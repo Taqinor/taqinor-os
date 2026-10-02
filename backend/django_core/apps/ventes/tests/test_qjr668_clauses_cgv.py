@@ -27,7 +27,7 @@ import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from django.test import SimpleTestCase, TestCase, tag
+from django.test import SimpleTestCase, TestCase, override_settings, tag
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -417,6 +417,112 @@ class RenduCgvFigeeTests(_Base):
         self.assertIn('Titre vivant', html)
         self.assertIn('Puce vivante QJR668', html)
         self.assertNotIn('{acompte}', html)
+
+
+PUBLIC_VIEWS = Path(__file__).resolve().parents[1] / 'public_views.py'
+
+
+class PageSignatureSourceTests(SimpleTestCase):
+    """(d) UNE seule fonction de remplissage : la page publique de signature
+    (``public_views._conditions_publiques``) n'a plus sa propre copie
+    (``.format`` + ``_pct_lisible``) — elle appelle ``remplir_cgv``."""
+
+    def _arbre(self):
+        return ast.parse(PUBLIC_VIEWS.read_text(encoding='utf-8'))
+
+    def test_conditions_publiques_appelle_la_fonction_partagee(self):
+        fonction = next(
+            n for n in ast.walk(self._arbre())
+            if isinstance(n, ast.FunctionDef)
+            and n.name == '_conditions_publiques')
+        appels = {n.func.id for n in ast.walk(fonction)
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+        attributs = {n.func.attr for n in ast.walk(fonction)
+                     if isinstance(n, ast.Call)
+                     and isinstance(n.func, ast.Attribute)}
+        self.assertIn('remplir_cgv', appels)
+        self.assertNotIn('format', attributs)
+
+    def test_plus_de_formateur_local_des_pourcentages(self):
+        noms = {n.name for n in ast.walk(self._arbre())
+                if isinstance(n, ast.FunctionDef)}
+        self.assertNotIn('_pct_lisible', noms)
+
+
+@override_settings(CACHES={'default': {
+    'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
+class PageSignatureCgvFigeeTests(_Base):
+    """(d) Décision fondateur 01/10/2026 — la page publique de signature
+    (« J'accepte … les conditions générales de vente ») sert la CGV FIGÉE du
+    devis, celle que son PDF imprime ; jamais le texte vivant modifié après
+    l'envoi."""
+
+    def _cgv(self, puces, titre):
+        from apps.parametres.models_documents import DocumentTemplates
+        tpl = DocumentTemplates.get(company=self.company)
+        tpl.cgv_titre = titre
+        tpl.cgv_bullets = puces
+        tpl.save()
+        return tpl
+
+    def _conditions(self, devis):
+        from apps.ventes.models import ShareLink
+        lien = ShareLink.for_devis(devis)
+        resp = APIClient().get(
+            f'/api/django/public/proposal/{lien.token}/data/')
+        self.assertEqual(resp.status_code, 200, getattr(resp, 'data', resp))
+        return resp.data['conditions']
+
+    def _acompte_pdf(self, devis):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.clauses_cgv import (
+            termes_paiement_affiches)
+        return termes_paiement_affiches(build_quote_data(devis))[0]
+
+    def test_cgv_modifiees_apres_envoi_la_page_sert_la_version_figee(self):
+        from apps.ventes.services import mark_devis_sent
+        tpl = self._cgv(['Puce envoyée QJR668 acompte {acompte}&#37;',
+                         'Puce fixe envoyée QJR668'], 'Titre envoyé QJR668')
+        devis = self._devis()
+        mark_devis_sent(devis=devis, user=self.user)
+        devis.refresh_from_db()
+        acompte = self._acompte_pdf(devis)
+        attendu = [f'Puce envoyée QJR668 acompte {acompte}%',
+                   'Puce fixe envoyée QJR668']
+        self.assertEqual(self._conditions(devis), attendu)
+        tpl.cgv_titre = 'Titre modifié QJR668'
+        tpl.cgv_bullets = ['Puce modifiée QJR668 {acompte}&#37;']
+        tpl.save()
+        apres = self._conditions(devis)
+        self.assertEqual(apres, attendu)
+        self.assertNotIn('Puce modifiée', ' | '.join(apres))
+
+    def test_snapshot_fige_servi_tel_quel(self):
+        """Les puces figées (entités HTML comprises) partent dé-échappées,
+        à l'identique — le texte vivant n'est pas lu."""
+        self._cgv(['Puce vivante QJR668'], 'Titre vivant QJR668')
+        devis = self._devis(statut=Devis.Statut.ENVOYE)
+        devis.clauses_appliquees = [CGV_FIGEE, CLAUSE]
+        devis.save(update_fields=['clauses_appliquees'])
+        self.assertEqual(self._conditions(devis),
+                         ['Puce CGV figée QJR668 unique', 'Acompte 40%'])
+
+    def test_sans_gel_texte_vivant_rempli_sans_case_brute(self):
+        """Devis sans snapshot : le texte VIVANT de la société, rempli par
+        ``remplir_cgv`` — une case inconnue n'est jamais servie brute
+        (l'ancien ``.format`` local renvoyait la puce telle quelle)."""
+        self._cgv(['Puce vivante QJR668 acompte {acompte}&#37;',
+                   'Garantie QJR668 {inconnue} ans'], 'Titre vivant')
+        devis = self._devis(statut=Devis.Statut.ENVOYE)
+        self.assertFalse(devis.clauses_appliquees)
+        acompte = self._acompte_pdf(devis)
+        conditions = self._conditions(devis)
+        self.assertEqual(conditions, [
+            f'Puce vivante QJR668 acompte {acompte}%',
+            'Garantie QJR668  ans'])
+        joint = ' | '.join(conditions)
+        self.assertNotIn('{', joint)
+        self.assertNotIn('}', joint)
 
 
 @tag('pdf')
