@@ -414,3 +414,21 @@ def realisation_pour_lead(lead):
     if meilleure is not None:
         return meilleure
     return _repli(lignes, _puissance_du_dernier_devis(lead))
+
+
+def cgv_bullets_societe(company):
+    """ERR-QJR668 — les puces CGV que la société a RENSEIGNÉES
+    (``DocumentTemplates.cgv_bullets``), TELLES QUELLES (marqueurs
+    ``{acompte}`` / ``{materiel}`` / ``{solde}`` / ``{tva_note}`` conservés :
+    le moteur les substitue au rendu), ou ``None`` quand elle n'en a saisi
+    aucune. Lecture seule : aucun enregistrement n'est créé
+    (``DocumentTemplates.get`` en crée un)."""
+    if company is None:
+        return None
+    from apps.parametres.models_documents import DocumentTemplates
+    modele = DocumentTemplates.objects.filter(company=company).first()
+    puces = getattr(modele, 'cgv_bullets', None)
+    if not isinstance(puces, list):
+        return None
+    puces = [str(p) for p in puces if str(p or '').strip()]
+    return puces or None

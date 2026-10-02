@@ -6,7 +6,8 @@ propres à chaque affaire (NTCPQ11, ``Devis.clauses_appliquees``) sont :
   * IMPRIMÉES par tous les gabarits (résidentiel, industriel, commercial,
     une page) — et un devis sans clause reste sans bloc.
 
-Le catalogue (app ``cpq``) est PARQUÉ : sans lui, le gel n'écrit rien et
+ERR-QJR668 : la source réelle est DocumentTemplates.cgv_bullets (Paramètres) ;
+le catalogue (app ``cpq``) est PARQUÉ : sans source, le gel n'écrit rien et
 n'efface jamais un snapshot déjà posé. Les tests fournissent la source en
 patchant ``clauses_applicables_devis``.
 
@@ -93,6 +94,43 @@ class GelTests(_Base):
         devis.refresh_from_db()
         self.assertEqual(devis.clauses_appliquees, [CLAUSE])
 
+    def test_envoi_gele_les_cgv_de_la_societe_sans_patch(self):
+        """ERR-QJR668 — SANS patch de ``clauses_applicables_devis`` : les CGV
+        renseignées dans Paramètres sont la source réelle du gel."""
+        from apps.parametres.models_documents import DocumentTemplates
+        from apps.ventes.services import mark_devis_sent
+        DocumentTemplates.objects.update_or_create(
+            company=self.company,
+            defaults={'cgv_bullets': [
+                'QJR668 livraison sous trente jours ouvrés',
+                'Acompte {acompte} % à la commande']})
+        devis = self._devis()
+        mark_devis_sent(devis=devis, user=self.user)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        # Les puces de la société sont gelées TELLES QUELLES (marqueur
+        # {acompte} conservé) dans UNE entrée dédiée, pas en clause
+        # particulière.
+        self.assertEqual(
+            devis.clauses_appliquees,
+            [{'type': 'cgv_gelees', 'bullets': [
+                'QJR668 livraison sous trente jours ouvrés',
+                'Acompte {acompte} % à la commande']}])
+
+    def test_les_cgv_gelees_sont_ecrites_une_seule_fois(self):
+        from apps.parametres.models_documents import DocumentTemplates
+        from apps.ventes.domain.cycle_vie import figer_clauses_devis
+        modele = DocumentTemplates.objects.create(
+            company=self.company, cgv_bullets=['QJR668 avant'])
+        devis = self._devis()
+        self.assertTrue(figer_clauses_devis(devis))
+        modele.cgv_bullets = ['QJR668 apres']
+        modele.save()
+        self.assertFalse(figer_clauses_devis(devis))
+        devis.refresh_from_db()
+        self.assertEqual(devis.clauses_appliquees[0]['bullets'],
+                         ['QJR668 avant'])
+
     def test_correction_apres_envoi_regele(self):
         devis = self._devis(statut=Devis.Statut.ENVOYE)
         devis.clauses_appliquees = [CLAUSE]
@@ -171,6 +209,47 @@ class ImpressionTests(_Base):
         texte, pages = self._texte(devis, {'pdf_mode': 'onepage'})
         self.assertIn(_norm(CLAUSE['corps_texte']), texte)
         self.assertEqual(pages, 1)
+
+    def test_cgv_gelees_imprimees_une_fois_et_figees_apres_edition(self):
+        """ERR-QJR668 — envoi → la société édite ses CGV → le PDF imprime le
+        texte GELÉ, UNE seule fois, dans le bloc CGV standard (jamais dans
+        « Clauses particulières »)."""
+        from apps.parametres.models_documents import DocumentTemplates
+        from apps.ventes.services import mark_devis_sent
+        modele, _ = DocumentTemplates.objects.update_or_create(
+            company=self.company,
+            defaults={'cgv_bullets': ['QJR668 livraison gelee trente jours']})
+        devis = self._devis()
+        mark_devis_sent(devis=devis, user=self.user)
+        modele.cgv_bullets = ['QJR668 livraison nouvelle quarante jours']
+        modele.save()
+        devis.refresh_from_db()
+        texte, _ = self._texte(devis)
+        self.assertEqual(texte.count('qjr668 livraison gelee trente jours'), 1)
+        self.assertNotIn('quarante jours', texte)
+        self.assertNotIn('clauses particulières', texte)
+
+    def test_un_brouillon_imprime_les_cgv_vives(self):
+        from apps.parametres.models_documents import DocumentTemplates
+        DocumentTemplates.objects.update_or_create(
+            company=self.company,
+            defaults={'cgv_bullets': ['QJR668 livraison vive vingt jours']})
+        texte, _ = self._texte(self._devis())
+        self.assertEqual(texte.count('qjr668 livraison vive vingt jours'), 1)
+        self.assertNotIn('clauses particulières', texte)
+
+    def test_cgv_gelees_et_clause_particuliere_coexistent_sans_doublon(self):
+        from apps.parametres.models_documents import DocumentTemplates
+        DocumentTemplates.objects.update_or_create(
+            company=self.company,
+            defaults={'cgv_bullets': ['QJR668 livraison gelee trente jours']})
+        devis = self._gele(self._devis(), [
+            CLAUSE, {'type': 'cgv_gelees',
+                     'bullets': ['QJR668 livraison gelee trente jours']}])
+        texte, _ = self._texte(devis)
+        self.assertEqual(texte.count('qjr668 livraison gelee trente jours'), 1)
+        self.assertEqual(texte.count(_norm(CLAUSE['corps_texte'])), 1)
+        self.assertIn('clauses particulières', texte)
 
     def test_clause_echappee(self):
         clause = dict(CLAUSE, corps_texte='QJR668 <b>a & b</b> < c')
