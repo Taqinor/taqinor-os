@@ -15,7 +15,7 @@ import { formatNumber } from '../../../lib/format'
 export default function BlocEtudeReseau({
   consoMensuelle, setConsoMensuelle, injectionEnabled, setInjectionEnabled,
   tensionRaccordement, dispatchSizing, estMt, repartitionMt, setPartMt,
-  tarifMtApplique,
+  tarifMtApplique, erreurConso,
 }) {
   return (
     <>
@@ -25,6 +25,10 @@ export default function BlocEtudeReseau({
           <Input id="gen-conso" type="number" min="0" step="any"
                  placeholder="ex: 12000" value={consoMensuelle}
                  onChange={e => setConsoMensuelle(e.target.value)} />
+          {/* ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — le refus s'affiche SOUS le champ. */}
+          {erreurConso && (
+            <p className="text-xs text-destructive" data-testid="erreur-conso">{erreurConso}</p>
+          )}
         </div>
         {/* QX50 — injection du surplus (loi 82-21), OFF par défaut */}
         <div className="grid gap-1.5">

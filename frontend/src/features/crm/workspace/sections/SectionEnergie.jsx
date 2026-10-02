@@ -171,6 +171,7 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
         <div className="form-group" style={{ alignSelf: 'flex-end' }}>
           <label className="pdf-toggle">
             <input
+              id="lf-regularisation-8221" data-field-anchor="lf-regularisation-8221"
               type="checkbox" checked={regularisation}
               onChange={(e) => setField('regularisation_8221', e.target.checked)}
             />

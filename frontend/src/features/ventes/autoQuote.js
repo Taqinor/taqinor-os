@@ -163,17 +163,6 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
 })
 
 /**
- * QJR602 (D-QJR5-13) — PLUS AUCUN PALIER N'EST APPLIQUÉ À UNE TAILLE
- * EXPLICITE : il n'y a donc plus rien à annoncer, la fonction rend toujours
- * `null`. Elle ne subsiste que pour ses deux derniers appelants, hors de ce
- * lot : le générateur (`DevisGenerator.jsx`, `runAutoQuote`) et
- * `LeadDevisPanel.jsx` — à supprimer avec leurs imports.
- */
-export function noticePalierKwc() {
-  return null
-}
-
-/**
  * Crée un devis auto-dimensionné depuis un lead. Retourne l'id du devis créé.
  * Lève { detail } si le lead n'a pas les données requises (mêmes règles que la
  * garde serveur POST /devis-auto/).

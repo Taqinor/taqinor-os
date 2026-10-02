@@ -175,6 +175,16 @@ test('la clé legacy recommended_choice est relue en repli', () => {
   assert.equal(devisVersEtat(devis).recommendedChoice, 'Avec batterie')
 })
 
+test('devisVersEtat marque `compose` les lignes produit relues sans verrou ni option', () => {
+  const devis = base(10, 'residentiel', {}, [
+    ligne(1, 5, 'Panneau', '10', '1000', '20'),
+    ligne(2, 6, 'Onduleur', '1', '7500', '20', { prix_manuel: true }),
+    ligne(3, 7, 'Borne', '1', '5000', '20', { optionnelle: true }),
+  ])
+  const { lignes } = devisVersEtat(devis)
+  assert.deepEqual(lignes.map(l => l.compose), [true, false, false])
+})
+
 test('toute clé écrite par l’écran est DÉCLARÉE au schéma serveur', () => {
   assert.ok(CLES_SCHEMA.size >= 50, `schéma trop petit : ${CLES_SCHEMA.size}`)
   for (const devis of Object.values(FIXTURES)) {

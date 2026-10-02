@@ -41,31 +41,43 @@ def build(ctx):
     # dessus. Sans barème servi, le bloc des tranches est OMIS — on n'imprime
     # pas des conditions de paiement que personne n'a décidées.
     pt = d.get("payment_terms") or {}
+    # ERR-QJR614-CI-INVESTISSEMENT-DIRHAM-VS-CENTIME — pourcentages NON
+    # tronqués (l'ancien ``int(pct)`` faisait d'un 33,5 % un 33 %) et montants
+    # au CENTIME via ``utils.echeancier.montants_tranches`` (la dernière
+    # tranche reçoit le reliquat) : acompte + matériel + solde == Total TTC.
+    from decimal import Decimal, InvalidOperation
     _pcts = {}
     for _cle in ("acompte", "materiel", "solde"):
         try:
-            _pcts[_cle] = int(pt[_cle])
-        except (KeyError, TypeError, ValueError):
+            _pcts[_cle] = Decimal(str(pt[_cle]))
+        except (KeyError, TypeError, ValueError, InvalidOperation):
             _pcts = {}
             break
-    a_pct = _pcts.get("acompte")
-    m_pct = _pcts.get("materiel")
-    s_pct = _pcts.get("solde")
+    fmt_mad = ctx.get("fmt_mad") or fmt
+    _montants = {}
+    if _pcts:
+        from apps.ventes.utils.echeancier import montants_tranches
+        _montants = montants_tranches(
+            invest, [(k, _pcts[k]) for k in ("acompte", "materiel", "solde")])
 
-    def tranche(label, pct, sub):
-        montant = round(invest * pct / 100)
+    def _pct_txt(pct):
+        # 50 → « 50 », 33.5 → « 33,5 » : jamais une troncature.
+        txt = format(pct.normalize(), "f")
+        return txt.replace(".", ",")
+
+    def tranche(label, cle, sub):
         return (
-            f'<td class="i3-tr"><div class="i3-tr-pct">{pct}%</div>'
+            f'<td class="i3-tr"><div class="i3-tr-pct">{_pct_txt(_pcts[cle])}%</div>'
             f'<div class="i3-tr-lab">{label}</div>'
-            f'<div class="i3-tr-amt">{fmt(montant)} MAD</div>'
+            f'<div class="i3-tr-amt">{fmt_mad(_montants[cle])} MAD</div>'
             f'<div class="i3-tr-sub">{sub}</div></td>')
 
     tranches = (
-        tranche("Acompte", a_pct, "à la commande — lancement des études & appro")
+        tranche("Acompte", "acompte", "à la commande — lancement des études & appro")
         + '<td class="i3-tgap"></td>'
-        + tranche("Matériel", m_pct, "à la livraison des équipements sur site")
+        + tranche("Matériel", "materiel", "à la livraison des équipements sur site")
         + '<td class="i3-tgap"></td>'
-        + tranche("Solde", s_pct, "à la mise en service & réception")
+        + tranche("Solde", "solde", "à la mise en service & réception")
     ) if _pcts else ""
     # QJR146 (f) — le titre suit le bloc : pas de section « Tranches de
     # paiement phasées » vide au-dessus d'un trou.

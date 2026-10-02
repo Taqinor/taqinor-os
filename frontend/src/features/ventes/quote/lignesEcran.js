@@ -36,6 +36,11 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
     .map((l) => {
       const taux = parseFloat(l.taux_tva ?? tauxDevis) || 20
       const produit = l.produit ?? l.produit_id
+      // Marqueur d'écran (jamais envoyé au serveur) : une ligne produit relue
+      // sans verrou ni option est tenue pour issue d'une composition, donc
+      // remplacée (et non gardée à côté) par la prochaine recomposition.
+      const compose = (l.type_ligne ?? 'produit') === 'produit' && !l.prix_manuel
+        && !l.quantite_manuelle && !l.optionnelle
       return {
         produit: String(produit ?? ''),
         designation: l.designation ?? '',
@@ -48,6 +53,7 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
         remise: String(parseFloat(l.remise) || 0),
         optionnelle: !!l.optionnelle,
         typeLigne: l.type_ligne ?? 'produit',
+        compose,
         variante: l.variante ?? '',
         prixManuel: !!l.prix_manuel,
         quantiteManuelle: !!l.quantite_manuelle,

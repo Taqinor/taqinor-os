@@ -473,7 +473,10 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
             charges_fixes_mad=entrees['charges_fixes_mad'],
             # QJR606 — la phase et la gamme du devis, lues par l'adaptateur.
             phase=entrees['phase'],
-            gamme_nom_devis=entrees['gamme_nom_devis'])
+            gamme_nom_devis=entrees['gamme_nom_devis'],
+            # ERR-QJR605 — site isolé et paires MPPT du devis.
+            hors_reseau=entrees['hors_reseau'],
+            mppt_paires=entrees['mppt_paires'])
         resultat['_empreinte'] = empreinte
         ecrire(devis, proprietaire=MOTEUR_DIMENSIONNEMENT,
                dimensionnement=resultat)

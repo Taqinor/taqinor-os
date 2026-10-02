@@ -62,7 +62,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-from authentication.scoping import scope_queryset  # noqa: E402,F401
+from authentication.scoping import scope_queryset  # noqa: E402
 
 
 def _gamme_envoi_payload(devis):
@@ -165,6 +165,23 @@ def _exiger_remise_envoi(devis, user, *, enregistrer=True):
         exiger_approbation_remise(devis, user, enregistrer=enregistrer)
     except RemiseNonApprouvee as erreur:
         raise _RemiseEnvoiRefusee(erreur.message)
+
+
+def _garde_kwh_declare(devis):
+    """ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES (décision fondateur 30/09/2026)
+    — un kWh mensuel déclaré que les factures du MÊME dossier contredisent
+    (facture au barème ÷ facture déclarée hors [0,5 ; 2]) REFUSE
+    l'enregistrement : 400 ``{detail, code}``, jamais un chiffrage
+    silencieux. Partagée par ``/atomic`` (sous sa transaction, rien n'est
+    créé) et ``replace-lines`` (avant toute écriture)."""
+    from rest_framework.exceptions import ValidationError
+    from ..etude_horaire import (
+        CODE_KWH_INCOHERENT, MESSAGE_KWH_INCOHERENT,
+        controle_kwh_declare_du_devis)
+    controle = controle_kwh_declare_du_devis(devis)
+    if controle is not None and not controle['coherent']:
+        raise ValidationError({'detail': MESSAGE_KWH_INCOHERENT,
+                               'code': CODE_KWH_INCOHERENT})
 
 
 def _valider_etude_ecran(etude_in):
@@ -721,10 +738,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         AJOUTÉ quand il manque, jamais re-tarifé quand il est là ; un
         composant introuvable ou non tarifé est sauté et DIT dans
         ``avertissements``, et ``lignes_ajoutees`` compte les ajouts. Le
-        STATUT n'est jamais écrit (règle #4) : un devis « envoyé » répond 409
-        avec ``revision_possible: true`` (le bon geste est « Réviser ») ; un
-        devis accepté/refusé/expiré répond 409 avec ``revision_possible:
-        false``. Renvoyer le MÊME layout ne fait aucune écriture
+        STATUT n'est jamais écrit (règle #4) : un devis « envoyé » est CORRIGÉ
+        SUR PLACE (200, QJR557 — chatter « corrigé après envoi : calepinage »,
+        marqueur ``resync_apres_envoi``, statut inchangé) ; un devis accepté
+        répond 409 avec ``revision_possible: true`` (le bon geste est
+        « Réviser ») ; refusé/expiré, 409 avec ``revision_possible: false``.
+        Renvoyer le MÊME layout ne fait aucune écriture
         (``inchange: true``). Devis d'une autre société → 404 (get_queryset)."""
         from ..services import sync_devis_from_layout, SyncLayoutError
 
@@ -1022,6 +1041,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                         **devise_kwargs)
                     if etude_in:
                         ecrire(devis, proprietaire=ECRAN, **etude_in)
+                    # ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — refus sous la
+                    # transaction : un kWh déclaré contredit ne crée RIEN.
+                    _garde_kwh_declare(devis)
                     # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction :
                     # la composition est celle que l'écran a arrêtée, le
                     # pipeline ne la recompose pas (recomposer détruirait les
@@ -1136,6 +1158,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             _gardes_mise_a_jour(devis, entete_ser.validated_data,
                                 request.user, t17=False)
         _valider_etude_ecran(etude_in)
+        # ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — avant toute écriture.
+        _garde_kwh_declare(devis)
         from ..services import (
             RemiseNonApprouvee, reverifier_remise_apres_correction)
         from ..domain.tarification import profondeur_remise_effective
@@ -2074,6 +2098,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
              for v in results],
         )
 
+    # api-only: TEMPORAIRE (QJR667) — aucun bouton « Dupliquer » du devis n'appelle
+    # encore cette action ; retirer ce marqueur dès que l'écran la câble.
     @action(detail=True, methods=['post'], url_path='dupliquer',
             permission_classes=[IsResponsableOrAdmin])
     def dupliquer(self, request, pk=None):
@@ -2213,6 +2239,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             status=(status.HTTP_201_CREATED if request.method == 'POST'
                     else status.HTTP_200_OK))
 
+    # api-only: TEMPORAIRE (QJR667) — aucun bouton « Renouveler » du devis n'appelle
+    # encore cette action ; retirer ce marqueur dès que l'écran la câble.
     @action(detail=True, methods=['post'], url_path='renouveler',
             permission_classes=[IsResponsableOrAdmin])
     def renouveler(self, request, pk=None):

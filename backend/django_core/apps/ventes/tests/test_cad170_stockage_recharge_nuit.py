@@ -149,3 +149,29 @@ class AucunTexteNeConseilleDeRechargerLeJour(SimpleTestCase):
         contenu = self.FICHIER.read_text(encoding='utf-8')
         self.assertIn('CAD170', contenu)
         self.assertIn('besoin de stockage', contenu)
+
+
+class LEchelleServieAuClientRespecteLePlancherVE(SimpleTestCase):
+    """QJR612 — l'échelle publique ne propose aucun palier sous le plancher."""
+
+    def test_lead_ve_nuit_aucun_palier_sous_le_plancher(self):
+        from apps.ventes.domain.dimensionnement_devis import (
+            _cibles_au_dessus_du_plancher_ve)
+        couches = _couches_ve(km=600)
+        recharge = EH.recharge_ve_nocturne_kwh_jour(couches)
+        self.assertGreater(recharge, 5.0)
+        plancher = EH.plancher_batterie_recharge_ve(0.0, couches, TAILLES)
+        sortie = _cibles_au_dessus_du_plancher_ve(list(TAILLES), couches)
+        self.assertTrue(sortie)
+        self.assertGreaterEqual(min(sortie) + 0.05,
+                                plancher['taille_retenue_kwh'])
+        self.assertLess(len(sortie), len(TAILLES))
+
+    def test_sans_recharge_nocturne_rien_ne_change(self):
+        from apps.ventes.domain.dimensionnement_devis import (
+            _cibles_au_dessus_du_plancher_ve)
+        self.assertEqual(
+            _cibles_au_dessus_du_plancher_ve(list(TAILLES), {}), list(TAILLES))
+        self.assertEqual(
+            _cibles_au_dessus_du_plancher_ve(
+                list(TAILLES), _couches_ve(creneau='jour')), list(TAILLES))

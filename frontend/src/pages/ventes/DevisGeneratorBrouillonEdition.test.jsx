@@ -134,6 +134,16 @@ describe('QJR581 — brouillon local en Édition complète', () => {
     expect(quitterBloque()).toBe(false)
   }, 15000)
 
+  it('getLead résolu après la fenêtre de 1,5 s : toujours aucun brouillon, aucune garde', async () => {
+    crmApi.getLead.mockImplementation(() => new Promise(r => setTimeout(() => r({ data: LEAD }), 2000)))
+    renderEdition()
+    await screen.findByRole('button', { name: /Enregistrer les modifications/ })
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(7))
+    await new Promise(r => setTimeout(r, 4200))
+    expect(window.localStorage.getItem(CLE)).toBeNull()
+    expect(quitterBloque()).toBe(false)
+  }, 15000)
+
   it('brouillon local à updated_at ancien : aucun bandeau « Reprendre », brouillon purgé', async () => {
     window.localStorage.setItem(CLE, JSON.stringify({
       savedAt: '2026-09-29T08:00:00Z', version: '2026-09-29T07:00:00Z', data: { note: 'vieux' },

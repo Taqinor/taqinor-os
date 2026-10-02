@@ -138,6 +138,7 @@ export default function SectionVisite({ state, setField, errors = {}, mode, refD
         <div className="form-group" style={{ alignSelf: 'flex-end' }}>
           <label className="pdf-toggle">
             <input
+              id="lf-visite-effectuee" data-field-anchor="lf-visite-effectuee"
               type="checkbox" checked={visiteEffectuee}
               onChange={(e) => setField('visite_effectuee', e.target.checked)}
             />

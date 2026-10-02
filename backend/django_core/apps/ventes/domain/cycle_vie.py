@@ -1640,17 +1640,25 @@ def contexte_clauses_devis(devis):
     }
 
 
+#: ERR-QJR668 — type de l'entrée de ``Devis.clauses_appliquees`` qui porte les
+#: puces CGV DE LA SOCIÉTÉ gelées à l'envoi. Ce n'est PAS une clause
+#: particulière : ``builder`` l'en écarte et la rend dans le bloc CGV standard
+#: (``doc_texts['cgv_bullets']``) — jamais deux fois.
+TYPE_CGV_GELEES = 'cgv_gelees'
+
+
 def clauses_applicables_devis(devis):
-    """QJR668 — les clauses/CGV du catalogue société qui s'appliquent à ce
-    devis (``[{clause_id, nom, corps_texte, type_deal, ordre}]``), ou ``None``
-    quand AUCUN catalogue n'est disponible.
+    """QJR668 — les clauses PARTICULIÈRES du catalogue ``cpq`` qui s'appliquent
+    à ce devis (``[{clause_id, nom, corps_texte, type_deal, ordre}]``), ou
+    ``None`` quand AUCUN catalogue n'est disponible.
 
     Le catalogue NTCPQ11 vit dans l'app ``cpq`` (``selectors.clauses_applicables``
     évalue chaque clause contre :func:`contexte_clauses_devis`). Tant que
     ``cpq`` est PARQUÉE (MVP solaire, SOLMVP), le module n'existe pas : la
-    fonction rend ``None`` et le gel n'écrit rien — un snapshot déjà posé
-    n'est jamais effacé faute de source. Import dynamique : aucune arête
-    statique ventes → cpq."""
+    fonction rend ``None`` et le gel n'écrit aucune clause particulière — un
+    snapshot déjà posé n'est jamais effacé faute de source. Import dynamique :
+    aucune arête statique ventes → cpq. Les CGV de la société ne passent
+    PAS par ici (voir :func:`figer_clauses_devis`)."""
     import importlib
 
     try:
@@ -1664,23 +1672,40 @@ def clauses_applicables_devis(devis):
 
 
 def figer_clauses_devis(devis):
-    """QJR668 (décision fondateur 01/10/2026) — GÈLE les clauses/CGV du devis
-    sur ``Devis.clauses_appliquees``, lues ensuite telles quelles par le PDF
-    (``builder`` → ``data['clauses_cgv']``) : le moteur ne fait que rendre.
+    """QJR668 (décision fondateur 01/10/2026) — GÈLE sur
+    ``Devis.clauses_appliquees`` : (1) les clauses PARTICULIÈRES ``cpq``
+    (bloc « Clauses particulières »), et (2) ERR-QJR668 — les puces CGV de la
+    SOCIÉTÉ (``DocumentTemplates.cgv_bullets``, marqueurs conservés), dans UNE
+    entrée ``{'type': 'cgv_gelees', 'bullets': [...]}`` que ``builder`` lit
+    pour le bloc CGV STANDARD du PDF — jamais pour « Clauses particulières ».
 
     Appelé sur le chemin d'envoi (:func:`mark_devis_sent`) puis RE-appelé à
     chaque correction sur place d'un envoyé
-    (``modifiabilite.consigner_correction_apres_envoi``, QJR518) — sinon le
-    PDF imprimerait des clauses choisies pour un contenu qui n'existe plus.
-    Sans catalogue (``None``), rien n'est écrit. N'écrit que si le jeu change.
-    Rend ``True`` quand le snapshot a été (ré)écrit. Ne touche jamais au
-    statut (règle #4)."""
-    clauses = clauses_applicables_devis(devis)
-    if clauses is None or clauses == (devis.clauses_appliquees or None):
+    (``modifiabilite.consigner_correction_apres_envoi``, QJR518). Les clauses
+    cpq suivent le contenu corrigé ; les CGV société sont gelées UNE fois (ce
+    que le client a reçu) : un texte édité après l'envoi ne les change pas.
+    Sans source, rien n'est écrit ni effacé. Rend ``True`` quand le snapshot a
+    été (ré)écrit. Ne touche jamais au statut (règle #4)."""
+    from apps.parametres.selectors import cgv_bullets_societe
+
+    existant = list(devis.clauses_appliquees or [])
+
+    def _est_cgv(c):
+        return isinstance(c, dict) and c.get('type') == TYPE_CGV_GELEES
+
+    cgv = [c for c in existant if _est_cgv(c)]
+    particulieres = [c for c in existant if not _est_cgv(c)]
+    if not cgv:
+        puces = cgv_bullets_societe(devis.company)
+        if puces:
+            cgv = [{'type': TYPE_CGV_GELEES, 'bullets': puces}]
+    cpq = clauses_applicables_devis(devis)
+    if cpq is not None:
+        particulieres = cpq
+    cible = particulieres + cgv
+    if cible == existant or (not cible and not existant):
         return False
-    if not clauses and not devis.clauses_appliquees:
-        return False
-    devis.clauses_appliquees = clauses
+    devis.clauses_appliquees = cible
     devis.save(update_fields=['clauses_appliquees'])
     return True
 
@@ -2092,7 +2117,8 @@ def rattacher_aval_financier_revision(devis, *, user=None):
 
     1. le BC non annulé de la V1 est RATTACHÉ à la V2 (``BonCommande.devis`` est
        OneToOne : un BC « complémentaire » est impossible sans migration — le BC
-       garde ses lignes d'origine ; question fondateur consignée au DONE LOG),
+       rendu après rattachement lit donc les lignes de la V2, ``utils/pdf.py``
+       relisant ``bc.devis`` ; question fondateur consignée au DONE LOG),
        et les factures (``Facture.devis``) et ``FactureSource`` de la V1 aussi :
        les documents émis restent valables ;
     2. l'écart TTC est régularisé AU CENTIME, jamais un montant inventé :

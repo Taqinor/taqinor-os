@@ -48,6 +48,8 @@ const fieldLabels = {
   date_cloture_prevue: { label: 'Clôture prévue le', section: 'pipeline', inputId: 'lf-date-cloture' },
   priorite: { label: 'Priorité', section: 'pipeline', inputId: 'lf-priorite' },
   canal: { label: 'Canal', section: 'pipeline', inputId: 'lf-canal' },
+  // QJR593 — le responsable (AssigneePicker) : ancre posée sur son wrapper.
+  owner: { label: 'Responsable', section: 'pipeline', inputId: 'lf-owner' },
   langue_preferee: { label: 'Langue préférée', section: 'pipeline', inputId: 'lf-langue-preferee' },
   // CAD65 — libellé = `verbose_name` serveur (apps/crm/models.py).
   civilite: { label: 'Civilité', section: 'pipeline', inputId: 'lf-civilite' },
@@ -74,6 +76,8 @@ const fieldLabels = {
   facture_periodicite: { label: 'La facture couvre', section: 'energie', inputId: 'lf-facture-periode' },
   conso_mensuelle_kwh: { libelleCourt: 'consommation mensuelle (kWh)', label: 'Conso mensuelle (kWh)', section: 'energie', inputId: 'lf-conso-mensuelle' },
   tranche_onee: { label: 'Tarif / tranche ONEE', section: 'energie', inputId: 'lf-tranche-onee' },
+  // QJR593 — case à cocher 82-21 (SectionEnergie) ; même texte que le chatter serveur.
+  regularisation_8221: { label: 'Régularisation 82-21', section: 'energie', inputId: 'lf-regularisation-8221' },
   raccordement: { libelleCourt: 'raccordement', label: 'Raccordement', section: 'energie', inputId: 'lf-raccordement' },
   // CAD150 — captés par le site, désormais éditables (CHAMPS_SITE).
   distributeur: { label: "Distributeur d'électricité", section: 'energie', inputId: 'lf-distributeur' },
@@ -146,10 +150,13 @@ const fieldLabels = {
   nb_etages: { label: 'Étages / hauteur', section: 'toiture', inputId: 'lf-nb-etages' },
 
   // ── Visite technique ───────────────────────────────────────────────────
+  visite_effectuee: { label: 'Visite effectuée', section: 'visite', inputId: 'lf-visite-effectuee' },
   visite_prevue_le: { label: 'Visite prévue le', section: 'visite', inputId: 'lf-visite-prevue' },
   visite_notes: { label: 'Notes de visite', section: 'visite', inputId: 'lf-visite-notes' },
 
   // ── Compléments ────────────────────────────────────────────────────────
+  // QJR593 — champs personnalisés (CustomFieldsInput) : ancre sur son wrapper.
+  custom_data: { label: 'Champs personnalisés', section: 'divers', inputId: 'lf-custom-data' },
   note: { label: 'Note générale', section: 'divers', inputId: 'lf-note' },
   // CAD150 — qualification captée par le site, éditable (CHAMPS_SITE).
   ownership: { label: "Statut d'occupation", section: 'divers', inputId: 'lf-ownership' },

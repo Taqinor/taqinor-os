@@ -204,7 +204,9 @@ def _dimensionnement_variante(devis, occupation):
         source_conso=entrees.source_conso,
         jour_reference=entrees.jour_reference,
         tranches=entrees.tranches, charges_fixes_mad=entrees.charges_fixes_mad,
-        phase=entrees.phase, gamme_nom_devis=entrees.gamme_nom_devis)
+        phase=entrees.phase, gamme_nom_devis=entrees.gamme_nom_devis,
+        # ERR-QJR605 — site isolé et paires MPPT du devis.
+        hors_reseau=entrees.hors_reseau, mppt_paires=entrees.mppt_paires)
 
 
 def calculer_profils_comparatifs(devis):

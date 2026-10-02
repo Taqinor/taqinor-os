@@ -339,8 +339,8 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
             pas touché. AssigneePicker n'expose pas de className : le contour va
             sur le wrapper (label stable pour l'e2e). */}
         <div className="form-group">
-          <label className="form-label">Responsable</label>
-          <div className={ownerSuggested ? 'vx-suggested-field inline-block rounded-full' : undefined}>
+          <label className="form-label" htmlFor="lf-owner">Responsable</label>
+          <div id="lf-owner" data-field-anchor="lf-owner" tabIndex={-1} className={ownerSuggested ? 'vx-suggested-field inline-block rounded-full' : undefined}>
             <AssigneePicker
               users={users}
               value={v('owner')}

@@ -9,6 +9,7 @@ import { formatMAD } from '../../lib/format.js'
 // `ligneCompteDansTotaux` (remise.js, même règle que le noyau des totaux ;
 // remise.js n'importe rien : aucun cycle).
 import { ligneCompteDansTotaux, totauxCanoniques } from './remise.js'
+import { SCENARIOS_VALIDES } from './quote/scenarios.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
 // DC9 — MIROIR de la source Python unique
@@ -1073,6 +1074,32 @@ export function controlerFacturesSaisies(factures, { factureHiverLead } = {}) {
   return { plancher, sousPlancher, ecartLead }
 }
 
+// ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — jumeau de
+// etude_horaire.coherence_kwh_declare_factures (décision fondateur 30/09/2026).
+// Le kWh mensuel DÉCLARÉ sur la fiche du lead prime sur ses factures (Q14,
+// CAD166) SEULEMENT s'il est vraisemblable : facture_barème(kWh) ÷ facture
+// déclarée doit tomber dans [0,5 ; 2] pour AU MOINS une facture déclarée
+// (hiver, et été quand elle est distincte). Sinon l'enregistrement est REFUSÉ.
+// `null` quand rien n'est confrontable (kWh ou facture absents).
+const RATIO_KWH_FACTURE_MIN = 0.5
+const RATIO_KWH_FACTURE_MAX = 2
+export const MESSAGE_KWH_INCOHERENT =
+  'kWh déclarés incohérents avec les factures — corriger la fiche du lead'
+export function controlerKwhDeclare(kwhMensuel, { factureHiver, factureEte, eteDifferente } = {},
+  tranches = ONEE_TRANCHES) {
+  const kwh = parseFloat(kwhMensuel) || 0
+  const factures = [factureHiver, eteDifferente ? factureEte : null]
+    .map(v => parseFloat(v) || 0).filter(v => v > 0)
+  if (!(kwh > 0) || !factures.length) return null
+  const factureBareme = factureMad(kwh, tranches).totalMad
+  const ratios = factures.map(f => factureBareme / f)
+  return {
+    factureBareme,
+    ratios,
+    coherent: ratios.some(r => r >= RATIO_KWH_FACTURE_MIN && r <= RATIO_KWH_FACTURE_MAX),
+  }
+}
+
 // TPPAN TTC due sur une période de `jours` jours consommant `kwhMensuel`.
 // Jumeau de bareme.tppan_mad : empilement progressif sur la TOTALITÉ de la
 // consommation, bornes proratisées, plafonné. Monotone non décroissante.
@@ -1647,12 +1674,10 @@ export function totauxCanoniquesTtc(lines, discountPct = 0) {
 // ── Totaux par option, TTC (port exact de updateTotals de app.js) ────────────
 // Option 1 SANS batterie : exclut Batterie + Onduleur hybride.
 // Option 2 AVEC batterie : exclut Onduleur réseau.
-// ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — miroir de
-// `apps/ventes/utils/options.py` `SCENARIOS_ALTERNATIVE` : les trois libellés
-// qui DÉCLARENT une alternative commerciale (le noyau sert alors UNE option,
-// panier filtré ET règle QF9 appliquée).
-// source-choix: ventes.utils.options.SCENARIOS_ALTERNATIVE
-export const SCENARIOS_ALTERNATIVE = ['Sans batterie', 'Avec batterie', 'Les deux (Sans + Avec)']
+// ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — les trois libellés qui DÉCLARENT
+// une alternative commerciale (le noyau sert alors UNE option, panier filtré
+// ET règle QF9 appliquée) : la liste vit dans `quote/scenarios.js`.
+export const SCENARIOS_ALTERNATIVE = SCENARIOS_VALIDES
 
 // Miroir de `familles_des_lignes` + `familles_servables` + la condition
 // « alternative déclarée » de `deux_options_depuis_paniers` (utils/options.py) :
@@ -1793,6 +1818,25 @@ const _estLigneProduit = (l) => (l?.typeLigne ?? l?.type_ligne ?? 'produit') ===
 
 export function lignesQuantiteFigee(lignes) {
   return (lignes || []).filter(l => _estLigneProduit(l) && l.quantiteManuelle && l.produit)
+}
+
+// Lignes en CONFLIT possible avec une nouvelle composition : seules les
+// quantités figées à la main. Un prix tapé ou une option ajoutée sont gardés
+// d'office par la fusion, sans question ; une ligne `compose` n'en est jamais une.
+export function lignesManuellesEnConflitPossible(lignes) {
+  return lignesQuantiteFigee(lignes)
+}
+
+// Applique une composition générée : 'garder' fusionne (saisies conservées),
+// 'recalcule' ne garde EXACTEMENT que les lignes recalculées.
+export function appliquerRecomposition(anciennes, generees, mode = 'garder') {
+  if (mode === 'recalcule') {
+    return {
+      lignes: (Array.isArray(generees) ? generees : []).map(g => ({ ...g, compose: true })),
+      conflits: [],
+    }
+  }
+  return fusionnerRecomposition(anciennes, generees)
 }
 
 function _ancienneLigneAGarder(l) {

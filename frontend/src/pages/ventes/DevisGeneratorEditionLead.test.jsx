@@ -230,3 +230,37 @@ describe('ERR-QAC-FACTURES-ECRAN-INVRAISEMBLABLES — contrôle des factures à 
     expect(cles.factures_mensuelles_reelles).toEqual(estimerMois(1600, 1600))
   })
 })
+
+describe('ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — kWh déclaré contredit par les factures', () => {
+  it('46 kWh/mois face à 15 000 MAD/mois BLOQUE l\'enregistrement (DEV-202609-0082)', async () => {
+    crmApi.getLead.mockResolvedValue({
+      data: { ...LEAD, facture_hiver: '15000', conso_mensuelle_kwh: '46' },
+    })
+    ventesApi.getDevisById.mockResolvedValue(devisRouvert({
+      etudeParams: { factures_mensuelles_reelles: estimerMois(15000, 15000) },
+    }))
+    renderEdition()
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
+    await screen.findAllByText(/Khalid Réouvert/)
+    await cliquerEnregistrer()
+    const erreur = await screen.findByTestId('erreur-enregistrement')
+    expect(erreur).toHaveTextContent(
+      'kWh déclarés incohérents avec les factures — corriger la fiche du lead')
+    expect(ventesApi.replaceLignesDevis).not.toHaveBeenCalled()
+    expect(ventesApi.patchEtudeParams).not.toHaveBeenCalled()
+  })
+
+  it('un kWh concordant (650 kWh/mois ≈ 1 200 MAD) enregistre normalement', async () => {
+    crmApi.getLead.mockResolvedValue({
+      data: { ...LEAD, facture_hiver: '1200', conso_mensuelle_kwh: '650' },
+    })
+    ventesApi.getDevisById.mockResolvedValue(devisRouvert({
+      etudeParams: { factures_mensuelles_reelles: estimerMois(1200, 1200) },
+    }))
+    renderEdition()
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
+    await screen.findAllByText(/Khalid Réouvert/)
+    await enregistrerEtLireEtude()
+    expect(ventesApi.replaceLignesDevis).toHaveBeenCalled()
+  })
+})

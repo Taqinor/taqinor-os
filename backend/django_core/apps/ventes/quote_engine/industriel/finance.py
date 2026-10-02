@@ -100,6 +100,9 @@ def build(ctx):
     d = ctx["d"]
     C = ctx["C"]
     fmt = ctx["fmt"]
+    # ERR-QJR614-CI-INVESTISSEMENT-DIRHAM-VS-CENTIME — l'investissement TTC du
+    # pied de page s'imprime au centime (même chaîne que la couverture).
+    fmt_mad = ctx.get("fmt_mad") or fmt
     fonts = ctx["fonts"]
 
     navy = C["navy"]
@@ -303,7 +306,7 @@ def build(ctx):
     </div>
   </div>
   <div class="i2-foot">
-    {om_txt}. Investissement (TTC, clé en main) : <b>{fmt(round(invest))} MAD</b>.
+    {om_txt}. Investissement (TTC, clé en main) : <b>{fmt_mad(invest)} MAD</b>.
     Chiffres indicatifs, hors financement.
   </div>"""
     elif not chiffrable:
@@ -325,7 +328,7 @@ def build(ctx):
     </div>
   </div>
   <div class="i2-foot">
-    Investissement (TTC, clé en main) : <b>{fmt(round(invest))} MAD</b>.
+    Investissement (TTC, clé en main) : <b>{fmt_mad(invest)} MAD</b>.
     Chiffres indicatifs, hors financement.
   </div>"""
     else:

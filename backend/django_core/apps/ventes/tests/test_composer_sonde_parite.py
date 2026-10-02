@@ -128,6 +128,57 @@ class SiteIsole(_Base):
         self.assertIn('off-grid', noms)
 
 
+class SiteIsoleTableauDeTailles(_Base):
+    """ERR-QJR605 — le balayage de tailles (``recommander_taille``) reçoit le
+    hors-réseau du devis / de la fiche, comme les cartes et l'échelle."""
+
+    RACCORDEMENT = 'aucun'
+
+    def setUp(self):
+        super().setUp()
+        from apps.ventes import dimensionnement
+        self.appels = []
+        vrai = dimensionnement.recommander_taille
+
+        def _espion(**kwargs):
+            self.appels.append(kwargs)
+            return {'tableau': [], 'recommandation': None, 'motivation': ''}
+
+        dimensionnement.recommander_taille = _espion
+        self.addCleanup(setattr, dimensionnement, 'recommander_taille', vrai)
+        self.lead.facture_hiver = Decimal('900')
+        self.lead.save()
+
+    def test_entrees_portent_le_hors_reseau(self):
+        from apps.ventes.domain.entrees import (
+            entrees_depuis_devis, entrees_depuis_lead)
+        self.assertTrue(entrees_depuis_devis(self.devis).hors_reseau)
+        self.assertTrue(
+            entrees_depuis_lead(self.lead, self.company).hors_reseau)
+
+    def test_les_appelants_transmettent_hors_reseau(self):
+        from apps.ventes.domain.etudes import rafraichir_dimensionnement_devis
+        from apps.ventes.domain.taille import (
+            _panneaux_dimensionnement_horaire)
+        from apps.ventes.profils_comparatifs import _dimensionnement_variante
+        rafraichir_dimensionnement_devis(self.devis, force=True)
+        _dimensionnement_variante(self.devis, 'presence')
+        _panneaux_dimensionnement_horaire(
+            lead=self.lead, company=self.company, phase=None)
+        self.assertEqual(len(self.appels), 3, self.appels)
+        for appel in self.appels:
+            self.assertTrue(appel.get('hors_reseau'), appel)
+
+    def test_empreinte_distingue_le_site_isole(self):
+        from apps.ventes.domain.entrees import (
+            EntreesMoteur, empreinte_entrees)
+        raccorde = EntreesMoteur(conso_kwh_mensuelles=[100.0] * 12)
+        isole = EntreesMoteur(
+            conso_kwh_mensuelles=[100.0] * 12, hors_reseau=True)
+        self.assertNotEqual(empreinte_entrees(raccorde),
+                            empreinte_entrees(isole))
+
+
 class AucunAppelDirect(TestCase):
     """Les trois modules ne composent plus en direct : ils passent par
     ``pipeline.composer_sonde``."""
