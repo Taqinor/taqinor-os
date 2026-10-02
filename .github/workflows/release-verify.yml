@@ -67,11 +67,11 @@ jobs:
       image: ${{ steps.tag.outputs.image }}
       image_e2e: ${{ steps.tag.outputs.image_e2e }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Calculer les etiquettes des images
         id: tag
         run: bash .github/ci-image/tag.sh "${{ github.repository }}" >> "$GITHUB_OUTPUT"
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -91,11 +91,11 @@ jobs:
             fi
           done
           exit 0
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         if: ${{ steps.exists.outputs.backend != 'true' || steps.exists.outputs.e2e != 'true' }}
       - name: Construire et pousser ci-backend si elle manque (chemin lent)
         if: ${{ steps.exists.outputs.backend != 'true' }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: backend/django_core
           file: .github/ci-image/Dockerfile
@@ -106,7 +106,7 @@ jobs:
           provenance: false
       - name: Construire et pousser ci-e2e si elle manque (chemin lent)
         if: ${{ steps.exists.outputs.e2e != 'true' }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: frontend
           file: .github/ci-image/Dockerfile.e2e
@@ -169,7 +169,7 @@ jobs:
       MINIO_BUCKET_PDF: erp-pdf
       MINIO_BUCKET_UPLOADS: erp-uploads
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Python 3.11 + les DEUX requirements (dont weasyprint) sont deja dans
       # l'image CI — plus de `setup-python` ni de `pip install -r
       # requirements.txt` ici (memes suppressions que les jobs conteneurises
@@ -197,8 +197,8 @@ jobs:
   frontend-full:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -272,12 +272,12 @@ jobs:
       # finit en 429 → redirection /login → faux « page blanche ».
       TENANT_RATE_LIMIT: '0'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Python 3.11 + les navigateurs Playwright sont déjà dans l'image
       # `ci-e2e` — plus de `setup-python` ici (même suppression que `e2e-shard`
       # dans ci.yml). Node reste (cache npm, sans lequel `npm ci` serait
       # beaucoup plus lent).
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -363,14 +363,14 @@ jobs:
         run: npx playwright test --grep @visual --update-snapshots
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-full
           path: frontend/playwright-report
           retention-days: 14
       - name: Upload visual baselines (à relire + commiter)
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-baselines
           path: frontend/e2e/**/*-snapshots/**
@@ -381,8 +381,8 @@ jobs:
   web-full:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -413,7 +413,7 @@ jobs:
             --output=html --output-path=./lighthouse-report.html || true
       - name: Upload Lighthouse report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lighthouse-report
           path: apps/web/lighthouse-report.html
@@ -454,8 +454,8 @@ jobs:
       REDIS_HOST: localhost
       REDIS_PORT: '6379'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'   # MUST match prod (python:3.11.x) — the full PDF/golden suite must run on the same Python that generates client PDFs.
       - name: Install FastAPI service dependencies
@@ -554,7 +554,7 @@ jobs:
       # budget 1200/min et font pleuvoir des 429 (bruit, pas un vrai bug).
       TENANT_RATE_LIMIT: '0'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/backend-env
         with:
           testdb-cache-into: erp_db
@@ -617,7 +617,7 @@ jobs:
             2>&1 | tee ../../schemathesis-output.log
       - name: Upload le rapport Schemathesis
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: schemathesis-report
           path: |
@@ -658,11 +658,11 @@ jobs:
       actions: read
       issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Job non conteneurisé (ubuntu-latest nu) : `python` n'est pas garanti
       # présent/aliasé sans cette étape — même règle que
       # `.github/workflows/dependency-audit.yml`.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
       - name: Le run nocturne PRECEDENT (deja termine) etait-il vert ?
@@ -692,7 +692,7 @@ jobs:
           echo "alerte=$ALERTE" >> "$GITHUB_OUTPUT"
       - name: Ouvrir/mettre à jour l'issue d'alerte (2 nuits rouges de suite)
         if: ${{ steps.decision.outputs.alerte == 'true' }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const title = '[release-verify] Le nocturne échoue depuis 2 nuits ou plus';
