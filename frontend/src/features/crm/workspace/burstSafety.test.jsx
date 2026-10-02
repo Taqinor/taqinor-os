@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, cleanup, fireEvent, waitFor, renderHook, act } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, renderHook, act } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
@@ -20,7 +20,7 @@ import LeadWorkspace from './LeadWorkspace'
         (SET_FIELD ignore `stage` ; `changeStage` flush AVANT le PATCH d'étape) ;
      2. sélection WhatsApp + navigation → sélection VIDE sur le lead B
         (LOAD_LEAD reconstruit un état neuf) ;
-     3. « a » archiver avec éditions → flush AVANT archive (leaveGuard) ;
+     3. archiver (menu, confirmé) avec éditions → flush AVANT archive (leaveGuard) ;
      4. note tapée + navigation → composer VIDE sur B, brouillon de A RESTAURÉ
         au retour (miroir sessionStorage) ;
      5. réponse LENTE de A arrivant après nav vers B → JETÉE (garde `id`). */
@@ -35,7 +35,15 @@ vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/PlanActiviteDialog', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/ConvertirClientDialog', () => ({ default: () => null }))
 vi.mock('./ContextRail', () => ({ default: () => null }))
-vi.mock('./IdentityRail', () => ({ default: () => <div data-testid="identity-rail" /> }))
+// Le rail réel porte le menu « ⋯ » → onAction('archive') (IdentityRail.test.jsx) ;
+// ici un bouton minimal rejoue ce routage pour le scénario 3.
+vi.mock('./IdentityRail', () => ({
+  default: ({ onAction }) => (
+    <div data-testid="identity-rail">
+      <button type="button" onClick={() => onAction('archive')}>Archiver</button>
+    </div>
+  ),
+}))
 
 vi.mock('../../../api/crmApi', () => ({
   default: {
@@ -110,9 +118,12 @@ describe('LW38 — scénario 2 : la sélection WhatsApp ne fuit jamais d’un le
   })
 })
 
-// ── Scénario 3 : « a » archiver avec éditions → flush d’abord (leaveGuard) ────
+// ── Scénario 3 : archiver avec éditions → flush d’abord (leaveGuard) ──────────
+// Incident 02/10/2026 : plus de touche « a » — l'archivage passe par le menu
+// « ⋯ » et une confirmation qui nomme le lead (ici acceptée).
 describe('LW38 — scénario 3 : archiver ne jette jamais une édition en cours', () => {
-  it('la touche « a » flushe la modif AVANT d’archiver (leaveGuard)', async () => {
+  it('archiver (menu « ⋯ », confirmé) flushe la modif AVANT d’archiver (leaveGuard)', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(
       <Provider store={configureStore({ reducer: { crm: crmReducer, auth: (st = { user: { id: 42 } }) => st } })}>
         <MemoryRouter>
@@ -122,10 +133,12 @@ describe('LW38 — scénario 3 : archiver ne jette jamais une édition en cours'
     )
     await waitFor(() => expect(crmApi.getLead).toHaveBeenCalled())
     fireEvent.change(document.querySelector('#lf-ville'), { target: { value: 'Rabat' } })
-    fireEvent.keyDown(document, { key: 'a' })
+    fireEvent.click(await screen.findByRole('button', { name: 'Archiver' }))
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
     // leaveGuard flushe (PATCH ville) AVANT que l'archive ne parte : rien perdu.
     await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(1, { ville: 'Rabat' }))
     await waitFor(() => expect(crmApi.archiverLead).toHaveBeenCalledWith(1))
+    confirmSpy.mockRestore()
   })
 })
 

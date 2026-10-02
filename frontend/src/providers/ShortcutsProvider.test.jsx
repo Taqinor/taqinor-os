@@ -55,7 +55,7 @@ describe('ShortcutsProvider — cheatsheet « ? » (VX248)', () => {
     // Le groupe « … — pour votre rôle » apparaît AVANT « Général » dans le DOM.
     expect(focusedHeading.compareDocumentPosition(generalHeading) & Node.DOCUMENT_POSITION_FOLLOWING)
       .toBeTruthy()
-    expect(within(dialog).getByText('Archiver / restaurer le lead')).toBeInTheDocument()
+    expect(within(dialog).getByText('Aller au responsable (déléguer)')).toBeInTheDocument()
   })
 
   it('un rôle qui NE matche PAS (Magasinier) voit les mêmes raccourcis en repli « autres rôles » — jamais masqués', () => {
@@ -66,7 +66,7 @@ describe('ShortcutsProvider — cheatsheet « ? » (VX248)', () => {
     // Toujours listés (filtre d'AFFICHAGE seulement, jamais une désactivation
     // fonctionnelle) — juste sous le libellé « (autres rôles) ».
     expect(within(dialog).getByText(/\(autres rôles\)/)).toBeInTheDocument()
-    expect(within(dialog).getByText('Archiver / restaurer le lead')).toBeInTheDocument()
+    expect(within(dialog).getByText('Aller au responsable (déléguer)')).toBeInTheDocument()
   })
 
   it("sans écran de détail monté, la cheatsheet reste correcte (Général/Navigation/Créer seulement)", () => {
@@ -80,7 +80,7 @@ describe('ShortcutsProvider — cheatsheet « ? » (VX248)', () => {
     fireEvent.keyDown(document, { key: '?' })
     const dialog = screen.getByLabelText('Aide des raccourcis clavier')
     expect(within(dialog).getByText('Général')).toBeInTheDocument()
-    expect(within(dialog).queryByText('Archiver / restaurer le lead')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText('Aller au responsable (déléguer)')).not.toBeInTheDocument()
   })
 })
 
