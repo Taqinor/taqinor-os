@@ -11291,3 +11291,18 @@ textarea.form-control {
   font-size: 0.72rem;
   opacity: 0.7;
 }
+
+/* Incident 02/10/2026 — « aucun lead actif ne correspond » : proposition
+   d'élargir la recherche aux leads archivés (LeadsPage.jsx). */
+.lp-archived-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md, 0.5rem);
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
