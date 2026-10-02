@@ -325,12 +325,23 @@ def _totals_chain(label, accent, tot, fmt, C, recommended=False,
         f'<span>{fmt(tot["ht_brut"])}</span></div>'
         + ancre("sous_total_ht", fmt(tot["ht_brut"]), option)
     ]
-    if tot.get("remise", 0) and tot["remise"] > 0:
+    _remise = bool(tot.get("remise", 0) and tot["remise"] > 0)
+    # ARRONDI-100 — la baisse au palier de 100 MAD inférieur, ligne visible.
+    _arrondi = bool(tot.get("arrondi", 0) and tot["arrondi"] > 0)
+    if _remise:
         rows.append(
             f'<div class="p2-tl p2-tl-rem"><span>{L("remise", "Remise")}</span>'
             f'<span>− {fmt(tot["remise"])}</span></div>'
             + ancre("remise", fmt(tot["remise"]), option)
         )
+    if _arrondi:
+        rows.append(
+            f'<div class="p2-tl p2-tl-rem"><span>'
+            f'{L("arrondi", "Arrondi commercial")}</span>'
+            f'<span>− {fmt(tot["arrondi"])}</span></div>'
+            + ancre("arrondi", fmt(tot["arrondi"]), option)
+        )
+    if _remise or _arrondi:
         rows.append(
             f'<div class="p2-tl"><span>{L("total_ht", "Total HT")}</span>'
             f'<span>{fmt(tot["ht_net"])}</span></div>'

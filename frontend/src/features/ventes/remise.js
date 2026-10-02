@@ -114,6 +114,60 @@ export function montantHtLigne(ligne) {
 // `apps/ventes/selectors.py::_canonical_totaux` : arithmétique entière, arrondi
 // moitié vers le haut, remise en NANOS de pourcent.
 
+// ── ARRONDI-100 (fondateur, 02/10/2026) ───────────────────────────────────
+// « Tous mes devis finissent par deux zéros, sans centimes : garde les prix
+// des articles, baisse juste le total au palier de 100 DH inférieur. »
+// MIROIR EXACT de `apps/ventes/selectors.py::_absorber_arrondi` (+
+// `domain/argent.PAS_ARRONDI_DEVIS`, `_ARRONDI_CENTIMES_CEDES`) : même ordre
+// d'essai, même arrondi moitié-vers-le-haut de la TVA, en centimes entiers.
+export const PAS_ARRONDI_DEVIS = 100
+const ARRONDI_CENTIMES_CEDES = 5n
+
+function tvaDe(baseC, rH) {
+  return diviserMoitieHaut(baseC * BigInt(rH), 10000n).valeur
+}
+
+// `paniers` : [{ rH (taux × 100), netC (HT net, centimes) }] ; rend les
+// nouvelles bases (même ordre) ou `null` quand le TTC reste tel quel.
+function absorberArrondi(paniers, ttcC, pasC) {
+  if (pasC <= 0n || ttcC < pasC) return null
+  const cible = (ttcC / pasC) * pasC
+  if (cible === ttcC) return null
+  const ordre = paniers.map((_, k) => k).sort((a, b) => paniers[b].rH - paniers[a].rH)
+  for (const essai of [cible, cible - pasC]) {
+    if (essai <= 0n) break
+    for (const i of ordre) {
+      // (autre panier qui cède, centimes cédés) — (null, 0) d'abord.
+      const cessions = [[null, 0n]]
+      for (const j of ordre) {
+        if (j === i) continue
+        for (let d = 1n; d <= ARRONDI_CENTIMES_CEDES; d += 1n) cessions.push([j, d])
+      }
+      for (const [j, d] of cessions) {
+        const nouvelles = paniers.map(p => p.netC)
+        if (j !== null) {
+          nouvelles[j] -= d
+          if (nouvelles[j] < 0n) continue
+        }
+        let autres = 0n
+        nouvelles.forEach((b, k) => { if (k !== i) autres += b + tvaDe(b, paniers[k].rH) })
+        const reste = essai - autres
+        if (reste < 0n) continue
+        const x0 = (reste * 10000n) / (10000n + BigInt(paniers[i].rH))
+        for (const k of [-2n, -1n, 0n, 1n, 2n]) {
+          const x = x0 + k
+          if (x < 0n || x > paniers[i].netC) continue
+          if (x + tvaDe(x, paniers[i].rH) === reste) {
+            nouvelles[i] = x
+            return nouvelles
+          }
+        }
+      }
+    }
+  }
+  return null
+}
+
 // Le HT d'une ligne en nanos : un BigInt déjà exact est pris tel quel.
 function htNanoDe(ligne) {
   if (typeof ligne?.htNano === 'bigint') return ligne.htNano
@@ -127,11 +181,15 @@ function htNanoDe(ligne) {
  *   (sinon le HT est `montantHtLigne`) ; seules les lignes qui
  *   `ligneCompteDansTotaux` entrent.
  * @param {number|string} remisePct remise GLOBALE, en pourcent.
- * @returns {{htBrut:number, remise:number, htNet:number,
+ * @param {{arrondiPas?: number}} [options] ARRONDI-100 — palier (MAD) du TTC
+ *   ramené au multiple inférieur ; absent / 0 = aucun arrondi.
+ * @returns {{htBrut:number, remise:number, arrondi:number, htNet:number,
  *   tvaParTaux:Array<{taux:number, htNet:number, tva:number}>, tva:number,
  *   ttc:number, htNetCentimes:bigint, remiseCentimes:bigint}}
+ *   `htNetCentimes` reste le HT net AVANT arrondi (la base que
+ *   `repartirRemiseParLigne` répartit sur les lignes).
  */
-export function totauxCanoniques(lignes, remisePct = 0) {
+export function totauxCanoniques(lignes, remisePct = 0, { arrondiPas = 0 } = {}) {
   const pctNano = nanos(parseFloat(remisePct) || 0)
   let htBrutNano = 0n
   const buckets = new Map() // taux ×100 → Σ HT (nanos)
@@ -162,19 +220,33 @@ export function totauxCanoniques(lignes, remisePct = 0) {
     const dernier = rates[rates.length - 1]
     nets.set(dernier, nets.get(dernier) + (htNetC - somme))
   }
-  const tvaParTaux = [...nets.entries()].map(([r, net]) => ({
-    taux: r / 100, htNetC: net,
-    tvaC: diviserMoitieHaut(net * BigInt(r), 10000n).valeur,
+  let tvaParTaux = [...nets.entries()].map(([r, net]) => ({
+    taux: r / 100, rH: r, htNetC: net, tvaC: tvaDe(net, r),
   }))
-  const tvaC = tvaParTaux.reduce((s, t) => s + t.tvaC, 0n)
+  let tvaC = tvaParTaux.reduce((s, t) => s + t.tvaC, 0n)
+  // ARRONDI-100 — le TTC ramené au palier inférieur par une baisse de HT
+  // (miroir de `_absorber_arrondi`) ; `arrondiC` = la baisse totale de HT.
+  let arrondiC = 0n
+  const pasC = BigInt(Math.round((parseFloat(arrondiPas) || 0) * 100))
+  const bases = absorberArrondi(
+    tvaParTaux.map(t => ({ rH: t.rH, netC: t.htNetC })), htNetC + tvaC, pasC)
+  if (bases) {
+    tvaParTaux = tvaParTaux.map((t, k) => ({
+      ...t, htNetC: bases[k], tvaC: tvaDe(bases[k], t.rH),
+    }))
+    arrondiC = htNetC - bases.reduce((s, b) => s + b, 0n)
+    tvaC = tvaParTaux.reduce((s, t) => s + t.tvaC, 0n)
+  }
+  const htNetFinalC = htNetC - arrondiC
   const enDh = (c) => Number(c) / 100
   return {
     htBrut: enDh(diviserMoitieHaut(htBrutNano, CENTIME_EN_NANO).valeur),
     remise: enDh(remiseC),
-    htNet: enDh(htNetC),
+    arrondi: enDh(arrondiC),
+    htNet: enDh(htNetFinalC),
     tvaParTaux: tvaParTaux.map(t => ({ taux: t.taux, htNet: enDh(t.htNetC), tva: enDh(t.tvaC) })),
     tva: enDh(tvaC),
-    ttc: enDh(htNetC + tvaC),
+    ttc: enDh(htNetFinalC + tvaC),
     htNetCentimes: htNetC,
     remiseCentimes: remiseC,
   }

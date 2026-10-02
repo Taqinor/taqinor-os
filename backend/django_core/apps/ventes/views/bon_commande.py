@@ -539,6 +539,12 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 # reprend donc chaque quantité ×N. N=1 → inchangé.
                 from ..selectors import nombre_proprietes
                 n_prop = nombre_proprietes(bc.devis)
+                # ARRONDI-100 — la facture reprend le palier du devis signé
+                # (jamais plus que lui). ×N villas : palier × N, car le devis
+                # vaut N × palier rond et ⌊N·v / (N·p)⌋ = ⌊v / p⌋.
+                from ..domain.argent import PAS_ARRONDI_DEVIS
+                facture.arrondi_pas = int(PAS_ARRONDI_DEVIS) * n_prop
+                facture.save(update_fields=['arrondi_pas'])
                 for ligne in option_lines(bc.devis):
                     LigneFacture.objects.create(
                         facture=facture,

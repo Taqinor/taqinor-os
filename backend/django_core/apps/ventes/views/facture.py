@@ -1330,6 +1330,11 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 # lignes BRUTES alors que la facture facture le NET, donc il
                 # créditait plus que ce qui avait été facturé.
                 remise_globale=facture.remise_globale,
+                # ARRONDI-100 — l'avoir TOTAL (lignes de la facture recopiées)
+                # reprend son palier : il crédite exactement le facturé. Un
+                # avoir PARTIEL (lignes saisies) n'arrondit jamais.
+                arrondi_pas=(0 if clean_lignes
+                             else getattr(source, 'arrondi_pas', 0) or 0),
                 created_by=request.user)
             if clean_lignes:
                 for ligne in clean_lignes:

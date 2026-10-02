@@ -384,16 +384,22 @@ def _totaux_canoniques(devis, lignes) -> dict:
     villa, la chaîne est mise à l'échelle ×N ici, exactement comme le moteur
     PDF. Échéancier, solde, acompte public, BC, pro-forma, CA et commission
     héritent de ce seul point. N=1 → inchangé."""
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
     from apps.ventes.selectors import (
         _canonical_totaux, nombre_proprietes, totaux_multi_proprietes,
     )
+    # ARRONDI-100 — le palier de 100 MAD inférieur, par villa (avant le ×N),
+    # exactement comme ``domain.argent`` : échéancier, solde, acompte public,
+    # BC, pro-forma et commission héritent du même total rond.
     can = totaux_multi_proprietes(_canonical_totaux(
         lignes,
         remise_globale_pct=getattr(devis, 'remise_globale', 0) or 0,
-        fallback_taux=devis.taux_tva), nombre_proprietes(devis))
+        fallback_taux=devis.taux_tva,
+        arrondi_pas=PAS_ARRONDI_DEVIS), nombre_proprietes(devis))
     return {
         'ht': can['ht_net'], 'tva': can['tva'], 'ttc': can['ttc'],
         'ht_brut': can['ht_brut'], 'remise': can['remise'],
+        'arrondi': can['arrondi'],
     }
 
 

@@ -79,6 +79,7 @@ from apps.ventes.quote_engine.builder import (
 )
 from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
 from apps.ventes.quote_engine.productible import productible_for_city
+from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
 from apps.ventes.selectors import _canonical_totaux
 
 FIXTURES = Path(__file__).resolve().parent / 'fixtures'
@@ -163,9 +164,11 @@ def _canonical_ttc_total(lines, discount_pct, fallback_taux=Decimal('20')):
             taux_tva_effectif=Decimal(str(li['taux_tva'])))
         for li in lines
     ]
+    # ARRONDI-100 — le total d'un devis est ramené au palier de 100 MAD
+    # inférieur, à l'écran (`optionTotalsTTC`) comme au noyau.
     resultat = _canonical_totaux(
         lignes, remise_globale_pct=Decimal(str(discount_pct)),
-        fallback_taux=fallback_taux)
+        fallback_taux=fallback_taux, arrondi_pas=PAS_ARRONDI_DEVIS)
     return resultat['ttc']
 
 

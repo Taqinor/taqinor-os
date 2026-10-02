@@ -11,10 +11,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  arrondiCentime, ligneCompteDansTotaux, montantHtLigne, puRemise,
-  repartirRemiseParLigne, totauxCanoniques,
+  arrondiCentime, ligneCompteDansTotaux, montantHtLigne, PAS_ARRONDI_DEVIS,
+  puRemise, repartirRemiseParLigne, totauxCanoniques,
 } from './remise.js'
-import { htFromTtc, totauxCanoniquesTtc } from './solar.js'
+import { htFromTtc, optionTotalsTTC, totauxCanoniquesTtc } from './solar.js'
 
 // nom, lignes [montant HT, type de ligne, optionnelle], remise globale en %,
 // puis ce que la chaîne canonique arrête (remise, ht_net) et la répartition.
@@ -246,3 +246,82 @@ for (const fixture of FIXTURES_NOYAU) {
     assert.equal(Math.round(noyau.ttc * 100), Math.round(noyau.htNet * 100) + tvaSomme)
   })
 }
+
+// ── ARRONDI-100 (fondateur, 02/10/2026) ─────────────────────────────────────
+// Miroir de `backend/django_core/apps/ventes/tests/test_arrondi_100.py` : MÊMES
+// cas, MÊMES chiffres (produits par le noyau Python `_absorber_arrondi`).
+const l = (quantite, prix, taux) => ({ quantite, prix_unitaire: prix, taux })
+const SANS_0116 = [
+  l(1, '30000.00', 20), l(42, '1200.00', 10), l(42, '416.67', 20),
+  l(84, '66.67', 20), l(160, '10.83', 20), l(115, '11.67', 20),
+  l(1, '1666.67', 20), l(1, '8333.33', 20), l(1, '11666.67', 20),
+  l(1, '958.33', 20),
+]
+const AVEC_0116 = [l(1, '41666.67', 20), ...SANS_0116.slice(1)]
+const arrondi = (lignes, pct = 0) => totauxCanoniques(
+  lignes, pct, { arrondiPas: PAS_ARRONDI_DEVIS })
+
+function invariants(t) {
+  assert.equal(Math.round(t.htNet * 100) + Math.round(t.tva * 100),
+    Math.round(t.ttc * 100), 'HT net + TVA = TTC au centime')
+  assert.equal(Math.round(t.htBrut * 100) - Math.round(t.remise * 100)
+    - Math.round(t.arrondi * 100), Math.round(t.htNet * 100))
+  assert.ok(t.arrondi >= 0)
+}
+
+test('ARRONDI-100 — DEV-202609-0116 sans batterie : 150 000,32 → 150 000', () => {
+  assert.equal(totauxCanoniques(SANS_0116, 0).ttc, 150000.32)
+  const t = arrondi(SANS_0116)
+  assert.equal(t.ttc, 150000)
+  assert.equal(t.arrondi, 0.27)
+  assert.equal(t.htNet, 129200)
+  invariants(t)
+})
+
+test('ARRONDI-100 — DEV-202609-0116 avec batterie : 164 000,33 → 164 000', () => {
+  assert.equal(totauxCanoniques(AVEC_0116, 0).ttc, 164000.33)
+  const t = arrondi(AVEC_0116)
+  assert.equal(t.ttc, 164000)
+  invariants(t)
+})
+
+test('ARRONDI-100 — 150 057 → 150 000 (47,50 HT d’arrondi)', () => {
+  const t = arrondi([l(1, '125047.50', 20)])
+  assert.equal(t.ttc, 150000)
+  assert.equal(t.arrondi, 47.5)
+  invariants(t)
+})
+
+test('ARRONDI-100 — un second panier cède un centime', () => {
+  const t = arrondi([l(1, '6223.01', 10), l(1, '14609.98', 20)])
+  assert.equal(t.ttc, 24300)
+  assert.equal(t.arrondi, 64.41)
+  const paniers = Object.fromEntries(t.tvaParTaux.map(p => [p.taux, p.htNet]))
+  assert.equal(paniers[10], 6223)
+  assert.equal(paniers[20], 14545.58)
+  invariants(t)
+})
+
+test('ARRONDI-100 — mono-taux 10 % inatteignable : palier d’en dessous', () => {
+  const t = arrondi([l(1, '455.00', 10)])
+  assert.equal(t.ttc, 400)
+  invariants(t)
+})
+
+test('ARRONDI-100 — sous le palier, rond, ou sans palier : inchangé', () => {
+  assert.equal(arrondi([l(1, '47.50', 20)]).ttc, 57)
+  assert.equal(arrondi([l(10, '1000', 20)]).arrondi, 0)
+  assert.equal(totauxCanoniques(SANS_0116, 5).arrondi, 0)
+})
+
+test('ARRONDI-100 — le générateur affiche les totaux par option au palier', () => {
+  const lignes = [
+    { designation: 'Onduleur réseau 5kW', quantite: '1', prix_unit_ttc: 9999.99, taux_tva: 20 },
+    { designation: 'Panneau 550W', quantite: '10', prix_unit_ttc: 1234.56, taux_tva: 10 },
+    { designation: 'Installation', quantite: '1', prix_unit_ttc: 3456.78, taux_tva: 20 },
+  ]
+  const tot = optionTotalsTTC(lignes, 0)
+  assert.equal(tot.totalSans % 100, 0)
+  assert.equal(tot.totalSansBrut, tot.totalSans, 'sans remise, aucun prix barré fantôme')
+  assert.ok(totauxCanoniquesTtc(lignes, 0) - tot.totalSans < 100)
+})

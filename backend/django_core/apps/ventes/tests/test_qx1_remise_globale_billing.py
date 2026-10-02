@@ -27,6 +27,7 @@ from apps.ventes.utils.options import option_totaux
 from apps.ventes.utils.echeancier import (
     creer_facture_tranche, next_tranche,
 )
+from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
 from apps.ventes.selectors import _canonical_totaux
 from apps.ventes.utils.references import create_with_reference
 
@@ -86,6 +87,9 @@ class Qx1RemiseGlobaleBillingTests(TestCase):
         if g:
             facture.remise_globale = g
             facture.save(update_fields=['remise_globale'])
+        # ARRONDI-100 — la facture de BC reprend le palier du devis.
+        facture.arrondi_pas = int(PAS_ARRONDI_DEVIS)
+        facture.save(update_fields=['arrondi_pas'])
         for ligne in option_lines(devis):
             LigneFacture.objects.create(
                 facture=facture, produit=ligne.produit,
@@ -160,7 +164,7 @@ class Qx1RemiseGlobaleBillingTests(TestCase):
             else list(devis.lignes.all()))
         can = _canonical_totaux(
             lignes, remise_globale_pct=devis.remise_globale,
-            fallback_taux=devis.taux_tva)
+            fallback_taux=devis.taux_tva, arrondi_pas=PAS_ARRONDI_DEVIS)
         self.assertEqual(_q(can['ttc']), ref_ttc)
 
     def test_single_option_with_global_remise(self):
@@ -184,14 +188,15 @@ class Qx1RemiseGlobaleBillingTests(TestCase):
 
     def test_with_per_line_remise_and_global(self):
         # Ligne remisée 10 % : 10×1000×0.9 = 9000 ; + 5×2000 = 10000 → 19000 HT
-        # remise globale 20 % → 15200 HT ; TTC 18240.
+        # remise globale 20 % → 15200 HT ; TTC 18240 → ARRONDI-100 : 18200
+        # (arrondi 33,33 HT : 15166,67 HT + 3033,33 TVA).
         devis = self._devis(
             [('Panneau', '10', '1000', '10'),
              ('Onduleur', '5', '2000', '0')],
             remise_globale='20', num=3)
         ref = option_totaux(devis)
-        self.assertEqual(_q(ref['ht']), Decimal('15200.00'))
-        self.assertEqual(_q(ref['ttc']), Decimal('18240.00'))
+        self.assertEqual(_q(ref['ht']), Decimal('15166.67'))
+        self.assertEqual(_q(ref['ttc']), Decimal('18200.00'))
         self._assert_chain(devis, num=3)
 
     def test_two_option_with_global_remise(self):
@@ -208,10 +213,10 @@ class Qx1RemiseGlobaleBillingTests(TestCase):
             # une seule présentation, et l'aval ne filtre plus par option.
             etude_params={'scenario': 'Les deux (Sans + Avec)'})
         # sans batterie : 11700 + 15400 + 4000 = 31100 HT ; −10 % = 27990 HT ;
-        # TTC 33588.
+        # TTC 33588 → ARRONDI-100 : 33500 (27916,67 HT + 5583,33 TVA).
         ref = option_totaux(devis)
-        self.assertEqual(_q(ref['ht']), Decimal('27990.00'))
-        self.assertEqual(_q(ref['ttc']), Decimal('33588.00'))
+        self.assertEqual(_q(ref['ht']), Decimal('27916.67'))
+        self.assertEqual(_q(ref['ttc']), Decimal('33500.00'))
         self._assert_chain(devis, num=4)
 
     def test_facture_no_remise_is_line_sum(self):

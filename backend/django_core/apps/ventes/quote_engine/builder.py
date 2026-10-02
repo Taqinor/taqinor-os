@@ -1962,7 +1962,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # la clé historique est conservée pour ses lecteurs, plus jamais pour
         # dire « et voici la version non arrondie ».
         ttc = float(vue.ttc)
+        # ARRONDI-100 — ``arrondi`` : la baisse de HT qui ramène le TTC au
+        # palier de 100 MAD inférieur (0.0 quand le TTC y est déjà).
         return {"ht_brut": ht_brut, "remise": float(vue.remise),
+                "arrondi": float(vue.arrondi),
                 "ht_net": float(vue.ht_net),
                 "tva": float(vue.tva), "tva_par_taux": tva_par_taux,
                 "ttc": ttc, "ttc_exact": ttc, "ttc_avant": ttc_avant}
@@ -3770,8 +3773,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 if not isinstance(t, dict):
                     return t
                 out = dict(t)
-                for k in ("ht_brut", "remise", "ht_net", "tva", "ttc",
-                          "ttc_exact", "ttc_avant"):
+                for k in ("ht_brut", "remise", "arrondi", "ht_net", "tva",
+                          "ttc", "ttc_exact", "ttc_avant"):
                     if isinstance(out.get(k), (int, float)):
                         # QJR53 — ``ttc`` est au CENTIME comme les autres
                         # étages ; seul ``ttc_avant`` (le prix BARRÉ, artefact

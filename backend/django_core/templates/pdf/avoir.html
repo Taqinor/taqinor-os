@@ -163,6 +163,13 @@
       <span>−{{ "%.2f"|format(totaux.remise) }} MAD</span>
     </div>
     {% endif %}
+    {# ARRONDI-100 — palier repris de la facture créditée. #}
+    {% if totaux.arrondi and totaux.arrondi > 0 %}
+    <div class="totaux-row remise">
+      <span>Arrondi commercial</span>
+      <span>−{{ "%.2f"|format(totaux.arrondi) }} MAD</span>
+    </div>
+    {% endif %}
     {% for b in totaux.tva_par_taux %}
     <div class="totaux-row">
       <span>TVA ({{ b.taux }}%)</span>

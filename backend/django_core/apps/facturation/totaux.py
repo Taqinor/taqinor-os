@@ -73,10 +73,13 @@ class TotauxDocumentMixin:
         chaînes d'arrondi divergentes pour le même document selon qu'il
         portait une remise globale ou non."""
         from apps.ventes.selectors import _canonical_totaux
+        # ARRONDI-100 — le palier HÉRITÉ du devis (facture de BC, avoir total
+        # d'une telle facture) ; 0 / absent (NoteDebit) = aucun arrondi.
         return _canonical_totaux(
             self.lignes.all(),
             remise_globale_pct=self.remise_globale,
-            fallback_taux=self.taux_tva)
+            fallback_taux=self.taux_tva,
+            arrondi_pas=getattr(self, 'arrondi_pas', 0) or 0)
 
     @property
     def total_ht(self):
@@ -130,8 +133,8 @@ class TotauxDocumentMixin:
 
     @property
     def totaux_affichage(self):
-        """AUD105 — LA CHAÎNE IMPRIMABLE : ``{ht_brut, remise, ht_net,
-        tva_par_taux, ttc}``, seule source des documents client.
+        """AUD105 — LA CHAÎNE IMPRIMABLE : ``{ht_brut, remise, arrondi,
+        ht_net, tva_par_taux, ttc}``, seule source des documents client.
 
         Les gabarits imprimaient « Sous-total HT » = ``total_ht`` puis
         « Remise globale (X %) » = ``total_ht × remise / 100``. Or ``total_ht``
@@ -149,11 +152,12 @@ class TotauxDocumentMixin:
             ht = self.total_ht
             return {
                 'ht_brut': ht, 'remise': Decimal('0'), 'ht_net': ht,
+                'arrondi': Decimal('0'),
                 'tva_par_taux': self.tva_par_taux, 'ttc': self.total_ttc,
             }
         totaux = self._canonique()
         return {
             'ht_brut': totaux['ht_brut'], 'remise': totaux['remise'],
-            'ht_net': totaux['ht_net'],
+            'arrondi': totaux['arrondi'], 'ht_net': totaux['ht_net'],
             'tva_par_taux': totaux['tva_par_taux'], 'ttc': totaux['ttc'],
         }

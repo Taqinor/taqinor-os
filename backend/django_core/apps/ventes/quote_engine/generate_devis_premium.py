@@ -1502,11 +1502,19 @@ def _totals_block_rows(totaux, colspan, ancres=None):
                 f'<td style="text-align:right;color:{color};font-weight:{weight};'
                 f'padding:3px 5px;white-space:nowrap;">{value}</td></tr>')
 
+    # ARRONDI-100 \u2014 la baisse qui ram\u00e8ne le Total TTC au palier de 100 MAD
+    # inf\u00e9rieur : une ligne VISIBLE entre la remise et le Total HT (les prix
+    # des lignes ne bougent pas), absente quand le total y est d\u00e9j\u00e0.
+    arrondi = totaux.get("arrondi") or 0
     rows = row("Sous-total HT", _fmt2(total_ht), fig="sous_total_ht")
     if DISCOUNT_PCT > 0:
         pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
         rows += row(f"Remise ({pct}\u202f%)", "\u2212" + _fmt2(remise), neg=True,
                     fig="remise")
+    if arrondi > 0:
+        rows += row(_L("arrondi"), "\u2212" + _fmt2(arrondi), neg=True,
+                    fig="arrondi")
+    if DISCOUNT_PCT > 0 or arrondi > 0:
         rows += row("Total HT", _fmt2(net_ht), fig="total_ht")
     # TVA \u00e9clat\u00e9e par taux (r\u00e9forme 10/20) \u2014 une ligne par taux pr\u00e9sent ;
     # un seul taux (devis historiques) \u2192 exactement l'ancienne ligne unique.
@@ -4076,6 +4084,13 @@ def page_onepage(items, tronquees=0):
         totals_html += _tot_line(
             f"{_L('remise')} ({_pct}&#8201;%)",
             "&#8722;" + _fmt2(remise) + "&nbsp;MAD", neg=True, fig="remise")
+    # ARRONDI-100 — même ligne visible que le bloc multi-pages.
+    _arrondi = totaux.get("arrondi") or 0
+    if _arrondi > 0:
+        totals_html += _tot_line(
+            _L("arrondi"), "&#8722;" + _fmt2(_arrondi) + "&nbsp;MAD",
+            neg=True, fig="arrondi")
+    if DISCOUNT_PCT > 0 or _arrondi > 0:
         totals_html += _tot_line(_L("total_ht"), _fmt2(net_ht) + "&nbsp;MAD",
                                  fig="total_ht")
     # TVA éclatée par taux présent (réforme 10/20) ; un seul taux → ligne
