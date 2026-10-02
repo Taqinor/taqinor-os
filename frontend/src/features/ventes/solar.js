@@ -9,6 +9,7 @@ import { formatMAD } from '../../lib/format.js'
 // `ligneCompteDansTotaux` (remise.js, même règle que le noyau des totaux ;
 // remise.js n'importe rien : aucun cycle).
 import { ligneCompteDansTotaux, totauxCanoniques } from './remise.js'
+import { SCENARIOS_VALIDES } from './quote/scenarios.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
 // DC9 — MIROIR de la source Python unique
@@ -1647,12 +1648,10 @@ export function totauxCanoniquesTtc(lines, discountPct = 0) {
 // ── Totaux par option, TTC (port exact de updateTotals de app.js) ────────────
 // Option 1 SANS batterie : exclut Batterie + Onduleur hybride.
 // Option 2 AVEC batterie : exclut Onduleur réseau.
-// ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — miroir de
-// `apps/ventes/utils/options.py` `SCENARIOS_ALTERNATIVE` : les trois libellés
-// qui DÉCLARENT une alternative commerciale (le noyau sert alors UNE option,
-// panier filtré ET règle QF9 appliquée).
-// source-choix: ventes.utils.options.SCENARIOS_ALTERNATIVE
-export const SCENARIOS_ALTERNATIVE = ['Sans batterie', 'Avec batterie', 'Les deux (Sans + Avec)']
+// ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — les trois libellés qui DÉCLARENT
+// une alternative commerciale (le noyau sert alors UNE option, panier filtré
+// ET règle QF9 appliquée) : la liste vit dans `quote/scenarios.js`.
+export const SCENARIOS_ALTERNATIVE = SCENARIOS_VALIDES
 
 // Miroir de `familles_des_lignes` + `familles_servables` + la condition
 // « alternative déclarée » de `deux_options_depuis_paniers` (utils/options.py) :
