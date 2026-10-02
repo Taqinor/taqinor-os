@@ -835,6 +835,8 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
             # L-2OPT — '' sur toute composition mono-optimum (le cas de tous
             # les aperçus d'hier) : la clé est ADDITIVE, jamais absente.
             'variante': getattr(ligne, 'variante', '') or '',
+            # ERR-QJR570 (D-QJR5-4) — provenance : posée par le moteur.
+            'ligne_composee': True,
         })
 
     return {

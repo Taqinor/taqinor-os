@@ -14,12 +14,28 @@
 // remise (QJR529 — la remise PAR LIGNE stockée, '0' par défaut : l'envoyer à
 // '0' en dur faisait monter le total client en silence au 1er enregistrement),
 // lot (QJR667 — rattachement à un lot multi-sites posé par « Lots /
-// multi-sites » ; sans lui, replace-lines recréait les lignes hors lot).
+// multi-sites » ; sans lui, replace-lines recréait les lignes hors lot),
+// ligne_composee ⇄ compose (ERR-QJR570 — provenance composée / ajoutée à la
+// main, persistée : D-QJR5-4).
 //
 // Module PUR (aucun React, aucun import.meta) : exécuté par `node --test`.
 import { ttcExactFromHt, htFromTtc } from '../solar.js'
 
 const TYPES_STRUCTURE = new Set(['section', 'note'])
+
+/**
+ * ERR-QJR570 (D-QJR5-4) — une ligne serveur est-elle COMPOSÉE par le moteur ?
+ * La provenance PERSISTÉE (`ligne_composee`) fait foi : true ⇒ composée (une
+ * recomposition la remplace), false ⇒ ajoutée à la main (gardée). Absente ou
+ * null (lignes antérieures, aucun backfill) ⇒ règle de repli : une ligne
+ * produit relue sans verrou ni option est tenue pour composée.
+ */
+function composeRelu(l) {
+  if ((l.type_ligne ?? 'produit') !== 'produit') return false
+  if (l.ligne_composee === true) return true
+  if (l.ligne_composee === false) return false
+  return !l.prix_manuel && !l.quantite_manuelle && !l.optionnelle
+}
 
 /**
  * Lignes servies par l'API (HT, snake_case) → lignes d'écran (TTC, forme
@@ -36,11 +52,10 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
     .map((l) => {
       const taux = parseFloat(l.taux_tva ?? tauxDevis) || 20
       const produit = l.produit ?? l.produit_id
-      // Marqueur d'écran (jamais envoyé au serveur) : une ligne produit relue
-      // sans verrou ni option est tenue pour issue d'une composition, donc
-      // remplacée (et non gardée à côté) par la prochaine recomposition.
-      const compose = (l.type_ligne ?? 'produit') === 'produit' && !l.prix_manuel
-        && !l.quantite_manuelle && !l.optionnelle
+      // Marqueur d'écran `compose` ⇄ provenance persistée `ligne_composee`
+      // (ERR-QJR570) : composée ⇒ remplacée par la prochaine recomposition,
+      // ajoutée à la main ⇒ gardée.
+      const compose = composeRelu(l)
       return {
         produit: String(produit ?? ''),
         designation: l.designation ?? '',
@@ -81,8 +96,11 @@ export function lignesEcranVersPayload(lines, { multiMode } = {}) {
     : (l.produit && parseFloat(l.quantite) > 0)))
   return gardees.map((l, idx) => {
     if (estStructure(l)) {
-      // Une ligne section/note ne porte ni produit ni prix.
-      return { type_ligne: l.typeLigne, ordre: idx, designation: l.designation }
+      // Une ligne section/note ne porte ni produit ni prix (ni provenance).
+      return {
+        type_ligne: l.typeLigne, ordre: idx, designation: l.designation,
+        ligne_composee: null,
+      }
     }
     return {
       produit: parseInt(l.produit, 10),
@@ -104,6 +122,10 @@ export function lignesEcranVersPayload(lines, { multiMode } = {}) {
       role_devis: l.role_devis || '',
       // QJR667 — le lot de la ligne (id d'un lot de CE devis, sinon null).
       lot: l.lot ?? null,
+      // ERR-QJR570 (D-QJR5-4) — la provenance PERSISTÉE : true = posée par
+      // le moteur (une recomposition la remplace), false = ajoutée à la main
+      // (« Ajouter une ligne », jamais remplacée, même après réouverture).
+      ligne_composee: !!l.compose,
     }
   })
 }

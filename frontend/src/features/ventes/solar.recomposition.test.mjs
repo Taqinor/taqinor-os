@@ -10,6 +10,7 @@ import {
   fusionnerRecomposition, lignesQuantiteFigee,
   appliquerRecomposition, lignesManuellesEnConflitPossible,
 } from './solar.js'
+import { lignesServeurVersEcran } from './quote/lignesEcran.js'
 
 const L = (produit, designation, quantite, prix, extra = {}) => ({
   produit: String(produit), designation, quantite: String(quantite),
@@ -144,4 +145,49 @@ test('lignes relues d’un devis enregistré + nouvelle composition : aucun doub
   const { lignes } = fusionnerRecomposition(relues, generees)
   assert.equal(lignes.length, 3)
   assert.deepEqual(lignes.map(l => l.produit), ['5', '60', '70'])
+})
+
+// ERR-QJR570 (D-QJR5-4) — la PROVENANCE persistée (`ligne_composee`) fait foi
+// à la réouverture : un produit ajouté À LA MAIN, enregistré puis rouvert,
+// n'a ni prix tapé ni quantité figée — sans marqueur persistant il était pris
+// pour une ligne composée et REMPLACÉ au recalcul suivant.
+const ondulRelu = (ligneComposee) => ({
+  id: 2, ordre: 1, produit: 13, designation: 'Onduleur hybride Deye 5kW', quantite: '1.00',
+  prix_unitaire: '10000.00', taux_tva: '20.00', type_ligne: 'produit',
+  ...(ligneComposee === undefined ? {} : { ligne_composee: ligneComposee }),
+})
+const panneauRelu = {
+  id: 1, ordre: 0, produit: 5, designation: 'Panneau 550W', quantite: '10.00',
+  prix_unitaire: '1000.00', taux_tva: '20.00', type_ligne: 'produit', ligne_composee: true,
+}
+const recompositionQjr570 = [
+  L(5, 'Panneau 550W', 12, 1200),
+  L(23, 'Onduleur hybride Deye 6kW', 1, 14000),
+]
+
+test('ERR-QJR570 provenance — ligne_composee:false (ajout manuel relu) : GARDÉE par une recomposition qui change d’onduleur', () => {
+  const relues = lignesServeurVersEcran([panneauRelu, ondulRelu(false)], '20.00')
+  assert.deepEqual(relues.map(l => l.compose), [true, false])
+  const { lignes, conflits } = fusionnerRecomposition(relues, recompositionQjr570)
+  assert.deepEqual(conflits, [])
+  assert.deepEqual(lignes.map(l => l.produit), ['5', '13', '23'])
+})
+
+test('ERR-QJR570 provenance — ligne_composee:true : REMPLACÉE par la recomposition', () => {
+  const relues = lignesServeurVersEcran([panneauRelu, ondulRelu(true)], '20.00')
+  assert.deepEqual(relues.map(l => l.compose), [true, true])
+  const { lignes } = fusionnerRecomposition(relues, recompositionQjr570)
+  assert.deepEqual(lignes.map(l => l.produit), ['5', '23'])
+})
+
+test('ERR-QJR570 provenance — null / absente : règle de repli de main inchangée', () => {
+  for (const valeur of [null, undefined]) {
+    const relues = lignesServeurVersEcran([panneauRelu, ondulRelu(valeur)], '20.00')
+    assert.equal(relues[1].compose, true)
+    const { lignes } = fusionnerRecomposition(relues, recompositionQjr570)
+    assert.deepEqual(lignes.map(l => l.produit), ['5', '23'])
+  }
+  // Repli : une saisie humaine (prix tapé) garde la ligne, provenance inconnue.
+  const [l] = lignesServeurVersEcran([{ ...ondulRelu(null), prix_manuel: true }], '20.00')
+  assert.equal(l.compose, false)
 })

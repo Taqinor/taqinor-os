@@ -17,7 +17,8 @@
         "optionnelle": false,
         "prix_manuel": false,
         "quantite_manuelle": false,
-        "lot": null
+        "lot": null,
+        "ligne_composee": true
       },
       {
         "produit": 62,
@@ -31,7 +32,8 @@
         "variante": "avec",
         "optionnelle": false,
         "prix_manuel": true,
-        "quantite_manuelle": true
+        "quantite_manuelle": true,
+        "ligne_composee": false
       }
     ],
     "entete": {
