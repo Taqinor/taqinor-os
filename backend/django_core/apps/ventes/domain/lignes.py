@@ -464,6 +464,11 @@ CHAMPS_LIGNE = (
     'role_devis',
     'groupe_index', 'groupe_label', 'optionnelle',
     'quantite_manuelle', 'prix_manuel',
+    # ERR-QJR570 (D-QJR5-4) — la PROVENANCE (True composée / False ajoutée à
+    # la main / None inconnue) : une copie la reprend (CHAMPS_CLONES :
+    # révision, duplication, gamme, renouvellement, modèles), et
+    # ``remplacer_lignes`` la fait suivre depuis l'écran.
+    'ligne_composee',
     # NTCPQ18 — rattachement à un LOT (site/bâtiment). QJR667 : l'écran
     # « Lots / multi-sites » le pose (POST lots/) et ``remplacer_lignes`` le
     # fait suivre (borné aux lots du devis) ; un test le vérifie contre le
@@ -829,6 +834,23 @@ def _groupe_index_emis(valeur):
     return n if n >= 0 else None
 
 
+def _ligne_composee_emise(valeur):
+    """ERR-QJR570 — ``True`` / ``False`` / ``None`` (absente ou inconnue).
+
+    Les chaînes 'true'/'false' (formulaires) sont lues comme telles : un
+    ``bool('false')`` ferait d'un ajout manuel une ligne composée."""
+    if valeur is None or valeur == '':
+        return None
+    if isinstance(valeur, bool):
+        return valeur
+    texte = str(valeur).strip().lower()
+    if texte in ('true', '1', 'oui', 'yes'):
+        return True
+    if texte in ('false', '0', 'non', 'no'):
+        return False
+    return None
+
+
 def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
                      autoriser_vidage=False):
     """QX21be — supprime puis recrée les lignes du devis (appelé SOUS une
@@ -973,7 +995,12 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
             # Absents (tous les appelants d'hier) ⇒ False, comportement
             # historique strictement inchangé.
             quantite_manuelle=bool(li.get('quantite_manuelle', False)),
-            prix_manuel=bool(li.get('prix_manuel', False)))
+            prix_manuel=bool(li.get('prix_manuel', False)),
+            # ERR-QJR570 (D-QJR5-4) — la provenance fait l'aller-retour :
+            # sans elle, un produit ajouté à la main, enregistré puis rouvert,
+            # était pris pour une ligne composée et REMPLACÉ au recalcul.
+            # Absente / null ⇒ None (inconnue), comportement d'hier.
+            ligne_composee=_ligne_composee_emise(li.get('ligne_composee')))
     # QJR83 — les forfaits AU PANNEAU suivent le compte réellement écrit
     # ci-dessus (jamais celui que l'appelant croyait envoyer).
     return retarifer_forfaits_par_panneau(devis,

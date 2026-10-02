@@ -2944,92 +2944,43 @@ def _acompte_publique(devis, lignes=None):
         return None
 
 
-def _pct_lisible(valeur):
-    """PREVIEW-V3-FIX — un pourcentage d'échéancier écrit comme on le lit :
-    « 40 » et non « 40.00 », « 33,5 » et non « 33.50 » (virgule FR, comme
-    ``resolveAcompte`` côté page). Jamais de notation exponentielle (le piège
-    de ``Decimal.normalize()``)."""
-    from decimal import Decimal, InvalidOperation
-    try:
-        d = Decimal(str(valeur))
-    except (InvalidOperation, TypeError, ValueError):
-        return str(valeur)
-    if d == d.to_integral_value():
-        return str(int(d))
-    return format(d, 'f').rstrip('0').rstrip('.').replace('.', ',')
-
-
 def _conditions_publiques(data, devis=None):
     """PREVIEW-V3 — les puces « Conditions générales du devis » du PDF, en texte.
 
-    SOURCE UNIQUE : ``DEFAULT_DOC_TEXTS['cgv_bullets']`` du moteur vendoré —
-    LE littéral que le PDF imprime (``_cgv_bullets_html``). On ne le recopie
-    pas : on l'importe et on substitue les MÊMES marqueurs avec les MÊMES
-    valeurs que le rendu (``payment_terms`` / ``tva_note`` / ``valid_until``
-    du dict ``build_quote_data``), puis on dé-échappe les entités HTML pour
-    du JSON. Une puce vide (échéance inconnue) est omise, comme dans le PDF.
+    QJR668 (décision fondateur 01/10/2026, « figer le texte CGV à l'envoi ») —
+    la page de signature (« J'accepte … les conditions générales ») sert
+    EXACTEMENT ce que le PDF de CE devis imprime, par LA fonction de
+    remplissage du moteur (``generate_devis_premium.cgv_bullets_remplies`` →
+    ``remplir_cgv_bullets``, celle que ``_cgv_bullets_html`` appelle). Plus
+    aucune copie locale du remplissage (l'ancien ``.format`` +
+    ``_pct_lisible`` écrivait « 33,5 » là où le PDF imprime « 33.5 », et
+    relisait l'échéancier sans les lignes du devis) :
+
+    * devis portant des CGV GELÉES (``Devis.clauses_appliquees``, entrée
+      ``cgv_gelees`` posée à l'envoi par ``domain/cycle_vie.
+      figer_clauses_devis``) → CES puces : ``build_quote_data`` les a déjà
+      substituées dans ``data['doc_texts']['cgv_bullets']``, la source même
+      du bloc CGV du PDF. Modifier ensuite les CGV société ne change plus ce
+      que le client accepte ;
+    * sinon (brouillon, aperçu) → les puces VIVES de la société (ou le
+      littéral par défaut), remplies par la même fonction.
+
+    Mêmes valeurs que le rendu : ``data['payment_terms']`` (échéancier du
+    devis rabattu par le builder, QJR623), ``tva_note``, ``valid_until``. Les
+    entités HTML sont dé-échappées pour le JSON ; une puce vide est omise,
+    comme dans le PDF. Forme inchangée (liste de textes, ``None`` si rien).
 
     Le sens de l'import est celui du repo : l'app lit le moteur, JAMAIS
-    l'inverse (le moteur vendoré n'importe rien de ``apps`` et tourne aussi
-    en ``__main__``). On ne lit AUCUN global de rendu (``PAY_A``/``TVA_NOTE``
-    sont réécrits par chaque rendu sous verrou) — seulement le littéral.
-
-    PREVIEW-V3-FIX (16/09/2026, audit C3) — LES POURCENTAGES VIENNENT DU DEVIS.
-    Ils étaient lus dans ``data['payment_terms']`` = ``payment_terms_for
-    (société, mode)`` : la SOCIÉTÉ seule, jamais le devis. Sur un devis à
-    échéancier négocié (``Devis.echeancier``, FG46), le récap disait « Acompte
-    de 40 % » et la puce, trois lignes plus bas, « Acompte à la commande :
-    30% » — deux vérités sur le même écran, à l'endroit exact où le client
-    décide. Les deux lectures partent désormais de la MÊME source, la
-    fonction d'échéancier qui prend LE DEVIS
-    (``utils.echeancier.pourcentages_echeancier``, celle dont
-    ``next_tranche`` sert la première tranche).
-
-    ``devis`` absent ⇒ comportement d'hier, à l'octet (société seule).
-
-    HORS PÉRIMÈTRE, ET DIT : le PDF garde son propre chemin
-    (``_cgv_bullets_html`` lit les globals ``PAY_A``/``PAY_M``/``PAY_S``
-    posés depuis le même ``payment_terms``). Il hérite donc encore de
-    l'écart sur un devis à échéancier négocié. Le corriger demanderait de
-    changer ce que le moteur IMPRIME ; ce commit ne touche que ce que la page
-    AFFICHE (consigne : ne pas changer le comportement du PDF tant que la
-    même fonction ne sert pas les deux).
+    l'inverse. Lecture seule (règle #4) ; rien n'est lu hors du ``data`` de CE
+    devis (multi-tenant). ``devis`` reste accepté pour la signature d'appel :
+    la correspondance échéancier → créneaux est déjà faite dans ``data``.
     """
     import html as _html
     try:
-        from .quote_engine.generate_devis_premium import DEFAULT_DOC_TEXTS
-        # Surcharge par société : MÊME source que le rendu, qui lit
-        # ``data['doc_texts']`` par-dessus les défauts (jamais un global).
-        _surcharges = (data or {}).get('doc_texts') or {}
-        gabarits = (
-            (_surcharges.get('cgv_bullets')
-             if isinstance(_surcharges, dict) else None)
-            or DEFAULT_DOC_TEXTS.get('cgv_bullets') or [])
-        terms = (data or {}).get('payment_terms') or {}
-        # QJR622 — la correspondance « échéancier du devis → acompte /
-        # matériel / solde » vit dans ``utils.echeancier`` (UNE fois, le PDF
-        # la lit aussi) ; ``devis`` absent ⇒ la société seule, à l'octet.
-        from .utils.echeancier import termes_paiement_devis
-        slots = termes_paiement_devis(devis, terms)
-        acompte = _pct_lisible(slots['acompte'])
-        materiel = _pct_lisible(slots['materiel'])
-        solde = _pct_lisible(slots['solde'])
-        tva_note = (data or {}).get('tva_note') or ''
-        valid_until = ((data or {}).get('valid_until') or '').strip()
-        validite_offre = (
-            f"Validit&#233; de l&#8217;offre&#160;: jusqu&#8217;au "
-            f"{valid_until}" if valid_until else '')
-        out = []
-        for brut in gabarits:
-            try:
-                txt = str(brut).format(
-                    acompte=acompte, materiel=materiel, solde=solde,
-                    tva_note=tva_note, validite_offre=validite_offre)
-            except (KeyError, IndexError, ValueError):
-                txt = str(brut)
-            txt = _html.unescape(txt).strip()
-            if txt:
-                out.append(txt)
+        from .quote_engine.generate_devis_premium import cgv_bullets_remplies
+        out = [txt for txt in (_html.unescape(str(puce)).strip()
+                               for puce in cgv_bullets_remplies(data or {}))
+               if txt]
         return out or None
     except Exception:  # noqa: BLE001 — best-effort
         return None

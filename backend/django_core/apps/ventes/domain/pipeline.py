@@ -917,6 +917,9 @@ def ecrire_lignes(devis, composition, *, company, avertissements=None):
             'variante': getattr(spec, 'variante', '') or '',
             'role_devis': (roles_emis[index]
                            if index < len(roles_emis) else None),
+            # ERR-QJR570 (D-QJR5-4) — une ligne posée par le MOTEUR : une
+            # recomposition la remplace (un dict de l'écran porte la sienne).
+            'ligne_composee': True,
         }
         for index, spec in enumerate(composition or ())
     ]
