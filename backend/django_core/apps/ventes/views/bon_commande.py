@@ -244,12 +244,16 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                     # du stock ERP du montant d'une batterie.
                     from ..utils.options import option_lines
                     from ..domain.facturation_ops import decompter_stock_lignes
+                    # ERR-QAC-MULTIVILLA-MATERIEL-XN — ×N villas : livrer
+                    # le BC sort le matériel des N villas facturées.
+                    from ..multivilla import nombre_proprietes
                     decompter_stock_lignes(
                         lignes=option_lines(bc.devis),
                         company=bc.company,
                         user=request.user,
                         reference=bc.reference,
                         note=f'Livraison BC {bc.reference}',
+                        multiplicateur=nombre_proprietes(bc.devis),
                     )
                 bc.statut = BonCommande.Statut.LIVRE
                 from django.utils import timezone as _tz2

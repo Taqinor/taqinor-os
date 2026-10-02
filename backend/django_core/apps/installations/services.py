@@ -214,11 +214,32 @@ def _devis_bon_commande(devis):
         return None
 
 
-def _puissance_from(devis, lead):
+def _nombre_proprietes(devis):
+    """ERR-QAC-MULTIVILLA-MATERIEL-XN — N du devis « ×N villas identiques »,
+    lu via le selector ventes (jamais ses models). 1 par défaut."""
+    from apps.ventes.selectors import nombre_proprietes
+    return nombre_proprietes(devis)
+
+
+def _puissance_from(devis, lead, projet=False):
+    """Puissance du devis (étude), sinon celle souhaitée sur le lead.
+
+    ERR-QAC-MULTIVILLA-MATERIEL-XN — ``projet=True`` : la puissance de
+    l'étude décrit UNE villa ; le chantier d'un devis ×N villas installe N
+    fois cette puissance (kWc projet, cf. ``ventes.selectors
+    .puissance_kwc_projet``). N=1 → valeur inchangée. Le repli lead (taille
+    souhaitée) n'est jamais multiplié."""
     params = devis.etude_params or {}
     for key in ('puissance_kwc', 'puissance_installee_kwc', 'puissance'):
         val = params.get(key)
         if val:
+            n = _nombre_proprietes(devis) if projet else 1
+            if n > 1:
+                from decimal import Decimal, InvalidOperation
+                try:
+                    return (Decimal(str(val)) * n).quantize(Decimal('0.01'))
+                except (InvalidOperation, TypeError, ValueError):
+                    return val
             return val
     if lead is not None and lead.taille_souhaitee_kwc:
         return lead.taille_souhaitee_kwc
@@ -239,10 +260,13 @@ def _freeze_bom(devis):
         lignes = option_lines(devis)
     except Exception:
         return bom
+    # ERR-QAC-MULTIVILLA-MATERIEL-XN — devis ×N villas : les lignes décrivent
+    # UNE villa, le chantier en installe N (N=1 → inchangé).
+    n_prop = _nombre_proprietes(devis)
     for ligne in lignes:
         produit = getattr(ligne, 'produit', None)
         try:
-            qte = float(ligne.quantite)
+            qte = float(ligne.quantite) * n_prop
         except (TypeError, ValueError):
             qte = None
         bom.append({
@@ -349,7 +373,7 @@ def create_installation_from_devis(devis, user, company):
             site_ville=(lead.ville if lead else None),
             gps_lat=(lead.gps_lat if lead else None),
             gps_lng=(lead.gps_lng if lead else None),
-            puissance_installee_kwc=_puissance_from(devis, lead),
+            puissance_installee_kwc=_puissance_from(devis, lead, projet=True),
             raccordement=raccordement,
             type_installation=type_install,
             regime_8221=regime_suggere,
@@ -859,10 +883,13 @@ def _bc_quantities(bon_commande):
     besoins = {}
     if not bon_commande.devis_id:
         return besoins
+    # ERR-QAC-MULTIVILLA-MATERIEL-XN — mêmes quantités que `marquer-livre` :
+    # ×N villas pour un devis ×N (N=1 → inchangé).
+    n_prop = _nombre_proprietes(bon_commande.devis)
     for ligne in bon_commande.devis.lignes.all():
         if not ligne.produit_id:
             continue
-        qte = int(Decimal(ligne.quantite).quantize(
+        qte = int((Decimal(ligne.quantite) * n_prop).quantize(
             Decimal('1'), rounding=ROUND_HALF_UP))
         if qte <= 0:
             continue

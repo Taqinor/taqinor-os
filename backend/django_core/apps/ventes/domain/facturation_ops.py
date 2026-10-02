@@ -130,7 +130,8 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
     return anomalies
 
 
-def decompter_stock_lignes(*, lignes, company, user, reference, note):
+def decompter_stock_lignes(*, lignes, company, user, reference, note,
+                           multiplicateur=1):
     """AUD116 — LE DÉCOMPTEUR UNIQUE de stock des lignes d'un devis.
 
     Il existait DEUX décompteurs pour le MÊME panier, et ils ne faisaient pas
@@ -148,6 +149,11 @@ def decompter_stock_lignes(*, lignes, company, user, reference, note):
     seule à savoir décompter. Elle lève ``StockInsuffisantError`` (message FR
     identique des deux côtés) ; à appeler dans la transaction de l'appelant.
     Renvoie ``True`` si au moins un mouvement a été posé.
+
+    ERR-QAC-MULTIVILLA-MATERIEL-XN — ``multiplicateur`` = N du devis « ×N
+    villas identiques » (``multivilla.nombre_proprietes``) : les lignes
+    décrivent UNE villa mais le projet (facturé ×N) en consomme N fois le
+    matériel. Défaut 1 = comportement historique strictement inchangé.
     """
     from decimal import Decimal, ROUND_HALF_UP
     from apps.stock.services import (
@@ -174,7 +180,7 @@ def decompter_stock_lignes(*, lignes, company, user, reference, note):
         # fractionnaire : 3,5 → 3, dérive silencieuse du stock sur les lignes
         # au mètre/câble). Le registre de stock est en entiers : on arrondit au
         # plus proche (HALF_UP) au lieu de tronquer, donc 3,5 → 4.
-        qte = int(Decimal(ligne.quantite).quantize(
+        qte = int((Decimal(ligne.quantite) * int(multiplicateur or 1)).quantize(
             Decimal('1'), rounding=ROUND_HALF_UP))
         if qte <= 0:
             continue
@@ -245,12 +251,16 @@ def reserver_stock_devis_facture(*, devis, user, company):
 
     # AUD116 — MÊME PANIER que la facture (`option_lines`) et que la
     # nomenclature du chantier, MÊME décompteur que la livraison BC.
+    # ERR-QAC-MULTIVILLA-MATERIEL-XN — un devis ×N villas facturé ×N consomme
+    # le matériel de N villas (N=1 inchangé).
+    from apps.ventes.multivilla import nombre_proprietes
     return decompter_stock_lignes(
         lignes=option_lines(devis),
         company=company,
         user=user,
         reference=reference,
         note=f'Facturation directe — devis {reference}',
+        multiplicateur=nombre_proprietes(devis),
     )
 
 
