@@ -15,10 +15,13 @@ Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \
         -Modules "apps.ventes.tests.test_qjr668_clauses_cgv"
 """
+import ast
+import html
 import re
+from pathlib import Path
 from unittest.mock import patch
 
-from django.test import TestCase, tag
+from django.test import TestCase, override_settings, tag
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -259,3 +262,114 @@ class ImpressionTests(_Base):
     def test_sans_clause_aucun_bloc(self):
         texte, _ = self._texte(self._devis())
         self.assertNotIn('clauses particulières', texte)
+
+
+@override_settings(CACHES={'default': {
+    'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
+class PageSignatureCgvTests(_Base):
+    """QJR668 — la page PUBLIQUE de signature (``proposal_data`` →
+    ``conditions``) sert les CGV que le PDF de CE devis imprime : la version
+    GELÉE à l'envoi quand elle existe, remplie par LA fonction du moteur
+    (``generate_devis_premium.remplir_cgv_bullets``) — jamais une seconde
+    copie du remplissage."""
+
+    def _conditions(self, devis):
+        from apps.ventes.models import ShareLink
+        lien = ShareLink.for_devis(devis)
+        r = APIClient().get(f'/api/django/public/proposal/{lien.token}/data/')
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
+        return r.data.get('conditions')
+
+    def _attendu_pdf(self, devis):
+        """Les puces du bloc CGV du PDF de CE devis, en texte."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.generate_devis_premium import (
+            cgv_bullets_remplies)
+        return [t for t in (html.unescape(str(p)).strip()
+                            for p in cgv_bullets_remplies(
+                                build_quote_data(devis, {'pdf_mode': 'full'})))
+                if t]
+
+    def test_envoye_puis_cgv_societe_modifiees_la_page_sert_les_puces_gelees(self):
+        from apps.parametres.models_documents import DocumentTemplates
+        from apps.ventes.services import mark_devis_sent
+        modele, _ = DocumentTemplates.objects.update_or_create(
+            company=self.company,
+            defaults={'cgv_bullets': [
+                'QJR668 livraison gelee trente jours',
+                'QJR668 acompte gele {acompte}&#37; a la commande']})
+        devis = self._devis()
+        mark_devis_sent(devis=devis, user=self.user)
+        modele.cgv_bullets = ['QJR668 livraison nouvelle quarante jours']
+        modele.save()
+        devis.refresh_from_db()
+        conditions = self._conditions(devis)
+        self.assertIsNotNone(conditions)
+        joint = ' | '.join(conditions)
+        self.assertIn('QJR668 livraison gelee trente jours', joint)
+        self.assertNotIn('quarante jours', joint)
+        acompte = [c for c in conditions if c.startswith('QJR668 acompte gele')]
+        self.assertEqual(len(acompte), 1, conditions)
+        self.assertNotIn('{', acompte[0])
+        self.assertTrue(acompte[0].endswith('% a la commande'), acompte[0])
+        # Exactement ce que le PDF de CE devis imprime.
+        self.assertEqual(conditions, self._attendu_pdf(devis))
+
+    def test_sans_gel_le_texte_vif_est_rempli_sans_case_brute(self):
+        from apps.parametres.models_documents import DocumentTemplates
+        DocumentTemplates.objects.update_or_create(
+            company=self.company,
+            defaults={'cgv_bullets': [
+                'QJR668 vif {acompte}&#37; puis {materiel}&#37; puis '
+                '{solde}&#37;', '{tva_note}', '{validite_offre}']})
+        devis = self._devis(statut=Devis.Statut.ENVOYE)
+        self.assertFalse(devis.clauses_appliquees)
+        conditions = self._conditions(devis)
+        self.assertIsNotNone(conditions)
+        joint = ' | '.join(conditions)
+        self.assertIn('QJR668 vif ', joint)
+        self.assertNotIn('{', joint)
+        self.assertNotIn('&#', joint)
+        self.assertEqual(conditions, self._attendu_pdf(devis))
+
+
+class UneSeuleFonctionDeRemplissageTests(TestCase):
+    """Garde AST : la page publique ne remplit plus les cases CGV elle-même."""
+
+    VENTES = Path(__file__).resolve().parent.parent
+
+    def _fonction(self, chemin, nom):
+        arbre = ast.parse(chemin.read_text(encoding='utf-8'))
+        for noeud in ast.walk(arbre):
+            if isinstance(noeud, ast.FunctionDef) and noeud.name == nom:
+                return arbre, noeud
+        self.fail(f'{nom} introuvable dans {chemin.name}')
+
+    @staticmethod
+    def _appels(noeud):
+        noms = set()
+        for n in ast.walk(noeud):
+            if isinstance(n, ast.Call):
+                f = n.func
+                noms.add(f.attr if isinstance(f, ast.Attribute)
+                         else getattr(f, 'id', None))
+        return noms
+
+    def test_conditions_publiques_sans_format_local(self):
+        arbre, fonction = self._fonction(
+            self.VENTES / 'public_views.py', '_conditions_publiques')
+        appels = self._appels(fonction)
+        self.assertNotIn('format', appels)
+        self.assertIn('cgv_bullets_remplies', appels)
+        definies = {n.name for n in ast.walk(arbre)
+                    if isinstance(n, ast.FunctionDef)}
+        self.assertNotIn('_pct_lisible', definies)
+
+    def test_le_pdf_passe_par_la_meme_fonction(self):
+        moteur = self.VENTES / 'quote_engine' / 'generate_devis_premium.py'
+        _, html_cgv = self._fonction(moteur, '_cgv_bullets_html')
+        appels = self._appels(html_cgv)
+        self.assertIn('remplir_cgv_bullets', appels)
+        self.assertNotIn('format', appels)
+        _, remplies = self._fonction(moteur, 'cgv_bullets_remplies')
+        self.assertIn('remplir_cgv_bullets', self._appels(remplies))

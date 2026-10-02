@@ -276,13 +276,47 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
         self.assertNotIn('30%', joint.replace(' ', ''))
 
     def test_les_pourcentages_sont_ecrits_comme_on_les_lit(self):
-        """« 40 », jamais « 40.00 » : les puces sont du texte client."""
-        from apps.ventes.public_views import _pct_lisible
-        from decimal import Decimal as D
-        self.assertEqual(_pct_lisible(D('40.00')), '40')
-        self.assertEqual(_pct_lisible(D('33.50')), '33,5')
-        self.assertEqual(_pct_lisible(30), '30')
-        self.assertEqual(_pct_lisible(30.0), '30')
+        """« 40 », jamais « 40.00 » : les puces sont du texte client.
+
+        QJR668 — la page et le PDF remplissent les cases par LA MÊME fonction
+        du moteur (``remplir_cgv_bullets``) : un échéancier négocié à 33,5 %
+        s'écrit « 33.5 » sur la page EXACTEMENT comme le PDF l'imprime
+        (l'ancienne copie locale ``_pct_lisible`` écrivait « 33,5 » : deux
+        textes pour une seule clause)."""
+        self.devis.echeancier = [
+            {'libelle': 'Acompte', 'type': 'acompte', 'pct_or_montant': 40},
+            {'libelle': 'Livraison du matériel', 'type': 'materiel',
+             'pct_or_montant': 50},
+            {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 10},
+        ]
+        self.devis.save(update_fields=['echeancier'])
+        joint = ' | '.join(self._payload()['conditions'])
+        self.assertIn('40%', joint.replace(' ', ''))
+        self.assertNotIn('40.00', joint)
+        self.assertNotIn('40.0%', joint.replace(' ', ''))
+
+        self.devis.echeancier = [
+            {'libelle': 'Acompte', 'type': 'acompte', 'pct_or_montant': 33.5},
+            {'libelle': 'Livraison du matériel', 'type': 'materiel',
+             'pct_or_montant': 56.5},
+            {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 10},
+        ]
+        self.devis.save(update_fields=['echeancier'])
+        joint = ' | '.join(self._payload()['conditions'])
+        self.assertIn('33.5%', joint.replace(' ', ''))
+        self.assertNotIn('33.50', joint)
+        self.assertNotIn('33,5', joint)
+        # Et le PDF de ce devis imprime le même chiffre (même fonction).
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.generate_devis_premium import (
+            cgv_bullets_remplies)
+        import html as _html
+        pdf = [t for t in (_html.unescape(str(p)).strip()
+                           for p in cgv_bullets_remplies(
+                               build_quote_data(self.devis,
+                                                {'pdf_mode': 'full'})))
+               if t]
+        self.assertEqual(self._payload()['conditions'], pdf)
 
     # ── moyens de paiement ──────────────────────────────────────────────
     def test_paiement_moyens_ne_propose_jamais_les_especes(self):

@@ -796,28 +796,99 @@ def _doc_text(key):
     return val
 
 
-def _cgv_bullets_html():
-    """Puces CGV éditables rendues avec le MÊME enrobage <li> qu'avant.
+def _pct_echeance(valeur, defaut):
+    """QJR623 — un pourcentage d'échéancier tel que le document l'IMPRIME.
 
-    Les marqueurs {acompte}/{materiel}/{solde}/{tva_note} sont substitués par
-    les valeurs dynamiques (PAY_A/PAY_M/PAY_S/TVA_NOTE). Défaut → puces
-    identiques au caractère près.
-    """
-    bullets = _doc_text("cgv_bullets") or DEFAULT_DOC_TEXTS["cgv_bullets"]
-    out = ""
-    for raw in bullets:
+    L'échéancier RÉEL du devis peut porter 33,5 % : on n'en tronque pas la
+    décimale (``int``) ; un entier reste un entier (« 40 », jamais
+    « 40.0 »). Pure : sert le rendu (``PAY_A``/``PAY_M``/``PAY_S``) ET
+    :func:`cgv_bullets_remplies` (la page publique de signature)."""
+    try:
+        f = float(valeur if valeur is not None else defaut)
+    except (TypeError, ValueError):
+        f = float(defaut)
+    return int(f) if f == int(f) else round(f, 2)
+
+
+def _tva_note_par_defaut(tva_pct):
+    """Mention TVA de repli (``data['tva_note']`` absent) — UNE fois."""
+    tva_lbl = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
+    return (f"TVA {tva_lbl} % appliquée sur l'ensemble des équipements et "
+            f"travaux.")
+
+
+def remplir_cgv_bullets(bullets, *, acompte, materiel, solde, tva_note,
+                        valid_until):
+    """QJR668 — LA fonction qui remplit les cases des puces CGV.
+
+    Substitue {acompte}/{materiel}/{solde}/{tva_note}/{validite_offre} et rend
+    les puces NON VIDES, entités HTML conservées (le moteur ne les échappe
+    pas). Une puce au gabarit illisible (case inconnue, accolade seule) est
+    rendue telle quelle ; une puce vide après remplissage (échéance inconnue)
+    est omise. Pure (aucun global) : le PDF (:func:`_cgv_bullets_html`) et la
+    page publique de signature (``public_views._conditions_publiques``, via
+    :func:`cgv_bullets_remplies`) passent par ELLE — jamais une seconde copie
+    du remplissage."""
+    out = []
+    for raw in bullets or ():
         try:
             txt = raw.format(
-                acompte=PAY_A, materiel=PAY_M, solde=PAY_S,
-                tva_note=TVA_NOTE,
+                acompte=acompte, materiel=materiel, solde=solde,
+                tva_note=tva_note,
                 # M7 — échéance RÉELLE ; inconnue ⇒ chaîne vide ⇒ puce omise.
                 validite_offre=(
                     "Validit&#233; de l&#8217;offre&#160;: jusqu&#8217;au "
-                    f"{VALID_UNTIL}" if VALID_UNTIL else ""))
+                    f"{valid_until}" if valid_until else ""))
         except (KeyError, IndexError, ValueError):
             txt = raw
         if not str(txt).strip():
             continue
+        out.append(txt)
+    return out
+
+
+def cgv_bullets_remplies(data):
+    """QJR668 — les puces CGV que le rendu de ``data`` (sortie de
+    ``build_quote_data``) IMPRIME, cases remplies, entités HTML conservées.
+
+    Mêmes entrées que le rendu, lues dans le MÊME dict : les puces de
+    ``data['doc_texts']`` (où le builder a déjà substitué la version GELÉE à
+    l'envoi — ``Devis.clauses_appliquees`` ``cgv_gelees``, ERR-QJR668) sinon
+    le littéral par défaut ; les pourcentages de ``data['payment_terms']``
+    (échéancier du devis rabattu par le builder, QJR623) ; ``tva_note`` ;
+    ``valid_until``. Pure : ne lit ni n'écrit aucun global de rendu."""
+    data = data or {}
+    surcharges = data.get("doc_texts") or {}
+    bullets = ((surcharges.get("cgv_bullets")
+                if isinstance(surcharges, dict) else None)
+               or DEFAULT_DOC_TEXTS["cgv_bullets"])
+    terms = data.get("payment_terms") or {}
+    try:
+        tva_pct = float(data.get("taux_tva", 20) or 20)
+    except (TypeError, ValueError):
+        tva_pct = 20.0
+    return remplir_cgv_bullets(
+        bullets,
+        acompte=_pct_echeance(terms.get("acompte"), 30),
+        materiel=_pct_echeance(terms.get("materiel"), 60),
+        solde=_pct_echeance(terms.get("solde"), 10),
+        tva_note=data.get("tva_note") or _tva_note_par_defaut(tva_pct),
+        valid_until=(data.get("valid_until") or "").strip())
+
+
+def _cgv_bullets_html():
+    """Puces CGV éditables rendues avec le MÊME enrobage <li> qu'avant.
+
+    Les marqueurs {acompte}/{materiel}/{solde}/{tva_note} sont substitués par
+    les valeurs dynamiques (PAY_A/PAY_M/PAY_S/TVA_NOTE) — par
+    :func:`remplir_cgv_bullets`, la fonction que la page publique appelle
+    aussi. Défaut → puces identiques au caractère près.
+    """
+    bullets = _doc_text("cgv_bullets") or DEFAULT_DOC_TEXTS["cgv_bullets"]
+    out = ""
+    for txt in remplir_cgv_bullets(
+            bullets, acompte=PAY_A, materiel=PAY_M, solde=PAY_S,
+            tva_note=TVA_NOTE, valid_until=VALID_UNTIL):
         # Enrobage <li> + indentation/retours IDENTIQUES au bloc historique
         # (newline + 8 espaces avant chaque puce) → HTML byte-identique au défaut.
         out += (f'\n        <li style="font-size:12px;color:{CG7};'
@@ -4446,9 +4517,7 @@ def apply_quote_data(data: dict) -> None:
     # L'empreinte, elle, est un TEXTE — donc échappée à l'usage.
     CALEPINAGE_SVG = data.get("calepinage_svg") or ""
     CALEPINAGE_EMPREINTE = data.get("calepinage_empreinte") or ""
-    _tva_lbl = int(TVA_PCT) if TVA_PCT == int(TVA_PCT) else TVA_PCT
-    TVA_NOTE       = data.get("tva_note") or (
-        f"TVA {_tva_lbl} % appliquée sur l'ensemble des équipements et travaux.")
+    TVA_NOTE       = data.get("tva_note") or _tva_note_par_defaut(TVA_PCT)
     # FG52 — devise portée par le document (défaut MAD = comportement inchangé).
     DEVISE         = (data.get("devise") or "MAD").strip().upper()
     # NTI18N5 — langue du document + table de libellés ROUTÉE par le builder.
@@ -4516,19 +4585,11 @@ def apply_quote_data(data: dict) -> None:
                 "de sa chaîne de totaux (%.2f) — deux totaux pour une seule "
                 "option (QJR146)." % (_cle_scalaire, float(_valeur), _ttc))
     _terms = data.get("payment_terms") or {}
-
-    def _pct(v, defaut):
-        # QJR623 — l'échéancier RÉEL du devis peut porter 33,5 % : on n'en
-        # tronque plus la décimale (``int``) ; un entier reste un entier.
-        try:
-            f = float(v if v is not None else defaut)
-        except (TypeError, ValueError):
-            f = float(defaut)
-        return int(f) if f == int(f) else round(f, 2)
-
-    PAY_A = _pct(_terms.get("acompte"), 30)
-    PAY_M = _pct(_terms.get("materiel"), 60)
-    PAY_S = _pct(_terms.get("solde"), 10)
+    # QJR623 / QJR668 — même normalisation que la page publique de signature
+    # (``_pct_echeance``, partagée avec ``cgv_bullets_remplies``).
+    PAY_A = _pct_echeance(_terms.get("acompte"), 30)
+    PAY_M = _pct_echeance(_terms.get("materiel"), 60)
+    PAY_S = _pct_echeance(_terms.get("solde"), 10)
     global MONTANTS_TRANCHES
     MONTANTS_TRANCHES = dict(data.get("montants_tranches") or {})
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
