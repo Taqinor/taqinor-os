@@ -144,6 +144,8 @@ import {
   deriveRoleOrderFromLines,
   // QJR546 — garde « produit tarifé » des lignes d'un modèle appliqué.
   _hasPrix,
+  // ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — kWh déclaré vs factures du lead.
+  controlerKwhDeclare, MESSAGE_KWH_INCOHERENT,
 } from '../../features/ventes/solar'
 import { formatNumber, formatMAD, formatDateTime, formatDate } from '../../lib/format'
 import { peutEditerDevis } from '../../features/ventes/devisStatuts'
@@ -3201,6 +3203,19 @@ export default function DevisGenerator({
       e.conso = 'Mode industriel : renseignez la consommation mensuelle (kWh) '
         + 'ou les factures électriques — l\'étude en dépend.'
     }
+    // ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES (décision fondateur 30/09/2026) —
+    // le kWh mensuel DÉCLARÉ sur la fiche du lead (celui que le serveur chiffre
+    // en priorité, Q14) contredit ses factures (barème ÷ facture hors
+    // [0,5 ; 2]) ⇒ enregistrement REFUSÉ, jamais un chiffrage silencieux. Le
+    // serveur (`/atomic`, `replace-lines`) applique la même garde.
+    if (!e.conso && selectedLead) {
+      const ctlKwh = controlerKwhDeclare(selectedLead.conso_mensuelle_kwh, {
+        factureHiver: selectedLead.facture_hiver,
+        factureEte: selectedLead.facture_ete,
+        eteDifferente: selectedLead.ete_differente,
+      })
+      if (ctlKwh && !ctlKwh.coherent) e.conso = MESSAGE_KWH_INCOHERENT
+    }
     const orphan = lines.find(l =>
       !l.produit && parseFloat(l.quantite) > 0 && parseFloat(l.prix_unit_ttc) > 0)
     if (orphan) {
@@ -3627,6 +3642,10 @@ export default function DevisGenerator({
         msg = 'Ce client n\'existe plus. Choisissez un autre client ou un lead.'
         setClientId('')
         crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
+      } else if (raw?.code === 'kwh_incoherent_factures') {
+        // ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — refus serveur : sous le champ.
+        msg = typeof raw.detail === 'string' ? raw.detail : MESSAGE_KWH_INCOHERENT
+        setErrors(prev => ({ ...prev, conso: msg }))
       } else if (typeof raw?.detail === 'string') {
         msg = raw.detail
       } else {

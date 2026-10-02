@@ -20,3 +20,22 @@ test('avec le productible de la ville, la production est celle du PDF (kWc 22,56
   // calculate_savings_roi(22.56, …)['prod_kwh'] = 34 648 (Python, arrondi à l'entier).
   assert.ok(Math.abs(roi.production_annuelle_kwh - 34648) <= 0.5, String(roi.production_annuelle_kwh))
 })
+
+// ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT (reste, 02/10) — ATTEIGNABILITÉ. Les
+// quatre appels de production de `computeROI` (aperçu `roi` / `roiAvec` de
+// DevisGenerator, `optimalKwcByPayback` depuis DevisGenerator et autoQuote)
+// passent TOUS `productibleForCity(ville, réglage société)`. Le repli
+// GHI × 0,8 n'est atteint que si ce productible est absent ou ≤ 0 : tant que
+// `productibleForCity` rend un nombre > 0 pour TOUTE entrée, aucun devis réel
+// ne l'atteint (repli conservé pour la parité simulateur). Ce test verrouille
+// cette prémisse.
+test('productibleForCity rend toujours un productible > 0 : le repli GHI × 0,8 est inatteignable', () => {
+  const villes = ['', '   ', null, undefined, 'Casablanca', 'agadir', 'Ville inconnue', 'Douar X']
+  const reglages = [null, undefined, '', 0, -5, 'abc', NaN, 1600, '1600', 1700]
+  for (const ville of villes) {
+    for (const reglage of reglages) {
+      const p = productibleForCity(ville, reglage)
+      assert.ok(Number.isFinite(p) && p > 0, `productibleForCity(${ville}, ${reglage}) = ${p}`)
+    }
+  }
+})

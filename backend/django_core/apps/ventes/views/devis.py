@@ -167,6 +167,23 @@ def _exiger_remise_envoi(devis, user, *, enregistrer=True):
         raise _RemiseEnvoiRefusee(erreur.message)
 
 
+def _garde_kwh_declare(devis):
+    """ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES (décision fondateur 30/09/2026)
+    — un kWh mensuel déclaré que les factures du MÊME dossier contredisent
+    (facture au barème ÷ facture déclarée hors [0,5 ; 2]) REFUSE
+    l'enregistrement : 400 ``{detail, code}``, jamais un chiffrage
+    silencieux. Partagée par ``/atomic`` (sous sa transaction, rien n'est
+    créé) et ``replace-lines`` (avant toute écriture)."""
+    from rest_framework.exceptions import ValidationError
+    from ..etude_horaire import (
+        CODE_KWH_INCOHERENT, MESSAGE_KWH_INCOHERENT,
+        controle_kwh_declare_du_devis)
+    controle = controle_kwh_declare_du_devis(devis)
+    if controle is not None and not controle['coherent']:
+        raise ValidationError({'detail': MESSAGE_KWH_INCOHERENT,
+                               'code': CODE_KWH_INCOHERENT})
+
+
 def _valider_etude_ecran(etude_in):
     """QJR544 — pré-validation des CHOIX d'écran (``etude_params`` clés
     ECRAN) avant toute écriture, partagée par ``/atomic`` et
@@ -1024,6 +1041,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                         **devise_kwargs)
                     if etude_in:
                         ecrire(devis, proprietaire=ECRAN, **etude_in)
+                    # ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — refus sous la
+                    # transaction : un kWh déclaré contredit ne crée RIEN.
+                    _garde_kwh_declare(devis)
                     # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction :
                     # la composition est celle que l'écran a arrêtée, le
                     # pipeline ne la recompose pas (recomposer détruirait les
@@ -1138,6 +1158,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             _gardes_mise_a_jour(devis, entete_ser.validated_data,
                                 request.user, t17=False)
         _valider_etude_ecran(etude_in)
+        # ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — avant toute écriture.
+        _garde_kwh_declare(devis)
         from ..services import (
             RemiseNonApprouvee, reverifier_remise_apres_correction)
         from ..domain.tarification import profondeur_remise_effective

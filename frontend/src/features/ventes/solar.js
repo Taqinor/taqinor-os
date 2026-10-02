@@ -1074,6 +1074,32 @@ export function controlerFacturesSaisies(factures, { factureHiverLead } = {}) {
   return { plancher, sousPlancher, ecartLead }
 }
 
+// ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — jumeau de
+// etude_horaire.coherence_kwh_declare_factures (décision fondateur 30/09/2026).
+// Le kWh mensuel DÉCLARÉ sur la fiche du lead prime sur ses factures (Q14,
+// CAD166) SEULEMENT s'il est vraisemblable : facture_barème(kWh) ÷ facture
+// déclarée doit tomber dans [0,5 ; 2] pour AU MOINS une facture déclarée
+// (hiver, et été quand elle est distincte). Sinon l'enregistrement est REFUSÉ.
+// `null` quand rien n'est confrontable (kWh ou facture absents).
+const RATIO_KWH_FACTURE_MIN = 0.5
+const RATIO_KWH_FACTURE_MAX = 2
+export const MESSAGE_KWH_INCOHERENT =
+  'kWh déclarés incohérents avec les factures — corriger la fiche du lead'
+export function controlerKwhDeclare(kwhMensuel, { factureHiver, factureEte, eteDifferente } = {},
+  tranches = ONEE_TRANCHES) {
+  const kwh = parseFloat(kwhMensuel) || 0
+  const factures = [factureHiver, eteDifferente ? factureEte : null]
+    .map(v => parseFloat(v) || 0).filter(v => v > 0)
+  if (!(kwh > 0) || !factures.length) return null
+  const factureBareme = factureMad(kwh, tranches).totalMad
+  const ratios = factures.map(f => factureBareme / f)
+  return {
+    factureBareme,
+    ratios,
+    coherent: ratios.some(r => r >= RATIO_KWH_FACTURE_MIN && r <= RATIO_KWH_FACTURE_MAX),
+  }
+}
+
 // TPPAN TTC due sur une période de `jours` jours consommant `kwhMensuel`.
 // Jumeau de bareme.tppan_mad : empilement progressif sur la TOTALITÉ de la
 // consommation, bornes proratisées, plafonné. Monotone non décroissante.
