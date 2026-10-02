@@ -620,6 +620,21 @@ def echelle_paliers_batterie(devis):
         return []
 
 
+def _cibles_au_dessus_du_plancher_ve(cibles, equipements):
+    """QJR612 — retire les paliers sous le plancher de recharge VE nocturne.
+
+    Sans recharge VE nocturne : ``cibles`` rendu tel quel. Sinon le plancher
+    est la plus petite taille d'offre couvrant la recharge (ou la plus grande
+    quand le catalogue ne la couvre pas — jamais une taille inventée)."""
+    from apps.ventes.etude_horaire import plancher_batterie_recharge_ve
+
+    plancher = plancher_batterie_recharge_ve(0.0, equipements, cibles)
+    taille = (plancher or {}).get('taille_retenue_kwh')
+    if not taille:
+        return list(cibles)
+    return [c for c in cibles if c >= taille - 0.05]
+
+
 def _echelle_paliers_batterie(devis):
     """Le calcul de :func:`echelle_paliers_batterie`, sans son filet."""
     from apps.parametres.pvgis_profils import productible_mensuel
@@ -719,6 +734,12 @@ def _echelle_paliers_batterie(devis):
     cibles = paliers_stockage_candidats(
         list(getattr(sonde_batterie, 'capacites_batterie_vivier', ()) or ()),
         maximum=MAX_PALIERS_STOCKAGE)
+    if not cibles:
+        return []
+    # QJR612 — LE PLANCHER RECHARGE VE NOCTURNE s'applique aussi à l'échelle
+    # servie au client (``balayer_tailles`` l'applique déjà) : aucun palier
+    # public sous la recharge nocturne du lead.
+    cibles = _cibles_au_dessus_du_plancher_ve(cibles, entrees['equipements'])
     if not cibles:
         return []
 
