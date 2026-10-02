@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import {
   FOCUSED_RECORD_SHORTCUTS, LEAD_STAGE_SHORTCUTS,
@@ -16,10 +18,11 @@ import { roleProfile } from './ShortcutsProvider'
 afterEach(() => { cleanup() })
 
 describe('FOCUSED_RECORD_SHORTCUTS (registre)', () => {
-  it('leadForm : a/d/n + 4 touches de stage, jamais SIGNED ni COLD', () => {
+  it('leadForm : d/n + 4 touches de stage, jamais SIGNED ni COLD, jamais « a » archiver (incident 02/10)', () => {
     const entry = FOCUSED_RECORD_SHORTCUTS.leadForm
     const keys = entry.items.map((it) => it.key)
-    expect(keys).toEqual(['a', 'd', 'n', '1', '2', '3', '4'])
+    expect(keys).toEqual(['d', 'n', '1', '2', '3', '4'])
+    expect(entry.items.some((it) => /archiv/i.test(it.label))).toBe(false)
     const stages = LEAD_STAGE_SHORTCUTS.map((s) => s.stage)
     expect(stages).toEqual(['NEW', 'CONTACTED', 'QUOTE_SENT', 'FOLLOW_UP'])
     expect(stages).not.toContain('SIGNED')
@@ -63,14 +66,14 @@ function Harness({ screenId, handlers, enabled }) {
 }
 
 describe('useFocusedRecordShortcuts — câblage clavier', () => {
-  it('« a » hors saisie déclenche le handler (archiver sans clic)', () => {
+  it('« n » hors saisie déclenche le handler (noter sans clic)', () => {
     const onA = vi.fn()
     render(
       <ActiveScreenProvider>
-        <Harness screenId="leadForm" handlers={{ a: onA }} enabled />
+        <Harness screenId="leadForm" handlers={{ n: onA }} enabled />
       </ActiveScreenProvider>,
     )
-    fireEvent.keyDown(document, { key: 'a' })
+    fireEvent.keyDown(document, { key: 'n' })
     expect(onA).toHaveBeenCalledTimes(1)
   })
 
@@ -78,11 +81,11 @@ describe('useFocusedRecordShortcuts — câblage clavier', () => {
     const onA = vi.fn()
     render(
       <ActiveScreenProvider>
-        <Harness screenId="leadForm" handlers={{ a: onA }} enabled />
+        <Harness screenId="leadForm" handlers={{ n: onA }} enabled />
         <input data-testid="some-field" />
       </ActiveScreenProvider>,
     )
-    fireEvent.keyDown(screen.getByTestId('some-field'), { key: 'a' })
+    fireEvent.keyDown(screen.getByTestId('some-field'), { key: 'n' })
     expect(onA).not.toHaveBeenCalled()
   })
 
@@ -90,21 +93,21 @@ describe('useFocusedRecordShortcuts — câblage clavier', () => {
     const onA = vi.fn()
     render(
       <ActiveScreenProvider>
-        <Harness screenId="leadForm" handlers={{ a: onA }} enabled />
+        <Harness screenId="leadForm" handlers={{ n: onA }} enabled />
       </ActiveScreenProvider>,
     )
-    fireEvent.keyDown(document, { key: 'a', metaKey: true })
+    fireEvent.keyDown(document, { key: 'n', metaKey: true })
     expect(onA).not.toHaveBeenCalled()
   })
 
-  it('enabled=false désactive le raccourci (ex. création — rien à archiver)', () => {
+  it('enabled=false désactive le raccourci (ex. création — rien à noter)', () => {
     const onA = vi.fn()
     render(
       <ActiveScreenProvider>
-        <Harness screenId="leadForm" handlers={{ a: onA }} enabled={false} />
+        <Harness screenId="leadForm" handlers={{ n: onA }} enabled={false} />
       </ActiveScreenProvider>,
     )
-    fireEvent.keyDown(document, { key: 'a' })
+    fireEvent.keyDown(document, { key: 'n' })
     expect(onA).not.toHaveBeenCalled()
   })
 
@@ -125,5 +128,48 @@ describe('useFocusedRecordShortcuts — câblage clavier', () => {
     )
     expect(screen.getByTestId('active-screen').textContent).toBe('leadForm')
     unmount()
+  })
+})
+
+/* INCIDENT 02/10/2026 — un lead vivant archivé par une frappe tapée dans le
+   panneau devis ouvert PAR-DESSUS la fiche lead. `scopeRef` : les touches d'un
+   écran se taisent dès qu'une boîte de dialogue qui ne le contient pas est
+   ouverte ; elles marchent toujours dans l'écran lui-même. */
+function ScopedScreen({ handlers, autreDialogue = false }) {
+  const ref = useRef(null)
+  useFocusedRecordShortcuts('leadForm', handlers, true, { scopeRef: ref })
+  return (
+    <>
+      <div role="dialog" ref={ref}>
+        <button type="button" data-testid="btn-fiche">Fiche</button>
+      </div>
+      {autreDialogue && createPortal(
+        <div role="dialog"><button type="button" data-testid="btn-dessus">Option</button></div>,
+        document.body,
+      )}
+    </>
+  )
+}
+
+describe('useFocusedRecordShortcuts — scopeRef (incident 02/10/2026)', () => {
+  it('fiche seule : la touche agit (rien n’est posé par-dessus)', () => {
+    const onN = vi.fn()
+    render(<ActiveScreenProvider><ScopedScreen handlers={{ n: onN }} /></ActiveScreenProvider>)
+    fireEvent.keyDown(screen.getByTestId('btn-fiche'), { key: 'n' })
+    expect(onN).toHaveBeenCalledTimes(1)
+  })
+
+  it('une boîte posée par-dessus : la touche tapée dedans n’atteint JAMAIS la fiche', () => {
+    const onN = vi.fn()
+    render(<ActiveScreenProvider><ScopedScreen handlers={{ n: onN }} autreDialogue /></ActiveScreenProvider>)
+    fireEvent.keyDown(screen.getByTestId('btn-dessus'), { key: 'n' })
+    expect(onN).not.toHaveBeenCalled()
+  })
+
+  it('une boîte posée par-dessus : même une frappe sur la fiche elle-même reste muette', () => {
+    const onN = vi.fn()
+    render(<ActiveScreenProvider><ScopedScreen handlers={{ n: onN }} autreDialogue /></ActiveScreenProvider>)
+    fireEvent.keyDown(document, { key: 'n' })
+    expect(onN).not.toHaveBeenCalled()
   })
 })

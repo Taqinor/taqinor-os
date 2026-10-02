@@ -4,7 +4,8 @@ import { useDispatch, useSelector } from 'react-redux'
 import api from '../../../api/axios'
 import crmApi from '../../../api/crmApi'
 import ventesApi from '../../../api/ventesApi'
-import { toastPromise } from '../../../ui/confirm'
+import { toastPromise, useConfirmDialog } from '../../../ui/confirm'
+import { toastWithUndo } from '../../../lib/toast'
 import {
   createLead, archiveLead, restoreLead,
 } from '../store/crmSlice'
@@ -287,18 +288,47 @@ export default function LeadWorkspace({
 
   // Archivage : passe TOUJOURS par leaveGuard (flush d'abord) — l'archivage ne
   // peut plus structurellement jeter des éditions non sauvées (tue P1#3).
-  const doArchive = useCallback(() => {
+  // INCIDENT 02/10/2026 — un lead vivant (« ouissam merbahi ») a été archivé
+  // sans que la commerciale s'en rende compte : aucune question, la fenêtre se
+  // refermait, et le lead quittait pipeline, agenda et relances. Désormais
+  // ARCHIVER est TOUJOURS demandé en nommant le lead (menu « ⋯ » comme ⌘K —
+  // plus aucun raccourci à une touche), puis un toast « Annuler » laisse 10 s
+  // pour revenir en arrière. La RESTAURATION ne cache rien : pas de question.
+  const { confirm: confirmer } = useConfirmDialog()
+  const doArchive = useCallback(async () => {
     if (!leadId) return
+    if (!leadArchived) {
+      const ok = await confirmer({
+        title: `Archiver « ${leadNom || 'ce lead'} » ?`,
+        description: 'Le lead quitte le pipeline, l’agenda et les relances. '
+          + 'Il reste retrouvable avec le filtre « Archivés » de la liste des '
+          + 'leads, d’où il se restaure.',
+        confirmLabel: 'Archiver',
+        cancelLabel: 'Annuler',
+        destructive: true,
+      })
+      if (!ok) return
+    }
     leaveGuard(async () => {
       setArchiveBusy(true)
       try {
         if (leadArchived) await dispatch(restoreLead(leadId)).unwrap()
-        else await dispatch(archiveLead(leadId)).unwrap()
+        else {
+          await dispatch(archiveLead(leadId)).unwrap()
+          toastWithUndo({
+            message: `« ${leadNom || 'Lead'} » archivé.`,
+            description: 'Retrouvable avec le filtre « Archivés » de la liste des leads.',
+            duration: 10000,
+            onUndo: () => {
+              dispatch(restoreLead(leadId)).unwrap().then(() => onSaved?.()).catch(() => {})
+            },
+          })
+        }
         onSaved?.()
         onClose?.()
       } catch { /* silencieux */ } finally { setArchiveBusy(false) }
     })
-  }, [leadId, leadArchived, leaveGuard, dispatch, onSaved, onClose])
+  }, [leadId, leadArchived, leadNom, confirmer, leaveGuard, dispatch, onSaved, onClose])
 
   /* ORDRE FONDATEUR 2026-08-01 — « les leads doivent pouvoir REVENIR EN
      ARRIÈRE d'étape, avec une confirmation avant ».
@@ -574,8 +604,8 @@ export default function LeadWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au VRAI changement de lead (state.leadId après LOAD_LEAD), jamais à chaque frappe du nom
   }, [mode, state.leadId])
 
-  // ── LW23 : registre de raccourcis propre (a/d/n/1-4) ──────────────────────
-  // `a` archiver (leaveGuard déjà structurel dans doArchive), `d` focus le
+  // ── LW23 : registre de raccourcis propre (d/n/1-4) ────────────────────────
+  // (`a` archiver RETIRÉ — incident 02/10/2026, voir doArchive.) `d` focus le
   // picker Responsable de l'IdentityRail (hook DOM stable `.ap-trigger` —
   // fichier d'une autre lane, jamais importé), `n` bascule Historique +
   // focus composer (événement `lw:open-note-composer`, ContextRail — LW19-21
@@ -587,11 +617,13 @@ export default function LeadWorkspace({
   // StageControl.jsx — critique Fable #5 : la double inscription exécutait
   // chaque changement d'étape DEUX fois : double PATCH, double toast).
   const focusedHandlers = useMemo(() => ({
-    a: () => doArchive(),
     d: () => { document.querySelector('.ap-trigger')?.focus() },
     n: () => { window.dispatchEvent(new CustomEvent('lw:open-note-composer', { detail: { leadId } })) },
-  }), [doArchive, leadId])
-  useFocusedRecordShortcuts('leadForm', focusedHandlers, mode === 'edit')
+  }), [leadId])
+  // `scopeRef` : les touches se taisent dès qu'un satellite (panneau devis,
+  // confirmation, popover…) est ouvert PAR-DESSUS la fiche (incident 02/10).
+  const rootRef = useRef(null)
+  useFocusedRecordShortcuts('leadForm', focusedHandlers, mode === 'edit', { scopeRef: rootRef })
 
   // ── Fermeture (✕/overlay/Escape) via leaveGuard ──────────────────────────
   const requestClose = useCallback(() => { leaveGuard(onClose) }, [leaveGuard, onClose])
@@ -657,7 +689,7 @@ export default function LeadWorkspace({
 
   // ── Rendu du contenu (partagé dialog / sheet / page) ──────────────────────
   const renderBody = (TitleComp) => (
-    <div className="lw-root">
+    <div className="lw-root" ref={rootRef}>
       <header className="lw-topbar">
         <div className="lw-topbar-left">
           {mode === 'edit' && leadsQueue && (
