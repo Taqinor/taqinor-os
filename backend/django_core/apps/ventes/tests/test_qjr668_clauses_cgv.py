@@ -339,6 +339,86 @@ class GelCgvSocieteTests(_Base):
         self.assertFalse(devis2.clauses_appliquees)
 
 
+CGV_FIGEE = {'clause_id': None, 'source': 'cgv_societe',
+             'nom': 'Titre CGV figé QJR668', 'corps_texte': '',
+             'puces': ['Puce CGV figée QJR668 unique', 'Acompte 40&#37;'],
+             'type_deal': '', 'ordre': 0, 'version': 3}
+
+
+class RenduCgvFigeeTests(_Base):
+    """(b)/(c) — le HTML EXACT du moteur legacy (bloc « Conditions
+    générales ») imprime la version FIGÉE, une seule fois, au lieu du texte
+    vivant de la société."""
+
+    def _cgv(self, puces, titre):
+        from apps.parametres.models_documents import DocumentTemplates
+        tpl = DocumentTemplates.get(company=self.company)
+        tpl.cgv_titre = titre
+        tpl.cgv_bullets = puces
+        tpl.save()
+        return tpl
+
+    def _html(self, devis):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis.refresh_from_db()
+        return G.render_html_for(build_quote_data(devis))
+
+    def test_modifier_les_cgv_apres_envoi_ne_change_pas_le_pdf(self):
+        from apps.ventes.services import mark_devis_sent
+        tpl = self._cgv(['Puce envoyée QJR668 acompte {acompte}&#37;'],
+                        'Titre envoyé QJR668')
+        devis = self._devis()
+        mark_devis_sent(devis=devis, user=self.user)
+        avant = self._html(devis)
+        tpl.cgv_titre = 'Titre modifié QJR668'
+        tpl.cgv_bullets = ['Puce modifiée QJR668']
+        tpl.save()
+        apres = self._html(devis)
+        for html in (avant, apres):
+            self.assertEqual(html.count('Puce envoyée QJR668 acompte'), 1)
+            self.assertEqual(html.count('Titre envoyé QJR668'), 1)
+            self.assertNotIn('Puce modifiée QJR668', html)
+            self.assertNotIn('Titre modifié QJR668', html)
+            self.assertNotIn('{acompte}', html)
+        # Un brouillon de la même société, lui, suit le texte vivant.
+        brouillon = self._html(self._devis())
+        self.assertIn('Puce modifiée QJR668', brouillon)
+        self.assertNotIn('Puce envoyée QJR668', brouillon)
+
+    def test_texte_fige_imprime_une_seule_fois(self):
+        from apps.ventes.quote_engine.clauses_cgv import TITRE
+        self._cgv(['Puce vivante QJR668'], 'Titre vivant QJR668')
+        devis = self._devis(statut=Devis.Statut.ENVOYE)
+        devis.clauses_appliquees = [CGV_FIGEE]
+        devis.save(update_fields=['clauses_appliquees'])
+        html = self._html(devis)
+        self.assertEqual(html.count('Puce CGV figée QJR668 unique'), 1)
+        self.assertEqual(html.count('Titre CGV figé QJR668'), 1)
+        self.assertNotIn('Puce vivante QJR668', html)
+        self.assertNotIn('Titre vivant QJR668', html)
+        # Jamais réimprimé dans « Clauses particulières ».
+        self.assertNotIn(TITRE, html)
+
+    def test_builder_separe_cgv_figee_et_clauses_particulieres(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._devis(statut=Devis.Statut.ENVOYE)
+        devis.clauses_appliquees = [CGV_FIGEE, CLAUSE]
+        devis.save(update_fields=['clauses_appliquees'])
+        data = build_quote_data(devis)
+        self.assertEqual(data['cgv_figees'], {
+            'titre': CGV_FIGEE['nom'], 'puces': CGV_FIGEE['puces']})
+        self.assertEqual([c['nom'] for c in data['clauses_cgv']],
+                         [CLAUSE['nom']])
+
+    def test_sans_snapshot_texte_vivant_inchange(self):
+        self._cgv(['Puce vivante QJR668 {acompte}&#37;'], 'Titre vivant')
+        html = self._html(self._devis())
+        self.assertIn('Titre vivant', html)
+        self.assertIn('Puce vivante QJR668', html)
+        self.assertNotIn('{acompte}', html)
+
+
 @tag('pdf')
 class ImpressionTests(_Base):
 
@@ -398,3 +478,11 @@ class ImpressionTests(_Base):
     def test_sans_clause_aucun_bloc(self):
         texte, _ = self._texte(self._devis())
         self.assertNotIn('clauses particulières', texte)
+
+    def test_cgv_figee_hors_clauses_particulieres_residentiel(self):
+        """Le gabarit résidentiel n'a pas de bloc CGV : la CGV figée n'y est
+        pas réimprimée en « Clauses particulières », et il reste à 3 pages."""
+        texte, pages = self._texte(self._gele(self._devis(), [CGV_FIGEE]))
+        self.assertNotIn('clauses particulières', texte)
+        self.assertNotIn(_norm('Puce CGV figée QJR668 unique'), texte)
+        self.assertEqual(pages, 3)

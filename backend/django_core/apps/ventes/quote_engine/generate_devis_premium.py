@@ -587,6 +587,9 @@ ACCEPTE_PAR_NOM = ""
 NOTE_CLIENT = ""
 # QJR668 — clauses/CGV de l'affaire gelées (échappées à l'ingestion).
 CLAUSES_CGV = []
+# QJR668 (décision fondateur 01/10/2026) — texte CGV SOCIÉTÉ figé à l'envoi
+# ({"titre", "puces"}, cases déjà remplies) ; None = texte vivant (inchangé).
+CGV_FIGEES = None
 
 
 def _clauses_cgv_html(font_pt="7.5"):
@@ -815,12 +818,20 @@ def _cgv_bullets_html():
     VALID_UNTIL). Défaut → puces identiques au caractère près. Une case
     inconnue n'est plus imprimée brute (elle devient une chaîne vide).
     """
-    bullets = _doc_text("cgv_bullets") or DEFAULT_DOC_TEXTS["cgv_bullets"]
-    out = ""
-    for txt in remplir_cgv(bullets, valeurs_cgv(
+    if CGV_FIGEES is not None:
+        # QJR668 — devis envoyé/signé : la version FIGÉE à l'envoi, telle
+        # quelle (ses cases sont déjà remplies ; le repassage par
+        # ``remplir_cgv`` sans valeur garantit seulement qu'aucune case brute
+        # ne s'imprime). Modifier les CGV société ne la change plus.
+        puces = remplir_cgv(CGV_FIGEES["puces"], {})
+    else:
+        bullets = _doc_text("cgv_bullets") or DEFAULT_DOC_TEXTS["cgv_bullets"]
+        puces = remplir_cgv(bullets, valeurs_cgv(
             acompte=PAY_A, materiel=PAY_M, solde=PAY_S, tva_note=TVA_NOTE,
             # M7 — échéance RÉELLE ; inconnue ⇒ chaîne vide ⇒ puce omise.
-            valid_until=VALID_UNTIL)):
+            valid_until=VALID_UNTIL))
+    out = ""
+    for txt in puces:
         # Enrobage <li> + indentation/retours IDENTIQUES au bloc historique
         # (newline + 8 espaces avant chaque puce) → HTML byte-identique au défaut.
         out += (f'\n        <li style="font-size:12px;color:{CG7};'
@@ -828,6 +839,14 @@ def _cgv_bullets_html():
                 f'<span style="position:absolute;left:0;color:{CA};'
                 f'font-size:11pt;line-height:1.1;">·</span>{txt}</li>')
     return out + "\n      "
+
+
+def _cgv_titre():
+    """QJR668 — titre du bloc « Conditions générales » : le titre FIGÉ à
+    l'envoi quand il existe, sinon le titre vivant (société, repli défaut)."""
+    if CGV_FIGEES is not None and CGV_FIGEES.get("titre"):
+        return CGV_FIGEES["titre"]
+    return _doc_text("cgv_titre")
 
 
 def _acceptance_stamp_html():
@@ -2615,7 +2634,7 @@ def page3():
   <!-- CONDITIONS GENERALES -->
   <div style="padding:0 24px 4px;margin-bottom:5px;">
     <div style="background:{CG1};border-radius:8px;padding:7px 12px;border:1px solid {CG2};border-left:4px solid {CN};">
-      <div style="font-size:9pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">{_doc_text("cgv_titre")}</div>
+      <div style="font-size:9pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">{_cgv_titre()}</div>
       <ul style="list-style:none;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">{_cgv_bullets_html()}</ul>
     </div>
   </div>
@@ -4366,6 +4385,7 @@ def apply_quote_data(data: dict) -> None:
     global LINKS  # QRP1 — liens client (proposition tokenisée)
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION, NOTE_CLIENT
     global CLAUSES_CGV  # QJR668 — clauses/CGV gelées de l'affaire
+    global CGV_FIGEES  # QJR668 — texte CGV société figé à l'envoi
     global DEVISE  # FG52 — devise du document (ISO 4217)
     global LANGUE_SORTIE, LIBELLES_DOC  # NTI18N5 — langue + libellés du gabarit
     global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
@@ -4623,6 +4643,15 @@ def apply_quote_data(data: dict) -> None:
         {"nom": _esc(str(c.get("nom") or "")),
          "corps_texte": _esc(str(c.get("corps_texte") or ""))}
         for c in (data.get("clauses_cgv") or []) if isinstance(c, dict)]
+    # QJR668 — texte CGV figé : fragments éditoriaux de la société imprimés
+    # SANS ré-échappement, exactement comme le texte vivant (``DOC_TEXTS``)
+    # dont ils sont la copie remplie ; posé côté serveur uniquement
+    # (``clauses_appliquees`` est en lecture seule dans l'API).
+    _cgv_f = data.get("cgv_figees")
+    CGV_FIGEES = (
+        {"titre": str(_cgv_f.get("titre") or ""),
+         "puces": [str(p) for p in (_cgv_f.get("puces") or [])]}
+        if isinstance(_cgv_f, dict) else None)
     DATE_ACCEPTATION = (data.get("date_acceptation") or "")
 
     # Numérotation des pages cohérente avec le nombre RÉEL de pages rendues
