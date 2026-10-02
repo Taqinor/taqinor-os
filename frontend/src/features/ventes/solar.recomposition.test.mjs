@@ -94,3 +94,21 @@ test('lignesQuantiteFigee : seules les lignes produit verrouillées', () => {
   ])
   assert.deepEqual(figees.map(l => l.designation), ['Socles'])
 })
+
+test('lignes relues d’un devis enregistré + nouvelle composition : aucun doublon onduleur/batterie', async () => {
+  const { lignesServeurVersEcran } = await import('./quote/lignesEcran.js')
+  const serveur = [
+    { id: 1, produit: 5, designation: 'Panneau 550W', quantite: '10', prix_unitaire: '1000', taux_tva: '20', ordre: 0, type_ligne: 'produit' },
+    { id: 2, produit: 6, designation: 'Onduleur 5 kW', quantite: '1', prix_unitaire: '7500', taux_tva: '20', ordre: 1, type_ligne: 'produit' },
+    { id: 3, produit: 7, designation: 'Batterie 5 kWh', quantite: '1', prix_unitaire: '16000', taux_tva: '20', ordre: 2, type_ligne: 'produit' },
+  ]
+  const relues = lignesServeurVersEcran(serveur, 20)
+  const generees = [
+    L(5, 'Panneau 550W', 12, 1200),
+    L(60, 'Onduleur 8 kW', 1, 11000),
+    L(70, 'Batterie 10 kWh', 1, 30000),
+  ]
+  const { lignes } = fusionnerRecomposition(relues, generees)
+  assert.equal(lignes.length, 3)
+  assert.deepEqual(lignes.map(l => l.produit), ['5', '60', '70'])
+})
