@@ -38,6 +38,20 @@ class TestGlobalSearch(TestCase):
         self.assertEqual(len(lead_group['results']), 1)
         self.assertIn('Bennani', lead_group['results'][0]['label'])
 
+    def test_archived_lead_found_and_marked_archive(self):
+        # Incident 02/10/2026 — un lead archivé « avait disparu » : la
+        # recherche globale le retrouve ET le dit archivé ; un lead actif ne
+        # porte jamais la mention.
+        Lead.objects.create(company=self.company, nom='Merbahi', ville='Rabat',
+                            is_archived=True)
+        Lead.objects.create(company=self.company, nom='Merbahiactif', ville='Fes')
+        resp = self.api.get('/api/django/reporting/search/?q=Merbahi')
+        self.assertEqual(resp.status_code, 200)
+        group = next(g for g in resp.data['groups'] if g['type'] == 'lead')
+        par_nom = {r['label']: r['sublabel'] for r in group['results']}
+        self.assertEqual(par_nom['Merbahi'], 'Archivé · Rabat')
+        self.assertEqual(par_nom['Merbahiactif'], 'Fes')
+
     def test_short_query_returns_nothing(self):
         resp = self.api.get('/api/django/reporting/search/?q=a')
         self.assertEqual(resp.status_code, 200)
