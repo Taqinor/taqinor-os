@@ -84,6 +84,22 @@ the fields above; no CAPTCHA within the capped volume; a documented cost per 1,0
 following ends the idea: a challenge on the first requests, a required login, or any sign that the
 activity can be tied to TAQINOR's Meta accounts.
 
+## Session-limited manual observation (2 October 2026) — separate from the experiment above
+
+- **What:** reading, in an ordinary logged-out browser window, the result counts and the filter and
+  pagination behaviour of the public Ad Library for a few keyword and country pairs (the client's
+  keyword « sandals », United States and Australia), to size the collection problem for the research
+  of 2 October 2026. This is not a scraper: no script, no call to the page's internal endpoint, no
+  pagination loop, and nothing stored beyond the counts and observations written in the research note.
+- **Limits:** at most 20 page views in the session, at human pace; no Meta account and no cookie of
+  any Meta identity; stop at the first login wall or CAPTCHA.
+- **Where:** the founder's workstation, in the assistant's isolated browser (not his Chrome profile).
+  At this volume the activity equals one person consulting the transparency tool, which is the use
+  Meta intends for it. The isolation rules of the one-day experiment above still apply to any
+  automated collection, and that experiment remains NOT approved.
+- **Founder approval for this observation:** approved by founder, in chat, on 2 October 2026:
+  « you have my approval to check meta ads for this session ». Valid for that session only.
+
 ## Founder approval
 
 - **Founder approval:** PENDING. Not approved as of 28 September 2026. To approve, replace this line
