@@ -47,7 +47,8 @@ montants CLIENT.
 
 Forme rendue : :class:`Totaux`, conforme à
 ``apps/ventes/contract_samples/devis_totaux.json`` (``ht_brut`` → ``remise`` →
-``ht_net`` → ``tva_par_taux`` → ``tva`` → ``ttc`` → ``ttc_affiche``). Les
+``arrondi`` → ``ht_net`` → ``tva_par_taux`` → ``tva`` → ``ttc`` →
+``ttc_affiche``). Les
 entrées de ``tva_par_taux`` portent ``{taux, base, montant}``, exactement le
 contrat — ``base`` étant la part de ``ht_net`` imposée à CE taux.
 """
