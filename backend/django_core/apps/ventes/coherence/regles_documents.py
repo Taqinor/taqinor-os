@@ -36,8 +36,8 @@ def _base_panier(panier):
 
 
 def ecarts_chaine(totaux, *, remise_pct=None, tol=None):
-    """Recalcule, étage par étage, la chaîne ``ht_brut → remise → ht_net →
-    TVA (par taux) → TTC`` d'un dict de totaux et rend la liste des étages
+    """Recalcule, étage par étage, la chaîne ``ht_brut → remise → arrondi →
+    ht_net → TVA (par taux) → TTC`` d'un dict de totaux et rend la liste des étages
     dont la valeur portée s'écarte du recalcul de plus de ``tol``.
 
     Accepte Decimal ou float, paniers ``{taux, base|base_ht|ht_net,
@@ -53,10 +53,14 @@ def ecarts_chaine(totaux, *, remise_pct=None, tol=None):
 
     ht_brut, remise = _f(t.get('ht_brut')), _f(t.get('remise'))
     ht_net, tva, ttc = _f(t.get('ht_net')), _f(t.get('tva')), _f(t.get('ttc'))
+    # ARRONDI-100 — la baisse de HT au palier de 100 MAD (0 sans palier).
+    arrondi = _f(t.get('arrondi'))
     if remise_pct is not None:
         _ecart('remise', remise, round(ht_brut * _f(remise_pct) / 100, 2)
                if _f(remise_pct) > 0 else 0.0)
-    _ecart('ht_net', ht_net, ht_brut - remise)
+    if arrondi < 0:
+        _ecart('arrondi', arrondi, 0.0)
+    _ecart('ht_net', ht_net, ht_brut - remise - arrondi)
     paniers = list(t.get('tva_par_taux') or [])
     if paniers:
         _ecart('somme_bases_tva', sum(_base_panier(p) for p in paniers),
@@ -87,9 +91,18 @@ def totaux_devis(r, devis, ctx):
     # (les lignes en décrivent une) ; le ×N n'est qu'une multiplication
     # entière exacte de chaque étage (``selectors.totaux_multi_proprietes``).
     t = totaux(devis, vue=Vue.NET, unitaire=True)
-    d = {'ht_brut': t.ht_brut, 'remise': t.remise, 'ht_net': t.ht_net,
-         'tva': t.tva, 'ttc': t.ttc, 'tva_par_taux': list(t.tva_par_taux)}
+    d = {'ht_brut': t.ht_brut, 'remise': t.remise, 'arrondi': t.arrondi,
+         'ht_net': t.ht_net, 'tva': t.tva, 'ttc': t.ttc,
+         'tva_par_taux': list(t.tva_par_taux)}
     ecarts = ecarts_chaine(d, remise_pct=devis.remise_globale)
+    # ARRONDI-100 (fondateur, 02/10/2026) — tout devis finit par deux zéros :
+    # un TTC d'au moins un palier qui n'y tombe pas est une violation.
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
+    if t.ttc >= PAS_ARRONDI_DEVIS and t.ttc % PAS_ARRONDI_DEVIS:
+        ecarts.append({'etage': 'palier_100',
+                       'porte': round(_f(t.ttc), 2),
+                       'recalcule': round(_f(t.ttc - t.ttc % PAS_ARRONDI_DEVIS),
+                                          2)})
     if not deux_options_declarees(devis):
         somme = sum((li.total_ht for li in devis.lignes.all()
                      if li.compte_dans_totaux), Decimal('0'))

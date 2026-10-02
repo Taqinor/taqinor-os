@@ -177,6 +177,20 @@ class NoyauArrondiTests(SimpleTestCase):
                 self.assertLess(exact['ttc'] - t['ttc'], 100)
 
 
+class AuditeurCoherenceArrondiTests(SimpleTestCase):
+    """L'auditeur nocturne (``coherence.regles_documents``) connaît l'étage."""
+
+    def test_chaine_arrondie_coherente(self):
+        from apps.ventes.coherence.regles_documents import ecarts_chaine
+        self.assertEqual(ecarts_chaine(_totaux(LIGNES_SANS_0116),
+                                       remise_pct=0), [])
+
+    def test_arrondi_oublie_est_un_ecart(self):
+        from apps.ventes.coherence.regles_documents import ecarts_chaine
+        t = dict(_totaux(LIGNES_SANS_0116), arrondi=Decimal('0'))
+        self.assertIn('ht_net', {e['etage'] for e in ecarts_chaine(t)})
+
+
 class ArrondiDevisFactureTests(TestCase):
     """L'argent du devis, son PDF, sa facture de BC et l'avoir total."""
 
@@ -220,6 +234,26 @@ class ArrondiDevisFactureTests(TestCase):
         tot = option_totaux(devis)
         self.assertEqual(tot['ttc'], Decimal('150000.00'))
         self.assertEqual(tot['arrondi'], Decimal('47.50'))
+
+    def test_auditeur_signale_un_devis_hors_palier(self):
+        from unittest import mock
+
+        from apps.ventes.coherence.registre import REGISTRE, charger_regles
+        from apps.ventes.domain.argent import Totaux
+        charger_regles()
+        devis = self._devis([('Kit PV', '1', '10000', '20')])
+        hors_palier = Totaux(
+            ht_brut=Decimal('9999.58'), remise=Decimal('0'),
+            ht_net=Decimal('9999.58'),
+            tva_par_taux=({'taux': Decimal('20'), 'base': Decimal('9999.58'),
+                           'montant': Decimal('1999.92')},),
+            tva=Decimal('1999.92'), ttc=Decimal('11999.50'),
+            ttc_affiche=Decimal('11999.50'))
+        regle = REGISTRE['DOC_TOTAUX_DEVIS']
+        with mock.patch('apps.ventes.domain.argent.totaux',
+                        return_value=hors_palier):
+            out = regle.check(regle, devis, None)
+        self.assertIn('palier_100', {v.valeurs['etage'] for v in out})
 
     def test_pdf_imprime_la_ligne_arrondi(self):
         from apps.ventes.quote_engine.builder import build_quote_data
