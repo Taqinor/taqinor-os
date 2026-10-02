@@ -1268,17 +1268,24 @@ class BonCommande(models.Model):
                 .values_list('ligne_devis_id')
                 .annotate(total=Sum('quantite_livree'))
             )
+        # ERR-QAC-MULTIVILLA-MATERIEL-XN — un devis « ×N villas identiques »
+        # porte les lignes d'UNE villa mais commande (et facture) N kits :
+        # sans ×N, livrer le kit d'une villa marquait le BC « livré ». Lu à
+        # la volée (aucune donnée stockée) ; N=1 → chiffres inchangés.
+        from .multivilla import nombre_proprietes
+        n_prop = nombre_proprietes(self.devis)
         out = []
         for ligne in self.devis.lignes.all():
             if not ligne.compte_dans_totaux or ligne.quantite is None:
                 continue
             livre = livre_par_ligne.get(ligne.id) or 0
+            commandee = ligne.quantite * n_prop
             out.append({
                 'ligne_devis_id': ligne.id,
                 'designation': ligne.designation,
-                'quantite_commandee': ligne.quantite,
+                'quantite_commandee': commandee,
                 'quantite_livree': livre,
-                'reliquat': ligne.quantite - livre,
+                'reliquat': commandee - livre,
             })
         return out
 

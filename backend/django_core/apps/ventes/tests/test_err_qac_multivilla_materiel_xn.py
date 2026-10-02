@@ -111,3 +111,46 @@ class TestStockLivraisonBC(_Base):
     def test_n3_livre_trois_villas(self):
         self.assertEqual(self._livrer(3), {
             'Onduleur réseau 5kW': 97, 'Panneau mono 550W': 70})
+
+
+class TestReliquatLivraisonBC(_Base):
+    def test_n1_quantites_commandees_inchangees(self):
+        bc = self._bc(self._devis(None))
+        par_desig = {r['designation']: r['quantite_commandee']
+                     for r in bc.reliquat_par_ligne}
+        self.assertEqual(par_desig, {'Onduleur réseau 5kW': Decimal('1'),
+                                     'Panneau mono 550W': Decimal('10')})
+
+    def test_n3_kit_dune_villa_ne_solde_pas_le_bc(self):
+        devis = self._devis(3)
+        bc = self._bc(devis)
+        par_desig = {r['designation']: r for r in bc.reliquat_par_ligne}
+        self.assertEqual(
+            par_desig['Panneau mono 550W']['quantite_commandee'],
+            Decimal('30'))
+        self.assertEqual(par_desig['Onduleur réseau 5kW']['reliquat'],
+                         Decimal('3'))
+        onduleur = devis.lignes.get(designation='Onduleur réseau 5kW')
+        panneau = devis.lignes.get(designation='Panneau mono 550W')
+        url = f'/api/django/ventes/bons-commande/{bc.id}/livrer-partiel/'
+        # Le kit d'UNE villa : le BC reste à livrer (reliquat 2 + 20).
+        resp = self.api.post(url, {'lignes': [
+            {'ligne_devis': onduleur.id, 'quantite': '1'},
+            {'ligne_devis': panneau.id, 'quantite': '10'}]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        bc.refresh_from_db()
+        self.assertEqual(bc.statut, BonCommande.Statut.CONFIRME)
+        self.assertTrue(bc.est_partiellement_livre)
+        reliquats = {r['designation']: r['reliquat']
+                     for r in bc.reliquat_par_ligne}
+        self.assertEqual(reliquats, {'Onduleur réseau 5kW': Decimal('2'),
+                                     'Panneau mono 550W': Decimal('20')})
+        # Les deux autres villas : le BC est soldé.
+        resp = self.api.post(url, {'lignes': [
+            {'ligne_devis': onduleur.id, 'quantite': '2'},
+            {'ligne_devis': panneau.id, 'quantite': '20'}]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        bc.refresh_from_db()
+        self.assertEqual(bc.statut, BonCommande.Statut.LIVRE)
+        self.assertEqual(self._stocks(), {
+            'Onduleur réseau 5kW': 97, 'Panneau mono 550W': 70})
