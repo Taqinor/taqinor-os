@@ -344,12 +344,18 @@ class ArrondiDevisFactureTests(TestCase):
 
     def test_prix_barre_du_pdf_au_palier_comme_l_ecran(self):
         from apps.ventes.quote_engine.builder import build_quote_data
-        devis = self._devis([('Kit PV', '1', '125047.50', '20')],
-                            remise_globale=Decimal('5'))
+        # Le moteur refuse un PDF sans onduleur : un vrai kit (10 / 20 %).
+        devis = self._devis([
+            ('Onduleur injection 5kW', '1', '10000.00', '20'),
+            ('Panneau 550W', '10', '1000.00', '10'),
+            ('Installation', '1', '3456.25', '20'),
+        ], remise_globale=Decimal('5'))
         data = build_quote_data(devis)
-        # Sans remise : 150 057,00 → 150 000 (le « totalSansBrut » écran).
-        self.assertEqual(data['totaux_all']['ttc_avant'], 150000)
-        self.assertEqual(Decimal(str(data['totaux_all']['ttc'])) % 100, 0)
+        # Sans remise : 27 147,50 → 27 100 (le « totalSansBrut » écran) ;
+        # remise 5 % : 25 790,13 → 25 700.
+        self.assertEqual(data['totaux_all']['ttc_avant'], 27100)
+        self.assertEqual(data['totaux_all']['ttc'], 25700.0)
+        self.assertEqual(_q(data['totaux_all']['ttc']), devis.total_ttc)
 
     def test_facture_saisie_a_la_main_jamais_arrondie(self):
         from apps.stock.models import Produit
