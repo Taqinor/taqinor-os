@@ -154,3 +154,35 @@ class TestReliquatLivraisonBC(_Base):
         self.assertEqual(bc.statut, BonCommande.Statut.LIVRE)
         self.assertEqual(self._stocks(), {
             'Onduleur réseau 5kW': 97, 'Panneau mono 550W': 70})
+
+
+class TestNomenclatureChantier(_Base):
+    def _bom(self, n):
+        from apps.installations.services import _freeze_bom
+        return {e['designation']: e['quantite']
+                for e in _freeze_bom(self._devis(n))}
+
+    def test_bom_n1_inchange(self):
+        self.assertEqual(self._bom(None), {'Onduleur réseau 5kW': 1.0,
+                                           'Panneau mono 550W': 10.0})
+
+    def test_bom_n3_trois_villas(self):
+        self.assertEqual(self._bom(3), {'Onduleur réseau 5kW': 3.0,
+                                        'Panneau mono 550W': 30.0})
+
+    def test_puissance_chantier_kwc_projet(self):
+        from apps.installations.services import _puissance_from
+        un, trois = self._devis(None), self._devis(3)
+        self.assertEqual(_puissance_from(un, None, projet=True), 5.5)
+        self.assertEqual(_puissance_from(trois, None, projet=True),
+                         Decimal('16.50'))
+        # Sans ``projet`` (régime 82-21 suggéré par villa) : valeur d'étude.
+        self.assertEqual(_puissance_from(trois, None), 5.5)
+
+    def test_reservation_bc_trois_villas(self):
+        from apps.installations.services import _bc_quantities
+        bc = self._bc(self._devis(3))
+        self.assertEqual(
+            {self.produits[d].id: q for d, q in [
+                ('Onduleur réseau 5kW', 3), ('Panneau mono 550W', 30)]},
+            _bc_quantities(bc))
