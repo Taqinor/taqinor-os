@@ -19,7 +19,7 @@ import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import { useServerFieldErrors } from '../../../hooks/useServerFieldErrors'
 import { useDelayedLoading } from '../../../hooks/useDelayedLoading'
 import { isTypingTarget } from '../../../providers/shortcuts'
-import { useFocusedRecordShortcuts, LEAD_STAGE_SHORTCUTS } from '../../../providers/focusedRecordShortcuts'
+import { useFocusedRecordShortcuts, LEAD_STAGE_SHORTCUTS, dialogueParDessus } from '../../../providers/focusedRecordShortcuts'
 import { pushRecentEntity } from '../../../providers/commandActions'
 import { normalizePhoneE164 } from '../../../lib/format'
 import { buildWaUrl } from '../../../lib/contactLinks'
@@ -219,6 +219,10 @@ export default function LeadWorkspace({
   // `cancelled` que LeadDetailPage.jsx, décliné en ref pour un callback
   // réutilisable hors effet).
   const leadIdRef = useRef(leadId)
+  // Racine de la fiche : les raccourcis (d/n/1-4, J/K) se taisent dès qu'une
+  // boîte ouverte ne la contient pas (satellite posé par-dessus — incident
+  // 02/10/2026, voir dialogueParDessus).
+  const rootRef = useRef(null)
   useEffect(() => { leadIdRef.current = leadId })
   const refreshHistorique = useCallback(() => {
     if (!leadId) return
@@ -499,6 +503,10 @@ export default function LeadWorkspace({
     const onKey = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
       if (isTypingTarget(e.target)) return
+      // Incident 02/10/2026 — une frappe dans le panneau devis (ou tout
+      // satellite posé par-dessus) ne fait jamais changer la fiche de lead
+      // sous un éditeur resté ouvert sur l'ancien.
+      if (dialogueParDessus(rootRef.current)) return
       if (e.key === 'j' || e.key === 'J') { e.preventDefault(); goToLead(nextInQueue) }
       else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); goToLead(prevInQueue) }
     }
@@ -622,7 +630,6 @@ export default function LeadWorkspace({
   }), [leadId])
   // `scopeRef` : les touches se taisent dès qu'un satellite (panneau devis,
   // confirmation, popover…) est ouvert PAR-DESSUS la fiche (incident 02/10).
-  const rootRef = useRef(null)
   useFocusedRecordShortcuts('leadForm', focusedHandlers, mode === 'edit', { scopeRef: rootRef })
 
   // ── Fermeture (✕/overlay/Escape) via leaveGuard ──────────────────────────

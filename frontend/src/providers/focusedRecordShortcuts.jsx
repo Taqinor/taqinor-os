@@ -139,10 +139,17 @@ export function useFocusedRecordShortcuts(screenId, handlers, enabled = true, { 
    boîte de dialogue ouverte ne contient PAS l'écran, c'est qu'un autre écran
    est posé par-dessus — les touches de la fiche se taisent. (Une fiche
    elle-même ouverte au-dessus d'une autre boîte perd aussi ses raccourcis :
-   c'est le sens sûr, jamais une action de trop.) */
-function dialogueParDessus(scopeEl) {
+   c'est le sens sûr, jamais une action de trop.) Seules comptent les boîtes
+   OUVERTES au sens Radix (`data-state="open"` — Dialog, Sheet, AlertDialog,
+   Popover) : une bannière permanente non modale (`role="dialog"` de
+   l'invite PWA) ne doit pas faire taire la fiche. Exporté pour J/K
+   (LeadWorkspace) — même garde, même règle. */
+// eslint-disable-next-line react-refresh/only-export-components -- garde co-localisée, pas un composant
+export function dialogueParDessus(scopeEl) {
   if (!scopeEl || typeof document === 'undefined') return false
-  const ouvertes = document.querySelectorAll('[role="dialog"], [role="alertdialog"]')
+  const ouvertes = document.querySelectorAll(
+    '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]',
+  )
   for (const d of ouvertes) {
     if (!d.contains(scopeEl)) return true
   }

@@ -140,11 +140,11 @@ function ScopedScreen({ handlers, autreDialogue = false }) {
   useFocusedRecordShortcuts('leadForm', handlers, true, { scopeRef: ref })
   return (
     <>
-      <div role="dialog" ref={ref}>
+      <div role="dialog" data-state="open" ref={ref}>
         <button type="button" data-testid="btn-fiche">Fiche</button>
       </div>
       {autreDialogue && createPortal(
-        <div role="dialog"><button type="button" data-testid="btn-dessus">Option</button></div>,
+        <div role="dialog" data-state="open"><button type="button" data-testid="btn-dessus">Option</button></div>,
         document.body,
       )}
     </>
@@ -164,6 +164,18 @@ describe('useFocusedRecordShortcuts — scopeRef (incident 02/10/2026)', () => {
     render(<ActiveScreenProvider><ScopedScreen handlers={{ n: onN }} autreDialogue /></ActiveScreenProvider>)
     fireEvent.keyDown(screen.getByTestId('btn-dessus'), { key: 'n' })
     expect(onN).not.toHaveBeenCalled()
+  })
+
+  it('une bannière permanente NON modale (role=dialog sans data-state, invite PWA) ne fait pas taire la fiche', () => {
+    const onN = vi.fn()
+    render(
+      <ActiveScreenProvider>
+        <ScopedScreen handlers={{ n: onN }} />
+        <div role="dialog" aria-label="Installer Taqinor OS">bannière</div>
+      </ActiveScreenProvider>,
+    )
+    fireEvent.keyDown(screen.getByTestId('btn-fiche'), { key: 'n' })
+    expect(onN).toHaveBeenCalledTimes(1)
   })
 
   it('une boîte posée par-dessus : même une frappe sur la fiche elle-même reste muette', () => {

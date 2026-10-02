@@ -28,7 +28,7 @@ vi.mock('../../../pages/crm/leads/AppointmentBooker', () => ({ default: () => nu
 // de la boîte de dialogue de la fiche — on reproduit exactement cette forme.
 vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({
   default: () => createPortal(
-    <div role="dialog" data-testid="devis-panel">
+    <div role="dialog" data-state="open" data-testid="devis-panel">
       <button type="button" data-testid="devis-btn">Option 2</button>
     </div>,
     document.body,
@@ -78,12 +78,12 @@ const LEAD = { id: 1569, nom: 'ouissam merbahi', stage: 'FOLLOW_UP', is_archived
 beforeEach(() => { mockMatchMedia(false); try { localStorage.clear() } catch { /* noop */ } })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-function renderLead({ initialDevis = null, lead = LEAD } = {}) {
+function renderLead({ initialDevis = null, lead = LEAD, ...props } = {}) {
   const store = configureStore({ reducer: { crm: crmReducer, auth: (s = { user: { id: 4 } }) => s } })
   return render(
     <Provider store={store}>
       <MemoryRouter>
-        <LeadWorkspace lead={lead} initialDevis={initialDevis} onClose={vi.fn()} onSaved={vi.fn()} />
+        <LeadWorkspace lead={lead} initialDevis={initialDevis} onClose={vi.fn()} onSaved={vi.fn()} {...props} />
       </MemoryRouter>
     </Provider>,
   )
@@ -105,6 +105,17 @@ describe('Incident 02/10 — touches tapées dans le panneau devis ouvert depuis
     fireEvent.keyDown(btn, { key: 'a' })
     await flush()
     expect(crmApi.archiverLead).not.toHaveBeenCalled()
+  })
+
+  it('« j » dans le panneau devis ne fait JAMAIS changer la fiche de lead dessous', async () => {
+    const onNavigateLead = vi.fn()
+    const queue = [LEAD, { id: 1570, nom: 'suivant', stage: 'NEW' }]
+    renderLead({ initialDevis: 'edit', leadsQueue: queue, onNavigateLead })
+    const btn = await screen.findByTestId('devis-btn')
+    btn.focus()
+    fireEvent.keyDown(btn, { key: 'j' })
+    await flush()
+    expect(onNavigateLead).not.toHaveBeenCalled()
   })
 
   it('« 3 » dans le panneau devis ne change JAMAIS l’étape du lead', async () => {

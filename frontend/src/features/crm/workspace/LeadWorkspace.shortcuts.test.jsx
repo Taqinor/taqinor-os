@@ -110,8 +110,8 @@ describe('LW23 — raccourcis propres (d/n/1-4)', () => {
 
   it('mode création (pas de lead) : les raccourcis sont désactivés (enabled=false)', async () => {
     renderEdit(null)
-    fireEvent.keyDown(document, { key: 'a' })
+    fireEvent.keyDown(document, { key: '2' })
     await new Promise((r) => setTimeout(r, 0))
-    expect(crmApi.archiverLead).not.toHaveBeenCalled()
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
   })
 })
