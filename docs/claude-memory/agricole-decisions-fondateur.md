@@ -1,6 +1,6 @@
 ---
 name: agricole-decisions-fondateur
-description: Décisions du fondateur du 02/10/2026 sur le devis agricole (pompage solaire) — D-AGR-1..12, base du Groupe AGR de docs/PLAN.md et AGW de docs/WEB_PLAN.md
+description: Décisions du fondateur du 02/10/2026 sur le devis agricole (pompage solaire) — D-AGR-1..13, base du Groupe AGR de docs/PLAN.md et AGW de docs/WEB_PLAN.md
 metadata:
   type: project
 ---
@@ -29,6 +29,8 @@ Groupe AGR (docs/PLAN.md) et le Groupe AGW (docs/WEB_PLAN.md).
 - **D-AGR-10** Aucune réalisation de pompage réelle à ce jour : preuve J4 omise pour l'agricole, jamais un toit.
 - **D-AGR-11** Darija : toutes les variantes pompage écrites maintenant ; relecture par Reda après.
 - **D-AGR-12** Priorité normale dans la file.
+- **D-AGR-13** Les anciens devis agricoles sont OUBLIÉS : aucun essai à blanc, aucune réparation, aucune
+  compatibilité ascendante ; seuls les nouveaux devis doivent être bons.
 
 **Why:** tranchées en séance interactive le 02/10/2026 sur la base de constats vérifiés (code, production en
 lecture seule, sources primaires : CGI 2026, Guide FDA 2024, loi 82-21, FAO-56, Banque mondiale 2018).

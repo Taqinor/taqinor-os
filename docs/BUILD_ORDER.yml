@@ -439,6 +439,13 @@ unmapped_ok:
   # darija, déclaration CNDP, question juriste, comptages SQL en production — jamais
   # dispatchées à un agent, pass-through.
   - CADM
+  # AGR — Devis agricole (pompage solaire) : audit L3 du 02/10/2026 (Groupe AGR de
+  # PLAN.md, priorité normale, décisions D-AGR-1..12) : auto-ordonné par ses
+  # contrats d'abord (AGR1-AGR7) et ses chaînes @after ; aucun prérequis de vague.
+  - AGR
+  # AGRM — tâches MANUELLES (Reda / fiscaliste / DPA / Meryem, pas du code) du
+  # Groupe AGR : jamais dispatchées à un agent, pass-through.
+  - AGRM
   # RLC — Relances : retour arriere, journal & etat client (Groupe RLC de
   # PLAN.md, releves fondateur du 08/09/2026) : correctifs/complements du
   # moteur de relances existant (apps/crm), aucun prerequis de vague plateforme.
