@@ -97,6 +97,12 @@ LIBELLES = {
         'en': 'Discount',
         'ar': 'الخصم',
     },
+    # ARRONDI-100 — la baisse qui ramène le total au palier de 100 MAD.
+    'arrondi': {
+        'fr': 'Arrondi commercial',
+        'en': 'Rounding adjustment',
+        'ar': 'تقريب تجاري',
+    },
     'total_ttc': {
         'fr': 'Total TTC',
         'en': 'Total incl. VAT',

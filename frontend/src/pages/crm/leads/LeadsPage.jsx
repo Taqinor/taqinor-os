@@ -33,6 +33,8 @@ import { useAccountViews } from '../../../hooks/useAccountViews'
 // LB47 — le menu ⋯ porte le changement de vue sur mobile (une seule ligne
 // de chrome) : même liste VIEWS que le sélecteur desktop, jamais une 2e.
 import ViewSwitcher, { VIEWS } from './ViewSwitcher'
+import ArchivedSearchHint from './ArchivedSearchHint'
+import useDeepLinkedLead from './useDeepLinkedLead'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
 // VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) filtre la liste sur les
 // membres de cette équipe — filtre client-side, aucun endpoint nouveau.
@@ -434,13 +436,12 @@ export default function LeadsPage() {
   }, [dispatch, filters.archived])
 
   // Lien profond depuis les ventes : /crm/leads?lead=<id> ouvre la fiche du
-  // lead (état dérivé, aucun effet) ; fermer retire le paramètre de l'URL
+  // lead (liste chargée, sinon la fiche elle-même) ; fermer retire le paramètre de l'URL
   // pour que la fiche ne se ré-ouvre pas.
   const wantedLeadId = searchParams.get('lead')
-  const deepLead = useMemo(() => {
-    if (!wantedLeadId) return null
-    return leads.find(l => String(l.id) === String(wantedLeadId)) ?? null
-  }, [wantedLeadId, leads])
+  // Incident 02/10/2026 — repli sur la fiche elle-même quand le lead n'est
+  // pas dans la liste chargée (lead ARCHIVÉ) : voir useDeepLinkedLead.
+  const deepLead = useDeepLinkedLead(wantedLeadId, leads, leadsLoading)
 
   useEffect(() => {
     if (!stageError) return undefined
@@ -1093,6 +1094,13 @@ export default function LeadsPage() {
             squelette EN FORME de la vue active, avec un crossfade FadeSwap
             (même pattern que LeadWorkspace.jsx, LW25) vers le contenu réel
             une fois les leads arrivés. */}
+        <ArchivedSearchHint
+          q={filters.q}
+          archived={filters.archived}
+          count={filtered.length}
+          loading={showSpinner || leadsLoading}
+          onWiden={() => setFilters((prev) => ({ ...prev, archived: 'tous' }))}
+        />
         {showSpinner && (
           <div className="lp-view-loading"><Spinner /> Chargement des leads…</div>
         )}

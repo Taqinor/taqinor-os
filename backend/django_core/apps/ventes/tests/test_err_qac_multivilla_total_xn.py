@@ -64,10 +64,15 @@ class TestEchelleSelecteur(SimpleTestCase):
 
 class TestOptionTotaux(SimpleTestCase):
     def test_n1_inchange(self):
+        from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
         from apps.ventes.selectors import _canonical_totaux
         from apps.ventes.utils.options import option_totaux
+        # ARRONDI-100 : le total d'un devis porte le palier de 100 MAD ; la
+        # référence N=1 est donc le noyau AVEC ce palier (28 166,69 exact →
+        # 28 100,00), sinon on compare un total de devis à un brut.
         u = _canonical_totaux(LIGNES, remise_globale_pct=0,
-                              fallback_taux=Decimal('20'))
+                              fallback_taux=Decimal('20'),
+                              arrondi_pas=PAS_ARRONDI_DEVIS)
         t = option_totaux(_devis(), option='', lignes=LIGNES)
         self.assertEqual(t['ttc'], u['ttc'])
         self.assertEqual(t['ht'], u['ht_net'])
@@ -76,7 +81,7 @@ class TestOptionTotaux(SimpleTestCase):
         from apps.ventes.utils.options import option_totaux
         un = option_totaux(_devis(remise='5'), option='', lignes=LIGNES)
         trois = option_totaux(_devis(3, remise='5'), option='', lignes=LIGNES)
-        for k in ('ht', 'tva', 'ttc', 'ht_brut', 'remise'):
+        for k in ('ht', 'tva', 'ttc', 'ht_brut', 'remise', 'arrondi'):
             self.assertEqual(trois[k], un[k] * 3, k)
 
 

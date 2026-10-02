@@ -72,11 +72,21 @@ class TestBuilderNePosePasLaCleSurDeuxOptions(TestCase):
         self.assertEqual(data['nb_options'], 1)
         self.assertIsNotNone(data.get('multi_villa'))
         # …et le total général EST la somme des groupes de la seule offre.
+        # ARRONDI-100 : les sous-totaux par villa restent exacts, seul le
+        # total général porte le palier de 100 MAD — Σ TTC des groupes
+        # 66 240 → total général 66 200 ; au HT, Σ groupes == HT net du
+        # général + arrondi (55 200,00 == 55 166,67 + 33,33).
         mv = data['multi_villa']
+        gt = mv['grand_total']
         somme = sum(Decimal(str(g['totaux']['ttc'])) for g in mv['groupes'])
-        self.assertAlmostEqual(float(somme),
-                               float(mv['grand_total']['ttc']), places=2)
-        self.assertAlmostEqual(float(mv['grand_total']['ttc']),
+        somme_ht = sum(Decimal(str(g['totaux']['ht_net']))
+                       for g in mv['groupes'])
+        self.assertAlmostEqual(float(somme), 66240.0, places=2)
+        self.assertAlmostEqual(float(gt['ttc']), 66200.0, places=2)
+        self.assertAlmostEqual(float(somme_ht),
+                               float(gt['ht_net']) + float(gt['arrondi']),
+                               places=2)
+        self.assertAlmostEqual(float(gt['ttc']),
                                float(data['totaux_all']['ttc']), places=2)
 
 

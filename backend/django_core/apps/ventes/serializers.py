@@ -1069,7 +1069,9 @@ class FactureSerializer(serializers.ModelSerializer):
         model = Facture
         fields = '__all__'
         read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_emission',
-                            'updated_at', 'updated_by']  # VX98 — server-side only
+                            'updated_at', 'updated_by',  # VX98 — server-side only
+                            # ARRONDI-100 — hérités du devis côté serveur.
+                            'arrondi_pas', 'arrondi_unites']
 
     @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
     def get_montant_du(self, obj):
@@ -1136,7 +1138,9 @@ class AvoirSerializer(serializers.ModelSerializer):
         model = Avoir
         fields = '__all__'
         read_only_fields = ['reference', 'created_by', 'fichier_pdf',
-                            'date_emission', 'company']
+                            'date_emission', 'company',
+                            # ARRONDI-100 — repris de la facture côté serveur.
+                            'arrondi_pas', 'arrondi_unites']
 
     def get_tva_par_taux(self, obj):
         return [

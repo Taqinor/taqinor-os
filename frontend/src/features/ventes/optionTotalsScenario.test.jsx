@@ -38,23 +38,27 @@ describe('optionTotalsTTC — scénario déclaré (ERR-QAH-VENTES-TOTAL-DIVERGEN
   it('« Les deux » : le panier AVEC perd les accessoires Huawei, comme le noyau', () => {
     const t = optionTotalsTTC(COMPOSITION, 0, { scenario: 'Les deux (Sans + Avec)' })
     // Observé avant le correctif : 94 292 (Smart Meter + clé Wi-Fi comptés).
-    expect(t.totalAvec).toBe(91292)
-    expect(t.totalSans).toBe(58892)
+    // ARRONDI-100 : 91 292 → 91 200 et 58 892 → 58 800 (palier de 100 inférieur).
+    expect(t.totalAvec).toBe(91200)
+    expect(t.totalSans).toBe(58800)
   })
 
   it('scénario mono « Avec batterie » : même panier que le noyau', () => {
     const t = optionTotalsTTC(COMPOSITION, 0, { scenario: 'Avec batterie' })
-    expect(t.totalAvec).toBe(91292)
+    // ARRONDI-100 : 91 292 → palier de 100 inférieur.
+    expect(t.totalAvec).toBe(91200)
   })
 
   it('sans scénario (appelants historiques) : comportement inchangé', () => {
     const t = optionTotalsTTC(COMPOSITION, 0)
-    expect(t.totalAvec).toBe(94292)
+    // ARRONDI-100 : 94 292 → palier de 100 inférieur.
+    expect(t.totalAvec).toBe(94200)
   })
 
   it('équipement non servable en deux options (pas de réseau) : aucune règle QF9', () => {
     const sansReseau = COMPOSITION.filter(l => !/réseau/.test(l.designation))
     const t = optionTotalsTTC(sansReseau, 0, { scenario: 'Les deux (Sans + Avec)' })
-    expect(t.totalAvec).toBe(94292)
+    // ARRONDI-100 : 94 292 → palier de 100 inférieur.
+    expect(t.totalAvec).toBe(94200)
   })
 })

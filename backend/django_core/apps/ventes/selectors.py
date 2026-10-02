@@ -703,13 +703,101 @@ def tva_buckets(lignes, *, fallback_taux, frozen=None):
 # STRICTEMENT inchangé (aucune de ces fonctions n'est appelée sur ce chemin).
 
 
-def _canonical_totaux(lignes, *, remise_globale_pct, fallback_taux):
+def _absorber_arrondi(tva_par_taux, ttc, pas):
+    """ARRONDI-100 (fondateur, 02/10/2026) — « tous mes devis finissent par
+    deux zéros, sans centimes : garde les prix des articles, baisse juste le
+    total au palier de 100 DH inférieur ».
+
+    Le TTC ``ttc`` est ramené au multiple de ``pas`` INFÉRIEUR (jamais
+    au-dessus : l'arrondi ne fait que baisser le prix). La baisse est une
+    réduction de HT sur les paniers de TVA, dont la TVA est recalculée par la
+    règle de la chaîne (``q(base × taux / 100)``) : ``ht_net + tva == ttc``
+    tient donc toujours, au centime, et aucune ligne ne change de prix.
+
+    ORDRE D'ESSAI (déterministe — l'écran le rejoue à l'identique) : le panier
+    au taux le PLUS ÉLEVÉ absorbe ; à un seul taux, certains TTC ne sont
+    atteints par AUCUNE base au centime (p. ex. 500,00 à 10 %), donc un autre
+    panier peut céder de 1 à ``_ARRONDI_CENTIMES_CEDES`` centimes de HT en
+    plus ; puis le panier suivant absorbe ; en dernier recours, le palier
+    d'en dessous (un devis mono-taux 10 % seulement, une fois sur onze). Aucun
+    palier atteignable ⇒ ``None`` (le total reste exact). Un TTC inférieur à
+    ``pas`` n'est jamais ramené à zéro.
+
+    Rend ``(paniers, arrondi_ht)`` ou ``None`` quand il n'y a rien à faire.
+    MIROIR EXACT : ``frontend/src/features/ventes/remise.js``
+    (``absorberArrondi``) — même ordre d'essai, même règle d'arrondi.
+    """
+    from decimal import Decimal as D, ROUND_FLOOR, ROUND_HALF_UP as RH
+
+    pas = D(str(pas or 0))
+    if pas <= 0 or ttc < pas:
+        return None
+    cible = (ttc / pas).to_integral_value(rounding=ROUND_FLOOR) * pas
+    if cible == ttc:
+        return None
+    centime = D('0.01')
+
+    def tva_de(base, taux):
+        return (base * taux / D('100')).quantize(centime, rounding=RH)
+
+    taux = [D(str(p['taux'])) for p in tva_par_taux]
+    bases = [p['ht_net'] for p in tva_par_taux]
+    ordre = sorted(range(len(bases)), key=lambda k: taux[k], reverse=True)
+    for essai in (cible, cible - pas):
+        if essai <= 0:
+            break
+        for i in ordre:
+            # (autre panier qui cède, centimes cédés) — (None, 0) d'abord.
+            cessions = [(None, 0)] + [
+                (j, d) for j in ordre if j != i
+                for d in range(1, _ARRONDI_CENTIMES_CEDES + 1)]
+            for j, d in cessions:
+                nouvelles = list(bases)
+                if j is not None:
+                    nouvelles[j] = bases[j] - d * centime
+                    if nouvelles[j] < 0:
+                        continue
+                autres = sum((nouvelles[k] + tva_de(nouvelles[k], taux[k])
+                              for k in range(len(bases)) if k != i), D('0'))
+                reste = essai - autres      # le TTC que le panier i porte
+                if reste < 0:
+                    continue
+                x0 = (reste * 100 / (100 + taux[i])).quantize(
+                    centime, rounding=ROUND_FLOOR)
+                for k in (-2, -1, 0, 1, 2):
+                    x = x0 + k * centime
+                    if x < 0 or x > bases[i]:
+                        continue
+                    if x + tva_de(x, taux[i]) == reste:
+                        nouvelles[i] = x
+                        paniers = [dict(p) for p in tva_par_taux]
+                        for k, p in enumerate(paniers):
+                            p.update(ht_net=nouvelles[k], base_ht=nouvelles[k],
+                                     montant=tva_de(nouvelles[k], taux[k]))
+                        return paniers, (sum(bases, D('0'))
+                                         - sum(nouvelles, D('0')))
+    return None
+
+
+#: ARRONDI-100 — centimes de HT qu'un second panier de TVA peut céder pour que
+#: le palier soit atteint exactement (2 suffisent sur 20 000 devis 10 %/20 %
+#: simulés ; 5 laisse de la marge). Miroir : ``remise.js``.
+_ARRONDI_CENTIMES_CEDES = 5
+
+
+def _canonical_totaux(lignes, *, remise_globale_pct, fallback_taux,
+                      arrondi_pas=None):
     """QJ29 — chaîne HT → remise → TVA (par taux) → TTC pour un lot de lignes.
 
     ``lignes`` : itérable de LigneDevis (expose ``total_ht`` et
-    ``taux_tva_effectif``). Renvoie un dict {ht_brut, remise, ht_net, tva,
-    tva_par_taux, ttc}. La remise globale s'applique proportionnellement à chaque
-    panier de taux (comme le builder), réconcilié au centime.
+    ``taux_tva_effectif``). Renvoie un dict {ht_brut, remise, arrondi, ht_net,
+    tva, tva_par_taux, ttc}. La remise globale s'applique proportionnellement à
+    chaque panier de taux (comme le builder), réconcilié au centime.
+
+    ARRONDI-100 — ``arrondi_pas`` (MAD, p. ex. 100) ramène le TTC au palier
+    inférieur (:func:`_absorber_arrondi`) ; ``arrondi`` est la baisse de HT
+    correspondante, entre la remise et le HT net. Absent / 0 (factures
+    saisies, avoirs, lots, villas) ⇒ ``arrondi == 0`` et chiffres inchangés.
     """
     from decimal import Decimal as D, ROUND_HALF_UP as RH
     # XSAL5/XSAL14 — exclut les lignes optionnelles non activées et section/note.
@@ -756,9 +844,17 @@ def _canonical_totaux(lignes, *, remise_globale_pct, fallback_taux):
         tva_amt = q(sum((b['montant'] for b in tva_par_taux), D('0')))
 
     ttc = q(ht_net + tva_amt)
+    arrondi = D('0.00')
+    absorbe = _absorber_arrondi(tva_par_taux, ttc, arrondi_pas)
+    if absorbe is not None:
+        tva_par_taux, arrondi = absorbe
+        ht_net = q(ht_net - arrondi)
+        tva_amt = q(sum((b['montant'] for b in tva_par_taux), D('0')))
+        ttc = q(ht_net + tva_amt)
     return {
-        'ht_brut': q(ht_brut), 'remise': remise, 'ht_net': ht_net,
-        'tva': tva_amt, 'tva_par_taux': tva_par_taux, 'ttc': ttc,
+        'ht_brut': q(ht_brut), 'remise': remise, 'arrondi': arrondi,
+        'ht_net': ht_net, 'tva': tva_amt, 'tva_par_taux': tva_par_taux,
+        'ttc': ttc,
     }
 
 
@@ -824,8 +920,12 @@ def multi_villa_totaux(devis):
     # sommer que les lignes groupées rendait `grand_total` < total du document
     # dès qu'une ligne hors groupe existait — deux chiffres irréconciliables
     # sur la même page d'un PDF client.
+    # ARRONDI-100 — le total général EST l'argent du devis (``Devis.total_ttc``
+    # passe par le même palier) ; les sous-totaux par villa restent exacts.
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
     grand_total = _canonical_totaux(
-        lignes, remise_globale_pct=remise, fallback_taux=fallback)
+        lignes, remise_globale_pct=remise, fallback_taux=fallback,
+        arrondi_pas=PAS_ARRONDI_DEVIS)
     return {'groupes': groupes, 'grand_total': grand_total}
 
 
@@ -847,7 +947,7 @@ def totaux_multi_proprietes(totaux, n):
     if n <= 1 or not isinstance(totaux, dict):
         return totaux
     out = dict(totaux)
-    for k in ('ht_brut', 'remise', 'ht_net', 'tva', 'ttc'):
+    for k in ('ht_brut', 'remise', 'arrondi', 'ht_net', 'tva', 'ttc'):
         if out.get(k) is not None:
             out[k] = out[k] * n
     if isinstance(out.get('tva_par_taux'), list):
@@ -2736,7 +2836,8 @@ def lots_totaux(devis):
     Chaque bloc de totaux passe par la MÊME chaîne canonique
     (``_canonical_totaux`` : HT brut → remise → TVA par taux → TTC) que les
     totaux du devis, donc la somme des lots + hors-lot recolle au total
-    consolidé au centime. Company scoping : seules les lignes du devis fourni
+    consolidé au centime — à l'``arrondi`` près (ARRONDI-100), que seul le
+    total consolidé porte. Company scoping : seules les lignes du devis fourni
     (déjà borné à sa société par l'appelant) sont lues."""
     lots = list(devis.lots.all())
     if not lots:
@@ -2763,11 +2864,15 @@ def lots_totaux(devis):
         orphelines, remise_globale_pct=remise,
         fallback_taux=fallback) if orphelines else None
 
+    # ARRONDI-100 — le total consolidé EST l'argent du devis : même palier que
+    # ``Devis.total_ttc`` (les blocs par lot restent exacts).
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
     return {
         'lots': blocs,
         'hors_lot': hors_lot,
         'total_consolide': _canonical_totaux(
-            lignes, remise_globale_pct=remise, fallback_taux=fallback),
+            lignes, remise_globale_pct=remise, fallback_taux=fallback,
+            arrondi_pas=PAS_ARRONDI_DEVIS),
     }
 
 

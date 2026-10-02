@@ -24,6 +24,8 @@ const FIN = 0.1
 export const FIGURE_KEYS = {
   sous_total_ht: { tolerance: ARGENT },
   remise: { tolerance: ARGENT, absolu: true },
+  // ARRONDI-100 — la baisse au palier de 100 MAD (figures.py).
+  arrondi: { tolerance: ARGENT, absolu: true },
   total_ht: { tolerance: ARGENT },
   tva: { tolerance: ARGENT },
   tva_taux: { tolerance: ARGENT },
@@ -177,6 +179,7 @@ function totaux(figs, t, option) {
   if (!t || typeof t !== 'object') return
   mettre(figs, 'sous_total_ht', t.ht_brut, option)
   mettre(figs, 'remise', t.remise, option)
+  mettre(figs, 'arrondi', t.arrondi, option)
   mettre(figs, 'total_ht', t.ht_net, option)
   mettre(figs, 'tva', t.tva, option)
   for (const b of t.tva_par_taux || []) mettre(figs, 'tva_taux', b?.montant, option, b?.taux)

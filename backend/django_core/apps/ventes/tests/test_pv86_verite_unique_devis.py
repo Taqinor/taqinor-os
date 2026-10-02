@@ -203,13 +203,23 @@ class TestArtefactDeuxOnduleurs(_Base):
         CENTIME. Dérivation : 79 027 HT − 10 % = 71 124,30 ; TVA 20 % =
         14 224,86 ; TTC = **85 349,16** (l'attente d'hier, ``round(...)``,
         disait 85 349 — le dirham).
+
+        ARRONDI-100 (02/10/2026) — ce TTC exact est ramené au palier de 100 MAD
+        inférieur par une baisse de HT de 40,97 (71 124,30 → 71 083,33) :
+        **85 300,00**. Les lignes ne bougent pas, et le total reste la chaîne
+        des lignes — au palier près.
         """
         devis = self.make_devis(ARTEFACT_LIGNES, remise='10')
         data = self.build(devis)
         ht = sum(float(li.quantite) * float(li.prix_unitaire)
                  for li in devis.lignes.all())
         self.assertEqual(data['nb_options'], 1)
-        self.assertEqual(data['display_total'], round(ht * 0.9 * 1.2, 2))
+        brut = round(ht * 0.9 * 1.2, 2)    # 85 349,16 : la chaîne exacte
+        # ARRONDI-100 : 85349.16 → 85300.0 (palier de 100 MAD inférieur).
+        self.assertEqual(data['display_total'], 85300.0)
+        self.assertLessEqual(data['display_total'], brut)
+        self.assertLess(brut - data['display_total'], 100)
+        self.assertAlmostEqual(data['totaux_avec']['arrondi'], 40.97, places=2)
         self.assertEqual(data['display_total'], data['totaux_avec']['ttc'])
         # Le modèle dit le même chiffre que le document, remise comprise.
         self.assertEqual(data['display_total'], self.ttc_du_devis(devis))
@@ -230,14 +240,25 @@ class TestAlternativeDeclaree(_Base):
         # ``round(pu_ttc, 2)``), plus au dirham. Dérivation « sans » :
         # 41 027 HT × 1,20 = **49 232,40** (l'attente d'hier disait 49 232) ;
         # « avec » : 67 327 HT × 1,20 = **80 792,40**.
-        self.assertEqual(
-            data['totaux_sans']['ttc'],
-            round(sum(it['quantite'] * it['prix_unit_ttc']
-                      for it in data['sans_items']), 2))
-        self.assertEqual(
-            data['totaux_avec']['ttc'],
-            round(sum(it['quantite'] * it['prix_unit_ttc']
-                      for it in data['avec_items']), 2))
+        # ARRONDI-100 : chaque total d'option est ramené au palier de 100 MAD
+        # inférieur par l'étage « arrondi » (HT) : 49 232,40 → 49 200,00
+        # (arrondi 27,00) et 80 792,40 → 80 700,00 (arrondi 77,00). La somme
+        # des lignes TTC, moins l'arrondi et sa TVA 20 % (devis mono-taux),
+        # redonne le total — l'invariant d'addition, étage compris.
+
+        def somme_lignes_ttc(items):
+            return round(sum(it['quantite'] * it['prix_unit_ttc']
+                             for it in items), 2)
+
+        self.assertEqual(somme_lignes_ttc(data['sans_items']), 49232.4)
+        self.assertEqual(somme_lignes_ttc(data['avec_items']), 80792.4)
+        self.assertEqual(data['totaux_sans']['ttc'], 49200.0)
+        self.assertEqual(data['totaux_avec']['ttc'], 80700.0)
+        for cle, items in (('totaux_sans', data['sans_items']),
+                           ('totaux_avec', data['avec_items'])):
+            self.assertEqual(
+                data[cle]['ttc'],
+                round(somme_lignes_ttc(items) - data[cle]['arrondi'] * 1.2, 2))
         # Le total de liste = option AVEC batterie (LANE CHOIX-AVEC, fondateur
         # 25/08/2026 : « choisis l'option avec quand tu dois choisir »),
         # jamais la somme mensongère des deux.

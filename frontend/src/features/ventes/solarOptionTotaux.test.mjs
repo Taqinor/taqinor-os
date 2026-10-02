@@ -13,10 +13,14 @@ import {
   optionTotalsTTC, appartientAuPanierSans, appartientAuPanierAvec,
   isAnyInverter, isSmartMeter, isWifiDongle, totauxCanoniquesTtc,
 } from './solar.js'
+import { PAS_ARRONDI_DEVIS } from './remise.js'
 
 // ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — un panier se chiffre par la chaîne
 // canonique du noyau (HT persisté → TVA), jamais par Σ TTC saisis.
-const canon = (...rows) => totauxCanoniquesTtc(rows, 0)
+// ARRONDI-100 : le total par option que le backend facture est ramené au
+// palier de 100 MAD inférieur ; le noyau de référence reçoit le même palier
+// pour comparer la MÊME quantité arrondie.
+const canon = (...rows) => totauxCanoniquesTtc(rows, 0, PAS_ARRONDI_DEVIS)
 
 // ── Mirror indépendant de QF9 (le NOYAU, pas la production) ─────────────────
 function estAccessoireHuawei(d) {
@@ -36,7 +40,7 @@ function totalAttenduPourPanier(lignesDuPanier) {
   const rows = panierSertHuawei(lignesDuPanier)
     ? lignesDuPanier
     : lignesDuPanier.filter(l => !estAccessoireHuawei(l?.designation))
-  return totauxCanoniquesTtc(rows, 0)
+  return totauxCanoniquesTtc(rows, 0, PAS_ARRONDI_DEVIS)
 }
 
 // Devis résidentiel canonique « Les deux » : réseau Huawei ('sans'), hybride
@@ -95,15 +99,24 @@ test('optionTotalsTTC : l’arrondi au centime ne dépend plus de la présence d
   const sansRemise = optionTotalsTTC(lignes, 0)
   const avecRemise = optionTotalsTTC(lignes, 10)
   // Sans remise : déjà au centime aujourd'hui (comportement historique).
-  assert.equal(sansRemise.totalSans, 1000.5)
+  // ARRONDI-100 : 1 000,5 → palier de 100 inférieur (le centime reste porté
+  // par le noyau sans palier, vérifié juste dessous).
+  assert.equal(sansRemise.totalSans, 1000)
+  assert.equal(totauxCanoniquesTtc(lignes, 0), 1000.5)
   // Avec remise : AVANT ce correctif, `Math.round(1000.5 × 0.9)` rendait 900
   // (l'entier), perdant les 0,45 MAD qui restent dans la liste/le PDF/la
   // facture (au centime). ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER : la valeur
   // est celle de la chaîne canonique (HT 833,75 ; remise 83,38 ; HT net
   // 750,37 ; TVA 150,07) → 900,44, le chiffre facturé.
-  assert.equal(avecRemise.totalSans, 900.44)
+  // ARRONDI-100 : 900,44 → palier de 100 inférieur ; le noyau SANS palier
+  // garde la chaîne au centime (900,44), preuve que rien n'est arrondi au
+  // dirham avant le palier.
+  assert.equal(avecRemise.totalSans, 900)
+  assert.equal(totauxCanoniquesTtc(lignes, 10), 900.44)
 })
 
+// ARRONDI-100 : « inchangé » = même population de lignes et même chaîne ; le
+// total est désormais au palier de 100 MAD (le noyau de référence aussi).
 test('optionTotalsTTC : un devis mono-option (aucune remise) reste inchangé à l’octet', () => {
   const lignes = [
     { designation: 'Onduleur réseau Huawei 10kW Triphasé', quantite: 1, prix_unit_ttc: 20000 },

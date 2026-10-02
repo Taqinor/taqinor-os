@@ -71,6 +71,7 @@ Contrat partagé : ``apps/ventes/contract_samples/offres_tailles.json``.
 from __future__ import annotations
 
 import logging
+import math
 from decimal import Decimal
 
 from django.utils import timezone
@@ -167,6 +168,19 @@ def _positif(valeur):
     """
     nombre = _num(valeur, 0.0)
     return nombre if nombre > 0 else None
+
+
+def _palier_devis(prix):
+    """ARRONDI-100 — le prix d'une taille explorée ramené au palier de
+    ``PAS_ARRONDI_DEVIS`` inférieur, comme le total de tout devis
+    (``selectors._absorber_arrondi``) : une carte Éco/Max ne peut pas annoncer
+    des centimes quand l'offre officielle d'à côté finit par deux zéros. Un
+    prix sous le palier (ou absent) passe tel quel."""
+    if prix is None:
+        return None
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
+    pas = float(PAS_ARRONDI_DEVIS)
+    return math.floor(prix / pas) * pas if prix >= pas else prix
 
 
 def _pct(fraction):
@@ -864,7 +878,8 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
             # Une variante « avec batterie » sans batterie composée n'est pas
             # une variante : elle est ABSENTE, jamais une copie du « sans ».
             continue
-        prix = _positif(_num(vue.get('cout_ttc')) * contexte.facteur_remise)
+        prix = _palier_devis(
+            _positif(_num(vue.get('cout_ttc')) * contexte.facteur_remise))
         economie = _positif(annuel.get('economie_%s_mad' % variante))
         carte = {
             'nb_panneaux': int(nb_panneaux),

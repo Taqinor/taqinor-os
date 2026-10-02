@@ -154,7 +154,14 @@ class TestQJR200TotalImprimeEgaleNoyau(TestCase):
         attendu = sum(
             (Decimal(str(li.total_ht)) for li in mono.lignes.all()),
             Decimal('0'))
-        self.assertEqual(total['ht'], attendu)
+        # ARRONDI-100 : les prix des lignes ne bougent pas, mais le total est
+        # ramené au palier de 100 MAD — HT net 41166.71 → 41166.67 (étage
+        # « arrondi » de 0.04, TTC 49400.05 → 49400.00). L'addition tient :
+        # somme des lignes = HT net + arrondi.
+        self.assertEqual(total['arrondi'], Decimal('0.04'))
+        self.assertEqual(total['ht'], Decimal('41166.67'))
+        self.assertEqual(total['ttc'], Decimal('49400.00'))
+        self.assertEqual(total['ht'] + total['arrondi'], attendu)
         self.assertIn('Smart Meter',
                       [li.designation for li in option_lines(mono)])
         # QJR300 — moitié DOCUMENT : même panier, même total.

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search, SlidersHorizontal, X } from 'lucide-react'
+import { Archive, Search, SlidersHorizontal, X } from 'lucide-react'
 import {
   EMPTY_FILTERS,
   PRIORITE_LABELS,
@@ -343,8 +343,24 @@ export default function FilterBar({ filters, setFilters, leads, mobile = false, 
         </PopoverContent>
       </Popover>
 
-
-
+      {/* Incident 02/10/2026 — un lead archivé « avait disparu » : le seul
+          chemin vers les archivés était la dernière rangée du panneau
+          « Filtres ». Accès VISIBLE, à côté de « Filtres », sur la MÊME
+          dimension serveur (`archived`) — bascule Archivés ⇄ Actifs. Au
+          téléphone : icône seule, la barre reste sur une ligne. */}
+      <Button
+        type="button"
+        variant={filters.archived === 'seuls' ? 'default' : 'outline'}
+        size="sm"
+        aria-pressed={filters.archived === 'seuls'}
+        aria-label={filters.archived === 'seuls' ? 'Revenir aux leads actifs' : 'Voir les leads archivés'}
+        title={filters.archived === 'seuls'
+          ? 'Revenir aux leads actifs'
+          : 'Voir les leads archivés (ouvrez-en un puis « ⋯ → Restaurer »)'}
+        onClick={() => setArchived(filters.archived === 'seuls' ? 'actifs' : 'seuls')}
+      >
+        <Archive aria-hidden="true" />{!mobile && ' Archivés'}
+      </Button>
     </div>
   )
 }

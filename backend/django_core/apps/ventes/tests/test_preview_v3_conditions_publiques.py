@@ -96,9 +96,10 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
 
         Fixture reprise mot pour mot de ``test_qjr_solde_deux_options`` (la
         même composition, les mêmes prix) : ses totaux y sont déjà épinglés —
-        37 320 TTC « sans », 68 880 TTC « avec » — donc les acomptes attendus
-        ici (30 %) sont 11 196,00 et 20 664,00, eux aussi déjà assertés
-        là-bas. Aucun chiffre neuf n'est inventé pour ce test.
+        37 300 TTC « sans », 68 800 TTC « avec » (ARRONDI-100 : 37 320 → 37 300,
+        68 880 → 68 800) — donc les acomptes attendus ici (30 %) sont 11 190,00
+        et 20 640,00, eux aussi déjà assertés là-bas. Aucun chiffre neuf n'est
+        inventé pour ce test.
         """
         from apps.stock.models import Produit
         devis = Devis.objects.create(
@@ -131,10 +132,12 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
 
     # ── acompte ─────────────────────────────────────────────────────────
     def test_acompte_porte_le_montant_reel_de_la_premiere_tranche(self):
-        """21 700 HT − 10 % = 19 530 ; TTC 23 436 ; acompte 30 % = 7 030,80."""
+        """21 700 HT − 10 % = 19 530 ; TTC 23 436 exact → 23 400 (ARRONDI-100) ;
+        acompte 30 % = 7 020,00."""
         data = self._payload()
         self.assertIn('acompte', data)
-        self.assertEqual(data['acompte']['ttc'], '7030.80')
+        # ARRONDI-100 : 7030.80 → 7020.00 (30 % de 23 400)
+        self.assertEqual(data['acompte']['ttc'], '7020.00')
         self.assertEqual(Decimal(data['acompte']['pourcentage']),
                          Decimal('30'))
         # PREVIEW-V3-FIX (C9) — `libelle` n'est plus servi : il ne l'était
@@ -147,7 +150,8 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
         même montant que `ttc` (aucune option ne filtre les lignes)."""
         data = self._payload()
         montants = data['acompte']['montants']
-        self.assertEqual(list(montants.values()), ['7030.80'])
+        # ARRONDI-100 : 7030.80 → 7020.00
+        self.assertEqual(list(montants.values()), ['7020.00'])
         self.assertEqual(len(montants), 1)
         # Mono-option : l'ERP peut ne distinguer aucune option ('') ou la
         # nommer « sans_batterie » (un onduleur réseau sans batterie) — dans
@@ -165,12 +169,13 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
         data = self._payload(ShareLink.for_devis(devis))
         acompte = data['acompte']
         self.assertEqual(acompte['montants'], {
-            'sans_batterie': '11196.00',   # 30 % de 37 320 TTC
-            'avec_batterie': '20664.00',   # 30 % de 68 880 TTC
+            # ARRONDI-100 : 11196 → 11190 et 20664 → 20640
+            'sans_batterie': '11190.00',   # 30 % de 37 300 TTC
+            'avec_batterie': '20640.00',   # 30 % de 68 800 TTC
         })
         # Avant acceptation, l'ERP facture l'option du TOTAL AFFICHÉ (D9).
         self.assertEqual(acompte['option'], 'avec_batterie')
-        self.assertEqual(acompte['ttc'], '20664.00')
+        self.assertEqual(acompte['ttc'], '20640.00')    # ARRONDI-100 : 20664
         self.assertEqual(acompte['ttc'], acompte['montants']['avec_batterie'])
 
     def test_acompte_suit_loption_acceptee_une_fois_le_devis_signe(self):
@@ -182,8 +187,9 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
         devis.save(update_fields=['statut', 'option_acceptee'])
         acompte = self._payload(ShareLink.for_devis(devis))['acompte']
         self.assertEqual(acompte['option'], 'sans_batterie')
-        self.assertEqual(acompte['ttc'], '11196.00')
-        self.assertEqual(acompte['montants']['sans_batterie'], '11196.00')
+        # ARRONDI-100 : 11196.00 → 11190.00
+        self.assertEqual(acompte['ttc'], '11190.00')
+        self.assertEqual(acompte['montants']['sans_batterie'], '11190.00')
 
     def test_acompte_est_le_meme_chiffre_avant_et_apres_signature(self):
         """La page et l'écran de succès lisent LE MÊME helper — donc jamais

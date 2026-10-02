@@ -11,8 +11,8 @@
 // avec les autres tests de cet écran (frontend/src/pages/ventes/), exécuté par
 // vitest comme eux — voir DevisLineRowRemise.test.jsx pour l'AFFICHAGE.
 import { describe, it, expect } from 'vitest'
-import { repartirRemiseParLigne } from '../../features/ventes/remise'
-import { optionTotalsTTC } from '../../features/ventes/solar'
+import { repartirRemiseParLigne, PAS_ARRONDI_DEVIS } from '../../features/ventes/remise'
+import { optionTotalsTTC, totauxCanoniquesTtc } from '../../features/ventes/solar'
 
 // Même formule que DevisGenerator.jsx (`lignesRemiseesTtc`) et DevisLineRow.jsx
 // (`lineTtc`) : cet écran est 100 % TTC, jamais une conversion HT.
@@ -100,7 +100,19 @@ describe('QJRREM — DevisGenerator : population + alignement de la remise par l
 
     const totals = optionTotalsTTC(lignes, 5)
     expect(totals.totalAvec).toBe(totals.totalSans) // aucune ligne variantée : les deux paniers sont identiques ici
-    expect(sommeCentimes).toBe(Math.round(totals.totalAvec * 100))
+    // ARRONDI-100 : les montants par ligne gardent leurs prix (somme 23 410,33,
+    // le total exact de la chaîne canonique SANS palier) ; le total du rail
+    // `totalAvec` est ramené au palier de 100 MAD inférieur (23 400), l'écart
+    // (10,33 MAD) étant l'« arrondi commercial ». Avant : la somme valait
+    // exactement `totalAvec`, au centime.
+    const totalExact = totauxCanoniquesTtc(lignes, 5)
+    expect(sommeCentimes).toBe(Math.round(totalExact * 100))
+    expect(totals.totalAvec).toBe(totauxCanoniquesTtc(lignes, 5, PAS_ARRONDI_DEVIS))
+    expect(totals.totalAvec).toBe(23400)
+    const arrondiCentimes = sommeCentimes - Math.round(totals.totalAvec * 100)
+    expect(arrondiCentimes).toBe(1033)
+    expect(arrondiCentimes).toBeGreaterThanOrEqual(0)
+    expect(arrondiCentimes).toBeLessThan(PAS_ARRONDI_DEVIS * 100)
   })
 
   it('invariant #10, formulation TTC de l’écran : la somme des lignes retenues == arrondiCentime(brut) − arrondiCentime(remise), sans ligne sautée', () => {

@@ -51,10 +51,16 @@ def _spec_lead(co, q):
         # pas sur Lead — l'y interroger casserait TOUTES les recherches.)
         | Q(client_ref__icontains=q) | Q(client_ref_provisoire__icontains=q)
     ).order_by('-date_creation')
+    # Incident 02/10/2026 — un lead ARCHIVÉ reste trouvable ici (il « avait
+    # disparu » pour la commerciale) mais doit se DIRE archivé : sans la
+    # mention, rien n'expliquait son absence du pipeline.
     return 'lead', 'Leads', qs, lambda le: {
         'id': le.id,
         'label': f"{le.nom} {le.prenom or ''}".strip() or le.societe or '—',
-        'sublabel': le.societe or le.ville or le.telephone or ''}
+        'sublabel': ' · '.join(filter(None, [
+            'Archivé' if le.is_archived else '',
+            le.societe or le.ville or le.telephone or '',
+        ]))}
 
 
 def _spec_client(co, q):

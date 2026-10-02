@@ -30,6 +30,7 @@
         "totaux": {
           "ht_brut": 10000.0,
           "remise": 0.0,
+          "arrondi": 0.0,
           "ht_net": 10000.0,
           "tva": 2000.0,
           "tva_par_taux": [
@@ -42,6 +43,7 @@
     "hors_lot": {
       "ht_brut": 2500.0,
       "remise": 0.0,
+      "arrondi": 0.0,
       "ht_net": 2500.0,
       "tva": 500.0,
       "tva_par_taux": [
@@ -52,6 +54,7 @@
     "total_consolide": {
       "ht_brut": 12500.0,
       "remise": 0.0,
+      "arrondi": 0.0,
       "ht_net": 12500.0,
       "tva": 2500.0,
       "tva_par_taux": [

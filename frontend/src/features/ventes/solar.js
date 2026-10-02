@@ -8,7 +8,7 @@ import { formatMAD } from '../../lib/format.js'
 // QJR567 — la population des totaux (ligne PRODUIT non optionnelle) vient de
 // `ligneCompteDansTotaux` (remise.js, même règle que le noyau des totaux ;
 // remise.js n'importe rien : aucun cycle).
-import { ligneCompteDansTotaux, totauxCanoniques } from './remise.js'
+import { ligneCompteDansTotaux, PAS_ARRONDI_DEVIS, totauxCanoniques } from './remise.js'
 import { SCENARIOS_VALIDES } from './quote/scenarios.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
@@ -1653,7 +1653,9 @@ function _retirerAccessoiresHuawei(rows) {
 // QJR642 — la chaîne de totaux vit dans `remise.totauxCanoniques` (UN noyau
 // pour le générateur et la répartition de remise) : ici ne reste que la
 // conversion TTC saisi → HT persisté, en nanos exacts (1e-8 MAD × 10).
-export function totauxCanoniquesTtc(lines, discountPct = 0) {
+// ARRONDI-100 — `arrondiPas` (MAD) : le TTC ramené au palier inférieur,
+// exactement comme le noyau (`_absorber_arrondi`) ; absent = TTC exact.
+export function totauxCanoniquesTtc(lines, discountPct = 0, arrondiPas = 0) {
   const lignes = (lines || []).map((l) => {
     const qH = BigInt(Math.round((parseFloat(l?.quantite) || 0) * 100))
     const taux = parseFloat(l?.taux_tva ?? TVA_STANDARD_DEFAUT)
@@ -1668,7 +1670,7 @@ export function totauxCanoniquesTtc(lines, discountPct = 0) {
       optionnelle: l?.optionnelle,
     }
   })
-  return totauxCanoniques(lignes, discountPct).ttc
+  return totauxCanoniques(lignes, discountPct, { arrondiPas }).ttc
 }
 
 // ── Totaux par option, TTC (port exact de updateTotals de app.js) ────────────
@@ -1740,11 +1742,15 @@ export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
   // l'identique (`totauxCanoniquesTtc` ci-dessous) : avant, 36/200 devis du
   // corpus figé divergeaient d'un centime. Le « brut » est la même chaîne
   // sans remise (la valeur que le noyau facture à 0 %).
+  // ARRONDI-100 — chaque total (avant ET après remise) est ramené au palier de
+  // 100 MAD inférieur, comme le devis enregistré et son PDF : sans remise, le
+  // « brut » et le « net » restent donc égaux (aucun prix barré fantôme).
   const pct = parseFloat(discountPct) || 0
-  const totalSansBrut = totauxCanoniquesTtc(linesSans, 0)
-  const totalAvecBrut = totauxCanoniquesTtc(linesAvec, 0)
-  const totalSans = totauxCanoniquesTtc(linesSans, pct)
-  const totalAvec = totauxCanoniquesTtc(linesAvec, pct)
+  const pas = PAS_ARRONDI_DEVIS
+  const totalSansBrut = totauxCanoniquesTtc(linesSans, 0, pas)
+  const totalAvecBrut = totauxCanoniquesTtc(linesAvec, 0, pas)
+  const totalSans = totauxCanoniquesTtc(linesSans, pct, pas)
+  const totalAvec = totauxCanoniquesTtc(linesAvec, pct, pas)
   return { totalSansBrut, totalAvecBrut, totalSans, totalAvec }
 }
 

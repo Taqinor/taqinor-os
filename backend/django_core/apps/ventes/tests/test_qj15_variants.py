@@ -309,7 +309,8 @@ class TestVariantSummaries(TestCase):
 
         summaries = _variant_summaries(source)
         self.assertEqual(len(summaries), 1)
-        # total_ttc = 8 × 2200 × 1.20 = 21120.0
-        self.assertAlmostEqual(summaries[0]['total_ttc'], 21120.0, places=0)
+        # total_ttc = 8 × 2200 × 1.20 = 21120.0 → ARRONDI-100 : palier de
+        # 100 MAD inférieur, 21100.0.
+        self.assertAlmostEqual(summaries[0]['total_ttc'], 21100.0, places=0)
         # prix_achat must not appear
         self.assertNotIn('prix_achat', summaries[0])

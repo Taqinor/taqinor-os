@@ -72,11 +72,30 @@ class TotauxDocumentMixin:
         ``tva_buckets`` calculant la TVA sur cette même base brute — deux
         chaînes d'arrondi divergentes pour le même document selon qu'il
         portait une remise globale ou non."""
-        from apps.ventes.selectors import _canonical_totaux
+        from apps.ventes.selectors import (
+            _canonical_totaux, totaux_multi_proprietes,
+        )
+        # ARRONDI-100 — le palier HÉRITÉ du devis (facture de BC, avoir total
+        # d'une telle facture) ; 0 / absent (NoteDebit) = aucun arrondi.
+        pas = getattr(self, 'arrondi_pas', 0) or 0
+        unites = getattr(self, 'arrondi_unites', 1) or 1
+        lignes = self.lignes.all()
+        if pas and unites > 1:
+            # ×N villas : la chaîne d'UNE villa (lignes ÷ N), son palier, puis
+            # ×N — au centime le calcul du devis signé.
+            from decimal import Decimal
+            from types import SimpleNamespace
+            lignes = [SimpleNamespace(
+                total_ht=Decimal(str(li.total_ht)) / unites,
+                taux_tva_effectif=li.taux_tva_effectif) for li in lignes]
+            return totaux_multi_proprietes(_canonical_totaux(
+                lignes, remise_globale_pct=self.remise_globale,
+                fallback_taux=self.taux_tva, arrondi_pas=pas), unites)
         return _canonical_totaux(
-            self.lignes.all(),
+            lignes,
             remise_globale_pct=self.remise_globale,
-            fallback_taux=self.taux_tva)
+            fallback_taux=self.taux_tva,
+            arrondi_pas=pas)
 
     @property
     def total_ht(self):
@@ -130,8 +149,8 @@ class TotauxDocumentMixin:
 
     @property
     def totaux_affichage(self):
-        """AUD105 — LA CHAÎNE IMPRIMABLE : ``{ht_brut, remise, ht_net,
-        tva_par_taux, ttc}``, seule source des documents client.
+        """AUD105 — LA CHAÎNE IMPRIMABLE : ``{ht_brut, remise, arrondi,
+        ht_net, tva_par_taux, ttc}``, seule source des documents client.
 
         Les gabarits imprimaient « Sous-total HT » = ``total_ht`` puis
         « Remise globale (X %) » = ``total_ht × remise / 100``. Or ``total_ht``
@@ -149,11 +168,12 @@ class TotauxDocumentMixin:
             ht = self.total_ht
             return {
                 'ht_brut': ht, 'remise': Decimal('0'), 'ht_net': ht,
+                'arrondi': Decimal('0'),
                 'tva_par_taux': self.tva_par_taux, 'ttc': self.total_ttc,
             }
         totaux = self._canonique()
         return {
             'ht_brut': totaux['ht_brut'], 'remise': totaux['remise'],
-            'ht_net': totaux['ht_net'],
+            'arrondi': totaux['arrondi'], 'ht_net': totaux['ht_net'],
             'tva_par_taux': totaux['tva_par_taux'], 'ttc': totaux['ttc'],
         }

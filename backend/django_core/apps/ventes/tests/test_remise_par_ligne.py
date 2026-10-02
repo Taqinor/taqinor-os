@@ -281,7 +281,12 @@ class TestChargeUtileMoteurPdf(TestCase):
                         self.assertIn(cle, item)
 
     def test_la_somme_des_totaux_remises_est_le_ht_net_du_panier(self):
-        """Le contrat du builder : par PANIER, Σ total_ht_remise == ht_net.
+        """Le contrat du builder : par PANIER, Σ total_ht_remise == ht_net
+        + arrondi (ARRONDI-100).
+
+        La répartition de la remise par ligne est inchangée : les lignes
+        remisées somment au HT AVANT le palier de 100 MAD ; l'écart avec le
+        ``ht_net`` imprimé est exactement l'« Arrondi commercial ».
 
         Vérifié à 5 % ET à 15 % — deux taux dont les restes ne tombent pas de
         la même façon.
@@ -294,8 +299,13 @@ class TestChargeUtileMoteurPdf(TestCase):
                 with self.subTest(pct=pct, liste=cle_liste):
                     somme = sum(self._centimes(it['total_ht_remise'])
                                 for it in data[cle_liste])
+                    # ARRONDI-100 : Σ lignes remisées == ht_net + arrondi
+                    # (ex. 41 230,00 == 41 166,67 + 63,33 au panier « sans »
+                    # à 5 %), l'ancienne égalité Σ == ht_net valait à arrondi 0.
                     self.assertEqual(
-                        somme, self._centimes(data[cle_tot]['ht_net']))
+                        somme,
+                        self._centimes(data[cle_tot]['ht_net'])
+                        + self._centimes(data[cle_tot]['arrondi']))
 
     def test_sans_remise_les_nouvelles_cles_valent_le_catalogue(self):
         """Remise nulle ⇒ les quatre clés sont les valeurs CATALOGUE, mot pour

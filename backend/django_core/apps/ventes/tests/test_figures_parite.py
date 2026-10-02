@@ -353,8 +353,11 @@ def _corpus():
     # Une remise sur la chaîne résidentielle : fait sortir les lignes
     # « Remise » et « Total HT » (présence seulement — la parité se prouve
     # sur la matrice en base, pas sur ce décor).
-    remise = {'totaux_sans': {**ts, 'remise': 100, 'ht_net': ts['ht_brut'] - 100},
-              'totaux_avec': {**ta, 'remise': 100, 'ht_net': ta['ht_brut'] - 100}}
+    # ARRONDI-100 — et un « Arrondi commercial » (présence seulement).
+    remise = {'totaux_sans': {**ts, 'remise': 100, 'arrondi': 0.27,
+                              'ht_net': ts['ht_brut'] - 100.27},
+              'totaux_avec': {**ta, 'remise': 100, 'arrondi': 0.27,
+                              'ht_net': ta['ht_brut'] - 100.27}}
     return {
         'residentiel_full': html_residentiel('deux', **remise),
         'legacy_etude': html_legacy('deux', include_etude=True, etude=dict(ETUDE)),
