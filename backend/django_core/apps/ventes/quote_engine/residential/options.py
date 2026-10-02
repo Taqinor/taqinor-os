@@ -657,6 +657,15 @@ def build_pages(ctx) -> list:
                 f'<td class="p2-r">{fmt_mad(t.get("ht_net", 0))}</td>'
                 f'<td class="p2-r p2-tot">{fmt_mad(t.get("ttc", 0))} MAD</td></tr>')
         _gt = _mv.get("grand_total") or {}
+        # ARRONDI-100 — seul le total général porte le palier de 100 MAD : la
+        # ligne « Arrondi commercial » referme l'addition des villas.
+        if (_gt.get("arrondi") or 0) > 0:
+            _arr_ttc = sum(float((g.get("totaux") or {}).get("ttc") or 0)
+                           for g in _mv["groupes"]) - float(_gt.get("ttc", 0))
+            _vrows += (
+                f'<tr><td>{L("arrondi", "Arrondi commercial")}</td>'
+                f'<td class="p2-r">− {fmt_mad(_gt["arrondi"])}</td>'
+                f'<td class="p2-r">− {fmt_mad(_arr_ttc)} MAD</td></tr>')
         _vrows += (
             f'<tr class="p2-multi-gt"><td>Total général</td>'
             f'<td class="p2-r">{fmt_mad(_gt.get("ht_net", 0))}</td>'

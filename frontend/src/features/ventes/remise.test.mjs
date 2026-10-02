@@ -248,7 +248,7 @@ for (const fixture of FIXTURES_NOYAU) {
 }
 
 // ── ARRONDI-100 (fondateur, 02/10/2026) ─────────────────────────────────────
-// Miroir de `backend/django_core/apps/ventes/tests/test_arrondi_100.py` : MÊMES
+// Même table que `backend/django_core/apps/ventes/tests/test_arrondi_100.py` : MÊMES
 // cas, MÊMES chiffres (produits par le noyau Python `_absorber_arrondi`).
 const l = (quantite, prix, taux) => ({ quantite, prix_unitaire: prix, taux })
 const SANS_0116 = [

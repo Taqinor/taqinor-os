@@ -173,8 +173,10 @@ class NoyauArrondiTests(SimpleTestCase):
             if exact['ttc'] >= 100:
                 self.assertEqual(t['ttc'] % 100, 0)
                 # Un devis qui porte du 20 % atteint toujours le palier juste
-                # en dessous : jamais plus de 100 MAD de baisse.
-                self.assertLess(exact['ttc'] - t['ttc'], 100)
+                # en dessous : jamais plus de 100 MAD de baisse (le mono-taux
+                # 10 % peut, lui, descendre d'un palier — test dédié).
+                if any(li.taux_tva_effectif == 20 for li in lignes):
+                    self.assertLess(exact['ttc'] - t['ttc'], 100)
 
 
 class AuditeurCoherenceArrondiTests(SimpleTestCase):
@@ -209,13 +211,13 @@ class ArrondiDevisFactureTests(TestCase):
             company=self.company, nom='ARR100', prenom='Client',
             telephone='+212600001100')
 
-    def _devis(self, lignes, statut='brouillon'):
+    def _devis(self, lignes, statut='brouillon', **kw):
         from apps.stock.models import Produit
         from apps.ventes.models import Devis, LigneDevis
         devis = Devis.objects.create(
             company=self.company, created_by=self.user,
             client=self.client_obj, reference=f'DEV-ARR100-{_nxt()}',
-            statut=statut, taux_tva=Decimal('20'))
+            statut=statut, taux_tva=Decimal('20'), **kw)
         for desig, qte, pu, taux in lignes:
             produit = Produit.objects.create(
                 company=self.company, nom=desig, sku=f'ARR100-{_nxt()}',
@@ -297,6 +299,7 @@ class ArrondiDevisFactureTests(TestCase):
         self.assertEqual(resp.status_code, 201, resp.data)
         facture = Facture.objects.get(bon_commande=bc)
         self.assertEqual(facture.arrondi_pas, 100)
+        self.assertEqual(facture.arrondi_unites, 1)
         self.assertEqual(facture.total_ttc, devis.total_ttc)
         self.assertEqual(facture.total_ttc, Decimal('150000.00'))
         self.assertEqual(facture.totaux_affichage['arrondi'],
@@ -311,6 +314,42 @@ class ArrondiDevisFactureTests(TestCase):
         avoir = Avoir.objects.get(pk=resp.data['id'])
         self.assertEqual(avoir.arrondi_pas, 100)
         self.assertEqual(avoir.total_ttc, facture.total_ttc)
+
+    def _facturer_par_bc(self, devis):
+        from apps.ventes.models import BonCommande, Facture
+        bc = BonCommande.objects.create(
+            company=self.company, reference=f'BC-ARR100-{_nxt()}',
+            devis=devis, client=self.client_obj,
+            statut=BonCommande.Statut.CONFIRME)
+        resp = self.api.post(
+            f'/api/django/ventes/bons-commande/{bc.id}/creer-facture/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        return Facture.objects.get(bon_commande=bc)
+
+    def test_facture_de_bc_x_n_villas_egale_le_devis(self):
+        # Revue critique : 100 000 TTC tapé par villa = 83 333,33 HT → villa
+        # 100 000,00 ; ×3 = 300 000,00. Un palier posé sur la base ×3
+        # (249 999,99 HT → 299 999,99) aurait facturé 299 700,00.
+        from apps.ventes.models import Devis
+        devis = self._devis([('Kit PV', '1', '83333.33', '20')],
+                            statut=Devis.Statut.ACCEPTE,
+                            etude_params={'nombre_proprietes': 3})
+        self.assertEqual(devis.total_ttc, Decimal('300000.00'))
+        facture = self._facturer_par_bc(devis)
+        self.assertEqual(facture.arrondi_unites, 3)
+        self.assertEqual(facture.total_ttc, devis.total_ttc)
+        self.assertEqual(facture.total_ht + facture.total_tva,
+                         facture.total_ttc)
+
+    def test_prix_barre_du_pdf_au_palier_comme_l_ecran(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._devis([('Kit PV', '1', '125047.50', '20')],
+                            remise_globale=Decimal('5'))
+        data = build_quote_data(devis)
+        # Sans remise : 150 057,00 → 150 000 (le « totalSansBrut » écran).
+        self.assertEqual(data['totaux_all']['ttc_avant'], 150000)
+        self.assertEqual(Decimal(str(data['totaux_all']['ttc'])) % 100, 0)
 
     def test_facture_saisie_a_la_main_jamais_arrondie(self):
         from apps.stock.models import Produit

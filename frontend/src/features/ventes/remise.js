@@ -225,7 +225,7 @@ export function totauxCanoniques(lignes, remisePct = 0, { arrondiPas = 0 } = {})
   }))
   let tvaC = tvaParTaux.reduce((s, t) => s + t.tvaC, 0n)
   // ARRONDI-100 — le TTC ramené au palier inférieur par une baisse de HT
-  // (miroir de `_absorber_arrondi`) ; `arrondiC` = la baisse totale de HT.
+  // (même calcul que `_absorber_arrondi`) ; `arrondiC` = baisse totale de HT.
   let arrondiC = 0n
   const pasC = BigInt(Math.round((parseFloat(arrondiPas) || 0) * 100))
   const bases = absorberArrondi(

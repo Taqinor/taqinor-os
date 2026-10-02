@@ -1335,6 +1335,8 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 # avoir PARTIEL (lignes saisies) n'arrondit jamais.
                 arrondi_pas=(0 if clean_lignes
                              else getattr(source, 'arrondi_pas', 0) or 0),
+                arrondi_unites=(1 if clean_lignes
+                                else getattr(source, 'arrondi_unites', 1) or 1),
                 created_by=request.user)
             if clean_lignes:
                 for ligne in clean_lignes:

@@ -133,6 +133,13 @@ class Facture(TotauxDocumentMixin, models.Model):
         verbose_name="Palier d'arrondi du TTC (MAD)",
         help_text="Hérité du devis : TTC ramené au multiple inférieur de ce "
                   "palier (0 = aucun arrondi).")
+    # ×N villas identiques : le devis arrondit UNE villa puis multiplie ; la
+    # facture (lignes ×N) rejoue exactement ce calcul (lignes ÷ N → palier →
+    # ×N), sinon la TVA arrondie sur la base ×N la décalerait d'un palier.
+    arrondi_unites = models.PositiveSmallIntegerField(
+        default=1,
+        verbose_name="Unités d'arrondi (villas)",
+        help_text="Hérité du devis ×N villas : le palier s'applique par villa.")
     note = models.TextField(blank=True, null=True)
     # ── Conformité Article 145 CGI (N11) — additif, optionnel ──
     # date_livraison = date de la livraison/prestation (mention obligatoire) ;
@@ -938,6 +945,10 @@ class Avoir(TotauxDocumentMixin, models.Model):
         verbose_name="Palier d'arrondi du TTC (MAD)",
         help_text="Repris de la facture : TTC ramené au multiple inférieur "
                   "de ce palier (0 = aucun arrondi).")
+    arrondi_unites = models.PositiveSmallIntegerField(
+        default=1,
+        verbose_name="Unités d'arrondi (villas)",
+        help_text="Repris de la facture : le palier s'applique par villa.")
     # Montants figés pour un avoir sur facture sans lignes (tranche).
     montant_ht = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True)

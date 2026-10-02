@@ -20,11 +20,15 @@ import {
   INVERTER_REPLACE_YEAR, optimalKwcByPayback, comptePanneauxOption,
   batteryCapaciteInconnue, totauxCanoniquesTtc,
 } from './solar.js'
+import { PAS_ARRONDI_DEVIS } from './remise.js'
 
 // ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — un panier se chiffre par la chaîne
 // canonique du noyau (HT persisté → TVA), jamais par Σ TTC saisis : les
 // attentes ci-dessous désignent les LIGNES du panier, le chiffrage suit.
-const canon = (...rows) => totauxCanoniquesTtc(rows, 0)
+// ARRONDI-100 : le total par option que le backend facture est ramené au
+// palier de 100 MAD inférieur (`option_totaux`) ; le noyau de référence reçoit
+// donc le même palier pour comparer la MÊME quantité arrondie.
+const canon = (...rows) => totauxCanoniquesTtc(rows, 0, PAS_ARRONDI_DEVIS)
 
 // ── fusionnerVariantes ────────────────────────────────────────────────────
 

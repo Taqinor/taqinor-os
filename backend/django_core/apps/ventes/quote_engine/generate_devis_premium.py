@@ -741,6 +741,19 @@ def _multi_villa_html():
             f'<td style="padding:3px 8px;text-align:right;font-weight:700;'
             f'color:{CN};white-space:nowrap;">{_mont(t, "ttc", fmt)}</td></tr>')
     gt = mv.get("grand_total") or {}
+    # ARRONDI-100 — seul le total général porte le palier de 100 MAD : la
+    # ligne « Arrondi commercial » referme l'addition des villas.
+    _arr = gt.get("arrondi")
+    if isinstance(_arr, (int, float)) and _arr > 0 \
+            and isinstance(gt.get("ttc"), (int, float)):
+        _arr_ttc = sum(float((g.get("totaux") or {}).get("ttc") or 0)
+                       for g in mv["groupes"]) - gt["ttc"]
+        rows += (
+            f'<tr><td style="padding:3px 8px;color:{CGR};">{_L("arrondi")}</td>'
+            f'<td style="padding:3px 8px;text-align:right;color:{CGR};">'
+            f'&#8722;{_fmt2(_arr)}</td>'
+            f'<td style="padding:3px 8px;text-align:right;color:{CGR};'
+            f'white-space:nowrap;">&#8722;{_fmt2(_arr_ttc)}</td></tr>')
     # Pas de total général chiffrable ⇒ pas de ligne « Total général ».
     if isinstance(gt.get("ttc"), (int, float)):
         rows += (

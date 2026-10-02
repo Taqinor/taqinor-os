@@ -19,6 +19,7 @@ import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 import DealSignedCelebration from '../../../ui/DealSignedCelebration'
 import { formatMAD } from '../../../lib/format'
 import { STATUT_DEVIS_LABELS } from '../../../features/ventes/devisStatuts'
+import { PAS_ARRONDI_DEVIS } from '../../../features/ventes/remise'
 
 // Rendu PDF.js (canvas) chargé à la demande — même composant inblocable que le
 // panneau devis de la fiche lead. Réutilisé tel quel, jamais dupliqué.
@@ -47,20 +48,28 @@ function ligneTtc(l, devisTva) {
   return qte * pu * (1 - rem / 100) * (1 + tva / 100)
 }
 
+// ARRONDI-100 — tout total de devis finit par deux zéros (palier inférieur).
+const auPalier = (ttc) => (ttc >= PAS_ARRONDI_DEVIS
+  ? Math.floor(ttc / PAS_ARRONDI_DEVIS) * PAS_ARRONDI_DEVIS : ttc)
+
 // Détail par option d'un devis à deux options : kWc estimé (panneaux × 0,71) et
 // total TTC de chacune (remise globale appliquée). « Sans batterie » = lignes
 // hors batterie, « Avec batterie » = toutes les lignes. Indicatif, calculé à
-// l'écran pour aider le choix — le PDF reste la source canonique.
+// l'écran pour aider le choix — le PDF reste la source canonique : quand le
+// serveur sert `comparaison_options` (mêmes totaux que le PDF), ils priment.
 function optionsDetail(devis) {
   const lignes = devis?.lignes ?? []
   if (!lignes.length) return null
   const tva = devis?.taux_tva
   const remGlobale = parseFloat(devis?.remise_globale) || 0
   const factor = 1 - remGlobale / 100
-  const ttcAvec = lignes.reduce((s, l) => s + ligneTtc(l, tva), 0) * factor
-  const ttcSans = lignes
-    .filter((l) => !isBatteryLine(l.designation))
-    .reduce((s, l) => s + ligneTtc(l, tva), 0) * factor
+  const canon = devis?.comparaison_options
+  const ttcAvec = canon?.avec?.ttc != null ? parseFloat(canon.avec.ttc)
+    : auPalier(lignes.reduce((s, l) => s + ligneTtc(l, tva), 0) * factor)
+  const ttcSans = canon?.sans?.ttc != null ? parseFloat(canon.sans.ttc)
+    : auPalier(lignes
+      .filter((l) => !isBatteryLine(l.designation))
+      .reduce((s, l) => s + ligneTtc(l, tva), 0) * factor)
   const nbPanneaux = lignes
     .filter((l) => (l.designation || '').toLowerCase().includes('panneau'))
     .reduce((s, l) => s + (parseFloat(l.quantite) || 0), 0)

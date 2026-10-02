@@ -25,6 +25,24 @@ class Migration(migrations.Migration):
                           "de ce palier (0 = aucun arrondi)."),
         ),
         migrations.AddField(
+            model_name='facture',
+            name='arrondi_unites',
+            field=models.PositiveSmallIntegerField(
+                default=1,
+                verbose_name="Unités d'arrondi (villas)",
+                help_text="Hérité du devis ×N villas : le palier s'applique "
+                          "par villa."),
+        ),
+        migrations.AddField(
+            model_name='avoir',
+            name='arrondi_unites',
+            field=models.PositiveSmallIntegerField(
+                default=1,
+                verbose_name="Unités d'arrondi (villas)",
+                help_text="Repris de la facture : le palier s'applique par "
+                          "villa."),
+        ),
+        migrations.AddField(
             model_name='avoir',
             name='arrondi_pas',
             field=models.PositiveIntegerField(
