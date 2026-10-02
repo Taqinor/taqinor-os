@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import {
   StatusPill,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
@@ -44,7 +44,11 @@ export default function StageControl({ state, onChangeStage, onSigne }) {
     ),
     [onChangeStage],
   )
-  useFocusedRecordShortcuts('leadForm', shortcutHandlers, isEdit)
+  // Incident 02/10/2026 — `scopeRef` : les touches 1-4 se taisent dès qu'un
+  // panneau (devis…) est ouvert par-dessus la fiche ; une frappe là-dedans ne
+  // change jamais l'étape du lead (garde dans useFocusedRecordShortcuts).
+  const rootRef = useRef(null)
+  useFocusedRecordShortcuts('leadForm', shortcutHandlers, isEdit, { scopeRef: rootRef })
 
   const currentIndex = PIPELINE_STAGES.indexOf(currentStage)
   const level = rottingLevel(sinceDays, thresholdsForIndex(currentIndex))
@@ -61,7 +65,7 @@ export default function StageControl({ state, onChangeStage, onSigne }) {
   const autres = PIPELINE_STAGES.filter((key) => key !== currentStage)
 
   return (
-    <div className="lw-stage" role="group" aria-label="Étape du lead">
+    <div className="lw-stage" role="group" aria-label="Étape du lead" ref={rootRef}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           {/* Toute la pilule est la cible (≥44 px de haut) : pilule + ancienneté

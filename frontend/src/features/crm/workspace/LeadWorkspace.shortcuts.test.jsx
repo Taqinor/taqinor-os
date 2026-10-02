@@ -69,11 +69,12 @@ function renderEdit(lead = LEAD_A) {
   )
 }
 
-describe('LW23 — raccourcis propres (a/d/n/1-4)', () => {
-  it('« a » archive le lead (leaveGuard, sans clic)', async () => {
+describe('LW23 — raccourcis propres (d/n/1-4)', () => {
+  it('« a » n’archive PLUS le lead (incident 02/10/2026 — archiver est toujours confirmé)', async () => {
     renderEdit()
     fireEvent.keyDown(document, { key: 'a' })
-    await waitFor(() => expect(crmApi.archiverLead).toHaveBeenCalledWith(1))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(crmApi.archiverLead).not.toHaveBeenCalled()
   })
 
   it('« d » focus le picker Responsable (hook DOM stable .ap-trigger, une autre lane)', () => {
@@ -109,8 +110,8 @@ describe('LW23 — raccourcis propres (a/d/n/1-4)', () => {
 
   it('mode création (pas de lead) : les raccourcis sont désactivés (enabled=false)', async () => {
     renderEdit(null)
-    fireEvent.keyDown(document, { key: 'a' })
+    fireEvent.keyDown(document, { key: '2' })
     await new Promise((r) => setTimeout(r, 0))
-    expect(crmApi.archiverLead).not.toHaveBeenCalled()
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
   })
 })
