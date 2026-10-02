@@ -2169,3 +2169,11 @@ test('QJR529 — totauxCanoniquesTtc applique la remise de ligne', () => {
     { quantite: '1', prix_unit_ttc: '1200', taux_tva: 20 },
   ], 10), 2070)
 })
+
+test('ERR-QJR576 — SCENARIOS_ALTERNATIVE est la liste unique de quote/scenarios.js (SCENARIOS_VALIDES)', async () => {
+  const { SCENARIOS_ALTERNATIVE } = await import('./solar.js')
+  const { SCENARIOS_VALIDES } = await import('./quote/sizingReducer.js')
+  assert.equal(SCENARIOS_ALTERNATIVE, SCENARIOS_VALIDES)
+  assert.deepEqual([...SCENARIOS_ALTERNATIVE].sort(),
+    ['Avec batterie', 'Les deux (Sans + Avec)', 'Sans batterie'])
+})

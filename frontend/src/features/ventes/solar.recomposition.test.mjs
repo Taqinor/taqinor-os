@@ -6,7 +6,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { fusionnerRecomposition, lignesQuantiteFigee } from './solar.js'
+import {
+  fusionnerRecomposition, lignesQuantiteFigee,
+  appliquerRecomposition, lignesManuellesEnConflitPossible,
+} from './solar.js'
 
 const L = (produit, designation, quantite, prix, extra = {}) => ({
   produit: String(produit), designation, quantite: String(quantite),
@@ -93,4 +96,52 @@ test('lignesQuantiteFigee : seules les lignes produit verrouillées', () => {
     { produit: '', designation: 'Note', typeLigne: 'note', quantiteManuelle: true },
   ])
   assert.deepEqual(figees.map(l => l.designation), ['Socles'])
+})
+
+test('aucun dialogue quand toutes les lignes sont issues d’une composition', () => {
+  const lignes = [L(5, 'Panneau', 10, 1200, { compose: true }), L(6, 'Onduleur', 1, 9000, { compose: true })]
+  assert.deepEqual(lignesManuellesEnConflitPossible(lignes), [])
+})
+
+test('conflit réel : prix figé, quantité figée ou option déclenchent le dialogue', () => {
+  const lignes = [
+    L(5, 'Panneau', 10, 999, { prixManuel: true }),
+    L(6, 'Socles', 24, 50, { quantiteManuelle: true }),
+    L(7, 'Borne', 1, 5000, { optionnelle: true }),
+    L(8, 'Câble', 1, 100, { compose: true }),
+  ]
+  assert.deepEqual(lignesManuellesEnConflitPossible(lignes).map(l => l.produit), ['5', '6', '7'])
+})
+
+test('« prendre N (recalculé) » ne garde exactement que les lignes recalculées ; « garder » fusionne', () => {
+  const anciennes = [
+    L(5, 'Panneau', 10, 999, { prixManuel: true }),
+    L(9, 'Borne ajoutée', 1, 6000),
+  ]
+  const generees = [L(5, 'Panneau', 12, 1200), L(6, 'Onduleur', 1, 9000)]
+  const pris = appliquerRecomposition(anciennes, generees, 'recalcule')
+  assert.deepEqual(pris.lignes.map(l => [l.produit, l.quantite, l.prix_unit_ttc]),
+    [['5', '12', '1200'], ['6', '1', '9000']])
+  assert.ok(pris.lignes.every(l => l.compose === true && !l.prixManuel))
+  const gardees = appliquerRecomposition(anciennes, generees, 'garder')
+  assert.deepEqual(gardees.lignes.map(l => l.produit), ['5', '9', '6'])
+  assert.equal(gardees.lignes[0].prix_unit_ttc, '999')
+})
+
+test('lignes relues d’un devis enregistré + nouvelle composition : aucun doublon onduleur/batterie', async () => {
+  const { lignesServeurVersEcran } = await import('./quote/lignesEcran.js')
+  const serveur = [
+    { id: 1, produit: 5, designation: 'Panneau 550W', quantite: '10', prix_unitaire: '1000', taux_tva: '20', ordre: 0, type_ligne: 'produit' },
+    { id: 2, produit: 6, designation: 'Onduleur 5 kW', quantite: '1', prix_unitaire: '7500', taux_tva: '20', ordre: 1, type_ligne: 'produit' },
+    { id: 3, produit: 7, designation: 'Batterie 5 kWh', quantite: '1', prix_unitaire: '16000', taux_tva: '20', ordre: 2, type_ligne: 'produit' },
+  ]
+  const relues = lignesServeurVersEcran(serveur, 20)
+  const generees = [
+    L(5, 'Panneau 550W', 12, 1200),
+    L(60, 'Onduleur 8 kW', 1, 11000),
+    L(70, 'Batterie 10 kWh', 1, 30000),
+  ]
+  const { lignes } = fusionnerRecomposition(relues, generees)
+  assert.equal(lignes.length, 3)
+  assert.deepEqual(lignes.map(l => l.produit), ['5', '60', '70'])
 })

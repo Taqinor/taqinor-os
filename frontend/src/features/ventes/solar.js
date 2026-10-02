@@ -9,6 +9,7 @@ import { formatMAD } from '../../lib/format.js'
 // `ligneCompteDansTotaux` (remise.js, même règle que le noyau des totaux ;
 // remise.js n'importe rien : aucun cycle).
 import { ligneCompteDansTotaux, totauxCanoniques } from './remise.js'
+import { SCENARIOS_VALIDES } from './quote/scenarios.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
 // DC9 — MIROIR de la source Python unique
@@ -1647,12 +1648,10 @@ export function totauxCanoniquesTtc(lines, discountPct = 0) {
 // ── Totaux par option, TTC (port exact de updateTotals de app.js) ────────────
 // Option 1 SANS batterie : exclut Batterie + Onduleur hybride.
 // Option 2 AVEC batterie : exclut Onduleur réseau.
-// ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — miroir de
-// `apps/ventes/utils/options.py` `SCENARIOS_ALTERNATIVE` : les trois libellés
-// qui DÉCLARENT une alternative commerciale (le noyau sert alors UNE option,
-// panier filtré ET règle QF9 appliquée).
-// source-choix: ventes.utils.options.SCENARIOS_ALTERNATIVE
-export const SCENARIOS_ALTERNATIVE = ['Sans batterie', 'Avec batterie', 'Les deux (Sans + Avec)']
+// ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — les trois libellés qui DÉCLARENT
+// une alternative commerciale (le noyau sert alors UNE option, panier filtré
+// ET règle QF9 appliquée) : la liste vit dans `quote/scenarios.js`.
+export const SCENARIOS_ALTERNATIVE = SCENARIOS_VALIDES
 
 // Miroir de `familles_des_lignes` + `familles_servables` + la condition
 // « alternative déclarée » de `deux_options_depuis_paniers` (utils/options.py) :
@@ -1793,6 +1792,26 @@ const _estLigneProduit = (l) => (l?.typeLigne ?? l?.type_ligne ?? 'produit') ===
 
 export function lignesQuantiteFigee(lignes) {
   return (lignes || []).filter(l => _estLigneProduit(l) && l.quantiteManuelle && l.produit)
+}
+
+// Lignes produit portant une saisie humaine (prix, quantité figés ou option) :
+// seules susceptibles d'être en CONFLIT avec une nouvelle composition. Une
+// ligne seulement issue d'une composition (`compose`) n'en est jamais une.
+export function lignesManuellesEnConflitPossible(lignes) {
+  return (lignes || []).filter(l => _estLigneProduit(l) && l.produit
+    && (l.prixManuel || l.quantiteManuelle || l.optionnelle))
+}
+
+// Applique une composition générée : 'garder' fusionne (saisies conservées),
+// 'recalcule' ne garde EXACTEMENT que les lignes recalculées.
+export function appliquerRecomposition(anciennes, generees, mode = 'garder') {
+  if (mode === 'recalcule') {
+    return {
+      lignes: (Array.isArray(generees) ? generees : []).map(g => ({ ...g, compose: true })),
+      conflits: [],
+    }
+  }
+  return fusionnerRecomposition(anciennes, generees)
 }
 
 function _ancienneLigneAGarder(l) {

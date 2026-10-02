@@ -62,6 +62,12 @@ export function ConfirmProvider({ children }) {
             <AlertDialogCancel onClick={() => settle(false)}>
               {opts.cancelLabel}
             </AlertDialogCancel>
+            {/* Troisième issue optionnelle : la promesse rend 'alternative'. */}
+            {opts.alternativeLabel && (
+              <AlertDialogCancel onClick={() => settle('alternative')}>
+                {opts.alternativeLabel}
+              </AlertDialogCancel>
+            )}
             <AlertDialogAction
               variant={opts.destructive ? 'destructive' : 'default'}
               onClick={() => settle(true)}
