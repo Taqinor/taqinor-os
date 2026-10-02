@@ -72,7 +72,7 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     # lectures). MÊME champ, déclaration identique avant/après (vérifié contre
     # origin/dev-cad : `date_emission = models.DateField(auto_now_add=True)`).
     # Bug-class #34.
-    "backend/django_core/apps/ventes/models.py:1354",  # NoteDebit.date_emission (1350->1354 : QJR669 remplace le gel de Devis.save par rafraichir_prix_par_kwc) (1346->1350 : ERR-QAC-MULTIVILLA-TOTAL-XN insère 4 lignes avant) (1260->1251 : SOLMVP11 retire 9 lignes avant) (1221->1260 : STKCAT2 vocabulaire + STKCAT23 LigneDevis.role_devis insérés avant, champ relu byte-identique) (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08) puis 1157->1180 (AUD188 : contraintes Devis/LigneDevis insérées avant), même champ date-ancre relu
+    "backend/django_core/apps/ventes/models.py:1370",  # NoteDebit.date_emission (1354->1370 : ERR-QJR570 LigneDevis.ligne_composee + commentaire QJR668 insérés avant) (1350->1354 : QJR669 remplace le gel de Devis.save par rafraichir_prix_par_kwc) (1346->1350 : ERR-QAC-MULTIVILLA-TOTAL-XN insère 4 lignes avant) (1260->1251 : SOLMVP11 retire 9 lignes avant) (1221->1260 : STKCAT2 vocabulaire + STKCAT23 LigneDevis.role_devis insérés avant, champ relu byte-identique) (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08) puis 1157->1180 (AUD188 : contraintes Devis/LigneDevis insérées avant), même champ date-ancre relu
     # NTASS — champs DATE métier (jour, pas horodatage) : date d'ajout d'un
     # actif couvert et date de déclaration d'un sinistre ; même motif que les
     # dates-ancre ventes ci-dessus (l'horodatage précis vit dans TenantModel.
