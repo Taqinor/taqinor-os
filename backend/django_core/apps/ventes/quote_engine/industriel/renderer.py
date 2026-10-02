@@ -10,6 +10,7 @@ automatic off-switch). One engine, one data builder.
 Renders only — never changes a devis status (CLAUDE.md rule #4).
 """
 from __future__ import annotations
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 
@@ -83,7 +84,11 @@ def _augment(data: dict) -> dict:
 
     etude = data.get("etude") or {}
     d = dict(data)
-    d["_invest_ttc"] = round(invest)
+    # ERR-QJR614-CI-INVESTISSEMENT-DIRHAM-VS-CENTIME — au CENTIME (ROUND_HALF_UP,
+    # la règle de la chaîne canonique) : l'ancien ``round(invest)`` faisait
+    # imprimer au dirham le pied de la page finance et la base des tranches.
+    d["_invest_ttc"] = float(Decimal(str(invest)).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP))
     # QJR620 — la page équipements partagée lit ``com_category`` : un devis
     # industriel n'a pas de catégorie commerciale (bloc générique honnête).
     d["com_category"] = None

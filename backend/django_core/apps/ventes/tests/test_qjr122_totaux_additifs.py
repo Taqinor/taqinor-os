@@ -258,3 +258,70 @@ class TestIndustrielPremiumAuCentime(SimpleTestCase):
         from apps.ventes.quote_engine.industriel import render
         ctx = render.build_ctx({})
         self.assertIs(ctx["fmt_mad"], montants.fmt_centimes)
+
+
+# ── ERR-QJR614-CI-INVESTISSEMENT-DIRHAM-VS-CENTIME ─────────────────────────
+# Un même PDF C&I imprimait l'investissement arrondi au DIRHAM en couverture
+# (``_invest_ttc = round(invest)``) et au CENTIME page équipements ; les
+# tranches industrielles (``round(_invest_ttc × int(pct)/100)``) ne sommaient
+# pas au Total TTC. Une seule chaîne de total TTC, des tranches au centime.
+
+_TOT_1200_85 = {"ht_brut": 1000.71, "remise": 0, "ht_net": 1000.71,
+                "tva": 200.14, "ttc": 1200.85}
+
+
+class TestInvestissementCIUneSeuleChaine(SimpleTestCase):
+
+    def _commercial(self):
+        from apps.ventes.quote_engine.commercial import (
+            render, renderer, sample_data)
+        data = sample_data.build("hotel")
+        data["totaux_all"] = dict(_TOT_1200_85)
+        data["display_total"] = 1200.85
+        return render.build_html(renderer._augment(data))
+
+    def _industriel(self, chiffrable=True):
+        from apps.ventes.quote_engine.industriel import (
+            render, renderer, sample_data)
+        data = sample_data.build()
+        data["totaux_all"] = dict(_TOT_1200_85)
+        data["display_total"] = 1200.85
+        if not chiffrable:
+            data["etude"] = dict(data.get("etude") or {},
+                                 economies_annuelles=None)
+            data["eco_s_ann"] = None
+        return render.build_html(renderer._augment(data))
+
+    def _ttc_equip(self, html):
+        m = re.search(r'Total TTC<span[^>]*></span></td>'
+                      r'<td[^>]*>([^<]*) MAD</td>', html)
+        self.assertIsNotNone(m, "Total TTC équipements introuvable")
+        return m.group(1)
+
+    def test_commercial_couverture_egale_total_ttc(self):
+        html = self._commercial()
+        cover = re.findall(r'class="c1c-inv-v">([^<]*)<span>', html)
+        self.assertEqual(cover, [f"1{NNBSP}200,85"])
+        self.assertEqual(self._ttc_equip(html), f"1{NNBSP}200,85")
+        self.assertNotIn(f"1{NNBSP}201", html)
+
+    def test_industriel_couverture_egale_total_ttc(self):
+        html = self._industriel()
+        cover = re.findall(r'class="i1-inv-v">([^<]*)<span>', html)
+        self.assertEqual(cover, [f"1{NNBSP}200,85"])
+        self.assertEqual(self._ttc_equip(html), f"1{NNBSP}200,85")
+        self.assertNotIn(f"1{NNBSP}201", html)
+
+    def test_industriel_pied_finance_au_centime(self):
+        html = self._industriel(chiffrable=False)
+        foot = re.findall(r'Investissement \(TTC, clé en main\) : '
+                          r'<b>([^<]*) MAD</b>', html)
+        self.assertTrue(foot, "pied de page finance introuvable")
+        self.assertEqual(set(foot), {f"1{NNBSP}200,85"})
+
+    def test_industriel_tranches_somment_au_centime(self):
+        html = self._industriel()
+        tranches = re.findall(r'class="i3-tr-amt">([^<]*) MAD</div>', html)
+        self.assertEqual(len(tranches), 3, tranches)
+        self.assertEqual(sum(_dec(t) for t in tranches), Decimal("1200.85"))
+        self.assertEqual(tranches[0], "600,43")

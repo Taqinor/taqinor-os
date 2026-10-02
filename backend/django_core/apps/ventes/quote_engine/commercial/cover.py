@@ -16,6 +16,9 @@ def build(ctx):
     d = ctx["d"]
     C = ctx["C"]
     fmt = ctx["fmt"]
+    # ERR-QJR614-CI-INVESTISSEMENT-DIRHAM-VS-CENTIME — l'investissement TTC
+    # s'imprime au centime, la même chaîne que le Total TTC page 2.
+    fmt_mad = ctx.get("fmt_mad") or fmt
     fonts = ctx["fonts"]
     logo_dark = ctx["logo_dark"]
     theme = ctx["theme"]
@@ -194,7 +197,7 @@ def build(ctx):
     </div>
     <div class="c1c-inv">
       <div class="c1c-inv-l">Investissement (TTC, clé en main)</div>
-      <div class="c1c-inv-v">{fmt(invest)}<span>&nbsp;MAD</span></div>{ancre("total_affiche", fmt(invest))}
+      <div class="c1c-inv-v">{fmt_mad(invest)}<span>&nbsp;MAD</span></div>{ancre("total_affiche", fmt_mad(invest))}
     </div>
   </div>
 </div>
