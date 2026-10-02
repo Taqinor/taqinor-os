@@ -621,7 +621,12 @@ export default function DevisGenerator({
   const chargerOverrides = (id) => {
     if (!id) return
     ventesApi.lireOverrides(id)
-      .then(({ data }) => { setOverridesReg(data); alignerSurRegistre(data) })
+      .then(({ data }) => {
+        // QJR581 — hydratation serveur tardive : la référence « rien n'a
+        // changé » est re-capturée sur l'état qu'elle pose.
+        captureReferenceJusqua.current = Date.now() + FENETRE_REFERENCE_MS
+        setOverridesReg(data); alignerSurRegistre(data)
+      })
       .catch(() => {})
   }
 
@@ -2084,6 +2089,8 @@ export default function DevisGenerator({
         // n'est jamais écrasée ; une panne reste ISOLÉE.
         Promise.resolve().then(() => crmApi.getLead(d.lead)).then(({ data: lead }) => {
           if (!lead || lead.id == null) return
+          // QJR581 — hydratation serveur tardive : re-capture de la référence.
+          captureReferenceJusqua.current = Date.now() + FENETRE_REFERENCE_MS
           setLeadDuDevis(lead)
           if (parseFloat(lead.facture_hiver) > 0) {
             setFHiver(prev => prev || String(lead.facture_hiver))
