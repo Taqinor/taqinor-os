@@ -186,7 +186,9 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             gamme_nom_devis=entrees.gamme_nom_devis,
             # QJR46 — le barème de la SOCIÉTÉ, celui que le devis appliquera.
             tranches=entrees.tranches,
-            charges_fixes_mad=entrees.charges_fixes_mad)
+            charges_fixes_mad=entrees.charges_fixes_mad,
+            # ERR-QJR605 — site isolé : le tableau compose off-grid.
+            hors_reseau=entrees.hors_reseau)
         recommandation = resultat.get('recommandation')
         if not recommandation:
             # Le tableau est vide pour DEUX raisons distinctes, et le

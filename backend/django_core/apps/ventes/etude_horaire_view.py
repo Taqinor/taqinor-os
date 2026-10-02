@@ -471,7 +471,8 @@ def _dimensionner(*, company, conso, ville, lat, lon, occupation, equipements,
             '(le catalogue est scopé société).')
         return None
     try:
-        from apps.ventes.compatibilites import normaliser_phase
+        from apps.ventes.compatibilites import (
+            est_site_isole, normaliser_phase)
         from apps.ventes.dimensionnement import recommander_taille
         return recommander_taille(
             company=company, conso_kwh_mensuelles=conso, ville=ville, lat=lat,
@@ -479,6 +480,8 @@ def _dimensionner(*, company, conso, ville, lat, lon, occupation, equipements,
             phase=normaliser_phase(corps.get('raccordement')),
             critere=corps.get('critere') or None,
             source_conso=source,
+            # ERR-QJR605 — raccordement « aucun » : kit off-grid.
+            hors_reseau=est_site_isole(corps.get('raccordement')),
             tranches=tranches, charges_fixes_mad=charges_fixes_mad)
     except Exception:  # noqa: BLE001 — un aperçu ne casse jamais
         logger.warning('dimensionnement indisponible', exc_info=True)

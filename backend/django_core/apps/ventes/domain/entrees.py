@@ -65,6 +65,13 @@ class EntreesMoteur:
     ``recommander_taille`` les transmettent. Elles n'entrent PAS dans
     l'empreinte (aucun bloc existant n'est périmé par cet ajout).
 
+    ERR-QJR605 — ``hors_reseau`` (raccordement « aucun », même lecture que
+    ``pipeline.contexte_sonde_du_devis``) et ``mppt_paires`` complètent ces
+    entrées de composition. ``hors_reseau`` entre dans l'empreinte QUAND IL
+    VAUT ``True`` seulement (un site raccordé garde l'empreinte d'avant) ;
+    ``mppt_paires`` en reste exclu (il se lit sur les lignes du devis, que le
+    tableau dérivé fait lui-même évoluer).
+
     ``tranches`` / ``charges_fixes_mad`` — L'IDENTITÉ TARIFAIRE (QJR46) : la
     surcharge de barème de la SOCIÉTÉ, lue par le MÊME
     ``etude_horaire._reglages_tarifaires`` que le moteur de devis. Elles ne
@@ -95,6 +102,10 @@ class EntreesMoteur:
     jour_reference: object = None
     phase: object = None
     gamme_nom_devis: object = None
+    # ERR-QJR605 — site ISOLÉ (raccordement « aucun ») et paires MPPT du devis :
+    # les deux entrées de composition que ``contexte_sonde_du_devis`` lit déjà.
+    hors_reseau: bool = False
+    mppt_paires: int = 1
 
     # ── accès mapping en LECTURE SEULE (pont de déplacement, voir docstring) ─
 
@@ -322,8 +333,10 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
     # QJR606 — phase du lead et gamme du devis, les MÊMES lecteurs que la
     # composition (``compatibilites.normaliser_phase``, ``gammes.gamme_nom``).
     from apps.crm.selectors import lead_du_devis
-    from apps.ventes.compatibilites import normaliser_phase
+    from apps.ventes.compatibilites import est_site_isole, normaliser_phase
     from apps.ventes.domain.gammes import gamme_nom
+    from apps.ventes.domain.pipeline import _mppt_paires_du_devis
+    raccordement = getattr(lead_du_devis(devis), 'raccordement', None)
     return EntreesMoteur(
         company=company, mode=mode, etude_params=etude_params,
         conso_kwh_mensuelles=conso, source_conso=source_conso,
@@ -334,14 +347,20 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
         equipements=equipements_du_devis(devis),
         tranches=tranches, charges_fixes_mad=charges_fixes,
         jour_reference=jour,
-        phase=normaliser_phase(
-            getattr(lead_du_devis(devis), 'raccordement', None)),
-        gamme_nom_devis=gamme_nom(devis) or None)
+        phase=normaliser_phase(raccordement),
+        gamme_nom_devis=gamme_nom(devis) or None,
+        hors_reseau=est_site_isole(raccordement),
+        mppt_paires=_mppt_paires_du_devis(devis))
 
 
 def _phase_du_lead(lead):
     from apps.ventes.compatibilites import normaliser_phase
     return normaliser_phase(getattr(lead, 'raccordement', None))
+
+
+def _hors_reseau_du_lead(lead):
+    from apps.ventes.compatibilites import est_site_isole
+    return est_site_isole(getattr(lead, 'raccordement', None))
 
 
 def entrees_depuis_lead(lead, company, *, contexte=True, jour_reference=None):
@@ -412,7 +431,8 @@ def entrees_depuis_lead(lead, company, *, contexte=True, jour_reference=None):
         equipements=composer_equipements(equipements_pour_lead(lead)),
         tranches=tranches, charges_fixes_mad=charges_fixes,
         # QJR606 — un lead n'a pas de gamme de devis : ``None``.
-        phase=_phase_du_lead(lead))
+        phase=_phase_du_lead(lead),
+        hors_reseau=_hors_reseau_du_lead(lead))
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -522,6 +542,10 @@ def empreinte_entrees(e):
             getattr(e, 'charges_fixes_mad', None), 2),
         'jour_reference': _texte(getattr(e, 'jour_reference', None)),
     }
+    if getattr(e, 'hors_reseau', False):
+        # ERR-QJR605 — seulement « vrai » : l'empreinte d'un site raccordé ne
+        # change pas, un site isolé ne partage jamais le tableau d'un autre.
+        charge['hors_reseau'] = True
     canonique = json.dumps(charge, sort_keys=True, separators=(',', ':'),
                            default=str, ensure_ascii=False)
     return hashlib.sha256(canonique.encode('utf-8')).hexdigest()

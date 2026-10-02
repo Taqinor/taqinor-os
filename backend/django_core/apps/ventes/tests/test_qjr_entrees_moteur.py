@@ -38,7 +38,7 @@ CHAMPS_ATTENDUS = (
     'conso_kwh_mensuelles', 'source_conso',
     'ville', 'lat', 'lon', 'occupation', 'equipements',
     'tranches', 'charges_fixes_mad', 'jour_reference',
-    'phase', 'gamme_nom_devis',
+    'phase', 'gamme_nom_devis', 'hors_reseau', 'mppt_paires',
 )
 
 
