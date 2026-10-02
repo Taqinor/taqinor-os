@@ -76,7 +76,7 @@ const fieldLabels = {
   facture_periodicite: { label: 'La facture couvre', section: 'energie', inputId: 'lf-facture-periode' },
   conso_mensuelle_kwh: { libelleCourt: 'consommation mensuelle (kWh)', label: 'Conso mensuelle (kWh)', section: 'energie', inputId: 'lf-conso-mensuelle' },
   tranche_onee: { label: 'Tarif / tranche ONEE', section: 'energie', inputId: 'lf-tranche-onee' },
-  // QJR593 — case à cocher 82-21 (SectionEnergie), libellé aligné sur le chatter serveur.
+  // QJR593 — case à cocher 82-21 (SectionEnergie) ; même texte que le chatter serveur.
   regularisation_8221: { label: 'Régularisation 82-21', section: 'energie', inputId: 'lf-regularisation-8221' },
   raccordement: { libelleCourt: 'raccordement', label: 'Raccordement', section: 'energie', inputId: 'lf-raccordement' },
   // CAD150 — captés par le site, désormais éditables (CHAMPS_SITE).
