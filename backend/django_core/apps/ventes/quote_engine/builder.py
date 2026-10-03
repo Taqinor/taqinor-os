@@ -774,6 +774,13 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
         # table d'icônes le consulte AVANT ses mots-clés. ``None`` sur toute
         # ligne historique ⇒ mots-clés, rendu inchangé.
         "role_devis": getattr(ligne, "role_devis", None) or None,
+        # AGR304 — rôle POMPAGE et courbe constructeur COPIÉS du produit
+        # (contrat stock ``produit_pompage.json`` › ``item_ligne_devis_rendu``,
+        # AGR7) : ``agricole/synthese`` lit la ligne pompe et sa courbe sur
+        # l'item, sans relire le catalogue ni reclasser par le nom. ``None``
+        # quand le produit ne les porte pas (résidentiel, pompe sans courbe).
+        "role_pompage": (getattr(produit, "role_pompage", None) or None),
+        "courbe_pompe": (getattr(produit, "courbe_pompe", None) or None),
         "_produit_nom": produit_nom,
     }
 
@@ -1142,13 +1149,13 @@ DEFAULT_PDF_OPTIONS = {
     # page qu'aux devis qui en ont vraiment un. Un ``True``/``False``
     # EXPLICITE (dialogue PDF, paramètre de requête) reste souverain.
     'include_calepinage': None,
-    # ── Agricole (pompage) — toggleable persuasion sections (default on) ──
-    'show_subsidy': True,          # FDA 30% subsidy block
-    'show_fuel_comparison': True,  # solaire vs butane vs diesel + payback
-    'show_environmental': True,    # CO₂ / fuel-avoided strip
-    'show_schematic': True,        # system schematic on the study page
-    'show_water_yield': True,      # water-delivered-per-month chart
-    'current_fuel': None,          # 'butane' | 'diesel' | 'none' (else étude/default)
+    # AGR303 — les six options agricoles (cinq bascules « de persuasion » :
+    # aide, comparatif carburant, environnement, schéma, eau livrée ; plus
+    # ``current_fuel``) sont RETIRÉES : aucun renderer ne
+    # les lisait depuis QJR236/DV1, et ``current_fuel`` ÉCRASAIT l'énergie
+    # déclarée dans l'étude (un paramètre de rendu ne modifie jamais une donnée
+    # client — D-AGR-5). Le renderer agricole ne déclare AUCUNE option qui
+    # pilote un montant d'aide (Q22, D-AGR-6).
     # ── L-NIV (24/08/2026) — anticopie « niveau standard » ────────────────────
     # ``True`` regroupe les lignes fixation/câblage/protection en UNE ligne
     # « Kit … » au sous-total EXACT (``utils/anticopie.agreger_lignes_kit`` —
@@ -1240,13 +1247,6 @@ def clean_pdf_options(raw) -> dict:
     # stricte, jamais une valeur arbitraire transmise plus loin).
     if raw.get('langue_sortie') in LANGUES_SORTIE_PDF:
         opts['langue_sortie'] = raw['langue_sortie']
-    # Agricole toggles — booleans default True; current_fuel a small enum.
-    for _flag in ('show_subsidy', 'show_fuel_comparison', 'show_environmental',
-                  'show_schematic', 'show_water_yield'):
-        if _flag in raw:
-            opts[_flag] = bool(raw[_flag])
-    if raw.get('current_fuel') in ('butane', 'diesel', 'none'):
-        opts['current_fuel'] = raw['current_fuel']
     # QRP1/A5 — JETON DU LIEN QUI SERT CE PDF (anticopie). Sans lui, le QR de
     # la proposition descend de ``ShareLink.for_devis``, qui rend le lien à
     # l'EXPIRATION LA PLUS LOINTAINE — pas celui qui sert le document : un PDF
@@ -2169,10 +2169,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         if _etude_perimee:
             avertissements_internes.append(
                 "étude industrielle périmée — relancer l'étude")
-    # Agricole : le carburant de référence du comparatif peut être forcé par
-    # l'option PDF (sinon l'étude / le défaut « butane » s'applique).
-    if opts.get('current_fuel'):
-        etude['current_fuel'] = opts['current_fuel']
+    # AGR303 — plus de surcharge de l'énergie actuelle par une option de
+    # rendu : l'étude rendue est l'étude STOCKÉE (énergie déclarée et datée,
+    # D-AGR-5 ; le bloc AGR3 porte la dépense déclarée).
     # QJ13 — tariff / self-consumption overrides from etude_params.
     # Resolves: tarif_kwh_override → tranches_override → utility name → fallback.
     # All are seller-editable via etude_params; nothing is fabricated from thin air.
@@ -3576,13 +3575,6 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "payment_terms": payment_terms,
         "mode_installation": mode,
         "etude": etude,
-        # Agricole — toggleable persuasion sections + company (Paramètres
-        # economics override). Ignored by every other renderer.
-        "show_subsidy": opts['show_subsidy'],
-        "show_fuel_comparison": opts['show_fuel_comparison'],
-        "show_environmental": opts['show_environmental'],
-        "show_schematic": opts['show_schematic'],
-        "show_water_yield": opts['show_water_yield'],
         # company id only (JSON-serializable — this dict is also returned by the
         # public proposal-data endpoint; never put the model instance here).
         "_company_id": getattr(devis, "company_id", None),
@@ -3976,19 +3968,18 @@ def echapper_textes_client(data: dict) -> dict:
 
     ── QJR154 — LE SOUS-DICTIONNAIRE ``etude`` EST COUVERT ─────────────────
     ``data['etude']`` est ``dict(devis.etude_params or {})`` : un ``JSONField``
-    LIBRE, accepté du corps de requête. La liste blanche l'ignorait, et deux
-    paquets impriment ses textes bruts — ``agricole/study.py`` (``crop``,
-    ``region``, ``pompe_nom``, ``irrigation_method``) et
-    ``commercial/categories.py`` (``four``). Seuls les scalaires de type
+    LIBRE, accepté du corps de requête. La liste blanche l'ignorait, alors
+    que le moteur imprime ses textes bruts (``pompe_nom`` du résumé pompage,
+    ``commercial/categories.py`` : ``four``). Seuls les scalaires de type
     ``str`` sont échappés, à plat : un nombre resterait un nombre (les gardes
     numériques du document le comparent), et les sous-blocs (``toiture``,
     ``etude_horaire``, ``bankable``, séries mensuelles) ne sont pas du texte
     rendu tel quel.
 
-    LE SCHÉMA AGRICOLE A UNE SEULE VÉRITÉ : ``agricole/schematic.py``
-    s'échappait lui-même. Il ne le fait PLUS (il consomme les textes déjà
-    échappés ici) — sans quoi un simple « & » dans une culture sortait
-    « &amp;amp; » sur le PDF.
+    UN SEUL ÉCHAPPEMENT : un module de rendu qui consomme ``data_rendu`` ne
+    s'échappe PAS lui-même — sans quoi un simple « & » dans une culture
+    sortirait « &amp;amp; » sur le PDF (AGR303 : l'ancien
+    ``agricole/schematic.py`` cité ici a été supprimé par DV1).
     """
     def _e(v):
         return html.escape(str(v)) if v is not None else v

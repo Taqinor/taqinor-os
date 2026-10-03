@@ -119,7 +119,9 @@ class TestQjr428ComparatifCarburantAbsentDuOnepage(TestCase):
         data = build_quote_data(self.devis, {'pdf_mode': 'full'})
         self.assertEqual(data['etude'].get('current_fuel'), 'diesel')
         self.assertEqual(data['etude'].get('fuel_spend_current'), 42000)
-        self.assertTrue(data['show_fuel_comparison'])
+        # AGR303 — la bascule morte du comparatif carburant a quitté la
+        # charge utile (aucun renderer ne la lisait).
+        self.assertNotIn('show_fuel_comparison', data)
 
     def test_le_one_page_agricole_ne_publie_AUCUN_comparatif_carburant(self):
         """LA PREUVE — d'abord. Un devis portant `current_fuel`+
@@ -143,9 +145,10 @@ class TestQjr428ComparatifCarburantAbsentDuOnepage(TestCase):
         self.assertNotIn('42 000', html)
 
     def test_le_meme_verdict_tient_quand_current_fuel_vient_de_l_option_pdf(self):
-        """Second chemin possible pour `current_fuel` (l'option PDF forcée,
-        `builder.py:676`/`:1690-1691`, plutôt que `etude_params`) : MÊME
-        verdict — le one-page ne le publie pas davantage."""
+        """Second chemin AUTREFOIS possible pour `current_fuel` (l'option PDF
+        forcée) : AGR303 l'a retirée — `clean_pdf_options` l'ignore, et
+        l'étude rendue reste l'étude stockée. MÊME verdict : le one-page ne
+        publie aucun comparatif carburant."""
         html, doc = self._render_onepage_html(
             {'pdf_mode': 'full', 'current_fuel': 'butane'})
         self.assertEqual(len(doc.pages), 1)
