@@ -117,6 +117,15 @@ TARIFF = {
     'charge_minimale_mad_jour': Decimal('3.50'),
     'indexation_tarif_pct_an': Decimal('2.500'),
     'indexation_source': 'Historique des tarifs publiés 9988776655',
+    # AGR207 — pompage agricole (barème société + règle FDA datée).
+    'charges_pompage_solaire': [
+        {'libelle': 'Nettoyage des panneaux', 'montant_mad_an': 650.0,
+         'source': 'barème société'}],
+    'regle_fda_pompage': {
+        'taux_pct': 30, 'plafond_mad_par_ha': 3000,
+        'plafond_mad_par_kwc': 3000, 'plafond_mad_par_projet': 30000,
+        'base': 'a_confirmer', 'source': 'Guide FDA édition 2024, p.20-23',
+        'releve_le': '2026-10-02'},
     'taux_imposition_pct': Decimal('31.00'), 'amortissement_mode': 'lineaire',
     'amortissement_duree_ans': 10,
     'amortissement_coefficient': Decimal('1.750'),

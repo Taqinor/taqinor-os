@@ -177,7 +177,12 @@ MODEL_POLICY = {
     # barème deviendrait illisible (repli silencieux sur les défauts).
     'parametres.TariffSettings': {
         'keep': {'pays_tarif', 'residential_tiers', 'tou_heures', 'tou_tarifs',
-                 'taxes'},
+                 'taxes',
+                 # AGR207 — barème des charges solaires de pompage et règle
+                 # FDA datée : montants, libellés de charge et source du
+                 # barème, gardés TELS QUELS comme ``taxes`` (une date
+                 # « 2026-10-02 » ressemblerait à un téléphone au brouilleur).
+                 'charges_pompage_solaire', 'regle_fda_pompage'},
     },
 }
 
