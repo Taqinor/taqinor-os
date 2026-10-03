@@ -69,6 +69,11 @@ def _visite_etat_slot(declaration, photos):
     return 'manquant'
 
 
+def _gabarit(visite):
+    """AGR412 — le gabarit de LA visite (``toiture`` par défaut)."""
+    return getattr(visite, 'gabarit', None) or 'toiture'
+
+
 def _visite_checklist(visite, medias):
     from . import visite_checklist as checklist
 
@@ -76,7 +81,7 @@ def _visite_checklist(visite, medias):
     for media in medias:
         par_slot.setdefault(media.slot_code, []).append(_visite_photo(media))
     blocs = []
-    for cat in checklist.categories():
+    for cat in checklist.categories(_gabarit(visite)):
         slots = []
         for declaration in cat['slots']:
             photos = par_slot.get(declaration['code'], [])
@@ -108,7 +113,7 @@ def _visite_mesures(visite):
 
     saisies = visite.mesures if isinstance(visite.mesures, dict) else {}
     rendu = {}
-    for cat in checklist.categories():
+    for cat in checklist.categories(_gabarit(visite)):
         champs = cat['mesures']
         if not champs:
             continue
@@ -120,7 +125,7 @@ def _visite_mesures(visite):
     return rendu
 
 
-def _visite_manquants(blocs, mesures_rendues):
+def _visite_manquants(blocs, mesures_rendues, gabarit=None):
     from . import visite_checklist as checklist
 
     manquants = []
@@ -140,7 +145,7 @@ def _visite_manquants(blocs, mesures_rendues):
                     'code': slot['code'],
                     'libelle': slot['libelle'],
                 })
-    for cat in checklist.categories():
+    for cat in checklist.categories(gabarit):
         valeurs = mesures_rendues.get(cat['categorie']) or {}
         for champ in cat['mesures']:
             if not checklist.mesure_requise(champ, valeurs):
@@ -192,7 +197,8 @@ def visite_terrain_manquants(visite):
     """La liste SERVEUR des manquants d'une visite (gate de terminaison)."""
     medias = list(visite.medias.select_related('attachment').all())
     blocs = _visite_checklist(visite, medias)
-    return _visite_manquants(blocs, _visite_mesures(visite))
+    return _visite_manquants(blocs, _visite_mesures(visite),
+                             _gabarit(visite))
 
 
 def contexte_visite_terrain(visite):
@@ -200,7 +206,7 @@ def contexte_visite_terrain(visite):
     medias = list(visite.medias.select_related('attachment').all())
     blocs = _visite_checklist(visite, medias)
     mesures_rendues = _visite_mesures(visite)
-    manquants = _visite_manquants(blocs, mesures_rendues)
+    manquants = _visite_manquants(blocs, mesures_rendues, _gabarit(visite))
     commercial = visite.commercial
     return {
         'id': visite.id,
@@ -211,6 +217,8 @@ def contexte_visite_terrain(visite):
                             or commercial.username),
         },
         'statut': visite.statut,
+        # AGR412 — la checklist servie est celle de CE gabarit.
+        'gabarit': _gabarit(visite),
         'date_prevue': (visite.date_prevue.isoformat()
                         if visite.date_prevue else None),
         'date_realisee': (visite.date_realisee.isoformat()
@@ -218,7 +226,8 @@ def contexte_visite_terrain(visite):
         'notes': visite.notes or '',
         'modifiable': visite.modifiable,
         'raison_lecture_seule': visite.raison_lecture_seule,
-        'photo_toit': {
+        # AGR412 — aucun toit à assembler sur un relevé du point d'eau.
+        'photo_toit': None if _gabarit(visite) == 'point_eau' else {
             'assemblage_etat': visite.assemblage_etat,
             'assemblage_erreur': visite.assemblage_erreur or '',
             'url': (f'/api/django/visites/visites/{visite.id}/photo-toit/'
@@ -312,6 +321,41 @@ def recap_visite_terrain(visite):
         return str(entier) if flottant == entier else f'{flottant:g}'
 
     morceaux = []
+    if _gabarit(visite) == 'point_eau':
+        # AGR412 — relevé du point d'eau : les SEULES valeurs saisies, jamais
+        # un défaut ni une mesure de toit.
+        source = valeur('point_eau', 'source_eau')
+        if source:
+            morceaux.append(source)
+        niveau = nombre('point_eau', 'niveau_statique_m')
+        if niveau:
+            morceaux.append(f'niveau statique {niveau} m')
+        elif valeur('point_eau', 'niveau_non_mesurable') is True:
+            morceaux.append('niveau non mesurable')
+        debit = nombre('point_eau', 'debit_mesure_m3h')
+        if debit:
+            morceaux.append(f'débit {debit} m³/h')
+        elif valeur('point_eau', 'debit_non_mesurable') is True:
+            morceaux.append('débit non mesurable')
+        profondeur = nombre('point_eau', 'profondeur_forage_m')
+        if profondeur:
+            morceaux.append(f'forage {profondeur} m')
+        electricite = valeur('electricite', 'electricite_sur_place')
+        if electricite:
+            morceaux.append(f'électricité {electricite}')
+        distance = nombre('site_pv', 'distance_forage_champ_m')
+        if distance:
+            morceaux.append(f'pose à {distance} m du forage')
+        autorisation = valeur('administratif', 'autorisation_prelevement')
+        if autorisation:
+            morceaux.append(f'autorisation ABH {autorisation}')
+        moment = visite.date_realisee or visite.date_prevue
+        entete = "Relevé du point d'eau validé"
+        if moment is not None:
+            entete += f' — réalisé le {moment.strftime("%d/%m/%Y")}'
+        if not morceaux:
+            return entete + '.'
+        return entete + ' : ' + ', '.join(morceaux) + '.'
     longueur = nombre('toiture', 'longueur_m')
     largeur = nombre('toiture', 'largeur_m')
     if longueur and largeur:
