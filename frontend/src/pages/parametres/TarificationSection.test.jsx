@@ -31,6 +31,7 @@ vi.mock('../../ui/confirm', () => ({
 }))
 
 import TarificationSection from './TarificationSection'
+import { documentContrat } from '../../test/fixtures/contractSamples'
 
 function racineDepot() {
   let dossier = resolve(process.cwd())
@@ -184,5 +185,85 @@ describe('CALX72 — refus avant envoi et refus du serveur sous le bon champ', (
     // Corriger le champ efface son refus.
     await user.type(champ('amortissement_coefficient'), '2')
     expect(screen.queryByTestId('erreur-amortissement_coefficient')).toBeNull()
+  })
+})
+
+/* AGR210 — section « Pompage agricole » : barème des charges solaires de la
+   société + règle FDA datée (calcul INTERNE). La réponse vient du contrat
+   partagé `ventes/contract_samples/economie_pompage.json` (`reglages_lus`),
+   jamais d'un mock inventé. */
+const REGLAGES_POMPAGE = documentContrat('ventes', 'economie_pompage').reglages_lus
+const CHARGES_CONTRAT = REGLAGES_POMPAGE['TariffSettings.charges_pompage_solaire'].exemple
+const REGLE_CONTRAT = REGLAGES_POMPAGE['TariffSettings.regle_fda_pompage'].exemple
+
+async function rendrePompage(charges = [], regle = {}) {
+  getTariffSettings.mockResolvedValue({ data: {
+    ...VIERGE, charges_pompage_solaire: charges, regle_fda_pompage: regle,
+  } })
+  render(<TarificationSection />)
+  await waitFor(() => expect(screen.getByTestId('tarif-pompage')).toBeInTheDocument())
+}
+
+describe('AGR210 — Pompage agricole (charges + règle FDA, usage interne)', () => {
+  it('société vierge : rien de prérempli, mention « usage interne »', async () => {
+    await rendrePompage()
+    expect(screen.getByText(/aucun montant d’aide n’est imprimé pour un client/))
+      .toBeInTheDocument()
+    expect(champ('regle_fda_pompage').value).toBe('')
+    expect(document.getElementById('tarif-fda-taux_pct').value).toBe('')
+    expect(champ('charges_pompage_solaire').querySelectorAll('input')).toHaveLength(0)
+  })
+
+  it('pré-remplir sans clic sur Enregistrer ⇒ aucun appel réseau', async () => {
+    const user = userEvent.setup()
+    await rendrePompage()
+    await user.click(screen.getByRole('button', { name: /Pré-remplir depuis le Guide FDA 2024/ }))
+    expect(document.getElementById('tarif-fda-taux_pct').value).toBe('30')
+    expect(document.getElementById('tarif-fda-plafond_mad_par_projet').value).toBe('30000')
+    expect(document.getElementById('tarif-fda-base').value).toBe('a_confirmer')
+    expect(champ('regle_fda_pompage').value).toMatch(/Guide FDA édition 2024, p\.20-23/)
+    expect(updateTariffSettings).not.toHaveBeenCalled()
+  })
+
+  it('source vide ⇒ message sous le champ, rien envoyé', async () => {
+    const user = userEvent.setup()
+    await rendrePompage()
+    await user.type(document.getElementById('tarif-fda-taux_pct'), '30')
+    await user.click(screen.getByRole('button', { name: /^Enregistrer$/ }))
+    expect(updateTariffSettings).not.toHaveBeenCalled()
+    expect(screen.getByTestId('erreur-regle_fda_pompage')).toHaveTextContent('source')
+    expect(champ('regle_fda_pompage')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByTestId('tarif-erreurs')).toHaveTextContent('Règle FDA pompage')
+  })
+
+  it('le refus 400 du serveur s’affiche sous le champ qu’il nomme', async () => {
+    const user = userEvent.setup()
+    const message = 'charges_pompage_solaire : ligne 1, la source est obligatoire.'
+    updateTariffSettings.mockRejectedValue({
+      response: { status: 400, data: { charges_pompage_solaire: [message] } },
+    })
+    await rendrePompage(CHARGES_CONTRAT, REGLE_CONTRAT)
+    await user.click(screen.getByRole('button', { name: /^Enregistrer$/ }))
+    expect(await screen.findByTestId('erreur-charges_pompage_solaire'))
+      .toHaveTextContent(message)
+  })
+
+  it('enregistrer → rouvrir → enregistrer sans toucher = objet serveur identique', async () => {
+    const user = userEvent.setup()
+    updateTariffSettings.mockResolvedValue({ data: {
+      ...VIERGE, charges_pompage_solaire: CHARGES_CONTRAT,
+      regle_fda_pompage: REGLE_CONTRAT, version: 2,
+    } })
+    await rendrePompage(CHARGES_CONTRAT, REGLE_CONTRAT)
+    await user.click(screen.getByRole('button', { name: /^Enregistrer$/ }))
+    await waitFor(() => expect(updateTariffSettings).toHaveBeenCalledTimes(1))
+    const premier = updateTariffSettings.mock.calls[0][0]
+    expect(premier.charges_pompage_solaire).toEqual(CHARGES_CONTRAT)
+    expect(premier.regle_fda_pompage).toEqual(REGLE_CONTRAT)
+    await user.click(screen.getByRole('button', { name: /Enregistr/ }))
+    await waitFor(() => expect(updateTariffSettings).toHaveBeenCalledTimes(2))
+    const second = updateTariffSettings.mock.calls[1][0]
+    expect(second.charges_pompage_solaire).toEqual(CHARGES_CONTRAT)
+    expect(second.regle_fda_pompage).toEqual(REGLE_CONTRAT)
   })
 })
