@@ -462,3 +462,44 @@ def choisir_pompe(pompes, *, hmt_m, debit_conception_m3h, alimentation,
     return resultat(sortie, etape, prix_a_renseigner=sans_prix_courbe,
                     kw=choisie["kw"], debit_livre=choisie["debit"],
                     paliers=[e["p"] for e in paliers], index=index)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# AGR118 — pompe EXISTANTE conservée (D-AGR-7) : compatibilité de SORTIE du
+# variateur avec la PLAQUE de la pompe.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _fiche_variateur(produit):
+    fiche = produit.get("fiche")
+    return fiche if isinstance(fiche, dict) else {}
+
+
+def variateurs_compatibles_plaque(variateurs, *, tension_v, phases):
+    """Tri des variateurs selon leur SORTIE face à la plaque.
+
+    Sortie = ``var_v_sortie_v`` / ``ond_phases`` de la fiche (AGR101), sinon
+    la tension du produit. Rend ``(compatibles, a_verifier)`` :
+
+    * plaque monophasée 220 V → variateurs 220 V seulement (une fiche qui
+      publie une sortie triphasée est écartée) ;
+    * plaque triphasée 220 V → ``compatibles`` = fiche publiant une sortie
+      TRIPHASÉE 220 V ; ``a_verifier`` = variateurs 220 V dont la fiche ne
+      publie pas les phases (« compatibilité à vérifier sur la fiche ») ;
+    * autre plaque → même tension, phases contrôlées quand publiées.
+    """
+    compatibles, a_verifier = [], []
+    for produit in variateurs or ():
+        fiche = _fiche_variateur(produit)
+        tension = _flottant(fiche.get("var_v_sortie_v"))
+        tension = int(tension) if tension else tension_produit(produit)
+        if tension_v and tension != tension_v:
+            continue
+        ph = _flottant(fiche.get("ond_phases"))
+        ph = int(ph) if ph else None
+        if phases and ph is not None and ph != phases:
+            continue
+        if phases == 3 and tension_v == TENSION_MONO_V and ph is None:
+            a_verifier.append(produit)
+            continue
+        compatibles.append(produit)
+    return compatibles, a_verifier
