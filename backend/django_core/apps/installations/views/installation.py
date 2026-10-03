@@ -345,12 +345,17 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             permission_classes=[IsAnyRole])
     def regime_suggestion(self, request):
         """N43 — régime loi 82-21 suggéré pour une puissance (kWc), via les
-        seuils éditables de la société. ?kwc=<nombre>. Défaut modifiable."""
+        seuils éditables de la société. ?kwc=<nombre>. Défaut modifiable.
+
+        AGR602 — ``&hors_reseau=1`` : installation non raccordée → régime
+        « déclaration hors réseau » (loi 82-21, art. 3), sans seuil."""
         from ..regime import suggest_for_company, regime_thresholds
         from ..models import Installation
         kwc = request.query_params.get('kwc')
+        hors_reseau = str(request.query_params.get('hors_reseau', '')).strip(
+        ).lower() in ('1', 'true', 'oui', 'yes')
         company = request.user.company
-        code = suggest_for_company(kwc, company)
+        code = suggest_for_company(kwc, company, hors_reseau=hors_reseau)
         label = dict(Installation.Regime8221.choices).get(code, code)
         seuil_decl, seuil_anre = regime_thresholds(company)
         return Response({

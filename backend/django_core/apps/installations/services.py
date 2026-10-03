@@ -350,9 +350,16 @@ def create_installation_from_devis(devis, user, company):
     # N43 — régime loi 82-21 proposé comme DÉFAUT MODIFIABLE depuis la
     # puissance (seuils éditables en Paramètres). Reste 'non_concerne' si la
     # puissance est inconnue ; l'utilisateur peut toujours le changer ensuite.
+    # AGR602 — un chantier agricole (pompage) est suggéré HORS RÉSEAU
+    # (modifiable) → régime « déclaration hors réseau » (loi 82-21, art. 3),
+    # quelle que soit la puissance. Les autres types : inchangé (par kWc).
     from .regime import suggest_for_company
+    raccordement_reseau = (
+        Installation.RaccordementReseau.HORS_RESEAU
+        if type_install == Installation.TypeInstallation.AGRICOLE else None)
     regime_suggere = suggest_for_company(
-        _puissance_from(devis, lead), company)
+        _puissance_from(devis, lead), company,
+        hors_reseau=raccordement_reseau is not None)
 
     # Installateur par défaut (N66) : celui configuré en Paramètres, sinon le
     # créateur du chantier (comportement actuel). « Signé » est le 1er jalon de
@@ -377,6 +384,7 @@ def create_installation_from_devis(devis, user, company):
             raccordement=raccordement,
             type_installation=type_install,
             regime_8221=regime_suggere,
+            raccordement_reseau=raccordement_reseau,
             statut=Installation.Statut.SIGNE,
             date_signature=date_signature,
             bom=_freeze_bom(devis),
