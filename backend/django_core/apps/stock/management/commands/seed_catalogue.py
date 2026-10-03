@@ -537,6 +537,29 @@ OPTIONS_POMPAGE = [
     ('Bassin', 'BASSIN', 'bassin', 20, 2),
 ]
 
+# ── AGR620 — SKU pompage « prix à renseigner » : installation, entretien,
+# antivol, clôture ──────────────────────────────────────────────────────────
+# Tous à ``prix_vente = 0`` (jamais auto-chiffrés), descriptions neutres SANS
+# aucun chiffre. ``INST-PMP`` : barème ``prix_fixe_ht``/``prix_par_panneau_ht``
+# VIDE ; ``ENT-PMP`` : ``est_recurrent=True``, ``periodicite_defaut`` VIDE (à
+# l'acceptation, XCTR1 crée le contrat). Les noms n'emploient JAMAIS le mot
+# « panneau » : un SKU antivol lu comme un panneau gonflerait la puissance
+# crête et le décompte de modules des devis. Aucune statistique de vol,
+# aucun assureur, aucune prime, aucun barème « par mètre ».
+# (nom, sku, role_pompage, qte, seuil, description, est_recurrent)
+SKU_POMPAGE_PRIX_A_RENSEIGNER = [
+    ('Installation pompage solaire', 'INST-PMP', 'installation_pompage', 999, 0,
+     'Installation du système de pompage solaire', False),
+    ("Contrat d'entretien et maintenance pompage solaire", 'ENT-PMP',
+     'entretien_pompage', 999, 0,
+     "Contrat d'entretien et de maintenance du système de pompage solaire",
+     True),
+    ('Fixations antivol (visserie inviolable)', 'ANTIVOL-PV', 'antivol', 20, 2,
+     'Visserie inviolable pour la fixation du champ solaire', False),
+    ('Clôture du champ solaire', 'CLOTURE-PV', 'cloture', 20, 2,
+     'Clôture de protection du champ solaire', False),
+]
+
 # ── PVLV2 — HISTORIQUE des SKU « Basse Tension » (créés 18/08, ARCHIVÉS
 # 21/08/2026) ─────────────────────────────────────────────────────────────
 # La recherche PVG4 avait identifié OND-H-DEY-15T/20T comme des SG01HP3
@@ -587,7 +610,8 @@ BATTERIE_DEYE_HV = [
 SKUS_SEMES = frozenset(
     row[1] for row in (
         *CATALOGUE, *POMPAGE, *VEICHI, *OSP,
-        *CABLES_PROTECTIONS_VIDES, *OPTIONS_POMPAGE, *BATTERIE_DEYE_HV,
+        *CABLES_PROTECTIONS_VIDES, *OPTIONS_POMPAGE,
+        *SKU_POMPAGE_PRIX_A_RENSEIGNER, *BATTERIE_DEYE_HV,
     )
 )
 
@@ -1899,6 +1923,38 @@ class Command(BaseCommand):
                 quantite=qte, quantite_avant=0, quantite_apres=qte,
                 reference='SEED-CATALOGUE',
                 note='Stock initial (options pompage — prix à renseigner)',
+                created_by=None, save_produit=False,
+            )
+            created.append(nom)
+
+        # ── AGR620 — installation / entretien / antivol / clôture pompage :
+        # PRIX VIDES (0), barème forfaitaire VIDE, périodicité VIDE. Additif :
+        # un SKU ou un nom déjà présent est sauté, jamais réécrit.
+        for (nom, sku, role_pompage, qte, seuil, description,
+             recurrent) in SKU_POMPAGE_PRIX_A_RENSEIGNER:
+            if (Produit.objects.filter(company=company, sku=sku).exists()
+                    or Produit.objects.filter(
+                        company=company, nom__iexact=nom,
+                        is_archived=False).exists()):
+                skipped.append(nom)
+                continue
+            produit = Produit.objects.create(
+                company=company, nom=nom, sku=sku,
+                categorie=get_categorie(classify_categorie(nom)),
+                prix_achat=Decimal('0'),
+                prix_vente=Decimal('0'),  # à renseigner par le fondateur
+                quantite_stock=qte, seuil_alerte=seuil,
+                tva=Decimal('20.00'),
+                role_pompage=role_pompage,
+                description=description,
+                est_recurrent=recurrent,
+            )
+            record_stock_movement(
+                company=company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                quantite=qte, quantite_avant=0, quantite_apres=qte,
+                reference='SEED-CATALOGUE',
+                note='Stock initial (pompage — prix à renseigner)',
                 created_by=None, save_produit=False,
             )
             created.append(nom)

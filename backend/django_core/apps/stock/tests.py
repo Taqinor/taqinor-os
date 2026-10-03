@@ -38,9 +38,10 @@ class TestSeedCatalogue(TestCase):
         # 31 solaire + 9 pompage + 16 VEICHI + 11 pompes OSP + 22 câbles/protections
         # + 1 batterie Deye BOS-B Pro HV 16 kWh (PVG4, identité PVLV2)
         # + 7 options du kit pompage à prix vides (AGR104)
+        # + 4 SKU pompage à prix vide : installation/entretien/antivol/clôture (AGR620)
         # (PVLV2 21/08/2026 : les 2 doublons « Deye basse tension 15/20 kW »
         # du 18/08 ne sont PLUS seedés — les SKU historiques SONT les LV)
-        self.assertEqual(qs.count(), 99)
+        self.assertEqual(qs.count(), 103)
         # Spot-check key items: HT price = simulator TTC / 1.2
         huawei_10t = qs.get(sku='OND-R-HUA-10T')
         self.assertEqual(huawei_10t.nom, 'Onduleur réseau Huawei 10kW Triphasé')
@@ -58,7 +59,7 @@ class TestSeedCatalogue(TestCase):
         # Traceability: one entry movement per product
         self.assertEqual(
             MouvementStock.objects.filter(
-                company=self.company, reference='SEED-CATALOGUE').count(), 99,
+                company=self.company, reference='SEED-CATALOGUE').count(), 103,
         )
 
     def test_fiches_and_pompage_seeded(self):
@@ -862,7 +863,7 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(
             Produit.objects.filter(company=self.company).count(), count_after_first)
         # PVLV2 — les deux doublons « Basse Tension » ne sont plus créés.
-        self.assertIn('0 created, 99 already present', out)
+        self.assertIn('0 created, 103 already present', out)
 
     def test_never_overwrites_existing_product(self):
         # Pre-existing product with the same name but a different price
