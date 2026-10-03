@@ -774,6 +774,13 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
         # table d'icônes le consulte AVANT ses mots-clés. ``None`` sur toute
         # ligne historique ⇒ mots-clés, rendu inchangé.
         "role_devis": getattr(ligne, "role_devis", None) or None,
+        # AGR304 — rôle POMPAGE et courbe constructeur COPIÉS du produit
+        # (contrat stock ``produit_pompage.json`` › ``item_ligne_devis_rendu``,
+        # AGR7) : ``agricole/synthese`` lit la ligne pompe et sa courbe sur
+        # l'item, sans relire le catalogue ni reclasser par le nom. ``None``
+        # quand le produit ne les porte pas (résidentiel, pompe sans courbe).
+        "role_pompage": (getattr(produit, "role_pompage", None) or None),
+        "courbe_pompe": (getattr(produit, "courbe_pompe", None) or None),
         "_produit_nom": produit_nom,
     }
 
