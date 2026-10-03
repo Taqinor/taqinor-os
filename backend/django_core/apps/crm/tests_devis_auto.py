@@ -241,7 +241,7 @@ class TestDevisAutoEndpoint(TestCase):
         self.assertEqual(resp.status_code, 400, resp.data)
         # EXACTEMENT les champs manquants, même message que le sérialiseur.
         self.assertEqual(resp.data['detail'], MSG_AGRICOLE)
-        ser =self.api.get(f'/api/django/crm/leads/{self.lead.id}/').data
+        ser = self.api.get(f'/api/django/crm/leads/{self.lead.id}/').data
         self.assertEqual(ser['devis_auto']['message'], resp.data['detail'])
 
     def test_200_once_fields_filled(self):
