@@ -238,7 +238,18 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
     def perform_create(self, serializer):
-        super().perform_create(serializer)
+        # CAD177 — la référence est attribuée côté serveur (`CHT-…`, même
+        # numérotation que `creer-depuis-devis`). Avant, ce chemin POST nu
+        # laissait `reference=''` : le 2e chantier créé ainsi dans la même
+        # société violait l'unicité (company, reference) → IntegrityError,
+        # HTTP 500 (vu en e2e-full nocturne, E-INSTALL-3).
+        from apps.ventes.utils.references import create_with_reference
+        company = self.request.user.company
+
+        def _save(reference):
+            return serializer.save(company=company, reference=reference)
+
+        create_with_reference(Installation, 'CHT', company, _save)
         inst = serializer.instance
         inst.created_by = self.request.user
         fields = ['created_by']
