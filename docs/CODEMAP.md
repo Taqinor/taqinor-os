@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 933bf7e89b8c3e5a9df9502a0316c7e3f5fc1c6571c31ebd95c260dd83617c1c
-Plan fingerprint: 60f1e169b9c0e2e6631e781bcf15383eb188c1883fd85dc5510e2cc6f094114c
+Plan fingerprint: fd7e37df55e9b264cf37ce075b9329575b88fa79220d2d18185950caa43d7d3e
 
 
 
@@ -551,7 +551,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (751)**
+**Done (769)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -563,6 +563,24 @@ Things this map could not fully verify from source — do not over-trust:
 - `ERR122` — [DÉGATÉ 29/09/2026 — décision fondateur (question interactive) : bump majeur autorisé…
 - `ERR123` — [DÉGATÉ 29/09/2026 — décision fondateur (question interactive) : bump majeur autorisé…
 - `ERR124` — [installations]
+- `AGR1` — Contrat d'abord : forme pompage du Lead, règle « devis auto prêt » agricole et drapeaux…
+- `AGR2` — Contrat d'abord : aperçu serveur du pompage + clés `etude_params` pompage v2
+- `AGR3` — Contrat d'abord : le bloc `economie_pompage` (économie agricole déclarée), ses saisies…
+- `AGR4` — Contrat d'abord : la charge utile publique d'un devis agricole (`synthese_agricole`…
+- `AGR5` — Contrat d'abord : la visite « relevé du point d'eau » (gabarit agricole)
+- `AGR6` — Contrat d'abord : recette de mise en service pompage (mesures, comparaison au devis…
+- `AGR7` — Contrat d'abord : le produit pompe / variateur structuré
+- `AGR200` — Contrat d'abord : base légale TVA par ligne, date prévue d'une tranche, attestation…
+- `AGR500` — Contrat d'abord : la touche de relance dit le segment du lead
+- `AGR501` — Contrat d'abord : l'état du dossier de subvention, champ interne
+- `AGR502` — Contrat d'abord : la mesure de la cadence découpée par segment
+- `AGR503` — Contrat d'abord : le cockpit « Contrôle du suivi » filtrable par segment
+- `AGR504` — Contrat d'abord : « envoyer le résumé à un associé »
+- `AGR505` — Contrat d'abord : une réalisation porte son segment
+- `AGR506` — Contrat d'abord : la carte des références proches
+- `AGR507` — Contrat d'abord : la tâche du playbook sait quel texte proposer
+- `AGR600` — Contrat d'abord : relevés de compteur heures / m³ et facturation à l'usage en m³ (SAV)
+- `AGR601` — Contrat d'abord : relevés de la pompe saisis par le client sur le portail
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
 - `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
@@ -1305,15 +1323,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `QJR669` — [DÉCIDÉ fondateur 01/10/2026 : suit le devis corrigé et envoyé] Sémantique de…
 - `QJR670` — Le PDF public d'un devis ACCEPTÉ sert l'exemplaire SIGNÉ figé, plus un re-rendu en…
 
-**Open — to build (263)**
+**Open — to build (245)**
 
-- `AGR1` — Contrat d'abord : forme pompage du Lead, règle « devis auto prêt » agricole et drapeaux…
-- `AGR2` — Contrat d'abord : aperçu serveur du pompage + clés `etude_params` pompage v2
-- `AGR3` — Contrat d'abord : le bloc `economie_pompage` (économie agricole déclarée), ses saisies…
-- `AGR4` — Contrat d'abord : la charge utile publique d'un devis agricole (`synthese_agricole`…
-- `AGR5` — Contrat d'abord : la visite « relevé du point d'eau » (gabarit agricole)
-- `AGR6` — Contrat d'abord : recette de mise en service pompage (mesures, comparaison au devis…
-- `AGR7` — Contrat d'abord : le produit pompe / variateur structuré
 - `AGR100` — Produit pompe/variateur : champs structurés et vocabulaire de rôles pompage (fin du…
 - `AGR101` — Fiche technique typée « pompe » et « variateur de pompage » (valeurs constructeur…
 - `AGR102` — Courbe de pompe refusée si elle n'est pas physiquement lisible
@@ -1351,7 +1362,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGR134` — Marge indicative : dire quand elle est partielle
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGR136` — Guide Meryem « Devis pompage en 10 gestes » dans la GED, régénéré par script
-- `AGR200` — Contrat d'abord : base légale TVA par ligne, date prévue d'une tranche, attestation…
 - `AGR201` — Moteur `economie_pompage` (1/5) : la dépense ACTUELLE vient des chiffres déclarés…
 - `AGR202` — Moteur `economie_pompage` (2/5) : charges solaires, remplacements au prix réel des…
 - `AGR203` — Moteur `economie_pompage` (3/5) : coût du m³ actuel et solaire, sensibilité au prix du…
@@ -1417,14 +1427,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGR422` — Écrans de visite : saisie et revue du gabarit « relevé du point d'eau »
 - `AGR423` — Aller-retour EN DIRECT du lead agricole : site → fiche → appel → visite du point d'eau…
 - `AGR424` — Retirer l'alias déprécié `pompe_cv` du sérialiseur Lead/SiteProfile (fin de la scission…
-- `AGR500` — Contrat d'abord : la touche de relance dit le segment du lead
-- `AGR501` — Contrat d'abord : l'état du dossier de subvention, champ interne
-- `AGR502` — Contrat d'abord : la mesure de la cadence découpée par segment
-- `AGR503` — Contrat d'abord : le cockpit « Contrôle du suivi » filtrable par segment
-- `AGR504` — Contrat d'abord : « envoyer le résumé à un associé »
-- `AGR505` — Contrat d'abord : une réalisation porte son segment
-- `AGR506` — Contrat d'abord : la carte des références proches
-- `AGR507` — Contrat d'abord : la tâche du playbook sait quel texte proposer
 - `AGR510` — Textes FR pompage : plus de facture, de toit, de promesse d'économie ni de « chez vous…
 - `AGR511` — Variantes darija pompage de TOUTES les clés agricoles (D-AGR-11)
 - `AGR512` — Le réveil saisonnier « factures d'été » exclut l'agricole
@@ -1453,8 +1455,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGR542` — Cockpit « Contrôle du suivi » : filtre `segment`, appliqué aussi par l'oracle
 - `AGR543` — Cockpit : sélecteur « Segment »
 - `AGR545` — Aller-retour EN DIRECT du suivi d'un lead agricole (clôture de la vague, leçon QJR5)
-- `AGR600` — Contrat d'abord : relevés de compteur heures / m³ et facturation à l'usage en m³ (SAV)
-- `AGR601` — Contrat d'abord : relevés de la pompe saisis par le client sur le portail
 - `AGR602` — Chantier pompage (1/2) : régime « déclaration hors réseau » (loi 82-21, art
 - `AGR603` — Jumeau ventes du régime hors réseau : dossiers réglementaires et régularisation art
 - `AGR604` — Écran chantier : régime hors réseau, raccordement au réseau, avertissement consultatif…

@@ -1,0 +1,31 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/references-proches/",
+  "pourquoi": "AGR506 (Groupe AGR, audit L3 du devis agricole, 02/10/2026 ; D-AGR-10) — CONTRAT D'ABORD (PACT10). Aujourd'hui aucun outil ne liste à la commerciale les installations RÉELLES proches d'un exploitant, alors que « allez voir chez un voisin » est l'argument de proximité cité par le guide GIZ 2017 (W4-24). Réponse : {`segment`, `references`: [{`id`, `titre`, `ville`, `distance_km`, `mise_en_service`, `url_page`, `lien_video`}]}. RÈGLES : seules les réalisations ACTIVES du segment du lead sont servies, selon la règle de preuve SYMÉTRIQUE du contrat `parametres/contract_samples/realisation.json` (AGR505 : un lead agricole ne reçoit que des réalisations agricoles ; un lead non agricole jamais une agricole ; une réalisation sans segment seulement pour un lead non agricole) ; triées par distance croissante, les distances inconnues en dernier ; `distance_km` = entier, `null` si les coordonnées d'une des deux villes sont inconnues (jamais une distance devinée) ; `mise_en_service` = AAAA-MM (précision mois) ou null ; la VILLE seulement — jamais une adresse ni un nom de client ; `lien_video` = chaîne vide quand il n'y en a pas. Liste vide = rien à montrer, JAMAIS un toit à la place (`exemple_vide` : aujourd'hui aucune réalisation de pompage n'est saisie). `segment` = `crm.Lead.type_installation` du lead (chaîne vide si non renseigné). Lecture seule, bornée à la société. Valeurs ILLUSTRATIVES.",
+  "exemple": {
+    "segment": "residentiel",
+    "references": [
+      {
+        "id": 12,
+        "titre": "Villa à Bouskoura",
+        "ville": "Bouskoura",
+        "distance_km": 8,
+        "mise_en_service": "2026-07",
+        "url_page": "https://taqinor.ma/realisations/villa-bouskoura/",
+        "lien_video": ""
+      },
+      {
+        "id": 21,
+        "titre": "Maison à Berrechid",
+        "ville": "Berrechid",
+        "distance_km": null,
+        "mise_en_service": null,
+        "url_page": "https://taqinor.ma/realisations/maison-berrechid/",
+        "lien_video": ""
+      }
+    ]
+  },
+  "exemple_vide": {
+    "segment": "agricole",
+    "references": []
+  }
+}
