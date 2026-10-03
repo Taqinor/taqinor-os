@@ -326,6 +326,19 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         # interne inchangé par défaut). Le jeton public est généré lazily.
         public = request.query_params.get('public') in ('1', 'true')
 
+        # AGR621 — étiquette PUBLIQUE (coffret d'un forage isolé) : pied
+        # « SAV : <téléphone société> · Chantier <référence> », chaque partie
+        # omise si vide. Jamais un délai d'intervention (aucun engagement
+        # décidé). L'étiquette interne reste octet-identique.
+        telephone = ''
+        if public:
+            from apps.parametres.models import CompanyProfile
+            try:
+                profil = CompanyProfile.get(company=request.user.company)
+                telephone = (getattr(profil, 'telephone', '') or '').strip()
+            except Exception:
+                telephone = ''
+
         items = []
         for eq in qs:
             if public:
@@ -336,7 +349,18 @@ class EquipementViewSet(CompanyScopedModelViewSet):
                 token = eq.equipement_token or f'EQUIP:{eq.pk}'
             titre = eq.produit.nom if eq.produit_id else '—'
             sous_titre = eq.numero_serie or '(sans série)'
-            items.append({'token': token, 'titre': titre, 'sous_titre': sous_titre})
+            item = {'token': token, 'titre': titre, 'sous_titre': sous_titre}
+            if public:
+                parties = []
+                if telephone:
+                    parties.append(f'SAV : {telephone}')
+                reference = (getattr(eq.installation, 'reference', '') or ''
+                             if eq.installation_id else '')
+                if reference:
+                    parties.append(f'Chantier {reference}')
+                if parties:
+                    item['pied'] = ' · '.join(parties)
+            items.append(item)
 
         if not items:
             return Response({'detail': 'Aucun équipement.'}, status=404)
