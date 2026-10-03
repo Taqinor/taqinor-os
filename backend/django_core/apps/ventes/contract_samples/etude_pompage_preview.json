@@ -20,6 +20,7 @@
     "besoin": {
       "mode": "volume_declare",
       "volume_m3_jour": 135,
+      "debit_souhaite_m3h": null,
       "mois_pointe": 7,
       "debit_actuel_m3h": null,
       "heures_actuelles_jour": null,
@@ -79,7 +80,8 @@
     "taille": "recommandee | inferieure | superieure (défaut : recommandee)",
     "alim": "mono | tri | dc",
     "type_pompe": "immergee | surface | dc",
-    "besoin.region": "une des 8 régions agronomiques émises par le site : souss-massa | doukkala | tadla | saiss | oriental | draa-tafilalet | gharb-loukkos | haouz (crm/webhooks.py _REGIONS_AGRICOLES)"
+    "besoin.region": "une des 8 régions agronomiques émises par le site : souss-massa | doukkala | tadla | saiss | oriental | draa-tafilalet | gharb-loukkos | haouz (crm/webhooks.py _REGIONS_AGRICOLES)",
+    "besoin.debit_souhaite_m3h": "débit SOUHAITÉ par le client (colonne Lead `pompe_debit_m3h`) — servi à côté du débit livré (couverture) ; ne fixe jamais seul le besoin (D-AGR-3)"
   },
   "exemple": {
     "entrees_resolues": {
