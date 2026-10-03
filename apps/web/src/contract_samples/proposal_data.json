@@ -3,6 +3,7 @@
   "forme_serveur": "complete",
   "pourquoi": "QJR3 (M0, audit L3 du 29/08/2026) — `apps/ventes/public_views.py::proposal_data` (~lignes 2343-2906) est un dict ASSEMBLÉ À LA MAIN, sans sérialiseur et sans forme déclarée (un commentaire à ~2961-2967 reconnaît que le générateur DRF ne sait pas l'introspecter). CE CONTRAT NE LE CONVERTIT PAS en sérialiseur DRF — chantier séparé, bien plus gros — il POSE la carte clé → nature de ce qu'il renvoie RÉELLEMENT aujourd'hui, dérivée d'une lecture du code (pas d'une exécution), pour que le test de forme QJR7 (M1, PAS dans ce commit) puisse vérifier le serveur contre cette carte au lieu que chaque consommateur (la page publique `apps/web`, les tests) invente sa propre hypothèse — l'incident PACT10 du 03/08/2026, rejoué. M0 reste docs-only : aucun test, aucun code de production dans ce commit.",
   "notes": {
+    "agricole_agr4": "AGR4 (Groupe AGR, audit L3 du devis agricole, 02/10/2026 ; D-AGR-2, D-AGR-5, D-AGR-6, D-AGR-10, D-AGR-13) — CONTRAT D'ABORD (PACT10, patron QJR501) : `exemple_agricole` est un FRAGMENT (seules les clés propres à l'agricole sont montrées ; toutes les autres clés de base gardent la forme de `exemple`). (1) `mode_kpis` agricole = {pompe_cv, pompe_kw, hmt_m, debit_hmt_m3h, m3_jour, heures_pompage, champ_kwc} — `bassin_m3` (×2 non sourcé) et `fda_eligible` (verdict propre au client, contraire à D-AGR-6) sont RETIRÉS ; ces sept clés sont les dérivées v1 écrites par le NOUVEAU moteur (`cles_etude_params_v2` du contrat partagé `etude_pompage_preview.json`). (2) En agricole, les clés économiques résidentielles de `quote` (eco_s_ann … hypotheses) valent `null`, et `economies_mensuelles` / `economies_periodes` sont ABSENTES. (3) `synthese_agricole` est une clé ADDITIVE : absente hors agricole, jamais `null` ; une sous-clé marquée `?` dans la tâche (besoin_vs_livre, point_fonctionnement, economies, energie_actuelle, pompe.plaque) est ABSENTE quand elle n'a rien à montrer et nommée dans `omissions`. `provenance` = la forme UNIQUE {origine, detail, date} du contrat partagé `etude_pompage_preview.json` (AGR2), citée mot pour mot ; la nature « besoin agronomique plein » est `besoin.nature` d'AGR2 (ici `base_besoin`), jamais une provenance. `economies` = le bloc PUBLIC du contrat partagé `economie_pompage.json` (AGR3), c.-à-d. son `exemple` SANS `vue_interne` — recopié tel quel, jamais redéfini. `aide_fda` imprime la RÈGLE (conditions, plafonds, édition, source, date, textes fr/en/ar) : AUCUN montant propre au client, aucun délai, jamais « jusqu'à 30 % » (D-AGR-6). Aucun `prix_achat` ni marge, à aucun niveau. `exemple` reste inchangé (`forme_serveur: complete` vert : la clé additive n'y figure pas tant que la vue ne l'émet pas ; AGR308 l'ajoute à `exemple` avec la vue). Valeurs ILLUSTRATIVES, alignées sur l'`exemple` du contrat AGR2 ; textes arabes à relire par Reda (D-AGR-11, sans bloquer l'envoi).",
     "remplace_par": "QJR501 / QJR536 (D-QJR5-1) — `remplace_par` : null tant que le devis n'est pas remplacé ; sinon {reference, url} de la version EN VIGUEUR (dernière de la chaîne superseded_by, même société). `url` = '/proposition/<slug>/<token>' du successeur ENVOYÉ avec un lien déjà valide, null si le successeur est encore brouillon (jamais servi au client). Les deux cas sont les fragments `exemple_remplace_par_envoye` / `exemple_remplace_par_brouillon` (seule la clé décrite). public_views émet, le web (`resolveOfferState`, [...token].astro) lit : une version remplacée n'est plus signable et dit « remplacée par … ».",
     "note_client": "QJR501 / QJR536 (D-QJR5-6) — `note_client` : texte CLIENT du champ Notes du devis ('' si vide). L'élément de `variants` garde sa forme {id, reference, version, total_ttc, note}.",
     "structure_de_la_reponse": "48 clés TOUJOURS présentes (QJR536 : + `remplace_par` et `note_client`, posées dans le littéral ; littéral `payload = {...}`, public_views.py:2531-2710, plus `niveau_masque` posée juste avant le retour à la ligne 2897) + 20 clés ADDITIVES conditionnées par section/donnée disponible (posées une à une par `if X is not None: payload['clef'] = X`, lignes 2716-2892 — jamais un `null` explicite : la clé est ABSENTE tout court quand rien n'est calculable ou que la case du dialogue d'envoi correspondante est décochée). Les deux niveaux de partage (`standard`/`confiance`, champ `niveau`) servent le MÊME jeu de clés — la dégradation `standard` simplifie le CONTENU de `quote`/`sld_svg`/`conception_electrique` (agrégation en un kit, calibres retirés) et le documente dans `niveau_masque`, elle ne retire AUCUNE clé de la carte ci-dessous. Seules les cases du dialogue d'envoi (`ShareLink.sections`) retirent des clés — additivement, indépendamment du niveau.",
@@ -360,5 +361,602 @@
   },
   "exemple_remplace_par_brouillon": {
     "remplace_par": {"reference": "DEV-202609-0012", "url": null}
+  },
+  "exemple_agricole": {
+    "mode_installation": "agricole",
+    "mode_kpis": {
+      "pompe_cv": 10.2,
+      "pompe_kw": 7.5,
+      "hmt_m": 58.7,
+      "debit_hmt_m3h": 30.5,
+      "m3_jour": 134.2,
+      "heures_pompage": 4.4,
+      "champ_kwc": 9.94
+    },
+    "quote": {
+      "eco_s_ann": null,
+      "eco_a_ann": null,
+      "eco_a_cumul": null,
+      "roi_s": null,
+      "roi_a": null,
+      "cashflow_sans": null,
+      "cashflow_avec": null,
+      "cashflow_assumptions": null,
+      "net_gain_sans": null,
+      "net_gain_avec": null,
+      "eco_s_monthly": null,
+      "eco_a_monthly": null,
+      "savings_method": null,
+      "hypotheses": null
+    },
+    "synthese_agricole": {
+      "version": 2,
+      "mode_pompe": "neuve",
+      "eau": {
+        "m3_jour": 134.2,
+        "heures_pompage": 4.4,
+        "hmt_m": 58.7,
+        "debit_hmt_m3h": 30.5,
+        "estimation": false
+      },
+      "provenance": {
+        "volume_m3_jour": {
+          "origine": "lead",
+          "detail": "client",
+          "date": "2026-09-12"
+        },
+        "niveau_statique_m": {
+          "origine": "lead",
+          "detail": "mesure_visite",
+          "date": "2026-09-15"
+        },
+        "niveau_dynamique_m": {
+          "origine": "lead",
+          "detail": "mesure_visite",
+          "date": "2026-09-15"
+        },
+        "debit_exploitation_m3h": {
+          "origine": "saisie",
+          "detail": "foreur",
+          "date": "2026-09-15"
+        },
+        "energie_actuelle": {
+          "origine": "saisie",
+          "detail": null,
+          "date": "2026-09-12"
+        }
+      },
+      "a_confirmer_par_visite": [
+        "profondeur_forage_m"
+      ],
+      "pompe": {
+        "cv": 10.2,
+        "kw": 7.5
+      },
+      "champ": {
+        "kwc": 9.94,
+        "nb_panneaux": 14
+      },
+      "besoin_vs_livre": {
+        "mois": [
+          {
+            "besoin_m3_jour": 135,
+            "livre_m3_jour": 140.3
+          },
+          {
+            "besoin_m3_jour": 135,
+            "livre_m3_jour": 161.7
+          },
+          {
+            "besoin_m3_jour": 135,
+            "livre_m3_jour": 186.0
+          },
+          {
+            "besoin_m3_jour": 135,
+            "livre_m3_jour": 207.4
+          },
+          {
+            "besoin_m3_jour": 135,
+            "livre_m3_jour": 219.6
+          },
+          {
+            "besoin_m3_jour": 135,
+            "livre_m3_jour": 225.7
+          },
+          {
+            "besoin_m3_jour": 135,
+            "livre_m3_jour": 228.8
+          },
+          {
+            "besoin_m3_jour": 135,
+            "livre_m3_jour": 222.7
+          },
+          {
+            "besoin_m3_jour": 135,
+            "livre_m3_jour": 201.3
+          },
+          {
+            "besoin_m3_jour": 135,
+            "livre_m3_jour": 173.8
+          },
+          {
+            "besoin_m3_jour": 135,
+            "livre_m3_jour": 146.4
+          },
+          {
+            "besoin_m3_jour": 135,
+            "livre_m3_jour": 134.2
+          }
+        ],
+        "mois_le_plus_serre": 12,
+        "hectares_irrigables": null,
+        "base_besoin": "declare"
+      },
+      "point_fonctionnement": {
+        "courbe": [
+          [
+            0,
+            91
+          ],
+          [
+            12,
+            85
+          ],
+          [
+            24,
+            70
+          ],
+          [
+            30,
+            60
+          ],
+          [
+            36,
+            43
+          ],
+          [
+            39,
+            34
+          ]
+        ],
+        "point": {
+          "debit_m3h": 30.5,
+          "hmt_m": 58.7
+        }
+      },
+      "schema": {
+        "profondeur_m": 90,
+        "niveau_m": 40,
+        "distance_m": 25,
+        "hmt_m": 58.7,
+        "bassin": null
+      },
+      "schema_svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 400 300\"><!-- schéma forage → pompe → variateur → panneaux, rendu par le serveur ; abrégé dans l'exemple --></svg>",
+      "economies": {
+        "statut": "calcule",
+        "publiable_client": true,
+        "motifs_non_publiable": [],
+        "cas": "carburant",
+        "entrees_declarees": [
+          {
+            "cle": "energie_actuelle",
+            "valeur": "butane",
+            "unite": null,
+            "provenance": {
+              "origine": "saisie",
+              "detail": null,
+              "date": "2026-09-12"
+            },
+            "saisi_le": "2026-09-12"
+          },
+          {
+            "cle": "consommation",
+            "valeur": 4,
+            "unite": "bouteille_12kg par jour d'irrigation",
+            "provenance": {
+              "origine": "saisie",
+              "detail": null,
+              "date": "2026-09-12"
+            },
+            "saisi_le": "2026-09-12"
+          },
+          {
+            "cle": "jours_irrigation_par_semaine",
+            "valeur": 6,
+            "unite": "jours",
+            "provenance": {
+              "origine": "saisie",
+              "detail": null,
+              "date": "2026-09-12"
+            },
+            "saisi_le": "2026-09-12"
+          },
+          {
+            "cle": "depense_unitaire_payee",
+            "valeur": 50.0,
+            "unite": "MAD par bouteille",
+            "provenance": {
+              "origine": "saisie",
+              "detail": null,
+              "date": "2026-09-12"
+            },
+            "saisi_le": "2026-09-12"
+          },
+          {
+            "cle": "mois_irrigation",
+            "valeur": [
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ],
+            "unite": "mois",
+            "provenance": {
+              "origine": "saisie",
+              "detail": null,
+              "date": "2026-09-12"
+            },
+            "saisi_le": "2026-09-12"
+          },
+          {
+            "cle": "entretien_paye_mad_an",
+            "valeur": 1500.0,
+            "unite": "MAD par an",
+            "provenance": {
+              "origine": "saisie",
+              "detail": null,
+              "date": "2026-09-12"
+            },
+            "saisi_le": "2026-09-12"
+          }
+        ],
+        "depense_actuelle": {
+          "par_mois": [
+            0.0,
+            0.0,
+            0.0,
+            5142.86,
+            5314.29,
+            5142.86,
+            5314.29,
+            5314.29,
+            5142.86,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "entretien_mad_an": 1500.0,
+          "annuelle_mad": 32871.45,
+          "formule": "par mois coché : quantité × jours d'irrigation par semaine × jours du mois ÷ 7 × prix payé déclaré ; + entretien payé déclaré"
+        },
+        "charges_solaires": {
+          "total_mad_an": 600.0,
+          "lignes": [
+            {
+              "libelle": "Nettoyage des panneaux et visite annuelle",
+              "montant_mad_an": 600.0,
+              "source": "barème société"
+            }
+          ]
+        },
+        "remplacements": [
+          {
+            "composant": "pompe",
+            "annee": 7,
+            "montant_ttc_mad": 18000.0,
+            "source": "Banque mondiale 2018, « Solar Pumping: The Basics » — TTC réel de la ligne pompe",
+            "motif": null
+          },
+          {
+            "composant": "variateur",
+            "annee": null,
+            "montant_ttc_mad": null,
+            "source": null,
+            "motif": "garantie constructeur non renseignée : remplacement omis"
+          }
+        ],
+        "economie": {
+          "horizon_ans": 10,
+          "flux": [
+            {
+              "annee": 0,
+              "economie_mad": 0.0,
+              "flux_mad": -95000.0,
+              "cumul_mad": -95000.0,
+              "flux_actualise_mad": null
+            },
+            {
+              "annee": 1,
+              "economie_mad": 32871.45,
+              "flux_mad": 32271.45,
+              "cumul_mad": -62728.55,
+              "flux_actualise_mad": null
+            },
+            {
+              "annee": 2,
+              "economie_mad": 32871.45,
+              "flux_mad": 32271.45,
+              "cumul_mad": -30457.1,
+              "flux_actualise_mad": null
+            },
+            {
+              "annee": 3,
+              "economie_mad": 32871.45,
+              "flux_mad": 32271.45,
+              "cumul_mad": 1814.35,
+              "flux_actualise_mad": null
+            },
+            {
+              "annee": 4,
+              "economie_mad": 32871.45,
+              "flux_mad": 32271.45,
+              "cumul_mad": 34085.8,
+              "flux_actualise_mad": null
+            },
+            {
+              "annee": 5,
+              "economie_mad": 32871.45,
+              "flux_mad": 32271.45,
+              "cumul_mad": 66357.25,
+              "flux_actualise_mad": null
+            },
+            {
+              "annee": 6,
+              "economie_mad": 32871.45,
+              "flux_mad": 32271.45,
+              "cumul_mad": 98628.7,
+              "flux_actualise_mad": null
+            },
+            {
+              "annee": 7,
+              "economie_mad": 32871.45,
+              "flux_mad": 14271.45,
+              "cumul_mad": 112900.15,
+              "flux_actualise_mad": null
+            },
+            {
+              "annee": 8,
+              "economie_mad": 32871.45,
+              "flux_mad": 32271.45,
+              "cumul_mad": 145171.6,
+              "flux_actualise_mad": null
+            },
+            {
+              "annee": 9,
+              "economie_mad": 32871.45,
+              "flux_mad": 32271.45,
+              "cumul_mad": 177443.05,
+              "flux_actualise_mad": null
+            },
+            {
+              "annee": 10,
+              "economie_mad": 32871.45,
+              "flux_mad": 32271.45,
+              "cumul_mad": 209714.5,
+              "flux_actualise_mad": null
+            }
+          ],
+          "van_mad": null,
+          "tri_pct": 30.7521,
+          "lcoe_mad_kwh": null,
+          "retour_ans": 3,
+          "retour_actualise_ans": null,
+          "hypotheses": [
+            {
+              "cle": "investissement_mad",
+              "valeur": 95000.0,
+              "source": "devis DEV-2026-10-0001 — total TTC client des lignes (jamais le prix d'achat)",
+              "saisie_le": null
+            },
+            {
+              "cle": "economie_annee1_mad",
+              "valeur": 32871.45,
+              "source": "dépense actuelle déclarée × part évitée des mois cochés + entretien payé déclaré",
+              "saisie_le": "2026-09-12"
+            },
+            {
+              "cle": "horizon_ans",
+              "valeur": 10,
+              "source": "décision fondateur D-AGR-5 du 02/10/2026",
+              "saisie_le": null
+            },
+            {
+              "cle": "indexation_pct",
+              "valeur": 0.0,
+              "source": "décision fondateur D-AGR-5 du 02/10/2026 — prix du carburant constant : il peut monter ou baisser",
+              "saisie_le": null
+            },
+            {
+              "cle": "degradation_pct",
+              "valeur": 0.0,
+              "source": "sans objet : l'économie est une dépense déclarée évitée, pas une production valorisée",
+              "saisie_le": null
+            },
+            {
+              "cle": "charges_solaires_mad_an",
+              "valeur": 600.0,
+              "source": "barème société — Paramètres › Tarification & ROI › Pompage agricole",
+              "saisie_le": "2026-09-30"
+            },
+            {
+              "cle": "remplacement_pompe",
+              "valeur": {
+                "annee": 7,
+                "montant_ttc_mad": 18000.0
+              },
+              "source": "Banque mondiale 2018, « Solar Pumping: The Basics » (pompe à remplacer après 7-10 ans) — TTC réel de la ligne pompe du devis",
+              "saisie_le": null
+            }
+          ],
+          "omissions": [
+            {
+              "cle": "taux_actualisation_pct",
+              "motif": "taux d'actualisation : vue interne uniquement (D-AGR-5) — VAN, retour actualisé et flux actualisés non publiés"
+            },
+            {
+              "cle": "lcoe_mad_kwh",
+              "motif": "sans objet pour le pompage : aucune énergie vendue ni valorisée en kWh"
+            },
+            {
+              "cle": "remplacement_variateur",
+              "motif": "garantie constructeur du variateur non renseignée sur la fiche produit : remplacement omis"
+            }
+          ]
+        },
+        "couverture": {
+          "verifiee": true,
+          "part_evitee_par_mois": [
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ],
+          "motif": null
+        },
+        "mad_par_m3": {
+          "actuel": 1.55,
+          "solaire": 0.56,
+          "formule": "actuel = dépense annuelle déclarée ÷ volume pompé annuel déclaré ; solaire = (investissement + remplacements + charges sur 10 ans) ÷ (volume utile annuel × 10)"
+        },
+        "sensibilite_carburant": [
+          {
+            "facteur": 0.8,
+            "libelle": "si le prix payé était 40 DH la bouteille",
+            "valeur_unitaire_mad": 40.0,
+            "economie_nette_mad_an": 25997.16,
+            "retour_ans": 4
+          },
+          {
+            "facteur": 0.9,
+            "libelle": "si le prix payé était 45 DH la bouteille",
+            "valeur_unitaire_mad": 45.0,
+            "economie_nette_mad_an": 29134.29,
+            "retour_ans": 4
+          },
+          {
+            "facteur": 1.1,
+            "libelle": "si le prix payé était 55 DH la bouteille",
+            "valeur_unitaire_mad": 55.0,
+            "economie_nette_mad_an": 35408.55,
+            "retour_ans": 3
+          },
+          {
+            "facteur": 1.2,
+            "libelle": "si le prix payé était 60 DH la bouteille",
+            "valeur_unitaire_mad": 60.0,
+            "economie_nette_mad_an": 38545.71,
+            "retour_ans": 3
+          },
+          {
+            "facteur": 1.5,
+            "libelle": "si le prix payé était 75 DH la bouteille",
+            "valeur_unitaire_mad": 75.0,
+            "economie_nette_mad_an": 47957.16,
+            "retour_ans": 2
+          }
+        ],
+        "seuil_rentabilite_carburant": {
+          "valeur_unitaire_mad": 16.58,
+          "unite": "MAD par bouteille 12 kg",
+          "formule": "valeur unitaire pour laquelle le cumul à 10 ans vaut 0 (indexation 0 %)"
+        },
+        "financement": null,
+        "coherence": [],
+        "reperes_affiches": [],
+        "omissions": [
+          {
+            "cle": "repere_butane_12kg_detail",
+            "motif": "repère sans source : non affiché à côté du champ"
+          },
+          {
+            "cle": "financement",
+            "motif": "aucun prêt saisi"
+          }
+        ]
+      },
+      "energie_actuelle": {
+        "valeur": "butane",
+        "provenance": {
+          "origine": "saisie",
+          "detail": null,
+          "date": "2026-09-12"
+        }
+      },
+      "aide_fda": {
+        "conditions": [
+          "accord préalable obtenu AVANT les travaux",
+          "versement après réalisation",
+          "un seul projet par exploitation"
+        ],
+        "plafonds": {
+          "taux_pct": 30,
+          "plafond_mad_par_ha": 3000,
+          "plafond_mad_par_kwc": 3000,
+          "plafond_mad_par_projet": 30000
+        },
+        "edition": "Guide FDA 2024",
+        "source": "Guide FDA édition 2024, p.20-23",
+        "releve_le": "2026-10-02",
+        "textes": {
+          "fr": "Aide de l'État (Fonds de développement agricole) au pompage solaire : 30 % de l'investissement, plafonnée à 3 000 DH par hectare, 3 000 DH par kWc et 30 000 DH par projet. Accord préalable à obtenir AVANT les travaux ; versement après réalisation ; un seul projet par exploitation. Source : Guide FDA, édition 2024, p.20-23. Le montant et l'éligibilité sont fixés par l'administration, pas par ce devis.",
+          "en": "State aid (Agricultural Development Fund) for solar pumping: 30% of the investment, capped at 3,000 MAD per hectare, 3,000 MAD per kWp and 30,000 MAD per project. Prior approval must be obtained BEFORE the works; payment after completion; one project per farm. Source: FDA Guide, 2024 edition, pp.20-23. The amount and eligibility are set by the administration, not by this quote.",
+          "ar": "دعم الدولة (صندوق التنمية الفلاحية) للضخ بالطاقة الشمسية: 30 % من الاستثمار، في حدود 3 000 درهم للهكتار و3 000 درهم للكيلوواط ذروة و30 000 درهم للمشروع. يجب الحصول على الموافقة المسبقة قبل الأشغال؛ يُصرف الدعم بعد الإنجاز؛ مشروع واحد لكل استغلالية. المصدر: دليل صندوق التنمية الفلاحية، طبعة 2024، ص 20-23. المبلغ والأهلية تحددهما الإدارة، لا هذا العرض."
+        }
+      },
+      "garanties": [
+        {
+          "composant": "pompe",
+          "mois": 24,
+          "libelle": "Garantie constructeur de la pompe"
+        },
+        {
+          "composant": "variateur",
+          "mois": null,
+          "libelle": "Garantie constructeur non renseignée"
+        }
+      ],
+      "options_kit": [
+        {
+          "ligne_id": 90311,
+          "designation": "Afficheur du variateur",
+          "total_ttc": 950.0
+        }
+      ],
+      "non_inclus": [
+        "forage",
+        "genie_civil"
+      ],
+      "formalites": [
+        {
+          "cle": "declaration_8221",
+          "textes": {
+            "fr": "Installation hors réseau : soumise à DÉCLARATION (loi 82-21, art. 3).",
+            "en": "Off-grid installation: subject to DECLARATION (Law 82-21, art. 3).",
+            "ar": "منشأة غير مرتبطة بالشبكة: تخضع للتصريح (القانون 82-21، المادة 3)."
+          },
+          "source": "Loi 82-21, art. 3"
+        }
+      ],
+      "omissions": [
+        {
+          "bloc": "preuve_realisation",
+          "motif": "aucune réalisation de pompage saisie (D-AGR-10) : jamais un toit à la place"
+        },
+        {
+          "bloc": "co2",
+          "motif": "aucun facteur d'émission diesel ou GPL relu à une source primaire : bloc masqué en agricole"
+        }
+      ]
+    }
   }
 }
