@@ -1930,6 +1930,14 @@ class FicheTechniqueSerializer(AttachmentSerializerMixin,
             'opt_ac_unites_max_par_branche', 'opt_v_out_nominal_v',
             'opt_v_out_min', 'opt_v_out_max', 'opt_i_out_max_a',
             'opt_pmax_out_w', 'opt_modules_max_par_chaine',
+            # AGR101 — fiches pompe / variateur de pompage (valeurs constructeur ;
+            # vide = non publié).
+            'pompe_i_nominal_a', 'pompe_diametre_ext_mm', 'pompe_nb_etages',
+            'pompe_immersion_min_m', 'pompe_rendement_pct',
+            'pompe_q_nominal_m3h', 'pompe_hmt_nominale_m',
+            'var_voc_reco_min_v', 'var_voc_reco_max_v', 'var_v_sortie_v',
+            'var_i_sortie_nominal_a', 'var_protection_marche_a_sec',
+            'var_rendement_mppt_pct',
             'pdf', 'pdf_url', 'pdf_filename', 'pdf_size', 'pdf_mime',
             'date_creation', 'date_mise_a_jour',
         ]
