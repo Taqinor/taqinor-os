@@ -4401,7 +4401,19 @@ def _mesure_onepage(html):
                 bas_totaux = bas if bas_totaux is None else max(bas_totaux, bas)
             hauteurs.append(boite.height)
         if bas_totaux is None:
-            return None
+            # CAD177 — le bloc de totaux est ABSENT de la page composée : ce
+            # n'est PAS une mesure impossible. WeasyPrint arrête la composition
+            # au bord bas de la page A4 et JETTE le reste du flux de la zone
+            # ``overflow:hidden`` (constaté sur 60 lignes : 42 composées, puis
+            # plus rien — ni lignes, ni « Total TTC »). Rendre ``None`` ici
+            # laissait le document NON rogné, sans son Total TTC. On mesure donc
+            # le MÊME HTML sur une page très haute : le flux part du haut, les
+            # positions au-dessus de la ligne de rognage sont identiques, et le
+            # bloc de totaux est enfin composé — d'où le vrai dépassement par
+            # rapport à la limite de la page A4 réelle.
+            bas_totaux = _bas_totaux_page_haute(_HTML, html, formes)
+            if bas_totaux is None:
+                return None
         hauteur_ligne = 0.0
         if hauteurs:
             hauteurs.sort()
@@ -4409,6 +4421,37 @@ def _mesure_onepage(html):
         return (max(0.0, bas_totaux - limite), hauteur_ligne)
     except Exception:  # noqa: BLE001 \u2014 un PDF ne casse jamais sur une mesure
         return None
+
+
+#: CAD177 — hauteur de la page de MESURE (jamais rendue au client) : assez
+#: haute pour composer le bloc de totaux du devis le plus dense.
+_ONEPAGE_MESURE_HAUTEUR_MM = 3000
+
+_CSS_PAGE_HAUTE = (
+    "<style>@page{size:210mm %dmm !important;}"
+    ".page{height:%dmm !important;}</style>"
+    % (_ONEPAGE_MESURE_HAUTEUR_MM, _ONEPAGE_MESURE_HAUTEUR_MM))
+
+
+def _bas_totaux_page_haute(html_cls, html, formes):
+    """CAD177 — bas du bloc « Total TTC » mesuré sur une page de mesure haute.
+
+    Sert UNIQUEMENT à la mesure (le document client reste en A4) ; ``None`` si
+    le libellé reste introuvable même là (gabarit inattendu : on ne devine
+    rien)."""
+    if "</head>" not in html:
+        return None
+    haute = html.replace("</head>", _CSS_PAGE_HAUTE + "</head>", 1)
+    pages = html_cls(string=_html_sans_base(haute)).render().pages
+    if not pages:
+        return None
+    bas_totaux = None
+    for boite in _boites_texte_onepage(pages[0]):
+        texte = (getattr(boite, "text", "") or "")
+        if any(forme in texte for forme in formes):
+            bas = boite.position_y + boite.height
+            bas_totaux = bas if bas_totaux is None else max(bas_totaux, bas)
+    return bas_totaux
 
 
 def _html_sans_base(html):

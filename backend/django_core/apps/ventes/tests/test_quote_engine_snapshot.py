@@ -32,6 +32,8 @@ Régénérer les baselines (image docker prod) :
 """
 import os
 import re
+from datetime import date, datetime
+from datetime import timezone as dt_timezone
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
@@ -50,6 +52,12 @@ RASTER_ZOOM = 1.5
 # Tolérance de diff pixels — jamais une égalité octet-à-octet (WeasyPrint /
 # matplotlib varient légèrement d'une machine à l'autre sur l'anti-aliasing).
 MAX_DIFF_PIXEL_RATIO = 0.02
+
+
+# CAD177 — la société est IMPRIMÉE sur chaque page (en-tête, titre) : le test
+# et ``update_pdf_baselines`` doivent rendre la MÊME, sinon le baseline commité
+# porte un autre nom que le rendu comparé. Source unique, partagée.
+SNAPSHOT_COMPANY_SLUG = 'qe-snap-co'
 
 
 def make_company(slug):
@@ -305,7 +313,25 @@ def _build_snapshot_devis(company, user, client_obj, case):
         mode_installation=case.get('mode_installation', ''),
         etude_params=case.get('etude_params'))
     _pin_share_token(devis, case)
+    _fige_dates(devis)
     return devis
+
+
+# CAD177 — dates FIGÉES (même principe que QJR307 dans
+# test_quote_engine_formats) : chaque page imprime la date du devis et sa date
+# de validité. Sans ce verrou, le baseline dérivait d'un jour à l'autre et la
+# date rendue n'était jamais celle du PNG commité.
+_DATE_CREATION_FIGEE = datetime(2026, 1, 15, 9, 0, 0, tzinfo=dt_timezone.utc)
+_DATE_VALIDITE_FIGEE = date(2026, 2, 14)
+
+
+def _fige_dates(devis):
+    """Fige ``date_creation``/``date_validite`` (``.update()`` contourne
+    ``auto_now_add``) — partagé par le test et ``update_pdf_baselines``."""
+    Devis.objects.filter(pk=devis.pk).update(
+        date_creation=_DATE_CREATION_FIGEE,
+        date_validite=_DATE_VALIDITE_FIGEE)
+    devis.refresh_from_db()
 
 
 def _pin_share_token(devis, case):
@@ -401,7 +427,7 @@ class TestQuoteEngineGoldenSnapshots(TestCase):
     de prix d'achat, puis compare/écrit le baseline pixel."""
 
     def setUp(self):
-        self.company = make_company('qe-snap-co')
+        self.company = make_company(SNAPSHOT_COMPANY_SLUG)
         self.user = make_user(self.company)
         self.client_obj = make_client(self.company)
 

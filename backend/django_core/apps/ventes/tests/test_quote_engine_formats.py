@@ -1769,9 +1769,9 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # AGR302 (2026-10-03) — CHANGEMENT VOULU : la fixture gelée imprime
         # désormais « 5,5 CV (4,05 kW) » (virgule décimale, ex « 5.5 CV
         # (4.05 kW) ») et ses libellés passent par ``_L()`` (texte français
-        # inchangé). L'empreinte ci-dessous DOIT être recopiée du message
-        # d'échec du premier run CI de cette branche (jamais calculée à la
-        # main — aucun rendu DB/WeasyPrint n'est lancé hors CI).
+        # inchangé). Ré-épinglée le 2026-10-03 (CAD177) : valeur recopiée du
+        # message d'échec de ce test exécuté dans l'image CI
+        # (.github/ci-image/Dockerfile, WeasyPrint réel) — jamais à la main.
         # Ré-épinglée le 2026-10-02 (ARRONDI-100, CI de la branche
         # claude/quote-rounding-100dh) : le total du devis gelé (44 700 HT,
         # soit 53 640 TTC à 20 %) est ramené au palier de 100 MAD (53 600 TTC),
@@ -1792,7 +1792,7 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # modification du rendu agricole la fait dériver : si le changement
         # est VOULU, coller la nouvelle valeur imprimée par le message d'échec.
         EMPREINTE_EPINGLEE = (
-            'f569f6acb6454b55d44cdd4f4e280f4e743adb947b1bcde443a5945e1a8019e4')
+            '965980be35121a6952cd39a478f6a4c3f04d5144a820fc53ea33b436418dbaa8')
 
         self.assertEqual(
             empreinte, EMPREINTE_EPINGLEE,

@@ -31,6 +31,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from apps.ventes.tests.test_quote_engine_snapshot import (
             BASELINE_CASES,
+            SNAPSHOT_COMPANY_SLUG,
             _build_snapshot_devis,
             _render_pdf_bytes,
             check_or_write_baseline,
@@ -47,7 +48,7 @@ class Command(BaseCommand):
         # Toute donnée créée pour le rendu (société/client/devis/produits de
         # démonstration) est annulée à la fin — seuls les PNG persistent.
         with transaction.atomic():
-            company = make_company('qe-snap-baseline-cmd')
+            company = make_company(SNAPSHOT_COMPANY_SLUG)
             user = make_user(company)
             client_obj = make_client(company)
 
