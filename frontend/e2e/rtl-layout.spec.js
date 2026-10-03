@@ -38,6 +38,25 @@ async function assertNoHOverflow(page, label) {
 }
 
 test.describe('NTI18N2: layout miroir RTL — /ui + 5 écrans clés', () => {
+  // CAD177 — depuis NTI18N3 (178785d2, ServerLocaleSync), la langue
+  // d'interface SERVEUR du compte l'emporte sur `taqinor.locale` dès que
+  // `/auth/me/` répond : le seul localStorage ne tient plus l'arabe. Ce spec
+  // ne passait que parce que i18n-quote-journey laissait `demo_admin` en
+  // arabe côté serveur (fuite réparée). On pose donc AUSSI la préférence
+  // serveur (même endpoint que le sélecteur réel), restaurée à `fr` ensuite.
+  test.beforeEach(async ({ page }) => {
+    const res = await page.request.patch('/api/django/auth/me/langue/', {
+      data: { langue_interface: 'ar' },
+    })
+    expect(res.ok(), `langue d'interface serveur → ar (${res.status()})`).toBeTruthy()
+  })
+  test.afterEach(async ({ page }) => {
+    const res = await page.request.patch('/api/django/auth/me/langue/', {
+      data: { langue_interface: 'fr' },
+    })
+    expect(res.ok(), `langue d'interface serveur → fr (${res.status()})`).toBeTruthy()
+  })
+
   for (const { path, label } of SCREENS) {
     test(`${label} : dir=rtl posé, aucun débordement horizontal`, async ({ page }) => {
       await forcerArabeRtl(page)

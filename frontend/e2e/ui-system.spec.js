@@ -27,7 +27,10 @@ test('UI system: /ui renders primitives, theme, density, dialog, toast', async (
   await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(false)
 
   // Densité : Compact -> data-density=compact
-  await page.getByRole('radio', { name: 'Compact' }).click()
+  // CAD177 — la vitrine porte DEUX sélecteurs de densité depuis P170
+  // (0d0dfee2 : en-tête + section « Modes de densité »), branchés sur le MÊME
+  // état : on clique celui de l'en-tête (premier dans le DOM).
+  await page.getByRole('radio', { name: 'Compact' }).first().click()
   await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute('data-density'))).toBe('compact')
 
   // Overlay : ouvrir un Dialog, vérifier le titre, fermer avec Échap
