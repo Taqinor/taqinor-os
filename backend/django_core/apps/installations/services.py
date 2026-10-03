@@ -1473,10 +1473,51 @@ def _gate_check_materiel(installation, stage=None):
     return None
 
 
+# AGR625 — régime « déclaration hors réseau » (loi 82-21, art. 3, posé par
+# AGR602) : guichet et modalités NON sourcés (décret 2.25.100 non lu, AGRM14)
+# → le gate dossier ne BLOQUE PAS ce régime, il AVERTIT seulement.
+AVERTISSEMENT_DECLARATION_HORS_RESEAU = (
+    "Déclaration hors réseau, art. 3 : modalités fixées par voie "
+    "réglementaire, à vérifier")
+REFERENCE_DECLARATION_HORS_RESEAU = (
+    "Déclaration art. 3 — modalités à préciser")
+
+
+def est_hors_reseau(installation):
+    """AGR625 — chantier non raccordé au réseau (champ AGR602 ou régime
+    « déclaration hors réseau »)."""
+    return (
+        getattr(installation, 'raccordement_reseau', None)
+        == Installation.RaccordementReseau.HORS_RESEAU
+        or installation.regime_8221
+        == Installation.Regime8221.DECLARATION_HORS_RESEAU)
+
+
+def etape_sans_objet(installation, stage):
+    """AGR625 — l'étape « Inspection & raccordement réseau (PTO) » est SANS
+    OBJET pour un chantier hors réseau : jamais exigée."""
+    return (getattr(stage, 'cle', None) == 'inspection_raccordement'
+            and est_hors_reseau(installation))
+
+
+def _gate_avertissements(installation, stage):
+    """AGR625 — avertissements CONSULTATIFS d'une étape (jamais bloquants,
+    jamais comptés dans les raisons)."""
+    avertissements = []
+    if (getattr(stage, 'exige_dossier', False)
+            and installation.regime_8221
+            == Installation.Regime8221.DECLARATION_HORS_RESEAU):
+        avertissements.append(AVERTISSEMENT_DECLARATION_HORS_RESEAU)
+    return avertissements
+
+
 def _gate_check_dossier(installation, stage=None):
     """Dossier réglementaire loi 82-21 approuvé quand il est requis."""
     if installation.regime_8221 == Installation.Regime8221.NON_CONCERNE:
         return None
+    if (installation.regime_8221
+            == Installation.Regime8221.DECLARATION_HORS_RESEAU):
+        return None  # AGR625 — consultatif : voir `_gate_avertissements`.
     if installation.dossier_statut in (
             Installation.DossierStatut.APPROUVE,
             Installation.DossierStatut.COMPTEUR_POSE):
@@ -1514,14 +1555,21 @@ def stage_gate_status(installation, stage):
     """État du gate d'une étape pour un chantier : exigences réunies ou non.
 
     Renvoie {cle, libelle, ordre, bloquant, satisfait, raisons[]} — les
-    `raisons` sont des phrases FRANÇAISES prêtes à afficher."""
+    `raisons` sont des phrases FRANÇAISES prêtes à afficher.
+
+    AGR625 — clés ADDITIVES : `avertissements` (liste consultative, jamais
+    comptée dans les raisons bloquantes) et `sans_objet` (étape non
+    applicable au chantier — ex. PTO d'un chantier hors réseau : satisfaite
+    d'office, jamais exigée)."""
     raisons = []
-    for flag, check in _GATE_CHECKS:
-        if not getattr(stage, flag, False):
-            continue
-        raison = check(installation, stage)
-        if raison:
-            raisons.append(raison)
+    sans_objet = etape_sans_objet(installation, stage)
+    if not sans_objet:
+        for flag, check in _GATE_CHECKS:
+            if not getattr(stage, flag, False):
+                continue
+            raison = check(installation, stage)
+            if raison:
+                raisons.append(raison)
     return {
         'cle': stage.cle,
         'libelle': stage.libelle,
@@ -1529,6 +1577,9 @@ def stage_gate_status(installation, stage):
         'bloquant': stage.bloquant,
         'satisfait': not raisons,
         'raisons': raisons,
+        'avertissements': (
+            [] if sans_objet else _gate_avertissements(installation, stage)),
+        'sans_objet': sans_objet,
     }
 
 
@@ -1933,21 +1984,35 @@ def assemble_handover_pieces(installation):
     })
 
     # ── Dossier réglementaire loi 82-21 (obligatoire seulement si requis) ──
+    # AGR625 — « déclaration hors réseau » (art. 3) : modalités non sourcées
+    # → pièce FACULTATIVE, référence « modalités à préciser ».
+    hors_reseau_art3 = (installation.regime_8221
+                        == Installation.Regime8221.DECLARATION_HORS_RESEAU)
     dossier_requis = (installation.regime_8221
                       != Installation.Regime8221.NON_CONCERNE)
     dossier_present = bool(installation.dossier_reference) or (
         installation.dossier_statut in (
             Installation.DossierStatut.APPROUVE,
             Installation.DossierStatut.COMPTEUR_POSE))
-    pieces.append({
-        'type': 'dossier_8221',
-        'libelle': 'Dossier réglementaire loi 82-21',
-        'reference': installation.dossier_reference or (
-            installation.get_dossier_statut_display()
-            if dossier_requis else 'Non concerné'),
-        'present': (not dossier_requis) or dossier_present,
-        'obligatoire': dossier_requis,
-    })
+    if hors_reseau_art3:
+        pieces.append({
+            'type': 'dossier_8221',
+            'libelle': 'Dossier réglementaire loi 82-21',
+            'reference': (installation.dossier_reference
+                          or REFERENCE_DECLARATION_HORS_RESEAU),
+            'present': dossier_present,
+            'obligatoire': False,
+        })
+    else:
+        pieces.append({
+            'type': 'dossier_8221',
+            'libelle': 'Dossier réglementaire loi 82-21',
+            'reference': installation.dossier_reference or (
+                installation.get_dossier_statut_display()
+                if dossier_requis else 'Non concerné'),
+            'present': (not dossier_requis) or dossier_present,
+            'obligatoire': dossier_requis,
+        })
 
     # ── Accès monitoring / application ──
     pack = getattr(installation, 'handover_pack', None)

@@ -1,0 +1,44 @@
+{
+  "endpoint": "GET /api/django/installations/chantiers/{id}/etapes/",
+  "pourquoi": "AGR625 (Groupe AGR, devis agricole, 02/10/2026) — forme du parcours d'étapes d'un chantier (CH2) avec les deux clés ADDITIVES de chaque étape : `avertissements` (liste de phrases FR CONSULTATIVES, jamais comptées dans `raisons`, jamais bloquantes) et `sans_objet` (étape non applicable au chantier : satisfaite d'office, jamais exigée). Cas servi : un chantier HORS RÉSEAU (régime `declaration_hors_reseau`, loi 82-21 art. 3, posé par AGR602) dans une société amorcée — l'étape « Autorisations & dossier 82-21 » n'est PAS bloquée tant que le guichet n'est pas sourcé (décret 2.25.100 non lu, AGRM14) et porte l'avertissement ; l'étape « Inspection & raccordement réseau (PTO) » est `sans_objet`. Pour un chantier raccordé, `avertissements` est vide et `sans_objet` est false (gates inchangés). Valeurs ILLUSTRATIVES. Le test backend `apps/installations/tests_agr625_gate_hors_reseau.py` AFFIRME cette forme (mêmes clés) ; l'écran d'AGR604 l'importe.",
+  "exemple": {
+    "installation": 214,
+    "reference": "CHT-2026-11-0007",
+    "etape_courante": "etude_site",
+    "etapes": [
+      {
+        "cle": "autorisations",
+        "libelle": "Autorisations & dossier 82-21",
+        "ordre": 2,
+        "bloquant": true,
+        "satisfait": true,
+        "raisons": [],
+        "avertissements": [
+          "Déclaration hors réseau, art. 3 : modalités fixées par voie réglementaire, à vérifier"
+        ],
+        "sans_objet": false,
+        "id": 3,
+        "statut_legacy": "signe",
+        "courante": false
+      },
+      {
+        "cle": "inspection_raccordement",
+        "libelle": "Inspection & raccordement réseau (PTO)",
+        "ordre": 7,
+        "bloquant": false,
+        "satisfait": true,
+        "raisons": [],
+        "avertissements": [],
+        "sans_objet": true,
+        "id": 8,
+        "statut_legacy": "installe",
+        "courante": false
+      }
+    ]
+  },
+  "regles": {
+    "avertissements": "liste de textes FR consultatifs ; jamais comptée dans `raisons` ni dans le blocage d'une transition",
+    "sans_objet": "true = étape non applicable au chantier (PTO d'un chantier hors réseau) : `satisfait` true, `raisons` vide, jamais exigée",
+    "pack.dossier_8221": "pour le régime declaration_hors_reseau : obligatoire=false, référence « Déclaration art. 3 — modalités à préciser » tant qu'aucune référence n'est saisie"
+  }
+}
