@@ -1,0 +1,512 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AGR1 (Groupe AGR, audit L3 du devis agricole, 02/10/2026 ; décisions D-AGR-3, D-AGR-4, D-AGR-9) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main` avant toute moitié. Aujourd'hui le Lead n'a que `pompe_cv`/`pompe_hmt_m`/`pompe_debit_m3h`, sans question ni libellé ; `pompe_cv` reçoit la pompe ACTUELLE envoyée par le site mais sert de CV CIBLE au générateur et au devis auto ; les réponses agricoles du tunnel dorment dans le sac `web_questionnaire` ; la règle « devis auto prêt » agricole exige CV ET HMT ET débit alors que le tunnel n'envoie jamais le CV. Prod 02/10/2026 : 23 devis agricoles, aucun sur un lead typé agricole. Ce fichier fige QUATRE blocs du détail lead (`forme_serveur: partielle` : seuls ces champs sont montrés) : (1) `colonnes` — les colonnes Lead pompage : nom, type, choix fermés, unité, et la QUESTION ORALE en français = help_text du modèle (vide = question pas encore posée) ; (2) `entrees_pompage` — bloc LU (calculé, jamais écrit) : pour chaque entrée connue, valeur + provenance + clé etude_params cible (`cle_etude` = une clé ENTRÉE de `cles_etude_params_v2` du contrat `etude_pompage_preview.json`, AGR2, ou `saisies_economie_pompage` du contrat `economie_pompage.json`, AGR3 ; `chemin` = le sous-chemin exact) ; AUCUNE clé v1 (`current_fuel`, `fuel_spend_current`, `distance_m`, `hmt_static`, `region`, `crop`, `surface_ha`) n'est une cible ; `provenance` = la valeur `detail` (client|site_web|mesure_visite|derive) de la forme UNIQUE {origine, detail, date} d'AGR2 — l'origine y vaut toujours `lead` ; `manquants` liste les colonnes absentes par leur nom ; (3) `incoherence_segment` — null, ou {segment_lead, mode_devis, devis:[{id, reference}], message} quand un devis agricole porte sur un lead non agricole (ou l'inverse) ; (4) `segment_suggere` — null, ou {valeur, raison}, servi SANS écriture. D-AGR-9 : le type du lead n'est JAMAIS changé automatiquement — le bandeau propose, le commercial change à la main. Aucun code dans ce commit ; les valeurs d'exemple sont ILLUSTRATIVES (aucun chiffre de client réel).",
+  "colonnes": [
+    {
+      "nom": "source_eau",
+      "type": "choix",
+      "choix": [
+        "puits",
+        "forage",
+        "bassin",
+        "riviere"
+      ],
+      "question": "« D'où vient l'eau : un puits, un forage, un bassin ou une rivière ? »"
+    },
+    {
+      "nom": "niveau_statique_m",
+      "type": "décimal",
+      "unite": "m",
+      "question": "« À quelle profondeur se trouve l'eau quand la pompe est arrêtée ? »"
+    },
+    {
+      "nom": "niveau_statique_source",
+      "type": "choix",
+      "choix": [
+        "declare",
+        "site_web",
+        "mesure_visite"
+      ],
+      "question": "« Ce niveau, vous l'avez mesuré, ou on vous l'a dit ? » (posé avec le niveau ; mesure_visite = relevé par TAQINOR)"
+    },
+    {
+      "nom": "profondeur_forage_m",
+      "type": "décimal",
+      "unite": "m",
+      "question": "« Quelle est la profondeur totale du forage ? »"
+    },
+    {
+      "nom": "debit_forage_m3h",
+      "type": "décimal",
+      "unite": "m³/h",
+      "question": "« Combien d'eau le forage peut-il donner par heure ? »"
+    },
+    {
+      "nom": "debit_forage_source",
+      "type": "choix",
+      "choix": [
+        "essai",
+        "foreur",
+        "client",
+        "mesure_visite"
+      ],
+      "question": "« Ce débit vient d'un essai de pompage, du foreur, ou c'est votre estimation ? »"
+    },
+    {
+      "nom": "besoin_eau_m3j",
+      "type": "décimal",
+      "unite": "m³/jour",
+      "question": "« De combien de mètres cubes d'eau avez-vous besoin par jour au plus fort de la saison ? »"
+    },
+    {
+      "nom": "besoin_eau_source",
+      "type": "choix",
+      "choix": [
+        "client",
+        "site_web",
+        "pompe_actuelle"
+      ],
+      "question": "« Ce volume, c'est votre chiffre, celui du site, ou on le calcule depuis votre pompe actuelle ? »"
+    },
+    {
+      "nom": "culture",
+      "type": "texte",
+      "question": "« Qu'est-ce que vous cultivez ? »"
+    },
+    {
+      "nom": "surface_irriguee_ha",
+      "type": "décimal",
+      "unite": "ha",
+      "question": "« Combien d'hectares irriguez-vous ? »"
+    },
+    {
+      "nom": "irrigation_methode",
+      "type": "choix",
+      "choix": [
+        "goutte",
+        "aspersion",
+        "gravitaire"
+      ],
+      "question": "« Vous irriguez au goutte-à-goutte, par aspersion ou à la raie (gravitaire) ? »"
+    },
+    {
+      "nom": "region_agricole",
+      "type": "choix",
+      "choix": [
+        "souss-massa",
+        "doukkala",
+        "tadla",
+        "saiss",
+        "oriental",
+        "draa-tafilalet",
+        "gharb-loukkos",
+        "haouz"
+      ],
+      "question": "« Dans quelle région se trouve l'exploitation ? »",
+      "note": "les 8 zones émises par le site (crm/webhooks.py:86, _REGIONS_AGRICOLES)"
+    },
+    {
+      "nom": "pompe_actuelle_cv",
+      "type": "décimal",
+      "unite": "CV",
+      "question": "« Quelle est la puissance de votre pompe ACTUELLE, en chevaux ? »",
+      "note": "ex-`pompe_cv` : décrit la pompe ACTUELLE (information, éligibilité) ; la puissance retenue est une SORTIE du dimensionnement (AGR401)"
+    },
+    {
+      "nom": "pompe_actuelle_type",
+      "type": "choix",
+      "choix": [
+        "immergee",
+        "surface",
+        "ne_sait_pas"
+      ],
+      "question": "« Votre pompe actuelle est-elle immergée dans le forage, ou en surface ? »"
+    },
+    {
+      "nom": "pompe_actuelle_debit_m3h",
+      "type": "décimal",
+      "unite": "m³/h",
+      "question": "« Combien d'eau votre pompe actuelle sort-elle par heure ? »"
+    },
+    {
+      "nom": "pompage_heures_jour",
+      "type": "décimal",
+      "unite": "h/jour",
+      "question": "« Combien d'heures par jour la pompe ACTUELLE tourne-t-elle ? »",
+      "note": "heures de la pompe ACTUELLE : servent seulement à estimer un volume déclaré (débit actuel × heures), jamais des heures de pompage solaire"
+    },
+    {
+      "nom": "pompe_alim_actuelle",
+      "type": "choix",
+      "choix": [
+        "aucune",
+        "diesel",
+        "butane",
+        "electrique"
+      ],
+      "question": "« Votre pompe actuelle marche à quoi — diesel, butane, électricité, ou vous n'en avez pas ? »",
+      "note": "vocabulaire existant crm.Lead.PompeAlimActuelle, inchangé"
+    },
+    {
+      "nom": "butane_bouteilles_jour",
+      "type": "décimal",
+      "unite": "bouteilles 12 kg / jour d'irrigation",
+      "question": "« Combien de bouteilles de butane utilisez-vous par jour d'irrigation ? »"
+    },
+    {
+      "nom": "carburant_litres_mois",
+      "type": "décimal",
+      "unite": "L/mois",
+      "question": "« Combien de litres de carburant la pompe consomme-t-elle par mois ? »",
+      "note": "colonne existante, inchangée"
+    },
+    {
+      "nom": "carburant_prix_unitaire_mad",
+      "type": "décimal",
+      "unite": "MAD / bouteille ou MAD / L",
+      "question": "« Combien payez-vous la bouteille (ou le litre) ? »",
+      "note": "prix PAYÉ déclaré (Q17) ; jamais pré-rempli"
+    },
+    {
+      "nom": "carburant_prix_declare_le",
+      "type": "date",
+      "question": "(aucune question : date posée par le serveur à l'écriture du prix déclaré)",
+      "note": "lecture seule pour le client de l'API"
+    },
+    {
+      "nom": "depense_carburant_mad_mois",
+      "type": "décimal",
+      "unite": "MAD/mois",
+      "question": "« Combien dépensez-vous en carburant par mois ? »",
+      "note": "information et barème de score provisoire ; jamais convertie en consommation ni multipliée par 12"
+    },
+    {
+      "nom": "mois_irrigation",
+      "type": "liste d'entiers 1-12",
+      "unite": "mois",
+      "question": "« Quels mois de l'année irriguez-vous ? »"
+    },
+    {
+      "nom": "distance_forage_champ_m",
+      "type": "décimal",
+      "unite": "m",
+      "question": "« Quelle distance entre le forage et l'endroit où on poserait les panneaux ? »"
+    },
+    {
+      "nom": "electricite_sur_place",
+      "type": "choix",
+      "choix": [
+        "aucune",
+        "monophase",
+        "triphase",
+        "ne_sait_pas"
+      ],
+      "question": "« Avez-vous l'électricité sur place : monophasé, triphasé, ou pas du tout ? »"
+    },
+    {
+      "nom": "autorisation_prelevement",
+      "type": "choix",
+      "choix": [
+        "oui",
+        "non",
+        "en_cours",
+        "ne_sait_pas"
+      ],
+      "question": "« Avez-vous une autorisation de prélèvement de l'agence de bassin (ABH) ? »"
+    },
+    {
+      "nom": "autorisation_numero",
+      "type": "texte",
+      "question": "« Quel est le numéro de cette autorisation ? »"
+    },
+    {
+      "nom": "autorisation_debit_l_s",
+      "type": "décimal",
+      "unite": "L/s",
+      "question": "« Quel débit l'autorisation vous accorde-t-elle, en litres par seconde ? »"
+    },
+    {
+      "nom": "autorisation_volume_m3_an",
+      "type": "décimal",
+      "unite": "m³/an",
+      "question": "« Quel volume par an l'autorisation vous accorde-t-elle ? »"
+    },
+    {
+      "nom": "compteur_eau",
+      "type": "booléen ou vide",
+      "question": "« Avez-vous un compteur d'eau sur le forage ? »"
+    },
+    {
+      "nom": "projet_pompage",
+      "type": "choix",
+      "choix": [
+        "existant",
+        "nouveau_forage"
+      ],
+      "question": "« C'est pour remplacer une pompe qui tourne déjà, ou pour un nouveau forage ? »"
+    },
+    {
+      "nom": "deja_beneficiaire_fda",
+      "type": "booléen ou vide",
+      "question": "« Avez-vous déjà reçu une aide du Fonds de développement agricole (FDA) pour l'irrigation ou le pompage ? »"
+    },
+    {
+      "nom": "pompe_hmt_m",
+      "type": "décimal",
+      "unite": "m",
+      "question": "« Savez-vous la hauteur totale à laquelle la pompe doit monter l'eau (HMT) ? »",
+      "note": "colonne existante"
+    },
+    {
+      "nom": "pompe_hmt_source",
+      "type": "choix",
+      "choix": [
+        "declaree",
+        "site_web"
+      ],
+      "question": "« Cette HMT, c'est vous qui la donnez, ou elle vient du site ? »"
+    },
+    {
+      "nom": "pompe_debit_m3h",
+      "type": "décimal",
+      "unite": "m³/h",
+      "question": "« Quel débit souhaitez-vous, en mètres cubes par heure ? »",
+      "note": "débit SOUHAITÉ (colonne existante) ; servi à côté du débit livré, ne fixe jamais seul le besoin (D-AGR-3)"
+    },
+    {
+      "nom": "decideur",
+      "type": "choix",
+      "question": "« Qui décide avec vous de ce projet ? »",
+      "note": "colonne existante `decideur`, réutilisée telle quelle (vocabulaire crm.Lead.Decideur)"
+    }
+  ],
+  "exemple": {
+    "id": 1512,
+    "type_installation": "agricole",
+    "source_eau": "forage",
+    "niveau_statique_m": "32.00",
+    "niveau_statique_source": "mesure_visite",
+    "profondeur_forage_m": "90.00",
+    "debit_forage_m3h": "36.00",
+    "debit_forage_source": "foreur",
+    "besoin_eau_m3j": "135.00",
+    "besoin_eau_source": "client",
+    "culture": "agrumes",
+    "surface_irriguee_ha": "4.00",
+    "irrigation_methode": "goutte",
+    "region_agricole": "souss-massa",
+    "pompe_actuelle_cv": "7.50",
+    "pompe_actuelle_type": "immergee",
+    "pompe_actuelle_debit_m3h": null,
+    "pompage_heures_jour": null,
+    "pompe_alim_actuelle": "butane",
+    "butane_bouteilles_jour": "4.0",
+    "carburant_litres_mois": null,
+    "carburant_prix_unitaire_mad": "50.00",
+    "carburant_prix_declare_le": "2026-09-12",
+    "depense_carburant_mad_mois": null,
+    "mois_irrigation": [
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "distance_forage_champ_m": "25.00",
+    "electricite_sur_place": "aucune",
+    "autorisation_prelevement": "en_cours",
+    "autorisation_numero": "",
+    "autorisation_debit_l_s": null,
+    "autorisation_volume_m3_an": null,
+    "compteur_eau": null,
+    "projet_pompage": "existant",
+    "deja_beneficiaire_fda": false,
+    "pompe_hmt_m": "60.00",
+    "pompe_hmt_source": "site_web",
+    "pompe_debit_m3h": null,
+    "decideur": null,
+    "entrees_pompage": {
+      "entrees": [
+        {
+          "colonne": "niveau_statique_m",
+          "valeur": 32,
+          "provenance": "mesure_visite",
+          "date": "2026-09-15",
+          "cle_etude": "source",
+          "chemin": "source.niveau_statique_m"
+        },
+        {
+          "colonne": "profondeur_forage_m",
+          "valeur": 90,
+          "provenance": "client",
+          "date": "2026-09-12",
+          "cle_etude": "source",
+          "chemin": "source.profondeur_forage_m"
+        },
+        {
+          "colonne": "debit_forage_m3h",
+          "valeur": 36,
+          "provenance": "client",
+          "date": "2026-09-12",
+          "cle_etude": "source",
+          "chemin": "source.debit_exploitation_m3h"
+        },
+        {
+          "colonne": "besoin_eau_m3j",
+          "valeur": 135,
+          "provenance": "client",
+          "date": "2026-09-12",
+          "cle_etude": "besoin",
+          "chemin": "besoin.volume_m3_jour"
+        },
+        {
+          "colonne": "region_agricole",
+          "valeur": "souss-massa",
+          "provenance": "site_web",
+          "date": "2026-09-10",
+          "cle_etude": "besoin",
+          "chemin": "besoin.region"
+        },
+        {
+          "colonne": "pompe_hmt_m",
+          "valeur": 60,
+          "provenance": "site_web",
+          "date": "2026-09-10",
+          "cle_etude": "hmt_entrees",
+          "chemin": "hmt_entrees.saisie_m"
+        },
+        {
+          "colonne": "distance_forage_champ_m",
+          "valeur": 25,
+          "provenance": "client",
+          "date": "2026-09-12",
+          "cle_etude": "distance_champ_m",
+          "chemin": "distance_champ_m"
+        },
+        {
+          "colonne": "pompe_alim_actuelle",
+          "valeur": "butane",
+          "provenance": "client",
+          "date": "2026-09-12",
+          "cle_etude": "saisies_economie_pompage",
+          "chemin": "saisies_economie_pompage.energie_actuelle.valeur"
+        },
+        {
+          "colonne": "butane_bouteilles_jour",
+          "valeur": 4,
+          "provenance": "client",
+          "date": "2026-09-12",
+          "cle_etude": "saisies_economie_pompage",
+          "chemin": "saisies_economie_pompage.consommation.quantite"
+        },
+        {
+          "colonne": "carburant_prix_unitaire_mad",
+          "valeur": 50,
+          "provenance": "client",
+          "date": "2026-09-12",
+          "cle_etude": "saisies_economie_pompage",
+          "chemin": "saisies_economie_pompage.depense_unitaire_payee.valeur"
+        },
+        {
+          "colonne": "mois_irrigation",
+          "valeur": [
+            4,
+            5,
+            6,
+            7,
+            8,
+            9
+          ],
+          "provenance": "client",
+          "date": "2026-09-12",
+          "cle_etude": "saisies_economie_pompage",
+          "chemin": "saisies_economie_pompage.mois_irrigation.mois"
+        }
+      ],
+      "manquants": [
+        "autorisation_debit_l_s",
+        "compteur_eau",
+        "pompe_actuelle_debit_m3h",
+        "pompage_heures_jour"
+      ]
+    },
+    "incoherence_segment": null,
+    "segment_suggere": null
+  },
+  "exemple_incoherent": {
+    "id": 1388,
+    "type_installation": "residentiel",
+    "entrees_pompage": {
+      "entrees": [],
+      "manquants": [
+        "niveau_statique_m",
+        "debit_forage_m3h",
+        "besoin_eau_m3j",
+        "pompe_hmt_m"
+      ]
+    },
+    "incoherence_segment": {
+      "segment_lead": "residentiel",
+      "mode_devis": "agricole",
+      "devis": [
+        {
+          "id": 4021,
+          "reference": "DEV-2026-10-0007"
+        }
+      ],
+      "message": "Ce lead est typé « résidentiel » mais porte un devis agricole. Changer le type du lead en « agricole » ?"
+    },
+    "segment_suggere": {
+      "valeur": "agricole",
+      "raison": "la note d'appel mentionne « forage » et « irrigation »"
+    }
+  },
+  "regles": {
+    "colonnes": "toutes nullables : vide = question pas encore posée ; jamais une valeur par défaut enregistrée comme une réponse",
+    "entrees_pompage.cibles": {
+      "niveau_statique_m": "source.niveau_statique_m (provenance : niveau_statique_source declare→client, site_web→site_web, mesure_visite→mesure_visite)",
+      "profondeur_forage_m": "source.profondeur_forage_m",
+      "debit_forage_m3h": "source.debit_exploitation_m3h ; `debit_forage_source` → source.debit_exploitation_origine (essai|foreur|client|mesure_visite) ; provenance detail : mesure_visite si mesuré par TAQINOR, sinon client",
+      "besoin_eau_m3j": "besoin.volume_m3_jour (provenance : besoin_eau_source client→client, site_web→site_web, pompe_actuelle→derive)",
+      "culture": "besoin.cultures[0].crop",
+      "surface_irriguee_ha": "besoin.cultures[0].surface_ha",
+      "irrigation_methode": "besoin.cultures[0].irrigation",
+      "region_agricole": "besoin.region",
+      "pompe_actuelle_debit_m3h": "besoin.debit_actuel_m3h (compte seulement avec pompage_heures_jour : volume déclaré, D-AGR-3)",
+      "pompage_heures_jour": "besoin.heures_actuelles_jour (heures de la pompe ACTUELLE)",
+      "pompe_actuelle_cv": "plaque.cv (lu seulement en mode existante, D-AGR-7)",
+      "pompe_actuelle_type": "type_pompe (lu seulement en mode existante ; ne_sait_pas ⇒ non transmis)",
+      "autorisation_debit_l_s": "source.debit_autorise_m3h (× 3,6 : conversion physique L/s → m³/h)",
+      "autorisation_volume_m3_an": "source.volume_annuel_autorise_m3",
+      "compteur_eau": "source.compteur",
+      "distance_forage_champ_m": "distance_champ_m",
+      "pompe_hmt_m": "hmt_entrees.saisie_m (provenance : pompe_hmt_source declaree→client, site_web→site_web)",
+      "pompe_debit_m3h": "besoin.debit_souhaite_m3h (servi à côté du débit livré)",
+      "pompe_alim_actuelle": "saisies_economie_pompage.energie_actuelle",
+      "butane_bouteilles_jour": "saisies_economie_pompage.consommation (unite bouteille_12kg, periode jour_irrigation)",
+      "carburant_litres_mois": "saisies_economie_pompage.consommation (unite litre, periode mois)",
+      "carburant_prix_unitaire_mad": "saisies_economie_pompage.depense_unitaire_payee (saisi_le = carburant_prix_declare_le)",
+      "mois_irrigation": "saisies_economie_pompage.mois_irrigation (provenance déclarée)"
+    },
+    "entrees_pompage.sans_cible": {
+      "source_eau": "information affichée (fiche, visite) ; aucune entrée de calcul",
+      "electricite_sur_place": "information (cas réseau, raccordement) ; ne choisit jamais `alim` à la place du vendeur",
+      "autorisation_prelevement": "information (formalité) ; aucune entrée de calcul",
+      "autorisation_numero": "information (formalité)",
+      "projet_pompage": "information ; le cas `nouveau_forage` de l'économie se lit sur `energie_actuelle = aucune`",
+      "deja_beneficiaire_fda": "information interne (condition « un seul projet par exploitation ») ; jamais un verdict client",
+      "depense_carburant_mad_mois": "information et score provisoire ; jamais convertie en consommation",
+      "decideur": "colonne existante du script d'appel",
+      "niveau_statique_source": "porte la provenance de niveau_statique_m",
+      "debit_forage_source": "porte l'origine de debit_forage_m3h",
+      "besoin_eau_source": "porte la provenance de besoin_eau_m3j",
+      "pompe_hmt_source": "porte la provenance de pompe_hmt_m",
+      "carburant_prix_declare_le": "porte la date de carburant_prix_unitaire_mad"
+    },
+    "incoherence_segment": "calculé à la lecture ; jamais d'écriture de `type_installation` (D-AGR-9)",
+    "segment_suggere": "calculé à la lecture (`crm/segment_suggere.py`, AGR406) ; jamais écrit",
+    "pii": "aucune de ces colonnes n'est une PII"
+  }
+}
