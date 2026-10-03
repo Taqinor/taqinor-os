@@ -40,6 +40,8 @@ CE QU'ELLE NE FAIT JAMAIS :
 """
 from __future__ import annotations
 
+from .garanties import garanties_pompage_et_omissions
+
 #: Version de la forme servie (contrat AGR4).
 VERSION = 2
 
@@ -355,6 +357,12 @@ def synthese_agricole(data):
         synthese["point_fonctionnement"] = point
     else:
         omissions.append({"bloc": "point_fonctionnement", "motif": motif})
+
+    # AGR305 — garanties par composant, lues sur les fiches des lignes
+    # (jamais ``theme.WARRANTIES``) ; composants sans durée → omissions.
+    garanties, omissions_garanties = garanties_pompage_et_omissions(items)
+    synthese["garanties"] = garanties
+    omissions.extend(omissions_garanties)
 
     synthese["schema"] = _bloc_schema(etude, eau)
     synthese["options_kit"] = _bloc_options_kit(data.get("options_proposees"))
