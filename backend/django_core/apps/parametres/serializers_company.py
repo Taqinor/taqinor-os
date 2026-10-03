@@ -113,6 +113,15 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     def validate_seuil_regime_anre_kwc(self, value):
         return self._validate_non_negative(value, 'Le seuil ANRE (kWc)')
 
+    # AGR606 — écart de recette pompage toléré : vide accepté (« écart affiché
+    # sans verdict »), sinon strictement positif et au plus 100 %.
+    def validate_recette_pompage_ecart_max_pct(self, value):
+        if value is not None and (value <= 0 or value > 100):
+            raise serializers.ValidationError(
+                "L'écart de recette pompage toléré doit être compris entre "
+                "0 (exclu) et 100 %.")
+        return value
+
     # NTI18N10 — validation contre le registre IANA réel (zoneinfo, stdlib
     # depuis Python 3.9, déjà utilisé par le runtime — aucune dépendance
     # nouvelle) plutôt qu'une liste `choices=` figée : couvre TOUS les fuseaux

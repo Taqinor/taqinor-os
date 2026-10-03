@@ -45,6 +45,8 @@ _PROFILE_FIELD_LABELS = {
     'agricole_marge_cable_descente_m':
         'Marge du câble de descente (m)',
     'agricole_salissure_supp_pct': 'Supplément de salissure (%)',
+    'recette_pompage_ecart_max_pct':
+        'Écart de recette pompage toléré (%)',
     'reperes_energie_agricole':
         'Repères énergie agricole (butane, gasoil — datés et sourcés)',
     'delai_visite_technique': 'Délai de visite technique (indicatif)',

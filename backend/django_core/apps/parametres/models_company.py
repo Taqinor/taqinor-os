@@ -234,6 +234,13 @@ class CompanyProfile(models.Model):
         max_digits=8, decimal_places=2, default=Decimal('11'))
     seuil_regime_anre_kwc = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal('1000'))
+    # ── AGR606 (Groupe AGR, 02/10/2026) — écart de recette pompage toléré (%)
+    # entre débit mesuré et débit promis. NULL et SANS défaut (décision C5-12 :
+    # « seuil à saisir par toi, je ne propose pas de chiffre ») : vide = écart
+    # affiché sans verdict. Jamais la tolérance IEC 62253 codée (texte de la
+    # norme non lu). Validé 0 < x ≤ 100 par le sérialiseur.
+    recette_pompage_ecart_max_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
     # ── Commission commerciale (N99) — additif, désactivé par défaut. Mode
     # 'off' (aucune commission, comportement inchangé), 'pct_devis' (% du HT
     # des devis signés) ou 'par_kwc' (MAD par kWc installé des chantiers issus

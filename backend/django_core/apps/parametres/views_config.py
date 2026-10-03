@@ -44,6 +44,8 @@ PROFILE_CONFIG_FIELDS = [
     'rendement_global', 'prix_cible_kwc_defaut',
     'remise_max_pct', 'discount_approval_threshold',
     'seuil_regime_declaration_kwc', 'seuil_regime_anre_kwc',
+    # AGR606 — écart de recette pompage toléré (%), sans défaut.
+    'recette_pompage_ecart_max_pct',
     'devise_defaut', 'lead_sla_hours', 'overage_seuil_pct',
     # MRY8 — fenêtres d'appel de la société (forme `fenetres_appel` du
     # contrat MRY25) : elles decident QUAND une touche de cadence tombe
