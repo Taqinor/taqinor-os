@@ -1,0 +1,38 @@
+{
+  "endpoint": "GET /api/django/portail/mes-chantiers/{id}/releves/",
+  "pourquoi": "AGR601 (Groupe AGR, audit L3 du devis agricole, 02/10/2026) — CONTRAT D'ABORD (PACT10), après le contrat SAV `sav/contract_samples/releves_compteur.json` (AGR600) dont il reprend la forme d'un relevé. Aujourd'hui le portail client n'a AUCUNE saisie : « Chantiers » n'offre que la timeline et les photos en lecture, « Ma consommation » ne lit que des kWh d'onduleur ; un exploitant ne peut transmettre ni ses heures de pompage ni l'index de son compteur d'eau. GET → {`equipements`: [{`id`, `libelle`, `types_admis`}], `releves`: [{`equipement`, `type`, `valeur`, `date`, `moyenne_jour_depuis_precedent`}], `m3_jour_estime_devis`, `omissions`: [{`cle`, `motif`}]} ; `releves` = plus récent d'abord ; `valeur` = index CUMULATIF ; `moyenne_jour_depuis_precedent` = même règle qu'AGR600 (null au premier relevé d'un type) ; `m3_jour_estime_devis` = le m³/jour imprimé sur le devis accepté du chantier, null + motif dans `omissions` quand le devis n'en porte pas (pompe sans courbe). POST sur la même URL avec {`equipement`, `type` (heures|m3), `valeur`, `date`} → 201 (le relevé créé) ; 400 en FRANÇAIS pour un compteur qui recule, un équipement d'un autre chantier ou un type refusé ; 404 pour le chantier d'un autre client (introuvable — jamais « trouvé puis refusé »). Jamais un prix, un tarif, un champ interne, l'auteur ni l'instrument. Valeurs ILLUSTRATIVES.",
+  "exemple": {
+    "equipements": [
+      {"id": 77, "libelle": "Pompe immergée — compteur d'eau du forage", "types_admis": ["m3"]},
+      {"id": 78, "libelle": "Variateur de pompage — compteur horaire", "types_admis": ["heures"]}
+    ],
+    "releves": [
+      {"equipement": 77, "type": "m3", "valeur": "1838.00", "date": "2027-02-04", "moyenne_jour_depuis_precedent": 19.6},
+      {"equipement": 78, "type": "heures", "valeur": "412.00", "date": "2027-02-04", "moyenne_jour_depuis_precedent": null},
+      {"equipement": 77, "type": "m3", "valeur": "1250.00", "date": "2027-01-05", "moyenne_jour_depuis_precedent": null}
+    ],
+    "m3_jour_estime_devis": 134.2,
+    "omissions": []
+  },
+  "exemple_vide": {
+    "equipements": [
+      {"id": 91, "libelle": "Pompe immergée — compteur d'eau du forage", "types_admis": ["m3"]}
+    ],
+    "releves": [],
+    "m3_jour_estime_devis": null,
+    "omissions": [
+      {"cle": "m3_jour_estime_devis", "motif": "le devis de ce chantier ne porte pas de m³/jour (pompe sans courbe constructeur)"}
+    ]
+  },
+  "corps_post": {"equipement": 77, "type": "m3", "valeur": "2391", "date": "2027-03-06"},
+  "exemple_201": {"equipement": 77, "type": "m3", "valeur": "2391.00", "date": "2027-03-06", "moyenne_jour_depuis_precedent": 18.4},
+  "exemple_400_recul": {"detail": "Ce relevé est inférieur au dernier relevé enregistré (1838.00) — le compteur ne peut pas reculer."},
+  "exemple_400_equipement": {"detail": "Cet équipement n'appartient pas à ce chantier."},
+  "exemple_400_type": {"detail": "Type de relevé refusé pour cet équipement : choisissez parmi m3."},
+  "exemple_404": {"detail": "Chantier introuvable."},
+  "regles": {
+    "types": "heures | m3 au portail (le kWh reste une lecture d'onduleur, jamais une saisie client) ; `types_admis` d'un équipement borne le POST",
+    "portee": "seuls les chantiers et équipements du client connecté ; un autre client = 404",
+    "interdit": "prix, tarif, `prix_achat`, marge, auteur, instrument, champ interne"
+  }
+}
