@@ -521,6 +521,22 @@ CABLES_PROTECTIONS_VIDES = [
     ('Coffret AC',           'COF-AC',      100, 5),
 ]
 
+# ── AGR104 — articles des OPTIONS du kit pompage (D-AGR-8), PRIX VIDES ───────
+# Articles GÉNÉRIQUES, sans marque ni caractéristique inventée : le fondateur
+# les renseigne (prix, fournisseur) ; tant que ``prix_vente`` vaut 0 ils sont
+# « prix à renseigner » et jamais auto-chiffrés (même garde que les pompes OSP).
+# ``role_pompage`` est DÉCLARÉ à la création (vocabulaire ROLES_POMPAGE, AGR100).
+# (nom, sku, role_pompage, qte, seuil)
+OPTIONS_POMPAGE = [
+    ('Sonde de niveau (protection marche à sec)', 'SONDE-NIV', 'sonde_niveau', 20, 2),
+    ("Compteur d'eau / débitmètre", 'CPT-EAU', 'compteur_eau', 20, 2),
+    ('Câble de descente immergé (au mètre)', 'CAB-DESC-M', 'cable_descente', 5000, 200),
+    ('Colonne de refoulement', 'COL-REF', 'colonne_refoulement', 20, 2),
+    ('Clapet anti-retour', 'CLAP-AR', 'clapet', 20, 2),
+    ('Tuyauterie (au mètre)', 'TUY-M', 'tuyauterie', 5000, 200),
+    ('Bassin', 'BASSIN', 'bassin', 20, 2),
+]
+
 # ── PVLV2 — HISTORIQUE des SKU « Basse Tension » (créés 18/08, ARCHIVÉS
 # 21/08/2026) ─────────────────────────────────────────────────────────────
 # La recherche PVG4 avait identifié OND-H-DEY-15T/20T comme des SG01HP3
@@ -571,7 +587,7 @@ BATTERIE_DEYE_HV = [
 SKUS_SEMES = frozenset(
     row[1] for row in (
         *CATALOGUE, *POMPAGE, *VEICHI, *OSP,
-        *CABLES_PROTECTIONS_VIDES, *BATTERIE_DEYE_HV,
+        *CABLES_PROTECTIONS_VIDES, *OPTIONS_POMPAGE, *BATTERIE_DEYE_HV,
     )
 )
 
@@ -1854,6 +1870,35 @@ class Command(BaseCommand):
                 note='Stock initial (câbles/protections — prix à renseigner)',
                 # Le produit est créé DÉJÀ à sa quantité : on trace
                 # l'entrée sans la ré-écrire (AUD223).
+                created_by=None, save_produit=False,
+            )
+            created.append(nom)
+
+        # ── AGR104 — options du kit pompage : PRIX VIDES (0), rôle DÉCLARÉ ──
+        # Additif : jamais d'écriture sur un produit existant (ni prix, ni nom,
+        # ni rôle) — un SKU déjà présent est simplement sauté.
+        for nom, sku, role_pompage, qte, seuil in OPTIONS_POMPAGE:
+            if (Produit.objects.filter(company=company, sku=sku).exists()
+                    or Produit.objects.filter(
+                        company=company, nom__iexact=nom,
+                        is_archived=False).exists()):
+                skipped.append(nom)
+                continue
+            produit = Produit.objects.create(
+                company=company, nom=nom, sku=sku,
+                categorie=get_categorie(classify_categorie(nom)),
+                prix_achat=Decimal('0'),
+                prix_vente=Decimal('0'),  # à renseigner par le fondateur
+                quantite_stock=qte, seuil_alerte=seuil,
+                tva=Decimal('20.00'),
+                role_pompage=role_pompage,
+            )
+            record_stock_movement(
+                company=company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                quantite=qte, quantite_avant=0, quantite_apres=qte,
+                reference='SEED-CATALOGUE',
+                note='Stock initial (options pompage — prix à renseigner)',
                 created_by=None, save_produit=False,
             )
             created.append(nom)
