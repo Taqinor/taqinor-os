@@ -1,0 +1,1368 @@
+{
+  "endpoint": "POST /api/django/ventes/etude-pompage/preview/",
+  "pourquoi": "AGR2 (Groupe AGR, audit L3 du devis agricole, 02/10/2026 ; décisions D-AGR-1, D-AGR-3, D-AGR-4, D-AGR-7, D-AGR-8, D-AGR-13) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main` avant toute moitié. Aujourd'hui le dimensionnement agricole n'existe qu'en JavaScript (`solar.js` pompageSelection/autoFillPompage) ; côté serveur seul le calepinage expose un calcul (`calepinage_pompage.json`) ; ventes n'a aucun contrat. D-AGR-1 : UN seul calcul serveur sert l'écran (aperçu en direct), le PDF, /proposition et le devis automatique. Cet aperçu CALCULE et n'écrit RIEN (aucun statut, aucune ligne, aucune version) ; POST parce que tout dépend d'une saisie. La société vient TOUJOURS de `request.user`. Chaque valeur résolue porte UNE forme de provenance, la même pour tout le Groupe AGR (`provenance` ci-dessous) — AGR1, AGR3, AGR4 et les phrases « déclaré par vous le … / mesuré par TAQINOR le … » (AGR304, AGR306, AGW303) la citent mot pour mot. Une donnée absente fait tomber le bloc concerné à `null` et le NOMME (alerte ou motif) — jamais un défaut inventé, jamais un zéro de remplacement. Aucune pompe sans courbe ne reçoit de m³/jour (`production` null). JAMAIS `prix_achat` ni marge, à aucun niveau. Quatre exemples : `exemple` (pompe neuve à courbe), `exemple_pompe_existante` (D-AGR-7), `exemple_aucune_pompe_chiffrable` (placeholder nommé, QXG3 ouvert), `exemple_pvgis_indisponible` (repli plat étiqueté). Toutes les VALEURS sont ILLUSTRATIVES (aucun client réel, aucune fiche réelle saisie) ; ce sont les clés, leurs natures et les règles qui font le contrat. `cles_etude_params_v2` liste les clés persistées dans `Devis.etude_params` (AGR122).",
+  "provenance": {
+    "forme": {
+      "origine": "texte : saisie | lead | reglage_societe | fiche | pvgis | calculee | estimation",
+      "detail": "texte ou null — OBLIGATOIRE quand origine = lead : client | site_web | mesure_visite | derive (vocabulaire du contrat crm `lead_pompage.json`, AGR1) ; pour les autres origines, une précision libre et stable (ex. `calendrier_culture`, `agricole_pump_hours`, `fiche_produit`) ou null",
+      "date": "date ISO (AAAA-MM-JJ) de la déclaration, de la mesure, du relevé ou du calcul ; null seulement quand elle est inconnue"
+    },
+    "regles": [
+      "UNE seule forme pour tout le groupe : {origine, detail, date}. Aucune autre clé.",
+      "La nature « besoin agronomique plein » n'est PAS une provenance : c'est `besoin.nature` (D-AGR-3).",
+      "Une valeur par défaut n'est jamais enregistrée comme une saisie : sans saisie ni lead ni réglage, la valeur est null et nommée.",
+      "Priorité de résolution : corps > devis > lead > réglage société (AGR121)."
+    ]
+  },
+  "corps": {
+    "mode_pompe": "neuve",
+    "plaque": null,
+    "besoin": {
+      "mode": "volume_declare",
+      "volume_m3_jour": 135,
+      "mois_pointe": 7,
+      "debit_actuel_m3h": null,
+      "heures_actuelles_jour": null,
+      "cultures": [],
+      "region": "souss_massa"
+    },
+    "source": {
+      "debit_exploitation_m3h": 36,
+      "debit_exploitation_origine": "foreur",
+      "debit_exploitation_date": "2026-09-15",
+      "debit_autorise_m3h": null,
+      "volume_annuel_autorise_m3": null,
+      "compteur": null,
+      "niveau_statique_m": 32,
+      "niveau_dynamique_m": 40,
+      "rabattement_m": null,
+      "profondeur_forage_m": 90,
+      "diametre_tubage_mm": 150,
+      "profondeur_calage_m": 60,
+      "volume_reservoir_m3": null
+    },
+    "hmt": {
+      "saisie_m": null,
+      "denivele_m": 4,
+      "conduite": {
+        "materiau": "pehd",
+        "diametre_interieur_mm": 100,
+        "longueur_m": 350,
+        "c_hazen_williams": null
+      },
+      "pertes_singulieres_m": 0.8,
+      "pression_service_bar": 1.0
+    },
+    "alim": "tri",
+    "type_pompe": "immergee",
+    "localisation": {
+      "ville": "Taroudant",
+      "lat": 30.47,
+      "lon": -8.88
+    },
+    "distance_champ_m": 25,
+    "options_cochees": [
+      "afficheur_variateur",
+      "protection_dc"
+    ],
+    "taille": "recommandee"
+  },
+  "corps_regles": {
+    "mode_pompe": "neuve | existante (D-AGR-7) — obligatoire",
+    "plaque": "objet {kw, tension_v, phases, cv, courant_a} — mode existante ; null en mode neuve. kw absent (CV seul) ⇒ alerte « kW de plaque à relever », la conversion CV→kW ne sert qu'à l'affichage",
+    "besoin.mode": "volume_declare | pompe_actuelle | agronomique (D-AGR-3 : déclaré d'abord ; jamais le maximum des deux)",
+    "besoin.cultures": "liste [{crop, surface_ha, irrigation}] — lue seulement en mode agronomique",
+    "source.niveau_dynamique_m": "ou `rabattement_m` (statique + rabattement) ; l'un des deux",
+    "hmt": "soit `saisie_m`, soit les composantes (denivele_m + conduite + pertes_singulieres_m + pression_service_bar) ; composante manquante ⇒ repli sur la HMT saisie, annoncée « saisie »",
+    "hmt.conduite.c_hazen_williams": "null = pris dans la table d'hypothèses pour PVC/PEHD ; autre matériau sans C saisi ⇒ pertes null + alerte `hmt.conduite.c_hazen_williams`",
+    "options_cochees": "clés de `kit.options[].cle`",
+    "taille": "recommandee | inferieure | superieure (défaut : recommandee)",
+    "alim": "mono | tri | dc",
+    "type_pompe": "immergee | surface | dc"
+  },
+  "exemple": {
+    "entrees_resolues": {
+      "volume_m3_jour": {
+        "valeur": 135,
+        "provenance": {
+          "origine": "lead",
+          "detail": "client",
+          "date": "2026-09-12"
+        }
+      },
+      "niveau_statique_m": {
+        "valeur": 32,
+        "provenance": {
+          "origine": "lead",
+          "detail": "mesure_visite",
+          "date": "2026-09-15"
+        }
+      },
+      "niveau_dynamique_m": {
+        "valeur": 40,
+        "provenance": {
+          "origine": "lead",
+          "detail": "mesure_visite",
+          "date": "2026-09-15"
+        }
+      },
+      "debit_exploitation_m3h": {
+        "valeur": 36,
+        "provenance": {
+          "origine": "saisie",
+          "detail": "foreur",
+          "date": "2026-09-15"
+        }
+      },
+      "denivele_m": {
+        "valeur": 4,
+        "provenance": {
+          "origine": "saisie",
+          "detail": null,
+          "date": "2026-10-02"
+        }
+      },
+      "localisation": {
+        "valeur": {
+          "ville": "Taroudant",
+          "lat": 30.47,
+          "lon": -8.88
+        },
+        "provenance": {
+          "origine": "lead",
+          "detail": "client",
+          "date": "2026-09-12"
+        }
+      }
+    },
+    "hmt": {
+      "valeur_m": 58.7,
+      "composantes": {
+        "niveau_dynamique_m": 40,
+        "denivele_m": 4,
+        "pertes_lineaires_m": 3.7,
+        "pertes_singulieres_m": 0.8,
+        "pression_service_m": 10.2
+      },
+      "source": "calculee"
+    },
+    "besoin": {
+      "m3_jour_mois": [
+        135,
+        135,
+        135,
+        135,
+        135,
+        135,
+        135,
+        135,
+        135,
+        135,
+        135,
+        135
+      ],
+      "nature": "declare",
+      "source_et0": null,
+      "autre_besoin": null
+    },
+    "conception": {
+      "mois_critique": 12,
+      "debit_conception_m3h": 30.7,
+      "plafonds": {
+        "debit_exploitation_m3h": 36,
+        "part_reglage_pct": null,
+        "debit_autorise_m3h": null,
+        "plafond_retenu_m3h": 36,
+        "atteint": false
+      }
+    },
+    "pompe": {
+      "mode": "neuve",
+      "produit": 314,
+      "nom": "Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3\", 380V)",
+      "placeholder": false,
+      "classement": "declare",
+      "type_pompe": "immergee",
+      "alimentation": "tri",
+      "kw": 7.5,
+      "tension_v": 380,
+      "plaque": null,
+      "courbe": {
+        "debits_m3h": [
+          0,
+          12,
+          24,
+          30,
+          36,
+          39
+        ],
+        "hmt_m": [
+          91,
+          85,
+          70,
+          60,
+          43,
+          34
+        ]
+      },
+      "point_fonctionnement": {
+        "debit_m3h": 30.5,
+        "hmt_m": 58.7
+      },
+      "debit_a_hmt_m3h": 30.5,
+      "prix_connu": true
+    },
+    "variateur": {
+      "produit": 403,
+      "nom": "VARIATEUR VEICHI SI23 7.5KW 380V",
+      "kw": 7.5,
+      "tension_v": 380,
+      "phases_sortie": 3,
+      "fiche_saisie": true,
+      "prix_connu": true,
+      "motif": null
+    },
+    "prix_a_renseigner": [],
+    "puissance_retenue": {
+      "kw": 7.5,
+      "cv": 10.2
+    },
+    "champ": {
+      "kwc": 9.94,
+      "nb_panneaux": 14,
+      "ratio": 1.33,
+      "chaines": {
+        "serie": 14,
+        "paralleles": 1,
+        "voc_froid_v": 728,
+        "vmp_chaud_v": 532,
+        "verifiable": true,
+        "motif": null
+      }
+    },
+    "production": {
+      "m3_jour_mois": [
+        140.3,
+        161.7,
+        186.0,
+        207.4,
+        219.6,
+        225.7,
+        228.8,
+        222.7,
+        201.3,
+        173.8,
+        146.4,
+        134.2
+      ],
+      "heures_equivalentes_mois": [
+        4.6,
+        5.3,
+        6.1,
+        6.8,
+        7.2,
+        7.4,
+        7.5,
+        7.3,
+        6.6,
+        5.7,
+        4.8,
+        4.4
+      ],
+      "source_irradiation": "pvgis",
+      "mode": "courbe",
+      "coordonnees_figees": {
+        "lat": 30.47,
+        "lon": -8.88,
+        "fige_le": "2026-10-02"
+      }
+    },
+    "couverture_pct_mois": [
+      104,
+      120,
+      138,
+      154,
+      163,
+      167,
+      169,
+      165,
+      149,
+      129,
+      108,
+      99
+    ],
+    "controle_conception": {
+      "tolerance_pct": {
+        "min": -5,
+        "max": 20
+      },
+      "couverture_mois_critique_pct": 99,
+      "statut": "conforme",
+      "source_tolerance": "hypotheses_pompage.json › tolerance_conception_pct (source secondaire)"
+    },
+    "ha_irrigables": {
+      "valeur": null,
+      "base": null,
+      "motif": "besoin déclaré en volume : aucun besoin par hectare connu (hectares calculés seulement sur un besoin agronomique)"
+    },
+    "autonomie_reservoir_jours": {
+      "valeur": null,
+      "motif": "aucun réservoir déclaré"
+    },
+    "tailles": [
+      {
+        "cle": "recommandee",
+        "pompe_produit": 314,
+        "pompe_nom": "Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3\", 380V)",
+        "puissance_kw": 7.5,
+        "champ_kwc": 9.94,
+        "nb_panneaux": 14,
+        "couverture_mois_critique_pct": 99,
+        "total_ttc": null,
+        "prix_connu": true,
+        "retenue": true,
+        "motif": null
+      },
+      {
+        "cle": "superieure",
+        "pompe_produit": 315,
+        "pompe_nom": "Pompe immergée OSP 30/11 — 12.5 CV / 9.3 kW (3\", 380V)",
+        "puissance_kw": 9.3,
+        "champ_kwc": 12.78,
+        "nb_panneaux": 18,
+        "couverture_mois_critique_pct": 121,
+        "total_ttc": null,
+        "prix_connu": true,
+        "retenue": false,
+        "motif": null
+      }
+    ],
+    "tailles_omises": [
+      {
+        "cle": "inferieure",
+        "motif": "aucun palier de pompe chiffrable sous la recommandée au catalogue"
+      }
+    ],
+    "kit": {
+      "inclus": [
+        {
+          "cle": "pompe",
+          "role_pompage": "pompe",
+          "produit": 314,
+          "designation": "Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3\", 380V)",
+          "quantite": 1,
+          "prix_connu": true
+        },
+        {
+          "cle": "variateur",
+          "role_pompage": "variateur_pompage",
+          "produit": 403,
+          "designation": "VARIATEUR VEICHI SI23 7.5KW 380V",
+          "quantite": 1,
+          "prix_connu": true
+        },
+        {
+          "cle": "panneaux",
+          "role_pompage": "",
+          "produit": 3,
+          "designation": "Panneau 710W",
+          "quantite": 14,
+          "prix_connu": true
+        },
+        {
+          "cle": "structure",
+          "role_pompage": "structure_sol",
+          "produit": 51,
+          "designation": "Structure au sol",
+          "quantite": 14,
+          "prix_connu": true
+        },
+        {
+          "cle": "installation",
+          "role_pompage": "installation_pompage",
+          "produit": 60,
+          "designation": "Installation pompage",
+          "quantite": 1,
+          "prix_connu": true
+        }
+      ],
+      "options": [
+        {
+          "cle": "afficheur_variateur",
+          "libelle": "Afficheur du variateur",
+          "produit": 420,
+          "prix_connu": true,
+          "cochee": true,
+          "quantite": 1,
+          "motif": null
+        },
+        {
+          "cle": "protection_dc",
+          "libelle": "Protections DC/AC",
+          "produit": 77,
+          "prix_connu": false,
+          "cochee": true,
+          "quantite": 1,
+          "motif": "prix à renseigner"
+        },
+        {
+          "cle": "sonde_niveau",
+          "libelle": "Sonde de niveau (marche à sec)",
+          "produit": null,
+          "prix_connu": false,
+          "cochee": false,
+          "quantite": 1,
+          "motif": "aucun produit au catalogue"
+        },
+        {
+          "cle": "compteur_eau",
+          "libelle": "Compteur d'eau",
+          "produit": null,
+          "prix_connu": false,
+          "cochee": false,
+          "quantite": 1,
+          "motif": "aucun produit au catalogue — mention : exigé par la loi 36-15 et le dossier FDA 2024"
+        },
+        {
+          "cle": "cable_descente",
+          "libelle": "Câble de descente",
+          "produit": 88,
+          "prix_connu": false,
+          "cochee": false,
+          "quantite": null,
+          "motif": "marge de câble non réglée : quantité à saisir"
+        }
+      ],
+      "non_inclus": [
+        "forage",
+        "genie_civil"
+      ]
+    },
+    "alertes": [],
+    "hypotheses": [
+      {
+        "cle": "energie_hydraulique_wh_par_m3_m",
+        "valeur": 2.725,
+        "statut": "physique",
+        "source": "ρ·g/3600 (ρ = 1000 kg/m³, g = 9,81 m/s²)",
+        "usage": "calcul"
+      },
+      {
+        "cle": "hazen_williams_c_pvc_pehd",
+        "valeur": 150,
+        "statut": "source",
+        "source": "bulletin IPEX mis en ligne 08/2022 ; AWWA M23",
+        "usage": "calcul"
+      },
+      {
+        "cle": "pertes_pvgis_comprises_pct",
+        "valeur": 14,
+        "statut": "source",
+        "source": "backend/django_core/apps/parametres/pvgis_profils.py:128 (PVGIS_LOSS_PCT) — déjà comprises : AUCUN derate supplémentaire (les 0,82-0,90 de Water Mission sont refusés : double comptage)",
+        "usage": "calcul"
+      }
+    ],
+    "methode": "HMT = niveau dynamique + dénivelé + pertes Hazen-Williams + pertes singulières + pression de service × 10,197 m/bar ; besoin déclaré (D-AGR-3) ; débit de conception = besoin du mois critique ÷ heures-pic PVGIS de ce mois ; production heure par heure sur le profil PVGIS du site avec lois de similitude de la courbe ; champ dimensionné sur le mois critique."
+  },
+  "exemple_pompe_existante": {
+    "entrees_resolues": {
+      "plaque": {
+        "valeur": {
+          "kw": 4.0,
+          "tension_v": 380,
+          "phases": 3,
+          "cv": null,
+          "courant_a": null
+        },
+        "provenance": {
+          "origine": "lead",
+          "detail": "mesure_visite",
+          "date": "2026-09-20"
+        }
+      },
+      "debit_actuel_m3h": {
+        "valeur": 18,
+        "provenance": {
+          "origine": "lead",
+          "detail": "client",
+          "date": "2026-09-18"
+        }
+      },
+      "heures_actuelles_jour": {
+        "valeur": 5,
+        "provenance": {
+          "origine": "lead",
+          "detail": "client",
+          "date": "2026-09-18"
+        }
+      }
+    },
+    "hmt": {
+      "valeur_m": 48,
+      "composantes": null,
+      "source": "saisie"
+    },
+    "besoin": {
+      "m3_jour_mois": [
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90
+      ],
+      "nature": "declare",
+      "source_et0": null,
+      "autre_besoin": null
+    },
+    "conception": {
+      "mois_critique": 12,
+      "debit_conception_m3h": null,
+      "plafonds": {
+        "debit_exploitation_m3h": null,
+        "part_reglage_pct": null,
+        "debit_autorise_m3h": null,
+        "plafond_retenu_m3h": null,
+        "atteint": false
+      }
+    },
+    "pompe": {
+      "mode": "existante",
+      "produit": null,
+      "nom": "Pompe existante conservée",
+      "placeholder": false,
+      "classement": null,
+      "type_pompe": "immergee",
+      "alimentation": "tri",
+      "kw": 4.0,
+      "tension_v": 380,
+      "plaque": {
+        "kw": 4.0,
+        "tension_v": 380,
+        "phases": 3,
+        "cv": null,
+        "courant_a": null
+      },
+      "courbe": null,
+      "point_fonctionnement": null,
+      "debit_a_hmt_m3h": null,
+      "prix_connu": null
+    },
+    "variateur": {
+      "produit": 411,
+      "nom": "VARIATEUR VEICHI SI23 4KW 380V",
+      "kw": 4.0,
+      "tension_v": 380,
+      "phases_sortie": null,
+      "fiche_saisie": false,
+      "prix_connu": true,
+      "motif": "fiche variateur à saisir : tension et phases de sortie non vérifiées sur la fiche"
+    },
+    "prix_a_renseigner": [],
+    "puissance_retenue": {
+      "kw": 4.0,
+      "cv": 5.4
+    },
+    "champ": {
+      "kwc": 5.68,
+      "nb_panneaux": 8,
+      "ratio": 1.42,
+      "chaines": {
+        "serie": null,
+        "paralleles": null,
+        "voc_froid_v": null,
+        "vmp_chaud_v": null,
+        "verifiable": false,
+        "motif": "chaîne PV non vérifiable : fiche du variateur non saisie"
+      }
+    },
+    "production": {
+      "m3_jour_mois": [
+        75.6,
+        84.6,
+        97.2,
+        106.2,
+        113.4,
+        115.2,
+        117.0,
+        113.4,
+        102.6,
+        90.0,
+        77.4,
+        70.2
+      ],
+      "heures_equivalentes_mois": [
+        4.2,
+        4.7,
+        5.4,
+        5.9,
+        6.3,
+        6.4,
+        6.5,
+        6.3,
+        5.7,
+        5.0,
+        4.3,
+        3.9
+      ],
+      "source_irradiation": "pvgis",
+      "mode": "debit_declare",
+      "coordonnees_figees": {
+        "lat": 32.33,
+        "lon": -6.36,
+        "fige_le": "2026-10-02"
+      }
+    },
+    "couverture_pct_mois": [
+      84,
+      94,
+      108,
+      118,
+      126,
+      128,
+      130,
+      126,
+      114,
+      100,
+      86,
+      78
+    ],
+    "controle_conception": {
+      "tolerance_pct": {
+        "min": -5,
+        "max": 20
+      },
+      "couverture_mois_critique_pct": 78,
+      "statut": "couverture_insuffisante",
+      "source_tolerance": "hypotheses_pompage.json › tolerance_conception_pct (source secondaire)"
+    },
+    "ha_irrigables": {
+      "valeur": null,
+      "base": null,
+      "motif": "besoin déclaré en volume : aucun besoin par hectare connu"
+    },
+    "autonomie_reservoir_jours": {
+      "valeur": null,
+      "motif": "aucun réservoir déclaré"
+    },
+    "tailles": [
+      {
+        "cle": "recommandee",
+        "pompe_produit": null,
+        "pompe_nom": "Pompe existante conservée",
+        "puissance_kw": 4.0,
+        "champ_kwc": 5.68,
+        "nb_panneaux": 8,
+        "couverture_mois_critique_pct": 78,
+        "total_ttc": null,
+        "prix_connu": true,
+        "retenue": true,
+        "motif": "pompe existante imposée : une seule taille"
+      }
+    ],
+    "tailles_omises": [
+      {
+        "cle": "inferieure",
+        "motif": "pompe existante imposée : une seule taille"
+      },
+      {
+        "cle": "superieure",
+        "motif": "pompe existante imposée : une seule taille"
+      }
+    ],
+    "kit": {
+      "inclus": [
+        {
+          "cle": "variateur",
+          "role_pompage": "variateur_pompage",
+          "produit": 411,
+          "designation": "VARIATEUR VEICHI SI23 4KW 380V",
+          "quantite": 1,
+          "prix_connu": true
+        },
+        {
+          "cle": "panneaux",
+          "role_pompage": "",
+          "produit": 3,
+          "designation": "Panneau 710W",
+          "quantite": 8,
+          "prix_connu": true
+        },
+        {
+          "cle": "structure",
+          "role_pompage": "structure_sol",
+          "produit": 51,
+          "designation": "Structure au sol",
+          "quantite": 8,
+          "prix_connu": true
+        },
+        {
+          "cle": "installation",
+          "role_pompage": "",
+          "produit": 61,
+          "designation": "Installation (barème INST-CAT)",
+          "quantite": 1,
+          "prix_connu": true
+        }
+      ],
+      "options": [
+        {
+          "cle": "afficheur_variateur",
+          "libelle": "Afficheur du variateur",
+          "produit": 420,
+          "prix_connu": true,
+          "cochee": true,
+          "quantite": 1,
+          "motif": null
+        }
+      ],
+      "non_inclus": [
+        "forage",
+        "genie_civil"
+      ]
+    },
+    "alertes": [
+      {
+        "code": "couverture_insuffisante",
+        "champ": "controle_conception",
+        "message": "Au mois critique (décembre), l'eau livrée couvre 78 % du besoin déclaré — sous la tolérance de conception (-5 %)."
+      },
+      {
+        "code": "chaine_non_verifiable",
+        "champ": "variateur.fiche",
+        "message": "Chaîne PV non vérifiable : la fiche du variateur VEICHI SI23 4 kW n'est pas saisie."
+      },
+      {
+        "code": "bareme_installation_toiture",
+        "champ": "kit.installation",
+        "message": "Barème toiture appliqué à un pompage — renseigner INST-PMP (alerte interne)."
+      }
+    ],
+    "hypotheses": [
+      {
+        "cle": "cv_vers_kw",
+        "valeur": 0.7355,
+        "statut": "physique",
+        "source": "1 CV (cheval-vapeur métrique) = 735,5 W",
+        "usage": "calcul"
+      }
+    ],
+    "methode": "Pompe existante conservée (D-AGR-7) : variateur et champ dimensionnés sur la PLAQUE ; production estimée sur le débit DÉCLARÉ de la pompe actuelle × Σ min(1, P/P_plaque), étiquetée « estimation sur débit déclaré »."
+  },
+  "exemple_aucune_pompe_chiffrable": {
+    "entrees_resolues": {
+      "volume_m3_jour": {
+        "valeur": 60,
+        "provenance": {
+          "origine": "saisie",
+          "detail": null,
+          "date": "2026-10-02"
+        }
+      }
+    },
+    "hmt": {
+      "valeur_m": 70,
+      "composantes": null,
+      "source": "saisie"
+    },
+    "besoin": {
+      "m3_jour_mois": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ],
+      "nature": "declare",
+      "source_et0": null,
+      "autre_besoin": null
+    },
+    "conception": {
+      "mois_critique": 12,
+      "debit_conception_m3h": 13.6,
+      "plafonds": {
+        "debit_exploitation_m3h": null,
+        "part_reglage_pct": null,
+        "debit_autorise_m3h": null,
+        "plafond_retenu_m3h": null,
+        "atteint": false
+      }
+    },
+    "pompe": {
+      "mode": "neuve",
+      "produit": null,
+      "nom": "Pompe — prix à renseigner : Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3\", 380V)",
+      "placeholder": true,
+      "classement": null,
+      "type_pompe": "immergee",
+      "alimentation": "mono",
+      "kw": null,
+      "tension_v": null,
+      "plaque": null,
+      "courbe": null,
+      "point_fonctionnement": null,
+      "debit_a_hmt_m3h": null,
+      "prix_connu": false
+    },
+    "variateur": {
+      "produit": null,
+      "nom": null,
+      "kw": null,
+      "tension_v": null,
+      "phases_sortie": null,
+      "fiche_saisie": false,
+      "prix_connu": false,
+      "motif": "aucune pompe retenue : variateur non choisi"
+    },
+    "prix_a_renseigner": [
+      "Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3\", 380V)"
+    ],
+    "puissance_retenue": {
+      "kw": null,
+      "cv": null
+    },
+    "champ": {
+      "kwc": null,
+      "nb_panneaux": null,
+      "ratio": null,
+      "chaines": {
+        "serie": null,
+        "paralleles": null,
+        "voc_froid_v": null,
+        "vmp_chaud_v": null,
+        "verifiable": false,
+        "motif": "aucune pompe retenue"
+      }
+    },
+    "production": null,
+    "couverture_pct_mois": null,
+    "controle_conception": {
+      "tolerance_pct": {
+        "min": -5,
+        "max": 20
+      },
+      "couverture_mois_critique_pct": null,
+      "statut": "non_verifiable",
+      "source_tolerance": "hypotheses_pompage.json › tolerance_conception_pct (source secondaire)"
+    },
+    "ha_irrigables": {
+      "valeur": null,
+      "base": null,
+      "motif": "aucune pompe retenue"
+    },
+    "autonomie_reservoir_jours": {
+      "valeur": null,
+      "motif": "aucun réservoir déclaré"
+    },
+    "tailles": [],
+    "tailles_omises": [
+      {
+        "cle": "recommandee",
+        "motif": "aucune pompe chiffrable au catalogue"
+      },
+      {
+        "cle": "inferieure",
+        "motif": "aucune pompe chiffrable au catalogue"
+      },
+      {
+        "cle": "superieure",
+        "motif": "aucune pompe chiffrable au catalogue"
+      }
+    ],
+    "kit": {
+      "inclus": [
+        {
+          "cle": "pompe",
+          "role_pompage": "pompe",
+          "produit": null,
+          "designation": "Pompe — prix à renseigner : Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3\", 380V)",
+          "quantite": 1,
+          "prix_connu": false
+        }
+      ],
+      "options": [],
+      "non_inclus": [
+        "forage",
+        "genie_civil"
+      ]
+    },
+    "alertes": [
+      {
+        "code": "aucune_pompe_chiffrable",
+        "champ": "pompe",
+        "message": "Aucune pompe chiffrable ne couvre ce besoin : la pompe à courbe du catalogue n'a pas de prix (à renseigner). Production et couverture non calculées."
+      },
+      {
+        "code": "gamme_monophasee",
+        "champ": "alim",
+        "message": "Gamme monophasée du catalogue insuffisante pour ce débit à cette HMT."
+      },
+      {
+        "code": "releve_point_eau_requis",
+        "champ": "source.niveau_statique_m",
+        "message": "Niveau d'eau du forage inconnu : relevé du point d'eau requis avant le devis (D-AGR-4)."
+      }
+    ],
+    "hypotheses": [
+      {
+        "cle": "rendement_groupe",
+        "valeur": 0.5,
+        "statut": "EST.",
+        "source": "plage AMEE 0,35-0,55, Guide PSIA, PDF du 14/01/2019",
+        "usage": "calcul"
+      }
+    ],
+    "methode": "Aucune pompe pricée ne couvre le débit de conception : ligne « Pompe — prix à renseigner : <noms> » (jamais enregistrée comme article gratuit), production et couverture omises."
+  },
+  "exemple_pvgis_indisponible": {
+    "entrees_resolues": {
+      "volume_m3_jour": {
+        "valeur": 135,
+        "provenance": {
+          "origine": "lead",
+          "detail": "client",
+          "date": "2026-09-12"
+        }
+      },
+      "heures_repli": {
+        "valeur": 7,
+        "provenance": {
+          "origine": "reglage_societe",
+          "detail": "agricole_pump_hours",
+          "date": "2026-10-02"
+        }
+      }
+    },
+    "hmt": {
+      "valeur_m": 58.7,
+      "composantes": {
+        "niveau_dynamique_m": 40,
+        "denivele_m": 4,
+        "pertes_lineaires_m": 3.7,
+        "pertes_singulieres_m": 0.8,
+        "pression_service_m": 10.2
+      },
+      "source": "calculee"
+    },
+    "besoin": {
+      "m3_jour_mois": [
+        135,
+        135,
+        135,
+        135,
+        135,
+        135,
+        135,
+        135,
+        135,
+        135,
+        135,
+        135
+      ],
+      "nature": "declare",
+      "source_et0": null,
+      "autre_besoin": null
+    },
+    "conception": {
+      "mois_critique": 1,
+      "debit_conception_m3h": 19.3,
+      "plafonds": {
+        "debit_exploitation_m3h": 36,
+        "part_reglage_pct": null,
+        "debit_autorise_m3h": null,
+        "plafond_retenu_m3h": 36,
+        "atteint": false
+      }
+    },
+    "pompe": {
+      "mode": "neuve",
+      "produit": 314,
+      "nom": "Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3\", 380V)",
+      "placeholder": false,
+      "classement": "declare",
+      "type_pompe": "immergee",
+      "alimentation": "tri",
+      "kw": 7.5,
+      "tension_v": 380,
+      "plaque": null,
+      "courbe": {
+        "debits_m3h": [
+          0,
+          12,
+          24,
+          30,
+          36,
+          39
+        ],
+        "hmt_m": [
+          91,
+          85,
+          70,
+          60,
+          43,
+          34
+        ]
+      },
+      "point_fonctionnement": {
+        "debit_m3h": 30.5,
+        "hmt_m": 58.7
+      },
+      "debit_a_hmt_m3h": 30.5,
+      "prix_connu": true
+    },
+    "variateur": {
+      "produit": 403,
+      "nom": "VARIATEUR VEICHI SI23 7.5KW 380V",
+      "kw": 7.5,
+      "tension_v": 380,
+      "phases_sortie": 3,
+      "fiche_saisie": true,
+      "prix_connu": true,
+      "motif": null
+    },
+    "prix_a_renseigner": [],
+    "puissance_retenue": {
+      "kw": 7.5,
+      "cv": 10.2
+    },
+    "champ": {
+      "kwc": 9.94,
+      "nb_panneaux": 14,
+      "ratio": 1.33,
+      "chaines": {
+        "serie": 14,
+        "paralleles": 1,
+        "voc_froid_v": 728,
+        "vmp_chaud_v": 532,
+        "verifiable": true,
+        "motif": null
+      }
+    },
+    "production": {
+      "m3_jour_mois": [
+        213.5,
+        213.5,
+        213.5,
+        213.5,
+        213.5,
+        213.5,
+        213.5,
+        213.5,
+        213.5,
+        213.5,
+        213.5,
+        213.5
+      ],
+      "heures_equivalentes_mois": [
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7
+      ],
+      "source_irradiation": "repli",
+      "mode": "repli_plat",
+      "coordonnees_figees": null
+    },
+    "couverture_pct_mois": [
+      158,
+      158,
+      158,
+      158,
+      158,
+      158,
+      158,
+      158,
+      158,
+      158,
+      158,
+      158
+    ],
+    "controle_conception": {
+      "tolerance_pct": {
+        "min": -5,
+        "max": 20
+      },
+      "couverture_mois_critique_pct": 158,
+      "statut": "surdimensionnement",
+      "source_tolerance": "hypotheses_pompage.json › tolerance_conception_pct (source secondaire)"
+    },
+    "ha_irrigables": {
+      "valeur": null,
+      "base": null,
+      "motif": "besoin déclaré en volume : aucun besoin par hectare connu"
+    },
+    "autonomie_reservoir_jours": {
+      "valeur": null,
+      "motif": "aucun réservoir déclaré"
+    },
+    "tailles": [
+      {
+        "cle": "recommandee",
+        "pompe_produit": 314,
+        "pompe_nom": "Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3\", 380V)",
+        "puissance_kw": 7.5,
+        "champ_kwc": 9.94,
+        "nb_panneaux": 14,
+        "couverture_mois_critique_pct": 158,
+        "total_ttc": null,
+        "prix_connu": true,
+        "retenue": true,
+        "motif": null
+      }
+    ],
+    "tailles_omises": [
+      {
+        "cle": "inferieure",
+        "motif": "aucun palier de pompe chiffrable sous la recommandée au catalogue"
+      },
+      {
+        "cle": "superieure",
+        "motif": "production en repli plat : palier supérieur non proposé sans irradiation du site"
+      }
+    ],
+    "kit": {
+      "inclus": [
+        {
+          "cle": "pompe",
+          "role_pompage": "pompe",
+          "produit": 314,
+          "designation": "Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3\", 380V)",
+          "quantite": 1,
+          "prix_connu": true
+        },
+        {
+          "cle": "variateur",
+          "role_pompage": "variateur_pompage",
+          "produit": 403,
+          "designation": "VARIATEUR VEICHI SI23 7.5KW 380V",
+          "quantite": 1,
+          "prix_connu": true
+        },
+        {
+          "cle": "panneaux",
+          "role_pompage": "",
+          "produit": 3,
+          "designation": "Panneau 710W",
+          "quantite": 14,
+          "prix_connu": true
+        },
+        {
+          "cle": "structure",
+          "role_pompage": "structure_sol",
+          "produit": 51,
+          "designation": "Structure au sol",
+          "quantite": 14,
+          "prix_connu": true
+        }
+      ],
+      "options": [],
+      "non_inclus": [
+        "forage",
+        "genie_civil"
+      ]
+    },
+    "alertes": [
+      {
+        "code": "pvgis_indisponible",
+        "champ": "production",
+        "message": "Irradiation du site indisponible : production en REPLI PLAT (débit × heures du réglage société), sans variation mensuelle."
+      },
+      {
+        "code": "surdimensionnement",
+        "champ": "controle_conception",
+        "message": "Au mois critique, l'eau livrée dépasse le besoin déclaré de plus de 20 % (repli plat)."
+      }
+    ],
+    "hypotheses": [],
+    "methode": "PVGIS indisponible : production = débit à la HMT × heures du réglage société (`agricole_pump_hours`), étiquetée « repli » ; coordonnées non figées."
+  },
+  "regles_sorties": {
+    "entrees_resolues": "objet : <entrée> → {valeur, provenance} — provenance = la forme UNIQUE ci-dessus",
+    "hmt.source": "saisie | calculee",
+    "besoin.nature": "declare | agronomique_plein (D-AGR-3) ; `source_et0` = {station, url, releve_le} ou « EST. » en mode agronomique, null sinon ; `autre_besoin` = l'autre besoin connu et son écart, servi SANS seuil (jamais le maximum des deux)",
+    "conception.plafonds": "plafond dur = débit d'exploitation déclaré × part du réglage AGR107 (si saisie) et débit autorisé ABH ; `atteint` true ⇒ alerte « forage »",
+    "pompe.mode": "neuve | existante ; `placeholder` true = ligne « Pompe — prix à renseigner : <noms> », jamais un article gratuit",
+    "puissance_retenue": "SORTIE du dimensionnement (le CV n'est plus une entrée) ; cv = kw / 0,7355 pour l'affichage",
+    "champ.chaines.verifiable": "false ⇒ `motif` obligatoire (fiche variateur absente, températures absentes…), jamais un blocage muet",
+    "production": "null quand aucune pompe à courbe et aucun débit déclaré (« jamais de m³/jour sans courbe ») ; `mode` courbe | debit_declare | repli_plat ; `source_irradiation` pvgis | repli ; `coordonnees_figees` = coordonnées + date de l'appel PVGIS gardées dans l'étude (reproductibilité)",
+    "couverture_pct_mois": "production ÷ besoin par mois, en %, NON plafonnée ; null quand la production est null",
+    "controle_conception.statut": "conforme | couverture_insuffisante (< 95 % au mois critique) | surdimensionnement (> 120 %) | non_verifiable — bornes = la tolérance de la table d'hypothèses, aucun autre seuil ; jamais bloquant (QX48(f))",
+    "ha_irrigables": "{valeur, base, motif} — seulement avec un besoin agronomique (« estimation » si l'ET0 est EST.)",
+    "autonomie_reservoir_jours": "{valeur, motif} — volume de réservoir DÉCLARÉ ÷ besoin ; aucun bassin dimensionné, aucun « ×2 »",
+    "tailles": "≤ 3, clés recommandee | inferieure | superieure ; défaut = recommandee ; palier absent ⇒ dans `tailles_omises` avec motif ; mode existante ⇒ une seule taille",
+    "kit": "inclus = pompe (si neuve), variateur, panneaux, structure (+ prestations) ; options nommées à cocher ; option sans produit pricé ⇒ prix_connu false + motif « prix à renseigner », jamais 0 MAD ; non_inclus = forage, genie_civil ; aucune batterie, aucun onduleur",
+    "alertes": "[{code, champ, message}] — message en français, `champ` nomme la saisie fautive ; jamais bloquant",
+    "hypotheses": "[{cle, valeur, statut, source, usage}] — entrées de la table `hypotheses_pompage.json` (AGR110) effectivement utilisées par CE calcul, recopiées telles quelles"
+  },
+  "interdit": [
+    "prix_achat",
+    "marge"
+  ],
+  "cles_etude_params_v2": {
+    "pourquoi": "Clés persistées dans `Devis.etude_params` pour un devis agricole (AGR122). ENTRÉES = propriétaire `ecran` (ce que le commercial saisit). DÉRIVÉES = propriétaire `moteur_pompage`, exclusives : un navigateur ne les écrit jamais, une copie/V2 les recalcule (ajoutées à CLES_DERIVEES_NON_COPIEES). D-AGR-13 : aucune clé n'existe pour relire un ancien devis agricole.",
+    "entrees": [
+      {
+        "cle": "mode_pompe",
+        "proprietaire": "ecran"
+      },
+      {
+        "cle": "plaque",
+        "proprietaire": "ecran"
+      },
+      {
+        "cle": "besoin",
+        "proprietaire": "ecran"
+      },
+      {
+        "cle": "source",
+        "proprietaire": "ecran"
+      },
+      {
+        "cle": "hmt_entrees",
+        "proprietaire": "ecran"
+      },
+      {
+        "cle": "alim",
+        "proprietaire": "ecran"
+      },
+      {
+        "cle": "type_pompe",
+        "proprietaire": "ecran"
+      },
+      {
+        "cle": "localisation",
+        "proprietaire": "ecran"
+      },
+      {
+        "cle": "distance_champ_m",
+        "proprietaire": "ecran"
+      },
+      {
+        "cle": "options_cochees",
+        "proprietaire": "ecran"
+      },
+      {
+        "cle": "taille",
+        "proprietaire": "ecran"
+      }
+    ],
+    "derivees": [
+      {
+        "cle": "besoin_mensuel",
+        "proprietaire": "moteur_pompage"
+      },
+      {
+        "cle": "production",
+        "proprietaire": "moteur_pompage"
+      },
+      {
+        "cle": "couverture_pct_mois",
+        "proprietaire": "moteur_pompage"
+      },
+      {
+        "cle": "controle_conception",
+        "proprietaire": "moteur_pompage"
+      },
+      {
+        "cle": "conception",
+        "proprietaire": "moteur_pompage"
+      },
+      {
+        "cle": "champ",
+        "proprietaire": "moteur_pompage"
+      },
+      {
+        "cle": "hmt_composantes",
+        "proprietaire": "moteur_pompage"
+      },
+      {
+        "cle": "ha_irrigables",
+        "proprietaire": "moteur_pompage"
+      },
+      {
+        "cle": "autonomie_reservoir_jours",
+        "proprietaire": "moteur_pompage"
+      },
+      {
+        "cle": "kit",
+        "proprietaire": "moteur_pompage"
+      },
+      {
+        "cle": "alertes_pompage",
+        "proprietaire": "moteur_pompage"
+      },
+      {
+        "cle": "hypotheses_pompage",
+        "proprietaire": "moteur_pompage"
+      },
+      {
+        "cle": "pvgis_fige",
+        "proprietaire": "moteur_pompage"
+      },
+      {
+        "cle": "provenance_pompage",
+        "proprietaire": "moteur_pompage"
+      }
+    ],
+    "derivees_v1_lues_par_le_rendu": [
+      {
+        "cle": "pompe_cv",
+        "proprietaire": "moteur_pompage",
+        "derivee_de": "puissance_retenue.cv"
+      },
+      {
+        "cle": "pompe_kw",
+        "proprietaire": "moteur_pompage",
+        "derivee_de": "puissance_retenue.kw"
+      },
+      {
+        "cle": "hmt_m",
+        "proprietaire": "moteur_pompage",
+        "derivee_de": "hmt.valeur_m"
+      },
+      {
+        "cle": "debit_hmt_m3h",
+        "proprietaire": "moteur_pompage",
+        "derivee_de": "pompe.debit_a_hmt_m3h"
+      },
+      {
+        "cle": "m3_jour",
+        "proprietaire": "moteur_pompage",
+        "derivee_de": "production.m3_jour_mois au mois critique (null sans production)"
+      },
+      {
+        "cle": "champ_kwc",
+        "proprietaire": "moteur_pompage",
+        "derivee_de": "champ.kwc"
+      },
+      {
+        "cle": "heures_pompage",
+        "proprietaire": "moteur_pompage",
+        "derivee_de": "production.heures_equivalentes_mois au mois critique (null sans production)"
+      }
+    ],
+    "regle_v1": "Les sept clés v1 ci-dessus restent UNIQUEMENT parce que le NOUVEAU moteur les écrit pour son propre rendu (D-AGR-13) ; toute autre clé v1 du bloc agricole (`current_fuel`, `fuel_spend_current`, `distance_m`, `hmt_static`, `hmt_drawdown`, `region`, `crop`, `surface_ha`, `profondeur_m`, `debit_souhaite_m3h`, `irrigation_method`) quitte le schéma (AGR122) ; énergie et dépense vivent dans `saisies_economie_pompage` (contrat `economie_pompage.json`, AGR3).",
+    "correspondance_corps": "Chaque clé d'ENTRÉE porte le nom de la clé du corps de l'aperçu, sauf `hmt_entrees` = l'objet `hmt` du corps (saisie_m ou composantes)."
+  }
+}
