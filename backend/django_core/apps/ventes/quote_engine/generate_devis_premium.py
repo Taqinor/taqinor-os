@@ -1011,6 +1011,35 @@ def kwc_fr(v):
     return (f"{f:.2f}".rstrip("0").rstrip(".") or "0").replace(".", ",")
 
 
+def _fdec_fr(v, decimales=2):
+    """AGR302 — nombre à la française : entier sans décimale (« 80 »), sinon
+    au plus ``decimales`` décimales sans zéro inutile, virgule décimale
+    (« 5,5 », « 4,05 », « 62,5 »). Une valeur non numérique est rendue telle
+    quelle (jamais un zéro inventé). Format seulement : aucun arrondi métier
+    au-delà de la précision d'affichage.
+    """
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return str(v)
+    if f == int(f):
+        return fnum(f)
+    return (f"{f:.{decimales}f}".rstrip("0").rstrip(".")
+            or "0").replace(".", ",")
+
+
+def _renvoi_detail_complet():
+    """AGR302 — où trouver les lignes retirées d'une table une-page tronquée.
+
+    Le pompage n'a PAS de devis multi-pages (QJR236) : le renvoi pointe vers
+    la proposition en ligne (QR de l'en-tête). AGR312 le fera renvoyer au
+    document agricole complet quand il sera branché.
+    """
+    if (globals().get("MODE_INSTALLATION") or "").strip().lower() == "agricole":
+        return "votre proposition en ligne (QR)"
+    return "le devis multi-pages"
+
+
 def _kwc_mention(prefixe="&#160;", suffixe="&#160;kWc"):
     """QJR145 (a) — « 10,65 kWc » prêt à imprimer, ou RIEN.
 
@@ -3891,29 +3920,26 @@ def page_onepage(items, tronquees=0):
         # Chiffres CANONIQUES calculés à la création du devis (courbe
         # constructeur) — rendus tels quels. Une carte sans valeur est
         # OMISE : jamais de tiret ni de m³/jour inventé sans courbe.
+        # AGR302 — chiffres à la française partout (« 5,5 CV (3,7 kW) »,
+        # « 62,5 m »), libellés passés par ``_L()`` (fr/en/ar), et la carte
+        # eau dit qu'elle est une ESTIMATION sur des heures SUPPOSÉES. Aucun
+        # nouveau chiffre : seul le format change.
         _sum_cells = []
         _pkw = ETUDE.get("pompe_kw")
+        _pcv = _fdec_fr(ETUDE.get("pompe_cv"))
         _sum_cells.append((
-            "Puissance pompe",
-            f"{ETUDE.get('pompe_cv')} CV ({_pkw} kW)" if _pkw
-            else f"{ETUDE.get('pompe_cv')} CV"))
-        if ETUDE.get("hmt_m"):
-            _sum_cells.append(("HMT", f"{ETUDE.get('hmt_m')} m",
-                               _ancre_figure("pompe_hmt_m",
-                                             ETUDE.get('hmt_m'))))
-        def _fdec(v):
-            # entier sans décimale, sinon une décimale à la française (30,5)
-            try:
-                f = float(v)
-                return fnum(f) if f == int(f) else f"{f:.1f}".replace(".", ",")
-            except Exception:
-                return str(v)
+            _L("puissance_pompe"),
+            f"{_pcv} CV ({_fdec_fr(_pkw)} kW)" if _pkw else f"{_pcv} CV"))
+        _hmt = ETUDE.get("hmt_m")
+        if _hmt:
+            _sum_cells.append(("HMT", f"{_fdec_fr(_hmt)} m",
+                               _ancre_figure("pompe_hmt_m", _hmt)))
         _dq = ETUDE.get("debit_hmt_m3h")
-        if _dq and ETUDE.get("hmt_m"):
+        if _dq and _hmt:
             _sum_cells.append(
-                (f"D&#233;bit &#224; {ETUDE.get('hmt_m')} m",
-                 f"{_fdec(_dq)} m&#179;/h",
-                 _ancre_figure("pompe_debit_m3h", _fdec(_dq))))
+                (_L("debit_a_hmt").format(hmt=_fdec_fr(_hmt)),
+                 f"{_fdec_fr(_dq, 1)} m&#179;/h",
+                 _ancre_figure("pompe_debit_m3h", _fdec_fr(_dq, 1))))
         elif ETUDE.get("debit_m3j"):  # anciens devis (saisie manuelle)
             _sum_cells.append(
                 ("D&#233;bit estim&#233;", f"{ETUDE.get('debit_m3j')} m&#179;/jour"))
@@ -3921,11 +3947,13 @@ def page_onepage(items, tronquees=0):
         _hrs = ETUDE.get("heures_pompage")
         if _m3j and _hrs:
             _sum_cells.append(
-                (f"Eau / jour (sur {_fdec(_hrs)} h de pompage)",
+                (f"{_L('eau_jour')} &#8212; {_L('estimation')}, "
+                 f"{_L('sur_heures_pompage').format(heures=_fdec_fr(_hrs, 1))}"
+                 f" ({_L('hypothese')})",
                  f"&#8776; {fnum(_m3j)} m&#179;",
                  _ancre_figure("pompe_volume_m3_jour", fnum(_m3j))))
         if KWC > 0:
-            _sum_cells.append(("Champ PV", f"{kwc_fr(KWC)} kWc",
+            _sum_cells.append((_L("champ_pv"), f"{kwc_fr(KWC)} kWc",
                                _ancre_figure("puissance_kwc", kwc_fr(KWC))))
     elif KWC > 0:
         _sum_cells = [
@@ -4067,7 +4095,7 @@ def page_onepage(items, tronquees=0):
             f'{"s" if tronquees > 1 else ""} d&#8217;&#233;quipement '
             f'&#8212; incluse'
             f'{"s" if tronquees > 1 else ""} dans les totaux ci-dessous, '
-            f'd&#233;tail complet sur le devis multi-pages.</td></tr>')
+            f'd&#233;tail complet sur {_renvoi_detail_complet()}.</td></tr>')
 
     # ── Bloc totaux : Sous-total HT → Remise visible → Total HT → TVA → TTC ──
     def _tot_line(label, value, navy=False, neg=False, fig=None, taux=None):

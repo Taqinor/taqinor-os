@@ -1073,10 +1073,12 @@ class TestPdfFormats3(TestPdfFormats):
         self.devis.save()
         html, doc = self._render({'pdf_mode': 'onepage'})
         self.assertEqual(len(doc.pages), 1)
-        self.assertIn('10 CV (7.5 kW)', html)
+        self.assertIn('10 CV (7,5 kW)', html)  # AGR302 — à la française
         self.assertIn('D&#233;bit &#224; 60 m', html)
         self.assertIn('30 m&#179;/h', html)
-        self.assertIn('Eau / jour (sur 7 h de pompage)', html)
+        self.assertIn(
+            'Eau / jour &#8212; estimation, sur 7 h de pompage '
+            '(hypoth&#232;se)', html)  # AGR302
         self.assertIn('210 m&#179;', html)
 
     def test_pompage_without_curve_never_shows_water_per_day(self):
@@ -1764,6 +1766,12 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
 
         empreinte = hashlib.sha256(html.encode('utf-8')).hexdigest()
 
+        # AGR302 (2026-10-03) — CHANGEMENT VOULU : la fixture gelée imprime
+        # désormais « 5,5 CV (4,05 kW) » (virgule décimale, ex « 5.5 CV
+        # (4.05 kW) ») et ses libellés passent par ``_L()`` (texte français
+        # inchangé). L'empreinte ci-dessous DOIT être recopiée du message
+        # d'échec du premier run CI de cette branche (jamais calculée à la
+        # main — aucun rendu DB/WeasyPrint n'est lancé hors CI).
         # Ré-épinglée le 2026-10-02 (ARRONDI-100, CI de la branche
         # claude/quote-rounding-100dh) : le total du devis gelé (44 700 HT,
         # soit 53 640 TTC à 20 %) est ramené au palier de 100 MAD (53 600 TTC),
