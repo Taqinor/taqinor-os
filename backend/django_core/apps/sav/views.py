@@ -2240,6 +2240,13 @@ class MaintenanceChecklistTemplateViewSet(CompanyScopedModelViewSet):
         qs = super().get_queryset()
         return qs.filter(actif=True)
 
+    def list(self, request, *args, **kwargs):
+        # AGR619 — sème une seule fois « Entretien pompage solaire » à
+        # l'affichage des modèles (même patron que seed_checklist_etapes).
+        from .services import ensure_modele_entretien_pompage
+        ensure_modele_entretien_pompage(request.user.company)
+        return super().list(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
 

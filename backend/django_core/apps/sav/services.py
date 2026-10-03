@@ -1848,3 +1848,48 @@ def repondre_par_email(ticket, *, corps, sujet='', destinataire='',
     activity.log_email(
         ticket, user, f'E-mail envoyé à {destinataire} — « {sujet} »\n\n{corps}')
     return ligne
+
+
+# ── AGR619 — modèle d'entretien « Pompage solaire » (semé, idempotent) ──────
+# Aucun intervalle, aucun seuil, aucun chiffre : la périodicité vient du
+# contrat et le seuil d'heures XSAV17 (`entretien_toutes_les_heures`) est
+# saisi par la société.
+MODELE_ENTRETIEN_POMPAGE_NOM = 'Entretien pompage solaire'
+MODELE_ENTRETIEN_POMPAGE_ETAPES = [
+    ('pompage_nettoyage_panneaux', 'Nettoyage des panneaux (poussière, sable)'),
+    ('pompage_connexions_dc_terre',
+     'Serrage et état des connexions DC et de la terre'),
+    ('pompage_isolement', 'Isolement moteur + câble mesuré'),
+    ('pompage_courant_phase', 'Courant par phase comparé à la plaque'),
+    ('pompage_variateur', 'Paramètres et journal de défauts du variateur'),
+    ('pompage_clapet_colonne', 'Clapet, colonne et étanchéité des raccords'),
+    ('pompage_niveau_dynamique', 'Niveau dynamique relevé'),
+    ('pompage_releves', "Relevé des heures et de l'index m³"),
+    ('pompage_marche_a_sec', 'Sonde marche à sec (si posée)'),
+    ('pompage_photos', 'Photos'),
+]
+
+
+def ensure_modele_entretien_pompage(company):
+    """AGR619 — sème UNE SEULE FOIS le modèle de checklist d'entretien
+    « Entretien pompage solaire » (idempotent, additif, sans gate). Jamais
+    recréé s'il a été renommé ou désactivé : le marqueur est sa première
+    étape (clé stable), cherchée sur TOUS les modèles de la société, actifs
+    ou non. Renvoie le modèle créé, ou None s'il existait déjà."""
+    if company is None:
+        return None
+    from .models import MaintenanceChecklistItem, MaintenanceChecklistTemplate
+    marqueur = MODELE_ENTRETIEN_POMPAGE_ETAPES[0][0]
+    if (MaintenanceChecklistItem.objects.filter(
+            company=company, cle=marqueur).exists()
+            or MaintenanceChecklistTemplate.objects.filter(
+                company=company, nom=MODELE_ENTRETIEN_POMPAGE_NOM).exists()):
+        return None
+    modele = MaintenanceChecklistTemplate.objects.create(
+        company=company, nom=MODELE_ENTRETIEN_POMPAGE_NOM, actif=True,
+        protege=False)
+    for i, (cle, libelle) in enumerate(MODELE_ENTRETIEN_POMPAGE_ETAPES):
+        MaintenanceChecklistItem.objects.create(
+            company=company, template=modele, cle=cle, libelle=libelle,
+            ordre=i)
+    return modele
