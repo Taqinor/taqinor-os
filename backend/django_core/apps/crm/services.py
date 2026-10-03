@@ -10151,6 +10151,28 @@ MENTION_VISITE_SANS_DEVIS = (
     'propose après le devis ».')
 
 
+#: AGR408 (D-AGR-4) — la règle POMPAGE : pour un lead agricole dont le niveau
+#: d'eau ou le débit du forage est inconnu, la visite de relevé du point d'eau
+#: se fait AVANT le devis. Ce n'est pas une exception.
+AVERTISSEMENT_VISITE_POINT_EAU = (
+    'Pompage : niveau d’eau ou débit du forage inconnu — la visite de relevé '
+    'du point d’eau se fait AVANT le devis.')
+
+#: AGR408 — la phrase de la note de planification dans ce cas.
+MENTION_VISITE_POINT_EAU = (
+    'Visite de relevé du point d’eau, avant devis (règle pompage).')
+
+
+def visite_point_eau_requise(lead):
+    """AGR408 — ``visite_point_eau_avant_devis(lead).requise`` (AGR403) :
+    vrai seulement pour un lead AGRICOLE au point d'eau inconnu."""
+    from .devis_auto import visite_point_eau_avant_devis
+    if lead is None:
+        return False
+    bloc = visite_point_eau_avant_devis(lead)
+    return bool(bloc and bloc['requise'])
+
+
 def visite_sans_devis(lead):
     """CAD123 — ce lead n'a-t-il encore reçu AUCUN devis (sorti du
     brouillon) ? Lecture par le sélecteur de ``ventes`` (frontière M3).
@@ -10242,7 +10264,13 @@ def avertissement_visite(lead):
     parti, deux chaînes VIDES (jamais null) sinon. Aucun blocage : c'est une
     information, pas un refus."""
     if visite_sans_devis(lead):
-        return {'avertissement_sans_devis': AVERTISSEMENT_VISITE_SANS_DEVIS,
+        # AGR408 (D-AGR-4) — pompage au point d'eau inconnu : la visite de
+        # relevé vient AVANT le devis, c'est la règle (le rappel juridique,
+        # lui, est inchangé).
+        texte = (AVERTISSEMENT_VISITE_POINT_EAU
+                 if visite_point_eau_requise(lead)
+                 else AVERTISSEMENT_VISITE_SANS_DEVIS)
+        return {'avertissement_sans_devis': texte,
                 'rappel_juridique': RAPPEL_JURIDIQUE_VISITE_DOMICILE}
     return {'avertissement_sans_devis': '', 'rappel_juridique': ''}
 
@@ -10320,7 +10348,11 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
     if sans_devis:
         # CAD123 — la visite posée avant tout devis est VISIBLE comme telle
         # dans le suivi : on a averti, on n'a pas bloqué, on le dit.
-        corps += f' {MENTION_VISITE_SANS_DEVIS}'
+        # AGR408 (D-AGR-4) — pour un lead agricole au point d'eau inconnu,
+        # c'est la RÈGLE pompage, pas une exception.
+        corps += (f' {MENTION_VISITE_POINT_EAU}'
+                  if visite_point_eau_requise(lead)
+                  else f' {MENTION_VISITE_SANS_DEVIS}')
     if devis_en_attente:
         corps += f' {mention_devis_apres_visite(libelle_devis)}'
     # Note SYSTÈME (``user=None``) : PLANIFIER n'est pas AVOIR contacté le
