@@ -112,8 +112,18 @@ class AucunMotQuiMentTests(SimpleTestCase):
                 self.assertIn(mot, base)
 
     def test_aucune_cle_exposee_n_affirme_ces_mots_a_un_segment_expose(self):
+        """AGR510 — la garde est passée PAR SEGMENT : chaque segment est
+        vérifié sur les clés de SA table, et sur les textes de base qu'il
+        reçoit pour les clés communes à tous les segments exposés (sans
+        variante pour lui, c'est le texte de base qui part). Aucun mot n'est
+        retiré de ``MOTS_QUI_MENTENT``."""
+        communes = set.intersection(*(
+            set(MESSAGE_TEMPLATE_VARIANTES_SEGMENT[s])
+            for s in SEGMENTS_EXPOSES))
+        self.assertTrue(communes)  # anti-faux-vert
         for segment in SEGMENTS_EXPOSES:
-            for cle in CLES_VARIANTES_SEGMENT:
+            cles = set(MESSAGE_TEMPLATE_VARIANTES_SEGMENT[segment]) | communes
+            for cle in sorted(cles):
                 texte = variante_segment(cle, segment)
                 if texte is None:
                     # Pas de variante pour ce couple : le texte de base part,
@@ -123,6 +133,70 @@ class AucunMotQuiMentTests(SimpleTestCase):
                 for mot in MOTS_QUI_MENTENT:
                     with self.subTest(segment=segment, cle=cle, mot=mot):
                         self.assertNotIn(mot, bas)
+
+
+class Agr510PompageTests(SimpleTestCase):
+    """AGR510 — plus de facture, de toit, de promesse d'économie ni de
+    « chez vous » pour un pompage ; « accord AVANT les travaux » pour la
+    FDA, sans aucun chiffre."""
+
+    def _tous_les_textes(self):
+        from apps.parametres.models_messages import (
+            MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
+        )
+        textes = dict(MESSAGE_TEMPLATE_DEFAULTS)
+        textes.update({f'darija:{c}': t for c, t in
+                       MESSAGE_TEMPLATE_DEFAULTS_DARIJA.items()})
+        for segment, table in MESSAGE_TEMPLATE_VARIANTES_SEGMENT.items():
+            textes.update({f'{segment}:{c}': t for c, t in table.items()})
+        try:
+            from apps.parametres.models_messages import (
+                MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA,
+            )
+        except ImportError:
+            MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA = {}
+        for segment, table in MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA.items():
+            textes.update({f'darija-{segment}:{c}': t
+                           for c, t in table.items()})
+        return textes
+
+    def test_les_cles_pompage_ont_leur_variante(self):
+        for cle in ('valeur_j1', 'reveil_a1', 'reveil_a2', 'reveil_a3',
+                    'rappel_plus_tard', 'debrief_visite', 'j4_preuve',
+                    'visite_proposition'):
+            with self.subTest(cle=cle):
+                self.assertIsNotNone(variante_segment(cle, SEGMENT_POMPAGE))
+
+    def test_aucune_variante_agricole_ne_promet_une_economie(self):
+        for cle, texte in MESSAGE_TEMPLATE_VARIANTES_SEGMENT[
+                SEGMENT_POMPAGE].items():
+            with self.subTest(cle=cle):
+                self.assertNotIn('économi', texte.lower())
+                self.assertNotIn('chez vous', texte.lower())
+                self.assertNotIn('3d', texte.lower())
+
+    def test_aucun_texte_ne_dit_rembours_ni_un_pourcentage(self):
+        import re
+        pourcentage = re.compile(r'\d\s*%')
+        for cle, texte in self._tous_les_textes().items():
+            with self.subTest(cle=cle):
+                self.assertNotIn('rembours', texte.lower())
+                self.assertIsNone(pourcentage.search(texte))
+
+    def test_dossier_fda_accord_avant_les_travaux_sans_chiffre(self):
+        import re
+        texte = MESSAGE_TEMPLATE_DEFAULTS['dossier_fda']
+        self.assertIn('avant les travaux', texte)
+        self.assertIsNone(re.search(r'\d', texte))
+
+    def test_visite_proposition_pompage_mesure_l_eau(self):
+        self.assertIn("mesurer le niveau et le débit de l'eau",
+                      variante_segment('visite_proposition', SEGMENT_POMPAGE))
+
+    def test_rappel_plus_tard_garde_ses_crochets(self):
+        texte = variante_segment('rappel_plus_tard', SEGMENT_POMPAGE)
+        self.assertIn('[jour]', texte)
+        self.assertIn('[heure]', texte)
 
     def test_le_residentiel_garde_EXACTEMENT_ses_textes(self):
         """On ne casse pas le cas majoritaire pour servir les exceptions."""

@@ -215,7 +215,7 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     'dossier_8221':
         "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Une question sur votre projet : où en est votre dossier d'autoproduction (loi 82-21) ? Selon l'étape où vous en êtes, on adapte l'étude et le calendrier de raccordement — et si le dossier n'est pas encore lancé, je vous explique les étapes en cinq minutes.",
     'dossier_fda':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Une question sur votre projet de pompage : avez-vous déposé un dossier de subvention agricole (FDA), ou comptez-vous le faire ? Cela change le calendrier et les pièces à préparer — dites-moi où vous en êtes et je cale l'étude dessus.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Une question sur votre projet de pompage : avez-vous déposé un dossier de subvention agricole (FDA), ou comptez-vous le faire ? Si vous visez cette aide, l'accord doit être obtenu avant les travaux. Cela change le calendrier et les pièces à préparer — dites-moi où vous en êtes et je cale l'étude dessus.",
 })
 
 # Variantes darija (écriture arabe, revue native le 04/09/2026). Une clé
@@ -659,19 +659,37 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT = {
     # Pompage agricole : pas de toit, pas de facture d'électricité (butane),
     # pas de « chez vous » — le chantier est au bord d'un forage.
     'agricole': {
+        # AGR510 (02/10/2026) — deux gestes seulement (plaque de la pompe +
+        # localisation du point d'eau), aucune promesse d'économie : aucun
+        # calcul d'économie agricole n'est encore servi sur le devis.
         'valeur_j1':
-            "Bonjour {civilite} {prenom}, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de connaître votre pompe (puissance, profondeur du forage, débit souhaité) et l'emplacement du point d'eau : je vous montre l'installation adaptée, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
+            "Bonjour {civilite} {prenom}, je n'ai pas réussi à vous joindre. Pour préparer votre étude, deux gestes suffisent : une photo de la plaque de votre pompe (ou de celle que vous visez) et la localisation WhatsApp du point d'eau. Je vous envoie ensuite l'installation adaptée et son chiffrage. Quel moment vous arrange pour un appel de cinq minutes ?",
+        # AGR510 — « je vous refais le chiffrage à jour » : ni vue 3D d'un
+        # champ (non vérifiée), ni économie promise.
         'reveil_a1':
-            "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu un devis de pompage solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer votre installation en 3D, sur VOTRE parcelle, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer l'emplacement.) Répondez STOP et je n'insiste plus.",
+            "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu un devis de pompage solaire chez nous. Si le projet revient d'actualité, je vous refais le chiffrage à jour — c'est gratuit, sans engagement. Je m'en occupe ? (Je dois juste confirmer l'emplacement du point d'eau.) Répondez STOP et je n'insiste plus.",
         'reveil_a3':
-            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de votre installation de pompage, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je vous refais le chiffrage à jour de votre installation de pompage. Je vous le prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
+        # AGR510 — un exploitant au butane n'a pas de facture : on demande la
+        # plaque de la pompe et ce qu'elle consomme aujourd'hui.
+        'reveil_a2':
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le pompage solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de la plaque de votre pompe, et dites-moi ce qu'elle consomme aujourd'hui (butane, gasoil ou électricité). Je vous envoie ensuite le chiffrage à jour. Répondez STOP et je n'insiste plus.",
+        # AGR510 — crochets [jour]/[heure] conservés (CAD69).
+        'rappel_plus_tard':
+            "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous pouvez prendre en photo la plaque de votre pompe, cela m'aide à préparer le chiffrage.",
+        'debrief_visite':
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle après le passage de notre technicien sur votre exploitation : qu'avez-vous pensé de sa visite, et reste-t-il des questions avant qu'on avance ensemble ?",
+        # AGR510 — une station de pompage, jamais un toit « comparable à la
+        # vôtre » ; sans la phrase sur le suivi temps réel (non garantie).
+        'j4_preuve':
+            "Voici une station de pompage solaire que nous avons posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Petite vidéo du chantier : {lien_video_preuve}.",
         # Une exploitation se décide souvent à plusieurs — associés, frères,
         # coopérative — pas nécessairement « en famille » : formulation
         # neutre, même chaleur, aucune supposition sur qui décide.
         'dimanche_famille':
             "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je sais que la décision se prend à plusieurs. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.",
         'visite_proposition':
-            "Pour verrouiller votre proposition, on peut passer sur place pour la vérification technique gratuite : le technicien confirme l'emplacement des panneaux, les caractéristiques du forage et le coffret électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
+            "Pour verrouiller votre proposition, on peut passer sur place pour la vérification technique gratuite : le technicien vient mesurer le niveau et le débit de l'eau, confirme l'emplacement des panneaux, les caractéristiques du forage et le coffret électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
         'visite_confirmation':
             "Bonjour, on confirme la visite technique prévue {date_visite} sur votre exploitation. Le technicien vérifie l'emplacement des panneaux, le forage et le coffret électrique — prévoyez l'accès au point d'eau. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
     },

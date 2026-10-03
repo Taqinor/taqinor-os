@@ -113,7 +113,7 @@ DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] م
 ### valeur_j1 — J1, WhatsApp de valeur (M2)
 FR : Bonjour {civilite} [Prénom], je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de votre facture (une photo suffit) et de votre adresse : je vous montre vos panneaux posés sur votre toit, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?
 DARIJA : السلام عليكم {civilite} [الاسم]، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف الفاتورة. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟
-POMPAGE : Bonjour {civilite} [Prénom], je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de connaître votre pompe (puissance, profondeur du forage, débit souhaité) et l'emplacement du point d'eau : je vous montre l'installation adaptée, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?
+POMPAGE : Bonjour {civilite} [Prénom], je n'ai pas réussi à vous joindre. Pour préparer votre étude, deux gestes suffisent : une photo de la plaque de votre pompe (ou de celle que vous visez) et la localisation WhatsApp du point d'eau. Je vous envoie ensuite l'installation adaptée et son chiffrage. Quel moment vous arrange pour un appel de cinq minutes ?
 B2B : Bonjour {civilite} [Prénom], je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de vos relevés de consommation (une photo suffit) et de l'adresse du site : je vous montre l'installation sur vos bâtiments, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?
 
 ### vocal_j3 — J3, vocal WhatsApp de trente secondes (M3, script à dire)
@@ -156,10 +156,12 @@ CAD110 — porte de sortie (voir note ci-dessus, section `je_classe_j7`) : les Q
 lointaines de la cadence (J30/J60), sont les plus exposées.
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de votre dernière facture, et je vous envoie l'estimation à jour. Répondez STOP et je n'insiste plus.
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال آخر فاتورة، وغادي نصيفط ليكم التقدير الجديد. جاوبو STOP وما نلحوش عليكم.
+POMPAGE : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Il y a un mois, vous vous renseigniez sur le pompage solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de la plaque de votre pompe, et dites-moi ce qu'elle consomme aujourd'hui (butane, gasoil ou électricité). Je vous envoie ensuite le chiffrage à jour. Répondez STOP et je n'insiste plus.
 
 ### rappel_plus_tard — réponse à « rappelez-moi plus tard » (M9)
 FR : Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez votre facture sous la main, une photo m'aide à préparer l'estimation.
 DARIJA : واخا، غادي نعيط ليكم [النهار] على [الساعة]. وحتى لذاك الوقت، إلا كانت الفاتورة عندكم، تصويرة ديالها غادي تعاونني نوجد التقدير.
+POMPAGE : Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous pouvez prendre en photo la plaque de votre pompe, cela m'aide à préparer le chiffrage.
 
 ### stop_contact — réponse à « ne me rappelez plus » (M10)
 FR : Compris, je ne vous rappellerai plus. Je vous laisse simplement ce numéro si un jour le projet revient. Bonne journée.
@@ -181,6 +183,7 @@ DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] م
 ### j4_preuve — J4, WhatsApp (la vue de SON toit avec les panneaux, ou la photo d'un chantier comparable)
 FR : Voici une installation comparable à la vôtre, posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Le suivi de production est en temps réel, je peux vous montrer. Petite vidéo du chantier : [lien vidéo].
 DARIJA : هادي تجهيزة شبيهة بديالكم، تركبات ف [mois] ف [ville] : [lien preuve]. القوة المركبة: [puissance preuve] kWc. متابعة الإنتاج كاينة ف الوقت الحقيقي، نقدر نوريكم.
+POMPAGE : Voici une station de pompage solaire que nous avons posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Petite vidéo du chantier : [lien vidéo].
 
 ### j6_garanties — J6, WhatsApp (avec les certificats de garantie des fabricants)
 FR : Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : [lien de votre proposition]. Ce qui est couvert et pour combien d'années : https://taqinor.ma/garanties
@@ -239,14 +242,14 @@ mois. Reformulé SANS durée plutôt qu'une durée inventée.
 CAD110 — porte de sortie sur les QUATRE touches de réveil (voir note, section `je_classe_j7`).
 FR : Bonjour {civilite} [prénom], c'est [Conseiller] de [Marque]. Vous aviez reçu un devis solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.) Répondez STOP et je n'insiste plus.
 DARIJA : السلام عليكم {civilite} [الاسم]، أنا [المستشار] من [Marque]. كنتو توصلتو بعرض للطاقة الشمسية عندنا. كاين جديد: دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم. غادي نوجد ليكم الصورة ونصيفطها ليكم هنا — بلاش، بلا ما تلتزمو بوالو. نبدا؟ (خاصني غير نتأكد من العنوان ديالكم.) جاوبو STOP وما نلحوش عليكم.
-POMPAGE : Bonjour {civilite} [Prénom], c'est [Conseiller] de [Marque]. Vous aviez reçu un devis de pompage solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer votre installation en 3D, sur VOTRE parcelle, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer l'emplacement.) Répondez STOP et je n'insiste plus.
+POMPAGE : Bonjour {civilite} [Prénom], c'est [Conseiller] de [Marque]. Vous aviez reçu un devis de pompage solaire chez nous. Si le projet revient d'actualité, je vous refais le chiffrage à jour — c'est gratuit, sans engagement. Je m'en occupe ? (Je dois juste confirmer l'emplacement du point d'eau.) Répondez STOP et je n'insiste plus.
 B2B : Bonjour {civilite} [Prénom], c'est [Conseiller] de [Marque]. Vous aviez reçu une étude solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer l'installation posée sur VOS bâtiments, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer l'adresse du site.) Répondez STOP et je n'insiste plus.
 
 ### reveil_a3 — dernière chance, la rupture honnête (A3 du Guide)
 CAD110 — porte de sortie (voir note, section `je_classe_j7`).
 FR : Bonjour {civilite} [prénom], [Conseiller] de [Marque]. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نقدر نصيفط ليكم الصورة ب 3D ديال الألواح فوق السطح ديالكم، مع تقدير محين. نوجدها ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.
-POMPAGE : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de votre installation de pompage, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.
+POMPAGE : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je vous refais le chiffrage à jour de votre installation de pompage. Je vous le prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.
 B2B : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de l'installation sur vos bâtiments, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.
 
 ### reveil_b — la saison des factures (B du Guide)
@@ -287,7 +290,8 @@ FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Une question sur vo
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. عندي سؤال على المشروع ديالكم: فين وصل الملف ديالكم ديال الإنتاج الذاتي (قانون 82-21)؟ حسب المرحلة اللي وصلتو ليها، كنلائمو الدراسة والروزنامة ديال الربط — وإلا الملف مازال ما تلانسا، كنشرح ليكم المراحل ف خمس دقايق.
 
 ### dossier_fda — agricole : le dossier de subvention
-FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Une question sur votre projet de pompage : avez-vous déposé un dossier de subvention agricole (FDA), ou comptez-vous le faire ? Cela change le calendrier et les pièces à préparer — dites-moi où vous en êtes et je cale l'étude dessus.
+AGR510 (02/10/2026) — D-AGR-6, Guide FDA 2024 p.22-23 : l'accord se demande AVANT les travaux ; aucun montant, taux ni délai. ✎ Texte à valider par le fondateur.
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Une question sur votre projet de pompage : avez-vous déposé un dossier de subvention agricole (FDA), ou comptez-vous le faire ? Si vous visez cette aide, l'accord doit être obtenu avant les travaux. Cela change le calendrier et les pièces à préparer — dites-moi où vous en êtes et je cale l'étude dessus.
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. عندي سؤال على المشروع ديال الضخ ديالكم: واش دخّلتو ملف الدعم الفلاحي (FDA)، ولا ناويين تدخّلوه؟ هادشي كيبدل الروزنامة والوثائق اللي خاصكم توجدو — قولوا ليا فين وصلتو ونوجد الدراسة على هاد الأساس.
 
 ## Après la signature (Guide v2.1, chapitre 13)
@@ -347,7 +351,7 @@ après ça rien ne se passe » : la chaîne ne s'interrompt plus.
 ### visite_proposition — après l'envoi du devis, WhatsApp
 FR : Pour verrouiller votre proposition, on peut passer chez vous pour la vérification technique gratuite : le technicien confirme l'orientation du toit, la charpente et le tableau électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — [Conseiller]
 DARIJA : باش نثبتو ليكم العرض، نقدرو نجيو عندكم لزيارة تقنية بلا فلوس: التقني كيتأكد من الاتجاه ديال السطح، من الهيكل ومن الطابلو ديال الضو، وكيجاوب على كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — [المستشار]
-POMPAGE : Pour verrouiller votre proposition, on peut passer sur place pour la vérification technique gratuite : le technicien confirme l'emplacement des panneaux, les caractéristiques du forage et le coffret électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — [Conseiller]
+POMPAGE : Pour verrouiller votre proposition, on peut passer sur place pour la vérification technique gratuite : le technicien vient mesurer le niveau et le débit de l'eau, confirme l'emplacement des panneaux, les caractéristiques du forage et le coffret électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — [Conseiller]
 B2B : Pour verrouiller votre proposition, on peut passer sur votre site pour la vérification technique gratuite : le technicien confirme l'orientation et la structure des bâtiments ainsi que le tableau électrique, et répond à toutes les questions de votre équipe sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — [Conseiller]
 
 ### visite_confirmation — la veille de la visite, WhatsApp
@@ -370,6 +374,7 @@ déclenche le rappel du responsable sous 24-48 h — rappel qui n'avait aucun sc
 l'envoie. ✎ Texte à valider par le fondateur ; darija pas encore relue par un locuteur natif (CADM1).
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je vous appelle après le passage de notre technicien chez vous : qu'avez-vous pensé de sa visite, et reste-t-il des questions avant qu'on avance ensemble ?
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. كنعيط ليكم من بعد ما جا التقني ديالنا عندكم: شنو رايكم فالزيارة ديالو، وواش بقا عندكم شي سؤال قبل ما نكملو مع بعضياتنا؟
+POMPAGE : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je vous appelle après le passage de notre technicien sur votre exploitation : qu'avez-vous pensé de sa visite, et reste-t-il des questions avant qu'on avance ensemble ?
 
 Décision fondateur du 21/09/2026 (CAD170) — VÉHICULE ÉLECTRIQUE, RECHARGE DE NUIT : **aucun texte ne conseille au
 client de recharger sa voiture en journée.** C'est le cas majoritaire (fenêtre 21h-6h) et l'effet mesuré sur
