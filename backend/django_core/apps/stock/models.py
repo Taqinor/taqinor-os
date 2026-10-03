@@ -7,7 +7,9 @@ from core.models import TenantModel  # SCA4 — socle multi-tenant
 # FONDATION) et PAS dans ``apps.ventes`` : ce module ne peut pas importer une
 # app métier sœur (frontière inter-app, verrouillée par ``.importlinter``),
 # et une copie locale aurait fait un miroir de plus à tenir à la main.
-from core.product_roles import ROLES_DEVIS
+from core.product_roles import (
+    ALIMENTATIONS_POMPAGE, ROLES_DEVIS, ROLES_POMPAGE, TYPES_POMPE,
+)
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -870,6 +872,32 @@ class Produit(models.Model):
         help_text="Courbe de performance constructeur : "
                   '{"debits_m3h": [0, 12, ...], "hmt_m": [91, 85, ...]} '
                   '(HMT délivrée à chaque débit).')
+    # ── AGR100 — champs STRUCTURÉS pompage (fin du classement par le nom).
+    # Vocabulaire ``ROLES_POMPAGE`` DISTINCT de ``ROLES_DEVIS`` (arbitrage de
+    # core/product_roles.py respecté). Vide = « non déclaré » : repli sur
+    # l'ancienne lecture (catégorie, puis mots du nom) ; jamais de défaut métier.
+    role_pompage = models.CharField(
+        max_length=32, blank=True, default='', db_index=True,
+        choices=[(r, r) for r in ROLES_POMPAGE],
+        verbose_name='Rôle pompage',
+        help_text="Rôle DÉCLARÉ dans une composition pompage (pompe, "
+                  "variateur_pompage, sonde_niveau…). Vide = non déclaré.")
+    type_pompe = models.CharField(
+        max_length=16, blank=True, default='',
+        choices=[(t, t) for t in TYPES_POMPE],
+        help_text='Pompes seulement : immergee, surface ou dc.')
+    alimentation = models.CharField(
+        max_length=8, blank=True, default='',
+        choices=[(a, a) for a in ALIMENTATIONS_POMPAGE],
+        help_text='Pompes et variateurs : mono, tri ou dc. Vide = non publié.')
+    courbe_source = models.JSONField(
+        default=dict, blank=True,
+        help_text='Provenance de courbe_pompe : {"document": "", "date": '
+                  'null, "page": null}. Document vide = source non publiée.')
+    courbe_frequence_hz = models.FloatField(
+        null=True, blank=True,
+        help_text='Fréquence (Hz) de publication de la courbe constructeur. '
+                  'null = non publié — jamais supposé.')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_mise_a_jour = models.DateTimeField(auto_now=True)
     # Champs personnalisés (T11) — valeurs indexées par CustomFieldDef.code.

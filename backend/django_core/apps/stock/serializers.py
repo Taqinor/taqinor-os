@@ -523,6 +523,9 @@ class ProduitSerializer(serializers.ModelSerializer):
             # Spécifications pompage
             'pompe_cv', 'hmt_m', 'debit_m3j', 'pompe_kw', 'tension_v',
             'courbe_pompe',
+            # AGR100 — champs structurés pompage (contrat produit_pompage.json)
+            'role_pompage', 'type_pompe', 'alimentation',
+            'courbe_source', 'courbe_frequence_hz',
             # Dates & data personnalisée
             'date_creation', 'date_mise_a_jour', 'custom_data',
             # FG20 — indicateur de marge (gardé par marge_voir, cf. get_fields)
@@ -684,6 +687,79 @@ class ProduitSerializer(serializers.ModelSerializer):
             )
             obj._stkcat21_role_resolu = cache
         return cache
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # AGR100 — `courbe_source` est TOUJOURS l'objet complet du contrat
+        # (produit_pompage.json), même pour un produit sans provenance saisie.
+        if 'courbe_source' in data:
+            src = data['courbe_source'] or {}
+            data['courbe_source'] = {
+                'document': src.get('document') or '',
+                'date': src.get('date') or None,
+                'page': src.get('page'),
+            }
+        return data
+
+    # ── AGR100 — vocabulaires pompage : 400 FR nommant le champ ────────────
+    @staticmethod
+    def _refuser_hors_vocabulaire(champ, value, valides):
+        if value and value not in valides:
+            raise serializers.ValidationError(
+                f"Valeur « {value} » inconnue pour `{champ}` : choisissez "
+                f"parmi {', '.join(valides)}.")
+        return value or ''
+
+    def validate_role_pompage(self, value):
+        from core.product_roles import ROLES_POMPAGE
+        return self._refuser_hors_vocabulaire(
+            'role_pompage', value, ROLES_POMPAGE)
+
+    def validate_type_pompe(self, value):
+        from core.product_roles import TYPES_POMPE
+        return self._refuser_hors_vocabulaire(
+            'type_pompe', value, TYPES_POMPE)
+
+    def validate_alimentation(self, value):
+        from core.product_roles import ALIMENTATIONS_POMPAGE
+        return self._refuser_hors_vocabulaire(
+            'alimentation', value, ALIMENTATIONS_POMPAGE)
+
+    def validate_courbe_source(self, value):
+        """Normalise la provenance en ``{document, date, page}`` (contrat
+        produit_pompage.json) ; vide / absent = source non publiée."""
+        if value in (None, {}, ''):
+            return {'document': '', 'date': None, 'page': None}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "`courbe_source` doit être un objet "
+                "{\"document\": ..., \"date\": ..., \"page\": ...}.")
+        inconnues = set(value) - {'document', 'date', 'page'}
+        if inconnues:
+            raise serializers.ValidationError(
+                "`courbe_source` n'accepte que `document`, `date` et "
+                f"`page` (reçu en trop : {', '.join(sorted(inconnues))}).")
+        document = value.get('document') or ''
+        if not isinstance(document, str):
+            raise serializers.ValidationError(
+                "`courbe_source.document` doit être un texte.")
+        date = value.get('date') or None
+        if date is not None:
+            import datetime
+            try:
+                datetime.date.fromisoformat(str(date))
+            except ValueError:
+                raise serializers.ValidationError(
+                    "`courbe_source.date` doit être une date ISO "
+                    "(AAAA-MM-JJ).")
+            date = str(date)
+        page = value.get('page')
+        if page in ('', None):
+            page = None
+        elif isinstance(page, bool) or not isinstance(page, int):
+            raise serializers.ValidationError(
+                "`courbe_source.page` doit être un entier.")
+        return {'document': document.strip(), 'date': date, 'page': page}
 
     def validate_role_devis(self, value):
         """Normalise « pas de rôle » en ``None`` (jamais la chaîne vide).
