@@ -41,6 +41,7 @@ CE QU'ELLE NE FAIT JAMAIS :
 from __future__ import annotations
 
 from .garanties import garanties_pompage_et_omissions
+from .schema import schema_svg
 
 #: Version de la forme servie (contrat AGR4).
 VERSION = 2
@@ -365,6 +366,10 @@ def synthese_agricole(data):
     omissions.extend(omissions_garanties)
 
     synthese["schema"] = _bloc_schema(etude, eau)
+    # AGR309 — UN seul dessin pour le PDF et la page : le SVG du schéma,
+    # tracé sur les seules valeurs saisies, servi tel quel.
+    synthese["schema_svg"] = schema_svg(
+        synthese, langue=data.get("langue_sortie") or "fr")
     synthese["options_kit"] = _bloc_options_kit(data.get("options_proposees"))
     synthese["non_inclus"] = list(NON_INCLUS)
 
