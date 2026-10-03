@@ -51,6 +51,20 @@ import { uniq } from './helpers'
 // On accepte les deux pour ne pas coupler ce spec à l'ordre des étapes.
 const OPTION_ARABE = /^(Arabe|العربية)$/
 
+// CAD177 — la bascule de langue est PERSISTÉE côté serveur sur le compte
+// (`CustomUser.langue_interface`, NTI18N3 — `PATCH /auth/me/langue/`). Or ce
+// compte, `demo_admin`, est celui de TOUTE la suite (storageState partagé) :
+// sans remise à `fr`, chaque spec suivant tournait en arabe/RTL (run
+// 36990128960 : leads-board, leads-density, leads, parcours-budget,
+// procure-to-pay, reliability, ux-* — 15 échecs en cascade). On restaure la
+// langue d'origine dans un `afterEach`, qui tourne MÊME si le test échoue.
+test.afterEach(async ({ page }) => {
+  const res = await page.request.patch('/api/django/auth/me/langue/', {
+    data: { langue_interface: 'fr' },
+  })
+  expect(res.ok(), `remise de la langue d'interface à fr (${res.status()})`).toBeTruthy()
+})
+
 test('NTI18N47: interface en arabe, client arabe, devis multilingue généré', async ({ page }) => {
   // ── 1. Bascule de l'interface en arabe (NTI18N8) ─────────────────────────
   await page.goto('/crm')
@@ -105,7 +119,10 @@ test('NTI18N47: interface en arabe, client arabe, devis multilingue généré', 
   await page.locator('[role="searchbox"]').last().fill(nomClient)
   await page.getByRole('option', { name: nomClient }).first().click()
 
-  await page.getByRole('button', { name: /Créer le devis/ }).click()
+  // CAD177 — DEUX boutons « Créer le devis » existent en desktop depuis le
+  // rail récapitulatif VX16 (be7caa72, `form="gen-form"`, lg+) : on vise
+  // celui du formulaire lui-même, présent à toutes les largeurs.
+  await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
   // Écran de succès du générateur — texte stable, jamais un libellé de bouton
   // (les actions proposées y évoluent).
   await expect(page.getByText('Devis enregistré')).toBeVisible({ timeout: 45_000 })

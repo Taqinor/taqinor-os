@@ -269,10 +269,13 @@ class GrapheMensuelTests(SimpleTestCase):
                          charts.bill_before_after(FACTURES_AVANT, apres, eco))
 
     def test_z2_le_graphe_n_est_meme_pas_calcule(self):
-        """Synthèse masquée ⇒ ``build_all`` ne produit que le calepinage."""
+        """Synthèse masquée ⇒ ``build_all`` ne calcule AUCUN graphe de la
+        synthèse (``bill``, comparaison des options) : seuls le calepinage et la
+        production mensuelle (PRODMOIS — elle dérive de la production annuelle
+        du devis, pas de la synthèse) restent."""
         from apps.ventes.quote_engine.residential import charts
         rendu = charts.build_all({'masquer_synthese': True, 'nb_panneaux': 8})
-        self.assertEqual(set(rendu), {'roof'})
+        self.assertEqual(set(rendu), {'roof', 'production'})
 
 
 # ════════════════════════════════════════════════════════════════════════════

@@ -86,6 +86,13 @@ const DraggableCard = memo(function DraggableCard({
     id: lead.id,
     data: { lead },
     disabled: busy,
+    // CAD177 — dnd-kit pose `role="button"` par défaut sur l'enveloppe ; or
+    // elle CONTIENT des contrôles focalisables (case de sélection, menu •••,
+    // responsable, devis auto) : un bouton ne peut pas en contenir d'autres
+    // (axe nested-interactive, serious — LB34 en e2e-full, 41 cartes). Rôle
+    // `group` : l'enveloppe reste focalisable et déplaçable au clavier
+    // (tabIndex, aria-roledescription « draggable », consignes dnd-kit).
+    attributes: { role: 'group' },
   })
   return (
     <div

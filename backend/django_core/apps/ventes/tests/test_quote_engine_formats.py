@@ -1073,10 +1073,12 @@ class TestPdfFormats3(TestPdfFormats):
         self.devis.save()
         html, doc = self._render({'pdf_mode': 'onepage'})
         self.assertEqual(len(doc.pages), 1)
-        self.assertIn('10 CV (7.5 kW)', html)
+        self.assertIn('10 CV (7,5 kW)', html)  # AGR302 — à la française
         self.assertIn('D&#233;bit &#224; 60 m', html)
         self.assertIn('30 m&#179;/h', html)
-        self.assertIn('Eau / jour (sur 7 h de pompage)', html)
+        self.assertIn(
+            'Eau / jour &#8212; estimation, sur 7 h de pompage '
+            '(hypoth&#232;se)', html)  # AGR302
         self.assertIn('210 m&#179;', html)
 
     def test_pompage_without_curve_never_shows_water_per_day(self):
@@ -1764,6 +1766,12 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
 
         empreinte = hashlib.sha256(html.encode('utf-8')).hexdigest()
 
+        # AGR302 (2026-10-03) — CHANGEMENT VOULU : la fixture gelée imprime
+        # désormais « 5,5 CV (4,05 kW) » (virgule décimale, ex « 5.5 CV
+        # (4.05 kW) ») et ses libellés passent par ``_L()`` (texte français
+        # inchangé). Ré-épinglée le 2026-10-03 (CAD177) : valeur recopiée du
+        # message d'échec de ce test exécuté dans l'image CI
+        # (.github/ci-image/Dockerfile, WeasyPrint réel) — jamais à la main.
         # Ré-épinglée le 2026-10-02 (ARRONDI-100, CI de la branche
         # claude/quote-rounding-100dh) : le total du devis gelé (44 700 HT,
         # soit 53 640 TTC à 20 %) est ramené au palier de 100 MAD (53 600 TTC),
@@ -1784,7 +1792,7 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # modification du rendu agricole la fait dériver : si le changement
         # est VOULU, coller la nouvelle valeur imprimée par le message d'échec.
         EMPREINTE_EPINGLEE = (
-            'f569f6acb6454b55d44cdd4f4e280f4e743adb947b1bcde443a5945e1a8019e4')
+            '965980be35121a6952cd39a478f6a4c3f04d5144a820fc53ea33b436418dbaa8')
 
         self.assertEqual(
             empreinte, EMPREINTE_EPINGLEE,
@@ -2423,6 +2431,10 @@ class TestPageCalepinage(TestCase):
         self._creer_calepinage()
         html, _doc = self._render(self._options())
         page = self._page_calepinage(html)
+        # Les images embarquées (``data:image/png;base64,…``) sont de l'octet
+        # aléatoire : « MAD » y apparaît par hasard (alphabet base64). On
+        # cherche les mots monétaires dans le TEXTE de la page, pas dans le PNG.
+        page = re.sub(r'data:[^;"\']+;base64,[A-Za-z0-9+/=]+', 'data:…', page)
         for interdit in ('prix_achat', 'marge', 'MAD', 'Total TTC',
                          'Sous-total', 'Remise'):
             self.assertNotIn(interdit, page)

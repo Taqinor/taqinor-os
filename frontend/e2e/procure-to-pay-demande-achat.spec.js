@@ -26,7 +26,10 @@ test('NTP2P42: demande d\'achat (catalogue) → approbation → BCF', async ({ p
   await expect(page.getByRole('heading', { name: "Demandes d'achat" })).toBeVisible()
 
   // ── 1) Créer depuis le catalogue interne (NTP2P3) + soumettre ───────────
-  await page.getByRole('button', { name: 'Nouvelle demande' }).click()
+  // CAD177 — sur une base sans demande, l'état vide du tableau propose AUSSI
+  // « Nouvelle demande » (emptyAction, DemandesAchatList.jsx depuis 59849b1c) :
+  // on vise le bouton d'en-tête, premier dans le DOM (même `openCreate`).
+  await page.getByRole('button', { name: 'Nouvelle demande' }).first().click()
   await expect(page.getByRole('heading', { name: "Nouvelle demande d'achat" })).toBeVisible()
   await page.locator('#da-objet').fill(objet)
 

@@ -17,7 +17,7 @@ from apps.crm.models import Lead
 
 #: Les colonnes que l'écran pose, par famille (miroir des étapes de
 #: `appelGuidance.js` ; le test écran prouve l'ordre, celui-ci la présence).
-COLONNES_AGRICOLES = ('pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+COLONNES_AGRICOLES = ('pompe_actuelle_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
                       'pompage_heures_jour', 'pompe_alim_actuelle',
                       'carburant_litres_mois')
 COLONNES_PRO = ('conso_mensuelle_kwh', 'compteur_puissance_kva',
@@ -44,7 +44,7 @@ class LeServeurSertLesQuestionsDuSegment(SimpleTestCase):
         """En résidentiel, la puissance souscrite se lit sur la PHOTO du
         compteur (dernier recours à l'oral, CAD154) : pas une question."""
         champs = _champs(Lead(nom='P', type_installation='residentiel'))
-        for colonne in ('pompe_cv', 'compteur_puissance_kva'):
+        for colonne in ('pompe_actuelle_cv', 'compteur_puissance_kva'):
             self.assertNotIn(colonne, champs, colonne)
 
     def test_chaque_colonne_de_segment_existe_sur_le_lead(self):
@@ -53,9 +53,9 @@ class LeServeurSertLesQuestionsDuSegment(SimpleTestCase):
 
     def test_une_reponse_de_segment_deja_sur_la_fiche_n_est_pas_reposee(self):
         lead = Lead(nom='P', type_installation='agricole',
-                    pompe_cv=Decimal('7.50'))
-        self.assertNotIn('pompe_cv', _champs(lead))
-        self.assertEqual(panneau.prefill_du_panneau(lead)['pompe_cv'], 7.5)
+                    pompe_actuelle_cv=Decimal('7.50'))
+        self.assertNotIn('pompe_actuelle_cv', _champs(lead))
+        self.assertEqual(panneau.prefill_du_panneau(lead)['pompe_actuelle_cv'], 7.5)
         pro = Lead(nom='P', type_installation='industriel',
                    compteur_puissance_kva=Decimal('60.00'))
         self.assertNotIn('compteur_puissance_kva', _champs(pro))
@@ -65,6 +65,6 @@ class LeServeurSertLesQuestionsDuSegment(SimpleTestCase):
     def test_la_pompe_est_servie_comme_un_nombre(self):
         questions = {q['champ']: q for q in panneau.questions_a_poser(
             Lead(nom='P', type_installation='agricole'))}
-        for colonne in ('pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h'):
+        for colonne in ('pompe_actuelle_cv', 'pompe_hmt_m', 'pompe_debit_m3h'):
             self.assertEqual(questions[colonne]['nature'], 'nombre', colonne)
             self.assertIsNone(questions[colonne]['choix'], colonne)

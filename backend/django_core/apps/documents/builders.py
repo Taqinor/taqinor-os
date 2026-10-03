@@ -209,6 +209,10 @@ def _equipements_poses(chantier):
             'date_fin_garantie': _as_date(eq.date_fin_garantie),
             'date_fin_garantie_production': _as_date(
                 eq.date_fin_garantie_production),
+            # AGR622 — garantie légale de conformité (loi 31-08, pose + 12
+            # mois), CALCULÉE par sav.Equipement ; None sans date de pose.
+            'date_fin_garantie_legale': _as_date(
+                getattr(eq, 'date_fin_garantie_legale', None)),
         })
     return items
 
@@ -445,6 +449,14 @@ def _equipements_poses_fragment(chantier):
         if eq['date_fin_garantie']:
             garantie_bits.append(
                 'Matériel : ' + eq['date_fin_garantie'].strftime('%d/%m/%Y'))
+        elif eq.get('date_fin_garantie_legale'):
+            # AGR622 — sans garantie constructeur, dire que la garantie
+            # légale court (au lieu d'un « — » muet). Une seule source :
+            # Produit.garantie_mois via les horloges sav.Equipement.
+            garantie_bits.append(
+                'Garantie constructeur : non renseignée — garantie légale de '
+                'conformité 12 mois (loi 31-08) jusqu\'au '
+                + eq['date_fin_garantie_legale'].strftime('%d/%m/%Y'))
         if eq['date_fin_garantie_production']:
             garantie_bits.append(
                 'Production : ' +

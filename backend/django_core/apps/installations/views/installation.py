@@ -195,6 +195,8 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'etapes',
             # CH3 — fiche de recette IEC 62446-1 (lecture ; POST auto-gardé).
             'recette',
+            # AGR608 — recette pompage (lecture ; POST auto-gardé).
+            'recette_pompage',
             # CH4 — pack de remise client (lecture ; POST auto-gardé).
             'pack_remise',
         ]:
@@ -238,7 +240,18 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
     def perform_create(self, serializer):
-        super().perform_create(serializer)
+        # CAD177 — la référence est attribuée côté serveur (`CHT-…`, même
+        # numérotation que `creer-depuis-devis`). Avant, ce chemin POST nu
+        # laissait `reference=''` : le 2e chantier créé ainsi dans la même
+        # société violait l'unicité (company, reference) → IntegrityError,
+        # HTTP 500 (vu en e2e-full nocturne, E-INSTALL-3).
+        from apps.ventes.utils.references import create_with_reference
+        company = self.request.user.company
+
+        def _save(reference):
+            return serializer.save(company=company, reference=reference)
+
+        create_with_reference(Installation, 'CHT', company, _save)
         inst = serializer.instance
         inst.created_by = self.request.user
         fields = ['created_by']
@@ -345,12 +358,17 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             permission_classes=[IsAnyRole])
     def regime_suggestion(self, request):
         """N43 — régime loi 82-21 suggéré pour une puissance (kWc), via les
-        seuils éditables de la société. ?kwc=<nombre>. Défaut modifiable."""
+        seuils éditables de la société. ?kwc=<nombre>. Défaut modifiable.
+
+        AGR602 — ``&hors_reseau=1`` : installation non raccordée → régime
+        « déclaration hors réseau » (loi 82-21, art. 3), sans seuil."""
         from ..regime import suggest_for_company, regime_thresholds
         from ..models import Installation
         kwc = request.query_params.get('kwc')
+        hors_reseau = str(request.query_params.get('hors_reseau', '')).strip(
+        ).lower() in ('1', 'true', 'oui', 'yes')
         company = request.user.company
-        code = suggest_for_company(kwc, company)
+        code = suggest_for_company(kwc, company, hors_reseau=hors_reseau)
         label = dict(Installation.Regime8221.choices).get(code, code)
         seuil_decl, seuil_anre = regime_thresholds(company)
         return Response({
@@ -965,6 +983,11 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         if not type_inst:
             return Response({'detail': "Le chantier n'a pas de type d'installation."},
                             status=status.HTTP_400_BAD_REQUEST)
+        if type_inst == Installation.TypeInstallation.AGRICOLE:
+            # AGR605 — plan agricole semé une seule fois (pose,
+            # mise_en_service, controle ; jamais de raccordement).
+            from ..services import ensure_plan_interventions_agricole
+            ensure_plan_interventions_agricole(company)
         plan_items = (TypeInterventionPlan.objects
                       .filter(company=company, type_installation=type_inst)
                       .order_by('ordre'))
@@ -1107,6 +1130,36 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'etape_courante': courante.cle if courante else None,
             'etapes': etapes,
         })
+
+    # ── AGR608 — fiche de recette POMPAGE (chantier agricole) ───────────────
+    @action(detail=True, methods=['get', 'post'], url_path='recette-pompage',
+            permission_classes=[IsAnyRole])
+    def recette_pompage(self, request, pk=None):
+        """AGR608 — recette pompage du chantier (cadre IEC 62253:2011).
+        GET → ``{installation, record}`` (``record`` null sans fiche) ;
+        POST crée une fiche VIDE si absente (Responsable/Admin), réservé à un
+        chantier agricole (400 FR sinon). Aucun verdict automatique."""
+        from ..models import RecettePompage
+        from ..serializers_commissioning import recette_pompage_envelope
+        inst = self.get_object()
+        recette = RecettePompage.objects.filter(installation=inst).first()
+        ctx = {'request': request}
+        if request.method == 'POST':
+            if not request.user.is_responsable:
+                return Response(status=status.HTTP_403_FORBIDDEN)
+            if inst.type_installation != Installation.TypeInstallation.AGRICOLE:
+                return Response(
+                    {'detail': "La recette pompage est réservée à un "
+                               "chantier agricole (pompage solaire)."},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if recette is not None:
+                return Response(recette_pompage_envelope(inst, recette, ctx))
+            recette = RecettePompage.objects.create(
+                company=inst.company, installation=inst,
+                created_by=request.user)
+            return Response(recette_pompage_envelope(inst, recette, ctx),
+                            status=status.HTTP_201_CREATED)
+        return Response(recette_pompage_envelope(inst, recette, ctx))
 
     # ── CH3 — fiche de recette IEC 62446-1 (mise en service structurée) ─────
     @action(detail=True, methods=['get', 'post'], url_path='recette',

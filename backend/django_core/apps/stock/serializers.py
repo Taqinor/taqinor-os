@@ -184,6 +184,35 @@ class MouvementStockSerializer(serializers.ModelSerializer):
         ]
 
 
+def controle_courbe_pompe_lisible(value):
+    """AGR102 — contrôle PHYSIQUE d'une courbe de pompe déjà valide en forme.
+
+    Retourne ``None`` si la courbe est lisible, sinon un message FR nommant le
+    point fautif (numéroté à partir de 1, patron STKCAT20). Règles (contrat
+    ``produit_pompage.json``) : valeurs ≥ 0, débits STRICTEMENT croissants,
+    HMT NON croissante. Aucun seuil inventé. Partagé avec le garde de
+    l'admin Django (``ProduitAdminForm.clean``) — une seule définition.
+    """
+    debits = value.get('debits_m3h')
+    hmts = value.get('hmt_m')
+    for i, (q, h) in enumerate(zip(debits, hmts)):
+        if q < 0:
+            return (f"Point {i + 1} de la courbe : le débit ({q}) ne peut "
+                    "pas être négatif.")
+        if h < 0:
+            return (f"Point {i + 1} de la courbe : la HMT ({h}) ne peut "
+                    "pas être négative.")
+    for i in range(1, len(debits)):
+        if debits[i] <= debits[i - 1]:
+            return (f"Point {i + 1} de la courbe : les débits doivent être "
+                    f"STRICTEMENT croissants ({debits[i]} après "
+                    f"{debits[i - 1]}).")
+        if hmts[i] > hmts[i - 1]:
+            return (f"Point {i + 1} de la courbe : la HMT doit être non "
+                    f"croissante ({hmts[i]} après {hmts[i - 1]}).")
+    return None
+
+
 class ProduitSerializer(serializers.ModelSerializer):
     categorie = CategorieSerializer(read_only=True)
     categorie_id = serializers.PrimaryKeyRelatedField(
@@ -374,6 +403,10 @@ class ProduitSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "`debits_m3h` et `hmt_m` ne doivent contenir que des "
                 "nombres finis.")
+        # AGR102 — lisibilité physique : jamais corrigée en silence.
+        probleme = controle_courbe_pompe_lisible(value)
+        if probleme:
+            raise serializers.ValidationError(probleme)
         return value
 
     def validate_code_barres(self, value):
@@ -523,6 +556,9 @@ class ProduitSerializer(serializers.ModelSerializer):
             # Spécifications pompage
             'pompe_cv', 'hmt_m', 'debit_m3j', 'pompe_kw', 'tension_v',
             'courbe_pompe',
+            # AGR100 — champs structurés pompage (contrat produit_pompage.json)
+            'role_pompage', 'type_pompe', 'alimentation',
+            'courbe_source', 'courbe_frequence_hz',
             # Dates & data personnalisée
             'date_creation', 'date_mise_a_jour', 'custom_data',
             # FG20 — indicateur de marge (gardé par marge_voir, cf. get_fields)
@@ -684,6 +720,79 @@ class ProduitSerializer(serializers.ModelSerializer):
             )
             obj._stkcat21_role_resolu = cache
         return cache
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # AGR100 — `courbe_source` est TOUJOURS l'objet complet du contrat
+        # (produit_pompage.json), même pour un produit sans provenance saisie.
+        if 'courbe_source' in data:
+            src = data['courbe_source'] or {}
+            data['courbe_source'] = {
+                'document': src.get('document') or '',
+                'date': src.get('date') or None,
+                'page': src.get('page'),
+            }
+        return data
+
+    # ── AGR100 — vocabulaires pompage : 400 FR nommant le champ ────────────
+    @staticmethod
+    def _refuser_hors_vocabulaire(champ, value, valides):
+        if value and value not in valides:
+            raise serializers.ValidationError(
+                f"Valeur « {value} » inconnue pour `{champ}` : choisissez "
+                f"parmi {', '.join(valides)}.")
+        return value or ''
+
+    def validate_role_pompage(self, value):
+        from core.product_roles import ROLES_POMPAGE
+        return self._refuser_hors_vocabulaire(
+            'role_pompage', value, ROLES_POMPAGE)
+
+    def validate_type_pompe(self, value):
+        from core.product_roles import TYPES_POMPE
+        return self._refuser_hors_vocabulaire(
+            'type_pompe', value, TYPES_POMPE)
+
+    def validate_alimentation(self, value):
+        from core.product_roles import ALIMENTATIONS_POMPAGE
+        return self._refuser_hors_vocabulaire(
+            'alimentation', value, ALIMENTATIONS_POMPAGE)
+
+    def validate_courbe_source(self, value):
+        """Normalise la provenance en ``{document, date, page}`` (contrat
+        produit_pompage.json) ; vide / absent = source non publiée."""
+        if value in (None, {}, ''):
+            return {'document': '', 'date': None, 'page': None}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "`courbe_source` doit être un objet "
+                "{\"document\": ..., \"date\": ..., \"page\": ...}.")
+        inconnues = set(value) - {'document', 'date', 'page'}
+        if inconnues:
+            raise serializers.ValidationError(
+                "`courbe_source` n'accepte que `document`, `date` et "
+                f"`page` (reçu en trop : {', '.join(sorted(inconnues))}).")
+        document = value.get('document') or ''
+        if not isinstance(document, str):
+            raise serializers.ValidationError(
+                "`courbe_source.document` doit être un texte.")
+        date = value.get('date') or None
+        if date is not None:
+            import datetime
+            try:
+                datetime.date.fromisoformat(str(date))
+            except ValueError:
+                raise serializers.ValidationError(
+                    "`courbe_source.date` doit être une date ISO "
+                    "(AAAA-MM-JJ).")
+            date = str(date)
+        page = value.get('page')
+        if page in ('', None):
+            page = None
+        elif isinstance(page, bool) or not isinstance(page, int):
+            raise serializers.ValidationError(
+                "`courbe_source.page` doit être un entier.")
+        return {'document': document.strip(), 'date': date, 'page': page}
 
     def validate_role_devis(self, value):
         """Normalise « pas de rôle » en ``None`` (jamais la chaîne vide).
@@ -1854,6 +1963,14 @@ class FicheTechniqueSerializer(AttachmentSerializerMixin,
             'opt_ac_unites_max_par_branche', 'opt_v_out_nominal_v',
             'opt_v_out_min', 'opt_v_out_max', 'opt_i_out_max_a',
             'opt_pmax_out_w', 'opt_modules_max_par_chaine',
+            # AGR101 — fiches pompe / variateur de pompage (valeurs constructeur ;
+            # vide = non publié).
+            'pompe_i_nominal_a', 'pompe_diametre_ext_mm', 'pompe_nb_etages',
+            'pompe_immersion_min_m', 'pompe_rendement_pct',
+            'pompe_q_nominal_m3h', 'pompe_hmt_nominale_m',
+            'var_voc_reco_min_v', 'var_voc_reco_max_v', 'var_v_sortie_v',
+            'var_i_sortie_nominal_a', 'var_protection_marche_a_sec',
+            'var_rendement_mppt_pct',
             'pdf', 'pdf_url', 'pdf_filename', 'pdf_size', 'pdf_mime',
             'date_creation', 'date_mise_a_jour',
         ]

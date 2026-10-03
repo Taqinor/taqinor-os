@@ -22,7 +22,8 @@ from .models import (
     SalleVenteItem, SavedView, SiteProfile, VisiteExterne, WebsiteLeadPayload,
 )
 from .devis_auto import (
-    champs_manquants_detail, champs_requis, message_manquants)
+    champs_manquants_detail, champs_requis, message_manquants,
+    visite_point_eau_avant_devis)
 from .scoring import compute_score, score_label, score_reasons
 
 
@@ -745,6 +746,13 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     equip_clim_kw = _PuissanceKwField(
         max_digits=5, decimal_places=2, required=False, allow_null=True)
 
+    # AGR401 — ALIAS lecture seule DÉPRÉCIÉ de ``pompe_actuelle_cv`` (même
+    # valeur) tant que les lecteurs frontend (DevisGenerator, autoQuote) ne
+    # sont pas migrés (AGR126/AGR415/AGR420) ; AGR424 le retire. Jamais
+    # inscriptible : un PATCH ``pompe_cv`` est ignoré.
+    pompe_cv = serializers.DecimalField(
+        source='pompe_actuelle_cv', max_digits=6, decimal_places=2,
+        read_only=True)
     stage_label = serializers.CharField(source='get_stage_display', read_only=True)
     source_label = serializers.CharField(source='get_source_display', read_only=True)
     client_nom = serializers.SerializerMethodField()
@@ -801,6 +809,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # (`selectors.provenance_site`) : RETRIEVE SEULEMENT, même porte que
     # `conception` (une requête par lead — jamais sur une liste).
     provenance_site = serializers.SerializerMethodField()
+    # AGR404 (contrat AGR1 ``lead_pompage.json``) — les entrées du
+    # dimensionnement agricole lues sur le lead, avec leur provenance :
+    # RETRIEVE SEULEMENT (une requête d'historique), même porte.
+    entrees_pompage = serializers.SerializerMethodField()
     # MRY5 — prochaine touche de cadence, ANNOTÉE dans le queryset
     # (``LeadViewSet.get_queryset``), jamais un SerializerMethodField : la
     # liste et le kanban affichent le badge « touche due » pour 50 cartes,
@@ -906,6 +918,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             'message': message_manquants(manquants) if manquants else None,
             'manquants_detail': detail,
             'requis': champs_requis(obj),
+            # AGR403 (D-AGR-4) — {requise, motifs} pour un agricole, null
+            # ailleurs : une information, jamais un blocage de `pret`.
+            'visite_point_eau_avant_devis': visite_point_eau_avant_devis(obj),
         }
 
     def get_next_activity(self, obj):
@@ -1179,7 +1194,57 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             if company is not None:
                 attrs['custom_data'] = validate_custom_data(
                     'lead', company, attrs.get('custom_data'))
+        self._poser_provenances_pompage(attrs)
+        self._valider_dossier_subvention(attrs)
         return attrs
+
+    #: AGR522 (contrat ``lead_dossier_subvention.json``, ``exemple_400``).
+    MESSAGE_DATE_SUBVENTION = (
+        "La date est obligatoire pour l'état « déposé », « accordé » ou "
+        '« refusé ».')
+
+    def _valider_dossier_subvention(self, attrs):
+        if ('dossier_subvention' not in attrs
+                and 'dossier_subvention_le' not in attrs):
+            return
+        instance = self.instance
+        etat = (attrs['dossier_subvention'] if 'dossier_subvention' in attrs
+                else getattr(instance, 'dossier_subvention', None))
+        date = (attrs['dossier_subvention_le']
+                if 'dossier_subvention_le' in attrs
+                else getattr(instance, 'dossier_subvention_le', None))
+        if etat in ('depose', 'accorde', 'refuse') and date is None:
+            raise serializers.ValidationError(
+                {'dossier_subvention_le': [self.MESSAGE_DATE_SUBVENTION]})
+
+    # AGR400 — une valeur de pompage SAISIE dans l'ERP porte sa provenance,
+    # posée ici (jamais par le corps : les colonnes ``*_source`` et
+    # ``carburant_prix_declare_le`` sont en lecture seule). Une valeur effacée
+    # efface sa provenance ; une valeur inchangée ne touche à rien.
+    _PROVENANCES_POMPAGE_SAISIE = (
+        ('niveau_statique_m', 'niveau_statique_source', 'declare'),
+        ('debit_forage_m3h', 'debit_forage_source', 'client'),
+        ('besoin_eau_m3j', 'besoin_eau_source', 'client'),
+        ('pompe_hmt_m', 'pompe_hmt_source', 'declaree'),
+    )
+
+    def _poser_provenances_pompage(self, attrs):
+        instance = self.instance
+
+        def _change(champ):
+            return champ in attrs and (
+                instance is None or getattr(instance, champ) != attrs[champ])
+
+        for valeur, source, origine in self._PROVENANCES_POMPAGE_SAISIE:
+            if _change(valeur):
+                attrs[source] = origine if attrs[valeur] is not None else None
+        # Q17 — le prix du carburant est DÉCLARÉ et DATÉ : la date est celle
+        # du jour où le prix change, posée par le serveur.
+        if _change('carburant_prix_unitaire_mad'):
+            from django.utils import timezone
+            attrs['carburant_prix_declare_le'] = (
+                timezone.localdate()
+                if attrs['carburant_prix_unitaire_mad'] is not None else None)
 
     class Meta:
         model = Lead
@@ -1210,6 +1275,12 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # les champs captés par le site sont TOUJOURS éditables par la
             # commerciale, leur provenance reste visible (`provenance_site`).
             'roof_point', 'roof_outline',
+            # AGR400 — provenances et date du prix : posées par le serveur
+            # (sérialiseur, webhook du site, validation de visite), jamais
+            # saisissables à la main.
+            'niveau_statique_source', 'debit_forage_source',
+            'besoin_eau_source', 'pompe_hmt_source',
+            'carburant_prix_declare_le',
         ]
 
     # FG20 — coordonnées personnelles masquées sans ``client_pii_voir``.
@@ -1247,6 +1318,8 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # CAD150 — la provenance « saisie sur le site » coûte une requête
             # par lead : détail seulement, même porte.
             fields.pop('provenance_site', None)
+            # AGR404 — `entrees_pompage` : détail seulement, même porte.
+            fields.pop('entrees_pompage', None)
         return fields
 
     def to_representation(self, instance):
@@ -1287,6 +1360,13 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         """
         from .selectors import conception_3d_du_lead
         return conception_3d_du_lead(obj)
+
+    @extend_schema_field(serializers.DictField())
+    def get_entrees_pompage(self, obj):
+        """AGR404 — ``{entrees, manquants}`` (contrat ``lead_pompage``) :
+        la SEULE lecture lead → entrées du moteur agricole."""
+        from .selectors import entrees_pompage_du_lead
+        return entrees_pompage_du_lead(obj)
 
     @extend_schema_field(serializers.DictField())
     def get_provenance_site(self, obj):
@@ -1590,6 +1670,11 @@ class SiteProfileSerializer(serializers.ModelSerializer):
     multi-tenant). Le client référencé doit appartenir à la même société
     (validate_client). Une seule fiche par client (OneToOne)."""
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    # AGR401 — ALIAS lecture seule DÉPRÉCIÉ de ``pompe_actuelle_cv`` (même
+    # valeur) tant que ``SiteProfilePage.jsx`` le lit ; retiré par AGR424.
+    pompe_cv = serializers.DecimalField(
+        source='pompe_actuelle_cv', max_digits=6, decimal_places=2,
+        read_only=True)
 
     class Meta:
         model = SiteProfile
@@ -1598,7 +1683,7 @@ class SiteProfileSerializer(serializers.ModelSerializer):
             'facture_hiver', 'facture_ete', 'ete_differente',
             'conso_mensuelle_kwh', 'tranche_onee', 'raccordement',
             'regularisation_8221', 'type_installation',
-            'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+            'pompe_actuelle_cv', 'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
             'type_toiture', 'surface_toiture_m2', 'orientation',
             'inclinaison_deg', 'ombrage', 'ombrage_notes',
             'gps_lat', 'gps_lng',

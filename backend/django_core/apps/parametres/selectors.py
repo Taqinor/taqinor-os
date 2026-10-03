@@ -278,6 +278,77 @@ def indexation_pour(company) -> dict | None:
     return indexation_depuis_reglages(_reglages_tarif_existants(company))
 
 
+# ── Pompage agricole — réglages société (Groupe AGR, 02/10/2026) ──────────
+
+
+def charges_pompage_pour(company) -> list:
+    """AGR207 — barème des charges solaires de pompage SAISI, ``[]`` sinon.
+
+    ``[{libelle, montant_mad_an, source}]`` ; jamais une charge par défaut.
+    """
+    from apps.parametres.tariff import charges_pompage_depuis_reglages
+    return charges_pompage_depuis_reglages(_reglages_tarif_existants(company))
+
+
+def regle_fda_pompage_pour(company) -> dict:
+    """AGR207 — règle FDA datée SAISIE et sourcée, ``{}`` sinon.
+
+    USAGE INTERNE seulement (aide indicative de la vue interne) : aucun
+    montant d'aide n'est jamais imprimé pour un client (D-AGR-6).
+    """
+    from apps.parametres.tariff import regle_fda_depuis_reglages
+    return regle_fda_depuis_reglages(_reglages_tarif_existants(company))
+
+
+#: AGR208 — clés des repères énergie agricole (contrat ``economie_pompage``).
+REPERES_ENERGIE_AGRICOLE_CLES = (
+    'butane_12kg_detail', 'butane_12kg_non_subventionne', 'gasoil_litre')
+#: Repère réservé à la vue INTERNE (AGR205) : jamais servi côté client.
+REPERE_INTERNE_SEULEMENT = 'butane_12kg_non_subventionne'
+
+
+def _reperes_sources(company, cles):
+    p = _profile(company)
+    reperes = getattr(p, 'reperes_energie_agricole', None) or {}
+    if not isinstance(reperes, dict):
+        return []
+    rendus = []
+    for cle in cles:
+        repere = reperes.get(cle)
+        if not isinstance(repere, dict):
+            continue
+        source = str(repere.get('source') or '').strip()
+        if not source or repere.get('valeur') in (None, ''):
+            continue  # un repère SANS source (ou sans valeur) n'est jamais servi
+        rendus.append({'cle': cle, 'valeur': repere.get('valeur'),
+                       'source': source,
+                       'releve_le': repere.get('releve_le') or None})
+    return rendus
+
+
+def reperes_energie_agricole_affiches(company) -> list:
+    """AGR208 — repères énergie montrés À CÔTÉ du champ du générateur.
+
+    ``[{cle, valeur, source, releve_le}]`` — seulement les repères qui ont une
+    source (et une valeur), JAMAIS le repère « non subventionné ». Une simple
+    indication datée : le prix retenu est celui DÉCLARÉ par le client (Q17,
+    D-AGR-5), aucun repère ne pré-remplit un champ.
+    """
+    return _reperes_sources(company, tuple(
+        c for c in REPERES_ENERGIE_AGRICOLE_CLES
+        if c != REPERE_INTERNE_SEULEMENT))
+
+
+def repere_butane_non_subventionne_interne(company) -> dict | None:
+    """AGR208 — repère « butane au coût réel » pour la vue INTERNE (AGR205).
+
+    ``{cle, valeur, source, releve_le}`` s'il est sourcé, sinon ``None``.
+    Jamais servi côté client (D-AGR-5).
+    """
+    rendus = _reperes_sources(company, (REPERE_INTERNE_SEULEMENT,))
+    return rendus[0] if rendus else None
+
+
 # ── Catalogue « Réalisations » — la preuve de la touche J4 ─────────────────
 # Ordre fondateur du 08/09/2026 : le message d'après-devis « Voici une
 # installation comparable à la vôtre » ne se remplit plus à la main. Ces
@@ -338,6 +409,16 @@ def _repli(lignes, cible):
     return lignes[0]
 
 
+def _lignes_du_segment(lignes, lead):
+    """AGR513 — les réalisations éligibles au segment du lead (D-AGR-10)."""
+    from .models_realisations import Realisation
+    agricole = Realisation.SEGMENT_AGRICOLE
+    segment_lead = (getattr(lead, "type_installation", None) or "").strip()
+    if segment_lead == agricole:
+        return [r for r in lignes if r.segment == agricole]
+    return [r for r in lignes if r.segment != agricole]
+
+
 def realisation_pour_lead(lead):
     """La réalisation à MONTRER à ce lead, ou ``None``.
 
@@ -371,6 +452,11 @@ def realisation_pour_lead(lead):
     lignes = sorted(
         Realisation.objects.filter(company=company, actif=True),
         key=_cle_recence, reverse=True)
+    # AGR513 (D-AGR-10) — filtre de SEGMENT, AVANT les trois règles : un lead
+    # agricole ne voit qu'une réalisation `agricole` (jamais un toit à sa
+    # place) ; un lead non agricole (ou sans type) voit tout SAUF l'agricole,
+    # réalisations sans segment comprises — le résidentiel reste identique.
+    lignes = _lignes_du_segment(lignes, lead)
     if not lignes:
         return None
 

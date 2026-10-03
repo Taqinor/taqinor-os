@@ -11,6 +11,7 @@ import {
 } from '../../ui/charts'
 import {
   categorieIcone, estPompage, pointsCourbePompe,
+  libelleRolePompage, libelleTypePompe, libelleAlimentation,
 } from '../../features/stock/catalogue'
 import { useHasPermission } from '../../hooks/useHasPermission'
 import {
@@ -25,6 +26,7 @@ import { BadgeCompletudeFiche } from './CatalogueTable.jsx'
 // PVFCH — libellés et mise en forme des champs de fiche : logique PURE
 // partagée avec ProduitForm (mêmes intitulés d'un écran à l'autre).
 import { groupeFicheAffichage } from './pvondFicheTechnique.js'
+import ProfilsSaisonniersSection from './ProfilsSaisonniersSection.jsx'
 // STKCAT25 — onglet « Utilisé dans » : les libellés d'étape/statut viennent de
 // LEUR source canonique, jamais d'une seconde liste écrite ici (règle #2 de
 // CLAUDE.md pour les étapes du pipeline ; liste fermée des chantiers N14).
@@ -283,6 +285,23 @@ function OngletFicheTechnique({ produit, onEdit }) {
             <>
               <Ligne label="Puissance pompe (kW)" valeur={produit.pompe_kw} />
               <Ligne label="Tension (V)" valeur={produit.tension_v} />
+            </>
+          )}
+          {/* AGR105 — rôle pompage déclaré, type, alimentation et provenance
+              de la courbe constructeur : une valeur vide se lit « non publié »,
+              jamais un défaut. */}
+          {(produit.role_pompage || estPompage(produit)) && (
+            <>
+              <Ligne label="Rôle pompage" valeur={libelleRolePompage(produit.role_pompage) || null} />
+              <Ligne label="Type de pompe" valeur={libelleTypePompe(produit.type_pompe) || null} />
+              <Ligne label="Alimentation" valeur={libelleAlimentation(produit.alimentation) || null} />
+              <Ligne label="Provenance de la courbe" valeur={produit.courbe_source?.document
+                ? [produit.courbe_source.document,
+                  produit.courbe_source.date,
+                  produit.courbe_source.page != null ? `p. ${produit.courbe_source.page}` : null,
+                ].filter(Boolean).join(' · ')
+                : null} />
+              <Ligne label="Fréquence de la courbe (Hz)" valeur={produit.courbe_frequence_hz} />
             </>
           )}
         </div>
@@ -874,6 +893,8 @@ export function ProduitDetail({ produit, onClose, onEdit, onRebut }) {
             <TabsTrigger value="compat">Compatibilités</TabsTrigger>
             {/* STKCAT25 — 6ᵉ onglet : où ce produit est-il utilisé ? */}
             <TabsTrigger value="utilise-dans">Utilisé dans</TabsTrigger>
+            {/* AGR623 — saison de réappro (irrigation) : profils saisonniers. */}
+            <TabsTrigger value="saison">Saison de réappro</TabsTrigger>
           </TabsList>
           <TabsContent value="en-commande">
             <OngletEnCommande produit={produit} />
@@ -891,6 +912,11 @@ export function ProduitDetail({ produit, onClose, onEdit, onRebut }) {
               inactif) : aucun appel réseau tant que l'onglet n'est pas lu. */}
           <TabsContent value="utilise-dans">
             <OngletUtiliseDans produitId={produit.id} />
+          </TabsContent>
+          {/* AGR623 — monté à l'ouverture seulement ; écriture réservée aux
+              rôles qui reçoivent `onEdit` (même règle que « Modifier »). */}
+          <TabsContent value="saison">
+            <ProfilsSaisonniersSection produit={produit} canWrite={Boolean(onEdit)} />
           </TabsContent>
         </Tabs>
 

@@ -129,6 +129,46 @@ LIBELLES = {
         'en': 'after commissioning',
         'ar': 'بعد التشغيل',
     },
+    # ── Résumé du une-page agricole (AGR302) ────────────────────────────────
+    # Les gabarits ``debit_a_hmt`` et ``sur_heures_pompage`` reçoivent un
+    # nombre DÉJÀ formaté par le moteur (``{hmt}``, ``{heures}``) : ce module
+    # n'en fabrique aucun. L'arabe est écrit maintenant et relu après par le
+    # fondateur (D-AGR-11, sans bloquer l'envoi).
+    'puissance_pompe': {
+        'fr': 'Puissance pompe',
+        'en': 'Pump power',
+        'ar': 'قدرة المضخة',
+    },
+    'debit_a_hmt': {
+        'fr': 'D&#233;bit &#224; {hmt} m',
+        'en': 'Flow at {hmt} m',
+        'ar': 'الصبيب على ارتفاع {hmt} م',
+    },
+    'eau_jour': {
+        'fr': 'Eau / jour',
+        'en': 'Water / day',
+        'ar': 'الماء / اليوم',
+    },
+    'sur_heures_pompage': {
+        'fr': 'sur {heures} h de pompage',
+        'en': 'over {heures} h of pumping',
+        'ar': 'على مدى {heures} ساعات من الضخ',
+    },
+    'estimation': {
+        'fr': 'estimation',
+        'en': 'estimate',
+        'ar': 'تقدير',
+    },
+    'hypothese': {
+        'fr': 'hypoth&#232;se',
+        'en': 'assumption',
+        'ar': 'افتراض',
+    },
+    'champ_pv': {
+        'fr': 'Champ PV',
+        'en': 'PV array',
+        'ar': 'الحقل الشمسي',
+    },
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',

@@ -22,7 +22,7 @@ from decimal import Decimal
 
 from django.test import SimpleTestCase
 
-from apps.crm.devis_auto import champs_manquants
+from apps.crm.devis_auto import champs_manquants, champs_manquants_detail
 from apps.crm.models import Lead
 from apps.ventes.etude_horaire import profil_depuis_factures
 
@@ -61,8 +61,10 @@ class LeGatingDuDevisAutomatiquePro(SimpleTestCase):
     def test_l_agricole_n_est_PAS_touche(self):
         lead = Lead(nom='Ferme', type_installation='agricole',
                     bill_kwh=Decimal('300'))
+        # AGR403 — groupes hydrauliques agricoles ; `bill_kwh` n'y entre pas.
         self.assertEqual(
-            champs_manquants(lead), ['pompe (CV)', 'HMT', 'débit souhaité'])
+            [e['champ'] for e in champs_manquants_detail(lead)],
+            ['pompe_hmt_m', 'pompe_debit_m3h'])
 
 
 class LesKwhSaisisPriment(SimpleTestCase):
