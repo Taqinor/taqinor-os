@@ -10975,6 +10975,101 @@ def ecrire_retour_lead_visite(lead, recap):
     return lead
 
 
+# ── AGR413 — LA MESURE DU POINT D'EAU REMPLACE LA DÉCLARATION ───────────────
+#
+# Contrat AGR5 (``visites/contract_samples/visite_terrain.json`` →
+# ``retour_lead_point_eau``), recopié ici mot pour mot (garde de test) :
+# mesure de la visite (``categorie.code``) → colonne Lead, + la provenance
+# « mesure_visite » posée sur la colonne ``*_source`` quand elle existe.
+# Une mesure sans colonne Lead (niveau dynamique, refoulement, conduite,
+# tension, alimentation) n'est PAS recopiée : le moteur la lit par
+# ``visites.selectors.mesures_point_eau_pour_lead``.
+RETOUR_LEAD_POINT_EAU = (
+    ('point_eau', 'source_eau', 'source_eau', None),
+    ('point_eau', 'niveau_statique_m', 'niveau_statique_m',
+     ('niveau_statique_source', 'mesure_visite')),
+    ('point_eau', 'debit_mesure_m3h', 'debit_forage_m3h',
+     ('debit_forage_source', 'mesure_visite')),
+    ('point_eau', 'profondeur_forage_m', 'profondeur_forage_m', None),
+    ('pompe_existante', 'pompe_actuelle_type', 'pompe_actuelle_type', None),
+    ('pompe_existante', 'pompe_actuelle_cv', 'pompe_actuelle_cv', None),
+    ('electricite', 'electricite_sur_place', 'electricite_sur_place', None),
+    ('site_pv', 'distance_forage_champ_m', 'distance_forage_champ_m', None),
+    ('administratif', 'autorisation_prelevement', 'autorisation_prelevement',
+     None),
+    ('administratif', 'autorisation_numero', 'autorisation_numero', None),
+    ('administratif', 'autorisation_debit_l_s', 'autorisation_debit_l_s',
+     None),
+    ('administratif', 'autorisation_volume_m3_an',
+     'autorisation_volume_m3_an', None),
+    ('administratif', 'compteur_eau', 'compteur_eau', None),
+)
+
+
+def _valeur_colonne_lead(colonne, brute):
+    """La valeur saisie convertie au type de la colonne Lead, ou None si elle
+    n'y tient pas (jamais tronquée en silence pour un nombre)."""
+    from decimal import Decimal, InvalidOperation
+
+    from django.core.exceptions import ValidationError
+
+    champ = Lead._meta.get_field(colonne)
+    if champ.get_internal_type() == 'DecimalField':
+        try:
+            valeur = Decimal(str(brute))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+        limite = Decimal(10) ** (champ.max_digits - champ.decimal_places)
+        if not valeur.is_finite() or abs(valeur) >= limite:
+            return None
+        return valeur.quantize(Decimal(1).scaleb(-champ.decimal_places))
+    if champ.get_internal_type() == 'BooleanField':
+        return brute if isinstance(brute, bool) else None
+    texte = str(brute).strip()
+    if champ.choices and texte not in dict(champ.choices):
+        return None
+    try:
+        champ.run_validators(texte[:champ.max_length or None])
+    except ValidationError:
+        return None
+    return texte[:champ.max_length] if champ.max_length else texte
+
+
+def appliquer_mesures_point_eau(lead, mesures, user):
+    """AGR413 — recopie sur le lead les mesures d'un relevé du point d'eau
+    VALIDÉ (``visites.selectors.mesures_point_eau_pour_lead``).
+
+    La mesure REMPLACE la déclaration ; une mesure absente ou vide n'efface
+    JAMAIS rien ; le journal ancien→nouveau est automatique
+    (``activity.log_changes``), avec pour auteur l'utilisateur qui valide.
+    Idempotent : re-valider avec les mêmes mesures ne change rien et
+    n'écrit aucune ligne. Renvoie la liste des colonnes écrites."""
+    if lead is None or not isinstance(mesures, dict) or not mesures:
+        return []
+    avant = Lead.objects.get(pk=lead.pk)
+    ecrites = []
+    for categorie, code, colonne, provenance in RETOUR_LEAD_POINT_EAU:
+        bloc = mesures.get(categorie)
+        brute = bloc.get(code) if isinstance(bloc, dict) else None
+        if brute is None or (isinstance(brute, str) and not brute.strip()):
+            continue
+        valeur = _valeur_colonne_lead(colonne, brute)
+        if valeur is None:
+            continue
+        if getattr(lead, colonne) != valeur:
+            setattr(lead, colonne, valeur)
+            ecrites.append(colonne)
+        if provenance:
+            source, origine = provenance
+            if getattr(lead, source) != origine:
+                setattr(lead, source, origine)
+                ecrites.append(source)
+    if ecrites:
+        lead.save(update_fields=ecrites + ['date_modification'])
+        activity.log_changes(avant, lead, user)
+    return ecrites
+
+
 # ── NTDATA18 — FUSION SUPERVISÉE DE CLIENTS ─────────────────────────────────
 #
 # Sur le modèle de `merge_leads` ci-dessus, mais pour `Client` : le détecteur

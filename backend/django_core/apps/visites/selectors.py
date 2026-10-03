@@ -254,6 +254,33 @@ def contexte_visite_terrain(visite):
     }
 
 
+def mesures_point_eau_pour_lead(visite):
+    """AGR413 — les mesures SAISIES d'un relevé du point d'eau, ``{categorie:
+    {code: valeur}}``, ou ``{}`` pour une visite toiture.
+
+    Seules les valeurs réellement saisies sortent (``False`` et ``0``
+    compris ; ``None`` et la chaîne vide jamais) : une mesure vide n'efface
+    donc jamais rien côté lead. Voyage dans l'événement ``visite_validee``
+    (kwarg ``mesures_point_eau``) ; le moteur agricole lit par ici les
+    mesures sans colonne Lead (niveau dynamique, refoulement, conduite).
+    Fonction PURE sur l'objet reçu (aucune requête)."""
+    from . import visite_checklist as checklist
+
+    if _gabarit(visite) != checklist.GABARIT_POINT_EAU:
+        return {}
+    saisies = visite.mesures if isinstance(visite.mesures, dict) else {}
+    rendu = {}
+    for cat in checklist.categories(checklist.GABARIT_POINT_EAU):
+        valeurs = saisies.get(cat['categorie'])
+        valeurs = valeurs if isinstance(valeurs, dict) else {}
+        bloc = {champ['code']: valeurs[champ['code']]
+                for champ in cat['mesures']
+                if _releve_valeur_saisie(valeurs.get(champ['code']))}
+        if bloc:
+            rendu[cat['categorie']] = bloc
+    return rendu
+
+
 def texture_toit_pour_lead(lead):
     """VT12 — la texture de toit CALÉE d'un lead, ou des valeurs nulles.
 

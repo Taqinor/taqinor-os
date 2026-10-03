@@ -481,9 +481,12 @@ def valider_visite(visite, user):
 
     visite.statut = VisiteTerrain.Statut.VALIDEE
     visite.save(update_fields=['statut'])
+    # AGR413 — les mesures du point d'eau voyagent avec l'événement (vides
+    # pour une visite toiture) : c'est le CRM qui décide de les recopier.
     visite_validee.send(
         sender=VisiteTerrain, visite=visite, lead_id=visite.lead_id,
-        user=user, recap=selectors.recap_visite_terrain(visite))
+        user=user, recap=selectors.recap_visite_terrain(visite),
+        mesures_point_eau=selectors.mesures_point_eau_pour_lead(visite))
     _notifier_commercial_visite(
         visite, 'visite_terrain_validee',
         'Visite technique validée',
