@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import math
 
-from core.pompage.hydraulique import _flottant
+from core.pompage.hydraulique import _flottant, debit_a_hmt
 
 #: Libellés des mois (mêmes valeurs que ``apps.ventes.solar_design._MONTHS_FR``).
 _MONTHS_FR = (
@@ -368,3 +368,185 @@ def pumping_cycle_yield(*, debit_hmt_m3h, pumping_hours=None,
         "daily_by_hour": daily_by_hour,
         "warnings": warnings,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# AGR114 — production d'eau MOIS PAR MOIS, HEURE PAR HEURE : profil PVGIS du
+# site + lois de similitude de la pompe (fin des 7 h plates).
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: Hypothèse étiquetée : puissance absorbée ∝ n³ (lois de similitude des
+#: turbomachines, débit ∝ n, hauteur ∝ n²). C'est une ESTIMATION — la courbe de
+#: puissance réelle d'une pompe n'est pas publiée par les fiches du catalogue.
+ESTIMATION_SIMILITUDE = ("vitesse relative n = min(1, (P/P_plaque)^(1/3)) : "
+                         "hypothèse P ∝ n³ (lois de similitude) — estimation")
+
+
+def mois_critique(besoin_m3_jour_mois, production_m3_jour_mois):
+    """Mois critique (1 = janvier … 12 = décembre) = argmax(besoin/production).
+
+    Un mois à besoin > 0 et production nulle est critique d'office. Aucun
+    besoin ou aucune production ⇒ ``None``."""
+    if not besoin_m3_jour_mois or not production_m3_jour_mois:
+        return None
+    meilleur, rapport_max = None, None
+    for index in range(min(12, len(besoin_m3_jour_mois),
+                           len(production_m3_jour_mois))):
+        besoin = _flottant(besoin_m3_jour_mois[index])
+        prod = _flottant(production_m3_jour_mois[index])
+        if besoin is None or besoin <= 0 or prod is None:
+            continue
+        rapport = float("inf") if prod <= 0 else besoin / prod
+        if rapport_max is None or rapport > rapport_max:
+            meilleur, rapport_max = index + 1, rapport
+    return meilleur
+
+
+def _debit_vitesse_relative(courbe, hmt, n):
+    """Débit (m³/h) d'une courbe mise à l'échelle Q×n, H×n² à la HMT ``hmt``.
+
+    Sur la courbe réduite, H_n(Q) = n²·H(Q/n) : le débit cherché est
+    n × (débit de la courbe d'origine à hmt/n²) ; 0 sous le point d'arrêt."""
+    if n <= 0:
+        return 0.0
+    debit = debit_a_hmt(courbe, hmt / (n * n))
+    if debit is None:
+        return None
+    return n * debit
+
+
+def production_mensuelle(*, kwc=None, profils_horaires=None, courbe_pompe=None,
+                         hmt_m=None, p_plaque_kw=None, rendement_mppt=None,
+                         salissure_pct=None, debit_declare_m3h=None,
+                         agricole_pump_hours=None, besoin_m3_jour_mois=None,
+                         coordonnees=None, reponse_pvgis=None):
+    """AGR114 — m³/jour de chaque mois, intégré HEURE PAR HEURE.
+
+    Entrées (toutes fournies par l'appelant, le noyau ne lit rien) :
+
+    * ``profils_horaires`` : 12 journées types (une par mois) de 24 valeurs
+      d'irradiance G (W/m²) du profil PVGIS du site. PVGIS est déjà net de
+      14 % de pertes (table AGR110 ``pertes_pvgis_comprises_pct``) : AUCUN
+      autre derate ; ``salissure_pct`` ne s'applique que s'il est RÉGLÉ
+      (AGR107), ``rendement_mppt`` que s'il est PUBLIÉ par la fiche.
+    * Puissance PV de l'heure : P = kWc × G/1000 × rendement MPPT.
+    * Vitesse relative n = min(1, (P/P_plaque)^(1/3)) — étiquetée
+      « estimation » ; courbe mise à l'échelle Q×n, H×n² ; débit interpolé à
+      la HMT, 0 sous le point d'arrêt (remplace le seuil fixe 0,15 sur ce
+      chemin ; ``pumping_cycle_yield`` reste inchangé pour ses appelants).
+
+    Cas dégradés, tous ÉTIQUETÉS :
+
+    * pompe sans courbe et sans débit déclaré ⇒ ``m3_jour_mois`` ``None``
+      (« jamais de m³/jour sans courbe ») ;
+    * pompe existante à débit DÉCLARÉ ⇒ débit × Σ min(1, P/P_plaque),
+      ``mode: debit_declare`` « estimation sur débit déclaré » ;
+    * aucun profil PVGIS ⇒ repli plat débit × ``agricole_pump_hours``,
+      ``mode: repli_plat``, ``source_irradiation: repli``.
+
+    Les coordonnées et la réponse PVGIS utilisées sont RENDUES pour être
+    FIGÉES dans l'étude (reproductibilité du devis).
+    """
+    hmt = _flottant(hmt_m)
+    courbe_ok = bool(courbe_pompe and courbe_pompe.get("debits_m3h")
+                     and courbe_pompe.get("hmt_m"))
+    debit_declare = _flottant(debit_declare_m3h)
+    if debit_declare is not None and debit_declare <= 0:
+        debit_declare = None
+
+    sortie = {
+        "m3_jour_mois": None,
+        "heures_equivalentes_mois": None,
+        "source_irradiation": None,
+        "mode": None,
+        "mois_critique": None,
+        "debit_nominal_m3h": None,
+        "etiquettes": [],
+        "motif": None,
+        "coordonnees_figees": dict(coordonnees) if coordonnees else None,
+        "reponse_pvgis": reponse_pvgis,
+    }
+
+    debit_nominal = None
+    if courbe_ok and hmt is not None and hmt > 0:
+        debit_nominal = _debit_vitesse_relative(courbe_pompe, hmt, 1.0)
+    if not courbe_ok and debit_declare is None:
+        sortie["motif"] = ("pompe sans courbe constructeur et sans débit "
+                           "déclaré — aucun m³/jour publié")
+        return sortie
+    if courbe_ok and debit_nominal is None:
+        sortie["motif"] = "HMT inconnue — production non calculée"
+        return sortie
+    if not courbe_ok:
+        debit_nominal = debit_declare
+    sortie["debit_nominal_m3h"] = round(debit_nominal, 1)
+
+    profils_valides = (profils_horaires is not None
+                       and len(profils_horaires) == 12
+                       and all(p for p in profils_horaires))
+
+    if not profils_valides:
+        heures = _flottant(agricole_pump_hours)
+        sortie["source_irradiation"] = "repli"
+        sortie["mode"] = "repli_plat"
+        if heures is None or heures <= 0:
+            sortie["motif"] = ("profil PVGIS indisponible et heures de "
+                               "pompage (réglage société) non renseignées")
+            return sortie
+        journalier = round(debit_nominal * heures, 1)
+        sortie["m3_jour_mois"] = [journalier] * 12
+        sortie["heures_equivalentes_mois"] = [round(heures, 1)] * 12
+        sortie["etiquettes"].append(
+            "repli : débit × heures de pompage du réglage société "
+            "(agricole_pump_hours), sans profil PVGIS")
+        sortie["mois_critique"] = mois_critique(besoin_m3_jour_mois,
+                                                sortie["m3_jour_mois"])
+        return sortie
+
+    puissance_kwc = _flottant(kwc)
+    plaque = _flottant(p_plaque_kw)
+    if puissance_kwc is None or puissance_kwc <= 0 or plaque is None \
+            or plaque <= 0:
+        sortie["source_irradiation"] = "pvgis"
+        sortie["motif"] = ("kWc du champ ou puissance de plaque de la pompe "
+                           "inconnus — production heure par heure non "
+                           "calculée")
+        return sortie
+
+    facteur = 1.0
+    eta = _flottant(rendement_mppt)
+    if eta is not None and 0 < eta <= 1:
+        facteur *= eta
+    salissure = _flottant(salissure_pct)
+    if salissure is not None and 0 < salissure < 100:
+        facteur *= 1 - salissure / 100.0
+
+    journaliers, heures_eq = [], []
+    for profil in profils_horaires:
+        volume = 0.0
+        for g in profil:
+            irradiance = max(0.0, _flottant(g, 0.0) or 0.0)
+            p_kw = puissance_kwc * irradiance / 1000.0 * facteur
+            rapport = p_kw / plaque
+            if courbe_ok:
+                n = min(1.0, rapport ** (1.0 / 3.0)) if rapport > 0 else 0.0
+                debit = _debit_vitesse_relative(courbe_pompe, hmt, n) or 0.0
+            else:
+                debit = debit_nominal * min(1.0, rapport)
+            volume += debit
+        journaliers.append(round(volume, 1))
+        heures_eq.append(round(volume / debit_nominal, 1)
+                         if debit_nominal > 0 else None)
+
+    sortie["source_irradiation"] = "pvgis"
+    sortie["m3_jour_mois"] = journaliers
+    sortie["heures_equivalentes_mois"] = heures_eq
+    if courbe_ok:
+        sortie["mode"] = "courbe"
+        sortie["etiquettes"].append(ESTIMATION_SIMILITUDE)
+    else:
+        sortie["mode"] = "debit_declare"
+        sortie["etiquettes"].append(
+            "estimation sur débit déclaré : débit × Σ min(1, P/P_plaque)")
+    sortie["mois_critique"] = mois_critique(besoin_m3_jour_mois, journaliers)
+    return sortie
