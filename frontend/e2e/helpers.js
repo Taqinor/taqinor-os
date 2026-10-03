@@ -1,10 +1,10 @@
 // Shared helpers + constants for the Taqinor OS E2E suite.
 // Selectors mirror the REAL components (no data-testids exist in the app, so we
 // lean on visible text, placeholders, stable CSS classes and ARIA roles).
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { expect } from '@playwright/test'
+import { expect, test as base } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 
 // Seeded by `manage.py seed_demo` (company "TAQINOR Démo"). Throwaway only.
@@ -12,6 +12,95 @@ export const ADMIN = { username: 'demo_admin', password: 'Demo@2026!' }
 export const SECOND_USER = 'demo_resp'
 
 export const AUTH_FILE = 'e2e/.auth/admin.json'
+
+// ── CAD177 — session partagée qui SURVIT à une matrice longue ──────────────
+// `auth.setup.js` se connecte UNE fois et fige les cookies dans AUTH_FILE ;
+// chaque test rouvre un contexte depuis ce fichier. Deux faits du backend
+// rendent ce fichier périssable sur la matrice COMPLÈTE de release-verify
+// (~60 min, contre ~5 min pour le shard par-merge) :
+//   1. l'access JWT vit 30 min (ERR87) et le refresh TOURNE à usage unique
+//      (ROTATE_REFRESH_TOKENS + BLACKLIST_AFTER_ROTATION) : dès qu'un test
+//      rafraîchit dans SON contexte, le refresh du fichier est en liste noire ;
+//   2. une déconnexion (même cliquée par le singe gremlins) révoque la
+//      session côté serveur (AUD408 — l'access meurt aussitôt).
+// Run 36990128960 : le singe a cliqué « Déconnexion » sur /admin/impersonation
+// à 09:46 → les 18 modules @monkey suivants, les 20 tests mobile et les 3
+// tablette sont tous tombés sur /login (refresh 401). Ce n'est pas un défaut
+// produit — c'est l'état de test partagé qui était périmé. Le remède : avant
+// chaque test qui s'appuie sur AUTH_FILE, vérifier la session et, si elle est
+// morte ou proche de l'expiration, la rafraîchir (ou se reconnecter par l'API)
+// puis RÉÉCRIRE le fichier — les tests suivants repartent d'un état valide.
+const MARGE_EXPIRATION_S = 10 * 60
+
+function secondesRestantesAccess(cookies) {
+  const access = cookies.find((c) => c.name === 'access_token')
+  if (!access) return -1
+  try {
+    const charge = JSON.parse(
+      Buffer.from(access.value.split('.')[1], 'base64url').toString('utf8'))
+    return charge.exp - Math.floor(Date.now() / 1000)
+  } catch {
+    return -1
+  }
+}
+
+/** Connexion par l'API (cookies posés dans `requete`, contexte API ou
+ *  `page.request`). Le throttle « login » (5/min/IP) peut répondre 429 :
+ *  on réessaie à intervalles jusqu'à ce que le serveur accepte — une
+ *  condition observée, jamais une pause aveugle. */
+export async function connexionApi(requete, { username, password } = ADMIN) {
+  await expect(async () => {
+    const res = await requete.post('/api/django/token/', { data: { username, password } })
+    expect(res.status(), `connexion API de ${username}`).toBe(200)
+  }).toPass({ intervals: [5_000, 10_000, 15_000], timeout: 75_000 })
+}
+
+/** Session vivante dans `requete` ? (`/auth/me/` 200). */
+async function sessionVivante(requete) {
+  return (await requete.get('/api/django/auth/me/')).ok()
+}
+
+/** Rafraîchit AUTH_FILE si sa session est morte ou expire bientôt. */
+export async function rafraichirEtatPartage(playwright, baseURL) {
+  const ctx = await playwright.request.newContext({ baseURL, storageState: AUTH_FILE })
+  try {
+    const avant = (await ctx.storageState()).cookies
+    if (secondesRestantesAccess(avant) > MARGE_EXPIRATION_S && await sessionVivante(ctx)) {
+      return
+    }
+    const refresh = await ctx.post('/api/django/auth/token/refresh/', { data: {} })
+    if (!(refresh.ok() && await sessionVivante(ctx))) {
+      await connexionApi(ctx)
+      expect(await sessionVivante(ctx), 'session admin après reconnexion').toBeTruthy()
+    }
+    // Les drapeaux localStorage du setup (bannière PWA, accueil vu) restent :
+    // seul le jeu de cookies est remplacé.
+    const ancien = JSON.parse(readFileSync(AUTH_FILE, 'utf8'))
+    const { cookies } = await ctx.storageState()
+    writeFileSync(AUTH_FILE, JSON.stringify({ ...ancien, cookies }, null, 2))
+  } finally {
+    await ctx.dispose()
+  }
+}
+
+/** `test` dont l'état partagé (AUTH_FILE) est garanti vivant au démarrage de
+ *  chaque test. Un `test.use({ storageState: {...} })` explicite (test à
+ *  froid) passe tel quel. À utiliser par les specs des projets qui tournent
+ *  APRÈS le gros projet `chromium` (monkey, mobile, mobile-safari, tablet). */
+export const testSessionFraiche = base.extend({
+  storageState: async ({ storageState, playwright, baseURL }, fournir) => {
+    if (storageState === AUTH_FILE) await rafraichirEtatPartage(playwright, baseURL)
+    await fournir(storageState)
+  },
+})
+
+/** Dans un test déjà lancé (ex. le singe qui enchaîne les écrans) : si la
+ *  session de CE contexte a été coupée (déconnexion cliquée), on se reconnecte
+ *  par l'API avant l'écran suivant. */
+export async function assurerSessionPage(page) {
+  if (await sessionVivante(page.request)) return
+  await connexionApi(page.request)
+}
 
 export const STAGE_LABELS = {
   NEW: 'Nouveau',
