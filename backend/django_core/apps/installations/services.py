@@ -152,6 +152,89 @@ def seed_checklist_etapes(company):
     ensure_default_template(company)
 
 
+# AGR605 — checklist d'exécution « Pompage solaire » (chantier agricole).
+# (cle, libelle, capture_serie, photo_obligatoire) — AUCUN chiffre : les
+# mesures vivent dans la recette pompage (AGR608), jamais dans un libellé.
+# Pas d'« Onduleur raccordé » : un kit de pompage n'a pas d'onduleur réseau.
+POMPAGE_TEMPLATE_NOM = 'Pompage solaire'
+POMPAGE_CHECKLIST_ETAPES = [
+    ('materiel_recu', 'Matériel reçu', False, False),
+    ('forage_verifie',
+     'Forage vérifié (accès, tubage, profondeur relevée)', False, True),
+    ('structure_sol_posee', 'Structure au sol posée', False, True),
+    ('panneaux_poses', 'Panneaux posés', True, False),
+    ('coffret_dc_terre', 'Coffret DC et mise à la terre', False, True),
+    ('cable_colonne_poses', 'Câble de descente et colonne posés',
+     False, False),
+    ('pompe_descendue',
+     'Pompe descendue (photo de la plaque signalétique)', True, True),
+    ('variateur_parametre', 'Variateur posé et paramétré', True, True),
+    ('recette_pompage', 'Recette pompage enregistrée', False, False),
+    ('etiquette_sav', 'Étiquette SAV collée sur le coffret', False, False),
+    ('client_forme',
+     'Client formé (démarrage/arrêt, défauts du variateur, nettoyage des '
+     'panneaux, relevés)', False, False),
+    ('photos_prises', 'Photos prises', False, False),
+    ('pv_reception_signe', 'PV de réception signé', False, False),
+]
+
+
+def ensure_template_agricole(company):
+    """AGR605 — sème UNE SEULE FOIS le template « Pompage solaire » de la
+    société (idempotent, additif). Jamais recréé dès qu'un template
+    ``type_installation='agricole'`` existe, ACTIF OU NON : un template
+    désactivé, renommé ou modifié par la société est respecté. Le template
+    est ``protege=False`` (le seul protégé reste le « Défaut »). Renvoie le
+    template créé, ou None s'il existait déjà."""
+    if company is None:
+        return None
+    agricole = Installation.TypeInstallation.AGRICOLE
+    if ChecklistTemplate.objects.filter(
+            company=company, type_installation=agricole).exists():
+        return None
+    template = ChecklistTemplate.objects.create(
+        company=company, type_installation=agricole,
+        nom=POMPAGE_TEMPLATE_NOM, ordre=1, protege=False, actif=True)
+    for i, (cle, libelle, capture, photo) in enumerate(
+            POMPAGE_CHECKLIST_ETAPES):
+        ChecklistEtapeModele.objects.create(
+            company=company, template=template, cle=cle, libelle=libelle,
+            ordre=i, capture_serie=capture, photo_obligatoire=photo,
+            protege=True)
+    return template
+
+
+# AGR605 — plan d'interventions standard d'un chantier agricole : jamais de
+# « raccordement ». Repère des 30 premiers jours : Ignite, nextbillion.net
+# « Four key lessons for implementing PAYGo ».
+POMPAGE_PLAN_INTERVENTIONS = [
+    ('pose', 'Pose du kit de pompage solaire'),
+    ('mise_en_service', 'Mise en service et recette pompage'),
+    ('controle',
+     "Point des 30 premiers jours : l'eau coule-t-elle, relevé heures/m³, "
+     "accord de référence demandé"),
+]
+
+
+def ensure_plan_interventions_agricole(company):
+    """AGR605 — sème UNE SEULE FOIS le plan d'interventions standard
+    agricole (idempotent, additif) : aucun plan agricole existant → pose,
+    mise_en_service, controle. Un plan déjà présent (même modifié) n'est
+    jamais touché. Renvoie le nombre de lignes créées."""
+    if company is None:
+        return 0
+    from .models import TypeInterventionPlan
+    agricole = Installation.TypeInstallation.AGRICOLE
+    if TypeInterventionPlan.objects.filter(
+            company=company, type_installation=agricole).exists():
+        return 0
+    for i, (cle, libelle) in enumerate(POMPAGE_PLAN_INTERVENTIONS):
+        TypeInterventionPlan.objects.create(
+            company=company, type_installation=agricole,
+            type_intervention_cle=cle, libelle_contexte=libelle, ordre=i)
+    return len(POMPAGE_PLAN_INTERVENTIONS)
+
+
 def template_for_installation(installation):
     """N74 — template de checklist auto-sélectionné pour un chantier :
     celui (actif) dont `type_installation` correspond au type du chantier ;
@@ -164,6 +247,8 @@ def template_for_installation(installation):
         return None
     default = ensure_default_template(company)
     type_install = installation.type_installation
+    if type_install == Installation.TypeInstallation.AGRICOLE:
+        ensure_template_agricole(company)  # AGR605 — une seule fois.
     if type_install:
         match = ChecklistTemplate.objects.filter(
             company=company, type_installation=type_install, actif=True
@@ -200,7 +285,10 @@ def ensure_checklist_items(installation):
         if m.cle not in existing:
             ChantierChecklistItem.objects.create(
                 company=company, installation=installation, cle=m.cle,
-                libelle=m.libelle, ordre=m.ordre, capture_serie=m.capture_serie)
+                libelle=m.libelle, ordre=m.ordre, capture_serie=m.capture_serie,
+                # FG76 — « copié depuis l'étape modèle » (AGR605 : la
+                # checklist pompage exige des photos sur 5 étapes).
+                photo_obligatoire=m.photo_obligatoire)
     # `Meta.ordering = ['ordre', 'id']` — même ordre que le related manager.
     return list(ChantierChecklistItem.objects.filter(
         installation=installation))

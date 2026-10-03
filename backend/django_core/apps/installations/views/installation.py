@@ -970,6 +970,11 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         if not type_inst:
             return Response({'detail': "Le chantier n'a pas de type d'installation."},
                             status=status.HTTP_400_BAD_REQUEST)
+        if type_inst == Installation.TypeInstallation.AGRICOLE:
+            # AGR605 — plan agricole semé une seule fois (pose,
+            # mise_en_service, controle ; jamais de raccordement).
+            from ..services import ensure_plan_interventions_agricole
+            ensure_plan_interventions_agricole(company)
         plan_items = (TypeInterventionPlan.objects
                       .filter(company=company, type_installation=type_inst)
                       .order_by('ordre'))
