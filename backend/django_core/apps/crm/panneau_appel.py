@@ -201,9 +201,9 @@ def questions_a_poser(lead):
     se dérive, on ne la demande pas.
     """
     carte = questionnaire.champs_encore_a_obtenir(
-        lead, questionnaire.SECTIONS)
+        lead, questionnaire.SECTIONS_HORS_POMPAGE)
     questions, vus = [], set()
-    for section in questionnaire.SECTIONS:
+    for section in questionnaire.SECTIONS_HORS_POMPAGE:
         a_obtenir = set(carte.get(section, ()))
         for champ in questionnaire.CHAMPS_PAR_SECTION.get(section, ()):
             if champ in CHAMPS_JAMAIS_DEMANDES or champ in vus:
@@ -232,7 +232,7 @@ def prefill_du_panneau(lead):
     est là ne se redemande pas, mais se RELIT — et rien n'y est inventé.
     """
     candidats = []
-    for section in questionnaire.SECTIONS:
+    for section in questionnaire.SECTIONS_HORS_POMPAGE:
         candidats.extend(questionnaire.CHAMPS_PAR_SECTION.get(section, ()))
     candidats.extend(champs_oraux_du_segment(lead))
     out = {}

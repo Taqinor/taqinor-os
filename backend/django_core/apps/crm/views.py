@@ -2229,14 +2229,18 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
         lead = self.get_object()
         try:
-            questions = quest.valider_questions(request.data.get('questions'))
+            questions = quest.valider_questions(
+                request.data.get('questions'), lead)
         except quest.SectionInconnue as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
 
         lien, change, cree = quest.mint_lien(
             lead, questions=questions, user=request.user)
-        posees = [cle for cle in quest.SECTIONS if lien.question_posee(cle)]
+        # AGR411 — le filtre de segment : un lien résidentiel reste
+        # identique à l'octet, un lien agricole ne nomme que ses sections.
+        sections_lead = quest.sections_du_lead(lead)
+        posees = [cle for cle in sections_lead if lien.question_posee(cle)]
         if change:
             # Recalage fold 25/08 — jamais « envoyé » : le serveur n'observe
             # pas l'envoi WhatsApp. « créé » à la première ouverture du
@@ -2257,7 +2261,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'token': lien.token,
             'expires_at': lien.expires_at.isoformat(),
             'questions': {cle: lien.question_posee(cle)
-                          for cle in quest.SECTIONS},
+                          for cle in sections_lead},
             'manquantes': quest.manquantes(lead),
         })
 

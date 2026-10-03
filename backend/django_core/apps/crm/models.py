@@ -4134,10 +4134,14 @@ class QuestionnaireLien(TenantModel):
     #:        (NN/g « Hierarchy of Trust » : ne jamais demander un engagement
     #:        de haut niveau avant d'avoir servi les paliers inférieurs).
     #: L'ancien ordre commençait par `contact` — exactement l'inverse.
+    #: AGR411 — `pompage`, `photo_pompe` (plaque) et `photo_forage` (tête de
+    #: forage) : sections du lead AGRICOLE seulement (filtre de segment dans
+    #: ``crm.questionnaire.sections_du_lead``) — jamais servies à un autre.
     SECTIONS_CLES = (
-        'occupation', 'equipements', 'energie',
+        'occupation', 'equipements', 'energie', 'pompage',
         'toiture', 'gps',
         'photo_facture', 'photo_compteur', 'photo_tableau',
+        'photo_pompe', 'photo_forage',
         'contact',
     )
 

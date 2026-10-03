@@ -1376,8 +1376,86 @@ def _quest_chauffage_electrique_hiver(raw):
     return raw if isinstance(raw, bool) else None
 
 
+# AGR411 — section POMPAGE du questionnaire client : mêmes primitives, même
+# raison (une colonne sans nettoyeur verrait la réponse portant son nom
+# silencieusement jetée). Bornes = celles des colonnes (``max_digits``).
+def _quest_source_eau(raw):
+    return _clean_choice(raw, Lead.SourceEau.values)
+
+
+def _quest_niveau_statique_m(raw):
+    return _clean_decimal(raw, lo=0, hi=2000)
+
+
+def _quest_besoin_eau_m3j(raw):
+    return _clean_decimal(raw, lo=0, hi=1_000_000)
+
+
+def _quest_surface_irriguee_ha(raw):
+    return _clean_decimal(raw, lo=0, hi=1_000_000)
+
+
+def _quest_culture(raw):
+    if raw in (None, ''):
+        return None
+    return str(raw).strip()[:120] or None
+
+
+def _quest_irrigation_methode(raw):
+    return _clean_choice(raw, Lead.IrrigationMethode.values)
+
+
+def _quest_butane_bouteilles_jour(raw):
+    return _clean_decimal(raw, lo=0, hi=1000)
+
+
+def _quest_carburant_prix_unitaire_mad(raw):
+    return _clean_decimal(raw, lo=0, hi=100_000)
+
+
+def _quest_depense_carburant_mad_mois(raw):
+    return _clean_decimal(raw, lo=0, hi=10_000_000)
+
+
+def _quest_mois_irrigation(raw):
+    """Liste de mois 1-12 DISTINCTS (triée), sinon None — même règle que le
+    validateur du modèle (``valider_mois_irrigation``)."""
+    if not isinstance(raw, list) or not raw:
+        return None
+    mois = []
+    for valeur in raw:
+        if isinstance(valeur, bool):
+            return None
+        try:
+            entier = int(valeur)
+        except (TypeError, ValueError):
+            return None
+        if entier != valeur and str(entier) != str(valeur).strip():
+            return None
+        if not 1 <= entier <= 12 or entier in mois:
+            return None
+        mois.append(entier)
+    return sorted(mois)
+
+
+def _quest_compteur_eau(raw):
+    return raw if isinstance(raw, bool) else None
+
+
 #: (b) colonnes Lead hors de portée du mapping site → nettoyeur dédié.
 _QUEST_NETTOYEURS_HORS_SITE = {
+    # AGR411 — section pompage du questionnaire client.
+    'source_eau': _quest_source_eau,
+    'niveau_statique_m': _quest_niveau_statique_m,
+    'besoin_eau_m3j': _quest_besoin_eau_m3j,
+    'surface_irriguee_ha': _quest_surface_irriguee_ha,
+    'culture': _quest_culture,
+    'irrigation_methode': _quest_irrigation_methode,
+    'butane_bouteilles_jour': _quest_butane_bouteilles_jour,
+    'carburant_prix_unitaire_mad': _quest_carburant_prix_unitaire_mad,
+    'depense_carburant_mad_mois': _quest_depense_carburant_mad_mois,
+    'mois_irrigation': _quest_mois_irrigation,
+    'compteur_eau': _quest_compteur_eau,
     'conso_mensuelle_kwh': _quest_conso,
     'surface_toiture_m2': _quest_surface,
     'tranche_onee': _quest_tranche,
