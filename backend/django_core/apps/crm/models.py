@@ -667,6 +667,15 @@ class Lead(SoftDeleteModel):
         DECLAREE = 'declaree', 'Déclarée'
         SITE_WEB = 'site_web', 'Saisie sur le site'
 
+    # AGR522 (contrat AGR501 ``lead_dossier_subvention.json``) — l'état d'un
+    # dossier d'aide FDA. INTERNE : jamais dans une charge utile client.
+    class DossierSubvention(models.TextChoices):
+        NON_CONCERNE = 'non_concerne', 'Non concerné'
+        A_DEPOSER = 'a_deposer', 'À déposer'
+        DEPOSE = 'depose', 'Déposé'
+        ACCORDE = 'accorde', 'Accordé (approbation préalable)'
+        REFUSE = 'refuse', 'Refusé'
+
     # ── CAD-L ── CAD154 — vocabulaires de la VAGUE 2. Les deux REPRENNENT
     # mot pour mot ceux de la qualification de visite
     # (``apps/visites/qualification.py``) : le terrain et le téléphone
@@ -1180,6 +1189,17 @@ class Lead(SoftDeleteModel):
     pompe_hmt_source = models.CharField(
         max_length=10, choices=PompeHmtSource.choices, null=True,
         blank=True, verbose_name='Provenance de la HMT')
+    # AGR522 — dossier de subvention FDA (INTERNE, D-AGR-6). Vide = pas
+    # encore renseigné. La date (dépôt, approbation préalable ou refus) est
+    # exigée pour « déposé », « accordé » et « refusé » (sérialiseur). Ce
+    # n'est pas un mode de paiement : le préfinancement reste
+    # ``financing_intent = credit``.
+    dossier_subvention = models.CharField(
+        max_length=14, choices=DossierSubvention.choices, null=True,
+        blank=True, verbose_name='Dossier de subvention (FDA)')
+    dossier_subvention_le = models.DateField(
+        null=True, blank=True,
+        verbose_name='Date de l’état du dossier de subvention')
 
     # ── Toiture & site ──
     type_toiture = models.CharField(

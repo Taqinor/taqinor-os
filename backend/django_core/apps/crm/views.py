@@ -1111,6 +1111,19 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # base.
         new_lead.refresh_from_db()
         activity.log_changes(old, new_lead, self.request.user)
+        # AGR522 — au passage à « accordé » (approbation préalable FDA), une
+        # étape MANUELLE datée rappelle le délai de 3 mois (interne, hors
+        # gabarit). Best-effort : jamais bloquant pour l'enregistrement.
+        if (new_lead.dossier_subvention == Lead.DossierSubvention.ACCORDE
+                and (old.dossier_subvention != new_lead.dossier_subvention
+                     or old.dossier_subvention_le
+                     != new_lead.dossier_subvention_le)):
+            from .services import poser_rappel_subvention
+            try:
+                poser_rappel_subvention(new_lead)
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+                logger.warning('AGR522: rappel FDA non posé (lead #%s)',
+                               new_lead.pk, exc_info=True)
         # QJR590 — une correction d'identité du lead suit sur SA fiche Client
         # (imprimée sur le PDF) tant que celle-ci n'a pas divergé à la main.
         if ecrits & {'nom', 'prenom', 'email', 'telephone', 'adresse',

@@ -161,6 +161,9 @@ TRACKED_FIELDS = {
     'projet_pompage': 'Projet de pompage',
     'deja_beneficiaire_fda': 'Déjà bénéficiaire FDA',
     'pompe_hmt_source': 'Provenance de la HMT',
+    # AGR522 — dossier de subvention FDA (interne).
+    'dossier_subvention': 'Dossier de subvention (FDA)',
+    'dossier_subvention_le': 'Date de l’état du dossier de subvention',
 }
 
 #: AGR401 — CLÉ D'HISTORIQUE DOCUMENTÉE : des lignes de chatter écrites avant
@@ -201,6 +204,7 @@ _CHOICE_FIELDS = {
     'besoin_eau_source', 'irrigation_methode', 'region_agricole',
     'pompe_actuelle_type', 'electricite_sur_place',
     'autorisation_prelevement', 'projet_pompage', 'pompe_hmt_source',
+    'dossier_subvention',
 }
 
 _BOOL_LABELS = {True: 'Oui', False: 'Non'}

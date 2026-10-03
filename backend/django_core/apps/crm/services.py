@@ -11070,6 +11070,59 @@ def appliquer_mesures_point_eau(lead, mesures, user):
     return ecrites
 
 
+# ── AGR522 — DOSSIER DE SUBVENTION FDA : LE RAPPEL DES 3 MOIS ───────────────
+#
+# Guide FDA 2024 (p.22-23, tableau « Délais ») : « Demande de subvention —
+# 3 mois à compter de la date de l'approbation préalable », après la
+# RÉALISATION. Au passage à « accordé », une étape MANUELLE datée est posée
+# pour le lendemain (filet hors gabarit — jamais une touche de cadence,
+# CAD124). Ce délai n'est JAMAIS écrit au client.
+
+#: Délai du Guide FDA 2024 (p.22-23) entre l'approbation préalable et la
+#: demande de subvention.
+DELAI_DEMANDE_SUBVENTION_MOIS = 3
+
+
+def _ajouter_mois(jour, mois):
+    """``jour`` + ``mois`` mois calendaires (jour ramené à la fin du mois)."""
+    import calendar
+
+    total = jour.month - 1 + mois
+    annee, mois_cible = jour.year + total // 12, total % 12 + 1
+    dernier = calendar.monthrange(annee, mois_cible)[1]
+    return jour.replace(year=annee, month=mois_cible,
+                        day=min(jour.day, dernier))
+
+
+def libelle_rappel_subvention(approbation):
+    """Le libellé de l'étape « délai FDA » pour une approbation préalable."""
+    limite = _ajouter_mois(approbation, DELAI_DEMANDE_SUBVENTION_MOIS)
+    return (f'Approbation préalable du {approbation:%d/%m} : la pose ET le '
+            'dépôt de la demande de subvention doivent tenir avant le '
+            f'{limite:%d/%m} (3 mois — Guide FDA 2024, p.22-23)')
+
+
+def poser_rappel_subvention(lead):
+    """AGR522 — pose (ou retrouve) l'étape MANUELLE du délai FDA pour demain.
+
+    Idempotent : l'étape se retrouve par son libellé (``_poser_etape_de_filet``
+    ne pose jamais deux fois la même étape ouverte), donc rejouer ne double
+    rien. Renvoie l'étape, ou None si le lead n'est pas « accordé » daté."""
+    if (lead is None
+            or lead.dossier_subvention != Lead.DossierSubvention.ACCORDE
+            or lead.dossier_subvention_le is None):
+        return None
+    libelle = libelle_rappel_subvention(lead.dossier_subvention_le)
+    deja = lead.relance_etapes.filter(cle='', libelle=libelle).first()
+    if deja is not None:
+        return deja
+    return _poser_etape_de_filet(
+        lead, libelle=libelle, canal=RelanceEtape.Canal.APPEL,
+        vise=timezone.now() + datetime.timedelta(days=1),
+        note='Posée automatiquement : dossier de subvention accordé — délai '
+             'interne, jamais écrit au client.')
+
+
 # ── NTDATA18 — FUSION SUPERVISÉE DE CLIENTS ─────────────────────────────────
 #
 # Sur le modèle de `merge_leads` ci-dessus, mais pour `Client` : le détecteur

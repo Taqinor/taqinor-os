@@ -1195,7 +1195,27 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
                 attrs['custom_data'] = validate_custom_data(
                     'lead', company, attrs.get('custom_data'))
         self._poser_provenances_pompage(attrs)
+        self._valider_dossier_subvention(attrs)
         return attrs
+
+    #: AGR522 (contrat ``lead_dossier_subvention.json``, ``exemple_400``).
+    MESSAGE_DATE_SUBVENTION = (
+        "La date est obligatoire pour l'état « déposé », « accordé » ou "
+        '« refusé ».')
+
+    def _valider_dossier_subvention(self, attrs):
+        if ('dossier_subvention' not in attrs
+                and 'dossier_subvention_le' not in attrs):
+            return
+        instance = self.instance
+        etat = (attrs['dossier_subvention'] if 'dossier_subvention' in attrs
+                else getattr(instance, 'dossier_subvention', None))
+        date = (attrs['dossier_subvention_le']
+                if 'dossier_subvention_le' in attrs
+                else getattr(instance, 'dossier_subvention_le', None))
+        if etat in ('depose', 'accorde', 'refuse') and date is None:
+            raise serializers.ValidationError(
+                {'dossier_subvention_le': [self.MESSAGE_DATE_SUBVENTION]})
 
     # AGR400 — une valeur de pompage SAISIE dans l'ERP porte sa provenance,
     # posée ici (jamais par le corps : les colonnes ``*_source`` et
