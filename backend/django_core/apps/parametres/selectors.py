@@ -409,6 +409,16 @@ def _repli(lignes, cible):
     return lignes[0]
 
 
+def _lignes_du_segment(lignes, lead):
+    """AGR513 — les réalisations éligibles au segment du lead (D-AGR-10)."""
+    from .models_realisations import Realisation
+    agricole = Realisation.SEGMENT_AGRICOLE
+    segment_lead = (getattr(lead, "type_installation", None) or "").strip()
+    if segment_lead == agricole:
+        return [r for r in lignes if r.segment == agricole]
+    return [r for r in lignes if r.segment != agricole]
+
+
 def realisation_pour_lead(lead):
     """La réalisation à MONTRER à ce lead, ou ``None``.
 
@@ -442,6 +452,11 @@ def realisation_pour_lead(lead):
     lignes = sorted(
         Realisation.objects.filter(company=company, actif=True),
         key=_cle_recence, reverse=True)
+    # AGR513 (D-AGR-10) — filtre de SEGMENT, AVANT les trois règles : un lead
+    # agricole ne voit qu'une réalisation `agricole` (jamais un toit à sa
+    # place) ; un lead non agricole (ou sans type) voit tout SAUF l'agricole,
+    # réalisations sans segment comprises — le résidentiel reste identique.
+    lignes = _lignes_du_segment(lignes, lead)
     if not lignes:
         return None
 
