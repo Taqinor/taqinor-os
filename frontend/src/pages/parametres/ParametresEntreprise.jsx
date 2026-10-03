@@ -25,6 +25,7 @@ import { toast } from '../../ui/confirm'
 import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
   searchSettings, groupTabs, saveModelForTab, SAVE_MODEL_HINTS,
+  formReglagesPompage, payloadReglagesPompage,
 } from './peConstants'
 import SettingsSidebar from './SettingsSidebar'
 import OnboardingSection from './OnboardingSection'
@@ -147,6 +148,8 @@ export default function ParametresEntreprise() {
     payment_terms: DEFAULT_PAYMENT_TERMS,
     quote_validity_days: 30,
     agricole_pump_hours: 7,
+    // AGR108 — réglages pompage SANS défaut (vides tant que rien n'est saisi).
+    ...formReglagesPompage({}),
     agricole_prix_bonbonne: 50,
     agricole_cout_reel_bonbonne: 128,
     // Q5 — delais commerciaux INDICATIFS (texte libre ; vide = non affiche).
@@ -613,6 +616,8 @@ export default function ParametresEntreprise() {
       payment_terms: { ...DEFAULT_PAYMENT_TERMS, ...(profile.payment_terms || {}) },
       quote_validity_days: profile.quote_validity_days ?? 30,
       agricole_pump_hours: profile.agricole_pump_hours ?? 7,
+      // AGR108 — vide reste vide (aucun repli numérique).
+      ...formReglagesPompage(profile),
       agricole_prix_bonbonne: profile.agricole_prix_bonbonne ?? 50,
       agricole_cout_reel_bonbonne: profile.agricole_cout_reel_bonbonne ?? 128,
       delai_visite_technique: profile.delai_visite_technique ?? '',
@@ -760,6 +765,8 @@ export default function ParametresEntreprise() {
       doc_numbering: dn,
       quote_validity_days: Number(form.quote_validity_days) || 30,
       agricole_pump_hours: Number(form.agricole_pump_hours) || 7,
+      // AGR108 — un champ pompage vidé part `null`, jamais un chiffre.
+      ...payloadReglagesPompage(form),
       agricole_prix_bonbonne: Number(form.agricole_prix_bonbonne) || 50,
       agricole_cout_reel_bonbonne: Number(form.agricole_cout_reel_bonbonne) || 128,
       // Q5 — chaine VIDE conservee telle quelle : elle SIGNIFIE

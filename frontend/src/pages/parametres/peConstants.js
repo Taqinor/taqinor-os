@@ -166,3 +166,47 @@ export const mediaUrl   = (url) => {
   // hasardeuse, l'aperçu dégrade proprement (la page, elle, vit).
   return url
 }
+
+// ── AGR108 (Groupe AGR, 02/10/2026) — réglages société du POMPAGE ──────────
+// Trois champs nullable SANS défaut (AGR107) : un champ vide reste vide à
+// l'écran et part `null` au serveur — jamais un chiffre de repli. L'indication
+// sourcée est AFFICHÉE à côté du champ, jamais pré-remplie.
+export const REGLAGES_POMPAGE = [
+  {
+    champ: 'agricole_part_debit_forage_pct',
+    libelle: 'Part du débit déclaré du forage utilisable (%)',
+    indication: 'Indication : 80 à 90 % du débit de l’essai (Water Mission, 2021). Jamais appliquée si le champ est vide.',
+  },
+  {
+    champ: 'agricole_marge_cable_descente_m',
+    libelle: 'Marge du câble de descente (m)',
+    indication: 'Longueur ajoutée à la profondeur de calage de la pompe.',
+  },
+  {
+    champ: 'agricole_salissure_supp_pct',
+    libelle: 'Supplément de salissure (%)',
+    indication: 'Indication : 5 % ou 10 % selon le site (COMPASS). Optionnel.',
+  },
+]
+
+/** Valeur numérique saisie → chaîne envoyée telle quelle (virgule → point),
+ *  ou `null` quand le champ est vide. Jamais arrondie, jamais remplacée. */
+export function nombreOuNull(valeur) {
+  if (valeur === null || valeur === undefined) return null
+  const texte = String(valeur).trim().replace(',', '.')
+  return texte === '' ? null : texte
+}
+
+/** Profil serveur → état du formulaire (vide = '' ; aucun défaut). */
+export function formReglagesPompage(profile = {}) {
+  return Object.fromEntries(REGLAGES_POMPAGE.map(({ champ }) => [
+    champ, profile?.[champ] ?? '',
+  ]))
+}
+
+/** État du formulaire → corps du PATCH (vide = null). */
+export function payloadReglagesPompage(form = {}) {
+  return Object.fromEntries(REGLAGES_POMPAGE.map(({ champ }) => [
+    champ, nombreOuNull(form?.[champ]),
+  ]))
+}

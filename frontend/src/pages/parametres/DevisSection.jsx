@@ -10,7 +10,7 @@ import {
 } from '../../ui'
 import ventesApi from '../../api/ventesApi'
 import { SectionTitle, Field } from './peComponents'
-import { MODE_LABELS, DOC_TYPES } from './peConstants'
+import { MODE_LABELS, DOC_TYPES, REGLAGES_POMPAGE } from './peConstants'
 
 /* WIR225/QG9 — Le « % de variation par défaut » des variantes de devis vivait
    sur `CompanyProfile.variante_pct` et n'était réglable NULLE PART : le seul
@@ -122,10 +122,23 @@ export default function DevisSection({
               <Input id="pe-validity" type="number" step="any" name="quote_validity_days"
                      value={form.quote_validity_days} onChange={set} />
             </Field>
-            <Field label="Heures de pompage / jour (agricole, défaut)" htmlFor="pe-pump-hours">
+            <Field label="Heures de repli / jour si l'irradiation du site est indisponible (agricole)"
+                   htmlFor="pe-pump-hours">
               <Input id="pe-pump-hours" type="number" step="any" name="agricole_pump_hours"
                      value={form.agricole_pump_hours} onChange={set} />
             </Field>
+          </div>
+          {/* AGR108 — réglages pompage société SANS défaut (AGR107) : un
+              champ vide reste vide et part `null` ; l'indication sourcée est
+              affichée À CÔTÉ, jamais pré-remplie. */}
+          <div className="pe-grid-2 mt-2.5" data-testid="reglages-pompage">
+            {REGLAGES_POMPAGE.map(({ champ, libelle, indication }) => (
+              <Field key={champ} label={libelle} htmlFor={`pe-${champ}`}>
+                <Input id={`pe-${champ}`} type="number" step="any" name={champ}
+                       value={form[champ] ?? ''} onChange={set} />
+                <p className="text-[11px] text-muted-foreground">{indication}</p>
+              </Field>
+            ))}
           </div>
           {/* Q4 (fondateur, 20/08/2026) — prix bonbonne butane terrain +
               coût réel non subventionné (agricole) : le moteur de devis en
