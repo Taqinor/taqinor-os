@@ -210,3 +210,59 @@ export function payloadReglagesPompage(form = {}) {
     champ, nombreOuNull(form?.[champ]),
   ]))
 }
+
+// ── AGR209 (Groupe AGR, 02/10/2026) — REPÈRES énergie agricole ─────────────
+// `CompanyProfile.reperes_energie_agricole` (AGR208, contrat partagé
+// `ventes/contract_samples/economie_pompage.json`) : chaque repère porte
+// {valeur, source, releve_le}. Une INDICATION datée montrée à côté du champ du
+// générateur — seulement si elle a une source ; le prix retenu est celui
+// DÉCLARÉ par le client (Q17, D-AGR-5). Aucun défaut, aucun repli numérique.
+export const REPERES_ENERGIE = [
+  { cle: 'butane_12kg_detail', libelle: 'Bouteille butane 12 kg — prix de détail (DH)', interne: false },
+  { cle: 'butane_12kg_non_subventionne', libelle: 'Bouteille butane 12 kg — coût non subventionné (DH)', interne: true },
+  { cle: 'gasoil_litre', libelle: 'Gasoil — prix du litre (DH)', interne: false },
+]
+
+/** Profil serveur → état éditable des repères (vide = '' ; aucun défaut). */
+export function formReperes(profile = {}) {
+  const reperes = profile?.reperes_energie_agricole || {}
+  return Object.fromEntries(REPERES_ENERGIE.map(({ cle }) => {
+    const r = reperes[cle] || {}
+    return [cle, {
+      valeur: r.valeur ?? '',
+      source: r.source ?? '',
+      releve_le: r.releve_le ?? '',
+    }]
+  }))
+}
+
+/** Valeur d'un repère → nombre (jamais arrondi), `null` si vide ; un texte
+ *  illisible part tel quel pour que le serveur le refuse en le NOMMANT. */
+function valeurRepere(valeur) {
+  const texte = nombreOuNull(valeur)
+  if (texte === null) return null
+  const n = Number(texte)
+  return Number.isFinite(n) ? n : texte
+}
+
+/** État éditable → corps `reperes_energie_agricole` du PATCH. */
+export function payloadReperes(reperes = {}) {
+  return Object.fromEntries(REPERES_ENERGIE.map(({ cle }) => {
+    const r = reperes?.[cle] || {}
+    return [cle, {
+      valeur: valeurRepere(r.valeur),
+      source: String(r.source ?? '').trim(),
+      releve_le: r.releve_le ? r.releve_le : null,
+    }]
+  }))
+}
+
+/** Ancienneté d'un relevé en jours entiers (aucun seuil), ou `null`. */
+export function joursDepuisReleve(releveLe, aujourdhui = new Date()) {
+  if (!releveLe) return null
+  const t = Date.parse(`${releveLe}T00:00:00`)
+  if (!Number.isFinite(t)) return null
+  const debut = new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(),
+    aujourdhui.getDate()).getTime()
+  return Math.max(0, Math.round((debut - t) / 86400000))
+}

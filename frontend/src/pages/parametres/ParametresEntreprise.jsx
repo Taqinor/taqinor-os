@@ -25,7 +25,7 @@ import { toast } from '../../ui/confirm'
 import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
   searchSettings, groupTabs, saveModelForTab, SAVE_MODEL_HINTS,
-  formReglagesPompage, payloadReglagesPompage,
+  formReglagesPompage, payloadReglagesPompage, formReperes, payloadReperes,
 } from './peConstants'
 import SettingsSidebar from './SettingsSidebar'
 import OnboardingSection from './OnboardingSection'
@@ -150,8 +150,8 @@ export default function ParametresEntreprise() {
     agricole_pump_hours: 7,
     // AGR108 — réglages pompage SANS défaut (vides tant que rien n'est saisi).
     ...formReglagesPompage({}),
-    agricole_prix_bonbonne: 50,
-    agricole_cout_reel_bonbonne: 128,
+    // AGR209 — repères énergie datés et sourcés, VIDES (jamais 50 / 128).
+    reperes_energie_agricole: formReperes({}),
     // Q5 — delais commerciaux INDICATIFS (texte libre ; vide = non affiche).
     delai_visite_technique: '48-72 h',
     delai_installation: '7-14 jours ouvres',
@@ -618,8 +618,7 @@ export default function ParametresEntreprise() {
       agricole_pump_hours: profile.agricole_pump_hours ?? 7,
       // AGR108 — vide reste vide (aucun repli numérique).
       ...formReglagesPompage(profile),
-      agricole_prix_bonbonne: profile.agricole_prix_bonbonne ?? 50,
-      agricole_cout_reel_bonbonne: profile.agricole_cout_reel_bonbonne ?? 128,
+      reperes_energie_agricole: formReperes(profile),
       delai_visite_technique: profile.delai_visite_technique ?? '',
       delai_installation: profile.delai_installation ?? '',
       doc_prefixes: { ...DEFAULT_PREFIXES, ...(profile.doc_prefixes || {}) },
@@ -767,8 +766,8 @@ export default function ParametresEntreprise() {
       agricole_pump_hours: Number(form.agricole_pump_hours) || 7,
       // AGR108 — un champ pompage vidé part `null`, jamais un chiffre.
       ...payloadReglagesPompage(form),
-      agricole_prix_bonbonne: Number(form.agricole_prix_bonbonne) || 50,
-      agricole_cout_reel_bonbonne: Number(form.agricole_cout_reel_bonbonne) || 128,
+      // AGR209 — un repère vidé part vide (null), jamais 50 / 128.
+      reperes_energie_agricole: payloadReperes(form.reperes_energie_agricole),
       // Q5 — chaine VIDE conservee telle quelle : elle SIGNIFIE
       // « ne pas afficher ce delai », ce n'est pas une valeur manquante.
       delai_visite_technique: (form.delai_visite_technique ?? '').trim(),

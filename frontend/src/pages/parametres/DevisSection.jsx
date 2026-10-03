@@ -10,7 +10,9 @@ import {
 } from '../../ui'
 import ventesApi from '../../api/ventesApi'
 import { SectionTitle, Field } from './peComponents'
-import { MODE_LABELS, DOC_TYPES, REGLAGES_POMPAGE } from './peConstants'
+import {
+  MODE_LABELS, DOC_TYPES, REGLAGES_POMPAGE, REPERES_ENERGIE, joursDepuisReleve,
+} from './peConstants'
 
 /* WIR225/QG9 — Le « % de variation par défaut » des variantes de devis vivait
    sur `CompanyProfile.variante_pct` et n'était réglable NULLE PART : le seul
@@ -31,6 +33,16 @@ export default function DevisSection({
   const roleNom = useSelector(s => s.auth?.role_nom) || ''
   const peutReglerVariante = canManageSensitive
     || ROLES_VARIANTE_PCT.includes(roleNom)
+
+  // AGR209 — repères énergie {cle: {valeur, source, releve_le}} (vide = '').
+  const reperes = form.reperes_energie_agricole || {}
+  const setRepere = (cle, cleChamp, valeur) => setForm(p => ({
+    ...p,
+    reperes_energie_agricole: {
+      ...(p.reperes_energie_agricole || {}),
+      [cle]: { ...((p.reperes_energie_agricole || {})[cle] || {}), [cleChamp]: valeur },
+    },
+  }))
 
   const [variantePct, setVariantePct] = useState('')
   const [variantePctSaving, setVariantePctSaving] = useState(false)
@@ -140,19 +152,53 @@ export default function DevisSection({
               </Field>
             ))}
           </div>
-          {/* Q4 (fondateur, 20/08/2026) — prix bonbonne butane terrain +
-              coût réel non subventionné (agricole) : le moteur de devis en
-              dérive le rapport de décompensation, plus de multiplicateur codé
-              en dur. Le fondateur les ajuste à chaque hausse. */}
-          <div className="pe-grid-2 mt-2.5">
-            <Field label="Prix bonbonne butane 12 kg, terrain (agricole, DH)" htmlFor="pe-butane-prix">
-              <Input id="pe-butane-prix" type="number" step="any" name="agricole_prix_bonbonne"
-                     value={form.agricole_prix_bonbonne} onChange={set} />
-            </Field>
-            <Field label="Coût réel bonbonne 12 kg, non subventionné (agricole, DH)" htmlFor="pe-butane-cout-reel">
-              <Input id="pe-butane-cout-reel" type="number" step="any" name="agricole_cout_reel_bonbonne"
-                     value={form.agricole_cout_reel_bonbonne} onChange={set} />
-            </Field>
+          {/* AGR209 — REPÈRES énergie agricole datés et sourcés (ex-réglages
+              « bonbonne » Q4). Une indication montrée À CÔTÉ du champ du
+              générateur, seulement si elle a une source ; aucun moteur ne la
+              lit comme prix : le prix retenu est celui DÉCLARÉ par le client.
+              Aucun défaut, aucun repli numérique ; « relevé il y a N jours »
+              sans seuil. */}
+          <div className="mt-2.5 flex flex-col gap-2" data-testid="reperes-energie">
+            <p className="text-[11px] text-muted-foreground">
+              Indication datée montrée à côté du champ du générateur ; le prix
+              retenu est celui DÉCLARÉ par le client. Un repère sans source
+              n&apos;est pas affiché au générateur.
+            </p>
+            {REPERES_ENERGIE.map(({ cle, libelle, interne }) => {
+              const r = reperes[cle] || {}
+              const jours = joursDepuisReleve(r.releve_le)
+              return (
+                <div key={cle} className="pe-grid-2" data-testid={`repere-${cle}`}>
+                  <Field label={libelle} htmlFor={`pe-repere-${cle}-valeur`}>
+                    <Input id={`pe-repere-${cle}-valeur`} type="number" step="any"
+                           value={r.valeur ?? ''}
+                           onChange={e => setRepere(cle, 'valeur', e.target.value)} />
+                    {interne && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Interne, jamais sur un devis.
+                      </p>
+                    )}
+                  </Field>
+                  <div className="pe-grid-2">
+                    <Field label="Source" htmlFor={`pe-repere-${cle}-source`}>
+                      <Input id={`pe-repere-${cle}-source`}
+                             value={r.source ?? ''}
+                             onChange={e => setRepere(cle, 'source', e.target.value)} />
+                    </Field>
+                    <Field label="Relevé le" htmlFor={`pe-repere-${cle}-date`}>
+                      <Input id={`pe-repere-${cle}-date`} type="date"
+                             value={r.releve_le ?? ''}
+                             onChange={e => setRepere(cle, 'releve_le', e.target.value)} />
+                      {jours !== null && (
+                        <p className="text-[11px] text-muted-foreground">
+                          relevé il y a {jours} jour{jours > 1 ? 's' : ''}
+                        </p>
+                      )}
+                    </Field>
+                  </div>
+                </div>
+              )
+            })}
           </div>
           {/* Q5 (fondateur, 20/08/2026) — délais commerciaux INDICATIFS.
               Ils étaient codés en dur dans les renderers PDF et rendus dans la
