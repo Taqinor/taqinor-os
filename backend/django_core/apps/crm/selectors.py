@@ -926,10 +926,15 @@ def provenance_site(lead):
 SITE_PROFILE_FIELDS = (
     'facture_hiver', 'facture_ete', 'ete_differente', 'conso_mensuelle_kwh',
     'tranche_onee', 'raccordement', 'regularisation_8221', 'type_installation',
-    'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+    'pompe_actuelle_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
     'type_toiture', 'surface_toiture_m2', 'orientation', 'inclinaison_deg',
     'ombrage', 'ombrage_notes', 'gps_lat', 'gps_lng',
 )
+
+#: AGR401 — nom de l'ALIAS lecture seule déprécié de ``pompe_actuelle_cv``
+#: (ancien nom de colonne), servi tant que le frontend le lit ; AGR424 le
+#: retire. Une seule constante pour le sélecteur et les sérialiseurs.
+ALIAS_DEPRECIE_CV_ACTUELLE = 'pompe_cv'
 
 
 def _lignes_pipeline_ouvertes(company, membre_ids=None):
@@ -1211,7 +1216,12 @@ def site_profile_for_client(client_id, company=None):
     profile = qs.first()
     if profile is None:
         return None
-    return {f: getattr(profile, f) for f in SITE_PROFILE_FIELDS}
+    profil = {f: getattr(profile, f) for f in SITE_PROFILE_FIELDS}
+    # AGR401 — ALIAS DÉPRÉCIÉ (même valeur) tant que les lecteurs frontend du
+    # pré-remplissage ne sont pas migrés (AGR126/AGR415/AGR420) ; retiré par
+    # AGR424. Ce n'est PAS la puissance du devis : c'est la pompe actuelle.
+    profil[ALIAS_DEPRECIE_CV_ACTUELLE] = profil['pompe_actuelle_cv']
+    return profil
 
 
 # DC11 — provenance des valeurs énergie/toiture reprises du lead ──────────────
@@ -1235,7 +1245,7 @@ LEAD_PROVENANCE_FIELDS = (
     # (de calcul, QJR586) le productible, le transport et le distributeur.
     'taille_souhaitee_kwc', 'batterie_souhaitee', 'raccordement',
     'structure_pref', 'structure_produit',
-    'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+    'pompe_actuelle_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
     'type_installation', 'ville', 'ville_reference',
 )
 

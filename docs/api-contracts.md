@@ -687,7 +687,7 @@
 - frontend/src/api/crmApi.js :: createSavedView -> /api/django/crm/vues-enregistrees  [SavedViewSerializer]
     champs: created_at, id, name, page, payload, rank, user
 - frontend/src/api/crmApi.js :: createSiteProfile -> /api/django/crm/site-profiles  [SiteProfileSerializer]
-    champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
+    champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_actuelle_cv, pompe_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
     ombrage ∈ {aucun, important, partiel}
     orientation ∈ {autre, est, ouest, sud, sud_est, sud_ouest}
     raccordement ∈ {aucun, inconnu, monophase, triphase}
@@ -728,7 +728,7 @@
 - frontend/src/api/crmApi.js :: getPlansActivite -> /api/django/crm/plans-activite  [PlanActiviteSerializer]
     champs: actif, company, date_creation, etapes, id, nom
 - frontend/src/api/crmApi.js :: getSiteProfiles -> /api/django/crm/site-profiles  [SiteProfileSerializer]
-    champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
+    champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_actuelle_cv, pompe_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
     ombrage ∈ {aucun, important, partiel}
     orientation ∈ {autre, est, ouest, sud, sud_est, sud_ouest}
     raccordement ∈ {aucun, inconnu, monophase, triphase}
@@ -746,7 +746,7 @@
     champs: company, created_by, date_creation, date_modification, id, lead, lead_nom, notes, reminder_sent, scheduled_at, statut, statut_display
     statut ∈ {annule, confirme, effectue, no_show, planifie}
 - frontend/src/api/crmApi.js :: updateSiteProfile -> /api/django/crm/site-profiles/<>  [SiteProfileSerializer]
-    champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
+    champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_actuelle_cv, pompe_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
     ombrage ∈ {aucun, important, partiel}
     orientation ∈ {autre, est, ouest, sud, sud_est, sud_ouest}
     raccordement ∈ {aucun, inconnu, monophase, triphase}

@@ -1004,9 +1004,17 @@ class Lead(SoftDeleteModel):
                   'de la fenêtre (equip_piscine_heures_jour en contrôle '
                   'toujours la longueur). Seul, ne change rien.')
 
-    # ── Pompage solaire (leads Agricole) — mêmes entrées que le générateur ──
-    pompe_cv = models.DecimalField(
-        max_digits=6, decimal_places=2, null=True, blank=True)
+    # ── Pompage solaire (leads Agricole) ──
+    # AGR401 — ancienne colonne CV, renommée : décrit la pompe ACTUELLE (information,
+    # éligibilité), JAMAIS la pompe du devis. La puissance retenue est une
+    # SORTIE du dimensionnement (clé CV d'``etude_params``), plus
+    # stockée sur le Lead.
+    pompe_actuelle_cv = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Pompe actuelle (CV)',
+        help_text="Question à l'appel : « Votre pompe actuelle fait combien "
+                  'de chevaux ? C\'est écrit sur sa plaque. » (vide = pas '
+                  'encore posée).')
     pompe_hmt_m = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True,
         help_text="Question à l'appel : « Connaissez-vous la hauteur totale "
@@ -2740,8 +2748,11 @@ class SiteProfile(models.Model):
         blank=True, null=True)
 
     # ── Pompage solaire (clients Agricole) ──
-    pompe_cv = models.DecimalField(
-        max_digits=6, decimal_places=2, null=True, blank=True)
+    # AGR401 — ancienne colonne CV, renommée : la pompe ACTUELLE (même copie que
+    # ``Lead.pompe_actuelle_cv``).
+    pompe_actuelle_cv = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Pompe actuelle (CV)')
     pompe_hmt_m = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True)
     pompe_debit_m3h = models.DecimalField(

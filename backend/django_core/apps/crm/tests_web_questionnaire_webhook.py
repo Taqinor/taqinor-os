@@ -156,7 +156,7 @@ class WebQuestionnaireWebhookTests(TestCase):
         # Réemploi des colonnes pompage existantes (jamais dupliquées).
         self.assertEqual(str(lead.pompe_hmt_m), '60.00')
         self.assertEqual(str(lead.pompe_debit_m3h), '12.00')
-        self.assertEqual(str(lead.pompe_cv), '7.50')
+        self.assertEqual(str(lead.pompe_actuelle_cv), '7.50')
         self.assertEqual(lead.web_questionnaire, {
             'water_source': 'forage',
             'profondeur_m': 45.0,

@@ -67,9 +67,11 @@ CHAMPS_A_DEFAUT_NON_NUL = ('ete_differente',)
 #: questionnaire client ne les porte, et elles n'ont de sens que pour un lead
 #: de pompage. CAD175 — la seconde livraison du panneau y ajoute la pompe
 #: elle-même (puissance, HMT, débit voulu : les trois entrées du générateur
-#: en mode agricole, colonnes `pompe_*` déjà existantes), en tête.
+#: en mode agricole, colonnes `pompe_*` déjà existantes), en tête. AGR401 —
+#: la puissance posée est celle de la pompe ACTUELLE (`pompe_actuelle_cv`,
+#: information) : la puissance retenue est une sortie du dimensionnement.
 CHAMPS_ORAUX_AGRICOLE = (
-    'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+    'pompe_actuelle_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
     'pompage_heures_jour', 'pompe_alim_actuelle', 'carburant_litres_mois',
 )
 

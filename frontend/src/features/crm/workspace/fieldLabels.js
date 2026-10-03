@@ -133,6 +133,12 @@ const fieldLabels = {
 
   // ── Pompage (agricole) ────────────────────────────────────────────────
   pompe_cv: { libelleCourt: 'puissance de la pompe (CV)', label: 'Pompe (CV)', section: 'pompage', inputId: 'lf-pompe-cv' },
+  // AGR401 — ex-`pompe_cv` renommée côté serveur (pompe ACTUELLE). Libellé =
+  // `verbose_name` serveur ; `pending` jusqu'à son FormField (AGR415).
+  pompe_actuelle_cv: {
+    libelleCourt: 'puissance de la pompe actuelle (CV)', label: 'Pompe actuelle (CV)',
+    section: 'pompage', inputId: 'lf-pompe-actuelle-cv', pending: 'AGR415',
+  },
   pompe_hmt_m: { libelleCourt: 'hauteur manométrique (HMT)', label: 'HMT (m)', section: 'pompage', inputId: 'lf-pompe-hmt' },
   pompe_debit_m3h: { libelleCourt: 'débit souhaité (m³/h)', label: 'Débit souhaité (m³/h)', section: 'pompage', inputId: 'lf-pompe-debit' },
 

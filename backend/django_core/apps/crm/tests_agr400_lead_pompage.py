@@ -36,8 +36,8 @@ SANS_QUESTION = {
     'niveau_statique_source', 'debit_forage_source', 'besoin_eau_source',
     'pompe_hmt_source', 'carburant_prix_declare_le',
 }
-#: Renommée par AGR401 (ex-``pompe_cv``) : vérifiée par son propre test.
-HORS_AGR400 = {'pompe_actuelle_cv'}
+#: AGR401 a livré ``pompe_actuelle_cv`` : plus aucune colonne hors contrôle.
+HORS_AGR400 = set()
 
 #: Les colonnes NOUVELLES d'AGR400 (le reste existait déjà).
 NOUVELLES = [

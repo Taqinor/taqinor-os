@@ -392,8 +392,8 @@ def _extract_web_questionnaire(data):
     bornes est ignorée — jamais d'erreur.
 
     ``_map_payload_to_fields`` consomme ensuite les clés qui RÉUTILISENT une
-    colonne Lead existante (hmt_m/debit_souhaite_m3h/pompe_cv_actuelle →
-    pompe_*, pro_monthly_kwh/pro_monthly_mad → bill_kwh/facture_hiver) ; le
+    colonne Lead existante (hmt_m/debit_souhaite_m3h → pompe_*,
+    pompe_cv_actuelle → pompe_actuelle_cv, pro_monthly_kwh/pro_monthly_mad → bill_kwh/facture_hiver) ; le
     reste va dans Lead.web_questionnaire."""
     out = {}
 
@@ -593,15 +593,15 @@ def _build_questionnaire_note(questionnaire, estimate, type_installation):
     if questionnaire.get('region_agricole'):
         parts.append(f"région {questionnaire['region_agricole']}")
     pompe = questionnaire.get('pompe_actuelle')
-    pompe_cv = questionnaire.get('pompe_cv_actuelle')
+    cv_actuelle = questionnaire.get('pompe_cv_actuelle')
     if pompe == 'aucune':
         parts.append('aucune pompe actuelle')
     elif pompe:
         label = {'electrique': 'électrique'}.get(pompe, pompe)
-        cv_txt = f" {fmt(pompe_cv)} CV" if pompe_cv is not None else ''
+        cv_txt = f" {fmt(cv_actuelle)} CV" if cv_actuelle is not None else ''
         parts.append(f"pompe {label}{cv_txt}")
-    elif pompe_cv is not None:
-        parts.append(f"pompe actuelle {fmt(pompe_cv)} CV")
+    elif cv_actuelle is not None:
+        parts.append(f"pompe actuelle {fmt(cv_actuelle)} CV")
     if questionnaire.get('fuel_spend_mad') is not None:
         parts.append(
             f"carburant {fmt(questionnaire['fuel_spend_mad'])} MAD/mois")
@@ -1121,9 +1121,12 @@ def _map_payload_to_fields(data: dict) -> dict:
         debit = questionnaire.pop('debit_souhaite_m3h', None)
         if debit is not None:
             fields['pompe_debit_m3h'] = debit
-        pompe_cv = questionnaire.pop('pompe_cv_actuelle', None)
-        if pompe_cv is not None:
-            fields['pompe_cv'] = pompe_cv
+        # AGR401 — le CV envoyé par le site est celui de la pompe ACTUELLE :
+        # il va dans `pompe_actuelle_cv` et ne remplit JAMAIS une entrée de
+        # dimensionnement (la puissance retenue est une SORTIE du moteur).
+        cv_actuelle = questionnaire.pop('pompe_cv_actuelle', None)
+        if cv_actuelle is not None:
+            fields['pompe_actuelle_cv'] = cv_actuelle
         if 'bill_kwh' not in fields:
             pro_kwh = questionnaire.pop('pro_monthly_kwh', None)
             if pro_kwh is not None:

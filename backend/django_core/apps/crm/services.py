@@ -4126,7 +4126,7 @@ _MERGE_FILL_FIELDS = [
     'type_installation', 'priorite', 'relance_date',
     'type_toiture', 'surface_toiture_m2', 'orientation', 'inclinaison_deg',
     'ombrage', 'ombrage_notes', 'nb_etages', 'structure_pref',
-    'taille_souhaitee_kwc', 'batterie_souhaitee', 'pompe_cv', 'pompe_hmt_m',
+    'taille_souhaitee_kwc', 'batterie_souhaitee', 'pompe_actuelle_cv', 'pompe_hmt_m',
     'pompe_debit_m3h', 'canal', 'motif_perte', 'note', 'whatsapp_opt_in',
     # AGR400 — colonnes de pompage (contrat AGR1) : préservées à la fusion.
     'source_eau', 'niveau_statique_m', 'niveau_statique_source',

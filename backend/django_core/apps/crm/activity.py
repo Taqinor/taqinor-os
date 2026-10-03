@@ -36,7 +36,8 @@ TRACKED_FIELDS = {
     'ete_differente': 'Été différent',
     'conso_mensuelle_kwh': 'Conso mensuelle (kWh)',
     'tranche_onee': 'Tarif / tranche ONEE',
-    'pompe_cv': 'Pompe (CV)',
+    # AGR401 — ex-« Pompe (CV) » : c'est la pompe ACTUELLE.
+    'pompe_actuelle_cv': 'Pompe actuelle (CV)',
     'pompe_hmt_m': 'HMT (m)',
     'pompe_debit_m3h': 'Débit souhaité (m³/h)',
     'raccordement': 'Raccordement',
@@ -160,6 +161,14 @@ TRACKED_FIELDS = {
     'projet_pompage': 'Projet de pompage',
     'deja_beneficiaire_fda': 'Déjà bénéficiaire FDA',
     'pompe_hmt_source': 'Provenance de la HMT',
+}
+
+#: AGR401 — CLÉ D'HISTORIQUE DOCUMENTÉE : des lignes de chatter écrites avant
+#: le renommage portent encore ``field='pompe_cv'`` (libellé stocké « Pompe
+#: (CV) »). La colonne n'existe plus ; ce libellé reste pour RELIRE ces lignes,
+#: jamais pour journaliser (``log_changes`` ne lit que ``TRACKED_FIELDS``).
+LIBELLES_HISTORIQUES = {
+    'pompe_cv': 'Pompe (CV)',
 }
 
 _CHOICE_FIELDS = {
