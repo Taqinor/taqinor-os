@@ -518,10 +518,13 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         from .services import ReleveDecroissantError, enregistrer_releve_compteur
 
         type_releve = request.data.get('type')
+        # AGR615 — le compteur d'eau d'une pompe (m³) est accepté.
         if type_releve not in (
                 ReleveCompteurEquipement.Type.HEURES,
-                ReleveCompteurEquipement.Type.KWH):
-            return Response({'detail': 'type invalide (heures|kwh).'}, status=400)
+                ReleveCompteurEquipement.Type.KWH,
+                ReleveCompteurEquipement.Type.M3):
+            return Response(
+                {'detail': 'type invalide (heures|kwh|m3).'}, status=400)
         try:
             valeur = Decimal(str(request.data.get('valeur')))
         except (InvalidOperation, TypeError):

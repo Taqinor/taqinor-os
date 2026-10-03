@@ -509,7 +509,8 @@ def _generer_ticket_preventif_compteur(company, equipement, type_releve,
 
     installation = equipement.installation
     client = getattr(installation, 'client', None)
-    label = 'heures' if type_releve == 'heures' else 'kWh'
+    # AGR615 — un seuil franchi sur un compteur m³ est libellé « m³ ».
+    label = {'heures': 'heures', 'm3': 'm³'}.get(type_releve, 'kWh')
     description = (
         f'Entretien préventif dû (seuil de {label} franchi — '
         f'compteur à {valeur} {label}).')
@@ -544,6 +545,22 @@ def calculer_ligne_usage_contrat(contrat, periode_debut, periode_fin):
         return None, 'Pas de tarif à l\'usage sur ce contrat.'
     if contrat.installation_id is None:
         return None, 'Contrat sans installation liée — usage non calculable.'
+
+    # AGR615 — contrat en m³ : la SEULE source est l'index des relevés
+    # compteur m³ ; jamais des kWh de monitoring étiquetés m³.
+    if contrat.unite_usage == contrat.UniteUsage.M3:
+        from .selectors import usage_m3_periode
+        usage = usage_m3_periode(contrat, periode_debut, periode_fin)
+        if usage is None:
+            return None, "Aucun relevé m³ sur la période — ligne d'usage omise."
+        franchise = contrat.franchise_incluse or Decimal('0')
+        facturable = max(Decimal('0'), usage - franchise)
+        montant = (facturable * contrat.tarif_usage).quantize(Decimal('0.01'))
+        description = (
+            f'Facturation à l\'usage — {usage} m³ relevés, '
+            f'franchise {franchise} m³, {facturable} m³ facturés '
+            f'à {contrat.tarif_usage} MAD/m³.')
+        return montant, description
 
     from apps.monitoring.selectors import usage_kwh_periode
 
