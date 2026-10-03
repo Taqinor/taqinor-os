@@ -14,4 +14,4 @@ State as of 2026-09-30:
 
 **Why:** founder wants to track this from other machines/accounts; the repo doc is the source of truth, this memory is the pointer.
 
-**How to apply:** open items — re-send the 12 sent quotes (founder); bug in apps/ventes/domain/etudes.py rafraichir_etude_horaire_devis summing both variantes' panels (60 stale hourly blocks, fixed in a separate session started 30/09 — check its PR); C&I 60 %/80 % autoconso model question. See [[ci-autoquote-conso-only]], [[qa-coherence-auditor]], [[prod-read-access]].
+**How to apply:** open items — re-send the 12 sent quotes (founder); bug in apps/ventes/domain/etudes.py rafraichir_etude_horaire_devis summing both variantes' panels (60 stale hourly blocks, fixed in a separate session started 30/09 — check its PR); C&I 60 %/80 % autoconso model question — FERMÉE le 03/10/2026 par D-CIQ-1 (horaire sur profil déclaré, [[ci-decisions-fondateur]]). See [[ci-autoquote-conso-only]], [[qa-coherence-auditor]], [[prod-read-access]].
