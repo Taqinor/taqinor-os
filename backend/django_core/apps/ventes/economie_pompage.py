@@ -26,12 +26,14 @@ from __future__ import annotations
 
 import calendar
 
-from .economie import EconomieInvalide, _nombre, flux_de_tresorerie
+from .economie import (
+    EconomieInvalide, _nombre, flux_de_tresorerie, tableau_pret)
 
 __all__ = [
     'ANNEE_REMPLACEMENT_POMPE', 'CAS_CARBURANT', 'CAS_NOUVEAU_FORAGE',
     'CAS_RESEAU', 'ENERGIES', 'HORIZON_ANS', 'depense_actuelle',
-    'economie_pompage', 'investissement_ttc', 'mention_declaration',
+    'economie_pompage', 'economie_pompage_publique', 'investissement_ttc',
+    'mention_declaration',
 ]
 
 #: Vocabulaire de ``crm.Lead.PompeAlimActuelle`` (contrat AGR3).
@@ -880,6 +882,182 @@ def _coherence(dep, saisies, sortie_etude, mois, jours_semaine):
     return [], round(hydraulique / carburant * 100.0, 1), [], []
 
 
+# ── AGR205 — vue INTERNE, financement, version publique ─────────────────────
+
+LIBELLE_SCENARIO_BUTANE = ("scénario hypothétique ; prix maintenu par l'État "
+                           "à ce jour")
+CONDITIONS_FDA = ('energie_actuelle_butane', 'irrigation_localisee',
+                  'compteur_eau', 'un_seul_projet_par_exploitation')
+#: Repère affiché À CÔTÉ du champ prix, par énergie (Q17 : jamais dedans).
+_REPERE_PAR_ENERGIE = {'butane': 'butane_12kg_detail',
+                       'diesel': 'gasoil_litre'}
+
+
+def _taux_actualisation(saisies):
+    """``{valeur, source}`` du taux INTERNE, ``None`` s'il n'est pas saisi ;
+    un taux saisi SANS source est refusé en nommant
+    ``taux_actualisation.source``."""
+    bloc = _bloc(saisies, 'taux_actualisation')
+    if not bloc or bloc.get('valeur') is None:
+        return None
+    source = str(bloc.get('source') or '').strip()
+    if not source:
+        raise EconomieInvalide(
+            "taux_actualisation.source : un taux d'actualisation saisi doit "
+            "porter sa source — aucun taux par défaut.",
+            champ='taux_actualisation.source')
+    return {'valeur': _nombre('taux_actualisation.valeur', bloc['valeur']),
+            'source': source, 'saisie_le': bloc.get('saisi_le')}
+
+
+def _repere(reperes, cle):
+    """Un repère daté et SOURCÉ, ou ``None``."""
+    repere = (reperes or {}).get(cle)
+    if not isinstance(repere, dict) or repere.get('valeur') is None or \
+            not str(repere.get('source') or '').strip():
+        return None
+    return repere
+
+
+def _reperes_affiches(dep, reperes):
+    cle = _REPERE_PAR_ENERGIE.get(dep.get('_energie'))
+    if cle is None:
+        return [], []
+    repere = _repere(reperes, cle)
+    if repere is None:
+        return [], [{'cle': f'repere_{cle}',
+                     'motif': 'repère sans source : non affiché à côté du '
+                              'champ'}]
+    return [{'cle': cle, 'valeur': repere['valeur'],
+             'source': repere['source'],
+             'releve_le': repere.get('releve_le')}], []
+
+
+def _scenario_butane(dep, parts, reperes, investissement, charges,
+                     remplacements):
+    if dep.get('_energie') != 'butane' or dep.get('_unite') != \
+            'bouteille_12kg':
+        return None, {'cle': 'scenario_butane_non_subventionne',
+                      'motif': 'sans objet : énergie actuelle autre que le '
+                               'butane en bouteilles'}
+    repere = _repere(reperes, 'butane_12kg_non_subventionne')
+    if repere is None:
+        return None, {'cle': 'scenario_butane_non_subventionne',
+                      'motif': 'repère « bouteille non subventionnée » sans '
+                               'source'}
+    valeur = _positif('reperes.butane_12kg_non_subventionne.valeur',
+                      repere['valeur'], strict=True)
+    facteur = valeur / dep['valeur_unitaire'] if dep['valeur_unitaire'] \
+        else None
+    if facteur is None:
+        return None, {'cle': 'scenario_butane_non_subventionne',
+                      'motif': 'prix payé déclaré nul : scénario non '
+                               'calculable'}
+    economie1 = _economie1_au_prix(dep, parts, facteur)
+    flux = _flux(investissement, economie1, charges, remplacements)
+    return {'libelle': LIBELLE_SCENARIO_BUTANE,
+            'valeur_unitaire_mad': round(valeur, 2),
+            'source': repere['source'],
+            'releve_le': repere.get('releve_le'),
+            'economie_nette_mad_an': round(economie1 - (charges or 0.0), 2),
+            'retour_ans': flux['retour_ans']}, None
+
+
+def _etat(valeur):
+    if valeur is True:
+        return 'remplie'
+    if valeur is False:
+        return 'non_remplie'
+    return 'a_verifier'
+
+
+def _aide_fda(dep, lignes, reglages, sortie_etude, surface_ha,
+              conditions_fda):
+    """Aide FDA INDICATIVE (vue interne seulement, D-AGR-6) =
+    min(taux × base, plafond/ha × surface, plafond/kWc × kWc, plafond/projet),
+    lus dans la règle datée de la société. Jamais déduite d'un total ni d'un
+    retour."""
+    regle = (reglages or {}).get('regle_fda_pompage') or {}
+    source = str(regle.get('source') or '').strip()
+    if not regle or not source:
+        return None, {'cle': 'aide_fda_indicative',
+                      'motif': 'règle FDA non saisie (réglage société)'}
+    energie = dep.get('_energie')
+    conditions_fda = conditions_fda or {}
+    conditions = [{'cle': 'energie_actuelle_butane',
+                   'etat': _etat(None if energie is None
+                                 else energie == 'butane')}]
+    for cle in CONDITIONS_FDA[1:]:
+        conditions.append({'cle': cle, 'etat': _etat(conditions_fda.get(cle))})
+
+    base_mode = regle.get('base') or 'a_confirmer'
+    lues = _lignes_lues(lignes)
+    if base_mode == 'ht':
+        base = None if any(lg['ht'] is None for lg in lues) else \
+            sum(lg['ht'] for lg in lues)
+    else:
+        base = sum(lg['ttc'] for lg in lues)
+    kwc = ((sortie_etude or {}).get('champ') or {}).get('kwc')
+
+    def terme(facteur, quantite):
+        if facteur is None or quantite is None:
+            return None
+        return round(float(facteur) * float(quantite), 2)
+
+    taux = regle.get('taux_pct')
+    termes = {
+        'taux_x_base_mad': (None if taux is None or base is None
+                            else round(float(taux) / 100.0 * base, 2)),
+        'plafond_ha_x_surface_mad': terme(regle.get('plafond_mad_par_ha'),
+                                          surface_ha),
+        'plafond_kwc_x_kwc_mad': terme(regle.get('plafond_mad_par_kwc'), kwc),
+        'plafond_projet_mad': (None if regle.get('plafond_mad_par_projet')
+                               is None else
+                               float(regle['plafond_mad_par_projet'])),
+    }
+    montant = None
+    if all(v is not None for v in termes.values()) and not any(
+            c['etat'] == 'non_remplie' for c in conditions):
+        montant = min(termes.values())
+    return {'montant_mad': montant, 'termes': termes, 'base': base_mode,
+            'edition': source, 'releve_le': regle.get('releve_le'),
+            'conditions': conditions}, None
+
+
+def _financement(saisies, dep, parts):
+    """Mensualité du prêt (``economie.tableau_pret``) contre le carburant
+    évité de chaque mois coché ; seulement si le prêt porte taux ET source.
+    Jamais de taux par défaut (CALX281)."""
+    pret = _bloc(saisies, 'pret')
+    if not pret:
+        return None, {'cle': 'financement', 'motif': 'aucun prêt saisi'}
+    if pret.get('taux_annuel_pct') is None or \
+            not str(pret.get('source') or '').strip():
+        return None, {'cle': 'financement',
+                      'motif': 'prêt saisi sans taux ou sans source : '
+                               'mensualité non calculée'}
+    params = {cle: pret.get(cle) for cle in (
+        'principal_mad', 'taux_annuel_pct', 'duree_mois', 'type_pret',
+        'differe_mois')}
+    try:
+        tableau = tableau_pret(**params)
+    except EconomieInvalide as refus:
+        raise EconomieInvalide(f'pret.{refus}',
+                               champ=f'pret.{refus.champ}') from refus
+    return {'mensualite_mad': tableau['mensualite_mad'],
+            'tableau': tableau,
+            'carburant_evite_par_mois': [
+                round(dep['_par_mois'][i] * parts[i], 2)
+                for i in range(12)]}, None
+
+
+def economie_pompage_publique(bloc):
+    """Le bloc SANS ``vue_interne`` — la SEULE forme qui sort vers un client
+    (PDF /proposal, page /proposition, messages)."""
+    return {cle: valeur for cle, valeur in (bloc or {}).items()
+            if cle != 'vue_interne'}
+
+
 # ── Le bloc ─────────────────────────────────────────────────────────────────
 
 def _bloc_vide():
@@ -903,7 +1081,8 @@ def _bloc_vide():
 
 
 def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
-                     reglages=None):
+                     reglages=None, reperes=None, surface_irriguee_ha=None,
+                     conditions_fda=None):
     """Le bloc ``economie_pompage`` (contrat ``economie_pompage.json``).
 
     Args:
@@ -918,7 +1097,18 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
             résolu par l'appelant) — JAMAIS le prix d'achat.
         reglages: ``{charges_pompage_solaire, regle_fda_pompage}``
             (``TariffSettings``, AGR207).
+        reperes: ``CompanyProfile.reperes_energie_agricole`` (AGR208) —
+            ``{cle: {valeur, source, releve_le}}`` ; un repère sans source
+            n'est jamais lu.
+        surface_irriguee_ha: surface irriguée connue (aide FDA indicative).
+        conditions_fda: ``{irrigation_localisee, compteur_eau,
+            un_seul_projet_par_exploitation}`` en booléens (``None`` = « à
+            vérifier »).
+
+    Lève ``EconomieInvalide`` (champ nommé) sur une saisie refusée — dont un
+    taux d'actualisation sans source (``taux_actualisation.source``).
     """
+    taux_interne = _taux_actualisation(saisies)
     dep = depense_actuelle(saisies)
     bloc = _bloc_vide()
     bloc['cas'] = dep['cas']
@@ -938,6 +1128,16 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
     remplacements_mad = sum(r['montant_mad'] for r in remplacements)
     mois, _ = _mois_coches(saisies)
     jours_semaine = jours_irrigation_par_semaine(saisies)
+    interne = bloc['vue_interne']
+    bloc['reperes_affiches'], omis_reperes = _reperes_affiches(dep, reperes)
+    bloc['omissions'].extend(omis_reperes)
+
+    def aide():
+        interne['aide_fda_indicative'], omis_aide = _aide_fda(
+            dep, lignes, reglages, sortie_etude, surface_irriguee_ha,
+            conditions_fda)
+        if omis_aide:
+            interne['omissions'].append(omis_aide)
 
     if dep['cas'] == CAS_NOUVEAU_FORAGE:
         # Le coût du m³ solaire est le SEUL repère : jamais comparé à une
@@ -953,6 +1153,10 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
             dep, sortie_etude, mois, jours_semaine, investissement,
             remplacements_mad, charges)
         bloc['omissions'].extend(omis_m3)
+        aide()
+        interne['omissions'].append({
+            'cle': 'van_mad',
+            'motif': 'nouveau forage : aucune économie à actualiser'})
         bloc['publiable_client'] = not motifs
         return bloc
 
@@ -964,6 +1168,8 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
                               'part_evitee_par_mois': None,
                               'motif': 'aucune dépense déclarée'}
         bloc['remplacements'] = []
+        interne['omissions'].append({'cle': 'vue_interne',
+                                     'motif': 'aucune économie déclarée'})
         return bloc
 
     motifs.extend(motifs_charges)
@@ -988,7 +1194,6 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
     if omis_seuil:
         bloc['omissions'].append(omis_seuil)
 
-    interne = bloc['vue_interne']
     coherence, rendement, omis_interne, motifs_coherence = _coherence(
         dep, saisies, sortie_etude, mois, jours_semaine)
     bloc['coherence'] = coherence
@@ -1004,6 +1209,25 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
             'champ': CHAMP_CONSOMMATION,
             'message': f'retour sur investissement de {retour} an : à '
                        f'vérifier avec le client'})
+
+    if taux_interne is None:
+        interne['omissions'].append({'cle': 'van_mad',
+                                     'motif': "taux d'actualisation non "
+                                              'saisi'})
+    else:
+        actualise = _flux(investissement, economie1, charges, remplacements,
+                          taux_actualisation=taux_interne)
+        interne['van_mad'] = actualise['van_mad']
+        interne['retour_actualise_ans'] = actualise['retour_actualise_ans']
+    scenario, omis_scenario = _scenario_butane(
+        dep, parts, reperes, investissement, charges, remplacements)
+    interne['scenario_butane_non_subventionne'] = scenario
+    if omis_scenario:
+        interne['omissions'].append(omis_scenario)
+    aide()
+    bloc['financement'], omis_financement = _financement(saisies, dep, parts)
+    if omis_financement:
+        bloc['omissions'].append(omis_financement)
 
     bloc['publiable_client'] = not motifs
     return bloc

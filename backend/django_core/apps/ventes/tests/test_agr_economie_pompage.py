@@ -579,3 +579,144 @@ class GardeDeCoherenceTests(SimpleTestCase):
         self.assertEqual(bloc['vue_interne']['alertes'][0]['code'],
                          'retour_tres_court')
         self.assertTrue(bloc['publiable_client'])
+
+
+# ── AGR205 ──────────────────────────────────────────────────────────────────
+
+REPERES = {
+    'butane_12kg_detail': {'valeur': 50, 'source': '', 'releve_le':
+                           '2026-08-20'},
+    'butane_12kg_non_subventionne': {
+        'valeur': 128, 'source': 'relevé société (repère daté)',
+        'releve_le': '2026-08-20'},
+}
+
+
+class VueInterneEtFinancementTests(SimpleTestCase):
+    """AGR205 — VAN avec taux saisi, scénario butane non subventionné, aide
+    FDA indicative, mensualité du prêt ; rien de tout cela ne sort de
+    ``economie_pompage_publique``."""
+
+    def bloc(self, saisies=None, **kw):
+        kw.setdefault('sortie_etude', dict(ETUDE_COUVERTE,
+                                           champ={'kwc': 5.0}))
+        kw.setdefault('lignes', lignes_reference())
+        kw.setdefault('reglages', dict(CHARGES, **REGLE_FDA))
+        return E.economie_pompage(saisies or saisies_12000(), **kw)
+
+    def test_sans_taux_van_nulle_avec_motif(self):
+        interne = self.bloc()['vue_interne']
+        self.assertIsNone(interne['van_mad'])
+        self.assertIn({'cle': 'van_mad',
+                       'motif': "taux d'actualisation non saisi"},
+                      interne['omissions'])
+
+    def test_taux_sans_source_refuse_en_nommant_le_champ(self):
+        s = saisies_12000()
+        s['taux_actualisation'] = {'valeur': 8, 'source': ''}
+        with self.assertRaises(EconomieInvalide) as ctx:
+            self.bloc(s)
+        self.assertEqual(ctx.exception.champ, 'taux_actualisation.source')
+
+    def test_taux_source_donne_la_van_du_meme_flux(self):
+        s = saisies_12000()
+        s['taux_actualisation'] = {'valeur': 8, 'source': 'saisie interne'}
+        bloc = self.bloc(s)
+        flux = [-50000.0] + [11400.0] * 10
+        flux[7] -= 8000.0
+        van = sum(f / 1.08 ** a for a, f in enumerate(flux))
+        self.assertAlmostEqual(bloc['vue_interne']['van_mad'], van, places=1)
+        # Le bloc PUBLIC reste sans VAN.
+        self.assertIsNone(bloc['economie']['van_mad'])
+
+    def test_aide_fda_le_plafond_le_plus_bas(self):
+        s = saisies_carburant(quantite=4, jours=6, prix=50.0,
+                              mois=range(4, 10))
+        aide = self.bloc(s, surface_irriguee_ha=4)['vue_interne'][
+            'aide_fda_indicative']
+        self.assertEqual(aide['termes'], {
+            'taux_x_base_mad': 15000.0,            # 30 % × 50 000 TTC
+            'plafond_ha_x_surface_mad': 12000.0,   # 3 000 × 4 ha
+            'plafond_kwc_x_kwc_mad': 15000.0,      # 3 000 × 5 kWc
+            'plafond_projet_mad': 30000.0})
+        self.assertEqual(aide['montant_mad'], 12000.0)
+        self.assertEqual(aide['edition'], 'Guide FDA édition 2024, p.20-23')
+        etats = {c['cle']: c['etat'] for c in aide['conditions']}
+        self.assertEqual(etats, {
+            'energie_actuelle_butane': 'remplie',
+            'irrigation_localisee': 'a_verifier', 'compteur_eau': 'a_verifier',
+            'un_seul_projet_par_exploitation': 'a_verifier'})
+
+    def test_diesel_condition_butane_non_remplie_montant_non_calcule(self):
+        aide = self.bloc(surface_irriguee_ha=4)['vue_interne'][
+            'aide_fda_indicative']
+        self.assertEqual(aide['conditions'][0],
+                         {'cle': 'energie_actuelle_butane',
+                          'etat': 'non_remplie'})
+        self.assertIsNone(aide['montant_mad'])
+
+    def test_regle_fda_absente_aide_omise(self):
+        interne = self.bloc(reglages=CHARGES)['vue_interne']
+        self.assertIsNone(interne['aide_fda_indicative'])
+        self.assertIn('aide_fda_indicative',
+                      [o['cle'] for o in interne['omissions']])
+
+    def test_scenario_butane_non_subventionne_interne_seulement(self):
+        s = saisies_carburant(quantite=4, jours=6, prix=50.0,
+                              mois=range(4, 10))
+        bloc = self.bloc(s, reperes=REPERES)
+        scen = bloc['vue_interne']['scenario_butane_non_subventionne']
+        bouteilles = 4 * 6 * 183 / 7
+        self.assertEqual(scen['valeur_unitaire_mad'], 128)
+        self.assertEqual(scen['economie_nette_mad_an'],
+                         round(bouteilles * 128 - 600, 2))
+        self.assertEqual(scen['libelle'], E.LIBELLE_SCENARIO_BUTANE)
+        # Le retour principal reste au prix PAYÉ déclaré.
+        principal = self.bloc(s)['economie']['retour_ans']
+        self.assertEqual(bloc['economie']['retour_ans'], principal)
+        # Le repère détail SANS source n'est pas affiché à côté du champ.
+        self.assertEqual(bloc['reperes_affiches'], [])
+
+    def test_scenario_omis_sans_source(self):
+        s = saisies_carburant(quantite=4, jours=6, prix=50.0,
+                              mois=range(4, 10))
+        reperes = {'butane_12kg_non_subventionne': {'valeur': 128,
+                                                    'source': ''}}
+        interne = self.bloc(s, reperes=reperes)['vue_interne']
+        self.assertIsNone(interne['scenario_butane_non_subventionne'])
+
+    def test_pret_saisi_mensualite_de_tableau_pret(self):
+        from apps.ventes.economie import tableau_pret
+        s = saisies_12000()
+        pret = {'principal_mad': 40000, 'taux_annuel_pct': 6,
+                'duree_mois': 60, 'type_pret': 'annuite', 'differe_mois': 0,
+                'source': 'offre bancaire saisie'}
+        s['pret'] = pret
+        fin = self.bloc(s)['financement']
+        attendu = tableau_pret(principal_mad=40000, taux_annuel_pct=6,
+                               duree_mois=60, type_pret='annuite',
+                               differe_mois=0)
+        self.assertEqual(fin['mensualite_mad'], attendu['mensualite_mad'])
+        self.assertEqual(fin['carburant_evite_par_mois'], [1000.0] * 12)
+
+    def test_pret_sans_taux_jamais_de_taux_par_defaut(self):
+        s = saisies_12000()
+        s['pret'] = {'principal_mad': 40000, 'duree_mois': 60,
+                     'type_pret': 'annuite', 'source': 'offre'}
+        bloc = self.bloc(s)
+        self.assertIsNone(bloc['financement'])
+
+    def test_rien_d_interne_ne_sort_de_la_version_publique(self):
+        import json
+        s = saisies_carburant(quantite=4, jours=6, prix=50.0,
+                              mois=range(4, 10))
+        s['taux_actualisation'] = {'valeur': 8, 'source': 'saisie interne'}
+        bloc = self.bloc(s, reperes=REPERES, surface_irriguee_ha=4)
+        publique = E.economie_pompage_publique(bloc)
+        self.assertNotIn('vue_interne', publique)
+        texte = json.dumps(publique, ensure_ascii=False)
+        for interdit in ('aide_fda', 'non_subventionne', 'rendement_global',
+                         'prix_achat'):
+            self.assertNotIn(interdit, texte)
+        self.assertIsNone(publique['economie']['van_mad'])
+        self.assertIn('vue_interne', bloc)
