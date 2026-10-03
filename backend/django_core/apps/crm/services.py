@@ -5501,7 +5501,97 @@ def _parse_meta_form_extras(field_data):
                 extras['type_installation'] = Lead.TypeInstallation.INDUSTRIEL
             elif any(k in v for k in ('ferme', 'agricole', 'pompage', 'puits')):
                 extras['type_installation'] = Lead.TypeInstallation.AGRICOLE
+        else:
+            # AGR410 — FORM-AGRI-1 : questions de pompage reconnues par
+            # mots-clés (``_meta_reponse_agricole``).
+            _meta_reponse_agricole(q, v, extras)
+    # AGR410 — une question AGRICOLE pose le type agricole, seulement si le
+    # formulaire n'a pas dit autre chose (et ``_apply_meta_form_extras`` ne
+    # l'écrit que sur un type VIDE).
+    if extras.pop('_agricole', False):
+        extras.setdefault('type_installation',
+                          Lead.TypeInstallation.AGRICOLE)
     return extras
+
+
+# ── AGR410 — Formulaire Meta agricole (FORM-AGRI-1) ─────────────────────────
+#
+# Mots-clés sur du texte NORMALISÉ (``_norm_form_text``). Une TRANCHE ne
+# devient JAMAIS un nombre (pas de milieu de tranche) : seule une réponse à
+# nombre UNIQUE, sans « plus/moins/entre », remplit une colonne ; sinon la
+# réponse reste dans la note, mot pour mot. Rien n'est jamais écrasé
+# (``_apply_meta_form_extras``). Aucune création de campagne ici (règle #3).
+_META_SOURCE_EAU_MOTS = (
+    (('forage',), 'forage'),
+    (('puits',), 'puits'),
+    (('bassin',), 'bassin'),
+    (('riviere', 'oued'), 'riviere'),
+)
+_META_ENERGIE_POMPE_MOTS = (
+    (('pas de pompe', 'aucune', 'pas encore'), 'aucune'),
+    # « gazoil » AVANT « gaz » : l'ordre de la table compte.
+    (('gasoil', 'diesel', 'gazoil'), 'diesel'),
+    (('butane', 'gaz'), 'butane'),
+    (('electri', 'reseau', 'onee'), 'electrique'),
+)
+_META_MOTS_TRANCHE = ('plus', 'moins', 'entre', '>', '<', 'jusqu')
+
+
+def _meta_nombre_unique(valeur_normalisee):
+    """Le nombre d'une réponse à nombre UNIQUE, ou None (tranche / texte)."""
+    from decimal import Decimal, InvalidOperation
+
+    texte = str(valeur_normalisee or '')
+    if any(mot in texte for mot in _META_MOTS_TRANCHE):
+        return None
+    nombres = _re.findall(r'\d+(?:[.,]\d+)?', texte.replace(' ', ''))
+    if len(nombres) != 1:
+        return None
+    try:
+        return Decimal(nombres[0].replace(',', '.'))
+    except InvalidOperation:
+        return None
+
+
+def _meta_mot_cle(valeur_normalisee, table):
+    for mots, cle in table:
+        if any(mot in valeur_normalisee for mot in mots):
+            return cle
+    return ''
+
+
+def _meta_reponse_agricole(q, v, extras):
+    """AGR410 — une question de pompage du formulaire Meta → ``extras``.
+
+    ``q``/``v`` déjà normalisés. Pose ``extras['_agricole']`` dès qu'une
+    question agricole est reconnue, même si sa réponse ne remplit rien."""
+    from decimal import Decimal
+
+    if (('eau' in q and ('source' in q or 'vient' in q or 'provient' in q))
+            or 'puits' in q or 'forage' in q):
+        extras['_agricole'] = True
+        source = _meta_mot_cle(v, _META_SOURCE_EAU_MOTS)
+        if source:
+            extras['source_eau'] = source
+    elif 'pompe' in q and any(k in q for k in (
+            'energie', 'fonctionne', 'marche', 'alimente', 'alimentation')):
+        extras['_agricole'] = True
+        energie = _meta_mot_cle(v, _META_ENERGIE_POMPE_MOTS)
+        if energie:
+            extras['pompe_alim_actuelle'] = energie
+    elif 'hectare' in q or ('surface' in q and (
+            'irrig' in q or 'cultiv' in q or 'terrain' in q
+            or 'exploitation' in q)):
+        extras['_agricole'] = True
+        surface = _meta_nombre_unique(v)
+        if surface is not None and surface < Decimal('10000000'):
+            extras['surface_irriguee_ha'] = surface
+    elif ('depense' in q or 'depensez' in q) and any(k in q for k in (
+            'carburant', 'gasoil', 'butane', 'gaz', 'pompe', 'diesel')):
+        extras['_agricole'] = True
+        depense = _meta_nombre_unique(v)
+        if depense is not None and depense < Decimal('100000000'):
+            extras['depense_carburant_mad_mois'] = depense
 
 
 def _apply_meta_form_extras(lead, extras):
@@ -5513,12 +5603,24 @@ def _apply_meta_form_extras(lead, extras):
     from decimal import Decimal
 
     changed = []
-    if extras.get('facture_estimee') is not None and lead.facture_hiver is None:
-        lead.facture_hiver = Decimal(int(extras['facture_estimee']))
-        changed.append('facture_hiver')
+    # AGR410 — le type d'abord : sur un lead AGRICOLE, la tranche de facture
+    # ne remplit PAS facture_hiver (elle gonflerait son score) — elle reste
+    # dans la note seulement.
     if extras.get('type_installation') and not lead.type_installation:
         lead.type_installation = extras['type_installation']
         changed.append('type_installation')
+    if (extras.get('facture_estimee') is not None and lead.facture_hiver is None
+            and lead.type_installation != Lead.TypeInstallation.AGRICOLE):
+        lead.facture_hiver = Decimal(int(extras['facture_estimee']))
+        changed.append('facture_hiver')
+    # AGR410 — réponses de pompage : remplissage seulement, jamais
+    # d'écrasement.
+    for champ in ('source_eau', 'pompe_alim_actuelle', 'surface_irriguee_ha',
+                  'depense_carburant_mad_mois'):
+        if extras.get(champ) is not None and getattr(lead, champ) in (
+                None, ''):
+            setattr(lead, champ, extras[champ])
+            changed.append(champ)
     if (extras.get('priorite') == Lead.Priorite.HAUTE
             and lead.priorite == Lead.Priorite.NORMALE):
         lead.priorite = Lead.Priorite.HAUTE
@@ -5552,7 +5654,10 @@ def _ensure_meta_form_note(lead, extras, form_id=''):
     for question, answer in extras['qa']:
         lines.append('• %s → %s' % (question.replace('_', ' '),
                                     answer.replace('_', ' ')))
-    if extras.get('facture_estimee') is not None:
+    # AGR410 — sur un lead agricole, la facture n'est PAS pré-remplie : la
+    # note ne le prétend pas (la réponse reste citée mot pour mot plus haut).
+    if (extras.get('facture_estimee') is not None
+            and lead.type_installation != Lead.TypeInstallation.AGRICOLE):
         lines.append(
             '(facture hiver pré-remplie à %s MAD depuis la tranche déclarée '
             '« %s » — à préciser au premier appel)'
