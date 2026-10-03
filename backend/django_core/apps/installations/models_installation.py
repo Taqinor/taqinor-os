@@ -182,6 +182,18 @@ class Installation(models.Model):
         DECLARATION_BT = 'declaration_bt', 'Déclaration (< 11 kW, BT)'
         ACCORD_RACCORDEMENT = 'accord_raccordement', 'Accord de raccordement'
         AUTORISATION_ANRE = 'autorisation_anre', 'Autorisation ANRE (> 1 MW)'
+        # AGR602 — loi 82-21, art. 3 : TOUTE installation non raccordée au
+        # réseau relève d'une déclaration, sans seuil de puissance.
+        DECLARATION_HORS_RESEAU = (
+            'declaration_hors_reseau',
+            'Déclaration hors réseau (loi 82-21, art. 3)')
+
+    # AGR602 — l'installation est-elle raccordée au réseau ? (null = non
+    # renseigné → suggestion par kWc, comportement historique). Un chantier
+    # agricole créé depuis un devis reçoit « hors_reseau » suggéré, modifiable.
+    class RaccordementReseau(models.TextChoices):
+        HORS_RESEAU = 'hors_reseau', 'Hors réseau'
+        RACCORDE = 'raccorde', 'Raccordé au réseau'
 
     class DossierStatut(models.TextChoices):
         NON_CONCERNE = 'non_concerne', 'Non concerné'
@@ -193,6 +205,9 @@ class Installation(models.Model):
     regime_8221 = models.CharField(
         max_length=24, choices=Regime8221.choices,
         default=Regime8221.NON_CONCERNE)
+    raccordement_reseau = models.CharField(
+        max_length=12, choices=RaccordementReseau.choices,
+        null=True, blank=True)
     dossier_statut = models.CharField(
         max_length=16, choices=DossierStatut.choices,
         default=DossierStatut.NON_CONCERNE)

@@ -509,7 +509,8 @@ def _generer_ticket_preventif_compteur(company, equipement, type_releve,
 
     installation = equipement.installation
     client = getattr(installation, 'client', None)
-    label = 'heures' if type_releve == 'heures' else 'kWh'
+    # AGR615 — un seuil franchi sur un compteur m³ est libellé « m³ ».
+    label = {'heures': 'heures', 'm3': 'm³'}.get(type_releve, 'kWh')
     description = (
         f'Entretien préventif dû (seuil de {label} franchi — '
         f'compteur à {valeur} {label}).')
@@ -544,6 +545,22 @@ def calculer_ligne_usage_contrat(contrat, periode_debut, periode_fin):
         return None, 'Pas de tarif à l\'usage sur ce contrat.'
     if contrat.installation_id is None:
         return None, 'Contrat sans installation liée — usage non calculable.'
+
+    # AGR615 — contrat en m³ : la SEULE source est l'index des relevés
+    # compteur m³ ; jamais des kWh de monitoring étiquetés m³.
+    if contrat.unite_usage == contrat.UniteUsage.M3:
+        from .selectors import usage_m3_periode
+        usage = usage_m3_periode(contrat, periode_debut, periode_fin)
+        if usage is None:
+            return None, "Aucun relevé m³ sur la période — ligne d'usage omise."
+        franchise = contrat.franchise_incluse or Decimal('0')
+        facturable = max(Decimal('0'), usage - franchise)
+        montant = (facturable * contrat.tarif_usage).quantize(Decimal('0.01'))
+        description = (
+            f'Facturation à l\'usage — {usage} m³ relevés, '
+            f'franchise {franchise} m³, {facturable} m³ facturés '
+            f'à {contrat.tarif_usage} MAD/m³.')
+        return montant, description
 
     from apps.monitoring.selectors import usage_kwh_periode
 
@@ -1831,3 +1848,48 @@ def repondre_par_email(ticket, *, corps, sujet='', destinataire='',
     activity.log_email(
         ticket, user, f'E-mail envoyé à {destinataire} — « {sujet} »\n\n{corps}')
     return ligne
+
+
+# ── AGR619 — modèle d'entretien « Pompage solaire » (semé, idempotent) ──────
+# Aucun intervalle, aucun seuil, aucun chiffre : la périodicité vient du
+# contrat et le seuil d'heures XSAV17 (`entretien_toutes_les_heures`) est
+# saisi par la société.
+MODELE_ENTRETIEN_POMPAGE_NOM = 'Entretien pompage solaire'
+MODELE_ENTRETIEN_POMPAGE_ETAPES = [
+    ('pompage_nettoyage_panneaux', 'Nettoyage des panneaux (poussière, sable)'),
+    ('pompage_connexions_dc_terre',
+     'Serrage et état des connexions DC et de la terre'),
+    ('pompage_isolement', 'Isolement moteur + câble mesuré'),
+    ('pompage_courant_phase', 'Courant par phase comparé à la plaque'),
+    ('pompage_variateur', 'Paramètres et journal de défauts du variateur'),
+    ('pompage_clapet_colonne', 'Clapet, colonne et étanchéité des raccords'),
+    ('pompage_niveau_dynamique', 'Niveau dynamique relevé'),
+    ('pompage_releves', "Relevé des heures et de l'index m³"),
+    ('pompage_marche_a_sec', 'Sonde marche à sec (si posée)'),
+    ('pompage_photos', 'Photos'),
+]
+
+
+def ensure_modele_entretien_pompage(company):
+    """AGR619 — sème UNE SEULE FOIS le modèle de checklist d'entretien
+    « Entretien pompage solaire » (idempotent, additif, sans gate). Jamais
+    recréé s'il a été renommé ou désactivé : le marqueur est sa première
+    étape (clé stable), cherchée sur TOUS les modèles de la société, actifs
+    ou non. Renvoie le modèle créé, ou None s'il existait déjà."""
+    if company is None:
+        return None
+    from .models import MaintenanceChecklistItem, MaintenanceChecklistTemplate
+    marqueur = MODELE_ENTRETIEN_POMPAGE_ETAPES[0][0]
+    if (MaintenanceChecklistItem.objects.filter(
+            company=company, cle=marqueur).exists()
+            or MaintenanceChecklistTemplate.objects.filter(
+                company=company, nom=MODELE_ENTRETIEN_POMPAGE_NOM).exists()):
+        return None
+    modele = MaintenanceChecklistTemplate.objects.create(
+        company=company, nom=MODELE_ENTRETIEN_POMPAGE_NOM, actif=True,
+        protege=False)
+    for i, (cle, libelle) in enumerate(MODELE_ENTRETIEN_POMPAGE_ETAPES):
+        MaintenanceChecklistItem.objects.create(
+            company=company, template=modele, cle=cle, libelle=libelle,
+            ordre=i)
+    return modele

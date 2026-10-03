@@ -385,6 +385,100 @@ class ReverificationMesure(models.Model):
         return f'Re-vérification #{self.intervention_id}'
 
 
+class RecettePompage(models.Model):
+    """AGR608 — fiche de RECETTE structurée d'un chantier de POMPAGE solaire
+    (cadre des essais : IEC 62253:2011), au lieu de la fiche IEC 62446-1 du
+    PV raccordé. Champs = contrat partagé ``contract_samples/
+    recette_pompage.json`` (AGR6).
+
+    Un chantier ↔ une fiche. ``company`` posée côté serveur, jamais lue du
+    corps. Le ``resultat`` est SAISI par le technicien (aucun verdict
+    automatique, aucun seuil, aucune correction d'irradiance). ``promesse`` =
+    copie FIGÉE de la promesse du devis (remplie par la comparaison AGR609 ;
+    une V2 du devis ne réécrit jamais une recette). La fiche est verrouillée
+    dès que le PV de réception du chantier est signé (``signe_le``)."""
+
+    CADRE = 'IEC 62253:2011'
+
+    class MethodeDebit(models.TextChoices):
+        COMPTEUR = 'compteur', 'Compteur'
+        JAUGEAGE = 'jaugeage', 'Jaugeage'
+
+    class SourceIrradiance(models.TextChoices):
+        MESUREE = 'mesuree', 'Mesurée'
+        ESTIMEE = 'estimee', 'Estimée'
+
+    class Resultat(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        CONFORME = 'conforme', 'Conforme'
+        RESERVES = 'reserves', 'Conforme avec réserves'
+        NON_CONFORME = 'non_conforme', 'Non conforme'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='recettes_pompage')
+    installation = models.OneToOneField(
+        Installation, on_delete=models.CASCADE,
+        related_name='recette_pompage')
+    date_essai = models.DateField(null=True, blank=True)
+    technicien = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='recettes_pompage_technicien')
+    # Instrument de mesure (traçabilité, comme XFSM12) : identifiant saisi.
+    instrument_id = models.CharField(max_length=60, blank=True, default='')
+    niveau_statique_m = models.FloatField(null=True, blank=True)
+    niveau_dynamique_m = models.FloatField(null=True, blank=True)
+    hmt_mesuree_m = models.FloatField(null=True, blank=True)
+    debit_mesure_m3h = models.FloatField(null=True, blank=True)
+    methode_debit = models.CharField(
+        max_length=10, choices=MethodeDebit.choices, blank=True, default='')
+    index_compteur_m3 = models.FloatField(null=True, blank=True)
+    courant_plaque_a = models.FloatField(null=True, blank=True)
+    # Phases 2 et 3 : null en monophasé.
+    courant_phase_1_a = models.FloatField(null=True, blank=True)
+    courant_phase_2_a = models.FloatField(null=True, blank=True)
+    courant_phase_3_a = models.FloatField(null=True, blank=True)
+    tension_v = models.PositiveIntegerField(null=True, blank=True)
+    frequence_variateur_hz = models.FloatField(null=True, blank=True)
+    irradiance_wm2 = models.PositiveIntegerField(null=True, blank=True)
+    source_irradiance = models.CharField(
+        max_length=8, choices=SourceIrradiance.choices, blank=True,
+        default='')
+    isolement_moteur_mohm = models.FloatField(null=True, blank=True)
+    isolement_ok = models.BooleanField(null=True, blank=True)
+    sens_rotation_ok = models.BooleanField(null=True, blank=True)
+    test_marche_a_sec_ok = models.BooleanField(null=True, blank=True)
+    resultat = models.CharField(
+        max_length=14, choices=Resultat.choices, default=Resultat.EN_COURS)
+    observations = models.TextField(blank=True, default='')
+    commentaire_ecart = models.TextField(blank=True, default='')
+    promesse = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='recettes_pompage_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Recette pompage (IEC 62253)'
+        verbose_name_plural = 'Recettes pompage (IEC 62253)'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Recette pompage {self.resultat} — chantier {self.installation_id}'
+
+    @property
+    def passe(self):
+        """Passée = conforme ou conforme avec réserves (saisi, jamais
+        déduit)."""
+        return self.resultat in (self.Resultat.CONFORME, self.Resultat.RESERVES)
+
+    @property
+    def verrouillee(self):
+        """Verrouillée dès que le PV de réception du chantier est signé."""
+        return bool(getattr(self.installation, 'signe_le', None))
+
+
 class HandoverPack(models.Model):
     """CH4 — PACK DE REMISE client assemblé au franchissement du gate « Remise
     au client » (handover).

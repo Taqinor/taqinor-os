@@ -326,6 +326,19 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         # interne inchangé par défaut). Le jeton public est généré lazily.
         public = request.query_params.get('public') in ('1', 'true')
 
+        # AGR621 — étiquette PUBLIQUE (coffret d'un forage isolé) : pied
+        # « SAV : <téléphone société> · Chantier <référence> », chaque partie
+        # omise si vide. Jamais un délai d'intervention (aucun engagement
+        # décidé). L'étiquette interne reste octet-identique.
+        telephone = ''
+        if public:
+            from apps.parametres.models import CompanyProfile
+            try:
+                profil = CompanyProfile.get(company=request.user.company)
+                telephone = (getattr(profil, 'telephone', '') or '').strip()
+            except Exception:
+                telephone = ''
+
         items = []
         for eq in qs:
             if public:
@@ -336,7 +349,18 @@ class EquipementViewSet(CompanyScopedModelViewSet):
                 token = eq.equipement_token or f'EQUIP:{eq.pk}'
             titre = eq.produit.nom if eq.produit_id else '—'
             sous_titre = eq.numero_serie or '(sans série)'
-            items.append({'token': token, 'titre': titre, 'sous_titre': sous_titre})
+            item = {'token': token, 'titre': titre, 'sous_titre': sous_titre}
+            if public:
+                parties = []
+                if telephone:
+                    parties.append(f'SAV : {telephone}')
+                reference = (getattr(eq.installation, 'reference', '') or ''
+                             if eq.installation_id else '')
+                if reference:
+                    parties.append(f'Chantier {reference}')
+                if parties:
+                    item['pied'] = ' · '.join(parties)
+            items.append(item)
 
         if not items:
             return Response({'detail': 'Aucun équipement.'}, status=404)
@@ -518,10 +542,13 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         from .services import ReleveDecroissantError, enregistrer_releve_compteur
 
         type_releve = request.data.get('type')
+        # AGR615 — le compteur d'eau d'une pompe (m³) est accepté.
         if type_releve not in (
                 ReleveCompteurEquipement.Type.HEURES,
-                ReleveCompteurEquipement.Type.KWH):
-            return Response({'detail': 'type invalide (heures|kwh).'}, status=400)
+                ReleveCompteurEquipement.Type.KWH,
+                ReleveCompteurEquipement.Type.M3):
+            return Response(
+                {'detail': 'type invalide (heures|kwh|m3).'}, status=400)
         try:
             valeur = Decimal(str(request.data.get('valeur')))
         except (InvalidOperation, TypeError):
@@ -2234,6 +2261,12 @@ class MaintenanceChecklistTemplateViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
+        if getattr(self, 'action', None) == 'list':
+            # AGR619 — sème une seule fois « Entretien pompage solaire » à
+            # l'affichage des modèles (même patron que seed_checklist_etapes).
+            from .services import ensure_modele_entretien_pompage
+            ensure_modele_entretien_pompage(
+                getattr(self.request.user, 'company', None))
         qs = super().get_queryset()
         return qs.filter(actif=True)
 
