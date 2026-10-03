@@ -62,8 +62,14 @@ PROFILE_PRICING = {
     'remise_max_pct': Decimal('12.50'),
     'discount_approval_threshold': Decimal('8.00'),
     'agricole_pump_hours': Decimal('6.5'),
-    'agricole_prix_bonbonne': Decimal('55.00'),
-    'agricole_cout_reel_bonbonne': Decimal('131.00'),
+    # AGR208 — repères énergie agricole (ex-« bonbonne » 55 / 131).
+    'reperes_energie_agricole': {
+        'butane_12kg_detail': {'valeur': 55, 'source': '',
+                               'releve_le': '2026-08-20'},
+        'butane_12kg_non_subventionne': {'valeur': 131, 'source': '',
+                                         'releve_le': '2026-08-20'},
+        'gasoil_litre': {'valeur': None, 'source': '', 'releve_le': None},
+    },
     'quote_validity_days': 45, 'variante_pct': Decimal('15.00'),
     'devise_defaut': 'MAD',
     'seuil_regime_declaration_kwc': Decimal('12'),

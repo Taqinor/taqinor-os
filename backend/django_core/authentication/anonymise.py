@@ -108,7 +108,8 @@ PRICING_PROFILE_FIELDS = frozenset({
     'tva_standard', 'tva_panneaux', 'onee_tarif_kwh', 'productible_kwh_kwc',
     'rendement_global', 'prix_cible_kwc_defaut', 'remise_max_pct',
     'discount_approval_threshold', 'agricole_pump_hours',
-    'agricole_prix_bonbonne', 'agricole_cout_reel_bonbonne',
+    # AGR208 — repères énergie agricole (ex-« bonbonne » Q4), datés/sourcés.
+    'reperes_energie_agricole',
     'quote_validity_days', 'payment_terms', 'variante_pct', 'devise_defaut',
     'seuil_regime_declaration_kwc', 'seuil_regime_anre_kwc',
 })
@@ -162,7 +163,10 @@ MODEL_POLICY = {
     # Réglages de prix de la société (voir PRICING_PROFILE_FIELDS).
     'parametres.CompanyProfile': {
         'only': PRICING_PROFILE_FIELDS,
-        'keep': {'devise_defaut'},
+        # AGR208 — les repères énergie (valeur, source, date « 2026-08-20 »)
+        # sont gardés TELS QUELS : le brouilleur de JSON prendrait la date
+        # pour un téléphone.
+        'keep': {'devise_defaut', 'reperes_energie_agricole'},
     },
     # Tarification & ROI : tout le singleton (barème, tolérance, charges fixes,
     # force motrice, surplus, hypothèses ROI/productible, grille horaire,

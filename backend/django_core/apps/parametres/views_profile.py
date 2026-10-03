@@ -45,8 +45,8 @@ _PROFILE_FIELD_LABELS = {
     'agricole_marge_cable_descente_m':
         'Marge du câble de descente (m)',
     'agricole_salissure_supp_pct': 'Supplément de salissure (%)',
-    'agricole_prix_bonbonne': 'Prix bonbonne butane 12 kg (agricole)',
-    'agricole_cout_reel_bonbonne': 'Coût réel bonbonne butane 12 kg (agricole)',
+    'reperes_energie_agricole':
+        'Repères énergie agricole (butane, gasoil — datés et sourcés)',
     'delai_visite_technique': 'Délai de visite technique (indicatif)',
     'delai_installation': "Délai d'installation (indicatif)",
     'doc_prefixes': 'Préfixes de numérotation',

@@ -3,7 +3,7 @@
 Domaine « Société & identité / Devis & logique métier ». Extrait de l'ancien
 ``serializers.py`` sans aucun changement de champ, de validation ni de
 comportement (mêmes URLs présignées, mêmes contrôles de société)."""
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from rest_framework import serializers
 
@@ -141,6 +141,63 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     # silence. NULL reste autorisé (= repli sur le défaut historique).
     _DOC_KEYS = {'devis', 'facture', 'avoir', 'bon_commande'}
     _RESET_VALUES = {'monthly', 'yearly', 'none'}
+
+    # AGR208 — repères énergie agricole {cle: {valeur, source, releve_le}}.
+    # Aucune valeur imposée : un repère peut rester vide ; une clé inconnue,
+    # une valeur négative ou une date illisible est refusée (400 nommant le
+    # champ). Jamais de repli numérique.
+    def validate_reperes_energie_agricole(self, value):
+        import datetime
+
+        from .selectors import REPERES_ENERGIE_AGRICOLE_CLES
+        if value in (None, ''):
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                'Les repères doivent être un objet {repère: {valeur, source, '
+                'releve_le}}.')
+        propre = {}
+        for cle, repere in value.items():
+            if cle not in REPERES_ENERGIE_AGRICOLE_CLES:
+                raise serializers.ValidationError(
+                    f'Repère inconnu : {cle} (attendus : '
+                    f"{', '.join(REPERES_ENERGIE_AGRICOLE_CLES)}).")
+            if repere is None:
+                repere = {}
+            if not isinstance(repere, dict) or set(repere) - {
+                    'valeur', 'source', 'releve_le'}:
+                raise serializers.ValidationError(
+                    f'{cle} : un objet {{valeur, source, releve_le}} est '
+                    'attendu.')
+            valeur = repere.get('valeur')
+            if valeur in ('', None):
+                valeur = None
+            else:
+                try:
+                    nombre = Decimal(str(valeur).replace(',', '.'))
+                except (InvalidOperation, TypeError, ValueError):
+                    nombre = None
+                if isinstance(valeur, bool) or nombre is None or \
+                        not nombre.is_finite() or nombre < 0:
+                    raise serializers.ValidationError(
+                        f'{cle} : la valeur doit être un montant positif '
+                        '(MAD).')
+                valeur = int(nombre) if nombre == nombre.to_integral_value() \
+                    else float(nombre)
+            source = repere.get('source') or ''
+            if not isinstance(source, str):
+                raise serializers.ValidationError(
+                    f'{cle} : la source doit être un texte.')
+            releve = repere.get('releve_le') or None
+            if releve is not None:
+                try:
+                    datetime.date.fromisoformat(str(releve))
+                except ValueError:
+                    raise serializers.ValidationError(
+                        f'{cle} : la date de relevé doit être AAAA-MM-JJ.')
+            propre[cle] = {'valeur': valeur, 'source': source.strip(),
+                           'releve_le': releve}
+        return propre
 
     def validate_doc_prefixes(self, value):
         if value is None:

@@ -157,16 +157,19 @@ class CompanyProfile(models.Model):
     agricole_salissure_supp_pct = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         validators=[MinValueValidator(0), MaxValueValidator(100)])
-    # Q4 (fondateur, 20/08/2026) — prix bonbonne butane 12 kg (terrain,
-    # aujourd'hui) et son coût réel non subventionné, utilisés par le moteur
-    # de devis agricole (comparatif carburant + rapport de décompensation :
-    # cout_reel / prix, plus de multiplicateur codé en dur). Défauts = valeurs
-    # terrain mi-2026 ; le fondateur les ajuste à chaque hausse de
-    # décompensation.
-    agricole_prix_bonbonne = models.DecimalField(
-        max_digits=8, decimal_places=2, default=50)
-    agricole_cout_reel_bonbonne = models.DecimalField(
-        max_digits=8, decimal_places=2, default=128)
+    # ── AGR208 (Groupe AGR, 02/10/2026) — REPÈRES énergie agricole datés et
+    # sourcés. Remplace les anciens réglages « bonbonne » (Q4 du 20/08 :
+    # 50 / 128), qu'aucun calcul ne lisait plus depuis QJR236 : l'intention
+    # Q4 est requalifiée, pas supprimée. Forme (contrat partagé
+    # ``ventes/contract_samples/economie_pompage.json``) :
+    # ``{butane_12kg_detail, butane_12kg_non_subventionne, gasoil_litre}``,
+    # chacun ``{valeur, source, releve_le}``. Un repère n'est qu'une
+    # INDICATION affichée à côté du champ du générateur, et seulement s'il a
+    # une source ; le prix retenu est toujours celui DÉCLARÉ par le client
+    # (Q17, D-AGR-5) — jamais une valeur pré-enregistrée. Le repère « non
+    # subventionné » n'est lu que par la vue interne (AGR205), jamais côté
+    # client. Lecture : ``parametres.selectors.reperes_energie_agricole_*``.
+    reperes_energie_agricole = models.JSONField(default=dict, blank=True)
     # ── Q5 (fondateur, 20/08/2026) — DÉLAIS COMMERCIAUX PARAMÉTRABLES ─────────
     # « visite sous 48-72 h » et « installation 7-14 jours » étaient codés en
     # dur dans quatre renderers ET rendus DANS la boîte « Conditions » du PDF,

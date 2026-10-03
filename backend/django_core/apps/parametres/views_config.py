@@ -31,7 +31,9 @@ from .models_documents import DocumentTemplates
 # défaut (FK propres à la société source).
 PROFILE_CONFIG_FIELDS = [
     'couleur_principale', 'payment_terms', 'quote_validity_days',
-    'agricole_pump_hours', 'agricole_prix_bonbonne', 'agricole_cout_reel_bonbonne',
+    'agricole_pump_hours',
+    # AGR208 — repères énergie agricole datés et sourcés (ex-« bonbonne »).
+    'reperes_energie_agricole',
     # AGR107 — réglages pompage société (nullable, sans défaut).
     'agricole_part_debit_forage_pct', 'agricole_marge_cable_descente_m',
     'agricole_salissure_supp_pct',
