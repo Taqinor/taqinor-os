@@ -119,7 +119,10 @@ test('NTI18N47: interface en arabe, client arabe, devis multilingue généré', 
   await page.locator('[role="searchbox"]').last().fill(nomClient)
   await page.getByRole('option', { name: nomClient }).first().click()
 
-  await page.getByRole('button', { name: /Créer le devis/ }).click()
+  // CAD177 — DEUX boutons « Créer le devis » existent en desktop depuis le
+  // rail récapitulatif VX16 (be7caa72, `form="gen-form"`, lg+) : on vise
+  // celui du formulaire lui-même, présent à toutes les largeurs.
+  await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
   // Écran de succès du générateur — texte stable, jamais un libellé de bouton
   // (les actions proposées y évoluent).
   await expect(page.getByText('Devis enregistré')).toBeVisible({ timeout: 45_000 })
