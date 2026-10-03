@@ -343,7 +343,8 @@ class FluxPompageTests(SimpleTestCase):
         with mock.patch.object(E, 'flux_de_tresorerie',
                                wraps=E.flux_de_tresorerie) as espion:
             self.bloc()
-        self.assertEqual(espion.call_count, 1)
+        # Le flux principal ET chaque ligne de sensibilité : un seul moteur.
+        self.assertGreaterEqual(espion.call_count, 1)
 
     def test_aucune_logique_d_injection_en_agricole(self):
         import json
@@ -354,3 +355,140 @@ class FluxPompageTests(SimpleTestCase):
         # Aucune ligne « moins subvention » dans le flux (retour SANS aide).
         self.assertNotIn('subvention',
                          json.dumps(bloc['economie'], ensure_ascii=False))
+
+
+# ── AGR203 ──────────────────────────────────────────────────────────────────
+
+def etude_declaree(volume=100.0, production=150.0, couverture=120):
+    return {'besoin': {'nature': 'declare', 'm3_jour_mois': [volume] * 12},
+            'production': (None if production is None
+                           else {'m3_jour_mois': [production] * 12}),
+            'couverture_pct_mois': ([couverture] * 12
+                                    if couverture is not None else None),
+            'pompe': {'mode': 'neuve'}}
+
+
+def _retour_a_la_main(investissement, economie_nette, sorties):
+    cumul = -investissement
+    if cumul >= 0:
+        return 0
+    for annee in range(1, 11):
+        cumul += economie_nette - sorties.get(annee, 0.0)
+        if cumul >= 0:
+            return annee
+    return None
+
+
+class CoutDuM3SensibiliteSeuilTests(SimpleTestCase):
+    """AGR203 — coût du m³ actuel et solaire, sensibilité sans prévision,
+    seuil de rentabilité du carburant."""
+
+    def gasoil(self, **kw):
+        # 10 L par jour d'irrigation × 6 j/semaine, 12 MAD/L, avril-sept.
+        saisies = saisies_carburant(
+            energie='diesel', quantite=10, unite='litre',
+            periode='jour_irrigation', jours=6, prix=12.0, mois=range(4, 10))
+        return E.economie_pompage(
+            saisies, sortie_etude=kw.get('etude', etude_declaree()),
+            lignes=lignes_reference(), reglages=CHARGES)
+
+    def test_gasoil_calcule_a_la_main(self):
+        bloc = self.gasoil()
+        jours = sum((30, 31, 30, 31, 31, 30))     # avril → septembre
+        litres = 10 * 6 * jours / 7
+        volume = 100 * 6 * jours / 7               # déclaré = utile (100 < 150)
+        self.assertEqual(bloc['mad_par_m3']['actuel'],
+                         round(litres * 12 / volume, 2))
+        self.assertEqual(bloc['mad_par_m3']['actuel'], 1.2)
+        self.assertEqual(bloc['mad_par_m3']['solaire'],
+                         round((50000 + 8000 + 600 * 10) / (volume * 10), 2))
+        seuil = (50000 + 8000 + 10 * 600) / (10 * litres)
+        self.assertEqual(bloc['seuil_rentabilite_carburant'],
+                         {'valeur_unitaire_mad': round(seuil, 2),
+                          'unite': 'MAD par litre',
+                          'formule': 'valeur unitaire pour laquelle le cumul '
+                                     'à 10 ans vaut 0 (indexation 0 %)'})
+        sens = bloc['sensibilite_carburant']
+        self.assertEqual([s['facteur'] for s in sens],
+                         [0.8, 0.9, 1.1, 1.2, 1.5])
+        for ligne_s in sens:
+            prix = 12.0 * ligne_s['facteur']
+            nette = litres * prix - 600
+            self.assertEqual(ligne_s['valeur_unitaire_mad'], round(prix, 2))
+            self.assertEqual(ligne_s['economie_nette_mad_an'],
+                             round(nette, 2))
+            self.assertEqual(ligne_s['retour_ans'],
+                             _retour_a_la_main(50000, nette, {7: 8000.0}))
+        self.assertEqual(sens[0]['libelle'],
+                         'si le prix payé était 9,60 DH le litre')
+
+    def test_butane_calcule_a_la_main(self):
+        saisies = saisies_carburant(quantite=4, jours=6, prix=50.0,
+                                    mois=range(4, 10))
+        bloc = E.economie_pompage(
+            saisies, sortie_etude=etude_declaree(volume=135.0),
+            lignes=lignes_reference(), reglages=CHARGES)
+        self.assertEqual(bloc['mad_par_m3']['actuel'],
+                         round(4 * 50 / 135, 2))
+        bouteilles = 4 * 6 * 183 / 7
+        self.assertEqual(
+            bloc['seuil_rentabilite_carburant']['valeur_unitaire_mad'],
+            round((50000 + 8000 + 6000) / (10 * bouteilles), 2))
+        self.assertEqual(bloc['seuil_rentabilite_carburant']['unite'],
+                         'MAD par bouteille 12 kg')
+        self.assertEqual(bloc['sensibilite_carburant'][2]['libelle'],
+                         'si le prix payé était 55 DH la bouteille')
+
+    def test_nouveau_forage_m3_solaire_seul_sans_economie(self):
+        saisies = {'energie_actuelle': _energie('aucune'),
+                   'consommation': {'jours_irrigation_par_semaine': 7},
+                   'mois_irrigation': _mois(range(1, 13))}
+        bloc = E.economie_pompage(
+            saisies, sortie_etude=etude_declaree(volume=50.0,
+                                                 production=40.0),
+            lignes=lignes_reference(), reglages=CHARGES)
+        self.assertEqual(bloc['cas'], E.CAS_NOUVEAU_FORAGE)
+        self.assertIsNone(bloc['mad_par_m3']['actuel'])
+        utile = 40.0 * 365                         # min(40 livrés, 50 voulus)
+        self.assertEqual(bloc['mad_par_m3']['solaire'],
+                         round((50000 + 8000 + 6000) / (utile * 10), 2))
+        self.assertEqual(bloc['economie']['flux'], [])
+        self.assertEqual(bloc['sensibilite_carburant'], [])
+        self.assertIsNone(bloc['seuil_rentabilite_carburant'])
+
+    def test_sans_serie_ni_volume_declare_omission_nommee(self):
+        etude = {'besoin': {'nature': 'agronomique_plein',
+                            'm3_jour_mois': [80.0] * 12},
+                 'production': None, 'couverture_pct_mois': None,
+                 'pompe': {'mode': 'neuve'}}
+        bloc = self.gasoil(etude=etude)
+        self.assertIsNone(bloc['mad_par_m3']['solaire'])
+        self.assertIsNone(bloc['mad_par_m3']['actuel'])
+        cles = {o['cle']: o['motif'] for o in bloc['omissions']}
+        self.assertIn('pompe sans courbe et aucun volume déclaré',
+                      cles['mad_par_m3.solaire'])
+        self.assertIn('volume pompé déclaré absent', cles['mad_par_m3.actuel'])
+
+    def test_la_sensibilite_ne_contient_aucune_ligne_indexee(self):
+        import json
+        for ligne_s in self.gasoil()['sensibilite_carburant']:
+            self.assertEqual(set(ligne_s), {
+                'facteur', 'libelle', 'valeur_unitaire_mad',
+                'economie_nette_mad_an', 'retour_ans'})
+            self.assertNotIn('index', json.dumps(ligne_s))
+
+    def test_reseau_grille_sur_la_facture_sans_seuil_carburant(self):
+        bloc = E.economie_pompage({
+            'energie_actuelle': _energie('electrique'),
+            'facture_reseau': {'montant_mad': 1000,
+                               'periodicite': 'mensuelle',
+                               'part_fixe_mad_mois': 100,
+                               'saisi_le': '2026-09-12'},
+            'mois_irrigation': _mois((6, 7, 8)),
+        }, sortie_etude=etude_declaree(), lignes=lignes_reference(),
+            reglages=CHARGES)
+        sens = bloc['sensibilite_carburant']
+        self.assertEqual(sens[0]['libelle'], 'si la facture était 800 DH')
+        self.assertEqual(sens[0]['economie_nette_mad_an'],
+                         round((800 - 100) * 3 - 600, 2))
+        self.assertIsNone(bloc['seuil_rentabilite_carburant'])

@@ -261,6 +261,9 @@ def depense_actuelle(saisies):
                     _provenance_saisie(saisi_le), saisi_le))
                 resultat['valeur_unitaire'] = montant
                 resultat['unite'] = f'MAD par facture {periodicite}'
+                resultat['_reseau'] = (
+                    montant, 2.0 if periodicite == 'bimestrielle' else 1.0,
+                    part_fixe)
     elif resultat['cas'] == CAS_CARBURANT or energie is None:
         if not conso or conso.get('quantite') is None:
             manque('consommation', 'consommation non déclarée')
@@ -363,6 +366,7 @@ def depense_actuelle(saisies):
     resultat['_par_mois'] = par_mois
     resultat['_entretien'] = entretien or 0.0
     resultat['_mois'] = list(mois)
+    resultat['_unite'] = unite
     return resultat
 
 
@@ -623,6 +627,162 @@ def _economie_annee1(par_mois, parts, entretien):
     return sum(par_mois[m] * parts[m] for m in range(12)) + entretien
 
 
+# ── AGR203 — coût du m³, sensibilité, seuil ─────────────────────────────────
+
+#: Grille de PRÉSENTATION « si le prix était X » (décision du plan AGR203) —
+#: jamais une prévision : chaque ligne garde l'indexation à 0 %.
+FACTEURS_SENSIBILITE = (0.8, 0.9, 1.1, 1.2, 1.5)
+_UNITE_LIBELLE = {'bouteille_12kg': 'la bouteille', 'litre': 'le litre'}
+_UNITE_SEUIL = {'bouteille_12kg': 'MAD par bouteille 12 kg',
+                'litre': 'MAD par litre'}
+
+
+def _serie12(valeur):
+    if isinstance(valeur, (list, tuple)) and len(valeur) == 12 and all(
+            isinstance(v, (int, float)) and not isinstance(v, bool)
+            for v in valeur):
+        return [float(v) for v in valeur]
+    return None
+
+
+def _besoin_par_mois(sortie_etude):
+    return _serie12(((sortie_etude or {}).get('besoin') or {})
+                    .get('m3_jour_mois'))
+
+
+def volume_declare_par_mois(sortie_etude):
+    """Le volume/jour DÉCLARÉ par mois (besoin de nature ``declare``, AGR2)."""
+    besoin = (sortie_etude or {}).get('besoin') or {}
+    if besoin.get('nature') != 'declare':
+        return None
+    return _serie12(besoin.get('m3_jour_mois'))
+
+
+def _production_par_mois(sortie_etude):
+    return _serie12(((sortie_etude or {}).get('production') or {})
+                    .get('m3_jour_mois'))
+
+
+def _fmt(valeur):
+    arrondi = round(valeur, 2)
+    if arrondi == int(arrondi):
+        return str(int(arrondi))
+    return ('%.2f' % arrondi).replace('.', ',')
+
+
+def _mad_par_m3(dep, sortie_etude, mois, jours_semaine, investissement,
+                remplacements_mad, charges):
+    """``(mad_par_m3, omissions)`` — jamais comparé à une énergie absente."""
+    omissions = []
+    bloc = {'actuel': None, 'solaire': None, 'formule': None}
+    formules = []
+    if not mois or jours_semaine is None:
+        motif = ("mois d'irrigation non déclarés" if not mois else
+                 "jours d'irrigation par semaine non déclarés")
+        omissions.append({'cle': 'mad_par_m3',
+                          'motif': f'coût du m³ non publié : {motif}'})
+        return bloc, omissions
+    jours = {m: jours_irrigues_du_mois(m, jours_semaine) for m in mois}
+    declare = volume_declare_par_mois(sortie_etude)
+
+    if dep['cas'] in (CAS_CARBURANT, CAS_RESEAU) and \
+            dep['statut'] == 'calcule':
+        if declare is None:
+            omissions.append({
+                'cle': 'mad_par_m3.actuel',
+                'motif': 'coût du m³ actuel non publié : volume pompé '
+                         'déclaré absent'})
+        else:
+            volume = sum(declare[m - 1] * jours[m] for m in mois)
+            if volume > 0:
+                bloc['actuel'] = round(
+                    dep['depense_actuelle']['annuelle_mad'] / volume, 2)
+                formules.append('actuel = dépense annuelle déclarée ÷ volume '
+                                'pompé annuel déclaré')
+
+    production = _production_par_mois(sortie_etude)
+    besoin = _besoin_par_mois(sortie_etude)
+    if production is not None and besoin is not None:
+        utile_jour = [min(production[i], besoin[i]) for i in range(12)]
+    elif declare is not None:
+        utile_jour = declare
+    else:
+        utile_jour = None
+    if utile_jour is None:
+        omissions.append({
+            'cle': 'mad_par_m3.solaire',
+            'motif': 'coût du m³ solaire non publié : pompe sans courbe et '
+                     'aucun volume déclaré'})
+    else:
+        utile = sum(utile_jour[m - 1] * jours[m] for m in mois)
+        if utile > 0:
+            total = (investissement + remplacements_mad
+                     + (charges or 0.0) * HORIZON_ANS)
+            bloc['solaire'] = round(total / (utile * HORIZON_ANS), 2)
+            formules.append(
+                f'solaire = (investissement + remplacements + charges sur '
+                f'{HORIZON_ANS} ans) ÷ (volume utile annuel × {HORIZON_ANS})')
+    bloc['formule'] = ' ; '.join(formules) or None
+    return bloc, omissions
+
+
+def _economie1_au_prix(dep, parts, facteur):
+    """L'économie d'année 1 si le prix (ou la facture) valait × ``facteur``."""
+    if dep['cas'] == CAS_RESEAU:
+        montant, diviseur, part_fixe = dep['_reseau']
+        mensuel = max(0.0, montant * facteur / diviseur - part_fixe)
+        par_mois = [mensuel if m in dep['_mois'] else 0.0
+                    for m in range(1, 13)]
+    else:
+        prix = dep['valeur_unitaire'] * facteur
+        par_mois = [q * prix for q in dep['quantite_par_mois']]
+    return _economie_annee1(par_mois, parts, dep['_entretien'])
+
+
+def _sensibilite(dep, parts, investissement, charges, remplacements):
+    lignes = []
+    for facteur in FACTEURS_SENSIBILITE:
+        economie1 = _economie1_au_prix(dep, parts, facteur)
+        flux = _flux(investissement, economie1, charges, remplacements)
+        valeur = dep['valeur_unitaire'] * facteur
+        if dep['cas'] == CAS_RESEAU:
+            libelle = f'si la facture était {_fmt(valeur)} DH'
+        else:
+            libelle = (f'si le prix payé était {_fmt(valeur)} DH '
+                       f"{_UNITE_LIBELLE[dep['_unite']]}")
+        lignes.append({
+            'facteur': facteur, 'libelle': libelle,
+            'valeur_unitaire_mad': round(valeur, 2),
+            'economie_nette_mad_an': round(economie1 - (charges or 0.0), 2),
+            'retour_ans': flux['retour_ans'],
+        })
+    return lignes
+
+
+def _seuil(dep, parts, investissement, charges, remplacements_mad):
+    """Prix unitaire pour lequel le cumul à 10 ans vaut 0 (forme fermée,
+    indexation 0) : (I + R + 10·C − 10·entretien) ÷ (10 · Q évitée)."""
+    if dep['cas'] != CAS_CARBURANT:
+        return None, {'cle': 'seuil_rentabilite_carburant',
+                      'motif': 'sans objet : aucun prix unitaire de '
+                               'carburant déclaré (cas réseau)'}
+    quantite = sum(q * p for q, p in zip(dep['quantite_par_mois'], parts))
+    if quantite <= 0:
+        return None, {'cle': 'seuil_rentabilite_carburant',
+                      'motif': 'aucune quantité évitée : seuil non calculable'}
+    seuil = (investissement + remplacements_mad
+             + HORIZON_ANS * ((charges or 0.0) - dep['_entretien'])) \
+        / (HORIZON_ANS * quantite)
+    if seuil <= 0:
+        return None, {'cle': 'seuil_rentabilite_carburant',
+                      'motif': 'seuil nul ou négatif : rentable à tout prix '
+                               'du carburant — non publié'}
+    return {'valeur_unitaire_mad': round(seuil, 2),
+            'unite': _UNITE_SEUIL[dep['_unite']],
+            'formule': f'valeur unitaire pour laquelle le cumul à '
+                       f'{HORIZON_ANS} ans vaut 0 (indexation 0 %)'}, None
+
+
 # ── Le bloc ─────────────────────────────────────────────────────────────────
 
 def _bloc_vide():
@@ -677,13 +837,24 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
     charges_bloc, charges, motifs_charges = _charges(reglages)
     bloc['charges_solaires'] = charges_bloc
 
+    remplacements_mad = sum(r['montant_mad'] for r in remplacements)
+    mois, _ = _mois_coches(saisies)
+    jours_semaine = jours_irrigation_par_semaine(saisies)
+
     if dep['cas'] == CAS_NOUVEAU_FORAGE:
+        # Le coût du m³ solaire est le SEUL repère : jamais comparé à une
+        # énergie que le client n'a pas.
         bloc['economie'] = _economie_vide(
             'nouveau forage : aucune énergie remplacée, aucune économie '
             'calculée')
         bloc['couverture'] = {'verifiee': False,
                               'part_evitee_par_mois': None,
                               'motif': 'aucune dépense déclarée'}
+        motifs.extend(motifs_charges)
+        bloc['mad_par_m3'], omis_m3 = _mad_par_m3(
+            dep, sortie_etude, mois, jours_semaine, investissement,
+            remplacements_mad, charges)
+        bloc['omissions'].extend(omis_m3)
         bloc['publiable_client'] = not motifs
         return bloc
 
@@ -706,5 +877,18 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
     economie = _flux(investissement, economie1, charges, remplacements)
     economie['omissions'].extend(omis_rempl)
     bloc['economie'] = economie
+    parts = couverture['part_evitee_par_mois']
+
+    bloc['mad_par_m3'], omis_m3 = _mad_par_m3(
+        dep, sortie_etude, mois, jours_semaine, investissement,
+        remplacements_mad, charges)
+    bloc['omissions'].extend(omis_m3)
+    bloc['sensibilite_carburant'] = _sensibilite(
+        dep, parts, investissement, charges, remplacements)
+    bloc['seuil_rentabilite_carburant'], omis_seuil = _seuil(
+        dep, parts, investissement, charges, remplacements_mad)
+    if omis_seuil:
+        bloc['omissions'].append(omis_seuil)
+
     bloc['publiable_client'] = not motifs
     return bloc
