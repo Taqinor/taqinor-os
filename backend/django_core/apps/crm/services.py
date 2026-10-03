@@ -1358,14 +1358,21 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
             # réflexion PUIS 7 jours de rétractation une fois l'offre de
             # crédit émise. Décision fondateur du 21/09/2026 : validité
             # distincte et plus longue (le réglage société), J+14 sinon.
+            fin_du_plan = derniere
             derniere = _validite_selon_financement(lead, devis, derniere)
+            # AGR523 — la note dit d'où vient une validité allongée par un
+            # dossier de subvention en instruction (le crédit garde la sienne).
+            motif = ('fin du plan de suivi'
+                     if (derniere == fin_du_plan
+                         or lead_finance_a_credit(lead)
+                         or not lead_dossier_subvention_en_instruction(lead))
+                     else MOTIF_VALIDITE_SUBVENTION)
             if poser_validite_devis(devis, derniere):
                 LeadActivity.objects.create(
                     company=lead.company, lead=lead, user=None,
                     kind=LeadActivity.Kind.NOTE,
                     body=(f'Validité de la proposition posée au '
-                          f'{derniere:%d/%m/%Y} — fin du plan de '
-                          'suivi.'))
+                          f'{derniere:%d/%m/%Y} — {motif}.'))
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
             pass
     return resultats
@@ -11323,6 +11330,18 @@ def lead_finance_a_credit(lead):
         FINANCEMENT_CREDIT
 
 
+def lead_dossier_subvention_en_instruction(lead):
+    """AGR523 — le dossier de subvention du lead est-il DÉPOSÉ (en
+    instruction) ? « À déposer », vide, accordé ou refusé : non."""
+    return (getattr(lead, 'dossier_subvention', None) or '') == 'depose'
+
+
+#: AGR523 — la fin de la note d'historique quand la validité vient du
+#: dossier de subvention en instruction.
+MOTIF_VALIDITE_SUBVENTION = ('dossier de subvention en instruction (réglage '
+                             'société)')
+
+
 def _validite_selon_financement(lead, devis, date_fin_de_suivi):
     """La date de validité à POSER sur ce devis.
 
@@ -11333,7 +11352,11 @@ def _validite_selon_financement(lead, devis, date_fin_de_suivi):
     sa validité à 10 jours ne se retrouve pas avec un devis financé qui expire
     AVANT la fin de son propre suivi.
     """
-    if not lead_finance_a_credit(lead):
+    # AGR523 — un dossier de subvention DÉPOSÉ (en instruction) reçoit la
+    # MÊME règle que le crédit : le réglage société, s'il est plus lointain.
+    # Aucun nouveau nombre, aucune durée propre à la FDA.
+    if not (lead_finance_a_credit(lead)
+            or lead_dossier_subvention_en_instruction(lead)):
         return date_fin_de_suivi
     try:
         from apps.ventes.services import date_validite_credit
