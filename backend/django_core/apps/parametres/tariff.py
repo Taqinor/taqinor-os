@@ -1235,6 +1235,103 @@ def fiscalite_depuis_reglages(reglages):
     return parametres
 
 
+# ── AGR207 (Groupe AGR, 02/10/2026) — pompage agricole, calcul INTERNE ──
+# Barème des charges solaires de pompage de la SOCIÉTÉ et règle FDA datée.
+# Vides par défaut ([] / {}) : aucune valeur suggérée ; toute saisie porte sa
+# source, sinon refus NOMMANT le champ. Jamais un montant d'aide imprimé pour
+# un client (D-AGR-6) : la règle FDA n'alimente que la vue interne.
+
+#: Bases de calcul admises pour la règle FDA.
+REGLE_FDA_BASES = ('ht', 'ttc', 'a_confirmer')
+#: Clés numériques de la règle FDA (toutes ≥ 0, nullables).
+REGLE_FDA_NOMBRES = ('taux_pct', 'plafond_mad_par_ha', 'plafond_mad_par_kwc',
+                     'plafond_mad_par_projet')
+REGLE_FDA_CLES = REGLE_FDA_NOMBRES + ('base', 'source', 'releve_le')
+CHARGE_POMPAGE_CLES = ('libelle', 'montant_mad_an', 'source')
+
+
+def erreurs_charges_pompage(charges):
+    """Refus du barème ``charges_pompage_solaire``, ``{champ: message}``."""
+    champ = 'charges_pompage_solaire'
+    if _vide(charges):
+        return {}
+    if not isinstance(charges, list):
+        return {champ: f"{champ} : une liste [{{libelle, montant_mad_an, "
+                       "source}] est attendue."}
+    for i, ligne in enumerate(charges, start=1):
+        if not isinstance(ligne, dict):
+            return {champ: f"{champ} : la ligne {i} doit être un objet "
+                           "{libelle, montant_mad_an, source}."}
+        inconnues = sorted(set(ligne) - set(CHARGE_POMPAGE_CLES))
+        if inconnues:
+            return {champ: f"{champ} : ligne {i}, clé inconnue "
+                           f"{', '.join(inconnues)}."}
+        if _vide(ligne.get('libelle')):
+            return {champ: f"{champ} : ligne {i}, le libellé est "
+                           "obligatoire."}
+        if _nombre_positif(ligne.get('montant_mad_an')) is None:
+            return {champ: f"{champ} : ligne {i}, montant_mad_an doit être "
+                           "un montant en MAD par an (≥ 0)."}
+        if _vide(ligne.get('source')):
+            return {champ: f"{champ} : ligne {i}, la source est obligatoire "
+                           "(barème de la société, contrat, devis "
+                           "fournisseur)."}
+    return {}
+
+
+def erreurs_regle_fda(regle):
+    """Refus de la règle ``regle_fda_pompage``, ``{champ: message}``."""
+    champ = 'regle_fda_pompage'
+    if _vide(regle):
+        return {}
+    if not isinstance(regle, dict):
+        return {champ: f"{champ} : un objet {{taux_pct, plafond_mad_par_ha, "
+                       "plafond_mad_par_kwc, plafond_mad_par_projet, base, "
+                       "source, releve_le} est attendu."}
+    inconnues = sorted(set(regle) - set(REGLE_FDA_CLES))
+    if inconnues:
+        return {champ: f"{champ} : clé inconnue {', '.join(inconnues)}."}
+    if _vide(regle.get('source')):
+        return {champ: f"{champ} : la source de la règle FDA est obligatoire "
+                       "(édition et pages du Guide FDA)."}
+    for cle in REGLE_FDA_NOMBRES:
+        valeur = regle.get(cle)
+        if _vide(valeur):
+            continue
+        nombre = _nombre_positif(valeur)
+        if nombre is None or (cle == 'taux_pct' and nombre > 100):
+            borne = ' entre 0 et 100' if cle == 'taux_pct' else ' (≥ 0)'
+            return {champ: f"{champ} : {cle} doit être un nombre{borne}."}
+    base = regle.get('base')
+    if not _vide(base) and base not in REGLE_FDA_BASES:
+        return {champ: f"{champ} : base doit valoir "
+                       f"{' | '.join(REGLE_FDA_BASES)}."}
+    releve = regle.get('releve_le')
+    if not _vide(releve):
+        try:
+            _dt.date.fromisoformat(str(releve))
+        except ValueError:
+            return {champ: f"{champ} : releve_le doit être une date "
+                           "AAAA-MM-JJ."}
+    return {}
+
+
+def charges_pompage_depuis_reglages(reglages):
+    """Barème des charges solaires de pompage saisi, ``[]`` sinon."""
+    charges = getattr(reglages, 'charges_pompage_solaire', None)
+    if _vide(charges) or erreurs_charges_pompage(charges):
+        return []
+    return list(charges)
+
+
+def regle_fda_depuis_reglages(reglages):
+    """Règle FDA saisie et sourcée (usage INTERNE), ``{}`` sinon."""
+    regle = getattr(reglages, 'regle_fda_pompage', None)
+    if _vide(regle) or erreurs_regle_fda(regle):
+        return {}
+    return dict(regle)
+
+
 def erreurs_reglages_tarif(reglages):
     """Point d'entrée UNIQUE des refus des réglages tarifaires, ``{champ: msg}``.
 
@@ -1267,4 +1364,9 @@ def erreurs_reglages_tarif(reglages):
         getattr(reglages, 'indexation_source', None)))
     erreurs.update(erreurs_fiscalite(
         *(getattr(reglages, champ, None) for champ in CHAMPS_FISCALITE)))
+    # AGR207 — pompage agricole (barème des charges + règle FDA datée).
+    erreurs.update(erreurs_charges_pompage(
+        getattr(reglages, 'charges_pompage_solaire', None)))
+    erreurs.update(erreurs_regle_fda(
+        getattr(reglages, 'regle_fda_pompage', None)))
     return erreurs

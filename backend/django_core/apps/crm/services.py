@@ -11267,27 +11267,33 @@ def _corps_pour_segment(corps, cle, lead, langue):
 
     Trois garde-fous, dans cet ordre :
 
-      * seul le FRANÇAIS a des variantes (aucune darija n'est validée : une
-        traduction automatique partirait à de vrais clients) ;
+      * seuls le FRANÇAIS et la DARIJA ont des variantes (AGR511, D-AGR-11 :
+        darija du pompage écrite phrase par phrase du FR validé, jamais une
+        traduction automatique) ; ``en``/``ar`` restent inchangés ;
       * un texte que la société a PERSONNALISÉ n'est jamais remplacé — la
-        variante ne s'applique qu'au texte encore au catalogue d'origine,
-        même règle que `_REVEIL_CLES_SEEDEES` ;
+        variante ne s'applique qu'au texte encore au catalogue d'origine DE
+        CETTE LANGUE (``MESSAGE_TEMPLATE_DEFAULTS`` en FR,
+        ``MESSAGE_TEMPLATE_DEFAULTS_DARIJA`` en darija), même règle que
+        `_REVEIL_CLES_SEEDEES` ;
       * un segment absent, inconnu ou résidentiel ne change RIEN.
 
     Best-effort : en cas de lecture impossible, le corps d'origine part.
     """
-    if not corps or not cle or (langue or 'fr') != 'fr':
+    langue = (langue or 'fr')
+    if not corps or not cle or langue not in ('fr', 'darija'):
         return corps
     try:
         from apps.parametres.models_messages import (
-            MESSAGE_TEMPLATE_DEFAULTS, variante_segment,
+            MESSAGE_TEMPLATE_DEFAULTS, MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
+            variante_segment,
         )
         variante = variante_segment(
-            cle, getattr(lead, 'type_installation', None))
+            cle, getattr(lead, 'type_installation', None), langue)
         if not variante:
             return corps
-        if corps.strip() != (MESSAGE_TEMPLATE_DEFAULTS.get(cle, '') or ''
-                             ).strip():
+        defauts = (MESSAGE_TEMPLATE_DEFAULTS if langue == 'fr'
+                   else MESSAGE_TEMPLATE_DEFAULTS_DARIJA)
+        if corps.strip() != (defauts.get(cle, '') or '').strip():
             return corps
         return variante
     except Exception:  # noqa: BLE001 — jamais bloquant
