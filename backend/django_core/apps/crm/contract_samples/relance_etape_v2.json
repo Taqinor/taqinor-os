@@ -643,5 +643,23 @@
     "visite_id": "Id de la visite terrain la plus récente du lead (apps/visites, lue par son sélecteur) ou null — permet « Ouvrir le retour » (`/visites/<id>`) depuis la file du jour.",
     "visite_retour_disponible": "booléen — le retour terrain de cette visite est saisi (même drapeau que la frise de la fiche).",
     "cockpit_controle": "COCKPIT-CONTRÔLE (30/09/2026) — cinq champs ADDITIFS sur chaque touche : `type_etape` (identifiant du type dans la table du parcours `parcours_suivi.json`, '' si la table ne la reconnaît pas), `est_tache` (une TÂCHE — préparer le devis, planifier la visite, décider la suite, devis modifié, question de prix — traitable dès maintenant, jamais « sautée »), `nb_reports` (nombre de fois où l'échéance de CETTE étape a été repoussée par un geste humain), `due_initial_at` (l'échéance d'origine, que les reports ne réécrivent pas) et `posee_le` (l'instant où l'étape a été posée). Et, servi SEULEMENT quand `scope` est demandé (la file du cockpit), le bloc `file` : `maintenant` (tout ce qui se traite maintenant dans la portée de l'utilisateur : échéances d'aujourd'hui et en retard PLUS les tâches ouvertes quelle que soit leur date), `demain`, `semaine` (les 7 prochains jours, hors « maintenant ») et `traitees_aujourdhui` (étapes closes « fait » aujourd'hui par un humain dans la même portée)."
+  },
+  "ajout_lead_segment": {
+    "cle": "lead_segment",
+    "ou": "chaque touche (élément de `results`, et la touche renvoyée par les actions qui servent le même sérialiseur `RelanceEtapeSerializer`)",
+    "nature": "texte",
+    "valeurs": [
+      "residentiel",
+      "commercial",
+      "industriel",
+      "agricole",
+      ""
+    ],
+    "regle": "Valeur = `crm.Lead.type_installation` du lead de la touche ; chaîne vide si non renseigné. Lecture seule, additive.",
+    "pourquoi": "AGR500 (Groupe AGR, 02/10/2026) — `RelanceEtapeSerializer` sert déjà `lead_langue`, `lead_contact_preference`, `lead_pii_masquee`, mais aucun segment : l'écran de suivi ne peut pas savoir qu'il parle à une exploitation (PanneauProposerVisite.jsx ne lit que `etape.cadence`). La clé ne sert QU'AUX CONSIGNES D'ÉCRAN (textes, panneau agricole) et JAMAIS au rythme : aucun délai, aucun barreau, aucun axe segment dans le gabarit de cadence (CAD52/CAD124 tiennent).",
+    "exemple_fragment": {
+      "lead_segment": "agricole"
+    },
+    "integration": "Posée ici, À CÔTÉ des exemples, pour garder `main` vert : les tests backend (tests_cad10_motif_refus.py, tests_param_cadence_relance_etape.py, tests_cad101_piece_recue.py…) exigent que la touche servie ait EXACTEMENT les clés de l'exemple. La tâche backend qui ajoute le champ au sérialiseur l'insère dans `exemple` (et chaque variante `exemple_*` qui montre une touche) DANS LE MÊME COMMIT, puis retire ce bloc."
   }
 }
