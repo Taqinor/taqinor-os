@@ -31,6 +31,7 @@ Régénérer les baselines (image docker prod) :
     docker compose exec django_core python manage.py update_pdf_baselines
 """
 import os
+import re
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
@@ -181,7 +182,12 @@ def _normaliser_pour_recherche(texte: str) -> str:
 
 # Marqueurs de prix d'achat interdits sur TOUT rendu client (jamais un centime
 # du prix d'achat revendeur ne doit fuiter — CLAUDE.md).
-FORBIDDEN_BUY_PRICE_MARKERS = ('9876', '9 876', '9 876', '9&#8239;876', 'achat')
+FORBIDDEN_BUY_PRICE_MARKERS = ('9876', '9 876', '9 876', '9&#8239;876')
+
+# « achat » MOT ENTIER (``\b``) : « rachat » appartient au texte légal légitime
+# de l'étude (« rachat BT non publié », loi 82-21) et n'est pas un prix d'achat —
+# la sous-chaîne brute `'achat' in texte` le prenait pour une fuite.
+FORBIDDEN_BUY_WORD = re.compile(r'\bachat\b')
 
 
 def _render_pdf_bytes(devis, pdf_options=None):
@@ -376,20 +382,6 @@ BASELINE_CASES = [
         'check_totals': True,
     },
     {
-        'name': 'agricole_pompage_full',
-        'reference': 'DEV-SNAP-AGRI',
-        'lines': AGRICOLE_LINES,
-        'mode_installation': 'agricole',
-        'etude_params': AGRICOLE_ETUDE,
-        'pdf_options': None,
-        'page_count': 4,
-        # Le rendu agricole plein format porte ses propres figures (pas de
-        # remise/TVA détaillée par palier identique au résidentiel) —
-        # la garde totaux est déjà couverte par les formats
-        # résidentiel/industriel ; on vérifie ici l'absence de prix d'achat.
-        'check_totals': False,
-    },
-    {
         'name': 'agricole_pompage_onepage',
         'reference': 'DEV-SNAP-AGRI1PG',
         'lines': AGRICOLE_LINES,
@@ -428,6 +420,9 @@ class TestQuoteEngineGoldenSnapshots(TestCase):
             self.assertNotIn(
                 marker.lower(), text,
                 f'prix_achat détecté dans le PDF client (marqueur « {marker} »)')
+        self.assertIsNone(
+            FORBIDDEN_BUY_WORD.search(text),
+            'prix_achat détecté dans le PDF client (mot « achat »)')
 
     def _run_case(self, case):
         devis = _build_snapshot_devis(
@@ -451,8 +446,27 @@ class TestQuoteEngineGoldenSnapshots(TestCase):
     def test_onepage_format_one_page(self):
         self._run_case(BASELINE_CASES[2])
 
-    def test_agricole_pompage_full_format(self):
+    def test_agricole_pompage_onepage_format(self):
         self._run_case(BASELINE_CASES[3])
 
-    def test_agricole_pompage_onepage_format(self):
-        self._run_case(BASELINE_CASES[4])
+    def test_agricole_full_se_degrade_en_une_page(self):
+        """QJR236 (décision fondateur DV1) — le renderer agricole premium
+        multi-pages est SUPPRIMÉ : une demande agricole « full » rend le même
+        document une page que le format ``onepage``. L'ancien cas
+        ``agricole_pompage_full`` (4 pages + 4 baselines PNG du renderer
+        supprimé) était rouge depuis ; ce test garde le comportement RÉEL,
+        sans baseline pixel (le rendu une page est déjà épinglé par
+        ``agricole_pompage_onepage``)."""
+        import fitz
+        case = {'reference': 'DEV-SNAP-AGRI', 'lines': AGRICOLE_LINES,
+                'mode_installation': 'agricole',
+                'etude_params': AGRICOLE_ETUDE}
+        devis = _build_snapshot_devis(
+            self.company, self.user, self.client_obj, case)
+        pdf_bytes = _render_pdf_bytes(devis, None)
+        doc = fitz.open(stream=pdf_bytes, filetype='pdf')
+        try:
+            self.assertEqual(len(doc), 1)
+        finally:
+            doc.close()
+        self._assert_no_buy_price(pdf_bytes)

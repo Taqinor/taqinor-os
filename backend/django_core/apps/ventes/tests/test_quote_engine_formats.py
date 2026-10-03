@@ -2423,6 +2423,10 @@ class TestPageCalepinage(TestCase):
         self._creer_calepinage()
         html, _doc = self._render(self._options())
         page = self._page_calepinage(html)
+        # Les images embarquées (``data:image/png;base64,…``) sont de l'octet
+        # aléatoire : « MAD » y apparaît par hasard (alphabet base64). On
+        # cherche les mots monétaires dans le TEXTE de la page, pas dans le PNG.
+        page = re.sub(r'data:[^;"\']+;base64,[A-Za-z0-9+/=]+', 'data:…', page)
         for interdit in ('prix_achat', 'marge', 'MAD', 'Total TTC',
                          'Sous-total', 'Remise'):
             self.assertNotIn(interdit, page)

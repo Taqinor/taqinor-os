@@ -79,7 +79,9 @@ class TestSectionsOptionsCommercialEtLegacy(TestCase):
     def _assert_imprime(self, texte):
         self.assertIn('section toiture qjr619', texte)
         self.assertIn('note visible qjr619', texte)
-        self.assertIn('options proposées', texte)
+        # Libellé en lettres espacées (letter-spacing) : PyMuPDF l'extrait
+        # glyphe par glyphe — on compare donc sans espaces.
+        self.assertIn('optionsproposées', ''.join(texte.split()))
         self.assertIn('monitoring qjr619', texte)
 
     def test_commercial_premium_full(self):
