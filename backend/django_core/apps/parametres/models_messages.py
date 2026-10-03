@@ -216,6 +216,16 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Une question sur votre projet : où en est votre dossier d'autoproduction (loi 82-21) ? Selon l'étape où vous en êtes, on adapte l'étude et le calendrier de raccordement — et si le dossier n'est pas encore lancé, je vous explique les étapes en cinq minutes.",
     'dossier_fda':
         "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Une question sur votre projet de pompage : avez-vous déposé un dossier de subvention agricole (FDA), ou comptez-vous le faire ? Si vous visez cette aide, l'accord doit être obtenu avant les travaux. Cela change le calendrier et les pièces à préparer — dites-moi où vous en êtes et je cale l'étude dessus.",
+    # AGR414 (Groupe AGR, 03/10/2026 ; D-AGR-4, D-AGR-11) — la visite de
+    # RELEVÉ DU POINT D'EAU, proposée AVANT le devis (le devis agricole exige
+    # niveau et débit, que l'exploitant connaît rarement). Liste de
+    # préparation FIXE de quatre éléments : une visite mal préparée coûte un
+    # deuxième déplacement. Ni prix, ni promesse d'aide, aucun chiffre ;
+    # {conseiller} = le responsable du lead (aucun prénom codé en dur).
+    # Texte à valider par le fondateur (✎) ; darija écrite maintenant,
+    # relecture native Reda ensuite (sans bloquer l'envoi).
+    'visite_releve_point_eau':
+        "Bonjour {civilite} {prenom}. Avant de vous préparer le devis de pompage, notre technicien peut passer gratuitement relever votre point d'eau : le niveau, le débit et l'emplacement des panneaux. Ça ne vous engage à rien. Pour qu'un seul passage suffise, merci de prévoir : l'accès au puits ou au forage ; la plaque de votre pompe actuelle, bien visible ; vos derniers reçus ou bouteilles de butane ou de gasoil ; l'autorisation de l'Agence du bassin hydraulique (ABH) et le compteur d'eau, s'ils existent. Dites-moi le jour qui vous arrange et je bloque le créneau. — {conseiller}",
 })
 
 # Variantes darija (écriture arabe, revue native le 04/09/2026). Une clé
@@ -341,6 +351,11 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     # réel — comme le reste des textes nés dans ce lot).
     'debrief_visite':
         "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم من بعد ما جا التقني ديالنا عندكم: شنو رايكم فالزيارة ديالو، وواش بقا عندكم شي سؤال قبل ما نكملو مع بعضياتنا؟",
+    # AGR414 — darija de la visite de relevé du point d'eau, traduite
+    # phrase par phrase du FR (aucune promesse, aucun chiffre ajouté) ;
+    # relecture native Reda à faire (D-AGR-11), sans bloquer l'envoi.
+    'visite_releve_point_eau':
+        "السلام عليكم {civilite} {prenom}. قبل ما نوجدو ليكم العرض ديال الضخ، التقني ديالنا يقدر يجي بلا فلوس يقيس نقطة الما ديالكم: المستوى ديال الما، الصبيب والبلاصة ديال الألواح. ما كتلزمكم بوالو. باش تكفي زيارة وحدة، وجدو عافاكم: الوصول للبير ولا للساندة؛ البلاكة ديال البومبة اللي عندكم دابا، باينة مزيان؛ آخر الوصولات ولا القراعي ديال البوطا ولا المازوط؛ الرخصة ديال وكالة الحوض المائي (ABH) والكونتور ديال الما، إلا كانو. قولوا ليا شمن نهار يناسبكم ونحجز ليكم الوقت. — {conseiller}",
 }
 
 # Placeholders AUTORISÉS dans un message de relance (MRY12). Aucun chiffre
@@ -421,6 +436,8 @@ CLES_RELANCE = [
     # CAD151 — le débrief après le retour du technicien (envoi manuel, comme
     # `annonce_appel_reda`/`offre_reda` juste en dessous).
     'debrief_visite',
+    # AGR414 — la visite de relevé du point d'eau (agricole, AVANT le devis).
+    'visite_releve_point_eau',
     # CAD125 — dossiers institutionnels, posés par playbook de SEGMENT
     # (industriel/commercial et agricole), jamais par un barreau de cadence.
     'dossier_8221',
@@ -537,6 +554,11 @@ class MessageTemplate(models.Model):
         DEBRIEF_VISITE = (
             'debrief_visite',
             "Après visite — débrief avec le client (envoi manuel)")
+        # AGR414 — la visite de relevé du point d'eau, proposée AVANT le devis
+        # agricole, avec sa liste de préparation.
+        VISITE_RELEVE_POINT_EAU = (
+            'visite_releve_point_eau',
+            "Pompage — proposer la visite de relevé du point d'eau")
         # CAD125 — dossiers institutionnels, par SEGMENT (playbook conditionné
         # sur `{type_installation}`), jamais un barreau de cadence.
         DOSSIER_8221 = (
@@ -695,7 +717,7 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT = {
         'visite_proposition':
             "Pour verrouiller votre proposition, on peut passer sur place pour la vérification technique gratuite : le technicien vient mesurer le niveau et le débit de l'eau, confirme l'emplacement des panneaux, les caractéristiques du forage et le coffret électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
         'visite_confirmation':
-            "Bonjour, on confirme la visite technique prévue {date_visite} sur votre exploitation. Le technicien vérifie l'emplacement des panneaux, le forage et le coffret électrique — prévoyez l'accès au point d'eau. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
+            "Bonjour, on confirme la visite technique prévue {date_visite} sur votre exploitation. Le technicien vérifie l'emplacement des panneaux, le forage et le coffret électrique. Pour qu'un seul passage suffise, merci de prévoir : l'accès au puits ou au forage ; la plaque de votre pompe actuelle, bien visible ; vos derniers reçus ou bouteilles de butane ou de gasoil ; l'autorisation de l'Agence du bassin hydraulique (ABH) et le compteur d'eau, s'ils existent. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
     },
     # Industriel / commercial : on parle à une ORGANISATION. « En famille »
     # ne décrit aucun processus d'achat B2B ; le site n'est pas « chez vous ».
