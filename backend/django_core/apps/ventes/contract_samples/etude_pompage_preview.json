@@ -24,7 +24,7 @@
       "debit_actuel_m3h": null,
       "heures_actuelles_jour": null,
       "cultures": [],
-      "region": "souss_massa"
+      "region": "souss-massa"
     },
     "source": {
       "debit_exploitation_m3h": 36,
@@ -78,7 +78,8 @@
     "options_cochees": "clés de `kit.options[].cle`",
     "taille": "recommandee | inferieure | superieure (défaut : recommandee)",
     "alim": "mono | tri | dc",
-    "type_pompe": "immergee | surface | dc"
+    "type_pompe": "immergee | surface | dc",
+    "besoin.region": "une des 8 régions agronomiques émises par le site : souss-massa | doukkala | tadla | saiss | oriental | draa-tafilalet | gharb-loukkos | haouz (crm/webhooks.py _REGIONS_AGRICOLES)"
   },
   "exemple": {
     "entrees_resolues": {
