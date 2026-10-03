@@ -9,18 +9,115 @@ Run:
     docker compose exec django_core python manage.py test \
         apps.crm.tests_devis_auto -v 2
 """
+import json
+from decimal import Decimal
+from pathlib import Path
+
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm import stages
-from apps.crm.devis_auto import champs_manquants, message_manquants
+from apps.crm.devis_auto import (
+    champs_manquants, champs_manquants_detail, champs_requis,
+    message_manquants, visite_point_eau_avant_devis)
 from apps.crm.models import Lead, LeadActivity
 from apps.ventes.models import Devis
 
 User = get_user_model()
+
+# AGR403 — libellés du contrat ``devis_auto_pret.json`` (exemple_agricole).
+LIB_HMT = "HMT (m) ou niveau d'eau"
+LIB_DEBIT = ('Débit souhaité, besoin en eau (m³/jour) ou débit de la pompe '
+             'actuelle')
+MSG_AGRICOLE = f'Manque : {LIB_HMT}, {LIB_DEBIT}'
+
+CONTRAT_DEVIS_AUTO = json.loads(
+    (Path(__file__).resolve().parent / 'contract_samples'
+     / 'devis_auto_pret.json').read_text(encoding='utf-8'))
+
+
+class TestAgricoleSansCvAGR403(SimpleTestCase):
+    """AGR403 (D-AGR-3, D-AGR-4) — « devis auto prêt » agricole sans le CV,
+    et drapeau « visite du point d'eau avant devis ». Règle pure."""
+
+    def _lead(self, **kwargs):
+        return Lead(nom='Ferme', type_installation='agricole', **kwargs)
+
+    def test_hmt_et_debit_sans_cv_est_pret(self):
+        lead = self._lead(pompe_hmt_m=Decimal('60'),
+                          pompe_debit_m3h=Decimal('20'))
+        self.assertEqual(champs_manquants(lead), [])
+
+    def test_niveau_et_besoin_m3j_est_pret(self):
+        lead = self._lead(niveau_statique_m=Decimal('32'),
+                          besoin_eau_m3j=Decimal('135'))
+        self.assertEqual(champs_manquants(lead), [])
+
+    def test_niveau_et_debit_actuel_avec_heures_est_pret(self):
+        lead = self._lead(niveau_statique_m=Decimal('32'),
+                          pompe_actuelle_debit_m3h=Decimal('10'),
+                          pompage_heures_jour=Decimal('7'))
+        self.assertEqual(champs_manquants(lead), [])
+
+    def test_debit_actuel_sans_heures_n_est_pas_pret(self):
+        lead = self._lead(niveau_statique_m=Decimal('32'),
+                          pompe_actuelle_debit_m3h=Decimal('10'))
+        self.assertEqual(champs_manquants(lead), [LIB_DEBIT])
+
+    def test_cv_seul_n_est_pas_pret_et_nomme_les_deux_groupes(self):
+        # Le CV de la pompe ACTUELLE n'est dans aucun groupe : un lead qui ne
+        # porte que lui reste « pas prêt », les deux groupes nommés.
+        lead = self._lead()
+        self.assertEqual(
+            [e['champ'] for e in champs_manquants_detail(lead)],
+            ['pompe_hmt_m', 'pompe_debit_m3h'])
+        self.assertEqual(champs_manquants(lead), [LIB_HMT, LIB_DEBIT])
+        for groupe in champs_requis(lead):
+            self.assertNotIn('pompe_cv', groupe)
+            self.assertNotIn('pompe_actuelle_cv', groupe)
+
+    def test_visite_point_eau_requise_tant_que_niveau_ou_debit_manque(self):
+        lead = self._lead()
+        self.assertEqual(visite_point_eau_avant_devis(lead), {
+            'requise': True,
+            'motifs': ["niveau d'eau du forage inconnu",
+                       'débit du forage inconnu']})
+        lead.niveau_statique_m = Decimal('32')
+        self.assertEqual(visite_point_eau_avant_devis(lead), {
+            'requise': True, 'motifs': ['débit du forage inconnu']})
+        lead.debit_forage_m3h = Decimal('36')
+        self.assertEqual(visite_point_eau_avant_devis(lead),
+                         {'requise': False, 'motifs': []})
+
+    def test_visite_point_eau_vaut_none_hors_agricole(self):
+        for mode in (None, '', 'residentiel', 'industriel', 'commercial'):
+            lead = Lead(nom='x', type_installation=mode)
+            self.assertIsNone(visite_point_eau_avant_devis(lead), mode)
+
+    def test_non_regression_residentiel_et_pro(self):
+        self.assertEqual(champs_requis(Lead(nom='x')), [['facture_hiver']])
+        self.assertEqual(
+            champs_requis(Lead(nom='x', ete_differente=True)),
+            [['facture_hiver'], ['facture_ete']])
+        for mode in ('industriel', 'commercial'):
+            self.assertEqual(champs_requis(Lead(nom='x', type_installation=mode)),
+                             [['conso_mensuelle_kwh', 'bill_kwh']])
+
+    def test_sortie_reelle_egale_l_exemple_agricole_du_contrat(self):
+        attendu = CONTRAT_DEVIS_AUTO['exemple_agricole']['devis_auto']
+        lead = self._lead()
+        detail = champs_manquants_detail(lead)
+        manquants = [e['label'] for e in detail]
+        self.assertEqual({
+            'pret': not manquants,
+            'manquants': manquants,
+            'manquants_detail': detail,
+            'requis': champs_requis(lead),
+            'visite_point_eau_avant_devis': visite_point_eau_avant_devis(lead),
+        }, attendu)
 
 
 def make_company(slug='devisauto-co', nom='DevisAuto Co'):
@@ -74,13 +171,11 @@ class TestChampsManquants(TestCase):
             lead.conso_mensuelle_kwh = 1234.5
             self.assertEqual(champs_manquants(lead), [], mode)
 
-    def test_agricole_needs_pump_triplet(self):
+    def test_agricole_needs_the_two_hydraulic_groups(self):
         lead = self._lead(type_installation='agricole')
-        self.assertEqual(champs_manquants(lead),
-                         ['pompe (CV)', 'HMT', 'débit souhaité'])
-        lead.pompe_cv = 5.5
-        self.assertEqual(champs_manquants(lead), ['HMT', 'débit souhaité'])
+        self.assertEqual(champs_manquants(lead), [LIB_HMT, LIB_DEBIT])
         lead.pompe_hmt_m = 80
+        self.assertEqual(champs_manquants(lead), [LIB_DEBIT])
         lead.pompe_debit_m3h = 12
         self.assertEqual(champs_manquants(lead), [])
 
@@ -130,10 +225,11 @@ class TestDevisAutoEndpoint(TestCase):
             username='devisauto_ep', password='x',
             role_legacy='responsable', company=self.company)
         self.api = make_api(self.user)
-        # Lead agricole : pompe renseignée, HMT + débit manquants.
+        # Lead agricole : HMT + débit manquants (AGR403 — le CV de la pompe
+        # actuelle ne compte plus).
         self.lead = Lead.objects.create(
             company=self.company, nom='Agriculteur',
-            type_installation='agricole', pompe_cv=7.5)
+            type_installation='agricole')
 
     def _post(self, lead_id=None, api=None):
         api = api or self.api
@@ -144,8 +240,8 @@ class TestDevisAutoEndpoint(TestCase):
         resp = self._post()
         self.assertEqual(resp.status_code, 400, resp.data)
         # EXACTEMENT les champs manquants, même message que le sérialiseur.
-        self.assertEqual(resp.data['detail'], 'Manque : HMT, débit souhaité')
-        ser = self.api.get(f'/api/django/crm/leads/{self.lead.id}/').data
+        self.assertEqual(resp.data['detail'], MSG_AGRICOLE)
+        ser =self.api.get(f'/api/django/crm/leads/{self.lead.id}/').data
         self.assertEqual(ser['devis_auto']['message'], resp.data['detail'])
 
     def test_200_once_fields_filled(self):
@@ -187,7 +283,7 @@ class TestDevisAutoEndpoint(TestCase):
         resp = self._post(api=make_api(commerciale))
         # Autorisée (la règle métier répond 400 « manquants », pas 403).
         self.assertEqual(resp.status_code, 400, resp.data)
-        self.assertEqual(resp.data['detail'], 'Manque : HMT, débit souhaité')
+        self.assertEqual(resp.data['detail'], MSG_AGRICOLE)
 
 
 class TestAvancerStagePourDevis(TestCase):

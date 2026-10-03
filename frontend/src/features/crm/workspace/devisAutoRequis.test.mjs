@@ -50,5 +50,6 @@ test('un libellé RENOMMÉ laisse la puce cliquable sur le bon champ', () => {
 test('agricole : chaque puce vise son champ de pompage', () => {
   const bloc = exempleContrat('crm', 'devis_auto_pret', 'exemple_agricole').devis_auto
   const chips = chipsAComplete(etat({ stage: PIPELINE_STAGES[0], devis_auto: bloc }))
-  assert.deepEqual(chips.map((c) => c.field), ['lf-pompe-cv', 'lf-pompe-hmt', 'lf-pompe-debit'])
+  // AGR403 — le CV (pompe ACTUELLE) n'est plus requis : deux groupes hydrauliques.
+  assert.deepEqual(chips.map((c) => c.field), ['lf-pompe-hmt', 'lf-pompe-debit'])
 })

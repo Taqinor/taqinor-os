@@ -22,7 +22,8 @@ from .models import (
     SalleVenteItem, SavedView, SiteProfile, VisiteExterne, WebsiteLeadPayload,
 )
 from .devis_auto import (
-    champs_manquants_detail, champs_requis, message_manquants)
+    champs_manquants_detail, champs_requis, message_manquants,
+    visite_point_eau_avant_devis)
 from .scoring import compute_score, score_label, score_reasons
 
 
@@ -906,6 +907,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             'message': message_manquants(manquants) if manquants else None,
             'manquants_detail': detail,
             'requis': champs_requis(obj),
+            # AGR403 (D-AGR-4) — {requise, motifs} pour un agricole, null
+            # ailleurs : une information, jamais un blocage de `pret`.
+            'visite_point_eau_avant_devis': visite_point_eau_avant_devis(obj),
         }
 
     def get_next_activity(self, obj):
