@@ -170,6 +170,9 @@ def _playbook_correspond_au_lead(playbook, lead):
     criteres = {
         'type_installation': getattr(lead, 'type_installation', None),
         'canal': getattr(lead, 'canal', None),
+        # AGR525 — le playbook FDA vise le REMPLACEMENT DU BUTANE (Guide FDA
+        # 2024, D-AGR-6) : l'énergie de la pompe actuelle est un critère.
+        'pompe_alim_actuelle': getattr(lead, 'pompe_alim_actuelle', None),
     }
     try:
         return evaluate_condition_group(playbook.condition, criteres)
@@ -11497,11 +11500,39 @@ PLAYBOOKS_SEGMENT_CAD125 = (
     {
         'nom': 'Segment — dossier de subvention agricole (FDA)',
         'segments': ('agricole',),
+        # AGR525 — réservé à la pompe AU BUTANE : le pilote FDA vise le
+        # remplacement du butane (Guide FDA 2024, D-AGR-6). Un exploitant au
+        # gasoil ou sur le réseau ne reçoit pas la question.
+        'criteres': (('pompe_alim_actuelle', 'butane'),),
         'cle_message': 'dossier_fda',
         'tache': ('Demander où en est le dossier de subvention agricole FDA '
                   '(texte « dossier_fda » au catalogue des messages)'),
     },
 )
+
+
+def _condition_playbook_segment(entree):
+    """La condition `core.rules` d'un playbook de segment : ses segments, ET
+    ses critères supplémentaires (AGR525) quand il en porte."""
+    criteres = entree.get('criteres') or ()
+    if not criteres:
+        return _condition_segment(entree['segments'])
+    feuilles = [
+        {'field': 'type_installation', 'operator': 'eq', 'value': segment}
+        for segment in entree['segments']]
+    segment = (feuilles[0] if len(feuilles) == 1
+               else {'op': 'or', 'conditions': feuilles})
+    return {
+        'op': 'and',
+        'conditions': [segment] + [
+            {'field': champ, 'operator': 'eq', 'value': valeur}
+            for champ, valeur in criteres],
+    }
+
+
+def _lead_satisfait_criteres(lead, entree):
+    return all(getattr(lead, champ, None) == valeur
+               for champ, valeur in (entree.get('criteres') or ()))
 
 
 def _condition_segment(segments):
@@ -11539,7 +11570,7 @@ def seed_playbooks_segment(company, *, stage=None):
         playbook, cree = Playbook.objects.get_or_create(
             company=company, nom=entree['nom'],
             defaults={'actif': True,
-                      'condition': _condition_segment(entree['segments'])})
+                      'condition': _condition_playbook_segment(entree)})
         resultats.append(playbook)
         if not cree:
             continue
@@ -11563,8 +11594,46 @@ def cle_message_segment(lead):
         return None
     for entree in PLAYBOOKS_SEGMENT_CAD125:
         if segment in entree['segments']:
+            # AGR525 — `dossier_fda` pour un agricole AU BUTANE seulement.
+            if not _lead_satisfait_criteres(lead, entree):
+                return None
             return entree['cle_message']
     return None
+
+
+def rattraper_playbooks_pompe(lead):
+    """AGR525 (3) — l'énergie de la pompe vient de passer à « butane » sur un
+    lead agricole déjà à la prise de contact OU au-delà : les tâches des
+    playbooks qui lisent ``pompe_alim_actuelle`` (le playbook FDA) sont
+    générées pour les étapes déjà atteintes. Idempotent (``get_or_create`` sur
+    (lead, tâche)) ; jamais au Froid ni à « Nouveau ». Renvoie les
+    progressions créées."""
+    from . import stages as _stages
+    from .models import LeadPlaybookProgress, Playbook
+
+    if (getattr(lead, 'type_installation', None) or '') != 'agricole' \
+            or getattr(lead, 'pompe_alim_actuelle', None) != 'butane':
+        return []
+    ordre = [s for s in _stages.STAGES if s != _stages.COLD]
+    if lead.stage not in ordre or ordre.index(lead.stage) < ordre.index(
+            _stages.CONTACTED):
+        return []
+    atteintes = ordre[ordre.index(_stages.CONTACTED):ordre.index(lead.stage) + 1]
+    import json as _json
+    created = []
+    for playbook in Playbook.objects.filter(company=lead.company, actif=True):
+        if 'pompe_alim_actuelle' not in _json.dumps(playbook.condition or {}):
+            continue
+        if not _playbook_correspond_au_lead(playbook, lead):
+            continue
+        for etape in playbook.etapes.filter(stage__in=atteintes) \
+                .prefetch_related('taches'):
+            for tache in etape.taches.all():
+                progress, cree = LeadPlaybookProgress.objects.get_or_create(
+                    lead=lead, tache=tache)
+                if cree:
+                    created.append(progress)
+    return created
 
 
 # ── CAD-J ── CAD126 — variantes de SEGMENT, par exception ─────────────────

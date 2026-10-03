@@ -1124,6 +1124,16 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
                 logger.warning('AGR522: rappel FDA non posé (lead #%s)',
                                new_lead.pk, exc_info=True)
+        # AGR525 — la pompe passe au butane sur un agricole déjà contacté :
+        # la tâche FDA apparaît pour les étapes atteintes (idempotent).
+        if (old.pompe_alim_actuelle != new_lead.pompe_alim_actuelle
+                and new_lead.pompe_alim_actuelle == 'butane'):
+            from .services import rattraper_playbooks_pompe
+            try:
+                rattraper_playbooks_pompe(new_lead)
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+                logger.warning('AGR525: tâche FDA non générée (lead #%s)',
+                               new_lead.pk, exc_info=True)
         # QJR590 — une correction d'identité du lead suit sur SA fiche Client
         # (imprimée sur le PDF) tant que celle-ci n'a pas divergé à la main.
         if ecrits & {'nom', 'prenom', 'email', 'telephone', 'adresse',

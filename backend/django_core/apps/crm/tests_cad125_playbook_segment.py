@@ -99,7 +99,6 @@ class LeBonSegmentTests(SimpleTestCase):
         for segment, attendue in (
                 ('industriel', 'dossier_8221'),
                 ('commercial', 'dossier_8221'),
-                ('agricole', 'dossier_fda'),
                 ('residentiel', None),
                 ('', None),
                 (None, None)):
@@ -107,6 +106,15 @@ class LeBonSegmentTests(SimpleTestCase):
                 self.assertEqual(
                     cle_message_segment(
                         Lead(type_installation=segment)), attendue)
+        # AGR525 — `dossier_fda` pour un agricole AU BUTANE seulement.
+        self.assertEqual(cle_message_segment(Lead(
+            type_installation='agricole', pompe_alim_actuelle='butane')),
+            'dossier_fda')
+        for energie in (None, 'diesel', 'electrique', 'aucune'):
+            with self.subTest(energie=energie):
+                self.assertIsNone(cle_message_segment(Lead(
+                    type_installation='agricole',
+                    pompe_alim_actuelle=energie)))
 
 
 class LePlaybookPoseLaTacheTests(TestCase):
@@ -119,11 +127,11 @@ class LePlaybookPoseLaTacheTests(TestCase):
             role_legacy='responsable', company=self.company)
         seed_playbooks_segment(self.company)
 
-    def _lead(self, segment):
+    def _lead(self, segment, **extra):
         return Lead.objects.create(
             company=self.company, nom=f'Lead {segment or "vide"}',
             owner=self.acteur, stage=stages.CONTACTED,
-            type_installation=segment)
+            type_installation=segment, **extra)
 
     def _noms_recommandes(self, lead):
         return {p.nom for p in playbooks_recommandes(lead, stages.CONTACTED)}
@@ -142,8 +150,83 @@ class LePlaybookPoseLaTacheTests(TestCase):
         self.assertEqual(noms, {PLAYBOOKS_SEGMENT_CAD125[0]['nom']})
 
     def test_un_agricole_reçoit_le_playbook_FDA_et_lui_seul(self):
-        noms = self._noms_recommandes(self._lead('agricole'))
+        # AGR525 — l'agricole AU BUTANE (cible du pilote FDA).
+        noms = self._noms_recommandes(
+            self._lead('agricole', pompe_alim_actuelle='butane'))
         self.assertEqual(noms, {PLAYBOOKS_SEGMENT_CAD125[1]['nom']})
+
+    def test_agr525_un_agricole_au_diesel_n_a_aucune_tache_fda(self):
+        lead = self._lead('agricole', pompe_alim_actuelle='diesel')
+        self.assertEqual(self._noms_recommandes(lead), set())
+        self.assertIsNone(cle_message_segment(lead))
+        from apps.crm.services import generer_playbook_progress
+        self.assertEqual(generer_playbook_progress(lead, stages.CONTACTED),
+                         [])
+
+    def test_agr525_au_butane_tache_et_cle_fda(self):
+        from apps.crm.services import generer_playbook_progress
+        lead = self._lead('agricole', pompe_alim_actuelle='butane')
+        self.assertEqual(len(generer_playbook_progress(
+            lead, stages.CONTACTED)), 1)
+        self.assertEqual(cle_message_segment(lead), 'dossier_fda')
+
+    def test_agr525_diesel_puis_butane_a_contacted_la_tache_apparait(self):
+        from apps.crm.models import LeadPlaybookProgress
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        lead = self._lead('agricole', pompe_alim_actuelle='diesel')
+        self.assertFalse(
+            LeadPlaybookProgress.objects.filter(lead=lead).exists())
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.acteur)}')
+        resp = api.patch(f'/api/django/crm/leads/{lead.id}/',
+                         {'pompe_alim_actuelle': 'butane'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            LeadPlaybookProgress.objects.filter(lead=lead).count(), 1)
+        # Rejouer ne double rien.
+        from apps.crm.services import rattraper_playbooks_pompe
+        lead.refresh_from_db()
+        self.assertEqual(rattraper_playbooks_pompe(lead), [])
+        self.assertEqual(
+            LeadPlaybookProgress.objects.filter(lead=lead).count(), 1)
+
+    def test_agr525_migration_rejouee_et_playbook_personnalise_intact(self):
+        import importlib
+        from django.apps import apps as django_apps
+        migration = importlib.import_module(
+            'apps.crm.migrations.0122_agr525_seed_playbooks_segment_existants')
+        ancienne = Company.objects.create(slug='agr525-anc', nom='anc')
+        fda = Playbook.objects.create(
+            company=ancienne, nom=PLAYBOOKS_SEGMENT_CAD125[1]['nom'],
+            condition=migration.ANCIENNE_CONDITION_FDA)
+        perso = Company.objects.create(slug='agr525-perso', nom='perso')
+        condition_perso = {'field': 'canal', 'operator': 'eq',
+                           'value': 'reference'}
+        fda_perso = Playbook.objects.create(
+            company=perso, nom=PLAYBOOKS_SEGMENT_CAD125[1]['nom'],
+            condition=condition_perso)
+        migration.rattraper(django_apps, None)
+        etat = sorted(Playbook.objects.values_list(
+            'company_id', 'nom', 'condition'), key=repr)
+        migration.rattraper(django_apps, None)
+        self.assertEqual(sorted(Playbook.objects.values_list(
+            'company_id', 'nom', 'condition'), key=repr), etat)
+        fda.refresh_from_db()
+        fda_perso.refresh_from_db()
+        self.assertEqual(fda.condition, migration.NOUVELLE_CONDITION_FDA)
+        self.assertEqual(fda_perso.condition, condition_perso)
+        # Les deux playbooks existent pour chaque société, une seule fois.
+        for company in (ancienne, perso, self.company):
+            self.assertEqual(
+                Playbook.objects.filter(company=company).count(), 2)
+        # La condition semée par le code égale celle de la migration.
+        self.assertEqual(
+            Playbook.objects.get(
+                company=self.company,
+                nom=PLAYBOOKS_SEGMENT_CAD125[1]['nom']).condition,
+            migration.NOUVELLE_CONDITION_FDA)
 
     def test_un_residentiel_n_en_recoit_AUCUN(self):
         """Il a déjà `j6_garanties` : on n'invente pas un dossier
