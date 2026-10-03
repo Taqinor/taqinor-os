@@ -314,3 +314,162 @@ def conception(*, besoin, profils_horaires=None, agricole_pump_hours=None,
         "alertes": alertes,
         "hypotheses": utilisees(cles),
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# AGR118 — mode ``existante`` (D-AGR-7) : la pompe déjà dans le forage est
+# CONSERVÉE ; variateur et champ dimensionnés sur sa PLAQUE.
+# ═══════════════════════════════════════════════════════════════════════════
+
+NOM_POMPE_EXISTANTE = "Pompe existante conservée"
+
+
+def _norme_plaque(plaque):
+    plaque = plaque or {}
+    kw = _flottant(plaque.get("kw"))
+    cv = _flottant(plaque.get("cv"))
+    tension = _flottant(plaque.get("tension_v"))
+    phases = _flottant(plaque.get("phases"))
+    courant = _flottant(plaque.get("courant_a"))
+    return {"kw": kw if kw and kw > 0 else None,
+            "tension_v": int(tension) if tension else None,
+            "phases": int(phases) if phases else None,
+            "cv": cv if cv and cv > 0 else None,
+            "courant_a": courant if courant and courant > 0 else None}
+
+
+def pompe_existante(*, plaque, variateurs, panneau=None,
+                    besoin_m3_jour_mois=None, hmt_m=None,
+                    debit_declare_m3h=None, type_pompe=None,
+                    profils_horaires=None, e_d_kwh_kwc_mois=None,
+                    temperatures=None, salissure_pct=None,
+                    agricole_pump_hours=None, mois_critique=None,
+                    coordonnees=None, reponse_pvgis=None):
+    """AGR118 — pompe existante : aucune ligne pompe, variateur sur la plaque.
+
+    * ``plaque`` : ``{kw, tension_v, phases, cv, courant_a}`` (saisie ou
+      relevé de visite D-AGR-4) ;
+    * variateur = :func:`core.pompage.champ.choisir_variateur` sur le kW
+      PLAQUE, parmi les variateurs dont la SORTIE (tension, phases) égale la
+      plaque (:func:`core.pompage.selection.variateurs_compatibles_plaque`) ;
+      plaque triphasée 220 V sans fiche publiant cette sortie ⇒ variateur
+      220 V proposé avec l'alerte « compatibilité à vérifier sur la fiche » ;
+    * kW plaque absent (CV seul) ⇒ alerte « kW de plaque à relever », AUCUN
+      variateur choisi : la conversion 0,7355 ne sert qu'à l'affichage ;
+    * champ = AGR115 ; production : courbe inconnue ⇒ ``None``, sauf débit
+      DÉCLARÉ de la pompe actuelle ⇒ estimation étiquetée (AGR114).
+
+    Rend ``{pompe, variateur, prix_a_renseigner, puissance_retenue, champ,
+    production, alertes, hypotheses}`` (formes du contrat
+    ``etude_pompage_preview.json``).
+    """
+    from core.pompage.champ import (
+        choisir_variateur, dimensionner_champ, fiche_saisie,
+        phases_sortie_variateur, tension_sortie_variateur,
+    )
+    from core.pompage.selection import (
+        TENSION_MONO_V, TENSION_TRI_V, prix_connu,
+        variateurs_compatibles_plaque,
+    )
+
+    alertes = []
+    cles = {"cv_vers_kw"}
+    p = _norme_plaque(plaque)
+    phases = p["phases"]
+    tension = p["tension_v"]
+    if tension is None and phases is not None:
+        tension = TENSION_MONO_V if phases == 1 else TENSION_TRI_V
+    alimentation = {1: "mono", 3: "tri"}.get(phases)
+
+    affiche_kw = p["kw"]
+    if affiche_kw is None and p["cv"]:
+        affiche_kw = p["cv"] * valeur("cv_vers_kw")
+    affiche_cv = p["cv"] or (p["kw"] / valeur("cv_vers_kw")
+                             if p["kw"] else None)
+
+    pompe = {
+        "mode": "existante", "produit": None, "nom": NOM_POMPE_EXISTANTE,
+        "placeholder": False, "classement": None, "type_pompe": type_pompe,
+        "alimentation": alimentation, "kw": p["kw"], "tension_v": tension,
+        "plaque": dict(p), "courbe": None, "point_fonctionnement": None,
+        "debit_a_hmt_m3h": None, "prix_connu": None,
+    }
+    variateur = {"produit": None, "nom": None, "kw": None, "tension_v": None,
+                 "phases_sortie": None, "fiche_saisie": False,
+                 "prix_connu": False, "motif": None}
+    candidats = []
+
+    if p["kw"] is None:
+        motif = ("kW de plaque à relever (visite « relevé du point d'eau », "
+                 "D-AGR-4) : variateur non choisi")
+        alertes.append(_alerte(
+            "kw_plaque_a_relever", "plaque.kw",
+            "kW de plaque de la pompe existante à relever (D-AGR-4) : le "
+            "variateur n'est pas choisi sur le CV (conversion × 0,7355 "
+            "affichée seulement)."))
+        variateur["motif"] = motif
+    else:
+        compatibles, a_verifier = variateurs_compatibles_plaque(
+            variateurs, tension_v=tension, phases=phases)
+        choix = choisir_variateur(
+            compatibles, kw_plaque=p["kw"], tension_v=tension, phases=phases,
+            courant_nominal_a=p["courant_a"])
+        if choix["variateur"] is None and a_verifier:
+            choix = choisir_variateur(
+                a_verifier, kw_plaque=p["kw"], tension_v=tension,
+                phases=phases, courant_nominal_a=p["courant_a"])
+            if choix["variateur"] is not None:
+                alertes.append(_alerte(
+                    "compatibilite_a_verifier", "variateur.fiche",
+                    "Plaque triphasée %d V : compatibilité à vérifier sur la "
+                    "fiche du variateur %s (sortie triphasée %d V non "
+                    "publiée)." % (tension, choix["variateur"].get("nom"),
+                                   tension)))
+        alertes.extend(a for a in choix["alertes"]
+                       if a["code"] != "kw_plaque_a_relever")
+        candidats = choix["candidats"]
+        retenu = choix["variateur"]
+        if retenu is not None:
+            variateur.update({
+                "produit": retenu.get("id"), "nom": retenu.get("nom"),
+                "kw": _flottant(retenu.get("pompe_kw")),
+                "tension_v": tension_sortie_variateur(retenu),
+                "phases_sortie": phases_sortie_variateur(retenu),
+                "fiche_saisie": fiche_saisie(retenu),
+                "prix_connu": prix_connu(retenu)})
+            if not variateur["fiche_saisie"]:
+                variateur["motif"] = ("fiche variateur à saisir : tension et "
+                                      "phases de sortie non vérifiées sur la "
+                                      "fiche")
+        else:
+            variateur["motif"] = choix["motif"]
+
+    champ = None
+    production = None
+    if panneau is not None:
+        champ = dimensionner_champ(
+            besoin_m3_jour_mois=besoin_m3_jour_mois, hmt_m=hmt_m,
+            panneau=panneau, variateurs_candidats=candidats, pompe=None,
+            p_plaque_kw=p["kw"], debit_declare_m3h=debit_declare_m3h,
+            profils_horaires=profils_horaires,
+            e_d_kwh_kwc_mois=e_d_kwh_kwc_mois, temperatures=temperatures,
+            salissure_pct=salissure_pct,
+            agricole_pump_hours=agricole_pump_hours,
+            mois_critique=mois_critique, coordonnees=coordonnees,
+            reponse_pvgis=reponse_pvgis)
+        production = champ["production"]
+        alertes.extend(champ["alertes"])
+    if production is None:
+        alertes.append(_alerte(
+            "production_omise", "production",
+            "Pompe existante sans courbe ni débit déclaré : production d'eau "
+            "omise (jamais de m³/jour sans courbe)."))
+
+    return {
+        "pompe": pompe, "variateur": variateur, "prix_a_renseigner": [],
+        "puissance_retenue": {
+            "kw": round(affiche_kw, 2) if affiche_kw else None,
+            "cv": round(affiche_cv, 1) if affiche_cv else None},
+        "champ": champ, "production": production, "alertes": alertes,
+        "hypotheses": utilisees(cles),
+    }
