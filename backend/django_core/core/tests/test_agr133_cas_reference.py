@@ -9,9 +9,9 @@ Rendement : le kWc de départ AGR115 vaut E / (η × E_d). Les deux références
 de dimensionnement (AMEE, SPIS) ne publient pas leur η ; elles sont tenues à
 ± 20 % avec la borne BASSE de la plage AMEE citée par la table AGR110
 (``rendement_groupe`` : « plage AMEE 0,35-0,55 »), lue dans la table — jamais
-recopiée ici. Avec la valeur par défaut « EST. » de la table (0,5), elles NE
-sont PAS tenues (kWc sous-estimé de 17 à 37 %) : cas rouge gardé en
-``expectedFailure`` tant que le réglage n'est pas tranché.
+recopiée ici. Décision fondateur du 03/10/2026 : la valeur par défaut « EST. »
+de la table vaut cette borne basse (0,35) — avec l'ancien 0,5, le kWc sortait
+sous-estimé de 17 à 37 %.
 """
 
 import re
@@ -71,10 +71,9 @@ class EnergieVersKwc(unittest.TestCase):
                                      SPIS["irradiation"], _eta_amee_bas()),
                     SPIS["kwc"])
 
-    @unittest.expectedFailure
     def test_references_tenues_avec_le_rendement_par_defaut(self):
-        """ROUGE : avec ``rendement_groupe`` = 0,5 « EST. » (défaut de la
-        table AGR110), AMEE et SPIS sortent de la bande ± 20 %."""
+        """Le défaut ``rendement_groupe`` de la table AGR110 (0,35, décision
+        fondateur du 03/10/2026) tient AMEE et SPIS dans la bande ± 20 %."""
         eta = valeur("rendement_groupe")
         for hmt, reference in AMEE_TABLE:
             _dans_bande(self, kwc_depart(AMEE_VOLUME_M3_J, hmt,

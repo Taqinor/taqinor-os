@@ -58,8 +58,9 @@ class QuatreCas(unittest.TestCase):
         self.assertIsNotNone(res["pompe"]["nom"])
         self.assertFalse(res["pompe"]["placeholder"])
         self.assertEqual(res["etape"], "pre_dimensionnement")
-        # kW min = 10 × 60 × 2,725 / (1000 × 0,5) = 3,27 kW ⇒ 5,5 CV (4,05).
-        self.assertEqual(res["pompe"]["produit"], 4)
+        # kW min = 10 × 60 × 2,725 / (1000 × 0,35) = 4,67 kW ⇒ 7,5 CV (5,52)
+        # (rendement_groupe = 0,35, décision fondateur du 03/10/2026).
+        self.assertEqual(res["pompe"]["produit"], 5)
         self.assertEqual(res["pompe"]["etiquette"], ETIQUETTE_A_CONFIRMER)
         self.assertFalse(res["production_publiable"])
         self.assertIn(OSP_30_8["nom"], res["prix_a_renseigner"])
