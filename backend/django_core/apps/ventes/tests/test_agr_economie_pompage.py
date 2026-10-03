@@ -492,3 +492,90 @@ class CoutDuM3SensibiliteSeuilTests(SimpleTestCase):
         self.assertEqual(sens[0]['economie_nette_mad_an'],
                          round((800 - 100) * 3 - 600, 2))
         self.assertIsNone(bloc['seuil_rentabilite_carburant'])
+
+
+# ── AGR204 ──────────────────────────────────────────────────────────────────
+
+def etude_hmt(volume, hmt):
+    etude = etude_declaree(volume=volume, production=volume * 2)
+    etude['hmt'] = {'valeur_m': hmt, 'source': 'calculee'}
+    return etude
+
+
+def saisies_gasoil_jour(litres, *, confirmee=False):
+    s = saisies_carburant(energie='diesel', quantite=litres, unite='litre',
+                          periode='jour_irrigation', jours=7, prix=12.0,
+                          mois=(6, 7, 8))
+    s['coherence_confirmee'] = confirmee
+    return s
+
+
+class GardeDeCoherenceTests(SimpleTestCase):
+    """AGR204 — litres ou bouteilles contre le volume pompé : avertir,
+    jamais corriger."""
+
+    def bloc(self, litres, volume, hmt, confirmee=False):
+        return E.economie_pompage(
+            saisies_gasoil_jour(litres, confirmee=confirmee),
+            sortie_etude=etude_hmt(volume, hmt), lignes=lignes_reference(),
+            reglages=CHARGES)
+
+    def test_constante_hydraulique_physique(self):
+        self.assertAlmostEqual(E.ENERGIE_HYDRAULIQUE_KWH_PAR_M3_M, 0.002725)
+
+    def test_chaque_pci_porte_sa_source_url_et_date(self):
+        for cle, pci in E.PCI_CARBURANTS.items():
+            with self.subTest(cle=cle):
+                self.assertIn('https://', pci['source'])
+                self.assertIn('03/10/2026', pci['source'])
+
+    def test_3_litres_pour_500_m3_a_60_m_avertit_sans_corriger(self):
+        bloc = self.bloc(3, 500, 60)
+        self.assertEqual(len(bloc['coherence']), 1)
+        alerte = bloc['coherence'][0]
+        self.assertEqual(alerte['niveau'], 'avertissement')
+        self.assertEqual(alerte['champ'],
+                         'saisies_economie_pompage.consommation')
+        self.assertEqual(alerte['message'], E.MESSAGE_IMPOSSIBLE)
+        self.assertFalse(bloc['publiable_client'])
+        # Chiffres INCHANGÉS : la dépense reste celle déclarée.
+        attendu = 3 * 7 * (30 + 31 + 31) / 7 * 12.0
+        self.assertEqual(bloc['depense_actuelle']['annuelle_mad'],
+                         round(attendu, 2))
+        self.assertIsNone(
+            bloc['vue_interne']['rendement_global_implicite_pct'])
+
+    def test_meme_cas_confirme_devient_publiable(self):
+        bloc = self.bloc(3, 500, 60, confirmee=True)
+        self.assertEqual(len(bloc['coherence']), 1)
+        self.assertTrue(bloc['publiable_client'])
+
+    def test_pci_non_source_omission_nommee(self):
+        from unittest import mock
+        sans = {k: dict(v, source='') for k, v in E.PCI_CARBURANTS.items()}
+        with mock.patch.object(E, 'PCI_CARBURANTS', sans):
+            bloc = self.bloc(3, 500, 60)
+        self.assertEqual(bloc['coherence'], [])
+        self.assertIn('pouvoir calorifique non sourcé', [
+            o['motif'].split(' :')[0]
+            for o in bloc['vue_interne']['omissions']])
+
+    def test_cas_realiste_aucun_avertissement_rendement_interne(self):
+        bloc = self.bloc(10, 100, 60)
+        self.assertEqual(bloc['coherence'], [])
+        hydraulique = 0.002725 * 60 * 100
+        carburant = 10 * 43.3 * 0.845 / 3.6
+        self.assertAlmostEqual(
+            bloc['vue_interne']['rendement_global_implicite_pct'],
+            round(hydraulique / carburant * 100, 1), places=1)
+        publique = {k: v for k, v in bloc.items() if k != 'vue_interne'}
+        import json
+        self.assertNotIn('rendement', json.dumps(publique))
+
+    def test_retour_d_un_an_alerte_interne_sans_bloquer(self):
+        # 200 L/jour × 12 MAD sur 3 mois : le retour tombe à 1 an.
+        bloc = self.bloc(200, 3000, 20)
+        self.assertLessEqual(bloc['economie']['retour_ans'], 1)
+        self.assertEqual(bloc['vue_interne']['alertes'][0]['code'],
+                         'retour_tres_court')
+        self.assertTrue(bloc['publiable_client'])

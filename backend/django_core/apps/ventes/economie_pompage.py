@@ -367,6 +367,7 @@ def depense_actuelle(saisies):
     resultat['_entretien'] = entretien or 0.0
     resultat['_mois'] = list(mois)
     resultat['_unite'] = unite
+    resultat['_energie'] = energie
     return resultat
 
 
@@ -783,6 +784,102 @@ def _seuil(dep, parts, investissement, charges, remplacements_mad):
                        f'{HORIZON_ANS} ans vaut 0 (indexation 0 %)'}, None
 
 
+# ── AGR204 — garde de cohérence : avertir, jamais corriger ──────────────────
+
+#: Énergie hydraulique par m³ et par mètre de HMT : ρ·g / 3,6·10⁶ =
+#: 1000 × 9,81 / 3 600 000 kWh/(m³·m) — physique (ρ = 1000 kg/m³,
+#: g = 9,81 m/s²), même valeur que la table ``hypotheses_pompage.json``.
+ENERGIE_HYDRAULIQUE_KWH_PAR_M3_M = 1000 * 9.81 / 3600000
+
+_GIEC = ('GIEC 2006, Lignes directrices pour les inventaires nationaux, '
+         'vol. 2, ch. 1, tableau 1.2 (PCI par défaut et bornes de '
+         "l'intervalle de confiance à 95 %) — https://www.ipcc-nggip.iges.or."
+         'jp/public/2006gl/pdf/2_Volume2/V2_1_Ch1_Introduction.pdf, relevé '
+         'le 03/10/2026')
+
+#: Pouvoir calorifique INFÉRIEUR par unité déclarée. On retient la BORNE
+#: HAUTE de l'intervalle du GIEC (et la masse volumique MAXIMALE du gazole) :
+#: la garde ne signale alors qu'une saisie impossible même pour le carburant
+#: le plus énergétique admis — jamais un simple écart de qualité.
+#: Une entrée sans ``source`` désactive la garde de CE carburant (motif
+#: « pouvoir calorifique non sourcé »).
+PCI_CARBURANTS = {
+    ('diesel', 'litre'): {
+        # 43,3 MJ/kg (borne haute « Gas/Diesel Oil », défaut 43,0) × 0,845
+        # kg/L (masse volumique maximale à 15 °C de la norme EN 590) ÷ 3,6.
+        'kwh_par_unite': 43.3 * 0.845 / 3.6,
+        'source': (_GIEC + ' : Gas/Diesel Oil 43,0 TJ/Gg (borne haute '
+                   '43,3) ; masse volumique ≤ 845 kg/m³ à 15 °C, norme '
+                   'EN 590 (https://en.wikipedia.org/wiki/EN_590, relevé le '
+                   '03/10/2026)'),
+    },
+    ('butane', 'bouteille_12kg'): {
+        # 52,2 MJ/kg (borne haute « Liquefied Petroleum Gases », défaut
+        # 47,3) × 12 kg (contenance de l'unité déclarée) ÷ 3,6.
+        'kwh_par_unite': 52.2 * 12 / 3.6,
+        'source': (_GIEC + ' : Liquefied Petroleum Gases 47,3 TJ/Gg (borne '
+                   'haute 52,2) ; 12 kg = contenance de la bouteille '
+                   'déclarée'),
+    },
+}
+
+CHAMP_CONSOMMATION = 'saisies_economie_pompage.consommation'
+MESSAGE_IMPOSSIBLE = ('consommation déclarée physiquement impossible pour ce '
+                      'volume et cette HMT — vérifier avec le client')
+
+
+def _hmt(sortie_etude):
+    valeur = ((sortie_etude or {}).get('hmt') or {}).get('valeur_m')
+    if isinstance(valeur, (int, float)) and not isinstance(valeur, bool) \
+            and valeur > 0:
+        return float(valeur)
+    return None
+
+
+def _coherence(dep, saisies, sortie_etude, mois, jours_semaine):
+    """``(coherence[], rendement_pct | None, omissions internes, motifs)``.
+
+    Énergie hydraulique annuelle = 0,002725 × HMT × volume pompé DÉCLARÉ ;
+    énergie du carburant déclaré = quantité annuelle × PCI. Rendement > 100 %
+    ⇒ avertissement nommant le champ ; AUCUNE valeur n'est corrigée. Le
+    critère de Nebraska n'est JAMAIS utilisé (critère de performance, pas une
+    borne physique).
+    """
+    if dep['cas'] != CAS_CARBURANT or dep['statut'] != 'calcule':
+        return [], None, [{'cle': 'rendement_global_implicite_pct',
+                           'motif': 'sans objet : aucun carburant déclaré'}], []
+    pci = PCI_CARBURANTS.get((dep['_energie'], dep['_unite']))
+    if not pci or not str(pci.get('source') or '').strip():
+        return [], None, [{'cle': 'rendement_global_implicite_pct',
+                           'motif': 'pouvoir calorifique non sourcé : garde '
+                                    'de cohérence omise'}], []
+    hmt = _hmt(sortie_etude)
+    declare = volume_declare_par_mois(sortie_etude)
+    if hmt is None or declare is None or jours_semaine is None:
+        return [], None, [{'cle': 'rendement_global_implicite_pct',
+                           'motif': 'garde de cohérence non calculable : '
+                                    'HMT, volume pompé déclaré ou jours '
+                                    "d'irrigation absents"}], []
+    volume = sum(declare[m - 1] * jours_irrigues_du_mois(m, jours_semaine)
+                 for m in mois)
+    hydraulique = ENERGIE_HYDRAULIQUE_KWH_PAR_M3_M * hmt * volume
+    carburant = sum(dep['quantite_par_mois']) * pci['kwh_par_unite']
+    if carburant <= 0:
+        return [], None, [], []
+    if hydraulique > carburant:
+        motifs = []
+        if not (saisies or {}).get('coherence_confirmee'):
+            motifs.append('consommation déclarée à confirmer avec le client '
+                          '(garde de cohérence)')
+        return [{'code': 'rendement_superieur_100',
+                 'niveau': 'avertissement', 'champ': CHAMP_CONSOMMATION,
+                 'message': MESSAGE_IMPOSSIBLE}], None, [
+            {'cle': 'rendement_global_implicite_pct',
+             'motif': 'rendement implicite supérieur à 100 % : non publié'}
+        ], motifs
+    return [], round(hydraulique / carburant * 100.0, 1), [], []
+
+
 # ── Le bloc ─────────────────────────────────────────────────────────────────
 
 def _bloc_vide():
@@ -800,6 +897,7 @@ def _bloc_vide():
             'scenario_butane_non_subventionne': None,
             'aide_fda_indicative': None,
             'rendement_global_implicite_pct': None, 'omissions': [],
+            'alertes': [],
         },
     }
 
@@ -889,6 +987,23 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
         dep, parts, investissement, charges, remplacements_mad)
     if omis_seuil:
         bloc['omissions'].append(omis_seuil)
+
+    interne = bloc['vue_interne']
+    coherence, rendement, omis_interne, motifs_coherence = _coherence(
+        dep, saisies, sortie_etude, mois, jours_semaine)
+    bloc['coherence'] = coherence
+    interne['rendement_global_implicite_pct'] = rendement
+    interne['omissions'].extend(omis_interne)
+    motifs.extend(motifs_coherence)
+    retour = economie.get('retour_ans')
+    if retour is not None and retour <= 1:
+        # Alerte INTERNE, jamais bloquante : un retour d'un an ou moins se
+        # vérifie avec le client avant d'être imprimé.
+        interne['alertes'].append({
+            'code': 'retour_tres_court', 'niveau': 'a_verifier',
+            'champ': CHAMP_CONSOMMATION,
+            'message': f'retour sur investissement de {retour} an : à '
+                       f'vérifier avec le client'})
 
     bloc['publiable_client'] = not motifs
     return bloc
