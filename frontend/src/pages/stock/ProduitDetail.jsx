@@ -11,6 +11,7 @@ import {
 } from '../../ui/charts'
 import {
   categorieIcone, estPompage, pointsCourbePompe,
+  libelleRolePompage, libelleTypePompe, libelleAlimentation,
 } from '../../features/stock/catalogue'
 import { useHasPermission } from '../../hooks/useHasPermission'
 import {
@@ -283,6 +284,23 @@ function OngletFicheTechnique({ produit, onEdit }) {
             <>
               <Ligne label="Puissance pompe (kW)" valeur={produit.pompe_kw} />
               <Ligne label="Tension (V)" valeur={produit.tension_v} />
+            </>
+          )}
+          {/* AGR105 — rôle pompage déclaré, type, alimentation et provenance
+              de la courbe constructeur : une valeur vide se lit « non publié »,
+              jamais un défaut. */}
+          {(produit.role_pompage || estPompage(produit)) && (
+            <>
+              <Ligne label="Rôle pompage" valeur={libelleRolePompage(produit.role_pompage) || null} />
+              <Ligne label="Type de pompe" valeur={libelleTypePompe(produit.type_pompe) || null} />
+              <Ligne label="Alimentation" valeur={libelleAlimentation(produit.alimentation) || null} />
+              <Ligne label="Provenance de la courbe" valeur={produit.courbe_source?.document
+                ? [produit.courbe_source.document,
+                  produit.courbe_source.date,
+                  produit.courbe_source.page != null ? `p. ${produit.courbe_source.page}` : null,
+                ].filter(Boolean).join(' · ')
+                : null} />
+              <Ligne label="Fréquence de la courbe (Hz)" valeur={produit.courbe_frequence_hz} />
             </>
           )}
         </div>

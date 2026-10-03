@@ -91,7 +91,7 @@ function _keySpecParType(type, p) {
     const hmt = parseFloat(p.hmt_m)
     const parts = []
     if (cv) parts.push(`${cv} CV`)
-    if (hmt) parts.push(`HMT max ${hmt} m`)
+    if (hmt) parts.push(`HMT d'arrêt ${hmt} m`)
     if (p.courbe_pompe) parts.push('courbe constructeur')
     return parts.join(' · ') || null
   }
@@ -128,7 +128,7 @@ export function keySpec(p) {
     const hmt = parseFloat(p.hmt_m)
     const parts = []
     if (cv) parts.push(`${cv} CV`)
-    if (hmt) parts.push(`HMT max ${hmt} m`)
+    if (hmt) parts.push(`HMT d'arrêt ${hmt} m`)
     if (p.courbe_pompe) parts.push('courbe constructeur')
     return parts.join(' · ') || null
   }
@@ -266,4 +266,81 @@ export function searchCatalogue(produits, query) {
     const foin = _botteDeFoin(p)
     return jetons.every((j) => foin.includes(j))
   })
+}
+
+/**
+ * AGR105 — contrôle d'une courbe de pompe saisie ligne par ligne, MIROIR de la
+ * règle serveur AGR102 (`controle_courbe_pompe_lisible`) : valeurs >= 0,
+ * débits STRICTEMENT croissants, HMT NON croissante. Seules les lignes
+ * COMPLÈTES (deux nombres) comptent comme des points ; rien n'est re-trié,
+ * arrondi ni corrigé en silence.
+ *
+ * Rend `{ parLigne, bandeau }` : `parLigne[i] = { debit?: msg, hmt?: msg }`
+ * (index = ligne de la table, pour afficher le message SOUS la cellule
+ * fautive) ; `bandeau` = phrase nommant la première cellule fautive, ou null.
+ */
+export function erreursCourbePompe(rows) {
+  const parLigne = {}
+  let bandeau = null
+  const marquer = (i, col, message) => {
+    parLigne[i] = { ...(parLigne[i] ?? {}), [col]: message }
+    if (!bandeau) bandeau = `Courbe constructeur, point ${i + 1} — ${message}`
+  }
+  let prec = null
+  rows.forEach((r, i) => {
+    const debit = parseFloat(r?.debit)
+    const hmt = parseFloat(r?.hmt)
+    if (!Number.isFinite(debit) || !Number.isFinite(hmt)) return
+    if (debit < 0) marquer(i, 'debit', 'le débit ne peut pas être négatif.')
+    if (hmt < 0) marquer(i, 'hmt', 'la HMT ne peut pas être négative.')
+    if (prec) {
+      if (debit <= prec.debit) {
+        marquer(i, 'debit', `les débits doivent être strictement croissants (${debit} après ${prec.debit}).`)
+      }
+      if (hmt > prec.hmt) {
+        marquer(i, 'hmt', `la HMT doit être non croissante (${hmt} après ${prec.hmt}).`)
+      }
+    }
+    prec = { debit, hmt }
+  })
+  return { parLigne, bandeau }
+}
+
+// AGR105 — vocabulaire pompage. Les clés sont celles de `ROLES_POMPAGE`
+// (core/product_roles.py, contrat `produit_pompage.json`) ; les libellés FR
+// sont ceux du contrat. Le serveur reste l'autorité (400 nommant `role_pompage`).
+// source-choix: core.product_roles.ROLES_POMPAGE
+export const ROLES_POMPAGE = [
+  ['pompe', 'Pompe'],
+  ['variateur_pompage', 'Variateur de pompage'],
+  ['afficheur_variateur', 'Afficheur du variateur'],
+  ['structure_sol', 'Structure au sol'],
+  ['cable_dc', 'Câble DC (panneaux → variateur)'],
+  ['cable_descente', 'Câble de descente (variateur → pompe)'],
+  ['protection_dc', 'Protection DC'],
+  ['sonde_niveau', 'Sonde de niveau (protection marche à sec)'],
+  ['compteur_eau', "Compteur d'eau"],
+  ['colonne_refoulement', 'Colonne de refoulement'],
+  ['clapet', 'Clapet anti-retour'],
+  ['tuyauterie', 'Tuyauterie'],
+  ['bassin', 'Bassin'],
+  ['installation_pompage', 'Installation pompage'],
+  ['entretien_pompage', 'Entretien pompage'],
+  ['antivol', 'Antivol'],
+  ['cloture', 'Clôture'],
+]
+// source-choix: stock.Produit.type_pompe
+export const TYPES_POMPE = [['immergee', 'Immergée'], ['surface', 'Surface'], ['dc', 'DC']]
+// source-choix: stock.Produit.alimentation
+export const ALIMENTATIONS = [['mono', 'Monophasée'], ['tri', 'Triphasée'], ['dc', 'DC']]
+
+/** Libellé FR d'une clé de vocabulaire pompage (`''` si inconnue / vide). */
+export function libelleRolePompage(cle) {
+  return ROLES_POMPAGE.find(([k]) => k === cle)?.[1] ?? ''
+}
+export function libelleTypePompe(cle) {
+  return TYPES_POMPE.find(([k]) => k === cle)?.[1] ?? ''
+}
+export function libelleAlimentation(cle) {
+  return ALIMENTATIONS.find(([k]) => k === cle)?.[1] ?? ''
 }
