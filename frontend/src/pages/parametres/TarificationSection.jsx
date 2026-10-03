@@ -56,6 +56,9 @@ export default function TarificationSection() {
   // jamais renvoyés, pour ne rien écraser côté serveur) + refus par champ.
   const [lot5, setLot5] = useState(null)
   const [erreurs, setErreurs] = useState({})
+  // AGR210 — pompage agricole (barème des charges + règle FDA datée, calcul
+  // INTERNE). null = non servis : jamais renvoyés, rien n'est écrasé.
+  const [pompage, setPompage] = useState(null)
 
   useEffect(() => {
     parametresApi.getTariffSettings()
@@ -84,6 +87,7 @@ export default function TarificationSection() {
           : DEFAULT_TIERS.map(t => ({ ...t })))
         setVersion(d.version || 1)
         setLot5(lot5DepuisServeur(d))
+        setPompage(pompageDepuisServeur(d))
       })
       .catch(() => {
         setForm(FALLBACK_FORM)
@@ -135,6 +139,30 @@ export default function TarificationSection() {
     setLot5(l => ({ ...l, taxes: l.taxes.filter((_, j) => j !== i) }))
     oublierErreur('taxes')
   }
+  // AGR210 — barème des charges solaires de pompage + règle FDA datée.
+  const setCharge = (i, cle, valeur) => {
+    setPompage(p => ({
+      ...p, charges: p.charges.map((c, j) => (j === i ? { ...c, [cle]: valeur } : c)),
+    }))
+    oublierErreur('charges_pompage_solaire')
+  }
+  const addCharge = () => setPompage(p => ({
+    ...p, charges: [...p.charges, { libelle: '', montant_mad_an: '', source: '' }],
+  }))
+  const removeCharge = (i) => {
+    setPompage(p => ({ ...p, charges: p.charges.filter((_, j) => j !== i) }))
+    oublierErreur('charges_pompage_solaire')
+  }
+  const setFda = (cle, valeur) => {
+    setPompage(p => ({ ...p, fda: { ...p.fda, [cle]: valeur } }))
+    oublierErreur('regle_fda_pompage')
+  }
+  // Geste EXPLICITE : remplit la règle depuis le Guide FDA 2024 (p.20-23),
+  // en local seulement — rien n'est enregistré sans « Enregistrer ».
+  const preremplirFda = () => {
+    setPompage(p => ({ ...p, fda: regleFdaGuide2024(new Date()) }))
+    oublierErreur('regle_fda_pompage')
+  }
   const allerAuChamp = (champ) => {
     const cible = document.getElementById(`tarif-${champ}`)
     cible?.scrollIntoView?.({ block: 'center' })
@@ -145,7 +173,10 @@ export default function TarificationSection() {
     if (!form) return
     // CALX72 — refus AVANT envoi : une valeur sourcée sans sa source n'est
     // jamais envoyée (le serveur reste l'arbitre de tout le reste).
-    const refus = lot5 ? erreursAvantEnvoi(lot5) : {}
+    const refus = {
+      ...(lot5 ? erreursAvantEnvoi(lot5) : {}),
+      ...(pompage ? erreursPompageAvantEnvoi(pompage) : {}),
+    }
     if (Object.keys(refus).length) {
       setErreurs(refus)
       toast.error(`Non enregistré : ${Object.keys(refus).length} champ(s) à corriger.`)
@@ -163,6 +194,7 @@ export default function TarificationSection() {
       const payload = {
         ...form,
         ...(lot5 ? payloadLot5(lot5) : {}),
+        ...(pompage ? payloadPompage(pompage) : {}),
         tolerance_kwh: Number(form.tolerance_kwh) || 0,
         selective_threshold_kwh: Number(form.selective_threshold_kwh) || 150,
         inclinaison_defaut_deg: Number(form.inclinaison_defaut_deg) || 0,
@@ -172,6 +204,7 @@ export default function TarificationSection() {
       const res = await parametresApi.updateTariffSettings(payload)
       setVersion(res.data?.version || version)
       if (lot5 && res.data) setLot5(lot5DepuisServeur(res.data))
+      if (pompage && res.data) setPompage(pompageDepuisServeur(res.data))
       setErreurs({})
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
@@ -358,6 +391,12 @@ export default function TarificationSection() {
         </p>
       )}
 
+      {pompage && (
+        <ReglagesPompage pompage={pompage} erreurs={erreurs}
+          setCharge={setCharge} addCharge={addCharge} removeCharge={removeCharge}
+          setFda={setFda} preremplirFda={preremplirFda} />
+      )}
+
       {Object.keys(erreurs).length > 0 && (
         <div role="alert" data-testid="tarif-erreurs"
           className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-[12.5px] text-destructive">
@@ -506,6 +545,9 @@ const LIBELLES_CHAMPS = {
   amortissement_duree_ans: 'Durée d’amortissement',
   amortissement_coefficient: 'Coefficient dégressif',
   fiscalite_source: 'Source de la fiscalité',
+  // AGR210 — pompage agricole (calcul interne).
+  charges_pompage_solaire: 'Charges solaires de pompage',
+  regle_fda_pompage: 'Règle FDA pompage',
 }
 
 const HEURES = Array.from({ length: 24 }, (_, h) => h)
@@ -949,5 +991,194 @@ function ReglagesLot5({
         </CardContent>
       </Card>
     </>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AGR210 (Groupe AGR, 02/10/2026) — pompage agricole, calcul INTERNE
+// ═══════════════════════════════════════════════════════════════════════════
+// `TariffSettings.charges_pompage_solaire` = [{libelle, montant_mad_an,
+// source}] (barème de la SOCIÉTÉ) et `regle_fda_pompage` = {taux_pct,
+// plafond_mad_par_ha, plafond_mad_par_kwc, plafond_mad_par_projet, base,
+// source, releve_le} (AGR207 ; contrat `ventes/contract_samples/
+// economie_pompage.json`). Vides par défaut ; aucun montant d'aide n'est
+// imprimé pour un client (D-AGR-6).
+
+// source-choix: parametres.tariff.REGLE_FDA_BASES
+const BASES_FDA = [
+  { value: 'ht', label: 'HT' },
+  { value: 'ttc', label: 'TTC' },
+  { value: 'a_confirmer', label: 'À confirmer (DPA)' },
+]
+const CHAMPS_FDA = [
+  'taux_pct', 'plafond_mad_par_ha', 'plafond_mad_par_kwc',
+  'plafond_mad_par_projet', 'base', 'source', 'releve_le',
+]
+const NOMBRES_FDA = [
+  'taux_pct', 'plafond_mad_par_ha', 'plafond_mad_par_kwc', 'plafond_mad_par_projet',
+]
+
+/** Règle FDA du Guide FDA édition 2024 (p.20-23) — posée SEULEMENT sur le
+ *  geste explicite « Pré-remplir », jamais enregistrée sans « Enregistrer ». */
+function regleFdaGuide2024(aujourdhui) {
+  const iso = [
+    aujourdhui.getFullYear(),
+    String(aujourdhui.getMonth() + 1).padStart(2, '0'),
+    String(aujourdhui.getDate()).padStart(2, '0'),
+  ].join('-')
+  return {
+    taux_pct: '30', plafond_mad_par_ha: '3000', plafond_mad_par_kwc: '3000',
+    plafond_mad_par_projet: '30000', base: 'a_confirmer',
+    source: 'Guide FDA édition 2024, p.20-23 (casainvest.ma)', releve_le: iso,
+  }
+}
+
+/** État d'édition servi par le serveur — `null` si les clés sont absentes. */
+function pompageDepuisServeur(d) {
+  if (!('charges_pompage_solaire' in d) && !('regle_fda_pompage' in d)) return null
+  const charges = Array.isArray(d.charges_pompage_solaire)
+    ? d.charges_pompage_solaire.map(c => ({
+      libelle: texte(c?.libelle), montant_mad_an: texte(c?.montant_mad_an),
+      source: texte(c?.source),
+    }))
+    : []
+  const regle = d.regle_fda_pompage && typeof d.regle_fda_pompage === 'object'
+    ? d.regle_fda_pompage : {}
+  return {
+    charges,
+    fda: Object.fromEntries(CHAMPS_FDA.map(c => [c, texte(regle[c])])),
+  }
+}
+
+/** Nombre JSON (jamais arrondi) ; un texte illisible part tel quel pour que
+ *  le serveur le refuse en NOMMANT le champ. */
+const nombreJson = (v) => {
+  if (!rempli(v)) return null
+  const t = texte(v).trim().replace(',', '.')
+  const n = Number(t)
+  return Number.isFinite(n) ? n : t
+}
+
+/** Les deux JSON envoyés au serveur : lignes vides retirées, règle vide = {}. */
+function payloadPompage(p) {
+  const charges = p.charges
+    .filter(c => rempli(c.libelle) || rempli(c.montant_mad_an) || rempli(c.source))
+    .map(c => ({
+      libelle: c.libelle.trim(), montant_mad_an: nombreJson(c.montant_mad_an),
+      source: c.source.trim(),
+    }))
+  const regle = {}
+  if (CHAMPS_FDA.some(c => rempli(p.fda[c]))) {
+    for (const c of CHAMPS_FDA) {
+      if (NOMBRES_FDA.includes(c)) regle[c] = nombreJson(p.fda[c])
+      else if (c === 'releve_le') regle[c] = rempli(p.fda[c]) ? p.fda[c] : null
+      else regle[c] = texte(p.fda[c]).trim()
+    }
+  }
+  return { charges_pompage_solaire: charges, regle_fda_pompage: regle }
+}
+
+/** Refus AVANT envoi : une charge ou une règle saisie sans sa source. */
+function erreursPompageAvantEnvoi(p) {
+  const refus = {}
+  const sansSource = p.charges.findIndex(c =>
+    (rempli(c.libelle) || rempli(c.montant_mad_an)) && !rempli(c.source))
+  if (sansSource >= 0) {
+    refus.charges_pompage_solaire = `charges_pompage_solaire : ligne ${sansSource + 1}, `
+      + 'la source est obligatoire (barème de la société, contrat, devis fournisseur).'
+  }
+  const fdaSaisie = CHAMPS_FDA.some(c => c !== 'source' && rempli(p.fda[c]))
+  if (fdaSaisie && !rempli(p.fda.source)) {
+    refus.regle_fda_pompage = 'regle_fda_pompage : la source de la règle FDA est '
+      + 'obligatoire (édition et pages du Guide FDA).'
+  }
+  return refus
+}
+
+function ReglagesPompage({
+  pompage, erreurs, setCharge, addCharge, removeCharge, setFda, preremplirFda,
+}) {
+  const fda = pompage.fda
+  const num = (cle, label, suffix) => (
+    <label className="block" htmlFor={`tarif-fda-${cle}`}>
+      <span className="mb-1 block text-[12.5px] font-medium text-foreground">{label}</span>
+      <div className="flex items-center gap-2">
+        <Input id={`tarif-fda-${cle}`} type="number" step="any" value={fda[cle]}
+          onChange={e => setFda(cle, e.target.value)} />
+        {suffix && <span className="shrink-0 text-[12px] text-muted-foreground">{suffix}</span>}
+      </div>
+    </label>
+  )
+  return (
+    <Card>
+      <CardContent className="space-y-3 pt-4 sm:pt-5" data-testid="tarif-pompage">
+        <SectionTitle label="Pompage agricole"
+          icon={<><path d="M12 2v6" /><path d="M8 8h8l-1 6H9z" /><path d="M6 22h12" /><path d="M12 14v8" /></>} />
+        <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-[12px] text-muted-foreground">
+          Usage interne : aucun montant d’aide n’est imprimé pour un client (D-AGR-6).
+        </p>
+
+        <p className="text-[12.5px] font-medium text-foreground">
+          Charges solaires de pompage (barème de la société)
+        </p>
+        <div id="tarif-charges_pompage_solaire" tabIndex={-1} className="flex flex-col gap-2">
+          {pompage.charges.map((c, i) => (
+            <div key={i} className="grid items-center gap-2 sm:grid-cols-[1.5fr_8rem_1.5fr_auto]">
+              <Input sanitize="off" aria-label={`Libellé de la charge ${i + 1}`}
+                value={c.libelle} onChange={e => setCharge(i, 'libelle', e.target.value)} />
+              <Input type="number" step="any" aria-label={`Montant de la charge ${i + 1} (MAD/an)`}
+                value={c.montant_mad_an}
+                onChange={e => setCharge(i, 'montant_mad_an', e.target.value)} />
+              <Input sanitize="off" aria-label={`Source de la charge ${i + 1}`}
+                value={c.source} onChange={e => setCharge(i, 'source', e.target.value)} />
+              <IconButton size="sm" variant="ghost" label={`Supprimer la charge ${i + 1}`}
+                onClick={() => removeCharge(i)}>
+                <Trash2 className="size-3.5" aria-hidden="true" />
+              </IconButton>
+            </div>
+          ))}
+        </div>
+        <ErreurChamp champ="charges_pompage_solaire" erreurs={erreurs} />
+        <Button type="button" size="sm" variant="outline" onClick={addCharge}>
+          <Plus className="size-4" aria-hidden="true" /> Ajouter une charge
+        </Button>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+          <p className="text-[12.5px] font-medium text-foreground">Règle FDA (datée)</p>
+          <Button type="button" size="sm" variant="outline" onClick={preremplirFda}>
+            Pré-remplir depuis le Guide FDA 2024 (p.20-23)
+          </Button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {num('taux_pct', 'Taux de l’aide', '%')}
+          {num('plafond_mad_par_ha', 'Plafond par hectare', 'MAD/ha')}
+          {num('plafond_mad_par_kwc', 'Plafond par kWc', 'MAD/kWc')}
+          {num('plafond_mad_par_projet', 'Plafond par projet', 'MAD')}
+          <label className="block" htmlFor="tarif-fda-base">
+            <span className="mb-1 block text-[12.5px] font-medium text-foreground">Base</span>
+            <select id="tarif-fda-base" className={selectCls} value={fda.base}
+              onChange={e => setFda('base', e.target.value)}>
+              <option value="">—</option>
+              {BASES_FDA.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+            </select>
+          </label>
+          <label className="block" htmlFor="tarif-fda-releve_le">
+            <span className="mb-1 block text-[12.5px] font-medium text-foreground">Relevé le</span>
+            <Input id="tarif-fda-releve_le" type="date" value={fda.releve_le}
+              onChange={e => setFda('releve_le', e.target.value)} />
+          </label>
+        </div>
+        <label className="block" htmlFor="tarif-regle_fda_pompage">
+          <span className="mb-1 block text-[12.5px] font-medium text-foreground">
+            Source de la règle FDA
+          </span>
+          <Input id="tarif-regle_fda_pompage" sanitize="off" value={fda.source}
+            invalid={Boolean(erreurs.regle_fda_pompage)}
+            aria-describedby={erreurs.regle_fda_pompage ? 'tarif-regle_fda_pompage-erreur' : undefined}
+            onChange={e => setFda('source', e.target.value)} />
+          <ErreurChamp champ="regle_fda_pompage" erreurs={erreurs} />
+        </label>
+      </CardContent>
+    </Card>
   )
 }

@@ -366,6 +366,24 @@ class TariffSettings(models.Model):
         help_text="Obligatoire dès qu'un taux d'imposition ou un "
                   "amortissement est saisi (texte de loi, avis fiscal).")
 
+    # ── AGR207 (Groupe AGR, 02/10/2026) — pompage agricole, calcul INTERNE ──
+    # Deux JSON VIDES par défaut (aucune valeur suggérée) ; chaque saisie
+    # porte sa source (refus nommant le champ, ``tariff.erreurs_pompage``).
+    # Le barème des charges est celui de la SOCIÉTÉ ; la règle FDA ne sert
+    # qu'à l'aide indicative de la vue interne — jamais un montant d'aide
+    # imprimé pour un client (D-AGR-6).
+    charges_pompage_solaire = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Charges solaires de pompage (barème société)',
+        help_text="Liste [{libelle, montant_mad_an, source}] — nettoyage, "
+                  "visite annuelle… chaque charge porte sa source.")
+    regle_fda_pompage = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Règle FDA pompage (usage interne)',
+        help_text="{taux_pct, plafond_mad_par_ha, plafond_mad_par_kwc, "
+                  "plafond_mad_par_projet, base (ht|ttc|a_confirmer), "
+                  "source, releve_le} — refusée sans source.")
+
     def clean(self):
         """Refuse un réglage tarifaire incohérent en NOMMANT le champ fautif."""
         from django.core.exceptions import ValidationError

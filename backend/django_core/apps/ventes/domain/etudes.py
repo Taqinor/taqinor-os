@@ -560,10 +560,11 @@ def rafraichir_etudes_du_devis(devis, *, force=False):
 #
 # Les autres clés DÉRIVÉES du schéma restent délibérément :
 #   · ``puissance_kwc`` décrit la composition, qui est clonée à l'identique ;
-#   · les dérivées POMPAGE (``debit_hmt_m3h``, ``m3_jour``, ``champ_kwc``) et
-#     les taux industriels (``taux_autoconso``, ``taux_couverture``,
+#   · les taux industriels (``taux_autoconso``, ``taux_couverture``,
 #     ``injection_*``) décrivent le SITE du client et n'ont AUCUN rafraîchisseur
-#     serveur : les purger supprimerait l'étude sans la remplacer. Seule celle
+#     serveur : les purger supprimerait l'étude sans la remplacer (AGR122 : les
+#     dérivées POMPAGE, elles, ont désormais leur moteur serveur et SONT
+#     purgées — voir la liste ci-dessous). Seule celle
 #     qui dépend du PRIX — ``payback`` — part avec les cinq autres, parce que
 #     c'est précisément le prix que le renouvellement change.
 #
@@ -589,6 +590,35 @@ CLES_DERIVEES_NON_COPIEES = (
     # QJR591 — la ville de chiffrage figée : une copie se rechiffre sur la
     # ville de SON lead, jamais sur celle de la source.
     'ville_calcul',
+    # AGR122 — les DÉRIVÉES du moteur serveur de pompage (propriétaire
+    # ``moteur_pompage``, contrat ``etude_pompage_preview.json`` ›
+    # ``cles_etude_params_v2``) : une copie ou une V2 RECALCULE (AGR123) au
+    # lieu de recopier une dérivée périmée. Les sept clés v1 lues par le rendu
+    # (``pompe_cv``…``heures_pompage``) en font partie : elles ne sont plus
+    # des saisies, le moteur les réécrit. Liste écrite à la main (et non
+    # déduite du schéma) : le test QJR117 vérifie qu'elle reste DÉRIVÉE au
+    # schéma, et le test AGR122 qu'elle couvre chaque dérivée du moteur.
+    'besoin_mensuel',
+    'production',
+    'couverture_pct_mois',
+    'controle_conception',
+    'conception',
+    'champ',
+    'hmt_composantes',
+    'ha_irrigables',
+    'autonomie_reservoir_jours',
+    'kit',
+    'alertes_pompage',
+    'hypotheses_pompage',
+    'pvgis_fige',
+    'provenance_pompage',
+    'pompe_cv',
+    'pompe_kw',
+    'hmt_m',
+    'debit_hmt_m3h',
+    'm3_jour',
+    'champ_kwc',
+    'heures_pompage',
 )
 
 #: QJR136 / ES13 — L'ATTRIBUTION PUBLICITAIRE NE SE RECOPIE PAS NON PLUS.

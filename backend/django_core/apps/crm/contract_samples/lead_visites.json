@@ -32,9 +32,15 @@
     "avertissement_sans_devis": "Aucun devis n’a encore été envoyé à ce client. Règle : la visite technique se propose APRÈS le devis (c’est un outil de closing). Vous pouvez la planifier quand même — elle sera signalée « sans devis » dans le suivi.",
     "rappel_juridique": "Si le bon de commande se signe pendant la visite, chez le client : démarchage à domicile (loi 31-08, art. 45) — cocher « signé au domicile », formulaire de rétractation remis, aucun acompte encaissé avant 7 jours (art. 49 et 50)."
   },
+  "exemple_agricole_point_eau": {
+    "visites": [],
+    "avertissement_sans_devis": "Pompage : niveau d’eau ou débit du forage inconnu — la visite de relevé du point d’eau se fait AVANT le devis.",
+    "rappel_juridique": "Si le bon de commande se signe pendant la visite, chez le client : démarchage à domicile (loi 31-08, art. 45) — cocher « signé au domicile », formulaire de rétractation remis, aucun acompte encaissé avant 7 jours (art. 49 et 50)."
+  },
   "notes": {
     "avertissement_sans_devis": "CAD123 — texte du SERVEUR (`services.AVERTISSEMENT_VISITE_SANS_DEVIS`), '' — jamais null — des qu'un devis est sorti du brouillon (`ventes.selectors.lead_a_un_devis`). Informatif : aucun chemin de planification ne le transforme en refus.",
     "rappel_juridique": "CAD123 × CAD122 — l'effet de bord juridique d'un bon de commande signe PENDANT la visite, chez le client (`services.RAPPEL_JURIDIQUE_VISITE_DOMICILE`). Servi avec l'avertissement, vide sinon.",
-    "suivi": "Une visite planifiee malgre l'avertissement est VISIBLE comme telle dans le suivi : la note de planification du chatter porte « Planifiée SANS devis envoyé — exception à la règle « la visite se propose après le devis ». » (`services.MENTION_VISITE_SANS_DEVIS`)."
+    "suivi": "Une visite planifiee malgre l'avertissement est VISIBLE comme telle dans le suivi : la note de planification du chatter porte « Planifiée SANS devis envoyé — exception à la règle « la visite se propose après le devis ». » (`services.MENTION_VISITE_SANS_DEVIS`).",
+    "agricole_point_eau": "AGR408 (D-AGR-4) — lead AGRICOLE sans devis dont le niveau d'eau ou le débit du forage est inconnu (`devis_auto.visite_point_eau_avant_devis`, AGR403) : `avertissement_sans_devis` porte la RÈGLE pompage (`services.AVERTISSEMENT_VISITE_POINT_EAU`) au lieu de l'exception ; la note de planification dit « Visite de relevé du point d’eau, avant devis (règle pompage). » (`services.MENTION_VISITE_POINT_EAU`). Le rappel juridique est inchangé. Agricole déjà relevé, résidentiel et C&I : inchangés, jamais de blocage."
   }
 }

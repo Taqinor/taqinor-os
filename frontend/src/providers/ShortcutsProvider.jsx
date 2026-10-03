@@ -87,6 +87,12 @@ export function ShortcutsProvider({ children }) {
 
   useEffect(() => {
     const onKey = (e) => {
+      // CAD177 — un `keydown` SANS `key` existe : l'autoremplissage de
+      // Chrome en émet (Event générique, pas un KeyboardEvent), tout comme
+      // le « typer » de gremlins.js (e2e @monkey). `e.key.toLowerCase()`
+      // levait alors un TypeError non rattrapé sur CHAQUE écran (raccourcis
+      // globaux) — rien à interpréter, on ignore.
+      if (typeof e.key !== 'string') return
       // Jamais en saisie, jamais avec modificateur (réservé au système / ⌘K).
       if (e.metaKey || e.ctrlKey || e.altKey) return
       if (isTypingTarget(e.target)) return

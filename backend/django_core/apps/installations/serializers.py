@@ -532,7 +532,10 @@ class InstallationSerializer(serializers.ModelSerializer):
 
     def get_regime_suggere(self, obj):
         from .regime import suggest_for_company
-        code = suggest_for_company(obj.puissance_installee_kwc, obj.company)
+        code = suggest_for_company(
+            obj.puissance_installee_kwc, obj.company,
+            hors_reseau=(obj.raccordement_reseau
+                         == Installation.RaccordementReseau.HORS_RESEAU))
         label = dict(Installation.Regime8221.choices).get(code, code)
         return {'code': code, 'label': label}
 

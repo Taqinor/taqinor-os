@@ -515,7 +515,10 @@ def _esc(value) -> str:
             .replace('>', '&gt;'))
 
 
-def _label_card(token, titre, sous_titre, code_svg):
+def _label_card(token, titre, sous_titre, code_svg, pied=None):
+    # AGR621 — `pied` optionnel (ex. « SAV : <téléphone> · Chantier <réf> ») ;
+    # absent/vide = carte octet-identique à l'historique.
+    pied_html = f'<div class="pied">{_esc(pied)}</div>' if pied else ''
     return (
         '<div class="label">'
         f'<div class="code">{code_svg}</div>'
@@ -523,6 +526,7 @@ def _label_card(token, titre, sous_titre, code_svg):
         f'<div class="titre">{_esc(titre)}</div>'
         f'<div class="sous">{_esc(sous_titre)}</div>'
         f'<div class="token">{_esc(token)}</div>'
+        f'{pied_html}'
         '</div></div>'
     )
 
@@ -530,7 +534,10 @@ def _label_card(token, titre, sous_titre, code_svg):
 def render_labels_html(items, symbology='qr'):
     """`items` = liste de dicts {token, titre, sous_titre}. Rend une planche
     d'étiquettes (grille) prête pour WeasyPrint. `symbology` = 'qr' | 'code128'.
-    """
+
+    AGR621 — clé optionnelle `pied` par étiquette (additif ; absente =
+    sortie identique)."""
+    items = list(items)
     cards = []
     for it in items:
         token = it['token']
@@ -539,7 +546,8 @@ def render_labels_html(items, symbology='qr'):
         else:
             svg = qr_svg(token)
         cards.append(_label_card(
-            token, it.get('titre', ''), it.get('sous_titre', ''), svg))
+            token, it.get('titre', ''), it.get('sous_titre', ''), svg,
+            pied=it.get('pied')))
     style = (
         '@page { size: A4; margin: 10mm; }'
         'body { font-family: Helvetica, Arial, sans-serif; }'
@@ -555,6 +563,10 @@ def render_labels_html(items, symbology='qr'):
         '.token { font-size: 7pt; color: #888; font-family: monospace;'
         ' margin-top: 1mm; }'
     )
+    # AGR621 — style du pied ajouté SEULEMENT si une étiquette en porte un
+    # (planche sans pied : sortie octet-identique).
+    if any(it.get('pied') for it in items):
+        style += '.pied { font-size: 7pt; font-weight: 700; margin-top: 1mm; }'
     return (
         '<!DOCTYPE html><html><head><meta charset="utf-8">'
         f'<style>{style}</style></head><body>'

@@ -356,12 +356,12 @@ describe('ProduitForm — section « Fiche technique » (PVOND)', () => {
     })
     await screen.findByText(/Éditer/)
     expect(await screen.findByText('Fiche technique')).toBeInTheDocument()
-    expect(screen.getByLabelText('HMT max (m)')).toHaveValue(91)
+    expect(screen.getByLabelText("HMT d'arrêt (m)")).toHaveValue(91)
     expect(screen.queryByLabelText('Puissance AC (kW)')).not.toBeInTheDocument()
 
     // Modifier la HMT + un point de courbe, enregistrer : le payload
     // principal (jamais une FicheTechnique) porte les deux.
-    fireEvent.change(screen.getByLabelText('HMT max (m)'), { target: { value: '95' } })
+    fireEvent.change(screen.getByLabelText("HMT d'arrêt (m)"), { target: { value: '95' } })
     fireEvent.change(screen.getByLabelText('Débit point 1'), { target: { value: '1' } })
     fireEvent.click(screen.getByRole('button', { name: 'Mettre à jour' }))
 
@@ -377,7 +377,7 @@ describe('ProduitForm — section « Fiche technique » (PVOND)', () => {
     renderCreate()
     await screen.findByText('Nouveau produit')
     fireEvent.change(screen.getByPlaceholderText('Nom du produit'), { target: { value: 'Pompe surface XYZ' } })
-    expect(await screen.findByLabelText('HMT max (m)')).toBeInTheDocument()
+    expect(await screen.findByLabelText("HMT d'arrêt (m)")).toBeInTheDocument()
     // Deux lignes vides par défaut.
     expect(screen.getByLabelText('Débit point 1')).toBeInTheDocument()
     expect(screen.getByLabelText('Débit point 2')).toBeInTheDocument()

@@ -329,6 +329,9 @@ class TestPdfReelParVariante(_Base):
         """Le bouton interne « Télécharger » doit toujours pointer sur le
         document COMPLET du commercial."""
         from apps.ventes.quote_engine import generate_premium_devis_pdf
+        # État PERSISTÉ avant le rendu (l'instance fraîchement créée porte
+        # ``None`` en mémoire alors que la base relit ``''``).
+        self.devis.refresh_from_db()
         avant = self.devis.fichier_pdf
         with patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket'), \
                 patch('apps.ventes.utils.pdf._upload_pdf'):

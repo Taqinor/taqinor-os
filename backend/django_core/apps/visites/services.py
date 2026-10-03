@@ -268,6 +268,32 @@ def visite_en_attente(lead):
             .order_by('-date_prevue', '-id').first())
 
 
+def gabarit_pour_lead(lead):
+    """AGR412 (D-AGR-4) — le gabarit d'une visite d'après le TYPE du lead que
+    le CRM passe (l'objet lead lui-même : aucun import de ``apps.crm``) :
+    ``point_eau`` pour un lead agricole, ``toiture`` sinon."""
+    from .models import VisiteTerrain
+
+    if (getattr(lead, 'type_installation', None) or '') == 'agricole':
+        return VisiteTerrain.Gabarit.POINT_EAU
+    return VisiteTerrain.Gabarit.TOITURE
+
+
+def recaler_gabarit(visite):
+    """AGR412 — recale le gabarit sur le type ACTUEL du lead tant que la
+    visite est BROUILLON (rien n'a encore été saisi sur le terrain) ; jamais
+    après. Mute ``visite`` sans l'enregistrer ; renvoie True si changé."""
+    from .models import VisiteTerrain
+
+    if visite.statut != VisiteTerrain.Statut.BROUILLON:
+        return False
+    cible = gabarit_pour_lead(visite.lead)
+    if visite.gabarit == cible:
+        return False
+    visite.gabarit = cible
+    return True
+
+
 def _deplacer_visite(visite, user, date_prevue, commercial, notes):
     """SUIVI E5 — DÉPLACE le rendez-vous existant (jamais une seconde
     visite) : nouvelle date, nouvel assigné s'il est fourni, notes
@@ -276,6 +302,8 @@ def _deplacer_visite(visite, user, date_prevue, commercial, notes):
     ``visite_planifiee`` est publié : le CRM recale confirmation et débrief."""
     ancienne_date = visite.date_prevue
     champs = []
+    if recaler_gabarit(visite):
+        champs.append('gabarit')
     if ancienne_date != date_prevue:
         visite.date_prevue = date_prevue
         champs.append('date_prevue')
@@ -408,7 +436,7 @@ def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
     visite = VisiteTerrain.objects.create(
         company=lead.company, lead=lead, commercial=commercial,
         statut=VisiteTerrain.Statut.BROUILLON, date_prevue=date_prevue,
-        notes=(notes or '').strip())
+        notes=(notes or '').strip(), gabarit=gabarit_pour_lead(lead))
     # PAS de ``journaliser_visite(..., 'creation')`` ici : l'abonné CRM de
     # ``visite_planifiee`` pose une note qui dit TOUT (la date ET l'assigné).
     # Les deux ensemble empileraient « Visite technique créée. » juste
@@ -453,9 +481,12 @@ def valider_visite(visite, user):
 
     visite.statut = VisiteTerrain.Statut.VALIDEE
     visite.save(update_fields=['statut'])
+    # AGR413 — les mesures du point d'eau voyagent avec l'événement (vides
+    # pour une visite toiture) : c'est le CRM qui décide de les recopier.
     visite_validee.send(
         sender=VisiteTerrain, visite=visite, lead_id=visite.lead_id,
-        user=user, recap=selectors.recap_visite_terrain(visite))
+        user=user, recap=selectors.recap_visite_terrain(visite),
+        mesures_point_eau=selectors.mesures_point_eau_pour_lead(visite))
     _notifier_commercial_visite(
         visite, 'visite_terrain_validee',
         'Visite technique validée',
@@ -499,7 +530,7 @@ def renvoyer_visite(visite, user, *, photos=None, mesures=None, motif=''):
     for demande in (mesures or []):
         categorie = (demande or {}).get('categorie')
         code = (demande or {}).get('code')
-        if checklist.mesure(categorie, code) is None:
+        if checklist.mesure(categorie, code, visite.gabarit) is None:
             continue
         bloc = dict(stockees.get(categorie) or {})
         if code in bloc:
@@ -606,7 +637,7 @@ def enregistrer_mesures(visite, categorie, valeurs):
     """
     from . import visite_checklist as checklist
 
-    declaration = checklist.categorie(categorie)
+    declaration = checklist.categorie(categorie, visite.gabarit)
     if declaration is None or not declaration['mesures']:
         return None, {'categorie': ('Catégorie de mesures inconnue '
                                     f'« {categorie} ».')}

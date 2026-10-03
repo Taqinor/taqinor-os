@@ -36,9 +36,14 @@
 // DÉTERMINISTE de son chemin (voir `grainePourRoute`) — un run est rejouable
 // à l'identique, et un échec rapporte l'écran ET la graine exacte qui l'a
 // provoqué (rejouable seule via `MONKEY_ROUTE`/`MONKEY_GRAINE`, voir plus bas).
-import { test, expect } from '@playwright/test'
+import { expect } from '@playwright/test'
 import { createRequire } from 'node:module'
-import { routesParModule, TITRE_ECRAN_ERREUR } from './helpers.js'
+import {
+  routesParModule, TITRE_ECRAN_ERREUR,
+  // CAD177 — session partagée vérifiée au démarrage de chaque module, et
+  // reprise entre deux écrans si un gremlin a cliqué « Déconnexion ».
+  testSessionFraiche as test, assurerSessionPage,
+} from './helpers.js'
 
 const require = createRequire(import.meta.url)
 
@@ -218,6 +223,12 @@ for (const [module, chemins] of PAR_MODULE) {
       for (const chemin of chemins) {
         routeActuelle = chemin
         graineActuelle = grainePourRoute(chemin)
+
+        // CAD177 — les gremlins cliquent PARTOUT, y compris « Déconnexion »
+        // (run 36990128960, /admin/impersonation) : sans reprise, chaque écran
+        // suivant s'ouvrait sur /login et se signalait « page blanche » à
+        // tort. On rétablit la session (API) avant d'ouvrir l'écran suivant.
+        await assurerSessionPage(page)
 
         await page.goto(chemin, { waitUntil: 'domcontentloaded' })
 

@@ -36,7 +36,8 @@ TRACKED_FIELDS = {
     'ete_differente': 'Été différent',
     'conso_mensuelle_kwh': 'Conso mensuelle (kWh)',
     'tranche_onee': 'Tarif / tranche ONEE',
-    'pompe_cv': 'Pompe (CV)',
+    # AGR401 — ex-« Pompe (CV) » : c'est la pompe ACTUELLE.
+    'pompe_actuelle_cv': 'Pompe actuelle (CV)',
     'pompe_hmt_m': 'HMT (m)',
     'pompe_debit_m3h': 'Débit souhaité (m³/h)',
     'raccordement': 'Raccordement',
@@ -128,6 +129,49 @@ TRACKED_FIELDS = {
     'declencheur': 'Ce qui a accroché',
     'compteur_puissance_kva': 'Puissance souscrite du compteur (kVA)',
     'chauffage_electrique_hiver': 'Chauffage électrique en hiver',
+    # AGR400 — colonnes de pompage (contrat AGR1) : une réponse changée sans
+    # trace, c'est un dimensionnement qui bouge sans explication. Libellés =
+    # ``verbose_name`` du modèle.
+    'source_eau': "Source d'eau",
+    'niveau_statique_m': "Niveau de l'eau, pompe arrêtée (m)",
+    'niveau_statique_source': 'Provenance du niveau statique',
+    'profondeur_forage_m': 'Profondeur du forage (m)',
+    'debit_forage_m3h': 'Débit du forage (m³/h)',
+    'debit_forage_source': 'Provenance du débit du forage',
+    'besoin_eau_m3j': 'Besoin en eau (m³/jour)',
+    'besoin_eau_source': 'Provenance du besoin en eau',
+    'culture': 'Culture',
+    'surface_irriguee_ha': 'Surface irriguée (ha)',
+    'irrigation_methode': "Méthode d'irrigation",
+    'region_agricole': 'Région agricole',
+    'pompe_actuelle_type': 'Pompe actuelle — type',
+    'pompe_actuelle_debit_m3h': 'Pompe actuelle — débit (m³/h)',
+    'butane_bouteilles_jour': 'Butane — bouteilles par jour',
+    'carburant_prix_unitaire_mad': 'Prix payé (bouteille ou litre, MAD)',
+    'carburant_prix_declare_le': 'Prix du carburant déclaré le',
+    'depense_carburant_mad_mois': 'Dépense carburant (MAD/mois)',
+    'mois_irrigation': "Mois d'irrigation",
+    'distance_forage_champ_m': 'Distance forage — panneaux (m)',
+    'electricite_sur_place': 'Électricité au forage',
+    'autorisation_prelevement': 'Autorisation de prélèvement (ABH)',
+    'autorisation_numero': "Numéro de l'autorisation",
+    'autorisation_debit_l_s': 'Débit autorisé (L/s)',
+    'autorisation_volume_m3_an': 'Volume autorisé (m³/an)',
+    'compteur_eau': "Compteur d'eau",
+    'projet_pompage': 'Projet de pompage',
+    'deja_beneficiaire_fda': 'Déjà bénéficiaire FDA',
+    'pompe_hmt_source': 'Provenance de la HMT',
+    # AGR522 — dossier de subvention FDA (interne).
+    'dossier_subvention': 'Dossier de subvention (FDA)',
+    'dossier_subvention_le': 'Date de l’état du dossier de subvention',
+}
+
+#: AGR401 — CLÉ D'HISTORIQUE DOCUMENTÉE : des lignes de chatter écrites avant
+#: le renommage portent encore ``field='pompe_cv'`` (libellé stocké « Pompe
+#: (CV) »). La colonne n'existe plus ; ce libellé reste pour RELIRE ces lignes,
+#: jamais pour journaliser (``log_changes`` ne lit que ``TRACKED_FIELDS``).
+LIBELLES_HISTORIQUES = {
+    'pompe_cv': 'Pompe (CV)',
 }
 
 _CHOICE_FIELDS = {
@@ -155,6 +199,12 @@ _CHOICE_FIELDS = {
     # CAD154 — deux des six champs de la vague 2 sont des choices (les
     # quatre autres sont un nombre, un montant, une puissance, un booléen).
     'frein_principal', 'declencheur',
+    # AGR400 — vocabulaires fermés des colonnes de pompage.
+    'source_eau', 'niveau_statique_source', 'debit_forage_source',
+    'besoin_eau_source', 'irrigation_methode', 'region_agricole',
+    'pompe_actuelle_type', 'electricite_sur_place',
+    'autorisation_prelevement', 'projet_pompage', 'pompe_hmt_source',
+    'dossier_subvention',
 }
 
 _BOOL_LABELS = {True: 'Oui', False: 'Non'}

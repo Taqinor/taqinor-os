@@ -86,7 +86,9 @@ class ManquantesTests(TestCase):
     def test_lead_vide_tout_est_manquant(self):
         lead = Lead.objects.create(company=self.company, nom='Vide')
         manq = quest.manquantes(lead)
-        self.assertEqual(sorted(manq), sorted(quest.SECTIONS))
+        # AGR411 — un lead non agricole garde le périmètre historique (les
+        # sections de pompage ne le concernent pas).
+        self.assertEqual(sorted(manq), sorted(quest.SECTIONS_HORS_POMPAGE))
         self.assertTrue(all(manq.values()), manq)
 
     def test_lead_complet_plus_les_trois_photos_ne_manque_rien(self):

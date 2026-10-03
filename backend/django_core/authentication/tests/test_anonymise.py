@@ -62,8 +62,14 @@ PROFILE_PRICING = {
     'remise_max_pct': Decimal('12.50'),
     'discount_approval_threshold': Decimal('8.00'),
     'agricole_pump_hours': Decimal('6.5'),
-    'agricole_prix_bonbonne': Decimal('55.00'),
-    'agricole_cout_reel_bonbonne': Decimal('131.00'),
+    # AGR208 — repères énergie agricole (ex-« bonbonne » 55 / 131).
+    'reperes_energie_agricole': {
+        'butane_12kg_detail': {'valeur': 55, 'source': '',
+                               'releve_le': '2026-08-20'},
+        'butane_12kg_non_subventionne': {'valeur': 131, 'source': '',
+                                         'releve_le': '2026-08-20'},
+        'gasoil_litre': {'valeur': None, 'source': '', 'releve_le': None},
+    },
     'quote_validity_days': 45, 'variante_pct': Decimal('15.00'),
     'devise_defaut': 'MAD',
     'seuil_regime_declaration_kwc': Decimal('12'),
@@ -117,6 +123,15 @@ TARIFF = {
     'charge_minimale_mad_jour': Decimal('3.50'),
     'indexation_tarif_pct_an': Decimal('2.500'),
     'indexation_source': 'Historique des tarifs publiés 9988776655',
+    # AGR207 — pompage agricole (barème société + règle FDA datée).
+    'charges_pompage_solaire': [
+        {'libelle': 'Nettoyage des panneaux', 'montant_mad_an': 650.0,
+         'source': 'barème société'}],
+    'regle_fda_pompage': {
+        'taux_pct': 30, 'plafond_mad_par_ha': 3000,
+        'plafond_mad_par_kwc': 3000, 'plafond_mad_par_projet': 30000,
+        'base': 'a_confirmer', 'source': 'Guide FDA édition 2024, p.20-23',
+        'releve_le': '2026-10-02'},
     'taux_imposition_pct': Decimal('31.00'), 'amortissement_mode': 'lineaire',
     'amortissement_duree_ans': 10,
     'amortissement_coefficient': Decimal('1.750'),

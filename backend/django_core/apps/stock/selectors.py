@@ -3341,6 +3341,174 @@ def produits_par_type_equipement(company, type_equipement, avec_prix=True):
     return list(qs.order_by('categorie__ordre', 'nom'))
 
 
+# ── AGR103 ── UNE seule lecture serveur du catalogue pompage ────────────────
+#
+# JS (``solar.js``) et Python (``calepinage/services/pompage.py``) reconstruisent
+# chacun le catalogue pompage avec des MOTS DU NOM. Cette lecture rend la forme
+# du contrat ``contract_samples/produit_pompage.json`` (``element_produits_
+# pompage``) : le rôle vient de ``role_pompage`` DÉCLARÉ, sinon de la catégorie,
+# sinon des mots du nom (repli permanent, jumeau de l'ancienne lecture) ;
+# ``classement`` dit LEQUEL a répondu. JAMAIS ``prix_achat`` ni marge.
+
+_FICHE_POMPE_CHAMPS = (
+    'pompe_i_nominal_a', 'pompe_diametre_ext_mm', 'pompe_nb_etages',
+    'pompe_immersion_min_m', 'pompe_rendement_pct', 'pompe_q_nominal_m3h',
+    'pompe_hmt_nominale_m',
+)
+_FICHE_VARIATEUR_CHAMPS = (
+    'ond_mppt_v_min', 'ond_mppt_v_max', 'ond_v_max_abs', 'ond_i_max_mppt_a',
+    'ond_phases', 'ond_v_demarrage_v',
+    'var_voc_reco_min_v', 'var_voc_reco_max_v', 'var_v_sortie_v',
+    'var_i_sortie_nominal_a', 'var_protection_marche_a_sec',
+    'var_rendement_mppt_pct',
+)
+
+
+def _nom_normalise(nom):
+    import unicodedata
+    decompose = unicodedata.normalize('NFKD', str(nom or ''))
+    return ''.join(c for c in decompose
+                   if not unicodedata.combining(c)).lower()
+
+
+def _role_pompage_pour(produit):
+    """``(role, classement)`` ou ``(None, None)`` — déclaré > catégorie > nom."""
+    nom = _nom_normalise(produit.nom)
+    if produit.role_pompage:
+        return produit.role_pompage, 'declare'
+    type_cat = getattr(produit.categorie, 'type_equipement', None)
+    if type_cat == 'pompe':
+        return 'pompe', 'categorie'
+    if type_cat == 'variateur':
+        if 'afficheur' in nom:
+            return 'afficheur_variateur', 'categorie'
+        return 'variateur_pompage', 'categorie'
+    if 'afficheur' in nom:
+        return 'afficheur_variateur', 'nom'
+    if 'variateur' in nom:
+        return 'variateur_pompage', 'nom'
+    if 'pompe ' in nom or nom.startswith('pompe'):
+        return 'pompe', 'nom'
+    return None, None
+
+
+def _alimentation_pompage_pour(produit):
+    """alimentation déclarée > ``tension_v`` > nom (« Monophasé »/« Triphasé »,
+    puis 220V/380V avec la règle stricte « nombre isolé + V »)."""
+    import re
+    if produit.alimentation:
+        return produit.alimentation
+    if produit.tension_v == 220:
+        return 'mono'
+    if produit.tension_v == 380:
+        return 'tri'
+    nom = _nom_normalise(produit.nom)
+    if 'monophas' in nom:
+        return 'mono'
+    if 'triphas' in nom:
+        return 'tri'
+    if re.search(r'(?<![\d.,])220\s*v(?:olts?|ac)?(?![a-z0-9])', nom):
+        return 'mono'
+    if re.search(r'(?<![\d.,])380\s*v(?:olts?|ac)?(?![a-z0-9])', nom):
+        return 'tri'
+    return ''
+
+
+def _type_pompe_pour(produit, role):
+    if produit.type_pompe:
+        return produit.type_pompe
+    if role != 'pompe':
+        return ''
+    nom = _nom_normalise(produit.nom)
+    if 'surface' in nom:
+        return 'surface'
+    if 'immerg' in nom:
+        return 'immergee'
+    return ''
+
+
+def _nombre_json(valeur):
+    if valeur is None:
+        return None
+    if isinstance(valeur, (bool, int)):
+        return valeur
+    return float(valeur)
+
+
+def _fiche_pompage_dict(produit):
+    from django.core.exceptions import ObjectDoesNotExist
+    try:
+        fiche = produit.fiche_technique
+    except ObjectDoesNotExist:
+        return None
+    if fiche.type_fiche == 'pompe':
+        champs = _FICHE_POMPE_CHAMPS
+    elif fiche.type_fiche == 'variateur_pompage':
+        champs = _FICHE_VARIATEUR_CHAMPS
+    else:
+        return None
+    out = {'type_fiche': fiche.type_fiche}
+    for champ in champs:
+        out[champ] = _nombre_json(getattr(fiche, champ))
+    return out
+
+
+def _texte_decimal(valeur):
+    return None if valeur is None else str(valeur)
+
+
+def produits_pompage(company, avec_prix=False):
+    """Le catalogue POMPAGE de la société (+ fiches globales), forme de
+    ``produit_pompage.json`` → ``element_produits_pompage``.
+
+    Produits ARCHIVÉS exclus (les 6 coffrets estimés), lecture seule, bornée à
+    la société. ``avec_prix=True`` ne garde que les produits à prix de vente
+    saisi (> 0) ; le défaut montre le vivier complet (``prix_connu`` dit ce
+    qu'il en est). Aucune clé ``prix_achat``/``marge`` — jamais. Une seule
+    requête (``categorie`` et ``fiche_technique`` préchargées).
+    """
+    from django.db.models import Q
+
+    from .models import Produit
+
+    qs = (Produit.objects
+          .filter(Q(company=company) | Q(company__isnull=True),
+                  is_archived=False)
+          .select_related('categorie', 'fiche_technique'))
+    if avec_prix:
+        qs = qs.filter(prix_vente__gt=0)
+    out = []
+    for p in qs.order_by('nom', 'id'):
+        role, classement = _role_pompage_pour(p)
+        if role is None:
+            continue
+        src = p.courbe_source if isinstance(p.courbe_source, dict) else {}
+        out.append({
+            'id': p.id,
+            'nom': p.nom,
+            'sku': p.sku or '',
+            'role_pompage': role,
+            'classement': classement,
+            'type_pompe': _type_pompe_pour(p, role),
+            'alimentation': _alimentation_pompage_pour(p),
+            'pompe_cv': _texte_decimal(p.pompe_cv),
+            'pompe_kw': _texte_decimal(p.pompe_kw),
+            'tension_v': p.tension_v,
+            'hmt_m': _texte_decimal(p.hmt_m),
+            'debit_m3j': _texte_decimal(p.debit_m3j),
+            'courbe_pompe': p.courbe_pompe or None,
+            'courbe_source': {
+                'document': src.get('document') or '',
+                'date': src.get('date') or None,
+                'page': src.get('page'),
+            },
+            'courbe_frequence_hz': p.courbe_frequence_hz,
+            'fiche': _fiche_pompage_dict(p),
+            'prix_connu': bool(p.prix_vente and p.prix_vente > 0),
+        })
+    return out
+
+
 # ── STKCAT27 ── la recherche SANS ACCENTS est-elle disponible sur cette base ?
 #
 # Sonde process-wide, mise en cache : `apps.stock.views.produit` s'en sert pour

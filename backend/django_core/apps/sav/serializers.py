@@ -703,10 +703,19 @@ class EquipementDowntimeSerializer(serializers.ModelSerializer):
 # ── XSAV17 — Relevés compteur (heures / kWh) ──────────────────────────────────
 
 class ReleveCompteurEquipementSerializer(serializers.ModelSerializer):
+    # AGR615 — moyenne par jour depuis le relevé précédent du même type
+    # (null au premier relevé ; contrat partagé releves_compteur.json).
+    moyenne_jour_depuis_precedent = serializers.SerializerMethodField()
+
     class Meta:
         model = ReleveCompteurEquipement
-        fields = ['id', 'equipement', 'type', 'valeur', 'date', 'date_creation']
+        fields = ['id', 'equipement', 'type', 'valeur', 'date', 'date_creation',
+                  'moyenne_jour_depuis_precedent']
         read_only_fields = ['id', 'company', 'created_by', 'date_creation']
+
+    def get_moyenne_jour_depuis_precedent(self, obj):
+        from .selectors import moyenne_jour_depuis_precedent
+        return moyenne_jour_depuis_precedent(obj)
 
 
 # ── XSAV23 — Réponses types (macros) SAV ──────────────────────────────────────

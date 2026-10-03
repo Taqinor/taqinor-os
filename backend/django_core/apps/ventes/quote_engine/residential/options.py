@@ -1068,8 +1068,13 @@ def build_pages(ctx) -> list:
 
   /* Per-option delta mini-cards */
   .p2-deltas {{ display:flex; gap:5mm; margin-top:1.5mm; align-items:stretch; }}
+  /* CAD177 — display:block (PAS flex-column) : en flex-column, WeasyPrint
+     dimensionnait la carte AVANT de replier la ligne « Pourquoi » sur deux
+     lignes, et ``overflow:hidden`` rognait sa 2e ligne (« passent sur
+     batterie » coupé sur le golden résidentiel p2). Ses enfants sont déjà des
+     blocs ; l'égalisation des hauteurs reste faite par .p2-deltas (stretch). */
   .p2-dcard {{ flex:1; border:1px solid {C['line']}; border-radius:10px;
-    overflow:hidden; display:flex; flex-direction:column; }}
+    overflow:hidden; display:block; }}
   .p2-dhead {{ padding:2.2mm 3.5mm; font-size:8.4pt; font-weight:700;
     color:#fff; }}
   .p2-dhead small {{ font-weight:500; opacity:.85; }}

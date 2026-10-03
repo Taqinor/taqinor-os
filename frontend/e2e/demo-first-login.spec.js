@@ -10,7 +10,7 @@
 // le storageState partagé) : c'est tout l'intérêt du scénario « premier
 // login ».
 import { test, expect } from '@playwright/test'
-import { uiLogin } from './helpers'
+import { uiLogin, fermerMomentAccueil } from './helpers'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -23,6 +23,11 @@ test.describe('NTDMO37 — premier login sur société démo fraîche', () => {
   test.beforeEach(async ({ page }) => {
     await uiLogin(page, DEMO_FULL_ADMIN)
     await expect(page).toHaveURL(/\/apps/, { timeout: 30_000 })
+    // CAD177 — premier login À FROID : le moment d'accueil VX156 (c2e0fa64)
+    // s'ouvre et interceptait le clic de (4) sur « Démo & Onboarding »
+    // (run 36990128960). C'est le comportement voulu d'un premier login : on
+    // le constate, puis on le ferme comme l'utilisateur.
+    await fermerMomentAccueil(page)
   })
 
   test('(1) le widget « Premiers pas » affiche une progression non-nulle', async ({ page }) => {

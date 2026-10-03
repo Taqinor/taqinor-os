@@ -69,6 +69,43 @@ ROLES_DEVIS = (
     'transport', 'suivi',
 )
 
+#: AGR100 (Groupe AGR) — vocabulaire de rôles POMPAGE, DISTINCT de
+#: ``ROLES_DEVIS`` : l'arbitrage écrit ci-dessus (« pompe / variateur → PAS DE
+#: RÔLE DE DEVIS ») est RESPECTÉ, pas révisé. Aucun rôle résidentiel n'est
+#: ajouté, ``FAMILLE_VERS_ROLE`` reste inchangé. Les quatre derniers rôles
+#: (``installation_pompage`` … ``cloture``) servent les SKU semés par AGR620.
+ROLES_POMPAGE = (
+    'pompe', 'variateur_pompage', 'afficheur_variateur', 'structure_sol',
+    'cable_dc', 'cable_descente', 'protection_dc', 'sonde_niveau',
+    'compteur_eau', 'colonne_refoulement', 'clapet', 'tuyauterie', 'bassin',
+    'installation_pompage', 'entretien_pompage', 'antivol', 'cloture',
+)
+
+#: Libellés FR des rôles pompage (voyagent par l'API : aucun miroir JS).
+LIBELLES_ROLES_POMPAGE = {
+    'pompe': 'Pompe',
+    'variateur_pompage': 'Variateur de pompage',
+    'afficheur_variateur': 'Afficheur du variateur',
+    'structure_sol': 'Structure au sol',
+    'cable_dc': 'Câble DC (panneaux → variateur)',
+    'cable_descente': 'Câble de descente (variateur → pompe)',
+    'protection_dc': 'Protection DC',
+    'sonde_niveau': 'Sonde de niveau (protection marche à sec)',
+    'compteur_eau': "Compteur d'eau",
+    'colonne_refoulement': 'Colonne de refoulement',
+    'clapet': 'Clapet anti-retour',
+    'tuyauterie': 'Tuyauterie',
+    'bassin': 'Bassin',
+    'installation_pompage': 'Installation pompage',
+    'entretien_pompage': 'Entretien pompage',
+    'antivol': 'Antivol',
+    'cloture': 'Clôture',
+}
+
+#: AGR100 — types de pompe et alimentations déclarables sur la fiche produit.
+TYPES_POMPE = ('immergee', 'surface', 'dc')
+ALIMENTATIONS_POMPAGE = ('mono', 'tri', 'dc')
+
 #: Les sources possibles de :func:`role_effectif`, par rang de priorité.
 SOURCES_ROLE = ('declare', 'categorie', 'nom')
 

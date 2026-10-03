@@ -743,3 +743,28 @@ class TestInterventionF3(TestCase):
         got = ids_of(r)
         self.assertIn(i2, got)
         self.assertNotIn(i1, got)
+
+
+class TestCreationDirecteReference(TestCase):
+    """CAD177 — un POST nu sur /chantiers/ attribue une référence serveur.
+
+    Avant : `reference=''` → le 2e chantier créé ainsi dans la même société
+    violait l'unicité (company, reference) → HTTP 500 (e2e-full nocturne,
+    E-INSTALL-3)."""
+
+    def setUp(self):
+        self.company = make_company(slug='cht-ref', nom='Cht Ref')
+        self.admin = User.objects.create_user(
+            username='cht_ref_admin', password='x', role_legacy='admin',
+            company=self.company)
+
+    def test_deux_creations_directes_references_distinctes(self):
+        api = auth(self.admin)
+        r1 = api.post('/api/django/installations/chantiers/', {}, format='json')
+        r2 = api.post('/api/django/installations/chantiers/', {}, format='json')
+        self.assertEqual(r1.status_code, 201, r1.content)
+        self.assertEqual(r2.status_code, 201, r2.content)
+        refs = set(Installation.objects.filter(
+            company=self.company).values_list('reference', flat=True))
+        self.assertEqual(len(refs), 2)
+        self.assertTrue(all(ref.startswith('CHT') for ref in refs), refs)

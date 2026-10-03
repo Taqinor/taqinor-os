@@ -3,7 +3,7 @@
 Domaine « Société & identité / Devis & logique métier ». Extrait de l'ancien
 ``serializers.py`` sans aucun changement de champ, de validation ni de
 comportement (mêmes URLs présignées, mêmes contrôles de société)."""
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from rest_framework import serializers
 
@@ -113,6 +113,15 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     def validate_seuil_regime_anre_kwc(self, value):
         return self._validate_non_negative(value, 'Le seuil ANRE (kWc)')
 
+    # AGR606 — écart de recette pompage toléré : vide accepté (« écart affiché
+    # sans verdict »), sinon strictement positif et au plus 100 %.
+    def validate_recette_pompage_ecart_max_pct(self, value):
+        if value is not None and (value <= 0 or value > 100):
+            raise serializers.ValidationError(
+                "L'écart de recette pompage toléré doit être compris entre "
+                "0 (exclu) et 100 %.")
+        return value
+
     # NTI18N10 — validation contre le registre IANA réel (zoneinfo, stdlib
     # depuis Python 3.9, déjà utilisé par le runtime — aucune dépendance
     # nouvelle) plutôt qu'une liste `choices=` figée : couvre TOUS les fuseaux
@@ -141,6 +150,63 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     # silence. NULL reste autorisé (= repli sur le défaut historique).
     _DOC_KEYS = {'devis', 'facture', 'avoir', 'bon_commande'}
     _RESET_VALUES = {'monthly', 'yearly', 'none'}
+
+    # AGR208 — repères énergie agricole {cle: {valeur, source, releve_le}}.
+    # Aucune valeur imposée : un repère peut rester vide ; une clé inconnue,
+    # une valeur négative ou une date illisible est refusée (400 nommant le
+    # champ). Jamais de repli numérique.
+    def validate_reperes_energie_agricole(self, value):
+        import datetime
+
+        from .selectors import REPERES_ENERGIE_AGRICOLE_CLES
+        if value in (None, ''):
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                'Les repères doivent être un objet {repère: {valeur, source, '
+                'releve_le}}.')
+        propre = {}
+        for cle, repere in value.items():
+            if cle not in REPERES_ENERGIE_AGRICOLE_CLES:
+                raise serializers.ValidationError(
+                    f'Repère inconnu : {cle} (attendus : '
+                    f"{', '.join(REPERES_ENERGIE_AGRICOLE_CLES)}).")
+            if repere is None:
+                repere = {}
+            if not isinstance(repere, dict) or set(repere) - {
+                    'valeur', 'source', 'releve_le'}:
+                raise serializers.ValidationError(
+                    f'{cle} : un objet {{valeur, source, releve_le}} est '
+                    'attendu.')
+            valeur = repere.get('valeur')
+            if valeur in ('', None):
+                valeur = None
+            else:
+                try:
+                    nombre = Decimal(str(valeur).replace(',', '.'))
+                except (InvalidOperation, TypeError, ValueError):
+                    nombre = None
+                if isinstance(valeur, bool) or nombre is None or \
+                        not nombre.is_finite() or nombre < 0:
+                    raise serializers.ValidationError(
+                        f'{cle} : la valeur doit être un montant positif '
+                        '(MAD).')
+                valeur = int(nombre) if nombre == nombre.to_integral_value() \
+                    else float(nombre)
+            source = repere.get('source') or ''
+            if not isinstance(source, str):
+                raise serializers.ValidationError(
+                    f'{cle} : la source doit être un texte.')
+            releve = repere.get('releve_le') or None
+            if releve is not None:
+                try:
+                    datetime.date.fromisoformat(str(releve))
+                except ValueError:
+                    raise serializers.ValidationError(
+                        f'{cle} : la date de relevé doit être AAAA-MM-JJ.')
+            propre[cle] = {'valeur': valeur, 'source': source.strip(),
+                           'releve_le': releve}
+        return propre
 
     def validate_doc_prefixes(self, value):
         if value is None:

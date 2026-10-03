@@ -14,6 +14,7 @@ import {
 import reportingApi from '../../api/reportingApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import { SectionTitle, Field } from './peComponents'
+import { CHAMP_ECART_RECETTE, erreurDuChamp } from './peConstants'
 // VX233 — feed d'audit extrait, paramétrable par section (filtre dynamique ici).
 import SettingsAuditFeed from './SettingsAuditFeed'
 // WIR112 — équipes terrain canoniques (DC40), à côté des Types d'intervention.
@@ -42,8 +43,39 @@ const CUSTOMFIELD_MODULES = [
   { key: 'kb_article', label: 'Articles KB' },
 ]
 
+/* AGR607 (Groupe AGR, 02/10/2026) — écart de recette pompage toléré (%),
+   réglage société SANS défaut (AGR606), à côté des seuils 82-21. Vide = aide
+   « non saisi : l'écart sera affiché sans verdict » ; une valeur tapée part
+   telle quelle (step="any", jamais arrondie) ; le refus 400 du serveur
+   s'affiche SOUS le champ. */
+export function EcartRecettePompageField({ form, set, erreur }) {
+  const message = erreurDuChamp(erreur, CHAMP_ECART_RECETTE)
+  const valeur = form?.[CHAMP_ECART_RECETTE] ?? ''
+  const vide = String(valeur).trim() === ''
+  return (
+    <Field label="Écart de recette pompage toléré (%)" htmlFor="pe-ecart-recette">
+      <Input id="pe-ecart-recette" type="number" step="any"
+             name={CHAMP_ECART_RECETTE} value={valeur} onChange={set}
+             invalid={Boolean(message)}
+             aria-describedby={message ? 'pe-ecart-recette-erreur' : undefined} />
+      {vide && (
+        <p className="text-[11px] text-muted-foreground">
+          Non saisi : l&apos;écart sera affiché sans verdict.
+        </p>
+      )}
+      {message && (
+        <p id="pe-ecart-recette-erreur" role="alert"
+           className="text-[11.5px] font-medium text-destructive">
+          {message}
+        </p>
+      )}
+    </Field>
+  )
+}
+
 export default function AvanceSection({
   form, set,
+  profileError = null,
   assignables = [],
   typesItv, newType, setNewType, addType, renameType, delType,
   checklistEtapes, newEtape, setNewEtape, addEtape, renameEtape, toggleEtapeActif, delEtape,
@@ -129,6 +161,7 @@ export default function AvanceSection({
                      name="seuil_regime_anre_kwc"
                      value={form.seuil_regime_anre_kwc} onChange={set} />
             </Field>
+            <EcartRecettePompageField form={form} set={set} erreur={profileError} />
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">
             Seuils loi 82-21 proposés à la création d'un chantier (régime

@@ -1,7 +1,8 @@
 """QX49 — Payload proposition mode-complet.
 
 Le payload public expose mode_installation, categorie_commerciale et un bloc KPI
-par mode (pompage : pompe_cv/kw, hmt, débit, m³/jour, champ kWc, bassin, FDA ;
+par mode (pompage : pompe_cv/kw, hmt, débit, m³/jour, heures, champ kWc —
+AGR301 : ni bassin « ×2 » ni drapeau FDA ;
 industriel/commercial : autoconso/couverture/économies/payback + injection 82-21
 si calculée). Whitelist STRICTE — jamais prix_achat/marge (RULE #4).
 
@@ -41,13 +42,37 @@ class TestModeKpisPure(SimpleTestCase):
         self.assertEqual(k['hmt_m'], 60)
         self.assertEqual(k['m3_jour'], 112)
         self.assertEqual(k['champ_kwc'], 9.24)
-        self.assertTrue(k['fda_eligible'])          # goutte → éligible
-        self.assertIsNotNone(k['bassin_m3'])        # dérivé du besoin FAO-56
+        # AGR301 — ni verdict FDA propre au client (Q22 / D-AGR-6) ni bassin
+        # « ×2 » non sourcé, même en goutte-à-goutte avec culture et surface.
+        self.assertNotIn('fda_eligible', k)
+        self.assertNotIn('bassin_m3', k)
 
-    def test_agricole_fda_not_eligible_without_drip(self):
+    def test_agricole_liste_blanche_exacte_avec_heures_de_pompage(self):
+        """AGR301 — la liste blanche agricole = les sept dérivées v1 du
+        contrat ``proposal_data.json`` › ``exemple_agricole.mode_kpis`` ;
+        ``heures_pompage`` est servi (le m³/jour en dépend)."""
         data = {'mode_installation': 'agricole',
-                'etude': {'irrigation_method': 'gravitaire'}}
-        self.assertFalse(_mode_kpis(data)['fda_eligible'])
+                'etude': {'pompe_cv': '10', 'pompe_kw': 7.5, 'hmt_m': '60',
+                          'debit_hmt_m3h': 30, 'm3_jour': 210,
+                          'heures_pompage': 7, 'champ_kwc': 10.65,
+                          'irrigation_method': 'goutte', 'crop': 'agrumes',
+                          'surface_ha': 2, 'region': 'souss-massa'}}
+        k = _mode_kpis(data)
+        self.assertEqual(set(k), {'pompe_cv', 'pompe_kw', 'hmt_m',
+                                  'debit_hmt_m3h', 'm3_jour',
+                                  'heures_pompage', 'champ_kwc'})
+        self.assertEqual(k['heures_pompage'], 7)
+        from pathlib import Path
+        contrat = json.loads(
+            (Path(__file__).resolve().parents[1] / 'contract_samples'
+             / 'proposal_data.json').read_text(encoding='utf-8'))
+        self.assertEqual(set(k),
+                         set(contrat['exemple_agricole']['mode_kpis']))
+
+    def test_mode_kpis_n_importe_plus_agronomy(self):
+        import inspect
+        from apps.ventes import public_views
+        self.assertNotIn('agronomy', inspect.getsource(public_views._mode_kpis))
 
     def test_industriel_kpis(self):
         data = {'mode_installation': 'industriel',
@@ -143,3 +168,23 @@ class TestProposalPayloadModes(TestCase):
         self.assertEqual(p['mode_installation'], 'industriel')
         self.assertIsNone(p['categorie_commerciale'])
         self.assertEqual(p['mode_kpis']['payback'], 3.1)
+
+    def test_agricole_payload_reel_sans_bassin_ni_fda_avec_heures(self):
+        """AGR301 — vérifié en RÉEL via le client Django : un devis agricole
+        en goutte-à-goutte, avec culture et surface, ne sert ni ``bassin_m3``
+        ni ``fda_eligible`` et porte ``heures_pompage``."""
+        devis = self._devis('DEV-QX49-AGR', 'agricole', {
+            'pompe_cv': '10', 'pompe_kw': 7.5, 'hmt_m': '60',
+            'debit_hmt_m3h': 30, 'm3_jour': 210, 'heures_pompage': 7,
+            'champ_kwc': 10.65, 'irrigation_method': 'goutte',
+            'crop': 'agrumes', 'surface_ha': 2, 'region': 'souss-massa'})
+        resp = self._payload(devis)
+        self.assertEqual(resp.status_code, 200)
+        kpis = resp.json()['mode_kpis']
+        self.assertNotIn('bassin_m3', kpis)
+        self.assertNotIn('fda_eligible', kpis)
+        self.assertEqual(kpis['heures_pompage'], 7)
+        self.assertEqual(kpis['m3_jour'], 210)
+        blob = json.dumps(resp.json())
+        self.assertNotIn('fda_eligible', blob)
+        self.assertNotIn('bassin_m3', blob)
