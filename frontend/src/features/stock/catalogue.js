@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import {
   parseWatt, parseKw, parseKwh, parsePhaseIsTri, tauxTvaOf, ttcFromHt, _norm,
+  isPompe,
 } from '../ventes/solar.js'
 
 export const MARQUE_GENERIQUE = 'Génériques'
@@ -343,4 +344,96 @@ export function libelleTypePompe(cle) {
 }
 export function libelleAlimentation(cle) {
   return ALIMENTATIONS.find(([k]) => k === cle)?.[1] ?? ''
+}
+
+/* ── AGR106 — « Pompage à compléter » + « kit pompage chiffrable » ──────────
+   Lecture SEULE, sur ce que le catalogue sert déjà (aucune valeur inventée,
+   aucun seuil). `prix_achat` n'est lu ICI que comme drapeau « à renseigner »
+   (écran interne Stock) : jamais affiché, jamais envoyé vers un document
+   client. Le rôle vient de `role_pompage` DÉCLARÉ, sinon de la catégorie typée
+   puis du nom (même ordre que `stock.selectors.produits_pompage`). */
+
+/** Rôle pompage d'un produit du catalogue, ou `null` s'il n'en a pas. */
+export function roleDuProduitPompage(p) {
+  if (p?.role_pompage) return p.role_pompage
+  const type = typeOfProduit(p)
+  const nom = _norm(p?.nom ?? '')
+  if (type === 'variateur' || nom.includes('variateur')) {
+    return nom.includes('afficheur') ? 'afficheur_variateur' : 'variateur_pompage'
+  }
+  if (type === 'pompe' || isPompe(p?.nom ?? '')) return 'pompe'
+  return null
+}
+
+/** Alimentation (mono / tri / dc) : déclarée, sinon tension, sinon nom. */
+export function alimentationDuProduit(p) {
+  if (p?.alimentation) return p.alimentation
+  if (Number(p?.tension_v) === 220) return 'mono'
+  if (Number(p?.tension_v) === 380) return 'tri'
+  const nom = _norm(p?.nom ?? '')
+  if (nom.includes('monophas')) return 'mono'
+  if (nom.includes('triphas')) return 'tri'
+  return ''
+}
+
+const CHAMPS_FICHE_VARIATEUR = [
+  'ond_mppt_v_min', 'ond_mppt_v_max', 'ond_v_max_abs', 'ond_i_max_mppt_a',
+  'ond_phases', 'ond_v_demarrage_v', 'var_voc_reco_min_v', 'var_voc_reco_max_v',
+  'var_v_sortie_v', 'var_i_sortie_nominal_a', 'var_protection_marche_a_sec',
+  'var_rendement_mppt_pct',
+]
+
+/** Une fiche variateur est « saisie » si elle est typée et porte au moins une
+ * valeur publiée (une fiche vide = « fiche à saisir »). */
+export function ficheVariateurSaisie(fiche) {
+  if (fiche?.type_fiche !== 'variateur_pompage') return false
+  return CHAMPS_FICHE_VARIATEUR.some(
+    (k) => fiche[k] !== null && fiche[k] !== undefined && fiche[k] !== '')
+}
+
+const _pricee = (p) => !sansPrix(p)
+const _avecCourbe = (p) => pointsCourbePompe(p?.courbe_pompe) != null
+const _fiche = (fiches, p) => (fiches && typeof fiches.get === 'function' ? fiches.get(p.id) : null)
+
+/** Articles à rôle pompage qui bloquent un devis pompage : sans prix de vente,
+ * sans prix d'achat (quand il est servi), pompe sans courbe, variateur sans
+ * fiche. Rend `[{ produit, role, raisons: [...] }]`, archivés exclus. */
+export function produitsPompageACompleter(produits, fiches) {
+  const out = []
+  for (const p of produits ?? []) {
+    if (p?.is_archived) continue
+    const role = roleDuProduitPompage(p)
+    if (!role) continue
+    const raisons = []
+    if (sansPrix(p)) raisons.push('prix de vente à renseigner')
+    if (p.prix_achat !== undefined && p.prix_achat !== null
+        && !(parseFloat(p.prix_achat) > 0)) raisons.push("prix d'achat à renseigner")
+    if (role === 'pompe' && !_avecCourbe(p)) raisons.push('courbe constructeur absente')
+    if (role === 'variateur_pompage' && !ficheVariateurSaisie(_fiche(fiches, p))) {
+      raisons.push('fiche variateur à saisir')
+    }
+    if (raisons.length) out.push({ produit: p, role, raisons })
+  }
+  return out
+}
+
+/** « Kit pompage chiffrable : oui / non » et CE QUI MANQUE : une pompe pricée
+ * avec courbe par alimentation, un variateur pricé avec fiche, des protections
+ * DC pricées. Rend `{ chiffrable, manques: [...] }`. */
+export function kitPompageChiffrable(produits, fiches) {
+  const actifs = (produits ?? []).filter((p) => !p?.is_archived)
+  const manques = []
+  for (const [alim, libelle] of [['mono', 'monophasée'], ['tri', 'triphasée']]) {
+    const ok = actifs.some((p) => roleDuProduitPompage(p) === 'pompe' && _pricee(p)
+      && _avecCourbe(p) && alimentationDuProduit(p) === alim)
+    if (!ok) manques.push(`aucune pompe ${libelle} pricée avec courbe`)
+  }
+  if (!actifs.some((p) => roleDuProduitPompage(p) === 'variateur_pompage' && _pricee(p)
+      && ficheVariateurSaisie(_fiche(fiches, p)))) {
+    manques.push('aucun variateur pricé avec fiche')
+  }
+  if (!actifs.some((p) => roleDuProduitPompage(p) === 'protection_dc' && _pricee(p))) {
+    manques.push('aucune protection DC pricée')
+  }
+  return { chiffrable: manques.length === 0, manques }
 }
