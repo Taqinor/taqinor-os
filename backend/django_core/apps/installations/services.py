@@ -1534,7 +1534,22 @@ def _gate_check_tests(installation, stage=None):
     Repli historique : si aucune fiche structurée n'a encore été ouverte mais
     que les champs libres `mes_*` / la date de mise en service portent déjà des
     valeurs (chantiers d'avant CH3), on considère l'essai enregistré — aucun
-    chantier existant n'est bloqué rétroactivement."""
+    chantier existant n'est bloqué rétroactivement.
+
+    AGR610 — chantier AGRICOLE (pompage) : jugé sur la RECETTE POMPAGE
+    (AGR608), jamais sur IEC 62446-1. Une fiche IEC seule ne suffit pas ;
+    pas de repli `mes_*`."""
+    if (installation.type_installation
+            == Installation.TypeInstallation.AGRICOLE):
+        from .models import RecettePompage
+        recette = RecettePompage.objects.filter(
+            installation=installation).first()
+        if recette is None:
+            return "Recette pompage non enregistrée."
+        if not recette.passe:
+            return ("Recette pompage non conforme "
+                    f"({recette.get_resultat_display()}).")
+        return None
     record = getattr(installation, 'commissioning_record', None)
     if record is not None:
         if record.passe:
@@ -2060,16 +2075,32 @@ def assemble_handover_pieces(installation):
     })
 
     # ── Certificat de recette IEC 62446-1 (CH3) ──
-    record = getattr(installation, 'commissioning_record', None)
-    recette_ok = record is not None and record.passe
-    pieces.append({
-        'type': 'commissioning',
-        'libelle': 'Certificat de recette IEC 62446-1',
-        'reference': (record.get_resultat_display()
-                      if record is not None else None),
-        'present': recette_ok,
-        'obligatoire': True,
-    })
+    # AGR610 — chantier agricole : « Procès-verbal de recette pompage »
+    # (AGR608), jamais le certificat IEC 62446-1 du PV raccordé.
+    if (installation.type_installation
+            == Installation.TypeInstallation.AGRICOLE):
+        from .models import RecettePompage
+        recette = RecettePompage.objects.filter(
+            installation=installation).first()
+        pieces.append({
+            'type': 'commissioning',
+            'libelle': 'Procès-verbal de recette pompage',
+            'reference': (recette.get_resultat_display()
+                          if recette is not None else None),
+            'present': recette is not None and recette.passe,
+            'obligatoire': True,
+        })
+    else:
+        record = getattr(installation, 'commissioning_record', None)
+        recette_ok = record is not None and record.passe
+        pieces.append({
+            'type': 'commissioning',
+            'libelle': 'Certificat de recette IEC 62446-1',
+            'reference': (record.get_resultat_display()
+                          if record is not None else None),
+            'present': recette_ok,
+            'obligatoire': True,
+        })
 
     # ── Dossier réglementaire loi 82-21 (obligatoire seulement si requis) ──
     # AGR625 — « déclaration hors réseau » (art. 3) : modalités non sourcées
