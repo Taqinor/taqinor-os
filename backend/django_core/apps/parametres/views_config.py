@@ -32,6 +32,9 @@ from .models_documents import DocumentTemplates
 PROFILE_CONFIG_FIELDS = [
     'couleur_principale', 'payment_terms', 'quote_validity_days',
     'agricole_pump_hours', 'agricole_prix_bonbonne', 'agricole_cout_reel_bonbonne',
+    # AGR107 — réglages pompage société (nullable, sans défaut).
+    'agricole_part_debit_forage_pct', 'agricole_marge_cable_descente_m',
+    'agricole_salissure_supp_pct',
     # Q5 — délais commerciaux (texte libre court ; vide ⇒ délai non affiché).
     'delai_visite_technique', 'delai_installation',
     'doc_prefixes', 'doc_numbering',

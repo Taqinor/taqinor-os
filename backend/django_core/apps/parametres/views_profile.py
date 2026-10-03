@@ -38,7 +38,13 @@ _PROFILE_FIELD_LABELS = {
     'default_installer': 'Installateur par défaut',
     'payment_terms': 'Échéancier de paiement',
     'quote_validity_days': 'Validité du devis (jours)',
-    'agricole_pump_hours': 'Heures de pompage par défaut',
+    'agricole_pump_hours':
+        "Heures de repli si l'irradiation du site est indisponible",
+    'agricole_part_debit_forage_pct':
+        'Part du débit déclaré du forage utilisable (%)',
+    'agricole_marge_cable_descente_m':
+        'Marge du câble de descente (m)',
+    'agricole_salissure_supp_pct': 'Supplément de salissure (%)',
     'agricole_prix_bonbonne': 'Prix bonbonne butane 12 kg (agricole)',
     'agricole_cout_reel_bonbonne': 'Coût réel bonbonne butane 12 kg (agricole)',
     'delai_visite_technique': 'Délai de visite technique (indicatif)',
