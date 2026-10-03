@@ -57,5 +57,23 @@
     "permissions": "`IsResponsableOrAdmin` (le geste ÉCRIT).",
     "param_cadence": "PARAM-CADENCE (25/09/2026) — les quatre champs ADDITIFS de `relance_etape_v2` (`cle`, `visite_prevue_le`, `visite_id`, `visite_retour_disponible`) sont servis ici aussi : la réponse EST la touche (forme `relance_etape_v2`) plus `prochaine_touche`.",
     "prochaine_touche": "SUIVI E9 (30/09/2026) — `prochaine_touche` NOMME l'étape annoncée (ADDITIF) : `libelle` (celui de l'étape, tel que la société l'a réglé dans Paramètres) et `cle` (clé moteur de l'étape — `devis`, `appel_apres_reponse`, `planifier`… —, retrouvée aussi pour une étape posée avant la clé ; '' pour un barreau du protocole). Même forme dans les réponses de `fait` / `sauter` (contrat `relance_etape_v2` + `prochaine_touche`) : l'écran n'annonce plus « prochain appel » pour une étape de préparation du devis. `null` quand plus rien n'est ouvert."
+  },
+  "ajout_lead_segment": {
+    "cle": "lead_segment",
+    "ou": "chaque touche (élément de `results`, et la touche renvoyée par les actions qui servent le même sérialiseur `RelanceEtapeSerializer`)",
+    "nature": "texte",
+    "valeurs": [
+      "residentiel",
+      "commercial",
+      "industriel",
+      "agricole",
+      ""
+    ],
+    "regle": "Valeur = `crm.Lead.type_installation` du lead de la touche ; chaîne vide si non renseigné. Lecture seule, additive.",
+    "pourquoi": "AGR500 (Groupe AGR, 02/10/2026) — `RelanceEtapeSerializer` sert déjà `lead_langue`, `lead_contact_preference`, `lead_pii_masquee`, mais aucun segment : l'écran de suivi ne peut pas savoir qu'il parle à une exploitation (PanneauProposerVisite.jsx ne lit que `etape.cadence`). La clé ne sert QU'AUX CONSIGNES D'ÉCRAN (textes, panneau agricole) et JAMAIS au rythme : aucun délai, aucun barreau, aucun axe segment dans le gabarit de cadence (CAD52/CAD124 tiennent).",
+    "exemple_fragment": {
+      "lead_segment": "agricole"
+    },
+    "integration": "Posée ici, À CÔTÉ des exemples, pour garder `main` vert : les tests backend (tests_cad10_motif_refus.py, tests_param_cadence_relance_etape.py, tests_cad101_piece_recue.py…) exigent que la touche servie ait EXACTEMENT les clés de l'exemple. La tâche backend qui ajoute le champ au sérialiseur l'insère dans `exemple` (et chaque variante `exemple_*` qui montre une touche) DANS LE MÊME COMMIT, puis retire ce bloc."
   }
 }

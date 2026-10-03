@@ -68,5 +68,43 @@
         ]
       ]
     }
-  }
+  },
+  "exemple_agricole_v2": {
+    "devis_auto": {
+      "pret": false,
+      "manquants": [
+        "HMT (m) ou niveau d'eau",
+        "Débit souhaité, besoin en eau (m³/jour) ou débit de la pompe actuelle"
+      ],
+      "manquants_detail": [
+        {
+          "champ": "pompe_hmt_m",
+          "label": "HMT (m) ou niveau d'eau"
+        },
+        {
+          "champ": "pompe_debit_m3h",
+          "label": "Débit souhaité, besoin en eau (m³/jour) ou débit de la pompe actuelle"
+        }
+      ],
+      "requis": [
+        [
+          "pompe_hmt_m",
+          "niveau_statique_m"
+        ],
+        [
+          "pompe_debit_m3h",
+          "besoin_eau_m3j",
+          "pompe_actuelle_debit_m3h"
+        ]
+      ],
+      "visite_point_eau_avant_devis": {
+        "requise": true,
+        "motifs": [
+          "niveau d'eau du forage inconnu",
+          "débit du forage inconnu"
+        ]
+      }
+    }
+  },
+  "notes_agricole_v2": "AGR1 (Groupe AGR, 02/10/2026 ; D-AGR-3, D-AGR-4) — la règle agricole CIBLE : le CV n'est plus requis (il décrit la pompe ACTUELLE, colonne `pompe_actuelle_cv` du contrat `lead_pompage.json`) ; requis = [['pompe_hmt_m','niveau_statique_m'], ['pompe_debit_m3h','besoin_eau_m3j','pompe_actuelle_debit_m3h']] où `pompe_actuelle_debit_m3h` ne compte QUE si `pompage_heures_jour` est renseigné (volume déclaré = débit actuel × heures actuelles). `visite_point_eau_avant_devis` {requise, motifs} : requise quand, à la fin de l'appel, le niveau d'eau ou le débit du forage est inconnu (D-AGR-4) ; sinon le devis part comme aujourd'hui. POSÉE À CÔTÉ de `exemple_agricole` (qui décrit la règle ACTUELLE de `devis_auto.py`, CV + HMT + débit) pour garder `main` vert : `tests_devis_auto_contrat.py` compare `champs_requis(lead)` à `exemple_agricole`. La tâche qui change la règle (AGR403) remplace `exemple_agricole` par ce bloc et retire `exemple_agricole_v2` dans le même commit que le code et le test."
 }

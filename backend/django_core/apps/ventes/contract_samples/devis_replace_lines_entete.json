@@ -79,5 +79,101 @@
     "detail": "Devis figé — révisez-le (reviser) pour le modifier.",
     "statut": "accepte",
     "revision_possible": true
+  },
+  "regles_agr200": "AGR200 (Groupe AGR, audit L3 du devis agricole, 02/10/2026) — CONTRAT D'ABORD (PACT10). Aujourd'hui une ligne ne connaît que `taux_tva` et une tranche {libelle, type, pct_or_montant} n'a aucune date ; aucune clé ne porte l'attestation de destination agricole, alors que l'art. 91-I-C-6° du CGI 2026 n'exonère une pompe solaire que si elle est « utilisée dans le secteur agricole ». Trois ajouts : (1) LIGNE `tva_base_legale` — texte ≤ 160 caractères, vide = aucune ; OBLIGATOIRE quand `taux_tva` vaut 0, sinon refus 400 nommant `lignes[i].tva_base_legale` (`exemple_400_tva_base_legale`) ; (2) TRANCHE `date_prevue` — date ISO facultative (null = non prévue) ; (3) `etude_params.attestation_usage_agricole` {attestee bool, le date, signataire texte} — propriétaire ECRAN, ENTRÉE. AUCUN taux par défaut ne change : l'avis ÉCRIT du fiscaliste (AGRM8) n'existe pas encore ; le contrat ne livre que la CAPACITÉ (un 0 % saisi reste 0 %). Le texte de base légale de l'exemple est ILLUSTRATIF, saisi par l'utilisateur — jamais proposé par défaut. `corps` (résidentiel) reste inchangé ; `corps_agricole` montre les trois ajouts.",
+  "corps_agricole": {
+    "lignes": [
+      {
+        "produit": 314,
+        "designation": "Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3\", 380V)",
+        "quantite": "1.00",
+        "prix_unitaire": "15000.00",
+        "remise": "0.00",
+        "taux_tva": "0.00",
+        "type_ligne": "produit",
+        "ordre": 0,
+        "variante": "",
+        "optionnelle": false,
+        "prix_manuel": false,
+        "quantite_manuelle": false,
+        "lot": null,
+        "ligne_composee": true,
+        "tva_base_legale": "Texte saisi par l'utilisateur (illustratif) : exonération invoquée au titre de l'art. 91-I-C-6° du CGI — matériel utilisé dans le secteur agricole."
+      },
+      {
+        "produit": 403,
+        "designation": "VARIATEUR VEICHI SI23 7.5KW 380V",
+        "quantite": "1.00",
+        "prix_unitaire": "3333.33",
+        "remise": "0.00",
+        "taux_tva": "20.00",
+        "type_ligne": "produit",
+        "ordre": 1,
+        "variante": "",
+        "optionnelle": false,
+        "prix_manuel": false,
+        "quantite_manuelle": false,
+        "lot": null,
+        "ligne_composee": true,
+        "tva_base_legale": ""
+      },
+      {
+        "produit": 3,
+        "designation": "Panneau 710W",
+        "quantite": "14.00",
+        "prix_unitaire": "1200.00",
+        "remise": "0.00",
+        "taux_tva": "20.00",
+        "type_ligne": "produit",
+        "ordre": 2,
+        "variante": "",
+        "optionnelle": false,
+        "prix_manuel": false,
+        "quantite_manuelle": false,
+        "lot": null,
+        "ligne_composee": true,
+        "tva_base_legale": ""
+      }
+    ],
+    "entete": {
+      "date_validite": "2026-11-01",
+      "taux_tva": "20.00",
+      "remise_globale": "0.00",
+      "note": "",
+      "mode_installation": "agricole",
+      "prix_cible_kwc": null,
+      "echeancier": [
+        {
+          "libelle": "Acompte",
+          "type": "acompte",
+          "pct_or_montant": 30,
+          "date_prevue": null
+        },
+        {
+          "libelle": "Matériel",
+          "type": "materiel",
+          "pct_or_montant": 60,
+          "date_prevue": null
+        },
+        {
+          "libelle": "Solde",
+          "type": "solde",
+          "pct_or_montant": 10,
+          "date_prevue": "2027-03-31"
+        }
+      ]
+    },
+    "etude_params": {
+      "attestation_usage_agricole": {
+        "attestee": true,
+        "le": "2026-10-02",
+        "signataire": "Exploitant (illustratif)"
+      }
+    },
+    "expected_updated_at": "2026-10-02T09:12:00.000000+00:00"
+  },
+  "exemple_400_tva_base_legale": {
+    "detail": "Ligne 1 : une base légale est obligatoire pour un taux de TVA de 0 %.",
+    "champ": "lignes[0].tva_base_legale"
   }
 }

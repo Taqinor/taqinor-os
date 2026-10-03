@@ -9,6 +9,7 @@
     "mise_en_service": "2026-07-01",
     "url_page": "https://taqinor.ma/realisations/villa-bouskoura/",
     "lien_suivi": "https://monitoring.example.com/p/villa-bouskoura",
+    "segment": "residentiel",
     "actif": true,
     "date_creation": "2026-09-08T09:15:00Z"
   },
@@ -21,6 +22,7 @@
       "mise_en_service": "2026-07-01",
       "url_page": "https://taqinor.ma/realisations/villa-bouskoura/",
       "lien_suivi": "https://monitoring.example.com/p/villa-bouskoura",
+      "segment": "residentiel",
       "actif": true,
       "date_creation": "2026-09-08T09:15:00Z"
     },
@@ -32,6 +34,7 @@
       "mise_en_service": null,
       "url_page": "https://taqinor.ma/realisations/ferme-mechraa-bel-ksiri/",
       "lien_suivi": "",
+      "segment": null,
       "actif": true,
       "date_creation": "2026-09-08T09:20:00Z"
     }
@@ -44,6 +47,8 @@
     "mise_en_service": "date ISO au 1er du mois, ou null. Rendue « juillet 2026 » dans le message ({mois_preuve}).",
     "lien_suivi": "chaîne vide quand le suivi de production n'est pas public — jamais null.",
     "permissions": "lecture : tout rôle ; écriture (POST/PATCH/DELETE) : Administrateur ou Responsable promu (403 sinon).",
-    "consommateur": "parametres.selectors.realisation_pour_lead → crm.services.message_pour_etape remplit {ville_preuve}/{mois_preuve}/{lien_preuve} de la touche j4_preuve ; sans réalisation les trois restent vides et la phrase est OMISE."
+    "consommateur": "parametres.selectors.realisation_pour_lead → crm.services.message_pour_etape remplit {ville_preuve}/{mois_preuve}/{lien_preuve} de la touche j4_preuve ; sans réalisation les trois restent vides et la phrase est OMISE.",
+    "segment": "AGR505 (Groupe AGR, 02/10/2026 ; D-AGR-10) — `residentiel|commercial|industriel|agricole`, NULLABLE (null = non renseigné). Aujourd'hui `parametres.Realisation` n'a ni type ni segment : le repli (c) de `realisation_pour_lead` peut montrer un toit de villa « comparable à la vôtre » à un agriculteur.",
+    "regle_preuve_segment": "Règle SYMÉTRIQUE (D-AGR-10) appliquée par `realisation_pour_lead` et par toute liste de références : un lead AGRICOLE ne reçoit qu'une réalisation `agricole` ; un lead NON agricole n'en reçoit JAMAIS une `agricole` ; une réalisation SANS segment (null) reste éligible pour un lead non agricole seulement. Aucune réalisation éligible = la preuve est OMISE, jamais un toit à la place."
   }
 }

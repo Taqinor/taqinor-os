@@ -217,5 +217,572 @@
       "rappel": "demain_matin",
       "conseil_closing": "Insister sur l'autonomie pendant les coupures."
     }
-  }
+  },
+  "gabarit_regle": "AGR5 (Groupe AGR, audit L3 du devis agricole, 02/10/2026 ; D-AGR-4) — CONTRAT D'ABORD (PACT10). Aujourd'hui ce contrat ne décrit qu'une checklist TOITURE (reflet de apps/visites/visite_checklist.py) et « terminer » est refusé tant qu'un élément manque : un technicien sur un forage doit inventer des mesures de toit. L'agrégat gagne la clé `gabarit` ('toiture' | 'point_eau'), fixée à la création de la visite ; le gabarit `point_eau` (visite « relevé du point d'eau », posée AVANT le devis quand le niveau d'eau ou le débit du forage est inconnu) REMPLACE les catégories toiture/tableau/local_onduleur/cheminement par point_eau, pompe_existante, electricite, site_pv, administratif, general (`gabarit_point_eau`, `exemple_point_eau`). `photo_toit` vaut null en point_eau. AUCUN seuil ni verdict (règle VT1 : le module montre, le bureau d'études juge). Un `sauf_si` rend une mesure requise facultative quand le technicien coche l'impossibilité (`niveau_non_mesurable`, `debit_non_mesurable`). `retour_lead_point_eau` = la table mesure → colonne Lead du contrat crm `lead_pompage.json` (AGR1), appliquée à la VALIDATION de la visite (jamais avant) ; une mesure sans colonne Lead (niveau dynamique, conduite, refoulement, tension, alimentation) n'est pas recopiée : le moteur la lit par `visites.selectors.mesures_point_eau_pour_lead` (AGR413), provenance lead/mesure_visite. L'`exemple` toiture est IDENTIQUE à l'octet : la clé `gabarit` (« toiture ») y entrera avec la tâche backend qui la sert (`getVisite` est sous contrat de forme : une clé que la vue ne renvoie pas encore rougirait `check_api_shapes.py`). Valeurs ILLUSTRATIVES.",
+  "gabarit_point_eau": {
+    "point_eau": {
+      "photos": {
+        "point_eau_tete_forage": "requise",
+        "point_eau_bassin": "facultative"
+      },
+      "mesures": {
+        "source_eau": {
+          "type": "choix",
+          "requis": true,
+          "libelle": "Source d'eau",
+          "choix": [
+            "puits",
+            "forage",
+            "bassin",
+            "riviere"
+          ]
+        },
+        "niveau_statique_m": {
+          "type": "décimal",
+          "requis": true,
+          "libelle": "Niveau statique (pompe arrêtée)",
+          "sauf_si": "niveau_non_mesurable",
+          "unite": "m"
+        },
+        "niveau_non_mesurable": {
+          "type": "booléen",
+          "requis": false,
+          "libelle": "Niveau non mesurable sur place"
+        },
+        "niveau_dynamique_m": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "Niveau dynamique (pompe en marche)",
+          "unite": "m"
+        },
+        "debit_mesure_m3h": {
+          "type": "décimal",
+          "requis": true,
+          "libelle": "Débit mesuré",
+          "sauf_si": "debit_non_mesurable",
+          "unite": "m³/h"
+        },
+        "debit_non_mesurable": {
+          "type": "booléen",
+          "requis": false,
+          "libelle": "Débit non mesurable sur place"
+        },
+        "debit_methode": {
+          "type": "choix",
+          "requis": false,
+          "libelle": "Méthode de mesure du débit",
+          "choix": [
+            "essai_pompage",
+            "seau_chronometre",
+            "compteur",
+            "declaration_foreur"
+          ]
+        },
+        "profondeur_forage_m": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "Profondeur du forage",
+          "unite": "m"
+        },
+        "diametre_tubage_mm": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "Diamètre du tubage",
+          "unite": "mm"
+        },
+        "hauteur_refoulement_m": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "Hauteur de refoulement",
+          "unite": "m"
+        },
+        "longueur_conduite_m": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "Longueur de la conduite",
+          "unite": "m"
+        },
+        "diametre_conduite_mm": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "Diamètre de la conduite",
+          "unite": "mm"
+        },
+        "bassin_volume_m3": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "Volume du bassin",
+          "unite": "m³"
+        }
+      }
+    },
+    "pompe_existante": {
+      "photos": {
+        "pompe_plaque": "facultative"
+      },
+      "mesures": {
+        "pompe_presente": {
+          "type": "booléen",
+          "requis": true,
+          "libelle": "Une pompe est-elle déjà installée ?"
+        },
+        "pompe_actuelle_type": {
+          "type": "choix",
+          "requis": false,
+          "libelle": "Type de la pompe actuelle",
+          "choix": [
+            "immergee",
+            "surface",
+            "ne_sait_pas"
+          ]
+        },
+        "pompe_actuelle_cv": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "Puissance de la pompe actuelle",
+          "unite": "CV"
+        },
+        "tension_v": {
+          "type": "entier",
+          "requis": false,
+          "libelle": "Tension de la pompe actuelle",
+          "unite": "V"
+        },
+        "alimentation": {
+          "type": "choix",
+          "requis": false,
+          "libelle": "Alimentation de la pompe actuelle",
+          "choix": [
+            "mono",
+            "tri"
+          ]
+        }
+      }
+    },
+    "electricite": {
+      "photos": {
+        "electricite_coffret": "facultative"
+      },
+      "mesures": {
+        "electricite_sur_place": {
+          "type": "choix",
+          "requis": true,
+          "libelle": "Électricité sur place",
+          "choix": [
+            "aucune",
+            "monophase",
+            "triphase",
+            "ne_sait_pas"
+          ]
+        }
+      }
+    },
+    "site_pv": {
+      "photos": {
+        "site_pv_emplacement": "requise (2 photos)"
+      },
+      "mesures": {
+        "distance_forage_champ_m": {
+          "type": "décimal",
+          "requis": true,
+          "libelle": "Distance forage → zone de pose",
+          "unite": "m"
+        },
+        "type_pose": {
+          "type": "choix",
+          "requis": false,
+          "libelle": "Type de pose",
+          "choix": [
+            "sol",
+            "ombriere"
+          ]
+        },
+        "cloture": {
+          "type": "booléen",
+          "requis": false,
+          "libelle": "Zone clôturée"
+        },
+        "gardiennage": {
+          "type": "booléen",
+          "requis": false,
+          "libelle": "Site gardé"
+        },
+        "ombrage_notes": {
+          "type": "texte",
+          "requis": false,
+          "libelle": "Ombrages (arbres, bâtiments)"
+        }
+      }
+    },
+    "administratif": {
+      "photos": {
+        "admin_autorisation_abh": "facultative",
+        "admin_compteur_eau": "facultative",
+        "admin_justificatifs_energie": "facultative"
+      },
+      "mesures": {
+        "autorisation_prelevement": {
+          "type": "choix",
+          "requis": true,
+          "libelle": "Autorisation de prélèvement ABH",
+          "choix": [
+            "oui",
+            "non",
+            "en_cours",
+            "ne_sait_pas"
+          ]
+        },
+        "autorisation_numero": {
+          "type": "texte",
+          "requis": false,
+          "libelle": "Numéro d'autorisation"
+        },
+        "autorisation_debit_l_s": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "Débit autorisé",
+          "unite": "L/s"
+        },
+        "autorisation_volume_m3_an": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "Volume annuel autorisé",
+          "unite": "m³/an"
+        },
+        "compteur_eau": {
+          "type": "booléen",
+          "requis": true,
+          "libelle": "Compteur d'eau sur le forage"
+        },
+        "justificatif_foncier": {
+          "type": "texte",
+          "requis": false,
+          "libelle": "Justificatif foncier"
+        },
+        "foreur_permis": {
+          "type": "texte",
+          "requis": false,
+          "libelle": "Permis du foreur (forage neuf)"
+        }
+      }
+    },
+    "general": {
+      "photos": {
+        "general_exploitation": "requise"
+      },
+      "mesures": {}
+    }
+  },
+  "exemple_point_eau": {
+    "id": 7,
+    "lead": 118,
+    "commercial": {
+      "id": 5,
+      "nom_affiche": "Commercial Démo"
+    },
+    "statut": "en_cours",
+    "gabarit": "point_eau",
+    "date_prevue": "2026-09-15",
+    "date_realisee": null,
+    "notes": "Accès toiture par escalier extérieur.",
+    "modifiable": true,
+    "raison_lecture_seule": "",
+    "photo_toit": null,
+    "checklist": [
+      {
+        "categorie": "point_eau",
+        "libelle": "Point d'eau",
+        "slots": [
+          {
+            "code": "point_eau_tete_forage",
+            "libelle": "Tête de forage",
+            "guide": "La tête du forage ou du puits, couvercle ouvert si possible.",
+            "requis": true,
+            "min_photos": 1,
+            "etat": "ok",
+            "photos": [
+              {
+                "id": 51,
+                "url": "/api/django/records/attachments/51/telecharger/",
+                "filename": "forage-1.jpg",
+                "gps_lat": 30.47,
+                "gps_lng": -8.88,
+                "commentaire": "",
+                "a_refaire": false,
+                "motif_refaire": ""
+              }
+            ]
+          },
+          {
+            "code": "point_eau_bassin",
+            "libelle": "Bassin",
+            "guide": "Le bassin ou le réservoir existant (optionnel).",
+            "requis": false,
+            "min_photos": 1,
+            "etat": "manquant",
+            "photos": []
+          }
+        ]
+      },
+      {
+        "categorie": "pompe_existante",
+        "libelle": "Pompe existante",
+        "slots": [
+          {
+            "code": "pompe_plaque",
+            "libelle": "Plaque de la pompe",
+            "guide": "La plaque signalétique lisible : kW, tension, phases (optionnel).",
+            "requis": false,
+            "min_photos": 1,
+            "etat": "manquant",
+            "photos": []
+          }
+        ]
+      },
+      {
+        "categorie": "electricite",
+        "libelle": "Électricité",
+        "slots": [
+          {
+            "code": "electricite_coffret",
+            "libelle": "Coffret électrique",
+            "guide": "Le coffret ou le compteur sur place (optionnel).",
+            "requis": false,
+            "min_photos": 1,
+            "etat": "manquant",
+            "photos": []
+          }
+        ]
+      },
+      {
+        "categorie": "site_pv",
+        "libelle": "Emplacement des panneaux",
+        "slots": [
+          {
+            "code": "site_pv_emplacement",
+            "libelle": "Emplacement prévu des panneaux",
+            "guide": "Deux vues de la zone de pose au sol, depuis deux côtés.",
+            "requis": true,
+            "min_photos": 2,
+            "etat": "manquant",
+            "photos": []
+          }
+        ]
+      },
+      {
+        "categorie": "administratif",
+        "libelle": "Administratif",
+        "slots": [
+          {
+            "code": "admin_autorisation_abh",
+            "libelle": "Autorisation ABH",
+            "guide": "Le document d'autorisation de prélèvement (optionnel).",
+            "requis": false,
+            "min_photos": 1,
+            "etat": "manquant",
+            "photos": []
+          },
+          {
+            "code": "admin_compteur_eau",
+            "libelle": "Compteur d'eau",
+            "guide": "Le compteur d'eau du forage (optionnel).",
+            "requis": false,
+            "min_photos": 1,
+            "etat": "manquant",
+            "photos": []
+          },
+          {
+            "code": "admin_justificatifs_energie",
+            "libelle": "Justificatifs butane / gasoil",
+            "guide": "Factures ou bons d'achat de carburant (optionnel).",
+            "requis": false,
+            "min_photos": 1,
+            "etat": "manquant",
+            "photos": []
+          }
+        ]
+      },
+      {
+        "categorie": "general",
+        "libelle": "Général",
+        "slots": [
+          {
+            "code": "general_exploitation",
+            "libelle": "Vue d'ensemble de l'exploitation",
+            "guide": "L'exploitation entière : forage, champ, zone de pose.",
+            "requis": true,
+            "min_photos": 1,
+            "etat": "manquant",
+            "photos": []
+          }
+        ]
+      }
+    ],
+    "mesures": {
+      "point_eau": {
+        "source_eau": "forage",
+        "niveau_statique_m": 32.0,
+        "niveau_non_mesurable": false,
+        "niveau_dynamique_m": 40.0,
+        "debit_mesure_m3h": 34.0,
+        "debit_non_mesurable": false,
+        "debit_methode": "seau_chronometre",
+        "profondeur_forage_m": 90.0,
+        "diametre_tubage_mm": 150.0,
+        "hauteur_refoulement_m": 4.0,
+        "longueur_conduite_m": 350.0,
+        "diametre_conduite_mm": 110.0,
+        "bassin_volume_m3": null
+      },
+      "pompe_existante": {
+        "pompe_presente": true,
+        "pompe_actuelle_type": "immergee",
+        "pompe_actuelle_cv": 7.5,
+        "tension_v": 380,
+        "alimentation": "tri"
+      },
+      "electricite": {
+        "electricite_sur_place": "aucune"
+      },
+      "site_pv": {
+        "distance_forage_champ_m": 25.0,
+        "type_pose": "sol",
+        "cloture": false,
+        "gardiennage": true,
+        "ombrage_notes": ""
+      },
+      "administratif": {
+        "autorisation_prelevement": "en_cours",
+        "autorisation_numero": "",
+        "autorisation_debit_l_s": null,
+        "autorisation_volume_m3_an": null,
+        "compteur_eau": null,
+        "justificatif_foncier": "",
+        "foreur_permis": ""
+      }
+    },
+    "completude": {
+      "complet": false,
+      "manquants": [
+        {
+          "type": "photo",
+          "categorie": "site_pv",
+          "code": "site_pv_emplacement",
+          "libelle": "Emplacement prévu des panneaux"
+        },
+        {
+          "type": "photo",
+          "categorie": "general",
+          "code": "general_exploitation",
+          "libelle": "Vue d'ensemble de l'exploitation"
+        },
+        {
+          "type": "mesure",
+          "categorie": "administratif",
+          "code": "compteur_eau",
+          "libelle": "Compteur d'eau sur le forage"
+        }
+      ]
+    },
+    "client_panel": {
+      "lead_nom": "Client Démo",
+      "telephone": "+212600000000",
+      "whatsapp": "+212600000000",
+      "adresse": "Quartier Démo, Bouskoura",
+      "ville": "Bouskoura",
+      "gps_lat": 33.4589,
+      "gps_lng": -7.6528
+    },
+    "devis": [
+      {
+        "id": 214,
+        "numero": "DEV-202609-0012",
+        "statut": "envoye",
+        "date": "2026-09-02",
+        "total_ttc": "84500.00",
+        "lignes": [
+          {
+            "designation": "Panneau 550 Wc",
+            "quantite": "12.000",
+            "prix_unitaire_ttc": "1850.00",
+            "total_ttc": "22200.00"
+          }
+        ]
+      }
+    ],
+    "en_route_le": null,
+    "arrivee_le": null,
+    "qualification": {
+      "temperature": "chaud",
+      "devis": "a_modifier",
+      "devis_details": "Ajouter une batterie 5 kWh.",
+      "decideur": "conjoint_famille",
+      "frein": "prix",
+      "declencheur": "coupures",
+      "rappel": "demain_matin",
+      "conseil_closing": "Insister sur l'autonomie pendant les coupures."
+    }
+  },
+  "retour_lead_point_eau": [
+    {
+      "mesure": "point_eau.source_eau",
+      "colonne_lead": "source_eau"
+    },
+    {
+      "mesure": "point_eau.niveau_statique_m",
+      "colonne_lead": "niveau_statique_m",
+      "provenance": {
+        "colonne_lead": "niveau_statique_source",
+        "valeur": "mesure_visite"
+      }
+    },
+    {
+      "mesure": "point_eau.debit_mesure_m3h",
+      "colonne_lead": "debit_forage_m3h",
+      "provenance": {
+        "colonne_lead": "debit_forage_source",
+        "valeur": "mesure_visite"
+      }
+    },
+    {
+      "mesure": "point_eau.profondeur_forage_m",
+      "colonne_lead": "profondeur_forage_m"
+    },
+    {
+      "mesure": "pompe_existante.pompe_actuelle_type",
+      "colonne_lead": "pompe_actuelle_type"
+    },
+    {
+      "mesure": "pompe_existante.pompe_actuelle_cv",
+      "colonne_lead": "pompe_actuelle_cv"
+    },
+    {
+      "mesure": "electricite.electricite_sur_place",
+      "colonne_lead": "electricite_sur_place"
+    },
+    {
+      "mesure": "site_pv.distance_forage_champ_m",
+      "colonne_lead": "distance_forage_champ_m"
+    },
+    {
+      "mesure": "administratif.autorisation_prelevement",
+      "colonne_lead": "autorisation_prelevement"
+    },
+    {
+      "mesure": "administratif.autorisation_numero",
+      "colonne_lead": "autorisation_numero"
+    },
+    {
+      "mesure": "administratif.autorisation_debit_l_s",
+      "colonne_lead": "autorisation_debit_l_s"
+    },
+    {
+      "mesure": "administratif.autorisation_volume_m3_an",
+      "colonne_lead": "autorisation_volume_m3_an"
+    },
+    {
+      "mesure": "administratif.compteur_eau",
+      "colonne_lead": "compteur_eau"
+    }
+  ]
 }
