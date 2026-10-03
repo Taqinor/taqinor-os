@@ -184,6 +184,35 @@ class MouvementStockSerializer(serializers.ModelSerializer):
         ]
 
 
+def controle_courbe_pompe_lisible(value):
+    """AGR102 — contrôle PHYSIQUE d'une courbe de pompe déjà valide en forme.
+
+    Retourne ``None`` si la courbe est lisible, sinon un message FR nommant le
+    point fautif (numéroté à partir de 1, patron STKCAT20). Règles (contrat
+    ``produit_pompage.json``) : valeurs ≥ 0, débits STRICTEMENT croissants,
+    HMT NON croissante. Aucun seuil inventé. Partagé avec le garde de
+    l'admin Django (``ProduitAdminForm.clean``) — une seule définition.
+    """
+    debits = value.get('debits_m3h')
+    hmts = value.get('hmt_m')
+    for i, (q, h) in enumerate(zip(debits, hmts)):
+        if q < 0:
+            return (f"Point {i + 1} de la courbe : le débit ({q}) ne peut "
+                    "pas être négatif.")
+        if h < 0:
+            return (f"Point {i + 1} de la courbe : la HMT ({h}) ne peut "
+                    "pas être négative.")
+    for i in range(1, len(debits)):
+        if debits[i] <= debits[i - 1]:
+            return (f"Point {i + 1} de la courbe : les débits doivent être "
+                    f"STRICTEMENT croissants ({debits[i]} après "
+                    f"{debits[i - 1]}).")
+        if hmts[i] > hmts[i - 1]:
+            return (f"Point {i + 1} de la courbe : la HMT doit être non "
+                    f"croissante ({hmts[i]} après {hmts[i - 1]}).")
+    return None
+
+
 class ProduitSerializer(serializers.ModelSerializer):
     categorie = CategorieSerializer(read_only=True)
     categorie_id = serializers.PrimaryKeyRelatedField(
@@ -374,6 +403,10 @@ class ProduitSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "`debits_m3h` et `hmt_m` ne doivent contenir que des "
                 "nombres finis.")
+        # AGR102 — lisibilité physique : jamais corrigée en silence.
+        probleme = controle_courbe_pompe_lisible(value)
+        if probleme:
+            raise serializers.ValidationError(probleme)
         return value
 
     def validate_code_barres(self, value):
