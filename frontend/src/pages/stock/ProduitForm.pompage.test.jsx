@@ -4,7 +4,7 @@ import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
-import contratPompage from '../../../../backend/django_core/apps/stock/contract_samples/produit_pompage.json'
+import { documentContrat } from '../../test/fixtures/contractSamples'
 
 /* ============================================================================
    AGR105 — fiche produit : champs pompage (rôle, type, alimentation,
@@ -90,6 +90,9 @@ function wrapper({ children }) {
 }
 
 // Un produit pompe tel que le serveur le sert (clés du contrat produit_pompage.json).
+// Le contrat partagé est LU (PACT10), jamais recopié à la main.
+const contratPompage = documentContrat('stock', 'produit_pompage')
+
 const POMPE = {
   id: 7, nom: 'Électropompe submersible 4 pouces', sku: 'PMP-X', marque: '',
   description: '', garantie: '', prix_vente: '5000', prix_achat: '3000', tva: 20,
