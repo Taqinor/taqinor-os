@@ -26,6 +26,7 @@ import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
   searchSettings, groupTabs, saveModelForTab, SAVE_MODEL_HINTS,
   formReglagesPompage, payloadReglagesPompage, formReperes, payloadReperes,
+  CHAMP_ECART_RECETTE, nombreOuNull,
 } from './peConstants'
 import SettingsSidebar from './SettingsSidebar'
 import OnboardingSection from './OnboardingSection'
@@ -152,6 +153,8 @@ export default function ParametresEntreprise() {
     ...formReglagesPompage({}),
     // AGR209 — repères énergie datés et sourcés, VIDES (jamais 50 / 128).
     reperes_energie_agricole: formReperes({}),
+    // AGR607 — écart de recette pompage toléré, SANS défaut.
+    [CHAMP_ECART_RECETTE]: '',
     // Q5 — delais commerciaux INDICATIFS (texte libre ; vide = non affiche).
     delai_visite_technique: '48-72 h',
     delai_installation: '7-14 jours ouvres',
@@ -619,6 +622,7 @@ export default function ParametresEntreprise() {
       // AGR108 — vide reste vide (aucun repli numérique).
       ...formReglagesPompage(profile),
       reperes_energie_agricole: formReperes(profile),
+      [CHAMP_ECART_RECETTE]: profile[CHAMP_ECART_RECETTE] ?? '',
       delai_visite_technique: profile.delai_visite_technique ?? '',
       delai_installation: profile.delai_installation ?? '',
       doc_prefixes: { ...DEFAULT_PREFIXES, ...(profile.doc_prefixes || {}) },
@@ -768,6 +772,8 @@ export default function ParametresEntreprise() {
       ...payloadReglagesPompage(form),
       // AGR209 — un repère vidé part vide (null), jamais 50 / 128.
       reperes_energie_agricole: payloadReperes(form.reperes_energie_agricole),
+      // AGR607 — vide = null (écart affiché sans verdict) ; tapé = tel quel.
+      [CHAMP_ECART_RECETTE]: nombreOuNull(form[CHAMP_ECART_RECETTE]),
       // Q5 — chaine VIDE conservee telle quelle : elle SIGNIFIE
       // « ne pas afficher ce delai », ce n'est pas une valeur manquante.
       delai_visite_technique: (form.delai_visite_technique ?? '').trim(),
@@ -861,6 +867,8 @@ export default function ParametresEntreprise() {
   const ctx = {
     profile, form, set, setForm, accent, uploading, dispatch,
     canManageSensitive,
+    // AGR607 — refus 400 du profil (`{champ: [msg]}`), affiché sous le champ.
+    profileError: error,
     categories, fournisseurs,
     assignables,
     niveaux, setNiveau, saveNiveaux, niveauxSaved, niveauxError, addNiveau, delNiveau, seedNiveaux,

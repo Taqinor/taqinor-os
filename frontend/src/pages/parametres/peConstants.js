@@ -257,6 +257,20 @@ export function payloadReperes(reperes = {}) {
   }))
 }
 
+// ── AGR607 (Groupe AGR, 02/10/2026) — écart de recette pompage toléré (%) ──
+// Réglage société SANS défaut (AGR606) : vide = « écart affiché sans
+// verdict » ; une valeur tapée part telle quelle (jamais arrondie).
+export const CHAMP_ECART_RECETTE = 'recette_pompage_ecart_max_pct'
+
+/** Message d'erreur serveur (400 DRF `{champ: [msg]}`) d'UN champ, ou ''. */
+export function erreurDuChamp(erreur, champ) {
+  if (!erreur || typeof erreur !== 'object' || Array.isArray(erreur)) return ''
+  const valeur = erreur[champ]
+  if (valeur == null) return ''
+  return (Array.isArray(valeur) ? valeur : [valeur])
+    .map(m => (typeof m === 'string' ? m : JSON.stringify(m))).join(' ')
+}
+
 /** Ancienneté d'un relevé en jours entiers (aucun seuil), ou `null`. */
 export function joursDepuisReleve(releveLe, aujourdhui = new Date()) {
   if (!releveLe) return null
