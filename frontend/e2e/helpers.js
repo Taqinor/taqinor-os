@@ -94,6 +94,18 @@ export const testSessionFraiche = base.extend({
   },
 })
 
+/** VX156 — premier login à froid : le « moment d'accueil » (WelcomeMoment,
+ *  modale one-shot plein écran) s'ouvre et intercepte les clics tant qu'il
+ *  n'est pas fermé. Un test qui part d'un contexte VIERGE (sans le drapeau
+ *  `taqinor:welcome:seen:v1` du storageState partagé) le voit donc à chaque
+ *  fois : on vérifie qu'il est là, puis on le ferme comme l'utilisateur. */
+export async function fermerMomentAccueil(page) {
+  const accueil = page.getByRole('dialog', { name: 'Bienvenue chez Taqinor' })
+  await expect(accueil).toBeVisible({ timeout: 20_000 })
+  await accueil.getByRole('button', { name: 'Commencer' }).click()
+  await expect(accueil).toBeHidden()
+}
+
 /** Dans un test déjà lancé (ex. le singe qui enchaîne les écrans) : si la
  *  session de CE contexte a été coupée (déconnexion cliquée), on se reconnecte
  *  par l'API avant l'écran suivant. */
