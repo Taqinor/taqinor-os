@@ -809,6 +809,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # (`selectors.provenance_site`) : RETRIEVE SEULEMENT, même porte que
     # `conception` (une requête par lead — jamais sur une liste).
     provenance_site = serializers.SerializerMethodField()
+    # AGR404 (contrat AGR1 ``lead_pompage.json``) — les entrées du
+    # dimensionnement agricole lues sur le lead, avec leur provenance :
+    # RETRIEVE SEULEMENT (une requête d'historique), même porte.
+    entrees_pompage = serializers.SerializerMethodField()
     # MRY5 — prochaine touche de cadence, ANNOTÉE dans le queryset
     # (``LeadViewSet.get_queryset``), jamais un SerializerMethodField : la
     # liste et le kanban affichent le badge « touche due » pour 50 cartes,
@@ -1294,6 +1298,8 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # CAD150 — la provenance « saisie sur le site » coûte une requête
             # par lead : détail seulement, même porte.
             fields.pop('provenance_site', None)
+            # AGR404 — `entrees_pompage` : détail seulement, même porte.
+            fields.pop('entrees_pompage', None)
         return fields
 
     def to_representation(self, instance):
@@ -1334,6 +1340,13 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         """
         from .selectors import conception_3d_du_lead
         return conception_3d_du_lead(obj)
+
+    @extend_schema_field(serializers.DictField())
+    def get_entrees_pompage(self, obj):
+        """AGR404 — ``{entrees, manquants}`` (contrat ``lead_pompage``) :
+        la SEULE lecture lead → entrées du moteur agricole."""
+        from .selectors import entrees_pompage_du_lead
+        return entrees_pompage_du_lead(obj)
 
     @extend_schema_field(serializers.DictField())
     def get_provenance_site(self, obj):

@@ -427,11 +427,13 @@ class TestGardeProvenanceQJR234(SimpleTestCase):
         self.assertIn('fantôme', constats[0][1])
 
     def test_une_EXCLUSION_perimee_rougit(self):
-        # QJR587 — le CV de la pompe (`pompe_actuelle_cv`, AGR401) est désormais ESTAMPILLÉ : l'exclusion témoin
-        # est `pompe_alim_actuelle` (toujours exclue, avec sa raison).
+        # QJR587 — le CV de la pompe (`pompe_actuelle_cv`, AGR401) est
+        # ESTAMPILLÉ, et AGR404 estampille aussi `pompe_alim_actuelle` :
+        # l'exclusion témoin est `ombrage_notes` (toujours exclue, avec sa
+        # raison).
         constats = selectors.lead_provenance_omissions(
-            [c for c in self._champs() if c != 'pompe_alim_actuelle'])
-        self.assertEqual([c[0] for c in constats], ['pompe_alim_actuelle'])
+            [c for c in self._champs() if c != 'ombrage_notes'])
+        self.assertEqual([c[0] for c in constats], ['ombrage_notes'])
         self.assertIn('périmée', constats[0][1])
 
     def test_qjr587_un_champ_ville_non_declare_ROUGIT(self):

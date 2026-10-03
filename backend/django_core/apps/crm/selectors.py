@@ -1247,6 +1247,9 @@ LEAD_PROVENANCE_FIELDS = (
     'structure_pref', 'structure_produit',
     'pompe_actuelle_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
     'type_installation', 'ville', 'ville_reference',
+    # AGR404 (ex-AGR215) — l'énergie de la pompe actuelle est lue par
+    # `entrees_pompage` pour l'économie agricole : une dérive doit se voir.
+    'pompe_alim_actuelle',
 )
 
 
@@ -1329,12 +1332,9 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
          "sur le lead au moment où l'étude compose la couche véhicule et "
          "où le rendu décide de l'étiquette « avec votre future voiture ». "
          "Une valeur sans copie ne peut pas diverger de sa copie."),
-        ('pompe_alim_actuelle',
-         "questionnaire de pompage agricole (CAD149) : l'alimentation de la "
-         "pompe ACTUELLE sert l'argumentaire et l'économie de carburant, "
-         "pas le bloc énergie/toiture RÉSIDENTIEL que le devis recopie dans "
-         "`etude_params`. À déclarer le jour où l'écran agricole re-saisit "
-         "cette valeur depuis le lead."),
+        # AGR404 — `pompe_alim_actuelle` n'est PLUS exclue : `entrees_pompage`
+        # la sert au moteur agricole (énergie actuelle de l'économie), elle
+        # est donc déclarée dans `LEAD_PROVENANCE_FIELDS`.
     ]
     # AGR400 — colonnes de pompage du contrat AGR1 (``lead_pompage.json``).
     # Exclues AVEC LEUR RAISON (seules trois portent le marqueur `pompe_`,
@@ -1506,6 +1506,206 @@ def lead_values_changed_since(stamp, company=None):
 
     return [f for f in LEAD_PROVENANCE_FIELDS
             if f in valeurs and _norm(courant.get(f)) != _norm(valeurs.get(f))]
+
+
+# AGR404 — `entrees_pompage` : UNE lecture lead → entrées du dimensionnement ──
+#
+# Contrat partagé : ``contract_samples/lead_pompage.json`` (AGR1), bloc
+# ``entrees_pompage`` et ``regles.entrees_pompage.cibles``. C'est la SEULE
+# source lue par le moteur agricole serveur (D1) et par l'écran. Chaque entrée
+# = {colonne, valeur, provenance, date, cle_etude, chemin} ; ``provenance`` =
+# la valeur ``detail`` (client|site_web|mesure_visite|derive) de la forme
+# unique {origine, detail, date} d'AGR2 (l'origine y vaut toujours « lead ») ;
+# ``cle_etude`` = une clé v2 d'AGR2 ou ``saisies_economie_pompage`` d'AGR3,
+# JAMAIS une clé v1. AUCUN défaut nulle part : une colonne vide est listée
+# dans ``manquants``, jamais remplacée (ni « tri », ni 20 m, ni « immergée »).
+
+#: colonne → (cle_etude, chemin). L'ordre est l'ordre de service.
+ENTREES_POMPAGE_CIBLES = (
+    ('niveau_statique_m', 'source', 'source.niveau_statique_m'),
+    ('profondeur_forage_m', 'source', 'source.profondeur_forage_m'),
+    ('debit_forage_m3h', 'source', 'source.debit_exploitation_m3h'),
+    ('autorisation_debit_l_s', 'source', 'source.debit_autorise_m3h'),
+    ('autorisation_volume_m3_an', 'source',
+     'source.volume_annuel_autorise_m3'),
+    ('compteur_eau', 'source', 'source.compteur'),
+    ('besoin_eau_m3j', 'besoin', 'besoin.volume_m3_jour'),
+    ('pompe_debit_m3h', 'besoin', 'besoin.debit_souhaite_m3h'),
+    ('pompe_actuelle_debit_m3h', 'besoin', 'besoin.debit_actuel_m3h'),
+    ('pompage_heures_jour', 'besoin', 'besoin.heures_actuelles_jour'),
+    ('culture', 'besoin', 'besoin.cultures[0].crop'),
+    ('surface_irriguee_ha', 'besoin', 'besoin.cultures[0].surface_ha'),
+    ('irrigation_methode', 'besoin', 'besoin.cultures[0].irrigation'),
+    ('region_agricole', 'besoin', 'besoin.region'),
+    ('pompe_hmt_m', 'hmt_entrees', 'hmt_entrees.saisie_m'),
+    ('distance_forage_champ_m', 'distance_champ_m', 'distance_champ_m'),
+    ('pompe_actuelle_cv', 'plaque', 'plaque.cv'),
+    ('pompe_actuelle_type', 'type_pompe', 'type_pompe'),
+    ('pompe_alim_actuelle', 'saisies_economie_pompage',
+     'saisies_economie_pompage.energie_actuelle.valeur'),
+    ('butane_bouteilles_jour', 'saisies_economie_pompage',
+     'saisies_economie_pompage.consommation.quantite'),
+    ('carburant_litres_mois', 'saisies_economie_pompage',
+     'saisies_economie_pompage.consommation.quantite'),
+    ('carburant_prix_unitaire_mad', 'saisies_economie_pompage',
+     'saisies_economie_pompage.depense_unitaire_payee.valeur'),
+    ('mois_irrigation', 'saisies_economie_pompage',
+     'saisies_economie_pompage.mois_irrigation.mois'),
+)
+
+#: Colonnes dont la provenance vit dans une colonne ``*_source`` dédiée :
+#: colonne → (colonne source, {valeur source → provenance}).
+_ENTREES_POMPAGE_SOURCES = {
+    'niveau_statique_m': ('niveau_statique_source', {
+        'declare': 'client', 'site_web': 'site_web',
+        'mesure_visite': 'mesure_visite'}),
+    'debit_forage_m3h': ('debit_forage_source', {
+        'essai': 'client', 'foreur': 'client', 'client': 'client',
+        'mesure_visite': 'mesure_visite'}),
+    'besoin_eau_m3j': ('besoin_eau_source', {
+        'client': 'client', 'site_web': 'site_web',
+        'pompe_actuelle': 'derive'}),
+    'pompe_hmt_m': ('pompe_hmt_source', {
+        'declaree': 'client', 'site_web': 'site_web'}),
+}
+
+#: La pompe ACTUELLE : lue par le moteur seulement en mode « pompe existante
+#: conservée » (D-AGR-7) — servie marquée « information ».
+_ENTREES_POMPAGE_INFORMATION = ('pompe_actuelle_cv', 'pompe_actuelle_type')
+
+#: Les heures de la pompe ACTUELLE, jamais des heures de pompage solaire.
+_LIBELLE_HEURES_ACTUELLES = 'heures de la pompe actuelle'
+
+#: Formule du volume déclaré dérivé (D-AGR-3).
+FORMULE_VOLUME_DECLARE = 'pompe_actuelle_debit_m3h × pompage_heures_jour'
+
+
+def _entree_valeur(valeur):
+    """Decimal → nombre JSON (entier quand il l'est) ; le reste tel quel."""
+    from decimal import Decimal
+    if isinstance(valeur, Decimal):
+        return int(valeur) if valeur == valeur.to_integral_value() \
+            else float(valeur)
+    return valeur
+
+
+def _entree_vide(valeur):
+    return valeur is None or valeur == '' or valeur == []
+
+
+def entrees_pompage_du_lead(lead):
+    """AGR404 — ``{entrees: [...], manquants: [...]}`` (contrat AGR1).
+
+    Lecture SEULE, aucune écriture. UNE requête au plus (l'historique des
+    colonnes de pompage, pour dater et dire qui a saisi). La provenance d'une
+    colonne sans ``*_source`` : dernière écriture HUMAINE → « client » ; une
+    écriture SYSTÈME (ou la valeur de création) d'un lead venu du site →
+    « site_web », sinon « client ».
+    """
+    from decimal import Decimal
+    from .models import Lead, LeadActivity
+
+    if lead is None:
+        return {'entrees': [], 'manquants': []}
+    # Seules les colonnes RENSEIGNÉES ont besoin d'une date : un lead sans
+    # aucune donnée de pompage (résidentiel) ne paie AUCUNE requête.
+    colonnes = [c for c, _cle, _chemin in ENTREES_POMPAGE_CIBLES
+                if not _entree_vide(getattr(lead, c, None))]
+    derniere = {}
+    if colonnes and getattr(lead, 'pk', None):
+        for ligne in (LeadActivity.objects
+                      .filter(lead_id=lead.pk, company_id=lead.company_id,
+                              kind=LeadActivity.Kind.MODIFICATION,
+                              field__in=colonnes)
+                      .order_by('created_at', 'pk')
+                      .values('field', 'user_id', 'created_at')):
+            derniere[ligne['field']] = ligne
+    du_site = getattr(lead, 'source', None) == Lead.Source.SITE_WEB
+    creation = getattr(lead, 'date_creation', None)
+
+    def _date(colonne):
+        if colonne == 'carburant_prix_unitaire_mad' \
+                and lead.carburant_prix_declare_le:
+            return lead.carburant_prix_declare_le.isoformat()
+        ligne = derniere.get(colonne)
+        moment = ligne['created_at'] if ligne else creation
+        return moment.date().isoformat() if moment else None
+
+    def _provenance(colonne):
+        if colonne in _ENTREES_POMPAGE_SOURCES:
+            champ_source, table = _ENTREES_POMPAGE_SOURCES[colonne]
+            valeur_source = getattr(lead, champ_source, None)
+            if valeur_source in table:
+                return table[valeur_source]
+        ligne = derniere.get(colonne)
+        if ligne and ligne['user_id'] is not None:
+            return 'client'
+        return 'site_web' if du_site else 'client'
+
+    entrees, manquants = [], []
+    for colonne, cle_etude, chemin in ENTREES_POMPAGE_CIBLES:
+        brute = getattr(lead, colonne, None)
+        if colonne == 'pompe_actuelle_type' and brute == 'ne_sait_pas':
+            brute = None  # « ne sait pas » ⇒ non transmis (contrat AGR1)
+        if _entree_vide(brute):
+            manquants.append(colonne)
+            continue
+        entree = {
+            'colonne': colonne,
+            'valeur': _entree_valeur(brute),
+            'provenance': _provenance(colonne),
+            'date': _date(colonne),
+            'cle_etude': cle_etude,
+            'chemin': chemin,
+        }
+        if colonne == 'autorisation_debit_l_s':
+            # Conversion PHYSIQUE L/s → m³/h (× 3,6), jamais une estimation.
+            entree['valeur'] = _entree_valeur(
+                (Decimal(str(brute)) * Decimal('3.6')).quantize(
+                    Decimal('0.01')))
+            entree['conversion'] = 'L/s × 3,6 → m³/h'
+        if colonne == 'debit_forage_m3h' and lead.debit_forage_source:
+            entree['origine'] = lead.debit_forage_source
+        if colonne in _ENTREES_POMPAGE_INFORMATION:
+            entree['information'] = True
+        if colonne == 'pompage_heures_jour':
+            entree['libelle'] = _LIBELLE_HEURES_ACTUELLES
+        if colonne == 'butane_bouteilles_jour':
+            entree['unite'], entree['periode'] = 'bouteille_12kg', \
+                'jour_irrigation'
+        if colonne == 'carburant_litres_mois':
+            entree['unite'], entree['periode'] = 'litre', 'mois'
+        entrees.append(entree)
+
+    # D-AGR-3 — volume déclaré : besoin_eau_m3j, sinon débit ACTUEL × heures
+    # ACTUELLES, servi DÉRIVÉ avec sa formule (jamais écrit sur le lead).
+    if _entree_vide(lead.besoin_eau_m3j) and lead.pompe_actuelle_debit_m3h \
+            and lead.pompage_heures_jour:
+        volume = (Decimal(str(lead.pompe_actuelle_debit_m3h))
+                  * Decimal(str(lead.pompage_heures_jour))).quantize(
+                      Decimal('0.01'))
+        entrees.append({
+            'colonne': 'besoin_eau_m3j',
+            'valeur': _entree_valeur(volume),
+            'provenance': 'derive',
+            'date': max(filter(None, (_date('pompe_actuelle_debit_m3h'),
+                                      _date('pompage_heures_jour'))),
+                        default=None),
+            'cle_etude': 'besoin',
+            'chemin': 'besoin.volume_m3_jour',
+            'formule': FORMULE_VOLUME_DECLARE,
+        })
+    return {'entrees': entrees, 'manquants': manquants}
+
+
+def entrees_pompage_pour_lead_id(lead_id, company):
+    """AGR404 — même lecture, par id, FILTRÉE par société (point d'entrée
+    cross-app du moteur agricole : jamais un lead d'une autre société)."""
+    from .models import Lead
+    if not lead_id or company is None:
+        return None
+    lead = Lead.objects.filter(pk=lead_id, company=company).first()
+    return entrees_pompage_du_lead(lead) if lead is not None else None
 
 
 # DC13 — localisation chantier : lead d'abord, sinon repli sur le client ──────

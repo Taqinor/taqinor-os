@@ -206,6 +206,8 @@ const fieldLabels = {
     inputId: 'lf-pompage-heures-jour', pending: 'PanneauScriptAppel (CAD152/153)',
   },
   pompe_alim_actuelle: {
+    // AGR404 — champ de provenance du lead (bannière « valeurs modifiées »).
+    libelleCourt: 'énergie de la pompe actuelle',
     label: 'Pompe actuelle — alimentation', section: 'pompage',
     inputId: 'lf-pompe-alim-actuelle', pending: 'PanneauScriptAppel (CAD152/153)',
   },

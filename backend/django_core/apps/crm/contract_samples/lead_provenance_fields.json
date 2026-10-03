@@ -25,7 +25,8 @@
       "pompe_debit_m3h",
       "type_installation",
       "ville",
-      "ville_reference"
+      "ville_reference",
+      "pompe_alim_actuelle"
     ]
   }
 }
