@@ -45,7 +45,9 @@ from core.electrique.types import (
 )
 from core.pompage.hydraulique import _flottant
 from core.pompage.hypotheses import utilisees, valeur
-from core.pompage.selection import TENSION_MONO_V, TENSION_TRI_V, tension_produit
+from core.pompage.selection import (
+    TENSION_MONO_V, TENSION_TRI_V, prix_connu, tension_produit,
+)
 from core.pompage.volumes import production_mensuelle
 
 ROLE_VARIATEUR = "variateur_pompage"
@@ -76,16 +78,6 @@ def _fr(nombre, chiffres=1):
     if "." in texte:
         texte = texte.rstrip("0").rstrip(".")
     return texte.replace(".", ",")
-
-
-def prix_connu(produit):
-    """Un prix de vente est-il saisi ? ``prix_connu`` (forme du sélecteur
-    AGR103) d'abord, sinon ``prix_vente`` > 0."""
-    if produit is None:
-        return False
-    if "prix_connu" in produit:
-        return bool(produit.get("prix_connu"))
-    return (_flottant(produit.get("prix_vente"), 0.0) or 0.0) > 0
 
 
 def _cle_tri(produit, kw):
