@@ -113,7 +113,7 @@
         "champ": "pompage_heures_jour",
         "section": null,
         "libelle": "Pompage — heures par jour",
-        "question": "Question à l'appel : « Combien d'heures par jour la pompe tourne-t-elle ? »",
+        "question": "Question à l'appel : « Combien d'heures par jour la pompe ACTUELLE tourne-t-elle ? »",
         "choix": null,
         "nature": "nombre"
       }

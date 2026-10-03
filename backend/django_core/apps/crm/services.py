@@ -4128,6 +4128,18 @@ _MERGE_FILL_FIELDS = [
     'ombrage', 'ombrage_notes', 'nb_etages', 'structure_pref',
     'taille_souhaitee_kwc', 'batterie_souhaitee', 'pompe_cv', 'pompe_hmt_m',
     'pompe_debit_m3h', 'canal', 'motif_perte', 'note', 'whatsapp_opt_in',
+    # AGR400 — colonnes de pompage (contrat AGR1) : préservées à la fusion.
+    'source_eau', 'niveau_statique_m', 'niveau_statique_source',
+    'profondeur_forage_m', 'debit_forage_m3h', 'debit_forage_source',
+    'besoin_eau_m3j', 'besoin_eau_source', 'culture', 'surface_irriguee_ha',
+    'irrigation_methode', 'region_agricole', 'pompe_actuelle_type',
+    'pompe_actuelle_debit_m3h', 'butane_bouteilles_jour',
+    'carburant_prix_unitaire_mad', 'carburant_prix_declare_le',
+    'depense_carburant_mad_mois', 'mois_irrigation',
+    'distance_forage_champ_m', 'electricite_sur_place',
+    'autorisation_prelevement', 'autorisation_numero',
+    'autorisation_debit_l_s', 'autorisation_volume_m3_an', 'compteur_eau',
+    'projet_pompage', 'deja_beneficiaire_fda', 'pompe_hmt_source',
     # Visite technique (légère) — préservée à la fusion.
     'visite_prevue_le', 'visite_effectuee', 'visite_notes',
     # Intake site web (taqinor.ma) — attribution + diagnostic préservés.

@@ -1288,6 +1288,13 @@ _RAISON_TRANCHE = (
     "signaler deux fois la même dérive."
 )
 
+_RAISON_POMPAGE_AGR = (
+    "colonne de pompage agricole (AGR400, contrat AGR1) : le devis ne la "
+    "RECOPIE pas encore dans `etude_params` — exclue jusqu'à ce que le "
+    "moteur agricole serveur la recopie (D-AGR-1) ; à ce jour-là, la "
+    "déclarer dans `LEAD_PROVENANCE_FIELDS`."
+)
+
 LEAD_PROVENANCE_EXCLUSIONS = dict(
     [(champ, _RAISON_PROFIL_APPEL) for champ in (
         'equip_piscine', 'equip_piscine_pompe_kw', 'equip_piscine_heures_jour',
@@ -1319,6 +1326,23 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
          "`etude_params`. À déclarer le jour où l'écran agricole re-saisit "
          "cette valeur depuis le lead."),
     ]
+    # AGR400 — colonnes de pompage du contrat AGR1 (``lead_pompage.json``).
+    # Exclues AVEC LEUR RAISON (seules trois portent le marqueur `pompe_`,
+    # toutes sont nommées pour qu'aucune ne sorte de la règle en silence).
+    + [(champ, _RAISON_POMPAGE_AGR) for champ in (
+        'source_eau', 'niveau_statique_m', 'niveau_statique_source',
+        'profondeur_forage_m', 'debit_forage_m3h', 'debit_forage_source',
+        'besoin_eau_m3j', 'besoin_eau_source', 'culture',
+        'surface_irriguee_ha', 'irrigation_methode', 'region_agricole',
+        'pompe_actuelle_type', 'pompe_actuelle_debit_m3h',
+        'butane_bouteilles_jour', 'carburant_prix_unitaire_mad',
+        'carburant_prix_declare_le', 'depense_carburant_mad_mois',
+        'mois_irrigation', 'distance_forage_champ_m', 'electricite_sur_place',
+        'autorisation_prelevement', 'autorisation_numero',
+        'autorisation_debit_l_s', 'autorisation_volume_m3_an',
+        'compteur_eau', 'projet_pompage', 'deja_beneficiaire_fda',
+        'pompe_hmt_source',
+    )]
     + [
         ('occupation_jour', _RAISON_LU_EN_DIRECT),
         ('roof_point', _RAISON_LU_EN_DIRECT),

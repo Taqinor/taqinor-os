@@ -1179,7 +1179,37 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             if company is not None:
                 attrs['custom_data'] = validate_custom_data(
                     'lead', company, attrs.get('custom_data'))
+        self._poser_provenances_pompage(attrs)
         return attrs
+
+    # AGR400 — une valeur de pompage SAISIE dans l'ERP porte sa provenance,
+    # posée ici (jamais par le corps : les colonnes ``*_source`` et
+    # ``carburant_prix_declare_le`` sont en lecture seule). Une valeur effacée
+    # efface sa provenance ; une valeur inchangée ne touche à rien.
+    _PROVENANCES_POMPAGE_SAISIE = (
+        ('niveau_statique_m', 'niveau_statique_source', 'declare'),
+        ('debit_forage_m3h', 'debit_forage_source', 'client'),
+        ('besoin_eau_m3j', 'besoin_eau_source', 'client'),
+        ('pompe_hmt_m', 'pompe_hmt_source', 'declaree'),
+    )
+
+    def _poser_provenances_pompage(self, attrs):
+        instance = self.instance
+
+        def _change(champ):
+            return champ in attrs and (
+                instance is None or getattr(instance, champ) != attrs[champ])
+
+        for valeur, source, origine in self._PROVENANCES_POMPAGE_SAISIE:
+            if _change(valeur):
+                attrs[source] = origine if attrs[valeur] is not None else None
+        # Q17 — le prix du carburant est DÉCLARÉ et DATÉ : la date est celle
+        # du jour où le prix change, posée par le serveur.
+        if _change('carburant_prix_unitaire_mad'):
+            from django.utils import timezone
+            attrs['carburant_prix_declare_le'] = (
+                timezone.localdate()
+                if attrs['carburant_prix_unitaire_mad'] is not None else None)
 
     class Meta:
         model = Lead
@@ -1210,6 +1240,12 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # les champs captés par le site sont TOUJOURS éditables par la
             # commerciale, leur provenance reste visible (`provenance_site`).
             'roof_point', 'roof_outline',
+            # AGR400 — provenances et date du prix : posées par le serveur
+            # (sérialiseur, webhook du site, validation de visite), jamais
+            # saisissables à la main.
+            'niveau_statique_source', 'debit_forage_source',
+            'besoin_eau_source', 'pompe_hmt_source',
+            'carburant_prix_declare_le',
         ]
 
     # FG20 — coordonnées personnelles masquées sans ``client_pii_voir``.
