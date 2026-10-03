@@ -1728,25 +1728,24 @@ def _mode_kpis(data):
     mode = (data.get('mode_installation') or '').strip().lower()
     etude = data.get('etude') or {}
     if mode == 'agricole':
-        method = (etude.get('irrigation_method') or '').strip().lower()
-        bassin = None
-        try:  # bassin recommandé ≈ 2× le besoin de pointe FAO-56 (QX47)
-            from .quote_engine.agricole.agronomy import peak_need_m3_day
-            besoin = peak_need_m3_day(etude)
-            if besoin:
-                bassin = round(besoin * 2)
-        except Exception:  # noqa: BLE001 — best-effort, pas bloquant
-            bassin = None
+        # AGR301 — liste blanche agricole = les sept dérivées v1 que le moteur
+        # pompage écrit pour son rendu (contrat partagé ``proposal_data.json``
+        # › ``exemple_agricole.mode_kpis``). RETIRÉS : ``bassin_m3`` (un « ×2 »
+        # du besoin de pointe sans aucune source, bâti sur des ET0 ESTIMÉES) et
+        # ``fda_eligible`` (un verdict d'éligibilité propre au client, contraire
+        # à Q22 / D-AGR-6 — l'aide revient comme RÈGLE sans montant via
+        # ``synthese_agricole``, AGR306/AGR308). AJOUTÉ : ``heures_pompage``,
+        # dont dépend le m³/jour (le PDF dit « sur N h », la page le dit aussi).
+        # Aucun bassin n'est servi tant qu'aucun nombre de jours d'autonomie
+        # n'est décidé ou sourcé ; ``agronomy`` n'est plus importé ici.
         return {
             'pompe_cv': _kpi_num(etude.get('pompe_cv')),
             'pompe_kw': _kpi_num(etude.get('pompe_kw')),
             'hmt_m': _kpi_num(etude.get('hmt_m')),
             'debit_hmt_m3h': _kpi_num(etude.get('debit_hmt_m3h')),
             'm3_jour': _kpi_num(etude.get('m3_jour')),
+            'heures_pompage': _kpi_num(etude.get('heures_pompage')),
             'champ_kwc': _kpi_num(etude.get('champ_kwc')) or _kpi_num(data.get('puissance_kwc')),
-            'bassin_m3': bassin,
-            # FDA gaté sur l'irrigation localisée (goutte) — « sous réserve ».
-            'fda_eligible': method == 'goutte',
         }
     if mode in ('industriel', 'commercial'):
         return {
