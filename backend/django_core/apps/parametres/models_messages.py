@@ -324,7 +324,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     'dossier_8221':
         "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عندي سؤال على المشروع ديالكم: فين وصل الملف ديالكم ديال الإنتاج الذاتي (قانون 82-21)؟ حسب المرحلة اللي وصلتو ليها، كنلائمو الدراسة والروزنامة ديال الربط — وإلا الملف مازال ما تلانسا، كنشرح ليكم المراحل ف خمس دقايق.",
     'dossier_fda':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عندي سؤال على المشروع ديال الضخ ديالكم: واش دخّلتو ملف الدعم الفلاحي (FDA)، ولا ناويين تدخّلوه؟ هادشي كيبدل الروزنامة والوثائق اللي خاصكم توجدو — قولوا ليا فين وصلتو ونوجد الدراسة على هاد الأساس.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عندي سؤال على المشروع ديال الضخ ديالكم: واش دخّلتو ملف الدعم الفلاحي (FDA)، ولا ناويين تدخّلوه؟ إلا كنتو باغيين هاد الدعم، خاص الموافقة تكون قبل الأشغال. هادشي كيبدل الروزنامة والوثائق اللي خاصكم توجدو — قولوا ليا فين وصلتو ونوجد الدراسة على هاد الأساس.",
     'identite_reference':
         "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. {prescripteur} هضر لينا عليكم بخصوص الطاقة الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
     'identite_telephone':
@@ -641,9 +641,13 @@ class MessageTemplate(models.Model):
 #
 # Modèle : le dictionnaire darija ci-dessus — dict SÉPARÉ, repli sur le FR
 # quand la clé est absente. On ne fabrique PAS une matrice 27 × langues ×
-# segments : seules les clés qui MENTENT ont une variante, et seulement en
-# français (aucune variante darija n'est validée — le repli reste le texte FR
-# de base, jamais une traduction automatique).
+# segments : seules les clés qui MENTENT ont une variante. AGR511 (D-AGR-11,
+# 02/10/2026) : le POMPAGE a AUSSI ses variantes darija
+# (`MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA`, dict séparé), traduites phrase
+# par phrase du FR validé — jamais une traduction automatique — et marquées
+# « relecture native Reda à faire », sans bloquer l'envoi. Le B2B darija n'a
+# toujours aucune variante (hors périmètre AGR) : il garde le texte darija de
+# base.
 #
 # Un texte que la société a PERSONNALISÉ n'est jamais remplacé par une
 # variante (même règle que `_REVEIL_CLES_SEEDEES`) : la variante ne s'applique
@@ -710,6 +714,40 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT = {
             "Bonjour, on confirme la visite technique prévue {date_visite} sur votre site. Le technicien vérifie la structure des bâtiments et le tableau électrique — prévoyez l'accès au local technique. La présence d'un responsable est importante : c'est l'occasion de répondre à toutes les questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
     },
 }
+# AGR511 (Groupe AGR, 02/10/2026 ; D-AGR-11) — VARIANTES DARIJA du pompage.
+# `{segment: {cle: texte darija}}`, dict SÉPARÉ du FR : exactement les clés
+# agricoles d'AGR510 (+ `dimanche_famille`, `visite_confirmation`). Chaque
+# texte est traduit phrase par phrase du FR validé (aucune promesse ajoutée,
+# aucun chiffre ajouté, jamais une traduction automatique) ; source dans
+# `docs/crm/messages_meryem.md` (lignes `POMPAGE DARIJA : `). RELECTURE NATIVE
+# REDA À FAIRE (tâche manuelle) — sans bloquer l'envoi. Ni « فاتورة »
+# (facture), ni « السطح » (toit), ni « العائلة » (famille). Une clé absente =
+# le texte darija de base ; le B2B darija n'a aucune variante (hors AGR).
+MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA = {
+    'agricole': {
+        'valeur_j1':
+            "السلام عليكم {civilite} {prenom}، حاولت نعيط ليكم ولكن ما لقيتكمش. باش نوجد الدراسة ديالكم، كافيين جوج حوايج: تصويرة ديال البلاكة ديال البومبة ديالكم (ولا ديال البومبة اللي باغيين) واللوكاليزاسيون ديال نقطة الما على الواتساب. من بعد نصيفط ليكم التجهيزة المناسبة والحساب ديال الثمن ديالها. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟",
+        'reveil_a1':
+            "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. كنتو توصلتو بعرض ديال الضخ بالطاقة الشمسية عندنا. إلا رجع المشروع كيهمكم، نعاود ليكم الحساب ديال الثمن محين — بلاش، بلا ما تلتزمو بوالو. نتكلف بيه؟ (خاصني غير نتأكد من البلاصة ديال نقطة الما.) جاوبو STOP وما نلحوش عليكم.",
+        'reveil_a2':
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. هادي شهر كنتو كتسولو على الضخ بالطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال البلاكة ديال البومبة ديالكم، وقولوا ليا شنو كتستهلك دابا (البوطا، المازوط ولا الضو). من بعد نصيفط ليكم الحساب ديال الثمن محين. جاوبو STOP وما نلحوش عليكم.",
+        'reveil_a3':
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نعاود ليكم الحساب ديال الثمن محين ديال التجهيزة ديال الضخ ديالكم. نوجدو ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.",
+        'rappel_plus_tard':
+            "واخا، غادي نعيط ليكم [النهار] على [الساعة]. وحتى لذاك الوقت، إلا قدرتو تصورو البلاكة ديال البومبة ديالكم، غادي تعاونني نوجد الحساب ديال الثمن.",
+        'dimanche_famille':
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عارفة بلي القرار كيتاخد بين أكثر من واحد. إلا غادي تهضرو عليه هاد الويكاند، نقدر نصيفط ليكم ورقة الملخص (صفحة وحدة فيها الأرقام المهمة) باش تشاركوها، ولا نعيط ليكم نهار الحد من بعد 5 ديال العشية وتكونو جوج ولا تلاتة، كيف ما بغيتو.",
+        'visite_proposition':
+            "باش نثبتو ليكم العرض، نقدرو نجيو للبلاصة لزيارة تقنية بلا فلوس: التقني كيجي يقيس المستوى ديال الما والصبيب ديالو، كيتأكد من البلاصة ديال الألواح، من الخصائص ديال البير ومن الكوفري ديال الضو، وكيجاوب على كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — {conseiller}",
+        'visite_confirmation':
+            "السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة {date_visite} ف الفيرمة ديالكم. التقني غادي يشوف البلاصة ديال الألواح، البير والكوفري ديال الضو — وجدو ليه الوصول لنقطة الما. الحضور ديالكم مهم: هي الفرصة باش نجاوبو على جميع الأسئلة ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — {conseiller}",
+        'j4_preuve':
+            "هادي محطة ديال الضخ بالطاقة الشمسية ركبناها ف {mois_preuve} ف {ville_preuve} : {lien_preuve}. القوة المركبة: {puissance_preuve} kWc. فيديو صغير ديال الشانطي: {lien_video_preuve}.",
+        'debrief_visite':
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم من بعد ما جا التقني ديالنا للفيرمة ديالكم: شنو رايكم فالزيارة ديالو، وواش بقا عندكم شي سؤال قبل ما نكملو مع بعضياتنا؟",
+    },
+}
+
 # Le commercial partage EXACTEMENT les textes de l'industriel : même
 # organisation, même processus d'achat. Un dict partagé plutôt que recopié —
 # une correction sur l'un vaut pour l'autre, par construction.
@@ -725,15 +763,25 @@ CLES_VARIANTES_SEGMENT = frozenset(
 )
 
 
-def variante_segment(cle, type_installation):
-    """Le texte FR adapté à CE segment, ou ``None`` (repli sur le texte FR).
+def variante_segment(cle, type_installation, langue='fr'):
+    """Le texte adapté à CE segment dans CETTE langue, ou ``None`` (repli).
 
+    ``langue='fr'`` lit ``MESSAGE_TEMPLATE_VARIANTES_SEGMENT`` ;
+    ``langue='darija'`` lit ``MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA``
+    (AGR511) ; toute autre langue (``en``, ``ar``) n'a aucune variante.
     Tolérant : un segment inconnu, vide ou résidentiel n'a jamais de variante.
     """
     segment = (type_installation or '').strip()
     if not segment:
         return None
-    return MESSAGE_TEMPLATE_VARIANTES_SEGMENT.get(segment, {}).get(cle)
+    langue = (langue or 'fr').strip()
+    if langue == 'fr':
+        table = MESSAGE_TEMPLATE_VARIANTES_SEGMENT
+    elif langue == 'darija':
+        table = MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA
+    else:
+        return None
+    return table.get(segment, {}).get(cle)
 
 
 # ── CAD127 (21/09/2026) — LE PREMIER MESSAGE DIT LA VÉRITÉ SUR L'ORIGINE ──

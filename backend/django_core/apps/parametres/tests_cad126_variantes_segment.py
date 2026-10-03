@@ -240,3 +240,143 @@ class PortéeDesVariantesTests(SimpleTestCase):
                     self.assertNotIn('Meryem', texte)
                     self.assertNotIn('Reda', texte)
                     self.assertNotIn('TAQINOR', texte)
+
+
+# ── AGR511 (02/10/2026, D-AGR-11) — variantes DARIJA du pompage ────────────
+
+#: Les mots darija qui MENTENT à un pompage : facture, toit, famille.
+MOTS_DARIJA_QUI_MENTENT = ('فاتورة', 'السطح', 'العائلة')
+
+#: Les clés agricoles d'AGR510 qui doivent avoir leur variante darija.
+CLES_DARIJA_POMPAGE = (
+    'valeur_j1', 'reveil_a1', 'reveil_a2', 'reveil_a3', 'rappel_plus_tard',
+    'dimanche_famille', 'visite_proposition', 'visite_confirmation',
+    'j4_preuve', 'debrief_visite')
+
+
+def _variantes_darija_du_guide():
+    """``{cle: texte converti}`` des lignes ``POMPAGE DARIJA : `` du guide."""
+    lignes = _guide().read_text(
+        encoding='utf-8').replace('\r\n', '\n').split('\n')
+    trouvees, cle = {}, None
+    for ligne in lignes:
+        if ligne.startswith('### '):
+            cle = ligne[4:].split(' ')[0].strip()
+            continue
+        if cle and ligne.startswith('POMPAGE DARIJA : '):
+            trouvees[cle] = _convertir(
+                ligne[len('POMPAGE DARIJA : '):].strip())
+    return trouvees
+
+
+class Agr511DarijaPompageTests(SimpleTestCase):
+    def setUp(self):
+        from apps.parametres.models_messages import (
+            MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
+            MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA,
+        )
+        self.defauts_darija = MESSAGE_TEMPLATE_DEFAULTS_DARIJA
+        self.table = MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA
+
+    def test_guide_et_dict_darija_egaux(self):
+        guide = _variantes_darija_du_guide()
+        self.assertTrue(guide)  # anti-faux-vert : le parseur lit bien
+        self.assertEqual(set(guide), set(self.table[SEGMENT_POMPAGE]))
+        for cle, texte in guide.items():
+            with self.subTest(cle=cle):
+                self.assertEqual(
+                    variante_segment(cle, SEGMENT_POMPAGE, 'darija'), texte)
+
+    def test_exactement_les_cles_agricoles(self):
+        self.assertEqual(set(self.table[SEGMENT_POMPAGE]),
+                         set(CLES_DARIJA_POMPAGE))
+        self.assertEqual(set(self.table), {SEGMENT_POMPAGE})  # pas de B2B
+        for cle in CLES_DARIJA_POMPAGE:
+            with self.subTest(cle=cle):
+                self.assertIn(cle, self.defauts_darija)
+                self.assertIsNotNone(variante_segment(cle, SEGMENT_POMPAGE))
+
+    def test_aucun_mot_darija_qui_ment(self):
+        for cle, texte in self.table[SEGMENT_POMPAGE].items():
+            for mot in MOTS_DARIJA_QUI_MENTENT:
+                with self.subTest(cle=cle, mot=mot):
+                    self.assertNotIn(mot, texte)
+
+    def test_placeholders_identiques_a_la_variante_fr(self):
+        import re
+        for cle, texte in self.table[SEGMENT_POMPAGE].items():
+            with self.subTest(cle=cle):
+                self.assertEqual(
+                    set(re.findall(r'\{(\w+)\}', texte)),
+                    set(re.findall(r'\{(\w+)\}', variante_segment(
+                        cle, SEGMENT_POMPAGE))))
+
+    def test_en_et_ar_et_residentiel_sans_variante(self):
+        for cle in CLES_DARIJA_POMPAGE:
+            with self.subTest(cle=cle):
+                self.assertIsNone(variante_segment(cle, SEGMENT_POMPAGE, 'en'))
+                self.assertIsNone(variante_segment(cle, SEGMENT_POMPAGE, 'ar'))
+                self.assertIsNone(
+                    variante_segment(cle, 'residentiel', 'darija'))
+                for segment in SEGMENTS_B2B:
+                    self.assertIsNone(variante_segment(cle, segment, 'darija'))
+
+    def test_dossier_fda_darija_accord_avant_travaux_sans_chiffre(self):
+        import re
+        texte = self.defauts_darija['dossier_fda']
+        self.assertIn('قبل الأشغال', texte)
+        self.assertIsNone(re.search(r'\d', texte))
+
+
+class Agr511RenduCorpsPourSegmentTests(SimpleTestCase):
+    """Le rendu (FR ET darija) passe par ``crm.services._corps_pour_segment``
+    — appelé par ``message_pour_etape`` et ``message_visite_pour_lead``."""
+
+    def setUp(self):
+        from types import SimpleNamespace
+
+        from apps.parametres.models_messages import (
+            MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
+        )
+        self.defauts_darija = MESSAGE_TEMPLATE_DEFAULTS_DARIJA
+        self.agricole = SimpleNamespace(type_installation='agricole')
+        self.residentiel = SimpleNamespace(type_installation='residentiel')
+
+    def _rendre(self, corps, cle, lead, langue):
+        from apps.crm.services import _corps_pour_segment
+        return _corps_pour_segment(corps, cle, lead, langue)
+
+    def test_lead_agricole_darija_ne_recoit_ni_facture_ni_toit_ni_famille(self):
+        for cle in ('valeur_j1', 'visite_proposition', 'dimanche_famille'):
+            rendu = self._rendre(self.defauts_darija[cle], cle,
+                                 self.agricole, 'darija')
+            for mot in MOTS_DARIJA_QUI_MENTENT:
+                with self.subTest(cle=cle, mot=mot):
+                    self.assertNotIn(mot, rendu)
+            self.assertEqual(rendu, variante_segment(
+                cle, SEGMENT_POMPAGE, 'darija'))
+
+    def test_corps_darija_personnalise_part_tel_quel(self):
+        perso = 'نص خاص بالشركة ديالنا {prenom}.'
+        self.assertEqual(
+            self._rendre(perso, 'valeur_j1', self.agricole, 'darija'), perso)
+
+    def test_lead_residentiel_darija_garde_ses_textes(self):
+        for cle in CLES_DARIJA_POMPAGE:
+            with self.subTest(cle=cle):
+                base = self.defauts_darija[cle]
+                self.assertEqual(
+                    self._rendre(base, cle, self.residentiel, 'darija'), base)
+
+    def test_anglais_et_arabe_inchanges(self):
+        texte = 'Hello {prenom}'
+        for langue in ('en', 'ar'):
+            with self.subTest(langue=langue):
+                self.assertEqual(
+                    self._rendre(texte, 'valeur_j1', self.agricole, langue),
+                    texte)
+
+    def test_francais_toujours_servi(self):
+        rendu = self._rendre(MESSAGE_TEMPLATE_DEFAULTS['valeur_j1'],
+                             'valeur_j1', self.agricole, 'fr')
+        self.assertEqual(rendu, variante_segment('valeur_j1', SEGMENT_POMPAGE))
