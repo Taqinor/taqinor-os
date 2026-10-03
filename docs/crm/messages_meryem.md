@@ -365,7 +365,7 @@ B2B : Pour verrouiller votre proposition, on peut passer sur votre site pour la 
 ### visite_confirmation — la veille de la visite, WhatsApp
 FR : Bonjour, on confirme la visite technique prévue [date de la visite] chez vous. Le technicien vérifie le toit, la charpente et le tableau électrique — prévoyez l'accès au compteur. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — [Conseiller]
 DARIJA : السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة [تاريخ الزيارة] عندكم. التقني غادي يشوف السطح، الهيكل والطابلو ديال الضو — وجدو ليه الوصول للكونتور. الحضور ديالكم مهم: هي الفرصة باش نجاوبو على جميع الأسئلة ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — [المستشار]
-POMPAGE : Bonjour, on confirme la visite technique prévue [date de la visite] sur votre exploitation. Le technicien vérifie l'emplacement des panneaux, le forage et le coffret électrique — prévoyez l'accès au point d'eau. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — [Conseiller]
+POMPAGE : Bonjour, on confirme la visite technique prévue [date de la visite] sur votre exploitation. Le technicien vérifie l'emplacement des panneaux, le forage et le coffret électrique. Pour qu'un seul passage suffise, merci de prévoir : l'accès au puits ou au forage ; la plaque de votre pompe actuelle, bien visible ; vos derniers reçus ou bouteilles de butane ou de gasoil ; l'autorisation de l'Agence du bassin hydraulique (ABH) et le compteur d'eau, s'ils existent. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — [Conseiller]
 POMPAGE DARIJA : السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة [تاريخ الزيارة] ف الفيرمة ديالكم. التقني غادي يشوف البلاصة ديال الألواح، البير والكوفري ديال الضو — وجدو ليه الوصول لنقطة الما. الحضور ديالكم مهم: هي الفرصة باش نجاوبو على جميع الأسئلة ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — [المستشار]
 B2B : Bonjour, on confirme la visite technique prévue [date de la visite] sur votre site. Le technicien vérifie la structure des bâtiments et le tableau électrique — prévoyez l'accès au local technique. La présence d'un responsable est importante : c'est l'occasion de répondre à toutes les questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — [Conseiller]
 
@@ -375,6 +375,14 @@ sur place), qui est aussi la vraie valeur du passage.
 
 Les deux variantes darija ci-dessus sont À FAIRE RELIRE par un locuteur natif : elles suivent le FR validé phrase par
 phrase (aucune promesse ajoutée, aucun chiffre) mais n'ont pas reçu la revue native du 04/09/2026.
+
+### visite_releve_point_eau — agricole, AVANT le devis, WhatsApp (AGR414, 03/10/2026)
+Le devis de pompage exige le niveau et le débit de l'eau, que l'exploitant connaît rarement (D-AGR-4) : on propose
+d'abord la visite gratuite de relevé du point d'eau, avec une liste de préparation FIXE de quatre éléments (une visite
+mal préparée coûte un deuxième déplacement). Ni prix, ni promesse d'aide, aucun chiffre. ✎ Texte à valider par le
+fondateur ; darija écrite maintenant (D-AGR-11), relecture native Reda à faire, sans bloquer l'envoi.
+FR : Bonjour {civilite} [Prénom]. Avant de vous préparer le devis de pompage, notre technicien peut passer gratuitement relever votre point d'eau : le niveau, le débit et l'emplacement des panneaux. Ça ne vous engage à rien. Pour qu'un seul passage suffise, merci de prévoir : l'accès au puits ou au forage ; la plaque de votre pompe actuelle, bien visible ; vos derniers reçus ou bouteilles de butane ou de gasoil ; l'autorisation de l'Agence du bassin hydraulique (ABH) et le compteur d'eau, s'ils existent. Dites-moi le jour qui vous arrange et je bloque le créneau. — [Conseiller]
+DARIJA : السلام عليكم {civilite} [الاسم]. قبل ما نوجدو ليكم العرض ديال الضخ، التقني ديالنا يقدر يجي بلا فلوس يقيس نقطة الما ديالكم: المستوى ديال الما، الصبيب والبلاصة ديال الألواح. ما كتلزمكم بوالو. باش تكفي زيارة وحدة، وجدو عافاكم: الوصول للبير ولا للساندة؛ البلاكة ديال البومبة اللي عندكم دابا، باينة مزيان؛ آخر الوصولات ولا القراعي ديال البوطا ولا المازوط؛ الرخصة ديال وكالة الحوض المائي (ABH) والكونتور ديال الما، إلا كانو. قولوا ليا شمن نهار يناسبكم ونحجز ليكم الوقت. — [المستشار]
 
 ### debrief_visite — après le retour du technicien, envoi manuel (CAD151, 23/09/2026)
 Le retour du terrain n'est pas un message client (il redescend dans l'historique du lead, voir ci-dessus) mais il

@@ -2997,7 +2997,11 @@ def _placer_civilite(corps, civilite):
 #: VISITE-CADENCE — les clés de gabarit que le rendu « message de visite »
 #: accepte. Liste FERMÉE : un `?cle=` inconnu est un 400 qui NOMME le champ,
 #: jamais un message vide servi en 200 (l'écran croirait avoir un texte).
-CLES_MESSAGE_VISITE = ('visite_proposition', 'visite_confirmation')
+#: AGR414 — ``visite_releve_point_eau`` : la visite de relevé du point d'eau
+#: proposée AVANT le devis agricole, avec sa liste de préparation (FR + darija).
+CLES_MESSAGE_VISITE = (
+    'visite_proposition', 'visite_confirmation', 'visite_releve_point_eau',
+)
 
 
 def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
@@ -3082,8 +3086,11 @@ def journaliser_message_visite_ouvert(lead, user, *, cle, langue, etape=None):
     RLC3 de cette touche : son panneau « Fait » sait alors que le message a
     été ouvert, au lieu de faire cocher l'aveu faux « marquée faite sans avoir
     ouvert le message ». Renvoie l'activité créée."""
-    quoi = ('proposer la visite' if cle == 'visite_proposition'
-            else 'confirmer la visite')
+    quoi = {
+        'visite_proposition': 'proposer la visite',
+        # AGR414 — la visite de relevé du point d'eau (agricole).
+        'visite_releve_point_eau': 'proposer le relevé du point d’eau',
+    }.get(cle, 'confirmer la visite')
     langue_txt = 'darija' if langue == 'darija' else 'français'
     if etape is not None:
         corps = (f'{prefixe_activite_message_ouvert(etape)} (cadence '
