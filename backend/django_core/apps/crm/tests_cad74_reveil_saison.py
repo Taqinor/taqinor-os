@@ -198,6 +198,26 @@ class PoseDuReveilSaisonnierTests(_Base):
             poser_reveils_saisonniers(self.company, self.acteur), [])
 
 
+class Agr512AgricoleExcluTests(_Base):
+    """AGR512 — le réveil « factures d'été » ne parle pas à un exploitant au
+    butane ou au gasoil : un dormant agricole est exclu, avec son motif."""
+    slug = 'agr512-agri'
+
+    def test_un_dormant_agricole_en_juillet_est_exclu_avec_son_motif(self):
+        lead = self._dormant(type_installation='agricole')
+        self._reveil_pose_le(lead, datetime.date(2026, 3, 2))
+        self.assertEqual(
+            motif_de_refus(lead),
+            'Texte « saison des factures » sans objet pour un lead agricole.')
+        self.assertIsNone(poser_reveil_saisonnier(lead, self.acteur))
+
+    def test_un_dormant_residentiel_reste_inchange(self):
+        lead = self._dormant(type_installation='residentiel')
+        self._reveil_pose_le(lead, datetime.date(2026, 3, 2))
+        self.assertIsNone(motif_de_refus(lead))
+        self.assertIsNotNone(poser_reveil_saisonnier(lead, self.acteur))
+
+
 class HorsSaisonTests(_Base):
     slug = 'cad74-hiver'
     maintenant = HORS_SAISON

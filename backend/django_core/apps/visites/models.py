@@ -74,9 +74,21 @@ class VisiteTerrain(TenantModel):
         related_name='visites_terrain',
         verbose_name='Commercial terrain',
     )
+
+    class Gabarit(models.TextChoices):
+        TOITURE = 'toiture', 'Toiture'
+        POINT_EAU = 'point_eau', "Relevé du point d'eau"
+
     statut = models.CharField(
         max_length=12, choices=Statut.choices, default=Statut.BROUILLON,
         verbose_name='Statut de la visite')
+    #: AGR412 (D-AGR-4) — la checklist de LA visite : ``toiture`` (historique)
+    #: ou ``point_eau`` (relevé du point d'eau d'un lead agricole, qui
+    #: REMPLACE la checklist toiture). Fixé par ``services.planifier_visite``
+    #: d'après le type du lead, recalculé tant que la visite est brouillon.
+    gabarit = models.CharField(
+        max_length=12, choices=Gabarit.choices, default=Gabarit.TOITURE,
+        verbose_name='Gabarit de visite')
     date_prevue = models.DateField(
         null=True, blank=True, verbose_name='Date prévue')
     date_realisee = models.DateTimeField(

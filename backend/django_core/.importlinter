@@ -682,3 +682,41 @@ forbidden_modules =
     core.middleware
     core.mixins
     authentication
+
+# AGR109 — `core.pompage` est le MOTEUR de pompage solaire (hydraulique,
+# sélection pompe/variateur, volumes pompés), partagé par DEUX consommateurs :
+# `apps.ventes` (devis agricole, D-AGR-1) et `apps.calepinage` (CAL155-158).
+# Le laisser dans le satellite calepinage ferait dépendre le cœur `ventes` d'un
+# module qui importait lui-même `ventes.solar_design` (cycle). Même arbitrage
+# que AOF33/PV33, donc même contrepartie : il vit en fondation et reste PUR —
+# stdlib seule, aucune dépendance Django, aucune I/O. `core.electrique` est
+# PERMIS (le champ PV du pompage réutilise ses fenêtres de chaînes, AGR115) ;
+# `core.calepinage` est INTERDIT (deux noyaux versionnés séparément).
+# Django/DRF/celery ne sont pas des root_packages ici : ils sont couverts par le
+# second verrou `core/tests/test_pompage_purete.py` (analyse AST).
+[importlinter:contract:pompage-est-un-noyau-pur]
+name = Le moteur de pompage reste un noyau pur (aucun modèle, vue, tâche ou app)
+type = forbidden
+source_modules =
+    core.pompage
+forbidden_modules =
+    apps
+    core.calepinage
+    core.models
+    core.views
+    core.vues
+    core.serializers
+    core.viewsets
+    core.services
+    core.selectors
+    core.tasks
+    core.jobs
+    core.numbering
+    core.documents
+    core.pdf
+    core.permissions
+    core.events
+    core.workflow
+    core.middleware
+    core.mixins
+    authentication

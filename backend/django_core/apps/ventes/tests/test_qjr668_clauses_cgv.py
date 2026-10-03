@@ -182,6 +182,14 @@ class ImpressionTests(_Base):
         doc = fitz.open(stream=upload.call_args[0][0], filetype='pdf')
         return _norm('\n'.join(p.get_text() for p in doc)), len(doc)
 
+    #: Le bloc « CGV standard » (puces de ``DocumentTemplates.cgv_bullets``,
+    #: ``generate_devis_premium.page3``) n'existe que dans le moteur LEGACY —
+    #: les pages premium résidentiel/commercial/industriel n'impriment que les
+    #: « Clauses particulières ». Les gardes de CGV rendent donc le format
+    #: legacy (``include_etude`` : ``is_residential`` l'écarte, cf.
+    #: ``test_pdf_commercial_legacy_sections_options``).
+    LEGACY = {'include_etude': True}
+
     def test_builder_expose_les_clauses(self):
         from apps.ventes.quote_engine.builder import build_quote_data
         devis = self._gele(self._devis(), [CLAUSE])
@@ -227,7 +235,7 @@ class ImpressionTests(_Base):
         modele.cgv_bullets = ['QJR668 livraison nouvelle quarante jours']
         modele.save()
         devis.refresh_from_db()
-        texte, _ = self._texte(devis)
+        texte, _ = self._texte(devis, self.LEGACY)
         self.assertEqual(texte.count('qjr668 livraison gelee trente jours'), 1)
         self.assertNotIn('quarante jours', texte)
         self.assertNotIn('clauses particulières', texte)
@@ -237,7 +245,7 @@ class ImpressionTests(_Base):
         DocumentTemplates.objects.update_or_create(
             company=self.company,
             defaults={'cgv_bullets': ['QJR668 livraison vive vingt jours']})
-        texte, _ = self._texte(self._devis())
+        texte, _ = self._texte(self._devis(), self.LEGACY)
         self.assertEqual(texte.count('qjr668 livraison vive vingt jours'), 1)
         self.assertNotIn('clauses particulières', texte)
 
@@ -249,7 +257,7 @@ class ImpressionTests(_Base):
         devis = self._gele(self._devis(), [
             CLAUSE, {'type': 'cgv_gelees',
                      'bullets': ['QJR668 livraison gelee trente jours']}])
-        texte, _ = self._texte(devis)
+        texte, _ = self._texte(devis, self.LEGACY)
         self.assertEqual(texte.count('qjr668 livraison gelee trente jours'), 1)
         self.assertEqual(texte.count(_norm(CLAUSE['corps_texte'])), 1)
         self.assertIn('clauses particulières', texte)

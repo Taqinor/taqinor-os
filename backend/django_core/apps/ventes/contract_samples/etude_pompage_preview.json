@@ -922,9 +922,9 @@
     "hypotheses": [
       {
         "cle": "rendement_groupe",
-        "valeur": 0.5,
+        "valeur": 0.35,
         "statut": "EST.",
-        "source": "plage AMEE 0,35-0,55, Guide PSIA, PDF du 14/01/2019",
+        "source": "borne basse de la plage AMEE 0,35-0,55, Guide PSIA, PDF du 14/01/2019 (décision fondateur 03/10/2026 : seule valeur qui tient AMEE et SPIS à ± 20 %)",
         "usage": "calcul"
       }
     ],

@@ -240,7 +240,31 @@ const CHAMPS_PAR_TYPE = {
     'opt_v_out_nominal_v', 'opt_v_out_min', 'opt_v_out_max',
     'opt_i_out_max_a', 'opt_pmax_out_w', 'opt_modules_max_par_chaine',
   ],
+  // AGR101/AGR105 — fiche « pompe » : valeurs PUBLIÉES par la fiche du modèle
+  // exact ; vide = « non publié », jamais 0.
+  pompe: [
+    'pompe_i_nominal_a', 'pompe_diametre_ext_mm', 'pompe_nb_etages',
+    'pompe_immersion_min_m', 'pompe_rendement_pct', 'pompe_q_nominal_m3h',
+    'pompe_hmt_nominale_m',
+  ],
+  // AGR101/AGR105 — fiche « variateur de pompage » : réutilise les champs
+  // onduleur que lit déjà l'électrique (fenêtre DC, courant, phases,
+  // démarrage) + les champs `var_*`. Aucune plage constructeur codée.
+  variateur_pompage: [
+    'ond_mppt_v_min', 'ond_mppt_v_max', 'ond_v_max_abs', 'ond_i_max_mppt_a',
+    'ond_phases', 'ond_v_demarrage_v',
+    'var_voc_reco_min_v', 'var_voc_reco_max_v', 'var_v_sortie_v',
+    'var_i_sortie_nominal_a', 'var_rendement_mppt_pct',
+  ],
 }
+
+// AGR105 — champs OUI / NON / NON PUBLIÉ (booléen nullable côté serveur).
+// État local : '' (non publié) | 'oui' | 'non' ; part à null / true / false.
+// Jamais un défaut « non » : un trou doit rester un trou.
+const CHAMPS_TRI_PAR_TYPE = {
+  variateur_pompage: ['var_protection_marche_a_sec'],
+}
+export const CHOIX_TRI = [['oui', 'Oui'], ['non', 'Non']]
 
 // ── CALX355 — champs à CHOIX (CharField non nul côté serveur : vide = '',
 // jamais `null` ni `0`). Valeurs et libellés = MIROIR EXACT de
@@ -406,8 +430,22 @@ export function estOptimiseurNom(nom) {
 /** Type de fiche du FORMULAIRE : la classification client d'abord (source
  * unique partagée avec le générateur de devis), sinon « optimiseur » quand
  * le nom le dit OU que la fiche enregistrée est déjà typée ainsi. */
-export function typeFicheFormulaire({ typeClient, nom, typeFicheServeur } = {}) {
+export function typeFicheFormulaire({
+  typeClient, nom, typeFicheServeur, rolePompage, estPompe, estVariateurPompage,
+} = {}) {
+  // AGR105 — le rôle pompage DÉCLARÉ passe en premier ; à défaut, la fiche
+  // déjà typée côté serveur, puis la famille lue (catégorie / nom).
+  if (rolePompage === 'pompe' || rolePompage === 'variateur_pompage') return rolePompage
   if (typeClient) return typeClient
+  if (typeFicheServeur === 'pompe' || typeFicheServeur === 'variateur_pompage') {
+    return typeFicheServeur
+  }
+  // Repli par famille lue : seulement si aucune fiche d'un AUTRE type n'est
+  // déjà enregistrée (jamais retyper une fiche existante).
+  if (!typeFicheServeur) {
+    if (estVariateurPompage) return 'variateur_pompage'
+    if (estPompe) return 'pompe'
+  }
   if (typeFicheServeur === 'optimiseur' || estOptimiseurNom(nom)) return 'optimiseur'
   return null
 }
@@ -492,6 +530,21 @@ export const LIBELLES_FICHE = {
   opt_i_out_max_a: 'Optimiseur — courant de sortie maxi (A)',
   opt_pmax_out_w: 'Optimiseur — puissance de sortie maxi (W)',
   opt_modules_max_par_chaine: 'Modules équipés maxi par chaîne',
+  // AGR105 — pompe (valeurs constructeur, vide = non publié)
+  pompe_i_nominal_a: 'Courant nominal (A)',
+  pompe_diametre_ext_mm: 'Diamètre extérieur (mm)',
+  pompe_nb_etages: "Nombre d'étages",
+  pompe_immersion_min_m: 'Immersion minimale (m)',
+  pompe_rendement_pct: 'Rendement au point nominal (%)',
+  pompe_q_nominal_m3h: 'Débit nominal (m³/h)',
+  pompe_hmt_nominale_m: 'HMT au débit nominal (m)',
+  // AGR105 — variateur de pompage
+  var_voc_reco_min_v: 'Voc recommandée du champ — mini (V)',
+  var_voc_reco_max_v: 'Voc recommandée du champ — maxi (V)',
+  var_v_sortie_v: 'Tension de sortie vers la pompe (V)',
+  var_i_sortie_nominal_a: 'Courant de sortie nominal (A)',
+  var_protection_marche_a_sec: 'Protection marche à sec intégrée',
+  var_rendement_mppt_pct: 'Rendement MPPT (%)',
 }
 
 /** Titre de la section affichée, par `type_fiche` backend. */
@@ -500,6 +553,8 @@ export const TITRES_FICHE = {
   module: 'Panneau photovoltaïque',
   batterie: 'Batterie',
   optimiseur: 'Optimiseur / micro-onduleur',
+  pompe: 'Pompe',
+  variateur_pompage: 'Variateur de pompage',
 }
 
 /** Ce qu'affiche une valeur ABSENTE. JAMAIS un défaut, jamais un zéro : un
@@ -519,6 +574,8 @@ export function valeurFicheAffichee(cle, fiche) {
     if (fiche.ond_bat_aucune) return 'Aucune batterie compatible'
   }
   const v = fiche[cle]
+  // AGR105 — booléen nullable : Oui / Non, jamais un trou rempli d'un défaut.
+  if (typeof v === 'boolean') return v ? 'Oui' : 'Non'
   // CALX355 — une courbe se lit par son NOMBRE de points (jamais un
   // « [object Object] ») ; une liste vide est une absence.
   if (COURBES_FICHE[cle]) {
@@ -552,6 +609,7 @@ export function groupeFicheAffichage(fiche) {
   // CALX355 — même ordre que le formulaire : nombres, puis choix, puis courbes.
   const cles = [
     ...CHAMPS_PAR_TYPE[type],
+    ...(CHAMPS_TRI_PAR_TYPE[type] ?? []),
     ...(CHAMPS_CHOIX_PAR_TYPE[type] ?? []),
     ...(COURBES_PAR_TYPE[type] ?? []),
   ]
@@ -578,6 +636,9 @@ export function typeFicheBackend(ficheType) {
   // CALX355 — type du formulaire (`typeFicheFormulaire`), pas une famille
   // de `classifyProduct`.
   if (ficheType === 'optimiseur') return 'optimiseur'
+  // AGR105 — fiches pompe / variateur de pompage (`type_fiche` du même nom).
+  if (ficheType === 'pompe') return 'pompe'
+  if (ficheType === 'variateur_pompage') return 'variateur_pompage'
   return null
 }
 
@@ -594,6 +655,9 @@ export function ficheFieldsVides() {
   }
   // CALX355 — choix vides ('') et courbes sans aucune ligne.
   for (const cles of Object.values(CHAMPS_CHOIX_PAR_TYPE)) {
+    for (const cle of cles) out[cle] = ''
+  }
+  for (const cles of Object.values(CHAMPS_TRI_PAR_TYPE)) {
     for (const cle of cles) out[cle] = ''
   }
   for (const cles of Object.values(COURBES_PAR_TYPE)) {
@@ -619,6 +683,11 @@ export function champsFicheDepuisServeur(fiche) {
   }
   for (const cles of Object.values(CHAMPS_CHOIX_PAR_TYPE)) {
     for (const cle of cles) out[cle] = fiche[cle] ? String(fiche[cle]) : ''
+  }
+  for (const cles of Object.values(CHAMPS_TRI_PAR_TYPE)) {
+    for (const cle of cles) {
+      out[cle] = fiche[cle] === true ? 'oui' : (fiche[cle] === false ? 'non' : '')
+    }
   }
   for (const cles of Object.values(COURBES_PAR_TYPE)) {
     for (const cle of cles) out[cle] = lignesCourbeDepuisServeur(cle, fiche[cle])
@@ -650,6 +719,11 @@ export function champsFichePourType(ficheType, ficheFields) {
   for (const cle of CHAMPS_CHOIX_PAR_TYPE[typeBackend] ?? []) {
     const brut = ficheFields?.[cle]
     out[cle] = brut ? String(brut) : ''
+  }
+  // AGR105 — oui/non/non publié → true/false/null.
+  for (const cle of CHAMPS_TRI_PAR_TYPE[typeBackend] ?? []) {
+    const brut = ficheFields?.[cle]
+    out[cle] = brut === 'oui' ? true : (brut === 'non' ? false : null)
   }
   for (const cle of COURBES_PAR_TYPE[typeBackend] ?? []) {
     out[cle] = validerCourbe(cle, ficheFields?.[cle]).points

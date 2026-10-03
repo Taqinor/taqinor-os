@@ -16,9 +16,12 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 
-from ..models import CommissioningRecord, CommissioningIVReading
+from ..models import (
+    CommissioningRecord, CommissioningIVReading, RecettePompage,
+)
 from ..serializers_commissioning import (
     CommissioningRecordSerializer, CommissioningIVReadingSerializer,
+    RecettePompageSerializer, recette_pompage_envelope,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -121,3 +124,52 @@ class CommissioningRecordViewSet(UsageGuardedDestroyMixin,
         return Response(
             CommissioningIVReadingSerializer(reading).data,
             status=status.HTTP_201_CREATED)
+
+
+MESSAGE_RECETTE_VERROUILLEE = (
+    "Recette pompage verrouillée : le PV de réception du chantier est signé, "
+    "la fiche ne peut plus être modifiée.")
+
+
+class RecettePompageViewSet(CompanyScopedModelViewSet):
+    """AGR608 — fiches de recette POMPAGE (cadre IEC 62253:2011). Lecture
+    tout rôle ; PATCH Responsable/Admin. La création passe par l'action
+    ``chantiers/{id}/recette-pompage/`` (POST, chantier agricole seulement).
+    Société TOUJOURS posée côté serveur (TenantMixin) ; queryset scopé.
+    PATCH refusé (400 FR nommant ``verrouillee``) dès que le PV du chantier
+    est signé : sinon le PV signé dirait autre chose que l'état servi.
+    Réponse ``{installation, record}`` (contrat ``recette_pompage.json``)."""
+    queryset = RecettePompage.objects.select_related(
+        'installation', 'technicien').all()
+    serializer_class = RecettePompageSerializer
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        installation = self.request.query_params.get('installation')
+        if installation:
+            qs = qs.filter(installation_id=installation)
+        return qs
+
+    def retrieve(self, request, *args, **kwargs):
+        recette = self.get_object()
+        return Response(recette_pompage_envelope(
+            recette.installation, recette, {'request': request}))
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        recette = self.get_object()
+        if recette.verrouillee:
+            raise ValidationError({'verrouillee': MESSAGE_RECETTE_VERROUILLEE})
+        serializer = self.get_serializer(
+            recette, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        recette.refresh_from_db()
+        return Response(recette_pompage_envelope(
+            recette.installation, recette, {'request': request}))

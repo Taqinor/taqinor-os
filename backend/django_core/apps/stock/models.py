@@ -7,7 +7,9 @@ from core.models import TenantModel  # SCA4 — socle multi-tenant
 # FONDATION) et PAS dans ``apps.ventes`` : ce module ne peut pas importer une
 # app métier sœur (frontière inter-app, verrouillée par ``.importlinter``),
 # et une copie locale aurait fait un miroir de plus à tenir à la main.
-from core.product_roles import ROLES_DEVIS
+from core.product_roles import (
+    ALIMENTATIONS_POMPAGE, ROLES_DEVIS, ROLES_POMPAGE, TYPES_POMPE,
+)
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -870,6 +872,32 @@ class Produit(models.Model):
         help_text="Courbe de performance constructeur : "
                   '{"debits_m3h": [0, 12, ...], "hmt_m": [91, 85, ...]} '
                   '(HMT délivrée à chaque débit).')
+    # ── AGR100 — champs STRUCTURÉS pompage (fin du classement par le nom).
+    # Vocabulaire ``ROLES_POMPAGE`` DISTINCT de ``ROLES_DEVIS`` (arbitrage de
+    # core/product_roles.py respecté). Vide = « non déclaré » : repli sur
+    # l'ancienne lecture (catégorie, puis mots du nom) ; jamais de défaut métier.
+    role_pompage = models.CharField(
+        max_length=32, blank=True, default='', db_index=True,
+        choices=[(r, r) for r in ROLES_POMPAGE],
+        verbose_name='Rôle pompage',
+        help_text="Rôle DÉCLARÉ dans une composition pompage (pompe, "
+                  "variateur_pompage, sonde_niveau…). Vide = non déclaré.")
+    type_pompe = models.CharField(
+        max_length=16, blank=True, default='',
+        choices=[(t, t) for t in TYPES_POMPE],
+        help_text='Pompes seulement : immergee, surface ou dc.')
+    alimentation = models.CharField(
+        max_length=8, blank=True, default='',
+        choices=[(a, a) for a in ALIMENTATIONS_POMPAGE],
+        help_text='Pompes et variateurs : mono, tri ou dc. Vide = non publié.')
+    courbe_source = models.JSONField(
+        default=dict, blank=True,
+        help_text='Provenance de courbe_pompe : {"document": "", "date": '
+                  'null, "page": null}. Document vide = source non publiée.')
+    courbe_frequence_hz = models.FloatField(
+        null=True, blank=True,
+        help_text='Fréquence (Hz) de publication de la courbe constructeur. '
+                  'null = non publié — jamais supposé.')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_mise_a_jour = models.DateTimeField(auto_now=True)
     # Champs personnalisés (T11) — valeurs indexées par CustomFieldDef.code.
@@ -2220,10 +2248,14 @@ class FicheTechnique(models.Model):
         # de conversion, PV*SOL les micro-onduleurs. Choix ADDITIF : aucune
         # fiche existante ne change de type.
         OPTIMISEUR = 'optimiseur', 'Optimiseur / micro-onduleur'
+        # AGR101 — pompe et variateur de pompage : valeurs PUBLIÉES par la
+        # fiche constructeur du modèle exact (additif).
+        POMPE = 'pompe', 'Pompe'
+        VARIATEUR_POMPAGE = 'variateur_pompage', 'Variateur de pompage'
         AUTRE = 'autre', 'Autre'
 
     type_fiche = models.CharField(
-        max_length=16, choices=TypeFiche.choices, blank=True, default='',
+        max_length=24, choices=TypeFiche.choices, blank=True, default='',
         help_text='Type de fiche technique (détermine les champs applicables).')
 
     # ── PV5 — Module : dimensions & coefficients de température ──
@@ -2751,6 +2783,55 @@ class FicheTechnique(models.Model):
         null=True, blank=True, validators=[MinValueValidator(1)],
         help_text='Nombre maximal de modules équipés admis sur une même '
                   'chaîne. Vide = non publié.')
+
+    # ── AGR101 — fiche « pompe » (type_fiche='pompe'). Chaque champ est la
+    # valeur PUBLIÉE par la fiche du modèle EXACT ; vide = « non publié »,
+    # jamais 0 ni une constante codée. ──
+    pompe_i_nominal_a = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Pompe — courant nominal (A). Vide = non publié.')
+    pompe_diametre_ext_mm = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Pompe — diamètre extérieur (mm). Vide = non publié.')
+    pompe_nb_etages = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Pompe — nombre d'étages. Vide = non publié.")
+    pompe_immersion_min_m = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Pompe — immersion minimale (m). Vide = non publié.')
+    pompe_rendement_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Pompe — rendement au point nominal (%). Vide = non publié.')
+    pompe_q_nominal_m3h = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True,
+        help_text='Pompe — débit nominal (m³/h). Vide = non publié.')
+    pompe_hmt_nominale_m = models.DecimalField(
+        max_digits=7, decimal_places=1, null=True, blank=True,
+        help_text='Pompe — HMT au débit nominal (m). Vide = non publié.')
+
+    # ── AGR101 — fiche « variateur de pompage » (type_fiche=
+    # 'variateur_pompage'). Réutilise les champs onduleur ``ond_*`` que
+    # ``core.electrique.chaines`` lit déjà (fenêtre MPPT, V max, I max,
+    # phases, démarrage) ; n'ajoute que ceux-ci. Aucune plage VEICHI codée. ──
+    var_voc_reco_min_v = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Variateur — Voc recommandée mini du champ (V).')
+    var_voc_reco_max_v = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Variateur — Voc recommandée maxi du champ (V).')
+    var_v_sortie_v = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Variateur — tension de sortie vers la pompe (V).')
+    var_i_sortie_nominal_a = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Variateur — courant de sortie nominal (A).')
+    var_protection_marche_a_sec = models.BooleanField(
+        null=True, blank=True,
+        help_text='Variateur — protection marche à sec intégrée '
+                  '(vide = non publié).')
+    var_rendement_mppt_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Variateur — rendement MPPT (%). Vide = non publié.')
 
     # ── PDF constructeur d'origine (optionnel) ──
     #

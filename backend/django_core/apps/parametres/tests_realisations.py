@@ -282,3 +282,82 @@ class SelecteurTests(TestCase):
     def test_le_catalogue_d_une_autre_societe_n_est_jamais_servi(self):
         _realisation(self.autre, 'Casablanca')
         self.assertIsNone(realisation_pour_lead(self._lead(ville='Casablanca')))
+
+
+class SegmentPreuveTests(TestCase):
+    """AGR513 (D-AGR-10) — la preuve est filtrée par segment, dans les deux
+    sens : jamais un toit montré à un agriculteur, jamais une station de
+    pompage montrée à un résidentiel."""
+
+    def setUp(self):
+        self.company = _societe('real-segment')
+
+    def _lead(self, **kwargs):
+        kwargs.setdefault('nom', 'Ouhaddou')
+        kwargs.setdefault('telephone', '+212651971401')
+        return Lead.objects.create(company=self.company, **kwargs)
+
+    def test_a_lead_agricole_et_seulement_du_residentiel_rien(self):
+        _realisation(self.company, 'Agadir', segment='residentiel')
+        _realisation(self.company, 'Agadir')  # sans segment
+        lead = self._lead(ville='Agadir', type_installation='agricole')
+        self.assertIsNone(realisation_pour_lead(lead))
+
+    def test_b_lead_agricole_et_une_agricole_a_400_km_celle_ci(self):
+        _realisation(self.company, 'Casablanca', segment='residentiel')
+        ferme = _realisation(self.company, 'Agadir', segment='agricole')
+        lead = self._lead(ville='Casablanca', type_installation='agricole')
+        self.assertEqual(realisation_pour_lead(lead), ferme)
+
+    def test_c_lead_residentiel_jamais_l_agricole_meme_dans_sa_ville(self):
+        _realisation(self.company, 'Casablanca', segment='agricole')
+        villa = _realisation(self.company, 'Agadir', segment='residentiel')
+        lead = self._lead(ville='Casablanca', type_installation='residentiel')
+        self.assertEqual(realisation_pour_lead(lead), villa)
+        seule_agricole = _societe('real-segment-seule')
+        _realisation(seule_agricole, 'Casablanca', segment='agricole')
+        lead2 = Lead.objects.create(
+            company=seule_agricole, nom='Zaki', telephone='+212651971402',
+            ville='Casablanca', type_installation='residentiel')
+        self.assertIsNone(realisation_pour_lead(lead2))
+
+    def test_d_lead_residentiel_sans_realisation_segmentee_inchange(self):
+        """Comme aujourd'hui : même ville d'abord (segment vide partout)."""
+        _realisation(self.company, 'Bouskoura')
+        meme = _realisation(self.company, 'Casablanca')
+        self.assertEqual(realisation_pour_lead(
+            self._lead(ville='Casablanca', type_installation='residentiel')),
+            meme)
+        self.assertEqual(realisation_pour_lead(self._lead(ville='Casablanca')),
+                         meme)
+
+
+class SegmentApiTests(TestCase):
+    def setUp(self):
+        self.company = _societe('real-segment-api')
+        admin = User.objects.create_user(
+            username='real_segment_admin', password='x',
+            role_legacy='admin', company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
+
+    def test_segment_expose_nullable_et_valide(self):
+        resp = self.api.post(URL, {
+            'titre': 'Ferme à Taroudant', 'ville': 'Taroudant',
+            'url_page': 'https://taqinor.ma/realisations/ferme-taroudant/',
+            'segment': 'agricole'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['segment'], 'agricole')
+        resp = self.api.post(URL, {
+            'titre': 'Villa', 'ville': 'Rabat',
+            'url_page': 'https://taqinor.ma/realisations/villa-rabat-seg/'},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertIsNone(resp.data['segment'])
+        resp = self.api.post(URL, {
+            'titre': 'X', 'ville': 'Rabat', 'segment': 'toiture',
+            'url_page': 'https://taqinor.ma/realisations/x-seg/'},
+            format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('segment', resp.data)

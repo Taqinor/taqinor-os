@@ -5,7 +5,10 @@
 //   2) les affordances de tri / d'actions restent ATTEIGNABLES SANS SURVOL — un
 //      écran tactile n'a pas de hover, donc une action qui n'apparaît qu'au
 //      :hover est invisible au doigt.
-import { test, expect } from '@playwright/test'
+import { expect } from '@playwright/test'
+// CAD177 — ce projet tourne en DERNIER de la matrice complète : la session
+// d'AUTH_FILE est revérifiée/rafraîchie avant chaque test.
+import { testSessionFraiche as test } from './helpers'
 
 // CAD85 — les écrans QUOTIDIENS de la cadence rejoignent la liste : le cockpit
 // CRM et le suivi des relances, ouverts chaque matin, et la FICHE d'un lead

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 
@@ -21,6 +21,15 @@ vi.mock('../../api/ventesApi', () => ({
 import ventesApi from '../../api/ventesApi'
 import DevisSection from './DevisSection'
 import LeadsSection from './LeadsSection'
+import { documentContrat } from '../../test/fixtures/contractSamples'
+import {
+  REPERES_ENERGIE, formReperes, payloadReperes, joursDepuisReleve,
+} from './peConstants'
+
+/* AGR209 — la forme des repères vient du contrat partagé (jamais un mock
+   inventé) : `reglages_lus['CompanyProfile.reperes_energie_agricole']`. */
+const REPERES_CONTRAT = documentContrat('ventes', 'economie_pompage')
+  .reglages_lus['CompanyProfile.reperes_energie_agricole'].exemple
 
 afterEach(() => cleanup())
 
@@ -34,7 +43,11 @@ function withStore(ui, { role_nom = null } = {}) {
 const baseForm = {
   payment_terms: {}, doc_prefixes: {}, doc_numbering: {},
   quote_validity_days: 30, agricole_pump_hours: 7,
-  agricole_prix_bonbonne: 50, agricole_cout_reel_bonbonne: 128,
+  // AGR209 — repères énergie datés et sourcés (ex-« bonbonne » 50 / 128),
+  // forme du contrat partagé `ventes/contract_samples/economie_pompage.json`.
+  reperes_energie_agricole: formReperes({
+    reperes_energie_agricole: REPERES_CONTRAT,
+  }),
   // Q5 — délais commerciaux indicatifs (texte libre ; vide = non affiché).
   delai_visite_technique: '48-72 h', delai_installation: '7-14 jours ouvrés',
   commission_mode: 'off', commission_valeur: '',
@@ -166,5 +179,59 @@ describe('MRY8 — LeadsSection (deux ouvertures : messages ≠ appels)', () => 
     expect(set).toHaveBeenCalled()
     const evenement = set.mock.calls.at(-1)[0]
     expect(evenement.target.name).toBe('message_heure_debut')
+  })
+})
+
+/* AGR209 — Paramètres › Devis : les anciens « Prix bonbonne » / « Coût réel »
+   (écrasés en silence par `|| 50` / `|| 128`) deviennent trois REPÈRES datés
+   et sourcés. Vider un repère l'envoie VIDE, jamais 50 ; enregistrer →
+   rouvrir → enregistrer sans toucher = profil serveur identique. */
+describe('AGR209 — DevisSection (repères énergie datés et sourcés)', () => {
+  it('affiche les trois repères, le « non subventionné » marqué interne', () => {
+    render(withStore(<DevisSection {...devisProps} canManageSensitive />))
+    for (const { libelle } of REPERES_ENERGIE) {
+      expect(screen.getByLabelText(libelle)).toHaveAttribute('step', 'any')
+    }
+    expect(screen.getByText('Interne, jamais sur un devis.')).toBeInTheDocument()
+    expect(screen.queryByText(/Prix bonbonne/)).toBeNull()
+    expect(screen.getByText(/le prix\s+retenu est celui DÉCLARÉ par le client/))
+      .toBeInTheDocument()
+  })
+
+  it('vider un repère ⇒ envoyé vide, jamais 50', () => {
+    const vide = payloadReperes({
+      ...formReperes({ reperes_energie_agricole: REPERES_CONTRAT }),
+      butane_12kg_detail: { valeur: '', source: '', releve_le: '' },
+    })
+    expect(vide.butane_12kg_detail).toEqual(
+      { valeur: null, source: '', releve_le: null })
+    expect(payloadReperes(formReperes({})).butane_12kg_detail.valeur).toBeNull()
+  })
+
+  it('enregistrer → rouvrir → enregistrer sans toucher = profil serveur identique', () => {
+    const rouvert = formReperes({ reperes_energie_agricole: REPERES_CONTRAT })
+    expect(payloadReperes(rouvert)).toEqual(REPERES_CONTRAT)
+    expect(payloadReperes(formReperes({
+      reperes_energie_agricole: payloadReperes(rouvert),
+    }))).toEqual(REPERES_CONTRAT)
+  })
+
+  it('« relevé il y a N jours » sans seuil', () => {
+    expect(joursDepuisReleve('2026-08-20', new Date(2026, 9, 2))).toBe(43)
+    expect(joursDepuisReleve('', new Date())).toBeNull()
+  })
+
+  it('saisir une source remonte au formulaire via setForm', () => {
+    const setForm = vi.fn()
+    render(withStore(
+      <DevisSection {...devisProps} setForm={setForm} canManageSensitive />))
+    fireEvent.change(document.getElementById('pe-repere-gasoil_litre-source'),
+      { target: { value: 'Relevé station' } })
+    expect(setForm).toHaveBeenCalled()
+    const suivant = setForm.mock.calls.at(-1)[0]({
+      reperes_energie_agricole: formReperes({}),
+    })
+    expect(suivant.reperes_energie_agricole.gasoil_litre.source)
+      .toBe('Relevé station')
   })
 })

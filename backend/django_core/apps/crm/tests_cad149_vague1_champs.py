@@ -137,8 +137,13 @@ class LesSixEndroitsSuivent(SimpleTestCase):
         surveilles = selectors.lead_provenance_champs_energie_toit()
         for nom in ('equip_ve_statut', 'pompe_alim_actuelle'):
             self.assertIn(nom, surveilles, nom)
-            raison = selectors.LEAD_PROVENANCE_EXCLUSIONS.get(nom)
-            self.assertTrue(isinstance(raison, str) and len(raison) > 40, nom)
+        raison = selectors.LEAD_PROVENANCE_EXCLUSIONS.get('equip_ve_statut')
+        self.assertTrue(isinstance(raison, str) and len(raison) > 40)
+        # AGR404 — `pompe_alim_actuelle` est désormais DÉCLARÉE (lue par
+        # `entrees_pompage`), plus exclue.
+        self.assertIn('pompe_alim_actuelle', selectors.LEAD_PROVENANCE_FIELDS)
+        self.assertNotIn('pompe_alim_actuelle',
+                         selectors.LEAD_PROVENANCE_EXCLUSIONS)
 
     def test_2ter_les_six_autres_ne_sont_pas_captes_par_les_marqueurs(self):
         """Contrôle négatif : une exclusion inutile est du bruit à relire."""

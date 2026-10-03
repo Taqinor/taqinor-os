@@ -1,8 +1,11 @@
 // E16 — Mobile pass (iPhone viewport, see the `mobile` project in the config):
 // no horizontal overflow on key pages, and the full nav menu is reachable
 // (verifies the C1 cut-off-menu fix).
-import { test, expect } from '@playwright/test'
+import { expect } from '@playwright/test'
 import {
+  // CAD177 — ce projet tourne APRÈS `chromium` + `monkey` (~50 min) : la
+  // session d'AUTH_FILE est revérifiée/rafraîchie avant chaque test.
+  testSessionFraiche as test,
   uniq, uiLogin, ADMIN, gotoLeads, createLead,
   assertNoSeriousA11yViolations,
 } from './helpers'

@@ -323,8 +323,9 @@ class TestResidentialQRESRound(TestCase):
     def test_overflow_quote_paginates_cleanly(self):
         """Devis très chargé (« plus10 ») : 4 pages numérotées « / 4 »,
         TOUTES les lignes du devis présentes (aucune avalée par le
-        découpage), la page rentabilité dédiée existe et porte la bande de
-        financement (QRES50)."""
+        découpage), la page rentabilité dédiée existe. Le bloc « Financement
+        possible » (QRES50, « Dans votre poche ») est SUPPRIMÉ depuis l'ordre
+        fondateur du 18/08 (4740d01c, QRES66) : il ne doit pas revenir."""
         import fitz
         from apps.ventes.quote_engine.residential import renderer, sample_data
         for variant in ("plus10",):
@@ -341,7 +342,7 @@ class TestResidentialQRESRound(TestCase):
             self.assertIn("Page 2 / 4", all_text)
             self.assertIn("Page 4 / 4", all_text)
             self.assertIn("Rentabilité de votre investissement", all_text)
-            self.assertIn("Dans votre poche", all_text)
+            self.assertNotIn("Dans votre poche", all_text)
 
     def test_bottom_content_never_silently_clipped(self):
         """Le cadre .page (A4 fixe, overflow:hidden) peut ROGNER sans faire de
@@ -419,8 +420,14 @@ class TestResidentialQRESRound(TestCase):
         """Le lien tokenisé vit dans le href et le QR ; le bouton n'affiche que
         « hôte/segment » (l'URL complète débordait sous le QR)."""
         html, _ = self._render("deux")
+        import re
         token_tail = "rKJtbjsY-qTML35ZnjQ9Lt_v4_demo"
-        self.assertEqual(html.count(token_tail), 1)          # href uniquement
+        # QRP1 : le lien vit dans DEUX href — le QR de la page 1 et le bouton
+        # de la page 3 — et JAMAIS dans un texte affiché.
+        self.assertEqual(html.count(token_tail), 2)
+        self.assertEqual(
+            len(re.findall(r'href="[^"]*' + re.escape(token_tail), html)),
+            html.count(token_tail))
         self.assertIn("Signez en ligne", html)
         self.assertIn("taqinor.ma/proposition</a>", html)
 

@@ -152,6 +152,89 @@ def seed_checklist_etapes(company):
     ensure_default_template(company)
 
 
+# AGR605 — checklist d'exécution « Pompage solaire » (chantier agricole).
+# (cle, libelle, capture_serie, photo_obligatoire) — AUCUN chiffre : les
+# mesures vivent dans la recette pompage (AGR608), jamais dans un libellé.
+# Pas d'« Onduleur raccordé » : un kit de pompage n'a pas d'onduleur réseau.
+POMPAGE_TEMPLATE_NOM = 'Pompage solaire'
+POMPAGE_CHECKLIST_ETAPES = [
+    ('materiel_recu', 'Matériel reçu', False, False),
+    ('forage_verifie',
+     'Forage vérifié (accès, tubage, profondeur relevée)', False, True),
+    ('structure_sol_posee', 'Structure au sol posée', False, True),
+    ('panneaux_poses', 'Panneaux posés', True, False),
+    ('coffret_dc_terre', 'Coffret DC et mise à la terre', False, True),
+    ('cable_colonne_poses', 'Câble de descente et colonne posés',
+     False, False),
+    ('pompe_descendue',
+     'Pompe descendue (photo de la plaque signalétique)', True, True),
+    ('variateur_parametre', 'Variateur posé et paramétré', True, True),
+    ('recette_pompage', 'Recette pompage enregistrée', False, False),
+    ('etiquette_sav', 'Étiquette SAV collée sur le coffret', False, False),
+    ('client_forme',
+     'Client formé (démarrage/arrêt, défauts du variateur, nettoyage des '
+     'panneaux, relevés)', False, False),
+    ('photos_prises', 'Photos prises', False, False),
+    ('pv_reception_signe', 'PV de réception signé', False, False),
+]
+
+
+def ensure_template_agricole(company):
+    """AGR605 — sème UNE SEULE FOIS le template « Pompage solaire » de la
+    société (idempotent, additif). Jamais recréé dès qu'un template
+    ``type_installation='agricole'`` existe, ACTIF OU NON : un template
+    désactivé, renommé ou modifié par la société est respecté. Le template
+    est ``protege=False`` (le seul protégé reste le « Défaut »). Renvoie le
+    template créé, ou None s'il existait déjà."""
+    if company is None:
+        return None
+    agricole = Installation.TypeInstallation.AGRICOLE
+    if ChecklistTemplate.objects.filter(
+            company=company, type_installation=agricole).exists():
+        return None
+    template = ChecklistTemplate.objects.create(
+        company=company, type_installation=agricole,
+        nom=POMPAGE_TEMPLATE_NOM, ordre=1, protege=False, actif=True)
+    for i, (cle, libelle, capture, photo) in enumerate(
+            POMPAGE_CHECKLIST_ETAPES):
+        ChecklistEtapeModele.objects.create(
+            company=company, template=template, cle=cle, libelle=libelle,
+            ordre=i, capture_serie=capture, photo_obligatoire=photo,
+            protege=True)
+    return template
+
+
+# AGR605 — plan d'interventions standard d'un chantier agricole : jamais de
+# « raccordement ». Repère des 30 premiers jours : Ignite, nextbillion.net
+# « Four key lessons for implementing PAYGo ».
+POMPAGE_PLAN_INTERVENTIONS = [
+    ('pose', 'Pose du kit de pompage solaire'),
+    ('mise_en_service', 'Mise en service et recette pompage'),
+    ('controle',
+     "Point des 30 premiers jours : l'eau coule-t-elle, relevé heures/m³, "
+     "accord de référence demandé"),
+]
+
+
+def ensure_plan_interventions_agricole(company):
+    """AGR605 — sème UNE SEULE FOIS le plan d'interventions standard
+    agricole (idempotent, additif) : aucun plan agricole existant → pose,
+    mise_en_service, controle. Un plan déjà présent (même modifié) n'est
+    jamais touché. Renvoie le nombre de lignes créées."""
+    if company is None:
+        return 0
+    from .models import TypeInterventionPlan
+    agricole = Installation.TypeInstallation.AGRICOLE
+    if TypeInterventionPlan.objects.filter(
+            company=company, type_installation=agricole).exists():
+        return 0
+    for i, (cle, libelle) in enumerate(POMPAGE_PLAN_INTERVENTIONS):
+        TypeInterventionPlan.objects.create(
+            company=company, type_installation=agricole,
+            type_intervention_cle=cle, libelle_contexte=libelle, ordre=i)
+    return len(POMPAGE_PLAN_INTERVENTIONS)
+
+
 def template_for_installation(installation):
     """N74 — template de checklist auto-sélectionné pour un chantier :
     celui (actif) dont `type_installation` correspond au type du chantier ;
@@ -164,6 +247,8 @@ def template_for_installation(installation):
         return None
     default = ensure_default_template(company)
     type_install = installation.type_installation
+    if type_install == Installation.TypeInstallation.AGRICOLE:
+        ensure_template_agricole(company)  # AGR605 — une seule fois.
     if type_install:
         match = ChecklistTemplate.objects.filter(
             company=company, type_installation=type_install, actif=True
@@ -200,7 +285,10 @@ def ensure_checklist_items(installation):
         if m.cle not in existing:
             ChantierChecklistItem.objects.create(
                 company=company, installation=installation, cle=m.cle,
-                libelle=m.libelle, ordre=m.ordre, capture_serie=m.capture_serie)
+                libelle=m.libelle, ordre=m.ordre, capture_serie=m.capture_serie,
+                # FG76 — « copié depuis l'étape modèle » (AGR605 : la
+                # checklist pompage exige des photos sur 5 étapes).
+                photo_obligatoire=m.photo_obligatoire)
     # `Meta.ordering = ['ordre', 'id']` — même ordre que le related manager.
     return list(ChantierChecklistItem.objects.filter(
         installation=installation))
@@ -350,9 +438,16 @@ def create_installation_from_devis(devis, user, company):
     # N43 — régime loi 82-21 proposé comme DÉFAUT MODIFIABLE depuis la
     # puissance (seuils éditables en Paramètres). Reste 'non_concerne' si la
     # puissance est inconnue ; l'utilisateur peut toujours le changer ensuite.
+    # AGR602 — un chantier agricole (pompage) est suggéré HORS RÉSEAU
+    # (modifiable) → régime « déclaration hors réseau » (loi 82-21, art. 3),
+    # quelle que soit la puissance. Les autres types : inchangé (par kWc).
     from .regime import suggest_for_company
+    raccordement_reseau = (
+        Installation.RaccordementReseau.HORS_RESEAU
+        if type_install == Installation.TypeInstallation.AGRICOLE else None)
     regime_suggere = suggest_for_company(
-        _puissance_from(devis, lead), company)
+        _puissance_from(devis, lead), company,
+        hors_reseau=raccordement_reseau is not None)
 
     # Installateur par défaut (N66) : celui configuré en Paramètres, sinon le
     # créateur du chantier (comportement actuel). « Signé » est le 1er jalon de
@@ -377,6 +472,7 @@ def create_installation_from_devis(devis, user, company):
             raccordement=raccordement,
             type_installation=type_install,
             regime_8221=regime_suggere,
+            raccordement_reseau=raccordement_reseau,
             statut=Installation.Statut.SIGNE,
             date_signature=date_signature,
             bom=_freeze_bom(devis),
@@ -1438,7 +1534,22 @@ def _gate_check_tests(installation, stage=None):
     Repli historique : si aucune fiche structurée n'a encore été ouverte mais
     que les champs libres `mes_*` / la date de mise en service portent déjà des
     valeurs (chantiers d'avant CH3), on considère l'essai enregistré — aucun
-    chantier existant n'est bloqué rétroactivement."""
+    chantier existant n'est bloqué rétroactivement.
+
+    AGR610 — chantier AGRICOLE (pompage) : jugé sur la RECETTE POMPAGE
+    (AGR608), jamais sur IEC 62446-1. Une fiche IEC seule ne suffit pas ;
+    pas de repli `mes_*`."""
+    if (installation.type_installation
+            == Installation.TypeInstallation.AGRICOLE):
+        from .models import RecettePompage
+        recette = RecettePompage.objects.filter(
+            installation=installation).first()
+        if recette is None:
+            return "Recette pompage non enregistrée."
+        if not recette.passe:
+            return ("Recette pompage non conforme "
+                    f"({recette.get_resultat_display()}).")
+        return None
     record = getattr(installation, 'commissioning_record', None)
     if record is not None:
         if record.passe:
@@ -1465,10 +1576,51 @@ def _gate_check_materiel(installation, stage=None):
     return None
 
 
+# AGR625 — régime « déclaration hors réseau » (loi 82-21, art. 3, posé par
+# AGR602) : guichet et modalités NON sourcés (décret 2.25.100 non lu, AGRM14)
+# → le gate dossier ne BLOQUE PAS ce régime, il AVERTIT seulement.
+AVERTISSEMENT_DECLARATION_HORS_RESEAU = (
+    "Déclaration hors réseau, art. 3 : modalités fixées par voie "
+    "réglementaire, à vérifier")
+REFERENCE_DECLARATION_HORS_RESEAU = (
+    "Déclaration art. 3 — modalités à préciser")
+
+
+def est_hors_reseau(installation):
+    """AGR625 — chantier non raccordé au réseau (champ AGR602 ou régime
+    « déclaration hors réseau »)."""
+    return (
+        getattr(installation, 'raccordement_reseau', None)
+        == Installation.RaccordementReseau.HORS_RESEAU
+        or installation.regime_8221
+        == Installation.Regime8221.DECLARATION_HORS_RESEAU)
+
+
+def etape_sans_objet(installation, stage):
+    """AGR625 — l'étape « Inspection & raccordement réseau (PTO) » est SANS
+    OBJET pour un chantier hors réseau : jamais exigée."""
+    return (getattr(stage, 'cle', None) == 'inspection_raccordement'
+            and est_hors_reseau(installation))
+
+
+def _gate_avertissements(installation, stage):
+    """AGR625 — avertissements CONSULTATIFS d'une étape (jamais bloquants,
+    jamais comptés dans les raisons)."""
+    avertissements = []
+    if (getattr(stage, 'exige_dossier', False)
+            and installation.regime_8221
+            == Installation.Regime8221.DECLARATION_HORS_RESEAU):
+        avertissements.append(AVERTISSEMENT_DECLARATION_HORS_RESEAU)
+    return avertissements
+
+
 def _gate_check_dossier(installation, stage=None):
     """Dossier réglementaire loi 82-21 approuvé quand il est requis."""
     if installation.regime_8221 == Installation.Regime8221.NON_CONCERNE:
         return None
+    if (installation.regime_8221
+            == Installation.Regime8221.DECLARATION_HORS_RESEAU):
+        return None  # AGR625 — consultatif : voir `_gate_avertissements`.
     if installation.dossier_statut in (
             Installation.DossierStatut.APPROUVE,
             Installation.DossierStatut.COMPTEUR_POSE):
@@ -1506,14 +1658,21 @@ def stage_gate_status(installation, stage):
     """État du gate d'une étape pour un chantier : exigences réunies ou non.
 
     Renvoie {cle, libelle, ordre, bloquant, satisfait, raisons[]} — les
-    `raisons` sont des phrases FRANÇAISES prêtes à afficher."""
+    `raisons` sont des phrases FRANÇAISES prêtes à afficher.
+
+    AGR625 — clés ADDITIVES : `avertissements` (liste consultative, jamais
+    comptée dans les raisons bloquantes) et `sans_objet` (étape non
+    applicable au chantier — ex. PTO d'un chantier hors réseau : satisfaite
+    d'office, jamais exigée)."""
     raisons = []
-    for flag, check in _GATE_CHECKS:
-        if not getattr(stage, flag, False):
-            continue
-        raison = check(installation, stage)
-        if raison:
-            raisons.append(raison)
+    sans_objet = etape_sans_objet(installation, stage)
+    if not sans_objet:
+        for flag, check in _GATE_CHECKS:
+            if not getattr(stage, flag, False):
+                continue
+            raison = check(installation, stage)
+            if raison:
+                raisons.append(raison)
     return {
         'cle': stage.cle,
         'libelle': stage.libelle,
@@ -1521,6 +1680,9 @@ def stage_gate_status(installation, stage):
         'bloquant': stage.bloquant,
         'satisfait': not raisons,
         'raisons': raisons,
+        'avertissements': (
+            [] if sans_objet else _gate_avertissements(installation, stage)),
+        'sans_objet': sans_objet,
     }
 
 
@@ -1913,33 +2075,63 @@ def assemble_handover_pieces(installation):
     })
 
     # ── Certificat de recette IEC 62446-1 (CH3) ──
-    record = getattr(installation, 'commissioning_record', None)
-    recette_ok = record is not None and record.passe
-    pieces.append({
-        'type': 'commissioning',
-        'libelle': 'Certificat de recette IEC 62446-1',
-        'reference': (record.get_resultat_display()
-                      if record is not None else None),
-        'present': recette_ok,
-        'obligatoire': True,
-    })
+    # AGR610 — chantier agricole : « Procès-verbal de recette pompage »
+    # (AGR608), jamais le certificat IEC 62446-1 du PV raccordé.
+    if (installation.type_installation
+            == Installation.TypeInstallation.AGRICOLE):
+        from .models import RecettePompage
+        recette = RecettePompage.objects.filter(
+            installation=installation).first()
+        pieces.append({
+            'type': 'commissioning',
+            'libelle': 'Procès-verbal de recette pompage',
+            'reference': (recette.get_resultat_display()
+                          if recette is not None else None),
+            'present': recette is not None and recette.passe,
+            'obligatoire': True,
+        })
+    else:
+        record = getattr(installation, 'commissioning_record', None)
+        recette_ok = record is not None and record.passe
+        pieces.append({
+            'type': 'commissioning',
+            'libelle': 'Certificat de recette IEC 62446-1',
+            'reference': (record.get_resultat_display()
+                          if record is not None else None),
+            'present': recette_ok,
+            'obligatoire': True,
+        })
 
     # ── Dossier réglementaire loi 82-21 (obligatoire seulement si requis) ──
+    # AGR625 — « déclaration hors réseau » (art. 3) : modalités non sourcées
+    # → pièce FACULTATIVE, référence « modalités à préciser ».
+    hors_reseau_art3 = (installation.regime_8221
+                        == Installation.Regime8221.DECLARATION_HORS_RESEAU)
     dossier_requis = (installation.regime_8221
                       != Installation.Regime8221.NON_CONCERNE)
     dossier_present = bool(installation.dossier_reference) or (
         installation.dossier_statut in (
             Installation.DossierStatut.APPROUVE,
             Installation.DossierStatut.COMPTEUR_POSE))
-    pieces.append({
-        'type': 'dossier_8221',
-        'libelle': 'Dossier réglementaire loi 82-21',
-        'reference': installation.dossier_reference or (
-            installation.get_dossier_statut_display()
-            if dossier_requis else 'Non concerné'),
-        'present': (not dossier_requis) or dossier_present,
-        'obligatoire': dossier_requis,
-    })
+    if hors_reseau_art3:
+        pieces.append({
+            'type': 'dossier_8221',
+            'libelle': 'Dossier réglementaire loi 82-21',
+            'reference': (installation.dossier_reference
+                          or REFERENCE_DECLARATION_HORS_RESEAU),
+            'present': dossier_present,
+            'obligatoire': False,
+        })
+    else:
+        pieces.append({
+            'type': 'dossier_8221',
+            'libelle': 'Dossier réglementaire loi 82-21',
+            'reference': installation.dossier_reference or (
+                installation.get_dossier_statut_display()
+                if dossier_requis else 'Non concerné'),
+            'present': (not dossier_requis) or dossier_present,
+            'obligatoire': dossier_requis,
+        })
 
     # ── Accès monitoring / application ──
     pack = getattr(installation, 'handover_pack', None)

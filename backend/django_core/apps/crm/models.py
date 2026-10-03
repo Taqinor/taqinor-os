@@ -10,6 +10,27 @@ from core.models import SoftDeleteModel, TenantModel
 from .stages import STAGE_CHOICES, NEW
 
 
+def valider_mois_irrigation(valeur):
+    """AGR400 — ``Lead.mois_irrigation`` : liste d'entiers 1-12 DISTINCTS.
+
+    Vide (None ou liste vide) = question pas encore posée. Toute autre forme
+    est refusée avec un message qui nomme les mois.
+    """
+    from django.core.exceptions import ValidationError
+    if valeur in (None, []):
+        return
+    message = ("« Mois d'irrigation » : une liste de mois distincts, "
+               'chacun entre 1 et 12.')
+    if not isinstance(valeur, list):
+        raise ValidationError(message)
+    for mois in valeur:
+        if isinstance(mois, bool) or not isinstance(mois, int) \
+                or not 1 <= mois <= 12:
+            raise ValidationError(message)
+    if len(set(valeur)) != len(valeur):
+        raise ValidationError(message)
+
+
 class Client(models.Model):
     company = models.ForeignKey(
         'authentication.Company',
@@ -579,6 +600,82 @@ class Lead(SoftDeleteModel):
         BUTANE = 'butane', 'Butane'
         ELECTRIQUE = 'electrique', 'Électrique (réseau)'
 
+    # ── AGR400 (Groupe AGR, contrat AGR1 ``lead_pompage.json``) — les
+    # vocabulaires des colonnes de pompage. Ceux que le site émet déjà
+    # (source d'eau, irrigation, région) gardent MOT POUR MOT les clés du
+    # tunnel (``apps/crm/webhooks.py``) : un second vocabulaire du même sujet
+    # rendrait le sac et la colonne illisibles ensemble.
+    class SourceEau(models.TextChoices):
+        PUITS = 'puits', 'Puits'
+        FORAGE = 'forage', 'Forage'
+        BASSIN = 'bassin', 'Bassin'
+        RIVIERE = 'riviere', 'Rivière'
+
+    class NiveauStatiqueSource(models.TextChoices):
+        DECLARE = 'declare', 'Déclaré par le client'
+        SITE_WEB = 'site_web', 'Saisi sur le site'
+        MESURE_VISITE = 'mesure_visite', 'Mesuré en visite'
+
+    class DebitForageSource(models.TextChoices):
+        ESSAI = 'essai', 'Essai de pompage'
+        FOREUR = 'foreur', 'Donné par le foreur'
+        CLIENT = 'client', 'Estimation du client'
+        MESURE_VISITE = 'mesure_visite', 'Mesuré en visite'
+
+    class BesoinEauSource(models.TextChoices):
+        CLIENT = 'client', 'Déclaré par le client'
+        SITE_WEB = 'site_web', 'Saisi sur le site'
+        POMPE_ACTUELLE = 'pompe_actuelle', 'Calculé depuis la pompe actuelle'
+
+    class IrrigationMethode(models.TextChoices):
+        GOUTTE = 'goutte', 'Goutte-à-goutte'
+        ASPERSION = 'aspersion', 'Aspersion'
+        GRAVITAIRE = 'gravitaire', 'Gravitaire (à la raie)'
+
+    class RegionAgricole(models.TextChoices):
+        SOUSS_MASSA = 'souss-massa', 'Souss-Massa'
+        DOUKKALA = 'doukkala', 'Doukkala'
+        TADLA = 'tadla', 'Tadla'
+        SAISS = 'saiss', 'Saïss'
+        ORIENTAL = 'oriental', 'Oriental'
+        DRAA_TAFILALET = 'draa-tafilalet', 'Drâa-Tafilalet'
+        GHARB_LOUKKOS = 'gharb-loukkos', 'Gharb-Loukkos'
+        HAOUZ = 'haouz', 'Haouz'
+
+    class PompeActuelleType(models.TextChoices):
+        IMMERGEE = 'immergee', 'Immergée'
+        SURFACE = 'surface', 'De surface'
+        NE_SAIT_PAS = 'ne_sait_pas', 'Ne sait pas'
+
+    class ElectriciteSurPlace(models.TextChoices):
+        AUCUNE = 'aucune', 'Aucune'
+        MONOPHASE = 'monophase', 'Monophasé'
+        TRIPHASE = 'triphase', 'Triphasé'
+        NE_SAIT_PAS = 'ne_sait_pas', 'Ne sait pas'
+
+    class AutorisationPrelevement(models.TextChoices):
+        OUI = 'oui', 'Oui'
+        NON = 'non', 'Non'
+        EN_COURS = 'en_cours', 'En cours'
+        NE_SAIT_PAS = 'ne_sait_pas', 'Ne sait pas'
+
+    class ProjetPompage(models.TextChoices):
+        EXISTANT = 'existant', 'Remplacer une pompe existante'
+        NOUVEAU_FORAGE = 'nouveau_forage', 'Nouveau forage'
+
+    class PompeHmtSource(models.TextChoices):
+        DECLAREE = 'declaree', 'Déclarée'
+        SITE_WEB = 'site_web', 'Saisie sur le site'
+
+    # AGR522 (contrat AGR501 ``lead_dossier_subvention.json``) — l'état d'un
+    # dossier d'aide FDA. INTERNE : jamais dans une charge utile client.
+    class DossierSubvention(models.TextChoices):
+        NON_CONCERNE = 'non_concerne', 'Non concerné'
+        A_DEPOSER = 'a_deposer', 'À déposer'
+        DEPOSE = 'depose', 'Déposé'
+        ACCORDE = 'accorde', 'Accordé (approbation préalable)'
+        REFUSE = 'refuse', 'Refusé'
+
     # ── CAD-L ── CAD154 — vocabulaires de la VAGUE 2. Les deux REPRENNENT
     # mot pour mot ceux de la qualification de visite
     # (``apps/visites/qualification.py``) : le terrain et le téléphone
@@ -916,13 +1013,193 @@ class Lead(SoftDeleteModel):
                   'de la fenêtre (equip_piscine_heures_jour en contrôle '
                   'toujours la longueur). Seul, ne change rien.')
 
-    # ── Pompage solaire (leads Agricole) — mêmes entrées que le générateur ──
-    pompe_cv = models.DecimalField(
-        max_digits=6, decimal_places=2, null=True, blank=True)
+    # ── Pompage solaire (leads Agricole) ──
+    # AGR401 — ancienne colonne CV, renommée : décrit la pompe ACTUELLE (information,
+    # éligibilité), JAMAIS la pompe du devis. La puissance retenue est une
+    # SORTIE du dimensionnement (clé CV d'``etude_params``), plus
+    # stockée sur le Lead.
+    pompe_actuelle_cv = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Pompe actuelle (CV)',
+        help_text="Question à l'appel : « Votre pompe actuelle fait combien "
+                  'de chevaux ? C\'est écrit sur sa plaque. » (vide = pas '
+                  'encore posée).')
     pompe_hmt_m = models.DecimalField(
-        max_digits=8, decimal_places=2, null=True, blank=True)
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text="Question à l'appel : « Connaissez-vous la hauteur totale "
+                  'de pompage, en mètres ? » (HMT, vide = pas encore '
+                  'posée).')
     pompe_debit_m3h = models.DecimalField(
-        max_digits=8, decimal_places=2, null=True, blank=True)
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text="Question à l'appel : « Quel débit voulez-vous, en m³ par "
+                  'heure ? » (débit SOUHAITÉ, vide = pas encore posée). '
+                  'Servi à côté du débit livré, il ne fixe jamais seul le '
+                  'besoin.')
+
+    # ── AGR400 — Pompage : les colonnes du contrat AGR1 (``lead_pompage.json``).
+    # Toutes ``null=True`` : vide = « la question n'a pas encore été posée »,
+    # JAMAIS une réponse ni un défaut. Le ``help_text`` EST la question orale.
+    # Les colonnes ``*_source`` et ``carburant_prix_declare_le`` ne se saisissent
+    # jamais à la main : le serveur les pose (sérialiseur, webhook, visite).
+    source_eau = models.CharField(
+        max_length=10, choices=SourceEau.choices, null=True, blank=True,
+        verbose_name="Source d'eau",
+        help_text="Question à l'appel : « L'eau vient d'où : un puits, un "
+                  'forage, un bassin ou une rivière ? » (vide = pas encore '
+                  'posée).')
+    niveau_statique_m = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True,
+        verbose_name="Niveau de l'eau, pompe arrêtée (m)",
+        help_text="Question à l'appel : « À quelle profondeur est l'eau "
+                  'quand la pompe est arrêtée ? » (mètres, vide = pas encore '
+                  'posée).')
+    niveau_statique_source = models.CharField(
+        max_length=14, choices=NiveauStatiqueSource.choices, null=True,
+        blank=True, verbose_name='Provenance du niveau statique')
+    profondeur_forage_m = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True,
+        verbose_name='Profondeur du forage (m)',
+        help_text="Question à l'appel : « Quelle est la profondeur totale "
+                  'du forage ? » (mètres, vide = pas encore posée).')
+    debit_forage_m3h = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Débit du forage (m³/h)',
+        help_text="Question à l'appel : « Le débit de votre forage est-il "
+                  'connu (essai, foreur) ? Combien d\'eau peut-il donner par '
+                  'heure ? » (m³/h, vide = pas encore posée).')
+    debit_forage_source = models.CharField(
+        max_length=14, choices=DebitForageSource.choices, null=True,
+        blank=True, verbose_name='Provenance du débit du forage')
+    besoin_eau_m3j = models.DecimalField(
+        max_digits=9, decimal_places=2, null=True, blank=True,
+        verbose_name="Besoin en eau (m³/jour)",
+        help_text="Question à l'appel : « Combien de m³ d'eau par jour en "
+                  'pleine saison ? » (vide = pas encore posée).')
+    besoin_eau_source = models.CharField(
+        max_length=14, choices=BesoinEauSource.choices, null=True,
+        blank=True, verbose_name='Provenance du besoin en eau')
+    culture = models.CharField(
+        max_length=120, null=True, blank=True, verbose_name='Culture',
+        help_text="Question à l'appel : « Qu'est-ce que vous cultivez ? » "
+                  '(vide = pas encore posée).')
+    surface_irriguee_ha = models.DecimalField(
+        max_digits=9, decimal_places=2, null=True, blank=True,
+        verbose_name='Surface irriguée (ha)',
+        help_text="Question à l'appel : « Combien d'hectares irriguez-"
+                  'vous ? » (vide = pas encore posée).')
+    irrigation_methode = models.CharField(
+        max_length=12, choices=IrrigationMethode.choices, null=True,
+        blank=True, verbose_name="Méthode d'irrigation",
+        help_text="Question à l'appel : « Vous arrosez comment : goutte-à-"
+                  'goutte, aspersion ou à la raie ? » (vide = pas encore '
+                  'posée).')
+    region_agricole = models.CharField(
+        max_length=16, choices=RegionAgricole.choices, null=True,
+        blank=True, verbose_name='Région agricole',
+        help_text="Question à l'appel : « Dans quelle région se trouve "
+                  "l'exploitation ? » (vide = pas encore posée).")
+    pompe_actuelle_type = models.CharField(
+        max_length=12, choices=PompeActuelleType.choices, null=True,
+        blank=True, verbose_name='Pompe actuelle — type',
+        help_text="Question à l'appel : « Votre pompe actuelle est-elle "
+                  'immergée dans le forage, ou en surface ? » (vide = pas '
+                  'encore posée).')
+    pompe_actuelle_debit_m3h = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Pompe actuelle — débit (m³/h)',
+        help_text="Question à l'appel : « Combien d'eau votre pompe "
+                  'actuelle sort-elle par heure ? » (m³/h, vide = pas encore '
+                  'posée). Avec les heures de la pompe actuelle, donne le '
+                  'volume déclaré.')
+    butane_bouteilles_jour = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        verbose_name='Butane — bouteilles par jour',
+        help_text="Question à l'appel : « Combien de bouteilles de butane "
+                  'par jour en saison ? » (bouteilles de 12 kg par jour '
+                  "d'irrigation, vide = pas encore posée).")
+    carburant_prix_unitaire_mad = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Prix payé (bouteille ou litre, MAD)',
+        help_text="Question à l'appel : « Vous la payez combien, la "
+                  'bouteille (ou le litre de gasoil) ? » (MAD, vide = pas '
+                  'encore posée). Prix PAYÉ déclaré, jamais pré-rempli.')
+    carburant_prix_declare_le = models.DateField(
+        null=True, blank=True, verbose_name='Prix du carburant déclaré le')
+    depense_carburant_mad_mois = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Dépense carburant (MAD/mois)',
+        help_text="Question à l'appel : « Combien dépensez-vous en "
+                  'carburant par mois ? » (MAD/mois, vide = pas encore '
+                  'posée). Information : jamais convertie en consommation.')
+    mois_irrigation = models.JSONField(
+        null=True, blank=True, validators=[valider_mois_irrigation],
+        verbose_name="Mois d'irrigation",
+        help_text="Question à l'appel : « Vous irriguez quels mois ? » "
+                  '(liste de mois 1 à 12, vide = pas encore posée).')
+    distance_forage_champ_m = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Distance forage — panneaux (m)',
+        help_text="Question à l'appel : « À quelle distance du forage peut-"
+                  'on poser les panneaux ? » (mètres, vide = pas encore '
+                  'posée).')
+    electricite_sur_place = models.CharField(
+        max_length=12, choices=ElectriciteSurPlace.choices, null=True,
+        blank=True, verbose_name='Électricité au forage',
+        help_text="Question à l'appel : « Y a-t-il l'électricité au "
+                  'forage : monophasé, triphasé ou rien ? » (vide = pas '
+                  'encore posée).')
+    autorisation_prelevement = models.CharField(
+        max_length=12, choices=AutorisationPrelevement.choices, null=True,
+        blank=True, verbose_name='Autorisation de prélèvement (ABH)',
+        help_text="Question à l'appel : « Avez-vous l'autorisation de "
+                  "l'Agence de bassin (ABH) pour ce point d'eau ? » (vide = "
+                  'pas encore posée).')
+    autorisation_numero = models.CharField(
+        max_length=60, null=True, blank=True,
+        verbose_name="Numéro de l'autorisation",
+        help_text="Question à l'appel : « Quel est le numéro de cette "
+                  'autorisation ? » (vide = pas encore posée).')
+    autorisation_debit_l_s = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Débit autorisé (L/s)',
+        help_text="Question à l'appel : « Quel débit l'autorisation vous "
+                  'accorde-t-elle, en litres par seconde ? » (vide = pas '
+                  'encore posée).')
+    autorisation_volume_m3_an = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Volume autorisé (m³/an)',
+        help_text="Question à l'appel : « Quel volume par an "
+                  "l'autorisation vous accorde-t-elle ? » (vide = pas encore "
+                  'posée).')
+    compteur_eau = models.BooleanField(
+        null=True, blank=True, verbose_name="Compteur d'eau",
+        help_text="Question à l'appel : « Avez-vous un compteur d'eau ? » "
+                  '(vide = pas encore posée).')
+    projet_pompage = models.CharField(
+        max_length=16, choices=ProjetPompage.choices, null=True, blank=True,
+        verbose_name='Projet de pompage',
+        help_text="Question à l'appel : « C'est un puits/forage qui existe, "
+                  'ou un forage à creuser ? » (vide = pas encore posée).')
+    deja_beneficiaire_fda = models.BooleanField(
+        null=True, blank=True, verbose_name='Déjà bénéficiaire FDA',
+        help_text="Question à l'appel : « Avez-vous déjà reçu une aide FDA "
+                  'pour un pompage solaire sur cette exploitation ? » (vide '
+                  '= pas encore posée). Information interne : jamais un '
+                  'verdict client.')
+    pompe_hmt_source = models.CharField(
+        max_length=10, choices=PompeHmtSource.choices, null=True,
+        blank=True, verbose_name='Provenance de la HMT')
+    # AGR522 — dossier de subvention FDA (INTERNE, D-AGR-6). Vide = pas
+    # encore renseigné. La date (dépôt, approbation préalable ou refus) est
+    # exigée pour « déposé », « accordé » et « refusé » (sérialiseur). Ce
+    # n'est pas un mode de paiement : le préfinancement reste
+    # ``financing_intent = credit``.
+    dossier_subvention = models.CharField(
+        max_length=14, choices=DossierSubvention.choices, null=True,
+        blank=True, verbose_name='Dossier de subvention (FDA)')
+    dossier_subvention_le = models.DateField(
+        null=True, blank=True,
+        verbose_name='Date de l’état du dossier de subvention')
 
     # ── Toiture & site ──
     type_toiture = models.CharField(
@@ -1359,9 +1636,12 @@ class Lead(SoftDeleteModel):
         max_digits=4, decimal_places=1, null=True, blank=True,
         verbose_name='Pompage — heures par jour',
         help_text="Question à l'appel : « Combien d'heures par jour la "
-                  'pompe tourne-t-elle ? » (h/jour, vide = pas encore '
-                  'posée). Colonne dédiée de la réponse que le site envoie '
-                  'déjà sous « heures de pompage ».')
+                  'pompe ACTUELLE tourne-t-elle ? » (h/jour, vide = pas '
+                  'encore posée). Heures de la pompe ACTUELLE : elles '
+                  'servent seulement à estimer un volume déclaré (débit '
+                  'actuel × heures), jamais des heures de pompage solaire. '
+                  'Colonne dédiée de la réponse que le site envoie déjà sous '
+                  '« heures de pompage ».')
     pompe_alim_actuelle = models.CharField(
         max_length=12, choices=PompeAlimActuelle.choices, null=True,
         blank=True, verbose_name='Pompe actuelle — alimentation',
@@ -2488,8 +2768,11 @@ class SiteProfile(models.Model):
         blank=True, null=True)
 
     # ── Pompage solaire (clients Agricole) ──
-    pompe_cv = models.DecimalField(
-        max_digits=6, decimal_places=2, null=True, blank=True)
+    # AGR401 — ancienne colonne CV, renommée : la pompe ACTUELLE (même copie que
+    # ``Lead.pompe_actuelle_cv``).
+    pompe_actuelle_cv = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Pompe actuelle (CV)')
     pompe_hmt_m = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True)
     pompe_debit_m3h = models.DecimalField(
@@ -3871,10 +4154,14 @@ class QuestionnaireLien(TenantModel):
     #:        (NN/g « Hierarchy of Trust » : ne jamais demander un engagement
     #:        de haut niveau avant d'avoir servi les paliers inférieurs).
     #: L'ancien ordre commençait par `contact` — exactement l'inverse.
+    #: AGR411 — `pompage`, `photo_pompe` (plaque) et `photo_forage` (tête de
+    #: forage) : sections du lead AGRICOLE seulement (filtre de segment dans
+    #: ``crm.questionnaire.sections_du_lead``) — jamais servies à un autre.
     SECTIONS_CLES = (
-        'occupation', 'equipements', 'energie',
+        'occupation', 'equipements', 'energie', 'pompage',
         'toiture', 'gps',
         'photo_facture', 'photo_compteur', 'photo_tableau',
+        'photo_pompe', 'photo_forage',
         'contact',
     )
 

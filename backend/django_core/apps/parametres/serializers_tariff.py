@@ -33,6 +33,10 @@ CHAMPS_LOT5 = [
     'amortissement_coefficient', 'fiscalite_source',
 ]
 
+# AGR207 (Groupe AGR) — pompage agricole, calcul INTERNE : barème des charges
+# solaires de la société + règle FDA datée. Vides par défaut ([] / {}).
+CHAMPS_POMPAGE = ['charges_pompage_solaire', 'regle_fda_pompage']
+
 
 class TariffSettingsSerializer(serializers.ModelSerializer):
     class Meta:
@@ -52,7 +56,7 @@ class TariffSettingsSerializer(serializers.ModelSerializer):
             'azimut_defaut_deg',
             'version',
             'date_modification',
-        ] + CHAMPS_LOT5
+        ] + CHAMPS_LOT5 + CHAMPS_POMPAGE
         # version/date posés serveur ; company jamais exposée ni acceptée.
         read_only_fields = ['version', 'date_modification']
 
@@ -68,11 +72,28 @@ class TariffSettingsSerializer(serializers.ModelSerializer):
         base = self.instance if self.instance is not None else TariffSettings()
         etat = SimpleNamespace(**{
             champ: attrs.get(champ, getattr(base, champ, None))
-            for champ in CHAMPS_LOT5 + ['residential_tiers']})
+            for champ in CHAMPS_LOT5 + CHAMPS_POMPAGE
+            + ['residential_tiers']})
         erreurs = erreurs_reglages_tarif(etat)
         if erreurs:
             raise serializers.ValidationError(erreurs)
         return attrs
+
+    def to_representation(self, instance):
+        # AGR207 — la lecture rend TOUJOURS une liste / un objet (jamais
+        # ``null``) : aucun défaut, aucune valeur suggérée.
+        data = super().to_representation(instance)
+        if data.get('charges_pompage_solaire') is None:
+            data['charges_pompage_solaire'] = []
+        if data.get('regle_fda_pompage') is None:
+            data['regle_fda_pompage'] = {}
+        return data
+
+    def validate_charges_pompage_solaire(self, value):
+        return [] if value is None else value
+
+    def validate_regle_fda_pompage(self, value):
+        return {} if value is None else value
 
     def validate_residential_tiers(self, value):
         """Liste de paliers {max_kwh: int|null, prix_kwh_ttc} ou NULL.
