@@ -195,6 +195,8 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'etapes',
             # CH3 — fiche de recette IEC 62446-1 (lecture ; POST auto-gardé).
             'recette',
+            # AGR608 — recette pompage (lecture ; POST auto-gardé).
+            'recette_pompage',
             # CH4 — pack de remise client (lecture ; POST auto-gardé).
             'pack_remise',
         ]:
@@ -1117,6 +1119,36 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'etape_courante': courante.cle if courante else None,
             'etapes': etapes,
         })
+
+    # ── AGR608 — fiche de recette POMPAGE (chantier agricole) ───────────────
+    @action(detail=True, methods=['get', 'post'], url_path='recette-pompage',
+            permission_classes=[IsAnyRole])
+    def recette_pompage(self, request, pk=None):
+        """AGR608 — recette pompage du chantier (cadre IEC 62253:2011).
+        GET → ``{installation, record}`` (``record`` null sans fiche) ;
+        POST crée une fiche VIDE si absente (Responsable/Admin), réservé à un
+        chantier agricole (400 FR sinon). Aucun verdict automatique."""
+        from ..models import RecettePompage
+        from ..serializers_commissioning import recette_pompage_envelope
+        inst = self.get_object()
+        recette = RecettePompage.objects.filter(installation=inst).first()
+        ctx = {'request': request}
+        if request.method == 'POST':
+            if not request.user.is_responsable:
+                return Response(status=status.HTTP_403_FORBIDDEN)
+            if inst.type_installation != Installation.TypeInstallation.AGRICOLE:
+                return Response(
+                    {'detail': "La recette pompage est réservée à un "
+                               "chantier agricole (pompage solaire)."},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if recette is not None:
+                return Response(recette_pompage_envelope(inst, recette, ctx))
+            recette = RecettePompage.objects.create(
+                company=inst.company, installation=inst,
+                created_by=request.user)
+            return Response(recette_pompage_envelope(inst, recette, ctx),
+                            status=status.HTTP_201_CREATED)
+        return Response(recette_pompage_envelope(inst, recette, ctx))
 
     # ── CH3 — fiche de recette IEC 62446-1 (mise en service structurée) ─────
     @action(detail=True, methods=['get', 'post'], url_path='recette',
