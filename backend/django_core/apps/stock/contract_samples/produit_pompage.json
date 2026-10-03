@@ -1,0 +1,244 @@
+{
+  "endpoint": "GET /api/django/stock/produits/<int:pk>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AGR7 (Groupe AGR, audit L3 du devis agricole, 02/10/2026 ; décisions D-AGR-1, D-AGR-7, D-AGR-8) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main` avant toute moitié. Aujourd'hui une pompe et un variateur ne sont que des champs PLATS sur `Produit` (`hmt_m` « HMT max », `debit_m3j`, `courbe_pompe` JSON sans source ni fréquence — apps/stock/models.py:852-872), aucune fiche technique typée pompe/variateur n'existe (`FicheTechnique.TypeFiche`), le classement se fait par MORCEAUX DU NOM (solar.js, calepinage/services/pompage.py) et ni la pompe ni le variateur n'ont de rôle (core/product_roles.py:112-114). Ce fichier fige QUATRE formes partagées : (1) les nouveaux champs `Produit` (`role_pompage`, `type_pompe`, `alimentation`, `courbe_source`, `courbe_frequence_hz`) — `exemple` ne montre QUE ces champs additifs du détail produit, d'où `forme_serveur: partielle` ; (2) les fiches `type_fiche` `pompe` et `variateur_pompage` ; (3) la forme d'un élément de `stock.selectors.produits_pompage` et l'item de ligne de devis servi au moteur de rendu ; (4) les règles de validité d'une courbe. Le vocabulaire `ROLES_POMPAGE` est DISTINCT de `ROLES_DEVIS` (arbitrage écrit de core/product_roles.py conservé : aucun rôle résidentiel n'est touché). Un champ vide (`null` ou chaîne vide) veut dire « non publié » — jamais une valeur par défaut. AUCUNE clé `prix_achat` ni marge dans aucune forme de ce fichier : `prix_connu` dit seulement si un prix de vente est saisi (QXG3 : les 11 pompes OSP 30 à courbe sont à prix 0). Les valeurs des exemples sont ILLUSTRATIVES ou recopiées du seed (`seed_catalogue.py`, valeurs « à confirmer » pour les pompes génériques) ; ce sont les clés et leurs natures qui font le contrat.",
+  "exemple": {
+    "id": 314,
+    "nom": "Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3\", 380V)",
+    "role_pompage": "pompe",
+    "type_pompe": "immergee",
+    "alimentation": "tri",
+    "pompe_cv": "10.00",
+    "pompe_kw": "7.50",
+    "tension_v": 380,
+    "hmt_m": null,
+    "debit_m3j": null,
+    "courbe_pompe": {
+      "debits_m3h": [0, 12, 24, 30, 36, 39],
+      "hmt_m": [91, 85, 70, 60, 43, 34]
+    },
+    "courbe_source": {
+      "document": "",
+      "date": null,
+      "page": null
+    },
+    "courbe_frequence_hz": null
+  },
+  "champs_produit": {
+    "role_pompage": {
+      "nature": "texte",
+      "choix": "une clé de `ROLES_POMPAGE` ci-dessous, ou chaîne vide (aucun rôle pompage)",
+      "regle": "Déclaré sur la fiche produit. Vide = le produit n'entre pas dans une composition pompage par son rôle ; le sélecteur peut encore le classer par catégorie ou par nom (`classement`)."
+    },
+    "type_pompe": {
+      "nature": "texte",
+      "choix": ["immergee", "surface", "dc"],
+      "regle": "Pompes seulement ; vide sur tout autre produit."
+    },
+    "alimentation": {
+      "nature": "texte",
+      "choix": ["mono", "tri", "dc"],
+      "regle": "Pompes et variateurs. Vide = non publié ; le sélecteur (AGR103) lit alors l'alimentation depuis le nom et le dit dans `classement`."
+    },
+    "courbe_source": {
+      "nature": "objet",
+      "forme": {"document": "texte (titre de la fiche constructeur)", "date": "date ISO ou null", "page": "entier ou null"},
+      "regle": "Provenance de `courbe_pompe`. Document vide = source non publiée (cas des 11 OSP du seed)."
+    },
+    "courbe_frequence_hz": {
+      "nature": "nombre ou null",
+      "regle": "Fréquence à laquelle la courbe constructeur est publiée (50 ou 60 Hz selon la fiche). null = non publié — jamais supposé."
+    }
+  },
+  "roles_pompage": {
+    "pompe": "Pompe",
+    "variateur_pompage": "Variateur de pompage",
+    "afficheur_variateur": "Afficheur du variateur",
+    "structure_sol": "Structure au sol",
+    "cable_dc": "Câble DC (panneaux → variateur)",
+    "cable_descente": "Câble de descente (variateur → pompe)",
+    "protection_dc": "Protection DC",
+    "sonde_niveau": "Sonde de niveau (protection marche à sec)",
+    "compteur_eau": "Compteur d'eau",
+    "colonne_refoulement": "Colonne de refoulement",
+    "clapet": "Clapet anti-retour",
+    "tuyauterie": "Tuyauterie",
+    "bassin": "Bassin",
+    "installation_pompage": "Installation pompage",
+    "entretien_pompage": "Entretien pompage",
+    "antivol": "Antivol",
+    "cloture": "Clôture"
+  },
+  "fiches": {
+    "pompe": {
+      "type_fiche": "pompe",
+      "champs": {
+        "pompe_i_nominal_a": "nombre ou null — courant nominal (A)",
+        "pompe_diametre_ext_mm": "nombre ou null — diamètre extérieur (mm)",
+        "pompe_nb_etages": "entier ou null",
+        "pompe_immersion_min_m": "nombre ou null — immersion minimale (m)",
+        "pompe_rendement_pct": "nombre ou null — rendement au point nominal (%)",
+        "pompe_q_nominal_m3h": "nombre ou null — débit nominal (m³/h)",
+        "pompe_hmt_nominale_m": "nombre ou null — HMT au débit nominal (m)"
+      },
+      "exemple": {
+        "type_fiche": "pompe",
+        "pompe_i_nominal_a": null,
+        "pompe_diametre_ext_mm": null,
+        "pompe_nb_etages": null,
+        "pompe_immersion_min_m": null,
+        "pompe_rendement_pct": null,
+        "pompe_q_nominal_m3h": null,
+        "pompe_hmt_nominale_m": null
+      }
+    },
+    "variateur_pompage": {
+      "type_fiche": "variateur_pompage",
+      "champs_onduleur_reutilises": ["ond_mppt_v_min", "ond_mppt_v_max", "ond_v_max_abs", "ond_i_max_mppt_a", "ond_phases", "ond_v_demarrage_v"],
+      "champs": {
+        "var_voc_reco_min_v": "nombre ou null — Voc recommandée mini du champ (V)",
+        "var_voc_reco_max_v": "nombre ou null — Voc recommandée maxi du champ (V)",
+        "var_v_sortie_v": "nombre ou null — tension de sortie vers la pompe (V)",
+        "var_i_sortie_nominal_a": "nombre ou null — courant de sortie nominal (A)",
+        "var_protection_marche_a_sec": "booléen ou null — protection marche à sec intégrée",
+        "var_rendement_mppt_pct": "nombre ou null — rendement MPPT (%)"
+      },
+      "exemple": {
+        "type_fiche": "variateur_pompage",
+        "ond_mppt_v_min": null,
+        "ond_mppt_v_max": null,
+        "ond_v_max_abs": null,
+        "ond_i_max_mppt_a": null,
+        "ond_phases": null,
+        "ond_v_demarrage_v": null,
+        "var_voc_reco_min_v": null,
+        "var_voc_reco_max_v": null,
+        "var_v_sortie_v": null,
+        "var_i_sortie_nominal_a": null,
+        "var_protection_marche_a_sec": null,
+        "var_rendement_mppt_pct": null
+      },
+      "regle": "Aucune plage VEICHI n'est codée : les plages viennent UNIQUEMENT de la fiche saisie (AGR101). Fiche vide = « fiche à saisir », la compatibilité champ/variateur est alors non vérifiable (motif nommé), jamais supposée."
+    }
+  },
+  "element_produits_pompage": {
+    "source": "stock.selectors.produits_pompage(company) — lecture seule, bornée à la société",
+    "cles": {
+      "id": "entier",
+      "nom": "texte",
+      "sku": "texte",
+      "role_pompage": "texte (clé de ROLES_POMPAGE)",
+      "classement": "texte : declare (role_pompage saisi) | categorie (déduit de la catégorie) | nom (déduit du nom — repli)",
+      "type_pompe": "texte ou vide",
+      "alimentation": "texte ou vide",
+      "pompe_cv": "décimal (texte) ou null",
+      "pompe_kw": "décimal (texte) ou null",
+      "tension_v": "entier ou null",
+      "hmt_m": "décimal (texte) ou null — champ plat historique « HMT max »",
+      "debit_m3j": "décimal (texte) ou null — champ plat historique",
+      "courbe_pompe": "objet {debits_m3h[], hmt_m[]} ou null",
+      "courbe_source": "objet {document, date, page}",
+      "courbe_frequence_hz": "nombre ou null",
+      "fiche": "objet (champs de la fiche pompe / variateur_pompage) ou null",
+      "prix_connu": "booléen — un prix de vente est saisi (> 0)"
+    },
+    "interdit": ["prix_achat", "marge"],
+    "exemples": [
+      {
+        "id": 314,
+        "nom": "Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3\", 380V)",
+        "sku": "PMP-OSP-30-8",
+        "role_pompage": "pompe",
+        "classement": "declare",
+        "type_pompe": "immergee",
+        "alimentation": "tri",
+        "pompe_cv": "10.00",
+        "pompe_kw": "7.50",
+        "tension_v": 380,
+        "hmt_m": null,
+        "debit_m3j": null,
+        "courbe_pompe": {
+          "debits_m3h": [0, 12, 24, 30, 36, 39],
+          "hmt_m": [91, 85, 70, 60, 43, 34]
+        },
+        "courbe_source": {"document": "", "date": null, "page": null},
+        "courbe_frequence_hz": null,
+        "fiche": null,
+        "prix_connu": false
+      },
+      {
+        "id": 402,
+        "nom": "VARIATEUR VEICHI SI23 5.5KW 380V",
+        "sku": "VEI-SI23-5.5-380",
+        "role_pompage": "variateur_pompage",
+        "classement": "declare",
+        "type_pompe": "",
+        "alimentation": "tri",
+        "pompe_cv": null,
+        "pompe_kw": "5.50",
+        "tension_v": 380,
+        "hmt_m": null,
+        "debit_m3j": null,
+        "courbe_pompe": null,
+        "courbe_source": {"document": "", "date": null, "page": null},
+        "courbe_frequence_hz": null,
+        "fiche": {
+          "type_fiche": "variateur_pompage",
+          "ond_mppt_v_min": null,
+          "ond_mppt_v_max": null,
+          "ond_v_max_abs": null,
+          "ond_i_max_mppt_a": null,
+          "ond_phases": null,
+          "ond_v_demarrage_v": null,
+          "var_voc_reco_min_v": null,
+          "var_voc_reco_max_v": null,
+          "var_v_sortie_v": null,
+          "var_i_sortie_nominal_a": null,
+          "var_protection_marche_a_sec": null,
+          "var_rendement_mppt_pct": null
+        },
+        "prix_connu": true
+      },
+      {
+        "id": 288,
+        "nom": "Pompe immergée solaire 5.5 CV Triphasé",
+        "sku": "PMP-IMM-5.5T",
+        "role_pompage": "pompe",
+        "classement": "nom",
+        "type_pompe": "immergee",
+        "alimentation": "tri",
+        "pompe_cv": "5.50",
+        "pompe_kw": null,
+        "tension_v": null,
+        "hmt_m": "180.00",
+        "debit_m3j": "45.00",
+        "courbe_pompe": null,
+        "courbe_source": {"document": "", "date": null, "page": null},
+        "courbe_frequence_hz": null,
+        "fiche": null,
+        "prix_connu": true
+      }
+    ],
+    "notes_exemples": "OSP 30/8 : courbe recopiée du seed, prix vide (QXG3), source de courbe non publiée. VEICHI SI23 5,5 kW 380 V : fiche à saisir (toutes les valeurs null). Pompe générique 5.5 CV Triphasé : classée par le NOM, `hmt_m`/`debit_m3j` sont les valeurs « à confirmer » du seed — jamais une preuve de couverture (écarté C1-02)."
+  },
+  "item_ligne_devis_rendu": {
+    "pourquoi": "L'item d'une ligne de devis servi au moteur de rendu (AGR304) porte `role_pompage` et `courbe_pompe` COPIÉS du produit, pour que le rendu ne relise jamais le catalogue ni ne reclasse par le nom.",
+    "exemple": {
+      "designation": "Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3\", 380V)",
+      "quantite": 1,
+      "role_pompage": "pompe",
+      "courbe_pompe": {
+        "debits_m3h": [0, 12, 24, 30, 36, 39],
+        "hmt_m": [91, 85, 70, 60, 43, 34]
+      }
+    },
+    "interdit": ["prix_achat", "marge"]
+  },
+  "regles_courbe": [
+    "`courbe_pompe` = {debits_m3h: [...], hmt_m: [...]}, deux listes de même longueur (≥ 2 points).",
+    "Débits STRICTEMENT croissants.",
+    "HMT NON croissante (chaque point ≤ le précédent).",
+    "Toutes les valeurs ≥ 0.",
+    "Une courbe qui viole une règle est refusée à la saisie (400 nommant `courbe_pompe`), jamais corrigée en silence."
+  ]
+}

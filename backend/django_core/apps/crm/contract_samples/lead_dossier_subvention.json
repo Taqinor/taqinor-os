@@ -1,0 +1,34 @@
+{
+  "endpoint": "PATCH /api/django/crm/leads/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AGR501 (Groupe AGR, audit L3 du devis agricole, 02/10/2026 ; D-AGR-6) — CONTRAT D'ABORD (PACT10). Aujourd'hui le lead ne porte que `financing_intent` (cash/credit/indecis) : rien ne dit où en est un dossier d'aide FDA, alors que le Guide FDA 2024 (p.22-23) fixe la suite approbation préalable → réalisation → demande. Deux colonnes : `dossier_subvention` ∈ {null, `non_concerne`, `a_deposer`, `depose`, `accorde`, `refuse`} (null = pas encore renseigné) et `dossier_subvention_le` (date ISO de l'état : dépôt, approbation préalable ou refus). RÈGLES : la date est OBLIGATOIRE pour `depose`, `accorde` et `refuse` (refus 400 nommant `dossier_subvention_le`, `exemple_400`) ; le champ est INTERNE — jamais dans le PDF /proposal, la page /proposition ni un message envoyé au client ; aucune étape de pipeline n'est créée (STAGES.py intouché) ; aucun statut de devis n'est touché (règle #4) ; l'état du dossier n'est pas un mode de paiement (le préfinancement bancaire reste `financing_intent = credit`). Le document décrit le CORPS envoyé et les champs relus ; la réponse complète est celle du sérialiseur de lead (`forme_serveur: partielle`). Valeurs ILLUSTRATIVES.",
+  "corps": {
+    "dossier_subvention": "depose",
+    "dossier_subvention_le": "2026-10-20"
+  },
+  "exemple": {
+    "id": 1512,
+    "dossier_subvention": "depose",
+    "dossier_subvention_le": "2026-10-20"
+  },
+  "exemple_vide": {
+    "id": 1512,
+    "dossier_subvention": null,
+    "dossier_subvention_le": null
+  },
+  "exemple_400": {
+    "dossier_subvention_le": [
+      "La date est obligatoire pour l'état « déposé », « accordé » ou « refusé »."
+    ]
+  },
+  "notes": {
+    "libelles": {
+      "non_concerne": "Non concerné",
+      "a_deposer": "À déposer",
+      "depose": "Déposé",
+      "accorde": "Accordé (approbation préalable)",
+      "refuse": "Refusé"
+    },
+    "interne": "Jamais servi dans une charge utile client (PDF, /proposition, messages) ; aucun délai de versement n'est affiché ni calculé côté client (D-AGR-6)."
+  }
+}

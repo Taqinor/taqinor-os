@@ -1,0 +1,50 @@
+{
+  "endpoint": "GET /api/django/sav/equipements/{id}/releves-compteur/",
+  "pourquoi": "AGR600 (Groupe AGR, audit L3 du devis agricole, 02/10/2026) — CONTRAT D'ABORD (PACT10), premier contrat de l'app `sav`. Aujourd'hui `ReleveCompteurEquipement.Type` ne connaît que `heures` et `kwh` (apps/sav/models.py), l'action XSAV17 (`EquipementViewSet.releves_compteur`) refuse tout autre type (« type invalide (heures|kwh) ») et l'écran ne propose que Heures/kWh : une pompe solaire ne peut pas porter l'index de son compteur d'eau. Ce fichier fige GET et POST sur la même URL, en GARDANT la forme XSAV17 existante : GET = LISTE des relevés, plus récent d'abord (`exemple` montre UN élément — le format des contrats exige un objet —, `exemple_liste` la réponse entière) ; POST {type, valeur, date?} → 201 avec le relevé créé + `ticket_genere` (inchangé). Un relevé = {`id`, `equipement`, `type` ∈ {heures, kwh, m3}, `valeur` (index CUMULATIF du compteur, jamais une consommation), `date` (ISO), `date_creation`, `moyenne_jour_depuis_precedent`} ; la clé additive `moyenne_jour_depuis_precedent` = (index − index du relevé PRÉCÉDENT du MÊME type) ÷ jours écoulés entre les deux dates, `null` au premier relevé d'un type (jamais 0 inventé). Refus 400 « le compteur ne peut pas reculer » (message existant de `ReleveDecroissantError`, `exemple_400_recul`). Facturation à l'usage d'un contrat en m³ : la ligne d'usage cite les m³ RELEVÉS sur la période (`ligne_usage_m3`) ; sans relevé m³ sur la période, la ligne est OMISE avec son motif (`ligne_usage_omise`) — JAMAIS un nombre de kWh étiqueté m³. Aucun prix d'achat, aucune marge. Valeurs ILLUSTRATIVES.",
+  "exemple": {
+    "id": 502,
+    "equipement": 77,
+    "type": "m3",
+    "valeur": "1838.00",
+    "date": "2027-02-04",
+    "date_creation": "2027-02-04T16:20:00Z",
+    "moyenne_jour_depuis_precedent": 19.6
+  },
+  "exemple_liste": [
+    {"id": 503, "equipement": 77, "type": "heures", "valeur": "412.00", "date": "2027-02-04", "date_creation": "2027-02-04T16:21:00Z", "moyenne_jour_depuis_precedent": null},
+    {"id": 502, "equipement": 77, "type": "m3", "valeur": "1838.00", "date": "2027-02-04", "date_creation": "2027-02-04T16:20:00Z", "moyenne_jour_depuis_precedent": 19.6},
+    {"id": 501, "equipement": 77, "type": "m3", "valeur": "1250.00", "date": "2027-01-05", "date_creation": "2027-01-05T10:02:00Z", "moyenne_jour_depuis_precedent": null}
+  ],
+  "exemple_vide": [],
+  "corps_post": {"type": "m3", "valeur": "2391", "date": "2027-03-06"},
+  "exemple_201": {
+    "id": 504,
+    "equipement": 77,
+    "type": "m3",
+    "valeur": "2391.00",
+    "date": "2027-03-06",
+    "date_creation": "2027-03-06T09:00:00Z",
+    "moyenne_jour_depuis_precedent": 18.4,
+    "ticket_genere": null
+  },
+  "exemple_400_recul": {"detail": "Ce relevé est inférieur au dernier relevé enregistré (1838.00) — le compteur ne peut pas reculer."},
+  "exemple_400_type": {"detail": "type invalide (heures|kwh|m3)."},
+  "ligne_usage_m3": {
+    "libelle": "Eau pompée du 05/01/2027 au 04/02/2027 : 588 m³ relevés × 0,40 MAD/m³",
+    "quantite": 588.0,
+    "unite": "m3",
+    "tarif_unitaire_mad": 0.4,
+    "montant_mad": 235.2,
+    "source": "relevés compteur m³ n° 501 et 502"
+  },
+  "ligne_usage_omise": {
+    "libelle": null,
+    "motif": "Aucun relevé m³ sur la période — ligne d'usage omise."
+  },
+  "regles": {
+    "valeur": "index CUMULATIF ≥ 0, jamais inférieur au dernier index du même type (400 sinon)",
+    "moyenne_jour_depuis_precedent": "(valeur − valeur précédente du même type) ÷ jours entre les deux dates, arrondie à 0,1 ; null au premier relevé du type ou si les deux dates sont égales",
+    "types": "heures | kwh | m3 — un relevé m³ ne se convertit jamais en kWh ni l'inverse",
+    "ligne_usage": "le tarif au m³ vient du contrat de maintenance saisi ; le contrat ne propose aucun tarif par défaut"
+  }
+}

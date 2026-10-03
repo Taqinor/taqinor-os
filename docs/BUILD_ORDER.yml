@@ -446,6 +446,13 @@ unmapped_ok:
   # AGRM — tâches MANUELLES (Reda / fiscaliste / DPA / Meryem, pas du code) du
   # Groupe AGR : jamais dispatchées à un agent, pass-through.
   - AGRM
+  # CIQ — Devis commercial & industriel : audit L3 du 03/10/2026 (Groupe CIQ de
+  # PLAN.md, placé avant AGR — D-CIQ-22, décisions D-CIQ-0..22) : auto-ordonné par
+  # ses contrats d'abord (CIQ1-CIQ12, CIQ200, CIQ400, CIQ669) et ses chaînes @after.
+  - CIQ
+  # CIQM — tâches MANUELLES du Groupe CIQ (Reda / fiscaliste / juriste / assureur /
+  # distributeur, pas du code) : jamais dispatchées à un agent, pass-through.
+  - CIQM
   # RLC — Relances : retour arriere, journal & etat client (Groupe RLC de
   # PLAN.md, releves fondateur du 08/09/2026) : correctifs/complements du
   # moteur de relances existant (apps/crm), aucun prerequis de vague plateforme.
