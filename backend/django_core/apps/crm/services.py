@@ -170,6 +170,9 @@ def _playbook_correspond_au_lead(playbook, lead):
     criteres = {
         'type_installation': getattr(lead, 'type_installation', None),
         'canal': getattr(lead, 'canal', None),
+        # AGR525 — le playbook FDA vise le REMPLACEMENT DU BUTANE (Guide FDA
+        # 2024, D-AGR-6) : l'énergie de la pompe actuelle est un critère.
+        'pompe_alim_actuelle': getattr(lead, 'pompe_alim_actuelle', None),
     }
     try:
         return evaluate_condition_group(playbook.condition, criteres)
@@ -1358,14 +1361,21 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
             # réflexion PUIS 7 jours de rétractation une fois l'offre de
             # crédit émise. Décision fondateur du 21/09/2026 : validité
             # distincte et plus longue (le réglage société), J+14 sinon.
+            fin_du_plan = derniere
             derniere = _validite_selon_financement(lead, devis, derniere)
+            # AGR523 — la note dit d'où vient une validité allongée par un
+            # dossier de subvention en instruction (le crédit garde la sienne).
+            motif = ('fin du plan de suivi'
+                     if (derniere == fin_du_plan
+                         or lead_finance_a_credit(lead)
+                         or not lead_dossier_subvention_en_instruction(lead))
+                     else MOTIF_VALIDITE_SUBVENTION)
             if poser_validite_devis(devis, derniere):
                 LeadActivity.objects.create(
                     company=lead.company, lead=lead, user=None,
                     kind=LeadActivity.Kind.NOTE,
                     body=(f'Validité de la proposition posée au '
-                          f'{derniere:%d/%m/%Y} — fin du plan de '
-                          'suivi.'))
+                          f'{derniere:%d/%m/%Y} — {motif}.'))
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
             pass
     return resultats
@@ -4126,8 +4136,20 @@ _MERGE_FILL_FIELDS = [
     'type_installation', 'priorite', 'relance_date',
     'type_toiture', 'surface_toiture_m2', 'orientation', 'inclinaison_deg',
     'ombrage', 'ombrage_notes', 'nb_etages', 'structure_pref',
-    'taille_souhaitee_kwc', 'batterie_souhaitee', 'pompe_cv', 'pompe_hmt_m',
+    'taille_souhaitee_kwc', 'batterie_souhaitee', 'pompe_actuelle_cv', 'pompe_hmt_m',
     'pompe_debit_m3h', 'canal', 'motif_perte', 'note', 'whatsapp_opt_in',
+    # AGR400 — colonnes de pompage (contrat AGR1) : préservées à la fusion.
+    'source_eau', 'niveau_statique_m', 'niveau_statique_source',
+    'profondeur_forage_m', 'debit_forage_m3h', 'debit_forage_source',
+    'besoin_eau_m3j', 'besoin_eau_source', 'culture', 'surface_irriguee_ha',
+    'irrigation_methode', 'region_agricole', 'pompe_actuelle_type',
+    'pompe_actuelle_debit_m3h', 'butane_bouteilles_jour',
+    'carburant_prix_unitaire_mad', 'carburant_prix_declare_le',
+    'depense_carburant_mad_mois', 'mois_irrigation',
+    'distance_forage_champ_m', 'electricite_sur_place',
+    'autorisation_prelevement', 'autorisation_numero',
+    'autorisation_debit_l_s', 'autorisation_volume_m3_an', 'compteur_eau',
+    'projet_pompage', 'deja_beneficiaire_fda', 'pompe_hmt_source',
     # Visite technique (légère) — préservée à la fusion.
     'visite_prevue_le', 'visite_effectuee', 'visite_notes',
     # Intake site web (taqinor.ma) — attribution + diagnostic préservés.
@@ -5489,7 +5511,97 @@ def _parse_meta_form_extras(field_data):
                 extras['type_installation'] = Lead.TypeInstallation.INDUSTRIEL
             elif any(k in v for k in ('ferme', 'agricole', 'pompage', 'puits')):
                 extras['type_installation'] = Lead.TypeInstallation.AGRICOLE
+        else:
+            # AGR410 — FORM-AGRI-1 : questions de pompage reconnues par
+            # mots-clés (``_meta_reponse_agricole``).
+            _meta_reponse_agricole(q, v, extras)
+    # AGR410 — une question AGRICOLE pose le type agricole, seulement si le
+    # formulaire n'a pas dit autre chose (et ``_apply_meta_form_extras`` ne
+    # l'écrit que sur un type VIDE).
+    if extras.pop('_agricole', False):
+        extras.setdefault('type_installation',
+                          Lead.TypeInstallation.AGRICOLE)
     return extras
+
+
+# ── AGR410 — Formulaire Meta agricole (FORM-AGRI-1) ─────────────────────────
+#
+# Mots-clés sur du texte NORMALISÉ (``_norm_form_text``). Une TRANCHE ne
+# devient JAMAIS un nombre (pas de milieu de tranche) : seule une réponse à
+# nombre UNIQUE, sans « plus/moins/entre », remplit une colonne ; sinon la
+# réponse reste dans la note, mot pour mot. Rien n'est jamais écrasé
+# (``_apply_meta_form_extras``). Aucune création de campagne ici (règle #3).
+_META_SOURCE_EAU_MOTS = (
+    (('forage',), 'forage'),
+    (('puits',), 'puits'),
+    (('bassin',), 'bassin'),
+    (('riviere', 'oued'), 'riviere'),
+)
+_META_ENERGIE_POMPE_MOTS = (
+    (('pas de pompe', 'aucune', 'pas encore'), 'aucune'),
+    # « gazoil » AVANT « gaz » : l'ordre de la table compte.
+    (('gasoil', 'diesel', 'gazoil'), 'diesel'),
+    (('butane', 'gaz'), 'butane'),
+    (('electri', 'reseau', 'onee'), 'electrique'),
+)
+_META_MOTS_TRANCHE = ('plus', 'moins', 'entre', '>', '<', 'jusqu')
+
+
+def _meta_nombre_unique(valeur_normalisee):
+    """Le nombre d'une réponse à nombre UNIQUE, ou None (tranche / texte)."""
+    from decimal import Decimal, InvalidOperation
+
+    texte = str(valeur_normalisee or '')
+    if any(mot in texte for mot in _META_MOTS_TRANCHE):
+        return None
+    nombres = _re.findall(r'\d+(?:[.,]\d+)?', texte.replace(' ', ''))
+    if len(nombres) != 1:
+        return None
+    try:
+        return Decimal(nombres[0].replace(',', '.'))
+    except InvalidOperation:
+        return None
+
+
+def _meta_mot_cle(valeur_normalisee, table):
+    for mots, cle in table:
+        if any(mot in valeur_normalisee for mot in mots):
+            return cle
+    return ''
+
+
+def _meta_reponse_agricole(q, v, extras):
+    """AGR410 — une question de pompage du formulaire Meta → ``extras``.
+
+    ``q``/``v`` déjà normalisés. Pose ``extras['_agricole']`` dès qu'une
+    question agricole est reconnue, même si sa réponse ne remplit rien."""
+    from decimal import Decimal
+
+    if (('eau' in q and ('source' in q or 'vient' in q or 'provient' in q))
+            or 'puits' in q or 'forage' in q):
+        extras['_agricole'] = True
+        source = _meta_mot_cle(v, _META_SOURCE_EAU_MOTS)
+        if source:
+            extras['source_eau'] = source
+    elif 'pompe' in q and any(k in q for k in (
+            'energie', 'fonctionne', 'marche', 'alimente', 'alimentation')):
+        extras['_agricole'] = True
+        energie = _meta_mot_cle(v, _META_ENERGIE_POMPE_MOTS)
+        if energie:
+            extras['pompe_alim_actuelle'] = energie
+    elif 'hectare' in q or ('surface' in q and (
+            'irrig' in q or 'cultiv' in q or 'terrain' in q
+            or 'exploitation' in q)):
+        extras['_agricole'] = True
+        surface = _meta_nombre_unique(v)
+        if surface is not None and surface < Decimal('10000000'):
+            extras['surface_irriguee_ha'] = surface
+    elif ('depense' in q or 'depensez' in q) and any(k in q for k in (
+            'carburant', 'gasoil', 'butane', 'gaz', 'pompe', 'diesel')):
+        extras['_agricole'] = True
+        depense = _meta_nombre_unique(v)
+        if depense is not None and depense < Decimal('100000000'):
+            extras['depense_carburant_mad_mois'] = depense
 
 
 def _apply_meta_form_extras(lead, extras):
@@ -5501,12 +5613,24 @@ def _apply_meta_form_extras(lead, extras):
     from decimal import Decimal
 
     changed = []
-    if extras.get('facture_estimee') is not None and lead.facture_hiver is None:
-        lead.facture_hiver = Decimal(int(extras['facture_estimee']))
-        changed.append('facture_hiver')
+    # AGR410 — le type d'abord : sur un lead AGRICOLE, la tranche de facture
+    # ne remplit PAS facture_hiver (elle gonflerait son score) — elle reste
+    # dans la note seulement.
     if extras.get('type_installation') and not lead.type_installation:
         lead.type_installation = extras['type_installation']
         changed.append('type_installation')
+    if (extras.get('facture_estimee') is not None and lead.facture_hiver is None
+            and lead.type_installation != Lead.TypeInstallation.AGRICOLE):
+        lead.facture_hiver = Decimal(int(extras['facture_estimee']))
+        changed.append('facture_hiver')
+    # AGR410 — réponses de pompage : remplissage seulement, jamais
+    # d'écrasement.
+    for champ in ('source_eau', 'pompe_alim_actuelle', 'surface_irriguee_ha',
+                  'depense_carburant_mad_mois'):
+        if extras.get(champ) is not None and getattr(lead, champ) in (
+                None, ''):
+            setattr(lead, champ, extras[champ])
+            changed.append(champ)
     if (extras.get('priorite') == Lead.Priorite.HAUTE
             and lead.priorite == Lead.Priorite.NORMALE):
         lead.priorite = Lead.Priorite.HAUTE
@@ -5540,7 +5664,10 @@ def _ensure_meta_form_note(lead, extras, form_id=''):
     for question, answer in extras['qa']:
         lines.append('• %s → %s' % (question.replace('_', ' '),
                                     answer.replace('_', ' ')))
-    if extras.get('facture_estimee') is not None:
+    # AGR410 — sur un lead agricole, la facture n'est PAS pré-remplie : la
+    # note ne le prétend pas (la réponse reste citée mot pour mot plus haut).
+    if (extras.get('facture_estimee') is not None
+            and lead.type_installation != Lead.TypeInstallation.AGRICOLE):
         lines.append(
             '(facture hiver pré-remplie à %s MAD depuis la tranche déclarée '
             '« %s » — à préciser au premier appel)'
@@ -10139,6 +10266,28 @@ MENTION_VISITE_SANS_DEVIS = (
     'propose après le devis ».')
 
 
+#: AGR408 (D-AGR-4) — la règle POMPAGE : pour un lead agricole dont le niveau
+#: d'eau ou le débit du forage est inconnu, la visite de relevé du point d'eau
+#: se fait AVANT le devis. Ce n'est pas une exception.
+AVERTISSEMENT_VISITE_POINT_EAU = (
+    'Pompage : niveau d’eau ou débit du forage inconnu — la visite de relevé '
+    'du point d’eau se fait AVANT le devis.')
+
+#: AGR408 — la phrase de la note de planification dans ce cas.
+MENTION_VISITE_POINT_EAU = (
+    'Visite de relevé du point d’eau, avant devis (règle pompage).')
+
+
+def visite_point_eau_requise(lead):
+    """AGR408 — ``visite_point_eau_avant_devis(lead).requise`` (AGR403) :
+    vrai seulement pour un lead AGRICOLE au point d'eau inconnu."""
+    from .devis_auto import visite_point_eau_avant_devis
+    if lead is None:
+        return False
+    bloc = visite_point_eau_avant_devis(lead)
+    return bool(bloc and bloc['requise'])
+
+
 def visite_sans_devis(lead):
     """CAD123 — ce lead n'a-t-il encore reçu AUCUN devis (sorti du
     brouillon) ? Lecture par le sélecteur de ``ventes`` (frontière M3).
@@ -10230,7 +10379,13 @@ def avertissement_visite(lead):
     parti, deux chaînes VIDES (jamais null) sinon. Aucun blocage : c'est une
     information, pas un refus."""
     if visite_sans_devis(lead):
-        return {'avertissement_sans_devis': AVERTISSEMENT_VISITE_SANS_DEVIS,
+        # AGR408 (D-AGR-4) — pompage au point d'eau inconnu : la visite de
+        # relevé vient AVANT le devis, c'est la règle (le rappel juridique,
+        # lui, est inchangé).
+        texte = (AVERTISSEMENT_VISITE_POINT_EAU
+                 if visite_point_eau_requise(lead)
+                 else AVERTISSEMENT_VISITE_SANS_DEVIS)
+        return {'avertissement_sans_devis': texte,
                 'rappel_juridique': RAPPEL_JURIDIQUE_VISITE_DOMICILE}
     return {'avertissement_sans_devis': '', 'rappel_juridique': ''}
 
@@ -10308,7 +10463,11 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
     if sans_devis:
         # CAD123 — la visite posée avant tout devis est VISIBLE comme telle
         # dans le suivi : on a averti, on n'a pas bloqué, on le dit.
-        corps += f' {MENTION_VISITE_SANS_DEVIS}'
+        # AGR408 (D-AGR-4) — pour un lead agricole au point d'eau inconnu,
+        # c'est la RÈGLE pompage, pas une exception.
+        corps += (f' {MENTION_VISITE_POINT_EAU}'
+                  if visite_point_eau_requise(lead)
+                  else f' {MENTION_VISITE_SANS_DEVIS}')
     if devis_en_attente:
         corps += f' {mention_devis_apres_visite(libelle_devis)}'
     # Note SYSTÈME (``user=None``) : PLANIFIER n'est pas AVOIR contacté le
@@ -10826,6 +10985,154 @@ def ecrire_retour_lead_visite(lead, recap):
     return lead
 
 
+# ── AGR413 — LA MESURE DU POINT D'EAU REMPLACE LA DÉCLARATION ───────────────
+#
+# Contrat AGR5 (``visites/contract_samples/visite_terrain.json`` →
+# ``retour_lead_point_eau``), recopié ici mot pour mot (garde de test) :
+# mesure de la visite (``categorie.code``) → colonne Lead, + la provenance
+# « mesure_visite » posée sur la colonne ``*_source`` quand elle existe.
+# Une mesure sans colonne Lead (niveau dynamique, refoulement, conduite,
+# tension, alimentation) n'est PAS recopiée : le moteur la lit par
+# ``visites.selectors.mesures_point_eau_pour_lead``.
+RETOUR_LEAD_POINT_EAU = (
+    ('point_eau', 'source_eau', 'source_eau', None),
+    ('point_eau', 'niveau_statique_m', 'niveau_statique_m',
+     ('niveau_statique_source', 'mesure_visite')),
+    ('point_eau', 'debit_mesure_m3h', 'debit_forage_m3h',
+     ('debit_forage_source', 'mesure_visite')),
+    ('point_eau', 'profondeur_forage_m', 'profondeur_forage_m', None),
+    ('pompe_existante', 'pompe_actuelle_type', 'pompe_actuelle_type', None),
+    ('pompe_existante', 'pompe_actuelle_cv', 'pompe_actuelle_cv', None),
+    ('electricite', 'electricite_sur_place', 'electricite_sur_place', None),
+    ('site_pv', 'distance_forage_champ_m', 'distance_forage_champ_m', None),
+    ('administratif', 'autorisation_prelevement', 'autorisation_prelevement',
+     None),
+    ('administratif', 'autorisation_numero', 'autorisation_numero', None),
+    ('administratif', 'autorisation_debit_l_s', 'autorisation_debit_l_s',
+     None),
+    ('administratif', 'autorisation_volume_m3_an',
+     'autorisation_volume_m3_an', None),
+    ('administratif', 'compteur_eau', 'compteur_eau', None),
+)
+
+
+def _valeur_colonne_lead(colonne, brute):
+    """La valeur saisie convertie au type de la colonne Lead, ou None si elle
+    n'y tient pas (jamais tronquée en silence pour un nombre)."""
+    from decimal import Decimal, InvalidOperation
+
+    from django.core.exceptions import ValidationError
+
+    champ = Lead._meta.get_field(colonne)
+    if champ.get_internal_type() == 'DecimalField':
+        try:
+            valeur = Decimal(str(brute))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+        limite = Decimal(10) ** (champ.max_digits - champ.decimal_places)
+        if not valeur.is_finite() or abs(valeur) >= limite:
+            return None
+        return valeur.quantize(Decimal(1).scaleb(-champ.decimal_places))
+    if champ.get_internal_type() == 'BooleanField':
+        return brute if isinstance(brute, bool) else None
+    texte = str(brute).strip()
+    if champ.choices and texte not in dict(champ.choices):
+        return None
+    try:
+        champ.run_validators(texte[:champ.max_length or None])
+    except ValidationError:
+        return None
+    return texte[:champ.max_length] if champ.max_length else texte
+
+
+def appliquer_mesures_point_eau(lead, mesures, user):
+    """AGR413 — recopie sur le lead les mesures d'un relevé du point d'eau
+    VALIDÉ (``visites.selectors.mesures_point_eau_pour_lead``).
+
+    La mesure REMPLACE la déclaration ; une mesure absente ou vide n'efface
+    JAMAIS rien ; le journal ancien→nouveau est automatique
+    (``activity.log_changes``), avec pour auteur l'utilisateur qui valide.
+    Idempotent : re-valider avec les mêmes mesures ne change rien et
+    n'écrit aucune ligne. Renvoie la liste des colonnes écrites."""
+    if lead is None or not isinstance(mesures, dict) or not mesures:
+        return []
+    avant = Lead.objects.get(pk=lead.pk)
+    ecrites = []
+    for categorie, code, colonne, provenance in RETOUR_LEAD_POINT_EAU:
+        bloc = mesures.get(categorie)
+        brute = bloc.get(code) if isinstance(bloc, dict) else None
+        if brute is None or (isinstance(brute, str) and not brute.strip()):
+            continue
+        valeur = _valeur_colonne_lead(colonne, brute)
+        if valeur is None:
+            continue
+        if getattr(lead, colonne) != valeur:
+            setattr(lead, colonne, valeur)
+            ecrites.append(colonne)
+        if provenance:
+            source, origine = provenance
+            if getattr(lead, source) != origine:
+                setattr(lead, source, origine)
+                ecrites.append(source)
+    if ecrites:
+        lead.save(update_fields=ecrites + ['date_modification'])
+        activity.log_changes(avant, lead, user)
+    return ecrites
+
+
+# ── AGR522 — DOSSIER DE SUBVENTION FDA : LE RAPPEL DES 3 MOIS ───────────────
+#
+# Guide FDA 2024 (p.22-23, tableau « Délais ») : « Demande de subvention —
+# 3 mois à compter de la date de l'approbation préalable », après la
+# RÉALISATION. Au passage à « accordé », une étape MANUELLE datée est posée
+# pour le lendemain (filet hors gabarit — jamais une touche de cadence,
+# CAD124). Ce délai n'est JAMAIS écrit au client.
+
+#: Délai du Guide FDA 2024 (p.22-23) entre l'approbation préalable et la
+#: demande de subvention.
+DELAI_DEMANDE_SUBVENTION_MOIS = 3
+
+
+def _ajouter_mois(jour, mois):
+    """``jour`` + ``mois`` mois calendaires (jour ramené à la fin du mois)."""
+    import calendar
+
+    total = jour.month - 1 + mois
+    annee, mois_cible = jour.year + total // 12, total % 12 + 1
+    dernier = calendar.monthrange(annee, mois_cible)[1]
+    return jour.replace(year=annee, month=mois_cible,
+                        day=min(jour.day, dernier))
+
+
+def libelle_rappel_subvention(approbation):
+    """Le libellé de l'étape « délai FDA » pour une approbation préalable."""
+    limite = _ajouter_mois(approbation, DELAI_DEMANDE_SUBVENTION_MOIS)
+    return (f'Approbation préalable du {approbation:%d/%m} : la pose ET le '
+            'dépôt de la demande de subvention doivent tenir avant le '
+            f'{limite:%d/%m} (3 mois — Guide FDA 2024, p.22-23)')
+
+
+def poser_rappel_subvention(lead):
+    """AGR522 — pose (ou retrouve) l'étape MANUELLE du délai FDA pour demain.
+
+    Idempotent : l'étape se retrouve par son libellé (``_poser_etape_de_filet``
+    ne pose jamais deux fois la même étape ouverte), donc rejouer ne double
+    rien. Renvoie l'étape, ou None si le lead n'est pas « accordé » daté."""
+    if (lead is None
+            or lead.dossier_subvention != Lead.DossierSubvention.ACCORDE
+            or lead.dossier_subvention_le is None):
+        return None
+    libelle = libelle_rappel_subvention(lead.dossier_subvention_le)
+    deja = lead.relance_etapes.filter(cle='', libelle=libelle).first()
+    if deja is not None:
+        return deja
+    return _poser_etape_de_filet(
+        lead, libelle=libelle, canal=RelanceEtape.Canal.APPEL,
+        vise=timezone.now() + datetime.timedelta(days=1),
+        note='Posée automatiquement : dossier de subvention accordé — délai '
+             'interne, jamais écrit au client.')
+
+
 # ── NTDATA18 — FUSION SUPERVISÉE DE CLIENTS ─────────────────────────────────
 #
 # Sur le modèle de `merge_leads` ci-dessus, mais pour `Client` : le détecteur
@@ -11026,6 +11333,18 @@ def lead_finance_a_credit(lead):
         FINANCEMENT_CREDIT
 
 
+def lead_dossier_subvention_en_instruction(lead):
+    """AGR523 — le dossier de subvention du lead est-il DÉPOSÉ (en
+    instruction) ? « À déposer », vide, accordé ou refusé : non."""
+    return (getattr(lead, 'dossier_subvention', None) or '') == 'depose'
+
+
+#: AGR523 — la fin de la note d'historique quand la validité vient du
+#: dossier de subvention en instruction.
+MOTIF_VALIDITE_SUBVENTION = ('dossier de subvention en instruction (réglage '
+                             'société)')
+
+
 def _validite_selon_financement(lead, devis, date_fin_de_suivi):
     """La date de validité à POSER sur ce devis.
 
@@ -11036,7 +11355,11 @@ def _validite_selon_financement(lead, devis, date_fin_de_suivi):
     sa validité à 10 jours ne se retrouve pas avec un devis financé qui expire
     AVANT la fin de son propre suivi.
     """
-    if not lead_finance_a_credit(lead):
+    # AGR523 — un dossier de subvention DÉPOSÉ (en instruction) reçoit la
+    # MÊME règle que le crédit : le réglage société, s'il est plus lointain.
+    # Aucun nouveau nombre, aucune durée propre à la FDA.
+    if not (lead_finance_a_credit(lead)
+            or lead_dossier_subvention_en_instruction(lead)):
         return date_fin_de_suivi
     try:
         from apps.ventes.services import date_validite_credit
@@ -11177,11 +11500,39 @@ PLAYBOOKS_SEGMENT_CAD125 = (
     {
         'nom': 'Segment — dossier de subvention agricole (FDA)',
         'segments': ('agricole',),
+        # AGR525 — réservé à la pompe AU BUTANE : le pilote FDA vise le
+        # remplacement du butane (Guide FDA 2024, D-AGR-6). Un exploitant au
+        # gasoil ou sur le réseau ne reçoit pas la question.
+        'criteres': (('pompe_alim_actuelle', 'butane'),),
         'cle_message': 'dossier_fda',
         'tache': ('Demander où en est le dossier de subvention agricole FDA '
                   '(texte « dossier_fda » au catalogue des messages)'),
     },
 )
+
+
+def _condition_playbook_segment(entree):
+    """La condition `core.rules` d'un playbook de segment : ses segments, ET
+    ses critères supplémentaires (AGR525) quand il en porte."""
+    criteres = entree.get('criteres') or ()
+    if not criteres:
+        return _condition_segment(entree['segments'])
+    feuilles = [
+        {'field': 'type_installation', 'operator': 'eq', 'value': segment}
+        for segment in entree['segments']]
+    segment = (feuilles[0] if len(feuilles) == 1
+               else {'op': 'or', 'conditions': feuilles})
+    return {
+        'op': 'and',
+        'conditions': [segment] + [
+            {'field': champ, 'operator': 'eq', 'value': valeur}
+            for champ, valeur in criteres],
+    }
+
+
+def _lead_satisfait_criteres(lead, entree):
+    return all(getattr(lead, champ, None) == valeur
+               for champ, valeur in (entree.get('criteres') or ()))
 
 
 def _condition_segment(segments):
@@ -11219,7 +11570,7 @@ def seed_playbooks_segment(company, *, stage=None):
         playbook, cree = Playbook.objects.get_or_create(
             company=company, nom=entree['nom'],
             defaults={'actif': True,
-                      'condition': _condition_segment(entree['segments'])})
+                      'condition': _condition_playbook_segment(entree)})
         resultats.append(playbook)
         if not cree:
             continue
@@ -11243,8 +11594,46 @@ def cle_message_segment(lead):
         return None
     for entree in PLAYBOOKS_SEGMENT_CAD125:
         if segment in entree['segments']:
+            # AGR525 — `dossier_fda` pour un agricole AU BUTANE seulement.
+            if not _lead_satisfait_criteres(lead, entree):
+                return None
             return entree['cle_message']
     return None
+
+
+def rattraper_playbooks_pompe(lead):
+    """AGR525 (3) — l'énergie de la pompe vient de passer à « butane » sur un
+    lead agricole déjà à la prise de contact OU au-delà : les tâches des
+    playbooks qui lisent ``pompe_alim_actuelle`` (le playbook FDA) sont
+    générées pour les étapes déjà atteintes. Idempotent (``get_or_create`` sur
+    (lead, tâche)) ; jamais au Froid ni à « Nouveau ». Renvoie les
+    progressions créées."""
+    from . import stages as _stages
+    from .models import LeadPlaybookProgress, Playbook
+
+    if (getattr(lead, 'type_installation', None) or '') != 'agricole' \
+            or getattr(lead, 'pompe_alim_actuelle', None) != 'butane':
+        return []
+    ordre = [s for s in _stages.STAGES if s != _stages.COLD]
+    if lead.stage not in ordre or ordre.index(lead.stage) < ordre.index(
+            _stages.CONTACTED):
+        return []
+    atteintes = ordre[ordre.index(_stages.CONTACTED):ordre.index(lead.stage) + 1]
+    import json as _json
+    created = []
+    for playbook in Playbook.objects.filter(company=lead.company, actif=True):
+        if 'pompe_alim_actuelle' not in _json.dumps(playbook.condition or {}):
+            continue
+        if not _playbook_correspond_au_lead(playbook, lead):
+            continue
+        for etape in playbook.etapes.filter(stage__in=atteintes) \
+                .prefetch_related('taches'):
+            for tache in etape.taches.all():
+                progress, cree = LeadPlaybookProgress.objects.get_or_create(
+                    lead=lead, tache=tache)
+                if cree:
+                    created.append(progress)
+    return created
 
 
 # ── CAD-J ── CAD126 — variantes de SEGMENT, par exception ─────────────────

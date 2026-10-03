@@ -67,4 +67,4 @@ la chaîne web et se perd sans trace à l'arrivée.
 | `lead_provenance_fields.json` | les champs de provenance du lead après QJR587 (QJR506) |
 | `devis_auto_pret.json` | bloc `devis_auto` structuré : `manquants_detail`, `requis` (QJR509) |
 | `questionnaire_lead.json` (étendu) | `colonnes_ecrites`, `prefill_vu`, `ignorees` (QJR512) |
-| `lead_pompage.json` + `devis_auto_pret.json` (`exemple_agricole_v2`) | Groupe AGR (02/10/2026) : colonnes Lead pompage et leurs questions, `entrees_pompage`, `incoherence_segment`, `segment_suggere`, règle agricole « devis auto prêt » sans CV + `visite_point_eau_avant_devis` (AGR1) |
+| `lead_pompage.json` + `devis_auto_pret.json` (`exemple_agricole`, règle v2 depuis AGR403) | Groupe AGR (02/10/2026) : colonnes Lead pompage et leurs questions, `entrees_pompage`, `incoherence_segment`, `segment_suggere`, règle agricole « devis auto prêt » sans CV + `visite_point_eau_avant_devis` (AGR1) |

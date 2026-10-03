@@ -168,6 +168,76 @@ class CreditTests(_Base):
         self.assertEqual(devis.date_validite, datetime.date(2026, 10, 31))
 
 
+class _SubventionBase(_Base):
+    """AGR523 — un dossier de subvention DÉPOSÉ (en instruction) reçoit la
+    validité du réglage société, comme le crédit — aucun nombre propre à la
+    FDA."""
+    financement = 'cash'
+    dossier = None
+
+    def setUp(self):
+        super().setUp()
+        if self.dossier:
+            self.lead.dossier_subvention = self.dossier
+            self.lead.dossier_subvention_le = datetime.date(2026, 9, 1)
+            self.lead.save(update_fields=['dossier_subvention',
+                                          'dossier_subvention_le'])
+
+
+class SubventionDeposeeTests(_SubventionBase):
+    slug = 'agr523-depose'
+    dossier = 'depose'
+
+    def test_depose_et_reglage_30j_donne_le_plus_lointain(self):
+        self.profil.quote_validity_days = 30
+        self.profil.save(update_fields=['quote_validity_days'])
+        devis = self._envoyer('DEV-AGR523-0030')
+        attendu = max(FIN_DU_SUIVI, ENVOI.date() + datetime.timedelta(days=30))
+        self.assertEqual(devis.date_validite, attendu)
+        from apps.crm.models import LeadActivity
+        from apps.crm.services import MOTIF_VALIDITE_SUBVENTION
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead, body__contains=MOTIF_VALIDITE_SUBVENTION).exists())
+
+    def test_le_message_J9_et_le_devis_disent_la_meme_date(self):
+        from apps.crm.services import message_pour_etape
+
+        self.profil.quote_validity_days = 30
+        self.profil.save(update_fields=['quote_validity_days'])
+        devis = self._envoyer('DEV-AGR523-J9')
+        etape = RelanceEtape.objects.create(
+            company=self.company, lead=self.lead, cadence='apres_devis',
+            ordre=7, due_at=ENVOI + datetime.timedelta(days=9),
+            due_date=(ENVOI + datetime.timedelta(days=9)).date(),
+            canal='whatsapp', libelle='Validité de la proposition',
+            template_cle='j9_validite', devis=devis)
+        rendu = message_pour_etape(etape, user=self.acteur)
+        self.assertIn(devis.date_validite.strftime('%d/%m/%Y'),
+                      rendu['message'])
+
+
+class SubventionADeposerTests(_SubventionBase):
+    slug = 'agr523-a-deposer'
+    dossier = 'a_deposer'
+
+    def test_a_deposer_garde_la_fin_du_plan(self):
+        self.profil.quote_validity_days = 30
+        self.profil.save(update_fields=['quote_validity_days'])
+        devis = self._envoyer('DEV-AGR523-ADEP')
+        self.assertEqual(devis.date_validite, FIN_DU_SUIVI)
+
+
+class SubventionVideTests(_SubventionBase):
+    slug = 'agr523-vide'
+    dossier = None
+
+    def test_sans_dossier_garde_la_fin_du_plan(self):
+        self.profil.quote_validity_days = 30
+        self.profil.save(update_fields=['quote_validity_days'])
+        devis = self._envoyer('DEV-AGR523-VIDE')
+        self.assertEqual(devis.date_validite, FIN_DU_SUIVI)
+
+
 class MessageJ9Tests(_Base):
     slug = 'cad57-message'
     financement = 'credit'

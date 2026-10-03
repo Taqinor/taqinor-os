@@ -67,9 +67,11 @@ CHAMPS_A_DEFAUT_NON_NUL = ('ete_differente',)
 #: questionnaire client ne les porte, et elles n'ont de sens que pour un lead
 #: de pompage. CAD175 — la seconde livraison du panneau y ajoute la pompe
 #: elle-même (puissance, HMT, débit voulu : les trois entrées du générateur
-#: en mode agricole, colonnes `pompe_*` déjà existantes), en tête.
+#: en mode agricole, colonnes `pompe_*` déjà existantes), en tête. AGR401 —
+#: la puissance posée est celle de la pompe ACTUELLE (`pompe_actuelle_cv`,
+#: information) : la puissance retenue est une sortie du dimensionnement.
 CHAMPS_ORAUX_AGRICOLE = (
-    'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+    'pompe_actuelle_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
     'pompage_heures_jour', 'pompe_alim_actuelle', 'carburant_litres_mois',
 )
 
@@ -199,9 +201,9 @@ def questions_a_poser(lead):
     se dérive, on ne la demande pas.
     """
     carte = questionnaire.champs_encore_a_obtenir(
-        lead, questionnaire.SECTIONS)
+        lead, questionnaire.SECTIONS_HORS_POMPAGE)
     questions, vus = [], set()
-    for section in questionnaire.SECTIONS:
+    for section in questionnaire.SECTIONS_HORS_POMPAGE:
         a_obtenir = set(carte.get(section, ()))
         for champ in questionnaire.CHAMPS_PAR_SECTION.get(section, ()):
             if champ in CHAMPS_JAMAIS_DEMANDES or champ in vus:
@@ -230,7 +232,7 @@ def prefill_du_panneau(lead):
     est là ne se redemande pas, mais se RELIT — et rien n'y est inventé.
     """
     candidats = []
-    for section in questionnaire.SECTIONS:
+    for section in questionnaire.SECTIONS_HORS_POMPAGE:
         candidats.extend(questionnaire.CHAMPS_PAR_SECTION.get(section, ()))
     candidats.extend(champs_oraux_du_segment(lead))
     out = {}

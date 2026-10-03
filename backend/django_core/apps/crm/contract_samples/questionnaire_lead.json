@@ -36,38 +36,84 @@
     },
     "interne": false
   },
-
+  "exemple_agricole": {
+    "entreprise": "Taqinor",
+    "prenom": "Brahim",
+    "sections": [
+      "pompage",
+      "gps",
+      "photo_pompe",
+      "photo_forage"
+    ],
+    "champs": {
+      "pompage": [
+        "source_eau",
+        "niveau_statique_m",
+        "besoin_eau_m3j",
+        "surface_irriguee_ha",
+        "culture",
+        "irrigation_methode",
+        "pompe_alim_actuelle",
+        "butane_bouteilles_jour",
+        "carburant_prix_unitaire_mad",
+        "depense_carburant_mad_mois",
+        "mois_irrigation",
+        "compteur_eau"
+      ],
+      "gps": [
+        "gps_lat",
+        "gps_lng"
+      ],
+      "photo_pompe": [],
+      "photo_forage": []
+    },
+    "prefill": {
+      "source_eau": "forage",
+      "niveau_statique_m": null,
+      "besoin_eau_m3j": null,
+      "surface_irriguee_ha": 4.0,
+      "culture": "agrumes",
+      "irrigation_methode": "goutte",
+      "pompe_alim_actuelle": "butane",
+      "butane_bouteilles_jour": null,
+      "carburant_prix_unitaire_mad": null,
+      "depense_carburant_mad_mois": null,
+      "mois_irrigation": null,
+      "compteur_eau": null,
+      "gps_lat": null,
+      "gps_lng": null
+    },
+    "repondu": {},
+    "interne": false
+  },
   "sections": [
     "occupation",
     "equipements",
     "energie",
+    "pompage",
     "toiture",
     "gps",
     "photo_facture",
     "photo_compteur",
     "photo_tableau",
+    "photo_pompe",
+    "photo_forage",
     "contact"
   ],
-
   "ordre": "L'ordre de cette liste EST l'ordre d'affichage (source unique : crm.QuestionnaireLien.SECTIONS_CLES). Recherche du 25/08/2026 — engagement CROISSANT, sensible en dernier : occupation/équipements (une tape) → énergie (un chiffre lu sur la facture) → toiture/GPS (estimer une surface, accorder une permission) → les trois photos (effort physique) → coordonnées (données personnelles, TOUJOURS en dernier — NN/g « Hierarchy of Trust »). L'ancien ordre commençait par `contact` : exactement l'inverse.",
-
   "ecrans": "REGROUPEMENT (page publique, apps/web/src/lib/questionnaire.ts ECRANS) — 6 écrans au maximum, jamais 9 : les trois photos tiennent sur UN écran, `toiture`+`gps` sur un autre (même sujet : le toit). Un écran n'existe que s'il porte au moins une section servie, et la barre de progression compte les ÉCRANS RÉELS (Baymard : un indicateur de progression doit refléter 1:1 les étapes réellement traversées). Une section reste l'unité d'ENREGISTREMENT : un écran POSTe chacune des siennes séparément, le contrat POST ne bouge pas.",
-
   "semantique_questions": {
     "trois_etats": "Comme ventes.ShareLink.sections : clé ABSENTE → section ACTIVE (défaut) ; clé à false → section RETIRÉE ; clé à true → section servie.",
     "defaut_au_mint": "Un mint SANS corps `questions` écrit la carte EXPLICITE des informations manquantes ({cle: true si manquante, false sinon}) — ordre fondateur « DÉFAUT = les informations manquantes ». Le trois-états reste la sémantique du champ (une section future inconnue de la carte serait active).",
     "cle_inconnue": "400 — la whitelist `sections` ci-dessus est la seule vérité."
   },
-
   "deux_jetons": {
     "token": "Jeton CLIENT — c'est LUI qu'on envoie. Lecture + écriture des réponses.",
     "token_interne": "Jeton COMMERCIAL — même page, JAMAIS montré au client. Il sert à visiter la page en APERÇU sans rien déclencher : le GET via ce jeton ne journalise RIEN (aucune LeadActivity, aucun `derniere_reponse_at`, aucun `sections_repondues`) et le POST y est REFUSÉ (403). Le commercial ne répond jamais à la place du client."
   },
-
   "mint": {
     "voir": "apps/crm/contract_samples/questionnaire_lien_mint.json — POST /api/django/crm/leads/<pk>/questionnaire-lien/ (échantillon vérifié séparément par check_api_shapes : un fichier = un endpoint)."
   },
-
   "public_get": {
     "auth": "AUCUNE — le lien EST l'authentification (patron magic-link, comme public/booking/). Throttlé par IP+jeton. Un jeton inconnu ou expiré renvoie un 404 à corps CONSTANT (jamais bavard).",
     "notes": {
@@ -78,7 +124,6 @@
       "interne": "true uniquement quand la page a été ouverte avec `token_interne` (aperçu commercial, aucune trace écrite). Absent/false côté client."
     }
   },
-
   "public_post": {
     "endpoint": "POST /api/django/crm/public/questionnaire/<token>/ (même URL)",
     "body": {
@@ -89,7 +134,10 @@
         "facture_ete": 4200
       },
       "photo": "data:image/jpeg;base64,… (sections photo_* uniquement)",
-      "prefill_vu": {"facture_hiver": 3500, "ete_differente": false}
+      "prefill_vu": {
+        "facture_hiver": 3500,
+        "ete_differente": false
+      }
     },
     "reponse": {
       "ok": true,
@@ -110,28 +158,121 @@
       "ignorees": "QJR512 — `ignorees` (réponse) : clés reçues mais non écrites (vide par défaut)."
     }
   },
-
   "colonnes_ecrites": {
-    "contact": ["email", "adresse", "ville"],
-    "gps": ["gps_lat", "gps_lng"],
-    "energie": ["facture_hiver", "facture_ete", "ete_differente", "conso_mensuelle_kwh", "raccordement"],
-    "toiture": ["type_toiture", "surface_toiture_m2", "roof_age", "ownership"],
-    "occupation": ["occupation_jour"],
-    "equipements": ["equip_piscine", "equip_piscine_pompe_kw", "equip_voiture_electrique", "equip_ve_km_semaine", "equip_clim", "equip_clim_pieces", "equip_chauffe_eau_electrique"]
+    "contact": [
+      "email",
+      "adresse",
+      "ville"
+    ],
+    "gps": [
+      "gps_lat",
+      "gps_lng"
+    ],
+    "energie": [
+      "facture_hiver",
+      "facture_ete",
+      "ete_differente",
+      "conso_mensuelle_kwh",
+      "raccordement"
+    ],
+    "toiture": [
+      "type_toiture",
+      "surface_toiture_m2",
+      "roof_age",
+      "ownership"
+    ],
+    "occupation": [
+      "occupation_jour"
+    ],
+    "equipements": [
+      "equip_piscine",
+      "equip_piscine_pompe_kw",
+      "equip_voiture_electrique",
+      "equip_ve_km_semaine",
+      "equip_clim",
+      "equip_clim_pieces",
+      "equip_chauffe_eau_electrique"
+    ],
+    "pompage": [
+      "source_eau",
+      "niveau_statique_m",
+      "besoin_eau_m3j",
+      "surface_irriguee_ha",
+      "culture",
+      "irrigation_methode",
+      "pompe_alim_actuelle",
+      "butane_bouteilles_jour",
+      "carburant_prix_unitaire_mad",
+      "depense_carburant_mad_mois",
+      "mois_irrigation",
+      "compteur_eau"
+    ]
   },
   "colonnes_ecrites_note": "QJR512 — `colonnes_ecrites` {section: [colonnes]} : les colonnes que chaque section écrit réellement ; liste fixée par QJR596. `energie` porte conso_mensuelle_kwh et n’écrit plus tranche_onee.",
   "champs_par_section": {
-    "contact": ["email", "adresse", "ville"],
-    "gps": ["gps_lat", "gps_lng"],
-    "energie": ["facture_hiver", "facture_ete", "ete_differente", "conso_mensuelle_kwh", "tranche_onee", "raccordement"],
-    "toiture": ["type_toiture", "surface_toiture_m2", "roof_age", "ownership"],
-    "occupation": ["occupation_jour"],
-    "equipements": ["equip_piscine", "equip_piscine_pompe_kw", "equip_piscine_heures_jour", "equip_piscine_creneau", "equip_voiture_electrique", "equip_ve_km_semaine", "equip_ve_chargeur_kw", "equip_ve_creneau", "equip_clim", "equip_clim_pieces", "equip_clim_kw", "equip_clim_creneau", "equip_chauffe_eau_electrique", "equip_chauffe_eau_kw", "equip_chauffe_eau_creneau"],
+    "contact": [
+      "email",
+      "adresse",
+      "ville"
+    ],
+    "gps": [
+      "gps_lat",
+      "gps_lng"
+    ],
+    "energie": [
+      "facture_hiver",
+      "facture_ete",
+      "ete_differente",
+      "conso_mensuelle_kwh",
+      "tranche_onee",
+      "raccordement"
+    ],
+    "toiture": [
+      "type_toiture",
+      "surface_toiture_m2",
+      "roof_age",
+      "ownership"
+    ],
+    "occupation": [
+      "occupation_jour"
+    ],
+    "equipements": [
+      "equip_piscine",
+      "equip_piscine_pompe_kw",
+      "equip_piscine_heures_jour",
+      "equip_piscine_creneau",
+      "equip_voiture_electrique",
+      "equip_ve_km_semaine",
+      "equip_ve_chargeur_kw",
+      "equip_ve_creneau",
+      "equip_clim",
+      "equip_clim_pieces",
+      "equip_clim_kw",
+      "equip_clim_creneau",
+      "equip_chauffe_eau_electrique",
+      "equip_chauffe_eau_kw",
+      "equip_chauffe_eau_creneau"
+    ],
+    "pompage": [
+      "source_eau",
+      "niveau_statique_m",
+      "besoin_eau_m3j",
+      "surface_irriguee_ha",
+      "culture",
+      "irrigation_methode",
+      "pompe_alim_actuelle",
+      "butane_bouteilles_jour",
+      "carburant_prix_unitaire_mad",
+      "depense_carburant_mad_mois",
+      "mois_irrigation",
+      "compteur_eau"
+    ],
     "photo_facture": [],
     "photo_compteur": [],
-    "photo_tableau": []
+    "photo_tableau": [],
+    "photo_pompe": [],
+    "photo_forage": []
   },
-
   "manquantes": {
     "quoi": "Carte {section: bool} — une section est MANQUANTE quand l'information qu'elle porte n'est pas (complètement) connue du lead. C'est le DÉFAUT des questions posées.",
     "regles": {
@@ -141,7 +282,10 @@
       "toiture": "type_toiture, surface_toiture_m2, roof_age ou ownership vide.",
       "occupation": "occupation_jour vide.",
       "equipements": "AU MOINS UN booléen equip_* à None — None = « jamais posée », ce qui est DIFFÉRENT de False (« le client a dit non »).",
-      "photo_facture / photo_compteur / photo_tableau": "aucune pièce jointe du type sur le lead. APPROXIMATION assumée : on reconnaît le type au LIBELLÉ du fichier (mots-clés facture/bill, compteur/meter, tableau/disjoncteur) — le magasin `records.Attachment` ne porte pas de type métier. En cas de doute → MANQUANTE (on repose la question plutôt que de supposer)."
+      "photo_facture / photo_compteur / photo_tableau": "aucune pièce jointe du type sur le lead. APPROXIMATION assumée : on reconnaît le type au LIBELLÉ du fichier (mots-clés facture/bill, compteur/meter, tableau/disjoncteur) — le magasin `records.Attachment` ne porte pas de type métier. En cas de doute → MANQUANTE (on repose la question plutôt que de supposer).",
+      "pompage (agricole)": "AGR411 — lead AGRICOLE seulement : source_eau, niveau_statique_m, besoin_eau_m3j, surface_irriguee_ha ou pompe_alim_actuelle vide.",
+      "photo_pompe / photo_forage (agricole)": "AGR411 — aucune pièce jointe dont le libellé porte pompe/plaque (plaque de la pompe) ou forage/puits (tête de forage)."
     }
-  }
+  },
+  "segment_agricole": "AGR411 — filtre de SEGMENT (`crm.questionnaire.sections_du_lead`). Lead AGRICOLE : sections pompage, photo_pompe, photo_forage, gps, contact, photo_compteur ; l'envoi sans corps ne coche que pompage, photo_pompe, photo_forage, gps et contact MANQUANTS ; occupation, equipements, energie, toiture, photo_facture et photo_tableau sont REFUSÉES en 400 avec un message qui nomme la section. Les colonnes orales (autorisation de prélèvement, aide FDA reçue, décideur) ne sont jamais posées par écrit. Lead NON agricole : périmètre historique, identique à l'octet (les sections de pompage y restent inconnues)."
 }
