@@ -359,19 +359,17 @@
       "cle_registre": "sourceEau",
       "groupe": "G_AGRICOLE",
       "requis": false,
-      "destination": "web_questionnaire",
-      "champ_lead": "web_questionnaire",
-      "cle_blob": "water_source",
-      "note": "puits / forage / bassin / riviere"
+      "destination": "colonne_lead",
+      "champ_lead": "source_eau",
+      "note": "puits / forage / bassin / riviere ; AGR402 : promue du sac vers la colonne dediee (remplie seulement si vide)"
     },
     "profondeurM": {
       "cle_registre": "profondeurM",
       "groupe": "G_AGRICOLE",
       "requis": false,
-      "destination": "web_questionnaire",
-      "champ_lead": "web_questionnaire",
-      "cle_blob": "profondeur_m",
-      "note": "borne haute 2 000"
+      "destination": "colonne_lead",
+      "champ_lead": "niveau_statique_m",
+      "note": "borne haute 2 000 ; provenance niveau_statique_source = site_web ; AGR402 : promue du sac vers la colonne dediee (remplie seulement si vide)"
     },
     "hmtM": {
       "cle_registre": "hmtM",
@@ -379,7 +377,7 @@
       "requis": false,
       "destination": "colonne_lead",
       "champ_lead": "pompe_hmt_m",
-      "note": "extrait du questionnaire vers la colonne dediee"
+      "note": "extrait du questionnaire vers la colonne dediee ; AGR402 : provenance pompe_hmt_source = site_web"
     },
     "debitM3h": {
       "cle_registre": "debitM3h",
@@ -393,10 +391,9 @@
       "cle_registre": "besoinM3j",
       "groupe": "G_AGRICOLE",
       "requis": false,
-      "destination": "web_questionnaire",
-      "champ_lead": "web_questionnaire",
-      "cle_blob": "besoin_m3j",
-      "note": "borne haute 1 000 000"
+      "destination": "colonne_lead",
+      "champ_lead": "besoin_eau_m3j",
+      "note": "borne haute 1 000 000 ; provenance besoin_eau_source = site_web ; AGR402 : promue du sac vers la colonne dediee (remplie seulement si vide)"
     },
     "heuresPompage": {
       "cle_registre": "heuresPompage",
@@ -411,37 +408,33 @@
       "cle_registre": "culture",
       "groupe": "G_AGRICOLE",
       "requis": false,
-      "destination": "web_questionnaire",
-      "champ_lead": "web_questionnaire",
-      "cle_blob": "culture",
-      "note": "texte libre tronque a 120"
+      "destination": "colonne_lead",
+      "champ_lead": "culture",
+      "note": "texte libre tronque a 120 ; AGR402 : promue du sac vers la colonne dediee (remplie seulement si vide)"
     },
     "regionAgricole": {
       "cle_registre": "regionAgricole",
       "groupe": "G_AGRICOLE",
       "requis": false,
-      "destination": "web_questionnaire",
-      "champ_lead": "web_questionnaire",
-      "cle_blob": "region_agricole",
-      "note": "whiteliste sur _REGIONS_AGRICOLES"
+      "destination": "colonne_lead",
+      "champ_lead": "region_agricole",
+      "note": "whiteliste sur _REGIONS_AGRICOLES ; AGR402 : promue du sac vers la colonne dediee (remplie seulement si vide)"
     },
     "surfaceHa": {
       "cle_registre": "surfaceHa",
       "groupe": "G_AGRICOLE",
       "requis": false,
-      "destination": "web_questionnaire",
-      "champ_lead": "web_questionnaire",
-      "cle_blob": "surface_ha",
-      "note": "borne haute 1 000 000"
+      "destination": "colonne_lead",
+      "champ_lead": "surface_irriguee_ha",
+      "note": "borne haute 1 000 000 ; AGR402 : promue du sac vers la colonne dediee (remplie seulement si vide)"
     },
     "fuelSpendMad": {
       "cle_registre": "depenseCarburantMad",
       "groupe": "G_AGRICOLE",
       "requis": false,
-      "destination": "web_questionnaire",
-      "champ_lead": "web_questionnaire",
-      "cle_blob": "fuel_spend_mad",
-      "note": "depense carburant/mois"
+      "destination": "colonne_lead",
+      "champ_lead": "depense_carburant_mad_mois",
+      "note": "depense carburant/mois ; jamais convertie en consommation ; AGR402 : promue du sac vers la colonne dediee (remplie seulement si vide)"
     },
     "estimateShown": {
       "cle_registre": "estimationAffichee",
