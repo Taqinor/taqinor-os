@@ -40,10 +40,11 @@ CLES_ECRAN_LEGITIMES = (
     'conso_annuelle',
     'toiture',
     'attribution',
-    'debit_souhaite_m3h',
-    'heures_pompage',
+    # AGR122 — `debit_souhaite_m3h`/`surface_ha` ont quitté le schéma et
+    # `heures_pompage` est une dérivée du moteur de pompage.
     'type_pompe',
-    'surface_ha',
+    'mode_pompe',
+    'besoin',
     'repartition_mt',
 )
 
