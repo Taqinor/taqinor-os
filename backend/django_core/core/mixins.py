@@ -35,23 +35,51 @@ class SameCompanyFKSerializerMixin:
     appel hors requête (services, seeds, tests unitaires du modèle) ne sont pas
     concernés : la garde n'a alors aucune société de référence et laisse passer,
     exactement comme le scoping de lecture.
+
+    ACAL298 — un id d'une autre société reçoit la MÊME réponse qu'un id
+    absent (« objet inexistant » de DRF) : le champ est borné dans
+    ``get_fields`` ; aucun message propre ne distingue plus les deux cas.
     """
 
     #: Noms des champs FK à valider même-société (déclaratif : lu par la garde).
     same_company_fields = ()
-
-    #: Message unique — ne jamais nommer l'objet voisin (ce serait l'oracle que
-    #: la validation existe précisément pour fermer).
-    MESSAGE_AUTRE_SOCIETE = (
-        "Cette référence n'appartient pas à votre société.")
 
     def _company_id_courante(self):
         request = self.context.get('request')
         user = getattr(request, 'user', None)
         return getattr(user, 'company_id', None)
 
+    def get_fields(self):
+        """ACAL298 — chaque champ déclaré naît BORNÉ à la société de la requête.
+
+        Le queryset du champ est filtré sur ``company_id`` de l'utilisateur
+        (promotion sur place par ``core.serializers.scope_related_field``) :
+        l'id d'une société voisine échoue alors à la RÉSOLUTION, avec l'erreur
+        standard « objet inexistant » de DRF — octet-identique à celle d'un id
+        qui n'existe pas. Avant, il était résolu puis refusé par un message
+        PROPRE (« n'appartient pas à votre société ») : deux réponses
+        différentes, donc un oracle d'existence inter-sociétés.
+
+        Superutilisateur plateforme sans société et appel hors requête :
+        ``request_company_id`` rend ``None`` et le queryset reste inchangé,
+        exactement comme avant.
+        """
+        # Import local : ``core.serializers`` importe ``core.models`` ; le
+        # mixin, lui, est importé par les sérialiseurs de toutes les apps.
+        from core.serializers import scope_related_field
+
+        fields = super().get_fields()
+        for nom in self.same_company_fields:
+            champ = fields.get(nom)
+            if champ is not None:
+                scope_related_field(champ)
+        return fields
+
     def _verifier_meme_societe(self, nom_champ, valeur):
-        """Lève un 400 porté par ``nom_champ`` si ``valeur`` est d'ailleurs."""
+        """Filet : lève l'erreur « objet inexistant » du champ si ``valeur``
+        est d'ailleurs (champ non promu par ``get_fields``, sous-classe
+        métier). JAMAIS un message propre : la réponse doit rester celle d'un
+        id absent (ACAL298)."""
         if valeur is None:
             return valeur
         company_id = self._company_id_courante()
@@ -59,12 +87,20 @@ class SameCompanyFKSerializerMixin:
             return valeur
         cible = getattr(valeur, 'company_id', None)
         if cible is not None and cible != company_id:
+            champ = self.fields.get(nom_champ)
+            messages = getattr(champ, 'error_messages', None) or {}
+            gabarit = messages.get(
+                'does_not_exist',
+                serializers.PrimaryKeyRelatedField.default_error_messages[
+                    'does_not_exist'])
             raise serializers.ValidationError(
-                {nom_champ: self.MESSAGE_AUTRE_SOCIETE})
+                {nom_champ: [str(gabarit).format(
+                    pk_value=getattr(valeur, 'pk', valeur))]},
+                code='does_not_exist')
         return valeur
 
     def to_internal_value(self, data):
-        """Le contrôle vit ici, PAS dans ``validate()``.
+        """Le filet vit ici, PAS dans ``validate()``.
 
         ``validate()`` est très souvent redéfini par le sérialiseur concret
         (règles métier) : accrocher la garde là l'aurait rendue silencieusement
