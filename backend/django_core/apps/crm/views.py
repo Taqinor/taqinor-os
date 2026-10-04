@@ -1771,6 +1771,22 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(LeadActivitySerializer(
             activites, many=True, context={'request': request}).data)
 
+    @action(detail=True, methods=['get'], url_path='references-proches',
+            permission_classes=[HasPermissionOrLegacy('crm_voir')])
+    def references_proches(self, request, pk=None):
+        """AGR516 — les réalisations RÉELLES proches de ce lead (« allez voir
+        chez un voisin »). Lecture seule, bornée à la société (``get_object``
+        → 404 pour un lead d'une autre société). Le choix, le filtre de
+        segment (AGR513) et le tri par distance vivent dans la fondation
+        ``parametres`` (``selectors.realisations_proches``) ; forme du contrat
+        ``lead_references_proches.json``. Aucune écriture."""
+        from apps.parametres.selectors import realisations_proches
+        lead = self.get_object()
+        return Response({
+            'segment': lead.type_installation or '',
+            'references': realisations_proches(lead, limite=5),
+        })
+
     @action(detail=True, methods=['get'], url_path='jalons-devis',
             permission_classes=[HasPermissionOrLegacy('crm_voir')])
     def jalons_devis(self, request, pk=None):
