@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, sep } from 'node:path'
+import { lireSourceCalepinageApi } from './calepinage/lireSource.mjs'
 
 /* ============================================================================
    CALX382 — aucune clé de `calepinageApi.js` ne reste jamais appelée.
@@ -24,6 +25,7 @@ import { dirname, join, sep } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const API_PATH = join(here, 'calepinageApi.js')
+const DOSSIER_FRAGMENTS = join(here, 'calepinage') + sep
 const FRONT_SRC = dirname(here) // frontend/src
 
 // Les commentaires du client ET des écrans CITENT des chemins/noms de clés
@@ -131,6 +133,8 @@ function texteAppelantsReel() {
   let tout = ''
   for (const fichier of walk(FRONT_SRC)) {
     if (fichier === API_PATH) continue
+    // SPL292 — les fragments de la façade ne sont pas des APPELANTS.
+    if (fichier.startsWith(DOSSIER_FRAGMENTS)) continue
     const nom = fichier.split(sep).pop()
     if (/\.test\.|\.spec\./.test(nom)) continue
     tout += sansCommentaires(readFileSync(fichier, 'utf8')) + '\n'
@@ -236,7 +240,7 @@ test('CALX382 — un namespace ne fuit pas sur le namespace suivant', () => {
    ========================================================================== */
 
 test('GARDE — aucune clé de calepinageApi.js hors de EXCEPTIONS_SANS_APPELANT ne reste sans appelant', () => {
-  const codeApi = sansCommentaires(readFileSync(API_PATH, 'utf8'))
+  const codeApi = sansCommentaires(lireSourceCalepinageApi())
   const cles = extraireCles(codeApi)
   assert.ok(cles.length > 0, 'aucune clé extraite — le format de calepinageApi.js a-t-il changé ?')
 
@@ -251,7 +255,7 @@ test('GARDE — aucune clé de calepinageApi.js hors de EXCEPTIONS_SANS_APPELANT
 })
 
 test('GARDE — EXCEPTIONS_SANS_APPELANT ne peut que RÉTRÉCIR (aucune entrée périmée)', () => {
-  const codeApi = sansCommentaires(readFileSync(API_PATH, 'utf8'))
+  const codeApi = sansCommentaires(lireSourceCalepinageApi())
   const cles = extraireCles(codeApi)
   const texte = texteAppelantsReel()
   const { exceptionsPerimees } = verifier(cles, texte, EXCEPTIONS_SANS_APPELANT)
@@ -262,7 +266,7 @@ test('GARDE — EXCEPTIONS_SANS_APPELANT ne peut que RÉTRÉCIR (aucune entrée 
 })
 
 test('GARDE — toute clé de EXCEPTIONS_SANS_APPELANT existe encore dans calepinageApi.js', () => {
-  const codeApi = sansCommentaires(readFileSync(API_PATH, 'utf8'))
+  const codeApi = sansCommentaires(lireSourceCalepinageApi())
   const cles = new Set(extraireCles(codeApi).map((c) => `${c.namespace}.${c.cle}`))
   const fantomes = Object.keys(EXCEPTIONS_SANS_APPELANT).filter((id) => !cles.has(id))
   assert.deepEqual(

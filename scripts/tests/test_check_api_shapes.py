@@ -1350,6 +1350,63 @@ class CalepinageApiGoldenTests(unittest.TestCase):
                       if module == self.FACADE.resolve())
         self.assertEqual(noms, self.RESOLUES)
 
+    # SPL292 — une fonction deplacee dans un fragment `api/calepinage/*.js`
+    # reste indexee sous la FACADE (le module importe/mocke par les ecrans).
+    FACADE_SEULE = (
+        "import api from './axios'\n"
+        "const calepinageApi = {\n"
+        "  calepinages: {\n"
+        "    modeles: () => api.get('/calepinage/calepinages/modeles/'),\n"
+        "    depuisLead: (leadId) =>\n"
+        "      api.post('/calepinage/calepinages/depuis-lead/', {}),\n"
+        "  },\n"
+        "}\n"
+        "export default calepinageApi\n"
+    )
+    FACADE_ECLATEE = (
+        "import api from './axios'\n"
+        "import { sorties } from './calepinage/sorties'\n"
+        "const calepinageApi = {\n"
+        "  calepinages: {\n"
+        "    modeles: () => api.get('/calepinage/calepinages/modeles/'),\n"
+        "    ...sorties,\n"
+        "  },\n"
+        "}\n"
+        "export default calepinageApi\n"
+    )
+    FRAGMENT = (
+        "import api from '../axios'\n"
+        "export const sorties = {\n"
+        "    depuisLead: (leadId) =>\n"
+        "      api.post('/calepinage/calepinages/depuis-lead/', {}),\n"
+        "}\n"
+    )
+    BASE = ("export const pivot = (id) => "
+            "`/calepinage/calepinages/${id}/`\n")
+
+    def _couples(self, racine, fichiers):
+        fonctions = shapes.ApiFunctions(fichiers)
+        fonctions.collect()
+        return {(Path(m).relative_to(racine.resolve()).as_posix(), nom, *appel)
+                for (m, nom), appels in fonctions.functions.items()
+                for appel in appels}
+
+    def test_un_fragment_est_indexe_sous_la_facade(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            seule = write(racine / "a" / "api" / "calepinageApi.js",
+                          self.FACADE_SEULE)
+            avant = self._couples(racine / "a", [seule])
+            facade = write(racine / "b" / "api" / "calepinageApi.js",
+                           self.FACADE_ECLATEE)
+            frag = write(racine / "b" / "api" / "calepinage" / "sorties.js",
+                         self.FRAGMENT)
+            base = write(racine / "b" / "api" / "calepinage" / "_base.js",
+                         self.BASE)
+            apres = self._couples(racine / "b", [facade, frag, base])
+        self.assertEqual(len(avant), 2)
+        self.assertEqual(apres, avant)
+
 
 if __name__ == "__main__":
     unittest.main()
