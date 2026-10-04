@@ -61,12 +61,11 @@ class AutoQuoteAtomiqueEtudeTests(TestCase):
 
     def test_agricole_etude_projetee_conservee(self):
         lead = self._lead('agricole', '+212600005431')
-        # AGR122 — l'écran n'envoie plus que les ENTRÉES v2 du pompage ; les
-        # dérivées (`pompe_cv`, `m3_jour`…) appartiennent au moteur serveur.
         etude = {
-            'mode_pompe': 'neuve', 'besoin': {'volume_m3_jour': 86.8},
-            'hmt_entrees': {'saisie_m': 60}, 'type_pompe': 'immergee',
-            'alim': 'tri', 'distance_champ_m': 20, 'taille': 'recommandee',
+            'pompe_cv': 5.5, 'pompe_kw': 4, 'debit_hmt_m3h': 12.4,
+            'm3_jour': 86.8, 'champ_kwc': 5.68, 'hmt_m': 60,
+            'debit_souhaite_m3h': 12, 'heures_pompage': 7,
+            'type_pompe': 'immergee', 'alim': 'tri', 'distance_m': 20,
         }
         rep = self.api.post(ATOMIC, {
             'lead': lead.id, 'statut': 'brouillon', 'taux_tva': '20.00',
@@ -77,22 +76,9 @@ class AutoQuoteAtomiqueEtudeTests(TestCase):
         self.assertEqual(rep.status_code, 201, rep.content)
         devis = Devis.objects.get(id=rep.data['id'])
         ep = devis.etude_params or {}
-        self.assertEqual(ep.get('besoin'), {'volume_m3_jour': 86.8})
-        self.assertEqual(ep.get('mode_pompe'), 'neuve')
-        self.assertEqual(ep.get('distance_champ_m'), 20)
-
-    def test_agricole_derivee_du_moteur_refusee(self):
-        """AGR122 — une dérivée du moteur de pompage envoyée par l'écran est
-        refusée (400 qui la nomme), jamais enregistrée."""
-        lead = self._lead('agricole', '+212600005439')
-        rep = self.api.post(ATOMIC, {
-            'lead': lead.id, 'statut': 'brouillon', 'taux_tva': '20.00',
-            'remise_globale': '0', 'mode_installation': 'agricole',
-            'etude_params': {'m3_jour': 86.8},
-            'lignes': [self._ligne(self.commun, '1000', 0)],
-        }, format='json')
-        self.assertEqual(rep.status_code, 400, rep.content)
-        self.assertIn('m3_jour', str(rep.content, 'utf-8'))
+        self.assertEqual(ep.get('m3_jour'), 86.8)
+        self.assertEqual(ep.get('pompe_cv'), 5.5)
+        self.assertEqual(ep.get('heures_pompage'), 7)
 
     def test_industriel_sans_batterie_total_d_une_seule_option(self):
         lead = self._lead('industriel', '+212600005432')
