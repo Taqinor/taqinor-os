@@ -3888,8 +3888,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               {dailyCurves?.noteHoraire && dailyCurve.hasServedShape && (
                 <p class="mt-1 text-xs text-lune-faint" data-i18n
                   data-fr={dailyCurves.noteHoraire}
-                  data-en="Times shown in Moroccan civil time (UTC+1). During Ramadan Morocco reverts to UTC+0: the curve then shifts one hour earlier."
-                  data-ar="التوقيت المدني المغربي (UTC+1). خلال رمضان يعود المغرب إلى UTC+0: ينزاح المنحنى عندئذ ساعة إلى الأمام.">
+                  data-en="Times shown in Moroccan civil time (GMT, UTC+0 year-round, no seasonal clock change)."
+                  data-ar="التوقيت المدني المغربي (توقيت غرينتش، UTC+0 طوال السنة، دون تغيير موسمي للساعة).">
                   {dailyCurves.noteHoraire}
                 </p>
               )}
