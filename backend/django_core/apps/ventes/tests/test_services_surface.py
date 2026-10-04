@@ -256,6 +256,8 @@ SURFACE_PUBLIQUE = (
     "send_devis_followup_nudges",
     "share_link_for_bcf",
     "stocker_image_toiture",
+    # ACAL299 — effacement d'un dépôt de toiture (photos de site).
+    "supprimer_fichier_toiture",
     "sync_devis_from_layout",
     "type_image_toiture",
     "url_image_toiture",

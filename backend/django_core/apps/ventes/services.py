@@ -434,6 +434,9 @@ url_image_toiture = _stockage_toiture.url_image_toiture
 # CALX5 — la lecture des OCTETS, pour le serveur qui relit un dépôt (série
 # météo de CALX62) : une URL présignée sert un navigateur, pas une tâche.
 lire_fichier_toiture = _stockage_toiture.lire_fichier_toiture
+# ACAL299 — l'effacement d'un dépôt (photos de site du calepinage, loi
+# 09-08) : préfixe ``roofs/`` exigé, jamais une autre clé du bucket des PDF.
+supprimer_fichier_toiture = _stockage_toiture.supprimer_fichier_toiture
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -621,6 +624,7 @@ __all__ = [
     'send_devis_followup_nudges',
     'share_link_for_bcf',
     'stocker_image_toiture',
+    'supprimer_fichier_toiture',
     'sync_devis_from_layout',
     'type_image_toiture',
     'url_image_toiture',
