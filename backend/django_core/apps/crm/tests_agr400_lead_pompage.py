@@ -15,11 +15,11 @@ from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
-from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from core.dates import aujourd_hui_local
 from apps.crm import activity, selectors, services
 from apps.crm.models import Lead
 
@@ -194,7 +194,7 @@ class SaisieParLApi(TestCase):
         self.assertEqual(self.lead.besoin_eau_source, 'client')
         self.assertEqual(self.lead.pompe_hmt_source, 'declaree')
         self.assertEqual(self.lead.carburant_prix_declare_le,
-                         timezone.localdate())
+                         aujourd_hui_local())
 
     def test_les_colonnes_serveur_ne_se_saisissent_pas(self):
         resp = self._patch({'niveau_statique_source': 'mesure_visite',

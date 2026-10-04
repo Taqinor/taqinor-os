@@ -630,7 +630,8 @@ def appliquer_section(lien, section, reponses=None, photo=None,
             if ('carburant_prix_unitaire_mad' in champs
                     and avant.carburant_prix_unitaire_mad
                     != champs['carburant_prix_unitaire_mad']):
-                lead.carburant_prix_declare_le = timezone.localdate()
+                from core.dates import aujourd_hui_local
+                lead.carburant_prix_declare_le = aujourd_hui_local()
                 serveur.append('carburant_prix_declare_le')
             lead.save(update_fields=_colonnes_a_ecrire(
                 list(champs) + serveur))
