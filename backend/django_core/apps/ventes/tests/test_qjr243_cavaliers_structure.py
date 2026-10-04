@@ -162,7 +162,13 @@ class CavalierEDocstringDesEtudes(SimpleTestCase):
     def test_les_deux_chemins_cites_ne_forcent_effectivement_pas(self):
         """La preuve, lue sur le code : ni ``perform_update`` ni
         ``replace-lines`` ne passent ``force=True``."""
-        source = (VENTES / 'views' / 'devis.py').read_text(encoding='utf-8')
+        # SPL130 — texte concaténé de ``views/devis*.py`` : la preuve suit
+        # ``perform_update`` / ``replace_lines`` quand SPL135 les déplace.
+        vues = VENTES / 'views'
+        fichiers = [vues / 'devis.py'] + sorted(vues.glob('devis_*.py'))
+        source = '\n'.join(chemin.read_text(encoding='utf-8')
+                           for chemin in fichiers)
+        self.assertIn('def perform_update', source)
         self.assertNotIn('rafraichir_etudes_du_devis(devis, force=True)',
                          source)
 
