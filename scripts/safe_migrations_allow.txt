@@ -117,3 +117,12 @@ backend/django_core/apps/sav/migrations/0064_solmvp14_detacher_apps_parquees.py
 # deux colonnes et leurs valeurs). Destructive-revertable, revue humaine via
 # la tâche AGR208 (modèle opus).
 backend/django_core/apps/parametres/migrations/0113_agr208_reperes_energie_agricole.py
+
+# AGR401 (02/10/2026) — RenameField pompe_cv -> pompe_actuelle_cv (Lead +
+# SiteProfile) : données conservées (elles décrivent déjà la pompe existante),
+# réversible (rename inverse), colonnes décimales identiques. Revue humaine.
+backend/django_core/apps/crm/migrations/0119_agr401_pompe_actuelle_cv.py
+# AGR104 — RunPython .update() borné : une ligne de catalogue par SKU nommé
+# (≈40 SKU, filtre role_pompage='' ; jamais un update global de table),
+# réversible (retirer_roles). Pas de verrou long possible.
+backend/django_core/apps/stock/migrations/0162_agr104_roles_pompage.py
