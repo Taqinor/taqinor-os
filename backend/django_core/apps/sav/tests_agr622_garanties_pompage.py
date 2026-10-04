@@ -5,6 +5,7 @@ Run :
     python manage.py test apps.sav.tests_agr622_garanties_pompage -v 2
 """
 from datetime import date
+from html import unescape
 from decimal import Decimal
 from io import StringIO
 from unittest.mock import patch
@@ -64,7 +65,9 @@ class DossierRemiseTests(_Base):
         from apps.documents import builders
         mock_pdf.return_value = b'%PDF-fake'
         builders.generate_dossier_remise(self.inst)
-        return mock_pdf.call_args[0][0]
+        # Le gabarit échappe l'apostrophe (« jusqu&#x27;au ») : on compare le
+        # TEXTE rendu, pas sa forme HTML échappée.
+        return unescape(mock_pdf.call_args[0][0])
 
     def test_texte_exact_sans_garantie_constructeur(self, mock_pdf, _dl):
         produit = self._pompe()
