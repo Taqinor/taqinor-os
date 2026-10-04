@@ -330,9 +330,9 @@ export const ROLES_POMPAGE = [
   ['antivol', 'Antivol'],
   ['cloture', 'Clôture'],
 ]
-// source-choix: stock.Produit.type_pompe
+// source-choix: core.product_roles.TYPES_POMPE
 export const TYPES_POMPE = [['immergee', 'Immergée'], ['surface', 'Surface'], ['dc', 'DC']]
-// source-choix: stock.Produit.alimentation
+// source-choix: core.product_roles.ALIMENTATIONS_POMPAGE
 export const ALIMENTATIONS = [['mono', 'Monophasée'], ['tri', 'Triphasée'], ['dc', 'DC']]
 
 /** Libellé FR d'une clé de vocabulaire pompage (`''` si inconnue / vide). */

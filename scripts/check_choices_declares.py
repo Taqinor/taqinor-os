@@ -247,9 +247,17 @@ def _par_module_ou_modele(cible: str, parties: list):
 
     if _CONSTANTE.match(parties[-1]):
         # `ao.fabrique.approvisionnement.GRAVITES`
-        chemin = APPS_ROOT.joinpath(*parties[:-1]).with_suffix(".py")
-        if not chemin.is_file():
-            chemin = APPS_ROOT.joinpath(*parties[:-1]) / "__init__.py"
+        # `core` n'est pas sous `apps/` : les deux racines sont essayees.
+        chemin = None
+        for racine in (APPS_ROOT, DJANGO_ROOT):
+            candidat = racine.joinpath(*parties[:-1]).with_suffix(".py")
+            if not candidat.is_file():
+                candidat = racine.joinpath(*parties[:-1]) / "__init__.py"
+            if chemin is None:
+                chemin = candidat  # motif d'echec : premiere racine
+            if candidat.is_file():
+                chemin = candidat
+                break
         if not chemin.is_file():
             return None, f"module introuvable pour `{cible}` ({chemin.name})"
         arbre = _module_tree(chemin)
