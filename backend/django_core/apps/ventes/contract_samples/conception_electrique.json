@@ -60,6 +60,7 @@
       "onduleur": { "designation": "Deye SUN-10K-SG04LP3", "ac_kw": 10.0, "n_mppt": 2, "rendement_euro_pct": null },
       "batterie": { "presente": true, "designation": "Dyness 5,1 kWh", "kwh": 5.1, "v_nominal": 51.2 }
     },
+    "source_entree": { "temperatures": "calepinage", "longueurs": "surcharge", "regime": "defaut" },
     "version_moteur": "3.1.0",
     "schema_version": 2
   }
