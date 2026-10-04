@@ -780,6 +780,23 @@ def _adapter_gabarits_reveil(lead, etapes, *, rang_initial=0):
 #: prend en famille, le dimanche. Posé sur tous, il envoyait un message
 #: dominical inapproprié à des prospects qui décident seuls.
 _TEMPLATE_DIMANCHE_FAMILLE = 'dimanche_famille'
+_TEMPLATE_PREUVE_J4 = 'j4_preuve'
+
+
+def _realisation_eligible(lead):
+    """AGR514 — une réalisation éligible existe-t-elle pour ce lead ?
+
+    Consomme le sélecteur de la fondation `parametres` (frontière respectée).
+    Un catalogue illisible vaut « aucune » : jamais une preuve inventée."""
+    try:
+        from apps.parametres.selectors import realisation_pour_lead
+        return realisation_pour_lead(lead) is not None
+    except Exception:  # noqa: BLE001
+        logger.warning('Preuve J4 : catalogue illisible (lead #%s)',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+        return False
+
+
 _TAG_DECISION_A_PLUSIEURS = 'décision à plusieurs'
 
 
@@ -889,8 +906,20 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
     # et ferait dérailler le quota de huit réveils par jour ouvré.
     ancre = depart if cadence == 'reveil' else origine
 
+    # AGR514 (D-AGR-10) — J4 « preuve » n'est posée que s'il existe une
+    # réalisation ÉLIGIBLE à montrer (sélecteur filtré par segment, AGR513).
+    # Filtre sur une DONNÉE, pas sur un segment : le gabarit reste unique
+    # (CAD124) et le trou de numérotation `ordre` est gardé. Calculé une seule
+    # fois, et seulement si le gabarit porte cette touche.
+    preuve_disponible = None
+
     echeances = []
     for gabarit in gabarits:
+        if (getattr(gabarit, 'template_cle', '') or '') == _TEMPLATE_PREUVE_J4:
+            if preuve_disponible is None:
+                preuve_disponible = _realisation_eligible(lead)
+            if not preuve_disponible:
+                continue
         if ((getattr(gabarit, 'template_cle', '') or '')
                 == _TEMPLATE_DIMANCHE_FAMILLE
                 and not _lead_porte_tag(lead, _TAG_DECISION_A_PLUSIEURS)):
