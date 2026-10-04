@@ -9,6 +9,7 @@
       "nom_affiche": "Commercial Démo"
     },
     "statut": "en_cours",
+    "gabarit": "toiture",
     "date_prevue": "2026-09-15",
     "date_realisee": null,
     "notes": "Accès toiture par escalier extérieur.",

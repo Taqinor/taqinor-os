@@ -37,6 +37,7 @@ import json
 import logging
 import re
 import unicodedata
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
@@ -392,8 +393,8 @@ def _extract_web_questionnaire(data):
     bornes est ignorée — jamais d'erreur.
 
     ``_map_payload_to_fields`` consomme ensuite les clés qui RÉUTILISENT une
-    colonne Lead existante (hmt_m/debit_souhaite_m3h/pompe_cv_actuelle →
-    pompe_*, pro_monthly_kwh/pro_monthly_mad → bill_kwh/facture_hiver) ; le
+    colonne Lead existante (hmt_m/debit_souhaite_m3h → pompe_*,
+    pompe_cv_actuelle → pompe_actuelle_cv, pro_monthly_kwh/pro_monthly_mad → bill_kwh/facture_hiver) ; le
     reste va dans Lead.web_questionnaire."""
     out = {}
 
@@ -593,15 +594,15 @@ def _build_questionnaire_note(questionnaire, estimate, type_installation):
     if questionnaire.get('region_agricole'):
         parts.append(f"région {questionnaire['region_agricole']}")
     pompe = questionnaire.get('pompe_actuelle')
-    pompe_cv = questionnaire.get('pompe_cv_actuelle')
+    cv_actuelle = questionnaire.get('pompe_cv_actuelle')
     if pompe == 'aucune':
         parts.append('aucune pompe actuelle')
     elif pompe:
         label = {'electrique': 'électrique'}.get(pompe, pompe)
-        cv_txt = f" {fmt(pompe_cv)} CV" if pompe_cv is not None else ''
+        cv_txt = f" {fmt(cv_actuelle)} CV" if cv_actuelle is not None else ''
         parts.append(f"pompe {label}{cv_txt}")
-    elif pompe_cv is not None:
-        parts.append(f"pompe actuelle {fmt(pompe_cv)} CV")
+    elif cv_actuelle is not None:
+        parts.append(f"pompe actuelle {fmt(cv_actuelle)} CV")
     if questionnaire.get('fuel_spend_mad') is not None:
         parts.append(
             f"carburant {fmt(questionnaire['fuel_spend_mad'])} MAD/mois")
@@ -770,6 +771,57 @@ def _telephone_canonique(value):
     ('212XXXXXXXXX') ; un numéro étranger reste intact."""
     from .serializers import LeadSerializer
     return LeadSerializer._canonical_phone(value) or value
+
+
+#: AGR402 — clé du sac ``web_questionnaire`` → (colonne Lead AGR400, colonne de
+#: provenance à poser à « site_web » ou None, borne STRICTE de la colonne ou
+#: None). La borne est celle de ``max_digits`` : au-delà, la valeur reste dans
+#: le sac (patron QJR595), jamais tronquée. Les vocabulaires (source d'eau,
+#: irrigation, région) sont déjà whitelistés par ``_extract_web_questionnaire``
+#: sur les MÊMES valeurs que les choix des colonnes.
+PROMOTIONS_POMPAGE = (
+    ('water_source', 'source_eau', None, None),
+    ('profondeur_m', 'niveau_statique_m', 'niveau_statique_source',
+     Decimal('100000')),
+    ('besoin_m3j', 'besoin_eau_m3j', 'besoin_eau_source',
+     Decimal('10000000')),
+    ('irrigation', 'irrigation_methode', None, None),
+    ('culture', 'culture', None, None),
+    ('surface_ha', 'surface_irriguee_ha', None, Decimal('10000000')),
+    ('region_agricole', 'region_agricole', None, None),
+    ('fuel_spend_mad', 'depense_carburant_mad_mois', None,
+     Decimal('100000000')),
+)
+
+#: AGR402 — colonnes de pompage remplies SEULEMENT si vides lors d'un renvoi
+#: du tunnel sur un lead existant (« ne remplir qu'une colonne vide ») ; la
+#: provenance suit le sort de SA valeur.
+POMPAGE_SI_VIDE = {
+    colonne: source for _cle, colonne, source, _borne in PROMOTIONS_POMPAGE
+}
+POMPAGE_SI_VIDE['pompe_hmt_m'] = 'pompe_hmt_source'
+
+
+def promouvoir_pompage_du_sac(sac: dict, fields: dict) -> None:
+    """AGR402 — déplace les réponses agricoles du sac vers leurs colonnes.
+
+    Mute ``sac`` (clé retirée quand elle est promue) et ``fields``. Une
+    colonne déjà posée explicitement dans ``fields`` n'est pas écrasée ; une
+    valeur hors borne reste dans le sac.
+    """
+    for cle, colonne, source, borne in PROMOTIONS_POMPAGE:
+        valeur = sac.get(cle)
+        if valeur is None or fields.get(colonne) not in (None, ''):
+            continue
+        if borne is not None:
+            try:
+                if not Decimal(str(valeur)) < borne:
+                    continue
+            except (InvalidOperation, ValueError):
+                continue
+        fields[colonne] = sac.pop(cle)
+        if source:
+            fields[source] = 'site_web'
 
 
 def _map_payload_to_fields(data: dict) -> dict:
@@ -1118,12 +1170,17 @@ def _map_payload_to_fields(data: dict) -> dict:
         hmt = questionnaire.pop('hmt_m', None)
         if hmt is not None:
             fields['pompe_hmt_m'] = hmt
+            # AGR402 — la HMT saisie sur le site porte sa provenance.
+            fields['pompe_hmt_source'] = 'site_web'
         debit = questionnaire.pop('debit_souhaite_m3h', None)
         if debit is not None:
             fields['pompe_debit_m3h'] = debit
-        pompe_cv = questionnaire.pop('pompe_cv_actuelle', None)
-        if pompe_cv is not None:
-            fields['pompe_cv'] = pompe_cv
+        # AGR401 — le CV envoyé par le site est celui de la pompe ACTUELLE :
+        # il va dans `pompe_actuelle_cv` et ne remplit JAMAIS une entrée de
+        # dimensionnement (la puissance retenue est une SORTIE du moteur).
+        cv_actuelle = questionnaire.pop('pompe_cv_actuelle', None)
+        if cv_actuelle is not None:
+            fields['pompe_actuelle_cv'] = cv_actuelle
         if 'bill_kwh' not in fields:
             pro_kwh = questionnaire.pop('pro_monthly_kwh', None)
             if pro_kwh is not None:
@@ -1177,6 +1234,12 @@ def _map_payload_to_fields(data: dict) -> dict:
         pompe_alim = questionnaire.pop('pompe_actuelle', None)
         if pompe_alim is not None:
             fields['pompe_alim_actuelle'] = pompe_alim
+        # AGR402 — les autres réponses agricoles du site quittent le sac pour
+        # leurs colonnes AGR400 (même geste que CAD149 juste au-dessus), avec
+        # leur provenance « site_web » quand la colonne en porte une. Une
+        # valeur qui ne tient pas dans sa colonne RESTE dans le sac (patron
+        # QJR595) ; la note de chatter cite toujours tout le payload.
+        promouvoir_pompage_du_sac(questionnaire, fields)
         # QJR595 — client pro : puissance souscrite et surface de toiture
         # promues vers leurs colonnes (remplissage seulement, jamais
         # d'écrasement). 99999.99 = max de compteur_puissance_kva
@@ -1313,8 +1376,86 @@ def _quest_chauffage_electrique_hiver(raw):
     return raw if isinstance(raw, bool) else None
 
 
+# AGR411 — section POMPAGE du questionnaire client : mêmes primitives, même
+# raison (une colonne sans nettoyeur verrait la réponse portant son nom
+# silencieusement jetée). Bornes = celles des colonnes (``max_digits``).
+def _quest_source_eau(raw):
+    return _clean_choice(raw, Lead.SourceEau.values)
+
+
+def _quest_niveau_statique_m(raw):
+    return _clean_decimal(raw, lo=0, hi=2000)
+
+
+def _quest_besoin_eau_m3j(raw):
+    return _clean_decimal(raw, lo=0, hi=1_000_000)
+
+
+def _quest_surface_irriguee_ha(raw):
+    return _clean_decimal(raw, lo=0, hi=1_000_000)
+
+
+def _quest_culture(raw):
+    if raw in (None, ''):
+        return None
+    return str(raw).strip()[:120] or None
+
+
+def _quest_irrigation_methode(raw):
+    return _clean_choice(raw, Lead.IrrigationMethode.values)
+
+
+def _quest_butane_bouteilles_jour(raw):
+    return _clean_decimal(raw, lo=0, hi=1000)
+
+
+def _quest_carburant_prix_unitaire_mad(raw):
+    return _clean_decimal(raw, lo=0, hi=100_000)
+
+
+def _quest_depense_carburant_mad_mois(raw):
+    return _clean_decimal(raw, lo=0, hi=10_000_000)
+
+
+def _quest_mois_irrigation(raw):
+    """Liste de mois 1-12 DISTINCTS (triée), sinon None — même règle que le
+    validateur du modèle (``valider_mois_irrigation``)."""
+    if not isinstance(raw, list) or not raw:
+        return None
+    mois = []
+    for valeur in raw:
+        if isinstance(valeur, bool):
+            return None
+        try:
+            entier = int(valeur)
+        except (TypeError, ValueError):
+            return None
+        if entier != valeur and str(entier) != str(valeur).strip():
+            return None
+        if not 1 <= entier <= 12 or entier in mois:
+            return None
+        mois.append(entier)
+    return sorted(mois)
+
+
+def _quest_compteur_eau(raw):
+    return raw if isinstance(raw, bool) else None
+
+
 #: (b) colonnes Lead hors de portée du mapping site → nettoyeur dédié.
 _QUEST_NETTOYEURS_HORS_SITE = {
+    # AGR411 — section pompage du questionnaire client.
+    'source_eau': _quest_source_eau,
+    'niveau_statique_m': _quest_niveau_statique_m,
+    'besoin_eau_m3j': _quest_besoin_eau_m3j,
+    'surface_irriguee_ha': _quest_surface_irriguee_ha,
+    'culture': _quest_culture,
+    'irrigation_methode': _quest_irrigation_methode,
+    'butane_bouteilles_jour': _quest_butane_bouteilles_jour,
+    'carburant_prix_unitaire_mad': _quest_carburant_prix_unitaire_mad,
+    'depense_carburant_mad_mois': _quest_depense_carburant_mad_mois,
+    'mois_irrigation': _quest_mois_irrigation,
+    'compteur_eau': _quest_compteur_eau,
     'conso_mensuelle_kwh': _quest_conso,
     'surface_toiture_m2': _quest_surface,
     'tranche_onee': _quest_tranche,
@@ -1820,12 +1961,22 @@ def _map_and_link_lead(raw, data, company):
         # patron que `perform_update` (views.py:739) et
         # `update_lead_from_public_api` (services.py:3843).
         avant = Lead.objects.get(pk=existing.pk)
+        # AGR402 — une colonne de pompage déjà remplie n'est pas écrasée par
+        # un renvoi du tunnel ; sa provenance reste celle de SA valeur.
+        pompage_garde = {
+            colonne for colonne in POMPAGE_SI_VIDE
+            if getattr(existing, colonne) not in (None, '')}
+        provenances_gardees = {
+            POMPAGE_SI_VIDE[colonne] for colonne in pompage_garde
+            if POMPAGE_SI_VIDE[colonne]}
         for key, value in fields.items():
             if value is None or value == '':
                 continue
             if key in _GPS_FIELDS and getattr(existing, key) is not None:
                 continue
             if key in manually_touched:
+                continue
+            if key in pompage_garde or key in provenances_gardees:
                 continue
             setattr(existing, key, value)
         existing.save()

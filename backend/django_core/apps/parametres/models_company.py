@@ -7,6 +7,7 @@ de nom de table — l'``app_label`` reste ``parametres`` et la table reste
 import datetime
 from decimal import Decimal
 
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
@@ -134,19 +135,41 @@ class CompanyProfile(models.Model):
     payment_terms = models.JSONField(null=True, blank=True)
     # Durée de validité du devis (jours). Défaut historique 30.
     quote_validity_days = models.PositiveIntegerField(default=30)
-    # Heures de pompage effectives/jour par défaut (mode agricole). Défaut 7.
+    # Heures de pompage de REPLI (mode agricole) : utilisées seulement si
+    # l'irradiation du site est indisponible (AGR107 — le moteur calcule
+    # sinon la production heure par heure, AGR114). Défaut historique 7.
     agricole_pump_hours = models.DecimalField(
         max_digits=4, decimal_places=1, default=7)
-    # Q4 (fondateur, 20/08/2026) — prix bonbonne butane 12 kg (terrain,
-    # aujourd'hui) et son coût réel non subventionné, utilisés par le moteur
-    # de devis agricole (comparatif carburant + rapport de décompensation :
-    # cout_reel / prix, plus de multiplicateur codé en dur). Défauts = valeurs
-    # terrain mi-2026 ; le fondateur les ajuste à chaque hausse de
-    # décompensation.
-    agricole_prix_bonbonne = models.DecimalField(
-        max_digits=8, decimal_places=2, default=50)
-    agricole_cout_reel_bonbonne = models.DecimalField(
-        max_digits=8, decimal_places=2, default=128)
+    # ── AGR107 (Groupe AGR, 02/10/2026) — réglages société du pompage, TOUS
+    # nullable et SANS défaut : un champ vide n'est jamais remplacé par un
+    # chiffre (zéro chiffre inventé). L'indication sourcée est affichée À
+    # CÔTÉ du champ par l'écran Paramètres, jamais appliquée d'office.
+    # Part (%) du débit d'exploitation DÉCLARÉ du forage réellement utilisable
+    # (indication : « 80 à 90 % de l'essai », Water Mission 2021).
+    agricole_part_debit_forage_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(100)])
+    # Marge (m) ajoutée à la profondeur de calage pour le câble de descente.
+    agricole_marge_cable_descente_m = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(0)])
+    # Supplément optionnel de salissure (%) (indication COMPASS 5 % / 10 %).
+    agricole_salissure_supp_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(100)])
+    # ── AGR208 (Groupe AGR, 02/10/2026) — REPÈRES énergie agricole datés et
+    # sourcés. Remplace les anciens réglages « bonbonne » (Q4 du 20/08 :
+    # 50 / 128), qu'aucun calcul ne lisait plus depuis QJR236 : l'intention
+    # Q4 est requalifiée, pas supprimée. Forme (contrat partagé
+    # ``ventes/contract_samples/economie_pompage.json``) :
+    # ``{butane_12kg_detail, butane_12kg_non_subventionne, gasoil_litre}``,
+    # chacun ``{valeur, source, releve_le}``. Un repère n'est qu'une
+    # INDICATION affichée à côté du champ du générateur, et seulement s'il a
+    # une source ; le prix retenu est toujours celui DÉCLARÉ par le client
+    # (Q17, D-AGR-5) — jamais une valeur pré-enregistrée. Le repère « non
+    # subventionné » n'est lu que par la vue interne (AGR205), jamais côté
+    # client. Lecture : ``parametres.selectors.reperes_energie_agricole_*``.
+    reperes_energie_agricole = models.JSONField(default=dict, blank=True)
     # ── Q5 (fondateur, 20/08/2026) — DÉLAIS COMMERCIAUX PARAMÉTRABLES ─────────
     # « visite sous 48-72 h » et « installation 7-14 jours » étaient codés en
     # dur dans quatre renderers ET rendus DANS la boîte « Conditions » du PDF,
@@ -211,6 +234,13 @@ class CompanyProfile(models.Model):
         max_digits=8, decimal_places=2, default=Decimal('11'))
     seuil_regime_anre_kwc = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal('1000'))
+    # ── AGR606 (Groupe AGR, 02/10/2026) — écart de recette pompage toléré (%)
+    # entre débit mesuré et débit promis. NULL et SANS défaut (décision C5-12 :
+    # « seuil à saisir par toi, je ne propose pas de chiffre ») : vide = écart
+    # affiché sans verdict. Jamais la tolérance IEC 62253 codée (texte de la
+    # norme non lu). Validé 0 < x ≤ 100 par le sérialiseur.
+    recette_pompage_ecart_max_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
     # ── Commission commerciale (N99) — additif, désactivé par défaut. Mode
     # 'off' (aucune commission, comportement inchangé), 'pct_devis' (% du HT
     # des devis signés) ou 'par_kwc' (MAD par kWc installé des chantiers issus

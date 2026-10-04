@@ -132,6 +132,10 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         if visite.commercial_id is None:
             visite.commercial = request.user
             visite.save(update_fields=['commercial'])
+        # AGR412 — le gabarit suit le type du lead (posé serveur, jamais lu
+        # du corps).
+        if services.recaler_gabarit(visite):
+            visite.save(update_fields=['gabarit'])
         services.journaliser_visite(visite, request.user, 'creation')
         # VTA7 — l'assigne apprend tout de suite que sa journee a change.
         services.notifier_assignation(visite, acteur=request.user)
@@ -174,6 +178,10 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         if visite.commercial_id != avant:
             services.notifier_assignation(visite, acteur=request.user)
         if visite.date_prevue != date_avant:
+            # AGR412 — une re-planification recale le gabarit sur le type
+            # du lead tant que la visite est brouillon.
+            if services.recaler_gabarit(visite):
+                visite.save(update_fields=['gabarit'])
             services.emettre_visite_planifiee(visite, request.user)
         return reponse
 
@@ -188,12 +196,13 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             return refus
 
         slot_code = (request.data.get('slot_code') or '').strip()
-        if slot_code not in checklist.codes_slots():
+        # AGR412 — la garde lit le gabarit de LA visite.
+        codes = checklist.codes_slots(visite.gabarit)
+        if slot_code not in codes:
             return _erreur(
                 'slot_code',
                 f'Emplacement photo inconnu « {slot_code} ». La checklist ne '
-                'connaît que : ' + ', '.join(sorted(checklist.codes_slots()))
-                + '.')
+                'connaît que : ' + ', '.join(sorted(codes)) + '.')
         fichier = request.FILES.get('fichier')
         if fichier is None:
             return _erreur('fichier', 'Aucun fichier reçu.')

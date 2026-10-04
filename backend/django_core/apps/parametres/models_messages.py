@@ -215,7 +215,17 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     'dossier_8221':
         "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Une question sur votre projet : où en est votre dossier d'autoproduction (loi 82-21) ? Selon l'étape où vous en êtes, on adapte l'étude et le calendrier de raccordement — et si le dossier n'est pas encore lancé, je vous explique les étapes en cinq minutes.",
     'dossier_fda':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Une question sur votre projet de pompage : avez-vous déposé un dossier de subvention agricole (FDA), ou comptez-vous le faire ? Cela change le calendrier et les pièces à préparer — dites-moi où vous en êtes et je cale l'étude dessus.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Une question sur votre projet de pompage : avez-vous déposé un dossier de subvention agricole (FDA), ou comptez-vous le faire ? Si vous visez cette aide, l'accord doit être obtenu avant les travaux. Cela change le calendrier et les pièces à préparer — dites-moi où vous en êtes et je cale l'étude dessus.",
+    # AGR414 (Groupe AGR, 03/10/2026 ; D-AGR-4, D-AGR-11) — la visite de
+    # RELEVÉ DU POINT D'EAU, proposée AVANT le devis (le devis agricole exige
+    # niveau et débit, que l'exploitant connaît rarement). Liste de
+    # préparation FIXE de quatre éléments : une visite mal préparée coûte un
+    # deuxième déplacement. Ni prix, ni promesse d'aide, aucun chiffre ;
+    # {conseiller} = le responsable du lead (aucun prénom codé en dur).
+    # Texte à valider par le fondateur (✎) ; darija écrite maintenant,
+    # relecture native Reda ensuite (sans bloquer l'envoi).
+    'visite_releve_point_eau':
+        "Bonjour {civilite} {prenom}. Avant de vous préparer le devis de pompage, notre technicien peut passer gratuitement relever votre point d'eau : le niveau, le débit et l'emplacement des panneaux. Ça ne vous engage à rien. Pour qu'un seul passage suffise, merci de prévoir : l'accès au puits ou au forage ; la plaque de votre pompe actuelle, bien visible ; vos derniers reçus ou bouteilles de butane ou de gasoil ; l'autorisation de l'Agence du bassin hydraulique (ABH) et le compteur d'eau, s'ils existent. Dites-moi le jour qui vous arrange et je bloque le créneau. — {conseiller}",
 })
 
 # Variantes darija (écriture arabe, revue native le 04/09/2026). Une clé
@@ -324,7 +334,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     'dossier_8221':
         "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عندي سؤال على المشروع ديالكم: فين وصل الملف ديالكم ديال الإنتاج الذاتي (قانون 82-21)؟ حسب المرحلة اللي وصلتو ليها، كنلائمو الدراسة والروزنامة ديال الربط — وإلا الملف مازال ما تلانسا، كنشرح ليكم المراحل ف خمس دقايق.",
     'dossier_fda':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عندي سؤال على المشروع ديال الضخ ديالكم: واش دخّلتو ملف الدعم الفلاحي (FDA)، ولا ناويين تدخّلوه؟ هادشي كيبدل الروزنامة والوثائق اللي خاصكم توجدو — قولوا ليا فين وصلتو ونوجد الدراسة على هاد الأساس.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عندي سؤال على المشروع ديال الضخ ديالكم: واش دخّلتو ملف الدعم الفلاحي (FDA)، ولا ناويين تدخّلوه؟ إلا كنتو باغيين هاد الدعم، خاص الموافقة تكون قبل الأشغال. هادشي كيبدل الروزنامة والوثائق اللي خاصكم توجدو — قولوا ليا فين وصلتو ونوجد الدراسة على هاد الأساس.",
     'identite_reference':
         "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. {prescripteur} هضر لينا عليكم بخصوص الطاقة الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
     'identite_telephone':
@@ -341,6 +351,11 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     # réel — comme le reste des textes nés dans ce lot).
     'debrief_visite':
         "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم من بعد ما جا التقني ديالنا عندكم: شنو رايكم فالزيارة ديالو، وواش بقا عندكم شي سؤال قبل ما نكملو مع بعضياتنا؟",
+    # AGR414 — darija de la visite de relevé du point d'eau, traduite
+    # phrase par phrase du FR (aucune promesse, aucun chiffre ajouté) ;
+    # relecture native Reda à faire (D-AGR-11), sans bloquer l'envoi.
+    'visite_releve_point_eau':
+        "السلام عليكم {civilite} {prenom}. قبل ما نوجدو ليكم العرض ديال الضخ، التقني ديالنا يقدر يجي بلا فلوس يقيس نقطة الما ديالكم: المستوى ديال الما، الصبيب والبلاصة ديال الألواح. ما كتلزمكم بوالو. باش تكفي زيارة وحدة، وجدو عافاكم: الوصول للبير ولا للساندة؛ البلاكة ديال البومبة اللي عندكم دابا، باينة مزيان؛ آخر الوصولات ولا القراعي ديال البوطا ولا المازوط؛ الرخصة ديال وكالة الحوض المائي (ABH) والكونتور ديال الما، إلا كانو. قولوا ليا شمن نهار يناسبكم ونحجز ليكم الوقت. — {conseiller}",
 }
 
 # Placeholders AUTORISÉS dans un message de relance (MRY12). Aucun chiffre
@@ -421,6 +436,8 @@ CLES_RELANCE = [
     # CAD151 — le débrief après le retour du technicien (envoi manuel, comme
     # `annonce_appel_reda`/`offre_reda` juste en dessous).
     'debrief_visite',
+    # AGR414 — la visite de relevé du point d'eau (agricole, AVANT le devis).
+    'visite_releve_point_eau',
     # CAD125 — dossiers institutionnels, posés par playbook de SEGMENT
     # (industriel/commercial et agricole), jamais par un barreau de cadence.
     'dossier_8221',
@@ -537,6 +554,11 @@ class MessageTemplate(models.Model):
         DEBRIEF_VISITE = (
             'debrief_visite',
             "Après visite — débrief avec le client (envoi manuel)")
+        # AGR414 — la visite de relevé du point d'eau, proposée AVANT le devis
+        # agricole, avec sa liste de préparation.
+        VISITE_RELEVE_POINT_EAU = (
+            'visite_releve_point_eau',
+            "Pompage — proposer la visite de relevé du point d'eau")
         # CAD125 — dossiers institutionnels, par SEGMENT (playbook conditionné
         # sur `{type_installation}`), jamais un barreau de cadence.
         DOSSIER_8221 = (
@@ -641,9 +663,13 @@ class MessageTemplate(models.Model):
 #
 # Modèle : le dictionnaire darija ci-dessus — dict SÉPARÉ, repli sur le FR
 # quand la clé est absente. On ne fabrique PAS une matrice 27 × langues ×
-# segments : seules les clés qui MENTENT ont une variante, et seulement en
-# français (aucune variante darija n'est validée — le repli reste le texte FR
-# de base, jamais une traduction automatique).
+# segments : seules les clés qui MENTENT ont une variante. AGR511 (D-AGR-11,
+# 02/10/2026) : le POMPAGE a AUSSI ses variantes darija
+# (`MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA`, dict séparé), traduites phrase
+# par phrase du FR validé — jamais une traduction automatique — et marquées
+# « relecture native Reda à faire », sans bloquer l'envoi. Le B2B darija n'a
+# toujours aucune variante (hors périmètre AGR) : il garde le texte darija de
+# base.
 #
 # Un texte que la société a PERSONNALISÉ n'est jamais remplacé par une
 # variante (même règle que `_REVEIL_CLES_SEEDEES`) : la variante ne s'applique
@@ -659,21 +685,39 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT = {
     # Pompage agricole : pas de toit, pas de facture d'électricité (butane),
     # pas de « chez vous » — le chantier est au bord d'un forage.
     'agricole': {
+        # AGR510 (02/10/2026) — deux gestes seulement (plaque de la pompe +
+        # localisation du point d'eau), aucune promesse d'économie : aucun
+        # calcul d'économie agricole n'est encore servi sur le devis.
         'valeur_j1':
-            "Bonjour {civilite} {prenom}, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de connaître votre pompe (puissance, profondeur du forage, débit souhaité) et l'emplacement du point d'eau : je vous montre l'installation adaptée, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
+            "Bonjour {civilite} {prenom}, je n'ai pas réussi à vous joindre. Pour préparer votre étude, deux gestes suffisent : une photo de la plaque de votre pompe (ou de celle que vous visez) et la localisation WhatsApp du point d'eau. Je vous envoie ensuite l'installation adaptée et son chiffrage. Quel moment vous arrange pour un appel de cinq minutes ?",
+        # AGR510 — « je vous refais le chiffrage à jour » : ni vue 3D d'un
+        # champ (non vérifiée), ni économie promise.
         'reveil_a1':
-            "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu un devis de pompage solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer votre installation en 3D, sur VOTRE parcelle, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer l'emplacement.) Répondez STOP et je n'insiste plus.",
+            "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu un devis de pompage solaire chez nous. Si le projet revient d'actualité, je vous refais le chiffrage à jour — c'est gratuit, sans engagement. Je m'en occupe ? (Je dois juste confirmer l'emplacement du point d'eau.) Répondez STOP et je n'insiste plus.",
         'reveil_a3':
-            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de votre installation de pompage, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je vous refais le chiffrage à jour de votre installation de pompage. Je vous le prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
+        # AGR510 — un exploitant au butane n'a pas de facture : on demande la
+        # plaque de la pompe et ce qu'elle consomme aujourd'hui.
+        'reveil_a2':
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le pompage solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de la plaque de votre pompe, et dites-moi ce qu'elle consomme aujourd'hui (butane, gasoil ou électricité). Je vous envoie ensuite le chiffrage à jour. Répondez STOP et je n'insiste plus.",
+        # AGR510 — crochets [jour]/[heure] conservés (CAD69).
+        'rappel_plus_tard':
+            "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous pouvez prendre en photo la plaque de votre pompe, cela m'aide à préparer le chiffrage.",
+        'debrief_visite':
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle après le passage de notre technicien sur votre exploitation : qu'avez-vous pensé de sa visite, et reste-t-il des questions avant qu'on avance ensemble ?",
+        # AGR510 — une station de pompage, jamais un toit « comparable à la
+        # vôtre » ; sans la phrase sur le suivi temps réel (non garantie).
+        'j4_preuve':
+            "Voici une station de pompage solaire que nous avons posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Petite vidéo du chantier : {lien_video_preuve}.",
         # Une exploitation se décide souvent à plusieurs — associés, frères,
         # coopérative — pas nécessairement « en famille » : formulation
         # neutre, même chaleur, aucune supposition sur qui décide.
         'dimanche_famille':
             "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je sais que la décision se prend à plusieurs. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.",
         'visite_proposition':
-            "Pour verrouiller votre proposition, on peut passer sur place pour la vérification technique gratuite : le technicien confirme l'emplacement des panneaux, les caractéristiques du forage et le coffret électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
+            "Pour verrouiller votre proposition, on peut passer sur place pour la vérification technique gratuite : le technicien vient mesurer le niveau et le débit de l'eau, confirme l'emplacement des panneaux, les caractéristiques du forage et le coffret électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
         'visite_confirmation':
-            "Bonjour, on confirme la visite technique prévue {date_visite} sur votre exploitation. Le technicien vérifie l'emplacement des panneaux, le forage et le coffret électrique — prévoyez l'accès au point d'eau. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
+            "Bonjour, on confirme la visite technique prévue {date_visite} sur votre exploitation. Le technicien vérifie l'emplacement des panneaux, le forage et le coffret électrique. Pour qu'un seul passage suffise, merci de prévoir : l'accès au puits ou au forage ; la plaque de votre pompe actuelle, bien visible ; vos derniers reçus ou bouteilles de butane ou de gasoil ; l'autorisation de l'Agence du bassin hydraulique (ABH) et le compteur d'eau, s'ils existent. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
     },
     # Industriel / commercial : on parle à une ORGANISATION. « En famille »
     # ne décrit aucun processus d'achat B2B ; le site n'est pas « chez vous ».
@@ -692,6 +736,40 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT = {
             "Bonjour, on confirme la visite technique prévue {date_visite} sur votre site. Le technicien vérifie la structure des bâtiments et le tableau électrique — prévoyez l'accès au local technique. La présence d'un responsable est importante : c'est l'occasion de répondre à toutes les questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
     },
 }
+# AGR511 (Groupe AGR, 02/10/2026 ; D-AGR-11) — VARIANTES DARIJA du pompage.
+# `{segment: {cle: texte darija}}`, dict SÉPARÉ du FR : exactement les clés
+# agricoles d'AGR510 (+ `dimanche_famille`, `visite_confirmation`). Chaque
+# texte est traduit phrase par phrase du FR validé (aucune promesse ajoutée,
+# aucun chiffre ajouté, jamais une traduction automatique) ; source dans
+# `docs/crm/messages_meryem.md` (lignes `POMPAGE DARIJA : `). RELECTURE NATIVE
+# REDA À FAIRE (tâche manuelle) — sans bloquer l'envoi. Ni « فاتورة »
+# (facture), ni « السطح » (toit), ni « العائلة » (famille). Une clé absente =
+# le texte darija de base ; le B2B darija n'a aucune variante (hors AGR).
+MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA = {
+    'agricole': {
+        'valeur_j1':
+            "السلام عليكم {civilite} {prenom}، حاولت نعيط ليكم ولكن ما لقيتكمش. باش نوجد الدراسة ديالكم، كافيين جوج حوايج: تصويرة ديال البلاكة ديال البومبة ديالكم (ولا ديال البومبة اللي باغيين) واللوكاليزاسيون ديال نقطة الما على الواتساب. من بعد نصيفط ليكم التجهيزة المناسبة والحساب ديال الثمن ديالها. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟",
+        'reveil_a1':
+            "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. كنتو توصلتو بعرض ديال الضخ بالطاقة الشمسية عندنا. إلا رجع المشروع كيهمكم، نعاود ليكم الحساب ديال الثمن محين — بلاش، بلا ما تلتزمو بوالو. نتكلف بيه؟ (خاصني غير نتأكد من البلاصة ديال نقطة الما.) جاوبو STOP وما نلحوش عليكم.",
+        'reveil_a2':
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. هادي شهر كنتو كتسولو على الضخ بالطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال البلاكة ديال البومبة ديالكم، وقولوا ليا شنو كتستهلك دابا (البوطا، المازوط ولا الضو). من بعد نصيفط ليكم الحساب ديال الثمن محين. جاوبو STOP وما نلحوش عليكم.",
+        'reveil_a3':
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نعاود ليكم الحساب ديال الثمن محين ديال التجهيزة ديال الضخ ديالكم. نوجدو ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.",
+        'rappel_plus_tard':
+            "واخا، غادي نعيط ليكم [النهار] على [الساعة]. وحتى لذاك الوقت، إلا قدرتو تصورو البلاكة ديال البومبة ديالكم، غادي تعاونني نوجد الحساب ديال الثمن.",
+        'dimanche_famille':
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عارفة بلي القرار كيتاخد بين أكثر من واحد. إلا غادي تهضرو عليه هاد الويكاند، نقدر نصيفط ليكم ورقة الملخص (صفحة وحدة فيها الأرقام المهمة) باش تشاركوها، ولا نعيط ليكم نهار الحد من بعد 5 ديال العشية وتكونو جوج ولا تلاتة، كيف ما بغيتو.",
+        'visite_proposition':
+            "باش نثبتو ليكم العرض، نقدرو نجيو للبلاصة لزيارة تقنية بلا فلوس: التقني كيجي يقيس المستوى ديال الما والصبيب ديالو، كيتأكد من البلاصة ديال الألواح، من الخصائص ديال البير ومن الكوفري ديال الضو، وكيجاوب على كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — {conseiller}",
+        'visite_confirmation':
+            "السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة {date_visite} ف الفيرمة ديالكم. التقني غادي يشوف البلاصة ديال الألواح، البير والكوفري ديال الضو — وجدو ليه الوصول لنقطة الما. الحضور ديالكم مهم: هي الفرصة باش نجاوبو على جميع الأسئلة ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — {conseiller}",
+        'j4_preuve':
+            "هادي محطة ديال الضخ بالطاقة الشمسية ركبناها ف {mois_preuve} ف {ville_preuve} : {lien_preuve}. القوة المركبة: {puissance_preuve} kWc. فيديو صغير ديال الشانطي: {lien_video_preuve}.",
+        'debrief_visite':
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم من بعد ما جا التقني ديالنا للفيرمة ديالكم: شنو رايكم فالزيارة ديالو، وواش بقا عندكم شي سؤال قبل ما نكملو مع بعضياتنا؟",
+    },
+}
+
 # Le commercial partage EXACTEMENT les textes de l'industriel : même
 # organisation, même processus d'achat. Un dict partagé plutôt que recopié —
 # une correction sur l'un vaut pour l'autre, par construction.
@@ -707,15 +785,25 @@ CLES_VARIANTES_SEGMENT = frozenset(
 )
 
 
-def variante_segment(cle, type_installation):
-    """Le texte FR adapté à CE segment, ou ``None`` (repli sur le texte FR).
+def variante_segment(cle, type_installation, langue='fr'):
+    """Le texte adapté à CE segment dans CETTE langue, ou ``None`` (repli).
 
+    ``langue='fr'`` lit ``MESSAGE_TEMPLATE_VARIANTES_SEGMENT`` ;
+    ``langue='darija'`` lit ``MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA``
+    (AGR511) ; toute autre langue (``en``, ``ar``) n'a aucune variante.
     Tolérant : un segment inconnu, vide ou résidentiel n'a jamais de variante.
     """
     segment = (type_installation or '').strip()
     if not segment:
         return None
-    return MESSAGE_TEMPLATE_VARIANTES_SEGMENT.get(segment, {}).get(cle)
+    langue = (langue or 'fr').strip()
+    if langue == 'fr':
+        table = MESSAGE_TEMPLATE_VARIANTES_SEGMENT
+    elif langue == 'darija':
+        table = MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA
+    else:
+        return None
+    return table.get(segment, {}).get(cle)
 
 
 # ── CAD127 (21/09/2026) — LE PREMIER MESSAGE DIT LA VÉRITÉ SUR L'ORIGINE ──

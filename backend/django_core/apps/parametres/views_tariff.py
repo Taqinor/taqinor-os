@@ -18,7 +18,8 @@ from rest_framework.response import Response
 from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 from .models import SettingsAuditLog
 from .models_tariff import TariffSettings
-from .serializers_tariff import CHAMPS_LOT5, TariffSettingsSerializer
+from .serializers_tariff import (
+    CHAMPS_LOT5, CHAMPS_POMPAGE, TariffSettingsSerializer)
 from .views_common import _audit_company
 from . import tariff as tariff_service
 from . import pvgis as pvgis_client
@@ -46,7 +47,8 @@ _TARIFF_AUDIT_FIELDS = {
 # modèle, une seule source.
 _TARIFF_AUDIT_FIELDS.update({
     champ: str(TariffSettings._meta.get_field(champ).verbose_name)
-    for champ in CHAMPS_LOT5 if champ not in _TARIFF_AUDIT_FIELDS
+    for champ in CHAMPS_LOT5 + CHAMPS_POMPAGE
+    if champ not in _TARIFF_AUDIT_FIELDS
 })
 
 

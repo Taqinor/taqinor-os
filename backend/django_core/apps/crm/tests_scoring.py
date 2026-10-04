@@ -13,11 +13,13 @@ Couvre :
 """
 import datetime
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from apps.crm.models import Lead
-from apps.crm.scoring import compute_score, compute_lead_score, score_label
+from apps.crm.scoring import (
+    _bill_points, _completeness_score, compute_lead_score, compute_score,
+    score_label)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -410,3 +412,79 @@ class TestScoreReasonsApi(TestScoringMultiTenant):
         self.lead_a.refresh_from_db()
         expected = compute_score(self.lead_a)
         self.assertEqual(self.lead_a.score, expected)
+
+
+class TestScoreAgricoleAGR409(SimpleTestCase):
+    """AGR409 — un lead AGRICOLE : complétude pompage (10 critères × 3 pts,
+    total 30 inchangé) et dépense DÉCLARÉE sur le barème de la facture.
+    Aucun nouveau poids ; les autres segments ne bougent pas d'un point."""
+
+    AGRICOLE_COMPLET = dict(
+        type_installation='agricole', telephone='+212600000001',
+        ville='Taroudant', gps_lat=30.47, whatsapp='+212600000001',
+        source_eau='forage', niveau_statique_m=32, besoin_eau_m3j=135,
+        pompe_alim_actuelle='butane', surface_irriguee_ha=4,
+        electricite_sur_place='aucune')
+
+    def test_lead_agricole_complet_complétude_30(self):
+        self.assertEqual(
+            _completeness_score(_make_lead(**self.AGRICOLE_COMPLET)), 30)
+
+    def test_hmt_ou_niveau_et_debit_ou_besoin_sont_des_l_un_des(self):
+        avec_hmt = dict(self.AGRICOLE_COMPLET, niveau_statique_m=None,
+                        pompe_hmt_m=60, besoin_eau_m3j=None,
+                        pompe_debit_m3h=20)
+        self.assertEqual(_completeness_score(_make_lead(**avec_hmt)), 30)
+
+    def test_depense_declaree_3000_vaut_une_facture_3000(self):
+        agricole = _make_lead(type_installation='agricole',
+                              depense_carburant_mad_mois=3000)
+        residentiel = _make_lead(type_installation='residentiel',
+                                 facture_hiver=3000)
+        self.assertEqual(_bill_points(agricole), _bill_points(residentiel))
+        self.assertEqual(_bill_points(agricole), 14)
+
+    def test_litres_fois_prix_declares(self):
+        lead = _make_lead(type_installation='agricole',
+                          carburant_litres_mois=300,
+                          carburant_prix_unitaire_mad=11)
+        self.assertEqual(_bill_points(lead), 14)  # 3 300 MAD/mois
+
+    def test_facture_seulement_pour_une_pompe_electrique(self):
+        electrique = _make_lead(type_installation='agricole',
+                                pompe_alim_actuelle='electrique',
+                                facture_hiver=5000)
+        butane = _make_lead(type_installation='agricole',
+                            pompe_alim_actuelle='butane',
+                            facture_hiver=5000)
+        self.assertEqual(_bill_points(electrique), 17)
+        self.assertEqual(_bill_points(butane), 0)
+
+    def test_rien_de_declare_zero_point(self):
+        lead = _make_lead(type_installation='agricole',
+                          butane_bouteilles_jour=4)
+        self.assertEqual(_bill_points(lead), 0)
+
+    def test_golden_les_autres_segments_au_point_pres(self):
+        # Valeurs FIGÉES avant AGR409 (ancienne formule : 10 champs
+        # résidentiels × 3 pts, facture d'hiver sur `_bill_score`).
+        residentiel = _make_lead(
+            type_installation='residentiel', telephone='0600', email='a@b.c',
+            ville='Rabat', facture_hiver=3000, surface_toiture_m2=40,
+            orientation='sud', type_toiture='terrasse', whatsapp='0600',
+            raccordement='monophase')
+        commercial = _make_lead(type_installation='commercial',
+                                telephone='0600', ville='Fès',
+                                facture_hiver=12000)
+        industriel = _make_lead(type_installation='industriel',
+                                email='u@x.ma', facture_hiver=900)
+        vide = _make_lead()
+        figes = {
+            'residentiel': (residentiel, 30, 14),
+            'commercial': (commercial, 12, 20),
+            'industriel': (industriel, 9, 4),
+            'vide': (vide, 0, 0),
+        }
+        for nom, (lead, completude, facture) in figes.items():
+            self.assertEqual(_completeness_score(lead), completude, nom)
+            self.assertEqual(_bill_points(lead), facture, nom)

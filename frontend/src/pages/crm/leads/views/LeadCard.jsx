@@ -732,12 +732,16 @@ function LeadCard({
             </span>
           )}
           {/* QX28 — readiness en micro-icônes 12px tooltipées (jamais un signal
-              « manquant » — seule l'absence de l'icône positive). */}
+              « manquant » — seule l'absence de l'icône positive).
+              CAD177 — `role="img"` : un `aria-label` sur un <span> SANS rôle
+              est interdit (axe aria-prohibited-attr, serious — LB34 en
+              e2e-full) ; même patron que les signaux ci-dessus. */}
           {(roofReady || factureReady || devisReady) && (
             <span className="kb-readi">
               {roofReady && (
                 <span
                   className="kb-readi-icon"
+                  role="img"
                   title={roofOutlineReady
                     ? 'Le client a tracé le contour de son toit (chargé dans l’écran 3D)'
                     : 'Un repère GPS de toiture a été capturé (site ou 3D)'}
@@ -749,12 +753,12 @@ function LeadCard({
                 </span>
               )}
               {factureReady && (
-                <span className="kb-readi-icon" title="Une facture d'électricité a été saisie" aria-label="Facture saisie">
+                <span className="kb-readi-icon" role="img" title="Une facture d'électricité a été saisie" aria-label="Facture saisie">
                   <FileText size={12} aria-hidden="true" />
                 </span>
               )}
               {devisReady && (
-                <span className="kb-readi-icon kb-readi-devis" title="Toutes les données sont réunies pour générer un devis en un clic" aria-label="Prêt à deviser en 1 clic">
+                <span className="kb-readi-icon kb-readi-devis" role="img" title="Toutes les données sont réunies pour générer un devis en un clic" aria-label="Prêt à deviser en 1 clic">
                   <Zap size={12} aria-hidden="true" />
                 </span>
               )}

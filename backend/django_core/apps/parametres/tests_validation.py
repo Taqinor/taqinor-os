@@ -246,3 +246,49 @@ class TestJsonShapeValidation(ProfileValidationBase):
             {'payment_terms': {'reseau': {'acompte': 30, 'materiel': 60,
                                           'solde': 10}}}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
+
+
+class TestEcartRecettePompage(ProfileValidationBase):
+    """AGR606 — écart de recette pompage toléré (%), SANS défaut : vide =
+    écart affiché sans verdict ; sinon 0 < x ≤ 100, refus 400 en français."""
+
+    URL = '/api/django/parametres/update/'
+    CHAMP = 'recette_pompage_ecart_max_pct'
+
+    def test_get_initial_null(self):
+        resp = self.api.get('/api/django/parametres/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn(self.CHAMP, resp.data)
+        self.assertIsNone(resp.data[self.CHAMP])
+
+    def test_patch_12_5_accepte(self):
+        resp = self.api.patch(self.URL, {self.CHAMP: 12.5}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(str(resp.data[self.CHAMP]), '12.50')
+
+    def test_valeurs_hors_bornes_refusees_en_francais(self):
+        for valeur in (-3, 150, 0):
+            with self.subTest(valeur=valeur):
+                resp = self.api.patch(self.URL, {self.CHAMP: valeur},
+                                      format='json')
+                self.assertEqual(resp.status_code, 400)
+                self.assertIn(self.CHAMP, resp.data)
+                self.assertIn('écart de recette', str(resp.data[self.CHAMP]))
+
+    def test_null_accepte(self):
+        self.api.patch(self.URL, {self.CHAMP: 10}, format='json')
+        resp = self.api.patch(self.URL, {self.CHAMP: None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data[self.CHAMP])
+
+    def test_enregistrer_rouvrir_enregistrer_identique(self):
+        self.api.patch(self.URL, {self.CHAMP: '7.25'}, format='json')
+        premier = self.api.get('/api/django/parametres/').data[self.CHAMP]
+        resp = self.api.patch(self.URL, {self.CHAMP: premier}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            self.api.get('/api/django/parametres/').data[self.CHAMP], premier)
+
+    def test_expose_a_cote_des_seuils_8221(self):
+        from apps.parametres.views_config import PROFILE_CONFIG_FIELDS
+        self.assertIn(self.CHAMP, PROFILE_CONFIG_FIELDS)

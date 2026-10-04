@@ -92,6 +92,25 @@ class Realisation(TenantModel):
     actif = models.BooleanField(
         'Actif', default=True,
         help_text='Une réalisation inactive ne sert plus aucune preuve.')
+    # AGR513 (Groupe AGR, 02/10/2026 ; D-AGR-10) — segment de l'installation,
+    # NULLABLE (null = non renseigné). Règle SYMÉTRIQUE appliquée par
+    # ``selectors.realisation_pour_lead`` : un lead AGRICOLE ne voit qu'une
+    # réalisation ``agricole`` ; un lead non agricole n'en voit JAMAIS une
+    # ``agricole`` (une réalisation sans segment lui reste éligible). Valeurs
+    # = clés de ``crm.Lead.TypeInstallation``, en littéral (ce module ne
+    # dépend d'aucun modèle du CRM).
+    SEGMENT_AGRICOLE = 'agricole'
+    SEGMENT_CHOICES = [
+        ('residentiel', 'Résidentiel'),
+        ('commercial', 'Commercial'),
+        ('industriel', 'Industriel'),
+        (SEGMENT_AGRICOLE, 'Agricole (pompage)'),
+    ]
+    segment = models.CharField(
+        'Segment', max_length=20, choices=SEGMENT_CHOICES,
+        null=True, blank=True,
+        help_text="Type d'installation. Une réalisation agricole n'est "
+                  "montrée qu'à un lead agricole, et inversement.")
 
     class Meta:
         verbose_name = 'Réalisation'

@@ -65,19 +65,55 @@ CHAMPS_PAR_SECTION = {
         # écrit : c'est la précision qui décide de l'étiquette du devis.
         'equip_ve_statut',
     ),
-    # CAD149 — les cinq autres champs de la vague 1 restent HORS de cette
-    # table, et c'est délibéré :
-    #   · `decideur` et `devis_concurrents` ne se posent qu'à l'ORAL
-    #     (décision fondateur du 21/09/2026) ;
-    #   · `pompage_heures_jour`, `pompe_alim_actuelle` et
-    #     `carburant_litres_mois` sont des réponses de pompage agricole, et
-    #     aucune section agricole n'existe dans ce questionnaire — en ouvrir
-    #     une est un geste d'écran, pas un geste de colonne.
+    # CAD149 — `decideur` et `devis_concurrents` restent HORS de cette table :
+    # ils ne se posent qu'à l'ORAL (décision fondateur du 21/09/2026).
+    # AGR411 — la section POMPAGE (lead agricole seulement, filtre
+    # ``sections_du_lead``) : les colonnes que le CLIENT écrit lui-même. Les
+    # colonnes orales seulement (autorisation de prélèvement, aide FDA reçue,
+    # décideur) n'y sont JAMAIS : elles ne se posent pas par écrit.
+    'pompage': ('source_eau', 'niveau_statique_m', 'besoin_eau_m3j',
+                'surface_irriguee_ha', 'culture', 'irrigation_methode',
+                'pompe_alim_actuelle', 'butane_bouteilles_jour',
+                'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois',
+                'mois_irrigation', 'compteur_eau'),
     # Sections PHOTO : aucune colonne — la réponse est une pièce jointe.
     'photo_facture': (),
     'photo_compteur': (),
     'photo_tableau': (),
+    'photo_pompe': (),
+    'photo_forage': (),
 }
+
+#: AGR411 — sections du lead AGRICOLE seulement (jamais servies à un autre).
+SECTIONS_AGRICOLES_SEULES = ('pompage', 'photo_pompe', 'photo_forage')
+#: AGR411 — sections REFUSÉES (400 qui nomme la section) à un lead agricole :
+#: plus jamais piscine, clim, toit ou facture d'électricité à un agriculteur.
+SECTIONS_REFUSEES_AGRICOLE = ('occupation', 'equipements', 'energie',
+                              'toiture', 'photo_facture', 'photo_tableau')
+#: AGR411 — les sections que l'envoi SANS corps peut cocher pour un agricole.
+SECTIONS_DEFAUT_AGRICOLE = ('pompage', 'photo_pompe', 'photo_forage', 'gps',
+                            'contact')
+#: Le périmètre historique (avant AGR411) : celui que lit le panneau d'appel
+#: et que sert tout lead non agricole — inchangé à l'octet.
+SECTIONS_HORS_POMPAGE = tuple(s for s in SECTIONS
+                              if s not in SECTIONS_AGRICOLES_SEULES)
+
+
+def est_agricole(lead) -> bool:
+    return (getattr(lead, 'type_installation', None) or '') == \
+        Lead.TypeInstallation.AGRICOLE
+
+
+def sections_du_lead(lead) -> tuple:
+    """AGR411 — la whitelist des sections pour CE lead (filtre de segment).
+
+    Agricole : tout sauf les sections refusées ; sinon : le périmètre
+    historique, sans les sections de pompage."""
+    if est_agricole(lead):
+        return tuple(s for s in SECTIONS
+                     if s not in SECTIONS_REFUSEES_AGRICOLE)
+    return SECTIONS_HORS_POMPAGE
+
 
 #: QJR596 — colonnes que CHAMPS_PAR_SECTION annonce mais que la page publique
 #: ne pose JAMAIS (aucun contrôle dans [token].astro / lib/questionnaire.ts) :
@@ -115,6 +151,10 @@ LIBELLE_SECTION = {
     'toiture': 'toiture',
     'occupation': 'présence en journée',
     'equipements': 'équipements',
+    # AGR411 — sections du lead agricole.
+    'pompage': 'pompage et irrigation',
+    'photo_pompe': 'photo de la plaque de la pompe',
+    'photo_forage': 'photo de la tête de forage',
 }
 
 #: Les trois booléens equip_* à TROIS ÉTATS : ``None`` = « jamais posée »,
@@ -137,6 +177,9 @@ _PHOTO_MOTS_CLES = {
     'photo_facture': ('facture', 'bill'),
     'photo_compteur': ('compteur', 'meter'),
     'photo_tableau': ('tableau', 'disjoncteur'),
+    # AGR411 — plaque de la pompe actuelle, tête de forage.
+    'photo_pompe': ('pompe', 'plaque'),
+    'photo_forage': ('forage', 'puits'),
 }
 _SECTIONS_PHOTO = tuple(_PHOTO_MOTS_CLES)
 
@@ -219,6 +262,12 @@ def _photo_presente(section, libelles) -> bool:
     return any(mot in nom for nom in libelles for mot in mots)
 
 
+#: AGR411 — la section pompage est MANQUANTE tant que l'une de ces réponses
+#: écrites manque.
+_POMPAGE_ESSENTIELS = ('source_eau', 'niveau_statique_m', 'besoin_eau_m3j',
+                       'surface_irriguee_ha', 'pompe_alim_actuelle')
+
+
 def manquantes(lead) -> dict:
     """Carte ``{section: bool}`` — l'information de la section est-elle
     (encore) inconnue ? C'est le DÉFAUT des questions posées au client.
@@ -228,6 +277,21 @@ def manquantes(lead) -> dict:
     from .devis_auto import champs_manquants
 
     libelles = _libelles_pieces_jointes(lead)
+
+    if est_agricole(lead):
+        # AGR411 — un agriculteur ne reçoit JAMAIS factures, toit, piscine,
+        # VE ni clim : le défaut ne coche que le pompage, ses deux photos, le
+        # GPS et les coordonnées manquants.
+        return {
+            'pompage': any(_vide(getattr(lead, cle, None))
+                           for cle in _POMPAGE_ESSENTIELS),
+            'photo_pompe': not _photo_presente('photo_pompe', libelles),
+            'photo_forage': not _photo_presente('photo_forage', libelles),
+            'gps': not _gps_connu(lead),
+            'contact': (_vide(lead.email)
+                        or _encore_a_obtenir(lead, 'adresse')
+                        or _vide(lead.ville)),
+        }
 
     # Énergie : la règle serveur du devis automatique (source de vérité
     # UNIQUE, jamais dupliquée) + les deux champs tarifaires que le
@@ -302,6 +366,10 @@ def sections_a_servir(lead, sections):
     dessiner — mieux vaut ne pas ouvrir l'écran du tout que d'en montrer un
     vide. Les sections photo, elles, restent TOUJOURS servies : leur réponse
     n'est pas une colonne."""
+    # AGR411 — filtre de segment, même sur un lien ancien : un agriculteur ne
+    # voit jamais un écran énergie/toiture/équipements.
+    permises = sections_du_lead(lead)
+    sections = [section for section in sections if section in permises]
     carte = champs_a_poser(lead, sections)
     return [section for section in sections
             if section in _SECTIONS_PHOTO or carte.get(section)]
@@ -309,22 +377,42 @@ def sections_a_servir(lead, sections):
 
 def questions_par_defaut(lead) -> dict:
     """Carte EXPLICITE des questions posées quand le commercial n'en choisit
-    aucune : « DÉFAUT = les informations manquantes » (ordre fondateur)."""
-    return dict(manquantes(lead))
+    aucune : « DÉFAUT = les informations manquantes » (ordre fondateur).
+
+    AGR411 — lead agricole : la carte nomme TOUTES ses sections permises ;
+    celles que le défaut ne coche pas (``photo_compteur``) sont posées à
+    False, sinon « clé absente → posée » (``question_posee``) les ouvrirait."""
+    carte = dict(manquantes(lead))
+    if est_agricole(lead):
+        for section in sections_du_lead(lead):
+            carte.setdefault(section, False)
+    return carte
 
 
-def valider_questions(brut) -> dict:
+def valider_questions(brut, lead=None) -> dict:
     """Normalise le corps ``questions`` du mint. Lève :class:`SectionInconnue`
     sur une clé hors whitelist — jamais un silence (une faute de frappe du
-    commercial ne doit pas retirer une question sans le dire)."""
+    commercial ne doit pas retirer une question sans le dire).
+
+    AGR411 — avec ``lead`` : filtre de SEGMENT. Une section refusée à un lead
+    agricole lève une erreur qui NOMME la section ; une section de pompage
+    reste inconnue pour un lead non agricole (message historique)."""
     if brut is None:
         return None
     if not isinstance(brut, dict):
         raise SectionInconnue('« questions » doit être un objet {section: '
                               'true/false}.')
+    permises = SECTIONS if lead is None else sections_du_lead(lead)
     out = {}
     for cle, valeur in brut.items():
-        if cle not in SECTIONS:
+        if cle not in permises:
+            if lead is not None and est_agricole(lead) and cle in SECTIONS:
+                if not valeur:
+                    continue  # « ne pas poser » une section refusée : rien
+                raise SectionInconnue(
+                    f'Section « {cle} » non posée à un lead agricole : le '
+                    'questionnaire pompage ne pose ni factures, ni toiture, '
+                    'ni équipements de la maison.')
             raise SectionInconnue(f'Section inconnue : « {cle} ».')
         out[cle] = bool(valeur)
     return out
@@ -483,6 +571,14 @@ def _sans_ecrasement_equipe(lead, section, champs, prefill_vu, ignorees):
     return gardes
 
 
+#: AGR411 — colonne de pompage écrite par le client → (colonne de provenance,
+#: valeur posée). Mêmes valeurs que la saisie ERP (sérialiseur AGR400).
+_PROVENANCE_ECRITE = {
+    'niveau_statique_m': ('niveau_statique_source', 'declare'),
+    'besoin_eau_m3j': ('besoin_eau_source', 'client'),
+}
+
+
 def appliquer_section(lien, section, reponses=None, photo=None,
                       prefill_vu=None, ignorees=None):
     """Enregistre UNE section répondue par le client. Retourne la liste des
@@ -511,6 +607,10 @@ def appliquer_section(lien, section, reponses=None, photo=None,
             f'Section non demandée sur ce lien : « {section} ».')
 
     lead = lien.lead
+    if section not in sections_du_lead(lead):
+        # AGR411 — filtre de segment (lien ancien, ou type changé depuis).
+        raise SectionInconnue(
+            f'Section non demandée sur ce lien : « {section} ».')
     enregistrees = []
 
     if section in _SECTIONS_PHOTO:
@@ -528,7 +628,21 @@ def appliquer_section(lien, section, reponses=None, photo=None,
             avant = Lead.objects.get(pk=lead.pk)
             for cle, valeur in champs.items():
                 setattr(lead, cle, valeur)
-            lead.save(update_fields=_colonnes_a_ecrire(champs))
+            # AGR411 — une valeur de pompage écrite par le client porte sa
+            # provenance (« déclarée ») ; le prix du carburant est DATÉ (Q17).
+            serveur = []
+            for cle, (source, origine) in _PROVENANCE_ECRITE.items():
+                if cle in champs and getattr(avant, cle) != champs[cle]:
+                    setattr(lead, source, origine)
+                    serveur.append(source)
+            if ('carburant_prix_unitaire_mad' in champs
+                    and avant.carburant_prix_unitaire_mad
+                    != champs['carburant_prix_unitaire_mad']):
+                from core.dates import aujourd_hui_local
+                lead.carburant_prix_declare_le = aujourd_hui_local()
+                serveur.append('carburant_prix_declare_le')
+            lead.save(update_fields=_colonnes_a_ecrire(
+                list(champs) + serveur))
             enregistrees = list(champs)
             activity.log_changes(avant, lead, None)
 

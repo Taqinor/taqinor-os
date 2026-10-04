@@ -7,7 +7,11 @@ Pondérations (total max = 100) :
   Complétude du profil         30 pts max
     Champs renseignés (10 critères, 3 pts chacun)
   Facture électrique (budget)  20 pts max
-    Montant facture_hiver en MAD/mois
+    Montant facture_hiver en MAD/mois — AGR409 : pour un lead AGRICOLE
+    seulement, la dépense mensuelle DÉCLARÉE (carburant ou facture d'une
+    pompe électrique) sur le MÊME barème, et une complétude propre de 10
+    critères pompage (total 30 inchangé). Poids PROVISOIRES (CAD133) : on
+    ne les recale qu'après la mesure CADM7.
   Canal d'acquisition          15 pts max
     Référence/appel entrant = fort ; Meta Ads = faible
   Type d'installation           8 pts max
@@ -111,13 +115,65 @@ _COMPLETENESS_FIELDS = [
 ]
 
 
+#: AGR409 — la complétude d'un lead AGRICOLE (et de lui seul) : 10 critères à
+#: 3 pts, total 30 INCHANGÉ. Un tuple = « l'un des » (HMT OU niveau d'eau ;
+#: débit souhaité OU besoin en eau). Aucun nouveau poids, aucun palier : les
+#: poids restent PROVISOIRES (CAD133) et ne se recalent qu'après la mesure
+#: CADM7.
+_COMPLETENESS_FIELDS_AGRICOLE = [
+    'telephone', 'ville', 'gps_lat', 'whatsapp', 'source_eau',
+    ('pompe_hmt_m', 'niveau_statique_m'),
+    ('pompe_debit_m3h', 'besoin_eau_m3j'),
+    'pompe_alim_actuelle', 'surface_irriguee_ha', 'electricite_sur_place',
+]
+
+
+def _rempli(lead, champ) -> bool:
+    return getattr(lead, champ, None) not in (None, '', False)
+
+
 def _completeness_score(lead) -> int:
+    criteres = (_COMPLETENESS_FIELDS_AGRICOLE
+                if (getattr(lead, 'type_installation', None) or '')
+                == 'agricole'
+                else _COMPLETENESS_FIELDS)
     filled = sum(
-        1 for f in _COMPLETENESS_FIELDS
-        if getattr(lead, f, None) not in (None, '', False)
+        1 for critere in criteres
+        if (any(_rempli(lead, c) for c in critere)
+            if isinstance(critere, tuple) else _rempli(lead, critere))
     )
-    ratio = filled / len(_COMPLETENESS_FIELDS)
+    ratio = filled / len(criteres)
     return round(ratio * _W_COMPLETENESS)
+
+
+def depense_declaree_mensuelle(lead) -> Decimal | None:
+    """AGR409 — la dépense mensuelle DÉCLARÉE d'un lead agricole (MAD/mois).
+
+    ``depense_carburant_mad_mois`` ; sinon litres/mois × prix PAYÉ si les deux
+    sont déclarés ; sinon la facture d'hiver pour une pompe ÉLECTRIQUE ;
+    sinon None. Jamais de bouteilles × jours inventés, jamais un prix de
+    référence.
+    """
+    depense = getattr(lead, 'depense_carburant_mad_mois', None)
+    if depense:
+        return Decimal(str(depense))
+    litres = getattr(lead, 'carburant_litres_mois', None)
+    prix = getattr(lead, 'carburant_prix_unitaire_mad', None)
+    if litres and prix:
+        return Decimal(str(litres)) * Decimal(str(prix))
+    facture = getattr(lead, 'facture_hiver', None)
+    if getattr(lead, 'pompe_alim_actuelle', None) == 'electrique' and facture:
+        return Decimal(str(facture))
+    return None
+
+
+def _bill_points(lead) -> int:
+    """Les points « facture » : la facture d'hiver, ou — pour un lead
+    AGRICOLE seulement (AGR409) — la dépense mensuelle DÉCLARÉE, sur le MÊME
+    barème ``_bill_score`` (aucun nouveau poids ni palier, CAD133/CADM7)."""
+    if (getattr(lead, 'type_installation', None) or '') == 'agricole':
+        return _bill_score(depense_declaree_mensuelle(lead))
+    return _bill_score(lead.facture_hiver)
 
 
 # ── Recency ──────────────────────────────────────────────────────────────────
@@ -289,7 +345,7 @@ def compute_score(lead) -> int:
     """
     score = 0
     score += _completeness_score(lead)
-    score += _bill_score(lead.facture_hiver)
+    score += _bill_points(lead)
     score += _CANAL_SCORES.get(lead.canal or '', 0)
     score += _TYPE_SCORES.get(lead.type_installation or '', 0)
     score += _recency_score(lead)
@@ -336,7 +392,7 @@ def score_reasons(lead) -> list[dict]:
     quand il est NÉGATIF : un score rabaissé à la main doit s'expliquer."""
     parts = [
         ('completude', _completeness_score(lead)),
-        ('facture', _bill_score(lead.facture_hiver)),
+        ('facture', _bill_points(lead)),
         ('canal', _CANAL_SCORES.get(lead.canal or '', 0)),
         ('type', _TYPE_SCORES.get(lead.type_installation or '', 0)),
         ('recency', _recency_score(lead)),

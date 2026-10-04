@@ -173,6 +173,28 @@ describe('ShortcutsProvider — ODY28 : séquences « g + lettre » unifiées', 
     window.removeEventListener('taqinor:app-launcher', listener)
   })
 
+  it('CAD177 — un keydown SANS `key` (autoremplissage Chrome, gremlins.js) est ignoré sans TypeError', () => {
+    navigateMock.mockClear()
+    renderWithProvider()
+    // Event générique (pas un KeyboardEvent) : `key` est undefined, comme
+    // l'autoremplissage de Chrome ou le « typer » de gremlins.js.
+    // Une exception dans un écouteur n'est pas relancée à `dispatchEvent` :
+    // elle remonte en `error` sur window (= « exception non rattrapée »).
+    const erreurs = []
+    const surErreur = (ev) => { erreurs.push(ev.error ?? ev.message); ev.preventDefault() }
+    window.addEventListener('error', surErreur)
+    try {
+      document.body.dispatchEvent(new Event('keydown', { bubbles: true }))
+      // Aussi au milieu d'une séquence « g … ».
+      fireEvent.keyDown(document.body, { key: 'g' })
+      document.body.dispatchEvent(new Event('keydown', { bubbles: true }))
+    } finally {
+      window.removeEventListener('error', surErreur)
+    }
+    expect(erreurs).toEqual([])
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
   it('une séquence inconnue ne fait rien', () => {
     navigateMock.mockClear()
     renderWithProvider()

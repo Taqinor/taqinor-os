@@ -1728,25 +1728,25 @@ def _mode_kpis(data):
     mode = (data.get('mode_installation') or '').strip().lower()
     etude = data.get('etude') or {}
     if mode == 'agricole':
-        method = (etude.get('irrigation_method') or '').strip().lower()
-        bassin = None
-        try:  # bassin recommandé ≈ 2× le besoin de pointe FAO-56 (QX47)
-            from .quote_engine.agricole.agronomy import peak_need_m3_day
-            besoin = peak_need_m3_day(etude)
-            if besoin:
-                bassin = round(besoin * 2)
-        except Exception:  # noqa: BLE001 — best-effort, pas bloquant
-            bassin = None
+        # AGR301 — liste blanche agricole = les sept dérivées v1 que le moteur
+        # pompage écrit pour son rendu (contrat partagé ``proposal_data.json``
+        # › ``exemple_agricole.mode_kpis``). RETIRÉS : ``bassin_m3`` (un « ×2 »
+        # du besoin de pointe sans aucune source, bâti sur des ET0 ESTIMÉES) et
+        # ``fda_eligible`` (un verdict d'éligibilité propre au client, contraire
+        # à Q22 / D-AGR-6 — l'aide revient comme RÈGLE sans montant via
+        # ``synthese_agricole``, AGR306/AGR308). AJOUTÉ : ``heures_pompage``,
+        # dont dépend le m³/jour (le PDF dit « sur N h », la page le dit aussi).
+        # Aucun bassin n'est servi tant qu'aucun nombre de jours d'autonomie
+        # n'est décidé ou sourcé ; le module agronomique n'est plus importé
+        # ici (gardé par test_qx49_proposal_payload).
         return {
             'pompe_cv': _kpi_num(etude.get('pompe_cv')),
             'pompe_kw': _kpi_num(etude.get('pompe_kw')),
             'hmt_m': _kpi_num(etude.get('hmt_m')),
             'debit_hmt_m3h': _kpi_num(etude.get('debit_hmt_m3h')),
             'm3_jour': _kpi_num(etude.get('m3_jour')),
+            'heures_pompage': _kpi_num(etude.get('heures_pompage')),
             'champ_kwc': _kpi_num(etude.get('champ_kwc')) or _kpi_num(data.get('puissance_kwc')),
-            'bassin_m3': bassin,
-            # FDA gaté sur l'irrigation localisée (goutte) — « sous réserve ».
-            'fda_eligible': method == 'goutte',
         }
     if mode in ('industriel', 'commercial'):
         return {
@@ -3085,6 +3085,49 @@ def _remplace_par_public(devis):
     return {'reference': courant.reference, 'url': url}
 
 
+#: AGR300 — clés ÉCONOMIQUES RÉSIDENTIELLES de ``data`` (forme publique
+#: ``quote``, contrat partagé ``proposal_data.json`` › ``exemple_agricole``).
+CLES_ECONOMIES_RESIDENTIELLES = (
+    'eco_s_ann', 'eco_a_ann', 'eco_a_cumul', 'roi_s', 'roi_a',
+    'cashflow_sans', 'cashflow_avec', 'cashflow_assumptions',
+    'net_gain_sans', 'net_gain_avec', 'eco_s_monthly', 'eco_a_monthly',
+    'savings_method', 'hypotheses',
+)
+
+#: Blocs publics dérivés de ces économies : ABSENTS en agricole.
+BLOCS_ECONOMIES_RESIDENTIELLES = ('economies_mensuelles', 'economies_periodes')
+
+
+def _est_agricole(data):
+    return (str((data or {}).get('mode_installation') or '')
+            .strip().lower() == 'agricole')
+
+
+def _vider_economies_residentielles(data):
+    """AGR300 — aucune « Économie / an » ni « Rentabilisé en » RÉSIDENTIELS
+    ne sort sur la proposition d'un devis AGRICOLE.
+
+    Le builder appelle ``calculate_savings_roi`` pour TOUT mode : sur un devis
+    de pompage, ces chiffres sont calculés comme si le champ PV remplaçait de
+    l'électricité ONEE (tarif réseau, autoconsommation forfaitaire) — un
+    devis de 10,65 kWc affichait « 17 174 MAD/an, 2,9 ans » alors que son PDF
+    n'imprime aucune économie. On cesse de les REPUBLIER : le calcul interne
+    du builder reste intact, aucun statut ne change (règle #4). L'économie
+    agricole (dépense déclarée, D-AGR-5) est un autre bloc (AGR3/AGR307).
+
+    UNE seule fonction, appelée par ``proposal_data`` ET par
+    ``_data_pour_taille_detail`` : les deux préparations restent jumelles.
+    Mute ``data`` en place et le rend.
+    """
+    if not _est_agricole(data):
+        return data
+    for cle in CLES_ECONOMIES_RESIDENTIELLES:
+        data[cle] = None
+    for cle in BLOCS_ECONOMIES_RESIDENTIELLES:
+        data.pop(cle, None)
+    return data
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -3197,6 +3240,9 @@ def proposal_data(request, token):
             for _k in ('eco_s_ann', 'eco_a_ann', 'eco_a_cumul',
                        'roi_s', 'roi_a', 'savings_method', 'hypotheses'):
                 data[_k] = None
+        # AGR300 — devis AGRICOLE : aucune économie résidentielle republiée.
+        _vider_economies_residentielles(data)
+        _agricole_public = _est_agricole(data)
         # M1 (audit du 19/08/2026) — la série « facture avant PV » ne franchit
         # la frontière publique que si elle est RÉELLE. Le builder ne fabrique
         # plus de proxy (facture ≈ économie / taux d'autoconsommation) : quand
@@ -3486,7 +3532,9 @@ def proposal_data(request, token):
         # ci-dessus : même patron additif — la clé n'est AJOUTÉE que lorsque la
         # couche économique est servable (hérite l'ancrage Z2 de `synthese`,
         # déjà calculé plus haut), sinon la page garde son affichage actuel.
-        _economies = _economies_mensuelles_publiques(devis, data, synthese, niveau)
+        _economies = (None if _agricole_public else
+                      _economies_mensuelles_publiques(
+                          devis, data, synthese, niveau))
         if _economies is not None:
             payload['economies_mensuelles'] = _economies
         # L-BACK T4 (24/08/2026) — quatre clés PUBLIC-SAFE de plus, MÊME
@@ -3716,6 +3764,8 @@ def _data_pour_taille_detail(devis, link):
         for cle in ('eco_s_ann', 'eco_a_ann', 'eco_a_cumul',
                     'roi_s', 'roi_a', 'savings_method', 'hypotheses'):
             data[cle] = None
+    # AGR300 — même garde que ``proposal_data`` (fonction partagée).
+    _vider_economies_residentielles(data)
     if data.get('nb_options') == 1:
         if not data.get('avec_ok'):
             data['totaux_avec'] = None

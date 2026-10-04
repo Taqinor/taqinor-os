@@ -10,7 +10,7 @@ chatter idempotente. Les leads capturés AVANT ce mapping sont enrichis
 """
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from authentication.models import Company
 
@@ -102,7 +102,7 @@ class MetaFormMappingTests(TestCase):
             ])
         self.assertIsNone(lead.facture_hiver)
         # Meryem a saisi un type à la main entre-temps : il doit GAGNER.
-        lead.type_installation = Lead.TypeInstallation.AGRICOLE
+        lead.type_installation = Lead.TypeInstallation.COMMERCIAL
         lead.save(update_fields=['type_installation'])
         # Repasse du pull, cette fois avec les réponses complètes.
         enriched = create_lead_from_meta_lead_ads(
@@ -117,9 +117,116 @@ class MetaFormMappingTests(TestCase):
         self.assertEqual(enriched.ville, 'casablanca')
         # La saisie humaine n'est jamais écrasée.
         self.assertEqual(
-            enriched.type_installation, Lead.TypeInstallation.AGRICOLE)
+            enriched.type_installation, Lead.TypeInstallation.COMMERCIAL)
         # Et la note verbatim est posée au backfill, une seule fois.
         self.assertEqual(
             LeadActivity.objects.filter(
                 lead=enriched,
                 body__startswith='[Formulaire Meta]').count(), 1)
+
+
+# AGR410 — FORM-AGRI-1 : clés PROVISOIRES (à remplacer par les clés brutes du
+# premier lead réel reçu ; le formulaire et la campagne se créent à la main,
+# PAUSED — règle #3, jamais par du code).
+Q_SOURCE_EAU = "d'où_vient_l'eau_de_votre_exploitation_?"
+Q_ENERGIE_POMPE = 'votre_pompe_actuelle_fonctionne_avec_quelle_énergie_?'
+Q_SURFACE_HA = 'combien_d\'hectares_irriguez-vous_?'
+Q_DEPENSE = 'combien_dépensez-vous_en_carburant_pour_la_pompe_par_mois_?'
+
+
+def _field_data_agri(*, phone='+212600000201', source='un_forage',
+                     energie='butane_(gaz)', surface='4_ha',
+                     depense='3000_dh', facture=None):
+    rows = [
+        {'name': 'full_name', 'values': ['Fellah Testeur']},
+        {'name': 'phone_number', 'values': [phone]},
+        {'name': 'city', 'values': ['taroudant']},
+        {'name': Q_SOURCE_EAU, 'values': [source]},
+        {'name': Q_ENERGIE_POMPE, 'values': [energie]},
+        {'name': Q_SURFACE_HA, 'values': [surface]},
+        {'name': Q_DEPENSE, 'values': [depense]},
+    ]
+    if facture is not None:
+        rows.append({'name': Q_FACTURE, 'values': [facture]})
+    return rows
+
+
+class MetaFormAgricoleTests(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor Agri', slug='taqinor-agri')
+
+    def _create(self, leadgen_id='9101', **kw):
+        return create_lead_from_meta_lead_ads(
+            company=self.company, leadgen_id=leadgen_id,
+            field_data=_field_data_agri(**kw), form_id='FORM-AGRI-1')
+
+    def test_les_reponses_de_pompage_remplissent_les_colonnes(self):
+        lead = self._create()
+        lead.refresh_from_db()
+        self.assertEqual(lead.type_installation,
+                         Lead.TypeInstallation.AGRICOLE)
+        self.assertEqual(lead.source_eau, 'forage')
+        self.assertEqual(lead.pompe_alim_actuelle, 'butane')
+        self.assertEqual(lead.surface_irriguee_ha, Decimal('4'))
+        self.assertEqual(lead.depense_carburant_mad_mois, Decimal('3000'))
+
+    def test_une_tranche_n_est_jamais_convertie(self):
+        lead = self._create(leadgen_id='9102', phone='+212600000202',
+                            surface='1_à_3_ha', depense='plus_de_2000_dh')
+        lead.refresh_from_db()
+        self.assertIsNone(lead.surface_irriguee_ha)
+        self.assertIsNone(lead.depense_carburant_mad_mois)
+        note = LeadActivity.objects.get(
+            lead=lead, body__startswith='[Formulaire Meta]')
+        self.assertIn('1 à 3 ha', note.body)
+        self.assertIn('plus de 2000 dh', note.body)
+
+    def test_la_facture_n_est_pas_copiee_sur_un_agricole(self):
+        lead = self._create(leadgen_id='9103', phone='+212600000203',
+                            facture='entre_1000_dh_à_2000_dh')
+        lead.refresh_from_db()
+        self.assertIsNone(lead.facture_hiver)
+        note = LeadActivity.objects.get(
+            lead=lead, body__startswith='[Formulaire Meta]')
+        self.assertIn('entre 1000 dh à 2000 dh', note.body)
+        self.assertNotIn('pré-remplie', note.body)
+
+    def test_jamais_d_ecrasement(self):
+        lead = create_lead_from_meta_lead_ads(
+            company=self.company, leadgen_id='9104',
+            field_data=[
+                {'name': 'full_name', 'values': ['Fellah Deux']},
+                {'name': 'phone_number', 'values': ['+212600000204']},
+            ])
+        lead.type_installation = Lead.TypeInstallation.RESIDENTIEL
+        lead.source_eau = 'puits'
+        lead.save(update_fields=['type_installation', 'source_eau'])
+        create_lead_from_meta_lead_ads(
+            company=self.company, leadgen_id='9104',
+            field_data=_field_data_agri(phone='+212600000204'),
+            form_id='FORM-AGRI-1')
+        lead.refresh_from_db()
+        self.assertEqual(lead.type_installation,
+                         Lead.TypeInstallation.RESIDENTIEL)
+        self.assertEqual(lead.source_eau, 'puits')
+        self.assertEqual(lead.pompe_alim_actuelle, 'butane')
+
+
+class MetaFormAgricoleParseTests(SimpleTestCase):
+    """Le parseur seul (aucun lead) : mots-clés et nombre unique."""
+
+    def _extras(self, rows):
+        from apps.crm.services import _parse_meta_form_extras
+        return _parse_meta_form_extras(rows)
+
+    def test_gazoil_est_du_diesel_pas_du_butane(self):
+        extras = self._extras([{'name': Q_ENERGIE_POMPE,
+                                'values': ['gazoil']}])
+        self.assertEqual(extras['pompe_alim_actuelle'], 'diesel')
+
+    def test_formulaire_residentiel_inchange(self):
+        extras = self._extras(_field_data())
+        self.assertNotIn('source_eau', extras)
+        self.assertEqual(extras['type_installation'],
+                         Lead.TypeInstallation.RESIDENTIEL)

@@ -208,9 +208,12 @@ class RenduReelTest(unittest.TestCase):
             document.close()
         # La marque courte de l'empreinte (`hash_court`) : le hash de
         # l'échantillon commence par « abababab ».
-        self.assertEqual(texte.count('abababab'), pages,
-                         "l'empreinte n'apparaît pas exactement une fois "
-                         "par page (%d occurrences, %d pages)"
+        # UNE fois par page (le pied courant, ``gabarit_document``) + UNE
+        # fois dans la table de la page de garde (« Empreinte d'entrée »,
+        # ``page_de_garde_html``) : jamais reposée dans le corps d'une section.
+        self.assertEqual(texte.count('abababab'), pages + 1,
+                         "l'empreinte n'apparaît pas une fois par page + une "
+                         "fois sur la garde (%d occurrences, %d pages)"
                          % (texte.count('abababab'), pages))
 
 

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4718, operations: 7500, components: 2135}
+counts: {paths: 4724, operations: 7510, components: 2157}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1656,6 +1656,8 @@ operations:
 - get /api/django/installations/chantiers/{id}/rapport-energie/ -> django_installations_chantiers_rapport_energie_retrieve
 - post /api/django/installations/chantiers/{id}/reactiver/ -> django_installations_chantiers_reactiver_create
 - get /api/django/installations/chantiers/{id}/readiness/ -> django_installations_chantiers_readiness_retrieve
+- get /api/django/installations/chantiers/{id}/recette-pompage/ -> django_installations_chantiers_recette_pompage_retrieve
+- post /api/django/installations/chantiers/{id}/recette-pompage/ -> django_installations_chantiers_recette_pompage_create
 - get /api/django/installations/chantiers/{id}/recette/ -> django_installations_chantiers_recette_retrieve
 - post /api/django/installations/chantiers/{id}/recette/ -> django_installations_chantiers_recette_create
 - get /api/django/installations/chantiers/{id}/releves/ -> django_installations_chantiers_releves_retrieve
@@ -2091,6 +2093,9 @@ operations:
 - patch /api/django/installations/recettes-commissioning/{id}/ -> django_installations_recettes_commissioning_partial_update
 - put /api/django/installations/recettes-commissioning/{id}/ -> django_installations_recettes_commissioning_update
 - post /api/django/installations/recettes-commissioning/{id}/ajouter-iv/ -> django_installations_recettes_commissioning_ajouter_iv_create
+- get /api/django/installations/recettes-pompage/ -> django_installations_recettes_pompage_list
+- get /api/django/installations/recettes-pompage/{id}/ -> django_installations_recettes_pompage_retrieve
+- patch /api/django/installations/recettes-pompage/{id}/ -> django_installations_recettes_pompage_partial_update
 - get /api/django/installations/regles-approbation-achat/ -> django_installations_regles_approbation_achat_list
 - post /api/django/installations/regles-approbation-achat/ -> django_installations_regles_approbation_achat_create
 - delete /api/django/installations/regles-approbation-achat/{id}/ -> django_installations_regles_approbation_achat_destroy
@@ -5444,6 +5449,8 @@ operations:
 - get /api/v1/installations/chantiers/{id}/rapport-energie/ -> v1_installations_chantiers_rapport_energie_retrieve
 - post /api/v1/installations/chantiers/{id}/reactiver/ -> v1_installations_chantiers_reactiver_create
 - get /api/v1/installations/chantiers/{id}/readiness/ -> v1_installations_chantiers_readiness_retrieve
+- get /api/v1/installations/chantiers/{id}/recette-pompage/ -> v1_installations_chantiers_recette_pompage_retrieve
+- post /api/v1/installations/chantiers/{id}/recette-pompage/ -> v1_installations_chantiers_recette_pompage_create
 - get /api/v1/installations/chantiers/{id}/recette/ -> v1_installations_chantiers_recette_retrieve
 - post /api/v1/installations/chantiers/{id}/recette/ -> v1_installations_chantiers_recette_create
 - get /api/v1/installations/chantiers/{id}/releves/ -> v1_installations_chantiers_releves_retrieve
@@ -5879,6 +5886,9 @@ operations:
 - patch /api/v1/installations/recettes-commissioning/{id}/ -> v1_installations_recettes_commissioning_partial_update
 - put /api/v1/installations/recettes-commissioning/{id}/ -> v1_installations_recettes_commissioning_update
 - post /api/v1/installations/recettes-commissioning/{id}/ajouter-iv/ -> v1_installations_recettes_commissioning_ajouter_iv_create
+- get /api/v1/installations/recettes-pompage/ -> v1_installations_recettes_pompage_list
+- get /api/v1/installations/recettes-pompage/{id}/ -> v1_installations_recettes_pompage_retrieve
+- patch /api/v1/installations/recettes-pompage/{id}/ -> v1_installations_recettes_pompage_partial_update
 - get /api/v1/installations/regles-approbation-achat/ -> v1_installations_regles_approbation_achat_list
 - post /api/v1/installations/regles-approbation-achat/ -> v1_installations_regles_approbation_achat_create
 - delete /api/v1/installations/regles-approbation-achat/{id}/ -> v1_installations_regles_approbation_achat_destroy
@@ -7555,6 +7565,7 @@ components:
 - AlerteRappel
 - AlerteRappelRequest
 - AlerteRappelStatutEnum
+- AlimentationEnum
 - AnalyseGoulotsResponse
 - Annonce
 - AnnonceProduitPlateforme
@@ -7623,6 +7634,7 @@ components:
 - AutomationRuleVersion
 - AutomationRun
 - AutomationRunStatusEnum
+- AutorisationPrelevementEnum
 - Avoir
 - AvoirFournisseur
 - AvoirFournisseurRequest
@@ -7640,6 +7652,7 @@ components:
 - BaseEnum
 - BatChimieEnum
 - BatterieSouhaiteeEnum
+- BesoinEauSourceEnum
 - BillRangeBucketEnum
 - BinAffectation
 - BinAffectationRequest
@@ -7879,6 +7892,7 @@ components:
 - DealEnregistre
 - DealEnregistreRequest
 - DealEnregistreStatutEnum
+- DebitForageSourceEnum
 - DecideurEnum
 - DecisionEnum
 - DecisionLog
@@ -7972,6 +7986,7 @@ components:
 - DossierPrioriteEnum
 - DossierRequest
 - DossierStatutEnum
+- DossierSubventionEnum
 - DossierWorkflowChecklistItem
 - DossierWorkflowChecklistItemRequest
 - DrillCatalogueReponse
@@ -7979,6 +7994,7 @@ components:
 - DrillRequeteRequest
 - EcheanceFactureFournisseur
 - EcheanceFactureFournisseurRequest
+- ElectriciteSurPlaceEnum
 - ElementSupprime
 - EmailTemplate
 - EmailTemplateRequest
@@ -8147,6 +8163,7 @@ components:
 - InventaireSessionRequest
 - IpAllowRule
 - IpAllowRuleRequest
+- IrrigationMethodeEnum
 - JalonChantierPortail
 - JalonChantierPortailRequest
 - JournalAcces
@@ -8284,6 +8301,7 @@ components:
 - MetaConnection
 - MetaConnectionRequest
 - MeteoTerrainReponse
+- MethodeDebitEnum
 - MethodeEnum
 - MethodeReservationStockEnum
 - MetierEnum
@@ -8332,6 +8350,7 @@ components:
 - NiveauApprobationEnum
 - NiveauB3eEnum
 - NiveauCertificationEnum
+- NiveauStatiqueSourceEnum
 - NomenclatureCodeBarres
 - NomenclatureCodeBarresRequest
 - NoteDebit
@@ -8658,6 +8677,7 @@ components:
 - PaginatedRealisationList
 - PaginatedReceptionFournisseurList
 - PaginatedReceptionNonFactureeList
+- PaginatedRecettePompageList
 - PaginatedReconciliationSnapshotList
 - PaginatedRegleAclMetadonneeList
 - PaginatedRegleApprobationAchatList
@@ -9001,6 +9021,7 @@ components:
 - PatchedRealisationRequest
 - PatchedReceptionFournisseurRequest
 - PatchedReceptionNonFactureeRequest
+- PatchedRecettePompageRequest
 - PatchedRegleAclMetadonneeRequest
 - PatchedRegleApprobationAchatRequest
 - PatchedRegleApprobationGedRequest
@@ -9124,7 +9145,9 @@ components:
 - PolitiqueFacturationAchatEnum
 - PolitiqueRetention
 - PolitiqueRetentionRequest
+- PompeActuelleTypeEnum
 - PompeAlimActuelleEnum
+- PompeHmtSourceEnum
 - PortailClientConsommationPoint
 - PortailClientMaConsommation
 - PortailClientProchainJalon
@@ -9176,6 +9199,7 @@ components:
 - ProjetChantierRequest
 - ProjetDevis
 - ProjetDevisRequest
+- ProjetPompageEnum
 - ProjetRequest
 - ProjetStatutEnum
 - ProjetTache
@@ -9248,6 +9272,7 @@ components:
 - RFQOffreRetenue
 - Raccordement046Enum
 - RaccordementE97Enum
+- RaccordementReseauEnum
 - RapportConformiteResponse
 - RapportDefinition
 - RapportDefinitionPartageEnum
@@ -9260,12 +9285,14 @@ components:
 - ReceptionFournisseurStatutEnum
 - ReceptionNonFacturee
 - ReceptionNonFactureeRequest
+- RecettePompage
 - RecherchePortail
 - RecherchePortailGroupe
 - RecherchePortailResultat
 - ReconciliationSnapshot
 - ReconciliationSnapshotStatusEnum
 - Regime8221E51Enum
+- RegionAgricoleEnum
 - Register
 - RegisterRequest
 - RegistreTraitement
@@ -9339,6 +9366,7 @@ components:
 - RoleDevisEnum
 - RoleLegacyEnum
 - RolePerimetreEnum
+- RolePompageEnum
 - RoleRequest
 - RoleSignataire
 - RoleSignataireRequest
@@ -9387,6 +9415,7 @@ components:
 - ScheduledExport
 - ScheduledExportModeEnum
 - ScheduledExportRequest
+- SegmentEnum
 - SensEnum
 - SequenceApprobateursEnum
 - SerieEntrepot
@@ -9419,6 +9448,8 @@ components:
 - SodRule
 - SodRuleRequest
 - Source4efEnum
+- SourceEauEnum
+- SourceIrradianceEnum
 - SousGarantieEnum
 - SousTraitant
 - SousTraitantRequest
@@ -9584,6 +9615,7 @@ components:
 - TypeMouvementEnum
 - TypeNomenclatureEnum
 - TypePartenaireEnum
+- TypePompeEnum
 - TypeProprietaireEnum
 - TypeQuaiEnum
 - TypeRegleEnum
