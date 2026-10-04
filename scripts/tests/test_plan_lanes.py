@@ -378,6 +378,52 @@ class TaskFilesTests(unittest.TestCase):
         label = "bug at webhooks.py:182 … Fix it. Files: `apps/crm/webhooks.py`."
         self.assertEqual(pl._task_files(label), frozenset({"apps/crm/webhooks.py"}))
 
+    def test_toute_extension_lue_et_json_non_tronque(self):
+        # Critique finale OWN : l'ancienne regex ne connaissait pas `.astro`
+        # ni `.ts`, et coupait `.json` en `.js` — deux tâches sur la même page
+        # Astro ou le même contrat JSON n'étaient pas unies et se percutaient.
+        label = ("x. Files: `apps/web/src/pages/proposition/[...token].astro`, "
+                 "`backend/django_core/apps/ventes/contract_samples/calepinage_options.json`, "
+                 "`apps/web/src/lib/lead.ts`. (ROUTINE)")
+        attendus = frozenset({
+            "apps/web/src/pages/proposition/[...token].astro",
+            "backend/django_core/apps/ventes/contract_samples/calepinage_options.json",
+            "apps/web/src/lib/lead.ts"})
+        self.assertEqual(pl._task_files(label), attendus)
+        self.assertEqual(pl._task_files_brut(label), attendus)
+
+    def test_balise_at_files_ne_masque_pas_la_clause_files(self):
+        # `(@files: …)` est une balise de LANE, pas la clause Files: — placée
+        # après, elle ne doit pas faire oublier la vraie liste de fichiers.
+        label = ("x. Files: `apps/crm/models.py`, `apps/crm/views.py`. (ROUTINE) "
+                 "(@files: apps/crm/models.py)")
+        self.assertEqual(pl._task_files(label),
+                         frozenset({"apps/crm/models.py", "apps/crm/views.py"}))
+
+    def test_nom_nu_reste_une_cle_de_lane(self):
+        # Prudence : un nom sans dossier (`veille_couverture.json`, cité par
+        # plusieurs tâches de PLAN_VEILLE) est ambigu pour la garde, mais deux
+        # tâches qui le nomment peuvent éditer le même fichier : il continue
+        # d'unir leurs lanes, avec sa VRAIE extension.
+        label = "x. Files: `apps/adsengine/competitor_intel.py`, `veille_couverture.json`. (ROUTINE)"
+        self.assertEqual(pl._task_files(label), frozenset({
+            "apps/adsengine/competitor_intel.py", "veille_couverture.json"}))
+
+    def test_deux_taches_partageant_une_page_astro_sont_unies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = Path(tmp) / "WEB_PLAN.md"
+            plan.write_text(
+                "## BUILD QUEUE\n"
+                "- [ ] W1 — a. Files: `apps/web/src/pages/devis/mon-toit.astro`. "
+                "(ROUTINE) (@lane: web-a)\n"
+                "- [ ] W2 — b. Files: `apps/web/src/pages/devis/mon-toit.astro`, "
+                "`apps/web/src/lib/x.ts`. (ROUTINE) (@lane: web-b)\n",
+                encoding="utf-8")
+            taches = pl.parse_tasks(plan)
+        planif = pl.schedule(taches, max_lanes=8)
+        self.assertEqual(len(planif["lanes"]), 1, planif["lanes"])
+        self.assertEqual(planif["counts"]["file_merges"], 1)
+
 
 class MergeLanesBySharedFilesTests(unittest.TestCase):
     """Lanes sharing a substantive file are unioned so workers fold clean."""
