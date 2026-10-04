@@ -324,6 +324,7 @@ n'est donc pas contrôlée) · `check_api_contract.py` OK · `check_tests_source
 - **Fable #1** (familles critiques, 25 S1) : 18 confirmés S1, 7 reclassés S2 (066, 075, 078, 087, 113, 116, 118), 2 scissions (022, 066), 1 fusion (096 + 097), 13 notes d'ordonnancement appliquées.
 - **Audit de l'audit** : non joué (corpus QJR5 de 14 défauts, METHODE §B 5) — écart déclaré, à faire au premier `vérifie ACAL`.
 
+
 ## 8. Rapport (phase 6)
 
 **Ce qui a été vérifié.** Les neuf étapes P1-P9 du parcours, sur les trois contrôles demandés par Reda
@@ -345,14 +346,7 @@ intra-société (vue restreinte, gouvernance des réglages, oracle d'existence).
 **Décisions.** 28 décisions fondateur D-ACAL (deux séries de questions, 04/10) + ~40 défauts conventionnels
 appliqués sans question (règles maison) — en tête du groupe dans `docs/plans/PLAN_AUDIT_CALEPINAGE.md`.
 
-**Tâches.** 351 tâches ACAL routées par propriétaire (METHODE §D.3) : PLAN_AUDIT_CALEPINAGE 238 ·
-TRANSVERSE 76 · DEVIS 15 · DEPLOY 14 · ANALYSE 4 · MOTEUR 1 · LEAD 1 · CHANTIERS 1 · SECURITE 1 ; jalons M0 21 ·
-M1 47 · M2 249 · M3 34 ; priorités P0 45 · P1 134 · P2 152 · P3 20 ; modèles 268 sonnet · 78 opus · 5 haiku ;
-UNE tâche d'acceptation live finale (ACAL351). Première garde v2 réservée (clauses §C.2 dans
-`check_taches_cablage.py`) incluse, routée vers PLAN_AUDIT_DEPLOY. Registre : chemins sans propriétaire
-rattachés (D3 : bibliothèques toiture apps/web, pages /preview, tests des écrans toiture, e2e calepinage ;
-X5, X1, J1b, J0 : voir `docs/audits/unites.yml`). `docs/PLAN2.md` : CALX44 → SKIP (D-ACAL-16), CODEMAP §10 +
-empreinte rafraîchis.
+**Tâches.** 351 tâches ACAL routées par propriétaire selon `docs/ownership.yml` (il prime sur `unites.yml`, METHODE §D.3 ; `check_ownership.py` vert) : CALEPINAGE 271 · TRANSVERSE 44 · DEPLOY 14 · DEVIS 12 · ANALYSE 4 · MOTEUR 2 · LEAD 1 · CHANTIERS 1 · SECURITE 1 · WEB_PLAN 1 ; jalons M0 21 · M1 47 · M2 249 · M3 34 ; priorités P0 45 · P1 134 · P2 152 · P3 20 ; modèles 268 sonnet · 78 opus · 5 haiku ; UNE tâche d'acceptation live finale (ACAL351). Première garde v2 réservée (clauses §C.2 dans `check_taches_cablage.py`) incluse, routée vers PLAN_AUDIT_DEPLOY. Groupe inséré APRÈS le Groupe SPL (découpe des fichiers-dieux, arrivé sur main pendant l'audit) dans les fichiers existants ; `docs/PLAN2.md` : CALX44 → SKIP (D-ACAL-16), CODEMAP §10 + empreinte rafraîchis.
 
 **Coût.** ~90 exécutions d'agents (au-dessus de la fourchette L3 « ~15-35 » de go-deep : la consigne de Reda
 exigeait 10 lanes + 2 lentilles + run live + rédacteurs + 3 passes Fable, et une limite d'usage hebdomadaire a
