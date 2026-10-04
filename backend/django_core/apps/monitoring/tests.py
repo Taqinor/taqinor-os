@@ -226,8 +226,11 @@ class TestUnderperformance(TestCase):
         self.user = User.objects.create_user(
             username='perf_admin', password='x', role_legacy='admin',
             company=self.company)
-        # Attendu = 5 kWc × 1500 = 7500 kWh/an.
+        # CIQ643 — attendu semé explicitement (7500 kWh/an), plus de repli.
         self.inst, _ = make_installation(self.company, ref='CHT-PERF-1', kwc='5.00')
+        MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst,
+            expected_annual_kwh=Decimal('7500'))
         self.today = date(2026, 6, 1)
 
     def _add_reading(self, kwh):
@@ -1151,7 +1154,7 @@ class TestBalayageQuotidien(TestCase):
         MonitoringSettings.objects.create(
             company=self.company, underperf_threshold_pct=Decimal('20'),
             auto_create_ticket=True)
-        # Relevé manuel très sous l'attendu (5 kWc × 1500 = 7500 kWh/an).
+        # Relevé manuel très sous l'attendu semé (7500 kWh/an).
         ProductionReading.objects.create(
             company=self.company, installation=inst,
             date=self.today - timedelta(days=10), period_days=365,

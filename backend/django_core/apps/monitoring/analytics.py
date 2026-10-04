@@ -5,9 +5,8 @@ Calcule, à partir des `ProductionReading` d'UN système, les indicateurs
 classiques d'exploitation-maintenance :
 
   * Performance Ratio (PR) — production réelle / production attendue sur la
-    fenêtre (l'attendu vient de `MonitoringConfig.expected_annual_kwh`, sinon
-    estimé depuis la puissance × productible conservateur, comme le service
-    de sous-performance).
+    fenêtre (l'attendu vient de `MonitoringConfig.expected_annual_kwh` ; sans
+    référence semée, PR non calculé — CIQ643, aucun attendu inventé).
   * Disponibilité — part des jours de la fenêtre couverts par au moins un
     relevé (proxy raisonnable sans télémétrie d'onduleur dédiée).
   * Soiling (salissure) — dérive du PR mensuel : un PR mensuel qui décroît
