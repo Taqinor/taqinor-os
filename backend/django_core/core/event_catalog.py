@@ -67,8 +67,10 @@ CATALOG = {
         ['devis', 'user']),
     'visite_validee': _e(
         'Une visite technique terrain reçoit le feu vert du bureau '
-        'd\'études — aucun statut de funnel ne bouge.',
-        ['visite', 'lead_id', 'user', 'recap']),
+        'd\'études — aucun statut de funnel ne bouge. ``mesures_point_eau`` '
+        '(AGR413) porte les mesures du point d\'eau d\'une visite agricole '
+        '(vide sinon).',
+        ['visite', 'lead_id', 'user', 'recap', 'mesures_point_eau']),
     'visite_planifiee': _e(
         'La date prévue d\'une visite technique est posée ou changée — le '
         'suivi commercial s\'y recale (aucun statut de funnel ne bouge).',
