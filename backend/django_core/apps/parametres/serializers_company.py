@@ -54,6 +54,13 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Utilisateur inconnu.')
         return value
 
+    def validate_responsable_leads_pro(self, value):
+        # CIQ415 — même règle par société que le responsable par défaut.
+        request = self.context.get('request')
+        if value and request and value.company_id != request.user.company_id:
+            raise serializers.ValidationError('Utilisateur inconnu.')
+        return value
+
     def validate_default_installer(self, value):
         # L'installateur par défaut doit appartenir à la même société.
         request = self.context.get('request')

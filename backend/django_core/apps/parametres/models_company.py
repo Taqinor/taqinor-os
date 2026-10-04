@@ -97,6 +97,16 @@ class CompanyProfile(models.Model):
         blank=True,
         related_name='+',
     )
+    # CIQ415 (D-CIQ-20) — responsable des leads commerciaux et industriels.
+    # Vide par défaut = comportement inchangé (responsable par défaut /
+    # round-robin). Même validation par société que responsable_defaut_leads.
+    responsable_leads_pro = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
     # ── XSAL11 — Affectation round-robin équilibrée des leads entrants ──
     # OFF par défaut = comportement actuel inchangé (responsable par défaut /
     # round-robin déjà existant de QW6). ON : parmi les commerciaux actifs
