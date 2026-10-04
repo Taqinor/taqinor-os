@@ -131,12 +131,12 @@ unites:
     I: 4
     score: 20
     niveau: L3
-    statut: à auditer
+    statut: audité
     groupe: ACAL
     plan: docs/plans/PLAN_AUDIT_CALEPINAGE.md
     plans_alimentes: []
     pr: null
-    date: null
+    date: 2026-10-04
     notes: "Score le plus élevé à égalité (critique de complétude) ; livrables PDF d'étude hors règle #4."
 
   - id: J0
