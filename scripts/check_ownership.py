@@ -45,6 +45,7 @@ Usage
     python scripts/check_ownership.py --base origin/main   # + fichiers ajoutés par la branche
     python scripts/check_ownership.py --stats       # fichiers et lignes par propriétaire
     python scripts/check_ownership.py --owner-of frontend/src/pages/ventes/DevisGenerator.jsx
+    python scripts/check_ownership.py --conflits 40   # la mesure de l'étape 1, rejouable (~2 min)
 """
 from __future__ import annotations
 
@@ -120,10 +121,10 @@ def normaliser(brut: str, web: bool = False) -> str | None:
     nu (``views.py``) est ambigu : ignoré. ``web=True`` (plan du site) lit
     ``src/…`` comme ``apps/web/src/…``.
     """
-    p = brut.strip().strip("`'\"*() ,;")
+    p = brut.strip().replace("\\", "/").strip("`'\"() ,;")
     while p.startswith("./"):
         p = p[2:]
-    if not p or "/" not in p or any(c in p for c in "*<>{}"):
+    if not p or "/" not in p or any(c in p for c in "<>{}"):
         return None
     if p.startswith(("backend/", "frontend/", "apps/web/")):
         return p
@@ -168,8 +169,9 @@ def _apps_parquees(racine: Path) -> list[str]:
 class Registre:
     """Le contenu de ``docs/ownership.yml``, compilé pour la résolution."""
 
-    def __init__(self, data: dict, racine: Path):
+    def __init__(self, data: dict, racine: Path, texte: str = ""):
         self.racine = racine
+        self.texte = texte
         self.roots = tuple(_liste(data.get("roots")))
         self.containers = tuple(_liste(data.get("containers")))
         self.exempt = set(_liste(data.get("exempt")))
@@ -245,7 +247,31 @@ def charger_registre(chemin: Path = REGISTRE, texte: str | None = None,
                      racine: Path = ROOT) -> Registre:
     if texte is None:
         texte = Path(chemin).read_text(encoding="utf-8")
-    return Registre(PL._MiniYamlParser(texte).parse(), racine)
+    return Registre(PL._MiniYamlParser(texte).parse(), racine, texte)
+
+
+def _cles_dupliquees(texte: str) -> list[str]:
+    """Le mini-YAML garde le DERNIER bloc d'une clé répétée, sans rien dire
+    (critique finale OWN, F5) : on relit le texte pour les repérer."""
+    vues, doublons, bloc = set(), [], None
+    for ligne in texte.splitlines():
+        if not ligne.strip() or ligne.lstrip().startswith("#"):
+            continue
+        m0 = re.match(r"^([A-Za-z_][\w-]*):", ligne)
+        if m0:
+            cle = m0.group(1)
+            if cle in vues:
+                doublons.append(cle)
+            vues.add(cle)
+            bloc = cle
+            continue
+        m2 = re.match(r"^  ([A-Za-z_][\w./-]*):", ligne)
+        if m2 and bloc in ("owners", "plans"):
+            cle = f"{bloc}.{m2.group(1)}"
+            if cle in vues:
+                doublons.append(cle)
+            vues.add(cle)
+    return doublons
 
 
 def proprietaire(reg: Registre, chemin: str) -> str | None:
@@ -303,6 +329,9 @@ def verifier_registre(reg: Registre, fichiers=()) -> tuple[list[str], list[str]]
                         f"glob trop large pour « {nom} » : {g} — il s'ouvre sur "
                         f"le conteneur {lit} et avalerait d'office un module "
                         f"neuf (règle c) ; nommer le sous-dossier")
+    for cle in _cles_dupliquees(reg.texte):
+        erreurs.append(f"clé déclarée deux fois dans docs/ownership.yml : {cle} "
+                       f"(le second bloc écraserait le premier sans bruit)")
     if "transverse" not in reg.owners:
         erreurs.append("propriétaire « transverse » absent du registre")
     elif reg.owners["transverse"]["paths"] or reg.owners["transverse"]["fallback"]:
@@ -323,8 +352,70 @@ def verifier_registre(reg: Registre, fichiers=()) -> tuple[list[str], list[str]]
     return erreurs, avert
 
 
-def verifier_plans(reg: Registre, plans: dict[str, str]) -> list[str]:
-    """Règle (b) (+ (c) au moment où la tâche est écrite)."""
+_FILES_MARQUEUR = re.compile(r"(?i)\b(?:files|fichiers)\s*:")
+_SEGMENT_CODE = re.compile(r"`([^`]+)`")
+#: chemin nu (sans backticks) : toute extension, bornée pour ne pas couper
+#: `.json` en `.js` (critique finale OWN, F1).
+_CHEMIN_NU = re.compile(r"[\w./\\[\]{},*-]+\.[A-Za-z0-9]{1,8}(?![\w])")
+_REF_LIGNE = re.compile(r":\d+(?:-\d+)?$")
+
+
+def _accolades(chemin: str) -> list[str]:
+    m = re.search(r"\{([^{}]*)\}", chemin)
+    if not m:
+        return [chemin]
+    out = []
+    for alt in m.group(1).split(","):
+        out += _accolades(chemin[:m.start()] + alt.strip() + chemin[m.end():])
+    return out
+
+
+def chemins_declares(label: str) -> list[str]:
+    """Chemins de la clause `Files:` (ou `Fichiers :`) d'une tâche, tels qu'écrits.
+
+    Lit les segments entre backticks (ou, à défaut, les chemins nus), quelle que
+    soit l'extension (.astro, .json, .scss…), développe les accolades, ramène
+    les antislashs à `/`, retire une référence de ligne `:120-140`. Garde les
+    globs (`*`) et les dossiers (`…/`) : la vérification les développe.
+    """
+    idx = [m.start() for m in _FILES_MARQUEUR.finditer(label)]
+    if not idx:
+        return []
+    queue = label[idx[-1]:]
+    bruts = _SEGMENT_CODE.findall(queue) or _CHEMIN_NU.findall(queue)
+    out: list[str] = []
+    for brut in bruts:
+        for morceau in re.split(r",\s+|\s+", brut.strip()):
+            morceau = _REF_LIGNE.sub("", morceau.strip().replace("\\", "/").strip("'\"()"))
+            for c in _accolades(morceau):
+                if "/" in c and (re.search(r"\.[A-Za-z0-9]{1,8}$", c) or c.endswith("/")
+                                 or "*" in c):
+                    if c not in out:
+                        out.append(c)
+    return out
+
+
+def _cibles(reg: "Registre", chemin: str, fichiers) -> list[str]:
+    """Un glob ou un dossier déclaré → les fichiers qu'il désigne (ou un
+    représentant fictif s'il n'en désigne encore aucun)."""
+    if chemin.endswith("/"):
+        chemin += "**"
+    if "*" not in chemin:
+        return [chemin]
+    rx = compiler_glob(chemin)
+    lit = _prefixe_litteral(chemin)
+    hits = [f for f in fichiers if f.startswith(lit) and rx.fullmatch(f)]
+    return hits or [re.sub(r"\*+", "x", chemin)]
+
+
+def verifier_plans(reg: Registre, plans: dict[str, str], fichiers=()) -> list[str]:
+    """Règle (b) (+ (a)/(c) au moment où la tâche est écrite).
+
+    Une tâche = sa ligne + ses lignes de continuation (indentées) jusqu'à la
+    suivante. Une ligne de case à cocher qui porte `Files:` sans être lisible
+    comme tâche est REFUSÉE (elle échapperait sinon à toute vérification).
+    """
+    fichiers = list(fichiers)
     erreurs = []
     for plan, texte in sorted(plans.items()):
         owners = reg.proprietaires_du_plan(plan)
@@ -339,8 +430,10 @@ def verifier_plans(reg: Registre, plans: dict[str, str]) -> list[str]:
         # (b). Un fichier qu'ils déclarent doit quand même avoir UN propriétaire.
         exempte = bool(set(owners) & reg.exempt)
         web = owners == ["web"]
+        lignes = texte.splitlines()
         hors_file = False
-        for n_ligne, brut in enumerate(texte.splitlines(), 1):
+        for i, brut in enumerate(lignes):
+            n_ligne = i + 1
             if brut.startswith(("# ", "## ", "### ")):
                 hors_file = bool(PL._NON_QUEUE_SECTION.match(brut))
                 continue
@@ -348,6 +441,12 @@ def verifier_plans(reg: Registre, plans: dict[str, str]) -> list[str]:
                 continue
             m = PL._TASK_LIST_RE.match(brut) or PL._TASK_HEADER_RE.match(brut)
             if not m:
+                if PL._RAW_CHECKLIST_RE.match(brut) and brut.lstrip().startswith("- [ ]") \
+                        and _FILES_MARQUEUR.search(brut):
+                    erreurs.append(
+                        f"{plan}:{n_ligne} — ligne de tâche mal formée (attendu « - [ ] "
+                        f"<ID> — … », tiret cadratin) : ses Files: échapperaient à la "
+                        f"garde ; la corriger")
                 continue
             statut = (m.group("status") or "").strip()
             en_ligne = (m.groupdict().get("inline_status") or "").strip()
@@ -356,27 +455,138 @@ def verifier_plans(reg: Registre, plans: dict[str, str]) -> list[str]:
             if statut:
                 continue  # [x], [BLOCKED…], [GATED…] : rien à construire
             tid = m.group("id")
-            for declare in sorted(PL._task_files_brut(m.group("label"))):
+            label = m.group("label")
+            j = i + 1
+            while j < len(lignes) and lignes[j][:1] in (" ", "\t") \
+                    and not lignes[j].lstrip().startswith("- ["):
+                label += " " + lignes[j].strip()
+                j += 1
+            for declare in chemins_declares(label):
                 chemin = normaliser(declare, web=web)
-                if not chemin or not reg.sous_racines(chemin) \
-                        or reg.est_append_only(chemin):
+                if not chemin or not reg.sous_racines(chemin):
                     continue
-                hits = reg.resoudre(chemin)
-                if not hits:
-                    erreurs.append(
-                        f"{plan}:{n_ligne} {tid} — `{chemin}` est sans propriétaire "
-                        f"(fichier neuf ?) : le déclarer dans docs/ownership.yml")
-                elif len(hits) > 1:
-                    erreurs.append(
-                        f"{plan}:{n_ligne} {tid} — `{chemin}` a deux propriétaires "
-                        f"({', '.join(hits)}) : corriger docs/ownership.yml")
-                elif hits[0] not in owners and not exempte:
-                    erreurs.append(
-                        f"{plan}:{n_ligne} {tid} — `{chemin}` appartient à "
-                        f"« {hits[0]} », pas à « {'/'.join(owners)} » : une tâche "
-                        f"multi-propriétaires va dans {reg.plan_transverse} "
-                        f"(ou retirer ce fichier de Files:)")
+                for cible in _cibles(reg, chemin, fichiers):
+                    if reg.est_append_only(cible):
+                        continue
+                    hits = reg.resoudre(cible)
+                    if not hits:
+                        erreurs.append(
+                            f"{plan}:{n_ligne} {tid} — `{cible}` est sans propriétaire "
+                            f"(fichier neuf ?) : le déclarer dans docs/ownership.yml")
+                    elif len(hits) > 1:
+                        erreurs.append(
+                            f"{plan}:{n_ligne} {tid} — `{cible}` a deux propriétaires "
+                            f"({', '.join(hits)}) : corriger docs/ownership.yml")
+                    elif hits[0] not in owners and not exempte:
+                        erreurs.append(
+                            f"{plan}:{n_ligne} {tid} — `{cible}` appartient à "
+                            f"« {hits[0]} », pas à « {'/'.join(owners)} » : une tâche "
+                            f"multi-propriétaires va dans {reg.plan_transverse} "
+                            f"(ou retirer ce fichier de Files:)")
     return erreurs
+
+
+# ------------------------------------------------------------- mesure (brief 1)
+def classer_conflits(reg: Registre, taches: dict, commits: list, lignes: dict) -> list[dict]:
+    """Classe les fichiers par coût de conflit = tâches × propriétaires × lignes.
+
+    ``taches`` : id → {prefixe, fichiers} ; ``commits`` : [(ids cités, fichiers)] ;
+    ``lignes`` : fichier → nombre de lignes. Le PARCOURS d'une tâche est le
+    propriétaire majoritaire de ses fichiers (hors surfaces append-only) ; celui
+    d'un groupe (préfixe d'ID) est le parcours majoritaire de ses tâches. Les
+    « propriétaires » d'un fichier = les parcours des tâches et des commits qui
+    l'ont touché : deux ou plus = fichier PARTAGÉ.
+    """
+    def parcours_tache(fichiers):
+        compte: dict[str, int] = {}
+        for f in fichiers:
+            if reg.est_append_only(f):
+                continue
+            o = proprietaire(reg, f)
+            if o and o != "parked":
+                compte[o] = compte.get(o, 0) + 1
+        return min(compte, key=lambda o: (-compte[o], o)) if compte else None
+
+    par_groupe: dict[str, dict[str, int]] = {}
+    for t in taches.values():
+        p = parcours_tache(t["fichiers"])
+        if p:
+            g = par_groupe.setdefault(t["prefixe"], {})
+            g[p] = g.get(p, 0) + 1
+    parcours_groupe = {g: min(c, key=lambda o: (-c[o], o)) for g, c in par_groupe.items()}
+
+    stats: dict[str, dict] = {}
+    for tid, t in taches.items():
+        p = parcours_groupe.get(t["prefixe"])
+        for f in t["fichiers"]:
+            s = stats.setdefault(f, {"taches": set(), "parcours": set(), "commits": 0})
+            s["taches"].add(tid)
+            if p:
+                s["parcours"].add(p)
+    for ids, fichiers in commits:
+        ps = {parcours_groupe.get(taches[i]["prefixe"]) for i in ids if i in taches} - {None}
+        for f in fichiers:
+            s = stats.setdefault(f, {"taches": set(), "parcours": set(), "commits": 0})
+            s["commits"] += 1
+            s["parcours"] |= ps
+    out = []
+    for f, s in stats.items():
+        if f not in lignes:
+            continue  # fichier disparu depuis
+        n = len(s["taches"])
+        out.append({"fichier": f, "proprietaire": proprietaire(reg, f),
+                    "append_only": reg.est_append_only(f), "lignes": lignes[f],
+                    "taches": n, "commits": s["commits"], "parcours": sorted(s["parcours"]),
+                    "cout": n * max(1, len(s["parcours"])) * max(1, lignes[f])})
+    out.sort(key=lambda r: (-r["cout"], r["fichier"]))
+    return out
+
+
+def mesurer_conflits(reg: Registre, n_commits: int = 2000, top: int = 40) -> str:
+    """La mesure de l'étape 1, rejouable : plans actuels ET tâches archivées
+    (instantané de chaque fichier plan juste avant chaque « clean the plans »),
+    ``n_commits`` derniers commits non-merge. Sortie : tableau markdown."""
+    import fnmatch
+    fichiers = fichiers_du_depot(reg)
+    lignes = {}
+    for f in fichiers:
+        try:
+            lignes[f] = (ROOT / f).read_bytes().count(b"\n")
+        except OSError:
+            pass
+    revs = ["HEAD"] + [h + "^" for h in _git("log", "--format=%H", "--", "docs/done_task.md")]
+    taches: dict[str, dict] = {}
+    for rev in revs:
+        for chemin in _git("ls-tree", "-r", "--name-only", rev, "docs/"):
+            if chemin in PLAN_EXCLUS or not any(fnmatch.fnmatch(chemin, g) for g in PLAN_GLOBS):
+                continue
+            for ligne in _git("show", f"{rev}:{chemin}"):
+                m = PL._TASK_LIST_RE.match(ligne) or PL._TASK_HEADER_RE.match(ligne)
+                if not m or m.group("id") in taches:
+                    continue
+                fs = {c for d in chemins_declares(m.group("label"))
+                      for c in [normaliser(d)] if c and reg.sous_racines(c) and "*" not in c}
+                taches[m.group("id")] = {"prefixe": PL._task_prefix(m.group("id")), "fichiers": fs}
+    commits, courant = [], None
+    jeton = re.compile(r"[A-Z][A-Z0-9]*(?:-[A-Za-z0-9]+)*")
+    for ligne in _git("log", f"-{n_commits}", "--no-merges", "--name-only", "--format=@@%s"):
+        if ligne.startswith("@@"):
+            courant = ({i for i in jeton.findall(ligne[2:]) if i in taches}, set())
+            commits.append(courant)
+        elif courant is not None:
+            courant[1].add(ligne.strip())
+    classes = classer_conflits(reg, taches, commits, lignes)
+    partages = [r for r in classes if len(r["parcours"]) >= 2]
+    entete = [
+        f"{len(fichiers)} fichiers, {len(taches)} tâches de plan (ouvertes + archivées), "
+        f"{len(commits)} commits ; {len(partages)} fichiers PARTAGÉS (≥ 2 propriétaires).", "",
+        "| # | Fichier | Propriétaire | Lignes | Tâches | Commits | Propriétaires qui le touchent | Coût |",
+        "|---|---|---|---|---|---|---|---|"]
+    for i, r in enumerate(partages[:top], 1):
+        ao = " (append-only)" if r["append_only"] else ""
+        entete.append(f"| {i} | `{r['fichier']}`{ao} | {r['proprietaire']} | {r['lignes']} | "
+                      f"{r['taches']} | {r['commits']} | {', '.join(r['parcours'])} | {r['cout']} |")
+    return "\n".join(entete)
 
 
 # -------------------------------------------------------------------------- CLI
@@ -394,8 +604,10 @@ def _git(*args: str) -> list[str]:
 def fichiers_du_depot(reg: Registre) -> list[str]:
     # suivis + non suivis non ignorés : un fichier créé mais pas encore
     # commité est vérifié AVANT de partir en CI.
-    return sorted(set(_git("ls-files", "-co", "--exclude-standard", "--",
-                           *reg.roots)))
+    # Filtre par PRÉFIXE en Python : passée à git comme pathspec, une racine
+    # comme « docker-compose » ne désignerait que le fichier de ce nom exact.
+    return sorted({f for f in _git("ls-files", "-co", "--exclude-standard")
+                   if reg.sous_racines(f)})
 
 
 def plans_du_depot() -> dict[str, str]:
@@ -427,12 +639,20 @@ def _stats(reg: Registre, fichiers: list[str]) -> str:
 
 
 def main(argv=None) -> int:
+    for flux in (sys.stdout, sys.stderr):  # console Windows cp1252 (F10)
+        try:
+            flux.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--base", help="ref git : nomme les fichiers AJOUTÉS sans propriétaire (règle c)")
     ap.add_argument("--stats", action="store_true", help="fichiers/lignes par propriétaire")
     ap.add_argument("--owner-of", nargs="+", metavar="CHEMIN")
     ap.add_argument("--max", type=int, default=60, help="refus imprimés au plus")
     ap.add_argument("--verbose", action="store_true", help="lister aussi les globs morts")
+    ap.add_argument("--conflits", type=int, nargs="?", const=40, metavar="N",
+                    help="mesure : les N fichiers partagés les plus coûteux (tâches × "
+                         "propriétaires × lignes, plans + archives + 2000 commits)")
     args = ap.parse_args(argv)
 
     reg = charger_registre()
@@ -444,6 +664,9 @@ def main(argv=None) -> int:
             print(f"{c} → {', '.join(hits) or 'AUCUN'}{ao}")
         return 0
 
+    if args.conflits:
+        print(mesurer_conflits(reg, top=args.conflits))
+        return 0
     fichiers = fichiers_du_depot(reg)
     if args.stats:
         print(_stats(reg, fichiers))
@@ -452,7 +675,7 @@ def main(argv=None) -> int:
     erreurs, avert = verifier_registre(reg, fichiers)
     erreurs += verifier_fichiers(reg, fichiers)
     plans = plans_du_depot()
-    erreurs += verifier_plans(reg, plans)
+    erreurs += verifier_plans(reg, plans, fichiers)
     if args.base:
         ajoutes = _git("diff", "--name-only", "--diff-filter=A",
                        f"{args.base}...HEAD", "--", *reg.roots)

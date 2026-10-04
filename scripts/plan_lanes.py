@@ -98,6 +98,11 @@ chaque tâche reçoit ``owners`` (les propriétaires de ses fichiers), chaque
 lane affiche les siens, et les tâches multi-propriétaires sont listées à part
 — leur place est le plan transverse (règle b de ``scripts/check_ownership.py``,
 la garde CI). Sans registre, comportement d'avant OWN à l'identique.
+
+Et un ``@after`` vers une tâche d'un AUTRE fichier plan est désormais attendu :
+une tâche dont une dépendance est visible et non cochée dans un autre plan part
+dans le seau ``after_blocked`` (motif en français). Une dépendance introuvable
+(archivée) ne bloque pas, comme avant ; ``--force-wave`` outrepasse.
 """
 from __future__ import annotations
 
@@ -885,6 +890,14 @@ def _is_append_only(path: str) -> bool:
     return reg.est_append_only(check_ownership.normaliser(path) or path)
 
 
+def _chemins_pour_proprietaires(label: str):
+    """Les chemins déclarés, lus comme la garde les lit (toute extension)."""
+    if _registre() is None:
+        return _task_files_brut(label)
+    import check_ownership
+    return check_ownership.chemins_declares(label)
+
+
 def _proprietaires(fichiers) -> list[str]:
     """Propriétaires (registre) des fichiers SUBSTANTIELS déclarés par une tâche.
 
@@ -1077,7 +1090,7 @@ def parse_tasks(path: Path) -> list[dict]:
             # touche vraiment, front et back.
             "files_bruts": sorted(_task_files_brut(label)),
             # OWN — propriétaires (docs/ownership.yml) des fichiers déclarés.
-            "owners": _proprietaires(_task_files_brut(label)),
+            "owners": _proprietaires(_chemins_pour_proprietaires(label)),
         })
     return tasks
 
@@ -1247,6 +1260,66 @@ def apply_contract_pairing_gate(
     return autorisees, refusees
 
 
+# ---------------------------------------------------------------------------
+# OWN (critique finale, F3) — un `@after` vers une tâche d'un AUTRE fichier plan
+# n'était jamais attendu : le planificateur ne retient une tâche que sur une
+# dépendance du MÊME run, donc un déplacement de la découpe SPL pouvait partir
+# avant la capture de son golden, posée dans un autre plan. La porte ci-dessous
+# lit le statut de toutes les tâches des fichiers plan du dépôt et refuse une
+# tâche tant qu'une de ses dépendances EXTERNES est visible et non cochée.
+# Rétro-compatible : une dépendance introuvable (archivée, ailleurs) ne bloque
+# pas, exactement comme avant ; `--force-wave` l'outrepasse (fondateur).
+# ---------------------------------------------------------------------------
+
+def index_taches_plans(racine: Path = ROOT) -> dict:
+    """ID → (statut, fichier plan, ligne) pour toutes les tâches des plans."""
+    import check_ownership
+    out: dict = {}
+    for motif in check_ownership.PLAN_GLOBS:
+        for chemin in sorted(racine.glob(motif)):
+            rel = chemin.relative_to(racine).as_posix()
+            if rel in check_ownership.PLAN_EXCLUS:
+                continue
+            for n, raw in enumerate(chemin.read_text(encoding="utf-8").splitlines(), 1):
+                m = _TASK_LIST_RE.match(raw) or _TASK_HEADER_RE.match(raw)
+                if not m:
+                    continue
+                statut = (m.group("status") or "").strip()
+                en_ligne = (m.groupdict().get("inline_status") or "").strip()
+                if en_ligne and not statut.lower().startswith("x"):
+                    statut = en_ligne
+                out.setdefault(m.group("id"), (statut, rel, n))
+    return out
+
+
+def apply_external_after_gate(
+    tasks: list[dict], index: dict, force_wave: bool = False,
+) -> tuple[list[dict], list[dict]]:
+    """Sépare ``tasks`` en (autorisées, refusées sur un @after externe ouvert)."""
+    if force_wave:
+        return tasks, []
+    ids = {t["id"] for t in tasks}
+    ok: list[dict] = []
+    refusees: list[dict] = []
+    for t in tasks:
+        raisons = []
+        for dep in t.get("deps", ()):
+            if dep in ids or dep not in index:
+                continue
+            statut, plan, ligne = index[dep]
+            if statut.lower().startswith("x"):
+                continue
+            raisons.append(
+                f"attend {dep} ({plan}:{ligne}, pas encore cochée) — un @after "
+                f"vers une tâche d'un autre plan se respecte : lancer d'abord "
+                f"ce plan-là, ou --force-wave (fondateur, consigné)")
+        if raisons:
+            refusees.append({**t, "after_block_reasons": raisons})
+        else:
+            ok.append(t)
+    return ok, refusees
+
+
 def count_malformed(path: Path) -> int:
     """Count ``- [`` lines that fail to match either task regex.
 
@@ -1338,6 +1411,7 @@ def schedule(
     n_workers: int | None = None,
     wave_size: int = 80,
     pairing_blocked: list[dict] | None = None,
+    after_blocked: list[dict] | None = None,
 ) -> dict:
     """Build lanes and a cross-category, longest-lane-first wave plan.
 
@@ -1352,6 +1426,7 @@ def schedule(
     # PACT11 — même contrat que ``wave_blocked`` : déjà retirées de ``tasks``,
     # surfacées dans leur propre section, jamais réinjectées dans ``buildable``.
     pairing_blocked = pairing_blocked or []
+    after_blocked = after_blocked or []
     buildable = [t for t in tasks if t["gate"] == "buildable" and t["lane"] != "UNASSIGNED"]
     gated = [t for t in tasks if t["gate"] == "gated"]
     unassigned = [t for t in tasks if t["lane"] == "UNASSIGNED" and t["gate"] == "buildable"]
@@ -1468,6 +1543,7 @@ def schedule(
         "unassigned": unassigned,
         "wave_blocked": wave_blocked,
         "pairing_blocked": pairing_blocked,
+        "after_blocked": after_blocked,
         "counts": {
             "buildable": len(buildable),
             "lanes": len(lanes),
@@ -1477,6 +1553,7 @@ def schedule(
             "wave_blocked": len(wave_blocked),
             "pairing_blocked": len(pairing_blocked),
             "multi_owner": len(multi_owner),
+            "after_blocked": len(after_blocked),
             "max_parallel": max((len(w) for w in waves), default=0),
             "models": model_counts,
             "workers": len(worker_out),
@@ -1569,6 +1646,14 @@ def render(plan: dict, max_lanes: int, source: str) -> str:
         out.append(
             f"- **{lane}** ({len(ids)}, model={plan['lane_models'][lane]}{own}): {', '.join(ids)}"
         )
+    if plan.get("after_blocked"):
+        out += [
+            "",
+            "## Refusé — @after vers une tâche ouverte d'un AUTRE plan (OWN) — "
+            "utiliser --force-wave pour outrepasser (fondateur, consigné)",
+        ]
+        for t in plan["after_blocked"]:
+            out.append(f"- `{t['id']}`  [{t['lane']}] — " + " ; ".join(t["after_block_reasons"]))
     if plan.get("multi_owner"):
         out += [
             "",
@@ -1712,10 +1797,18 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
+    # OWN (F3) — @after vers une tâche ouverte d'un autre fichier plan.
+    allowed_tasks, after_blocked = apply_external_after_gate(
+        allowed_tasks, index_taches_plans(), force_wave=args.force_wave,
+    )
+    for t in after_blocked:
+        print(f"REFUSÉ (@after externe, OWN) : {t['id']} — "
+              + " ; ".join(t["after_block_reasons"]), file=sys.stderr)
+
     plan = schedule(
         allowed_tasks, max(1, args.max_lanes), wave_blocked=wave_blocked,
         n_workers=args.workers, wave_size=args.wave_size,
-        pairing_blocked=pairing_blocked,
+        pairing_blocked=pairing_blocked, after_blocked=after_blocked,
     )
     source = ", ".join(
         p.relative_to(ROOT).as_posix() if p.is_relative_to(ROOT) else str(p)

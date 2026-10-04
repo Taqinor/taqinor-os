@@ -14,7 +14,18 @@
 #     pour qu'un module NEUF reste sans propriétaire jusqu'à sa déclaration (règle c) ;
 #   - les fichiers d'une unité logés chez une autre (réglages cadence/stock/chantiers dans
 #     Paramètres, moteur de calepinage sous core/, studio toiture dans apps/web…) rejoignent
-#     leur unité.
+#     leur unité ;
+#   - apps/web reste au propriétaire `web` (sa session WEB_PLAN, déploiement Cloudflare séparé),
+#     SAUF le studio toiture partagé avec l'ERP (calepinage) : mesuré le 04/10, les pages
+#     proposition/questionnaire/suivi, devis/mon-toit et lib/lead.ts, pages/api/** sont
+#     éditées par la session web (13 tâches ouvertes + 8 archivées de WEB_PLAN, contre 3 de
+#     PLAN2 ; lead.ts : 7 tâches web, 2 devis, 0 acquisition) — les claims J0/J1a/J1b/J6 de
+#     unites.yml sur apps/web les auraient rendues multi-propriétaires ;
+#   - les racines couvrent TOUT le code et l'outillage (backend/, frontend/, scripts/, .github/,
+#     services/…) : un fichier hors racines (docs/, CLAUDE.md, .claude/) n'a pas de propriétaire.
+#     Les conteneurs (backend/, backend/django_core/, apps/, frontend/, src/, features/, pages/,
+#     api/) n'acceptent pas de glob ouvert : un dossier NEUF y reste sans propriétaire (règle c).
+#     Sous un résiduel (core/**, components/**, ventes/**…), un fichier neuf hérite du résiduel.
 #
 # Résolution (scripts/check_ownership.py) : `paths` = revendication précise et STRICTE (deux
 # propriétaires = refus) ; à défaut `fallback` = résiduel d'un sous-arbre, le plus long préfixe
@@ -27,8 +38,8 @@
 # indentés de 2, listes « - x », listes [a, b], chaînes entre guillemets, commentaires #.
 
 version: 1
-roots: [backend/django_core/apps/, backend/django_core/core/, frontend/src/, apps/web/]
-containers: [backend/django_core/apps/, frontend/src/, frontend/src/features/, frontend/src/pages/, frontend/src/api/]
+roots: [backend/, frontend/, apps/, scripts/, .github/, services/, mobile/, tools/, load/, loadtests/, STAGES.py, docker-compose, .env.example, .dockerignore, .gitignore, .bandit.baseline, .lanes.json, .mcp.json, .blocked.json, .semgrep/]
+containers: [backend/, backend/django_core/, backend/django_core/apps/, frontend/, frontend/src/, frontend/src/features/, frontend/src/pages/, frontend/src/api/]
 exempt: [transverse, platform, parked]
 
 owners:
@@ -145,6 +156,20 @@ owners:
       - backend/django_core/apps/ventes/views/releve_import.py
       - backend/django_core/apps/ventes/views/remise_encaissement.py
       - backend/django_core/core/events/facturation.py
+      - backend/django_core/templates/pdf/avoir.html
+      - backend/django_core/templates/pdf/bon_commande.html
+      - backend/django_core/templates/pdf/bordereau_remise.html
+      - backend/django_core/templates/pdf/devis.html
+      - backend/django_core/templates/pdf/dossier_contentieux.html
+      - backend/django_core/templates/pdf/facture.html
+      - backend/django_core/templates/pdf/lettre_relance.html
+      - backend/django_core/templates/pdf/note_debit.html
+      - backend/django_core/templates/pdf/proforma.html
+      - backend/django_core/templates/pdf/recu.html
+      - backend/django_core/templates/pdf/releve.html
+      - backend/django_core/templates/pdf/releve_abonnement.html
+      - frontend/e2e/avoirs*
+      - frontend/e2e/receivables*
       - frontend/src/features/ventes/PaiementEnLigneDialog*
       - frontend/src/features/ventes/echeancierEdition*
       - frontend/src/pages/ventes/AvoirsPage*
@@ -162,6 +187,7 @@ owners:
       - frontend/src/pages/ventes/factureKanban*
       - frontend/src/pages/ventes/factureList/**
       - frontend/src/pages/ventes/kpiArgent.apx12.test.mjs
+      - tools/facture/**
     fallback:
       - backend/django_core/apps/ventes/*_facturation.py
   calepinage:
@@ -321,6 +347,7 @@ owners:
       - backend/django_core/core/events/calepinage.py
       - backend/django_core/core/tests/test_calepinage_*
       - backend/django_core/core/tests/test_electrique_*
+      - frontend/e2e/calepinage*
       - frontend/src/api/calepinage/**
       - frontend/src/api/calepinageApi*
       - frontend/src/features/calepinage/**
@@ -354,7 +381,6 @@ owners:
     audit: "audit acquisition"
     titre: "Acquisition : site, Meta Lead Ads, webhooks, parrainage, RDV"
     paths:
-      - apps/web/src/pages/devis/mon-toit.astro
       - backend/django_core/apps/adsengine/**
       - backend/django_core/apps/contact/**
       - backend/django_core/apps/crm/attribution_selectors.py
@@ -382,15 +408,19 @@ owners:
       - backend/django_core/apps/crm/webhooks.py
       - backend/django_core/apps/ventes/selectors_publicite.py
       - backend/django_core/core/events/acquisition.py
+      - frontend/e2e/adsengine*
+      - frontend/e2e/veille*
       - frontend/src/features/adsengine/**
       - frontend/src/pages/crm/WebsiteLeadPayloadsPage*
+      - tools/adlib_probe/**
+      - tools/veille_tri/**
   lead:
     unite: J1a
     plan: docs/plans/PLAN_AUDIT_LEAD.md
     audit: "audit lead"
     titre: "Lead → fiche → cadence → visite (CRM hors fichiers chauds, visites)"
     paths:
-      - apps/web/src/pages/questionnaire/**
+      - STAGES.py
       - backend/django_core/apps/ged/fixtures/guide_visite_suivi_commercial.*
       - backend/django_core/apps/ged/tests_guide_suivi_a_jour.py
       - backend/django_core/apps/parametres/contract_samples/cadence_relance_v2.json
@@ -402,6 +432,9 @@ owners:
       - backend/django_core/apps/ventes/views/plan_commission.py
       - backend/django_core/apps/visites/**
       - backend/django_core/core/events/lead.py
+      - frontend/e2e/activities*
+      - frontend/e2e/doublons*
+      - frontend/e2e/leads*
       - frontend/src/api/crmApi*
       - frontend/src/api/visitesApi*
       - frontend/src/features/visites/**
@@ -445,6 +478,9 @@ owners:
       - backend/django_core/apps/roles/**
       - backend/django_core/apps/tiers/**
       - backend/django_core/apps/trash/**
+      - backend/django_core/authentication/**
+      - backend/django_core/testkit/**
+      - backend/django_core/tests/**
       - frontend/src/api/accessReviewApi*
       - frontend/src/api/adminopsApi*
       - frontend/src/api/auditApi*
@@ -532,6 +568,9 @@ owners:
       - backend/django_core/apps/installations/**
       - backend/django_core/apps/outillage/**
       - backend/django_core/core/events/chantiers.py
+      - backend/django_core/templates/pdf/bon_livraison.html
+      - backend/django_core/templates/pdf/compte_rendu_intervention.html
+      - frontend/e2e/installations*
       - frontend/src/api/installationsApi*
       - frontend/src/api/outillageApi*
       - frontend/src/features/installations/**
@@ -559,6 +598,14 @@ owners:
       - backend/django_core/core/stock_reorder.py
       - backend/django_core/core/tests/test_stkcat21_product_roles.py
       - backend/django_core/core/tests/test_stock_reorder.py
+      - backend/django_core/templates/pdf/analyse_achats.html
+      - backend/django_core/templates/pdf/bon_assemblage.html
+      - backend/django_core/templates/pdf/bon_commande_fournisseur.html
+      - backend/django_core/templates/pdf/bon_enlevement_location.html
+      - backend/django_core/templates/pdf/bon_restitution_location.html
+      - backend/django_core/templates/pdf/facture_fournisseur.html
+      - frontend/e2e/procure-to-pay*
+      - frontend/e2e/stock*
       - frontend/src/api/stockApi*
       - frontend/src/components/CatalogueAchatPicker*
       - frontend/src/components/OnboardingFournisseurWizard*
@@ -583,10 +630,10 @@ owners:
     audit: "audit documents"
     titre: "GED, documents, portail client, suivi public"
     paths:
-      - apps/web/src/pages/suivi/**
       - backend/django_core/apps/documents/**
       - backend/django_core/apps/portail/**
       - backend/django_core/apps/ventes/selectors_portail.py
+      - backend/django_core/templates/pdf/document_*
       - frontend/src/api/documentsApi*
       - frontend/src/api/gedApi*
       - frontend/src/api/portailApi*
@@ -608,6 +655,8 @@ owners:
       - backend/django_core/core/events.py
       - backend/django_core/core/events/__init__.py
       - backend/django_core/core/tests/test_events_split_golden.py
+      - backend/django_core/templates/email/**
+      - frontend/e2e/parametres*
       - frontend/src/api/automationApi*
       - frontend/src/api/notificationsApi*
       - frontend/src/api/parametresApi*
@@ -627,6 +676,8 @@ owners:
     audit: "audit générateur"
     titre: "Écran générateur de devis (100 % TTC) et calcul solaire côté écran"
     paths:
+      - frontend/scripts/calculs_*
+      - frontend/scripts/solar_*
       - frontend/src/features/ventes/autoQuote*
       - frontend/src/features/ventes/calc/**
       - frontend/src/features/ventes/golden/**
@@ -648,10 +699,12 @@ owners:
     audit: "audit devis"
     titre: "Étude → devis → envoi → correction → révision → signature"
     paths:
-      - apps/web/src/pages/proposition/**
       - backend/django_core/apps/crm/devis_selectors.py
       - backend/django_core/apps/crm/devis_views.py
       - backend/django_core/core/events/devis.py
+      - frontend/e2e/devis*
+      - frontend/e2e/figures*
+      - frontend/e2e/i18n-quote-journey*
       - frontend/src/api/ventesApi*
       - frontend/src/styles/devis/**
     fallback:
@@ -664,7 +717,47 @@ owners:
     audit: "audit deploy"
     titre: "Déployabilité, réglages, images, CI, outillage du dépôt, socle du front"
     paths:
+      - .bandit.baseline
+      - .blocked.json
+      - .dockerignore
+      - .env.example
+      - .github/**
+      - .gitignore
+      - .lanes.json
+      - .mcp.json
+      - .semgrep/**
+      - backend/.gitignore
+      - backend/README.md
+      - backend/caddy/**
+      - backend/celery_worker/**
+      - backend/db/**
+      - backend/django_core/.coveragerc
+      - backend/django_core/.dockerignore
+      - backend/django_core/.importlinter
+      - backend/django_core/Dockerfile
+      - backend/django_core/app_template/**
       - backend/django_core/apps/ventes/tests/test_qx11_beat_reachability.py
+      - backend/django_core/erp_agentique/**
+      - backend/django_core/manage.py
+      - backend/django_core/requirements-dev.txt
+      - backend/django_core/requirements.txt
+      - backend/django_core/setup.cfg
+      - backend/minio/**
+      - backend/nginx/**
+      - docker-compose*
+      - docker-compose*.yml
+      - frontend/.dockerignore
+      - frontend/.gitignore
+      - frontend/Dockerfile.dev
+      - frontend/Dockerfile.prod
+      - frontend/README.md
+      - frontend/eslint.config.js
+      - frontend/index.html
+      - frontend/nginx.conf
+      - frontend/package-lock.json
+      - frontend/package.json
+      - frontend/playwright.config.js
+      - frontend/public/**
       - frontend/src/api/axios*
       - frontend/src/api/coreApi*
       - frontend/src/api/demoApi*
@@ -700,11 +793,21 @@ owners:
       - frontend/src/sw.js
       - frontend/src/ui/**
       - frontend/src/utils/**
+      - frontend/vite.config.js
+      - frontend/vitest.config.js
+      - load/**
+      - loadtests/**
+      - mobile/**
+      - scripts/**
+      - services/**
     fallback:
+      - frontend/e2e/**
+      - frontend/scripts/**
       - frontend/src/components/**
       - frontend/src/lib/**
       - frontend/src/styles/**
       - frontend/src/test/**
+      - tools/**
   sav:
     unite: J4
     plan: docs/plans/PLAN_AUDIT_SAV.md
@@ -714,6 +817,10 @@ owners:
       - backend/django_core/apps/monitoring/**
       - backend/django_core/apps/sav/**
       - backend/django_core/core/events/sav.py
+      - backend/django_core/templates/pdf/maintenance.html
+      - backend/django_core/templates/pdf/sav_fiche_ticket.html
+      - backend/django_core/templates/pdf/sav_intervention.html
+      - frontend/e2e/sav*
       - frontend/src/api/monitoringApi*
       - frontend/src/api/savApi*
       - frontend/src/components/sav/**
@@ -736,6 +843,8 @@ owners:
       - backend/django_core/apps/semantic/**
       - backend/django_core/apps/statuspage/**
       - backend/django_core/apps/uxviews/**
+      - backend/fastapi_ia/**
+      - frontend/e2e/reporting*
       - frontend/src/api/dataimportApi*
       - frontend/src/api/iaApi*
       - frontend/src/api/importApi*
@@ -755,25 +864,28 @@ owners:
       - frontend/src/pages/reporting/**
     fallback:
       - frontend/src/features/uxviews/**
-  parked:
-    paths:
-      - backend/django_core/core/events/parked.py
   web:
     plan: docs/WEB_PLAN.md
-    titre: "Site public Astro (apps/web) hors studio toiture, tunnel lead, proposition et suivi"
+    titre: "Site public Astro (apps/web) hors studio toiture : sa session WEB_PLAN, déploiement Cloudflare"
     fallback:
       - apps/web/**
   parked:
     plan: docs/backlog/PHASE2_PLAN.md
-    titre: "Coquilles des 47 apps parquées (liste lue dans core/parked.py, jamais recopiée)"
+    titre: "Coquilles des 47 apps parquées (liste lue dans core/parked.py, jamais recopiée) et miroirs parked/"
     paths_from_parked_registry: true
+    paths:
+      - backend/django_core/core/events/parked.py
+      - backend/django_core/templates/ao/**
+      - backend/django_core/templates/pdf/mrp_*
+      - backend/django_core/templates/pdf/rapport_avancement_projet.html
+      - backend/parked/**
+      - frontend/parked/**
   platform:
     plan: docs/PLAN.md
     titre: "Files historiques multi-propriétaires du run « work on the plan » (aucun fichier)"
   transverse:
     plan: docs/plans/PLAN_AUDIT_TRANSVERSE.md
     titre: "Tâches multi-propriétaires (aucun fichier) — jamais en parallèle d'un plan qui chevauche"
-
 # Surfaces APPEND-ONLY : tout propriétaire peut y AJOUTER selon la règle écrite à côté (jamais
 # réordonner, renommer ni réécrire l'ajout d'un autre) ; elles n'unissent pas deux lanes
 # (plan_lanes.py) et ne rendent pas une tâche multi-propriétaires (règle b). Conflit à
@@ -829,10 +941,6 @@ append_only:
     rule: "TRACKED_MODELS : un tuple (<app>, <Model>) en fin de liste, commenté de son ID de tâche"
   - path: backend/django_core/apps/publicapi/constants.py
     rule: "une constante SCOPE_* en fin du bloc des portées (+ son choix) ; jamais renommer un identifiant publié"
-  - path: backend/django_core/apps/dataimport/services.py
-    rule: "FIELD_MAPS : un nouveau bloc-clé par cible ; jamais modifier le mapping d'une autre cible"
-  - path: backend/django_core/apps/dataimport/export_registry.py
-    rule: "_SPECS : une ExportSpec en fin ; champ sensible ajouté à SENSITIVE_FIELDS dans le même commit"
   - path: "backend/django_core/apps/records/platform_baselines/*.txt"
     rule: "cliquet DÉCROISSANT : supprimer seulement les lignes du module corrigé, jamais en ajouter"
   - path: backend/django_core/apps/calepinage/views/rattachements.py
@@ -841,14 +949,10 @@ append_only:
     rule: "une clé de paramètre ajoutée EN FIN avec « # CALX<id> » (D-CALX 13)"
   - path: "frontend/src/features/*/module.config.jsx"
     rule: "routes et nav d'un module : ajouter une entrée lazy() et une entrée de nav, jamais réordonner (le premier item CRM reste la porte Leads, APX1)"
-  - path: "frontend/src/features/*/store/*Slice.js"
-    rule: "ajouter un thunk/reducer par nouvelle ressource, jamais toucher aux existants"
   - path: frontend/src/api/calepinageApi.js
     rule: "une capacité = UNE fonction ajoutée EN FIN avec « // CALX<id> » (D-CALX 13)"
   - path: frontend/src/features/calepinage/atelier/onglets.js
     rule: "un onglet ajouté EN FIN avec « // CALX<id> » (D-CALX 13)"
-  - path: frontend/src/pages/crm/CrmCockpit.jsx
-    rule: "coquille de composition : UN import et UNE ligne de montage par widget ; la logique vit dans le fichier du widget"
   - path: frontend/src/router/index.jsx
     rule: "un écran avec layout passe par features/<module>/module.config.jsx (import.meta.glob) ; ici seulement une route hors layout, ajoutée en fin de bloc"
   - path: frontend/src/router/prefetchMap.js
@@ -871,8 +975,6 @@ append_only:
     rule: "UNE ligne « export * from './X' » ajoutée en fin de sa section"
   - path: "frontend/src/ui/*/index.js"
     rule: "UNE ligne « export * from './X' » ajoutée en fin"
-  - path: frontend/src/pages/aide/LexiquePage.jsx
-    rule: "TERMES : insertion à la position ALPHABÉTIQUE (ordre affirmé par LexiquePage.test.jsx), sans définition chiffrée"
   - path: frontend/src/test/fixtures/contractSamples.js
     rule: "un export par nouvel échantillon de contrat (PACT10), ajouté en fin"
   - path: frontend/src/index.css
@@ -884,7 +986,7 @@ append_only:
   - path: frontend/src/components/records-panels.css
     rule: "fichier historique (contenu migré dans index.css) : n'y rien ajouter"
   - path: frontend/src/main.jsx
-    rule: "un import ou un provider ajouté en fin de sa liste"
+    rule: "surface historique de plan_lanes : un import ou un provider ajouté en fin de sa liste, rien d'autre"
   - path: frontend/src/App.jsx
     rule: "surface historique de plan_lanes (fichier absent aujourd'hui)"
   - path: docs/PLAN.md
@@ -893,6 +995,24 @@ append_only:
     rule: "file de plan : ajout de tâches et de lignes de DONE LOG (hors racines du registre)"
   - path: docs/CODEMAP.md
     rule: "carte régénérée ; conflit = arbre fusionné + codemap_fingerprint.py --write"
+  - path: "scripts/*.txt"
+    rule: "liste de référence (allowlist / baseline) : une ligne = une exception d'UN fichier ; une tâche n'ajoute, ne re-clé ou ne retire QUE les lignes qui nomment SES fichiers ; jamais réordonner"
+  - path: scripts/check_money_rounding.py
+    rule: "TARGET_FILES seulement : ajouter ou re-clé les chemins de SES modules, rien d'autre dans ce fichier"
+  - path: scripts/check_api_shapes.py
+    rule: "ECHANTILLONS_POSES_AVANT_LEUR_VUE seulement : ajouter les échantillons de SON module, rien d'autre dans ce fichier"
+  - path: scripts/ci_guards.py
+    rule: "GARDES : UNE entrée (nom, commande, dossier) ajoutée en fin du job, jamais une étape ci.yml"
+  - path: backend/django_core/erp_agentique/settings/base.py
+    rule: "un réglage ou un label sous le bloc commenté de l'app propriétaire ; JAMAIS réordonner INSTALLED_APPS (graphe des coquilles parquées)"
+  - path: backend/django_core/erp_agentique/urls.py
+    rule: "UNE ligne path('<prefixe>/', include('apps.<x>.urls')) avant le bloc admin/schéma"
+  - path: backend/django_core/erp_agentique/celery.py
+    rule: "beat_schedule : UNE entrée en fin, clé « <app>-<verbe> » + commentaire de tâche"
+  - path: .env.example
+    rule: "variables ajoutées sous le bloc commenté de leur module ; jamais renommer une variable existante"
+  - path: docs/ownership.yml
+    rule: "une tâche n'ajoute ou ne retire QUE les globs de SON propriétaire (dans son bloc) ; jamais réordonner ni toucher le bloc d'un autre (hors racines : vérifié par la garde elle-même)"
 
 # Plan → propriétaire(s). Chaque owners.<x>.plan lie déjà son plan ; ici les fichiers plan
 # historiques. Les propriétaires `platform` / `transverse` / `parked` sont exemptés de la règle

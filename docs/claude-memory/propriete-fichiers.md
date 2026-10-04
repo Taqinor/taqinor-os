@@ -7,8 +7,8 @@ metadata:
 
 **Une tâche va dans le plan du propriétaire de ses fichiers ; multi-propriétaires → plan transverse.**
 
-Chaque fichier sous `backend/django_core/apps`, `backend/django_core/core`, `frontend/src`, `apps/web` a
-UN propriétaire, déclaré dans `docs/ownership.yml`. Propriétaires = les unités de
+Chaque fichier du code et de l'outillage (`backend/`, `frontend/`, `apps/web`, `scripts/`, `.github/`,
+`services/`… — pas docs/ ni CLAUDE.md) a UN propriétaire, déclaré dans `docs/ownership.yml`. Propriétaires = les unités de
 `docs/audits/unites.yml` qui possèdent des fichiers (acquisition J0, lead J1a, crm D1, devis J1b,
 facturation J5, moteur D2, generateur D4, calepinage D3, chantiers J2, stock J3, documents J6, sav J4,
 parametres X3, securite X1, deploy X5, analyse X7) + `web` (docs/WEB_PLAN.md) + `parked` + `platform`
@@ -20,6 +20,12 @@ transverse : `docs/plans/PLAN_AUDIT_TRANSVERSE.md`. Le registre PRIME sur le cha
   `python scripts/check_ownership.py --owner-of <chemins>` ; un seul propriétaire → son plan ; plusieurs →
   plan transverse. Un fichier NEUF doit être revendiqué dans `docs/ownership.yml` dans le même commit.
 - Un test suit son sujet (DevisGenerator* = generateur, tests du moteur = moteur…).
+- `apps/web` reste au propriétaire `web` (session WEB_PLAN, déploiement Cloudflare) sauf le studio toiture
+  (calepinage) : mesuré le 04/10, ses pages proposition/questionnaire et `lib/lead.ts` sont éditées par la
+  session web ; une tâche qui change à la fois une page apps/web et le backend ERP est transverse.
+- Un `@after` vers une tâche d'un AUTRE plan est attendu : `plan_lanes.py` refuse la tâche tant que sa
+  dépendance n'est pas cochée (lancer d'abord l'autre plan ; `--force-wave` = fondateur seulement).
+- Mesurer : `python scripts/check_ownership.py --conflits 40` (fichiers partagés classés par coût).
 - Surfaces `append_only` du registre (migrations/, urls.py, apps.py, façade ventes/services.py,
   core/events.py, roles/models.py, index.css, router, module.config.jsx…) : tout propriétaire y AJOUTE
   selon la règle écrite à côté, sans réordonner ni réécrire. Migrations : si deux sessions créent la même
@@ -33,7 +39,7 @@ transverse : `docs/plans/PLAN_AUDIT_TRANSVERSE.md`. Le registre PRIME sur le cha
 **Why:** Reda, 02→04/10/2026 — les sessions parallèles ne marchent que si la propriété est réelle et
 disjointe ; la construction QJR5 a dû faire passer 155 de ses 159 tâches dans une seule lane série parce
 que DevisGenerator.jsx, views/devis.py, solar.js, builder.py, crm/services.py… étaient partagés (mesure du
-04/10 : 720 fichiers touchés par au moins deux propriétaires).
+04/10 : 968 fichiers sur 14 277 touchés par au moins deux propriétaires).
 
 **How to apply:** la garde `scripts/check_ownership.py` (job `stage-names`) refuse un fichier sans
 propriétaire ou à deux propriétaires, une tâche ouverte d'un plan de propriétaire qui déclare le fichier

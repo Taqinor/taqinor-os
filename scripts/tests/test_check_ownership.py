@@ -338,6 +338,92 @@ class PlansTests(unittest.TestCase):
         self.assertIn("aucun propriétaire", erreurs[0])
 
 
+class FormesDeFilesTests(unittest.TestCase):
+    """Critique finale OWN (F1/F4) : toute forme de `Files:` est lue."""
+
+    def setUp(self):
+        self.reg = registre()
+        self.fichiers = [
+            "backend/django_core/apps/ventes/views/devis.py",
+            "backend/django_core/apps/ventes/views/facture.py",
+            "backend/django_core/apps/crm/cadence_temps.py",
+        ]
+
+    def _refus(self, ligne, plan="docs/plans/PLAN_DEVIS.md"):
+        return co.verifier_plans(self.reg, {plan: ligne}, fichiers=self.fichiers)
+
+    def test_extensions_completes_et_json_non_tronque(self):
+        chemins = co.chemins_declares(
+            "x. Files: `apps/ventes/contract_samples/calepinage_options.json`, "
+            "`apps/web/src/pages/proposition/[...token].astro`, `frontend/src/a.scss`.")
+        self.assertIn("apps/ventes/contract_samples/calepinage_options.json", chemins)
+        self.assertNotIn("apps/ventes/contract_samples/calepinage_options.js", chemins)
+        self.assertIn("apps/web/src/pages/proposition/[...token].astro", chemins)
+        self.assertIn("frontend/src/a.scss", chemins)
+
+    def test_accolades_antislash_glob_et_dossier(self):
+        for decl in ("`backend/django_core/apps/{ventes/views/devis,crm/cadence_temps}.py`",
+                     "`backend\\django_core\\apps\\crm\\cadence_temps.py`",
+                     "`backend/django_core/apps/crm/*.py`",
+                     "`backend/django_core/apps/crm/`"):
+            with self.subTest(decl=decl):
+                erreurs = self._refus(f"- [ ] SPL20 — x. Files: {decl}. (ROUTINE)\n")
+                self.assertTrue(any("cadence" in e for e in erreurs), erreurs)
+
+    def test_files_en_ligne_de_continuation_et_fichiers(self):
+        for texte in ("- [ ] SPL21 — x : constat long.\n"
+                      "  Files: `backend/django_core/apps/crm/cadence_temps.py`. (ROUTINE)\n",
+                      "- [ ] SPL22 — x. Fichiers : `backend/django_core/apps/crm/cadence_temps.py`.\n"):
+            with self.subTest(texte=texte[:20]):
+                erreurs = self._refus(texte)
+                self.assertEqual(len(erreurs), 1, erreurs)
+                self.assertIn("cadence", erreurs[0])
+
+    def test_ligne_de_tache_mal_formee_avec_files_refusee(self):
+        erreurs = self._refus(
+            "- [ ] SPL23 - tiret court. Files: `backend/django_core/apps/ventes/views/devis.py`.\n")
+        self.assertEqual(len(erreurs), 1, erreurs)
+        self.assertIn("mal formée", erreurs[0])
+
+
+class RegistreDoublonsTests(unittest.TestCase):
+    def test_cle_de_proprietaire_dupliquee_refusee(self):
+        # F5 : le mini-YAML garde silencieusement le DERNIER bloc d'une clé.
+        texte = REGISTRE.replace(
+            "  transverse:\n",
+            "  cadence:\n"
+            "    plan: docs/plans/PLAN_CADENCE_BIS.md\n"
+            "  transverse:\n")
+        erreurs, _ = co.verifier_registre(registre(texte), [])
+        self.assertTrue(any("deux fois" in e and "cadence" in e for e in erreurs), erreurs)
+
+
+class MesureConflitsTests(unittest.TestCase):
+    """F8 : la mesure du brief (étape 1) est reproductible par la garde."""
+
+    def test_classement_par_cout_taches_x_proprietaires_x_lignes(self):
+        reg = registre()
+        devis = "backend/django_core/apps/ventes/views/devis.py"
+        cadence = "backend/django_core/apps/crm/cadence_temps.py"
+        taches = {
+            "QJR1": {"prefixe": "QJR", "fichiers": {devis}},
+            "QJR2": {"prefixe": "QJR", "fichiers": {devis}},
+            "CAD1": {"prefixe": "CAD", "fichiers": {cadence, devis}},
+            "CAD2": {"prefixe": "CAD", "fichiers": {cadence}},
+        }
+        commits = [({"QJR1"}, {devis}), ({"CAD1"}, {cadence})]
+        lignes = {devis: 100, cadence: 10}
+        lignes_classees = co.classer_conflits(reg, taches, commits, lignes)
+        tete = lignes_classees[0]
+        self.assertEqual(tete["fichier"], devis)
+        self.assertEqual(tete["proprietaire"], "devis")
+        self.assertEqual(tete["taches"], 3)
+        self.assertEqual(sorted(tete["parcours"]), ["cadence", "devis"])
+        self.assertEqual(tete["cout"], 3 * 2 * 100)
+        self.assertEqual([r["fichier"] for r in lignes_classees if len(r["parcours"]) >= 2],
+                         [devis])
+
+
 class NouveauxFichiersTests(unittest.TestCase):
     def test_nouveau_fichier_sans_proprietaire_nomme(self):
         reg = registre()
@@ -379,6 +465,24 @@ class PlanLanesIntegrationTests(unittest.TestCase):
             taches = {t["id"]: t for t in pl.parse_tasks(plan)}
         self.assertEqual(taches["SPL10"]["owners"], ["devis"])
         self.assertEqual(taches["SPL11"]["owners"], ["cadence", "devis"])
+
+    def test_after_vers_une_tache_ouverte_d_un_autre_plan_bloque(self):
+        # F3 : un @after vers une tâche d'un AUTRE fichier plan était ignoré —
+        # un déplacement pouvait partir avant la capture de son golden.
+        taches = [
+            {"id": "SPL3", "deps": ["SPL1"], "lane": "a"},
+            {"id": "SPL4", "deps": ["QJR500"], "lane": "a"},
+            {"id": "SPL5", "deps": ["SPL4"], "lane": "a"},
+        ]
+        index = {"SPL1": ("", "docs/plans/PLAN_AUDIT_LEAD.md", 12),
+                 "QJR500": ("x", "docs/PLAN2.md", 1183)}
+        ok, refusees = pl.apply_external_after_gate(taches, index)
+        self.assertEqual([t["id"] for t in ok], ["SPL4", "SPL5"])
+        self.assertEqual(refusees[0]["id"], "SPL3")
+        self.assertIn("SPL1", refusees[0]["after_block_reasons"][0])
+        self.assertIn("PLAN_AUDIT_LEAD.md", refusees[0]["after_block_reasons"][0])
+        ok, refusees = pl.apply_external_after_gate(taches, index, force_wave=True)
+        self.assertEqual(refusees, [])
 
     def test_sans_registre_comportement_inchange(self):
         pl.utiliser_registre(None)
