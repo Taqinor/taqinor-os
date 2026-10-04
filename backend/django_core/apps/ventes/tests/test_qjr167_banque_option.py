@@ -129,13 +129,15 @@ class AppelantPublicPasseLOptionTests(TestCase):
 
     def test_couverture_batterie_publique_nomme_explicitement_l_option(self):
         import ast
-        import inspect
 
-        from apps.ventes import public_views as PV
+        from apps.ventes.tests.split_golden import fichiers_du_groupe
 
-        arbre = ast.parse(inspect.getsource(PV).lstrip())
+        # SPL241 — ``public_views.py`` est découpé en ``public/*.py`` : la
+        # garde lit le GROUPE (jamais vide), pas un fichier qui se vide.
+        arbres = [ast.parse(chemin.read_text(encoding='utf-8'))
+                  for chemin in fichiers_du_groupe('public_views.py', 'public/*.py')]
         appels = [
-            noeud for noeud in ast.walk(arbre)
+            noeud for arbre in arbres for noeud in ast.walk(arbre)
             if isinstance(noeud, ast.Call)
             and isinstance(noeud.func, ast.Name)
             and noeud.func.id == 'banque_batterie_du_devis'

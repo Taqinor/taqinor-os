@@ -44,6 +44,7 @@ from unittest import mock
 from django.test import RequestFactory, SimpleTestCase, override_settings
 
 from apps.ventes import public_views
+from apps.ventes.tests.split_golden import fichiers_du_groupe
 
 
 #: Valeur hostile : un caractère non-ASCII suffisait à faire lever
@@ -318,11 +319,16 @@ class GardeStructurelleCorpsPublicTests(SimpleTestCase):
     #: y compris sur un champ que ce recensement ne nomme pas encore.
     _CHAMPS = ('otp_code', 'nom', 'name', 'option', 'on_behalf_of')
 
+    #: SPL241 — ``public_views.py`` est découpé en ``public/*.py`` : les scans
+    #: lisent le GROUPE (jamais vide), pas un fichier qui se vide.
+    @staticmethod
+    def _arbres():
+        return [ast.parse(chemin.read_text(encoding='utf-8'))
+                for chemin in fichiers_du_groupe('public_views.py', 'public/*.py')]
+
     def test_plus_aucun_strip_nu_sur_le_corps_de_requete(self):
-        source = Path(public_views.__file__).read_text(encoding='utf-8')
-        arbre = ast.parse(source)
         fautifs = []
-        for noeud in ast.walk(arbre):
+        for noeud in (n for arbre in self._arbres() for n in ast.walk(arbre)):
             if not (isinstance(noeud, ast.Call)
                     and isinstance(noeud.func, ast.Attribute)
                     and noeud.func.attr == 'strip'):
@@ -338,10 +344,8 @@ class GardeStructurelleCorpsPublicTests(SimpleTestCase):
         self.assertEqual(fautifs, [], 'sites non gardés : %r' % (fautifs,))
 
     def test_les_six_champs_passent_par_la_primitive_partagee(self):
-        source = Path(public_views.__file__).read_text(encoding='utf-8')
-        arbre = ast.parse(source)
         lus = set()
-        for noeud in ast.walk(arbre):
+        for noeud in (n for arbre in self._arbres() for n in ast.walk(arbre)):
             if (isinstance(noeud, ast.Call)
                     and isinstance(noeud.func, ast.Name)
                     and noeud.func.id == '_texte_du_corps'):
