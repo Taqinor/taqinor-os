@@ -1,4 +1,5 @@
 """CH3/CH4 — Sérialiseurs recette IEC 62446-1 + pack de remise (installations)."""
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -131,12 +132,15 @@ class RecettePompageSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Technicien inconnu.')
         return value
 
+    @extend_schema_field(serializers.CharField())
     def get_cadre(self, obj):
         return RecettePompage.CADRE
 
+    @extend_schema_field(serializers.DictField())
     def get_comparaison(self, obj):
         return comparaison_recette_pompage(obj)
 
+    @extend_schema_field(serializers.DictField())
     def get_vue_portail(self, obj):
         comp = comparaison_recette_pompage(obj)
         return {
