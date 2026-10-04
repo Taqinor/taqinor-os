@@ -484,6 +484,23 @@ class PlanLanesIntegrationTests(unittest.TestCase):
         ok, refusees = pl.apply_external_after_gate(taches, index, force_wave=True)
         self.assertEqual(refusees, [])
 
+    def test_refus_after_externe_transitif(self):
+        # Critique finale OWN (F8) : SPL47 retenue par un @after externe, SPL48
+        # (@after SPL47, même plan) partait quand même — le planificateur ne
+        # retient que sur une dépendance PRÉSENTE dans le run.
+        taches = [
+            {"id": "SPL47", "deps": ["SPL46"], "lane": "a"},
+            {"id": "SPL48", "deps": ["SPL47"], "lane": "a"},
+            {"id": "SPL49", "deps": ["SPL48"], "lane": "a"},
+            {"id": "SPL52", "deps": [], "lane": "b"},
+        ]
+        index = {"SPL46": ("", "docs/plans/PLAN_AUDIT_TRANSVERSE.md", 40)}
+        ok, refusees = pl.apply_external_after_gate(taches, index)
+        self.assertEqual([t["id"] for t in ok], ["SPL52"])
+        self.assertEqual(sorted(t["id"] for t in refusees), ["SPL47", "SPL48", "SPL49"])
+        motif = next(t for t in refusees if t["id"] == "SPL49")["after_block_reasons"][0]
+        self.assertIn("SPL48", motif)
+
     def test_sans_registre_comportement_inchange(self):
         pl.utiliser_registre(None)
         self.assertFalse(pl._is_append_only(
