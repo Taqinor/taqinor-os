@@ -19,8 +19,11 @@ LES TROIS RÈGLES
 ----------------
 (a) **Exactement un propriétaire.** Chaque fichier suivi sous les ``roots`` est
     revendiqué par UN propriétaire. Résolution à deux étages : un glob ``paths``
-    (revendication précise) l'emporte ; à défaut, un glob ``fallback`` (défaut
-    d'un sous-arbre). Deux propriétaires au même étage = refus ; aucun = refus.
+    (revendication précise, STRICTE : deux propriétaires = refus) l'emporte ; à
+    défaut, les globs ``fallback`` (résiduels d'un sous-arbre) départagés par le
+    plus long préfixe littéral — « fichier > dossier > résiduel », la règle de
+    docs/audits/unites.yml ; égalité entre deux propriétaires = refus. Aucun
+    propriétaire = refus.
     Un glob ne peut pas s'ouvrir directement sur un ``container`` (``apps/*``,
     ``features/**``…) : un module NEUF doit être déclaré, pas avalé.
 (b) **Une tâche reste chez son propriétaire.** Une tâche ouverte et
@@ -197,13 +200,25 @@ class Registre:
         return chemin.startswith(self.roots)
 
     def resoudre(self, chemin: str) -> list[str]:
-        """Propriétaires qui revendiquent ``chemin`` à l'étage décisif."""
-        for etage in ("paths", "fallback"):
-            hits = sorted({nom for nom, _, rx, lit in self._regles[etage]
-                           if chemin.startswith(lit) and rx.fullmatch(chemin)})
-            if hits:
-                return hits
-        return []
+        """Propriétaires qui revendiquent ``chemin`` à l'étage décisif.
+
+        ``paths`` est STRICT : deux propriétaires qui y revendiquent le même
+        fichier = refus. ``fallback`` résout les résiduels imbriqués
+        (``ventes/**`` ⊃ ``ventes/quote_engine/**``) : le préfixe littéral le
+        plus long gagne ; une égalité entre deux propriétaires = refus.
+        """
+        hits = sorted({nom for nom, _, rx, lit in self._regles["paths"]
+                       if chemin.startswith(lit) and rx.fullmatch(chemin)})
+        if hits:
+            return hits
+        meilleurs: dict[str, int] = {}
+        for nom, _, rx, lit in self._regles["fallback"]:
+            if chemin.startswith(lit) and rx.fullmatch(chemin):
+                meilleurs[nom] = max(meilleurs.get(nom, -1), len(lit))
+        if not meilleurs:
+            return []
+        top = max(meilleurs.values())
+        return sorted(nom for nom, n in meilleurs.items() if n == top)
 
     def est_append_only(self, chemin: str) -> bool:
         return any(rx.fullmatch(chemin) for _, rx in self._ao)
@@ -357,7 +372,10 @@ def verifier_plans(reg: Registre, plans: dict[str, str]) -> list[str]:
 
 # -------------------------------------------------------------------------- CLI
 def _git(*args: str) -> list[str]:
-    res = subprocess.run(["git", *args], cwd=ROOT, capture_output=True,
+    # core.quotepath=off : sans lui git cite les chemins accentués
+    # (« "apps/web/src/pages/r\303\251alisations…" ») et ils sortent du registre.
+    res = subprocess.run(["git", "-c", "core.quotepath=off", *args], cwd=ROOT,
+                         capture_output=True,
                          text=True, encoding="utf-8", errors="replace")
     if res.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} : {res.stderr.strip()}")

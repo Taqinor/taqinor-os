@@ -145,6 +145,29 @@ class ResolutionTests(unittest.TestCase):
         self.assertEqual(len(erreurs), 1)
         self.assertIn("deux propriétaires", erreurs[0])
 
+    def test_fallbacks_imbriques_le_plus_specifique_gagne(self):
+        # ventes/** (devis) ⊃ quote_engine/** (moteur) ⊃ facturx.py (facturation,
+        # paths) : trois niveaux. Entre résiduels, le préfixe le plus long gagne
+        # (règle « fichier > dossier > résiduel » de docs/audits/unites.yml).
+        texte = REGISTRE.replace(
+            "      - backend/django_core/apps/ventes/quote_engine/**\n", "").replace(
+            "  web:\n",
+            "  moteur:\n"
+            "    plan: docs/plans/PLAN_AUDIT_MOTEUR.md\n"
+            "    fallback:\n"
+            "      - backend/django_core/apps/ventes/quote_engine/**\n"
+            "  web:\n").replace(
+            "      - backend/django_core/apps/ventes/views/facture.py\n",
+            "      - backend/django_core/apps/ventes/views/facture.py\n"
+            "      - backend/django_core/apps/ventes/quote_engine/facturx.py\n")
+        reg = registre(texte)
+        self.assertEqual(co.proprietaire(
+            reg, "backend/django_core/apps/ventes/quote_engine/builder.py"), "moteur")
+        self.assertEqual(co.proprietaire(
+            reg, "backend/django_core/apps/ventes/quote_engine/facturx.py"), "facturation")
+        self.assertEqual(co.proprietaire(
+            reg, "backend/django_core/apps/ventes/serializers.py"), "devis")
+
     def test_semantique_des_globs(self):
         rx = co.compiler_glob("frontend/src/pages/ventes/Devis*.jsx")
         self.assertTrue(rx.fullmatch("frontend/src/pages/ventes/DevisList.jsx"))

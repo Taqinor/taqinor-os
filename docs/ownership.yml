@@ -1,0 +1,843 @@
+# docs/ownership.yml — registre de PROPRIÉTÉ des fichiers (OWN, 02/10/2026)
+#
+# RÈGLE (mémoire docs/claude-memory/propriete-fichiers.md) : une tâche va dans le plan du
+# propriétaire de ses fichiers ; multi-propriétaires → plan transverse
+# (docs/plans/PLAN_AUDIT_TRANSVERSE.md), qui ne tourne JAMAIS en parallèle d'un plan dont il
+# touche un propriétaire.
+#
+# Propriétaires = les unités de docs/audits/unites.yml qui possèdent des fichiers (clé = mot du
+# déclencheur, `unite:` = son id), + web (docs/WEB_PLAN.md), parked (coquilles des apps parquées),
+# platform (files historiques multi-propriétaires), transverse (ne possède AUCUN fichier). Ce
+# registre PRIME sur le champ `possede` de unites.yml (METHODE.md §D.3) ; il en part et l'affine :
+#   - un test suit son sujet (DevisGenerator* = générateur, tests du moteur = moteur…) ;
+#   - le résiduel front d'X5 (« frontend/src/** ») est remplacé par la liste explicite du socle,
+#     pour qu'un module NEUF reste sans propriétaire jusqu'à sa déclaration (règle c) ;
+#   - les fichiers d'une unité logés chez une autre (réglages cadence/stock/chantiers dans
+#     Paramètres, moteur de calepinage sous core/, studio toiture dans apps/web…) rejoignent
+#     leur unité.
+#
+# Résolution (scripts/check_ownership.py) : `paths` = revendication précise et STRICTE (deux
+# propriétaires = refus) ; à défaut `fallback` = résiduel d'un sous-arbre, le plus long préfixe
+# littéral gagne (« fichier > dossier > résiduel ») ; égalité = refus ; aucun = refus. `**` =
+# toute profondeur, `*` = un segment. Un glob ne s'ouvre jamais directement sur un `container`.
+#
+# Vérifier : python scripts/check_ownership.py   (job CI stage-names)
+# Interroger : python scripts/check_ownership.py --owner-of <chemin…>   |   --stats
+# Sous-ensemble YAML lu par plan_lanes._MiniYamlParser (pas de PyYAML en CI) : mappings
+# indentés de 2, listes « - x », listes [a, b], chaînes entre guillemets, commentaires #.
+
+version: 1
+roots: [backend/django_core/apps/, backend/django_core/core/, frontend/src/, apps/web/]
+containers: [backend/django_core/apps/, frontend/src/, frontend/src/features/, frontend/src/pages/, frontend/src/api/]
+exempt: [transverse, platform, parked]
+
+owners:
+  facturation:
+    unite: J5
+    plan: docs/plans/PLAN_AUDIT_FACTURATION.md
+    audit: "audit facturation"
+    titre: "Devis accepté → BC → facture → paiement → avoir → relances"
+    paths:
+      - backend/django_core/apps/facturation/**
+      - backend/django_core/apps/ventes/contract_samples/factures_kpis.json
+      - backend/django_core/apps/ventes/deposit.py
+      - backend/django_core/apps/ventes/dgi/**
+      - backend/django_core/apps/ventes/domain/argent.py
+      - backend/django_core/apps/ventes/domain/bordereau.py
+      - backend/django_core/apps/ventes/domain/encaissements.py
+      - backend/django_core/apps/ventes/domain/facturation_ops.py
+      - backend/django_core/apps/ventes/domain/recouvrement.py
+      - backend/django_core/apps/ventes/exports.py
+      - backend/django_core/apps/ventes/extra_docs_views.py
+      - backend/django_core/apps/ventes/insights_view.py
+      - backend/django_core/apps/ventes/journal_view.py
+      - backend/django_core/apps/ventes/management/commands/dgi_export_facture.py
+      - backend/django_core/apps/ventes/models_releve.py
+      - backend/django_core/apps/ventes/numbering_view.py
+      - backend/django_core/apps/ventes/paiement_import.py
+      - backend/django_core/apps/ventes/payment_providers.py
+      - backend/django_core/apps/ventes/payments/**
+      - backend/django_core/apps/ventes/quote_engine/facturx.py
+      - backend/django_core/apps/ventes/receivers.py
+      - backend/django_core/apps/ventes/recouvrement.py
+      - backend/django_core/apps/ventes/scheduled.py
+      - backend/django_core/apps/ventes/tests/test_acompte_annulation.py
+      - backend/django_core/apps/ventes/tests/test_aud10*
+      - backend/django_core/apps/ventes/tests/test_aud11*
+      - backend/django_core/apps/ventes/tests/test_aud12*
+      - backend/django_core/apps/ventes/tests/test_aud13*
+      - backend/django_core/apps/ventes/tests/test_aud15*
+      - backend/django_core/apps/ventes/tests/test_aud18*
+      - backend/django_core/apps/ventes/tests/test_aud506*
+      - backend/django_core/apps/ventes/tests/test_aud806*
+      - backend/django_core/apps/ventes/tests/test_aud836*
+      - backend/django_core/apps/ventes/tests/test_avoirs.py
+      - backend/django_core/apps/ventes/tests/test_bulk_factures.py
+      - backend/django_core/apps/ventes/tests/test_cash_flow.py
+      - backend/django_core/apps/ventes/tests/test_cht12*
+      - backend/django_core/apps/ventes/tests/test_cht15*
+      - backend/django_core/apps/ventes/tests/test_conformite.py
+      - backend/django_core/apps/ventes/tests/test_credit_warning.py
+      - backend/django_core/apps/ventes/tests/test_dc10*
+      - backend/django_core/apps/ventes/tests/test_dc19*
+      - backend/django_core/apps/ventes/tests/test_dc23*
+      - backend/django_core/apps/ventes/tests/test_deposit.py
+      - backend/django_core/apps/ventes/tests/test_dgi.py
+      - backend/django_core/apps/ventes/tests/test_echeancier_*
+      - backend/django_core/apps/ventes/tests/test_email_scheduled.py
+      - backend/django_core/apps/ventes/tests/test_err_acompte_ttc_centime.py
+      - backend/django_core/apps/ventes/tests/test_err_qac_facture_recalcul_remise.py
+      - backend/django_core/apps/ventes/tests/test_facturation.py
+      - backend/django_core/apps/ventes/tests/test_facture_*
+      - backend/django_core/apps/ventes/tests/test_invariants_documents.py
+      - backend/django_core/apps/ventes/tests/test_invariants_money.py
+      - backend/django_core/apps/ventes/tests/test_journal.py
+      - backend/django_core/apps/ventes/tests/test_lead_direct_fk.py
+      - backend/django_core/apps/ventes/tests/test_money_serialization.py
+      - backend/django_core/apps/ventes/tests/test_nti18n17*
+      - backend/django_core/apps/ventes/tests/test_numbering_ubl.py
+      - backend/django_core/apps/ventes/tests/test_paiement_action_permission_tiers.py
+      - backend/django_core/apps/ventes/tests/test_payment_link.py
+      - backend/django_core/apps/ventes/tests/test_pdf.py
+      - backend/django_core/apps/ventes/tests/test_protected_delete_409.py
+      - backend/django_core/apps/ventes/tests/test_pv_livraison.py
+      - backend/django_core/apps/ventes/tests/test_pvfresh_facture.py
+      - backend/django_core/apps/ventes/tests/test_qx1_remise_globale_billing.py
+      - backend/django_core/apps/ventes/tests/test_qx33_deposit_success.py
+      - backend/django_core/apps/ventes/tests/test_recouvrement.py
+      - backend/django_core/apps/ventes/tests/test_relance_reset.py
+      - backend/django_core/apps/ventes/tests/test_releve_import.py
+      - backend/django_core/apps/ventes/tests/test_revision_aval_financier.py
+      - backend/django_core/apps/ventes/tests/test_sca39*
+      - backend/django_core/apps/ventes/tests/test_sca41*
+      - backend/django_core/apps/ventes/tests/test_sca45*
+      - backend/django_core/apps/ventes/tests/test_wir165*
+      - backend/django_core/apps/ventes/tests/test_xctr22*
+      - backend/django_core/apps/ventes/tests/test_xfac*
+      - backend/django_core/apps/ventes/tests/test_xfsm19*
+      - backend/django_core/apps/ventes/tests/test_xpos7*
+      - backend/django_core/apps/ventes/tests/test_xsal12*
+      - backend/django_core/apps/ventes/tests/test_xsal13*
+      - backend/django_core/apps/ventes/tests/test_ycash4*
+      - backend/django_core/apps/ventes/tests/test_ydocf4*
+      - backend/django_core/apps/ventes/tests/test_ydocf7*
+      - backend/django_core/apps/ventes/tests/test_yevnt6*
+      - backend/django_core/apps/ventes/tests/test_yledg*
+      - backend/django_core/apps/ventes/tests/test_zfac*
+      - backend/django_core/apps/ventes/tests/test_zsal8*
+      - backend/django_core/apps/ventes/tests/test_zsal9*
+      - backend/django_core/apps/ventes/utils/echeancier.py
+      - backend/django_core/apps/ventes/utils/libelles_ar.py
+      - backend/django_core/apps/ventes/utils/numbering_audit.py
+      - backend/django_core/apps/ventes/utils/pdf.py
+      - backend/django_core/apps/ventes/utils/ubl.py
+      - backend/django_core/apps/ventes/views/avoir.py
+      - backend/django_core/apps/ventes/views/bon_commande.py
+      - backend/django_core/apps/ventes/views/credit_warning.py
+      - backend/django_core/apps/ventes/views/facture.py
+      - backend/django_core/apps/ventes/views/ligne_facture.py
+      - backend/django_core/apps/ventes/views/mandat_paiement.py
+      - backend/django_core/apps/ventes/views/paiement.py
+      - backend/django_core/apps/ventes/views/releve_import.py
+      - backend/django_core/apps/ventes/views/remise_encaissement.py
+      - frontend/src/features/ventes/PaiementEnLigneDialog*
+      - frontend/src/features/ventes/echeancierEdition*
+      - frontend/src/pages/ventes/AvoirsPage*
+      - frontend/src/pages/ventes/BonCommandeList*
+      - frontend/src/pages/ventes/FactureForm*
+      - frontend/src/pages/ventes/FactureKanbanBoard*
+      - frontend/src/pages/ventes/FactureList*
+      - frontend/src/pages/ventes/MandatsPaiementPage*
+      - frontend/src/pages/ventes/NoteDebitDialog*
+      - frontend/src/pages/ventes/PaiementDialog*
+      - frontend/src/pages/ventes/PaiementsPage*
+      - frontend/src/pages/ventes/RelancesPage*
+      - frontend/src/pages/ventes/RemisesEncaissementPage*
+      - frontend/src/pages/ventes/encaisserGagne.ez13.test.mjs
+      - frontend/src/pages/ventes/factureKanban*
+      - frontend/src/pages/ventes/kpiArgent.apx12.test.mjs
+  calepinage:
+    unite: D3
+    plan: docs/plans/PLAN_AUDIT_CALEPINAGE.md
+    audit: "audit calepinage"
+    titre: "Calepinage : studio toiture, simulation, publication vers le devis, livrables"
+    paths:
+      - apps/web/src/lib/estimatorBrainV3*
+      - apps/web/src/lib/estimatorBrainV4*
+      - apps/web/src/lib/estimatorBrainV5*
+      - apps/web/src/lib/estimatorBrainV6*
+      - apps/web/src/lib/estimatorBrainV7*
+      - apps/web/src/lib/estimatorBrainV8*
+      - apps/web/src/lib/freeLayout*
+      - apps/web/src/lib/horizonEngine*
+      - apps/web/src/lib/layoutVariability*
+      - apps/web/src/lib/obstacles*
+      - apps/web/src/lib/panelSelection*
+      - apps/web/src/lib/productionEngine*
+      - apps/web/src/lib/productionWindow*
+      - apps/web/src/lib/roof*
+      - apps/web/src/lib/shadingEngine*
+      - apps/web/src/pages/api/roof-*
+      - apps/web/src/pages/preview/toiture*
+      - apps/web/src/scripts/roof-tool*.ts
+      - apps/web/src/scripts/roofPro11/**
+      - apps/web/tests/autoLayout*
+      - apps/web/tests/captureBoot*
+      - apps/web/tests/contactPrefill*
+      - apps/web/tests/estimator-current*
+      - apps/web/tests/estimatorBrainV3*
+      - apps/web/tests/estimatorBrainV4*
+      - apps/web/tests/estimatorBrainV5*
+      - apps/web/tests/estimatorBrainV6*
+      - apps/web/tests/estimatorBrainV7*
+      - apps/web/tests/estimatorBrainV8*
+      - apps/web/tests/estimatorHardening*
+      - apps/web/tests/estimatorPreview*
+      - apps/web/tests/estimatorRuntime*
+      - apps/web/tests/freeDragSelect*
+      - apps/web/tests/freeLayout*
+      - apps/web/tests/freePlacement*
+      - apps/web/tests/horizonEngine*
+      - apps/web/tests/hydrateFrom*
+      - apps/web/tests/layout*
+      - apps/web/tests/manualEditsGuard*
+      - apps/web/tests/multiZoneFacing*
+      - apps/web/tests/obstacle*
+      - apps/web/tests/overhang*
+      - apps/web/tests/packMixed*
+      - apps/web/tests/panelSelection*
+      - apps/web/tests/pitched*
+      - apps/web/tests/prefillOrientation*
+      - apps/web/tests/prodWindow*
+      - apps/web/tests/productionEngine*
+      - apps/web/tests/productionWindow*
+      - apps/web/tests/propositionViewerFull*
+      - apps/web/tests/propositionViewerKeyboard*
+      - apps/web/tests/propositionViewerWJ27*
+      - apps/web/tests/referenceContour*
+      - apps/web/tests/reverseGeocode*
+      - apps/web/tests/roof-*
+      - apps/web/tests/roof.test.ts
+      - apps/web/tests/roofAdjacency*
+      - apps/web/tests/roofAreas*
+      - apps/web/tests/roofConfig*
+      - apps/web/tests/roofEstimate*
+      - apps/web/tests/roofImagePublic*
+      - apps/web/tests/roofPro*
+      - apps/web/tests/roofTypeSelect*
+      - apps/web/tests/serializeGeometry*
+      - apps/web/tests/setbacks*
+      - apps/web/tests/shading*
+      - apps/web/tests/solarAccess*
+      - apps/web/tests/userJourney*
+      - apps/web/tests/variantCards*
+      - backend/django_core/apps/calepinage/**
+      - backend/django_core/apps/crm/contract_samples/lead_photo_toit.json
+      - backend/django_core/apps/crm/roof_*
+      - backend/django_core/apps/crm/tests_calx106_empreinte_osm.py
+      - backend/django_core/apps/crm/tests_lead_roof_fields.py
+      - backend/django_core/apps/crm/tests_repere_toit.py
+      - backend/django_core/apps/crm/tests_roof_*
+      - backend/django_core/apps/crm/tests_trace_toit.py
+      - backend/django_core/apps/crm/views_visite.py
+      - backend/django_core/apps/ventes/calendrier_view.py
+      - backend/django_core/apps/ventes/calepinage_options.py
+      - backend/django_core/apps/ventes/commissioning.py
+      - backend/django_core/apps/ventes/connection_declaration.py
+      - backend/django_core/apps/ventes/connection_declaration_view.py
+      - backend/django_core/apps/ventes/contract_samples/calepinage_options.json
+      - backend/django_core/apps/ventes/contract_samples/conception_electrique.json
+      - backend/django_core/apps/ventes/contract_samples/devis_boq_electrique.json
+      - backend/django_core/apps/ventes/contract_samples/devis_design_context.json
+      - backend/django_core/apps/ventes/diagram_views.py
+      - backend/django_core/apps/ventes/domain/geometrie.py
+      - backend/django_core/apps/ventes/domain/stockage_toiture.py
+      - backend/django_core/apps/ventes/electrical_service.py
+      - backend/django_core/apps/ventes/models_commissioning.py
+      - backend/django_core/apps/ventes/models_regulatory.py
+      - backend/django_core/apps/ventes/regulatory_docs.py
+      - backend/django_core/apps/ventes/roof_load.py
+      - backend/django_core/apps/ventes/roof_load_view.py
+      - backend/django_core/apps/ventes/serializers_commissioning.py
+      - backend/django_core/apps/ventes/serializers_regulatory.py
+      - backend/django_core/apps/ventes/single_line_diagram.py
+      - backend/django_core/apps/ventes/tests/test_borne_toit_physique.py
+      - backend/django_core/apps/ventes/tests/test_cal195*
+      - backend/django_core/apps/ventes/tests/test_calepinage_*
+      - backend/django_core/apps/ventes/tests/test_cht25*
+      - backend/django_core/apps/ventes/tests/test_ctx3d_cible_avec.py
+      - backend/django_core/apps/ventes/tests/test_fg2*
+      - backend/django_core/apps/ventes/tests/test_l_choix_avec_sld.py
+      - backend/django_core/apps/ventes/tests/test_l_sld_*
+      - backend/django_core/apps/ventes/tests/test_lire_layout_surfaces_pose.py
+      - backend/django_core/apps/ventes/tests/test_pv14*
+      - backend/django_core/apps/ventes/tests/test_pv40*
+      - backend/django_core/apps/ventes/tests/test_pv41*
+      - backend/django_core/apps/ventes/tests/test_pv42*
+      - backend/django_core/apps/ventes/tests/test_pv45*
+      - backend/django_core/apps/ventes/tests/test_pv79_layout_finalise.py
+      - backend/django_core/apps/ventes/tests/test_pv81*
+      - backend/django_core/apps/ventes/tests/test_pv83*
+      - backend/django_core/apps/ventes/tests/test_pv85*
+      - backend/django_core/apps/ventes/tests/test_pvuni_verite_unique_calepinage.py
+      - backend/django_core/apps/ventes/tests/test_qj21_pans_geometry.py
+      - backend/django_core/apps/ventes/tests/test_qj26_roof_layout_proposal.py
+      - backend/django_core/apps/ventes/tests/test_qjr165_lecteur_layout.py
+      - backend/django_core/apps/ventes/tests/test_qjr227*
+      - backend/django_core/apps/ventes/tests/test_qjr243*
+      - backend/django_core/apps/ventes/tests/test_qjr_bascule_3d.py
+      - backend/django_core/apps/ventes/tests/test_qjr_sld_variante.py
+      - backend/django_core/apps/ventes/tests/test_qjr_sync_layout_fraicheur.py
+      - backend/django_core/apps/ventes/tests/test_regulatory_docs.py
+      - backend/django_core/apps/ventes/tests/test_roof_*
+      - backend/django_core/apps/ventes/tests/test_selector_calepinage.py
+      - backend/django_core/apps/ventes/tests/test_single_line_diagram.py
+      - backend/django_core/apps/ventes/tests/test_sld_*
+      - backend/django_core/apps/ventes/views/commissioning.py
+      - backend/django_core/apps/ventes/views/regulatory.py
+      - backend/django_core/apps/ventes/views/roof_config.py
+      - backend/django_core/core/calepinage/**
+      - backend/django_core/core/electrique/**
+      - backend/django_core/core/tests/test_calepinage_*
+      - backend/django_core/core/tests/test_electrique_*
+      - frontend/src/api/calepinageApi*
+      - frontend/src/features/calepinage/**
+      - frontend/src/features/crm/workspace/IdentityRail.conception.test.jsx
+      - frontend/src/features/crm/workspace/LeadWorkspace.toiture3d.test.jsx
+      - frontend/src/features/crm/workspace/Photo*
+      - frontend/src/features/crm/workspace/photoToit*
+      - frontend/src/features/crm/workspace/sections/Trace*
+      - frontend/src/features/crm/workspace/trace*
+      - frontend/src/features/ventes/AjouterBoqElectrique*
+      - frontend/src/features/ventes/BlocCalepinageDevis*
+      - frontend/src/features/ventes/ChoisirDevisPourDesign*
+      - frontend/src/features/ventes/ConceptionElectrique*
+      - frontend/src/features/ventes/ToitClientOverlay*
+      - frontend/src/lib/roofTextureWarp*
+      - frontend/src/pages/ventes/Conception3DPage*
+      - frontend/src/pages/ventes/DossiersReglementairesPage*
+      - frontend/src/pages/ventes/RoofViewer*
+      - frontend/src/pages/ventes/RoofViewerPage*
+      - frontend/src/pages/ventes/ToitureDesign*
+      - frontend/src/styles/roofbuilder.css
+      - frontend/src/test/fixtures/calepinage*
+      - frontend/src/test/stubs/roofbuilder.js
+      - frontend/src/test/stubs/roofproCaptureBoot.js
+    fallback:
+      - backend/django_core/apps/ventes/tests/test_calx*
+  acquisition:
+    unite: J0
+    plan: docs/plans/PLAN_AUDIT_ACQUISITION.md
+    audit: "audit acquisition"
+    titre: "Acquisition : site, Meta Lead Ads, webhooks, parrainage, RDV"
+    paths:
+      - apps/web/src/pages/devis/mon-toit.astro
+      - backend/django_core/apps/adsengine/**
+      - backend/django_core/apps/contact/**
+      - backend/django_core/apps/crm/contract_samples/lead_provenance_site.json
+      - backend/django_core/apps/crm/contract_samples/tunnel_webhook_keys.json
+      - backend/django_core/apps/crm/management/commands/backfill_meta_lead_attribution.py
+      - backend/django_core/apps/crm/management/commands/import_odoo_leads.py
+      - backend/django_core/apps/crm/management/commands/push_odoo_stages.py
+      - backend/django_core/apps/crm/management/commands/sync_odoo_leads.py
+      - backend/django_core/apps/crm/odoo_sync.py
+      - backend/django_core/apps/crm/tests_cad105_sync_odoo_cadence.py
+      - backend/django_core/apps/crm/tests_cad119_date_odoo.py
+      - backend/django_core/apps/crm/tests_import_odoo.py
+      - backend/django_core/apps/crm/tests_meta_form_mapping.py
+      - backend/django_core/apps/crm/tests_odoo_sync.py
+      - backend/django_core/apps/crm/tests_qj8_webhook_dedupe.py
+      - backend/django_core/apps/crm/tests_qjr414_webhooks_fail_closed.py
+      - backend/django_core/apps/crm/tests_qk1_webhook_qualification.py
+      - backend/django_core/apps/crm/tests_qx16_payload_replay.py
+      - backend/django_core/apps/crm/tests_web_questionnaire_webhook.py
+      - backend/django_core/apps/crm/tests_webhook*
+      - backend/django_core/apps/crm/tests_xmkt32_meta_lead_ads.py
+      - backend/django_core/apps/crm/webhooks.py
+      - frontend/src/features/adsengine/**
+      - frontend/src/pages/crm/WebsiteLeadPayloadsPage*
+  lead:
+    unite: J1a
+    plan: docs/plans/PLAN_AUDIT_LEAD.md
+    audit: "audit lead"
+    titre: "Lead → fiche → cadence → visite (CRM hors fichiers chauds, visites)"
+    paths:
+      - apps/web/src/pages/questionnaire/**
+      - backend/django_core/apps/ged/fixtures/guide_visite_suivi_commercial.*
+      - backend/django_core/apps/ged/tests_guide_suivi_a_jour.py
+      - backend/django_core/apps/parametres/contract_samples/cadence_relance_v2.json
+      - backend/django_core/apps/parametres/contract_samples/fenetres_appel.json
+      - backend/django_core/apps/ventes/contract_samples/plan_commission.json
+      - backend/django_core/apps/ventes/tests/test_wir281*
+      - backend/django_core/apps/ventes/tests/test_xsal6_plan_commission.py
+      - backend/django_core/apps/ventes/views/plan_commission.py
+      - backend/django_core/apps/visites/**
+      - frontend/src/api/crmApi*
+      - frontend/src/api/visitesApi*
+      - frontend/src/features/visites/**
+      - frontend/src/lib/appareilEquipe*
+      - frontend/src/pages/CalendarPage*
+      - frontend/src/pages/CartePage*
+      - frontend/src/pages/activities/**
+      - frontend/src/pages/parametres/CadenceRelanceEditor*
+      - frontend/src/pages/ventes/ClientQuickCreateModal*
+      - frontend/src/pages/visites/**
+    fallback:
+      - backend/django_core/apps/crm/**
+      - frontend/src/features/crm/**
+      - frontend/src/pages/crm/**
+  crm:
+    unite: D1
+    plan: docs/plans/PLAN_AUDIT_CRM.md
+    audit: "audit crm"
+    titre: "Plongée CRM : les trois fichiers chauds"
+    paths:
+      - backend/django_core/apps/crm/selectors.py
+      - backend/django_core/apps/crm/services.py
+      - backend/django_core/apps/crm/views.py
+  securite:
+    unite: X1
+    plan: docs/plans/PLAN_AUDIT_SECURITE.md
+    audit: "audit sécurité"
+    titre: "Multi-société, authentification, rôles, autorisations"
+    paths:
+      - backend/django_core/apps/__init__.py
+      - backend/django_core/apps/accessreview/**
+      - backend/django_core/apps/adminops/**
+      - backend/django_core/apps/audit/**
+      - backend/django_core/apps/core/**
+      - backend/django_core/apps/customfields/**
+      - backend/django_core/apps/entites/**
+      - backend/django_core/apps/identity/**
+      - backend/django_core/apps/records/**
+      - backend/django_core/apps/roles/**
+      - backend/django_core/apps/tiers/**
+      - backend/django_core/apps/trash/**
+      - frontend/src/api/accessReviewApi*
+      - frontend/src/api/adminopsApi*
+      - frontend/src/api/auditApi*
+      - frontend/src/api/customFieldsApi*
+      - frontend/src/api/identityApi*
+      - frontend/src/api/recordsApi*
+      - frontend/src/api/rolesApi*
+      - frontend/src/api/tiersApi*
+      - frontend/src/api/trashApi*
+      - frontend/src/features/admin/**
+      - frontend/src/features/adminops/**
+      - frontend/src/features/audit/**
+      - frontend/src/features/auth/**
+      - frontend/src/features/entites/**
+      - frontend/src/features/tiers/**
+      - frontend/src/pages/Login*
+      - frontend/src/pages/RegisterCompany*
+      - frontend/src/pages/admin/**
+      - frontend/src/pages/tiers/**
+    fallback:
+      - backend/django_core/core/**
+  moteur:
+    unite: D2
+    plan: docs/plans/PLAN_AUDIT_MOTEUR.md
+    audit: "audit moteur"
+    titre: "Moteur de devis (règle #4) et calculateurs de dimensionnement"
+    paths:
+      - backend/django_core/apps/ventes/coherence/**
+      - backend/django_core/apps/ventes/contract_samples/ventes_economie.json
+      - backend/django_core/apps/ventes/dimensionnement.py
+      - backend/django_core/apps/ventes/domain/dimensionnement_devis.py
+      - backend/django_core/apps/ventes/economie.py
+      - backend/django_core/apps/ventes/etude_horaire.py
+      - backend/django_core/apps/ventes/etude_horaire_view.py
+      - backend/django_core/apps/ventes/management/commands/audit_coherence.py
+      - backend/django_core/apps/ventes/offres_tailles.py
+      - backend/django_core/apps/ventes/solar_design.py
+      - backend/django_core/apps/ventes/tests/_moteur_fixtures.py
+      - backend/django_core/apps/ventes/tests/_quote_engine_common.py
+      - backend/django_core/apps/ventes/tests/test_agr_economie*
+      - backend/django_core/apps/ventes/tests/test_calx280_contrat_economie*
+      - backend/django_core/apps/ventes/tests/test_calx288_api_economie*
+      - backend/django_core/apps/ventes/tests/test_coherence*
+      - backend/django_core/apps/ventes/tests/test_dimensionnement*
+      - backend/django_core/apps/ventes/tests/test_entrees_moteur*
+      - backend/django_core/apps/ventes/tests/test_etude_horaire*
+      - backend/django_core/apps/ventes/tests/test_l_qa1_etude_horaire*
+      - backend/django_core/apps/ventes/tests/test_leco_economies*
+      - backend/django_core/apps/ventes/tests/test_moteur*
+      - backend/django_core/apps/ventes/tests/test_offres_tailles*
+      - backend/django_core/apps/ventes/tests/test_payload_dimensionnement*
+      - backend/django_core/apps/ventes/tests/test_pdf_*
+      - backend/django_core/apps/ventes/tests/test_premium*
+      - backend/django_core/apps/ventes/tests/test_proposal_data_shape*
+      - backend/django_core/apps/ventes/tests/test_qg2_render_cache*
+      - backend/django_core/apps/ventes/tests/test_qjr162_replis_renderer*
+      - backend/django_core/apps/ventes/tests/test_qjr235_registre_renderers*
+      - backend/django_core/apps/ventes/tests/test_qjr431_appelants_etude_horaire*
+      - backend/django_core/apps/ventes/tests/test_qjr666_premium*
+      - backend/django_core/apps/ventes/tests/test_qjr_coherence*
+      - backend/django_core/apps/ventes/tests/test_qjr_dimensionnement*
+      - backend/django_core/apps/ventes/tests/test_qjr_entrees_moteur*
+      - backend/django_core/apps/ventes/tests/test_quote_engine*
+      - backend/django_core/apps/ventes/tests/test_quote_engine.py
+      - backend/django_core/apps/ventes/tests/test_qx45*
+      - backend/django_core/apps/ventes/tests/test_qx46*
+      - backend/django_core/apps/ventes/tests/test_qx48*
+      - backend/django_core/apps/ventes/tests/test_qx49*
+      - backend/django_core/apps/ventes/tests/test_qx50*
+      - backend/django_core/apps/ventes/tests/test_solar_design*
+      - backend/django_core/apps/ventes/tests/test_solar_differential*
+      - backend/django_core/apps/ventes/views/economie.py
+    fallback:
+      - backend/django_core/apps/ventes/quote_engine/**
+  chantiers:
+    unite: J2
+    plan: docs/plans/PLAN_AUDIT_CHANTIERS.md
+    audit: "audit chantiers"
+    titre: "Signature → chantier → interventions → réception"
+    paths:
+      - backend/django_core/apps/installations/**
+      - backend/django_core/apps/outillage/**
+      - frontend/src/api/installationsApi*
+      - frontend/src/api/outillageApi*
+      - frontend/src/features/installations/**
+      - frontend/src/pages/installations/**
+      - frontend/src/pages/interventions/**
+      - frontend/src/pages/outillage/**
+      - frontend/src/pages/parametres/ChecklistSection*
+      - frontend/src/pages/parametres/EquipeTerrainSection*
+      - frontend/src/pages/parametres/EtapesChantierSection*
+      - frontend/src/pages/parametres/FicheInterventionModelesSection*
+      - frontend/src/pages/parametres/SecuriteTerrainSection*
+      - frontend/src/pages/parametres/ShotListSection*
+  stock:
+    unite: J3
+    plan: docs/plans/PLAN_AUDIT_STOCK.md
+    audit: "audit stock"
+    titre: "Catalogue, prix, stock, achats fournisseurs"
+    paths:
+      - backend/django_core/apps/achats/**
+      - backend/django_core/apps/stock/**
+      - backend/django_core/core/product_roles.py
+      - backend/django_core/core/stock_reorder.py
+      - backend/django_core/core/tests/test_stkcat21_product_roles.py
+      - backend/django_core/core/tests/test_stock_reorder.py
+      - frontend/src/api/stockApi*
+      - frontend/src/components/CatalogueAchatPicker*
+      - frontend/src/components/OnboardingFournisseurWizard*
+      - frontend/src/components/Produit*
+      - frontend/src/components/ScoreRisqueFournisseurBadge*
+      - frontend/src/features/parametres/useStockFlags*
+      - frontend/src/features/stock/**
+      - frontend/src/pages/parametres/AchatsParametresPage*
+      - frontend/src/pages/parametres/ClotureAchatsWizardPage*
+      - frontend/src/pages/parametres/GammesMarquesPage*
+      - frontend/src/pages/parametres/KitsSection*
+      - frontend/src/pages/parametres/NomenclaturesCodeBarresSection*
+      - frontend/src/pages/parametres/ReglesApprobationAchatSection*
+      - frontend/src/pages/parametres/StockSection*
+      - frontend/src/pages/stock/**
+  documents:
+    unite: J6
+    plan: docs/plans/PLAN_AUDIT_DOCUMENTS.md
+    audit: "audit documents"
+    titre: "GED, documents, portail client, suivi public"
+    paths:
+      - apps/web/src/pages/suivi/**
+      - backend/django_core/apps/documents/**
+      - backend/django_core/apps/portail/**
+      - frontend/src/api/documentsApi*
+      - frontend/src/api/gedApi*
+      - frontend/src/api/portailApi*
+      - frontend/src/features/ged/**
+      - frontend/src/features/portail/**
+      - frontend/src/pages/ged/**
+    fallback:
+      - backend/django_core/apps/ged/**
+  parametres:
+    unite: X3
+    plan: docs/plans/PLAN_AUDIT_PARAMETRES.md
+    audit: "audit parametres"
+    titre: "Paramètres, notifications, automatisation, onboarding, bus d'événements"
+    paths:
+      - backend/django_core/apps/automation/**
+      - backend/django_core/apps/notifications/**
+      - backend/django_core/apps/onboarding/**
+      - backend/django_core/core/event_coverage.py
+      - backend/django_core/core/events.py
+      - frontend/src/api/automationApi*
+      - frontend/src/api/notificationsApi*
+      - frontend/src/api/parametresApi*
+      - frontend/src/features/notifications/**
+      - frontend/src/features/onboarding/**
+      - frontend/src/pages/approbations/**
+      - frontend/src/pages/onboarding/**
+    fallback:
+      - backend/django_core/apps/parametres/**
+      - frontend/src/features/parametres/**
+      - frontend/src/pages/parametres/**
+  generateur:
+    unite: D4
+    plan: docs/plans/PLAN_AUDIT_GENERATEUR.md
+    audit: "audit générateur"
+    titre: "Écran générateur de devis (100 % TTC) et calcul solaire côté écran"
+    paths:
+      - frontend/src/features/ventes/autoQuote*
+      - frontend/src/features/ventes/solar*
+      - frontend/src/features/ventes/solar*.test.*
+      - frontend/src/pages/ventes/DevisGenerator*
+      - frontend/src/pages/ventes/generator/**
+  devis:
+    unite: J1b
+    plan: docs/plans/PLAN_AUDIT_DEVIS.md
+    audit: "audit devis"
+    titre: "Étude → devis → envoi → correction → révision → signature"
+    paths:
+      - apps/web/src/pages/proposition/**
+      - frontend/src/api/ventesApi*
+    fallback:
+      - backend/django_core/apps/ventes/**
+      - frontend/src/features/ventes/**
+      - frontend/src/pages/ventes/**
+  deploy:
+    unite: X5
+    plan: docs/plans/PLAN_AUDIT_DEPLOY.md
+    audit: "audit deploy"
+    titre: "Déployabilité, réglages, images, CI, outillage du dépôt, socle du front"
+    paths:
+      - backend/django_core/apps/ventes/tests/test_qx11_beat_reachability.py
+      - frontend/src/api/axios*
+      - frontend/src/api/coreApi*
+      - frontend/src/api/demoApi*
+      - frontend/src/api/endpointNonConstruit*
+      - frontend/src/api/origin*
+      - frontend/src/api/refreshCoordinator*
+      - frontend/src/api/resource*
+      - frontend/src/api/types/**
+      - frontend/src/build-tools/**
+      - frontend/src/design/**
+      - frontend/src/features/core/**
+      - frontend/src/features/kanban/**
+      - frontend/src/features/pwa/**
+      - frontend/src/features/queue/**
+      - frontend/src/hooks/**
+      - frontend/src/hover-compat.layout.test.mjs
+      - frontend/src/i18n/**
+      - frontend/src/index.css
+      - frontend/src/main.jsx
+      - frontend/src/mobile-foundation.test.mjs
+      - frontend/src/pages/Dashboard*
+      - frontend/src/pages/Journal*
+      - frontend/src/pages/Landing*
+      - frontend/src/pages/aide/**
+      - frontend/src/pages/home/**
+      - frontend/src/pages/landing.css
+      - frontend/src/pages/preferences/**
+      - frontend/src/pages/table-engine.test.mjs
+      - frontend/src/pages/ui/**
+      - frontend/src/providers/**
+      - frontend/src/router/**
+      - frontend/src/store/**
+      - frontend/src/sw.js
+      - frontend/src/ui/**
+      - frontend/src/utils/**
+    fallback:
+      - frontend/src/components/**
+      - frontend/src/lib/**
+      - frontend/src/styles/**
+      - frontend/src/test/**
+  sav:
+    unite: J4
+    plan: docs/plans/PLAN_AUDIT_SAV.md
+    audit: "audit sav"
+    titre: "Chantier réceptionné → parc, tickets, SLA, garanties, monitoring"
+    paths:
+      - backend/django_core/apps/monitoring/**
+      - backend/django_core/apps/sav/**
+      - frontend/src/api/monitoringApi*
+      - frontend/src/api/savApi*
+      - frontend/src/components/sav/**
+      - frontend/src/features/sav/**
+      - frontend/src/features/uxviews/quickcreate/TicketQuickCreateModal*
+      - frontend/src/pages/monitoring/**
+      - frontend/src/pages/parametres/MonitoringSection*
+      - frontend/src/pages/sav/**
+  analyse:
+    unite: X7
+    plan: docs/plans/PLAN_AUDIT_ANALYSE.md
+    audit: "audit analyse"
+    titre: "Pilotage, API publique, imports, hors-ligne, IA"
+    paths:
+      - backend/django_core/apps/agent/**
+      - backend/django_core/apps/dataimport/**
+      - backend/django_core/apps/offlinesync/**
+      - backend/django_core/apps/publicapi/**
+      - backend/django_core/apps/reporting/**
+      - backend/django_core/apps/semantic/**
+      - backend/django_core/apps/statuspage/**
+      - backend/django_core/apps/uxviews/**
+      - frontend/src/api/dataimportApi*
+      - frontend/src/api/iaApi*
+      - frontend/src/api/importApi*
+      - frontend/src/api/offlinesyncApi*
+      - frontend/src/api/publicapiApi*
+      - frontend/src/api/reportingApi*
+      - frontend/src/api/statuspageApi*
+      - frontend/src/api/uxviewsApi*
+      - frontend/src/features/ia/**
+      - frontend/src/features/offlinesync/**
+      - frontend/src/features/reporting/**
+      - frontend/src/pages/Rapports.jsx
+      - frontend/src/pages/Reporting.jsx
+      - frontend/src/pages/ia/**
+      - frontend/src/pages/rapports-*
+      - frontend/src/pages/reporting-format.test.mjs
+      - frontend/src/pages/reporting/**
+    fallback:
+      - frontend/src/features/uxviews/**
+  web:
+    plan: docs/WEB_PLAN.md
+    titre: "Site public Astro (apps/web) hors studio toiture, tunnel lead, proposition et suivi"
+    fallback:
+      - apps/web/**
+  parked:
+    plan: docs/backlog/PHASE2_PLAN.md
+    titre: "Coquilles des 47 apps parquées (liste lue dans core/parked.py, jamais recopiée)"
+    paths_from_parked_registry: true
+  platform:
+    plan: docs/PLAN.md
+    titre: "Files historiques multi-propriétaires du run « work on the plan » (aucun fichier)"
+  transverse:
+    plan: docs/plans/PLAN_AUDIT_TRANSVERSE.md
+    titre: "Tâches multi-propriétaires (aucun fichier) — jamais en parallèle d'un plan qui chevauche"
+
+# Surfaces APPEND-ONLY : tout propriétaire peut y AJOUTER selon la règle écrite à côté (jamais
+# réordonner, renommer ni réécrire l'ajout d'un autre) ; elles n'unissent pas deux lanes
+# (plan_lanes.py) et ne rendent pas une tâche multi-propriétaires (règle b). Conflit à
+# l'update-branch = garder les DEUX ajouts. Le fichier garde son propriétaire (règle a).
+append_only:
+  - path: "backend/django_core/apps/*/migrations/**"
+    rule: "un NOUVEAU fichier seulement, jamais d'édition d'une migration appliquée ; si deux sessions créent la même tête, celle qui fusionne en second régénère SA migration au-dessus (jamais de migration de fusion)"
+  - path: "backend/django_core/apps/*/urls.py"
+    rule: "une ligne router.register/path (et son import) par ressource, sous un commentaire de tâche ; jamais modifier une route existante (contrat public)"
+  - path: "backend/django_core/apps/*/apps.py"
+    rule: "un bloc d'import/abonnement par fonctionnalité dans ready(), commenté de son ID de tâche ; jamais éditer un bloc existant"
+  - path: "backend/django_core/apps/*/admin.py"
+    rule: "une classe ModelAdmin par nouveau modèle ; jamais éditer celle d'un autre"
+  - path: "backend/django_core/apps/*/platform.py"
+    rule: "manifeste ARC28 : ajouter une clé ou un fournisseur, jamais réécrire une entrée"
+  - path: "backend/django_core/apps/*/agent_actions.py"
+    rule: "registre ARC33 : ajouter un enregistrement, jamais éditer celui d'un autre module"
+  - path: "backend/django_core/apps/*/bi_datasets.py"
+    rule: "registre de jeux BI : ajouter un jeu, jamais éditer celui d'un autre"
+  - path: "backend/django_core/apps/*/contract_samples/README.md"
+    rule: "une ligne d'index par nouveau contrat JSON (PACT10) ; le JSON lui-même appartient au propriétaire de la fonctionnalité"
+  - path: backend/django_core/apps/crm/tasks.py
+    rule: "une @shared_task par fonctionnalité, nom unique « crm.<x> », ajoutée en fin ; jamais éditer la tâche d'un autre"
+  - path: backend/django_core/apps/ventes/services.py
+    rule: "façade pure (QJR68/QJR76) : seulement des ré-exports « nom = _module.nom » + __all__, jamais un corps"
+  - path: backend/django_core/apps/ventes/tests/test_services_surface.py
+    rule: "liste dorée de la façade services.py : ajouter les noms ré-exportés, ne rien retirer hors tâche de nettoyage"
+  - path: backend/django_core/apps/ventes/tests/test_qx11_beat_reachability.py
+    rule: "ON_DEMAND_ALLOWLIST : UNE ligne « '<app>.<tâche>' » ajoutée en fin de liste (garde de joignabilité beat) ; rien d'autre dans ce fichier"
+  - path: backend/django_core/apps/ventes/views/__init__.py
+    rule: "une ligne de ré-export par nouvelle vue ; jamais modifier les existantes"
+  - path: backend/django_core/apps/stock/views/__init__.py
+    rule: "une ligne de ré-export par nouvelle vue"
+  - path: backend/django_core/apps/installations/views/__init__.py
+    rule: "une ligne de ré-export par nouvelle vue"
+  - path: backend/django_core/apps/installations/models.py
+    rule: "surface de ré-export pure : ajouter une ligne d'import ; le code va dans models_*.py"
+  - path: backend/django_core/apps/parametres/models.py
+    rule: "surface de ré-export pure : ajouter une ligne d'import ; le code va dans models_*.py"
+  - path: backend/django_core/apps/notifications/models.py
+    rule: "EventType : un membre ajouté EN FIN avec clé unique (+ son entrée module_map dans le même commit) ; les autres classes restent au propriétaire"
+  - path: backend/django_core/apps/notifications/module_map.py
+    rule: "une entrée par nouvel EventType, en fin"
+  - path: backend/django_core/core/events.py
+    rule: "un Signal EN FIN sous une bannière « # ── <TASKID> — … ── » (+ puce du catalogue) ; jamais renommer un événement émis"
+  - path: backend/django_core/core/event_catalog.py
+    rule: "une entrée par nouvel événement, en fin"
+  - path: backend/django_core/core/event_coverage.py
+    rule: "une entrée par nouvel événement, en fin"
+  - path: backend/django_core/apps/roles/models.py
+    rule: "un code de droit ajouté EN FIN du groupe de son module dans ALL_PERMISSIONS (+ son entrée PERMISSION_*) ; jamais renommer un code existant"
+  - path: backend/django_core/apps/audit/signals.py
+    rule: "TRACKED_MODELS : un tuple (<app>, <Model>) en fin de liste, commenté de son ID de tâche"
+  - path: backend/django_core/apps/publicapi/constants.py
+    rule: "une constante SCOPE_* en fin du bloc des portées (+ son choix) ; jamais renommer un identifiant publié"
+  - path: backend/django_core/apps/dataimport/services.py
+    rule: "FIELD_MAPS : un nouveau bloc-clé par cible ; jamais modifier le mapping d'une autre cible"
+  - path: backend/django_core/apps/dataimport/export_registry.py
+    rule: "_SPECS : une ExportSpec en fin ; champ sensible ajouté à SENSITIVE_FIELDS dans le même commit"
+  - path: "backend/django_core/apps/records/platform_baselines/*.txt"
+    rule: "cliquet DÉCROISSANT : supprimer seulement les lignes du module corrigé, jamais en ajouter"
+  - path: backend/django_core/apps/calepinage/views/rattachements.py
+    rule: "une action de rattachement ajoutée EN FIN avec « # CALX<id> » (D-CALX 13)"
+  - path: backend/django_core/apps/calepinage/services/parametres_cles.py
+    rule: "une clé de paramètre ajoutée EN FIN avec « # CALX<id> » (D-CALX 13)"
+  - path: "frontend/src/features/*/module.config.jsx"
+    rule: "routes et nav d'un module : ajouter une entrée lazy() et une entrée de nav, jamais réordonner (le premier item CRM reste la porte Leads, APX1)"
+  - path: "frontend/src/features/*/store/*Slice.js"
+    rule: "ajouter un thunk/reducer par nouvelle ressource, jamais toucher aux existants"
+  - path: frontend/src/api/calepinageApi.js
+    rule: "une capacité = UNE fonction ajoutée EN FIN avec « // CALX<id> » (D-CALX 13)"
+  - path: frontend/src/features/calepinage/atelier/onglets.js
+    rule: "un onglet ajouté EN FIN avec « // CALX<id> » (D-CALX 13)"
+  - path: frontend/src/pages/crm/CrmCockpit.jsx
+    rule: "coquille de composition : UN import et UNE ligne de montage par widget ; la logique vit dans le fichier du widget"
+  - path: frontend/src/router/index.jsx
+    rule: "un écran avec layout passe par features/<module>/module.config.jsx (import.meta.glob) ; ici seulement une route hors layout, ajoutée en fin de bloc"
+  - path: frontend/src/router/prefetchMap.js
+    rule: "UNE entrée « '/chemin': () => import('../pages/…') » en fin de PREFETCH_MAP, copie exacte de l'import lazy du module.config"
+  - path: frontend/src/components/layout/routes.meta.js
+    rule: "blocs historiques seulement : une ligne en fin du bloc de son module ; un module inscrit par module.config.jsx n'y touche pas"
+  - path: frontend/src/lib/apps/appSkus.js
+    rule: "UNE ligne « <app_label>: { sku, libelle, installable } » à sa place ALPHABÉTIQUE dans MANIFESTES"
+  - path: frontend/src/lib/search/entityRoutes.js
+    rule: "un type d'entité = UNE ligne en fin de chacune des tables ROUTE, LIST_ROUTE, TYPE_LABEL"
+  - path: frontend/src/store/index.js
+    rule: "un slice = UN import + UNE clé de combineReducers(), ajoutés en fin de liste"
+  - path: frontend/src/providers/shortcuts.js
+    rule: "UNE entrée { keys, to, label } en fin de GOTO_SHORTCUTS / CREATE_SHORTCUTS ; keys unique"
+  - path: frontend/src/providers/index.js
+    rule: "UNE ligne « export * from './X' » en fin"
+  - path: "frontend/src/i18n/catalogs/*.json"
+    rule: "clés sous le préfixe de leur module, à la MÊME position relative dans fr/en/ar ; jamais renommer une clé"
+  - path: frontend/src/ui/index.js
+    rule: "UNE ligne « export * from './X' » ajoutée en fin de sa section"
+  - path: "frontend/src/ui/*/index.js"
+    rule: "UNE ligne « export * from './X' » ajoutée en fin"
+  - path: frontend/src/pages/aide/LexiquePage.jsx
+    rule: "TERMES : insertion à la position ALPHABÉTIQUE (ordre affirmé par LexiquePage.test.jsx), sans définition chiffrée"
+  - path: frontend/src/test/fixtures/contractSamples.js
+    rule: "un export par nouvel échantillon de contrat (PACT10), ajouté en fin"
+  - path: frontend/src/index.css
+    rule: "UN bloc ajouté EN FIN, ouvert par « /* ── <TASKID> — <titre> ── */ », classes préfixées par le module ; jamais réécrire une règle existante"
+  - path: frontend/src/design/tokens.css
+    rule: "un jeton déclaré EN FIN de CHAQUE bloc (clair :root et variantes sunlight) sous « /* <TASKID> */ »"
+  - path: frontend/src/styles/print.css
+    rule: "une règle ajoutée en fin de @media print"
+  - path: frontend/src/components/records-panels.css
+    rule: "fichier historique (contenu migré dans index.css) : n'y rien ajouter"
+  - path: frontend/src/main.jsx
+    rule: "un import ou un provider ajouté en fin de sa liste"
+  - path: frontend/src/App.jsx
+    rule: "surface historique de plan_lanes (fichier absent aujourd'hui)"
+  - path: docs/PLAN.md
+    rule: "file de plan : ajout de tâches et de lignes de DONE LOG (hors racines du registre)"
+  - path: docs/PLAN2.md
+    rule: "file de plan : ajout de tâches et de lignes de DONE LOG (hors racines du registre)"
+  - path: docs/CODEMAP.md
+    rule: "carte régénérée ; conflit = arbre fusionné + codemap_fingerprint.py --write"
+
+# Plan → propriétaire(s). Chaque owners.<x>.plan lie déjà son plan ; ici les fichiers plan
+# historiques. Les propriétaires `platform` / `transverse` / `parked` sont exemptés de la règle
+# (b) : leurs files touchent plusieurs propriétaires et ne tournent donc jamais en parallèle d'un
+# plan qu'elles chevauchent.
+plans:
+  docs/PLAN2.md: platform
+  docs/new_tasks_plan.md: platform
+  docs/FRONTEND_GAP_PLAN.md: platform
+  docs/ERROR_PLAN.md: platform
+  docs/WEB_ERROR_PLAN.md: web
+  docs/backlog/FULL_SAAS_PLAN.md: parked
+  docs/plans/PLAN_VEILLE.md: acquisition
+  docs/plans/PLAN_CRM_VENTES.md: [acquisition, lead, crm, devis, facturation, moteur, generateur, calepinage]

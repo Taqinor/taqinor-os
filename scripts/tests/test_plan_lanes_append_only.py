@@ -171,11 +171,15 @@ class LanesNonFonduesTest(unittest.TestCase):
     def test_sans_calx2_les_trois_lanes_se_fondaient_en_une(self):
         """La preuve que le test ci-dessus n'est pas vide."""
         avant = pl._APPEND_ONLY_SUFFIXES
+        # OWN : docs/ownership.yml redéclare ces surfaces ; « avant CALX2 »
+        # veut aussi dire « avant le registre ».
+        registre_avant = pl.utiliser_registre(None)
         try:
             pl._APPEND_ONLY_SUFFIXES = SUFFIXES_AVANT_CALX2
             fondues, fusions = _lanes_et_fusions(self._tasks(PLAN_FIXTURE))
         finally:
             pl._APPEND_ONLY_SUFFIXES = avant
+            pl.utiliser_registre(registre_avant)
         self.assertEqual(len(fondues), 1)
         self.assertTrue(fusions)
 
