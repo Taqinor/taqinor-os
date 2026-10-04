@@ -1212,6 +1212,10 @@ def echantillons_de_contrat(shapes, racine: Path = None, lecteur_serveur=None):
 # Cle : `<app>/<fichier>.json`. Valeur : la route visee et la raison de
 # l'abstention — jamais « plus tard », toujours un identifiant de tache.
 ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
+    "adsengine/veille_annonceur.json":
+        "GET adsengine/veille/annonceurs/<id>/ — l'annonceur decouvert et "
+        "son verdict motive, pose SEUL et EN PREMIER (PACT10) : la vue "
+        "arrive avec VEIL17 (VEIL3)",
     "adsengine/veille_decouverte.json":
         "GET adsengine/veille/decouvertes/<id>/ (le POST de lancement renvoie "
         "la meme forme) — la decouverte et son journal, pose SEUL et EN "
