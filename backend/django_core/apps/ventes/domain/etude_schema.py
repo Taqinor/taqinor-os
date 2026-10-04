@@ -46,6 +46,10 @@ AUTO_DEVIS = 'auto_devis'
 #: calcule rien : la seule clé dont il est propriétaire est l'ESTAMPILLE de
 #: provenance, c'est-à-dire la trace de CE QU'IL A REPRIS du lead.
 PIPELINE = 'pipeline'
+#: AGR122 — le moteur SERVEUR de pompage agricole (D-AGR-1) : seul écrivain
+#: des dérivées du devis de pompage (besoin mensuel, production, couverture,
+#: champ, kit…) et des sept clés v1 que le rendu lit encore.
+MOTEUR_POMPAGE = 'moteur_pompage'
 #: Personne : clé HISTORIQUE que plus aucun chemin ne pose (voir les notes).
 ORPHELINE = 'orpheline'
 
@@ -181,14 +185,71 @@ SCHEMA = {
     'autoconso_sans': _cle((int, float), CALEPINAGE, DERIVEE),
     'autoconso_avec': _cle((int, float), CALEPINAGE, DERIVEE),
 
-    # ── Le bloc AGRICOLE (pompage) — dérivé de l'étude de pompage ────────────
-    'pompe_cv': _cle((int, float), ECRAN, ENTREE),
-    'pompe_kw': _cle((int, float), ECRAN, ENTREE),
-    'hmt_m': _cle((int, float), ECRAN, ENTREE),
-    'debit_hmt_m3h': _cle((int, float), ECRAN, DERIVEE),
-    'm3_jour': _cle((int, float), ECRAN, DERIVEE),
-    'champ_kwc': _cle((int, float), ECRAN, DERIVEE),
-    'irrigation_method': _cle((str,), ECRAN, ENTREE),
+    # ── Le bloc AGRICOLE (pompage) v2 — AGR122 (contrat partagé
+    #    `contract_samples/etude_pompage_preview.json` › `cles_etude_params_v2`,
+    #    AGR2). ENTRÉES = ce que le commercial saisit (propriétaire ECRAN),
+    #    chaque clé porte le nom de la clé du corps de l'aperçu, sauf
+    #    `hmt_entrees` = l'objet `hmt` du corps. DÉRIVÉES = propriétaire
+    #    MOTEUR_POMPAGE : un navigateur ne les écrit jamais (refus 400 nommant
+    #    la clé), une copie / V2 les recalcule (`CLES_DERIVEES_NON_COPIEES`).
+    #    Un DÉFAUT n'est jamais enregistré comme une saisie : sans saisie ni
+    #    lead ni réglage, la valeur reste absente (règle de provenance AGR2).
+    'mode_pompe': _cle((str,), ECRAN, ENTREE,
+                       'D-AGR-7 — `neuve` | `existante`.'),
+    'plaque': _cle((dict,), ECRAN, ENTREE,
+                   'D-AGR-7 — plaque de la pompe existante conservée '
+                   '(kW, tension, phases).'),
+    'besoin': _cle((dict,), ECRAN, ENTREE,
+                   'D-AGR-3 — volume déclaré d’abord, sinon besoin FAO-56.'),
+    'source': _cle((dict,), ECRAN, ENTREE,
+                   'Le point d’eau : débit d’exploitation, niveaux, forage.'),
+    'hmt_entrees': _cle((dict,), ECRAN, ENTREE,
+                        'L’objet `hmt` du corps : saisie directe ou '
+                        'composantes (dénivelé, conduite, pression).'),
+    'alim': _cle((str,), ECRAN, ENTREE),
+    'type_pompe': _cle((str,), ECRAN, ENTREE),
+    'localisation': _cle((dict,), ECRAN, ENTREE),
+    'distance_champ_m': _cle((int, float), ECRAN, ENTREE),
+    'options_cochees': _cle((list,), ECRAN, ENTREE,
+                            'D-AGR-8 — options NOMMÉES cochées du kit.'),
+    'taille': _cle((str,), ECRAN, ENTREE,
+                   '`recommandee` | `inferieure` | `superieure`.'),
+
+    'besoin_mensuel': _cle((dict, list), MOTEUR_POMPAGE, DERIVEE),
+    'production': _cle((dict,), MOTEUR_POMPAGE, DERIVEE),
+    'couverture_pct_mois': _cle((list,), MOTEUR_POMPAGE, DERIVEE),
+    'controle_conception': _cle((dict,), MOTEUR_POMPAGE, DERIVEE),
+    'conception': _cle((dict,), MOTEUR_POMPAGE, DERIVEE),
+    'champ': _cle((dict,), MOTEUR_POMPAGE, DERIVEE),
+    'hmt_composantes': _cle((dict,), MOTEUR_POMPAGE, DERIVEE),
+    'ha_irrigables': _cle((dict,), MOTEUR_POMPAGE, DERIVEE),
+    'autonomie_reservoir_jours': _cle((dict,), MOTEUR_POMPAGE, DERIVEE),
+    'kit': _cle((dict,), MOTEUR_POMPAGE, DERIVEE),
+    'alertes_pompage': _cle((list,), MOTEUR_POMPAGE, DERIVEE),
+    'hypotheses_pompage': _cle((list,), MOTEUR_POMPAGE, DERIVEE),
+    'pvgis_fige': _cle((dict,), MOTEUR_POMPAGE, DERIVEE,
+                       'Coordonnées + date de l’appel PVGIS gardées dans '
+                       'l’étude (reproductibilité).'),
+    'provenance_pompage': _cle((dict,), MOTEUR_POMPAGE, DERIVEE,
+                               'Forme UNIQUE {origine, detail, date} par '
+                               'entrée résolue (AGR2).'),
+
+    #    Les SEPT clés v1 que le rendu lit encore : DÉRIVÉES de la pompe
+    #    retenue, écrites par le NOUVEAU moteur pour son propre rendu
+    #    (D-AGR-13) — plus jamais des saisies d'écran.
+    'pompe_cv': _cle((int, float), MOTEUR_POMPAGE, DERIVEE,
+                     'puissance_retenue.cv'),
+    'pompe_kw': _cle((int, float), MOTEUR_POMPAGE, DERIVEE,
+                     'puissance_retenue.kw'),
+    'hmt_m': _cle((int, float), MOTEUR_POMPAGE, DERIVEE, 'hmt.valeur_m'),
+    'debit_hmt_m3h': _cle((int, float), MOTEUR_POMPAGE, DERIVEE,
+                          'pompe.debit_a_hmt_m3h'),
+    'm3_jour': _cle((int, float), MOTEUR_POMPAGE, DERIVEE,
+                    'production.m3_jour_mois au mois critique'),
+    'champ_kwc': _cle((int, float), MOTEUR_POMPAGE, DERIVEE, 'champ.kwc'),
+    'heures_pompage': _cle((int, float), MOTEUR_POMPAGE, DERIVEE,
+                           'production.heures_equivalentes_mois au mois '
+                           'critique'),
 
     # ── QJR66 / ARBITRAGE ORCHESTRATEUR (29/08/2026) — LE CONTRAT DE
     #    ROUND-TRIP `?edit=`. Le mappeur de réouverture de brouillon
@@ -200,24 +261,14 @@ SCHEMA = {
     #    commercial (ce qu'il a TAPÉ), propriétaire ECRAN — JAMAIS des
     #    dérivées : aucun de ces nombres n'est calculé par le moteur.
     #
-    #    Entrées du marché AGRICOLE (pompage + exploitation guidée).
-    'debit_souhaite_m3h': _cle((int, float), ECRAN, ENTREE,
-                               'Le débit VOULU par le client — à ne pas '
-                               'confondre avec `debit_hmt_m3h`, qui est ce '
-                               'que la pompe retenue délivre à cette HMT.'),
-    'heures_pompage': _cle((int, float), ECRAN, ENTREE),
-    'type_pompe': _cle((str,), ECRAN, ENTREE),
-    'alim': _cle((str,), ECRAN, ENTREE),
-    'profondeur_m': _cle((int, float), ECRAN, ENTREE),
-    'distance_m': _cle((int, float), ECRAN, ENTREE),
-    'region': _cle((str,), ECRAN, ENTREE),
-    'crop': _cle((str,), ECRAN, ENTREE),
-    'surface_ha': _cle((int, float), ECRAN, ENTREE),
-    'current_fuel': _cle((str,), ECRAN, ENTREE),
-    'fuel_spend_current': _cle((int, float), ECRAN, ENTREE,
-                               'Dépense carburant ACTUELLE, en MAD/AN.'),
-    'hmt_static': _cle((int, float), ECRAN, ENTREE),
-    'hmt_drawdown': _cle((int, float), ECRAN, ENTREE),
+    #    AGR122 / D-AGR-13 — les anciennes entrées AGRICOLES v1
+    #    (`debit_souhaite_m3h`, `profondeur_m`, `distance_m`, `region`,
+    #    `crop`, `surface_ha`, `current_fuel`, `fuel_spend_current`,
+    #    `hmt_static`, `hmt_drawdown`, `irrigation_method`) ont QUITTÉ le
+    #    schéma : aucune relecture d'un ancien devis agricole, aucune reprise
+    #    de données. Le pompage vit dans les clés v2 ci-dessus ; énergie et
+    #    dépense dans `saisies_economie_pompage` (contrat
+    #    `economie_pompage.json`, AGR3/AGR206).
 
     # ── Les DÉRIVÉES du marché industriel / commercial ───────────────────────
     'taux_autoconso': _cle((int, float), ECRAN, DERIVEE),

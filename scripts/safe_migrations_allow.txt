@@ -110,3 +110,10 @@ backend/django_core/authentication/migrations/0033_solmvp30b_customuser_sans_pos
 # rh.Competence). No SAV business table dropped, no django_migrations row
 # touched; destructive-revertable per the Groupe SOLMVP recipe.
 backend/django_core/apps/sav/migrations/0064_solmvp14_detacher_apps_parquees.py
+# AGR208 (Groupe AGR, 02/10/2026) — `agricole_prix_bonbonne` /
+# `agricole_cout_reel_bonbonne` (Q4, lus par aucun calcul depuis QJR236)
+# retirés APRÈS recopie de leurs valeurs dans le JSON
+# `reperes_energie_agricole` (RunPython réversible : le retour restaure les
+# deux colonnes et leurs valeurs). Destructive-revertable, revue humaine via
+# la tâche AGR208 (modèle opus).
+backend/django_core/apps/parametres/migrations/0113_agr208_reperes_energie_agricole.py

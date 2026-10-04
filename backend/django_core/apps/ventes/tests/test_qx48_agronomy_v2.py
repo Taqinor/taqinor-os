@@ -24,11 +24,14 @@ class TestMonthlySeries(SimpleTestCase):
         # pic d'été > creux d'hiver
         self.assertGreater(r['gross_m3_farm_day'][6], r['gross_m3_farm_day'][0])
 
-    def test_unknown_crop_flat_kc(self):
-        # jamais d'exception ; culture inconnue → Kc plat 0.85
-        r = a.monthly_water_demand(crop='zzz', region='mars', surface_ha=1)
-        self.assertEqual(len(r['kc']), 12)
-        self.assertEqual(a.crop_kc_monthly('zzz')[:3], [0.85, 0.85, 0.85])
+    def test_unknown_crop_besoin_omis(self):
+        # AGR112 — jamais d'exception ; culture sans profil Kc (« maraichage »
+        # du menu, « zzz ») → besoin OMIS (None), plus de Kc plat 0,85.
+        self.assertIsNone(a.monthly_water_demand(
+            crop='zzz', region='mars', surface_ha=1))
+        self.assertIsNone(a.crop_kc_monthly('maraichage'))
+        self.assertIsNone(a.peak_need_m3_day(
+            {'crop': 'maraichage', 'surface_ha': 2, 'region': 'tadla'}))
 
     def test_irrigation_method_changes_gross(self):
         base = dict(crop='agrumes', region='souss-massa', surface_ha=2)
@@ -79,6 +82,13 @@ class TestKcVectorsParity(SimpleTestCase):
 
     def test_avocatier_evergreen(self):
         self.assertEqual(a.crop_kc_monthly('avocatier'), [0.85] * 12)
+
+    def test_olivier_profil_mensuel_fao56_note24(self):
+        # AGR112 — FAO-56 Table 12 note 24 (Pastor et Orgaz), plus 0,65 plat.
+        self.assertEqual(
+            a.crop_kc_monthly('olivier'),
+            [0.50, 0.50, 0.65, 0.60, 0.55, 0.50,
+             0.45, 0.45, 0.55, 0.60, 0.65, 0.50])
 
 
 class TestAnnualIntegral(SimpleTestCase):

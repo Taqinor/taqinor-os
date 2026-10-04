@@ -79,6 +79,13 @@ def motif_de_refus(lead, *, maintenant=None):
     if not dans_la_fenetre_saison(local.date()):
         return ('Hors saison : le réveil saisonnier ne se pose qu’entre juin '
                 'et septembre.')
+    # AGR512 — la saison de `reveil_b` est celle où la facture ONEE choque le
+    # FOYER : son texte parle des factures d'électricité, sans objet pour un
+    # exploitant au butane ou au gasoil. Aucune « saison agricole » n'est
+    # inventée (aucune source datée sur QUAND les exploitants achètent).
+    if (getattr(lead, 'type_installation', None) or '') == 'agricole':
+        return ('Texte « saison des factures » sans objet pour un lead '
+                'agricole.')
     if getattr(lead, 'is_archived', False):
         return 'Le lead est archivé.'
     if getattr(lead, 'perdu', False):

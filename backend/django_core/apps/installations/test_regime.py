@@ -97,3 +97,80 @@ class TestRegimeSuggestionEndpoint(TestCase):
             Installation.objects.get(pk=inst.id).regime_8221,
             'accord_raccordement')
         self.assertEqual(r.data['regime_suggere']['code'], 'accord_raccordement')
+
+
+class TestRegimeHorsReseauAGR602(TestCase):
+    """AGR602 — loi 82-21, art. 3 : toute installation non raccordée relève
+    d'une déclaration, sans seuil de puissance."""
+
+    def setUp(self):
+        self.company = make_company(slug='reg-hr-co', nom='Reg HR Co')
+        self.user = User.objects.create_user(
+            username='reg_hr_user', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth(self.user)
+
+    def test_pure_hors_reseau_any_power(self):
+        for kwc in (None, 0, 5, 10.65, 42, 5000):
+            self.assertEqual(
+                suggest_regime_8221(kwc, hors_reseau=True),
+                'declaration_hors_reseau')
+        # Sans le drapeau : comportement historique octet-identique.
+        self.assertEqual(suggest_regime_8221(10.65), 'declaration_bt')
+        self.assertEqual(suggest_regime_8221(42), 'accord_raccordement')
+
+    def test_agricole_devis_gives_hors_reseau_chantier(self):
+        # 15 panneaux de 710 W = 10,65 kWc ; devis agricole accepté.
+        devis, _client, lead = make_accepted_devis(self.company)
+        lead.type_installation = 'agricole'
+        lead.save()
+        devis.mode_installation = 'agricole'
+        devis.etude_params = {'puissance_kwc': 15 * 0.71}
+        devis.save()
+        inst, created = create_installation_from_devis(
+            devis, self.user, self.company)
+        self.assertTrue(created)
+        self.assertEqual(inst.type_installation, 'agricole')
+        self.assertEqual(inst.regime_8221, 'declaration_hors_reseau')
+        self.assertEqual(inst.raccordement_reseau, 'hors_reseau')
+        r = self.api.get(f'/api/django/installations/chantiers/{inst.id}/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            r.data['regime_suggere']['code'], 'declaration_hors_reseau')
+
+    def test_agricole_switched_to_raccorde_gets_kwc_suggestion(self):
+        devis, _client, _lead = make_accepted_devis(self.company)
+        devis.mode_installation = 'agricole'
+        devis.etude_params = {'puissance_kwc': 42}
+        devis.save()
+        inst, _ = create_installation_from_devis(
+            devis, self.user, self.company)
+        r = self.api.patch(
+            f'/api/django/installations/chantiers/{inst.id}/',
+            {'raccordement_reseau': 'raccorde'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(
+            r.data['regime_suggere']['code'], 'accord_raccordement')
+
+    def test_residentiel_and_industriel_unchanged(self):
+        devis, _client, _lead = make_accepted_devis(self.company)
+        inst, _ = create_installation_from_devis(
+            devis, self.user, self.company)
+        self.assertEqual(inst.regime_8221, 'declaration_bt')
+        self.assertIsNone(inst.raccordement_reseau)
+        devis2, _c, _l = make_accepted_devis(self.company, with_lead=False)
+        devis2.mode_installation = 'industriel'
+        devis2.etude_params = {'puissance_kwc': 250}
+        devis2.save()
+        inst2, _ = create_installation_from_devis(
+            devis2, self.user, self.company)
+        self.assertEqual(inst2.regime_8221, 'accord_raccordement')
+        self.assertIsNone(inst2.raccordement_reseau)
+
+    def test_endpoint_hors_reseau(self):
+        url = '/api/django/installations/chantiers/regime-suggestion/'
+        r = self.api.get(url, {'kwc': '10', 'hors_reseau': '1'})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['code'], 'declaration_hors_reseau')
+        r2 = self.api.get(url, {'kwc': '10'})
+        self.assertEqual(r2.data['code'], 'declaration_bt')

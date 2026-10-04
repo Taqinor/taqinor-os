@@ -29,7 +29,9 @@ import CustomFieldsInput from '../../components/CustomFieldsInput'
 import { classifyProduct, isPompe } from '../../features/ventes/solar.js'
 // STKCAT20 — la même source que le sélecteur de structures (STKCAT11) : la
 // famille RÉELLE d'un produit vient de sa catégorie TYPÉE, jamais du seul nom.
-import { typeOfProduit } from '../../features/stock/catalogue.js'
+import {
+  typeOfProduit, erreursCourbePompe, ROLES_POMPAGE, TYPES_POMPE, ALIMENTATIONS,
+} from '../../features/stock/catalogue.js'
 import {
   // PVOND-H (fondateur 19/08/2026) — la plage de tension batterie s'édite
   // désormais sur le CHAMP DÉDIÉ de FicheTechnique (ond_bat_aucune/
@@ -45,7 +47,7 @@ import {
   // bloc optimiseur) : toute la logique reste PURE, testée par
   // pvondFicheTechnique.test.mjs (node --test).
   typeFicheFormulaire, COURBES_FICHE, CHOIX_CHIMIE_BATTERIE, ligneCourbeVide,
-  erreursCourbesPourType, messageRefusFiche, LIBELLES_FICHE,
+  erreursCourbesPourType, messageRefusFiche, LIBELLES_FICHE, CHOIX_TRI,
 } from './pvondFicheTechnique.js'
 
 /* CALX355 — saisie d'une courbe de fiche point par point : une ligne par
@@ -477,6 +479,16 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     debit_m3j:  produit?.debit_m3j  != null ? String(produit.debit_m3j)  : '',
     pompe_kw:   produit?.pompe_kw   != null ? String(produit.pompe_kw)   : '',
     tension_v:  produit?.tension_v  != null ? String(produit.tension_v) : '',
+    // AGR105 — champs structurés pompage (AGR100) : vide = « non publié »,
+    // jamais un défaut. La provenance de la courbe (document / date / page)
+    // et la fréquence de référence se saisissent à plat, partent en objet.
+    role_pompage:  produit?.role_pompage  ?? '',
+    type_pompe:    produit?.type_pompe    ?? '',
+    alimentation:  produit?.alimentation  ?? '',
+    courbe_frequence_hz: produit?.courbe_frequence_hz != null ? String(produit.courbe_frequence_hz) : '',
+    courbe_source_document: produit?.courbe_source?.document ?? '',
+    courbe_source_date:     produit?.courbe_source?.date ?? '',
+    courbe_source_page:     produit?.courbe_source?.page != null ? String(produit.courbe_source.page) : '',
   }
   const [initialFieldsSnapshot] = useState(initialFields)
   const [fields, setFields] = useState(initialFields)
@@ -607,9 +619,21 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   // de devis (`classifyProduct`, solar.js), jamais réimplémentée ici.
   // CALX355 — repli « optimiseur » UNIQUEMENT quand `classifyProduct` ne
   // classe pas le produit (`typeFicheFormulaire`, pvondFicheTechnique.js).
+  // AGR105 — pompe / variateur de pompage : le rôle DÉCLARÉ d'abord, puis la
+  // famille lue (catégorie typée, nom) tant qu'aucune fiche d'un autre type
+  // n'est enregistrée.
+  const categorieTapee = categories.find(c => String(c.id) === String(fields.categorie_id))
+  const nomVariateur = /variateur/i.test(fields.nom) && !/afficheur/i.test(fields.nom)
+  const estVariateurPompageLu = typeOfProduit({ categorie: categorieTapee }) === 'variateur'
+    ? !/afficheur/i.test(fields.nom) : nomVariateur
   const ficheType = typeFicheFormulaire({
     typeClient: classifyProduct(fields.nom), nom: fields.nom, typeFicheServeur: ficheTypeServeur,
+    rolePompage: fields.role_pompage,
+    estPompe: typeOfProduit({ categorie: categorieTapee }) === 'pompe' || isPompe(fields.nom),
+    estVariateurPompage: estVariateurPompageLu,
   })
+  const estPompeFicheType = ficheType === 'pompe'
+  const estVariateurFicheType = ficheType === 'variateur_pompage'
   const estOnduleurHybride = ficheType === 'onduleur_hybride'
   const estOnduleurReseau = ficheType === 'onduleur_reseau'
   const estOnduleur = estOnduleurHybride || estOnduleurReseau
@@ -635,7 +659,16 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const categorieChoisie = categories.find(c => String(c.id) === String(fields.categorie_id))
   const estPompeFiche = typeOfProduit({ categorie: categorieChoisie }) === 'pompe' || isPompe(fields.nom)
   const afficherFicheTechnique = estOnduleur || estPanneauFiche || estBatterieFiche || estPompeFiche
-    || estOptimiseurFiche
+    || estOptimiseurFiche || estPompeFicheType || estVariateurFicheType
+  // AGR105 — la section « Pompage » (rôle, type, alimentation, provenance de
+  // la courbe) : détail seulement pour une pompe / un variateur ; le rôle se
+  // déclare sur tout article du kit (sonde, clapet, bassin…).
+  const roleEstPompeOuVariateur = ['pompe', 'variateur_pompage'].includes(fields.role_pompage)
+  const afficherDetailPompage = roleEstPompeOuVariateur || estPompeFiche || estPompeFicheType
+    || estVariateurFicheType
+  // AGR105 — erreurs de courbe de pompe, recalculées en direct (selon AGR102).
+  const erreursCourbePompeLive = erreursCourbePompe(courbeRows)
+  const [courbePompeTentee, setCourbePompeTentee] = useState(false)
 
   // Plage de tension batterie : éditable ici UNIQUEMENT pour un onduleur
   // HYBRIDE (règle fondateur 18/08) — un onduleur réseau n'en porte jamais.
@@ -750,7 +783,11 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     // fautive et le bandeau la nomme. Jamais une courbe tronquée en silence.
     const courbesOk = !erreursCourbes.bandeau
     if (!courbesOk) setCourbesTentees(true)
-    return Object.keys(e).length === 0 && courbesOk
+    // AGR105 — la courbe de pompe doit être lisible (AGR102) : erreur sous la
+    // cellule fautive, AUCUN envoi tant qu'elle est fausse.
+    const courbePompeOk = !erreursCourbePompeLive.bandeau
+    if (!courbePompeOk) setCourbePompeTentee(true)
+    return Object.keys(e).length === 0 && courbesOk && courbePompeOk
   }
 
   const handleSubmit = async (e) => {
@@ -804,6 +841,17 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         pompe_kw:  fields.pompe_kw  !== '' ? fields.pompe_kw : null,
         tension_v: fields.tension_v !== '' ? parseInt(fields.tension_v) : null,
         courbe_pompe: courbePompePayload,
+        // AGR105 — champs structurés pompage : vide = '' / null (non publié),
+        // jamais un défaut ni un nombre arrondi.
+        role_pompage: fields.role_pompage,
+        type_pompe: fields.type_pompe,
+        alimentation: fields.alimentation,
+        courbe_frequence_hz: fields.courbe_frequence_hz !== '' ? Number(fields.courbe_frequence_hz) : null,
+        courbe_source: {
+          document: fields.courbe_source_document.trim(),
+          date: fields.courbe_source_date || null,
+          page: fields.courbe_source_page !== '' ? Number(fields.courbe_source_page) : null,
+        },
         // WIR67 — champs personnalisés du module « produit ».
         custom_data: customData,
       }
@@ -1248,6 +1296,84 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
             </FormField>
           </FormSection>
 
+          {/* AGR105 — « Pompage » : le rôle DÉCLARÉ de l'article dans un kit
+              pompage (AGR100), puis, pour une pompe / un variateur, le type,
+              l'alimentation et la provenance de la courbe constructeur
+              (document / date / page) avec sa fréquence de référence. Vide =
+              « non publié » : jamais une valeur par défaut. */}
+          <FormSection
+            title="Pompage"
+            description="Rôle dans un kit de pompage solaire. Laissez vide pour tout autre article."
+          >
+            <FormField label="Rôle pompage" htmlFor="pf-role-pompage" error={errors.role_pompage}>
+              <Select
+                value={fields.role_pompage || '__none'}
+                onValueChange={v => setField('role_pompage', v === '__none' ? '' : v)}
+              >
+                <SelectTrigger id="pf-role-pompage"><SelectValue placeholder="— Aucun —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Aucun —</SelectItem>
+                  {ROLES_POMPAGE.map(([valeur, libelle]) => (
+                    <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            {afficherDetailPompage && (
+              <>
+                {(roleEstPompeOuVariateur ? fields.role_pompage === 'pompe' : (estPompeFiche || estPompeFicheType)) && (
+                  <FormField label="Type de pompe" htmlFor="pf-type-pompe">
+                    <Select
+                      value={fields.type_pompe || '__none'}
+                      onValueChange={v => setField('type_pompe', v === '__none' ? '' : v)}
+                    >
+                      <SelectTrigger id="pf-type-pompe"><SelectValue placeholder="— Non publié —" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">— Non publié —</SelectItem>
+                        {TYPES_POMPE.map(([valeur, libelle]) => (
+                          <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                )}
+                <FormField label="Alimentation" htmlFor="pf-alimentation">
+                  <Select
+                    value={fields.alimentation || '__none'}
+                    onValueChange={v => setField('alimentation', v === '__none' ? '' : v)}
+                  >
+                    <SelectTrigger id="pf-alimentation"><SelectValue placeholder="— Non publiée —" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">— Non publiée —</SelectItem>
+                      {ALIMENTATIONS.map(([valeur, libelle]) => (
+                        <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                <FormField label="Provenance de la courbe — document" htmlFor="pf-courbe-doc">
+                  <Input id="pf-courbe-doc" value={fields.courbe_source_document}
+                         onChange={e => setField('courbe_source_document', e.target.value)} />
+                </FormField>
+                <FormField label="Provenance de la courbe — date" htmlFor="pf-courbe-date">
+                  <Input id="pf-courbe-date" type="date" value={fields.courbe_source_date}
+                         onChange={e => setField('courbe_source_date', e.target.value)} />
+                </FormField>
+                <FormField label="Provenance de la courbe — page" htmlFor="pf-courbe-page">
+                  <Input id="pf-courbe-page" type="number" step="any" inputMode="decimal"
+                         value={fields.courbe_source_page}
+                         onChange={e => setField('courbe_source_page', e.target.value)} />
+                </FormField>
+                <FormField label="Fréquence de référence de la courbe (Hz)" htmlFor="pf-courbe-hz"
+                           hint="Fréquence à laquelle le constructeur publie la courbe (Hz) ; vide = non publiée.">
+                  <Input id="pf-courbe-hz" type="number" step="any" inputMode="decimal"
+                         value={fields.courbe_frequence_hz}
+                         onChange={e => setField('courbe_frequence_hz', e.target.value)} />
+                </FormField>
+              </>
+            )}
+          </FormSection>
+
           {/* PVOND (fondateur 18/08) — « Fiche technique » : la promesse de
               ProduitDetail.jsx (« se modifie depuis l'édition du produit »)
               enfin tenue. Section par TYPE, auto-détecté depuis le nom tapé —
@@ -1608,6 +1734,78 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                 </>
               )}
 
+              {/* AGR105 — fiche « pompe » : valeurs publiées par la fiche du modèle
+                  EXACT. Champ vide = « non publié » (jamais 0). Unités affichées. */}
+              {estPompeFicheType && (
+                <>
+                  <p className="sm:col-span-2 text-xs text-muted-foreground">
+                    Fiche pompe — recopiez la fiche constructeur du modèle exact ; laissez
+                    vide ce qui n&apos;est pas publié.
+                  </p>
+                  {[
+                    'pompe_i_nominal_a', 'pompe_diametre_ext_mm', 'pompe_nb_etages',
+                    'pompe_immersion_min_m', 'pompe_rendement_pct',
+                    'pompe_q_nominal_m3h', 'pompe_hmt_nominale_m',
+                  ].map((cle) => (
+                    <FormField key={cle} label={LIBELLES_FICHE[cle]} htmlFor={`pf-ft-${cle}`}>
+                      <Input id={`pf-ft-${cle}`} type="number" step="any" inputMode="decimal"
+                             value={ficheFields[cle]}
+                             onChange={e => setFicheField(cle, e.target.value)} />
+                    </FormField>
+                  ))}
+                </>
+              )}
+
+              {/* AGR105 — fiche « variateur de pompage » : fenêtre DC, courant,
+                  tension de sortie (champs onduleur réutilisés + var_*). Aucune
+                  plage constructeur codée : fiche vide = « à saisir ». */}
+              {estVariateurFicheType && (
+                <>
+                  <p className="sm:col-span-2 text-xs text-muted-foreground">
+                    Fiche variateur — la compatibilité champ / variateur ne se vérifie
+                    que sur ces valeurs publiées ; vides, elle reste « non vérifiable ».
+                  </p>
+                  {[
+                    'ond_mppt_v_min', 'ond_mppt_v_max', 'ond_v_max_abs', 'ond_i_max_mppt_a',
+                    'ond_v_demarrage_v', 'var_voc_reco_min_v', 'var_voc_reco_max_v',
+                    'var_v_sortie_v', 'var_i_sortie_nominal_a', 'var_rendement_mppt_pct',
+                  ].map((cle) => (
+                    <FormField key={cle} label={LIBELLES_FICHE[cle]} htmlFor={`pf-ft-${cle}`}>
+                      <Input id={`pf-ft-${cle}`} type="number" step="any" inputMode="decimal"
+                             value={ficheFields[cle]}
+                             onChange={e => setFicheField(cle, e.target.value)} />
+                    </FormField>
+                  ))}
+                  <FormField label={LIBELLES_FICHE.ond_phases} htmlFor="pf-ft-var-phases">
+                    <Select
+                      value={ficheFields.ond_phases || '__none'}
+                      onValueChange={v => setFicheField('ond_phases', v === '__none' ? '' : v)}
+                    >
+                      <SelectTrigger id="pf-ft-var-phases"><SelectValue placeholder="— Non publié —" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">— Non publié —</SelectItem>
+                        <SelectItem value="1">Monophasé</SelectItem>
+                        <SelectItem value="3">Triphasé</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                  <FormField label={LIBELLES_FICHE.var_protection_marche_a_sec} htmlFor="pf-ft-var-marche-a-sec">
+                    <Select
+                      value={ficheFields.var_protection_marche_a_sec || '__none'}
+                      onValueChange={v => setFicheField('var_protection_marche_a_sec', v === '__none' ? '' : v)}
+                    >
+                      <SelectTrigger id="pf-ft-var-marche-a-sec"><SelectValue placeholder="— Non publié —" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">— Non publié —</SelectItem>
+                        {CHOIX_TRI.map(([valeur, libelle]) => (
+                          <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                </>
+              )}
+
               {/* STKCAT20 — la section « Pompage » est désormais ÉDITABLE ici :
                   ces 5 champs + la courbe sont des colonnes PLATES du modèle
                   Produit (pas une FicheTechnique séparée), donc dans le MÊME
@@ -1632,12 +1830,12 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                              invalid={!!errors.tension_v} value={fields.tension_v}
                              onChange={e => setField('tension_v', e.target.value)} />
                     </FormField>
-                    <FormField label="HMT max (m)" htmlFor="pf-pompe-hmt" error={errors.hmt_m}>
+                    <FormField label="HMT d'arrêt (m)" htmlFor="pf-pompe-hmt" error={errors.hmt_m}>
                       <Input id="pf-pompe-hmt" type="number" step="any" inputMode="decimal"
                              invalid={!!errors.hmt_m} value={fields.hmt_m}
                              onChange={e => setField('hmt_m', e.target.value)} />
                     </FormField>
-                    <FormField label="Débit indicatif (m³/j)" htmlFor="pf-pompe-debitj" error={errors.debit_m3j}>
+                    <FormField label="Débit indicatif (non garanti) (m³/j)" htmlFor="pf-pompe-debitj" error={errors.debit_m3j}>
                       <Input id="pf-pompe-debitj" type="number" step="any" inputMode="decimal"
                              invalid={!!errors.debit_m3j} value={fields.debit_m3j}
                              onChange={e => setField('debit_m3j', e.target.value)} />
@@ -1648,28 +1846,47 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                       — jamais un JSON brut à taper. Les valeurs restent des
                       chaînes tant que la ligne est en cours de frappe (jamais
                       arrondies/rejetées) ; converties en nombres au submit. */}
-                  <div>
+                  <div data-testid="pf-courbe-pompe">
                     <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
                       Courbe constructeur (débit m³/h → HMT m)
                     </p>
                     <div className="flex flex-col gap-2">
-                      {courbeRows.map((row, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <Input type="number" step="any" inputMode="decimal"
-                                 placeholder="Débit (m³/h)" aria-label={`Débit point ${i + 1}`}
-                                 value={row.debit}
-                                 onChange={e => { clearField('courbe_pompe'); setCourbeRow(i, 'debit', e.target.value) }} />
-                          <Input type="number" step="any" inputMode="decimal"
-                                 placeholder="HMT (m)" aria-label={`HMT point ${i + 1}`}
-                                 value={row.hmt}
-                                 onChange={e => { clearField('courbe_pompe'); setCourbeRow(i, 'hmt', e.target.value) }} />
-                          <Button type="button" variant="ghost" size="icon"
-                                  aria-label={`Retirer le point ${i + 1}`}
-                                  onClick={() => { clearField('courbe_pompe'); retirerCourbeRow(i) }}>
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
+                      {courbeRows.map((row, i) => {
+                        const errLigne = courbePompeTentee ? erreursCourbePompeLive.parLigne[i] : undefined
+                        return (
+                          <div key={i} className="flex items-start gap-2">
+                            <div className="flex w-44 flex-col gap-1">
+                              <Input type="number" step="any" inputMode="decimal"
+                                     placeholder="Débit (m³/h)" aria-label={`Débit point ${i + 1}`}
+                                     invalid={!!errLigne?.debit}
+                                     aria-describedby={errLigne?.debit ? `pf-courbe-pompe-${i}-debit-erreur` : undefined}
+                                     value={row.debit}
+                                     onChange={e => { clearField('courbe_pompe'); setCourbeRow(i, 'debit', e.target.value) }} />
+                              {errLigne?.debit && (
+                                <p id={`pf-courbe-pompe-${i}-debit-erreur`} role="alert"
+                                   className="text-xs text-destructive">{errLigne.debit}</p>
+                              )}
+                            </div>
+                            <div className="flex w-44 flex-col gap-1">
+                              <Input type="number" step="any" inputMode="decimal"
+                                     placeholder="HMT (m)" aria-label={`HMT point ${i + 1}`}
+                                     invalid={!!errLigne?.hmt}
+                                     aria-describedby={errLigne?.hmt ? `pf-courbe-pompe-${i}-hmt-erreur` : undefined}
+                                     value={row.hmt}
+                                     onChange={e => { clearField('courbe_pompe'); setCourbeRow(i, 'hmt', e.target.value) }} />
+                              {errLigne?.hmt && (
+                                <p id={`pf-courbe-pompe-${i}-hmt-erreur`} role="alert"
+                                   className="text-xs text-destructive">{errLigne.hmt}</p>
+                              )}
+                            </div>
+                            <Button type="button" variant="ghost" size="icon"
+                                    aria-label={`Retirer le point ${i + 1}`}
+                                    onClick={() => { clearField('courbe_pompe'); retirerCourbeRow(i) }}>
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )
+                      })}
                     </div>
                     <Button type="button" variant="outline" size="sm" className="mt-2"
                             onClick={() => { clearField('courbe_pompe'); ajouterCourbeRow() }}>
@@ -1707,6 +1924,13 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
             <div role="alert" data-testid="pf-courbes-bandeau"
                  className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               Non enregistré — {erreursCourbes.bandeau}
+            </div>
+          )}
+
+          {courbePompeTentee && erreursCourbePompeLive.bandeau && (
+            <div role="alert" data-testid="pf-courbe-pompe-bandeau"
+                 className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              Non enregistré — {erreursCourbePompeLive.bandeau}
             </div>
           )}
 

@@ -1901,3 +1901,62 @@ def performance_agent(company, *, date_debut=None, date_fin=None):
         'nb_tickets_traites': len(tickets),
         'agents': agents,
     }
+
+
+# ── AGR615 — usage en m³ d'un contrat depuis les relevés compteur ───────────
+
+def usage_m3_periode(contrat, debut, fin):
+    """AGR615 — m³ RELEVÉS sur ``[debut, fin)`` pour un contrat en m³.
+
+    Par équipement du contrat (M2M ``equipements``, sinon ceux du chantier
+    du contrat) : index du dernier relevé m³ daté AVANT ``fin`` (borne
+    exclusive) moins index du dernier relevé m³ daté au plus tard ``debut``.
+    Une borne sans relevé → l'équipement ne compte pas ; aucun équipement
+    mesurable → ``None`` (la ligne d'usage est omise). Jamais une lecture
+    kWh : les relevés m³ sont la SEULE source."""
+    from decimal import Decimal
+    from .models import ReleveCompteurEquipement
+
+    equipement_ids = list(contrat.equipements.values_list('id', flat=True))
+    if not equipement_ids and contrat.installation_id is not None:
+        equipement_ids = list(Equipement.objects.filter(
+            company=contrat.company,
+            installation_id=contrat.installation_id,
+        ).values_list('id', flat=True))
+    if not equipement_ids:
+        return None
+    releves = ReleveCompteurEquipement.objects.filter(
+        company=contrat.company, equipement_id__in=equipement_ids,
+        type=ReleveCompteurEquipement.Type.M3)
+    total = None
+    for equipement_id in equipement_ids:
+        mine = releves.filter(equipement_id=equipement_id).order_by(
+            '-date', '-date_creation', '-id')
+        fin_releve = mine.filter(date__lt=fin).first()
+        debut_releve = mine.filter(date__lte=debut).first()
+        if fin_releve is None or debut_releve is None:
+            continue
+        delta = max(Decimal('0'), fin_releve.valeur - debut_releve.valeur)
+        total = delta if total is None else total + delta
+    return total
+
+
+def moyenne_jour_depuis_precedent(releve):
+    """AGR615 — (index − index du relevé PRÉCÉDENT du même type et du même
+    équipement) ÷ jours écoulés, arrondi à 0,1. ``None`` au premier relevé
+    du type ou quand les deux dates sont égales (jamais un 0 inventé)."""
+    from django.db.models import Q
+    from .models import ReleveCompteurEquipement
+
+    precedent = (ReleveCompteurEquipement.objects
+                 .filter(equipement_id=releve.equipement_id, type=releve.type)
+                 .exclude(pk=releve.pk)
+                 .filter(Q(date__lt=releve.date)
+                         | Q(date=releve.date, id__lt=releve.pk))
+                 .order_by('-date', '-id').first())
+    if precedent is None:
+        return None
+    jours = (releve.date - precedent.date).days
+    if jours <= 0:
+        return None
+    return round(float(releve.valeur - precedent.valeur) / jours, 1)

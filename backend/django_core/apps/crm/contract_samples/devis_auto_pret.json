@@ -1,7 +1,7 @@
 {
   "endpoint": "GET /api/django/crm/leads/<id>/",
   "forme_serveur": "partielle",
-  "pourquoi": "QJR509 (M0 QJR5) — la règle « devis automatique prêt » servie STRUCTURÉE : bloc `devis_auto` du lead = {pret, manquants: [libellés], manquants_detail: [{champ, label}], requis: [[…]]} où chaque groupe de `requis` est un « l'un des » (ex. [['conso_mensuelle_kwh','bill_kwh']] pour le C&I, [['pompe_cv'],['pompe_hmt_m'],['pompe_debit_m3h']] en agricole). Note : industriel/commercial -> createAutoQuote (JS) seul ; POST /devis/auto/ refuse ces marchés (creation.py:929-935).",
+  "pourquoi": "QJR509 (M0 QJR5) — la règle « devis automatique prêt » servie STRUCTURÉE : bloc `devis_auto` du lead = {pret, manquants: [libellés], manquants_detail: [{champ, label}], requis: [[…]]} où chaque groupe de `requis` est un « l'un des » (ex. [['conso_mensuelle_kwh','bill_kwh']] pour le C&I, [['pompe_hmt_m','niveau_statique_m'],['pompe_debit_m3h','besoin_eau_m3j','pompe_actuelle_debit_m3h']] en agricole depuis AGR403 (D-AGR-3, D-AGR-4 : le CV décrit la pompe ACTUELLE et ne compte plus ; pompe_actuelle_debit_m3h ne compte qu'avec pompage_heures_jour ; + visite_point_eau_avant_devis {requise, motifs} pour un agricole, null ailleurs)). Note : industriel/commercial -> createAutoQuote (JS) seul ; POST /devis/auto/ refuse ces marchés (creation.py:929-935).",
   "exemple": {
     "devis_auto": {
       "pret": false,
@@ -23,53 +23,6 @@
     }
   },
   "exemple_agricole": {
-    "devis_auto": {
-      "pret": false,
-      "manquants": [
-        "Puissance de la pompe (CV)",
-        "HMT (m)",
-        "Débit (m³/h)"
-      ],
-      "manquants_detail": [
-        {
-          "champ": "pompe_cv",
-          "label": "Puissance de la pompe (CV)"
-        },
-        {
-          "champ": "pompe_hmt_m",
-          "label": "HMT (m)"
-        },
-        {
-          "champ": "pompe_debit_m3h",
-          "label": "Débit (m³/h)"
-        }
-      ],
-      "requis": [
-        [
-          "pompe_cv"
-        ],
-        [
-          "pompe_hmt_m"
-        ],
-        [
-          "pompe_debit_m3h"
-        ]
-      ]
-    }
-  },
-  "exemple_pret": {
-    "devis_auto": {
-      "pret": true,
-      "manquants": [],
-      "manquants_detail": [],
-      "requis": [
-        [
-          "facture_hiver"
-        ]
-      ]
-    }
-  },
-  "exemple_agricole_v2": {
     "devis_auto": {
       "pret": false,
       "manquants": [
@@ -106,5 +59,16 @@
       }
     }
   },
-  "notes_agricole_v2": "AGR1 (Groupe AGR, 02/10/2026 ; D-AGR-3, D-AGR-4) — la règle agricole CIBLE : le CV n'est plus requis (il décrit la pompe ACTUELLE, colonne `pompe_actuelle_cv` du contrat `lead_pompage.json`) ; requis = [['pompe_hmt_m','niveau_statique_m'], ['pompe_debit_m3h','besoin_eau_m3j','pompe_actuelle_debit_m3h']] où `pompe_actuelle_debit_m3h` ne compte QUE si `pompage_heures_jour` est renseigné (volume déclaré = débit actuel × heures actuelles). `visite_point_eau_avant_devis` {requise, motifs} : requise quand, à la fin de l'appel, le niveau d'eau ou le débit du forage est inconnu (D-AGR-4) ; sinon le devis part comme aujourd'hui. POSÉE À CÔTÉ de `exemple_agricole` (qui décrit la règle ACTUELLE de `devis_auto.py`, CV + HMT + débit) pour garder `main` vert : `tests_devis_auto_contrat.py` compare `champs_requis(lead)` à `exemple_agricole`. La tâche qui change la règle (AGR403) remplace `exemple_agricole` par ce bloc et retire `exemple_agricole_v2` dans le même commit que le code et le test."
+  "exemple_pret": {
+    "devis_auto": {
+      "pret": true,
+      "manquants": [],
+      "manquants_detail": [],
+      "requis": [
+        [
+          "facture_hiver"
+        ]
+      ]
+    }
+  }
 }

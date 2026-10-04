@@ -950,6 +950,22 @@ def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
         logger.warning(
             'VTA5 : retour lead du feu vert de visite échoué pour le lead '
             '#%s', lead_id, exc_info=True)
+    # AGR413 — les mesures du point d'eau (kwarg ``mesures_point_eau``, vide
+    # pour une visite toiture) remontent sur les colonnes du lead : la mesure
+    # remplace la déclaration. Lead borné à la société de la visite.
+    # Best-effort comme VTA5 : la visite est déjà validée.
+    mesures = kwargs.get('mesures_point_eau')
+    if mesures:
+        try:
+            from .services import appliquer_mesures_point_eau
+            lead = Lead.objects.filter(
+                pk=lead_id, company_id=visite.company_id).first()
+            if lead is not None:
+                appliquer_mesures_point_eau(lead, mesures, user)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'AGR413 : retour des mesures du point d\'eau échoué pour le '
+                'lead #%s', lead_id, exc_info=True)
 
 
 # ── VISITE-CADENCE — LE SUIVI COMMERCIAL RÉAGIT À LA VISITE ──────────────────

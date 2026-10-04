@@ -495,3 +495,92 @@ describe('STKCAT17 — catégorie : type affiché + colonne recherchable', () =>
   // flag colonne n'a encore aucun effet observable : il n'active un vrai
   // comportement qu'avec STKCAT26 (recherche du moteur branchée), testé là-bas.
 })
+
+// ─── AGR106 — « Pompage à compléter » + « kit pompage chiffrable » ──────────
+// Catalogue de seed tel que le serveur le sert : 11 pompes OSP à prix 0 avec
+// courbe (380 V), pompes génériques à prix d'achat 0 sans courbe, variateurs
+// VEICHI pricés SANS fiche, protections DC à prix 0, options du kit à prix 0.
+describe('CatalogueTable — AGR106 pompage à compléter', () => {
+  beforeEach(() => {
+    if (!window.matchMedia) {
+      window.matchMedia = vi.fn().mockImplementation((q) => ({
+        matches: false, media: q, onchange: null,
+        addListener: vi.fn(), removeListener: vi.fn(),
+        addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+      }))
+    }
+  })
+
+  const COURBE = { debits_m3h: [0, 12, 24], hmt_m: [91, 85, 70] }
+  const osp = Array.from({ length: 11 }, (u, i) => baseProduit({
+    id: 100 + i, nom: `Pompe immergée OSP 30/${i + 8}`, sku: `PMP-OSP-${i}`,
+    prix_vente: '0', prix_achat: '0', tension_v: 380, courbe_pompe: COURBE,
+    role_pompage: 'pompe', alimentation: 'tri',
+    categorie: { id: 9, nom: 'Pompes', ordre: 8 },
+  }))
+  const generique = baseProduit({
+    id: 200, nom: 'Pompe immergée solaire 3 CV Monophasé', sku: 'PMP-IMM-3M',
+    prix_vente: '5416.67', prix_achat: '0', pompe_cv: '3', categorie: { id: 9, nom: 'Pompes', ordre: 8 },
+  })
+  const variateur = baseProduit({
+    id: 300, nom: 'VARIATEUR VEICHI SI23 5.5KW 380V', sku: 'VEI-SI23-5.5-380',
+    prix_vente: '2708.33', prix_achat: '2375', tension_v: 380, role_pompage: 'variateur_pompage',
+    categorie: { id: 10, nom: 'Variateurs', ordre: 9 },
+  })
+  const protection = baseProduit({
+    id: 400, nom: 'Parafoudre DC type 2 1000 V', sku: 'PARA-DC-T2-1000',
+    prix_vente: '0', prix_achat: '0', role_pompage: 'protection_dc',
+  })
+  const sonde = baseProduit({
+    id: 500, nom: 'Sonde de niveau (protection marche à sec)', sku: 'SONDE-NIV',
+    prix_vente: '0', prix_achat: '0', role_pompage: 'sonde_niveau',
+  })
+  const panneau = baseProduit({ id: 600, nom: 'Panneau 700 Wc', sku: 'PAN-700' })
+  const SEED = [...osp, generique, variateur, protection, sonde, panneau]
+
+  it('le filtre liste les 11 OSP et les options sans prix, et exclut le reste', async () => {
+    const user = userEvent.setup()
+    renderTable({ produits: SEED, fichesParProduit: new Map() })
+    const bouton = screen.getByTestId('filtre-pompage-a-completer')
+    // 11 OSP + générique (sans courbe, achat 0) + variateur (sans fiche) + protection + sonde
+    expect(bouton).toHaveTextContent('Pompage à compléter (15)')
+    await user.click(bouton)
+    const raisons = screen.getByTestId('pompage-raisons')
+    expect(within(raisons).getAllByText(/OSP 30\//)).toHaveLength(11)
+    expect(within(raisons).getByText(/Sonde de niveau/)).toBeInTheDocument()
+    expect(within(raisons).getByText(/Parafoudre DC/)).toBeInTheDocument()
+    expect(within(raisons).getByText(/fiche variateur à saisir/)).toBeInTheDocument()
+    expect(within(raisons).getByText(/courbe constructeur absente/)).toBeInTheDocument()
+    expect(within(raisons).queryByText(/Panneau 700/)).toBeNull()
+  })
+
+  it('le bandeau dit « non » et nomme « aucune pompe monophasée pricée avec courbe »', () => {
+    renderTable({ produits: SEED, fichesParProduit: new Map() })
+    const bandeau = screen.getByTestId('bandeau-kit-pompage')
+    expect(bandeau).toHaveTextContent('Kit pompage chiffrable : non')
+    expect(bandeau).toHaveTextContent('aucune pompe monophasée pricée avec courbe')
+    expect(bandeau).toHaveTextContent('aucune pompe triphasée pricée avec courbe')
+    expect(bandeau).toHaveTextContent('aucun variateur pricé avec fiche')
+    expect(bandeau).toHaveTextContent('aucune protection DC pricée')
+  })
+
+  it('un kit complet affiche « oui »', () => {
+    const complet = [
+      baseProduit({ id: 1, nom: 'Pompe M', prix_vente: '100', courbe_pompe: COURBE,
+        role_pompage: 'pompe', alimentation: 'mono' }),
+      baseProduit({ id: 2, nom: 'Pompe T', prix_vente: '100', courbe_pompe: COURBE,
+        role_pompage: 'pompe', alimentation: 'tri' }),
+      baseProduit({ id: 3, nom: 'Variateur', prix_vente: '100', role_pompage: 'variateur_pompage' }),
+      baseProduit({ id: 4, nom: 'Protection DC', prix_vente: '100', role_pompage: 'protection_dc' }),
+    ]
+    const fiches = new Map([[3, { type_fiche: 'variateur_pompage', var_v_sortie_v: '380.0' }]])
+    renderTable({ produits: complet, fichesParProduit: fiches })
+    expect(screen.getByTestId('bandeau-kit-pompage')).toHaveTextContent('Kit pompage chiffrable : oui')
+  })
+
+  it('un catalogue sans article pompage n’affiche ni filtre ni bandeau', () => {
+    renderTable()
+    expect(screen.queryByTestId('filtre-pompage-a-completer')).toBeNull()
+    expect(screen.queryByTestId('bandeau-kit-pompage')).toBeNull()
+  })
+})
