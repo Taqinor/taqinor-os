@@ -1,0 +1,99 @@
+{
+  "ast": {
+    "FicheTechnique": "362042ac2b26d20297820372746c3ed1cfc4de94",
+    "_est_nombre": "5d18c0bef90e040ff010a635babf0336bbe24585",
+    "_valider_courbe": "bfa8fece7cfe0c8262df1bb3994254992b14c056",
+    "valider_courbe_irradiance": "1569e31152555f78800b28b078b5ba0ff5c2a04f",
+    "valider_courbe_rendement_onduleur": "59d583b6911cd2395369c19869dccc09876ce736"
+  },
+  "validateurs": {
+    "irr_abscisse_recule": {
+      "messages": [
+        "« rendement_par_irradiance » : « w_m2 » du point d'index 1 (200) ne dépasse pas celui du point d'index 0 (800) — une courbe s'interpole, son abscisse ne peut ni reculer ni se répéter."
+      ],
+      "refus": true
+    },
+    "irr_abscisse_repetee": {
+      "messages": [
+        "« rendement_par_irradiance » : « w_m2 » du point d'index 2 (600) ne dépasse pas celui du point d'index 1 (600) — une courbe s'interpole, son abscisse ne peut ni reculer ni se répéter."
+      ],
+      "refus": true
+    },
+    "irr_booleen": {
+      "messages": [
+        "« rendement_par_irradiance » : « w_m2 » du point d'index 0 n'est pas un nombre (True)."
+      ],
+      "refus": true
+    },
+    "irr_chaine_vide": {
+      "refus": false,
+      "retour": null
+    },
+    "irr_cle_absente": {
+      "messages": [
+        "« rendement_par_irradiance » : le point d'index 1 n'a pas de « rendement_relatif_pct »."
+      ],
+      "refus": true
+    },
+    "irr_liste_vide": {
+      "messages": [
+        "« rendement_par_irradiance » : une liste vide n'est pas une courbe. Laisser le champ VIDE si la donnée n'est pas publiée."
+      ],
+      "refus": true
+    },
+    "irr_none": {
+      "refus": false,
+      "retour": null
+    },
+    "irr_pas_une_liste": {
+      "messages": [
+        "« rendement_par_irradiance » attend une LISTE de points, pas un(e) dict."
+      ],
+      "refus": true
+    },
+    "irr_point_non_objet": {
+      "messages": [
+        "« rendement_par_irradiance » : le point d'index 0 n'est pas un objet mais un(e) list."
+      ],
+      "refus": true
+    },
+    "irr_valide": {
+      "refus": false,
+      "retour": null
+    },
+    "irr_valide_decimal": {
+      "refus": false,
+      "retour": null
+    },
+    "ond_none": {
+      "refus": false,
+      "retour": null
+    },
+    "ond_par_tension_recule": {
+      "messages": [
+        "« ond_courbe_rendement » : « charge_pct » du point d'index 2 (20) ne dépasse pas celui du point d'index 0 (50) — une courbe s'interpole, son abscisse ne peut ni reculer ni se répéter."
+      ],
+      "refus": true
+    },
+    "ond_par_tension_valide": {
+      "refus": false,
+      "retour": null
+    },
+    "ond_rendement_chaine": {
+      "messages": [
+        "« ond_courbe_rendement » : « rendement_pct » du point d'index 0 n'est pas un nombre ('90')."
+      ],
+      "refus": true
+    },
+    "ond_tension_non_numerique": {
+      "messages": [
+        "« ond_courbe_rendement » : « tension_v » du point d'index 0 n'est pas un nombre ('haute')."
+      ],
+      "refus": true
+    },
+    "ond_valide": {
+      "refus": false,
+      "retour": null
+    }
+  }
+}
