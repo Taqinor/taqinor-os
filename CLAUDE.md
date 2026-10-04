@@ -553,6 +553,37 @@ the lanes drain or a usage cap hits**. While the one CI runs you are NOT idle �
 reports the queue drained; deploy stays Reda's — Deploys rule). Wake-ups exist to resume a paused drain,
 never to chop the run into many small merges.
 
+### "work on all plans" (founder, 2026-10-04)
+EVERY active plan file drained at once as ONE pooled pipeline, so the 8 lanes stay full: when one
+file's backlog collapses into a few colliding lanes, the free slots take disjoint lanes from the
+other files instead of idling. Identical to **"How a plan run works"** (WOW23 ~80-task waves, one
+merge per wave, pipelining, model routing, review, retro) EXCEPT:
+- **The pool.** `docs/ERROR_PLAN.md`, `docs/WEB_ERROR_PLAN.md`, `docs/PLAN2.md`, `docs/PLAN.md`,
+  `docs/new_tasks_plan.md`, every `docs/plans/PLAN_*.md` (domain + audit files), `docs/WEB_PLAN.md`,
+  `docs/FRONTEND_GAP_PLAN.md` — never `docs/backlog/*` (parked) nor `PLAN_HOWTO.md`. Re-glob at every
+  lane refill (files added mid-run join). Plan with ONE pooled call, files in priority order:
+  `python scripts/plan_lanes.py <the pool> --workers 8 --wave-size 80`.
+- **Priority = tie-break, never a reason to idle.** A free slot takes the highest-priority DISJOINT
+  lane: bugs (ERROR_PLAN, WEB_ERROR_PLAN) → PLAN2 → PLAN → new_tasks_plan → `docs/plans/*` →
+  WEB_PLAN → FRONTEND_GAP_PLAN. A collision-bound oversized lane (e.g. 270+ CIQ/AGR tasks unioned on
+  shared `Files:`) stays ONE agent; the other slots fill around it — pooling never splits a lane.
+- **Exclusive.** This session owns every pooled file: never run it alongside another plan command
+  (work on the plan / `<domain>` / web plan / error plan). At start, a plan file touched by an open
+  PR (`gh pr list`) belongs to another live session → drop it from the pool for this run.
+- **Each task keeps its SOURCE file's rules**, exactly as its own command would apply them: domain
+  ownership contracts + INTERDIT lists (outside → `[BLOCKED: hors périmètre …]`), WEB_PLAN /
+  WEB_ERROR_PLAN tasks touch ONLY `apps/web/**`, bookkeeping per file (PLAN/PLAN2/ERROR_PLAN →
+  CODEMAP §10 + `codemap_fingerprint.py --write` in the same commit; every other file → tick + DONE
+  LOG in-file). One branch `dev-all`; a wave's merge may mix files (an `apps/web` change auto-deploys
+  the site via Cloudflare — never `wrangler`).
+- **Report at every merge** per file: tasks shipped + remaining open, plus `PLAN_STATUS: EMPTY|MORE`
+  for ERROR_PLAN. Stop when no pooled file holds a buildable `[ ]`.
+
+### "loop work on all plans" (`/loop work on all plans`)
+**"loop work on the plan"** over the pool: each fire continues the one pipeline (re-glob, refill
+free lanes, merge each wave the instant its CI is green, build the next wave during CI). The fire that
+finds nothing buildable in ANY pooled file does the last merge or reports all plans drained.
+
 ### "add to plan:" followed by tasks (one per line or separated by ;)
 Append them as `[ ]` lines to `docs/PLAN.md`'s BUILD QUEUE, then refresh §10 "Plan status" of
 `docs/CODEMAP.md` and re-run `python scripts/codemap_fingerprint.py --write` in the same commit

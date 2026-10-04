@@ -544,6 +544,17 @@ class ContractPairingGateTests(unittest.TestCase):
         self.assertEqual(blocked, [])
         self.assertEqual(len(allowed), 2)
 
+    def test_une_tache_backend_BLOQUEE_ne_refuse_rien(self):
+        # Cas réel du pool de tous les plans : NTPRT29 `[BLOCKED: …]` dans
+        # new_tasks_plan.md refusait 33 écrans crm de PLAN.md. Une tâche
+        # bloquée ne part pas dans ce run, donc elle ne produit rien en
+        # parallèle.
+        bloquee = self.AOF166.replace(
+            "AOF166 — ", "AOF166 — **[BLOCKED: décision fondateur]** ")
+        tasks = self._tasks(bloquee, self.AOF170, self.AOF172_SANS)
+        _, blocked = pl.apply_contract_pairing_gate(tasks)
+        self.assertEqual(blocked, [])
+
     def test_une_autre_app_n_est_jamais_appariee(self):
         # Le backend `crm` ne produit rien pour l'écran `ao` : appariement par
         # APP, jamais par proximité dans le fichier de plan.
