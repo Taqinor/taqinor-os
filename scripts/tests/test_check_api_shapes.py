@@ -1329,5 +1329,27 @@ class PlancherInventaireTests(unittest.TestCase):
         self.assertGreater(entree["serialiseurs"]["valeur"], 0)
 
 
+class CalepinageApiGoldenTests(unittest.TestCase):
+    """SPL291 — fige les 16 fonctions de calepinageApi.js que la garde
+    resout aujourd'hui, AVANT tout eclatement en fragments (SPL292-SPL295).
+    Un deplacement qui ferait sortir une fonction de l'index (cle (fichier,
+    nom) introuvable) passerait a vide — ce test le rougit."""
+
+    FACADE = ROOT / "frontend" / "src" / "api" / "calepinageApi.js"
+    RESOLUES = [
+        "calculer", "comparerProjets", "creerDepuisModele", "depuisLead",
+        "depuisModele", "enregistrerProfilsTypes", "get", "importerProjet",
+        "modeles", "pose", "profilsTypes", "resultat", "suggererPentesIGN",
+        "suggestionPenteDisponible", "update", "zonesLestage",
+    ]
+
+    def test_les_16_fonctions_calepinage_sont_resolues(self):
+        fonctions = shapes.ApiFunctions([self.FACADE])
+        fonctions.collect()
+        noms = sorted(nom for (module, nom) in fonctions.functions
+                      if module == self.FACADE.resolve())
+        self.assertEqual(noms, self.RESOLUES)
+
+
 if __name__ == "__main__":
     unittest.main()
