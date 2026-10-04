@@ -377,8 +377,16 @@ def sections_a_servir(lead, sections):
 
 def questions_par_defaut(lead) -> dict:
     """Carte EXPLICITE des questions posées quand le commercial n'en choisit
-    aucune : « DÉFAUT = les informations manquantes » (ordre fondateur)."""
-    return dict(manquantes(lead))
+    aucune : « DÉFAUT = les informations manquantes » (ordre fondateur).
+
+    AGR411 — lead agricole : la carte nomme TOUTES ses sections permises ;
+    celles que le défaut ne coche pas (``photo_compteur``) sont posées à
+    False, sinon « clé absente → posée » (``question_posee``) les ouvrirait."""
+    carte = dict(manquantes(lead))
+    if est_agricole(lead):
+        for section in sections_du_lead(lead):
+            carte.setdefault(section, False)
+    return carte
 
 
 def valider_questions(brut, lead=None) -> dict:
