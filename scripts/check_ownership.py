@@ -352,7 +352,8 @@ def verifier_registre(reg: Registre, fichiers=()) -> tuple[list[str], list[str]]
     return erreurs, avert
 
 
-_FILES_MARQUEUR = re.compile(r"(?i)\b(?:files|fichiers)\s*:")
+# `(?<!@)` : `(@files: …)` est une balise de LANE (plan_lanes), pas la clause.
+_FILES_MARQUEUR = re.compile(r"(?i)(?<!@)\b(?:files|fichiers)\s*:")
 _SEGMENT_CODE = re.compile(r"`([^`]+)`")
 #: chemin nu (sans backticks) : toute extension, bornée pour ne pas couper
 #: `.json` en `.js` (critique finale OWN, F1).

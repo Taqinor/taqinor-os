@@ -890,12 +890,47 @@ def _is_append_only(path: str) -> bool:
     return reg.est_append_only(check_ownership.normaliser(path) or path)
 
 
+def _chemins_declares(label: str) -> list[str]:
+    """Les chemins de la clause `Files:`, lus EXACTEMENT comme la garde les lit.
+
+    Une seule lecture pour la garde de propriété et pour la disjonction des
+    lanes (``check_ownership.chemins_declares``) : toute extension (`.astro`,
+    `.ts`, `.json`…, jamais `.json` coupé en `.js`), accolades développées,
+    antislashs ramenés à `/`, référence de ligne `:120-140` retirée. Repli sur
+    l'ancienne regex si le module de la garde est introuvable.
+    """
+    try:
+        import check_ownership
+    except ImportError:  # pragma: no cover — plan_lanes copié seul ailleurs
+        idx = max(label.rfind("Files:"), label.rfind("Files :"))
+        if idx < 0:
+            return []
+        return [raw.strip("`'\" ") for raw in _FILE_PATH_RE.findall(label[idx:])]
+    return check_ownership.chemins_declares(label)
+
+
+_NOM_NU_RE = re.compile(r"`([\w.\[\]-]+\.[A-Za-z0-9]{1,8})`")
+
+
+def _chemins_pour_lanes(label: str) -> list[str]:
+    """`_chemins_declares` + les noms NUS (`veille_couverture.json`, sans dossier).
+
+    Ambigu pour la garde (aucun propriétaire calculable), un nom nu reste une
+    clé de lane : deux tâches qui le citent peuvent éditer le même fichier, et
+    dans le doute la disjonction UNIT plutôt que de séparer.
+    """
+    chemins = _chemins_declares(label)
+    idx = [m.start() for m in re.finditer(r"(?i)(?<!@)\b(?:files|fichiers)\s*:", label)]
+    if idx:
+        for nom in _NOM_NU_RE.findall(label[idx[-1]:]):
+            if nom not in chemins:
+                chemins.append(nom)
+    return chemins
+
+
 def _chemins_pour_proprietaires(label: str):
     """Les chemins déclarés, lus comme la garde les lit (toute extension)."""
-    if _registre() is None:
-        return _task_files_brut(label)
-    import check_ownership
-    return check_ownership.chemins_declares(label)
+    return _chemins_declares(label)
 
 
 def _proprietaires(fichiers) -> list[str]:
@@ -926,20 +961,10 @@ def _task_files(label: str) -> frozenset[str]:
     the prose — ``webhooks.py:182`` refs — are ignored), and append-only shared
     surfaces are dropped (they never force a lane merge). Returns an empty set
     when the task declares no files, in which case it falls back to the lane
-    heuristic exactly as before (fully backward-compatible).
+    heuristic exactly as before (fully backward-compatible). Paths are read by
+    ``_chemins_pour_lanes`` — the ownership guard's reader, plus bare names.
     """
-    idx = label.rfind("Files:")
-    if idx < 0:
-        idx = label.rfind("Files :")
-    if idx < 0:
-        return frozenset()
-    tail = label[idx:]
-    out = set()
-    for raw in _FILE_PATH_RE.findall(tail):
-        p = raw.strip("`'\" ")
-        if p and not _is_append_only(p):
-            out.add(p)
-    return frozenset(out)
+    return frozenset(p for p in _chemins_pour_lanes(label) if not _is_append_only(p))
 
 
 def pack_workers(
@@ -1164,14 +1189,7 @@ def _task_files_brut(label: str) -> frozenset[str]:
     parce qu'elles ne doivent pas fusionner deux lanes. Ici on veut savoir ce
     que la tâche TOUCHE, pas ce qui la ferait entrer en conflit.
     """
-    idx = label.rfind("Files:")
-    if idx < 0:
-        idx = label.rfind("Files :")
-    if idx < 0:
-        return frozenset()
-    return frozenset(
-        raw.strip("`'\" ") for raw in _FILE_PATH_RE.findall(label[idx:])
-    )
+    return frozenset(_chemins_pour_lanes(label))
 
 
 def _apps_backend(fichiers) -> set[str]:
