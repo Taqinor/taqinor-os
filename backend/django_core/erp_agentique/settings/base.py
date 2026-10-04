@@ -1320,14 +1320,18 @@ VEILLE_AO_RETENTION_MOIS = int(
 # du test runner.
 
 # N1 — types d'événement qui partent TOUJOURS immédiatement, même la nuit
-# (liste de clés `notifications.EventType`, séparées par des virgules). VIDE par
-# défaut : décision fondateur du 25/09/2026, toutes les notifications suivent
-# les heures de travail. L'exception future se pose ici (ou dans l'env), jamais
-# en dur dans le code. Les alertes de SÉCURITÉ n'en ont pas besoin : leurs
-# appelants passent déjà `respect_quiet_hours=False`.
+# (liste de clés `notifications.EventType`, séparées par des virgules).
+# Décision fondateur du 25/09/2026 : les notifications suivent les heures de
+# travail. EXCEPTION fondateur du 04/10/2026 : les alertes de LEAD partent
+# tout de suite, 24 h/24, 7 j/7 — la fenêtre des messages clients étant fermée
+# le week-end, les leads arrivés du vendredi soir au dimanche n'étaient
+# annoncés que le lundi 08:30 (« les nouveaux leads n'arrivent plus »).
+# L'env peut remplacer la liste. Les alertes de SÉCURITÉ n'en ont pas besoin :
+# leurs appelants passent déjà `respect_quiet_hours=False`.
 NOTIFICATIONS_TOUJOURS_IMMEDIATES = tuple(
     cle.strip() for cle in os.environ.get(
-        'NOTIFICATIONS_TOUJOURS_IMMEDIATES', '').split(',')
+        'NOTIFICATIONS_TOUJOURS_IMMEDIATES',
+        'lead_new,lead_assigned,lead_callback_requested').split(',')
     if cle.strip())
 
 # XRH33 — public careers/recruitment page, PARKED (OFF) by default (same
