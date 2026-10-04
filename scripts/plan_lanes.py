@@ -88,6 +88,16 @@ planté en production le 03/08/2026. Cette seule vérification l'aurait empêch�
 Strictement additif : sans lignes ``Files:``, ou sans tâche backend
 correspondante dans le même run, la porte est un no-op exact. ``--force-wave``
 l'outrepasse (même échappatoire fondateur que SCA3, consignée sur stderr).
+
+OWN — registre de propriété (docs/ownership.yml, 02/10/2026)
+-------------------------------------------------------------
+La disjonction des lanes lit le registre de propriété : ses surfaces
+``append_only`` (routes, barrels, ``migrations/``, échantillons de contrat…)
+ne fusionnent jamais deux lanes, en plus des suffixes historiques ci-dessous ;
+chaque tâche reçoit ``owners`` (les propriétaires de ses fichiers), chaque
+lane affiche les siens, et les tâches multi-propriétaires sont listées à part
+— leur place est le plan transverse (règle b de ``scripts/check_ownership.py``,
+la garde CI). Sans registre, comportement d'avant OWN à l'identique.
 """
 from __future__ import annotations
 
@@ -833,8 +843,67 @@ _APPEND_ONLY_SUFFIXES = (
 )
 
 
+# OWN (02/10/2026) — le registre de propriété ``docs/ownership.yml`` est la
+# source des surfaces append-only ET du propriétaire de chaque fichier. Il est
+# lu par ``scripts/check_ownership.py`` (la garde CI) ; ici on ne fait que le
+# consulter. Sans registre (ou illisible), la disjonction retombe exactement
+# sur les suffixes ci-dessus : comportement d'avant OWN, octet pour octet.
+REGISTRE_PROPRIETE = ROOT / "docs" / "ownership.yml"
+_NON_CHARGE = object()
+_registre_cache = _NON_CHARGE
+
+
+def _registre():
+    global _registre_cache
+    if _registre_cache is _NON_CHARGE:
+        _registre_cache = None
+        if REGISTRE_PROPRIETE.is_file():
+            try:
+                import check_ownership
+                _registre_cache = check_ownership.charger_registre(REGISTRE_PROPRIETE)
+            except Exception as exc:  # registre cassé : la garde CI le dira
+                print(f"WARNING: docs/ownership.yml illisible ({exc}) — "
+                      f"disjonction par suffixes seulement", file=sys.stderr)
+    return _registre_cache
+
+
+def utiliser_registre(reg):
+    """Remplace le registre consulté (tests) ; renvoie l'ancien pour le restaurer."""
+    global _registre_cache
+    avant = _registre_cache
+    _registre_cache = reg
+    return avant
+
+
 def _is_append_only(path: str) -> bool:
-    return any(path.endswith(sfx) for sfx in _APPEND_ONLY_SUFFIXES)
+    if any(path.endswith(sfx) for sfx in _APPEND_ONLY_SUFFIXES):
+        return True
+    reg = _registre()
+    if reg is None:
+        return False
+    import check_ownership
+    return reg.est_append_only(check_ownership.normaliser(path) or path)
+
+
+def _proprietaires(fichiers) -> list[str]:
+    """Propriétaires (registre) des fichiers SUBSTANTIELS déclarés par une tâche.
+
+    Deux propriétaires ou plus = tâche multi-propriétaires : elle appartient au
+    plan transverse (règle b de check_ownership.py). Vide sans registre.
+    """
+    reg = _registre()
+    if reg is None:
+        return []
+    import check_ownership
+    out = set()
+    for brut in fichiers:
+        chemin = check_ownership.normaliser(brut)
+        if not chemin or not reg.sous_racines(chemin) or reg.est_append_only(chemin):
+            continue
+        o = check_ownership.proprietaire(reg, chemin)
+        if o:
+            out.add(o)
+    return sorted(out)
 
 
 def _task_files(label: str) -> frozenset[str]:
@@ -1007,6 +1076,8 @@ def parse_tasks(path: Path) -> list[dict]:
             # index.css & co.), `files_bruts` sert à savoir ce que la tâche
             # touche vraiment, front et back.
             "files_bruts": sorted(_task_files_brut(label)),
+            # OWN — propriétaires (docs/ownership.yml) des fichiers déclarés.
+            "owners": _proprietaires(_task_files_brut(label)),
         })
     return tasks
 
@@ -1338,6 +1409,14 @@ def schedule(
     for t in buildable:
         model_counts[t["model"]] += 1
 
+    # OWN — propriétaires (docs/ownership.yml) de chaque lane, et tâches
+    # multi-propriétaires : celles-ci appartiennent au plan transverse.
+    lane_owners = {
+        k: sorted({o for t in lanes[k] for o in t.get("owners", ())})
+        for k in lane_order
+    }
+    multi_owner = [t for t in buildable if len(t.get("owners", ())) > 1]
+
     # Time-balanced worker buckets: pack whole lanes into <= n_workers agents
     # so all finish at ~the same wall-clock time (default: the same ceiling as
     # the per-wave parallelism, i.e. one agent per worker).
@@ -1378,6 +1457,8 @@ def schedule(
     return {
         "lanes": {k: [t["id"] for t in lanes[k]] for k in lane_order},
         "lane_models": lane_models,
+        "lane_owners": lane_owners,
+        "multi_owner": multi_owner,
         "lane_costs": {k: round(v, 3) for k, v in lane_costs.items()},
         "workers": worker_out,
         "pipelined_waves": pipelined,
@@ -1395,6 +1476,7 @@ def schedule(
             "unassigned": len(unassigned),
             "wave_blocked": len(wave_blocked),
             "pairing_blocked": len(pairing_blocked),
+            "multi_owner": len(multi_owner),
             "max_parallel": max((len(w) for w in waves), default=0),
             "models": model_counts,
             "workers": len(worker_out),
@@ -1482,9 +1564,21 @@ def render(plan: dict, max_lanes: int, source: str) -> str:
             out.append(f"    - `{t['id']}`  [{t['lane']}] ({t['model']}){deps}")
     out += ["", "## Lanes (tasks inside a lane run in sequence; model = lane's max tier)"]
     for lane, ids in plan["lanes"].items():
+        owners = plan.get("lane_owners", {}).get(lane) or []
+        own = f", owners={'/'.join(owners)}" if owners else ""
         out.append(
-            f"- **{lane}** ({len(ids)}, model={plan['lane_models'][lane]}): {', '.join(ids)}"
+            f"- **{lane}** ({len(ids)}, model={plan['lane_models'][lane]}{own}): {', '.join(ids)}"
         )
+    if plan.get("multi_owner"):
+        out += [
+            "",
+            "## Multi-propriétaires (OWN, docs/ownership.yml) — ces tâches "
+            "touchent plusieurs propriétaires : leur place est le plan "
+            "transverse (docs/plans/PLAN_TRANSVERSE.md), jamais en parallèle "
+            "d'un plan qui chevauche",
+        ]
+        for t in plan["multi_owner"]:
+            out.append(f"- `{t['id']}`  [{t['lane']}] — {', '.join(t['owners'])}")
     if plan["gated"]:
         out += ["", "## Gated — skip and flag (never auto-built)"]
         for t in plan["gated"]:
