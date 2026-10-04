@@ -146,6 +146,16 @@ GARDES = {
         ('Test the plan-task wiring checker itself',
          'python -m unittest scripts.tests.test_check_taches_cablage -v',
          '.'),
+        # OWN (02/10/2026) — chaque fichier a UN propriétaire (docs/ownership.yml),
+        # chaque tâche reste dans le plan du sien ; multi-propriétaires → plan
+        # transverse. C'est ce qui rend les sessions « work on the plan <x> »
+        # parallèles sans collision.
+        ('Check propriété des fichiers (OWN — un propriétaire par fichier, tâches routées)',
+         'python scripts/check_ownership.py',
+         '.'),
+        ('Test the file-ownership checker itself (OWN)',
+         'python -m unittest scripts.tests.test_check_ownership -v',
+         '.'),
         ('Check no raw JSON / bare error object is shown to the user (EZ16)',
          'python scripts/check_frontend_errors.py',
          '.'),

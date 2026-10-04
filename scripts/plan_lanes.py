@@ -88,6 +88,21 @@ planté en production le 03/08/2026. Cette seule vérification l'aurait empêch�
 Strictement additif : sans lignes ``Files:``, ou sans tâche backend
 correspondante dans le même run, la porte est un no-op exact. ``--force-wave``
 l'outrepasse (même échappatoire fondateur que SCA3, consignée sur stderr).
+
+OWN — registre de propriété (docs/ownership.yml, 02/10/2026)
+-------------------------------------------------------------
+La disjonction des lanes lit le registre de propriété : ses surfaces
+``append_only`` (routes, barrels, ``migrations/``, échantillons de contrat…)
+ne fusionnent jamais deux lanes, en plus des suffixes historiques ci-dessous ;
+chaque tâche reçoit ``owners`` (les propriétaires de ses fichiers), chaque
+lane affiche les siens, et les tâches multi-propriétaires sont listées à part
+— leur place est le plan transverse (règle b de ``scripts/check_ownership.py``,
+la garde CI). Sans registre, comportement d'avant OWN à l'identique.
+
+Et un ``@after`` vers une tâche d'un AUTRE fichier plan est désormais attendu :
+une tâche dont une dépendance est visible et non cochée dans un autre plan part
+dans le seau ``after_blocked`` (motif en français). Une dépendance introuvable
+(archivée) ne bloque pas, comme avant ; ``--force-wave`` outrepasse.
 """
 from __future__ import annotations
 
@@ -833,8 +848,110 @@ _APPEND_ONLY_SUFFIXES = (
 )
 
 
+# OWN (02/10/2026) — le registre de propriété ``docs/ownership.yml`` est la
+# source des surfaces append-only ET du propriétaire de chaque fichier. Il est
+# lu par ``scripts/check_ownership.py`` (la garde CI) ; ici on ne fait que le
+# consulter. Sans registre (ou illisible), la disjonction retombe exactement
+# sur les suffixes ci-dessus : comportement d'avant OWN, octet pour octet.
+REGISTRE_PROPRIETE = ROOT / "docs" / "ownership.yml"
+_NON_CHARGE = object()
+_registre_cache = _NON_CHARGE
+
+
+def _registre():
+    global _registre_cache
+    if _registre_cache is _NON_CHARGE:
+        _registre_cache = None
+        if REGISTRE_PROPRIETE.is_file():
+            try:
+                import check_ownership
+                _registre_cache = check_ownership.charger_registre(REGISTRE_PROPRIETE)
+            except Exception as exc:  # registre cassé : la garde CI le dira
+                print(f"WARNING: docs/ownership.yml illisible ({exc}) — "
+                      f"disjonction par suffixes seulement", file=sys.stderr)
+    return _registre_cache
+
+
+def utiliser_registre(reg):
+    """Remplace le registre consulté (tests) ; renvoie l'ancien pour le restaurer."""
+    global _registre_cache
+    avant = _registre_cache
+    _registre_cache = reg
+    return avant
+
+
 def _is_append_only(path: str) -> bool:
-    return any(path.endswith(sfx) for sfx in _APPEND_ONLY_SUFFIXES)
+    if any(path.endswith(sfx) for sfx in _APPEND_ONLY_SUFFIXES):
+        return True
+    reg = _registre()
+    if reg is None:
+        return False
+    import check_ownership
+    return reg.est_append_only(check_ownership.normaliser(path) or path)
+
+
+def _chemins_declares(label: str) -> list[str]:
+    """Les chemins de la clause `Files:`, lus EXACTEMENT comme la garde les lit.
+
+    Une seule lecture pour la garde de propriété et pour la disjonction des
+    lanes (``check_ownership.chemins_declares``) : toute extension (`.astro`,
+    `.ts`, `.json`…, jamais `.json` coupé en `.js`), accolades développées,
+    antislashs ramenés à `/`, référence de ligne `:120-140` retirée. Repli sur
+    l'ancienne regex si le module de la garde est introuvable.
+    """
+    try:
+        import check_ownership
+    except ImportError:  # pragma: no cover — plan_lanes copié seul ailleurs
+        idx = max(label.rfind("Files:"), label.rfind("Files :"))
+        if idx < 0:
+            return []
+        return [raw.strip("`'\" ") for raw in _FILE_PATH_RE.findall(label[idx:])]
+    return check_ownership.chemins_declares(label)
+
+
+_NOM_NU_RE = re.compile(r"`([\w.\[\]-]+\.[A-Za-z0-9]{1,8})`")
+
+
+def _chemins_pour_lanes(label: str) -> list[str]:
+    """`_chemins_declares` + les noms NUS (`veille_couverture.json`, sans dossier).
+
+    Ambigu pour la garde (aucun propriétaire calculable), un nom nu reste une
+    clé de lane : deux tâches qui le citent peuvent éditer le même fichier, et
+    dans le doute la disjonction UNIT plutôt que de séparer.
+    """
+    chemins = _chemins_declares(label)
+    idx = [m.start() for m in re.finditer(r"(?i)(?<!@)\b(?:files|fichiers)\s*:", label)]
+    if idx:
+        for nom in _NOM_NU_RE.findall(label[idx[-1]:]):
+            if nom not in chemins:
+                chemins.append(nom)
+    return chemins
+
+
+def _chemins_pour_proprietaires(label: str):
+    """Les chemins déclarés, lus comme la garde les lit (toute extension)."""
+    return _chemins_declares(label)
+
+
+def _proprietaires(fichiers) -> list[str]:
+    """Propriétaires (registre) des fichiers SUBSTANTIELS déclarés par une tâche.
+
+    Deux propriétaires ou plus = tâche multi-propriétaires : elle appartient au
+    plan transverse (règle b de check_ownership.py). Vide sans registre.
+    """
+    reg = _registre()
+    if reg is None:
+        return []
+    import check_ownership
+    out = set()
+    for brut in fichiers:
+        chemin = check_ownership.normaliser(brut)
+        if not chemin or not reg.sous_racines(chemin) or reg.est_append_only(chemin):
+            continue
+        o = check_ownership.proprietaire(reg, chemin)
+        if o:
+            out.add(o)
+    return sorted(out)
 
 
 def _task_files(label: str) -> frozenset[str]:
@@ -844,20 +961,10 @@ def _task_files(label: str) -> frozenset[str]:
     the prose — ``webhooks.py:182`` refs — are ignored), and append-only shared
     surfaces are dropped (they never force a lane merge). Returns an empty set
     when the task declares no files, in which case it falls back to the lane
-    heuristic exactly as before (fully backward-compatible).
+    heuristic exactly as before (fully backward-compatible). Paths are read by
+    ``_chemins_pour_lanes`` — the ownership guard's reader, plus bare names.
     """
-    idx = label.rfind("Files:")
-    if idx < 0:
-        idx = label.rfind("Files :")
-    if idx < 0:
-        return frozenset()
-    tail = label[idx:]
-    out = set()
-    for raw in _FILE_PATH_RE.findall(tail):
-        p = raw.strip("`'\" ")
-        if p and not _is_append_only(p):
-            out.add(p)
-    return frozenset(out)
+    return frozenset(p for p in _chemins_pour_lanes(label) if not _is_append_only(p))
 
 
 def pack_workers(
@@ -1007,6 +1114,8 @@ def parse_tasks(path: Path) -> list[dict]:
             # index.css & co.), `files_bruts` sert à savoir ce que la tâche
             # touche vraiment, front et back.
             "files_bruts": sorted(_task_files_brut(label)),
+            # OWN — propriétaires (docs/ownership.yml) des fichiers déclarés.
+            "owners": _proprietaires(_chemins_pour_proprietaires(label)),
         })
     return tasks
 
@@ -1080,14 +1189,7 @@ def _task_files_brut(label: str) -> frozenset[str]:
     parce qu'elles ne doivent pas fusionner deux lanes. Ici on veut savoir ce
     que la tâche TOUCHE, pas ce qui la ferait entrer en conflit.
     """
-    idx = label.rfind("Files:")
-    if idx < 0:
-        idx = label.rfind("Files :")
-    if idx < 0:
-        return frozenset()
-    return frozenset(
-        raw.strip("`'\" ") for raw in _FILE_PATH_RE.findall(label[idx:])
-    )
+    return frozenset(_chemins_pour_lanes(label))
 
 
 def _apps_backend(fichiers) -> set[str]:
@@ -1182,6 +1284,82 @@ def apply_contract_pairing_gate(
     return autorisees, refusees
 
 
+# ---------------------------------------------------------------------------
+# OWN (critique finale, F3) — un `@after` vers une tâche d'un AUTRE fichier plan
+# n'était jamais attendu : le planificateur ne retient une tâche que sur une
+# dépendance du MÊME run, donc un déplacement de la découpe SPL pouvait partir
+# avant la capture de son golden, posée dans un autre plan. La porte ci-dessous
+# lit le statut de toutes les tâches des fichiers plan du dépôt et refuse une
+# tâche tant qu'une de ses dépendances EXTERNES est visible et non cochée.
+# Rétro-compatible : une dépendance introuvable (archivée, ailleurs) ne bloque
+# pas, exactement comme avant ; `--force-wave` l'outrepasse (fondateur).
+# ---------------------------------------------------------------------------
+
+def index_taches_plans(racine: Path = ROOT) -> dict:
+    """ID → (statut, fichier plan, ligne) pour toutes les tâches des plans."""
+    import check_ownership
+    out: dict = {}
+    for motif in check_ownership.PLAN_GLOBS:
+        for chemin in sorted(racine.glob(motif)):
+            rel = chemin.relative_to(racine).as_posix()
+            if rel in check_ownership.PLAN_EXCLUS:
+                continue
+            for n, raw in enumerate(chemin.read_text(encoding="utf-8").splitlines(), 1):
+                m = _TASK_LIST_RE.match(raw) or _TASK_HEADER_RE.match(raw)
+                if not m:
+                    continue
+                statut = (m.group("status") or "").strip()
+                en_ligne = (m.groupdict().get("inline_status") or "").strip()
+                if en_ligne and not statut.lower().startswith("x"):
+                    statut = en_ligne
+                out.setdefault(m.group("id"), (statut, rel, n))
+    return out
+
+
+def apply_external_after_gate(
+    tasks: list[dict], index: dict, force_wave: bool = False,
+) -> tuple[list[dict], list[dict]]:
+    """Sépare ``tasks`` en (autorisées, refusées sur un @after externe ouvert)."""
+    if force_wave:
+        return tasks, []
+    ids = {t["id"] for t in tasks}
+    ok: list[dict] = []
+    refusees: list[dict] = []
+    for t in tasks:
+        raisons = []
+        for dep in t.get("deps", ()):
+            if dep in ids or dep not in index:
+                continue
+            statut, plan, ligne = index[dep]
+            if statut.lower().startswith("x"):
+                continue
+            raisons.append(
+                f"attend {dep} ({plan}:{ligne}, pas encore cochée) — un @after "
+                f"vers une tâche d'un autre plan se respecte : lancer d'abord "
+                f"ce plan-là, ou --force-wave (fondateur, consigné)")
+        if raisons:
+            refusees.append({**t, "after_block_reasons": raisons})
+        else:
+            ok.append(t)
+    # Transitif (critique finale OWN, F8) : une tâche qui attend une tâche
+    # REFUSÉE de ce run doit l'être aussi — sinon, la dépendance n'étant plus
+    # dans le run, le planificateur la croirait libre et la lancerait.
+    refusees_ids = {t["id"] for t in refusees}
+    change = True
+    while change:
+        change = False
+        for t in list(ok):
+            attente = [d for d in t.get("deps", ()) if d in refusees_ids]
+            if attente:
+                ok.remove(t)
+                refusees.append({**t, "after_block_reasons": [
+                    f"attend {d}, elle-même refusée dans ce run (@after externe en amont)"
+                    for d in attente]})
+                refusees_ids.add(t["id"])
+                change = True
+    return ok, refusees
+
+
 def count_malformed(path: Path) -> int:
     """Count ``- [`` lines that fail to match either task regex.
 
@@ -1273,6 +1451,7 @@ def schedule(
     n_workers: int | None = None,
     wave_size: int = 80,
     pairing_blocked: list[dict] | None = None,
+    after_blocked: list[dict] | None = None,
 ) -> dict:
     """Build lanes and a cross-category, longest-lane-first wave plan.
 
@@ -1287,6 +1466,7 @@ def schedule(
     # PACT11 — même contrat que ``wave_blocked`` : déjà retirées de ``tasks``,
     # surfacées dans leur propre section, jamais réinjectées dans ``buildable``.
     pairing_blocked = pairing_blocked or []
+    after_blocked = after_blocked or []
     buildable = [t for t in tasks if t["gate"] == "buildable" and t["lane"] != "UNASSIGNED"]
     gated = [t for t in tasks if t["gate"] == "gated"]
     unassigned = [t for t in tasks if t["lane"] == "UNASSIGNED" and t["gate"] == "buildable"]
@@ -1344,6 +1524,14 @@ def schedule(
     for t in buildable:
         model_counts[t["model"]] += 1
 
+    # OWN — propriétaires (docs/ownership.yml) de chaque lane, et tâches
+    # multi-propriétaires : celles-ci appartiennent au plan transverse.
+    lane_owners = {
+        k: sorted({o for t in lanes[k] for o in t.get("owners", ())})
+        for k in lane_order
+    }
+    multi_owner = [t for t in buildable if len(t.get("owners", ())) > 1]
+
     # Time-balanced worker buckets: pack whole lanes into <= n_workers agents
     # so all finish at ~the same wall-clock time (default: the same ceiling as
     # the per-wave parallelism, i.e. one agent per worker).
@@ -1384,6 +1572,8 @@ def schedule(
     return {
         "lanes": {k: [t["id"] for t in lanes[k]] for k in lane_order},
         "lane_models": lane_models,
+        "lane_owners": lane_owners,
+        "multi_owner": multi_owner,
         "lane_costs": {k: round(v, 3) for k, v in lane_costs.items()},
         "workers": worker_out,
         "pipelined_waves": pipelined,
@@ -1393,6 +1583,7 @@ def schedule(
         "unassigned": unassigned,
         "wave_blocked": wave_blocked,
         "pairing_blocked": pairing_blocked,
+        "after_blocked": after_blocked,
         "counts": {
             "buildable": len(buildable),
             "lanes": len(lanes),
@@ -1401,6 +1592,8 @@ def schedule(
             "unassigned": len(unassigned),
             "wave_blocked": len(wave_blocked),
             "pairing_blocked": len(pairing_blocked),
+            "multi_owner": len(multi_owner),
+            "after_blocked": len(after_blocked),
             "max_parallel": max((len(w) for w in waves), default=0),
             "models": model_counts,
             "workers": len(worker_out),
@@ -1488,9 +1681,29 @@ def render(plan: dict, max_lanes: int, source: str) -> str:
             out.append(f"    - `{t['id']}`  [{t['lane']}] ({t['model']}){deps}")
     out += ["", "## Lanes (tasks inside a lane run in sequence; model = lane's max tier)"]
     for lane, ids in plan["lanes"].items():
+        owners = plan.get("lane_owners", {}).get(lane) or []
+        own = f", owners={'/'.join(owners)}" if owners else ""
         out.append(
-            f"- **{lane}** ({len(ids)}, model={plan['lane_models'][lane]}): {', '.join(ids)}"
+            f"- **{lane}** ({len(ids)}, model={plan['lane_models'][lane]}{own}): {', '.join(ids)}"
         )
+    if plan.get("after_blocked"):
+        out += [
+            "",
+            "## Refusé — @after vers une tâche ouverte d'un AUTRE plan (OWN) — "
+            "utiliser --force-wave pour outrepasser (fondateur, consigné)",
+        ]
+        for t in plan["after_blocked"]:
+            out.append(f"- `{t['id']}`  [{t['lane']}] — " + " ; ".join(t["after_block_reasons"]))
+    if plan.get("multi_owner"):
+        out += [
+            "",
+            "## Multi-propriétaires (OWN, docs/ownership.yml) — ces tâches "
+            "touchent plusieurs propriétaires : leur place est le plan "
+            "transverse (docs/plans/PLAN_TRANSVERSE.md), jamais en parallèle "
+            "d'un plan qui chevauche",
+        ]
+        for t in plan["multi_owner"]:
+            out.append(f"- `{t['id']}`  [{t['lane']}] — {', '.join(t['owners'])}")
     if plan["gated"]:
         out += ["", "## Gated — skip and flag (never auto-built)"]
         for t in plan["gated"]:
@@ -1624,10 +1837,18 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
+    # OWN (F3) — @after vers une tâche ouverte d'un autre fichier plan.
+    allowed_tasks, after_blocked = apply_external_after_gate(
+        allowed_tasks, index_taches_plans(), force_wave=args.force_wave,
+    )
+    for t in after_blocked:
+        print(f"REFUSÉ (@after externe, OWN) : {t['id']} — "
+              + " ; ".join(t["after_block_reasons"]), file=sys.stderr)
+
     plan = schedule(
         allowed_tasks, max(1, args.max_lanes), wave_blocked=wave_blocked,
         n_workers=args.workers, wave_size=args.wave_size,
-        pairing_blocked=pairing_blocked,
+        pairing_blocked=pairing_blocked, after_blocked=after_blocked,
     )
     source = ", ".join(
         p.relative_to(ROOT).as_posix() if p.is_relative_to(ROOT) else str(p)
