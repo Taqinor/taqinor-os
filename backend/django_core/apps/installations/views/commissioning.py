@@ -143,6 +143,13 @@ class RecettePompageViewSet(CompanyScopedModelViewSet):
         'installation', 'technicien').all()
     serializer_class = RecettePompageSerializer
     http_method_names = ['get', 'patch', 'head', 'options']
+    # YAPIC2/YAPIC11 — tri et recherche explicites (jamais l'OrderingFilter
+    # ouvert sur tous les champs).
+    ordering_fields = ['date_essai', 'resultat', 'date_creation',
+                       'date_modification']
+    ordering = ['-date_creation']
+    search_fields = ['installation__reference', 'instrument_id',
+                     'observations']
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

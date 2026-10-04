@@ -85,8 +85,12 @@ class SectionPompageTests(TestCase):
     def test_post_section_pompage_n_ecrit_que_ses_colonnes(self):
         lead = self._agricole(email='b@example.ma', facture_hiver=900,
                               culture='olivier')
+        # Un lien qui ne pose QUE le pompage : les autres sections permises
+        # sont explicitement à False (« clé absente → posée »,
+        # ``QuestionnaireLien.question_posee``).
         lien = QuestionnaireLien.objects.create(
-            company=self.company, lead=lead, questions={'pompage': True})
+            company=self.company, lead=lead,
+            questions={s: s == 'pompage' for s in quest.sections_du_lead(lead)})
         get = self.client.get(PUBLIC.format(lien.token))
         self.assertEqual(get.status_code, 200, get.content)
         self.assertEqual(sorted(get.json()),

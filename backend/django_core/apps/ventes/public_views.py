@@ -1737,7 +1737,8 @@ def _mode_kpis(data):
         # ``synthese_agricole``, AGR306/AGR308). AJOUTÉ : ``heures_pompage``,
         # dont dépend le m³/jour (le PDF dit « sur N h », la page le dit aussi).
         # Aucun bassin n'est servi tant qu'aucun nombre de jours d'autonomie
-        # n'est décidé ou sourcé ; ``agronomy`` n'est plus importé ici.
+        # n'est décidé ou sourcé ; le module agronomique n'est plus importé
+        # ici (gardé par test_qx49_proposal_payload).
         return {
             'pompe_cv': _kpi_num(etude.get('pompe_cv')),
             'pompe_kw': _kpi_num(etude.get('pompe_kw')),

@@ -1241,9 +1241,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         # Q17 — le prix du carburant est DÉCLARÉ et DATÉ : la date est celle
         # du jour où le prix change, posée par le serveur.
         if _change('carburant_prix_unitaire_mad'):
-            from django.utils import timezone
+            from core.dates import aujourd_hui_local
             attrs['carburant_prix_declare_le'] = (
-                timezone.localdate()
+                aujourd_hui_local()
                 if attrs['carburant_prix_unitaire_mad'] is not None else None)
 
     class Meta:

@@ -123,6 +123,10 @@ class EntreesPompage(TestCase):
         lead = Lead.objects.create(
             company=self.company, nom='Ferme', source=Lead.Source.SITE_WEB,
             type_installation='agricole', **valeurs)
+        # Relire depuis la base : l'exemple JSON porte des dates en chaînes
+        # (``carburant_prix_declare_le``), le sélecteur reçoit toujours un
+        # lead chargé de la base (dates typées).
+        lead.refresh_from_db()
         # Les colonnes que l'exemple dit « client » ont été saisies par un
         # humain dans l'ERP (une ligne de chatter avec un utilisateur).
         user = User.objects.create_user(
