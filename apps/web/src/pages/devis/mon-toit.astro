@@ -241,10 +241,17 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
              l'étape 2 (accordéon « Votre contexte ») pour garder cette étape
              carte légère — mêmes id/name, contrat webhook inchangé. -->
 
-        <p class="mt-5 text-lune-soft" data-i18n
+        <p id="mt-step0-intro" class="mt-5 text-lune-soft" data-i18n
           data-fr="Cherchez votre adresse et posez un repère sur votre toit. C'est facultatif — vous pouvez aussi continuer avec votre adresse seule."
           data-ar="ابحث عن عنوانك وضع علامة على سطحك. هذا اختياري — يمكنك أيضاً المتابعة بعنوانك فقط.">
           Cherchez votre adresse et posez un repère sur votre toit. C'est facultatif —
+          vous pouvez aussi continuer avec votre adresse seule.
+        </p>
+        <!-- AGW401 — variante agricole de l'étape 0 (affichée par syncStep2Panels). -->
+        <p id="mt-step0-intro-agri" hidden class="mt-5 text-lune-soft" data-i18n
+          data-fr="Cherchez votre adresse et posez un repère sur votre forage ou votre parcelle. C'est facultatif — vous pouvez aussi continuer avec votre adresse seule."
+          data-ar="ابحث عن عنوانك وضع علامة على بئرك أو قطعتك الأرضية. هذا اختياري — يمكنك أيضاً المتابعة بعنوانك فقط.">
+          Cherchez votre adresse et posez un repère sur votre forage ou votre parcelle. C'est facultatif —
           vous pouvez aussi continuer avec votre adresse seule.
         </p>
 
@@ -2561,6 +2568,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // pilote des questions d'étape 2 entièrement différentes) ; « Continuer »
   // exige un choix explicite (validateStep0, nudge inline sur les cartes). ———
   let mode = savedWizard?.mode || '';
+  // AGW401 — l'intention déclarée par le visiteur en cliquant (?mode=…, liste
+  // FERMÉE des 4 modes) présélectionne VISIBLEMENT la carte (aria-pressed) ;
+  // elle reste modifiable. Valeur inconnue = aucun effet. SEUL lecteur de
+  // `?mode=` de ce tunnel. Aucune clé webhook nouvelle.
+  try {
+    const wantedMode = new URLSearchParams(window.location.search).get('mode');
+    if (wantedMode && ['residentiel', 'industriel', 'commercial', 'agricole'].includes(wantedMode)) mode = wantedMode;
+  } catch { /* URL illisible : aucun mode présélectionné */ }
   // WJ121 — migration des sessions en cours : l'ancien profil unique
   // 'professionnel' est réhydraté comme 'industriel' (le backend mappe déjà
   // professionnel→industriel) — le site n'ÉMET plus jamais 'professionnel'.
@@ -2619,6 +2634,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (pro) pro.hidden = !(m === 'industriel' || m === 'professionnel');
     if (commercial) commercial.hidden = m !== 'commercial';
     if (agri) agri.hidden = m !== 'agricole';
+    // AGW401 — étape 0 en mode agricole : repère « forage / parcelle », sans le
+    // choix Pointer/Dessiner mon toit (GPS et ville conservés).
+    const introStd = $('mt-step0-intro');
+    const introAgri = $('mt-step0-intro-agri');
+    if (introStd) introStd.hidden = m === 'agricole';
+    if (introAgri) introAgri.hidden = m !== 'agricole';
+    const roofModeGrp = $('mt-roof-mode-group');
+    if (roofModeGrp) roofModeGrp.hidden = m === 'agricole' || !!(fallback && !fallback.hidden);
     syncRaisonSociale();
   }
   /** La raison sociale vit désormais sur l'écran CONTACT (coupe fondateur

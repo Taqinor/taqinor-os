@@ -233,9 +233,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
              accordion) to keep this map step light — same id/name, webhook
              contract unchanged. -->
 
-        <p class="mt-5 text-lune-soft">
+        <p id="mt-step0-intro" class="mt-5 text-lune-soft">
           Search for your address and drop a pin on your roof. This is optional —
           you can also continue with your address alone.
+        </p>
+        <!-- AGW401 — agricultural variant of step 0 (shown by syncStep2Panels). -->
+        <p id="mt-step0-intro-agri" hidden class="mt-5 text-lune-soft">
+          Search for your address and drop a pin on your borehole or your plot. This is
+          optional — you can also continue with your address alone.
         </p>
 
         <!-- No-JavaScript / no map-key fallback (WJ4): ask for a plain-text
@@ -2383,6 +2388,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // entirely different step-2 questionnaire); "Continue" requires an
   // explicit choice (validateStep0, inline nudge on the cards). ———
   let mode = savedWizard?.mode || '';
+  // AGW401 — l'intention déclarée par le visiteur en cliquant (?mode=…, liste
+  // FERMÉE des 4 modes) présélectionne VISIBLEMENT la carte (aria-pressed) ;
+  // elle reste modifiable. Valeur inconnue = aucun effet. SEUL lecteur de
+  // `?mode=` de ce tunnel. Aucune clé webhook nouvelle.
+  try {
+    const wantedMode = new URLSearchParams(window.location.search).get('mode');
+    if (wantedMode && ['residentiel', 'industriel', 'commercial', 'agricole'].includes(wantedMode)) mode = wantedMode;
+  } catch { /* URL illisible : aucun mode présélectionné */ }
   // WJ121 — in-flight session migration: the old single 'professionnel'
   // profile rehydrates as 'industriel' (the backend already maps
   // professionnel→industriel) — the site never EMITS 'professionnel' anymore.
@@ -2437,6 +2450,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (pro) pro.hidden = !(m === 'industriel' || m === 'professionnel');
     if (commercial) commercial.hidden = m !== 'commercial';
     if (agri) agri.hidden = m !== 'agricole';
+    // AGW401 — étape 0 en mode agricole : repère « forage / parcelle », sans le
+    // choix Pointer/Dessiner mon toit (GPS et ville conservés).
+    const introStd = $('mt-step0-intro');
+    const introAgri = $('mt-step0-intro-agri');
+    if (introStd) introStd.hidden = m === 'agricole';
+    if (introAgri) introAgri.hidden = m !== 'agricole';
+    const roofModeGrp = $('mt-roof-mode-group');
+    if (roofModeGrp) roofModeGrp.hidden = m === 'agricole' || !!(fallback && !fallback.hidden);
     syncRaisonSociale();
   }
   /** The company name now lives on the CONTACT screen (founder cut 18/08):

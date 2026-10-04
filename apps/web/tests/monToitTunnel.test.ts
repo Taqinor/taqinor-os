@@ -742,3 +742,43 @@ describe("Chantier 5 — le GPS rend l'adresse secondaire, jamais bloquante", ()
     });
   }
 });
+
+// ———————————————————————————————————————————————————————————————————————————
+// AGW401 — `?mode=` présélectionne VISIBLEMENT la carte (liste fermée des 4
+// modes, UN SEUL lecteur par tunnel) ; l'étape 0 agricole parle de forage.
+// ———————————————————————————————————————————————————————————————————————————
+describe('AGW401 — ?mode= présélectionne la carte, étape 0 agricole', () => {
+  for (const [lang, rel] of LOCALES) {
+    const src = read(rel);
+    const script = stripLineComments(src);
+
+    it(`${lang} — un seul lecteur de ?mode= et liste fermée des 4 modes`, () => {
+      expect(script.match(/URLSearchParams\(/g)?.length).toBe(1);
+      expect(script).toContain("get('mode')");
+      expect(script).toContain("['residentiel', 'industriel', 'commercial', 'agricole'].includes(wantedMode)");
+      // Valeur inconnue : aucune affectation hors de la liste fermée.
+      expect(script.match(/mode = wantedMode;/g)?.length).toBe(1);
+    });
+
+    it(`${lang} — la présélection passe par syncModeCards (aria-pressed) au démarrage`, () => {
+      expect(script).toContain("b.setAttribute('aria-pressed', String(on));");
+      const afterRead = script.slice(script.indexOf('mode = wantedMode;'));
+      expect(afterRead.indexOf('syncModeCards();')).toBeGreaterThan(-1);
+    });
+
+    it(`${lang} — étape 0 agricole : texte forage/parcelle, Pointer/Dessiner masqué`, () => {
+      expect(src).toContain('id="mt-step0-intro-agri"');
+      expect(src).toMatch(/id="mt-step0-intro-agri" hidden/);
+      expect(src).toMatch(/forage|borehole/);
+      expect(script).toContain("introAgri.hidden = m !== 'agricole';");
+      expect(script).toContain("roofModeGrp.hidden = m === 'agricole'");
+    });
+  }
+  it('FR/AR — le texte forage est livré en français et en arabe', () => {
+    for (const rel of ['../src/pages/devis/mon-toit.astro', '../src/pages/ar/devis/mon-toit.astro']) {
+      const src = read(rel);
+      expect(src).toContain('posez un repère sur votre forage ou votre parcelle');
+      expect(src).toContain('ضع علامة على بئرك أو قطعتك الأرضية');
+    }
+  });
+});
