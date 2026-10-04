@@ -11,10 +11,12 @@ leak is read by the end client, not by a log.
 DB-free AST sweep (mirrors ``check_unique_scoping.py`` /
 ``check_tenant_isolation.py``):
 
-  1. ``backend/django_core/apps/*/models.py`` + ``core/models.py`` are parsed to
+  1. ``backend/django_core/apps/*/models*.py`` (+ ``models/``) + ``core/models.py``
+     are parsed (SPL72: ``models.py`` AND every ``models_<x>.py`` split out of it) to
      map every ``ForeignKey('<app>.<Model>')`` and which models are
      tenant-scoped (they declare ``company`` or inherit a tenant base).
-  2. Every ``*ModelSerializer`` subclass under ``apps/*/serializers*.py`` is
+  2. Every ``*ModelSerializer`` subclass under ``apps/*/serializers*.py`` /
+     ``apps/*/*_serializers.py`` (+ ``serializers/``) is
      matched to its ``Meta.model``; each ``Meta.fields`` entry that is a
      WRITABLE cross-app FK to a tenant-scoped model must be covered by either
      ``def validate_<field>`` or a declarative
@@ -40,6 +42,12 @@ APPS_DIR = DJANGO_CORE / "apps"
 ALLOWLIST_PATH = ROOT / "scripts" / "fk_scoping_allow.txt"
 
 FK_CALLS = ("ForeignKey", "OneToOneField")
+#: SPL72 — UNE seule découverte par garde : ``models.py`` ET ses scissions
+#: ``models_<x>.py``, ``serializers.py`` ET ``serializers_<x>.py`` /
+#: ``<x>_serializers.py`` (plus les dossiers ``models/`` / ``serializers/``).
+#: Sans cela, scinder un gros fichier ferait SORTIR ses classes de la garde.
+MODEL_GLOBS = ("models*.py",)
+SERIALIZER_GLOBS = ("serializers*.py", "*_serializers.py")
 #: Bases connues pour porter ``company`` sans le redéclarer.
 TENANT_BASES = {"TenantModel", "CompanyScopedModel", "SoftDeleteTenantModel"}
 #: Apps « socle » : une FK vers elles n'est pas une FK métier cross-app.
@@ -95,6 +103,23 @@ def _base_names(cls: ast.ClassDef):
 
 # ── 1. carte des modèles ───────────────────────────────────────────────────
 
+def _iter_app_files(app_dir: Path, globs, subdir: str):
+    """Fichiers d'une app répondant à ``globs`` (à la racine) + ``subdir/*.py``,
+    triés, sans doublon (``serializers.py`` répond à ``serializers*.py``)."""
+    seen = set()
+    for pattern in globs:
+        for f in sorted(app_dir.glob(pattern)):
+            if f.is_file() and f not in seen:
+                seen.add(f)
+                yield f
+    sdir = app_dir / subdir
+    if sdir.is_dir():
+        for f in sorted(sdir.glob("*.py")):
+            if f not in seen:
+                seen.add(f)
+                yield f
+
+
 def _iter_model_files():
     core_models = DJANGO_CORE / "core" / "models.py"
     if core_models.is_file():
@@ -104,13 +129,8 @@ def _iter_model_files():
     for app_dir in sorted(APPS_DIR.iterdir()):
         if not app_dir.is_dir():
             continue
-        mp = app_dir / "models.py"
-        if mp.is_file():
-            yield app_dir.name, mp
-        mdir = app_dir / "models"
-        if mdir.is_dir():
-            for f in sorted(mdir.glob("*.py")):
-                yield app_dir.name, f
+        for f in _iter_app_files(app_dir, MODEL_GLOBS, "models"):
+            yield app_dir.name, f
 
 
 def build_model_map():
@@ -187,13 +207,8 @@ def _iter_serializer_files():
     for app_dir in sorted(APPS_DIR.iterdir()):
         if not app_dir.is_dir():
             continue
-        sp = app_dir / "serializers.py"
-        if sp.is_file():
-            yield app_dir.name, sp
-        sdir = app_dir / "serializers"
-        if sdir.is_dir():
-            for f in sorted(sdir.glob("*.py")):
-                yield app_dir.name, f
+        for f in _iter_app_files(app_dir, SERIALIZER_GLOBS, "serializers"):
+            yield app_dir.name, f
 
 
 def _meta_of(cls: ast.ClassDef):
@@ -240,15 +255,25 @@ def collect_sites():
     fks, tenant, name_to_keys = build_model_map()
     sites = []   # (rel, cls, field, target, couvert)
 
+    # SPL72 — l'héritage se résout sur TOUTES les classes sérialiseurs d'une MÊME
+    # app (pas seulement le fichier courant) : un mixin de ``serializers.py`` couvre
+    # une sous-classe déplacée dans ``serializers_<x>.py``.
+    parsed = []                 # (app, rel, tree)
+    classes_by_app = {}         # app -> {nom: ClassDef}
     for app, path in _iter_serializer_files():
-        rel = _rel(path)
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except (OSError, SyntaxError):
             continue
-        classes = {n.name: n for n in ast.walk(tree)
-                   if isinstance(n, ast.ClassDef)}
-        for cls in classes.values():
+        parsed.append((app, _rel(path), tree))
+        table = classes_by_app.setdefault(app, {})
+        for n in ast.walk(tree):
+            if isinstance(n, ast.ClassDef):
+                table.setdefault(n.name, n)
+
+    for app, rel, tree in parsed:
+        classes = classes_by_app[app]
+        for cls in [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]:
             bases = _base_names(cls)
             if not any(b.endswith("ModelSerializer") for b in bases):
                 continue
@@ -285,14 +310,21 @@ def collect_sites():
                 continue
 
             read_only, same_company, validates = _serializer_facts(cls)
-            # Héritage intra-fichier : une base couvre ses sous-classes.
-            for b in bases:
+            # Héritage intra-APP : une base (même fichier ou autre fichier
+            # sérialiseur de l'app) couvre ses sous-classes, transitivement.
+            vus = {cls.name}
+            pile = list(bases)
+            while pile:
+                b = pile.pop()
                 base_cls = classes.get(b)
-                if base_cls is not None:
-                    b_ro, b_sc, b_val = _serializer_facts(base_cls)
-                    read_only |= b_ro
-                    same_company |= b_sc
-                    validates |= b_val
+                if base_cls is None or b in vus:
+                    continue
+                vus.add(b)
+                b_ro, b_sc, b_val = _serializer_facts(base_cls)
+                read_only |= b_ro
+                same_company |= b_sc
+                validates |= b_val
+                pile.extend(_base_names(base_cls))
 
             noms_exposes = (list(champs_fk)
                             if declared_fields == "__all__" else declared_fields)

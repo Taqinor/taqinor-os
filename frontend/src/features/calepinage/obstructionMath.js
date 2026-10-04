@@ -3,8 +3,8 @@
  * azimut/hauteur angulaire vues depuis un point de référence, pour les surimprimer
  * sur `SunDiagram.jsx`. MÊME repère que `apps/web/src/lib/horizonEngine.ts`/
  * `shadingEngine.ts` (azimut 0=Nord/90=Est/180=Sud/270=Ouest, ENU mètres, WGS84
- * sphérique) — dupliqué pour la même raison que `horizonMath.js` (pas d'alias
- * `@rooflib` dans `frontend/vitest.config.js`, hors périmètre de cette lane).
+ * sphérique). ACAL254 : la projection lng/lat → ENU vient de
+ * `@rooflib/shadingEngine` (`shadeObstructionsENU`), plus d'une copie locale.
  *
  * SOURCES PERSISTÉES SEULEMENT — les ombres tracées à la main (`shadeObstructions`)
  * ne voyagent JAMAIS dans le document (`apps/web/src/scripts/roofPro11/context.ts`,
@@ -15,8 +15,9 @@
  * (règle du moteur) : il est écarté ici aussi, jamais une hauteur inventée.
  */
 
+import { shadeObstructionsENU } from '@rooflib/shadingEngine'
+
 const DEG2RAD = Math.PI / 180
-const WGS84_RADIUS = 6378137
 
 /** Hypothèse de hauteur de toit PAR DÉFAUT (2 étages × 3 m), affichée comme telle —
  *  même valeur que `apps/web/src/scripts/roofPro11/constants.ts` (FLOORS×FLOOR_HEIGHT_M).
@@ -24,11 +25,16 @@ const WGS84_RADIUS = 6378137
  *  au-dessus du plan du champ. */
 export const HAUTEUR_TOIT_HYPOTHESE_M = 6
 
-/** ENU (mètres, est=x/nord=y) d'un point lng/lat relatif à une origine lng/lat. */
+/** ENU (mètres, est=x/nord=y) d'un point lng/lat relatif à une origine lng/lat —
+ *  la projection du moteur d'ombrage de l'atelier (`shadeObstructionsENU`) ; la
+ *  hauteur n'intervient pas ici (toit = 0, hauteur factice 1 m jamais lue). */
 function versENU(origineLng, origineLat, lng, lat) {
-  const dx = (lng - origineLng) * DEG2RAD * WGS84_RADIUS * Math.cos(origineLat * DEG2RAD)
-  const dy = (lat - origineLat) * DEG2RAD * WGS84_RADIUS
-  return { dx, dy }
+  const [p] = shadeObstructionsENU(
+    [{ id: 'pt', base: [lng, lat], tip: [lng, lat], heightM: 1, halfWidthM: 0 }],
+    [origineLng, origineLat],
+    0,
+  )
+  return { dx: p.x, dy: p.y }
 }
 
 /**
