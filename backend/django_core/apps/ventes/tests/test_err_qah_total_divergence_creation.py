@@ -23,7 +23,9 @@ donc déjà le total canonique, identique à celui relu ensuite.
 ROUGE AVANT LE CORRECTIF : ``etude_params`` était ignoré en silence par
 ``DevisWriteSerializer`` (champ en lecture seule), donc la réponse atomique
 valait la somme des 13 lignes — ``114092.00`` sur la composition ci-dessous
-(l'équivalent du 117 391,16 observé) — au lieu de ``91292.00``.
+(l'équivalent du 117 391,16 observé) — au lieu de ``91292.00``. Depuis
+ARRONDI-100 (02/10/2026) les totaux sont au palier de 100 MAD : le défaut
+vaudrait ``114000.00`` au lieu de ``91200.00``.
 """
 from decimal import Decimal
 
@@ -63,9 +65,12 @@ COMPOSITION = [
 #   Meter + clé Wi-Fi) : 14 300 + 64 160 × 1,20 = 91 292,00
 #   panier SANS (sans hybride ni batterie ; Huawei ⇒ accessoires gardés) :
 #   14 300 + 37 160 × 1,20 = 58 892,00
-TOTAL_TOUTES_LIGNES = Decimal('114092.00')
-TOTAL_AVEC = Decimal('91292.00')
-TOTAL_SANS = Decimal('58892.00')
+# ARRONDI-100 : chaque total est ramené au palier de 100 MAD inférieur (baisse
+# de HT de 76,67 sur les trois paniers ; les prix des lignes ne bougent pas).
+# Même chiffres que le jumeau écran ``optionTotalsScenario.test.jsx``.
+TOTAL_TOUTES_LIGNES = Decimal('114000.00')    # ARRONDI-100 : 114092 → 114000
+TOTAL_AVEC = Decimal('91200.00')              # ARRONDI-100 : 91292 → 91200
+TOTAL_SANS = Decimal('58800.00')              # ARRONDI-100 : 58892 → 58800
 
 
 class TotalUniqueCreationTests(TestCase):
@@ -109,7 +114,8 @@ class TotalUniqueCreationTests(TestCase):
         resp = self._creer(etude_params=choix)
         self.assertEqual(resp.status_code, 201, resp.content)
         devis_id = resp.data['id']
-        # Observé avant le correctif : '114092.00' (somme des 13 lignes).
+        # Observé avant le correctif : '114092.00' (somme des 13 lignes) —
+        # '114000.00' depuis ARRONDI-100.
         self.assertEqual(Decimal(str(resp.data['total_ttc'])), TOTAL_AVEC)
         self.assertEqual(resp.data['nb_options'], 2)
         self.assertEqual(

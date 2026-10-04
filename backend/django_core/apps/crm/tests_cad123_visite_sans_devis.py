@@ -138,3 +138,63 @@ class VisiteSansDevisTests(TestCase):
         note = self.lead.activites.filter(
             body__startswith='Visite technique planifiée').get()
         self.assertNotIn(services.MENTION_VISITE_SANS_DEVIS, note.body)
+
+
+class Agr408TextesPompageDuContratTests(SimpleTestCase):
+    """AGR408 (D-AGR-4) — le contrat dit EXACTEMENT les textes pompage."""
+
+    def test_l_avertissement_pompage_est_celui_du_serveur(self):
+        exemple = CONTRAT['exemple_agricole_point_eau']
+        self.assertEqual(exemple['avertissement_sans_devis'],
+                         services.AVERTISSEMENT_VISITE_POINT_EAU)
+        self.assertIn('AVANT le devis', exemple['avertissement_sans_devis'])
+        self.assertEqual(exemple['rappel_juridique'],
+                         services.RAPPEL_JURIDIQUE_VISITE_DOMICILE)
+        self.assertEqual(sorted(exemple), sorted(CONTRAT['exemple']))
+
+    def test_la_mention_de_planification_n_est_plus_une_exception(self):
+        self.assertNotIn('exception', services.MENTION_VISITE_POINT_EAU)
+        self.assertIn('avant devis (règle pompage)',
+                      services.MENTION_VISITE_POINT_EAU)
+
+
+class Agr408VisitePointEauAvantDevisTests(VisiteSansDevisTests):
+    """AGR408 — un lead AGRICOLE au point d'eau inconnu : la visite AVANT le
+    devis est la règle pompage. (Hérite des tests CAD123 sur un lead
+    résidentiel, qui restent verts.)"""
+
+    def _agricole(self, **kwargs):
+        for champ, valeur in dict(type_installation='agricole',
+                                  **kwargs).items():
+            setattr(self.lead, champ, valeur)
+        self.lead.save()
+
+    def test_agricole_point_eau_inconnu_lecture_porte_la_regle_pompage(self):
+        self._agricole()
+        reponse = self.api.get(self._url('visites/'))
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        attendu = CONTRAT['exemple_agricole_point_eau']
+        self.assertEqual(reponse.data['avertissement_sans_devis'],
+                         attendu['avertissement_sans_devis'])
+        self.assertEqual(reponse.data['rappel_juridique'],
+                         attendu['rappel_juridique'])
+
+    def test_agricole_point_eau_inconnu_note_de_planification(self):
+        self._agricole()
+        self.api.post(self._url('visites/planifier/'),
+                      {'date_prevue': DEMAIN.isoformat()}, format='json')
+        note = self.lead.activites.filter(
+            body__startswith='Visite technique planifiée').get()
+        self.assertIn(services.MENTION_VISITE_POINT_EAU, note.body)
+        self.assertNotIn(services.MENTION_VISITE_SANS_DEVIS, note.body)
+
+    def test_agricole_deja_releve_inchange(self):
+        self._agricole(niveau_statique_m=Decimal('32'),
+                       debit_forage_m3h=Decimal('36'))
+        reponse = self.api.get(self._url('visites/'))
+        self.assertEqual(reponse.data['avertissement_sans_devis'],
+                         services.AVERTISSEMENT_VISITE_SANS_DEVIS)
+        reponse = self.api.post(self._url('visites/planifier/'),
+                                {'date_prevue': DEMAIN.isoformat()},
+                                format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)

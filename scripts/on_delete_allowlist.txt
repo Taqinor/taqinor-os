@@ -220,6 +220,8 @@ backend/django_core/apps/installations/models_chantier.py::CommissioningRecord.c
 backend/django_core/apps/installations/models_chantier.py::CommissioningRecord.installation
 backend/django_core/apps/installations/models_chantier.py::HandoverPack.company
 backend/django_core/apps/installations/models_chantier.py::HandoverPack.installation
+backend/django_core/apps/installations/models_chantier.py::RecettePompage.company
+backend/django_core/apps/installations/models_chantier.py::RecettePompage.installation
 backend/django_core/apps/installations/models_chantier.py::ReverificationMesure.company
 backend/django_core/apps/installations/models_chantier.py::ShotListSlot.company
 backend/django_core/apps/installations/models_chantier.py::StageModele.company

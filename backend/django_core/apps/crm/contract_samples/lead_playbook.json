@@ -1,0 +1,63 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/playbook/",
+  "pourquoi": "AGR507 (Groupe AGR, audit L3 du devis agricole, 02/10/2026) — CONTRAT D'ABORD (PACT10). Aujourd'hui `LeadPlaybookProgressSerializer` ne sert que le libellé de la tâche ; `cle_message_segment` (apps/crm/services.py) n'a aucun appelant hors tests et `dossier_fda` n'apparaît nulle part dans `frontend/src` : l'écran ne sait pas quel TEXTE proposer pour une tâche de playbook segmenté. La réponse de GET (NTCRM12, `lead_playbook_view`) est une LISTE de progressions : `exemple` montre UN élément (le format des contrats exige un objet), `exemple_liste` la réponse entière. Chaque élément reprend la forme EXISTANTE (`id`, `lead`, `tache`, `tache_libelle`, `tache_obligatoire`, `etape_stage`, `fait`, `fait_par`, `fait_par_nom`, `fait_le`, `created_at`) et ajoute la clé additive `cle_message` ∈ {`dossier_fda`, `dossier_8221`, null} : la clé du texte que le bouton « Proposer le texte » demandera (AGR527). `leads/<id>/message-visite/?cle=` acceptera ces deux clés SEULEMENT quand `cle_message_segment(lead)` les renvoie pour ce lead (sinon refus 400 nommant `cle`). Aucune étape de pipeline n'est créée (STAGES.py intouché) ; `etape_stage` reste une clé de STAGES.py. Le POST existant (coche d'une tâche) renvoie un élément de la même forme. Valeurs ILLUSTRATIVES.",
+  "exemple": {
+    "id": 801,
+    "lead": 1512,
+    "tache": 44,
+    "tache_libelle": "Préparer le dossier d'aide FDA avec le client",
+    "tache_obligatoire": false,
+    "etape_stage": "QUOTE_SENT",
+    "fait": false,
+    "fait_par": null,
+    "fait_par_nom": null,
+    "fait_le": null,
+    "created_at": "2026-10-02T10:00:00Z",
+    "cle_message": "dossier_fda"
+  },
+  "exemple_liste": [
+    {
+      "id": 801,
+      "lead": 1512,
+      "tache": 44,
+      "tache_libelle": "Préparer le dossier d'aide FDA avec le client",
+      "tache_obligatoire": false,
+      "etape_stage": "QUOTE_SENT",
+      "fait": false,
+      "fait_par": null,
+      "fait_par_nom": null,
+      "fait_le": null,
+      "created_at": "2026-10-02T10:00:00Z",
+      "cle_message": "dossier_fda"
+    },
+    {
+      "id": 802,
+      "lead": 1512,
+      "tache": 45,
+      "tache_libelle": "Rappeler la déclaration de l'installation hors réseau (loi 82-21)",
+      "tache_obligatoire": false,
+      "etape_stage": "QUOTE_SENT",
+      "fait": true,
+      "fait_par": 7,
+      "fait_par_nom": "nadia",
+      "fait_le": "2026-10-03T09:30:00Z",
+      "created_at": "2026-10-02T10:00:00Z",
+      "cle_message": "dossier_8221"
+    },
+    {
+      "id": 803,
+      "lead": 1512,
+      "tache": 12,
+      "tache_libelle": "Confirmer le rendez-vous de visite",
+      "tache_obligatoire": true,
+      "etape_stage": "CONTACTED",
+      "fait": true,
+      "fait_par": 7,
+      "fait_par_nom": "nadia",
+      "fait_le": "2026-09-20T15:10:00Z",
+      "created_at": "2026-09-18T08:00:00Z",
+      "cle_message": null
+    }
+  ],
+  "exemple_vide": []
+}

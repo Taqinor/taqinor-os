@@ -1073,10 +1073,12 @@ class TestPdfFormats3(TestPdfFormats):
         self.devis.save()
         html, doc = self._render({'pdf_mode': 'onepage'})
         self.assertEqual(len(doc.pages), 1)
-        self.assertIn('10 CV (7.5 kW)', html)
+        self.assertIn('10 CV (7,5 kW)', html)  # AGR302 — à la française
         self.assertIn('D&#233;bit &#224; 60 m', html)
         self.assertIn('30 m&#179;/h', html)
-        self.assertIn('Eau / jour (sur 7 h de pompage)', html)
+        self.assertIn(
+            'Eau / jour &#8212; estimation, sur 7 h de pompage '
+            '(hypoth&#232;se)', html)  # AGR302
         self.assertIn('210 m&#179;', html)
 
     def test_pompage_without_curve_never_shows_water_per_day(self):
@@ -1764,7 +1766,18 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
 
         empreinte = hashlib.sha256(html.encode('utf-8')).hexdigest()
 
-        # Ré-épinglée le 2026-10-01 (PR #764, lot 5 QJR5, shard 1) : QJR627
+        # AGR302 (2026-10-03) — CHANGEMENT VOULU : la fixture gelée imprime
+        # désormais « 5,5 CV (4,05 kW) » (virgule décimale, ex « 5.5 CV
+        # (4.05 kW) ») et ses libellés passent par ``_L()`` (texte français
+        # inchangé). Ré-épinglée le 2026-10-03 (CAD177) : valeur recopiée du
+        # message d'échec de ce test exécuté dans l'image CI
+        # (.github/ci-image/Dockerfile, WeasyPrint réel) — jamais à la main.
+        # Ré-épinglée le 2026-10-02 (ARRONDI-100, CI de la branche
+        # claude/quote-rounding-100dh) : le total du devis gelé (44 700 HT,
+        # soit 53 640 TTC à 20 %) est ramené au palier de 100 MAD (53 600 TTC),
+        # donc le rendu change — changement VOULU. Valeur recopiée du message
+        # d'échec du run CI (jamais calculée à la main).
+        # Avant : ré-épinglée le 2026-10-01 (PR #764, lot 5 QJR5, shard 1) : QJR627
         # insère dans ``page_onepage`` l'emplacement du bloc « Note » client
         # (``_note_client_html``) — vide ici (devis sans note), donc seule une
         # ligne d'indentation s'ajoute au HTML : aucun changement visible.
@@ -1779,7 +1792,7 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # modification du rendu agricole la fait dériver : si le changement
         # est VOULU, coller la nouvelle valeur imprimée par le message d'échec.
         EMPREINTE_EPINGLEE = (
-            '02d25cd79845b737762ae909eeedd6206d8a2dd11e1d02b340267ceb23cb8513')
+            '965980be35121a6952cd39a478f6a4c3f04d5144a820fc53ea33b436418dbaa8')
 
         self.assertEqual(
             empreinte, EMPREINTE_EPINGLEE,
@@ -1834,9 +1847,14 @@ class TestQjr53TotauxAuCentime(TestCase):
 
         devis = self._devis('DEV-QJR53-SOMME', remise='12.5')
         totaux = build_quote_data(devis, {'pdf_mode': 'onepage'})['totaux_all']
-        self.assertAlmostEqual(totaux['ht_net'],
-                               round(totaux['ht_brut'] - totaux['remise'], 2),
-                               places=2)
+        # ARRONDI-100 : la chaîne imprimée porte un étage de plus, négatif
+        # comme la remise — HT net = HT brut − remise − arrondi commercial
+        # (34 916,75 − 4 364,59 − 52,16 = 30 500,00).
+        self.assertAlmostEqual(totaux['arrondi'], 52.16, places=2)
+        self.assertAlmostEqual(
+            totaux['ht_net'],
+            round(totaux['ht_brut'] - totaux['remise'] - totaux['arrondi'], 2),
+            places=2)
         self.assertAlmostEqual(
             totaux['tva'],
             round(sum(b['montant'] for b in totaux['tva_par_taux']), 2),
@@ -2413,6 +2431,10 @@ class TestPageCalepinage(TestCase):
         self._creer_calepinage()
         html, _doc = self._render(self._options())
         page = self._page_calepinage(html)
+        # Les images embarquées (``data:image/png;base64,…``) sont de l'octet
+        # aléatoire : « MAD » y apparaît par hasard (alphabet base64). On
+        # cherche les mots monétaires dans le TEXTE de la page, pas dans le PNG.
+        page = re.sub(r'data:[^;"\']+;base64,[A-Za-z0-9+/=]+', 'data:…', page)
         for interdit in ('prix_achat', 'marge', 'MAD', 'Total TTC',
                          'Sous-total', 'Remise'):
             self.assertNotIn(interdit, page)

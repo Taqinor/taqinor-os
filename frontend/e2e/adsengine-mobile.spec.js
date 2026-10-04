@@ -17,7 +17,11 @@
 // LOCAL du viewport via `test.use()` plutôt que le projet `mobile` dédié
 // (réservé à `mobile.spec.js`), pré-authentifié via le même storageState
 // que le reste du projet `chromium`.
-import { test, expect } from '@playwright/test'
+import { expect } from '@playwright/test'
+// CAD177 — tourne aussi dans les projets `mobile`/`mobile-safari`, APRÈS
+// `chromium` + `monkey` : session d'AUTH_FILE revérifiée avant chaque test
+// (couvre `page` ET la fixture `request` qui crée les actions).
+import { testSessionFraiche as test } from './helpers'
 
 test.use({ viewport: { width: 375, height: 812 } })
 

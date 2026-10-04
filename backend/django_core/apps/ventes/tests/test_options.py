@@ -128,10 +128,14 @@ class TestOptionDownstream(TestCase):
         devis.option_acceptee = 'sans_batterie'
         devis.save(update_fields=['option_acceptee'])
         t = option_totaux(devis)
-        # réseau 11700 + panneaux 15400 + installation 4000 = 31100 HT
-        self.assertEqual(t['ht'], Decimal('31100'))
-        self.assertEqual(t['tva'], Decimal('6220.00'))
-        self.assertEqual(t['ttc'], Decimal('37320.00'))
+        # réseau 11700 + panneaux 15400 + installation 4000 = 31100 HT brut
+        # ARRONDI-100 : TTC 37320 → 37300, par une baisse de HT de 16,67
+        # (ht 31100 → 31083.33, tva 6220 → 6216.67). Les lignes ne bougent pas.
+        self.assertEqual(t['ht_brut'], Decimal('31100.00'))
+        self.assertEqual(t['arrondi'], Decimal('16.67'))
+        self.assertEqual(t['ht'], Decimal('31083.33'))
+        self.assertEqual(t['tva'], Decimal('6216.67'))
+        self.assertEqual(t['ttc'], Decimal('37300.00'))
 
     def test_option_totaux_avec(self):
         devis = self._two_option_devis(num=42)
@@ -139,8 +143,12 @@ class TestOptionDownstream(TestCase):
         devis.save(update_fields=['option_acceptee'])
         t = option_totaux(devis)
         # hybride 24000 + panneaux 15400 + batterie 14000 + installation 4000
-        self.assertEqual(t['ht'], Decimal('57400'))
-        self.assertEqual(t['ttc'], Decimal('68880.00'))
+        # = 57400 HT brut. ARRONDI-100 : TTC 68880 → 68800 (HT 57400 → 57333.33,
+        # arrondi 66.67).
+        self.assertEqual(t['ht_brut'], Decimal('57400.00'))
+        self.assertEqual(t['arrondi'], Decimal('66.67'))
+        self.assertEqual(t['ht'], Decimal('57333.33'))
+        self.assertEqual(t['ttc'], Decimal('68800.00'))
 
     def test_echeancier_acompte_uses_accepted_option(self):
         devis = self._two_option_devis(num=43)
@@ -148,9 +156,11 @@ class TestOptionDownstream(TestCase):
         devis.statut = Devis.Statut.ACCEPTE
         devis.save(update_fields=['option_acceptee', 'statut'])
         tr = next_tranche(devis)
-        # acompte 30 % du TTC de l'option « sans » (37320), pas du total mêlé.
+        # acompte 30 % du TTC de l'option « sans » (37300 après ARRONDI-100),
+        # pas du total mêlé.
         self.assertEqual(tr['key'], 'acompte')
-        self.assertEqual(tr['ttc'], Decimal('11196.00'))
+        # ARRONDI-100 : 11196.00 → 11190.00
+        self.assertEqual(tr['ttc'], Decimal('11190.00'))
 
     def test_bom_excludes_battery_for_sans(self):
         devis = self._two_option_devis(num=44)

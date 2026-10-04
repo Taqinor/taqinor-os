@@ -36,7 +36,9 @@ from hypothesis.extra.django import TestCase as HypothesisDjangoTestCase
 
 from apps.facturation.models import LigneFacture
 from apps.facturation.totaux import TotauxDocumentMixin
-from apps.ventes.domain.argent import Vue, repartir_remise_par_ligne
+from apps.ventes.domain.argent import (
+    PAS_ARRONDI_DEVIS, Vue, repartir_remise_par_ligne,
+)
 from apps.ventes.domain.argent import totaux as argent_totaux
 from apps.ventes.models import BonCommande, Devis, LigneDevis
 from apps.ventes.selectors import TAUX_TVA_REFERENTIEL, _canonical_totaux
@@ -110,10 +112,14 @@ class _FakeDocumentTotaux(TotauxDocumentMixin):
 
     def __init__(self, lignes, *, remise_globale=Decimal('0'),
                  taux_tva=Decimal('20'), montant_ht=None, montant_tva=None,
-                 montant_ttc=None):
+                 montant_ttc=None, arrondi_pas=0):
         self.lignes = _FakeManager(lignes)
         self.remise_globale = remise_globale
         self.taux_tva = taux_tva
+        # ARRONDI-100 — le palier hérité du devis (``Facture.arrondi_pas``,
+        # posé à 100 sur une facture de BC) ; 0 = facture saisie, jamais
+        # arrondie.
+        self.arrondi_pas = arrondi_pas
         self.montant_ht = montant_ht
         self.montant_tva = montant_tva
         self.montant_ttc = montant_ttc
@@ -268,7 +274,12 @@ class MoneyChainPureInvariants(SimpleTestCase):
         appelle ``selectors._canonical_totaux``, comme
         ``domain.argent.totaux``) : les trois totaux doivent être identiques,
         au centime, pour les mêmes lignes/remise/taux — exactement
-        « totaux du sérialiseur = ceux du modèle = ceux du builder PDF »."""
+        « totaux du sérialiseur = ceux du modèle = ceux du builder PDF ».
+
+        ARRONDI-100 — le total d'un devis porte le palier de 100 MAD ; la
+        facture comparée ici est la facture de BC de CE devis, qui hérite du
+        même palier (``Facture.arrondi_pas = 100``) : on compare donc deux
+        chaînes arrondies, étage par étage, ``arrondi`` compris."""
         lignes_devis = _lignes_devis(specs)
         fake_devis = _FakeDevisPourArgent(
             remise_globale=remise_globale, taux_tva=taux_fallback)
@@ -278,11 +289,13 @@ class MoneyChainPureInvariants(SimpleTestCase):
         lignes_facture = _lignes_facture(specs)
         doc_facture = _FakeDocumentTotaux(
             lignes_facture, remise_globale=remise_globale,
-            taux_tva=taux_fallback)
+            taux_tva=taux_fallback, arrondi_pas=PAS_ARRONDI_DEVIS)
 
         self.assertEqual(totaux_devis.ht_net, doc_facture.total_ht)
         self.assertEqual(totaux_devis.tva, doc_facture.total_tva)
         self.assertEqual(totaux_devis.ttc, doc_facture.total_ttc)
+        self.assertEqual(totaux_devis.arrondi,
+                         doc_facture.totaux_affichage['arrondi'])
 
     # ── ERR-QAH-VENTES-FACTURE-HT-NON-ARRONDI (CORRIGÉ) ──────────────────────
     @PUR
@@ -388,12 +401,13 @@ class MoneySerializerModelInvariants(HypothesisDjangoTestCase):
             company=company, reference=f'BC-QAH2-{uuid.uuid4().hex[:10]}',
             devis=devis, client=client, statut=BonCommande.Statut.EN_ATTENTE)
 
-        # Le noyau, appelé sur les lignes RECHARGÉES depuis la base.
+        # Le noyau, appelé sur les lignes RECHARGÉES depuis la base. ARRONDI-100 :
+        # avec le palier du devis, sinon on compare un total de devis à un brut.
         devis.refresh_from_db()
         lignes_recharges = list(devis.lignes.all())
         attendu = _canonical_totaux(
             lignes_recharges, remise_globale_pct=devis.remise_globale,
-            fallback_taux=devis.taux_tva)
+            fallback_taux=devis.taux_tva, arrondi_pas=PAS_ARRONDI_DEVIS)
 
         # Le MODÈLE.
         self.assertEqual(devis.total_ht, attendu['ht_net'])

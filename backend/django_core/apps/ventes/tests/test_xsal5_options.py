@@ -86,8 +86,10 @@ class TestOptionalExcludedFromTotals(TestCase):
         opt.refresh_from_db()
         self.assertFalse(opt.optionnelle)
         devis2 = Devis.objects.get(pk=devis.pk)
-        self.assertEqual(Decimal(devis2.total_ht), Decimal('1400'))
-        self.assertEqual(Decimal(devis2.total_ttc), Decimal('1680'))
+        # ARRONDI-100 : 1400 HT / 1680 TTC → 1333.33 HT / 1600 TTC (le TTC
+        # 1680 est ramené au palier de 100 MAD inférieur par une baisse de HT).
+        self.assertEqual(Decimal(devis2.total_ht), Decimal('1333.33'))
+        self.assertEqual(Decimal(devis2.total_ttc), Decimal('1600'))
         # Chatter : une note d'activation a été consignée.
         self.assertTrue(devis2.activites.filter(
             kind='note', body__icontains='Option activée').exists())
@@ -168,7 +170,9 @@ class TestBuilderOptionsBlock(TestCase):
         self.assertEqual(len(data['options_proposees']), 1)
         opt = data['options_proposees'][0]
         self.assertEqual(opt['designation'], 'Garantie étendue')
-        self.assertEqual(opt['total_ttc'], 480.0)
+        # ARRONDI-100 : 480.0 → 400.0 (supplément = 1600 − 1200, deux totaux
+        # arrondis au palier de 100 MAD).
+        self.assertEqual(opt['total_ttc'], 400.0)
         # RULE #4 — jamais de prix d'achat/marge dans la donnée client.
         self.assertNotIn('prix_achat', _flatten_keys(data))
 
@@ -190,8 +194,10 @@ class TestBuilderOptionsBlock(TestCase):
             taux_tva=Decimal('20.00'), optionnelle=True)
         data = build_quote_data(devis, {'pdf_mode': 'onepage'})
         o = data['options_proposees'][0]
-        self.assertEqual(o['total_ttc'], 1140.0)
-        self.assertEqual(o['total_ht'], 950.0)
+        # ARRONDI-100 : 1140.0 → 1100.0 et 950.0 → 916.66 (supplément =
+        # total(avec) 2200 TTC / 1833.33 HT − total(sans) 1100 TTC / 916.67 HT).
+        self.assertEqual(o['total_ttc'], 1100.0)
+        self.assertEqual(o['total_ht'], 916.66)
         avant = Decimal(Devis.objects.get(pk=devis.pk).total_ttc)
         html = G.render_html_for(data)
         # Le bloc « Options proposées » seul (tableau entre l'intitulé et la
@@ -199,11 +205,12 @@ class TestBuilderOptionsBlock(TestCase):
         bloc = html.split('Options propos&#233;es (non incluses', 1)[1]
         bloc = bloc.split('Activez une option', 1)[0]
         self.assertIn('Garantie', bloc)
-        self.assertIn('1 140 MAD', bloc)
+        self.assertIn('1 100 MAD', bloc)    # ARRONDI-100 : 1 140 → 1 100
         self.assertNotIn('1 200 MAD', bloc)
         activate_optional_line(devis=devis, ligne_id=opt.id, user=self.user)
         apres = Decimal(Devis.objects.get(pk=devis.pk).total_ttc)
-        self.assertEqual(apres - avant, Decimal('1140.00'))
+        # ARRONDI-100 : 1140.00 → 1100.00 (2200 − 1100).
+        self.assertEqual(apres - avant, Decimal('1100.00'))
 
     def test_options_block_absent_without_options(self):
         from apps.ventes.quote_engine.builder import build_quote_data
@@ -261,8 +268,9 @@ class TestPublicActivateEndpoint(TestCase):
         self.assertEqual(resp.status_code, 200)
         opt.refresh_from_db()
         self.assertFalse(opt.optionnelle)
+        # ARRONDI-100 : 1400 → 1333.33 HT (TTC 1680 → 1600).
         self.assertEqual(Decimal(Devis.objects.get(pk=devis.pk).total_ht),
-                         Decimal('1400'))
+                         Decimal('1333.33'))
 
     def test_bad_token_404(self):
         resp = self.api.post(

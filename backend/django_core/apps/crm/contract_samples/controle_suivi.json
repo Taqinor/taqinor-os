@@ -517,5 +517,29 @@
     "premier_contact": "Leads CRÉÉS sur la période : `dans_le_delai` = premier contact humain posé avant le délai, sur la MÊME horloge que l'exception (heures d'horloge, jours non ouvrés retirés) ; `mediane_minutes` = médiane du délai création → premier contact en minutes OUVRÉES (le KPI « rappelé en moins de 5 min ouvrées » — jamais la moyenne : week-ends et fériés la faussent) ; `plus_longue_attente_heures` = le lead encore jamais contacté qui attend depuis le plus longtemps (horloge du délai), `null` s'il n'y en a pas.",
     "resultats": "Sur la période et la même portée : visites techniques planifiées, devis passés « envoyé », devis passés « accepté » — trois résultats à lire À CÔTÉ de l'effort, jamais un classement.",
     "erreurs": "400 `{\"erreurs\": {champ: message}}` — `jours` (hors 7/14/30), `owner` (identifiant inconnu ou hors portée)."
+  },
+  "ajout_segment": {
+    "parametre": "?segment=",
+    "valeurs_admises": [
+      "residentiel",
+      "commercial",
+      "industriel",
+      "agricole",
+      "non_renseigne"
+    ],
+    "absent": "tous les segments (comportement actuel, inchangé)",
+    "champ_servi": "segment",
+    "nature_champ_servi": "texte ou null — ÉCHO du paramètre reçu (null quand le paramètre est absent)",
+    "pourquoi": "AGR503 (Groupe AGR, 02/10/2026) — `parametres_controle` (apps/crm/controle_suivi.py) ne lit que `jours` et `owner`, et le module ne connaît ni `segment` ni `type_installation` : le cockpit « Contrôle du suivi » ne peut pas isoler les exploitations agricoles. Le filtre porte sur `crm.Lead.type_installation` du lead de chaque touche (`non_renseigne` = vide). TOUTES les règles de mesure restent IDENTIQUES : retard compté en jours ouvrés, reports humains comptés, liste derrière chaque chiffre, même page pour tous les rôles ; aucun seuil propre à un segment.",
+    "exemple_requete": "GET /api/django/crm/relance-etapes/controle/?jours=14&owner=7&segment=agricole",
+    "exemple_fragment": {
+      "segment": "agricole"
+    },
+    "exemple_400": {
+      "segment": [
+        "Segment inconnu : « fellah ». Valeurs admises : residentiel, commercial, industriel, agricole, non_renseigne."
+      ]
+    },
+    "integration": "Posé ici, À CÔTÉ de `exemple`, pour garder `main` vert : GET relance-etapes/controle/ est sous contrat de forme (`check_api_shapes.py` compare `exemple` à la vue) et tests_cockpit_controle.py compare les clés servies à celles de `exemple`. La tâche backend qui sert `segment` l'insère dans `exemple`, `exemple_vide` et `exemple_alerte` DANS LE MÊME COMMIT, puis retire ce bloc."
   }
 }

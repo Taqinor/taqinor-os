@@ -566,6 +566,8 @@ class ReleveCompteurEquipement(models.Model):
     class Type(models.TextChoices):
         HEURES = 'heures', 'Heures'
         KWH = 'kwh', 'kWh'
+        # AGR615 — index du compteur d'eau d'une pompe (m³ cumulés).
+        M3 = 'm3', 'm³'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,

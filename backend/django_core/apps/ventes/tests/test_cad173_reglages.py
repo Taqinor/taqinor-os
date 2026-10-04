@@ -151,6 +151,9 @@ class Q17_AucunPrixDeCarburantEnDur(SimpleTestCase):
     MOTIF = re.compile(
         r'(?i)\b(prix|cout|coût|tarif)[_ ]?(gasoil|gazole|diesel|carburant)\b'
         r'|\b(gasoil|gazole|diesel)[_ ]?(mad|dh|prix|litre)\b')
+    #: Un nombre LITTÉRAL : un chiffre qui ne prolonge pas un identifiant
+    #: (la clé de repère ``butane_12kg_detail`` n'est pas un prix).
+    NOMBRE = re.compile(r'(?<!\w)\d')
 
     def _fichiers(self):
         racine = RACINE / 'backend' / 'django_core' / 'apps'
@@ -166,7 +169,7 @@ class Q17_AucunPrixDeCarburantEnDur(SimpleTestCase):
         for chemin in self._fichiers():
             texte = chemin.read_text(encoding='utf-8', errors='ignore')
             for numero, ligne in enumerate(texte.splitlines(), start=1):
-                if self.MOTIF.search(ligne) and re.search(r'\d', ligne):
+                if self.MOTIF.search(ligne) and self.NOMBRE.search(ligne):
                     coupables.append(f'{chemin.name}:{numero}: {ligne.strip()}')
         self.assertEqual(coupables, [])
 

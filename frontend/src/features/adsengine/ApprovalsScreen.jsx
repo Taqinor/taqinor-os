@@ -236,6 +236,9 @@ export default function ApprovalsScreen() {
       // coller… intacts).
       if (isTypingTarget(document.activeElement)) return
       if (e.ctrlKey || e.metaKey || e.altKey) return
+      // CAD177 — `keydown` sans `key` (autoremplissage Chrome, gremlins.js) :
+      // rien à interpréter, jamais un TypeError non rattrapé.
+      if (typeof e.key !== 'string') return
       const key = e.key.toLowerCase()
       // Liste et index lus dans leurs refs : le gestionnaire n'est abonné
       // qu'une fois et voit TOUJOURS l'état courant, même si la frappe précède

@@ -1,6 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
+from .views.commissioning import RecettePompageViewSet
+
 from .views import (
     InstallationViewSet, InterventionViewSet, TypeInterventionViewSet,
     CommissioningRecordViewSet, StageModeleViewSet,
@@ -71,6 +73,8 @@ router.register(r'chantiers', InstallationViewSet)
 router.register(r'interventions', InterventionViewSet)
 router.register(r'types-intervention', TypeInterventionViewSet)
 router.register(r'recettes-commissioning', CommissioningRecordViewSet)
+# AGR608 — recette pompage (PATCH ; création via chantiers/{id}/recette-pompage/).
+router.register(r'recettes-pompage', RecettePompageViewSet)
 router.register(r'etapes-chantier', StageModeleViewSet)
 router.register(r'checklist-templates', ChecklistTemplateViewSet)
 router.register(r'checklist-etapes', ChecklistEtapeModeleViewSet)

@@ -558,9 +558,12 @@ class TestFG79InterventionPlan(TestCase):
         self.assertEqual(set(r.data['existants']), {'pose', 'raccordement'})
 
     def test_no_plan_returns_empty(self):
-        """FG79 — pas de plan → 200 avec listes vides."""
+        """FG79 — pas de plan → 200 avec listes vides.
+
+        Type ``industriel`` : depuis AGR605 le plan AGRICOLE est semé à la
+        volée (pose, mise_en_service, controle) — il n'est plus « sans plan »."""
         inst2 = make_chantier(self.company, self.user,
-                              type_installation='agricole')
+                              type_installation='industriel')
         r = self.api.post(
             f'/api/django/installations/chantiers/{inst2.id}/'
             f'creer-interventions-standard/',

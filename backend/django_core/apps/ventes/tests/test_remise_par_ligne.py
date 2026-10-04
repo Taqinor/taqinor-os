@@ -281,7 +281,12 @@ class TestChargeUtileMoteurPdf(TestCase):
                         self.assertIn(cle, item)
 
     def test_la_somme_des_totaux_remises_est_le_ht_net_du_panier(self):
-        """Le contrat du builder : par PANIER, Σ total_ht_remise == ht_net.
+        """Le contrat du builder : par PANIER, Σ total_ht_remise == ht_net
+        + arrondi (ARRONDI-100).
+
+        La répartition de la remise par ligne est inchangée : les lignes
+        remisées somment au HT AVANT le palier de 100 MAD ; l'écart avec le
+        ``ht_net`` imprimé est exactement l'« Arrondi commercial ».
 
         Vérifié à 5 % ET à 15 % — deux taux dont les restes ne tombent pas de
         la même façon.
@@ -294,8 +299,13 @@ class TestChargeUtileMoteurPdf(TestCase):
                 with self.subTest(pct=pct, liste=cle_liste):
                     somme = sum(self._centimes(it['total_ht_remise'])
                                 for it in data[cle_liste])
+                    # ARRONDI-100 : Σ lignes remisées == ht_net + arrondi
+                    # (ex. 41 230,00 == 41 166,67 + 63,33 au panier « sans »
+                    # à 5 %), l'ancienne égalité Σ == ht_net valait à arrondi 0.
                     self.assertEqual(
-                        somme, self._centimes(data[cle_tot]['ht_net']))
+                        somme,
+                        self._centimes(data[cle_tot]['ht_net'])
+                        + self._centimes(data[cle_tot]['arrondi']))
 
     def test_sans_remise_les_nouvelles_cles_valent_le_catalogue(self):
         """Remise nulle ⇒ les quatre clés sont les valeurs CATALOGUE, mot pour
@@ -426,7 +436,8 @@ class TestRenduPdfRemiseParLigne(TestCase):
                 self.assertNotIn(self.PHRASE, html)
 
     def test_les_pages_ne_bougent_pas_avec_une_remise(self):
-        """3 pages, 4 avec étude, 1 en une-page — remise ou pas.
+        """4 pages (industriel premium, D-QJR5-12), 4 avec étude (moteur
+        legacy), 1 en une-page — remise ou pas.
 
         Les deux nombres tiennent dans la MÊME cellule : aucune ligne de
         tableau n'est ajoutée, donc la pagination ne peut pas suivre la remise.
@@ -445,7 +456,8 @@ class TestRenduPdfRemiseParLigne(TestCase):
             devis.save(update_fields=['mode_installation'])
             with self.subTest(pct=pct):
                 _, doc = self._render(devis)
-                self.assertEqual(len(doc.pages), 3)
+                # D-QJR5-12 / QJR620 : l'industriel premium porte 4 pages.
+                self.assertEqual(len(doc.pages), 4)
                 _, doc_etude = self._render(devis, {'include_etude': True})
                 self.assertEqual(len(doc_etude.pages), 4)
                 _, doc_1p = self._render(devis, {'pdf_mode': 'onepage'})
@@ -455,7 +467,9 @@ class TestRenduPdfRemiseParLigne(TestCase):
         """Règle #4 — ``Produit.prix_achat`` reste GÉNÉRATEUR-ONLY, y compris
         sur un document remisé (la remise touche des prix : c'est exactement le
         moment où une marge peut fuiter)."""
-        devis = self._devis('5', 'DEV-REM-ACHAT', etude_params=DEUX_OPTIONS)
+        # La RÉFÉRENCE ne porte pas le mot « achat » : elle est imprimée (titre,
+        # en-tête, pied) et ferait un faux positif sur le marqueur ci-dessous.
+        devis = self._devis('5', 'DEV-REM-MARGE', etude_params=DEUX_OPTIONS)
         for ligne in devis.lignes.all():
             ligne.produit.prix_achat = Decimal('9876.54')
             ligne.produit.save(update_fields=['prix_achat'])
@@ -463,5 +477,10 @@ class TestRenduPdfRemiseParLigne(TestCase):
             with self.subTest(opts=opts):
                 html, _ = self._render(devis, opts)
                 for marqueur in ('9876', '9 876', '9 876',
-                                 '9&#8239;876', 'achat'):
+                                 '9&#8239;876'):
                     self.assertNotIn(marqueur, html.lower())
+                # « achat » MOT ENTIER : « rachat » (tarif de rachat 82-21,
+                # texte légitime) n'est pas un prix d'achat.
+                self.assertIsNone(
+                    re.search(r'\bachat\b', html.lower()),
+                    'le mot « achat » est imprimé dans le document client')

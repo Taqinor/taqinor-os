@@ -10,6 +10,7 @@ import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import {
   categorieIcone, jaugeStock, keySpec, prixTtc, sansPrix, severiteStock,
   SEV_BAS, SEV_OK, SEV_RUPTURE,
+  produitsPompageACompleter, kitPompageChiffrable, roleDuProduitPompage,
 } from '../../features/stock/catalogue'
 import { formatMAD } from '../../lib/format'
 import {
@@ -167,6 +168,25 @@ export function CatalogueTable({
   // pas activée (le rail de StockList filtre déjà sur UNE catégorie ; grouper
   // aide surtout en vue « Tout le catalogue »).
   const [grouped, setGrouped] = useState(false)
+
+  // AGR106 — « Pompage à compléter » : filtre OFF par défaut (rendu identique
+  // tant qu'on ne l'active pas) + bandeau « kit pompage chiffrable ». Lecture
+  // seule ; rien n'apparaît sur un catalogue sans aucun article pompage.
+  const [pompageACompleterSeul, setPompageACompleterSeul] = useState(false)
+  const aDuPompage = useMemo(
+    () => (produits ?? []).some((p) => !p?.is_archived && roleDuProduitPompage(p)),
+    [produits])
+  const aCompleter = useMemo(
+    () => produitsPompageACompleter(produits, fichesParProduit),
+    [produits, fichesParProduit])
+  const kitPompage = useMemo(
+    () => kitPompageChiffrable(produits, fichesParProduit),
+    [produits, fichesParProduit])
+  const donneesAffichees = useMemo(() => {
+    if (!pompageACompleterSeul) return produits ?? []
+    const ids = new Set(aCompleter.map((x) => x.produit.id))
+    return (produits ?? []).filter((p) => ids.has(p.id))
+  }, [produits, pompageACompleterSeul, aCompleter])
 
   const columns = useMemo(() => [
     // Colonne de selection (multi-selection pilotee par StockList → BulkProductBar).
@@ -458,21 +478,48 @@ export function CatalogueTable({
       {/* STKCAT26 — bascule groupement (moteur DataTable `groupBy`), à côté
           de l'export propre au moteur (celui de l'en-tête StockList a disparu,
           devenu redondant — même export xlsx serveur des deux côtés). */}
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {aDuPompage && (
+          <Button type="button" variant={pompageACompleterSeul ? 'secondary' : 'outline'} size="sm"
+                  aria-pressed={pompageACompleterSeul}
+                  data-testid="filtre-pompage-a-completer"
+                  onClick={() => setPompageACompleterSeul(v => !v)}
+                  title="Articles pompage sans prix, pompes sans courbe, variateurs sans fiche">
+            <AlertTriangle /> Pompage à compléter ({aCompleter.length})
+          </Button>
+        )}
         <Button type="button" variant={grouped ? 'secondary' : 'outline'} size="sm"
                 onClick={() => setGrouped(v => !v)}
                 title="Regrouper les lignes par catégorie">
           <Layers /> {grouped ? 'Catégories groupées' : 'Grouper par catégorie'}
         </Button>
       </div>
+      {aDuPompage && (
+        <div role="status" data-testid="bandeau-kit-pompage"
+             className="rounded-lg border border-border bg-muted/40 p-3 text-sm">
+          <span className="font-medium">
+            Kit pompage chiffrable : {kitPompage.chiffrable ? 'oui' : 'non'}
+          </span>
+          {!kitPompage.chiffrable && (
+            <span className="text-muted-foreground"> — il manque : {kitPompage.manques.join(' ; ')}</span>
+          )}
+        </div>
+      )}
+      {aDuPompage && pompageACompleterSeul && (
+        <ul data-testid="pompage-raisons" className="text-xs text-muted-foreground list-disc pl-5">
+          {aCompleter.map(({ produit, raisons }) => (
+            <li key={produit.id}>{produit.nom} — {raisons.join(', ')}</li>
+          ))}
+        </ul>
+      )}
       <DataTable
-        data={produits ?? []}
+        data={donneesAffichees}
         columns={columns}
         getRowId={(p) => p.id}
         loading={showSkeleton}
         searchable={false}
         rowActions={rowActions}
-        virtualize={(produits?.length ?? 0) > 100}
+        virtualize={donneesAffichees.length > 100}
         pageSize={50}
         pageSizeOptions={[25, 50, 100, 200]}
         summary={summary}

@@ -31,7 +31,12 @@ from .models_documents import DocumentTemplates
 # défaut (FK propres à la société source).
 PROFILE_CONFIG_FIELDS = [
     'couleur_principale', 'payment_terms', 'quote_validity_days',
-    'agricole_pump_hours', 'agricole_prix_bonbonne', 'agricole_cout_reel_bonbonne',
+    'agricole_pump_hours',
+    # AGR208 — repères énergie agricole datés et sourcés (ex-« bonbonne »).
+    'reperes_energie_agricole',
+    # AGR107 — réglages pompage société (nullable, sans défaut).
+    'agricole_part_debit_forage_pct', 'agricole_marge_cable_descente_m',
+    'agricole_salissure_supp_pct',
     # Q5 — délais commerciaux (texte libre court ; vide ⇒ délai non affiché).
     'delai_visite_technique', 'delai_installation',
     'doc_prefixes', 'doc_numbering',
@@ -39,6 +44,8 @@ PROFILE_CONFIG_FIELDS = [
     'rendement_global', 'prix_cible_kwc_defaut',
     'remise_max_pct', 'discount_approval_threshold',
     'seuil_regime_declaration_kwc', 'seuil_regime_anre_kwc',
+    # AGR606 — écart de recette pompage toléré (%), sans défaut.
+    'recette_pompage_ecart_max_pct',
     'devise_defaut', 'lead_sla_hours', 'overage_seuil_pct',
     # MRY8 — fenêtres d'appel de la société (forme `fenetres_appel` du
     # contrat MRY25) : elles decident QUAND une touche de cadence tombe

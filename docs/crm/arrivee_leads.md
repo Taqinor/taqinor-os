@@ -88,6 +88,26 @@ et, côté base, un `Lead` avec `external_id=<leadgen_id>` plus un `MetaLeadMirr
 Si la tuile est verte et que rien n'arrive : App Dashboard → mode **Live** et version du champ
 (v25.0) ; consigner ici ce qui a été trouvé.
 
+### 3 bis. Formulaire agricole FORM-AGRI-1 (AGR410)
+
+Le formulaire et sa campagne se créent **à la main**, campagne `PAUSED` (règle #3) — aucun code
+ne les crée. Les questions de pompage sont reconnues par mots-clés
+(`crm/services._meta_reponse_agricole`) :
+
+| Question (mots-clés) | Colonne du lead |
+|---|---|
+| d'où vient l'eau / source d'eau / puits / forage | `source_eau` (puits, forage, bassin, riviere) |
+| énergie de la pompe (fonctionne / marche avec…) | `pompe_alim_actuelle` (butane/gaz, gasoil/diesel, électricité, pas de pompe) |
+| hectares / surface irriguée | `surface_irriguee_ha` |
+| dépense de carburant de la pompe | `depense_carburant_mad_mois` |
+
+Règles : une **tranche** (« 1 à 3 ha », « plus de 2000 DH ») ne devient **jamais** un nombre —
+seule une réponse à nombre unique remplit une colonne, sinon elle reste dans la note
+`[Formulaire Meta]`, mot pour mot. Une question agricole pose le type `agricole` seulement si le
+type est vide. Sur un lead agricole, la tranche de facture ne remplit **pas** `facture_hiver`
+(note seulement). Jamais d'écrasement. Les clés de la fixture de test sont **provisoires** : les
+remplacer par les clés brutes du premier lead réel (`tests_meta_form_mapping.py`).
+
 ## 4. Alerte « webhook muet »
 
 Quand le filet 15 min **crée** un lead dont l'heure Meta a plus de 20 minutes, une notification

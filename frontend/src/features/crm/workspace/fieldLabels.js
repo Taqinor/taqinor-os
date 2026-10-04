@@ -133,6 +133,12 @@ const fieldLabels = {
 
   // ── Pompage (agricole) ────────────────────────────────────────────────
   pompe_cv: { libelleCourt: 'puissance de la pompe (CV)', label: 'Pompe (CV)', section: 'pompage', inputId: 'lf-pompe-cv' },
+  // AGR401 — ex-`pompe_cv` renommée côté serveur (pompe ACTUELLE). Libellé =
+  // `verbose_name` serveur ; `pending` jusqu'à son FormField (AGR415).
+  pompe_actuelle_cv: {
+    libelleCourt: 'puissance de la pompe actuelle (CV)', label: 'Pompe actuelle (CV)',
+    section: 'pompage', inputId: 'lf-pompe-actuelle-cv', pending: 'AGR415',
+  },
   pompe_hmt_m: { libelleCourt: 'hauteur manométrique (HMT)', label: 'HMT (m)', section: 'pompage', inputId: 'lf-pompe-hmt' },
   pompe_debit_m3h: { libelleCourt: 'débit souhaité (m³/h)', label: 'Débit souhaité (m³/h)', section: 'pompage', inputId: 'lf-pompe-debit' },
 
@@ -200,6 +206,8 @@ const fieldLabels = {
     inputId: 'lf-pompage-heures-jour', pending: 'PanneauScriptAppel (CAD152/153)',
   },
   pompe_alim_actuelle: {
+    // AGR404 — champ de provenance du lead (bannière « valeurs modifiées »).
+    libelleCourt: 'énergie de la pompe actuelle',
     label: 'Pompe actuelle — alimentation', section: 'pompage',
     inputId: 'lf-pompe-alim-actuelle', pending: 'PanneauScriptAppel (CAD152/153)',
   },

@@ -33,5 +33,22 @@ setup('authenticate', async ({ page }) => {
     try { localStorage.setItem('taqinor-pwa-install-dismissed', '1') } catch { /* mode privé */ }
     try { localStorage.setItem('taqinor:welcome:seen:v1', '1') } catch { /* mode privé */ }
   })
+  // CAD177 — NTDMO26 (00f3b452) : sur une société RÉELLE de moins de 30 j
+  // (la société `seed_demo` de la CI est créée le jour même, `est_demo=False`)
+  // le widget « Premiers pas » du Dashboard REDIRIGE vers l'assistant
+  // /onboarding/demarrage tant que l'item `assistant_demarrage` n'est ni fait
+  // ni passé. Comportement voulu pour un nouveau client — mais l'utilisateur
+  // simulé par cet état partagé est un HABITUÉ (comme le rejet PWA / l'accueil
+  // ci-dessus) : il a déjà « Passé » l'assistant, exactement par l'action du
+  // bouton « Passer, je configurerai plus tard » (POST …/ignorer/). Sans cela,
+  // tout spec qui ouvre /dashboard atterrissait sur l'assistant (run
+  // 36990128960 : VX60 comptes-justes x2).
+  const progres = await page.request.get('/api/django/onboarding/progress/')
+  expect(progres.ok(), `GET /onboarding/progress/ (${progres.status()})`).toBeTruthy()
+  const item = ((await progres.json()).items ?? []).find((it) => it.key === 'assistant_demarrage')
+  if (item && !item.fait) {
+    const ignorer = await page.request.post(`/api/django/onboarding/progress/${item.id}/ignorer/`)
+    expect(ignorer.ok(), `assistant de démarrage passé (${ignorer.status()})`).toBeTruthy()
+  }
   await page.context().storageState({ path: AUTH_FILE })
 })

@@ -199,6 +199,23 @@ class ProduitAdminForm(forms.ModelForm):
             if ('courbe_pompe' in cleaned and ancienne_courbe
                     and not cleaned.get('courbe_pompe')):
                 self.add_error('courbe_pompe', CHAMP_CATALOGUE_VIDE_INTERDIT)
+        # AGR102 — miroir du garde API (ProduitSerializer.validate_courbe_pompe)
+        # : une courbe saisie doit être physiquement lisible (débits strictement
+        # croissants, HMT non croissante, valeurs >= 0). Une courbe mal formée
+        # (forme) est ignorée ici — c'est la garde de forme de l'API.
+        courbe = cleaned.get('courbe_pompe')
+        if courbe:
+            from .serializers import controle_courbe_pompe_lisible
+            if (isinstance(courbe, dict)
+                    and isinstance(courbe.get('debits_m3h'), list)
+                    and isinstance(courbe.get('hmt_m'), list)
+                    and len(courbe['debits_m3h']) == len(courbe['hmt_m'])
+                    and all(isinstance(v, (int, float))
+                            and not isinstance(v, bool)
+                            for v in courbe['debits_m3h'] + courbe['hmt_m'])):
+                probleme = controle_courbe_pompe_lisible(courbe)
+                if probleme:
+                    self.add_error('courbe_pompe', probleme)
         return cleaned
 
 

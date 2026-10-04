@@ -23,7 +23,9 @@ from apps.ventes.models import Devis
 from apps.ventes.tests._quote_engine_common import (
     make_client, make_company, make_devis, make_user,
 )
-from apps.ventes.utils.options import AVEC_BATTERIE, option_totaux
+from apps.ventes.utils.options import (
+    AVEC_BATTERIE, option_lines, option_totaux,
+)
 
 MIGRATION = import_module(
     'apps.ventes.migrations.0109_qjr212_prix_par_kwc_option_effective')
@@ -94,12 +96,27 @@ class TestQJR212(TestCase):
 
     def test_la_chaine_recopiee_colle_au_noyau(self):
         """La recopie SELF-CONTAINED doit rendre le MÊME nombre que le noyau —
-        sinon la réparation écrirait une troisième vérité."""
+        sinon la réparation écrirait une troisième vérité.
+
+        ARRONDI-100 : la recopie est FIGÉE au 31/08/2026 (migration déjà
+        appliquée, volontairement indépendante du moteur) — elle rend le TTC
+        au centime, sans l'étage « arrondi » que le noyau applique depuis. Elle
+        colle donc au noyau SANS palier (68 880,00) ; le total du devis
+        (``option_totaux``) n'est que ce nombre ramené au palier de 100 MAD
+        inférieur (68 800,00)."""
+        from apps.ventes.selectors import _canonical_totaux
         devis = self._devis()
+        copie = self._panier_effectif_ttc(devis)
+        noyau_sans_palier = _canonical_totaux(
+            option_lines(devis, AVEC_BATTERIE),
+            remise_globale_pct=devis.remise_globale,
+            fallback_taux=devis.taux_tva)['ttc']
         self.assertLessEqual(
-            abs(self._panier_effectif_ttc(devis)
-                - Decimal(str(option_totaux(devis, AVEC_BATTERIE)['ttc']))),
-            Decimal('0.01'))
+            abs(copie - Decimal(str(noyau_sans_palier))), Decimal('0.01'))
+        total_devis = Decimal(str(option_totaux(devis, AVEC_BATTERIE)['ttc']))
+        self.assertEqual(total_devis % 100, 0)
+        self.assertLessEqual(total_devis, copie)
+        self.assertLess(copie - total_devis, Decimal('100'))
 
     # ── LE ROUGE ────────────────────────────────────────────────────────────
     def test_devis_deux_options_sans_remise_est_repare(self):

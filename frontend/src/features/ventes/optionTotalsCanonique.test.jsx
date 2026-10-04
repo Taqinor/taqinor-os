@@ -23,14 +23,17 @@ const LIGNES = [
 describe('optionTotalsTTC — chaîne canonique (ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER)', () => {
   it('remise appliquée sur le HT brut, taux par taux, avant la TVA', () => {
     const t = optionTotalsTTC(LIGNES, '5')
-    expect(t.totalSans).toBe(13299.98)
-    expect(t.totalAvec).toBe(13299.98)
+    // ARRONDI-100 : 13 299,98 → palier de 100 inférieur (la chaîne canonique
+    // reste celle du commentaire d'en-tête, avant le palier).
+    expect(t.totalSans).toBe(13200)
+    expect(t.totalAvec).toBe(13200)
   })
 
   it('le brut est la même chaîne à 0 %', () => {
     const t = optionTotalsTTC(LIGNES, 0)
-    expect(t.totalSansBrut).toBe(13999.99)
-    expect(t.totalSans).toBe(13999.99)
+    // ARRONDI-100 : 13 999,99 → palier de 100 inférieur.
+    expect(t.totalSansBrut).toBe(13900)
+    expect(t.totalSans).toBe(13900)
   })
 
   it('mono-taux : TVA sur le HT net unique', () => {

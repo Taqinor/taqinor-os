@@ -584,7 +584,20 @@ const NON_LU_DOCUMENTATION: Readonly<Record<string, string>> = {
   'exemple_remplace_par_envoye.remplace_par.url': 'Fragment d’exemple (successeur ENVOYÉ) : le chemin public de la version en vigueur, illustratif — lu par `resolveRemplacement`.',
   'exemple_remplace_par_brouillon.remplace_par.reference': 'Fragment d’exemple (successeur encore BROUILLON) : la référence reste dite, illustrative.',
   'exemple_remplace_par_brouillon.remplace_par.url': 'Fragment d’exemple (successeur encore BROUILLON) : `null`, un brouillon n’est jamais servi au client — illustratif.',
+  // AGR4 (contrat d'abord PACT10, 03/10/2026)
+  'notes.agricole_agr4': 'Note de contrat : pourquoi `exemple_agricole` est un FRAGMENT posé avant ses deux moitiés (AGR4, PACT10) — documentation.',
 };
+
+/**
+ * FRAGMENTS D'EXEMPLE posés AVANT leur lecteur (PACT10) : toute feuille sous ce
+ * préfixe est décidée en bloc, par écrit. La moitié web qui les LIRA (AGW300-
+ * AGW308) retire le préfixe d'ici et range chaque clé dans `CLES_LUES` / `NON_LU`.
+ */
+const FRAGMENTS_DOCUMENTATION: Readonly<Record<string, string>> = {
+  'exemple_agricole.': 'Fragment d’exemple agricole (AGR4) : la charge utile publique d’un devis de pompage, posée seule sur main avant la page /proposition agricole (AGW300-AGW308) qui la lira.',
+};
+const decideeParFragment = (c: string): boolean =>
+  Object.keys(FRAGMENTS_DOCUMENTATION).some((prefixe) => c.startsWith(prefixe));
 
 describe('QJW20 — chaque feuille de `proposal_data` est soit LUE, soit REFUSÉE par écrit', () => {
   const PAYLOAD = feuillesPayload(CONTRAT);
@@ -629,7 +642,7 @@ describe('QJW20 — chaque feuille de `proposal_data` est soit LUE, soit REFUSÉ
   });
 
   it('CHAQUE clé de la documentation du contrat est justifiée par écrit', () => {
-    const orphelines = DOCUMENTATION.filter((c) => NON_LU_DOCUMENTATION[c] === undefined);
+    const orphelines = DOCUMENTATION.filter((c) => NON_LU_DOCUMENTATION[c] === undefined && !decideeParFragment(c));
     expect(orphelines, `documentation sans décision : ${orphelines.join(', ')}`).toEqual([]);
   });
 
@@ -648,7 +661,7 @@ describe('QJW20 — chaque feuille de `proposal_data` est soit LUE, soit REFUSÉ
   });
 
   it('chaque raison est une VRAIE phrase, pas un « n/a » qui vide la garde de son sens', () => {
-    for (const [cle, raison] of Object.entries({ ...NON_LU, ...NON_LU_DOCUMENTATION, ...LUES_HORS_RENOMMAGE })) {
+    for (const [cle, raison] of Object.entries({ ...NON_LU, ...NON_LU_DOCUMENTATION, ...FRAGMENTS_DOCUMENTATION, ...LUES_HORS_RENOMMAGE })) {
       expect(raison.length, `${cle} : raison trop courte`).toBeGreaterThan(30);
       expect(raison, `${cle} : raison vide de contenu`).not.toMatch(/^(?:n\/a|na|tbd|todo|—|-)\.?$/i);
     }

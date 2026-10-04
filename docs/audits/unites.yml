@@ -1,0 +1,626 @@
+# docs/audits/unites.yml — registre versionné des unités d'audit (commande « audit »)
+#
+# Lu par le skill `.claude/skills/audit/SKILL.md` ; méthode : docs/audits/METHODE.md.
+# Source de vérité PARTAGÉE entre machines : on le lit toujours sur origin/main
+# (`git fetch origin` puis `git show origin/main:docs/audits/unites.yml`).
+#
+# - `rang` : ordre de passage (règle : METHODE.md §D.2). `audit first` = rang 1 ;
+#   `audit next` = plus petit rang dont statut = « à auditer » et sans branche de
+#   claim `audit-<id>` vivante sur origin (METHODE.md §D.5).
+# - `possede` : chemins dont l'unité est PROPRIÉTAIRE D'ÉCRITURE (routage des tâches,
+#   METHODE.md §D.3). Le chemin le plus spécifique gagne (fichier > dossier > glob
+#   résiduel). Si docs/ownership.yml existe, IL PRIME sur ce champ.
+#   Une unité sans `possede` (X2, X4, X6) est une PISTE : elle audite à travers les
+#   autres et route toutes ses tâches vers leurs propriétaires.
+# - `perimetre_lu` : ce que l'audit LIT en plus (coutures), sans en être propriétaire.
+# - `statut` ∈ {à auditer, en cours, audité, construit, vérifié}.
+#   « en cours » se lit d'abord sur la branche de claim ; il n'est écrit ici que si
+#   un audit livre volontairement un dossier partiel.
+# - `groupe` : préfixe d'ID des tâches produites (vérifié libre dans docs/*.md,
+#   docs/plans/*.md et docs/BUILD_ORDER.yml le 02/10/2026).
+# - `plan` : fichier du propriétaire (docs/plans/PLAN_AUDIT_<UNITE>.md) ;
+#   `plans_alimentes` : fichiers où les tâches d'un audit de cette unité sont allées.
+# - Faits vérifiés sur origin/main 6742fc3a1 ; P et I = probabilité et impact (1-5),
+#   score = P × I (METHODE.md §D.2).
+#
+# Hors périmètre de TOUTES les unités : les 47 apps parquées
+# (backend/django_core/core/parked.py, APPS_PARQUEES), backend/parked/**, et
+# apps/web/** hors des fichiers listés ci-dessous (domaine de docs/WEB_PLAN.md).
+
+version: 1
+date_maj: "2026-10-02"
+base: "6742fc3a1"
+statuts: [à auditer, en cours, audité, construit, vérifié]
+
+unites:
+
+  - id: X2
+    rang: 1
+    declencheur: totaux
+    titre: "Invariants de la chaîne argent de bout en bout (piste sans fichiers propres)"
+    possede: []
+    perimetre_lu:
+      - "chaîne Sous-total HT → Remise → Total HT → TVA → TTC sur devis, BC, facture, avoir, PDF, page publique, portail"
+      - "backend/django_core/apps/ventes/utils/references.py (numérotation, jamais count()+1)"
+      - "Produit.prix_achat jamais côté client"
+    coutures:
+      - "backend/django_core/apps/ventes/tests/test_proprietes_devis.py"
+      - "backend/django_core/apps/ventes/tests/test_proprietes_tarifs.py"
+      - "backend/django_core/apps/ventes/tests/test_solar_differential.py"
+      - "backend/django_core/apps/ventes/tests/test_solar_differential_calculs.py"
+      - "backend/django_core/apps/ventes/tests/test_figures_parite.py"
+      - "frontend/src/features/ventes/solar.properties.test.mjs"
+      - "frontend/e2e/figures-parite.spec.js"
+      - "manage.py audit_coherence --json --no-persist (22 règles @regle, ventes/crm)"
+    P: 4
+    I: 5
+    score: 20
+    niveau: L3
+    statut: à auditer
+    groupe: ATOT
+    plan: null
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "Produit les oracles que J5, J1b et J3 réutilisent. Tâches routées vers le propriétaire des fichiers touchés (souvent PLAN_AUDIT_FACTURATION / DEVIS / MOTEUR) ou TRANSVERSE."
+
+  - id: J5
+    rang: 2
+    declencheur: facturation
+    titre: "Devis accepté → BC → facture → paiement → avoir → relances"
+    possede:
+      - "backend/django_core/apps/facturation/**"
+      - "backend/django_core/apps/ventes/domain/facturation_ops.py"
+      - "backend/django_core/apps/ventes/domain/encaissements.py"
+      - "backend/django_core/apps/ventes/domain/recouvrement.py"
+      - "backend/django_core/apps/ventes/domain/argent.py"
+      - "backend/django_core/apps/ventes/domain/bordereau.py"
+      - "backend/django_core/apps/ventes/views/facture.py"
+      - "backend/django_core/apps/ventes/views/ligne_facture.py"
+      - "backend/django_core/apps/ventes/views/bon_commande.py"
+      - "backend/django_core/apps/ventes/views/paiement.py"
+      - "backend/django_core/apps/ventes/views/avoir.py"
+      - "backend/django_core/apps/ventes/views/remise_encaissement.py"
+      - "backend/django_core/apps/ventes/views/mandat_paiement.py"
+      - "backend/django_core/apps/ventes/views/releve_import.py"
+      - "frontend/src/pages/ventes/{AvoirsPage,BonCommandeList,FactureForm,FactureKanbanBoard,FactureList,MandatsPaiementPage,NoteDebitDialog,PaiementDialog,PaiementsPage,RelancesPage,RemisesEncaissementPage}.jsx"
+      - "frontend/src/pages/ventes/factureKanban.js"
+      - "frontend/src/features/ventes/PaiementEnLigneDialog.jsx"
+      - "frontend/src/features/ventes/echeancierEdition.js"
+    perimetre_lu:
+      - "PDF facture legacy (séparé de la règle #4)"
+      - "lien de paiement, webhook prestataire, import relevé"
+    coutures:
+      - "import-linter : exception explicite apps.facturation.totaux -> apps.ventes.selectors (backend/django_core/.importlinter)"
+      - "deux chemins de création de facture (devis/generer-facture et bon_commande/creer-facture) — chaîne de totaux commune NON vérifiée"
+      - "événements : facture_emise → crm ; facture_payee → notifications + onboarding ; payment_captured (core) → ventes"
+      - "émis sans abonné : paiement_rejete, facture_annulee, paiement_enregistre, avoir_cree, avoir_annule (facture_paid est dans ALLOWED_UNCONSUMED)"
+      - "abonné sans émetteur : effet_rejete"
+    P: 4
+    I: 5
+    score: 20
+    niveau: L3
+    statut: à auditer
+    groupe: AFAC
+    plan: docs/plans/PLAN_AUDIT_FACTURATION.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "apps/facturation : 1 444 lignes de .py à la racine de l'app, hors tests/ et migrations/ (wc -l, 02/10)."
+
+  - id: D3
+    rang: 3
+    declencheur: calepinage
+    titre: "Calepinage : studio toiture, simulation, publication vers le devis, livrables"
+    possede:
+      - "backend/django_core/apps/calepinage/**"
+      - "frontend/src/features/calepinage/**"
+      - "frontend/src/api/calepinageApi.js"
+      - "frontend/src/pages/ventes/{ToitureDesign,RoofViewer,RoofViewerPage,Conception3DPage}.jsx"
+      - "backend/django_core/apps/ventes/domain/geometrie.py"
+      - "apps/web/src/scripts/roof-tool*.ts"
+      - "apps/web/src/scripts/roofPro11/**"
+    perimetre_lu:
+      - "crm roof_outline / roof_point / traceToit (propriétaire J1a)"
+      - "backend/django_core/apps/ventes/domain/resynchronisation.py (propriétaire J1b)"
+      - "feu vert backend/django_core/apps/calepinage/services/feu_vert.py ↔ visites"
+    coutures:
+      - "contrats : backend/django_core/apps/calepinage/contract_samples/ (48 fichiers dont README.md)"
+      - "événements : lead_created crm → calepinage ; layout_finalise → calepinage + crm ; devis_sent → calepinage"
+    P: 5
+    I: 4
+    score: 20
+    niveau: L3
+    statut: à auditer
+    groupe: ACAL
+    plan: docs/plans/PLAN_AUDIT_CALEPINAGE.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "Score le plus élevé à égalité (critique de complétude) ; livrables PDF d'étude hors règle #4."
+
+  - id: J0
+    rang: 4
+    declencheur: acquisition
+    titre: "Acquisition : site, Meta Lead Ads, webhooks, parrainage, RDV"
+    possede:
+      - "backend/django_core/apps/adsengine/**"
+      - "backend/django_core/apps/contact/**"
+      - "backend/django_core/apps/crm/webhooks.py"
+      - "backend/django_core/apps/crm/odoo_sync.py"
+      - "frontend/src/features/adsengine/**"
+      - "apps/web/src/pages/devis/mon-toit.astro"
+      - "apps/web/src/pages/api/**"
+      - "apps/web/src/lib/lead.ts"
+    perimetre_lu:
+      - "apps/web/worker/deadLetter.mjs + liaison KV Cloudflare LEADS_DLQ (QJR663 ; no-op tant que l'espace KV n'est pas créé par le fondateur ; aucun équivalent backend)"
+      - "règle #1 Odoo JSON-2 ; règle #3 --status PAUSED"
+    coutures:
+      - "événements : meta_lead_captured, appointment_effectue crm → adsengine ; lead_erased : abonné adsengine sans émetteur"
+      - "canal post_save parallèle : backend/django_core/apps/adsengine/capi_crm.py (connect l.519)"
+      - "garde : scripts/check_lead_webhook_parite.py"
+    P: 4
+    I: 4
+    score: 16
+    niveau: L2
+    statut: à auditer
+    groupe: AACQ
+    plan: docs/plans/PLAN_AUDIT_ACQUISITION.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "crm/webhooks.py et crm/odoo_sync.py sont aussi dans le contrat de docs/plans/PLAN_CRM_VENTES.md (chevauchement, METHODE.md §D.3)."
+
+  - id: J1a
+    rang: 5
+    declencheur: lead
+    titre: "Lead → fiche → cadence → visite (CRM hors fichiers chauds, visites)"
+    possede:
+      - "backend/django_core/apps/crm/**"
+      - "backend/django_core/apps/visites/**"
+      - "frontend/src/pages/crm/**"
+      - "frontend/src/features/crm/**"
+      - "frontend/src/api/crmApi.js"
+      - "frontend/src/pages/visites/**"
+      - "frontend/src/features/visites/**"
+      - "frontend/src/api/visitesApi.js"
+      - "frontend/src/pages/activities/**"
+      - "apps/web/src/pages/questionnaire/**"
+    perimetre_lu:
+      - "backend/django_core/authentication/selectors.py (home mobile, propriétaire X1) — jumelle de frontend/src/features/offlinesync/mobile/mobileHome.js (propriétaire X7)"
+    coutures:
+      - "contrats : backend/django_core/apps/crm/contract_samples/ (dont controle_suivi.json) ; backend/django_core/apps/visites/contract_samples/"
+      - "catalogue d'étapes : frontend/src/features/crm/relances/parcours_suivi.json (18 étapes)"
+      - "événements : visite_planifiee / visite_terminee / visite_validee visites → crm ; lead_created crm → calepinage"
+      - "crm/urls.py:32 importe apps.visites.views (violation de la doctrine de couture)"
+      - "émis sans abonné : deal_commission_due (crm/receivers.py:156), salle_vente_signal_interet (crm/services.py:286)"
+      - "crm abonné à ao_depose / ao_gagne d'une app parquée"
+    P: 4
+    I: 4
+    score: 16
+    niveau: L2
+    statut: à auditer
+    groupe: ALEA
+    plan: docs/plans/PLAN_AUDIT_LEAD.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "Résiduel de apps/crm : crm/services.py, selectors.py, views.py sont à D1 ; webhooks.py, odoo_sync.py à J0. Mots v1 : leads (dédoublonnage/attribution/score), fiche, cadence, clients, visites. pages/activities : à confirmer par la session de propriété."
+
+  - id: D1
+    rang: 6
+    declencheur: crm
+    titre: "Plongée CRM : les trois fichiers chauds"
+    possede:
+      - "backend/django_core/apps/crm/services.py"
+      - "backend/django_core/apps/crm/selectors.py"
+      - "backend/django_core/apps/crm/views.py"
+    perimetre_lu:
+      - "fonctions appelées par J0, J1a, J1b, J5"
+    coutures:
+      - "resolve_client_for_lead (jamais de doublon client)"
+      - "crm/selectors.py:364 et :421 importent apps.ventes.models.Facture"
+    P: 4
+    I: 4
+    score: 16
+    niveau: L2
+    statut: à auditer
+    groupe: ACRM
+    plan: docs/plans/PLAN_AUDIT_CRM.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "Tailles (wc -l, 02/10) : services.py 13 547, selectors.py 5 889, views.py 5 817. Une lane partagée par les précisions v1 pour éviter le triple rapport."
+
+  - id: X1
+    rang: 7
+    declencheur: sécurité
+    titre: "Multi-société, authentification, rôles, autorisations"
+    possede:
+      - "backend/django_core/core/**"
+      - "backend/django_core/apps/core/**"
+      - "backend/django_core/authentication/**"
+      - "backend/django_core/apps/roles/**"
+      - "backend/django_core/apps/identity/**"
+      - "backend/django_core/apps/accessreview/**"
+      - "backend/django_core/apps/audit/**"
+      - "backend/django_core/apps/records/**"
+      - "backend/django_core/apps/trash/**"
+      - "backend/django_core/apps/customfields/**"
+      - "backend/django_core/apps/entites/**"
+      - "backend/django_core/apps/tiers/**"
+      - "backend/django_core/apps/adminops/**"
+      - "backend/django_core/tests/**"
+      - "backend/django_core/testkit/**"
+      - "frontend/src/features/{auth,admin,adminops,audit,entites,tiers}/**"
+      - "frontend/src/pages/{admin,tiers}/**"
+      - "frontend/src/pages/{Login,RegisterCompany}.jsx"
+      - "frontend/src/api/{accessReviewApi,adminopsApi,auditApi,customFieldsApi,identityApi,recordsApi,rolesApi,tiersApi,trashApi}.js"
+    perimetre_lu:
+      - "checklist OWASP ASVS 5.0 8.4.1 / 8.2.2 / 8.2.3 + cheat-sheet multi-tenant sur toutes les apps conservées"
+      - "docs/claude-memory/demo-accounts-prod-incident.md"
+    coutures:
+      - "rôles : roles/models.py:1301 CANONICAL_SYSTEM_ROLES ; permissions : authentication/permissions.py (IsAdminRole, IsResponsableOrAdmin)"
+      - "garde : backend/django_core/tests/test_tenant_sweep.py + testkit/tenant_sweep.py"
+      - "contrats : backend/django_core/apps/tiers/contract_samples/"
+    P: 3
+    I: 5
+    score: 15
+    niveau: L3
+    statut: à auditer
+    groupe: ASEC
+    plan: docs/plans/PLAN_AUDIT_SECURITE.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "core/events.py et core/event_coverage.py sont à X3 (plus spécifiques). Lecture par checklist, pas intégrale."
+
+  - id: X4
+    rang: 8
+    declencheur: pdf
+    titre: "Documents imprimés : /proposal, PDF facture, PDF d'étude (piste sans fichiers propres)"
+    possede: []
+    perimetre_lu:
+      - "/proposal (règle #4, apps/ventes/quote_engine — propriétaire D2)"
+      - "PDF facture legacy (propriétaire J5) ; PDF d'étude calepinage (propriétaire D3)"
+      - "backend/django_core/apps/ventes/utils/pdf.py (propriétaire J1b)"
+      - "textes CGV de apps/parametres (propriétaire X3)"
+    coutures:
+      - "même texte / CGV : PDF = page publique = portail ; extraction PyMuPDF dans le conteneur"
+      - "prix_achat jamais imprimé (oracle 7 qa-explorer)"
+    P: 3
+    I: 5
+    score: 15
+    niveau: L2
+    statut: à auditer
+    groupe: APDF
+    plan: null
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "Monte à L3 dès qu'un chiffre client imprimé est contesté (go-deep : checked-facts)."
+
+  - id: D2
+    rang: 9
+    declencheur: moteur
+    titre: "Moteur de devis (règle #4) et calculateurs de dimensionnement"
+    possede:
+      - "backend/django_core/apps/ventes/quote_engine/**"
+      - "backend/django_core/apps/ventes/solar_design.py"
+      - "backend/django_core/apps/ventes/etude_horaire.py"
+      - "backend/django_core/apps/ventes/dimensionnement.py"
+      - "backend/django_core/apps/ventes/offres_tailles.py"
+      - "backend/django_core/apps/ventes/economie.py"
+      - "backend/django_core/apps/ventes/domain/dimensionnement_devis.py"
+      - "backend/django_core/apps/ventes/coherence/**"
+      - "backend/django_core/apps/ventes/management/commands/audit_coherence.py"
+      - "backend/django_core/apps/ventes/tests/test_quote_engine.py"
+    perimetre_lu:
+      - "modes Résidentiel / Industriel / Agricole, pompage (jamais onduleur ni batterie, m³/jour seulement pour une pompe à courbe, jamais de produit sans prix)"
+      - "frontend/src/features/ventes/solar.js (propriétaire D4) : mots-clés alignés avec quote_engine/builder.py"
+    coutures:
+      - "quote_engine : builder.py (4 470 l.), generate_devis_premium.py (4 833 l.), pricing.py, bareme.py, figures.py, montants.py, sous-dossiers residential / industriel / commercial / agricole"
+      - "/proposal seul chemin PDF client (règle #4) ; pages 3 / 4 / 1 gardées par test_quote_engine.py"
+    P: 3
+    I: 5
+    score: 15
+    niveau: L3
+    statut: à auditer
+    groupe: AMOT
+    plan: docs/plans/PLAN_AUDIT_MOTEUR.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "Lanes de jugement en opus/high (règle #4). Manifeste de couverture obligatoire (lane QJR79 : constats dans des fichiers jamais lus avant ; chiffre 149 non re-vérifié)."
+
+  - id: J2
+    rang: 10
+    declencheur: chantiers
+    titre: "Signature → chantier → interventions → réception"
+    possede:
+      - "backend/django_core/apps/installations/**"
+      - "backend/django_core/apps/outillage/**"
+      - "frontend/src/pages/installations/**"
+      - "frontend/src/features/installations/**"
+      - "frontend/src/pages/interventions/**"
+      - "frontend/src/pages/outillage/**"
+      - "frontend/src/api/installationsApi.js"
+      - "frontend/src/api/outillageApi.js"
+    perimetre_lu:
+      - "bascule nomenclature → parc SAV : sweep_bom_to_parc défini dans apps/sav/services.py:127, appelé depuis installations/services.py:3203-3211"
+    coutures:
+      - "contrats : backend/django_core/apps/installations/contract_samples/"
+      - "événements : devis_accepted → installations/receivers.py:30 ; bon_commande_cree → installations + notifications ; chantier_annule → ventes ; chantier_receptionne.send à installations/services.py:3335"
+      - "émis sans abonné : document_statut_change"
+    P: 3
+    I: 4
+    score: 12
+    niveau: L2
+    statut: à auditer
+    groupe: ACHT
+    plan: docs/plans/PLAN_AUDIT_CHANTIERS.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "installations/services.py = 4 712 lignes : découpage par sous-flux (achats/réception, kitting/livraison, réception chantier → parc)."
+
+  - id: J3
+    rang: 11
+    declencheur: stock
+    titre: "Catalogue, prix, stock, achats fournisseurs"
+    possede:
+      - "backend/django_core/apps/stock/**"
+      - "backend/django_core/apps/achats/**"
+      - "frontend/src/pages/stock/**"
+      - "frontend/src/features/stock/**"
+      - "frontend/src/api/stockApi.js"
+    perimetre_lu:
+      - "ventes.utils (noyau partagé de fait, propriétaire J1b)"
+    coutures:
+      - "contrats : backend/django_core/apps/stock/contract_samples/"
+      - "événements : reception_fournisseur_confirmee et facture_fournisseur_creee → installations ; produit_modifie → ventes"
+      - "émis sans abonné : paiement_fournisseur_enregistre, mouvement_stock_enregistre"
+    P: 3
+    I: 4
+    score: 12
+    niveau: L2
+    statut: à auditer
+    groupe: ASTK
+    plan: docs/plans/PLAN_AUDIT_STOCK.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "Règle « prix négocié intouchable » ; Produit.prix_achat jamais client ; seed_catalogue additif."
+
+  - id: J6
+    rang: 12
+    declencheur: documents
+    titre: "GED, documents, portail client, suivi public"
+    possede:
+      - "backend/django_core/apps/ged/**"
+      - "backend/django_core/apps/documents/**"
+      - "backend/django_core/apps/portail/**"
+      - "frontend/src/pages/ged/**"
+      - "frontend/src/features/ged/**"
+      - "frontend/src/features/portail/**"
+      - "frontend/src/api/{gedApi,documentsApi,portailApi}.js"
+      - "apps/web/src/pages/suivi/**"
+    perimetre_lu:
+      - "sélecteurs lus par portail : ventes, ged, installations, crm, sav, stock"
+    coutures:
+      - "contrats : backend/django_core/apps/portail/contract_samples/"
+      - "événements : document_produit ventes → ged"
+    P: 3
+    I: 4
+    score: 12
+    niveau: L2
+    statut: à auditer
+    groupe: ADOC
+    plan: docs/plans/PLAN_AUDIT_DOCUMENTS.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "Mots v1 : ged, portail. Aucun compte portail seedé : couverture à déclarer."
+
+  - id: X3
+    rang: 13
+    declencheur: parametres
+    titre: "Paramètres, notifications, automatisation, onboarding, bus d'événements"
+    possede:
+      - "backend/django_core/apps/parametres/**"
+      - "backend/django_core/apps/notifications/**"
+      - "backend/django_core/apps/automation/**"
+      - "backend/django_core/apps/onboarding/**"
+      - "backend/django_core/core/events.py"
+      - "backend/django_core/core/event_coverage.py"
+      - "frontend/src/pages/parametres/**"
+      - "frontend/src/features/parametres/**"
+      - "frontend/src/features/notifications/**"
+      - "frontend/src/pages/onboarding/**"
+      - "frontend/src/features/onboarding/**"
+      - "frontend/src/pages/approbations/**"
+      - "frontend/src/api/{parametresApi,notificationsApi,automationApi}.js"
+    perimetre_lu:
+      - "chaque lecteur d'un réglage (une seule lecture par réglage)"
+    coutures:
+      - "contrats : backend/django_core/apps/parametres/contract_samples/ ; backend/django_core/apps/notifications/contract_samples/"
+      - "core/events.py : 79 signaux déclarés ; ALLOWED_UNCONSUMED dans core/event_coverage.py"
+    P: 3
+    I: 4
+    score: 12
+    niveau: L2
+    statut: à auditer
+    groupe: APAR
+    plan: docs/plans/PLAN_AUDIT_PARAMETRES.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "Documents envoyés/signés gardent leur version figée ; aucun texte client codé en dur ailleurs."
+
+  - id: D4
+    rang: 14
+    declencheur: générateur
+    titre: "Écran générateur de devis (100 % TTC) et calcul solaire côté écran"
+    possede:
+      - "frontend/src/pages/ventes/DevisGenerator.jsx"
+      - "frontend/src/pages/ventes/generator/**"
+      - "frontend/src/features/ventes/solar.js"
+      - "frontend/src/features/ventes/solar*.test.*"
+      - "frontend/src/features/ventes/autoQuote.js"
+    perimetre_lu:
+      - "internes de apps/web/src/pages/proposition/[...token].astro (propriétaire J1b)"
+      - "apps/web/src/scripts/roof-tool-pro11.ts (propriétaire D3)"
+    coutures:
+      - "jumeaux écran ↔ moteur (C3) ; form noValidate, inputs step=any, indicateur de marge générateur seulement"
+    P: 4
+    I: 5
+    score: 20
+    niveau: L2
+    statut: à auditer
+    groupe: AGNR
+    plan: docs/plans/PLAN_AUDIT_GENERATEUR.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "Audité par QJR5 le 30/09, contre-visite après un cycle de build (d'où le rang 14 malgré le score 20). DevisGenerator.jsx = 5 668 lignes. Préfixe AGEN déjà pris (docs/done_task.md) → AGNR."
+
+  - id: J1b
+    rang: 15
+    declencheur: devis
+    titre: "Étude → devis → envoi → correction → révision → signature"
+    possede:
+      - "backend/django_core/apps/ventes/**"
+      - "frontend/src/pages/ventes/**"
+      - "frontend/src/features/ventes/**"
+      - "frontend/src/api/ventesApi.js"
+      - "apps/web/src/pages/proposition/**"
+    perimetre_lu:
+      - "couture calepinage ↔ devis (generer-devis / sync-devis, from-layout / sync-layout)"
+    coutures:
+      - "contrats : backend/django_core/apps/ventes/contract_samples/"
+      - "événements : devis_accepted.send cycle_vie.py:1192 → crm, installations, sav, automation, onboarding ; devis_sent.send cycle_vie.py:2317 → crm, calepinage, onboarding ; devis_refused.send depuis une vue (views/devis.py:2386) ; devis_expired → audit + notifications"
+      - "accept_devis (cycle_vie.py:1196) appelé par views/devis.py:2327 (interne) et public_views.py:4489 (OTP public) : même comportement exigé"
+      - "Devis.roof_layout (ventes/models.py:207), re-posé par domain/resynchronisation.py:1070-1097"
+    P: 2
+    I: 5
+    score: 10
+    niveau: L3
+    statut: à auditer
+    groupe: ADEV
+    plan: docs/plans/PLAN_AUDIT_DEVIS.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "Audité par QJR5 le 30/09, contre-visite après un cycle de build. Propriétaire RÉSIDUEL de apps/ventes et des écrans ventes (J5, D2, D3, D4 possèdent des fichiers plus spécifiques)."
+
+  - id: X5
+    rang: 16
+    declencheur: deploy
+    titre: "Déployabilité, réglages, images, CI, outillage du dépôt, socle du front"
+    possede:
+      - "backend/django_core/erp_agentique/**"
+      - "backend/{caddy,nginx,celery_worker,minio,db}/**"
+      - "**/Dockerfile*"
+      - "docker-compose*.yml"
+      - ".github/**"
+      - "scripts/**"
+      - "frontend/scripts/**"
+      - "frontend/src/router/**"
+      - "frontend/src/components/**"
+      - "frontend/src/ui/**"
+      - "frontend/src/features/{core,kanban,pwa,queue}/**"
+      - "frontend/src/pages/{home,preferences,aide,ui}/**"
+      - "frontend/src/api/{axios,origin,refreshCoordinator,resource,endpointNonConstruit}.js"
+      - "frontend/src/** (résiduel : tout fichier front sans propriétaire plus spécifique)"
+    perimetre_lu:
+      - "frontend/scripts/check_dockerfile_context.mjs ; manage.py check --deploy ; parité CI ↔ image"
+    coutures:
+      - "leçon 1 de docs/claude-memory/lecons-construction-qjr5.md (vert en CI ≠ déployable)"
+    P: 2
+    I: 5
+    score: 10
+    niveau: L1
+    statut: à auditer
+    groupe: ADEP
+    plan: docs/plans/PLAN_AUDIT_DEPLOY.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "Propriétaire de scripts/** : les gardes M3 (check_*.py) de n'importe quel audit sont routées ici sauf si elles ne touchent qu'une app."
+
+  - id: J4
+    rang: 17
+    declencheur: sav
+    titre: "Chantier réceptionné → parc, tickets, SLA, garanties, monitoring"
+    possede:
+      - "backend/django_core/apps/sav/**"
+      - "backend/django_core/apps/monitoring/**"
+      - "frontend/src/pages/sav/**"
+      - "frontend/src/features/sav/**"
+      - "frontend/src/pages/monitoring/**"
+      - "frontend/src/api/{savApi,monitoringApi}.js"
+    perimetre_lu:
+      - "/suivi/:token ERP (≠ apps/web/src/pages/suivi, propriétaire J6)"
+    coutures:
+      - "événements : chantier_receptionne → sav + monitoring ; intervention_completed → sav + onboarding ; ticket_resolu → crm + notifications"
+      - "abonnés sans émetteur : equipement_remplace, abonnement_monitoring_resilie"
+    P: 3
+    I: 3
+    score: 9
+    niveau: L2
+    statut: à auditer
+    groupe: ASAV
+    plan: docs/plans/PLAN_AUDIT_SAV.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "Garantie partant de la date de réception ; SLA calculé d'une seule façon."
+
+  - id: X7
+    rang: 18
+    declencheur: analyse
+    titre: "Pilotage, API publique, imports, hors-ligne, IA"
+    possede:
+      - "backend/django_core/apps/{reporting,publicapi,dataimport,offlinesync,uxviews,semantic,statuspage,agent}/**"
+      - "backend/fastapi_ia/**"
+      - "frontend/src/pages/reporting/**"
+      - "frontend/src/features/{reporting,offlinesync,uxviews,ia}/**"
+      - "frontend/src/pages/ia/**"
+      - "frontend/src/api/{reportingApi,publicapiApi,dataimportApi,offlinesyncApi,uxviewsApi,statuspageApi,iaApi}.js"
+    perimetre_lu:
+      - "les chiffres de pilotage se recalculent depuis UNE source"
+    coutures:
+      - "second canal d'événements : backend/django_core/apps/publicapi/signals.py (pre_save/post_save sur Lead, Devis, Installation, Intervention, Facture, …)"
+      - "contrats : backend/django_core/apps/agent/contract_samples/"
+    P: 3
+    I: 3
+    score: 9
+    niveau: L1
+    statut: à auditer
+    groupe: AANA
+    plan: docs/plans/PLAN_AUDIT_ANALYSE.md
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "backend/fastapi_ia ajouté au registre (absent de la synthèse) : propriétaire à confirmer par la session de propriété."
+
+  - id: X6
+    rang: 19
+    declencheur: performance
+    titre: "Performance sur les points chauds (piste sans fichiers propres)"
+    possede: []
+    perimetre_lu:
+      - "points chauds : crm/services.py, proposition/[...token].astro, installations/services.py, DevisGenerator.jsx"
+    coutures:
+      - "assertNumQueries / N+1 mesuré, exports non paginés, boucles O(n²) prouvées (critère C14)"
+    P: 2
+    I: 3
+    score: 6
+    niveau: L2
+    statut: à auditer
+    groupe: APRF
+    plan: null
+    plans_alimentes: []
+    pr: null
+    date: null
+    notes: "Tâches routées vers les propriétaires des fichiers touchés."

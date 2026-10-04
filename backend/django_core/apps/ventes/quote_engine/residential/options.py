@@ -325,12 +325,23 @@ def _totals_chain(label, accent, tot, fmt, C, recommended=False,
         f'<span>{fmt(tot["ht_brut"])}</span></div>'
         + ancre("sous_total_ht", fmt(tot["ht_brut"]), option)
     ]
-    if tot.get("remise", 0) and tot["remise"] > 0:
+    _remise = bool(tot.get("remise", 0) and tot["remise"] > 0)
+    # ARRONDI-100 — la baisse au palier de 100 MAD inférieur, ligne visible.
+    _arrondi = bool(tot.get("arrondi", 0) and tot["arrondi"] > 0)
+    if _remise:
         rows.append(
             f'<div class="p2-tl p2-tl-rem"><span>{L("remise", "Remise")}</span>'
             f'<span>− {fmt(tot["remise"])}</span></div>'
             + ancre("remise", fmt(tot["remise"]), option)
         )
+    if _arrondi:
+        rows.append(
+            f'<div class="p2-tl p2-tl-rem"><span>'
+            f'{L("arrondi", "Arrondi commercial")}</span>'
+            f'<span>− {fmt(tot["arrondi"])}</span></div>'
+            + ancre("arrondi", fmt(tot["arrondi"]), option)
+        )
+    if _remise or _arrondi:
         rows.append(
             f'<div class="p2-tl"><span>{L("total_ht", "Total HT")}</span>'
             f'<span>{fmt(tot["ht_net"])}</span></div>'
@@ -646,6 +657,15 @@ def build_pages(ctx) -> list:
                 f'<td class="p2-r">{fmt_mad(t.get("ht_net", 0))}</td>'
                 f'<td class="p2-r p2-tot">{fmt_mad(t.get("ttc", 0))} MAD</td></tr>')
         _gt = _mv.get("grand_total") or {}
+        # ARRONDI-100 — seul le total général porte le palier de 100 MAD : la
+        # ligne « Arrondi commercial » referme l'addition des villas.
+        if (_gt.get("arrondi") or 0) > 0:
+            _arr_ttc = sum(float((g.get("totaux") or {}).get("ttc") or 0)
+                           for g in _mv["groupes"]) - float(_gt.get("ttc", 0))
+            _vrows += (
+                f'<tr><td>{L("arrondi", "Arrondi commercial")}</td>'
+                f'<td class="p2-r">− {fmt_mad(_gt["arrondi"])}</td>'
+                f'<td class="p2-r">− {fmt_mad(_arr_ttc)} MAD</td></tr>')
         _vrows += (
             f'<tr class="p2-multi-gt"><td>Total général</td>'
             f'<td class="p2-r">{fmt_mad(_gt.get("ht_net", 0))}</td>'
@@ -1048,8 +1068,13 @@ def build_pages(ctx) -> list:
 
   /* Per-option delta mini-cards */
   .p2-deltas {{ display:flex; gap:5mm; margin-top:1.5mm; align-items:stretch; }}
+  /* CAD177 — display:block (PAS flex-column) : en flex-column, WeasyPrint
+     dimensionnait la carte AVANT de replier la ligne « Pourquoi » sur deux
+     lignes, et ``overflow:hidden`` rognait sa 2e ligne (« passent sur
+     batterie » coupé sur le golden résidentiel p2). Ses enfants sont déjà des
+     blocs ; l'égalisation des hauteurs reste faite par .p2-deltas (stretch). */
   .p2-dcard {{ flex:1; border:1px solid {C['line']}; border-radius:10px;
-    overflow:hidden; display:flex; flex-direction:column; }}
+    overflow:hidden; display:block; }}
   .p2-dhead {{ padding:2.2mm 3.5mm; font-size:8.4pt; font-weight:700;
     color:#fff; }}
   .p2-dhead small {{ font-weight:500; opacity:.85; }}

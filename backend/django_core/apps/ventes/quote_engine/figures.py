@@ -99,6 +99,8 @@ FIGURE_KEYS: dict[str, Cle] = {
     # ── Chaîne de totaux (par option : data-figure-option) ──────────────────
     "sous_total_ht": Cle("Sous-total HT (avant remise)", "MAD", _ARGENT),
     "remise": Cle("Montant de la remise", "MAD", _ARGENT, absolu=True),
+    "arrondi": Cle("Arrondi commercial (palier de 100 MAD inférieur)", "MAD",
+                   _ARGENT, absolu=True),
     "total_ht": Cle("Total HT après remise", "MAD", _ARGENT),
     "tva": Cle("Montant total de TVA", "MAD", _ARGENT),
     "tva_taux": Cle("Montant de TVA d'UN taux (data-figure-taux)", "MAD",
@@ -433,6 +435,7 @@ def _totaux(c: _Collecte, totaux, option):
         return
     c.mettre("sous_total_ht", totaux.get("ht_brut"), option)
     c.mettre("remise", totaux.get("remise"), option)
+    c.mettre("arrondi", totaux.get("arrondi"), option)
     c.mettre("total_ht", totaux.get("ht_net"), option)
     c.mettre("tva", totaux.get("tva"), option)
     for b in totaux.get("tva_par_taux") or []:

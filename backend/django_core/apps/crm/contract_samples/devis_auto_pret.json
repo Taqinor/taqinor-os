@@ -1,7 +1,7 @@
 {
   "endpoint": "GET /api/django/crm/leads/<id>/",
   "forme_serveur": "partielle",
-  "pourquoi": "QJR509 (M0 QJR5) — la règle « devis automatique prêt » servie STRUCTURÉE : bloc `devis_auto` du lead = {pret, manquants: [libellés], manquants_detail: [{champ, label}], requis: [[…]]} où chaque groupe de `requis` est un « l'un des » (ex. [['conso_mensuelle_kwh','bill_kwh']] pour le C&I, [['pompe_cv'],['pompe_hmt_m'],['pompe_debit_m3h']] en agricole). Note : industriel/commercial -> createAutoQuote (JS) seul ; POST /devis/auto/ refuse ces marchés (creation.py:929-935).",
+  "pourquoi": "QJR509 (M0 QJR5) — la règle « devis automatique prêt » servie STRUCTURÉE : bloc `devis_auto` du lead = {pret, manquants: [libellés], manquants_detail: [{champ, label}], requis: [[…]]} où chaque groupe de `requis` est un « l'un des » (ex. [['conso_mensuelle_kwh','bill_kwh']] pour le C&I, [['pompe_hmt_m','niveau_statique_m'],['pompe_debit_m3h','besoin_eau_m3j','pompe_actuelle_debit_m3h']] en agricole depuis AGR403 (D-AGR-3, D-AGR-4 : le CV décrit la pompe ACTUELLE et ne compte plus ; pompe_actuelle_debit_m3h ne compte qu'avec pompage_heures_jour ; + visite_point_eau_avant_devis {requise, motifs} pour un agricole, null ailleurs)). Note : industriel/commercial -> createAutoQuote (JS) seul ; POST /devis/auto/ refuse ces marchés (creation.py:929-935).",
   "exemple": {
     "devis_auto": {
       "pret": false,
@@ -26,35 +26,37 @@
     "devis_auto": {
       "pret": false,
       "manquants": [
-        "Puissance de la pompe (CV)",
-        "HMT (m)",
-        "Débit (m³/h)"
+        "HMT (m) ou niveau d'eau",
+        "Débit souhaité, besoin en eau (m³/jour) ou débit de la pompe actuelle"
       ],
       "manquants_detail": [
         {
-          "champ": "pompe_cv",
-          "label": "Puissance de la pompe (CV)"
-        },
-        {
           "champ": "pompe_hmt_m",
-          "label": "HMT (m)"
+          "label": "HMT (m) ou niveau d'eau"
         },
         {
           "champ": "pompe_debit_m3h",
-          "label": "Débit (m³/h)"
+          "label": "Débit souhaité, besoin en eau (m³/jour) ou débit de la pompe actuelle"
         }
       ],
       "requis": [
         [
-          "pompe_cv"
+          "pompe_hmt_m",
+          "niveau_statique_m"
         ],
         [
-          "pompe_hmt_m"
-        ],
-        [
-          "pompe_debit_m3h"
+          "pompe_debit_m3h",
+          "besoin_eau_m3j",
+          "pompe_actuelle_debit_m3h"
         ]
-      ]
+      ],
+      "visite_point_eau_avant_devis": {
+        "requise": true,
+        "motifs": [
+          "niveau d'eau du forage inconnu",
+          "débit du forage inconnu"
+        ]
+      }
     }
   },
   "exemple_pret": {

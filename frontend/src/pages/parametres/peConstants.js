@@ -166,3 +166,117 @@ export const mediaUrl   = (url) => {
   // hasardeuse, l'aperçu dégrade proprement (la page, elle, vit).
   return url
 }
+
+// ── AGR108 (Groupe AGR, 02/10/2026) — réglages société du POMPAGE ──────────
+// Trois champs nullable SANS défaut (AGR107) : un champ vide reste vide à
+// l'écran et part `null` au serveur — jamais un chiffre de repli. L'indication
+// sourcée est AFFICHÉE à côté du champ, jamais pré-remplie.
+export const REGLAGES_POMPAGE = [
+  {
+    champ: 'agricole_part_debit_forage_pct',
+    libelle: 'Part du débit déclaré du forage utilisable (%)',
+    indication: 'Indication : 80 à 90 % du débit de l’essai (Water Mission, 2021). Jamais appliquée si le champ est vide.',
+  },
+  {
+    champ: 'agricole_marge_cable_descente_m',
+    libelle: 'Marge du câble de descente (m)',
+    indication: 'Longueur ajoutée à la profondeur de calage de la pompe.',
+  },
+  {
+    champ: 'agricole_salissure_supp_pct',
+    libelle: 'Supplément de salissure (%)',
+    indication: 'Indication : 5 % ou 10 % selon le site (COMPASS). Optionnel.',
+  },
+]
+
+/** Valeur numérique saisie → chaîne envoyée telle quelle (virgule → point),
+ *  ou `null` quand le champ est vide. Jamais arrondie, jamais remplacée. */
+export function nombreOuNull(valeur) {
+  if (valeur === null || valeur === undefined) return null
+  const texte = String(valeur).trim().replace(',', '.')
+  return texte === '' ? null : texte
+}
+
+/** Profil serveur → état du formulaire (vide = '' ; aucun défaut). */
+export function formReglagesPompage(profile = {}) {
+  return Object.fromEntries(REGLAGES_POMPAGE.map(({ champ }) => [
+    champ, profile?.[champ] ?? '',
+  ]))
+}
+
+/** État du formulaire → corps du PATCH (vide = null). */
+export function payloadReglagesPompage(form = {}) {
+  return Object.fromEntries(REGLAGES_POMPAGE.map(({ champ }) => [
+    champ, nombreOuNull(form?.[champ]),
+  ]))
+}
+
+// ── AGR209 (Groupe AGR, 02/10/2026) — REPÈRES énergie agricole ─────────────
+// `CompanyProfile.reperes_energie_agricole` (AGR208, contrat partagé
+// `ventes/contract_samples/economie_pompage.json`) : chaque repère porte
+// {valeur, source, releve_le}. Une INDICATION datée montrée à côté du champ du
+// générateur — seulement si elle a une source ; le prix retenu est celui
+// DÉCLARÉ par le client (Q17, D-AGR-5). Aucun défaut, aucun repli numérique.
+export const REPERES_ENERGIE = [
+  { cle: 'butane_12kg_detail', libelle: 'Bouteille butane 12 kg — prix de détail (DH)', interne: false },
+  { cle: 'butane_12kg_non_subventionne', libelle: 'Bouteille butane 12 kg — coût non subventionné (DH)', interne: true },
+  { cle: 'gasoil_litre', libelle: 'Gasoil — prix du litre (DH)', interne: false },
+]
+
+/** Profil serveur → état éditable des repères (vide = '' ; aucun défaut). */
+export function formReperes(profile = {}) {
+  const reperes = profile?.reperes_energie_agricole || {}
+  return Object.fromEntries(REPERES_ENERGIE.map(({ cle }) => {
+    const r = reperes[cle] || {}
+    return [cle, {
+      valeur: r.valeur ?? '',
+      source: r.source ?? '',
+      releve_le: r.releve_le ?? '',
+    }]
+  }))
+}
+
+/** Valeur d'un repère → nombre (jamais arrondi), `null` si vide ; un texte
+ *  illisible part tel quel pour que le serveur le refuse en le NOMMANT. */
+function valeurRepere(valeur) {
+  const texte = nombreOuNull(valeur)
+  if (texte === null) return null
+  const n = Number(texte)
+  return Number.isFinite(n) ? n : texte
+}
+
+/** État éditable → corps `reperes_energie_agricole` du PATCH. */
+export function payloadReperes(reperes = {}) {
+  return Object.fromEntries(REPERES_ENERGIE.map(({ cle }) => {
+    const r = reperes?.[cle] || {}
+    return [cle, {
+      valeur: valeurRepere(r.valeur),
+      source: String(r.source ?? '').trim(),
+      releve_le: r.releve_le ? r.releve_le : null,
+    }]
+  }))
+}
+
+// ── AGR607 (Groupe AGR, 02/10/2026) — écart de recette pompage toléré (%) ──
+// Réglage société SANS défaut (AGR606) : vide = « écart affiché sans
+// verdict » ; une valeur tapée part telle quelle (jamais arrondie).
+export const CHAMP_ECART_RECETTE = 'recette_pompage_ecart_max_pct'
+
+/** Message d'erreur serveur (400 DRF `{champ: [msg]}`) d'UN champ, ou ''. */
+export function erreurDuChamp(erreur, champ) {
+  if (!erreur || typeof erreur !== 'object' || Array.isArray(erreur)) return ''
+  const valeur = erreur[champ]
+  if (valeur == null) return ''
+  return (Array.isArray(valeur) ? valeur : [valeur])
+    .map(m => (typeof m === 'string' ? m : JSON.stringify(m))).join(' ')
+}
+
+/** Ancienneté d'un relevé en jours entiers (aucun seuil), ou `null`. */
+export function joursDepuisReleve(releveLe, aujourdhui = new Date()) {
+  if (!releveLe) return null
+  const t = Date.parse(`${releveLe}T00:00:00`)
+  if (!Number.isFinite(t)) return null
+  const debut = new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(),
+    aujourdhui.getDate()).getTime()
+  return Math.max(0, Math.round((debut - t) / 86400000))
+}

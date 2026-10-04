@@ -79,13 +79,19 @@ class TestPdfResidentielSectionsOptions(TestCase):
         from apps.ventes.quote_engine.montants import fmt_centimes
         devis = self._devis('DEV-QJR618-A')
         opt = build_quote_data(devis)['options_proposees'][0]
-        self.assertEqual(opt['total_ttc'], 1140.0)
+        # 1 000 HT + TVA 20 % = 1 200, remise globale 5 % = 1 140, puis
+        # ARRONDI-100 (02/10/2026) : le TTC d'une option tombe au palier de
+        # 100 inférieur — 1 100,00.
+        self.assertEqual(opt['total_ttc'], 1100.0)
         texte, pages = self._texte_pdf(devis)
         # Rendu RÉSIDENTIEL premium (pas le repli legacy).
         self.assertIn('le détail de votre projet', texte)
         self.assertIn('section toiture qjr618', texte)
         self.assertIn('note visible pose sous quinze jours', texte)
-        self.assertIn('options proposées', texte)
+        # Le libellé de bloc est en lettres espacées (letter-spacing) : PyMuPDF
+        # l'extrait glyphe par glyphe (« o p t i o n s … ») — on compare donc
+        # sans espaces, comme ``test_quote_engine_snapshot``.
+        self.assertIn('optionsproposées', ''.join(texte.split()))
         self.assertIn('garantie étendue qjr618', texte)
         self.assertIn(_norm(fmt_centimes(opt['total_ttc'])), texte)
         self.assertEqual(pages, 3)
@@ -94,7 +100,7 @@ class TestPdfResidentielSectionsOptions(TestCase):
         devis = self._devis('DEV-QJR618-B', avec_structure=False)
         texte, pages = self._texte_pdf(devis)
         self.assertIn('le détail de votre projet', texte)
-        self.assertNotIn('options proposées', texte)
+        self.assertNotIn('optionsproposées', ''.join(texte.split()))
         self.assertEqual(pages, 3)
 
 

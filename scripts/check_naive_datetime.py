@@ -64,8 +64,8 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     # LigneFacture, Paiement, Avoir et LigneAvoir insèrent des lignes AVANT ces
     # deux champs dans le même fichier. MÊME champ, déclaration byte-identique
     # avant/après (vérifiée contre 024a132c). Bug-class #34.
-    "backend/django_core/apps/facturation/models.py:920",
-    "backend/django_core/apps/facturation/models.py:1111",
+    "backend/django_core/apps/facturation/models.py:937",
+    "backend/django_core/apps/facturation/models.py:1139",
     # Remappé 1251->1346 (lane CAD IK-MESURE 21/09 : +95 lignes insérées AVANT
     # NoteDebit dans ventes/models.py — le marqueur « signé au domicile » de
     # CAD122 sur BonCommande, sa constante de délai, son exception et ses deux
@@ -173,7 +173,7 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # AVANT CommissionPartenaire) — MÊME champ, déclaration identique
     # (`paye_le = models.DateField(null=True, blank=True,
     # verbose_name='Payée le')`). Bug-class #34.
-    "backend/django_core/apps/crm/models.py:3022",  # CommissionPartenaire.paye_le
+    "backend/django_core/apps/crm/models.py:3305",  # CommissionPartenaire.paye_le
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.

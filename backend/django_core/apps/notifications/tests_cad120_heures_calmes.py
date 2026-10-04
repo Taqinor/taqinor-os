@@ -32,6 +32,9 @@ RACINE_DEPOT = Path(__file__).resolve().parents[4]
 #: était encore à UTC+1, 23:00 UTC = minuit local, 12:00 UTC = 13:00 local).
 NUIT = datetime.datetime(2026, 9, 15, 23, 0, tzinfo=datetime.timezone.utc)
 JOURNEE = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc)
+#: Samedi 3 octobre 2026, 17:49 UTC — l'arrivée réelle du lead « Chance »,
+#: annoncée seulement le lundi 08:30 avant l'exception du 04/10/2026.
+SAMEDI = datetime.datetime(2026, 10, 3, 17, 49, tzinfo=datetime.timezone.utc)
 
 
 class EnvExempleTests(SimpleTestCase):
@@ -52,8 +55,10 @@ class EnvExempleTests(SimpleTestCase):
                         'cloche in-app', 'CRITIQUE', 'FONDATEUR', 'SECURITE'):
             self.assertIn(attendu, bloc, attendu)
 
-    def test_lexception_future_est_documentee_mais_vide(self):
-        self.assertIn('# NOTIFICATIONS_TOUJOURS_IMMEDIATES=', self.texte)
+    def test_lexception_des_leads_est_documentee(self):
+        self.assertIn(
+            '# NOTIFICATIONS_TOUJOURS_IMMEDIATES=lead_new,lead_assigned,'
+            'lead_callback_requested', self.texte)
 
 
 class DecisionDeReportTests(TestCase):
@@ -102,3 +107,18 @@ class DecisionDeReportTests(TestCase):
     @override_settings(NOTIFICATIONS_QUIET_HOURS_ENABLED=True)
     def test_un_appelant_qui_refuse_le_report_est_respecte(self):
         self.assertIsNone(self._report(NUIT, respect=False))
+
+    # ── Exception fondateur du 04/10/2026 : les alertes de lead partent ──
+    # ── tout de suite, nuit et week-end compris.                        ──
+    def test_les_alertes_de_lead_sont_immediates_par_defaut(self):
+        from django.conf import settings
+        for cle in (EventType.LEAD_NEW, EventType.LEAD_ASSIGNED,
+                    EventType.LEAD_CALLBACK_REQUESTED):
+            self.assertIn(cle, settings.NOTIFICATIONS_TOUJOURS_IMMEDIATES)
+
+    @override_settings(NOTIFICATIONS_QUIET_HOURS_ENABLED=True)
+    def test_un_lead_du_samedi_soir_est_annonce_tout_de_suite(self):
+        self.assertIsNotNone(self._report(SAMEDI))  # le reste attend lundi
+        for cle in (EventType.LEAD_NEW, EventType.LEAD_ASSIGNED):
+            self.assertIsNone(self._report(SAMEDI, event_type=cle), cle)
+            self.assertIsNone(self._report(NUIT, event_type=cle), cle)

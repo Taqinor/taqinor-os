@@ -56,7 +56,7 @@ class WIR99SiteProfilePrefillTests(TestCase):
             facture_ete=Decimal('900.00'),
             conso_mensuelle_kwh=Decimal('850.00'),
             raccordement='triphase', type_installation='agricole',
-            pompe_cv=Decimal('7.50'), pompe_hmt_m=Decimal('60.00'),
+            pompe_actuelle_cv=Decimal('7.50'), pompe_hmt_m=Decimal('60.00'),
             pompe_debit_m3h=Decimal('12.00'),
             surface_toiture_m2=Decimal('140.00'))
 
@@ -70,6 +70,8 @@ class WIR99SiteProfilePrefillTests(TestCase):
         self.assertEqual(profil['conso_mensuelle_kwh'], Decimal('850.00'))
         self.assertEqual(profil['raccordement'], 'triphase')
         self.assertEqual(profil['type_installation'], 'agricole')
+        self.assertEqual(profil['pompe_actuelle_cv'], Decimal('7.50'))
+        # AGR401 — alias déprécié (même valeur) jusqu'à AGR424.
         self.assertEqual(profil['pompe_cv'], Decimal('7.50'))
         self.assertEqual(profil['surface_toiture_m2'], Decimal('140.00'))
 

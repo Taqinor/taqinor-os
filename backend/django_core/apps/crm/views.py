@@ -1111,6 +1111,29 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # base.
         new_lead.refresh_from_db()
         activity.log_changes(old, new_lead, self.request.user)
+        # AGR522 — au passage à « accordé » (approbation préalable FDA), une
+        # étape MANUELLE datée rappelle le délai de 3 mois (interne, hors
+        # gabarit). Best-effort : jamais bloquant pour l'enregistrement.
+        if (new_lead.dossier_subvention == Lead.DossierSubvention.ACCORDE
+                and (old.dossier_subvention != new_lead.dossier_subvention
+                     or old.dossier_subvention_le
+                     != new_lead.dossier_subvention_le)):
+            from .services import poser_rappel_subvention
+            try:
+                poser_rappel_subvention(new_lead)
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+                logger.warning('AGR522: rappel FDA non posé (lead #%s)',
+                               new_lead.pk, exc_info=True)
+        # AGR525 — la pompe passe au butane sur un agricole déjà contacté :
+        # la tâche FDA apparaît pour les étapes atteintes (idempotent).
+        if (old.pompe_alim_actuelle != new_lead.pompe_alim_actuelle
+                and new_lead.pompe_alim_actuelle == 'butane'):
+            from .services import rattraper_playbooks_pompe
+            try:
+                rattraper_playbooks_pompe(new_lead)
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+                logger.warning('AGR525: tâche FDA non générée (lead #%s)',
+                               new_lead.pk, exc_info=True)
         # QJR590 — une correction d'identité du lead suit sur SA fiche Client
         # (imprimée sur le PDF) tant que celle-ci n'a pas divergé à la main.
         if ecrits & {'nom', 'prenom', 'email', 'telephone', 'adresse',
@@ -2229,14 +2252,18 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
         lead = self.get_object()
         try:
-            questions = quest.valider_questions(request.data.get('questions'))
+            questions = quest.valider_questions(
+                request.data.get('questions'), lead)
         except quest.SectionInconnue as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
 
         lien, change, cree = quest.mint_lien(
             lead, questions=questions, user=request.user)
-        posees = [cle for cle in quest.SECTIONS if lien.question_posee(cle)]
+        # AGR411 — le filtre de segment : un lien résidentiel reste
+        # identique à l'octet, un lien agricole ne nomme que ses sections.
+        sections_lead = quest.sections_du_lead(lead)
+        posees = [cle for cle in sections_lead if lien.question_posee(cle)]
         if change:
             # Recalage fold 25/08 — jamais « envoyé » : le serveur n'observe
             # pas l'envoi WhatsApp. « créé » à la première ouverture du
@@ -2257,7 +2284,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'token': lien.token,
             'expires_at': lien.expires_at.isoformat(),
             'questions': {cle: lien.question_posee(cle)
-                          for cle in quest.SECTIONS},
+                          for cle in sections_lead},
             'manquantes': quest.manquantes(lead),
         })
 

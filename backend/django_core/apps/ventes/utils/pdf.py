@@ -555,6 +555,8 @@ def generate_bon_commande_pdf(bc_id):
         context['total_tva'] = totaux['tva']         # TVA sur le HT net
         context['total_ttc'] = totaux['ttc']         # TTC net
         context['remise_montant'] = totaux.get('remise', Decimal('0'))
+        # ARRONDI-100 — la baisse au palier de 100 MAD inférieur.
+        context['arrondi_montant'] = totaux.get('arrondi', Decimal('0'))
         context['remise_globale'] = bc.devis.remise_globale or Decimal('0')
         # ERR-QAC-MULTIVILLA-TOTAL-XN — totaux ×N, lignes d'une villa : le
         # gabarit l'annonce pour que le document s'additionne.

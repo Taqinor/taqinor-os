@@ -327,6 +327,17 @@ class FiguresPariteSurfacesTests(TestCase):
     def test_agricole_pompage(self):
         self._verifier('agricole_pompage')
 
+    def test_agricole_pompage_proposition_sans_economie_residentielle(self):
+        """AGR300 — la surface proposition d'un devis agricole ne porte plus
+        ``economie_annuelle`` ni ``payback_ans`` (économies résidentielles au
+        tarif ONEE que le PDF du même devis n'imprime pas)."""
+        spec = CAS['agricole_pompage']
+        surfaces, _ = self._surfaces(self._devis('agricole_pompage', spec),
+                                     spec)
+        cles = [k.split('@')[0] for k in surfaces['proposition']]
+        self.assertNotIn('economie_annuelle', cles)
+        self.assertNotIn('payback_ans', cles)
+
     def test_industriel(self):
         self._verifier('industriel')
 
@@ -353,8 +364,11 @@ def _corpus():
     # Une remise sur la chaîne résidentielle : fait sortir les lignes
     # « Remise » et « Total HT » (présence seulement — la parité se prouve
     # sur la matrice en base, pas sur ce décor).
-    remise = {'totaux_sans': {**ts, 'remise': 100, 'ht_net': ts['ht_brut'] - 100},
-              'totaux_avec': {**ta, 'remise': 100, 'ht_net': ta['ht_brut'] - 100}}
+    # ARRONDI-100 — et un « Arrondi commercial » (présence seulement).
+    remise = {'totaux_sans': {**ts, 'remise': 100, 'arrondi': 0.27,
+                              'ht_net': ts['ht_brut'] - 100.27},
+              'totaux_avec': {**ta, 'remise': 100, 'arrondi': 0.27,
+                              'ht_net': ta['ht_brut'] - 100.27}}
     return {
         'residentiel_full': html_residentiel('deux', **remise),
         'legacy_etude': html_legacy('deux', include_etude=True, etude=dict(ETUDE)),

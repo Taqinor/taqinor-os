@@ -30,6 +30,7 @@ import {
   // (`autoFillPompage` est déjà importé plus bas, avec le bloc pompage.)
   structureRoleForName, structureChoisie,
 } from './solar.js'
+import { PAS_ARRONDI_DEVIS } from './remise.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
 const ht = (ttc) => (ttc / 1.2).toFixed(2)
@@ -139,7 +140,8 @@ test('remise saisie librement (ex. 12.5 %) : appliquée exactement', () => {
   // ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — chaîne canonique du noyau : HT
   // persisté 833,33 ; remise 104,17 ; HT net 729,16 ; TVA 145,83 → 874,99
   // (le chiffre facturé ; l'ancien « 1000 × 0,875 = 875 » ne l'était pas).
-  assert.equal(totalSans, 874.99)
+  // ARRONDI-100 : 874,99 → palier de 100 inférieur.
+  assert.equal(totalSans, 800)
 })
 
 test('sélecteur produits : groupé selon les catégories du catalogue simulateur', () => {
@@ -385,11 +387,15 @@ test('auto-fill 14 panneaux × 710 W : équipements et prix identiques au simula
   const sommeTtc = (rs) => rs.reduce((s, r) => s + r.quantite * r.prix_unit_ttc, 0)
   assert.equal(sommeTtc(rows.filter(appartientAuPanierSans)), 63727.5)
   assert.equal(sommeTtc(rows.filter(appartientAuPanierAvec)), 101727.5)
+  // ARRONDI-100 : le total par option est ramené au palier de 100 MAD
+  // inférieur ; le noyau de référence reçoit le même palier.
   const totals = optionTotalsTTC(rows, 0)
-  assert.equal(totals.totalSansBrut, totauxCanoniquesTtc(rows.filter(appartientAuPanierSans), 0))
-  assert.equal(totals.totalAvecBrut, totauxCanoniquesTtc(rows.filter(appartientAuPanierAvec), 0))
-  assert.ok(Math.abs(totals.totalSansBrut - 63727.5) < 1)
-  assert.ok(Math.abs(totals.totalAvecBrut - 101727.5) < 1)
+  assert.equal(totals.totalSansBrut, totauxCanoniquesTtc(rows.filter(appartientAuPanierSans), 0, PAS_ARRONDI_DEVIS))
+  assert.equal(totals.totalAvecBrut, totauxCanoniquesTtc(rows.filter(appartientAuPanierAvec), 0, PAS_ARRONDI_DEVIS))
+  // ARRONDI-100 : 63 727,73 → palier de 100 inférieur (ancienne attente : à moins de 1 MAD de 63 727,5).
+  assert.equal(totals.totalSansBrut, 63700)
+  // ARRONDI-100 : 101 727,72 → palier de 100 inférieur (ancienne attente : à moins de 1 MAD de 101 727,5).
+  assert.equal(totals.totalAvecBrut, 101700)
 })
 
 test('auto-fill 24 panneaux × 710 W : batterie homogène 3×5 kWh (jamais 10+5), structures alu', () => {
@@ -1760,19 +1766,25 @@ test('QJ31 mode A — ×N multiplie le total TTC (unitaire × N)', () => {
   const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '3', discountPct: '0' })
   assert.equal(r.mode, 'multiplicateur')
   assert.equal(r.nombreProprietes, 3)
-  // Chaîne canonique (ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER) : 34 000,04.
-  assert.equal(r.totalUnitaireSans, totauxCanoniquesTtc(lines, 0))
-  // ERR-QAC-MULTIVILLA-TOTAL-XN — ×N au CENTIME (miroir backend) : 34 000,04 × 3.
-  assert.equal(r.totalMultiSans, 102000.12)
+  // Chaîne canonique (ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER) : 34 000,04, que
+  // l'ARRONDI-100 ramène au palier de 100 MAD inférieur (noyau : même palier).
+  assert.equal(r.totalUnitaireSans, totauxCanoniquesTtc(lines, 0, PAS_ARRONDI_DEVIS))
+  assert.equal(r.totalUnitaireSans, 34000)
+  // ERR-QAC-MULTIVILLA-TOTAL-XN — ×N au CENTIME (miroir backend) : unitaire × 3.
+  // ARRONDI-100 : 102 000,12 → palier de 100 inférieur (unitaire arrondi AVANT le ×N).
+  assert.equal(r.totalMultiSans, 102000)
 })
 
 test('QJ31 mode A — ×N applique aussi la remise (unitaire remisé × N)', () => {
   const lines = [L('Panneaux', 10, 1400), L('Onduleur réseau', 1, 20000)] // 34000 brut
   const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '2', discountPct: '10' })
-  // Chaîne canonique (ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER) : 30 600,04.
-  assert.equal(r.totalUnitaireSans, totauxCanoniquesTtc(lines, 10))
-  // ERR-QAC-MULTIVILLA-TOTAL-XN — ×N au CENTIME : 30 600,04 × 2.
-  assert.equal(r.totalMultiSans, 61200.08)
+  // Chaîne canonique (ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER) : 30 600,04, que
+  // l'ARRONDI-100 ramène au palier de 100 MAD inférieur (noyau : même palier).
+  assert.equal(r.totalUnitaireSans, totauxCanoniquesTtc(lines, 10, PAS_ARRONDI_DEVIS))
+  assert.equal(r.totalUnitaireSans, 30600)
+  // ERR-QAC-MULTIVILLA-TOTAL-XN — ×N au CENTIME : unitaire × 2.
+  // ARRONDI-100 : 61 200,08 → palier de 100 inférieur (unitaire arrondi AVANT le ×N).
+  assert.equal(r.totalMultiSans, 61200)
 })
 
 test('QJ31 mode B — groupes villas : sous-total par villa + total général', () => {

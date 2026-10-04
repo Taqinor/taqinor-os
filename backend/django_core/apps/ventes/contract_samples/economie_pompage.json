@@ -1,0 +1,611 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<int:pk>/economie-pompage/",
+  "pourquoi": "AGR3 (Groupe AGR, audit L3 du devis agricole, 02/10/2026 ; décisions D-AGR-5, D-AGR-6, Q17, Q22, D-AGR-13) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main` avant toute moitié. Aujourd'hui aucun moteur d'économie agricole n'existe (agricole/economics.py supprimé par QJR236, git ce7e9f01) ; `etude_params` ne porte que `current_fuel` et `fuel_spend_current` en MAD/an issus d'un × 12 sur des mois inconnus ; le seul bloc économie sous contrat est résidentiel (`ventes_economie.json`, CALX280). Ce fichier fige : (1) la clé d'ENTRÉE `etude_params.saisies_economie_pompage` (propriétaire ECRAN) ; (2) le bloc de SORTIE `economie_pompage` (`exemple` = la réponse INTERNE de ce GET, `vue_interne` comprise) ; (3) `vue_interne` ; (4) les réglages lus ; (5) les deux endpoints. RÈGLES ÉCRITES : « vue_interne n'entre JAMAIS dans une charge utile client » (PDF /proposal, page /proposition, messages : seule `economie_pompage_publique` — le bloc SANS `vue_interne` — sort) ; chiffres DÉCLARÉS du client seulement (SAISI, SOURCÉ, OU OMIS) ; horizon 10 ans ; indexation carburant 0 % écrite ; retour SANS aide ; aucune aide FDA dans le flux ni « moins subvention » ; aucun prix du carburant pré-enregistré (Q17 : un repère daté s'affiche À CÔTÉ du champ, jamais dedans) ; bloc omis avec motifs si rien n'est déclaré. Chaque `provenance` suit la forme UNIQUE `{origine, detail, date}` du contrat `etude_pompage_preview.json` (AGR2) : `declare_client` = origine `saisie` ; `lead` = origine `lead` + son `detail` (client|site_web|mesure_visite|derive) ; `calendrier_culture` = origine `calculee`, detail `calendrier_culture`. Garde de vocabulaire (même esprit que CALX280) : AUCUNE clé de ce document ne contient `prix`, `cout` ni `marge` — le coût du m³ est servi sous `mad_par_m3` ; le corps de la preview, qui reprend les champs de LIGNE de l'écran, est donc décrit en TEXTE (`corps_preview`), jamais en clés. Deux exemples : `exemple` (« butane déclaré ») et `exemple_rien_declare` (bloc omis, motifs). Les VALEURS sont ILLUSTRATIVES (aucun client réel) ; ce sont les clés, leurs natures et leurs règles d'omission qui font le contrat.",
+  "endpoints": {
+    "lecture_interne": "GET /api/django/ventes/devis/<int:pk>/economie-pompage/ — action du DevisViewSet, IsAnyRole, 404 hors société ; calculé à la lecture, JAMAIS stocké ; rend le bloc AVEC `vue_interne` (écran interne seulement)",
+    "apercu": "POST /api/django/ventes/economie-pompage/preview/ — aucune écriture ; rend la même forme que la lecture interne"
+  },
+  "corps_preview": "Objet JSON à trois clés : `saisies` (la forme de `saisies_economie_pompage` ci-dessous) ; `sortie_etude_pompage` (la réponse de POST /api/django/ventes/etude-pompage/preview/, contrat `etude_pompage_preview.json`) ; `lignes` = liste d'objets {produit, quantite, prix_unitaire, remise, taux_tva} — les champs de ligne de l'écran ; l'investissement est RECALCULÉ côté serveur à partir de `produit` et des valeurs transmises (total TTC client, jamais le prix d'achat).",
+  "saisies_economie_pompage": {
+    "proprietaire": "ecran",
+    "nature": "ENTRÉE, recopiée par les copies et la V2",
+    "regles": {
+      "energie_actuelle": "{valeur aucune|butane|diesel|electrique (vocabulaire de crm.Lead.PompeAlimActuelle), provenance {origine, detail, date}} — absente = non déclarée (jamais « butane » par défaut) ; `aucune` ⇒ cas nouveau_forage, ni dépense ni économie",
+      "consommation": "{quantite, unite bouteille_12kg|litre, periode jour_irrigation|semaine|mois, jours_irrigation_par_semaine (obligatoire si periode = jour_irrigation), saisi_le}",
+      "depense_unitaire_payee": "{valeur (MAD par bouteille ou par litre, PAYÉ et déclaré), saisi_le} — jamais pré-remplie (Q17)",
+      "facture_reseau": "{montant_mad, periodicite mensuelle|bimestrielle, part_fixe_mad_mois, saisi_le} — cas électrique seulement ; bimestrielle ÷ 2 (règle Q24) ; jamais une grille tarifaire",
+      "mois_irrigation": "{mois [1..12], provenance {origine, detail, date}} — pré-cochés par le calendrier de culture = origine calculee/detail calendrier_culture ; déclarés = origine saisie",
+      "entretien_paye_mad_an": "{valeur, saisi_le}",
+      "coherence_confirmee": "booléen — le vendeur confirme avec le client un chiffre que la garde de cohérence signale",
+      "taux_actualisation": "{valeur, source} — saisie INTERNE ; refusée sans source (400 nommant `taux_actualisation.source`)",
+      "pret": "{principal_mad, taux_annuel_pct, duree_mois, type_pret, differe_mois, source} — saisie INTERNE ; jamais de taux par défaut"
+    },
+    "exemple": {
+      "energie_actuelle": {
+        "valeur": "butane",
+        "provenance": {
+          "origine": "saisie",
+          "detail": null,
+          "date": "2026-09-12"
+        }
+      },
+      "consommation": {
+        "quantite": 4,
+        "unite": "bouteille_12kg",
+        "periode": "jour_irrigation",
+        "jours_irrigation_par_semaine": 6,
+        "saisi_le": "2026-09-12"
+      },
+      "depense_unitaire_payee": {
+        "valeur": 50.0,
+        "saisi_le": "2026-09-12"
+      },
+      "facture_reseau": null,
+      "mois_irrigation": {
+        "mois": [
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "provenance": {
+          "origine": "saisie",
+          "detail": null,
+          "date": "2026-09-12"
+        }
+      },
+      "entretien_paye_mad_an": {
+        "valeur": 1500.0,
+        "saisi_le": "2026-09-12"
+      },
+      "coherence_confirmee": false,
+      "taux_actualisation": null,
+      "pret": null
+    }
+  },
+  "regles_sortie": {
+    "statut": "calcule | omis",
+    "publiable_client": "false tant qu'un motif existe (barème des charges non saisi, cohérence non confirmée…) ; les motifs dans `motifs_non_publiable`",
+    "cas": "carburant | reseau | nouveau_forage | null (rien déclaré)",
+    "entrees_declarees": "[{cle, valeur, unite, provenance, saisi_le}] — publiées « déclaré par le client le JJ/MM »",
+    "depense_actuelle": "{par_mois[12], entretien_mad_an, annuelle_mad, formule} — jamais × 12 ; null si une saisie manque (motif nommé)",
+    "charges_solaires": "{total_mad_an, lignes[{libelle, montant_mad_an, source}]} — barème société ; absent ⇒ publiable_client false",
+    "remplacements": "[{composant, annee, montant_ttc_mad, source, motif}] — pompe année 7 au TTC réel de sa ligne (Banque mondiale 2018) ; variateur à ceil(garantie_mois / 12) au TTC réel, sinon omis avec motif ; pompe existante conservée ⇒ aucune provision pompe",
+    "economie": "forme EXACTE de `ventes_economie.json` (horizon_ans, flux[{annee, economie_mad, flux_mad, cumul_mad, flux_actualise_mad}], van_mad, tri_pct, lcoe_mad_kwh, retour_ans, retour_actualise_ans, hypotheses, omissions) ; VAN et actualisé toujours null ici (vue interne)",
+    "couverture": "{verifiee, part_evitee_par_mois[12] = min(1, couverture du mois servie par AGR2), motif} — pompe sans courbe ⇒ part 1, verifiee false, motif « couverture non vérifiable : pompe sans courbe »",
+    "mad_par_m3": "{actuel, solaire, formule} — omis (null) si une donnée manque ; seul repère du cas nouveau_forage",
+    "sensibilite_carburant": "[{facteur, libelle, valeur_unitaire_mad, economie_nette_mad_an, retour_ans}] — facteurs 0,8 / 0,9 / 1,1 / 1,2 / 1,5 ; grille de présentation « si le prix était X », jamais une prévision, indexation 0 %",
+    "seuil_rentabilite_carburant": "{valeur_unitaire_mad, unite, formule} ou null (omis s'il est ≤ 0)",
+    "financement": "null sauf si `pret` est saisi avec taux ET source : {mensualite_mad, tableau, carburant_evite_par_mois[12]}",
+    "coherence": "[{code, niveau, champ, message}] — avertir, jamais corriger ; « rendement > 100 % » seule borne physique",
+    "reperes_affiches": "[{cle, valeur, source, releve_le}] — seulement les repères qui ont une source ; jamais le repère « non subventionné »",
+    "omissions": "[{cle, motif}] — chaque grandeur non publiée, motif en français qui NOMME la saisie manquante",
+    "vue_interne": "{van_mad, retour_actualise_ans, scenario_butane_non_subventionne, aide_fda_indicative, rendement_global_implicite_pct, omissions} — n'entre JAMAIS dans une charge utile client"
+  },
+  "exemple": {
+    "statut": "calcule",
+    "publiable_client": true,
+    "motifs_non_publiable": [],
+    "cas": "carburant",
+    "entrees_declarees": [
+      {
+        "cle": "energie_actuelle",
+        "valeur": "butane",
+        "unite": null,
+        "provenance": {
+          "origine": "saisie",
+          "detail": null,
+          "date": "2026-09-12"
+        },
+        "saisi_le": "2026-09-12"
+      },
+      {
+        "cle": "consommation",
+        "valeur": 4,
+        "unite": "bouteille_12kg par jour d'irrigation",
+        "provenance": {
+          "origine": "saisie",
+          "detail": null,
+          "date": "2026-09-12"
+        },
+        "saisi_le": "2026-09-12"
+      },
+      {
+        "cle": "jours_irrigation_par_semaine",
+        "valeur": 6,
+        "unite": "jours",
+        "provenance": {
+          "origine": "saisie",
+          "detail": null,
+          "date": "2026-09-12"
+        },
+        "saisi_le": "2026-09-12"
+      },
+      {
+        "cle": "depense_unitaire_payee",
+        "valeur": 50.0,
+        "unite": "MAD par bouteille",
+        "provenance": {
+          "origine": "saisie",
+          "detail": null,
+          "date": "2026-09-12"
+        },
+        "saisi_le": "2026-09-12"
+      },
+      {
+        "cle": "mois_irrigation",
+        "valeur": [
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "unite": "mois",
+        "provenance": {
+          "origine": "saisie",
+          "detail": null,
+          "date": "2026-09-12"
+        },
+        "saisi_le": "2026-09-12"
+      },
+      {
+        "cle": "entretien_paye_mad_an",
+        "valeur": 1500.0,
+        "unite": "MAD par an",
+        "provenance": {
+          "origine": "saisie",
+          "detail": null,
+          "date": "2026-09-12"
+        },
+        "saisi_le": "2026-09-12"
+      }
+    ],
+    "depense_actuelle": {
+      "par_mois": [
+        0.0,
+        0.0,
+        0.0,
+        5142.86,
+        5314.29,
+        5142.86,
+        5314.29,
+        5314.29,
+        5142.86,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "entretien_mad_an": 1500.0,
+      "annuelle_mad": 32871.45,
+      "formule": "par mois coché : quantité × jours d'irrigation par semaine × jours du mois ÷ 7 × prix payé déclaré ; + entretien payé déclaré"
+    },
+    "charges_solaires": {
+      "total_mad_an": 600.0,
+      "lignes": [
+        {
+          "libelle": "Nettoyage des panneaux et visite annuelle",
+          "montant_mad_an": 600.0,
+          "source": "barème société"
+        }
+      ]
+    },
+    "remplacements": [
+      {
+        "composant": "pompe",
+        "annee": 7,
+        "montant_ttc_mad": 18000.0,
+        "source": "Banque mondiale 2018, « Solar Pumping: The Basics » — TTC réel de la ligne pompe",
+        "motif": null
+      },
+      {
+        "composant": "variateur",
+        "annee": null,
+        "montant_ttc_mad": null,
+        "source": null,
+        "motif": "garantie constructeur non renseignée : remplacement omis"
+      }
+    ],
+    "economie": {
+      "horizon_ans": 10,
+      "flux": [
+        {
+          "annee": 0,
+          "economie_mad": 0.0,
+          "flux_mad": -95000.0,
+          "cumul_mad": -95000.0,
+          "flux_actualise_mad": null
+        },
+        {
+          "annee": 1,
+          "economie_mad": 32871.45,
+          "flux_mad": 32271.45,
+          "cumul_mad": -62728.55,
+          "flux_actualise_mad": null
+        },
+        {
+          "annee": 2,
+          "economie_mad": 32871.45,
+          "flux_mad": 32271.45,
+          "cumul_mad": -30457.1,
+          "flux_actualise_mad": null
+        },
+        {
+          "annee": 3,
+          "economie_mad": 32871.45,
+          "flux_mad": 32271.45,
+          "cumul_mad": 1814.35,
+          "flux_actualise_mad": null
+        },
+        {
+          "annee": 4,
+          "economie_mad": 32871.45,
+          "flux_mad": 32271.45,
+          "cumul_mad": 34085.8,
+          "flux_actualise_mad": null
+        },
+        {
+          "annee": 5,
+          "economie_mad": 32871.45,
+          "flux_mad": 32271.45,
+          "cumul_mad": 66357.25,
+          "flux_actualise_mad": null
+        },
+        {
+          "annee": 6,
+          "economie_mad": 32871.45,
+          "flux_mad": 32271.45,
+          "cumul_mad": 98628.7,
+          "flux_actualise_mad": null
+        },
+        {
+          "annee": 7,
+          "economie_mad": 32871.45,
+          "flux_mad": 14271.45,
+          "cumul_mad": 112900.15,
+          "flux_actualise_mad": null
+        },
+        {
+          "annee": 8,
+          "economie_mad": 32871.45,
+          "flux_mad": 32271.45,
+          "cumul_mad": 145171.6,
+          "flux_actualise_mad": null
+        },
+        {
+          "annee": 9,
+          "economie_mad": 32871.45,
+          "flux_mad": 32271.45,
+          "cumul_mad": 177443.05,
+          "flux_actualise_mad": null
+        },
+        {
+          "annee": 10,
+          "economie_mad": 32871.45,
+          "flux_mad": 32271.45,
+          "cumul_mad": 209714.5,
+          "flux_actualise_mad": null
+        }
+      ],
+      "van_mad": null,
+      "tri_pct": 30.7521,
+      "lcoe_mad_kwh": null,
+      "retour_ans": 3,
+      "retour_actualise_ans": null,
+      "hypotheses": [
+        {
+          "cle": "investissement_mad",
+          "valeur": 95000.0,
+          "source": "devis DEV-2026-10-0001 — total TTC client des lignes (jamais le prix d'achat)",
+          "saisie_le": null
+        },
+        {
+          "cle": "economie_annee1_mad",
+          "valeur": 32871.45,
+          "source": "dépense actuelle déclarée × part évitée des mois cochés + entretien payé déclaré",
+          "saisie_le": "2026-09-12"
+        },
+        {
+          "cle": "horizon_ans",
+          "valeur": 10,
+          "source": "décision fondateur D-AGR-5 du 02/10/2026",
+          "saisie_le": null
+        },
+        {
+          "cle": "indexation_pct",
+          "valeur": 0.0,
+          "source": "décision fondateur D-AGR-5 du 02/10/2026 — prix du carburant constant : il peut monter ou baisser",
+          "saisie_le": null
+        },
+        {
+          "cle": "degradation_pct",
+          "valeur": 0.0,
+          "source": "sans objet : l'économie est une dépense déclarée évitée, pas une production valorisée",
+          "saisie_le": null
+        },
+        {
+          "cle": "charges_solaires_mad_an",
+          "valeur": 600.0,
+          "source": "barème société — Paramètres › Tarification & ROI › Pompage agricole",
+          "saisie_le": "2026-09-30"
+        },
+        {
+          "cle": "remplacement_pompe",
+          "valeur": {
+            "annee": 7,
+            "montant_ttc_mad": 18000.0
+          },
+          "source": "Banque mondiale 2018, « Solar Pumping: The Basics » (pompe à remplacer après 7-10 ans) — TTC réel de la ligne pompe du devis",
+          "saisie_le": null
+        }
+      ],
+      "omissions": [
+        {
+          "cle": "taux_actualisation_pct",
+          "motif": "taux d'actualisation : vue interne uniquement (D-AGR-5) — VAN, retour actualisé et flux actualisés non publiés"
+        },
+        {
+          "cle": "lcoe_mad_kwh",
+          "motif": "sans objet pour le pompage : aucune énergie vendue ni valorisée en kWh"
+        },
+        {
+          "cle": "remplacement_variateur",
+          "motif": "garantie constructeur du variateur non renseignée sur la fiche produit : remplacement omis"
+        }
+      ]
+    },
+    "couverture": {
+      "verifiee": true,
+      "part_evitee_par_mois": [
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0
+      ],
+      "motif": null
+    },
+    "mad_par_m3": {
+      "actuel": 1.55,
+      "solaire": 0.56,
+      "formule": "actuel = dépense annuelle déclarée ÷ volume pompé annuel déclaré ; solaire = (investissement + remplacements + charges sur 10 ans) ÷ (volume utile annuel × 10)"
+    },
+    "sensibilite_carburant": [
+      {
+        "facteur": 0.8,
+        "libelle": "si le prix payé était 40 DH la bouteille",
+        "valeur_unitaire_mad": 40.0,
+        "economie_nette_mad_an": 25997.16,
+        "retour_ans": 4
+      },
+      {
+        "facteur": 0.9,
+        "libelle": "si le prix payé était 45 DH la bouteille",
+        "valeur_unitaire_mad": 45.0,
+        "economie_nette_mad_an": 29134.29,
+        "retour_ans": 4
+      },
+      {
+        "facteur": 1.1,
+        "libelle": "si le prix payé était 55 DH la bouteille",
+        "valeur_unitaire_mad": 55.0,
+        "economie_nette_mad_an": 35408.55,
+        "retour_ans": 3
+      },
+      {
+        "facteur": 1.2,
+        "libelle": "si le prix payé était 60 DH la bouteille",
+        "valeur_unitaire_mad": 60.0,
+        "economie_nette_mad_an": 38545.71,
+        "retour_ans": 3
+      },
+      {
+        "facteur": 1.5,
+        "libelle": "si le prix payé était 75 DH la bouteille",
+        "valeur_unitaire_mad": 75.0,
+        "economie_nette_mad_an": 47957.16,
+        "retour_ans": 2
+      }
+    ],
+    "seuil_rentabilite_carburant": {
+      "valeur_unitaire_mad": 16.58,
+      "unite": "MAD par bouteille 12 kg",
+      "formule": "valeur unitaire pour laquelle le cumul à 10 ans vaut 0 (indexation 0 %)"
+    },
+    "financement": null,
+    "coherence": [],
+    "reperes_affiches": [],
+    "omissions": [
+      {
+        "cle": "repere_butane_12kg_detail",
+        "motif": "repère sans source : non affiché à côté du champ"
+      },
+      {
+        "cle": "financement",
+        "motif": "aucun prêt saisi"
+      }
+    ],
+    "vue_interne": {
+      "van_mad": null,
+      "retour_actualise_ans": null,
+      "scenario_butane_non_subventionne": null,
+      "aide_fda_indicative": {
+        "montant_mad": 12000.0,
+        "termes": {
+          "taux_x_base_mad": 28500.0,
+          "plafond_ha_x_surface_mad": 12000.0,
+          "plafond_kwc_x_kwc_mad": 29820.0,
+          "plafond_projet_mad": 30000.0
+        },
+        "base": "a_confirmer",
+        "edition": "Guide FDA 2024, p.20-23",
+        "conditions": [
+          {
+            "cle": "energie_actuelle_butane",
+            "etat": "remplie"
+          },
+          {
+            "cle": "irrigation_localisee",
+            "etat": "a_verifier"
+          },
+          {
+            "cle": "compteur_eau",
+            "etat": "a_verifier"
+          },
+          {
+            "cle": "un_seul_projet_par_exploitation",
+            "etat": "a_verifier"
+          }
+        ]
+      },
+      "rendement_global_implicite_pct": null,
+      "omissions": [
+        {
+          "cle": "van_mad",
+          "motif": "taux d'actualisation non saisi"
+        },
+        {
+          "cle": "scenario_butane_non_subventionne",
+          "motif": "repère « bouteille non subventionnée » sans source"
+        },
+        {
+          "cle": "rendement_global_implicite_pct",
+          "motif": "pouvoir calorifique du butane non sourcé"
+        }
+      ]
+    }
+  },
+  "exemple_rien_declare": {
+    "statut": "omis",
+    "publiable_client": false,
+    "motifs_non_publiable": [
+      "énergie actuelle non déclarée",
+      "consommation non déclarée",
+      "prix payé non déclaré",
+      "mois d'irrigation non déclarés"
+    ],
+    "cas": null,
+    "entrees_declarees": [],
+    "depense_actuelle": null,
+    "charges_solaires": null,
+    "remplacements": [],
+    "economie": {
+      "horizon_ans": 10,
+      "flux": [],
+      "van_mad": null,
+      "tri_pct": null,
+      "lcoe_mad_kwh": null,
+      "retour_ans": null,
+      "retour_actualise_ans": null,
+      "hypotheses": [],
+      "omissions": [
+        {
+          "cle": "economie",
+          "motif": "énergie actuelle non déclarée : aucune économie calculée"
+        }
+      ]
+    },
+    "couverture": {
+      "verifiee": false,
+      "part_evitee_par_mois": null,
+      "motif": "aucune dépense déclarée"
+    },
+    "mad_par_m3": {
+      "actuel": null,
+      "solaire": null,
+      "formule": null
+    },
+    "sensibilite_carburant": [],
+    "seuil_rentabilite_carburant": null,
+    "financement": null,
+    "coherence": [],
+    "reperes_affiches": [],
+    "omissions": [
+      {
+        "cle": "saisies_economie_pompage.energie_actuelle",
+        "motif": "énergie actuelle non déclarée"
+      },
+      {
+        "cle": "saisies_economie_pompage.consommation",
+        "motif": "consommation non déclarée"
+      },
+      {
+        "cle": "saisies_economie_pompage.depense_unitaire_payee",
+        "motif": "prix payé non déclaré"
+      },
+      {
+        "cle": "saisies_economie_pompage.mois_irrigation",
+        "motif": "mois d'irrigation non déclarés"
+      }
+    ],
+    "vue_interne": {
+      "van_mad": null,
+      "retour_actualise_ans": null,
+      "scenario_butane_non_subventionne": null,
+      "aide_fda_indicative": null,
+      "rendement_global_implicite_pct": null,
+      "omissions": [
+        {
+          "cle": "vue_interne",
+          "motif": "aucune économie déclarée"
+        }
+      ]
+    }
+  },
+  "reglages_lus": {
+    "TariffSettings.charges_pompage_solaire": {
+      "forme": "[{libelle, montant_mad_an, source}] — vide par défaut ([]), aucune valeur par défaut",
+      "exemple": [
+        {
+          "libelle": "Nettoyage des panneaux et visite annuelle",
+          "montant_mad_an": 600.0,
+          "source": "barème société"
+        }
+      ]
+    },
+    "TariffSettings.regle_fda_pompage": {
+      "forme": "{taux_pct, plafond_mad_par_ha, plafond_mad_par_kwc, plafond_mad_par_projet, base ht|ttc|a_confirmer, source, releve_le} — vide par défaut ({}) ; refusée sans source",
+      "exemple": {
+        "taux_pct": 30,
+        "plafond_mad_par_ha": 3000,
+        "plafond_mad_par_kwc": 3000,
+        "plafond_mad_par_projet": 30000,
+        "base": "a_confirmer",
+        "source": "Guide FDA édition 2024, p.20-23",
+        "releve_le": "2026-10-02"
+      },
+      "regle": "Usage INTERNE seulement (aide indicative de `vue_interne`) ; le client ne voit que la RÈGLE imprimée, jamais un montant (D-AGR-6)"
+    },
+    "CompanyProfile.reperes_energie_agricole": {
+      "forme": "{butane_12kg_detail, butane_12kg_non_subventionne, gasoil_litre}, chacun {valeur, source, releve_le}",
+      "exemple": {
+        "butane_12kg_detail": {
+          "valeur": 50,
+          "source": "",
+          "releve_le": "2026-08-20"
+        },
+        "butane_12kg_non_subventionne": {
+          "valeur": 128,
+          "source": "",
+          "releve_le": "2026-08-20"
+        },
+        "gasoil_litre": {
+          "valeur": null,
+          "source": "",
+          "releve_le": null
+        }
+      },
+      "regle": "Valeurs de l'exemple = la reprise Q4 du 20/08 (source VIDE, AGR208) ; un repère n'est affiché que s'il a une source ; `butane_12kg_non_subventionne` n'est lu que par la vue interne"
+    }
+  }
+}

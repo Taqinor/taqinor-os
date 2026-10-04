@@ -159,6 +159,15 @@
       <span>Remise globale ({{ remise_globale }}%)</span>
       <span>−{{ "%.2f"|format(remise_montant) }} MAD</span>
     </div>
+    {% endif %}
+    {# ARRONDI-100 — le total du devis ramené au palier de 100 MAD inférieur. #}
+    {% if arrondi_montant and arrondi_montant > 0 %}
+    <div class="totaux-row remise">
+      <span>Arrondi commercial</span>
+      <span>−{{ "%.2f"|format(arrondi_montant) }} MAD</span>
+    </div>
+    {% endif %}
+    {% if remise_globale > 0 or (arrondi_montant and arrondi_montant > 0) %}
     <div class="totaux-row">
       <span>Total HT</span>
       <span>{{ "%.2f"|format(total_ht) }} MAD</span>

@@ -49,14 +49,23 @@ class TestLotsDevis(TestCase):
                          Decimal('3000.00'))
         self.assertEqual(res['lots'][1]['totaux']['ht_net'],
                          Decimal('5001.00'))
+        # ARRONDI-100 : 8001.00 → 8000.00. Seul le total consolidé porte le
+        # palier de 100 MAD (TTC 9601,20 → 9600,00, arrondi 1,00) ; les blocs
+        # par lot ci-dessus restent exacts.
         self.assertEqual(res['total_consolide']['ht_net'],
-                         Decimal('8001.00'))
+                         Decimal('8000.00'))
+        self.assertEqual(res['total_consolide']['arrondi'], Decimal('1.00'))
         self.assertIsNone(res['hors_lot'])
 
     def test_consolide_coherent_au_centime_avec_le_devis(self):
         res = lots_totaux(self.devis)
         somme = sum(b['totaux']['ht_net'] for b in res['lots'])
-        self.assertEqual(somme, res['total_consolide']['ht_net'])
+        # ARRONDI-100 : les blocs par lot sont exacts, le consolidé porte le
+        # palier — Σ lots == consolidé + arrondi (8001,00 == 8000,00 + 1,00),
+        # et le consolidé est exactement le total du devis.
+        self.assertEqual(
+            somme,
+            res['total_consolide']['ht_net'] + res['total_consolide']['arrondi'])
         self.assertEqual(res['total_consolide']['ht_net'],
                          self.devis.total_ht)
 
@@ -67,15 +76,21 @@ class TestLotsDevis(TestCase):
         res = lots_totaux(self.devis)
         self.assertEqual(res['lots'][0]['totaux']['ht_net'],
                          Decimal('2700.00'))
+        # ARRONDI-100 : 7200.90 → 7166.67 (palier de 100 MAD sur le seul
+        # consolidé : 7200,90 == 7166,67 + arrondi 34,23, somme des lots).
         self.assertEqual(res['total_consolide']['ht_net'],
-                         Decimal('7200.90'))
+                         Decimal('7166.67'))
+        self.assertEqual(
+            res['total_consolide']['ht_net'] + res['total_consolide']['arrondi'],
+            Decimal('7200.90'))
 
     def test_ligne_hors_lot_isolee(self):
         self._ligne(None, '500.00', '1')
         res = lots_totaux(self.devis)
         self.assertEqual(res['hors_lot']['ht_net'], Decimal('500.00'))
+        # ARRONDI-100 : 8501.00 → 8500.00 (hors-lot et lots restent exacts).
         self.assertEqual(res['total_consolide']['ht_net'],
-                         Decimal('8501.00'))
+                         Decimal('8500.00'))
 
     def test_devis_sans_lot_reste_mono_site(self):
         autre = DevisFactory(company=self.company)
@@ -85,7 +100,8 @@ class TestLotsDevis(TestCase):
         self.lot_a.delete()
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.lignes.count(), 2)
-        self.assertEqual(self.devis.total_ht, Decimal('8001.00'))
+        # ARRONDI-100 : 8001.00 → 8000.00 (TTC 9601,20 → 9600,00).
+        self.assertEqual(self.devis.total_ht, Decimal('8000.00'))
 
     def test_endpoint_get_et_post(self):
         url = f'/api/django/ventes/devis/{self.devis.id}/lots/'

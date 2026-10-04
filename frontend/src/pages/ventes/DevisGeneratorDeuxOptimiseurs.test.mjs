@@ -34,6 +34,7 @@ import {
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
   totauxCanoniquesTtc,
 } from '../../features/ventes/solar.js'
+import { PAS_ARRONDI_DEVIS } from '../../features/ventes/remise.js'
 
 const SRV_SANS = { panneaux: 12, kwc: 8.52 }
 const SRV_AVEC = { panneaux: 16, kwc: 11.36 }
@@ -232,8 +233,10 @@ test('les totaux par option appliquent les paniers — deux compositions diverge
   const t = optionTotalsTTC(lignes, 0)
   // ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — chaque panier se chiffre par la
   // chaîne canonique du noyau (HT persisté → TVA) sur SES lignes.
-  assert.equal(t.totalSansBrut, totauxCanoniquesTtc([lignes[0], lignes[2]], 0))
-  assert.equal(t.totalAvecBrut, totauxCanoniquesTtc([lignes[1], lignes[3], lignes[4]], 0))
+  // ARRONDI-100 : le total par option est ramené au palier de 100 MAD
+  // inférieur ; le noyau de référence reçoit le même palier.
+  assert.equal(t.totalSansBrut, totauxCanoniquesTtc([lignes[0], lignes[2]], 0, PAS_ARRONDI_DEVIS))
+  assert.equal(t.totalAvecBrut, totauxCanoniquesTtc([lignes[1], lignes[3], lignes[4]], 0, PAS_ARRONDI_DEVIS))
   assert.notEqual(t.totalSansBrut, t.totalAvecBrut,
     'deux optimiseurs indépendants doivent donner deux totaux différents')
 })
@@ -244,9 +247,10 @@ test('la remise globale s’applique aux DEUX options, chacune sur SON total', (
   // Chaîne canonique (ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER) : HT persisté
   // 10 × 833,33 = 8 333,30 → brut 9 999,96 ; remise 833,33 → HT net
   // 7 499,97 ; TVA 1 499,99 → 8 999,96, le chiffre facturé.
-  assert.equal(t.totalSansBrut, 9999.96)
-  assert.equal(t.totalSans, 8999.96)
-  assert.equal(t.totalAvec, 8999.96)
+  // ARRONDI-100 : 9 999,96 → palier de 100 inférieur (9 900) ; 8 999,96 → 8 900.
+  assert.equal(t.totalSansBrut, 9900)
+  assert.equal(t.totalSans, 8900)
+  assert.equal(t.totalAvec, 8900)
 })
 
 test('une ligne batterie taguée « sans » ne compte JAMAIS dans une capacité batterie', () => {

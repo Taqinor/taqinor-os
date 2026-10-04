@@ -156,16 +156,19 @@ class WebQuestionnaireWebhookTests(TestCase):
         # Réemploi des colonnes pompage existantes (jamais dupliquées).
         self.assertEqual(str(lead.pompe_hmt_m), '60.00')
         self.assertEqual(str(lead.pompe_debit_m3h), '12.00')
-        self.assertEqual(str(lead.pompe_cv), '7.50')
-        self.assertEqual(lead.web_questionnaire, {
-            'water_source': 'forage',
-            'profondeur_m': 45.0,
-            'besoin_m3j': 84.0,
-            'irrigation': 'goutte',
-            'culture': 'olivier',
-            'surface_ha': 5.0,
-            'fuel_spend_mad': 2500.0,
-        })
+        self.assertEqual(str(lead.pompe_actuelle_cv), '7.50')
+        # AGR402 — les réponses agricoles quittent le sac pour leurs colonnes.
+        self.assertEqual(lead.web_questionnaire, {})
+        self.assertEqual(lead.source_eau, 'forage')
+        self.assertEqual(str(lead.niveau_statique_m), '45.00')
+        self.assertEqual(lead.niveau_statique_source, 'site_web')
+        self.assertEqual(str(lead.besoin_eau_m3j), '84.00')
+        self.assertEqual(lead.besoin_eau_source, 'site_web')
+        self.assertEqual(lead.pompe_hmt_source, 'site_web')
+        self.assertEqual(lead.irrigation_methode, 'goutte')
+        self.assertEqual(lead.culture, 'olivier')
+        self.assertEqual(str(lead.surface_irriguee_ha), '5.00')
+        self.assertEqual(str(lead.depense_carburant_mad_mois), '2500.00')
         # CAD149 — les deux réponses de pompage PROMUES en colonne : elles
         # quittent le sac, exactement comme HMT/débit/CV au-dessus.
         self.assertEqual(str(lead.pompage_heures_jour), '7.0')
@@ -287,8 +290,9 @@ class TrousDeMappingCombles(TestCase):
             mode='agricole', regionAgricole='souss-massa', culture='olivier'))
         self.assertEqual(res.status_code, 201, res.content)
         lead = Lead.objects.get(pk=res.json()['lead_id'])
-        self.assertEqual(lead.web_questionnaire.get('region_agricole'),
-                         'souss-massa')
+        # AGR402 — promue vers sa colonne (plus dans le sac).
+        self.assertEqual(lead.region_agricole, 'souss-massa')
+        self.assertNotIn('region_agricole', lead.web_questionnaire)
         note = LeadActivity.objects.filter(
             lead=lead, body__startswith='Questionnaire web').first()
         self.assertIn('région souss-massa', note.body)
@@ -298,6 +302,7 @@ class TrousDeMappingCombles(TestCase):
             mode='agricole', regionAgricole='atlantide', culture='olivier'))
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertNotIn('region_agricole', lead.web_questionnaire)
+        self.assertIsNone(lead.region_agricole)
 
     def test_cles_gatees_atterrissent_toutes_dans_le_blob(self):
         """Clés déjà acceptées mais rarement émises : on verrouille qu'elles
@@ -552,3 +557,114 @@ class Qjr595PromotionProCoupleTests(TestCase):
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertIsNone(lead.compteur_puissance_kva)
         self.assertEqual(lead.web_questionnaire['puissance_kva'], 100000.0)
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class Agr402PromotionPompageTests(TestCase):
+    """AGR402 — les réponses agricoles du site quittent le sac pour leurs
+    colonnes AGR400 (webhook + reprise de l'existant)."""
+
+    PAYLOAD_AGRICOLE = dict(
+        mode='agricole', waterSource='puits', profondeurM=30, hmtM=55,
+        besoinM3j=90, irrigation='aspersion', culture='agrumes',
+        surfaceHa=3, regionAgricole='haouz', fuelSpendMad=1800)
+    CLES_SAC = ('water_source', 'profondeur_m', 'hmt_m', 'besoin_m3j',
+                'irrigation', 'culture', 'surface_ha', 'region_agricole',
+                'fuel_spend_mad')
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='AGR402 Co', slug='agr402-co')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data):
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json',
+            HTTP_X_WEBHOOK_SECRET=SECRET)
+
+    def test_payload_agricole_complet_remplit_les_colonnes_et_vide_le_sac(self):
+        res = self.post(payload_site(**self.PAYLOAD_AGRICOLE))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.source_eau, 'puits')
+        self.assertEqual(str(lead.niveau_statique_m), '30.00')
+        self.assertEqual(lead.niveau_statique_source, 'site_web')
+        self.assertEqual(str(lead.pompe_hmt_m), '55.00')
+        self.assertEqual(lead.pompe_hmt_source, 'site_web')
+        self.assertEqual(str(lead.besoin_eau_m3j), '90.00')
+        self.assertEqual(lead.irrigation_methode, 'aspersion')
+        self.assertEqual(lead.culture, 'agrumes')
+        self.assertEqual(str(lead.surface_irriguee_ha), '3.00')
+        self.assertEqual(lead.region_agricole, 'haouz')
+        self.assertEqual(str(lead.depense_carburant_mad_mois), '1800.00')
+        for cle in self.CLES_SAC:
+            self.assertNotIn(cle, lead.web_questionnaire or {}, cle)
+
+    def test_besoin_seul_remplit_besoin_avec_la_source_site_web(self):
+        res = self.post(payload_site(mode='agricole', besoinM3j=84))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(str(lead.besoin_eau_m3j), '84.00')
+        self.assertEqual(lead.besoin_eau_source, 'site_web')
+        self.assertIsNone(lead.niveau_statique_source)
+
+    def test_une_colonne_deja_remplie_n_est_pas_ecrasee(self):
+        self.post(payload_site(mode='agricole', profondeurM=30, hmtM=55))
+        # Renvoi de la MÊME soumission (< 60 s, même téléphone) : complète
+        # les colonnes vides, ne réécrit jamais une colonne déjà remplie.
+        self.post(payload_site(mode='agricole', profondeurM=80, hmtM=90,
+                               culture='olivier'))
+        leads = Lead.objects.filter(company=self.company)
+        self.assertEqual(leads.count(), 1)
+        lead = leads.get()
+        self.assertEqual(str(lead.niveau_statique_m), '30.00')
+        self.assertEqual(str(lead.pompe_hmt_m), '55.00')
+        self.assertEqual(lead.culture, 'olivier')
+
+    def test_une_valeur_hors_colonne_reste_dans_le_sac(self):
+        from apps.crm.webhooks import promouvoir_pompage_du_sac
+        sac = {'fuel_spend_mad': 1e9, 'culture': 'blé'}
+        fields = {}
+        promouvoir_pompage_du_sac(sac, fields)
+        self.assertEqual(sac, {'fuel_spend_mad': 1e9})
+        self.assertEqual(fields, {'culture': 'blé'})
+
+
+class Agr402RepriseDeLExistantTests(TestCase):
+    """La migration de données : déplace si la colonne est vide, retire la
+    clé déplacée, idempotente."""
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(
+            'apps.crm.migrations.0120_agr402_sac_pompage_vers_colonnes')
+
+    def test_reprise_idempotente_et_sans_ecrasement(self):
+        from django.apps import apps as django_apps
+        company = Company.objects.create(nom='AGR402 R', slug='agr402-r')
+        vierge = Lead.objects.create(
+            company=company, nom='Vierge', web_questionnaire={
+                'water_source': 'forage', 'besoin_m3j': 120,
+                'region_agricole': 'souss-massa', 'equipes': '2x8'})
+        rempli = Lead.objects.create(
+            company=company, nom='Rempli', besoin_eau_m3j=50,
+            web_questionnaire={'besoin_m3j': 120})
+        migration = self._migration()
+        migration.deplacer(django_apps, None)
+        vierge.refresh_from_db()
+        rempli.refresh_from_db()
+        self.assertEqual(vierge.source_eau, 'forage')
+        self.assertEqual(str(vierge.besoin_eau_m3j), '120.00')
+        self.assertEqual(vierge.besoin_eau_source, 'site_web')
+        self.assertEqual(vierge.region_agricole, 'souss-massa')
+        self.assertEqual(vierge.web_questionnaire, {'equipes': '2x8'})
+        # Colonne déjà remplie : rien n'est déplacé, la clé reste au sac.
+        self.assertEqual(str(rempli.besoin_eau_m3j), '50.00')
+        self.assertEqual(rempli.web_questionnaire, {'besoin_m3j': 120})
+        etat = list(Lead.objects.filter(company=company).order_by('pk')
+                    .values())
+        migration.deplacer(django_apps, None)
+        self.assertEqual(
+            list(Lead.objects.filter(company=company).order_by('pk')
+                 .values()), etat)

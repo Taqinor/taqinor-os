@@ -47,7 +47,8 @@ montants CLIENT.
 
 Forme rendue : :class:`Totaux`, conforme à
 ``apps/ventes/contract_samples/devis_totaux.json`` (``ht_brut`` → ``remise`` →
-``ht_net`` → ``tva_par_taux`` → ``tva`` → ``ttc`` → ``ttc_affiche``). Les
+``arrondi`` → ``ht_net`` → ``tva_par_taux`` → ``tva`` → ``ttc`` →
+``ttc_affiche``). Les
 entrées de ``tva_par_taux`` portent ``{taux, base, montant}``, exactement le
 contrat — ``base`` étant la part de ``ht_net`` imposée à CE taux.
 """
@@ -55,6 +56,15 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Optional, Tuple
+
+# ARRONDI-100 (fondateur, 02/10/2026) — « tous mes devis finissent par deux
+# zéros, sans centimes : garde les prix des articles, baisse juste le total au
+# palier de 100 DH inférieur ». LE palier de TOUT devis, par option et par
+# villa : le TTC est ramené au multiple de 100 MAD inférieur par
+# ``selectors._absorber_arrondi`` (une baisse de HT, ``ht_net + tva == ttc``
+# au centime). Miroir écran : ``PAS_ARRONDI_DEVIS`` de
+# ``frontend/src/features/ventes/remise.js``.
+PAS_ARRONDI_DEVIS = Decimal('100')
 
 
 class Vue(Enum):
@@ -84,6 +94,10 @@ class Totaux:
     tva: Decimal
     ttc: Decimal
     ttc_affiche: Decimal
+    # ARRONDI-100 — la baisse de HT qui ramène ``ttc`` au palier de
+    # ``PAS_ARRONDI_DEVIS`` (``ht_net = ht_brut − remise − arrondi``). Dernier
+    # champ, avec défaut : aucune construction positionnelle existante ne bouge.
+    arrondi: Decimal = Decimal('0.00')
 
 
 def _lignes_du_devis(devis, lignes, *, avec_produit):
@@ -174,7 +188,10 @@ def _totaux_canoniques(devis, lignes, option, *, unitaire=False):
     noyau = _canonical_totaux(
         lignes,
         remise_globale_pct=getattr(devis, 'remise_globale', 0) or 0,
-        fallback_taux=devis.taux_tva)
+        fallback_taux=devis.taux_tva,
+        # ARRONDI-100 — par villa, AVANT le ×N : une villa coûte un palier
+        # rond, N villas coûtent N paliers ronds (le PDF imprime les deux).
+        arrondi_pas=PAS_ARRONDI_DEVIS)
     # ERR-QAC-MULTIVILLA-TOTAL-XN — ×N villas identiques : l'argent du devis
     # est le total ×N imprimé (décision fondateur 30/09/2026). ``unitaire``
     # n'est demandé QUE par le moteur PDF, qui compose le document d'UNE villa
@@ -186,9 +203,11 @@ def _totaux_canoniques(devis, lignes, option, *, unitaire=False):
         ht_brut=noyau['ht_brut'], remise=noyau['remise'],
         ht_net=noyau['ht_net'], tva_par_taux=_entrees_tva(noyau['tva_par_taux']),
         tva=noyau['tva'], ttc=noyau['ttc'],
-        # AUCUNE vue n'arrondit aujourd'hui : ``ttc_affiche`` est le SLOT prévu
-        # pour un futur arrondi d'affichage, jamais une seconde source.
-        ttc_affiche=noyau['ttc'])
+        # AUCUNE vue n'arrondit l'AFFICHAGE : ``ttc_affiche`` est le SLOT prévu
+        # pour un futur arrondi d'affichage, jamais une seconde source. Le
+        # palier de 100 MAD (ARRONDI-100) est de l'ARGENT, pas de l'affichage :
+        # il est déjà dans ``ttc``.
+        ttc_affiche=noyau['ttc'], arrondi=noyau['arrondi'])
 
 
 def totaux(devis, *, vue: Vue, option: Optional[str] = None,

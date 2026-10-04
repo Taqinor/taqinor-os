@@ -55,7 +55,7 @@ describe('ShortcutsProvider — cheatsheet « ? » (VX248)', () => {
     // Le groupe « … — pour votre rôle » apparaît AVANT « Général » dans le DOM.
     expect(focusedHeading.compareDocumentPosition(generalHeading) & Node.DOCUMENT_POSITION_FOLLOWING)
       .toBeTruthy()
-    expect(within(dialog).getByText('Archiver / restaurer le lead')).toBeInTheDocument()
+    expect(within(dialog).getByText('Aller au responsable (déléguer)')).toBeInTheDocument()
   })
 
   it('un rôle qui NE matche PAS (Magasinier) voit les mêmes raccourcis en repli « autres rôles » — jamais masqués', () => {
@@ -66,7 +66,7 @@ describe('ShortcutsProvider — cheatsheet « ? » (VX248)', () => {
     // Toujours listés (filtre d'AFFICHAGE seulement, jamais une désactivation
     // fonctionnelle) — juste sous le libellé « (autres rôles) ».
     expect(within(dialog).getByText(/\(autres rôles\)/)).toBeInTheDocument()
-    expect(within(dialog).getByText('Archiver / restaurer le lead')).toBeInTheDocument()
+    expect(within(dialog).getByText('Aller au responsable (déléguer)')).toBeInTheDocument()
   })
 
   it("sans écran de détail monté, la cheatsheet reste correcte (Général/Navigation/Créer seulement)", () => {
@@ -80,7 +80,7 @@ describe('ShortcutsProvider — cheatsheet « ? » (VX248)', () => {
     fireEvent.keyDown(document, { key: '?' })
     const dialog = screen.getByLabelText('Aide des raccourcis clavier')
     expect(within(dialog).getByText('Général')).toBeInTheDocument()
-    expect(within(dialog).queryByText('Archiver / restaurer le lead')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText('Aller au responsable (déléguer)')).not.toBeInTheDocument()
   })
 })
 
@@ -171,6 +171,28 @@ describe('ShortcutsProvider — ODY28 : séquences « g + lettre » unifiées', 
     // C'était LE bug : les deux gestionnaires tiraient sur la même frappe.
     expect(listener).not.toHaveBeenCalled()
     window.removeEventListener('taqinor:app-launcher', listener)
+  })
+
+  it('CAD177 — un keydown SANS `key` (autoremplissage Chrome, gremlins.js) est ignoré sans TypeError', () => {
+    navigateMock.mockClear()
+    renderWithProvider()
+    // Event générique (pas un KeyboardEvent) : `key` est undefined, comme
+    // l'autoremplissage de Chrome ou le « typer » de gremlins.js.
+    // Une exception dans un écouteur n'est pas relancée à `dispatchEvent` :
+    // elle remonte en `error` sur window (= « exception non rattrapée »).
+    const erreurs = []
+    const surErreur = (ev) => { erreurs.push(ev.error ?? ev.message); ev.preventDefault() }
+    window.addEventListener('error', surErreur)
+    try {
+      document.body.dispatchEvent(new Event('keydown', { bubbles: true }))
+      // Aussi au milieu d'une séquence « g … ».
+      fireEvent.keyDown(document.body, { key: 'g' })
+      document.body.dispatchEvent(new Event('keydown', { bubbles: true }))
+    } finally {
+      window.removeEventListener('error', surErreur)
+    }
+    expect(erreurs).toEqual([])
+    expect(navigateMock).not.toHaveBeenCalled()
   })
 
   it('une séquence inconnue ne fait rien', () => {

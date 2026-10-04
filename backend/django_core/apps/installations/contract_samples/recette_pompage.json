@@ -1,0 +1,149 @@
+{
+  "endpoint": "GET /api/django/installations/chantiers/{id}/recette-pompage/",
+  "pourquoi": "AGR6 (Groupe AGR, audit L3 du devis agricole, 02/10/2026) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main` avant les deux moitiés (backend AGR608-AGR612, frontend AGR613-AGR614). Aujourd'hui la seule recette est IEC 62446-1 pour le PV raccordé (apps/installations/models_chantier.py : terre, polarité, isolement, `production_test_kw`, `performance_ok` booléen) : aucun champ débit, HMT, courant moteur, fréquence ni niveau d'eau, alors que le devis imprime un débit à la HMT et un m³/jour (`debit_hmt_m3h`, `hmt_m`, `m3_jour`, `heures_pompage`). Réponse de GET et POST : `{installation, record}`, `record: null` tant qu'aucune fiche n'existe (`exemple_vide`). Le bloc `comparaison` met la mesure en face de la promesse FIGÉE du devis (copiée à la création de la fiche, jamais relue en direct). `cadre` = « IEC 62253:2011 » (sis.se, publiée 07/2011). Le contrat n'écrit AUCUN seuil, AUCUNE tolérance, AUCUNE correction d'irradiance : `seuil_ecart_pct` vient d'un réglage SOCIÉTÉ sans défaut (AGR606) — null = non saisi, alors `hors_seuil` est null ; l'irradiance est affichée à côté de l'écart, jamais un débit « corrigé ». `debit_attendu_a_hmt_mesuree_m3h` = la courbe de la pompe lue à la HMT mesurée, null + motif (dans `omissions`) quand la pompe n'a pas de courbe. `vue_portail` = ce que le CLIENT voit sur le portail : date, HMT et débit mesurés, débit promis, écart, commentaire, résultat — jamais l'instrument, un prix ni `prix_achat`. Valeurs ILLUSTRATIVES (alignées sur l'`exemple` du contrat `etude_pompage_preview.json`).",
+  "endpoints": {
+    "lire": "GET /api/django/installations/chantiers/{id}/recette-pompage/ → {installation, record}",
+    "creer": "POST /api/django/installations/chantiers/{id}/recette-pompage/ → {installation, record} (201) ; une seule fiche par chantier",
+    "modifier": "PATCH /api/django/installations/recettes-pompage/{id}/ → {installation, record} ; refusé (400 nommant `verrouillee`) une fois la fiche verrouillée"
+  },
+  "corps_patch": {
+    "hmt_mesuree_m": 60.2,
+    "debit_mesure_m3h": 28.9,
+    "commentaire_ecart": ""
+  },
+  "exemple": {
+    "installation": 214,
+    "record": {
+      "id": 37,
+      "date_essai": "2026-11-18",
+      "technicien": 12,
+      "instrument_id": "DEB-ULTRA-02",
+      "niveau_statique_m": 32.4,
+      "niveau_dynamique_m": 41.1,
+      "hmt_mesuree_m": 60.2,
+      "debit_mesure_m3h": 28.9,
+      "methode_debit": "compteur",
+      "index_compteur_m3": 12.6,
+      "courant_plaque_a": 16.0,
+      "courant_phase_1_a": 14.8,
+      "courant_phase_2_a": 14.9,
+      "courant_phase_3_a": 14.7,
+      "tension_v": 380,
+      "frequence_variateur_hz": 49.2,
+      "irradiance_wm2": 870,
+      "source_irradiance": "mesuree",
+      "isolement_moteur_mohm": 250.0,
+      "isolement_ok": true,
+      "sens_rotation_ok": true,
+      "test_marche_a_sec_ok": true,
+      "resultat": "conforme",
+      "observations": "",
+      "commentaire_ecart": "",
+      "verrouillee": false,
+      "cadre": "IEC 62253:2011",
+      "comparaison": {
+        "promesse": {
+          "debit_hmt_m3h": 30.5,
+          "hmt_m": 58.7,
+          "m3_jour": 134.2,
+          "heures_pompage": 4.4,
+          "devis_reference": "DEV-2026-10-0001",
+          "figee_le": "2026-11-02"
+        },
+        "debit_attendu_a_hmt_mesuree_m3h": 29.9,
+        "ecart_debit_pct": -3.3,
+        "seuil_ecart_pct": null,
+        "hors_seuil": null,
+        "commentaire_requis": false,
+        "omissions": [
+          {"cle": "hors_seuil", "motif": "seuil d'écart non saisi par la société : aucun verdict"}
+        ]
+      },
+      "vue_portail": {
+        "date_essai": "2026-11-18",
+        "hmt_mesuree_m": 60.2,
+        "debit_mesure_m3h": 28.9,
+        "debit_promis_m3h": 30.5,
+        "ecart_debit_pct": -3.3,
+        "commentaire_ecart": "",
+        "resultat": "conforme"
+      }
+    }
+  },
+  "exemple_vide": {
+    "installation": 214,
+    "record": null
+  },
+  "exemple_sans_courbe": {
+    "installation": 215,
+    "record": {
+      "id": 38,
+      "date_essai": "2026-11-20",
+      "technicien": 12,
+      "instrument_id": "",
+      "niveau_statique_m": null,
+      "niveau_dynamique_m": null,
+      "hmt_mesuree_m": 47.5,
+      "debit_mesure_m3h": 16.2,
+      "methode_debit": "jaugeage",
+      "index_compteur_m3": null,
+      "courant_plaque_a": 9.0,
+      "courant_phase_1_a": 8.6,
+      "courant_phase_2_a": null,
+      "courant_phase_3_a": null,
+      "tension_v": 220,
+      "frequence_variateur_hz": 50.0,
+      "irradiance_wm2": null,
+      "source_irradiance": "estimee",
+      "isolement_moteur_mohm": null,
+      "isolement_ok": null,
+      "sens_rotation_ok": true,
+      "test_marche_a_sec_ok": null,
+      "resultat": "en_cours",
+      "observations": "Pompe monophasée : phases 2 et 3 sans objet.",
+      "commentaire_ecart": "",
+      "verrouillee": false,
+      "cadre": "IEC 62253:2011",
+      "comparaison": {
+        "promesse": {
+          "debit_hmt_m3h": null,
+          "hmt_m": 48.0,
+          "m3_jour": null,
+          "heures_pompage": null,
+          "devis_reference": "DEV-2026-10-0004",
+          "figee_le": "2026-11-05"
+        },
+        "debit_attendu_a_hmt_mesuree_m3h": null,
+        "ecart_debit_pct": null,
+        "seuil_ecart_pct": null,
+        "hors_seuil": null,
+        "commentaire_requis": false,
+        "omissions": [
+          {"cle": "debit_attendu_a_hmt_mesuree_m3h", "motif": "pompe sans courbe constructeur : débit attendu non calculable"},
+          {"cle": "ecart_debit_pct", "motif": "aucun débit promis ni attendu : écart non calculable"}
+        ]
+      },
+      "vue_portail": {
+        "date_essai": "2026-11-20",
+        "hmt_mesuree_m": 47.5,
+        "debit_mesure_m3h": 16.2,
+        "debit_promis_m3h": null,
+        "ecart_debit_pct": null,
+        "commentaire_ecart": "",
+        "resultat": "en_cours"
+      }
+    }
+  },
+  "regles": {
+    "methode_debit": "compteur | jaugeage",
+    "courant_phase_2_a / courant_phase_3_a": "null en monophasé",
+    "source_irradiance": "mesuree | estimee",
+    "resultat": "en_cours | conforme | reserves | non_conforme — saisi par le technicien, jamais déduit d'un seuil par le contrat",
+    "comparaison.promesse": "copie FIGÉE des quatre clés du devis (debit_hmt_m3h, hmt_m, m3_jour, heures_pompage) + devis_reference + figee_le",
+    "comparaison.ecart_debit_pct": "(débit mesuré − débit attendu à la HMT mesurée) ÷ débit attendu × 100 ; null + motif quand l'attendu est null",
+    "comparaison.seuil_ecart_pct": "réglage société (AGR606), null = non saisi ; aucun défaut",
+    "comparaison.hors_seuil": "true | false | null (null sans seuil ou sans écart)",
+    "comparaison.commentaire_requis": "true quand hors_seuil est true : `commentaire_ecart` devient obligatoire avant le verrouillage",
+    "vue_portail": "jamais l'instrument, le technicien, un prix ni `prix_achat`"
+  }
+}

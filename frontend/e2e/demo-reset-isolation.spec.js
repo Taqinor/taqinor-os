@@ -15,24 +15,32 @@
 //     spec vit en e2e COMPLET (release-verify), pas dans le palier smoke
 //     par-merge de ci.yml (qui ne seed pas `taqinor-demo-full`).
 import { test, expect } from '@playwright/test'
-import { uiLogin, ADMIN } from './helpers'
+import { uiLogin, fermerMomentAccueil, rafraichirEtatPartage, AUTH_FILE } from './helpers'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
 const DEMO_FULL_ADMIN = { username: 'demo_admin_full', password: 'DemoFull@2026!' }
 
-async function leadCount(page) {
-  const res = await page.request.get('/api/django/crm/leads/?page_size=1')
+async function leadCount(requete) {
+  const res = await requete.get('/api/django/crm/leads/?page_size=1')
   expect(res.ok(), `GET /crm/leads/ (${res.status()})`).toBeTruthy()
   const body = await res.json()
   return typeof body.count === 'number' ? body.count : (Array.isArray(body) ? body.length : 0)
 }
 
-test('NTDMO38 — reset-demo sur taqinor-demo-full laisse taqinor-demo strictement intact', async ({ page }) => {
+test('NTDMO38 — reset-demo sur taqinor-demo-full laisse taqinor-demo strictement intact', async ({ page, playwright, baseURL }) => {
+  // CAD177 — les comptes de la société RÉELLE voisine se lisent par l'API
+  // avec la session admin PARTAGÉE (AUTH_FILE, revérifiée), plus par deux
+  // connexions UI : juste après les 4 connexions à froid de
+  // demo-first-login, la 6e connexion de la minute tombait sur le throttle
+  // « login » 5/min/IP (run 36990128960 : POST /token/ 429, « Requête
+  // ralentie »). La seule connexion UI restante est celle du sujet du test :
+  // l'admin de la société démo qui déclenche le reset.
+  await rafraichirEtatPartage(playwright, baseURL)
+  const adminReel = await playwright.request.newContext({ baseURL, storageState: AUTH_FILE })
+
   // 1) Baseline sur la société RÉELLE voisine, AVANT tout reset.
-  await uiLogin(page, ADMIN)
-  await expect(page).toHaveURL(/\/apps/, { timeout: 30_000 })
-  const before = await leadCount(page)
+  const before = await leadCount(adminReel)
   expect(before, 'la société réelle voisine a des leads seedés (seed_demo)')
     .toBeGreaterThan(0)
 
@@ -41,6 +49,8 @@ test('NTDMO38 — reset-demo sur taqinor-demo-full laisse taqinor-demo stricteme
   await page.context().clearCookies()
   await uiLogin(page, DEMO_FULL_ADMIN)
   await expect(page).toHaveURL(/\/apps/, { timeout: 30_000 })
+  // CAD177 — premier login à froid : moment d'accueil VX156 à fermer.
+  await fermerMomentAccueil(page)
 
   await page.goto('/parametres')
   await page.getByRole('button', { name: 'Démo & Onboarding' }).click()
@@ -60,10 +70,8 @@ test('NTDMO38 — reset-demo sur taqinor-demo-full laisse taqinor-demo stricteme
 
   // 3) Revient sur la société RÉELLE voisine : ses leads sont STRICTEMENT
   //    inchangés — la preuve que le reset est resté scopé à sa propre société.
-  await page.context().clearCookies()
-  await uiLogin(page, ADMIN)
-  await expect(page).toHaveURL(/\/apps/, { timeout: 30_000 })
-  const after = await leadCount(page)
+  const after = await leadCount(adminReel)
+  await adminReel.dispose()
   expect(after, 'aucun lead de la société réelle voisine perdu ni ajouté par le reset démo')
     .toBe(before)
 })

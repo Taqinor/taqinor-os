@@ -29,6 +29,27 @@
       "equipements": true
     }
   },
+  "exemple_agricole": {
+    "url": "https://taqinor.ma/questionnaire/pQ7x…/",
+    "url_interne": "https://taqinor.ma/questionnaire/Z3kb…/",
+    "token": "pQ7x…",
+    "expires_at": "2026-09-24T10:00:00+00:00",
+    "questions": {
+      "pompage": true,
+      "gps": true,
+      "photo_compteur": false,
+      "photo_pompe": true,
+      "photo_forage": true,
+      "contact": true
+    },
+    "manquantes": {
+      "pompage": true,
+      "photo_pompe": true,
+      "photo_forage": true,
+      "gps": true,
+      "contact": true
+    }
+  },
   "notes": {
     "url": "La SEULE à envoyer au client.",
     "url_interne": "Aperçu COMMERCIAL — même page, jeton `token_interne`, JAMAIS montré au client. Le GET par ce jeton ne journalise rien et le POST y est refusé (403) : un aperçu ne déclenche rien, et le commercial ne répond jamais à la place du client.",
