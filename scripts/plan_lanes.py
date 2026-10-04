@@ -1323,6 +1323,22 @@ def apply_external_after_gate(
             refusees.append({**t, "after_block_reasons": raisons})
         else:
             ok.append(t)
+    # Transitif (critique finale OWN, F8) : une tâche qui attend une tâche
+    # REFUSÉE de ce run doit l'être aussi — sinon, la dépendance n'étant plus
+    # dans le run, le planificateur la croirait libre et la lancerait.
+    refusees_ids = {t["id"] for t in refusees}
+    change = True
+    while change:
+        change = False
+        for t in list(ok):
+            attente = [d for d in t.get("deps", ()) if d in refusees_ids]
+            if attente:
+                ok.remove(t)
+                refusees.append({**t, "after_block_reasons": [
+                    f"attend {d}, elle-même refusée dans ce run (@after externe en amont)"
+                    for d in attente]})
+                refusees_ids.add(t["id"])
+                change = True
     return ok, refusees
 
 
