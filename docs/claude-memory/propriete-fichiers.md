@@ -39,7 +39,7 @@ transverse : `docs/plans/PLAN_AUDIT_TRANSVERSE.md`. Le registre PRIME sur le cha
 **Why:** Reda, 02→04/10/2026 — les sessions parallèles ne marchent que si la propriété est réelle et
 disjointe ; la construction QJR5 a dû faire passer 155 de ses 159 tâches dans une seule lane série parce
 que DevisGenerator.jsx, views/devis.py, solar.js, builder.py, crm/services.py… étaient partagés (mesure du
-04/10 : 968 fichiers sur 14 277 touchés par au moins deux propriétaires).
+04/10 : 967 fichiers sur 14 277 touchés par au moins deux propriétaires).
 
 **How to apply:** la garde `scripts/check_ownership.py` (job `stage-names`) refuse un fichier sans
 propriétaire ou à deux propriétaires, une tâche ouverte d'un plan de propriétaire qui déclare le fichier
