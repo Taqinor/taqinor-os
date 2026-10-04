@@ -35,6 +35,8 @@ _PROFILE_FIELD_LABELS = {
     'conditions_generales': 'Conditions générales',
     'couleur_principale': 'Couleur principale',
     'responsable_defaut_leads': 'Responsable par défaut des leads',
+    'responsable_leads_pro':
+        'Responsable des leads commerciaux et industriels',
     'default_installer': 'Installateur par défaut',
     'payment_terms': 'Échéancier de paiement',
     'quote_validity_days': 'Validité du devis (jours)',
