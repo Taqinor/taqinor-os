@@ -11,7 +11,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { construireCoupe, pasRangeeMesure, PROFONDEUR_MODULE_M, MONTANT_AVANT_M } from './coupeRangees.js'
-import { sunPosition, JOUR_SOLSTICE_HIVER } from './horizonMath.js'
+import { sunDirection as sunPosition, WINTER_SOLSTICE_DAY as JOUR_SOLSTICE_HIVER } from '@rooflib/roofPro2'
 
 const DEG2RAD = Math.PI / 180
 

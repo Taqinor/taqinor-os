@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
-import { sortedHorizonPoints, horizonMaxHeightDeg, heuresMasqueesEstimation } from './horizonMath'
+import {
+  sortedHorizonPoints, horizonMaxHeightDeg, hourlyHorizonFactors, maskedHourCount,
+} from '@rooflib/horizonEngine'
 import SunDiagram, { COURBES_REPERE } from './SunDiagram'
 import RetourAtelier from './atelier/RetourAtelier'
 
@@ -77,7 +79,9 @@ export default function HorizonPanel({ calepinageId: idPropose } = {}) {
   }, [calepinageId])
 
   const hauteurMaxDeg = horizonMaxHeightDeg(points)
-  const heuresMasquees = typeof latitudeDeg === 'number' ? heuresMasqueesEstimation(latitudeDeg, points) : 0
+  // ACAL254 — le MÊME compte que l'atelier : heures (mois × heure) de la matrice de
+  // dérate réellement appliquée à la production, en heures — plus de pas de 0,5 h.
+  const heuresMasquees = typeof latitudeDeg === 'number' ? maskedHourCount(hourlyHorizonFactors(latitudeDeg, points)) : 0
   const exploitable = sortedHorizonPoints(points).length >= 2
 
   function ajouterPoint() {
@@ -203,7 +207,7 @@ export default function HorizonPanel({ calepinageId: idPropose } = {}) {
           </div>
         </div>
         <div>
-          <span className="tech-label text-lune-faint">Heures masquées (estimation, 3 jours de repère)</span>
+          <span className="tech-label text-lune-faint">Heures masquées (jour moyen de chaque mois, en heures)</span>
           <div className="fig text-white" data-testid="cal-horizon-heures-masquees">
             {exploitable ? heuresMasquees : '—'}
           </div>
