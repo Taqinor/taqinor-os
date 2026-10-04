@@ -8,34 +8,35 @@ metadata:
 **Une tâche va dans le plan du propriétaire de ses fichiers ; multi-propriétaires → plan transverse.**
 
 Chaque fichier sous `backend/django_core/apps`, `backend/django_core/core`, `frontend/src`, `apps/web` a
-UN propriétaire, déclaré dans `docs/ownership.yml` (globs `paths` précis, puis `fallback` par sous-arbre).
-Propriétaires = les unités d'audit de [[audits-modules]] (leads, fiche, cadence, clients, visites,
-calepinage, devis, facturation, stock, chantiers, sav, ged, portail, parametres) + publicite, analyse,
-web, platform, parked, et `transverse` qui ne possède AUCUN fichier. Chaque propriétaire a son plan
-`docs/plans/PLAN_<PROPRIÉTAIRE>.md` (lancé par « work on the plan <propriétaire> », créé par le premier
-audit qui y route une tâche) ; `transverse` = `docs/plans/PLAN_TRANSVERSE.md`.
+UN propriétaire, déclaré dans `docs/ownership.yml`. Propriétaires = les unités de
+`docs/audits/unites.yml` qui possèdent des fichiers (acquisition J0, lead J1a, crm D1, devis J1b,
+facturation J5, moteur D2, generateur D4, calepinage D3, chantiers J2, stock J3, documents J6, sav J4,
+parametres X3, securite X1, deploy X5, analyse X7) + `web` (docs/WEB_PLAN.md) + `parked` + `platform`
+(files historiques PLAN/PLAN2/new_tasks/ERROR_PLAN/FRONTEND_GAP, aucun fichier) + `transverse` (aucun
+fichier). Plan d'un propriétaire : `docs/plans/PLAN_AUDIT_<MOT>.md` (« work on the plan audit_<mot> ») ;
+transverse : `docs/plans/PLAN_AUDIT_TRANSVERSE.md`. Le registre PRIME sur le champ `possede` de unites.yml.
 
-- Rédiger une tâche (audit, add to plan, ERR…) : lister ses `Files:`, demander leur propriétaire
-  (`python scripts/check_ownership.py --owner-of <chemins>`) ; un seul → son plan ; plusieurs → plan
-  transverse. Un fichier neuf doit être revendiqué au registre dans le même commit.
-- Surfaces `append_only` du registre (routes, barrels, index.css, échantillons de contrat, `migrations/`…) :
-  tout propriétaire y AJOUTE selon la règle écrite à côté, sans réordonner ni réécrire. Migrations :
-  si deux sessions créent la même tête, celle qui fusionne en second régénère SA migration au-dessus
-  (jamais de migration de fusion).
-- Le plan transverse et les files historiques multi-propriétaires (PLAN.md, PLAN2.md, new_tasks_plan.md,
-  ERROR_PLAN.md, FRONTEND_GAP_PLAN.md) ne tournent JAMAIS en parallèle d'un plan dont ils touchent un
-  propriétaire.
-- Un fichier-dieu garde un propriétaire intérimaire ; une tâche d'un autre propriétaire qui le touche
-  est transverse jusqu'à sa découpe (tâches SPL, docs/plans/PLAN_TRANSVERSE.md).
+- Rédiger une tâche (audit, add to plan, ERR…) : lister ses `Files:`, puis
+  `python scripts/check_ownership.py --owner-of <chemins>` ; un seul propriétaire → son plan ; plusieurs →
+  plan transverse. Un fichier NEUF doit être revendiqué dans `docs/ownership.yml` dans le même commit.
+- Un test suit son sujet (DevisGenerator* = generateur, tests du moteur = moteur…).
+- Surfaces `append_only` du registre (migrations/, urls.py, apps.py, façade ventes/services.py,
+  core/events.py, roles/models.py, index.css, router, module.config.jsx…) : tout propriétaire y AJOUTE
+  selon la règle écrite à côté, sans réordonner ni réécrire. Migrations : si deux sessions créent la même
+  tête, celle qui fusionne en second régénère SA migration au-dessus (jamais de migration de fusion).
+- Le plan transverse, PLAN_CRM_VENTES.md et les files historiques ne tournent JAMAIS en parallèle d'un
+  plan dont ils touchent un propriétaire.
+- Un fichier-dieu garde un propriétaire intérimaire ; une tâche d'un autre propriétaire qui le touche est
+  transverse jusqu'à sa découpe (groupe SPL : déplacements purs, golden capturé avant, ancien code
+  supprimé dans le même commit).
 
-**Why:** Reda, 02/10/2026 — les sessions parallèles ne marchent que si la propriété est réelle et
-disjointe ; la construction QJR5 a dû faire passer 155 de ses 159 tâches dans une seule lane série
-parce que DevisGenerator.jsx, views/devis.py, solar.js, builder.py, crm/services.py… étaient partagés.
-Cette règle remplace, pour le routage, la sortie « ONE new group in docs/PLAN2.md » du bloc commun
-d'[[audits-modules]].
+**Why:** Reda, 02→04/10/2026 — les sessions parallèles ne marchent que si la propriété est réelle et
+disjointe ; la construction QJR5 a dû faire passer 155 de ses 159 tâches dans une seule lane série parce
+que DevisGenerator.jsx, views/devis.py, solar.js, builder.py, crm/services.py… étaient partagés (mesure du
+04/10 : 720 fichiers touchés par au moins deux propriétaires).
 
 **How to apply:** la garde `scripts/check_ownership.py` (job `stage-names`) refuse un fichier sans
-propriétaire ou à deux propriétaires, une tâche d'un plan de propriétaire qui déclare un fichier d'un
-autre, et un fichier neuf non déclaré ; `scripts/plan_lanes.py` affiche les propriétaires de chaque
-lane et liste les tâches multi-propriétaires. Voir [[lecons-construction-qjr5]] pour les critères
-d'acceptation des tâches de découpe.
+propriétaire ou à deux propriétaires, une tâche ouverte d'un plan de propriétaire qui déclare le fichier
+d'un autre, un plan non lié au registre et un fichier neuf non déclaré ; `scripts/plan_lanes.py` affiche
+les propriétaires de chaque lane et liste les tâches multi-propriétaires. Critères d'acceptation des tâches
+de découpe : [[lecons-construction-qjr5]]. Routage côté audit : skill `audit`, docs/audits/METHODE.md §D.3.

@@ -57,10 +57,12 @@ owners:
       - backend/django_core/apps/ventes/paiement_import.py
       - backend/django_core/apps/ventes/payment_providers.py
       - backend/django_core/apps/ventes/payments/**
+      - backend/django_core/apps/ventes/public/paiement_views.py
       - backend/django_core/apps/ventes/quote_engine/facturx.py
       - backend/django_core/apps/ventes/receivers.py
       - backend/django_core/apps/ventes/recouvrement.py
       - backend/django_core/apps/ventes/scheduled.py
+      - backend/django_core/apps/ventes/tests/fixtures/golden_*_facturation.js*
       - backend/django_core/apps/ventes/tests/test_acompte_annulation.py
       - backend/django_core/apps/ventes/tests/test_aud10*
       - backend/django_core/apps/ventes/tests/test_aud11*
@@ -89,6 +91,7 @@ owners:
       - backend/django_core/apps/ventes/tests/test_err_qac_facture_recalcul_remise.py
       - backend/django_core/apps/ventes/tests/test_facturation.py
       - backend/django_core/apps/ventes/tests/test_facture_*
+      - backend/django_core/apps/ventes/tests/test_golden_*_facturation.py
       - backend/django_core/apps/ventes/tests/test_invariants_documents.py
       - backend/django_core/apps/ventes/tests/test_invariants_money.py
       - backend/django_core/apps/ventes/tests/test_journal.py
@@ -134,12 +137,14 @@ owners:
       - backend/django_core/apps/ventes/views/avoir.py
       - backend/django_core/apps/ventes/views/bon_commande.py
       - backend/django_core/apps/ventes/views/credit_warning.py
+      - backend/django_core/apps/ventes/views/devis_facturation.py
       - backend/django_core/apps/ventes/views/facture.py
       - backend/django_core/apps/ventes/views/ligne_facture.py
       - backend/django_core/apps/ventes/views/mandat_paiement.py
       - backend/django_core/apps/ventes/views/paiement.py
       - backend/django_core/apps/ventes/views/releve_import.py
       - backend/django_core/apps/ventes/views/remise_encaissement.py
+      - backend/django_core/core/events/facturation.py
       - frontend/src/features/ventes/PaiementEnLigneDialog*
       - frontend/src/features/ventes/echeancierEdition*
       - frontend/src/pages/ventes/AvoirsPage*
@@ -155,7 +160,10 @@ owners:
       - frontend/src/pages/ventes/RemisesEncaissementPage*
       - frontend/src/pages/ventes/encaisserGagne.ez13.test.mjs
       - frontend/src/pages/ventes/factureKanban*
+      - frontend/src/pages/ventes/factureList/**
       - frontend/src/pages/ventes/kpiArgent.apx12.test.mjs
+    fallback:
+      - backend/django_core/apps/ventes/*_facturation.py
   calepinage:
     unite: D3
     plan: docs/plans/PLAN_AUDIT_CALEPINAGE.md
@@ -240,6 +248,15 @@ owners:
       - backend/django_core/apps/crm/tests_roof_*
       - backend/django_core/apps/crm/tests_trace_toit.py
       - backend/django_core/apps/crm/views_visite.py
+      - backend/django_core/apps/stock/golden/**
+      - backend/django_core/apps/stock/importers/fiche_pan_ond.py
+      - backend/django_core/apps/stock/models_fiche_technique.py
+      - backend/django_core/apps/stock/selectors_fiche_technique.py
+      - backend/django_core/apps/stock/serializers_fiche_technique.py
+      - backend/django_core/apps/stock/test_cal_*.py
+      - backend/django_core/apps/stock/test_calx60_*.py
+      - backend/django_core/apps/stock/test_golden_fiche_technique_*.py
+      - backend/django_core/apps/stock/views/fiche_technique.py
       - backend/django_core/apps/ventes/calendrier_view.py
       - backend/django_core/apps/ventes/calepinage_options.py
       - backend/django_core/apps/ventes/commissioning.py
@@ -258,9 +275,11 @@ owners:
       - backend/django_core/apps/ventes/regulatory_docs.py
       - backend/django_core/apps/ventes/roof_load.py
       - backend/django_core/apps/ventes/roof_load_view.py
+      - backend/django_core/apps/ventes/selectors_calepinage.py
       - backend/django_core/apps/ventes/serializers_commissioning.py
       - backend/django_core/apps/ventes/serializers_regulatory.py
       - backend/django_core/apps/ventes/single_line_diagram.py
+      - backend/django_core/apps/ventes/solar_finance.py
       - backend/django_core/apps/ventes/tests/test_borne_toit_physique.py
       - backend/django_core/apps/ventes/tests/test_cal195*
       - backend/django_core/apps/ventes/tests/test_calepinage_*
@@ -294,12 +313,15 @@ owners:
       - backend/django_core/apps/ventes/tests/test_single_line_diagram.py
       - backend/django_core/apps/ventes/tests/test_sld_*
       - backend/django_core/apps/ventes/views/commissioning.py
+      - backend/django_core/apps/ventes/views/devis_calepinage.py
       - backend/django_core/apps/ventes/views/regulatory.py
       - backend/django_core/apps/ventes/views/roof_config.py
       - backend/django_core/core/calepinage/**
       - backend/django_core/core/electrique/**
+      - backend/django_core/core/events/calepinage.py
       - backend/django_core/core/tests/test_calepinage_*
       - backend/django_core/core/tests/test_electrique_*
+      - frontend/src/api/calepinage/**
       - frontend/src/api/calepinageApi*
       - frontend/src/features/calepinage/**
       - frontend/src/features/crm/workspace/IdentityRail.conception.test.jsx
@@ -319,6 +341,7 @@ owners:
       - frontend/src/pages/ventes/RoofViewer*
       - frontend/src/pages/ventes/RoofViewerPage*
       - frontend/src/pages/ventes/ToitureDesign*
+      - frontend/src/styles/calepinage/**
       - frontend/src/styles/roofbuilder.css
       - frontend/src/test/fixtures/calepinage*
       - frontend/src/test/stubs/roofbuilder.js
@@ -334,8 +357,10 @@ owners:
       - apps/web/src/pages/devis/mon-toit.astro
       - backend/django_core/apps/adsengine/**
       - backend/django_core/apps/contact/**
+      - backend/django_core/apps/crm/attribution_selectors.py
       - backend/django_core/apps/crm/contract_samples/lead_provenance_site.json
       - backend/django_core/apps/crm/contract_samples/tunnel_webhook_keys.json
+      - backend/django_core/apps/crm/leads_meta.py
       - backend/django_core/apps/crm/management/commands/backfill_meta_lead_attribution.py
       - backend/django_core/apps/crm/management/commands/import_odoo_leads.py
       - backend/django_core/apps/crm/management/commands/push_odoo_stages.py
@@ -343,6 +368,7 @@ owners:
       - backend/django_core/apps/crm/odoo_sync.py
       - backend/django_core/apps/crm/tests_cad105_sync_odoo_cadence.py
       - backend/django_core/apps/crm/tests_cad119_date_odoo.py
+      - backend/django_core/apps/crm/tests_cad134_meta_timeline.py
       - backend/django_core/apps/crm/tests_import_odoo.py
       - backend/django_core/apps/crm/tests_meta_form_mapping.py
       - backend/django_core/apps/crm/tests_odoo_sync.py
@@ -354,6 +380,8 @@ owners:
       - backend/django_core/apps/crm/tests_webhook*
       - backend/django_core/apps/crm/tests_xmkt32_meta_lead_ads.py
       - backend/django_core/apps/crm/webhooks.py
+      - backend/django_core/apps/ventes/selectors_publicite.py
+      - backend/django_core/core/events/acquisition.py
       - frontend/src/features/adsengine/**
       - frontend/src/pages/crm/WebsiteLeadPayloadsPage*
   lead:
@@ -370,8 +398,10 @@ owners:
       - backend/django_core/apps/ventes/contract_samples/plan_commission.json
       - backend/django_core/apps/ventes/tests/test_wir281*
       - backend/django_core/apps/ventes/tests/test_xsal6_plan_commission.py
+      - backend/django_core/apps/ventes/views/devis_cadence.py
       - backend/django_core/apps/ventes/views/plan_commission.py
       - backend/django_core/apps/visites/**
+      - backend/django_core/core/events/lead.py
       - frontend/src/api/crmApi*
       - frontend/src/api/visitesApi*
       - frontend/src/features/visites/**
@@ -382,8 +412,10 @@ owners:
       - frontend/src/pages/parametres/CadenceRelanceEditor*
       - frontend/src/pages/ventes/ClientQuickCreateModal*
       - frontend/src/pages/visites/**
+      - frontend/src/styles/lead/**
     fallback:
       - backend/django_core/apps/crm/**
+      - backend/django_core/apps/ventes/*_cadence.py
       - frontend/src/features/crm/**
       - frontend/src/pages/crm/**
   crm:
@@ -447,11 +479,14 @@ owners:
       - backend/django_core/apps/ventes/economie.py
       - backend/django_core/apps/ventes/etude_horaire.py
       - backend/django_core/apps/ventes/etude_horaire_view.py
+      - backend/django_core/apps/ventes/horaire/base.py
       - backend/django_core/apps/ventes/management/commands/audit_coherence.py
       - backend/django_core/apps/ventes/offres_tailles.py
+      - backend/django_core/apps/ventes/solar_base.py
       - backend/django_core/apps/ventes/solar_design.py
       - backend/django_core/apps/ventes/tests/_moteur_fixtures.py
       - backend/django_core/apps/ventes/tests/_quote_engine_common.py
+      - backend/django_core/apps/ventes/tests/golden/moteur/**
       - backend/django_core/apps/ventes/tests/test_agr_economie*
       - backend/django_core/apps/ventes/tests/test_calx280_contrat_economie*
       - backend/django_core/apps/ventes/tests/test_calx288_api_economie*
@@ -468,6 +503,7 @@ owners:
       - backend/django_core/apps/ventes/tests/test_premium*
       - backend/django_core/apps/ventes/tests/test_proposal_data_shape*
       - backend/django_core/apps/ventes/tests/test_qg2_render_cache*
+      - backend/django_core/apps/ventes/tests/test_qjr158_pricing_replis*
       - backend/django_core/apps/ventes/tests/test_qjr162_replis_renderer*
       - backend/django_core/apps/ventes/tests/test_qjr235_registre_renderers*
       - backend/django_core/apps/ventes/tests/test_qjr431_appelants_etude_horaire*
@@ -495,6 +531,7 @@ owners:
     paths:
       - backend/django_core/apps/installations/**
       - backend/django_core/apps/outillage/**
+      - backend/django_core/core/events/chantiers.py
       - frontend/src/api/installationsApi*
       - frontend/src/api/outillageApi*
       - frontend/src/features/installations/**
@@ -507,6 +544,7 @@ owners:
       - frontend/src/pages/parametres/FicheInterventionModelesSection*
       - frontend/src/pages/parametres/SecuriteTerrainSection*
       - frontend/src/pages/parametres/ShotListSection*
+      - frontend/src/styles/chantiers/**
   stock:
     unite: J3
     plan: docs/plans/PLAN_AUDIT_STOCK.md
@@ -514,7 +552,9 @@ owners:
     titre: "Catalogue, prix, stock, achats fournisseurs"
     paths:
       - backend/django_core/apps/achats/**
-      - backend/django_core/apps/stock/**
+      - backend/django_core/apps/crm/stock_selectors.py
+      - backend/django_core/apps/ventes/selectors_stock.py
+      - backend/django_core/core/events/stock.py
       - backend/django_core/core/product_roles.py
       - backend/django_core/core/stock_reorder.py
       - backend/django_core/core/tests/test_stkcat21_product_roles.py
@@ -534,6 +574,9 @@ owners:
       - frontend/src/pages/parametres/ReglesApprobationAchatSection*
       - frontend/src/pages/parametres/StockSection*
       - frontend/src/pages/stock/**
+      - frontend/src/styles/stock/**
+    fallback:
+      - backend/django_core/apps/stock/**
   documents:
     unite: J6
     plan: docs/plans/PLAN_AUDIT_DOCUMENTS.md
@@ -543,6 +586,7 @@ owners:
       - apps/web/src/pages/suivi/**
       - backend/django_core/apps/documents/**
       - backend/django_core/apps/portail/**
+      - backend/django_core/apps/ventes/selectors_portail.py
       - frontend/src/api/documentsApi*
       - frontend/src/api/gedApi*
       - frontend/src/api/portailApi*
@@ -562,13 +606,17 @@ owners:
       - backend/django_core/apps/onboarding/**
       - backend/django_core/core/event_coverage.py
       - backend/django_core/core/events.py
+      - backend/django_core/core/events/__init__.py
+      - backend/django_core/core/tests/test_events_split_golden.py
       - frontend/src/api/automationApi*
       - frontend/src/api/notificationsApi*
       - frontend/src/api/parametresApi*
       - frontend/src/features/notifications/**
       - frontend/src/features/onboarding/**
+      - frontend/src/features/workflow/**
       - frontend/src/pages/approbations/**
       - frontend/src/pages/onboarding/**
+      - frontend/src/styles/parametres/**
     fallback:
       - backend/django_core/apps/parametres/**
       - frontend/src/features/parametres/**
@@ -580,10 +628,20 @@ owners:
     titre: "Écran générateur de devis (100 % TTC) et calcul solaire côté écran"
     paths:
       - frontend/src/features/ventes/autoQuote*
+      - frontend/src/features/ventes/calc/**
+      - frontend/src/features/ventes/golden/**
+      - frontend/src/features/ventes/quote/ecranDefauts*
+      - frontend/src/features/ventes/quote/ligneFabrique*
       - frontend/src/features/ventes/solar*
       - frontend/src/features/ventes/solar*.test.*
       - frontend/src/pages/ventes/DevisGenerator*
+      - frontend/src/pages/ventes/DevisLineRowReorder.test.mjs
+      - frontend/src/pages/ventes/DevisOffresTailles.test.mjs
+      - frontend/src/pages/ventes/brouillonAngleMort.ez4.test.mjs
+      - frontend/src/pages/ventes/dimensionnementKwc.ez5.test.mjs
+      - frontend/src/pages/ventes/generateurOptions.apx16.test.mjs
       - frontend/src/pages/ventes/generator/**
+      - frontend/src/styles/generateur/**
   devis:
     unite: J1b
     plan: docs/plans/PLAN_AUDIT_DEVIS.md
@@ -591,7 +649,11 @@ owners:
     titre: "Étude → devis → envoi → correction → révision → signature"
     paths:
       - apps/web/src/pages/proposition/**
+      - backend/django_core/apps/crm/devis_selectors.py
+      - backend/django_core/apps/crm/devis_views.py
+      - backend/django_core/core/events/devis.py
       - frontend/src/api/ventesApi*
+      - frontend/src/styles/devis/**
     fallback:
       - backend/django_core/apps/ventes/**
       - frontend/src/features/ventes/**
@@ -651,6 +713,7 @@ owners:
     paths:
       - backend/django_core/apps/monitoring/**
       - backend/django_core/apps/sav/**
+      - backend/django_core/core/events/sav.py
       - frontend/src/api/monitoringApi*
       - frontend/src/api/savApi*
       - frontend/src/components/sav/**
@@ -692,6 +755,9 @@ owners:
       - frontend/src/pages/reporting/**
     fallback:
       - frontend/src/features/uxviews/**
+  parked:
+    paths:
+      - backend/django_core/core/events/parked.py
   web:
     plan: docs/WEB_PLAN.md
     titre: "Site public Astro (apps/web) hors studio toiture, tunnel lead, proposition et suivi"

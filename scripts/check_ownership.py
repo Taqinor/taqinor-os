@@ -107,6 +107,11 @@ def _prefixe_litteral(glob: str) -> str:
     return glob if m is None else glob[:m.start()]
 
 
+def _specificite(glob: str) -> int:
+    """Nombre de caractères littéraux (hors jokers) : « fichier > dossier > résiduel »."""
+    return len(re.sub(r"[*?]", "", glob))
+
+
 def normaliser(brut: str, web: bool = False) -> str | None:
     """Chemin déclaré dans une tâche → chemin du dépôt (``None`` si inexploitable).
 
@@ -204,17 +209,18 @@ class Registre:
 
         ``paths`` est STRICT : deux propriétaires qui y revendiquent le même
         fichier = refus. ``fallback`` résout les résiduels imbriqués
-        (``ventes/**`` ⊃ ``ventes/quote_engine/**``) : le préfixe littéral le
-        plus long gagne ; une égalité entre deux propriétaires = refus.
+        (``ventes/**`` ⊃ ``ventes/quote_engine/**`` ; ``ventes/**`` vs
+        ``ventes/*_facturation.py``) : le glob qui porte le PLUS de caractères
+        littéraux gagne ; une égalité entre deux propriétaires = refus.
         """
         hits = sorted({nom for nom, _, rx, lit in self._regles["paths"]
                        if chemin.startswith(lit) and rx.fullmatch(chemin)})
         if hits:
             return hits
         meilleurs: dict[str, int] = {}
-        for nom, _, rx, lit in self._regles["fallback"]:
+        for nom, glob, rx, lit in self._regles["fallback"]:
             if chemin.startswith(lit) and rx.fullmatch(chemin):
-                meilleurs[nom] = max(meilleurs.get(nom, -1), len(lit))
+                meilleurs[nom] = max(meilleurs.get(nom, -1), _specificite(glob))
         if not meilleurs:
             return []
         top = max(meilleurs.values())
@@ -327,8 +333,11 @@ def verifier_plans(reg: Registre, plans: dict[str, str]) -> list[str]:
                 f"{plan} : aucun propriétaire ne lie ce plan — le déclarer "
                 f"(owners.<x>.plan ou plans:) dans docs/ownership.yml")
             continue
-        if set(owners) & reg.exempt:
-            continue
+        if "parked" in owners:
+            continue  # files parquées : hors périmètre du MVP, jamais drainées
+        # Plans exemptés (transverse, files historiques) : seulement de la règle
+        # (b). Un fichier qu'ils déclarent doit quand même avoir UN propriétaire.
+        exempte = bool(set(owners) & reg.exempt)
         web = owners == ["web"]
         hors_file = False
         for n_ligne, brut in enumerate(texte.splitlines(), 1):
@@ -361,7 +370,7 @@ def verifier_plans(reg: Registre, plans: dict[str, str]) -> list[str]:
                     erreurs.append(
                         f"{plan}:{n_ligne} {tid} — `{chemin}` a deux propriétaires "
                         f"({', '.join(hits)}) : corriger docs/ownership.yml")
-                elif hits[0] not in owners:
+                elif hits[0] not in owners and not exempte:
                     erreurs.append(
                         f"{plan}:{n_ligne} {tid} — `{chemin}` appartient à "
                         f"« {hits[0]} », pas à « {'/'.join(owners)} » : une tâche "
@@ -423,6 +432,7 @@ def main(argv=None) -> int:
     ap.add_argument("--stats", action="store_true", help="fichiers/lignes par propriétaire")
     ap.add_argument("--owner-of", nargs="+", metavar="CHEMIN")
     ap.add_argument("--max", type=int, default=60, help="refus imprimés au plus")
+    ap.add_argument("--verbose", action="store_true", help="lister aussi les globs morts")
     args = ap.parse_args(argv)
 
     reg = charger_registre()
@@ -448,8 +458,13 @@ def main(argv=None) -> int:
                        f"{args.base}...HEAD", "--", *reg.roots)
         erreurs += verifier_nouveaux(reg, ajoutes)
 
-    for a in avert:
+    morts = [a for a in avert if a.startswith("glob mort")]
+    for a in (avert if args.verbose else [a for a in avert if a not in morts]):
         print(f"AVERTISSEMENT : {a}")
+    if morts and not args.verbose:
+        print(f"note : {len(morts)} glob(s) ne couvrent encore aucun fichier (cibles "
+              f"déclarées d'avance par des tâches planifiées, ou globs périmés) — "
+              f"--verbose pour la liste")
     if erreurs:
         for e in erreurs[:args.max]:
             print(f"REFUS : {e}")

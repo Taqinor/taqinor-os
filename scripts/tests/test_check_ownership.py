@@ -168,6 +168,23 @@ class ResolutionTests(unittest.TestCase):
         self.assertEqual(co.proprietaire(
             reg, "backend/django_core/apps/ventes/serializers.py"), "devis")
 
+    def test_motif_specifique_bat_le_residuel_de_meme_prefixe(self):
+        # `ventes/*_facturation.py` et `ventes/**` ont le MÊME préfixe littéral :
+        # départager par la longueur du préfixe les mettait à égalité (fichier
+        # neuf à deux propriétaires). Le plus de caractères littéraux gagne.
+        texte = REGISTRE.replace(
+            "      - backend/django_core/apps/ventes/views/facture.py\n",
+            "      - backend/django_core/apps/ventes/views/facture.py\n").replace(
+            "  cadence:\n",
+            "  cadence:\n"
+            "    fallback:\n"
+            "      - backend/django_core/apps/ventes/*_cadence.py\n")
+        reg = registre(texte)
+        self.assertEqual(co.proprietaire(
+            reg, "backend/django_core/apps/ventes/selectors_cadence.py"), "cadence")
+        self.assertEqual(co.proprietaire(
+            reg, "backend/django_core/apps/ventes/selectors.py"), "devis")
+
     def test_semantique_des_globs(self):
         rx = co.compiler_glob("frontend/src/pages/ventes/Devis*.jsx")
         self.assertTrue(rx.fullmatch("frontend/src/pages/ventes/DevisList.jsx"))
@@ -251,6 +268,19 @@ class PlansTests(unittest.TestCase):
                  "`backend/django_core/apps/crm/cadence_temps.py`. (ROUTINE)\n")
         plans = {"docs/plans/PLAN_TRANSVERSE.md": ligne, "docs/PLAN2.md": ligne}
         self.assertEqual(co.verifier_plans(self.reg, plans), [])
+
+    def test_plan_exempte_garde_les_regles_a_et_c(self):
+        # Exempté de la règle (b) seulement : un fichier déclaré par une tâche
+        # transverse doit quand même avoir UN propriétaire (sinon il naîtra
+        # orphelin, ou doublement possédé, à sa création).
+        ligne = ("- [ ] SPL12 — x. Files: `backend/django_core/apps/ventes/views/devis.py`, "
+                 "`frontend/src/features/neuf/Neuf.jsx`. (ROUTINE)\n")
+        erreurs = co.verifier_plans(self.reg, {"docs/plans/PLAN_TRANSVERSE.md": ligne})
+        self.assertEqual(len(erreurs), 1, erreurs)
+        self.assertIn("sans propriétaire", erreurs[0])
+        # … mais pas les files parquées (backlog hors périmètre).
+        self.assertEqual(co.verifier_plans(
+            self.reg, {"docs/backlog/PHASE2_PLAN.md": ligne}), [])
 
     def test_taches_non_constructibles_ignorees(self):
         hors = "Files: `backend/django_core/apps/crm/cadence_temps.py`. (ROUTINE)"
