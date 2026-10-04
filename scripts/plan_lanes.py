@@ -1221,6 +1221,12 @@ def apply_contract_pairing_gate(
 
     producteurs: dict[str, list[dict]] = {}
     for t in tasks:
+        # Une tâche backend `[BLOCKED]`/`[GATED]` ne part pas dans ce run : elle
+        # ne peut rien produire en parallèle. Sans ce filtre, le pool de tous
+        # les plans (`work on all plans`) refusait 33 écrans crm de PLAN.md
+        # contre NTPRT29, bloquée dans new_tasks_plan.md.
+        if t.get("gate") == "gated":
+            continue
         for app in _apps_backend(t.get("files_bruts", ())):
             producteurs.setdefault(app, []).append(t)
     if not producteurs:
