@@ -137,6 +137,12 @@ SCHEMA = {
     # post-envoi (jamais un journal). Le booléen est toléré pour les devis
     # anciens qui n'ont qu'un drapeau.
     'resync_apres_envoi': _cle((bool, dict), CALEPINAGE, ENTREE),
+    # ACAL90 (D-ACAL-22) — les classes de kit (``CLASSES_KIT_COMPLETABLES``)
+    # RETIRÉES À LA MAIN : la resynchronisation ne les recrée jamais. Posée
+    # par ``domain/lignes`` (suppression d'une ligne, enregistrement de
+    # l'écran), lue par ``composition._completer_kit_residentiel``.
+    'kit_retire': _cle((list,), ECRAN, ENTREE,
+                       note='classes de kit retirées à la main (ACAL90).'),
     # DC11 / QJR106 — L'ESTAMPILLE DE PROVENANCE des valeurs énergie/toiture
     # REPRISES DU LEAD : ``{'source_lead_id', 'captured_at', 'valeurs'}``,
     # produite par ``crm.selectors.lead_provenance_stamp`` et posée par

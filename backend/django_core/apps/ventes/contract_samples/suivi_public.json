@@ -1,0 +1,46 @@
+{
+  "endpoint": "GET /api/django/ventes/suivi/<token>/",
+  "pourquoi": "ADOC112 (PACT10) — contrat du suivi public post-signature (QX34, public_views.suivi_public -> selectors.devis_milestones), pose SEUL avant ses moitiés : ADOC121/ADOC130 (serveur) et ADOC132/ADOC133 (page apps/web suivi/[token].astro + lib/suivi.ts). Trois fautes de la v1 que ce contrat interdit : (1) `date` d'un jalon est une date ISO ou null, JAMAIS un statut (la v1 servait date='signe' pour Installation) ; (2) `generated_at` est l'horodatage TECHNIQUE de la réponse et ne doit jamais être affiché comme « mis à jour » ; la page lit `mis_a_jour_le` ; (3) « Installation » n'est plus faite à la signature.",
+  "forme_serveur": "complete",
+  "regles": {
+    "cles_jalons": ["accepte", "acompte", "materiel", "installation", "facture"],
+    "ordre": "les cinq entrées sont toujours présentes, dans cet ordre",
+    "date": "ISO date (YYYY-MM-DD) du fait ou null ; jamais un statut ('signe', 'a_planifier')",
+    "mis_a_jour_le": "ISO date la plus récente parmi les jalons faits ; null si aucun jalon fait ; indépendante de l'horloge de la requête",
+    "generated_at": "horodatage technique de la réponse (ISO datetime) ; jamais affiché comme « mis à jour »",
+    "accepte": "devis accepté (statut accepte ou date_acceptation) ; date = date_acceptation",
+    "acompte": "au moins un Paiement encaissé sur une facture du devis (statut != rejete) ; date = date_paiement du premier",
+    "materiel": "jalon portail synchronisé du chantier de phase `appro` atteint (D-ADOC-3) ; date = date_jalon",
+    "installation": "jalon portail synchronisé du chantier de phase `pose` atteint (D-ADOC-3) ; date = date_jalon",
+    "facture": "au moins une facture hors brouillon et hors annulée (liée au devis ou à son bon de commande) ; date = date_emission de la première",
+    "chantier_annule": "chantier annulé => materiel et installation non faits",
+    "refus": "403 {detail:'otp_required'} si le lien exige un code non vérifié ; 404 pour jeton invalide/expiré"
+  },
+  "exemple": {
+    "reference": "DEV-202608-0042",
+    "generated_at": "2026-10-05T09:12:41.512340+00:00",
+    "mis_a_jour_le": "2026-10-02",
+    "milestones": [
+      {"key": "accepte", "label": "Proposition acceptée", "done": true, "date": "2026-08-26"},
+      {"key": "acompte", "label": "Acompte reçu", "done": true, "date": "2026-09-01"},
+      {"key": "materiel", "label": "Matériel commandé", "done": true, "date": "2026-09-15"},
+      {"key": "installation", "label": "Installation", "done": true, "date": "2026-10-02"},
+      {"key": "facture", "label": "Facturé", "done": false, "date": null}
+    ],
+    "detail": null
+  },
+  "exemple_aucun_jalon_fait": {
+    "reference": "DEV-202608-0043",
+    "generated_at": "2026-10-05T09:12:41.512340+00:00",
+    "mis_a_jour_le": null,
+    "milestones": [
+      {"key": "accepte", "label": "Proposition acceptée", "done": false, "date": null},
+      {"key": "acompte", "label": "Acompte reçu", "done": false, "date": null},
+      {"key": "materiel", "label": "Matériel commandé", "done": false, "date": null},
+      {"key": "installation", "label": "Installation", "done": false, "date": null},
+      {"key": "facture", "label": "Facturé", "done": false, "date": null}
+    ]
+  },
+  "exemple_403_otp": {"detail": "otp_required"},
+  "exemple_404": {"detail": "Introuvable."}
+}

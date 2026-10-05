@@ -142,6 +142,14 @@ class GoldenFicheTechniqueSerializerTests(TestCase):
         kwargs.setdefault('context', self._contexte())
         return _resolve()(*args, **kwargs)
 
+    def test_spl115_serializer_vit_dans_serializers_fiche_technique(self):
+        """SPL115 — la classe a déménagé dans ``serializers_fiche_technique``
+        et l'ancien module ne la porte plus (même app : aucun ré-export)."""
+        import apps.stock.serializers as ancien
+        self.assertEqual(_resolve().__module__,
+                         'apps.stock.serializers_fiche_technique')
+        self.assertFalse(hasattr(ancien, 'FicheTechniqueSerializer'))
+
     def test_empreinte_ast(self):
         verifier_section(self, GOLDEN, 'ast',
                          {'FicheTechniqueSerializer': fingerprint(_resolve())})

@@ -1,0 +1,39 @@
+---
+/**
+ * Formulaire du code de LECTURE (OTP) — markup PARTAGÉ par /proposition
+ * (audit C5) et /suivi (ADOC133) ; la logique client vit dans
+ * `lib/otpLecture.ts` (`brancherOtpLecture`). Les ids `otp-lecture-*` sont le
+ * contrat entre les deux : ne pas les renommer d'un seul côté.
+ */
+interface Props {
+  /** Libellé du bouton de validation (« Ouvrir ma proposition »…). */
+  valider: string;
+}
+const { valider } = Astro.props;
+---
+
+<form id="otp-lecture-form" class="mt-8 w-full max-w-sm text-start" novalidate>
+  <button type="button" id="otp-lecture-demander" class="btn-pill w-full justify-center"
+    style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)">
+    Recevoir mon code
+  </button>
+  <label for="otp-lecture-code" class="tech-label mt-6 block text-lune-faint">Code reçu</label>
+  <input
+    id="otp-lecture-code"
+    name="otp_code"
+    type="text"
+    inputmode="numeric"
+    autocomplete="one-time-code"
+    maxlength="6"
+    class="mt-2 w-full rounded-xl border border-white/15 bg-nuit/60 px-4 py-3 text-lg text-lune"
+    dir="ltr"
+    placeholder="------"
+  />
+  <button type="submit" id="otp-lecture-valider" class="btn-pill mt-4 w-full justify-center">
+    {valider}
+  </button>
+</form>
+<p id="otp-lecture-message" class="mt-4 min-h-[1.25rem] max-w-sm text-sm text-lune-soft" role="status" aria-live="polite"></p>
+<p class="mt-6 text-sm text-lune-faint">
+  Vous ne recevez rien&nbsp;? Votre conseiller Taqinor peut vous ouvrir l’accès.
+</p>

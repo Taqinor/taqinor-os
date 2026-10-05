@@ -59,7 +59,7 @@ class TestTypesFiche(AGR101Base):
             self.assertIn(v, valeurs)
 
     def test_contrat_cles_fiches_presentes_sur_le_serializeur(self):
-        from apps.stock.serializers import FicheTechniqueSerializer
+        from apps.stock.serializers_fiche_technique import FicheTechniqueSerializer
         champs = set(FicheTechniqueSerializer().fields)
         for nom_fiche in ('pompe', 'variateur_pompage'):
             for cle in CONTRAT['fiches'][nom_fiche]['champs']:

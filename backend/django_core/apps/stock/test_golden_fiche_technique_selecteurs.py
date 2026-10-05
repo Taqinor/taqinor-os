@@ -151,6 +151,22 @@ class GoldenFicheTechniqueSelecteursTests(TestCase):
         # Lecture fraîche : aucun cache de relation hérité de la création.
         return Produit.objects.get(pk=self.ids[sku])
 
+    def test_spl114_lecture_vit_dans_selectors_fiche_technique(self):
+        """SPL114 — les cinq sélecteurs ont déménagé dans
+        ``selectors_fiche_technique.py`` ; la façade ``apps.stock.selectors``
+        ré-exporte LES MÊMES objets (pas de jumeau)."""
+        import importlib
+
+        import apps.stock.selectors as facade
+        module = importlib.import_module(
+            'apps.stock.selectors_fiche_technique')
+        for fn in (type_fiche_produit, specs_for_produit, dimensions_de_pose,
+                   produits_modules_qs, kit_from_produit):
+            self.assertEqual(fn.__module__,
+                             'apps.stock.selectors_fiche_technique')
+            self.assertIs(getattr(module, fn.__name__), fn)
+            self.assertIs(getattr(facade, fn.__name__), fn)
+
     def test_empreintes_ast(self):
         courant = {
             fn.__name__: fingerprint(fn) for fn in (

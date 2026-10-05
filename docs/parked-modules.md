@@ -344,6 +344,17 @@ n'ont jamais été supprimées, on ne fait que **rendre les modèles à Django**
 Ce que la recette ne fait **jamais** : recréer une table, toucher `django_migrations` à la
 main, squasher des migrations, ou réécrire une migration déjà appliquée en production.
 
+### 5.1 Hors registre — `backend/parked/core_calepinage/` (ACAL328)
+
+Pas une app : des modules du **noyau** `core/calepinage/` sans importeur de production — le
+rendu matplotlib AO (`rendu/`), `rives.py`, `etude.py` et leurs tests — parqués par ACAL328
+(D-ACAL-16, parquer plutôt que supprimer). Aucune migration, aucune table. Retour :
+`cp -r` vers `backend/django_core/core/calepinage/` (et les tests vers `core/tests/`),
+remettre l'exemption `SOUS_PAQUET_RENDU` / `DEPENDANCES_RENDU` de
+`core/tests/test_calepinage_purete.py`, donner un importeur de production aux modules (ou
+les allowlister dans `core/tests/test_acal_core_calepinage_orphelins.py`), puis re-lancer
+les 10 tests revenus — recette détaillée dans `backend/parked/core_calepinage/README.md`.
+
 ## 6. Note déployeur (21/09/2026, arrêtée par SOLMVP53)
 
 **Rien à faire à la main.** L'auto-deploy suffit : `migrate` puis le redémarrage habituel.

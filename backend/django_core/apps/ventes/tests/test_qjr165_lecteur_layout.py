@@ -144,9 +144,12 @@ CORPUS = (
      (12, 710, 710, 8.52, 'sans')),
     ('C16 zones + result top vide',
      {'result': {}, 'zones': [_zone(12, 8.52)]}, (12, 710, 710, 8.52, 'sans')),
-    ('C17 zones + result.panels top (le top gagne)',
+    # ACAL59 (D-ACAL-5) — la règle a CHANGÉ, délibérément : le ``result``
+    # racine (le toit seul) n'est lu qu'à DÉFAUT de toute géométrie de zone ;
+    # dès qu'une zone porte un compte posé, la somme des pans gagne.
+    ('C17 zones + result.panels top (ACAL59 : la géométrie des zones gagne)',
      {'result': {'panels': 10, 'kwc': 5.5}, 'areas': [_zone(12, 8.52)]},
-     (10, 550, 550, 5.5, 'sans')),
+     (12, 710, 710, 8.52, 'sans')),
     ('C18 multi-pans FG248',
      {'areas': [{'label': 'Pan Sud', 'roofType': 'pitched', 'pitchDeg': 30,
                  'facingAzimuthDeg': 180,
@@ -309,7 +312,9 @@ class LesCinqOriginesLisentLeMemeLecteur(SimpleTestCase):
         * ``lire_layout`` — LE lecteur ;
         * ``extract_roof_config`` — le lecteur de ZONES, où ``count`` est la
           clé légitime (et ``panels`` une LISTE de poses, pas un nombre) ;
-        * ``layout_hash`` — qui n'INTERPRÈTE rien, il empreinte.
+        * ``layout_hash`` — qui n'INTERPRÈTE rien, il empreinte ;
+        * ``pans_du_document`` (ACAL59) — LA primitive des pans posés que
+          ``lire_layout`` somme (toit + surfaces de pose).
         """
         source = inspect.getsource(geometrie)
         arbre = ast.parse(source)
@@ -323,6 +328,7 @@ class LesCinqOriginesLisentLeMemeLecteur(SimpleTestCase):
                 porteuses.add(noeud.name)
         self.assertEqual(
             porteuses,
-            {'lire_layout', 'extract_roof_config', 'layout_hash'},
+            {'lire_layout', 'extract_roof_config', 'layout_hash',
+             'pans_du_document'},
             "une NOUVELLE lecture de layout est apparue dans "
             "domain/geometrie.py — QJR165 n'en autorise qu'une.")

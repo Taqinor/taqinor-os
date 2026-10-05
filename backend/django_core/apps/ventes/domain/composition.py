@@ -388,8 +388,18 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               ordre_lignes=None, mppt_paires=1, phase=None,
                               batterie_cible_kwh=None,
                               batterie_module_kwh=None,
-                              hors_reseau=False):
+                              hors_reseau=False, modeles=None):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
+
+    ``modeles`` (ACAL63, C-ACAL-042) — les modèles POSÉS par le calepinage,
+    ``[{produit_id, watt, count}]`` (``geometrie.modeles_designes``). Dès
+    qu'une FICHE est désignée, le devis vend UNE ligne panneau PAR MODÈLE : la
+    fiche désignée prime sur le moins cher du wattage ET sur la marque
+    épinglée (PVMRQ — l'écart de marque est DIT), un modèle sans fiche suit la
+    règle du wattage ; le compte vendu = la somme des modèles. Une fiche
+    absente ou non tarifée n'est jamais remplacée (le refus nommé est
+    prononcé par ``pipeline.verifier``). ``None`` (LE DÉFAUT) ⇒ composition
+    byte-identique à l'historique.
 
     U3 (fondateur 20/08/2026) — CETTE FONCTION EST LA SOURCE DE VÉRITÉ de la
     composition résidentielle. Elle porte désormais TOUTES les règles qui
@@ -552,9 +562,12 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     structure_par_id = None
     par_type = {}
     structures_nommees = []
+    # ACAL63 — les fiches TARIFÉES par id, pour les modules désignés.
+    tarifes_par_pk = {}
     for produit in produits:
         if not _has_price(produit):
             continue
+        tarifes_par_pk[getattr(produit, 'pk', None)] = produit
         # La résolution PAR ID se fait dans la liste ``produits`` DÉJÀ scopée
         # société par l'appelant, et APRÈS la garde de prix : un id qui
         # désignerait un produit non tarifé — ou celui d'une autre société —
@@ -797,6 +810,57 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         if statut in (STATUT_INCOMPATIBLE, STATUT_RESERVE) and coince:
             _avertir(avertissement_panneau_onduleur(
                 panneau, coince[0], coince[1]))
+
+    # ── ACAL63 — UNE LIGNE PANNEAU PAR MODÈLE DÉSIGNÉ ─────────────────────
+    # Le calepinage a posé des modules PRÉCIS (``modules[].produitId``) : le
+    # devis vend CES fiches-là, une ligne par modèle, au compte posé — jamais
+    # le moins cher du wattage, jamais un seul panneau pour tout le site.
+    panneaux_designes = None
+    designes = [m for m in (modeles or ())
+                if isinstance(m, dict) and int(m.get('count') or 0) > 0]
+    if any(m.get('produit_id') for m in designes):
+        panneaux_designes = []
+        marque_panneau = str(carte_marques.get('panneau') or '').strip()
+        for modele in designes:
+            n_modele = int(modele.get('count') or 0)
+            if modele.get('produit_id'):
+                choisi = tarifes_par_pk.get(
+                    _entier_ou_none(modele.get('produit_id')))
+                if choisi is None:
+                    # Fiche absente / non tarifée : refus NOMMÉ prononcé par
+                    # ``pipeline.verifier`` — jamais un remplaçant ici.
+                    continue
+                if marque_panneau and not _marque_correspond(
+                        choisi, marque_panneau):
+                    _avertir(
+                        'Le module désigné par le calepinage « %s » n\'est '
+                        'pas de la marque épinglée « %s » : le module désigné '
+                        'a été retenu.'
+                        % (getattr(choisi, 'nom', '') or '?', marque_panneau))
+            else:
+                w_modele = int(_entier_ou_none(modele.get('watt')) or watt)
+                au_watt = [c for c in tries if c[0] == w_modele]
+                choisi = (au_watt[0][1] if au_watt
+                          else (min(tries, key=lambda c: abs(c[0] - w_modele))[1]
+                                if tries else None))
+                if choisi is None:
+                    continue
+            panneaux_designes.append((choisi, n_modele))
+            # PVCOMPAT — chaque modèle est jugé face aux onduleurs vendus ; un
+            # module DÉSIGNÉ n'est jamais remplacé, le problème est DIT.
+            if onduleurs_vendus:
+                from apps.ventes.compatibilites import (
+                    STATUT_INCOMPATIBLE, STATUT_RESERVE,
+                    avertissement_panneau_onduleur)
+                statut_m, coince_m = _statut_couple_panneau(
+                    choisi, onduleurs_vendus)
+                if statut_m in (STATUT_INCOMPATIBLE, STATUT_RESERVE) \
+                        and coince_m:
+                    _avertir(avertissement_panneau_onduleur(
+                        choisi, coince_m[0], coince_m[1]))
+        if panneaux_designes:
+            nb = sum(n for _, n in panneaux_designes)
+            panneau = panneaux_designes[0][0]
 
     # ── Batteries : cible = kWc arrondi au multiple de 5 (5 kWh au minimum),
     # servie en modules HOMOGÈNES (un seul calibre par banque — voir la garde
@@ -1137,7 +1201,19 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         ajouter(role_ond, onduleur, quantite_onduleur(kw_onduleur))
     ajouter('smart_meter', premier('smart_meter'), 1 if huawei else 0)
     ajouter('wifi_dongle', premier('wifi_dongle'), 1 if huawei else 0)
-    ajouter('panneau', panneau, nb)
+    if panneaux_designes:
+        # ACAL63 — une ligne par modèle (même fiche répétée ⇒ une ligne).
+        cumul = {}
+        for produit_m, n_m in panneaux_designes:
+            cle_m = getattr(produit_m, 'pk', None) or id(produit_m)
+            if cle_m in cumul:
+                cumul[cle_m] = (produit_m, cumul[cle_m][1] + n_m)
+            else:
+                cumul[cle_m] = (produit_m, n_m)
+        for produit_m, n_m in cumul.values():
+            ajouter('panneau', produit_m, n_m)
+    else:
+        ajouter('panneau', panneau, nb)
     if veut_batterie:
         ajouter('batterie', bat5, nb5)
         ajouter('batterie', bat10, nb10)
@@ -1175,6 +1251,11 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     _watt_reel = _parse_watt(getattr(panneau, 'nom', '')) if panneau else None
     lignes.panel_watt_reel = _watt_reel or watt
     lignes.kwc_reel = round(nb * float(lignes.panel_watt_reel) / 1000.0, 3)
+    if panneaux_designes:
+        # ACAL63 — kWc des lignes = kWc du dessin : la somme modèle par modèle.
+        lignes.kwc_reel = round(sum(
+            n_m * float(_parse_watt(getattr(p_m, 'nom', '')) or watt)
+            for p_m, n_m in panneaux_designes) / 1000.0, 3)
     lignes.blocs = blocs
     lignes.marques_manquantes = marques_manquantes
     # DIM2 — LES CAPACITÉS RÉELLEMENT DISPONIBLES, en kWh nominaux, telles que
@@ -1459,6 +1540,27 @@ CLASSES_KIT_COMPLETABLES = (
     'tableau', 'installation', 'transport',
 )
 
+#: ACAL90 (D-ACAL-22) — le message FRANÇAIS d'une classe NON RECRÉÉE parce
+#: qu'elle a été retirée à la main (marqueur ``etude_params.kit_retire``).
+AVERTISSEMENTS_KIT_RETIRE = {
+    'smart_meter': 'Smart Meter non recréé : retiré à la main — remettez-le '
+                   'depuis le générateur.',
+    'wifi_dongle': 'Clé Wifi non recréée : retirée à la main — remettez-la '
+                   'depuis le générateur.',
+    'structure': 'Structure non recréée : retirée à la main — remettez-la '
+                 'depuis le générateur.',
+    'socle': 'Socles non recréés : retirés à la main — remettez-les depuis '
+             'le générateur.',
+    'accessoires': 'Accessoires non recréés : retirés à la main — '
+                   'remettez-les depuis le générateur.',
+    'tableau': 'Tableau de protection AC/DC non recréé : retiré à la main — '
+               'remettez-le depuis le générateur.',
+    'installation': 'Installation non recréée : retirée à la main — '
+                    'remettez-la depuis le générateur.',
+    'transport': 'Transport non recréé : retiré à la main — remettez-le '
+                 'depuis le générateur.',
+}
+
 #: Le message FRANÇAIS d'une classe manquante, écrit EN ENTIER par classe pour
 #: que l'accord soit juste (« Structure … absente », « Socles … absents »).
 AVERTISSEMENTS_KIT_ABSENT = {
@@ -1682,6 +1784,10 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
     # quand deux options la réclament : deux fois le même message ferait
     # croire à deux manques distincts.
     deja_dit = set()
+    # ACAL90 (D-ACAL-22) — les classes RETIRÉES À LA MAIN ne sont jamais
+    # recréées ; la réponse le DIT (une fois par classe).
+    from apps.ventes.domain.lignes import classes_kit_retirees
+    retirees = set(classes_kit_retirees(devis))
 
     for vue in _options_a_reparer(devis, lignes, kwc=kwc, watt=watt,
                                   nb_panneaux=nb_panneaux,
@@ -1763,6 +1869,12 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
                 continue
             if classe in ('smart_meter', 'wifi_dongle') and not huawei:
                 continue
+            if classe in retirees:
+                cle_dite = ('retire', classe)
+                if cle_dite not in deja_dit:
+                    deja_dit.add(cle_dite)
+                    avertissements.append(AVERTISSEMENTS_KIT_RETIRE[classe])
+                continue
             spec = par_classe.get(classe)
             if spec is None:
                 if classe not in deja_dit:
@@ -1791,7 +1903,8 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
 
 
 def _refuser_couple_panneau_onduleur_impossible(devis, lignes, lignes_panneau,
-                                                cible_panneaux, watt, gamme):
+                                                cible_panneaux, watt, gamme,
+                                                modeles=None):
     """DEV-202608-0016 — la resynchro 3D n'ÉCRIT PAS une composition impossible.
 
     L'outil 3D a posé 25 panneaux Canadian Solar 710 Wc (Isc 18,59 A par
@@ -1819,38 +1932,51 @@ def _refuser_couple_panneau_onduleur_impossible(devis, lignes, lignes_panneau,
     if cible_panneaux <= 0:
         return
 
-    # Le panneau CONCERNÉ : celui que la resynchro va ajuster (la ligne
-    # dominante, même politique que l'écriture plus bas), ou celui qu'elle
-    # créerait s'il n'y a encore aucune ligne panneau.
-    candidats = [li for li in lignes_panneau
-                 if getattr(li, 'produit', None) is not None]
-    if candidats:
-        panneau = max(candidats,
-                      key=lambda li: Decimal(str(li.quantite or 0))).produit
-    else:
-        panneau = _pick_product(devis.company, _is_panel, watt=watt,
-                                role='panneau', gamme=gamme)
-    if panneau is None:
-        return
+    # ACAL63 — modèles DÉSIGNÉS : CHAQUE modèle est jugé, à son compte.
+    juges = []
+    if modeles:
+        from apps.ventes.domain.geometrie import _produit_designe
+        for modele in modeles:
+            produit_m = (_produit_designe(devis.company,
+                                          modele.get('produit_id'))
+                         if modele.get('produit_id') else None)
+            if produit_m is not None:
+                juges.append((produit_m, int(modele.get('count') or 0)))
+    if not juges:
+        # Le panneau CONCERNÉ : celui que la resynchro va ajuster (la ligne
+        # dominante, même politique que l'écriture plus bas), ou celui
+        # qu'elle créerait s'il n'y a encore aucune ligne panneau.
+        candidats = [li for li in lignes_panneau
+                     if getattr(li, 'produit', None) is not None]
+        if candidats:
+            panneau = max(candidats,
+                          key=lambda li: Decimal(str(li.quantite or 0))).produit
+        else:
+            panneau = _pick_product(devis.company, _is_panel, watt=watt,
+                                    role='panneau', gamme=gamme)
+        if panneau is None:
+            return
+        juges = [(panneau, cible_panneaux)]
 
     onduleurs = [li.produit for li in lignes
                  if getattr(li, 'produit', None) is not None
                  and (_classe_ligne(li, _is_hybrid_inverter)
                       or _classe_ligne(li, _is_reseau_inverter))]
-    for onduleur in onduleurs:
-        verdict = verdict_panneau_onduleur(panneau, onduleur)
-        if verdict.get('statut') != STATUT_INCOMPATIBLE:
-            continue
-        raisons = verdict.get('raisons') or []
-        raise SyncLayoutError(
-            '%d panneaux « %s » sont incompatibles avec « %s » : %s. '
-            'Corrigez le nombre de panneaux ou changez d\'onduleur — le devis '
-            'n\'a pas été modifié.'
-            % (cible_panneaux, getattr(panneau, 'nom', '') or 'panneau',
-               getattr(onduleur, 'nom', '') or 'onduleur',
-               raisons[0] if raisons else
-               'le couple sort des bornes de la fiche constructeur'),
-            revision_possible=False)
+    for panneau, compte_juge in juges:
+        for onduleur in onduleurs:
+            verdict = verdict_panneau_onduleur(panneau, onduleur)
+            if verdict.get('statut') != STATUT_INCOMPATIBLE:
+                continue
+            raisons = verdict.get('raisons') or []
+            raise SyncLayoutError(
+                '%d panneaux « %s » sont incompatibles avec « %s » : %s. '
+                'Corrigez le nombre de panneaux ou changez d\'onduleur — le '
+                'devis n\'a pas été modifié.'
+                % (compte_juge, getattr(panneau, 'nom', '') or 'panneau',
+                   getattr(onduleur, 'nom', '') or 'onduleur',
+                   raisons[0] if raisons else
+                   'le couple sort des bornes de la fiche constructeur'),
+                revision_possible=False)
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────

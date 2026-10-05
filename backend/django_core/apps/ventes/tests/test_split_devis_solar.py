@@ -18,7 +18,7 @@ le code d'AVANT :
     ``True`` dans le MÊME commit que le déplacement ;
 (c) ``golden/split_sd_comportement.json`` — digests de COMPORTEMENT des
     vraies fonctions (jamais mockées) : ``hypotheses`` + ``omissions`` de
-    ``string_design``, ``battery_storage_sizing``, ``simulate_bankable_yield``
+    ``string_design``, ``simulate_bankable_yield`` (``battery_storage_sizing`` retirée par ACAL330)
     et ``tariff_escalation_projection`` avec leurs défauts, ``net_metering_savings``
     (tranches TOU par saison, avec/sans tarifs), ``compensation_surplus`` (les
     trois mécanismes), ``tariff_escalation_projection`` (indexation saisie /
@@ -350,23 +350,8 @@ class ComportementSolarTests(SimpleTestCase):
                             cold_temp_c=-5.0)),
             _sur(lambda: sd(0)),
         ]
-        bat = _f('battery_storage_sizing')
-        res['battery'] = [
-            _sur(lambda: bat()),
-            _sur(lambda: bat(mode='autoconso', pv_daily_production_kwh=30.0,
-                             pv_self_consumption_kwh=18.0,
-                             night_load_kwh=8.0)),
-            _sur(lambda: bat(mode='backup', critical_load_kw=2.0,
-                             backup_hours=4.0)),
-            _sur(lambda: bat(mode='both', pv_kwc=6.0,
-                             productible_kwh_kwc_year=1650.0,
-                             night_load_kwh=8.0, critical_load_kw=2.0,
-                             backup_hours=4.0, evening_peak_kw=3.0,
-                             depth_of_discharge=0.9,
-                             round_trip_efficiency=0.92,
-                             system_voltage_v=48.0)),
-            _sur(lambda: bat(mode='inconnu')),
-        ]
+        # ACAL330 — ``battery_storage_sizing`` SUPPRIMÉE (jumeau mort) : son
+        # entrée de comportement est retirée du golden avec elle.
         yld = _f('simulate_bankable_yield')
         res['yield'] = [
             _sur(lambda: yld(10000.0)),
@@ -380,8 +365,7 @@ class ComportementSolarTests(SimpleTestCase):
         res['hypotheses_omissions'] = {
             nom: [_hyp_omis(r) for r in (res[nom] if isinstance(res[nom], list)
                                          else [res[nom]])]
-            for nom in ('string_design', 'battery', 'yield',
-                        'projection_defauts')}
+            for nom in ('string_design', 'yield', 'projection_defauts')}
         return res
 
     def _classification(self):

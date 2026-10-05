@@ -806,7 +806,8 @@ SPECTACULAR_SETTINGS = {
         # COTES_AC_DC). Sans ces entrées : « multiple names for the same
         # choice set ». Nommage de schéma uniquement — aucun choix ne change.
         'OuiNonEnum': 'apps.crm.models.Lead.OuiNon',
-        'CoteAcDcEnum': 'apps.stock.models.COTES_AC_DC',
+        # SPL113 — FicheTechnique vit dans stock/models_fiche_technique.py.
+        'CoteAcDcEnum': 'apps.stock.models_fiche_technique.COTES_AC_DC',
         # SOLMVP-sweep (2026-09-21) — `EtatGeneralPieceEnum`
         # (immobilier.PieceEtatLieux.EtatGeneral) est retiré : apps.immobilier
         # est sorti du MVP solaire (Groupe SOLMVP, coquille).
@@ -1456,6 +1457,13 @@ ENTREPRISE_COULEUR = os.environ.get('ENTREPRISE_COULEUR', '#2563EB')
 # vendored premium engine (apps.ventes.quote_engine). Set to '0' to fall back to
 # the legacy ventes WeasyPrint quote PDF. Only affects QUOTES, never invoices.
 USE_PREMIUM_QUOTE_ENGINE = os.environ.get('USE_PREMIUM_QUOTE_ENGINE', '1') != '0'
+
+# ACAL331 (D-ACAL-17) — bascule A/B du compte de panneaux résidentiel sur le
+# moteur partagé ``core/calepinage`` (AOF164). OFF par défaut : chaque devis
+# garde le compte historique. Ne lever qu'après le dry-run
+# ``manage.py comparer_compte_moteur_calepinage`` soumis au fondateur ; un
+# devis déjà émis n'est jamais recalculé.
+USE_MOTEUR_CALEPINAGE = os.environ.get('USE_MOTEUR_CALEPINAGE', '0') == '1'
 
 # ARC21 — DÉCISION founder-gated : Tiers comme source d'écriture de l'identité.
 # OFF par défaut → comportement byte-identique à aujourd'hui (les modèles

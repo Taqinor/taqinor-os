@@ -2752,6 +2752,32 @@ export interface RoofLayoutGeometryPanel {
   cx: number;
   cy: number;
   face?: RoofLayoutPanelFace;
+  /** ACAL262 — rotation libre du module (°, mode `free`) ; absent = pose alignée. */
+  angleDeg?: number;
+}
+
+/** ACAL262 — Le MODULE publié (géométrie seule : jamais produitId, libellé ni prix). */
+export interface RoofLayoutModule {
+  id: string;
+  longueurMm: number;
+  largeurMm: number;
+  pmaxWc?: number;
+}
+
+/** ACAL262 — Retraits saisis (m), tels que publiés. */
+export interface RoofLayoutSetbacks {
+  lateralM?: number;
+  extremityM?: number;
+  parapetM?: number;
+  jointM?: number;
+}
+
+/** ACAL262 — Zone d'exclusion publiée (contour [lng,lat]). */
+export interface RoofLayoutExclusionZone {
+  id?: string;
+  nature: 'ENVELOPPE' | 'INTERDITE' | 'RESERVEE' | 'PREFEREE';
+  vertices: Array<[number, number]>;
+  setbackM?: number;
 }
 
 /**
@@ -2783,6 +2809,10 @@ export interface RoofLayoutZoneGeometry {
   origin: [number, number];
   /** Centres ENU (m, repère `origin`) des panneaux RÉELLEMENT posés. */
   panels: RoofLayoutGeometryPanel[];
+  /** ACAL262 — id du module posé sur ce pan (renvoi vers `RoofLayout.modules[].id`). */
+  moduleId?: string;
+  /** ACAL262 — mode de pose publié (ex. `free`). */
+  mode?: string;
 }
 
 /** Une zone (pan de toit) du layout backend, déjà validée. */
@@ -2812,6 +2842,15 @@ export interface RoofLayoutZone {
 export interface RoofLayout {
   version: number;
   zones: RoofLayoutZone[];
+  /** ACAL262 — modules publiés (cotes). Absent sur les anciens devis. */
+  modules?: RoofLayoutModule[];
+  /** ACAL262 — retraits saisis. */
+  setbacksM?: RoofLayoutSetbacks;
+  /** ACAL262 — zones d'exclusion. */
+  exclusionZones?: RoofLayoutExclusionZone[];
+  /** ACAL262 — surfaces de pose (sol/ombrière/façade), brutes : relues par
+   *  `normaliserSurfacePose` côté visionneuse. */
+  poseSurfaces?: unknown[];
 }
 
 function isFiniteNum(v: unknown): v is number {
@@ -2844,7 +2883,9 @@ function parseZoneGeometry(raw: unknown): RoofLayoutZoneGeometry | null {
     const po = p as Record<string, unknown>;
     if (!isFiniteNum(po.cx) || !isFiniteNum(po.cy)) continue;
     const face: RoofLayoutPanelFace | undefined = po.face === 'E' || po.face === 'W' ? po.face : undefined;
-    panels.push(face ? { cx: po.cx, cy: po.cy, face } : { cx: po.cx, cy: po.cy });
+    const cell: RoofLayoutGeometryPanel = face ? { cx: po.cx, cy: po.cy, face } : { cx: po.cx, cy: po.cy };
+    if (isFiniteNum(po.angleDeg)) cell.angleDeg = po.angleDeg;
+    panels.push(cell);
   }
   if (panels.length === 0) return null;
   // `count` (déclaré par le builder) DOIT normalement valoir panels.length —
@@ -2859,7 +2900,68 @@ function parseZoneGeometry(raw: unknown): RoofLayoutZoneGeometry | null {
     count,
     origin: [olng, olat],
     panels,
+    ...(typeof g.moduleId === 'string' && g.moduleId.trim() ? { moduleId: g.moduleId.trim() } : {}),
+    ...(typeof g.mode === 'string' && g.mode.trim() ? { mode: g.mode.trim() } : {}),
   };
+}
+
+/** ACAL262 — `modules[]` publié : entrées incomplètes ignorées, jamais jeté. */
+function parseLayoutModules(raw: unknown): RoofLayoutModule[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RoofLayoutModule[] = [];
+  for (const m of raw) {
+    if (!m || typeof m !== 'object') continue;
+    const mo = m as Record<string, unknown>;
+    if (typeof mo.id !== 'string' || !mo.id.trim()) continue;
+    if (!isFiniteNum(mo.longueurMm) || mo.longueurMm <= 0) continue;
+    if (!isFiniteNum(mo.largeurMm) || mo.largeurMm <= 0) continue;
+    out.push({
+      id: mo.id.trim(),
+      longueurMm: mo.longueurMm,
+      largeurMm: mo.largeurMm,
+      ...(isFiniteNum(mo.pmaxWc) && mo.pmaxWc > 0 ? { pmaxWc: mo.pmaxWc } : {}),
+    });
+  }
+  return out;
+}
+
+const NATURES_EXCLUSION = ['ENVELOPPE', 'INTERDITE', 'RESERVEE', 'PREFEREE'] as const;
+
+/** ACAL262 — `exclusionZones[]` publié (contour [lng,lat], ≥ 3 sommets valides). */
+function parseExclusionZones(raw: unknown): RoofLayoutExclusionZone[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RoofLayoutExclusionZone[] = [];
+  for (const e of raw) {
+    if (!e || typeof e !== 'object') continue;
+    const eo = e as Record<string, unknown>;
+    const nature = NATURES_EXCLUSION.find((n) => n === eo.nature);
+    if (!nature || !Array.isArray(eo.vertices)) continue;
+    const vertices: Array<[number, number]> = [];
+    for (const v of eo.vertices) {
+      if (Array.isArray(v) && v.length >= 2 && isFiniteNum(v[0]) && isFiniteNum(v[1])) {
+        vertices.push([v[0], v[1]]);
+      }
+    }
+    if (vertices.length < 3) continue;
+    out.push({
+      nature,
+      vertices,
+      ...(typeof eo.id === 'string' && eo.id ? { id: eo.id } : {}),
+      ...(isFiniteNum(eo.setbackM) ? { setbackM: eo.setbackM } : {}),
+    });
+  }
+  return out;
+}
+
+function parseSetbacks(raw: unknown): RoofLayoutSetbacks | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const out: RoofLayoutSetbacks = {};
+  for (const k of ['lateralM', 'extremityM', 'parapetM', 'jointM'] as const) {
+    const v = r[k];
+    if (isFiniteNum(v) && v >= 0) out[k] = v;
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 /**
@@ -2930,7 +3032,19 @@ export function parseRoofLayout(raw: unknown): RoofLayout | null {
     });
   }
   if (zones.length === 0) return null;
-  return { version: isFiniteNum(obj.version) ? obj.version : 1, zones };
+  // ACAL262 — clés additives (anciens devis : toutes absentes ⇒ aucune clé en sortie).
+  const modules = parseLayoutModules(obj.modules);
+  const setbacksM = parseSetbacks(obj.setbacksM);
+  const exclusionZones = parseExclusionZones(obj.exclusionZones);
+  const poseSurfaces = Array.isArray(obj.poseSurfaces) ? obj.poseSurfaces : [];
+  return {
+    version: isFiniteNum(obj.version) ? obj.version : 1,
+    zones,
+    ...(modules.length ? { modules } : {}),
+    ...(setbacksM ? { setbacksM } : {}),
+    ...(exclusionZones.length ? { exclusionZones } : {}),
+    ...(poseSurfaces.length ? { poseSurfaces } : {}),
+  };
 }
 
 // ── Constantes de géométrie (dupliquées de roofPro2/roofPro11 — la visionneuse

@@ -125,3 +125,12 @@ chercher l'archive à la main.
 - Un module désactivable par toggle société (l'ancien mécanisme d'édition du
   Groupe SOL, supprimé par SOLMVP3) : ici, le code est physiquement hors du
   PYTHONPATH, jamais un simple masquage.
+
+## Hors registre : `core_calepinage/` (ACAL328)
+
+`backend/parked/core_calepinage/` n'est PAS une des 47 apps du registre
+(`core/parked.py`) : ce sont des modules du NOYAU `core/calepinage/` (rendu
+matplotlib AO, `rives.py`, `etude.py` et leurs tests) sans importeur de
+production, parqués par ACAL328 (D-ACAL-16). `scripts/parquer_miroir.py` ne
+le touche pas ; sa recette de retour est dans
+[`core_calepinage/README.md`](core_calepinage/README.md).

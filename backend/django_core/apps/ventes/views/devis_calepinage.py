@@ -13,7 +13,6 @@ dans les corps (patchs ``apps.ventes.utils.pdf.*``,
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from ..models import Devis
 from authentication.permissions import IsResponsableOrAdmin
 from ..utils.client_links import chemin_proposition
 from .devis_gardes import _refus_modifiabilite, _reponse_non_modifiable
@@ -23,22 +22,12 @@ from .devis_gardes import _pourcentage_saisi  # ACAL278
 def _emettre_layout_finalise(devis, user):
     """PV79 — annonce que la conception 3D d'un devis est finalisée.
 
-    Passe par le bus ``core.events`` (M6) plutôt que par un appel direct à
-    ``crm`` : les deux apps restent découplées, et un futur abonné (chantier,
-    notifications…) se branche sans toucher ce fichier. Ne change AUCUN statut
-    et n'écrit rien lui-même (règle #4).
-
-    Jamais bloquant : un abonné en échec ne doit pas faire échouer la
-    finalisation d'un calepinage déjà enregistré. L'erreur est journalisée.
+    ACAL34 — le corps vit dans ``domain/resynchronisation`` (l'enveloppe
+    ``resynchroniser_conception`` l'émet elle-même) ; ce nom reste le point
+    d'appel des vues (même ``sender``, même try/except, jamais bloquant).
     """
-    from core.events import layout_finalise
-    try:
-        layout_finalise.send(sender='ventes.views.devis', devis=devis,
-                             user=user)
-    except Exception:  # noqa: BLE001 — un abonné cassé ne casse pas le devis
-        import logging as _logging
-        _logging.getLogger(__name__).exception(
-            'PV79 : abonné en échec sur layout_finalise (devis %s)', devis.pk)
+    from ..domain.resynchronisation import emettre_layout_finalise
+    emettre_layout_finalise(devis, user)
 
 
 class DevisCalepinageActionsMixin:
@@ -66,7 +55,10 @@ class DevisCalepinageActionsMixin:
         on failure (instead of a PDF error at render time).
         """
         from decimal import Decimal
-        from ..services import build_devis_from_layout, layout_hash, validate_composition_for_layout
+        from ..services import (
+            AutoDevisError, build_devis_from_layout, layout_hash,
+            poser_layout_hash, validate_composition_for_layout)
+        from ..selectors import devis_brouillon_pour_layout
         from ..models import ShareLink
 
         company = request.user.company
@@ -157,7 +149,15 @@ class DevisCalepinageActionsMixin:
         structure_type = request.data.get('structure_type') or None
 
         # QJ17 — pre-flight composition check: validate catalogue before building.
-        composition_errors = validate_composition_for_layout(layout, company)
+        # ACAL32 — le pré-vol compose avec la phase et le site isolé du LEAD
+        # (déduits par le pré-vol lui-même) ; un site isolé que le catalogue
+        # ne sert pas est un 422 NOMMÉ {hors_reseau: …}.
+        try:
+            composition_errors = validate_composition_for_layout(
+                layout, company, lead=lead_obj)
+        except AutoDevisError as refus:
+            return Response({refus.field or 'detail': refus.message},
+                            status=status.HTTP_422_UNPROCESSABLE_ENTITY)
         if composition_errors:
             return Response(
                 {'detail': composition_errors[0], 'errors': composition_errors},
@@ -165,19 +165,13 @@ class DevisCalepinageActionsMixin:
 
         # QJ17 — idempotency: dedupe by lead + layout hash.
         # Re-clicking « Générer » returns the existing brouillon, not a duplicate.
+        # ACAL88 — la dédup est CELLE du sélecteur (brouillons ACTIFS
+        # seulement, la même que le module calepinage) : la copie inline est
+        # SUPPRIMÉE, un brouillon archivé n'est plus jamais rendu.
         lhash = layout_hash(layout)
         existing = None
         if lead_obj is not None and lhash:
-            existing = (
-                Devis.objects.filter(
-                    company=company,
-                    lead=lead_obj,
-                    statut=Devis.Statut.BROUILLON,
-                    layout_hash=lhash,
-                )
-                .order_by('-date_creation')
-                .first()
-            )
+            existing = devis_brouillon_pour_layout(company, lead_obj.pk, lhash)
         if existing is not None:
             link = ShareLink.for_devis(existing)
             import logging as _logging
@@ -191,39 +185,47 @@ class DevisCalepinageActionsMixin:
                     'statut': existing.statut,
                     'proposal_token': link.token,
                     'proposal_path': chemin_proposition(existing, link.token),
+                    'avertissements': [],
+                    'marques_manquantes': [],
                     'deduplicated': True,
                 },
                 status=status.HTTP_200_OK)
 
-        # L-TRI (fondateur 24/08/2026 : « cette erreur ne doit pas se
-        # répéter ») — le chemin 3D ne transmettait PAS la phase du lead :
-        # un client triphasé pouvait encore recevoir un onduleur mono par
-        # ICI alors que l'auto-devis (services.py, PVCOMPAT) la passait déjà.
-        from apps.ventes.compatibilites import normaliser_phase
+        # L-TRI / ACAL32 — la phase ET le site isolé du lead sont déduits UNE
+        # fois par ``build_devis_from_layout`` (même point pour le module
+        # calepinage) : la déduction inline d'ici est SUPPRIMÉE.
         _composition = dict(
             taux_tva=taux_tva, remise_globale=remise,
             structure_produit_id=structure_produit_id,
-            structure_type=(str(structure_type) if structure_type else None),
-            phase=normaliser_phase(getattr(lead_obj, 'raccordement', None)))
+            structure_type=(str(structure_type) if structure_type else None))
         # CAL185 — le rapport « à renseigner » n'existe que sur l'entrée
         # calepinage ; l'entrée historique est byte-identique.
         rapport = None
-        if nomenclature is not None:
-            from ..services import build_devis_depuis_calepinage_retenu
-            devis, rapport = build_devis_depuis_calepinage_retenu(
-                calepinage_id=calepinage_id, user=request.user,
-                company=company, lead=lead_obj, client=client_obj,
-                **_composition)
-        else:
-            devis = build_devis_from_layout(
-                layout=layout, user=request.user, company=company,
-                lead=lead_obj, client=client_obj, **_composition)
+        # ACAL88 — le canal de la construction (U3) : ce que la composition a
+        # refusé de faire remonte dans la réponse (contrat devis_from_layout).
+        journal = {}
+        try:
+            if nomenclature is not None:
+                from ..services import build_devis_depuis_calepinage_retenu
+                devis, rapport = build_devis_depuis_calepinage_retenu(
+                    calepinage_id=calepinage_id, user=request.user,
+                    company=company, lead=lead_obj, client=client_obj,
+                    **_composition)
+            else:
+                devis = build_devis_from_layout(
+                    layout=layout, user=request.user, company=company,
+                    lead=lead_obj, client=client_obj, journal=journal,
+                    **_composition)
+        except AutoDevisError as refus:
+            # ACAL32 — un refus de composition (site isolé non servable…) est
+            # un 422 NOMMÉ, jamais un 500 ; rien n'a été écrit.
+            return Response({refus.field or 'detail': refus.message},
+                            status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
         # QJ17 — persist the layout hash on the newly-created devis so future
         # duplicate requests are caught in O(1).
-        if lhash:
-            Devis.objects.filter(pk=devis.pk).update(layout_hash=lhash)
-            devis.layout_hash = lhash
+        # ACAL88 — l'écriture inline est SUPPRIMÉE : le poseur unique.
+        poser_layout_hash(devis, lhash)
 
         # PV79 — la conception 3D est FINALISÉE. Aucun statut ne bouge : on
         # ANNONCE seulement le fait, et les abonnés (crm : note au chatter du
@@ -237,6 +239,12 @@ class DevisCalepinageActionsMixin:
             'statut': devis.statut,
             'proposal_token': link.token,
             'proposal_path': chemin_proposition(devis, link.token),
+            # ACAL88 / ACAL4 — la branche ToitureDesign.jsx qui les lit
+            # devient vivante.
+            'avertissements': list(
+                (rapport or journal).get('avertissements') or ()),
+            'marques_manquantes': list(
+                (rapport or journal).get('marques_manquantes') or ()),
         }
         # CAL185 — clés AJOUTÉES seulement sur l'entrée calepinage : la
         # réponse de l'entrée historique ne bouge pas d'un octet.
@@ -294,7 +302,7 @@ class DevisCalepinageActionsMixin:
         « Réviser ») ; refusé/expiré, 409 avec ``revision_possible: false``.
         Renvoyer le MÊME layout ne fait aucune écriture
         (``inchange: true``). Devis d'une autre société → 404 (get_queryset)."""
-        from ..services import sync_devis_from_layout, SyncLayoutError
+        from ..services import resynchroniser_conception, SyncLayoutError
 
         devis = self.get_object()  # borné société par get_queryset
         payload = request.data
@@ -307,33 +315,14 @@ class DevisCalepinageActionsMixin:
             return Response({'detail': 'Layout manquant ou invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            resultat = sync_devis_from_layout(devis, payload, request.user)
+            # ACAL34 — L'ENVELOPPE unique (resynchro + quatre études +
+            # annonce PV79), la même que « Resynchroniser le devis » du module.
+            resultat = resynchroniser_conception(devis, payload, request.user)
         except SyncLayoutError as exc:
             return Response(
                 {'detail': exc.detail,
                  'revision_possible': exc.revision_possible},
                 status=status.HTTP_409_CONFLICT)
-        # PV79 — même annonce qu'à la création : la toiture vient d'être
-        # redessinée et les lignes suivent. Un renvoi du MÊME layout
-        # (``inchange``) n'annonce rien : il ne s'est rien passé.
-        if not (isinstance(resultat, dict) and resultat.get('inchange')):
-            _emettre_layout_finalise(devis, request.user)
-            # CJ2b / L-1V — les lignes viennent d'être resynchronisées
-            # (quantités de panneaux, batterie, onduleur) : les QUATRE études
-            # doivent repartir de cette composition COURANTE — pas seulement le
-            # bloc horaire, sans quoi le schéma unifilaire de la page client
-            # décrirait la composition d'avant (best-effort, jamais bloquant —
-            # voir ``services.rafraichir_etudes_du_devis``).
-            # QJR20 — « composition COURANTE » est désormais GARANTI et non
-            # espéré : ``sync_devis_from_layout`` recale l'instance qu'on lui a
-            # passée sur la ligne qu'il a verrouillée et écrite
-            # (``_resynchroniser_instance_appelante``). Sans ce recalage,
-            # ``devis`` gardait les lignes PRÉCHARGÉES en début de requête
-            # (``prefetch_related('lignes')`` du queryset) et les quatre études
-            # se recalculaient — puis se PERSISTAIENT — sur la composition
-            # d'AVANT la resynchro.
-            from ..services import rafraichir_etudes_du_devis
-            rafraichir_etudes_du_devis(devis)
         return Response(resultat)
 
     @action(detail=True, methods=['get', 'post'],
@@ -556,11 +545,20 @@ class DevisCalepinageActionsMixin:
         payload = request.data
         if isinstance(payload, dict) and set(payload.keys()) == {'roof_layout'}:
             payload = payload['roof_layout']
+        # ACAL41 (C-ACAL-090) — sur un ENVOYÉ, ce geste est une correction
+        # de la CONCEPTION imprimée : encadré comme sync-layout (début de geste
+        # AVANT la première écriture, fin de geste après) ; renvoyer le même
+        # document ne laisse aucune trace. Hors envoyé : no-op.
+        from ..domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis)
+        avant_geste = debut_de_geste_devis(devis, request.user)
         devis.roof_layout = payload
         devis.save(update_fields=['roof_layout'])
         # La MÊME empreinte que les deux autres chemins (écriture ciblée, aucun
         # statut touché) — puis la MÊME annonce.
         poser_layout_hash(devis, layout_hash(payload))
+        fin_de_geste_devis(devis, request.user, avant=avant_geste,
+                           objet='calepinage')
         _emettre_layout_finalise(devis, request.user)
         return Response({'roof_layout': devis.roof_layout})
 

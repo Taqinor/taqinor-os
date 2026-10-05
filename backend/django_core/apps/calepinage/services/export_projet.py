@@ -536,6 +536,14 @@ def _valider_layout(document, prefixe):
 
     if document is None:
         return None
+    # ACAL86 — un projet exporté d'un document HISTORIQUE porte ``battery``
+    # booléen : il est normalisé par le lecteur unique (``True`` →
+    # ``{'declaree': True}``, ``False`` → ``None``) AVANT la validation, et
+    # c'est la forme normalisée qui est importée — jamais un refus.
+    if (isinstance(document, dict)
+            and isinstance(document.get('battery'), bool)):
+        from apps.ventes.services import battery_du_document
+        document = dict(document, battery=battery_du_document(document))
     try:
         valider_document(document)
     except ImportLayoutRefuse as refus:

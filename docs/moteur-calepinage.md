@@ -10,8 +10,9 @@ qui lui permet d'avoir **deux consommateurs qui ne peuvent pas s'importer l'un
 l'autre** (`apps.ao` pour la réponse à appel d'offres, `apps.ventes` pour la
 villa) et d'être testé **sans base de données**, donc hors du gate de
 migrations. Un contrat import-linter (`calepinage-est-un-noyau-pur`) et un test
-AST verrouillent cette pureté ; le sous-paquet `rendu/` est la seule exemption
-(matplotlib), et il ne calcule rien.
+AST verrouillent cette pureté — sans aucune exemption depuis ACAL328 : le
+rendu matplotlib AO (`rendu/`, qui ne calculait rien) est parqué dans
+`backend/parked/core_calepinage/`.
 
 ---
 
@@ -333,4 +334,4 @@ pensé.
 | Point d'entrée partagé côté ERP (villa, sans projet AO) | `apps/ao/services.calepiner_surface` / `calepiner_villa` |
 | Bascule A/B du devis résidentiel (flag `USE_MOTEUR_CALEPINAGE`) | `apps/ventes/services.arbitrer_compte_calepinage` |
 | Goldens FRDISI (148 / 120 / 314) | `core/calepinage/golden/frdisi_2026_07_27/` |
-| Planches A3, profils interne/dépôt | `core/calepinage/rendu/` |
+| Planches A3, profils interne/dépôt (AO, parqués par ACAL328) | `backend/parked/core_calepinage/rendu/` — la planche servie est `apps/calepinage/services/planche.py` |

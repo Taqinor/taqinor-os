@@ -92,7 +92,7 @@ class TestVocabulaire(SimpleTestCase):
             self.assertIn(v, valeurs)
 
     def test_cles_des_fiches_du_contrat_sur_le_serializeur(self):
-        from apps.stock.serializers import FicheTechniqueSerializer
+        from apps.stock.serializers_fiche_technique import FicheTechniqueSerializer
         champs = set(FicheTechniqueSerializer().fields)
         for cle in _champs_fiches_ci():
             self.assertIn(cle, champs)

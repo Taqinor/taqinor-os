@@ -80,8 +80,8 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
 
     from apps.ventes.selectors import devis_brouillon_pour_layout
     from apps.ventes.services import (
-        build_devis_from_layout, layout_hash, poser_layout_hash,
-        validate_composition_for_layout,
+        AutoDevisError, build_devis_from_layout, layout_hash,
+        poser_layout_hash, validate_composition_for_layout,
     )
 
     layout = _exiger_layout(calepinage)
@@ -93,7 +93,13 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
 
     # Pré-vol de composition : le catalogue peut-il servir ce toit ? Le refus
     # est celui du serveur ventes, mot pour mot (422).
-    erreurs = validate_composition_for_layout(layout, company)
+    # ACAL32 — le pré-vol compose avec la phase et le site isolé du LEAD,
+    # comme la création ; un site isolé non servable est un 422 NOMMÉ.
+    try:
+        erreurs = validate_composition_for_layout(layout, company, lead=lead)
+    except AutoDevisError as refus:
+        raise DevisRefuse(refus.message, champ=refus.field or 'composition',
+                          statut=422) from None
     if erreurs:
         raise DevisRefuse(erreurs[0], champ='composition', statut=422,
                           donnees={'detail': erreurs[0], 'errors': erreurs})
@@ -118,9 +124,15 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
             _lier(calepinage, deja, user=user)
             return deja, False
 
-    devis = build_devis_from_layout(
-        layout=layout, user=user, company=company, lead=lead, client=client,
-        **montants)
+    try:
+        devis = build_devis_from_layout(
+            layout=layout, user=user, company=company, lead=lead,
+            client=client, **montants)
+    except AutoDevisError as refus:
+        # ACAL32 — phase / site isolé du lead déduits par la création ; son
+        # refus NOMMÉ (``hors_reseau``) remonte en 422, jamais un 500.
+        raise DevisRefuse(refus.message, champ=refus.field or 'composition',
+                          statut=422) from None
     # Le devis porte la MÊME empreinte que le calepinage : c'est ce qui rend
     # la dédup possible au clic suivant, et le badge « à jour » honnête.
     poser_layout_hash(devis, empreinte)
@@ -193,7 +205,8 @@ def resynchroniser_devis(calepinage, *, user=None):
             « Générer le devis »), ou refus 409 du serveur ventes propagé.
     """
     from apps.ventes.selectors import get_devis_by_pk
-    from apps.ventes.services import SyncLayoutError, sync_devis_from_layout
+    from apps.ventes.services import (
+        SyncLayoutError, resynchroniser_conception)
 
     layout = _exiger_layout(calepinage)
     devis_id = getattr(calepinage, 'devis_id', None)
@@ -208,7 +221,10 @@ def resynchroniser_devis(calepinage, *, user=None):
         raise DevisRefuse(f"Devis introuvable (#{devis_id}).", champ='devis')
 
     try:
-        return sync_devis_from_layout(devis, layout, user)
+        # ACAL34 — l'enveloppe ventes UNIQUE : resynchro + quatre études
+        # (étude horaire, profils… décrivent les lignes). L'annonce
+        # layout_finalise depuis le module est branchée par D02-T14.
+        return resynchroniser_conception(devis, layout, user, emettre=False)
     except SyncLayoutError as refus:
         raise DevisRefuse(
             refus.detail, champ='devis', statut=409,

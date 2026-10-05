@@ -125,7 +125,7 @@ GRANDFATHERED_FILEFIELDS = {
     "apps/gestion_projet/models.py": {"fichier": 1},
     "apps/portail/models.py": {"fichier": 1},
     "apps/rh/models.py": {"justificatif": 1, "cv_fichier": 1},
-    "apps/stock/models.py": {"pdf": 1},
+    "apps/stock/models_fiche_technique.py": {"pdf": 1},
 }
 
 FILEFIELD_RE = re.compile(

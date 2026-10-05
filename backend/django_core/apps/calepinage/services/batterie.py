@@ -2,9 +2,10 @@
 
 LE CONSTAT (CAL152)
 -------------------
-``battery_storage_sizing`` (``apps/ventes/solar_design.py``) n'offre que
-``autoconso`` / ``backup`` / ``both``, et il DIMENSIONNE (des kWh utiles à
-partir d'un surplus journalier) — il ne fait tourner aucune batterie.
+L'ancien ``battery_storage_sizing`` de ``apps/ventes/solar_design.py``
+(supprimé par ACAL330 : jumeau mort, sans appelant) n'offrait que
+``autoconso`` / ``backup`` / ``both``, et DIMENSIONNAIT (des kWh utiles à
+partir d'un surplus journalier) — il ne faisait tourner aucune batterie.
 PVsyst documente QUATRE stratégies (autoconsommation, effacement de pointe,
 réseau faible/îlotage, décalage de puissance programmé —
 https://www.pvsyst.com/help/project-design/grid-connected-system-definition/grid-systems-with-storage/index.html)

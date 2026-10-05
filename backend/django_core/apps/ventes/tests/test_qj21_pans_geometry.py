@@ -65,6 +65,9 @@ def make_multi_pan_layout():
                 'facingAzimuthDeg': 180,   # BOUSSOLE : 180 = Sud
                 'neededPanels': 12,
                 'neededAuto': True,
+                # ACAL59 — le compte POSÉ (``geometry.count``) fait foi ;
+                # ``neededPanels`` (souhaité) n'est plus un repli.
+                'geometry': {'count': 12, 'kwc': 6.6},
             },
             {
                 'id': 'z2', 'label': 'Pan Est',
@@ -75,6 +78,7 @@ def make_multi_pan_layout():
                 'facingAzimuthDeg': 90,    # BOUSSOLE : 90 = Est
                 'neededPanels': 4,
                 'neededAuto': True,
+                'geometry': {'count': 4, 'kwc': 2.2},
             },
         ],
     }

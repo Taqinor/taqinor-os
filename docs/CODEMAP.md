@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 0fa3c72363ec155020755626f21a482c3a96f89af43a0116608ea1b4574bcee8
+Structure fingerprint: 9c60d08697dd19cefc73563110175b9a7b5396a5f1968f5544becfb599bb75f8
 Plan fingerprint: 66de76def246feec5e4cea01d0a569fb9da623d31ea1dc698dc524570496a4f4
 
 
@@ -167,7 +167,8 @@ taqinor-os/
 |  |  +- authentication/          Tenant root: Company + CustomUser, JWT, registration (NOT under apps/)
 |  |  +- apps/                    39 kept apps — see §4
 |  +- parked/                     SOLMVP37 source mirror of the 47 shelled apps (pre-shell code, no
-|  |                              migrations); refreshed from the archive tag by parquer_miroir.py
+|  |                              migrations); refreshed from the archive tag by parquer_miroir.py;
+|  |                              core_calepinage/ = parked core.calepinage rives/etude (ACAL)
 |  +- fastapi_ia/                 FastAPI AI service (root_path /api/fastapi)
 |  |  +- app/api/endpoints/       ocr.py (Zhipu OCR), sql_agent.py (LangChain NL->SQL)
 |  +- nginx/                      Reverse-proxy config

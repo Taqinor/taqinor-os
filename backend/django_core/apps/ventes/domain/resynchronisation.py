@@ -295,6 +295,10 @@ def reconcilier(devis, intention):
     toiture = extract_roof_config(layout)
     cible_panneaux = _cible_panneaux_du_layout(layout, toiture)
     watt = _watt_du_layout(layout, toiture, cible_panneaux)
+    # ACAL63 (C-ACAL-042) — les modèles DÉSIGNÉS par le calepinage : la
+    # resynchro porte CHAQUE ligne panneau au compte de SON modèle (plus de
+    # « dominante » par quantité, plus de choix au wattage seul).
+    modeles = modeles_designes(layout)
 
     # QJR556 — le scénario du layout est lu par son PROPRIÉTAIRE UNIQUE
     # (``geometrie.scenario_du_layout``), plus par une copie qui ignorait
@@ -430,10 +434,22 @@ def reconcilier(devis, intention):
         # à refuser), et aucune ligne n'a encore bougé — un refus laisse la
         # transaction absolument intacte.
         _refuser_couple_panneau_onduleur_impossible(
-            verrou, lignes, lignes_panneau, cible_panneaux, watt, gamme)
+            verrou, lignes, lignes_panneau, cible_panneaux, watt, gamme,
+            modeles=modeles)
 
         # ── Panneaux : porter le compte à la cible ──
-        if cible_panneaux > 0 and not lignes_panneau:
+        if modeles and not devis_variante and cible_panneaux > 0:
+            # ── ACAL63 — LIGNE PAR LIGNE, MODÈLE PAR MODÈLE ────────────────
+            modifiees, change = _reconcilier_panneaux_par_modele(
+                verrou, lignes_panneau, modeles, avertissements)
+            lignes_modifiees += modifiees
+            panneaux_ont_change = panneaux_ont_change or change
+            total_panneaux = sum(
+                int(li.quantite or 0)
+                for li in _lignes_produit(verrou)
+                if _classe_ligne(li, _is_panel))
+            total_panneaux_avec = total_panneaux
+        elif cible_panneaux > 0 and not lignes_panneau:
             panneau = _pick_product(verrou.company, _is_panel, watt=watt,
                                     role='panneau', gamme=gamme)
             if panneau is None:
@@ -1133,6 +1149,107 @@ def reconcilier(devis, intention):
     return resultat
 
 
+def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
+                                     avertissements):
+    """ACAL63 (C-ACAL-042) — porte CHAQUE ligne panneau au compte de SON
+    modèle désigné par le calepinage. Rend ``(lignes_modifiees, a_change)``.
+
+    * modèle à fiche désignée : la (plus grosse) ligne LIBRE de CE produit
+      reçoit l'écart ; absente, une ligne de la fiche est créée au prix
+      catalogue (une fiche non tarifée n'est jamais cotée : l'écart est DIT) ;
+    * modèle sans fiche : la ligne panneau restante la plus grosse, à défaut
+      le panneau du catalogue au wattage du modèle ;
+    * une ligne panneau d'un produit qu'AUCUN modèle ne désigne est ramenée à
+      0 et NOMMÉE (jamais une suppression silencieuse) ;
+    * une quantité TAPÉE (QJR60 / D12) n'est jamais réécrite : l'écart est
+      nommé.
+    Jamais ``quantite_manuelle`` / ``prix_manuel`` posés."""
+    from apps.ventes.domain.geometrie import _produit_designe
+
+    modifiees = 0
+    change = False
+    restantes = list(lignes_panneau)
+
+    def _porter(lignes_m, cible, libelle):
+        nonlocal modifiees, change
+        total = sum(int(li.quantite or 0) for li in lignes_m)
+        if total == cible:
+            return
+        libres = [li for li in lignes_m if not _quantite_verrouillee(li)]
+        if not libres:
+            _avertir_verrouillee(
+                avertissements, lignes_m,
+                "l'écart de %d panneau(x) « %s »" % (abs(total - cible),
+                                                     libelle))
+            return
+        dominante = max(libres, key=lambda li: Decimal(str(li.quantite or 0)))
+        nouvelle = max(0, int(dominante.quantite or 0) + (cible - total))
+        dominante.quantite = Decimal(str(nouvelle))
+        dominante.save(update_fields=['quantite'])
+        modifiees += 1
+        change = True
+
+    for modele in modeles:
+        cible = int(modele.get('count') or 0)
+        produit_id = modele.get('produit_id')
+        if produit_id:
+            try:
+                cle = int(produit_id)
+            except (TypeError, ValueError):
+                cle = None
+            lignes_m = [li for li in restantes if li.produit_id == cle]
+            for li in lignes_m:
+                restantes.remove(li)
+            produit = (None if lignes_m
+                       else _produit_designe(verrou.company, produit_id))
+        else:
+            lignes_m = ([max(restantes,
+                             key=lambda li: Decimal(str(li.quantite or 0)))]
+                        if restantes else [])
+            for li in lignes_m:
+                restantes.remove(li)
+            produit = (None if lignes_m else _pick_product(
+                verrou.company, _is_panel, watt=modele.get('watt'),
+                role='panneau', gamme=gamme_nom(verrou)))
+        if lignes_m:
+            _porter(lignes_m, cible, getattr(lignes_m[0].produit, 'nom', '')
+                    or lignes_m[0].designation)
+            continue
+        if produit is None:
+            avertissements.append(
+                'Le module désigné par le calepinage (fiche #%s) n\'est pas '
+                'tarifé dans votre catalogue : sa ligne de %d panneau(x) n\'a '
+                'pas été créée — tarifez la fiche puis resynchronisez.'
+                % (produit_id or '?', cible))
+            continue
+        if cible > 0:
+            creer_ligne(
+                verrou, produit=produit, designation=produit.nom,
+                quantite=Decimal(str(cible)),
+                prix_unitaire=Decimal(produit.prix_vente),
+                remise=Decimal('0'), ordre=_ordre_suivant(verrou))
+            modifiees += 1
+            change = True
+
+    for ligne in restantes:
+        if int(ligne.quantite or 0) <= 0:
+            continue
+        if _quantite_verrouillee(ligne):
+            _avertir_verrouillee(
+                avertissements, [ligne],
+                'la ligne « %s », hors des modules du calepinage'
+                % ligne.designation)
+            continue
+        avertissements.append(
+            'La ligne de panneaux « %s » ne correspond à aucun module posé '
+            'sur le calepinage : elle a été ramenée à 0.' % ligne.designation)
+        ligne.quantite = Decimal('0')
+        ligne.save(update_fields=['quantite'])
+        modifiees += 1
+        change = True
+    return modifiees, change
+
+
 def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
     """PV18 — ADAPTATEUR (QJR97, bascule 5/5a).
 
@@ -1159,6 +1276,57 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
         exact=bool(cible_exacte),
         mode=MODE_RECONCILIER))
     return resultat['resynchro']
+
+
+def emettre_layout_finalise(devis, user):
+    """PV79 — annonce que la conception 3D d'un devis est finalisée.
+
+    Passe par le bus ``core.events`` (M6) plutôt que par un appel direct à
+    ``crm`` : les deux apps restent découplées. Ne change AUCUN statut et
+    n'écrit rien lui-même (règle #4). Jamais bloquant : un abonné en échec ne
+    fait pas échouer la finalisation d'un calepinage déjà enregistré.
+
+    ACAL34 — déplacé ici depuis la vue (qui y délègue) pour que l'enveloppe
+    :func:`resynchroniser_conception` l'émette elle-même ; le littéral
+    ``sender`` est INCHANGÉ (aucun récepteur ne filtre dessus).
+    """
+    from core.events import layout_finalise
+    try:
+        layout_finalise.send(sender='ventes.views.devis', devis=devis,
+                             user=user)
+    except Exception:  # noqa: BLE001 — un abonné cassé ne casse pas le devis
+        logging.getLogger(__name__).exception(
+            'PV79 : abonné en échec sur layout_finalise (devis %s)', devis.pk)
+
+
+def resynchroniser_conception(devis, layout, user=None, *, emettre=True):
+    """ACAL34 (C-ACAL-109) — L'ENVELOPPE UNIQUE d'une resynchronisation de
+    conception : ``sync-layout`` (ventes) ET « Resynchroniser le devis »
+    (module calepinage) l'appellent, plus aucune suite recopiée.
+
+    1. :func:`sync_devis_from_layout` — le geste chirurgical (PV18), tracé
+       « corrigé après envoi » sur un ENVOYÉ (QJR557) ;
+    2. si quelque chose a changé (pas ``inchange``) : les QUATRE études
+       repartent de la composition COURANTE
+       (``etudes.rafraichir_etudes_du_devis`` — étude horaire, profils,
+       dimensionnement, électrique) ; sur un envoyé, ce rafraîchissement a lieu
+       DANS ce geste explicite, jamais hors geste ;
+    3. si ``emettre`` : l'annonce ``layout_finalise`` (PV79).
+
+    Rend le dict de :func:`sync_devis_from_layout`, INCHANGÉ ; ``SyncLayoutError``
+    remonte telle quelle. Aucun statut écrit (règle #4).
+    """
+    resultat = sync_devis_from_layout(devis, layout, user)
+    if isinstance(resultat, dict) and resultat.get('inchange'):
+        return resultat
+    if emettre:
+        emettre_layout_finalise(devis, user)
+    # QJR20 — ``sync_devis_from_layout`` a recalé l'instance passée sur la
+    # ligne verrouillée et écrite : les études se calculent sur la
+    # composition d'APRÈS la resynchro.
+    from apps.ventes.domain.etudes import rafraichir_etudes_du_devis
+    rafraichir_etudes_du_devis(devis)
+    return resultat
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
@@ -1197,6 +1365,7 @@ from apps.ventes.domain.geometrie import (  # noqa: E402,F401
     _watt_du_layout,
     extract_roof_config,
     layout_hash,
+    modeles_designes,
     scenario_du_layout,
 )
 from apps.ventes.domain.lignes import (  # noqa: E402,F401

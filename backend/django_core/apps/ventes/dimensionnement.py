@@ -2168,6 +2168,7 @@ from apps.ventes.domain.dimensionnement_devis import (  # noqa: E402,F401
     _echelle_paliers_batterie,
     _lignes_produit_du_devis,
     capacite_batterie_des_lignes,
+    comptes_panneaux_valides,
     contenance_toit_du_devis,
     contour_du_devis_lnglat,
     echelle_paliers_batterie,

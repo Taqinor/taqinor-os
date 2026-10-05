@@ -142,6 +142,9 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         avant_geste = debut_de_geste_devis(
             serializer.validated_data.get('devis'), self.request.user)
         serializer.save()
+        # ACAL90 — une ligne de kit AJOUTÉE à la main sort du marqueur.
+        from ..domain.lignes import noter_ligne_ajoutee
+        noter_ligne_ajoutee(serializer.instance)
         # CJ2b / L-1V — une ligne AJOUTÉE peut changer la puissance kWc
         # résidentielle : les QUATRE études du devis (bloc horaire,
         # dimensionnement, profils comparatifs, CONCEPTION ÉLECTRIQUE) doivent
@@ -179,7 +182,11 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         self._check_devis_not_frozen(instance.devis)
         devis = instance.devis
         avant_geste = debut_de_geste_devis(devis, self.request.user)
-        instance.delete()
+        # ACAL90 — LE point de suppression à la main : une ligne de kit
+        # retirée est mémorisée (``kit_retire``), jamais recréée par la
+        # resynchro (D-ACAL-22).
+        from ..domain.lignes import supprimer_ligne
+        supprimer_ligne(instance)
         # CJ2b / L-1V — voir perform_create ci-dessus (même raison : une ligne
         # RETIRÉE peut changer, voire annuler, la puissance kWc).
         _retarifer_forfaits(devis)

@@ -97,15 +97,19 @@ _TOLERANCE_LATTICE_M = 0.05
 #: ``estimatorBrainV2`` ``opts.setbackM ?? PERIMETER_SETBACK_M`` (miroir
 #: visionneuse : ``VIEWER_SETBACK_M``).
 #:
-#: LIMITE CONNUE, DITE HONNÊTEMENT (PV63) : le calepineur accepte désormais des
-#: retraits PAR CÔTÉ (``resolveSetbacks`` → ``{lateralM, extremityM,
-#: parapetM}``), et ces trois valeurs NE SONT PAS SÉRIALISÉES dans le layout
-#: (``prefill.ts`` ne les émet pas). Un dessin dérivé prolonge donc toujours au
-#: retrait par défaut de 0,5 m. Conséquence bornée et connue : sur un toit
-#: réglé à un retrait PLUS GRAND, une rangée ajoutée peut s'approcher du bord
-#: plus près que le commercial ne l'aurait fait — jamais hors du polygone. Le
-#: jour où les retraits par côté voyageront dans le layout, ils se lisent ici.
+#: ACAL272 (C-ACAL-116) — PV63 corrigé : les retraits PAR CÔTÉ VOYAGENT
+#: désormais dans le layout (racine ``setbacksM`` {lateralM, extremityM,
+#: parapetM, jointM}, CAL76) et la proposition publique les publie (ACAL261).
+#: Ils se lisent ici (:func:`retrait_du_document`) : un emplacement ajouté doit
+#: tenir à au moins le PLUS GRAND des retraits saisis de chaque bord — borne
+#: prudente (un refus prudent est le sens voulu de cet estimateur), jamais
+#: plus près que le retrait du côté concerné. Sans saisie, le repli reste ce
+#: retrait par défaut de 0,5 m.
 _RETRAIT_RIVE_M = 0.5
+
+#: ACAL272 — les natures de zone d'exclusion qui INTERDISENT de prolonger
+#: (doctrine PV62 : on plafonne, on ne devine pas).
+_NATURES_BLOQUANTES = ('INTERDITE', 'RESERVEE')
 
 #: PV61 — dégagement (m) autour d'un obstacle, PAR TYPE. Table recopiée de
 #: ``apps/web/src/scripts/roofPro11/types.ts`` ``CLEARANCE_BY_TYPE`` : les
@@ -152,7 +156,7 @@ _ZONE_RECOPIEES = ('id', 'label', 'vertices', 'roofType',
 #: page lit (``proposition.parseRoofLayout``) plus ``type`` (PV61, le
 #: dégagement) — rien d'autre n'a de raison d'exister sur un dessin.
 _OBSTACLE_RECOPIEES = ('id', 'centerLng', 'centerLat', 'lengthM', 'widthM',
-                       'type')
+                       'type', 'degagementM', 'forme', 'rayonM')
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -296,14 +300,61 @@ def obstacles_enu(obstacles, origine):
             continue
         if nord_sud <= 0 or est_ouest <= 0:
             continue
-        degagement = _DEGAGEMENTS.get(obstacle.get('type'),
-                                      _DEGAGEMENT_DEFAUT)
+        # ACAL272 — le dégagement PROPRE saisi sur l'obstacle passe devant la
+        # table par type.
+        propre = _fini(obstacle.get('degagementM'))
+        degagement = (propre if propre is not None and propre >= 0
+                      else _DEGAGEMENTS.get(obstacle.get('type'),
+                                            _DEGAGEMENT_DEFAUT))
         cx = (lng - olng) * _DEG2M * cos_lat
         cy = (lat - olat) * _DEG2M
         demi_x = est_ouest / 2.0 + degagement       # Est-Ouest = widthM
         demi_y = nord_sud / 2.0 + degagement        # Nord-Sud  = lengthM
         boites.append((cx - demi_x, cy - demi_y, cx + demi_x, cy + demi_y))
     return boites
+
+
+def retrait_du_document(layout):
+    """ACAL272 — le retrait de rive (m) à respecter pour un emplacement
+    AJOUTÉ : le plus grand des retraits SAISIS (``setbacksM`` : latéral,
+    extrémité, acrotère), à défaut :data:`_RETRAIT_RIVE_M`."""
+    retraits = (layout or {}).get('setbacksM') if isinstance(
+        layout, dict) else None
+    valeurs = []
+    if isinstance(retraits, dict):
+        for cle in ('lateralM', 'extremityM', 'parapetM'):
+            valeur = _fini(retraits.get(cle))
+            if valeur is not None and valeur >= 0:
+                valeurs.append(valeur)
+    return max(valeurs) if valeurs else _RETRAIT_RIVE_M
+
+
+def motif_non_extensible(layout):
+    """ACAL272 (doctrine PV62) — pourquoi ce document ne se PROLONGE pas, ou
+    ``None``. Une zone INTERDITE/RÉSERVÉE, une allée de circulation ou un
+    obstacle de forme NON rectangulaire : l'estimateur ne sait pas en tenir
+    compte au panneau près, il refuse d'étendre (capacité = modules posés)."""
+    if not isinstance(layout, dict):
+        return None
+    for exclusion in layout.get('exclusionZones') or []:
+        if (isinstance(exclusion, dict)
+                and exclusion.get('nature') in _NATURES_BLOQUANTES):
+            return ('zone %s : extension refusée'
+                    % str(exclusion['nature']).lower())
+    allee = layout.get('alleeTechnique')
+    if isinstance(allee, dict) and (_fini(allee.get('largeurM')) or 0) > 0:
+        return 'allée de circulation : extension refusée'
+    for zone in layout.get('zones') or []:
+        if not isinstance(zone, dict):
+            continue
+        for obstacle in zone.get('obstacles') or []:
+            if not isinstance(obstacle, dict):
+                continue
+            forme = obstacle.get('forme')
+            if (forme not in (None, '', 'rectangle')
+                    or obstacle.get('rayonM') is not None):
+                return 'obstacle non rectangulaire : extension refusée'
+    return None
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -330,11 +381,17 @@ class _Trame:
     #: publique (``public_views._FACES_CONNUES``).
     FACES = ('E', 'W')
 
-    def __init__(self, index, zone, geometrie, libre=False):
+    def __init__(self, index, zone, geometrie, libre=False, retrait=None,
+                 motif=None):
         self.index = index
         self.zone = zone
         self.geometrie = geometrie
         self.libre = bool(libre)
+        # ACAL272 — le retrait SAISI du document et le motif de refus
+        # d'extension (zone interdite, allée, obstacle non rectangulaire).
+        self.retrait = (_RETRAIT_RIVE_M if retrait is None
+                        else float(retrait))
+        self.motif = motif
         self.u, self.s = axes_de_pose(geometrie.get('azimuthDeg') or 0.0)
         self.rangees = self._lire_rangees(geometrie.get('panels') or [])
         self.pas_colonne = self._pas_colonne()
@@ -451,7 +508,7 @@ class _Trame:
         faite À LA MAIN (``mode == 'free'``) ou un pavage mixte ne sont jamais
         prolongés : le dessin plafonne, et il le DIT.
         """
-        return (not self.libre and bool(self.rangees)
+        return (not self.libre and not self.motif and bool(self.rangees)
                 and self.trame_reguliere())
 
     def _emplacement_libre(self, uu, vv):
@@ -471,7 +528,7 @@ class _Trame:
         for coin in coins:
             if not _dans_polygone(coin, self.anneau):
                 return False
-            if _distance_bord(coin, self.anneau) < _RETRAIT_RIVE_M:
+            if _distance_bord(coin, self.anneau) < self.retrait:
                 return False
         if self.obstacles:
             # Les boîtes portent DÉJÀ leur dégagement PV61 (voir
@@ -605,6 +662,24 @@ def nb_panneaux_publies(layout_public):
     toit, et la carte finissait par annoncer un nombre que son propre dessin ne
     montrait pas.
     """
+    total = _nb_panneaux_des_zones(layout_public)
+    # ACAL272 — les SURFACES DE POSE publiées (sol, ombrière, façade : ACAL261)
+    # sont des pans à part entière : leurs modules posés comptent. Une zone de
+    # toit qu'on prolongerait ne les redessine pas — d'où ``deriver`` et la
+    # contenance qui refusent alors d'étendre (comptes différents).
+    for surface in (layout_public or {}).get('poseSurfaces') or []:
+        if not isinstance(surface, dict):
+            continue
+        moteur = surface.get('engine')
+        modules = _fini((moteur or {}).get('modules')) if isinstance(
+            moteur, dict) else None
+        if modules is not None and modules > 0:
+            total += int(round(modules))
+    return total
+
+
+def _nb_panneaux_des_zones(layout_public):
+    """Les panneaux dessinés sur les seules ZONES publiées."""
     total = 0
     for _rang, zone in zones_publiees(layout_public):
         geometrie = zone.get('geometry')
@@ -616,7 +691,7 @@ def nb_panneaux_publies(layout_public):
     return total
 
 
-def lire_trames(layout_public, libres=None):
+def lire_trames(layout_public, libres=None, contraintes=None):
     """Les trames EXPLOITABLES du calepinage assaini, dans l'ordre publié.
 
     Une zone publiée peut être illisible pour la dérivation (contour de moins
@@ -625,6 +700,12 @@ def lire_trames(layout_public, libres=None):
     du tout, plutôt que de servir un dessin amputé de cette zone.
     """
     identifiants, rangs = libres if libres else (set(), set())
+    # ACAL272 — retrait saisi et motif de refus d'extension, lus sur le
+    # document BRUT quand l'appelant le fournit (``contraintes`` : l'allée
+    # n'est pas publiée), sinon sur le layout reçu.
+    source = contraintes if isinstance(contraintes, dict) else layout_public
+    retrait = retrait_du_document(source)
+    motif = motif_non_extensible(source)
     trames = []
     for rang, zone in zones_publiees(layout_public):
         geometrie = zone.get('geometry')
@@ -632,7 +713,8 @@ def lire_trames(layout_public, libres=None):
             continue
         libre = (zone.get('id') in identifiants if zone.get('id')
                  else rang in rangs)
-        trame = _Trame(rang, zone, geometrie, libre=libre)
+        trame = _Trame(rang, zone, geometrie, libre=libre, retrait=retrait,
+                       motif=motif)
         if trame.rangees and trame.anneau and len(trame.anneau) >= 3:
             trames.append(trame)
     return trames
@@ -661,7 +743,8 @@ def lire_trames(layout_public, libres=None):
 # rangée unique, trame illisible).
 
 
-def capacite_du_layout(layout_public, libres=None, contraintes=None):
+def capacite_du_layout(layout_public, libres=None, contraintes=None,
+                       contraintes_site=None):
     """Le nombre MAXIMAL de panneaux que la GÉOMÉTRIE RÉELLE de ce toit tient.
 
     ``None`` quand ce layout ne porte aucun calepinage exploitable — jamais un
@@ -702,7 +785,7 @@ def capacite_du_layout(layout_public, libres=None, contraintes=None):
     nb_publies = nb_panneaux_publies(layout_public)
     if nb_publies <= 0:
         return None
-    trames = lire_trames(layout_public, libres)
+    trames = lire_trames(layout_public, libres, contraintes)
     if not trames:
         return None
     # CIQ137 — îlots bornés du PROJET (``contraintes_site.ilot_max_m``) : la
@@ -710,11 +793,11 @@ def capacite_du_layout(layout_public, libres=None, contraintes=None):
     # qui empiètent sur les allées. Sans contrainte : chemin d'hier, inchangé.
     from core.calepinage.ilots import lire_contraintes
 
-    if callable(contraintes):
+    if callable(contraintes_site):
         # Résolues PARESSEUSEMENT : un toit sans calepinage exploitable ne
         # coûte aucune lecture de plus.
-        contraintes = contraintes()
-    lu = lire_contraintes(contraintes)
+        contraintes_site = contraintes_site()
+    lu = lire_contraintes(contraintes_site)
     if lu is not None:
         return _capacite_avec_ilots(trames, lu)
     # Règle 4 — le MÊME verdict que ``deriver``. Les deux comptes ne coïncident
@@ -790,9 +873,13 @@ def capacite_toit_du_devis(devis):
     capacite = None
     if isinstance(layout, dict):
         try:
+            # ACAL272 — le document BRUT porte retraits, exclusions,
+            # allée et surfaces de pose : il est aussi la source des
+            # contraintes. CIQ137 — les contraintes de SITE (îlots) du
+            # calepinage lié, résolues paresseusement.
             capacite = capacite_du_layout(
-                layout, _modes_libres(devis),
-                lambda: _contraintes_site_du_devis(devis))
+                layout, _modes_libres(devis), contraintes=layout,
+                contraintes_site=lambda: _contraintes_site_du_devis(devis))
         except Exception:  # noqa: BLE001 — une géométrie illisible n'est pas
             # une contenance : on n'en publie aucune.
             logger.warning('capacite_toit indisponible', exc_info=True)
@@ -1010,7 +1097,9 @@ def deriver(devis, offres_tailles, layout_public, sld_servi=False):
     offres = list((offres_tailles or {}).get('offres') or [])
     if not offres:
         return None
-    trames = lire_trames(layout_public, _modes_libres(devis))
+    brut = getattr(devis, 'roof_layout', None)
+    trames = lire_trames(layout_public, _modes_libres(devis),
+                         contraintes=brut if isinstance(brut, dict) else None)
     if not trames:
         return None
     # DEUX COMPTES, ET LA DIFFÉRENCE EST LE PIÈGE. ``nb_publies`` est ce que la

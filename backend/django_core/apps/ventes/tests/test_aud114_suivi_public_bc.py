@@ -45,7 +45,7 @@ class TestSuiviPublicAvecBonCommande(TestCase):
         resp = self.api.get(self._url())
         self.assertEqual(resp.status_code, 200, resp.content)
         ms = {m['key']: m for m in resp.data['milestones']}
-        self.assertTrue(ms['materiel']['done'])
+        self.assertFalse(ms['materiel']['done'])  # ADOC121 : jalon appro requis
         self.assertFalse(ms['facture']['done'])
 
     def test_facture_de_chaine_bc_marque_le_jalon(self):

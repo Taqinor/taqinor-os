@@ -320,11 +320,14 @@ class TestDrapeauCalepinageDeuxOptions(BaseDevisLive):
             etude_params={'scenario': 'Les deux (Sans + Avec)'})
         variantes = {}
         for nb, variante in ((self.NB_SANS, 'sans'), (self.NB_AVEC, 'avec')):
+            # ACAL46 — ``comptes_panneaux_valides`` (règle partagée du
+            # drapeau de péremption) lit le CHAMP ``LigneDevis.variante`` :
+            # la ligne le porte, en plus du point de lecture du moteur patché.
             ligne = devis.lignes.create(
                 produit=self.panneau,
                 designation='Panneau Canadien Solar 710W',
                 quantite=Decimal(str(nb)), prix_unitaire=Decimal('1272.73'),
-                ordre=0)
+                ordre=0, variante=variante)
             variantes[ligne.pk] = variante
         devis.lignes.create(
             produit=reseau,

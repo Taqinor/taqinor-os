@@ -99,6 +99,48 @@ class PhotosSiteMixin:
                          'photos': photos_site(calepinage)},
                         status=status.HTTP_201_CREATED)
 
+    @extend_schema(parameters=[OpenApiParameter(
+        name='photo_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+        description="Identifiant de la photo de site (sous-ressource du calepinage).")])
+    @action(detail=True, methods=['patch', 'delete'],
+            url_path=r'photos/(?P<photo_id>[^/.]+)',
+            permission_classes=[PeutLireOuEcrireCalepinage])
+    def photo_detail(self, request, pk=None, photo_id=None):
+        """ACAL202 — corriger (PATCH genre/prise_le/legende) ou retirer (DELETE)
+        UNE photo de site.
+
+        L'OBJET D'ABORD (CAL29) : le calepinage est résolu borné société, puis
+        la photo DANS ses photos — d'ailleurs, la même 404. Une date future ou
+        un genre inconnu sont refusés comme à la création, en nommant le champ.
+        Aucun statut ne bouge (règle #4).
+        """
+        from ..selectors import photos_site
+        from ..services.photos import (
+            PhotoRefusee, modifier_photo_site, photo_en_ligne,
+            supprimer_photo_site,
+        )
+
+        # ACAL277 — import local : ``calepinages.py`` importe CE module.
+        from .calepinages import _identifiant_ou_404
+
+        calepinage = self.get_object()  # borné société par get_queryset
+        photo = calepinage.photos_site.select_related('attachment').filter(
+            pk=_identifiant_ou_404(photo_id)).first()
+        if photo is None:
+            return Response({'detail': 'Photo introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if request.method.lower() == 'delete':
+            supprimer_photo_site(photo)
+            return Response({'photos': photos_site(calepinage)})
+        try:
+            modifier_photo_site(
+                photo, request.data if isinstance(request.data, dict) else {})
+        except PhotoRefusee as refus:
+            return Response({refus.champ or 'detail': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({'photo': photo_en_ligne(photo),
+                         'photos': photos_site(calepinage)})
+
     #: YAPIC6 — ``photo_id`` n'est pas un champ du pivot : sans cette déclaration,
     #: drf-spectacular publie un paramètre de chemin sans type.
     @extend_schema(parameters=[OpenApiParameter(
@@ -131,8 +173,16 @@ class PhotosSiteMixin:
         if photo is None:
             return Response({'detail': 'Photo introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
+        # ACAL202 — la clé ``calage`` est OBLIGATOIRE : un corps qui l'omet
+        # n'efface plus le calage en silence (``null`` explicite = effacer).
+        corps = request.data
+        if not isinstance(corps, dict) or 'calage' not in corps:
+            return Response(
+                {'calage': "Clé « calage » obligatoire : un objet "
+                           "{coins: [[lat, lng] × 4]}, ou null pour effacer."},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
-            calage_photo_site(photo, request.data.get('calage'))
+            calage_photo_site(photo, corps['calage'])
         except PhotoRefusee as refus:
             return Response({refus.champ or 'detail': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)

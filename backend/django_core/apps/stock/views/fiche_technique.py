@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from core.viewsets import CompanyScopedModelViewSet
 from ..importers.fiche_pan_ond import FichierIllisible, champs_a_ecrire, parse_pan_ond_bytes
 from ..models import FicheTechnique, Produit
-from ..serializers import FicheTechniqueSerializer
+from ..serializers_fiche_technique import FicheTechniqueSerializer
 from authentication.permissions import (
     IsAnyRole,
     IsAdminRole,

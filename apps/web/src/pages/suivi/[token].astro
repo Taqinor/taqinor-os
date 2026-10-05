@@ -17,11 +17,13 @@
 export const prerender = false;
 
 import Layout from '../../layouts/Layout.astro';
+import OtpLectureForm from '../../components/OtpLectureForm.astro';
 import {
   type SuiviResponse,
   suiviEndpoint,
   buildTimeline,
-  formatSuiviDate,
+  libelleMiseAJour,
+  etatErreurSuivi,
 } from '../../lib/suivi';
 import { whatsappLink } from '../../lib/proposition';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
@@ -40,6 +42,8 @@ let data: SuiviResponse | null = null;
 let errorDetail: { fr: string; ar: string } | null = null;
 let httpStatus = 200;
 let isTimeout = false;
+// ADOC133 — le lien exige un code à usage unique non vérifié (403 `otp_required`).
+let otpRequis = false;
 
 // Rate-limit du SSR : un token de suivi est un identifiant devinable (chaîne
 // opaque mais finie) — même bucket généreux que proposition-view (W316).
@@ -68,8 +72,19 @@ if (!rl.allowed) {
     if (res.ok) {
       data = (await res.json()) as SuiviResponse;
     } else {
+      // ADOC133 — le corps du refus décide de l'écran : 403 `otp_required` ⇒
+      // écran de saisie du code (jamais « Ce suivi n’est pas accessible »).
+      let detail = '';
+      try {
+        const body = (await res.json()) as { detail?: unknown };
+        detail = typeof body?.detail === 'string' ? body.detail : '';
+      } catch {
+        detail = '';
+      }
+      const etat = etatErreurSuivi(res.status, detail);
+      otpRequis = etat === 'otp';
       errorDetail =
-        res.status === 404
+        etat === 'introuvable'
           ? {
               fr: 'Ce lien de suivi est introuvable ou a expiré.',
               ar: 'رابط المتابعة هذا غير موجود أو انتهت صلاحيته.',
@@ -107,7 +122,10 @@ const ok = !!data;
 const reference = data?.reference ?? '';
 const stepsFr = ok ? buildTimeline(data!, 'fr') : [];
 const stepsAr = ok ? buildTimeline(data!, 'ar') : [];
-const generatedLabel = formatSuiviDate(data?.generated_at ?? null);
+// ADOC132 — « Mis à jour le » = `mis_a_jour_le` (date du dernier jalon fait),
+// JAMAIS `generated_at` (horodatage technique : il vaut « maintenant » à chaque
+// lecture). `null` ⇒ aucune ligne « Mis à jour » (zéro date inventée).
+const miseAJour = libelleMiseAJour(data);
 
 // Lien de partage WhatsApp : compositeur générique (wa.me sans numéro — le
 // client choisit le destinataire) partageant l'URL COURANTE, donc CETTE page
@@ -134,7 +152,24 @@ const ogTitle = 'Suivi de votre projet solaire | Taqinor';
   ogTitle={ogTitle}
   ogImageAlt="Taqinor — suivi de votre projet solaire"
 >
-  {!ok ? (
+  {!ok && otpRequis ? (
+    <section id="otp-lecture" class="mx-auto flex min-h-[60dvh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center" data-token={token}>
+    <!-- ADOC133 — écran de code de LECTURE (même mécanisme et mêmes endpoints que
+         /proposition : proxy same-origin /api/proposition-otp, mode `lecture`,
+         MÊME jeton ShareLink). Vérification réussie ⇒ le serveur déverrouille la
+         lecture une heure (otp_lecture_verified) : on recharge la même URL. -->
+      <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
+      <h1 class="display mt-6 text-3xl text-lune sm:text-4xl">Suivi protégé</h1>
+      <p class="v2-body mt-4 max-w-md">
+        Ce suivi est protégé par un code à usage unique. Nous l’envoyons au contact
+        enregistré sur votre devis.
+      </p>
+      <OtpLectureForm valider="Ouvrir mon suivi" />
+      <a href={waFallbackLink} target="_blank" rel="noopener noreferrer" class="btn-pill mt-4">
+        Contacter sur WhatsApp
+      </a>
+    </section>
+  ) : !ok ? (
     <section class="mx-auto flex min-h-[60dvh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center">
     <!-- ── État « lien expiré / indisponible » (FR + AR, jamais une page blanche) ── -->
       <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
@@ -199,10 +234,10 @@ const ogTitle = 'Suivi de votre projet solaire | Taqinor';
             <span data-lang="ar" dir="rtl" hidden>مرحبًا، إليكم تقدّم مشروعكم.</span>
           </h1>
           <p class="fig lum mt-4 text-2xl sm:text-3xl" dir="ltr">{reference}</p>
-          {generatedLabel ? (
-            <p class="mt-2 text-sm text-lune-faint">
-              <span data-lang="fr">Mis à jour le <span dir="ltr">{generatedLabel}</span></span>
-              <span data-lang="ar" dir="rtl" hidden>آخر تحديث بتاريخ <span dir="ltr">{generatedLabel}</span></span>
+          {miseAJour ? (
+            <p class="mt-2 text-sm text-lune-faint" data-mis-a-jour>
+              <span data-lang="fr">Mis à jour le <span dir="ltr">{miseAJour.date}</span></span>
+              <span data-lang="ar" dir="rtl" hidden>آخر تحديث بتاريخ <span dir="ltr">{miseAJour.date}</span></span>
             </p>
           ) : null}
         </div>
@@ -328,6 +363,7 @@ const ogTitle = 'Suivi de votre projet solaire | Taqinor';
 </style>
 
 <script>
+  import { brancherOtpLecture } from '../../lib/otpLecture';
   // WJ115 — bascule FR/عربي minimale : toggle `hidden` sur chaque paire
   // `[data-lang]` + `dir`/`lang` document — pas de tri-node dual-node (page
   // courte, un mécanisme plus lourd n'apporterait rien ici).
@@ -350,6 +386,12 @@ const ogTitle = 'Suivi de votre projet solaire | Taqinor';
         : 'min-h-11 px-2.5 py-2.5 text-xs font-semibold text-lune-soft transition-colors hover:text-white';
     }
   }
+
+  // ADOC133 — écran de code de lecture : logique PARTAGÉE avec /proposition
+  // (lib/otpLecture.ts, une seule copie — garde ACAL345). Proxy same-origin
+  // `/api/proposition-otp`, mode `lecture`, même jeton ; sans effet hors de
+  // `#otp-lecture`.
+  brancherOtpLecture('votre suivi');
 
   document.getElementById('suivi-lang-fr')?.addEventListener('click', () => setLang('fr'));
   document.getElementById('suivi-lang-ar')?.addEventListener('click', () => setLang('ar'));

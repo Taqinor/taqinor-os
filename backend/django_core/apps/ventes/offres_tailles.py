@@ -1880,8 +1880,18 @@ def _layout_de_la_taille(devis, contexte, nb_panneaux, modules,
         layout['panelWatt'] = int(round(watt))
     layout['result'] = result
 
-    a_deja_une_batterie = bool(_compter_modules_du_devis(devis))
-    layout['battery'] = bool(modules) or a_deja_une_batterie
+    # ACAL86 (C-ACAL-100) — ``battery`` au format du CONTRAT roof_layout_v2 :
+    # objet non vide ou ``None``, jamais un booléen. La capacité est celle
+    # des modules de la taille (ou, à défaut, de ceux que le devis vend déjà)
+    # quand le module est connu ; sinon une batterie DÉCLARÉE, sans kWh
+    # inventé.
+    nb_modules = int(modules or 0) or int(_compter_modules_du_devis(devis) or 0)
+    if nb_modules > 0:
+        module_kwh = _num(getattr(contexte, 'module_batterie_kwh', None), 0.0)
+        layout['battery'] = ({'kwh': round(nb_modules * module_kwh, 2)}
+                             if module_kwh > 0 else {'declaree': True})
+    else:
+        layout['battery'] = None
     layout['scenario'] = ('avec_batterie' if layout['battery'] else 'reseau')
     return layout
 
