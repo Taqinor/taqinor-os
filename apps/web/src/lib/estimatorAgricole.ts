@@ -12,11 +12,31 @@
  * (HMT × débit → kW pompe, formule AMEE) que l'ERP obtient, lui, des courbes
  * constructeur réelles (debitAtHmt/selectPompeByCurve) — l'ERP reste la source
  * autoritaire au moment du devis chiffré.
+ *
+ * AGW409 — les constantes HYDRAULIQUES (énergie hydraulique, CV → kW, rendement
+ * groupe) ne sont PLUS écrites ici : elles sont LUES dans le jumeau de la table
+ * d'hypothèses du noyau (`src/contract_samples/hypotheses_pompage.json`, JSON-égal
+ * à `apps/ventes/contract_samples/hypotheses_pompage.json`, export de
+ * `core/pompage/hypotheses.py` — contrôle (a) de scripts/check_api_shapes.py).
+ * Aucun bassin ici : pas de multiplicateur de stockage côté site. Chaque chiffre
+ * affiché est une ESTIMATION (le rendement groupe est une hypothèse « EST. »).
  */
+import hypothesesPompage from '../contract_samples/hypotheses_pompage.json';
 
-// ── Constantes MIROIR de frontend/src/features/ventes/solar.js ──────────────
-/** 1 CV = 0.7355 kW — miroir solar.js CV_TO_KW. */
-export const CV_TO_KW = 0.7355;
+/** Valeur numérique d'une hypothèse de la table unique — échoue fort si absente. */
+function hypothese(cle: string): number {
+  const h = (hypothesesPompage.exemple.hypotheses as Array<{ cle: string; valeur: unknown }>).find(
+    (x) => x.cle === cle,
+  );
+  if (!h || typeof h.valeur !== 'number' || !Number.isFinite(h.valeur) || h.valeur <= 0) {
+    throw new Error(`hypotheses_pompage.json : hypothèse numérique « ${cle} » introuvable`);
+  }
+  return h.valeur;
+}
+
+// ── Constantes lues dans la table d'hypothèses (jamais recopiées) ───────────
+/** 1 CV = 0,7355 kW — table : `cv_vers_kw` (miroir solar.js CV_TO_KW). */
+export const CV_TO_KW = hypothese('cv_vers_kw');
 /** Heures de pompage effectives/jour — miroir solar.js HEURES_POMPAGE_DEFAUT. */
 export const HEURES_POMPAGE_DEFAUT = 7;
 /** Champ PV ≈ 1.4 × puissance pompe (marché 1.3–1.5×) — miroir champFromKw. */
@@ -24,18 +44,19 @@ export const PV_FACTOR = 1.4;
 /** Puissance panneau de référence (W) — miroir solar.js (panneau 710 W). */
 export const PANEL_W = 710;
 
-// ── Hypothèses PROPRES à ce module (documentées) ──────────────────────────────
+// ── Conventions de dimensionnement PROPRES au site (non hydrauliques, documentées) ──
 /**
- * Puissance hydraulique : P(kW) = débit(m³/h) × HMT(m) × 2.725 / 1000.
- * 2.725 = ρ·g/3600 (1000 kg/m³ × 9.81 m/s² / 3600 s) — formule standard
- * du dimensionnement pompage (guides AMEE/pompage solaire).
+ * Puissance hydraulique : P(kW) = débit(m³/h) × HMT(m) × coeff / 1000, avec
+ * coeff = ρ·g/3600 — table : `energie_hydraulique_wh_par_m3_m`.
  */
-export const HYDRAULIC_COEFF = 2.725;
+export const HYDRAULIC_COEFF = hypothese('energie_hydraulique_wh_par_m3_m');
 /**
- * Rendement global groupe motopompe (hypothèses prudentes usuelles) :
- * immergée ≈ 0.55, surface ≈ 0.50. Défaut : immergée (cas forage majoritaire).
+ * Rendement global groupe motopompe — table : `rendement_groupe` (statut
+ * « EST. »). Une seule valeur pour immergée et surface : la table ne distingue
+ * pas, et le site n'invente pas de différence.
  */
-export const PUMP_EFF = { immergee: 0.55, surface: 0.5 } as const;
+export const RENDEMENT_GROUPE = hypothese('rendement_groupe');
+export const PUMP_EFF = { immergee: RENDEMENT_GROUPE, surface: RENDEMENT_GROUPE } as const;
 /** Paliers CV commerciaux des pompes du marché (catalogue usuel). */
 export const CV_STEPS = [0.5, 1, 1.5, 2, 3, 4, 5.5, 7.5, 10, 12.5, 15, 20, 25, 30] as const;
 /** Hauteur de refoulement par défaut quand seul le puits est connu (m). */

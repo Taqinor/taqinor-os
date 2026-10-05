@@ -92,8 +92,11 @@ describe('WJ124 — chaîne culture → eau → pompe (avocat Gharb 5 ha)', () =
     const est = estimateAgricole({ besoinM3j: md.peak_m3_farm_day, hmtM: 55, heuresPompage: 7, pompeType: 'immergee' });
     expect(est.ok).toBe(true);
     if (est.ok) {
-      expect(est.pompeCv).toBe(20);
-      expect(est.champKwc).toBeCloseTo(20.59, 2);
+      // AGW409 — rendement groupe lu dans la table d'hypothèses (0,35 EST.) :
+      // 43,9 m³/h × 55 m → 6,57 kW hydrauliques → 18,8 kW → 25,5 CV → palier 30
+      // (avant : 0,55 → 20 CV, 20,59 kWc).
+      expect(est.pompeCv).toBe(30);
+      expect(est.champKwc).toBeCloseTo(31.24, 2);
       expect(est.m3Jour).toBe(307); // ≈ besoin de pointe arrondi
       expect(est.nbPanneaux).toBeGreaterThan(0);
     }
