@@ -92,7 +92,10 @@ class PeremptionPlanche(TestCase):
         verdict = peremption_layout_devis(self.devis, calepinage=Calepinage
                                           .objects.get(pk=calepinage.pk))
         self.assertTrue(verdict['conception_divergente'])
-        self.assertEqual(verdict['calepinage_nb_panneaux'], 16)
+        # Compté par le lecteur unique (ACAL60) : les modules POSÉS du pan.
+        from apps.ventes.domain.geometrie import lire_layout
+        self.assertEqual(verdict['calepinage_nb_panneaux'],
+                         lire_layout(calepinage.roof_layout).compte)
 
     def test_optionnelle_meme_verdict_badge_et_pdf(self):
         produit = Produit.objects.get(company=self.company,

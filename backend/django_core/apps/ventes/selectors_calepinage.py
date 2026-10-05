@@ -183,7 +183,8 @@ def peremption_layout_devis(devis, calepinage=None):
     (``public_views.py`` ← ``quote_engine/builder.py``) : l'API interne ne
     l'exposait nulle part, donc l'écran ERP ne pouvait pas dire au commercial
     que sa 3D ne décrit plus ce que le devis vend. Le compte de modules du
-    layout est lu par le HELPER du moteur PDF (``_panneaux_du_layout``).
+    layout est lu par le MÊME lecteur que le moteur PDF (ACAL60 :
+    ``geometrie.lire_layout`` — un champ au sol compte).
 
     ACAL46 (C-ACAL-112) — les comptes des LIGNES viennent de LA règle
     partagée ``domain.dimensionnement_devis.comptes_panneaux_valides`` (lignes
@@ -208,7 +209,8 @@ def peremption_layout_devis(devis, calepinage=None):
     """
     from apps.ventes.domain.dimensionnement_devis import (
         comptes_panneaux_valides)
-    from apps.ventes.quote_engine.builder import _panneaux_du_layout
+    from apps.ventes.quote_engine.builder import (
+        _compte_du_layout as _panneaux_du_layout)
 
     if devis is None:
         return {'layout_stale': None, 'layout_nb_panneaux': None,

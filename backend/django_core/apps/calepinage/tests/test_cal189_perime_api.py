@@ -73,7 +73,9 @@ class PeremptionApiTest(BaseApiCalepinage):
 
     def test_meme_valeur_que_le_moteur_de_la_page_publique(self):
         """Test CROISÉ : le helper serveur et le moteur PDF s'accordent."""
-        from apps.ventes.quote_engine.builder import _panneaux_du_layout
+        # ACAL60 — le moteur PDF compte par le lecteur unique du layout.
+        from apps.ventes.quote_engine.builder import (
+            _compte_du_layout as _panneaux_du_layout)
 
         self._ligne_panneaux(9)
         helper = peremption_layout_devis(self.devis)

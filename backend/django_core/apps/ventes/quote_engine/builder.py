@@ -2100,7 +2100,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # ce n'est pas le panneau vendu) — voir M3.
         if _kwc_layout and not puissance_des_lignes:
             puissance_kwc = round(_kwc_layout, 2)
-            nb_panneaux = _panneaux_du_layout(roof_layout) or None
+            nb_panneaux = _compte_du_layout(roof_layout) or None
         # Facteur de RECALAGE des figures du calepinage (production, économies)
         # sur la taille réellement vendue : la modélisation de site du
         # calepinage (orientation, inclinaison, ombrage, irradiance) est
@@ -2176,7 +2176,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # Document RÉTRÉCI à une option (L-2OPT, variante du lien public) : seul
     # le compte de l'option RENDUE est valide (LAYSTALE) — même règle, un
     # argument.
-    layout_nb_panneaux = _panneaux_du_layout(roof_layout)
+    layout_nb_panneaux = _compte_du_layout(roof_layout)
     _option_rendue = (('avec' if avec_ok else 'sans')
                       if (panneaux_divergents and not deux_options) else None)
     _comptes_valides = _comptes_panneaux_valides(devis, option=_option_rendue)
@@ -4135,26 +4135,23 @@ def _est_la_figure_du_calepinage(valeur_stockee, valeur_layout) -> bool:
         return False
 
 
-def _panneaux_du_layout(roof_layout) -> int:
-    """Nombre de panneaux que le calepinage 3D porte, ou ``0`` s'il n'en dit rien.
-
-    PVUNI — lit le ``result`` (clés connues de roofPro) puis, à défaut, somme les
-    pans. Tolérant par construction : un layout absent/mal formé rend 0, ce qui
-    éteint simplement le drapeau de péremption (jamais une fausse alerte).
-    """
-    if not isinstance(roof_layout, dict):
+def _compte_du_layout(roof_layout) -> int:
+    """ACAL60 (C-ACAL-035) — le nombre de panneaux POSÉS sur le calepinage,
+    lu par LE lecteur unique du layout (``domain.geometrie.lire_layout`` :
+    somme des pans — toit, champ au sol, ombrière, façade —, ``result``
+    racine à défaut de toute géométrie). L'ancien ``_panneaux_du_layout``
+    (``result`` puis une clé ``pans`` qu'aucun écrivain v2 n'émet) est
+    SUPPRIMÉ : un champ au sol de 340 modules rendait 0 et éteignait le
+    drapeau de péremption. Tolérant : un layout absent/mal formé rend 0
+    (jamais une fausse alerte). Lecture seule (règle #4)."""
+    if not isinstance(roof_layout, dict) or not roof_layout:
         return 0
-    resultat = roof_layout.get("result") or {}
-    if isinstance(resultat, dict):
-        for cle in ("panels", "count", "nb_panneaux"):
-            nombre = int(round(_nombre(resultat.get(cle))))
-            if nombre > 0:
-                return nombre
-    total = 0
-    for pan in (roof_layout.get("pans") or []):
-        if isinstance(pan, dict):
-            total += int(round(_nombre(pan.get("nb_panneaux"))))
-    return total
+    from apps.ventes.domain.geometrie import lire_layout
+    try:
+        return int(lire_layout(roof_layout).compte or 0)
+    except Exception:  # noqa: BLE001 — un layout illisible n'éteint pas un PDF
+        logger.warning("ACAL60: layout illisible pour le compte de panneaux")
+        return 0
 
 
 def _pdf_key(devis, *, watermark=False, variante=None) -> str:
