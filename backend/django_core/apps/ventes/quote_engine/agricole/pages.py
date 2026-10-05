@@ -693,6 +693,184 @@ def cloture(ctx):
             f'</div>')
 
 
+# ── AGR319 — annexe « Note de calcul du kit de pompage » (dossier FDA) ─────
+
+#: Composantes de la HMT (contrat AGR2 › ``hmt.composantes``), dans l'ordre.
+COMPOSANTES_HMT = ("niveau_dynamique_m", "denivele_m", "pertes_lineaires_m",
+                   "pertes_singulieres_m", "pression_service_m")
+
+
+def _ligne_role(d, role):
+    for it in _items(d):
+        if it.get("role_pompage") == role:
+            return it
+    return None
+
+
+def _equipement_annexe(d, synthese, lg):
+    lignes = []
+    champ = synthese.get("champ") or {}
+    kwc, nb = _n(champ.get("kwc"), 2), _n(champ.get("nb_panneaux"), 0)
+    if kwc is not None and nb is not None:
+        lignes.append(_t(lg, "agr_annexe_champ", kwc=kwc, n=nb))
+    for role in ("pompe", "variateur_pompage"):
+        it = _ligne_role(d, role)
+        if it is None:
+            continue
+        texte = it.get("designation") or ""
+        marque = (it.get("marque") or "").strip()
+        if marque:
+            texte += f" — {marque}"
+        mois = it.get("garantie_mois")
+        if isinstance(mois, int) and not isinstance(mois, bool) and mois > 0:
+            texte += " · " + _t(lg, "agr_annexe_garantie",
+                                duree=_duree(lg, mois))
+        lignes.append(texte)
+    if not lignes:
+        lignes.append(_t(lg, "agr_annexe_omis"))
+    return "".join(f'<div class="ag-li">{l}</div>' for l in lignes)
+
+
+def _hmt_annexe(d, synthese, lg, nom_societe):
+    etude = d.get("etude") or {}
+    hmt = _n((synthese.get("eau") or {}).get("hmt_m"))
+    if hmt is None:
+        return f'<div class="ag-omis">{_t(lg, "agr_annexe_omis")}</div>'
+    comp = etude.get("hmt_composantes") or {}
+    lignes = "".join(
+        f'<tr><td>{_t(lg, f"agr_comp_{c}")}</td>'
+        f'<td class="r">{_n(comp.get(c), 2)} m</td></tr>'
+        for c in COMPOSANTES_HMT if _n(comp.get(c), 2) is not None)
+    prov = (synthese.get("provenance") or {}).get("hmt_m")
+    phrase = ""
+    # Une HMT CALCULÉE se lit par ses composantes ci-dessus ; seule une HMT
+    # mesurée ou déclarée porte une phrase de provenance (jamais « à
+    # confirmer » plaqué sur un calcul).
+    cle = None
+    if isinstance(prov, dict):
+        cle = ("mesure" if prov.get("detail") in ("mesure_visite", "foreur")
+               else "declare" if prov.get("origine") in ("saisie", "lead")
+               else None)
+    if cle:
+        phrase = _t(lg, "agr_annexe_provenance",
+                    phrase=mentions.phrase_provenance(
+                        cle, lg, date=prov.get("date"),
+                        nom_societe=nom_societe))
+    return (f'<div class="ag-small"><b>{_t(lg, "agr_annexe_hmt", hmt=hmt)}'
+            f'</b></div>'
+            + (f'<table class="ag-tbl">{lignes}</table>' if lignes else "")
+            + (f'<div class="ag-note">{phrase}</div>' if phrase else ""))
+
+
+def _debit_et_mois_annexe(d, synthese, lg):
+    etude = d.get("etude") or {}
+    conception = etude.get("conception") or {}
+    q = _n(conception.get("debit_conception_m3h"))
+    blocs = []
+    try:
+        mois = int(conception.get("mois_critique"))
+        mois_txt = _t(lg, f"agr_mois_{mois}") if 1 <= mois <= 12 else None
+    except (TypeError, ValueError):
+        mois_txt = None
+    if q is not None and mois_txt:
+        blocs.append(f'<div class="ag-small">'
+                     f'{_t(lg, "agr_annexe_debit_conception", q=q, mois=mois_txt)}'
+                     f'</div>')
+    serie = (etude.get("production") or {}).get("m3_jour_mois")
+    if isinstance(serie, (list, tuple)) and len(serie) == 12 and all(
+            _num(v) is not None for v in serie):
+        entetes = "".join(f'<td class="r"><b>{_t(lg, f"agr_moisc_{i}")}</b>'
+                          f'</td>' for i in range(1, 13))
+        valeurs = "".join(f'<td class="r">{_n(v)}</td>' for v in serie)
+        blocs.append(f'<div class="ag-small" style="margin-top:4px;">'
+                     f'{_t(lg, "agr_annexe_m3_mois")}</div>'
+                     f'<table class="ag-tbl"><tr>{entetes}</tr>'
+                     f'<tr>{valeurs}</tr></table>')
+    if not blocs:
+        return f'<div class="ag-omis">{_t(lg, "agr_annexe_omis")}</div>'
+    return "".join(blocs)
+
+
+def _hypotheses_annexe(d, lg):
+    hyps = [h for h in ((d.get("etude") or {}).get("hypotheses_pompage")
+                        or []) if isinstance(h, dict) and h.get("cle")]
+    if not hyps:
+        return f'<div class="ag-omis">{_t(lg, "agr_annexe_omis")}</div>'
+    lignes = []
+    for h in hyps:
+        source = (_t(lg, "agr_annexe_est") if h.get("statut") == "estimation"
+                  or not h.get("source") else theme._esc(h.get("source")))
+        valeur = h.get("valeur")
+        valeur = _n(valeur, 3) if _num(valeur) is not None \
+            else theme._esc(valeur if valeur is not None else "")
+        lignes.append(f'<tr><td>{theme._esc(h.get("cle"))}</td>'
+                      f'<td class="r">{valeur}</td><td>{source}</td></tr>')
+    return f'<table class="ag-tbl">{"".join(lignes)}</table>'
+
+
+def _fiches_annexe(d, lg):
+    fiches = []
+    # Au plus six fiches, 220 caractères chacune : l'annexe tient sur UNE page.
+    for it in _items(d):
+        if len(fiches) >= 6:
+            break
+        description = (it.get("description") or "").strip()
+        if not description:
+            continue
+        marque = (it.get("marque") or "").strip()
+        titre = it.get("designation") or ""
+        if marque:
+            titre += f" — {marque}"
+        fiches.append(f'<div class="ag-li"><b>{titre}</b> : '
+                      f'{description[:220]}</div>')
+    if not fiches:
+        return f'<div class="ag-omis">{_t(lg, "agr_annexe_omis")}</div>'
+    return "".join(fiches)
+
+
+def _references_annexe(d, lg):
+    refs = [r for r in d.get("references_pompage") or []
+            if isinstance(r, dict) and r.get("titre")]
+    if not refs:
+        return (f'<div class="ag-small">'
+                f'{_t(lg, "agr_annexe_aucune_reference")}</div>')
+    return "".join(
+        f'<div class="ag-li">{theme._esc(r.get("titre"))}'
+        + (f' — {theme._esc(r.get("ville"))}' if r.get("ville") else "")
+        + (f' ({theme._esc(r.get("mise_en_service"))})'
+           if r.get("mise_en_service") else "")
+        + '</div>' for r in refs)
+
+
+def page_annexe_note_calcul(ctx):
+    """AGR319 — annexe rendue SEULEMENT sur ``include_note_calcul`` : kWc et
+    panneaux, pompe et variateur (marque, garantie), HMT retenue et ses
+    composantes avec provenance, débit de conception, m³/jour par mois,
+    hypothèses et leurs sources (ou EST.), fiches produits, références de la
+    société. JAMAIS un montant d'aide, jamais ``prix_achat``."""
+    d, synthese = ctx["d"], ctx["synthese"]
+    lg = _langue(d)
+    sec = '<div class="ag-sec">{}</div>'.format
+    return (f'<div class="ag-pad">'
+            f'<div class="ag-kicker">{_t(lg, "agr_annexe_kicker")}</div>'
+            f'<div class="ag-title">{_t(lg, "agr_annexe_titre")}</div>'
+            f'{sec(_t(lg, "agr_annexe_equipement"))}'
+            f'<div class="ag-box">{_equipement_annexe(d, synthese, lg)}</div>'
+            f'{sec(_t(lg, "agr_entree_hmt_m"))}'
+            f'<div class="ag-box">'
+            f'{_hmt_annexe(d, synthese, lg, ctx["nom_societe"])}</div>'
+            f'{sec(_t(lg, "agr_debit"))}'
+            f'<div class="ag-box">{_debit_et_mois_annexe(d, synthese, lg)}'
+            f'</div>'
+            f'{sec(_t(lg, "agr_annexe_hypotheses"))}'
+            f'<div class="ag-box">{_hypotheses_annexe(d, lg)}</div>'
+            f'{sec(_t(lg, "agr_annexe_fiches"))}'
+            f'<div class="ag-box">{_fiches_annexe(d, lg)}</div>'
+            f'{sec(_t(lg, "agr_annexe_references"))}'
+            f'<div class="ag-box">{_references_annexe(d, lg)}</div>'
+            f'</div>')
+
+
 # ── assemblage ──────────────────────────────────────────────────────────────
 
 def densite_compacte(d) -> int:
@@ -732,6 +910,9 @@ def build_html(d: dict, elastic: dict | None = None) -> str:
 
     ctx = build_ctx(d)
     pages = [page1(ctx), page2(ctx), page3(ctx)]
+    # AGR319 — +1 page SEULEMENT sur l'option explicite ``include_note_calcul``.
+    if d.get("include_note_calcul"):
+        pages.append(page_annexe_note_calcul(ctx))
     total = len(pages)
     elastic = elastic or {}
     body = "".join(

@@ -1184,6 +1184,11 @@ DEFAULT_PDF_OPTIONS = {
     # page qu'aux devis qui en ont vraiment un. Un ``True``/``False``
     # EXPLICITE (dialogue PDF, paramètre de requête) reste souverain.
     'include_calepinage': None,
+    # AGR319 — annexe « Note de calcul du kit de pompage » (pièce du dossier
+    # FDA, Guide 2024 p.21) du document agricole de 3 pages : +1 page, SEULEMENT
+    # sur demande EXPLICITE (défaut ``False`` : tout appelant existant reste
+    # byte-identique). Aucune option ne pilote un montant d'aide (Q22).
+    'include_note_calcul': False,
     # AGR303 — les six options agricoles (cinq bascules « de persuasion » :
     # aide, comparatif carburant, environnement, schéma, eau livrée ; plus
     # ``current_fuel``) sont RETIRÉES : aucun renderer ne
@@ -1278,6 +1283,9 @@ def clean_pdf_options(raw) -> dict:
     if 'include_calepinage' in raw:
         _cal = raw['include_calepinage']
         opts['include_calepinage'] = None if _cal is None else bool(_cal)
+    # AGR319 — annexe « Note de calcul » agricole : booléen explicite seul.
+    if 'include_note_calcul' in raw:
+        opts['include_note_calcul'] = bool(raw['include_note_calcul'])
     # NTI18N4 — langue de sortie déjà résolue par l'appelant (whitelist
     # stricte, jamais une valeur arbitraire transmise plus loin).
     if raw.get('langue_sortie') in LANGUES_SORTIE_PDF:
@@ -4080,6 +4088,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             if _eco_pompage:
                 data["_economie_pompage"] = _eco_pompage
 
+    # ── AGR319 — annexe « Note de calcul du kit de pompage » (dossier FDA) :
+    # posée SEULEMENT sur demande explicite d'un devis agricole (sinon aucune
+    # clé : tout autre rendu reste octet-identique). Les références de la
+    # société sont ses réalisations de segment AGRICOLE (sélecteur AGR513,
+    # ``parametres.selectors.realisations_proches``), lues comme pour un lead
+    # agricole même si le lead du devis est mal typé (D-AGR-9 : on ne change
+    # jamais son type). Aucun montant d'aide, aucun ``prix_achat``.
+    if mode == "agricole" and opts.get('include_note_calcul'):
+        data["include_note_calcul"] = True
+        data["references_pompage"] = _references_pompage(devis)
+
     # ── CIQ303 — les entrées du lead PRO (CIQ405), lues par le SEUL sélecteur
     # crm (jamais les modèles d'une autre app), pour ``ci/synthese`` : ses
     # ``manquants`` disent ce qui reste « à confirmer ». C&I seulement, posé
@@ -4097,6 +4116,39 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             data["_entrees_ci_lead"] = _entrees_ci
 
     return data
+
+
+class _LeadVuAgricole:
+    """AGR319 — le lead du devis LU au segment agricole, pour le seul choix
+    des références de pompage (aucune écriture : le type du lead n'est jamais
+    changé, D-AGR-9)."""
+
+    type_installation = "agricole"
+
+    def __init__(self, lead, company):
+        self._lead = lead
+        self.company = company
+
+    def __getattr__(self, nom):
+        return getattr(self._lead, nom, None)
+
+
+def _references_pompage(devis):
+    """AGR319 — ``[{titre, ville, mise_en_service}]`` : les réalisations
+    AGRICOLES de la société (au plus 5), ou ``[]`` — jamais un toit à leur
+    place (D-AGR-10). Ne casse jamais un rendu."""
+    try:
+        from apps.parametres.selectors import realisations_proches
+        refs = realisations_proches(
+            _LeadVuAgricole(getattr(devis, "lead", None),
+                            getattr(devis, "company", None)), limite=5)
+    except Exception:  # noqa: BLE001 — l'annexe dit « aucune référence »
+        logger.exception("references_pompage: échec (devis %s)",
+                         getattr(devis, "reference", "?"))
+        return []
+    return [{"titre": r.get("titre") or "", "ville": r.get("ville") or "",
+             "mise_en_service": r.get("mise_en_service")}
+            for r in refs or [] if isinstance(r, dict)]
 
 
 # ── QJR30 — ÉCHAPPEMENT DES TEXTES CLIENT POUR LES RENDERERS « MAISON » ─────

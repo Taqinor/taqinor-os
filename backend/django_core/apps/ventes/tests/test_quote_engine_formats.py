@@ -1649,8 +1649,12 @@ class TestQjr32DispatchModeNormalise(TestCase):
         import fitz
         from apps.ventes.quote_engine import generate_premium_devis_pdf
 
-        for options, pages_attendues in (({'pdf_mode': 'full'}, 3),
-                                         ({'pdf_mode': 'onepage'}, 1)):
+        # AGR319 — +1 page (annexe « Note de calcul », dossier FDA) sur
+        # l'option EXPLICITE ``include_note_calcul`` seulement.
+        for options, pages_attendues in (
+                ({'pdf_mode': 'full'}, 3),
+                ({'pdf_mode': 'full', 'include_note_calcul': True}, 4),
+                ({'pdf_mode': 'onepage'}, 1)):
             with self.subTest(options=options):
                 up.reset_mock()
                 generate_premium_devis_pdf(self.devis.id,

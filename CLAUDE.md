@@ -115,7 +115,8 @@ repo yet, the rule still applies to any future integration.
   (`apps/ventes/quote_engine/generate_devis_premium.py`) renders all formats, selected via
   the list's PDF dialog → `generer-pdf` body / `/proposal` query params (whitelist in
   `clean_pdf_options`): premium 'full' = 3 pages (industriel: 4 — D-QJR5-12; agricole: the dedicated
-  3-page document of `quote_engine/agricole/`, `include_etude`/`include_calepinage` no effect — D-AGR-2, AGR312), +`include_etude` = 4 (degrades to 3
+  3-page document of `quote_engine/agricole/`, `include_etude`/`include_calepinage` no effect — D-AGR-2, AGR312;
+  +1 page only for an EXPLICIT `include_note_calcul` — FDA design note, AGR319), +`include_etude` = 4 (degrades to 3
   without étude data), 'onepage' = 1 (adaptive density, never overflows); residential premium
   +1 page only for an EXPLICIT `include_calepinage` (planche; `devis_final`/`show_monthly`/langue
   never add a page — QJR666). PDFs show
