@@ -96,6 +96,8 @@ class ProductionReading(models.Model):
     class Source(models.TextChoices):
         MANUAL = 'manual', 'Saisie manuelle'
         AUTO = 'auto', 'Automatique'
+        # CIQ645 — import CSV des relevés (phase 1 sans connecteur payant).
+        IMPORT = 'import', 'Import CSV'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
