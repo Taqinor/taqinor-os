@@ -397,6 +397,8 @@ POSES_AVANT_LEUR_ROUTE = {
     # ACAL1 (M0) — POST layout/section/ (écriture par section + If-Match) :
     # la porte arrive avec ACAL22.
     'calepinage_layout_section.json': 'ACAL22',
+    # ACAL15 (M0) — GET gabarits-dossiers/ : la porte arrive avec ACAL238.
+    'gabarits_dossier_reglementaire.json': 'ACAL238',
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne
