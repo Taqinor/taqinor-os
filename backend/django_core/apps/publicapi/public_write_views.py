@@ -16,7 +16,7 @@ from rest_framework.views import APIView
 from apps.crm.models import Lead
 
 from .auth import PUBLIC_AUTHENTICATION_CLASSES, ApiKeyRateThrottle
-from .constants import (
+from .portees import (
     SCOPE_WRITE_ACTIVITIES, SCOPE_WRITE_DEVIS, SCOPE_WRITE_LEADS,
     SCOPE_WRITE_TICKETS,
 )

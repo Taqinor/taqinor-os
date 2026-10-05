@@ -26,7 +26,8 @@ from unittest import mock
 from django.apps import apps as django_apps
 from django.test import SimpleTestCase, TestCase
 
-from .constants import EVENT_CALEPINAGE_SIMULE, SCOPE_READ_CALEPINAGES
+from .portees import SCOPE_READ_CALEPINAGES
+from .constants import EVENT_CALEPINAGE_SIMULE
 from .public_serializers import (
     MOTIF_RESULTAT_NON_SIMULE, PublicCalepinageResultatSerializer,
     PublicPostePerteSerializer, resultat_calepinage_public,
@@ -286,7 +287,7 @@ class VueDocumenteeTests(SimpleTestCase):
         self.assertIn('LA SÉRIE HORAIRE N\'EST PAS PUBLIÉE ICI', texte)
 
     def test_la_portee_future_n_existe_pas(self):
-        from .constants import ALL_SCOPES
+        from .portees import ALL_SCOPES
 
         self.assertNotIn('calepinages:simuler', ALL_SCOPES)
 
@@ -368,7 +369,7 @@ class ResultatPublicEnBaseTests(TestCase):
             self.assertNotIn(secret, brut)
 
     def test_scope_requis(self):
-        from .constants import SCOPE_READ_LEADS
+        from .portees import SCOPE_READ_LEADS
         from .models import ApiKey
 
         _cle, brute = ApiKey.issue(company=self.co_a, label='sans',

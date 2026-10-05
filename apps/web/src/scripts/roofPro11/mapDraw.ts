@@ -9,7 +9,7 @@
  * (qui ajoute la couche WebGL de la scène 3D) et l'orchestration `close()` restent
  * dans l'entrée car ils sont indissociables de la scène 3D / du pipeline de calcul.
  */
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { isSimplePolygon, type LngLat } from '../../lib/roof';
 import { availableOptionalLayers, getOptionalLayer, optionalLayerSourceSpec } from '../../lib/roofConfig';
 import { $ } from './dom';

@@ -10,7 +10,7 @@
  * extrait référence réellement.
  */
 import * as THREE from 'three';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { type SvgBox, type ProductionScope, type ProductionSource } from '../../lib/productionWindow';
 import { type SpecificDateProfile, type ScaledProduction, type PerKwcProduction } from '../../lib/productionEngine';
 import { type LngLat } from '../../lib/roof';

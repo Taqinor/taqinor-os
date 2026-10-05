@@ -13,7 +13,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm.models import Lead
 
-from .constants import SCOPE_READ_LEADS, SCOPE_WRITE_LEADS, ENV_TEST, ENV_LIVE
+from .portees import SCOPE_READ_LEADS, SCOPE_WRITE_LEADS
+from .constants import ENV_TEST, ENV_LIVE
 from .models import ApiKey, SandboxTenant
 
 User = get_user_model()
