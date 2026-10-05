@@ -30,7 +30,8 @@ def make_company(slug='nd-co', nom='ND Co'):
 
 class TestNoteDebit(TestCase):
     def setUp(self):
-        from apps.roles.models import Role, ALL_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
         self.company = make_company()
         admin_role = Role.objects.create(
             company=self.company, nom='Administrateur',
@@ -103,7 +104,8 @@ class TestNoteDebit(TestCase):
 
     def test_note_debit_scoping_cross_company_404(self):
         other_company = make_company(slug='nd-other', nom='Other Co')
-        from apps.roles.models import Role, ALL_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
         other_role = Role.objects.create(
             company=other_company, nom='Administrateur',
             permissions=ALL_PERMISSIONS, est_systeme=True)

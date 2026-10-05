@@ -40,10 +40,10 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.crm.models import Client
 from apps.portail.models import ComptePortailClient, DocumentClientPortail
 from apps.portail.services import enregistrer_connexion_portail
-from apps.roles.models import (
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
     PORTAIL_CLIENT_PERMISSIONS,
     ROLE_PORTAIL_CLIENT,
-    Role,
 )
 from authentication.models import Company, CustomUser
 

@@ -34,7 +34,8 @@ def make_company(slug='zfac5-co', nom='ZFAC5 Co'):
 
 class TestAvoirContrePassation(TestCase):
     def setUp(self):
-        from apps.roles.models import ALL_PERMISSIONS, Role
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
         self.company = make_company()
         admin_role = Role.objects.create(
             company=self.company, nom='Administrateur',

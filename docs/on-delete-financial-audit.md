@@ -339,7 +339,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/reporting/models.py::ApprobationSlaConfig.company` | backend/django_core/apps/reporting/models.py:676 | authentication.Company | CASCADE |
 | `backend/django_core/apps/reporting/models.py::ClasseurPartageInterne.company` | backend/django_core/apps/reporting/models.py:712 | authentication.Company | CASCADE |
 | `backend/django_core/apps/reporting/models.py::WebVitalMetric.company` | backend/django_core/apps/reporting/models.py:765 | authentication.Company | CASCADE |
-| `backend/django_core/apps/roles/models.py::Role.company` | backend/django_core/apps/roles/models.py:1327 | authentication.Company | CASCADE |
+| `backend/django_core/apps/roles/models.py::Role.company` | backend/django_core/apps/roles/models.py:8 | authentication.Company | CASCADE |
 | `backend/django_core/apps/sav/models.py::SavSlaSettings.company` | backend/django_core/apps/sav/models.py:56 | authentication.Company | CASCADE |
 | `backend/django_core/apps/sav/models.py::MaintenanceChecklistTemplate.company` | backend/django_core/apps/sav/models.py:259 | authentication.Company | CASCADE |
 | `backend/django_core/apps/sav/models.py::MaintenanceChecklistItem.company` | backend/django_core/apps/sav/models.py:277 | authentication.Company | CASCADE |

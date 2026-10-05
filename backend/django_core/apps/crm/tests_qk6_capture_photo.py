@@ -150,7 +150,8 @@ class CaptureOcrTests(TestCase):
 
     def setUp(self):
         from django.contrib.auth import get_user_model
-        from apps.roles.models import Role, RESPONSABLE_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
 
         User = get_user_model()
         self.company = Company.objects.create(nom='QK6 OCR', slug='qk6-ocr')

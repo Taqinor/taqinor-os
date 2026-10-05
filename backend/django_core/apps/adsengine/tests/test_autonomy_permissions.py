@@ -11,6 +11,7 @@ from django.test import TestCase
 
 from authentication.models import Company
 from apps.roles import models as roles
+from apps.roles import permissions_registre as registre
 
 FLIGHTPLAN = 'adsengine_flightplan_manage'
 AUTONOMY = 'adsengine_autonomy_toggle'
@@ -18,32 +19,32 @@ AUTONOMY = 'adsengine_autonomy_toggle'
 
 class PermissionCatalogTests(TestCase):
     def test_both_permissions_registered(self):
-        self.assertIn(FLIGHTPLAN, roles.ALL_PERMISSIONS)
-        self.assertIn(AUTONOMY, roles.ALL_PERMISSIONS)
+        self.assertIn(FLIGHTPLAN, registre.ALL_PERMISSIONS)
+        self.assertIn(AUTONOMY, registre.ALL_PERMISSIONS)
 
     def test_direction_tier_has_both(self):
-        for perms in (roles.DIRECTEUR_PERMISSIONS, roles.ADMIN_PERMISSIONS):
+        for perms in (registre.DIRECTEUR_PERMISSIONS, registre.ADMIN_PERMISSIONS):
             self.assertIn(FLIGHTPLAN, perms)
             self.assertIn(AUTONOMY, perms)
 
     def test_responsable_tier_manages_flightplans_not_autonomy(self):
-        for perms in (roles.COMMERCIAL_RESP_PERMISSIONS,
-                      roles.TECHNICIEN_RESP_PERMISSIONS):
+        for perms in (registre.COMMERCIAL_RESP_PERMISSIONS,
+                      registre.TECHNICIEN_RESP_PERMISSIONS):
             self.assertIn(FLIGHTPLAN, perms)
             self.assertNotIn(AUTONOMY, perms)
 
     def test_non_responsable_tier_has_neither(self):
-        for perms in (roles.COMMERCIAL_PERMISSIONS,
-                      roles.TECHNICIEN_PERMISSIONS,
-                      roles.VIEWER_PERMISSIONS,
-                      roles.UTILISATEUR_PERMISSIONS):
+        for perms in (registre.COMMERCIAL_PERMISSIONS,
+                      registre.TECHNICIEN_PERMISSIONS,
+                      registre.VIEWER_PERMISSIONS,
+                      registre.UTILISATEUR_PERMISSIONS):
             self.assertNotIn(FLIGHTPLAN, perms)
             self.assertNotIn(AUTONOMY, perms)
 
     def test_autonomy_toggle_is_admin_only(self):
         # Aucun rôle canonique HORS Directeur/Administrateur ne porte l'activation
         # de l'autonomie.
-        for nom, perms in roles.CANONICAL_SYSTEM_ROLES:
+        for nom, perms in registre.CANONICAL_SYSTEM_ROLES:
             if nom in ('Directeur', 'Administrateur'):
                 self.assertIn(AUTONOMY, perms, nom)
             else:

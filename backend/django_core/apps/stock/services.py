@@ -6117,10 +6117,10 @@ def provisionner_compte_fournisseur(company, fournisseur_id):
     from django.db import transaction
     from django.utils.crypto import get_random_string
 
-    from apps.roles.models import (
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import (
         PORTAIL_FOURNISSEUR_PERMISSIONS,
         ROLE_PORTAIL_FOURNISSEUR,
-        Role,
     )
     from authentication.models import CustomUser
 

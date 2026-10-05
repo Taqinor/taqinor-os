@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 74438b30992932683a10fe5d798c31ef632cdc58df2abcf2aba7283c66077014
+Structure fingerprint: 70f28884be5e0a2425bb006da7312bac63a0f0a42d1ddec9d2dc247e83e5b6fb
 Plan fingerprint: 46284c39f438628eab0aebad3e7c116570ecc932a2ba1503cdb1cab115cc095f
 
 
@@ -238,7 +238,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `reporting` | `reporting/` | 11 | Dashboards/KPIs/insights, federated KPI hub, `Classeur`, `RapportDefinition`, `KpiAlerte`, global search (`search.py`) — the app owns no business data. |
 | `semantic` | `semantic/` | 2 | Named, governed metrics (`MetricDefinition` + versions) — BI semantic layer consumed via `core.data_explorer`. |
 | `parametres` | `parametres/` | 18 | `CompanyProfile`, business settings, WhatsApp/email templates, `TauxTVA`/`ConditionPaiement`/`UniteMesure` referentials, `Realisation`, tax-ID validators, output-language resolver. |
-| `roles` | `roles/` | 1 | Per-company `Role` + permission lists (RBAC). |
+| `roles` | `roles/` | 1 | Per-company `Role` + permission lists (RBAC). Le registre des droits (`ALL_PERMISSIONS`, `PERMISSION_MODULE`, rôles système) vit dans `permissions_registre.py` (SPL301) ; `models.py` ne garde que `Role`. |
 | `identity` | `identity/` | 7 | SSO/SCIM, network & session policies, trusted devices, break-glass (NTSEC). |
 | `accessreview` | `accessreview/` | 3 | Access-review campaigns, attestation, SoD rules. |
 | `audit` | `audit/` | 1 | `AuditLog` activity trail. |

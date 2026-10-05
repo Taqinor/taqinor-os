@@ -34,7 +34,8 @@ from apps.crm import horaires, services, stages
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
 from apps.crm.selectors import chaine_commerciale
 from apps.parametres.models import CompanyProfile
-from apps.roles.models import COMMERCIAL_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
 from apps.visites.models import VisiteTerrain
 
 User = get_user_model()

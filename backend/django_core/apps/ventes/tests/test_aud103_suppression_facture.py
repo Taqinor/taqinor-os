@@ -45,7 +45,8 @@ def _auth(user):
 
 class TestSuppressionFacture(TestCase):
     def setUp(self):
-        from apps.roles.models import ALL_PERMISSIONS, Role
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
 
         self.company, _ = Company.objects.get_or_create(
             slug='aud103-co', defaults={'nom': 'AUD103 Co'})

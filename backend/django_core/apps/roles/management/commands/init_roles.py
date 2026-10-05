@@ -57,8 +57,8 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **options):
         from authentication.models import Company, CustomUser
-        from apps.roles.models import (
-            Role,
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
             CANONICAL_SYSTEM_ROLES,
             SYSTEM_ROLE_PERIMETRES,
             RESPONSABLE_PERMISSIONS,

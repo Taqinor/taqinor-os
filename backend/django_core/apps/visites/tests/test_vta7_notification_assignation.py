@@ -19,7 +19,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Lead
 from apps.notifications.models import EventType, Notification
-from apps.roles.models import COMMERCIAL_TERRAIN_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import COMMERCIAL_TERRAIN_PERMISSIONS
 from apps.visites.models import VisiteTerrain
 from authentication.models import Company
 

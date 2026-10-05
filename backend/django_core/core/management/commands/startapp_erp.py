@@ -50,9 +50,9 @@ def _wiring_checklist(label):
          "   Si le module doit rester découplé (string-FK only) ou est une "
          "couche fondation, ajouter/étendre un contrat dans "
          "backend/django_core/.importlinter."),
-        ("4. roles/models.py — ALL_PERMISSIONS",
+        ("4. roles/permissions_registre.py — ALL_PERMISSIONS",
          f"   Ajouter les codes de permission ('{label}_voir', "
-         f"'{label}_gerer', …) à ALL_PERMISSIONS (apps/roles/models.py) si le "
+         f"'{label}_gerer', …) à ALL_PERMISSIONS (apps/roles/permissions_registre.py) si le "
          "module gate lecture/écriture."),
         ("5. Manifeste module — module_manifest (ODX2)",
          f"   Généré dans {dotted}/apps.py : ajuster key/label/categorie/"

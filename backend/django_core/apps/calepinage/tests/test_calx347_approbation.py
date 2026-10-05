@@ -42,8 +42,10 @@ from apps.calepinage.permissions import (
 )
 from apps.calepinage.services import approbation as service
 from apps.calepinage.services.lidar_ign import accepter_suggestion
-from apps.roles.models import (
-    ALL_PERMISSIONS, CANONICAL_SYSTEM_ROLES, ELEVATED_PERMISSIONS,
+from apps.roles.permissions_registre import (
+    ALL_PERMISSIONS,
+    CANONICAL_SYSTEM_ROLES,
+    ELEVATED_PERMISSIONS,
     PERMISSION_MODULE,
 )
 

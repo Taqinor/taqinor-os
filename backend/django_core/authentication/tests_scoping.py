@@ -9,8 +9,10 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company, CustomUser
-from apps.roles.models import (
-    Role, DIRECTEUR_PERMISSIONS, COMMERCIAL_PERMISSIONS,
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    DIRECTEUR_PERMISSIONS,
+    COMMERCIAL_PERMISSIONS,
     COMMERCIAL_RESP_PERMISSIONS,
 )
 from apps.crm.models import Lead

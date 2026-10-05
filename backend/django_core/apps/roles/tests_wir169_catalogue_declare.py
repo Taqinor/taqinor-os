@@ -23,7 +23,7 @@ bug (403 silencieux pour tout le monde), jamais un cas toléré.
 from django.test import SimpleTestCase
 from django.urls import URLPattern, URLResolver, get_resolver
 
-from apps.roles.models import (
+from apps.roles.permissions_registre import (
     ADMIN_PERMISSIONS,
     ALL_PERMISSIONS,
     DIRECTEUR_PERMISSIONS,

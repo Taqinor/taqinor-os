@@ -44,7 +44,8 @@ class _Listener:
 
 class TestAUD127AvoirAnnule(TestCase):
     def setUp(self):
-        from apps.roles.models import ALL_PERMISSIONS, Role
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
         from core.events import avoir_annule
 
         self.company = make_company()

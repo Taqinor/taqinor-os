@@ -24,7 +24,11 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.calepinage.models import Calepinage
 from apps.crm.models import Client, Lead
-from apps.roles.models import DIRECTEUR_PERMISSIONS, TECHNICIEN_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    DIRECTEUR_PERMISSIONS,
+    TECHNICIEN_PERMISSIONS,
+)
 from authentication.models import Company
 
 User = get_user_model()

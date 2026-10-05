@@ -165,7 +165,8 @@ class TestReadinessHotList(TestCase):
     def setUp(self):
         from authentication.models import Company
         from django.contrib.auth import get_user_model
-        from apps.roles.models import Role, RESPONSABLE_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
 
         User = get_user_model()
         self.company, _ = Company.objects.get_or_create(

@@ -21,7 +21,9 @@ from types import SimpleNamespace
 from django.core.management import call_command
 from django.test import TestCase
 
-EMPLACEMENT = 'apps.roles.models'
+# SPL301 : le registre vit dans permissions_registre.py ; ``Role`` reste
+# dans models.py (lu via ``from .models import Role``).
+EMPLACEMENT = 'apps.roles.permissions_registre'
 
 NOMS_41 = [
     'APP_VISIBILITY_PREFIX', 'APP_VISIBILITY_SUFFIX', 'EST_PERMISSION_APP',
@@ -364,8 +366,9 @@ class RegistrePermissionsGoldenTests(TestCase):
     def test_perimetre_de_sur_vrais_modeles(self):
         from django.contrib.auth import get_user_model
         User = get_user_model()
-        role_rh = self.m.Role(nom='SPL300 rh', perimetre='rh')
-        role_global = self.m.Role(nom='SPL300 global')
+        from .models import Role
+        role_rh = Role(nom='SPL300 rh', perimetre='rh')
+        role_global = Role(nom='SPL300 global')
         self.assertEqual(self.m.perimetre_de(User(role=role_rh)), 'rh')
         self.assertIsNone(self.m.perimetre_de(User(role=role_global)))
         self.assertIsNone(self.m.perimetre_de(User()))  # sans rôle
@@ -375,7 +378,8 @@ class RegistrePermissionsGoldenTests(TestCase):
 
     # (4) modèle et migrations
     def test_choices_du_champ_perimetre(self):
-        choix = self.m.Role._meta.get_field('perimetre').choices
+        from .models import Role
+        choix = Role._meta.get_field('perimetre').choices
         self.assertEqual([list(c) for c in choix],
                          self.golden['perimetre_choices'])
 

@@ -14,8 +14,11 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company, CustomUser
-from apps.roles.models import (
-    Role, DIRECTEUR_PERMISSIONS, COMMERCIAL_PERMISSIONS, ADMIN_PERMISSIONS,
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    DIRECTEUR_PERMISSIONS,
+    COMMERCIAL_PERMISSIONS,
+    ADMIN_PERMISSIONS,
 )
 from apps.crm.models import Client, Lead
 from apps.audit.models import AuditLog

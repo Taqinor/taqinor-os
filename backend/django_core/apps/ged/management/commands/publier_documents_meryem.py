@@ -107,7 +107,8 @@ from apps.notifications.models import EventType
 from apps.notifications.services import notify_many
 from apps.parametres.models_company import CompanyProfile
 from apps.records.storage import store_attachment
-from apps.roles.models import CANONICAL_PORTAIL_ROLES, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import CANONICAL_PORTAIL_ROLES
 
 CABINET_NOM = 'Documents internes'
 DOSSIER_RACINE_NOM = 'Commercial'

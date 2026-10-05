@@ -31,7 +31,8 @@ from apps.ged.management.commands import publier_documents_meryem as cmd
 from apps.ged.models import AclGed, Cabinet, Document, DocumentVersion, Folder
 from apps.notifications.models import Notification
 from apps.parametres.models_company import CompanyProfile
-from apps.roles.models import ROLE_PORTAIL_CLIENT, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import ROLE_PORTAIL_CLIENT
 
 User = get_user_model()
 

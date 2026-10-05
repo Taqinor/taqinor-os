@@ -43,7 +43,11 @@ from apps.calepinage.services.site import (
     normaliser_section_imagerie,
     section_vide,
 )
-from apps.roles.models import DIRECTEUR_PERMISSIONS, TECHNICIEN_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    DIRECTEUR_PERMISSIONS,
+    TECHNICIEN_PERMISSIONS,
+)
 from authentication.models import Company
 
 User = get_user_model()

@@ -27,10 +27,10 @@ from apps.portail.services import (
     reactiver_acces_client,
     revoquer_acces_client,
 )
-from apps.roles.models import (
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
     PORTAIL_CLIENT_PERMISSIONS,
     ROLE_PORTAIL_CLIENT,
-    Role,
 )
 from apps.ventes.models import Devis
 from authentication.models import Company, CustomUser

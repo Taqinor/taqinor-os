@@ -11,12 +11,12 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 
-from .models import (
+from .models import Role
+from .permissions_registre import (
     PERIMETRE_RH,
     PERIMETRE_VENTES,
     ROLE_ADMIN_RH,
     ROLE_ADMIN_VENTES,
-    Role,
     perimetre_de,
     permissions_hors_perimetre,
 )

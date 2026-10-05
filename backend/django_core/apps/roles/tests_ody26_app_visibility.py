@@ -19,10 +19,15 @@ Couvre :
 from django.test import TestCase
 from rest_framework.exceptions import ValidationError
 
-from apps.roles.models import (
-    ADMIN_PERMISSIONS, ALL_PERMISSIONS, DIRECTEUR_PERMISSIONS,
-    RESPONSABLE_PERMISSIONS, UTILISATEUR_PERMISSIONS,
-    cles_apps_autorisees, est_permission_app, permission_app,
+from apps.roles.permissions_registre import (
+    ADMIN_PERMISSIONS,
+    ALL_PERMISSIONS,
+    DIRECTEUR_PERMISSIONS,
+    RESPONSABLE_PERMISSIONS,
+    UTILISATEUR_PERMISSIONS,
+    cles_apps_autorisees,
+    est_permission_app,
+    permission_app,
 )
 from apps.roles.serializers import RoleSerializer
 

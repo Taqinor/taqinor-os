@@ -28,7 +28,8 @@ from django.test import TestCase
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.variantes import creer_variante
 from apps.crm.models import Client
-from apps.roles.models import DIRECTEUR_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
 from apps.stock.models import Produit
 from apps.ventes.services import (
     build_devis_depuis_calepinage_retenu, produits_a_renseigner,

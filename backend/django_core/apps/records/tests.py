@@ -191,7 +191,8 @@ class TestAttachments(TestCase):
         cls.user = User.objects.create_user(
             username='att_resp', password='x', role_legacy='responsable',
             company=cls.company)
-        from apps.roles.models import Role, ALL_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
         admin_role = Role.objects.create(
             company=cls.company, nom='Administrateur',
             permissions=ALL_PERMISSIONS, est_systeme=True)
@@ -630,7 +631,8 @@ class TestVentesAttachmentTargets(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.company = Company.objects.create(nom='Vts Att', slug='vts-att')
-        from apps.roles.models import Role, COMMERCIAL_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
         role = Role.objects.create(
             company=cls.company, nom='Commercial',
             permissions=COMMERCIAL_PERMISSIONS, est_systeme=True)
@@ -693,7 +695,8 @@ class TestComments(TestCase):
         cls.resp = User.objects.create_user(
             username='cmt_resp', password='x', role_legacy='responsable',
             company=cls.company)
-        from apps.roles.models import Role, ALL_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
         admin_role = Role.objects.create(
             company=cls.company, nom='Administrateur',
             permissions=ALL_PERMISSIONS, est_systeme=True)
@@ -829,7 +832,8 @@ class TestTags(TestCase):
         cls.resp = User.objects.create_user(
             username='tag_resp', password='x', role_legacy='responsable',
             company=cls.company)
-        from apps.roles.models import Role, ALL_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
         admin_role = Role.objects.create(
             company=cls.company, nom='Administrateur',
             permissions=ALL_PERMISSIONS, est_systeme=True)

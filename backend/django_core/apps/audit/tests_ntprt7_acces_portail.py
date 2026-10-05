@@ -21,7 +21,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.audit import recorder
 from apps.audit.models import AuditLog
-from apps.roles.models import DIRECTEUR_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
 from authentication.models import Company
 
 User = get_user_model()

@@ -13,12 +13,12 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Client
-from apps.roles.models import (
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
     ADMIN_PERMISSIONS,
     ALL_PERMISSIONS,
     DIRECTEUR_PERMISSIONS,
     PERMISSION_MODULE,
-    Role,
     TECHNICIEN_PERMISSIONS,
     TECHNICIEN_RESP_PERMISSIONS,
 )

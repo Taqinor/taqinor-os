@@ -24,7 +24,11 @@ def make_company(slug='avo-co', nom='Avo Co'):
 
 class TestAvoirs(TestCase):
     def setUp(self):
-        from apps.roles.models import Role, ALL_PERMISSIONS, RESPONSABLE_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            ALL_PERMISSIONS,
+            RESPONSABLE_PERMISSIONS,
+        )
         self.company = make_company()
         admin_role = Role.objects.create(
             company=self.company, nom='Administrateur',
@@ -230,7 +234,8 @@ class TestAvoirConcurrenceAUD126(TransactionTestCase):
     """
 
     def setUp(self):
-        from apps.roles.models import ALL_PERMISSIONS, Role
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
         self.company = make_company(slug='avo-conc-co', nom='Avo Conc Co')
         admin_role = Role.objects.create(
             company=self.company, nom='Administrateur',
