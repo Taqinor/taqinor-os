@@ -37,7 +37,8 @@ from apps.calepinage.services.parametres_cles import (
     TYPES_CLES,
     registre,
 )
-from apps.roles.models import DIRECTEUR_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
 from authentication.models import Company
 
 User = get_user_model()
