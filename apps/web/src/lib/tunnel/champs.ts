@@ -34,6 +34,7 @@
 import { billRangeFromExact } from '../billRange';
 import { MAX_CONSO_MENSUELLE_KWH } from '../estimatorPro';
 import type { LeadModeId } from '../lead';
+import type { RoofLayoutPublic } from '../../scripts/roofPro11/captureBoot';
 
 /** Les modes du tunnel dans lesquels une question peut être posée. */
 export const MODES_TOUS: readonly LeadModeId[] = [
@@ -191,6 +192,8 @@ export interface EtatTunnel {
   tracking: Partial<Record<CleTracking, string>>;
   repereToit: RepereToit | null;
   contourToit: Array<[number, number]>;
+  /** ACAL304 — tracé MULTI-PANS (document roof_layout v2) ; absent/`null` = un seul pan ou aucun. */
+  layoutToit?: RoofLayoutPublic | null;
 
   // ——— anti-spam ———
   honeypot: string;
@@ -240,6 +243,30 @@ export interface DescripteurChamp {
 
 /** Un descripteur tel qu'il est déclaré : sa clé est le nom de la propriété. */
 type DescripteurSansCle = Omit<DescripteurChamp, 'cle'>;
+
+const LAYOUT_OCTETS_MAX = 65536;
+const LAYOUT_ZONES_MAX = 12;
+const LAYOUT_SOMMETS_MAX = 64;
+
+/** ACAL304 — `roofLayout` borné, sinon OMIS (jamais fabriqué, jamais une erreur). */
+function layoutOuOmis(v: unknown): unknown {
+  if (v === null || typeof v !== 'object') return undefined;
+  const zones = (v as { zones?: unknown }).zones;
+  if (!Array.isArray(zones) || zones.length < 2 || zones.length > LAYOUT_ZONES_MAX) return undefined;
+  for (const z of zones) {
+    const vs = (z as { vertices?: unknown } | null)?.vertices;
+    if (!Array.isArray(vs) || vs.length < 3 || vs.length > LAYOUT_SOMMETS_MAX) return undefined;
+    for (const c of vs) {
+      if (!Array.isArray(c) || c.length < 2 || !Number.isFinite(c[0]) || !Number.isFinite(c[1])) return undefined;
+    }
+  }
+  try {
+    if (JSON.stringify(v).length > LAYOUT_OCTETS_MAX) return undefined;
+  } catch {
+    return undefined;
+  }
+  return v;
+}
 
 // ——— nettoyeurs réutilisables ———————————————————————————————————————————
 // Chacun applique la discipline « nettoyer ou omettre, jamais fabriquer ».
@@ -1021,6 +1048,20 @@ const G_CARTE = {
     nettoyer: (v) => (Array.isArray(v) && v.length >= 3 ? v : undefined),
     requis: false,
   },
+  /**
+   * ACAL304 (D-ACAL-27) — le tracé MULTI-PANS du visiteur, 70e clé. N'est émis qu'à
+   * partir de DEUX pans : un seul pan = clé ABSENTE, corps identique à celui d'avant.
+   * Bornes alignées sur le webhook (<= 64 Ko, <= 12 zones, <= 64 sommets par zone,
+   * coordonnées finies) ; hors bornes = clé omise, jamais une erreur pour le visiteur.
+   */
+  roofLayout: {
+    webhookKey: 'roofLayout',
+    domId: null,
+    modes: MODES_TOUS,
+    lire: (e) => e.layoutToit ?? undefined,
+    nettoyer: (v) => layoutOuOmis(v),
+    requis: false,
+  },
 } satisfies Record<string, DescripteurSansCle>;
 
 /**
@@ -1130,6 +1171,7 @@ export function etatVide(): EtatTunnel {
     tracking: {},
     repereToit: null,
     contourToit: [],
+    layoutToit: null,
     honeypot: '',
   };
 }

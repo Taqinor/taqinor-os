@@ -29,6 +29,75 @@ import { type InitOptions } from './types';
 export type { CaptureStrings };
 export { CAPTURE_STRINGS_FR };
 
+/** ACAL304 (D-ACAL-27, moitié site) — nombre maximal de pans, aligné sur la borne
+ *  du webhook (<= 12 zones, contrat `lead_layout_public.json`). */
+export const MAX_PANS = 12;
+
+/** Document `roof_layout` v2 ÉMIS par la capture publique. Rien d'autre que ce que le
+ *  visiteur a dessiné : ni pente, ni module, ni puissance (aucun chiffre ajouté). */
+export interface RoofLayoutPublic {
+  version: 2;
+  pin: { lat: number; lng: number } | null;
+  zones: Array<{ id: string; label: string; vertices: Array<[number, number]> }>;
+  source: 'lead';
+}
+
+/** Centroïde (moyenne des sommets) d'un pan, `{lat,lng}`. */
+export function centroidOf(pan: LngLat[]): { lat: number; lng: number } | null {
+  if (pan.length === 0) return null;
+  let lng = 0;
+  let lat = 0;
+  for (const [x, y] of pan) {
+    lng += x;
+    lat += y;
+  }
+  return { lng: lng / pan.length, lat: lat / pan.length };
+}
+
+/**
+ * Construit `roofLayout` depuis les pans FERMÉS. Un seul pan (ou aucun) => `null` : le
+ * corps du lead reste alors identique à celui d'avant ACAL304 (clé absente). `pin` est le
+ * centroïde du PREMIER pan (même repère que `roofPoint`). Sommets en [lng, lat].
+ */
+export function buildRoofLayout(pans: LngLat[][]): RoofLayoutPublic | null {
+  const ok = pans.filter((p) => p.length >= 3).slice(0, MAX_PANS);
+  if (ok.length < 2) return null;
+  return {
+    version: 2,
+    pin: centroidOf(ok[0]),
+    zones: ok.map((p, i) => ({
+      id: `z${i + 1}`,
+      label: `Pan ${i + 1}`,
+      vertices: p.map(([lng, lat]) => [lng, lat] as [number, number]),
+    })),
+    source: 'lead',
+  };
+}
+
+/** État notifié à la page : celui d'`InitOptions.onCaptureChange` + les pans (ACAL304). */
+export interface CaptureState {
+  pin: { lat: number; lng: number } | null;
+  /** PREMIER pan en [[lat,lng],…] (repli des leads et de l'ERP d'aujourd'hui). */
+  outline: Array<[number, number]>;
+  address?: string | null;
+  /** Tous les pans FERMÉS en [[lat,lng],…] (restauration sessionStorage). */
+  pans: Array<Array<[number, number]>>;
+  /** `roofLayout` à émettre, `null` tant qu'il y a moins de deux pans fermés. */
+  layout: RoofLayoutPublic | null;
+}
+
+/** Libellés des contrôles multi-pans (la page les localise ; absent => FR). */
+export interface PanStrings {
+  panAdded: string;
+  panRemoved: string;
+  maxPans: string;
+}
+export const PAN_STRINGS_FR: PanStrings = {
+  panAdded: 'Pan ajouté. Tracez le suivant (double-clic pour fermer) ou envoyez.',
+  panRemoved: 'Pan retiré.',
+  maxPans: 'Nombre maximal de pans atteint.',
+};
+
 /** `initRoofToolPro8`/`bootCaptureOnly` acceptent un `opts.strings` optionnel sans
  *  modifier `types.ts` (hors périmètre WJ41) : on élargit le type localement par
  *  intersection. Absent → CAPTURE_STRINGS_FR (rendu FR inchangé).
@@ -40,7 +109,12 @@ export { CAPTURE_STRINGS_FR };
  * `opts.onMapError` (optionnel) : notifie la page d'une panne carte SURVENUE EN
  * COURS DE SESSION (tuiles/style — après un premier rendu réussi), pour révéler
  * le panneau de repli adresse existant au lieu d'un simple `console.warn` muet. */
-export type CaptureOptions = InitOptions & {
+export type CaptureOptions = Omit<InitOptions, 'onCaptureChange'> & {
+  /** Même rappel qu'`InitOptions`, enrichi des pans (ACAL304). */
+  onCaptureChange?: (state: CaptureState) => void;
+  /** ACAL304 — pans à restaurer au boot ([[lat,lng],…] chacun, ≥ 3 sommets). */
+  hydratePans?: Array<Array<[number, number]>> | null;
+  panStrings?: PanStrings;
   strings?: CaptureStrings;
   dir?: 'ltr' | 'rtl';
   onMapError?: () => void;
@@ -71,6 +145,7 @@ export type CaptureOptions = InitOptions & {
  */
 export function bootCaptureOnly(opts: CaptureOptions): void {
   const t = opts.strings ?? CAPTURE_STRINGS_FR;
+  const ps = opts.panStrings ?? PAN_STRINGS_FR;
   const mapEl = $('rp9-map');
   if (!mapEl) return;
 
@@ -83,6 +158,8 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
   const finishBtn = $<HTMLButtonElement>('rp9-finish');
   const clearBtn = $<HTMLButtonElement>('rp9-clear');
   const undoPointBtn = $<HTMLButtonElement>('rp9-undo-point');
+  const addPanBtn = $<HTMLButtonElement>('rp9-add-pan');
+  const removePanBtn = $<HTMLButtonElement>('rp9-remove-pan');
   const areaValueEl = $('rp9-area-value');
 
   const setStatus = (msg: string) => {
@@ -96,6 +173,9 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
   let pin: LngLat | null = null;
   let vertices: LngLat[] = [];
   let closed = false;
+  // ACAL304 — pans déjà FERMÉS avant le pan courant (`vertices`/`closed`). Le pan courant
+  // reste celui que le géocodeur partagé et le tracé existants manipulent.
+  let pans: LngLat[][] = [];
 
   // Contexte MINIMAL pour createMapDraw : il ne lit que ctx.opts / ctx.vertices /
   // ctx.closed (cf. mapDraw.ts). On caste un objet partiel — aucun autre champ n'est
@@ -190,6 +270,8 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
 
   /** Pin courant {lat,lng} (centroïde si un contour est tracé, sinon le point posé). */
   function currentPin(): { lat: number; lng: number } | null {
+    // ACAL304 — dès qu'un pan est fermé, le repère est le centroïde du PREMIER pan.
+    if (pans.length > 0) return centroidOf(pans[0]);
     if (vertices.length >= 3) {
       let lng = 0;
       let lat = 0;
@@ -205,6 +287,8 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
 
   /** Contour en [[lat,lng],…] (vide si pas de tracé fermé d'au moins 3 points). */
   function currentOutline(): Array<[number, number]> {
+    // ACAL304 — `roofOutline` reste le PREMIER pan.
+    if (pans.length > 0) return pans[0].map(([lng, lat]) => [lat, lng] as [number, number]);
     if (vertices.length < 3) return [];
     return vertices.map(([lng, lat]) => [lat, lng] as [number, number]);
   }
@@ -213,8 +297,36 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
   // dernier repère doit remplir l'adresse (anti-course, comme la recherche d'adresse).
   let revAbort: AbortController | null = null;
 
+  /** Pans FERMÉS : les précédents + le courant s'il est fermé. */
+  function closedPans(): LngLat[][] {
+    return closed && vertices.length >= 3 ? [...pans, vertices] : [...pans];
+  }
+
+  function syncPanButtons() {
+    if (addPanBtn) addPanBtn.hidden = !closed || pans.length + 1 >= MAX_PANS;
+    if (removePanBtn) removePanBtn.hidden = !(closed || pans.length > 0);
+  }
+
+  function redrawPans() {
+    const features: GeoJSON.Feature[] = pans.map((p) => ({
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [[...p, p[0]]] },
+      properties: {},
+    }));
+    srcOf('rp9-pans')?.setData({ type: 'FeatureCollection', features } as never);
+  }
+
   function notify(address?: string | null) {
-    opts.onCaptureChange?.({ pin: currentPin(), outline: currentOutline(), address });
+    syncPanButtons();
+    const all = closedPans();
+    const state: CaptureState = {
+      pin: currentPin(),
+      outline: currentOutline(),
+      address,
+      pans: all.map((p) => p.map(([lng, lat]) => [lat, lng] as [number, number])),
+      layout: buildRoofLayout(all),
+    };
+    opts.onCaptureChange?.(state);
   }
 
   // W2 — RÉSOUT l'adresse depuis le repère courant (géocodage inverse) puis re-notifie
@@ -258,9 +370,12 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
   const reverseGeocode = mapDraw.reverseGeocode;
 
   map.on('load', () => {
+    map.addSource('rp9-pans', { type: 'geojson', data: empty as never });
     map.addSource('rp9-line', { type: 'geojson', data: empty as never });
     map.addSource('rp9-pts', { type: 'geojson', data: empty as never });
     map.addSource('rp9-pin', { type: 'geojson', data: empty as never });
+    map.addLayer({ id: 'rp9-pans-fill', type: 'fill', source: 'rp9-pans', paint: { 'fill-color': GOLD, 'fill-opacity': 0.18 } });
+    map.addLayer({ id: 'rp9-pans-line', type: 'line', source: 'rp9-pans', paint: { 'line-color': GOLD, 'line-width': 2.5 } });
     map.addLayer({ id: 'rp9-line', type: 'line', source: 'rp9-line', paint: { 'line-color': GOLD, 'line-width': 2.5, 'line-dasharray': [2, 1.5] } });
     map.addLayer({ id: 'rp9-pts', type: 'circle', source: 'rp9-pts', paint: { 'circle-radius': 5, 'circle-color': GOLD, 'circle-stroke-color': '#070b1d', 'circle-stroke-width': 1.5 } });
     map.addLayer({
@@ -272,7 +387,7 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
     if (opts.initialQuery) void mapDraw.geocode(opts.initialQuery, true);
     else setStatus(t.searchAddressThenPin);
     // W113 — hydratation : sème pin/contour quand un lead est fourni.
-    if (opts.hydrate?.lead) seedFromLead(opts.hydrate.lead);
+    if (!seedPans(opts.hydratePans) && opts.hydrate?.lead) seedFromLead(opts.hydrate.lead);
   });
 
   /** Pose/déplace le PIN simple (un seul point) sur le toit. Efface tout tracé. */
@@ -332,7 +447,7 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
     // Choix EXPLICITE « dessiner » : le PREMIER clic ouvre le contour. Le
     // double-clic restait la seule porte d'entrée du tracé et rien ne
     // l'annonçait — une interaction qui n'existe même pas au doigt sur mobile.
-    if (!closed && opts.roofInputMode?.() === 'draw') {
+    if (!closed && (opts.roofInputMode?.() === 'draw' || pans.length > 0)) {
       // Un pin déjà posé (visiteur d'abord passé par « Pointer mon toit ») devient
       // le PREMIER sommet du tracé au lieu d'être silencieusement perdu — même
       // patron que le double-clic historique plus bas (`vertices = pin ? [pin] :
@@ -369,7 +484,7 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
     // Le flux HISTORIQUE (pas de cartes de geste, donc `roofInputMode` absent)
     // garde le double-clic traceur, inchangé.
     const inputMode = opts.roofInputMode?.();
-    if (inputMode && inputMode !== 'draw') return;
+    if (inputMode && inputMode !== 'draw' && pans.length === 0) return;
     if (closed) return;
     if (vertices.length >= 3 && isSimplePolygon(vertices)) {
       closed = true;
@@ -430,6 +545,8 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
     pin = null;
     vertices = [];
     closed = false;
+    pans = [];
+    redrawPans();
     // W2 — annule un reverse-geocode en vol : aucune adresse périmée ne doit arriver
     // après l'effacement.
     revAbort?.abort();
@@ -442,6 +559,77 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
     setStatus(t.searchAddressThenPin);
     notify();
   });
+
+  /** ACAL304 — « Ajouter un pan » : fige le contour fermé et ouvre un pan neuf. */
+  addPanBtn?.addEventListener('click', () => {
+    if (!closed || vertices.length < 3) return;
+    if (pans.length + 1 >= MAX_PANS) {
+      setStatus(ps.maxPans);
+      return;
+    }
+    pans = [...pans, vertices];
+    vertices = [];
+    closed = false;
+    redrawTrace();
+    srcOf('rp9-line')?.setData(empty as never);
+    redrawPans();
+    if (finishBtn) finishBtn.disabled = true;
+    if (undoPointBtn) undoPointBtn.hidden = true;
+    updateAreaReadout();
+    setStatus(ps.panAdded);
+    notify();
+  });
+
+  /** ACAL304 — « Retirer ce pan » : retire le pan courant (ou le dernier fermé). */
+  removePanBtn?.addEventListener('click', () => {
+    if (vertices.length === 0 && pans.length > 0) pans = pans.slice(0, -1);
+    vertices = [];
+    closed = false;
+    pin = null;
+    // le pan précédent redevient le pan courant, fermé : « Ajouter un pan » revient.
+    if (pans.length > 0) {
+      vertices = pans[pans.length - 1];
+      closed = true;
+      pans = pans.slice(0, -1);
+    }
+    redrawTrace();
+    srcOf('rp9-line')?.setData(
+      closed
+        ? ({ type: 'Feature', geometry: { type: 'LineString', coordinates: [...vertices, vertices[0]] }, properties: {} } as never)
+        : (empty as never),
+    );
+    redrawPans();
+    redrawPin();
+    if (finishBtn) finishBtn.disabled = true;
+    if (undoPointBtn) undoPointBtn.hidden = true;
+    updateAreaReadout();
+    setStatus(ps.panRemoved);
+    notify();
+    refreshAddressFromPin();
+  });
+
+  /** ACAL304 — restaure les pans ([lat,lng]) ; rend `true` si au moins deux pans ont été semés. */
+  function seedPans(raw: CaptureOptions['hydratePans']): boolean {
+    if (!Array.isArray(raw)) return false;
+    const ok = raw
+      .filter((p) => Array.isArray(p) && p.length >= 3 && p.every((c) => Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1])))
+      .slice(0, MAX_PANS)
+      .map((p) => p.map(([lat, lng]) => [lng, lat] as LngLat));
+    if (ok.length < 2) return false; // un seul pan : chemin historique (seedFromLead)
+    pans = ok.slice(0, -1);
+    vertices = ok[ok.length - 1];
+    closed = true;
+    pin = null;
+    redrawTrace();
+    redrawPans();
+    srcOf('rp9-line')?.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [...vertices, vertices[0]] }, properties: {} } as never);
+    redrawPin();
+    const p = currentPin();
+    if (p) landOn([p.lng, p.lat]);
+    updateAreaReadout();
+    notify();
+    return true;
+  }
 
   /** W113 — sème pin/contour depuis un lead (réutilisable hors capture). */
   function seedFromLead(lead: { roof_point?: { lat: number; lng: number } | null; roof_outline?: Array<[number, number]> | null }) {

@@ -6,9 +6,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourcesFactureList } from './factureList/lireSources.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const SRC = readFileSync(join(HERE, 'FactureList.jsx'), 'utf8')
+// SPL211 — FactureList.jsx + factureList/*.{js,jsx} (la ligne et ses aides y vivent).
+const SRC = lireSourcesFactureList()
 
 test('PendingStepsIndicator : une facture à acompte PARTIEL affiche « Solde restant », lecture PURE (isPartiallyPaid déjà défini)', () => {
   assert.match(SRC, /const isPartiallyPaid = f =>/)
