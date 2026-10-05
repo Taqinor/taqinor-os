@@ -122,6 +122,7 @@ RESTENT = [
 #: SPL143 : ``PLACE['facturation'] = 'apps.ventes.selectors_facturation'``).
 PLACE = {
     'facturation': 'apps.ventes.selectors_facturation',  # SPL143
+    'calepinage': 'apps.ventes.selectors_calepinage',  # SPL144
 }
 
 
