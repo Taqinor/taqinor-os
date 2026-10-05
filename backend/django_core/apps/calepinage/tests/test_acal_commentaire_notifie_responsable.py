@@ -24,7 +24,8 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 
 from apps.calepinage.models import Calepinage
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 
 from .test_api_liste import BaseApiCalepinage, url_detail
 

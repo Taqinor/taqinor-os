@@ -1087,7 +1087,7 @@ def _notifier_la_note(calepinage, auteur, texte):
             auteur, 'pk', None):
         return
     try:
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         from apps.notifications.services import notify
 
         nom = (getattr(auteur, 'get_full_name', lambda: '')() or '').strip() \
