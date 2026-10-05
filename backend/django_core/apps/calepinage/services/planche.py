@@ -62,7 +62,7 @@ __all__ = [
 ]
 
 #: A3 PAYSAGE, en millimètres — le format des planches remises (même choix que
-#: ``core.calepinage.rendu.feuille.FORMAT_DEFAUT``).
+#: l'ancien rendu matplotlib AO, parqué par ACAL328).
 FORMAT_A3_MM = (420.0, 297.0)
 
 #: Marge de feuille et largeur du bandeau latéral (cartouche + légende CAL172).
