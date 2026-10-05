@@ -17,9 +17,9 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 
 from . import delivery, events_feed
+from .portees import SCOPE_READ_EVENTS, SCOPE_READ_FACTURES, SCOPE_READ_LEADS
 from .constants import (
     EVENT_FACTURE_PAID, EVENT_LEAD_CREATED, EVENT_TICKET_CREATED,
-    SCOPE_READ_EVENTS, SCOPE_READ_FACTURES, SCOPE_READ_LEADS,
 )
 from .models import ApiEvent, ApiKey
 

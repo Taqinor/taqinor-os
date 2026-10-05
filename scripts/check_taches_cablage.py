@@ -55,6 +55,13 @@ FORME 4 « composant-redefini » — AVERTISSEMENT SEUL, NON BLOQUANTE.
     gaspillage : au lieu de ne pas brancher ce qui existe, on le reecrit.
     Elle N'ECHOUE PAS — voir « HONNETETE SUR LA FORME 4 ».
 
+FORME 5 « clauses-absentes » — BLOQUANTE (ACAL344, C-ACAL-146).
+    Une tache OUVERTE d'un fichier ``docs/plans/PLAN_AUDIT_*.md`` doit porter
+    chacun des 13 libelles de la tache d'audit (docs/audits/METHODE.md §C.2,
+    unique definition : la constante ``CLAUSES_AUDIT`` ci-dessous). Le libelle
+    est cherche insensible a la casse et aux accents ; son CONTENU n'est pas
+    juge (« n/a — raison » est une clause presente).
+
 MESURES DU 03/08/2026 sur ``origin/main`` (@70dbc196)
 ------------------------------------------------------
     1921 taches ouvertes lues dans 13 fichiers de plan.
@@ -242,14 +249,35 @@ PLAN_FILES_EXPLICITES = (
 )
 PLAN_GLOB = ("docs/plans", "PLAN_*.md")
 
+# FORME 5 — les fichiers de plan d'audit (docs/audits/METHODE.md §C.2) et les
+# 13 libelles qu'y porte CHAQUE tache ouverte. UNIQUE definition : METHODE.md
+# la cite sans la recopier.
+_PLAN_AUDIT = re.compile(r"^docs/plans/PLAN_AUDIT_[^/]*\.md$")
+CLAUSES_AUDIT = (
+    "Constat",
+    "Given",
+    "Test rouge d'abord",
+    "Test-du-test",
+    "Source réelle",
+    "Appelants",
+    "Jumeaux",
+    "Listes figées",
+    "Contrat partagé",
+    "Déployable",
+    "Preuve en direct",
+    "Hors périmètre",
+    "Files",
+)
+
 # Les quatre formes gardees. La FORME 2 est deliberement non bloquante.
 FORME_ECRAN = "ecran-sans-cablage"
 FORME_BACKEND = "backend-sans-consommateur"
 FORME_CONTRAT = "contrat-absent"
 FORME_DOUBLON = "composant-redefini"
+FORME_CLAUSES = "clauses-absentes"
 # La FORME 2 et la FORME 4 sont MESUREES mais jamais bloquantes : leur taux de
 # faux positifs a ete mesure, pas suppose (voir l'en-tete).
-FORMES_BLOQUANTES = (FORME_ECRAN, FORME_CONTRAT)
+FORMES_BLOQUANTES = (FORME_ECRAN, FORME_CONTRAT, FORME_CLAUSES)
 FORMES_AVERTISSEMENT = (FORME_BACKEND, FORME_DOUBLON)
 
 # ---------------------------------------------------------------------------
@@ -353,6 +381,21 @@ def normaliser(texte: str) -> str:
     et une garde qui dependrait d'un accent bien place serait fragile."""
     decompose = unicodedata.normalize("NFKD", texte)
     return "".join(c for c in decompose if not unicodedata.combining(c)).lower()
+
+
+def _motif_clause(libelle: str):
+    return re.compile(r"(?<![\w-])" + re.escape(normaliser(libelle))
+                      + r"(?![\w-])")
+
+
+_MOTIFS_CLAUSES_AUDIT = tuple((libelle, _motif_clause(libelle))
+                              for libelle in CLAUSES_AUDIT)
+
+
+def clauses_manquantes(texte_normalise: str) -> list:
+    """Les libelles de CLAUSES_AUDIT absents d'un texte deja normalise."""
+    return [libelle for libelle, motif in _MOTIFS_CLAUSES_AUDIT
+            if not motif.search(texte_normalise)]
 
 
 # --- FORME 1 : clause d'atteignabilite -------------------------------------
@@ -786,9 +829,19 @@ def analyse(fichiers=None, avec_doublons=True):
         "f2_candidates": 0, "f2_exposantes": 0, "f2_fautives": 0,
         "f3_candidates": 0, "f3_conformes": 0, "f3_fautives": 0,
         "f4_fichiers": 0, "f4_proprietaires": 0, "f4_doublons": 0,
+        "f5_candidates": 0, "f5_fautives": 0,
     }
 
     for tache in taches:
+        # ------ FORME 5 : tache d'audit sans ses 13 clauses (§C.2) ------
+        if _PLAN_AUDIT.match(tache.fichier):
+            stats["f5_candidates"] += 1
+            manques = clauses_manquantes(tache.normalise)
+            if manques:
+                stats["f5_fautives"] += 1
+                constats.append(Constat(FORME_CLAUSES, tache.identifiant,
+                                        tache, manques))
+
         # ---------------- FORME 1 : ecran sans cablage ----------------
         ecrans = [c for c, _, _ in tache.chemins if est_ecran(c)]
         if ecrans:
@@ -863,6 +916,9 @@ ENTETE_BASE = """\
 #                         frontend) sans exiger de contrat partage verifiable.
 #   composant-redefini  : un composant possede son fichier `<X>.jsx` et un
 #                         AUTRE fichier le redefinit au lieu de l'importer.
+#   clauses-absentes    : une tache OUVERTE de docs/plans/PLAN_AUDIT_*.md
+#                         omet l'un des 13 libelles de METHODE §C.2 (ACAL344,
+#                         amorcee le 05/10/2026 avec le groupe SPL).
 # (La forme `backend-sans-consommateur` est mesuree mais NON bloquante — voir
 #  l'en-tete du script : elle n'atteint pas le zero faux positif.)
 #
@@ -946,6 +1002,13 @@ def _explique(constat: Constat):
             "backend AFFIRME l'exemple de reponse committe dans "
             "`docs/api-contracts.md` et le test frontend l'IMPORTE (jamais un "
             "mock ecrit a la main) »")
+    elif constat.forme == FORME_CLAUSES:
+        lignes.append(
+            "      tache d'audit (docs/audits/METHODE.md §C.2) sans les "
+            "libelles : " + ", ".join(constat.detail))
+        lignes.append(
+            "      A FAIRE : ajoutez chaque libelle manquant (« n/a — raison » "
+            "s'il ne s'applique pas)")
     elif constat.forme == FORME_DOUBLON:
         nom, _, fichier = constat.cible.partition("|")
         lignes.append(f"      redefinit `{nom}` alors que le composant a deja "
@@ -1005,6 +1068,9 @@ def main(argv=None) -> int:
         print(f"  backend ET frontend nommes            : {stats['f3_candidates']}")
         print(f"     exigeant un contrat partage        : {stats['f3_conformes']}")
         print(f"     n'exigeant aucun contrat           : {stats['f3_fautives']}")
+        print("\nFORME 5 — tache d'audit sans ses 13 clauses (BLOQUANTE)")
+        print(f"  taches ouvertes de PLAN_AUDIT_*.md    : {stats['f5_candidates']}")
+        print(f"     omettant au moins un libelle       : {stats['f5_fautives']}")
         print("\nFORME 4 — composant redefini (AVERTISSEMENT SEUL)")
         print(f"  fichiers .jsx non-test analyses       : {stats['f4_fichiers']}")
         print(f"  composants a fichier proprietaire     : {stats['f4_proprietaires']}")

@@ -33,7 +33,7 @@ from rest_framework import serializers
 from apps.installations.models_demande_achat import DemandeAchat
 from apps.installations.models_rfq import RFQ
 
-from .constants import SCOPE_READ_ACHATS
+from .portees import SCOPE_READ_ACHATS
 from .public_views import PublicReadOnlyViewSet
 
 

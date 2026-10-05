@@ -152,9 +152,18 @@ function resolvable(path) {
   const rel = path.replace(/^\/adsengine\//, '')
   const segments = rel.split('/').filter(Boolean)
   if (segments.length === 0) return false
-  const [first, ...rest] = segments
+  // Un préfixe routeur peut compter plusieurs segments (DRF accepte
+  // `router.register(r'veille/decouvertes', …)` — PLAN_VEILLE) : on prend le
+  // plus long préfixe enregistré qui couvre le début du chemin.
+  let rest = null
+  for (let n = segments.length; n >= 1; n--) {
+    if (routerPrefixes.has(segments.slice(0, n).join('/'))) {
+      rest = segments.slice(n)
+      break
+    }
+  }
 
-  if (routerPrefixes.has(first)) {
+  if (rest !== null) {
     if (rest.length === 0) return true // list/create sur la racine du routeur
     if (rest.length === 1) {
       // <id>/ (retrieve/update/delete) OU une action detail=False

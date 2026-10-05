@@ -42,7 +42,7 @@ from core.sla import SlaSnapshot, SlaSnapshotSerializer
 from core.usage_limits import usage_summary
 
 from .auth import PUBLIC_AUTHENTICATION_CLASSES, ApiKeyRateThrottle, HasApiScope
-from .constants import SCOPE_READ_FIABILITE
+from .portees import SCOPE_READ_FIABILITE
 from .public_response import PublicApiResponseMixin
 
 _RUN_RESUME_SHAPE = inline_serializer('FiabiliteRunResumePublic', {

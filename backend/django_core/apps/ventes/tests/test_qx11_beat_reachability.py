@@ -47,6 +47,7 @@ ON_DEMAND_ALLOWLIST = {
     # ``campaigns/backfill-complet/`` (``.delay()`` dans une action de viewset ;
     # jamais périodique — les synchros récurrentes sont, elles, planifiées).
     'adsengine.backfill_complet',
+    'adsengine.veille_etape',
     # NTADM10 — création d'un environnement sandbox : orchestrée à la demande
     # depuis l'endpoint ``adminops/sandbox/creer/`` (jamais périodique ; la
     # purge NTADM11 et le rappel NTADM35 sont, eux, planifiés dans le beat).

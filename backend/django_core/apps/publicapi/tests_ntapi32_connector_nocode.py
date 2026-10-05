@@ -22,10 +22,13 @@ from apps.crm.models import Client
 from apps.sav.models import Ticket
 
 from . import connector_nocode, delivery
+from .portees import (
+    SCOPE_READ_EVENTS, SCOPE_READ_FACTURES, SCOPE_READ_LEADS,
+    SCOPE_WRITE_TICKETS,
+)
 from .constants import (
     ALL_EVENTS, EVENT_FACTURE_PAID, EVENT_LEAD_CREATED, EVENT_TICKET_RESOLVED,
-    PUBLIC_API_BASE, SCOPE_READ_EVENTS, SCOPE_READ_FACTURES, SCOPE_READ_LEADS,
-    SCOPE_WRITE_TICKETS,
+    PUBLIC_API_BASE,
 )
 from .models import ApiKey
 

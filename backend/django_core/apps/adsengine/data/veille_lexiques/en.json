@@ -1,0 +1,38 @@
+{
+  "langue": "en",
+  "version": "v1",
+  "produit": [
+    "dress", "dresses", "skirt", "skirts", "trousers", "pants", "jeans",
+    "shirt", "shirts", "blouse", "t-shirt", "tee", "jumper", "sweater",
+    "hoodie", "jacket", "jackets", "coat", "coats", "shorts", "leggings",
+    "jumpsuit", "lingerie", "swimwear", "clothing", "clothes", "apparel",
+    "outfit", "outfits", "shoes", "shoe", "trainers", "sneakers", "boots",
+    "sandals", "heels", "loafers", "bag", "bags", "handbag", "handbags",
+    "tote", "backpack", "clutch", "purse", "leather goods"
+  ],
+  "hors_sujet": [
+    "phone case", "jewellery", "jewelry", "necklace", "bracelet", "ring",
+    "earrings", "watch", "watches", "cosmetics", "makeup", "perfume",
+    "fragrance", "skincare", "serum", "shampoo", "home decor", "furniture",
+    "sofa", "bedding", "lighting", "dry cleaning", "alterations", "course",
+    "courses", "coaching", "training"
+  ],
+  "editorial": [
+    "magazine", "blog", "article", "podcast", "news", "app", "download",
+    "subscribe", "newsletter", "webinar", "episode", "agency", "charity",
+    "giveaway", "tutorial"
+  ],
+  "commerce": [
+    "delivery", "shipping", "price", "sale", "discount", "order now",
+    "shop now", "buy", "checkout", "free returns", "£", "$"
+  ],
+  "urgence": [
+    "last day", "final day", "today only", "last chance", "limited stock",
+    "ends tonight", "only a few left", "final hours", "ends soon"
+  ],
+  "nom_generique": [
+    "shop", "store", "boutique", "fashion", "style", "trend", "trendy",
+    "chic", "luxe", "luxury", "official", "outlet", "deals", "online",
+    "world", "london", "best", "top", "my", "the", "co", "hub"
+  ]
+}

@@ -19,7 +19,8 @@ from django.db import models
 from core.crypto_fields import EncryptedCharField
 from core.models import TenantModel
 
-from .constants import SCOPE_CHOICES, EVENT_CHOICES, ENV_CHOICES, ENV_LIVE, ENV_TEST
+from .portees import SCOPE_CHOICES
+from .constants import EVENT_CHOICES, ENV_CHOICES, ENV_LIVE, ENV_TEST
 
 
 # Préfixe lisible de toute clé émise (aide au repérage côté client/logs).
@@ -131,7 +132,7 @@ class ApiKey(models.Model):
         ``environnement`` défaut ``live`` ; une clé ``test`` porte un préfixe
         distinct (``tqk_test_``).
         """
-        from .constants import ALL_SCOPES
+        from .portees import ALL_SCOPES
         environnement = environnement if environnement in (ENV_LIVE, ENV_TEST) else ENV_LIVE
         raw_key = generate_raw_key(environnement)
         clean_scopes = [s for s in (scopes or []) if s in ALL_SCOPES]
@@ -444,7 +445,7 @@ class ServiceAccount(models.Model):
 
         Réutilise le hachage/allowlist de scopes de ``ApiKey`` (jamais dupliqué).
         Le jeton en clair n'est disponible qu'ici — jamais re-stocké."""
-        from .constants import ALL_SCOPES
+        from .portees import ALL_SCOPES
         raw = generate_raw_key()
         clean = [s for s in (scopes or []) if s in ALL_SCOPES]
         inst = cls.objects.create(
@@ -805,7 +806,7 @@ class OAuthClient(TenantModel):
         MÊMES scopes ; son propre secret en clair est délibérément jeté (elle
         n'est utilisable que via ce flot OAuth).
         """
-        from .constants import ALL_SCOPES
+        from .portees import ALL_SCOPES
 
         propres = [s for s in (scopes or []) if s in ALL_SCOPES]
         compagnon, _raw_jete = ApiKey.issue(

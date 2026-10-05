@@ -34,9 +34,9 @@ from __future__ import annotations
 import json
 import os
 
+from .portees import SCOPE_READ_EVENTS
 from .constants import (
     EVENT_CHOICES, PUBLIC_API_BASE, PUBLIC_API_DEFAULT_VERSION,
-    SCOPE_READ_EVENTS,
 )
 
 NOM_FICHIER = 'connecteur-taqinor.json'
