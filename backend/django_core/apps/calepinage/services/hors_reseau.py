@@ -3,9 +3,10 @@
 LE CONSTAT
 ----------
 ``grep -rn "autonomie_jours|jours d'autonomie|SHScalc" backend --include=*.py``
-= 0. ``battery_storage_sizing`` (``apps/ventes/solar_design.py``) ne connaît
-qu'un secours en HEURES (``backup_hours``) : de quoi passer une coupure, pas
-de quoi faire vivre un site isolé une semaine de ciel couvert. PVsyst a un
+= 0. L'ancien ``battery_storage_sizing`` (``apps/ventes/solar_design.py``,
+supprimé par ACAL330) ne connaissait qu'un secours en HEURES
+(``backup_hours``) : de quoi passer une coupure, pas de quoi faire vivre un
+site isolé une semaine de ciel couvert. PVsyst a un
 module autonome dédié (banque + régulateur + charge) et PVGIS expose
 ``SHScalc`` (lat, lon, peakpower, batterysize, cutoff, consumptionday —
 https://joint-research-centre.ec.europa.eu/photovoltaic-geographical-information-system-pvgis/getting-started-pvgis/api-non-interactive-service_en).
