@@ -40,7 +40,8 @@ from apps.crm.models import Client
 from apps.installations.models import Intervention
 from apps.installations.services import (
     _notifier_reassignation, create_installation_from_devis)
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.ventes.models import Devis
 from authentication.models import Company
 

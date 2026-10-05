@@ -20,10 +20,17 @@ from authentication.permissions import (
 )
 
 from .models import (
-    Annonce, EventType, Holiday, MessageAccueil, Notification,
-    NotificationPreference, NotificationRoutingRule, PushSubscription,
-    WhatsAppTemplate, WorkingHoursConfig,
+    Annonce,
+    Holiday,
+    MessageAccueil,
+    Notification,
+    NotificationPreference,
+    NotificationRoutingRule,
+    PushSubscription,
+    WhatsAppTemplate,
+    WorkingHoursConfig,
 )
+from .types_evenements import EventType
 from .serializers import (
     AnnonceSerializer, HolidaySerializer, MessageAccueilSerializer,
     NotificationPreferenceSerializer, NotificationRoutingRuleSerializer,

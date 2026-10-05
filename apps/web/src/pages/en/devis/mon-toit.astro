@@ -318,6 +318,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
               Undo last point
             </button>
+            <button type="button" id="rp9-add-pan" hidden
+              class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
+              Add a roof section
+            </button>
+            <button type="button" id="rp9-remove-pan" hidden
+              class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
+              Remove this section
+            </button>
             <button type="button" id="rp9-clear"
               class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-white/50 hover:text-white">
               Clear
@@ -2032,6 +2040,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // it READS its DOM into a plain state and hands it to `construireCorps`,
   // which applies the field registry and calls `validateLead` itself.
   import { construireCorps } from '../../../lib/tunnel/corps';
+  import type { RoofLayoutPublic } from '../../../scripts/roofPro11/captureBoot';
   import { etatVide, type EtatTunnel } from '../../../lib/tunnel/champs';
   import { lireChampsDomTunnel } from '../../../lib/tunnel/lecture';
   import { ERREURS } from '../../../lib/tunnel/i18n';
@@ -2193,6 +2202,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // ——— capture state (pin / outline) held by onCaptureChange ———
   let capturePin: { lat: number; lng: number } | null = null;
   let captureOutline: Array<[number, number]> = [];
+  // ACAL304 — tous les pans FERMÉS ([lat,lng]) + le roofLayout v2 à émettre (≥ 2 pans).
+  let capturePans: Array<Array<[number, number]>> = [];
+  let captureLayout: RoofLayoutPublic | null = null;
   let cityTouched = false;
   cityEl?.addEventListener('input', () => { cityTouched = true; });
 
@@ -2266,6 +2278,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // activity, surface, water source, units).
     sel?: Record<string, string>;
     capturePin?: { lat: number; lng: number } | null;
+    capturePans?: Array<Array<[number, number]>>;
+    captureLayout?: RoofLayoutPublic | null;
     captureOutline?: Array<[number, number]>;
     fields?: Record<string, string>;
     checks?: Record<string, boolean>;
@@ -2329,7 +2343,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         step, revealed, mode,
         visitWindowPart, visitWindowWeek,
         sel: { proUnit, tension, activity, surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode, occupationJour },
-        capturePin, captureOutline,
+        capturePin, captureOutline, capturePans, captureLayout,
         fields, checks,
         idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId,
       };
@@ -2708,12 +2722,17 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         // browser back mid-journey) is seeded straight into the map at boot,
         // via the same mechanism as hydrating from an existing lead (W113):
         // the visitor doesn't have to re-drop their pin.
+        // ACAL304 — les pans multiples sont restaurés tels quels (≥ 2 pans).
+        hydratePans: capturePans.length >= 2 ? capturePans : undefined,
+        panStrings: { panAdded: 'Section added. Draw the next one (double-click to close) or send.', panRemoved: 'Section removed.', maxPans: 'Maximum number of sections reached.' },
         hydrate: capturePin
           ? { lead: { roof_point: capturePin, roof_outline: captureOutline.length >= 3 ? captureOutline : null } }
           : undefined,
         onCaptureChange: (s) => {
           capturePin = s.pin;
           captureOutline = s.outline;
+          capturePans = s.pans;
+          captureLayout = s.layout;
           syncCityRequirement();
           // QX/Lane C — the outline changed: the cached satellite snapshot no
           // longer matches, let it rebuild.
@@ -2938,6 +2957,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     syncEquipDetails();
     if (savedWizard.capturePin) capturePin = savedWizard.capturePin;
     if (savedWizard.captureOutline?.length) captureOutline = savedWizard.captureOutline;
+    if (savedWizard.capturePans?.length) capturePans = savedWizard.capturePans;
+    if (savedWizard.captureLayout) captureLayout = savedWizard.captureLayout;
     syncCityRequirement();
     if (Object.keys(savedWizard.fields ?? {}).length > 0 || savedWizard.capturePin) markDataEntered();
     restoring = false;
@@ -4397,6 +4418,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // WJ4 — OPTIONAL pin and outline: we never BLOCK without them.
       repereToit: capturePin,
       contourToit: captureOutline,
+      layoutToit: captureLayout,
     };
   }
 

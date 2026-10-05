@@ -27,7 +27,8 @@ from apps.stock.models import (
     LigneReceptionFournisseur, Produit, ReceptionFournisseur,
 )
 from apps.stock.tasks import expiration_alerts_task
-from apps.notifications.models import Notification, EventType
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 
 User = get_user_model()
 

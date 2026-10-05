@@ -4,7 +4,8 @@ Garanties : un utilisateur cumulant deux permissions en conflit apparaît dans
 le rapport SoD ; une règle critique bloque l'attribution du rôle ; le seed
 standard est fourni ; tout est scopé société.
 """
-from apps.roles.models import ALL_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import ALL_PERMISSIONS
 from apps.roles.services import apply_role_to_user
 from authentication.models import CustomUser
 from testkit.base import TenantAPITestCase

@@ -16,7 +16,8 @@ from apps.onboarding.services import (
     demasquer_item_pour_societe, marquer_item_complete,
     masquer_item_pour_societe,
 )
-from apps.roles.models import ALL_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import ALL_PERMISSIONS
 
 User = get_user_model()
 

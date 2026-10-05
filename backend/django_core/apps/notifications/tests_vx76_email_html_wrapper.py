@@ -13,7 +13,7 @@ from django.utils import timezone
 
 from authentication.models import Company
 
-from .models import EventType
+from .types_evenements import EventType
 from .services import notify
 
 User = get_user_model()

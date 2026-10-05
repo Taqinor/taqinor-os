@@ -22,7 +22,7 @@ Utilisé par `serializers.NotificationSerializer` (exposé en lecture,
 """
 from __future__ import annotations
 
-from .models import EventType
+from .types_evenements import EventType
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Sévérité — 'critique' > 'normal' > 'info'. Rang numérique pour le tri

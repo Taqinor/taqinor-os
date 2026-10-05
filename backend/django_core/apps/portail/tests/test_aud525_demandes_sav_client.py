@@ -23,12 +23,12 @@ from rest_framework.test import APIClient
 from apps.crm.models import Client
 from apps.installations.models import Installation
 from apps.portail.models import DemandeTicketPortail
-from apps.roles.models import (
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
     PORTAIL_CLIENT_PERMISSIONS,
     PORTAIL_FOURNISSEUR_PERMISSIONS,
     ROLE_PORTAIL_CLIENT,
     ROLE_PORTAIL_FOURNISSEUR,
-    Role,
 )
 from authentication.models import Company, CustomUser
 

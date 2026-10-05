@@ -108,7 +108,7 @@ class SandboxEnvironmentViewSet(viewsets.ReadOnlyModelViewSet):
         except Exception:
             pass
         try:
-            from apps.notifications.models import EventType
+            from apps.notifications.types_evenements import EventType
             from apps.notifications.services import notify
             if env.cree_par is not None:
                 notify(
@@ -185,7 +185,7 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
         except Exception:
             pass
         try:
-            from apps.notifications.models import EventType
+            from apps.notifications.types_evenements import EventType
             from apps.notifications.services import notify
             if package.cree_par is not None:
                 notify(
@@ -204,7 +204,7 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
         except Exception:
             pass
         try:
-            from apps.notifications.models import EventType
+            from apps.notifications.types_evenements import EventType
             from apps.notifications.services import notify
             if getattr(user, 'pk', None):
                 notify(

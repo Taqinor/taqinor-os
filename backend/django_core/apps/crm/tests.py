@@ -714,7 +714,8 @@ class TestManagedLists(TestCase):
     """Étiquettes + motifs de perte gérés : admin édite, tout rôle lit."""
 
     def setUp(self):
-        from apps.roles.models import Role, ALL_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
         self.company = make_company(slug='lists-co', nom='Lists Co')
         admin_role = Role.objects.create(
             company=self.company, nom='Administrateur',

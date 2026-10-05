@@ -24,7 +24,11 @@ from apps.facturation.models import Facture
 from apps.installations.models import Installation, Livraison
 from apps.installations.models_pod import PreuveLivraison
 from apps.records.models import Attachment
-from apps.roles.models import PORTAIL_CLIENT_PERMISSIONS, ROLE_PORTAIL_CLIENT, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    PORTAIL_CLIENT_PERMISSIONS,
+    ROLE_PORTAIL_CLIENT,
+)
 from apps.ventes.models import Devis
 from authentication.models import Company, CustomUser
 

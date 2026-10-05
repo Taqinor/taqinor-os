@@ -8,9 +8,8 @@ perdre un réglage déjà enregistré.
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from apps.notifications.models import (
-    EventType, NotificationPreference,
-)
+from apps.notifications.models import NotificationPreference
+from apps.notifications.types_evenements import EventType
 from apps.notifications.module_map import (
     EVENT_TYPE_MODULE, event_types_masques,
 )

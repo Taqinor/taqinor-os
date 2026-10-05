@@ -19,7 +19,8 @@ from django.utils import timezone
 from apps.audit.models import AuditLog
 from authentication.models import Company
 
-from .models import EventType, Notification, NotificationPreference
+from .models import Notification, NotificationPreference
+from .types_evenements import EventType
 
 User = get_user_model()
 

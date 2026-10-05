@@ -11,7 +11,8 @@ from django.test import TestCase
 
 from authentication.models import Company
 from apps.crm.models import Client
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.ventes.models import Devis, DevisActivity
 from apps.ventes.services import expire_stale_devis
 from core.events import devis_expired

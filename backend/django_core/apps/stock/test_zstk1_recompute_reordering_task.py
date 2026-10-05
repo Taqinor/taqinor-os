@@ -22,7 +22,8 @@ from authentication.models import Company
 from apps.roles.models import Role
 from apps.stock.models import BonCommandeFournisseur, Produit
 from apps.stock.tasks import recompute_reordering_task
-from apps.notifications.models import Notification, EventType
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 
 User = get_user_model()
 

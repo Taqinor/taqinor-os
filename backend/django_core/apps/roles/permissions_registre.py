@@ -1,0 +1,1322 @@
+"""Registre des droits (ALL_PERMISSIONS, PERMISSION_MODULE, rôles système) — sorti de roles/models.py par SPL301."""
+import re
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# ODY26 — Axe « App visible » par rôle. DÉCISION : on RÉUTILISE
+# ``Role.permissions``, sans nouveau champ ni migration.
+#
+# Vérifié avant de trancher : la visibilité d'une app ne dépendait jusqu'ici
+# QUE du palier codé en dur dans les ``module.config.jsx`` (2 items de nav sur
+# 44 modules portent un ``perm``) — rien d'administrable. ``Role.permissions``
+# est le SEUL magasin par rôle, scopé société, éditable dans la matrice VX38 et
+# déjà acheminé au front (``state.auth.permissions``, lu par
+# ``useInstalledApps()``). Un champ dédié n'aurait rien apporté de plus et
+# aurait coûté une migration + un 2ᵉ système à garder synchrone.
+#
+# Convention : un code ``app_<clé>_voir`` par app (préfixe ``app_`` : aucune
+# collision avec les codes métier ``crm_voir``/``sav_voir``…).
+#
+# Sémantique : NARROWING OPT-IN, le patron déjà utilisé plus bas pour
+# ``records_scope_equipe``/``records_scope_sous_arbre`` — un rôle SANS aucun
+# marqueur voit tout (comportement historique préservé) ; dès qu'il en porte
+# un, la liste devient une LISTE BLANCHE.
+#
+# Ces codes ne sont VOLONTAIREMENT pas dans ``ALL_PERMISSIONS`` (ci-dessous),
+# pour deux raisons : (1) ``DIRECTEUR_PERMISSIONS``/``ADMIN_PERMISSIONS`` en
+# dérivent — les y mettre restreindrait mécaniquement le Directeur à la liste
+# gelée du jour ; (2) énumérer les 44 clés d'apps côté backend créerait un 2ᵉ
+# REGISTRE de la liste d'apps, ce que le Groupe ODY interdit (l'unique registre
+# reste ``moduleConfigs`` côté front, consommé par ``useInstalledApps()``). La
+# validation se fait donc par FORME (``EST_PERMISSION_APP``) — ces codes ne
+# donnent aucun droit, ils en RETIRENT : un code inconnu de trop n'ouvre rien.
+#
+# PORTÉE : restriction d'INTERFACE (quelles apps le porteur voit), jamais une
+# frontière de sécurité — le gating serveur par viewset reste seul juge.
+# ───────────────────────────────────────────────────────────────────────────
+APP_VISIBILITY_PREFIX = 'app_'
+APP_VISIBILITY_SUFFIX = '_voir'
+EST_PERMISSION_APP = re.compile(r'^app_[a-z0-9][a-z0-9_]*_voir$')
+
+
+def est_permission_app(code):
+    """Vrai si ``code`` appartient à la famille ODY26 « app visible »."""
+    return bool(EST_PERMISSION_APP.match(code or ''))
+
+
+def permission_app(cle):
+    """Code de permission « app visible » pour la clé de module ``cle``."""
+    return f'{APP_VISIBILITY_PREFIX}{cle}{APP_VISIBILITY_SUFFIX}'
+
+
+def cles_apps_autorisees(permissions):
+    """Liste blanche d'apps portée par ``permissions``, ou ``None``.
+
+    ``None`` (et non un ensemble vide) quand le rôle ne porte AUCUN marqueur :
+    « pas de restriction » et « restreint à rien » sont deux états distincts,
+    et seul le premier existe côté données (miroir exact de
+    ``allowedAppKeys()`` dans ``frontend/src/lib/apps/useInstalledApps.js``).
+    """
+    codes = [c for c in (permissions or []) if est_permission_app(c)]
+    if not codes:
+        return None
+    return {
+        c[len(APP_VISIBILITY_PREFIX):-len(APP_VISIBILITY_SUFFIX)]
+        for c in codes
+    }
+
+
+ALL_PERMISSIONS = [
+    'stock_voir',
+    'stock_creer',
+    'stock_modifier',
+    'stock_supprimer',
+    'stock_mouvement',
+    'stock_export',
+    'crm_voir',
+    'crm_creer',
+    'crm_modifier',
+    'crm_supprimer',
+    'crm_export',
+    'crm_reassign',
+    # ── VT2/VTA4 — Visite technique terrain (module `visites`) ───────────────
+    # Quatre actions DISJOINTES : consulter une visite, en créer une, la
+    # remplir (photos/mesures/terminer), et donner le FEU VERT calepinage.
+    # ``visites_valider`` est délibérément séparé de ``visites_modifier`` :
+    # celui qui relève les mesures sur le toit n'est pas celui qui décide que
+    # le dossier est bon (même esprit que ``compta_saisir``/``compta_valider``).
+    # VTA4 — codes RENOMMÉS de ``crm_visite_*`` en ``visites_*`` : la visite a
+    # quitté le CRM pour son app autonome, et un commercial terrain porte ces
+    # droits SANS aucun droit CRM. Garder le préfixe ``crm_`` ferait déduire le
+    # mauvais module propriétaire et rendrait le droit invisible à une société
+    # qui n'a pas le module CRM. Une data migration réécrit les Role.permissions
+    # déjà en base (apps/roles/migrations/0004_vta4_renommer_permissions_visite).
+    'visites_voir',
+    'visites_creer',
+    'visites_modifier',
+    'visites_valider',
+    'ventes_voir',
+    'ventes_creer',
+    'ventes_modifier',
+    'ventes_supprimer',
+    'ventes_valider',
+    'ventes_pdf',
+    'ventes_export',
+    'ventes_reassign',
+    'installation_voir',
+    'installation_gerer',
+    'installation_export',
+    'intervention_gerer',
+    'technicien_assign',
+    'equipement_voir',
+    'equipement_gerer',
+    'sav_voir',
+    'sav_gerer',
+    'sav_export',
+    'sav_reassign',
+    # ── NTSRV39 — trois gestes SAV plus fins que `sav_gerer` ────────────────
+    # `sav_probleme_gerer` : créer/modifier un PROBLÈME (NTSRV16) et y
+    # rattacher des incidents. Un technicien traite ses tickets, il ne
+    # déclare pas la cause racine d'un parc — c'est un geste de responsable.
+    'sav_probleme_gerer',
+    # `sav_nps_voir` / `sav_sentiment_ia_voir` : lecture du NPS transactionnel
+    # (NTSRV14) et du badge de sentiment IA (NTSRV13). Catalogués ICI, en
+    # amont de ces deux tâches, pour la raison exacte de la règle WIR169 : un
+    # code posé sur un viewset sans entrée au catalogue rend 403 pour TOUS
+    # les rôles fins. Ils sont donc prêts le jour où ces écrans arrivent, et
+    # ces tâches n'auront pas à rouvrir `apps/roles`.
+    'sav_nps_voir',
+    'sav_sentiment_ia_voir',
+    # NTSRV40 — envoyer une REPONSE EXTERNE au client depuis un ticket
+    # (e-mail NTSRV1, et le jour ou il existera l'envoi WhatsApp NTSRV3).
+    # Distinct de `sav_gerer` : un agent en formation travaille ses tickets
+    # (assignation, notes INTERNES) sans pouvoir ecrire au client.
+    # Accorde par defaut a TOUS les roles systeme qui portaient deja
+    # `sav_gerer` — aucun acces existant n'est retire ; un Administrateur le
+    # retire au role de l'agent en formation depuis Parametres -> Roles.
+    'sav_repondre_client_externe',
+    'parametres_voir',
+    'parametres_modifier',
+    'users_voir',
+    'users_gerer',
+    'roles_gerer',
+    'reporting_voir',
+    'reporting_export',
+    # ── Comptabilité — séparation des tâches (COMPTA40) ──
+    # Trois actions DISJOINTES du flux comptable : saisir une écriture, la
+    # valider (second regard) et clôturer une période/exercice. La règle
+    # « le saisisseur ne valide pas sa propre écriture » est posée en dur côté
+    # service (``compta.services.valider_ecriture``) ; ces codes gouvernent QUI
+    # a le droit d'accéder à chaque action. ``compta_cloturer`` est une action
+    # de gouvernance réservée par défaut au palier direction.
+    'compta_saisir',
+    'compta_valider',
+    'compta_cloturer',
+    # ── Paie (XPAI7) — follow-up explicite noté au DONE de PAIE1 ──
+    # L'app ``paie`` était gatée uniquement par le grossier
+    # ``IsResponsableOrAdmin`` (tout porteur de rôle passe). Deux codes
+    # DISJOINTS : ``paie_voir`` (lecture bulletins/périodes/déclarations) et
+    # ``paie_gerer`` (calcul/validation/clôture/paramètres/tout le reste en
+    # écriture). Le coffre-fort employé (``CoffreFortBulletinViewSet``,
+    # ``IsAnyRole``) reste scopé utilisateur, inchangé — hors périmètre.
+    'paie_voir',
+    'paie_gerer',
+    # ── Données sensibles & gouvernance (Feature D, 2026-06) ──
+    # Voir les prix d'achat et la marge interne (générateur, stock). Accordée à
+    # Directeur + Administrateur par défaut ; jamais sur un document client.
+    'prix_achat_voir',
+    # Voir le Journal d'activité (audit). Directeur uniquement par défaut.
+    'journal_activite_voir',
+    # ── Rémunération RH (Feature G, 2026-06) ──
+    # Lire ET écrire la rémunération de base d'un employé (salaire, périodicité,
+    # historique). Donnée paie sensible : réservée au palier RH (Directeur +
+    # Administrateur par défaut) ; ne fuit jamais dans une sortie client.
+    'salaires_voir',
+    # ── Données sensibles (FG20) — groupe « Données sensibles » curé ──
+    # Permissions de LECTURE qui DÉMASQUENT une donnée sensible dans les
+    # sérialiseurs ; absentes → la donnée est masquée. ÉLEVÉES (octroi réservé à
+    # l'admin). Repli légacy : un compte SANS rôle fin garde l'accès historique
+    # (jamais de régression pour les comptes hérités).
+    # `client_pii_voir` : voir les coordonnées personnelles du client/lead
+    # (téléphone, email, adresse, WhatsApp, GPS). `marge_voir` : voir la marge
+    # interne calculée (indicateur générateur). Distinct de `prix_achat_voir`
+    # (prix d'achat brut), qui reste la garde du prix d'achat lui-même.
+    'client_pii_voir',
+    'marge_voir',
+    # XQHS22 — voir les montants du coût de la non-qualité (CoQ) QHSE (NCR/
+    # CAPA/incident). Donnée financière interne, jamais client-facing (même
+    # règle que `prix_achat`/`marge_voir`). Élevée (cf. ELEVATED_PERMISSIONS).
+    'cout_non_qualite_voir',
+    # ── ENG — Moteur de Publicités Meta (apps/adsengine) ──
+    # Trois permissions DISJOINTES : lecture du moteur (adsengine_view),
+    # gestion des campagnes (adsengine_manage), et approbation (propose → approuve).
+    # L'approbation est réservée au palier direction/admin + responsable.
+    'adsengine_view',
+    'adsengine_manage',
+    'adsengine_approve',
+    # ── ADSENG47 — permissions FINES du moteur autonome (runner P6). Deux
+    # pouvoirs DISTINCTS de l'approbation ENG19 : gérer les plans de vol
+    # (``adsengine_flightplan_manage``, palier responsable+) et ACTIVER le mode
+    # autonome (``adsengine_autonomy_toggle``). L'activation de l'autonomie est
+    # admin-SEUL : elle n'est mappée sur AUCUN autre rôle ci-dessous, donc seuls
+    # Directeur/Administrateur (qui héritent d'``ALL_PERMISSIONS``) la portent.
+    'adsengine_flightplan_manage',
+    'adsengine_autonomy_toggle',
+    # ── Portée de visibilité des enregistrements (Feature F) ──
+    # Marqueurs de RÔLE (pas des cases « action ») : narrowing OPT-IN. Un rôle
+    # SANS l'un de ces marqueurs voit tous les enregistrements de sa société
+    # (comportement historique préservé — légacy, rôles personnalisés, admins).
+    # `records_scope_equipe` : ses propres enregistrements + ceux de ses pairs
+    # (même superviseur direct). `records_scope_sous_arbre` : les siens + tout
+    # son sous-arbre (toute personne lui remontant, récursivement).
+    'records_scope_equipe',
+    'records_scope_sous_arbre',
+    # ── YRBAC3 — Fine-grainage des apps gatées seulement par
+    # ``IsResponsableOrAdmin`` : qhse/gestion_projet/contrats/litiges/kb.
+    # Chaque app reçoit deux codes DISJOINTS : ``<app>_voir`` (lecture — GET/
+    # HEAD/OPTIONS) et ``<app>_gerer`` (écriture — POST/PUT/PATCH/DELETE +
+    # actions custom). Compta a déjà ses propres codes fins (compta_saisir/
+    # valider/cloturer, COMPTA40) — pas de doublon ici. Paie a déjà
+    # paie_voir/paie_gerer (XPAI7) — pas de doublon ici non plus.
+    'qhse_voir',
+    'qhse_gerer',
+    'projet_voir',
+    'projet_gerer',
+    'contrat_voir',
+    'contrat_gerer',
+    'litige_voir',
+    'litige_gerer',
+    'kb_voir',
+    'kb_gerer',
+    # ── NTJUR1 — Affaires juridiques (apps/juridique), même patron YRBAC3 que
+    # ``contrat_*``/``litige_*`` ci-dessus. Deux codes DISJOINTS :
+    #   * ``juridique_voir``  — lecture des dossiers (GET/HEAD/OPTIONS) ;
+    #   * ``juridique_gerer`` — écriture (POST/PUT/PATCH/DELETE + actions).
+    # Module NEUF : comme ``ao_*`` (AOF2), ``rh_*`` (WIR172) et ``fpa_*``
+    # (WIR173), ils ne sont mappés sur AUCUN rôle Responsable/Commercial/
+    # Technicien/Viewer ci-dessous — un dossier contentieux (licenciement,
+    # litige actionnaire) reste à la direction, qui les porte par héritage
+    # d'``ALL_PERMISSIONS``. Aucun accès existant n'est retiré : l'app n'existait
+    # pas. Le filtrage de CONFIDENTIALITÉ (dossiers ``confidentiel`` invisibles
+    # hors palier administrateur) est une garde SUPPLÉMENTAIRE, posée dans le
+    # ``get_queryset`` du ViewSet (NTJUR1).
+    'juridique_voir',
+    'juridique_gerer',
+    # ── NTDOC11 — Salles de données (apps/datarooms), même patron YRBAC3 :
+    #   * ``datarooms_voir``  — lecture des salles et de leur contenu ;
+    #   * ``datarooms_gerer`` — création/modification, ajout et retrait de
+    #     documents, invitation et révocation de viewers, fermeture.
+    # Module NEUF : comme ``juridique_*`` ci-dessus, il n'est mappé sur AUCUN
+    # rôle Responsable/Commercial/Technicien/Viewer — une due diligence reste à
+    # la direction, qui les porte par héritage d'``ALL_PERMISSIONS``. Aucun
+    # accès existant n'est retiré : l'app n'existait pas.
+    'datarooms_voir',
+    'datarooms_gerer',
+    # NTJUR39 — ENGAGER UNE DÉPENSE n'est pas « écrire dans le module ».
+    # ``juridique_gerer_mandats`` est REQUISE, EN PLUS de ``juridique_gerer``,
+    # pour créer/modifier un ``MandatAvocat`` ou une ``NoteHonoraires``, et
+    # pour proposer une provision (NTJUR14). Un responsable de dossier sans ce
+    # code consulte son dossier mais n'engage aucune dépense. DISTINCTE de la
+    # permission de confidentialité : voir un dossier secret ne donne pas le
+    # droit de signer un cabinet à 300 000 MAD.
+    'juridique_gerer_mandats',
+    # NTJUR40 — DÉFENSE EN PROFONDEUR sur le workflow d'approbation des
+    # engagements juridiques (NTJUR19) : ``juridique_approuver_engagement``
+    # est REQUISE, EN PLUS de ``juridique_gerer``, pour décider une étape.
+    # Être NOMMÉ approbateur d'une étape ne suffit donc jamais : retirer la
+    # permission au rôle d'un approbateur désigné bloque IMMÉDIATEMENT son
+    # bouton « Approuver » côté API, sans toucher aux étapes en cours. Même
+    # esprit que ``cpq_approbation_approuver`` (NTCPQ36). Non mappée sur un
+    # rôle non-direction : seuls Directeur/Administrateur la portent par
+    # héritage d'``ALL_PERMISSIONS``, un admin peut l'octroyer à un rôle
+    # comptable/juridique dédié.
+    'juridique_approuver_engagement',
+    # ── WIR172 — Ressources humaines (apps/rh), même patron YRBAC3. Le module
+    # RH n'avait AUCUNE permission fine : ``_RhBaseViewSet`` était gardé par le
+    # grossier ``IsResponsableOrAdmin``, qui passe dès qu'un rôle accorde UNE
+    # écriture — même totalement hors RH (``crm_creer`` suffisait). Un
+    # Commercial obtenait donc le CRUD complet des dossiers employés, des
+    # sanctions et des visites médicales. Deux codes DISJOINTS :
+    #   * ``rh_voir``  — lecture du module RH (GET/HEAD/OPTIONS) ;
+    #   * ``rh_gerer`` — écriture (POST/PUT/PATCH/DELETE + actions custom).
+    # Distribution (même logique que ``paie_voir``/``paie_gerer``, XPAI7) :
+    # les deux codes vont aux rôles qui avaient DÉJÀ un mandat RH — Directeur
+    # et Administrateur (héritage d'ALL_PERMISSIONS), l'administration
+    # DÉLÉGUÉE « Admin RH » (NTADM20) dont c'est le domaine, et le
+    # « Responsable » (accès historique complet, cf. RESPONSABLE_PERMISSIONS).
+    # Ils ne sont mappés sur AUCUN rôle Commercial/Technicien/Viewer : ceux-là
+    # n'obtenaient l'accès RH que par EFFET DE BORD d'une écriture ailleurs
+    # (``crm_creer`` suffisait à satisfaire ``IsResponsableOrAdmin``) — c'est
+    # exactement le trou que WIR172 ferme. Les comptes HÉRITÉS sans rôle fin
+    # gardent leur accès historique (repli ``_user_has_or_legacy``).
+    # La rémunération (``salaires_voir``) et les bulletins restent gardés par
+    # leurs propres codes — inchangés.
+    'rh_voir',
+    'rh_gerer',
+    # ── WIR173 — FP&A (apps/fpa). Les 4 codes existaient DÉJÀ côté
+    # ``apps/fpa/permissions.py`` (NTFPA26) mais n'étaient enregistrés NULLE
+    # PART : ils n'étaient donc pas assignables depuis l'UI de gestion des
+    # rôles, et les 14 viewsets FP&A (cycles, export XLSX, scénarios,
+    # projection de masse salariale) n'avaient AUCUNE garde — tout utilisateur
+    # authentifié de la société les lisait ET les écrivait.
+    #   * ``fpa_saisir``         — saisir le budget de SON département ;
+    #   * ``fpa_valider``        — valider/rejeter un budget soumis ;
+    #   * ``fpa_consulter_tout`` — voir TOUS les départements (lecture élargie,
+    #     n'écrit jamais) ;
+    #   * ``fpa_administrer``    — administration complète FP&A : SEULE
+    #     permission acceptée sur les actions de gouvernance d'un cycle
+    #     (ouvrir-saisie / clore / dupliquer / export).
+    # Comme ``ao_*`` (AOF2) et ``rh_*`` (WIR172), aucun de ces codes n'est mappé
+    # sur un rôle Responsable/Commercial/Technicien/Utilisateur/Viewer : la
+    # planification budgétaire reste à la direction (Directeur/Administrateur
+    # par héritage d'ALL_PERMISSIONS). Les comptes HÉRITÉS sans rôle fin gardent
+    # leur accès historique (repli légacy de ``FpaScopedPermission``).
+    'fpa_saisir',
+    'fpa_valider',
+    'fpa_consulter_tout',
+    'fpa_administrer',
+    # ── WIR174 — GED (apps/ged). Le caviardage définitif, la rétention légale
+    # (legal hold) et les politiques de rétention n'étaient gardés que par
+    # ``IsResponsableOrAdmin`` — c'est-à-dire par tout porteur d'UNE écriture,
+    # même totalement hors GED. Trois codes, deux paliers :
+    #   * ``ged_voir``  — lecture du module (déclaratif : la LECTURE GED reste
+    #     ouverte à tout rôle interne via ``IsAnyRole``, contrat GED37 que
+    #     WIR174 ne referme PAS ; ce code sert le gating d'écran/nav et un
+    #     éventuel resserrement futur, il n'ouvre rien de plus) ;
+    #   * ``ged_gerer`` — écriture documentaire courante (créer/éditer/
+    #     supprimer un document, opérations de lot…). Mappé LARGEMENT, sur tous
+    #     les rôles qui écrivaient déjà : la GED est un outil transverse, aucun
+    #     accès n'est retiré.
+    #   * ``ged_gouvernance`` — les trois pouvoirs de GOUVERNANCE documentaire :
+    #     poser/lever un legal hold, caviarder définitivement, écrire une
+    #     politique de rétention. DIRECTION SEULE : mappé sur AUCUN rôle
+    #     ci-dessous (seuls Directeur/Administrateur le portent, par héritage
+    #     d'ALL_PERMISSIONS) et ÉLEVÉ (cf. ELEVATED_PERMISSIONS) — un
+    #     Responsable ne peut donc pas se l'octroyer.
+    'ged_voir',
+    'ged_gerer',
+    'ged_gouvernance',
+    # ── AOF2 — Appels d'offres (apps/ao) : correction d'une régression de
+    # confidentialité EXISTANTE. Les 8 ViewSets AO héritaient d'une base gardée
+    # par le grossier ``IsResponsableOrAdmin`` : tout le palier Responsable
+    # voyait l'intégralité d'un dossier d'appel d'offres, et il n'existait
+    # AUCUNE permission ``ao_*``. Trois codes DISJOINTS :
+    #   * ``ao_voir``   — lecture du dossier AO (GET/HEAD/OPTIONS) ;
+    #   * ``ao_gerer``  — écriture (POST/PUT/PATCH/DELETE + actions métier) ;
+    #   * ``ao_rentabilite_voir`` — voir l'ÉCONOMIE d'un AO (coût de revient,
+    #     marge, bénéfice). Donnée financière interne, jamais client-facing —
+    #     même palier que ``prix_achat_voir``/``marge_voir``, donc ÉLEVÉE (cf.
+    #     ELEVATED_PERMISSIONS) et mappée dans AUCUNE liste de rôle ci-dessous :
+    #     seuls Directeur et Administrateur la portent, par héritage
+    #     d'ALL_PERMISSIONS.
+    # ``ao_voir``/``ao_gerer`` ne sont eux non plus mappés sur aucun rôle
+    # Responsable/Commercial/Technicien/Utilisateur : l'accès AO se RESSERRE
+    # sur la direction, et reste INCHANGÉ pour Directeur/Administrateur.
+    'ao_voir',
+    'ao_gerer',
+    'ao_rentabilite_voir',
+    # ── CAL6 — Calepinage (apps/calepinage). Deux codes DISJOINTS, source
+    # unique dans ``apps/calepinage/permissions.py`` :
+    #   * ``calepinage_voir``  — lecture d'un calepinage ;
+    #   * ``calepinage_gerer`` — écriture + actions métier (enregistrer un
+    #     layout, créer/retenir une variante, dupliquer).
+    # PALIER ``ventes`` : concevoir une toiture est un geste commercial
+    # courant — partout où un rôle porte ``ventes_voir`` il gagne
+    # ``calepinage_voir``, et partout où il porte ``ventes_creer`` il gagne
+    # ``calepinage_gerer``. AUCUNE permission ÉLEVÉE n'est touchée (le module
+    # n'expose ni prix d'achat, ni marge), et aucun accès existant n'est
+    # retiré : l'app n'existait pas avant ce groupe.
+    'calepinage_voir',
+    'calepinage_gerer',
+    # ── CALX347 — le SECOND REGARD sur un calepinage : ``calepinage_approuver``
+    # (source unique ``apps/calepinage/permissions.py::CAL_APPROUVER``).
+    # « Qui peut écrire » ne vaut plus « qui peut valider » : un porteur de
+    # ``calepinage_gerer`` SEUL reçoit 403 sur la décision d'approbation.
+    # ZÉRO TITULAIRE PAR DÉFAUT (décision tranchée du 21/09/2026) : le code
+    # n'est ajouté à AUCUNE liste de rôle métier ci-dessous — seuls Directeur
+    # et Administrateur le portent, par l'héritage d'``ALL_PERMISSIONS`` qui
+    # vaut pour CHAQUE code du catalogue ; tout autre rôle le reçoit par la
+    # matrice des rôles, jamais par défaut. Préfixe ``calepinage_`` : rattaché
+    # au manifeste ``calepinage`` par ``PERMISSION_MODULE`` sans ligne neuve.
+    'calepinage_approuver',
+    # ── NTADM39 — permissions fines de apps.adminops. Toutes gardées DERRIÈRE
+    # ``IsAdministrateur`` (palier admin déjà requis) — ces codes RESSERRENT
+    # encore l'accès au sein de ce palier : un rôle admin-tier CUSTOM
+    # (``est_systeme=False``) doit porter le code précis pour agir ; les rôles
+    # SYSTÈME (``est_systeme=True``, Directeur/Administrateur…) et les comptes
+    # hérités sans Role fin gardent leur comportement actuel (rétrocompat —
+    # voir ``apps.adminops.permissions.verifier_permission_fine``). Nommage
+    # ``adminops_<objet>_<action>`` (jamais ``adminops.<objet>.<action>`` —
+    # ce dépôt n'utilise QUE le underscore ; et ``_voir`` — jamais ``_consulter``
+    # — pour rester lu comme LECTURE par
+    # ``authentication.CustomUser._role_grants_write``).
+    #   * ``adminops_entites_gerer``          — éditer une Entité (apps/entites,
+    #     câblage HORS PÉRIMÈTRE de cette tâche : apps/entites appartient à une
+    #     autre lane — le code est déclaré ici, prêt à être consommé).
+    #   * ``adminops_sandbox_creer``          — créer un environnement sandbox.
+    #   * ``adminops_config_package_exporter``— exporter un package de config.
+    #   * ``adminops_config_package_importer``— appliquer (importer) un package.
+    #   * ``adminops_licences_voir``          — consulter l'écran Licences & sièges.
+    'adminops_entites_gerer',
+    'adminops_sandbox_creer',
+    'adminops_config_package_exporter',
+    'adminops_config_package_importer',
+    'adminops_licences_voir',
+    # ── VAO12 — Veille appels d'offres (apps/veille_ao). Deux codes, et le
+    # partage entre les deux n'est pas cosmétique :
+    #   * ``veille_ao_voir``  — LIRE les avis du sas. Mappé LARGEMENT : un
+    #     commercial doit voir passer les avis, sinon la veille ne sert à
+    #     personne. C'est de l'information PUBLIQUE (des avis de marché
+    #     publiés), pas une donnée sensible.
+    #   * ``veille_ao_gerer`` — ÉCRIRE : modifier les mots-clés, les sources,
+    #     les règles d'exclusion, trancher un avis. Palier Responsable /
+    #     Directeur : ces réglages décident de ce que TOUTE la société voit,
+    #     et l'armement de la collecte en dépend (règle #5).
+    # Aucun accès n'est ÉLARGI par rapport à aujourd'hui : le module est neuf,
+    # ces deux codes n'ouvrent que ses propres routes.
+    'veille_ao_voir',
+    'veille_ao_gerer',
+    # NTCPQ36 — permissions granulaires CPQ (apps/cpq), vérifiées côté
+    # viewsets, jamais un simple check de rôle nommé en dur :
+    #   * ``cpq_regles_gerer``            — écrire les règles produit CPQ
+    #     (NTCPQ2) et les contraintes de compatibilité (NTCPQ1).
+    #   * ``cpq_prix_contractuels_gerer`` — modifier/supprimer un
+    #     PrixContractuel (NTCPQ5) créé par un AUTRE utilisateur (NTCPQ37 ;
+    #     son propre créateur peut toujours l'éditer sans ce code).
+    #   * ``cpq_marge_voir``              — voir ``marge_sous_seuil`` (NTCPQ6)
+    #     sur le détail devis et l'export technique (NTCPQ22). Même palier
+    #     de sensibilité que ``marge_voir``/``prix_achat_voir`` (ELEVATED).
+    #   * ``cpq_approbation_approuver``   — approuver/rejeter une étape
+    #     d'approbation de remise (NTCPQ7/8).
+    'cpq_regles_gerer',
+    'cpq_prix_contractuels_gerer',
+    'cpq_marge_voir',
+    'cpq_approbation_approuver',
+    # NTSCM37 — permissions granulaires du module planification supply chain
+    # (apps/scm), vérifiées via ``apps.scm.permissions`` (HasPermissionOrLegacy,
+    # repli sur le palier Responsable/Admin historique) :
+    #   * ``scm_previsions_voir``/``scm_previsions_editer`` — prévisions de
+    #     demande (NTSCM1/2/3) et événements de demande.
+    #   * ``scm_politiques_stock_editer`` — écrire les politiques de stock
+    #     (NTSCM6, recalcul en masse, assistant NTSCM30).
+    #   * ``scm_sop_voir`` — lecture des cycles S&OP.
+    #   * ``scm_sop_animer`` — avancer le statut d'un cycle S&OP
+    #     (``avancer-statut``, NTSCM12) — réservé Administrateur/Directeur.
+    #   * ``scm_fournisseurs_classement_voir`` — réservé pour un futur écran
+    #     de classement/scorecard fournisseur (NTSCM23, pas encore au plan) ;
+    #     enregistré ici sans viewset consommateur pour l'instant.
+    'scm_previsions_voir',
+    'scm_previsions_editer',
+    'scm_politiques_stock_editer',
+    'scm_sop_voir',
+    'scm_sop_animer',
+    'scm_fournisseurs_classement_voir',
+    # ── WIR169 — codes DÉCLARÉS par des viewsets mais ABSENTS du catalogue.
+    # Bug de câblage, pas de politique : ces six codes sont posés en
+    # ``read_permission``/``write_permission`` sur de vrais viewsets, mais
+    # n'ont jamais été enregistrés ici. Conséquence mécanique : les presets
+    # ``DIRECTEUR_PERMISSIONS``/``ADMIN_PERMISSIONS`` (dérivés d'ALL_PERMISSIONS)
+    # ne les contenaient pas, ``has_erp_permission`` renvoyait False pour TOUT
+    # compte portant un rôle fin — Directeur inclus — et les modules
+    # répondaient 403 à tout le monde (seuls les comptes HÉRITÉS sans rôle fin
+    # passaient, par le repli ``core.permissions._user_has_or_legacy``). Les
+    # enregistrer ne RETIRE rien et n'ouvre rien de neuf : cela rend enfin
+    # atteignable ce que les viewsets annoncent déjà. Un test générique
+    # (``apps/roles/tests_wir169_catalogue_declare.py``) interdit la récidive.
+    #   * ``btp_voir``/``btp_gerer`` — vertical BTP/EPC (apps/btp_chantier,
+    #     Groupe NTCON) : réserves, RFI, visas, journal, avenants, DGD,
+    #     diffusion de plans. Distribution calquée sur le tiering DÉJÀ déclaré
+    #     par ``frontend/src/features/btp_chantier/module.config.jsx`` (réserves
+    #     + journal au palier « normal », le reste au palier responsable) :
+    #     lecture au Technicien et au Technicien responsable, écriture au
+    #     Technicien responsable et au Responsable — c'est du travail de
+    #     chantier, jamais un droit commercial.
+    #   * ``assurances_voir``/``assurances_gerer`` — registre des assurances et
+    #     sinistres d'entreprise (apps/assurances, NTASS29). Donnée de
+    #     GOUVERNANCE (polices, primes, sinistres, attestations) : direction
+    #     (héritage d'ALL_PERMISSIONS) + le rôle légacy « Responsable », rien
+    #     de plus — aucun rôle Commercial/Technicien/Viewer ne la porte.
+    #   * ``douane_responsable`` (apps/douane) et ``transport_responsable``
+    #     (apps/transport) — réglages engageants de leur module, dont la
+    #     docstring dit explicitement « réservé à un porteur de rôle
+    #     responsable » : mappés sur le seul rôle « Responsable » (+ direction
+    #     par héritage). Ils ne se terminent pas par ``_voir`` : ce sont bien
+    #     des codes d'ÉCRITURE au sens de ``CustomUser._role_grants_write``.
+    'btp_voir',
+    'btp_gerer',
+    'assurances_voir',
+    'assurances_gerer',
+    'douane_responsable',
+    'transport_responsable',
+    # NTCON26 — permissions FINES par geste engageant du vertical BTP/EPC.
+    # ``btp_gerer`` ouvre TOUT en écriture : lever une réserve, approuver un
+    # visa, approuver un avenant qui engage le budget et finaliser un décompte
+    # général définitif relevaient du même code, alors que sur un chantier réel
+    # ces gestes appartiennent à des personnes différentes (conducteur de
+    # travaux / MOE / direction). Ces six codes sont exigés EN PLUS de
+    # ``btp_gerer`` sur l'action correspondante (cf.
+    # ``apps/btp_chantier/permissions.py``) — le repli légacy des comptes SANS
+    # rôle fin reste intact, aucun accès existant n'est retiré.
+    # Les clés sont écrites en pointé dans le plan (``btp.reserve.creer``…) ;
+    # le registre du dépôt est en souligné sans exception, on garde la
+    # convention du dépôt (correspondance 1:1 documentée dans
+    # ``apps/btp_chantier/permissions.py``).
+    'btp_reserve_creer',
+    'btp_reserve_lever',
+    'btp_rfi_repondre',
+    'btp_visa_approuver',
+    'btp_avenant_approuver',
+    'btp_dgd_finaliser',
+    # NTUX31 — permissions FINES par rôle sur les vues sauvegardées et la
+    # corbeille transverse. Avant ce code, l'accès à `/parametres/corbeille`
+    # (NTUX7) et à `definir-par-defaut-role`/le partage d'équipe (NTUX1/2)
+    # dépendait UNIQUEMENT du palier grossier hérité (`IsAdminOrResponsableTier`
+    # / `IsResponsableOrAdmin`) — non administrable au cas par cas dans la
+    # matrice de rôles. Ces cinq codes s'ajoutent EN PLUS de ces gardes
+    # (jamais à leur place, même patron que NTCON26) : un compte HÉRITÉ sans
+    # rôle fin garde exactement son accès (repli légacy de
+    # `core.permissions._user_has_or_legacy`) ; un rôle FIN doit désormais
+    # porter le code pour que la case puisse être décochée dans l'éditeur de
+    # rôles sans toucher au code. Le plan écrit les clés en pointé
+    # (``ux.vue.partager_equipe``…) ; le registre du dépôt reste en souligné,
+    # correspondance 1:1 documentée dans ``apps/uxviews/permissions.py`` et
+    # ``apps/trash/permissions.py`` :
+    #   ux.vue.partager_equipe      -> ux_vue_partager_equipe
+    #   ux.vue.definir_defaut_role  -> ux_vue_definir_defaut_role
+    #   ux.corbeille.consulter      -> ux_corbeille_consulter
+    #   ux.corbeille.restaurer      -> ux_corbeille_restaurer
+    #   ux.edition_masse.executer   -> ux_edition_masse_executer
+    'ux_vue_partager_equipe',
+    'ux_vue_definir_defaut_role',
+    'ux_corbeille_consulter',
+    'ux_corbeille_restaurer',
+    'ux_edition_masse_executer',
+    # ── NTP2P36 — permissions fines par rôle sur l'approbation d'achats et
+    # notes de frais ──────────────────────────────────────────────────────
+    # Quatre gestes d'approbation/validation distincts, DISJOINTS de
+    # ``stock_gerer``/``installation_gerer`` : un compte peut créer une
+    # demande d'achat sans pouvoir l'approuver. Aucune de ces vérifications
+    # n'est câblée ici — le catalogue rend seulement les codes octroyables
+    # (Paramètres → grille rôles) et prêts à être exigés côté vue quand les
+    # actions correspondantes appliquent la garde (apps/installations,
+    # apps/stock, apps/frais — hors du présent périmètre roles-only).
+    #   * ``approuver_demande_achat``        — décide une étape de
+    #     ``EtapeApprobationAchat`` (NTP2P2, action ``approuver-etape``).
+    #   * ``approuver_note_frais_direction`` — valide l'escalade direction
+    #     d'une ``NoteFrais`` (NTP2P11).
+    #   * ``valider_dossier_fournisseur``    — valide/rejette un dossier
+    #     fournisseur en attente (NTP2P7, action ``valider-dossier``).
+    #   * ``emettre_carte_achat``            — émet une carte d'achat
+    #     virtuelle (NTP2P15, GATED-founder/COST, non construit sur main).
+    # Non-terminées par ``_voir``/``_gerer`` : ce sont des gestes d'ÉCRITURE
+    # au sens de ``CustomUser._role_grants_write`` (même patron que
+    # ``douane_responsable``/``btp_visa_approuver``), pas des codes élevés
+    # (pas d'exposition de donnée sensible — cf. ``ELEVATED_PERMISSIONS``).
+    'approuver_demande_achat',
+    'approuver_note_frais_direction',
+    'valider_dossier_fournisseur',
+    'emettre_carte_achat',
+    # ── NTOBS22 — permissions fines par rôle sur les écrans Fiabilité
+    # (Paramètres → Fiabilité : Sauvegardes/Limites & usage/SLA/fenêtres de
+    # maintenance/export de réversibilité) ───────────────────────────────
+    #   * ``fiabilite_voir``           — lecture seule des écrans du groupe
+    #     (remplace le ``fiabilite_lecture`` du plan : le suffixe ``_voir``
+    #     est OBLIGATOIRE pour tout code de LECTURE — ``CustomUser.
+    #     _role_grants_write`` ne reconnaît que ``_voir``/``_view`` comme
+    #     lecture ; un code ``fiabilite_lecture`` isolé aurait rendu
+    #     « responsable » — et donc capable d'ouvrir tout endpoint interne
+    #     gardé ``IsResponsableOrAdmin`` — le premier rôle qui l'aurait porté
+    #     seul, à l'exact inverse du besoin lecture-seule).
+    #   * ``fiabilite_administration`` — crée une fenêtre de maintenance,
+    #     lance un export de réversibilité, édite ``SlaCreditPolicy``/
+    #     ``ReliabilitySettings``. Réservé Directeur (hérité via
+    #     ``ALL_PERMISSIONS``/``DIRECTEUR_PERMISSIONS`` ci-dessous).
+    # Le câblage des 6 vues ``core.{maintenance_windows,sla,views}`` (alors
+    # sur ``IsDirecteurOrAdmin``/``IsAdminOrResponsableTier`` codé en dur) était
+    # hors du périmètre roles-only de cette tâche — depuis le 20/09 ces deux
+    # codes sont consommés par les 6 vues Fiabilité de core (``FiabilitePermission``, NTOBS22-câblage). Aucun rôle « Comptable »
+    # n'existe dans ce dépôt (les rôles système sont Directeur/Administrateur/
+    # Commercial responsable/Commercial/Commercial terrain/Technicien
+    # responsable/Technicien/Viewer/Admin RH/Admin Ventes + les 3 rôles
+    # portail) : ``fiabilite_voir`` n'est donc octroyé à AUCUN rôle par défaut
+    # ici (jamais d'invention d'un rôle système non demandé) — un
+    # Administrateur peut le cocher manuellement sur le rôle de son choix
+    # (Viewer, par ex.) via l'éditeur de rôles existant, comme tout code de ce
+    # catalogue.
+    'fiabilite_voir',
+    'fiabilite_administration',
+    # ── NTI18N40 — gérer la localisation et les traductions ─────────────────
+    # Droit DISTINCT de ``parametres_modifier`` : celui-ci ouvre AUSSI la
+    # tarification, les modèles de documents et les référentiels, si bien
+    # qu'une société ne pouvait pas confier la relecture linguistique (écran
+    # Localisation : langue de repli, verrou de langue d'interface, fuseau
+    # d'affichage, assistant pays, fêtes mobiles ; écran Traductions) sans
+    # ouvrir au passage tous les réglages de la société.
+    #
+    # Distribution : Directeur + Administrateur par héritage d'``ALL_PERMISSIONS``,
+    # et AJOUTÉ à ``RESPONSABLE_PERMISSIONS`` ci-dessous — le palier Responsable
+    # écrivait déjà ces écrans (``IsAdminOrResponsableTier``), il garde donc
+    # exactement son accès. Aucun accès existant n'est retiré ; ce qui devient
+    # possible, c'est de DÉCOCHER la localisation sur un rôle personnalisé.
+    # Consommé par ``apps.parametres.localisation`` (garde serveur) et par le
+    # masquage de l'onglet côté interface (``state.auth.permissions``).
+    'localisation_gerer',
+]
+
+# ───────────────────────────────────────────────────────────────────────────
+# SOL12 — MODULE PROPRIÉTAIRE d'un code de permission (affichage seulement)
+# ───────────────────────────────────────────────────────────────────────────
+# Le préfixe d'un code ne suffit PAS à retrouver son module : `installation_*`
+# appartient à `installations`, `equipement_*` à `sav`, `projet_*` à
+# `gestion_projet`, `btp_*` à `btp_chantier`. D'où cette table EXPLICITE, écrite
+# une fois, ici — au plus près des codes.
+#
+# À quoi elle sert : l'éditeur de rôles montrait les cases `<app>_voir` /
+# `<app>_gerer` d'apps que la société n'a PAS (module désactivé, hors plan de
+# licence, ou vertical parqué par l'édition). L'admin cochait des droits sans
+# effet, sur des écrans qui n'existent pas chez lui.
+#
+# PORTÉE : AFFICHAGE UNIQUEMENT. Le backend continue de servir TOUS les codes
+# (`ALL_PERMISSIONS` est inchangé) et un rôle qui porte déjà un code d'un module
+# désactivé le CONSERVE — réactiver le module doit rendre le droit intact. Ce
+# n'est pas une frontière de sécurité : le gating serveur par viewset reste seul
+# juge. Un code ABSENT de cette table n'est jamais masqué (fondation, données
+# sensibles, portée d'enregistrements…).
+PERMISSION_MODULE = {
+    **{c: 'stock' for c in ALL_PERMISSIONS if c.startswith('stock_')},
+    **{c: 'crm' for c in ALL_PERMISSIONS if c.startswith('crm_')},
+    # VTA4 — les droits de la visite terrain appartiennent au module
+    # `visites`, plus au CRM (app autonome depuis le groupe VTA).
+    **{c: 'visites' for c in ALL_PERMISSIONS if c.startswith('visites_')},
+    **{c: 'ventes' for c in ALL_PERMISSIONS if c.startswith('ventes_')},
+    'installation_voir': 'installations',
+    'installation_gerer': 'installations',
+    'installation_export': 'installations',
+    'intervention_gerer': 'installations',
+    'technicien_assign': 'installations',
+    'equipement_voir': 'sav',
+    'equipement_gerer': 'sav',
+    **{c: 'sav' for c in ALL_PERMISSIONS if c.startswith('sav_')},
+    **{c: 'reporting' for c in ALL_PERMISSIONS if c.startswith('reporting_')},
+    **{c: 'compta' for c in ALL_PERMISSIONS if c.startswith('compta_')},
+    **{c: 'paie' for c in ALL_PERMISSIONS if c.startswith('paie_')},
+    'cout_non_qualite_voir': 'qhse',
+    **{c: 'adsengine' for c in ALL_PERMISSIONS if c.startswith('adsengine_')},
+    **{c: 'qhse' for c in ALL_PERMISSIONS if c.startswith('qhse_')},
+    'projet_voir': 'gestion_projet',
+    'projet_gerer': 'gestion_projet',
+    'contrat_voir': 'contrats',
+    'contrat_gerer': 'contrats',
+    'litige_voir': 'litiges',
+    'litige_gerer': 'litiges',
+    **{c: 'kb' for c in ALL_PERMISSIONS if c.startswith('kb_')},
+    # NTJUR1 — clé de manifeste ``juridique`` (apps/juridique).
+    **{c: 'juridique' for c in ALL_PERMISSIONS if c.startswith('juridique_')},
+    # NTDOC11 — clé de manifeste ``datarooms`` (apps/datarooms).
+    **{c: 'datarooms' for c in ALL_PERMISSIONS if c.startswith('datarooms_')},
+    **{c: 'rh' for c in ALL_PERMISSIONS if c.startswith('rh_')},
+    **{c: 'fpa' for c in ALL_PERMISSIONS if c.startswith('fpa_')},
+    **{c: 'ged' for c in ALL_PERMISSIONS if c.startswith('ged_')},
+    **{c: 'ao' for c in ALL_PERMISSIONS if c.startswith('ao_')},
+    # CAL6 — le préfixe des codes EST la clé de manifeste (``calepinage``).
+    **{c: 'calepinage' for c in ALL_PERMISSIONS if c.startswith('calepinage_')},
+    **{c: 'adminops' for c in ALL_PERMISSIONS if c.startswith('adminops_')},
+    **{c: 'veille_ao' for c in ALL_PERMISSIONS if c.startswith('veille_ao_')},
+    **{c: 'cpq' for c in ALL_PERMISSIONS if c.startswith('cpq_')},
+    **{c: 'scm' for c in ALL_PERMISSIONS if c.startswith('scm_')},
+    # NTCON26 — tous les codes `btp_*` appartiennent au module `btp_chantier`
+    # (le préfixe diffère de la clé de module : d'où cette dérivation explicite
+    # plutôt qu'une entrée par code).
+    **{c: 'btp_chantier' for c in ALL_PERMISSIONS if c.startswith('btp_')},
+    **{c: 'assurances' for c in ALL_PERMISSIONS if c.startswith('assurances_')},
+    'douane_responsable': 'douane',
+    'transport_responsable': 'transport',
+    # NTP2P36 — gestes d'approbation achats/notes de frais, groupés sous
+    # l'app Django propriétaire du modèle concerné (jamais la page frontend
+    # qui les affiche, qui peut différer — cf. ``compta``/``rh`` pour
+    # NoteFrais alors que le modèle vit dans ``apps.frais``).
+    'approuver_demande_achat': 'installations',
+    'valider_dossier_fournisseur': 'stock',
+    'emettre_carte_achat': 'stock',
+    'approuver_note_frais_direction': 'frais',
+    # NTOBS22 — ``fiabilite_voir``/``fiabilite_administration`` sont
+    # VOLONTAIREMENT absents d'ici : les écrans Fiabilité vivent sous
+    # ``apps.parametres`` (``module_manifest.installable = False`` — jamais
+    # togglable), même statut fondation que ``parametres_voir`` ci-dessus
+    # (cf. ``test_fondation_et_donnees_sensibles_sans_module``) : les
+    # mapper masquerait leur case sur un toggle qui n'existe pas.
+}
+
+# Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans
+# l'une d'elles, le rôle voit tout (par société). Source unique de vérité.
+SCOPE_TEAM = 'records_scope_equipe'
+SCOPE_SUBTREE = 'records_scope_sous_arbre'
+
+# Permissions ÉLEVÉES (ERR5) : octroyer l'une d'elles donne le contrôle des
+# rôles eux-mêmes (``roles_gerer`` = clé admin/escalade) ou l'accès aux données
+# sensibles (prix d'achat/marge, journal d'audit). Un non-administrateur ne peut
+# JAMAIS les ajouter à un rôle — sinon un Responsable s'auto-promeut
+# Administrateur en cochant ``roles_gerer`` sur son propre rôle. Réservées au
+# palier admin (porteur de ``roles_gerer``) côté serializer/vue.
+ELEVATED_PERMISSIONS = frozenset({
+    'roles_gerer',
+    'prix_achat_voir',
+    'journal_activite_voir',
+    'salaires_voir',
+    # FG20 — données sensibles : démasquer la marge interne est élevé (même
+    # niveau que le prix d'achat). La PII client n'est PAS élevée : voir les
+    # coordonnées d'un client est un besoin opérationnel courant (commercial),
+    # donc ``client_pii_voir`` reste octroyable par un Responsable.
+    'marge_voir',
+    # XQHS22 — coût de la non-qualité : même palier que marge/prix d'achat.
+    'cout_non_qualite_voir',
+    # AOF2 — économie d'un appel d'offres (coût de revient, marge, bénéfice
+    # net visé). Même palier que marge/prix d'achat : un non-administrateur ne
+    # peut jamais l'octroyer, et aucun rôle non-direction ne la porte.
+    'ao_rentabilite_voir',
+    # NTCPQ36 — marge sous seuil CPQ (NTCPQ6/22) : même palier que marge_voir.
+    'cpq_marge_voir',
+    # WIR174 — gouvernance documentaire (legal hold, caviardage définitif,
+    # politiques de rétention) : « direction seule » n'est tenable que si un
+    # non-administrateur ne peut pas s'octroyer le code lui-même.
+    'ged_gouvernance',
+})
+
+RESPONSABLE_PERMISSIONS = [
+    'stock_voir',
+    # QG4 — `stock_creer` retiré : la création de produits est réservée aux
+    # rôles Directeur + Commercial responsable (décision Reda).
+    'stock_modifier',
+    'stock_mouvement',
+    'crm_voir',
+    'crm_creer',
+    'crm_modifier',
+    # VT2 — le Responsable pilote les visites techniques ET porte le feu vert
+    # bureau d'études (c'est lui qui arbitre un dossier de calepinage).
+    # VTA4 — codes renommés `visites_*` (app autonome) ; périmètre inchangé.
+    'visites_voir',
+    'visites_creer',
+    'visites_modifier',
+    'visites_valider',
+    'ventes_voir',
+    'ventes_creer',
+    'ventes_modifier',
+    'ventes_valider',
+    'ventes_pdf',
+    # CAL6 — calepinage au palier ventes (il porte déjà `ventes_creer`).
+    'calepinage_voir',
+    'calepinage_gerer',
+    # La Commerciale gère le flux chantier (création depuis devis, suivi,
+    # interventions). L'admin garde le contrôle total (suppression).
+    'installation_voir',
+    'installation_gerer',
+    'intervention_gerer',
+    # SAV : la Commerciale consulte le parc d'équipements et ouvre/traite les
+    # tickets après-vente. La GESTION du parc (ajout d'équipements) reste admin.
+    'equipement_voir',
+    'sav_voir',
+    'sav_gerer',
+    # NTSRV39 — palier responsable : déclare les problèmes (cause racine) et
+    # lit NPS/sentiment. Comportement historique préservé (ce rôle avait déjà
+    # l'accès complet au SAV).
+    'sav_probleme_gerer', 'sav_nps_voir', 'sav_sentiment_ia_voir',
+    # NTSRV40 — repondait deja au client (il portait `sav_gerer`).
+    'sav_repondre_client_externe',
+    'parametres_voir',
+    # NTI18N40 — le palier Responsable écrivait déjà les écrans Localisation et
+    # Traductions (``IsAdminOrResponsableTier``) : il porte donc le nouveau code
+    # pour garder EXACTEMENT son accès une fois la garde posée.
+    'localisation_gerer',
+    'users_voir',
+    'reporting_voir',
+    # COMPTA40 — le Responsable peut saisir ET valider des écritures (mais la
+    # séparation des tâches empêche toujours de valider sa PROPRE saisie) ; la
+    # clôture reste au palier direction/admin.
+    'compta_saisir',
+    'compta_valider',
+    # XPAI7 — comportement historique préservé : le Responsable avait accès
+    # complet à la paie via le grossier IsResponsableOrAdmin.
+    'paie_voir',
+    'paie_gerer',
+    # FG20 — la Commerciale/Responsable voit les coordonnées client (besoin
+    # opérationnel) ; comportement historique préservé.
+    'client_pii_voir',
+    # YRBAC3 — comportement historique préservé : le Responsable avait accès
+    # complet (lecture + écriture) à qhse/gestion_projet/contrats/litiges/kb
+    # via le grossier IsResponsableOrAdmin.
+    'qhse_voir', 'qhse_gerer',
+    'projet_voir', 'projet_gerer',
+    'contrat_voir', 'contrat_gerer',
+    'litige_voir', 'litige_gerer',
+    'kb_voir', 'kb_gerer',
+    # WIR172 — comportement historique préservé, MÊME logique que
+    # ``paie_voir``/``paie_gerer`` ci-dessus (XPAI7) : le Responsable avait
+    # l'accès complet au module RH via le grossier ``IsResponsableOrAdmin``.
+    # Couper les dossiers employés tout en lui laissant la PAIE (donnée plus
+    # sensible encore) serait incohérent. Le resserrement visé par WIR172
+    # porte sur Commercial/Technicien/Viewer — des rôles qui n'ont jamais eu
+    # de mandat RH et n'obtenaient l'accès que par effet de bord d'une
+    # écriture ailleurs (``crm_creer`` suffisait).
+    'rh_voir', 'rh_gerer',
+    # WIR174 — GED : écriture documentaire courante préservée (accès
+    # historique via l'ancien IsResponsableOrAdmin). PAS ged_gouvernance
+    # (legal hold / caviardage / rétention) — direction seule.
+    'ged_voir', 'ged_gerer',
+    # ENG — accès complet au moteur de publicités (y compris approbation).
+    'adsengine_view', 'adsengine_manage', 'adsengine_approve',
+    # VAO12 — veille AO : lecture ET réglage (mots-clés, sources, règles).
+    'veille_ao_voir', 'veille_ao_gerer',
+    # NTCPQ36 — comportement historique préservé (accès complet via l'ancien
+    # IsResponsableOrAdmin, non-différencié). PAS cpq_marge_voir : même
+    # palier que marge_voir/prix_achat_voir, réservé Directeur/Admin
+    # (ELEVATED_PERMISSIONS) — le Responsable ne les porte pas non plus.
+    'cpq_regles_gerer', 'cpq_prix_contractuels_gerer',
+    'cpq_approbation_approuver',
+    # NTSCM37 — comportement historique préservé (accès complet via l'ancien
+    # IsResponsableOrAdmin, non-différencié) SAUF `scm_sop_animer` — réservé
+    # Administrateur/Directeur (avancer le statut d'un cycle S&OP).
+    'scm_previsions_voir', 'scm_previsions_editer',
+    'scm_politiques_stock_editer', 'scm_sop_voir',
+    'scm_fournisseurs_classement_voir',
+    # WIR169 — le rôle légacy « Responsable » est le porteur historique de tout
+    # module gardé « responsable ou admin » : il reçoit les quatre codes
+    # BTP/assurances et les deux réglages douane/transport, dont les viewsets
+    # annoncent explicitement ce palier.
+    'btp_voir', 'btp_gerer',
+    # NTCON26 — le Responsable porte les six gestes engageants du chantier
+    # (c'est le palier que les viewsets BTP annoncent depuis NTCON1).
+    'btp_reserve_creer', 'btp_reserve_lever', 'btp_rfi_repondre',
+    'btp_visa_approuver', 'btp_avenant_approuver', 'btp_dgd_finaliser',
+    'assurances_voir', 'assurances_gerer',
+    'douane_responsable', 'transport_responsable',
+    # NTUX31 — le Responsable passait déjà `IsAdminOrResponsableTier`/
+    # `IsResponsableOrAdmin` sur la corbeille, le partage d'équipe et
+    # `definir-par-defaut-role` : les cinq codes fins préservent cet accès.
+    'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
+    'ux_corbeille_consulter', 'ux_corbeille_restaurer',
+    'ux_edition_masse_executer',
+]
+
+UTILISATEUR_PERMISSIONS = [
+    'stock_voir',
+    'crm_voir',
+    'ventes_voir',
+    # CAL6 — lecture seule du calepinage, comme pour les devis.
+    'calepinage_voir',
+    'installation_voir',
+    'equipement_voir',
+    'sav_voir',
+    'parametres_voir',
+    'reporting_voir',
+    # FG20 — préserve l'accès historique aux coordonnées client.
+    'client_pii_voir',
+    # ENG19 — lecture du moteur publicitaire : `adsengine_view` est distribuée
+    # à TOUS les rôles (manage/approve restent réservés aux paliers supérieurs).
+    'adsengine_view',
+]
+
+
+# ── Les SEPT rôles (Feature D, 2026-06) ────────────────────────────────────
+# Chacun reçoit les défauts ci-dessous ; TOUT reste éditable ensuite dans
+# Paramètres (grille module × action). « Admin » = le rôle « Administrateur »
+# existant (nom conservé pour la rétro-compatibilité données/tests). Les rôles
+# système légacy « Responsable » et « Utilisateur » restent définis plus haut
+# pour les comptes/données déjà en place ; ils voient tout (aucun marqueur de
+# portée) — comportement historique préservé.
+
+# Directeur : accès total, prix d'achat/marges, et le Journal d'activité.
+# Aucun marqueur de portée → voit tous les enregistrements de la société.
+DIRECTEUR_PERMISSIONS = [
+    p for p in ALL_PERMISSIONS
+    if p not in (SCOPE_TEAM, SCOPE_SUBTREE)
+]
+
+# Administrateur (= « Admin ») : comme le Directeur, MAIS sans le Journal
+# d'activité par défaut (réservé Directeur, octroyable dans Paramètres) et,
+# depuis QG4, sans la création de produits (`stock_creer`) — réservée aux
+# rôles Directeur + Commercial responsable (décision Reda).
+ADMIN_PERMISSIONS = [
+    p for p in DIRECTEUR_PERMISSIONS
+    if p not in ('journal_activite_voir', 'stock_creer')
+]
+
+# Commercial responsable : CRM/Ventes/SAV complets, peut réassigner leads/
+# devis/tickets dans l'équipe ; voit son sous-arbre ; pas de prix d'achat.
+# QG4 — porte `stock_creer` : la création de produits est réservée aux rôles
+# Directeur + Commercial responsable (décision Reda).
+COMMERCIAL_RESP_PERMISSIONS = [
+    'crm_voir', 'crm_creer', 'crm_modifier', 'crm_supprimer', 'crm_export',
+    'crm_reassign',
+    # VT2 — mène les visites ET arbitre le feu vert de son équipe.
+    # VTA4 — codes renommés `visites_*` ; périmètre inchangé.
+    'visites_voir', 'visites_creer', 'visites_modifier',
+    'visites_valider',
+    'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_supprimer',
+    'ventes_valider', 'ventes_pdf', 'ventes_export', 'ventes_reassign',
+    'calepinage_voir', 'calepinage_gerer',  # CAL6 — palier ventes.
+    'stock_voir', 'stock_creer',  # QG4 — création de produits autorisée.
+    'equipement_voir', 'sav_voir', 'sav_gerer', 'sav_export', 'sav_reassign',
+    # NTSRV40 — repondait deja au client (il portait `sav_gerer`).
+    'sav_repondre_client_externe',
+    'parametres_voir', 'users_voir', 'reporting_voir', 'reporting_export',
+    'client_pii_voir',  # FG20 — coordonnées client (besoin commercial).
+    # YRBAC3 — comportement historique préservé (accès complet via l'ancien
+    # IsResponsableOrAdmin, non-différencié lecture/écriture).
+    'qhse_voir', 'qhse_gerer',
+    'projet_voir', 'projet_gerer',
+    'contrat_voir', 'contrat_gerer',
+    'litige_voir', 'litige_gerer',
+    'kb_voir', 'kb_gerer',
+    # WIR174 — GED : écriture documentaire courante préservée (accès
+    # historique). PAS ged_gouvernance — direction seule.
+    'ged_voir', 'ged_gerer',
+    # ENG — gestion des campagnes (l'approbation reste au palier admin).
+    'adsengine_view', 'adsengine_manage',
+    # ADSENG47 — gestion des plans de vol (palier responsable). L'ACTIVATION de
+    # l'autonomie (``adsengine_autonomy_toggle``) reste admin-seul, non ici.
+    'adsengine_flightplan_manage',
+    # VAO12 — veille AO : un commercial responsable lit les avis ET règle la
+    # veille de son équipe (palier responsable).
+    'veille_ao_voir', 'veille_ao_gerer',
+    # NTCPQ36 — comportement historique préservé (accès complet via l'ancien
+    # IsResponsableOrAdmin). PAS cpq_marge_voir : « pas de prix d'achat »
+    # pour ce rôle (même exclusion que marge_voir/prix_achat_voir).
+    'cpq_regles_gerer', 'cpq_prix_contractuels_gerer',
+    'cpq_approbation_approuver',
+    # NTUX31 — palier « responsable » (porte `users_voir`, passe déjà
+    # `IsAdminOrResponsableTier`) : préserve l'accès corbeille/vues existant.
+    'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
+    'ux_corbeille_consulter', 'ux_corbeille_restaurer',
+    'ux_edition_masse_executer',
+    SCOPE_SUBTREE,
+]
+
+# Commercial : l'accès de la « Commerciale » d'aujourd'hui ; voit son équipe
+# (pairs) ; pas de prix d'achat, pas de réassignation.
+COMMERCIAL_PERMISSIONS = [
+    'crm_voir', 'crm_creer', 'crm_modifier', 'crm_export',
+    # VT2 — le commercial TERRAIN remplit la visite ; il ne se donne JAMAIS le
+    # feu vert à lui-même (`visites_valider` absent, à dessein).
+    # VTA4 — codes renommés `visites_*` ; périmètre inchangé.
+    'visites_voir', 'visites_creer', 'visites_modifier',
+    'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_valider',
+    'ventes_pdf', 'ventes_export',
+    'calepinage_voir', 'calepinage_gerer',  # CAL6 — palier ventes.
+    'stock_voir', 'equipement_voir', 'sav_voir',
+    'parametres_voir', 'reporting_voir',
+    'client_pii_voir',  # FG20 — coordonnées client (besoin commercial).
+    # YRBAC3 — comportement historique préservé (accès complet via l'ancien
+    # IsResponsableOrAdmin, non-différencié lecture/écriture).
+    'qhse_voir', 'qhse_gerer',
+    'projet_voir', 'projet_gerer',
+    'contrat_voir', 'contrat_gerer',
+    'litige_voir', 'litige_gerer',
+    'kb_voir', 'kb_gerer',
+    # WIR174 — GED : écriture documentaire courante préservée (accès
+    # historique). PAS ged_gouvernance — direction seule.
+    'ged_voir', 'ged_gerer',
+    # ENG — gestion des campagnes (l'approbation reste au palier admin).
+    'adsengine_view', 'adsengine_manage',
+    # VAO12 — veille AO en LECTURE : un commercial doit voir passer les avis
+    # (c'est le but du module) ; le réglage reste au palier responsable.
+    'veille_ao_voir',
+    # NTUX31 — ce rôle a déjà des permissions d'écriture (crm_creer…), donc
+    # `is_responsable` (repli légacy de `IsResponsableOrAdmin`) est déjà vrai
+    # pour lui : sans ce code, `definir-par-defaut-role`/le partage d'équipe
+    # RÉGRESSERAIENT pour un rôle Commercial fin. PAS `ux_corbeille_*`/
+    # `ux_edition_masse_executer` : la corbeille et l'édition en masse restent
+    # au palier `IsAdminOrResponsableTier` (Responsable+), jamais ouvertes au
+    # Commercial de base — comportement inchangé.
+    'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
+    SCOPE_TEAM,
+]
+
+# ───────────────────────────────────────────────────────────────────────────
+# VTA4 — COMMERCIAL TERRAIN : l'utilisateur de l'app Visites, et RIEN d'autre
+# ───────────────────────────────────────────────────────────────────────────
+# Commande fondateur 2026-09-12 : « l'utilisateur qui fera la visite n'aura
+# probablement pas l'accès CRM ». C'est le rôle qui rend cette phrase vraie —
+# et c'est pour lui que la visite est sortie du CRM.
+#
+# Trois droits métier (il relève, il ne valide JAMAIS son propre travail — même
+# règle que le rôle Commercial) + LE marqueur de visibilité d'app
+# ``app_visites_voir`` (ODY26) : dès qu'un rôle porte un marqueur, la liste
+# devient une LISTE BLANCHE — ce rôle ne voit donc QUE la tuile Visites sur
+# l'accueil. Le marqueur reste HORS d'``ALL_PERMISSIONS`` (mécanique ODY26 : il
+# ne donne aucun droit, il en retire ; l'y mettre restreindrait mécaniquement
+# Directeur/Administrateur qui en dérivent).
+#
+# PAS de ``crm_voir`` : le panneau client/devis de la visite est servi par
+# l'agrégat de ``apps.visites``, pas par l'API CRM — un commercial terrain
+# reçoit donc bien 403 sur ``/api/django/crm/leads/``, ce qui est le point.
+# Le rôle Technicien existant n'est PAS touché (il porte ~25 droits post-vente
+# et sa route d'accueil ``/ma-journee`` appartient à ``installations``).
+COMMERCIAL_TERRAIN_PERMISSIONS = [
+    'visites_voir', 'visites_creer', 'visites_modifier',
+    permission_app('visites'),
+]
+
+# Technicien responsable : Chantiers/SAV/Stock complets, assigne les
+# techniciens ; voit son sous-arbre ; pas de prix d'achat.
+TECHNICIEN_RESP_PERMISSIONS = [
+    'installation_voir', 'installation_gerer', 'installation_export',
+    'intervention_gerer', 'technicien_assign',
+    'equipement_voir', 'equipement_gerer', 'sav_voir', 'sav_gerer',
+    'sav_export', 'sav_reassign',
+    # NTSRV39 — c'est LE « Responsable SAV » de l'ERP : il déclare les
+    # problèmes (NTSRV16) et lit NPS/sentiment. Le Technicien de base ne les
+    # porte PAS (il garde l'accès ticket standard `sav_voir`/`sav_gerer`).
+    'sav_probleme_gerer', 'sav_nps_voir', 'sav_sentiment_ia_voir',
+    # NTSRV40 — repondait deja au client (il portait `sav_gerer`).
+    'sav_repondre_client_externe',
+    # QG4 — `stock_creer` retiré : la création de produits est réservée aux
+    # rôles Directeur + Commercial responsable (décision Reda).
+    'stock_voir', 'stock_modifier', 'stock_mouvement',
+    'stock_export',
+    'parametres_voir', 'users_voir', 'reporting_voir', 'reporting_export',
+    'client_pii_voir',  # FG20 — coordonnées client (intervention terrain).
+    # YRBAC3 — comportement historique préservé (accès complet via l'ancien
+    # IsResponsableOrAdmin, non-différencié lecture/écriture).
+    'qhse_voir', 'qhse_gerer',
+    'projet_voir', 'projet_gerer',
+    'contrat_voir', 'contrat_gerer',
+    'litige_voir', 'litige_gerer',
+    'kb_voir', 'kb_gerer',
+    # WIR174 — GED : écriture documentaire courante préservée (accès
+    # historique). PAS ged_gouvernance — direction seule.
+    'ged_voir', 'ged_gerer',
+    # ENG — gestion des campagnes (l'approbation reste au palier admin).
+    'adsengine_view', 'adsengine_manage',
+    # ADSENG47 — gestion des plans de vol (palier responsable). L'ACTIVATION de
+    # l'autonomie (``adsengine_autonomy_toggle``) reste admin-seul, non ici.
+    'adsengine_flightplan_manage',
+    # WIR169 — vertical BTP/EPC : le chantier est son métier. Lecture ET
+    # écriture (palier « responsable » du module.config BTP). Les assurances
+    # restent hors de sa portée (gouvernance).
+    'btp_voir', 'btp_gerer',
+    # NTCON26 — séparation des tâches : le conducteur de travaux pose et lève
+    # les réserves et répond aux RFI (son métier quotidien) ; les trois gestes
+    # ENGAGEANTS (approuver un visa, approuver un avenant qui touche le budget,
+    # finaliser un décompte général définitif) montent d'un cran et restent au
+    # palier Responsable/direction — c'est précisément l'objet de NTCON26.
+    'btp_reserve_creer', 'btp_reserve_lever', 'btp_rfi_repondre',
+    # NTUX31 — palier « responsable » (porte `users_voir`) : préserve l'accès
+    # corbeille/vues existant.
+    'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
+    'ux_corbeille_consulter', 'ux_corbeille_restaurer',
+    'ux_edition_masse_executer',
+    # VTA4 — le feu vert calepinage est un arbitrage TECHNIQUE : le responsable
+    # technique le porte au même titre que le commercial responsable.
+    # `visites_voir` vient AVEC : `visites_valider` seul donnerait un rôle qui
+    # peut valider une visite sans pouvoir l'ouvrir (la lecture de l'agrégat
+    # est gatée par `visites_voir`). Il ne porte NI `creer` NI `modifier` — il
+    # arbitre, il ne relève pas les mesures.
+    'visites_voir', 'visites_valider',
+    SCOPE_SUBTREE,
+]
+
+# Technicien : Chantiers/Installations et SAV pour le travail assigné, Stock en
+# vue + mouvements ; pas d'édition Ventes ; voit son équipe (pairs).
+TECHNICIEN_PERMISSIONS = [
+    'installation_voir', 'installation_gerer', 'intervention_gerer',
+    'equipement_voir', 'sav_voir', 'sav_gerer',
+    # NTSRV40 — repondait deja au client (il portait `sav_gerer`) : aucun
+    # acces retire. C'est CE code qu'un Administrateur enleve au role d'un
+    # agent en formation pour le limiter aux notes internes.
+    'sav_repondre_client_externe',
+    'stock_voir', 'stock_mouvement',
+    'parametres_voir', 'reporting_voir',
+    'client_pii_voir',  # FG20 — coordonnées client (intervention terrain).
+    # YRBAC3 — comportement historique préservé (accès complet via l'ancien
+    # IsResponsableOrAdmin, non-différencié lecture/écriture).
+    'qhse_voir', 'qhse_gerer',
+    'projet_voir', 'projet_gerer',
+    'contrat_voir', 'contrat_gerer',
+    'litige_voir', 'litige_gerer',
+    'kb_voir', 'kb_gerer',
+    # WIR174 — GED : écriture documentaire courante préservée (accès
+    # historique). PAS ged_gouvernance — direction seule.
+    'ged_voir', 'ged_gerer',
+    # ENG — gestion des campagnes (l'approbation reste au palier admin).
+    'adsengine_view', 'adsengine_manage',
+    # WIR169 — vertical BTP/EPC en LECTURE : le module.config BTP expose déjà
+    # les réserves et le journal de chantier au palier « normal ». Jamais
+    # ``btp_gerer`` pour ce rôle (RFI/visas/avenants/DGD restent responsable+).
+    'btp_voir',
+    # NTUX31 — même motif que Commercial (base) : `is_responsable` est déjà
+    # vrai pour ce rôle via ses permissions d'écriture existantes. PAS
+    # `ux_corbeille_*`/`ux_edition_masse_executer` — restent Responsable+.
+    'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
+    SCOPE_TEAM,
+]
+
+# Viewer : lecture seule partout dans sa portée ; aucune création/édition/
+# suppression/export ; pas de prix d'achat. Portée = sa position dans l'arbre.
+VIEWER_PERMISSIONS = [
+    'stock_voir', 'crm_voir', 'ventes_voir', 'installation_voir',
+    'calepinage_voir',  # CAL6 — lecture seule, jamais `calepinage_gerer`.
+    'equipement_voir', 'sav_voir', 'parametres_voir', 'reporting_voir',
+    'client_pii_voir',  # FG20 — préserve l'accès historique aux coordonnées.
+    # YRBAC3 — nouvel accès en LECTURE SEULE (le Viewer n'avait aucun accès à
+    # ces apps avant : IsResponsableOrAdmin bloquait tout porteur lecture
+    # seule). Additif — jamais de _gerer pour ce rôle.
+    'qhse_voir',
+    'projet_voir',
+    'contrat_voir',
+    'litige_voir',
+    'kb_voir',
+    # WIR174 — GED en lecture seule (jamais _gerer pour ce rôle).
+    'ged_voir',
+    # ENG — accès en lecture seule (pas de gestion ni approbation).
+    'adsengine_view',
+    # NTUX31 — délibérément ABSENT : les cinq codes fins ne sont ni `_voir` ni
+    # `records_scope_*`, les ajouter ferait basculer `is_responsable` à Vrai
+    # pour ce rôle STRICTEMENT lecture seule (cf. `_role_grants_write`) — un
+    # effet de bord qui ouvrirait tout endpoint gardé `IsResponsableOrAdmin`
+    # ailleurs dans le dépôt, bien au-delà du périmètre UX. Un Viewer n'avait de
+    # toute façon jamais accès à la corbeille/au partage d'équipe (palier
+    # normal).
+    SCOPE_TEAM,
+]
+
+# ── NTADM20 — Administration DÉLÉGUÉE par domaine ──────────────────────────
+# Deux rôles système de plus, bâtis sur le MÊME moteur JSON que les sept
+# précédents (``Role.permissions``) : aucun nouveau moteur, aucune table de
+# plus — juste deux presets semés par ``init_roles``.
+#
+# Ce qui les distingue d'un Administrateur : ils ne portent PAS
+# ``roles_gerer``. C'est le signal FAISANT AUTORITÉ du palier
+# (``authentication.role_tiers``) : sans lui, et AVEC ``users_voir``, le
+# porteur relève du palier « responsable » — il ouvre donc l'écran
+# Utilisateurs mais JAMAIS l'administration globale (rôles/permissions,
+# Paramètres → Société, console tenants). Ils ne portent pas non plus
+# ``parametres_voir``/``parametres_modifier`` : les réglages de la société
+# restent hors de leur portée.
+#
+# NE JAMAIS y ajouter : ``stock_creer`` (politique QG4 — réservé à Directeur
+# + Commercial responsable, verrouillée par un test) ni
+# ``adsengine_autonomy_toggle`` (admin-seul, ADSENG47).
+
+# Admin RH : le domaine RH/Paie/recrutement + la gestion des comptes, rien
+# d'autre. ``salaires_voir`` lui donne la rémunération (besoin métier
+# central) ; il n'a aucun droit CRM/Ventes/Stock.
+ADMIN_RH_PERMISSIONS = [
+    'users_voir', 'users_gerer',
+    'paie_voir', 'paie_gerer',
+    'salaires_voir',
+    # WIR172 — le domaine RH lui-même (dossiers employés, sanctions, visites
+    # médicales…) : sans ces deux codes l'Admin RH perdrait l'accès qu'il a
+    # aujourd'hui via l'ancien gate grossier ``IsResponsableOrAdmin``.
+    'rh_voir', 'rh_gerer',
+    'reporting_voir',
+    'kb_voir',
+    'projet_voir',
+    'qhse_voir',
+    # WIR174 — écriture documentaire COURANTE préservée : l'Admin RH portait
+    # déjà ``users_gerer``/``paie_gerer``, donc ``is_responsable`` — il passait
+    # l'ancien ``IsResponsableOrAdmin`` de la GED et écrivait les documents
+    # (contrats, attestations, pièces du dossier employé). Sans ces deux codes,
+    # WIR174 lui RETIRAIT cet accès, ce que son propre invariant interdit.
+    # PAS ``ged_gouvernance`` (legal hold / caviardage / rétention) : direction
+    # seule, et ce code est ÉLEVÉ — un admin délégué ne peut ni le porter ni
+    # l'octroyer.
+    'ged_voir', 'ged_gerer',
+]
+
+# Admin Ventes : CRM + Ventes + Stock (sans la création de produits, QG4) et
+# les rapports commerciaux. Aucun réglage global de la société, aucune paie.
+ADMIN_VENTES_PERMISSIONS = [
+    'crm_voir', 'crm_creer', 'crm_modifier', 'crm_supprimer', 'crm_export',
+    'crm_reassign',
+    'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_supprimer',
+    'ventes_valider', 'ventes_pdf', 'ventes_export', 'ventes_reassign',
+    'calepinage_voir', 'calepinage_gerer',  # CAL6 — palier ventes.
+    'stock_voir', 'stock_modifier', 'stock_supprimer', 'stock_mouvement',
+    'stock_export',
+    'client_pii_voir',
+    'users_voir',
+    'reporting_voir', 'reporting_export',
+    'kb_voir',
+    # WIR174 — même raison que l'Admin RH ci-dessus : ``crm_creer``/
+    # ``ventes_creer``… le rendaient ``is_responsable``, donc il ÉCRIVAIT déjà
+    # dans la GED (devis signés, pièces client). Accès courant préservé, sans
+    # ``ged_gouvernance``.
+    'ged_voir', 'ged_gerer',
+]
+
+ROLE_ADMIN_RH = 'Admin RH'
+ROLE_ADMIN_VENTES = 'Admin Ventes'
+
+# ── NTADM21 — Garde-fou de la délégation ────────────────────────────────────
+# Un administrateur délégué doit pouvoir gérer SON domaine sans jamais pouvoir
+# fabriquer (ou distribuer) un rôle plus large que le sien. Le PÉRIMÈTRE porté
+# par son propre rôle borne exactement ce qu'il peut créer, éditer et assigner.
+#
+# ``perimetre = NULL`` = GLOBAL = comportement historique : Directeur,
+# Administrateur, et absolument tous les rôles existants restent inchangés.
+PERIMETRE_RH = 'rh'
+PERIMETRE_VENTES = 'ventes'
+PERIMETRE_CHOICES = [
+    (PERIMETRE_RH, 'RH & Paie'),
+    (PERIMETRE_VENTES, 'Ventes & CRM'),
+]
+
+# Ce que chaque périmètre AUTORISE — dérivé des presets NTADM20, jamais une
+# seconde liste à garder synchrone à la main.
+PERIMETRE_PERMISSIONS = {
+    PERIMETRE_RH: frozenset(ADMIN_RH_PERMISSIONS),
+    PERIMETRE_VENTES: frozenset(ADMIN_VENTES_PERMISSIONS),
+}
+
+# Périmètre semé sur les rôles système d'administration déléguée.
+SYSTEM_ROLE_PERIMETRES = {
+    ROLE_ADMIN_RH: PERIMETRE_RH,
+    ROLE_ADMIN_VENTES: PERIMETRE_VENTES,
+}
+
+
+def perimetre_de(user):
+    """Périmètre de délégation de ``user`` (``None`` = global).
+
+    ``None`` pour un anonyme, un superuser, un compte sans rôle fin, ou tout
+    rôle dont ``perimetre`` est vide — c'est-à-dire tous les comptes existants.
+    """
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return None
+    if getattr(user, 'is_superuser', False):
+        return None
+    role = getattr(user, 'role', None)
+    if role is None:
+        return None
+    return getattr(role, 'perimetre', None) or None
+
+
+def permissions_hors_perimetre(perimetre, permissions):
+    """Codes de ``permissions`` qui SORTENT de ``perimetre``, triés.
+
+    Liste vide quand ``perimetre`` est nul/inconnu (délégation globale =
+    comportement historique). Les marqueurs qui RESTREIGNENT au lieu
+    d'accorder — portée d'enregistrements (``records_scope_*``) et visibilité
+    d'app (``app_<clé>_voir``, ODY26) — ne sortent jamais d'un périmètre :
+    les refuser reviendrait à interdire de RÉDUIRE un rôle.
+    """
+    if not perimetre:
+        return []
+    autorisees = PERIMETRE_PERMISSIONS.get(perimetre)
+    if autorisees is None:
+        return []
+    return sorted(
+        code for code in set(permissions or [])
+        if code not in autorisees
+        and not code.startswith('records_scope')
+        and not est_permission_app(code)
+    )
+
+
+# Les 2 rôles d'administration déléguée (nom → permissions), semés par
+# ``init_roles`` au même titre que les rôles canoniques.
+CANONICAL_DELEGUE_ROLES = [
+    (ROLE_ADMIN_RH, ADMIN_RH_PERMISSIONS),
+    (ROLE_ADMIN_VENTES, ADMIN_VENTES_PERMISSIONS),
+]
+
+
+# ── NTPRT1 — Rôles système du Portail EXTERNE (self-service) ────────────────
+# AXE DE PERMISSION SÉPARÉ du catalogue interne ``ALL_PERMISSIONS`` : ces codes
+# ``portail_*_acces`` n'apparaissent JAMAIS dans la grille de rôles interne
+# (Paramètres, module × action) ni dans la matrice RBAC interne
+# (``core.rbac_matrix``). Ils bornent l'accès aux endpoints self-service
+# ``/api/django/portail/*`` et RIEN d'autre. Un compte portail ne porte AUCUNE
+# permission interne, donc n'a par construction accès à aucun endpoint interne
+# (critère d'acceptation NTPRT1). Le préfixe ``portail_`` est exclu de
+# ``CustomUser._role_grants_write`` : un compte portail n'est JAMAIS
+# « responsable » interne. La classe de permission d'enforcement (accès borné à
+# SON id) est posée par NTPRT5 ; ici on ne pose que la donnée (rôles + champs).
+PORTAIL_CLIENT_PERMISSIONS = ['portail_client_acces']
+PORTAIL_FOURNISSEUR_PERMISSIONS = ['portail_fournisseur_acces']
+PORTAIL_PARTENAIRE_PERMISSIONS = ['portail_partenaire_acces']
+
+# Les 3 rôles système du portail (nom → permissions). Créés/synchronisés par le
+# seeder ``init_roles`` (idempotent, additif) exactement comme les rôles
+# internes ci-dessus, avec ``est_systeme=True``.
+# NTPRT2 — noms CANONIQUES des 3 rôles système portail, extraits en constantes
+# pour que le provisionnement d'un compte portail (services de ``portail``/
+# ``stock``/``compta``) rattache le compte au MÊME rôle que celui semé par
+# ``init_roles`` — jamais une chaîne magique dupliquée qui divergerait.
+ROLE_PORTAIL_CLIENT = 'Portail client'
+ROLE_PORTAIL_FOURNISSEUR = 'Portail fournisseur'
+ROLE_PORTAIL_PARTENAIRE = 'Portail partenaire'
+
+CANONICAL_PORTAIL_ROLES = [
+    (ROLE_PORTAIL_CLIENT, PORTAIL_CLIENT_PERMISSIONS),
+    (ROLE_PORTAIL_FOURNISSEUR, PORTAIL_FOURNISSEUR_PERMISSIONS),
+    (ROLE_PORTAIL_PARTENAIRE, PORTAIL_PARTENAIRE_PERMISSIONS),
+]
+
+
+# Registre canonique : (nom, permissions). Les trois premiers conservent les
+# noms système historiques. Ordre = ordre d'affichage souhaité. Le seeder crée/
+# met à jour ces rôles système pour chaque société (idempotent, additif).
+CANONICAL_SYSTEM_ROLES = [
+    ('Directeur', DIRECTEUR_PERMISSIONS),
+    ('Administrateur', ADMIN_PERMISSIONS),
+    ('Commercial responsable', COMMERCIAL_RESP_PERMISSIONS),
+    ('Commercial', COMMERCIAL_PERMISSIONS),
+    # VTA4 — l'utilisateur de l'app Visites : il fait les visites terrain et
+    # n'a AUCUN accès CRM (liste blanche d'apps `app_visites_voir`).
+    ('Commercial terrain', COMMERCIAL_TERRAIN_PERMISSIONS),
+    ('Technicien responsable', TECHNICIEN_RESP_PERMISSIONS),
+    ('Technicien', TECHNICIEN_PERMISSIONS),
+    ('Viewer', VIEWER_PERMISSIONS),
+    # Rôles légacy conservés pour les comptes/données déjà en place.
+    ('Responsable', RESPONSABLE_PERMISSIONS),
+    ('Utilisateur', UTILISATEUR_PERMISSIONS),
+    # NTADM20 — administration DÉLÉGUÉE par domaine (RH / Ventes). Semés
+    # exactement comme les autres rôles système (est_systeme=True,
+    # idempotent) ; ils ne portent jamais ``roles_gerer``.
+    *CANONICAL_DELEGUE_ROLES,
+    # NTPRT1 — rôles système du Portail externe (client/fournisseur/partenaire).
+    # Un même axe que les rôles internes pour le SEEDING (est_systeme=True,
+    # idempotent), mais des permissions portail-seules (jamais internes).
+    *CANONICAL_PORTAIL_ROLES,
+]

@@ -31,7 +31,8 @@ def make_company(slug='zfac6-co', nom='ZFAC6 Co'):
 
 class TestEncaissementGroupe(TestCase):
     def setUp(self):
-        from apps.roles.models import RESPONSABLE_PERMISSIONS, Role
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
         self.company = make_company()
         resp_role = Role.objects.create(
             company=self.company, nom='Responsable',

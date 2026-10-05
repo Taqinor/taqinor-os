@@ -29,7 +29,7 @@ from core.views import ChangelogViewSet
 
 from . import recorder
 from .models import AuditLog
-from .signals import TRACKED_MODELS
+from .modeles_suivis import TRACKED_MODELS
 
 User = get_user_model()
 

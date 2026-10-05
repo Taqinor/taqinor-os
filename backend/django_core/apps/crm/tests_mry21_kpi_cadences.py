@@ -27,7 +27,8 @@ from apps.crm.management.commands.bilan_hebdo_relances import (
     LIGNES, bilan_hebdo_relances, formater_bilan)
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
 from apps.crm.selectors import kpi_cadences
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.parametres.models import CompanyProfile
 from apps.roles.models import Role
 from apps.ventes.models import Devis

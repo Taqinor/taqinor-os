@@ -211,7 +211,8 @@ def notifier_traductions_manquantes_hebdo(limite=None):
     marquées comme notifiées : la semaine suivante ne parle que de ce qui a
     bougé depuis.
     """
-    from apps.notifications.models import EventType, NotificationReason
+    from apps.notifications.models import NotificationReason
+    from apps.notifications.types_evenements import EventType
     from apps.notifications.services import notify_many
     from authentication.selectors import active_companies
 

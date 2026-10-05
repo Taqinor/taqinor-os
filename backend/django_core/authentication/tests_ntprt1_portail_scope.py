@@ -19,10 +19,10 @@ from django.core.management import call_command
 from django.test import TestCase
 
 from authentication.models import Company, CustomUser
-from apps.roles.models import (
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
     ALL_PERMISSIONS,
     CANONICAL_PORTAIL_ROLES,
-    Role,
 )
 
 

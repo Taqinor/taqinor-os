@@ -58,7 +58,8 @@ def make_company(slug):
 
 
 def make_directeur(company, username):
-    from apps.roles.models import DIRECTEUR_PERMISSIONS, Role
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
     role, _ = Role.objects.get_or_create(
         company=company, nom='Directeur',
         defaults={'permissions': DIRECTEUR_PERMISSIONS, 'est_systeme': True})
@@ -67,7 +68,8 @@ def make_directeur(company, username):
 
 
 def make_commercial(company, username):
-    from apps.roles.models import COMMERCIAL_PERMISSIONS, Role
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
     role, _ = Role.objects.get_or_create(
         company=company, nom='Commercial',
         defaults={'permissions': COMMERCIAL_PERMISSIONS, 'est_systeme': True})

@@ -20,7 +20,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.parametres.models import SettingsAuditLog
-from apps.roles.models import Role, ALL_PERMISSIONS
+from apps.roles.models import Role
+from apps.roles.permissions_registre import ALL_PERMISSIONS
 
 User = get_user_model()
 
@@ -167,8 +168,9 @@ class RolesEscalationGuardTest(TestCase):
     promouvrait Administrateur."""
 
     def setUp(self):
-        from apps.roles.models import (
-            RESPONSABLE_PERMISSIONS, COMMERCIAL_PERMISSIONS,
+        from apps.roles.permissions_registre import (
+            RESPONSABLE_PERMISSIONS,
+            COMMERCIAL_PERMISSIONS,
         )
         self.company = Company.objects.create(nom='Esc Co', slug='esc-co')
         self.admin_role = Role.objects.create(
@@ -258,7 +260,7 @@ class RevueAccesTest(TestCase):
         from datetime import timedelta
         from django.utils import timezone
         from authentication.models import UserSession
-        from apps.roles.models import RESPONSABLE_PERMISSIONS
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
 
         self.company = Company.objects.create(nom='Revue Co', slug='revue-co')
         self.other = Company.objects.create(nom='Autre Co', slug='autre-revue')
@@ -377,10 +379,16 @@ class AdsEnginePermissionsTest(TestCase):
     """
 
     def setUp(self):
-        from apps.roles.models import (
-            DIRECTEUR_PERMISSIONS, ADMIN_PERMISSIONS, COMMERCIAL_RESP_PERMISSIONS,
-            COMMERCIAL_PERMISSIONS, TECHNICIEN_RESP_PERMISSIONS, TECHNICIEN_PERMISSIONS,
-            VIEWER_PERMISSIONS, RESPONSABLE_PERMISSIONS, UTILISATEUR_PERMISSIONS,
+        from apps.roles.permissions_registre import (
+            DIRECTEUR_PERMISSIONS,
+            ADMIN_PERMISSIONS,
+            COMMERCIAL_RESP_PERMISSIONS,
+            COMMERCIAL_PERMISSIONS,
+            TECHNICIEN_RESP_PERMISSIONS,
+            TECHNICIEN_PERMISSIONS,
+            VIEWER_PERMISSIONS,
+            RESPONSABLE_PERMISSIONS,
+            UTILISATEUR_PERMISSIONS,
         )
         self.company = Company.objects.create(nom='AdsEng Co', slug='adseng-co')
 

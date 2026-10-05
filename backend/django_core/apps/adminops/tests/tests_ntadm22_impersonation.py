@@ -101,7 +101,8 @@ class ImpersonationConsentementTests(TestCase):
             impersonation_service.emettre_jeton_impersonation(demande)
 
     def test_notification_envoyee_a_l_administrateur(self):
-        from apps.notifications.models import EventType, Notification
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
         self._demande()
         self.assertTrue(Notification.objects.filter(
             recipient=self.admin,

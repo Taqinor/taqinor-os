@@ -619,8 +619,6 @@ backend/django_core/apps/stock/models.py::TransfertStock.company
 backend/django_core/apps/tiers/models.py::Tiers.company
 # --- backend/django_core/apps/ventes/models.py
 backend/django_core/apps/ventes/models.py::Devis.company
-backend/django_core/apps/ventes/models.py::ParametrageRelanceClient.responsable
-backend/django_core/apps/ventes/models.py::PromessePaiement.company
 # --- backend/django_core/apps/ventes/models_commissioning.py
 backend/django_core/apps/ventes/models_commissioning.py::AsBuiltPack.company
 backend/django_core/apps/ventes/models_commissioning.py::AttestationConformite.company
@@ -629,6 +627,9 @@ backend/django_core/apps/ventes/models_commissioning.py::CommissioningTest.compa
 backend/django_core/apps/ventes/models_commissioning.py::IVCurveCapture.company
 backend/django_core/apps/ventes/models_commissioning.py::IVCurveCapture.recette
 backend/django_core/apps/ventes/models_commissioning.py::TestPerformanceReception.company
+# --- backend/django_core/apps/ventes/models_facturation.py
+backend/django_core/apps/ventes/models_facturation.py::ParametrageRelanceClient.responsable
+backend/django_core/apps/ventes/models_facturation.py::PromessePaiement.company
 # --- backend/django_core/apps/ventes/models_regulatory.py
 backend/django_core/apps/ventes/models_regulatory.py::DossierChecklistItem.dossier
 backend/django_core/apps/ventes/models_regulatory.py::DossierExchange.dossier

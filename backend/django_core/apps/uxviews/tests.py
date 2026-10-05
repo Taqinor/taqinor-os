@@ -463,7 +463,8 @@ class NTUX39EcranRecentEtNotificationTests(TestCase):
             EcranRecent.objects.filter(owner=self.commercial1, ecran='crm.leads').count(), 1)
 
     def test_modifying_team_view_filters_notifies_recent_viewers_not_the_whole_company(self):
-        from apps.notifications.models import EventType, Notification
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
 
         view = SavedView.objects.create(
             company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Équipe',
@@ -489,7 +490,8 @@ class NTUX39EcranRecentEtNotificationTests(TestCase):
             event_type=EventType.UXVIEWS_VUE_EQUIPE_MODIFIEE).exists())
 
     def test_renaming_without_changing_configuration_does_not_notify(self):
-        from apps.notifications.models import EventType, Notification
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
 
         view = SavedView.objects.create(
             company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Équipe',
@@ -507,7 +509,8 @@ class NTUX39EcranRecentEtNotificationTests(TestCase):
 
         from django.utils import timezone
 
-        from apps.notifications.models import EventType, Notification
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
 
         view = SavedView.objects.create(
             company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Équipe',

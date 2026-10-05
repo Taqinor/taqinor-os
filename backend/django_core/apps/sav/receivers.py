@@ -197,7 +197,7 @@ def _proposer_contrat_maintenance_on_chantier_receptionne(
         )
 
         from apps.notifications.services import notify
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
 
         note = notify(
             assigne, EventType.SAV_ACTIVITE_DUE,

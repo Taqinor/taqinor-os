@@ -24,7 +24,8 @@ from django.test import TestCase
 
 from authentication.models import Company
 
-from apps.notifications.models import EventType, NotificationPreference
+from apps.notifications.models import NotificationPreference
+from apps.notifications.types_evenements import EventType
 from apps.notifications.services import default_prefs_for, resolve_prefs
 
 User = get_user_model()

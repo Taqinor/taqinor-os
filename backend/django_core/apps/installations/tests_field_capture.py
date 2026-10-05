@@ -616,7 +616,8 @@ class TestStatutIsolation(_Base):
 class TestTechnicienScope(TestCase):
     def setUp(self):
         self.company = make_company(slug='maj-co', nom='Ma Journée Co')
-        from apps.roles.models import Role, TECHNICIEN_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
         self.tech_role = Role.objects.create(
             company=self.company, nom='Technicien', est_systeme=True,
             permissions=list(TECHNICIEN_PERMISSIONS))

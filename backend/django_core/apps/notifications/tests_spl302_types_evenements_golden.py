@@ -18,7 +18,9 @@ from pathlib import Path
 from django.core.management import call_command
 from django.test import TestCase
 
-EMPLACEMENT = 'apps.notifications.models'
+# SPL303 : l'énum vit dans types_evenements.py ; models.py la ré-importe
+# (3 champs + migrations 0039-0064, hors périmètre de la garde).
+EMPLACEMENT = 'apps.notifications.types_evenements'
 NOMS = ['EventType']
 RACINE_DJANGO = Path(__file__).resolve().parents[2]
 GOLDEN_PATH = (
@@ -179,7 +181,8 @@ class TypesEvenementsGoldenTests(TestCase):
     def test_champs_choices(self):
         for nom in ('Notification', 'NotificationPreference',
                     'NotificationRoutingRule'):
-            champ = getattr(self.m, nom)._meta.get_field('event_type')
+            from . import models as notif_models
+            champ = getattr(notif_models, nom)._meta.get_field('event_type')
             with self.subTest(modele=nom):
                 self.assertEqual(list(champ.choices),
                                  list(self.m.EventType.choices))

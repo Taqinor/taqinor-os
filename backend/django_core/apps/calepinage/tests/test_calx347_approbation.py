@@ -45,8 +45,10 @@ from apps.calepinage.services.lidar_ign import accepter_suggestion
 from apps.calepinage.tests._m0_en_attente import (
     affirmer_non_servies, sans,
 )
-from apps.roles.models import (
-    ALL_PERMISSIONS, CANONICAL_SYSTEM_ROLES, ELEVATED_PERMISSIONS,
+from apps.roles.permissions_registre import (
+    ALL_PERMISSIONS,
+    CANONICAL_SYSTEM_ROLES,
+    ELEVATED_PERMISSIONS,
     PERMISSION_MODULE,
 )
 

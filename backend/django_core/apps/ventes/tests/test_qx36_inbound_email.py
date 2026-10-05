@@ -56,7 +56,8 @@ class Qx36InboundEmailTests(TestCase):
         self.assertTrue(any('Réponse email' in b for b in bodies))
 
     def test_reply_notifies_seller(self):
-        from apps.notifications.models import Notification, EventType
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
         msg = _StubMessage(
             subject=f'Re: {self.devis.reference}', body='Merci',
             from_email='client@example.com')

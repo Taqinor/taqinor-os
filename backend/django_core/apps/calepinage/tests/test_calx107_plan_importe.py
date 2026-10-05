@@ -237,7 +237,8 @@ class PlanImporteApiTest(TestCase):
         from apps.calepinage.models import Calepinage
         from apps.crm.models import Lead
         from apps.records.models import Attachment
-        from apps.roles.models import DIRECTEUR_PERMISSIONS, Role
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
         from authentication.models import Company
 
         self.company = Company.objects.create(nom='Plan Co',

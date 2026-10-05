@@ -103,11 +103,12 @@ from authentication.role_tiers import ROLE_ADMIN, tier_for_role_fields
 
 from apps.ged import services
 from apps.ged.models import ACL_LECTURE, AclGed, Document, Folder
-from apps.notifications.models import EventType
+from apps.notifications.types_evenements import EventType
 from apps.notifications.services import notify_many
 from apps.parametres.models_company import CompanyProfile
 from apps.records.storage import store_attachment
-from apps.roles.models import CANONICAL_PORTAIL_ROLES, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import CANONICAL_PORTAIL_ROLES
 
 CABINET_NOM = 'Documents internes'
 DOSSIER_RACINE_NOM = 'Commercial'

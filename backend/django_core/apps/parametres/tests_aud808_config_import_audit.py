@@ -15,7 +15,8 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.roles.models import Role, ADMIN_PERMISSIONS
+from apps.roles.models import Role
+from apps.roles.permissions_registre import ADMIN_PERMISSIONS
 from apps.parametres.models import CompanyProfile, MessageTemplate, SettingsAuditLog
 
 User = get_user_model()

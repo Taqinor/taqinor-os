@@ -1398,7 +1398,7 @@ def notifier_rappel(alerte, impact=None):
     """
     try:
         from django.contrib.auth import get_user_model
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         from apps.notifications.services import notify_many
 
         impact = impact or impact_rappel(alerte)

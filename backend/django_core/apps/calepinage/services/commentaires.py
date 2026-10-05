@@ -110,7 +110,7 @@ def _notifier_responsable(calepinage, commentaire, *, user=None):
     if responsable is None or responsable == user:
         return
     try:
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         from apps.notifications.services import notify
 
         auteur_nom = getattr(user, 'username', '') or 'Un équipier'
