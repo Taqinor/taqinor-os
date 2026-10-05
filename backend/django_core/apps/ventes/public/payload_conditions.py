@@ -55,7 +55,7 @@ def _acompte_publique(devis, lignes=None):
     try:
         from ..utils.echeancier import next_tranche
         from ..utils.options import (AVEC_BATTERIE, SANS_BATTERIE,
-                                    deux_options_declarees, option_effective)
+                                     deux_options_declarees, option_effective)
         tr = next_tranche(devis, lignes=lignes)
         if tr is None:
             return None
