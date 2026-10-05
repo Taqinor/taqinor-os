@@ -86,10 +86,27 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     # L'écriture passe par ``views_profile.update_profile`` (posée côté serveur
     # sur la société de l'appelant, auditée) — jamais par un setattr nested.
     benchmarking_opt_in = serializers.SerializerMethodField()
+    # CIQ614 — seuils 82-21 de RÉFÉRENCE (textes, noyau core.reglementaire),
+    # exposés à côté des surcharges société ``seuil_regime_*`` (NULL = seuil
+    # sourcé). Lecture seule : la société ne saisit qu'une surcharge.
+    seuils_sources = serializers.SerializerMethodField()
 
     def get_benchmarking_opt_in(self, obj):
         company = getattr(obj, 'company', None)
         return bool(getattr(company, 'benchmarking_opt_in', False))
+
+    def get_seuils_sources(self, obj):
+        from core.reglementaire import regime_8221 as r8221
+        return {
+            'declaration': {
+                'valeur_kw': r8221.SEUIL_DECLARATION_KW,
+                'source': r8221.SEUIL_DECLARATION_SOURCE,
+            },
+            'autorisation': {
+                'valeur_kw': r8221.SEUIL_AUTORISATION_KW,
+                'source': r8221.SEUIL_AUTORISATION_SOURCE,
+            },
+        }
 
     class Meta:
         model = CompanyProfile
@@ -166,8 +183,9 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     def validate_overage_seuil_pct(self, value):
         return self._validate_pct(value, 'Le seuil de dépassement')
 
-    # Seuils de régime loi 82-21 (kWc) : non négatifs (NULL non permis par le
-    # modèle, mais on borne défensivement les valeurs entrantes).
+    # Seuils de régime loi 82-21 (kWc) — CIQ614 : SURCHARGES société, NULL =
+    # seuil sourcé (``seuils_sources``) ; une surcharge saisie est non
+    # négative.
     def _validate_non_negative(self, value, label):
         if value is not None and value < 0:
             raise serializers.ValidationError(

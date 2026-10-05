@@ -43,6 +43,8 @@ PROFILE_CONFIG_FIELDS = [
     'tva_standard', 'tva_panneaux', 'onee_tarif_kwh', 'productible_kwh_kwc',
     'rendement_global', 'prix_cible_kwc_defaut',
     'remise_max_pct', 'discount_approval_threshold',
+    # CIQ614 — SURCHARGES 82-21 de la société (NULL = seuil sourcé des
+    # textes, exposé à part en lecture par ``seuils_sources``).
     'seuil_regime_declaration_kwc', 'seuil_regime_anre_kwc',
     # AGR606 — écart de recette pompage toléré (%), sans défaut.
     'recette_pompage_ecart_max_pct',

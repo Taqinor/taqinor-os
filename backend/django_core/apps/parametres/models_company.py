@@ -238,12 +238,15 @@ class CompanyProfile(models.Model):
     # tant qu'il n'est pas renseigné, aucun devis n'exige d'approbation.
     discount_approval_threshold = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True)
-    # ── Seuils de régime loi 82-21 (N43) — kWc, éditables. Défauts = cadre
-    # marocain standard : déclaration < 11 kWc, autorisation ANRE > 1 MW.
+    # ── Seuils de régime loi 82-21 (N43 → CIQ614, 03/10/2026) — SURCHARGES
+    # société seulement, NULL et SANS défaut. La valeur de référence vient des
+    # textes, via le noyau ``core.reglementaire.regime_8221`` (déclaration
+    # < 11 kW, autorisation ≥ 5 MW, décret 2.25.100 art. 5, 18) et est exposée
+    # avec son article (``seuils_sources`` du sérialiseur). Vide = seuil sourcé.
     seuil_regime_declaration_kwc = models.DecimalField(
-        max_digits=8, decimal_places=2, default=Decimal('11'))
+        max_digits=8, decimal_places=2, null=True, blank=True)
     seuil_regime_anre_kwc = models.DecimalField(
-        max_digits=10, decimal_places=2, default=Decimal('1000'))
+        max_digits=10, decimal_places=2, null=True, blank=True)
     # ── AGR606 (Groupe AGR, 02/10/2026) — écart de recette pompage toléré (%)
     # entre débit mesuré et débit promis. NULL et SANS défaut (décision C5-12 :
     # « seuil à saisir par toi, je ne propose pas de chiffre ») : vide = écart
