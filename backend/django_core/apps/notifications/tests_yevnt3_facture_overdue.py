@@ -16,7 +16,8 @@ from django.test import TestCase
 
 from authentication.models import Company, CustomUser
 
-from .models import EventType, Notification
+from .models import Notification
+from .types_evenements import EventType
 
 
 def _make_company(name='OverdueCo'):

@@ -76,7 +76,8 @@ class TestParametrageRelanceClientCron(TestCase):
 
 class TestParametrageRelanceClientAPI(TestCase):
     def setUp(self):
-        from apps.roles.models import RESPONSABLE_PERMISSIONS, Role
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
         self.company = make_company(slug='zfac8-api-co', nom='ZFAC8 API Co')
         resp_role = Role.objects.create(
             company=self.company, nom='Responsable',

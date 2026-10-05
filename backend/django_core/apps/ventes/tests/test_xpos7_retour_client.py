@@ -31,7 +31,8 @@ def make_company(slug='xpos7-co', nom='XPOS7 Co'):
 
 class TestRetourClient(TestCase):
     def setUp(self):
-        from apps.roles.models import Role, RESPONSABLE_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
         self.company = make_company()
         resp_role = Role.objects.create(
             company=self.company, nom='Responsable',
@@ -152,7 +153,8 @@ class TestRetourClient(TestCase):
 
     def test_cross_tenant_isolation_404(self):
         other = make_company('xpos7-other', 'Other XPOS7 Co')
-        from apps.roles.models import Role, RESPONSABLE_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
         other_role = Role.objects.create(
             company=other, nom='Responsable',
             permissions=RESPONSABLE_PERMISSIONS, est_systeme=True)

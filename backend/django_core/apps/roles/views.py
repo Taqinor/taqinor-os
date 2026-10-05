@@ -13,7 +13,8 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAdminOrResponsableTier, IsAdminRole
 from apps.parametres.models import SettingsAuditLog
-from .models import Role, ALL_PERMISSIONS
+from .models import Role
+from .permissions_registre import ALL_PERMISSIONS
 from .serializers import RoleSerializer
 
 
@@ -73,7 +74,7 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def _perimetre_acteur(self):
         """NTADM21 — périmètre de délégation de l'acteur (None = global)."""
-        from .models import perimetre_de
+        from .permissions_registre import perimetre_de
         return perimetre_de(self.request.user)
 
     def _guard_perimetre(self, *jeux_de_permissions):
@@ -90,7 +91,7 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
         ``permission_classes`` d'``@action`` : ce viewset surcharge
         ``get_permissions``, qui PRIME et rendrait une telle garde muette.
         """
-        from .models import permissions_hors_perimetre
+        from .permissions_registre import permissions_hors_perimetre
         perimetre = self._perimetre_acteur()
         if not perimetre:
             return
@@ -213,7 +214,7 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
         jamais une frontière de sécurité, et un rôle qui porte déjà un code
         d'un module éteint le conserve intact.
         """
-        from .models import PERMISSION_MODULE
+        from .permissions_registre import PERMISSION_MODULE
 
         return Response({
             'permissions': ALL_PERMISSIONS,

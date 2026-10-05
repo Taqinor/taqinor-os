@@ -17,7 +17,8 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.roles.models import Role, ALL_PERMISSIONS
+from apps.roles.models import Role
+from apps.roles.permissions_registre import ALL_PERMISSIONS
 from core.rbac_matrix import MATRIX, ALLOW
 
 User = get_user_model()

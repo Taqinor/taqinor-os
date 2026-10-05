@@ -1,7 +1,6 @@
 {
  "serializers": {
   "AffectationPaiementSerializer": {
-   "ast_sha256": "594a07c1e04c51a1ab30e584d544ce05acf740a272ca2cafc0c61897d9bfc32f",
    "fields": {
     "created_by": [
      "PrimaryKeyRelatedField",
@@ -55,7 +54,6 @@
    }
   },
   "AvoirSerializer": {
-   "ast_sha256": "8b9861e8fda929076053ba2c7ad94517d86293f49d0725a3f2ac205a784da46c",
    "fields": {
     "arrondi_pas": [
      "IntegerField",
@@ -249,7 +247,6 @@
    }
   },
   "BonCommandeSerializer": {
-   "ast_sha256": "e0a8b7d3b30382585ffdf5a30656b05b9ba3a240a2dac9b66f5e723d18daba4b",
    "fields": {
     "client": [
      "PrimaryKeyRelatedField",
@@ -422,7 +419,6 @@
    }
   },
   "FactureActivitySerializer": {
-   "ast_sha256": "1a9436392d2ddee17276c2ef7b5982d8748ef588f69d36fdb8018362a0d20735",
    "fields": {
     "body": [
      "CharField",
@@ -497,7 +493,6 @@
    }
   },
   "FactureSerializer": {
-   "ast_sha256": "d73fb4654000fd9e8495069883fd903c5cc3dcfa4d90559b9e1db15ef97b9a8c",
    "fields": {
     "abandon_auto": [
      "BooleanField",
@@ -985,7 +980,6 @@
    }
   },
   "FactureWriteSerializer": {
-   "ast_sha256": "c6a5ffb31248c519eb49902dfcdbdc662dba72033436b0eba0231af2ffd93e57",
    "fields": {
     "abandon_auto": [
      "BooleanField",
@@ -1326,7 +1320,6 @@
    }
   },
   "FollowupLevelSerializer": {
-   "ast_sha256": "cb099e44f431f889ebc5c49e992dc53e826924b88dd723e7d3e2a4f78d78333f",
    "fields": {
     "canal": [
      "ChoiceField",
@@ -1387,7 +1380,6 @@
    }
   },
   "LigneAvoirSerializer": {
-   "ast_sha256": "6c5ca4a42717bdc94bf565311015ed4d4dab18fbce649fda44da36682d48d8f9",
    "fields": {
     "designation": [
      "CharField",
@@ -1448,7 +1440,6 @@
    }
   },
   "LigneFactureSerializer": {
-   "ast_sha256": "abac6b52d295b9459f6a41d327ecd66a8dd7fc4ce560804c6153e30543156129",
    "fields": {
     "designation": [
      "CharField",
@@ -1523,7 +1514,6 @@
    }
   },
   "LigneNoteDebitSerializer": {
-   "ast_sha256": "91f11b2cfad2e416d935d9c6286813e2c6912636b7ce325ce5f81b0264a1d9c4",
    "fields": {
     "designation": [
      "CharField",
@@ -1584,7 +1574,6 @@
    }
   },
   "LigneRemiseEncaissementSerializer": {
-   "ast_sha256": "b2b280ee7de25639cae0730b0f0f94c4f13b1441f98e0016f4cc8d3887c6d13c",
    "fields": {
     "date_paiement": [
      "DateField",
@@ -1631,7 +1620,6 @@
    }
   },
   "MandatPaiementSerializer": {
-   "ast_sha256": "a9b9fe15db402f711328487ab4f9f1f1cebf8c0e8dd657b8832fae3c06e21c96",
    "fields": {
     "client": [
      "PrimaryKeyRelatedField",
@@ -1720,7 +1708,6 @@
    }
   },
   "NoteDebitSerializer": {
-   "ast_sha256": "26efd43d15b88eb2f8e94c7a1484ed8ed2a37464153d0d8058c70e581de0bdba",
    "fields": {
     "client": [
      "PrimaryKeyRelatedField",
@@ -1879,7 +1866,6 @@
    }
   },
   "PaiementSerializer": {
-   "ast_sha256": "9b930a10630252408f5afff5d3802d68cce18ed774ef9e9863b955605c95eef8",
    "fields": {
     "banque_tiree": [
      "CharField",
@@ -2080,7 +2066,6 @@
    }
   },
   "ParametrageRelanceClientSerializer": {
-   "ast_sha256": "1718d7f58e74b0edc4439fd91713beb7e964619aaa2c62340662b1b6758e0e29",
    "fields": {
     "client": [
      "PrimaryKeyRelatedField",
@@ -2134,7 +2119,6 @@
    }
   },
   "PromessePaiementSerializer": {
-   "ast_sha256": "375b3bce985759b322d80450acde387c380e13152c3b5a42f1fc68e106db1dd9",
    "fields": {
     "company": [
      "PrimaryKeyRelatedField",
@@ -2223,7 +2207,6 @@
    }
   },
   "RelanceLogSerializer": {
-   "ast_sha256": "f94effa933834321981fbf7f459235e203928ef8633f00bd46b845cf40595191",
    "fields": {
     "canal": [
      "CharField",
@@ -2291,7 +2274,6 @@
    }
   },
   "RelancerFactureSerializer": {
-   "ast_sha256": "7ca7e3335369322d7222beb0cd89d0c4468e30786780cc84198e0ee8e2158e6c",
    "fields": {
     "envoyer_email": [
      "BooleanField",
@@ -2324,7 +2306,6 @@
    }
   },
   "RemiseEncaissementSerializer": {
-   "ast_sha256": "0e3dc23072ff1ab3f7b870ef70edc374a7ef304ec72d5fd1cb6db23f67b9c2ca",
    "fields": {
     "cloture_par": [
      "PrimaryKeyRelatedField",
@@ -2455,7 +2436,6 @@
    }
   },
   "RetenueSubieSerializer": {
-   "ast_sha256": "0ac1dd12d2f405fb953331731ace04deb18047bbb52ac367d1909a689ad6d429",
    "fields": {
     "attestation_date": [
      "DateField",

@@ -22,9 +22,8 @@ from apps.adsengine.models import (
     AdCampaignMirror, AdMirror, EngineAlert, InsightSnapshot,
 )
 from apps.adsengine.tasks import daily_ads_digest
-from apps.notifications.models import (
-    EventType, Notification, NotificationPreference,
-)
+from apps.notifications.models import Notification, NotificationPreference
+from apps.notifications.types_evenements import EventType
 
 User = get_user_model()
 

@@ -26,7 +26,8 @@ from apps.stock.models import (
     LigneBonCommandeFournisseur, Produit,
 )
 from apps.stock.tasks import relancer_bcf_en_retard_task
-from apps.notifications.models import Notification, EventType
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 
 User = get_user_model()
 

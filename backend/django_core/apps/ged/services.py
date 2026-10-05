@@ -4479,7 +4479,7 @@ def relancer_demande_document(demande, *, now=None):
         return demande
     if demande.utilisateur_id:
         try:
-            from apps.notifications.models import EventType as ET
+            from apps.notifications.types_evenements import EventType as ET
             from apps.notifications.services import notify
             notify(
                 demande.utilisateur, ET.APPROVAL_REMINDER,
@@ -5109,7 +5109,7 @@ def notifier_planifications_echues(company, *, today=None):
     for planif in qs:
         if planif.assigne_a_id:
             try:
-                from apps.notifications.models import EventType as ET
+                from apps.notifications.types_evenements import EventType as ET
                 from apps.notifications.services import notify
                 notify(
                     planif.assigne_a, ET.APPROVAL_REMINDER,
@@ -6065,7 +6065,7 @@ def surveiller_reutilisation_suspecte(adresse_ip, company):
         return False
 
     try:
-        from apps.notifications.models import EventType as ET
+        from apps.notifications.types_evenements import EventType as ET
         from apps.notifications.services import notify
         for admin in _administrateurs_societe(company):
             notify(

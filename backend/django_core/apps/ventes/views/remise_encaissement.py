@@ -19,7 +19,7 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import Paiement, RemiseEncaissement, LigneRemiseEncaissement
-from ..serializers import RemiseEncaissementSerializer
+from ..serializers_facturation import RemiseEncaissementSerializer
 
 READ_ACTIONS = ['list', 'retrieve']
 

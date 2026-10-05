@@ -19,7 +19,7 @@ Liste vide = rendu propre (aucune fuite, aucune erreur).
 """
 from django.db.models import Q
 
-from apps.roles.models import SCOPE_TEAM, SCOPE_SUBTREE
+from apps.roles.permissions_registre import SCOPE_TEAM, SCOPE_SUBTREE
 
 __all__ = [
     'record_scope_for',

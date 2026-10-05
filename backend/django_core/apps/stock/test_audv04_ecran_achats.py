@@ -25,7 +25,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.roles.models import Role
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.stock.models import (
     AcompteFournisseur, BonCommandeFournisseur, DocumentConformiteFournisseur,
     EcheanceFactureFournisseur, FactureFournisseur, Fournisseur,

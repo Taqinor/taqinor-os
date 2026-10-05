@@ -19,8 +19,9 @@ from .models import (
     Facture, FollowupLevel, Paiement, ParametrageRelanceClient,
     PromessePaiement,
 )
-from .serializers import (
-    FollowupLevelSerializer, ParametrageRelanceClientSerializer,
+from .serializers_facturation import (
+    FollowupLevelSerializer,
+    ParametrageRelanceClientSerializer,
     PromessePaiementSerializer,
 )
 

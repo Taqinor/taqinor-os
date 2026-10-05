@@ -19,8 +19,11 @@ from ..models import (  # noqa: F401
 from ..serializers import (  # noqa: F401
     DevisSerializer,
     DevisWriteSerializer,
-    BonCommandeSerializer,
     LigneDevisSerializer,
+    DevisActivitySerializer,
+)
+from ..serializers_facturation import (  # noqa: F401
+    BonCommandeSerializer,
     FactureSerializer,
     FactureWriteSerializer,
     LigneFactureSerializer,
@@ -28,7 +31,6 @@ from ..serializers import (  # noqa: F401
     AvoirSerializer,
     NoteDebitSerializer,
     RelanceLogSerializer,
-    DevisActivitySerializer,
 )
 from rest_framework.permissions import BasePermission  # noqa: F401
 from authentication.permissions import (  # noqa: F401
@@ -1581,7 +1583,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from ..recouvrement import (
             ensure_default_followup_levels, facture_relancable,
         )
-        from ..serializers import RelancerFactureSerializer
+        from ..serializers_facturation import RelancerFactureSerializer
 
         facture = self.get_object()
         # AUD131 — garde d'état AVANT toute écriture.
@@ -1770,7 +1772,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     def historique(self, request, pk=None):
         """Chatter de la facture : avoirs créés + paiements encaissés (qui,
         quand, montant). Lecture seule ; acteur et société posés côté serveur."""
-        from ..serializers import FactureActivitySerializer
+        from ..serializers_facturation import FactureActivitySerializer
         facture = self.get_object()
         return Response(
             FactureActivitySerializer(

@@ -100,7 +100,8 @@ class TestSelecteurPur(TestCase):
 
 class TestNotification(TestCase):
     def test_notifie_le_responsable_configure(self):
-        from apps.notifications.models import Notification, EventType
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
 
         company = _company()
         responsable = _user(company, role='responsable')

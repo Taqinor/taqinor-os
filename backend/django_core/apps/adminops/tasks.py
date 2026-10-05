@@ -73,7 +73,7 @@ def _notifier_expiration(env, delai_txt):
         # pour un événement cross-app sans type dédié (ajouter un nouveau
         # choix à `EventType` exigerait une migration dans `apps.notifications`,
         # hors périmètre de cette lane).
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         from apps.notifications.services import notify
         notify(
             env.cree_par, EventType.DIGEST,

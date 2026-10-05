@@ -8,7 +8,9 @@
  * l'échelle de la production estimée du système), et répartit chaque kWh :
  *   • DIRECT  = min(prod, conso) : le solaire couvre d'abord ce qui est consommé
  *               à cet instant (jamais du stockage inutile).
- *   • SURPLUS (prod > conso) → charge la batterie (rendement one-way ≈0,96), le
+ *   • SURPLUS (prod > conso) → charge la batterie (rendement one-way = √ du
+ *               rendement ALLER-RETOUR publié par la FICHE de la batterie vendue —
+ *               ACAL173 ; fiche muette ⇒ AUCUNE simulation, omission nommée), le
  *               reste est exporté/perdu (valorisé à ZÉRO — pas de net-billing BT
  *               clair au Maroc, conservateur, cohérent avec applianceConsumption).
  *   • DÉFICIT (conso > prod) ← batterie d'abord (décharge, rendement one-way), puis
@@ -20,8 +22,10 @@
  * sous-estimerait l'autoconsommation du matin (aucune énergie stockée la veille).
  *
  * DISCIPLINE « ZÉRO CHIFFRE INVENTÉ » : ce module ne fabrique AUCUN prix. Les seules
- * constantes chiffrées sont des CONSTANTES PHYSIQUES documentées (rendement, DoD,
- * capacité catalogue) — chacune porte un commentaire de source. La capacité par
+ * constantes chiffrées sont des CONSTANTES PHYSIQUES documentées (DoD de repli,
+ * capacité catalogue) — chacune porte un commentaire de source. Le RENDEMENT n'en
+ * est plus une (ACAL173) : il vient de la fiche servie (`fiche_batterie`), ou la
+ * simulation n'a pas lieu. La capacité par
  * unité vient STRICTEMENT des références catalogue Dyness 5/10 kWh (jamais d'une
  * valeur inventée). Le prix batterie est lu du devis par la page, jamais ici.
  */
@@ -32,14 +36,12 @@ export const HOURS_PER_DAY = 24;
 
 // ── Constantes physiques (chacune SOURCÉE) ───────────────────────────────────
 
-/**
- * Rendement ONE-WAY d'une batterie LFP (lithium fer phosphate) ≈ 0,96 : appliqué
- * UNE fois à la charge et UNE fois à la décharge → rendement ALLER-RETOUR ≈ 0,92
- * (0,96² ≈ 0,9216), l'ordre de grandeur publié pour un pack LFP + onduleur-chargeur
- * moderne (systèmes résidentiels Deye/Dyness). Conservateur : les pertes réelles
- * dépendent du courant et de la température. Réglable ici.
- */
-export const BATTERY_ONE_WAY_EFFICIENCY = 0.96;
+// ACAL173 (C-ACAL-063) — l'ancienne constante `BATTERY_ONE_WAY_EFFICIENCY`
+// (0,96 one-way → 0,9216 aller-retour) est SUPPRIMÉE : un rendement de repli
+// est un chiffre inventé sur la batterie du client. Le rendement vient de la
+// FICHE (`fiche_batterie.rendement_ar_pct`, servi par la proposition) ou la
+// simulation de repli n'est pas exécutée (omission nommée, voir
+// `batterySimParamsFromFiche`).
 
 /**
  * Profondeur de décharge (DoD) LFP retenue = 0,90. Le lithium LFP tolère 90-95 % de
@@ -124,8 +126,12 @@ export interface BatterySimInput {
   capacityKwhPerUnit: number;
   /** Nombre d'unités batterie (le curseur : 0, 1, 2, 3…). */
   units: number;
-  /** Rendement one-way (défaut BATTERY_ONE_WAY_EFFICIENCY). */
-  oneWayEfficiency?: number;
+  /**
+   * Rendement one-way = √ (rendement aller-retour de la FICHE). OBLIGATOIRE
+   * (ACAL173) : aucun défaut — sans rendement de fiche, l'appelant ne simule
+   * pas (voir `batterySimParamsFromFiche`).
+   */
+  oneWayEfficiency: number;
   /** Profondeur de décharge (défaut BATTERY_DEPTH_OF_DISCHARGE). */
   depthOfDischarge?: number;
   /** Puissance des charges essentielles (W, défaut ESSENTIAL_LOAD_W). */
@@ -274,8 +280,15 @@ function runDay(
  * Déterministe et pur.
  */
 export function simulateBattery(input: BatterySimInput): BatterySimResult {
-  const etaOneWay = clamp01(
-    input.oneWayEfficiency ?? BATTERY_ONE_WAY_EFFICIENCY, 0.5, 1, BATTERY_ONE_WAY_EFFICIENCY);
+  // ACAL173 — aucun rendement de repli : un rendement absent ou illisible est
+  // une ERREUR d'appel (l'appelant devait ne pas simuler), jamais 0,96 en silence.
+  const etaFiche = input.oneWayEfficiency;
+  if (typeof etaFiche !== 'number' || !Number.isFinite(etaFiche)
+      || etaFiche <= 0 || etaFiche > 1) {
+    throw new RangeError(
+      'simulateBattery : oneWayEfficiency (rendement de la fiche) requis dans ]0, 1]');
+  }
+  const etaOneWay = etaFiche;
   const dod = clamp01(
     input.depthOfDischarge ?? BATTERY_DEPTH_OF_DISCHARGE, 0.1, 1, BATTERY_DEPTH_OF_DISCHARGE);
   const essentialW = Number.isFinite(input.essentialLoadW) && (input.essentialLoadW ?? 0) > 0
@@ -323,15 +336,92 @@ export function simulateBattery(input: BatterySimInput): BatterySimResult {
  * sur `hi`. `hi` (1.0) est la borne la plus OPTIMISTE — rendement/DoD à
  * 100 % : y retomber en silence ferait passer une entrée invalide pour la
  * MEILLEURE batterie possible. `fallback` doit être la CONSTANTE PAR DÉFAUT
- * documentée de l'appelant (`BATTERY_ONE_WAY_EFFICIENCY` /
- * `BATTERY_DEPTH_OF_DISCHARGE`), jamais une valeur inventée ici. Aujourd'hui
- * inatteignable des deux appelants actuels (`?? DEFAUT` écarte déjà
- * null/undefined avant d'arriver ici) — corrigé en prévision d'un futur
- * appelant qui transmettrait un NaN explicite.
+ * documentée de l'appelant (`BATTERY_DEPTH_OF_DISCHARGE` — seul appelant
+ * depuis ACAL173 : le rendement n'a plus de défaut, il est refusé s'il est
+ * illisible), jamais une valeur inventée ici.
  */
 function clamp01(v: number, lo: number, hi: number, fallback: number): number {
   if (!Number.isFinite(v)) return fallback;
   return Math.max(lo, Math.min(hi, v));
+}
+
+// ── ACAL173 — la FICHE de la batterie vendue (clé servie `fiche_batterie`) ────
+
+/**
+ * Lecture typée de `fiche_batterie` (contrat ACAL10,
+ * `backend/django_core/apps/ventes/contract_samples/couverture_batterie.json`) :
+ * le rendement aller-retour et le DoD PUBLIÉS par la fiche de la batterie du
+ * devis, et l'omission nommée quand la fiche se tait sur le rendement.
+ */
+export interface FicheBatterie {
+  /** Rendement ALLER-RETOUR publié (%), ou null quand la fiche se tait. */
+  rendementArPct: number | null;
+  /** Profondeur de décharge publiée (%), ou null (repli DoD de la page, hors défaut). */
+  dodPct: number | null;
+  /** 'fiche' quand le rendement vient des fiches, sinon null. */
+  source: 'fiche' | null;
+  /** Omission NOMMÉE servie quand le rendement manque, sinon null. */
+  simulationOmiseMotif: string | null;
+}
+
+/**
+ * Motif d'omission quand la clé `fiche_batterie` n'est PAS servie du tout
+ * (même texte que le serveur, `payload_batterie.MOTIF_SIMULATION_OMISE`) : sans
+ * fiche, pas de rendement — donc pas de simulation, jamais un repli chiffré.
+ */
+export const MOTIF_SIMULATION_OMISE =
+  'Rendement aller-retour non publié par la fiche de la batterie : simulation omise';
+
+function pctOuNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 100 ? v : null;
+}
+
+/** `fiche_batterie` du payload public, ou null (clé absente / illisible). */
+export function readFicheBatterie(payload: unknown): FicheBatterie | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const raw = (payload as Record<string, unknown>)['fiche_batterie'];
+  if (!raw || typeof raw !== 'object') return null;
+  const f = raw as Record<string, unknown>;
+  const rendementArPct = pctOuNull(f['rendement_ar_pct']);
+  const motif = typeof f['simulation_omise_motif'] === 'string'
+    && (f['simulation_omise_motif'] as string).trim()
+    ? (f['simulation_omise_motif'] as string)
+    : null;
+  return {
+    rendementArPct,
+    dodPct: pctOuNull(f['dod_pct']),
+    source: f['source'] === 'fiche' && rendementArPct !== null ? 'fiche' : null,
+    simulationOmiseMotif: motif,
+  };
+}
+
+/** Paramètres du simulateur dérivés de la fiche, ou l'omission nommée. */
+export type BatterySimFicheParams =
+  | { ok: true; oneWayEfficiency: number; depthOfDischarge?: number }
+  | { ok: false; motif: string };
+
+/**
+ * ACAL173 — `simulateBattery` reçoit oneWayEfficiency = √(rendement_ar_pct/100)
+ * (le rendement aller-retour est appliqué une fois à la charge, une fois à la
+ * décharge) et depthOfDischarge = dod_pct/100 quand la fiche le publie (sinon
+ * le repli DoD de la page, inchangé). Fiche absente ou MUETTE sur le rendement
+ * ⇒ `{ ok: false, motif }` : AUCUNE simulation, l'omission servie est affichée.
+ */
+export function batterySimParamsFromFiche(
+  fiche: FicheBatterie | null | undefined,
+): BatterySimFicheParams {
+  if (!fiche || fiche.rendementArPct === null) {
+    return {
+      ok: false,
+      motif: fiche?.simulationOmiseMotif ?? MOTIF_SIMULATION_OMISE,
+    };
+  }
+  const params: BatterySimFicheParams = {
+    ok: true,
+    oneWayEfficiency: Math.sqrt(fiche.rendementArPct / 100),
+  };
+  if (fiche.dodPct !== null) params.depthOfDischarge = fiche.dodPct / 100;
+  return params;
 }
 
 // ── Détection de la ligne batterie du devis (capacité + unités offertes) ──────

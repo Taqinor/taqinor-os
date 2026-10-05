@@ -14,7 +14,9 @@ from django.core.management import call_command
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.test import TestCase
 
-EMPLACEMENT = 'apps.audit.signals'
+# SPL305 : les deux registres vivent dans modeles_suivis.py ; signals.py
+# les importe pour connect() et _on_post_save.
+EMPLACEMENT = 'apps.audit.modeles_suivis'
 NOMS = ['TRACKED_MODELS', 'MODELES_SANS_UPDATE_GENERIQUE']
 RACINE_DJANGO = Path(__file__).resolve().parents[2]
 
@@ -171,14 +173,16 @@ def fautifs_emplacement(noms, emplacement, racine=None):
 
 class ModelesSuivisGoldenTests(TestCase):
     def test_plancher_tracked_models(self):
-        from apps.audit import signals
+        from apps.audit import modeles_suivis
         self.assertEqual(len(GOLDEN_TRACKED_MODELS), 30)
         self.assertTrue(
-            est_sous_suite(GOLDEN_TRACKED_MODELS, list(signals.TRACKED_MODELS)),
+            est_sous_suite(GOLDEN_TRACKED_MODELS,
+                           list(modeles_suivis.TRACKED_MODELS)),
             'TRACKED_MODELS : tuple retiré ou réordonné',
         )
         self.assertTrue(
-            GOLDEN_SANS_UPDATE <= set(signals.MODELES_SANS_UPDATE_GENERIQUE))
+            GOLDEN_SANS_UPDATE
+            <= set(modeles_suivis.MODELES_SANS_UPDATE_GENERIQUE))
 
     def test_connect_a_cable_les_trois_signaux(self):
         for app_label, nom in GOLDEN_TRACKED_MODELS:

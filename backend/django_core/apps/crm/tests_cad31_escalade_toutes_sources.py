@@ -36,7 +36,8 @@ from apps.crm.management.commands.escalader_premier_contact import (
     MARQUEUR, escalader_premier_contact)
 from apps.crm.models import Lead, LeadActivity
 from apps.crm.stages import COLD, CONTACTED, NEW, SIGNED
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

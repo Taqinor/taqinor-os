@@ -13,7 +13,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from ..models import Devis, BonCommande
-from ..serializers import BonCommandeSerializer, FactureSerializer
+from ..serializers_facturation import BonCommandeSerializer, FactureSerializer
 from authentication.permissions import IsResponsableOrAdmin
 from ..utils.references import create_with_reference
 from ..utils.company_settings import create_numbered

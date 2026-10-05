@@ -26,7 +26,8 @@ from apps.crm.management.commands.escalader_premier_contact import (
 from apps.crm.management.commands.notifier_relances_dues import (
     notifier_relances_dues)
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

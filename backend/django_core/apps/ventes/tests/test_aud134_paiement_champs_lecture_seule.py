@@ -124,7 +124,7 @@ class TestAud134PaiementChampsLectureSeule(TestCase):
             Paiement.objects.filter(client=self.client_obj).exists())
 
     def test_les_sept_champs_sont_declares_en_lecture_seule(self):
-        from apps.ventes.serializers import PaiementSerializer
+        from apps.ventes.serializers_facturation import PaiementSerializer
         champs = PaiementSerializer().fields
         for nom in ('client', 'statut', 'statut_affectation', 'provider_ref',
                     'motif_rejet', 'frais_rejet', 'date_rejet',

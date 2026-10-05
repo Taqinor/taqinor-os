@@ -196,7 +196,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             from django.contrib.auth import get_user_model
             from django.utils import timezone
 
-            from apps.notifications.models import EventType
+            from apps.notifications.types_evenements import EventType
             from apps.notifications.services import notify_many
 
             seuil = timezone.now() - timedelta(days=30)

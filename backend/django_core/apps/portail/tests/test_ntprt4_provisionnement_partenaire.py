@@ -34,7 +34,8 @@ from rest_framework.test import APIClient
 
 from apps.crm.models import Partenaire
 from apps.portail.services import provisionner_compte_partenaire
-from apps.roles.models import ROLE_PORTAIL_PARTENAIRE, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import ROLE_PORTAIL_PARTENAIRE
 from authentication.models import Company, CustomUser
 
 _seq = itertools.count(1)

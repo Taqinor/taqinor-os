@@ -482,7 +482,7 @@ def _notify_kpi_alerte(alerte, valeur):
     précis). Réutilise ``apps.notifications.services.notify`` — best-effort,
     ne lève jamais."""
     from apps.notifications.services import notify
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
 
     # NTDATA41 — le message NOMME ce qui est surveillé et ce qui a été comparé.
     # Une alerte de source « métrique » n'a pas de `kpi` : `get_kpi_display()`

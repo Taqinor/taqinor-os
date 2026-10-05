@@ -14,6 +14,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { lireSourcesDevisList } from './devisList/lireSources.mjs'
+import { lireSourcesFactureList } from './factureList/lireSources.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const read = (f) => readFileSync(path.join(__dirname, f), 'utf8')
@@ -25,6 +26,8 @@ test('plus une seule popup du système dans pages/ventes/', () => {
   const fichiers = [
     ...readdirSync(__dirname).map((f) => [f, f]),
     ...readdirSync(path.join(__dirname, 'devisList')).map((f) => [f, path.join('devisList', f)]),
+    // SPL211 — factureList/ (ligne + aides extraites de FactureList.jsx) est balayé aussi.
+    ...readdirSync(path.join(__dirname, 'factureList')).map((f) => [f, path.join('factureList', f)]),
   ]
   for (const [nom, f] of fichiers) {
     if (!/\.jsx?$/.test(nom) || nom.includes('.test.')) continue
@@ -39,7 +42,7 @@ test('plus une seule popup du système dans pages/ventes/', () => {
 test('les 5 écrans qui confirmaient utilisent le dialogue maison', () => {
   for (const f of ['DevisGenerator.jsx', 'DevisList.jsx', 'FactureList.jsx',
     'RelancesPage.jsx', 'BonCommandeList.jsx']) {
-    const src = read(f)
+    const src = f === 'FactureList.jsx' ? lireSourcesFactureList() : read(f)
     assert.match(src, /useConfirmDialog/, `${f} : dialogue maison absent`)
     assert.match(src, /await confirm(Delete)?\(/, `${f} : confirmation non attendue`)
   }

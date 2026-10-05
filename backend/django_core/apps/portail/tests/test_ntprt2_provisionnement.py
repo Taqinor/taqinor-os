@@ -26,7 +26,8 @@ from rest_framework.test import APIClient
 from apps.crm.models import Client
 from apps.portail.models import ComptePortailClient
 from apps.portail.services import provisionner_compte_portail_client
-from apps.roles.models import ROLE_PORTAIL_CLIENT, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import ROLE_PORTAIL_CLIENT
 from authentication.models import Company, CustomUser
 
 _seq = itertools.count(1)

@@ -1576,9 +1576,25 @@ class SerializerReader:
                     continue
                 valeurs = declares._resoudre_reference(kw.value, noeud, arbre,
                                                        constantes)
+                if not valeurs:
+                    valeurs = self._choix_importes(kw.value, proprietaire)
                 if valeurs:
                     out[nom] = sorted(valeurs)
         return out
+
+    def _choix_importes(self, reference, module: str):
+        """SPL303 — `choices=EventType.choices` ou la `TextChoices` est IMPORTEE
+        dans le module du modele (`from .types_evenements import EventType`) au
+        lieu d'y etre definie : on suit l'import par le meme resolveur que les
+        serialiseurs. Sans cela, sortir une enumeration dans son propre module
+        effacait EN SILENCE ses valeurs du contrat versionne."""
+        if not (isinstance(reference, ast.Attribute) and reference.attr == "choices"
+                and isinstance(reference.value, ast.Name)):
+            return None
+        resolu = self.backend._resolve_class(reference.value.id, module)
+        if resolu is None:
+            return None
+        return declares._valeurs_de_textchoices(resolu[1])
 
 
 def mocks_contre_serialiseur(serialiseurs, fichiers=None):

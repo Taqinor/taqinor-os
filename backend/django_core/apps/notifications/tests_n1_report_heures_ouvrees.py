@@ -33,8 +33,11 @@ from testkit.time import frozen
 
 from apps.notifications import selectors, services
 from apps.notifications.models import (
-    EventType, Holiday, Notification, NotificationPreference,
+    Holiday,
+    Notification,
+    NotificationPreference,
 )
+from apps.notifications.types_evenements import EventType
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

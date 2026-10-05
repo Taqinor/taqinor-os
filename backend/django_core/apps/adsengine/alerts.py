@@ -410,7 +410,7 @@ def notify_meta_leads_sla_breach(company, *, now=None, seuil_heures=None):
     from django.utils import timezone as _tz
 
     from apps.crm.selectors import leads_meta_sla_depasse
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
     from apps.notifications.services import notify
 
     ref_now = now or _tz.now()

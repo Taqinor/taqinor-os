@@ -4,8 +4,13 @@ Capture AVANT SPL148 : aucun sérialiseur ne bouge ici. Aucune requête, aucune
 base : `cls().get_fields()` + AST du source ; aucun symbole mocké. Fige, par
 classe :
 
-* `{champ: [classe du champ, read_only, required, source, many]}` ;
-* le sha256 de `ast.dump` de la classe (corps non touché par un déplacement).
+* `{champ: [classe du champ, read_only, required, source, many]}`.
+
+SPL148 (fin de piste) : les 20 classes vivent dans
+`apps.ventes.serializers_facturation` (sans ré-export) ; empreintes AST
+vérifiées identiques (20/20) au moment du déplacement puis retirées du
+fixture. `PLACE` est désormais actif : module attendu + aucun jumeau sur
+`apps.ventes.serializers`.
 
 Régénération (rare, volontaire) : `GOLDEN_CAPTURE=1` réécrit le fixture.
 `PLACE` : module attendu après SPL148 (`apps.ventes.serializers_facturation`).
@@ -13,8 +18,6 @@ Tant que SPL148 n'a pas eu lieu, `PLACE` est vide et `test_place` est SAUTÉ
 (le garder rouge casserait la CI du merge qui porte seulement la capture) ;
 SPL148 renseigne `PLACE` et la garde devient active.
 """
-import ast
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -23,6 +26,7 @@ from django.test import SimpleTestCase
 from rest_framework.serializers import ListSerializer
 
 from apps.ventes import serializers as ventes_serializers
+from apps.ventes import serializers_facturation
 
 SERIALISEURS = [
     'BonCommandeSerializer', 'LigneFactureSerializer', 'PaiementSerializer',
@@ -36,22 +40,12 @@ SERIALISEURS = [
     'MandatPaiementSerializer',
 ]
 
-# Module attendu par classe APRÈS SPL148 ; {} = aucun déplacement effectué.
-PLACE = {}
 MODULE_CIBLE = 'apps.ventes.serializers_facturation'
+# Module attendu par classe APRÈS SPL148.
+PLACE = {nom: MODULE_CIBLE for nom in SERIALISEURS}
 
 FIXTURE = (Path(__file__).parent / 'fixtures'
            / 'golden_serializers_facturation.json')
-SERIALIZERS_PY = Path(__file__).resolve().parents[1] / 'serializers.py'
-
-
-def _empreintes_ast():
-    arbre = ast.parse(SERIALIZERS_PY.read_text(encoding='utf-8'))
-    return {
-        n.name: hashlib.sha256(ast.dump(n).encode('utf-8')).hexdigest()
-        for n in arbre.body
-        if isinstance(n, ast.ClassDef) and n.name in SERIALISEURS
-    }
 
 
 def _champ(champ):
@@ -67,14 +61,12 @@ def _champ(champ):
 
 
 def _capturer():
-    empreintes = _empreintes_ast()
     classes = {}
     for nom in SERIALISEURS:
-        cls = getattr(ventes_serializers, nom)
+        cls = getattr(serializers_facturation, nom)
         champs = cls().get_fields()
         classes[nom] = {
             'fields': {k: _champ(v) for k, v in champs.items()},
-            'ast_sha256': empreintes.get(nom),
         }
     return {'serializers': classes}
 
@@ -91,8 +83,6 @@ class GoldenSerializersFacturationTests(SimpleTestCase):
         self.assertEqual(len(self.capture['serializers']), 20)
         for nom, d in self.capture['serializers'].items():
             self.assertTrue(d['fields'], nom)
-            self.assertTrue(d['ast_sha256'],
-                            f'{nom} : classe introuvable dans serializers.py')
 
     def test_golden(self):
         if os.environ.get('GOLDEN_CAPTURE') == '1':
@@ -107,9 +97,14 @@ class GoldenSerializersFacturationTests(SimpleTestCase):
         self.assertEqual(courant, attendu)
 
     def test_place(self):
-        if not PLACE:
-            self.skipTest('SPL148 pas encore fait : PLACE vide')
-        reel = {nom: getattr(ventes_serializers, nom).__module__
+        reel = {nom: getattr(serializers_facturation, nom).__module__
                 for nom in SERIALISEURS}
         self.assertEqual(reel, {nom: PLACE.get(nom, MODULE_CIBLE)
                                 for nom in SERIALISEURS})
+
+    def test_aucun_jumeau_dans_serializers(self):
+        # Sans ré-export : aucun des 20 noms ne reste sur serializers.py
+        # (ni définition, ni import de façade).
+        restes = [nom for nom in SERIALISEURS
+                  if hasattr(ventes_serializers, nom)]
+        self.assertEqual(restes, [])
