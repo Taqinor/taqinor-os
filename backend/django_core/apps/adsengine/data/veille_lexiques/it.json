@@ -1,0 +1,35 @@
+{
+  "langue": "it",
+  "version": "v1",
+  "produit": [
+    "vestito", "vestiti", "abito", "abiti", "gonna", "gonne", "pantaloni",
+    "jeans", "camicia", "camicie", "maglia", "maglione", "felpa", "giacca",
+    "cappotto", "abbigliamento", "costume da bagno", "intimo", "scarpe",
+    "scarpa", "sneakers", "stivali", "sandali", "decollete", "borsa",
+    "borse", "zaino", "pochette", "pelletteria"
+  ],
+  "hors_sujet": [
+    "cover per telefono", "gioielli", "collana", "bracciale", "anello", "orecchini",
+    "orologio", "orologi", "cosmetici", "trucco", "profumo", "crema",
+    "shampoo", "arredamento", "mobili", "divano", "lavanderia", "corso",
+    "corsi", "formazione"
+  ],
+  "editorial": [
+    "rivista", "blog", "articolo", "podcast", "notizie", "app", "scarica",
+    "iscriviti", "newsletter", "webinar", "episodio", "agenzia",
+    "associazione", "concorso"
+  ],
+  "commerce": [
+    "spedizione", "consegna", "prezzo", "saldi", "sconto", "acquista ora",
+    "compra", "acquista", "negozio", "reso gratuito", "€"
+  ],
+  "urgence": [
+    "ultimo giorno", "solo oggi", "ultima occasione", "scorte limitate",
+    "finisce stasera", "ultime ore", "ne restano pochi"
+  ],
+  "nom_generique": [
+    "shop", "store", "negozio", "boutique", "moda", "fashion", "style",
+    "stile", "tendenza", "chic", "lusso", "ufficiale", "official", "outlet",
+    "deals", "online", "mondo", "milano", "best", "top", "my", "the"
+  ]
+}

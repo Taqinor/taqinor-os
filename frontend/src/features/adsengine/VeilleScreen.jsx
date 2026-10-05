@@ -1,16 +1,24 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Binoculars, Plus, ExternalLink } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import VeilleDecouverte from './VeilleDecouverte'
+import VeilleAnnonceurs from './VeilleAnnonceurs'
+import VeilleEtiquetage from './VeilleEtiquetage'
+import VeilleMesures from './VeilleMesures'
 
 /* ============================================================================
-   PUB70 — Écran « Veille concurrentielle » (périmètre HONNÊTE, zéro scraping).
+   PUB70 / PLAN_VEILLE — Écran « Veille concurrentielle ».
    ----------------------------------------------------------------------------
-   L'API Ad Library de Meta ne couvre PAS les pubs commerciales marocaines : la
-   veille est MANUELLE et OUTILLÉE. On suit des Pages concurrentes (avec un lien
-   Ad Library web PROFOND à ouvrir soi-même) et on SAISIT les hooks/angles
-   observés (« inspiration », jamais copiés verbatim). Une cadence par concurrent
-   et la matière de brief sont agrégées côté serveur. Aucune collecte
-   automatisée (règle #5 — GATED derrière un dossier tos_risk/).
+   La couverture de l'API Ad Library de Meta dépend du PAYS (servie par
+   `veille/couverture/`, VEIL10) : pubs commerciales servies pour l'Union
+   européenne, Royaume-Uni à confirmer, politique seulement ailleurs (dont le
+   Maroc). Deux onglets :
+   - « Découverte » (défaut, VEIL30) : trouver les vendeurs par mots-clés × pays
+     via l'API officielle, à la demande, plafonds explicites ;
+   - « Saisie manuelle » (PUB70) : on suit des Pages concurrentes (lien Ad
+     Library web PROFOND à ouvrir soi-même) et on SAISIT les hooks/angles
+     observés (« inspiration », jamais copiés verbatim). Aucune collecte du
+     site web (règle #5 — GATED derrière un dossier tos_risk/).
    ========================================================================== */
 
 const EMPTY_PAGE = { name: '', page_id: '', country: 'MA', website: '' }
@@ -19,7 +27,96 @@ const EMPTY_OBS = {
   format: '', source_url: '',
 }
 
+const LIBELLES_ACCES = {
+  non_configure: 'Accès Ad Library non configuré.',
+  desactive: 'Accès Ad Library désactivé.',
+  non_autorise: "Cette société n'est pas autorisée à lancer une découverte.",
+  pret: 'Accès Ad Library prêt.',
+  expire_bientot: 'Accès Ad Library prêt — le jeton expire bientôt.',
+  invalide: 'Accès Ad Library invalide : jeton refusé par Meta.',
+}
+const LIBELLES_STATUT_PAYS = {
+  couvert: 'Pubs commerciales couvertes',
+  a_confirmer: 'À confirmer',
+  non_couvert: 'Politique seulement',
+}
+
+function BandeauCouverture({ couverture }) {
+  if (!couverture) return null
+  const parStatut = {}
+  for (const ligne of couverture.couverture || []) {
+    (parStatut[ligne.statut] ||= []).push(ligne)
+  }
+  const acces = couverture.acces || {}
+  return (
+    <div className="alert alert-info" data-testid="ae-veille-couverture">
+      {Object.entries(parStatut).map(([statut, lignes]) => (
+        <div key={statut} data-testid={`ae-veille-couverture-${statut}`}>
+          <strong>{LIBELLES_STATUT_PAYS[statut] || statut}</strong>
+          {' : '}{lignes.map(l => l.pays).join(', ')}
+          {' — '}{lignes[0].motif_fr}
+        </div>
+      ))}
+      <div data-testid="ae-veille-acces" data-etat={acces.etat}>
+        {LIBELLES_ACCES[acces.etat] || acces.etat}
+        {acces.expire_le && ` (expire le ${new Date(acces.expire_le).toLocaleDateString('fr-FR')})`}
+      </div>
+    </div>
+  )
+}
+
+const ONGLETS = [
+  { cle: 'decouverte', libelle: 'Découverte' },
+  { cle: 'annonceurs', libelle: 'Annonceurs' },
+  { cle: 'etiquetage', libelle: 'Échantillon de mesure' },
+  { cle: 'mesures', libelle: 'Mesures' },
+  { cle: 'manuel', libelle: 'Saisie manuelle' },
+]
+
 export default function VeilleScreen() {
+  const [onglet, setOnglet] = useState('decouverte')
+  const [couverture, setCouverture] = useState(null)
+  const [decouverteId, setDecouverteId] = useState(null)
+
+  useEffect(() => {
+    adsengineApi.veille.couverture()
+      .then(r => setCouverture(r.data))
+      .catch(() => setCouverture(null))
+  }, [])
+
+  return (
+    <div className="p-4" data-testid="ae-veille-screen">
+      <h1 className="h4 d-flex align-items-center gap-2">
+        <Binoculars size={20} aria-hidden="true" /> Veille concurrentielle
+      </h1>
+      <BandeauCouverture couverture={couverture} />
+      <ul className="nav nav-tabs mb-3" role="tablist">
+        {ONGLETS.map(o => (
+          <li className="nav-item" key={o.cle}>
+            <button
+              type="button" role="tab" aria-selected={onglet === o.cle}
+              className={`nav-link${onglet === o.cle ? ' active' : ''}`}
+              data-testid={`ae-veille-onglet-${o.cle}`}
+              onClick={() => setOnglet(o.cle)}>
+              {o.libelle}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {onglet === 'decouverte' && (
+        <VeilleDecouverte
+          couverture={couverture?.couverture || []}
+          decouverteId={decouverteId} onSelection={setDecouverteId} />
+      )}
+      {onglet === 'annonceurs' && <VeilleAnnonceurs decouverteId={decouverteId} />}
+      {onglet === 'etiquetage' && <VeilleEtiquetage decouverteId={decouverteId} />}
+      {onglet === 'mesures' && <VeilleMesures decouverteId={decouverteId} />}
+      {onglet === 'manuel' && <SaisieManuelle />}
+    </div>
+  )
+}
+
+function SaisieManuelle() {
   const [pages, setPages] = useState([])
   const [veille, setVeille] = useState(null)
   const [pageDraft, setPageDraft] = useState(EMPTY_PAGE)
@@ -76,11 +173,7 @@ export default function VeilleScreen() {
   }
 
   return (
-    <div className="p-4" data-testid="ae-veille-screen">
-      <h1 className="h4 d-flex align-items-center gap-2">
-        <Binoculars size={20} aria-hidden="true" /> Veille concurrentielle
-      </h1>
-
+    <div data-testid="ae-veille-manuel">
       {veille?.finding && (
         <div className="alert alert-info" data-testid="ae-veille-finding">
           {veille.finding.reason_fr}

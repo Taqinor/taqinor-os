@@ -8,6 +8,7 @@ import fieldLabels from '../fieldLabels'
 import { NON_COMPTE_PLAQUE, NON_COMPTE_TRANCHE_ONEE } from '../../relances/appelGuidance'
 import { ChampSite } from './SectionDivers'
 import { enumOptions } from './enumOptions'
+import SelectEnum from './SelectEnum'
 
 // CAD157 — une valeur de grandeur réellement saisie (0 compris : c'est une
 // réponse, pas un silence ; `''`/null = rien de saisi).
@@ -677,16 +678,9 @@ function PompTexte({ 'data-field-anchor': id, cle, ctx, label }) {
 }
 
 function PompChoix({ 'data-field-anchor': id, cle, ctx, label, choix }) {
-  const { state, setField, errors } = ctx
   return (
     <ChampPompage data-field-anchor={id} cle={cle} ctx={ctx} label={label}>
-      <select
-        id={id} className={errors[cle] ? 'form-select is-invalid' : 'form-select'}
-        aria-invalid={errors[cle] ? true : undefined}
-        value={getField(state, cle) ?? ''} onChange={(e) => setField(cle, e.target.value)}
-      >
-        {enumOptions(choix)}
-      </select>
+      <SelectEnum id={id} cle={cle} ctx={ctx} choix={choix} />
     </ChampPompage>
   )
 }

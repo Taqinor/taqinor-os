@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { documentContrat } from '../../test/fixtures/contractSamples'
 import { produitCiACompleter, raisonCiACompleter } from '../../features/stock/catalogue.js'
 
@@ -45,72 +41,22 @@ vi.mock('../../api/axios', () => ({
   },
 }))
 
-vi.mock('../../ui', async (importActual) => {
-  const actual = await importActual()
-  const Passthrough = ({ children }) => <>{children}</>
-  const Select = ({ value, onValueChange, children }) => {
-    const kids = Array.isArray(children) ? children : [children]
-    const trigger = kids.find((k) => k?.props?.id)
-    return (
-      <select id={trigger?.props?.id} value={value} onChange={(e) => onValueChange(e.target.value)}>
-        {kids}
-      </select>
-    )
-  }
-  return {
-    ...actual,
-    Select,
-    SelectTrigger: Passthrough,
-    SelectValue: () => null,
-    SelectContent: Passthrough,
-    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
-  }
-})
+vi.mock('../../ui', async (importActual) => (
+  (await import('../../test/fixtures/produitFormHarness.jsx')).uiAvecSelectNatif(await importActual())
+))
 
-const {
-  getFichesTechniques, createFicheTechnique, updateFicheTechnique,
-  createProduitApi, updateProduitApi,
-} = vi.hoisted(() => ({
-  getFichesTechniques: vi.fn(() => Promise.resolve({ data: [] })),
-  createFicheTechnique: vi.fn(() => Promise.resolve({ data: { id: 501 } })),
-  updateFicheTechnique: vi.fn(() => Promise.resolve({ data: {} })),
-  createProduitApi: vi.fn((data) => Promise.resolve({ data: { id: 42, ...data } })),
-  updateProduitApi: vi.fn((id, data) => Promise.resolve({ data: { id, ...data } })),
-}))
-
-vi.mock('../../api/stockApi', () => ({
-  default: {
-    getProduitPrixFournisseurs: () => Promise.resolve({ data: [] }),
-    comparerFournisseurs: () => Promise.resolve({ data: [] }),
-    comparerTcoFournisseurs: () => Promise.resolve({ data: { fournisseurs: [] } }),
-    createPrixFournisseur: () => Promise.resolve({ data: {} }),
-    updatePrixFournisseur: () => Promise.resolve({ data: {} }),
-    deletePrixFournisseur: () => Promise.resolve({ data: {} }),
-    uploadProduitImage: () => Promise.resolve({ data: {} }),
-    getFichesTechniques: (...args) => getFichesTechniques(...args),
-    createFicheTechnique: (...args) => createFicheTechnique(...args),
-    updateFicheTechnique: (...args) => updateFicheTechnique(...args),
-    createProduit: (...args) => createProduitApi(...args),
-    updateProduit: (...args) => updateProduitApi(...args),
-  },
+vi.mock('../../api/stockApi', async () => ({
+  default: (await import('../../test/fixtures/produitFormHarness.jsx')).stockApiSimule(),
 }))
 
 import ProduitForm from './ProduitForm.jsx'
+import {
+  wrapperProduitForm as wrapper, espionsStock,
+} from '../../test/fixtures/produitFormHarness.jsx'
 
-const store = configureStore({
-  reducer: {
-    auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => s,
-    stock: (s = { categories: [], fournisseurs: [], produits: [] }) => s,
-  },
-})
-
-function wrapper({ children }) {
-  return (
-    <Provider store={store}>
-      <MemoryRouter><ThemeProvider>{children}</ThemeProvider></MemoryRouter>
-    </Provider>
-  )
-}
+const {
+  getFichesTechniques, createFicheTechnique, updateFicheTechnique, updateProduitApi,
+} = espionsStock
 
 // Le contrôleur d'injection tel que le serveur le sert : clés de `exemple`
 // (détail produit) du contrat, rôle C&I posé.

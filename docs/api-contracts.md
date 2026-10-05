@@ -610,6 +610,8 @@
     variants_created:nombre
 - frontend/src/features/adsengine/adsengineApi.js :: journal -> /api/django/adsengine/regles/journal
     detail:texte, results:inconnu
+- frontend/src/features/adsengine/adsengineApi.js :: mesures -> /api/django/adsengine/veille/decouvertes/<>/mesures
+    annonceurs_distincts:objet, appels_par_mot_cle:inconnu, decouverte_id:inconnu, doublons:objet, part_dropshipper:objet, part_par_classe:inconnu, part_pubs_actives_5_jours:inconnu, pubs_par_appel:objet, rappel_concurrents_nommes:objet, saturation:objet, taux_remplissage_domaine:objet
 - frontend/src/features/adsengine/adsengineApi.js :: preflight -> /api/django/adsengine/plans-vol/preflight
     detail:texte, portes:inconnu, pret:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: simulate -> /api/django/adsengine/plans-vol/simulate

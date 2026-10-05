@@ -113,3 +113,64 @@ comme les autres modules vendus (vérifié par
   `/api/django/adsengine/…` (et son miroir `/api/v1/adsengine/…`) répond `404`
   pour ses utilisateurs, sans affecter les autres sociétés (isolation
   multi-tenant, `DisabledModuleMiddleware`).
+
+## 7. Pilote de veille « YanBow » (PLAN_VEILLE, D-VEIL-5)
+
+Le pilote de veille publicitaire (trouver les vendeurs UE + Royaume-Uni par
+l'API officielle Meta Ad Library) tourne dans une société **« YanBow »** de
+l'ERP actuel, module Publicité. Un serveur YanBow séparé n'est monté qu'au
+**premier client payant** (avec ses données réelles et SON accès officiel).
+
+1. **Créer la société** par l'admin Django : `/{DJANGO_ADMIN_URL}`
+   (défaut `/api/django/admin/`) → *Authentication › Companies › Ajouter*
+   (`CompanyAdmin`, `backend/django_core/authentication/admin.py`). JAMAIS par
+   `manage.py init_tenant` ni par l'inscription publique
+   (`RegisterCompanyView`, `authentication/views.py`) : les deux appliquent le
+   gabarit solaire (catalogue, étapes, modèles) qui n'a rien à faire chez
+   YanBow. Noter l'**identifiant** de la société créée.
+2. **Créer le compte responsable/admin** : même admin → *Authentication ›
+   Users › Ajouter* (`CustomUserAdmin`), société = YanBow, puis lui affecter
+   un rôle (*Roles › Ajouter*, `apps/roles/admin.py`) portant au minimum
+   `adsengine_view` et `adsengine_manage` (lancer une découverte, corriger un
+   verdict, étiqueter, tirer l'échantillon, exporter).
+3. **Désactiver les autres modules** si utile : connecté en admin YanBow,
+   **Paramètres → Applications** (`frontend/src/pages/parametres/
+   ApplicationsSection.jsx`) → couper CRM, Ventes, Chantiers… ; chaque coupure
+   crée une ligne `ModuleToggle` (`core/models.py`) pour la société seulement.
+   Laisser **Publicité** actif (aucune ligne = actif par défaut).
+4. **Variables `.env` du pilote** (lues par
+   `erp_agentique/settings/base.py`, déclarées commentées dans `.env.example`),
+   puis redémarrer `django` et `celery_worker` :
+   - `META_AD_LIBRARY_ENABLED=1`, `META_AD_LIBRARY_ACCESS_TOKEN`,
+     `META_AD_LIBRARY_APP_ID`, `META_AD_LIBRARY_APP_SECRET` — l'accès de test
+     de Reda, application dédiée « YanBow Veille » ; SÉPARÉ de tout ce qui sert
+     aux campagnes TAQINOR (jamais `MetaConnection`, jamais
+     `META_SYSTEM_USER_TOKEN` / `META_LEAD_ADS_*`) ;
+   - `VEILLE_SOCIETES_AUTORISEES=<id de YanBow>` (D-VEIL-12 : vide = personne ;
+     aucune autre société ne peut lancer de découverte sous ce jeton) ;
+   - facultatif : `VEILLE_PAUSE_USAGE_PCT` (pause préventive, défaut 75),
+     `VEILLE_CONSERVATION_PUBS_JOURS` (défaut 90) ;
+   - démonstration sans jeton : `META_AD_LIBRARY_FIXTURES_DIR=<dossier>` avec
+     `META_AD_LIBRARY_ENABLED=0` (transport de rejeu, aucune connexion) ;
+   - tri IA dans l'ERP : `VEILLE_IA_CLE_API` reste **vide** pendant le pilote
+     (tri par la session Claude, `tools/veille_tri/trier.py`, D-VEIL-8).
+5. **Atterrissage** : `/publicite/veille` (entrée de nav « Veille
+   concurrentielle », `frontend/src/features/adsengine/module.config.jsx`).
+   Le bandeau affiche la couverture par pays et l'état de l'accès (`pret`,
+   `expire_bientot`…) servis par `GET /api/django/adsengine/veille/couverture/`
+   (`?verifier=1` déclenche UN `debug_token` à la demande). Onglets :
+   Découverte → Annonceurs → Échantillon de mesure → Mesures.
+6. **Commandes utiles** (`backend/django_core/apps/adsengine/management/
+   commands/`) : `veille_exporter_fiches --decouverte <id>`,
+   `veille_importer_verdicts <fichier> --company <id>`,
+   `veille_mesurer --decouverte <id>`, et en fin de pilote
+   `veille_purger --company <id>` (`--simulation` d'abord).
+
+**Limites connues du pilote.** La page de connexion affiche « Taqinor » ;
+les autres écrans Publicité (campagnes, créatifs…) restent visibles pour la
+société YanBow tant que le module est actif ; les résultats obtenus sous
+l'accès de test de Reda sont une **démonstration à l'écran**, sans remise de
+fichier ni de liste (D-VEIL-7 — l'export CSV est l'outil de la mise en
+service, pas du pilote). **Déclencheur du serveur séparé** : le premier client
+payant — mise en service sous SON accès officiel, YanBow prestataire
+technique.
