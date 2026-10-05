@@ -67,7 +67,7 @@ const faq = [
   },
   {
     q: 'Que faire si mon installation solaire existante n’est pas déclarée ?',
-    a: 'L’Article 33 ouvre, depuis le 9 juin 2026, une fenêtre de 18 mois pour la régulariser. Passé ce délai, elle reste en situation irrégulière au regard de la loi, avec les sanctions que cela suppose.',
+    a: 'L’Article 33 prévoit « dans un délai de dix-huit (18) mois à compter de la date d\'entrée en vigueur de la présente loi » ; le point de départ de ce délai est à confirmer auprès des services de l’énergie : déposez sans attendre. Passé le délai, l’installation reste en situation irrégulière au regard de la loi, avec les sanctions que cela suppose.',
   },
 ];
 const regimes = [
@@ -124,31 +124,38 @@ const regimes = [
 
       <!-- W259 — « Où en est la loi ? » : distingue LIVE (MT/HT) de PENDING (BT résidentiel). -->
       <div class="v2-rise mt-10 border-2 border-brass-400/50 bg-nuit-800/60 p-6 sm:p-8">
-        <p class="tech-label v2-kicker text-brass-300">Où en est la loi ? · vérifié le 3 juillet 2026</p>
+        <p class="tech-label v2-kicker text-brass-300">Où en est la loi ? · vérifié le 5 octobre 2026</p>
+        {/* CIW412 — sources : décision ANRE 04/26 art. 6-7 (le tarif d'excédent vise la TENSION
+            MT/HT/THT, quel que soit le régime) ; décret 2.25.100 art. 12 (accord de raccordement
+            de 11 kW à moins de 5 MW) ; D-CIQ-4. En basse tension la revente n'est pas ouverte. */}
         <div class="mt-4 grid gap-5 sm:grid-cols-2">
           <div>
             <p class="tech-label text-lune">En vigueur</p>
             <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              Décret <strong class="text-white">2-25-100</strong> (BO du 9 mars 2026, en vigueur depuis
-              le 9 juin 2026) et décision ANRE <strong class="text-white">04/26</strong> :
-              <strong class="text-white">0,18–0,21 DH/kWh</strong> de rachat du surplus, mais seulement
-              pour les régimes accord de raccordement et autorisation, en
-              <strong class="text-white"> moyenne, haute et très haute tension (MT/HT/THT)</strong>.
+              Le décret d'application <strong class="text-white">2-25-100</strong> (Bulletin Officiel du
+              9 mars 2026, en vigueur depuis le <strong class="text-white">9 juin 2026</strong>) et la
+              décision <strong class="text-white">04/26</strong> de l'ANRE. Tarif d'excédent ANRE
+              (décision 04/26) : <strong class="text-white">0,18 DH/kWh hors pointe, 0,21 DH/kWh en
+              pointe, hors taxes</strong>, pour les installations raccordées en
+              <strong class="text-white"> moyenne, haute ou très haute tension (MT/HT/THT)</strong>,
+              quel que soit leur régime.
             </p>
           </div>
           <div>
             <p class="tech-label text-lune">Pas encore publié</p>
             <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              Le tarif de rachat du régime <strong class="text-white">déclaration en basse tension
-              (BT)</strong> — celui de la quasi-totalité des villas — n'est pas encore publié, avec une
-              échéance évoquée autour de <strong class="text-white">2027</strong>, non confirmée à ce
-              jour.
+              En <strong class="text-white">basse tension (BT)</strong>, quel que soit le régime — y compris
+              un commerce de 11 kW ou plus sous accord de raccordement — la revente du surplus n'est
+              pas ouverte à ce jour. Ne prenez pas le tarif MT/HT ci-dessus pour celui de votre villa
+              ou de votre commerce.
             </p>
           </div>
         </div>
         <p class="mt-5 text-xs leading-relaxed text-lune-faint">
-          Une installation déjà posée ? La fenêtre de régularisation de l'Article 33 est ouverte dès
-          aujourd'hui, indépendamment de ce tarif —
+          Une installation déjà posée ? L'Article 33 prévoit « dans un délai de dix-huit (18) mois à
+          compter de la date d'entrée en vigueur de la présente loi » ; le point de départ de ce
+          délai est à confirmer auprès des services de l'énergie : déposez sans attendre, indépendamment
+          de ce tarif —
           <a href="/regularization-article-33" class="border-b border-brass-300/60 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">faites régulariser votre installation existante →</a>.
         </p>
       </div>
@@ -167,13 +174,14 @@ const regimes = [
 
       <h2 class="display v2-section-title mt-14 text-white">Et si mon installation existe déjà ?</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        La loi n’oublie pas les installations posées avant elle. Son Article 33 ouvre, depuis le
-        9 juin 2026, une fenêtre de 18 mois pour les mettre en règle : c’est le délai dont vous
-        disposez pour déposer le dossier qui manque — déclaration, accord de raccordement ou
-        autorisation, selon le régime qui vous concerne ci-dessus. Régularisée dans ce délai, une
-        installation existante rejoint le cadre légal comme une neuve. Passé la fenêtre, elle reste
-        en situation irrégulière au regard de la loi 82-21, avec les sanctions que cela suppose. Il
-        n’y a donc rien à gagner à attendre, et la démarche se lance dès aujourd’hui.
+        La loi n’oublie pas les installations posées avant elle. Son Article 33 prévoit « dans un délai de dix-huit (18) mois à compter de la date d'entrée en
+        vigueur de la présente loi » pour les mettre en règle : le point de départ de ce délai est à
+        confirmer auprès des services de l'énergie — déposez sans attendre le dossier qui manque,
+        déclaration, accord de raccordement ou autorisation, selon le régime qui vous concerne
+        ci-dessus. Régularisée dans le délai, une installation existante rejoint le cadre légal
+        comme une neuve. Passé le délai, elle reste en situation irrégulière au regard de la loi
+        82-21, avec les sanctions que cela suppose. Il n’y a donc rien à gagner à attendre, et la
+        démarche se lance dès aujourd’hui.
       </p>
       <RelatedLinks mt="mt-8" links={[
         { href: '/loi-82-21', label: 'Identifier mon régime en 3 questions' },
