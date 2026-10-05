@@ -1080,6 +1080,10 @@ def noter_kit_retire(devis, *, retirees=(), remises=()):
         return avant
     from apps.ventes.domain.etude_schema import ECRAN, ecrire
     ecrire(frais, proprietaire=ECRAN, **{CLE_KIT_RETIRE: apres or None})
+    # Le jeton d'édition (``updated_at``, verrou optimiste QJR545) avancé par
+    # ``ecrire`` suit l'instance de l'appelant : sa réponse sert le bon jeton.
+    if getattr(frais, 'updated_at', None) is not None:
+        devis.updated_at = frais.updated_at
     # L'instance de l'appelant suit (seule la clé du marqueur) : ses
     # écritures suivantes d'``etude_params`` (études, resynchro) repartent de
     # son bloc en mémoire et ne doivent pas effacer le marqueur.
