@@ -44,8 +44,10 @@ _DEFAULT_WATT = 710
 # ── Conditions de paiement par mode d'installation (SOURCE UNIQUE) ──
 # Décision propriétaire 2026-06-12. Tous les formats PDF ET l'échéancier
 # devis → factures (acompte/tranches) lisent CE mapping ; plus aucun
-# pourcentage de paiement en dur ailleurs. Agricole = défaut résidentiel
-# (30/60/10) en attente d'un éventuel veto du fondateur.
+# pourcentage de paiement en dur ailleurs. Agricole = 30/60/10 CONSERVÉ
+# (décision du 02/10/2026, AGR219 : MESURER avant tout autre réglage, comme
+# CAD52) ; la trésorerie « après récolte » se dit par la ``date_prevue``
+# facultative d'une tranche (``utils/echeancier.py``), jamais par un autre %.
 PAYMENT_TERMS_BY_MODE = {
     "residentiel": {"acompte": 30, "materiel": 60, "solde": 10},
     "industriel": {"acompte": 50, "materiel": 40, "solde": 10},
@@ -695,17 +697,37 @@ def tva_note_des_lignes(lignes, taux_defaut) -> str:
       le tableau », avec les SEULS taux présents sur les lignes.
 
     Une ligne sans taux propre (devis historique) porte le taux du devis.
+    AGR217 — une ligne À 0 % (taux propre) ⇒ « TVA appliquée ligne par
+    ligne : 0 % / … — exonération : <base légale saisie> », une mention par
+    base distincte ; sans ligne à 0 %, texte identique à l'octet.
     Lecture pure : aucun statut écrit (règle #4).
     """
     par_taux = {}
+    bases = []
+    zero_ligne = False
     for li in lignes:
         taux = getattr(li, "taux_tva", None)
+        if taux is not None and float(taux) == 0.0:
+            zero_ligne = True
         if taux is None:
             taux = taux_defaut
         taux = float(taux)
         produit_nom = getattr(getattr(li, "produit", None), "nom", "") or ""
         par_taux.setdefault(taux, []).append(
             _is_panel(getattr(li, "designation", "") or "", produit_nom))
+        # AGR217 — la base légale SAISIE d'une ligne exonérée (une mention
+        # par base distincte, dans l'ordre des lignes).
+        base = (getattr(li, "tva_base_legale", "") or "").strip()
+        if taux == 0.0 and base and base not in bases:
+            bases.append(base)
+    if zero_ligne:
+        # AGR217 — un 0 % présent : la note le dit ligne par ligne et CITE
+        # la base légale saisie (jamais un texte proposé par défaut).
+        taux_txt = " / ".join(
+            f"{_taux_libelle(t)} %" for t in sorted(par_taux))
+        mentions = " ; ".join(f"exonération : {b}" for b in bases)
+        return (f"TVA appliquée ligne par ligne : {taux_txt}"
+                + (f" — {mentions}" if mentions else ""))
     if len(par_taux) <= 1:
         taux = next(iter(par_taux)) if par_taux else float(taux_defaut)
         return (f"TVA {_taux_libelle(taux)} % appliquée sur l'ensemble des "
@@ -717,6 +739,19 @@ def tva_note_des_lignes(lignes, taux_defaut) -> str:
     taux_txt = " / ".join(f"{_taux_libelle(t)} %" for t in sorted(par_taux))
     return (f"TVA appliquée ligne par ligne : {taux_txt} — taux indiqué "
             f"dans le tableau")
+
+
+def _attestation_usage_agricole(devis):
+    """AGR217 — ``etude_params.attestation_usage_agricole`` (contrat AGR200 :
+    ``{attestee, le, signataire}``), copie défensive, ou ``None``. Lecture
+    pure (règle #4) : le builder ne fait que rendre ce qui a été saisi."""
+    valeur = (getattr(devis, "etude_params", None) or {}).get(
+        "attestation_usage_agricole")
+    if not isinstance(valeur, dict) or not valeur:
+        return None
+    return {"attestee": bool(valeur.get("attestee")),
+            "le": valeur.get("le") or None,
+            "signataire": valeur.get("signataire") or ""}
 
 
 def _line_to_item(ligne, taux_tva: Decimal) -> dict:
@@ -3187,11 +3222,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # par la MÊME correspondance que la page publique (QJR622) ; le réglage
     # société n'est plus que le repli. Les pourcentages sont rendus en nombres
     # simples (int si entiers) : le dict de rendu reste sérialisable JSON.
-    payment_terms = {
-        cle: _pct_simple(val)
-        for cle, val in termes_paiement_devis(
-            devis, payment_terms_for(getattr(devis, "company", None), mode),
-            lignes).items()}
+    _termes = termes_paiement_devis(
+        devis, payment_terms_for(getattr(devis, "company", None), mode),
+        lignes, avec_dates=True)
+    # AGR219 — la date prévue par créneau (solde « après récolte »), hors
+    # des pourcentages ; posée dans ``data`` SEULEMENT si une tranche en porte.
+    _dates_prevues = _termes.pop("dates_prevues", None)
+    payment_terms = {cle: _pct_simple(val) for cle, val in _termes.items()}
 
     # D2/N60/N67/N59 — textes éditables du devis (en-têtes/CGV/validité/garanties
     # /BPA/tampon). SURCHARGES non vides seulement ; toute clé absente → le moteur
@@ -3925,6 +3962,34 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # la charge utile publique.
     if avertissements_internes:
         data["avertissements_internes"] = list(avertissements_internes)
+
+    # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),
+    # exposée pour le rendu (D3). Additif : la clé n'est posée QUE lorsqu'une
+    # attestation est saisie → un devis sans elle reste octet-identique.
+    _attestation = _attestation_usage_agricole(devis)
+    if _attestation is not None:
+        data["attestation_usage_agricole"] = _attestation
+
+    # ── AGR219 — dates prévues des tranches (D3). Additif : posé SEULEMENT
+    # quand une tranche en porte une → un échéancier sans date reste
+    # octet-identique. Aucune facture n'est datée par elles.
+    if _dates_prevues is not None:
+        data["payment_dates"] = _dates_prevues
+
+    # ── AGR306 — la règle FDA SAISIE par la société (AGR207), passée à
+    # ``agricole/synthese`` qui en imprime la RÈGLE (jamais un montant propre
+    # au client, D-AGR-6). Agricole seulement, et posée SEULEMENT quand elle
+    # est saisie : sinon le module retombe sur son repli daté (Guide FDA 2024)
+    # et tout autre devis reste octet-identique. Ne casse jamais un rendu.
+    if mode == "agricole":
+        try:
+            from apps.parametres.selectors import regle_fda_pompage_pour
+            _regle_fda = regle_fda_pompage_pour(
+                getattr(devis, "company", None))
+        except Exception:  # noqa: BLE001 — repli daté du module
+            _regle_fda = {}
+        if _regle_fda:
+            data["regle_fda_societe"] = _regle_fda
 
     return data
 

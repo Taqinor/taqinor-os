@@ -218,6 +218,13 @@ SCHEMA = {
                                'Dépense carburant ACTUELLE, en MAD/AN.'),
     'hmt_static': _cle((int, float), ECRAN, ENTREE),
     'hmt_drawdown': _cle((int, float), ECRAN, ENTREE),
+    # AGR217 (contrat AGR200) — l'attestation de destination AGRICOLE du
+    # matériel (art. 91-I-C-6° CGI 2026 : « utilisée dans le secteur
+    # agricole ») : {attestee, le, signataire}. Saisie, jamais calculée.
+    'attestation_usage_agricole': _cle(
+        (dict,), ECRAN, ENTREE,
+        "Attestation d'usage agricole saisie : {attestee: bool, le: date "
+        "ISO, signataire: texte}."),
 
     # ── Les DÉRIVÉES du marché industriel / commercial ───────────────────────
     'taux_autoconso': _cle((int, float), ECRAN, DERIVEE),

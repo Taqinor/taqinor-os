@@ -32,7 +32,10 @@ from core.electrique.types import Cable, fr, fr_a
 
 __all__ = [
     "SECTIONS_MM2", "AMPACITE_H1Z2Z2K", "AMPACITE_U1000R2V_MONO",
-    "AMPACITE_U1000R2V_TRI", "RHO_CUIVRE_20C", "COEFF_ISC_DIMENSIONNEMENT",
+    "AMPACITE_U1000R2V_TRI", "SECTIONS_MM2_CI", "AMPACITE_H1Z2Z2K_CI",
+    "AMPACITE_U1000R2V_MONO_CI", "AMPACITE_U1000R2V_TRI_CI",
+    "BAREMES_ETENDUS", "CRITERE_HORS_BAREME_THERMIQUE", "bareme_pour",
+    "RHO_CUIVRE_20C", "COEFF_ISC_DIMENSIONNEMENT",
     "CHUTE_CIBLE_DC_PCT", "CHUTE_MAX_DC_PCT", "CHUTE_CIBLE_AC_PCT",
     "CHUTE_MAX_AC_PCT", "SECTION_MIN_DC_MM2", "CRITERE_ECHAUFFEMENT",
     "CRITERE_CHUTE", "CRITERE_LES_DEUX", "CRITERE_PLANCHER",
@@ -59,6 +62,55 @@ AMPACITE_U1000R2V_MONO = ((2.5, 31.0), (4.0, 42.0), (6.0, 54.0), (10.0, 75.0),
 #: Idem, TROIS conducteurs chargés (triphasé) — le barème est plus sévère.
 AMPACITE_U1000R2V_TRI = ((2.5, 28.0), (4.0, 37.0), (6.0, 48.0), (10.0, 66.0),
                          (16.0, 88.0), (25.0, 117.0))
+
+# ── CIQ139 — barèmes ÉTENDUS aux puissances C&I (aucune extrapolation) ──────
+# Les barèmes ci-dessus s'arrêtent à 25 mm² : un onduleur de 100 kW (≈ 144 A
+# en triphasé 400 V) ou de 150 kW (≈ 217 A) n'y trouvait aucune section
+# thermiquement suffisante. Les lignes AJOUTÉES ci-dessous sont RELEVÉES une
+# à une dans la source citée, dans LA MÊME COLONNE que les lignes existantes
+# (vérifié : les six lignes 2,5-25 mm² de chaque barème y figurent à
+# l'identique). Une section non relevée n'est pas ajoutée : le barème
+# s'arrête là. Les barèmes de base restent INCHANGÉS (le résidentiel et ses
+# golden ne bougent pas) ; le moteur ne bascule sur un barème étendu que
+# lorsque l'exigence thermique dépasse la dernière ligne du barème de base.
+#
+# U-1000 R2V : IEC 60364-5-52 éd. 3 (2009), annexe B, cuivre, isolant PR
+# (XLPE/EPR, âme 90 °C, ambiance 30 °C), méthode de référence B1 (colonne 4)
+# — tableau B.52.3 (DEUX conducteurs chargés) et tableau B.52.5 (TROIS
+# conducteurs chargés), relevés dans leur reproduction « Methods of
+# installation and current-carrying capacities based on IEC 60364-5-52
+# Ed.3 » (Top Cable, p.12 et p.14). NB : les lignes 2,5-25 mm² existantes
+# sont celles de cette colonne B1 (le commentaire historique « méthode C »
+# est inexact ; il n'est pas réécrit ici, aucune autre constante ne change).
+_ETENDU_U1000R2V_MONO = ((35.0, 164.0), (50.0, 198.0), (70.0, 253.0),
+                         (95.0, 306.0), (120.0, 354.0), (150.0, 393.0),
+                         (185.0, 449.0), (240.0, 528.0))
+_ETENDU_U1000R2V_TRI = ((35.0, 144.0), (50.0, 175.0), (70.0, 222.0),
+                        (95.0, 269.0), (120.0, 312.0), (150.0, 342.0),
+                        (185.0, 384.0), (240.0, 450.0))
+# H1Z2Z2-K : EN 50618 (barème de l'annexe A), colonne « câble seul à l'air
+# libre » (« Single Cable Free Air », âme 120 °C, ambiance ≤ 60 °C), relevée
+# sur la fiche AEI Cables « SOLAR CABLE – H1Z2Z2-K » réf. DS/SD/SOLAR
+# (déc. 2020), qui cite BS EN 50618 ; les lignes 2,5-25 mm² existantes y
+# figurent à l'identique (41 · 55 · 70 · 98 · 132 · 176 A). Relevé jusqu'à
+# 240 mm² (dernière ligne publiée).
+_ETENDU_H1Z2Z2K = ((35.0, 218.0), (50.0, 276.0), (70.0, 347.0),
+                   (95.0, 416.0), (120.0, 488.0), (150.0, 566.0),
+                   (185.0, 644.0), (240.0, 775.0))
+
+#: Sections normalisées des barèmes étendus (mêmes pour les trois barèmes).
+SECTIONS_MM2_CI = SECTIONS_MM2 + tuple(s for s, _ in _ETENDU_U1000R2V_TRI)
+AMPACITE_H1Z2Z2K_CI = AMPACITE_H1Z2Z2K + _ETENDU_H1Z2Z2K
+AMPACITE_U1000R2V_MONO_CI = AMPACITE_U1000R2V_MONO + _ETENDU_U1000R2V_MONO
+AMPACITE_U1000R2V_TRI_CI = AMPACITE_U1000R2V_TRI + _ETENDU_U1000R2V_TRI
+
+#: Barème de base → son extension relevée (paires immuables : le noyau
+#: n'a aucune globale mutable, garde ``test_electrique_purete``).
+BAREMES_ETENDUS = (
+    (AMPACITE_H1Z2Z2K, AMPACITE_H1Z2Z2K_CI),
+    (AMPACITE_U1000R2V_MONO, AMPACITE_U1000R2V_MONO_CI),
+    (AMPACITE_U1000R2V_TRI, AMPACITE_U1000R2V_TRI_CI),
+)
 
 #: Résistivité du cuivre à 20 °C (Ω·mm²/m) — valeur du guide UTE C 15-105 pour
 #: le calcul de chute de tension. En service à chaud, la pratique majore cette
@@ -92,6 +144,10 @@ CRITERE_ECHAUFFEMENT = "échauffement (Iz)"
 CRITERE_CHUTE = "chute de tension"
 CRITERE_LES_DEUX = "échauffement et chute de tension"
 CRITERE_PLANCHER = "plancher DC 6 mm² (décision fondateur 19/08/2026)"
+#: CIQ139 — l'exigence thermique dépasse la DERNIÈRE ligne relevée du barème :
+#: aucune section ne la tient, le verdict est NON CONFORME (jamais extrapolé).
+CRITERE_HORS_BAREME_THERMIQUE = ("échauffement hors barème relevé — NON "
+                                 "CONFORME")
 
 
 @dataclass(frozen=True)
@@ -106,6 +162,11 @@ class SectionProposee:
     section_par_chute_mm2: Optional[float] = None
     #: La cible de chute n'est pas tenue même à la plus grosse section du barème.
     hors_bareme: bool = False
+    #: CIQ139 — l'exigence thermique (max(Ib, In)) dépasse l'Iz de la DERNIÈRE
+    #: ligne relevée : aucune section du barème ne la tient. Le verdict est
+    #: NON CONFORME (``critere`` = ``CRITERE_HORS_BAREME_THERMIQUE``) — la
+    #: plus grosse section n'est jamais rendue en silence.
+    thermique_hors_bareme: bool = False
 
 
 @dataclass(frozen=True)
@@ -220,13 +281,19 @@ def proposer_section(courant_ib_a, longueur_m, tension_v, cible_pct,
 
     hors_bareme = section_chute is None
     plus_grosse = bareme[-1][0]
+    # CIQ139 — exigence thermique au-delà de la dernière ligne RELEVÉE : le
+    # verdict est publié NON CONFORME, jamais la plus grosse section en
+    # silence (et jamais une valeur extrapolée au-delà du barème).
+    thermique_hors_bareme = section_thermique is None
     if section_thermique is None:
         section_thermique = plus_grosse
     if section_chute is None:
         section_chute = plus_grosse
 
     retenue = max(section_thermique, section_chute)
-    if section_thermique == section_chute:
+    if thermique_hors_bareme:
+        critere = CRITERE_HORS_BAREME_THERMIQUE
+    elif section_thermique == section_chute:
         critere = CRITERE_LES_DEUX
     elif retenue == section_chute:
         critere = CRITERE_CHUTE
@@ -243,10 +310,36 @@ def proposer_section(courant_ib_a, longueur_m, tension_v, cible_pct,
         chute_pct=chute_tension_pct(longueur_m, courant_chute, retenue,
                                     tension_v, coefficient),
         critere=critere,
-        section_par_echauffement_mm2=section_thermique,
+        section_par_echauffement_mm2=(None if thermique_hors_bareme
+                                      else section_thermique),
         section_par_chute_mm2=section_chute,
         hors_bareme=hors_bareme,
+        thermique_hors_bareme=thermique_hors_bareme,
     )
+
+
+def bareme_pour(bareme, courant_ib_a, calibre_in_a=None):
+    """CIQ139 — le barème de BASE tant que sa dernière ligne tient l'exigence
+    thermique ``max(Ib, In)`` ; sinon son extension RELEVÉE
+    (:data:`BAREMES_ETENDUS`). Le résidentiel garde donc son barème (et ses
+    golden) à l'identique ; seul un courant que la base ne pouvait PAS tenir
+    bascule sur les sections C&I."""
+    exigence = max(float(courant_ib_a or 0.0), float(calibre_in_a or 0.0))
+    if exigence > bareme[-1][1] + 1e-9:
+        for base, etendu in BAREMES_ETENDUS:
+            if bareme == base:
+                return etendu
+    return bareme
+
+
+def _bloquant_hors_bareme(nom, proposee, ib_a, in_a):
+    """Le verdict NON CONFORME nommé d'une exigence thermique hors barème."""
+    exigence = max(float(ib_a or 0.0), float(in_a or 0.0))
+    return ("%s : NON CONFORME — exigence thermique %s au-delà de la dernière "
+            "ligne relevée du barème (%s mm², Iz %s) : aucune section ne la "
+            "tient, aucune valeur extrapolée"
+            % (nom, fr_a(exigence), fr(proposee.section_mm2, 1),
+               fr_a(proposee.iz_a)))
 
 
 def dimensionner_branches_ac(branches, phases=1, tension_reseau_v=0.0,
@@ -313,12 +406,18 @@ def dimensionner_branches_ac(branches, phases=1, tension_reseau_v=0.0,
         if calibre is None:
             calibre = branche.get("calibre_a")
         calibre = float(calibre) if calibre else None
+        # CIQ139 — barème étendu relevé SEULEMENT si la base ne tient pas.
+        bareme = bareme_pour(bareme, ib_ac, calibre)
         proposee = proposer_section(
             courant_ib_a=ib_ac, longueur_m=longueur, tension_v=tension,
             cible_pct=CHUTE_CIBLE_AC_PCT, bareme=bareme,
             coefficient=coefficient, calibre_in_a=calibre)
         conforme, motif = verifier_ib_in_iz(ib_ac, calibre, proposee.iz_a)
         depasse = proposee.chute_pct > CHUTE_MAX_AC_PCT + 1e-9
+        if proposee.thermique_hors_bareme:
+            conforme = False
+            bloquants.append(_bloquant_hors_bareme(
+                "branche AC %s" % nom, proposee, ib_ac, calibre))
         if motif:
             bloquants.append("branche AC %s : %s" % (nom, motif))
         if depasse:
@@ -398,10 +497,15 @@ def dimensionner_cables(entree, resultat_chaines=None,
         proposee = proposer_section(
             courant_ib_a=ib_dc, longueur_m=entree.dc_m,
             tension_v=tension_service, cible_pct=CHUTE_CIBLE_DC_PCT,
-            bareme=AMPACITE_H1Z2Z2K, coefficient=2.0, calibre_in_a=calibre,
+            bareme=bareme_pour(AMPACITE_H1Z2Z2K, ib_dc, calibre),
+            coefficient=2.0, calibre_in_a=calibre,
             courant_service_a=imp, section_min_mm2=SECTION_MIN_DC_MM2)
         conforme, motif = verifier_ib_in_iz(ib_dc, calibre, proposee.iz_a)
         depasse = proposee.chute_pct > CHUTE_MAX_DC_PCT + 1e-9
+        if proposee.thermique_hors_bareme:
+            conforme = False
+            bloquants.append(_bloquant_hors_bareme(
+                "câble DC", proposee, ib_dc, calibre))
         if motif:
             bloquants.append("câble DC : %s" % motif)
         if depasse:
@@ -462,6 +566,9 @@ def dimensionner_cables(entree, resultat_chaines=None,
                   if resultat_protections is not None else None)
     if ib_ac > 0:
         bareme = AMPACITE_U1000R2V_TRI if triphase else AMPACITE_U1000R2V_MONO
+        # CIQ139 — onduleurs C&I : barème étendu RELEVÉ seulement quand la
+        # base (≤ 25 mm²) ne tient pas l'exigence thermique.
+        bareme = bareme_pour(bareme, ib_ac, calibre_ac)
         coefficient = math.sqrt(3.0) if triphase else 2.0
         proposee = proposer_section(
             courant_ib_a=ib_ac, longueur_m=entree.ac_m,
@@ -469,6 +576,10 @@ def dimensionner_cables(entree, resultat_chaines=None,
             bareme=bareme, coefficient=coefficient, calibre_in_a=calibre_ac)
         conforme, motif = verifier_ib_in_iz(ib_ac, calibre_ac, proposee.iz_a)
         depasse = proposee.chute_pct > CHUTE_MAX_AC_PCT + 1e-9
+        if proposee.thermique_hors_bareme:
+            conforme = False
+            bloquants.append(_bloquant_hors_bareme(
+                "câble AC", proposee, ib_ac, calibre_ac))
         if motif:
             bloquants.append("câble AC : %s" % motif)
         if depasse:
