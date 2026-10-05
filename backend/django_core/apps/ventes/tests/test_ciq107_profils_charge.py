@@ -17,6 +17,8 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 CONTRAT = os.path.join(os.path.dirname(ICI), 'contract_samples', 'etude_ci_preview.json')
 PAQUET = os.path.dirname(os.path.abspath(profils.__file__))
 RACINES_INTERDITES = ('django', 'rest_framework', 'celery', 'apps', 'authentication', 'core')
+#: Modules hors paquet permis : eux-mêmes sans Django (vérifié ci-dessous).
+IMPORTS_PURS_PERMIS = frozenset({'apps.parametres.pvgis_profils'})
 
 
 def _contrat_archetypes():
@@ -147,11 +149,27 @@ class TestPurete(unittest.TestCase):
                 else:
                     continue
                 for module in modules:
-                    if module.startswith('apps.ventes.moteur_ci'):
+                    if module.startswith('apps.ventes.moteur_ci') or module in IMPORTS_PURS_PERMIS:
                         continue
                     if module.split('.')[0] in RACINES_INTERDITES or 'models' in module:
                         fautifs.append((nom, module))
         self.assertEqual(fautifs, [])
+
+    def test_imports_permis_sans_django(self):
+        racine = os.path.dirname(os.path.dirname(PAQUET))
+        for module in IMPORTS_PURS_PERMIS:
+            chemin = os.path.join(os.path.dirname(racine), *module.split('.')) + '.py'
+            with open(chemin, encoding='utf-8') as fh:
+                arbre = ast.parse(fh.read())
+            for noeud in arbre.body:
+                if isinstance(noeud, ast.Import):
+                    noms = [alias.name for alias in noeud.names]
+                elif isinstance(noeud, ast.ImportFrom):
+                    noms = [noeud.module or '']
+                else:
+                    continue
+                for nom in noms:
+                    self.assertNotIn(nom.split('.')[0], RACINES_INTERDITES, (module, nom))
 
     def test_garde_armee(self):
         arbre = ast.parse('from django.db import models\n')
