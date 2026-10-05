@@ -18,13 +18,28 @@
     "calepinage"
   ],
   "exemple": {
-    "query": "hammadi",
+    "query": "casa",
+    "detail": "",
     "groups": [
+      {
+        "type": "devis",
+        "label": "Devis",
+        "results": [
+          {"id": 1, "label": "DV-2026-0001", "sublabel": "Client Casa"}
+        ]
+      },
+      {
+        "type": "lead",
+        "label": "Leads",
+        "results": [
+          {"id": 2, "label": "Lead Casablanca", "sublabel": "Casablanca"}
+        ]
+      },
       {
         "type": "calepinage",
         "label": "Calepinages",
         "results": [
-          {"id": 7, "label": "Villa Hammadi", "sublabel": "Client Hammadi"}
+          {"id": 7, "label": "Villa Hammadi", "sublabel": "Client Casa"}
         ]
       }
     ]

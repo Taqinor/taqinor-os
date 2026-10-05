@@ -12,15 +12,7 @@ vi.mock('../../api/reportingApi', () => ({
 
 import reportingApi from '../../api/reportingApi'
 import GlobalSearch from './GlobalSearch'
-
-// Forme réelle servie par reporting/search.py::_spec_calepinage.
-const GROUPS = [
-  {
-    type: 'calepinage',
-    label: 'Calepinages',
-    results: [{ id: 7, label: 'Villa Hammadi', sublabel: 'Client Hammadi' }],
-  },
-]
+import { reponseContrat } from '../../test/fixtures/contractSamples'
 
 function Lieu() {
   const l = useLocation()
@@ -46,7 +38,7 @@ function renderSearch({ modulesDesactives = [] } = {}) {
 describe('ACAL199 — recherche globale : groupe Calepinages', () => {
   beforeEach(() => {
     reportingApi.search.mockReset()
-    reportingApi.search.mockResolvedValue({ data: { groups: GROUPS } })
+    reportingApi.search.mockResolvedValue(reponseContrat('reporting', 'recherche_types'))
   })
   afterEach(() => { cleanup(); vi.clearAllMocks() })
 
