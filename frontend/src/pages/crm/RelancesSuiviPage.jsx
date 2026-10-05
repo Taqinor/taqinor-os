@@ -164,8 +164,11 @@ function MesureCadencePanel() {
   const distribution = donnees.signatures_par_touches_consommees ?? []
   // CAD178 — additif : les 4 gestes clés, par famille d'appareil.
   const gestesAppareil = donnees.gestes_par_appareil ?? []
+  // AGR541 — additif : les mêmes mesures découpées par segment (AGR540).
+  const parSegment = donnees.par_segment ?? []
 
   return (
+    <>
     <Card className="mt-3" data-testid="mesure-cadence-panel">
       <CardContent className="flex flex-col gap-4 pt-4">
         <section>
@@ -267,6 +270,95 @@ function MesureCadencePanel() {
             </table>
           )}
         </section>
+      </CardContent>
+    </Card>
+    {parSegment.length > 0 && <MesureParSegment lignes={parSegment} />}
+    </>
+  )
+}
+
+// AGR541 — libellés des segments de `mesure_cadence.par_segment` (mêmes
+// clés que le serveur, `crm.Lead.TypeInstallation` + `non_renseigne`).
+const SEGMENT_LABELS_MESURE = {
+  residentiel: 'Résidentiel', commercial: 'Commercial', industriel: 'Industriel',
+  agricole: 'Agricole', non_renseigne: 'Non renseigné',
+}
+const AIDE_INCOHERENTS = 'leads non agricoles avec un devis agricole — '
+  + 'corriger le type sur la fiche'
+const TIRET = '—'
+
+/** Une valeur servie, rendue TELLE QUELLE : `null` → « — », jamais 0 %. */
+function valeur(v, suffixe = '') {
+  return v == null ? TIRET : `${v}${suffixe}`
+}
+
+/** AGR541 — le tableau « Par segment » (AGR540), en LECTURE SEULE : une
+ *  ligne par segment, les valeurs du serveur telles quelles, aucun calcul,
+ *  aucune couleur de jugement. */
+function MesureParSegment({ lignes }) {
+  return (
+    <Card className="mt-3" data-testid="mesure-par-segment">
+      <CardContent className="flex flex-col gap-2 pt-4">
+        <h3 className="text-sm font-semibold">Par segment</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border text-left text-muted-foreground">
+                <th className="py-1 pr-2">Segment</th>
+                <th className="py-1 pr-2 text-right">Leads</th>
+                <th className="py-1 pr-2 text-right">Devis envoyés</th>
+                <th className="py-1 pr-2 text-right">Délai médian 1er devis (j)</th>
+                <th className="py-1 pr-2 text-right">Délai médian signature (j)</th>
+                <th className="py-1 pr-2 text-right">Signatures</th>
+                <th className="py-1 pr-2">Signatures par mois</th>
+                <th className="py-1 pr-2 text-right">Taux froid</th>
+                <th className="py-1 pr-2 text-right">Taux de joint</th>
+                <th className="py-1 pr-2 text-right">En attente d’un accord</th>
+                <th className="py-1 pr-2">Dossiers de subvention</th>
+                <th className="py-1 text-right" title={AIDE_INCOHERENTS}>Incohérents</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lignes.map((l) => {
+                const parMois = Array.isArray(l.signatures_par_mois)
+                  ? l.signatures_par_mois : []
+                const dossiers = Object.entries(l.dossiers_subvention || {})
+                return (
+                  <tr
+                    key={l.segment} className="border-b border-border/50"
+                    data-testid={`mesure-segment-${l.segment}`}
+                  >
+                    <td className="py-1 pr-2">{SEGMENT_LABELS_MESURE[l.segment] ?? l.segment}</td>
+                    <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.nb_leads)}</td>
+                    <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.devis_envoyes)}</td>
+                    <td className="py-1 pr-2 text-right tabular-nums">
+                      {valeur(l.delai_median_premier_devis_jours)}
+                    </td>
+                    <td className="py-1 pr-2 text-right tabular-nums">
+                      {valeur(l.delai_median_signature_jours)}
+                    </td>
+                    <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.signatures)}</td>
+                    <td className="py-1 pr-2">
+                      {parMois.length === 0 ? TIRET
+                        : parMois.map((m) => `${m.mois} : ${m.signatures}`).join(' · ')}
+                    </td>
+                    <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.taux_froid_pct, ' %')}</td>
+                    <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.taux_joint_pct, ' %')}</td>
+                    <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.en_attente_accord)}</td>
+                    <td className="py-1 pr-2">
+                      {dossiers.length === 0 ? TIRET
+                        : dossiers.map(([etat, n]) => `${etat} : ${n}`).join(' · ')}
+                    </td>
+                    <td className="py-1 text-right tabular-nums">{valeur(l.incoherents)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-xs text-muted-foreground" data-testid="aide-incoherents">
+          Incohérents : {AIDE_INCOHERENTS}.
+        </p>
       </CardContent>
     </Card>
   )
