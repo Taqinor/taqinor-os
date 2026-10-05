@@ -45,7 +45,8 @@ from html import escape
 __all__ = [
     'CLES_INTERDITES', 'NoteRefusee', 'CLES_VERDICT', 'CLES_MARGES',
     'construire_note_calcul', 'verdict_de_preuve', 'html_de_note_calcul',
-    'rendre_note_calcul',
+    'rendre_note_calcul', 'resultat_servi_et_stocke',
+    'motif_note_indisponible',
 ]
 
 #: Clés dont la seule PRÉSENCE dans la donnée d'entrée est un défaut
@@ -241,8 +242,62 @@ def _source_lisible(code):
     return LIBELLE_SOURCE.get(texte, str(code))
 
 
-def construire_note_calcul(resultat, *, site=None, identite=None, styles=None):
-    """``Calepinage.resultat`` -> la note, prête à mettre en page.
+def resultat_servi_et_stocke(calepinage):
+    """``(servi, stocke)`` — LE lecteur strict, refus converti en ``NoteRefusee``.
+
+    ACAL214 — la note ne lit plus la colonne brute ``Calepinage.resultat`` :
+    elle lit le résultat SERVI par ``GET resultat/`` (pose, électrique,
+    production, fraîcheur CALX70), exactement comme le rapport d'étude
+    (``rapport.resultat_du_rapport``). Le STOCKÉ ne sert que pour le régime de
+    preuve (``preuve``/``marges``), que le moteur y dépose.
+    """
+    from .rapport import RapportRefuse, resultat_du_rapport
+
+    try:
+        return resultat_du_rapport(calepinage)
+    except RapportRefuse as refus:
+        raise NoteRefusee(str(refus), champ=refus.champ or 'resultat') from refus
+
+
+def _controler_servi(resultat):
+    """Refuse un résultat SERVI périmé, puis exige les grandeurs de la note.
+
+    Une simulation périmée refuse en 400 sous le champ ``simulation`` avec le
+    MOTIF servi : jamais le P50 d'un ancien toit.
+    """
+    if resultat.get('simulation_perimee'):
+        raise NoteRefusee(
+            "Note de calcul : %s" % (resultat.get('motif')
+                                     or 'la simulation est périmée.'),
+            champ='simulation')
+    for chemin, libelle in GRANDEURS_INDISPENSABLES:
+        _exiger(resultat, chemin, libelle)
+
+
+def motif_note_indisponible(calepinage):
+    """``None`` si la note se rend, sinon le motif (français) du refus.
+
+    Lecture PURE : aucun PDF n'est produit, rien n'est écrit. C'est le MÊME
+    contrôle que le rendu (``resultat_servi_et_stocke`` +
+    ``_controler_servi``) : l'inventaire des sorties ne déclare la note
+    disponible que si la lecture stricte réussit.
+    """
+    try:
+        servi, _stocke = resultat_servi_et_stocke(calepinage)
+        _controler_servi(servi)
+    except NoteRefusee as refus:
+        return str(refus)
+    return None
+
+
+def construire_note_calcul(resultat, *, site=None, identite=None, styles=None,
+                           stocke=None):
+    """Le résultat SERVI -> la note, prête à mettre en page.
+
+    ``resultat`` est le résultat servi (``resultat_servi_et_stocke``) ;
+    ``stocke`` (facultatif) est ``Calepinage.resultat`` tel qu'enregistré, d'où
+    sont lus le régime de preuve et les marges. Sans ``stocke``, ``resultat``
+    porte tout (forme du contrat, essais purs).
 
     ``site`` est le contexte géographique du calepinage
     (``selectors.contexte_geographique`` : ville, adresse, source du repère) —
@@ -258,9 +313,11 @@ def construire_note_calcul(resultat, *, site=None, identite=None, styles=None):
             "calepinage. Une note ne se rend pas à partir d'un calcul qui n'a "
             "pas eu lieu.", champ='resultat')
     _verifier_etancheite(resultat)
-
-    for chemin, libelle in GRANDEURS_INDISPENSABLES:
-        _exiger(resultat, chemin, libelle)
+    if isinstance(stocke, dict):
+        _verifier_etancheite(stocke)
+    _controler_servi(resultat)
+    preuve_source = (stocke if isinstance(stocke, dict) and stocke
+                     else resultat)
 
     site = site if isinstance(site, dict) else {}
     base = _lire(resultat, 'production.base') or {}
@@ -314,7 +371,7 @@ def construire_note_calcul(resultat, *, site=None, identite=None, styles=None):
         },
         # CAL177 — le régime de preuve, RECOPIÉ du résultat (jamais recalculé)
         # : c'est ce qui le rend égal à celui de l'API des variantes.
-        'verdict': verdict_de_preuve(resultat),
+        'verdict': verdict_de_preuve(preuve_source),
         'avertissements': list(resultat.get('avertissements') or []),
         'provenance': {
             # Deux graphies coexistent dans le dépôt pour la MÊME empreinte
@@ -323,7 +380,8 @@ def construire_note_calcul(resultat, *, site=None, identite=None, styles=None):
             # réel.
             'hash_entree': (resultat.get('hash_entree')
                             or resultat.get('entree_hash') or ''),
-            'version_moteur': resultat.get('version_moteur') or '',
+            'version_moteur': (resultat.get('version_moteur')
+                               or preuve_source.get('version_moteur') or ''),
             'calcule_le': resultat.get('calcule_le') or '',
             'simule': bool(resultat.get('simule')),
         },
@@ -603,6 +661,7 @@ def rendre_note_calcul(calepinage, *, company=None, site=None, identite=None,
                                           titre_document=TITRE_NOTE)
     if styles is None:
         styles = styles_de_societe(company)
-    note = construire_note_calcul(getattr(calepinage, 'resultat', None),
-                                  site=site, identite=identite, styles=styles)
+    servi, stocke = resultat_servi_et_stocke(calepinage)
+    note = construire_note_calcul(servi, site=site, identite=identite,
+                                  styles=styles, stocke=stocke)
     return render_pdf(html=html_de_note_calcul(note), company=company)

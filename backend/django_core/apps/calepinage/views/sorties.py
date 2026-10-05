@@ -102,8 +102,8 @@ def inventaire_des_sorties(calepinage):
     except PlancheRefusee:
         geometrie = None
     a_parcelle = bool((geometrie or {}).get('parcelle'))
-    a_resultat = isinstance(calepinage.resultat, dict) \
-        and bool(calepinage.resultat)
+    motif_note = _motif_note(calepinage)  # ACAL214 : lecture stricte
+    a_resultat = motif_note is None
 
     def entree(code, libelle, extension, chemin, disponible, motif,
                produit_par='serveur'):
@@ -136,7 +136,7 @@ def inventaire_des_sorties(calepinage):
         entree('plan_masse_pdf', 'Plan de masse (bâtiment dans sa parcelle)',
                'pdf', 'plan-masse.pdf/', a_parcelle, SANS_PARCELLE),
         entree('note_calcul_pdf', 'Note de calcul', 'pdf',
-               'note-calcul.pdf/', a_resultat, SANS_RESULTAT),
+               'note-calcul.pdf/', a_resultat, motif_note),
         entree('dxf',
                'Export DXF (calques TOITURE / OBSTACLES / MODULES / COTES)',
                'dxf', 'export.dxf/', dessinable, SANS_GEOMETRIE),
@@ -152,7 +152,7 @@ def inventaire_des_sorties(calepinage):
                bool(calepinage.roof_image), SANS_IMAGE),
         entree('pack_technique', 'Dossier technique (pièces fusionnées)',
                'pdf', 'pack-technique/', dessinable and a_resultat,
-               SANS_PIECE),
+               motif_note or SANS_PIECE),
     ]
     return {
         'calepinage': calepinage.pk,
@@ -425,3 +425,14 @@ class SortiesMixin:
 
         panneau = (equipements_du_calepinage(calepinage) or {}).get('panneau')
         return (panneau or {}).get('produit')
+
+
+def _motif_note(calepinage):
+    """ACAL214 — ``None`` si la note se rend (lecture STRICTE du résultat servi).
+
+    Déclarée en FIN de fichier pour ne déplacer aucun ``@action`` (la liste
+    figée ``scripts/calepinage_actions_allow.txt`` est ancrée sur les lignes).
+    """
+    from ..services.note_calcul import motif_note_indisponible
+
+    return motif_note_indisponible(calepinage)

@@ -180,10 +180,15 @@ class RenduReelPagesTest(unittest.TestCase):
     def _octets_note_calcul(self):
         from apps.calepinage.services.note_calcul import rendre_note_calcul
 
-        nu = SimpleNamespace(company=None, pk=None, titre='Villa Anfa',
-                             resultat=_resultat())
-        return rendre_note_calcul(nu, site=SITE, identite=IDENTITE,
-                                  styles=STYLES)
+        # ACAL214 — la note lit le résultat SERVI (chaîne réelle).
+        from .acal_livrables_helpers import (
+            calepinage_simule_reel, patch_materiel,
+        )
+
+        nu = calepinage_simule_reel()
+        with patch_materiel():
+            return rendre_note_calcul(nu, site=SITE, identite=IDENTITE,
+                                      styles=STYLES)
 
     def _octets_rapport_etude(self):
         from apps.calepinage.services.rapport import rendre_rapport
