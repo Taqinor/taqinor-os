@@ -450,3 +450,250 @@ def base_economique(tva_recuperable, *, investissement=None,
         'base_amortissable_mad': amortissable,
         'flux': flux,
     }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CIQ206 — moteur ``economie_ci`` (3/6) : UN flux 25 ans par
+# ``economie.flux_de_tresorerie``, jalons 5/10/15/20/25, TRI avec son
+# horizon, VAN sur le seul taux DÉCLARÉ du client, coût du kWh solaire à côté
+# du tarif évité.
+# ═════════════════════════════════════════════════════════════════════════════
+# AUCUNE seconde arithmétique : le flux est celui de ``flux_de_tresorerie``
+# (economie.py n'est pas modifié) ; ce module ne fait que lui passer des
+# hypothèses EXPLICITES et sourcées. La revente (CIQ207) n'entre JAMAIS dans
+# le flux de tête.
+
+#: Horizon d'analyse C&I (D-CIQ-10).
+HORIZON_CI_ANS = 25
+HORIZON_CI_SOURCE = 'D-CIQ-10 : 25 ans'
+#: Jalons publiés du cumul (D-CIQ-10).
+JALONS_CI_ANS = (5, 10, 15, 20, 25)
+#: Indexation : tarif de vente CONSTANT (QX39 / QRES54), saisie à 0.
+MENTION_INDEXATION_CONSTANTE = 'tarif de vente constant (hypothèse)'
+#: Dégradation annuelle des modules : médiane publiée, source unique
+#: ``quote_engine.pricing.PANEL_DEGRADATION``.
+DEGRADATION_CI_SOURCE = 'médiane Jordan & Kurtz, NREL/JA-5200-51664, 2012'
+#: Remplacement de l'onduleur à mi-vie (``pricing.INVERTER_REPLACE_YEAR`` ;
+#: principe IEA PVPS), au montant RÉEL de sa ligne (décision Q1 du 20/08).
+ONDULEUR_MOTIF = "remplacement à mi-vie (principe IEA PVPS, décision Q1 du " \
+                 "20/08/2026), au montant réel de la ligne onduleur du devis"
+MOTIF_SANS_ONDULEUR = (
+    "aucune ligne onduleur dans le devis — aucun remplacement porté au flux")
+MOTIF_VAN_OMISE = (
+    "VAN omise : taux d'actualisation non déclaré par le client")
+MOTIF_LCOE_NON_ACTUALISE = (
+    "coût moyen NON actualisé : coût total ÷ production totale sur 25 ans "
+    "(aucun taux d'actualisation déclaré par le client)")
+MOTIF_OM_PROPOSE = "O&M proposé, non souscrit — non déduit"
+MOTIF_OM_SANS_PRIX = "tarif O&M à renseigner — non déduit"
+MOTIF_OM_ABSENT = "aucune option O&M sur le devis — aucune charge annuelle"
+
+
+def _pricing():
+    from apps.ventes.quote_engine import pricing
+    return pricing
+
+
+def lire_taux_client(saisie):
+    """``saisies_economie_ci.taux_actualisation_client`` validé, ou None.
+
+    ``{valeur_pct, source, saisi_le}`` ; un taux sans source est refusé en
+    nommant ``taux_actualisation_client.source`` (D-CIQ-10 : seul le taux
+    DÉCLARÉ par le client ouvre la VAN).
+    """
+    if saisie in (None, '', {}):
+        return None
+    champ = 'taux_actualisation_client'
+    if not isinstance(saisie, dict):
+        raise SaisieEconomieCiInvalide(
+            f"{champ} : un objet {{valeur_pct, source, saisi_le}} est "
+            "attendu.", champ=champ)
+    brut = saisie.get('valeur_pct')
+    if brut is None or brut == '':
+        return None
+    try:
+        valeur = float(brut)
+    except (TypeError, ValueError):
+        valeur = None
+    if valeur is None or valeur != valeur or valeur <= -100:
+        raise SaisieEconomieCiInvalide(
+            f"{champ}.valeur_pct : un taux en % (> −100) est attendu.",
+            champ=f'{champ}.valeur_pct')
+    source = str(saisie.get('source') or '').strip()
+    if not source:
+        raise SaisieEconomieCiInvalide(
+            f"{champ}.source : le taux d'actualisation doit porter sa source "
+            "(déclaré par le client).", champ=f'{champ}.source')
+    return {'valeur_pct': valeur, 'source': source,
+            'saisi_le': saisie.get('saisi_le') or None}
+
+
+def _om(om, cle_base):
+    """``(charge annuelle | None, bloc om du contrat)`` (D-CIQ-12).
+
+    ``om`` : ``{activee, ht, ttc, source}`` lu de la ligne O&M du devis (rôle
+    du contrat CIQ7) ou None. Activée avec prix ⇒ charge déduite ; activée
+    sans prix ⇒ « tarif O&M à renseigner » ; optionnelle ⇒ « proposé, non
+    souscrit — non déduit ».
+    """
+    if not isinstance(om, dict):
+        return None, {'statut': 'absent', 'montant_mad_an': None,
+                      'source': MOTIF_OM_ABSENT}
+    montant = _montant(om.get(cle_base))
+    if not om.get('activee'):
+        return None, {'statut': 'propose', 'montant_mad_an': montant,
+                      'source': MOTIF_OM_PROPOSE}
+    if montant is None:
+        return None, {'statut': 'tarif_a_renseigner', 'montant_mad_an': None,
+                      'source': MOTIF_OM_SANS_PRIX}
+    source = str(om.get('source') or '').strip() or \
+        'ligne O&M souscrite du devis'
+    return montant, {'statut': 'souscrit', 'montant_mad_an': montant,
+                     'source': source}
+
+
+def _un_flux(investissement, economie, *, production, taux, onduleur, charge,
+             om_bloc, cle_base):
+    from apps.ventes import economie as eco_mod
+    pricing = _pricing()
+    deg_pct = pricing.PANEL_DEGRADATION * 100.0
+    remplacements = []
+    montant_onduleur = None if onduleur is None else _montant(
+        onduleur.get(cle_base))
+    if montant_onduleur is not None:
+        remplacements.append({
+            'equipement': 'onduleur',
+            'annee': pricing.INVERTER_REPLACE_YEAR,
+            'mode': 'remplacer',
+            'montant_mad': montant_onduleur,
+            'source': str(onduleur.get('source') or '').strip()
+            or 'ligne onduleur du devis'})
+    taux_brut = None if taux is None else {
+        'valeur': taux['valeur_pct'],
+        'source': f"déclaré par le client — {taux['source']}",
+        'saisie_le': taux['saisi_le']}
+    libelle = 'HT' if cle_base == 'ht' else 'TTC'
+    investissement = {'valeur': investissement,
+                      'source': f"devis — total {libelle} de l'option retenue"}
+    economie = {'valeur': economie,
+                'source': 'economie_ci.economie_annee1 (valorisation horaire '
+                          'au tarif du poste)'}
+    production = {'valeur': production,
+                  'source': 'etude_ci.bilan (moteur C&I)'}
+    charge_brute = None if charge is None else {
+        'valeur': charge, 'source': om_bloc['source']}
+    bloc = eco_mod.flux_de_tresorerie(
+        investissement_mad=investissement,
+        economie_annee1_mad=economie,
+        production_annee1_kwh=production,
+        horizon_ans={'valeur': HORIZON_CI_ANS, 'source': HORIZON_CI_SOURCE},
+        taux_actualisation_pct=taux_brut,
+        indexation_pct={'valeur': 0.0,
+                        'source': MENTION_INDEXATION_CONSTANTE},
+        degradation_pct={'valeur': deg_pct, 'source': DEGRADATION_CI_SOURCE},
+        charges_annuelles_mad=charge_brute,
+        remplacements=remplacements)
+    omissions = [o for o in bloc['omissions']
+                 if o['cle'] not in ('remplacements', 'charges_annuelles_mad')]
+    if montant_onduleur is None:
+        omissions.append({'cle': 'remplacements',
+                          'motif': MOTIF_SANS_ONDULEUR})
+    if charge is None:
+        omissions.append({'cle': 'charges_annuelles_mad',
+                          'motif': om_bloc['source']})
+    lcoe_actualise = taux is not None
+    if taux is None and bloc['flux'] and production['valeur']:
+        # Coût moyen NON actualisé, étiqueté : le même calcul LCOE du module
+        # economie à un taux de 0 (= coût total ÷ production totale).
+        lcoe = eco_mod.lcoe(
+            investissement_mad=investissement,
+            charges_annuelles_mad=charge_brute,
+            production_annuelle_kwh=production,
+            horizon_ans=HORIZON_CI_ANS,
+            taux_actualisation_pct={'valeur': 0.0,
+                                    'source': MOTIF_LCOE_NON_ACTUALISE},
+            degradation_pct={'valeur': deg_pct,
+                             'source': DEGRADATION_CI_SOURCE},
+            remplacements=remplacements)['lcoe_mad_kwh']
+        bloc['lcoe_mad_kwh'] = lcoe
+        omissions = [o for o in omissions if o['cle'] != 'lcoe_mad_kwh']
+        omissions.append({'cle': 'lcoe_actualise',
+                          'motif': MOTIF_LCOE_NON_ACTUALISE})
+    if taux is None:
+        omissions = [o for o in omissions
+                     if o['cle'] not in ('van_mad', 'retour_actualise_ans')]
+        omissions.append({'cle': 'van_mad', 'motif': MOTIF_VAN_OMISE})
+    bloc['omissions'] = omissions
+    remplacement = None
+    if montant_onduleur is not None:
+        remplacement = {
+            'composant': 'onduleur',
+            'annee': pricing.INVERTER_REPLACE_YEAR,
+            'montant_ttc_mad': _montant(onduleur.get('ttc')),
+            'montant_ht_mad': _montant(onduleur.get('ht')),
+            'source': remplacements[0]['source'],
+            'motif': ONDULEUR_MOTIF,
+        }
+    return bloc, remplacement, lcoe_actualise
+
+
+def _jalons(bloc):
+    if not bloc or not bloc.get('flux'):
+        return []
+    par_annee = {f['annee']: f['cumul_mad'] for f in bloc['flux']}
+    return [{'annee': a, 'cumul_mad': par_annee.get(a)}
+            for a in JALONS_CI_ANS if a in par_annee]
+
+
+def flux_ci(base_eco, *, production_annee1_kwh=None, kwh_evites_an=None,
+            onduleur=None, om=None, taux_actualisation_client=None):
+    """Le flux 25 ans d'un devis C&I et ses indicateurs (forme
+    ``economie_ci.json`` : ``flux_ht`` / ``flux_ttc``, ``jalons``,
+    ``indicateurs``, ``remplacements``, ``om``).
+
+    ``base_eco`` : sortie de :func:`base_economique`. ``onduleur`` :
+    ``{ht, ttc, source}`` = montant RÉEL des lignes onduleur du devis (None =
+    aucune ligne : omission nommée). ``om`` : voir :func:`_om`.
+    ``taux_actualisation_client`` : saisie brute (validée par
+    :func:`lire_taux_client`). La revente n'entre jamais ici.
+    """
+    taux = lire_taux_client(taux_actualisation_client)
+    sortie = {'base': base_eco['base'], 'motif_base': base_eco['motif_base'],
+              'flux_ht': None, 'flux_ttc': None, 'jalons': [],
+              'indicateurs': None, 'remplacements': [], 'om': None}
+    principal = 'flux_ttc' if base_eco['base'] == BASE_TTC else 'flux_ht'
+    actualise = False
+    for cle in base_eco['flux']:
+        cle_base = 'ht' if cle == 'flux_ht' else 'ttc'
+        charge, om_bloc = _om(om, cle_base)
+        bloc, remplacement, actualise_ = _un_flux(
+            base_eco[f'investissement_{cle_base}_mad'],
+            base_eco[f'economie_annee1_{cle_base}_mad'],
+            production=production_annee1_kwh, taux=taux, onduleur=onduleur,
+            charge=charge, om_bloc=om_bloc, cle_base=cle_base)
+        sortie[cle] = bloc
+        if cle == principal:
+            sortie['om'] = om_bloc
+            actualise = actualise_
+            if remplacement is not None:
+                sortie['remplacements'] = [remplacement]
+    bloc = sortie[principal]
+    sortie['jalons'] = _jalons(bloc)
+    if base_eco['base'] == BASE_DEUX:
+        sortie['jalons_ttc'] = _jalons(sortie['flux_ttc'])
+    economie = base_eco[
+        'economie_annee1_' + ('ttc' if principal == 'flux_ttc' else 'ht')
+        + '_mad']
+    kwh = _montant(kwh_evites_an)
+    sortie['indicateurs'] = {
+        'tri_pct': bloc['tri_pct'],
+        'tri_horizon_ans': HORIZON_CI_ANS,
+        'retour_ans': bloc['retour_ans'],
+        'van_mad': bloc['van_mad'],
+        'van_motif': None if taux is not None else MOTIF_VAN_OMISE,
+        'lcoe_mad_kwh': bloc['lcoe_mad_kwh'],
+        'lcoe_actualise': actualise,
+        'tarif_kwh_evite_moyen': (round(economie / kwh, 4)
+                                  if economie is not None and kwh else None),
+    }
+    return sortie
