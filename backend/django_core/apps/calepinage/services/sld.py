@@ -480,7 +480,8 @@ def _dessin_du_calepinage(calepinage):
     conception, _materiel, donnees, _document = conception_du_calepinage(
         calepinage)
     if (list(getattr(conception, 'manquantes', ()) or ())
-            or list(bloquants_nommes(conception) or ())):
+            or list(bloquants_nommes(conception) or ())
+            or getattr(conception, 'micro_seul', False)):
         return {'svg': None, 'blocs': (), 'liaisons': ()}
     norme = _norme_du_calepinage(calepinage)
     # ACAL55 — le dessin lit un ``ResultatElectrique`` COMPLET (protections
@@ -523,6 +524,13 @@ def resultat_et_gabarit_decides(conception, donnees, norme):
             texte for texte in (gabarit.get('bandeau') or '', mention)
             if texte)
     return resultat, gabarit
+
+
+#: ACAL162 — pourquoi aucune planche n'est dessinée en micro-onduleurs seuls.
+MOTIF_SCHEMA_MICRO_SEUL = (
+    "aucun onduleur de chaîne : régime micro-onduleurs — le schéma "
+    "unifilaire de branches AC n'est pas encore dessiné ; les départs QAC.N "
+    "et les câbles W2.N sont publiés dans le résultat électrique")
 
 
 def _norme_du_calepinage(calepinage):
@@ -769,6 +777,13 @@ def schema_du_calepinage(calepinage):
         'manquantes': manquantes,
     }
     if manquantes or bloquants:
+        return reponse
+    if getattr(conception, 'micro_seul', False):
+        # ACAL162 — le gabarit de planche du noyau suppose un onduleur de
+        # chaîne : en régime micro-onduleurs SEUL, aucune planche n'est
+        # dessinée et la réponse le DIT (les branches QAC.N / W2.N sont
+        # publiées par le résultat électrique).
+        reponse['bloquants'] = [MOTIF_SCHEMA_MICRO_SEUL]
         return reponse
     edition = edition_sld(calepinage)
     norme = _norme_du_calepinage(calepinage)

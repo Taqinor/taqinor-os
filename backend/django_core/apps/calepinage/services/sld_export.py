@@ -137,6 +137,10 @@ def _dessin_et_tableau(calepinage):
         calepinage)
     empechements = (list(getattr(conception, 'manquantes', ()) or ())
                     + list(bloquants_nommes(conception) or ()))
+    if getattr(conception, 'micro_seul', False):
+        from .sld import MOTIF_SCHEMA_MICRO_SEUL
+
+        empechements.append(MOTIF_SCHEMA_MICRO_SEUL)
     if empechements:
         premier = empechements[0]
         champ = premier.split(' : ', 1)[0] if ' : ' in premier else 'schema'

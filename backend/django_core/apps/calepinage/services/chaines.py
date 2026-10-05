@@ -113,6 +113,11 @@ class PanPose:
     source_orientation: Optional[str] = None
 
 
+#: ACAL162 — le motif publié quand le champ est 100 % micro-onduleurs : il
+#: n'y a AUCUN onduleur de chaîne, donc aucun verdict de chaîne à prononcer.
+MOTIF_MICRO_SEUL = "aucun onduleur de chaîne : régime micro-onduleurs"
+
+
 @dataclass(frozen=True)
 class Conception:
     """Le chaînage d'un calepinage — ou le SILENCE nommé qui en tient lieu."""
@@ -132,6 +137,11 @@ class Conception:
     coefficients_non_sources: Tuple[str, ...] = ()
     temperatures: object = None
     entree: object = None
+    #: ACAL162 — vrai quand le champ est câblé en micro-onduleurs SEULS
+    #: (aucun onduleur de chaîne désigné) : ``resultat`` vaut ``None`` (rien
+    #: n'est chaîné) mais ``entree`` existe (module, pans, phases) pour les
+    #: branches AC — l'UNIQUE indicateur de ce régime.
+    micro_seul: bool = False
     _drapeaux: Tuple[str, ...] = field(default=(), repr=False)
 
     @property
@@ -433,7 +443,7 @@ def _avertissement_coefficients_non_sources(module):
 
 def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
                       module_designation='', onduleur_designation='',
-                      **options):
+                      optimiseur_specs=None, **options):
     """CAL124 — le chaînage COMPLET d'un document de conception.
 
     Args:
@@ -452,6 +462,23 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
     module, manque_module = specs_module(module_specs, module_designation)
     onduleur, manque_onduleur = specs_onduleur(onduleur_specs,
                                                onduleur_designation)
+    # ACAL162 — AUCUN onduleur de chaîne désigné (fiche vide, pas une fiche
+    # incomplète) mais un MICRO-onduleur en emplacement optimiseur : le champ
+    # est câblé en branches AC. Aucun onduleur fictif n'est construit.
+    from .micro_onduleurs import est_micro_onduleur
+
+    if (not manque_module and not onduleur_specs
+            and est_micro_onduleur(optimiseur_specs)):
+        if not pans:
+            return Conception(
+                pans=(), temperatures=temperatures,
+                alertes=("aucun module posé : il n'y a rien à chaîner",))
+        return Conception(
+            pans=pans, resultat=None, micro_seul=True,
+            entree=entree_electrique(layout, module, None, temperatures,
+                                     **options),
+            alertes=(MOTIF_MICRO_SEUL,), temperatures=temperatures,
+            coefficients_non_sources=tuple(module.coefficients_non_sources))
     manquantes = tuple(['module : %s' % m for m in manque_module]
                        + ['onduleur : %s' % m for m in manque_onduleur])
     if manquantes:

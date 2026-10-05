@@ -1022,6 +1022,13 @@ def resoudre_materiel(company, entree, *, calepinage=None):
         designations[role] = _designation(produit)
         produits[role] = produit.pk
         provenances[role] = provenance
+    from .micro_onduleurs import est_micro_onduleur
+
+    if not blocs['onduleur'] and est_micro_onduleur(blocs['optimiseur']):
+        # ACAL162 — régime micro-onduleurs SEUL : l'onduleur de chaîne n'est
+        # pas « manquant », il n'existe pas.
+        absents = [texte for texte in absents
+                   if not texte.startswith(LIBELLES_ROLES['onduleur'] + ' ')]
     return {**blocs, 'designations': designations, 'produits': produits,
             'provenances': provenances, 'absents': tuple(absents)}
 
@@ -1187,6 +1194,8 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         onduleur_specs=materiel['onduleur'], temperatures=temperatures,
         module_designation=materiel['designations']['module'],
         onduleur_designation=materiel['designations']['onduleur'],
+        # ACAL162 — un micro-onduleur seul suffit à câbler le champ.
+        optimiseur_specs=materiel.get('optimiseur'),
         **_options_entree(donnees))
     return (conception, materiel, donnees, document)
 
@@ -2495,8 +2504,12 @@ def _micro_onduleurs_du_calepinage(conception, specs, designation=''):
         branches_du_champ, equipement_ac, est_micro_onduleur,
     )
 
-    if conception.fiche_incomplete or conception.resultat is None \
-            or not est_micro_onduleur(specs):
+    # ACAL162 — le régime micro SEUL (``micro_seul``, aucun onduleur de
+    # chaîne) a ses branches comme le régime mixte : seul indicateur, aligné
+    # sur ``services/troncons.py``.
+    if conception.fiche_incomplete or not est_micro_onduleur(specs) or (
+            conception.resultat is None
+            and not getattr(conception, 'micro_seul', False)):
         return {'bloc': None, 'protections': [], 'omissions': []}
     bloc = branches_du_champ(conception, specs, designation=designation)
     if not bloc['applique']:
@@ -3035,6 +3048,18 @@ def _champ_de_fiche(specs, cle):
     return getattr(specs, cle, None)
 
 
+#: ACAL162 — les cinq verdicts de CHAÎNE du contrat CAL244 (code, libellé).
+VERDICTS_DE_CHAINE = (
+    ('voc_cold_under_vmax',
+     "Voc à froid sous la tension maximale admissible de l'onduleur"),
+    ('vmp_cold_under_mppt_max', 'Vmp à froid dans le haut de la plage MPPT'),
+    ('vmp_hot_over_mppt_min', 'Vmp à chaud au-dessus du bas de la plage MPPT'),
+    ('courant_par_entree_mppt',
+     'Courant par entrée MPPT sous le courant admissible'),
+    ('ratio_dc_ac', 'Ratio DC/AC dans la fourchette retenue par la société'),
+)
+
+
 def verdicts_electriques(conception, optimiseur_specs=None,
                          optimiseur_designation='', *, reglages=None):
     """Les verdicts du contrat CAL244, dérivés des chiffres de FICHE.
@@ -3052,8 +3077,16 @@ def verdicts_electriques(conception, optimiseur_specs=None,
     Isc publié dépassé) ; ce qui dégrade la production alerte (écrêtage sur
     l'Imp, MPPT hors plage en été, ratio DC/AC).
     """
-    from .chaines import evaluer_onduleurs
+    from .chaines import MOTIF_MICRO_SEUL, evaluer_onduleurs
 
+    if getattr(conception, 'micro_seul', False):
+        # ACAL162 — aucun verdict de CHAÎNE n'est prononcé : chacun des cinq
+        # est OMIS en disant pourquoi (jamais un vert, jamais un rouge).
+        return tuple({
+            'code': code, 'libelle': libelle, 'conforme': None,
+            'bloquant': False, 'source': None, 'detail': MOTIF_MICRO_SEUL,
+            **_bloc_temperature(conception.temperatures),
+        } for code, libelle in VERDICTS_DE_CHAINE)
     if conception.resultat is None or not conception.chaines:
         return ()
     onduleur = conception.entree.onduleur
