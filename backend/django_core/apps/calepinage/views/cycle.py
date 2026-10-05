@@ -31,7 +31,8 @@ LA RÉFÉRENCE DE LA COPIE — CE QUE LE TEXTE DE LA TÂCHE SUPPOSE, ET LE RÉEL
 Le texte de CALX35 annonce « la référence neuve vient de
 ``core.numbering.next_reference`` ». ``Calepinage`` ne porte AUCUN champ
 ``reference`` : l'étiquette est DÉRIVÉE de la date de création et de
-l'identifiant (``services/presentation.py::reference_calepinage``, CAL17 → ACAL196), et
+l'identifiant (``services/presentation.py::reference_calepinage``,
+CAL17 → ACAL196), et
 ``next_reference`` exige un champ porteur sur le modèle — l'ajouter serait
 une migration, que la décision D-CALX 8 interdit dans ce lot. La copie porte
 donc une référence NEUVE parce qu'elle porte un identifiant neuf, et cette

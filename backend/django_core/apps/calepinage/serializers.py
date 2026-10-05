@@ -189,7 +189,8 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         if client is None:
             return None
         ville = (getattr(client, 'ville', '') or '').strip() or None
-        return {'id': client.pk, 'nom': str(client), 'ville': ville}
+        # ``Client.__str__`` ajoute une espace finale sans prénom : rognée.
+        return {'id': client.pk, 'nom': str(client).strip(), 'ville': ville}
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_responsable_nom(self, calepinage):
