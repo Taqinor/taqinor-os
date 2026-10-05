@@ -253,3 +253,355 @@ def ingerer_page(requete, reponse, numero_page):
                                 'updated_at'])
     return {'deja_ingeree': False, 'pubs': len(pubs),
             'nouveaux_annonceurs': nouveaux, 'a_suivant': a_suivant}
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# VEIL16 — Lancement à la demande : une tâche Celery = UN appel, garde de
+# quota, reprise. Aucune tâche planifiée (beat) : seule l'action d'un humain
+# lance une découverte.
+# ═════════════════════════════════════════════════════════════════════════════
+# Reprise progressive après un quota : toujours < 3 600 s (visibilité Redis).
+PALIERS_PAUSE_S = (300, 600, 1200, 1800)
+# Délai court entre deux étapes (une étape = une page d'une requête).
+COUNTDOWN_ETAPE_S = 2
+JOB_KIND = 'veille_decouverte'
+NOM_TACHE = 'adsengine.veille_etape'
+
+STATUTS_FINAUX = ('termine', 'echec', 'annule')
+STATUTS_REQUETE_OUVERTS = ('a_faire', 'en_cours')
+
+
+class LancementRefuse(Exception):
+    """Refus de création/lancement (message FR + statut HTTP)."""
+
+    def __init__(self, message_fr, statut_http=400):
+        self.message_fr = message_fr
+        self.statut_http = statut_http
+        super().__init__(message_fr)
+
+
+def _entier_positif(valeur, nom):
+    if valeur in (None, ''):
+        raise LancementRefuse(
+            f'« {nom} » est obligatoire : aucun plafond n\'est inventé.')
+    try:
+        entier = int(valeur)
+    except (TypeError, ValueError):
+        raise LancementRefuse(f'« {nom} » doit être un entier.')
+    if entier <= 0:
+        raise LancementRefuse(f'« {nom} » doit être strictement positif.')
+    return entier
+
+
+def _seuil_pause_usage():
+    from django.conf import settings
+    try:
+        return int(getattr(settings, 'VEILLE_PAUSE_USAGE_PCT', 75))
+    except (TypeError, ValueError):
+        return 75
+
+
+def creer_decouverte(company, user, donnees):
+    """Valide et crée une découverte + ses requêtes (mot-clé × pays).
+
+    Refus 403 FR si la société n'est pas dans ``VEILLE_SOCIETES_AUTORISEES`` ;
+    400 FR si un plafond manque (aucun défaut inventé), si un mot-clé dépasse
+    100 caractères ou si un pays n'est pas couvert. Aucun appel réseau."""
+    from . import ad_library_client as alc
+    from . import veille_acces
+    from .models import VeilleDecouverte, VeilleRequete
+
+    if not veille_acces.societe_autorisee(company):
+        raise LancementRefuse(
+            veille_acces.MESSAGES_FR[veille_acces.NON_AUTORISE], 403)
+    donnees = donnees or {}
+    plafond_appels = _entier_positif(donnees.get('plafond_appels'),
+                                     'plafond_appels')
+    plafond_pages = _entier_positif(donnees.get('plafond_pages_par_requete'),
+                                    'plafond_pages_par_requete')
+    search_type = donnees.get('search_type') or 'KEYWORD_UNORDERED'
+    if search_type not in alc.SEARCH_TYPES:
+        raise LancementRefuse(f'Mode de recherche inconnu : {search_type}.')
+    ad_active_status = donnees.get('ad_active_status') or 'ACTIVE'
+    if ad_active_status not in alc.AD_ACTIVE_STATUS:
+        raise LancementRefuse(
+            f'Statut de diffusion inconnu : {ad_active_status}.')
+    mots_cles = donnees.get('mots_cles')
+    if not isinstance(mots_cles, list) or not mots_cles:
+        raise LancementRefuse('Au moins un mot-clé avec ses pays est requis.')
+    propres, couples = [], []
+    for entree in mots_cles:
+        if not isinstance(entree, dict):
+            raise LancementRefuse('Mot-clé illisible.')
+        try:
+            texte = alc.valider_mot_cle(entree.get('texte'))
+            pays = entree.get('pays') or []
+            if not isinstance(pays, list) or not pays:
+                raise alc.ParametreInvalide(
+                    f'Aucun pays choisi pour « {texte} ».')
+            codes = []
+            for code in pays:
+                code = alc.valider_pays(code)
+                if code not in codes:
+                    codes.append(code)
+        except alc.ParametreInvalide as exc:
+            raise LancementRefuse(exc.message_fr)
+        propres.append({'texte': texte, 'pays': codes})
+        for code in codes:
+            if (texte, code) not in couples:
+                couples.append((texte, code))
+
+    cle = str(donnees.get('cle_idempotence') or '')[:64]
+    with transaction.atomic():
+        if cle:
+            existante = VeilleDecouverte.objects.filter(
+                company=company, cle_idempotence=cle).first()
+            if existante is not None:
+                return existante
+        dec = VeilleDecouverte.objects.create(
+            company=company, cree_par=user if getattr(user, 'pk', None)
+            else None,
+            mots_cles=propres, search_type=search_type,
+            ad_active_status=ad_active_status,
+            plafond_appels=plafond_appels,
+            plafond_pages_par_requete=plafond_pages, cle_idempotence=cle)
+        for ordre, (texte, code) in enumerate(couples):
+            VeilleRequete.objects.create(
+                company=company, decouverte=dec, ordre=ordre, mot_cle=texte,
+                pays=code, search_type=search_type)
+    return dec
+
+
+def _envoyer_etape(dec, countdown=0):
+    """Envoie l'étape ``dec.numero_etape`` (hors transaction de l'appelant)."""
+    from .tasks import veille_etape
+    veille_etape.apply_async(
+        kwargs={'decouverte_id': dec.pk, 'company_id': dec.company_id,
+                'job_id': dec.background_job_id, 'etape': dec.numero_etape},
+        countdown=max(0, int(countdown)))
+
+
+def lancer(dec, user):
+    """Soumet la découverte comme job de fond (``core.jobs.submit`` : suivi de
+    progression). La première étape porte ``etape=0``."""
+    from core import jobs
+
+    job = jobs.submit(JOB_KIND, NOM_TACHE, company=dec.company, user=user,
+                      decouverte_id=dec.pk, etape=dec.numero_etape)
+    dec.background_job = job
+    dec.save(update_fields=['background_job', 'updated_at'])
+    return job
+
+
+def reprendre(dec):
+    """Relance une découverte en pause/échec réseau : nouvelle chaîne d'étapes
+    (le numéro d'étape avance, toute ancienne chaîne devient inerte). Ne
+    contourne JAMAIS une pause de quota : l'étape attendra ``reprise_a``."""
+    from .models import VeilleDecouverte
+
+    with transaction.atomic():
+        dec = VeilleDecouverte.objects.select_for_update().get(pk=dec.pk)
+        if dec.statut in ('termine', 'annule'):
+            raise LancementRefuse(
+                'Cette découverte est close : elle ne peut pas reprendre.')
+        dec.numero_etape += 1
+        if dec.statut == 'echec':
+            dec.statut = 'en_file'
+        dec.save(update_fields=['numero_etape', 'statut', 'updated_at'])
+    _envoyer_etape(dec)
+    return dec
+
+
+def annuler(dec):
+    from .models import VeilleDecouverte
+
+    with transaction.atomic():
+        dec = VeilleDecouverte.objects.select_for_update().get(pk=dec.pk)
+        if dec.statut not in STATUTS_FINAUX:
+            dec.statut = 'annule'
+            dec.termine_le = timezone.now()
+            dec.save(update_fields=['statut', 'termine_le', 'updated_at'])
+            dec.requetes.filter(statut__in=STATUTS_REQUETE_OUVERTS).update(
+                curseur_after='')
+    return dec
+
+
+def _erreur(dec, code, message_fr, now):
+    dec.erreurs = list(dec.erreurs or []) + [
+        {'code': code, 'message_fr': message_fr, 'a': now.isoformat()}]
+
+
+def _clore(dec, statut, now):
+    dec.statut = statut
+    dec.termine_le = now
+    dec.requetes.filter(statut__in=STATUTS_REQUETE_OUVERTS).update(
+        curseur_after='')
+    dec.requetes.exclude(curseur_after='').update(curseur_after='')
+    job = dec.background_job
+    if job is not None:
+        if statut == 'echec':
+            job.marquer_echec((dec.erreurs or [{}])[-1].get('message_fr', ''))
+        else:
+            job.marquer_termine()
+
+
+def _progression(dec):
+    total = dec.requetes.count()
+    if not total or dec.background_job is None:
+        return
+    faites = dec.requetes.exclude(statut__in=STATUTS_REQUETE_OUVERTS).count()
+    dec.background_job.marquer_progression(int(100 * faites / total))
+
+
+def executer_etape(decouverte_id, etape=None, *, http_client=None, now=None):
+    """UNE étape : au plus UN appel HTTP. Renvoie ``{action, countdown,
+    etape}`` où ``action`` ∈ ``continuer`` | ``attendre`` | ``fin`` |
+    ``ignore`` ; l'appelant (la tâche) se relance si ``continuer``/``attendre``
+    avec le numéro ``etape`` renvoyé."""
+    from . import ad_library_client as alc
+    from . import veille_acces
+    from .models import VeilleDecouverte
+
+    now = now or timezone.now()
+    with transaction.atomic():
+        dec = (VeilleDecouverte.objects.select_for_update(skip_locked=True)
+               .filter(pk=decouverte_id).first())
+        if dec is None:  # verrou tenu par une autre étape, ou disparue
+            return {'action': 'ignore', 'countdown': 0, 'etape': etape}
+        if etape is not None and int(etape) != dec.numero_etape:
+            return {'action': 'ignore', 'countdown': 0, 'etape': etape}
+        if dec.statut in STATUTS_FINAUX:
+            return {'action': 'fin', 'countdown': 0, 'etape': etape}
+
+        dec.numero_etape += 1
+        champs = ['numero_etape', 'statut', 'reprise_a', 'erreurs',
+                  'pauses_consecutives', 'dernier_usage_app', 'termine_le',
+                  'appels_consommes', 'updated_at']
+
+        # Pause de quota en cours : aucun appel avant ``reprise_a``.
+        if dec.statut == 'en_pause_quota' and dec.reprise_a \
+                and dec.reprise_a > now:
+            reste = int((dec.reprise_a - now).total_seconds()) + 1
+            dec.save(update_fields=champs)
+            return {'action': 'attendre', 'countdown': reste,
+                    'etape': dec.numero_etape}
+
+        try:
+            config = veille_acces.exiger_utilisable(dec.company)
+        except veille_acces.AccesRefuse as exc:
+            _erreur(dec, None, exc.message_fr, now)
+            _clore(dec, 'echec', now)
+            dec.save(update_fields=champs)
+            return {'action': 'fin', 'countdown': 0, 'etape': dec.numero_etape}
+
+        # Choix de la requête : la première ouverte, plafonds respectés.
+        requete = None
+        for candidate in dec.requetes.filter(
+                statut__in=STATUTS_REQUETE_OUVERTS).order_by('ordre', 'id'):
+            if candidate.pages_lues >= dec.plafond_pages_par_requete:
+                candidate.statut = 'plafond'
+                candidate.curseur_after = ''
+                candidate.save(update_fields=['statut', 'curseur_after',
+                                              'updated_at'])
+                continue
+            requete = candidate
+            break
+        if requete is None:
+            _clore(dec, 'termine', now)
+            dec.save(update_fields=champs)
+            return {'action': 'fin', 'countdown': 0, 'etape': dec.numero_etape}
+        if dec.appels_consommes >= dec.plafond_appels:
+            dec.requetes.filter(statut__in=STATUTS_REQUETE_OUVERTS).update(
+                statut='plafond', curseur_after='')
+            _clore(dec, 'termine', now)
+            dec.save(update_fields=champs)
+            return {'action': 'fin', 'countdown': 0, 'etape': dec.numero_etape}
+
+        dec.statut = 'en_cours'
+        dec.reprise_a = None
+        client = alc.AdLibraryClient(
+            config.jeton, app_id=config.app_id, app_secret=config.app_secret,
+            http_client=http_client)
+        try:
+            reponse = client.chercher(
+                requete.mot_cle, requete.pays,
+                search_type=requete.search_type,
+                ad_active_status=dec.ad_active_status,
+                after=requete.curseur_after or None)
+        except alc.QuotaAtteint as exc:
+            palier = PALIERS_PAUSE_S[min(dec.pauses_consecutives,
+                                         len(PALIERS_PAUSE_S) - 1)]
+            dec.pauses_consecutives += 1
+            dec.appels_consommes += 1
+            requete.appels += 1
+            requete.statut = 'en_cours'
+            requete.save(update_fields=['appels', 'statut', 'updated_at'])
+            dec.statut = 'en_pause_quota'
+            dec.reprise_a = now + datetime.timedelta(seconds=palier)
+            if exc.usage:
+                dec.dernier_usage_app = dict(exc.usage)
+            _erreur(dec, exc.code, exc.message_fr, now)
+            dec.save(update_fields=champs)
+            return {'action': 'attendre', 'countdown': palier,
+                    'etape': dec.numero_etape}
+        except alc.AccesInvalide as exc:
+            dec.appels_consommes += 1
+            requete.appels += 1
+            requete.save(update_fields=['appels', 'updated_at'])
+            _erreur(dec, exc.code, exc.message_fr, now)
+            _clore(dec, 'echec', now)
+            dec.save(update_fields=champs)
+            return {'action': 'fin', 'countdown': 0, 'etape': dec.numero_etape}
+        except alc.AdLibraryErreur as exc:
+            # Autre 4xx / paramètre / réseau : la requête est en erreur, le
+            # lancement continue avec la suivante.
+            dec.appels_consommes += 1
+            requete.appels += 1
+            requete.statut = 'erreur'
+            requete.curseur_after = ''
+            requete.message_erreur = veille_acces.masquer_secrets(
+                exc.message_fr, config)[:255]
+            requete.save(update_fields=['appels', 'statut', 'curseur_after',
+                                        'message_erreur', 'updated_at'])
+            _erreur(dec, exc.code, requete.message_erreur, now)
+            dec.save(update_fields=champs)
+            return {'action': 'continuer', 'countdown': COUNTDOWN_ETAPE_S,
+                    'etape': dec.numero_etape}
+
+        # Succès : ingestion (même transaction) puis statut de la requête.
+        dec.save(update_fields=champs)
+        numero_page = requete.pages_lues + 1
+        ingerer_page(requete, reponse, numero_page)
+        requete.refresh_from_db()
+        dec.refresh_from_db()
+        if not reponse.get('a_suivant'):
+            requete.statut = ('vide' if numero_page == 1
+                              and not reponse.get('pubs') else 'terminee')
+            requete.curseur_after = ''
+        elif requete.pages_lues >= dec.plafond_pages_par_requete:
+            requete.statut = 'plafond'
+            requete.curseur_after = ''
+        else:
+            requete.statut = 'en_cours'
+        requete.save(update_fields=['statut', 'curseur_after', 'updated_at'])
+
+        dec.pauses_consecutives = 0
+        action, countdown = 'continuer', COUNTDOWN_ETAPE_S
+        usage_pct = alc.pourcentage_usage(reponse.get('usage'))
+        if usage_pct >= _seuil_pause_usage():
+            palier = PALIERS_PAUSE_S[0]
+            dec.statut = 'en_pause_quota'
+            dec.reprise_a = now + datetime.timedelta(seconds=palier)
+            dec.pauses_consecutives = 1
+            _erreur(dec, None,
+                    f'Usage de l\'application à {usage_pct} % : pause '
+                    'préventive avant de reprendre.', now)
+            action, countdown = 'attendre', palier
+        elif not dec.requetes.filter(
+                statut__in=STATUTS_REQUETE_OUVERTS).exists():
+            _clore(dec, 'termine', now)
+            action, countdown = 'fin', 0
+        dec.save(update_fields=champs)
+        _progression(dec)
+        return {'action': action, 'countdown': countdown,
+                'etape': dec.numero_etape}

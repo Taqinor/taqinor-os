@@ -95,6 +95,8 @@ class Migration(migrations.Migration):
                     blank=True, null=True, verbose_name='Reprise à')),
                 ('pauses_consecutives', models.PositiveSmallIntegerField(
                     default=0, verbose_name='Pauses de quota consécutives')),
+                ('numero_etape', models.PositiveIntegerField(
+                    default=0, verbose_name="Numéro d'étape attendu")),
                 ('erreurs', models.JSONField(
                     blank=True, default=list,
                     verbose_name='Erreurs ([{code, message_fr, a}])')),

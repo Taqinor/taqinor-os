@@ -3102,6 +3102,10 @@ class VeilleDecouverte(TenantModel):
         null=True, blank=True, verbose_name='Reprise à')
     pauses_consecutives = models.PositiveSmallIntegerField(
         default=0, verbose_name='Pauses de quota consécutives')
+    # VEIL16 — numéro de l'étape attendue : une étape relivrée (acks_late) ou
+    # une chaîne périmée porte un numéro dépassé et ne fait RIEN.
+    numero_etape = models.PositiveIntegerField(
+        default=0, verbose_name="Numéro d'étape attendu")
     erreurs = models.JSONField(
         default=list, blank=True,
         verbose_name='Erreurs ([{code, message_fr, a}])')

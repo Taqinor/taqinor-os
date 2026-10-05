@@ -1194,6 +1194,9 @@ CELERY_TASK_ROUTES = {
     'adsengine.check_attribution_quality': {'queue': 'scheduled'},
     # PUB94 — snapshot hebdo d'observabilité de L'Arbre (branches mortes).
     'adsengine.flag_dead_branches_weekly': {'queue': 'scheduled'},
+    # PLAN_VEILLE (VEIL16) — étape de découverte À LA DEMANDE (jamais au beat) :
+    # une page d'une requête par tâche, relancée par countdown.
+    'adsengine.veille_etape': {'queue': 'default'},
     # NTADM10/11/16/35/36/38 — jobs adminops planifiés (sandbox clone/purge/
     # rappel, health score, purge packages/usage).
     'adminops.cloner_sandbox': {'queue': 'scheduled'},
@@ -1408,6 +1411,8 @@ VEILLE_SOCIETES_AUTORISEES = [
 # faux → lecture de `<mot_cle>_<pays>_<page>.json` dans ce dossier, AUCUNE
 # connexion (démonstrations sans jeton, e2e VEIL46).
 META_AD_LIBRARY_FIXTURES_DIR = os.environ.get('META_AD_LIBRARY_FIXTURES_DIR', '')
+# VEIL16 — pause préventive quand X-App-Usage atteint ce pourcentage.
+VEILLE_PAUSE_USAGE_PCT = int(os.environ.get('VEILLE_PAUSE_USAGE_PCT') or 75)
 
 # Stockage fichiers — MinIO / S3 (Phase 2 Sem. 4)
 MINIO_ENDPOINT = os.environ.get('MINIO_ENDPOINT', 'minio:9000')
