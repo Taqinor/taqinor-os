@@ -5,5 +5,167 @@
     "produits_modules_qs": "19444dfcbf03073548bcee363028b01f2d5704ed",
     "specs_for_produit": "f77cf1d695e7eb8a40b69ffa9b582fa6e9eecc30",
     "type_fiche_produit": "373b95140ffe0bf243d5bc85d4300b739ff1c3b5"
-  }
+  },
+  "lecture": {
+    "G-AUTRE": {
+      "dimensions_de_pose": {},
+      "kit_from_produit": null,
+      "specs_for_produit": {},
+      "type_fiche_produit": "autre"
+    },
+    "G-BAT": {
+      "dimensions_de_pose": {},
+      "kit_from_produit": null,
+      "specs_for_produit": {
+        "chimie": "LFP",
+        "cycles_publies": 6000,
+        "dod_pct": "Decimal:90.0",
+        "kwh_nominal": "Decimal:10.24",
+        "kwh_usable": "Decimal:9.20",
+        "v_nominal": "Decimal:51.2"
+      },
+      "type_fiche_produit": "batterie"
+    },
+    "G-MOD": {
+      "dimensions_de_pose": {
+        "epaisseur_mm": 30,
+        "largeur_mm": 1134,
+        "longueur_mm": 2278,
+        "poids_kg": "Decimal:27.50",
+        "puissance_wc": "Decimal:550.00"
+      },
+      "kit_from_produit": "Kit(code='G-MOD', libelle='A Module 550 Wc', module_long_m=2.278, module_court_m=1.134, puissance_module_wc=550.0, inclinaison_deg=13.0, orientation=<OrientationModule.PORTRAIT: 'PORTRAIT'>, modules_par_table=1, faitage_m=0.0)",
+      "specs_for_produit": {
+        "bifacial": true,
+        "bifacialite_pct": "Decimal:70.0",
+        "degradation_annee1_pct": "Decimal:1.00",
+        "degradation_annuelle_pct": "Decimal:0.40",
+        "epaisseur_mm": 30,
+        "garantie_pct_a_10_ans": "Decimal:92.0",
+        "garantie_pct_a_25_ans": "Decimal:87.0",
+        "imp_a": "Decimal:13.25",
+        "isc_a": "Decimal:13.90",
+        "largeur_mm": 1134,
+        "longueur_mm": 2278,
+        "noct_c": "Decimal:43.0",
+        "pmax_wc": "Decimal:550.00",
+        "poids_kg": "Decimal:27.50",
+        "rendement_par_irradiance": [
+          {
+            "rendement_relatif_pct": 97.0,
+            "w_m2": 200
+          },
+          {
+            "rendement_relatif_pct": 100.0,
+            "w_m2": 1000
+          }
+        ],
+        "rendement_pct": "Decimal:21.30",
+        "techno_cellule": "N-type TOPCon",
+        "temp_coeff_pmax_pct_c": "Decimal:-0.300",
+        "temp_coeff_voc_pct_c": "Decimal:-0.250",
+        "tolerance_pmax_max_pct": "Decimal:3.00",
+        "tolerance_pmax_min_pct": "Decimal:0.00",
+        "uc_w_m2k": "Decimal:29.00",
+        "uv_w_m3sk": "Decimal:0.00",
+        "vmp_v": "Decimal:41.50",
+        "voc_v": "Decimal:49.50"
+      },
+      "type_fiche_produit": "module"
+    },
+    "G-MOD-ARCH": {
+      "dimensions_de_pose": {
+        "largeur_mm": 1038,
+        "longueur_mm": 2094,
+        "puissance_wc": "Decimal:450.00"
+      },
+      "kit_from_produit": "Kit(code='G-MOD-ARCH', libelle='C Module archivé', module_long_m=2.094, module_court_m=1.038, puissance_module_wc=450.0, inclinaison_deg=13.0, orientation=<OrientationModule.PORTRAIT: 'PORTRAIT'>, modules_par_table=1, faitage_m=0.0)",
+      "specs_for_produit": {
+        "bifacial": false,
+        "largeur_mm": 1038,
+        "longueur_mm": 2094,
+        "pmax_wc": "Decimal:450.00"
+      },
+      "type_fiche_produit": "module"
+    },
+    "G-MOD-SANSDIM": {
+      "dimensions_de_pose": {
+        "puissance_wc": "Decimal:400.00"
+      },
+      "kit_from_produit": null,
+      "specs_for_produit": {
+        "bifacial": false,
+        "pmax_wc": "Decimal:400.00",
+        "voc_v": "Decimal:37.00"
+      },
+      "type_fiche_produit": "module"
+    },
+    "G-OND": {
+      "dimensions_de_pose": {},
+      "kit_from_produit": null,
+      "specs_for_produit": {
+        "ac_kw": "Decimal:10.00",
+        "i_max_mppt_a": "Decimal:16.0",
+        "mppt_v_max": "Decimal:800.0",
+        "mppt_v_min": "Decimal:200.0",
+        "n_mppt": 2,
+        "phases": 3,
+        "rendement_euro_pct": "Decimal:97.5",
+        "rendement_par_charge": [
+          {
+            "charge_pct": 10,
+            "rendement_pct": 90
+          },
+          {
+            "charge_pct": 100,
+            "rendement_pct": 97
+          }
+        ],
+        "v_max_abs": "Decimal:1000.0"
+      },
+      "type_fiche_produit": "onduleur"
+    },
+    "G-OPT": {
+      "dimensions_de_pose": {},
+      "kit_from_produit": null,
+      "specs_for_produit": {
+        "i_in_max_a": "Decimal:14.0",
+        "modules_par_optimiseur": 1,
+        "pmax_in_w": "Decimal:700.00",
+        "pmax_out_w": "Decimal:700.00",
+        "rendement_pct": "Decimal:99.5",
+        "v_in_max": "Decimal:80.0",
+        "v_in_min": "Decimal:8.0"
+      },
+      "type_fiche_produit": "optimiseur"
+    },
+    "G-POMPE": {
+      "dimensions_de_pose": {},
+      "kit_from_produit": null,
+      "specs_for_produit": {},
+      "type_fiche_produit": "pompe"
+    },
+    "G-SANS": {
+      "dimensions_de_pose": {},
+      "kit_from_produit": null,
+      "specs_for_produit": {},
+      "type_fiche_produit": ""
+    },
+    "G-VAR": {
+      "dimensions_de_pose": {},
+      "kit_from_produit": null,
+      "specs_for_produit": {},
+      "type_fiche_produit": "variateur_pompage"
+    },
+    "G-VIDE": {
+      "dimensions_de_pose": {},
+      "kit_from_produit": null,
+      "specs_for_produit": {},
+      "type_fiche_produit": ""
+    }
+  },
+  "produits_modules_qs": [
+    "G-MOD",
+    "G-MOD-SANSDIM"
+  ]
 }

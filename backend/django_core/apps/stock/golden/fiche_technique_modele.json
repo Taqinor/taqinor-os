@@ -6,6 +6,1693 @@
     "valider_courbe_irradiance": "1569e31152555f78800b28b078b5ba0ff5c2a04f",
     "valider_courbe_rendement_onduleur": "59d583b6911cd2395369c19869dccc09876ce736"
   },
+  "meta": {
+    "champs": [
+      {
+        "blank": true,
+        "classe": "BigAutoField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "id",
+        "null": false,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "ForeignKey",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "company",
+        "null": true,
+        "on_delete": "CASCADE",
+        "related_name": "fiches_techniques",
+        "validateurs": []
+      },
+      {
+        "blank": false,
+        "classe": "OneToOneField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "produit",
+        "null": false,
+        "on_delete": "PROTECT",
+        "related_name": "fiche_technique",
+        "validateurs": []
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "e9db1bd7fb374a70dd2f9bcee15982ee9ba9c041",
+        "max_digits": 8,
+        "max_length": null,
+        "nom": "pmax_wc",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "cc0648e148c07b237453dea7f08de9784682eb5b",
+        "max_digits": 8,
+        "max_length": null,
+        "nom": "voc_v",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "8a7a8997e729478a576408e002c0194f7a4c3a59",
+        "max_digits": 8,
+        "max_length": null,
+        "nom": "isc_a",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "93a879b10ef34a1252aba4dd01bf3b46f467873e",
+        "max_digits": 8,
+        "max_length": null,
+        "nom": "vmp_v",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "4c101fd4b33647faab4fcd7761e6d177957e429b",
+        "max_digits": 8,
+        "max_length": null,
+        "nom": "imp_a",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "67c89732069b5cdae2090224c499bc464eadb01d",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "rendement_pct",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "CharField",
+        "decimal_places": null,
+        "defaut": "''",
+        "help_text_sha1": "007c9a01e0ee51f2084218fbf2b8c32a1bcdd3c6",
+        "max_digits": null,
+        "max_length": 24,
+        "nom": "type_fiche",
+        "null": false,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MaxLengthValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "f065ece549f6eccf497f3b981f768ad018495128",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "longueur_mm",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "0a0aa6ac64199e4fe1e516daf83da16211b038d7",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "largeur_mm",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "deb744522acc2996d44093559082e53c86ca0fb2",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "epaisseur_mm",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "c9e933cbc9612d9eddaa86c9a2387a5b1db33140",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "poids_kg",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "CharField",
+        "decimal_places": null,
+        "defaut": "''",
+        "help_text_sha1": "a757eca6d4e7db07ed8b908b756202efb8590b47",
+        "max_digits": null,
+        "max_length": 100,
+        "nom": "techno_cellule",
+        "null": false,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MaxLengthValidator"
+        ]
+      },
+      {
+        "blank": false,
+        "classe": "BooleanField",
+        "decimal_places": null,
+        "defaut": "False",
+        "help_text_sha1": "ad598028f5ee981c77395d8a3f9e4e623fd29984",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "bifacial",
+        "null": false,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": []
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "29a6989a2506b4d9b35f3e14e5c6f9bdfa3b7de3",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "bifacialite_pct",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 3,
+        "defaut": null,
+        "help_text_sha1": "aadd5aa25c5f71dbc247e87bbf4fd45fb49528ad",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "temp_coeff_voc_pct_c",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 3,
+        "defaut": null,
+        "help_text_sha1": "5d3e899dc3d1dd5ebf756ec49992f90d06bd7978",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "temp_coeff_pmax_pct_c",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "c19a17b3f8ba5d166dde67ef255653a432502f2b",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "noct_c",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "7d3cc81311b54bcfcd4f6f81d3d412a5050c13af",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "uc_w_m2k",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "92500014d18a244baf4491455b3dcfed4c196856",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "uv_w_m3sk",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "171af473cbc73ebbe4b9ca0b82edd5be23cf5540",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "degradation_annuelle_pct",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "1edc94062d45fd9867104a4bd2909c1658cd5e2f",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "degradation_annee1_pct",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "12c570b69a048841b399ac0fc730fa8aee5f58a6",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "garantie_pct_a_10_ans",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "f0d6ebf39e7e22f016d55832593e3aa2a5b8b350",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "garantie_pct_a_25_ans",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "JSONField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "306737df601725fb28bb25b322fc9c54627830c8",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "rendement_par_irradiance",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "valider_courbe_irradiance"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "64dfa0e710f3c2bdd6e3c7a2c2ba0f39494afa63",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "tolerance_pmax_min_pct",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "9814b8aa5d7f15cd66db53f4a442ea9ea41c4385",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "tolerance_pmax_max_pct",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveSmallIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "762c62d8a0503f53239ef4a029211dfc6e2d7689",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "ond_n_mppt",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "344ec2cea1fa9d667b22a9ff56df3c954e4c2442",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "ond_mppt_v_min",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "f0a8df5bdf2e3036913f720c7a2b7067127a2bed",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "ond_mppt_v_max",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "86c12e68d2f8c69c5ae454baaae5492fbcf20076",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "ond_v_max_abs",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "e59fbedd7d70abaaa9dce2766d2119974b3d15b7",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "ond_i_max_mppt_a",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "2820ed0cebdd63842e89007457d07782aee04ca8",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "ond_ac_kw",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveSmallIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "ded149753ad51fc0b452b5b42f3407d40e60b742",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "ond_phases",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "01ab9dc1ab6763e87a54d1a60646f6681a03df63",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "ond_rendement_euro_pct",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "a5beddc5e22758bfcddf4957e60466f85487f077",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "ond_v_demarrage_v",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "433290f8d9b1afcc11d4334c98353992b4f2a6df",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "ond_isc_max_mppt_a",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": false,
+        "classe": "BooleanField",
+        "decimal_places": null,
+        "defaut": "False",
+        "help_text_sha1": "e4c3f8e48466d12258fc44acd4418bced8faa50c",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "ond_bat_aucune",
+        "null": false,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": []
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "5720c6d1c44009a8615185fcf228ac7b6ba5b7f5",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "ond_bat_v_min",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "04283e6d7fbfe81b2ae42b8471848836b870dce2",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "ond_bat_v_max",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "230db0b707702f3e6e748ed71ef12f72a37496a0",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "ond_bat_max_charge_kw",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "a491e3962701b87ee71cbfd3d904c2d1ad87c538",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "ond_bat_max_decharge_kw",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveSmallIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "044b8460634e8a33b22080a7d7a1049a7acf390d",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "ond_entrees_par_mppt",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveSmallIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "5832eea56b8d442a82b1a4d2e2207febc20da3b0",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "ond_chaines_max_par_mppt",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "5793e69db284dce0d287fa431b3cadb228b893b8",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "ond_s_max_kva",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "e2f1584e0798a577553cbd7383dc69030be2c3c2",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "ond_dc_max_kwc",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "JSONField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "5576233e08ec1d391213b3b084fb1a46ef73cad9",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "ond_courbe_rendement",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "valider_courbe_rendement_onduleur"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "b6e77af4cdba5f8b39630853197793bbca926de4",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "ond_rendement_max_pct",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator",
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "09092c0e5ba7fc5cda620a92422a9de503ddac0b",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "ond_rendement_cec_pct",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator",
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "bc87fb24ab7e86b5f8c9905d9ca43e0132a48b40",
+        "max_digits": 7,
+        "max_length": null,
+        "nom": "ond_conso_nuit_w",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "c934a9fc6c773e13b1d7080c240ec605f5b00fad",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "bat_kwh_nominal",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "c39d6c5b05e831e96f4cc9f6cf819e5870e1215a",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "bat_kwh_usable",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "3445eb2ac6403b54df4516d8a5401ee05dc99ce3",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "bat_dod_pct",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "b883b86eeed2df860bc37eee6a5e74ab32247200",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "bat_v_nominal",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "0dfe42cf0e6c678684eb0ad3ca209618692dfaf1",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "bat_max_charge_kw",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "8e45c69b6998435b8c9c0323c96b2f1fcd425cd3",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "bat_max_decharge_kw",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "22e9298ad1451623e43a443d1190bed29dafc4cc",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "bat_max_modules_par_banc",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "6da00d3058fb0839b32d4d089da20382f59d90a8",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "bat_rendement_ar_pct",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator",
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "020ba2dfa29fcfdd3ce951fc5ec50938cd310b26",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "bat_cycles_publies",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "f6c170a15e4611852b41840579a9615ac7a0e689",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "bat_retention_fin_de_vie_pct",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator",
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveSmallIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "0385cf16636e80e1cd68cd0992ebf71243ed4bb1",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "bat_garantie_annees",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "6904b9da3d43de44fcbf4b3718702b475e885c21",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "bat_c_rate_charge",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "98764b6f82ea482f3967b4d9d7a6307584501719",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "bat_c_rate_decharge",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "CharField",
+        "decimal_places": null,
+        "defaut": "''",
+        "help_text_sha1": "9615735aa12f8c447a6a284de21f61b990ba6b53",
+        "max_digits": null,
+        "max_length": 16,
+        "nom": "bat_chimie",
+        "null": false,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MaxLengthValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "cbcc33a85f8d31c9b2213357439dc58675cf5a8f",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "bat_temp_min_c",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "e4dd22ef001d4fec17c1412daa16fb7f470f0f4f",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "bat_temp_max_c",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "ede46d336fcf28db9c0d82ec957451a07a688687",
+        "max_digits": 7,
+        "max_length": null,
+        "nom": "opt_pmax_in_w",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "73b895bbbc0e03b9b3e2e0301e8b84ad0300b794",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "opt_v_in_min",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "b53dc4025b60295d82cdd5913fe2a72bb23c7bf2",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "opt_v_in_max",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "4d40466c4031d53861abe8211c338848a1758cbf",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "opt_i_in_max_a",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "cf8881250a56f1bab3708213b367b539844c63b0",
+        "max_digits": 4,
+        "max_length": null,
+        "nom": "opt_rendement_pct",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveSmallIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "2f80f38c31b38e9d73ee35bb2d1cacc53c53f49a",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "opt_modules_par_optimiseur",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 3,
+        "defaut": null,
+        "help_text_sha1": "a4430b261c0cb00de9925c453d64d0f3d6fc0de7",
+        "max_digits": 7,
+        "max_length": null,
+        "nom": "opt_ac_kw",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "487c42749b8806d0d96986432759970fd9110621",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "opt_ac_tension_v",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "085a9437d7ad587219da6cc218d3705937df245e",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "opt_ac_i_max_a",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveSmallIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "f286622791617475236223866bca86c559f338c1",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "opt_ac_unites_max_par_branche",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "2bb0cf6031dc4a2bb031b3d2eb03295ada5c6f66",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "opt_v_out_nominal_v",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "fe4a4471fe5a10fc42236368fa5c3a32033a1021",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "opt_v_out_min",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "3309e76ed79d598cfabe0f54220cb3519fdcf5fa",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "opt_v_out_max",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "8b9f8b5ea6293b008b03d7fb4438aa6487a767b2",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "opt_i_out_max_a",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "d3703c4627b274fc4c2204108d311c995ffe775d",
+        "max_digits": 7,
+        "max_length": null,
+        "nom": "opt_pmax_out_w",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveSmallIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "a6674131fc6782b3125a12d97d4874d0be137aea",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "opt_modules_max_par_chaine",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "1b64ffd165f6f91a624e547d3bc06f1e67ab998c",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "pompe_i_nominal_a",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "6478d292e3408dd89e65c785727d669243a48acc",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "pompe_diametre_ext_mm",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveSmallIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "71462aabfcd5e48ead1f670d80afc3c0a8baec0c",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "pompe_nb_etages",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "cb521e6d1ccfa8f01e2a5c4cd05cfc35506ba5ab",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "pompe_immersion_min_m",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "294e7ce47b95f7c2b2b1ada23b3ad93cbe5ae38e",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "pompe_rendement_pct",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "fd0de871deeca182255bab8507458a54c9b0d6b3",
+        "max_digits": 7,
+        "max_length": null,
+        "nom": "pompe_q_nominal_m3h",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "62da20e309858a33cf42cc7e1e31a267e3b380ac",
+        "max_digits": 7,
+        "max_length": null,
+        "nom": "pompe_hmt_nominale_m",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "ed9800e0acb418c8c632c9a9f01d5080c9697eec",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "var_voc_reco_min_v",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "1377719103ad947427a0fc8c5c5998dbe118fb91",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "var_voc_reco_max_v",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "aacc9368f6897714e804c698f44aabadcc0c10d1",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "var_v_sortie_v",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "1959d38eedbada3d3ed23bc72a383abaa57899d5",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "var_i_sortie_nominal_a",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "BooleanField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "b0693c2bdb24517791a398137f3bc1774d47882f",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "var_protection_marche_a_sec",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": []
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 2,
+        "defaut": null,
+        "help_text_sha1": "37a0ccd6c7bf2336975e92f9c45cd7c1060841b9",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "var_rendement_mppt_pct",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "FileField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "8d99950f751468515a26bc0360d73ea844e8eeae",
+        "max_digits": null,
+        "max_length": 100,
+        "nom": "pdf",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": []
+      },
+      {
+        "blank": true,
+        "classe": "CharField",
+        "decimal_places": null,
+        "defaut": "''",
+        "help_text_sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "max_digits": null,
+        "max_length": 500,
+        "nom": "pdf_key",
+        "null": false,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MaxLengthValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "CharField",
+        "decimal_places": null,
+        "defaut": "''",
+        "help_text_sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "max_digits": null,
+        "max_length": 255,
+        "nom": "pdf_filename",
+        "null": false,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MaxLengthValidator"
+        ]
+      },
+      {
+        "blank": false,
+        "classe": "PositiveIntegerField",
+        "decimal_places": null,
+        "defaut": "0",
+        "help_text_sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "pdf_size",
+        "null": false,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "CharField",
+        "decimal_places": null,
+        "defaut": "''",
+        "help_text_sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "max_digits": null,
+        "max_length": 120,
+        "nom": "pdf_mime",
+        "null": false,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MaxLengthValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DateTimeField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "date_creation",
+        "null": false,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": []
+      },
+      {
+        "blank": true,
+        "classe": "DateTimeField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "date_mise_a_jour",
+        "null": false,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": []
+      }
+    ],
+    "constraints": [],
+    "db_table": "stock_fichetechnique",
+    "indexes": [],
+    "ordering": [
+      "-date_mise_a_jour"
+    ],
+    "verbose_name": "Fiche technique",
+    "verbose_name_plural": "Fiches techniques"
+  },
   "validateurs": {
     "irr_abscisse_recule": {
       "messages": [
