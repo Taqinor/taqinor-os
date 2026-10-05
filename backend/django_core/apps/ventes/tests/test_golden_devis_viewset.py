@@ -34,9 +34,11 @@ import hashlib
 import inspect
 import json
 import re
+from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 VUES = Path(__file__).resolve().parent.parent / 'views'
 FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
@@ -224,3 +226,71 @@ class GoldenDevisViewSet(SimpleTestCase):
         from apps.ventes.views.devis import DevisViewSet
         self.assertEqual(DevisViewSet.perform_update.__qualname__,
                          'DevisEditionActionsMixin.perform_update')
+
+
+#: SPL139 — octets que le moteur « rend » pendant la capture : le rendu réel
+#: (WeasyPrint + MinIO) n'est ni déterministe ni disponible hors pile ; ce
+#: qui est figé ici est la VUE ``/proposal`` (routage, garde, paramètres
+#: transmis au moteur, en-têtes, octets streamés tels quels). Le symbole
+#: déplacé (``proposal``) n'est JAMAIS mocké : seuls le moteur et le
+#: téléchargement MinIO le sont, à leur chemin de définition (les imports
+#: restent function-locaux dans le corps).
+_OCTETS_CAPTURE = b'%PDF-1.4 golden SPL139 /proposal'
+
+
+class GoldenProposalReponse(TestCase):
+    """SPL139 — capture GET ``/api/django/ventes/devis/<id>/proposal/``,
+    identique avant et après le déplacement vers ``views/devis_pdf.py``
+    (règle #4 : rendu seul, aucun statut écrit)."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+        from authentication.models import Company
+        self.company = Company.objects.get_or_create(
+            slug='spl139-golden', defaults={'nom': 'SPL139 Golden'})[0]
+        self.user = get_user_model().objects.create_user(
+            username='spl139-resp', password='motdepasse-test-1234',
+            company=self.company, role_legacy='responsable')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Golden', prenom='SPL139',
+            email='spl139@example.invalid')
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-SPL139-1',
+            client=self.client_obj, statut=Devis.Statut.ENVOYE,
+            taux_tva=Decimal('20'))
+        self.api = APIClient()
+        self.api.force_authenticate(user=self.user)
+
+    @patch('apps.ventes.utils.pdf.download_pdf',
+           return_value=_OCTETS_CAPTURE)
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+           return_value='devis/spl139/DEV-SPL139-1.pdf')
+    def test_proposal_reponse_identique(self, m_gen, m_dl):
+        from apps.ventes.utils.filenames import document_filename
+        statut_avant = self.devis.statut
+        resp = self.api.get(
+            '/api/django/ventes/devis/%d/proposal/'
+            '?pdf_mode=onepage&devis_final=1' % self.devis.id)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.assertEqual(resp.content, _OCTETS_CAPTURE)
+        nom = document_filename(
+            'Proposition', self.devis.reference, client=self.client_obj,
+            company=self.company)
+        self.assertEqual(resp['Content-Disposition'],
+                         'inline; filename="%s"' % nom)
+        # Le moteur reçoit le devis, les options nettoyées, persist=False
+        # (ERR74 : un GET ne persiste jamais fichier_pdf).
+        self.assertEqual(m_gen.call_count, 1)
+        args, kwargs = m_gen.call_args
+        self.assertEqual(args[0], self.devis.id)
+        self.assertEqual(kwargs, {'persist': False})
+        self.assertEqual(args[1].get('pdf_mode'), 'onepage')
+        self.assertIs(args[1].get('devis_final'), True)
+        m_dl.assert_called_once_with('devis/spl139/DEV-SPL139-1.pdf')
+        # Règle #4 : le rendu n'écrit aucun statut.
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, statut_avant)
