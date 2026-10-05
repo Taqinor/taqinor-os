@@ -404,8 +404,18 @@ export default function SectionPro({ state, setField, errors = {} }) {
   const segment = getField(state, 'type_installation')
   const industriel = segment === 'industriel'
   const visite = state?.server?.devis_auto?.visite_avant_devis
+  // CIQ428 — indicateur INTERNE (loi 47-09) : affiché SEULEMENT au seuil
+  // atteint, en lecture seule ; aucune amende, aucune échéance.
+  const audit = state?.server?.indicateurs_internes?.audit_47_09
+  const auditAtteint = audit?.statut === 'seuil_atteint_electricite_seule'
   return (
     <>
+      {auditAtteint && (
+        <p className="gen-hint" role="note" data-audit-47-09>
+          Audit énergétique obligatoire probable (loi 47-09) : {audit.motif}. Indicatif — sur
+          déclaratif — à vérifier avec le client.
+        </p>
+      )}
       {visite?.requise && (
         <p className="gen-hint" role="note" data-visite-avant-devis>
           Visite avant devis : {(visite.motifs ?? []).join(' ; ') || 'requise'}.

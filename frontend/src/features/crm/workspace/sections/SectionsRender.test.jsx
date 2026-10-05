@@ -852,3 +852,46 @@ describe('CIQ418 — SectionPro : chaque colonne du contrat est atteignable', ()
     ])
   })
 })
+
+/* CIQ428 — l'indicateur INTERNE « audit énergétique obligatoire probable »
+   (contrat `lead_pro.json`, `indicateurs_internes.audit_47_09`) : affiché
+   SEULEMENT au seuil atteint ; un lead résidentiel ne porte rien. */
+describe('CIQ428 — indicateur audit 47-09 dans la section Professionnel', () => {
+  const contrat = documentContrat('crm', 'lead_pro')
+  const lead = { ...contrat.exemple, nom: 'Hôtel' }
+  const monterPro = (l) => render(<SectionPro state={initState({ lead: l, mode: 'edit' })} {...base} />)
+  const avec = (statut, motif = 'motif') => ({
+    ...lead,
+    indicateurs_internes: { audit_47_09: { ...contrat.exemple.indicateurs_internes.audit_47_09, statut, motif } },
+  })
+
+  it('le contrat porte la clé au détail', () => {
+    expect(contrat.exemple.indicateurs_internes).toHaveProperty('audit_47_09')
+  })
+
+  it('affiché au seuil atteint, avec la mention « indicatif — sur déclaratif »', () => {
+    monterPro(avec('seuil_atteint_electricite_seule', "l'électricité déclarée seule atteint 516 tep"))
+    const note = document.querySelector('[data-audit-47-09]')
+    expect(note.textContent).toContain('516 tep')
+    expect(note.textContent).toContain('Indicatif — sur')
+    expect(note.textContent).toContain('à vérifier avec le client')
+  })
+
+  it('absent quand le seuil n’est pas atteint ou indéterminable', () => {
+    for (const statut of ['non_determine', null]) {
+      monterPro(avec(statut))
+      expect(document.querySelector('[data-audit-47-09]')).toBeNull()
+      cleanup()
+    }
+  })
+
+  it('un lead résidentiel ne porte rien (aucune section Professionnel)', () => {
+    const { container } = render(
+      <SectionsPane
+        state={initState({ lead: { id: 3, nom: 'Villa', type_installation: 'residentiel' }, mode: 'edit' })}
+        setField={vi.fn()} errors={{}} mode="edit" refData={{ users: [], tagOptions: [], motifOptions: [] }}
+      />,
+    )
+    expect(container.querySelector('[data-audit-47-09]')).toBeNull()
+  })
+})

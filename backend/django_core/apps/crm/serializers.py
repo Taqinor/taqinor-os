@@ -835,6 +835,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # lues sur le lead, avec leur provenance : RETRIEVE SEULEMENT (une
     # requête d'historique), même porte ; ``null`` hors commercial/industriel.
     entrees_ci = serializers.SerializerMethodField()
+    # CIQ428 — indicateurs INTERNES du vendeur (« audit énergétique
+    # obligatoire probable », loi 47-09) : DÉTAIL SEULEMENT, jamais la liste,
+    # jamais une sortie client.
+    indicateurs_internes = serializers.SerializerMethodField()
     # MRY5 — prochaine touche de cadence, ANNOTÉE dans le queryset
     # (``LeadViewSet.get_queryset``), jamais un SerializerMethodField : la
     # liste et le kanban affichent le badge « touche due » pour 50 cartes,
@@ -1413,6 +1417,8 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             fields.pop('identite_entreprise', None)
             # CIQ405 — `entrees_ci` : détail seulement, même porte.
             fields.pop('entrees_ci', None)
+            # CIQ428 — `indicateurs_internes` : détail seulement, même porte.
+            fields.pop('indicateurs_internes', None)
         return fields
 
     def to_representation(self, instance):
@@ -1458,8 +1464,29 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     def get_entrees_ci(self, obj):
         """CIQ405 — ``{entrees, manquants, informations}`` (contrat CIQ1) :
         la SEULE lecture lead → entrées du moteur C&I."""
+        return self._entrees_ci(obj)
+
+    def _entrees_ci(self, obj):
+        """CIQ428 — ``entrees_ci`` calculé UNE fois par lead sérialisé (lu
+        par ``entrees_ci`` ET par ``indicateurs_internes``)."""
         from .selectors import entrees_ci_du_lead
-        return entrees_ci_du_lead(obj)
+        cache = getattr(self, '_cache_entrees_ci', None)
+        if cache is None:
+            cache = self._cache_entrees_ci = {}
+        cle = id(obj)
+        if cle not in cache:
+            cache[cle] = entrees_ci_du_lead(obj)
+        return cache[cle]
+
+    @extend_schema_field(serializers.DictField())
+    def get_indicateurs_internes(self, obj):
+        """CIQ428 — ``{audit_47_09}`` : l'indicateur INTERNE « audit
+        énergétique obligatoire probable » sur la seule électricité
+        DÉCLARÉE (``apps/crm/audit_energetique.py``) ; ``None`` hors
+        commercial / industriel. Vu par le vendeur seulement."""
+        from .audit_energetique import indicateur_du_lead
+        return {'audit_47_09': indicateur_du_lead(
+            obj.type_installation, self._entrees_ci(obj))}
 
     @extend_schema_field(serializers.DictField())
     def get_identite_entreprise(self, obj):
