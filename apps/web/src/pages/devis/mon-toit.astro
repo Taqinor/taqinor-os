@@ -2266,6 +2266,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   import { OCCUPANCY_IDS, OCCUPANCY_SHAPES, type OccupancyId } from '../../lib/dayProfiles';
   // L-WEBT TASK2 / QJR664 — « Une journée type » (rendu partagé fr/en/ar).
   import { renderJourType } from '../../scripts/tunnel/jourType';
+  import { brancherAffiner } from '../../scripts/tunnel/affiner';
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = (id: string) => document.getElementById(id);
@@ -4741,30 +4742,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // avec l'idempotencyKey DÉJÀ envoyée (jamais une seconde soumission), puis
   // ouvre /questionnaire/<jeton>. Échec ou 404 : le bouton se retire sans
   // message alarmant. Rien n'est demandé AVANT la porte de contact.
+  // Logique partagée (fetch du proxy, ouverture du questionnaire, retrait sur échec) :
+  // scripts/tunnel/affiner.ts. Ici, seul le garde de profil.
   function setupAffiner(idempotencyKey: string) {
-    const btn = $('mt-affiner') as HTMLButtonElement | null;
-    if (!btn || !idempotencyKey) return;
     if (mode !== 'commercial' && mode !== 'industriel') return;
-    btn.hidden = false;
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      try {
-        const res = await fetch('/api/lead-affiner', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ key: idempotencyKey }),
-          signal: AbortSignal.timeout(6000),
-        });
-        const data = (await res.json().catch(() => null)) as { ok?: boolean; url?: string } | null;
-        if (data?.ok && typeof data.url === 'string' && data.url.startsWith('/questionnaire/')) {
-          window.location.href = data.url;
-          return;
-        }
-      } catch {
-        // silencieux : repli ci-dessous.
-      }
-      btn.hidden = true; // échec / 404 : le bouton se retire, sans alarme.
-    });
+    brancherAffiner($('mt-affiner') as HTMLButtonElement | null, idempotencyKey);
   }
 
   // ——— soumission → /api/capture-lead (contrat INCHANGÉ) ———

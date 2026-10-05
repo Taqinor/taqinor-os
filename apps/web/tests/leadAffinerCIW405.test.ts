@@ -130,6 +130,7 @@ const LOCALES: Array<[string, string]> = [
   ['AR', '../src/pages/ar/devis/mon-toit.astro'],
 ];
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+const affiner = read('../src/scripts/tunnel/affiner.ts');
 
 describe.each(LOCALES)('tunnel %s — bouton « Affiner »', (_l, rel) => {
   const src = read(rel);
@@ -148,15 +149,20 @@ describe.each(LOCALES)('tunnel %s — bouton « Affiner »', (_l, rel) => {
   });
 
   it("n'est activé que pour commercial / industriel, via le proxy avec l'idempotencyKey", () => {
-    expect(src).toContain("fetch('/api/lead-affiner'");
-    expect(src).toMatch(/mode !== 'commercial' && mode !== 'industriel'/);
+    // ACAL345 — la logique du bouton vit UNE fois dans scripts/tunnel/affiner.ts ;
+    // la page garde le garde de profil et branche ce module.
+    expect(src).toMatch(/import \{ brancherAffiner \} from '(\.\.\/)+scripts\/tunnel\/affiner'/);
+    expect(affiner).toContain("fetch('/api/lead-affiner'");
+    const wrapper = src.slice(src.indexOf('function setupAffiner'), src.indexOf('brancherAffiner($', src.indexOf('function setupAffiner')));
+    expect(wrapper).toMatch(/mode !== 'commercial' && mode !== 'industriel'/);
+    expect(src).toContain("brancherAffiner($('mt-affiner') as HTMLButtonElement | null, idempotencyKey)");
     expect(src).toContain('setupAffiner(getOrCreateDedupTokens().idempotencyKey)');
-    expect(src).toContain('JSON.stringify({ key: idempotencyKey })');
+    expect(affiner).toContain('JSON.stringify({ key: idempotencyKey })');
   });
 
   it('un échec retire le bouton sans message ; succès ouvre /questionnaire/<jeton>', () => {
-    const start = src.indexOf('function setupAffiner');
-    const fn = src.slice(start, src.indexOf('btn.hidden = true; //', start) + 40);
+    const start = affiner.indexOf('function brancherAffiner');
+    const fn = affiner.slice(start, affiner.indexOf('btn.hidden = true; //', start) + 40);
     expect(fn).toContain("startsWith('/questionnaire/')");
     expect(fn).toContain('btn.hidden = true');
     expect(fn).not.toMatch(/errEl|alert\(/);

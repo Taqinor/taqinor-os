@@ -2070,6 +2070,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // No weight is invented here.
   import { OCCUPANCY_IDS, OCCUPANCY_SHAPES, type OccupancyId } from '../../../lib/dayProfiles';
   import { renderJourType } from '../../../scripts/tunnel/jourType';
+  import { brancherAffiner } from '../../../scripts/tunnel/affiner';
   // QX/Lane C — TYPE only (erased at build: Three.js/viewerOnly NEVER joins
   // the initial bundle — WJ18; the real module stays a lazy import()).
   import type { RoofImageSpec } from '../../../scripts/roofPro11/viewerOnly';
@@ -4533,30 +4534,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // avec l'idempotencyKey DÉJÀ envoyée (jamais une seconde soumission), puis
   // ouvre /questionnaire/<jeton>. Échec ou 404 : le bouton se retire sans
   // message alarmant. Rien n'est demandé AVANT la porte de contact.
+  // Logique partagée (fetch du proxy, ouverture du questionnaire, retrait sur échec) :
+  // scripts/tunnel/affiner.ts. Ici, seul le garde de profil.
   function setupAffiner(idempotencyKey: string) {
-    const btn = $('mt-affiner') as HTMLButtonElement | null;
-    if (!btn || !idempotencyKey) return;
     if (mode !== 'commercial' && mode !== 'industriel') return;
-    btn.hidden = false;
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      try {
-        const res = await fetch('/api/lead-affiner', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ key: idempotencyKey }),
-          signal: AbortSignal.timeout(6000),
-        });
-        const data = (await res.json().catch(() => null)) as { ok?: boolean; url?: string } | null;
-        if (data?.ok && typeof data.url === 'string' && data.url.startsWith('/questionnaire/')) {
-          window.location.href = data.url;
-          return;
-        }
-      } catch {
-        // silencieux : repli ci-dessous.
-      }
-      btn.hidden = true; // échec / 404 : le bouton se retire, sans alarme.
-    });
+    brancherAffiner($('mt-affiner') as HTMLButtonElement | null, idempotencyKey);
   }
 
   // ——— submission -> /api/capture-lead (contract UNCHANGED) ———

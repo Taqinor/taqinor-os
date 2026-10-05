@@ -20,28 +20,14 @@
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
-import * as cf from 'cloudflare:workers';
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+import { jsonResponse as json, relayJson, resolveApiBase } from './_proxy';
 
 // Même forme que `idempotencyKey` (lib/lead.ts) et lead-ref-lookup.ts.
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9_-]{8,64}$/;
 // Jeton de questionnaire : alphabet URL-safe, jamais un chemin ni une query.
 const TOKEN_RE = /^[A-Za-z0-9_-]{8,200}$/;
-
-function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers },
-  });
-}
-
-function resolveApiBase(): string {
-  const env = (cf.env ?? {}) as { PUBLIC_API_BASE?: string };
-  const runtime = env.PUBLIC_API_BASE?.trim();
-  const build = (import.meta.env.PUBLIC_API_BASE as string | undefined)?.trim();
-  return runtime || build || 'https://api.taqinor.ma';
-}
 
 function affinerEndpoint(apiBase: string, key: string): string {
   return `${apiBase.replace(/\/+$/, '')}/api/django/crm/public/lead-affiner/${encodeURIComponent(key)}/`;
@@ -67,23 +53,13 @@ export const POST: APIRoute = async ({ request }) => {
   }
   if (!IDEMPOTENCY_KEY_RE.test(key)) return json({ ok: false }, 400);
 
-  let upstreamStatus = 502;
-  let upstreamPayload: unknown = null;
-  try {
-    const res = await fetch(affinerEndpoint(resolveApiBase(), key), {
-      method: 'POST',
-      headers: { accept: 'application/json' },
-      signal: AbortSignal.timeout(5000),
-    });
-    upstreamStatus = res.status;
-    try {
-      upstreamPayload = await res.json();
-    } catch {
-      upstreamPayload = null;
-    }
-  } catch {
-    return json({ ok: false }, 502);
-  }
+  const relais = await relayJson(affinerEndpoint(resolveApiBase(), key), {
+    method: 'POST',
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!relais) return json({ ok: false }, 502);
+  const { status: upstreamStatus, payload: upstreamPayload } = relais;
 
   const raw =
     upstreamStatus === 200 && upstreamPayload && typeof upstreamPayload === 'object'

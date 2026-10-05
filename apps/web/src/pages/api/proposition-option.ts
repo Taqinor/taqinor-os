@@ -17,24 +17,10 @@
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
-import * as cf from 'cloudflare:workers';
 import { buildOptionBody, normalizeOptionResponse, optionEndpoint } from '../../lib/proposition';
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
-
-function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers },
-  });
-}
-
-function resolveApiBase(): string {
-  const env = (cf.env ?? {}) as { PUBLIC_API_BASE?: string };
-  const runtime = env.PUBLIC_API_BASE?.trim();
-  const build = (import.meta.env.PUBLIC_API_BASE as string | undefined)?.trim();
-  return runtime || build || 'https://api.taqinor.ma';
-}
+import { jsonResponse as json, relayJson, resolveApiBase } from './_proxy';
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — un POST cross-site forgé est refusé avant tout traitement : activer une option
@@ -66,27 +52,19 @@ export const POST: APIRoute = async ({ request }) => {
   const clientIp = clientIpFromRequest(request);
   const ip = clientIp && clientIp !== 'unknown' ? clientIp : '';
 
-  let upstreamStatus = 502;
-  let upstreamPayload: unknown = null;
-  try {
-    const res = await fetch(optionEndpoint(resolveApiBase(), token), {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        accept: 'application/json',
-        ...(ip ? { 'X-Forwarded-For': ip, 'CF-Connecting-IP': ip } : {}),
-      },
-      body: JSON.stringify(upstreamBody),
-    });
-    upstreamStatus = res.status;
-    try {
-      upstreamPayload = await res.json();
-    } catch {
-      upstreamPayload = null;
-    }
-  } catch {
+  const relais = await relayJson(optionEndpoint(resolveApiBase(), token), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json',
+      ...(ip ? { 'X-Forwarded-For': ip, 'CF-Connecting-IP': ip } : {}),
+    },
+    body: JSON.stringify(upstreamBody),
+  });
+  if (!relais) {
     return json({ ok: false, status: 502, detail: 'Service momentanément indisponible. Veuillez réessayer.' }, 502);
   }
+  const { status: upstreamStatus, payload: upstreamPayload } = relais;
 
   // On relaie le statut backend (200 / 400 / 403 / 404 / 409) et l'objet normalisé : la page
   // choisit le message amical dans OPTION_MSG, sans jamais afficher un détail technique.

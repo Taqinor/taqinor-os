@@ -1803,14 +1803,8 @@ const estIndustriel =
             facture_ete: numOrUndef('q-facture-ete'),
             raccordement: fieldVal('q-raccordement') || undefined,
           };
-        case 'photo_facture':
-        case 'photo_compteur':
-        case 'photo_tableau':
-        case 'photo_pompe':
-        case 'photo_forage':
-        case 'photo_factures':
-        case 'photo_poste':
-          return {};
+        // Les sections photo (isPhotoSection) n'ont aucun champ : elles tombent
+        // dans `default` → {} ; la photo voyage dans le champ `photo` du POST.
         case 'pompage':
           return {
             source_eau: fieldVal('q-source-eau') || undefined,
