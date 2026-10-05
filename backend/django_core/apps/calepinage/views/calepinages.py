@@ -460,7 +460,7 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         """
         calepinage = self.get_object()
         variante = selectors.variantes(calepinage).filter(
-            pk=variante_id).first()
+            pk=_identifiant_ou_404(variante_id)).first()
         if variante is None:
             return Response({'detail': 'Variante introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -495,7 +495,7 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         """
         calepinage = self.get_object()
         variante = selectors.variantes(calepinage).filter(
-            pk=variante_id).first()
+            pk=_identifiant_ou_404(variante_id)).first()
         if variante is None:
             return Response({'detail': 'Variante introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -547,7 +547,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         calepinage — est introuvable (404).
         """
         calepinage = self.get_object()  # borné société par get_queryset
-        version = selectors.versions(calepinage).filter(pk=version_id).first()
+        version = selectors.versions(calepinage).filter(
+            pk=_identifiant_ou_404(version_id)).first()
         if version is None:
             return Response({'detail': 'Version introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -1223,6 +1224,29 @@ def _permissions(calepinage, request):
 
 
 # ── Lecture des paramètres de requête : refusée en NOMMANT le champ ────────
+
+#: ACAL277 — la plus grande clé primaire qu'une colonne ``bigint`` PostgreSQL
+#: peut porter : au-delà, la base lève ``DataError`` (500) au lieu de « rien ».
+_ID_MAX = 2 ** 63 - 1
+
+
+def _identifiant_ou_404(valeur):
+    """ACAL277 — l'identifiant d'un chemin ``[^/.]+``, ou ``None``.
+
+    La regex de route accepte ``abc`` : ``filter(pk='abc')`` levait
+    ``ValueError`` ⇒ 500 (SIT-G2-12). Ici un identifiant non numérique, nul
+    ou hors de la plage d'une clé primaire rend ``None`` : ``filter(pk=None)``
+    ne trouve rien et la route répond SON 404 — corps IDENTIQUE à celui d'un
+    identifiant absent (même oracle, défaut gravé). Utilisé par les cinq
+    routes à identifiant de chemin (variante, retenir, restaurer, diff,
+    calage de photo).
+    """
+    texte = str(valeur if valeur is not None else '').strip()
+    if not (texte.isascii() and texte.isdigit()):
+        return None
+    ident = int(texte)
+    return ident if 0 < ident <= _ID_MAX else None
+
 
 def _entier(valeur, champ):
     """Un identifiant entier, ou ``None`` quand le filtre est absent."""

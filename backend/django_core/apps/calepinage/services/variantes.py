@@ -45,6 +45,16 @@ class VarianteRefusee(ValueError):
         self.champ = champ
 
 
+def _nom_texte(nom):
+    """ACAL277 — le nom d'une variante est un TEXTE : ``5`` ou ``['a']`` sont
+    refusés en nommant ``nom`` (avant : ``AttributeError`` ⇒ 500)."""
+    if nom is not None and not isinstance(nom, str):
+        raise VarianteRefusee(
+            "Le nom de la variante doit être un texte "
+            f"(reçu : {type(nom).__name__}).", champ='nom')
+    return (nom or '').strip()
+
+
 def creer_variante(calepinage, *, nom, roof_layout=None, resultat=None,
                    user=None, retenir=False):
     """Crée une variante sur ``calepinage``.
@@ -62,7 +72,7 @@ def creer_variante(calepinage, *, nom, roof_layout=None, resultat=None,
         raise VarianteRefusee(
             "Le calepinage n'est pas encore enregistré : impossible d'y "
             "ajouter une variante.", champ='calepinage')
-    libelle = (nom or '').strip()
+    libelle = _nom_texte(nom)
     if not libelle:
         raise VarianteRefusee(
             "Donnez un nom à la variante : c'est lui qui permet de la "
@@ -107,7 +117,7 @@ def modifier_variante(variante, *, nom=None, roof_layout=..., resultat=...):
 
     champs = []
     if nom is not None:
-        libelle = (nom or '').strip()
+        libelle = _nom_texte(nom)
         if not libelle:
             raise VarianteRefusee(
                 "Donnez un nom à la variante : c'est lui qui permet de la "

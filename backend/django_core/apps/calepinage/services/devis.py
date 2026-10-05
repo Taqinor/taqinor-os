@@ -89,6 +89,9 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
     layout = _exiger_layout(calepinage)
     company = calepinage.company
     lead, client = _lead_et_client(calepinage)
+    # ACAL277 — les montants sont VALIDÉS avant toute écriture (y compris le
+    # rattachement d'un brouillon existant) : un refus n'écrit rien.
+    montants = _montants(taux_tva, remise_globale, Decimal)
 
     # Pré-vol de composition : le catalogue peut-il servir ce toit ? Le refus
     # est celui du serveur ventes, mot pour mot (422).
@@ -106,7 +109,7 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
 
     devis = build_devis_from_layout(
         layout=layout, user=user, company=company, lead=lead, client=client,
-        **_montants(taux_tva, remise_globale, Decimal))
+        **montants)
     # Le devis porte la MÊME empreinte que le calepinage : c'est ce qui rend
     # la dédup possible au clic suivant, et le badge « à jour » honnête.
     poser_layout_hash(devis, empreinte)
@@ -121,16 +124,20 @@ def _montants(taux_tva, remise_globale, Decimal):
     que l'appelant ne dit pas, le service ventes le décide comme il le décide
     pour tous ses autres appelants.
     """
+    from .valeurs import nombre_fini
+
     montants = {}
-    for cle, brut in (('taux_tva', taux_tva),
-                      ('remise_globale', remise_globale)):
+    for cle, libelle, brut in (('taux_tva', 'Taux de TVA', taux_tva),
+                               ('remise_globale', 'Remise globale',
+                                remise_globale)):
         if brut in (None, ''):
             continue
-        try:
-            montants[cle] = Decimal(str(brut))
-        except Exception as erreur:  # noqa: BLE001 — refus NOMMÉ, jamais un 500
-            raise DevisRefuse(f"Valeur invalide pour « {cle} » : {brut!r}.",
-                              champ=cle) from erreur
+        # ACAL277 — un pourcentage FINI dans [0, 100], deux décimales au
+        # plus : « NaN », « 123456 », « 150 » ou « -5 » sont refusés en
+        # nommant le champ, jamais un 500 ni un devis aberrant.
+        nombre_fini(brut, cle, libelle=libelle, mini=0, maxi=100,
+                    decimales=2, erreur=DevisRefuse)
+        montants[cle] = Decimal(str(brut))
     return montants
 
 
