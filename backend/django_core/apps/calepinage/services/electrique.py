@@ -2077,8 +2077,12 @@ def verdict_publiable(calepinage):
 
     motifs = list(_motifs_de_la_conception(conception))
     motifs.extend(_motifs_de_la_norme(norme))
+    # ACAL155 — LA saisie de raccordement (celle de l'écran), jamais une clé
+    # ``raccordement`` de l'entrée électrique qu'aucun écrivain ne pose.
+    from .raccordement import saisie_du_calepinage
+
     motifs.extend(_motifs_du_raccordement(
-        conception, donnees.get('raccordement'), reglages))
+        conception, saisie_du_calepinage(calepinage), reglages))
     if _regime_non_precise(donnees) and not getattr(
             conception, 'manquantes', ()) and conception.chaines:
         from core.electrique.protections import MOTIF_REGIME_NON_PRECISE

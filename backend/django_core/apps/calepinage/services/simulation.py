@@ -366,6 +366,7 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
     )
     from .norme import norme_applicable
     from .pertes import postes_du_calepinage
+    from .raccordement import saisie_du_calepinage
 
     conception, materiel_resolu, donnees, document = conception_du_calepinage(
         calepinage, entree=entree, layout=layout, materiel=materiel)
@@ -435,7 +436,10 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         'consommation': _declaration_consommation(document),
         'batterie': _declaration_batterie(calepinage, document,
                                           materiel_resolu, company),
-        'raccordement': _section_du_document(document, 'raccordement'),
+        # ACAL155 — LA saisie de raccordement (cos φ imposé, plafond
+        # d'injection), écrite par ``POST raccordement/`` : jamais une
+        # section du document qu'aucun écrivain ne produit.
+        'raccordement': saisie_du_calepinage(calepinage),
         'hors_reseau': _section_du_document(document, 'hors_reseau'),
         # CALX271 — les batteries du STOCK, pour comparer leurs capacités.
         'capacites_batterie_stock': _capacites_batterie_du_stock(company),

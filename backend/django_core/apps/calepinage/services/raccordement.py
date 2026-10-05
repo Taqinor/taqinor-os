@@ -934,10 +934,28 @@ def _verdict_desequilibre(desequilibre, seuil, source_seuil, motif):
 # jusqu'au compteur. Les tronçons continus sont donc marqués non parcourus —
 # ils ne sont pas « oubliés », ils sont en amont de l'onduleur.
 
-#: Les sept champs de la saisie du contrat CALX205, dans son ordre.
+#: Les NEUF champs de la saisie du contrat CALX205, dans son ordre : les
+#: sept historiques, puis (ACAL155 / M0 ACAL9) le plafond d'injection et sa
+#: justification, que lisent ``etapes/autoconsommation.py`` et
+#: ``etapes/batterie.py``.
 CHAMPS_SAISIE = ('puissance_souscrite_kva', 'phases', 'tension_nominale_v',
                  'limite_elevation_pct', 'source_limite', 'cos_phi_impose',
-                 'source_cos_phi')
+                 'source_cos_phi', 'plafond_injection_kw',
+                 'plafond_injection_justification')
+
+#: ACAL155 — LA clé de ``Calepinage.resultat`` qui porte la saisie de
+#: raccordement. Unique : ni ``roof_layout['raccordement']`` (jamais écrit)
+#: ni ``entree_electrique['raccordement']`` (hors ``CHAMPS_ENTREE``) ne sont
+#: plus lus — tout lecteur passe par :func:`saisie_du_calepinage`.
+CLE_SAISIE = 'raccordement_saisie'
+
+#: Le refus opposé à un plafond d'injection SANS justification (clé
+#: ``plafond_injection_justification`` de ``refus_plafond_sans_
+#: justification``, contrat CALX205 / ACAL9).
+REFUS_PLAFOND_SANS_JUSTIFICATION = (
+    "Un plafond d'injection ne peut pas être enregistré sans sa "
+    "justification : indiquez le contrat de raccordement ou la prescription "
+    "du gestionnaire de réseau qui l'impose.")
 
 #: Les champs saisis et leur intitulé français : un refus les NOMME tels que
 #: l'écran les affiche (règle fondateur du 08/09/2026 — l'erreur désigne le
@@ -948,6 +966,7 @@ INTITULES_SAISIE = {
     'limite_elevation_pct': "la limite d'élévation (%)",
     'cos_phi_impose': 'le cos φ imposé',
     'phases': 'le nombre de phases du branchement',
+    'plafond_injection_kw': "le plafond d'injection (kW)",
 }
 
 #: Le statut PUBLIÉ pour un contrôle qui n'a pas eu lieu. Le noyau le nomme
@@ -994,6 +1013,28 @@ def _nombre_saisi(valeur, champ):
     return nombre
 
 
+def _plafond_saisi(valeur):
+    """Le plafond d'injection : un nombre ≥ 0, ``None``, ou un refus nommé.
+
+    Zéro est ADMIS : une injection interdite (« zéro injection ») est un
+    plafond réel, pas une absence de saisie.
+    """
+    champ = 'plafond_injection_kw'
+    if valeur is None or valeur == '':
+        return None
+    nombre = _nombre(valeur)
+    if nombre is None or not math.isfinite(nombre):
+        raise _refus_saisie(
+            champ, "%s n'est pas un nombre : saisissez une valeur chiffrée, "
+                   "ou laissez le champ vide si elle n'est pas connue."
+                   % INTITULES_SAISIE[champ].capitalize())
+    if nombre < 0:
+        raise _refus_saisie(
+            champ, "%s ne peut pas être négatif (« %s »)."
+                   % (INTITULES_SAISIE[champ].capitalize(), fr(nombre)))
+    return nombre
+
+
 def _phases_saisies(valeur):
     """1 ou 3 — un régime hors de ces deux-là est REFUSÉ, jamais ignoré."""
     if valeur is None or valeur == '':
@@ -1008,11 +1049,13 @@ def _phases_saisies(valeur):
 
 
 def _saisie_publiee(brute):
-    """Les SEPT champs du contrat, normalisés — aucun autre n'est retenu.
+    """Les NEUF champs du contrat, normalisés — aucun autre n'est retenu.
 
     Une clé inconnue du corps est ignorée : le contrat CALX205 fige la
-    saisie à sept champs, et accepter une huitième clé la ferait vivre dans
-    la base sans qu'aucun écran ni aucun calcul ne la lise jamais.
+    saisie à neuf champs (ACAL155), et accepter une dixième clé la ferait
+    vivre dans la base sans qu'aucun écran ni aucun calcul ne la lise jamais.
+    Un plafond d'injection sans justification est REFUSÉ, comme une limite
+    sans source.
     """
     brute = brute if isinstance(brute, dict) else {}
     saisie = {
@@ -1021,11 +1064,36 @@ def _saisie_publiee(brute):
                                       'source_limite'),
         'source_cos_phi': _texte_saisi(brute.get('source_cos_phi'),
                                        'source_cos_phi'),
+        'plafond_injection_kw': _plafond_saisi(
+            brute.get('plafond_injection_kw')),
+        'plafond_injection_justification': _texte_saisi(
+            brute.get('plafond_injection_justification'),
+            'plafond_injection_justification'),
     }
     for champ in ('puissance_souscrite_kva', 'tension_nominale_v',
                   'limite_elevation_pct', 'cos_phi_impose'):
         saisie[champ] = _nombre_saisi(brute.get(champ), champ)
+    if (saisie['plafond_injection_kw'] is not None
+            and not saisie['plafond_injection_justification']):
+        raise _refus_saisie('plafond_injection_justification',
+                            REFUS_PLAFOND_SANS_JUSTIFICATION)
     return {champ: saisie[champ] for champ in CHAMPS_SAISIE}
+
+
+def saisie_du_calepinage(calepinage):
+    """ACAL155 — LA saisie de raccordement de ce calepinage, ou ``{}``.
+
+    Lue sur ``resultat['raccordement_saisie']`` (écrite par
+    ``POST raccordement/``) — la SEULE source : la simulation (cos φ imposé,
+    plafond d'injection), le verdict publiable et la vue la lisent ICI.
+    Un ``resultat`` illisible rend ``{}`` : l'état vide du contrat, où les
+    verdicts sont omis en nommant ce qui manque — jamais une saisie devinée.
+    """
+    resultat = getattr(calepinage, 'resultat', None)
+    if not isinstance(resultat, dict):
+        return {}
+    saisie = resultat.get(CLE_SAISIE)
+    return dict(saisie) if isinstance(saisie, dict) else {}
 
 
 def _injection(saisie):

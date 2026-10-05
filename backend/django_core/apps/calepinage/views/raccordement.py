@@ -50,14 +50,12 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutLireOuEcrireCalepinage
-from ..services.raccordement import (
-    PREFIXE_CHAMP, RaccordementInvalide, bloc_raccordement,
+from ..services.raccordement import (  # ACAL155 : clé + lecture uniques
+    CLE_SAISIE, PREFIXE_CHAMP, RaccordementInvalide, bloc_raccordement,
+    saisie_du_calepinage,
 )
 
 __all__ = ['raccordement', 'CLE_SAISIE', 'champ_du_refus']
-
-#: La clé de la saisie dans ``Calepinage.resultat`` (JSONField existant).
-CLE_SAISIE = 'raccordement_saisie'
 
 
 def champ_du_refus(champ):
@@ -74,20 +72,6 @@ def champ_du_refus(champ):
     if nom.startswith(PREFIXE_CHAMP):
         nom = nom[len(PREFIXE_CHAMP):]
     return nom or 'raccordement'
-
-
-def _saisie_enregistree(calepinage):
-    """La saisie déjà posée sur ce calepinage, ou ``{}`` — jamais un repli.
-
-    Un ``resultat`` illisible (None, liste, texte) rend ``{}`` : l'état vide
-    du contrat CALX205, où les cinq verdicts sont omis en nommant ce qui
-    manque — pas une saisie devinée.
-    """
-    resultat = getattr(calepinage, 'resultat', None)
-    if not isinstance(resultat, dict):
-        return {}
-    saisie = resultat.get(CLE_SAISIE)
-    return saisie if isinstance(saisie, dict) else {}
 
 
 def _persister(calepinage, saisie):
@@ -139,7 +123,7 @@ def raccordement(self, request, pk=None):
     calepinage = self.get_object()  # borné société par get_queryset
     ecriture = request.method.lower() == 'post'
     corps = request.data if isinstance(request.data, dict) else {}
-    saisie = corps if ecriture else _saisie_enregistree(calepinage)
+    saisie = corps if ecriture else saisie_du_calepinage(calepinage)
     try:
         bloc = _bloc_du_calepinage(calepinage, saisie)
     except RaccordementInvalide as refus:
