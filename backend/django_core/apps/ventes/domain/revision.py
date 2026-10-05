@@ -189,6 +189,23 @@ def reviser_devis(devis, *, user=None):
             old, user, f'Remplacé par {nd.reference} (révision).')
         activity.log_devis_note(
             nd, user, f'Révision de {old.reference}.')
+
+    # ACAL91 (C-ACAL-115) — l'événement de domaine ``devis_revise`` part APRÈS
+    # le commit (jamais pour une V+1 annulée par un rollback), UNE fois, en
+    # best-effort : ``send_robust`` rend l'exception d'un abonné au lieu de la
+    # lever — la révision est déjà actée, un abonné en échec est journalisé.
+    # Aucun statut n'est écrit ici (règle #4).
+    from core.events import devis_revise
+
+    def _emettre_devis_revise():
+        for recepteur, resultat in devis_revise.send_robust(
+                sender=Devis, ancien=old, nouveau=nd, user=user):
+            if isinstance(resultat, Exception):
+                logger.warning(
+                    'ACAL91 : abonné %r de devis_revise en échec (%s -> %s) : %s',
+                    recepteur, old.reference, nd.reference, resultat)
+
+    transaction.on_commit(_emettre_devis_revise)
     return nd
 
 
