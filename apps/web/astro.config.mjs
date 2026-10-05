@@ -1,6 +1,7 @@
 // @ts-check
 import { copyFile, readFile, writeFile } from 'node:fs/promises';
 import { defineConfig } from 'astro/config';
+import { dossierClient, retirerPreviewToiture } from './scripts/retirer-preview-toiture.mjs';
 
 import cloudflare from '@astrojs/cloudflare';
 import tailwindcss from '@tailwindcss/vite';
@@ -57,6 +58,22 @@ const workersDevRedirect = () => ({
   },
 });
 
+/**
+ * ACAL332 — les pages /preview/toiture* (générations 1 à 3 et pro-11) restent
+ * une galerie interne servie par `astro dev`, mais ne sont PAS publiées : ce
+ * hook les retire du dossier client construit. Pages et scripts sources sont
+ * gardés (D-ACAL-19) ; /preview/diagnostic et le sitemap sont inchangés.
+ */
+const previewToitureHorsBuild = () => ({
+  name: 'taqinor:retirer-preview-toiture',
+  hooks: {
+    'astro:build:done': async ({ dir }) => {
+      const retirees = await retirerPreviewToiture(dossierClient(dir));
+      console.log(`[retirer-preview-toiture] retiré du build : ${retirees.join(', ') || 'rien'}`);
+    },
+  },
+});
+
 // https://astro.build/config
 export default defineConfig({
   site: 'https://taqinor.ma',
@@ -92,6 +109,7 @@ export default defineConfig({
       // statique dans dist/, donc hors sitemap comme /equipe.
       filter: (page) => !/type-test|media-test|variants-test|craft-|\/preview\/|\/internal\/|\/proposition\/|\/embed\/|\/equipe\/?$|\/confiance\/?$|\/status(\/|$)/.test(page)
     }),
-    workersDevRedirect()
+    workersDevRedirect(),
+    previewToitureHorsBuild()
   ]
 });
