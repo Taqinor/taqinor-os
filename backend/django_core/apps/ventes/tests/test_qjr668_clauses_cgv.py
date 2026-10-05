@@ -31,7 +31,7 @@ from apps.ventes.tests._quote_engine_common import (
     make_client, make_company, make_devis, make_user,
 )
 
-SOURCE = 'apps.ventes.domain.cycle_vie.clauses_applicables_devis'
+SOURCE = 'apps.ventes.domain.envoi.clauses_applicables_devis'
 CLAUSE = {'clause_id': 1, 'nom': 'Garantie de production',
           'corps_texte': 'QJR668 production garantie quatre-vingt-dix pour cent',
           'type_deal': 'residentiel', 'ordre': 0}
@@ -87,7 +87,7 @@ class GelTests(_Base):
 
     def test_sans_catalogue_rien_n_est_ecrit_ni_efface(self):
         """cpq parqué : la source réelle rend None, le snapshot reste."""
-        from apps.ventes.domain.cycle_vie import (
+        from apps.ventes.domain.envoi import (
             clauses_applicables_devis, figer_clauses_devis)
         devis = self._devis()
         self.assertIsNone(clauses_applicables_devis(devis))
@@ -122,7 +122,7 @@ class GelTests(_Base):
 
     def test_les_cgv_gelees_sont_ecrites_une_seule_fois(self):
         from apps.parametres.models_documents import DocumentTemplates
-        from apps.ventes.domain.cycle_vie import figer_clauses_devis
+        from apps.ventes.domain.envoi import figer_clauses_devis
         modele = DocumentTemplates.objects.create(
             company=self.company, cgv_bullets=['QJR668 avant'])
         devis = self._devis()

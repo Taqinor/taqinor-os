@@ -210,7 +210,7 @@ class DevisEnvoiActionsMixin:
         # QJR668 — la pièce jointe est rendue AVANT ``mark_devis_sent`` : les
         # clauses/CGV de l'affaire sont gelées dès maintenant pour y figurer.
         if devis.statut == devis.Statut.BROUILLON:
-            from ..domain.cycle_vie import figer_clauses_devis
+            from ..domain.envoi import figer_clauses_devis
             figer_clauses_devis(devis)
 
         # Génère le PDF premium (persist=False — rendu à la volée, pas de

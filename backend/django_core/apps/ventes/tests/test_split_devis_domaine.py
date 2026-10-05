@@ -67,7 +67,7 @@ DEPLACEMENTS = {
     'rev': ('split_dm_rev', 'apps/ventes/domain/cycle_vie.py',
             'apps/ventes/domain/revision.py', 'SPL263', True),
     'envoi': ('split_dm_envoi', 'apps/ventes/domain/cycle_vie.py',
-              'apps/ventes/domain/envoi.py', 'SPL264', False),
+              'apps/ventes/domain/envoi.py', 'SPL264', True),
     'comp': ('split_dm_comp', 'apps/ventes/domain/pipeline.py',
              'apps/ventes/domain/etape_composer.py', 'SPL265', False),
     'cal': ('split_dm_cal', 'apps/ventes/domain/creation.py',
