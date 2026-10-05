@@ -17,9 +17,12 @@ import logging
 from django.utils import timezone
 
 from .models import (
-    Channel, EventType, Notification, NotificationPreference,
+    Channel,
+    Notification,
+    NotificationPreference,
     NotificationRoutingRule,
 )
+from .types_evenements import EventType
 
 logger = logging.getLogger(__name__)
 

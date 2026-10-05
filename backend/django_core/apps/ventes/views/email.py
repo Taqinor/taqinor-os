@@ -14,15 +14,17 @@ from ..models import (  # noqa: F401
 from ..serializers import (  # noqa: F401
     DevisSerializer,
     DevisWriteSerializer,
-    BonCommandeSerializer,
     LigneDevisSerializer,
+    DevisActivitySerializer,
+)
+from ..serializers_facturation import (  # noqa: F401
+    BonCommandeSerializer,
     FactureSerializer,
     FactureWriteSerializer,
     LigneFactureSerializer,
     PaiementSerializer,
     AvoirSerializer,
     RelanceLogSerializer,
-    DevisActivitySerializer,
 )
 from authentication.permissions import (  # noqa: F401
     IsAnyRole,

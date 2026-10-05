@@ -12,7 +12,8 @@ from django.utils import timezone
 from authentication.models import Company
 from apps.crm.models import Client
 from apps.installations.models import Installation
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.records.models import Activity
 from apps.sav.models import ContratMaintenance
 from apps.sav.selectors import client_a_contrat_actif, taux_attache

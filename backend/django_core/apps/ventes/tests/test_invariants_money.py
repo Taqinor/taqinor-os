@@ -42,7 +42,7 @@ from apps.ventes.domain.argent import (
 from apps.ventes.domain.argent import totaux as argent_totaux
 from apps.ventes.models import BonCommande, Devis, LigneDevis
 from apps.ventes.selectors import TAUX_TVA_REFERENTIEL, _canonical_totaux
-from apps.ventes.serializers import BonCommandeSerializer
+from apps.ventes.serializers_facturation import BonCommandeSerializer
 from apps.ventes.tests._quote_engine_common import make_client, make_company
 from core.money import quantize_mad
 

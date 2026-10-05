@@ -18,7 +18,8 @@ from authentication.models import Company
 
 from apps.adsengine import digest as digest_mod
 from apps.adsengine.models import AdCampaignMirror, AdMirror, EngineAlert, InsightSnapshot
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 
 User = get_user_model()
 

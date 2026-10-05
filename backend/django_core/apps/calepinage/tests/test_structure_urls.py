@@ -113,8 +113,10 @@ class FormeUrlUniqueTest(SimpleTestCase):
         """
         from apps.calepinage.views import PREFIXES_URL_AUTORISES
 
+        # ACAL238 — ``gabarits-dossiers`` : réglage société (contrat ACAL15).
         self.assertEqual(PREFIXES_URL_AUTORISES,
-                         ('calepinages', 'moteur', 'parametres'))
+                         ('calepinages', 'moteur', 'parametres',
+                          'gabarits-dossiers'))
         self.assertNotIn(
             'calepinage', PREFIXES_URL_AUTORISES,
             "Aucun second préfixe ne doit servir l'objet métier lui-même.")

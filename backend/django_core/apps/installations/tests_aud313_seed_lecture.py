@@ -46,7 +46,8 @@ def auth(user):
 
 
 def make_directeur(company):
-    from apps.roles.models import Role, DIRECTEUR_PERMISSIONS
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
     role = Role.objects.create(
         company=company, nom='Directeur', est_systeme=True,
         permissions=list(DIRECTEUR_PERMISSIONS))
@@ -58,7 +59,8 @@ def make_directeur(company):
 
 
 def make_technicien(company):
-    from apps.roles.models import Role, TECHNICIEN_PERMISSIONS
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
     role = Role.objects.create(
         company=company, nom='Technicien', est_systeme=True,
         permissions=list(TECHNICIEN_PERMISSIONS))

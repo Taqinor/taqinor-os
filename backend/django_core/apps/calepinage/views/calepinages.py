@@ -31,7 +31,6 @@ mauvais objet (``LeadWorkspace.jsx`` l'a montré).
 from __future__ import annotations
 
 import json
-from datetime import timedelta
 
 from django.utils.dateparse import parse_date, parse_datetime
 from drf_spectacular.types import OpenApiTypes
@@ -73,6 +72,8 @@ from ..services.devis import (
     DevisRefuse, generer_devis, resynchroniser_devis,
 )
 from ..services.layout import LayoutRefuse, enregistrer_layout
+# ACAL196 — référence et aperçu : UNE définition, lue aussi par la liste.
+from ..services.presentation import image_apercu, reference_calepinage
 from ..services.variantes import (
     VarianteRefusee, creer_variante, modifier_variante, retenir_variante,
     supprimer_variante,
@@ -82,9 +83,6 @@ from .electrique import ElectriqueActionsMixin
 from .schema import SchemaUnifilaireMixin  # CAL195
 
 __all__ = ['CalepinageViewSet', 'contexte_conception', 'detail_calepinage']
-
-#: Durée de validité de l'URL présignée du rendu (celle du stockage ventes).
-DUREE_URL_IMAGE = timedelta(hours=1)
 
 
 class ActionIdempotenteMixin:
@@ -960,7 +958,7 @@ def detail_calepinage(calepinage, request=None):
     peremption = _peremption_calepinage(calepinage, company)
     return {
         'id': calepinage.pk,
-        'reference': _reference(calepinage),
+        'reference': reference_calepinage(calepinage),
         'nom': _texte(getattr(calepinage, 'titre', '')) or str(calepinage),
         'statut': calepinage.statut,
         'statut_libelle': calepinage.get_statut_display(),
@@ -982,7 +980,7 @@ def detail_calepinage(calepinage, request=None):
         'layout_nb_panneaux': peremption['layout_nb_panneaux'],
         'versions': _compteur_versions(calepinage),
         'variantes': _compteur_variantes(calepinage),
-        'image': _image(calepinage),
+        'image': image_apercu(calepinage),
         'contexte_geographique': cal_selectors.contexte_geographique(
             calepinage),
         # CIQ136 — contraintes de site du PROJET ({} = aucune).
@@ -1008,21 +1006,6 @@ def _peremption_calepinage(calepinage, company):
                          and devis.company_id != company.pk):
         return {'layout_stale': None, 'layout_nb_panneaux': None}
     return peremption_layout_devis(devis)
-
-
-def _reference(calepinage):
-    """« CAL-AAMM-0001 » — DÉRIVÉE, jamais un numéro stocké.
-
-    Le modèle ne porte pas de référence (aucune migration n'est ajoutée par
-    cette lane) : l'étiquette est déduite de la date de création et de
-    l'identifiant, donc elle est stable dans le temps et ne peut pas
-    « rétrécir » comme un ``count()+1``. Le jour où une vraie numérotation
-    arrivera, elle passera par ``apps/ventes/utils/references.py``.
-    """
-    cree = getattr(calepinage, 'created_at', None)
-    if cree is None:
-        return f'CAL-{calepinage.pk:04d}'
-    return f'CAL-{cree.strftime("%y%m")}-{calepinage.pk:04d}'
 
 
 def _texte(valeur):
@@ -1163,30 +1146,6 @@ def _compteur_variantes(calepinage):
         'total': len(lignes),
         'retenue_id': retenue.pk if retenue is not None else None,
         'non_simulees': len([v for v in lignes if not v.resultat]),
-    }
-
-
-def _image(calepinage):
-    """``{url, genere_le, expire_le}`` du rendu stocké, ou trois ``null``.
-
-    ACAL200 : l'URL est un chemin RELATIF même origine servi par Django
-    (``roof-image/fichier/``) — jamais une URL pré-signée vers l'hôte interne
-    de MinIO. ``expire_le`` est conservé tel que le contrat le promet
-    (génération + une heure : la fenêtre pendant laquelle l'aperçu est
-    garanti frais). Sans rendu enregistré, trois ``null``.
-    """
-    from django.utils import timezone
-
-    from ..services.presentation import url_fichier_roof_image
-
-    cle = _texte(getattr(calepinage, 'roof_image', ''))
-    if not cle:
-        return {'url': None, 'genere_le': None, 'expire_le': None}
-    maintenant = timezone.now()
-    return {
-        'url': url_fichier_roof_image(calepinage.pk),
-        'genere_le': _horodatage(maintenant),
-        'expire_le': _horodatage(maintenant + DUREE_URL_IMAGE),
     }
 
 

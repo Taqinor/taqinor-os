@@ -14,7 +14,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from .models import EventType, Notification, NotificationReason
+from .models import Notification, NotificationReason
+from .types_evenements import EventType
 
 User = get_user_model()
 

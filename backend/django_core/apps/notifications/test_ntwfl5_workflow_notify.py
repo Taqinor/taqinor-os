@@ -16,7 +16,8 @@ from authentication.models import Company
 from core import workflow
 from core.models import WorkflowDefinition, WorkflowStepDefinition
 
-from .models import EventType, Notification
+from .models import Notification
+from .types_evenements import EventType
 from .services import sweep_workflow_step_reminders
 
 User = get_user_model()

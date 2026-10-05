@@ -14,7 +14,7 @@ historique inchangé, jamais une régression par omission.
 """
 from __future__ import annotations
 
-from .models import EventType
+from .types_evenements import EventType
 
 EVENT_MODULE = {
     # crm

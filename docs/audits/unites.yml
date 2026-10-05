@@ -404,9 +404,11 @@ unites:
       - "frontend/src/features/ged/**"
       - "frontend/src/features/portail/**"
       - "frontend/src/api/{gedApi,documentsApi,portailApi}.js"
-      - "apps/web/src/pages/suivi/**"
+      - "backend/django_core/apps/ventes/selectors_portail.py"
+      - "backend/django_core/templates/pdf/document_*"
     perimetre_lu:
       - "sélecteurs lus par portail : ventes, ged, installations, crm, sav, stock"
+      - "suivi public : endpoint ventes/suivi/<token>/ (J1b) et page apps/web/src/pages/suivi (propriétaire web, docs/ownership.yml)"
     coutures:
       - "contrats : backend/django_core/apps/portail/contract_samples/"
       - "événements : document_produit ventes → ged"
@@ -414,13 +416,13 @@ unites:
     I: 4
     score: 12
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: ADOC
     plan: docs/plans/PLAN_AUDIT_DOCUMENTS.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "Mots v1 : ged, portail. Aucun compte portail seedé : couverture à déclarer."
+    plans_alimentes: [docs/plans/PLAN_AUDIT_DOCUMENTS.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_CALEPINAGE.md, docs/WEB_PLAN.md]
+    pr: 806
+    date: 2026-10-05
+    notes: "Mots v1 : ged, portail. Audit L2 du 05/10/2026 (dossier docs/audits/2026-10-05-documents.md) : 66 constats (3 S1), 103 tâches ADOC, décisions D-ADOC-1..4. apps/web suivi retiré de possede (propriétaire web, ownership.yml prime). Comptes portail créés en local pour le run (aucun seedé)."
 
   - id: X3
     rang: 13

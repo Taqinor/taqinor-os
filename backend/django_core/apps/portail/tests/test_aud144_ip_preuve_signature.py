@@ -33,8 +33,10 @@ from django.test import RequestFactory, SimpleTestCase, TestCase
 from apps.crm.models import Client
 from apps.portail import views_client
 from apps.portail.models import AcceptationDevisPortail
-from apps.roles.models import (
-    PORTAIL_CLIENT_PERMISSIONS, ROLE_PORTAIL_CLIENT, Role,
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    PORTAIL_CLIENT_PERMISSIONS,
+    ROLE_PORTAIL_CLIENT,
 )
 from apps.ventes.models import Devis
 from authentication.models import Company, CustomUser

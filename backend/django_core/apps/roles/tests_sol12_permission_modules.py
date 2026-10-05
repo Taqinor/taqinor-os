@@ -15,7 +15,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.roles.models import ALL_PERMISSIONS, PERMISSION_MODULE
+from apps.roles.permissions_registre import ALL_PERMISSIONS, PERMISSION_MODULE
 from apps.roles.views import RoleViewSet
 from authentication.models import Company
 from core import modules as modules_infra

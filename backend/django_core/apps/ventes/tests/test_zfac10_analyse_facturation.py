@@ -33,7 +33,8 @@ def make_company(slug='zfac10-co', nom='ZFAC10 Co'):
 
 class TestAnalyseFacturation(TestCase):
     def setUp(self):
-        from apps.roles.models import RESPONSABLE_PERMISSIONS, Role
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
         self.company = make_company()
         resp_role = Role.objects.create(
             company=self.company, nom='Responsable',
@@ -92,7 +93,8 @@ class TestAnalyseFacturation(TestCase):
 
     def test_cross_company_isolation(self):
         other_company = make_company(slug='zfac10-other', nom='Other Co')
-        from apps.roles.models import RESPONSABLE_PERMISSIONS, Role
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
         other_role = Role.objects.create(
             company=other_company, nom='Responsable',
             permissions=RESPONSABLE_PERMISSIONS, est_systeme=True)

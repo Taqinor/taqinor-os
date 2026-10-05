@@ -29,7 +29,8 @@ from apps.crm.models import Client
 from apps.ventes.models import Devis
 from apps.installations.models import DemandeAchat
 from apps.installations.services import create_installation_from_devis
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')

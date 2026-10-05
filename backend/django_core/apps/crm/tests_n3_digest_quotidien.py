@@ -27,7 +27,8 @@ from apps.crm import stages
 from apps.crm.management.commands.notifier_relances_dues import (
     DIGEST_ZERO_TITRE, notifier_relances_dues)
 from apps.crm.models import Lead, RelanceEtape
-from apps.notifications.models import EventType, Holiday, Notification
+from apps.notifications.models import Holiday, Notification
+from apps.notifications.types_evenements import EventType
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

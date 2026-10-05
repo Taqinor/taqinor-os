@@ -309,6 +309,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
               التراجع عن آخر نقطة
             </button>
+            <button type="button" id="rp9-add-pan" hidden
+              class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
+              إضافة جزء من السطح
+            </button>
+            <button type="button" id="rp9-remove-pan" hidden
+              class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
+              إزالة هذا الجزء
+            </button>
             <button type="button" id="rp9-clear"
               class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-white/50 hover:text-white">
               مسح
@@ -2050,6 +2058,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // elle LIT son DOM dans un état simple et le donne à `construireCorps`, qui
   // applique le registre de champs et appelle `validateLead` lui-même.
   import { construireCorps } from '../../../lib/tunnel/corps';
+  import type { RoofLayoutPublic } from '../../../scripts/roofPro11/captureBoot';
   import { etatVide, type EtatTunnel } from '../../../lib/tunnel/champs';
   import { lireChampsDomTunnel } from '../../../lib/tunnel/lecture';
   import { ERREURS } from '../../../lib/tunnel/i18n';
@@ -2152,6 +2161,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // ——— état capture (repère / contour) tenu par onCaptureChange ———
   let capturePin: { lat: number; lng: number } | null = null;
   let captureOutline: Array<[number, number]> = [];
+  // ACAL304 — tous les pans FERMÉS ([lat,lng]) + le roofLayout v2 à émettre (≥ 2 pans).
+  let capturePans: Array<Array<[number, number]>> = [];
+  let captureLayout: RoofLayoutPublic | null = null;
   let cityTouched = false;
   cityEl?.addEventListener('input', () => { cityTouched = true; });
 
@@ -2257,6 +2269,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // la complète dans l'ERP ; plus rien à persister.
     sel?: Record<string, string>;
     capturePin?: { lat: number; lng: number } | null;
+    capturePans?: Array<Array<[number, number]>>;
+    captureLayout?: RoofLayoutPublic | null;
     captureOutline?: Array<[number, number]>;
     fields?: Record<string, string>;
     checks?: Record<string, boolean>;
@@ -2321,7 +2335,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         step, revealed, mode,
         visitWindowPart, visitWindowWeek,
         sel: { proUnit, tension, activity, surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode, occupationJour },
-        capturePin, captureOutline,
+        capturePin, captureOutline, capturePans, captureLayout,
         fields, checks,
         idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId,
       };
@@ -2681,12 +2695,17 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         // « pointer » fait atterrir la carte serrée sur le repère.
         roofInputMode: () => roofInputMode,
         // WJ61 — repère/contour restaurés depuis sessionStorage semés au boot.
+        // ACAL304 — les pans multiples sont restaurés tels quels (≥ 2 pans).
+        hydratePans: capturePans.length >= 2 ? capturePans : undefined,
+        panStrings: { panAdded: 'تمت إضافة جزء. ارسم الجزء التالي (انقر مرتين للإغلاق) أو أرسل.', panRemoved: 'تمت إزالة الجزء.', maxPans: 'تم بلوغ الحد الأقصى لعدد الأجزاء.' },
         hydrate: capturePin
           ? { lead: { roof_point: capturePin, roof_outline: captureOutline.length >= 3 ? captureOutline : null } }
           : undefined,
         onCaptureChange: (s) => {
           capturePin = s.pin;
           captureOutline = s.outline;
+          capturePans = s.pans;
+          captureLayout = s.layout;
           syncCityRequirement();
           // QX/Lane C — le contour a changé : l'instantané satellite ne correspond plus.
           roofImageSpecPromise = null;
@@ -2864,6 +2883,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     syncEquipDetails();
     if (savedWizard.capturePin) capturePin = savedWizard.capturePin;
     if (savedWizard.captureOutline?.length) captureOutline = savedWizard.captureOutline;
+    if (savedWizard.capturePans?.length) capturePans = savedWizard.capturePans;
+    if (savedWizard.captureLayout) captureLayout = savedWizard.captureLayout;
     syncCityRequirement();
     if (Object.keys(savedWizard.fields ?? {}).length > 0 || savedWizard.capturePin) markDataEntered();
     restoring = false;
@@ -4202,6 +4223,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // WJ4 — repère et contour FACULTATIFS : on ne BLOQUE jamais sans eux.
       repereToit: capturePin,
       contourToit: captureOutline,
+      layoutToit: captureLayout,
     };
   }
 

@@ -17,7 +17,8 @@ from django.test import TestCase
 
 from authentication.models import Company, CustomUser
 from apps.parametres.models import SettingsAuditLog
-from apps.roles.models import Role, CANONICAL_SYSTEM_ROLES
+from apps.roles.models import Role
+from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
 
 
 def _preset(nom):

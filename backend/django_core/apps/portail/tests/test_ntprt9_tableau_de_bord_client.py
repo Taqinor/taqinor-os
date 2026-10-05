@@ -32,12 +32,12 @@ from apps.crm.models import Client
 from apps.facturation.models import Facture
 from apps.installations.models import Installation
 from apps.portail.services import upsert_jalon_chantier
-from apps.roles.models import (
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
     PORTAIL_CLIENT_PERMISSIONS,
     PORTAIL_FOURNISSEUR_PERMISSIONS,
     ROLE_PORTAIL_CLIENT,
     ROLE_PORTAIL_FOURNISSEUR,
-    Role,
 )
 from apps.sav.models import Ticket
 from apps.ventes.models import Devis

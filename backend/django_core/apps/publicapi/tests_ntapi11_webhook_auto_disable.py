@@ -15,7 +15,8 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from authentication.models import Company
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 
 from .constants import EVENT_LEAD_CREATED
 from .models import Webhook, WebhookDelivery

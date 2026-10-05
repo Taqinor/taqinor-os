@@ -21,7 +21,11 @@ def make_company(slug='fg-co', nom='FG Co'):
 def make_user(company, username, role='responsable'):
     # Assign a real system Role (not just role_legacy) so the user carries the
     # correct menu tier / write permissions the CRM endpoints are gated on.
-    from apps.roles.models import Role, ADMIN_PERMISSIONS, RESPONSABLE_PERMISSIONS
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import (
+        ADMIN_PERMISSIONS,
+        RESPONSABLE_PERMISSIONS,
+    )
     _defs = {
         'admin': ('Administrateur', ADMIN_PERMISSIONS),
         'responsable': ('Responsable', RESPONSABLE_PERMISSIONS),

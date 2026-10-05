@@ -519,7 +519,7 @@ def _notify_reassignment(act, actor):
         user = act.assigned_to
         if user is None or (actor is not None and user.id == actor.id):
             return
-        from apps.notifications.models import EventType as ET
+        from apps.notifications.types_evenements import EventType as ET
         from apps.notifications.services import notify
         link = _deep_link(act.content_type, act.object_id)
         actor_label = getattr(actor, 'username', '') or 'Quelqu\'un'
@@ -696,7 +696,7 @@ def _notify_mentions(body, author, company, content_type=None, object_id=None):
         return
     try:
         from django.contrib.auth import get_user_model
-        from apps.notifications.models import EventType as ET
+        from apps.notifications.types_evenements import EventType as ET
         from apps.notifications.services import notify
         User = get_user_model()
         link = _deep_link(content_type, object_id)

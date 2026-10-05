@@ -16,7 +16,11 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.roles.models import Role, ALL_PERMISSIONS, RESPONSABLE_PERMISSIONS
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    ALL_PERMISSIONS,
+    RESPONSABLE_PERMISSIONS,
+)
 
 User = get_user_model()
 
@@ -275,9 +279,11 @@ class TestRoleAssignmentN103(TestCase):
     les rôles. Le palier dérive désormais d'abord du signal ``roles_gerer``."""
 
     def setUp(self):
-        from apps.roles.models import (
-            DIRECTEUR_PERMISSIONS, ADMIN_PERMISSIONS,
-            COMMERCIAL_PERMISSIONS, VIEWER_PERMISSIONS,
+        from apps.roles.permissions_registre import (
+            DIRECTEUR_PERMISSIONS,
+            ADMIN_PERMISSIONS,
+            COMMERCIAL_PERMISSIONS,
+            VIEWER_PERMISSIONS,
         )
         self.company = Company.objects.create(nom='N103 Co', slug='n103-co')
         self.directeur_role = Role.objects.create(

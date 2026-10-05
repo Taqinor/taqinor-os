@@ -34,7 +34,8 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 
-from .models import Annonce, AnnonceLecture, EventType, Notification
+from .models import Annonce, AnnonceLecture, Notification
+from .types_evenements import EventType
 
 User = get_user_model()
 

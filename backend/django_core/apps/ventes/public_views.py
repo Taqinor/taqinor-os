@@ -31,7 +31,8 @@ from .public.lecture_views import _notify_open, _stamp_view_si_public
 from .public.payload_batterie import (
     _balayage_stockage_publique, _batterie_regime_publique,
     _couverture_batterie_publique, _echelle_paliers_batterie_publique,
-    _remplissage_batterie_publiable, _residuel_falaise_publiable,
+    _fiche_batterie_publique, _remplissage_batterie_publiable,
+    _residuel_falaise_publiable,
 )
 from .public.payload_conditions import (
     PAIEMENT_MOYENS_PUBLICS, _acompte_publique, _conditions_publiques,
@@ -1330,6 +1331,15 @@ def proposal_data(request, token):
             if _jour_type_servi else None)
         if _couverture is not None:
             payload['couverture_batterie'] = _couverture
+        # ACAL173 (contrat ACAL10) — `fiche_batterie` : rendement aller-retour
+        # et DoD de la FICHE de la batterie vendue, lus par le simulateur de
+        # repli de la page (même section que son graphe). Fiche muette sur le
+        # rendement ⇒ `rendement_ar_pct` null + omission nommée, jamais un
+        # rendement de repli. Clé absente sans ligne batterie.
+        _fiche_batterie = (
+            _fiche_batterie_publique(devis) if _jour_type_servi else None)
+        if _fiche_batterie is not None:
+            payload['fiche_batterie'] = _fiche_batterie
         # TAILLES (ordre fondateur, 26/08/2026) — `offres_tailles` : les TROIS
         # tailles d'installation explorables (Éco → Recommandé → Max), chacune
         # dans ses deux variantes sans/avec, pour qu'UNE bascule au-dessus des

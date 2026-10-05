@@ -22,8 +22,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.calepinage.models import ParametresCalepinage
 from apps.calepinage.services.parametres import enregistrer_parametres
 from apps.parametres.models_audit import SettingsAuditLog
-from apps.roles.models import (
-    DIRECTEUR_PERMISSIONS, RESPONSABLE_PERMISSIONS, Role,
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    DIRECTEUR_PERMISSIONS, RESPONSABLE_PERMISSIONS,
 )
 from authentication.models import Company
 

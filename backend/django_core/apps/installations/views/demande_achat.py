@@ -70,7 +70,7 @@ def _notifier_demandeur_decision(da, approuvee):
         return
     try:
         from apps.notifications.services import notify
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         if approuvee:
             titre = f"Demande d'achat approuvée — {da.reference}"
             corps = f"Votre demande « {da.objet} » ({da.reference}) a été approuvée."

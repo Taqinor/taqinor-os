@@ -26,7 +26,8 @@ class FG23SecurityEventsTest(TestCase):
     def setUp(self):
         self.company = _company()
         # Directeur : journal_activite_voir via role_legacy admin + can_view.
-        from apps.roles.models import Role, DIRECTEUR_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
         role = Role.objects.create(
             company=self.company, nom='Directeur',
             permissions=list(DIRECTEUR_PERMISSIONS), est_systeme=True)

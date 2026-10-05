@@ -22,7 +22,8 @@ from apps.calepinage.services.commentaires import (
     CommentaireInvalide, commentaires_du_calepinage, deposer_commentaire,
 )
 from apps.notifications.models import Notification
-from apps.roles.models import DIRECTEUR_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
 from authentication.models import Company
 
 User = get_user_model()

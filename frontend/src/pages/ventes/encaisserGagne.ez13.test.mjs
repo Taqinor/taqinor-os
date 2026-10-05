@@ -10,9 +10,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { lireSourcesFactureList } from './factureList/lireSources.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const src = readFileSync(path.join(__dirname, 'FactureList.jsx'), 'utf8')
+// SPL211 — FactureList.jsx + factureList/*.{js,jsx} (la ligne FactureRow y vit).
+const src = lireSourcesFactureList()
 const dialog = readFileSync(path.join(__dirname, 'PaiementDialog.jsx'), 'utf8')
 const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
 

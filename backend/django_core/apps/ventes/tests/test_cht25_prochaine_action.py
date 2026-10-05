@@ -70,7 +70,7 @@ class RegulatoryDossierEstTraceParLeJournalTests(TestCase):
     def test_le_modele_est_declare_suivi(self):
         # Contrat M4 (import-linter) : ventes n'importe JAMAIS apps.audit —
         # résolution à l'exécution, hors du graphe d'imports statiques.
-        tracked = import_module('apps.audit.signals').TRACKED_MODELS
+        tracked = import_module('apps.audit.modeles_suivis').TRACKED_MODELS
         self.assertIn(('ventes', 'RegulatoryDossier'), tracked)
 
     def test_transition_de_statut_ecrit_une_ligne_auditlog(self):

@@ -20,10 +20,16 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.roles.models import (
-    ALL_PERMISSIONS, CANONICAL_SYSTEM_ROLES, COMMERCIAL_TERRAIN_PERMISSIONS,
-    DIRECTEUR_PERMISSIONS, PERMISSION_MODULE, Role, TECHNICIEN_PERMISSIONS,
-    cles_apps_autorisees, permission_app,
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    ALL_PERMISSIONS,
+    CANONICAL_SYSTEM_ROLES,
+    COMMERCIAL_TERRAIN_PERMISSIONS,
+    DIRECTEUR_PERMISSIONS,
+    PERMISSION_MODULE,
+    TECHNICIEN_PERMISSIONS,
+    cles_apps_autorisees,
+    permission_app,
 )
 from authentication.models import Company
 

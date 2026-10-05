@@ -417,3 +417,75 @@ def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
     except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
         logger.warning('couverture_batterie indisponible', exc_info=True)
         return None
+
+
+#: ACAL173 (contrat ACAL10, ``couverture_batterie.json`` → ``fiche_batterie``) —
+#: l'omission NOMMÉE servie quand la fiche ne publie pas son rendement
+#: aller-retour. Jamais un rendement de repli (règle « zéro chiffre inventé ») :
+#: la page n'exécute alors pas le simulateur de repli pour cette batterie.
+MOTIF_SIMULATION_OMISE = (
+    'Rendement aller-retour non publié par la fiche de la batterie : '
+    'simulation omise')
+
+
+def _fiche_batterie_publique(devis):
+    """ACAL173 — clé ``fiche_batterie`` : le rendement aller-retour et le DoD
+    publiés par la FICHE de la batterie vendue, que le simulateur de repli de
+    la page (``batterySim.simulateBattery``) applique au lieu de ses anciennes
+    constantes (0,96 one-way → 0,9216 aller-retour).
+
+    ``{rendement_ar_pct, dod_pct, source, simulation_omise_motif}`` :
+
+    * ``rendement_ar_pct`` — même règle que le moteur horaire
+      (``horaire.batterie_lignes.rendement_batterie_des_lignes``, QJR137) :
+      PROUVÉ OU RIEN — TOUTES les lignes batterie publient leur rendement, on
+      retient le plus bas ; une seule fiche muette ⇒ ``None`` ;
+    * ``dod_pct`` — même règle sur ``dod_pct`` de la fiche (``None`` si une
+      fiche se tait : la page garde alors son DoD de repli, hors défaut) ;
+    * ``source`` — ``'fiche'`` quand le rendement vient des fiches, sinon
+      ``None`` ;
+    * ``simulation_omise_motif`` — :data:`MOTIF_SIMULATION_OMISE` quand le
+      rendement manque (la page affiche cette omission au lieu d'un taux),
+      sinon ``None``.
+
+    ``None`` (clé absente) quand le devis ne porte AUCUNE ligne batterie : rien
+    à simuler. Lecture des fiches par le sélecteur de ``stock`` (jamais
+    ``stock.models``), aucun prix (ni de vente ni d'achat) : servie identique
+    aux deux niveaux de partage. Best-effort : ne fait jamais tomber la page."""
+    try:
+        from ..horaire.batterie_lignes import (
+            RENDEMENT_SOURCE_FICHE, _puissance_fiche,
+            rendement_batterie_des_lignes,
+        )
+        from ..services import classer_produit
+        lignes = []
+        for ligne in devis.lignes.all():
+            designation = getattr(ligne, 'designation', '') or ''
+            if classer_produit(designation) != 'batterie':
+                continue
+            if float(getattr(ligne, 'quantite', 0) or 0) <= 0:
+                continue
+            lignes.append(ligne)
+        if not lignes:
+            return None
+        rendement = rendement_batterie_des_lignes(
+            lignes, roles=['batterie'] * len(lignes))
+        rendement_pct = None
+        if (rendement.get('source') == RENDEMENT_SOURCE_FICHE
+                and rendement.get('rendement')):
+            rendement_pct = round(float(rendement['rendement']) * 100, 2)
+        dods = [_puissance_fiche(getattr(ligne, 'produit', None), 'dod_pct')
+                for ligne in lignes]
+        dod_pct = (min(dods) if all(d is not None and 0 < d <= 100
+                                    for d in dods) else None)
+        return {
+            'rendement_ar_pct': rendement_pct,
+            'dod_pct': dod_pct,
+            'source': 'fiche' if rendement_pct is not None else None,
+            'simulation_omise_motif': (
+                None if rendement_pct is not None
+                else MOTIF_SIMULATION_OMISE),
+        }
+    except Exception:  # noqa: BLE001 — voir _couverture_batterie_publique
+        logger.warning('fiche_batterie indisponible', exc_info=True)
+        return None

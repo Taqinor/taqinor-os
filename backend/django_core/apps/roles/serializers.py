@@ -1,6 +1,9 @@
 from rest_framework import serializers
-from .models import (
-    ALL_PERMISSIONS, ELEVATED_PERMISSIONS, Role, est_permission_app,
+from .models import Role
+from .permissions_registre import (
+    ALL_PERMISSIONS,
+    ELEVATED_PERMISSIONS,
+    est_permission_app,
 )
 
 

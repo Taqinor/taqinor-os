@@ -43,7 +43,7 @@ def notifier_nouvelles_violations(report):
     """Notifie les admins de chaque société ayant de NOUVELLES violations
     (gravité hors « info »). Rend le nombre de notifications émises."""
     from authentication.models import Company, CustomUser
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
     from apps.notifications.services import notify
 
     par_societe = {}

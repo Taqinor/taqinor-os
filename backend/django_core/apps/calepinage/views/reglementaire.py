@@ -48,7 +48,8 @@ from ..services.reglementaire import (
 )
 from .calepinages import CalepinageViewSet
 
-__all__ = ['dossiers_reglementaires', 'generer_dossier', 'champs_dossier']
+__all__ = ['dossiers_reglementaires', 'generer_dossier', 'champs_dossier',
+           'joindre_piece']
 
 
 def _forme():
@@ -247,3 +248,59 @@ def champs_dossier(self, request, pk=None):
 CalepinageViewSet.dossiers_reglementaires = dossiers_reglementaires
 CalepinageViewSet.generer_dossier = generer_dossier
 CalepinageViewSet.champs_dossier = champs_dossier
+
+
+# ── ACAL238 — JOINDRE (OU RETIRER) UNE PIÈCE D'UN DOSSIER ─────────────────
+# Action NEUVE ajoutée EN FIN de fichier (aucune action existante décalée).
+
+def _forme_piece_jointe():
+    """La forme DÉCLARÉE (contrat ``dossiers_reglementaires.json`` ›
+    ``joindre_piece``)."""
+    return inline_serializer('CalepinageJoindrePiece', {
+        'piece': serializers.CharField(),
+        'etat': serializers.CharField(),
+        'attachment': serializers.IntegerField(allow_null=True),
+        'depose_le': serializers.DateTimeField(allow_null=True),
+    })
+
+
+_FORME_PIECE_JOINTE = _forme_piece_jointe()  # UNE instance : 200 et 201
+
+
+@extend_schema(responses={200: _FORME_PIECE_JOINTE,
+                          201: _FORME_PIECE_JOINTE})
+@action(detail=True, methods=['post'], url_path='joindre-piece',
+        permission_classes=[PeutGererCalepinage])
+def joindre_piece(self, request, pk=None):
+    """ACAL238 — ``POST /calepinages/<pk>/joindre-piece/``.
+
+    Multipart ``{dossier|gabarit, piece, fichier}`` → 201 ; ``{dossier,
+    piece, retirer: true}`` → 200 (la pièce redevient non fournie). Un refus
+    sort en 400 SOUS LE CHAMP nommé (``dossier``, ``piece``, ``fichier``).
+    """
+    from ..services.reglementaire import PieceRefusee
+    from ..services.reglementaire import joindre_piece as _joindre
+
+    calepinage = self.get_object()
+    corps = request.data
+    agregat = dossiers_du_calepinage(calepinage)
+    compose = _compose_designe(agregat, corps)
+    dossier = (_dossier_en_base(calepinage, compose)
+               if compose is not None else None)
+    if dossier is None:
+        return Response({'dossier': [MESSAGE_SANS_DESIGNATION]},
+                        status=status.HTTP_400_BAD_REQUEST)
+    retirer = str(corps.get('retirer') or '').strip().lower() in (
+        '1', 'true', 'vrai', 'oui', 'on')
+    try:
+        reponse = _joindre(dossier, corps.get('piece'),
+                           fichier=request.FILES.get('fichier'),
+                           retirer=retirer, user=request.user)
+    except PieceRefusee as refus:
+        return Response({refus.champ: [str(refus)]},
+                        status=status.HTTP_400_BAD_REQUEST)
+    return Response(reponse, status=(status.HTTP_200_OK if retirer
+                                     else status.HTTP_201_CREATED))
+
+
+CalepinageViewSet.joindre_piece = joindre_piece  # ACAL238

@@ -12,7 +12,7 @@ avant leur câblage — cf. ``apps/roles/tests_wir169_catalogue_declare.py``).
 """
 from django.test import SimpleTestCase
 
-from .models import (
+from .permissions_registre import (
     ADMIN_PERMISSIONS,
     ALL_PERMISSIONS,
     DIRECTEUR_PERMISSIONS,

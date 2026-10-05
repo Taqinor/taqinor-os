@@ -36,7 +36,7 @@ import logging
 
 from django.db.models.signals import post_save, pre_save
 
-from .models import EventType
+from .types_evenements import EventType
 from .services import notify
 
 logger = logging.getLogger(__name__)

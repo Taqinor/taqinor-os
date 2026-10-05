@@ -33,7 +33,8 @@ from apps.crm.models import Lead
 from apps.crm.selectors import leads_chauds_non_contactes
 from apps.crm.stages import COLD, NEW, SIGNED
 from apps.notifications import sweeps
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.notifications.sweeps import HOT_LEAD_TITRE, sweep_hot_leads
 
 User = get_user_model()

@@ -338,7 +338,7 @@ def ressources_partenaire_portail(company):
     (QuerySet, plus récent d'abord). Un document SANS cette ACL explicite —
     « interne uniquement » — n'apparaît JAMAIS ici (critère d'acceptation
     NTPRT31), même consultable en interne par ailleurs."""
-    from apps.roles.models import ROLE_PORTAIL_PARTENAIRE
+    from apps.roles.permissions_registre import ROLE_PORTAIL_PARTENAIRE
 
     if company is None:
         return Document.objects.none()

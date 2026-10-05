@@ -20,8 +20,10 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.crm.models import Partenaire, SoumissionLeadPartenaire
-from apps.roles.models import (
-    PORTAIL_PARTENAIRE_PERMISSIONS, ROLE_PORTAIL_PARTENAIRE, Role,
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    PORTAIL_PARTENAIRE_PERMISSIONS,
+    ROLE_PORTAIL_PARTENAIRE,
 )
 from authentication.models import Company, CustomUser
 

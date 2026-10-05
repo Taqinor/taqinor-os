@@ -262,7 +262,8 @@ def notifier_relances_dues(dry_run=False, today=None):
     from core.dates import aujourd_hui_local
 
     from apps.crm.selectors import relance_etapes_dues
-    from apps.notifications.models import EventType, Notification
+    from apps.notifications.models import Notification
+    from apps.notifications.types_evenements import EventType
     from apps.notifications.services import notify
 
     User = get_user_model()

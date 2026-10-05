@@ -8,14 +8,12 @@ Ce qui est prouvé ici, PUREMENT (aucune base) :
   ``detail`` sont imprimés TELS QUE SERVIS (aucun recalcul) ; un verdict
   ``conforme: null`` imprime « non vérifiable », jamais « OK » ;
 * sans schéma disponible (``rendre_rapport_avec_schema`` avec un
-  ``construire_bloc`` injecté), le rapport porte le motif MOT POUR MOT de
-  ``services/reglementaire.py::_rendus_du_module`` et NE GROSSIT PAS d'une
-  page vide (``@tag('pdf')``).
+  ``construire_bloc`` injecté), le rapport porte le motif et NE GROSSIT PAS
+  d'une page vide (``@tag('pdf')``).
 
-``bloc_schema_unifilaire`` touche la base (il prend le CALEPINAGE, lit son
-devis lié — voir la docstring de ``electrique.py``) : ``BlocSchemaDbTest``
-le prouve sur une fixture réelle, ÉCRITE mais NON EXÉCUTÉE localement (règle
-de lane — CI validera).
+``bloc_schema_unifilaire`` touche la base (il prend le CALEPINAGE et lit son
+schéma NATIF ``sld.schema_du_calepinage`` — ACAL163, avec ou sans devis
+lié) : ``BlocSchemaDbTest`` le prouve sur une fixture réelle.
 
 Run (partie pure) :
     cd backend/django_core
@@ -190,12 +188,15 @@ if BaseApiCalepinage is not None:
             self.calepinage = Calepinage.objects.create(
                 company=self.company, lead_id=self.lead.pk, titre='Villa DB')
 
-        def test_sans_devis_lie_le_motif_mot_pour_mot(self):
+        def test_sans_devis_lie_le_motif_nomme_ce_qui_manque(self):
             octets, motif = bloc_schema_unifilaire(self.calepinage)
             self.assertIsNone(octets)
-            self.assertEqual(motif, MOTIF_SCHEMA_INDISPONIBLE)
+            self.assertTrue(motif.startswith(MOTIF_SCHEMA_INDISPONIBLE[:-1]))
+            # ACAL163 — le schéma ne se produit plus « depuis le devis lié ».
+            self.assertNotIn('devis lié', motif)
 
         def test_devis_lie_sans_schema_publiable_le_meme_motif(self):
+            _octets, sans_devis = bloc_schema_unifilaire(self.calepinage)
             devis = Devis.objects.create(
                 company=self.company,
                 client=Client.objects.filter(company=self.company).first()
@@ -205,7 +206,7 @@ if BaseApiCalepinage is not None:
             self.calepinage.save()
             octets, motif = bloc_schema_unifilaire(self.calepinage)
             self.assertIsNone(octets)
-            self.assertEqual(motif, MOTIF_SCHEMA_INDISPONIBLE)
+            self.assertEqual(motif, sans_devis)
 
 
 if __name__ == '__main__':  # pragma: no cover

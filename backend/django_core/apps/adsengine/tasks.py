@@ -995,7 +995,7 @@ def _alerter_lead_rattrape(company, lead, lead_row):
         if not cache.add(cle, 1, timeout=3600):
             return
         from apps.crm.visites import utilisateurs_direction
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         from apps.notifications.services import notify_many
         notify_many(
             utilisateurs_direction(company), EventType.LEAD_RATTRAPE,
