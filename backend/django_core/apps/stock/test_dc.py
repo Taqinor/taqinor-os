@@ -186,7 +186,7 @@ class TestDC35FicheTechnique(DCBase):
             self.assertNotIn(forbidden, field_names)
 
     def test_serializer_reads_identity_from_produit(self):
-        from apps.stock.serializers import FicheTechniqueSerializer
+        from apps.stock.serializers_fiche_technique import FicheTechniqueSerializer
         self.produit.marque = 'JA Solar'
         self.produit.garantie = '12 ans produit / 30 ans production'
         self.produit.save(update_fields=['marque', 'garantie'])
@@ -307,7 +307,7 @@ class TestPV5FicheTechniqueSpecs(DCBase):
 
     def test_serializer_round_trip_exposes_all_new_fields(self):
         from apps.stock.models import FicheTechnique
-        from apps.stock.serializers import FicheTechniqueSerializer
+        from apps.stock.serializers_fiche_technique import FicheTechniqueSerializer
         fiche = self._make_fiche(
             type_fiche=FicheTechnique.TypeFiche.MODULE,
             longueur_mm=2384, largeur_mm=1303,

@@ -19,7 +19,7 @@ from django.urls import Resolver404, resolve
 from rest_framework.exceptions import ValidationError
 
 from apps.stock.models import FicheTechnique, Produit
-from apps.stock.serializers import FicheTechniqueSerializer
+from apps.stock.serializers_fiche_technique import FicheTechniqueSerializer
 from authentication.models import Company
 
 PDF = b'%PDF-1.4\n%\xe2\xe3\xcf\xd3\n'
