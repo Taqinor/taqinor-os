@@ -3902,16 +3902,25 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         message}}`` qui NOMME le champ : ``jours`` hors 7/14/30, ``owner``
         inconnu ou hors portée — levés (``DRFValidationError``) pour que la
         forme versionnée reste celle de la réponse."""
-        from .controle_suivi import controle_suivi, parametres_controle
+        from .controle_suivi import (
+            controle_suivi, parametre_segment, parametres_controle,
+        )
 
         jours, owner, erreurs = parametres_controle(
             request.user.company, request.user,
             request.query_params.get('jours'),
             request.query_params.get('owner'))
+        # AGR542 — ``?segment=`` (type du lead, ``non_renseigne`` = vide) ;
+        # une valeur inconnue est refusée en nommant ``segment``.
+        segment, erreur_segment = parametre_segment(
+            request.query_params.get('segment'))
+        if erreur_segment:
+            erreurs = {**erreurs, 'segment': erreur_segment}
         if erreurs:
             raise DRFValidationError({'erreurs': erreurs})
         return Response(controle_suivi(
-            request.user.company, request.user, jours=jours, owner=owner))
+            request.user.company, request.user, jours=jours, owner=owner,
+            segment=segment))
 
     def _marquer(self, request, statut):
         etape = self.get_object()
