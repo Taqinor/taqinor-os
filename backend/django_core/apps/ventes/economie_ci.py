@@ -292,3 +292,161 @@ def valoriser(apercu_ci, tarif, *, millesime=2026, tarif_declare=None,
         'revente': _revente_bt(apercu) if tension != 'mt' else None,
         'hypotheses': hypotheses,
     }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CIQ205 — moteur ``economie_ci`` (2/6) : base HT si la TVA est récupérable,
+# TTC sinon, les deux bases côte à côte quand c'est inconnu (D-CIQ-3).
+# ═════════════════════════════════════════════════════════════════════════════
+# Un assujetti récupère la TVA (10 % panneaux, 20 % le reste, 20 % sur
+# l'électricité en 2026) : son retour se compte HT/HT. Une clinique exonérée
+# sans droit à déduction (CGI art. 91) ou un commerce hors champ supporte
+# vraiment le TTC. Inconnu ⇒ les DEUX bases (un TTC seul raccourcirait de 3 à
+# 5 % le retour d'un assujetti ; les deux bases ne surestiment jamais). AUCUN
+# défaut tiré de la catégorie. La chaîne du document (HT → TVA → TTC) et la
+# saisie 100 % TTC du générateur ne changent pas.
+
+TVA_OUI = 'oui'
+TVA_NON = 'non'
+TVA_INCONNU = 'inconnu'
+TVA_VALEURS = (TVA_OUI, TVA_NON, TVA_INCONNU)
+#: Provenances admises de la saisie (contrat ``economie_ci.json``).
+TVA_PROVENANCES = ('lead', 'declare_client')
+
+BASE_HT = 'ht'
+BASE_TTC = 'ttc'
+BASE_DEUX = 'deux'
+
+MOTIF_BASE_HT = "TVA récupérable déclarée « oui » : économies en HT (D-CIQ-3)"
+MOTIF_BASE_TTC = (
+    "TVA non récupérable déclarée « non » : économies en TTC (D-CIQ-3)")
+MOTIF_BASE_DEUX = (
+    "statut TVA non déclaré : les deux bases sont montrées (HT et TTC, "
+    "D-CIQ-3)")
+
+
+class SaisieEconomieCiInvalide(ValueError):
+    """Une saisie de ``saisies_economie_ci`` REFUSÉE — ``champ`` la nomme."""
+
+    def __init__(self, message, *, champ):
+        super().__init__(message)
+        self.champ = champ
+
+
+def _valeur_tva(brute):
+    """'oui' | 'non' | None (« ne sait pas », vide ou inconnu)."""
+    if isinstance(brute, dict):
+        brute = brute.get('valeur')
+    if not isinstance(brute, str):
+        return None
+    v = brute.strip().lower()
+    return v if v in (TVA_OUI, TVA_NON) else None
+
+
+def lire_saisie_tva(saisie):
+    """Normalise ``saisies_economie_ci.tva_recuperable`` (idempotent).
+
+    ``None`` / vide ⇒ ``None``. Sinon ``{valeur, provenance, saisi_le}`` ;
+    une valeur hors {oui, non, inconnu} est refusée en nommant le champ.
+    Normaliser une saisie déjà normalisée la rend INCHANGÉE (enregistrer →
+    rouvrir → enregistrer sans toucher = saisie identique).
+    """
+    champ = 'saisies_economie_ci.tva_recuperable'
+    if saisie in (None, '', {}):
+        return None
+    if isinstance(saisie, str):
+        saisie = {'valeur': saisie}
+    if not isinstance(saisie, dict):
+        raise SaisieEconomieCiInvalide(
+            f"{champ} : un objet {{valeur, provenance, saisi_le}} est "
+            "attendu.", champ=champ)
+    valeur = str(saisie.get('valeur') or '').strip().lower()
+    if valeur not in TVA_VALEURS:
+        raise SaisieEconomieCiInvalide(
+            f"{champ}.valeur : choisir parmi {', '.join(TVA_VALEURS)}.",
+            champ=f'{champ}.valeur')
+    provenance = saisie.get('provenance') or 'declare_client'
+    if provenance not in TVA_PROVENANCES:
+        raise SaisieEconomieCiInvalide(
+            f"{champ}.provenance : choisir parmi "
+            f"{', '.join(TVA_PROVENANCES)}.", champ=f'{champ}.provenance')
+    return {'valeur': valeur, 'provenance': provenance,
+            'saisi_le': saisie.get('saisi_le') or None}
+
+
+def resoudre_tva_recuperable(valeur_lead=None, saisie=None):
+    """La TVA récupérable RETENUE : le lead d'abord, puis la saisie.
+
+    ``valeur_lead`` = ``Lead.tva_recuperable`` (oui | non | ne_sait_pas | vide,
+    lu par l'orchestrateur via ``crm.selectors``) ; ``saisie`` =
+    ``saisies_economie_ci.tva_recuperable``. Rien de déclaré ⇒ ``inconnu`` —
+    jamais un défaut tiré de la catégorie.
+    """
+    lead = _valeur_tva(valeur_lead)
+    if lead is not None:
+        return {'valeur': lead, 'provenance': 'lead', 'saisi_le': None}
+    lu = lire_saisie_tva(saisie)
+    if lu is not None and lu['valeur'] in (TVA_OUI, TVA_NON):
+        return lu
+    return {'valeur': TVA_INCONNU,
+            'provenance': (lu or {}).get('provenance'),
+            'saisi_le': (lu or {}).get('saisi_le')}
+
+
+def _montant(v):
+    try:
+        if v is None or isinstance(v, bool):
+            return None
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    return round(x, 2) if x >= 0 else None
+
+
+def base_economique(tva_recuperable, *, investissement=None,
+                    economie_annee1=None):
+    """La base économique d'un devis C&I (D-CIQ-3).
+
+    ``tva_recuperable`` : sortie de :func:`resoudre_tva_recuperable` (ou la
+    valeur nue oui | non | inconnu). ``investissement`` : totaux de l'option
+    retenue ``{ht, ttc}`` (``utils.options.option_totaux``, recalculés côté
+    serveur). ``economie_annee1`` : le bloc de :func:`valoriser`
+    (``total_mad`` = HT, ``total_mad_ttc`` = TTC : prix déclarés HT, ou TTC ÷
+    (1 + TVA énergie du millésime) via ``tarif_ci``).
+
+    Retour : ``{base, motif_base, tva_recuperable, investissement_ht_mad,
+    investissement_ttc_mad, economie_annee1_ht_mad, economie_annee1_ttc_mad,
+    base_amortissable_mad, flux}`` — ``flux`` liste les flux à construire
+    (``flux_ht`` / ``flux_ttc`` / les deux).
+    """
+    if isinstance(tva_recuperable, dict):
+        valeur = tva_recuperable.get('valeur')
+    else:
+        valeur = tva_recuperable
+    valeur = valeur if valeur in TVA_VALEURS else TVA_INCONNU
+    if valeur == TVA_OUI:
+        base, motif, flux = BASE_HT, MOTIF_BASE_HT, ['flux_ht']
+    elif valeur == TVA_NON:
+        base, motif, flux = BASE_TTC, MOTIF_BASE_TTC, ['flux_ttc']
+    else:
+        base, motif, flux = BASE_DEUX, MOTIF_BASE_DEUX, ['flux_ht', 'flux_ttc']
+
+    inv = investissement if isinstance(investissement, dict) else {}
+    inv_ht, inv_ttc = _montant(inv.get('ht')), _montant(inv.get('ttc'))
+    eco = economie_annee1 if isinstance(economie_annee1, dict) else {}
+    eco_ht = _montant(eco.get('total_mad'))
+    eco_ttc = _montant(eco.get('total_mad_ttc'))
+    # Base amortissable (CIQ233) : HT quand la TVA se récupère, TTC quand
+    # elle est supportée ; inconnue tant que le statut n'est pas déclaré.
+    amortissable = {BASE_HT: inv_ht, BASE_TTC: inv_ttc}.get(base)
+    return {
+        'base': base,
+        'motif_base': motif,
+        'tva_recuperable': valeur,
+        'investissement_ht_mad': inv_ht,
+        'investissement_ttc_mad': inv_ttc,
+        'economie_annee1_ht_mad': eco_ht,
+        'economie_annee1_ttc_mad': eco_ttc,
+        'base_amortissable_mad': amortissable,
+        'flux': flux,
+    }
