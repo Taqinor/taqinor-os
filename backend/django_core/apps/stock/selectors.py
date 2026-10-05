@@ -3649,6 +3649,22 @@ def _eligibilite_ci(produit, role, prix_connu):
     return True, None
 
 
+def etat_ci_produit(produit):
+    """CIQ104 — l'état C&I d'UN produit (fiche produit / filtre catalogue
+    « C&I à compléter »), ou ``None`` s'il n'a aucun rôle C&I. Même règle que
+    :func:`produits_ci` ; aucune requête de plus quand ``fiche_technique`` est
+    préchargée. Jamais de prix d'achat."""
+    role, classement = role_ci_pour(produit)
+    if role is None:
+        return None
+    prix_connu = bool(produit.prix_vente and produit.prix_vente > 0)
+    eligible, motif = _eligibilite_ci(produit, role, prix_connu)
+    from core.product_roles import LIBELLES_ROLES_CI
+    return {'role_ci': role, 'libelle': LIBELLES_ROLES_CI.get(role, role),
+            'classement': classement, 'prix_connu': prix_connu,
+            'eligible_ci': eligible, 'motif_exclusion': motif}
+
+
 def produits_ci(company, avec_prix=False):
     """Le catalogue C&I de la société (+ produits globaux), forme
     ``element_produits_ci`` de ``produit_ci.json``.

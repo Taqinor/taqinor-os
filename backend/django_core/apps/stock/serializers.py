@@ -5,6 +5,9 @@ from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers
 
 from apps.records.storage import AttachmentSerializerMixin, attachment_url
+from core.product_roles import (
+    LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
+)
 
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
@@ -230,12 +233,18 @@ class ProduitSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
-    # CIQ101 — déclarés en texte libre pour que le refus hors vocabulaire
-    # soit le message FR de ``validate_role_ci`` / ``validate_type_pose``.
-    role_ci = serializers.CharField(
-        required=False, allow_blank=True, max_length=32)
-    type_pose = serializers.CharField(
-        required=False, allow_blank=True, max_length=24)
+    # CIQ101/CIQ104 — choix déclarés AVEC leurs libellés FR : l'écran les lit
+    # par OPTIONS (aucun miroir JS) ; une valeur hors vocabulaire → 400 FR
+    # nommant le champ.
+    role_ci = serializers.ChoiceField(
+        choices=[(r, LIBELLES_ROLES_CI[r]) for r in ROLES_CI],
+        required=False, allow_blank=True)
+    type_pose = serializers.ChoiceField(
+        choices=[(t, LIBELLES_TYPES_POSE[t]) for t in TYPES_POSE],
+        required=False, allow_blank=True)
+    # CIQ104 — état C&I lu par le filtre « C&I à compléter » (même règle que
+    # ``stock.selectors.produits_ci`` ; jamais de prix d'achat).
+    etat_ci = serializers.SerializerMethodField()
 
     def get_fields(self):
         fields = super().get_fields()
@@ -567,6 +576,8 @@ class ProduitSerializer(serializers.ModelSerializer):
             'courbe_source', 'courbe_frequence_hz',
             # CIQ101 — champs C&I (contrat produit_ci.json)
             'role_ci', 'type_pose', 'delai_appro_jours',
+            # CIQ104 — état C&I (lecture seule) pour le filtre « à compléter »
+            'etat_ci',
             # Dates & data personnalisée
             'date_creation', 'date_mise_a_jour', 'custom_data',
             # FG20 — indicateur de marge (gardé par marge_voir, cf. get_fields)
@@ -765,6 +776,11 @@ class ProduitSerializer(serializers.ModelSerializer):
         from core.product_roles import ALIMENTATIONS_POMPAGE
         return self._refuser_hors_vocabulaire(
             'alimentation', value, ALIMENTATIONS_POMPAGE)
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_etat_ci(self, obj):
+        from .selectors import etat_ci_produit
+        return etat_ci_produit(obj)
 
     # ── CIQ101 — vocabulaires C&I : 400 FR nommant le champ ───────────────
     def validate_role_ci(self, value):

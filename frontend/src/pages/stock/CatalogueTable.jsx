@@ -11,6 +11,7 @@ import {
   categorieIcone, jaugeStock, keySpec, prixTtc, sansPrix, severiteStock,
   SEV_BAS, SEV_OK, SEV_RUPTURE,
   produitsPompageACompleter, kitPompageChiffrable, roleDuProduitPompage,
+  produitCiACompleter, raisonCiACompleter,
 } from '../../features/stock/catalogue'
 import { formatMAD } from '../../lib/format'
 import {
@@ -182,11 +183,25 @@ export function CatalogueTable({
   const kitPompage = useMemo(
     () => kitPompageChiffrable(produits, fichesParProduit),
     [produits, fichesParProduit])
+  // CIQ104 — « C&I à compléter » : rôle C&I sans prix ou exclu (fiche
+  // incomplète…), lu sur `etat_ci` servi par l'API. OFF par défaut ; absent
+  // d'un catalogue sans aucun article C&I.
+  const [ciACompleterSeul, setCiACompleterSeul] = useState(false)
+  const aDuCi = useMemo(
+    () => (produits ?? []).some((p) => !p?.is_archived && p?.etat_ci),
+    [produits])
+  const ciACompleter = useMemo(
+    () => (produits ?? []).filter((p) => !p?.is_archived && produitCiACompleter(p)),
+    [produits])
   const donneesAffichees = useMemo(() => {
-    if (!pompageACompleterSeul) return produits ?? []
-    const ids = new Set(aCompleter.map((x) => x.produit.id))
-    return (produits ?? []).filter((p) => ids.has(p.id))
-  }, [produits, pompageACompleterSeul, aCompleter])
+    let liste = produits ?? []
+    if (pompageACompleterSeul) {
+      const ids = new Set(aCompleter.map((x) => x.produit.id))
+      liste = liste.filter((p) => ids.has(p.id))
+    }
+    if (ciACompleterSeul) liste = liste.filter((p) => produitCiACompleter(p))
+    return liste
+  }, [produits, pompageACompleterSeul, aCompleter, ciACompleterSeul])
 
   const columns = useMemo(() => [
     // Colonne de selection (multi-selection pilotee par StockList → BulkProductBar).
@@ -488,6 +503,15 @@ export function CatalogueTable({
             <AlertTriangle /> Pompage à compléter ({aCompleter.length})
           </Button>
         )}
+        {aDuCi && (
+          <Button type="button" variant={ciACompleterSeul ? 'secondary' : 'outline'} size="sm"
+                  aria-pressed={ciACompleterSeul}
+                  data-testid="filtre-ci-a-completer"
+                  onClick={() => setCiACompleterSeul(v => !v)}
+                  title="Articles C&I sans prix ou exclus du dimensionnement (fiche incomplète…)">
+            <AlertTriangle /> C&amp;I à compléter ({ciACompleter.length})
+          </Button>
+        )}
         <Button type="button" variant={grouped ? 'secondary' : 'outline'} size="sm"
                 onClick={() => setGrouped(v => !v)}
                 title="Regrouper les lignes par catégorie">
@@ -509,6 +533,13 @@ export function CatalogueTable({
         <ul data-testid="pompage-raisons" className="text-xs text-muted-foreground list-disc pl-5">
           {aCompleter.map(({ produit, raisons }) => (
             <li key={produit.id}>{produit.nom} — {raisons.join(', ')}</li>
+          ))}
+        </ul>
+      )}
+      {aDuCi && ciACompleterSeul && (
+        <ul data-testid="ci-raisons" className="text-xs text-muted-foreground list-disc pl-5">
+          {ciACompleter.map((p) => (
+            <li key={p.id}>{p.nom} — {raisonCiACompleter(p)}</li>
           ))}
         </ul>
       )}

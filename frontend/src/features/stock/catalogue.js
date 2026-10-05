@@ -437,3 +437,204 @@ export function kitPompageChiffrable(produits, fiches) {
   }
   return { chiffrable: manques.length === 0, manques }
 }
+
+// ── CIQ104 — usage C&I (contrat produit_ci.json) ──────────────────────────
+// Les rôles C&I et les types de pose ne sont PAS recopiés ici : leurs
+// libellés FR voyagent par l'API (choix de `role_ci` / `type_pose` servis
+// par OPTIONS sur /stock/produits/). Seuls les petits vocabulaires de FICHE
+// sont déclarés, avec leur source vérifiée par check_choices_declares.
+
+/** Type de fiche C&I qu'appelle un rôle C&I (`null` = pas de fiche C&I). */
+export const TYPE_FICHE_PAR_ROLE_CI = {
+  onduleur_string_tri: 'onduleur',
+  compteur_injection: 'limiteur',
+  controleur_injection: 'limiteur',
+  logger_supervision: 'logger',
+  protection_ac: 'protection',
+  protection_dc: 'protection',
+  coffret_ac: 'protection',
+  coffret_dc: 'protection',
+  cable_ac: 'cable',
+  mise_a_la_terre: 'cable',
+  structure_ci: 'structure',
+}
+
+export function typeFicheCi(roleCi) {
+  return TYPE_FICHE_PAR_ROLE_CI[roleCi] ?? null
+}
+
+/** Champs de fiche C&I par type (ordre du contrat). */
+export const CHAMPS_FICHE_CI = {
+  onduleur: ['ond_limitation_export', 'ond_compteurs_compatibles',
+    'ond_relais_decouplage', 'ond_cos_phi_min', 'ond_cos_phi_max'],
+  limiteur: ['lim_mode', 'lim_i_max_a', 'lim_onduleurs_max', 'lim_marques', 'lim_phases'],
+  logger: ['log_onduleurs_max', 'log_marques'],
+  protection: ['prot_type', 'prot_cote', 'prot_calibre_a', 'prot_pouvoir_coupure_ka',
+    'prot_poles', 'prot_tension_v'],
+  cable: ['cable_cote', 'cable_section_mm2', 'cable_ame'],
+  structure: ['struct_type_pose', 'struct_masse_kg_m2', 'struct_notice_document',
+    'struct_notice_date', 'struct_notice_page'],
+}
+
+const _LISTES_CI = ['ond_compteurs_compatibles', 'lim_marques', 'log_marques']
+const _ENTIERS_CI = ['lim_onduleurs_max', 'lim_phases', 'log_onduleurs_max', 'prot_poles',
+  'struct_notice_page']
+const _NOMBRES_CI = ['ond_cos_phi_min', 'ond_cos_phi_max', 'lim_i_max_a', 'prot_calibre_a',
+  'prot_pouvoir_coupure_ka', 'prot_tension_v', 'cable_section_mm2', 'struct_masse_kg_m2']
+
+/** Libellés d'écran des champs de fiche C&I. */
+export const LIBELLES_FICHE_CI = {
+  ond_limitation_export: "Limitation d'export",
+  ond_compteurs_compatibles: 'Compteurs compatibles (séparés par des virgules)',
+  ond_relais_decouplage: 'Relais de découplage',
+  ond_cos_phi_min: 'cos φ réglable mini',
+  ond_cos_phi_max: 'cos φ réglable maxi',
+  lim_mode: 'Mode de raccordement',
+  lim_i_max_a: 'Courant maxi en direct (A)',
+  lim_onduleurs_max: "Nombre d'onduleurs pilotés",
+  lim_marques: 'Marques compatibles (séparées par des virgules)',
+  lim_phases: 'Phases (1 ou 3)',
+  log_onduleurs_max: "Nombre d'onduleurs supervisés",
+  log_marques: 'Marques supervisées (séparées par des virgules)',
+  prot_type: 'Type de protection',
+  prot_cote: 'Côté de la protection',
+  prot_calibre_a: 'Calibre (A)',
+  prot_pouvoir_coupure_ka: 'Pouvoir de coupure (kA)',
+  prot_poles: 'Nombre de pôles',
+  prot_tension_v: 'Tension assignée (V)',
+  cable_cote: 'Côté du câble',
+  cable_section_mm2: 'Section (mm²)',
+  cable_ame: 'Âme',
+  struct_type_pose: 'Type de pose de la structure',
+  struct_masse_kg_m2: 'Masse du système posé (kg/m²)',
+  struct_notice_document: 'Notice fabricant (document)',
+  struct_notice_date: 'Notice — date',
+  struct_notice_page: 'Notice — page',
+}
+
+// source-choix: core.product_roles.LIM_MODES
+export const CHOIX_LIM_MODE = [
+  ['compteur_direct', 'Compteur en direct'],
+  ['compteur_tc', 'Compteur à TC'],
+  ['controleur', 'Contrôleur'],
+]
+// source-choix: core.product_roles.OND_LIMITATIONS_EXPORT
+export const CHOIX_OND_LIMITATION = [
+  ['integree', 'Intégrée'],
+  ['compteur_requis', 'Compteur requis'],
+  ['controleur_requis', 'Contrôleur requis'],
+  ['non_publiee', 'Non publiée'],
+]
+// source-choix: core.product_roles.OND_RELAIS_DECOUPLAGE
+export const CHOIX_OND_RELAIS = [
+  ['integre', 'Intégré'],
+  ['externe', 'Externe'],
+  ['non_publie', 'Non publié'],
+]
+// source-choix: core.product_roles.PROT_TYPES
+export const CHOIX_PROT_TYPE = [
+  ['disjoncteur', 'Disjoncteur'],
+  ['sectionneur', 'Sectionneur'],
+  ['fusible', 'Fusible'],
+  ['parafoudre', 'Parafoudre'],
+  ['ddr', 'Différentiel (DDR)'],
+  ['interrupteur', 'Interrupteur'],
+]
+// source-choix: core.product_roles.COTES_AC_DC
+export const CHOIX_COTE = [['ac', 'AC'], ['dc', 'DC']]
+// source-choix: core.product_roles.CABLE_AMES
+export const CHOIX_AME = [['cu', 'Cuivre'], ['al', 'Aluminium']]
+
+/** Les choix (clé, libellé) d'un champ texte de fiche C&I, ou `null`. */
+export function choixChampFicheCi(cle) {
+  return {
+    ond_limitation_export: CHOIX_OND_LIMITATION,
+    ond_relais_decouplage: CHOIX_OND_RELAIS,
+    lim_mode: CHOIX_LIM_MODE,
+    prot_type: CHOIX_PROT_TYPE,
+    prot_cote: CHOIX_COTE,
+    cable_cote: CHOIX_COTE,
+    cable_ame: CHOIX_AME,
+  }[cle] ?? null
+}
+
+export const estChampFicheCiNumerique = (cle) => _ENTIERS_CI.includes(cle) || _NOMBRES_CI.includes(cle)
+
+/** État de formulaire (chaînes) des champs C&I d'une fiche servie. */
+export function ficheCiDepuisServeur(fiche) {
+  const out = {}
+  for (const cles of Object.values(CHAMPS_FICHE_CI)) {
+    for (const cle of cles) out[cle] = ''
+  }
+  if (!fiche) return out
+  for (const cle of Object.keys(out)) {
+    if (cle.startsWith('struct_notice_')) continue
+    const v = fiche[cle]
+    if (_LISTES_CI.includes(cle)) out[cle] = Array.isArray(v) ? v.join(', ') : ''
+    else out[cle] = (v === null || v === undefined) ? '' : String(v)
+  }
+  const notice = fiche.struct_notice ?? {}
+  out.struct_notice_document = notice.document ?? ''
+  out.struct_notice_date = notice.date ?? ''
+  out.struct_notice_page = notice.page != null ? String(notice.page) : ''
+  return out
+}
+
+function _valeurServeurCi(cle, brut) {
+  const s = String(brut ?? '').trim()
+  if (_LISTES_CI.includes(cle)) return s ? s.split(',').map((x) => x.trim()).filter(Boolean) : []
+  if (_ENTIERS_CI.includes(cle) || _NOMBRES_CI.includes(cle)) {
+    // Saisie libre : jamais arrondie, jamais rejetée ici (le serveur tranche).
+    return s === '' ? null : Number(s.replace(',', '.'))
+  }
+  return s
+}
+
+/** PATCH des seuls champs C&I MODIFIÉS d'un type de fiche (objet vide si rien
+ * n'a bougé — « enregistrer sans toucher = PATCH vide »). La provenance de
+ * masse repart en objet `struct_notice` dès qu'une de ses parties change. */
+export function patchFicheCi(typeFiche, initial, courant) {
+  const out = {}
+  const cles = CHAMPS_FICHE_CI[typeFiche] ?? []
+  let noticeChange = false
+  for (const cle of cles) {
+    if ((initial?.[cle] ?? '') === (courant?.[cle] ?? '')) continue
+    if (cle.startsWith('struct_notice_')) { noticeChange = true; continue }
+    out[cle] = _valeurServeurCi(cle, courant[cle])
+  }
+  if (noticeChange) {
+    out.struct_notice = {
+      document: String(courant.struct_notice_document ?? '').trim(),
+      date: courant.struct_notice_date || null,
+      page: _valeurServeurCi('struct_notice_page', courant.struct_notice_page),
+    }
+  }
+  return out
+}
+
+/** Choix `[[valeur, libellé]]` d'un champ, lus dans la réponse OPTIONS
+ * (`actions.POST.<champ>.choices`) — les libellés FR du serveur. */
+export function choixDepuisOptions(optionsData, champ) {
+  const choix = optionsData?.actions?.POST?.[champ]?.choices
+    ?? optionsData?.actions?.PUT?.[champ]?.choices ?? []
+  return choix
+    .filter((c) => c && c.value !== '' && c.value != null)
+    .map((c) => [String(c.value), String(c.display_name ?? c.value)])
+}
+
+/** « C&I à compléter » : un rôle C&I sans prix de vente, ou exclu (fiche
+ * incomplète…), lu sur `etat_ci` servi par l'API. */
+export function produitCiACompleter(p) {
+  const etat = p?.etat_ci
+  if (!etat) return false
+  return !etat.prix_connu || !etat.eligible_ci
+}
+
+/** La raison affichée d'un article C&I à compléter (`''` sinon). */
+export function raisonCiACompleter(p) {
+  const etat = p?.etat_ci
+  if (!etat) return ''
+  if (!etat.eligible_ci && etat.motif_exclusion) return etat.motif_exclusion
+  if (!etat.prix_connu) return 'prix à renseigner'
+  return ''
+}

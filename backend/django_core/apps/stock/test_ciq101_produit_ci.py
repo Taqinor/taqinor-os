@@ -207,6 +207,29 @@ class TestSaisieEtLecture(CIQ101Base):
         self.assertEqual(r.data['struct_notice'], {
             'document': 'Notice X', 'date': '2026-01-02', 'page': 3})
 
+    def test_options_servent_les_libelles_fr_des_roles(self):
+        """CIQ104 — l'écran lit les libellés par OPTIONS (aucun miroir JS)."""
+        r = api_for(self.user).options(URL_PRODUITS)
+        self.assertEqual(r.status_code, 200)
+        choix = {c['value']: c['display_name']
+                 for c in r.data['actions']['POST']['role_ci']['choices']}
+        self.assertEqual(choix, CONTRAT['roles_ci'])
+
+    def test_etat_ci_servi_et_sans_prix_achat(self):
+        """CIQ104 — ``etat_ci`` (filtre « C&I à compléter »)."""
+        p = Produit.objects.create(
+            company=self.company, nom='Structure bac acier', prix_vente=0,
+            role_ci='structure_ci', type_pose='bac_acier')
+        r = api_for(self.user).get(f'{URL_PRODUITS}{p.pk}/')
+        self.assertEqual(r.data['etat_ci']['role_ci'], 'structure_ci')
+        self.assertFalse(r.data['etat_ci']['prix_connu'])
+        self.assertTrue(r.data['etat_ci']['eligible_ci'])
+        self.assertNotIn('prix_achat', r.data['etat_ci'])
+        autre = Produit.objects.create(
+            company=self.company, nom='Article quelconque', prix_vente=1)
+        r = api_for(self.user).get(f'{URL_PRODUITS}{autre.pk}/')
+        self.assertIsNone(r.data['etat_ci'])
+
     def test_enregistrer_rouvrir_enregistrer_identique(self):
         client = api_for(self.user)
         r = client.post(URL_PRODUITS, {

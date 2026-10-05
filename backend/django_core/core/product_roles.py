@@ -154,6 +154,17 @@ TYPES_POSE = (
     'ombriere', 'sol',
 )
 
+#: CIQ104 — libellés FR des types de pose (servis par l'API : choix de
+#: ``ProduitSerializer.type_pose``, lus par OPTIONS ; aucun miroir JS).
+LIBELLES_TYPES_POSE = {
+    'toiture_inclinee': 'Toiture inclinée',
+    'bac_acier': 'Bac acier',
+    'toit_plat_leste': 'Toit plat — lesté',
+    'toit_plat_fixe': 'Toit plat — fixé',
+    'ombriere': 'Ombrière',
+    'sol': 'Au sol',
+}
+
 #: CIQ101 — vocabulaires des fiches C&I (vide = « non publié »).
 LIM_MODES = ('compteur_direct', 'compteur_tc', 'controleur')
 OND_LIMITATIONS_EXPORT = ('integree', 'compteur_requis', 'controleur_requis',
