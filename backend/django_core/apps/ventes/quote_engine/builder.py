@@ -4050,6 +4050,28 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             _regle_fda = {}
         if _regle_fda:
             data["regle_fda_societe"] = _regle_fda
+        # ── AGR307 — le bloc PUBLIC ``economie_pompage`` (AGR3, calculé à la
+        # lecture, jamais stocké ; SANS ``vue_interne``), recopié tel quel par
+        # ``agricole/synthese`` dans ``synthese_agricole['economies']``. Posé
+        # SEULEMENT quand le moteur en rend un : sinon la synthèse omet le
+        # bloc avec son motif. Ne casse jamais un rendu. Sans aucune saisie
+        # d'économie, le moteur rendrait un bloc « omis » : on ne l'appelle
+        # pas (il relit l'étude de pompage, PVGIS compris).
+        _ep_eco = getattr(devis, "etude_params", None)
+        if (getattr(devis, "pk", None) and isinstance(_ep_eco, dict)
+                and _ep_eco.get("saisies_economie_pompage")):
+            try:
+                from apps.ventes.selectors import (
+                    economie_pompage_publique_pour_devis,
+                )
+                _eco_pompage = economie_pompage_publique_pour_devis(
+                    devis.pk, getattr(devis, "company", None))
+            except Exception:  # noqa: BLE001 — la synthèse omet, motivée
+                logger.exception("economie_pompage: échec (devis %s)",
+                                 getattr(devis, "reference", "?"))
+                _eco_pompage = None
+            if _eco_pompage:
+                data["economie_pompage"] = _eco_pompage
 
     # ── CIQ303 — les entrées du lead PRO (CIQ405), lues par le SEUL sélecteur
     # crm (jamais les modèles d'une autre app), pour ``ci/synthese`` : ses
