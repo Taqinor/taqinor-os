@@ -1,0 +1,436 @@
+{
+  "pdf_complet": [
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "genererPdfDevis",
+      {
+        "id": 101,
+        "options": {
+          "pdf_mode": "full",
+          "show_monthly": true,
+          "devis_final": false,
+          "include_etude": false,
+          "include_calepinage": null
+        }
+      }
+    ],
+    [
+      "dispatch",
+      "ventes/genererPdfDevis/noop"
+    ],
+    [
+      "ventesApi.etatPdfDevis",
+      101
+    ],
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "ventesApi.telechargerPdfDevis",
+      101
+    ],
+    [
+      "URL.createObjectURL",
+      "Blob(application/pdf)"
+    ],
+    [
+      "a.click",
+      {
+        "href": "blob:flux",
+        "download": "DEV-F-BROUILLON.pdf"
+      }
+    ]
+  ],
+  "pdf_onepage": [
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "genererPdfDevis",
+      {
+        "id": 101,
+        "options": {
+          "pdf_mode": "onepage",
+          "show_monthly": true,
+          "devis_final": false,
+          "include_etude": false,
+          "include_calepinage": null
+        }
+      }
+    ],
+    [
+      "dispatch",
+      "ventes/genererPdfDevis/noop"
+    ],
+    [
+      "ventesApi.etatPdfDevis",
+      101
+    ],
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "ventesApi.telechargerPdfDevis",
+      101
+    ],
+    [
+      "URL.createObjectURL",
+      "Blob(application/pdf)"
+    ],
+    [
+      "a.click",
+      {
+        "href": "blob:flux",
+        "download": "DEV-F-BROUILLON.pdf"
+      }
+    ]
+  ],
+  "pdf_lot": [
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "genererPdfDevis",
+      {
+        "id": 101,
+        "options": {
+          "pdf_mode": "full",
+          "show_monthly": true,
+          "devis_final": false,
+          "include_etude": false,
+          "include_calepinage": null
+        }
+      }
+    ],
+    [
+      "dispatch",
+      "ventes/genererPdfDevis/noop"
+    ],
+    [
+      "genererPdfDevis",
+      {
+        "id": 102,
+        "options": {
+          "pdf_mode": "full",
+          "show_monthly": true,
+          "devis_final": false,
+          "include_etude": false,
+          "include_calepinage": null
+        }
+      }
+    ],
+    [
+      "dispatch",
+      "ventes/genererPdfDevis/noop"
+    ],
+    [
+      "toast.success",
+      "Génération lancée pour 2 devis."
+    ],
+    [
+      "ventesApi.etatPdfDevis",
+      101
+    ],
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "ventesApi.etatPdfDevis",
+      102
+    ],
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ]
+  ],
+  "pdf_proforma_bc": [
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "ventesApi.getProformaPdf",
+      103
+    ],
+    [
+      "URL.createObjectURL",
+      "Blob(application/pdf)"
+    ],
+    [
+      "a.click",
+      {
+        "href": "blob:flux",
+        "download": "Proforma_DEV-F-ACCEPTE.pdf"
+      }
+    ],
+    [
+      "--- bon de commande ---"
+    ],
+    [
+      "ventesApi.getBonCommandePdf",
+      7
+    ],
+    [
+      "URL.createObjectURL",
+      "Blob(application/pdf)"
+    ],
+    [
+      "a.click",
+      {
+        "href": "blob:flux",
+        "download": "BC-F-0007.pdf"
+      }
+    ]
+  ],
+  "partage_pdf": [
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "ventesApi.telechargerPdfDevis",
+      101
+    ],
+    [
+      "navigator.canShare",
+      {
+        "files": [
+          "File(DEV-F-BROUILLON.pdf, application/pdf)"
+        ],
+        "title": "Devis DEV-F-BROUILLON"
+      }
+    ],
+    [
+      "navigator.share",
+      {
+        "files": [
+          "File(DEV-F-BROUILLON.pdf, application/pdf)"
+        ],
+        "title": "Devis DEV-F-BROUILLON"
+      }
+    ],
+    [
+      "ventesApi.partagePdfDevis",
+      101
+    ],
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "toast.success",
+      "PDF partagé — devis marqué envoyé."
+    ]
+  ],
+  "email": [
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "ventesApi.envoyerEmailDevis",
+      101,
+      {
+        "to_email": "acme@exemple.ma"
+      }
+    ],
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "toast.success",
+      "Devis DEV-F-BROUILLON envoyé par email.",
+      {
+        "icon": "☀️",
+        "description": "ACME · 42 000,00 MAD · Devis envoyé. La balle est dans le camp du client."
+      }
+    ]
+  ],
+  "whatsapp": [
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "ventesApi.whatsappPreviewDevis",
+      101
+    ],
+    [
+      "window.open",
+      "https://wa.me/212600000000",
+      "_blank",
+      "noopener"
+    ],
+    [
+      "ventesApi.whatsappDevis",
+      101,
+      {}
+    ],
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ]
+  ],
+  "whatsapp_relance": [
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "ventesApi.whatsappPreviewDevis",
+      102
+    ],
+    [
+      "window.open",
+      "https://wa.me/212600000000?text=Bonjour%2C%20petit%20rappel%20concernant%20votre%20devis%20DEV-F-ENVOYE",
+      "_blank",
+      "noopener"
+    ],
+    [
+      "ventesApi.whatsappDevis",
+      102,
+      {}
+    ],
+    [
+      "ventesApi.noterDevis",
+      102,
+      "Relance du devis DEV-F-ENVOYE envoyée par WhatsApp."
+    ],
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ]
+  ],
+  "copie_liens": [
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "clipboard.writeText",
+      "http://localhost:3000/ventes/devis?devis=102"
+    ],
+    [
+      "toast.success",
+      "Lien interne du devis copié."
+    ],
+    [
+      "--- lien proposition ---"
+    ],
+    [
+      "ventesApi.shareLinkDevis",
+      102,
+      {
+        "envoi": true
+      }
+    ],
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "clipboard.writeText",
+      "https://taqinor.ma/proposition/tok123"
+    ],
+    [
+      "toast.success",
+      "Lien copié — devis marqué envoyé."
+    ],
+    [
+      "--- aperçu interne ---"
+    ],
+    [
+      "ventesApi.shareLinkDevis",
+      102
+    ],
+    [
+      "clipboard.writeText",
+      "https://taqinor.ma/proposition/int456"
+    ],
+    [
+      "toast.success",
+      "Aperçu interne copié — ne l’envoyez jamais au client (aucune notification)."
+    ]
+  ],
+  "contacter_superieur": [
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "ventesApi.contacterSuperieur",
+      101
+    ],
+    [
+      "toast.success",
+      "Votre supérieur a été notifié."
+    ],
+    [
+      "ventesApi.superiorContactStatus",
+      101
+    ]
+  ],
+  "deep_link_envoyer": [
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "ventesApi.whatsappPreviewDevis",
+      101
+    ]
+  ],
+  "deep_link_apercu": [
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "ventesApi.getProposalPdf",
+      101,
+      {
+        "pdf_mode": "full",
+        "include_etude": 0
+      }
+    ]
+  ],
+  "demontage_pendant_sondage": [
+    [
+      "dispatch",
+      "ventes/fetchDevis/noop"
+    ],
+    [
+      "genererPdfDevis",
+      {
+        "id": 101,
+        "options": {
+          "pdf_mode": "onepage",
+          "show_monthly": true,
+          "devis_final": false,
+          "include_etude": false,
+          "include_calepinage": null
+        }
+      }
+    ],
+    [
+      "dispatch",
+      "ventes/genererPdfDevis/noop"
+    ],
+    [
+      "ventesApi.etatPdfDevis",
+      101
+    ],
+    [
+      "--- démontage ---"
+    ]
+  ]
+}
