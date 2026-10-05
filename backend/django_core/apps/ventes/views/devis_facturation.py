@@ -140,6 +140,106 @@ class DevisFacturationActionsMixin:
     @action(
         detail=True,
         methods=['post'],
+        url_path='facturer-complet',
+        permission_classes=[IsResponsableOrAdmin],
+    )
+    def facturer_complet(self, request, pk=None):
+        """« Facturer » un devis ACCEPTÉ en un geste (fondateur, 05/10/2026).
+
+        Crée la facture COMPLÈTE (100 %, lignes du devis recopiées), l'émet
+        (numéro définitif) puis consigne les paiements DÉJÀ reçus (0 à 5 :
+        montant, date passée possible, mode, référence) — le tout atomique.
+        Contrat : ``contract_samples/devis_facturer_complet.json``. Mêmes
+        gardes que ``generer-facture`` (blocage crédit XFAC28, avertissement
+        de vente ZSAL9, réservation de stock U9). Jamais de prix d'achat ni de
+        marge dans la réponse.
+        """
+        devis = self.get_object()
+        from ..models import Facture
+        from ..domain.encaissements import EncaissementRefuse
+        from ..domain.facturation_ops import (
+            EmissionRefusee, FacturationRefusee, facturer_devis_complet,
+        )
+        from ..services import (
+            StockInsuffisantError, verifier_credit_hold, CreditHoldError,
+            verifier_sale_warnings, SaleWarningError,
+        )
+        company = request.user.company
+        if devis.client_id is not None:
+            try:
+                verifier_credit_hold(
+                    devis.client,
+                    override=bool(request.data.get('override_credit')),
+                    user=request.user, chatter_target=devis,
+                    contexte='facturation complète')
+            except CreditHoldError as exc:
+                return Response(
+                    {'detail': (
+                        'Client en blocage crédit : '
+                        f'{exc.motif}. Un responsable/admin peut passer '
+                        'outre avec `override_credit: true`.'),
+                     'credit_hold': True},
+                    status=status.HTTP_403_FORBIDDEN)
+        try:
+            verifier_sale_warnings(
+                devis,
+                override=bool(request.data.get('override_avertissement')),
+                user=request.user, chatter_target=devis)
+        except SaleWarningError as exc:
+            return Response(
+                {'detail': (
+                    f'Avertissement de vente bloquant : {exc.motif}. '
+                    'Un responsable/admin peut passer outre avec '
+                    '`override_avertissement: true`.'),
+                 'sale_warning': True},
+                status=status.HTTP_403_FORBIDDEN)
+        try:
+            facture, paiements = facturer_devis_complet(
+                devis=devis, user=request.user, company=company,
+                paiements=request.data.get('paiements') or [])
+        except (FacturationRefusee, EncaissementRefuse,
+                EmissionRefusee) as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except StockInsuffisantError as exc:
+            return Response({'detail': exc.message},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except CreditHoldError as exc:
+            return Response(
+                {'detail': f'Client en blocage crédit : {exc.motif}.',
+                 'credit_hold': True},
+                status=status.HTTP_403_FORBIDDEN)
+        from decimal import Decimal
+        cent = Decimal('0.01')
+        montant_paye = Decimal(str(facture.montant_paye))
+        if facture.statut == Facture.Statut.PAYEE:
+            statut = 'payee'
+        elif montant_paye > 0 and facture.statut in (
+                Facture.Statut.EMISE, Facture.Statut.EN_RETARD):
+            # Statut de PAIEMENT servi à l'écran : la facture reste « Émise »
+            # en base (aucun statut « partiellement payée » côté modèle).
+            statut = 'partiellement_payee'
+        else:
+            statut = facture.statut
+        return Response({
+            'facture_id': facture.id,
+            'facture_reference': facture.reference,
+            'statut': statut,
+            'total_ttc': str(Decimal(str(facture.total_ttc)).quantize(cent)),
+            'montant_paye': str(montant_paye.quantize(cent)),
+            'montant_du': str(Decimal(str(facture.montant_du)).quantize(cent)),
+            'paiements': [{
+                'id': p.id,
+                'montant': str(Decimal(str(p.montant)).quantize(cent)),
+                'date_paiement': p.date_paiement.isoformat(),
+                'mode_paiement': p.mode,
+                'reference': p.reference or '',
+            } for p in paiements],
+        }, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True,
+        methods=['post'],
         url_path='proforma-pdf',
         permission_classes=[IsResponsableOrAdmin],
     )

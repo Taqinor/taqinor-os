@@ -70,6 +70,8 @@ FIGEE = {
     'reappliquer_lead': RESP, 'acquitter_derive': RESP,
     # QJR659 (décision fondateur 01/10) : partager le PDF vaut envoi.
     'pdf_partage': RESP,
+    # Fondateur 05/10/2026 : « Facturer » un devis accepté (écriture).
+    'facturer_complet': RESP,
 }
 
 #: Table de vérité des trois gardes « à palier » (inchangées par QJR649).

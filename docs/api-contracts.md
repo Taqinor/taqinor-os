@@ -522,6 +522,8 @@
     date:inconnu, devis:inconnu, erreur:inconnu, fichier_pdf:inconnu, statut:inconnu
 - frontend/src/api/ventesApi.js :: exportStatus -> /api/django/ventes/export/status/<>
     detail:texte, download_url:inconnu, filename:inconnu, status:texte
+- frontend/src/api/ventesApi.js :: facturerComplet -> /api/django/ventes/devis/<>/facturer-complet
+    credit_hold:booleen, detail:inconnu, facture_id:inconnu, facture_reference:inconnu, montant_du:texte, montant_paye:texte, paiements:liste, sale_warning:booleen, statut:inconnu, total_ttc:texte
 - frontend/src/api/ventesApi.js :: genererPdfDevis -> /api/django/ventes/devis/<>/generer-pdf
     detail:texte, task_id:inconnu
 - frontend/src/api/ventesApi.js :: genererPdfFacture -> /api/django/ventes/factures/<>/generer-pdf
@@ -536,6 +538,8 @@
     friction:inconnu, sections:inconnu
 - frontend/src/api/ventesApi.js :: getPrefillSite -> /api/django/ventes/devis/prefill-site
     client:inconnu, detail:texte, profil:inconnu
+- frontend/src/api/ventesApi.js :: getRelanceApercu -> /api/django/ventes/factures/<>/relance-apercu
+    deja_tous_envoyes:inconnu, email_client:inconnu, facture_id:inconnu, facture_reference:inconnu, jours_retard:inconnu, message:inconnu, montant_du:inconnu, niveau_suivant:inconnu, niveaux:liste, peut_envoyer_email:booleen, relances_envoyees:nombre, sujet:inconnu
 - frontend/src/api/ventesApi.js :: getSimulationStatus -> /api/django/ventes/devis/<>/simulation-status/<>
     detail:texte, simulation:inconnu, status:texte
 - frontend/src/api/ventesApi.js :: getVarianteConfig -> /api/django/ventes/devis/variante-config

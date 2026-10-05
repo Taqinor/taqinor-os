@@ -142,6 +142,195 @@ def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
     return paiement
 
 
+def arrondir_au_pas(montant, pas):
+    """ZFAC11 — arrondit ``montant`` au multiple le plus proche de ``pas``.
+
+    Pur (aucune I/O). ``pas <= 0`` (arrondi désactivé) renvoie ``montant``
+    inchangé — comportement actuel strictement préservé. Arrondi « half-up »
+    (0,025 monte à 0,05 pour un pas de 0,05). Renvoie un ``Decimal`` quantifié
+    à 2 décimales.
+
+    Déplacé tel quel depuis ``views/facture.py`` (qui le ré-exporte) pour que
+    le service d'encaissement ci-dessous n'importe jamais une vue.
+    """
+    from decimal import ROUND_HALF_UP
+    montant = Decimal(str(montant))
+    pas = Decimal(str(pas or 0))
+    if pas <= 0:
+        return montant.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    nb_pas = (montant / pas).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    return (nb_pas * pas).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
+def proposer_arrondi_caisse(facture, mode, reste=None):
+    """ZFAC11 — propose le reste à payer ARRONDI au pas de caisse société.
+
+    Ne s'applique QU'aux règlements en espèces et seulement si la société a
+    configuré un pas (> 0). Renvoie un dict
+    ``{montant_arrondi, ecart, pas, applicable}`` où ``ecart`` = résiduel non
+    perçu (montant_du − montant_arrondi, jamais négatif) qui sera tracé comme
+    un abandon « Arrondi espèces ». Hors espèces ou pas nul → ``applicable`` est
+    ``False`` et ``montant_arrondi`` = reste à payer (aucun arrondi).
+
+    ``reste`` : résiduel de référence explicite. Indispensable au moment de
+    l'encaissement, où ``facture.montant_du`` (propriété vivante) inclut DÉJÀ
+    le paiement tout juste enregistré — la proposition doit se calculer sur le
+    reste AVANT paiement, sinon elle ne correspond jamais au montant réglé.
+
+    Déplacé tel quel depuis ``views/facture.py`` (qui le ré-exporte).
+    """
+    from apps.parametres.models import CompanyProfile
+    from apps.ventes.models import Paiement
+    reste = facture.montant_du if reste is None else reste
+    profile = CompanyProfile.get(company=facture.company)
+    pas = getattr(profile, 'arrondi_caisse', None) or Decimal('0')
+    if mode != Paiement.Mode.ESPECES or pas <= 0 or reste <= 0:
+        return {
+            'montant_arrondi': reste, 'ecart': Decimal('0'),
+            'pas': pas, 'applicable': False,
+        }
+    montant_arrondi = arrondir_au_pas(reste, pas)
+    # On ne perçoit jamais plus que le dû : si l'arrondi monte au-dessus du
+    # reste, on redescend au pas inférieur (l'écart reste ≥ 0, jamais un
+    # trop-perçu à gérer).
+    if montant_arrondi > reste:
+        montant_arrondi = montant_arrondi - pas
+    if montant_arrondi < 0:
+        montant_arrondi = Decimal('0')
+    ecart = reste - montant_arrondi
+    return {
+        'montant_arrondi': montant_arrondi, 'ecart': ecart,
+        'pas': pas, 'applicable': ecart > 0,
+    }
+
+
+class EncaissementRefuse(Exception):
+    """Refus d'un encaissement manuel (message FR, prêt pour un 400)."""
+
+    def __init__(self, motif):
+        super().__init__(motif)
+        self.motif = motif
+
+
+def encaisser_sur_facture(*, facture, donnees, user):
+    """LE chemin de l'encaissement MANUEL d'une facture (montant + date + mode).
+
+    Corps extrait À L'IDENTIQUE de ``FactureViewSet.enregistrer_paiement``
+    (``POST factures/{id}/enregistrer-paiement/``) pour qu'un second appelant —
+    « Facturer » un devis accepté avec ses paiements déjà reçus
+    (``facturer-complet``) — passe EXACTEMENT par le même code : verrou ERR72,
+    garde sur-paiement au centime, escompte XFAC12, chatter, événement
+    ``paiement_enregistre``, bascule « Payée » AUD102 (reset des relances
+    U10), arrondi espèces ZFAC11 et tolérance XFAC13.
+
+    ``donnees`` = les champs validés du paiement (``montant``,
+    ``date_paiement``, ``mode``, ``reference``…) — jamais ``company``,
+    ``facture`` ni ``created_by``, posés ici côté serveur.
+
+    Lève ``EncaissementRefuse`` (rien n'est écrit). Renvoie
+    ``(facture_verrouillee_rafraichie, paiement)``.
+    """
+    from django.db import transaction
+
+    from apps.ventes.models import Facture, Paiement
+
+    montant = donnees.get('montant')
+    if montant is None or montant <= 0:
+        raise EncaissementRefuse('Le montant du paiement doit être positif.')
+    # ERR72 — la garde sur-paiement et l'écriture du paiement doivent être
+    # sérialisées : on verrouille la ligne facture (select_for_update) puis
+    # on lit le reste à payer, on contrôle, et on enregistre — le tout dans
+    # une seule transaction. Sans le verrou, deux paiements concurrents
+    # lisaient chacun l'ancien reste et passaient tous deux la garde.
+    with transaction.atomic():
+        locked = Facture.objects.select_for_update().get(pk=facture.pk)
+        if locked.statut == Facture.Statut.ANNULEE:
+            raise EncaissementRefuse(
+                'Impossible d\'encaisser sur une facture annulée.')
+        # Garde sur-paiement : refuser un encaissement qui dépasse le reste
+        # à payer (TTC − déjà payé − avoirs). Tolérance d'un centime pour
+        # les arrondis ; un montant égal au reste passe (solde la facture).
+        reste = locked.montant_du
+        # XFAC12 — escompte pour règlement anticipé : si la fenêtre est
+        # atteinte (date_paiement <= émission + escompte_jours) ET que le
+        # montant réglé correspond au NET après escompte (reste − escompte,
+        # tolérance 1 centime), l'escompte se calcule automatiquement et
+        # SOLDE la facture avec le règlement — jamais hors fenêtre (plein
+        # tarif reste dû, comportement actuel inchangé).
+        date_paiement = donnees.get('date_paiement')
+        escompte_montant = Decimal('0')
+        if locked.escompte_applicable(date_paiement):
+            escompte_potentiel = locked.calcul_escompte(reste, date_paiement)
+            net_attendu = reste - escompte_potentiel
+            if abs(montant - net_attendu) <= TOLERANCE_CENTIME:
+                escompte_montant = escompte_potentiel
+                reste = net_attendu
+        if montant - reste > TOLERANCE_CENTIME:
+            raise EncaissementRefuse(
+                f'Le paiement dépasse le reste à payer ({reste:.2f} MAD).')
+        paiement = Paiement.objects.create(
+            **donnees,
+            facture=locked,
+            company=locked.company,
+            created_by=user,
+            escompte_montant=escompte_montant,
+        )
+        # Chatter facture : trace l'encaissement (acteur côté serveur,
+        # jamais lu du corps de la requête).
+        from apps.ventes import activity
+        activity.log_facture_paiement(locked, user, paiement)
+        # YLEDG1 — événement documentaire générique (pose du seam pour
+        # compta.ecriture_pour_paiement, jamais d'import de son service ici).
+        from core.events import paiement_enregistre
+        paiement_enregistre.send(
+            sender=Paiement, instance=paiement, company=locked.company)
+        # Statut auto : intégralement réglée → « Payée ».
+        # AUD102 (P2) — la bascule (garde centime-près, U10
+        # reset_relance_escalation, YDOCF4 `facture_paid` + YEVNT6
+        # `facture_payee`) vit DANS le service unique.
+        locked.refresh_from_db()
+        soldee = marquer_facture_soldee(
+            locked, montant=montant, user=user,
+            source='encaissement_facture')
+        if not soldee and locked.statut != Facture.Statut.ANNULEE:
+            # ZFAC11 — arrondi de caisse : un règlement EN ESPÈCES égal au
+            # reste à payer arrondi au pas société (défaut 0 = désactivé,
+            # comportement inchangé) solde la facture, l'écart d'arrondi
+            # étant tracé comme un abandon « Arrondi espèces » (jamais
+            # silencieux). Ne s'applique qu'aux espèces ; virement/chèque
+            # l'ignorent. Passe AVANT la tolérance XFAC13 (motif dédié).
+            mode = donnees.get('mode', Paiement.Mode.VIREMENT)
+            # ``reste`` = résiduel AVANT ce paiement (capturé plus haut) —
+            # montant_du est déjà retombé après la création du paiement.
+            prop = proposer_arrondi_caisse(locked, mode, reste=reste)
+            if (prop['applicable']
+                    and abs(montant - prop['montant_arrondi']) <= TOLERANCE_CENTIME
+                    and Decimal('0') < locked.montant_du <= prop['pas']):
+                from apps.ventes.services import abandonner_solde_facture
+                abandonner_solde_facture(
+                    locked, motif=Facture.MotifAbandon.ARRONDI_CAISSE,
+                    user=user, auto=True,
+                )
+                locked.refresh_from_db()
+            else:
+                # XFAC13 — tolérance société : un résiduel sous le seuil
+                # (défaut 0 = désactivé, comportement inchangé) est abandonné
+                # automatiquement à l'encaissement plutôt que de laisser la
+                # facture « en retard » pour quelques centimes.
+                from apps.parametres.models import CompanyProfile
+                profile = CompanyProfile.get(company=locked.company)
+                tolerance = getattr(
+                    profile, 'tolerance_ecart_reglement', None) or Decimal('0')
+                if tolerance > 0 and locked.montant_du <= tolerance:
+                    from apps.ventes.services import abandonner_solde_facture
+                    abandonner_solde_facture(
+                        locked, motif=Facture.MotifAbandon.ECART_REGLEMENT,
+                        user=user, auto=True,
+                    )
+                    locked.refresh_from_db()
+    return locked, paiement
+
+
 def facture_montant_du(facture):
     """Solde restant dû d'une facture (lecture, thin service pour apps.pos)."""
     return facture.montant_du

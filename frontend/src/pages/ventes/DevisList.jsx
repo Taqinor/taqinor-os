@@ -30,6 +30,7 @@ import useDocumentTitle from '../../hooks/useDocumentTitle'
 // même « record focalisé » que la surbrillance de ligne existante).
 import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import FacturerDevisDialog from '../../features/ventes/FacturerDevisDialog'
 // VX155 — la carte de victoire (enrichit VX40) remplace le toast plat +
 // celebrateDealSigned() appelés directement d'ici ; le burst reste posé,
 // mais DEPUIS <DealSignedCelebration> lui-même.
@@ -672,6 +673,7 @@ export default function DevisList() {
     }
   }
 
+  const [facturerTarget, setFacturerTarget] = useState(null)
   const handleGenererFacture = async (d) => {
     setFactureGenId(d.id)
     try {
@@ -760,7 +762,7 @@ export default function DevisList() {
     suiviOpenId, toggleSuiviPartage, lectureClientCache, canSeeLectureClient,
     conceptionOpenId, setConceptionOpenId, etudeOpenId, setEtudeOpenId,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
-    deletingId, statutActionId, convertingId, chantierBusy, factureGenId,
+    deletingId, statutActionId, convertingId, chantierBusy, factureGenId, setFacturerTarget,
     openEdit, openVarianteModal, openGammeModal, handleDelete,
     openAcceptModal, openRefusModal, handleConvertBC,
     handleChantier, handleGenererFacture,
@@ -888,6 +890,12 @@ export default function DevisList() {
         onClose={() => { pdf.setPdfTarget(null); pdf.setBatchPdf(false) }}
         onGenererLot={pdf.handleGenererPdfLot}
         onGenererUn={pdf.handleGenererPdf}
+      />
+
+      <FacturerDevisDialog
+        devis={facturerTarget}
+        onOpenChange={(o) => { if (!o) setFacturerTarget(null) }}
+        onDone={() => dispatch(fetchDevis())}
       />
 
       {/* ── T9 — Modale d'acceptation inline (nom / date / option) — MB4
