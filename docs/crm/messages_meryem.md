@@ -335,6 +335,13 @@ FR : Si quelqu'un autour de vous, un voisin, un frère, un collègue, réfléchi
 DARIJA : إلا كان شي واحد حداكم، جار، خو، ولا زميل، كيفكر ف الطاقة الشمسية، تقدرو تصيفطو ليه الرابط ديال الرعاية ديالكم؛ غادي يكون عندو نفس الدراسة بلاش، ونتافقو مع بعضياتنا على مكافأة ليكم.
 B2B : Si une autre entreprise de votre entourage, ou un autre site de votre groupe, réfléchit au solaire, vous pouvez lui envoyer votre lien de parrainage ; elle aura la même étude gratuite.
 
+### resume_associe — le résumé transmis à l'associé, avec l'accord du client (AGR534, 05/10/2026)
+Geste MANUEL (CAD144 : aucun automatisme vers le contact secondaire) : bouton « Envoyer le résumé à un associé »
+(`POST leads/<id>/resume-associe/`), seulement si l'accord du client est coché et que le numéro de l'associé est valide ;
+le lien est celui de la proposition déjà envoyée. ✎ Texte à valider par le fondateur ; darija à relire par un locuteur natif.
+FR : Bonjour, je vous transmets, avec l'accord de notre client, le résumé de la proposition solaire préparée par [Marque] : [lien de votre proposition]. Vous pouvez la consulter et me poser vos questions ici. — [Conseiller]
+DARIJA : السلام عليكم، كنصيفط ليكم، بموافقة الزبون ديالنا، الملخص ديال العرض ديال الطاقة الشمسية اللي وجدات [Marque]: [lien de votre proposition]. تقدرو تشوفوه وتسولوني على أي حاجة هنا. — [المستشار]
+
 ## Les documents : ce qui ouvre une touche, et ce qui n'en ouvre pas (CAD61, 21/09/2026)
 
 **Le client envoie quelque chose** (photo de facture, pièce d'identité, relevé) → geste **« pièce reçue »** :

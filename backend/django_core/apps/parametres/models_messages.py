@@ -455,6 +455,9 @@ CLES_RELANCE = [
     # CAD128 — le client DÉJÀ SIGNÉ qui redemande un devis : cadence courte,
     # texte propre. Jamais le protocole contact sur un client acquis.
     'deuxieme_affaire',
+    # AGR534 — le résumé transmis à l'ASSOCIÉ (contact secondaire), geste
+    # manuel avec l'accord du client (`leads/<id>/resume-associe/`).
+    'resume_associe',
 ]
 
 #: CAD60 (21/09/2026) — les textes à ENVOI MANUEL, hors cadence.
@@ -592,6 +595,11 @@ class MessageTemplate(models.Model):
         RELANCE_EMAIL_J10 = (
             'relance_email_j10',
             "Relance — e-mail générique (J10)")
+        # AGR534 — le résumé de la proposition transmis à l'associé (contact
+        # secondaire), avec l'accord du client : geste manuel, aucune cadence.
+        RESUME_ASSOCIE = (
+            'resume_associe',
+            "Résumé de la proposition transmis à l'associé (avec accord)")
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -1004,4 +1012,21 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
 MESSAGE_TEMPLATE_DEFAULTS.update({
     'relance_email_j10':
         "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous ai contacté récemment au sujet de votre demande solaire, sans succès pour l'instant. Si le projet vous intéresse toujours, répondez simplement à cet e-mail ou appelez-moi : je reste à votre disposition.",
+})
+
+# ── AGR534 (05/10/2026) — LE RÉSUMÉ TRANSMIS À L'ASSOCIÉ ──────────────────────
+# `dimanche_famille` agricole promet « la page résumé … pour la partager » :
+# `POST leads/<id>/resume-associe/` prépare le lien WhatsApp vers le contact
+# SECONDAIRE (CAD144 : jamais un automatisme — c'est un geste manuel, avec
+# l'accord du client coché). Aucun chiffre, aucun prénom codé en dur
+# ({conseiller}, {marque}, {lien} résolus côté serveur ; {lien} = la
+# proposition publique existante, règle #4). Source : `docs/crm/messages_meryem.md`.
+# ✎ Texte à valider par Reda ; darija à relire par un locuteur natif.
+MESSAGE_TEMPLATE_DEFAULTS.update({
+    'resume_associe':
+        "Bonjour, je vous transmets, avec l'accord de notre client, le résumé de la proposition solaire préparée par {marque} : {lien}. Vous pouvez la consulter et me poser vos questions ici. — {conseiller}",
+})
+MESSAGE_TEMPLATE_DEFAULTS_DARIJA.update({
+    'resume_associe':
+        'السلام عليكم، كنصيفط ليكم، بموافقة الزبون ديالنا، الملخص ديال العرض ديال الطاقة الشمسية اللي وجدات {marque}: {lien}. تقدرو تشوفوه وتسولوني على أي حاجة هنا. — {conseiller}',
 })

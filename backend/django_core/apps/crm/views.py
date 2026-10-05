@@ -1454,6 +1454,91 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'phone': phone, 'message': message, 'links': links,
         })
 
+    @extend_schema(responses=inline_serializer('CrmResumeAssocie', {
+        'wa_url': serializers.CharField(),
+        'phone': serializers.CharField(),
+        'message': serializers.CharField(),
+    }))
+    @action(detail=True, methods=['post'], url_path='resume-associe',
+            permission_classes=[IsResponsableOrAdmin])
+    def resume_associe(self, request, pk=None):
+        """AGR534 (contrat ``lead_resume_associe.json``, AGR504) — PRÉPARE le
+        lien WhatsApp vers l'ASSOCIÉ (contact secondaire) avec le résumé de la
+        proposition déjà envoyée. N'ENVOIE rien (décision D5) : le commercial
+        ouvre ``wa_url``. Corps ``{devis_id, accord_client: true, langue?}``.
+
+        Refus 403 sans ``client_pii_voir`` (le numéro est une PII) ; 400
+        nommant ``accord_client`` (accord non coché),
+        ``contact_secondaire_telephone`` (vide ou invalide) ou ``devis_id``
+        (devis absent, d'un autre lead, ou jamais envoyé). Effet : UNE ligne
+        d'historique ; aucun statut, aucune date d'envoi, aucune cadence
+        touchés (CAD144, règle #4 : le lien est la proposition existante)."""
+        from apps.parametres.models_messages import MessageTemplate
+        from apps.ventes.selectors import devis_for_lead
+        from apps.ventes.utils.client_links import url_proposition
+        from apps.ventes.utils.phone import normalize_phone_e164
+        from apps.ventes.utils.whatsapp import build_wa_url, render_message_template
+
+        from .models import LeadActivity
+        from .serializers import pii_masquee_pour
+        from .services import (
+            _nom_affiche_conseiller, _nom_affiche_marque,
+            _omettre_phrases_incompletes,
+        )
+
+        if pii_masquee_pour(request.user):
+            return Response(
+                {'detail': "Vous n'avez pas la permission de voir les "
+                           'coordonnées du client.'},
+                status=status.HTTP_403_FORBIDDEN)
+        lead = self.get_object()
+        accord = request.data.get('accord_client')
+        if not (accord is True or str(accord).strip().lower() == 'true'):
+            return Response(
+                {'accord_client': [
+                    "Cochez l'accord du client avant de partager le résumé "
+                    'avec son associé.']},
+                status=status.HTTP_400_BAD_REQUEST)
+        phone = (lead.contact_secondaire_telephone or '').strip()
+        if not phone or not normalize_phone_e164(phone):
+            return Response(
+                {'contact_secondaire_telephone': [
+                    'Aucun numéro valide pour le contact secondaire : '
+                    'renseignez-le sur la fiche.']},
+                status=status.HTTP_400_BAD_REQUEST)
+        brut = str(request.data.get('devis_id') or '').strip()
+        devis = (devis_for_lead(lead, [int(brut)]) if brut.isdigit() else [])
+        if not devis or devis[0].statut == 'brouillon':
+            return Response(
+                {'devis_id': [
+                    "Ce devis n'a jamais été envoyé au client : rien à "
+                    'partager.']},
+                status=status.HTTP_400_BAD_REQUEST)
+        devis = devis[0]
+        langue = (request.data.get('langue') or lead.langue_preferee
+                  or 'fr').strip()
+        if langue not in ('fr', 'darija'):
+            langue = 'fr'
+        corps = MessageTemplate.get_corps(
+            lead.company, 'resume_associe', langue) or ''
+        contexte = {
+            'conseiller': _nom_affiche_conseiller(lead, request.user),
+            'marque': _nom_affiche_marque(lead),
+            'lien': url_proposition(devis) or '',
+        }
+        manquants = [cle for cle, valeur in contexte.items()
+                     if '{' + cle + '}' in corps and not str(valeur).strip()]
+        message = render_message_template(
+            _omettre_phrases_incompletes(corps, manquants), contexte)
+        nom = (lead.contact_secondaire_nom or '').strip() or 'l’associé'
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=request.user,
+            kind=LeadActivity.Kind.NOTE,
+            body=f'Résumé transmis à {nom} — accord du client noté '
+                 f'(proposition {devis.reference}).')
+        return Response({'wa_url': build_wa_url(phone, message),
+                         'phone': phone, 'message': message})
+
     @action(detail=True, methods=['post'], url_path='whatsapp-devis',
             permission_classes=[IsResponsableOrAdmin])
     def whatsapp_devis(self, request, pk=None):
