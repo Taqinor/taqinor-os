@@ -59,7 +59,7 @@ DEPLACEMENTS = {
     'batterie': ('split_pv_batterie', 'apps/ventes/public/payload_batterie.py',
                  'SPL248', True),
     'variantes': ('split_pv_variantes',
-                  'apps/ventes/public/payload_variantes.py', 'SPL249', False),
+                  'apps/ventes/public/payload_variantes.py', 'SPL249', True),
     'economie': ('split_pv_economie', 'apps/ventes/public/payload_economie.py',
                  'SPL250', False),
     'conditions': ('split_pv_conditions',

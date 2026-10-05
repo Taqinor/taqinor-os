@@ -25,7 +25,7 @@ from django.contrib.auth import get_user_model
 from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis
-from apps.ventes.public_views import _variant_summaries
+from apps.ventes.public.payload_variantes import _variant_summaries
 
 User = get_user_model()
 
