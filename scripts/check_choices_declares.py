@@ -583,6 +583,12 @@ REFUS = {
         ("check_dar_guard", "COMPORTEMENT")],
     "frontend/src/features/ao/provenance.test.jsx": [
         ("Sanity check", "TEST")],
+    # CIQ (vague 1) — SectionPro.jsx reprend les LIBELLÉS de questions de
+    # `COMMERCIAL_CATEGORY_QUESTIONS` (frontend/src/features/ventes/solar.js),
+    # un autre fichier frontend ; les clés fermées vivent dans un contrat JSON
+    # (`reponses_categorie_par_categorie.cles`), pas un champ `choices=`.
+    "frontend/src/features/crm/workspace/sections/SectionPro.jsx": [
+        ("reponses_categorie_par_categorie.cles", "MIROIR_JS")],
     "frontend/src/features/crm/CallLogPopover.jsx": [
         ("LeadActivity.OUTCOMES", "FORME")],
     # QJR M4 (30/08/2026) — les trois promesses du lot front-purs/parité :
