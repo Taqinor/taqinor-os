@@ -42,6 +42,7 @@ import {
 } from './moduleSelect';
 
 import { underlayPourDocument } from './underlay'; // CALX107
+import { emettrePourDocument } from './parcelle'; // ACAL233
 import { emettreSurfacesPose, lireSurfacesPose, type SurfacePose } from './poseSurfaces'; // CALX123 ; ACAL26 — relecture
 
 import {
@@ -1159,6 +1160,8 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
 
     ...emettreBatiments(ctx.batiments), // CALX100 — hauteurs SAISIES + provenance (batiment.ts)
 
+    ...emettrePourDocument(ctx.parcelle), // ACAL233 — la parcelle tracée ; aucune parcelle ⇒ aucune clé
+
     ...underlayPourDocument(ctx), // CALX107 — le calque de fond calé voyage par le document (contrat CALX86) ; aucun fond ⇒ aucune clé
 
     ...emettreSurfacesPose(ctx.surfacesPose), // CALX123 — les surfaces de pose tracées (contrat `poseSurfaces[]`) ; aucune surface ⇒ aucune clé
@@ -1218,7 +1221,7 @@ const CLES_RACINE_ATELIER = new Set([
   'version', 'pin', 'outline', 'billKwh', 'zones', 'activeAreaId', 'result', 'scenario', 'panelWatt',
   'battery', 'source', 'devisId', 'shading12x24', 'shadeObstructions', 'choixConception', 'measurements',
   'environment', 'exclusionZones', 'setbacksM', 'horizonProfile', 'scene', 'buildings', 'underlay',
-  'poseSurfaces', 'consumption', 'modules', 'optimisation', 'electrical',
+  'poseSurfaces', 'consumption', 'modules', 'optimisation', 'electrical', 'parcelle',
 ]);
 /** Clés de PAN que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
 const CLES_PAN_ATELIER = new Set([

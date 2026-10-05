@@ -366,4 +366,6 @@ export interface Ctx {
   setbacks?: import('../../lib/roofPro2').PerimeterSetbacks;
   /** ACAL31 — le calque de fond du document (contrat CALX86), réémis par `underlayPourDocument`. */
   underlay?: unknown;
+  /** ACAL233 — la parcelle tracée (clé racine `parcelle`), ou null : réémise par `serializeLayout`. */
+  parcelle?: import('./parcelle').Parcelle | null;
 }

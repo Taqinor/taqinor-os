@@ -39,6 +39,7 @@ import {
 import { type CoucheElectrique } from './electrique3d';
 import { type AffectationModules } from './moduleSelect';
 import { lireBatiments } from './batiment'; // ACAL31
+import { lireParcelle } from './parcelle'; // ACAL233
 
 /** Ce que l'hydratation peut poser dans le ctx — chaque clé ABSENTE est laissée intacte
  *  (c'est ce qui permet d'appliquer UNE section sans toucher aux autres). */
@@ -140,6 +141,7 @@ export function appliquerHydratationAuCtx(ctx: Ctx, h: HydratationAtelier): void
       }
       ctx.batiments = lireBatiments(doc);
       if (doc.underlay != null) ctx.underlay = copie(doc.underlay);
+      ctx.parcelle = lireParcelle(doc); // ACAL233
     }
   }
   if (h.modulesDuDocument !== undefined) ctx.modulesDuDocument = copie(h.modulesDuDocument ?? []); // ACAL30

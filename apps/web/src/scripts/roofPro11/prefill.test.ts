@@ -15,7 +15,9 @@ import {
   deserializeHorizonProfileFromLayout,
   deserializeSceneFromLayout,
   hydrateFromDevis,
+  lireCouchesDocument,
 } from './prefill';
+import { appliquerHydratationAuCtx } from './hydratation';
 import { uniformSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { type HorizonProfile } from '../../lib/horizonEngine';
 import { type Measurement } from './mesureUi';
@@ -545,5 +547,32 @@ describe('CALX22x câblage — serializeLayout porte `electrical` via couche.ecr
     const avec = serializeLayout(makeCtx(areas), null, { coucheElectrique: couche });
     expect(avec.result).toEqual(sans.result);
     expect(avec.zones).toEqual(sans.zones);
+  });
+});
+
+describe('ACAL233 — la parcelle tracée voyage par la clé racine `parcelle`', () => {
+  const ANNEAU = [[-7.6, 33.59], [-7.598, 33.59], [-7.598, 33.592], [-7.6, 33.592]];
+
+  it('serializeLayout émet parcelle et deserializeLayout la relit à l’identique (aller-retour, sans parcelle → clé absente)', () => {
+    const ctx = makeCtx([zone('z1')]);
+    expect('parcelle' in serializeLayout(ctx)).toBe(false);
+    ctx.parcelle = { vertices: ANNEAU.map((p) => [p[0], p[1]] as [number, number]) };
+    const doc = serializeLayout(ctx) as unknown as Record<string, unknown>;
+    expect(doc.parcelle).toEqual({ vertices: ANNEAU });
+
+    // Rouvrir : le document relu repose la parcelle dans le ctx, qui la réémet à l’octet près.
+    const neuf = makeCtx([zone('z1')]);
+    appliquerHydratationAuCtx(neuf, lireCouchesDocument(doc));
+    expect(neuf.parcelle).toEqual({ vertices: ANNEAU });
+    expect(JSON.stringify((serializeLayout(neuf) as unknown as Record<string, unknown>).parcelle))
+      .toBe(JSON.stringify(doc.parcelle));
+  });
+
+  it('effacer la parcelle retire la clé, même si le document relu la portait', () => {
+    const ctx = makeCtx([zone('z1')]);
+    appliquerHydratationAuCtx(ctx, lireCouchesDocument({ parcelle: { vertices: ANNEAU } }));
+    expect(ctx.parcelle).not.toBeNull();
+    ctx.parcelle = null;
+    expect('parcelle' in serializeLayout(ctx)).toBe(false);
   });
 });
