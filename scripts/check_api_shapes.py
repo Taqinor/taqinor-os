@@ -1214,24 +1214,27 @@ def echantillons_de_contrat(shapes, racine: Path = None, lecteur_serveur=None):
 ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
     "adsengine/veille_verdict.json":
         "POST adsengine/veille/annonceurs/<id>/verdict/ — verdict humain, "
-        "reponse = l'annonceur au format veille_annonceur.json, pose SEUL et "
-        "EN PREMIER (PACT10) : la vue arrive avec VEIL17 (VEIL5)",
+        "reponse = l'annonceur au format veille_annonceur.json : servie par "
+        "l'@action `verdict` de VeilleAnnonceurViewSet (ModelViewSet, forme "
+        "non lisible statiquement) — test_veille_api.py et "
+        "VeilleAnnonceurs.test.jsx s'appuient sur CET exemple (VEIL5/VEIL17)",
     "adsengine/veille_echantillon.json":
-        "POST adsengine/veille/decouvertes/<id>/echantillon/ — tirage de "
-        "l'echantillon de mesure, pose SEUL et EN PREMIER (PACT10) : la vue "
-        "arrive avec VEIL17 (VEIL5)",
-    "adsengine/veille_mesures.json":
-        "GET adsengine/veille/decouvertes/<id>/mesures/ — les mesures d'une "
-        "decouverte (null + motif, jamais 0), pose SEUL et EN PREMIER "
-        "(PACT10) : la vue arrive avec VEIL18 (VEIL4)",
+        "POST adsengine/veille/decouvertes/<id>/echantillon/ — tirage gele de "
+        "l'echantillon de mesure : servie par l'@action `echantillon` de "
+        "VeilleDecouverteViewSet (forme non lisible statiquement) — "
+        "test_veille_api.py et VeilleEtiquetage.test.jsx s'appuient sur CET "
+        "exemple (VEIL5/VEIL17)",
     "adsengine/veille_annonceur.json":
-        "GET adsengine/veille/annonceurs/<id>/ — l'annonceur decouvert et "
-        "son verdict motive, pose SEUL et EN PREMIER (PACT10) : la vue "
-        "arrive avec VEIL17 (VEIL3)",
+        "GET adsengine/veille/annonceurs/<id>/ — l'annonceur decouvert et son "
+        "verdict motive : servie par VeilleAnnonceurViewSet (ModelViewSet, "
+        "forme non lisible statiquement) — test_veille_api.py et "
+        "VeilleAnnonceurs.test.jsx s'appuient sur CET exemple (VEIL3/VEIL17)",
     "adsengine/veille_decouverte.json":
         "GET adsengine/veille/decouvertes/<id>/ (le POST de lancement renvoie "
-        "la meme forme) — la decouverte et son journal, pose SEUL et EN "
-        "PREMIER (PACT10) : la vue arrive avec VEIL17 (VEIL2)",
+        "la meme forme) — la decouverte et son journal : servie par "
+        "VeilleDecouverteViewSet (ModelViewSet, forme non lisible "
+        "statiquement) — test_veille_api.py et VeilleDecouverte.test.jsx "
+        "s'appuient sur CET exemple (VEIL2/VEIL17)",
     "calepinage/calepinage_simulation.json":
         "POST calepinages/<pk>/simuler/, et les blocs ecrits par fusion dans "
         "Calepinage.resultat (simulation, production, pertes, cascade, meteo, "
