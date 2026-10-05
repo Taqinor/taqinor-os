@@ -23,6 +23,9 @@ import SectionDivers, { SectionOrigine, SectionWebQuestionnaire } from './sectio
 // mode, refData } ; SectionsPane possède la STRUCTURE (anchors data-nav-id,
 // entête repliable, ErrorBoundary par section — motif VX205).
 
+// AGR416 — sections résidentielles repliées à l'ouverture d'un lead agricole.
+const SECTIONS_REPLIEES_AGRICOLE = ['energie', 'equipements', 'toiture']
+
 const COLLAPSE_KEY = 'taqinor.lw.collapsed'
 const readCollapsed = () => {
   try { return JSON.parse(localStorage.getItem(COLLAPSE_KEY)) || {} } catch { return {} }
@@ -159,6 +162,14 @@ export default function SectionsPane({
       for (const s of registry) {
         if (s.id === 'origine' || s.id === 'questionnaire') continue
         auto[s.id] = sectionAutoRepliee(state, s.id, { porteUnManquant: pointees.has(s.id) })
+      }
+      // AGR416 — lead AGRICOLE : les sections résidentielles (factures,
+      // questionnaire d'appel, toiture) s'ouvrent REPLIÉES — jamais retirées,
+      // l'ordre ne change pour aucun segment — et « Pompage » reste ouverte.
+      // Le choix persisté de l'utilisatrice (`stored`) prime toujours.
+      if (agricole) {
+        for (const id of SECTIONS_REPLIEES_AGRICOLE) auto[id] = true
+        auto.pompage = false
       }
     }
     return { ...auto, ...stored }

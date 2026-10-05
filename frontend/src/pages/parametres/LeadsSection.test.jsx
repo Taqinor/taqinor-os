@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 /* CAD37 — la branche Ramadan est MORTE par défaut : `est_en_ramadan` renvoie
@@ -18,6 +18,7 @@ import userEvent from '@testing-library/user-event'
    qu'une horloge vivante rend instable. */
 
 import LeadsSection from './LeadsSection'
+import parametresApi from '../../api/parametresApi'
 import { periodesRamadan, proposerRamadan, datesRamadanASaisir }
   from '../../lib/hijriDate'
 
@@ -140,5 +141,97 @@ describe('CAD37 — le convertisseur hégirien ne fabrique aucune date fausse', 
     expect(datesRamadanASaisir('2026-02-18', '', AUJOURDHUI)).toBe(true)
     expect(datesRamadanASaisir('2026-02-18', '2026-03-19', AUJOURDHUI))
       .toBe(false)
+  })
+})
+
+/* CIQ417 — responsable des leads commerciaux et industriels. */
+describe('CIQ417 — responsable des leads commerciaux et industriels', () => {
+  afterEach(() => { cleanup(); vi.restoreAllMocks() })
+
+  const USERS = [
+    { id: 7, username: 'sami', poste: 'Commercial' },
+    { id: 9, username: 'meryem', poste: '' },
+  ]
+
+  function rendre(profile) {
+    return render(
+      <LeadsSection
+        form={{ ...CHAMPS_VIDES }} set={noop} setForm={noop}
+        {...LISTES} assignables={USERS} profile={profile}
+        setNewTag={noop} addTag={noop} renameTag={noop} delTag={noop}
+        archiveTag={noop} setTagColor={noop}
+        setNewMotif={noop} addMotif={noop} renameMotif={noop} delMotif={noop}
+        archiveMotif={noop}
+        setNewCanal={noop} addCanal={noop} renameCanal={noop} delCanal={noop}
+        archiveCanal={noop}
+      />,
+    )
+  }
+
+  async function choisir(user, nom) {
+    await user.click(screen.getByRole('combobox', {
+      name: /Responsable des leads commerciaux et industriels/i }))
+    await user.click(await screen.findByRole('option', { name: nom }))
+  }
+
+  it('choisir un utilisateur envoie PATCH {responsable_leads_pro} seul', async () => {
+    const updateProfile = vi.spyOn(parametresApi, 'updateProfile')
+      .mockResolvedValue({ data: { responsable_leads_pro: 7 } })
+    vi.spyOn(parametresApi, 'getProfile')
+      .mockResolvedValue({ data: { responsable_leads_pro: null } })
+    const user = userEvent.setup()
+    rendre({ responsable_leads_pro: null })
+    await choisir(user, /sami/)
+    expect(updateProfile).toHaveBeenCalledTimes(1)
+    expect(updateProfile).toHaveBeenCalledWith({ responsable_leads_pro: 7 })
+  })
+
+  it('vider (« Comme les autres leads ») envoie null', async () => {
+    const updateProfile = vi.spyOn(parametresApi, 'updateProfile')
+      .mockResolvedValue({ data: { responsable_leads_pro: null } })
+    vi.spyOn(parametresApi, 'getProfile')
+      .mockResolvedValue({ data: { responsable_leads_pro: 7 } })
+    const user = userEvent.setup()
+    rendre({ responsable_leads_pro: 7 })
+    await choisir(user, 'Comme les autres leads')
+    expect(updateProfile).toHaveBeenCalledWith({ responsable_leads_pro: null })
+  })
+
+  it('enregistrer, rouvrir, enregistrer sans toucher : objet serveur identique', async () => {
+    let serveur = { responsable_leads_pro: null }
+    vi.spyOn(parametresApi, 'getProfile')
+      .mockImplementation(async () => ({ data: { ...serveur } }))
+    const updateProfile = vi.spyOn(parametresApi, 'updateProfile')
+      .mockImplementation(async (patch) => {
+        serveur = { ...serveur, ...patch }
+        return { data: { ...serveur } }
+      })
+    const user = userEvent.setup()
+    const premiere = rendre(null)
+    await choisir(user, /sami/)
+    const apres1 = { ...serveur }
+    premiere.unmount()
+    rendre(null)
+    // Rouvert : le sélecteur reflète le serveur, sans aucune interaction.
+    await waitFor(() => expect(screen.getByRole('combobox', {
+      name: /Responsable des leads commerciaux et industriels/i,
+    })).toHaveTextContent('sami'))
+    // Aucun PATCH sans geste de l'utilisateur ; le serveur reste identique.
+    expect(updateProfile).toHaveBeenCalledTimes(1)
+    expect(serveur).toEqual(apres1)
+  })
+
+  it('une erreur 400 s’affiche sous le champ', async () => {
+    vi.spyOn(parametresApi, 'getProfile')
+      .mockResolvedValue({ data: { responsable_leads_pro: null } })
+    vi.spyOn(parametresApi, 'updateProfile').mockRejectedValue({
+      response: { status: 400, data: { responsable_leads_pro: ['Utilisateur inconnu.'] } },
+    })
+    const user = userEvent.setup()
+    rendre({ responsable_leads_pro: null })
+    await choisir(user, /sami/)
+    const alerte = await screen.findByText('Utilisateur inconnu.')
+    expect(alerte).toHaveAttribute('role', 'alert')
+    expect(alerte).toHaveAttribute('id', 'pe-resp-leads-pro-err')
   })
 })
