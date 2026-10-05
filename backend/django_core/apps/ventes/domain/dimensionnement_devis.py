@@ -626,7 +626,7 @@ def _cibles_au_dessus_du_plancher_ve(cibles, equipements):
     Sans recharge VE nocturne : ``cibles`` rendu tel quel. Sinon le plancher
     est la plus petite taille d'offre couvrant la recharge (ou la plus grande
     quand le catalogue ne la couvre pas — jamais une taille inventée)."""
-    from apps.ventes.etude_horaire import plancher_batterie_recharge_ve
+    from apps.ventes.horaire.ve_nocturne import plancher_batterie_recharge_ve
 
     plancher = plancher_batterie_recharge_ve(0.0, equipements, cibles)
     taille = (plancher or {}).get('taille_retenue_kwh')

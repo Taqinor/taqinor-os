@@ -52,7 +52,7 @@ DEPLACEMENTS = {
     'conso': ('split_eh_conso', 'apps/ventes/horaire/conso.py', 'SPL257',
               True),
     've': ('split_eh_ve', 'apps/ventes/horaire/ve_nocturne.py', 'SPL258',
-           False),
+           True),
 }
 
 #: Modules où vit chaque fonction, avant ou après la découpe.

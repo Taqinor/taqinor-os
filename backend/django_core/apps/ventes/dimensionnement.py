@@ -997,6 +997,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
     from apps.ventes.etude_horaire import (
         balayer_stockage_horaire,
         calculer_etude_horaire,
+    )
+    from apps.ventes.horaire.ve_nocturne import (
         equipements_sans_recharge_ve_nocturne,
         plancher_batterie_recharge_ve,
         recharge_ve_nocturne_kwh_jour,
