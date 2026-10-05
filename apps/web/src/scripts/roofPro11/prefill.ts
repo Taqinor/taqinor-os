@@ -15,7 +15,7 @@
 import { DEG2RAD, WGS84_RADIUS } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
-import { champsFormeObstacle, type AreaRecord, type CardData, type LeadPayload, type ObstacleType, type ObstacleProvenance } from './types';
+import { champsFormeObstacle, type AreaRecord, type CardData, type LeadPayload, type ObstacleType, type ObstacleProvenance, type TiltMode, type OrientMode, type AzimuthMode, type MarginMode } from './types';
 import { type LngLat } from '../../lib/roof';
 import { BILL_RANGES } from '../../lib/billRange';
 import { PANEL2_WATT } from '../../lib/estimatorBrainV2';
@@ -26,7 +26,7 @@ import { deduceEdgeTypes, fusionnerAretesSaisies, type SerializedEdge, type Edge
 import { type EnvironmentObject } from './environment';
 import { type ShadeObstruction } from '../../lib/shadingEngine'; // ACAL27
 import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone } from './zones';
-import { resolveSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
+import { resolveSetbacks, PERIMETER_SETBACK_M, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { sortedHorizonPoints, horizonMaxHeightDeg, type HorizonProfile, type HorizonSource } from '../../lib/horizonEngine';
 import { lireCoucheElectrique, type CoucheElectrique, type DocumentElectrique } from './electrique3d';
 import { numeroterDocument, registreAtelier } from './numerotation'; // CALX111
@@ -545,6 +545,82 @@ export function deserializeShadeObstructions(json: unknown): {
   return { lues, nonLues };
 }
 
+// ═══════════ ACAL29 — CHOIX DE CONCEPTION ÉPINGLÉS (contrat `$defs/choixConception`) ═══════════
+// `sel`/`pinned` de l'atelier ne quittaient jamais la mémoire : rouvrir un toit plat épinglé
+// à 10° le repavait à l'inclinaison recommandée (live ATL-07 : 35°, est-ouest, 30 panneaux,
+// une version créée). Chaque axe s'écrit avec sa valeur ÉPINGLÉE, sinon 'reco' ('auto' pour
+// la pose, comme la puce de l'atelier) ; `epingles` liste les axes réellement épinglés.
+// Correspondances : azimut plein sud = 180, aligné toit = l'azimut aligné RÉEL du toit (un
+// nombre ≠ 180 se relit « aligné », l'angle est recalculé du toit) ; marge gardée = le
+// retrait de rive de design (PERIMETER_SETBACK_M), pleine rive = 0.
+
+/** Ordre fixe des axes (celui du contrat et des puces). */
+const AXES_CHOIX = ['family', 'tilt', 'orient', 'azimuth', 'margin'] as const;
+type AxeChoix = (typeof AXES_CHOIX)[number];
+
+/** ACAL29 — ce que la relecture rend : la sélection des axes épinglés, la liste des
+ *  épingles, et le bloc brut (ses clés inconnues sont retransmises telles quelles). */
+export interface ChoixConceptionLu {
+  sel: { family?: 'south' | 'eastwest'; tilt?: TiltMode; orient?: OrientMode; azimuth?: AzimuthMode; margin?: MarginMode };
+  epingles: AxeChoix[];
+  brut: Record<string, unknown>;
+}
+
+/** ACAL29 — écrit `choixConception` depuis `ctx.sel`/`ctx.pinned`. Aucun axe épinglé ⇒
+ *  aucune clé (document identique). */
+export function serializeChoixConception(ctx: Ctx): { choixConception?: Record<string, unknown> } {
+  const pinned = ctx.pinned;
+  const sel = ctx.sel;
+  if (!pinned || !sel || pinned.size === 0) return {};
+  const epingles = AXES_CHOIX.filter((a) => pinned.has(a));
+  const alignedDeg = ctx.rec?.roofAlignedAzimuthDeg;
+  const choix: Record<string, unknown> = {
+    family: pinned.has('family') ? sel.family : 'reco',
+    tilt: pinned.has('tilt') && typeof sel.tilt === 'number' ? sel.tilt : 'reco',
+    orient: pinned.has('orient') ? sel.orient : 'auto',
+    azimuth: pinned.has('azimuth')
+      ? sel.azimuth === 'aligned'
+        ? typeof alignedDeg === 'number' && Number.isFinite(alignedDeg) ? alignedDeg : 'auto'
+        : 180
+      : 'reco',
+    margin: pinned.has('margin') ? (sel.margin === 'remove' ? 0 : PERIMETER_SETBACK_M) : 'reco',
+    epingles,
+  };
+  // Clés inconnues du bloc relu (le contrat admet des propriétés additionnelles).
+  const relu = ctx.choixConceptionRelu;
+  const extras = relu
+    ? Object.fromEntries(Object.entries(relu).filter(([k]) => !(AXES_CHOIX as readonly string[]).includes(k) && k !== 'epingles'))
+    : {};
+  return { choixConception: { ...choix, ...extras } };
+}
+
+/** ACAL29 — relit `choixConception`. Absent, illisible ou sans aucune épingle ⇒ null. */
+export function lireChoixConception(json: unknown): ChoixConceptionLu | null {
+  const brut = (json as { choixConception?: unknown } | null | undefined)?.choixConception;
+  if (!brut || typeof brut !== 'object' || Array.isArray(brut)) return null;
+  const c = brut as Record<string, unknown>;
+  const epingles = Array.isArray(c.epingles)
+    ? AXES_CHOIX.filter((a) => (c.epingles as unknown[]).includes(a))
+    : [];
+  if (!epingles.length) return null;
+  const sel: ChoixConceptionLu['sel'] = {};
+  if (epingles.includes('family') && (c.family === 'south' || c.family === 'eastwest')) sel.family = c.family;
+  if (epingles.includes('tilt') && typeof c.tilt === 'number' && Number.isFinite(c.tilt)) sel.tilt = c.tilt;
+  if (epingles.includes('orient') && (c.orient === 'portrait' || c.orient === 'landscape' || c.orient === 'mixed')) {
+    sel.orient = c.orient;
+  }
+  if (epingles.includes('azimuth') && typeof c.azimuth === 'number' && Number.isFinite(c.azimuth)) {
+    sel.azimuth = c.azimuth === 180 ? 'south' : 'aligned';
+  }
+  if (epingles.includes('margin') && typeof c.margin === 'number' && Number.isFinite(c.margin)) {
+    sel.margin = c.margin === 0 ? 'remove' : 'keep';
+  }
+  // Une épingle sans valeur exploitable n'est pas reposée (jamais une valeur devinée).
+  const reposables = epingles.filter((a) => sel[a] !== undefined);
+  if (!reposables.length) return null;
+  return { sel, epingles: reposables, brut: JSON.parse(JSON.stringify(c)) };
+}
+
 // ═══════════ CAL102 — MESURES (sérialisation) ═══════════
 // Mêmes garanties que `shading12x24` : un tableau de MAUVAISE forme est REFUSÉ EN BLOC
 // (mieux vaut aucune mesure au rechargement qu'une mesure à moitié fausse) — mais ici
@@ -741,6 +817,9 @@ export interface SerializedLayout {
    *  matrice `shading12x24` ne pouvait pas être recalculée à l'identique à la réouverture.
    *  Omis ou vide = aucune ombre tracée (comportement historique, byte pour byte). */
   shadeObstructions?: Array<Record<string, unknown>>;
+  /** ACAL29 — les CHOIX DE CONCEPTION épinglés (contrat `$defs/choixConception`). Omis tant
+   *  qu'aucun axe n'est épinglé (document d'hier, byte pour byte). */
+  choixConception?: Record<string, unknown>;
   /** CAL102 — mesures posées (distance/surface/angle), annotations du calepinage. Omis ou
    *  vide = aucune mesure (comportement historique, byte pour byte). */
   measurements?: Measurement[];
@@ -1012,6 +1091,9 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     // ACAL27 — les ombres tracées voyagent avec la matrice qu'elles produisent : relues par
     // `appliquerHydratationAuCtx`, elles redonnent la MÊME matrice au recalcul.
     ...serializeShadeObstructions(ctx.shadeObstructions, ctx.shadeObstructionsNonLues),
+    // ACAL29 — les choix épinglés (famille, inclinaison, pose, azimut, marge) : réappliqués
+    // AVANT le pavage à la réouverture, ils redonnent exactement la grille enregistrée.
+    ...serializeChoixConception(ctx),
     // CAL102 — les mesures posées voyagent avec le design (sinon rouvrir le dossier les
     // perd, comme n'importe quelle autre annotation de l'atelier).
     ...(ctx.measurements && ctx.measurements.length ? { measurements: serializeMeasurements(ctx.measurements) } : {}),
@@ -1392,6 +1474,8 @@ export interface CouchesDocument {
    *  sait recalculer, et les autres, transmises telles quelles. */
   shadeObstructions: ShadeObstruction[];
   shadeObstructionsNonLues: Array<Record<string, unknown>>;
+  /** ACAL29 — choix de conception épinglés relus, ou null (aucun choix épinglé). */
+  choixConception: ChoixConceptionLu | null;
   /** `consumption.source` relue telle quelle, ou null (aucun bloc / provenance illisible). */
   consSource: SourceConsommation | null;
   /** `electrical` relu par `lireCoucheElectrique`, ou null quand le document n'en porte pas. */
@@ -1422,6 +1506,7 @@ export function lireCouchesDocument(json: unknown): CouchesDocument {
       const ombres = deserializeShadeObstructions(doc);
       return { shadeObstructions: ombres.lues, shadeObstructionsNonLues: ombres.nonLues };
     })(),
+    choixConception: lireChoixConception(doc),
     consSource,
     electrical,
   };

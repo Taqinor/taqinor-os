@@ -1890,3 +1890,65 @@ describe('runtime W113 — marqueur du pin client à l\'hydratation', () => {
     expect(fakeMarkers.filter((m) => m.added).length).toBe(0);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL29 — les CHOIX DE CONCEPTION épinglés voyagent avec le document et sont réappliqués
+// AVANT le pavage : un toit plat épinglé à 10° rouvert puis enregistré sans geste reste à
+// 10° (live ATL-07 : 35°, est-ouest, 30 panneaux, une version créée). Boot RÉEL de
+// l'atelier (hydrate.devis → load → pavage), sérialisé par le wrapper `onApiReady`.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL29 — choix épinglés réappliqués avant le pavage', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  function documentToitPlat(choixConception?: Record<string, unknown>) {
+    return {
+      version: 2, pin: { lat: 33.59, lng: -7.62 }, outline: [], billKwh: null, activeAreaId: 'z1',
+      zones: [{
+        id: 'z1', label: 'Toit', vertices: squareCorners(16), obstacles: [], roofType: 'flat', pitchDeg: 22,
+        facingAzimuthDeg: 180, facingManual: false, neededPanels: 12, neededAuto: false,
+      }],
+      ...(choixConception ? { choixConception } : {}),
+    };
+  }
+
+  async function bootEtSerialiser(doc: unknown) {
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      hydrate: { devis: { id: 9, geometrie: { roof_layout: doc as never }, cibleVendue: false } },
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    return api!.serializeLayout() as { choixConception?: Record<string, unknown> };
+  }
+
+  it('choixConception {tilt 10 épinglé, family south} → boot → serializeLayout rend tiltDeg 10 et le même choixConception', async () => {
+    const choix = { family: 'south', tilt: 10, orient: 'auto', azimuth: 'reco', margin: 'reco', epingles: ['family', 'tilt'] };
+    const sortie = await bootEtSerialiser(documentToitPlat(choix));
+    // Le pavage s'est fait avec les épingles : les puces affichent 10° et la famille sud
+    // épinglées (pas « Recommandé »). (La scène WebGL mockée ne produit pas de layoutPlan :
+    // la géométrie posée elle-même est couverte par prefill.roundtrip.test.ts.)
+    expect(pressedVals('data-tilt')).toContain('10');
+    expect(pressedVals('data-tilt')).not.toContain('reco');
+    expect(pressedVals('data-family')).toContain('south');
+    // Enregistrer sans geste : le même bloc repart.
+    expect(sortie.choixConception).toEqual(choix);
+  });
+
+  it('sans choixConception, le pavage reprend la recommandation (le test discrimine) et aucune clé n’est écrite', async () => {
+    const sortie = await bootEtSerialiser(documentToitPlat());
+    expect(pressedVals('data-tilt')).not.toContain('10');
+    expect('choixConception' in sortie).toBe(false);
+  });
+});

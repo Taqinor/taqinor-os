@@ -58,7 +58,8 @@ function copie<T>(v: T): T {
  *    non recalculables dans `ctx.shadeObstructionsNonLues` ;
  *  - les six champs `cons*` + `consSource` → la consommation du SITE (un facteur saisonnier
  *    `null` = non renseigné : le défaut de l'atelier est gardé) ;
- *  - `electrical` → `ctx.electrical` (null = aucune couche).
+ *  - `electrical` → `ctx.electrical` (null = aucune couche) ;
+ *  - `choixConception` (ACAL29) → `ctx.sel` / `ctx.pinned` (axes épinglés), AVANT le pavage.
  */
 export function appliquerHydratationAuCtx(ctx: Ctx, h: HydratationAtelier): void {
   if (h.surfacesPose !== undefined) ctx.surfacesPose = copie(h.surfacesPose ?? []);
@@ -90,6 +91,23 @@ export function appliquerHydratationAuCtx(ctx: Ctx, h: HydratationAtelier): void
     }
   }
   if (h.shadeObstructionsNonLues !== undefined) ctx.shadeObstructionsNonLues = copie(h.shadeObstructionsNonLues ?? []);
+  // ACAL29 — les choix épinglés repartent dans `sel`/`pinned` AVANT le pavage (l'appelant
+  // applique l'hydratation avant `close()`) : l'optimiseur repave la même grille.
+  if (h.choixConception !== undefined) {
+    const choix = h.choixConception;
+    if (choix) {
+      ctx.sel = { ...ctx.sel, ...choix.sel };
+      const pins = ctx.pinned as Set<(typeof choix.epingles)[number]> | undefined;
+      if (pins) {
+        pins.clear();
+        for (const a of choix.epingles) pins.add(a);
+      }
+      ctx.useRecommended = false;
+      ctx.choixConceptionRelu = copie(choix.brut);
+    } else {
+      ctx.choixConceptionRelu = null;
+    }
+  }
   if (h.consCurve !== undefined) ctx.consCurve = (h.consCurve ?? []).slice();
   if (h.consHandEdited !== undefined) ctx.consHandEdited = Boolean(h.consHandEdited);
   if (h.consAppliances !== undefined) ctx.consAppliances = copie(h.consAppliances ?? []);

@@ -154,6 +154,7 @@ describe('PV19 — garde-fous', () => {
       shading12x24: null,
       shadeObstructions: [],
       shadeObstructionsNonLues: [],
+      choixConception: null,
       consSource: null,
       electrical: null,
     });
@@ -195,7 +196,7 @@ describe('PV19 — le boot LEAD reste strictement inchangé (golden)', () => {
     // ACAL26 — et les cinq couches du document (surfaces de pose, environnement, matrice
     // d'ombrage, provenance de la consommation, couche électrique), jamais un champ devis.
     expect(Object.keys(h).sort()).toEqual([
-      'center', 'consAppliances', 'consCurve', 'consHandEdited', 'consSeasonal', 'consSource',
+      'center', 'choixConception', 'consAppliances', 'consCurve', 'consHandEdited', 'consSeasonal', 'consSource',
       'consSummerFactor', 'consWinterFactor', 'contact', 'electrical', 'environment',
       'shadeObstructions', 'shadeObstructionsNonLues', 'shading12x24', 'surfacesPose', 'vertices',
     ]);
@@ -214,6 +215,7 @@ describe('PV19 — le boot LEAD reste strictement inchangé (golden)', () => {
       shading12x24: null,
       shadeObstructions: [],
       shadeObstructionsNonLues: [],
+      choixConception: null,
       consSource: null,
       electrical: null,
     });

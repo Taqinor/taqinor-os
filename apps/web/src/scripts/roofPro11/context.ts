@@ -358,4 +358,6 @@ export interface Ctx {
   /** ACAL27 — les entrées `shadeObstructions[]` RELUES que l'atelier ne sait pas recalculer
    *  (un `contour`, un `centre` sans bout d'ombre) : transmises telles quelles au document. */
   shadeObstructionsNonLues?: Array<Record<string, unknown>>;
+  /** ACAL29 — le bloc `choixConception` RELU (ses clés inconnues sont retransmises). */
+  choixConceptionRelu?: Record<string, unknown> | null;
 }

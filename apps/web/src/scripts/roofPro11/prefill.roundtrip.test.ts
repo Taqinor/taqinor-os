@@ -282,3 +282,45 @@ describe('ACAL28 — chaque pan garde sa géométrie enregistrée', () => {
     expect(sortie.result?.panels).toBe(0);
   });
 });
+
+/* ============================================================================
+   ACAL29 — choix de conception épinglés : enregistrés, relus, réappliqués.
+   ========================================================================== */
+describe('ACAL29 — choixConception voyage avec le document', () => {
+  function ctxAvecChoix(zones: AreaRecord[]): Ctx {
+    const ctx = ctxApresBoot(zones, zones[0].id) as unknown as Record<string, unknown>;
+    ctx.sel = { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' };
+    ctx.pinned = new Set();
+    ctx.useRecommended = true;
+    ctx.rec = null;
+    return ctx as unknown as Ctx;
+  }
+
+  it("choixConception {tilt:10 épinglé, family:'south'} → hydraté → serializeLayout rend tiltDeg 10 et le même choixConception", () => {
+    const doc = documentRiche();
+    (doc.zones[0] as unknown as Record<string, unknown>).geometry = {
+      azimuthDeg: 180, tiltDeg: 10, family: 'south', flush: false, kwc: 1.44, count: 2,
+      origin: [-7.6, 33.5], panels: [{ cx: 0, cy: 0 }, { cx: 1.2, cy: 0 }],
+    };
+    const choix = { family: 'south', tilt: 10, orient: 'auto', azimuth: 'reco', margin: 'reco', epingles: ['family', 'tilt'] };
+    (doc as unknown as Record<string, unknown>).choixConception = choix;
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const ctx = ctxAvecChoix(h.zones!);
+    appliquerHydratationAuCtx(ctx, h);
+    expect(ctx.sel.tilt).toBe(10);
+    expect([...ctx.pinned]).toEqual(['family', 'tilt']);
+    expect(ctx.useRecommended).toBe(false);
+    const sortie = serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 5, panelWatt: null, scenario: null }));
+    expect(sortie.zones[0].geometry?.tiltDeg).toBe(10);
+    expect(sortie.choixConception).toEqual(choix);
+  });
+
+  it('sans choix épinglé, aucune clé choixConception (document identique)', () => {
+    const doc = documentRiche();
+    const h = hydrateFromDevis({ id: 5, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const ctx = ctxAvecChoix(h.zones!);
+    appliquerHydratationAuCtx(ctx, h);
+    const sortie = serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, null));
+    expect('choixConception' in sortie).toBe(false);
+  });
+});
