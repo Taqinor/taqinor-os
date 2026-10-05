@@ -17,6 +17,7 @@ from ..models import Devis
 from authentication.permissions import IsResponsableOrAdmin
 from ..utils.client_links import chemin_proposition
 from .devis_gardes import _refus_modifiabilite, _reponse_non_modifiable
+from .devis_gardes import _pourcentage_saisi  # ACAL278
 
 
 def _emettre_layout_finalise(devis, user):
@@ -64,7 +65,7 @@ class DevisCalepinageActionsMixin:
         catalogue before building and returns HTTP 422 with inline French guidance
         on failure (instead of a PDF error at render time).
         """
-        from decimal import Decimal, InvalidOperation
+        from decimal import Decimal
         from ..services import build_devis_from_layout, layout_hash, validate_composition_for_layout
         from ..models import ShareLink
 
@@ -125,19 +126,17 @@ class DevisCalepinageActionsMixin:
                 {'detail': 'Un client ou un lead est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        def _dec(raw, default):
-            if raw in (None, ''):
-                return default
-            try:
-                return Decimal(str(raw))
-            except (InvalidOperation, ValueError, TypeError):
-                return None
-
-        taux_tva = _dec(request.data.get('taux_tva'), Decimal('20'))
-        remise = _dec(request.data.get('remise_globale'), Decimal('0'))
-        if taux_tva is None or remise is None:
+        # ACAL278 — UNE règle de module (fini, 0..100, 2 décimales) au lieu
+        # d'un ``_dec`` imbriqué sans borne : 400 NOMMÉ, jamais l'IntegrityError
+        # de ck_devis_remise_globale_0_100 (500).
+        taux_tva, erreur = _pourcentage_saisi(
+            request.data, 'taux_tva', Decimal('20'))
+        remise, erreur_remise = _pourcentage_saisi(
+            request.data, 'remise_globale', Decimal('0'))
+        erreur = erreur or erreur_remise
+        if erreur:
             return Response(
-                {'detail': 'taux_tva / remise_globale invalide.'},
+                dict(erreur, detail=next(iter(erreur.values()))),
                 status=status.HTTP_400_BAD_REQUEST)
 
         # STKCAT8 — le chemin 3D était MUET sur la structure : il ne

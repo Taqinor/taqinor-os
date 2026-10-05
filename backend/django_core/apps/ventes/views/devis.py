@@ -26,6 +26,7 @@ from ..utils.client_links import chemin_proposition
 from core.entite_scoping import EntiteScopeMixin  # NTADM2
 from core.idempotency import IdempotentCreateMixin  # YAPIC9
 from ..utils.company_settings import create_numbered
+from .devis_gardes import _pourcentage_saisi  # ACAL278
 from .devis_edition import DevisEditionActionsMixin  # SPL135
 from .devis_cycle import DevisCycleActionsMixin  # SPL136
 from .devis_etudes import DevisEtudesActionsMixin  # SPL137
@@ -400,7 +401,7 @@ class DevisViewSet(DevisEditionActionsMixin,
         données de dimensionnement manquent ou si le marché n'est pas résidentiel
         — l'agent demande alors la donnée / oriente vers le générateur. Aucun
         statut n'est touché : le service renvoie un brouillon (règle #4)."""
-        from decimal import Decimal, InvalidOperation
+        from decimal import Decimal
         from ..services import build_devis_auto, AutoDevisError
         from ..models import ShareLink
         from apps.crm.selectors import (
@@ -437,19 +438,17 @@ class DevisViewSet(DevisEditionActionsMixin,
                 {'detail': 'Un lead (ou un client) est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        def _dec(raw, default):
-            if raw in (None, ''):
-                return default
-            try:
-                return Decimal(str(raw))
-            except (InvalidOperation, ValueError, TypeError):
-                return None
-
-        taux_tva = _dec(request.data.get('taux_tva'), Decimal('20'))
-        remise = _dec(request.data.get('remise_globale'), Decimal('0'))
-        if taux_tva is None or remise is None:
+        # ACAL278 — UNE règle de module (fini, 0..100, 2 décimales) au lieu
+        # d'un ``_dec`` imbriqué sans borne : 400 NOMMÉ, jamais l'IntegrityError
+        # de ck_devis_remise_globale_0_100 (500).
+        taux_tva, erreur = _pourcentage_saisi(
+            request.data, 'taux_tva', Decimal('20'))
+        remise, erreur_remise = _pourcentage_saisi(
+            request.data, 'remise_globale', Decimal('0'))
+        erreur = erreur or erreur_remise
+        if erreur:
             return Response(
-                {'detail': 'taux_tva / remise_globale invalide.'},
+                dict(erreur, detail=next(iter(erreur.values()))),
                 status=status.HTTP_400_BAD_REQUEST)
 
         # U3 — trois réglages POUR CE DEVIS-LÀ, qui ne réécrivent JAMAIS la
