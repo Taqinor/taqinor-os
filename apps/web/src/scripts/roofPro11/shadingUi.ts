@@ -86,6 +86,8 @@ export interface ShadingUi {
    *  aucune obstruction n'est renseignée : le chiffre est alors ABSENT, jamais estimé.
    *  Lu par les consommateurs (affichage, sérialisation CAL248). */
   solarAccess: () => SolarAccessSummary | null;
+  /** ACAL138 — accès solaire ANNUEL sur les modules POSÉS donnés (valeur persistée). */
+  solarAccessAnnuel: (points: readonly { x: number; y: number }[]) => SolarAccessSummary | null;
   /** Efface toutes les ombres tracées (« Effacer » / nouveau tracé). */
   reset: () => void;
   /** CAL93 — fixe (ou efface, `null`) le profil d'horizon lointain (CAL92 ou saisi),
@@ -882,6 +884,14 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
    * module posé, ou aucune obstruction renseignée : rien n'a été vérifié, on ne publie
    * donc pas un « 100 % » qui ferait croire à une vérification d'ombrage).
    */
+  /** ACAL138 — l'accès solaire PERSISTÉ : sur les modules POSÉS fournis (dans l'ordre de
+   *  `geometry.panels`), sur l'ANNÉE entière — jamais le mois du sélecteur de la carte. */
+  function solarAccessAnnuel(points: readonly { x: number; y: number }[]): SolarAccessSummary | null {
+    if (!points.length || ctx.vertices.length < 3) return null;
+    const prod = ctx.prodPerKwc ?? fallbackPerKwc();
+    return solarAccessSummary(ctx.centroidLat, activeShadeEntries(), prod, points, null);
+  }
+
   function solarAccess(): SolarAccessSummary | null {
     const plan = ctx.layoutPlan;
     if (!plan || !plan.grid.panels.length || ctx.vertices.length < 3) return null;
@@ -942,7 +952,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       `du plus ombragé <span class="fig">${esc(pct(s.min))}</span> au plus dégagé <span class="fig">${esc(pct(s.max))}</span>` +
       (s.lowCount ? `, dont ${s.lowCount} sous ${esc(pct(SOLAR_ACCESS_LOW))}` : '') +
       '.</div>' +
-      `<div class="mt-1 opacity-80">${esc(s.method)}</div>` +
+      `<div class="mt-1 opacity-80">${esc(s.method.description)}</div>` +
       `<ul class="mt-1 list-disc pl-4 opacity-80">${s.assumptions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` +
       proposalHtml;
   }
@@ -1255,6 +1265,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     refreshHeatmap,
     reset,
     solarAccess,
+    solarAccessAnnuel, // ACAL138
     setHorizonProfile,
     horizonStatus,
     moduleShadeReadings,

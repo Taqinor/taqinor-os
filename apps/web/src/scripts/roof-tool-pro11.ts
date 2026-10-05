@@ -3879,25 +3879,35 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    * calculable (aucune obstruction renseignée, aucun module posé) : le document sort
    * alors SANS accès solaire, jamais avec des valeurs par défaut.
    */
+  // ACAL138 — date du DERNIER calcul d'accès solaire écrit, par contenu : deux
+  // sérialisations sans geste portent la MÊME date (et la date relue du document tant que
+  // les valeurs n'ont pas changé).
+  let memoAccesSolaire: { cle: string; computedAt: string } | null = null;
   function activeSolarAccessMeta():
     | { solarAccessByZone: Record<string, import('./roofPro11/prefill').SerializedSolarAccess> }
     | null {
-    const s = shadingUi.solarAccess();
+    // ACAL138 — les modules POSÉS du pan actif, dans l'ordre exact de `geometry.panels`
+    // (placement libre compris) : la même liste que le document — jamais tout le pavage.
+    const panneaux = geometrieZoneActive(ctx)?.panels ?? [];
+    const s = shadingUi.solarAccessAnnuel(panneaux.map((p) => ({ x: p.cx, y: p.cy })));
     if (!s) return null;
+    const method = { ...s.method } as Record<string, unknown>;
+    const assumptions = {
+      periode: 'annee', // ACAL138 — toujours l'année entière (contrat ACAL2)
+      hypotheses: s.assumptions,
+      moduleLePlusOmbrage: s.min,
+      moduleLePlusDegage: s.max,
+      moyennePan: s.average,
+    };
+    const cle = JSON.stringify([s.perModule, method, assumptions]);
+    if (!memoAccesSolaire || memoAccesSolaire.cle !== cle) {
+      const relu = activeArea()?.geometrieEnregistree?.solarAccess;
+      const memeCalcul = relu && JSON.stringify([relu.values, relu.method, relu.assumptions]) === cle;
+      memoAccesSolaire = { cle, computedAt: memeCalcul ? relu.computedAt : new Date().toISOString() };
+    }
     return {
       solarAccessByZone: {
-        [ctx.activeAreaId]: {
-          values: s.perModule,
-          method: s.method,
-          assumptions: {
-            periode: s.month == null ? 'annee-entiere' : `mois-${s.month + 1}`,
-            hypotheses: s.assumptions,
-            moduleLePlusOmbrage: s.min,
-            moduleLePlusDegage: s.max,
-            moyennePan: s.average,
-          },
-          computedAt: new Date().toISOString(),
-        },
+        [ctx.activeAreaId]: { values: s.perModule, method, assumptions, computedAt: memoAccesSolaire.computedAt },
       },
     };
   }

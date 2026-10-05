@@ -266,7 +266,8 @@ export interface SerializedSolarAccess {
   /** Un facteur (0–1) par module, MÊME ORDRE et MÊME LONGUEUR que `panels`. `null` =
    *  module non calculé — jamais 1, qui se lirait « aucun ombrage mesuré ». */
   values: Array<number | null>;
-  method: string;
+  /** ACAL138 — méthode NOMMÉE (objet {horizon, rangees, resolution, description}). */
+  method: Record<string, unknown>;
   assumptions: Record<string, unknown>;
   /** ISO 8601. */
   computedAt: string;
@@ -284,18 +285,21 @@ export function serializeSolarAccess(
   panelCount: number,
 ): SerializedSolarAccess | null {
   if (!raw || !Array.isArray(raw.values) || raw.values.length !== panelCount || panelCount <= 0) return null;
-  if (typeof raw.method !== 'string' || !raw.method.trim()) return null;
+  // ACAL138 — la méthode est un OBJET (contrat ACAL2) : une phrase libre n'est plus écrite.
+  if (!raw.method || typeof raw.method !== 'object' || Array.isArray(raw.method)) return null;
   const values = raw.values.map((v) =>
     typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : null,
   );
   if (values.every((v) => v === null)) return null; // rien de calculé : on n'écrit rien
-  const computedAt =
-    typeof raw.computedAt === 'string' && raw.computedAt ? raw.computedAt : new Date().toISOString();
+  // ACAL138 — la date est celle du CALCUL, fournie par l'appelant ; jamais refaite ici
+  // (sinon deux sérialisations de suite différaient). Absente ⇒ rien n'est écrit.
+  if (typeof raw.computedAt !== 'string' || !raw.computedAt) return null;
+  const computedAt = raw.computedAt;
   const assumptions =
     raw.assumptions && typeof raw.assumptions === 'object' && !Array.isArray(raw.assumptions)
       ? { ...raw.assumptions }
       : {};
-  return { values, method: raw.method, assumptions, computedAt };
+  return { values, method: { ...raw.method }, assumptions, computedAt };
 }
 
 /** CAL248 — relit l'accès solaire d'une géométrie de zone sérialisée. Absent, mal formé
@@ -303,6 +307,12 @@ export function serializeSolarAccess(
  *  valeur n'est reconstituée. */
 export function deserializeSolarAccess(geometry: unknown, panelCount: number): SerializedSolarAccess | null {
   const raw = (geometry as { solarAccess?: SerializedSolarAccess } | null | undefined)?.solarAccess;
+  // ACAL138 — un document ancien porte une PHRASE : tolérée en lecture (contrat ACAL2),
+  // normalisée en objet sans rien inventer de plus que sa description.
+  const methode = (raw as { method?: unknown } | null | undefined)?.method;
+  if (raw && typeof methode === 'string' && methode.trim()) {
+    return serializeSolarAccess({ ...raw, method: { description: methode } }, panelCount);
+  }
   return serializeSolarAccess(raw, panelCount);
 }
 

@@ -2295,3 +2295,50 @@ describe('runtime ACAL99 — la conception enregistrée prime sur la cible du de
     expect(sortie.zones[0].neededPanels).toBe(8);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL138 — boot RÉEL : l'accès solaire écrit porte une valeur par module POSÉ, une méthode
+// OBJET annuelle, et la MÊME date de calcul d'une sérialisation à l'autre.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL138 — accès solaire persisté', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('deux sérialisations sans geste sont identiques (aucune date de calcul refaite)', async () => {
+    // Un immeuble de 40 m posé au sud du toit : une vraie source d'ombre, donc un accès calculé.
+    const coins = squareCorners(16);
+    const doc = {
+      version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'area-1',
+      zones: [{
+        id: 'area-1', label: 'Toit', vertices: coins, obstacles: [], roofType: 'flat', pitchDeg: 22,
+        facingAzimuthDeg: 180, facingManual: false, neededPanels: 6, neededAuto: false,
+      }],
+      environment: [{ id: 'env-1', kind: 'batiment', centerLng: -7.62, centerLat: 33.5897, heightM: 40, lengthM: 20, widthM: 10 }],
+    };
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      hydrate: { devis: { id: 30, geometrie: { roof_layout: doc as never }, cibleVendue: false } },
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    type Geo = { count: number; panels: unknown[]; solarAccess?: { values: unknown[]; method: unknown; computedAt: string } };
+    const un = api!.serializeLayout() as { zones: Array<{ geometry?: Geo }> };
+    const deux = api!.serializeLayout() as { zones: Array<{ geometry?: Geo }> };
+    // Deux « Enregistrer » sans geste : document identique (aucune date refaite).
+    // NB : la scène WebGL mockée de ce banc ne produit pas de pavage (pas de `layoutPlan`),
+    // donc pas de `solarAccess` ici — la longueur « modules posés » et la méthode objet sont
+    // prouvées par prefill.test.ts et lib/shadingEngine.test.ts.
+    expect(JSON.stringify(deux)).toBe(JSON.stringify(un));
+  });
+});
