@@ -24,7 +24,8 @@ from apps.calepinage.models import Calepinage
 from apps.calepinage.services.pompage import JOURS_PAR_MOIS, hmt_du_puits
 from apps.crm.models import Lead
 from apps.parametres.models import CompanyProfile
-from apps.roles.models import DIRECTEUR_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
 from apps.stock.models import Categorie, FicheTechnique, Produit
 from apps.ventes.domain.pompage import etudier_pompage
 from authentication.models import Company
