@@ -593,6 +593,15 @@ class LigneDevis(models.Model):
     taux_tva = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         help_text='Taux TVA de la ligne (%). Vide = taux global du devis.')
+    # AGR217 (contrat AGR200) — la BASE LÉGALE d'une ligne exonérée, SAISIE
+    # par l'utilisateur (jamais proposée par défaut). OBLIGATOIRE dès que la
+    # ligne est enregistrée à 0 % (refus 400 nommant
+    # ``lignes[i].tva_base_legale``). Vide = aucune ; les lignes historiques
+    # ne sont pas réécrites. AUCUN taux par défaut ne change (AGRM8).
+    tva_base_legale = models.CharField(
+        max_length=160, blank=True, default='',
+        help_text="Base légale de l'exonération (ligne à 0 %). Saisie par "
+                  "l'utilisateur ; vide = aucune.")
 
     # ── QJ29 — Multi-propriétés (villas différentes) — additif, tout optionnel ─
     # Partitionne les lignes en groupes par-villa dans UN SEUL document (pas de

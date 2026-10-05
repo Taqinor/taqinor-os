@@ -695,17 +695,37 @@ def tva_note_des_lignes(lignes, taux_defaut) -> str:
       le tableau », avec les SEULS taux présents sur les lignes.
 
     Une ligne sans taux propre (devis historique) porte le taux du devis.
+    AGR217 — une ligne À 0 % (taux propre) ⇒ « TVA appliquée ligne par
+    ligne : 0 % / … — exonération : <base légale saisie> », une mention par
+    base distincte ; sans ligne à 0 %, texte identique à l'octet.
     Lecture pure : aucun statut écrit (règle #4).
     """
     par_taux = {}
+    bases = []
+    zero_ligne = False
     for li in lignes:
         taux = getattr(li, "taux_tva", None)
+        if taux is not None and float(taux) == 0.0:
+            zero_ligne = True
         if taux is None:
             taux = taux_defaut
         taux = float(taux)
         produit_nom = getattr(getattr(li, "produit", None), "nom", "") or ""
         par_taux.setdefault(taux, []).append(
             _is_panel(getattr(li, "designation", "") or "", produit_nom))
+        # AGR217 — la base légale SAISIE d'une ligne exonérée (une mention
+        # par base distincte, dans l'ordre des lignes).
+        base = (getattr(li, "tva_base_legale", "") or "").strip()
+        if taux == 0.0 and base and base not in bases:
+            bases.append(base)
+    if zero_ligne:
+        # AGR217 — un 0 % présent : la note le dit ligne par ligne et CITE
+        # la base légale saisie (jamais un texte proposé par défaut).
+        taux_txt = " / ".join(
+            f"{_taux_libelle(t)} %" for t in sorted(par_taux))
+        mentions = " ; ".join(f"exonération : {b}" for b in bases)
+        return (f"TVA appliquée ligne par ligne : {taux_txt}"
+                + (f" — {mentions}" if mentions else ""))
     if len(par_taux) <= 1:
         taux = next(iter(par_taux)) if par_taux else float(taux_defaut)
         return (f"TVA {_taux_libelle(taux)} % appliquée sur l'ensemble des "
@@ -717,6 +737,19 @@ def tva_note_des_lignes(lignes, taux_defaut) -> str:
     taux_txt = " / ".join(f"{_taux_libelle(t)} %" for t in sorted(par_taux))
     return (f"TVA appliquée ligne par ligne : {taux_txt} — taux indiqué "
             f"dans le tableau")
+
+
+def _attestation_usage_agricole(devis):
+    """AGR217 — ``etude_params.attestation_usage_agricole`` (contrat AGR200 :
+    ``{attestee, le, signataire}``), copie défensive, ou ``None``. Lecture
+    pure (règle #4) : le builder ne fait que rendre ce qui a été saisi."""
+    valeur = (getattr(devis, "etude_params", None) or {}).get(
+        "attestation_usage_agricole")
+    if not isinstance(valeur, dict) or not valeur:
+        return None
+    return {"attestee": bool(valeur.get("attestee")),
+            "le": valeur.get("le") or None,
+            "signataire": valeur.get("signataire") or ""}
 
 
 def _line_to_item(ligne, taux_tva: Decimal) -> dict:
@@ -3925,6 +3958,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # la charge utile publique.
     if avertissements_internes:
         data["avertissements_internes"] = list(avertissements_internes)
+
+    # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),
+    # exposée pour le rendu (D3). Additif : la clé n'est posée QUE lorsqu'une
+    # attestation est saisie → un devis sans elle reste octet-identique.
+    _attestation = _attestation_usage_agricole(devis)
+    if _attestation is not None:
+        data["attestation_usage_agricole"] = _attestation
 
     return data
 

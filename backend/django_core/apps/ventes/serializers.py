@@ -99,6 +99,15 @@ class LigneDevisSerializer(serializers.ModelSerializer):
                     and getattr(instance, 'produit_id', None) is None:
                 raise serializers.ValidationError({
                     'produit': 'Une ligne produit doit référencer un produit.'})
+            # AGR217 (contrat AGR200) — une ligne enregistrée à 0 % porte sa
+            # base légale (création comme modification). Aucun taux changé.
+            taux = attrs.get('taux_tva', getattr(instance, 'taux_tva', None))
+            base = attrs.get('tva_base_legale',
+                             getattr(instance, 'tva_base_legale', ''))
+            if taux is not None and taux == 0 and not (base or '').strip():
+                raise serializers.ValidationError({
+                    'tva_base_legale': 'Une base légale est obligatoire pour '
+                                       'un taux de TVA de 0 %.'})
         return attrs
 
     def create(self, validated_data):
