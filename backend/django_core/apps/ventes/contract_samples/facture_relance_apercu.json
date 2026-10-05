@@ -1,0 +1,22 @@
+{
+  "endpoint": "GET /api/django/ventes/factures/<int:pk>/relance-apercu/",
+  "pourquoi": "Fenêtre « Relancer » (fondateur, 05/10/2026) : dit QUEL niveau de relance part maintenant (1, 2 ou 3 — Rappel courtois / Relance / Relance ferme, toujours présents : les 3 niveaux par défaut sont créés automatiquement pour toute société qui n'en a aucun) et montre l'aperçu EXACT du message qui sera envoyé (objet + corps, variables déjà remplacées). niveau_suivant = le prochain niveau à envoyer d'après les relances déjà consignées (null seulement si les 3 sont déjà partis : niveau_suivant reste alors le dernier niveau, et deja_tous_envoyes = true). email_client vide ⇒ peut_envoyer_email = false (la case e-mail est alors désactivée côté écran ; sinon elle est COCHÉE par défaut). montant_du en TEXTE décimal.",
+  "exemple": {
+    "facture_id": 118,
+    "facture_reference": "FAC-2026-10-0007",
+    "montant_du": "15000.00",
+    "jours_retard": 18,
+    "niveaux": [
+      { "id": 4, "ordre": 1, "nom": "Rappel courtois", "delai_jours": 7 },
+      { "id": 5, "ordre": 2, "nom": "Relance", "delai_jours": 15 },
+      { "id": 6, "ordre": 3, "nom": "Relance ferme", "delai_jours": 30 }
+    ],
+    "niveau_suivant": { "id": 5, "ordre": 2, "nom": "Relance", "delai_jours": 15 },
+    "deja_tous_envoyes": false,
+    "relances_envoyees": 1,
+    "email_client": "client@example.ma",
+    "peut_envoyer_email": true,
+    "sujet": "Relance — facture FAC-2026-10-0007 : 15 000,00 MAD restant dus",
+    "message": "Bonjour,\n\nSauf erreur de notre part, la facture FAC-2026-10-0007 présente un solde de 15 000,00 MAD …"
+  }
+}

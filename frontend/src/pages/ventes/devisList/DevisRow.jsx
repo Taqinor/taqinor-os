@@ -91,7 +91,7 @@ export default function DevisRow({ d, ctx }) {
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
-    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, factureGenId,
+    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, factureGenId, setFacturerTarget,
     openEdit, openVarianteModal, openGammeModal, handleDelete, handleEnvoyer, handleRelancer,
     handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, handleCopierApercuInterne, copierLienInterne, handlePreview, openPdfModal,
@@ -541,14 +541,23 @@ export default function DevisRow({ d, ctx }) {
               Échéancier complet
             </Button>
           ) : (
-            <Button
-              size="sm"
-              onClick={() => handleGenererFacture(d)}
-              loading={factureGenId === d.id}
-              title="Générer la prochaine tranche de facture"
-            >
-              Générer facture
-            </Button>
+            <>
+              {!(d.solde?.tranches_facturees > 0) && (
+                <Button size="sm" onClick={() => setFacturerTarget(d)}
+                        title="Facture complète + paiements déjà reçus">
+                  Facturer (facture complète)
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant={d.solde?.tranches_facturees > 0 ? 'default' : 'outline'}
+                onClick={() => handleGenererFacture(d)}
+                loading={factureGenId === d.id}
+                title="Générer la prochaine tranche de facture"
+              >
+                {d.solde?.tranches_facturees > 0 ? 'Générer facture' : 'Facturer par tranches (acompte…)'}
+              </Button>
+            </>
           )}
 
           {/* VX20 — menu « Plus » unique : regroupe TOUTES les actions

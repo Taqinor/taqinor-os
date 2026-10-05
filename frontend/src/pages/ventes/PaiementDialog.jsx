@@ -22,15 +22,8 @@ import {
 import { formatMAD, formatDateTime } from '../../lib/format'
 // VX155 — jalon « facture payée » : un cran au-dessus du toast succès plat.
 import { toastMilestone } from '../../lib/toast'
+import { MODES_PAIEMENT } from '../../features/ventes/modesPaiement'
 
-const MODES_PAIEMENT = [
-  { value: 'especes',     label: 'Espèces' },
-  { value: 'virement',    label: 'Virement' },
-  { value: 'cheque',      label: 'Chèque' },
-  { value: 'carte',       label: 'Carte' },
-  { value: 'prelevement', label: 'Prélèvement' },
-  { value: 'autre',       label: 'Autre' },
-]
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
