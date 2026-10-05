@@ -11,7 +11,7 @@
  * restreinte par domaine. PVGIS : appelé côté serveur uniquement
  * (/api/roof-estimate) — jamais depuis le navigateur.
  */
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 // CSS importée comme URL (et non en effet de bord) : Vite émet l'asset mais
 // n'injecte AUCUN <link> sur la page. On l'ajoute nous-mêmes à l'init de la
 // carte → la CSS MapLibre (~69 ko) ne se charge qu'à l'ouverture de l'outil,
