@@ -34,6 +34,8 @@ couche qui lit l'ORM et l'appelle.
 """
 from __future__ import annotations
 
+from http import HTTPStatus
+
 #: Les états d'une pièce, tels que le contrat CAL247 les nomme.
 ETAT_FOURNIE = 'fournie'
 ETAT_A_COMPLETER = 'a_completer'
@@ -771,7 +773,7 @@ __all__ += [
 class GabaritRefuse(ValueError):
     """Un dépôt refusé : ``erreurs`` = ``{champ nommé: message}``."""
 
-    def __init__(self, erreurs, *, statut=400):
+    def __init__(self, erreurs, *, statut=HTTPStatus.BAD_REQUEST):
         super().__init__('; '.join(str(m) for m in erreurs.values()))
         self.erreurs = dict(erreurs)
         self.statut = statut
@@ -786,9 +788,10 @@ class PieceRefusee(ValueError):
 
 
 def _est_pdf(fichier):
-    entete = fichier.read(5)
+    signature = b'%PDF-'
+    entete = fichier.read(len(signature))
     fichier.seek(0)
-    return entete == b'%PDF-'
+    return entete == signature
 
 
 def gabarit_publie(gabarit):
@@ -999,7 +1002,7 @@ def supprimer_gabarit(gabarit, user):
     if utilisations:
         raise GabaritRefuse({'detail': (
             f"Ce gabarit est utilisé par {utilisations} dossier(s) : "
-            "archivez-le plutôt que de le supprimer.")}, statut=409)
+            "archivez-le plutôt que de le supprimer.")}, statut=HTTPStatus.CONFLICT)
     with transaction.atomic():
         _journaliser(gabarit, user, avant=gabarit_publie(gabarit),
                      apres=None)
