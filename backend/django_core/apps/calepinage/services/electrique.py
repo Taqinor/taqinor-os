@@ -1341,6 +1341,30 @@ def entree_electrique_servie(calepinage, stockee):
     }
 
 
+def _options_batterie(calepinage, donnees, materiel):
+    """ACAL168 — le parc de stockage DÉCLARÉ, pour le dessin du schéma.
+
+    Seule une batterie DÉCLARÉE dans l'entrée (``donnees['batterie']``) et
+    résolue sur sa fiche est dessinée : un calepinage sans déclaration garde
+    son schéma tel qu'il était, octet pour octet. La résolution est celle de
+    ``chaines.batterie_du_calepinage`` — la MÊME que la simulation lit.
+    """
+    declaree = (donnees or {}).get('batterie') if isinstance(
+        donnees, dict) else None
+    if not isinstance(declaree, dict) or not declaree:
+        return {}
+    from .chaines import batterie_du_calepinage
+
+    batterie = batterie_du_calepinage(calepinage, donnees, materiel)
+    if batterie is None:
+        return {}
+    return {
+        'batterie': True,
+        'batterie_designation': batterie['designation'],
+        'batterie_kwh': batterie['specs'].get('capacite_utile_kwh'),
+    }
+
+
 def _options_entree(entree):
     """Les options du noyau lues dans l'entrée SAISIE — jamais devinées."""
     options = {}
@@ -1398,7 +1422,8 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         onduleur_designation=materiel['designations']['onduleur'],
         # ACAL162 — un micro-onduleur seul suffit à câbler le champ.
         optimiseur_specs=materiel.get('optimiseur'),
-        **_options_entree(donnees))
+        **_options_entree(donnees), **_options_batterie(
+            calepinage, donnees, materiel))
     return (conception, materiel, donnees, document)
 
 

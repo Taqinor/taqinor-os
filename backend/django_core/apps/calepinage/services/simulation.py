@@ -245,59 +245,20 @@ def _declaration_batterie(calepinage, donnees, materiel, company):
     ``services/electrique.py::resoudre_materiel`` : désignation explicite,
     sinon ligne du devis lié).
     """
-    from .batterie import specs_batterie
-    from .equipements import equipements_du_calepinage
+    from .chaines import batterie_du_calepinage
 
-    saisie = (donnees or {}).get('batterie') if isinstance(
-        donnees, dict) else None
-    saisie = dict(saisie) if isinstance(saisie, dict) else {}
-
-    produit_batterie = None
-    produit_onduleur = None
-    produit_devis = None
-    packs_devis = None
-    if company is not None:
-        from apps.stock.selectors import get_produit_scoped
-
-        equipements = equipements_du_calepinage(calepinage)
-        bloc = equipements.get('batterie') if isinstance(equipements,
-                                                         dict) else None
-        if isinstance(bloc, dict) and bloc.get('produit'):
-            produit_devis = bloc['produit']
-            quantite = _nombre(bloc.get('quantite'))
-            if quantite is not None and quantite >= 1:
-                packs_devis = int(round(quantite))
-        identifiant = saisie.get('produit')
-        if identifiant in (None, ''):
-            identifiant = produit_devis
-        if identifiant not in (None, ''):
-            produit_batterie = get_produit_scoped(company, identifiant)
-        identifiant = ((materiel or {}).get('produits') or {}).get(
-            'onduleur')
-        if identifiant not in (None, ''):
-            produit_onduleur = get_produit_scoped(company, identifiant)
-
-    if produit_batterie is None:
+    batterie = batterie_du_calepinage(calepinage, donnees, materiel, company)
+    if batterie is None:
         return {}
-
-    provenance = {
-        'produit': ('explicite' if saisie.get('produit') not in (None, '')
-                    else 'devis'),
-        'packs': ('explicite' if saisie.get('packs') not in (None, '')
-                  else ('devis' if packs_devis else 'defaut')),
-    }
-    packs = int(_nombre(saisie.get('packs')) or packs_devis or 1) or 1
-    declaration = {cle: valeur for cle, valeur in saisie.items()
+    declaration = {cle: valeur for cle, valeur in batterie['saisie'].items()
                    if cle not in ('produit', 'packs') and valeur is not None}
-    nom = str(getattr(produit_batterie, 'nom', '') or '').strip()
+    nom = str(getattr(batterie['produit'], 'nom', '') or '').strip()
     declaration['groupes'] = [{
         'groupe': nom or 'Batterie',
-        'packs': packs,
-        'specs': specs_batterie(produit_batterie,
-                                produit_onduleur=produit_onduleur,
-                                nb_packs=packs),
+        'packs': batterie['packs'],
+        'specs': batterie['specs'],
     }]
-    declaration['provenance'] = provenance
+    declaration['provenance'] = batterie['provenance']
     return declaration
 
 
