@@ -18,7 +18,10 @@
  * l'étude technique (et le lead garde sa propre bande ROI, inchangée).
  */
 
-import { PRODUCTION_NET_FACTOR } from './systemLoss';
+import {
+  FALLBACK_SPECIFIC_YIELD_KWH_PER_KWC,
+  FALLBACK_SPECIFIC_YIELD_PVGIS14,
+} from './productionEngine';
 
 /** Coordonnée GeoJSON : [longitude, latitude]. */
 export type LngLat = [number, number];
@@ -39,15 +42,13 @@ export const SETBACK_M = 0.4; // retrait de rive (sécurité incendie / maintena
 export const PANEL_GAP_M = 0.02; // jeu entre panneaux
 
 // — Hypothèses énergie (Maroc) —
-/** Productible de repli EN BASE PVGIS 14 % (même base que la table committée). */
-export const KWH_PER_KWC_YEAR_PVGIS14 = 1600;
 /**
- * Productible de repli quand PVGIS est injoignable, RAMENÉ À LA BASE 20 %
- * (ordre fondateur 18/08) : 1600 × 0,9302 ≈ 1488 kWh/kWc/an. C'est ce chiffre
- * qui est servi au visiteur, donc il doit être sur la même base que
- * `specificYield()` et que le devis ERP. Source unique : src/lib/systemLoss.ts.
+ * Productible de repli (base 14 % / base 20 %) : RÉEXPORT de la constante unique
+ * de productionEngine.ts (ACAL271) = productible du devis (1651), plus de 1600
+ * propre. Servi au visiteur quand PVGIS est injoignable.
  */
-export const KWH_PER_KWC_YEAR = KWH_PER_KWC_YEAR_PVGIS14 * PRODUCTION_NET_FACTOR;
+export const KWH_PER_KWC_YEAR_PVGIS14 = FALLBACK_SPECIFIC_YIELD_PVGIS14;
+export const KWH_PER_KWC_YEAR = FALLBACK_SPECIFIC_YIELD_KWH_PER_KWC;
 /**
  * @deprecated Tarif moyen PLAT — ne plus l'utiliser pour valoriser des kWh.
  * ORDRE FONDATEUR (18/08) : « I want the new price per kWh to be used so the

@@ -282,9 +282,16 @@ export function shapeFromDailyProfiles(profiles: DrcalcDailyPoint[]): HourlyProf
   return byMonth.map((prof, mi) => prof.map((s, h) => (cntByMonth[mi][h] > 0 ? s / cntByMonth[mi][h] : 0)));
 }
 
-/** Repli prudent EXPRIMÉ EN BASE PVGIS 14 % (même base que la table committée). */
-export const FALLBACK_SPECIFIC_YIELD_PVGIS14 = 1600;
-/** Le même repli ramené à la base 20 % du fondateur (≈ 1488 kWh/kWc/an). */
+/**
+ * Productible par défaut du DEVIS, base PVGIS 14 % (Casablanca) — miroir de
+ * backend/django_core/apps/ventes/quote_engine/productible.py:38
+ * (DEFAULT_PRODUCTIBLE = 1651). ACAL271 : le repli de l'atelier et du site public
+ * vaut le productible du devis (plus l'ancien 1600 « prudent »).
+ */
+export const DEFAULT_PRODUCTIBLE_DEVIS = 1651;
+/** Repli EXPRIMÉ EN BASE PVGIS 14 % (même base que la table committée) = productible du devis. */
+export const FALLBACK_SPECIFIC_YIELD_PVGIS14 = DEFAULT_PRODUCTIBLE_DEVIS;
+/** Le même repli ramené à la base 20 % du fondateur (≈ 1536 kWh/kWc/an : 1651 × 0,9302). */
 export const FALLBACK_SPECIFIC_YIELD_KWH_PER_KWC =
   FALLBACK_SPECIFIC_YIELD_PVGIS14 * PRODUCTION_NET_FACTOR;
 
@@ -302,7 +309,7 @@ export const FALLBACK_SPECIFIC_YIELD_KWH_PER_KWC =
  * son chiffre (les tests passent 1600/1500 en clair : comportement inchangé).
  *
  * @param specificYieldKwhPerKwc rendement annuel par kWc
- *        (défaut : 1600 base PVGIS 14 % → ≈ 1488 base 20 %, prudent).
+ *        (défaut : 1651 base PVGIS 14 % = productible du devis → ≈ 1536 base 20 %).
  */
 export function fallbackPerKwc(
   specificYieldKwhPerKwc = FALLBACK_SPECIFIC_YIELD_KWH_PER_KWC,
