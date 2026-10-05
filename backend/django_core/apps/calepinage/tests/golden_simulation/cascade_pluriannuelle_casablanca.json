@@ -445,7 +445,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "Aucun transformateur dans cette installation : le poste ne la concerne pas et rien ne reste à renseigner."
+     "motif_omission_non_compare": "transformateur non déclaré : déclarez-le ou répondez ‘pas de transformateur’"
     },
     {
      "omise": true,

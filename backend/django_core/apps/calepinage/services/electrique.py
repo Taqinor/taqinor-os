@@ -347,6 +347,7 @@ CHAMPS_ENTREE = (
     'affectation_manuelle',  # CAL234 — affectation IMPOSÉE module par module
     'polystring',           # CALX206 — pans mis en parallèle sur une entrée
     'derogations',          # CALX215 — alertes PASSÉES OUTRE (geste, pas réglage)
+    'transformateur',       # ACAL151 — {declare, 3 grandeurs sourcées}
 )
 
 #: CALX215 — la clé par laquelle une alerte est PASSÉE OUTRE. C'est un GESTE,
@@ -709,6 +710,7 @@ def _valider_entree(calepinage, fusionnee, postee):
             raise EntreeInvalide(
                 "« %s » doit être un objet {...} (reçu : %s)."
                 % (cle, type(valeur).__name__), champ=cle)
+    _valider_transformateur(postee.get('transformateur'))
     poly = postee.get(CLE_POLYSTRING)
     if poly not in (None, '') and not isinstance(poly, (list, tuple)):
         raise EntreeInvalide(
@@ -743,6 +745,59 @@ def _valider_entree(calepinage, fusionnee, postee):
         except PolystringRefuse as refus:
             raise EntreeInvalide(str(refus), champ='%s.%s' % (
                 CLE_POLYSTRING, refus.champ or 'groupes'))
+
+
+def _valider_transformateur(saisie):
+    """ACAL151 — la FORME du transformateur : ``{declare, 3 grandeurs}``.
+
+    Chaque grandeur est ``{valeur, source, reference}`` : une valeur sans
+    source n'est pas une saisie (D-CALX 7) et le refus NOMME le champ. La
+    lecture de l'étape (``services/etapes/transformateur.py``) reste LA
+    règle de calcul ; ici, on refuse seulement ce qu'elle ignorerait en
+    silence.
+    """
+    from .etapes.transformateur import (
+        CHAMP_A_VIDE, CHAMP_EN_CHARGE, CHAMP_NOMINAL, CLE_TRANSFORMATEUR,
+    )
+
+    if saisie is None:
+        return
+    if not isinstance(saisie, dict):
+        raise EntreeInvalide(
+            "« transformateur » doit être un objet {declare, %s, %s, %s} "
+            "(reçu : %s)." % (CHAMP_A_VIDE, CHAMP_EN_CHARGE, CHAMP_NOMINAL,
+                              type(saisie).__name__),
+            champ=CLE_TRANSFORMATEUR)
+    grandeurs = (CHAMP_A_VIDE, CHAMP_EN_CHARGE, CHAMP_NOMINAL)
+    inconnues = sorted(set(saisie) - {'declare', *grandeurs})
+    if inconnues:
+        raise EntreeInvalide(
+            "Champ du transformateur inconnu : « %s »." % inconnues[0],
+            champ='%s.%s' % (CLE_TRANSFORMATEUR, inconnues[0]))
+    if not isinstance(saisie.get('declare'), bool):
+        raise EntreeInvalide(
+            "Répondez à la question « transformateur » : declare vaut vrai "
+            "(un transformateur est déclaré) ou faux (pas de transformateur).",
+            champ='%s.declare' % CLE_TRANSFORMATEUR)
+    for champ in grandeurs:
+        brut = saisie.get(champ)
+        if brut is None:
+            continue
+        chemin = '%s.%s' % (CLE_TRANSFORMATEUR, champ)
+        if not isinstance(brut, dict):
+            raise EntreeInvalide(
+                "« %s » doit être un objet {valeur, source, reference}."
+                % champ, champ=chemin)
+        valeur = _nombre(brut.get('valeur'))
+        if not _fini(valeur) or valeur < 0:
+            raise EntreeInvalide(
+                "« %s » : valeur illisible ou négative (« %s »)."
+                % (champ, brut.get('valeur')), champ='%s.valeur' % chemin)
+        if not str(brut.get('source') or '').strip():
+            raise EntreeInvalide(
+                "« %s » est saisi sans sa source : une valeur sans source "
+                "n'est pas une saisie (fiche, plaque, procès-verbal…)."
+                % champ, champ='%s.source' % chemin)
 
 
 def _checklist_protections_tolerante(conception, decisions, norme):
@@ -965,9 +1020,9 @@ def resoudre_materiel(company, entree, *, calepinage=None):
 #: hors-réseau — lus tels qu'enregistrés, ``null`` quand rien n'est saisi.
 CLES_ENTREE_SUPPLEMENTAIRES = ('regime', 'transformateur', 'batterie',
                                'hors_reseau')
-CLES_ENTREE_SERVIE = (tuple(cle for cle in CHAMPS_ENTREE
-                            if cle != CLE_DEROGATIONS)
-                      + CLES_ENTREE_SUPPLEMENTAIRES)
+CLES_ENTREE_SERVIE = tuple(dict.fromkeys(
+    tuple(cle for cle in CHAMPS_ENTREE if cle != CLE_DEROGATIONS)
+    + CLES_ENTREE_SUPPLEMENTAIRES))
 
 #: Le transformateur tant que la question n'a pas été répondue : DÉCLARÉ
 #: absent, aucune grandeur — jamais une perte inventée.
