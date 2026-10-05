@@ -26,6 +26,7 @@ import re as _re
 
 from django.apps import apps as django_apps
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError as DRFValidationError
 
 # CRX26 — LA date MÉTIER (Africa/Casablanca), lue EXPLICITEMENT : elle ne dépend
 # d'aucun réglage global. Avant AUD836, ``settings.TIME_ZONE`` valait ``'UTC'``
@@ -4890,12 +4891,22 @@ def resolve_client_for_lead(lead: Lead) -> Client:
         attacher_tiers_au_lead(lead, lead.client)
         return lead.client
 
+    lead_ice = _ice_normalise(getattr(lead, 'ice', None))
+
     def _find_existing():
+        # CIQ403 (contrat CIQ8, ``rattachement``) — l'ICE d'abord : jamais un
+        # second client pour le même ICE dans la même société.
+        if lead_ice:
+            for candidate in Client.objects.filter(
+                    company=lead.company, ice__isnull=False).exclude(ice=''):
+                if _ice_normalise(candidate.ice) == lead_ice:
+                    return candidate
         if lead.email:
             match = Client.objects.filter(
                 company=lead.company, email__iexact=lead.email,
             ).first()
             if match is not None:
+                _verifier_ice_compatible(match, lead_ice, "l'e-mail")
                 return match
         # QX17 — repli téléphone : un client marocain récurrent n'a pas
         # toujours le MÊME email (ou aucun) d'un dossier à l'autre — le
@@ -4911,6 +4922,7 @@ def resolve_client_for_lead(lead: Lead) -> Client:
             return None
         for candidate in Client.objects.filter(company=lead.company):
             if normalize_phone(candidate.telephone) == lead_phone:
+                _verifier_ice_compatible(candidate, lead_ice, 'le téléphone')
                 return candidate
         return None
 
@@ -4938,6 +4950,49 @@ def resolve_client_for_lead(lead: Lead) -> Client:
     # nom du lead n'est touché (QW7).
     attacher_tiers_au_lead(lead, client)
     return client
+
+
+class ConflitIdentiteEntreprise(DRFValidationError):
+    """CIQ403 (contrat CIQ8 ``exemple_conflit``) — l'e-mail ou le téléphone
+    du lead désigne un client dont l'ICE DIFFÈRE de celui du lead : jamais
+    une réutilisation silencieuse. Sous-classe de ``ValidationError`` DRF :
+    tout appelant HTTP rend un 400 qui nomme ``ice`` sans être modifié."""
+
+    default_code = 'conflit_identite_entreprise'
+
+    def __init__(self, message):
+        super().__init__({'code': 'conflit_identite_entreprise',
+                          'champ': 'ice', 'message': message})
+
+
+def _ice_normalise(valeur):
+    """ICE comparable : espaces retirés ; vide = ``''``."""
+    return _re.sub(r'\s', '', str(valeur or '')).upper()
+
+
+def _verifier_ice_compatible(client, lead_ice, par):
+    client_ice = _ice_normalise(client.ice)
+    if lead_ice and client_ice and client_ice != lead_ice:
+        raise ConflitIdentiteEntreprise(
+            f'Le client trouvé par {par} (« {client.nom} ») porte l\'ICE '
+            f'{client.ice}, différent de celui du lead ({lead_ice}) : '
+            "vérifier l'ICE avant de créer ou de rattacher le client.")
+
+
+def lead_est_entreprise(lead):
+    """CIQ403 (contrat CIQ8, ``creation_depuis_lead.quand_entreprise``) —
+    le client d'un lead commercial/industriel, ou qui porte une raison
+    sociale, est une ENTREPRISE ; sinon un particulier (inchangé)."""
+    return (getattr(lead, 'type_installation', None)
+            in ('commercial', 'industriel')
+            or bool((getattr(lead, 'societe', None) or '').strip()))
+
+
+def _nom_personne(lead):
+    return ' '.join(
+        p.strip() for p in (getattr(lead, 'prenom', None),
+                            getattr(lead, 'nom', None))
+        if p and p.strip())
 
 
 def _resoudre_ou_creer_client(lead, _find_existing):
@@ -4970,16 +5025,38 @@ def _resoudre_ou_creer_client(lead, _find_existing):
             # a gagné la course, l'unique_together (company, email) lève une
             # IntegrityError — on la rattrape et on réutilise le client existant
             # (style get_or_create), au lieu de propager un 500.
-            with transaction.atomic():
-                client = Client.objects.create(
-                    company=lead.company,
-                    nom=lead.nom,
-                    prenom=lead.prenom,
-                    email=lead.email,
-                    telephone=(lead.telephone or '')[:20] or None,
-                    adresse=adresse or None,
-                    langue_document=langue_document,
+            champs = dict(
+                company=lead.company,
+                nom=lead.nom,
+                prenom=lead.prenom,
+                email=lead.email,
+                telephone=(lead.telephone or '')[:20] or None,
+                adresse=adresse or None,
+                langue_document=langue_document,
+            )
+            if lead_est_entreprise(lead):
+                # CIQ403 — client ENTREPRISE (contrat CIQ8) : la raison
+                # sociale nomme le client, la personne devient « à
+                # l'attention de ». Sans raison sociale : le nom de la
+                # personne, marqué à confirmer (jamais bloquant). Les
+                # identifiants sont recopiés tels que DÉCLARÉS.
+                raison = (lead.societe or '').strip()
+                personne = _nom_personne(lead)
+                champs.update(
+                    type_client=Client.TypeClient.ENTREPRISE,
+                    nom=raison or personne or lead.nom,
+                    prenom=None,
+                    raison_sociale_a_confirmer=not raison,
+                    contact_nom=personne or None,
+                    contact_fonction=lead.fonction_contact or None,
+                    ice=(lead.ice or '').strip() or None,
+                    rc=lead.rc or None,
+                    if_fiscal=lead.if_fiscal or None,
+                    adresse_siege=lead.adresse_siege or None,
+                    tva_recuperable=lead.tva_recuperable or None,
                 )
+            with transaction.atomic():
+                client = Client.objects.create(**champs)
         except IntegrityError:
             # CRX24 — attrape AUSSI la contrainte insensible à la casse
             # ``crx24_client_email_unique_ci`` : ``_find_existing`` cherche en
@@ -4996,22 +5073,53 @@ def _resoudre_ou_creer_client(lead, _find_existing):
 #: Champs d'identité recopiés du lead vers sa fiche Client (contrat
 #: ``lead_client_ecart.json``) — ordre stable, celui de l'écart servi.
 IDENTITE_CLIENT_CHAMPS = ('nom', 'prenom', 'email', 'telephone', 'adresse')
+#: CIQ403 (contrat ``lead_client_ecart.json`` → ``exemple_entreprise``) — un
+#: client ENTREPRISE suit en plus son identité légale ; ``prenom`` n'a pas de
+#: sens pour lui (la personne est ``contact_nom``).
+IDENTITE_CLIENT_CHAMPS_ENTREPRISE = (
+    'nom', 'email', 'telephone', 'adresse', 'contact_nom',
+    'contact_fonction', 'ice', 'rc', 'if_fiscal', 'adresse_siege',
+    'tva_recuperable',
+)
 
 
-def identite_client_depuis_lead(lead):
+def _champs_identite(client):
+    if getattr(client, 'type_client', None) == Client.TypeClient.ENTREPRISE:
+        return IDENTITE_CLIENT_CHAMPS_ENTREPRISE
+    return IDENTITE_CLIENT_CHAMPS
+
+
+def identite_client_depuis_lead(lead, *, entreprise=False):
     """Identité Client telle que :func:`_resoudre_ou_creer_client` la
-    recopie d'un lead (adresse = adresse + ', ' + ville ; téléphone ≤ 20)."""
+    recopie d'un lead (adresse = adresse + ', ' + ville ; téléphone ≤ 20).
+
+    CIQ403 — ``entreprise=True`` : nom ← societe (sinon la personne),
+    contact_nom ← prénom + nom, et l'identité légale déclarée."""
     adresse = getattr(lead, 'adresse', None) or ''
     ville = getattr(lead, 'ville', None)
     if ville:
         adresse = ', '.join(p for p in (adresse, ville) if p)
-    return {
+    identite = {
         'nom': getattr(lead, 'nom', None),
         'prenom': getattr(lead, 'prenom', None),
         'email': getattr(lead, 'email', None),
         'telephone': (getattr(lead, 'telephone', None) or '')[:20] or None,
         'adresse': adresse or None,
     }
+    if entreprise:
+        personne = _nom_personne(lead) or None
+        identite.update(
+            nom=(getattr(lead, 'societe', None) or '').strip() or personne,
+            prenom=None,
+            contact_nom=personne,
+            contact_fonction=getattr(lead, 'fonction_contact', None),
+            ice=(getattr(lead, 'ice', None) or '').strip() or None,
+            rc=getattr(lead, 'rc', None),
+            if_fiscal=getattr(lead, 'if_fiscal', None),
+            adresse_siege=getattr(lead, 'adresse_siege', None),
+            tva_recuperable=getattr(lead, 'tva_recuperable', None),
+        )
+    return identite
 
 
 def _identite_egale(champ, a, b):
@@ -5041,8 +5149,10 @@ def client_ecart(lead):
     client = _client_synchronisable(lead)
     if client is None:
         return []
-    cible = identite_client_depuis_lead(lead)
-    return [c for c in IDENTITE_CLIENT_CHAMPS
+    champs = _champs_identite(client)
+    cible = identite_client_depuis_lead(
+        lead, entreprise=champs is IDENTITE_CLIENT_CHAMPS_ENTREPRISE)
+    return [c for c in champs
             if not _identite_egale(c, getattr(client, c, None), cible[c])]
 
 
@@ -5069,10 +5179,13 @@ def synchroniser_identite_client(lead, avant, user, *, force=False):
     client = _client_synchronisable(lead)
     if client is None:
         return [], None
-    cible = identite_client_depuis_lead(lead)
-    ancienne = identite_client_depuis_lead(avant) if avant is not None else {}
+    champs_suivis = _champs_identite(client)
+    entreprise = champs_suivis is IDENTITE_CLIENT_CHAMPS_ENTREPRISE
+    cible = identite_client_depuis_lead(lead, entreprise=entreprise)
+    ancienne = (identite_client_depuis_lead(avant, entreprise=entreprise)
+                if avant is not None else {})
     champs = []
-    for c in IDENTITE_CLIENT_CHAMPS:
+    for c in champs_suivis:
         actuelle = getattr(client, c, None)
         if _identite_egale(c, actuelle, cible[c]):
             continue
