@@ -39,10 +39,12 @@ import {
   degagementObstacle,
   formeObstacle,
   lireGabaritsObstacle,
+  lireGabaritsZone,
   obstacleCercle,
   obstacleDepuisGabarit,
   obstaclePolygone,
   type GabaritObstacle,
+  type GabaritZone,
   type ObstacleEtendu,
 } from './types';
 import {
@@ -700,7 +702,14 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
           `<button type="button" data-zone-add="${n.id}" class="rp9-btn" title="${esc(n.note)}" ` +
           `style="border-color:${exclusionColor(n.id)}">Zone ${esc(n.label.toLowerCase())}</button>`,
       ).join('') +
-      `</div><ul id="rp9-zone-list" class="mt-2 flex flex-col gap-1 text-xs"></ul>`;
+      `</div>` +
+      // ACAL291 — gabarit RÉGLEMENTAIRE de la société (source obligatoire) : le glissé reste le geste.
+      `<div class="mt-2 flex flex-wrap items-center gap-2 text-xs">` +
+      `<label class="inline-flex items-center gap-1" for="rp9-zone-gabarit">Gabarit réglementaire` +
+      `<select id="rp9-zone-gabarit" class="rp9-input"></select></label>` +
+      `<button type="button" id="rp9-zone-gabarit-poser" class="rp9-btn" disabled>Poser une zone depuis ce gabarit</button>` +
+      `<span id="rp9-zone-gabarit-vide" class="text-lune-faint"></span></div>` +
+      `<ul id="rp9-zone-list" class="mt-2 flex flex-col gap-1 text-xs"></ul>`;
     anchorEl.appendChild(panel);
     return panel;
   }
@@ -711,10 +720,18 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     return ctx.exclusionZones;
   }
 
-  function beginZone(nature: ExclusionNature) {
+  /** ACAL291 — le gabarit réglementaire armé pour le prochain glissé, ou null. */
+  let gabaritZoneArme: GabaritZone | null = null;
+
+  function beginZone(nature: ExclusionNature, gabarit: GabaritZone | null = null) {
+    gabaritZoneArme = gabarit;
     ctx.pendingZoneNature = nature;
     setObstacleMode(true);
-    setStatus(`Tracez la zone ${nature.toLowerCase()} : glissez un rectangle sur la carte.`);
+    setStatus(
+      gabarit
+        ? `Tracez la zone « ${gabarit.libelle} » (${gabarit.source}) : glissez un rectangle sur la carte.`
+        : `Tracez la zone ${nature.toLowerCase()} : glissez un rectangle sur la carte.`,
+    );
   }
 
   function updateZone(id: string, transform: (z: ExclusionZone) => ExclusionZone) {
@@ -833,6 +850,29 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
    *  on ne le redemande pas, et on n'en suppose aucun. */
   const paysDuSite = ctx.opts?.imagery?.pays ?? null;
   const { gabarits: gabaritsObstacle, refuses: gabaritsRefuses } = lireGabaritsObstacle(reglages?.zones_types);
+  // ACAL291 — les gabarits de ZONE réglementaire (les gabarits d'obstacle sont ignorés ici).
+  const { gabarits: gabaritsZone, refuses: gabaritsZoneRefuses } = lireGabaritsZone(reglages?.zones_types);
+  const zoneGabaritEl = $<HTMLSelectElement>('rp9-zone-gabarit');
+  const zoneGabaritPoserBtn = $<HTMLButtonElement>('rp9-zone-gabarit-poser');
+  const zoneGabaritVideEl = $('rp9-zone-gabarit-vide');
+  if (zoneGabaritEl) {
+    zoneGabaritEl.innerHTML = gabaritsZone
+      .map((g) => `<option value="${esc(g.cle)}">${esc(g.libelle)} — ${esc(g.source)}</option>`)
+      .join('');
+    zoneGabaritEl.disabled = gabaritsZone.length === 0;
+  }
+  if (zoneGabaritPoserBtn) zoneGabaritPoserBtn.disabled = gabaritsZone.length === 0;
+  if (zoneGabaritVideEl) {
+    zoneGabaritVideEl.textContent = gabaritsZoneRefuses.length
+      ? gabaritsZoneRefuses.map((r) => r.motif).join(' ')
+      : gabaritsZone.length
+        ? ''
+        : 'Aucun gabarit réglementaire saisi dans les réglages de la société.';
+  }
+  zoneGabaritPoserBtn?.addEventListener('click', () => {
+    const g = gabaritsZone.find((x) => x.cle === zoneGabaritEl?.value);
+    if (g) beginZone(g.nature, g);
+  });
   const largeurReglee = largeurAlleeDepuisReglages(reglages?.degagements, paysDuSite);
 
   let modeTrace: ModeTrace | null = null;
@@ -1359,7 +1399,9 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
         return;
       }
       ctx.pushWorkshopHistory?.();
-      zoneList().push(exclusionZoneFromDrag(prochainId('zone', zoneList()), nature, start.lngLat, end)); // ACAL64
+      const gabarit = gabaritZoneArme; // ACAL291
+      gabaritZoneArme = null;
+      zoneList().push(exclusionZoneFromDrag(prochainId('zone', zoneList()), nature, start.lngLat, end, gabarit)); // ACAL64
       renderZoneList();
       redrawExclusionZones();
       recalcWithShading();
