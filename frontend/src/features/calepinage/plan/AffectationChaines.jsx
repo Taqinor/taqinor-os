@@ -1,11 +1,10 @@
 /* eslint-disable react-refresh/only-export-components --
-   `AFFECTATION_PALETTE`, `AFFECTATION_UNASSIGNED` et `couleurParModule` sont
-   des constantes/fonctions PURES : le test jumeau les confronte, valeur par
-   valeur, à la palette de `apps/web/src/scripts/roofPro11/scene3d.ts` (CAL126)
-   pour qu'un module teinté ici ait EXACTEMENT la couleur qu'il a dans la 3D.
-   Les sortir dans un `.js` voisin séparerait la table de son unique lecteur
-   pour satisfaire une règle de fast-refresh qui ne s'applique pas à une
-   constante — même dérogation que `module.config.jsx` du même module. */
+   `couleurParModule` est une fonction PURE testée seule : la sortir dans un
+   `.js` voisin séparerait la table de son unique lecteur pour satisfaire une
+   règle de fast-refresh — même dérogation que `module.config.jsx` du même
+   module. ACAL324 — la teinte n'est plus une palette locale : c'est celle que
+   le serveur SERT ligne par ligne (`couleur_chaine` / `couleur_mppt`,
+   source unique `services/chaines.py::PALETTE_CHAINES`). */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
@@ -64,26 +63,17 @@ import RetourAtelier from '../atelier/RetourAtelier'
    sont RECOPIÉS tels quels — cet écran n'en reformule ni n'en filtre aucun.
    ========================================================================== */
 
-/* ── LA TEINTE DES CHAÎNES — MIROIR EXACT DE CAL126 ────────────────────────
-   Ces valeurs sont celles de `AFFECTATION_PALETTE` / `AFFECTATION_UNASSIGNED`
-   de `apps/web/src/scripts/roofPro11/scene3d.ts`. Les deux projets (portail
-   Vite et site Astro) ne partagent aucun module : le seul moyen d'empêcher la
-   dérive est de la VÉRIFIER, ce que fait le test jumeau en relisant le source
-   TypeScript. Un module doit avoir la même couleur ici et dans la 3D, sans
-   quoi l'installateur croit corriger une chaîne et en corrige une autre. */
-export const AFFECTATION_PALETTE = [
-  'rgb(36, 130, 214)', // bleu
-  'rgb(232, 125, 33)', // orange
-  'rgb(46, 163, 89)', // vert
-  'rgb(184, 64, 158)', // magenta
-  'rgb(0, 153, 158)', // sarcelle
-  'rgb(212, 61, 71)', // rouge
-  'rgb(115, 102, 199)', // violet
-  'rgb(153, 133, 26)', // ocre
-]
+/* ── LA TEINTE DES CHAÎNES — SERVIE PAR LE SERVEUR (ACAL324) ───────────────
+   Chaque ligne de `electrique.affectation[]` porte `couleur_chaine` et
+   `couleur_mppt` (gris pour un module non affecté) : la même valeur colore
+   cet écran, la 3D et le plan de câblage PDF. Aucune palette n'est recopiée
+   ici — une copie locale, c'est une couleur qui dérive. */
 
-/** GRIS des modules NON affectés — jamais une couleur de groupe. */
-export const AFFECTATION_UNASSIGNED = 'rgb(140, 143, 148)'
+/** La couleur SERVIE d'une ligne pour le mode affiché, ou `null`. */
+export function couleurServie(ligne, mode) {
+  const couleur = mode === 'chaine' ? ligne.couleur_chaine : ligne.couleur_mppt
+  return typeof couleur === 'string' && couleur ? couleur : null
+}
 
 /** Clé de groupe d'une ligne. `null` = module non affecté (gris). */
 export function cleGroupe(ligne, mode) {
@@ -111,21 +101,20 @@ export function couleurParModule(lignes, mode) {
   const couleurs = new Map()
   const parCle = new Map()
   const ordre = []
-  let prochaine = 0
   for (const ligne of lignes || []) {
     if (!ligne || typeof ligne.module !== 'string') continue
     const cle = cleGroupe(ligne, mode)
     let entree = parCle.get(cle)
     if (!entree) {
-      const couleur = cle == null
-        ? AFFECTATION_UNASSIGNED
-        : AFFECTATION_PALETTE[prochaine++ % AFFECTATION_PALETTE.length]
+      // ACAL324 — la pastille du groupe prend la couleur SERVIE par sa
+      // première ligne (ordre de première apparition, comme le serveur).
+      const couleur = couleurServie(ligne, mode)
       entree = { cle, libelle: libelleGroupe(ligne, mode), couleur, nombre: 0 }
       parCle.set(cle, entree)
       ordre.push(cle)
     }
     entree.nombre += 1
-    couleurs.set(ligne.module, entree.couleur)
+    couleurs.set(ligne.module, couleurServie(ligne, mode) || entree.couleur)
   }
   const legende = ordre
     .map((c) => parCle.get(c))
@@ -457,7 +446,7 @@ export default function AffectationChaines({ calepinageId }) {
                 title={`${ligne.module} — ${libelleGroupe(ligne, mode)} (${ligne.source})${
                   estFaible(ligne) ? ' — chaîne la plus faible en ombrage' : ''
                 }`}
-                style={{ backgroundColor: couleurs.get(ligne.module) || AFFECTATION_UNASSIGNED }}
+                style={{ backgroundColor: couleurs.get(ligne.module) || undefined }}
                 className={`h-7 w-12 rounded text-[10px] text-white ${
                   selection.has(ligne.module) ? 'ring-2 ring-foreground' : ''
                 } ${estFaible(ligne) ? 'outline outline-2 outline-dashed outline-amber-500' : ''}`}

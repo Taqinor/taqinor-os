@@ -1017,7 +1017,8 @@ def _cartouche(entree, resultat, largeur, hauteur, cartouche):
         lignes.append(("Stockage", entree.batterie_designation))
     lignes.extend([
         ("Régime / phases", "%s · %s" % (
-            entree.regime,
+            # ACAL152 — jamais « None » ni un « TT » supposé.
+            entree.regime or "Régime non précisé",
             "triphasé" if int(entree.phases or 1) == 3 else "monophasé")),
         ("Date", donnees.get("date", "—")),
         ("Indice", donnees.get("indice", "A")),

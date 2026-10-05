@@ -92,8 +92,9 @@ DETAIL_DEJA_CALCULE = (
 
 MOTIF_SANS_PAN_EQUIPE = (
     'Aucun pan de ce calepinage ne porte à la fois des modules et une '
-    "puissance crête : il n'y a rien à simuler. Posez des modules et "
-    'désignez le module PV avant de lancer la simulation.')
+    "puissance crête : il n'y a rien à simuler. Posez des modules, puis "
+    "désignez le module PV dans l'onglet Matériel électrique (ou liez un "
+    'devis qui porte une ligne module) avant de lancer la simulation.')
 
 MOTIF_SANS_POINT = (
     "Le site de ce calepinage n'a pas de point GPS : la météo se demande à "
@@ -227,7 +228,7 @@ def _site_du_calepinage(calepinage, document, imagerie):
     }
 
 
-def _declaration_batterie(calepinage, document, entree, company):
+def _declaration_batterie(calepinage, document, materiel, company):
     """La batterie DÉCLARÉE et les specs de son pack, ou ``{}``.
 
     La déclaration vit sur le document (``roof_layout.battery``) ; les
@@ -235,6 +236,11 @@ def _declaration_batterie(calepinage, document, entree, company):
     ici parce que ce module est le seul à avoir accès au stock. Aucune
     stratégie n'est supposée : sans stratégie saisie, CALX188 omet le bloc et
     le dit.
+
+    ACAL56 — l'onduleur est celui du RÉSOLVEUR (``materiel``, rendu par
+    ``services/electrique.py::resoudre_materiel`` : désignation explicite,
+    sinon ligne du devis lié) — plus jamais une lecture directe de
+    ``entree['onduleur_produit']`` qui ignorait le devis.
     """
     from .batterie import specs_batterie
     from .equipements import equipements_du_calepinage
@@ -253,7 +259,8 @@ def _declaration_batterie(calepinage, document, entree, company):
                                                          dict) else None
         if isinstance(bloc, dict) and bloc.get('produit'):
             produit_batterie = get_produit_scoped(company, bloc['produit'])
-        identifiant = (entree or {}).get('onduleur_produit')
+        identifiant = ((materiel or {}).get('produits') or {}).get(
+            'onduleur')
         if identifiant not in (None, ''):
             produit_onduleur = get_produit_scoped(company, identifiant)
 
@@ -359,6 +366,7 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
     )
     from .norme import norme_applicable
     from .pertes import postes_du_calepinage
+    from .raccordement import saisie_du_calepinage
 
     conception, materiel_resolu, donnees, document = conception_du_calepinage(
         calepinage, entree=entree, layout=layout, materiel=materiel)
@@ -426,9 +434,12 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         'postes_saisis': postes_du_calepinage(calepinage),
         # ── les déclarations aval ───────────────────────────────────────
         'consommation': _declaration_consommation(document),
-        'batterie': _declaration_batterie(calepinage, document, donnees,
-                                          company),
-        'raccordement': _section_du_document(document, 'raccordement'),
+        'batterie': _declaration_batterie(calepinage, document,
+                                          materiel_resolu, company),
+        # ACAL155 — LA saisie de raccordement (cos φ imposé, plafond
+        # d'injection), écrite par ``POST raccordement/`` : jamais une
+        # section du document qu'aucun écrivain ne produit.
+        'raccordement': saisie_du_calepinage(calepinage),
         'hors_reseau': _section_du_document(document, 'hors_reseau'),
         # CALX271 — les batteries du STOCK, pour comparer leurs capacités.
         'capacites_batterie_stock': _capacites_batterie_du_stock(company),
@@ -643,23 +654,6 @@ def _simulation_enregistree(calepinage):
     stocke = stocke if isinstance(stocke, dict) else {}
     entete = stocke.get(CLE_SIMULATION)
     return dict(entete) if isinstance(entete, dict) else {}
-
-
-def _fusionner(calepinage, blocs):
-    """Pose ``blocs`` dans ``Calepinage.resultat`` PAR FUSION DE CLÉS.
-
-    Patron de ``services/electrique.py::enregistrer_entree`` : les clés que la
-    simulation ne produit pas (``entree_electrique``, ``pertes`` saisies,
-    ``horizon``…) sont conservées à l'octet près. Seule la colonne ``resultat``
-    est écrite — AUCUN statut (règle #4).
-    """
-    resultat = getattr(calepinage, 'resultat', None)
-    resultat = dict(resultat) if isinstance(resultat, dict) else {}
-    resultat.update(blocs)
-    calepinage.resultat = resultat
-    if getattr(calepinage, 'pk', None):
-        calepinage.save(update_fields=['resultat', 'updated_at'])
-    return resultat
 
 
 def _ajouter_avertissement(blocs, texte):
@@ -1013,7 +1007,14 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         'duree_s': round(time.monotonic() - depart, 3),
     }
     if enregistrer:
-        _fusionner(calepinage, blocs)
+        # ACAL57 — l'écrivain unique : les blocs de la simulation sont posés
+        # PAR FUSION DE CLÉS sur le resultat RELU sous verrou au moment
+        # d'écrire. Une saisie faite PENDANT le calcul (``entree_electrique``,
+        # ``sld_edition``…) n'est donc jamais effacée par l'instantané lu au
+        # début. Seule la colonne ``resultat`` est écrite — AUCUN statut.
+        from .resultat import modifier_resultat
+
+        modifier_resultat(calepinage, lambda resultat: resultat.update(blocs))
         _annoncer_simulation(calepinage)
     return {
         'deja_calcule': False,

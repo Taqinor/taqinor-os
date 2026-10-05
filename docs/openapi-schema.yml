@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4724, operations: 7510, components: 2157}
+counts: {paths: 4724, operations: 7512, components: 2157}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -545,6 +545,7 @@ operations:
 - get /api/django/calepinage/calepinages/{id}/dossiers-reglementaires/ -> django_calepinage_calepinages_dossiers_reglementaires_retrieve
 - post /api/django/calepinage/calepinages/{id}/dupliquer/ -> django_calepinage_calepinages_dupliquer_create
 - post /api/django/calepinage/calepinages/{id}/enregistrer-pertes/ -> django_calepinage_calepinages_enregistrer_pertes_create
+- get /api/django/calepinage/calepinages/{id}/entree-electrique/ -> django_calepinage_calepinages_entree_electrique_retrieve
 - post /api/django/calepinage/calepinages/{id}/entree-electrique/ -> django_calepinage_calepinages_entree_electrique_create
 - get /api/django/calepinage/calepinages/{id}/equipements/ -> django_calepinage_calepinages_equipements_retrieve
 - delete /api/django/calepinage/calepinages/{id}/etiquettes/ -> django_calepinage_calepinages_etiquettes_destroy
@@ -4338,6 +4339,7 @@ operations:
 - get /api/v1/calepinage/calepinages/{id}/dossiers-reglementaires/ -> v1_calepinage_calepinages_dossiers_reglementaires_retrieve
 - post /api/v1/calepinage/calepinages/{id}/dupliquer/ -> v1_calepinage_calepinages_dupliquer_create
 - post /api/v1/calepinage/calepinages/{id}/enregistrer-pertes/ -> v1_calepinage_calepinages_enregistrer_pertes_create
+- get /api/v1/calepinage/calepinages/{id}/entree-electrique/ -> v1_calepinage_calepinages_entree_electrique_retrieve
 - post /api/v1/calepinage/calepinages/{id}/entree-electrique/ -> v1_calepinage_calepinages_entree_electrique_create
 - get /api/v1/calepinage/calepinages/{id}/equipements/ -> v1_calepinage_calepinages_equipements_retrieve
 - delete /api/v1/calepinage/calepinages/{id}/etiquettes/ -> v1_calepinage_calepinages_etiquettes_destroy

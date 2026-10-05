@@ -43,6 +43,7 @@ from apps.calepinage.services.electrique import (
     MENTION_NON_SOURCEE,
     SOURCE_SAISIE,
     SOURCE_TMY,
+    SOURCE_TMY_NOCT,
     enregistrer_fournisseur_temperatures,
     fournisseur_temperatures,
     temperatures_site,
@@ -124,14 +125,27 @@ class SourceTmyPublieeTest(_Socle):
     """Ce que la chaîne électrique publie, fournisseur branché."""
 
     def test_sans_saisie_la_source_est_tmy_et_la_mention_est_vide(self):
+        # ACAL164 (réécrit, règle (h)) — le chaud est une température de
+        # CELLULE : T2m max + (NOCT − 20) × 1000 / 800, jamais l'ambiante.
+        temperatures = temperatures_site(pin=PIN, saisie=None,
+                                         fournisseur=self.fournisseur(),
+                                         module_specs={'noct_c': 45.0})
+
+        self.assertEqual(temperatures.source, SOURCE_TMY_NOCT)
+        self.assertEqual(temperatures.mention, '')
+        self.assertTrue(temperatures.sourcees)
+        self.assertEqual(temperatures.froid_c, min(self.t2m))
+        self.assertAlmostEqual(temperatures.chaud_c,
+                               round(max(self.t2m) + 31.25, 2))
+
+    def test_sans_noct_le_chaud_est_le_repli_nomme_du_noyau(self):
         temperatures = temperatures_site(pin=PIN, saisie=None,
                                          fournisseur=self.fournisseur())
 
         self.assertEqual(temperatures.source, SOURCE_TMY)
-        self.assertEqual(temperatures.mention, '')
-        self.assertTrue(temperatures.sourcees)
         self.assertEqual(temperatures.froid_c, min(self.t2m))
-        self.assertEqual(temperatures.chaud_c, max(self.t2m))
+        self.assertEqual(temperatures.chaud_c, TEMP_CHAUD_DEFAUT_C)
+        self.assertEqual(temperatures.mention, MENTION_NON_SOURCEE)
 
     def test_la_base_et_la_fenetre_voyagent_jusqu_au_detail(self):
         temperatures = temperatures_site(pin=PIN, saisie=None,
