@@ -10556,6 +10556,29 @@ MENTION_VISITE_POINT_EAU = (
     'Visite de relevé du point d’eau, avant devis (règle pompage).')
 
 
+#: CIQ411 (D-CIQ-5) — la règle SITE PROFESSIONNEL : pour un lead commercial
+#: ou industriel dont le site est en MT, ou dont la tension, la puissance
+#: souscrite ou le toit restent inconnus, la visite technique se fait AVANT le
+#: devis final. Ce n'est pas une exception ; jamais un blocage.
+AVERTISSEMENT_VISITE_PRO = (
+    'Site professionnel : {motifs} — la visite technique se fait AVANT le '
+    'devis final (un devis indicatif reste possible, marqué « estimation '
+    'sous réserve de visite »).')
+
+#: CIQ411 — la phrase de la note de planification dans ce cas.
+MENTION_VISITE_PRO = 'Visite technique avant devis (règle site professionnel).'
+
+
+def visite_pro_avant_devis(lead):
+    """CIQ411 — ``devis_auto.visite_avant_devis(lead)`` (CIQ404) : le bloc
+    {requise, motifs} d'un lead commercial/industriel, ``None`` ailleurs."""
+    from .devis_auto import visite_avant_devis
+    if lead is None:
+        return None
+    bloc = visite_avant_devis(lead)
+    return bloc if bloc and bloc.get('requise') else None
+
+
 def visite_point_eau_requise(lead):
     """AGR408 — ``visite_point_eau_avant_devis(lead).requise`` (AGR403) :
     vrai seulement pour un lead AGRICOLE au point d'eau inconnu."""
@@ -10663,6 +10686,12 @@ def avertissement_visite(lead):
         texte = (AVERTISSEMENT_VISITE_POINT_EAU
                  if visite_point_eau_requise(lead)
                  else AVERTISSEMENT_VISITE_SANS_DEVIS)
+        # CIQ411 (D-CIQ-5) — site pro en MT ou aux faits inconnus : la
+        # visite AVANT le devis final est la règle, pas une exception.
+        pro = visite_pro_avant_devis(lead)
+        if pro is not None:
+            texte = AVERTISSEMENT_VISITE_PRO.format(
+                motifs=', '.join(pro['motifs']))
         return {'avertissement_sans_devis': texte,
                 'rappel_juridique': RAPPEL_JURIDIQUE_VISITE_DOMICILE}
     return {'avertissement_sans_devis': '', 'rappel_juridique': ''}
@@ -10743,9 +10772,13 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
         # dans le suivi : on a averti, on n'a pas bloqué, on le dit.
         # AGR408 (D-AGR-4) — pour un lead agricole au point d'eau inconnu,
         # c'est la RÈGLE pompage, pas une exception.
-        corps += (f' {MENTION_VISITE_POINT_EAU}'
-                  if visite_point_eau_requise(lead)
-                  else f' {MENTION_VISITE_SANS_DEVIS}')
+        # CIQ411 (D-CIQ-5) — site pro : visite avant devis, la règle.
+        if visite_pro_avant_devis(lead) is not None:
+            corps += f' {MENTION_VISITE_PRO}'
+        else:
+            corps += (f' {MENTION_VISITE_POINT_EAU}'
+                      if visite_point_eau_requise(lead)
+                      else f' {MENTION_VISITE_SANS_DEVIS}')
     if devis_en_attente:
         corps += f' {mention_devis_apres_visite(libelle_devis)}'
     # Note SYSTÈME (``user=None``) : PLANIFIER n'est pas AVOIR contacté le
