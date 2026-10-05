@@ -117,10 +117,12 @@ class Agr302RenvoiTroncatureTests(SimpleTestCase):
         return G.build_html_onepage(list(data['all_items'])[:2], tronquees=3)
 
     def test_agricole_tronque_ne_renvoie_plus_au_devis_multi_pages(self):
+        # AGR312 — re-épinglé : le renvoi pointe désormais vers le document
+        # agricole complet de 3 pages (le renderer est branché au registre).
         html = self._table_tronquee('agricole')
         self.assertIn('autres lignes d&#8217;&#233;quipement', html)
         self.assertNotIn('multi-pages', html)
-        self.assertIn('votre proposition en ligne (QR)', html)
+        self.assertIn('le document complet (3 pages)', html)
 
     def test_residentiel_tronque_garde_son_renvoi(self):
         html = self._table_tronquee('residentiel')

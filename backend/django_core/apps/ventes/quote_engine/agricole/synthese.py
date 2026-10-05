@@ -95,6 +95,28 @@ MOTIF_ET0_NON_SOURCEE = (
     "ET0 sans source : besoin agronomique non publiable, comparaison omise")
 MOTIF_MODE_POMPE_INCONNU = (
     "mode de pompe (neuve ou existante) non renseigné")
+MOTIF_ECONOMIES_ABSENTES = (
+    "aucune dépense actuelle déclarée par le client (énergie, consommation, "
+    "prix payé) : économies non chiffrées")
+MOTIF_ENERGIE_NON_DECLAREE = (
+    "énergie actuelle non déclarée par le client : jamais la valeur par "
+    "défaut de l'écran")
+
+#: AGR307 — clés du bloc AGR3 qui ne sortent JAMAIS vers un client (contrat
+#: ``economie_pompage.json`` › ``vue_interne`` : VAN, repère « butane au coût
+#: réel » D-AGR-5, aide FDA indicative…).
+CLES_INTERNES_AGR3 = ("vue_interne",)
+
+#: AGR307 — la condition de toute économie agricole, dite au client à côté du
+#: bloc (texte STRUCTUREL imprimé par le renderer — jamais ajouté au bloc
+#: AGR3, qui est recopié champ à champ).
+CONDITION_ECONOMIES = {
+    "fr": "Si le solaire remplace tout votre pompage actuel, à volume pompé "
+          "égal.",
+    "en": "If solar replaces all of your current pumping, for the same "
+          "volume pumped.",
+    "ar": "إذا عوّضت الطاقة الشمسية كل ضخّكم الحالي، بنفس حجم الماء المضخوخ.",
+}
 
 
 # ── utilitaires purs ────────────────────────────────────────────────────────
@@ -292,6 +314,36 @@ def _mode_pompe(etude, items):
     return "neuve" if _item_pompe(items) is not None else None
 
 
+def _bloc_economies(bloc):
+    """AGR307 — ``(bloc, motif)`` : le bloc PUBLIC ``economie_pompage`` (AGR3)
+    recopié champ à champ, SANS aucun recalcul ; ``vue_interne`` n'en sort
+    jamais. Omis (motif) quand il est absent, omis par le moteur ou non
+    publiable : un chiffre non publiable n'atteint pas le document."""
+    if not isinstance(bloc, dict) or not bloc:
+        return None, MOTIF_ECONOMIES_ABSENTES
+    if bloc.get("statut") != "calcule" or not bloc.get("publiable_client"):
+        motifs = [m for m in (bloc.get("motifs_non_publiable") or [])
+                  if isinstance(m, str) and m]
+        return None, ("; ".join(motifs) if motifs
+                      else MOTIF_ECONOMIES_ABSENTES)
+    return {cle: valeur for cle, valeur in bloc.items()
+            if cle not in CLES_INTERNES_AGR3}, None
+
+
+def _energie_actuelle(etude):
+    """AGR307 — l'énergie actuelle DÉCLARÉE (``saisies_economie_pompage``,
+    contrat AGR3), ou None : sans provenance, ce n'est pas une déclaration —
+    l'ancienne clé ``current_fuel`` (défaut « butane » de l'écran) n'est
+    JAMAIS lue."""
+    saisie = _dict(_dict(etude.get("saisies_economie_pompage"))
+                   .get("energie_actuelle"))
+    valeur = saisie.get("valeur")
+    provenance = _provenance(saisie.get("provenance"))
+    if not valeur or provenance is None:
+        return None
+    return {"valeur": valeur, "provenance": provenance}
+
+
 # ── la fonction publique ────────────────────────────────────────────────────
 
 def synthese_agricole(data):
@@ -377,6 +429,19 @@ def synthese_agricole(data):
     # tracé sur les seules valeurs saisies, servi tel quel.
     synthese["schema_svg"] = schema_svg(
         synthese, langue=data.get("langue_sortie") or "fr")
+    # AGR307 — l'argent : le bloc public AGR3 tel quel (posé par le builder
+    # dans ``data['_economie_pompage']``), sinon absent et motivé.
+    economies, motif = _bloc_economies(data.get("_economie_pompage"))
+    if economies is not None:
+        synthese["economies"] = economies
+    else:
+        omissions.append({"bloc": "economies", "motif": motif})
+    energie = _energie_actuelle(etude)
+    if energie is not None:
+        synthese["energie_actuelle"] = energie
+    else:
+        omissions.append({"bloc": "energie_actuelle",
+                          "motif": MOTIF_ENERGIE_NON_DECLAREE})
     synthese["options_kit"] = _bloc_options_kit(data.get("options_proposees"))
     synthese["non_inclus"] = list(NON_INCLUS)
     # AGR306 — les formalités du client (82-21 hors réseau, 36-15 eau).

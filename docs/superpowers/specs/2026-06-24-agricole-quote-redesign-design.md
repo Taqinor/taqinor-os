@@ -29,7 +29,12 @@ meaningful number to a farmer. So:
 - **Tangible pictograms** (jerrycans 20 L, citernes, butane bottles) using the ISOTYPE discipline:
   repeat identical small icons with a "× N" multiplier — **never scale one icon up** (clip-art tell).
 - **Kill the monthly water bar graph.** Replace with: hero water number + jerrycan/citerne equivalence
-  + a one-line **payback "crossover"** ("remboursé année N, ensuite l'eau est quasi gratuite à vie").
+  + a one-line **payback "crossover"** ("remboursé année N, ensuite : sans carburant, coût de
+  fonctionnement réduit ; pompe à renouveler"). *(Corrigé le 05/10/2026, AGR317 : l'ancienne phrase
+  promettait une eau « quasi gratuite à vie » — faux, la pompe se remplace au bout de 7 à 10 ans,
+  Banque mondiale 2018 ; et GIZ/AGIRE 2019 mesure une hausse de la consommation d'eau chez 31 %
+  (Marrakech) à 60 % (Tata) des agriculteurs passés au solaire. Le vocabulaire interdit est gardé par
+  `apps/ventes/tests/test_agr317_vocabulaire_agricole.py`.)*
 - **Lorentz's most persuasive line, adopted:** *"Même au mois le moins ensoleillé, votre installation
   donne plus d'eau qu'il n'en faut."* One sentence replaces a spec table.
 - **Translate the one surviving technical fact:** HMT → "on monte votre eau à ≈ X m — comme un immeuble
@@ -70,10 +75,16 @@ research's guess): **the engine is sound and already on the 2026 research base.*
   entry; luzerne 0.95 is the season-average, not the instantaneous peak). Copy/labelling only.
 - A2. Keep butane copy on the honest framing (*"coût réel ~128 DH, subvention en cours de
   décompensation, gel temporaire et fragile"*). Do **NOT** print "70 DH en 2026" as fact (frozen twice).
-- A3. Optional: bump diesel default 13.5 → live (it's flagged "à relever"; overridable from Paramètres).
-- A4. FDA wording on PDF: *"30 %, plafonnée à 30 000 MAD par projet, pompage couplé à l'irrigation
-  localisée, sous réserve d'éligibilité"*; surface the stackable drip subsidy (80–100%, ~23 000 MAD/ha)
-  as a separate informational line.
+- ~~A3. Optional: bump diesel default 13.5 → live~~ — **barré (AGR317, 05/10/2026)** : le prix du
+  carburant est DÉCLARÉ par le client (Q17), jamais un défaut ni un prix « live » pré-enregistré.
+- A4. **Réécrit (AGR317, 05/10/2026).** La règle FDA imprimée est celle d'AGR306 (D-AGR-6) : la RÈGLE
+  seule (30 % de l'investissement, plafonds 3 000 DH par ha, 3 000 DH par kWc et 30 000 DH par projet,
+  accord AVANT travaux, versement après réalisation, un seul projet par exploitation — Guide FDA 2024
+  p.20-23), jamais un montant propre au client ni « jusqu'à 30 % » (Q22). L'aide goutte-à-goutte n'est
+  JAMAIS imprimée côté client (Q22) ; si on la cite en INTERNE, on reprend TOUS les paliers lus dans le
+  Guide FDA 2024 p.14-15 : 100 % / 38 000 DH, 75 % / 28 500 DH, 60 % / 23 000 DH par ha net équipé, et la
+  catégorie 34 000 / 25 000 DH (arrêté 1323.22, valable jusqu'au 31/12/2027 ou 350 000 ha) ; le cumul
+  avec le pilote solaire est à confirmer par la DPA (AGRM13).
 
 **The real gap (not a wrong number):** `economics.compute` already *reads* `surface_ha`, `crop`,
 `current_fuel`, `irrigation_method`, `region`, HMT breakdown from `etude` — **but the frontend form

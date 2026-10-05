@@ -475,14 +475,11 @@ class TestQuoteEngineGoldenSnapshots(TestCase):
     def test_agricole_pompage_onepage_format(self):
         self._run_case(BASELINE_CASES[3])
 
-    def test_agricole_full_se_degrade_en_une_page(self):
-        """QJR236 (décision fondateur DV1) — le renderer agricole premium
-        multi-pages est SUPPRIMÉ : une demande agricole « full » rend le même
-        document une page que le format ``onepage``. L'ancien cas
-        ``agricole_pompage_full`` (4 pages + 4 baselines PNG du renderer
-        supprimé) était rouge depuis ; ce test garde le comportement RÉEL,
-        sans baseline pixel (le rendu une page est déjà épinglé par
-        ``agricole_pompage_onepage``)."""
+    def test_agricole_full_rend_le_document_de_trois_pages(self):
+        """AGR312 (D-AGR-2) — re-épinglé : une demande agricole « full »
+        n'est plus dégradée en une page ; le renderer agricole rend le
+        document complet de 3 pages (sans baseline pixel ; le une-page reste
+        épinglé par ``agricole_pompage_onepage``)."""
         import fitz
         case = {'reference': 'DEV-SNAP-AGRI', 'lines': AGRICOLE_LINES,
                 'mode_installation': 'agricole',
@@ -492,7 +489,7 @@ class TestQuoteEngineGoldenSnapshots(TestCase):
         pdf_bytes = _render_pdf_bytes(devis, None)
         doc = fitz.open(stream=pdf_bytes, filetype='pdf')
         try:
-            self.assertEqual(len(doc), 1)
+            self.assertEqual(len(doc), 3)
         finally:
             doc.close()
         self._assert_no_buy_price(pdf_bytes)

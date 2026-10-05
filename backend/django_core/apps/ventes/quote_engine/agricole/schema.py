@@ -30,6 +30,8 @@ from __future__ import annotations
 
 import html
 
+from .. import i18n_labels as _i18n
+
 NAVY = "#1A2B4A"
 GOLD = "#F5A623"
 BLUE = "#2C5F8A"
@@ -41,19 +43,12 @@ WHITE = "#FFFFFF"
 FONT = "DejaVu Sans, Arial, sans-serif"
 
 #: Étiquettes d'un mot par langue (repli : français).
-LIBELLES = {
-    "forage": {"fr": "Forage", "en": "Borehole", "ar": "البئر"},
-    "pompe": {"fr": "Pompe", "en": "Pump", "ar": "المضخة"},
-    "variateur": {"fr": "Variateur", "en": "Drive", "ar": "المغير"},
-    "panneaux": {"fr": "Panneaux", "en": "Panels", "ar": "الألواح"},
-    "bassin": {"fr": "Bassin", "en": "Tank", "ar": "الحوض"},
-    "irrigation": {"fr": "Irrigation", "en": "Irrigation", "ar": "السقي"},
-    "profondeur": {"fr": "Profondeur", "en": "Depth", "ar": "العمق"},
-    "niveau": {"fr": "Niveau", "en": "Level", "ar": "المستوى"},
-    "distance": {"fr": "Distance", "en": "Distance", "ar": "المسافة"},
-    "hmt": {"fr": "HMT", "en": "Head", "ar": "الارتفاع"},
-    "debit": {"fr": "Débit", "en": "Flow", "ar": "الصبيب"},
-}
+#: AGR314 — les étiquettes du schéma et de la courbe vivent dans le catalogue
+#: UNIQUE des libellés structurels du document (``quote_engine.i18n_labels``,
+#: clés ``agr_schema_*``) ; cette table en est la vue par mot, inchangée.
+_MOTS = ("forage", "pompe", "variateur", "panneaux", "bassin", "irrigation",
+         "profondeur", "niveau", "distance", "hmt", "debit")
+LIBELLES = {mot: dict(_i18n.LIBELLES[f"agr_schema_{mot}"]) for mot in _MOTS}
 
 #: Phrase imprimée à la place de la courbe quand la pompe n'en a pas.
 TEXTE_COURBE_ABSENTE = {

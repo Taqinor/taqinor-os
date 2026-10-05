@@ -1184,6 +1184,11 @@ DEFAULT_PDF_OPTIONS = {
     # page qu'aux devis qui en ont vraiment un. Un ``True``/``False``
     # EXPLICITE (dialogue PDF, paramètre de requête) reste souverain.
     'include_calepinage': None,
+    # AGR319 — annexe « Note de calcul du kit de pompage » (pièce du dossier
+    # FDA, Guide 2024 p.21) du document agricole de 3 pages : +1 page, SEULEMENT
+    # sur demande EXPLICITE (défaut ``False`` : tout appelant existant reste
+    # byte-identique). Aucune option ne pilote un montant d'aide (Q22).
+    'include_note_calcul': False,
     # AGR303 — les six options agricoles (cinq bascules « de persuasion » :
     # aide, comparatif carburant, environnement, schéma, eau livrée ; plus
     # ``current_fuel``) sont RETIRÉES : aucun renderer ne
@@ -1278,6 +1283,9 @@ def clean_pdf_options(raw) -> dict:
     if 'include_calepinage' in raw:
         _cal = raw['include_calepinage']
         opts['include_calepinage'] = None if _cal is None else bool(_cal)
+    # AGR319 — annexe « Note de calcul » agricole : booléen explicite seul.
+    if 'include_note_calcul' in raw:
+        opts['include_note_calcul'] = bool(raw['include_note_calcul'])
     # NTI18N4 — langue de sortie déjà résolue par l'appelant (whitelist
     # stricte, jamais une valeur arbitraire transmise plus loin).
     if raw.get('langue_sortie') in LANGUES_SORTIE_PDF:
@@ -1556,11 +1564,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # CIQ301 — commercial / industriel : leurs économies ne sortent JAMAIS du
     # modèle résidentiel/BT (``calculate_savings_roi``) ni d'une étude JS.
     _mode_ci = mode.strip().lower() in ("commercial", "industriel")
-    # Mode agricole : le format à options n'a pas de sens (pas d'onduleur) —
-    # la demande « premium » dégrade proprement vers le format une page.
+    # AGR312 — plus de dégradation « full → une page » en agricole : le
+    # document complet est le renderer agricole de 3 pages (registre, plus
+    # bas) ; le une-page reste servi pour ``pdf_mode='onepage'``.
+    # ``include_etude`` / ``include_calepinage`` n'y ont aucun effet : le
+    # document agricole intègre son étude.
     pdf_mode = opts['pdf_mode']
-    if mode == "agricole" and pdf_mode == "full":
-        pdf_mode = "onepage"
+    _mode_agricole = mode.strip().lower() == "agricole"
 
     # QJR400 — LA RÈGLE DE SERVABILITÉ VIENT DU NOYAU (``utils.options``), elle
     # n'est plus recalculée ici. QJR-OFFGRID — l'option « avec » se sert d'un
@@ -1578,9 +1588,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # batterie qui manque. Une seule présentation, honnêtement étiquetée
         # « Sans batterie ».
         sans_ok, avec_ok = True, False
-    if not sans_ok and not avec_ok and pdf_mode == "full":
+    if (not sans_ok and not avec_ok and pdf_mode == "full"
+            and not _mode_agricole):
         # RÈGLE DURE : une option ne se rend JAMAIS sans onduleur. Un devis
         # sans aucun onduleur ne peut pas produire le document à options.
+        # AGR312 — le pompage n'a pas d'options à onduleur : son document
+        # complet (renderer agricole) est une liste unique, comme le une-page.
         raise ValueError(
             f"Devis {devis.reference} : aucune option ne contient d'onduleur — "
             "génération du PDF à options refusée (règle de sécurité).")
@@ -4050,8 +4063,92 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             _regle_fda = {}
         if _regle_fda:
             data["regle_fda_societe"] = _regle_fda
+        # ── AGR307 — le bloc PUBLIC ``economie_pompage`` (AGR3, calculé à la
+        # lecture, jamais stocké ; SANS ``vue_interne``), recopié tel quel par
+        # ``agricole/synthese`` dans ``synthese_agricole['economies']``. Posé
+        # SEULEMENT quand le moteur en rend un : sinon la synthèse omet le
+        # bloc avec son motif. Ne casse jamais un rendu. Sans aucune saisie
+        # d'économie, le moteur rendrait un bloc « omis » : on ne l'appelle
+        # pas (il relit l'étude de pompage, PVGIS compris). Clé PRÉFIXÉE ``_``
+        # (AGR308) : ``quote`` ne la republie jamais — le bloc ne sort que par
+        # ``synthese_agricole``, sous la case « économies » du lien.
+        _ep_eco = getattr(devis, "etude_params", None)
+        if (getattr(devis, "pk", None) and isinstance(_ep_eco, dict)
+                and _ep_eco.get("saisies_economie_pompage")):
+            try:
+                from apps.ventes.selectors import (
+                    economie_pompage_publique_pour_devis,
+                )
+                _eco_pompage = economie_pompage_publique_pour_devis(
+                    devis.pk, getattr(devis, "company", None))
+            except Exception:  # noqa: BLE001 — la synthèse omet, motivée
+                logger.exception("economie_pompage: échec (devis %s)",
+                                 getattr(devis, "reference", "?"))
+                _eco_pompage = None
+            if _eco_pompage:
+                data["_economie_pompage"] = _eco_pompage
+
+    # ── AGR319 — annexe « Note de calcul du kit de pompage » (dossier FDA) :
+    # posée SEULEMENT sur demande explicite d'un devis agricole (sinon aucune
+    # clé : tout autre rendu reste octet-identique). Les références de la
+    # société sont ses réalisations de segment AGRICOLE (sélecteur AGR513,
+    # ``parametres.selectors.realisations_proches``), lues comme pour un lead
+    # agricole même si le lead du devis est mal typé (D-AGR-9 : on ne change
+    # jamais son type). Aucun montant d'aide, aucun ``prix_achat``.
+    if mode == "agricole" and opts.get('include_note_calcul'):
+        data["include_note_calcul"] = True
+        data["references_pompage"] = _references_pompage(devis)
+
+    # ── CIQ303 — les entrées du lead PRO (CIQ405), lues par le SEUL sélecteur
+    # crm (jamais les modèles d'une autre app), pour ``ci/synthese`` : ses
+    # ``manquants`` disent ce qui reste « à confirmer ». C&I seulement, posé
+    # SEULEMENT quand le lead en rend : tout autre devis reste octet-identique.
+    # Clé PRÉFIXÉE ``_`` : la charge utile publique republie ``data`` sous
+    # ``quote`` après ``_sans_cles_internes`` — elle n'y sort jamais. Ne casse
+    # jamais un rendu.
+    if mode in ("commercial", "industriel"):
+        try:
+            from apps.crm.selectors import entrees_ci_du_lead
+            _entrees_ci = entrees_ci_du_lead(getattr(devis, "lead", None))
+        except Exception:  # noqa: BLE001 — la synthèse omet, jamais ne casse
+            _entrees_ci = None
+        if _entrees_ci:
+            data["_entrees_ci_lead"] = _entrees_ci
 
     return data
+
+
+class _LeadVuAgricole:
+    """AGR319 — le lead du devis LU au segment agricole, pour le seul choix
+    des références de pompage (aucune écriture : le type du lead n'est jamais
+    changé, D-AGR-9)."""
+
+    type_installation = "agricole"
+
+    def __init__(self, lead, company):
+        self._lead = lead
+        self.company = company
+
+    def __getattr__(self, nom):
+        return getattr(self._lead, nom, None)
+
+
+def _references_pompage(devis):
+    """AGR319 — ``[{titre, ville, mise_en_service}]`` : les réalisations
+    AGRICOLES de la société (au plus 5), ou ``[]`` — jamais un toit à leur
+    place (D-AGR-10). Ne casse jamais un rendu."""
+    try:
+        from apps.parametres.selectors import realisations_proches
+        refs = realisations_proches(
+            _LeadVuAgricole(getattr(devis, "lead", None),
+                            getattr(devis, "company", None)), limite=5)
+    except Exception:  # noqa: BLE001 — l'annexe dit « aucune référence »
+        logger.exception("references_pompage: échec (devis %s)",
+                         getattr(devis, "reference", "?"))
+        return []
+    return [{"titre": r.get("titre") or "", "ville": r.get("ville") or "",
+             "mise_en_service": r.get("mise_en_service")}
+            for r in refs or [] if isinstance(r, dict)]
 
 
 # ── QJR30 — ÉCHAPPEMENT DES TEXTES CLIENT POUR LES RENDERERS « MAISON » ─────
@@ -4311,8 +4408,8 @@ def _filigrane_standard_texte(devis):
 #
 # L'ORDRE EST SIGNIFIANT et repris tel quel : industriel (QX45), puis
 # commercial (QX46), puis résidentiel — le premier dont le prédicat accepte le
-# devis rend le document. (L'entrée agricole a été supprimée par QJR236 /
-# décision DV1 : elle était injoignable depuis QJR32.)
+# devis rend le document. (L'entrée agricole, supprimée par QJR236 / DV1
+# parce qu'injoignable, est REVENUE avec le renderer de 3 pages — AGR312.)
 #
 # LES IMPORTS SONT PARESSEUX, comme avant : chaque paquet de renderer importe
 # des dépendances lourdes, et ce module est chargé au démarrage.
@@ -4320,13 +4417,13 @@ def _filigrane_standard_texte(devis):
 def registre_renderers():
     """``[(marché, module renderer, prédicat)]`` — LA liste, dans l'ordre.
 
-    QJR236 (décision fondateur DV1) — L'ENTRÉE ``agricole`` A ÉTÉ RETIRÉE avec
-    son renderer. Depuis QJR32 (le dispatch lit le ``pdf_mode`` NORMALISÉ) elle
-    était INJOIGNABLE : ``build_quote_data`` dégrade par conception toute
-    demande agricole « full » en une page. Le devis agricole passe donc par le
-    repli NOMMÉ ci-dessous (``_journaliser_repli``) vers le moteur legacy, qui
-    le sert seul depuis juin — et le document rendu est byte-identique.
+    AGR312 (D-AGR-2) — L'ENTRÉE ``agricole`` EST DE RETOUR : le renderer de 3
+    pages (``agricole/renderer``) sert un devis agricole au format complet ;
+    ``build_quote_data`` ne dégrade plus la demande « full ». Le une-page
+    (``pdf_mode='onepage'``) reste au moteur legacy, et un refus du renderer
+    (``Unsupported``) passe par le repli NOMMÉ ``_journaliser_repli``.
     """
+    from .agricole import renderer as agricole
     from .commercial import renderer as commercial
     from .industriel import renderer as industriel
     from .residential import renderer as residential
@@ -4334,6 +4431,7 @@ def registre_renderers():
     return (
         ('industriel', industriel, industriel.is_industrial),
         ('commercial', commercial, commercial.is_commercial),
+        ('agricole', agricole, agricole.is_agricole),
         ('residentiel', residential, residential.is_residential),
     )
 

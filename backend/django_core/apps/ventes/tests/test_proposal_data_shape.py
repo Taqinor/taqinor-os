@@ -26,7 +26,7 @@ Ce qui devient ROUGE
 
 Ce qui reste VERT, volontairement
 ---------------------------------
-* Une clé ADDITIVE absente : les ~20 clés additives dépendent de ce que le
+* Une clé ADDITIVE absente : les ~21 clés additives dépendent de ce que le
   devis porte et des cases du dialogue d'envoi. Exiger leur présence ferait
   dépendre le test du hasard de la fixture, pas du contrat.
 * Une clé de base à `null` : c'est la forme déclarée du « rien à montrer ».
@@ -73,7 +73,7 @@ EXEMPLES = ('exemple', 'exemple_standard', 'exemple_sections_masquees')
 #: écrit dans `notes.structure_de_la_reponse`. Si ces deux nombres bougent,
 #: le contrat ET cette constante changent ensemble — jamais l'un sans l'autre.
 NB_CLES_BASE = 48
-NB_CLES_ADDITIVES = 20
+NB_CLES_ADDITIVES = 21
 
 #: Les clés que l'échantillon déclare pour les réponses d'ERREUR, jamais pour
 #: la charge utile 200 (contrat, bloc `notes.cle_detail`). QJR228 (31/08/2026)
@@ -244,6 +244,35 @@ def make_devis(company, user, client_obj, reference, roof_layout=None):
     return devis
 
 
+def make_devis_agricole(company, user, client_obj, reference):
+    """AGR308 — devis de POMPAGE minimal (patron de
+    `test_agr300_proposition_agricole_sans_economie_residentielle.py`)."""
+    devis = Devis.objects.create(
+        company=company, reference=reference, client=client_obj,
+        statut='envoye', taux_tva=Decimal('20.00'),
+        remise_globale=Decimal('0'), created_by=user,
+        mode_installation='agricole',
+        etude_params={'pompe_cv': '10', 'pompe_kw': 7.5,
+                      'type_pompe': 'immergee', 'alim': 'tri',
+                      'hmt_m': '60', 'debit_hmt_m3h': 30,
+                      'heures_pompage': 7, 'm3_jour': 210,
+                      'champ_kwc': 10.65})
+    for i, (designation, quantite, prix) in enumerate([
+        ('Pompe immergée OSP 30/8 10 CV', '1', '18000'),
+        ('Variateur VEICHI 7,5 kW', '1', '9000'),
+        ('Panneau mono 550W', '20', '1100'),
+    ]):
+        produit = Produit.objects.create(
+            company=company, nom=designation, sku=f'{reference[-6:]}-{i}',
+            prix_vente=Decimal(prix), prix_achat=Decimal('9999'),
+            quantite_stock=50)
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation=designation,
+            quantite=Decimal(quantite), prix_unitaire=Decimal(prix),
+            remise=Decimal('0'), ordre=i)
+    return devis
+
+
 def sample_layout():
     return {
         'version': 1, 'scenario': 'reseau',
@@ -267,7 +296,7 @@ def sample_layout():
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestContratLisible(TestCase):
-    def test_le_contrat_declare_48_cles_de_base_et_20_additives(self):
+    def test_le_contrat_declare_48_cles_de_base_et_21_additives(self):
         base, additives, _natures = charger_contrat()
         self.assertEqual(
             len(base), NB_CLES_BASE,
@@ -308,6 +337,11 @@ class TestFormeDeLaChargeUtileVivante(TestCase):
         cls.devis_layout = make_devis(cls.company, cls.user, cls.client_obj,
                                       'DEV-QJR7-A2',
                                       roof_layout=sample_layout())
+        # AGR308 — un devis AGRICOLE : sa charge utile porte la clé additive
+        # `synthese_agricole`, confrontée au contrat comme toutes les autres
+        # (et sa forme interne au fragment `exemple_agricole`, plus bas).
+        cls.devis_agricole = make_devis_agricole(
+            cls.company, cls.user, cls.client_obj, 'DEV-QJR7-A3')
 
     def _payload(self, devis, niveau):
         token = str(uuid.uuid4())
@@ -319,7 +353,7 @@ class TestFormeDeLaChargeUtileVivante(TestCase):
         return reponse.json()
 
     def _tous_les_payloads(self):
-        for devis in (self.devis, self.devis_layout):
+        for devis in (self.devis, self.devis_layout, self.devis_agricole):
             for niveau in (ShareLink.NIVEAU_STANDARD,
                            ShareLink.NIVEAU_CONFIANCE):
                 yield devis.reference, niveau, self._payload(devis, niveau)
@@ -334,6 +368,25 @@ class TestFormeDeLaChargeUtileVivante(TestCase):
                     f"forme de proposal_data hors contrat ({reference}, "
                     f"niveau {niveau}) :\n  - "
                     + "\n  - ".join(problemes))
+
+    def test_synthese_agricole_conforme_au_fragment_exemple_agricole(self):
+        # AGR308 — le test de forme s'étend au fragment `exemple_agricole` :
+        # chaque sous-clé servie est déclarée, avec la même nature.
+        fragment = json.loads(CONTRAT.read_text(encoding='utf-8'))[
+            'exemple_agricole']['synthese_agricole']
+        for niveau in (ShareLink.NIVEAU_STANDARD, ShareLink.NIVEAU_CONFIANCE):
+            payload = self._payload(self.devis_agricole, niveau)
+            servie = payload['synthese_agricole']
+            with self.subTest(niveau=niveau):
+                self.assertEqual(sorted(set(servie) - set(fragment)), [])
+                for cle, valeur in servie.items():
+                    attendue = nature(fragment[cle])
+                    if NUL in (nature(valeur), attendue):
+                        continue
+                    self.assertEqual(nature(valeur), attendue, cle)
+        # Hors agricole : la clé additive est ABSENTE, jamais `null`.
+        self.assertNotIn('synthese_agricole',
+                         self._payload(self.devis, ShareLink.NIVEAU_CONFIANCE))
 
     def test_les_44_cles_de_base_sont_servies_aux_deux_niveaux(self):
         base, _additives, _natures = self.contrat
