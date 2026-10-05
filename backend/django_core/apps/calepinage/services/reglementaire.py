@@ -521,20 +521,17 @@ class DossierRefuse(ValueError):
 def _rendus_du_module(calepinage, company):
     """``code -> fonction de rendu`` (octets PDF). Imports FONCTION-LOCAUX."""
     from .note_calcul import rendre_note_calcul
-    from .planche import html_de_planche, rendre_planche_pdf
+    from .planche import rendre_planche_pdf
 
     def _schema():
-        from apps.ventes.selectors import schema_unifilaire_svg
-        from core.pdf import render_pdf
+        # ACAL163 — le schéma NATIF du calepinage (édition appliquée), avec
+        # ou sans devis lié, par l'UNIQUE fonction qui l'encapsule.
+        from .rapport.electrique import bloc_schema_unifilaire
 
-        svg = schema_unifilaire_svg(devis=calepinage.devis) \
-            if getattr(calepinage, 'devis_id', None) else ''
-        if not svg:
-            raise DossierRefuse(
-                "Aucun schéma unifilaire n'est disponible pour ce "
-                "calepinage : il se produit depuis le devis lié.",
-                piece='schema_unifilaire')
-        return render_pdf(html=html_de_planche(svg), company=company)
+        octets, motif = bloc_schema_unifilaire(calepinage, company=company)
+        if not octets:
+            raise DossierRefuse(motif, piece='schema_unifilaire')
+        return octets
 
     return {
         'planche': lambda: rendre_planche_pdf(calepinage, company=company),

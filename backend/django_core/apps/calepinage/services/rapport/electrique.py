@@ -2,14 +2,11 @@
 
 Le constat
 ==========
-Le schéma unifilaire est un SVG produit HORS du module et servi à un seul
-panneau (``apps/calepinage/views/schema.py:55-102`` →
-``apps.ventes.selectors.schema_unifilaire_svg``), et le dossier
-réglementaire sait déjà l'encapsuler pour l'impression
-(``services/reglementaire.py::_rendus_du_module``, via
-``planche.html_de_planche``) : c'est une pièce SÉPARÉE, fusionnée en PDF, pas
-un fragment HTML embarqué. Aucune pièce d'étude ne porte chaînage, verdicts
-et schéma ensemble.
+Le schéma unifilaire est le SVG NATIF du calepinage
+(``services/sld.py::schema_du_calepinage`` — conception électrique réelle,
+édition appliquée, servi aussi par ``views/schema.py``). Le dossier
+réglementaire l'encapsule pour l'impression comme une pièce SÉPARÉE,
+fusionnée en PDF, pas un fragment HTML embarqué.
 
 DEUX SURFACES, POUR DEUX RAISONS (même discipline que ``systeme.py``,
 CALX299)
@@ -20,20 +17,19 @@ CALX299)
   (ratio DC/AC compris) et table des verdicts, servis TELS QUELS, sans rien
   recalculer ;
 * ``bloc_schema_unifilaire(calepinage, …)``/``rendre_rapport_avec_schema`` —
-  la jonction du schéma exige la base (le devis LIÉ porte l'électrique
-  chiffrée : ``apps.ventes.selectors.schema_unifilaire_svg(devis)``) : ces
-  fonctions prennent le CALEPINAGE directement, exactement comme
-  ``reglementaire._rendus_du_module``. Elles ne sont PAS encore appelées par
-  ``rendre_rapport`` — crochet de phase 2 (voir la docstring de
-  ``services/rapport/__init__.py``).
+  la jonction du schéma exige la base : ces fonctions prennent le CALEPINAGE
+  et lisent ``schema_du_calepinage`` — AVEC OU SANS devis lié (ACAL163,
+  C-ACAL-061 : l'ancienne lecture ``schema_unifilaire_svg(devis=…)`` est
+  supprimée). ``bloc_schema_unifilaire`` est l'UNIQUE fonction qui encapsule
+  le schéma : la pièce ``schema_unifilaire`` du dossier réglementaire
+  (``reglementaire._rendus_du_module``) l'appelle aussi.
 
-Le motif MOT POUR MOT
-======================
-``MOTIF_SCHEMA_INDISPONIBLE`` reprend, caractère pour caractère, la phrase
-de ``services/reglementaire.py::_rendus_du_module`` (sa fermeture
-``_schema()``) : un lecteur qui compare le dossier réglementaire et ce
-rapport ne doit jamais lire deux formulations différentes pour la même
-absence.
+Le motif
+========
+``MOTIF_SCHEMA_INDISPONIBLE`` ouvre la phrase ; quand le service du schéma
+NOMME ses ``bloquants``/``manquantes``, ils la complètent TELS QUELS — le
+dossier réglementaire et ce rapport lisent donc la même phrase pour la même
+absence (une seule fonction la compose).
 """
 from __future__ import annotations
 
@@ -64,11 +60,9 @@ CSS_SECTION = (
 #: jamais « OK », jamais une valeur devinée.
 MENTION_NON_VERIFIABLE = 'non vérifiable'
 
-#: MOT POUR MOT ``services/reglementaire.py::_rendus_du_module`` (fonction
-#: ``_schema``) — voir la docstring du module.
+#: L'ouverture du motif — voir la docstring du module (ACAL163).
 MOTIF_SCHEMA_INDISPONIBLE = (
-    "Aucun schéma unifilaire n'est disponible pour ce calepinage : il se "
-    "produit depuis le devis lié.")
+    "Aucun schéma unifilaire n'est disponible pour ce calepinage.")
 
 
 def _table_chainage(chainage, langue):
@@ -182,26 +176,32 @@ def html_de_section(contexte):
 
 # ── Le schéma unifilaire — lit la base, prend le calepinage ─────────────────
 
+def _motif_du_schema(schema):
+    """Le motif d'un schéma NON dessiné : l'ouverture, complétée des
+    ``bloquants``/``manquantes`` du service, tels quels (ACAL163)."""
+    raisons = [str(r) for r in (schema.get('bloquants') or ()) if r]
+    raisons += [str(m) for m in (schema.get('manquantes') or ()) if m]
+    if not raisons:
+        return MOTIF_SCHEMA_INDISPONIBLE
+    return '%s — %s' % (MOTIF_SCHEMA_INDISPONIBLE[:-1], ' ; '.join(raisons))
+
+
 def bloc_schema_unifilaire(calepinage, *, company=None):
-    """``(octets_pdf, motif)`` — le schéma unifilaire, encapsulé comme le fait
-    ``reglementaire._rendus_du_module`` (``html_de_planche`` + ``render_pdf``),
-    ou ``(None, MOTIF_SCHEMA_INDISPONIBLE)`` MOT POUR MOT quand aucun devis
-    n'est lié ou que le devis ne publie aucun schéma.
+    """``(octets_pdf, motif)`` — le schéma unifilaire NATIF du calepinage
+    (``sld.schema_du_calepinage`` : conception réelle, édition appliquée),
+    encapsulé par ``html_de_planche`` + ``render_pdf`` ; ou ``(None, motif)``
+    quand le service ne le dessine pas (``svg`` ``None``), le motif NOMMANT
+    ses bloquants/manquantes. Avec ou sans devis lié (ACAL163).
     """
-    from apps.ventes.selectors import schema_unifilaire_svg
     from core.pdf import render_pdf
 
     from ..planche import html_de_planche
+    from ..sld import schema_du_calepinage
 
-    # ``schema_unifilaire_svg`` est keyword-only (``*, devis=None, …`` —
-    # ``apps/ventes/selectors.py:449``) : l'appel positionnel de
-    # ``services/reglementaire.py::_rendus_du_module`` (``:522``) lèverait un
-    # ``TypeError`` s'il s'exécutait — défaut PRÉEXISTANT, hors du fichier de
-    # cette tâche, signalé sans être corrigé ici.
-    devis_id = getattr(calepinage, 'devis_id', None)
-    svg = schema_unifilaire_svg(devis=calepinage.devis) if devis_id else ''
+    schema = schema_du_calepinage(calepinage)
+    svg = schema.get('svg')
     if not svg:
-        return None, MOTIF_SCHEMA_INDISPONIBLE
+        return None, _motif_du_schema(schema)
     octets = render_pdf(
         html=html_de_planche(svg),
         company=company or getattr(calepinage, 'company', None))
