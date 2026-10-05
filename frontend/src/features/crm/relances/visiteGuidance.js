@@ -115,11 +115,48 @@ export const REGLE_VRAI_CLIENT_AGRICOLE =
   "La visite se fait avec l'exploitant lui-même — jamais le gardien ni l'ouvrier. "
   + 'Confirmez sa présence au créneau choisi.'
 
-/** AGR532 — les consignes de visite selon le segment du lead
+// CIQ516 — consignes PROFESSIONNELLES (commercial / industriel), AJOUTÉES à
+// côté des textes du fondateur (jamais à leur place, jamais reformulés) : un
+// hôtel ou une usine n'a ni « charpente » ni « maison », et le décideur n'est
+// pas « la bonne ». ✎ Textes à valider par Reda ; aucun chiffre.
+export const PHASE_GUIDANCE_PRO = {
+  1: PHASE_GUIDANCE[1],
+  2: {
+    ...PHASE_GUIDANCE[2],
+    script: 'Le chiffrage est basé sur vos factures ; quand le technicien passe, '
+      + "il relève la structure du bâtiment, l'accès à la toiture et le tableau "
+      + 'électrique général, pour verrouiller le prix, pas pour le changer.',
+  },
+  3: PHASE_GUIDANCE[3],
+}
+
+export const SIGNAUX_ACHAT_PRO = [
+  'À vérifier : le retour sur investissement',
+  'À vérifier : le financement',
+  "À vérifier : l'arrêt de l'activité pendant les travaux",
+  'À vérifier : l\'assurance du bâtiment',
+  'À vérifier : l\'accord du propriétaire des murs',
+  "À vérifier : le délai d'installation",
+]
+
+export const REGLE_VRAI_CLIENT_PRO =
+  'La visite se fait avec le décideur ou son responsable technique — jamais '
+  + "avec l'accueil seul. Confirmez sa présence au créneau choisi."
+
+/** AGR532 / CIQ516 — les consignes de visite selon le segment du lead
  *  (`etape.lead_segment`, contrat `relance_etape_v2.json`) : agricole → les
- *  constantes agricoles ; tout autre segment → les textes du fondateur, tels
+ *  constantes agricoles ; commercial / industriel → les constantes
+ *  professionnelles ; tout autre segment → les textes du fondateur, tels
  *  quels. */
 export function guidanceVisite(segment) {
+  if (segment === 'commercial' || segment === 'industriel') {
+    return {
+      phases: PHASE_GUIDANCE_PRO,
+      signaux: SIGNAUX_ACHAT_PRO,
+      regleObjection: REGLE_OBJECTION,
+      regleVraiClient: REGLE_VRAI_CLIENT_PRO,
+    }
+  }
   if (segment === 'agricole') {
     return {
       phases: PHASE_GUIDANCE_AGRICOLE,

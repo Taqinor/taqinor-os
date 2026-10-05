@@ -113,11 +113,44 @@ test('AGR532 — guidanceVisite("agricole") : ni toit, ni charpente, ni bonne', 
 })
 
 test('AGR532 — tout autre segment rend exactement les textes actuels', () => {
-  for (const segment of ['residentiel', 'commercial', 'industriel', '', undefined, null]) {
+  for (const segment of ['residentiel', '', undefined, null]) {
     const g = guidanceVisite(segment)
     assert.equal(g.phases, PHASE_GUIDANCE)
     assert.equal(g.signaux, SIGNAUX_ACHAT)
     assert.equal(g.regleObjection, REGLE_OBJECTION)
     assert.equal(g.regleVraiClient, REGLE_VRAI_CLIENT)
+  }
+})
+
+test('CIQ516 — les textes du fondateur sont inchangés (octet pour octet)', () => {
+  assert.equal(PHASE_GUIDANCE[2].script,
+    "Le chiffrage est basé sur vos factures et photos ; quand le technicien passe, il "
+    + "confirme juste l'orientation du toit et la charpente pour verrouiller le prix, "
+    + 'pas pour le changer.')
+  assert.equal(SIGNAUX_ACHAT[3], 'Questions sur SA toiture / sa maison')
+  assert.equal(REGLE_VRAI_CLIENT,
+    'La visite se fait avec le client lui-même — jamais le gardien ni la bonne. '
+    + 'Confirmez sa présence au créneau choisi.')
+})
+
+test('CIQ516 — guidanceVisite(commercial|industriel) : ni charpente, ni maison, ni bonne, ni gardien', () => {
+  for (const segment of ['commercial', 'industriel']) {
+    const g = guidanceVisite(segment)
+    const texte = JSON.stringify(g).toLowerCase()
+    for (const mot of ['charpente', 'maison', 'bonne', 'gardien']) {
+      assert.ok(!texte.includes(mot), `${segment} : ${mot}`)
+    }
+    assert.match(g.phases[2].script, /structure du bâtiment, l'accès à la toiture et le tableau électrique général/)
+    assert.match(g.regleVraiClient, /décideur ou son responsable technique — jamais avec l'accueil seul/)
+    for (const sujet of ['retour sur investissement', 'financement', "l'arrêt de l'activité",
+      'assurance du bâtiment', 'propriétaire des murs', 'délai']) {
+      assert.ok(g.signaux.some((s) => s.includes(sujet)), sujet)
+    }
+    // Aucun chiffre dans les TEXTES.
+    const textes = [
+      ...Object.values(g.phases).flatMap((p) => [p.titre, p.texte, p.script, p.jamais]),
+      ...g.signaux, g.regleObjection, g.regleVraiClient,
+    ].filter(Boolean).join(' ')
+    assert.ok(!/\d/.test(textes))
   }
 })
