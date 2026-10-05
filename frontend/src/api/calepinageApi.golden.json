@@ -124,6 +124,16 @@
       "verbe": "post"
     }
   ],
+  "calepinages.corrigerReleve": [
+    {
+      "config": null,
+      "data": {
+        "k": 1
+      },
+      "url": "/calepinage/calepinages/7/releve/3/",
+      "verbe": "patch"
+    }
+  ],
   "calepinages.create": [
     {
       "config": null,
@@ -747,6 +757,14 @@
       "data": null,
       "url": "/calepinage/calepinages/7/sorties/",
       "verbe": "get"
+    }
+  ],
+  "calepinages.supprimerReleve": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/releve/3/",
+      "verbe": "delete"
     }
   ],
   "calepinages.syncDevis": [
