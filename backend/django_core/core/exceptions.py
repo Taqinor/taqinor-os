@@ -36,11 +36,16 @@ attrapées (ex. ``apps.ventes`` Devis/Facture, qui n'avaient aucun override).
 """
 from __future__ import annotations
 
+import logging
+import uuid
+
 from django.db.models import ProtectedError
 from rest_framework import exceptions as drf_exceptions
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
+
+logger = logging.getLogger(__name__)
 
 # Slug stable par classe d'exception DRF — jamais dérivé du message humain
 # (qui peut être traduit/reformulé sans casser un client qui teste `code`).
@@ -104,6 +109,48 @@ def _fields_for(exc, code: str):
 def _request_id(context) -> str | None:
     request = context.get('request') if context else None
     return getattr(request, 'request_id', None) if request is not None else None
+
+
+def _request_id_garanti(context) -> str:
+    """Identifiant de corrélation d'un 500 — TOUJOURS une chaîne (ACAL315).
+
+    Normalement posé par ``core.middleware.RequestIdMiddleware``. S'il manque
+    (middleware non monté, requête construite à la main), un ``uuid4`` est
+    généré ICI et reposé sur la requête, pour que l'enveloppe, l'en-tête
+    ``X-Request-Id`` et la ligne de journal portent le MÊME id — jamais
+    ``null`` (live PUB : « request_id null in the shell »)."""
+    request = context.get('request') if context else None
+    request_id = _request_id(context)
+    if request_id:
+        return str(request_id)
+    request_id = uuid.uuid4().hex
+    if request is not None:
+        for cible in (getattr(request, '_request', None), request):
+            if cible is None:
+                continue
+            try:
+                cible.request_id = request_id
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+                pass
+    return request_id
+
+
+def _journalise_500(exc, context, request_id: str) -> None:
+    """ACAL315 — un 500 n'est JAMAIS muet : pile + request_id + chemin +
+    méthode + société dans le journal. Jamais le corps ni un en-tête (aucun
+    secret). Lecture réflexive de la société : `core` n'importe aucune app."""
+    request = context.get('request') if context else None
+    path = getattr(request, 'path', None)
+    method = getattr(request, 'method', None)
+    user = getattr(request, 'user', None)
+    company_id = getattr(user, 'company_id', None) if user is not None else None
+    logger.exception(
+        '500 non géré [request_id=%s] %s %s (société=%s) : %s',
+        request_id, method, path, company_id, type(exc).__name__,
+        exc_info=exc,
+        extra={'request_id': request_id, 'path': path,
+               'company_id': company_id, 'method': method},
+    )
 
 
 def _protected_error_message(exc: ProtectedError) -> str:
@@ -198,6 +245,8 @@ def taqinor_exception_handler(exc, context):
         # unifiée reste due même ici ; le statut HTTP/sémantique tenant ne
         # change JAMAIS (toujours 500, jamais masqué en 200).
         code = 'server_error'
+        request_id = _request_id_garanti(context)
+        _journalise_500(exc, context, request_id)
         body = {
             'error': {
                 'code': code,
@@ -206,7 +255,11 @@ def taqinor_exception_handler(exc, context):
                 'request_id': request_id,
             },
         }
-        return Response(body, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        response = Response(body, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # Même id dans l'en-tête (le middleware le réécrit à l'identique
+        # quand il est monté ; sans lui, l'en-tête reste quand même posé).
+        response['X-Request-Id'] = request_id
+        return response
 
     code = _code_for(exc)
     envelope = {
