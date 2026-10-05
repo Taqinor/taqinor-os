@@ -1459,6 +1459,27 @@ CLASSES_KIT_COMPLETABLES = (
     'tableau', 'installation', 'transport',
 )
 
+#: ACAL90 (D-ACAL-22) — le message FRANÇAIS d'une classe NON RECRÉÉE parce
+#: qu'elle a été retirée à la main (marqueur ``etude_params.kit_retire``).
+AVERTISSEMENTS_KIT_RETIRE = {
+    'smart_meter': 'Smart Meter non recréé : retiré à la main — remettez-le '
+                   'depuis le générateur.',
+    'wifi_dongle': 'Clé Wifi non recréée : retirée à la main — remettez-la '
+                   'depuis le générateur.',
+    'structure': 'Structure non recréée : retirée à la main — remettez-la '
+                 'depuis le générateur.',
+    'socle': 'Socles non recréés : retirés à la main — remettez-les depuis '
+             'le générateur.',
+    'accessoires': 'Accessoires non recréés : retirés à la main — '
+                   'remettez-les depuis le générateur.',
+    'tableau': 'Tableau de protection AC/DC non recréé : retiré à la main — '
+               'remettez-le depuis le générateur.',
+    'installation': 'Installation non recréée : retirée à la main — '
+                    'remettez-la depuis le générateur.',
+    'transport': 'Transport non recréé : retiré à la main — remettez-le '
+                 'depuis le générateur.',
+}
+
 #: Le message FRANÇAIS d'une classe manquante, écrit EN ENTIER par classe pour
 #: que l'accord soit juste (« Structure … absente », « Socles … absents »).
 AVERTISSEMENTS_KIT_ABSENT = {
@@ -1682,6 +1703,10 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
     # quand deux options la réclament : deux fois le même message ferait
     # croire à deux manques distincts.
     deja_dit = set()
+    # ACAL90 (D-ACAL-22) — les classes RETIRÉES À LA MAIN ne sont jamais
+    # recréées ; la réponse le DIT (une fois par classe).
+    from apps.ventes.domain.lignes import classes_kit_retirees
+    retirees = set(classes_kit_retirees(devis))
 
     for vue in _options_a_reparer(devis, lignes, kwc=kwc, watt=watt,
                                   nb_panneaux=nb_panneaux,
@@ -1762,6 +1787,12 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
             if classe in presentes:
                 continue
             if classe in ('smart_meter', 'wifi_dongle') and not huawei:
+                continue
+            if classe in retirees:
+                cle_dite = ('retire', classe)
+                if cle_dite not in deja_dit:
+                    deja_dit.add(cle_dite)
+                    avertissements.append(AVERTISSEMENTS_KIT_RETIRE[classe])
                 continue
             spec = par_classe.get(classe)
             if spec is None:

@@ -898,6 +898,12 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
     from apps.stock.models import Produit
     if not lignes_in and not autoriser_vidage:
         raise ValueError(MSG_REMPLACEMENT_VIDE)
+    # ACAL90 — les classes de kit présentes AVANT le remplacement : celles
+    # qui n'y sont plus après ont été retirées à la main (D-ACAL-22). Un
+    # devis neuf (aucune ligne) n'en retire aucune.
+    classes_avant = {c for c in (
+        _classe_completable(li) for li in LigneDevis.objects.filter(
+            devis_id=devis.pk).select_related('produit')) if c}
     _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
     _VALID_VARIANTES = {c.value for c in LigneDevis.Variante}
     # QJR667 — un ``lot`` n'est accepté que s'il appartient à CE devis (donc
@@ -1001,10 +1007,112 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
             # était pris pour une ligne composée et REMPLACÉ au recalcul.
             # Absente / null ⇒ None (inconnue), comportement d'hier.
             ligne_composee=_ligne_composee_emise(li.get('ligne_composee')))
+    # ACAL90 — le marqueur suit le geste de l'écran : retirées = avant −
+    # après ; toute classe présente après en sort.
+    classes_apres = {c for c in (
+        _classe_completable(li) for li in LigneDevis.objects.filter(
+            devis_id=devis.pk).select_related('produit')) if c}
+    if classes_avant or classes_apres:
+        noter_kit_retire(devis, retirees=classes_avant - classes_apres,
+                         remises=classes_apres)
     # QJR83 — les forfaits AU PANNEAU suivent le compte réellement écrit
     # ci-dessus (jamais celui que l'appelant croyait envoyer).
     return retarifer_forfaits_par_panneau(devis,
                                           avertissements=avertissements)
+
+
+# ── ACAL90 (C-ACAL-111, D-ACAL-22) — LE KIT RETIRÉ À LA MAIN ────────────────
+#
+# Une ligne de kit (transport, installation, structure…) SUPPRIMÉE à la main
+# ne doit plus jamais être recréée par une resynchronisation : le devis
+# mémorise la CLASSE retirée dans ``etude_params.kit_retire`` (propriétaire
+# ÉCRAN, ``etude_schema``). Le marqueur est écrit ICI, aux deux seuls points
+# où un humain retire une ligne (suppression d'UNE ligne, enregistrement de
+# l'écran qui remplace les lignes) — jamais par la resynchro elle-même, qui
+# supprime des lignes pour ses propres raisons. Une ligne de la classe AJOUTÉE
+# à la main retire la classe du marqueur ; un devis neuf n'en porte aucun.
+
+#: La clé d'étude du marqueur.
+CLE_KIT_RETIRE = 'kit_retire'
+
+
+def _classe_completable(ligne):
+    """La classe de kit COMPLÉTABLE d'une ligne (``CLASSES_KIT_COMPLETABLES``,
+    classifieur partagé ``_classe_kit_de_ligne``), ou ``None``."""
+    from apps.ventes.domain.composition import (
+        CLASSES_KIT_COMPLETABLES, _classe_kit_de_ligne)
+    if getattr(ligne, 'type_ligne', 'produit') not in ('produit', None, ''):
+        return None
+    classe = _classe_kit_de_ligne(ligne)
+    return classe if classe in CLASSES_KIT_COMPLETABLES else None
+
+
+def classes_kit_retirees(devis):
+    """Les classes de kit retirées à la main de ce devis (liste, relue sur
+    l'instance — l'appelant passe un devis frais ou verrouillé)."""
+    etude = getattr(devis, 'etude_params', None)
+    if not isinstance(etude, dict):
+        return []
+    valeur = etude.get(CLE_KIT_RETIRE)
+    if not isinstance(valeur, list):
+        return []
+    return [str(c) for c in valeur if c]
+
+
+def noter_kit_retire(devis, *, retirees=(), remises=()):
+    """Met à jour le marqueur : ``retirees`` y entrent, ``remises`` en
+    sortent (une classe à la fois retirée et remise dans le même geste —
+    un remplacement — en sort). N'écrit que si le marqueur change ; une liste
+    vide RETIRE la clé (aucun marqueur sur un devis qui n'a rien retiré)."""
+    from apps.ventes.domain.composition import CLASSES_KIT_COMPLETABLES
+    if devis is None or getattr(devis, 'pk', None) is None:
+        return []
+    from apps.ventes.models import Devis
+    frais = Devis.objects.filter(pk=devis.pk).first()
+    if frais is None:
+        return []
+    avant = classes_kit_retirees(frais)
+    apres = set(avant) | {c for c in retirees
+                          if c in CLASSES_KIT_COMPLETABLES}
+    apres -= set(remises)
+    apres = [c for c in CLASSES_KIT_COMPLETABLES if c in apres]
+    if apres == avant:
+        return avant
+    from apps.ventes.domain.etude_schema import ECRAN, ecrire
+    ecrire(frais, proprietaire=ECRAN, **{CLE_KIT_RETIRE: apres or None})
+    # L'instance de l'appelant suit (seule la clé du marqueur) : ses
+    # écritures suivantes d'``etude_params`` (études, resynchro) repartent de
+    # son bloc en mémoire et ne doivent pas effacer le marqueur.
+    if isinstance(getattr(devis, 'etude_params', None), dict):
+        if apres:
+            devis.etude_params[CLE_KIT_RETIRE] = list(apres)
+        else:
+            devis.etude_params.pop(CLE_KIT_RETIRE, None)
+    else:
+        devis.etude_params = dict(frais.etude_params or {})
+    return apres
+
+
+def supprimer_ligne(ligne):
+    """Le point de SUPPRESSION À LA MAIN d'une ligne de devis
+    (``LigneDevisViewSet.perform_destroy``) : supprime la ligne et, si elle
+    appartient à une classe de kit complétable, l'inscrit dans le marqueur
+    ``kit_retire`` — la resynchro ne la recréera plus (D-ACAL-22)."""
+    devis = ligne.devis
+    classe = _classe_completable(ligne)
+    ligne.delete()
+    if classe:
+        noter_kit_retire(devis, retirees=[classe])
+    return classe
+
+
+def noter_ligne_ajoutee(ligne):
+    """Une ligne AJOUTÉE à la main (``perform_create``) : sa classe de kit
+    sort du marqueur — on la remet à la main, jamais la resynchro."""
+    classe = _classe_completable(ligne)
+    if classe:
+        noter_kit_retire(ligne.devis, remises=[classe])
+    return classe
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
