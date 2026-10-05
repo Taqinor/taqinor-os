@@ -97,7 +97,8 @@ def _date(valeur):
             jour = datetime.date.fromisoformat(str(valeur)[:10])
         except ValueError:
             return None
-        dt = datetime.datetime(jour.year, jour.month, jour.day)
+        dt = datetime.datetime(jour.year, jour.month, jour.day,
+                               tzinfo=datetime.timezone.utc)
     if timezone.is_naive(dt):
         dt = timezone.make_aware(dt, datetime.timezone.utc)
     return dt
