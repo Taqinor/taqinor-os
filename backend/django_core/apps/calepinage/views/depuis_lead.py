@@ -37,7 +37,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage
-from ..services.creation import CreationRefusee, ouvrir_ou_creer_pour_lead
+from ..services.creation import (
+    CreationRefusee, corps_conflit, ouvrir_ou_creer_pour_lead,
+)
 
 __all__ = ['depuis_lead']
 
@@ -88,6 +90,12 @@ def depuis_lead(self, request):
                         status=status.HTTP_400_BAD_REQUEST)
 
     if not cree:
+        # ACAL295 — l'unicité est lue SANS restriction (D-ACAL-12), mais un
+        # existant hors de la vue de l'appelant n'est jamais servi : 409 sans
+        # identifiant, référence ni nom (IdentityRail lit ``detail``).
+        conflit = corps_conflit(calepinage, request.user)
+        if 'detail' in conflit:
+            return Response(conflit, status=status.HTTP_409_CONFLICT)
         return Response(_reponse(calepinage, cree=False))
     return Response(_reponse(calepinage, cree=True),
                     status=status.HTTP_201_CREATED)

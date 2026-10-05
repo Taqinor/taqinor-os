@@ -60,8 +60,28 @@ def _message_deja_ouvert(existant):
             'ouvrez-le, ou créez une variante.')
 
 
-def corps_conflit(existant):
-    """Le corps 409 publié par les portes qui refusent un second ouvert."""
+#: ACAL295 — le 409 quand l'existant est HORS de la vue de l'appelant (vue
+#: restreinte au responsable) : ni identifiant, ni référence, ni nom.
+MESSAGE_HORS_VUE = ('Ce lead a déjà un calepinage ouvert confié à un autre '
+                    'responsable : demandez-lui de vous le confier.')
+
+
+def _visible(calepinage, user):
+    from ..selectors import calepinages_visibles
+
+    return calepinages_visibles(user, inclure_archives=True).filter(
+        pk=calepinage.pk).exists()
+
+
+def corps_conflit(existant, user=None):
+    """Le corps 409 publié par les portes qui refusent un second ouvert.
+
+    ACAL295 — ``user`` donné et l'existant hors de SA vue
+    (``selectors.calepinages_visibles``) ⇒ ``{detail}`` SANS identifiant,
+    référence ni nom : l'unicité reste tenue (D-ACAL-12), rien ne fuit.
+    """
+    if user is not None and not _visible(existant, user):
+        return {'detail': MESSAGE_HORS_VUE}
     return {'lead': _message_deja_ouvert(existant),
             'calepinage_existant': existant.pk}
 

@@ -53,7 +53,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from .. import selectors
 from ..models import Calepinage
 from ..permissions import (
-    CAL_APPROUVER, CAL_GERER, CAL_VOIR, PeutApprouverCalepinage,
+    CAL_APPROUVER, CAL_GERER, CAL_VOIR,
     PeutGererCalepinage, PeutLireOuEcrireCalepinage, PeutVoirCalepinage,
 )
 from ..serializers import CalepinageSerializer, CalepinageVarianteSerializer
@@ -214,8 +214,11 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
     # ── Liste : des filtres qui filtrent VRAIMENT ──────────────────────────
     def get_queryset(self):
         params = getattr(self.request, 'query_params', {}) or {}
-        lignes = selectors.appliquer_filtres_liste(
-            super().get_queryset(),
+        # ACAL295 — LE prédicat d'accès (``selectors.calepinages_visibles``) :
+        # société + filtres de liste + vue restreinte au responsable, le même
+        # pour la liste, le détail et chaque action ``detail=True``.
+        lignes = selectors.calepinages_visibles(
+            self.request.user, base=super().get_queryset(),
             lead_id=_entier(params.get('lead'), 'lead'),
             client_id=_entier(params.get('client'), 'client'),
             statut=_statut(params.get('statut')),
@@ -226,8 +229,6 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         responsable_id = _entier(params.get('responsable'), 'responsable')
         if responsable_id:
             lignes = lignes.filter(responsable_id=responsable_id)
-        # CALX406 — la vue restreinte au responsable, si la société l'a SAISIE.
-        lignes = _restreindre_au_responsable(lignes, self.request)
         # CALX343 — ``?etiquette=<id>`` (répétable, ET logique) : filtre porté
         # par ``services/etiquettes.py`` (``records.TaggedItem``), jamais par
         # ``selectors.py``. Absent ⇒ rien n'est filtré ; illisible ⇒ 400 qui
@@ -275,7 +276,7 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                     donnees['lead_id'], company, user=request.user,
                     titre=titre, responsable=responsable)
                 if not cree:
-                    return Response(corps_conflit(calepinage),
+                    return Response(corps_conflit(calepinage, request.user),
                                     status=status.HTTP_409_CONFLICT)
             else:
                 client = donnees.get('client')
@@ -1026,45 +1027,10 @@ def _responsable(calepinage, company):
         else None
 
 
-#: CALX406 — clé, DANS la section ``presets`` des réglages société (même
-#: place que ``approbation_exigee``, CALX347 : aucune section neuve), qui
-#: réduit la liste de chacun à SES calepinages. Absente ⇒ vue inchangée (D12).
-CLE_VUE_RESTREINTE = 'vue_restreinte_au_responsable'
-
-
-def vue_restreinte_au_responsable(company):
-    """CALX406 — le réglage société, lu SANS deviner : ``True`` et rien d'autre.
-
-    Une valeur absente, ``False``, ``"oui"`` ou ``1`` laisse la vue
-    inchangée : on ne restreint jamais la vue d'une société qui n'a pas
-    explicitement choisi de le faire.
-    """
-    if company is None:
-        return False
-    presets = selectors.parametres_de_societe(company).get('presets') or {}
-    return presets.get(CLE_VUE_RESTREINTE) is True
-
-
-def _restreindre_au_responsable(lignes, request):
-    """La liste réduite aux calepinages DE l'appelant, si la société l'a voulu.
-
-    « Les siens » = ceux dont il est ``responsable`` OU qu'il a créés
-    (``cree_par``) — sinon un concepteur perdrait de vue ce qu'il vient
-    d'ouvrir. Le porteur de ``calepinage_approuver`` voit TOUT : un relecteur
-    doit pouvoir relire. Sa garde est vérifiée D'ABORD : elle ne coûte aucune
-    requête (le rôle est déjà chargé par la garde de lecture), et le réglage
-    société n'est lu que pour ceux qu'il peut restreindre.
-    """
-    from django.db.models import Q
-
-    user = getattr(request, 'user', None)
-    if user is None or not getattr(user, 'is_authenticated', False):
-        return lignes
-    if PeutApprouverCalepinage().has_permission(request, None):
-        return lignes
-    if not vue_restreinte_au_responsable(getattr(user, 'company', None)):
-        return lignes
-    return lignes.filter(Q(responsable=user) | Q(cree_par=user))
+# ACAL295 — la clé ``CLE_VUE_RESTREINTE``, le réglage
+# ``vue_restreinte_au_responsable`` et la restriction elle-même vivent dans
+# ``selectors.py`` (``calepinages_visibles``) : UN prédicat d'accès pour toutes
+# les routes, plus de jumeau ici.
 
 
 def _lead_objet(calepinage, company):

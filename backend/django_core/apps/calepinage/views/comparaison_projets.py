@@ -51,8 +51,9 @@ def comparer_projets(self, request):
 
     corps = request.data if isinstance(request.data, dict) else {}
     try:
-        return Response(comparer_calepinages(
-            getattr(request.user, 'company', None), corps.get('ids')))
+        # ACAL295 — l'APPELANT, pas sa seule société : un calepinage hors de
+        # sa vue tombe en refus, avec le motif d'un identifiant absent.
+        return Response(comparer_calepinages(request.user, corps.get('ids')))
     except ComparaisonRefusee as refus:
         return Response({refus.champ or 'ids': str(refus)},
                         status=status.HTTP_400_BAD_REQUEST)
@@ -76,8 +77,7 @@ def comparatif_xlsx(self, request, pk=None):
     autres = params.getlist('ids') if params is not None else []
     try:
         comparaison = comparer_calepinages(
-            getattr(request.user, 'company', None),
-            [calepinage.pk] + list(autres))
+            request.user, [calepinage.pk] + list(autres))
         octets = exporter_comparatif_xlsx(comparaison)
     except (ComparaisonRefusee, ExportRefuse) as refus:
         return Response({getattr(refus, 'champ', '') or 'ids': str(refus)},

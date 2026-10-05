@@ -78,6 +78,74 @@ def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
         q=q, inclure_archives=inclure_archives)
 
 
+#: CALX406 / ACAL295 — la clé de ``presets`` qui restreint la vue au
+#: responsable (ou au créateur) d'un calepinage.
+CLE_VUE_RESTREINTE = 'vue_restreinte_au_responsable'
+
+
+def vue_restreinte_au_responsable(company):
+    """CALX406 — le réglage société, lu SANS deviner : ``True`` et rien d'autre.
+
+    Une valeur absente, ``False``, ``"oui"`` ou ``1`` laisse la vue
+    inchangée : on ne restreint jamais la vue d'une société qui n'a pas
+    explicitement choisi de le faire.
+    """
+    if company is None:
+        return False
+    presets = parametres_de_societe(company).get('presets') or {}
+    return presets.get(CLE_VUE_RESTREINTE) is True
+
+
+def restreindre_aux_siens(lignes, user):
+    """ACAL295 — ``lignes`` réduites aux calepinages DE ``user`` si la société
+    l'a voulu (``responsable`` OU ``cree_par``).
+
+    Le porteur de ``calepinage_approuver`` voit TOUT (un relecteur doit
+    pouvoir relire) : sa garde est vérifiée D'ABORD — elle ne coûte aucune
+    requête —, le réglage n'est lu que pour ceux qu'il peut restreindre.
+    """
+    from django.db.models import Q
+
+    from core.permissions import _user_has_or_legacy
+
+    from .permissions import CAL_APPROUVER
+
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return lignes
+    if _user_has_or_legacy(user, CAL_APPROUVER):
+        return lignes
+    if not vue_restreinte_au_responsable(getattr(user, 'company', None)):
+        return lignes
+    return lignes.filter(Q(responsable=user) | Q(cree_par=user))
+
+
+def calepinages_visibles(user, *, inclure_archives=False, base=None,
+                         **filtres):
+    """ACAL295 — LE prédicat d'accès : les calepinages que ``user`` peut lire
+    ou écrire par ``company + pk``.
+
+    = calepinages de ``user.company`` (``base`` : un queryset déjà borné
+    société, ex. celui du viewset avec ses ``select_related``) + les filtres
+    de liste (``appliquer_filtres_liste``, archives exclues par défaut) + la
+    restriction au responsable (``restreindre_aux_siens``). Toute route qui
+    résout un calepinage par identifiant part d'ICI : un calepinage hors vue
+    est INTROUVABLE (même réponse qu'un identifiant absent), jamais
+    « interdit ».
+    """
+    from .models import Calepinage
+
+    company = getattr(user, 'company', None)
+    if base is None:
+        if company is None:
+            return Calepinage.objects.none()
+        base = Calepinage.objects.filter(company=company)
+    elif company is not None:
+        base = base.filter(company=company)
+    lignes = appliquer_filtres_liste(base, inclure_archives=inclure_archives,
+                                     **filtres)
+    return restreindre_aux_siens(lignes, user)
+
+
 def calepinage_ouvert_du_lead(company, lead_id):
     """ACAL182 — LE calepinage OUVERT (non archivé) d'un lead, ou ``None``.
 
