@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, cleanup, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { cleanup, waitFor } from '@testing-library/react'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -20,106 +19,27 @@ import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamp
    tapé à la main.
    ========================================================================== */
 
-vi.mock('../../api/axios', () => ({
-  default: { get: vi.fn(), post: vi.fn() },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisDesignContext: vi.fn(),
-    getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    syncDevisLayout: vi.fn(),
-    shareLinkDevis: vi.fn(),
-    whatsappPreviewDevis: vi.fn(),
-    reviserDevis: vi.fn(),
-  },
-}))
-// Le double SUIT la surface RÉELLE de `calepinageApi` (même patron que
-// `ToitureDesign.calepinage.test.jsx`) : une liste écrite à la main laisserait des
-// groupes indéfinis et ferait planter l'écran au lieu de montrer l'assertion.
-vi.mock('../../api/calepinageApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  const espionner = (groupe) => Object.fromEntries(
-    Object.entries(groupe).map(([cle, valeur]) => [
-      cle,
-      typeof valeur === 'function'
-        ? vi.fn(() => Promise.resolve({ data: null }))
-        : valeur,
-    ]),
-  )
-  return {
-    default: Object.fromEntries(
-      Object.entries(actual.default).map(([nom, groupe]) => [
-        nom,
-        (groupe && typeof groupe === 'object') ? espionner(groupe) : groupe,
-      ]),
-    ),
-  }
-})
-vi.mock('../../api/crmApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getLeadPhotoToit: vi.fn(() => Promise.resolve({
-        data: { visite_id: null, url: null, texture_calage: null },
-      })),
-      getRoofFootprint: vi.fn(() => Promise.resolve({ data: {} })),
-    },
-  }
-})
-vi.mock('../../lib/toast', () => ({ toastInfo: vi.fn() }))
 vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }))
 
 const setBatimentOsmPropose = vi.fn()
-const initRoofToolPro8 = vi.fn((options) => {
-  options?.onApiReady?.({
-    serializeLayout: vi.fn(() => ({ version: 2, zones: [] })),
-    snapshot: vi.fn(() => null),
-    setBatimentOsmPropose,
-  })
-})
-vi.mock('@roofbuilder', () => ({ initRoofToolPro8: (...a) => initRoofToolPro8(...a) }))
 
+import '../../test/toitureDesignHarnessCalepinage'
+import {
+  initRoofToolPro8, rendreCalepinage, rendreLead, reinitialiserBootMinimal, stubberEmpreinteOsm,
+} from '../../test/toitureDesignHarness'
 import api from '../../api/axios'
 import crmApi from '../../api/crmApi'
 import calepinageApi from '../../api/calepinageApi'
-import ToitureDesign from './ToitureDesign'
+
+stubberEmpreinteOsm()
 
 const CTX = exempleContrat('calepinage', 'calepinage_design_context')
 const PARAMETRES = exempleContrat('calepinage', 'parametres_calepinage')
 const EMPREINTE = exempleContrat('calepinage', 'calepinage_empreinte_osm')
 
-function rendreCalepinage(id) {
-  return render(
-    <MemoryRouter initialEntries={[`/calepinage/${id}`]}>
-      <Routes>
-        <Route path="/calepinage/:id" element={<ToitureDesign mode="calepinage" />} />
-      </Routes>
-    </MemoryRouter>,
-  )
-}
-
-function rendreLead(id) {
-  return render(
-    <MemoryRouter initialEntries={[`/toiture/${id}`]}>
-      <Routes>
-        <Route path="/toiture/:id" element={<ToitureDesign />} />
-      </Routes>
-    </MemoryRouter>,
-  )
-}
-
 beforeEach(() => {
   vi.clearAllMocks()
-  delete window.__taqinorRoofBooted
-  initRoofToolPro8.mockImplementation((options) => {
-    options?.onApiReady?.({
-      serializeLayout: vi.fn(() => ({ version: 2, zones: [] })),
-      snapshot: vi.fn(() => null),
-      setBatimentOsmPropose,
-    })
-  })
+  reinitialiserBootMinimal({ setBatimentOsmPropose })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -184,7 +104,7 @@ describe('CALX132 câblage — la hauteur OSM est PROPOSÉE au panneau Bâtiment
   it('le bloc `batiment` de l’empreinte part vers `setBatimentOsmPropose`', async () => {
     crmApi.getRoofFootprint.mockResolvedValue({ data: EMPREINTE })
 
-    rendreLead(42)
+    rendreLead(42, '/toiture/:id')
 
     await waitFor(() => expect(setBatimentOsmPropose).toHaveBeenCalled())
     expect(setBatimentOsmPropose).toHaveBeenCalledWith(EMPREINTE.batiment)
@@ -195,7 +115,7 @@ describe('CALX132 câblage — la hauteur OSM est PROPOSÉE au panneau Bâtiment
       data: { polygon: EMPREINTE.polygon },
     })
 
-    rendreLead(42)
+    rendreLead(42, '/toiture/:id')
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(setBatimentOsmPropose).not.toHaveBeenCalled()

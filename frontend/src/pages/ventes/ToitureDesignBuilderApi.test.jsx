@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -25,57 +24,6 @@ import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamp
    `calquesDisponibles`), absentes de ce harnais-là.
    ========================================================================== */
 
-vi.mock('../../api/axios', () => ({
-  default: { get: vi.fn(), post: vi.fn() },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisDesignContext: vi.fn(),
-    getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    syncDevisLayout: vi.fn(),
-    shareLinkDevis: vi.fn(),
-    whatsappPreviewDevis: vi.fn(),
-    reviserDevis: vi.fn(),
-  },
-}))
-// Même double que `ToitureDesign.calepinage.test.jsx` : chaque méthode de
-// `calepinageApi` devient un espion `{ data: null }` — sans quoi
-// `calepinageApi.parametres` (lu par `PanneauAllees`) est `undefined` et
-// fait planter tout l'écran.
-vi.mock('../../api/calepinageApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  const espionner = (groupe) => Object.fromEntries(
-    Object.entries(groupe).map(([cle, valeur]) => [
-      cle,
-      typeof valeur === 'function'
-        ? vi.fn(() => Promise.resolve({ data: null }))
-        : valeur,
-    ]),
-  )
-  return {
-    default: Object.fromEntries(
-      Object.entries(actual.default).map(([nom, groupe]) => [
-        nom,
-        (groupe && typeof groupe === 'object') ? espionner(groupe) : groupe,
-      ]),
-    ),
-  }
-})
-vi.mock('../../api/crmApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getLeadPhotoToit: vi.fn(() => Promise.resolve({
-        data: { visite_id: null, url: null, texture_calage: null },
-      })),
-    },
-  }
-})
-vi.mock('../../lib/toast', () => ({ toastInfo: vi.fn() }))
-
-const LAYOUT = { version: 2, zones: [{ id: 'z1' }] }
 // CALX3 — le document d'entrée du moteur (`entreeMoteur()`), forme minimale
 // exploitable par `RemplissageProuve`/`PanneauAllees` (elles ne font que le
 // reposter tel quel à `calepinageApi.moteur.calculer`).
@@ -85,10 +33,6 @@ const DOCUMENT_MOTEUR = {
   contour: [[33.5731, -7.5898], [33.5732, -7.5898], [33.5732, -7.5897]],
   surfaces: [], kits: [], parametres: {}, obstacles: [], zones: [], engagements: [],
 }
-const serializeLayout = vi.fn(() => LAYOUT)
-const snapshot = vi.fn(() => null)
-const setReferenceContourVisible = vi.fn()
-const recommencerDepuisTraceClient = vi.fn(() => true)
 const entreeMoteur = vi.fn(() => DOCUMENT_MOTEUR)
 const appliquerPlan = vi.fn(() => true)
 const raccourcis = {
@@ -96,46 +40,21 @@ const raccourcis = {
   aimantation: vi.fn(), supprimer: vi.fn(), dupliquer: vi.fn(), pleinEcran: vi.fn(),
 }
 const calquesDisponibles = vi.fn(() => [])
-const initRoofToolPro8 = vi.fn((options) => {
-  options?.onApiReady?.({
-    serializeLayout, snapshot, setReferenceContourVisible,
-    recommencerDepuisTraceClient, entreeMoteur, appliquerPlan, raccourcis,
-    calquesDisponibles,
-  })
-})
-vi.mock('@roofbuilder', () => ({ initRoofToolPro8: (...a) => initRoofToolPro8(...a) }))
 
+import '../../test/toitureDesignHarnessCalepinage'
+import {
+  initRoofToolPro8, rendreCalepinage, reinitialiserBoot,
+} from '../../test/toitureDesignHarness'
 import calepinageApi from '../../api/calepinageApi'
-import ToitureDesign from './ToitureDesign'
 
 const CTX = exempleContrat('calepinage', 'calepinage_design_context')
 
-function rendreCalepinage(id) {
-  return render(
-    <MemoryRouter initialEntries={[`/calepinage/${id}`]}>
-      <Routes>
-        <Route path="/calepinage/:id"
-          element={<ToitureDesign mode="calepinage" />} />
-      </Routes>
-    </MemoryRouter>,
-  )
-}
-
 beforeEach(() => {
   vi.clearAllMocks()
-  delete window.__taqinorRoofBooted
-  serializeLayout.mockReturnValue(LAYOUT)
-  snapshot.mockReturnValue(null)
   entreeMoteur.mockReturnValue(DOCUMENT_MOTEUR)
   appliquerPlan.mockReturnValue(true)
   calquesDisponibles.mockReturnValue([])
-  initRoofToolPro8.mockImplementation((options) => {
-    options?.onApiReady?.({
-      serializeLayout, snapshot, setReferenceContourVisible,
-      recommencerDepuisTraceClient, entreeMoteur, appliquerPlan, raccourcis,
-      calquesDisponibles,
-    })
-  })
+  reinitialiserBoot({ entreeMoteur, appliquerPlan, raccourcis, calquesDisponibles })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
