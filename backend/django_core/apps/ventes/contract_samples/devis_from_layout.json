@@ -1,0 +1,43 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/from-layout/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ACAL4 (PACT10, C-ACAL-106/105/104) — contrat posé SEUL et EN PREMIER. Constat : `ToitureDesign.jsx` lit `devis?.avertissements` et `devis?.marques_manquantes` alors que `views/devis.py::from_layout` ne les renvoie jamais (branche morte). Corps de la requête : {layout, lead | client, taux_tva?, remise_globale?, structure_produit_id?, structure_type?}. Réponses : 201 = le devis créé + `avertissements` [str] + `marques_manquantes` [str] ; 200 = même forme + `deduplicated: true` (brouillon ACTIF de même lead + même empreinte de layout, jamais un doublon) ; 422 {detail, errors} = pré-vol de composition (catalogue) ; 422 {hors_reseau: str} = refus d'un site isolé nommé (clé `hors_reseau`, pas un message anonyme). Les clés historiques de l'entrée calepinage (`calepinage`, `variante`, `a_renseigner`, CAL185) ne sont PAS documentées : la branche est retirée par C-ACAL-087. Jumeau module : `calepinage_publication.json` (D02-T01), mêmes clés. Appelant écran : `frontend/src/pages/ventes/ToitureDesign.jsx`. Producteurs futurs : `views/devis.py::from_layout`, `domain/creation.py::build_devis_from_layout` (paramètre journal existant). Aucun statut ne bouge : le devis naît `brouillon`.",
+  "corps": {
+    "layout": { "version": 2, "zones": [] },
+    "lead": 412,
+    "taux_tva": 20,
+    "remise_globale": 0,
+    "structure_produit_id": null,
+    "structure_type": null
+  },
+  "exemple": {
+    "id": 3141,
+    "reference": "DEV-2026-000413",
+    "statut": "brouillon",
+    "proposal_token": "k3Qe9vN2xT7uHf1LzA8wYb4R",
+    "proposal_path": "/proposition/k3Qe9vN2xT7uHf1LzA8wYb4R",
+    "avertissements": [
+      "Aucune structure de fixation n'est définie pour ce toit : une ligne par défaut a été ajoutée."
+    ],
+    "marques_manquantes": ["Onduleur : marque non renseignée sur la fiche produit."]
+  },
+  "exemple_deduplique": {
+    "id": 3141,
+    "reference": "DEV-2026-000413",
+    "statut": "brouillon",
+    "proposal_token": "k3Qe9vN2xT7uHf1LzA8wYb4R",
+    "proposal_path": "/proposition/k3Qe9vN2xT7uHf1LzA8wYb4R",
+    "avertissements": [],
+    "marques_manquantes": [],
+    "deduplicated": true
+  },
+  "exemple_422_preflight": {
+    "detail": "Aucun onduleur compatible au catalogue pour cette puissance.",
+    "errors": [
+      "Aucun onduleur compatible au catalogue pour cette puissance."
+    ]
+  },
+  "exemple_422_hors_reseau": {
+    "hors_reseau": "Site isolé : le devis automatique n'est pas disponible, une étude hors-réseau est requise."
+  }
+}

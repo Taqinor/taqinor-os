@@ -13,6 +13,32 @@
         "date_validite": "2026-10-28",
         "total_ttc": "48500.00",
         "accepte": false,
+        "mis_a_jour_le": "2026-09-29T14:05:00+00:00"
+      },
+      {
+        "id": 400,
+        "reference": "DEV-202609-0003",
+        "statut": "accepte",
+        "statut_display": "Accepté",
+        "date_creation": "2026-09-01T08:00:00+00:00",
+        "date_validite": "2026-10-01",
+        "total_ttc": "36000.00",
+        "accepte": true,
+        "mis_a_jour_le": null
+      }
+    ]
+  },
+  "exemple_ciq9": {
+    "results": [
+      {
+        "id": 413,
+        "reference": "DEV-202609-0012",
+        "statut": "envoye",
+        "statut_display": "Envoyé",
+        "date_creation": "2026-09-28T10:12:00+00:00",
+        "date_validite": "2026-10-28",
+        "total_ttc": "48500.00",
+        "accepte": false,
         "mis_a_jour_le": "2026-09-29T14:05:00+00:00",
         "exige_identite_entreprise": true
       },
@@ -30,5 +56,5 @@
       }
     ]
   },
-  "exige_identite_entreprise": "CIQ9 — booléen ADDITIF sur chaque élément : vrai quand le devis est commercial ou industriel (D-CIQ-11 : raison sociale, qualité du signataire et ICE obligatoires à l'acceptation en ligne, contrat `apps/ventes/contract_samples/acceptation_entreprise.json`), faux sinon."
+  "exige_identite_entreprise": "CIQ9 — booléen ADDITIF sur chaque élément : vrai quand le devis est commercial ou industriel (D-CIQ-11 : raison sociale, qualité du signataire et ICE obligatoires à l'acceptation en ligne, contrat `apps/ventes/contract_samples/acceptation_entreprise.json`), faux sinon. Tant que CIQ9 ne le sert pas, la clé vit dans `exemple_ciq9` (PAS dans `exemple`, que test_portail_devis_mis_a_jour compare clé à clé au sélecteur actuel) ; CIQ9 la verse dans `exemple` en même temps que le sélecteur qui l'émet."
 }

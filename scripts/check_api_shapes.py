@@ -1212,6 +1212,30 @@ def echantillons_de_contrat(shapes, racine: Path = None, lecteur_serveur=None):
 # Cle : `<app>/<fichier>.json`. Valeur : la route visee et la raison de
 # l'abstention — jamais « plus tard », toujours un identifiant de tache.
 ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
+    "adsengine/veille_verdict.json":
+        "POST adsengine/veille/annonceurs/<id>/verdict/ — verdict humain, "
+        "reponse = l'annonceur au format veille_annonceur.json, pose SEUL et "
+        "EN PREMIER (PACT10) : la vue arrive avec VEIL17 (VEIL5)",
+    "adsengine/veille_echantillon.json":
+        "POST adsengine/veille/decouvertes/<id>/echantillon/ — tirage de "
+        "l'echantillon de mesure, pose SEUL et EN PREMIER (PACT10) : la vue "
+        "arrive avec VEIL17 (VEIL5)",
+    "adsengine/veille_mesures.json":
+        "GET adsengine/veille/decouvertes/<id>/mesures/ — les mesures d'une "
+        "decouverte (null + motif, jamais 0), pose SEUL et EN PREMIER "
+        "(PACT10) : la vue arrive avec VEIL18 (VEIL4)",
+    "adsengine/veille_annonceur.json":
+        "GET adsengine/veille/annonceurs/<id>/ — l'annonceur decouvert et "
+        "son verdict motive, pose SEUL et EN PREMIER (PACT10) : la vue "
+        "arrive avec VEIL17 (VEIL3)",
+    "adsengine/veille_decouverte.json":
+        "GET adsengine/veille/decouvertes/<id>/ (le POST de lancement renvoie "
+        "la meme forme) — la decouverte et son journal, pose SEUL et EN "
+        "PREMIER (PACT10) : la vue arrive avec VEIL17 (VEIL2)",
+    "adsengine/veille_couverture.json":
+        "GET adsengine/veille/couverture/ — couverture de l'API Ad Library "
+        "PAR PAYS + etat de l'acces, pose SEUL et EN PREMIER (PACT10) : la "
+        "vue arrive avec VEIL10 (VEIL1)",
     "calepinage/calepinage_simulation.json":
         "POST calepinages/<pk>/simuler/, et les blocs ecrits par fusion dans "
         "Calepinage.resultat (simulation, production, pertes, cascade, meteo, "

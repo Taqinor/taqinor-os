@@ -1,0 +1,66 @@
+{
+  "endpoint": "GET /api/django/adsengine/veille/decouvertes/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "VEIL2 (PACT10) — contrat posé SEUL et EN PREMIER : la découverte = un lancement (mots-clés x pays) et son journal. Le POST de lancement (`POST /api/django/adsengine/veille/decouvertes/`) renvoie la MÊME forme. `statut` : en_file | en_cours | en_pause_quota | termine | echec | annule. `requetes[].statut` : a_faire | en_cours | terminee | vide | plafond | erreur. Un mot-clé fait au plus 100 caractères (limite de l'API ads_archive). Les plafonds (`plafond_appels`, `plafond_pages_par_requete`) bornent la consommation du quota ; `reprise_a` est l'heure de reprise quand le statut est en_pause_quota (codes 4/17/32/613). `dernier_usage_app` reprend l'en-tête X-App-Usage. AUCUN champ ne porte un jeton d'accès, un curseur de pagination ni une URL `paging.next` : Meta interdit de stocker les curseurs. Vue livrée par VEIL17.",
+  "exemple": {
+    "id": 17,
+    "statut": "en_pause_quota",
+    "mots_cles": [
+      { "texte": "robe été", "pays": ["FR", "BE"] },
+      { "texte": "baskets running", "pays": ["FR"] }
+    ],
+    "search_type": "KEYWORD_UNORDERED",
+    "ad_active_status": "ACTIVE",
+    "plafond_appels": 200,
+    "plafond_pages_par_requete": 10,
+    "appels_consommes": 41,
+    "pubs_recues": 3180,
+    "pages_lues": 41,
+    "annonceurs_distincts": 412,
+    "reprise_a": "2026-10-05T09:30:00Z",
+    "erreurs": [
+      {
+        "code": 613,
+        "message_fr": "Limite de débit atteinte : la découverte attend avant de reprendre.",
+        "a": "2026-10-04T09:28:12Z"
+      }
+    ],
+    "dernier_usage_app": {
+      "call_count": 87,
+      "total_cputime": 12,
+      "total_time": 15
+    },
+    "cree_par": "Reda Kasri",
+    "cree_le": "2026-10-04T09:00:00Z",
+    "termine_le": null,
+    "requetes": [
+      {
+        "mot_cle": "robe été",
+        "pays": "FR",
+        "statut": "terminee",
+        "pages_lues": 18,
+        "appels": 18,
+        "pubs": 1450,
+        "nouveaux_annonceurs": 210
+      },
+      {
+        "mot_cle": "robe été",
+        "pays": "BE",
+        "statut": "en_cours",
+        "pages_lues": 9,
+        "appels": 9,
+        "pubs": 720,
+        "nouveaux_annonceurs": 96
+      },
+      {
+        "mot_cle": "baskets running",
+        "pays": "FR",
+        "statut": "a_faire",
+        "pages_lues": 0,
+        "appels": 0,
+        "pubs": 0,
+        "nouveaux_annonceurs": 0
+      }
+    ]
+  }
+}
