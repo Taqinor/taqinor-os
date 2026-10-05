@@ -32,6 +32,7 @@
 // l'ordre d'émission des clés du corps (celui du littéral `buildBody()` FR).
 
 import { billRangeFromExact } from '../billRange';
+import { MAX_CONSO_MENSUELLE_KWH } from '../estimatorPro';
 import type { LeadModeId } from '../lead';
 
 /** Les modes du tunnel dans lesquels une question peut être posée. */
@@ -285,6 +286,11 @@ export function trancheFactureProfessionnelle(etat: EtatTunnel): string {
   let mad: number | null = null;
   if (etat.factureProUnite === 'mad') mad = v;
   else if (etat.tarifProMadKwh != null && etat.tarifProMadKwh > 0) mad = v * etat.tarifProMadKwh;
+  // CIW404 — une conso au-delà du plafond technique de l'estimateur (aucun tarif posé, la
+  // tranche resterait vide et l'erreur s'afficherait sur un champ résidentiel CACHÉ) prend
+  // la tranche la plus haute, comme le fait déjà le chemin en MAD : « gt10000 » reste
+  // factuellement vrai pour tout gros compte.
+  if (mad == null && etat.factureProUnite !== 'mad' && v > MAX_CONSO_MENSUELLE_KWH) return 'gt10000';
   if (mad == null || !(mad > 0)) return '';
   return billRangeFromExact(mad) ?? (mad > 10_000 ? 'gt10000' : '');
 }
@@ -736,7 +742,14 @@ const G_ESTIMATION = {
     webhookKey: 'estimateShown',
     domId: null,
     modes: MODES_TOUS,
-    lire: (e) => e.estimationAffichee,
+    // CIW404 — en commercial/industriel, AUCUN chiffre d'hypothèse ne part (constantes non
+    // sourcées : tarifs, prix au kWc, parts diurnes « à vérifier »). La clé est OMISE : le
+    // drapeau « étude dédiée » n'a pas de clé dans le contrat (liste blanche de lead.ts et du
+    // webhook) — l'écran garde son teaser (WJ125), le CRM ne reçoit rien de chiffré.
+    lire: (e) =>
+      e.mode === 'industriel' || e.mode === 'commercial' || e.mode === 'professionnel'
+        ? undefined
+        : e.estimationAffichee,
     nettoyer: (v) => (v != null && typeof v === 'object' ? v : undefined),
     requis: false,
   },

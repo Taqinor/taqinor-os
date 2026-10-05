@@ -192,3 +192,29 @@ describe('AGW402 — zeroFormWhatsappText variante pompage', () => {
     expect(read('../src/pages/en/index.astro')).toContain("zeroFormWhatsappText('en')");
   });
 });
+
+// ———————————————————————————————————————————————————————————————————————————
+// CIW404 — le message WhatsApp d'un lead commercial/industriel ne porte aucune
+// économie ni retour (les libellés restent vides dans le bloc pro des 3 pages).
+// ———————————————————————————————————————————————————————————————————————————
+describe('CIW404 — WhatsApp pro sans économie ni retour', () => {
+  it('sans libellé d\'économie : aucun « MAD/an », « économies estimées » ni retour', () => {
+    const t = captureWhatsappText({ fullName: 'Karim', city: 'Casablanca', kwcLabel: undefined, savingsLabel: undefined });
+    expect(t).not.toMatch(/MAD\/an|économies estimées|retour/i);
+  });
+
+  for (const [lang, rel] of [
+    ['FR', '../src/pages/devis/mon-toit.astro'],
+    ['EN', '../src/pages/en/devis/mon-toit.astro'],
+    ['AR', '../src/pages/ar/devis/mon-toit.astro'],
+  ] as const) {
+    it(`${lang} — le bloc pro vide lastSavingsLabel/lastKwcLabel (jamais de libellé chiffré hérité des hypothèses)`, () => {
+      const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+      const debut = src.indexOf('function computeProEstimate');
+      const fin = src.indexOf('interface AgricoleEstimateOk', debut);
+      const bloc = fin > debut ? src.slice(debut, fin) : src.slice(debut, debut + 12000);
+      expect(bloc).not.toMatch(/lastSavingsLabel = (?!'')/);
+      expect(bloc).not.toMatch(/lastKwcLabel = (?!'')/);
+    });
+  }
+});

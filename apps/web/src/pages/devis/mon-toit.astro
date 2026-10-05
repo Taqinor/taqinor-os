@@ -552,7 +552,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                    ÉQUIPES seules (SHIFT_DAY_SHARE_CEILING) — le week-end
                    n'entrait dans aucun calcul. Le commercial le complète dans l'ERP. -->
               <p class="mt-2 text-xs text-lune-faint">
-                Le solaire déplace vos heures PLEINES (~1,01 DH/kWh) ; la POINTE ne se
+                Le solaire déplace vos heures PLEINES ; la POINTE ne se
                 couvre qu'avec une batterie — jamais l'inverse. Plus vous produisez la
                 nuit (3×8, continu), moins le solaire seul couvre — une estimation
                 honnête, affinée après étude.
@@ -3627,6 +3627,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       lastSavingsLabel = '';
       lastKwc = null;
       estimateShown = null;
+      // CIW404 — un tarif périmé ne survit pas à une estimation en échec.
+      lastProTarifMadKwh = null;
       if (printBtn) printBtn.hidden = true;
     };
     const proBill = num(proBillId());
@@ -3692,30 +3694,18 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // WJ125 — payload lead (chiffres exacts) + labels construits AVANT tout
     // rendu ; en parcours public gaté on s'arrête ici SANS écrire un chiffre.
     {
-      const s: Record<string, number | string> = {};
+      // CIW404 — en modes commercial/industriel, AUCUN chiffre d'hypothèse (kWc, production,
+      // économie, retour, taux de couverture / d'autoconsommation) ne part au CRM ni dans le
+      // message WhatsApp : ils viennent de constantes non sourcées (tarifs, prix au kWc, parts
+      // diurnes « à vérifier ») et le retour est la MÊME paire pour tous les leads d'une
+      // tension. Seul un drapeau « étude dédiée » reste ; l'écran garde le teaser (WJ125).
+      // Le seul chiffre montré au client sera celui du moteur serveur (/proposition, D-CIQ-0).
       const kOk = Number.isFinite(est.kwc) && est.kwc > 0;
-      if (kOk) s.kwc = est.kwc;
-      // Le nombre de modules du dimensionnement annoncé (nb × 710 Wc = ce kWc).
-      // estimatorPro le calcule depuis toujours ; le CRM ne le recevait jamais et
-      // le conseiller le recomptait à la main depuis le kWc.
-      if (Number.isFinite(est.nbPanneaux) && est.nbPanneaux > 0) s.nbPanneaux = est.nbPanneaux;
-      if (Number.isFinite(est.prodAnnuelleKwh) && est.prodAnnuelleKwh > 0) s.prodKwh = Math.round(est.prodAnnuelleKwh);
-      if (Number.isFinite(est.tauxAutoconso) && est.tauxAutoconso > 0) s.tauxAutoconso = pct(est.tauxAutoconso);
-      if (Number.isFinite(est.tauxCouverture) && est.tauxCouverture > 0) s.tauxCouverture = pct(est.tauxCouverture);
-      const eOk = est.ecoAnnuelleMadLow > 0 && est.ecoAnnuelleMadHigh > 0;
-      if (eOk) { s.ecoMadYearLow = est.ecoAnnuelleMadLow; s.ecoMadYearHigh = est.ecoAnnuelleMadHigh; }
-      const rOk = est.paybackYearsLow > 0 && est.paybackYearsHigh > 0;
-      const rLabel = rOk
-        ? (est.paybackYearsLow === est.paybackYearsHigh
-          ? `${fmtYears(est.paybackYearsLow)} ans`
-          : `${fmtYears(est.paybackYearsLow)} – ${fmtYears(est.paybackYearsHigh)} ans`)
-        : null;
-      if (rLabel) s.paybackLabel = rLabel;
-      estimateShown = s;
+      estimateShown = null; // CIW404 — aucun chiffre vers le CRM
+      // `lastKwc` ne sert qu'à l'aperçu 3D local : il ne part jamais au CRM.
       lastKwc = kOk ? est.kwc : null;
-      lastKwcLabel = kOk ? `${formatKwc(est.kwc)} kWc` : '';
-      const eLabel = eOk ? formatMadRange(est.ecoAnnuelleMadLow, est.ecoAnnuelleMadHigh) : null;
-      lastSavingsLabel = eLabel ? `${eLabel}/an` : '';
+      lastKwcLabel = '';
+      lastSavingsLabel = '';
     }
     if (PUBLIC_ESTIMATE_GATED) {
       updatePanels3dVisibility();
@@ -3773,10 +3763,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     }
     if (noteEl) noteEl.hidden = true;
     if (hypWrap) hypWrap.hidden = false;
-    estimateShown = shown;
+    // CIW404 — même règle côté écran non gaté : rien de chiffré vers le CRM ni WhatsApp.
+    estimateShown = null; // CIW404 — aucun chiffre vers le CRM
     lastKwc = kwcOk ? est.kwc : null;
-    lastKwcLabel = kwcOk ? `${formatKwc(est.kwc)} kWc` : '';
-    lastSavingsLabel = ecoLabel ? `${ecoLabel}/an` : '';
+    lastKwcLabel = '';
+    lastSavingsLabel = '';
     if (printBtn) printBtn.hidden = false;
     fillDocChrome();
     updatePanels3dVisibility();
@@ -4640,7 +4631,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // `errors.roofType` n'a plus de champ où s'afficher : le type de toit est
     // retiré du tunnel (coupe fondateur 18/08) et resolveRoofType garantit une
     // valeur valide — l'erreur ne peut donc plus se produire depuis cette page.
-    setFieldError('mt-bill', 'mt-bill-err', errors.billRange ?? null);
+    // CIW404 — l'erreur de tranche va sur le champ VISIBLE du profil actif (jamais sur le <select> résidentiel caché en C&I).
+    if (isProMode(mode)) setFieldError(proBillId(), proBillErrId(), errors.billRange ?? null);
+    else setFieldError('mt-bill', 'mt-bill-err', errors.billRange ?? null);
     const cErr = $('mt-consent-err');
     if (cErr) { cErr.textContent = errors.consent ?? ''; cErr.hidden = !errors.consent; }
   }

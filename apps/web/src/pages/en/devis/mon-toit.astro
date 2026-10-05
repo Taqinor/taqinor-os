@@ -506,7 +506,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                    from the SHIFTS alone (SHIFT_DAY_SHARE_CEILING) — weekend
                    never entered any calculation. The sales rep fills it in the ERP. -->
               <p class="mt-2 text-xs text-lune-faint">
-                Solar shifts your FULL-rate hours (~1.01 MAD/kWh); PEAK is only covered
+                Solar shifts your FULL-rate hours; PEAK is only covered
                 with a battery — never the other way round. The more you produce at night
                 (3×8, continuous), the less solar alone covers — an honest estimate,
                 refined after a study.
@@ -3418,6 +3418,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastSavingsLabel = '';
       lastKwc = null;
       estimateShown = null;
+      // CIW404 — un tarif périmé ne survit pas à une estimation en échec.
+      lastProTarifMadKwh = null;
       if (printBtn) printBtn.hidden = true;
     };
     const proBill = num(proBillId());
@@ -3482,30 +3484,18 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // WJ125 — lead payload (exact figures) + labels built BEFORE any render;
     // in the gated public journey we stop here WITHOUT writing a single figure.
     {
-      const s: Record<string, number | string> = {};
+      // CIW404 — en modes commercial/industriel, AUCUN chiffre d'hypothèse (kWc, production,
+      // économie, retour, taux de couverture / d'autoconsommation) ne part au CRM ni dans le
+      // message WhatsApp : ils viennent de constantes non sourcées (tarifs, prix au kWc, parts
+      // diurnes « à vérifier ») et le retour est la MÊME paire pour tous les leads d'une
+      // tension. Seul un drapeau « étude dédiée » reste ; l'écran garde le teaser (WJ125).
+      // Le seul chiffre montré au client sera celui du moteur serveur (/proposition, D-CIQ-0).
       const kOk = Number.isFinite(est.kwc) && est.kwc > 0;
-      if (kOk) s.kwc = est.kwc;
-      // The module count behind the announced sizing (n × 710 Wc = that kWc).
-      // estimatorPro has always computed it; the CRM never received it, so the
-      // adviser recounted it by hand from the kWc.
-      if (Number.isFinite(est.nbPanneaux) && est.nbPanneaux > 0) s.nbPanneaux = est.nbPanneaux;
-      if (Number.isFinite(est.prodAnnuelleKwh) && est.prodAnnuelleKwh > 0) s.prodKwh = Math.round(est.prodAnnuelleKwh);
-      if (Number.isFinite(est.tauxAutoconso) && est.tauxAutoconso > 0) s.tauxAutoconso = pct(est.tauxAutoconso);
-      if (Number.isFinite(est.tauxCouverture) && est.tauxCouverture > 0) s.tauxCouverture = pct(est.tauxCouverture);
-      const eOk = est.ecoAnnuelleMadLow > 0 && est.ecoAnnuelleMadHigh > 0;
-      if (eOk) { s.ecoMadYearLow = est.ecoAnnuelleMadLow; s.ecoMadYearHigh = est.ecoAnnuelleMadHigh; }
-      const rOk = est.paybackYearsLow > 0 && est.paybackYearsHigh > 0;
-      const rLabel = rOk
-        ? (est.paybackYearsLow === est.paybackYearsHigh
-          ? `${fmtYears(est.paybackYearsLow)} yrs`
-          : `${fmtYears(est.paybackYearsLow)} – ${fmtYears(est.paybackYearsHigh)} yrs`)
-        : null;
-      if (rLabel) s.paybackLabel = rLabel;
-      estimateShown = s;
+      estimateShown = null; // CIW404 — aucun chiffre vers le CRM
+      // `lastKwc` ne sert qu'à l'aperçu 3D local : il ne part jamais au CRM.
       lastKwc = kOk ? est.kwc : null;
-      lastKwcLabel = kOk ? `${formatKwc(est.kwc)} kWc` : '';
-      const eLabel = eOk ? formatMadRange(est.ecoAnnuelleMadLow, est.ecoAnnuelleMadHigh) : null;
-      lastSavingsLabel = eLabel ? `${eLabel}/yr` : '';
+      lastKwcLabel = '';
+      lastSavingsLabel = '';
     }
     if (PUBLIC_ESTIMATE_GATED) {
       updatePanels3dVisibility();
@@ -3563,10 +3553,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     }
     if (noteEl) noteEl.hidden = true;
     if (hypWrap) hypWrap.hidden = false;
-    estimateShown = shown;
+    // CIW404 — même règle côté écran non gaté : rien de chiffré vers le CRM ni WhatsApp.
+    estimateShown = null; // CIW404 — aucun chiffre vers le CRM
     lastKwc = kwcOk ? est.kwc : null;
-    lastKwcLabel = kwcOk ? `${formatKwc(est.kwc)} kWc` : '';
-    lastSavingsLabel = ecoLabel ? `${ecoLabel}/year` : '';
+    lastKwcLabel = '';
+    lastSavingsLabel = '';
     if (printBtn) printBtn.hidden = false;
     fillDocChrome();
     updatePanels3dVisibility();
@@ -4433,7 +4424,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // `errors.roofType` no longer has a field to show on: "roof type" is
     // removed from the funnel (founder cut 18/08) and resolveRoofType
     // guarantees a valid value — the error can no longer occur from this page.
-    setFieldError('mt-bill', 'mt-bill-err', enMsg(errors.billRange));
+    // CIW404 — the range error goes on the VISIBLE field of the active profile (never on the residential <select> hidden in C&I).
+    if (isProMode(mode)) setFieldError(proBillId(), proBillErrId(), enMsg(errors.billRange));
+    else setFieldError('mt-bill', 'mt-bill-err', enMsg(errors.billRange));
     const cErr = $('mt-consent-err');
     const consentMsg = enMsg(errors.consent);
     if (cErr) { cErr.textContent = consentMsg ?? ''; cErr.hidden = !consentMsg; }

@@ -432,3 +432,95 @@ describe('AGW403 — heuresPompage seulement si le curseur a été touché', () 
     });
   }
 });
+
+// ———————————————————————————————————————————————————————————————————————————
+// CIW404 — aucun chiffre d'hypothèse C&I ne part au CRM ; un gros compte en kWh
+// prend la tranche gt10000 ; « ~1,01 DH/kWh » retiré des 3 langues.
+// ———————————————————————————————————————————————————————————————————————————
+import { trancheFactureProfessionnelle } from '../src/lib/tunnel/champs';
+
+describe('CIW404 — estimateShown des modes commercial/industriel', () => {
+  const chiffres = {
+    kwc: 120, nbPanneaux: 170, prodKwh: 200000, tauxAutoconso: 99, tauxCouverture: 60,
+    ecoMadYearLow: 90000, ecoMadYearHigh: 110000, paybackLabel: '3 – 5 ans',
+  };
+  const valeursNumeriques = (o: unknown) =>
+    Object.values((o ?? {}) as Record<string, unknown>).filter((v) => typeof v === 'number');
+
+  for (const mode of ['commercial', 'industriel'] as const) {
+    it(`${mode} — le payload n'a plus de clé estimateShown : aucun chiffre d'hypothèse (kWc, éco, retour, taux) vers le CRM`, () => {
+      const body = corps({
+        ...etatResidentiel(), mode, factureProValeur: 30000, factureProUnite: 'mad', estimationAffichee: chiffres,
+      });
+      expect(body).not.toHaveProperty('estimateShown');
+      expect(valeursNumeriques(body.estimateShown)).toEqual([]);
+      const json = JSON.stringify(body);
+      for (const k of ['ecoMadYearLow', 'tauxAutoconso', 'tauxCouverture', 'paybackLabel', 'prodKwh']) {
+        expect(json).not.toContain(k);
+      }
+    });
+
+    it(`${mode} — sans estimation, la clé est absente (rien n'est inventé)`, () => {
+      const body = corps({ ...etatResidentiel(), mode, factureProValeur: 30000, factureProUnite: 'mad', estimationAffichee: null });
+      expect(body).not.toHaveProperty('estimateShown');
+    });
+  }
+
+  it('le résidentiel et l\'agricole gardent leurs chiffres montrés, inchangés', () => {
+    const resid = corps({ ...etatResidentiel(), estimationAffichee: { kwc: 6, ecoMadYearLow: 9000 } });
+    expect(resid.estimateShown).toEqual({ kwc: 6, ecoMadYearLow: 9000 });
+    const agri = corps({ ...etatResidentiel(), mode: 'agricole', estimationAffichee: { pompeCv: 5.5, m3Jour: 70 } });
+    expect(agri.estimateShown).toEqual({ pompeCv: 5.5, m3Jour: 70 });
+  });
+});
+
+describe('CIW404 — gros compte en kWh : tranche gt10000, jamais d\'erreur sur un champ caché', () => {
+  const etatPro = (over: Partial<EtatTunnel>): EtatTunnel => ({
+    ...etatResidentiel(), mode: 'industriel', trancheFacture: '', factureHiverMad: null, ...over,
+  });
+
+  it('industriel à 300 000 kWh/mois sans estimation valide (aucun tarif) → gt10000', () => {
+    const etat = etatPro({ factureProValeur: 300_000, factureProUnite: 'kwh', tarifProMadKwh: null });
+    expect(trancheFactureProfessionnelle(etat)).toBe('gt10000');
+    const { body, errors } = construireCorps(etat, { messages: MESSAGES });
+    expect(body.billRange).toBe('gt10000');
+    expect(errors).not.toHaveProperty('billRange');
+  });
+
+  it('même chose pour un commercial', () => {
+    expect(trancheFactureProfessionnelle(etatPro({ mode: 'commercial', factureProValeur: 250_000, factureProUnite: 'kwh', tarifProMadKwh: null }))).toBe('gt10000');
+  });
+
+  it('sous le plafond technique et sans tarif : toujours pas de tranche fabriquée', () => {
+    expect(trancheFactureProfessionnelle(etatPro({ factureProValeur: 150_000, factureProUnite: 'kwh', tarifProMadKwh: null }))).toBe('');
+  });
+
+  it('avec un tarif connu, la conversion habituelle est inchangée', () => {
+    expect(trancheFactureProfessionnelle(etatPro({ factureProValeur: 50_000, factureProUnite: 'kwh', tarifProMadKwh: 1.4 }))).toBe('gt10000');
+    expect(trancheFactureProfessionnelle(etatPro({ factureProValeur: 5_000, factureProUnite: 'mad' }))).not.toBe('');
+  });
+
+  for (const [lang, rel] of [
+    ['FR', '../src/pages/devis/mon-toit.astro'],
+    ['EN', '../src/pages/en/devis/mon-toit.astro'],
+    ['AR', '../src/pages/ar/devis/mon-toit.astro'],
+  ] as const) {
+    const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+    it(`${lang} — plus de « 1,01 » ; tarif périmé remis à null ; erreur de tranche sur le champ visible`, () => {
+      expect(src).not.toMatch(/1[,.]01/);
+      expect(src).toContain('lastProTarifMadKwh = null;');
+      expect(src).toMatch(/if \(isProMode\(mode\)\) setFieldError\(proBillId\(\), proBillErrId\(\)/);
+    });
+    it(`${lang} — le bloc pro n'écrit plus ni payload chiffré ni libellé WhatsApp (kWc, économie)`, () => {
+      const debut = src.indexOf('estimateShown = null; // CIW404 — aucun chiffre vers le CRM');
+      expect(debut).toBeGreaterThan(-1);
+      const fin = src.indexOf('announceEstimate(', debut);
+      const apres = src.slice(debut, fin);
+      expect(apres).not.toMatch(/lastSavingsLabel = (?!'')/);
+      expect(apres).not.toMatch(/lastKwcLabel = (?!'')/);
+      expect(src.match(/estimateShown = null; \/\/ CIW404 — aucun chiffre vers le CRM/g)?.length).toBe(2);
+      expect(src).not.toMatch(/s\.ecoMadYearLow = est\.ecoAnnuelleMadLow/);
+      expect(src).not.toMatch(/s\.paybackLabel = rLabel/);
+    });
+  }
+});

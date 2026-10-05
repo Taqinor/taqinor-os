@@ -176,8 +176,10 @@ describe.each(LOCALES)('WJ123 — panneau industriel v2 dans mon-toit.astro (%s)
     expect(src).not.toContain('id="mt-puissance-kva"');
   });
 
-  it('la micro-copy dit que le solaire déplace les heures pleines (~1,01), la pointe seulement avec batterie', () => {
-    expect(src).toMatch(/1[.,]01/);
+  it('la micro-copy dit que le solaire déplace les heures pleines, la pointe seulement avec batterie — sans tarif non sourcé (CIW404)', () => {
+    expect(src).toMatch(/heures PLEINES|FULL-rate hours|ساعاتكم المُمتلئة/);
+    // CIW404 — « ~1,01 DH/kWh » n'avait aucune source : retiré des 3 langues.
+    expect(src).not.toMatch(/1[.,]01/);
   });
 
   it('l’estimateur reçoit equipes', () => {
