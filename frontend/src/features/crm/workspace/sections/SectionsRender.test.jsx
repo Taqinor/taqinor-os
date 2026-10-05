@@ -2,7 +2,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { axe } from 'vitest-axe'
 import * as axeMatchers from 'vitest-axe/matchers'
-import { initState } from '../draftCore'
+import { initState, dirtyKeys } from '../draftCore'
+import fieldLabels from '../fieldLabels'
+import { documentContrat } from '../../../../test/fixtures/contractSamples'
 import SectionContact from './SectionContact'
 import SectionPipeline from './SectionPipeline'
 import SectionEnergie, { SectionPompage, SectionEquipements } from './SectionEnergie'
@@ -83,9 +85,9 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
     expect(values).toEqual(['', 'monophase', 'triphase', 'inconnu', 'aucun'])
   })
 
-  it('SectionPompage rend les 3 champs pompage', () => {
+  it('SectionPompage rend les champs hydrauliques (CV actuel, HMT, débit)', () => {
     render(<SectionPompage state={createState()} {...base} />)
-    expect(document.querySelector('#lf-pompe-cv')).toBeInTheDocument()
+    expect(document.querySelector('#lf-pompe-actuelle-cv')).toBeInTheDocument()
     expect(document.querySelector('#lf-pompe-hmt')).toBeInTheDocument()
     expect(document.querySelector('#lf-pompe-debit')).toBeInTheDocument()
   })
@@ -560,5 +562,136 @@ describe('ROUND 5 — repli automatique À L’OUVERTURE (jamais pendant la sess
     expect(tete(container, 'visite')).toHaveAttribute('aria-expanded', 'true')
     // Le bandeau non plus n'a rien à faire dans un formulaire vierge.
     expect(screen.queryByLabelText('Informations à compléter')).toBeNull()
+  })
+})
+
+/* AGR415 — la section Pompage complète, contre le contrat partagé
+   `lead_pompage.json` (check_api_shapes) : aucun mock inventé. */
+describe('AGR415 — SectionPompage : chaque colonne du contrat a son champ', () => {
+  const contrat = documentContrat('crm', 'lead_pompage')
+  const colonnes = contrat.colonnes.filter((c) => !c.question.startsWith('(aucune'))
+  const exemple = contrat.exemple
+  const leadAgricole = { ...exemple, nom: 'Fellah' }
+  const monter = (lead = leadAgricole, props = {}) => render(
+    <SectionPompage state={initState({ lead, mode: 'edit' })} {...base} {...props} />,
+  )
+
+  it('chaque colonne a un inputId réel (plus aucun `pending` pompage) atteignable', () => {
+    monter()
+    for (const { nom } of colonnes) {
+      const entree = fieldLabels[nom]
+      expect(entree, nom).toBeTruthy()
+      expect(entree.pending, nom).toBeUndefined()
+      expect(entree.section, nom).toBe('pompage')
+      expect(document.getElementById(entree.inputId), `${nom} → #${entree.inputId}`).toBeInTheDocument()
+    }
+  })
+
+  it('la question de l’appel sous chaque champ = celle du contrat, mot pour mot', () => {
+    monter()
+    for (const { nom, question } of colonnes) {
+      const hint = document.getElementById(`${fieldLabels[nom].inputId}-hint`)
+      expect(hint, nom).toBeInTheDocument()
+      expect(hint.textContent, nom).toBe(question)
+    }
+  })
+
+  it('les choix fermés de chaque select sont ceux du contrat', () => {
+    monter()
+    for (const { nom, choix } of colonnes.filter((c) => Array.isArray(c.choix))) {
+      const select = document.getElementById(fieldLabels[nom].inputId)
+      const valeurs = Array.from(select.options).map((o) => o.value).filter(Boolean)
+      expect(valeurs.sort(), nom).toEqual([...choix].sort())
+    }
+  })
+
+  it('regroupée en 5 blocs, dans l’ordre de l’appel', () => {
+    monter()
+    const titres = Array.from(document.querySelectorAll('.lw-bloc-titre')).map((h) => h.textContent)
+    expect(titres).toEqual(['Énergie actuelle', 'Eau', 'Besoin', 'Pompe actuelle & site', 'Règles & aides'])
+  })
+
+  it('la pompe actuelle est libellée « information, jamais la pompe du devis »', () => {
+    monter()
+    const label = document.querySelector('label[for="lf-pompe-actuelle-cv"]')
+    expect(label.textContent).toContain('information, jamais la pompe du devis')
+  })
+
+  it('toutes les saisies numériques sont step="any" (jamais d’arrondi forcé)', () => {
+    monter()
+    const nombres = document.querySelectorAll('input[type="number"]')
+    expect(nombres.length).toBeGreaterThan(10)
+    for (const n of nombres) expect(n.getAttribute('step'), n.id).toBe('any')
+  })
+
+  it('une saisie de 12,5 part telle quelle', () => {
+    const setField = vi.fn()
+    monter(leadAgricole, { setField })
+    fireEvent.change(document.getElementById('lf-pompe-debit'), { target: { value: '12.5' } })
+    expect(setField).toHaveBeenCalledWith('pompe_debit_m3h', '12.5')
+  })
+
+  it('enregistrer → rouvrir → enregistrer sans toucher : aucun écart avec le serveur', () => {
+    const state = initState({ lead: leadAgricole, mode: 'edit' })
+    render(<SectionPompage state={state} {...base} />)
+    const relu = {}
+    for (const { nom } of colonnes) {
+      const el = document.getElementById(fieldLabels[nom].inputId)
+      if (!el || el.type === 'checkbox') continue
+      if (el.tagName === 'SELECT' && el.value === '') {
+        relu[nom] = null
+      } else if (el.tagName === 'SELECT' && /^(oui|non)$/.test(el.value)) {
+        relu[nom] = el.value === 'oui'
+      } else {
+        relu[nom] = el.value
+      }
+    }
+    // Les mois sont des cases à cocher : relues comme la liste d'entiers.
+    relu.mois_irrigation = Array.from(document.querySelectorAll('[id^="lf-mois-irrigation"]'))
+      .map((c, i) => (c.checked ? i + 1 : null)).filter(Boolean)
+    expect(relu.mois_irrigation).toEqual(exemple.mois_irrigation)
+    expect(dirtyKeys({ ...state, draft: relu })).toEqual([])
+  })
+
+  it('l’étoile « requis devis auto » ne marque que les groupes de la règle servie', () => {
+    const requis = [
+      ['pompe_hmt_m', 'niveau_statique_m'],
+      ['pompe_debit_m3h', 'besoin_eau_m3j', 'pompe_actuelle_debit_m3h'],
+    ]
+    monter({ ...leadAgricole, devis_auto: { pret: true, manquants: [], manquants_detail: [], requis } })
+    const etoiles = Array.from(document.querySelectorAll('label .req-auto'))
+      .map((e) => e.closest('label').getAttribute('for'))
+    expect([...etoiles].sort()).toEqual([
+      'lf-besoin-eau', 'lf-niveau-statique', 'lf-pompe-actuelle-debit', 'lf-pompe-debit', 'lf-pompe-hmt',
+    ])
+    // Le CV (pompe ACTUELLE) n'est plus requis (AGR403).
+    expect(etoiles).not.toContain('lf-pompe-actuelle-cv')
+  })
+
+  it('les provenances servies s’affichent en lecture seule', () => {
+    monter()
+    const niveau = document.querySelector('[data-provenance="niveau_statique_m"]')
+    expect(niveau.textContent).toContain('mesuré en visite')
+    expect(document.querySelector('[data-provenance="pompe_hmt_m"]').textContent).toContain('site web')
+    expect(document.querySelector('[data-provenance="culture"]')).toBeNull()
+  })
+
+  it('avertissement NON bloquant quand le débit souhaité égale la HMT', () => {
+    monter({ ...leadAgricole, pompe_hmt_m: '80.00', pompe_debit_m3h: '80' })
+    expect(document.querySelector('[data-avertissement="debit-egal-hmt"]').textContent)
+      .toContain('Valeurs identiques')
+    cleanup()
+    monter({ ...leadAgricole, pompe_hmt_m: '80', pompe_debit_m3h: '12' })
+    expect(document.querySelector('[data-avertissement="debit-egal-hmt"]')).toBeNull()
+  })
+
+  it('rappel interne ABH / permis du foreur pour un forage à creuser', () => {
+    monter({ ...leadAgricole, projet_pompage: 'nouveau_forage' })
+    const rappel = document.querySelector('[data-rappel="forage-a-creuser"]')
+    expect(rappel.textContent).toContain('ABH')
+    expect(rappel.textContent).toContain('art. 112 et 114')
+    cleanup()
+    monter({ ...leadAgricole, projet_pompage: 'existant' })
+    expect(document.querySelector('[data-rappel="forage-a-creuser"]')).toBeNull()
   })
 })

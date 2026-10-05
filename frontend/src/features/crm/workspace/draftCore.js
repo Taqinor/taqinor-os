@@ -49,8 +49,21 @@ export const TRACKED_KEYS = [
   // granularité que le lot 4 ci-dessus, en enrichissement d'une couche déjà
   // active (jamais une paire requise).
   'equip_clim_creneau', 'equip_piscine_creneau',
-  // Pompage (agricole)
-  'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+  // Pompage (agricole) — AGR415 : TOUTES les colonnes du contrat partagé
+  // `lead_pompage.json` (sauf `carburant_prix_declare_le`, posée par le
+  // serveur : lecture seule). `pompe_cv` (alias déprécié, AGR401) n'est plus
+  // écrit : la pompe ACTUELLE est `pompe_actuelle_cv`.
+  'pompe_actuelle_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+  'source_eau', 'niveau_statique_m', 'niveau_statique_source',
+  'profondeur_forage_m', 'debit_forage_m3h', 'debit_forage_source',
+  'besoin_eau_m3j', 'besoin_eau_source', 'culture', 'surface_irriguee_ha',
+  'irrigation_methode', 'region_agricole', 'pompe_actuelle_type',
+  'pompe_actuelle_debit_m3h', 'butane_bouteilles_jour',
+  'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois',
+  'mois_irrigation', 'distance_forage_champ_m', 'electricite_sur_place',
+  'autorisation_prelevement', 'autorisation_numero', 'autorisation_debit_l_s',
+  'autorisation_volume_m3_an', 'compteur_eau', 'projet_pompage',
+  'deja_beneficiaire_fda', 'pompe_hmt_source',
   // Toiture & site
   'type_toiture', 'surface_toiture_m2', 'orientation', 'inclinaison_deg',
   'ombrage', 'ombrage_notes', 'nb_etages', 'structure_pref', 'structure_produit',
@@ -186,7 +199,7 @@ export const SECTION_FIELDS = {
   pipeline: ['owner', 'canal', 'contact_preference', 'priorite',
     'langue_preferee', 'civilite', 'tags', 'motif_perte', 'relance_date',
     'type_installation', 'montant_estime', 'date_cloture_prevue',
-    'objectif_projet', 'decideur', 'devis_concurrents',
+    'objectif_projet', 'devis_concurrents',
     // CAD144 — le second interlocuteur (saisie libre, aucune automatisation).
     'contact_secondaire_nom', 'contact_secondaire_telephone'],
   energie: ['facture_hiver', 'facture_ete', 'ete_differente',
@@ -211,8 +224,20 @@ export const SECTION_FIELDS = {
   // CAD149/CAD174 — `pompage_heures_jour`/`pompe_alim_actuelle`/
   // `carburant_litres_mois` : promotions du sac `web_questionnaire` en
   // colonnes dédiées (vocabulaire déjà émis par le site, jamais inventé ici).
-  pompage: ['pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
-    'pompage_heures_jour', 'pompe_alim_actuelle', 'carburant_litres_mois'],
+  // AGR415 — `decideur` est saisi dans le bloc « Règles & aides » du pompage
+  // (le contrat `lead_pompage.json` le liste) : UNE section par champ.
+  pompage: ['pompe_actuelle_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+    'pompage_heures_jour', 'pompe_alim_actuelle', 'carburant_litres_mois',
+    'source_eau', 'niveau_statique_m', 'niveau_statique_source',
+    'profondeur_forage_m', 'debit_forage_m3h', 'debit_forage_source',
+    'besoin_eau_m3j', 'besoin_eau_source', 'culture', 'surface_irriguee_ha',
+    'irrigation_methode', 'region_agricole', 'pompe_actuelle_type',
+    'pompe_actuelle_debit_m3h', 'butane_bouteilles_jour',
+    'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois',
+    'mois_irrigation', 'distance_forage_champ_m', 'electricite_sur_place',
+    'autorisation_prelevement', 'autorisation_numero', 'autorisation_debit_l_s',
+    'autorisation_volume_m3_an', 'compteur_eau', 'projet_pompage',
+    'deja_beneficiaire_fda', 'pompe_hmt_source', 'decideur'],
   // CAD149/CAD174 — `type_bien` REMPLACE l'idée d'un type de toit posable (`roof_type` n'existe plus côté fiche, QJR657)
   // posable (chemin fermé par la décision du 18/08/2026, voir
   // WEB_QUESTIONNAIRE_STRUCTURED_FIELDS plus bas) : le type de BIEN (villa/
@@ -240,7 +265,9 @@ export const SECTION_TRAVAIL = 'pipeline'
 const SECTION_COEUR = {
   contact: ['telephone', 'ville'],
   toiture: ['surface_toiture_m2', 'orientation', 'type_toiture'],
-  pompage: ['pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h'],
+  // AGR403/AGR415 — repli quand aucune règle n'est servie (création) ; la
+  // règle servie (`devis_auto.requis`) prime, voir sectionCoeurGroupes.
+  pompage: ['pompe_hmt_m', 'pompe_debit_m3h'],
   visite: [],
   divers: [],
   // L4 — aucun champ n'est requis à lui seul (tous optionnels) : jugée sur le
@@ -254,9 +281,15 @@ const SECTION_COEUR = {
 // site, CAD166). Seuls les groupes dont un champ vit dans la section énergie
 // comptent (en agricole, les champs requis sont dans « Pompage »).
 export function sectionCoeurGroupes(state, id) {
+  const requis = state?.server?.devis_auto?.requis
+  if (id === 'pompage' && Array.isArray(requis)) {
+    // AGR415 — en agricole, la règle servie (AGR403) vit dans « Pompage ».
+    const champsPompage = SECTION_FIELDS.pompage
+    const groupes = requis.filter((g) => Array.isArray(g) && g.some((k) => champsPompage.includes(k)))
+    if (groupes.length) return groupes
+  }
   if (id !== 'energie') return (SECTION_COEUR[id] ?? []).map((k) => [k])
   const champs = SECTION_FIELDS.energie
-  const requis = state?.server?.devis_auto?.requis
   if (!Array.isArray(requis)) return []
   return requis.filter((g) => Array.isArray(g) && g.some((k) => champs.includes(k)))
 }
@@ -365,7 +398,17 @@ export function buildCreateDefaults({ currentUserId = null, lastVille = '' } = {
     equip_piscine_heures_jour: '',
     // L-FRONT lot 5 — créneaux clim/piscine (contrat L-BACK2, 24/08).
     equip_clim_creneau: '', equip_piscine_creneau: '',
-    pompe_cv: '', pompe_hmt_m: '', pompe_debit_m3h: '',
+    pompe_actuelle_cv: '', pompe_hmt_m: '', pompe_debit_m3h: '',
+    source_eau: '', niveau_statique_m: '', niveau_statique_source: '',
+    profondeur_forage_m: '', debit_forage_m3h: '', debit_forage_source: '',
+    besoin_eau_m3j: '', besoin_eau_source: '', culture: '', surface_irriguee_ha: '',
+    irrigation_methode: '', region_agricole: '', pompe_actuelle_type: '',
+    pompe_actuelle_debit_m3h: '', butane_bouteilles_jour: '',
+    carburant_prix_unitaire_mad: '', depense_carburant_mad_mois: '',
+    mois_irrigation: '', distance_forage_champ_m: '', electricite_sur_place: '',
+    autorisation_prelevement: '', autorisation_numero: '', autorisation_debit_l_s: '',
+    autorisation_volume_m3_an: '', compteur_eau: '', projet_pompage: '',
+    deja_beneficiaire_fda: '', pompe_hmt_source: '',
     type_toiture: '', surface_toiture_m2: '', orientation: '', inclinaison_deg: '',
     ombrage: '', ombrage_notes: '', nb_etages: '', structure_pref: '', structure_produit: null,
     taille_souhaitee_kwc: '', batterie_souhaitee: '',

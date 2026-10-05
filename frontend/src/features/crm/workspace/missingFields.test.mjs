@@ -68,7 +68,7 @@ test('chips exactes par type_installation — résidentiel vs agricole', () => {
   assert.deepEqual(agricole.map((c) => c.section), ['pompage', 'pompage', 'pompage'])
   assert.deepEqual(
     agricole.map((c) => c.field),
-    ['lf-pompe-cv', 'lf-pompe-hmt', 'lf-pompe-debit'],
+    ['lf-pompe-actuelle-cv', 'lf-pompe-hmt', 'lf-pompe-debit'],
   )
 })
 

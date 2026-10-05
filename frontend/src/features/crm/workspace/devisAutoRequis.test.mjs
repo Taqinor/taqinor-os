@@ -53,3 +53,10 @@ test('agricole : chaque puce vise son champ de pompage', () => {
   // AGR403 — le CV (pompe ACTUELLE) n'est plus requis : deux groupes hydrauliques.
   assert.deepEqual(chips.map((c) => c.field), ['lf-pompe-hmt', 'lf-pompe-debit'])
 })
+
+test('AGR415 — agricole : le cœur « Pompage » LIT les groupes servis (nouveau devis_auto_pret.json)', () => {
+  const { requis } = exempleContrat('crm', 'devis_auto_pret', 'exemple_agricole').devis_auto
+  assert.deepEqual(sectionCoeurKeys(etat({ devis_auto: { requis } }), 'pompage'), requis.flat())
+  // Sans règle servie (création) : repli sur HMT + débit, jamais le CV.
+  assert.deepEqual(sectionCoeurKeys(etat({}), 'pompage'), ['pompe_hmt_m', 'pompe_debit_m3h'])
+})
