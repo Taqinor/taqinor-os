@@ -99,7 +99,14 @@ class ListeBlanche3DPublique(TestCase):
         for cle in ('modules', 'setbacksM', 'exclusionZones', 'poseSurfaces'):
             self.assertIn(cle, riche)
             self.assertIn(cle, safe)
-        self.assertLessEqual(set(surface), set(riche['poseSurfaces'][0]))
+        # Le contour d'une surface s'écrit `vertices` OU `contourM` (prose du
+        # contrat : « vertices|contourM ») ; l'exemple montre `vertices`, ce
+        # layout porte `contourM` — l'alternative documentée, pas une clé
+        # hors contrat.
+        self.assertIn('vertices|contourM',
+                      contrat['pourquoi_roof_layout_riche'])
+        self.assertLessEqual(set(surface),
+                             set(riche['poseSurfaces'][0]) | {'contourM'})
         self.assertLessEqual(set(safe['modules'][0]), set(riche['modules'][0]))
 
     def test_aucun_prix_ni_produit(self):
