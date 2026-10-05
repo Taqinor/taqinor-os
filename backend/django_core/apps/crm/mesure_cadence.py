@@ -350,6 +350,164 @@ def gestes_par_appareil(company, *, jours=JOURS_MESURE_DEFAUT):
              'total': ligne['total']} for ligne in lignes]
 
 
+#: AGR540 — l'ordre des entrées de ``par_segment`` (contrat
+#: ``mesure_cadence.json``) : les valeurs de ``crm.Lead.TypeInstallation``
+#: puis ``non_renseigne``, toujours toutes, même à zéro.
+SEGMENTS_MESURE = ('residentiel', 'commercial', 'industriel', 'agricole')
+SEGMENT_NON_RENSEIGNE = 'non_renseigne'
+
+
+def _segment_de(type_installation):
+    valeur = (type_installation or '').strip()
+    return valeur if valeur in SEGMENTS_MESURE else SEGMENT_NON_RENSEIGNE
+
+
+def _mediane_jours(durees):
+    """Médiane en jours (1 décimale), ``None`` sur une liste vide."""
+    import statistics
+    if not durees:
+        return None
+    return round(statistics.median(durees), 1)
+
+
+def _jours_entre(debut, fin):
+    return (fin - debut).total_seconds() / 86400.0
+
+
+def par_segment(company, *, jours=JOURS_MESURE_DEFAUT):
+    """AGR540 — les mesures de cadence DÉCOUPÉES par segment (contrat
+    ``mesure_cadence.json``, bloc ``par_segment``), en LECTURE SEULE.
+
+    Population : les leads créés sur la fenêtre (archivés et miroir Odoo
+    écartés, comme ``part_contact_et_langue``). Les étapes viennent de
+    STAGES.py (``stages.COLD`` / ``stages.SIGNED``, jamais un littéral) ; les
+    devis, des sélecteurs de ``ventes`` (jamais ses modèles). Aucun seuil,
+    aucun réglage : des comptes et des taux, ``None`` dès qu'un dénominateur
+    est nul. Une entrée par segment, toujours dans le même ordre, même à 0.
+    """
+    from django.utils import timezone
+
+    from apps.ventes.selectors import (
+        devis_envoyes_par_lead, leads_avec_devis_de_mode,
+    )
+
+    from . import horaires, stages
+    from .models import Lead, LeadActivity, RelanceEtape
+    # AGR520 — l'étiquette « En attente d'un accord » : source unique.
+    from .services import TAG_ATTENTE_ACCORD, _lead_porte_tag
+    from .suite_touche import q_barreau
+
+    depuis = timezone.now() - datetime.timedelta(days=int(jours))
+    ordre = SEGMENTS_MESURE + (SEGMENT_NON_RENSEIGNE,)
+    sortie = {s: {
+        'segment': s, 'nb_leads': 0, 'devis_envoyes': 0,
+        '_delais_devis': [], '_delais_signature': [], 'signatures': 0,
+        '_froids': 0, '_closes': 0, '_joints': 0, '_par_mois': {},
+        'en_attente_accord': 0, 'dossiers_subvention': {}, 'incoherents': 0,
+    } for s in ordre}
+
+    leads = list(
+        Lead.objects
+        .filter(company=company, is_archived=False,
+                date_creation__gte=depuis)
+        .exclude(source=Lead.Source.ODOO_IMPORT_TEST)
+        .only('id', 'type_installation', 'stage', 'tags',
+              'dossier_subvention', 'date_creation'))
+    segment_du_lead = {}
+    cree_le = {}
+    for lead in leads:
+        segment = _segment_de(lead.type_installation)
+        segment_du_lead[lead.pk] = segment
+        cree_le[lead.pk] = lead.date_creation
+        bloc = sortie[segment]
+        bloc['nb_leads'] += 1
+        if lead.stage == stages.COLD:
+            bloc['_froids'] += 1
+        if _lead_porte_tag(lead, TAG_ATTENTE_ACCORD):
+            bloc['en_attente_accord'] += 1
+        if lead.dossier_subvention:
+            etats = bloc['dossiers_subvention']
+            etats[lead.dossier_subvention] = etats.get(
+                lead.dossier_subvention, 0) + 1
+
+    ids = list(segment_du_lead)
+    premier_envoi = {}
+    for devis in devis_envoyes_par_lead(company, ids):
+        lead_id = devis['lead_id']
+        sortie[segment_du_lead[lead_id]]['devis_envoyes'] += 1
+        if lead_id not in premier_envoi:
+            premier_envoi[lead_id] = devis['date_envoi']
+    for lead_id, envoi in premier_envoi.items():
+        if cree_le.get(lead_id) is not None:
+            sortie[segment_du_lead[lead_id]]['_delais_devis'].append(
+                max(0.0, _jours_entre(cree_le[lead_id], envoi)))
+
+    non_agricoles = [i for i in ids if segment_du_lead[i] != 'agricole']
+    for lead_id in leads_avec_devis_de_mode(company, non_agricoles,
+                                            'agricole'):
+        sortie[segment_du_lead[lead_id]]['incoherents'] += 1
+
+    # Signatures : le passage d'étape vers SIGNED (chatter, STAGES.py fait
+    # foi), sur les leads de la population.
+    signatures = (LeadActivity.objects
+                  .filter(company=company, field='stage',
+                          created_at__gte=depuis, lead_id__in=ids,
+                          new_value=stages.STAGE_LABELS[stages.SIGNED])
+                  .order_by('lead_id', 'created_at')
+                  .values('lead_id', 'created_at'))
+    signes = set()
+    for signature in signatures:
+        lead_id = signature['lead_id']
+        if lead_id in signes:
+            continue
+        signes.add(lead_id)
+        bloc = sortie[segment_du_lead[lead_id]]
+        bloc['signatures'] += 1
+        mois = signature['created_at'].astimezone(
+            horaires.CASABLANCA).strftime('%Y-%m')
+        bloc['_par_mois'][mois] = bloc['_par_mois'].get(mois, 0) + 1
+        envoi = premier_envoi.get(lead_id)
+        if envoi is not None and signature['created_at'] >= envoi:
+            bloc['_delais_signature'].append(
+                _jours_entre(envoi, signature['created_at']))
+
+    # Taux de joint : même définition que ``taux_joint_par_creneau``.
+    touches = (RelanceEtape.objects
+               .filter(company=company, traite_le__gte=depuis,
+                       statut__in=STATUTS_CLOS_HUMAIN, lead_id__in=ids)
+               .filter(q_barreau()))
+    issues = _issues_par_touche(touches, company)
+    for ligne in touches.values('id', 'lead_id'):
+        bloc = sortie[segment_du_lead[ligne['lead_id']]]
+        bloc['_closes'] += 1
+        if issues.get(ligne['id'], '') in ISSUES_JOINT:
+            bloc['_joints'] += 1
+
+    resultat = []
+    for segment in ordre:
+        bloc = sortie[segment]
+        resultat.append({
+            'segment': segment,
+            'nb_leads': bloc['nb_leads'],
+            'devis_envoyes': bloc['devis_envoyes'],
+            'delai_median_premier_devis_jours': _mediane_jours(
+                bloc['_delais_devis']),
+            'delai_median_signature_jours': _mediane_jours(
+                bloc['_delais_signature']),
+            'signatures': bloc['signatures'],
+            'taux_froid_pct': _pct(bloc['_froids'], bloc['nb_leads']),
+            'taux_joint_pct': _pct(bloc['_joints'], bloc['_closes']),
+            'signatures_par_mois': [
+                {'mois': mois, 'signatures': nombre}
+                for mois, nombre in sorted(bloc['_par_mois'].items())],
+            'en_attente_accord': bloc['en_attente_accord'],
+            'dossiers_subvention': dict(sorted(
+                bloc['dossiers_subvention'].items())),
+            'incoherents': bloc['incoherents'],
+        })
+    return resultat
+
+
 def mesure_cadence(company, *, jours=JOURS_MESURE_DEFAUT):
     """Les mesures de CAD87 (+ CAD178), en une seule lecture (forme du
     contrat).
@@ -371,4 +529,6 @@ def mesure_cadence(company, *, jours=JOURS_MESURE_DEFAUT):
         'part_contact_et_langue': part_contact_et_langue(company, jours=jours),
         # CAD178 — additif : les 4 gestes clés, par famille d'appareil.
         'gestes_par_appareil': gestes_par_appareil(company, jours=jours),
+        # AGR540 — additif : les mêmes mesures découpées par segment.
+        'par_segment': par_segment(company, jours=jours),
     }

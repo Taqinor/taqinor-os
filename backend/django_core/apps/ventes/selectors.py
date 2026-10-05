@@ -2670,6 +2670,34 @@ def devis_par_mode_pour_lead(lead_id, company):
                 .values('id', 'reference', 'mode_installation', 'statut'))
 
 
+def devis_envoyes_par_lead(company, lead_ids):
+    """AGR540 — les devis SORTIS du brouillon (``date_envoi`` posée) des
+    leads ``lead_ids``, en lecture mince : ``[{lead_id, mode_installation,
+    date_envoi}]``. Lecture cross-app pour ``apps.crm`` (mesure par segment,
+    en LECTURE SEULE), bornée par ``company`` ; une requête pour N leads."""
+    from .models import Devis
+    ids = list(lead_ids or [])
+    if not ids or company is None:
+        return []
+    return list(Devis.objects.filter(
+        company=company, lead_id__in=ids, date_envoi__isnull=False,
+    ).order_by('lead_id', 'date_envoi', 'id').values(
+        'lead_id', 'mode_installation', 'date_envoi'))
+
+
+def leads_avec_devis_de_mode(company, lead_ids, mode):
+    """AGR540 — sous-ensemble de ``lead_ids`` portant AU MOINS un devis de
+    ``mode_installation == mode`` (tous statuts), bornée par ``company``.
+    Une requête ; sert le compteur ``incoherents`` de la mesure par segment."""
+    from .models import Devis
+    ids = list(lead_ids or [])
+    if not ids or company is None:
+        return set()
+    return set(Devis.objects.filter(
+        company=company, lead_id__in=ids, mode_installation=mode,
+    ).values_list('lead_id', flat=True))
+
+
 def lead_a_un_devis(lead):
     """MRY11 — Ce lead a-t-il déjà REÇU une proposition (devis sorti du
     brouillon : envoyé, accepté, refusé ou expiré) ?
