@@ -3117,6 +3117,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // normalement `cityTouched`, et sans ce garde-fou le prochain repère posé
     // sur la carte écraserait silencieusement la ville qu'on vient de restaurer.
     if (savedWizard.fields?.['mt-city']) cityTouched = true;
+    // AGW403 — un curseur « heures de pompage » restauré à une valeur ≠ 7 a
+    // forcément été touché (affecter `.value` par script ne déclenche pas
+    // `input`) ; à 7 on ne peut pas le savoir : jamais une réponse inventée.
+    {
+      const hp = $('mt-heures-pompage') as HTMLInputElement | null;
+      const savedHp = savedWizard.fields?.['mt-heures-pompage'];
+      if (hp && savedHp && savedHp !== '7') hp.dataset.touche = '1';
+    }
     // WJ105 — une préférence de contact restaurée doit re-synchroniser la
     // visibilité de la SLA de rappel (affecter `.checked` par script ne
     // déclenche pas `change`).
@@ -3316,7 +3324,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     const out = $('mt-heures-pompage-value');
     if (out && heuresInput) out.textContent = `${heuresInput.value} h`;
   }
+  // AGW403 — le curseur vaut 7 AVANT toute interaction : `data-touche="1"` est
+  // posé dès son premier événement input/change, et seul un curseur touché
+  // envoie `heuresPompage` (lecture.ts : type « nombreTouche »). L'estimation
+  // affichée garde ses 7 h par défaut (hypothèse interne), sans effet visible.
+  const marquerHeuresTouchees = () => { if (heuresInput) heuresInput.dataset.touche = '1'; };
+  heuresInput?.addEventListener('change', marquerHeuresTouchees);
   heuresInput?.addEventListener('input', () => {
+    marquerHeuresTouchees();
     syncHeuresLabel();
     computeEstimate();
   });

@@ -373,3 +373,62 @@ describe('construireCorps — le pré-contrôle passe par validateLead', () => {
     expect(errors.phone).not.toBe('City required');
   });
 });
+
+// ———————————————————————————————————————————————————————————————————————————
+// AGW403 — les heures de pompage ne partent que si le visiteur a touché le
+// curseur (data-touche="1"), dans les trois locales.
+// ———————————————————————————————————————————————————————————————————————————
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { lireChampsDomTunnel } from '../src/lib/tunnel/lecture';
+
+/** Un Document minimal : seul `getElementById` + value/checked/getAttribute servent à la lecture. */
+function fauxDocument(els: Record<string, { value?: string; touche?: boolean }>): Document {
+  return {
+    getElementById: (id: string) =>
+      els[id]
+        ? {
+            value: els[id].value ?? '',
+            checked: false,
+            getAttribute: (n: string) => (n === 'data-touche' && els[id].touche ? '1' : null),
+          }
+        : null,
+  } as unknown as Document;
+}
+
+describe('AGW403 — heuresPompage seulement si le curseur a été touché', () => {
+  it('curseur non touché (value=7) → aucune clé heuresPompage dans le corps', () => {
+    const lus = lireChampsDomTunnel(fauxDocument({ 'mt-heures-pompage': { value: '7' } }));
+    expect(lus.heuresPompage).toBeNull();
+    const body = corps({ ...etatResidentiel(), ...lus, mode: 'agricole' });
+    expect(body).not.toHaveProperty('heuresPompage');
+  });
+
+  it('curseur touché à 7 → heuresPompage=7', () => {
+    const lus = lireChampsDomTunnel(fauxDocument({ 'mt-heures-pompage': { value: '7', touche: true } }));
+    expect(lus.heuresPompage).toBe(7);
+    const body = corps({ ...etatResidentiel(), ...lus, mode: 'agricole' });
+    expect(body.heuresPompage).toBe(7);
+  });
+
+  it('curseur touché à 9 → 9 ; touché mais résidentiel → toujours gaté', () => {
+    const lus = lireChampsDomTunnel(fauxDocument({ 'mt-heures-pompage': { value: '9', touche: true } }));
+    expect(corps({ ...etatResidentiel(), ...lus, mode: 'agricole' }).heuresPompage).toBe(9);
+    expect(corps({ ...etatResidentiel(), ...lus })).not.toHaveProperty('heuresPompage');
+  });
+
+  for (const [lang, rel] of [
+    ['FR', '../src/pages/devis/mon-toit.astro'],
+    ['EN', '../src/pages/en/devis/mon-toit.astro'],
+    ['AR', '../src/pages/ar/devis/mon-toit.astro'],
+  ] as const) {
+    it(`${lang} — la page pose data-touche au premier input/change du curseur`, () => {
+      const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+      expect(src).toContain("heuresInput.dataset.touche = '1'");
+      expect(src).toContain("heuresInput?.addEventListener('change', marquerHeuresTouchees);");
+      expect(src).toContain('marquerHeuresTouchees();\n    syncHeuresLabel();'.replace(/\n/g, src.includes('\r\n') ? '\r\n' : '\n'));
+      // le curseur lui-même ne porte aucun data-touche au chargement
+      expect(src).not.toMatch(/id="mt-heures-pompage"[^>]*data-touche/);
+    });
+  }
+});

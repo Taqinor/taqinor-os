@@ -672,6 +672,10 @@ const G_AGRICOLE = {
    * vaut « 7 » AVANT toute interaction. Sans le gate, un lead résidentiel
    * transporterait « 7 h/j » que personne n'a saisi et le CRM l'afficherait
    * comme une réponse du visiteur sur une villa.
+   * AGW403 — et même en agricole, `heuresPompage` n'est non-nul que si le
+   * visiteur a TOUCHÉ le curseur (lecture.ts, type « nombreTouche ») : un 7
+   * par défaut n'est jamais envoyé comme une réponse (le panneau d'appel
+   * sautait alors la question).
    */
   heuresPompage: {
     webhookKey: 'heuresPompage',
