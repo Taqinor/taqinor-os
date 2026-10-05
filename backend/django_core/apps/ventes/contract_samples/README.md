@@ -96,3 +96,4 @@ rougit pas tant que la route n'existe pas.
 | Fichier | Endpoint / ce qu'il apparie |
 | --- | --- |
 | `acceptation_entreprise.json` (+ copie jumelle `apps/web/src/contract_samples/`) | POST proposal/<token>/accept/ (+ portail, ERP) : bloc `entreprise` {raison_sociale, signataire_qualite, ice}, `signature_entreprise`, remontée de l'ICE au Client (CIQ9) |
+| `proposal_data.json` (étendu, + copie jumelle `apps/web/src/contract_samples/`) | fragments `exemple_commercial` / `exemple_industriel` : `synthese_ci`, `mode_kpis` C&I v2, clés résidentielles vidées en C&I, `signature_entreprise` (`notes_ciq4`, CIQ4) |
