@@ -57,7 +57,7 @@ DEPLACEMENTS = {
     'horaire': ('split_pv_horaire', 'apps/ventes/public/payload_horaire.py',
                 'SPL247', True),
     'batterie': ('split_pv_batterie', 'apps/ventes/public/payload_batterie.py',
-                 'SPL248', False),
+                 'SPL248', True),
     'variantes': ('split_pv_variantes',
                   'apps/ventes/public/payload_variantes.py', 'SPL249', False),
     'economie': ('split_pv_economie', 'apps/ventes/public/payload_economie.py',

@@ -38,7 +38,7 @@ from apps.ventes.etude_horaire import (
     simuler_batterie_pas_fins,
 )
 from apps.ventes.models import Devis, LigneDevis, ShareLink
-from apps.ventes.public_views import (
+from apps.ventes.public.payload_batterie import (
     _couverture_batterie_publique,
     _paliers_curseur_batterie,
 )
@@ -854,7 +854,7 @@ class GardeChiffresDecrivantCeDevisTests(_PayloadBase):
 
     # ── Les prédicats eux-mêmes ────────────────────────────────────────────
     def test_les_predicats_lisent_la_configuration_reellement_vendue(self):
-        from apps.ventes.public_views import (
+        from apps.ventes.public.payload_batterie import (
             _capacite_batterie_vendue,
             _panneaux_vendus,
             _remplissage_batterie_publiable,
@@ -875,7 +875,7 @@ class GardeChiffresDecrivantCeDevisTests(_PayloadBase):
     def test_ecart_de_capacite_sous_la_tolerance_reste_publiable(self):
         """MÊME tolérance que le marquage « retenu » des paliers (0,05 kWh) :
         un arrondi amont ne doit pas faire disparaître un chiffre juste."""
-        from apps.ventes.public_views import _remplissage_batterie_publiable
+        from apps.ventes.public.payload_batterie import _remplissage_batterie_publiable
         devis = self._devis('qjr14-tolerance')
         dim = {'recommandation_avec': {'panneaux': self.PANNEAUX_VENDUS,
                                        'batterie_kwh': 10.02,

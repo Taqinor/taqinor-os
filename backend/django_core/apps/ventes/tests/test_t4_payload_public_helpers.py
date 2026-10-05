@@ -10,7 +10,7 @@ recalculer : ``apps.ventes.public_views._tranche_tarifaire_publique`` et
 from django.test import SimpleTestCase
 
 from apps.ventes.public.payload_horaire import _tranche_tarifaire_publique
-from apps.ventes.public_views import (
+from apps.ventes.public.payload_batterie import (
     _balayage_stockage_publique,
     _batterie_regime_publique,
 )

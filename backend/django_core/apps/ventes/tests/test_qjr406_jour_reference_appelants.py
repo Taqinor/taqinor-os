@@ -35,8 +35,7 @@ from django.test import SimpleTestCase
 
 from apps.ventes import courbes_journalieres as CJ
 from apps.ventes import etude_horaire as EH
-from apps.ventes import public_views
-from apps.ventes.public import payload_horaire
+from apps.ventes.public import payload_batterie, payload_horaire
 
 
 #: Profil horaire figé servi aux deux vues (le chemin de lecture du devis
@@ -76,11 +75,11 @@ class _BaseSurfacesPubliques(SimpleTestCase):
             return payload_horaire._jours_types_publique(devis)
 
     def _couverture(self, devis):
-        with mock.patch.object(public_views, '_profil_horaire_pour_devis',
+        with mock.patch.object(payload_batterie, '_profil_horaire_pour_devis',
                                return_value=_PROFIL), \
                 mock.patch.object(EH, 'banque_batterie_du_devis',
                                   return_value=dict(_BANQUE)):
-            return public_views._couverture_batterie_publique(
+            return payload_batterie._couverture_batterie_publique(
                 devis, {'avec_ok': True}, True, None)
 
 
@@ -131,7 +130,7 @@ class CouvertureBatteriePubliqueAppelantTests(_BaseSurfacesPubliques):
         attendu = EH.couverture_batterie_publique(
             kwc=_KWC, conso_kwh_mensuelles=_CONSO,
             capacite_utile_pack_kwh=_BANQUE['capacite_utile_pack_kwh'],
-            nb_packs_max=public_views._paliers_curseur_batterie(
+            nb_packs_max=payload_batterie._paliers_curseur_batterie(
                 None, _BANQUE['nb_packs'],
                 capacite_utile_pack_kwh=_BANQUE['capacite_utile_pack_kwh']),
             nb_packs_plancher=_BANQUE['nb_packs'],
@@ -160,7 +159,7 @@ class DevisSansJourDeReferenceTests(_BaseSurfacesPubliques):
         attendu = EH.couverture_batterie_publique(
             kwc=_KWC, conso_kwh_mensuelles=_CONSO,
             capacite_utile_pack_kwh=_BANQUE['capacite_utile_pack_kwh'],
-            nb_packs_max=public_views._paliers_curseur_batterie(
+            nb_packs_max=payload_batterie._paliers_curseur_batterie(
                 None, _BANQUE['nb_packs'],
                 capacite_utile_pack_kwh=_BANQUE['capacite_utile_pack_kwh']),
             nb_packs_plancher=_BANQUE['nb_packs'],
