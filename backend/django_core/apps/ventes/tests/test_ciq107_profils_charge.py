@@ -16,8 +16,12 @@ from apps.ventes.moteur_ci.profils import (
 ICI = os.path.dirname(os.path.abspath(__file__))
 CONTRAT = os.path.join(os.path.dirname(ICI), 'contract_samples', 'etude_ci_preview.json')
 PAQUET = os.path.dirname(os.path.abspath(profils.__file__))
-RACINES_INTERDITES = ('django', 'rest_framework', 'celery', 'apps', 'authentication', 'core')
-#: Modules hors paquet permis : eux-mêmes sans Django (vérifié ci-dessous).
+#: CIQ110/CIQ116 (re-pin) — le paquet réutilise des modules PURS hors de lui
+#: (croisement ``solar_design``, doctrine ``dimensionnement``, ``core.electrique``,
+#: constantes 82-21, plages ONEE) : la garde interdit l'import DIRECT de Django
+#: ou d'un modèle, et vérifie TRANSITIVEMENT (interpréteur neuf) qu'aucun module
+#: du paquet ne charge Django, DRF, Celery ni un ``models``.
+RACINES_INTERDITES = ('django', 'rest_framework', 'celery', 'authentication')
 IMPORTS_PURS_PERMIS = frozenset({'apps.parametres.pvgis_profils'})
 #: Paquets PURS du noyau (aucun Django, aucun modèle) que la composition et la
 #: combinaison d'onduleurs C&I consomment (CIQ111/CIQ115 : « par

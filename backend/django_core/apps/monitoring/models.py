@@ -96,6 +96,8 @@ class ProductionReading(models.Model):
     class Source(models.TextChoices):
         MANUAL = 'manual', 'Saisie manuelle'
         AUTO = 'auto', 'Automatique'
+        # CIQ645 — import CSV des relevés (phase 1 sans connecteur payant).
+        IMPORT = 'import', 'Import CSV'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -277,8 +279,12 @@ class SlaDisponibilite(TenantModel):
     installation = models.OneToOneField(
         'installations.Installation', on_delete=models.CASCADE,
         related_name='sla_disponibilite')
+    # CIQ644 — SANS défaut : le 98 % pré-rempli était un engagement
+    # contractuel que personne n'avait décidé. Une ligne sans taux est refusée
+    # par ``clean()`` (« Saisir le taux garanti »). Lignes existantes
+    # conservées telles quelles.
     disponibilite_garantie_pct = models.DecimalField(
-        max_digits=5, decimal_places=2, default=98)
+        max_digits=5, decimal_places=2, null=True, blank=True)
     compensation_mad_par_jour_indispo = models.DecimalField(
         max_digits=10, decimal_places=2, default=0)
     note = models.TextField(blank=True, default='')
@@ -295,6 +301,13 @@ class SlaDisponibilite(TenantModel):
 
     def __str__(self):
         return f'SLA dispo #{self.installation_id} ({self.disponibilite_garantie_pct} %)'
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        super().clean()
+        if self.disponibilite_garantie_pct is None:
+            raise ValidationError({
+                'disponibilite_garantie_pct': 'Saisir le taux garanti.'})
 
 
 # ── NTNRG27 — Registre des certificats carbone émis ─────────────────────────

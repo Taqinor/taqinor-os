@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { Button, FormField, Input } from '../../../../ui'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import crmApi from '../../../../api/crmApi'
+import ventesApi from '../../../../api/ventesApi'
 import { toast, toastPromise } from '../../../../ui/confirm'
 import { getApiError } from '../../../../lib/apiError'
 import useCanaux from '../../useCanaux'
@@ -255,6 +256,75 @@ function RelanceCadenceControls({ leadId, onChanged }) {
   )
 }
 
+// AGR535 (contrat lead_resume_associe.json) — « Envoyer le résumé à un
+// associé » : le client a demandé ou accepté ce partage (case), on choisit le
+// devis ENVOYÉ, le serveur PRÉPARE le lien WhatsApp (il n'envoie rien) et
+// l'humain l'ouvre au clic. Erreurs 400 sous le champ nommé.
+const TAG_DECISION_A_PLUSIEURS = 'Décision à plusieurs'
+const sansAccent = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
+
+function ResumeAssocie({ leadId, devis, erreurs, setErreurs }) {
+  const [accord, setAccord] = useState(false)
+  const [devisId, setDevisId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const idAccord = useId()
+  const idDevis = useId()
+  const choisi = devisId || (devis.length ? String(devis[0].id) : '')
+
+  const envoyer = async () => {
+    setBusy(true)
+    setErreurs({})
+    try {
+      const r = await crmApi.resumeAssocie(
+        leadId, { devis_id: Number(choisi), accord_client: true }, { suppressErrorToast: true })
+      const url = r?.data?.wa_url
+      if (url) window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      const data = err?.response?.data
+      if (err?.response?.status === 400 && data && typeof data === 'object') {
+        setErreurs(data)
+      } else {
+        toast.error(getApiError(err, 'Préparation du résumé impossible.').message)
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const premier = (c) => (Array.isArray(erreurs[c]) ? erreurs[c][0] : erreurs[c])
+  return (
+    <div className="w-full grid gap-2" data-testid="resume-associe">
+      <FormField
+        label="Le client a demandé ou accepté ce partage" htmlFor={idAccord}
+        error={premier('accord_client')}
+      >
+        <input
+          id={idAccord} type="checkbox" checked={accord}
+          onChange={(e) => setAccord(e.target.checked)}
+        />
+      </FormField>
+      {devis.length > 0 && (
+        <FormField label="Devis envoyé à partager" htmlFor={idDevis} error={premier('devis_id')}>
+          <select
+            id={idDevis} className="form-select" value={choisi}
+            onChange={(e) => setDevisId(e.target.value)}
+          >
+            {devis.map((d) => (
+              <option key={d.id} value={d.id}>{d.reference || `Devis ${d.id}`}</option>
+            ))}
+          </select>
+        </FormField>
+      )}
+      <div>
+        <Button type="button" variant="outline" size="sm"
+                disabled={!accord || busy || !choisi} onClick={envoyer}>
+          Envoyer le résumé à un associé
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // Langue préférée du contact — pré-sélectionne la langue du message WhatsApp.
 const LANGUES_PREFEREES = { fr: 'Français', darija: 'Darija' }
 
@@ -320,6 +390,28 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
       .catch(() => { if (actif) setCadenceActive(false) })
     return () => { actif = false }
   }, [state.leadId, friseReload, relanceVersion])
+
+  // AGR535 — devis ENVOYÉS du lead (lecture seule), pour choisir celui à
+  // partager avec l'associé ; chargés seulement si un contact secondaire existe.
+  const [devisEnvoyes, setDevisEnvoyes] = useState([])
+  const [erreursResume, setErreursResume] = useState({})
+  const aSecondaire = !!(String(v('contact_secondaire_nom')).trim()
+    || String(v('contact_secondaire_telephone')).trim())
+  useEffect(() => {
+    if (state.mode !== 'edit' || state.leadId == null || !aSecondaire) return undefined
+    let actif = true
+    Promise.resolve(ventesApi.getDevis({ lead: state.leadId }))
+      .then((r) => {
+        if (!actif) return
+        const liste = r?.data?.results ?? r?.data ?? []
+        setDevisEnvoyes(Array.isArray(liste) ? liste.filter((d) => d.statut && d.statut !== 'brouillon') : [])
+      })
+      .catch(() => { if (actif) setDevisEnvoyes([]) })
+    return () => { actif = false }
+  }, [state.mode, state.leadId, aSecondaire])
+  const suggereTag = getField(state, 'type_installation') === 'agricole'
+    && !!String(v('contact_secondaire_nom')).trim()
+    && !String(v('tags')).split(',').some((t) => sansAccent(t) === sansAccent(TAG_DECISION_A_PLUSIEURS))
 
   return (
     <>
@@ -492,7 +584,10 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
         </FormField>
         <FormField
           label="Contact secondaire (téléphone)" htmlFor="lf-contact-secondaire-tel"
-          error={errors.contact_secondaire_telephone}
+          error={errors.contact_secondaire_telephone
+            || (Array.isArray(erreursResume.contact_secondaire_telephone)
+              ? erreursResume.contact_secondaire_telephone[0]
+              : erreursResume.contact_secondaire_telephone)}
         >
           <Input
             id="lf-contact-secondaire-tel" type="tel" invalid={!!errors.contact_secondaire_telephone}
@@ -506,6 +601,21 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
         <p className="w-full text-xs text-muted-foreground">
           Aucune relance automatique n’est adressée à ce contact : le joindre reste un geste manuel.
         </p>
+        {suggereTag && (
+          <div className="w-full text-xs" data-testid="suggestion-tag-decision">
+            <Button type="button" variant="ghost" size="sm"
+                    onClick={() => setField('tags', [String(v('tags')).trim(), TAG_DECISION_A_PLUSIEURS]
+                      .filter(Boolean).join(', '))}>
+              {`Ajouter l’étiquette « ${TAG_DECISION_A_PLUSIEURS} »`}
+            </Button>
+          </div>
+        )}
+        {state.mode === 'edit' && state.leadId != null && aSecondaire && (
+          <ResumeAssocie
+            leadId={state.leadId} devis={devisEnvoyes}
+            erreurs={erreursResume} setErreurs={setErreursResume}
+          />
+        )}
       </div>
       {/* CAD150 — `contact_preference` était déjà suivie (TRACKED_KEYS,
           SECTION_FIELDS.pipeline) : il ne lui manquait que son contrôle. Posée

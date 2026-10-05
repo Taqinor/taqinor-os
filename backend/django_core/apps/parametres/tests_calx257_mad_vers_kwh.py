@@ -100,10 +100,12 @@ class ClasseSaisieTest(SimpleTestCase):
             tariff.kwh_depuis_facture(reglages(), 300, classe='industriel')
         self.assertEqual(capture.exception.champ, 'classe')
 
-    def test_force_motrice_au_tarif_unique(self):
+    def test_agricole_au_tarif_unique(self):
+        # CIQ229 — seul « agricole » garde le tarif unique saisi ; la force
+        # motrice lit la grille officielle (tests_ciq229_force_motrice.py).
         s = reglages(force_motrice_prix_kwh_ttc=Decimal('0.9500'))
         resultat = tariff.kwh_depuis_facture(s, Decimal('950.00'),
-                                             classe='force_motrice')
+                                             classe='agricole')
         self.assertEqual(resultat['kwh'], Decimal('1000.0'))
 
     def test_montant_illisible_ou_negatif_refuse_en_le_nommant(self):

@@ -95,11 +95,13 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   const openPdfModal = (d) => {
     setBatchPdf(false)
     setPdfTarget(d)
-    // Agricole a désormais son propre format premium (4 pages) — défaut « full ».
-    // Un devis sans onduleur classé (Composition libre) part directement sur
-    // 'onepage' — jamais le refus 400 que l'utilisateur découvrirait sinon
-    // seulement après avoir cliqué « Générer ».
-    const sansOnduleur = devisSansOnduleurClasse(d)
+    // AGR315 — l'agricole a son document complet de 3 pages (renderer
+    // agricole, AGR312) : défaut « full », jamais rabattu sur une page faute
+    // d'onduleur (un kit de pompage n'en a pas). Un autre devis sans onduleur
+    // classé (Composition libre) part directement sur 'onepage' — jamais le
+    // refus 400 que l'utilisateur découvrirait sinon après « Générer ».
+    const sansOnduleur = d?.mode_installation !== 'agricole'
+      && devisSansOnduleurClasse(d)
     setPdfMode(sansOnduleur ? 'onepage' : 'full')
     setPdfModeAutoOnepage(sansOnduleur)
     setShowMonthly(true)

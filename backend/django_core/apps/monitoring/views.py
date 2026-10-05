@@ -49,6 +49,96 @@ from .services import (
 
 READ_ACTIONS = ['list', 'retrieve']
 
+# ── CIQ645 — import CSV des relevés ─────────────────────────────────────────
+_COLONNES_RELEVES = {
+    'date': ('date',),
+    'periode': ('periode_jours', 'periode', 'period_days'),
+    'energie': ('energie_kwh', 'energie', 'energy_kwh'),
+    'index': ('index_compteur', 'index'),
+}
+
+
+def _lire_csv_releves(texte):
+    """``([(numero, (date, periode, energie, index|None))], erreurs)``.
+
+    ``numero`` = numéro de ligne du fichier (en-tête = 1). Une ligne invalide
+    part dans ``erreurs`` [{ligne, motif}] et n'est jamais créée.
+    """
+    import datetime as _dt
+    from decimal import Decimal, InvalidOperation
+
+    premiere = texte.splitlines()[0] if texte.splitlines() else ''
+    separateur = ';' if ';' in premiere else ','
+    lecteur = csv.reader(io.StringIO(texte), delimiter=separateur)
+    try:
+        entete = [c.strip().lower() for c in next(lecteur)]
+    except StopIteration:
+        return [], [{'ligne': 1, 'motif': 'En-tête absent.'}]
+    position = {}
+    for cle, noms in _COLONNES_RELEVES.items():
+        position[cle] = next(
+            (entete.index(n) for n in noms if n in entete), None)
+    manquantes = [noms[0] for cle, noms in _COLONNES_RELEVES.items()
+                  if cle != 'index' and position[cle] is None]
+    if manquantes:
+        return [], [{'ligne': 1, 'motif': 'Colonne(s) manquante(s) : '
+                     + ', '.join(manquantes) + '.'}]
+
+    def cellule(ligne, cle):
+        i = position[cle]
+        if i is None or i >= len(ligne):
+            return ''
+        return ligne[i].strip()
+
+    lignes, erreurs = [], []
+    for numero, ligne in enumerate(lecteur, start=2):
+        if not any(c.strip() for c in ligne):
+            continue
+        brut_date = cellule(ligne, 'date')
+        jour = None
+        for fmt in ('%Y-%m-%d', '%d/%m/%Y'):
+            try:
+                jour = _dt.datetime.strptime(brut_date, fmt).date()
+                break
+            except ValueError:
+                continue
+        if jour is None:
+            erreurs.append({'ligne': numero,
+                            'motif': f'Date illisible : « {brut_date} ».'})
+            continue
+        try:
+            periode = int(cellule(ligne, 'periode'))
+        except ValueError:
+            periode = 0
+        if periode < 1:
+            erreurs.append({'ligne': numero, 'motif': (
+                'Période en jours invalide (entier ≥ 1 attendu).')})
+            continue
+        try:
+            energie = Decimal(cellule(ligne, 'energie').replace(',', '.'))
+        except InvalidOperation:
+            energie = None
+        if energie is None or not energie.is_finite():
+            erreurs.append({'ligne': numero,
+                            'motif': 'Énergie (kWh) illisible.'})
+            continue
+        if energie < 0:
+            erreurs.append({'ligne': numero,
+                            'motif': 'Énergie négative refusée.'})
+            continue
+        brut_index = cellule(ligne, 'index')
+        index = None
+        if brut_index:
+            try:
+                index = Decimal(brut_index.replace(',', '.'))
+            except InvalidOperation:
+                erreurs.append({'ligne': numero, 'motif': (
+                    "Index du compteur illisible.")})
+                continue
+        lignes.append((numero, (jour, periode, energie.quantize(
+            Decimal('0.01')), index)))
+    return lignes, erreurs
+
 
 class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
     """Config de supervision par système installé (N50). Lecture tout rôle ;
@@ -94,6 +184,54 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             'underperforming': evald['underperforming'],
             'ratio_pct': evald['ratio_pct'],
             'ticket': evald['ticket'].id if evald.get('ticket') else None,
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='import-releves',
+            permission_classes=[IsResponsableOrAdmin])
+    def import_releves(self, request, pk=None):
+        """CIQ645 (D-CIQ-18) — import CSV des relevés de production d'un site.
+
+        Colonnes : ``date`` (AAAA-MM-JJ ou JJ/MM/AAAA), ``periode_jours``,
+        ``energie_kwh``, ``index_compteur`` (facultatif) ; séparateur ``;``
+        ou ``,``. Fichier ``fichier`` (multipart) ou texte ``csv``.
+        Idempotent par (chantier, date, période) : un relevé déjà présent
+        n'est jamais doublé. Les lignes invalides sont rapportées avec leur
+        numéro, jamais créées. ``company`` posée côté serveur. Aucun
+        connecteur : le suivi n'est jamais « en temps réel ».
+        """
+        config = self.get_object()  # 404 hors société (TenantMixin)
+        fichier = request.FILES.get('fichier')
+        if fichier is not None:
+            texte = fichier.read().decode('utf-8-sig', errors='replace')
+        else:
+            texte = str(request.data.get('csv') or '')
+        if not texte.strip():
+            return Response(
+                {'detail': 'Fichier CSV vide ou absent (champ « fichier » ou '
+                           '« csv »).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        lignes, erreurs = _lire_csv_releves(texte)
+        installation = config.installation
+        existants = set(ProductionReading.objects.filter(
+            installation=installation).values_list('date', 'period_days'))
+        a_creer, doublons = [], 0
+        for numero, (jour, periode, energie, index) in lignes:
+            if (jour, periode) in existants:
+                doublons += 1
+                continue
+            existants.add((jour, periode))
+            a_creer.append(ProductionReading(
+                company=request.user.company, installation=installation,
+                date=jour, period_days=periode, energy_kwh=energie,
+                source=ProductionReading.Source.IMPORT,
+                note=(f'Index du compteur de production : {index}'
+                      if index is not None else ''),
+                created_by=request.user))
+        ProductionReading.objects.bulk_create(a_creer)
+        return Response({
+            'crees': len(a_creer),
+            'doublons': doublons,
+            'erreurs': erreurs,
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='history',
@@ -291,6 +429,13 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             build_warranty_report_data, render_warranty_report_pdf,
         )
         config = self.get_object()
+        # CIQ646 (D-CIQ-12) — aucun rapport client de garantie de production
+        # tant que la société n'a pas validé l'engagement (assureur/juriste).
+        from .selectors import _garantie_production_autorisee
+        if not _garantie_production_autorisee(config.installation):
+            return Response(
+                {'detail': 'Garantie de production non validée (Paramètres).'},
+                status=status.HTTP_409_CONFLICT)
         annee = request.query_params.get('annee')
         annee = int(annee) if annee else None
         data = build_warranty_report_data(config.installation, year=annee)

@@ -42,6 +42,8 @@ User = get_user_model()
 A_FAIRE = RelanceEtape.Statut.A_FAIRE
 JOURS_JOUES = 21
 FERIE = datetime.date(2026, 10, 12)
+#: AGR542 — le type du lead des dossiers qui en portent un (les autres restent vides).
+TYPES_DES_DOSSIERS = {'agricole': 'agricole'}
 
 
 class ControleDuSuiviScenarioTests(ParcoursBase):
@@ -100,9 +102,12 @@ class ControleDuSuiviScenarioTests(ParcoursBase):
         self._a(10)
         self.en_tant_que(owner)
         numero = len(self.dossiers) + 1
-        resp = self.appel('post', '/api/django/crm/leads/', {
-            'nom': f'Scénario {code}', 'telephone': f'+2126100{numero:05d}',
-            'owner': owner.pk})
+        corps = {'nom': f'Scénario {code}', 'telephone': f'+2126100{numero:05d}',
+                 'owner': owner.pk}
+        # AGR542 — un dossier AGRICOLE vit le scénario comme les autres.
+        if code in TYPES_DES_DOSSIERS:
+            corps['type_installation'] = TYPES_DES_DOSSIERS[code]
+        resp = self.appel('post', '/api/django/crm/leads/', corps)
         lead = Lead.objects.get(pk=resp.data['id'])
         self.assertEqual(lead.owner_id, owner.pk, self.msg('responsable du lead', lead))
         self.dossiers[code] = lead
@@ -316,6 +321,8 @@ class ControleDuSuiviScenarioTests(ParcoursBase):
             ('abs_excusee', com2, 7, self.absente_puis_rattrape),
             ('abs_ouverte', com2, 7, self.arret_depuis(4)),
             ('reg_com2', com2, 1, self.regulier),
+            # AGR542 — un dossier agricole, traité régulièrement.
+            ('agricole', com, 6, self.regulier),
         ]
         for jour in self.jours_joues:
             self.jour = jour
@@ -335,19 +342,22 @@ class ControleDuSuiviScenarioTests(ParcoursBase):
             jour, datetime.time(heure, 0), tzinfo=horaires.CASABLANCA))
         self.en_tant_que(self.chef)
 
-    def servi(self, jours=14, owner=None):
+    def servi(self, jours=14, owner=None, segment=None):
         url = f'/api/django/crm/relance-etapes/controle/?jours={jours}'
         if owner is not None:
             url += f'&owner={owner}'
+        if segment is not None:
+            url += f'&segment={segment}'
         return self.appel('get', url).data
 
-    def confronter(self, jours=14, owner=None):
-        """Les écarts oracle ↔ API pour (``jours``, ``owner``), à l'instant gelé."""
+    def confronter(self, jours=14, owner=None, segment=None):
+        """Les écarts oracle ↔ API pour (``jours``, ``owner``, ``segment``), à l'instant
+        gelé."""
         from django.utils import timezone
 
         oracle = Oracle(self.company, self.chef, maintenant=timezone.now())
-        return ecarts(oracle.attendu(jours=jours, owner=owner),
-                      self.servi(jours=jours, owner=owner))
+        return ecarts(oracle.attendu(jours=jours, owner=owner, segment=segment),
+                      self.servi(jours=jours, owner=owner, segment=segment))
 
     def lignes(self, servi, liste):
         return {ligne['lead']: ligne for ligne in servi['exceptions'][liste]['lignes']}
@@ -359,12 +369,32 @@ class ControleDuSuiviScenarioTests(ParcoursBase):
         d = self.dossiers
 
         # 1. L'API et l'oracle disent la même chose — toutes périodes, toute l'équipe et
-        #    chaque commerciale.
+        #    chaque commerciale ; AGR542 : avec et sans le filtre « segment ».
         for jours in (7, 14, 30):
             for owner in (None, self.com.pk, self.com2.pk):
-                with self.subTest(jours=jours, owner=owner):
-                    self.assertEqual(self.confronter(jours, owner), [], self.msg(
-                        f'écarts oracle ↔ API (jours={jours}, owner={owner})'))
+                for segment in (None, 'agricole', 'non_renseigne'):
+                    with self.subTest(jours=jours, owner=owner, segment=segment):
+                        self.assertEqual(
+                            self.confronter(jours, owner, segment), [], self.msg(
+                                f'écarts oracle ↔ API (jours={jours}, owner={owner}, '
+                                f'segment={segment})'))
+
+        # AGR542 — le filtre restreint aux étapes des leads du segment, servi en écho.
+        with self.subTest('segment agricole'):
+            agricole = self.servi(14, segment='agricole')
+            self.assertEqual(agricole['segment'], 'agricole')
+            self.assertGreater(agricole['verdict']['du'], 0)
+            self.assertLess(agricole['verdict']['du'], self.servi(14)['verdict']['du'])
+            for liste in ('en_retard', 'taches_en_attente', 'sans_prochaine_etape',
+                          'premier_contact_hors_delai'):
+                self.assertTrue(set(self.lignes(agricole, liste)) <= {d['agricole'].pk},
+                                liste)
+            self.assertIsNone(self.servi(14)['segment'])
+        with self.subTest('segment inconnu : 400 qui nomme segment'):
+            resp = self.api.get(
+                '/api/django/crm/relance-etapes/controle/?jours=14&segment=fellah')
+            self.assertEqual(resp.status_code, 400)
+            self.assertIn('segment', resp.data['erreurs'])
 
         # 2. Les faits du scénario, dits un à un (pas seulement « l'oracle est d'accord »).
         servi = self.servi(14)

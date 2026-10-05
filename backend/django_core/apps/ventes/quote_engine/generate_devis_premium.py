@@ -313,6 +313,9 @@ CALEPINAGE_EMPREINTE = ""
 SIGNE_AU_DOMICILE = False
 DELAI_RETRACTATION_DOMICILE_JOURS = 7
 TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
+# AGR313 — la synthèse agricole (``agricole/synthese.synthese_agricole``) : la
+# MÊME fonction que le document de 3 pages et /proposition. None hors agricole.
+SYNTHESE_AGRICOLE = None
 # Conditions de paiement par mode — TOUJOURS fournies par le builder ;
 # défaut résidentiel pour le chemin autonome.
 PAY_A, PAY_M, PAY_S = 30, 60, 10
@@ -1031,12 +1034,11 @@ def _fdec_fr(v, decimales=2):
 def _renvoi_detail_complet():
     """AGR302 — où trouver les lignes retirées d'une table une-page tronquée.
 
-    Le pompage n'a PAS de devis multi-pages (QJR236) : le renvoi pointe vers
-    la proposition en ligne (QR de l'en-tête). AGR312 le fera renvoyer au
-    document agricole complet quand il sera branché.
+    AGR312 — le pompage a de nouveau son document complet : le renvoi pointe
+    vers le « document complet (3 pages) » du renderer agricole.
     """
     if (globals().get("MODE_INSTALLATION") or "").strip().lower() == "agricole":
-        return "votre proposition en ligne (QR)"
+        return "le document complet (3 pages)"
     return "le devis multi-pages"
 
 
@@ -3879,6 +3881,72 @@ def _onepage_header_html():
         f'{ref_html}</div></div>')
 
 
+def _cartes_pompage_synthese(synthese):
+    """AGR313 — les cartes du résumé pompage, lues dans ``synthese_agricole``
+    (mêmes formats qu'AGR302 ; une carte sans valeur est OMISE). La carte
+    « besoin / livré » n'existe que si la synthèse la sert."""
+    eau = synthese.get("eau") or {}
+    pompe = synthese.get("pompe") or {}
+    cellules = []
+    _pcv, _pkw = pompe.get("cv"), pompe.get("kw")
+    if _pcv is not None:
+        cellules.append((
+            _L("puissance_pompe"),
+            f"{_fdec_fr(_pcv)} CV ({_fdec_fr(_pkw)} kW)" if _pkw is not None
+            else f"{_fdec_fr(_pcv)} CV"))
+    _hmt = eau.get("hmt_m")
+    if _hmt is not None:
+        cellules.append(("HMT", f"{_fdec_fr(_hmt)} m",
+                         _ancre_figure("pompe_hmt_m", _hmt)))
+    _dq = eau.get("debit_hmt_m3h")
+    if _dq is not None and _hmt is not None:
+        cellules.append(
+            (_L("debit_a_hmt").format(hmt=_fdec_fr(_hmt)),
+             f"{_fdec_fr(_dq, 1)} m&#179;/h",
+             _ancre_figure("pompe_debit_m3h", _fdec_fr(_dq, 1))))
+    _m3j, _hrs = eau.get("m3_jour"), eau.get("heures_pompage")
+    if _m3j is not None and _hrs is not None:
+        _est = f"{_L('estimation')}, " if eau.get("estimation") else ""
+        cellules.append(
+            (f"{_L('eau_jour')} &#8212; {_est}"
+             f"{_L('sur_heures_pompage').format(heures=_fdec_fr(_hrs, 1))}"
+             f" ({_L('hypothese')})",
+             f"&#8776; {fnum(_m3j)} m&#179;",
+             _ancre_figure("pompe_volume_m3_jour", fnum(_m3j))))
+    bvl = synthese.get("besoin_vs_livre")
+    if isinstance(bvl, dict):
+        try:
+            _m = (bvl.get("mois") or [])[int(bvl.get("mois_le_plus_serre")) - 1]
+        except (TypeError, ValueError, IndexError):
+            _m = None
+        if isinstance(_m, dict) and _m.get("besoin_m3_jour") is not None \
+                and _m.get("livre_m3_jour") is not None:
+            cellules.append((
+                _L("besoin_livre_mois_serre"),
+                f"{fnum(_m['besoin_m3_jour'])} / "
+                f"{fnum(_m['livre_m3_jour'])} m&#179;"))
+    if KWC > 0:
+        cellules.append((_L("champ_pv"), f"{kwc_fr(KWC)} kWc",
+                         _ancre_figure("puissance_kwc", kwc_fr(KWC))))
+    return cellules
+
+
+def _bon_pour_accord_compact_html():
+    """AGR313 — bloc « Bon pour accord » compact du une-page agricole : nom,
+    date, signature. Sa DERNIÈRE ligne porte le libellé, si bien que la mesure
+    du une-page (``_mesure_onepage``) le garde dans la zone visible."""
+    return (
+        f'<div style="margin:6px 24px 0;border:1px solid {CN};'
+        f'border-radius:6px;padding:5px 10px;">'
+        f'<div style="display:flex;justify-content:space-between;'
+        f'font-size:7pt;color:{CG7};">'
+        f'<span>{_L("bpa_nom")}&#160;: {CLIENT_NAME}</span>'
+        f'<span>{_L("bpa_date")}&#160;:&#160;____/____/________</span></div>'
+        f'<div style="height:22px;"></div>'
+        f'<div style="font-size:7.5pt;font-weight:800;color:{CN};">'
+        f'{_L("bon_pour_accord")} &#8212; {_L("bpa_signature")}</div></div>')
+
+
 def page_onepage(items, tronquees=0):
     """Single A4 page: header + summary strip + client block + HT product table + footer.
 
@@ -3916,7 +3984,9 @@ def page_onepage(items, tronquees=0):
     _op_opt = ONEPAGE_BRANCHE if _meme else ""
 
     # ── Bloc résumé système (style devis concurrent) ──
-    if ETUDE.get("pompe_cv"):
+    if SYNTHESE_AGRICOLE is not None:
+        _sum_cells = _cartes_pompage_synthese(SYNTHESE_AGRICOLE)
+    elif ETUDE.get("pompe_cv"):
         # Chiffres CANONIQUES calculés à la création du devis (courbe
         # constructeur) — rendus tels quels. Une carte sans valeur est
         # OMISE : jamais de tiret ni de m³/jour inventé sans courbe.
@@ -4200,6 +4270,10 @@ def page_onepage(items, tronquees=0):
                            else _libelle_avec_min)
 
     header_html = _onepage_header_html()
+    # AGR313 — « Bon pour accord » compact du une-page agricole (nom, date,
+    # signature) ; les options à cocher et le schéma restent au 3 pages.
+    bpa_html = (_bon_pour_accord_compact_html()
+                if SYNTHESE_AGRICOLE is not None else "")
 
     return f"""
 <div class="page" style="position:relative;display:block;">
@@ -4275,6 +4349,7 @@ def page_onepage(items, tronquees=0):
       {'<span>&#183; ' + _note_remise_par_ligne() + '</span>' if DISCOUNT_PCT > 0 else ''}
     </div>
   </div>
+  {bpa_html}
 
   </div><!-- /CONTENT AREA -->
 
@@ -4360,7 +4435,14 @@ def _formes_total_ttc():
     gabarit est donc bien celle du texte compos\u00e9.)
     """
     formes = []
-    for brut in (_L("total_ttc"), i18n_labels.libelle("total_ttc", "fr")):
+    bruts = [_L("total_ttc"), i18n_labels.libelle("total_ttc", "fr")]
+    # AGR313 — en agricole, le bloc « Bon pour accord » compact vient APRÈS
+    # les totaux : son libellé (dernière ligne du bloc) borne aussi la zone
+    # visible, sinon la signature pourrait être rognée sans qu'on le mesure.
+    if SYNTHESE_AGRICOLE is not None:
+        bruts += [_L("bon_pour_accord"),
+                  i18n_labels.libelle("bon_pour_accord", "fr")]
+    for brut in bruts:
         for forme in (brut, brut.upper()):
             if forme and forme not in formes:
                 formes.append(forme)
@@ -4602,6 +4684,17 @@ def apply_quote_data(data: dict) -> None:
     TVA_PCT        = float(data.get("taux_tva", 20) or 20)
     MODE_INSTALLATION = data.get("mode_installation", "") or ""
     ETUDE          = data.get("etude") or {}
+    # AGR313 — le une-page agricole lit ses cartes dans la synthèse agricole
+    # (mêmes valeurs, mêmes omissions que le 3 pages et la page en ligne),
+    # plus dans ``ETUDE`` (un troisième chemin qui pouvait diverger).
+    global SYNTHESE_AGRICOLE
+    SYNTHESE_AGRICOLE = None
+    if MODE_INSTALLATION.strip().lower() == "agricole":
+        try:
+            from .agricole.synthese import synthese_agricole
+            SYNTHESE_AGRICOLE = synthese_agricole(data)
+        except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici
+            SYNTHESE_AGRICOLE = None
     INCLUDE_ETUDE  = bool(data.get("include_etude", False))
     INCLUDE_ANNEXE = bool(data.get("include_annexe_technique", False))
     ELECTRICAL_DESIGN = data.get("electrical_design") or {}
@@ -4864,6 +4957,13 @@ def render_html_for(data: dict) -> str:
     concurrent doit prendre ``_RENDER_LOCK`` lui-même**, ou passer par
     ``generate_premium_pdf``.
     """
+    # AGR312 — le moteur legacy ne sert JAMAIS un devis agricole en format à
+    # options (pas d'onduleur) : le document complet est le renderer agricole
+    # de 3 pages (``agricole/renderer``) ; s'il refuse un devis (repli NOMMÉ
+    # du builder), le legacy rend la version courte d'une page.
+    if ((data.get("mode_installation") or "").strip().lower() == "agricole"
+            and data.get("pdf_mode", "full") != "onepage"):
+        data = {**data, "pdf_mode": "onepage"}
     apply_quote_data(data)
     if data.get("pdf_mode", "full") == "onepage":
         # QJR124 — plus de re-filtrage ici : ``builder`` filtre les accessoires

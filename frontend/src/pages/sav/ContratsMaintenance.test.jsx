@@ -15,14 +15,16 @@ import { ContratStatutPill } from './ContratsMaintenance.jsx'
 // savApi/crmApi/installationsApi/axios mockés (patron
 // EquipementFiabilitePanel.test.jsx pour le store redux).
 const { getContrats, getTourneePreventive, planifierTournee,
-  getRentabiliteContrats } = vi.hoisted(() => ({
+  getRentabiliteContrats, saveContratOm } = vi.hoisted(() => ({
   getContrats: vi.fn(() => Promise.resolve({ data: [] })),
   getTourneePreventive: vi.fn(),
   planifierTournee: vi.fn(),
   getRentabiliteContrats: vi.fn(),
+  saveContratOm: vi.fn(),
 }))
 vi.mock('../../api/savApi', () => ({
   default: {
+    saveContratOm: (...a) => saveContratOm(...a),
     getContrats: (...a) => getContrats(...a),
     getTourneePreventive: (...a) => getTourneePreventive(...a),
     planifierTournee: (...a) => planifierTournee(...a),
@@ -41,7 +43,8 @@ vi.mock('../../api/axios', () => ({
   default: { get: vi.fn(() => Promise.resolve({ data: [] })) },
 }))
 
-import { Component as ContratsMaintenance } from './ContratsMaintenance.jsx'
+import { Component as ContratsMaintenance, PrestationsOmEditor } from './ContratsMaintenance.jsx'
+import { documentContrat } from '../../test/fixtures/contractSamples'
 
 function makeStore(permissions = []) {
   return configureStore({
@@ -174,5 +177,78 @@ describe('ContratStatutPill (J144 — statut contrat → ton + libellé FR)', ()
   it('inactif l’emporte même si une visite est due', () => {
     render(<ContratStatutPill contrat={{ actif: false, due: true }} />)
     expect(screen.getByText('Inactif')).toBeInTheDocument()
+  })
+})
+
+/* CIQ648 — prestations O&M, fréquences et prix « à renseigner », délai
+   d'intervention en heures. Les charges utiles viennent du contrat PARTAGÉ
+   `apps/sav/contract_samples/contrat_om.json` (PACT10), jamais d'un mock. */
+describe('ContratsMaintenance — prestations O&M (CIQ648)', () => {
+  const CONTRAT = documentContrat('sav', 'contrat_om')
+
+  it('contrat créé depuis un devis → 4 prestations « à renseigner », aucun nombre pré-rempli', () => {
+    render(<PrestationsOmEditor contrat={CONTRAT.exemple_vide} />)
+    for (const p of CONTRAT.exemple_vide.prestations) {
+      const ligne = screen.getByTestId(`prestation-${p.id}`)
+      expect(ligne).toHaveTextContent(p.libelle)
+      const frequence = screen.getByLabelText(`${p.libelle} — fréquence par an`)
+      expect(frequence).toHaveValue(null)
+      expect(frequence).toHaveAttribute('step', 'any')
+      expect(screen.getByLabelText(`${p.libelle} — prix HT`)).toHaveValue(null)
+    }
+    expect(screen.getAllByText('à renseigner')).toHaveLength(8)
+    expect(screen.getByLabelText("Délai d'intervention (heures)")).toHaveValue(null)
+    expect(screen.getByText('Vide : non engagé.')).toBeInTheDocument()
+  })
+
+  it('fréquence 2 saisie → PATCH du contrat avec la valeur telle quelle', async () => {
+    saveContratOm.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    const contrat = CONTRAT.exemple_vide
+    render(<PrestationsOmEditor contrat={contrat} />)
+    await user.type(screen.getByLabelText('Nettoyage des modules — fréquence par an'), '2')
+    await user.click(screen.getByRole('button', { name: /Enregistrer/ }))
+    await waitFor(() => expect(saveContratOm).toHaveBeenCalledTimes(1))
+    const [id, corps] = saveContratOm.mock.calls[0]
+    expect(id).toBe(contrat.id)
+    expect(corps.delai_intervention_heures).toBeNull()
+    expect(corps.prestations).toEqual(contrat.prestations.map((p) => ({
+      id: p.id, incluse: false,
+      frequence_an: p.type === 'nettoyage' ? '2' : null, prix_ht: null,
+    })))
+  })
+
+  it('le refus 400 du serveur s’affiche sous le champ fautif', async () => {
+    saveContratOm.mockRejectedValue({ response: { data: {
+      delai_intervention_heures: ['Doit être supérieur ou égal à 0.'] } } })
+    const user = userEvent.setup()
+    render(<PrestationsOmEditor contrat={CONTRAT.exemple_vide} />)
+    await user.click(screen.getByRole('button', { name: /Enregistrer/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('supérieur ou égal')
+    expect(screen.getByLabelText("Délai d'intervention (heures)"))
+      .toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('enregistrer → rouvrir → enregistrer sans toucher = même PATCH', async () => {
+    saveContratOm.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    render(<PrestationsOmEditor contrat={CONTRAT.exemple} />)
+    await user.click(screen.getByRole('button', { name: /Enregistrer/ }))
+    await waitFor(() => expect(saveContratOm).toHaveBeenCalledTimes(1))
+    const premier = saveContratOm.mock.calls[0][1]
+    expect(premier.delai_intervention_heures).toBe('48')
+    cleanup()
+    // Rouvrir = la charge utile renvoyée par le serveur, ré-affichée telle quelle.
+    const rouvert = {
+      ...CONTRAT.exemple,
+      delai_intervention_heures: premier.delai_intervention_heures,
+      prestations: CONTRAT.exemple.prestations.map((p) => ({
+        ...p, ...premier.prestations.find((q) => q.id === p.id),
+      })),
+    }
+    render(<PrestationsOmEditor contrat={rouvert} />)
+    await user.click(screen.getByRole('button', { name: /Enregistrer/ }))
+    await waitFor(() => expect(saveContratOm).toHaveBeenCalledTimes(2))
+    expect(saveContratOm.mock.calls[1][1]).toEqual(premier)
   })
 })

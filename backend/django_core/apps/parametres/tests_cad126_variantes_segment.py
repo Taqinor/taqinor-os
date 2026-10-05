@@ -309,7 +309,9 @@ class Agr511DarijaPompageTests(SimpleTestCase):
     def test_exactement_les_cles_agricoles(self):
         self.assertEqual(set(self.table[SEGMENT_POMPAGE]),
                          set(CLES_DARIJA_POMPAGE))
-        self.assertEqual(set(self.table), {SEGMENT_POMPAGE})  # pas de B2B
+        # CIQ504 — la darija B2B (base partagée) rejoint le pompage.
+        self.assertEqual(set(self.table),
+                         {SEGMENT_POMPAGE, *SEGMENTS_B2B})
         for cle in CLES_DARIJA_POMPAGE:
             with self.subTest(cle=cle):
                 self.assertIn(cle, self.defauts_darija)
@@ -337,8 +339,10 @@ class Agr511DarijaPompageTests(SimpleTestCase):
                 self.assertIsNone(variante_segment(cle, SEGMENT_POMPAGE, 'ar'))
                 self.assertIsNone(
                     variante_segment(cle, 'residentiel', 'darija'))
+                # CIQ504 — le B2B a sa darija, jamais d'anglais ni d'arabe.
                 for segment in SEGMENTS_B2B:
-                    self.assertIsNone(variante_segment(cle, segment, 'darija'))
+                    self.assertIsNone(variante_segment(cle, segment, 'en'))
+                    self.assertIsNone(variante_segment(cle, segment, 'ar'))
 
     def test_dossier_fda_darija_accord_avant_travaux_sans_chiffre(self):
         import re
@@ -531,3 +535,107 @@ class Ciq501RenduLeadCommercialTests(TestCase):
         attendu = MESSAGE_TEMPLATE_DEFAULTS['valeur_j1'].replace(
             '{civilite} ', '').replace('{prenom}', 'Aziz')
         self.assertEqual(rendu['message'], attendu)
+
+
+# ── CIQ504 (05/10/2026) — darija B2B, base partagée ────────────────────────
+
+#: Les clés B2B qui reçoivent leur darija (CAD126/CIQ501).
+CLES_B2B_DARIJA = (
+    'valeur_j1', 'reveil_a1', 'reveil_a2', 'reveil_a3', 'rappel_plus_tard',
+    'dimanche_famille', 'visite_proposition', 'visite_confirmation',
+    'j4_preuve', 'debrief_visite', 'parrainage')
+
+#: Les mots darija RÉSIDENTIELS qu'un patron ne doit plus recevoir.
+MOTS_DARIJA_B2B_INTERDITS = ('فاتورة الضو', 'العائلة', 'السطح')
+
+
+def _b2b_darija_du_guide():
+    """``{cle: texte converti}`` des lignes ``B2B DARIJA : `` du guide."""
+    lignes = _guide().read_text(
+        encoding='utf-8').replace('\r\n', '\n').split('\n')
+    trouvees, cle = {}, None
+    for ligne in lignes:
+        if ligne.startswith('### '):
+            cle = ligne[4:].split(' ')[0].strip()
+            continue
+        if cle and ligne.startswith('B2B DARIJA : '):
+            trouvees[cle] = _convertir(ligne[len('B2B DARIJA : '):].strip())
+    return trouvees
+
+
+class Ciq504DarijaB2BTests(SimpleTestCase):
+    def setUp(self):
+        from types import SimpleNamespace
+
+        from apps.parametres.models_messages import (
+            MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
+            MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA,
+        )
+        self.defauts_darija = MESSAGE_TEMPLATE_DEFAULTS_DARIJA
+        self.table = MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA
+        self.industriel = SimpleNamespace(type_installation='industriel')
+        self.residentiel = SimpleNamespace(type_installation='residentiel')
+
+    def _rendre(self, corps, cle, lead):
+        from apps.crm.services import _corps_pour_segment
+        return _corps_pour_segment(corps, cle, lead, 'darija')
+
+    def test_c_guide_et_dict_darija_b2b_egaux(self):
+        guide = _b2b_darija_du_guide()
+        self.assertTrue(guide)  # anti-faux-vert
+        self.assertEqual(set(guide), set(CLES_B2B_DARIJA))
+        for cle, texte in guide.items():
+            for segment in SEGMENTS_B2B:
+                with self.subTest(cle=cle, segment=segment):
+                    self.assertEqual(
+                        variante_segment(cle, segment, 'darija'), texte)
+
+    def test_commercial_lit_la_base_de_l_industriel(self):
+        self.assertIs(self.table['commercial'], self.table['industriel'])
+        self.assertEqual(set(self.table['industriel']), set(CLES_B2B_DARIJA))
+
+    def test_a_lead_industriel_darija_ni_facture_du_menage_ni_famille(self):
+        # Anti-faux-vert : la base darija porte bien ces mots.
+        self.assertIn('فاتورة الضو', self.defauts_darija['valeur_j1'])
+        self.assertIn('العائلة', self.defauts_darija['dimanche_famille'])
+        for cle in ('valeur_j1', 'dimanche_famille'):
+            rendu = self._rendre(self.defauts_darija[cle], cle,
+                                 self.industriel)
+            with self.subTest(cle=cle):
+                self.assertEqual(rendu,
+                                 variante_segment(cle, 'industriel', 'darija'))
+                self.assertNotIn('فاتورة الضو', rendu)
+                self.assertNotIn('العائلة', rendu)
+
+    def test_aucun_mot_darija_residentiel_dans_la_base_b2b(self):
+        for cle, texte in self.table['industriel'].items():
+            for mot in MOTS_DARIJA_B2B_INTERDITS:
+                with self.subTest(cle=cle, mot=mot):
+                    self.assertNotIn(mot, texte)
+
+    def test_b_corps_darija_personnalise_part_tel_quel(self):
+        perso = 'نص خاص بالشركة ديالنا {prenom}.'
+        self.assertEqual(
+            self._rendre(perso, 'valeur_j1', self.industriel), perso)
+
+    def test_d_lead_residentiel_darija_garde_exactement_ses_textes(self):
+        for cle in CLES_B2B_DARIJA:
+            with self.subTest(cle=cle):
+                base = self.defauts_darija[cle]
+                self.assertEqual(
+                    self._rendre(base, cle, self.residentiel), base)
+
+    def test_placeholders_identiques_a_la_variante_fr_b2b(self):
+        import re
+        for cle, texte in self.table['industriel'].items():
+            with self.subTest(cle=cle):
+                self.assertEqual(
+                    set(re.findall(r'\{(\w+)\}', texte)),
+                    set(re.findall(r'\{(\w+)\}',
+                                   variante_segment(cle, 'industriel'))))
+
+    def test_attente_accord_accuse_a_sa_base_darija(self):
+        texte = self.defauts_darija['attente_accord_accuse']
+        self.assertTrue(texte.strip())
+        self.assertIn('[النهار]', texte)
+        self.assertNotIn('العائلة', texte)

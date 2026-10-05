@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4784, operations: 7584, components: 2196}
+counts: {paths: 4788, operations: 7588, components: 2200}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2244,6 +2244,7 @@ operations:
 - get /api/django/monitoring/configs/{id}/co2/ -> django_monitoring_configs_co2_retrieve
 - post /api/django/monitoring/configs/{id}/email-om-report/ -> django_monitoring_configs_email_om_report_create
 - get /api/django/monitoring/configs/{id}/history/ -> django_monitoring_configs_history_retrieve
+- post /api/django/monitoring/configs/{id}/import-releves/ -> django_monitoring_configs_import_releves_create
 - get /api/django/monitoring/configs/{id}/om-metrics/ -> django_monitoring_configs_om_metrics_retrieve
 - get /api/django/monitoring/configs/{id}/om-report/ -> django_monitoring_configs_om_report_retrieve
 - get /api/django/monitoring/configs/{id}/rapport-garantie-pdf/ -> django_monitoring_configs_rapport_garantie_pdf_retrieve
@@ -3617,6 +3618,7 @@ operations:
 - post /api/django/ventes/economie-pompage/preview/ -> django_ventes_economie_pompage_preview_create
 - get /api/django/ventes/email-config/ -> django_ventes_email_config_retrieve
 - get /api/django/ventes/etats/analyse-facturation/ -> django_ventes_etats_analyse_facturation_retrieve
+- post /api/django/ventes/etude-ci/preview/ -> django_ventes_etude_ci_preview_create
 - post /api/django/ventes/etude-horaire/preview/ -> django_ventes_etude_horaire_preview_create
 - post /api/django/ventes/etude-pompage/preview/ -> django_ventes_etude_pompage_preview_create
 - get /api/django/ventes/export-comptable/ -> django_ventes_export_comptable_retrieve
@@ -6074,6 +6076,7 @@ operations:
 - get /api/v1/monitoring/configs/{id}/co2/ -> v1_monitoring_configs_co2_retrieve
 - post /api/v1/monitoring/configs/{id}/email-om-report/ -> v1_monitoring_configs_email_om_report_create
 - get /api/v1/monitoring/configs/{id}/history/ -> v1_monitoring_configs_history_retrieve
+- post /api/v1/monitoring/configs/{id}/import-releves/ -> v1_monitoring_configs_import_releves_create
 - get /api/v1/monitoring/configs/{id}/om-metrics/ -> v1_monitoring_configs_om_metrics_retrieve
 - get /api/v1/monitoring/configs/{id}/om-report/ -> v1_monitoring_configs_om_report_retrieve
 - get /api/v1/monitoring/configs/{id}/rapport-garantie-pdf/ -> v1_monitoring_configs_rapport_garantie_pdf_retrieve
@@ -7413,6 +7416,7 @@ operations:
 - post /api/v1/ventes/economie-pompage/preview/ -> v1_ventes_economie_pompage_preview_create
 - get /api/v1/ventes/email-config/ -> v1_ventes_email_config_retrieve
 - get /api/v1/ventes/etats/analyse-facturation/ -> v1_ventes_etats_analyse_facturation_retrieve
+- post /api/v1/ventes/etude-ci/preview/ -> v1_ventes_etude_ci_preview_create
 - post /api/v1/ventes/etude-horaire/preview/ -> v1_ventes_etude_horaire_preview_create
 - post /api/v1/ventes/etude-pompage/preview/ -> v1_ventes_etude_pompage_preview_create
 - get /api/v1/ventes/export-comptable/ -> v1_ventes_export_comptable_retrieve
@@ -8119,6 +8123,7 @@ components:
 - EtapePlanActivite
 - EtapePlanActiviteRequest
 - EtatConstateEnum
+- EtudeCiPreviewResponse
 - EtudeHoraireConsommation
 - EtudeHorairePreviewErreur
 - EtudeHorairePreviewRequestRequest
@@ -9263,6 +9268,9 @@ components:
 - PreferencePortail
 - PreferencePortailEcritureRequest
 - PrefillIncidentDepuisLog
+- PrestationContrat
+- PrestationContratRequest
+- PrestationContratTypeEnum
 - PreuveLivraison
 - PreuveLivraisonRequest
 - Priorite568Enum

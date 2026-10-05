@@ -73,8 +73,154 @@ export function EcartRecettePompageField({ form, set, erreur }) {
   )
 }
 
+/* CIQ639 (Groupe CIQ) — seuils 82-21 SOURCÉS (CIQ614) : la référence vient
+   des textes (11 kW, 5 MW, servie par `seuils_sources` avec son article) ;
+   la société ne saisit qu'une SURCHARGE, vide par défaut (fin du 1 000
+   prérempli). Réglages C&I de CIQ622, tous SANS défaut : vide = « écart
+   affiché sans verdict » / « non engagé ». Valeurs tapées envoyées telles
+   quelles (step="any"), refus 400 du serveur sous le champ fautif. */
+const CHAMPS_SEUILS_8221 = [
+  { champ: 'seuil_regime_declaration_kwc', cle: 'declaration',
+    label: 'Surcharge du seuil « Déclaration » (kW)' },
+  { champ: 'seuil_regime_anre_kwc', cle: 'autorisation',
+    label: 'Surcharge du seuil « Autorisation » (kW)' },
+]
+const AIDE_SANS_VERDICT = "Vide : l'écart sera affiché sans verdict."
+const AIDE_NON_ENGAGE = 'Vide : non engagé.'
+const REGLAGES_CI_NOMBRES = [
+  { champ: 'recette_ecart_pmax_pct', label: 'Écart de recette toléré sur la puissance crête (%)', aide: AIDE_SANS_VERDICT },
+  { champ: 'recette_echantillon_iv_pct', label: 'Échantillon de courbes I-V à la recette (%)', aide: AIDE_SANS_VERDICT },
+  { champ: 'recette_pr_seuil_interne', label: 'Seuil interne de performance ratio (%) — alerte interne', aide: AIDE_SANS_VERDICT },
+  { champ: 'delai_intervention_suivi_heures', label: "Délai d'intervention du suivi (heures)", aide: AIDE_NON_ENGAGE },
+  { champ: 'delai_reception_definitive_mois', label: 'Délai de réception définitive (mois)', aide: AIDE_NON_ENGAGE },
+]
+const REGLAGES_CI_BOOLEENS = [
+  { champ: 'securite_obligatoire_avant_demarrage', label: 'Contrôle de sécurité obligatoire avant démarrage' },
+  { champ: 'garantie_production_autorisee', label: 'Garantie de production autorisée' },
+]
+export const CHAMP_GARANTIE_VALIDATION = 'garantie_production_validation'
+export const MESSAGE_GARANTIE_SANS_VALIDATION = (
+  "La garantie de production ne peut être autorisée qu'avec sa validation "
+  + 'écrite (assureur ou juriste : qui a validé et quand).')
+
+const versTexte = (v) => (v === null || v === undefined ? '' : String(v))
+const nombreOuNul = (v) => {
+  if (v === null || v === undefined) return null
+  const t = String(v).trim().replace(',', '.')
+  return t === '' ? null : t
+}
+
+/** Profil serveur → état du formulaire (vide = '' / false ; aucun défaut). */
+// eslint-disable-next-line react-refresh/only-export-components
+export function formReglagesCi(profile = {}) {
+  const p = profile || {}
+  return {
+    ...Object.fromEntries(CHAMPS_SEUILS_8221.map(({ champ }) => [champ, versTexte(p[champ])])),
+    ...Object.fromEntries(REGLAGES_CI_NOMBRES.map(({ champ }) => [champ, versTexte(p[champ])])),
+    ...Object.fromEntries(REGLAGES_CI_BOOLEENS.map(({ champ }) => [champ, !!p[champ]])),
+    [CHAMP_GARANTIE_VALIDATION]: versTexte(p[CHAMP_GARANTIE_VALIDATION]),
+  }
+}
+
+/** État du formulaire → PATCH : vide = null, tapé = tel quel. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function payloadReglagesCi(form = {}) {
+  const f = form || {}
+  return {
+    ...Object.fromEntries(CHAMPS_SEUILS_8221.map(({ champ }) => [champ, nombreOuNul(f[champ])])),
+    ...Object.fromEntries(REGLAGES_CI_NOMBRES.map(({ champ }) => [champ, nombreOuNul(f[champ])])),
+    ...Object.fromEntries(REGLAGES_CI_BOOLEENS.map(({ champ }) => [champ, !!f[champ]])),
+    [CHAMP_GARANTIE_VALIDATION]: versTexte(f[CHAMP_GARANTIE_VALIDATION]).trim(),
+  }
+}
+
+/** Erreur locale de la garantie (même règle que le serveur), ou ''. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function erreurGarantieLocale(form = {}) {
+  const f = form || {}
+  return f.garantie_production_autorisee
+    && versTexte(f[CHAMP_GARANTIE_VALIDATION]).trim() === ''
+    ? MESSAGE_GARANTIE_SANS_VALIDATION : ''
+}
+
+function ErreurSous({ id, message }) {
+  if (!message) return null
+  return (
+    <p id={id} role="alert" className="text-[11.5px] font-medium text-destructive">
+      {message}
+    </p>
+  )
+}
+
+export function SeuilsEtReglagesCiFields({ form, set, erreur, seuilsSources }) {
+  const f = form || {}
+  const garantieLocale = erreurGarantieLocale(f)
+  const garantieMessage = erreurDuChamp(erreur, CHAMP_GARANTIE_VALIDATION) || garantieLocale
+  return (
+    <>
+      {CHAMPS_SEUILS_8221.map(({ champ, cle, label }) => {
+        const source = seuilsSources?.[cle]
+        const message = erreurDuChamp(erreur, champ)
+        const id = `pe-${champ}`
+        return (
+          <Field key={champ} label={label} htmlFor={id}>
+            <Input id={id} type="number" step="any" name={champ}
+                   value={versTexte(f[champ])} onChange={set}
+                   invalid={Boolean(message)}
+                   aria-describedby={message ? `${id}-erreur` : undefined} />
+            <p className="text-[11px] text-muted-foreground">
+              {source
+                ? `Seuil des textes : ${source.valeur_kw} kW — ${source.source}. Vide = seuil des textes.`
+                : 'Vide = seuil des textes.'}
+            </p>
+            <ErreurSous id={`${id}-erreur`} message={message} />
+          </Field>
+        )
+      })}
+      {REGLAGES_CI_NOMBRES.map(({ champ, label, aide }) => {
+        const message = erreurDuChamp(erreur, champ)
+        const id = `pe-${champ}`
+        const vide = versTexte(f[champ]).trim() === ''
+        return (
+          <Field key={champ} label={label} htmlFor={id}>
+            <Input id={id} type="number" step="any" name={champ}
+                   value={versTexte(f[champ])} onChange={set}
+                   invalid={Boolean(message)}
+                   aria-describedby={message ? `${id}-erreur` : undefined} />
+            {vide && !message && (
+              <p className="text-[11px] text-muted-foreground">{aide}</p>
+            )}
+            <ErreurSous id={`${id}-erreur`} message={message} />
+          </Field>
+        )
+      })}
+      {REGLAGES_CI_BOOLEENS.map(({ champ, label }) => (
+        <label key={champ} className="flex items-center gap-2 text-[12.5px]">
+          <input type="checkbox" name={champ} checked={!!f[champ]} onChange={set} />
+          {label}
+        </label>
+      ))}
+      <Field label="Validation de la garantie de production (qui, quand)"
+             htmlFor="pe-garantie-validation">
+        <Input id="pe-garantie-validation" type="text"
+               name={CHAMP_GARANTIE_VALIDATION}
+               value={versTexte(f[CHAMP_GARANTIE_VALIDATION])} onChange={set}
+               invalid={Boolean(garantieMessage)}
+               aria-describedby={garantieMessage ? 'pe-garantie-validation-erreur' : undefined} />
+        {!f.garantie_production_autorisee && (
+          <p className="text-[11px] text-muted-foreground">
+            Non autorisée : aucune garantie de production n&apos;est imprimée.
+          </p>
+        )}
+        <ErreurSous id="pe-garantie-validation-erreur" message={garantieMessage} />
+      </Field>
+    </>
+  )
+}
+
 export default function AvanceSection({
   form, set,
+  profile = null,
   profileError = null,
   assignables = [],
   typesItv, newType, setNewType, addType, renameType, delType,
@@ -151,22 +297,16 @@ export default function AvanceSection({
                      name="discount_approval_threshold" placeholder="vide = désactivé"
                      value={form.discount_approval_threshold} onChange={set} />
             </Field>
-            <Field label="Seuil régime « Déclaration » (kWc)" htmlFor="pe-seuil-decl">
-              <Input id="pe-seuil-decl" type="number" step="any"
-                     name="seuil_regime_declaration_kwc"
-                     value={form.seuil_regime_declaration_kwc} onChange={set} />
-            </Field>
-            <Field label="Seuil régime « Autorisation ANRE » (kWc)" htmlFor="pe-seuil-anre">
-              <Input id="pe-seuil-anre" type="number" step="any"
-                     name="seuil_regime_anre_kwc"
-                     value={form.seuil_regime_anre_kwc} onChange={set} />
-            </Field>
+            <SeuilsEtReglagesCiFields form={form} set={set} erreur={profileError}
+                                      seuilsSources={profile?.seuils_sources} />
             <EcartRecettePompageField form={form} set={set} erreur={profileError} />
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">
             Seuils loi 82-21 proposés à la création d'un chantier (régime
             suggéré, modifiable) : sous le 1er seuil = Déclaration, entre les
-            deux = Accord de raccordement, au-dessus du 2nd = Autorisation ANRE.
+            deux = Accord de raccordement, au-dessus du 2nd = Autorisation.
+            Ils viennent des textes ; une surcharge ne se saisit que par choix
+            délibéré de la société.
           </p>
           <p className="mt-2 text-[11px] text-muted-foreground">
             Au-delà de ce seuil de remise, un devis exige l'approbation d'un

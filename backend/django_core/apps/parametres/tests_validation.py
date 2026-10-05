@@ -292,3 +292,209 @@ class TestEcartRecettePompage(ProfileValidationBase):
     def test_expose_a_cote_des_seuils_8221(self):
         from apps.parametres.views_config import PROFILE_CONFIG_FIELDS
         self.assertIn(self.CHAMP, PROFILE_CONFIG_FIELDS)
+
+
+class TestSeuils8221Surcharge(ProfileValidationBase):
+    """CIQ614 — les seuils 82-21 sont ceux des textes (noyau
+    ``core.reglementaire``) ; la société ne saisit qu'une SURCHARGE (NULL par
+    défaut). L'API expose ``seuils_sources`` (valeur + article)."""
+
+    URL = '/api/django/parametres/update/'
+    CHAMPS = ('seuil_regime_declaration_kwc', 'seuil_regime_anre_kwc')
+
+    def test_get_initial_surcharges_null_et_seuils_sources(self):
+        resp = self.api.get('/api/django/parametres/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        for champ in self.CHAMPS:
+            self.assertIn(champ, resp.data)
+            self.assertIsNone(resp.data[champ])
+        sources = resp.data['seuils_sources']
+        self.assertEqual(sources['declaration']['valeur_kw'], 11)
+        self.assertEqual(sources['autorisation']['valeur_kw'], 5000)
+        self.assertIn('décret 2.25.100 art. 5',
+                      sources['declaration']['source'])
+        self.assertIn('art. 5, 18', sources['autorisation']['source'])
+
+    def test_surcharge_saisie_puis_videe(self):
+        resp = self.api.patch(
+            self.URL, {'seuil_regime_anre_kwc': 2000}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(str(resp.data['seuil_regime_anre_kwc']), '2000.00')
+        # La référence sourcée ne bouge pas avec la surcharge.
+        self.assertEqual(
+            resp.data['seuils_sources']['autorisation']['valeur_kw'], 5000)
+        resp = self.api.patch(
+            self.URL, {'seuil_regime_anre_kwc': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data['seuil_regime_anre_kwc'])
+
+    def test_surcharge_negative_refusee_en_francais(self):
+        resp = self.api.patch(
+            self.URL, {'seuil_regime_anre_kwc': -1}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('ne peut pas être négatif',
+                      str(resp.data['seuil_regime_anre_kwc']))
+
+    def test_seuils_sources_lecture_seule(self):
+        resp = self.api.patch(
+            self.URL, {'seuils_sources': {'declaration': {'valeur_kw': 1}}},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            resp.data['seuils_sources']['declaration']['valeur_kw'], 11)
+
+    def test_enregistrer_rouvrir_enregistrer_identique(self):
+        self.api.patch(self.URL, {'seuil_regime_declaration_kwc': '9.5'},
+                       format='json')
+        premier = self.api.get('/api/django/parametres/').data
+        corps = {c: premier[c] for c in self.CHAMPS}
+        resp = self.api.patch(self.URL, corps, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        second = self.api.get('/api/django/parametres/').data
+        for cle in self.CHAMPS + ('seuils_sources',):
+            self.assertEqual(second[cle], premier[cle])
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(
+            'apps.parametres.migrations.0118_ciq614_seuils_8221_surcharge')
+
+    def _profil(self, decl, anre):
+        from decimal import Decimal
+        from apps.parametres.models import CompanyProfile
+        prof = CompanyProfile.get(company=self.company)
+        CompanyProfile.objects.filter(pk=prof.pk).update(
+            seuil_regime_declaration_kwc=Decimal(decl),
+            seuil_regime_anre_kwc=Decimal(anre))
+        return prof
+
+    def test_migration_ancien_defaut_passe_a_null(self):
+        from django.apps import apps as django_apps
+        from apps.parametres.models import CompanyProfile
+        prof = self._profil('11', '1000')
+        self._migration().anciens_defauts_vers_null(django_apps, None)
+        prof = CompanyProfile.objects.get(pk=prof.pk)
+        self.assertIsNone(prof.seuil_regime_declaration_kwc)
+        self.assertIsNone(prof.seuil_regime_anre_kwc)
+
+    def test_migration_choix_delibere_conserve(self):
+        from decimal import Decimal
+        from django.apps import apps as django_apps
+        from apps.parametres.models import CompanyProfile
+        prof = self._profil('8', '2000')
+        self._migration().anciens_defauts_vers_null(django_apps, None)
+        prof = CompanyProfile.objects.get(pk=prof.pk)
+        self.assertEqual(prof.seuil_regime_declaration_kwc, Decimal('8'))
+        self.assertEqual(prof.seuil_regime_anre_kwc, Decimal('2000'))
+
+    def test_migration_reversible(self):
+        from decimal import Decimal
+        from django.apps import apps as django_apps
+        from apps.parametres.models import CompanyProfile
+        prof = self._profil('11', '2000')
+        mig = self._migration()
+        mig.anciens_defauts_vers_null(django_apps, None)
+        mig.null_vers_anciens_defauts(django_apps, None)
+        prof = CompanyProfile.objects.get(pk=prof.pk)
+        self.assertEqual(prof.seuil_regime_declaration_kwc, Decimal('11'))
+        self.assertEqual(prof.seuil_regime_anre_kwc, Decimal('2000'))
+
+
+class TestReglagesCI(ProfileValidationBase):
+    """CIQ622 — réglages C&I de recette / suivi / garantie, TOUS sans défaut
+    (D-CIQ-12, D-CIQ-14) ; 0 < % ≤ 100, heures et mois > 0, garantie de
+    production autorisée seulement avec son texte de validation."""
+
+    URL = '/api/django/parametres/update/'
+    NULLS = ('recette_ecart_pmax_pct', 'recette_echantillon_iv_pct',
+             'recette_pr_seuil_interne', 'delai_intervention_suivi_heures',
+             'delai_reception_definitive_mois')
+    FAUX = ('securite_obligatoire_avant_demarrage',
+            'garantie_production_autorisee')
+
+    def test_get_initial_tout_vide(self):
+        resp = self.api.get('/api/django/parametres/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        for champ in self.NULLS:
+            self.assertIsNone(resp.data[champ], champ)
+        for champ in self.FAUX:
+            self.assertIs(resp.data[champ], False, champ)
+        self.assertEqual(resp.data['garantie_production_validation'], '')
+
+    def test_valeurs_valides_200(self):
+        corps = {
+            'recette_ecart_pmax_pct': '3.5', 'recette_echantillon_iv_pct': 10,
+            'recette_pr_seuil_interne': 78, 'delai_intervention_suivi_heures': 48,
+            'delai_reception_definitive_mois': 12,
+            'securite_obligatoire_avant_demarrage': True,
+            'garantie_production_autorisee': True,
+            'garantie_production_validation': 'Validé par le juriste, 01/10/2026',
+        }
+        resp = self.api.patch(self.URL, corps, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(str(resp.data['recette_ecart_pmax_pct']), '3.50')
+        self.assertEqual(resp.data['delai_intervention_suivi_heures'], 48)
+        self.assertIs(resp.data['garantie_production_autorisee'], True)
+
+    def test_pourcentages_hors_bornes_refuses_en_francais(self):
+        for champ in ('recette_ecart_pmax_pct', 'recette_echantillon_iv_pct',
+                      'recette_pr_seuil_interne'):
+            for valeur in (-3, 150, 0):
+                with self.subTest(champ=champ, valeur=valeur):
+                    resp = self.api.patch(self.URL, {champ: valeur},
+                                          format='json')
+                    self.assertEqual(resp.status_code, 400)
+                    self.assertIn('doit être compris entre',
+                                  str(resp.data[champ]))
+
+    def test_delais_nuls_ou_negatifs_refuses_en_francais(self):
+        for champ in ('delai_intervention_suivi_heures',
+                      'delai_reception_definitive_mois'):
+            for valeur in (0, -3):
+                with self.subTest(champ=champ, valeur=valeur):
+                    resp = self.api.patch(self.URL, {champ: valeur},
+                                          format='json')
+                    self.assertEqual(resp.status_code, 400)
+                    self.assertIn('strictement positif', str(resp.data[champ]))
+
+    def test_garantie_autorisee_sans_validation_refusee(self):
+        resp = self.api.patch(
+            self.URL, {'garantie_production_autorisee': True}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('assureur ou juriste',
+                      str(resp.data['garantie_production_validation']))
+        resp = self.api.patch(
+            self.URL, {'garantie_production_autorisee': True,
+                       'garantie_production_validation': '   '},
+            format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_garantie_patch_partiel_utilise_texte_enregistre(self):
+        self.api.patch(self.URL, {
+            'garantie_production_validation': 'Assureur X, 02/10/2026'},
+            format='json')
+        resp = self.api.patch(
+            self.URL, {'garantie_production_autorisee': True}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_enregistrer_rouvrir_enregistrer_identique(self):
+        self.api.patch(self.URL, {
+            'recette_ecart_pmax_pct': '4.25',
+            'delai_reception_definitive_mois': 12,
+            'garantie_production_autorisee': True,
+            'garantie_production_validation': 'Juriste Y, 03/10/2026'},
+            format='json')
+        champs = self.NULLS + self.FAUX + ('garantie_production_validation',)
+        premier = self.api.get('/api/django/parametres/').data
+        resp = self.api.patch(self.URL, {c: premier[c] for c in champs},
+                              format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        second = self.api.get('/api/django/parametres/').data
+        for champ in champs:
+            self.assertEqual(second[champ], premier[champ], champ)
+
+    def test_exposes_avec_les_autres_reglages(self):
+        from apps.parametres.views_config import PROFILE_CONFIG_FIELDS
+        for champ in self.NULLS + self.FAUX + (
+                'garantie_production_validation',):
+            self.assertIn(champ, PROFILE_CONFIG_FIELDS)

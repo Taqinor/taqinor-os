@@ -384,6 +384,27 @@ class TariffSettings(models.Model):
                   "plafond_mad_par_projet, base (ht|ttc|a_confirmer), "
                   "source, releve_le} — refusée sans source.")
 
+    # ── CIQ211 (Groupe CIQ, 03/10/2026) — réglages C&I SANS valeur par défaut.
+    # Scénarios de sensibilité SAISIS par Reda (convention 16 : aucune
+    # sensibilité n'existe tant qu'il n'en saisit pas), chacun avec sa source ;
+    # au plus 4 (``tariff.SENSIBILITES_CI_MAX``). Refus nommant
+    # ``sensibilites_ci[i].source`` (``tariff.erreurs_sensibilites_ci``).
+    sensibilites_ci = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Scénarios de sensibilité C&I',
+        help_text="Liste [{cle (indexation_tarif|degradation|tarif_kwh|"
+                  "production), variation_pct, source}] — vide par défaut.")
+    # D-CIQ-15 — le mot « crédit-bail » n'est montré au client qu'après un
+    # avis juridique (loi 82-21 art. 2) : FAUX par défaut ; la référence de
+    # l'avis est obligatoire pour passer à vrai.
+    mention_credit_bail_autorisee = models.BooleanField(
+        default=False,
+        verbose_name='Mention « crédit-bail » autorisée')
+    mention_credit_bail_source = models.TextField(
+        blank=True, default='',
+        verbose_name="Référence de l'avis juridique (crédit-bail)",
+        help_text="Obligatoire pour autoriser la mention « crédit-bail ».")
+
     def clean(self):
         """Refuse un réglage tarifaire incohérent en NOMMANT le champ fautif."""
         from django.core.exceptions import ValidationError

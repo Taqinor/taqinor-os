@@ -218,6 +218,11 @@ const crmApi = {
   // « Ouvrir WhatsApp » seulement, jamais pour remplir l'aperçu.
   whatsappDevis: (id, payload) =>
     api.post(`/crm/leads/${id}/whatsapp-devis/`, payload),
+  // AGR535 (contrat lead_resume_associe.json) — PRÉPARE le lien WhatsApp du
+  // résumé de la proposition pour l'associé (contact secondaire) ; n'envoie
+  // rien. Corps {devis_id, accord_client, langue?}. 400 nommant le champ.
+  resumeAssocie: (id, payload, config) =>
+    api.post(`/crm/leads/${id}/resume-associe/`, payload, config),
   // QJR590 (contrat lead_client_ecart.json) — « Mettre à jour la fiche client ».
   synchroniserClient: (id) => api.post(`/crm/leads/${id}/synchroniser-client/`),
   // QJR538 (contrat whatsapp_devis_apercu.json) — APERÇU sans aucun effet.

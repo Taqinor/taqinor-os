@@ -99,9 +99,9 @@ class TestQjr428ComparatifCarburantAbsentDuOnepage(TestCase):
 
         data = build_quote_data(self.devis, pdf_options)
         self.assertEqual(data['pdf_mode'], 'onepage',
-                         "un devis agricole dégrade toujours vers le one-page "
-                         "(QJR32/QJR236) — sinon ce test ne prouve pas la "
-                         "bonne page")
+                         "AGR312 — le une-page agricole se demande "
+                         "explicitement (plus de dégradation de « full ») — "
+                         "sinon ce test ne prouve pas la bonne page")
         cap = {}
         orig = G._render_pdf_weasyprint
         G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
@@ -130,7 +130,7 @@ class TestQjr428ComparatifCarburantAbsentDuOnepage(TestCase):
         est conservée pour l'étude, mais aucun renderer ne la lit pour
         produire un chiffre. Ce résultat DÉCIDE le texte de l'écran
         (voir `TestQjr428TextePanneauAgricoleHonnete` ci-dessous)."""
-        html, doc = self._render_onepage_html({'pdf_mode': 'full'})
+        html, doc = self._render_onepage_html({'pdf_mode': 'onepage'})
         self.assertEqual(len(doc.pages), 1)
         for mot in self.MOTS_COMPARATIF_CARBURANT:
             self.assertNotIn(mot, html,
@@ -150,7 +150,7 @@ class TestQjr428ComparatifCarburantAbsentDuOnepage(TestCase):
         l'étude rendue reste l'étude stockée. MÊME verdict : le one-page ne
         publie aucun comparatif carburant."""
         html, doc = self._render_onepage_html(
-            {'pdf_mode': 'full', 'current_fuel': 'butane'})
+            {'pdf_mode': 'onepage', 'current_fuel': 'butane'})
         self.assertEqual(len(doc.pages), 1)
         for mot in self.MOTS_COMPARATIF_CARBURANT:
             self.assertNotIn(mot, html,

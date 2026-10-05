@@ -346,6 +346,8 @@ export default function AtelierPanneaux({
         lectureSeule={enLectureSeule}
         calepinageId={calepinageId}
         builderApi={builderApi}
+        contraintesSite={detail ? (detail.contraintes_site ?? null) : undefined}
+        onContraintesEnregistrees={relire}
       />
 
       {/* CAL101 — l'aide-mémoire des raccourcis, à portée de « ? ». */}

@@ -162,6 +162,11 @@ const savApi = {
     ? api.patch(`/sav/contrats-maintenance/${id}/`, data)
     : api.post('/sav/contrats-maintenance/', data),
   deleteContrat: (id) => api.delete(`/sav/contrats-maintenance/${id}/`),
+  // CIQ648 — contrat O&M C&I : prestations (incluse, fréquence/an, prix HT)
+  // et délai d'intervention en heures (contrat partagé contrat_om.json).
+  saveContratOm: (id, { delai_intervention_heures, prestations }) =>
+    api.patch(`/sav/contrats-maintenance/${id}/`,
+      { delai_intervention_heures, prestations }),
   genererVisitesDues: () => api.post('/sav/contrats-maintenance/generer-dus/'),
   // N47 — rapport court de visite de maintenance (PDF, sans prix d'achat).
   // L675 — date de visite optionnelle (?date=AAAA-MM-JJ ; défaut derniere_visite).

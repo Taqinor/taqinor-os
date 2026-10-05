@@ -1,19 +1,21 @@
 # flake8: noqa
-"""TAQINOR quote engine — AGRICOLE : le moteur AGRONOMIQUE, et lui seul.
+"""TAQINOR quote engine — AGRICOLE (pompage solaire).
 
-QJR236 (décision fondateur DV1 du 30/08/2026) — LE RENDERER PREMIUM
-MULTI-PAGES A ÉTÉ SUPPRIMÉ. Depuis que le dispatch lit le ``pdf_mode``
-NORMALISÉ (QJR32), il était INJOIGNABLE : ``build_quote_data`` dégrade PAR
-CONCEPTION toute demande agricole « full » en une page (le format à options n'a
-pas de sens sans onduleur), donc aucune entrée ne pouvait plus le sélectionner
-et ce format avait silencieusement cessé d'être livré. Le une-page sert seul
-depuis juin ; la résurrection reste possible par ``git``.
+AGR310 (D-AGR-2, 02/10/2026) — LE DOCUMENT AGRICOLE DÉDIÉ DE 3 PAGES REVIENT,
+réécrit : :mod:`renderer` (``is_agricole`` / ``Unsupported`` /
+``render_pdf_bytes``) et :mod:`pages` (P1 l'eau et l'argent, P2 comment ça
+marche, P3 équipement, prix, garanties). Toutes ses valeurs viennent de
+:func:`synthese.synthese_agricole` — la MÊME fonction que /proposition
+(AGR308) — et de la chaîne de totaux canonique du builder. Rendu seul
+(règle #4). L'ancien renderer supprimé par QJR236/DV1 (ce7e9f01) n'est PAS
+ressuscité : ``economics.py``, ``economics_page.py``, ``constants.py`` et
+``cover.py`` restent dans l'historique git.
 
-CE QUI RESTE, ET QUI EST VIVANT : :mod:`agronomy` — le moteur agronomique v2
-(FAO-56, série mensuelle, ``ET0_MONTHLY``). Il n'a jamais appartenu au
-renderer : il est lu par ``apps/ventes/public_views.py`` (``peak_need_m3_day``)
-et sa table ``ET0_MONTHLY`` est citée par ``apps/crm/webhooks.py``.
+Le une-page agricole (version courte) reste rendu par le moteur legacy
+(``quote_engine/generate_devis_premium.py``).
 
-Le PDF agricole une-page est rendu par le moteur legacy
-(``quote_engine/generate_devis_premium.py``), inchangé.
+Modules : :mod:`synthese` (AGR304), :mod:`garanties` (AGR305),
+:mod:`mentions` (AGR306), :mod:`schema` (AGR309) et :mod:`agronomy` — le
+moteur agronomique v2 (FAO-56, ``ET0_MONTHLY``), lu par
+``apps/ventes/public_views.py`` et ``apps/crm/webhooks.py``.
 """

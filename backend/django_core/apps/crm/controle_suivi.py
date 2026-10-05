@@ -123,6 +123,42 @@ def parametres_controle(company, user, jours_brut=None, owner_brut=None):
     return jours, owner, erreurs
 
 
+#: AGR542 (contrat ``controle_suivi.json``) — les segments admis par
+#: ``?segment=`` : les valeurs de ``crm.Lead.TypeInstallation`` puis
+#: ``non_renseigne`` (type vide). Absent = tous les segments.
+SEGMENTS_ADMIS = ('residentiel', 'commercial', 'industriel', 'agricole',
+                  'non_renseigne')
+SEGMENT_NON_RENSEIGNE = 'non_renseigne'
+
+
+def parametre_segment(segment_brut=None):
+    """AGR542 — ``(segment, erreur)`` depuis ``?segment=``.
+
+    Absent ou vide → ``(None, None)`` (tous les segments, comportement
+    inchangé) ; une valeur hors ``SEGMENTS_ADMIS`` → refus nommé (la vue le
+    sert en 400 sous la clé ``segment``)."""
+    brut = str(segment_brut if segment_brut is not None else '').strip()
+    if not brut:
+        return None, None
+    if brut in SEGMENTS_ADMIS:
+        return brut, None
+    return None, (f'Segment inconnu : « {brut} ». Valeurs admises : '
+                  + ', '.join(SEGMENTS_ADMIS) + '.')
+
+
+def filtrer_par_segment(leads, segment):
+    """AGR542 — restreint un queryset de leads à ``segment`` (``None`` =
+    inchangé ; ``non_renseigne`` = type vide ou nul)."""
+    from django.db.models import Q
+
+    if not segment:
+        return leads
+    if segment == SEGMENT_NON_RENSEIGNE:
+        return leads.filter(Q(type_installation__isnull=True)
+                            | Q(type_installation=''))
+    return leads.filter(type_installation=segment)
+
+
 def _owner_dans_la_portee(company, user, owner_id):
     from django.contrib.auth import get_user_model
 
@@ -599,12 +635,15 @@ def _commerciaux(proprietaires):
 # ── LA lecture ───────────────────────────────────────────────────────────────
 
 def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
-                   maintenant=None):
+                   maintenant=None, segment=None):
     """Le bloc « Contrôle du suivi » — EXACTEMENT la forme de
     ``contract_samples/controle_suivi.json``.
 
     ``jours`` ∈ ``JOURS_AUTORISES`` et ``owner`` (un responsable de la portée,
     ou ``None``) sont validés par ``parametres_controle`` en amont.
+    AGR542 — ``segment`` (validé par ``parametre_segment``) restreint la
+    PORTÉE aux leads de ce segment : toutes les listes et tous les compteurs
+    en découlent ; aucune règle de mesure ne change. Servi en écho.
     ``maintenant`` (instant aware) est injectable pour les tests ; le JOUR est
     celui d'Africa/Casablanca."""
     from django.utils import timezone
@@ -625,8 +664,9 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
     sla = lead_sla_hours(company)
 
     portee = scope_queryset(
-        Lead.objects.filter(company=company, is_archived=False), user,
-        ['owner'])
+        filtrer_par_segment(
+            Lead.objects.filter(company=company, is_archived=False), segment),
+        user, ['owner'])
     portee_ids = portee.values('id')
     proprietaire = dict(portee.values_list('id', 'owner_id'))
 
@@ -740,6 +780,8 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
     return {
         'periode_jours': jours,
         'owner': owner,
+        # AGR542 — écho du paramètre (``None`` = tous les segments).
+        'segment': segment,
         'commerciaux': _commerciaux(concernes),
         'seuils': {
             'retard_alerte_jours': RETARD_ALERTE_JOURS,

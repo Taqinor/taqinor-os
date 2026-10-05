@@ -4,6 +4,7 @@
   "exemple": {
     "periode_jours": 14,
     "owner": 7,
+    "segment": null,
     "commerciaux": [
       {
         "id": 7,
@@ -223,6 +224,7 @@
   "exemple_vide": {
     "periode_jours": 14,
     "owner": null,
+    "segment": null,
     "commerciaux": [],
     "seuils": {
       "retard_alerte_jours": 2,
@@ -282,6 +284,7 @@
   "exemple_alerte": {
     "periode_jours": 14,
     "owner": 7,
+    "segment": null,
     "commerciaux": [
       {
         "id": 7,
@@ -516,30 +519,7 @@
     "par_type": "Sur la période ; l'ordre des lignes est celui de la table du parcours ; un type sans aucune étape jugée n'est pas servi ; `reportees` comme au verdict, par type. `reponses` : ce qui a été répondu sur les étapes closes « fait » — clé = l'issue enregistrée (`joint`, `non_joint`, `rappel`, `refuse`, `visite_acceptee`…), `sans_issue` pour un « Fait — passer à la suite » ; triées par effectif décroissant.",
     "premier_contact": "Leads CRÉÉS sur la période : `dans_le_delai` = premier contact humain posé avant le délai, sur la MÊME horloge que l'exception (heures d'horloge, jours non ouvrés retirés) ; `mediane_minutes` = médiane du délai création → premier contact en minutes OUVRÉES (le KPI « rappelé en moins de 5 min ouvrées » — jamais la moyenne : week-ends et fériés la faussent) ; `plus_longue_attente_heures` = le lead encore jamais contacté qui attend depuis le plus longtemps (horloge du délai), `null` s'il n'y en a pas.",
     "resultats": "Sur la période et la même portée : visites techniques planifiées, devis passés « envoyé », devis passés « accepté » — trois résultats à lire À CÔTÉ de l'effort, jamais un classement.",
-    "erreurs": "400 `{\"erreurs\": {champ: message}}` — `jours` (hors 7/14/30), `owner` (identifiant inconnu ou hors portée)."
-  },
-  "ajout_segment": {
-    "parametre": "?segment=",
-    "valeurs_admises": [
-      "residentiel",
-      "commercial",
-      "industriel",
-      "agricole",
-      "non_renseigne"
-    ],
-    "absent": "tous les segments (comportement actuel, inchangé)",
-    "champ_servi": "segment",
-    "nature_champ_servi": "texte ou null — ÉCHO du paramètre reçu (null quand le paramètre est absent)",
-    "pourquoi": "AGR503 (Groupe AGR, 02/10/2026) — `parametres_controle` (apps/crm/controle_suivi.py) ne lit que `jours` et `owner`, et le module ne connaît ni `segment` ni `type_installation` : le cockpit « Contrôle du suivi » ne peut pas isoler les exploitations agricoles. Le filtre porte sur `crm.Lead.type_installation` du lead de chaque touche (`non_renseigne` = vide). TOUTES les règles de mesure restent IDENTIQUES : retard compté en jours ouvrés, reports humains comptés, liste derrière chaque chiffre, même page pour tous les rôles ; aucun seuil propre à un segment.",
-    "exemple_requete": "GET /api/django/crm/relance-etapes/controle/?jours=14&owner=7&segment=agricole",
-    "exemple_fragment": {
-      "segment": "agricole"
-    },
-    "exemple_400": {
-      "segment": [
-        "Segment inconnu : « fellah ». Valeurs admises : residentiel, commercial, industriel, agricole, non_renseigne."
-      ]
-    },
-    "integration": "Posé ici, À CÔTÉ de `exemple`, pour garder `main` vert : GET relance-etapes/controle/ est sous contrat de forme (`check_api_shapes.py` compare `exemple` à la vue) et tests_cockpit_controle.py compare les clés servies à celles de `exemple`. La tâche backend qui sert `segment` l'insère dans `exemple`, `exemple_vide` et `exemple_alerte` DANS LE MÊME COMMIT, puis retire ce bloc."
+    "erreurs": "400 `{\"erreurs\": {champ: message}}` — `jours` (hors 7/14/30), `owner` (identifiant inconnu ou hors portée). AGR542 — `segment` (valeur inconnue) : « Segment inconnu : « fellah ». Valeurs admises : residentiel, commercial, industriel, agricole, non_renseigne. »",
+    "segment": "AGR503/AGR542 — `?segment=` ∈ residentiel, commercial, industriel, agricole, non_renseigne ; absent = tous les segments (comportement actuel, inchangé). `segment` servi = texte ou null — ÉCHO du paramètre reçu (null quand le paramètre est absent). Le filtre porte sur `crm.Lead.type_installation` du lead de chaque étape (`non_renseigne` = vide) : toutes les listes et tous les compteurs se restreignent aux leads de ce segment ; TOUTES les règles de mesure restent IDENTIQUES (jours ouvrés, reports comptés, même page pour tous les rôles), aucun seuil propre à un segment. Exemple : GET /api/django/crm/relance-etapes/controle/?jours=14&owner=7&segment=agricole."
   }
 }

@@ -86,10 +86,33 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     # L'écriture passe par ``views_profile.update_profile`` (posée côté serveur
     # sur la société de l'appelant, auditée) — jamais par un setattr nested.
     benchmarking_opt_in = serializers.SerializerMethodField()
+    # CIQ614 — seuils 82-21 de RÉFÉRENCE (textes, noyau core.reglementaire),
+    # exposés à côté des surcharges société ``seuil_regime_*`` (NULL = seuil
+    # sourcé). Lecture seule : la société ne saisit qu'une surcharge.
+    seuils_sources = serializers.SerializerMethodField()
+    # CIQ622 — délais déclarés sans le MinValueValidator du modèle : le refus
+    # (≤ 0) est rendu par ``validate_<champ>`` avec un message français.
+    delai_intervention_suivi_heures = serializers.IntegerField(
+        required=False, allow_null=True)
+    delai_reception_definitive_mois = serializers.IntegerField(
+        required=False, allow_null=True)
 
     def get_benchmarking_opt_in(self, obj):
         company = getattr(obj, 'company', None)
         return bool(getattr(company, 'benchmarking_opt_in', False))
+
+    def get_seuils_sources(self, obj) -> dict:
+        from core.reglementaire import regime_8221 as r8221
+        return {
+            'declaration': {
+                'valeur_kw': r8221.SEUIL_DECLARATION_KW,
+                'source': r8221.SEUIL_DECLARATION_SOURCE,
+            },
+            'autorisation': {
+                'valeur_kw': r8221.SEUIL_AUTORISATION_KW,
+                'source': r8221.SEUIL_AUTORISATION_SOURCE,
+            },
+        }
 
     class Meta:
         model = CompanyProfile
@@ -166,8 +189,9 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     def validate_overage_seuil_pct(self, value):
         return self._validate_pct(value, 'Le seuil de dépassement')
 
-    # Seuils de régime loi 82-21 (kWc) : non négatifs (NULL non permis par le
-    # modèle, mais on borne défensivement les valeurs entrantes).
+    # Seuils de régime loi 82-21 (kWc) — CIQ614 : SURCHARGES société, NULL =
+    # seuil sourcé (``seuils_sources``) ; une surcharge saisie est non
+    # négative.
     def _validate_non_negative(self, value, label):
         if value is not None and value < 0:
             raise serializers.ValidationError(
@@ -189,6 +213,41 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
                 "L'écart de recette pompage toléré doit être compris entre "
                 "0 (exclu) et 100 %.")
         return value
+
+    # ── CIQ622 — réglages C&I de recette / suivi, SANS défaut : vide accepté
+    # (« écart affiché sans verdict » / « non engagé »), sinon 0 < % ≤ 100 et
+    # heures / mois > 0. Refus 400 en français nommant le réglage.
+    def _validate_pct_strict(self, value, label):
+        if value is not None and (value <= 0 or value > 100):
+            raise serializers.ValidationError(
+                f'{label} doit être compris entre 0 (exclu) et 100 %.')
+        return value
+
+    def _validate_strict_positif(self, value, label):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                f'{label} doit être strictement positif.')
+        return value
+
+    def validate_recette_ecart_pmax_pct(self, value):
+        return self._validate_pct_strict(
+            value, "L'écart de recette toléré sur la puissance crête")
+
+    def validate_recette_echantillon_iv_pct(self, value):
+        return self._validate_pct_strict(
+            value, "L'échantillon de courbes I-V")
+
+    def validate_recette_pr_seuil_interne(self, value):
+        return self._validate_pct_strict(
+            value, 'Le seuil interne de performance ratio')
+
+    def validate_delai_intervention_suivi_heures(self, value):
+        return self._validate_strict_positif(
+            value, "Le délai d'intervention (heures)")
+
+    def validate_delai_reception_definitive_mois(self, value):
+        return self._validate_strict_positif(
+            value, 'Le délai de réception définitive (mois)')
 
     # ── CIQ105 — forfaits des prestations C&I et bande interne prix/kWc. Une
     # valeur saisie SANS source est refusée (400 FR nommant le champ) ; une
@@ -406,6 +465,24 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
                     'commission_valeur':
                         'La valeur de commission est obligatoire quand un '
                         'mode de commission est actif.',
+                })
+        # CIQ622 — une garantie de production n'est autorisée qu'avec le texte
+        # de validation (assureur ou juriste : qui et quand). Valeurs
+        # effectives (entrantes OU enregistrées) pour un PATCH partiel.
+        autorisee = attrs.get(
+            'garantie_production_autorisee',
+            getattr(inst, 'garantie_production_autorisee', False))
+        if autorisee:
+            if 'garantie_production_validation' in attrs:
+                texte = attrs.get('garantie_production_validation')
+            else:
+                texte = getattr(inst, 'garantie_production_validation', '')
+            if not (texte or '').strip():
+                raise serializers.ValidationError({
+                    'garantie_production_validation':
+                        "La garantie de production ne peut être autorisée "
+                        "qu'avec sa validation écrite (assureur ou juriste : "
+                        "qui a validé et quand).",
                 })
         return attrs
 

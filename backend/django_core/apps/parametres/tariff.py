@@ -145,10 +145,12 @@ def monthly_bill_residentiel(settings, kwh):
 
 
 def monthly_bill_force_motrice(settings, kwh):
-    """Facture mensuelle (Decimal TTC) pour la classe force motrice/agricole.
+    """Facture mensuelle (Decimal TTC) de la classe AGRICOLE (pompage).
 
-    Tarif unique ``force_motrice_prix_kwh_ttc`` (moins cher), jamais le haut
-    barème résidentiel.
+    Tarif unique ``force_motrice_prix_kwh_ttc`` (périmètre AGR, inchangé),
+    jamais le haut barème résidentiel. CIQ229 : la classe ``force_motrice``
+    (atelier, chambre froide) n'y passe plus — elle lit la grille officielle
+    (:func:`_facture_force_motrice_officielle`).
     """
     kwh = Decimal(str(kwh or 0))
     if kwh <= 0:
@@ -156,12 +158,46 @@ def monthly_bill_force_motrice(settings, kwh):
     return _q(kwh * Decimal(str(settings.force_motrice_prix_kwh_ttc)))
 
 
+# ── CIQ229 — force motrice à la grille OFFICIELLE ONEE BT ───────────────────
+# Les trois tranches publiées (``tarifs_officiels.BT_FORCE_MOTRICE``, TTC tels
+# que publiés) remplacent les 0,95 DH/kWh non sourcés : un client force
+# motrice y voyait ses kWh surestimés de 44 % (1,3639/0,95) à 76 %
+# (1,6758/0,95). La page ne publie pas la règle de tranche : lecture
+# PROGRESSIVE, étiquetée « à confirmer sur facture ».
+def _motif_grille_force_motrice():
+    from apps.parametres import tarifs_officiels as officiels
+    return (f"grille officielle ONEE BT force motrice (relevé du "
+            f"{officiels.RELEVE_LE}) — règle de tranche à confirmer sur "
+            "facture")
+
+
+def _facture_force_motrice_officielle(kwh):
+    """Facture mensuelle TTC (Decimal) aux tranches officielles, progressive."""
+    from apps.parametres import tarifs_officiels as officiels
+    kwh = Decimal(str(kwh or 0))
+    if kwh <= 0:
+        return Decimal('0.00')
+    total = Decimal('0')
+    for tranche in officiels.grille_bt('bt_force_motrice'):
+        bas = Decimal(str(tranche['seuil_min_kwh'] or 0))
+        haut = tranche['seuil_max_kwh']
+        plafond = kwh if haut is None else min(kwh, Decimal(str(haut)))
+        part = plafond - bas
+        if part > 0:
+            total += part * Decimal(str(tranche['valeur']))
+    return _q(total)
+
+
 def monthly_bill(settings, kwh, classe='residentiel'):
     """Facture mensuelle TTC selon la classe tarifaire.
 
-    classe ∈ {'residentiel', 'force_motrice'} (alias 'agricole').
+    classe ∈ {'residentiel', 'force_motrice', 'agricole'} : ``force_motrice``
+    lit la grille officielle ONEE (CIQ229), ``agricole`` garde le tarif
+    unique saisi (périmètre AGR).
     """
-    if classe in ('force_motrice', 'agricole'):
+    if classe == 'force_motrice':
+        return _facture_force_motrice_officielle(kwh)
+    if classe == 'agricole':
         return monthly_bill_force_motrice(settings, kwh)
     return monthly_bill_residentiel(settings, kwh)
 
@@ -338,7 +374,9 @@ def kwh_depuis_facture(settings, mad_ttc, *, classe):
         else:
             haut = milieu
     kwh = haut.quantize(_DIXIEME, rounding=ROUND_HALF_UP)
-    return _resultat_inversion(settings, classe, kwh, '',
+    # CIQ229 — la force motrice publie la grille officielle et sa date.
+    motif = _motif_grille_force_motrice() if classe == 'force_motrice' else ''
+    return _resultat_inversion(settings, classe, kwh, motif,
                                charges_fixes=fixes, energie=energie)
 
 
@@ -438,7 +476,7 @@ def compute_roi(settings, kwc, conso_mensuelle_kwh, cout_total_ttc,
     payback = (_q(cout / economie_totale)
                if economie_totale > 0 and cout > 0 else None)
 
-    return {
+    resultat = {
         'production_annuelle_kwh': _q(prod_annuelle),
         'autoconsommee_kwh': _q(autoconsommee),
         'surplus_kwh': _q(surplus),
@@ -448,6 +486,10 @@ def compute_roi(settings, kwc, conso_mensuelle_kwh, cout_total_ttc,
         'economie_totale_annuelle': economie_totale,
         'payback_annees': payback,
     }
+    if classe == 'force_motrice':
+        # CIQ229 — le simulateur nomme la grille officielle et sa date.
+        resultat['motif_tarif'] = _motif_grille_force_motrice()
+    return resultat
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1332,6 +1374,70 @@ def regle_fda_depuis_reglages(reglages):
     return dict(regle)
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# CIQ211 — SENSIBILITÉS C&I ET MENTION « CRÉDIT-BAIL », SAISIES (D-CIQ-15)
+# ═════════════════════════════════════════════════════════════════════════════
+#: Paramètres qu'un scénario de sensibilité peut faire varier.
+SENSIBILITE_CI_CLES = ('indexation_tarif', 'degradation', 'tarif_kwh',
+                       'production')
+#: Clés admises d'un scénario saisi.
+SENSIBILITE_CI_CHAMPS = ('cle', 'variation_pct', 'source')
+#: Au plus 4 scénarios, comme ``apps.ventes.economie.SCENARIOS_MAX``.
+SENSIBILITES_CI_MAX = 4
+
+
+def erreurs_sensibilites_ci(scenarios):
+    """Refus de ``sensibilites_ci``, ``{champ: message}`` (vide = valide).
+
+    Un scénario sans source est refusé en NOMMANT ``sensibilites_ci[i].source``
+    (``i`` à partir de 0) ; aucune sensibilité n'est jamais supposée.
+    """
+    champ = 'sensibilites_ci'
+    if _vide(scenarios):
+        return {}
+    if not isinstance(scenarios, list):
+        return {champ: f"{champ} : une liste [{{cle, variation_pct, "
+                       "source}] est attendue."}
+    if len(scenarios) > SENSIBILITES_CI_MAX:
+        return {champ: f"{champ} : au plus {SENSIBILITES_CI_MAX} scénarios."}
+    for i, ligne in enumerate(scenarios):
+        if not isinstance(ligne, dict):
+            return {champ: f"{champ}[{i}] : un objet {{cle, variation_pct, "
+                           "source}} est attendu."}
+        inconnues = sorted(set(ligne) - set(SENSIBILITE_CI_CHAMPS))
+        if inconnues:
+            return {champ: f"{champ}[{i}] : clé inconnue "
+                           f"{', '.join(inconnues)}."}
+        if ligne.get('cle') not in SENSIBILITE_CI_CLES:
+            return {champ: f"{champ}[{i}].cle doit valoir "
+                           f"{' | '.join(SENSIBILITE_CI_CLES)}."}
+        try:
+            variation = Decimal(
+                str(ligne.get('variation_pct')).strip().replace(',', '.'))
+        except (InvalidOperation, TypeError, ValueError):
+            variation = None
+        if (variation is None or not variation.is_finite()
+                or variation <= Decimal('-100')):
+            return {champ: f"{champ}[{i}].variation_pct : une variation en % "
+                           "(> −100) est attendue."}
+        if _vide(ligne.get('source')):
+            return {champ: f"{champ}[{i}].source : la source du scénario est "
+                           "obligatoire (étude, historique publié, garantie "
+                           "fabricant)."}
+    return {}
+
+
+def erreurs_mention_credit_bail(autorisee, source):
+    """Autoriser la mention « crédit-bail » exige la référence de l'avis
+    juridique (D-CIQ-15), ``{champ: message}``."""
+    if autorisee and _vide(source):
+        return {'mention_credit_bail_source': (
+            "mention_credit_bail_source : la référence de l'avis juridique "
+            "est obligatoire pour autoriser la mention « crédit-bail » "
+            "(loi 82-21 art. 2).")}
+    return {}
+
+
 def erreurs_reglages_tarif(reglages):
     """Point d'entrée UNIQUE des refus des réglages tarifaires, ``{champ: msg}``.
 
@@ -1369,4 +1475,10 @@ def erreurs_reglages_tarif(reglages):
         getattr(reglages, 'charges_pompage_solaire', None)))
     erreurs.update(erreurs_regle_fda(
         getattr(reglages, 'regle_fda_pompage', None)))
+    # CIQ211 — sensibilités C&I saisies et mention « crédit-bail ».
+    erreurs.update(erreurs_sensibilites_ci(
+        getattr(reglages, 'sensibilites_ci', None)))
+    erreurs.update(erreurs_mention_credit_bail(
+        getattr(reglages, 'mention_credit_bail_autorisee', False),
+        getattr(reglages, 'mention_credit_bail_source', None)))
     return erreurs

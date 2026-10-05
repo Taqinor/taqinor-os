@@ -62,7 +62,11 @@ def _univers(lead):
     # AGR411 — le panneau lit le périmètre HISTORIQUE du questionnaire
     # (``SECTIONS_HORS_POMPAGE``) : la section écrite « pompage » est celle du
     # lien client, ses questions orales passent par ``champs_oraux_du_segment``.
-    for section in questionnaire.SECTIONS_HORS_POMPAGE:
+    # AGR407 / CIQ410 — un lead agricole ou pro ne reçoit AUCUNE section
+    # résidentielle : son univers est celui que le panneau lit VRAIMENT pour
+    # lui (``_sections_du_panneau``), plus ses questions orales. La garde reste
+    # prouvée sur chaque colonne posable, segment par segment.
+    for section in panneau._sections_du_panneau(lead):
         champs.extend(questionnaire.CHAMPS_PAR_SECTION.get(section, ()))
     champs.extend(panneau.champs_oraux_du_segment(lead))
     return [c for c in dict.fromkeys(champs)
