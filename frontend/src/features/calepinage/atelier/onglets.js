@@ -92,6 +92,7 @@ export const ONGLETS = [
 
   { cle: 'materiel-electrique', libelle: 'Matériel électrique', groupe: 'Système', ordre: 215, composant: lazy(() => import('../electrique/MaterielElectrique')) }, // ACAL149
   { cle: 'saisies-electriques', libelle: 'Saisies électriques', groupe: 'Système', ordre: 216, composant: lazy(() => import('../electrique/SaisiesElectriques')) }, // ACAL153
+  { cle: 'decisions-electriques', libelle: 'Décisions électriques', groupe: 'Système', ordre: 217, composant: lazy(() => import('../electrique/DecisionsElectriques')) }, // ACAL154
 ]
 
 /**
