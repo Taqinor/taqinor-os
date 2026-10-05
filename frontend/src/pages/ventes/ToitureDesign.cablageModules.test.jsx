@@ -181,3 +181,29 @@ describe('CALX109 câblage — le catalogue de modules atteint le constructeur',
     expect(initRoofToolPro8.mock.calls[0][0].modulesDisponibles).toBeUndefined()
   })
 })
+
+// ACAL80 — l'ERP ne sert pas `/api/roof-yield` (route d'apps/web) : la page dit au
+// constructeur de ne JAMAIS l'appeler (repli table), dans les deux modes.
+describe('ACAL80 — point de rendement nul dans l’ERP', () => {
+  it('mode CALEPINAGE et mode DEVIS : `rendementPvgis: null` transmis au constructeur', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreCalepinage(CTX.calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(initRoofToolPro8.mock.calls[0][0].rendementPvgis).toBeNull()
+
+    cleanup()
+    initRoofToolPro8.mockClear()
+    delete window.__taqinorRoofBooted
+    ventesApi.getDevisDesignContext.mockResolvedValue({
+      data: {
+        devis: { id: 9, reference: 'DV-9' }, client: {},
+        geometrie: { roof_layout: null, roof_outline: null, roof_point: null }, cible: null,
+        carte: { available: true, maptilerKey: 'k', mapboxToken: '' }, modifiable: true, motif_lecture_seule: null,
+      },
+    })
+    rendreDevis(9)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(initRoofToolPro8.mock.calls[0][0].rendementPvgis).toBeNull()
+  })
+})

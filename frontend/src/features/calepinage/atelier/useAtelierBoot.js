@@ -210,6 +210,9 @@ export function useAtelierBoot(ctx) {
       if (cancelled) return
       window.__taqinorRoofBooted = true
       mod.initRoofToolPro8({
+        // ACAL80 — l'ERP ne sert pas `/api/roof-yield` (route d'apps/web) : aucune requête,
+        // repli sur la table committée — plus aucune erreur 405 à l'ouverture.
+        rendementPvgis: null,
         maptilerKey,
         mapboxToken,
         reducedMotion: !!reducedMotion,
@@ -296,6 +299,9 @@ export function useAtelierBoot(ctx) {
       // Un devis en lecture seule BOOTE quand même : on peut regarder le
       // calepinage vendu — seule l'action d'enregistrement disparaît.
       mod.initRoofToolPro8({
+        // ACAL80 — l'ERP ne sert pas `/api/roof-yield` (route d'apps/web) : aucune requête,
+        // repli sur la table committée — plus aucune erreur 405 à l'ouverture.
+        rendementPvgis: null,
         maptilerKey: carte.maptilerKey,
         mapboxToken: carte.mapboxToken || undefined,
         reducedMotion: !!reducedMotion,
@@ -413,6 +419,9 @@ export function useAtelierBoot(ctx) {
         // peut regarder la conception — seule l'action d'enregistrement
         // disparaît, exactement comme en mode devis.
         mod.initRoofToolPro8({
+          // ACAL80 — l'ERP ne sert pas `/api/roof-yield` (route d'apps/web) : aucune requête,
+          // repli sur la table committée — plus aucune erreur 405 à l'ouverture.
+          rendementPvgis: null,
           maptilerKey: carte.maptilerKey,
           mapboxToken: carte.mapboxToken || undefined,
           reducedMotion: !!reducedMotion,

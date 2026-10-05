@@ -97,6 +97,10 @@ export interface InitOptions {
   // panneau près. Le type reste volontairement OPAQUE ici : la forme fait foi dans
   // le contrat, et `moduleSelect.ts` est le seul à la lire.
   modulesDisponibles?: unknown;
+  /** ACAL80 — point de rendement PVGIS (URL) ; `null` = aucune requête (l'ERP n'a pas la
+   *  route `/api/roof-yield` d'apps/web : repli sur la table committée). Absent = le défaut
+   *  `/api/roof-yield` des pages publiques. */
+  rendementPvgis?: string | null;
 
   // CALX104/CALX403 — les deux sections des réglages société que l'ATELIER consomme
   // (`zones_types` pour les gabarits d'obstacle, `degagements` pour la largeur d'allée

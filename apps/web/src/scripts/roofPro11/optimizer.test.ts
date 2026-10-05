@@ -384,7 +384,7 @@ describe('CALX114 — dépôt de `optimisation` (CALX88) pour le balayage', () =
 // ═══════════════════════════════════════════════════════════════════════════════
 // ACAL79 — une seule borne `clampNeeded`, et la cible VENDUE n'est jamais plafonnée.
 // ═══════════════════════════════════════════════════════════════════════════════
-import { besoinVendu, clampNeeded } from './optimizer';
+import { besoinVendu, clampNeeded, lireRendement, RENDEMENT_PVGIS_DEFAUT } from './optimizer';
 import { hydrateFromDevis } from './prefill';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -405,5 +405,23 @@ describe('ACAL79 — cible vendue et borne unique', () => {
     const entree = readFileSync(fileURLToPath(new URL('../roof-tool-pro11.ts', import.meta.url)), 'utf8');
     expect(entree).not.toMatch(/const clampNeeded\s*=/);
     expect(entree).toMatch(/clampNeeded, \/\/ ACAL79/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL80 — point de rendement injectable : null dans l'ERP ⇒ aucune requête.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL80 — lireRendement', () => {
+  it('rendementPvgis null → aucun fetch, pitchedSpecificYield rend null', async () => {
+    let appels = 0;
+    const fetcher = (async () => {
+      appels += 1;
+      return { ok: true, json: async () => ({ ok: true, annualKwh: 1700 }) };
+    }) as unknown as typeof fetch;
+    expect(await lireRendement(null, { legs: [] }, fetcher)).toBeNull();
+    expect(appels).toBe(0);
+    // Avec l'URL par défaut (pages publiques), la requête part et le kWh revient.
+    expect(await lireRendement(RENDEMENT_PVGIS_DEFAUT, { legs: [] }, fetcher)).toBe(1700);
+    expect(appels).toBe(1);
   });
 });

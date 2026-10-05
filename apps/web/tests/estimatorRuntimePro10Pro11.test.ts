@@ -2200,3 +2200,56 @@ describe('runtime ACAL79 — la cible vendue n’est jamais plafonnée', () => {
     expect(doc.zones[0].neededAuto).toBe(false);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL80 — boot RÉEL : `rendementPvgis: null` (l'ERP) ⇒ aucune requête /api/roof-yield ;
+// sans l'option (pages publiques), la requête part comme avant.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL80 — point de rendement injectable', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    fetchMock = vi.fn(() => Promise.reject(new Error('no network')));
+    vi.stubGlobal('fetch', fetchMock);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+  // Les tests précédents laissent des promesses PVGIS en vol qui atterrissent dans le fetch
+  // de CE test : on ne compte que les requêtes portant le site tracé ICI (lon -7.41).
+  const demandesRendement = (lon = -7.41) =>
+    fetchMock.mock.calls.filter((c) => String(c[0]).includes('/api/roof-yield')
+      && Math.abs((JSON.parse(String((c[1] as { body?: string })?.body ?? '{}')).lon ?? 0) - lon) < 0.01).length;
+  function tracerA(map: FakeMap, lng0: number) {
+    vi.useFakeTimers();
+    for (const [lng, lat] of squareCorners(16, lng0)) {
+      map.fire('click', { lngLat: { lng, lat }, point: { x: 0, y: 0 } });
+      vi.advanceTimersByTime(241);
+    }
+    vi.useRealTimers();
+    (document.getElementById('rp9-finish') as HTMLButtonElement).click();
+  }
+
+  it('rendementPvgis null : tracer un toit ne demande jamais /api/roof-yield', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document), rendementPvgis: null });
+    setBill('1500');
+    tracerA(fakeMaps[0], -7.41);
+    await flushPvgis();
+    expect(demandesRendement()).toBe(0);
+    expect(txt('rp9-reco-kwc')).toMatch(/kWc/); // la table committée a fourni le chiffre
+  });
+
+  it('sans l’option (pages publiques) : la requête part comme avant', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    tracerA(fakeMaps[0], -7.41);
+    await flushPvgis();
+    expect(demandesRendement()).toBeGreaterThan(0);
+  });
+});

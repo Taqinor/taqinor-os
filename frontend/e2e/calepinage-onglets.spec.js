@@ -156,3 +156,42 @@ test('CALX387: le lien profond /calepinage/:id/<cle> ouvre le MÊME panneau que 
   await expect(page.getByTestId('cal-onglet-panneau')).toBeVisible()
   await expect(page.getByTestId('cal-pente')).toBeVisible()
 })
+
+// ACAL80 — ORACLE CONSOLE : l'atelier de l'ERP n'appelle plus `/api/roof-yield` (route de
+// l'app web, non servie par le nginx de l'ERP : 42 erreurs 405 par ouverture). On observe
+// la FRONTIÈRE RÉSEAU (aucune requête vers cette route) et la console (aucune erreur qui
+// la nomme, aucune 405).
+test('ACAL80: ouvrir l’atelier ne demande jamais /api/roof-yield et ne logue aucune erreur 405', async ({ page }) => {
+  const demandesRendement = []
+  const erreursConsole = []
+  page.on('request', (req) => {
+    if (req.url().includes('/api/roof-yield')) demandesRendement.push(req.url())
+  })
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') erreursConsole.push(msg.text())
+  })
+
+  await gotoLeads(page)
+  const nomLead = await createLead(page, {
+    nom: uniq('ACAL80 Lead'), facture: 900, ville: 'Casablanca',
+  })
+  await page.goto('/calepinage/nouveau')
+  await expect(page.getByRole('heading', { name: 'Nouveau calepinage' })).toBeVisible()
+  await page.getByRole('tab', { name: 'Lead' }).click()
+  await page.locator('#cal-nouveau-lead').getByRole('combobox').click()
+  await page.getByRole('searchbox').fill(nomLead)
+  await page.getByRole('option', { name: new RegExp(nomLead) }).first().click()
+  await page.locator('#cal-nouveau-nom').fill(uniq('ACAL80 Toiture'))
+  await page.getByRole('button', { name: 'Créer le calepinage' }).click()
+  await expect(page).toHaveURL(/\/calepinage\/\d+/)
+  await expect(page.getByTestId('cal-rail-onglets')).toBeVisible()
+  // L'atelier a démarré (le constructeur pose son marqueur de boot) : l'oracle porte sur
+  // tout ce qui a été demandé jusque-là.
+  await expect.poll(() => page.evaluate(() => Boolean(window.__taqinorRoofBooted))).toBe(true)
+
+  expect(demandesRendement, 'requête(s) vers /api/roof-yield depuis l’ERP').toEqual([])
+  expect(
+    erreursConsole.filter((t) => /roof-yield|\b405\b/.test(t)),
+    'erreur(s) console liées au point de rendement',
+  ).toEqual([])
+})
