@@ -2070,7 +2070,8 @@ def _motifs_du_raccordement(conception, saisie, reglages):
 
     motifs = []
     try:
-        bloc = verdicts_raccordement(conception, saisie)
+        # ACAL175 — les réglages société portent le repli cos φ sourcé.
+        bloc = verdicts_raccordement(conception, saisie, reglages)
     except RaccordementInvalide as refus:
         return [_motif_publication(
             'RACCORDEMENT_REFUSE', STATUT_MOTIF_SANS_SOURCE, str(refus),

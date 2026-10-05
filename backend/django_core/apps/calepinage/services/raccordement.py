@@ -410,7 +410,28 @@ def _source_limite(source_limite):
 # 230 V, 400 V, ni un régime : c'est exactement ce que le contrat CALX205
 # publie dans son état `exemple_vide`.
 
-def verdicts_raccordement(conception, saisie):
+#: ACAL175 — la clé du réglage SOCIÉTÉ (registre CALX145) qui sert de REPLI
+#: sourcé au cos φ du verdict « puissance souscrite » — jamais à l'écrêtage.
+CLE_COS_PHI_SOCIETE = 'cos_phi_par_defaut'
+
+
+def _cos_phi_societe(reglages):
+    """``(cos_phi, source)`` du réglage société, ou ``(None, '')``.
+
+    Une valeur sans source n'est pas une valeur (D-CALX 7) ; hors de ]0 ; 1]
+    ce n'est pas un cos φ.
+    """
+    saisie = (reglages or {}).get(CLE_COS_PHI_SOCIETE)
+    if not isinstance(saisie, dict):
+        return (None, '')
+    valeur = _nombre(saisie.get('valeur'))
+    source = str(saisie.get('source') or '').strip()
+    if valeur is None or not source or valeur <= 0 or valeur > 1:
+        return (None, '')
+    return (valeur, source)
+
+
+def verdicts_raccordement(conception, saisie, reglages=None):
     """CALX242 — les trois contrôles du branchement, chacun NOMMANT son champ.
 
     Args:
@@ -435,8 +456,15 @@ def verdicts_raccordement(conception, saisie):
     """
     saisie = saisie if isinstance(saisie, dict) else {}
     cos_phi, source_cos_phi = _cos_phi_saisi(saisie)
+    origine = 'saisie — cos_phi_impose'
+    if cos_phi is None:
+        # ACAL175 — à défaut du cos φ IMPOSÉ du site, le réglage SOCIÉTÉ
+        # sourcé ; le site prime toujours. L'écrêtage, lui, ne lit QUE le
+        # cos φ imposé (``etapes/ecretage.py``).
+        cos_phi, source_cos_phi = _cos_phi_societe(reglages)
+        origine = 'réglage société — %s' % CLE_COS_PHI_SOCIETE
     injectee, source_puissance, motif_puissance = _puissance_injectee_kva(
-        conception, cos_phi, source_cos_phi)
+        conception, cos_phi, source_cos_phi, origine=origine)
     phases_onduleur = _phases_onduleur(conception)
     tension_employee = _tension_employee_v(conception)
 
@@ -484,7 +512,8 @@ def _evaluation(conception):
         return None
 
 
-def _puissance_injectee_kva(conception, cos_phi, source_cos_phi):
+def _puissance_injectee_kva(conception, cos_phi, source_cos_phi, *,
+                            origine='saisie — cos_phi_impose'):
     """``(kVA, source, motif)`` — la puissance APPARENTE réellement injectée.
 
     Deux provenances, dans cet ordre, et AUCUN repli au-delà :
@@ -513,7 +542,7 @@ def _puissance_injectee_kva(conception, cos_phi, source_cos_phi):
                           "renseignée : « ac_kw » manque sur la fiche.")
     if cos_phi is not None and cos_phi > 0:
         return (active / cos_phi,
-                'saisie — cos_phi_impose, source : %s' % source_cos_phi, '')
+                '%s, source : %s' % (origine, source_cos_phi), '')
     return (None, '',
             "la puissance APPARENTE injectée n'est pas calculable : la fiche "
             "onduleur ne publie pas « s_max_kva » et aucun « cos_phi_impose » "
@@ -1253,7 +1282,7 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None, *,
     saisie = _saisie_publiee(saisie)
     elevation = _elevation_de_tension(_troncons_pour_elevation(troncons),
                                       _injection(saisie))
-    branchement = verdicts_raccordement(conception, saisie)
+    branchement = verdicts_raccordement(conception, saisie, reglages)
     equilibrage = repartition_des_phases(_parc_onduleurs(conception),
                                          saisie['phases'],
                                          reglages=reglages)

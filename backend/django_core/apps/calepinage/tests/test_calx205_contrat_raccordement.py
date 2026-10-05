@@ -215,6 +215,9 @@ class AucuneValeurSansProvenanceTest(SimpleTestCase):
         `cos_phi_par_defaut` est un réglage SOCIÉTÉ (registre CALX145) ;
         `cos_phi_impose` est ce que le contrat de raccordement de CE site
         impose. Leur donner le même nom en ferait deux sources de vérité.
+        ACAL175 — le réglage société sert de REPLI SOURCÉ au seul verdict
+        « puissance souscrite » (le site prime) ; l'écrêtage ne lit jamais
+        que le cos φ imposé.
         """
         reglages = {entree[0] for entree in CLES_ELECTRIQUE_SOCIETE}
         self.assertIn('cos_phi_par_defaut', reglages)
