@@ -367,11 +367,12 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # injecter, donc rien à comparer. Le devis auto part sur l'onduleur
     # AUTONOME + batterie, en option unique — et il REFUSE (étape 4 ci-dessous)
     # plutôt que de coter un hybride que ce client ne pourra pas raccorder.
-    from apps.ventes.compatibilites import est_site_isole
+    # ACAL32 — phase ET site isolé lus UNE fois (``taille``), comme le
+    # chemin 3D et le pré-vol.
     # QJR400 — même propriétaire unique que ci-dessus pour « hors réseau ⇒
     # jamais deux options ».
     from apps.ventes.utils.options import deux_options_composables
-    hors_reseau = est_site_isole(getattr(lead, 'raccordement', None))
+    phase_client, hors_reseau = phase_et_isolement_du_lead(lead)
     deux_options = deux_options_composables(deux_options, hors_reseau)
     if hors_reseau:
         wants_battery = True
@@ -464,8 +465,8 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # raccorder chez lui. « inconnu » (ou vide) laisse la composition décider
     # exactement comme avant. Le DRY-RUN le reçoit aussi, sinon l'aperçu et le
     # devis ne parleraient pas du même onduleur.
-    from apps.ventes.compatibilites import normaliser_phase
-    phase_client = normaliser_phase(getattr(lead, 'raccordement', None))
+    # ACAL32 — ``phase_client`` est lu plus haut, avec ``hors_reseau``, par
+    # ``taille.phase_et_isolement_du_lead`` (une seule déduction).
 
     # ── QJR82 — L'ÉTAPE `verifier`, LA MÊME QUE LE CHEMIN 3D ────────────────
     # La pré-vérification n'était câblée que sur le calepinage 3D : le devis
@@ -977,6 +978,7 @@ from apps.ventes.domain.taille import (  # noqa: E402
     _refus_dimensionnement,
     _residential_panel_count,
     phase_client_pour_dimensionnement,
+    phase_et_isolement_du_lead,
 )
 from apps.ventes.domain.creation import _structure_demandee  # noqa: E402
 from apps.ventes.domain.creation_calepinage import (  # noqa: E402

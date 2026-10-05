@@ -44,7 +44,9 @@ from jsonschema import Draft202012Validator
 
 from apps.ventes.domain.geometrie import _zone_villa_depuis_pan
 from apps.ventes.public_views import _safe_roof_layout
-from apps.ventes.quote_engine.builder import _panneaux_du_layout
+# ACAL60 — le compte du moteur PDF passe par le lecteur unique du layout.
+from apps.ventes.quote_engine.builder import (
+    _compte_du_layout as _panneaux_du_layout)
 
 # ``…/backend/django_core/apps/ventes/tests/`` -> ``…/apps/calepinage/…``
 SCHEMA_PATH = (Path(__file__).resolve().parents[2] / 'calepinage'
@@ -240,9 +242,14 @@ class NonRegressionConsommateursVentesTest(SimpleTestCase):
                          _panneaux_du_layout(self.v1))
 
     def test_panneaux_du_layout_lit_bien_le_result(self):
-        """Le compte vient de `result.panels` — pas d'accident d'égalité."""
+        """ACAL59/ACAL60 — le compte est la SOMME des pans POSÉS (toit +
+        surfaces de pose, ``pans_du_document``) : le ``result`` racine (le
+        toit seul) n'est plus lu dès qu'une zone porte une géométrie — pas
+        d'accident d'égalité avec lui."""
+        from apps.ventes.domain.geometrie import pans_du_document
         self.assertEqual(_panneaux_du_layout(self.v2),
-                         self.v2['result']['panels'])
+                         sum(p['modules']
+                             for p in pans_du_document(self.v2)))
 
     # ── 2. domain.geometrie._zone_villa_depuis_pan (moteur villa) ───────────
     def test_zone_villa_depuis_pan_identique(self):
@@ -272,7 +279,11 @@ class NonRegressionConsommateursVentesTest(SimpleTestCase):
         la whitelist `_ZONE_KEYS` / `_safe_zone_geometry` les écarte."""
         public = self._public(self.v2)
         self.assertNotIn('environment', public)
-        self.assertNotIn('exclusionZones', public)
+        # ACAL261 (C-ACAL-116) — les zones d'exclusion SONT publiées
+        # désormais, mais réduites à leur géométrie (contrat proposal_data).
+        for exclusion in public.get('exclusionZones', []):
+            self.assertLessEqual(
+                set(exclusion), {'id', 'nature', 'vertices', 'setbackM'})
         zone = public['zones'][0]
         self.assertNotIn('edges', zone)
         self.assertNotIn('buildingId', zone)

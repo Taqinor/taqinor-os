@@ -225,6 +225,8 @@ orientation_du_pan = _geometrie.orientation_du_pan
 layout_hash = _geometrie.layout_hash
 poser_layout_hash = _geometrie.poser_layout_hash
 validate_composition_for_layout = _geometrie.validate_composition_for_layout
+battery_du_document = _geometrie.battery_du_document
+pans_du_document = _geometrie.pans_du_document
 DRAPEAU_MOTEUR_CALEPINAGE = _geometrie.DRAPEAU_MOTEUR_CALEPINAGE
 TOLERANCE_ARBITRAGE_MODULES = _geometrie.TOLERANCE_ARBITRAGE_MODULES
 TOLERANCE_ARBITRAGE_PCT = _geometrie.TOLERANCE_ARBITRAGE_PCT
@@ -392,6 +394,7 @@ def consigner_correction_apres_envoi(devis, *, user=None, objet='',
 from apps.ventes.domain import resynchronisation as _resynchronisation  # noqa: E402
 SyncLayoutError = _resynchronisation.SyncLayoutError
 sync_devis_from_layout = _resynchronisation.sync_devis_from_layout
+resynchroniser_conception = _resynchronisation.resynchroniser_conception
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -533,6 +536,7 @@ __all__ = [
     'avertissement_batterie_plafond_banc',
     'avertissement_batterie_rupture_stock',
     'avertissement_vivier_batterie_vide',
+    'battery_du_document',
     'bcf_share_url',
     'build_devis_auto',
     'build_devis_depuis_calepinage_retenu',
@@ -607,6 +611,7 @@ __all__ = [
     'ordre_lignes_societe',
     'orientation_du_pan',
     'otp_lecture_verified',
+    'pans_du_document',
     'phase_client_pour_dimensionnement',
     'plafond_panneaux',
     'plafond_physique_du_contour',
@@ -633,6 +638,7 @@ __all__ = [
     'request_otp_lecture',
     'reserver_stock_devis_facture',
     'reset_relance_escalation',
+    'resynchroniser_conception',
     'resynchroniser_devis_pour_produit',
     'revoquer_lien_paiement',
     'save_devis_as_preset',

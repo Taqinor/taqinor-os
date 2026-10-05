@@ -126,6 +126,7 @@ SURFACE_PUBLIQUE = (
     "avertissement_batterie_plafond_banc",
     "avertissement_batterie_rupture_stock",
     "avertissement_vivier_batterie_vide",
+    "battery_du_document",
     "bcf_share_url",
     "build_devis_auto",
     "build_devis_depuis_calepinage_retenu",
@@ -215,6 +216,7 @@ SURFACE_PUBLIQUE = (
     # ACAL58 — orientation POSÉE d'abord (ventes/domain/geometrie.py).
     "orientation_du_pan",
     "otp_lecture_verified",
+    "pans_du_document",
     "phase_client_pour_dimensionnement",
     "plafond_panneaux",
     "plafond_physique_du_contour",
@@ -250,6 +252,7 @@ SURFACE_PUBLIQUE = (
     "request_otp_lecture",
     "reserver_stock_devis_facture",
     "reset_relance_escalation",
+    "resynchroniser_conception",
     "resynchroniser_devis_pour_produit",
     "reverifier_remise_apres_correction",
     "revoquer_lien_paiement",

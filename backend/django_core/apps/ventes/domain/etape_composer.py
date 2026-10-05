@@ -125,6 +125,9 @@ class IntentionComposition:
     #: pour un appelant qui compose N fois (balayages). ``None`` (LE DÉFAUT)
     #: ⇒ lus ici, à chaque composition.
     reglages: object = None
+    #: ACAL63 — les modèles DÉSIGNÉS par le calepinage (``[{produit_id, watt,
+    #: count}]``). ``None`` (LE DÉFAUT) ⇒ un seul panneau, choisi au wattage.
+    modeles: object = None
 
 
 @dataclass(frozen=True)
@@ -224,6 +227,7 @@ def composer(intention):
                                 if (avec_batterie and avec) else None),
             hors_reseau=hors_reseau,
             batterie_module_kwh=getattr(intention, 'batterie_module_kwh', None),
+            modeles=getattr(intention, 'modeles', None),
             **commun)
     # QJR604 — LE BARÈME TRANSPORT est appliqué ICI, pour toutes les origines,
     # avant l'écriture des lignes (donc avant le cliché de marge et le gel du
@@ -321,13 +325,16 @@ def contexte_sonde_du_devis(devis, *, reglages=None):
     """Le ``ContexteSonde`` d'un devis : gamme, structure, phase, MPPT, TVA,
     hors-réseau et ville du barème — lus UNE fois, sur le devis et son lead."""
     from apps.crm.selectors import lead_du_devis
-    from apps.ventes.compatibilites import est_site_isole, normaliser_phase
     from apps.ventes.domain.composition import structure_produit_id_du_devis
     from apps.ventes.domain.gammes import gamme_nom
+    from apps.ventes.domain.taille import phase_et_isolement_du_lead
     lead = lead_du_devis(devis)
-    raccordement = getattr(lead, 'raccordement', None)
+    # ACAL32 — phase et site isolé du lead lus par LE survivant
+    # (``taille.phase_et_isolement_du_lead``) ; la détection par lignes
+    # autonomes déjà posées reste propre au devis existant.
+    phase, isole = phase_et_isolement_du_lead(lead)
     gamme = gamme_nom(devis) or None
-    hors_reseau = est_site_isole(raccordement) or any(
+    hors_reseau = isole or any(
         _is_offgrid_inverter(ligne.designation or '')
         and float(ligne.quantite or 0) > 0
         for ligne in devis.lignes.all())
@@ -337,7 +344,7 @@ def contexte_sonde_du_devis(devis, *, reglages=None):
         reglages=reglages or reglages_de_composition(devis.company, gamme),
         gamme_nom_devis=gamme,
         structure_produit_id=structure_produit_id_du_devis(devis),
-        phase=normaliser_phase(raccordement),
+        phase=phase,
         mppt_paires=_mppt_paires_du_devis(devis),
         taux_tva=Decimal(str(taux)) if taux is not None else Decimal('20'),
         hors_reseau=bool(hors_reseau),
@@ -440,6 +447,37 @@ def message_batterie_incompatible(plage):
             'devis.' % (_v_txt(plage[0]), _v_txt(plage[1])))
 
 
+def refus_modeles_designes(company, modeles):
+    """ACAL63 — les messages FRANÇAIS des modèles désignés NON servables :
+    fiche introuvable dans le catalogue de la société, ou fiche non tarifée
+    (« tarifez la fiche X »). ``[]`` quand tout est servable."""
+    erreurs = []
+    designes = [m for m in (modeles or ())
+                if isinstance(m, dict) and m.get('produit_id')]
+    if not designes or company is None:
+        return erreurs
+    par_pk = {getattr(p, 'pk', None): p
+              for p in catalogue_de_la_societe(company)}
+    for modele in designes:
+        try:
+            cle = int(modele['produit_id'])
+        except (TypeError, ValueError):
+            cle = None
+        produit = par_pk.get(cle)
+        if produit is None:
+            erreurs.append(
+                'Le module désigné par le calepinage (fiche produit #%s) est '
+                'introuvable dans votre catalogue : choisissez un module de '
+                'votre catalogue dans l\'atelier, puis relancez.'
+                % modele['produit_id'])
+        elif not _has_price(produit):
+            erreurs.append(
+                'Le module désigné par le calepinage n\'est pas tarifé : '
+                'tarifez la fiche « %s » (prix de vente) puis relancez.'
+                % (getattr(produit, 'nom', '') or '#%s' % cle))
+    return erreurs
+
+
 def verifier(intention):
     """Étape 4 — la composition demandée est-elle SERVABLE par ce catalogue ?
 
@@ -465,6 +503,11 @@ def verifier(intention):
     if (int(intention.nb_panneaux or 0) <= 0
             and float(intention.kwc or 0) <= 0):
         erreurs.append(MSG_AUCUN_PANNEAU)
+    # ACAL63 — un module DÉSIGNÉ par le calepinage doit être une fiche
+    # TARIFÉE de la société : sinon refus NOMMÉ (défaut gravé), jamais un
+    # repli sur le panneau le moins cher du même wattage.
+    erreurs.extend(refus_modeles_designes(
+        intention.company, getattr(intention, 'modeles', None)))
 
     scenario = (intention.scenario or '').strip().lower()
     company = intention.company
@@ -517,6 +560,7 @@ def verifier(intention):
 # Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps — jamais
 # ``pipeline`` (qui importe ce module) ni la façade.
 from apps.ventes.domain.catalogue import (  # noqa: E402
+    _has_price,
     _is_hybrid_inverter,
     _is_offgrid_inverter,
     _is_reseau_inverter,

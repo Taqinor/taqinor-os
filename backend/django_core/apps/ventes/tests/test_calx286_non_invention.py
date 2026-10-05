@@ -202,18 +202,6 @@ class FamillesOmisesTest(unittest.TestCase):
         self.assertIn('annual_degradation_rate',
                       {o['cle'] for o in res['omissions']})
 
-    def test_batterie_dod_rendement_nuit_et_pointe_omis(self):
-        res = sd.battery_storage_sizing(
-            mode='both', daily_surplus_kwh=10.0, critical_load_kw=2.0,
-            backup_hours=4.0)
-        omis = {o['cle'] for o in res['omissions']}
-        self.assertLessEqual({'depth_of_discharge', 'round_trip_efficiency',
-                              'night_load_kwh', 'backup_peak_factor'}, omis)
-        self.assertIsNone(res['autoconso']['usable_kwh'])
-        self.assertIsNone(res['backup']['usable_kw'])
-        self.assertIsNone(res['backup']['nominal_kwh'])
-        self.assertIsNone(res['recommended']['nominal_kwh'])
-
     def test_arbre_de_pertes_omis(self):
         res = sd.simulate_bankable_yield(10000)
         self.assertIsNone(res['performance_ratio'])

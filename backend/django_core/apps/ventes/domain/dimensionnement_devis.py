@@ -359,6 +359,61 @@ def _lignes_produit_du_devis(devis):
             and ligne.prix_unitaire is not None]
 
 
+def comptes_panneaux_valides(devis, option=None):
+    """ACAL46 (C-ACAL-112) — LES comptes de panneaux « valides » d'un devis :
+    l'ensemble ``{n_sans, n_avec}`` (non nuls) contre lequel un calepinage
+    est jugé périmé. UNE seule règle, lue par le moteur PDF
+    (``quote_engine.builder``, ``layout_stale``) ET par le sélecteur de la
+    fiche (``selectors.peremption_layout_devis``) — jamais un recompte de
+    plus.
+
+    * lignes PRODUIT comptées dans les totaux : ni section/note, ni ligne
+      ``optionnelle`` (add-on hors total, XSAL5 — le même filtre que le
+      moteur de rendu) ;
+    * classifieur partagé ``solar_classification.is_panel(designation,
+      produit.nom)`` — une désignation libre dont le PRODUIT est un panneau
+      compte ;
+    * deux options (L-2OPT) : une ligne ``sans`` ne compte que dans l'option
+      sans, ``avec`` dans l'option avec, une ligne COMMUNE dans les deux.
+
+    ``option`` (``'sans'``/``'avec'``) — un document RÉTRÉCI à une seule
+    option (lien public d'une variante) n'imprime que le compte de CETTE
+    option : seul celui-là est alors valide. ``None`` ⇒ les deux.
+
+    Un devis sans aucune ligne panneau rend un ensemble VIDE (rien à
+    comparer : jamais une alerte inventée). Lecture pure, ne lève jamais."""
+    from apps.ventes.solar_classification import is_panel
+
+    try:
+        lignes = list(devis.lignes.all())
+    except Exception:  # noqa: BLE001 — devis détaché / sans lignes
+        return set()
+    comptes = {'sans': 0, 'avec': 0}
+    for ligne in lignes:
+        if (getattr(ligne, 'type_ligne', 'produit') or 'produit') != 'produit':
+            continue
+        if getattr(ligne, 'optionnelle', False):
+            continue
+        produit = getattr(ligne, 'produit', None)
+        if not is_panel(getattr(ligne, 'designation', '') or '',
+                        getattr(produit, 'nom', '') or ''):
+            continue
+        try:
+            quantite = int(round(float(getattr(ligne, 'quantite', 0) or 0)))
+        except (TypeError, ValueError):
+            continue
+        variante = getattr(ligne, 'variante', '') or ''
+        if variante not in ('sans', 'avec'):
+            variante = ''  # inconnue ⇒ commune (``_variante_de_ligne``)
+        if variante in ('', 'sans'):
+            comptes['sans'] += quantite
+        if variante in ('', 'avec'):
+            comptes['avec'] += quantite
+    if option in comptes:
+        return {comptes[option]} if comptes[option] > 0 else set()
+    return {n for n in comptes.values() if n > 0}
+
+
 def facteur_remise_du_devis(devis) -> float:
     """Le facteur multiplicatif de remise RÉELLEMENT appliqué par ce devis.
 
