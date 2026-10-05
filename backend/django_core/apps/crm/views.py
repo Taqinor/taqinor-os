@@ -1271,7 +1271,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                              # ligne il retomberait sur le `[IsAdminRole()]`
                              # final et la commerciale — qui est justement
                              # celle qui appelle — serait refusée (bug CI #25).
-                             'panneau_appel'):
+                             'panneau_appel',
+                             # AGR516 — les réalisations proches sont une
+                             # LECTURE de la fiche : même garde fine que
+                             # l'@action (sinon `[IsAdminRole()]` final).
+                             'references_proches'):
             # CRX19/CRX37 — l'historique COMPLET d'un lead (et ses jalons
             # devis, qui sont le même historique vu côté ventes) exige
             # ``crm_voir``. get_permissions() PRIME sur le permission_classes
