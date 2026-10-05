@@ -1139,7 +1139,13 @@ export async function runSimulation(
   // WJ97 — un rappel rapide n'a pas de `billRange` : aucune fourchette kWc/ROI
   // à estimer (on ne fabrique jamais un chiffre sans facture connue) — bande
   // vide, honnête, jamais un devis local basé sur une hypothèse.
-  if (!lead.billRange) {
+  // CIW411 — un lead COMMERCIAL ou INDUSTRIEL n'a pas de bande résidentielle non plus :
+  // `engineEstimateBand` (ou le simulateur) calcule kWc et retour pour une VILLA ; attacher
+  // « 30 kWc et plus (étude dédiée) · 3 à 5 ans » à un pro, c'était un chiffre résidentiel
+  // non sourcé dans `Lead.roi_band` (prod 03/10/2026). Bande vide, aucun appel au simulateur ;
+  // `billRange`, `qualified` et la tranche restent INCHANGÉS (convention 17). Résidentiel et
+  // agricole identiques.
+  if (!lead.billRange || lead.mode === 'commercial' || lead.mode === 'industriel' || lead.mode === 'professionnel') {
     return { kwcMin: 0, kwcMax: 0, kwcLabel: '', paybackLabel: '', source: 'local' };
   }
   const fallback = engineEstimateBand(lead.billRange);
