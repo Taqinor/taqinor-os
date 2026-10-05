@@ -155,7 +155,10 @@ class TestDevisAutoProCIQ404(SimpleTestCase):
                           raccordement='triphase')
         with mock.patch.object(questionnaire, '_libelles_pieces_jointes',
                                return_value=[]):
-            self.assertFalse(questionnaire.manquantes(lead)['energie'])
+            # CIQ412 — un pro ne reçoit plus la section énergie résidentielle
+            # du tout (clé absente) : elle n'est donc jamais rouverte.
+            self.assertFalse(
+                questionnaire.manquantes(lead).get('energie', False))
 
 
 class TestAgricoleSansCvAGR403(SimpleTestCase):

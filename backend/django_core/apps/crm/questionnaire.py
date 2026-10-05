@@ -82,6 +82,25 @@ CHAMPS_PAR_SECTION = {
     'photo_tableau': (),
     'photo_pompe': (),
     'photo_forage': (),
+    # CIQ412 (contrat CIQ400 ``questionnaire_lead.json`` → ``exemple_pro``)
+    # — sections du lead PRO : les colonnes du contrat CIQ1 que le CLIENT
+    # écrit lui-même. Q21 tient : budget, délai, décideur et concurrents ne
+    # sont JAMAIS demandés par écrit.
+    'reseau': ('tension_raccordement', 'compteur_puissance_kva',
+               'conso_mensuelle_kwh', 'releve_conso', 'cos_phi'),
+    'activite': ('categorie_commerciale', 'reponses_categorie',
+                 'secteur_industriel', 'export_ue_declare', 'regime_equipes',
+                 'jours_ouverture', 'heure_debut', 'heure_fin',
+                 'fermeture_mois', 'groupe_electrogene', 'groupe_kva',
+                 'groupe_litres_mois', 'groupe_depense_mad_mois',
+                 'pv_existant_kwc'),
+    'site': ('type_surface', 'type_toiture', 'surface_toiture_m2'),
+    'societe': ('societe', 'ice', 'rc', 'if_fiscal', 'adresse_siege',
+                'fonction_contact', 'contact_secondaire_nom',
+                'contact_secondaire_telephone', 'contact_secondaire_email',
+                'contact_secondaire_fonction', 'tva_recuperable'),
+    'photo_factures': (),
+    'photo_poste': (),
 }
 
 #: AGR411 — sections du lead AGRICOLE seulement (jamais servies à un autre).
@@ -93,10 +112,18 @@ SECTIONS_REFUSEES_AGRICOLE = ('occupation', 'equipements', 'energie',
 #: AGR411 — les sections que l'envoi SANS corps peut cocher pour un agricole.
 SECTIONS_DEFAUT_AGRICOLE = ('pompage', 'photo_pompe', 'photo_forage', 'gps',
                             'contact')
+#: CIQ412 — sections du lead PRO seulement (jamais servies à un autre).
+SECTIONS_PRO_SEULES = ('reseau', 'activite', 'site', 'societe',
+                       'photo_factures', 'photo_poste')
+#: CIQ412 — les sections d'un lead commercial/industriel (ordre d'affichage
+#: de la whitelist) : les sections pro, plus le GPS et les coordonnées.
+SECTIONS_PRO = tuple(s for s in SECTIONS
+                     if s in SECTIONS_PRO_SEULES or s in ('gps', 'contact'))
 #: Le périmètre historique (avant AGR411) : celui que lit le panneau d'appel
-#: et que sert tout lead non agricole — inchangé à l'octet.
+#: et que sert tout lead résidentiel — inchangé à l'octet.
 SECTIONS_HORS_POMPAGE = tuple(s for s in SECTIONS
-                              if s not in SECTIONS_AGRICOLES_SEULES)
+                              if s not in SECTIONS_AGRICOLES_SEULES
+                              and s not in SECTIONS_PRO_SEULES)
 
 
 def est_agricole(lead) -> bool:
@@ -104,14 +131,24 @@ def est_agricole(lead) -> bool:
         Lead.TypeInstallation.AGRICOLE
 
 
+def est_pro(lead) -> bool:
+    """CIQ412 — lead commercial ou industriel."""
+    return (getattr(lead, 'type_installation', None) or '') in (
+        Lead.TypeInstallation.COMMERCIAL, Lead.TypeInstallation.INDUSTRIEL)
+
+
 def sections_du_lead(lead) -> tuple:
     """AGR411 — la whitelist des sections pour CE lead (filtre de segment).
 
-    Agricole : tout sauf les sections refusées ; sinon : le périmètre
-    historique, sans les sections de pompage."""
+    Agricole : tout sauf les sections refusées (et sans les sections pro) ;
+    pro (CIQ412) : les sections pro + GPS + coordonnées ; sinon : le
+    périmètre historique, sans les sections de pompage ni les sections pro."""
     if est_agricole(lead):
         return tuple(s for s in SECTIONS
-                     if s not in SECTIONS_REFUSEES_AGRICOLE)
+                     if s not in SECTIONS_REFUSEES_AGRICOLE
+                     and s not in SECTIONS_PRO_SEULES)
+    if est_pro(lead):
+        return SECTIONS_PRO
     return SECTIONS_HORS_POMPAGE
 
 
@@ -155,6 +192,13 @@ LIBELLE_SECTION = {
     'pompage': 'pompage et irrigation',
     'photo_pompe': 'photo de la plaque de la pompe',
     'photo_forage': 'photo de la tête de forage',
+    # CIQ412 — sections du lead pro.
+    'reseau': 'raccordement et consommation',
+    'activite': 'activité et horaires',
+    'site': 'surface disponible',
+    'societe': 'société',
+    'photo_factures': 'les 12 dernières factures',
+    'photo_poste': 'compteur / poste de livraison',
 }
 
 #: Les trois booléens equip_* à TROIS ÉTATS : ``None`` = « jamais posée »,
@@ -180,6 +224,9 @@ _PHOTO_MOTS_CLES = {
     # AGR411 — plaque de la pompe actuelle, tête de forage.
     'photo_pompe': ('pompe', 'plaque'),
     'photo_forage': ('forage', 'puits'),
+    # CIQ412 — factures (jusqu'à 12) et compteur / poste de livraison.
+    'photo_factures': ('factures', 'facture', 'bill'),
+    'photo_poste': ('poste', 'livraison', 'compteur'),
 }
 _SECTIONS_PHOTO = tuple(_PHOTO_MOTS_CLES)
 
@@ -278,6 +325,9 @@ def manquantes(lead) -> dict:
 
     libelles = _libelles_pieces_jointes(lead)
 
+    if est_pro(lead):
+        return _manquantes_pro(lead, libelles)
+
     if est_agricole(lead):
         # AGR411 — un agriculteur ne reçoit JAMAIS factures, toit, piscine,
         # VE ni clim : le défaut ne coche que le pompage, ses deux photos, le
@@ -331,6 +381,57 @@ def manquantes(lead) -> dict:
     }
 
 
+def _tension_inconnue(lead) -> bool:
+    return (_vide(lead.tension_raccordement)
+            or lead.tension_raccordement == 'ne_sait_pas'
+            or lead.tension_source == 'site_defaut_visible')
+
+
+def _manquantes_pro(lead, libelles) -> dict:
+    """CIQ412 — règles ``manquantes_pro`` (contrat CIQ400) : une section pro
+    est MANQUANTE quand la tension, la puissance souscrite, le rythme, la
+    surface ou l'identité restent inconnus. Jamais une section résidentielle."""
+    if lead.type_installation == Lead.TypeInstallation.INDUSTRIEL:
+        activite_connue = not _vide(lead.secteur_industriel)
+    else:
+        activite_connue = not _vide(lead.categorie_commerciale)
+    return {
+        'reseau': (_tension_inconnue(lead)
+                   or lead.compteur_puissance_kva is None),
+        'activite': (not activite_connue or not lead.jours_ouverture
+                     or lead.heure_debut is None or lead.heure_fin is None),
+        'site': lead.surface_toiture_m2 is None,
+        'gps': not _gps_connu(lead),
+        'photo_factures': not _photo_presente('photo_factures', libelles),
+        'photo_poste': not _photo_presente('photo_poste', libelles),
+        'societe': _vide(lead.societe) or _vide(lead.ice),
+        'contact': (_vide(lead.email) or _encore_a_obtenir(lead, 'adresse')
+                    or _vide(lead.ville)),
+    }
+
+
+#: CIQ412 — colonnes de la section activité propres à UN segment : un
+#: commerce ne voit pas les questions d'usine, et l'inverse.
+_ACTIVITE_INDUSTRIEL_SEULEMENT = ('secteur_industriel', 'export_ue_declare')
+_ACTIVITE_COMMERCIAL_SEULEMENT = ('categorie_commerciale',
+                                  'reponses_categorie')
+
+
+def _colonnes_du_lead(lead, section) -> tuple:
+    """Les colonnes écrites d'une section, filtrées par segment (CIQ412) ;
+    hors lead pro, exactement :func:`colonnes_ecrites`."""
+    colonnes = colonnes_ecrites(section)
+    if section == 'activite':
+        exclues = (_ACTIVITE_COMMERCIAL_SEULEMENT
+                   if lead.type_installation == Lead.TypeInstallation.INDUSTRIEL
+                   else _ACTIVITE_INDUSTRIEL_SEULEMENT)
+        colonnes = tuple(c for c in colonnes if c not in exclues)
+    if section == 'reseau' and \
+            lead.type_installation != Lead.TypeInstallation.INDUSTRIEL:
+        colonnes = tuple(c for c in colonnes if c != 'cos_phi')
+    return colonnes
+
+
 def champs_a_poser(lead, sections) -> dict:
     """``{section: [colonnes à AFFICHER]}`` — le grain FIN du questionnaire.
 
@@ -351,7 +452,7 @@ def champs_a_poser(lead, sections) -> dict:
     veut PAS dire « rien à demander » (la réponse y est une pièce jointe) —
     d'où :func:`sections_a_servir`, seul endroit qui tranche ce cas."""
     return {
-        section: [cle for cle in colonnes_ecrites(section)
+        section: [cle for cle in _colonnes_du_lead(lead, section)
                   if not (_vide(getattr(lead, cle, None))
                           and _couverte_ailleurs(lead, cle))]
         for section in sections
@@ -383,7 +484,7 @@ def questions_par_defaut(lead) -> dict:
     celles que le défaut ne coche pas (``photo_compteur``) sont posées à
     False, sinon « clé absente → posée » (``question_posee``) les ouvrirait."""
     carte = dict(manquantes(lead))
-    if est_agricole(lead):
+    if est_agricole(lead) or est_pro(lead):
         for section in sections_du_lead(lead):
             carte.setdefault(section, False)
     return carte
@@ -413,6 +514,16 @@ def valider_questions(brut, lead=None) -> dict:
                     f'Section « {cle} » non posée à un lead agricole : le '
                     'questionnaire pompage ne pose ni factures, ni toiture, '
                     'ni équipements de la maison.')
+            if lead is not None and est_pro(lead) and cle in SECTIONS:
+                if not valeur:
+                    continue
+                # CIQ412 — un hôtel ne reçoit jamais « Passez-vous la journée
+                # à la maison ? » : refus qui NOMME la section.
+                raise SectionInconnue(
+                    f'Section « {cle} » non posée à un lead professionnel : '
+                    'le questionnaire pro ne pose ni occupation, ni '
+                    'équipements de la maison, ni toiture ou énergie '
+                    'résidentielles.')
             raise SectionInconnue(f'Section inconnue : « {cle} ».')
         out[cle] = bool(valeur)
     return out
@@ -432,7 +543,7 @@ def prefill(lead, sections) -> dict:
 
     out = {}
     for section in sections:
-        for cle in colonnes_ecrites(section):
+        for cle in _colonnes_du_lead(lead, section):
             valeur = getattr(lead, cle, None)
             # QJR592 — un lead PRO (industriel / commercial) a déjà donné son
             # kWh mensuel sur le site : il est rangé dans `bill_kwh` seulement.
@@ -573,10 +684,65 @@ def _sans_ecrasement_equipe(lead, section, champs, prefill_vu, ignorees):
 
 #: AGR411 — colonne de pompage écrite par le client → (colonne de provenance,
 #: valeur posée). Mêmes valeurs que la saisie ERP (sérialiseur AGR400).
+#: CIQ412 — idem pour les colonnes pro (sérialiseur CIQ401) : le client
+#: DÉCLARE ; le cos φ se lit sur la facture.
 _PROVENANCE_ECRITE = {
     'niveau_statique_m': ('niveau_statique_source', 'declare'),
     'besoin_eau_m3j': ('besoin_eau_source', 'client'),
+    'tension_raccordement': ('tension_source', 'declare'),
+    'compteur_puissance_kva': ('puissance_souscrite_source', 'declare'),
+    'surface_toiture_m2': ('surface_source', 'declare'),
+    'cos_phi': ('cos_phi_source', 'facture'),
 }
+
+#: CIQ412 — sections pro dont les réponses sont validées par le MODÈLE
+#: (``Field.clean`` : type, choix fermés, validateurs CIQ401), colonne par
+#: colonne — une valeur invalide est ignorée, jamais une erreur.
+_SECTIONS_PRO_COLONNES = ('reseau', 'activite', 'site', 'societe')
+
+
+def _champs_pro_depuis_reponses(lead, section, reponses) -> dict:
+    """Réponses d'une section PRO → champs ``Lead`` propres (CIQ412).
+
+    Seules les colonnes de la section (filtrées par segment) sont lues ;
+    ``None``/chaîne vide = pas de réponse (on n'efface jamais). Le relevé de
+    consommation est normalisé (au plus 12 mois) et porte la source
+    ``declare``."""
+    from django.core.exceptions import ValidationError
+
+    from .models import normaliser_releve_conso
+
+    if not isinstance(reponses, dict):
+        return {}
+    out = {}
+    for cle in _colonnes_du_lead(lead, section):
+        if cle not in reponses:
+            continue
+        brut = reponses[cle]
+        if brut is None or (isinstance(brut, str) and not brut.strip()):
+            continue
+        if cle == 'releve_conso' and isinstance(brut, dict):
+            brut = dict(brut, source='declare')
+        try:
+            valeur = Lead._meta.get_field(cle).clean(brut, lead)
+        except (ValidationError, TypeError, ValueError):
+            continue
+        if cle == 'releve_conso':
+            valeur = normaliser_releve_conso(valeur)
+        if cle == 'reponses_categorie':
+            categorie = (reponses.get('categorie_commerciale')
+                         or lead.categorie_commerciale)
+            permises = set(Lead.REPONSES_CATEGORIE_CLES.get(categorie, ()))
+            if not isinstance(valeur, dict) or set(valeur) - permises:
+                continue
+        out[cle] = valeur
+    if 'heure_debut' in out or 'heure_fin' in out:
+        debut = out.get('heure_debut', lead.heure_debut)
+        fin = out.get('heure_fin', lead.heure_fin)
+        if debut is not None and fin is not None and debut >= fin:
+            out.pop('heure_debut', None)
+            out.pop('heure_fin', None)
+    return out
 
 
 def appliquer_section(lien, section, reponses=None, photo=None,
@@ -617,8 +783,11 @@ def appliquer_section(lien, section, reponses=None, photo=None,
         if _enregistrer_photo(lead, section, photo) is not None:
             enregistrees.append('photo')
     else:
-        champs = champs_lead_depuis_reponses(
-            reponses, colonnes_ecrites(section))
+        if section in _SECTIONS_PRO_COLONNES:
+            champs = _champs_pro_depuis_reponses(lead, section, reponses)
+        else:
+            champs = champs_lead_depuis_reponses(
+                reponses, colonnes_ecrites(section))
         if champs and isinstance(prefill_vu, dict):
             champs = _sans_ecrasement_equipe(
                 lead, section, champs, prefill_vu, ignorees)

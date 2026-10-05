@@ -4660,11 +4660,20 @@ class QuestionnaireLien(TenantModel):
     #: AGR411 — `pompage`, `photo_pompe` (plaque) et `photo_forage` (tête de
     #: forage) : sections du lead AGRICOLE seulement (filtre de segment dans
     #: ``crm.questionnaire.sections_du_lead``) — jamais servies à un autre.
+    #: CIQ412 (contrat CIQ400) — `reseau`, `activite`, `site`, `societe`,
+    #: `photo_factures` (12 factures) et `photo_poste` (compteur / poste de
+    #: livraison) : sections du lead PRO (commercial/industriel) seulement.
+    #: Même logique d'engagement : réseau et activité (des chiffres connus)
+    #: d'abord, le site ensuite, les photos, puis l'identité légale juste
+    #: avant les coordonnées.
     SECTIONS_CLES = (
         'occupation', 'equipements', 'energie', 'pompage',
-        'toiture', 'gps',
+        'reseau', 'activite',
+        'toiture', 'site', 'gps',
         'photo_facture', 'photo_compteur', 'photo_tableau',
         'photo_pompe', 'photo_forage',
+        'photo_factures', 'photo_poste',
+        'societe',
         'contact',
     )
 
