@@ -42,13 +42,22 @@ export const QUESTIONNAIRE_SECTIONS = [
   'equipements',
   'energie',
   'pompage',
+  // CIW406 — sections du lead PRO (commercial / industriel), contrat CIQ400
+  // `questionnaire_lead.json` (`segment_pro`) : le serveur ne les sert qu'à un
+  // lead pro, et ne lui sert JAMAIS occupation / équipements / toiture / énergie.
+  'reseau',
+  'activite',
   'toiture',
+  'site',
   'gps',
   'photo_facture',
   'photo_compteur',
   'photo_tableau',
   'photo_pompe',
   'photo_forage',
+  'photo_factures',
+  'photo_poste',
+  'societe',
   'contact',
 ] as const;
 export type QuestionnaireSectionId = (typeof QUESTIONNAIRE_SECTIONS)[number];
@@ -63,7 +72,9 @@ export function isPhotoSection(section: QuestionnaireSectionId): boolean {
     section === 'photo_compteur' ||
     section === 'photo_tableau' ||
     section === 'photo_pompe' ||
-    section === 'photo_forage'
+    section === 'photo_forage' ||
+    section === 'photo_factures' ||
+    section === 'photo_poste'
   );
 }
 
@@ -83,6 +94,12 @@ export const SECTION_META: Record<QuestionnaireSectionId, SectionMeta> = {
   pompage: { icon: '💧', title: { fr: 'Votre pompage', en: 'Your water pumping', ar: 'الضخ والسقي' } },
   photo_pompe: { icon: '⚙️', title: { fr: 'Photo de la pompe (plaque)', en: 'Photo of the pump (nameplate)', ar: 'صورة المضخة (اللوحة)' } },
   photo_forage: { icon: '🕳️', title: { fr: 'Photo du forage', en: 'Photo of the borehole', ar: 'صورة البئر' } },
+  reseau: { icon: '🔌', title: { fr: 'Votre raccordement et votre consommation', en: 'Your grid connection and consumption', ar: 'الربط بالشبكة والاستهلاك' } },
+  activite: { icon: '🏭', title: { fr: 'Votre activité et vos horaires', en: 'Your activity and opening hours', ar: 'نشاطكم وأوقات العمل' } },
+  site: { icon: '📐', title: { fr: 'La surface disponible', en: 'The available surface', ar: 'المساحة المتاحة' } },
+  societe: { icon: '🏢', title: { fr: 'Votre société', en: 'Your company', ar: 'شركتكم' } },
+  photo_factures: { icon: '🧾', title: { fr: 'Les 12 dernières factures', en: 'Your last 12 bills', ar: 'آخر 12 فاتورة' } },
+  photo_poste: { icon: '🔢', title: { fr: 'Compteur / poste de livraison', en: 'Meter / delivery substation', ar: 'العداد / محطة التسليم' } },
   occupation: { icon: '🕒', title: { fr: 'Occupation du logement', en: 'Home occupancy', ar: 'شغل المنزل' } },
   equipements: { icon: '🧰', title: { fr: 'Équipements', en: 'Appliances', ar: 'التجهيزات' } },
 };
@@ -252,14 +269,32 @@ export const ECRANS: readonly EcranDef[] = [
     title: { fr: 'Votre pompage', en: 'Your water pumping', ar: 'الضخ والسقي' },
   },
   {
+    id: 'reseau',
+    sections: ['reseau'],
+    title: { fr: 'Votre raccordement', en: 'Your grid connection', ar: 'الربط بالشبكة' },
+  },
+  {
+    id: 'activite',
+    sections: ['activite'],
+    title: { fr: 'Votre activité', en: 'Your activity', ar: 'نشاطكم' },
+  },
+  {
     id: 'toit',
-    sections: ['toiture', 'gps'],
+    sections: ['toiture', 'site', 'gps'],
     title: { fr: 'Votre toit', en: 'Your roof', ar: 'سطحكم' },
   },
   {
     id: 'photos',
-    sections: ['photo_facture', 'photo_compteur', 'photo_tableau', 'photo_pompe', 'photo_forage'],
+    sections: [
+      'photo_facture', 'photo_compteur', 'photo_tableau', 'photo_pompe', 'photo_forage',
+      'photo_factures', 'photo_poste',
+    ],
     title: { fr: 'Vos photos', en: 'Your photos', ar: 'صوركم' },
+  },
+  {
+    id: 'societe',
+    sections: ['societe'],
+    title: { fr: 'Votre société', en: 'Your company', ar: 'شركتكم' },
   },
   {
     id: 'coordonnees',
@@ -338,6 +373,83 @@ export const MOIS_IRRIGATION_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as
 
 export type OccupationJourId = (typeof OCCUPATION_JOUR_VALUES)[number];
 
+// CIW406 — vocabulaire des sections PRO, IDENTIQUE au contrat `lead_pro.json`
+// (colonnes crm.Lead : choix fermés). Épinglé par un test contre le JSON.
+export const TENSION_VALUES = ['bt', 'mt', 'ne_sait_pas'] as const;
+export const TYPE_SURFACE_VALUES = ['toiture', 'ombriere', 'terrain'] as const;
+export const TYPE_TOITURE_PRO_VALUES = [
+  'terrasse_beton', 'tole_metal', 'tuiles', 'bac_acier', 'fibrociment', 'autre',
+] as const;
+export const REGIME_EQUIPES_VALUES = ['1x8', '2x8', '3x8', 'continu', 'ne_sait_pas'] as const;
+export const OUI_NON_VALUES = ['oui', 'non'] as const;
+export const TVA_RECUPERABLE_VALUES = ['oui', 'non', 'ne_sait_pas'] as const;
+export const CATEGORIE_COMMERCIALE_VALUES = [
+  'hotel', 'restaurant', 'commerce', 'bureau', 'sante', 'ecole', 'hammam', 'boulangerie', 'froid', 'autre',
+] as const;
+/** Jours d'ouverture : 1 (lundi) à 7 (dimanche). */
+export const JOURS_OUVERTURE_VALUES = [1, 2, 3, 4, 5, 6, 7] as const;
+/** Au plus 12 mois de relevé (contrat `releve_conso.max_elements`). */
+export const RELEVE_CONSO_MAX_MOIS = 12;
+
+export interface CategorieQuestion {
+  key: string;
+  type: 'number' | 'bool' | 'select';
+  /** Valeurs fermées d'une question `select`. */
+  options?: readonly string[];
+}
+/**
+ * Questions propres à chaque catégorie commerciale = clés FERMÉES de
+ * `reponses_categorie_par_categorie.cles` (contrat `lead_pro.json`, miroir de
+ * `crm.Lead.REPONSES_CATEGORIE_CLES`). Les libellés FR/EN/AR vivent dans la page.
+ */
+export const REPONSES_CATEGORIE_QUESTIONS: Record<string, readonly CategorieQuestion[]> = {
+  hotel: [
+    { key: 'chambres', type: 'number' },
+    { key: 'occupation_pct', type: 'number' },
+    { key: 'piscine', type: 'bool' },
+    { key: 'heures_piscine', type: 'number' },
+    { key: 'blanchisserie', type: 'bool' },
+    { key: 'reception_24h', type: 'bool' },
+  ],
+  restaurant: [
+    { key: 'chambres_froides', type: 'number' },
+    { key: 'horaires', type: 'select', options: ['midi', 'soir', 'continu'] },
+    { key: 'cuisson', type: 'select', options: ['electrique', 'gaz'] },
+    { key: 'ouvert_journee_ramadan', type: 'bool' },
+  ],
+  commerce: [
+    { key: 'surface_vente_m2', type: 'number' },
+    { key: 'chambres_froides', type: 'number' },
+  ],
+  bureau: [
+    { key: 'effectif', type: 'number' },
+    { key: 'clim', type: 'bool' },
+  ],
+  sante: [
+    { key: 'lits', type: 'number' },
+    { key: 'garde_nuit', type: 'bool' },
+  ],
+  ecole: [
+    { key: 'effectif', type: 'number' },
+    { key: 'internat', type: 'bool' },
+    { key: 'fermeture_estivale', type: 'bool' },
+  ],
+  hammam: [
+    { key: 'surface_m2', type: 'number' },
+    { key: 'chauffe', type: 'select', options: ['electrique', 'gaz'] },
+  ],
+  boulangerie: [
+    { key: 'four', type: 'select', options: ['electrique', 'gaz'] },
+    { key: 'cuisson_nocturne', type: 'bool' },
+  ],
+  froid: [
+    { key: 'temperature_consigne', type: 'number' },
+    { key: 'volume_m3', type: 'number' },
+    { key: 'saisonnalite_recolte', type: 'bool' },
+  ],
+  autre: [],
+};
+
 export type EquipementKey =
   | 'equip_piscine'
   | 'equip_voiture_electrique'
@@ -405,6 +517,98 @@ export function cleanOuiNon(v: unknown): boolean | undefined {
   return undefined;
 }
 
+// ── CIW406 — sections PRO : nettoyeurs dédiés ───────────────────────────
+
+/** Nombre fini (négatif admis : une consigne de froid vaut −18 °C), borné. */
+export function cleanBoundedNumber(v: unknown, min: number, max: number): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= min && n <= max ? n : null;
+}
+
+/** Entiers DISTINCTS de `[min, max]`, triés ; liste vide ⇒ `null`. */
+export function cleanEntiersDistincts(v: unknown, min: number, max: number): number[] | null {
+  if (!Array.isArray(v)) return null;
+  const out = new Set<number>();
+  for (const x of v) {
+    const n = Number(x);
+    if (Number.isInteger(n) && n >= min && n <= max) out.add(n);
+  }
+  return out.size > 0 ? [...out].sort((a, b) => a - b) : null;
+}
+
+export interface ReleveMois {
+  mois: string;
+  kwh: number;
+  kwh_pointe?: number;
+  kwh_pleines?: number;
+  kwh_creuses?: number;
+}
+
+/**
+ * Relevé de consommation (contrat `releve_conso`) : au plus 12 mois DISTINCTS
+ * « AAAA-MM », chacun avec des kWh ≥ 0 (une ligne sans kWh est écartée — jamais
+ * un 0 fabriqué). Les registres pointe / pleines / creuses ne valent qu'en
+ * moyenne tension (`mt`) : hors MT ils ne partent jamais. Aucun mois valide ⇒ `null`.
+ */
+export function cleanReleveConso(
+  v: unknown,
+  tension: string | null | undefined,
+): { mois: ReleveMois[]; source: 'declare' } | null {
+  if (!Array.isArray(v)) return null;
+  const vus = new Set<string>();
+  const out: ReleveMois[] = [];
+  for (const ligne of v) {
+    if (!ligne || typeof ligne !== 'object') continue;
+    const l = ligne as Record<string, unknown>;
+    const mois = typeof l.mois === 'string' ? l.mois.trim() : '';
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mois) || vus.has(mois)) continue;
+    const kwh = cleanBoundedNumber(l.kwh, 0, 100_000_000);
+    if (kwh == null) continue;
+    const propre: ReleveMois = { mois, kwh };
+    if (tension === 'mt') {
+      const pointe = cleanBoundedNumber(l.kwh_pointe, 0, 100_000_000);
+      const pleines = cleanBoundedNumber(l.kwh_pleines, 0, 100_000_000);
+      const creuses = cleanBoundedNumber(l.kwh_creuses, 0, 100_000_000);
+      if (pointe != null) propre.kwh_pointe = pointe;
+      if (pleines != null) propre.kwh_pleines = pleines;
+      if (creuses != null) propre.kwh_creuses = creuses;
+    }
+    vus.add(mois);
+    out.push(propre);
+    if (out.length >= RELEVE_CONSO_MAX_MOIS) break;
+  }
+  return out.length > 0 ? { mois: out, source: 'declare' } : null;
+}
+
+/**
+ * Réponses propres à la catégorie : SEULES les clés fermées de la catégorie
+ * choisie, typées (nombre / oui-non / liste fermée) ; vide ⇒ `null`.
+ */
+export function cleanReponsesCategorie(
+  categorie: string | null,
+  v: unknown,
+): Record<string, number | boolean | string> | null {
+  if (!categorie || !v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const questions = REPONSES_CATEGORIE_QUESTIONS[categorie] ?? [];
+  const src = v as Record<string, unknown>;
+  const out: Record<string, number | boolean | string> = {};
+  for (const q of questions) {
+    const brut = src[q.key];
+    if (q.type === 'number') {
+      const n = cleanBoundedNumber(brut, -100, 100_000_000);
+      if (n != null) out[q.key] = n;
+    } else if (q.type === 'bool') {
+      const b = cleanOuiNon(brut);
+      if (b !== undefined) out[q.key] = b;
+    } else {
+      const e = cleanEnum(brut, (q.options ?? []) as readonly string[]);
+      if (e) out[q.key] = e;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 // ── Photos (data URL base64) ─────────────────────────────────────────────
 
 /** Plafond d'upload par photo (contrat : ≤ 10 Mo). */
@@ -469,11 +673,92 @@ export function buildSectionReponses(
       if (raccordement) out.raccordement = raccordement;
       break;
     }
+    case 'reseau': {
+      const tension = cleanEnum(raw.tension_raccordement, TENSION_VALUES);
+      if (tension) out.tension_raccordement = tension;
+      const kva = cleanBoundedNumber(raw.compteur_puissance_kva, 0.01, 100_000);
+      if (kva != null) out.compteur_puissance_kva = kva;
+      const kwh = cleanBoundedNumber(raw.conso_mensuelle_kwh, 0.01, 100_000_000);
+      if (kwh != null) out.conso_mensuelle_kwh = kwh;
+      const releve = cleanReleveConso(raw.releve_conso, tension);
+      if (releve) out.releve_conso = releve;
+      // cos φ : décimal ]0 ; 1], jamais supposé (colonne industriel seulement,
+      // le serveur ne la sert pas à un commerce).
+      const cos = cleanBoundedNumber(raw.cos_phi, 0.01, 1);
+      if (cos != null) out.cos_phi = cos;
+      break;
+    }
+    case 'activite': {
+      const categorie = cleanEnum(raw.categorie_commerciale, CATEGORIE_COMMERCIALE_VALUES);
+      if (categorie) {
+        out.categorie_commerciale = categorie;
+        const rc = cleanReponsesCategorie(categorie, raw.reponses_categorie);
+        if (rc) out.reponses_categorie = rc;
+      }
+      const secteur = cleanStr(raw.secteur_industriel, 120);
+      if (secteur) out.secteur_industriel = secteur;
+      const exportUe = cleanEnum(raw.export_ue_declare, OUI_NON_VALUES);
+      if (exportUe) out.export_ue_declare = exportUe;
+      const equipes = cleanEnum(raw.regime_equipes, REGIME_EQUIPES_VALUES);
+      if (equipes) out.regime_equipes = equipes;
+      const jours = cleanEntiersDistincts(raw.jours_ouverture, 1, 7);
+      if (jours) out.jours_ouverture = jours;
+      const debut = cleanBoundedInt(raw.heure_debut, 24);
+      const fin = cleanBoundedInt(raw.heure_fin, 24);
+      // Le serveur écarte la paire si début ≥ fin : on ne l'envoie pas non plus.
+      if (debut != null && fin != null && debut < fin) {
+        out.heure_debut = debut;
+        out.heure_fin = fin;
+      }
+      const fermeture = cleanEntiersDistincts(raw.fermeture_mois, 1, 12);
+      if (fermeture) out.fermeture_mois = fermeture;
+      const groupe = cleanEnum(raw.groupe_electrogene, OUI_NON_VALUES);
+      if (groupe) out.groupe_electrogene = groupe;
+      // Les détails du groupe ne valent que s'il y en a un (jamais une valeur
+      // restée dans un champ masqué) ; litres ET dirhams DÉCLARÉS, jamais déduits.
+      if (groupe === 'oui') {
+        const gkva = cleanBoundedNumber(raw.groupe_kva, 0.01, 1_000_000);
+        if (gkva != null) out.groupe_kva = gkva;
+        const litres = cleanBoundedNumber(raw.groupe_litres_mois, 0.01, 10_000_000);
+        if (litres != null) out.groupe_litres_mois = litres;
+        const mad = cleanBoundedNumber(raw.groupe_depense_mad_mois, 0.01, 100_000_000);
+        if (mad != null) out.groupe_depense_mad_mois = mad;
+      }
+      const pv = cleanBoundedNumber(raw.pv_existant_kwc, 0.01, 1_000_000);
+      if (pv != null) out.pv_existant_kwc = pv;
+      break;
+    }
+    case 'site': {
+      const surface = cleanEnum(raw.type_surface, TYPE_SURFACE_VALUES);
+      if (surface) out.type_surface = surface;
+      const type = cleanEnum(raw.type_toiture, TYPE_TOITURE_PRO_VALUES);
+      if (type) out.type_toiture = type;
+      const m2 = cleanPositiveNumber(raw.surface_toiture_m2, 10_000_000);
+      if (m2 != null) out.surface_toiture_m2 = m2;
+      break;
+    }
+    case 'societe': {
+      for (const [cle, max] of [
+        ['societe', 255], ['ice', 30], ['rc', 30], ['if_fiscal', 30], ['adresse_siege', 500],
+        ['fonction_contact', 120], ['contact_secondaire_nom', 255],
+        ['contact_secondaire_telephone', 50], ['contact_secondaire_fonction', 120],
+      ] as const) {
+        const val = cleanStr(raw[cle], max);
+        if (val) out[cle] = val;
+      }
+      const emailSecondaire = cleanEmail(raw.contact_secondaire_email);
+      if (emailSecondaire) out.contact_secondaire_email = emailSecondaire;
+      const tva = cleanEnum(raw.tva_recuperable, TVA_RECUPERABLE_VALUES);
+      if (tva) out.tva_recuperable = tva;
+      break;
+    }
     case 'photo_facture':
     case 'photo_compteur':
     case 'photo_tableau':
     case 'photo_pompe':
     case 'photo_forage':
+    case 'photo_factures':
+    case 'photo_poste':
       // Rien dans `reponses` — la photo voyage dans le champ `photo` du corps POST.
       break;
     case 'toiture': {
@@ -575,6 +860,18 @@ const SECTION_COLONNES_ECRITES: Partial<Record<QuestionnaireSectionId, readonly 
   energie: ['facture_hiver', 'facture_ete', 'ete_differente', 'conso_mensuelle_kwh', 'raccordement'],
   toiture: ['type_toiture', 'surface_toiture_m2', 'roof_age', 'ownership'],
   occupation: ['occupation_jour'],
+  reseau: ['tension_raccordement', 'compteur_puissance_kva', 'conso_mensuelle_kwh', 'releve_conso', 'cos_phi'],
+  activite: [
+    'categorie_commerciale', 'reponses_categorie', 'secteur_industriel', 'export_ue_declare',
+    'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin', 'fermeture_mois',
+    'groupe_electrogene', 'groupe_kva', 'groupe_litres_mois', 'groupe_depense_mad_mois', 'pv_existant_kwc',
+  ],
+  site: ['type_surface', 'type_toiture', 'surface_toiture_m2'],
+  societe: [
+    'societe', 'ice', 'rc', 'if_fiscal', 'adresse_siege', 'fonction_contact',
+    'contact_secondaire_nom', 'contact_secondaire_telephone', 'contact_secondaire_email',
+    'contact_secondaire_fonction', 'tva_recuperable',
+  ],
   pompage: [
     'source_eau', 'niveau_statique_m', 'besoin_eau_m3j', 'surface_irriguee_ha', 'culture',
     'irrigation_methode', 'pompe_alim_actuelle', 'butane_bouteilles_jour',
