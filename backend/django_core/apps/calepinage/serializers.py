@@ -141,8 +141,8 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             'layout_stale', 'layout_nb_panneaux',
             'cree_par', 'created_at', 'updated_at',
             'responsable', 'responsable_nom',  # CALX406
-            'contraintes_site',  # CIQ136
             'reference', 'image', 'modifie_le', 'client_apercu',  # ACAL196
+            'contraintes_site',  # CIQ136
         ]
         #: ACAL33 — ``devis`` est LU, jamais écrit par le CRUD : le seul
         #: écrivain est ``services.liens.lier_devis`` (refus nommés, journal,
