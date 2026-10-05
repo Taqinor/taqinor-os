@@ -2063,15 +2063,15 @@ class JourReferenceTousLesAppelantsTests(SimpleTestCase):
         from types import SimpleNamespace
         from unittest import mock
 
-        from apps.ventes import public_views
+        from apps.ventes.public import payload_horaire
 
         profil = (6.0, self.CONSO, self.VILLE, None, None,
                   CJ.OCCUPATION_PRESENCE, None)
-        with mock.patch.object(public_views, '_profil_horaire_pour_devis',
+        with mock.patch.object(payload_horaire, '_profil_horaire_pour_devis',
                                return_value=profil):
-            a = public_views._jours_types_publique(
+            a = payload_horaire._jours_types_publique(
                 SimpleNamespace(date_creation=self.JOUR_A, overrides={}))
-            b = public_views._jours_types_publique(
+            b = payload_horaire._jours_types_publique(
                 SimpleNamespace(date_creation=self.JOUR_B, overrides={}))
         self.assertIsNotNone(a)
         self.assertIsNotNone(b)

@@ -36,6 +36,7 @@ from django.test import SimpleTestCase
 from apps.ventes import courbes_journalieres as CJ
 from apps.ventes import etude_horaire as EH
 from apps.ventes import public_views
+from apps.ventes.public import payload_horaire
 
 
 #: Profil horaire figé servi aux deux vues (le chemin de lecture du devis
@@ -70,9 +71,9 @@ class _BaseSurfacesPubliques(SimpleTestCase):
     """Outillage commun : profil figé, banque figée, moteur RÉEL."""
 
     def _jours_types(self, devis):
-        with mock.patch.object(public_views, '_profil_horaire_pour_devis',
+        with mock.patch.object(payload_horaire, '_profil_horaire_pour_devis',
                                return_value=_PROFIL):
-            return public_views._jours_types_publique(devis)
+            return payload_horaire._jours_types_publique(devis)
 
     def _couverture(self, devis):
         with mock.patch.object(public_views, '_profil_horaire_pour_devis',
@@ -176,7 +177,7 @@ class ResolutionDeLaDateTests(SimpleTestCase):
     def test_delegue_a_la_source_unique_du_domaine(self):
         from apps.ventes.domain.entrees import jour_reference_du_devis
         devis = _devis(date_creation=JOUR_A)
-        self.assertEqual(public_views._jour_reference_publique(devis),
+        self.assertEqual(payload_horaire._jour_reference_publique(devis),
                          jour_reference_du_devis(devis))
 
     def test_une_resolution_impossible_ne_leve_pas(self):
@@ -184,4 +185,4 @@ class ResolutionDeLaDateTests(SimpleTestCase):
         with mock.patch('apps.ventes.domain.entrees.jour_reference_du_devis',
                         side_effect=RuntimeError('boom')):
             self.assertIsNone(
-                public_views._jour_reference_publique(_devis()))
+                payload_horaire._jour_reference_publique(_devis()))

@@ -209,7 +209,7 @@ class PayloadPublicTests(_PcmpBase):
         # est dérivée du slug et (company, reference) est unique — deux appels
         # avec le même slug violeraient la contrainte.
         from apps.ventes.models import ShareLink
-        from apps.ventes.public_views import _profils_comparatifs_publique
+        from apps.ventes.public.payload_horaire import _profils_comparatifs_publique
         devis = self._devis(slug)
         rafraichir_profils_comparatifs_devis(devis, force=True)
         devis.refresh_from_db()
@@ -218,7 +218,7 @@ class PayloadPublicTests(_PcmpBase):
             niveau or ShareLink.NIVEAU_CONFIANCE), devis
 
     def test_absent_quand_rien_n_est_calculable(self):
-        from apps.ventes.public_views import _profils_comparatifs_publique
+        from apps.ventes.public.payload_horaire import _profils_comparatifs_publique
         self.assertIsNone(_profils_comparatifs_publique({}))
         self.assertIsNone(_profils_comparatifs_publique(None))
         self.assertIsNone(

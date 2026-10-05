@@ -55,7 +55,7 @@ DEPLACEMENTS = {
     'lecture': ('split_pv_lecture', 'apps/ventes/public/lecture_views.py',
                 'SPL246', True),
     'horaire': ('split_pv_horaire', 'apps/ventes/public/payload_horaire.py',
-                'SPL247', False),
+                'SPL247', True),
     'batterie': ('split_pv_batterie', 'apps/ventes/public/payload_batterie.py',
                  'SPL248', False),
     'variantes': ('split_pv_variantes',
