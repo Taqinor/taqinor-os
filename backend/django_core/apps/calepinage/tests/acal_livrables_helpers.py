@@ -14,6 +14,7 @@ Le matériel (fiches module/onduleur) est le seam documenté des tests
 ``patch_materiel()``.
 """
 import copy
+import unittest
 from unittest import mock
 
 from apps.calepinage.services.electrique import enregistrer_entree
@@ -30,7 +31,7 @@ LAYOUT_PLANCHE_SIMULABLE = dict(copy.deepcopy(_LAYOUT_PLANCHE),
                                 pin={'lat': 33.5731, 'lng': -7.5898})
 
 __all__ = ['LAYOUT_SIMULABLE', 'LAYOUT_PLANCHE_SIMULABLE', 'MATERIEL',
-           'PivotSansBase',
+           'PivotSansBase', 'exiger_bibliotheques_pdf',
            'calepinage_simule_reel', 'modifier_la_conception',
            'patch_materiel']
 
@@ -87,3 +88,14 @@ def modifier_la_conception(pivot):
     pivot.roof_layout = copy.deepcopy(pivot.roof_layout)
     pivot.roof_layout['zones'][0]['geometry']['count'] += 1
     return pivot
+
+
+def exiger_bibliotheques_pdf():
+    """ACAL163/227 — saute l'essai quand WeasyPrint ou PyMuPDF manquent."""
+    import importlib
+
+    try:
+        for bibliotheque in ('fitz', 'weasyprint'):
+            importlib.import_module(bibliotheque)
+    except Exception:  # noqa: BLE001 - bibliothèques natives absentes
+        raise unittest.SkipTest('WeasyPrint ou PyMuPDF indisponible')

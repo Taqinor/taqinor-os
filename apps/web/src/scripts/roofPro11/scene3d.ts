@@ -144,6 +144,9 @@ export interface Scene3d {
    *  `null` remet la teinte d'origine. Les deux colorations partagent le canal :
    *  la dernière appelée gagne, exactement comme deux réglages d'un même bouton. */
   setStringColoring: (colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) => void;
+  /** ACAL286 — repeint la zone active depuis `ctx.affectationColoration` (table servie) ; la
+   *  teinte est ré-appliquée à chaque rendu de la scène (le mesh est reconstruit). */
+  rafraichirAffectation: () => void;
   /** W115 — instantané PNG (data URL) de la 3D rendue, ou null si le renderer/canvas
    *  est indisponible. Le renderer partage le canvas MapLibre (map.getCanvas()). */
   snapshot: () => string | null;
@@ -941,6 +944,10 @@ export interface AffectationRow {
   chaine: number | null;
   onduleur?: number | null;
   mppt: number | null;
+  /** ACAL286 — la teinte SERVIE de la ligne (`rgb(r, g, b)`), une par mode : le serveur
+   *  (ACAL285) est la seule source des couleurs, l'écran n'en invente aucune. */
+  couleur_chaine?: string | null;
+  couleur_mppt?: string | null;
 }
 
 export type AffectationMode = 'chaine' | 'mppt';
@@ -953,22 +960,17 @@ export interface Rgb01 {
 }
 
 /**
- * Palette des groupes. Teintes de LUMINOSITÉ MOYENNE, choisies pour rester lisibles
- * sur fond clair comme sur fond sombre (une palette pastel disparaît sur le blanc,
- * une palette saturée sombre disparaît sur la nuit de l'atelier). Elle boucle si le
- * dossier compte plus de groupes que de couleurs — deux groupes de même couleur restent
- * distingués par la légende, qui les nomme.
+ * ACAL286 — `rgb(r, g, b)` (0–255, la forme SERVIE par le serveur) → couleur 0–1 du buffer
+ * `instanceColor`. Une valeur absente ou illisible rend `null` : le module reste gris.
  */
-export const AFFECTATION_PALETTE: readonly Rgb01[] = [
-  { r: 0.14, g: 0.51, b: 0.84 }, // bleu
-  { r: 0.91, g: 0.49, b: 0.13 }, // orange
-  { r: 0.18, g: 0.64, b: 0.35 }, // vert
-  { r: 0.72, g: 0.25, b: 0.62 }, // magenta
-  { r: 0.0, g: 0.6, b: 0.62 }, // sarcelle
-  { r: 0.83, g: 0.24, b: 0.28 }, // rouge
-  { r: 0.45, g: 0.4, b: 0.78 }, // violet
-  { r: 0.6, g: 0.52, b: 0.1 }, // ocre
-];
+export function lireCouleurServie(texte: unknown): Rgb01 | null {
+  if (typeof texte !== 'string') return null;
+  const m = /^\s*rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)\s*$/i.exec(texte);
+  if (!m) return null;
+  const [r, g, b] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (r > 255 || g > 255 || b > 255) return null;
+  return { r: r / 255, g: g / 255, b: b / 255 };
+}
 
 /** GRIS des modules NON affectés — jamais une couleur de groupe, jamais l'invisible. */
 export const AFFECTATION_UNASSIGNED: Rgb01 = { r: 0.55, g: 0.56, b: 0.58 };
@@ -1015,13 +1017,15 @@ export function buildAffectationColoring(
   const colorByModule = new Map<string, Rgb01>();
   const order: (string | null)[] = [];
   const parKey = new Map<string | null, AffectationLegendEntry>();
-  let nextColor = 0;
   for (const row of rows ?? []) {
     if (!row || typeof row.module !== 'string') continue;
     const key = affectationGroupKey(row, mode);
     let entry = parKey.get(key);
     if (!entry) {
-      const color = key == null ? AFFECTATION_UNASSIGNED : AFFECTATION_PALETTE[nextColor++ % AFFECTATION_PALETTE.length];
+      // ACAL286 — la couleur du groupe est celle de sa PREMIÈRE ligne servie (même valeur sur
+      // toutes les lignes d'un groupe) ; sans couleur servie, le module reste gris.
+      const servie = key == null ? null : lireCouleurServie(mode === 'chaine' ? row.couleur_chaine : row.couleur_mppt);
+      const color = servie ?? AFFECTATION_UNASSIGNED;
       entry = { key, label: affectationGroupLabel(row, mode), color, count: 0 };
       parKey.set(key, entry);
       order.push(key);
@@ -1052,6 +1056,30 @@ export function affectationColorFn(
     const c = id == null ? undefined : coloring.colorByModule.get(id);
     return c ?? AFFECTATION_UNASSIGNED;
   };
+}
+
+/**
+ * ACAL286 — identifiant de module `<pan>#<rang>` de CHAQUE cellule de lattice posée, indexé
+ * PAR CELLULE (la forme que `affectationColorFn` attend). Le rang est la position 1-based de la
+ * cellule parmi les cellules occupées du pan, triées : c'est l'ordre de `geometry.panels` que
+ * `serializeLayout` écrit, donc celui dont le serveur nomme ses modules (`chaines.py`).
+ */
+export function identifiantsModulesParCellule(cellules: readonly number[], libelle: string): string[] {
+  const ids: string[] = [];
+  [...cellules].sort((a, b) => a - b).forEach((cellule, i) => {
+    ids[cellule] = `${libelle}#${i + 1}`;
+  });
+  return ids;
+}
+
+/** ACAL286 — la fonction cellule → couleur de la table SERVIE pour le pan actif (ou `null`). */
+export function couleurParAffectation(
+  coloring: AffectationColoring | null | undefined,
+  cellules: readonly number[],
+  libelle: string,
+): ((cellIndex: number) => Rgb01) | null {
+  if (!coloring) return null;
+  return affectationColorFn(coloring, identifiantsModulesParCellule(cellules, libelle));
 }
 
 
@@ -2106,6 +2134,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       ctx.activePanelMesh = panelIM;
       ctx.activePanelCellIndex = panelCellIndices;
       teinterAllees(ctx, panelIM, panelCellIndices); // CALX403 câblage
+      if (ctx.affectationColoration) rafraichirAffectation(); // ACAL286 — le mesh vient d'être reconstruit
     }
 
     // Zones NON actives : obstacles rendus en boîtes subduées (sans étiquette ni drag),
@@ -2674,6 +2703,14 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     setSolarAccessHeatmap(colorFor);
   }
 
+  /** ACAL286 — la table servie (ctx.affectationColoration) appliquée au pan actif ; absente ⇒
+   *  teinte d'origine (comportement d'avant). */
+  function rafraichirAffectation() {
+    const aire = ctx.areas.find((a) => a.id === ctx.activeAreaId);
+    const libelle = String(aire?.label || aire?.id || ctx.activeAreaId || '');
+    setStringColoring(couleurParAffectation(ctx.affectationColoration, ctx.activePanelCellIndex, libelle));
+  }
+
   /** Repeint la scène 3D (déclenché après un changement de couleur d'instance). */
   function map3dRepaint() {
     map.triggerRepaint();
@@ -2748,7 +2785,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     attacherCoucheElectrique();
   }
 
-  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, snapshot, renderOffscreen };
+  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, rafraichirAffectation, snapshot, renderOffscreen };
 }
 
 /* ════════════════════════════════════════════════════════════════════════════

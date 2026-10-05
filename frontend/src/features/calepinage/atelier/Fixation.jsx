@@ -23,6 +23,16 @@ import { Button, Card, Spinner } from '../../../ui'
    sait déjà faire ; le message de refus, recopié tel quel, NOMME les systèmes
    actifs quand plusieurs le sont.
 
+   ACAL82 — LE CHOIX EST PERSISTÉ SUR LE CALEPINAGE. « Appliquer » écrit
+   `POST calepinages/<pk>/fixation/ {systeme_id}` (ACAL81, contrat
+   `fixation_post`) puis RELIT `bom-fixation/` SANS paramètre : le serveur
+   rend le système persisté avec `systeme_source: 'calepinage'`. Aucun état
+   d'écran n'est la source de vérité — au rechargement, le champ reprend
+   l'identifiant que le SERVEUR dit persisté. Le classeur ne dépend donc
+   plus d'aucun paramètre (export.xlsx lit le même choix persisté).
+   LIMITE CONNUE : aucune route ne LISTE encore les systèmes actifs de la
+   société ; le champ reste un identifiant saisi (jamais une liste inventée).
+
    ZÉRO CHIFFRE INVENTÉ (D-CALX 7) : une ligne dont la quantité vaut `null`
    affiche le `manquant` SERVEUR — jamais un tiret muet, jamais un zéro.
 
@@ -86,14 +96,13 @@ export default function Fixation({ calepinageId: idPropose = null }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl ?? null
 
-  const [systemeSaisi, setSystemeSaisi] = useState('')
-  const [systemeApplique, setSystemeApplique] = useState('')
+  // `null` = champ non touché : il affiche alors le choix PERSISTÉ (serveur).
+  const [systemeSaisi, setSystemeSaisi] = useState(null)
+  const [application, setApplication] = useState({ enCours: false, erreur: null })
 
-  const { data, loading, error } = useResource(
-    () => calepinageApi.calepinages.bomFixation(
-      calepinageId, systemeApplique ? { systeme: systemeApplique } : undefined,
-    ),
-    [calepinageId, systemeApplique],
+  const { data, loading, error, refetch } = useResource(
+    () => calepinageApi.calepinages.bomFixation(calepinageId),
+    calepinageId,
     {
       select: (reponse) => reponse?.data ?? null,
       enabled: Boolean(calepinageId),
@@ -112,7 +121,25 @@ export default function Fixation({ calepinageId: idPropose = null }) {
   const [telechargementEnCours, setTelechargementEnCours] = useState(false)
   const [erreurTelechargement, setErreurTelechargement] = useState(null)
 
-  const appliquerSysteme = () => setSystemeApplique(systemeSaisi.trim())
+  const systemePersiste = data?.systeme_source === 'calepinage' && data?.systeme
+    ? String(data.systeme.id) : ''
+  const valeurChamp = systemeSaisi ?? systemePersiste
+
+  const appliquerSysteme = async () => {
+    if (!calepinageId) return
+    const texte = String(valeurChamp).trim()
+    setApplication({ enCours: true, erreur: null })
+    try {
+      await calepinageApi.calepinages.appliquerFixation(
+        calepinageId, { systeme_id: texte === '' ? null : texte },
+      )
+      setSystemeSaisi(null)
+      setApplication({ enCours: false, erreur: null })
+      await refetch()
+    } catch (erreur) {
+      setApplication({ enCours: false, erreur: resumerRefus(erreur?.response?.data) })
+    }
+  }
 
   const entreeClasseur = (inventaire?.sorties || []).find((s) => s.code === CODE_TABLEUR) || null
 
@@ -162,19 +189,26 @@ export default function Fixation({ calepinageId: idPropose = null }) {
           </span>
           <input
             type="text"
-            value={systemeSaisi}
+            value={valeurChamp}
             onChange={(e) => setSystemeSaisi(e.target.value)}
+            data-testid="acal82-champ-systeme"
             className="rounded border border-input bg-card px-2 py-1 text-sm"
           />
           <Button
             type="button"
             variant="outline"
+            disabled={application.enCours}
             onClick={appliquerSysteme}
             data-testid="calx360-appliquer-systeme"
           >
-            Appliquer
+            {application.enCours ? 'Application…' : 'Appliquer'}
           </Button>
         </label>
+        {application.erreur && (
+          <p role="alert" className="mt-2 text-xs text-destructive" data-testid="acal82-erreur-application">
+            {application.erreur}
+          </p>
+        )}
         {refus.length > 0 && (
           <ul className="mt-2 space-y-1" data-testid="calx360-refus">
             {refus.map((r, index) => (

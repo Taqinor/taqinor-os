@@ -38,8 +38,11 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import logging
 
 from .journal import journaliser_creation
+
+logger = logging.getLogger(__name__)
 
 
 class CreationRefusee(ValueError):
@@ -152,19 +155,85 @@ def obtenir_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
                                 preset_id=None):
     """Le calepinage de ce devis — le même à chaque appel (IDEMPOTENT).
 
+    ACAL35 — ADAPTATEUR de :func:`adopter_ou_creer_pour_devis` (signature
+    inchangée) : ``cree`` vaut ``True`` seulement quand un calepinage a été
+    CRÉÉ ; un calepinage déjà lié ou ADOPTÉ (l'ouvert du lead) rend ``False``.
+
     CALX351 — ``preset_id`` (optionnel) désigne un jeu de réglages société
     (``services/presets.py``) appliqué aux pans du document de DÉPART, à la
     création seulement : un calepinage déjà existant n'est jamais retouché.
-    Absent ⇒ comportement d'aujourd'hui, strictement identique.
 
     Returns:
-        ``(calepinage, cree)`` — ``cree`` vaut ``True`` seulement au premier
-        appel.
+        ``(calepinage, cree)``.
 
     Raises:
         CreationRefusee: devis absent, ou appartenant à une AUTRE société
             (rien n'est créé, et l'appelant n'apprend rien de son existence) ;
             jeu de réglages inconnu (``preset_id``).
+    """
+    calepinage, origine = adopter_ou_creer_pour_devis(
+        devis_id, company, user=user, titre=titre, preset_id=preset_id)
+    return calepinage, origine == ORIGINE_CREE
+
+
+#: ACAL35 — les trois origines rendues par :func:`adopter_ou_creer_pour_devis`.
+ORIGINE_EXISTANT = 'existant'
+ORIGINE_ADOPTE = 'adopte'
+ORIGINE_CREE = 'cree'
+
+
+def _sans_cles_privees(roof_layout):
+    """ACAL35 — une COPIE du document du devis sans ses clés PRIVÉES (racine
+    préfixée ``_`` : ``_pans_geometry``, ``_origine_calepinage``…), propres au
+    devis et jamais recopiées dans la conception. L'empreinte imprimée
+    (``layout_hash``) ne lit aucune de ces clés : elle est inchangée."""
+    if not isinstance(roof_layout, dict):
+        return roof_layout
+    return {cle: valeur for cle, valeur in roof_layout.items()
+            if not str(cle).startswith('_')}
+
+
+def _ouverts_sans_devis(company, lead_id):
+    """Les calepinages OUVERTS (non archivés, même filtre que
+    ``selectors.calepinage_ouvert_du_lead``) de ce lead, sans devis lié.
+
+    Un MODÈLE réutilisable (CAL14) n'est jamais une conception à adopter :
+    il est écarté (on en part par copie, jamais en le liant)."""
+    from ..selectors import liste_calepinages
+    from .modeles import est_modele
+
+    if not lead_id:
+        return []
+    return [calepinage for calepinage
+            in liste_calepinages(company, lead_id=lead_id)
+            .filter(devis__isnull=True)
+            if not est_modele(calepinage)]
+
+
+def adopter_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
+                                preset_id=None):
+    """ACAL35 — LE calepinage de ce devis : déjà lié, ADOPTÉ, ou créé.
+
+    D-ACAL-1 — le calepinage est l'unique conception d'un devis. Un devis né
+    pour un lead dont la toiture est DÉJÀ conçue dans un calepinage ouvert
+    (sans devis) ADOPTE ce calepinage (``liens.lier_devis``, chatter CAL26)
+    au lieu d'en créer un second : son document n'est PAS réécrit.
+
+    * déjà lié ⇒ ``'existant'`` ;
+    * UN seul calepinage ouvert sans devis sur le lead du devis ⇒ adopté,
+      ``'adopte'`` (``roof_layout`` / ``layout_hash`` octet-identiques) ;
+    * aucun, ou PLUSIEURS (aucun choix silencieux : ils sont nommés au
+      journal applicatif) ⇒ création, ``'cree'`` — le document de départ
+      est celui du devis SANS ses clés privées.
+
+    Course : même verrou consultatif que la porte lead (ACAL182) ; une
+    liaison perdue (contrainte ``calepinage_un_par_devis``) est relue.
+
+    Returns:
+        ``(calepinage, origine)``, ``origine`` ∈ {'existant','adopte','cree'}.
+
+    Raises:
+        CreationRefusee: voir :func:`obtenir_ou_creer_pour_devis`.
     """
     from django.db import IntegrityError, transaction
 
@@ -187,9 +256,9 @@ def obtenir_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
 
     existant = calepinage_du_devis(devis_id, company)
     if existant is not None:
-        return existant, False
+        return existant, ORIGINE_EXISTANT
 
-    roof_layout = getattr(devis, 'roof_layout', None)
+    roof_layout = _sans_cles_privees(getattr(devis, 'roof_layout', None))
     empreinte = getattr(devis, 'layout_hash', None) or ''
     regles = 0
     if jeu is not None:
@@ -199,21 +268,24 @@ def obtenir_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
 
             empreinte = layout_hash(roof_layout) or ''
 
-    with transaction.atomic(), _verrou_creation(
-            company.pk, getattr(devis, 'lead_id', None)):
+    lead_id = getattr(devis, 'lead_id', None)
+    with transaction.atomic(), _verrou_creation(company.pk, lead_id):
         # Re-lecture DANS la transaction, SOUS le verrou du lead (ACAL182) :
         # deux clics simultanés sur « Concevoir la toiture » ne doivent pas
         # produire deux calepinages.
         existant = calepinage_du_devis(devis_id, company)
         if existant is not None:
-            return existant, False
+            return existant, ORIGINE_EXISTANT
+        adopte = _adopter_l_ouvert_du_lead(devis, company, lead_id, user=user)
+        if adopte is not None:
+            return adopte
         try:
             with transaction.atomic():
                 calepinage = Calepinage.objects.create(
                     company=company,
                     devis=devis,
                     client_id=getattr(devis, 'client_id', None),
-                    lead_id=getattr(devis, 'lead_id', None),
+                    lead_id=lead_id,
                     titre=titre or _titre_du_devis(devis),
                     roof_layout=roof_layout,
                     layout_hash=empreinte,
@@ -226,11 +298,41 @@ def obtenir_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
             existant = calepinage_du_devis(devis_id, company)
             if existant is None:
                 raise
-            return existant, False
+            return existant, ORIGINE_EXISTANT
     # CAL26 — la première ligne du chatter, par la primitive `records`.
     journaliser_creation(calepinage, user=user)
     _noter_jeu(calepinage, jeu, regles, user=user)
-    return calepinage, True
+    return calepinage, ORIGINE_CREE
+
+
+def _adopter_l_ouvert_du_lead(devis, company, lead_id, *, user=None):
+    """ACAL35 — ``(calepinage, origine)`` si l'ouvert UNIQUE du lead a été
+    adopté (ou si une liaison concurrente a gagné), sinon ``None``."""
+    from django.db import transaction
+
+    from ..selectors import calepinage_du_devis
+    from .liens import LiaisonRefusee, lier_devis
+
+    candidats = _ouverts_sans_devis(company, lead_id)
+    if not candidats:
+        return None
+    if len(candidats) > 1:
+        logger.warning(
+            'ACAL35 : le lead %s a %d calepinages ouverts sans devis (%s) — '
+            'aucun choix silencieux, un calepinage est créé pour le devis %s.',
+            lead_id, len(candidats),
+            ', '.join(f'#{c.pk}' for c in candidats), devis.pk)
+        return None
+    try:
+        with transaction.atomic():
+            calepinage = lier_devis(candidats[0], devis.pk, user=user)
+    except LiaisonRefusee:
+        # Course : un autre rattachement du MÊME devis a gagné — relecture.
+        gagnant = calepinage_du_devis(devis.pk, company)
+        if gagnant is None:
+            raise
+        return gagnant, ORIGINE_EXISTANT
+    return calepinage, ORIGINE_ADOPTE
 
 
 def _titre_du_devis(devis):
