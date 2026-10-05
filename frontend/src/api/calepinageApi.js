@@ -584,3 +584,4 @@ const calepinageApi = {
 }
 
 export default calepinageApi
+// ACAL ACAL1 — contrat calepinage_layout_section.json (M0, remplacé par l'usage réel dans la moitié cliente)

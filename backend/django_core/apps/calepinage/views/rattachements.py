@@ -170,3 +170,4 @@ MODULES_RATTACHES = (
 )
 
 __all__ = ['MODULES_RATTACHES']
+# ACAL ACAL1 — contrat calepinage_layout_section.json (M0, remplacé par l'usage réel dans la moitié serveur)

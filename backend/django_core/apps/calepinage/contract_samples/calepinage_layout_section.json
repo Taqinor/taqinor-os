@@ -1,0 +1,150 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/layout/section/",
+  "pourquoi": "ACAL1 (D-ACAL-1/4, C-ACAL-044) — ÉCRITURE PAR SECTION du document de conception : un onglet de l'atelier (Horizon, Terrain, Ombrière, Pente, fond de plan) écrit SA SEULE clé du document roof_layout au lieu de renvoyer le document entier ; le jeton d'écriture est l'empreinte « document » (empreinte_document, D-ACAL-4 — jamais layout_hash). Corps accepté, deux formes : (a) {cle ∈ {horizonProfile, poseSurfaces, underlay}, valeur, base_empreinte} ; (b) {cle:'zones', zone_id, champs ⊂ {pitchDeg, pitchSource, facingAzimuthDeg, facingManual}, base_empreinte}. Toute autre `cle` est refusée 400 {cle} (liste blanche). Un base_empreinte différent de l'empreinte courante est refusé 409 code 'document_modifie' (écriture concurrente ailleurs) ; le même jeton est lu par POST calepinages/<pk>/layout/ dans l'en-tête If-Match — l'en-tête manquant donne 428 {detail}, OBLIGATION ACTIVÉE EN M3 SEULEMENT (D01-T37) : tant que tous les écrivains n'ont pas migré, l'absence reste tolérée. PACT10 : ce fichier part AVANT les moitiés back (D01-T03/T04/T05/T14/T15/T16/T30/T31) et front. Les ajouts au design-context (geometrie.empreinte_document) sont portés par calepinage_design_context.json ; ceux du plan importé (contour_lnglat, fond-plan/) par calepinage_plan_importe.json / calepinage_import_plan.json. Un POST jamais ne versionne si rien n'a changé (`inchange: true`, version inchangée). Les valeurs de l'exemple sont ILLUSTRATIVES ; ce sont les clés et leurs natures qui font le contrat.",
+  "exemple": {
+    "roof_layout": {
+      "horizonProfile": {
+        "source": "saisie",
+        "points": [
+          {
+            "azimuthDeg": 90,
+            "heightDeg": 8.0
+          },
+          {
+            "azimuthDeg": 270,
+            "heightDeg": 12.5
+          }
+        ],
+        "hauteurMaxDeg": 12.5
+      },
+      "poseSurfaces": [],
+      "underlay": null
+    },
+    "empreinte_document": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6",
+    "layout_hash": "9b2e4d6f8a0c1e3b5d7f9a1c3e5b7d90",
+    "inchange": false,
+    "version": 4
+  },
+  "exemple_zone": {
+    "corps": {
+      "cle": "zones",
+      "zone_id": "z1",
+      "champs": {
+        "pitchDeg": 18,
+        "pitchSource": {
+          "mode": "degres",
+          "degres": 18
+        },
+        "facingAzimuthDeg": 180,
+        "facingManual": true
+      },
+      "base_empreinte": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6"
+    },
+    "reponse": {
+      "roof_layout": {
+        "zones": [
+          {
+            "id": "z1",
+            "pitchDeg": 18,
+            "pitchSource": {
+              "mode": "degres",
+              "degres": 18
+            },
+            "facingAzimuthDeg": 180,
+            "facingManual": true
+          }
+        ]
+      },
+      "empreinte_document": "a0b1c2d3e4f5061728394a5b6c7d8e9f00112233445566778899aabbccddeeff",
+      "layout_hash": "c3d5e7f90b1d3f5a7c9e1b3d5f7a9c1e",
+      "inchange": false,
+      "version": 5
+    }
+  },
+  "exemple_corps_section": {
+    "cle": "horizonProfile",
+    "valeur": {
+      "source": "saisie",
+      "points": [
+        {
+          "azimuthDeg": 90,
+          "heightDeg": 8.0
+        },
+        {
+          "azimuthDeg": 270,
+          "heightDeg": 12.5
+        }
+      ],
+      "hauteurMaxDeg": 12.5
+    },
+    "base_empreinte": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6"
+  },
+  "exemple_inchange": {
+    "roof_layout": {
+      "horizonProfile": {
+        "source": "saisie",
+        "points": [
+          {
+            "azimuthDeg": 90,
+            "heightDeg": 8.0
+          },
+          {
+            "azimuthDeg": 270,
+            "heightDeg": 12.5
+          }
+        ],
+        "hauteurMaxDeg": 12.5
+      },
+      "poseSurfaces": [],
+      "underlay": null
+    },
+    "empreinte_document": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6",
+    "layout_hash": "9b2e4d6f8a0c1e3b5d7f9a1c3e5b7d90",
+    "inchange": true,
+    "version": 4
+  },
+  "exemple_conflit_409": {
+    "detail": "Le document a été modifié ailleurs depuis votre ouverture : rechargez avant d'enregistrer.",
+    "code": "document_modifie",
+    "empreinte_courante": "a0b1c2d3e4f5061728394a5b6c7d8e9f00112233445566778899aabbccddeeff"
+  },
+  "exemple_refus_cle_400": {
+    "cle": "Clé non autorisée : seules horizonProfile, poseSurfaces, underlay et zones s'écrivent par section."
+  },
+  "exemple_manque_if_match_428": {
+    "detail": "En-tête If-Match manquant : envoyez l'empreinte du document ouvert. (obligation activée en M3 seulement, D01-T37)"
+  },
+  "if_match": {
+    "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/layout/",
+    "en_tete": "If-Match: <empreinte_document>",
+    "409": "même corps que exemple_conflit_409",
+    "428": "même corps que exemple_manque_if_match_428 — activé en M3 seulement"
+  },
+  "suggestions_pente": {
+    "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/suggestions-pente/",
+    "corps": {
+      "operation": "proposer | accepter | refuser",
+      "zone_id": "z1 (facultatif : toutes les zones si absent pour proposer)",
+      "base_empreinte": "<empreinte_document>"
+    },
+    "exemple": {
+      "roof_layout": {
+        "zones": [
+          {
+            "id": "z1",
+            "pitchDeg": 18,
+            "pitchSuggestion": {
+              "status": "suggeree",
+              "valeurDeg": 15,
+              "source": "ign_bd_alti",
+              "decidedAt": null,
+              "libelle": "pente du terrain"
+            }
+          }
+        ]
+      },
+      "empreinte_document": "b1c2d3e4f5061728394a5b6c7d8e9f00112233445566778899aabbccddeeff00"
+    },
+    "note": "la suggestion « pente du terrain » n'est JAMAIS recopiée dans pitchDeg (D-ACAL-19) ; accepter la pose dans pitchSource, refuser la marque 'refusee'."
+  }
+}
