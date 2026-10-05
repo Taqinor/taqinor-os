@@ -228,51 +228,37 @@ def _site_du_calepinage(calepinage, document, imagerie):
     }
 
 
-def _declaration_batterie(calepinage, document, materiel, company):
+def _declaration_batterie(calepinage, donnees, materiel, company):
     """La batterie DÉCLARÉE et les specs de son pack, ou ``{}``.
 
-    La déclaration vit sur le document (``roof_layout.battery``) ; les
-    grandeurs viennent de la FICHE du produit batterie du devis lié, résolue
-    ici parce que ce module est le seul à avoir accès au stock. Aucune
-    stratégie n'est supposée : sans stratégie saisie, CALX188 omet le bloc et
-    le dit.
+    ACAL166 — la déclaration vit sur l'ENTRÉE électrique enregistrée
+    (``POST entree-electrique/`` → ``donnees['batterie']``), plus sur
+    ``roof_layout.battery`` (un second porteur qu'aucun écrivain ne
+    produisait). Le PRODUIT et le nombre de PACKS prennent, à défaut de saisie,
+    la ligne batterie du devis lié — la provenance (``explicite`` | ``devis``)
+    voyage dans ``provenance`` ; les grandeurs viennent de la FICHE du
+    produit, résolue ici parce que ce module est le seul à avoir accès au
+    stock. AUCUNE stratégie n'est supposée : sans stratégie saisie, CALX188
+    omet le bloc et le DIT.
 
     ACAL56 — l'onduleur est celui du RÉSOLVEUR (``materiel``, rendu par
     ``services/electrique.py::resoudre_materiel`` : désignation explicite,
-    sinon ligne du devis lié) — plus jamais une lecture directe de
-    ``entree['onduleur_produit']`` qui ignorait le devis.
+    sinon ligne du devis lié).
     """
-    from .batterie import specs_batterie
-    from .equipements import equipements_du_calepinage
+    from .chaines import batterie_du_calepinage
 
-    brute = (document.get('battery') if isinstance(document, dict) else None)
-    if not isinstance(brute, dict) or not brute:
+    batterie = batterie_du_calepinage(calepinage, donnees, materiel, company)
+    if batterie is None:
         return {}
-
-    produit_batterie = None
-    produit_onduleur = None
-    if company is not None:
-        from apps.stock.selectors import get_produit_scoped
-
-        equipements = equipements_du_calepinage(calepinage)
-        bloc = equipements.get('batterie') if isinstance(equipements,
-                                                         dict) else None
-        if isinstance(bloc, dict) and bloc.get('produit'):
-            produit_batterie = get_produit_scoped(company, bloc['produit'])
-        identifiant = ((materiel or {}).get('produits') or {}).get(
-            'onduleur')
-        if identifiant not in (None, ''):
-            produit_onduleur = get_produit_scoped(company, identifiant)
-
-    packs = int(_nombre(brute.get('count')) or 1) or 1
-    declaration = dict(brute)
+    declaration = {cle: valeur for cle, valeur in batterie['saisie'].items()
+                   if cle not in ('produit', 'packs') and valeur is not None}
+    nom = str(getattr(batterie['produit'], 'nom', '') or '').strip()
     declaration['groupes'] = [{
-        'groupe': str(brute.get('model') or 'Batterie'),
-        'packs': packs,
-        'specs': specs_batterie(produit_batterie,
-                                produit_onduleur=produit_onduleur,
-                                nb_packs=packs),
+        'groupe': nom or 'Batterie',
+        'packs': batterie['packs'],
+        'specs': batterie['specs'],
     }]
+    declaration['provenance'] = batterie['provenance']
     return declaration
 
 
@@ -310,16 +296,9 @@ def _capacites_batterie_du_stock(company):
     return capacites
 
 
-def _section_du_document(document, nom):
-    """Une section DÉCLARÉE du document (``{}`` quand elle n'y est pas).
-
-    Rien n'est supposé : un raccordement sans plafond saisi ne plafonne rien,
-    et un calepinage sans section ``hors_reseau`` est raccordé — c'est le cas
-    de tous les calepinages existants (comportement d'aujourd'hui inchangé).
-    """
-    if not isinstance(document, dict):
-        return {}
-    section = document.get(nom)
+def _section_de_l_entree(donnees, nom):
+    """ACAL166 — une section DÉCLARÉE de l'entrée électrique (``{}`` si absente)."""
+    section = donnees.get(nom) if isinstance(donnees, dict) else None
     return dict(section) if isinstance(section, dict) else {}
 
 
@@ -434,13 +413,16 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         'postes_saisis': postes_du_calepinage(calepinage),
         # ── les déclarations aval ───────────────────────────────────────
         'consommation': _declaration_consommation(document),
-        'batterie': _declaration_batterie(calepinage, document,
+        'batterie': _declaration_batterie(calepinage, donnees,
                                           materiel_resolu, company),
         # ACAL155 — LA saisie de raccordement (cos φ imposé, plafond
         # d'injection), écrite par ``POST raccordement/`` : jamais une
         # section du document qu'aucun écrivain ne produit.
         'raccordement': saisie_du_calepinage(calepinage),
-        'hors_reseau': _section_du_document(document, 'hors_reseau'),
+        # ACAL166 — le mode hors réseau est DÉCLARÉ dans l'entrée électrique
+        # enregistrée (jamais une section du document qu'aucun écrivain ne
+        # produisait) ; absent, l'installation est raccordée (inchangé).
+        'hors_reseau': _section_de_l_entree(donnees, 'hors_reseau'),
         # CALX271 — les batteries du STOCK, pour comparer leurs capacités.
         'capacites_batterie_stock': _capacites_batterie_du_stock(company),
     }

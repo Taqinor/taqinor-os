@@ -137,7 +137,8 @@ class DupliquerServiceTest(TestCase):
 
     def test_la_copie_porte_une_reference_neuve(self):
         from apps.calepinage.services.variantes import dupliquer
-        from apps.calepinage.views.calepinages import _reference
+        from apps.calepinage.services.presentation import (
+            reference_calepinage as _reference)
 
         copie = dupliquer(self.original)
         self.assertNotEqual(copie.pk, self.original.pk)

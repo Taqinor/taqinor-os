@@ -39,6 +39,7 @@ SOUS_MODULES = (
     'simulation',     # CAL139 — @actions pertes/enregistrer-pertes
     'consommation',   # CAL149 — profils types de consommation (réglage)
     'reglementaire',  # CAL191 — @action dossiers-reglementaires (CAL247)
+    'gabarits_dossier',  # ACAL238 — dépôt des gabarits (réglage société)
     # 'io_layout' (CAL216 — @actions export-layout/import-layout) déjà listé
     # ci-dessus (documenté dès le jour 1 du paquet, CAL233).
 )
@@ -55,7 +56,13 @@ SOUS_MODULES = (
 #: le contrat committé ``contract_samples/moteur_calculer.json`` (PACT10), que
 #: la lane d'en face consomme déjà. Le servir ailleurs aurait donc cassé le
 #: contrat pour sauver la lettre d'une règle qui ne le visait pas.
-PREFIXES_URL_AUTORISES = ('calepinages', 'moteur', 'parametres')
+#:
+#: ACAL238 — ``gabarits-dossiers`` : le dépôt des gabarits de dossier
+#: réglementaire, un RÉGLAGE société (comme ``parametres``) sans identifiant
+#: de calepinage, au chemin figé par le contrat
+#: ``gabarits_dossier_reglementaire.json`` (ACAL15, PACT10).
+PREFIXES_URL_AUTORISES = ('calepinages', 'moteur', 'parametres',
+                          'gabarits-dossiers')
 
 __all__ = ['SOUS_MODULES', 'PREFIXES_URL_AUTORISES']
 

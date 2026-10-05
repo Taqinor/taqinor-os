@@ -15,7 +15,11 @@ import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractS
 
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
-    calepinages: { resultat: vi.fn(), simuler: vi.fn() },
+    calepinages: {
+      resultat: vi.fn(), simuler: vi.fn(),
+      entreeElectrique: vi.fn(() => Promise.resolve({ data: { entree: {} } })),
+      enregistrerEntreeElectrique: vi.fn(),
+    },
     moteur: { resultat: vi.fn() },
   },
 }))
@@ -217,5 +221,90 @@ describe('PanneauBatterie (CALX14)', () => {
     expect(await screen.findByTestId('calx14-erreur')).toHaveTextContent(
       'Batterie indisponible.',
     )
+  })
+})
+
+/* ACAL167 — la déclaration de la batterie et du mode hors réseau. Les réponses viennent de
+   l'exemple COMMITTÉ `calepinage_entree_electrique.json` (jamais d'un objet tapé à la main). */
+describe('PanneauBatterie — déclarer la batterie (ACAL167)', () => {
+  const VIDE = exempleContrat('calepinage', 'calepinage_entree_electrique', 'exemple_vide')
+  const poste = () => calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[0][1]
+  const champ = (cle) => document.getElementById(`acal167-${cle}`)
+
+  beforeEach(() => {
+    calepinageApi.calepinages.entreeElectrique
+      .mockResolvedValue({ data: { entree: VIDE.entree } })
+    servir('exemple')
+  })
+
+  it('saisir une stratégie poste {batterie:{strategie, packs}} et relit la valeur serveur', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+    calepinageApi.calepinages.entreeElectrique
+      .mockResolvedValueOnce({ data: { entree: VIDE.entree } })
+      .mockResolvedValueOnce({ data: { entree: { ...VIDE.entree, batterie: { strategie: 'autoconso', packs: 2 } } } })
+    rendre()
+
+    await screen.findByTestId('acal167-declaration')
+    fireEvent.change(champ('strategie'), { target: { value: 'autoconso' } })
+    fireEvent.change(champ('packs'), { target: { value: '2' } })
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+
+    await screen.findByTestId('acal167-message')
+    expect(poste()).toEqual({ batterie: { strategie: 'autoconso', packs: 2 } })
+    // La valeur relue du serveur est celle affichée.
+    expect(champ('strategie')).toHaveValue('autoconso')
+    expect(champ('packs')).toHaveValue(2)
+    expect(calepinageApi.calepinages.entreeElectrique).toHaveBeenCalledTimes(2)
+  })
+
+  it('paramètre de stratégie manquant refusé sous son champ', async () => {
+    const message = '« seuil_effacement_kw » : saisissez un nombre positif ou nul.'
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValue({
+      response: { status: 400, data: { 'batterie.seuil_effacement_kw': message } },
+    })
+    rendre()
+
+    await screen.findByTestId('acal167-declaration')
+    fireEvent.change(champ('strategie'), { target: { value: 'peak_shaving' } })
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+
+    expect(await screen.findByTestId('acal167-erreur-seuil_effacement_kw')).toHaveTextContent(message)
+  })
+
+  it('hors réseau poste jours_autonomie', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+    rendre()
+
+    await screen.findByTestId('acal167-declaration')
+    fireEvent.click(champ('actif'))
+    fireEvent.change(champ('jours'), { target: { value: '2' } })
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+
+    await screen.findByTestId('acal167-message')
+    expect(poste()).toEqual({ hors_reseau: { actif: true, jours_autonomie: 2 } })
+  })
+
+  it('une déclaration jamais touchée et absente du stock n’envoie rien d’inventé', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+    rendre()
+
+    await screen.findByTestId('acal167-declaration')
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+
+    await screen.findByTestId('acal167-message')
+    expect(poste()).toEqual({})
+  })
+
+  it('« Enregistrer et relancer » enchaîne la relance de la simulation (forcer: true)', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+    calepinageApi.calepinages.simuler.mockResolvedValue({ data: {} })
+    rendre()
+
+    await screen.findByTestId('acal167-declaration')
+    fireEvent.change(champ('strategie'), { target: { value: 'autoconso' } })
+    fireEvent.click(screen.getByTestId('acal167-enregistrer-relancer'))
+
+    await vi.waitFor(() => expect(calepinageApi.calepinages.simuler).toHaveBeenCalledWith(1, { forcer: true }))
+    expect(poste()).toEqual({ batterie: { strategie: 'autoconso' } })
   })
 })

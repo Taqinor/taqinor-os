@@ -15,7 +15,9 @@ import {
   deserializeHorizonProfileFromLayout,
   deserializeSceneFromLayout,
   hydrateFromDevis,
+  lireCouchesDocument,
 } from './prefill';
+import { appliquerHydratationAuCtx, hydratationDeSection } from './hydratation';
 import { uniformSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { type HorizonProfile } from '../../lib/horizonEngine';
 import { type Measurement } from './mesureUi';
@@ -545,5 +547,60 @@ describe('CALX22x câblage — serializeLayout porte `electrical` via couche.ecr
     const avec = serializeLayout(makeCtx(areas), null, { coucheElectrique: couche });
     expect(avec.result).toEqual(sans.result);
     expect(avec.zones).toEqual(sans.zones);
+  });
+});
+
+describe('ACAL233 — la parcelle tracée voyage par la clé racine `parcelle`', () => {
+  const ANNEAU = [[-7.6, 33.59], [-7.598, 33.59], [-7.598, 33.592], [-7.6, 33.592]];
+
+  it('serializeLayout émet parcelle et deserializeLayout la relit à l’identique (aller-retour, sans parcelle → clé absente)', () => {
+    const ctx = makeCtx([zone('z1')]);
+    expect('parcelle' in serializeLayout(ctx)).toBe(false);
+    ctx.parcelle = { vertices: ANNEAU.map((p) => [p[0], p[1]] as [number, number]) };
+    const doc = serializeLayout(ctx) as unknown as Record<string, unknown>;
+    expect(doc.parcelle).toEqual({ vertices: ANNEAU });
+
+    // Rouvrir : le document relu repose la parcelle dans le ctx, qui la réémet à l’octet près.
+    const neuf = makeCtx([zone('z1')]);
+    appliquerHydratationAuCtx(neuf, lireCouchesDocument(doc));
+    expect(neuf.parcelle).toEqual({ vertices: ANNEAU });
+    expect(JSON.stringify((serializeLayout(neuf) as unknown as Record<string, unknown>).parcelle))
+      .toBe(JSON.stringify(doc.parcelle));
+  });
+
+  it('effacer la parcelle retire la clé, même si le document relu la portait', () => {
+    const ctx = makeCtx([zone('z1')]);
+    appliquerHydratationAuCtx(ctx, lireCouchesDocument({ parcelle: { vertices: ANNEAU } }));
+    expect(ctx.parcelle).not.toBeNull();
+    ctx.parcelle = null;
+    expect('parcelle' in serializeLayout(ctx)).toBe(false);
+  });
+});
+
+describe('ACAL258 — l’allée technique de CE calepinage voyage par la clé racine `alleeTechnique`', () => {
+  const ALLEE = { largeurM: 1.4, source: 'suggestion_moteur' };
+
+  it('appliquerSection(alleeTechnique) pose l’allée dans le ctx et serializeLayout la ressort', () => {
+    const ctx = makeCtx([zone('z1')]);
+    expect('alleeTechnique' in serializeLayout(ctx)).toBe(false);
+    appliquerHydratationAuCtx(ctx, hydratationDeSection('alleeTechnique', ALLEE));
+    expect(ctx.alleeTechnique).toEqual(ALLEE);
+    expect((serializeLayout(ctx) as unknown as Record<string, unknown>).alleeTechnique).toEqual(ALLEE);
+  });
+
+  it('un document rouvert puis enregistré sans geste garde l’allée (octet-identique)', () => {
+    const doc = { alleeTechnique: { ...ALLEE, note: 'clé inconnue conservée' } };
+    const ctx = makeCtx([zone('z1')]);
+    appliquerHydratationAuCtx(ctx, lireCouchesDocument(doc));
+    expect(JSON.stringify((serializeLayout(ctx) as unknown as Record<string, unknown>).alleeTechnique))
+      .toBe(JSON.stringify(doc.alleeTechnique));
+  });
+
+  it('une allée illisible (largeur nulle, source absente) n’est jamais inventée ni réémise', () => {
+    for (const mauvaise of [{ largeurM: 0, source: 'saisie' }, { largeurM: 1.2 }, 'x', null]) {
+      const ctx = makeCtx([zone('z1')]);
+      appliquerHydratationAuCtx(ctx, hydratationDeSection('alleeTechnique', mauvaise));
+      expect('alleeTechnique' in (serializeLayout(ctx) as unknown as Record<string, unknown>)).toBe(false);
+    }
   });
 });

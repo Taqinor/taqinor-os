@@ -10,7 +10,7 @@ import { aggregateAreas, areaLabel, type AreaResult } from '../../lib/roofAreas'
 import { annualSavingsMad } from '../../lib/estimatorBrainV2';
 import { fmt, fmtMad, esc } from './dom';
 import { type Ctx } from './context';
-import { type AreaRecord } from './types';
+import { type AreaRecord, type GabaritZone } from './types';
 import { type RoofShapePan, type RoofShapePreset } from './scene3d';
 import { geodesicAreaM2, isSimplePolygon, pointInPolygon, type LngLat } from '../../lib/roof';
 import { referenceContourRing } from './prefill'; // ACAL71 — le validateur de contour UNIQUE
@@ -1030,12 +1030,29 @@ function clampNum(v: number, lo: number, hi: number): number {
 
 /** Zone rectangulaire née d'un glissé (deux coins), retrait 0 et hauteur non renseignée :
  *  RIEN n'est inventé tant que l'utilisateur n'a pas saisi. */
-export function exclusionZoneFromDrag(id: string, nature: ExclusionNature, a: LngLat, b: LngLat): ExclusionZone {
-  return {
+export function exclusionZoneFromDrag(
+  id: string,
+  nature: ExclusionNature,
+  a: LngLat,
+  b: LngLat,
+  gabarit?: GabaritZone | null,
+): ExclusionZone {
+  const zone: ExclusionZone = {
     id,
     nature,
     vertices: [a, [b[0], a[1]], b, [a[0], b[1]]],
     setbackM: 0,
+  };
+  // ACAL291 — posée depuis un gabarit réglementaire de la société : libellé, nature, retrait,
+  // hauteur et SOURCE sont ceux du gabarit (aucun n'est complété ici) ; la géométrie reste le glissé.
+  if (!gabarit) return zone;
+  return {
+    ...zone,
+    nature: gabarit.nature,
+    label: gabarit.libelle,
+    setbackM: gabarit.retraitM,
+    ...(gabarit.hauteurM != null ? { heightM: gabarit.hauteurM } : {}),
+    source: gabarit.source,
   };
 }
 

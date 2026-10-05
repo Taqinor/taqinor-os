@@ -42,13 +42,24 @@ __all__ = ['miroir_layout_du_devis', 'reverrouiller_au_devis_sent', 'reprise_du_
 def miroir_layout_du_devis(sender, devis, user=None, **kwargs):
     """Alimente le calepinage canonique du devis avec sa conception.
 
-    * le calepinage est OBTENU ou CRÉÉ (idempotent : le même devis rend
-      toujours le même calepinage — ``services.obtenir_ou_creer_pour_devis``) ;
+    * le calepinage est OBTENU, ADOPTÉ ou CRÉÉ (idempotent : le même devis
+      rend toujours le même calepinage) ;
     * la conception est enregistrée par le chemin d'écriture COMMUN
       (``services.enregistrer_layout``), donc elle dépose une version quand —
       et seulement quand — elle a changé, et le chatter est alimenté ;
     * la SOCIÉTÉ et l'AUTEUR viennent du serveur : la société est celle du
       devis, l'auteur est l'utilisateur agissant transmis par l'événement.
+
+    ACAL35 (D-ACAL-1) — selon l'origine rendue par
+    ``services.creation.adopter_ou_creer_pour_devis`` :
+
+    * ``'existant'`` (déjà lié) — le document du devis est recopié, comme
+      avant (ce reliquat du miroir est retiré par ACAL38) ;
+    * ``'adopte'`` (l'ouvert du lead) — RIEN n'est écrit : le calepinage est
+      la conception, son document reste octet-identique ;
+    * ``'cree'`` — le calepinage est né avec le document du devis SANS ses
+      clés privées ; rien n'y est recopié de plus (seule sa première version
+      est déposée, sur son PROPRE document).
 
     Aucun statut n'est écrit (règle #4), ni côté devis ni côté calepinage.
     """
@@ -58,12 +69,17 @@ def miroir_layout_du_devis(sender, devis, user=None, **kwargs):
             or not layout:
         return
     try:
-        from .services.creation import obtenir_ou_creer_pour_devis
+        from .services.creation import (
+            ORIGINE_CREE, ORIGINE_EXISTANT, adopter_ou_creer_pour_devis,
+        )
         from .services.layout import enregistrer_layout
 
-        calepinage, _ = obtenir_ou_creer_pour_devis(
+        calepinage, origine = adopter_ou_creer_pour_devis(
             devis.pk, company, user=user)
-        enregistrer_layout(calepinage, layout, user=user)
+        if origine == ORIGINE_EXISTANT:
+            enregistrer_layout(calepinage, layout, user=user)
+        elif origine == ORIGINE_CREE:
+            enregistrer_layout(calepinage, calepinage.roof_layout, user=user)
     except Exception:  # noqa: BLE001 — un miroir ne casse jamais la source
         logger.exception(
             'CAL39 : miroir de conception en échec pour le devis %s',

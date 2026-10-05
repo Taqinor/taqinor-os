@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4764, operations: 7558, components: 2167}
+counts: {paths: 4770, operations: 7570, components: 2173}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -579,6 +579,7 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/image-document/ -> django_calepinage_calepinages_image_document_create
 - post /api/django/calepinage/calepinages/{id}/import-layout/ -> django_calepinage_calepinages_import_layout_create
 - post /api/django/calepinage/calepinages/{id}/importer-plan/ -> django_calepinage_calepinages_importer_plan_create
+- post /api/django/calepinage/calepinages/{id}/joindre-piece/ -> django_calepinage_calepinages_joindre_piece_create
 - get /api/django/calepinage/calepinages/{id}/layout/ -> django_calepinage_calepinages_layout_retrieve
 - post /api/django/calepinage/calepinages/{id}/layout/ -> django_calepinage_calepinages_layout_create
 - get /api/django/calepinage/calepinages/{id}/manuel-proprietaire.pdf/ -> django_calepinage_calepinages_manuel_proprietaire.pdf_retrieve
@@ -636,6 +637,11 @@ operations:
 - get /api/django/calepinage/calepinages/{id}/versions/ -> django_calepinage_calepinages_versions_retrieve
 - get /api/django/calepinage/calepinages/{id}/versions/{version_id}/diff/ -> django_calepinage_calepinages_versions_diff_retrieve
 - post /api/django/calepinage/calepinages/{id}/versions/{version_id}/restaurer/ -> django_calepinage_calepinages_versions_restaurer_create
+- get /api/django/calepinage/gabarits-dossiers/ -> django_calepinage_gabarits_dossiers_list
+- post /api/django/calepinage/gabarits-dossiers/ -> django_calepinage_gabarits_dossiers_create
+- delete /api/django/calepinage/gabarits-dossiers/{id}/ -> django_calepinage_gabarits_dossiers_destroy
+- get /api/django/calepinage/gabarits-dossiers/{id}/ -> django_calepinage_gabarits_dossiers_retrieve
+- patch /api/django/calepinage/gabarits-dossiers/{id}/ -> django_calepinage_gabarits_dossiers_partial_update
 - post /api/django/calepinage/moteur/calculer/ -> django_calepinage_moteur_calculer_create
 - post /api/django/calepinage/moteur/pose/ -> django_calepinage_moteur_pose_create
 - get /api/django/calepinage/moteur/resultat/{job_id}/ -> django_calepinage_moteur_resultat_retrieve
@@ -4396,6 +4402,7 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/image-document/ -> v1_calepinage_calepinages_image_document_create
 - post /api/v1/calepinage/calepinages/{id}/import-layout/ -> v1_calepinage_calepinages_import_layout_create
 - post /api/v1/calepinage/calepinages/{id}/importer-plan/ -> v1_calepinage_calepinages_importer_plan_create
+- post /api/v1/calepinage/calepinages/{id}/joindre-piece/ -> v1_calepinage_calepinages_joindre_piece_create
 - get /api/v1/calepinage/calepinages/{id}/layout/ -> v1_calepinage_calepinages_layout_retrieve
 - post /api/v1/calepinage/calepinages/{id}/layout/ -> v1_calepinage_calepinages_layout_create
 - get /api/v1/calepinage/calepinages/{id}/manuel-proprietaire.pdf/ -> v1_calepinage_calepinages_manuel_proprietaire.pdf_retrieve
@@ -4453,6 +4460,11 @@ operations:
 - get /api/v1/calepinage/calepinages/{id}/versions/ -> v1_calepinage_calepinages_versions_retrieve
 - get /api/v1/calepinage/calepinages/{id}/versions/{version_id}/diff/ -> v1_calepinage_calepinages_versions_diff_retrieve
 - post /api/v1/calepinage/calepinages/{id}/versions/{version_id}/restaurer/ -> v1_calepinage_calepinages_versions_restaurer_create
+- get /api/v1/calepinage/gabarits-dossiers/ -> v1_calepinage_gabarits_dossiers_list
+- post /api/v1/calepinage/gabarits-dossiers/ -> v1_calepinage_gabarits_dossiers_create
+- delete /api/v1/calepinage/gabarits-dossiers/{id}/ -> v1_calepinage_gabarits_dossiers_destroy
+- get /api/v1/calepinage/gabarits-dossiers/{id}/ -> v1_calepinage_gabarits_dossiers_retrieve
+- patch /api/v1/calepinage/gabarits-dossiers/{id}/ -> v1_calepinage_gabarits_dossiers_partial_update
 - post /api/v1/calepinage/moteur/calculer/ -> v1_calepinage_moteur_calculer_create
 - post /api/v1/calepinage/moteur/pose/ -> v1_calepinage_moteur_pose_create
 - get /api/v1/calepinage/moteur/resultat/{job_id}/ -> v1_calepinage_moteur_resultat_retrieve
@@ -7753,11 +7765,16 @@ components:
 - CalepinageDossierFinChantierPiece
 - CalepinageDossiersReglementaires
 - CalepinageExportProjet
+- CalepinageGabaritDepose
+- CalepinageGabaritDossier
+- CalepinageGabaritDossierCorpsRequest
+- CalepinageGabaritsDossiers
 - CalepinageGenererDossier
 - CalepinageHorizon
 - CalepinageImageDocumentDepot
 - CalepinageImportPlan
 - CalepinageImportProjet
+- CalepinageJoindrePiece
 - CalepinageMeteoFichier
 - CalepinageMoteurAccuseTravailLong
 - CalepinageMoteurCalculerReponse
@@ -8876,6 +8893,7 @@ components:
 - PatchedCabinetRequest
 - PatchedCadenceRelanceEtapeRequest
 - PatchedCalendrierHegirienRequeteRequest
+- PatchedCalepinageGabaritDossierCorpsRequest
 - PatchedCalepinageRequest
 - PatchedCanalRequest
 - PatchedCategorieEquipementRequest

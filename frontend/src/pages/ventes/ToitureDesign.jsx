@@ -75,7 +75,7 @@ import {
 import BuilderDom from '../../features/calepinage/atelier/BuilderDom.jsx'
 import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
 import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues.js'
-import { useAtelierBoot } from '../../features/calepinage/atelier/useAtelierBoot.js'
+import { useAtelierBoot, pousserAffectationAtelier } from '../../features/calepinage/atelier/useAtelierBoot.js'
 import '../../styles/roofbuilder.css'
 
 export default function ToitureDesign({ mode = 'lead' }) {
@@ -596,6 +596,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
           ? champ : httpMessage(code ?? 0, data))
         return
       }
+
+      // ACAL286 — l'affectation servie a pu changer avec ce document : la teinte est relue.
+      pousserAffectationAtelier(apiTool, calepinageId)
 
       // Même conception → ZÉRO écriture serveur, et on le DIT : aucune
       // version n'a été créée, rien ne doit prétendre le contraire.

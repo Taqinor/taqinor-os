@@ -70,7 +70,13 @@ def methodes_servies(callback):
     """Les méthodes HTTP réellement servies par cette route."""
     actions = getattr(callback, 'actions', None)
     if actions:
-        return [m.upper() for m in actions]
+        # Le routeur DRF déclare ``put`` pour toute route détail ; un
+        # viewset qui le RETIRE de ``http_method_names`` (ACAL238 :
+        # gabarits-dossiers/) ne le sert pas — 405 n'est pas une fuite.
+        permises = getattr(getattr(callback, 'cls', None),
+                           'http_method_names', None)
+        return [m.upper() for m in actions
+                if permises is None or m in permises]
     classe = getattr(callback, 'cls', None) or getattr(callback, 'view_class',
                                                        None)
     if classe is None:

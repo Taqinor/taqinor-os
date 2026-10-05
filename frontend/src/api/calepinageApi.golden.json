@@ -24,6 +24,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.appliquerFixation": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/fixation/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.approbation": [
     {
       "config": null,
@@ -319,6 +327,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.enregistrerEditionSld": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/schema-unifilaire/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.enregistrerEntreeElectrique": [
     {
       "config": null,
@@ -365,6 +381,14 @@
       "data": 3,
       "url": "/calepinage/calepinages/7/releve/",
       "verbe": "post"
+    }
+  ],
+  "calepinages.entreeElectrique": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/entree-electrique/",
+      "verbe": "get"
     }
   ],
   "calepinages.envoyerImage": [
@@ -534,6 +558,14 @@
         ]
       },
       "url": "/calepinage/calepinages/import-projet/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.joindrePiece": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/joindre-piece/",
       "verbe": "post"
     }
   ],
