@@ -407,7 +407,6 @@ POSES_AVANT_LEUR_ROUTE = {
 #: attente » est réellement servie).
 CLES_POSEES_AVANT_LEUR_PRODUCTEUR = {
     'dossiers_reglementaires.json': {'packs_france': 'ACAL238'},
-    'calepinage_raccordement.json': {'proposition_lead': 'ACAL157'},
     'site_imagerie.json': {'site_effectif': 'ACAL129'},
 }
 
