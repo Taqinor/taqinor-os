@@ -38,10 +38,13 @@ import {
 // AGR127/AGR128 — aperçu SERVEUR du pompage (aucun calcul local).
 import {
   useEtudePompagePreview, construireCorpsPompage, manquantsPompage,
+  useEconomiePompagePreview,
 } from '../../features/ventes/etudePompagePreview'
+import { saisiesEconomiePompage } from '../../features/ventes/quote/etudeMarcheBloc'
 import {
   POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie,
 } from '../../features/ventes/etudePompagePreviewPur'
+import { ECO_POMPAGE_VIDE, ecoDepuisSaisies } from '../../features/ventes/quote/etudeMarcheBloc'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
@@ -918,11 +921,16 @@ export default function DevisGenerator({
   const [farmCrop, setFarmCrop] = useState('')
   const [farmSurfaceHa, setFarmSurfaceHa] = useState('')
   const [farmIrrigation, setFarmIrrigation] = useState('')
-  const [farmFuel, setFarmFuel] = useState('')
   // Dépense carburant ACTUELLE : saisie au mois OU à l'année (bascule), mais
   // stockée toujours en MAD/AN (fuel_spend_current).
-  const [farmFuelSpend, setFarmFuelSpend] = useState('')
-  const [farmFuelPeriod, setFarmFuelPeriod] = useState('mois') // 'mois' | 'an'
+  // AGR212 — l'économie DÉCLARÉE (énergie, consommation, prix payé daté,
+  // mois d'irrigation, facture réseau, entretien) : tout vide au départ,
+  // écrit dans `saisies_economie_pompage` — plus jamais « butane » par
+  // défaut, plus jamais × 12.
+  const [ecoPompage, setEcoPompage] = useState(ECO_POMPAGE_VIDE)
+  const majEco = useCallback(
+    (cle, valeur) => setEcoPompage((e) => ({ ...e, [cle]: valeur })), [])
+  const [reperesEnergie, setReperesEnergie] = useState({})
   const [farmHmtStatic, setFarmHmtStatic] = useState('')
   const [farmHmtDrawdown, setFarmHmtDrawdown] = useState('')
   // AGR128 — les blocs NOUVEAUX du générateur agricole (cas de pompe,
@@ -956,7 +964,7 @@ export default function DevisGenerator({
     prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
-    farmIrrigation, farmFuel, farmFuelSpend, farmFuelPeriod, farmHmtStatic,
+    farmIrrigation, ecoPompage, farmHmtStatic,
     farmHmtDrawdown, pompageSaisie,
 
   }), [
@@ -970,7 +978,7 @@ export default function DevisGenerator({
     prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
-    farmIrrigation, farmFuel, farmFuelSpend, farmFuelPeriod, farmHmtStatic,
+    farmIrrigation, ecoPompage, farmHmtStatic,
     farmHmtDrawdown, pompageSaisie,
   ])
   // « Dirty » = l'utilisateur a réellement saisi quelque chose de significatif
@@ -1108,9 +1116,7 @@ export default function DevisGenerator({
     if (d.farmCrop != null) setFarmCrop(d.farmCrop)
     if (d.farmSurfaceHa != null) setFarmSurfaceHa(d.farmSurfaceHa)
     if (d.farmIrrigation != null) setFarmIrrigation(d.farmIrrigation)
-    if (d.farmFuel != null) setFarmFuel(d.farmFuel)
-    if (d.farmFuelSpend != null) setFarmFuelSpend(d.farmFuelSpend)
-    if (d.farmFuelPeriod != null) setFarmFuelPeriod(d.farmFuelPeriod)
+    if (d.ecoPompage && typeof d.ecoPompage === 'object') setEcoPompage(d.ecoPompage)
     if (d.farmHmtStatic != null) setFarmHmtStatic(d.farmHmtStatic)
     if (d.farmHmtDrawdown != null) setFarmHmtDrawdown(d.farmHmtDrawdown)
     if (d.pompageSaisie && typeof d.pompageSaisie === 'object') setPompageSaisie(d.pompageSaisie)
@@ -2173,9 +2179,8 @@ export default function DevisGenerator({
       pose(etat.farm.crop, setFarmCrop)
       pose(etat.farm.surfaceHa, setFarmSurfaceHa)
       pose(etat.farm.irrigation, setFarmIrrigation)
-      pose(etat.farm.fuel, setFarmFuel)
-      pose(etat.farm.fuelSpend, setFarmFuelSpend)
-      pose(etat.farm.fuelPeriod, setFarmFuelPeriod)
+      // AGR212 — l'économie déclarée se relit telle qu'enregistrée.
+      setEcoPompage(etat.saisiesEco || ecoDepuisSaisies(null))
       pose(etat.farm.hmtStatic, setFarmHmtStatic)
       pose(etat.farm.hmtDrawdown, setFarmHmtDrawdown)
       pose(etat.pompe.profondeur, setPompeProfondeur)
@@ -2223,6 +2228,9 @@ export default function DevisGenerator({
           .padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
         setDateValidite(prev => prev || iso)
       }
+      // AGR208/AGR212 — repères énergie datés et sourcés (simple indication à
+      // côté du champ prix, jamais recopiés dedans).
+      setReperesEnergie(data?.reperes_energie_agricole || {})
       const heures = parseFloat(data?.agricole_pump_hours)
       if (!editId && Number.isFinite(heures) && heures > 0) {
         setPompeHeures(String(heures))
@@ -2733,6 +2741,34 @@ export default function DevisGenerator({
   const corpsPompage = modeInstallation === 'agricole'
     ? construireCorpsPompage(etatPompage) : null
   const apercuPompage = useEtudePompagePreview(corpsPompage)
+  // AGR212 — mois d'irrigation PRÉ-COCHÉS par le calendrier de la culture :
+  // ceux où le besoin servi par l'aperçu serveur (besoin agronomique) est > 0.
+  const moisCalendrier = useMemo(() => {
+    const b = apercuPompage?.donnees?.besoin
+    if (!b || b.nature !== 'agronomique_plein' || !Array.isArray(b.m3_jour_mois)) return []
+    return b.m3_jour_mois.map((v, i) => (v > 0 ? i + 1 : null)).filter(Boolean)
+  }, [apercuPompage?.donnees])
+  const aujourdhuiIso = new Date().toISOString().slice(0, 10)
+  const ecoAvecCalendrier = (ecoPompage.mois == null && moisCalendrier.length)
+    ? {
+        ...ecoPompage,
+        dateDeclaration: ecoPompage.dateDeclaration || aujourdhuiIso,
+        mois: moisCalendrier,
+        moisProvenance: ecoPompage.confirme
+          ? { origine: 'saisie', detail: null, date: ecoPompage.dateDeclaration || aujourdhuiIso }
+          : { origine: 'calculee', detail: 'calendrier_culture', date: ecoPompage.dateDeclaration || aujourdhuiIso },
+      }
+    : { ...ecoPompage, dateDeclaration: ecoPompage.dateDeclaration || aujourdhuiIso }
+  // AGR212 — la garde de cohérence (AGR204) vient de l'aperçu SERVEUR de
+  // l'économie : la case « je confirme ce chiffre » n'apparaît que si elle
+  // avertit.
+  const saisiesEcoApercu = modeInstallation === 'agricole'
+    ? saisiesEconomiePompage(ecoAvecCalendrier) : null
+  const economiePompage = useEconomiePompagePreview(
+    saisiesEcoApercu && apercuPompage?.donnees
+      ? { saisies: saisiesEcoApercu, sortie_etude_pompage: apercuPompage.donnees, lignes: [] }
+      : null)
+  const coherenceAvertit = (economiePompage?.coherence || []).length > 0
 
   // U3COMPOSE (26/08/2026) — composition LOCALE (JavaScript), CONSERVÉE : le
   // chemin agricole (déjà séparé, ci-dessous) reste local car aucun dry-run
@@ -3507,9 +3543,10 @@ export default function DevisGenerator({
     },
     farm: {
       irrigation: farmIrrigation, region: farmRegion, crop: farmCrop,
-      surfaceHa: farmSurfaceHa, fuel: farmFuel, fuelSpend: farmFuelSpendAnnual,
+      surfaceHa: farmSurfaceHa,
       hmtStatic: farmHmtStatic, hmtDrawdown: farmHmtDrawdown,
     },
+    saisiesEco: ecoAvecCalendrier,
   })
   const blocEtudeMarche = () => etatVersEcritures(etatEcran(), {
     etude: modeInstallation === 'industriel' ? etudeIndustrielle : etudeCommerciale,
@@ -3880,14 +3917,6 @@ export default function DevisGenerator({
   // (Dimensionnement pompage : déclaré plus haut, avant handleAutoFill —
   // eslint no-use-before-define, recalage L-2OPT 25/08.)
 
-  // ── Données d'exploitation guidées → dépense carburant ANNUELLE + besoin eau ──
-  // La dépense saisie au mois est ramenée à l'année (clé fuel_spend_current en
-  // MAD/AN). farmFuelSpendAnnual reste '' si rien n'est saisi (champ optionnel).
-  const farmFuelSpendAnnual = (() => {
-    const v = parseFloat(farmFuelSpend)
-    if (!Number.isFinite(v) || v <= 0) return ''
-    return farmFuelPeriod === 'mois' ? Math.round(v * 12) : Math.round(v)
-  })()
 
   // AGR129 — le besoin en eau et l'eau livrée viennent de l'aperçu SERVEUR
   // (`apercuPompage`, AGR127) : plus de besoin FAO-56 calculé dans le
@@ -4450,10 +4479,9 @@ export default function DevisGenerator({
           farmCrop={farmCrop} setFarmCrop={setFarmCrop}
           farmRegion={farmRegion} setFarmRegion={setFarmRegion}
           farmIrrigation={farmIrrigation} setFarmIrrigation={setFarmIrrigation}
-          farmFuel={farmFuel} setFarmFuel={setFarmFuel}
-          farmFuelSpend={farmFuelSpend} setFarmFuelSpend={setFarmFuelSpend}
-          farmFuelPeriod={farmFuelPeriod} setFarmFuelPeriod={setFarmFuelPeriod}
-          farmFuelSpendAnnual={farmFuelSpendAnnual}
+          ecoPompage={ecoPompage} majEco={majEco}
+          reperesEnergie={reperesEnergie} moisCalendrier={moisCalendrier}
+          coherenceAvertit={coherenceAvertit}
           farmHmtStatic={farmHmtStatic} setFarmHmtStatic={setFarmHmtStatic}
           farmHmtDrawdown={farmHmtDrawdown} setFarmHmtDrawdown={setFarmHmtDrawdown}
           pompageSaisie={pompageSaisie} majPompage={majPompage}

@@ -246,6 +246,117 @@ function ResultatPompage({ donnees, saisie, majPompage }) {
   )
 }
 
+// AGR212 — repère daté et SOURCÉ affiché À CÔTÉ du champ prix (AGR208) :
+// une simple indication, jamais recopiée dans le champ (Q17).
+const REPERE_PAR_ENERGIE = { butane: 'butane_12kg_detail', diesel: 'gasoil_litre' }
+
+function EconomieDeclaree({ eco, majEco, reperes, moisCalendrier, coherenceAvertit }) {
+  const e = eco || {}
+  const maj = (cle) => (v) => majEco?.(cle, v)
+  const carburant = e.energie === 'butane' || e.energie === 'diesel'
+  const repere = (reperes || {})[REPERE_PAR_ENERGIE[e.energie]]
+  const repereSource = repere && repere.valeur != null && String(repere.source || '').trim()
+  const coches = new Set(Array.isArray(e.mois) ? e.mois : (moisCalendrier || []))
+  const basculerMois = (m) => {
+    const suivant = new Set(coches)
+    if (suivant.has(m)) suivant.delete(m); else suivant.add(m)
+    majEco?.('mois', [...suivant].sort((x, y) => x - y))
+    majEco?.('moisProvenance', null)
+  }
+  const aujourdhui = new Date().toISOString().slice(0, 10)
+  return (
+    <div className="mt-4 grid gap-3 rounded-lg border p-3" data-testid="bloc-economie-declaree">
+      <span className="font-display text-sm font-semibold">Énergie actuelle et dépense déclarée</span>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-1.5">
+          <Label htmlFor="gen-farm-fuel">Énergie actuelle</Label>
+          <select id="gen-farm-fuel" value={e.energie || ''}
+                  onChange={ev => majEco?.('energie', ev.target.value)}
+                  className="h-9 rounded-md border border-input bg-card px-2 text-sm">
+            <option value="">Non renseignée</option>
+            <option value="aucune">Aucune (nouveau forage)</option>
+            <option value="butane">Butane</option>
+            <option value="diesel">Gasoil</option>
+            <option value="electrique">Réseau électrique</option>
+          </select>
+        </div>
+        <ChampTexte id="gen-eco-date" label="Date de déclaration" type="date"
+                    valeur={e.dateDeclaration || aujourdhui} onChange={maj('dateDeclaration')} />
+        <ChampNombre id="gen-eco-entretien" label="Entretien et réparations payés (MAD / an)"
+                     valeur={e.entretien} onChange={maj('entretien')} />
+      </div>
+      {carburant && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-testid="bloc-consommation">
+          <ChampNombre id="gen-eco-quantite" label="Consommation (quantité)"
+                       valeur={e.quantite} onChange={maj('quantite')} />
+          <ChoixNatif id="gen-eco-unite" label="Unité" valeur={e.unite}
+                      onChange={maj('unite')}
+                      options={[['bouteille_12kg', 'Bouteille 12 kg'], ['litre', 'Litre']]} />
+          <ChoixNatif id="gen-eco-periode" label="Période" valeur={e.periode}
+                      onChange={maj('periode')}
+                      options={[['jour_irrigation', "Par jour d'irrigation"],
+                        ['semaine', 'Par semaine'], ['mois', 'Par mois']]} />
+          {e.periode === 'jour_irrigation' && (
+            <ChampNombre id="gen-eco-jours" label="Jours d'irrigation par semaine"
+                         valeur={e.joursSemaine} onChange={maj('joursSemaine')} />
+          )}
+          <div className="grid gap-1.5">
+            <ChampNombre id="gen-eco-prix"
+                         label={e.unite === 'litre' ? 'Prix payé (DH / L)' : 'Prix payé (DH / bouteille)'}
+                         valeur={e.prix} onChange={maj('prix')} />
+            {repereSource && (
+              <p className="text-xs text-muted-foreground" data-testid="repere-energie">
+                Repère : {fmtNum(repere.valeur)} DH — {repere.source}
+                {repere.releve_le ? ` (relevé le ${repere.releve_le})` : ''}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+      {e.energie === 'electrique' && (
+        <div className="grid gap-4 sm:grid-cols-3" data-testid="bloc-facture-reseau">
+          <ChampNombre id="gen-eco-facture" label="Montant de la facture (MAD)"
+                       valeur={e.factureMontant} onChange={maj('factureMontant')} />
+          <ChoixNatif id="gen-eco-facture-periodicite" label="Périodicité"
+                      valeur={e.facturePeriodicite} onChange={maj('facturePeriodicite')}
+                      options={[['mensuelle', 'Mensuelle'], ['bimestrielle', 'Bimestrielle']]} />
+          <ChampNombre id="gen-eco-part-fixe" label="Part fixe (MAD / mois)"
+                       valeur={e.facturePartFixe} onChange={maj('facturePartFixe')} />
+        </div>
+      )}
+      <fieldset className="grid gap-1" data-testid="mois-irrigation">
+        <legend className="text-sm">
+          Mois d'irrigation
+          {!Array.isArray(e.mois) && (moisCalendrier || []).length > 0 && !e.confirme
+            ? ' — pré-cochés par le calendrier de la culture' : ''}
+        </legend>
+        <div className="flex flex-wrap gap-2">
+          {MOIS.map(([v, l]) => (
+            <label key={v} className="flex items-center gap-1 text-xs">
+              <input type="checkbox" data-testid={`mois-irr-${v}`}
+                     checked={coches.has(Number(v))}
+                     onChange={() => basculerMois(Number(v))} />
+              {l.slice(0, 3)}
+            </label>
+          ))}
+        </div>
+        <label className="flex items-center gap-2 text-xs">
+          <input type="checkbox" checked={Boolean(e.confirme)}
+                 onChange={ev => majEco?.('confirme', ev.target.checked)} />
+          Mois confirmés avec le client
+        </label>
+      </fieldset>
+      {coherenceAvertit && (
+        <label className="flex items-center gap-2 text-sm text-warning" data-testid="coherence-confirmee">
+          <input type="checkbox" checked={Boolean(e.coherenceConfirmee)}
+                 onChange={ev => majEco?.('coherenceConfirmee', ev.target.checked)} />
+          Je confirme ce chiffre avec le client
+        </label>
+      )}
+    </div>
+  )
+}
+
 const MOIS = [['1', 'Janvier'], ['2', 'Février'], ['3', 'Mars'], ['4', 'Avril'],
   ['5', 'Mai'], ['6', 'Juin'], ['7', 'Juillet'], ['8', 'Août'],
   ['9', 'Septembre'], ['10', 'Octobre'], ['11', 'Novembre'], ['12', 'Décembre']]
@@ -263,8 +374,8 @@ export default function PanneauAgricole({
   // ── Votre exploitation (toutes optionnelles) ──
   farmSurfaceHa, setFarmSurfaceHa, farmCrop, setFarmCrop,
   farmRegion, setFarmRegion, farmIrrigation, setFarmIrrigation,
-  farmFuel, setFarmFuel, farmFuelSpend, setFarmFuelSpend,
-  farmFuelPeriod, setFarmFuelPeriod, farmFuelSpendAnnual,
+  // ── AGR212 — économie DÉCLARÉE ──
+  ecoPompage, majEco, reperesEnergie, moisCalendrier, coherenceAvertit,
   farmHmtStatic, setFarmHmtStatic, farmHmtDrawdown, setFarmHmtDrawdown,
   // ── AGR128 — blocs nouveaux (cas de pompe, besoin, point d'eau, HMT) ──
   pompageSaisie, majPompage, apercuPompage,
@@ -551,42 +662,6 @@ export default function PanneauAgricole({
               </Select>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="gen-farm-fuel">Énergie actuelle</Label>
-              <Select value={farmFuel} onValueChange={setFarmFuel}>
-                <SelectTrigger id="gen-farm-fuel"><SelectValue placeholder="Non renseignée" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="butane">Butane (gaz)</SelectItem>
-                  <SelectItem value="diesel">Diesel (gasoil)</SelectItem>
-                  <SelectItem value="none">Aucune / nouveau forage</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="gen-farm-fuelspend">
-                Dépense carburant actuelle (MAD) — optionnel
-              </Label>
-              <div className="flex gap-2">
-                <Input id="gen-farm-fuelspend" type="number" min="0" step="any"
-                       className="flex-1"
-                       placeholder="ex: 2000" value={farmFuelSpend}
-                       onChange={e => setFarmFuelSpend(e.target.value)} />
-                <Select value={farmFuelPeriod} onValueChange={setFarmFuelPeriod}>
-                  <SelectTrigger id="gen-farm-fuelperiod" className="w-28">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="mois">/ mois</SelectItem>
-                    <SelectItem value="an">/ an</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {farmFuelSpendAnnual !== '' && farmFuelPeriod === 'mois' && (
-                <p className="text-xs text-muted-foreground">
-                  ≈ {fmtNum(farmFuelSpendAnnual)} MAD / an
-                </p>
-              )}
-            </div>
-            <div className="grid gap-1.5">
               <Label htmlFor="gen-farm-static">
                 Niveau statique de l'eau (m) — optionnel
               </Label>
@@ -605,6 +680,10 @@ export default function PanneauAgricole({
           </div>
 
         </div>
+
+        <EconomieDeclaree eco={ecoPompage} majEco={majEco}
+                          reperes={reperesEnergie} moisCalendrier={moisCalendrier}
+                          coherenceAvertit={coherenceAvertit} />
 
         {/* ── AGR129 — le résultat SERVEUR en direct (aperçu AGR127) ── */}
         {apercuPompage?.chargement && (

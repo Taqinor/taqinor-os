@@ -66,3 +66,32 @@ export function useEtudePompagePreview(corps) {
 
   return { donnees, chargement, erreur, corpsServi }
 }
+
+/** AGR212 — l'aperçu de l'économie DÉCLARÉE (AGR206, aucune écriture). */
+export const postEconomiePompagePreview = (body, config = {}) =>
+  api.post('/ventes/economie-pompage/preview/', body, config)
+
+/**
+ * AGR212 — même patron que `useEtudePompagePreview` : sert la garde de
+ * cohérence (AGR204) au générateur. `corps` null = aucun appel.
+ */
+export function useEconomiePompagePreview(corps) {
+  const corpsKey = corps ? JSON.stringify(corps) : null
+  const debouncedKey = useDebouncedValue(corpsKey, 500)
+  const [donnees, setDonnees] = useState(null)
+  useEffect(() => {
+    if (!debouncedKey) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète l'absence de corps
+      setDonnees(null)
+      return undefined
+    }
+    let cancelled = false
+    const controller = new AbortController()
+    setDonnees(null)
+    postEconomiePompagePreview(JSON.parse(debouncedKey), { signal: controller.signal })
+      .then((res) => { if (!cancelled) setDonnees(res.data) })
+      .catch(() => {})
+    return () => { cancelled = true; controller.abort() }
+  }, [debouncedKey])
+  return donnees
+}

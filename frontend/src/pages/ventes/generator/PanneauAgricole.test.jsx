@@ -12,6 +12,7 @@ import { MemoryRouter } from 'react-router-dom'
 import authReducer from '../../../features/auth/store/authSlice'
 import ventesReducer from '../../../features/ventes/store/ventesSlice'
 import PanneauAgricole from './PanneauAgricole'
+import { ECO_POMPAGE_VIDE } from '../../../features/ventes/quote/etudeMarcheBloc'
 import {
   POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie,
   construireCorpsPompage, manquantsPompage,
@@ -69,9 +70,9 @@ const PROPS_VIDES = {
   setPompeProfondeur: vi.fn(), pompeDistance: '', setPompeDistance: vi.fn(),
   farmSurfaceHa: '', setFarmSurfaceHa: vi.fn(), farmCrop: '', setFarmCrop: vi.fn(),
   farmRegion: '', setFarmRegion: vi.fn(), farmIrrigation: '',
-  setFarmIrrigation: vi.fn(), farmFuel: '', setFarmFuel: vi.fn(),
-  farmFuelSpend: '', setFarmFuelSpend: vi.fn(), farmFuelPeriod: 'mois',
-  setFarmFuelPeriod: vi.fn(), farmFuelSpendAnnual: '',
+  setFarmIrrigation: vi.fn(),
+  ecoPompage: ECO_POMPAGE_VIDE, majEco: vi.fn(), reperesEnergie: {},
+  moisCalendrier: [], coherenceAvertit: false,
   farmHmtStatic: '', setFarmHmtStatic: vi.fn(), farmHmtDrawdown: '',
   setFarmHmtDrawdown: vi.fn(),
   pompageSaisie: POMPAGE_SAISIE_VIDE, majPompage: vi.fn(), apercuPompage: null,
@@ -244,5 +245,46 @@ describe('résultat serveur (AGR129)', () => {
   it('aucune valeur affichée sans réponse serveur', () => {
     render(<PanneauAgricole {...PROPS_VIDES} apercuPompage={null} />)
     expect(screen.queryByTestId('resultat-pompage')).toBeNull()
+  })
+})
+
+// ── AGR212 — économie déclarée ─────────────────────────────────────────────
+describe('économie déclarée (AGR212)', () => {
+  const REPERES = { gasoil_litre: { valeur: 11.4, source: 'Relevé station (test)', releve_le: '2026-09-01' } }
+
+  it('repère affiché à côté du champ, champ prix VIDE', () => {
+    render(<PanneauAgricole {...PROPS_VIDES} reperesEnergie={REPERES}
+      ecoPompage={{ ...ECO_POMPAGE_VIDE, energie: 'diesel', unite: 'litre' }} />)
+    expect(screen.getByTestId('repere-energie').textContent).toContain('Relevé station (test)')
+    expect(document.getElementById('gen-eco-prix').value).toBe('')
+  })
+
+  it('2 000 / mois : jamais « 24 000 » affiché (plus de × 12)', () => {
+    render(<PanneauAgricole {...PROPS_VIDES}
+      ecoPompage={{ ...ECO_POMPAGE_VIDE, energie: 'diesel', quantite: '2000', periode: 'mois',
+        mois: [5, 6, 7, 8] }} />)
+    const texte = screen.getByTestId('bloc-economie-declaree').textContent
+    expect(texte.includes('24 000') || texte.includes('24000') || texte.includes('24\u202f000')).toBe(false)
+  })
+
+  it('mois pré-cochés par le calendrier ; « je confirme » seulement si la garde avertit', () => {
+    const majEco = vi.fn()
+    const { rerender } = render(<PanneauAgricole {...PROPS_VIDES} majEco={majEco}
+      moisCalendrier={[4, 5, 6]} />)
+    expect(screen.getByTestId('mois-irr-5')).toBeChecked()
+    expect(screen.getByTestId('mois-irr-1')).not.toBeChecked()
+    expect(screen.queryByTestId('coherence-confirmee')).toBeNull()
+    fireEvent.click(screen.getByTestId('mois-irr-5'))
+    expect(majEco).toHaveBeenCalledWith('mois', [4, 6])
+    rerender(<PanneauAgricole {...PROPS_VIDES} coherenceAvertit />)
+    expect(screen.getByTestId('coherence-confirmee')).toBeTruthy()
+  })
+
+  it('tous les champs nombre gardent step="any"', () => {
+    render(<PanneauAgricole {...PROPS_VIDES}
+      ecoPompage={{ ...ECO_POMPAGE_VIDE, energie: 'electrique' }} />)
+    for (const input of document.querySelectorAll('input[type="number"]')) {
+      expect(input.getAttribute('step')).toBe('any')
+    }
   })
 })
