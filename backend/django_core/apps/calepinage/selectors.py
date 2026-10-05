@@ -460,6 +460,67 @@ def calepinage_retenu_pour_devis(devis_id, company):
     }
 
 
+def entree_electrique_du_devis(devis_id, company):
+    """ACAL165 (C-ACAL-061) — les grandeurs de SITE du calepinage lié à ce
+    devis, telles que l'onglet Verdict du calepinage les emploie, pour l'étude
+    électrique du devis (``apps.ventes.electrical_service``).
+
+    Rend ``None`` sans calepinage lié, sinon ``{calepinage_id, temperatures,
+    dc_m, ac_m, regime}`` :
+
+    * ``temperatures`` — ``{froid_c, chaud_c, source}`` de
+      ``services.electrique.temperatures_pour_calepinage`` (saisie, TMY du pin,
+      chaud de CELLULE par la fiche module — ACAL164), la MÊME lecture que le
+      Verdict ; ``None`` quand le calepinage n'a aucune source établie (les
+      valeurs de repli du noyau ne sont pas une donnée du site) ou que la
+      saisie est incohérente ;
+    * ``dc_m`` / ``ac_m`` / ``regime`` — UNIQUEMENT les valeurs SAISIES de
+      l'entrée électrique (D05-T09) ; ``None`` sinon : le calepinage n'invente
+      jamais une longueur ni un régime.
+
+    Lecture PURE, bornée société, ne lève jamais.
+    """
+    calepinage = calepinage_du_devis(devis_id, company)
+    if calepinage is None:
+        return None
+    from .services.electrique import (
+        entree_stockee, resoudre_materiel, temperatures_pour_calepinage)
+
+    donnees = entree_stockee(calepinage)
+    temperatures = None
+    try:
+        try:
+            materiel = resoudre_materiel(company, donnees,
+                                         calepinage=calepinage)
+            module_specs = (materiel or {}).get('module') or None
+        except Exception:  # noqa: BLE001 — sans fiche, pas de NOCT
+            module_specs = None
+        site = temperatures_pour_calepinage(
+            calepinage, saisie=donnees, module_specs=module_specs)
+        if site.source is not None:
+            temperatures = {'froid_c': float(site.froid_c),
+                            'chaud_c': float(site.chaud_c),
+                            'source': site.source}
+    except Exception:  # noqa: BLE001 — saisie incohérente : pas de source
+        temperatures = None
+
+    def _longueur(cle):
+        try:
+            valeur = float(donnees.get(cle))
+        except (TypeError, ValueError):
+            return None
+        return valeur if valeur > 0 else None
+
+    regime = str(donnees.get('regime') or '').strip().upper() or None
+    return {
+        'calepinage_id': calepinage.pk,
+        'temperatures': temperatures,
+        'dc_m': _longueur('dc_m'),
+        'ac_m': _longueur('ac_m'),
+        'regime': regime,
+    }
+
+
 #: CAL185 — les clés de la nomenclature d'une variante retenue. TOUJOURS
 #: toutes présentes : un appelant n'a jamais à deviner si une clé existe.
 CLES_NOMENCLATURE_RETENUE = ('calepinage', 'variante', 'nom', 'layout',

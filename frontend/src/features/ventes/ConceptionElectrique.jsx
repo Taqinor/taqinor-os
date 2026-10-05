@@ -39,6 +39,21 @@ function defaultDcM(nStrings) {
   return Math.max(DC_M_MINIMUM, (nStrings || 0) * DC_M_PAR_CHAINE)
 }
 
+// ACAL165 — provenance des grandeurs de site de l'étude (`design.source_entree`,
+// contrat `conception_electrique.json`) : surcharge du devis, calepinage lié,
+// ou forfait du noyau. Une étude rangée avant ACAL165 ne la porte pas : rien
+// n'est affiché plutôt qu'une provenance supposée.
+const LIBELLES_SOURCE = {
+  calepinage: 'calepinage lié',
+  surcharge: 'saisie sur ce devis',
+  defaut: 'forfait par défaut',
+}
+const GRANDEURS_SOURCE = [
+  ['temperatures', 'Températures'],
+  ['longueurs', 'Longueurs de liaison'],
+  ['regime', 'Régime de neutre'],
+]
+
 export default function ConceptionElectrique({ devisId }) {
   const [design, setDesign] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -91,9 +106,17 @@ export default function ConceptionElectrique({ devisId }) {
     e.preventDefault()
     setRecalculating(true)
     try {
+      // ACAL165 — des longueurs LUES (calepinage lié ou forfait) et non
+      // retouchées ne sont pas renvoyées comme une surcharge : le serveur
+      // garde leur provenance. Une surcharge déjà posée est toujours renvoyée.
+      const servies = design?.parametres || {}
+      const dejaSurcharge = design?.source_entree?.longueurs === 'surcharge'
+      const inchangees = !dejaSurcharge
+        && dcM !== '' && Number(dcM) === servies.dc_m
+        && acM !== '' && Number(acM) === servies.ac_m
       const overrides = {
-        dc_m: dcM === '' ? undefined : Number(dcM),
-        ac_m: acM === '' ? undefined : Number(acM),
+        dc_m: dcM === '' || inchangees ? undefined : Number(dcM),
+        ac_m: acM === '' || inchangees ? undefined : Number(acM),
         phases: Number(phases),
       }
       const res = await ventesApi.recalculerConceptionElectrique(devisId, overrides)
@@ -131,6 +154,7 @@ export default function ConceptionElectrique({ devisId }) {
 
   const chaines = design.chaines || []
   const conformite = design.conformite || { conforme: true, bloquants: [], alertes: [] }
+  const sourceEntree = design.source_entree || null
 
   return (
     <div className="space-y-4">
@@ -165,6 +189,18 @@ export default function ConceptionElectrique({ devisId }) {
           </ul>
         )}
       </div>
+
+      {/* ACAL165 — d'où viennent les grandeurs de site de l'étude. */}
+      {sourceEntree && (
+        <p className="text-xs text-muted-foreground" data-testid="conception-source-entree">
+          {GRANDEURS_SOURCE.map(([cle, libelle], i) => (
+            <span key={cle}>
+              {i > 0 && ' · '}
+              {libelle} : {LIBELLES_SOURCE[sourceEntree[cle]] || 'non précisé'}
+            </span>
+          ))}
+        </p>
+      )}
 
       {/* Chaînes par MPPT */}
       <div className="overflow-x-auto">

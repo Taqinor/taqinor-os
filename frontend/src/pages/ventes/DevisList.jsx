@@ -673,6 +673,26 @@ export default function DevisList() {
     }
   }
 
+  // ADOC131 (D-ADOC-4) — « Révoquer le lien client » d'un devis accepté :
+  // le lien public (proposition + suivi de chantier) répond 404 aussitôt.
+  const handleRevoquerLienPublic = async (d) => {
+    const ok = await confirm({
+      title: `Révoquer le lien client de « ${d.reference} » ?`,
+      description: 'Le client ne pourra plus ouvrir sa proposition ni le suivi de son chantier avec ce lien.',
+      confirmLabel: 'Révoquer',
+      destructive: true,
+    })
+    if (!ok) return
+    try {
+      const res = await ventesApi.revoquerLienPublic(d.id)
+      toast.success(res.data?.revoques > 0
+        ? `Lien client de ${d.reference} révoqué.`
+        : `Aucun lien client actif pour ${d.reference}.`)
+    } catch (err) {
+      toast.error(frenchError(err, 'Révocation du lien impossible.'))
+    }
+  }
+
   const [facturerTarget, setFacturerTarget] = useState(null)
   const handleGenererFacture = async (d) => {
     setFactureGenId(d.id)
@@ -765,7 +785,7 @@ export default function DevisList() {
     deletingId, statutActionId, convertingId, chantierBusy, factureGenId, setFacturerTarget,
     openEdit, openVarianteModal, openGammeModal, handleDelete,
     openAcceptModal, openRefusModal, handleConvertBC,
-    handleChantier, handleGenererFacture,
+    handleChantier, handleGenererFacture, handleRevoquerLienPublic,
   }
 
   // ── ARC49 — Rangée d'en-tête du tableau (8 colonnes), partagée par le cas

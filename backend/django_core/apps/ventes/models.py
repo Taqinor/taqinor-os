@@ -1204,6 +1204,20 @@ class ShareLink(models.Model):
         default=_default_share_token, editable=False,
         verbose_name='Jeton aperçu interne (sans notification)')
 
+    # ── ADOC131 (D-ADOC-4) — suivi post-signature vivant jusqu'à la réception
+    # du chantier + 90 jours, et révocable. ``suivi_prolonge_le`` est posé à
+    # l'acceptation (``domain.suivi.ouvrir_suivi``) : tant qu'il est non nul,
+    # le lien reste valide au-delà de ``expires_at`` (chantier en cours, durée
+    # inconnue). À la réception (``core.events.chantier_receptionne``), il
+    # repasse à null et ``expires_at`` reçoit l'échéance réception + 90 j.
+    # ``revoque_le`` coupe le lien IMMÉDIATEMENT (suivi ET proposition, même
+    # jeton). Deux champs nullables : additifs, aucun lien existant touché.
+    suivi_prolonge_le = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Suivi prolongé depuis (acceptation)')
+    revoque_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Lien révoqué le')
+
     def jeton_interne_effectif(self):
         """L-INTPREV — jeton d'aperçu interne, généré paresseusement si ce
         lien n'en porte pas encore (garde défensive : normalement déjà posé
@@ -1244,7 +1258,12 @@ class ShareLink(models.Model):
 
     @property
     def is_valid(self):
-        return self.expires_at > timezone.now()
+        # ADOC131 — révoqué ⇒ jamais valide ; prolongé (devis accepté, chantier
+        # pas encore réceptionné) ⇒ valide quelle que soit ``expires_at``.
+        if self.revoque_le is not None:
+            return False
+        return (self.expires_at > timezone.now()
+                or self.suivi_prolonge_le is not None)
 
     @property
     def engagement_summary(self):
@@ -1291,9 +1310,15 @@ class ShareLink(models.Model):
 
     @classmethod
     def for_devis(cls, devis):
-        """Réutilise un lien encore valide pour ce devis, sinon en crée un."""
+        """Réutilise un lien encore valide pour ce devis, sinon en crée un.
+
+        ADOC131 — même règle que ``is_valid`` : un lien RÉVOQUÉ n'est jamais
+        réutilisé (un nouveau jeton est créé), un lien PROLONGÉ par le suivi
+        l'est même passé ``expires_at``."""
         link = cls.objects.filter(
-            devis=devis, expires_at__gt=timezone.now()
+            models.Q(expires_at__gt=timezone.now())
+            | models.Q(suivi_prolonge_le__isnull=False),
+            devis=devis, revoque_le__isnull=True,
         ).order_by('-expires_at').first()
         return link or cls.objects.create(company=devis.company, devis=devis)
 

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4788, operations: 7588, components: 2200}
+counts: {paths: 4790, operations: 7590, components: 2200}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -3583,6 +3583,7 @@ operations:
 - post /api/django/ventes/devis/{id}/renouveler/ -> django_ventes_devis_renouveler_create
 - post /api/django/ventes/devis/{id}/replace-lines/ -> django_ventes_devis_replace_lines_create
 - post /api/django/ventes/devis/{id}/reviser/ -> django_ventes_devis_reviser_create
+- post /api/django/ventes/devis/{id}/revoquer-lien-public/ -> django_ventes_devis_revoquer_lien_public_create
 - post /api/django/ventes/devis/{id}/roof-image/ -> django_ventes_devis_roof_image_create
 - post /api/django/ventes/devis/{id}/save-preset/ -> django_ventes_devis_save_preset_create
 - get /api/django/ventes/devis/{id}/schema-unifilaire/ -> django_ventes_devis_schema_unifilaire_retrieve
@@ -7381,6 +7382,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/renouveler/ -> v1_ventes_devis_renouveler_create
 - post /api/v1/ventes/devis/{id}/replace-lines/ -> v1_ventes_devis_replace_lines_create
 - post /api/v1/ventes/devis/{id}/reviser/ -> v1_ventes_devis_reviser_create
+- post /api/v1/ventes/devis/{id}/revoquer-lien-public/ -> v1_ventes_devis_revoquer_lien_public_create
 - post /api/v1/ventes/devis/{id}/roof-image/ -> v1_ventes_devis_roof_image_create
 - post /api/v1/ventes/devis/{id}/save-preset/ -> v1_ventes_devis_save_preset_create
 - get /api/v1/ventes/devis/{id}/schema-unifilaire/ -> v1_ventes_devis_schema_unifilaire_retrieve
