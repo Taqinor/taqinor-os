@@ -87,19 +87,22 @@ class TestExtractRoofConfigGeometrie(SimpleTestCase):
         self.assertAlmostEqual(cfg['kwc'], 11.0, places=3)
         self.assertAlmostEqual(cfg['surface_m2'], 42.0, places=2)
 
-    def test_neededpanels_reste_le_dernier_recours(self):
-        """Ni ``result`` ni ``geometry`` → l'ancien repli tient toujours."""
+    def test_neededpanels_n_est_plus_un_compte_pose(self):
+        """ACAL59 (C-ACAL-118) — ni ``result`` ni ``geometry`` : le pan n'est
+        PAS pavé. ``neededPanels`` est le compte SOUHAITÉ, jamais le compte
+        POSÉ : l'ancien repli (14) est retiré, le pan compte 0."""
         zone = _zone_v1('z1', kwc=5.5, count=10, needed=14)
         zone.pop('geometry')
         cfg = extract_roof_config({'zones': [zone]})
-        self.assertEqual(cfg['nb_panneaux'], 14)
+        self.assertEqual(cfg['nb_panneaux'], 0)
         self.assertEqual(cfg['kwc'], 0.0)
 
     def test_geometry_non_dict_est_ignoree_sans_exception(self):
         zone = _zone_v1('z1', kwc=5.5, count=10, needed=14)
         zone['geometry'] = 'corrompu'
         cfg = extract_roof_config({'zones': [zone]})
-        self.assertEqual(cfg['nb_panneaux'], 14)
+        # ACAL59 — sans géométrie lisible, aucun compte posé (jamais 14).
+        self.assertEqual(cfg['nb_panneaux'], 0)
 
 
 class TestBuildDevisDepuisBlobV1(TestCase):
