@@ -738,6 +738,10 @@ _LIBELLES_SEGMENT = {
 }
 
 
+#: CIQ409 — segments pro (l'industriel d'abord : il l'emporte).
+_SEGMENTS_PRO = ('industriel', 'commercial')
+
+
 def _message_incoherence(segment_lead, mode_devis):
     cible = _LIBELLES_SEGMENT.get(mode_devis, mode_devis)
     if segment_lead:
@@ -754,16 +758,26 @@ def incoherence_segment(type_lead, devis):
     [{id, reference}], message}`` : le lead porte au moins un devis agricole
     alors que son type n'est pas « agricole » (vide compris) ; ou, à
     l'inverse, le lead est agricole et TOUS ses devis sont résidentiels.
-    Fonction PURE sur la lecture mince ``devis`` de ventes ; elle n'écrit
+    CIQ409 (contrat ``lead_pro.json``) étend la règle au C&I : un devis
+    commercial/industriel sur un lead qui n'est ni l'un ni l'autre, ou un
+    lead pro dont tous les devis sont résidentiels. Fonction PURE sur la lecture mince ``devis`` de ventes ; elle n'écrit
     rien — le commercial change le type à la main."""
     type_lead = type_lead or ''
     par_mode = {}
     for d in devis or ():
         par_mode.setdefault(d.get('mode_installation') or '', []).append(d)
+    modes_pro = [m for m in _SEGMENTS_PRO if par_mode.get(m)]
     mode = None
     if type_lead != 'agricole' and par_mode.get('agricole'):
         mode = 'agricole'
-    elif type_lead == 'agricole' and set(par_mode) == {'residentiel'}:
+    elif type_lead not in _SEGMENTS_PRO and modes_pro:
+        # CIQ409 — un devis commercial/industriel sur un lead qui n'est ni
+        # l'un ni l'autre ; l'industriel l'emporte s'il y a les deux.
+        mode = modes_pro[0]
+    elif (type_lead in ('agricole',) + _SEGMENTS_PRO
+          and set(par_mode) == {'residentiel'}):
+        # AGR405 / CIQ409 — l'inverse : un lead agricole ou pro dont TOUS
+        # les devis sont résidentiels.
         mode = 'residentiel'
     if mode is None:
         return None

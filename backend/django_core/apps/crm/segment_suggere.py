@@ -20,15 +20,43 @@ import re
 MOTS_AGRICOLES = (
     'pompe', 'pompes', 'pompage', 'puits', 'forage', 'forages', 'ferme',
     'fermes', 'irrigation', 'irriguer',
-    'pump', 'pumps', 'pumping', 'well', 'wells', 'borehole', 'boreholes',
-    'farm', 'farms',
+    # « well » est écarté : trop courant en anglais (« as well »).
+    'pump', 'pumps', 'pumping', 'borehole', 'boreholes', 'farm', 'farms',
     'مضخة', 'المضخة', 'بئر', 'البئر', 'الآبار', 'ثقب', 'الثقب', 'ضيعة',
     'الضيعة', 'مزرعة', 'المزرعة', 'سقي', 'السقي', 'الري',
 )
 
+#: CIQ409 — mots d'industrie (ils l'emportent sur un mot de commerce).
+MOTS_INDUSTRIELS = (
+    'usine', 'usines', 'industrie', 'industriel', 'industrielle', 'atelier',
+    'ateliers', 'hangar', 'hangars',
+    'factory', 'factories', 'industry', 'workshop', 'warehouse',
+    'مصنع', 'المصنع', 'معمل', 'المعمل', 'ورشة', 'الورشة',
+)
+
+#: CIQ409 — mots de commerce et de services (accentués ET non accentués :
+#: une note tapée vite perd ses accents).
+MOTS_COMMERCIAUX = (
+    'société', 'societe', 'entreprise', 'hôtel', 'hotel', 'riad',
+    'restaurant', 'café', 'cafe', 'clinique', 'cabinet', 'école', 'ecole',
+    'magasin', 'supermarché', 'supermarche', 'boulangerie', 'hammam',
+    'bureau', 'bureaux',
+    'company', 'clinic', 'school', 'shop', 'store',
+    'supermarket', 'bakery', 'office',
+    'شركة', 'الشركة', 'فندق', 'الفندق', 'رياض', 'مطعم', 'المطعم', 'مقهى',
+    'المقهى', 'مصحة', 'المصحة', 'مدرسة', 'المدرسة', 'محل', 'المحل', 'مخبزة',
+    'المخبزة', 'حمام', 'الحمام',
+)
+
+#: Segments « pro » : jamais de suggestion pro pour un lead déjà typé ainsi.
+SEGMENTS_PRO = ('commercial', 'industriel')
+
 #: Fragment de chemin des pages de pompage (FR/EN/AR : /pompage-solaire,
 #: /en/pompage-solaire, /ar/pompage-solaire).
 PAGE_AGRICOLE = 'pompage'
+
+#: CIQ409 — fragment de chemin de la page pro (/professionnel FR/EN/AR).
+PAGE_PRO = 'professionnel'
 
 #: Champs texte lus, dans l'ordre, avec leur nom dans la raison.
 CHAMPS_TEXTE = (
@@ -45,6 +73,8 @@ def _motif(mots):
 
 
 _MOTIF_AGRICOLE = _motif(MOTS_AGRICOLES)
+_MOTIF_INDUSTRIEL = _motif(MOTS_INDUSTRIELS)
+_MOTIF_COMMERCIAL = _motif(MOTS_COMMERCIAUX)
 
 
 def _texte(lead, champ):
@@ -90,13 +120,56 @@ def _suggestion_agricole(lead):
     return None
 
 
+def _vide(valeur):
+    return valeur is None or (isinstance(valeur, str) and not valeur.strip())
+
+
+def _suggestion_pro(lead):
+    """CIQ409 — commercial ou industriel, dans cet ordre de force : un mot
+    d'industrie l'emporte sur tout ; puis la page /professionnel, un mot de
+    commerce, une raison sociale, et enfin une conso connue SEULEMENT en
+    kWh (``bill_kwh`` sans facture en dirhams ni conso mensuelle)."""
+    trouve = _par_mots(lead, _MOTIF_INDUSTRIEL)
+    if trouve:
+        libelle, mots = trouve
+        return {'valeur': 'industriel',
+                'raison': '%s mentionne %s' % (libelle, _citer(mots))}
+    page = _texte(lead, 'page')
+    if PAGE_PRO in page.lower():
+        return {'valeur': 'commercial',
+                'raison': '1re page %s' % page.strip()}
+    trouve = _par_mots(lead, _MOTIF_COMMERCIAL)
+    if trouve:
+        libelle, mots = trouve
+        return {'valeur': 'commercial',
+                'raison': '%s mentionne %s' % (libelle, _citer(mots))}
+    societe = _texte(lead, 'societe').strip()
+    if societe:
+        return {'valeur': 'commercial',
+                'raison': 'le lead porte une raison sociale (« %s »)'
+                          % societe}
+    if (not _vide(getattr(lead, 'bill_kwh', None))
+            and _vide(getattr(lead, 'facture_hiver', None))
+            and _vide(getattr(lead, 'conso_mensuelle_kwh', None))):
+        return {'valeur': 'commercial',
+                'raison': 'seule une consommation en kWh est connue'}
+    return None
+
+
 def segment_suggere(lead):
     """``None`` ou ``{valeur, raison}`` — lecture seule, jamais écrit.
 
-    Toujours ``None`` quand le type du lead vaut déjà « agricole »."""
+    Le pompage d'abord (AGR406 ; ``None`` pour ce signal quand le type vaut
+    déjà « agricole »), puis le pro (CIQ409 ; jamais proposé à un lead déjà
+    commercial, industriel ou agricole)."""
     if lead is None:
         return None
     type_lead = getattr(lead, 'type_installation', None) or ''
     if type_lead == 'agricole':
         return None
-    return _suggestion_agricole(lead)
+    agricole = _suggestion_agricole(lead)
+    if agricole is not None:
+        return agricole
+    if type_lead in SEGMENTS_PRO:
+        return None
+    return _suggestion_pro(lead)
