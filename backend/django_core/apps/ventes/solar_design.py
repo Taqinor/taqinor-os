@@ -61,6 +61,17 @@ from apps.parametres.tariff import (  # CALX279
     MENTION_INDEXATION_NON_SAISIE as _MENTION_INDEXATION_NON_SAISIE,
 )
 
+# SPL259 — helpers d'hypothèse, d'omission et de série : module FEUILLE
+# ``solar_base`` (stdlib seule), importés ici POUR USAGE par les calculateurs.
+from apps.ventes.solar_base import (
+    _coerce_series,
+    _hypothese,
+    _omission,
+    _omissions_temperatures,
+    _source_defaut,
+    _taux_ou_none,
+)
+
 # ── Paramètres électriques par défaut (module silicium cristallin) ────────────
 # Valeurs marché conservatrices pour un panneau PV mono/poly courant. Tout est
 # surchargeable par l'appelant via le dict ``module``.
@@ -112,57 +123,6 @@ STC_TEMP_C = 25.0          # conditions standard (Voc/Vmp donnés à 25 °C)
 # pour ne rien changer en production (D12).
 DEFAULT_COLD_TEMP_C = -5.0   # température cellule mini de dimensionnement (hiver Maroc montagne)
 DEFAULT_HOT_TEMP_C = 70.0    # température cellule maxi (été, module chaud)
-
-
-# ── CALX286 — hypothèses et omissions PUBLIÉES (jamais un défaut muet) ───────
-# Toute grandeur qui dépend d'un défaut NON SOURCÉ non fourni par l'appelant
-# sort ``None`` avec une entrée ``omissions`` ; tout défaut qui reste appliqué
-# (hors des familles retirées par CALX286) est publié dans ``hypotheses`` avec
-# sa provenance. ``couvre`` liste les clés de sortie (chemins pointés) que
-# l'entrée gouverne — le test de non-invention s'appuie dessus.
-
-def _source_defaut(nom):
-    """Provenance d'un défaut codé du module : son NOM, et le fait qu'il n'est
-    pas sourcé."""
-    return (f"défaut codé du module (apps/ventes/solar_design.py {nom}) — "
-            "valeur non sourcée, appliquée faute de saisie")
-
-
-def _hypothese(cle, valeur, source, couvre=None):
-    """Une hypothèse appliquée, avec sa source et les sorties qu'elle gouverne."""
-    return {"cle": cle, "valeur": valeur, "source": source,
-            "couvre": list(couvre or [cle])}
-
-
-def _omission(cle, motif, couvre=None):
-    """Une grandeur omise faute de saisie, avec son motif et ses dépendantes."""
-    return {"cle": cle, "motif": motif, "couvre": list(couvre or [cle])}
-
-
-def _taux_ou_none(valeur):
-    """Nombre lu dans ``valeur``, ou ``None`` s'il est absent/illisible/NaN."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        v = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return v if v == v else None
-
-
-def _omissions_temperatures(cold_temp_c, hot_temp_c, couvre):
-    """Omissions des températures de dimensionnement non fournies."""
-    omissions = []
-    for cle, valeur, libelle in (("cold_temp_c", cold_temp_c, "minimale"),
-                                 ("hot_temp_c", hot_temp_c, "maximale")):
-        if _taux_ou_none(valeur) is None:
-            omissions.append(_omission(
-                cle,
-                f"omis : température cellule {libelle} de dimensionnement non "
-                f"fournie ({cle}) — la fenêtre de tension en dépend, aucune "
-                "température n'est supposée",
-                couvre))
-    return omissions
 
 
 # Ratio DC/AC maximal toléré pour considérer un onduleur « assez gros ».
@@ -2401,26 +2361,6 @@ _TYPICAL_LOAD_PROFILES = {
     "commercial": TYPICAL_LOAD_PROFILE_COMMERCIAL,
     "tertiaire": TYPICAL_LOAD_PROFILE_COMMERCIAL,
 }
-
-
-def _coerce_series(values):
-    """Convertit un itérable en liste de floats ≥ 0 (illisible/<0 → 0.0).
-
-    Préserve la longueur : chaque case impossible à lire ou négative devient
-    0.0 (jamais de rejet, jamais d'exception). ``None`` → liste vide.
-    """
-    if values is None:
-        return []
-    out = []
-    for v in values:
-        try:
-            f = float(v)
-        except (TypeError, ValueError):
-            f = 0.0
-        if f < 0.0 or f != f:  # négatif ou NaN → 0
-            f = 0.0
-        out.append(f)
-    return out
 
 
 def _scaled_typical_load(total_kwh, profile_key="residential"):

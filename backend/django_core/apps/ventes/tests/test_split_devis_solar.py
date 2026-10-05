@@ -53,7 +53,7 @@ SOURCE = 'apps/ventes/solar_design.py'
 
 #: Une entrée par région : (golden, module cible, SPL qui la déplace, actif).
 DEPLACEMENTS = {
-    'base': ('split_sd_base', 'apps/ventes/solar_base.py', 'SPL259', False),
+    'base': ('split_sd_base', 'apps/ventes/solar_base.py', 'SPL259', True),
     'finance': ('split_sd_finance', 'apps/ventes/solar_finance.py', 'SPL260',
                 False),
     'classif': ('split_sd_classif', 'apps/ventes/solar_classification.py',
