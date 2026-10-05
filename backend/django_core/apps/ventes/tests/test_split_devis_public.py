@@ -53,7 +53,7 @@ GROUPE = ('public_views.py', 'public/*.py')
 DEPLACEMENTS = {
     'noyau': ('split_pv_noyau', 'apps/ventes/public/noyau.py', 'SPL245', True),
     'lecture': ('split_pv_lecture', 'apps/ventes/public/lecture_views.py',
-                'SPL246', False),
+                'SPL246', True),
     'horaire': ('split_pv_horaire', 'apps/ventes/public/payload_horaire.py',
                 'SPL247', False),
     'batterie': ('split_pv_batterie', 'apps/ventes/public/payload_batterie.py',

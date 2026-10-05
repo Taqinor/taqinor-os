@@ -5,11 +5,11 @@ from .public_views import (
     proposal_taille_detail,  # OPTIONS CHARGEABLES (29/08/2026)
     proposal_contact_request, proposal_request_otp,
     proposal_request_otp_lecture, proposal_verify_otp_lecture,  # L-NIV
-    proposal_engagement,  # XSAL16
     proposal_virement_declare,  # QX33be
     proposal_activate_option,  # XSAL5
     suivi_public,  # QX34
 )
+from .public.lecture_views import proposal_engagement  # XSAL16, SPL246
 
 urlpatterns = [
     path('document/<str:token>/', public_document, name='public-document'),

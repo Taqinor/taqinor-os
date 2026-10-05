@@ -30,6 +30,7 @@ from authentication.models import Company
 
 from apps.crm.models import Client
 from apps.ventes import public_views
+from apps.ventes.public import lecture_views
 from apps.ventes.models import Devis, ShareLink
 from apps.ventes.tests.split_golden import fichiers_du_groupe
 
@@ -74,7 +75,7 @@ class PublicDocumentGardeTests(_BaseLienProtege):
         marquée « ouverte »."""
         with mock.patch.object(
                 public_views, '_stamp_view_si_public') as stamp, \
-                mock.patch.object(public_views, '_notify_first_open') as notif:
+                mock.patch.object(lecture_views, '_notify_first_open') as notif:
             reponse = self.anon.get(self._url())
         self.assertEqual(reponse.status_code, 403)
         self.assertEqual(reponse.data['detail'], 'otp_required')

@@ -111,7 +111,7 @@ class TestShareLinkStamping(TestCase):
         PDF puis recharger ne vaut plus 3). Le second GET franchit donc la
         fenêtre — c'est ce que « une deuxième visite » veut dire.
         """
-        from apps.ventes.public_views import REOUVERTURE_FENETRE
+        from apps.ventes.public.lecture_views import REOUVERTURE_FENETRE
         from testkit.time import frozen
 
         debut = timezone.now()
