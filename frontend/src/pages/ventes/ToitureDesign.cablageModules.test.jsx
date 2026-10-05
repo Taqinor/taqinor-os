@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -21,96 +20,23 @@ import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamp
    PACT13 — la charge utile vient de l'exemple COMMITTÉ, jamais d'un objet tapé à la main.
    ========================================================================== */
 
-vi.mock('../../api/axios', () => ({
-  default: { get: vi.fn(), post: vi.fn() },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisDesignContext: vi.fn(),
-    getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    syncDevisLayout: vi.fn(),
-    shareLinkDevis: vi.fn(),
-    whatsappPreviewDevis: vi.fn(),
-    reviserDevis: vi.fn(),
-  },
-}))
-// Le double SUIT la surface RÉELLE de `calepinageApi` (même patron que
-// `ToitureDesign.cablageHooks2.test.jsx`) : une liste écrite à la main laisserait des
-// groupes indéfinis et ferait planter l'écran au lieu de montrer l'assertion.
-vi.mock('../../api/calepinageApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  const espionner = (groupe) => Object.fromEntries(
-    Object.entries(groupe).map(([cle, valeur]) => [
-      cle,
-      typeof valeur === 'function'
-        ? vi.fn(() => Promise.resolve({ data: null }))
-        : valeur,
-    ]),
-  )
-  return {
-    default: Object.fromEntries(
-      Object.entries(actual.default).map(([nom, groupe]) => [
-        nom,
-        (groupe && typeof groupe === 'object') ? espionner(groupe) : groupe,
-      ]),
-    ),
-  }
-})
-vi.mock('../../api/crmApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getLeadPhotoToit: vi.fn(() => Promise.resolve({
-        data: { visite_id: null, url: null, texture_calage: null },
-      })),
-      getRoofFootprint: vi.fn(() => Promise.resolve({ data: {} })),
-    },
-  }
-})
-vi.mock('../../lib/toast', () => ({ toastInfo: vi.fn() }))
 vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }))
 
-const initRoofToolPro8 = vi.fn()
-vi.mock('@roofbuilder', () => ({ initRoofToolPro8: (...a) => initRoofToolPro8(...a) }))
-
+import '../../test/toitureDesignHarnessCalepinage'
+import {
+  initRoofToolPro8, rendreCalepinage, rendreDevis, reinitialiserBootMinimal, stubberEmpreinteOsm,
+} from '../../test/toitureDesignHarness'
 import calepinageApi from '../../api/calepinageApi'
 import ventesApi from '../../api/ventesApi'
-import ToitureDesign from './ToitureDesign'
+
+stubberEmpreinteOsm()
 
 const CTX = exempleContrat('calepinage', 'calepinage_design_context')
 const MODULES = exempleContrat('calepinage', 'calepinage_modules_disponibles')
 
-function rendreCalepinage(id) {
-  return render(
-    <MemoryRouter initialEntries={[`/calepinage/${id}`]}>
-      <Routes>
-        <Route path="/calepinage/:id" element={<ToitureDesign mode="calepinage" />} />
-      </Routes>
-    </MemoryRouter>,
-  )
-}
-
-function rendreDevis(id) {
-  return render(
-    <MemoryRouter initialEntries={[`/devis/${id}/toiture`]}>
-      <Routes>
-        <Route path="/devis/:id/toiture" element={<ToitureDesign mode="devis" />} />
-      </Routes>
-    </MemoryRouter>,
-  )
-}
-
 beforeEach(() => {
   vi.clearAllMocks()
-  delete window.__taqinorRoofBooted
-  initRoofToolPro8.mockImplementation((options) => {
-    options?.onApiReady?.({
-      serializeLayout: vi.fn(() => ({ version: 2, zones: [] })),
-      snapshot: vi.fn(() => null),
-    })
-  })
+  reinitialiserBootMinimal()
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -174,7 +100,7 @@ describe('CALX109 câblage — le catalogue de modules atteint le constructeur',
       },
     })
 
-    rendreDevis(9)
+    rendreDevis(9, '/devis/:id/toiture')
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(calepinageApi.calepinages.modulesDisponibles).not.toHaveBeenCalled()

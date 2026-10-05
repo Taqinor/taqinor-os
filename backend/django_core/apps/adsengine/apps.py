@@ -47,3 +47,11 @@ class AdsengineConfig(AppConfig):
         # que ``adsengine`` importe ``apps.crm``.
         from . import receivers
         receivers.connect()
+
+        # PLAN_VEILLE (VEIL19) — conservation des textes des pubs vues de la
+        # veille, via le registre partagé ``core.retention`` (simulation par
+        # défaut ; agrégats et verdicts gardés).
+        from core.retention import register_retention_policy
+        from . import veille_conservation
+        register_retention_policy(veille_conservation.NOM_POLITIQUE,
+                                  veille_conservation.politique_retention)

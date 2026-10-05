@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, cleanup, waitFor, act } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,62 +19,6 @@ import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamp
    Régénérer volontairement : `VITE_UPDATE_GOLDEN=1 npx vitest run
    src/pages/ventes/ToitureDesign.golden.test.jsx`. */
 
-vi.mock('../../api/axios', () => ({
-  default: { get: vi.fn(), post: vi.fn() },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisDesignContext: vi.fn(),
-    getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    syncDevisLayout: vi.fn(),
-    shareLinkDevis: vi.fn(),
-    whatsappPreviewDevis: vi.fn(),
-    reviserDevis: vi.fn(),
-  },
-}))
-vi.mock('../../api/calepinageApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  const espionner = (groupe) => Object.fromEntries(
-    Object.entries(groupe).map(([cle, valeur]) => [
-      cle,
-      typeof valeur === 'function'
-        ? vi.fn(() => Promise.resolve({ data: null }))
-        : valeur,
-    ]),
-  )
-  return {
-    default: Object.fromEntries(
-      Object.entries(actual.default).map(([nom, groupe]) => [
-        nom,
-        (groupe && typeof groupe === 'object') ? espionner(groupe) : groupe,
-      ]),
-    ),
-  }
-})
-vi.mock('../../api/crmApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getLeadPhotoToit: vi.fn(() => Promise.resolve({
-        data: { visite_id: null, url: null, texture_calage: null },
-      })),
-    },
-  }
-})
-vi.mock('../../lib/toast', () => ({ toastInfo: vi.fn() }))
-vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }))
-vi.mock('../../providers/confirm-context', () => ({
-  useConfirm: () => () => Promise.resolve(true),
-}))
-const navigateMock = vi.fn()
-vi.mock('react-router-dom', async (importOriginal) => {
-  const actual = await importOriginal()
-  return { ...actual, useNavigate: () => navigateMock }
-})
-
-const LAYOUT = { version: 2, zones: [{ id: 'z1' }] }
 const journalApi = []
 const enregistrer = (nom, valeur) => vi.fn((...args) => {
   journalApi.push({ appel: nom, args })
@@ -85,18 +28,16 @@ const serializeLayout = enregistrer('serializeLayout', LAYOUT)
 const snapshot = enregistrer('snapshot', null)
 const setReferenceContourVisible = enregistrer('setReferenceContourVisible')
 const recommencerDepuisTraceClient = enregistrer('recommencerDepuisTraceClient', true)
-const initRoofToolPro8 = vi.fn((options) => {
-  options?.onApiReady?.({
-    serializeLayout, snapshot, setReferenceContourVisible,
-    recommencerDepuisTraceClient,
-  })
-})
-vi.mock('@roofbuilder', () => ({ initRoofToolPro8: (...a) => initRoofToolPro8(...a) }))
 
+import '../../test/toitureDesignHarnessCalepinage'
+import '../../test/toitureDesignHarnessNavigation'
+import {
+  initRoofToolPro8, LAYOUT, LEAD_88, ecranCalepinage, ecranDevis, ecranLead,
+  brancherBoot, simulerApiLead,
+} from '../../test/toitureDesignHarness'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
 import calepinageApi from '../../api/calepinageApi'
-import ToitureDesign from './ToitureDesign'
 
 const DOSSIER = resolve(dirname(fileURLToPath(import.meta.url)),
   '../../features/calepinage/__golden__')
@@ -135,36 +76,17 @@ beforeEach(() => {
   vi.clearAllMocks()
   journalApi.length = 0
   delete window.__taqinorRoofBooted
-  initRoofToolPro8.mockImplementation((options) => {
-    options?.onApiReady?.({
-      serializeLayout, snapshot, setReferenceContourVisible,
-      recommencerDepuisTraceClient,
-    })
+  brancherBoot({
+    serializeLayout, snapshot, setReferenceContourVisible,
+    recommencerDepuisTraceClient,
   })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('ToitureDesign — GOLDEN des trois modes (SPL194)', () => {
   it('mode lead : DOM + journal du builder', async () => {
-    const lead = {
-      id: 88, nom: 'Alaoui', prenom: 'Youssef', ville: 'Casablanca',
-      telephone: '0600000000', roof_point: { lat: 33.5, lng: -7.6 },
-      roof_outline: [[33.5, -7.6]], bill_kwh: 7200,
-    }
-    api.get.mockImplementation((url) => {
-      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
-      if (url === '/ventes/roof-config/') {
-        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
-      }
-      return Promise.reject(new Error(`URL inattendue ${url}`))
-    })
-    const dom = await bootEtDom(
-      <MemoryRouter initialEntries={['/devis-design/88']}>
-        <Routes>
-          <Route path="/devis-design/:id" element={<ToitureDesign />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    simulerApiLead(api, LEAD_88)
+    const dom = await bootEtDom(ecranLead(88))
     figer('toitureDesign.lead.html', dom)
     figer('toitureDesign.lead.boot.json', jsonStable(journalDuBoot()))
   })
@@ -173,14 +95,7 @@ describe('ToitureDesign — GOLDEN des trois modes (SPL194)', () => {
     const CTX = exempleContrat('ventes', 'devis_design_context')
     ventesApi.getDevisDesignContext.mockResolvedValue(
       reponseContrat('ventes', 'devis_design_context'))
-    const dom = await bootEtDom(
-      <MemoryRouter initialEntries={[`/ventes/devis/${CTX.devis.id}/design`]}>
-        <Routes>
-          <Route path="/ventes/devis/:id/design"
-            element={<ToitureDesign mode="devis" />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    const dom = await bootEtDom(ecranDevis(CTX.devis.id))
     figer('toitureDesign.devis.html', dom)
     figer('toitureDesign.devis.boot.json', jsonStable(journalDuBoot()))
   })
@@ -189,14 +104,7 @@ describe('ToitureDesign — GOLDEN des trois modes (SPL194)', () => {
     const CTX = exempleContrat('calepinage', 'calepinage_design_context')
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))
-    const dom = await bootEtDom(
-      <MemoryRouter initialEntries={[`/calepinage/${CTX.calepinage.id}`]}>
-        <Routes>
-          <Route path="/calepinage/:id"
-            element={<ToitureDesign mode="calepinage" />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    const dom = await bootEtDom(ecranCalepinage(CTX.calepinage.id))
     figer('toitureDesign.calepinage.html', dom)
     figer('toitureDesign.calepinage.boot.json', jsonStable(journalDuBoot()))
   })

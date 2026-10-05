@@ -536,6 +536,29 @@ const adsengineApi = {
     ...resource('observations-concurrents'),
   },
 
+  // ── PLAN_VEILLE — découverte de vendeurs par l'API officielle Ad Library ──
+  // Contrats : backend/django_core/apps/adsengine/contract_samples/veille_*.json.
+  // Aucune URL de snapshot ni jeton n'est jamais servi ; le lien vers la
+  // bibliothèque publique est construit par le serveur et ouvert par un clic.
+  veille: {
+    couverture: (params) => api.get('/adsengine/veille/couverture/', { params }),
+    decouvertes: (params) => api.get('/adsengine/veille/decouvertes/', { params }),
+    decouverte: (id) => api.get(`/adsengine/veille/decouvertes/${id}/`),
+    lancer: (payload) => api.post('/adsengine/veille/decouvertes/', payload),
+    annuler: (id) => api.post(`/adsengine/veille/decouvertes/${id}/annuler/`),
+    reprendre: (id) => api.post(`/adsengine/veille/decouvertes/${id}/reprendre/`),
+    mesures: (id) => api.get(`/adsengine/veille/decouvertes/${id}/mesures/`),
+    echantillon: (id, payload) =>
+      api.post(`/adsengine/veille/decouvertes/${id}/echantillon/`, payload),
+    annonceurs: (params) => api.get('/adsengine/veille/annonceurs/', { params }),
+    annonceur: (id, params) => api.get(`/adsengine/veille/annonceurs/${id}/`, { params }),
+    verdict: (id, payload) => api.post(`/adsengine/veille/annonceurs/${id}/verdict/`, payload),
+    etiquette: (id, payload) =>
+      api.post(`/adsengine/veille/annonceurs/${id}/etiquette/`, payload),
+    exportCsv: (params) =>
+      api.get('/adsengine/veille/annonceurs/export-csv/', { params, responseType: 'blob' }),
+  },
+
   // ── PUB73 — Import d'une photo de chantier dans la créathèque ──
   // Provenance source_lane='chantier' + consentement PUB75 bloquant côté backend.
   chantierImport: {

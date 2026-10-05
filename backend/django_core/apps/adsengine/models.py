@@ -2808,9 +2808,10 @@ class CompetitorPage(TenantModel):
     """PUB70 — Page concurrente SUIVIE pour la veille publicitaire (périmètre
     HONNÊTE, ZÉRO scraping — règle #5).
 
-    L'API officielle Ad Library ne couvre PAS les pubs commerciales marocaines
-    (elle ne sert que politique / enjeux sociaux). La veille est donc MANUELLE et
-    OUTILLÉE : on suit des Pages concurrentes, on ouvre l'Ad Library WEB via un
+    La couverture de l'API officielle Ad Library dépend du PAYS (VEIL10 —
+    ``competitor_intel.VEILLE_COUVERTURE`` : UE couverte pour le commercial,
+    Royaume-Uni à confirmer, Maroc/hors UE politique seulement). Pour le Maroc,
+    la veille reste donc MANUELLE et OUTILLÉE : on suit des Pages concurrentes, on ouvre l'Ad Library WEB via un
     lien profond (``ad_library_url``), et l'humain SAISIT les hooks/angles
     observés (``CompetitorAdObservation``) — jamais une collecte automatisée
     (toute automatisation = GATED : décision fondateur + dossier ``tos_risk/``).
@@ -3025,3 +3026,373 @@ class FieldTestResult(TenantModel):
 
     def __str__(self):
         return f'{self.ft} = {self.measured_value}'
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PLAN_VEILLE — VEIL14 : découverte de vendeurs par l'API officielle Ad Library
+# ═════════════════════════════════════════════════════════════════════════════
+# Modèles NOUVEAUX et séparés de ``CompetitorPage`` (Page SUIVIE saisie à la
+# main) : la réutiliser casserait son unicité ``(company, name)``, la cadence
+# « saisies humaines » et la future liste de suivi. Aucune référence à la
+# connexion de campagne. Aucune colonne de suivi futur (premier/dernier aperçu) :
+# la phase suivante les ajoutera par migration additive.
+
+# Classes de verdict (D-VEIL-1/2/3) : (clé, libellé FR, est_bruit). SERVIES par
+# le serveur (``classes_disponibles``) — l'écran ne les code jamais en dur.
+# « dropshipper » n'est JAMAIS une classe : c'est un attribut (D-VEIL-2).
+VEILLE_CLASSES = (
+    ('vendeur', 'Vendeur', False),
+    ('place_de_marche', 'Place de marché ou géant', True),
+    ('hors_sujet', 'Hors sujet (hors vêtements, chaussures, sacs)', True),
+    ('pas_vendeur', 'Pas un vendeur', True),
+    ('doublon', "Doublon d'un autre annonceur", True),
+    ('incertain', 'Incertain', False),
+)
+VEILLE_CLASSE_CHOICES = [(cle, libelle) for cle, libelle, _b in VEILLE_CLASSES]
+VEILLE_TRI_CHOICES = [('oui', 'Oui'), ('non', 'Non'),
+                      ('incertain', 'Incertain')]
+VEILLE_JEU_CHOICES = [('etalonnage', 'Étalonnage'), ('test', 'Test')]
+VEILLE_DECIDE_PAR_CHOICES = [('regle', 'Règle'), ('ia', 'IA'),
+                             ('humain', 'Humain')]
+VEILLE_SEARCH_TYPE_CHOICES = [
+    ('KEYWORD_UNORDERED', 'Mots-clés (ordre libre)'),
+    ('KEYWORD_EXACT_PHRASE', 'Expression exacte'),
+]
+VEILLE_AD_ACTIVE_CHOICES = [('ACTIVE', 'Actives'), ('INACTIVE', 'Inactives'),
+                            ('ALL', 'Toutes')]
+
+
+class VeilleDecouverte(TenantModel):
+    """VEIL14 — UN lancement de découverte (mots-clés × pays) et son journal
+    (contrat ``veille_decouverte.json``). Aucun champ ne porte de jeton ni
+    d'URL ``paging.next`` ; les curseurs vivent sur ``VeilleRequete`` le temps
+    du lancement, puis sont EFFACÉS."""
+
+    class Statut(models.TextChoices):
+        EN_FILE = 'en_file', 'En file'
+        EN_COURS = 'en_cours', 'En cours'
+        EN_PAUSE_QUOTA = 'en_pause_quota', 'En pause (quota atteint)'
+        TERMINE = 'termine', 'Terminé'
+        ECHEC = 'echec', 'Échec'
+        ANNULE = 'annule', 'Annulé'
+
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.EN_FILE,
+        verbose_name='Statut')
+    mots_cles = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Mots-clés et pays ([{texte, pays: [..]}])')
+    search_type = models.CharField(
+        max_length=24, choices=VEILLE_SEARCH_TYPE_CHOICES,
+        default='KEYWORD_UNORDERED', verbose_name='Mode de recherche')
+    ad_active_status = models.CharField(
+        max_length=10, choices=VEILLE_AD_ACTIVE_CHOICES, default='ACTIVE',
+        verbose_name='Statut de diffusion')
+    plafond_appels = models.PositiveIntegerField(
+        verbose_name="Plafond d'appels")
+    plafond_pages_par_requete = models.PositiveIntegerField(
+        verbose_name='Plafond de pages par requête')
+    appels_consommes = models.PositiveIntegerField(
+        default=0, verbose_name='Appels consommés')
+    pubs_recues = models.PositiveIntegerField(
+        default=0, verbose_name='Pubs reçues')
+    pages_lues = models.PositiveIntegerField(
+        default=0, verbose_name='Pages lues')
+    reprise_a = models.DateTimeField(
+        null=True, blank=True, verbose_name='Reprise à')
+    pauses_consecutives = models.PositiveSmallIntegerField(
+        default=0, verbose_name='Pauses de quota consécutives')
+    # VEIL16 — numéro de l'étape attendue : une étape relivrée (acks_late) ou
+    # une chaîne périmée porte un numéro dépassé et ne fait RIEN.
+    numero_etape = models.PositiveIntegerField(
+        default=0, verbose_name="Numéro d'étape attendu")
+    erreurs = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Erreurs ([{code, message_fr, a}])')
+    dernier_usage_app = models.JSONField(
+        default=dict, blank=True, verbose_name='Dernier X-App-Usage')
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='adsengine_veille_decouvertes',
+        verbose_name='Créée par')
+    termine_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Terminée le')
+    background_job = models.ForeignKey(
+        'core.BackgroundJob', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+        verbose_name='Job de fond')
+    cle_idempotence = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name="Clé d'idempotence du lancement")
+
+    class Meta:
+        verbose_name = 'Découverte (veille)'
+        verbose_name_plural = 'Découvertes (veille)'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='adseng_veilledec_co_st_idx'),
+        ]
+
+    def __str__(self):
+        return f'Découverte #{self.pk} ({self.statut})'
+
+    @property
+    def annonceurs_distincts(self):
+        return (VeilleAnnonceur.objects
+                .filter(company_id=self.company_id,
+                        pubs_vues__requete__decouverte_id=self.pk)
+                .distinct().count())
+
+
+class VeilleRequete(TenantModel):
+    """VEIL14 — Unité de REPRISE d'une découverte : un mot-clé × un pays × un
+    mode de recherche. ``curseur_after`` n'existe que pendant le lancement
+    (reprise au même curseur après une pause de quota) puis est EFFACÉ."""
+
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINEE = 'terminee', 'Terminée'
+        VIDE = 'vide', 'Vide'
+        PLAFOND = 'plafond', 'Plafond atteint'
+        ERREUR = 'erreur', 'Erreur'
+
+    decouverte = models.ForeignKey(
+        # on_delete: composition — une requête n'existe que pour SA découverte
+        # (journal de lancement) ; la découverte supprimée emporte ses requêtes.
+        'adsengine.VeilleDecouverte', on_delete=models.CASCADE,
+        related_name='requetes', verbose_name='Découverte')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    mot_cle = models.CharField(max_length=100, verbose_name='Mot-clé')
+    pays = models.CharField(max_length=2, verbose_name='Pays (ISO-2)')
+    search_type = models.CharField(
+        max_length=24, choices=VEILLE_SEARCH_TYPE_CHOICES,
+        default='KEYWORD_UNORDERED', verbose_name='Mode de recherche')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.A_FAIRE,
+        verbose_name='Statut')
+    curseur_after = models.TextField(
+        blank=True, default='',
+        verbose_name='Curseur (pendant le lancement seulement)')
+    pages_lues = models.PositiveIntegerField(default=0,
+                                             verbose_name='Pages lues')
+    appels = models.PositiveIntegerField(default=0, verbose_name='Appels')
+    pubs = models.PositiveIntegerField(default=0, verbose_name='Pubs reçues')
+    nouveaux_annonceurs = models.PositiveIntegerField(
+        default=0, verbose_name='Nouveaux annonceurs')
+    journal_pages = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Journal par page ([{page, pubs, nouveaux}])')
+    message_erreur = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Erreur')
+
+    class Meta:
+        verbose_name = 'Requête de découverte (veille)'
+        verbose_name_plural = 'Requêtes de découverte (veille)'
+        ordering = ['decouverte', 'ordre', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'decouverte', 'mot_cle', 'pays',
+                        'search_type'],
+                name='uniq_adseng_veillereq'),
+        ]
+
+    def __str__(self):
+        return f'{self.mot_cle} / {self.pays}'
+
+
+class VeilleAnnonceur(TenantModel):
+    """VEIL14 — Un annonceur DISTINCT (une Page Meta), pas une pub. Unique par
+    ``(company, page_id)`` à travers toutes les découvertes de la société ; ses
+    agrégats suivent le contrat ``veille_annonceur.json``. ``jeu`` (étalonnage
+    / test) est GELÉ au tirage de l'échantillon de mesure."""
+
+    page_id = models.CharField(max_length=64, verbose_name='ID de Page Meta')
+    page_name = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom de Page')
+    pays_vus = models.JSONField(default=list, blank=True,
+                                verbose_name='Pays vus')
+    mots_cles = models.JSONField(default=list, blank=True,
+                                 verbose_name='Mots-clés')
+    nb_pubs_vues = models.PositiveIntegerField(
+        default=0, verbose_name='Pubs vues (ad_archive_id distincts)')
+    extraits = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Extraits ([{texte ≤200, ad_archive_id}], ≤5)')
+    domaines = models.JSONField(default=list, blank=True,
+                                verbose_name='Domaines ([{domaine, nb}])')
+    payeurs = models.JSONField(default=list, blank=True,
+                               verbose_name='Payeurs UE')
+    ad_archive_id_exemple = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Pub exemple (lien bibliothèque)')
+    classe = models.CharField(
+        max_length=20, choices=VEILLE_CLASSE_CHOICES, default='incertain',
+        verbose_name='Classe')
+    verdict_courant = models.ForeignKey(
+        'adsengine.VeilleVerdict', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+        verbose_name='Verdict courant')
+    doublon_de = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='doublons', verbose_name='Doublon de')
+    dropshipper_probable = models.CharField(
+        max_length=10, choices=VEILLE_TRI_CHOICES, default='incertain',
+        verbose_name='Dropshipper probable')
+    dropshipper_indices = models.JSONField(
+        default=list, blank=True, verbose_name='Indices dropshipper')
+    dropshipper_decide_par = models.CharField(
+        max_length=8, choices=VEILLE_DECIDE_PAR_CHOICES, blank=True,
+        default='', verbose_name='Dropshipper décidé par')
+    jeu = models.CharField(
+        max_length=12, choices=VEILLE_JEU_CHOICES, null=True, blank=True,
+        verbose_name='Jeu de mesure (gelé)')
+    jeu_decouverte = models.ForeignKey(
+        'adsengine.VeilleDecouverte', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+        verbose_name='Découverte du tirage')
+
+    class Meta:
+        verbose_name = 'Annonceur découvert (veille)'
+        verbose_name_plural = 'Annonceurs découverts (veille)'
+        ordering = ['page_name', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'page_id'],
+                name='uniq_adseng_veilleannonceur'),
+        ]
+
+    def __str__(self):
+        return self.page_name or self.page_id
+
+
+class VeillePubVue(TenantModel):
+    """VEIL14 — Une pub VUE par une requête (champs ``ads_archive`` autorisés
+    seulement). ``extrait`` ≤ 500 caractères ; aucune URL de snapshot n'est
+    stockée. Unique par ``(requete, ad_archive_id)`` (rejouer une page ne crée
+    pas de doublon)."""
+
+    requete = models.ForeignKey(
+        # on_delete: composition — une pub vue n'existe que dans la requête
+        # qui l'a reçue ; la requête supprimée emporte ses pubs vues.
+        'adsengine.VeilleRequete', on_delete=models.CASCADE,
+        related_name='pubs_vues', verbose_name='Requête')
+    annonceur = models.ForeignKey(
+        # on_delete: composition — la pub vue est une observation de CET
+        # annonceur ; l'annonceur purgé (fin de contrat) emporte ses pubs.
+        'adsengine.VeilleAnnonceur', on_delete=models.CASCADE,
+        related_name='pubs_vues', verbose_name='Annonceur')
+    ad_archive_id = models.CharField(max_length=64,
+                                     verbose_name='ID de pub (archive)')
+    numero_page = models.PositiveIntegerField(
+        default=1, verbose_name='Numéro de page')
+    extrait = models.TextField(blank=True, default='',
+                               verbose_name='Extrait (≤ 500 caractères)')
+    legende = models.CharField(max_length=500, blank=True, default='',
+                               verbose_name='Légende du lien')
+    domaine = models.CharField(max_length=255, blank=True, default='',
+                               verbose_name='Domaine affiché')
+    titres = models.JSONField(default=list, blank=True,
+                              verbose_name='Titres de lien')
+    langues = models.JSONField(default=list, blank=True,
+                               verbose_name='Langues')
+    plateformes = models.JSONField(default=list, blank=True,
+                                   verbose_name='Plateformes')
+    payeurs = models.JSONField(default=list, blank=True,
+                               verbose_name='Payeurs UE')
+    debut_diffusion = models.DateTimeField(
+        null=True, blank=True, verbose_name='Début de diffusion')
+    fin_diffusion = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fin de diffusion')
+    pays_portee = models.JSONField(default=list, blank=True,
+                                   verbose_name='Pays de portée')
+
+    class Meta:
+        verbose_name = 'Pub vue (veille)'
+        verbose_name_plural = 'Pubs vues (veille)'
+        ordering = ['requete', 'numero_page', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'requete', 'ad_archive_id'],
+                name='uniq_adseng_veillepub'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'ad_archive_id'],
+                         name='adseng_veillepub_co_ad_idx'),
+        ]
+
+    def __str__(self):
+        return self.ad_archive_id
+
+
+class VeilleVerdict(TenantModel):
+    """VEIL14 — Verdict sur un annonceur : HISTORIQUE jamais modifié (un nouveau
+    verdict = une nouvelle ligne). ``decide_par`` : règle | ia | humain. Une
+    étiquette de MESURE (``est_etiquette_mesure``) ne devient jamais le verdict
+    courant."""
+
+    annonceur = models.ForeignKey(
+        # on_delete: composition — l'historique de verdicts n'a de sens que
+        # pour SON annonceur ; l'annonceur purgé emporte son historique.
+        'adsengine.VeilleAnnonceur', on_delete=models.CASCADE,
+        related_name='verdicts', verbose_name='Annonceur')
+    classe = models.CharField(max_length=20, choices=VEILLE_CLASSE_CHOICES,
+                              verbose_name='Classe')
+    motif_fr = models.TextField(blank=True, default='', verbose_name='Motif')
+    preuves = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Preuves ([{champ, valeur, ad_archive_id}])')
+    decide_par = models.CharField(max_length=8,
+                                  choices=VEILLE_DECIDE_PAR_CHOICES,
+                                  verbose_name='Décidé par')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='adsengine_veille_verdicts',
+        verbose_name='Auteur')
+    modele = models.CharField(max_length=80, blank=True, default='',
+                              verbose_name='Modèle IA')
+    version_consigne = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Version de la consigne')
+    jetons_entree = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Jetons d'entrée")
+    jetons_sortie = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Jetons de sortie')
+    confiance = models.FloatField(null=True, blank=True,
+                                  verbose_name='Confiance (0..1)')
+    dropshipper = models.CharField(
+        max_length=10, choices=VEILLE_TRI_CHOICES, default='incertain',
+        verbose_name='Dropshipper')
+    dropshipper_indices = models.JSONField(
+        default=list, blank=True, verbose_name='Indices dropshipper')
+    doublon_de = models.ForeignKey(
+        'adsengine.VeilleAnnonceur', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+', verbose_name='Doublon de')
+    est_etiquette_mesure = models.BooleanField(
+        default=False, verbose_name='Étiquette de mesure')
+    jeu = models.CharField(
+        max_length=12, choices=VEILLE_JEU_CHOICES, null=True, blank=True,
+        verbose_name='Jeu de mesure')
+
+    class Meta:
+        verbose_name = 'Verdict (veille)'
+        verbose_name_plural = 'Verdicts (veille)'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'annonceur', 'est_etiquette_mesure'],
+                name='adseng_veilleverd_co_an_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.classe} ({self.decide_par})'
+
+    def save(self, *args, **kwargs):
+        # Historique jamais modifié : une ligne existante ne se réécrit pas.
+        if self.pk is not None and not kwargs.pop('_purge', False):
+            if VeilleVerdict.objects.filter(pk=self.pk).exists():
+                raise ValidationError(
+                    'Un verdict de veille ne se modifie jamais : '
+                    'enregistrer un nouveau verdict.')
+        super().save(*args, **kwargs)

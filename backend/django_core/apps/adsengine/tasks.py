@@ -2450,3 +2450,24 @@ def backfill_after_divergence(company, *, campaign_meta_id='', day=None):
 
     logger.info('adsengine.backfill_after_divergence: %s', summary)
     return summary
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PLAN_VEILLE — VEIL16 : étape de découverte À LA DEMANDE (jamais au beat)
+# ═════════════════════════════════════════════════════════════════════════════
+@shared_task(name='adsengine.veille_etape')
+def veille_etape(decouverte_id, job_id=None, company_id=None, etape=None):
+    """UNE étape d'une découverte de veille = au plus UN appel ``ads_archive``
+    (limites Celery 120 s/180 s + ``acks_late`` : jamais de boucle longue).
+    Se relance avec un court ``countdown`` (ou le palier de pause de quota,
+    toujours < 3 600 s). Une étape relivrée porte un numéro dépassé et ne fait
+    rien (idempotence par ``VeilleDecouverte.numero_etape``)."""
+    from .veille_decouverte import executer_etape
+
+    resultat = executer_etape(decouverte_id, etape=etape)
+    if resultat['action'] in ('continuer', 'attendre'):
+        veille_etape.apply_async(
+            kwargs={'decouverte_id': decouverte_id, 'job_id': job_id,
+                    'company_id': company_id, 'etape': resultat['etape']},
+            countdown=resultat['countdown'])
+    return resultat

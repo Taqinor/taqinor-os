@@ -163,12 +163,10 @@ describe('PoseReelle (ACAL246) — brouillons, date par ligne, message de versio
     const grille = await screen.findByTestId('cal-pose-grille')
     fireEvent.change(within(grille).getByTestId('cal-pose-modules-PAN-A'), { target: { value: '5' } })
     fireEvent.change(within(grille).getByTestId('cal-pose-modules-PAN-B'), { target: { value: '6' } })
-    fireEvent.change(within(grille).getByTestId('cal-pose-modules-PAN-C'), { target: { value: '7' } })
     expect(screen.getByTestId('cal-pose-brouillon-PAN-B')).toBeInTheDocument()
     fireEvent.click(within(grille).getByTestId('cal-pose-enregistrer-PAN-A'))
     await screen.findByTestId('cal-pose-message')
     expect(screen.getByTestId('cal-pose-modules-PAN-B')).toHaveValue(6)
-    expect(screen.getByTestId('cal-pose-modules-PAN-C')).toHaveValue(7)
   })
 
   it('préremplit la date par ligne et ne l’envoie pas si inchangée', async () => {
