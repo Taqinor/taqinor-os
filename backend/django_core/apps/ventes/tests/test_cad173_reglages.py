@@ -30,6 +30,7 @@ from django.test import SimpleTestCase
 from apps.crm import questionnaire
 from apps.ventes import courbes_journalieres as CJ
 from apps.ventes import etude_horaire as EH
+from apps.ventes.horaire import base as horaire_base
 from apps.ventes.tests.split_golden import fichiers_du_groupe
 
 RACINE = Path(__file__).resolve().parents[5]
@@ -92,7 +93,7 @@ class Q12_LaSaisonDeLaClimEtDeLaPiscine(SimpleTestCase):
 
     def test_les_mois_sont_ceux_de_la_facture_d_ete(self):
         self.assertEqual(sorted(CJ.MOIS_REDISTRIBUTION_ETE),
-                         sorted(mois + 1 for mois in EH.MOIS_ETE_FACTURE))
+                         sorted(mois + 1 for mois in horaire_base.MOIS_ETE_FACTURE))
 
     def test_mai_et_octobre_sont_DESORMAIS_actifs(self):
         for mois in (5, 10):

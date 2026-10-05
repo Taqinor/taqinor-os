@@ -44,7 +44,7 @@ SOURCE = 'apps/ventes/etude_horaire.py'
 
 #: Une entrée par région : (golden, module cible, SPL qui la déplace, actif).
 DEPLACEMENTS = {
-    'base': ('split_eh_base', 'apps/ventes/horaire/base.py', 'SPL254', False),
+    'base': ('split_eh_base', 'apps/ventes/horaire/base.py', 'SPL254', True),
     'public': ('split_eh_public', 'apps/ventes/horaire/public.py', 'SPL255',
                False),
     'bat': ('split_eh_bat', 'apps/ventes/horaire/batterie_lignes.py',

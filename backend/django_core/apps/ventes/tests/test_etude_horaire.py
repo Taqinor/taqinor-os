@@ -33,6 +33,7 @@ from django.test import SimpleTestCase
 
 from apps.ventes import etude_horaire as EH
 from apps.ventes import courbes_journalieres as CJ
+from apps.ventes.horaire import base as horaire_base
 from apps.ventes.quote_engine import bareme as B
 from apps.ventes.quote_engine import pricing
 
@@ -1643,7 +1644,7 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
         bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
         for index, conso_mois in enumerate(self.CONSO_MODESTE):
             jours = EH.JOURS_PAR_MOIS[index]
-            saison = EH.saison_du_mois(index + 1)
+            saison = horaire_base.saison_du_mois(index + 1)
             # CAD173 (Q12) — le MOIS est passé au composeur, comme le fait
             # `jours_types_annee` : clim et piscine suivent l'été de la
             # FACTURE (mai→octobre). Sans lui, les deux côtés compareraient
@@ -1742,7 +1743,7 @@ class EstimationConsoFacteurCompositeurTests(SimpleTestCase):
         """L'énergie mensuelle que ``forme_consommation_detaillee`` place
         RÉELLEMENT dans la couche ``cle`` — la seule référence qui compte."""
         jours = EH.JOURS_PAR_MOIS[index]
-        saison = EH.saison_du_mois(index + 1)
+        saison = horaire_base.saison_du_mois(index + 1)
         # CAD173 (Q12) — même porte que `jours_types_annee` : le MOIS décide.
         _forme, couches = CJ.forme_consommation_detaillee(
             self.CONSO[index] / jours, CJ.OCCUPATION_PRESENCE, saison=saison,

@@ -216,7 +216,7 @@ def _construire(data, economies_mensuelles, etude_params):
     if serie_sans is None:
         return None
 
-    from apps.ventes.etude_horaire import saison_du_mois
+    from apps.ventes.horaire.base import saison_du_mois
 
     # « avec batterie » suit EXACTEMENT la garde d'``economies_mensuelles`` :
     # jamais un chiffre « avec » sur un devis qui ne peut pas livrer l'option.

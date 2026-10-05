@@ -75,7 +75,6 @@ from django.utils import timezone
 
 from apps.parametres.pvgis_profils import (
     JOURS_PAR_MOIS,
-    MOIS_PAR_SAISON,
     SAISONS,
     productible_mensuel,
     profil_production_journalier,
@@ -92,6 +91,7 @@ from apps.ventes.courbes_journalieres import (
     profil_suppose,
     renormalisation_redistribution,
 )
+from apps.ventes.horaire.base import MOIS_ETE_FACTURE, _num, saison_du_mois
 from apps.ventes.quote_engine import bareme
 from apps.ventes.quote_engine.pricing import BATTERY_ROUNDTRIP, PRODUCTION_DERATE
 from apps.ventes.solar_design import hourly_self_consumption
@@ -101,34 +101,6 @@ logger = logging.getLogger(__name__)
 #: Version du bloc ``etude_params['etude_horaire']``. Incrémentée à TOUT
 #: changement de forme — jamais de mutation silencieuse d'un bloc déjà posé.
 ETUDE_HORAIRE_VERSION = 1
-
-#: Mois (index 0 = janvier) considérés « été » quand le lead déclare une
-#: facture d'été DISTINCTE. Mai→octobre — MÊME découpage que
-#: ``apps/ventes/public_views._monthly_consumption``, qui sert déjà la série
-#: mensuelle de la page : deux découpages différents feraient diverger l'écran
-#: et le moteur sur le même client.
-MOIS_ETE_FACTURE = frozenset({4, 5, 6, 7, 8, 9})
-
-#: Mois (1-12) → saison PVGIS, dérivé de ``MOIS_PAR_SAISON`` (source unique :
-#: hiver = DJF, mi-saison = MAM+SON, été = JJA). Jamais un second découpage.
-_SAISON_DU_MOIS = {
-    mois: saison
-    for saison, mois_tuple in MOIS_PAR_SAISON.items()
-    for mois in mois_tuple
-}
-
-
-def _num(valeur, defaut=0.0):
-    """Flottant tolérant — illisible/``None`` → ``defaut``, jamais d'exception."""
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return float(defaut)
-
-
-def saison_du_mois(mois):
-    """Saison PVGIS d'un mois 1-12 (``None`` hors bornes)."""
-    return _SAISON_DU_MOIS.get(mois)
 
 
 # ════════════════════════════════════════════════════════════════════════════
