@@ -1,0 +1,2207 @@
+{
+ "modeles": {
+  "AffectationPaiement": {
+   "app_label": "ventes",
+   "ast_sha256": "e44c47cac2a18e41ae6b9de98812e75628103abd93b6fe8dc1aa36bb3478906f",
+   "constraints": [],
+   "db_table": "ventes_affectationpaiement",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "company",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "affectations_paiement",
+       "to": "authentication.company"
+      }
+     ]
+    ],
+    [
+     "paiement",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "affectations",
+       "to": "facturation.paiement"
+      }
+     ]
+    ],
+    [
+     "facture",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "affectations_paiement",
+       "to": "facturation.facture"
+      }
+     ]
+    ],
+    [
+     "montant",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "decimal_places": 2,
+       "max_digits": 12
+      }
+     ]
+    ],
+    [
+     "date_affectation",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "auto_now_add": true
+      }
+     ]
+    ],
+    [
+     "created_by",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "affectations_effectuees",
+       "to": "authentication.customuser"
+      }
+     ]
+    ]
+   ],
+   "indexes": [],
+   "ordering": [
+    "-date_affectation"
+   ],
+   "unique_together": []
+  },
+  "BonCommande": {
+   "app_label": "ventes",
+   "ast_sha256": "ebf3514d0a88a02bf5b88e889e4901f0ba05cc1bc610d000c095b8db8c928e05",
+   "constraints": [],
+   "db_table": "ventes_boncommande",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "company",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "bons_commande",
+       "to": "authentication.company"
+      }
+     ]
+    ],
+    [
+     "reference",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "max_length": 50
+      }
+     ]
+    ],
+    [
+     "devis",
+     [
+      "django.db.models.OneToOneField",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "bon_commande",
+       "to": "ventes.devis"
+      }
+     ]
+    ],
+    [
+     "lead",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "bons_commande_directs",
+       "to": "crm.lead"
+      }
+     ]
+    ],
+    [
+     "client",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.PROTECT",
+       "related_name": "bons_commande",
+       "to": "crm.client"
+      }
+     ]
+    ],
+    [
+     "statut",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "choices": [
+        [
+         "en_attente",
+         "En attente"
+        ],
+        [
+         "confirme",
+         "Confirmé"
+        ],
+        [
+         "livre",
+         "Livré"
+        ],
+        [
+         "annule",
+         "Annulé"
+        ]
+       ],
+       "default": "en_attente",
+       "max_length": 20
+      }
+     ]
+    ],
+    [
+     "date_creation",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "auto_now_add": true
+      }
+     ]
+    ],
+    [
+     "date_livraison_prevue",
+     [
+      "django.db.models.DateField",
+      [],
+      {
+       "blank": true,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "note",
+     [
+      "django.db.models.TextField",
+      [],
+      {
+       "blank": true,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "pv_livraison",
+     [
+      "django.db.models.JSONField",
+      [],
+      {
+       "blank": true,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "date_livraison_reelle",
+     [
+      "django.db.models.DateField",
+      [],
+      {
+       "blank": true,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "signe_au_domicile",
+     [
+      "django.db.models.BooleanField",
+      [],
+      {
+       "default": false,
+       "help_text": "Ce bon de commande a-t-il été signé chez le client (démarchage, loi 31-08 art. 45) ?",
+       "verbose_name": "Signé au domicile du client"
+      }
+     ]
+    ],
+    [
+     "date_signature_domicile",
+     [
+      "django.db.models.DateField",
+      [],
+      {
+       "blank": true,
+       "help_text": "Quelle date le client a-t-il écrite de sa main à côté de sa signature (loi 31-08 art. 47 al. 2) ?",
+       "null": true,
+       "verbose_name": "Date écrite par le client"
+      }
+     ]
+    ]
+   ],
+   "indexes": [],
+   "ordering": [
+    "-date_creation"
+   ],
+   "unique_together": [
+    [
+     "company",
+     "reference"
+    ]
+   ]
+  },
+  "FactureActivity": {
+   "app_label": "ventes",
+   "ast_sha256": "a3abda9fe9931cc2adff25ddc379a3d7a657585b6023dd359e2bcdb28bfd15c8",
+   "constraints": [],
+   "db_table": "ventes_factureactivity",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "company",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "facture_activities",
+       "to": "authentication.company"
+      }
+     ]
+    ],
+    [
+     "facture",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "activites",
+       "to": "facturation.facture"
+      }
+     ]
+    ],
+    [
+     "kind",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "choices": [
+        [
+         "creation",
+         "Création"
+        ],
+        [
+         "modification",
+         "Modification"
+        ],
+        [
+         "note",
+         "Note"
+        ]
+       ],
+       "max_length": 15
+      }
+     ]
+    ],
+    [
+     "field",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "blank": true,
+       "max_length": 100,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "field_label",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "blank": true,
+       "max_length": 150,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "old_value",
+     [
+      "django.db.models.TextField",
+      [],
+      {
+       "blank": true,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "new_value",
+     [
+      "django.db.models.TextField",
+      [],
+      {
+       "blank": true,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "body",
+     [
+      "django.db.models.TextField",
+      [],
+      {
+       "blank": true,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "user",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "facture_activities",
+       "to": "authentication.customuser"
+      }
+     ]
+    ],
+    [
+     "created_at",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "auto_now_add": true
+      }
+     ]
+    ]
+   ],
+   "indexes": [
+    "ventes_factact_idx"
+   ],
+   "ordering": [
+    "-created_at"
+   ],
+   "unique_together": []
+  },
+  "FactureSource": {
+   "app_label": "ventes",
+   "ast_sha256": "fd7ea42a7be30f795ab6db60165830a0da848982028cd0c888b80d380dbfdec4",
+   "constraints": [],
+   "db_table": "ventes_facturesource",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "company",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "facture_sources",
+       "to": "authentication.company"
+      }
+     ]
+    ],
+    [
+     "facture",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "sources",
+       "to": "facturation.facture"
+      }
+     ]
+    ],
+    [
+     "devis",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.PROTECT",
+       "related_name": "factures_sources",
+       "to": "ventes.devis"
+      }
+     ]
+    ],
+    [
+     "sous_total_ht",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "decimal_places": 2,
+       "max_digits": 12
+      }
+     ]
+    ]
+   ],
+   "indexes": [],
+   "ordering": [],
+   "unique_together": [
+    [
+     "facture",
+     "devis"
+    ]
+   ]
+  },
+  "LigneLivraisonBC": {
+   "app_label": "ventes",
+   "ast_sha256": "0f75fef35758976ef5c53e232f7d32916ea81884526e10844364237b866e6443",
+   "constraints": [],
+   "db_table": "ventes_lignelivraisonbc",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "livraison",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "lignes",
+       "to": "ventes.livraisonbc"
+      }
+     ]
+    ],
+    [
+     "ligne_devis",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "lignes_livraison_bc",
+       "to": "ventes.lignedevis"
+      }
+     ]
+    ],
+    [
+     "quantite_livree",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "decimal_places": 2,
+       "max_digits": 10
+      }
+     ]
+    ]
+   ],
+   "indexes": [],
+   "ordering": [],
+   "unique_together": []
+  },
+  "LigneNoteDebit": {
+   "app_label": "ventes",
+   "ast_sha256": "db42b6212afa5e4c44191dddb6cb56fd04955bd83cc5e6dcf6e2b23417cff6b2",
+   "constraints": [],
+   "db_table": "ventes_lignenotedebit",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "note_debit",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "lignes",
+       "to": "ventes.notedebit"
+      }
+     ]
+    ],
+    [
+     "produit",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "lignes_note_debit",
+       "to": "stock.produit"
+      }
+     ]
+    ],
+    [
+     "designation",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "max_length": 255
+      }
+     ]
+    ],
+    [
+     "quantite",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "decimal_places": 2,
+       "max_digits": 10
+      }
+     ]
+    ],
+    [
+     "prix_unitaire",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "decimal_places": 2,
+       "max_digits": 10
+      }
+     ]
+    ],
+    [
+     "remise",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "decimal_places": 2,
+       "default": 0,
+       "max_digits": 5
+      }
+     ]
+    ],
+    [
+     "taux_tva",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "blank": true,
+       "decimal_places": 2,
+       "max_digits": 5,
+       "null": true
+      }
+     ]
+    ]
+   ],
+   "indexes": [],
+   "ordering": [],
+   "unique_together": []
+  },
+  "LigneRemiseEncaissement": {
+   "app_label": "ventes",
+   "ast_sha256": "4a1fce2b6b91d2a61ca06447959d2915923e1234b042e199629b44dcdd2d6f0d",
+   "constraints": [
+    "uniq_ligne_remise_par_paiement"
+   ],
+   "db_table": "ventes_ligneremiseencaissement",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "remise",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "lignes",
+       "to": "ventes.remiseencaissement"
+      }
+     ]
+    ],
+    [
+     "paiement",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.PROTECT",
+       "related_name": "lignes_remise_encaissement",
+       "to": "facturation.paiement"
+      }
+     ]
+    ]
+   ],
+   "indexes": [],
+   "ordering": [],
+   "unique_together": []
+  },
+  "LivraisonBC": {
+   "app_label": "ventes",
+   "ast_sha256": "022a5f7ae585020eab8f5ee0fd0873c25c804023504ce62a3315dacb8e67a048",
+   "constraints": [],
+   "db_table": "ventes_livraisonbc",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "company",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "livraisons_bc",
+       "to": "authentication.company"
+      }
+     ]
+    ],
+    [
+     "bon_commande",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "livraisons",
+       "to": "ventes.boncommande"
+      }
+     ]
+    ],
+    [
+     "date_livraison",
+     [
+      "django.db.models.DateField",
+      [],
+      {}
+     ]
+    ],
+    [
+     "note",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "blank": true,
+       "default": "",
+       "max_length": 255
+      }
+     ]
+    ],
+    [
+     "created_by",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "livraisons_bc_creees",
+       "to": "authentication.customuser"
+      }
+     ]
+    ],
+    [
+     "created_at",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "auto_now_add": true
+      }
+     ]
+    ]
+   ],
+   "indexes": [],
+   "ordering": [
+    "-date_livraison",
+    "-created_at"
+   ],
+   "unique_together": []
+  },
+  "MandatPaiement": {
+   "app_label": "ventes",
+   "ast_sha256": "d7790a39d6eb986e18a0af105aaf7420bc6e67b608bf0f3cc246f9d152fadda8",
+   "constraints": [],
+   "db_table": "ventes_mandatpaiement",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "company",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "mandats_paiement",
+       "to": "authentication.company"
+      }
+     ]
+    ],
+    [
+     "client",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.PROTECT",
+       "related_name": "mandats_paiement",
+       "to": "crm.client"
+      }
+     ]
+    ],
+    [
+     "provider",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "default": "noop",
+       "max_length": 40
+      }
+     ]
+    ],
+    [
+     "token",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "blank": true,
+       "default": "",
+       "max_length": 200
+      }
+     ]
+    ],
+    [
+     "derniers_chiffres",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "blank": true,
+       "default": "",
+       "max_length": 4
+      }
+     ]
+    ],
+    [
+     "expiration_mois",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "blank": true,
+       "default": "",
+       "help_text": "MM/AAAA, affichage seulement.",
+       "max_length": 7
+      }
+     ]
+    ],
+    [
+     "statut",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "choices": [
+        [
+         "actif",
+         "Actif"
+        ],
+        [
+         "expire",
+         "Expiré"
+        ],
+        [
+         "revoque",
+         "Révoqué"
+        ]
+       ],
+       "default": "actif",
+       "max_length": 10
+      }
+     ]
+    ],
+    [
+     "consentement_horodate",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "blank": true,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "created_at",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "auto_now_add": true
+      }
+     ]
+    ],
+    [
+     "revoked_at",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "blank": true,
+       "null": true
+      }
+     ]
+    ]
+   ],
+   "indexes": [],
+   "ordering": [
+    "-created_at"
+   ],
+   "unique_together": []
+  },
+  "NoteDebit": {
+   "app_label": "ventes",
+   "ast_sha256": "8ed9c56270b86324f74ea47d767bf517d878f50dcb26309cdbe1c694f61b048a",
+   "constraints": [],
+   "db_table": "ventes_notedebit",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "company",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "notes_debit",
+       "to": "authentication.company"
+      }
+     ]
+    ],
+    [
+     "reference",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "max_length": 50
+      }
+     ]
+    ],
+    [
+     "facture",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.PROTECT",
+       "related_name": "notes_debit",
+       "to": "facturation.facture"
+      }
+     ]
+    ],
+    [
+     "client",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.PROTECT",
+       "related_name": "notes_debit",
+       "to": "crm.client"
+      }
+     ]
+    ],
+    [
+     "statut",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "choices": [
+        [
+         "brouillon",
+         "Brouillon"
+        ],
+        [
+         "emise",
+         "Émise"
+        ],
+        [
+         "annulee",
+         "Annulée"
+        ]
+       ],
+       "default": "brouillon",
+       "max_length": 20
+      }
+     ]
+    ],
+    [
+     "motif",
+     [
+      "django.db.models.TextField",
+      [],
+      {
+       "blank": true,
+       "default": ""
+      }
+     ]
+    ],
+    [
+     "date_emission",
+     [
+      "django.db.models.DateField",
+      [],
+      {
+       "auto_now_add": true
+      }
+     ]
+    ],
+    [
+     "taux_tva",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "decimal_places": 2,
+       "default": 20.0,
+       "max_digits": 5
+      }
+     ]
+    ],
+    [
+     "remise_globale",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "decimal_places": 2,
+       "default": 0,
+       "help_text": "Remise globale (%) reprise de la facture d'origine.",
+       "max_digits": 5
+      }
+     ]
+    ],
+    [
+     "montant_ht",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "blank": true,
+       "decimal_places": 2,
+       "max_digits": 12,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "montant_tva",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "blank": true,
+       "decimal_places": 2,
+       "max_digits": 12,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "montant_ttc",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "blank": true,
+       "decimal_places": 2,
+       "max_digits": 12,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "created_by",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "notes_debit_creees",
+       "to": "authentication.customuser"
+      }
+     ]
+    ],
+    [
+     "fichier_pdf",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "blank": true,
+       "max_length": 500,
+       "null": true
+      }
+     ]
+    ]
+   ],
+   "indexes": [],
+   "ordering": [
+    "-date_emission",
+    "-id"
+   ],
+   "unique_together": [
+    [
+     "company",
+     "reference"
+    ]
+   ]
+  },
+  "ParametrageRelanceClient": {
+   "app_label": "ventes",
+   "ast_sha256": "571bbe38a228bf89c27d275f789197ad4bf510731a28e6c21110b273acc16653",
+   "constraints": [],
+   "db_table": "ventes_parametragerelanceclient",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "company",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "parametrages_relance",
+       "to": "authentication.company"
+      }
+     ]
+    ],
+    [
+     "client",
+     [
+      "django.db.models.OneToOneField",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "parametrage_relance",
+       "to": "crm.client"
+      }
+     ]
+    ],
+    [
+     "responsable",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "clients_relance_responsable",
+       "to": "authentication.customuser"
+      }
+     ]
+    ],
+    [
+     "mode",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "choices": [
+        [
+         "auto",
+         "Automatique"
+        ],
+        [
+         "manuel",
+         "Manuel"
+        ]
+       ],
+       "default": "auto",
+       "max_length": 10
+      }
+     ]
+    ],
+    [
+     "prochaine_relance_manuelle",
+     [
+      "django.db.models.DateField",
+      [],
+      {
+       "blank": true,
+       "null": true
+      }
+     ]
+    ]
+   ],
+   "indexes": [],
+   "ordering": [],
+   "unique_together": []
+  },
+  "PaymentLink": {
+   "app_label": "ventes",
+   "ast_sha256": "2a9b4910eb26f1022ceef16c1f89a481d38453f1ebcaaf171199d6a86eedcad1",
+   "constraints": [
+    "uniq_paymentlink_actif_par_facture"
+   ],
+   "db_table": "ventes_paymentlink",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "company",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "payment_links",
+       "to": "authentication.company"
+      }
+     ]
+    ],
+    [
+     "facture",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "payment_links",
+       "to": "facturation.facture"
+      }
+     ]
+    ],
+    [
+     "token",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "default": "apps.ventes.models._default_payment_token",
+       "editable": false,
+       "max_length": 64,
+       "unique": true
+      }
+     ]
+    ],
+    [
+     "provider",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "default": "noop",
+       "max_length": 40
+      }
+     ]
+    ],
+    [
+     "montant",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "decimal_places": 2,
+       "max_digits": 12
+      }
+     ]
+    ],
+    [
+     "statut",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "choices": [
+        [
+         "en_attente",
+         "En attente"
+        ],
+        [
+         "paye",
+         "Payé"
+        ],
+        [
+         "expire",
+         "Expiré"
+        ],
+        [
+         "annule",
+         "Annulé"
+        ]
+       ],
+       "default": "en_attente",
+       "max_length": 20
+      }
+     ]
+    ],
+    [
+     "provider_ref",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "blank": true,
+       "default": "",
+       "max_length": 200
+      }
+     ]
+    ],
+    [
+     "paiement",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "payment_links",
+       "to": "facturation.paiement"
+      }
+     ]
+    ],
+    [
+     "created_at",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "auto_now_add": true
+      }
+     ]
+    ],
+    [
+     "expires_at",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "default": "apps.ventes.models._default_payment_expiry"
+      }
+     ]
+    ],
+    [
+     "paid_at",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "blank": true,
+       "null": true
+      }
+     ]
+    ]
+   ],
+   "indexes": [
+    "ventes_paym_token_d35b85_idx"
+   ],
+   "ordering": [
+    "-created_at"
+   ],
+   "unique_together": []
+  },
+  "ProformaDocument": {
+   "app_label": "ventes",
+   "ast_sha256": "666b7b95909d4ec2618b74097f969c934449a92fff83dd8746d2065e4a33c4c6",
+   "constraints": [],
+   "db_table": "ventes_proformadocument",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "company",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "proforma_documents",
+       "to": "authentication.company"
+      }
+     ]
+    ],
+    [
+     "reference",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "max_length": 50
+      }
+     ]
+    ],
+    [
+     "devis",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "proformas",
+       "to": "ventes.devis"
+      }
+     ]
+    ],
+    [
+     "created_by",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "proformas_creees",
+       "to": "authentication.customuser"
+      }
+     ]
+    ],
+    [
+     "date_creation",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "auto_now_add": true
+      }
+     ]
+    ]
+   ],
+   "indexes": [],
+   "ordering": [
+    "-date_creation"
+   ],
+   "unique_together": [
+    [
+     "company",
+     "reference"
+    ]
+   ]
+  },
+  "PromessePaiement": {
+   "app_label": "ventes",
+   "ast_sha256": "72794069ad8e19105b0e25d8856a4cdc3c39973cc0af527d9269580be36521d0",
+   "constraints": [],
+   "db_table": "ventes_promessepaiement",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "company",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "promesses_paiement",
+       "to": "authentication.company"
+      }
+     ]
+    ],
+    [
+     "facture",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "promesses_paiement",
+       "to": "facturation.facture"
+      }
+     ]
+    ],
+    [
+     "montant_promis",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "decimal_places": 2,
+       "max_digits": 12
+      }
+     ]
+    ],
+    [
+     "date_promise",
+     [
+      "django.db.models.DateField",
+      [],
+      {}
+     ]
+    ],
+    [
+     "note",
+     [
+      "django.db.models.TextField",
+      [],
+      {
+       "blank": true,
+       "default": ""
+      }
+     ]
+    ],
+    [
+     "statut",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "choices": [
+        [
+         "en_cours",
+         "En cours"
+        ],
+        [
+         "tenue",
+         "Tenue"
+        ],
+        [
+         "rompue",
+         "Rompue"
+        ]
+       ],
+       "default": "en_cours",
+       "max_length": 10
+      }
+     ]
+    ],
+    [
+     "created_by",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "promesses_paiement_creees",
+       "to": "authentication.customuser"
+      }
+     ]
+    ],
+    [
+     "date_creation",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "auto_now_add": true
+      }
+     ]
+    ]
+   ],
+   "indexes": [],
+   "ordering": [
+    "-date_creation"
+   ],
+   "unique_together": []
+  },
+  "RemiseEncaissement": {
+   "app_label": "ventes",
+   "ast_sha256": "3668f04936a8a1e01ae1fffc66ddb3fb0cc15d6fbf54634e03b58cceed0944e8",
+   "constraints": [],
+   "db_table": "ventes_remiseencaissement",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "company",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "remises_encaissement",
+       "to": "authentication.company"
+      }
+     ]
+    ],
+    [
+     "technicien",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.PROTECT",
+       "related_name": "remises_encaissement",
+       "to": "authentication.customuser"
+      }
+     ]
+    ],
+    [
+     "reference",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "blank": true,
+       "default": "",
+       "max_length": 50
+      }
+     ]
+    ],
+    [
+     "date_collecte",
+     [
+      "django.db.models.DateField",
+      [],
+      {}
+     ]
+    ],
+    [
+     "montant_declare",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "decimal_places": 2,
+       "help_text": "Montant total déclaré par le technicien pour cette collecte (avant rapprochement des lignes).",
+       "max_digits": 12
+      }
+     ]
+    ],
+    [
+     "statut",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "choices": [
+        [
+         "ouverte",
+         "Ouverte"
+        ],
+        [
+         "cloturee",
+         "Clôturée"
+        ],
+        [
+         "validee",
+         "Validée"
+        ]
+       ],
+       "default": "ouverte",
+       "max_length": 15
+      }
+     ]
+    ],
+    [
+     "note",
+     [
+      "django.db.models.TextField",
+      [],
+      {
+       "blank": true,
+       "default": ""
+      }
+     ]
+    ],
+    [
+     "fichier_pdf",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "blank": true,
+       "max_length": 500,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "created_by",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "remises_encaissement_creees",
+       "to": "authentication.customuser"
+      }
+     ]
+    ],
+    [
+     "date_creation",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "auto_now_add": true
+      }
+     ]
+    ],
+    [
+     "cloture_par",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "remises_encaissement_cloturees",
+       "to": "authentication.customuser"
+      }
+     ]
+    ],
+    [
+     "date_cloture",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "blank": true,
+       "null": true
+      }
+     ]
+    ]
+   ],
+   "indexes": [],
+   "ordering": [
+    "-date_collecte",
+    "-id"
+   ],
+   "unique_together": []
+  },
+  "RetenueSubie": {
+   "app_label": "ventes",
+   "ast_sha256": "4d46f390654d8ac91da749be2d0b171f511bd9cdc27236b618a9e3aadad29ee7",
+   "constraints": [],
+   "db_table": "ventes_retenuesubie",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "company",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "retenues_subies",
+       "to": "authentication.company"
+      }
+     ]
+    ],
+    [
+     "facture",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "retenues_subies",
+       "to": "facturation.facture"
+      }
+     ]
+    ],
+    [
+     "paiement",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "retenues_subies",
+       "to": "facturation.paiement"
+      }
+     ]
+    ],
+    [
+     "type_retenue",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "choices": [
+        [
+         "ras_tva",
+         "RAS TVA"
+        ],
+        [
+         "ras_is",
+         "RAS IS"
+        ]
+       ],
+       "default": "ras_tva",
+       "max_length": 10
+      }
+     ]
+    ],
+    [
+     "taux",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "decimal_places": 2,
+       "max_digits": 5
+      }
+     ]
+    ],
+    [
+     "base",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "decimal_places": 2,
+       "max_digits": 12
+      }
+     ]
+    ],
+    [
+     "montant",
+     [
+      "django.db.models.DecimalField",
+      [],
+      {
+       "decimal_places": 2,
+       "max_digits": 12
+      }
+     ]
+    ],
+    [
+     "attestation_recue",
+     [
+      "django.db.models.BooleanField",
+      [],
+      {
+       "default": false
+      }
+     ]
+    ],
+    [
+     "attestation_date",
+     [
+      "django.db.models.DateField",
+      [],
+      {
+       "blank": true,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "attestation_fichier",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "blank": true,
+       "max_length": 500,
+       "null": true
+      }
+     ]
+    ],
+    [
+     "note",
+     [
+      "django.db.models.TextField",
+      [],
+      {
+       "blank": true,
+       "default": ""
+      }
+     ]
+    ],
+    [
+     "created_by",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "retenues_subies_creees",
+       "to": "authentication.customuser"
+      }
+     ]
+    ],
+    [
+     "date_creation",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "auto_now_add": true
+      }
+     ]
+    ]
+   ],
+   "indexes": [],
+   "ordering": [
+    "-date_creation"
+   ],
+   "unique_together": []
+  },
+  "TentativeDebitMandat": {
+   "app_label": "ventes",
+   "ast_sha256": "46afcc60ac90e7cd6e6b8af7277ca8c4c3ecc1245977e3306ed900dacd308692",
+   "constraints": [],
+   "db_table": "ventes_tentativedebitmandat",
+   "fields": [
+    [
+     "id",
+     [
+      "django.db.models.BigAutoField",
+      [],
+      {
+       "auto_created": true,
+       "primary_key": true,
+       "serialize": false,
+       "verbose_name": "ID"
+      }
+     ]
+    ],
+    [
+     "company",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "tentatives_debit_mandat",
+       "to": "authentication.company"
+      }
+     ]
+    ],
+    [
+     "mandat",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "on_delete": "django.db.models.deletion.CASCADE",
+       "related_name": "tentatives",
+       "to": "ventes.mandatpaiement"
+      }
+     ]
+    ],
+    [
+     "periode",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "max_length": 20
+      }
+     ]
+    ],
+    [
+     "statut",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "choices": [
+        [
+         "reussi",
+         "Réussi"
+        ],
+        [
+         "echec",
+         "Échec"
+        ]
+       ],
+       "max_length": 10
+      }
+     ]
+    ],
+    [
+     "motif_echec",
+     [
+      "django.db.models.CharField",
+      [],
+      {
+       "blank": true,
+       "default": "",
+       "max_length": 255
+      }
+     ]
+    ],
+    [
+     "paiement",
+     [
+      "django.db.models.ForeignKey",
+      [],
+      {
+       "blank": true,
+       "null": true,
+       "on_delete": "django.db.models.deletion.SET_NULL",
+       "related_name": "tentatives_debit_mandat",
+       "to": "facturation.paiement"
+      }
+     ]
+    ],
+    [
+     "date_tentative",
+     [
+      "django.db.models.DateTimeField",
+      [],
+      {
+       "auto_now_add": true
+      }
+     ]
+    ],
+    [
+     "prochaine_retentative",
+     [
+      "django.db.models.DateField",
+      [],
+      {
+       "blank": true,
+       "null": true
+      }
+     ]
+    ]
+   ],
+   "indexes": [],
+   "ordering": [
+    "-date_tentative"
+   ],
+   "unique_together": []
+  }
+ }
+}
