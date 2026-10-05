@@ -7,22 +7,12 @@ import { buildRelanceMessage } from './devisListHelpers.js'
 
 // SPL205 — dialogues d'envoi de la liste des devis (email + WhatsApp/relance),
 // JSX déplacé VERBATIM de DevisList.jsx (move only). Tout l'état et les
-// handlers viennent de useDevisEnvoi, passés en props NOMMÉES.
+// handlers viennent de useDevisEnvoi, passés en props NOMMÉES (le parent
+// étale l'objet du hook ; seules les props ci-dessous sont lues).
 export default function EnvoiDialogs({
-  emailTarget,
-  emailAddress,
-  setEmailAddress,
-  emailBusy,
-  closeEmailModal,
-  submitEmail,
-  waTarget,
-  waData,
-  waSending,
-  relanceMode,
-  waGammeEnvoi,
-  setWaGammeEnvoi,
-  closeWaModal,
-  openWhatsApp,
+  emailTarget, emailAddress, setEmailAddress, emailBusy, closeEmailModal, submitEmail,
+  waTarget, waData, waSending, relanceMode, waGammeEnvoi, setWaGammeEnvoi,
+  closeWaModal, openWhatsApp,
 }) {
   return (
     <>
