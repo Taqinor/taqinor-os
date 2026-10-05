@@ -52,10 +52,13 @@ from rest_framework.response import Response
 from ..analyse_plan import TAILLE_MAX_OCTETS
 from ..permissions import PeutGererCalepinage
 from ..services.import_plan import (
+    CalageIllisible,
     PlanIllisible,
     analyser_plan,
     contour_du_calque,
+    contour_lnglat,
     cotes_hors_tout,
+    lire_calage,
 )
 from .calepinages import CalepinageViewSet
 
@@ -66,6 +69,9 @@ CHAMP_FICHIER = 'fichier'
 
 #: Le champ qui porte le calque choisi.
 CHAMP_CALQUE = 'calque'
+
+#: ACAL69 — le champ (JSON en multipart) qui porte le calage.
+CHAMP_CALAGE = 'calage'
 
 SANS_FICHIER = ("Aucun plan déposé : ajoutez un fichier DXF ou PDF vectoriel "
                 "dans le champ « fichier ».")
@@ -121,9 +127,23 @@ def _forme():
         'contour': serializers.ListField(child=serializers.ListField(),
                                          allow_null=True),
         'cotes_hors_tout': serializers.DictField(allow_null=True),
+        'contour_lnglat': serializers.ListField(
+            child=serializers.ListField(), allow_null=True),
         'enregistre': serializers.BooleanField(),
         'message': serializers.CharField(),
     })
+
+
+def _epingle(calepinage):
+    """L'épingle ``{lat, lng}`` : le document, sinon le diagnostic."""
+    from .. import selectors as cal_selectors
+
+    layout = getattr(calepinage, 'roof_layout', None)
+    pin = layout.get('pin') if isinstance(layout, dict) else None
+    if isinstance(pin, dict) and pin.get('lat') is not None \
+            and pin.get('lng') is not None:
+        return pin
+    return cal_selectors.contexte_geographique(calepinage)['pin']
 
 
 def _refus(champ, message):
@@ -191,6 +211,22 @@ def importer_plan(self, request, pk=None):
                           str(refus))
         cotes = cotes_hors_tout(contour)
 
+    # ACAL69 — le calage (corps OPTIONNEL) pose le contour sur l'épingle.
+    # Calcul pur : rien n'est écrit. L'épingle : celle du document, sinon
+    # celle du diagnostic (même lecture que horizon).
+    contour_geo = None
+    calage_brut = request.data.get(CHAMP_CALAGE)
+    if calage_brut not in (None, '', {}):
+        if not contour:
+            return _refus(CHAMP_CALQUE,
+                          "Choisissez un calque avant de caler le plan.")
+        try:
+            calage = lire_calage(calage_brut)
+            contour_geo = contour_lnglat(
+                contour, calage, _epingle(calepinage))
+        except CalageIllisible as refus:
+            return _refus(refus.champ, str(refus))
+
     unite = analyse.get('unite') or 'inconnu'
     return Response({
         'calepinage': calepinage.pk,
@@ -208,6 +244,7 @@ def importer_plan(self, request, pk=None):
         'calque': calque_demande or None,
         'contour': contour,
         'cotes_hors_tout': cotes,
+        'contour_lnglat': contour_geo,
         # Constante du SERVEUR : cette porte n'écrit jamais.
         'enregistre': False,
         'message': MESSAGE_AVEC_CALQUE if contour else MESSAGE_SANS_CALQUE,
