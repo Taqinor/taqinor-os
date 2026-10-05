@@ -588,3 +588,4 @@ export default calepinageApi
 // ACAL3 — contrat calepinage_publication.json (M0, remplacé par l'usage réel dans la moitié cliente)
 // ACAL9 — contrat calepinage_entree_electrique.json (M0, remplacé par l'usage réel dans la moitié cliente)
 // ACAL9 — contrat calepinage_publication_electrique.json (M0, remplacé par l'usage réel dans la moitié cliente)
+// ACAL11 — contrat calepinage_liste.json (M0, remplacé par l'usage réel dans la moitié cliente)

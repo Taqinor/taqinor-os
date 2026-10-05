@@ -175,3 +175,4 @@ __all__ = ['MODULES_RATTACHES']
 # ACAL8 — contrat calepinage_pertes.json (M0, remplacé par l'usage réel dans la moitié serveur D04-T22)
 # ACAL9 — contrat calepinage_entree_electrique.json (M0, remplacé par l'usage réel dans la moitié serveur)
 # ACAL9 — contrat calepinage_publication_electrique.json (M0, remplacé par l'usage réel dans la moitié serveur)
+# ACAL11 — contrat calepinage_liste.json (M0, remplacé par l'usage réel dans la moitié serveur)
