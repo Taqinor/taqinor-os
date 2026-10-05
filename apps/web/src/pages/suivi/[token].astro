@@ -21,7 +21,7 @@ import {
   type SuiviResponse,
   suiviEndpoint,
   buildTimeline,
-  formatSuiviDate,
+  libelleMiseAJour,
 } from '../../lib/suivi';
 import { whatsappLink } from '../../lib/proposition';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
@@ -107,7 +107,10 @@ const ok = !!data;
 const reference = data?.reference ?? '';
 const stepsFr = ok ? buildTimeline(data!, 'fr') : [];
 const stepsAr = ok ? buildTimeline(data!, 'ar') : [];
-const generatedLabel = formatSuiviDate(data?.generated_at ?? null);
+// ADOC132 — « Mis à jour le » = `mis_a_jour_le` (date du dernier jalon fait),
+// JAMAIS `generated_at` (horodatage technique : il vaut « maintenant » à chaque
+// lecture). `null` ⇒ aucune ligne « Mis à jour » (zéro date inventée).
+const miseAJour = libelleMiseAJour(data);
 
 // Lien de partage WhatsApp : compositeur générique (wa.me sans numéro — le
 // client choisit le destinataire) partageant l'URL COURANTE, donc CETTE page
@@ -199,10 +202,10 @@ const ogTitle = 'Suivi de votre projet solaire | Taqinor';
             <span data-lang="ar" dir="rtl" hidden>مرحبًا، إليكم تقدّم مشروعكم.</span>
           </h1>
           <p class="fig lum mt-4 text-2xl sm:text-3xl" dir="ltr">{reference}</p>
-          {generatedLabel ? (
-            <p class="mt-2 text-sm text-lune-faint">
-              <span data-lang="fr">Mis à jour le <span dir="ltr">{generatedLabel}</span></span>
-              <span data-lang="ar" dir="rtl" hidden>آخر تحديث بتاريخ <span dir="ltr">{generatedLabel}</span></span>
+          {miseAJour ? (
+            <p class="mt-2 text-sm text-lune-faint" data-mis-a-jour>
+              <span data-lang="fr">Mis à jour le <span dir="ltr">{miseAJour.date}</span></span>
+              <span data-lang="ar" dir="rtl" hidden>آخر تحديث بتاريخ <span dir="ltr">{miseAJour.date}</span></span>
             </p>
           ) : null}
         </div>
