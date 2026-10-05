@@ -129,6 +129,37 @@ class ContratOmCiTest(TestCase):
             [p['libelle'] for p in resp.data['prestations']],
             [p['libelle'] for p in document['exemple_vide']['prestations']])
 
+    def test_patch_prestations_editables_et_bornees_au_contrat(self):
+        self._accepter(self.devis)
+        contrat = self._contrats().get()
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        url = f'/api/django/sav/contrats-maintenance/{contrat.pk}/'
+        nettoyage = contrat.prestations.get(type='nettoyage')
+        resp = api.patch(url, {'prestations': [
+            {'id': nettoyage.pk, 'frequence_an': 2, 'incluse': True,
+             'type': 'autre', 'libelle': 'renommé'}]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        nettoyage.refresh_from_db()
+        self.assertEqual(nettoyage.frequence_an, 2)
+        self.assertTrue(nettoyage.incluse)
+        self.assertEqual(nettoyage.type, 'nettoyage')
+        self.assertEqual(nettoyage.libelle, 'Nettoyage des modules')
+        self.assertIsNone(nettoyage.prix_ht)
+        # Une prestation d'un autre contrat n'est jamais modifiable ici.
+        autre = ContratMaintenance.objects.create(
+            company=self.company, client=self.client_obj,
+            date_debut=timezone.localdate())
+        etrangere = PrestationContrat.objects.create(
+            company=self.company, contrat=autre, type='autre',
+            libelle='Autre')
+        resp = api.patch(url, {'prestations': [
+            {'id': etrangere.pk, 'frequence_an': 9}]}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        etrangere.refresh_from_db()
+        self.assertIsNone(etrangere.frequence_an)
+
     def test_migration_additive(self):
         module = import_module(
             'apps.sav.migrations.0066_ciq640_prestations_contrat')
