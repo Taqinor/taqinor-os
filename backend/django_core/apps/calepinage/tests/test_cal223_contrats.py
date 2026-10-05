@@ -330,6 +330,35 @@ SANS_PRODUCTEUR_PUR = {
         'apps/calepinage/tests/test_calx335_contrat_fixation_bom.py, et le '
         'coeur PUR du producteur (_lignes_de_fixation) est rejoué contre '
         "l'exemple par apps/calepinage/tests/test_calx359_bom_fixation.py",
+    # ACAL M0 (PACT10, 05/10/2026) — contrats posés SEULS avant leur moitié
+    # serveur : chacun est affirmé par la tâche qui livre son producteur.
+    'calepinage_layout_section.json':
+        'écriture par section + jeton If-Match (ACAL1) : la porte lit et '
+        'versionne le calepinage en base',
+    'calepinage_publication.json':
+        'réponse de generer-devis / sync-devis (ACAL3) : la publication '
+        'écrit le devis et le calepinage en base',
+    'calepinage_pertes.json':
+        'pertes et dérogations du calepinage (ACAL8) : lues sur le '
+        'calepinage et les réglages société en base',
+    'calepinage_entree_electrique.json':
+        "entrée électrique stockée + matériel résolu (ACAL9) : lit le devis "
+        'lié et le stock en base',
+    'calepinage_publication_electrique.json':
+        'refus de publication électrique 422 + dérogation (ACAL9) : lit le '
+        'verdict du calepinage en base',
+    'calepinage_liste.json':
+        'liste des calepinages (ACAL11) : queryset société en base',
+    'calepinage_creation_conflit.json':
+        'conflit de création 409 (ACAL12) : cherche le calepinage ouvert du '
+        'lead en base',
+    'calepinage_photos.json':
+        'photos du site (ACAL13) : pièces jointes en base',
+    'gabarits_dossier_reglementaire.json':
+        'gabarits déposés par la société (ACAL15) : lus en base',
+    'calepinage_consommation_proposee.json':
+        'consommation proposée par le serveur (ACAL21) : lit les factures '
+        'et le profil du lead en base',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -366,7 +395,22 @@ POSES_AVANT_LEUR_ROUTE = {
     # (``views/asbuilt.py``) : ``calepinage_asbuilt_ecarts.json`` en est SORTI.
     # CALX359 a livré ``GET calepinages/<pk>/bom-fixation/``
     # (``views/fixation.py``) : ``calepinage_fixation_bom.json`` en est SORTI.
+    # ACAL21 (M0) — POST consommation/proposer/ : la porte arrive avec ACAL310
+    # (retirer l'entrée dans le même commit que la route).
+    'calepinage_consommation_proposee.json': 'ACAL310',
 }
+
+#: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne
+#: les serve : ``échantillon -> {clé: tâche qui la livre}``. La comparaison
+#: les ignore tant que l'entrée existe ; la tâche nommée retire SA clé dans
+#: le même commit que le producteur (le test rougit dès qu'une clé « en
+#: attente » est réellement servie).
+CLES_POSEES_AVANT_LEUR_PRODUCTEUR = {
+    'dossiers_reglementaires.json': {'packs_france': 'ACAL238'},
+    'calepinage_raccordement.json': {'proposition_lead': 'ACAL157'},
+    'site_imagerie.json': {'site_effectif': 'ACAL129'},
+}
+
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
 #: chercher) : ils appartiennent à une autre app.
@@ -461,6 +505,13 @@ class ClesServiesTest(unittest.TestCase):
     def _comparer(self, nom, servi, cle_exemple='exemple'):
         attendu = set(_charger(nom)[cle_exemple])
         obtenu = set(servi)
+        en_attente = set(CLES_POSEES_AVANT_LEUR_PRODUCTEUR.get(nom, {}))
+        self.assertEqual(
+            sorted(en_attente & obtenu), [],
+            f"{nom} : le producteur sert désormais "
+            f"{sorted(en_attente & obtenu)} — retirer ces clés de "
+            "CLES_POSEES_AVANT_LEUR_PRODUCTEUR.")
+        attendu -= en_attente
         self.assertEqual(
             sorted(attendu - obtenu), [],
             f"{nom} : le serveur ne sert PAS la ou les clés "
@@ -535,7 +586,9 @@ class ClesServiesTest(unittest.TestCase):
         donnees = _charger('site_imagerie.json')
         for etat in ('exemple', 'exemple_vide',
                      'exemple_section_declaree_sans_valeur'):
-            absentes = set(donnees[etat]) - set(SECTIONS_PARAMETRES)
+            absentes = (set(donnees[etat]) - set(SECTIONS_PARAMETRES)
+                        - set(CLES_POSEES_AVANT_LEUR_PRODUCTEUR
+                              ['site_imagerie.json']))
             self.assertEqual(
                 sorted(absentes), [],
                 f"site_imagerie.json ({etat}) : section(s) {sorted(absentes)} "

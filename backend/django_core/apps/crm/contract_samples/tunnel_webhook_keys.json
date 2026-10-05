@@ -5,7 +5,7 @@
   "notes": {
     "endpoint": "`POST /api/capture-lead` est le proxy Astro du site — la cible que `champs.ts` NOMME lui-meme (« le nom EXACT de la cle emise dans le corps envoye a /api/capture-lead »). Aucune vue Django ne sert ce chemin : `scripts/check_api_shapes.py` ne compare donc rien ici, exactement comme pour `apps/ventes/contract_samples/ligne_fiche_mapping.json`. La garde de conformite de CE fichier est `scripts/check_lead_webhook_parite.py` (QJR230). La route Django qui recoit ensuite le corps relaye par le proxy est `POST /api/django/crm/webhooks/website-leads/` (`apps/crm/webhooks.py::website_lead_webhook`).",
     "forme_serveur": "`partielle` (vocabulaire de `scripts/check_api_shapes.py`, QJR228) : `exemple` decrit ici un CORPS DE REQUETE, pas la reponse de l'endpoint. Il ne doit jamais etre confronte a la forme renvoyee par une vue.",
-    "regeneration": "Les 69 cles sont DERIVEES du registre, jamais recopiees a la main. Commande de verification/regeneration, executable sur l'hote, sans base ni docker, depuis la racine du depot (le \\x27 tient lieu d'apostrophe : aucun echappement de shell) :\n    python -c \"import re,pathlib;print(re.findall(r'webhookKey: \\x27(\\w+)\\x27', pathlib.Path('apps/web/src/lib/tunnel/champs.ts').read_text(encoding='utf-8')))\"\nLa liste rendue (69 entrees) doit egaler, DANS L'ORDRE, les cles de `cles` ci-dessous. Un `webhookKey` ajoute au registre sans etre ajoute ici se voit donc immediatement ; la garde `scripts/check_lead_webhook_parite.py` (QJR230) verifie l'autre moitie — que `_map_payload_to_fields` traite bien chaque cle de cette table.",
+    "regeneration": "Les 69 cles du registre (70 avec `roofLayout`, ACAL20) sont DERIVEES du registre, jamais recopiees a la main. Commande de verification/regeneration, executable sur l'hote, sans base ni docker, depuis la racine du depot (le \\x27 tient lieu d'apostrophe : aucun echappement de shell) :\n    python -c \"import re,pathlib;print(re.findall(r'webhookKey: \\x27(\\w+)\\x27', pathlib.Path('apps/web/src/lib/tunnel/champs.ts').read_text(encoding='utf-8')))\"\nLa liste rendue (69 entrees) doit egaler, DANS L'ORDRE, les 69 premieres cles de `cles` ci-dessous ; la 70e, `roofLayout` (ACAL20), est posee AVANT son entree dans le registre `champs.ts` (PATCH-T02) : l'ecart de UN est attendu jusque-la. Un `webhookKey` ajoute au registre sans etre ajoute ici se voit donc immediatement ; la garde `scripts/check_lead_webhook_parite.py` (QJR230) verifie l'autre moitie — que `_map_payload_to_fields` traite bien chaque cle de cette table.",
     "destinations": "Quatre destinations, et une seule par cle. `colonne_lead` : la valeur atterrit dans la colonne `crm.Lead` nommee par `champ_lead`. `web_questionnaire` : elle atterrit dans le blob JSON `Lead.web_questionnaire`, sous la cle `cle_blob` (snake_case aligne sur le vocabulaire `etude_params` du generateur). `vue` : la vue du webhook la lit, mais aucune colonne ne la porte. `refus` : le CRM ne la lit PAS, et c'est ecrit — jamais par omission.",
     "style_tolerant": "Tout ce mapping est TOLERANT par conception : une valeur invalide, hors bornes ou hors liste est ignoree en silence, jamais une erreur, jamais un defaut invente (regle « zero chiffre invente »). Une cle absente ne touche donc jamais le champ correspondant.",
     "hors_registre": "Le corps reellement envoye porte AUSSI des cles qui ne viennent PAS de ce registre et sortent donc du perimetre de ce contrat : `consentTimestamp`, `qualified`, `band`, `page`, `submittedAt` (posees par `buildLeadRecord`, `apps/web/src/lib/lead.ts`) et les alias historiques que le webhook tolere encore (`phoneE164`, `marketMode`, `billKwh`, `occupantType`, `projectTiming`, `financingIntent`, `ombrage`, `batteryInterest`…). Les ajouter ici ferait mentir le compte de 69 : ce fichier documente LE REGISTRE DU TUNNEL, pas la totalite du corps.",
@@ -659,6 +659,67 @@
       "destination": "colonne_lead",
       "champ_lead": "roof_outline",
       "note": "polygone facultatif, nettoye par _clean_roof_outline"
+    },
+    "roofLayout": {
+      "cle_registre": "roofLayout",
+      "groupe": "G_CARTE",
+      "requis": false,
+      "destination": "refus",
+      "champ_lead": null,
+      "note": "EN ATTENTE DU CABLAGE (ACAL20, D-ACAL-27) : 70e cle, posee SEULE avant le code (PACT10). Objet facultatif = le trace multi-pans du visiteur (document roof_layout v2). Porteur ERP prevu : Lead.web_questionnaire['roof_layout'] (cle_blob), SANS colonne ni migration. Bornes : <= 64 Ko serialise, <= 12 zones, <= 64 sommets par zone, coordonnees finies ; hors bornes = cle IGNOREE, jamais une erreur pour le visiteur. Declaree `refus` tant que `_extract_web_questionnaire` ne la lit pas (la garde check_lead_webhook_parite.py rougirait sur `web_questionnaire` non lu) : PATCH-T03 la cable et la passe en `web_questionnaire` + `cle_blob: roof_layout`, PATCH-T02 l'emet cote site (nom emis `roofLayout`, nom range `roof_layout`)."
     }
+  },
+  "ajout_ciq400": {
+    "pourquoi": "CIQ400 (Groupe CIQ, audit L3 C&I du 03/10/2026 ; D-CIQ-8, D-CIQ-11, Q21) — clés pro du tunnel promues du sac `web_questionnaire` vers les colonnes du contrat `lead_pro.json` (CIQ1).",
+    "cle_nouvelle": {
+      "tensionSource": {
+        "cle_registre": "tensionSource",
+        "groupe": "G_PRO",
+        "requis": false,
+        "destination": "colonne_lead",
+        "champ_lead": "tension_source",
+        "valeurs": [
+          "touchee",
+          "defaut_visible"
+        ],
+        "note": "touchee → `site_web` ; defaut_visible → `site_defaut_visible` (la valeur pré-cochée n'a pas été modifiée : visite requise, D-CIQ-5)"
+      }
+    },
+    "promues_en_colonne": {
+      "categorieCommerciale": {
+        "champ_lead": "categorie_commerciale"
+      },
+      "reponses par catégorie (chambres, occupationPct, piscine, blanchisserie, chambresFroides, horaires, cuisson, surfaceVenteM2, effectif, clim, lits, gardeNuit, internat, four, cuissonNocturne, temperatureConsigne, volumeM3, saisonnaliteRecolte, chauffe…)": {
+        "champ_lead": "reponses_categorie"
+      },
+      "equipes": {
+        "champ_lead": "regime_equipes"
+      },
+      "surfaceType": {
+        "champ_lead": "type_surface"
+      },
+      "hasGenerator": {
+        "champ_lead": "groupe_electrogene",
+        "note": "accepté par apps/web/src/lib/lead.ts, plus émis par le tunnel depuis la coupe du 18/08 : promu s'il arrive"
+      },
+      "groupeKva": {
+        "champ_lead": "groupe_kva",
+        "note": "idem : promu s'il arrive"
+      },
+      "dieselDhMois": {
+        "champ_lead": "groupe_depense_mad_mois",
+        "note": "idem : promu s'il arrive"
+      },
+      "cosPhiConnu": {
+        "champ_lead": "cos_phi",
+        "note": "idem : promu s'il arrive ; `cos_phi_source` = site_web"
+      }
+    },
+    "restent_au_sac": {
+      "activityProfile": "simple INFORMATION (son envoyeur existe, apps/web/src/lib/tunnel/champs.ts) — D-CIQ-1 n'en fait JAMAIS une entrée de calcul",
+      "weekend": "aucun envoyeur depuis le 18/08, et un booléen ne dit pas quels jours",
+      "fermetureEstivale": "aucun envoyeur depuis le 18/08, et un booléen ne dit pas quels mois"
+    },
+    "regle": "La table `cles` reste DÉRIVÉE du registre (`notes.regeneration`) : elle prend ces destinations quand la tâche de promotion (CIQ406) et le registre web les émettent ; ce bloc en est le contrat."
   }
 }

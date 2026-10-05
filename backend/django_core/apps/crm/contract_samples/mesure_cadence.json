@@ -283,5 +283,43 @@
       ]
     },
     "integration": "Posée ici, À CÔTÉ de `exemple`, pour garder `main` vert : tests_cockpit_mesure_barreaux.py et tests_cad87_kpi_touche_heure_jour.py exigent que la réponse ait EXACTEMENT les clés de `exemple`. La tâche backend qui sert `par_segment` l'insère dans `exemple` et `exemple_vide` DANS LE MÊME COMMIT, puis retire ce bloc. Valeurs ILLUSTRATIVES (seul le décompte « 2 leads typés agricole » reprend le fait de production du 02/10/2026)."
+  },
+  "ajout_ciq10_par_segment": {
+    "pourquoi": "CIQ10 (Groupe CIQ, 05/10/2026 ; audit L3 C&I du 03/10/2026 ; D-CIQ-6, convention 8 « contact B2B sur fixe : la touche WhatsApp devient un e-mail quand une adresse existe — règle de DONNÉE, aucun axe segment », convention 10 « preuve J4 OMISE pour le C&I tant qu'aucune réalisation C&I n'est saisie ») — `mesure_cadence` (AGR502) ne comptait ni les raisons d'attente ni les touches converties.",
+    "cles_ajoutees_par_entree": {
+      "attente_accord_par_raison": "{raison: nombre} sur direction, financement, bailleur_murs, budget_exercice, consultation, administration — comptes seulement",
+      "touches_converties": "{email: nombre, appel: nombre} — touches WhatsApp converties sur numéro fixe (convention 8)",
+      "joints_par_creneau": "{creneau: nombre} — comptes, aucun pourcentage",
+      "delais_signature_jours": "liste triée des délais (jours) entre premier devis et signature"
+    },
+    "incoherents": "s'élargit aux devis commerciaux/industriels portés par un lead d'un autre type (drapeau `incoherence_segment` du contrat `lead_pro.json`, CIQ1).",
+    "regles": [
+      "`null` si un dénominateur est nul ; aucun seuil, aucune couleur, aucun verdict."
+    ],
+    "exemple_fragment": {
+      "segment": "commercial",
+      "attente_accord_par_raison": {
+        "direction": 1,
+        "financement": 2,
+        "bailleur_murs": 0,
+        "budget_exercice": 0,
+        "consultation": 0,
+        "administration": 0
+      },
+      "touches_converties": {
+        "email": 4,
+        "appel": 2
+      },
+      "joints_par_creneau": {
+        "matin": 6,
+        "midi": 1,
+        "apres_midi": 5
+      },
+      "delais_signature_jours": [
+        31.0,
+        49.0
+      ]
+    },
+    "note": "Valeurs ILLUSTRATIVES."
   }
 }

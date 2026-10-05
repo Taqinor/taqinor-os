@@ -287,5 +287,134 @@
       "photo_pompe / photo_forage (agricole)": "AGR411 — aucune pièce jointe dont le libellé porte pompe/plaque (plaque de la pompe) ou forage/puits (tête de forage)."
     }
   },
-  "segment_agricole": "AGR411 — filtre de SEGMENT (`crm.questionnaire.sections_du_lead`). Lead AGRICOLE : sections pompage, photo_pompe, photo_forage, gps, contact, photo_compteur ; l'envoi sans corps ne coche que pompage, photo_pompe, photo_forage, gps et contact MANQUANTS ; occupation, equipements, energie, toiture, photo_facture et photo_tableau sont REFUSÉES en 400 avec un message qui nomme la section. Les colonnes orales (autorisation de prélèvement, aide FDA reçue, décideur) ne sont jamais posées par écrit. Lead NON agricole : périmètre historique, identique à l'octet (les sections de pompage y restent inconnues)."
+  "segment_agricole": "AGR411 — filtre de SEGMENT (`crm.questionnaire.sections_du_lead`). Lead AGRICOLE : sections pompage, photo_pompe, photo_forage, gps, contact, photo_compteur ; l'envoi sans corps ne coche que pompage, photo_pompe, photo_forage, gps et contact MANQUANTS ; occupation, equipements, energie, toiture, photo_facture et photo_tableau sont REFUSÉES en 400 avec un message qui nomme la section. Les colonnes orales (autorisation de prélèvement, aide FDA reçue, décideur) ne sont jamais posées par écrit. Lead NON agricole : périmètre historique, identique à l'octet (les sections de pompage y restent inconnues).",
+  "exemple_pro": {
+    "entreprise": "Taqinor",
+    "prenom": "Karim",
+    "sections": [
+      "reseau",
+      "activite",
+      "site",
+      "societe",
+      "photo_factures",
+      "photo_poste",
+      "contact"
+    ],
+    "champs": {
+      "reseau": [
+        "tension_raccordement",
+        "compteur_puissance_kva",
+        "conso_mensuelle_kwh",
+        "releve_conso",
+        "cos_phi"
+      ],
+      "activite": [
+        "categorie_commerciale",
+        "reponses_categorie",
+        "secteur_industriel",
+        "export_ue_declare",
+        "regime_equipes",
+        "jours_ouverture",
+        "heure_debut",
+        "heure_fin",
+        "fermeture_mois",
+        "groupe_electrogene",
+        "groupe_kva",
+        "groupe_litres_mois",
+        "groupe_depense_mad_mois",
+        "pv_existant_kwc"
+      ],
+      "site": [
+        "type_surface",
+        "type_toiture",
+        "surface_toiture_m2"
+      ],
+      "societe": [
+        "societe",
+        "ice",
+        "rc",
+        "if_fiscal",
+        "adresse_siege",
+        "fonction_contact",
+        "contact_secondaire_nom",
+        "contact_secondaire_telephone",
+        "contact_secondaire_email",
+        "contact_secondaire_fonction",
+        "tva_recuperable"
+      ],
+      "photo_factures": [],
+      "photo_poste": [],
+      "contact": [
+        "prenom",
+        "nom",
+        "telephone",
+        "email"
+      ]
+    },
+    "prefill": {
+      "tension_raccordement": "bt",
+      "compteur_puissance_kva": null,
+      "conso_mensuelle_kwh": null,
+      "releve_conso": null,
+      "cos_phi": null,
+      "categorie_commerciale": "hotel",
+      "reponses_categorie": null,
+      "secteur_industriel": null,
+      "export_ue_declare": null,
+      "regime_equipes": null,
+      "jours_ouverture": null,
+      "heure_debut": null,
+      "heure_fin": null,
+      "fermeture_mois": null,
+      "groupe_electrogene": null,
+      "groupe_kva": null,
+      "groupe_litres_mois": null,
+      "groupe_depense_mad_mois": null,
+      "pv_existant_kwc": null,
+      "type_surface": null,
+      "type_toiture": null,
+      "surface_toiture_m2": 650.0,
+      "societe": "Hôtel Exemple SARL",
+      "ice": null,
+      "rc": null,
+      "if_fiscal": null,
+      "adresse_siege": null,
+      "fonction_contact": null,
+      "contact_secondaire_nom": null,
+      "contact_secondaire_telephone": null,
+      "contact_secondaire_email": null,
+      "contact_secondaire_fonction": null,
+      "tva_recuperable": null
+    },
+    "repondu": {
+      "contact": true
+    },
+    "interne": false
+  },
+  "segment_pro": {
+    "pourquoi": "CIQ400 (Groupe CIQ, audit L3 C&I du 03/10/2026 ; D-CIQ-8, D-CIQ-11, Q21) — SECTIONS_CLES ne connaissait que occupation, equipements, energie, toiture, gps, les 3 photos et contact (apps/crm/models.py) ; `manquantes()` (crm/questionnaire.py) cochait « occupation » et « équipements » pour tout lead : un hôtel recevait « Passez-vous la journée à la maison ? ».",
+    "sections_pro": [
+      "reseau",
+      "activite",
+      "site",
+      "societe",
+      "photo_factures",
+      "photo_poste",
+      "contact"
+    ],
+    "libelles_photos": {
+      "photo_factures": "Les 12 dernières factures, PDF ou photos",
+      "photo_poste": "Compteur / poste de livraison"
+    },
+    "refusees_400": [
+      "occupation",
+      "equipements",
+      "toiture",
+      "energie"
+    ],
+    "regle_400": "Lead commercial/industriel : les sections occupation, equipements, toiture résidentielle et energie résidentielle sont REFUSÉES en 400, avec un message qui NOMME la section (patron AGR411).",
+    "jamais_par_ecrit": "Q21 tient : budget, délai, décideur et concurrents ne sont JAMAIS demandés par écrit. `ownership` n'est jamais posé à un pro (le document du propriétaire des murs relève de la visite ou du dossier).",
+    "colonnes": "Les champs de section sont les colonnes du contrat `lead_pro.json` (CIQ1) ; `contact_secondaire_nom` / `contact_secondaire_telephone` = colonnes existantes du contact secondaire (`lead_contact_secondaire.json`).",
+    "note": "Valeurs ILLUSTRATIVES ; aucune question résidentielle dans `exemple_pro`."
+  }
 }

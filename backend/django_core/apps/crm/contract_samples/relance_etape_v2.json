@@ -661,5 +661,114 @@
       "lead_segment": "agricole"
     },
     "integration": "Posée ici, À CÔTÉ des exemples, pour garder `main` vert : les tests backend (tests_cad10_motif_refus.py, tests_param_cadence_relance_etape.py, tests_cad101_piece_recue.py…) exigent que la touche servie ait EXACTEMENT les clés de l'exemple. La tâche backend qui ajoute le champ au sérialiseur l'insère dans `exemple` (et chaque variante `exemple_*` qui montre une touche) DANS LE MÊME COMMIT, puis retire ce bloc."
+  },
+  "ajout_ciq10_canal_fixe": {
+    "pourquoi": "CIQ10 (Groupe CIQ, 05/10/2026 ; audit L3 C&I du 03/10/2026 ; D-CIQ-6, convention 8 « contact B2B sur fixe : la touche WhatsApp devient un e-mail quand une adresse existe — règle de DONNÉE, aucun axe segment », convention 10 « preuve J4 OMISE pour le C&I tant qu'aucune réalisation C&I n'est saisie ») — `canal_adapte` n'expliquait que la préférence « WhatsApp uniquement » (apps/crm/serializers.py), jamais la conversion CAD34 d'une touche WhatsApp sur un numéro FIXE.",
+    "causes_nouvelles": [
+      "Numéro fixe : touche envoyée par e-mail (texte prêt, PDF à joindre).",
+      "Numéro fixe sans e-mail : appel — le texte du message sert de fil de conversation."
+    ],
+    "regle": "Règle de DONNÉE (numéro fixe + présence d'une adresse e-mail), jamais un axe segment : `canal` devient `email` (ou `appel` sans e-mail) ; `template_cle` est CONSERVÉE (le même texte sert)."
+  },
+  "exemple_fixe_email": {
+    "count": 1,
+    "results": [
+      {
+        "id": 452,
+        "lead": 2207,
+        "lead_nom": "Karim Exemple",
+        "lead_owner_nom": "meryem",
+        "lead_telephone": "+212522000452",
+        "lead_whatsapp": "",
+        "lead_email": "direction@hotel-exemple.ma",
+        "lead_langue": "fr",
+        "lead_score": 44,
+        "lead_priorite": "normale",
+        "cadence": "contact",
+        "ordre": 4,
+        "due_date": "2026-09-06",
+        "due_at": "2026-09-06T09:33:00Z",
+        "canal": "email",
+        "libelle": "Appel 3 (répondeur)",
+        "template_cle": "repondeur",
+        "statut": "a_faire",
+        "note": "",
+        "overdue": false,
+        "devis": null,
+        "devis_reference": "",
+        "traite_le": null,
+        "traite_par_nom": "",
+        "statut_libelle": "À faire",
+        "message_ouvert_le": null,
+        "canal_adapte": "Numéro fixe : touche envoyée par e-mail (texte prêt, PDF à joindre).",
+        "lead_est_junk": false,
+        "lead_contact_preference": "",
+        "lead_pii_masquee": false,
+        "suites": {
+          "joint": [
+            "contact_arretee",
+            "etape_appeler"
+          ],
+          "joint_telephone": [
+            "contact_arretee",
+            "etape_devis_demain"
+          ],
+          "visite_acceptee": [
+            "contact_arretee",
+            "etape_planifier_visite"
+          ],
+          "non_joint": [
+            "touche_suivante"
+          ],
+          "rappel": [
+            "touche_suivante_a_la_date"
+          ],
+          "plus_tard": [
+            "veille_meme_touche"
+          ],
+          "refuse": [
+            "relances_arretees",
+            "etape_decider_suite"
+          ],
+          "ne_plus_contacter": [
+            "ne_plus_contacter"
+          ],
+          "sauter": [
+            "touche_suivante"
+          ]
+        },
+        "cle": "",
+        "type_etape": "contact_message",
+        "est_tache": false,
+        "nb_reports": 0,
+        "due_initial_at": "2026-09-06T09:33:00Z",
+        "posee_le": "2026-09-06T09:33:00Z",
+        "visite_prevue_le": null,
+        "visite_id": null,
+        "visite_retour_disponible": false,
+        "lead_segment": "commercial"
+      }
+    ]
+  },
+  "ajout_ciq10_raison_attente": {
+    "pourquoi": "CIQ10 (Groupe CIQ, 05/10/2026 ; audit L3 C&I du 03/10/2026 ; D-CIQ-6, convention 8 « contact B2B sur fixe : la touche WhatsApp devient un e-mail quand une adresse existe — règle de DONNÉE, aucun axe segment », convention 10 « preuve J4 OMISE pour le C&I tant qu'aucune réalisation C&I n'est saisie ») — la réponse `attente_accord` (AGR520) n'avait aucune raison typée ; l'attente B2B passe par elle, jamais par une colonne « période de décision ».",
+    "corps_fait": {
+      "reponse": "attente_accord",
+      "raison_attente": "financement"
+    },
+    "raisons": [
+      "direction",
+      "financement",
+      "bailleur_murs",
+      "budget_exercice",
+      "consultation",
+      "administration"
+    ],
+    "regle": "`raison_attente` OBLIGATOIRE quand `reponse='attente_accord'` ; absente ou hors liste ⇒ 400 qui nomme `raison_attente` et liste les valeurs ; ignorée pour toute autre réponse.",
+    "exemple_400": {
+      "raison_attente": [
+        "Valeur requise parmi : direction, financement, bailleur_murs, budget_exercice, consultation, administration."
+      ]
+    }
   }
 }

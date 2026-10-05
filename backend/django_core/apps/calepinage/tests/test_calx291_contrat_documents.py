@@ -116,9 +116,12 @@ class NeufCodesNeufsTest(unittest.TestCase):
                          "l'un des deux.")
 
     def test_chaque_document_porte_les_neuf_cles_du_contrat(self):
+        # ACAL14 (contrat documents v2) : + methode, langues, apercu,
+        # autres_formats.
         attendues = {'code', 'libelle', 'format', 'endpoint', 'produit_par',
                      'disponible', 'motif_indisponible', 'manque',
-                     'versions'}
+                     'versions', 'methode', 'langues', 'apercu',
+                     'autres_formats'}
         for document in CONTRAT['exemple']['documents']:
             self.assertEqual(set(document), attendues,
                              f"document « {document.get('code')} » hors "

@@ -1,0 +1,48 @@
+{
+  "endpoint": "GET /api/django/adsengine/veille/couverture/",
+  "forme_serveur": "partielle",
+  "pourquoi": "VEIL1 (PACT10) — contrat posé SEUL et EN PREMIER. Aujourd'hui `competitor_intel.py` sert UN dict global `covers_commercial: False`, faux pour l'UE et le Royaume-Uni, affiché par VeilleScreen. Cette NOUVELLE route dit la couverture de l'API Meta Ad Library PAR PAYS, plus l'état de l'accès. Codes pays ISO-3166 alpha-2 (GB jamais UK, GR jamais EL). `statut` : couvert | a_confirmer | non_couvert ; le Royaume-Uni est `a_confirmer` tant que la contradiction documentaire n'est pas mesurée (VEIL41). `acces.etat` : non_configure | desactive | non_autorise | pret | expire_bientot | invalide. Aucune clé d'impressions ni de dépenses : l'API ne les donne jamais pour une pub commerciale. Vue livrée par VEIL10.",
+  "exemple": {
+    "couverture": [
+      {
+        "pays": "FR",
+        "statut": "couvert",
+        "motif_fr": "Pays de l'Union européenne : les pubs commerciales y sont servies par ads_archive avec la portée UE.",
+        "source_url": "https://www.facebook.com/ads/library/api/",
+        "lu_le": "2026-10-03"
+      },
+      {
+        "pays": "GB",
+        "statut": "a_confirmer",
+        "motif_fr": "Sources contradictoires sur le Royaume-Uni : à mesurer avant toute promesse.",
+        "source_url": "https://www.facebook.com/ads/library/api/",
+        "lu_le": "2026-10-03"
+      },
+      {
+        "pays": "MA",
+        "statut": "non_couvert",
+        "motif_fr": "Hors Union européenne et Royaume-Uni : seules les pubs politiques sont servies.",
+        "source_url": "https://www.facebook.com/ads/library/api/",
+        "lu_le": "2026-10-03"
+      },
+      {
+        "pays": "US",
+        "statut": "non_couvert",
+        "motif_fr": "Hors Union européenne et Royaume-Uni : seules les pubs politiques sont servies.",
+        "source_url": "https://www.facebook.com/ads/library/api/",
+        "lu_le": "2026-10-03"
+      },
+      {
+        "pays": "AU",
+        "statut": "non_couvert",
+        "motif_fr": "Hors Union européenne et Royaume-Uni : seules les pubs politiques sont servies.",
+        "source_url": "https://www.facebook.com/ads/library/api/",
+        "lu_le": "2026-10-03"
+      }
+    ],
+    "acces": {
+      "etat": "non_configure",
+      "expire_le": null
+    }
+  }
+}

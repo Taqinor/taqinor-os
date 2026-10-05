@@ -586,6 +586,8 @@ const NON_LU_DOCUMENTATION: Readonly<Record<string, string>> = {
   'exemple_remplace_par_brouillon.remplace_par.url': 'Fragment d’exemple (successeur encore BROUILLON) : `null`, un brouillon n’est jamais servi au client — illustratif.',
   // AGR4 (contrat d'abord PACT10, 03/10/2026)
   'notes.agricole_agr4': 'Note de contrat : pourquoi `exemple_agricole` est un FRAGMENT posé avant ses deux moitiés (AGR4, PACT10) — documentation.',
+  // ACAL18 (contrat d'abord PACT10, 05/10/2026)
+  'pourquoi_roof_layout_riche': 'Note de contrat : pourquoi `exemple_roof_layout_riche` est un FRAGMENT (géométrie seule, jamais un prix) posé avant son émetteur D08-T21/T22 (ACAL18, PACT10) — documentation.',
 };
 
 /**
@@ -595,6 +597,14 @@ const NON_LU_DOCUMENTATION: Readonly<Record<string, string>> = {
  */
 const FRAGMENTS_DOCUMENTATION: Readonly<Record<string, string>> = {
   'exemple_agricole.': 'Fragment d’exemple agricole (AGR4) : la charge utile publique d’un devis de pompage, posée seule sur main avant la page /proposition agricole (AGW300-AGW308) qui la lira.',
+  // CIQ4 (contrat d'abord PACT10, 03/10/2026) — même patron que AGR4 : la moitié
+  // serveur (CIQ303-CIQ306) les servira, la page /proposition C&I (CIQ308,
+  // CIQ319-CIQ321) les lira et range alors chaque clé dans CLES_LUES / NON_LU.
+  'exemple_commercial.': 'Fragment d’exemple commercial (CIQ4) : la charge utile publique d’un devis commercial (`synthese_ci`, `mode_kpis` C&I v2, clés résidentielles vidées), posée seule sur main avant que CIQ306 la serve et que la page /proposition C&I (CIQ308) la lise.',
+  'exemple_industriel.': 'Fragment d’exemple industriel (CIQ4) : la charge utile publique d’un devis industriel MT (`synthese_ci` 25 ans, `mode_kpis` C&I v2), posée seule sur main avant que CIQ306 la serve et que la page /proposition C&I (CIQ308) la lise.',
+  'exemple_signature_entreprise.': 'Fragment d’exemple (CIQ4) : le bloc `signature_entreprise` d’un devis C&I accepté (raison sociale, qualité, ICE, D-CIQ-11), posé avant l’acceptation entreprise serveur (CIQ319) et sa lecture par la page (CIQ321).',
+  'notes_ciq4.': 'Notes de contrat CIQ4 : pourquoi les fragments C&I sont posés avant leurs deux moitiés et quelles clés résidentielles sont absentes ou vidées en C&I — documentation, jamais une valeur lue par la page.',
+  'exemple_roof_layout_riche.': 'Fragment d’exemple ACAL18 : le `roof_layout` riche (zones, modules, retraits, exclusions, surfaces de pose) que la page /proposition recevra quand `_safe_roof_layout` sera élargie (D08-T21/T22) — posé seul avant ses deux moitiés.',
 };
 const decideeParFragment = (c: string): boolean =>
   Object.keys(FRAGMENTS_DOCUMENTATION).some((prefixe) => c.startsWith(prefixe));
