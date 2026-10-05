@@ -1,0 +1,35 @@
+{
+  "langue": "nl",
+  "version": "v1",
+  "produit": [
+    "jurk", "jurken", "rok", "rokken", "broek", "broeken", "jeans",
+    "overhemd", "blouse", "trui", "vest", "jas", "jassen", "kleding",
+    "kleren", "badkleding", "lingerie", "schoenen", "schoen", "sneakers",
+    "laarzen", "sandalen", "pumps", "tas", "tassen", "handtas", "handtassen",
+    "rugzak", "lederwaren"
+  ],
+  "hors_sujet": [
+    "telefoonhoesje", "sieraden", "ketting", "armband", "ring", "oorbellen",
+    "horloge", "horloges", "cosmetica", "make-up", "parfum", "huidverzorging",
+    "shampoo", "woondecoratie", "meubels", "bank", "stomerij", "cursus",
+    "cursussen", "training"
+  ],
+  "editorial": [
+    "tijdschrift", "blog", "artikel", "podcast", "nieuws", "app",
+    "download", "abonneer", "nieuwsbrief", "webinar", "aflevering",
+    "bureau", "vereniging", "winactie"
+  ],
+  "commerce": [
+    "verzending", "levering", "prijs", "uitverkoop", "korting",
+    "bestel nu", "koop nu", "kopen", "winkelmand", "gratis retour", "€"
+  ],
+  "urgence": [
+    "laatste dag", "alleen vandaag", "laatste kans", "beperkte voorraad",
+    "eindigt vanavond", "laatste uren", "op is op"
+  ],
+  "nom_generique": [
+    "shop", "store", "winkel", "boutique", "mode", "fashion", "style",
+    "trend", "chic", "luxe", "officieel", "official", "outlet", "deals",
+    "online", "wereld", "amsterdam", "best", "top", "my", "the"
+  ]
+}

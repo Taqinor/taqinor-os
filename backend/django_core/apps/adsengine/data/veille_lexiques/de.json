@@ -1,0 +1,35 @@
+{
+  "langue": "de",
+  "version": "v1",
+  "produit": [
+    "kleid", "kleider", "rock", "hose", "hosen", "jeans", "hemd", "bluse",
+    "pullover", "jacke", "jacken", "mantel", "shorts", "leggings",
+    "bekleidung", "kleidung", "mode fur damen", "schuhe", "schuh",
+    "sneaker", "stiefel", "sandalen", "pumps", "tasche", "taschen",
+    "handtasche", "handtaschen", "rucksack", "lederwaren"
+  ],
+  "hors_sujet": [
+    "handyhulle", "schmuck", "halskette", "armband", "ring", "ohrringe",
+    "uhr", "uhren", "kosmetik", "make-up", "parfum", "hautpflege",
+    "shampoo", "deko", "mobel", "sofa", "bettwasche", "reinigung", "kurs",
+    "kurse", "coaching"
+  ],
+  "editorial": [
+    "magazin", "blog", "artikel", "podcast", "nachrichten", "app",
+    "herunterladen", "abonnieren", "newsletter", "webinar", "folge",
+    "agentur", "verein", "gewinnspiel"
+  ],
+  "commerce": [
+    "versand", "lieferung", "preis", "sale", "rabatt", "jetzt bestellen",
+    "jetzt kaufen", "kaufen", "warenkorb", "kostenlose rucksendung", "€"
+  ],
+  "urgence": [
+    "letzter tag", "nur heute", "letzte chance", "begrenzter vorrat",
+    "endet heute", "nur noch", "letzte stunden"
+  ],
+  "nom_generique": [
+    "shop", "store", "boutique", "mode", "fashion", "style", "trend",
+    "chic", "luxus", "offiziell", "official", "outlet", "deals", "online",
+    "welt", "berlin", "best", "top", "my", "the"
+  ]
+}

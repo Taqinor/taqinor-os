@@ -31,7 +31,7 @@ export const MANIFESTES = {
   accessreview: { sku: 'generic', libelle: 'Revue des accès', installable: false },
   achats: { sku: 'solar_core', libelle: 'Achats', installable: true },
   adminops: { sku: 'generic', libelle: 'Administration', installable: true },
-  adsengine: { sku: 'generic', libelle: 'Publicité', installable: false },
+  adsengine: { sku: 'generic', libelle: 'Publicité', installable: true },
   agent: { sku: 'generic', libelle: 'Agent', installable: true },
   agriculture: { sku: 'vertical_agriculture', libelle: 'Agriculture', installable: true },
   ai_governance: { sku: 'generic', libelle: 'Gouvernance IA', installable: true },
