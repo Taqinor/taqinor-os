@@ -8,7 +8,7 @@ reste vrai quand la visite repasse non validée.
 
 Run ::
 
-    python manage.py test apps.calepinage.tests.\n        test_acal_reprise_visite_maj -v 2
+    manage.py test apps.calepinage.tests.test_acal_reprise_visite_maj
 """
 from __future__ import annotations
 

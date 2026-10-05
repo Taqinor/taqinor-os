@@ -242,6 +242,10 @@ const calepinageApi = {
     // le relevé créé PLUS l'historique à jour (contrat `calepinage_releve.json`).
     releve: (id) => api.get(`${pivot(id)}releve/`),
     enregistrerReleve: (id, corps) => api.post(`${pivot(id)}releve/`, corps),
+    // ACAL204/205 — corriger (PATCH, le MÊME relevé) ou retirer (DELETE) un
+    // relevé de saisie ; GET releve/ rend aussi `releve_courant_id`.
+    corrigerReleve: (id, releveId, corps) => api.patch(`${pivot(id)}releve/${releveId}/`, corps),
+    supprimerReleve: (id, releveId) => api.delete(`${pivot(id)}releve/${releveId}/`),
 
     // CALX31 — le chatter GÉNÉRIQUE de la plateforme (`records`), hérité par
     // `CalepinageViewSet` via `ChatterViewSetMixin` (views/calepinages.py) :
