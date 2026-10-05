@@ -52,7 +52,8 @@
       "subscribed_power": {
         "peak_reduction_pct": 22.0,
         "recommended_subscribed": 68,
-        "annual_saving": 5200
+        "annual_saving": null,
+        "mention": "la puissance souscrite ne baisse que si le client la révise ; non attribuable au PV seul"
       },
       "degradation": {
         "factor_year1": 0.9784,
