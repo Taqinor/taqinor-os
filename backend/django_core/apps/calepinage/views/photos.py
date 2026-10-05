@@ -103,7 +103,7 @@ class PhotosSiteMixin:
         name='photo_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
         description="Identifiant de la photo de site (sous-ressource du calepinage).")])
     @action(detail=True, methods=['patch', 'delete'],
-            url_path=r'photos/(?P<photo_id>\d+)',
+            url_path=r'photos/(?P<photo_id>[^/.]+)',
             permission_classes=[PeutLireOuEcrireCalepinage])
     def photo_detail(self, request, pk=None, photo_id=None):
         """ACAL202 — corriger (PATCH genre/prise_le/legende) ou retirer (DELETE)
@@ -147,7 +147,7 @@ class PhotosSiteMixin:
         name='photo_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
         description="Identifiant de la photo de site (sous-ressource du calepinage).")])
     @action(detail=True, methods=['patch'],
-            url_path=r'photos/(?P<photo_id>\d+)/calage',
+            url_path=r'photos/(?P<photo_id>[^/.]+)/calage',
             permission_classes=[PeutLireOuEcrireCalepinage])
     def photo_calage(self, request, pk=None, photo_id=None):
         """CAL53 — pose (ou efface) le calage des 4 coins d'UNE photo de site.
