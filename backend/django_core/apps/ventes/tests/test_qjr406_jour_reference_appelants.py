@@ -34,7 +34,7 @@ from unittest import mock
 from django.test import SimpleTestCase
 
 from apps.ventes import courbes_journalieres as CJ
-from apps.ventes import etude_horaire as EH
+from apps.ventes.horaire import batterie_lignes as BL
 from apps.ventes.horaire import public as HP
 from apps.ventes.public import payload_batterie, payload_horaire
 
@@ -78,7 +78,7 @@ class _BaseSurfacesPubliques(SimpleTestCase):
     def _couverture(self, devis):
         with mock.patch.object(payload_batterie, '_profil_horaire_pour_devis',
                                return_value=_PROFIL), \
-                mock.patch.object(EH, 'banque_batterie_du_devis',
+                mock.patch.object(BL, 'banque_batterie_du_devis',
                                   return_value=dict(_BANQUE)):
             return payload_batterie._couverture_batterie_publique(
                 devis, {'avec_ok': True}, True, None)

@@ -48,7 +48,7 @@ DEPLACEMENTS = {
     'public': ('split_eh_public', 'apps/ventes/horaire/public.py', 'SPL255',
                True),
     'bat': ('split_eh_bat', 'apps/ventes/horaire/batterie_lignes.py',
-            'SPL256', False),
+            'SPL256', True),
     'conso': ('split_eh_conso', 'apps/ventes/horaire/conso.py', 'SPL257',
               False),
     've': ('split_eh_ve', 'apps/ventes/horaire/ve_nocturne.py', 'SPL258',

@@ -28,6 +28,7 @@ from django.test import SimpleTestCase
 
 from apps.ventes import courbes_journalieres as CJ
 from apps.ventes import etude_horaire as EH
+from apps.ventes.horaire import batterie_lignes as BL
 from apps.ventes.horaire import public as HP
 
 VILLE = 'Casablanca'
@@ -60,10 +61,10 @@ class CouvertureBatteriePubliqueRendementTest(SimpleTestCase):
         0,90 non étiqueté, quelle que soit la fiche du devis."""
         bloc = self._bloc(
             batterie_rendement=RENDEMENT_FICHE,
-            batterie_rendement_source=EH.RENDEMENT_SOURCE_FICHE)
+            batterie_rendement_source=BL.RENDEMENT_SOURCE_FICHE)
         self.assertIsNotNone(bloc)
         self.assertEqual(bloc['rendement'], RENDEMENT_FICHE)
-        self.assertEqual(bloc['rendement_source'], EH.RENDEMENT_SOURCE_FICHE)
+        self.assertEqual(bloc['rendement_source'], BL.RENDEMENT_SOURCE_FICHE)
         self.assertNotEqual(bloc['rendement'], EH.BATTERY_ROUNDTRIP)
 
     def test_sans_rendement_de_fiche_l_hypothese_est_declaree(self):
@@ -74,7 +75,7 @@ class CouvertureBatteriePubliqueRendementTest(SimpleTestCase):
         self.assertIsNotNone(bloc)
         self.assertEqual(bloc['rendement'], EH.BATTERY_ROUNDTRIP)
         self.assertEqual(bloc['rendement_source'],
-                         EH.RENDEMENT_SOURCE_HYPOTHESE)
+                         BL.RENDEMENT_SOURCE_HYPOTHESE)
 
     def test_une_valeur_hors_bornes_ne_passe_jamais_pour_une_fiche(self):
         """Même garde que QJR137 dans ``calculer_etude_horaire`` : un
@@ -82,10 +83,10 @@ class CouvertureBatteriePubliqueRendementTest(SimpleTestCase):
         se fait jamais passer pour une valeur prouvée."""
         bloc = self._bloc(
             batterie_rendement=1.4,
-            batterie_rendement_source=EH.RENDEMENT_SOURCE_FICHE)
+            batterie_rendement_source=BL.RENDEMENT_SOURCE_FICHE)
         self.assertEqual(bloc['rendement'], EH.BATTERY_ROUNDTRIP)
         self.assertEqual(bloc['rendement_source'],
-                         EH.RENDEMENT_SOURCE_HYPOTHESE)
+                         BL.RENDEMENT_SOURCE_HYPOTHESE)
 
 
 class BalayerStockageHoraireRendementTest(SimpleTestCase):
@@ -105,11 +106,11 @@ class BalayerStockageHoraireRendementTest(SimpleTestCase):
         la signature ne l'accepte)."""
         bloc = self._bloc(
             batterie_rendement=RENDEMENT_FICHE,
-            batterie_rendement_source=EH.RENDEMENT_SOURCE_FICHE)
+            batterie_rendement_source=BL.RENDEMENT_SOURCE_FICHE)
         self.assertIsNotNone(bloc)
         self.assertEqual(bloc['rendement_batterie'], RENDEMENT_FICHE)
         self.assertEqual(bloc['rendement_batterie_source'],
-                         EH.RENDEMENT_SOURCE_FICHE)
+                         BL.RENDEMENT_SOURCE_FICHE)
         self.assertNotEqual(bloc['rendement_batterie'], EH.BATTERY_ROUNDTRIP)
 
     def test_sans_rendement_de_fiche_l_hypothese_est_declaree(self):
@@ -117,7 +118,7 @@ class BalayerStockageHoraireRendementTest(SimpleTestCase):
         self.assertIsNotNone(bloc)
         self.assertEqual(bloc['rendement_batterie'], EH.BATTERY_ROUNDTRIP)
         self.assertEqual(bloc['rendement_batterie_source'],
-                         EH.RENDEMENT_SOURCE_HYPOTHESE)
+                         BL.RENDEMENT_SOURCE_HYPOTHESE)
 
 
 class CalculerEtudeHoraireInchangeTest(SimpleTestCase):
@@ -139,9 +140,9 @@ class CalculerEtudeHoraireInchangeTest(SimpleTestCase):
     def test_avec_fiche_le_rendement_voyage_toujours(self):
         etude = EH.calculer_etude_horaire(
             batterie_rendement=RENDEMENT_FICHE,
-            batterie_rendement_source=EH.RENDEMENT_SOURCE_FICHE,
+            batterie_rendement_source=BL.RENDEMENT_SOURCE_FICHE,
             **self._commun())
         self.assertIsNotNone(etude)
         self.assertEqual(etude['rendement_batterie'], RENDEMENT_FICHE)
         self.assertEqual(etude['rendement_batterie_source'],
-                         EH.RENDEMENT_SOURCE_FICHE)
+                         BL.RENDEMENT_SOURCE_FICHE)

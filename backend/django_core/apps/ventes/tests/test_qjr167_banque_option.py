@@ -19,7 +19,7 @@ from decimal import Decimal
 
 from django.test import TestCase
 
-from apps.ventes.etude_horaire import banque_batterie_du_devis
+from apps.ventes.horaire.batterie_lignes import banque_batterie_du_devis
 from apps.ventes.models import LigneDevis
 from apps.ventes.tests.test_quote_engine import (
     make_client, make_company, make_devis, make_produit, make_user,

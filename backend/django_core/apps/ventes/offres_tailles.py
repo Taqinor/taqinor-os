@@ -809,8 +809,9 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
     """
     from apps.ventes.dimensionnement import _compter_modules_batterie
     from apps.ventes.dimensionnement import _lire_composition
-    from apps.ventes.etude_horaire import (
-        calculer_etude_horaire, puissances_batterie_des_lignes)
+    from apps.ventes.etude_horaire import calculer_etude_horaire
+    from apps.ventes.horaire.batterie_lignes import (
+        puissances_batterie_des_lignes)
 
     kwc = round(nb_panneaux * contexte.panel_watt / 1000.0, 3)
     # Les substitutions sont RÉSOLUES UNE FOIS : le prix, la capacité de la

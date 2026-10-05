@@ -638,8 +638,8 @@ def _cibles_au_dessus_du_plancher_ve(cibles, equipements):
 def _echelle_paliers_batterie(devis):
     """Le calcul de :func:`echelle_paliers_batterie`, sans son filet."""
     from apps.parametres.pvgis_profils import productible_mensuel
-    from apps.ventes.etude_horaire import (
-        balayer_stockage_horaire,
+    from apps.ventes.etude_horaire import balayer_stockage_horaire
+    from apps.ventes.horaire.batterie_lignes import (
         # L-DECH — SOURCE UNIQUE des bornes de puissance batterie.
         puissances_batterie_des_lignes,
     )

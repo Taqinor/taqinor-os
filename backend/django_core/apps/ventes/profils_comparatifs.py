@@ -227,8 +227,8 @@ def calculer_profils_comparatifs(devis):
 
 def _calculer_profils_comparatifs(devis):
     """Cœur de :func:`calculer_profils_comparatifs`."""
-    from apps.ventes.etude_horaire import (
-        capacite_batterie_du_devis, etude_horaire_pour_devis)
+    from apps.ventes.etude_horaire import etude_horaire_pour_devis
+    from apps.ventes.horaire.batterie_lignes import capacite_batterie_du_devis
 
     mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
     if mode != 'residentiel':
@@ -310,7 +310,7 @@ def _empreinte_profils(devis):
     frais.
     """
     from apps.ventes.domain.entrees import empreinte_entrees_du_devis
-    from apps.ventes.etude_horaire import capacite_batterie_du_devis
+    from apps.ventes.horaire.batterie_lignes import capacite_batterie_du_devis
 
     base = empreinte_entrees_du_devis(devis)
     if not base:

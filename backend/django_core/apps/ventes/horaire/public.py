@@ -17,14 +17,16 @@ from apps.ventes.courbes_journalieres import (
     renormalisation_redistribution,
 )
 from apps.ventes.etude_horaire import (
-    RENDEMENT_SOURCE_FICHE,
-    RENDEMENT_SOURCE_HYPOTHESE,
     _mettre_a_l_echelle,
     jours_types_annee,
     simuler_batterie_jour,
     simuler_batterie_pas_fins,
 )
 from apps.ventes.horaire.base import _num, saison_du_mois
+from apps.ventes.horaire.batterie_lignes import (
+    RENDEMENT_SOURCE_FICHE,
+    RENDEMENT_SOURCE_HYPOTHESE,
+)
 from apps.ventes.quote_engine.pricing import BATTERY_ROUNDTRIP, PRODUCTION_DERATE
 
 # Même émetteur de journal qu'avant le déplacement (filtres et tests inchangés).

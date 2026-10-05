@@ -32,6 +32,7 @@ from pathlib import Path
 from django.test import SimpleTestCase
 
 from apps.ventes import etude_horaire as EH
+from apps.ventes.horaire import batterie_lignes as BL
 from apps.ventes.horaire import public as HP
 from apps.ventes import courbes_journalieres as CJ
 from apps.ventes.horaire import base as horaire_base
@@ -1357,7 +1358,7 @@ class LectureDesPuissancesDeLaCompositionTest(SimpleTestCase):
         table = {ligne.produit: ligne.specs for ligne in lignes}
         with mock.patch('apps.stock.selectors.specs_for_produit',
                         side_effect=lambda p: table.get(p, {})):
-            return EH.puissances_batterie_des_lignes(list(lignes))
+            return BL.puissances_batterie_des_lignes(list(lignes))
 
     def test_un_seul_pack_rend_sa_valeur_de_fiche(self):
         resultat = self._lire(
@@ -1441,7 +1442,7 @@ class LectureDesPuissancesDeLaCompositionTest(SimpleTestCase):
         table = {ligne.produit: ligne.specs for ligne in lignes}
         with mock.patch('apps.stock.selectors.specs_for_produit',
                         side_effect=lambda p: table.get(p, {})):
-            resultat = EH.puissances_batterie_des_lignes(
+            resultat = BL.puissances_batterie_des_lignes(
                 lignes, roles=['batterie', 'onduleur_hybride'])
         self.assertAlmostEqual(resultat['packs_decharge_kw'], 2 * 5.12)
         self.assertAlmostEqual(resultat['ond_decharge_kw'], 6.14)
