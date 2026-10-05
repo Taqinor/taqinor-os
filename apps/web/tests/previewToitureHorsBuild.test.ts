@@ -101,7 +101,7 @@ describe('le hook réel d\'astro.config.mjs', () => {
     await hook({ dir: pathToFileURL(join(racine, 'client') + '/') });
     expect(existsSync(join(racine, 'client', 'preview', 'toiture-3d-pro-11'))).toBe(false);
     expect(existsSync(join(racine, 'client', 'preview', 'diagnostic'))).toBe(true);
-  });
+  }, 120_000); // importer astro.config.mjs charge Astro + adaptateur Cloudflare : bien plus que les 5 s par défaut
 
   it('les sources des pages et du canonique roof-tool-pro11 restent en place', () => {
     for (const rel of [
