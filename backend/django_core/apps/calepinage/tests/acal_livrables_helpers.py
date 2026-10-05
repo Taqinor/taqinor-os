@@ -19,11 +19,18 @@ from unittest import mock
 from apps.calepinage.services.electrique import enregistrer_entree
 from apps.calepinage.services.simulation import simuler_calepinage
 
+from .test_cal171_planche import LAYOUT as _LAYOUT_PLANCHE
 from .test_calx5_simulation import (
     LAYOUT as LAYOUT_SIMULABLE, MATERIEL, REGLAGES, _ClientRejoue,
 )
 
-__all__ = ['LAYOUT_SIMULABLE', 'MATERIEL', 'PivotSansBase',
+#: La conception dessinable des essais de planche (contour, sommets, modules
+#: posés) ET simulable : le même document, avec l'épingle que la météo exige.
+LAYOUT_PLANCHE_SIMULABLE = dict(copy.deepcopy(_LAYOUT_PLANCHE),
+                                pin={'lat': 33.5731, 'lng': -7.5898})
+
+__all__ = ['LAYOUT_SIMULABLE', 'LAYOUT_PLANCHE_SIMULABLE', 'MATERIEL',
+           'PivotSansBase',
            'calepinage_simule_reel', 'modifier_la_conception',
            'patch_materiel']
 

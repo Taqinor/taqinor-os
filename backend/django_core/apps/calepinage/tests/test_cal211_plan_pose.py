@@ -23,6 +23,7 @@ Run :
 import copy
 import json
 import pathlib
+from unittest import mock
 
 from django.test import SimpleTestCase
 
@@ -33,6 +34,10 @@ from apps.calepinage.services.planche import (
     verifier_absence_d_argent,
 )
 
+from .acal_livrables_helpers import (
+    LAYOUT_PLANCHE_SIMULABLE, MATERIEL, calepinage_simule_reel,
+    patch_materiel,
+)
 from .test_cal171_planche import LAYOUT
 from .test_cal173_empreinte import MOMENT, FauxCalepinage
 
@@ -42,15 +47,24 @@ RESULTAT = json.loads(
     .read_text(encoding='utf-8'))['exemple']
 
 
-def calepinage_de_pose(resultat=None):
-    calepinage = FauxCalepinage()
-    calepinage.resultat = RESULTAT if resultat is None else resultat
+def calepinage_de_pose():
+    """ACAL216 - un calepinage SIMULE par les vrais ecrivains : le plan de
+    pose lit le resultat SERVI, jamais le contrat colle dans la colonne."""
+    simule = calepinage_simule_reel(LAYOUT_PLANCHE_SIMULABLE)
+    calepinage = FauxCalepinage(roof_layout=simule.roof_layout)
+    calepinage.resultat = simule.resultat
     return calepinage
+
+
+def plan_de_pose_svg(calepinage, **options):
+    """Le plan de pose, materiel injecte (le stock n'a pas de base ici)."""
+    with patch_materiel():
+        return rendre_plan_pose_svg(calepinage, moment=MOMENT, **options)
 
 
 class AucunMontantTest(SimpleTestCase):
     def test_le_plan_de_pose_ne_porte_aucun_montant(self):
-        svg = rendre_plan_pose_svg(calepinage_de_pose(), moment=MOMENT)
+        svg = plan_de_pose_svg(calepinage_de_pose())
         for interdit in ('prix', 'prix_achat', 'MAD', 'montant', 'Tarif'):
             self.assertNotIn(interdit.lower(), svg.lower())
 
@@ -61,21 +75,24 @@ class AucunMontantTest(SimpleTestCase):
         self.assertIn('montant', str(capture.exception).lower())
 
     def test_un_resultat_qui_charrie_un_prix_fait_refuser_le_plan(self):
-        resultat = copy.deepcopy(RESULTAT)
-        resultat['electrique']['onduleurs'][0]['reference'] = \
-            'ONDULEUR 10 kW (prix sur demande)'
-        with self.assertRaises(PlanDePoseRefuse):
-            rendre_plan_pose_svg(calepinage_de_pose(resultat), moment=MOMENT)
+        avec_prix = copy.deepcopy(MATERIEL)
+        avec_prix['designations']['onduleur'] = 'ONDULEUR 10 kW (prix sur demande)'
+        calepinage = calepinage_de_pose()
+        with mock.patch(
+                'apps.calepinage.services.electrique.resoudre_materiel',
+                return_value=avec_prix):
+            with self.assertRaises(PlanDePoseRefuse):
+                rendre_plan_pose_svg(calepinage, moment=MOMENT)
 
 
 class EmpreinteEtCheminTest(SimpleTestCase):
     def test_le_plan_de_pose_porte_l_empreinte_du_calepinage(self):
-        svg = rendre_plan_pose_svg(calepinage_de_pose(), moment=MOMENT)
+        svg = plan_de_pose_svg(calepinage_de_pose())
         self.assertIn('calepinage aaaaaaaaaaaa', svg)
         self.assertIn('moteur calepinage-1.0.0', svg)
 
     def test_le_titre_nomme_la_piece(self):
-        svg = rendre_plan_pose_svg(calepinage_de_pose(), moment=MOMENT)
+        svg = plan_de_pose_svg(calepinage_de_pose())
         self.assertIn('Plan de pose', svg)
 
 
@@ -136,6 +153,12 @@ class ListeDesChainesTest(SimpleTestCase):
         self.assertEqual(lignes_de_chaines({}), ())
 
     def test_la_liste_paraît_dans_le_bandeau_du_plan(self):
-        svg = rendre_plan_pose_svg(calepinage_de_pose(), moment=MOMENT)
-        self.assertIn('Chaînes : 2', svg)
-        self.assertIn('ONDULEUR-ESSAI-1', svg)
+        from apps.calepinage import selectors
+
+        calepinage = calepinage_de_pose()
+        svg = plan_de_pose_svg(calepinage)
+        with patch_materiel():
+            servi = selectors.resultat_servi(calepinage)
+        chainage = servi['electrique']['chainage']
+        self.assertIn('Chaînes : %s' % chainage['chaines'], svg)
+        self.assertIn('Onduleur', svg)

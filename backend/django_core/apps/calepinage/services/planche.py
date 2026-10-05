@@ -1072,6 +1072,11 @@ def _reperes_de_pose(pan, vers_feuille):
     return morceaux
 
 
+#: Dite sur le plan de pose quand l'électrique n'est pas chaîné : un bandeau
+#: muet se lirait « aucune chaîne à poser ».
+MENTION_NON_CHAINE = 'Électrique non chaîné — chaînes non calculées.'
+
+
 def lignes_de_chaines(resultat):
     """La LISTE DES CHAÎNES pour le bandeau — recopiée du moteur.
 
@@ -1116,8 +1121,13 @@ TITRE_DE_CONTENU = {
 
 def rendre_plan_pose_svg(calepinage, *, moment=None, **options):
     """CAL211 — le plan de POSE, VÉRIFIÉ sans montant, portant l'empreinte."""
+    from .. import selectors
+
     bandeau = tuple(options.pop('bandeau', ()))
-    bandeau += lignes_de_chaines(getattr(calepinage, 'resultat', None))
+    # ACAL216 — les chaînes sont celles du résultat SERVI (lecteur tolérant :
+    # jamais la colonne brute, qui ne porte pas le bloc électrique).
+    chaines = lignes_de_chaines(selectors.resultat_servi(calepinage))
+    bandeau += chaines or (MENTION_NON_CHAINE,)
     return verifier_absence_d_argent(
         rendre_plan_svg(calepinage, contenu=CONTENU_POSE, moment=moment,
                         bandeau=bandeau, **options))

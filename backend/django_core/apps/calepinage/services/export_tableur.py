@@ -327,8 +327,12 @@ def _tables_du_calepinage(calepinage):
     from .planche import geometrie_de_planche
 
     geometrie = geometrie_de_planche(getattr(calepinage, 'roof_layout', None))
+    from .. import selectors
+
+    # ACAL216 — le résultat SERVI (pose, électrique, nomenclature), lecteur
+    # tolérant : jamais la colonne brute, qui ne porte ni pose ni électrique.
     tables = tables_du_resultat(geometrie,
-                                getattr(calepinage, 'resultat', None))
+                                selectors.resultat_servi(calepinage))
     # CALX359 — la feuille « Fixation », EN FIN, seulement quand la société
     # a un catalogue de fixation : sans lui, le classeur est EXACTEMENT
     # celui d'aujourd'hui (D12). Même garde de prix que les trois autres.

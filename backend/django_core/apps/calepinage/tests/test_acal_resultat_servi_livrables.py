@@ -13,6 +13,7 @@ Run :
 """
 import copy
 from html import escape
+from unittest import mock
 
 from django.test import SimpleTestCase
 
@@ -23,10 +24,15 @@ from apps.calepinage.services.note_calcul import (
 from apps.calepinage.services.documents.presentation_compacte import (
     MOTIF_SANS_RESULTAT, html_de_presentation_compacte,
 )
+from apps.calepinage.services import export_tableur
+from apps.calepinage.services.planche import (
+    MENTION_NON_CHAINE, rendre_plan_pose_svg,
+)
 from apps.calepinage.views.sorties import inventaire_des_sorties
 
 from .acal_livrables_helpers import (
-    PivotSansBase, LAYOUT_SIMULABLE, calepinage_simule_reel,
+    LAYOUT_PLANCHE_SIMULABLE, LAYOUT_SIMULABLE, PivotSansBase,
+    calepinage_simule_reel,
     modifier_la_conception, patch_materiel,
 )
 
@@ -135,3 +141,53 @@ class PresentationCompacteSurResultatServiTest(SimpleTestCase):
         self.assertIn('presentation-mensuelle', html)
         self.assertTrue(servi['hash_entree'])
         self.assertIn(servi['hash_entree'][:12], html)
+
+
+class PlanDePoseEtClasseurSurResultatServiTest(SimpleTestCase):
+    """ACAL216 — bandeau Chaînes et feuilles Chaînes/Nomenclature du servi."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.pivot = calepinage_simule_reel(LAYOUT_PLANCHE_SIMULABLE)
+
+    def _tables(self, pivot):
+        with patch_materiel(), mock.patch.object(
+                export_tableur, '_table_fixation', return_value=None):
+            return export_tableur._tables_du_calepinage(pivot)
+
+    def test_plan_de_pose_porte_les_chaines_du_calepinage_reel(self):
+        with patch_materiel():
+            from apps.calepinage import selectors
+
+            servi = selectors.resultat_servi(self.pivot)
+            svg = rendre_plan_pose_svg(self.pivot)
+        self.assertNotIn('electrique', self.pivot.resultat)
+        self.assertIn('Chaînes : %s' % servi['electrique']['chainage']
+                      ['chaines'], svg)
+        self.assertIn('Onduleur', svg)
+
+    def test_plan_de_pose_non_chaine_le_dit_sans_erreur(self):
+        jamais = PivotSansBase(copy.deepcopy(LAYOUT_PLANCHE_SIMULABLE))
+        with patch_materiel():
+            svg = rendre_plan_pose_svg(jamais)
+        self.assertIn(MENTION_NON_CHAINE, svg)
+
+    def test_classeur_chaines_et_nomenclature_remplis(self):
+        with patch_materiel():
+            from apps.calepinage import selectors
+
+            servi = selectors.resultat_servi(self.pivot)
+        tables = {titre: (entetes, lignes)
+                  for titre, entetes, lignes in self._tables(self.pivot)}
+        chaines = dict((ligne[0], ligne[1])
+                       for ligne in tables['Chaînes'][1])
+        self.assertEqual(chaines['Nombre de chaînes'],
+                         servi['electrique']['chainage']['chaines'])
+        modules = [ligne for ligne in tables['Nomenclature'][1]
+                   if ligne[0].startswith('Module photovoltaïque')]
+        self.assertEqual(len(modules), 1)
+        self.assertEqual(modules[0][1], servi['pose']['total_modules'])
+
+    def test_deux_exports_successifs_donnent_les_memes_tables(self):
+        self.assertEqual(self._tables(self.pivot), self._tables(self.pivot))
