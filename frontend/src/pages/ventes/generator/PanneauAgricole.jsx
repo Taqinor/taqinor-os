@@ -13,6 +13,12 @@
 // toute autre valeur, `modeDepuisTypeInstallation`), donc exactement un
 // panneau rend, à la place exacte qu'occupait la carte d'origine.
 //
+// AGR128 — les blocs suivent l'ordre des outils de référence : cas de pompe
+// → besoin → point d'eau → hauteur (HMT) → équipement. Tous les champs
+// démarrent VIDES (aucun défaut enregistré comme une saisie) ; la HMT
+// calculée par le SERVEUR est affichée et surchargeable, la surcharge restant
+// visible. Aucun calcul ici : l'aperçu vient de `useEtudePompagePreview`.
+//
 // AUCUNE LOGIQUE ICI : l'état et les gestes arrivent en props, tout le calcul
 // reste dans l'écran porteur. Le balisage sort à l'octet — mêmes `id`, mêmes
 // `placeholder`, mêmes classes, même ordre DOM. Chaque `<input type="number">`
@@ -27,6 +33,47 @@ import { GenCardHeader } from './CarteMetrique'
 import { formatNumber } from '../../../lib/format'
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
+
+// AGR128 — un champ nombre des blocs nouveaux : `step="any"` (aucun champ ne
+// snappe jamais), valeur tapée transmise telle quelle (jamais arrondie).
+function ChampNombre({ id, label, valeur, onChange, placeholder }) {
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} type="number" min="0" step="any"
+             placeholder={placeholder} value={valeur ?? ''}
+             onChange={e => onChange(e.target.value)} />
+    </div>
+  )
+}
+
+function ChampTexte({ id, label, valeur, onChange, type = 'text' }) {
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} type={type} value={valeur ?? ''}
+             onChange={e => onChange(e.target.value)} />
+    </div>
+  )
+}
+
+function ChoixNatif({ id, label, valeur, onChange, options }) {
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <select id={id} value={valeur ?? ''}
+              onChange={e => onChange(e.target.value)}
+              className="h-9 rounded-md border border-input bg-card px-2 text-sm">
+        <option value="">Non renseigné</option>
+        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+    </div>
+  )
+}
+
+const MOIS = [['1', 'Janvier'], ['2', 'Février'], ['3', 'Mars'], ['4', 'Avril'],
+  ['5', 'Mai'], ['6', 'Juin'], ['7', 'Juillet'], ['8', 'Août'],
+  ['9', 'Septembre'], ['10', 'Octobre'], ['11', 'Novembre'], ['12', 'Décembre']]
 // QJR241 — clé de marché de ce panneau (ex-`cle` de quote/marches/agricole.js,
 // module supprimé faute de consommateur de production).
 const CLE = 'agricole'
@@ -45,26 +92,65 @@ export default function PanneauAgricole({
   farmFuelPeriod, setFarmFuelPeriod, farmFuelSpendAnnual,
   farmHmtStatic, setFarmHmtStatic, farmHmtDrawdown, setFarmHmtDrawdown,
   farmWaterDemand, pumpM3Day,
+  // ── AGR128 — blocs nouveaux (cas de pompe, besoin, point d'eau, HMT) ──
+  pompageSaisie, majPompage, apercuPompage,
 }) {
   if (marche !== CLE) return null
+  const sp = pompageSaisie || {}
+  const plaque = sp.plaque || {}
+  const besoin = sp.besoin || {}
+  const source = sp.source || {}
+  const hmt = sp.hmt || {}
+  const conduite = hmt.conduite || {}
+  const maj = (chemin) => (valeur) => majPompage?.(chemin, valeur)
+  const existante = sp.mode_pompe === 'existante'
+  const hmtServeur = apercuPompage?.donnees?.hmt || null
   return (
     <Card>
       <GenCardHeader icon={Sprout} title="Pompage solaire" />
       <CardContent className="pt-4">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div className="grid gap-1.5">
-            <Label htmlFor="gen-pompecv">
-              Puissance pompe (CV){pompageSel?.mode === 'courbe' && ' — auto (courbe)'}
-            </Label>
-            <Input id="gen-pompecv" type="number" min="0" step="any"
-                   value={pompeCv} onChange={e => setPompeCv(e.target.value)} />
-            {pompageDims && (
-              <p className="text-xs text-muted-foreground">
-                ≈ {pompageSel?.kw ?? pompageDims.kw} kW · champ PV conseillé {pompageDims.champKw} kWc
-                ({pompageDims.nbPanneaux} panneaux 710 W)
-              </p>
-            )}
+        {/* ── (1) Cas de pompe : neuve ou existante (D-AGR-7) ── */}
+        <div className="grid gap-1.5" data-testid="bloc-cas-pompe">
+          <Label>Cas de pompe</Label>
+          <Segmented
+            options={[
+              { value: 'neuve', label: 'Pompe neuve' },
+              { value: 'existante', label: 'Pompe existante conservée' },
+            ]}
+            value={sp.mode_pompe || ''}
+            onChange={maj('mode_pompe')}
+          />
+        </div>
+        {existante ? (
+          <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-5" data-testid="bloc-plaque">
+            <ChampNombre id="gen-plaque-kw" label="Plaque : puissance (kW)"
+                         valeur={plaque.kw} onChange={maj('plaque.kw')} />
+            <div className="grid gap-1.5">
+              <Label htmlFor="gen-pompecv">Plaque : puissance (CV)</Label>
+              <Input id="gen-pompecv" type="number" min="0" step="any"
+                     value={pompeCv} onChange={e => setPompeCv(e.target.value)} />
+            </div>
+            <ChampNombre id="gen-plaque-tension" label="Plaque : tension (V)"
+                         valeur={plaque.tension_v} onChange={maj('plaque.tension_v')} />
+            <ChoixNatif id="gen-plaque-phases" label="Plaque : phases"
+                        valeur={plaque.phases} onChange={maj('plaque.phases')}
+                        options={[['mono', 'Monophasé'], ['tri', 'Triphasé']]} />
+            <ChampNombre id="gen-plaque-courant" label="Plaque : courant (A)"
+                         valeur={plaque.courant_a} onChange={maj('plaque.courant_a')} />
           </div>
+        ) : (pompeCv !== '' && pompeCv != null && (
+          <p className="mt-2 text-xs text-muted-foreground" data-testid="pompe-actuelle-info">
+            Pompe actuelle du client : {pompeCv} CV (information — une pompe neuve
+            est dimensionnée par le serveur).
+          </p>
+        ))}
+        {pompageDims && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            ≈ {pompageSel?.kw ?? pompageDims.kw} kW · champ PV conseillé {pompageDims.champKw} kWc
+            ({pompageDims.nbPanneaux} panneaux 710 W)
+          </p>
+        )}
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <div className="grid gap-1.5">
             <Label>Type de pompe</Label>
             <Segmented
@@ -88,12 +174,86 @@ export default function PanneauAgricole({
             />
           </div>
         </div>
-        <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {/* ── (2) Besoin en eau : déclaré d'abord (D-AGR-3) ── */}
+        <div className="mt-4 grid gap-1.5" data-testid="bloc-besoin">
+          <Label>Besoin en eau</Label>
+          <Segmented
+            options={[
+              { value: 'volume_declare', label: 'Volume déclaré' },
+              { value: 'pompe_actuelle', label: 'Pompe actuelle' },
+              { value: 'agronomique', label: 'Cultures' },
+            ]}
+            value={besoin.mode || ''}
+            onChange={maj('besoin.mode')}
+          />
+        </div>
+        {besoin.mode === 'volume_declare' && (
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            <ChampNombre id="gen-besoin-volume" label="Volume par jour (m³/jour)"
+                         valeur={besoin.volume_m3_jour} onChange={maj('besoin.volume_m3_jour')} />
+            <ChoixNatif id="gen-besoin-mois-pointe" label="Mois de pointe"
+                        valeur={besoin.mois_pointe} onChange={maj('besoin.mois_pointe')}
+                        options={MOIS} />
+          </div>
+        )}
+        {besoin.mode === 'pompe_actuelle' && (
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            <ChampNombre id="gen-besoin-debit-actuel"
+                         label="Débit de la pompe actuelle (m³/h) — déclaré par le client"
+                         valeur={besoin.debit_actuel_m3h} onChange={maj('besoin.debit_actuel_m3h')} />
+            <ChampNombre id="gen-besoin-heures-actuelles"
+                         label="Heures de pompage actuelles / jour — déclaré par le client"
+                         valeur={besoin.heures_actuelles_jour}
+                         onChange={maj('besoin.heures_actuelles_jour')} />
+          </div>
+        )}
+
+        {/* ── (3) Point d'eau ── */}
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="bloc-point-eau">
+          <ChampNombre id="gen-source-debit" label="Débit d'exploitation du forage (m³/h)"
+                       valeur={source.debit_exploitation_m3h}
+                       onChange={maj('source.debit_exploitation_m3h')} />
+          <ChoixNatif id="gen-source-debit-origine" label="Origine du débit"
+                      valeur={source.debit_exploitation_origine}
+                      onChange={maj('source.debit_exploitation_origine')}
+                      options={[['essai', 'Essai de pompage'], ['foreur', 'Donné par le foreur'],
+                        ['client', 'Estimation du client'], ['mesure_visite', 'Mesuré en visite']]} />
+          <ChampTexte id="gen-source-debit-date" label="Date du débit" type="date"
+                      valeur={source.debit_exploitation_date}
+                      onChange={maj('source.debit_exploitation_date')} />
+          <ChampNombre id="gen-source-debit-autorise" label="Débit autorisé ABH (m³/h)"
+                       valeur={source.debit_autorise_m3h} onChange={maj('source.debit_autorise_m3h')} />
+          <ChampNombre id="gen-source-volume-autorise" label="Volume annuel autorisé ABH (m³)"
+                       valeur={source.volume_annuel_autorise_m3}
+                       onChange={maj('source.volume_annuel_autorise_m3')} />
+          <ChoixNatif id="gen-source-compteur" label="Compteur d'eau"
+                      valeur={source.compteur} onChange={maj('source.compteur')}
+                      options={[['oui', 'Oui'], ['non', 'Non']]} />
+          <ChampNombre id="gen-source-niveau-dynamique" label="Niveau dynamique (m)"
+                       valeur={source.niveau_dynamique_m} onChange={maj('source.niveau_dynamique_m')} />
+          <ChampNombre id="gen-source-tubage" label="Diamètre de tubage (mm)"
+                       valeur={source.diametre_tubage_mm} onChange={maj('source.diametre_tubage_mm')} />
+          <ChampNombre id="gen-source-calage" label="Profondeur de calage (m)"
+                       valeur={source.profondeur_calage_m} onChange={maj('source.profondeur_calage_m')} />
+          <ChampNombre id="gen-source-reservoir" label="Réservoir (m³)"
+                       valeur={source.volume_reservoir_m3} onChange={maj('source.volume_reservoir_m3')} />
+        </div>
+
+        {/* ── (4) Hauteur manométrique ── */}
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="grid gap-1.5">
-            <Label htmlFor="gen-hmt">HMT (m)</Label>
+            <Label htmlFor="gen-hmt">
+              HMT saisie (m){hmtServeur?.source === 'calculee' && pompeHmt !== '' ? ' — surcharge' : ''}
+            </Label>
             <Input id="gen-hmt" type="number" min="0" step="any"
                    placeholder="ex: 120" value={pompeHmt}
                    onChange={e => setPompeHmt(e.target.value)} />
+            {hmtServeur?.valeur_m != null && (
+              <p className="text-xs text-muted-foreground" data-testid="hmt-serveur">
+                HMT retenue par le serveur : {fmtNum(hmtServeur.valeur_m)} m
+                ({hmtServeur.source === 'saisie' ? 'saisie' : 'calculée'})
+              </p>
+            )}
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="gen-debit">Débit souhaité (m³/h)</Label>
@@ -114,12 +274,41 @@ export default function PanneauAgricole({
                    onChange={e => setPompeProfondeur(e.target.value)} />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="gen-distance">Distance panneaux → coffret (m)</Label>
+            <Label htmlFor="gen-distance">Distance champ → coffret (m)</Label>
             <Input id="gen-distance" type="number" min="0" step="any"
                    value={pompeDistance}
                    onChange={e => setPompeDistance(e.target.value)} />
           </div>
         </div>
+        <label className="mt-3 flex items-center gap-2 text-sm">
+          <input type="checkbox" data-testid="hmt-detail"
+                 checked={Boolean(hmt.detail)}
+                 onChange={e => majPompage?.('hmt.detail', e.target.checked)} />
+          Détailler la HMT (dénivelé, conduite, pression)
+        </label>
+        {hmt.detail && (
+          <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="bloc-hmt-detail">
+            <ChampNombre id="gen-hmt-denivele" label="Dénivelé (m)"
+                         valeur={hmt.denivele_m} onChange={maj('hmt.denivele_m')} />
+            <ChoixNatif id="gen-hmt-materiau" label="Conduite : matériau"
+                        valeur={conduite.materiau} onChange={maj('hmt.conduite.materiau')}
+                        options={[['pehd', 'PEHD'], ['pvc', 'PVC'], ['acier', 'Acier'], ['autre', 'Autre']]} />
+            <ChampNombre id="gen-hmt-diametre" label="Conduite : diamètre intérieur (mm)"
+                         valeur={conduite.diametre_interieur_mm}
+                         onChange={maj('hmt.conduite.diametre_interieur_mm')} />
+            <ChampNombre id="gen-hmt-longueur" label="Conduite : longueur (m)"
+                         valeur={conduite.longueur_m} onChange={maj('hmt.conduite.longueur_m')} />
+            {conduite.materiau && !['pehd', 'pvc'].includes(conduite.materiau) && (
+              <ChampNombre id="gen-hmt-c" label="Coefficient C de Hazen-Williams"
+                           valeur={conduite.c_hazen_williams}
+                           onChange={maj('hmt.conduite.c_hazen_williams')} />
+            )}
+            <ChampNombre id="gen-hmt-singulieres" label="Pertes singulières (m)"
+                         valeur={hmt.pertes_singulieres_m} onChange={maj('hmt.pertes_singulieres_m')} />
+            <ChampNombre id="gen-hmt-pression" label="Pression de service (bar)"
+                         valeur={hmt.pression_service_bar} onChange={maj('hmt.pression_service_bar')} />
+          </div>
+        )}
 
         {/* ── Votre exploitation (données GUIDÉES, toutes optionnelles) ── */}
         {/* Encouragées : le besoin en eau FAO-56 qu'elles permettent d'estimer
@@ -154,7 +343,7 @@ export default function PanneauAgricole({
             <div className="grid gap-1.5">
               <Label htmlFor="gen-farm-crop">Culture</Label>
               <Select value={farmCrop} onValueChange={setFarmCrop}>
-                <SelectTrigger id="gen-farm-crop"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="gen-farm-crop"><SelectValue placeholder="Non renseignée" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="agrumes">Agrumes</SelectItem>
                   <SelectItem value="maraichage">Maraîchage</SelectItem>
@@ -169,7 +358,7 @@ export default function PanneauAgricole({
             <div className="grid gap-1.5">
               <Label htmlFor="gen-farm-region">Région</Label>
               <Select value={farmRegion} onValueChange={setFarmRegion}>
-                <SelectTrigger id="gen-farm-region"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="gen-farm-region"><SelectValue placeholder="Non renseignée" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="souss-massa">Souss-Massa (Agadir)</SelectItem>
                   <SelectItem value="doukkala">Doukkala (El Jadida)</SelectItem>
@@ -177,13 +366,15 @@ export default function PanneauAgricole({
                   <SelectItem value="saiss">Saïss (Fès-Meknès)</SelectItem>
                   <SelectItem value="oriental">Oriental (Berkane)</SelectItem>
                   <SelectItem value="draa-tafilalet">Drâa-Tafilalet</SelectItem>
+                  <SelectItem value="gharb-loukkos">Gharb-Loukkos</SelectItem>
+                  <SelectItem value="haouz">Haouz (Marrakech)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="gen-farm-irrigation">Mode d'irrigation</Label>
               <Select value={farmIrrigation} onValueChange={setFarmIrrigation}>
-                <SelectTrigger id="gen-farm-irrigation"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="gen-farm-irrigation"><SelectValue placeholder="Non renseigné" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="goutte">Goutte-à-goutte</SelectItem>
                   <SelectItem value="aspersion">Aspersion</SelectItem>
@@ -194,7 +385,7 @@ export default function PanneauAgricole({
             <div className="grid gap-1.5">
               <Label htmlFor="gen-farm-fuel">Énergie actuelle</Label>
               <Select value={farmFuel} onValueChange={setFarmFuel}>
-                <SelectTrigger id="gen-farm-fuel"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="gen-farm-fuel"><SelectValue placeholder="Non renseignée" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="butane">Butane (gaz)</SelectItem>
                   <SelectItem value="diesel">Diesel (gasoil)</SelectItem>

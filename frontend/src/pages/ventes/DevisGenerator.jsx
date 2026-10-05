@@ -36,6 +36,13 @@ import {
   // ce générateur).
 } from '../../features/ventes/autoQuote'
 import { waterDemandFromFarm } from '../../features/ventes/agronomy'
+// AGR127/AGR128 — aperçu SERVEUR du pompage (aucun calcul local).
+import {
+  useEtudePompagePreview, construireCorpsPompage, manquantsPompage,
+} from '../../features/ventes/etudePompagePreview'
+import {
+  POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie,
+} from '../../features/ventes/etudePompagePreviewPur'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
@@ -894,28 +901,39 @@ export default function DevisGenerator({
   const [horsReseau, setHorsReseau] = useState(false)
   const [horsReseauTouched, setHorsReseauTouched] = useState(false)
   // Pompage (agricole)
-  const [pompeCv, setPompeCv] = useState('5.5')
-  const [pompeType, setPompeType] = useState('immergee')
+  // AGR128 — TOUS les états initiaux agricoles sont VIDES hors lead : un
+  // défaut (« 5.5 » CV, « 20 » m, « immergée », « souss-massa », « agrumes »,
+  // « butane ») produisait un devis plausible sans aucune donnée du forage.
+  const [pompeCv, setPompeCv] = useState('')
+  const [pompeType, setPompeType] = useState('')
   // (`pompeAlim` vient du reducer, voir plus haut.)
   const [pompeHmt, setPompeHmt] = useState('')
   const [pompeDebit, setPompeDebit] = useState('')
   const [pompeProfondeur, setPompeProfondeur] = useState('')
-  const [pompeDistance, setPompeDistance] = useState('20')
+  const [pompeDistance, setPompeDistance] = useState('')
   const [pompeHeures, setPompeHeures] = useState(String(HEURES_POMPAGE_DEFAUT))
   // ── Exploitation agricole (données GUIDÉES, toutes optionnelles) — alimentent
   // le calcul FAO-56 (besoin en eau) et le redimensionnement/chiffrage du PDF.
   // Stockées dans etude_params sous ces clés exactes (le backend les relit).
-  const [farmRegion, setFarmRegion] = useState('souss-massa')
-  const [farmCrop, setFarmCrop] = useState('agrumes')
+  const [farmRegion, setFarmRegion] = useState('')
+  const [farmCrop, setFarmCrop] = useState('')
   const [farmSurfaceHa, setFarmSurfaceHa] = useState('')
-  const [farmIrrigation, setFarmIrrigation] = useState('goutte')
-  const [farmFuel, setFarmFuel] = useState('butane')
+  const [farmIrrigation, setFarmIrrigation] = useState('')
+  const [farmFuel, setFarmFuel] = useState('')
   // Dépense carburant ACTUELLE : saisie au mois OU à l'année (bascule), mais
   // stockée toujours en MAD/AN (fuel_spend_current).
   const [farmFuelSpend, setFarmFuelSpend] = useState('')
   const [farmFuelPeriod, setFarmFuelPeriod] = useState('mois') // 'mois' | 'an'
   const [farmHmtStatic, setFarmHmtStatic] = useState('')
   const [farmHmtDrawdown, setFarmHmtDrawdown] = useState('')
+  // AGR128 — les blocs NOUVEAUX du générateur agricole (cas de pompe,
+  // besoin, point d'eau, HMT détaillée), vides au départ. `majPompage`
+  // pose UNE valeur à son chemin (copie, jamais en place).
+  const [pompageSaisie, setPompageSaisie] = useState(POMPAGE_SAISIE_VIDE)
+  const majPompage = useCallback(
+    (chemin, valeur) => setPompageSaisie((s) => poserSaisie(s, chemin, valeur)),
+    [],
+  )
 
   // ── VX62 — Brouillon auto + garde de sortie ──
   // Le formulaire (2 300+ lignes, ~20 min de saisie) n'avait NI brouillon NI
@@ -940,7 +958,7 @@ export default function DevisGenerator({
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
     farmIrrigation, farmFuel, farmFuelSpend, farmFuelPeriod, farmHmtStatic,
-    farmHmtDrawdown,
+    farmHmtDrawdown, pompageSaisie,
 
   }), [
     leadId, clientId, dateValidite, scenario, recommendedChoice, note,
@@ -954,7 +972,7 @@ export default function DevisGenerator({
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
     farmIrrigation, farmFuel, farmFuelSpend, farmFuelPeriod, farmHmtStatic,
-    farmHmtDrawdown,
+    farmHmtDrawdown, pompageSaisie,
   ])
   // « Dirty » = l'utilisateur a réellement saisi quelque chose de significatif
   // (au moins un identifiant de cible OU une note OU des factures OU des
@@ -1096,6 +1114,7 @@ export default function DevisGenerator({
     if (d.farmFuelPeriod != null) setFarmFuelPeriod(d.farmFuelPeriod)
     if (d.farmHmtStatic != null) setFarmHmtStatic(d.farmHmtStatic)
     if (d.farmHmtDrawdown != null) setFarmHmtDrawdown(d.farmHmtDrawdown)
+    if (d.pompageSaisie && typeof d.pompageSaisie === 'object') setPompageSaisie(d.pompageSaisie)
   }
 
   useEffect(() => {
@@ -2699,6 +2718,22 @@ export default function DevisGenerator({
       })
     : null
   const pompageDims = pompageSel?.dims ?? null
+  // AGR128 — l'état de l'écran recomposé dans la forme du corps du contrat
+  // (AGR127) ; l'aperçu SERVEUR n'est demandé que pour le marché agricole et
+  // seulement quand l'essentiel est saisi (sinon `null`, aucun appel).
+  const etatPompage = useMemo(() => etatPompageEcran(pompageSaisie, {
+    pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
+    pompeDistance, farmRegion, farmCrop, farmSurfaceHa, farmIrrigation,
+    farmHmtStatic, farmHmtDrawdown, leadId: leadId || null,
+    editId: editId || null,
+  }), [pompageSaisie, pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit,
+    pompeProfondeur, pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
+    farmIrrigation, farmHmtStatic, farmHmtDrawdown, leadId, editId])
+  const pompageManquants = modeInstallation === 'agricole'
+    ? manquantsPompage(etatPompage) : []
+  const corpsPompage = modeInstallation === 'agricole'
+    ? construireCorpsPompage(etatPompage) : null
+  const apercuPompage = useEtudePompagePreview(corpsPompage)
 
   // U3COMPOSE (26/08/2026) — composition LOCALE (JavaScript), CONSERVÉE : le
   // chemin agricole (déjà séparé, ci-dessous) reste local car aucun dry-run
@@ -3859,6 +3894,9 @@ export default function DevisGenerator({
   const farmWaterDemand = useMemo(() => {
     if (modeInstallation !== 'agricole') return null
     if (!(parseFloat(farmSurfaceHa) > 0)) return null
+    // AGR128 — culture et région ne sont plus pré-remplies : sans elles,
+    // aucun besoin estimé (jamais une culture supposée).
+    if (!farmCrop || !farmRegion) return null
     return waterDemandFromFarm({
       crop: farmCrop, region: farmRegion,
       surfaceHa: farmSurfaceHa, method: farmIrrigation,
@@ -4432,6 +4470,8 @@ export default function DevisGenerator({
           farmHmtStatic={farmHmtStatic} setFarmHmtStatic={setFarmHmtStatic}
           farmHmtDrawdown={farmHmtDrawdown} setFarmHmtDrawdown={setFarmHmtDrawdown}
           farmWaterDemand={farmWaterDemand} pumpM3Day={pumpM3Day}
+          pompageSaisie={pompageSaisie} majPompage={majPompage}
+          apercuPompage={apercuPompage}
         />
 
         {/* ── Paramètres techniques ── */}
@@ -4604,6 +4644,13 @@ export default function DevisGenerator({
             <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
               {errors.recalcDim && <span className="text-xs text-destructive">{errors.recalcDim}</span>}
               {errors.autofill && <span className="text-xs text-destructive">{errors.autofill}</span>}
+              {/* AGR128 — agricole : aucun devis plausible sans le besoin, la
+                  hauteur et le cas de pompe ; le message NOMME ce qui manque. */}
+              {pompageManquants.length > 0 && (
+                <span className="text-xs text-warning" data-testid="pompage-manquants">
+                  Auto-remplir indisponible — à renseigner : {pompageManquants.join(', ')}.
+                </span>
+              )}
               {errors.autofillKwc && <span className="text-xs text-warning">{errors.autofillKwc}</span>}
               {/* PVMRQ — même patron visuel que `errors.autofill` ci-dessus. */}
               {errors.marquesManquantes && <span className="text-xs text-destructive">{errors.marquesManquantes}</span>}
@@ -4622,6 +4669,8 @@ export default function DevisGenerator({
                 <RefreshCw /> Recalculer le dimensionnement
               </Button>
               <Button type="button" className="bg-brass-400 text-nuit hover:bg-brass-500"
+                      data-testid="btn-auto-remplir"
+                      disabled={pompageManquants.length > 0}
                       loading={autoFillLoading} onClick={() => avecQuantitesFigees(handleAutoFill)}>
                 <Zap /> Auto-remplir depuis le stock
               </Button>

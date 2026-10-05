@@ -184,6 +184,99 @@ export function construireCorpsPompage(etat) {
   return corps
 }
 
+// ── AGR128 — l'état d'écran du générateur agricole ────────────────────────
+// Les champs NOUVEAUX (cas de pompe, besoin, point d'eau, HMT détaillée) :
+// TOUS vides au départ — aucun défaut n'est jamais enregistré comme une
+// saisie. Les champs historiques de l'écran (CV, HMT saisie, débit souhaité,
+// profondeur, distance, niveau statique, rabattement, culture…) restent leurs
+// propres états et sont RECOMPOSÉS dans la forme du corps par
+// `etatPompageEcran` — une seule correspondance, testée.
+export const POMPAGE_SAISIE_VIDE = Object.freeze({
+  mode_pompe: '',
+  plaque: Object.freeze({ kw: '', tension_v: '', phases: '', courant_a: '' }),
+  besoin: Object.freeze({
+    mode: '', volume_m3_jour: '', mois_pointe: '', debit_actuel_m3h: '',
+    heures_actuelles_jour: '',
+  }),
+  source: Object.freeze({
+    debit_exploitation_m3h: '', debit_exploitation_origine: '',
+    debit_exploitation_date: '', debit_autorise_m3h: '',
+    volume_annuel_autorise_m3: '', compteur: '', niveau_dynamique_m: '',
+    diametre_tubage_mm: '', profondeur_calage_m: '', volume_reservoir_m3: '',
+  }),
+  hmt: Object.freeze({
+    detail: false, denivele_m: '', pertes_singulieres_m: '',
+    pression_service_bar: '',
+    conduite: Object.freeze({ materiau: '', diametre_interieur_mm: '', longueur_m: '' }),
+  }),
+  options_cochees: Object.freeze([]),
+  taille: '',
+})
+
+/** Pose `valeur` au chemin `a.b.c` d'une saisie (copie, jamais en place). */
+export function poserSaisie(saisie, chemin, valeur) {
+  const cles = chemin.split('.')
+  const racine = { ...(saisie || {}) }
+  let noeud = racine
+  for (let i = 0; i < cles.length - 1; i += 1) {
+    noeud[cles[i]] = { ...(noeud[cles[i]] || {}) }
+    noeud = noeud[cles[i]]
+  }
+  noeud[cles[cles.length - 1]] = valeur
+  return racine
+}
+
+/**
+ * La forme du corps (AGR127) depuis l'état de l'écran : `saisie` (les blocs
+ * nouveaux) + `ecran` (les états historiques). Rien n'est inventé : un champ
+ * vide reste vide (et part `null`).
+ */
+export function etatPompageEcran(saisie, ecran = {}) {
+  const s = saisie || POMPAGE_SAISIE_VIDE
+  const e = ecran || {}
+  const b = s.besoin || {}
+  const h = s.hmt || {}
+  const culture = (e.farmCrop || e.farmSurfaceHa)
+    ? [{ crop: e.farmCrop || '', surface_ha: e.farmSurfaceHa ?? '',
+        irrigation: e.farmIrrigation || '' }]
+    : []
+  return {
+    mode_pompe: s.mode_pompe || '',
+    plaque: { ...(s.plaque || {}), cv: e.pompeCv ?? '' },
+    besoin: {
+      mode: b.mode || '',
+      volume_m3_jour: b.volume_m3_jour ?? '',
+      debit_souhaite_m3h: e.pompeDebit ?? '',
+      mois_pointe: b.mois_pointe ?? '',
+      debit_actuel_m3h: b.debit_actuel_m3h ?? '',
+      heures_actuelles_jour: b.heures_actuelles_jour ?? '',
+      cultures: culture,
+      region: e.farmRegion || '',
+    },
+    source: {
+      ...(s.source || {}),
+      niveau_statique_m: e.farmHmtStatic ?? '',
+      rabattement_m: e.farmHmtDrawdown ?? '',
+      profondeur_forage_m: e.pompeProfondeur ?? '',
+    },
+    hmt: {
+      saisie_m: e.pompeHmt ?? '',
+      denivele_m: h.detail ? (h.denivele_m ?? '') : '',
+      conduite: h.detail ? { c_hazen_williams: '', ...(h.conduite || {}) } : null,
+      pertes_singulieres_m: h.detail ? (h.pertes_singulieres_m ?? '') : '',
+      pression_service_bar: h.detail ? (h.pression_service_bar ?? '') : '',
+    },
+    alim: e.pompeAlim || '',
+    type_pompe: e.pompeType || '',
+    localisation: { ville: e.ville || '', lat: '', lon: '' },
+    distance_champ_m: e.pompeDistance ?? '',
+    options_cochees: [...(s.options_cochees || [])],
+    taille: s.taille || '',
+    lead: e.leadId ?? null,
+    devis: e.editId ?? null,
+  }
+}
+
 const LIBELLES_ORIGINE = {
   saisie: 'saisi',
   lead: 'fiche lead',

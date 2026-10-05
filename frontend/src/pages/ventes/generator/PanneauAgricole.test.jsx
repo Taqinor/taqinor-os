@@ -1,0 +1,183 @@
+// AGR128 — générateur agricole : besoin, point d'eau, HMT détaillée, cas de
+// pompe ; plus de CV / distance / région / culture / énergie pré-remplis.
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+import { MemoryRouter } from 'react-router-dom'
+
+import authReducer from '../../../features/auth/store/authSlice'
+import ventesReducer from '../../../features/ventes/store/ventesSlice'
+import PanneauAgricole from './PanneauAgricole'
+import {
+  POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie,
+  construireCorpsPompage, manquantsPompage,
+} from '../../../features/ventes/etudePompagePreviewPur'
+
+vi.mock('../../../api/crmApi', () => ({
+  default: {
+    getClients: vi.fn(() => Promise.resolve({ data: [] })),
+    getLeads: vi.fn(() => Promise.resolve({ data: [] })),
+  },
+}))
+vi.mock('../../../api/stockApi', () => ({
+  default: { getProduits: vi.fn(() => Promise.resolve({ data: [] })) },
+}))
+vi.mock('../../../api/parametresApi', () => ({
+  default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
+}))
+vi.mock('../../../api/ventesApi', () => ({
+  default: {
+    getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
+    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
+    getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
+    lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
+  },
+}))
+// L'aperçu serveur n'est jamais appelé tant que l'essentiel manque.
+vi.mock('../../../api/axios', () => ({
+  default: { post: vi.fn(() => Promise.resolve({ data: null })), get: vi.fn() },
+}))
+
+import api from '../../../api/axios'
+import DevisGenerator from '../DevisGenerator'
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
+  if (!window.matchMedia) {
+    window.matchMedia = vi.fn().mockImplementation((q) => ({
+      matches: false, media: q, onchange: null,
+      addListener: vi.fn(), removeListener: vi.fn(),
+      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+    }))
+  }
+  if (!globalThis.ResizeObserver) {
+    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
+  }
+})
+
+const PROPS_VIDES = {
+  marche: 'agricole',
+  pompeCv: '', setPompeCv: vi.fn(), pompageSel: null, pompageDims: null,
+  pompeType: '', setPompeType: vi.fn(), pompeAlim: '', dispatchSizing: vi.fn(),
+  pompeHmt: '', setPompeHmt: vi.fn(), pompeDebit: '', setPompeDebit: vi.fn(),
+  pompeHeures: '', setPompeHeures: vi.fn(), pompeProfondeur: '',
+  setPompeProfondeur: vi.fn(), pompeDistance: '', setPompeDistance: vi.fn(),
+  farmSurfaceHa: '', setFarmSurfaceHa: vi.fn(), farmCrop: '', setFarmCrop: vi.fn(),
+  farmRegion: '', setFarmRegion: vi.fn(), farmIrrigation: '',
+  setFarmIrrigation: vi.fn(), farmFuel: '', setFarmFuel: vi.fn(),
+  farmFuelSpend: '', setFarmFuelSpend: vi.fn(), farmFuelPeriod: 'mois',
+  setFarmFuelPeriod: vi.fn(), farmFuelSpendAnnual: '',
+  farmHmtStatic: '', setFarmHmtStatic: vi.fn(), farmHmtDrawdown: '',
+  setFarmHmtDrawdown: vi.fn(), farmWaterDemand: null, pumpM3Day: null,
+  pompageSaisie: POMPAGE_SAISIE_VIDE, majPompage: vi.fn(), apercuPompage: null,
+}
+
+describe('panneau agricole — formulaire neuf', () => {
+  it('région, culture et énergie actuelle sont VIDES (aucun défaut)', () => {
+    render(<PanneauAgricole {...PROPS_VIDES} />)
+    expect(document.getElementById('gen-farm-region').textContent).toContain('Non renseignée')
+    expect(document.getElementById('gen-farm-crop').textContent).toContain('Non renseignée')
+    expect(document.getElementById('gen-farm-fuel').textContent).toContain('Non renseignée')
+    expect(document.getElementById('gen-distance').value).toBe('')
+    // Mode neuve par défaut ? Non : aucun cas de pompe n'est présumé.
+    expect(screen.queryByTestId('bloc-plaque')).toBeNull()
+  })
+
+  it('une saisie part TELLE QUELLE (jamais arrondie ni rejetée)', () => {
+    const majPompage = vi.fn()
+    render(<PanneauAgricole {...PROPS_VIDES} majPompage={majPompage}
+      pompageSaisie={poserSaisie(POMPAGE_SAISIE_VIDE, 'besoin.mode', 'volume_declare')} />)
+    fireEvent.change(document.getElementById('gen-besoin-volume'),
+      { target: { value: '135.757' } })
+    expect(majPompage).toHaveBeenCalledWith('besoin.volume_m3_jour', '135.757')
+    fireEvent.change(document.getElementById('gen-source-niveau-dynamique'),
+      { target: { value: '40.05' } })
+    expect(majPompage).toHaveBeenCalledWith('source.niveau_dynamique_m', '40.05')
+    for (const input of document.querySelectorAll('input[type="number"]')) {
+      expect(input.getAttribute('step')).toBe('any')
+    }
+  })
+
+  it('pompe existante : la plaque (dont le CV) est saisie', () => {
+    render(<PanneauAgricole {...PROPS_VIDES}
+      pompageSaisie={poserSaisie(POMPAGE_SAISIE_VIDE, 'mode_pompe', 'existante')} />)
+    expect(screen.getByTestId('bloc-plaque')).toBeTruthy()
+    expect(document.getElementById('gen-pompecv')).toBeTruthy()
+  })
+
+  it('pompe neuve : le CV est retiré des entrées', () => {
+    render(<PanneauAgricole {...PROPS_VIDES} pompeCv="5.5"
+      pompageSaisie={poserSaisie(POMPAGE_SAISIE_VIDE, 'mode_pompe', 'neuve')} />)
+    expect(document.getElementById('gen-pompecv')).toBeNull()
+    expect(screen.getByTestId('pompe-actuelle-info').textContent).toContain('5.5 CV')
+  })
+})
+
+describe('chaque saisie apparaît dans le corps de l’aperçu (AGR127)', () => {
+  it('besoin, point d’eau, HMT détaillée, distance', () => {
+    let s = POMPAGE_SAISIE_VIDE
+    for (const [chemin, v] of [
+      ['mode_pompe', 'neuve'], ['besoin.mode', 'volume_declare'],
+      ['besoin.volume_m3_jour', '135.5'], ['besoin.mois_pointe', '7'],
+      ['source.debit_exploitation_m3h', '36'],
+      ['source.debit_exploitation_origine', 'foreur'],
+      ['source.niveau_dynamique_m', '40'], ['source.diametre_tubage_mm', '150'],
+      ['hmt.detail', true], ['hmt.denivele_m', '4'],
+      ['hmt.conduite.materiau', 'pehd'], ['hmt.conduite.longueur_m', '350'],
+    ]) s = poserSaisie(s, chemin, v)
+    const corps = construireCorpsPompage(etatPompageEcran(s, {
+      pompeDistance: '25.25', farmHmtStatic: '32', pompeProfondeur: '90',
+      pompeDebit: '30', pompeAlim: 'tri', pompeType: 'immergee',
+    }))
+    expect(corps.besoin.volume_m3_jour).toBe(135.5)
+    expect(corps.besoin.mois_pointe).toBe(7)
+    expect(corps.besoin.debit_souhaite_m3h).toBe(30)
+    expect(corps.source.debit_exploitation_m3h).toBe(36)
+    expect(corps.source.debit_exploitation_origine).toBe('foreur')
+    expect(corps.source.niveau_statique_m).toBe(32)
+    expect(corps.source.profondeur_forage_m).toBe(90)
+    expect(corps.hmt.denivele_m).toBe(4)
+    expect(corps.hmt.conduite.materiau).toBe('pehd')
+    expect(corps.hmt.conduite.longueur_m).toBe(350)
+    expect(corps.distance_champ_m).toBe(25.25)
+    expect(corps.alim).toBe('tri')
+  })
+
+  it('formulaire vide → manquants nommés, aucun corps', () => {
+    const etat = etatPompageEcran(POMPAGE_SAISIE_VIDE, {})
+    expect(construireCorpsPompage(etat)).toBeNull()
+    expect(manquantsPompage(etat)).toEqual([
+      'le cas de pompe (neuve ou existante)', 'le besoin en eau',
+      "la hauteur (HMT ou niveau d'eau)"])
+  })
+})
+
+describe('générateur — formulaire agricole vide', () => {
+  it('Auto-remplir est désactivé et le message nomme ce qui manque', async () => {
+    render(
+      <Provider store={configureStore({
+        reducer: { auth: authReducer, ventes: ventesReducer },
+        preloadedState: { auth: {
+          user: { id: 1 }, role: 'normal', role_nom: 'Directeur',
+          permissions: [], isAuthenticated: true, loading: false } },
+      })}>
+        <MemoryRouter initialEntries={['/ventes/devis/nouveau']}>
+          <DevisGenerator />
+        </MemoryRouter>
+      </Provider>,
+    )
+    const radio = await screen.findByRole('radio', { name: /Agricole/ })
+    fireEvent.click(radio)
+    await waitFor(() =>
+      expect(screen.getByTestId('pompage-manquants').textContent)
+        .toContain('le besoin en eau'))
+    expect(screen.getByTestId('pompage-manquants').textContent)
+      .toContain('le cas de pompe')
+    expect(screen.getByTestId('btn-auto-remplir')).toBeDisabled()
+    // Aucun appel d'aperçu tant que l'essentiel manque.
+    expect(api.post).not.toHaveBeenCalledWith(
+      '/ventes/etude-pompage/preview/', expect.anything(), expect.anything())
+  })
+})
