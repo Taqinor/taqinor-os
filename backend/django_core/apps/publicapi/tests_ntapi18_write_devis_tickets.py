@@ -17,7 +17,7 @@ from apps.crm.models import Client, Lead
 from apps.sav.models import Ticket
 from apps.ventes.models import Devis
 
-from .constants import (
+from .portees import (
     SCOPE_READ_LEADS, SCOPE_WRITE_DEVIS, SCOPE_WRITE_TICKETS,
 )
 from .models import ApiKey
@@ -185,7 +185,7 @@ class Ntapi18ScopesTests(TestCase):
     """Les deux nouveaux scopes sont bien déclarés (garde NTAPI42)."""
 
     def test_scopes_declares_dans_le_catalogue(self):
-        from .constants import ALL_SCOPES
+        from .portees import ALL_SCOPES
 
         self.assertIn(SCOPE_WRITE_DEVIS, ALL_SCOPES)
         self.assertIn(SCOPE_WRITE_TICKETS, ALL_SCOPES)

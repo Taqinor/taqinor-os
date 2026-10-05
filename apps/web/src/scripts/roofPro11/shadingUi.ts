@@ -15,7 +15,7 @@
  * câblage DOM, tracé sur la carte. Aucun réseau, aucun lead. Tous les nœuds DOM
  * sont optionnels (le harness jsdom ne les fournit pas) — l'outil tourne sans eux.
  */
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { sunDirection } from '../../lib/roofPro2';
 import {
   IMAGERY_SUN_DEFAULT,

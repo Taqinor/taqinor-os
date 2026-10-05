@@ -41,7 +41,7 @@
  *
  * Voir apps/web/BRAIN_V6_NOTES.md, BRAIN_V5_NOTES.md, BRAIN_V4_NOTES.md.
  */
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import maplibreCssUrl from 'maplibre-gl/dist/maplibre-gl.css?url';
 import * as THREE from 'three';
 import {

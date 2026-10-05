@@ -17,7 +17,7 @@
  * Les fonctions inter-modules (renderConfig de l'optimiseur, etc.) ne sont pas
  * appelées d'ici ; l'état partagé (obstacles/zones/disposition) passe par `ctx`.
  */
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import * as THREE from 'three';
 import { PANEL2_THICK_M, sunDirection, describeRowPitch } from '../../lib/roofPro2';
 import { rowSelfShading } from '../../lib/shadingEngine';

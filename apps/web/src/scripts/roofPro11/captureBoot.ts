@@ -13,7 +13,7 @@
  * GARDE-FOU : ce module ne POSTe AUCUN lead (comme tout le builder). Seule la page
  * publique, via son endpoint dédié /api/capture-lead, soumet — jamais l'outil.
  */
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import maplibreCssUrl from 'maplibre-gl/dist/maplibre-gl.css?url';
 import { isSimplePolygon, type LngLat } from '../../lib/roof';
 import { buildSatelliteStyle } from '../../lib/roofConfig';

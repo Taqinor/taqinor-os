@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 
-from .constants import SCOPE_READ_LEADS, SCOPE_READ_LICENCE
+from .portees import SCOPE_READ_LEADS, SCOPE_READ_LICENCE
 from .models import ApiKey
 
 User = get_user_model()
