@@ -39,6 +39,7 @@ from apps.crm import horaires
 from apps.crm.models import Lead
 from apps.crm.services import calculer_echeances_cadence
 from apps.parametres.models import CompanyProfile
+from apps.parametres.models_realisations import Realisation
 
 User = get_user_model()
 
@@ -185,6 +186,15 @@ class LeSuiviApresDevisSetaleAussiTests(_Base):
     """« Même test sur `apres_devis` » : un devis fini hors fenêtre."""
 
     slug = 'cad19-apres-devis'
+
+    def setUp(self):
+        super().setUp()
+        # AGR514 (D-AGR-10) — la touche 4 « preuve » n'est posée que s'il
+        # existe une réalisation éligible ; l'étalement J+1/J+2/J+4 en a
+        # besoin pour exister.
+        Realisation.objects.create(
+            company=self.company, titre='Chantier témoin', ville='Bouskoura',
+            url_page='https://taqinor.ma/realisations/cad19/')
 
     def test_un_devis_envoye_le_samedi_etale_J1_J2_J4(self):
         plan = self._plan(_a(SAMEDI), cadence='apres_devis')
