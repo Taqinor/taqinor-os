@@ -22,7 +22,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from authentication.models import Company
 
 from apps.notifications import services
-from apps.notifications.models import EventType
+from apps.notifications.types_evenements import EventType
 from apps.parametres.models import CompanyProfile
 
 #: Racine du dépôt : …/backend/django_core/apps/notifications/<ce fichier>.

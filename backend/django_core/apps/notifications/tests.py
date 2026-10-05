@@ -7,7 +7,12 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 
-from .models import EventType, Notification, NotificationPreference, NotificationRoutingRule
+from .models import (
+    Notification,
+    NotificationPreference,
+    NotificationRoutingRule,
+)
+from .types_evenements import EventType
 from .services import merged_preferences, notify, notify_many, resolve_recipients
 
 User = get_user_model()

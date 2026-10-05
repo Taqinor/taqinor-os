@@ -113,7 +113,7 @@ def detect_impossible_travel(user, ip, at=None):
 def _notify_directeurs(company, user, detail):
     """Notifie les Directeurs de la société (best-effort, jamais bloquant)."""
     try:
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         from apps.notifications.services import notify, resolve_recipients
         for recipient in resolve_recipients(
                 company, EventType.SECURITY_ALERT):

@@ -29,8 +29,8 @@ from apps.crm.management.commands.detecter_comptes_dormants import (
 from apps.crm.management.commands.recycler_leads_non_travailles import (
     recycler_leads_non_travailles)
 from apps.crm.models import Client, Lead
-from apps.notifications.models import (
-    EventType, Notification, NotificationPreference)
+from apps.notifications.models import Notification, NotificationPreference
+from apps.notifications.types_evenements import EventType
 from apps.notifications.services import default_prefs_for
 from apps.parametres.models import CompanyProfile
 from apps.roles.models import Role

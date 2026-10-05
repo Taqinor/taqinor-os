@@ -39,7 +39,8 @@ class AnnoncesProduitTests(TestCase):
 
     # ── Publication ─────────────────────────────────────────────────────────
     def test_editeur_publie_et_tous_les_tenants_sont_notifies(self):
-        from apps.notifications.models import EventType, Notification
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
 
         resp = self._api(self.editeur).post(
             '/api/django/adminops/annonces/',
@@ -136,7 +137,8 @@ class AnnoncesProduitTests(TestCase):
         self.assertEqual(len(pas_vu.data['results']), 0)
 
     def test_compte_de_portail_non_notifie(self):
-        from apps.notifications.models import EventType, Notification
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
 
         portail = CustomUser.objects.create_user(
             username='client_portail_annonce', password='pw53914',

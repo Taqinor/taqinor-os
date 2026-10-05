@@ -10,7 +10,8 @@ Run :
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.parametres.i18n_labels import variante_absente
 from apps.parametres.models_translations import TraductionManquante
 from apps.parametres.scheduled import (

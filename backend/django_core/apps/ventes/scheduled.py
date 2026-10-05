@@ -686,7 +686,7 @@ def _post_engagement_notification(devis, vendeur, key, label):
     """QX30be — pose une Notification d'engagement (best-effort, in-lane)."""
     try:
         from apps.notifications.services import notify
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         from apps.ventes.utils.client_links import proposition_url
         from apps.ventes.models import ShareLink
         try:

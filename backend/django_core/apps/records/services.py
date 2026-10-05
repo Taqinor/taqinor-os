@@ -195,7 +195,7 @@ def notify_followers(*, content_type, object_id, title, body='',
         qs = qs.exclude(user=exclude_user)
 
     try:
-        from apps.notifications.models import EventType as ET
+        from apps.notifications.types_evenements import EventType as ET
         from apps.notifications.services import notify
     except Exception:  # pragma: no cover - défensif
         return 0
@@ -289,7 +289,7 @@ def _notifier_reveil_activite(activity):
     if activity.assigned_to_id is None:
         return
     try:
-        from apps.notifications.models import EventType as ET
+        from apps.notifications.types_evenements import EventType as ET
         from apps.notifications.services import notify
         link = None
         if activity.content_type_id and activity.object_id:

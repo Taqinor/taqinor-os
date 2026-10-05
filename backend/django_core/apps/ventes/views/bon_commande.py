@@ -75,7 +75,7 @@ def _notifier_chantier_materiel_confirme(bc):
         if responsable is None:
             return
         from apps.notifications.services import notify
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         notify(
             responsable, EventType.CHANTIER_MATERIEL_CONFIRME,
             f'Matériel confirmé — chantier {installation.reference}',

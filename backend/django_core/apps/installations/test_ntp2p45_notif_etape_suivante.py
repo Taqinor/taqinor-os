@@ -23,7 +23,8 @@ from apps.installations.models import (
     DemandeAchat, DemandeAchatLigne, EtapeApprobationAchat,
     RegleApprobationAchat,
 )
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 
 User = get_user_model()
 _seq = itertools.count(1)

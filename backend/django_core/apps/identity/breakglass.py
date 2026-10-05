@@ -92,7 +92,7 @@ def _audit(company, target, actor, detail):
 
 def _notify_directeurs(company, target, accorde_par):
     try:
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         from apps.notifications.services import notify, resolve_recipients
         body = ('Accès break-glass accordé à %s par %s.' % (
             getattr(target, 'username', '?'),

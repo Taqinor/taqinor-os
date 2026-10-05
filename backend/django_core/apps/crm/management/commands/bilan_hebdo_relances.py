@@ -69,7 +69,7 @@ def bilan_hebdo_relances(*, jours=7, dry_run=False):
 
     from apps.crm.selectors import kpi_cadences
     from apps.crm.visites import utilisateurs_direction
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
     from apps.notifications.services import notify_many
 
     envoyes = 0

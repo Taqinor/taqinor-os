@@ -63,7 +63,7 @@ def digest_favoris_obsoletes_hebdo():
     from authentication.models import Company
     from django.contrib.auth import get_user_model
 
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
     from apps.notifications.services import notify
 
     User = get_user_model()

@@ -619,7 +619,9 @@ def send_devis_followup_nudges():
                 if vendeur is not None:
                     try:
                         from apps.notifications.services import notify
-                        from apps.notifications.models import EventType
+                        from apps.notifications.types_evenements import (
+                            EventType,
+                        )
                         notify(
                             vendeur, EventType.DEVIS_NUDGE_DUE,
                             title=(f'Relance à faire — devis {devis.reference} '

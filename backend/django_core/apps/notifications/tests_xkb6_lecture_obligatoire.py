@@ -18,7 +18,8 @@ from django.utils import timezone
 
 from authentication.models import Company
 
-from .models import Annonce, AnnonceLecture, AnnonceRelance, EventType, Notification
+from .models import Annonce, AnnonceLecture, AnnonceRelance, Notification
+from .types_evenements import EventType
 
 User = get_user_model()
 

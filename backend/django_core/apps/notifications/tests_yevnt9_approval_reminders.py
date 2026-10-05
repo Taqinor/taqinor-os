@@ -20,7 +20,8 @@ from django.utils import timezone
 
 from authentication.models import Company
 
-from .models import ApprovalReminderConfig, EventType, Notification
+from .models import ApprovalReminderConfig, Notification
+from .types_evenements import EventType
 
 User = get_user_model()
 

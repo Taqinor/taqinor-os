@@ -23,7 +23,8 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 from apps.crm.models import Client, Lead, LeadActivity
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.ventes.models import Devis, ShareLink
 
 User = get_user_model()

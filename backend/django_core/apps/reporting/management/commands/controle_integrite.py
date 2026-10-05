@@ -68,7 +68,7 @@ def _notify_anomalies(company, result, n):
     try:
         from django.contrib.auth import get_user_model
         from apps.notifications.services import notify_many
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
 
         User = get_user_model()
         familles_en_anomalie = [

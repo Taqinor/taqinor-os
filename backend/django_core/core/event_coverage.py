@@ -32,7 +32,7 @@ from core import events
 DJANGO_CORE_ROOT = Path(__file__).resolve().parents[1]
 APPS_ROOT = DJANGO_CORE_ROOT / "apps"
 CORE_ROOT = DJANGO_CORE_ROOT / "core"
-EVENTTYPE_FILE = APPS_ROOT / "notifications" / "models.py"
+EVENTTYPE_FILE = APPS_ROOT / "notifications" / "types_evenements.py"
 
 # --- Listes blanches EXPLICITES (un orphelin non listé fait échouer le test) --
 
@@ -162,7 +162,7 @@ ALLOWED_UNPRODUCED: set[str] = {
     "SAV_ACTIVITE_DUE",
     # SOLMVP — deux EventType dont l'UNIQUE producteur vivait dans un module
     # sorti du MVP solaire (``core.parked`` / ``docs/parked-modules.md``). Le
-    # membre reste déclaré dans ``apps/notifications/models.py`` (app CONSERVÉE,
+    # membre reste déclaré dans ``apps/notifications/types_evenements.py`` (app CONSERVÉE,
     # et une ``Notification`` déjà écrite en base garde son type) : on RÉSERVE
     # plutôt que de supprimer, le producteur redevient vrai au retour du module.
     "CONSENTEMENT_RETIRE_TRAITE",  # grc (alerte DPO NTGRC9)
