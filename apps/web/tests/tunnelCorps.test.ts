@@ -174,6 +174,24 @@ describe('construireCorps — les gates conservés', () => {
     expect(indus.activityProfile).toBe('day');
   });
 
+  it("CIW408 — en mode COMMERCIAL, tensionRaccordement et activityProfile ne partent JAMAIS (panneau caché)", () => {
+    const comm = corps({ ...etatResidentiel(), mode: 'commercial', tension: 'bt', activite: 'day' });
+    expect(comm).not.toHaveProperty('tensionRaccordement');
+    expect(comm).not.toHaveProperty('activityProfile');
+    // même avec des valeurs non par défaut posées par un ancien état
+    const comm2 = corps({ ...etatResidentiel(), mode: 'commercial', tension: 'mt', activite: 'continuous' });
+    expect(comm2).not.toHaveProperty('tensionRaccordement');
+    expect(comm2).not.toHaveProperty('activityProfile');
+  });
+
+  it("CIW408 — le payload INDUSTRIEL (et l'alias professionnel) est inchangé", () => {
+    for (const mode of ['industriel', 'professionnel'] as const) {
+      const indus = corps({ ...etatResidentiel(), mode, tension: 'mt', activite: 'continuous' });
+      expect(indus.tensionRaccordement).toBe('mt');
+      expect(indus.activityProfile).toBe('continuous');
+    }
+  });
+
   it("`categorieCommerciale` ne part qu'en mode commercial", () => {
     const indus = corps({
       ...etatResidentiel(),

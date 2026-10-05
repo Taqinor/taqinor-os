@@ -56,6 +56,16 @@ export function estModePro(mode: string): boolean {
   return (MODES_PRO as readonly string[]).includes(mode);
 }
 
+/**
+ * CIW408 — le seul panneau qui POSE la tension de raccordement et le profil
+ * d'activité (boutons « BT / MT » et « Journée… ») est le panneau INDUSTRIEL ;
+ * en mode commercial il est caché, donc ces deux réponses n'existent pas.
+ */
+export const MODES_INDUSTRIEL: readonly LeadModeId[] = ['professionnel', 'industriel'];
+export function estModeIndustriel(mode: string): boolean {
+  return (MODES_INDUSTRIEL as readonly string[]).includes(mode);
+}
+
 /** Les 6 paramètres de tracking repris de `sessionStorage` (capture first-touch). */
 export const CLES_TRACKING = [
   'fbclid',
@@ -519,23 +529,24 @@ const G_PRO = {
     requis: false,
   },
   /**
-   * `tension` et `activite` ont un DÉFAUT VISIBLE ('bt' / 'day') : elles ne
-   * partent que si un profil C&I est actif — sinon on émettrait une donnée que
-   * le visiteur n'a jamais choisie.
+   * `tension` et `activite` ont un DÉFAUT ('bt' / 'day') qui n'est VISIBLE que dans
+   * le panneau INDUSTRIEL. CIW408 — en mode commercial (panneau caché) elles ne
+   * partent JAMAIS : un hôtel arrivait au CRM avec « raccordement BT · activité de
+   * jour » qu'il n'avait jamais vu. Aucun défaut silencieux.
    */
   tensionRaccordement: {
     webhookKey: 'tensionRaccordement',
     domId: null,
-    modes: MODES_PRO,
-    lire: (e) => (estModePro(e.mode) ? e.tension : undefined),
+    modes: MODES_INDUSTRIEL,
+    lire: (e) => (estModeIndustriel(e.mode) ? e.tension : undefined),
     nettoyer: chaineOuOmise,
     requis: false,
   },
   profilActivite: {
     webhookKey: 'activityProfile',
     domId: null,
-    modes: MODES_PRO,
-    lire: (e) => (estModePro(e.mode) ? e.activite : undefined),
+    modes: MODES_INDUSTRIEL,
+    lire: (e) => (estModeIndustriel(e.mode) ? e.activite : undefined),
     nettoyer: chaineOuOmise,
     requis: false,
   },
