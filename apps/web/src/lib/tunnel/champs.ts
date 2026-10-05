@@ -140,6 +140,10 @@ export interface EtatTunnel {
   raisonSociale: string;
   tension: string;
   activite: string;
+  /** CIW410 — le visiteur a cliqué BT ou MT (sinon le défaut visible n'est pas une déclaration). */
+  tensionTouchee: boolean;
+  /** CIW410 — le visiteur a cliqué un profil d'activité. */
+  activiteTouchee: boolean;
   categorieCommerciale: string;
   equipes: string;
 
@@ -569,11 +573,26 @@ const G_PRO = {
     nettoyer: chaineOuOmise,
     requis: false,
   },
+  /**
+   * CIW410 (contrat CIQ400 `tensionSource`, promue en `tension_source` par CIQ406) — la tension
+   * BT est PRÉSÉLECTIONNÉE visiblement (WJ123) : le CRM ne peut pas distinguer une usine MT qui
+   * n'a rien touché d'un vrai BT. `touchee` = le visiteur a cliqué BT ou MT ; sinon
+   * `defaut_visible`. Même gate que `tensionRaccordement` (panneau industriel seulement).
+   */
+  tensionSource: {
+    webhookKey: 'tensionSource',
+    domId: null,
+    modes: MODES_INDUSTRIEL,
+    lire: (e) => (estModeIndustriel(e.mode) ? (e.tensionTouchee ? 'touchee' : 'defaut_visible') : undefined),
+    nettoyer: chaineOuOmise,
+    requis: false,
+  },
+  /** CIW410 — « Journée » est un défaut visible : `activityProfile` ne part que s'il a été touché. */
   profilActivite: {
     webhookKey: 'activityProfile',
     domId: null,
     modes: MODES_INDUSTRIEL,
-    lire: (e) => (estModeIndustriel(e.mode) ? e.activite : undefined),
+    lire: (e) => (estModeIndustriel(e.mode) && e.activiteTouchee ? e.activite : undefined),
     nettoyer: chaineOuOmise,
     requis: false,
   },
@@ -1131,6 +1150,8 @@ export function etatVide(): EtatTunnel {
     raisonSociale: '',
     tension: '',
     activite: '',
+    tensionTouchee: false,
+    activiteTouchee: false,
     categorieCommerciale: '',
     equipes: '',
     typeSurface: '',

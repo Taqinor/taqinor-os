@@ -2349,7 +2349,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       const snapshot: WizardSnapshot = {
         step, revealed, mode,
         visitWindowPart, visitWindowWeek,
-        sel: { proUnit, tension, activity, surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode, occupationJour },
+        sel: { proUnit, tension, activity, tensionTouched: tensionTouched ? '1' : '', activityTouched: activityTouched ? '1' : '', surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode, occupationJour },
         capturePin, captureOutline, capturePans, captureLayout,
         fields, checks,
         idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId,
@@ -2916,6 +2916,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   let proUnit = savedSel.proUnit || 'mad';
   let tension = savedSel.tension || 'bt';
   let activity = savedSel.activity || 'day';
+  // CIW410 — le visiteur a-t-il CLIQUÉ la tension / l'activité ? Les défauts visibles
+  // (BT, « Journée » — WJ123) restent, mais ne partent comme déclarés que touchés.
+  let tensionTouched = savedSel.tensionTouched === '1';
+  let activityTouched = savedSel.activityTouched === '1';
   let surfaceType = savedSel.surfaceType || '';
   let waterSource = savedSel.waterSource || '';
   let waterUnit = savedSel.waterUnit || 'm3h';
@@ -3044,8 +3048,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // en moyenne tension) est retiré du tunnel — comme les cartes « groupe
   // électrogène » (coupe fondateur 18/08).
   wireCardGroup('.mt-pro-unit', () => proUnit, (v) => { proUnit = v || 'mad'; }, { recompute: true });
-  wireCardGroup('.mt-tension', () => tension, (v) => { tension = v || 'bt'; }, { recompute: true });
-  wireCardGroup('.mt-activity', () => activity, (v) => { activity = v || 'day'; }, { recompute: true });
+  wireCardGroup('.mt-tension', () => tension, (v) => { tension = v || 'bt'; tensionTouched = true; }, { recompute: true });
+  wireCardGroup('.mt-activity', () => activity, (v) => { activity = v || 'day'; activityTouched = true; }, { recompute: true });
   wireCardGroup('.mt-surface-type', () => surfaceType, (v) => { surfaceType = v; }, { allowUnset: true, recompute: true });
   // WJ122 — COMMERCIAL : cartes catégorie + bascule d'unité de facture. Le choix
   // de catégorie recalcule l'estimation (day-share par archétype → hôtel ≠
@@ -4202,6 +4206,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       tarifProMadKwh: lastProTarifMadKwh,
       tension,
       activite: activity,
+      tensionTouchee: tensionTouched,
+      activiteTouchee: activityTouched,
       categorieCommerciale: commercialCategory,
       // WJ123 — mode INDUSTRIEL : les ÉQUIPES plafonnent honnêtement
       // l'autoconsommation dans estimatePro.
