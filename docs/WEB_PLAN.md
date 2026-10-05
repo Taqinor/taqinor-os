@@ -467,6 +467,7 @@ each for Lydec/Redal/Amendis).
   CLAIMS partnerships — verify with the banks, never copy the claim); PROMASOL/AMEE amounts +
   Taqinor's own AMEE status; exact décret/décision references + validity windows for the 82-21
   explainer (W259). Pages ship with the verified subset only.
+  **Annotation AGW306 (2026-10-05):** D-AGR-6 lève WG11 pour ces SEULS faits sourcés de la RÈGLE FDA (conditions ; plafonds 30 % / 3 000 DH par ha / 3 000 DH par kWc / 30 000 DH par projet ; accord AVANT travaux ; versement après réalisation ; un seul projet par exploitation ; Guide FDA 2024 p.20-23, relevé le 02/10/2026), publiés sur /financement et /pompage-solaire, sans montant propre au client, sans « jusqu'à 30 % » et sans « cumulable » (le cumul n'est pas confirmé par la DPA). Tout le reste de WG11 reste gated.
 
 **Round-2 founder gates (2026-07-02) — each unlocks specific round-2 tasks; no invented values:**
 

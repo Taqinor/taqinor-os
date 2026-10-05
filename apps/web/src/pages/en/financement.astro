@@ -65,9 +65,11 @@ const mecanismes = [
         source: 'creditagricole.ma',
       },
       {
-        nom: 'FDA — solar pumping subsidy ≈ 30 %',
-        body: 'The Agricultural Development Fund subsidises roughly 30 % of the acquisition and installation cost of an agricultural solar pumping kit (panels, pump unit, structure, accessories), paid after invoicing — filed at your regional DPA or ORMVA. Cumulative with the existing drip-irrigation subsidy.',
-        source: 'FDA guide (agrimaroc.ma / casainvest.ma)',
+        // AGW306 (D-AGR-6) — la RÈGLE sourcée, mêmes mots que le repli daté du devis
+        // (quote_engine/agricole/mentions.py, AGR306) ; jamais un montant propre au client.
+        nom: 'FDA — the rule of the solar pumping aid',
+        body: 'State aid (Agricultural Development Fund) for solar pumping: 30% of the investment, capped at 3,000 MAD per hectare, 3,000 MAD per kWp and 30,000 MAD per project. Conditions: replacement of a butane pump, localised irrigation, water meter. Prior approval must be obtained before the works; the aid is not deducted from the price and is paid after completion; one project per farm. Decision of the DPA/ORMVA, not guaranteed; Taqinor is not a subsidising body.',
+        source: 'Guide FDA 2024, pp. 20-23 — read on 2 October 2026',
       },
     ],
   },

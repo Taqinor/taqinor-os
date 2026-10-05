@@ -65,9 +65,11 @@ const mecanismes = [
         source: 'creditagricole.ma',
       },
       {
-        nom: 'FDA — subvention pompage solaire ≈ 30 %',
-        body: 'Le Fonds de Développement Agricole subventionne environ 30 % du coût d’acquisition et d’installation d’un kit de pompage solaire agricole (panneaux, groupe motopompe, structure, accessoires), versée après facture — dossier à déposer à la DPA ou à l’ORMVA de votre région. Cumulable avec la subvention goutte-à-goutte existante.',
-        source: 'Guide FDA (agrimaroc.ma / casainvest.ma)',
+        // AGW306 (D-AGR-6) — la RÈGLE sourcée, mêmes mots que le repli daté du devis
+        // (quote_engine/agricole/mentions.py, AGR306) ; jamais un montant propre au client.
+        nom: 'FDA — la règle de l’aide au pompage solaire',
+        body: 'Aide de l’État (Fonds de développement agricole) au pompage solaire : 30 % de l’investissement, plafonnée à 3 000 DH par hectare, 3 000 DH par kWc et 30 000 DH par projet. Conditions : remplacement d’une pompe au butane, irrigation localisée, compteur d’eau. Accord préalable à obtenir avant travaux ; l’aide n’est pas déduite du prix et elle est versée après réalisation ; un seul projet par exploitation. Décision de la DPA/ORMVA, non garantie ; Taqinor n’est pas organisme subventionneur.',
+        source: 'Guide FDA 2024, p. 20-23 — relevé le 2 octobre 2026',
       },
     ],
   },
