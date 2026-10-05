@@ -7,9 +7,10 @@
  *
  * ACAL332 — les liens /preview/toiture* ne s'affichent qu'en `astro dev` : en
  * build ces pages sont retirées du dossier publié (hook d'astro.config.mjs),
- * un lien y serait mort. La liste vit dans scripts/retirer-preview-toiture.mjs.
+ * un lien y serait mort. La liste vit dans scripts/liens-preview.mjs (sans
+ * import Node : la page est pré-rendue dans workerd).
  */
-import { liensPreview } from '../../../scripts/retirer-preview-toiture.mjs';
+import { liensPreview } from '../../../scripts/liens-preview.mjs';
 
 const liens = liensPreview(import.meta.env.DEV);
 ---

@@ -10,29 +10,10 @@ import { readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+export { LIENS_PREVIEW, liensPreview } from './liens-preview.mjs';
+
 /** Préfixe des entrées retirées de `<client>/preview/` (pages ET dossiers). */
 export const PREFIXE_PREVIEW_TOITURE = 'toiture';
-
-/**
- * Les liens de l'index /preview/. `toiture: true` = galerie interne, listée
- * SEULEMENT en dev (en build les pages n'existent plus : un lien serait mort).
- * @type {ReadonlyArray<{ href: string, label: string, toiture: boolean, featured?: boolean }>}
- */
-export const LIENS_PREVIEW = Object.freeze([
-  { href: '/preview/diagnostic', label: 'Diagnostic (prévisualisation)', toiture: false },
-  { href: '/preview/toiture', label: 'Estimateur toiture (tracé)', toiture: true },
-  { href: '/preview/toiture-3d', label: 'Estimateur toiture 3D', toiture: true },
-  { href: '/preview/toiture-3d-pro', label: 'Estimateur toiture 3D Pro', toiture: true },
-  { href: '/preview/toiture-3d-pro-11', label: 'Estimateur 3D Pro v11 (canonique)', toiture: true, featured: true },
-]);
-
-/**
- * Les liens à afficher sur l'index de preview.
- * @param {boolean} dev `import.meta.env.DEV`
- */
-export function liensPreview(dev) {
-  return LIENS_PREVIEW.filter((lien) => dev || !lien.toiture);
-}
 
 /** @param {string | URL} dir */
 function enChemin(dir) {
