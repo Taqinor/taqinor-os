@@ -91,6 +91,8 @@ export function reinitialiserBootMinimal(extra = {}) {
       snapshot: vi.fn(() => null),
       ...extra,
     })
+    // ACAL68 — comme le constructeur réel : l'hydratation se termine APRÈS `onApiReady`.
+    options?.onHydrationTerminee?.()
   })
 }
 

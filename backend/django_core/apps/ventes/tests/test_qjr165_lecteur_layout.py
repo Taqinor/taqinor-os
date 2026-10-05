@@ -81,8 +81,8 @@ import inspect
 from django.test import SimpleTestCase
 
 from apps.ventes.domain import geometrie
-from apps.ventes.domain.creation import (
-    build_devis_auto, build_devis_from_layout)
+from apps.ventes.domain.creation_auto import build_devis_auto
+from apps.ventes.domain.creation_calepinage import build_devis_from_layout
 from apps.ventes.domain.geometrie import (
     _cible_panneaux_du_layout, _watt_du_layout, lire_layout)
 

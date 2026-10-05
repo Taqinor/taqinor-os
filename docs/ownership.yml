@@ -519,6 +519,7 @@ owners:
       - backend/django_core/apps/ventes/management/commands/audit_coherence.py
       - backend/django_core/apps/ventes/offres_tailles.py
       - backend/django_core/apps/ventes/solar_base.py
+      - backend/django_core/apps/ventes/solar_classification.py
       - backend/django_core/apps/ventes/solar_design.py
       - backend/django_core/apps/ventes/tests/_moteur_fixtures.py
       - backend/django_core/apps/ventes/tests/_quote_engine_common.py

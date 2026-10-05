@@ -410,7 +410,28 @@ def _source_limite(source_limite):
 # 230 V, 400 V, ni un régime : c'est exactement ce que le contrat CALX205
 # publie dans son état `exemple_vide`.
 
-def verdicts_raccordement(conception, saisie):
+#: ACAL175 — la clé du réglage SOCIÉTÉ (registre CALX145) qui sert de REPLI
+#: sourcé au cos φ du verdict « puissance souscrite » — jamais à l'écrêtage.
+CLE_COS_PHI_SOCIETE = 'cos_phi_par_defaut'
+
+
+def _cos_phi_societe(reglages):
+    """``(cos_phi, source)`` du réglage société, ou ``(None, '')``.
+
+    Une valeur sans source n'est pas une valeur (D-CALX 7) ; hors de ]0 ; 1]
+    ce n'est pas un cos φ.
+    """
+    saisie = (reglages or {}).get(CLE_COS_PHI_SOCIETE)
+    if not isinstance(saisie, dict):
+        return (None, '')
+    valeur = _nombre(saisie.get('valeur'))
+    source = str(saisie.get('source') or '').strip()
+    if valeur is None or not source or valeur <= 0 or valeur > 1:
+        return (None, '')
+    return (valeur, source)
+
+
+def verdicts_raccordement(conception, saisie, reglages=None):
     """CALX242 — les trois contrôles du branchement, chacun NOMMANT son champ.
 
     Args:
@@ -435,8 +456,15 @@ def verdicts_raccordement(conception, saisie):
     """
     saisie = saisie if isinstance(saisie, dict) else {}
     cos_phi, source_cos_phi = _cos_phi_saisi(saisie)
+    origine = 'saisie — cos_phi_impose'
+    if cos_phi is None:
+        # ACAL175 — à défaut du cos φ IMPOSÉ du site, le réglage SOCIÉTÉ
+        # sourcé ; le site prime toujours. L'écrêtage, lui, ne lit QUE le
+        # cos φ imposé (``etapes/ecretage.py``).
+        cos_phi, source_cos_phi = _cos_phi_societe(reglages)
+        origine = 'réglage société — %s' % CLE_COS_PHI_SOCIETE
     injectee, source_puissance, motif_puissance = _puissance_injectee_kva(
-        conception, cos_phi, source_cos_phi)
+        conception, cos_phi, source_cos_phi, origine=origine)
     phases_onduleur = _phases_onduleur(conception)
     tension_employee = _tension_employee_v(conception)
 
@@ -484,7 +512,8 @@ def _evaluation(conception):
         return None
 
 
-def _puissance_injectee_kva(conception, cos_phi, source_cos_phi):
+def _puissance_injectee_kva(conception, cos_phi, source_cos_phi, *,
+                            origine='saisie — cos_phi_impose'):
     """``(kVA, source, motif)`` — la puissance APPARENTE réellement injectée.
 
     Deux provenances, dans cet ordre, et AUCUN repli au-delà :
@@ -513,7 +542,7 @@ def _puissance_injectee_kva(conception, cos_phi, source_cos_phi):
                           "renseignée : « ac_kw » manque sur la fiche.")
     if cos_phi is not None and cos_phi > 0:
         return (active / cos_phi,
-                'saisie — cos_phi_impose, source : %s' % source_cos_phi, '')
+                '%s, source : %s' % (origine, source_cos_phi), '')
     return (None, '',
             "la puissance APPARENTE injectée n'est pas calculable : la fiche "
             "onduleur ne publie pas « s_max_kva » et aucun « cos_phi_impose » "
@@ -934,10 +963,28 @@ def _verdict_desequilibre(desequilibre, seuil, source_seuil, motif):
 # jusqu'au compteur. Les tronçons continus sont donc marqués non parcourus —
 # ils ne sont pas « oubliés », ils sont en amont de l'onduleur.
 
-#: Les sept champs de la saisie du contrat CALX205, dans son ordre.
+#: Les NEUF champs de la saisie du contrat CALX205, dans son ordre : les
+#: sept historiques, puis (ACAL155 / M0 ACAL9) le plafond d'injection et sa
+#: justification, que lisent ``etapes/autoconsommation.py`` et
+#: ``etapes/batterie.py``.
 CHAMPS_SAISIE = ('puissance_souscrite_kva', 'phases', 'tension_nominale_v',
                  'limite_elevation_pct', 'source_limite', 'cos_phi_impose',
-                 'source_cos_phi')
+                 'source_cos_phi', 'plafond_injection_kw',
+                 'plafond_injection_justification')
+
+#: ACAL155 — LA clé de ``Calepinage.resultat`` qui porte la saisie de
+#: raccordement. Unique : ni ``roof_layout['raccordement']`` (jamais écrit)
+#: ni ``entree_electrique['raccordement']`` (hors ``CHAMPS_ENTREE``) ne sont
+#: plus lus — tout lecteur passe par :func:`saisie_du_calepinage`.
+CLE_SAISIE = 'raccordement_saisie'
+
+#: Le refus opposé à un plafond d'injection SANS justification (clé
+#: ``plafond_injection_justification`` de ``refus_plafond_sans_
+#: justification``, contrat CALX205 / ACAL9).
+REFUS_PLAFOND_SANS_JUSTIFICATION = (
+    "Un plafond d'injection ne peut pas être enregistré sans sa "
+    "justification : indiquez le contrat de raccordement ou la prescription "
+    "du gestionnaire de réseau qui l'impose.")
 
 #: Les champs saisis et leur intitulé français : un refus les NOMME tels que
 #: l'écran les affiche (règle fondateur du 08/09/2026 — l'erreur désigne le
@@ -948,6 +995,7 @@ INTITULES_SAISIE = {
     'limite_elevation_pct': "la limite d'élévation (%)",
     'cos_phi_impose': 'le cos φ imposé',
     'phases': 'le nombre de phases du branchement',
+    'plafond_injection_kw': "le plafond d'injection (kW)",
 }
 
 #: Le statut PUBLIÉ pour un contrôle qui n'a pas eu lieu. Le noyau le nomme
@@ -994,6 +1042,28 @@ def _nombre_saisi(valeur, champ):
     return nombre
 
 
+def _plafond_saisi(valeur):
+    """Le plafond d'injection : un nombre ≥ 0, ``None``, ou un refus nommé.
+
+    Zéro est ADMIS : une injection interdite (« zéro injection ») est un
+    plafond réel, pas une absence de saisie.
+    """
+    champ = 'plafond_injection_kw'
+    if valeur is None or valeur == '':
+        return None
+    nombre = _nombre(valeur)
+    if nombre is None or not math.isfinite(nombre):
+        raise _refus_saisie(
+            champ, "%s n'est pas un nombre : saisissez une valeur chiffrée, "
+                   "ou laissez le champ vide si elle n'est pas connue."
+                   % INTITULES_SAISIE[champ].capitalize())
+    if nombre < 0:
+        raise _refus_saisie(
+            champ, "%s ne peut pas être négatif (« %s »)."
+                   % (INTITULES_SAISIE[champ].capitalize(), fr(nombre)))
+    return nombre
+
+
 def _phases_saisies(valeur):
     """1 ou 3 — un régime hors de ces deux-là est REFUSÉ, jamais ignoré."""
     if valeur is None or valeur == '':
@@ -1008,11 +1078,13 @@ def _phases_saisies(valeur):
 
 
 def _saisie_publiee(brute):
-    """Les SEPT champs du contrat, normalisés — aucun autre n'est retenu.
+    """Les NEUF champs du contrat, normalisés — aucun autre n'est retenu.
 
     Une clé inconnue du corps est ignorée : le contrat CALX205 fige la
-    saisie à sept champs, et accepter une huitième clé la ferait vivre dans
-    la base sans qu'aucun écran ni aucun calcul ne la lise jamais.
+    saisie à neuf champs (ACAL155), et accepter une dixième clé la ferait
+    vivre dans la base sans qu'aucun écran ni aucun calcul ne la lise jamais.
+    Un plafond d'injection sans justification est REFUSÉ, comme une limite
+    sans source.
     """
     brute = brute if isinstance(brute, dict) else {}
     saisie = {
@@ -1021,11 +1093,36 @@ def _saisie_publiee(brute):
                                       'source_limite'),
         'source_cos_phi': _texte_saisi(brute.get('source_cos_phi'),
                                        'source_cos_phi'),
+        'plafond_injection_kw': _plafond_saisi(
+            brute.get('plafond_injection_kw')),
+        'plafond_injection_justification': _texte_saisi(
+            brute.get('plafond_injection_justification'),
+            'plafond_injection_justification'),
     }
     for champ in ('puissance_souscrite_kva', 'tension_nominale_v',
                   'limite_elevation_pct', 'cos_phi_impose'):
         saisie[champ] = _nombre_saisi(brute.get(champ), champ)
+    if (saisie['plafond_injection_kw'] is not None
+            and not saisie['plafond_injection_justification']):
+        raise _refus_saisie('plafond_injection_justification',
+                            REFUS_PLAFOND_SANS_JUSTIFICATION)
     return {champ: saisie[champ] for champ in CHAMPS_SAISIE}
+
+
+def saisie_du_calepinage(calepinage):
+    """ACAL155 — LA saisie de raccordement de ce calepinage, ou ``{}``.
+
+    Lue sur ``resultat['raccordement_saisie']`` (écrite par
+    ``POST raccordement/``) — la SEULE source : la simulation (cos φ imposé,
+    plafond d'injection), le verdict publiable et la vue la lisent ICI.
+    Un ``resultat`` illisible rend ``{}`` : l'état vide du contrat, où les
+    verdicts sont omis en nommant ce qui manque — jamais une saisie devinée.
+    """
+    resultat = getattr(calepinage, 'resultat', None)
+    if not isinstance(resultat, dict):
+        return {}
+    saisie = resultat.get(CLE_SAISIE)
+    return dict(saisie) if isinstance(saisie, dict) else {}
 
 
 def _injection(saisie):
@@ -1113,7 +1210,45 @@ def _verdict_publie(verdict):
     }
 
 
-def bloc_raccordement(conception, saisie, troncons, reglages=None):
+#: ACAL157 — la provenance d'une valeur PROPOSÉE depuis le lead.
+SOURCE_PROPOSITION_LEAD = 'lead'
+
+#: ``Lead.raccordement`` (choix crm) → nombre de phases. Toute autre valeur
+#: (« je ne sais pas », vide) ne propose RIEN : aucun régime n'est deviné.
+PHASES_DU_RACCORDEMENT_LEAD = {'monophase': 1, 'triphase': 3}
+
+
+def proposition_du_lead(calepinage):
+    """ACAL157 — ce que le LEAD sait déjà, PROPOSÉ à la saisie, ou ``None``.
+
+    ``{puissance_souscrite_kva, phases, source: 'lead'}`` lus sur le lead du
+    calepinage (``Lead.compteur_puissance_kva``, ``Lead.raccordement``) par le
+    sélecteur cross-app ``apps.crm.selectors.get_company_lead`` (borné
+    société : un lead d'une autre société est introuvable). RIEN n'est
+    écrit — ni dans le lead, ni dans ``resultat`` : la valeur ne devient une
+    saisie que par un ``POST raccordement/`` explicite. ``None`` sans lead ou
+    quand le lead ne sait rien des deux.
+    """
+    lead_id = getattr(calepinage, 'lead_id', None)
+    company = getattr(calepinage, 'company', None)
+    if not lead_id or company is None:
+        return None
+    from apps.crm.selectors import get_company_lead
+
+    lead = get_company_lead(company, lead_id)
+    if lead is None:
+        return None
+    puissance = _positif(getattr(lead, 'compteur_puissance_kva', None))
+    phases = PHASES_DU_RACCORDEMENT_LEAD.get(
+        str(getattr(lead, 'raccordement', '') or '').strip().lower())
+    if puissance is None and phases is None:
+        return None
+    return {'puissance_souscrite_kva': puissance, 'phases': phases,
+            'source': SOURCE_PROPOSITION_LEAD}
+
+
+def bloc_raccordement(conception, saisie, troncons, reglages=None, *,
+                      proposition_lead=None):
     """CALX244 — le document ``{saisie, calcul, verdicts}`` du raccordement.
 
     Args:
@@ -1127,10 +1262,16 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None):
         reglages: la section société « electrique_societe » du registre
             (``services/parametres_cles.py``), ``{clé: {valeur, source}}``.
 
+        proposition_lead: ACAL157 — la proposition de :func:`
+            proposition_du_lead`, publiée TELLE QUELLE (jamais fusionnée
+            dans la saisie).
+
     Returns:
-        ``{saisie, calcul, verdicts}`` — les CINQ verdicts sont toujours
-        présents, dans l'ordre du contrat, et un contrôle qui n'a pas eu
-        lieu vaut ``omis`` avec le motif qui nomme ce qui manque.
+        ``{saisie, calcul, verdicts, proposition_lead}`` — les CINQ verdicts
+        sont toujours présents, dans l'ordre du contrat, et un contrôle qui
+        n'a pas eu lieu vaut ``omis`` avec le motif qui nomme ce qui manque ;
+        ``proposition_lead`` est TOUJOURS présente (``null`` sans
+        proposition).
 
     Raises:
         RaccordementInvalide: saisie illisible, limite sans
@@ -1141,7 +1282,7 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None):
     saisie = _saisie_publiee(saisie)
     elevation = _elevation_de_tension(_troncons_pour_elevation(troncons),
                                       _injection(saisie))
-    branchement = verdicts_raccordement(conception, saisie)
+    branchement = verdicts_raccordement(conception, saisie, reglages)
     equilibrage = repartition_des_phases(_parc_onduleurs(conception),
                                          saisie['phases'],
                                          reglages=reglages)
@@ -1156,4 +1297,6 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None):
             'desequilibre_pct': equilibrage['desequilibre_pct'],
         },
         'verdicts': [_verdict_publie(verdict) for verdict in verdicts],
+        'proposition_lead': (dict(proposition_lead)
+                             if isinstance(proposition_lead, dict) else None),
     }

@@ -205,7 +205,7 @@ def enregistrer_version_document(calepinage, *, code, octets, langue=None,
 def _journaliser_si_branche(calepinage, *, code, numero, langue, user):
     """CALX324 — une ligne de fil, l'EMPREINTE du document, jamais un
     résumé de son contenu (même discipline que ``services/planche.py::
-    empreinte_du_calepinage``). Best-effort : ``services/journal.py``
+    _empreinte_du_calepinage``). Best-effort : ``services/journal.py``
     avale déjà ses propres échecs (``_ecrire``) — cet appel ne peut donc
     pas casser un enregistrement de version déjà réussi."""
     from ..journal import journaliser_document_produit

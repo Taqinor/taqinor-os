@@ -60,7 +60,7 @@ def jeux_de_societe(company):
     return jeux if isinstance(jeux, list) else []
 
 
-def enregistrer_jeu(company, jeu):
+def enregistrer_jeu(company, jeu, *, user=None):
     """Ajoute, ou REMPLACE (par ``id``), un jeu MAISON de marges/espacements/
     dégagements de l'atelier.
 
@@ -90,11 +90,14 @@ def enregistrer_jeu(company, jeu):
     existants = jeux_de_societe(company)
     restants = [ligne for ligne in existants if ligne.get('id') != identifiant]
     restants.append(dict(jeu, id=identifiant, nom=nom))
-    enregistrer_parametres(company, {'presets': _section(company, restants)})
+    # ACAL302 — l'auteur signe le journal d'audit (et la garde de
+    # gouvernance, inchangée ici : les clés de gouvernance sont recopiées).
+    enregistrer_parametres(company, {'presets': _section(company, restants)},
+                           user=user)
     return restants
 
 
-def retirer_jeu(company, preset_id):
+def retirer_jeu(company, preset_id, *, user=None):
     """Retire le jeu MAISON ``preset_id`` — refuse s'il est introuvable, en
     nommant le champ."""
     from .parametres import enregistrer_parametres
@@ -105,7 +108,8 @@ def retirer_jeu(company, preset_id):
         raise PresetInvalide(
             f'Preset de conception introuvable : « {preset_id} ».',
             champ='id')
-    enregistrer_parametres(company, {'presets': _section(company, restants)})
+    enregistrer_parametres(company, {'presets': _section(company, restants)},
+                           user=user)
     return restants
 
 

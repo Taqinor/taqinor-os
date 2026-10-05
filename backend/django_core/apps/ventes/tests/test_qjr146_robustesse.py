@@ -398,7 +398,7 @@ class TestAbc_ChemminsDeCopie(TestCase):
         self.devis.statut = Devis.Statut.ACCEPTE
         self.devis.save(update_fields=['statut'])
         avant = Devis.objects.filter(company=self.company).count()
-        with mock.patch('apps.ventes.domain.cycle_vie.cloner_lignes',
+        with mock.patch('apps.ventes.domain.revision.cloner_lignes',
                         side_effect=RuntimeError('boom')):
             with self.assertRaises(RuntimeError):
                 renouveler_devis(self.devis, user=self.user)

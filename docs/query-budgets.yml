@@ -63,9 +63,9 @@ endpoints:
     note: "Détail agrégé (CALX390) — lead, client, devis, compteurs de versions/variantes, contexte géographique, droits."
 
   - path: /api/django/calepinage/calepinages/<pk>/resultat/
-    budget: 13
+    budget: 15
     enforced: true
-    note: "Résultat servi (CALX390) — pose, électrique, simulation persistée et fraîcheur."
+    note: "Résultat servi (CALX390) — pose, électrique, simulation persistée et fraîcheur. 13 → 15 (ACAL56, D-ACAL-10) : le matériel électrique sans désignation explicite est lu sur le DEVIS LIÉ — +1 devis, +1 lignes du devis (mesuré à 15, constant)."
 
   # --- Endpoints à couvrir (test de budget pas encore écrit) ---------------
   - path: /api/django/ventes/factures/

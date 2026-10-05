@@ -43,7 +43,10 @@ class Calepinage(TenantModel):
 
     Un calepinage naît d'un lead, d'un client, d'un devis ou d'une affaire
     d'appel d'offres — et il SURVIT à l'absence de devis : on peut concevoir
-    une toiture avant de chiffrer quoi que ce soit.
+    une toiture avant de chiffrer quoi que ce soit. Il porte un lead et/ou un
+    client (OU INCLUSIF, contrainte ``calepinage_lead_ou_client``) ; quand il
+    porte les deux, le client est celui du lead (ACAL179, règle du
+    sérialiseur).
     """
 
     class Statut(models.TextChoices):
@@ -154,6 +157,18 @@ class Calepinage(TenantModel):
         related_name='calepinages_responsable',
         verbose_name='Responsable',
     )
+    #: ACAL81 — le système de fixation CHOISI pour ce calepinage (catalogue
+    #: de la société, CALX358). Vide = aucun choix : la nomenclature retombe
+    #: sur ``?systeme=`` ou l'UNIQUE système actif, comme avant (migration
+    #: ``0019`` additive). Seul écrivain : ``services.fixation
+    #: .appliquer_systeme`` (même refus pour un id absent ou étranger).
+    systeme_fixation = models.ForeignKey(
+        'SystemeFixation',
+        on_delete=models.SET_NULL,  # on_delete: un système retiré du catalogue laisse le calepinage sans choix, jamais détruit
+        null=True, blank=True,
+        related_name='calepinages',
+        verbose_name='Système de fixation',
+    )
 
     class Meta:
         verbose_name = 'Calepinage'
@@ -166,6 +181,13 @@ class Calepinage(TenantModel):
                 condition=(models.Q(lead_id__isnull=False)
                            | models.Q(client__isnull=False)),
                 name='calepinage_lead_ou_client'),
+            # ACAL33 — UN calepinage par devis (et par société) : deux
+            # conceptions sur un même devis rendaient la péremption et la
+            # resynchronisation ambiguës. Seul écrivain : liens.lier_devis.
+            models.UniqueConstraint(
+                fields=['company', 'devis'],
+                condition=models.Q(devis__isnull=False),
+                name='calepinage_un_par_devis'),
         ]
         indexes = [
             models.Index(fields=['company', 'statut'],

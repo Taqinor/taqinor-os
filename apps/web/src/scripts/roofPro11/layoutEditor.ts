@@ -1778,7 +1778,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   function hydrateLayout(
     // CALX113 câblage — `angleDeg` OPTIONNEL : l'orientation propre d'un panneau libre
     // (rotation, symétrie) vient du document et doit être REPOSÉE avec son centre.
-    centers: readonly { cx: number; cy: number; angleDeg?: number }[],
+    centers: readonly { cx: number; cy: number; angleDeg?: number; face?: 'E' | 'W' }[],
     origin?: readonly [number, number],
     mode?: 'lattice' | 'free',
   ): boolean {
@@ -1801,9 +1801,11 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
         centers.map((c) => ({
           cx: c.cx + dx,
           cy: c.cy + dy,
+          // ACAL28 — la `face` E/O revient elle aussi (comme à l'entrée en mode libre) :
+          // des chevrons dos à dos restent dos à dos après réouverture.
+          ...(c.face === 'E' || c.face === 'W' ? { face: c.face } : {}),
           // CALX113 câblage — l'orientation enregistrée revient telle quelle : sans elle,
-          // une symétrie appliquée était perdue au rechargement. (La `face` E/O, elle,
-          // n'était déjà pas reposée ici avant ce câblage — hors périmètre, signalé.)
+          // une symétrie appliquée était perdue au rechargement.
           ...(typeof c.angleDeg === 'number' && Number.isFinite(c.angleDeg)
             ? { angleDeg: c.angleDeg }
             : {}),

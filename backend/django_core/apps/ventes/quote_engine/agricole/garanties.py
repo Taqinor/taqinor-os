@@ -74,7 +74,7 @@ def _est_panneau(it):
     if it.get("role_devis") == "panneau":
         return True
     try:
-        from apps.ventes.solar_design import is_panel
+        from apps.ventes.solar_classification import is_panel
     except Exception:  # noqa: BLE001 — jamais casser un rendu
         return False
     return is_panel(it.get("designation", "") or "",

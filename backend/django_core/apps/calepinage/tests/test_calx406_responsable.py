@@ -124,73 +124,6 @@ class DetailContratTest(SimpleTestCase):
         self.assertIn('CALX406', CONTRAT['pourquoi'])
 
 
-class ReglageSocieteTest(SimpleTestCase):
-    """``True`` et rien d'autre — jamais une restriction devinée."""
-
-    def _vue(self, presets):
-        with mock.patch.object(vues.selectors, 'parametres_de_societe',
-                               return_value={'presets': presets}):
-            return vues.vue_restreinte_au_responsable(SimpleNamespace(pk=1))
-
-    def test_seul_true_restreint(self):
-        self.assertTrue(self._vue({vues.CLE_VUE_RESTREINTE: True}))
-        for valeur in (None, False, 'oui', 1, 'true'):
-            with self.subTest(valeur=valeur):
-                self.assertFalse(self._vue({vues.CLE_VUE_RESTREINTE: valeur}))
-        self.assertFalse(self._vue({}))
-
-    def test_sans_societe_rien_n_est_lu(self):
-        with mock.patch.object(vues.selectors, 'parametres_de_societe',
-                               side_effect=AssertionError('lu pour rien')):
-            self.assertFalse(vues.vue_restreinte_au_responsable(None))
-
-
-class RestrictionTest(SimpleTestCase):
-    """Qui est restreint, et à quoi."""
-
-    def _requete(self, approuve):
-        user = mock.Mock(is_authenticated=True, portee='interne',
-                         is_superuser=False, company=SimpleNamespace(pk=1))
-        user.has_erp_permission.side_effect = (
-            lambda code: approuve and code == 'calepinage_approuver')
-        return SimpleNamespace(user=user, method='GET')
-
-    def test_le_relecteur_voit_tout_sans_lire_le_reglage(self):
-        lignes = mock.Mock()
-        with mock.patch.object(vues, 'vue_restreinte_au_responsable',
-                               side_effect=AssertionError('lu pour rien')):
-            rendu = vues._restreindre_au_responsable(lignes,
-                                                     self._requete(True))
-        self.assertIs(rendu, lignes)
-        lignes.filter.assert_not_called()
-
-    def test_sans_reglage_la_liste_est_inchangee(self):
-        lignes = mock.Mock()
-        with mock.patch.object(vues, 'vue_restreinte_au_responsable',
-                               return_value=False):
-            rendu = vues._restreindre_au_responsable(lignes,
-                                                     self._requete(False))
-        self.assertIs(rendu, lignes)
-        lignes.filter.assert_not_called()
-
-    def test_avec_reglage_responsable_ou_createur(self):
-        from django.db.models import Q
-
-        lignes = mock.Mock()
-        requete = self._requete(False)
-        with mock.patch.object(vues, 'vue_restreinte_au_responsable',
-                               return_value=True):
-            vues._restreindre_au_responsable(lignes, requete)
-        lignes.filter.assert_called_once_with(
-            Q(responsable=requete.user) | Q(cree_par=requete.user))
-
-    def test_anonyme_intouche(self):
-        lignes = mock.Mock()
-        requete = SimpleNamespace(user=None)
-        self.assertIs(vues._restreindre_au_responsable(lignes, requete),
-                      lignes)
-
-
 # ── EN BASE — exige l'ORM (la CI est la gate de ces classes) ──────────────
 
 from django.contrib.auth import get_user_model  # noqa: E402
@@ -290,8 +223,10 @@ class ResponsableEnBase(BaseApiCalepinage):
         self.assertIsNone(self.a_personne.responsable)
 
     def test_creation_sans_responsable_admise(self):
-        reponse = self.api.post(URL, {'lead': self.lead.pk, 'titre': 'Neuf'},
-                                format='json')
+        # ACAL182 — ``self.lead`` porte déjà trois calepinages OUVERTS (un
+        # seul ouvert par lead, D-ACAL-12) : la création vise ``lead_2``.
+        reponse = self.api.post(URL, {'lead': self.lead_2.pk,
+                                      'titre': 'Neuf'}, format='json')
         self.assertEqual(reponse.status_code, 201, reponse.data)
         self.assertIsNone(Calepinage.objects.get(
             pk=reponse.data['id']).responsable)
@@ -311,3 +246,57 @@ class ResponsableEnBase(BaseApiCalepinage):
         self.assertEqual(reponse.data['responsable']['id'], self.anne.pk)
         self.assertEqual(sorted(reponse.data['responsable']),
                          sorted(CONTRAT['exemple']['responsable']))
+
+
+# ── ACAL295 — le réglage et la restriction, sur la SOURCE RÉELLE ───────────
+# (ex-``ReglageSocieteTest`` / ``RestrictionTest`` : ils patchaient
+# ``views.calepinages.vue_restreinte_au_responsable`` ; réécrits ici sur
+# ``selectors`` et de vrais comptes, jamais supprimés.)
+
+from apps.calepinage import selectors as sel  # noqa: E402
+
+
+class ReglageSocieteEnBase(BaseApiCalepinage):
+    """``True`` et rien d'autre — jamais une restriction devinée."""
+
+    def _vue(self, presets):
+        ParametresCalepinage.objects.update_or_create(
+            company=self.company, defaults={'presets': presets})
+        return sel.vue_restreinte_au_responsable(self.company)
+
+    def test_seul_true_restreint(self):
+        self.assertTrue(self._vue({sel.CLE_VUE_RESTREINTE: True}))
+        for valeur in (None, False, 'oui', 1, 'true'):
+            with self.subTest(valeur=valeur):
+                self.assertFalse(self._vue({sel.CLE_VUE_RESTREINTE: valeur}))
+        self.assertFalse(self._vue({}))
+
+    def test_sans_societe_rien_n_est_lu(self):
+        with self.assertNumQueries(0):
+            self.assertFalse(sel.vue_restreinte_au_responsable(None))
+
+
+class RestrictionEnBase(ResponsableEnBase):
+    """Qui est restreint, et à quoi — ``selectors.restreindre_aux_siens``
+    (mêmes trois calepinages et comptes que ``ResponsableEnBase``)."""
+
+    def _visibles(self, user):
+        return set(sel.restreindre_aux_siens(
+            Calepinage.objects.filter(company=self.company), user)
+            .values_list('pk', flat=True))
+
+    def test_le_relecteur_voit_tout(self):
+        self._restreindre()
+        self.assertEqual(self._visibles(self.user), self.tous)
+
+    def test_sans_reglage_la_liste_est_inchangee(self):
+        self.assertEqual(self._visibles(self.anne), self.tous)
+
+    def test_avec_reglage_responsable_ou_createur(self):
+        self._restreindre()
+        self.assertEqual(self._visibles(self.anne), {self.confie_a_anne.pk})
+        self.assertEqual(self._visibles(self.bruno), {self.cree_par_bruno.pk})
+
+    def test_anonyme_intouche(self):
+        self._restreindre()
+        self.assertEqual(self._visibles(None), self.tous)

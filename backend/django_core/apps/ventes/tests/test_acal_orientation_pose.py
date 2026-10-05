@@ -18,7 +18,7 @@ from django.test import SimpleTestCase, TestCase
 
 from apps.crm.models import Client
 from apps.ventes.calepinage_options import _pan_principal
-from apps.ventes.domain.creation import _calepinage_range
+from apps.ventes.domain.creation_calepinage import _calepinage_range
 from apps.ventes.models import Devis
 from apps.ventes.services import extract_roof_config, orientation_du_pan
 from apps.ventes.tasks import zones_etude_du_devis

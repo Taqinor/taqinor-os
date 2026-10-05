@@ -15,8 +15,8 @@
 #     `--autoriser-croissance`, drapeau reserve au fondateur, visible en revue.
 #
 # Format : `<fichier>:<ligne>  <url_path>  # <raison datee>`.
-backend/django_core/apps/calepinage/views/archivage.py:51  archiver  # non consommee au 23/09/2026 (CALX381)
-backend/django_core/apps/calepinage/views/archivage.py:67  restaurer-corbeille  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/archivage.py:56  archiver  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/archivage.py:72  restaurer-corbeille  # non consommee au 23/09/2026 (CALX381)
 backend/django_core/apps/calepinage/views/documents.py:45  rapport-etude.pdf  # non consommee au 23/09/2026 (CALX381)
 backend/django_core/apps/calepinage/views/documents.py:214  apercu-document  # non consommee au 23/09/2026 (CALX381)
 backend/django_core/apps/calepinage/views/documents.py:273  plan-cablage.pdf  # non consommee au 23/09/2026 (CALX381)

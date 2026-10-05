@@ -31,7 +31,37 @@ from rest_framework.response import Response
 
 from ..permissions import PeutLireOuEcrireCalepinage
 
-__all__ = ['PhotosSiteMixin']
+__all__ = ['PhotosSiteMixin', 'reponse_fichier']
+
+
+def reponse_fichier(octets, mime_piece=''):
+    """ACAL200 — la réponse « image » d'un fichier servi par le proxy Django.
+
+    Le type vient des OCTETS (magic-bytes), jamais du nom ni d'un en-tête
+    annoncé ; à défaut, du type enregistré de la pièce s'il est ``image/*``
+    (WebP). Ni image ni octets : ``None`` — l'appelant rend 404, le serveur ne
+    sert pas un PDF ou un script sous un chemin d'image.
+    """
+    from django.http import HttpResponse
+
+    from apps.ventes import services as ventes_services
+
+    if not octets:
+        return None
+    _extension, mime = ventes_services.type_image_toiture(octets)
+    if mime is None and str(mime_piece or '').startswith('image/'):
+        mime = mime_piece
+    if mime is None:
+        return None
+    reponse = HttpResponse(octets, content_type=mime)
+    reponse['X-Content-Type-Options'] = 'nosniff'
+    reponse['Cache-Control'] = 'private, max-age=300'
+    return reponse
+
+
+def fichier_introuvable():
+    return Response({'detail': 'Fichier introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
 
 
 class PhotosSiteMixin:
@@ -92,8 +122,12 @@ class PhotosSiteMixin:
             PhotoRefusee, calage_photo_site, photo_en_ligne,
         )
 
+        # ACAL277 — import local : ``calepinages.py`` importe CE module.
+        from .calepinages import _identifiant_ou_404
+
         calepinage = self.get_object()  # borné société par get_queryset
-        photo = calepinage.photos_site.filter(pk=photo_id).first()
+        photo = calepinage.photos_site.filter(
+            pk=_identifiant_ou_404(photo_id)).first()
         if photo is None:
             return Response({'detail': 'Photo introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -104,3 +138,34 @@ class PhotosSiteMixin:
                             status=status.HTTP_400_BAD_REQUEST)
         return Response({'photo': photo_en_ligne(photo),
                          'photos': photos_site(calepinage)})
+
+    @extend_schema(
+        parameters=[OpenApiParameter(
+            name='photo_id', type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            description="Identifiant de la photo de site.")],
+        responses={(200, 'image/*'): OpenApiTypes.BINARY})
+    @action(detail=True, methods=['get'],
+            url_path=r'photos/(?P<photo_id>[^/.]+)/fichier',
+            permission_classes=[PeutLireOuEcrireCalepinage])
+    def photo_fichier(self, request, pk=None, photo_id=None):
+        """ACAL200 — les OCTETS d'une photo, par Django (même origine).
+
+        L'objet d'abord (société), puis la photo DANS ses photos : une photo
+        d'un autre calepinage ou d'une autre société rend la MÊME 404 qu'une
+        photo absente. Le bucket est résolu par la clé de la pièce
+        (``lire_octets_piece``).
+        """
+        from ..services.photos import lire_octets_piece
+
+        calepinage = self.get_object()  # borné société par get_queryset
+        if not str(photo_id).isdigit():
+            return fichier_introuvable()
+        photo = (calepinage.photos_site.select_related('attachment')
+                 .filter(pk=int(photo_id)).first())
+        if photo is None:
+            return fichier_introuvable()
+        reponse = reponse_fichier(
+            lire_octets_piece(photo.attachment.file_key),
+            photo.attachment.mime)
+        return reponse if reponse is not None else fichier_introuvable()

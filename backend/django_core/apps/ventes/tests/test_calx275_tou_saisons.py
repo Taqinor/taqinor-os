@@ -23,7 +23,7 @@ import unittest
 from django.test import SimpleTestCase
 
 from apps.parametres import tariff
-from apps.ventes import solar_design as sd
+from apps.ventes import solar_finance as sd
 
 ANNUEL = ['creuse'] * 8 + ['pleine'] * 10 + ['pointe'] * 4 + ['pleine'] * 2
 ETE = ['creuse'] * 8 + ['pleine'] * 11 + ['pointe'] * 4 + ['pleine']

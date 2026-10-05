@@ -112,12 +112,8 @@ EN_ATTENTE_RESULTAT = {
     'production.annees': 'ACAL54',
     'simulation': 'ACAL48',
     'ecart_devis': 'ACAL104',
-    'derogations': 'ACAL283',
-    'ecarts_longueur': 'ACAL283',
     'pose.pans[].cle': 'ACAL265',
     'pose.pans[].module_id': 'ACAL264',
-    'electrique.affectation[].couleur_chaine': 'ACAL285',
-    'electrique.affectation[].couleur_mppt': 'ACAL285',
     'electrique.affectation_obsolete': 'ACAL265',
 }
 

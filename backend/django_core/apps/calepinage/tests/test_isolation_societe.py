@@ -27,7 +27,9 @@ from django.contrib.contenttypes.models import ContentType
 
 from apps.calepinage.models import (
     Calepinage, CalepinageVariante, CalepinageVersion, PhotoSite,
+    ReleveTerrain,
 )
+from apps.crm.models import Lead
 from apps.records.models import Attachment
 from core.models import BackgroundJob
 
@@ -105,6 +107,10 @@ class BalayageIsolationTest(BaseApiCalepinage):
         self.photo_etrangere = PhotoSite.objects.create(
             company=self.autre, calepinage=self.cal_etranger,
             attachment=piece, prise_le='2026-03-12')
+        # ACAL205 — un relevé de terrain ÉTRANGER (route ``releve/<id>/``).
+        self.releve_etranger = ReleveTerrain.objects.create(
+            company=self.autre, calepinage=self.cal_etranger,
+            releve_le='2026-03-12')
         # Un objet À NOUS, pour les questions 2 et 3.
         self.mien = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='Le mien')
@@ -144,9 +150,12 @@ class BalayageIsolationTest(BaseApiCalepinage):
 
     # ── Question 3 : `company` du corps est IGNORÉ ─────────────────────────
     def test_company_du_corps_est_ignoree_a_la_creation(self):
+        # ACAL182 — un lead n'a qu'UN calepinage ouvert (``self.mien`` l'est
+        # déjà sur ``self.lead``) : la création vise un lead encore libre.
+        libre = Lead.objects.create(company=self.company, nom='Lead libre')
         reponse = self.api.post(
             '/' + PREFIXE + 'calepinages/',
-            {'lead': self.lead.pk, 'company': self.autre.pk}, format='json')
+            {'lead': libre.pk, 'company': self.autre.pk}, format='json')
         self.assertEqual(reponse.status_code, 201, reponse.data)
         self.assertEqual(
             Calepinage.objects.get(pk=reponse.data['id']).company_id,
@@ -171,6 +180,7 @@ class BalayageIsolationTest(BaseApiCalepinage):
             'version_id': (self.version_etrangere.pk if etranger else 0),
             'job_id': (self.job_etranger.pk if etranger else 0),
             'photo_id': (self.photo_etrangere.pk if etranger else 0),
+            'releve_id': (self.releve_etranger.pk if etranger else 0),
         }
         # ACAL229 — un ``url_path`` à extension s'écrit ``r'nom\.ext'``
         # (point ÉCHAPPÉ dans la regex du routeur) : l'URL réellement servie

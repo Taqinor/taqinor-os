@@ -425,7 +425,7 @@ class LeCatalogueIncompletDegradeSansCasser(_Base):
         (structures, socles, accessoires…). Ce qu'elle ne couvre plus est le
         cas où l'ONDULEUR lui-même manque : là, il n'y a plus de devis à
         dégrader."""
-        from apps.ventes.domain.pipeline import MSG_SANS_ONDULEUR_RESEAU
+        from apps.ventes.domain.etape_composer import MSG_SANS_ONDULEUR_RESEAU
         from apps.ventes.domain.taille import AutoDevisError
 
         Produit.objects.filter(company=self.company).update(

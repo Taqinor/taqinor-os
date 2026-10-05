@@ -52,9 +52,10 @@ RACCORDEMENT = charger('calepinage_raccordement.json')
 
 ETATS = ('exemple', 'exemple_limite_saisie', 'exemple_vide')
 
-#: Les neuf champs de la saisie — `source_limite` et `source_cos_phi` sont
-#: des champs À PART ENTIÈRE, pas des annotations facultatives. ACAL9
-#: (contrat F06) : + le plafond d'injection et sa justification.
+#: Les NEUF champs de la saisie (ACAL155) — `source_limite`,
+#: `source_cos_phi` et `plafond_injection_justification` sont des champs À
+#: PART ENTIÈRE, pas des annotations facultatives. Le contrat est relu sur
+#: la constante du service : les deux ne peuvent pas diverger.
 CHAMPS_SAISIE = {'puissance_souscrite_kva', 'phases', 'tension_nominale_v',
                  'limite_elevation_pct', 'source_limite', 'cos_phi_impose',
                  'source_cos_phi', 'plafond_injection_kw',
@@ -74,7 +75,9 @@ CODES = ['elevation_tension', 'puissance_souscrite', 'regime_phases',
 
 #: Les couples « valeur ⇔ sa provenance » : l'une sans l'autre est refusée.
 COUPLES_SOURCES = (('limite_elevation_pct', 'source_limite'),
-                   ('cos_phi_impose', 'source_cos_phi'))
+                   ('cos_phi_impose', 'source_cos_phi'),
+                   ('plafond_injection_kw',
+                    'plafond_injection_justification'))
 
 #: « marge » N'Y FIGURE PAS volontairement : `ecart_limite_pct` est ici la marge à
 #: la limite d'élévation, en points de pourcentage — pas une marge
@@ -114,13 +117,18 @@ class TroisBlocsTest(SimpleTestCase):
 
     def test_les_trois_blocs_dans_chaque_etat(self):
         for etat in ETATS:
-            # ACAL9 : + `proposition_lead` (objet ou null) dans chaque état.
+            # ACAL157 — + ``proposition_lead`` (null sans proposition).
             self.assertEqual(sorted(RACCORDEMENT[etat]),
                              ['calcul', 'proposition_lead', 'saisie',
                               'verdicts'],
                              f'{etat} : les blocs de réponse ont bougé.')
 
     def test_les_neuf_champs_de_saisie(self):
+        from apps.calepinage.services.raccordement import (
+            CHAMPS_SAISIE as SERVIS,
+        )
+
+        self.assertEqual(set(SERVIS), CHAMPS_SAISIE)
         for etat in ETATS:
             self.assertEqual(
                 set(RACCORDEMENT[etat]['saisie']), CHAMPS_SAISIE,
@@ -177,10 +185,12 @@ class AucuneValeurSansProvenanceTest(SimpleTestCase):
                         f'{etat} : « {source} » est renseignée alors que '
                         f'« {valeur} » ne l’est pas.')
 
-    def test_les_deux_refus_nomment_le_champ_de_provenance(self):
+    def test_les_trois_refus_nomment_le_champ_de_provenance(self):
         for etat, attendu in (('refus_limite_sans_source', 'source_limite'),
                               ('refus_cos_phi_sans_source',
-                               'source_cos_phi')):
+                               'source_cos_phi'),
+                              ('refus_plafond_sans_justification',
+                               'plafond_injection_justification')):
             self.assertEqual(sorted(RACCORDEMENT[etat]), [attendu],
                              f'{etat} : le refus doit porter sur le champ '
                              f'de provenance, et sur lui seul.')
@@ -205,6 +215,9 @@ class AucuneValeurSansProvenanceTest(SimpleTestCase):
         `cos_phi_par_defaut` est un réglage SOCIÉTÉ (registre CALX145) ;
         `cos_phi_impose` est ce que le contrat de raccordement de CE site
         impose. Leur donner le même nom en ferait deux sources de vérité.
+        ACAL175 — le réglage société sert de REPLI SOURCÉ au seul verdict
+        « puissance souscrite » (le site prime) ; l'écrêtage ne lit jamais
+        que le cos φ imposé.
         """
         reglages = {entree[0] for entree in CLES_ELECTRIQUE_SOCIETE}
         self.assertIn('cos_phi_par_defaut', reglages)

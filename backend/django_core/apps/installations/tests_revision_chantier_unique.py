@@ -18,7 +18,7 @@ from django.utils import timezone
 from authentication.models import Company
 from apps.crm.models import Client, Lead
 from apps.installations.models import Installation, InstallationActivity
-from apps.ventes.domain.cycle_vie import reviser_devis
+from apps.ventes.domain.revision import reviser_devis
 from apps.ventes.models import Devis
 from core.events import devis_accepted
 

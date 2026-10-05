@@ -13,6 +13,7 @@ import unittest
 from core.electrique.chaines import concevoir_chaines
 from core.electrique.onduleurs import dimensionner_onduleurs
 from core.electrique.protections import (
+    MOTIF_REGIME_NON_PRECISE,
     CALIBRES_FUSIBLE_GPV_A,
     FACTEUR_FUSIBLE_MAX,
     FACTEUR_FUSIBLE_MIN,
@@ -183,6 +184,15 @@ class DifferentielEtTerre(unittest.TestCase):
         resultat = _protections(_entree(regime="TN"))
         self.assertIsNone(_repere(resultat, "DDR1"))
         self.assertTrue(any("TN" in a for a in resultat.alertes))
+
+    def test_regime_non_precise_aucun_ddr(self):
+        """ACAL152 — aucun « TT » supposé : sans régime, pas de DDR1, et
+        l'omission est NOMMÉE."""
+        for regime in (None, ""):
+            with self.subTest(regime=regime):
+                resultat = _protections(_entree(regime=regime))
+                self.assertIsNone(_repere(resultat, "DDR1"))
+                self.assertIn(MOTIF_REGIME_NON_PRECISE, resultat.alertes)
 
     def test_prise_de_terre_absente_par_defaut_mais_verifiee(self):
         """Décision fondateur 19/08 : la prise de terre n'est plus bundlée.

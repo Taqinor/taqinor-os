@@ -51,6 +51,9 @@ import RetourAtelier from './atelier/RetourAtelier'
 
 const RAD = Math.PI / 180
 
+/** ACAL213 — un tracé de toit demande au moins trois sommets. */
+const MIN_SOMMETS = 3
+
 /**
  * CAL63 — l'ÉCHELLE, depuis deux points de référence et la distance RÉELLE
  * saisie entre eux. Rend `{ echelle, distancePlan, source: 'saisie' }`, ou
@@ -190,6 +193,8 @@ export default function PlanImporteCalage({
   const [fichierDepose, setFichierDepose] = useState(null)
   const [analyse, setAnalyse] = useState(null)
   const [calqueChoisi, setCalqueChoisi] = useState('')
+  // ACAL213 — le rang (1, 2, …) de l'entité choisie dans le calque ('' = défaut serveur).
+  const [entiteChoisie, setEntiteChoisie] = useState('')
   const [contourImporte, setContourImporte] = useState(null)
   const [refusImport, setRefusImport] = useState(null)
 
@@ -275,6 +280,7 @@ export default function PlanImporteCalage({
   }
 
   const convertir = () => {
+    if (sommets.length < MIN_SOMMETS) return
     if (!mesure) {
       setRefus('distanceReelleM')
       return
@@ -295,7 +301,7 @@ export default function PlanImporteCalage({
      première analyse (la liste des calques) ; `calque` renseigné = le contour
      de ce calque. Le fichier n'est pas conservé côté serveur : il repart avec
      le choix du calque. Un refus atterrit SOUS son champ. */
-  const envoyerPlan = (calque) => {
+  const envoyerPlan = (calque, entite = '') => {
     if (!fichierDepose) {
       setRefusImport({
         champ: 'fichier',
@@ -306,6 +312,7 @@ export default function PlanImporteCalage({
     const corps = new FormData()
     corps.append('fichier', fichierDepose)
     if (calque) corps.append('calque', calque)
+    if (calque && entite) corps.append('entite', String(entite))
     setRefusImport(null)
     Promise.resolve(calepinageApi.calepinages.importerPlan(calepinageId, corps))
       .then((res) => {
@@ -326,6 +333,9 @@ export default function PlanImporteCalage({
         })
       })
   }
+
+  const entitesDuCalque = (analyse?.calques ?? [])
+    .find((calque) => calque.nom === calqueChoisi)?.entites_detail ?? []
 
   const blocDepot = (
     <div className="mt-4" data-testid="cal-calage-import">
@@ -369,7 +379,7 @@ export default function PlanImporteCalage({
               data-testid="cal-calage-calque"
               value={calqueChoisi}
               aria-invalid={refusImport?.champ === 'calque' ? 'true' : undefined}
-              onChange={(e) => setCalqueChoisi(e.target.value)}
+              onChange={(e) => { setCalqueChoisi(e.target.value); setEntiteChoisie('') }}
               className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
             >
               <option value="">— choisir un calque —</option>
@@ -380,7 +390,30 @@ export default function PlanImporteCalage({
               ))}
             </select>
           </label>
-          <button type="button" onClick={() => envoyerPlan(calqueChoisi)}
+          {entitesDuCalque.length > 0 && (
+            <fieldset className="mt-2" data-testid="cal-calage-entites">
+              <legend className="tech-label text-lune-faint">
+                Entité du calque (le serveur propose la plus grande aire fermée)
+              </legend>
+              {entitesDuCalque.map((entite) => (
+                <label key={entite.rang} className="mt-1 flex items-center gap-2 text-xs text-lune-soft">
+                  <input
+                    type="radio"
+                    name="cal-calage-entite"
+                    data-testid={`cal-calage-entite-${entite.rang}`}
+                    checked={String(entiteChoisie) === String(entite.rang)}
+                    onChange={() => setEntiteChoisie(String(entite.rang))}
+                  />
+                  {`Entité ${entite.rang} — ${entite.sommets} sommet(s), `
+                    + `aire ${Number(entite.aire).toFixed(2)} (${texte(analyse.unite)}²), `
+                    + `emprise ${Number(entite.emprise?.largeur).toFixed(2)} × `
+                    + `${Number(entite.emprise?.hauteur).toFixed(2)}`
+                    + (entite.fermee ? '' : ' — tracé non fermé')}
+                </label>
+              ))}
+            </fieldset>
+          )}
+          <button type="button" onClick={() => envoyerPlan(calqueChoisi, entiteChoisie)}
             data-testid="cal-calage-proposer"
             className="mt-2 rounded bg-brass-500/20 px-3 py-1 text-sm font-semibold text-brass-200">
             Proposer ce contour
@@ -500,10 +533,17 @@ export default function PlanImporteCalage({
         </button>
         <button type="button" onClick={convertir}
           data-testid="cal-calage-convertir"
-          className="rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white">
+          disabled={sommets.length < MIN_SOMMETS}
+          className="rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
           Convertir en tracé de toit
         </button>
       </div>
+      {sommets.length < MIN_SOMMETS && (
+        <p role="alert" className="mt-2 text-xs text-red-300"
+          data-testid="cal-calage-convertir-motif">
+          {`Conversion impossible : ce contour n’a que ${sommets.length} sommet(s) ; un tracé de toit demande au moins ${MIN_SOMMETS} sommets.`}
+        </p>
+      )}
 
       {message && (
         <p className="mt-3 text-sm text-lune-soft" role="status"

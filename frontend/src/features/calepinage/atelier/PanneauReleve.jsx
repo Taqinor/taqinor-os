@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 
@@ -69,6 +69,27 @@ function validerAvantEnvoi(chaines, azimutDeg, precisionDeg) {
       + 'comme une mesure exacte.'
   }
   return erreurs
+}
+
+/** Le relevé servi → l'état des champs du formulaire (aller-retour). */
+function champsDuReleve(releve) {
+  const chaines = Array.isArray(releve?.chaines) && releve.chaines.length > 0
+    ? releve.chaines.map((c) => ({
+      nom: c.nom ?? '',
+      totalMesure: c.total_mesure ?? '',
+      toleranceM: c.tolerance_m ?? '',
+      cotes: (c.cotes || []).map((k) => ({ nom: k.nom ?? '', valeur: k.valeur ?? '' })),
+    }))
+    : [CHAINE_VIDE()]
+  return {
+    releveLe: releve?.releve_le ?? '',
+    notes: releve?.notes ?? '',
+    azimutDeg: releve?.azimut ? String(releve.azimut.deg) : '',
+    precisionDeg: releve?.azimut && releve.azimut.precision_deg != null
+      ? String(releve.azimut.precision_deg) : '',
+    chaines,
+    photoIds: (releve?.photos || []).map((p) => p.id),
+  }
 }
 
 function ChampTexte({ id, testId, label, valeur, onChange, type = 'text' }) {
@@ -264,12 +285,56 @@ export default function PanneauReleve({ calepinageId: idPropose }) {
   const [resultat, setResultat] = useState(null)
   const [enCours, setEnCours] = useState(false)
   const [message, setMessage] = useState(null)
+  // ACAL205 — le relevé COURANT (relu au montage), l'historique, les photos
+  // du calepinage (cochables) et celles rattachées au relevé.
+  const [releveCourantId, setReleveCourantId] = useState(null)
+  const [historique, setHistorique] = useState([])
+  const [photosSite, setPhotosSite] = useState([])
+  const [photoIds, setPhotoIds] = useState([])
+
+  useEffect(() => {
+    if (!calepinageId) return undefined
+    let vivant = true
+    Promise.resolve(calepinageApi.calepinages.releve?.(calepinageId))
+      .then((res) => {
+        const donnees = res?.data
+        if (!vivant || !donnees) return
+        const releves = donnees.releves ?? []
+        setHistorique(releves)
+        setReleveCourantId(donnees.releve_courant_id ?? null)
+        const courant = releves.find((r) => r.id === donnees.releve_courant_id)
+        if (courant) {
+          const champs = champsDuReleve(courant)
+          setReleveLe(champs.releveLe)
+          setNotes(champs.notes)
+          setAzimutDeg(champs.azimutDeg)
+          setPrecisionDeg(champs.precisionDeg)
+          setChaines(champs.chaines)
+          setPhotoIds(champs.photoIds)
+          setResultat({ releve: courant })
+        }
+      })
+      .catch(() => {})
+    Promise.resolve(calepinageApi.calepinages.photos?.(calepinageId))
+      .then((res) => { if (vivant) setPhotosSite(res?.data?.photos ?? []) })
+      .catch(() => {})
+    return () => { vivant = false }
+  }, [calepinageId])
+
+  const basculerPhoto = (photoId) => setPhotoIds((ids) => (
+    ids.includes(photoId) ? ids.filter((i) => i !== photoId) : [...ids, photoId]
+  ))
 
   const majChaine = (index, chaine) => setChaines((cs) => cs.map((c, i) => (i === index ? chaine : c)))
   const ajouterChaine = () => setChaines((cs) => [...cs, CHAINE_VIDE()])
   const retirerChaine = (index) => setChaines((cs) => cs.filter((_, i) => i !== index))
 
-  const envoyer = () => {
+  /**
+   * `mode` 'corriger' : PATCH du relevé courant (le MÊME relevé) ;
+   * 'creer' : POST d'une NOUVELLE ligne. L'historique garde sa longueur après
+   * une correction.
+   */
+  const enregistrer = (mode) => {
     const erreursSaisie = validerAvantEnvoi(chaines, azimutDeg, precisionDeg)
     setErreurs(erreursSaisie)
     setMessage(null)
@@ -282,12 +347,22 @@ export default function PanneauReleve({ calepinageId: idPropose }) {
       azimut_boussole_deg: nombreOuNull(azimutDeg),
       precision_azimut_deg: nombreOuNull(precisionDeg),
       notes,
+      photo_ids: photoIds,
     }
+    const corriger = mode === 'corriger' && releveCourantId
     setEnCours(true)
-    Promise.resolve(calepinageApi.calepinages.enregistrerReleve(calepinageId, corps))
+    Promise.resolve(corriger
+      ? calepinageApi.calepinages.corrigerReleve(calepinageId, releveCourantId, corps)
+      : calepinageApi.calepinages.enregistrerReleve(calepinageId, corps))
       .then((res) => {
-        setResultat(res?.data ?? null)
-        setMessage('Relevé enregistré.')
+        const donnees = res?.data ?? null
+        setResultat(donnees)
+        if (donnees?.releves) setHistorique(donnees.releves)
+        else if (corriger && donnees?.releve) {
+          setHistorique((h) => h.map((r) => (r.id === donnees.releve.id ? donnees.releve : r)))
+        }
+        if (donnees?.releve_courant_id !== undefined) setReleveCourantId(donnees.releve_courant_id)
+        setMessage(corriger ? 'Relevé corrigé.' : 'Relevé enregistré.')
       })
       .catch((err) => {
         const corpsRefus = err?.response?.data
@@ -295,6 +370,29 @@ export default function PanneauReleve({ calepinageId: idPropose }) {
           ? corpsRefus
           : { detail: 'Le relevé a été refusé par le serveur.' })
         setResultat(null)
+      })
+      .finally(() => setEnCours(false))
+  }
+
+  const supprimer = () => {
+    if (!releveCourantId || !calepinageId) return
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function'
+      && !window.confirm('Supprimer ce relevé ? Ses photos restent au calepinage.')) return
+    setEnCours(true)
+    Promise.resolve(calepinageApi.calepinages.supprimerReleve(calepinageId, releveCourantId))
+      .then(() => Promise.resolve(calepinageApi.calepinages.releve?.(calepinageId)))
+      .then((res) => {
+        const donnees = res?.data
+        setHistorique(donnees?.releves ?? [])
+        setReleveCourantId(donnees?.releve_courant_id ?? null)
+        setResultat(null)
+        setMessage('Relevé supprimé.')
+      })
+      .catch((err) => {
+        const corpsRefus = err?.response?.data
+        setErreurs(corpsRefus && typeof corpsRefus === 'object'
+          ? corpsRefus
+          : { detail: 'La suppression a été refusée par le serveur.' })
       })
       .finally(() => setEnCours(false))
   }
@@ -382,15 +480,71 @@ export default function PanneauReleve({ calepinageId: idPropose }) {
         + Ajouter une chaîne
       </button>
 
-      <button
-        type="button"
-        onClick={envoyer}
-        disabled={enCours}
-        data-testid="cal-releve-envoyer"
-        className="mt-5 block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200"
-      >
-        {enCours ? 'Envoi au solveur…' : 'Envoyer au solveur'}
-      </button>
+      {photosSite.length > 0 && (
+        <fieldset className="mt-4 border-t border-white/10 pt-3" data-testid="cal-releve-photos">
+          <legend className="tech-label text-lune-faint">Photos du site rattachées à ce relevé</legend>
+          {photosSite.map((photo) => (
+            <label key={photo.id} className="mt-1 flex items-center gap-2 text-sm text-lune-soft">
+              <input
+                type="checkbox"
+                data-testid={`cal-releve-photo-${photo.id}`}
+                checked={photoIds.includes(photo.id)}
+                onChange={() => basculerPhoto(photo.id)}
+              />
+              {`${photo.legende || photo.genre || 'Photo'} — ${photo.prise_le || 'date inconnue'}`}
+            </label>
+          ))}
+        </fieldset>
+      )}
+
+      <div className="mt-5 flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={() => enregistrer(releveCourantId ? 'corriger' : 'creer')}
+          disabled={enCours}
+          data-testid="cal-releve-envoyer"
+          className="block rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200"
+        >
+          {enCours
+            ? 'Envoi au solveur…'
+            : (releveCourantId ? 'Enregistrer (corriger ce relevé)' : 'Envoyer au solveur')}
+        </button>
+        {releveCourantId && (
+          <>
+            <button
+              type="button"
+              onClick={() => enregistrer('creer')}
+              disabled={enCours}
+              data-testid="cal-releve-nouveau"
+              className="block rounded border border-white/15 px-4 py-2 text-sm text-lune-soft"
+            >
+              Nouveau relevé
+            </button>
+            <button
+              type="button"
+              onClick={supprimer}
+              disabled={enCours}
+              data-testid="cal-releve-supprimer"
+              className="block px-2 py-2 text-sm text-red-300 underline"
+            >
+              Supprimer ce relevé
+            </button>
+          </>
+        )}
+      </div>
+
+      {historique.length > 0 && (
+        <div className="mt-4 border-t border-white/10 pt-3" data-testid="cal-releve-historique">
+          <p className="tech-label text-lune-faint">{`Historique (${historique.length})`}</p>
+          <ul className="mt-1 text-sm text-lune-soft">
+            {historique.map((r) => (
+              <li key={r.id} data-testid={`cal-releve-historique-${r.id}`}>
+                {`${r.releve_le || 'date inconnue'}${r.id === releveCourantId ? ' — courant' : ''}`}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {message && (
         <p role="status" data-testid="cal-releve-message" className="mt-3 text-sm text-lune-soft">

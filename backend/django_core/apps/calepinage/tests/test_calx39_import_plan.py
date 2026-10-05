@@ -34,7 +34,6 @@ import pathlib
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase
 
-from apps.calepinage.tests._m0_en_attente import sans
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 ECHANTILLON = (RACINE_APP / 'contract_samples'
@@ -87,6 +86,12 @@ class CalepinageNu:
     pk = 1
     company = None
     roof_layout = None
+
+
+class CalepinageEpingle(CalepinageNu):
+    """Un calepinage NU dont le document porte l'épingle du contrat."""
+
+    roof_layout = {'pin': {'lat': 33.5, 'lng': -7.6}}
 
 
 class FausseRequete:
@@ -157,26 +162,29 @@ class RouteImporterPlanTest(SimpleTestCase):
                       [parser.__name__ for parser in parsers])
 
 
-#: ACAL13 (M0) a posé ces clés avant leur producteur : chaque tâche nommée
-#: les sert et retire son entrée.
-EN_ATTENTE = {'calques[].entites_detail': 'ACAL212',
-              'contour_lnglat': 'ACAL69'}
-
-
 class ContratImportPlanTest(SimpleTestCase):
-    """L'échantillon committé EST ce que la porte rend."""
+    """L'échantillon committé EST ce que la porte rend.
+
+    ACAL13 (M0) avait posé ``calques[].entites_detail`` (ACAL212) et
+    ``contour_lnglat`` (ACAL69) avant leur producteur : les deux sont
+    servis, l'échantillon est comparé TEL QUEL.
+    """
 
     def test_l_exemple_est_la_reponse_reelle_avec_calque(self):
-        reponse = _appeler(calque=CALQUE)
+        # ACAL69/212 : la réponse porte aussi ``contour_lnglat`` quand le
+        # corps du contrat (``corps_calage``) est envoyé avec une épingle.
+        corps = _contrat()['corps_calage']
+        reponse = _appeler(vue=FausseVue(CalepinageEpingle()),
+                           calque=CALQUE, entite=corps['entite'],
+                           calage=json.dumps(corps['calage']))
         self.assertEqual(reponse.status_code, 200)
-        self.assertEqual(reponse.data,
-                         sans(_contrat()['exemple'], EN_ATTENTE))
+        self.assertEqual(reponse.data, _contrat()['exemple'])
 
     def test_l_exemple_sans_calque_est_la_reponse_reelle(self):
         reponse = _appeler()
         self.assertEqual(reponse.status_code, 200)
         self.assertEqual(reponse.data,
-                         sans(_contrat()['exemple_sans_calque'], EN_ATTENTE))
+                         _contrat()['exemple_sans_calque'])
 
     def test_les_calques_disponibles_sont_rendus(self):
         exemple = _contrat()['exemple_sans_calque']

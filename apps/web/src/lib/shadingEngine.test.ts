@@ -191,9 +191,22 @@ describe('CAL97 — solarAccessSummary : un chiffre reproductible, ou pas de chi
     expect(sum.perModule[0]).toBe(sum.min);
   });
 
+  it('période annuelle indépendante du mois affiché (ACAL138)', () => {
+    // La valeur PERSISTÉE est l'année entière (month = null) : choisir décembre sur la
+    // carte de chaleur rend une autre lecture, MENSUELLE, nommée comme telle.
+    const annuel = solarAccessSummary(LAT, [cheminee], prod, modules, null) as SolarAccessSummary;
+    const decembre = solarAccessSummary(LAT, [cheminee], prod, modules, 11) as SolarAccessSummary;
+    expect(annuel.method).toMatchObject({ resolution: 'annuelle', horizon: false, rangees: false });
+    expect(decembre.method.resolution).toBe('mensuelle');
+    expect(annuel.perModule).not.toEqual(decembre.perModule);
+    expect(solarAccessSummary(LAT, [cheminee], prod, modules)).toEqual(annuel);
+  });
+
   it('la méthode et les hypothèses accompagnent TOUJOURS le chiffre', () => {
     const s = solarAccessSummary(LAT, [cheminee], prod, modules) as SolarAccessSummary;
-    expect(s.method.length).toBeGreaterThan(40);
+    // ACAL138 — méthode OBJET : sa description reste une phrase lisible.
+    expect(s.method.description.length).toBeGreaterThan(40);
+    expect(s.method.resolution).toBe('annuelle');
     expect(s.assumptions.length).toBeGreaterThanOrEqual(3);
     expect(s.assumptions.join(' ')).toContain(String(Math.round(DIFFUSE_FRACTION_WHEN_SHADED * 100)));
     expect(s.assumptions.join(' ').toLowerCase()).toContain('horizon');

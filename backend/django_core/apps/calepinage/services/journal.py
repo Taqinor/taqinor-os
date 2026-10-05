@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     'journaliser_creation', 'journaliser_lien_devis',
-    'journaliser_lien_appel_offre', 'journaliser_layout',
+    'journaliser_layout',
     'journaliser_variante_retenue', 'journaliser_restauration',
     'journaliser_verrou', 'journaliser_document_produit', 'noter',
     'journaliser_pose_reelle', 'journaliser_version_pose',
@@ -82,15 +82,6 @@ def journaliser_lien_devis(calepinage, *, ancien=None, nouveau=None,
     """Rattachement (ou changement) du devis lié, ancien → nouveau."""
     return _ecrire(calepinage, 'MODIFICATION', user=user, field='devis',
                    field_label='Devis lié',
-                   old_value='' if ancien is None else str(ancien),
-                   new_value='' if nouveau is None else str(nouveau))
-
-
-def journaliser_lien_appel_offre(calepinage, *, ancien=None, nouveau=None,
-                                 user=None):
-    """Rattachement (ou changement) de l'affaire d'appel d'offres."""
-    return _ecrire(calepinage, 'MODIFICATION', user=user,
-                   field='appel_offre', field_label="Appel d'offres",
                    old_value='' if ancien is None else str(ancien),
                    new_value='' if nouveau is None else str(nouveau))
 

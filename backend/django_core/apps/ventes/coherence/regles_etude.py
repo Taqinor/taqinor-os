@@ -78,7 +78,7 @@ def factures_reelles(devis, ep):
             return vals, 'factures_mensuelles_reelles'
     try:
         from apps.crm.selectors import lead_bills_for_devis
-        from apps.ventes.etude_horaire import serie_mad_mensuelle
+        from apps.ventes.horaire.conso import serie_mad_mensuelle
         b = lead_bills_for_devis(devis) or {}
         serie = serie_mad_mensuelle(b.get('facture_hiver'),
                                     b.get('facture_ete'),

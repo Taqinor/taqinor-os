@@ -122,6 +122,34 @@ describe('CALX107 câblage — le PLAN importé atteint enfin le calque de fond'
   })
 })
 
+describe('ACAL68 — le fond est posé après l’hydratation', () => {
+  it('le fond est posé après l’hydratation, jamais celui d’un document précédent', async () => {
+    const fondPrecedent = { kind: 'plan', attachmentId: 999 }
+    // À `onApiReady`, le singleton du constructeur décrit encore le document PRÉCÉDENT ;
+    // l'hydratation du document ouvert le remplace par SON fond.
+    initRoofToolPro8.mockImplementation((options) => {
+      fondDuDocument.mockReturnValue(fondPrecedent)
+      options?.onApiReady?.({
+        serializeLayout: vi.fn(() => ({ version: 2, zones: [] })),
+        snapshot: vi.fn(() => null),
+        fondDuDocument,
+        motifFondRefuse,
+        poserFond,
+      })
+      fondDuDocument.mockReturnValue(fondPlan())
+      options?.onHydrationTerminee?.()
+    })
+    calepinageApi.calepinages.planImporte.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_plan_importe'))
+
+    rendreCalepinage(CTX.calepinage.id)
+
+    await waitFor(() => expect(poserFond).toHaveBeenCalled())
+    expect(poserFond).toHaveBeenCalledTimes(1)
+    expect(poserFond.mock.calls[0][0]).toEqual(fondPlan())
+  })
+})
+
 describe('CALX104/CALX403 câblage — `reglagesAtelier` en mode DEVIS, SANS requête annexe', () => {
   it('les deux sections du contexte agrégé partent TELLES QUELLES au builder', async () => {
     ventesApi.getDevisDesignContext.mockResolvedValue(

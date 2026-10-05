@@ -567,7 +567,7 @@ class _Contexte:
         #: QJR605 — L'INTENTION DU DEVIS (gamme, phase, MPPT, TVA, hors-réseau,
         #: structure) : les cartes composent par ``pipeline.composer_sonde``,
         #: le même constructeur que le devis lui-même.
-        from apps.ventes.domain.pipeline import contexte_sonde_du_devis
+        from apps.ventes.domain.etape_composer import contexte_sonde_du_devis
         import dataclasses
         self.sonde = dataclasses.replace(
             sonde or contexte_sonde_du_devis(devis), panel_watt=panel_watt)
@@ -634,7 +634,7 @@ class _Contexte:
         banque grandit en N modules du calibre DÉJÀ vendu par ce devis,
         homogène, jamais un re-choix catalogue.
         """
-        from apps.ventes.domain.pipeline import composer_sonde
+        from apps.ventes.domain.etape_composer import composer_sonde
         try:
             return composer_sonde(
                 self.sonde, nb_panneaux, avec_batterie=avec_batterie,
@@ -655,8 +655,10 @@ def _contexte(devis):
     panneau. Aucune n'est franchie par défaut — sans profil réel, la section
     disparaît au lieu d'afficher une estimation.
     """
-    from apps.ventes.domain.pipeline import (
-        contexte_sonde_du_devis, sonder_wattage)
+    from apps.ventes.domain.etape_composer import (
+        contexte_sonde_du_devis,
+        sonder_wattage,
+    )
     from apps.ventes.services import entrees_dimensionnement_du_devis
 
     entrees = entrees_dimensionnement_du_devis(devis)

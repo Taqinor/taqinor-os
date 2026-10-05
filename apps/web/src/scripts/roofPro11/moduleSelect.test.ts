@@ -29,6 +29,8 @@ import {
   syntheseModules,
   type DocumentAvecModules,
   type ModuleDocument,
+  affectationDesPans, // ACAL30
+  MENTION_PRODUIT_ARCHIVE, // ACAL30
 } from './moduleSelect';
 import {
   MODULE_ATELIER_PAR_DEFAUT,
@@ -41,7 +43,9 @@ import {
 import { type LngLat } from '../../lib/roof';
 // CALX110 — le câblage RÉEL : le document écrit par `serializeLayout` et les totaux
 // affichés par `computePanStats`. Ce sont les deux seuls consommateurs de ce module.
-import { serializeLayout } from './prefill';
+import { serializeLayout, hydrateFromDevis } from './prefill';
+import { appliquerHydratationAuCtx, serialiserDocumentAtelier } from './hydratation'; // ACAL30
+import { uniformSetbacks } from '../../lib/roofPro2'; // ACAL30
 import { computePanStats } from './panStats';
 import { type Ctx } from './context';
 import { type AreaRecord } from './types';
@@ -136,6 +140,20 @@ describe("CALX109 — l'échantillon de contrat est lu tel qu'il est committé",
       expect(estRefus(cotes)).toBe(true);
       expect((cotes as { champ: string }).champ).toBe(champ);
     }
+  });
+
+  // ACAL174 — le serveur sert les favoris de la société EN TÊTE : l'atelier
+  // propose les modules DANS L'ORDRE SERVI, jamais retrié.
+  it("l'ordre servi est conservé", () => {
+    const [complet] = CONTRAT.exemple.modules as Array<{ module: ModuleDocument }>;
+    const copie = (id: number, favori: boolean) => ({
+      ...complet, favori,
+      module: { ...complet.module, id: `produit-${id}`, produitId: id },
+    });
+    const servi = { ...CONTRAT.exemple,
+      modules: [copie(2, true), copie(1, false), copie(3, false)] };
+    expect(lireModulesDisponibles(servi).choisissables.map((m) => m.id))
+      .toEqual(['produit-2', 'produit-1', 'produit-3']);
   });
 
   it('une réponse absente ou mal formée ne jette jamais', () => {
@@ -454,5 +472,72 @@ describe('CALX110 — les totaux affichés par `computePanStats`', () => {
     const p = stats.pans[0];
     const empreinte = (grand.longueurMm! * grand.largeurMm!) / 1e6;
     expect(p.occupancyRate).toBeCloseTo((p.panels * empreinte) / p.areaM2, 9);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL30 — le module choisi par pan survit à un catalogue vide (illisible) ou à un produit
+// archivé : jamais de retour silencieux au module par défaut 720 Wc (porte ATL-10).
+// Chemin RÉEL : document → hydrateFromDevis → appliquerHydratationAuCtx → sérialiseur câblé
+// (le document part d'un objet NEUF, comme serializeLayout).
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL30 — moduleId et modules[] conservés hors catalogue', () => {
+  const produit550 = module({ id: 'produit-550', libelle: 'Module 550 Wc', pmaxWc: 550, produitId: 550 });
+  const autre = module({ id: 'produit-400', libelle: 'Module 400 Wc', pmaxWc: 400 });
+
+  function documentAvecModule() {
+    const pans = [pan('z1', 10)].map((p) => ({
+      id: p.id, label: p.label, vertices: p.vertices, obstacles: [], roofType: 'pitched', pitchDeg: 22,
+      facingAzimuthDeg: 180, facingManual: false, neededPanels: 10, neededAuto: false,
+      geometry: {
+        azimuthDeg: 180, tiltDeg: 15, family: 'south', flush: false, kwc: 5.5, count: 10,
+        origin: [-7.6, 33.59], panels: Array.from({ length: 10 }, (_, i) => ({ cx: i * 1.2, cy: 0 })),
+        moduleId: 'produit-550',
+      },
+    }));
+    return {
+      version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'z1', zones: pans,
+      result: { panels: 10, kwc: 5.5, annualKwh: 9000, savings: null },
+      panelWatt: 550, modules: [produit550],
+    } as unknown as import('./prefill').SerializedLayout;
+  }
+
+  function sortieAvecCatalogue(catalogue: ModuleDocument[]) {
+    const doc = documentAvecModule();
+    const h = hydrateFromDevis({ id: 1, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const zones = h.zones!.map((z) => ({ ...z, renderPlan: planDe(10) }));
+    const ctx = contexte(zones);
+    appliquerHydratationAuCtx(ctx, h);
+    const sortie = serialiserDocumentAtelier(ctx, null, {
+      devisOrigin: null, solarAccess: null, setbacks: uniformSetbacks(), horizonProfile: null,
+      modules: affectationDesPans(catalogue, ctx.areas, ctx.modulesDuDocument), coucheElectrique: null,
+    });
+    return { doc, sortie };
+  }
+
+  it('serializeLayout puis ecrireModulesDansDocument avec catalogue vide / produit absent conserve moduleId et modules[]', () => {
+    for (const catalogue of [[], [autre]]) {
+      const { doc, sortie } = sortieAvecCatalogue(catalogue);
+      expect(sortie.zones[0].geometry?.moduleId).toBe('produit-550');
+      expect(sortie.modules).toEqual(doc.modules);
+      expect(sortie.panelWatt).toBe(550);
+      expect(sortie.zones[0].geometry?.kwc).toBeCloseTo(5.5, 9);
+    }
+  });
+
+  it('le produit repris du document est signalé « produit archivé », jamais proposé au choix', () => {
+    const a = affectationDesPans([autre], [{ id: 'z1', moduleId: 'produit-550' }], [produit550]);
+    expect(a.archives).toEqual(['produit-550']);
+    expect(a.catalogue.map((m) => m.id)).toEqual(['produit-400', 'produit-550']);
+    expect(MENTION_PRODUIT_ARCHIVE).toBe('produit archivé');
+  });
+
+  it('sans fusion des modules du document (le défaut d’avant), le pan retombe sur 720 Wc', () => {
+    const doc = documentAvecModule();
+    const h = hydrateFromDevis({ id: 1, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const ctx = contexte(h.zones!.map((z) => ({ ...z, renderPlan: planDe(10) })));
+    const sortie = serializeLayout(ctx, null, { modules: affectationDesPans([], ctx.areas) });
+    expect(sortie.zones[0].geometry?.moduleId).toBeUndefined();
+    expect(sortie.panelWatt).toBe(PANEL2_WATT);
   });
 });

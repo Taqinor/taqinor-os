@@ -81,12 +81,16 @@ def _lecture_visite(calepinage):
     return releve_pour_calepinage(lead)
 
 
-def _composer_reponse(lecture, bloc_releve):
+def _composer_reponse(lecture, bloc_releve, ecart=None):
     """La réponse de ``releve-visite/`` — UNE forme, GET comme POST.
 
     Fonction PURE : ``lecture`` est le dictionnaire de la porte ``visites``,
-    ``bloc_releve`` le relevé déjà repris (``_releve_en_ligne``) ou ``None``.
+    ``bloc_releve`` le relevé déjà repris (``_releve_en_ligne``) ou ``None``,
+    ``ecart`` les mesures qui divergent (``_ecart``). ``a_jour`` : le relevé
+    repris correspond à la visite validée (un relevé, une visite validée,
+    aucun écart) — jamais vrai sans relevé ni sans visite à comparer.
     """
+    ecart = list(ecart or [])
     return {
         'visite_id': lecture.get('visite_id'),
         'validee_le': lecture.get('validee_le'),
@@ -95,7 +99,41 @@ def _composer_reponse(lecture, bloc_releve):
         'motif_absence': lecture.get('motif_absence'),
         'deja_repris': bloc_releve is not None,
         'releve': bloc_releve,
+        'a_jour': (bloc_releve is not None
+                   and lecture.get('visite_id') is not None and not ecart),
+        'ecart': ecart,
     }
+
+
+def _valeurs(mesures):
+    """``{code: valeur}`` d'une liste de mesures ``[{code, valeur, …}]``."""
+    return {mesure.get('code'): mesure.get('valeur')
+            for mesure in mesures or []
+            if isinstance(mesure, dict) and mesure.get('code')}
+
+
+def _ecart(releve, lecture):
+    """ACAL210 — les mesures qui DIVERGENT entre le relevé repris et la visite.
+
+    ``[{code, releve, visite}]`` (valeur reprise, valeur actuelle de la
+    visite ; ``None`` quand un côté ne l'a pas). Vide sans relevé ou sans
+    visite validée à comparer. Lecture pure : rien n'est converti (D7).
+    """
+    if releve is None or lecture.get('visite_id') is None:
+        return []
+    repris = _valeurs(releve.mesures)
+    courant = _valeurs(lecture.get('mesures'))
+    codes = list(courant) + [code for code in repris if code not in courant]
+    return [{'code': code, 'releve': repris.get(code),
+             'visite': courant.get(code)}
+            for code in codes if repris.get(code) != courant.get(code)]
+
+
+def _formater(valeur):
+    """Une valeur pour le journal : « 10 » et non « 10.0 »."""
+    if isinstance(valeur, float) and valeur.is_integer():
+        return str(int(valeur))
+    return 'non saisie' if valeur is None else str(valeur)
 
 
 def _horodatage(moment):
@@ -128,13 +166,18 @@ def _releve_repris(calepinage, visite_id):
     """Le relevé de CE calepinage déjà repris de CETTE visite, ou ``None``."""
     from ..models import ProvenanceTerrain, ReleveTerrain
 
-    if visite_id is None or not getattr(calepinage, 'pk', None):
+    if not getattr(calepinage, 'pk', None):
         return None
-    return (ReleveTerrain.objects
-            .select_related('releve_par')
-            .filter(calepinage=calepinage, company_id=calepinage.company_id,
-                    provenance=ProvenanceTerrain.VISITE, visite_id=visite_id)
-            .first())
+    reprises = (ReleveTerrain.objects
+                .select_related('releve_par')
+                .filter(calepinage=calepinage,
+                        company_id=calepinage.company_id,
+                        provenance=ProvenanceTerrain.VISITE))
+    if visite_id is None:
+        # ACAL210 : la visite repasse « non validée » (renvoyée à refaire) —
+        # la reprise déjà faite reste vraie : on rend la plus récente.
+        return reprises.order_by('-created_at', '-id').first()
+    return reprises.filter(visite_id=visite_id).first()
 
 
 def _bloc(releve):
@@ -150,8 +193,9 @@ def etat_reprise(calepinage):
     Lecture PURE : rien n'est écrit, ni ici ni côté visite.
     """
     lecture = _lecture_visite(calepinage)
-    return _composer_reponse(
-        lecture, _bloc(_releve_repris(calepinage, lecture.get('visite_id'))))
+    releve = _releve_repris(calepinage, lecture.get('visite_id'))
+    return _composer_reponse(lecture, _bloc(releve),
+                             _ecart(releve, lecture))
 
 
 def _entiers_uniques(photos):
@@ -217,8 +261,48 @@ def _rattacher_photos(calepinage, releve, photos, user):
         )
 
 
-def reprendre_visite(calepinage, user=None):
+def _mettre_a_jour(calepinage, releve, lecture, user):
+    """ACAL210 — remplace EN PLACE mesures et photos du relevé repris.
+
+    La contrainte ``uniq_releve_reprise_par_visite`` est respectée (aucune
+    nouvelle ligne). Une photo de la visite devenue « à refaire » n'est plus
+    servie par la porte de ``visites`` : sa fiche photo est retirée de la liste
+    du relevé (la pièce jointe, elle, n'est jamais supprimée). L'écart remplacé
+    est journalisé au chatter, une ligne par mise à jour.
+    """
+    from django.utils import timezone
+
+    from ..models import PhotoSite, ProvenanceTerrain
+    from .journal import noter
+
+    ecart = _ecart(releve, lecture)
+    releve.mesures = list(lecture.get('mesures') or [])
+    releve.releve_le = timezone.localdate()
+    if getattr(user, 'pk', None):
+        releve.releve_par = user
+    releve.save()
+    retenues = [photo['attachment_id']
+                for photo in _entiers_uniques(lecture.get('photos'))]
+    PhotoSite.objects.filter(
+        calepinage=calepinage, releve=releve,
+        provenance=ProvenanceTerrain.VISITE,
+    ).exclude(attachment_id__in=retenues).delete()
+    _rattacher_photos(calepinage, releve, lecture.get('photos'), user)
+    if ecart:
+        detail = ' ; '.join(
+            f"{ligne['code']} {_formater(ligne['releve'])} vers "
+            f"{_formater(ligne['visite'])}" for ligne in ecart)
+        noter(calepinage, f'Reprise mise à jour : {detail}', user=user)
+
+
+def reprendre_visite(calepinage, user=None, *, remplacer=False):
     """POST — reprend la dernière visite validée dans ce calepinage.
+
+    ``remplacer=True`` (ACAL210, « Mettre à jour depuis la visite ») met à
+    jour EN PLACE le relevé déjà repris : mesures remplacées par celles de la
+    visite validée, nouvelles photos rattachées, photos devenues « à refaire »
+    retirées de la liste du relevé, écart journalisé au chatter. Sans lui, un
+    relevé déjà repris n'est jamais touché.
 
     Returns:
         ``(reponse, cree)`` — la réponse du contrat (``deja_repris: true``,
@@ -248,7 +332,11 @@ def reprendre_visite(calepinage, user=None):
         list(Calepinage.objects.select_for_update()
              .filter(pk=calepinage.pk).values_list('pk', flat=True))
         existant = _releve_repris(calepinage, visite_id)
+        if existant is not None and not remplacer:
+            return _composer_reponse(lecture, _bloc(existant),
+                                     _ecart(existant, lecture)), False
         if existant is not None:
+            _mettre_a_jour(calepinage, existant, lecture, user)
             return _composer_reponse(lecture, _bloc(existant)), False
 
         releve = ReleveTerrain(

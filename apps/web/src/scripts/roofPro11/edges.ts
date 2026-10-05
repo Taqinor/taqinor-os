@@ -109,6 +109,50 @@ export function fusionnerAretesSaisies(
   });
 }
 
+/** ACAL78 — un pan, vu de « Recommencer depuis le tracé client ». */
+export interface PanReinitialisable {
+  id: string;
+  vertices: LngLat[];
+  obstacles?: unknown[];
+  edges?: SerializedEdge[];
+  buildingId?: string;
+}
+
+/**
+ * ACAL78 — « Recommencer depuis le tracé client » repart VRAIMENT du tracé : contour du
+ * client, aucun obstacle, AUCUNE arête saisie (un type `manuel` ou un `retraitM` posé sur
+ * l'arête n° i de l'ancien contour serait sinon réappliqué par index à une arête qui n'a
+ * plus rien à voir, cf. `fusionnerAretesSaisies`), et plus de géométrie enregistrée. Le
+ * rattachement au bâtiment n'est gardé que s'il reste vrai : pan seul de son bâtiment (le
+ * bâtiment, c'est lui), ou centre du tracé dans l'emprise des AUTRES pans de ce bâtiment.
+ * PURE : rend un NOUVEL objet.
+ */
+export function reinitialiserDepuisTraceClient<T extends PanReinitialisable>(
+  pan: T,
+  trace: readonly LngLat[],
+  autresPans: readonly PanReinitialisable[],
+): T {
+  const sortie = { ...pan, vertices: trace.map(([lng, lat]) => [lng, lat] as LngLat), obstacles: [] } as T & {
+    geometrieEnregistree?: unknown;
+  };
+  delete sortie.edges;
+  delete sortie.geometrieEnregistree;
+  const bat = pan.buildingId;
+  if (bat) {
+    const freres = autresPans.filter((a) => a.id !== pan.id && a.buildingId === bat && a.vertices.length >= 3);
+    if (freres.length && trace.length) {
+      const cx = trace.reduce((t, v) => t + v[0], 0) / trace.length;
+      const cy = trace.reduce((t, v) => t + v[1], 0) / trace.length;
+      const pts = freres.flatMap((a) => a.vertices);
+      const dedans =
+        cx >= Math.min(...pts.map((p) => p[0])) && cx <= Math.max(...pts.map((p) => p[0]))
+        && cy >= Math.min(...pts.map((p) => p[1])) && cy <= Math.max(...pts.map((p) => p[1]));
+      if (!dedans) delete sortie.buildingId;
+    }
+  }
+  return sortie;
+}
+
 /** Couleur d'affichage 3D par type d'arête (hex Three.js), pour distinguer faîtage/
  *  égout/inconnue d'un coup d'œil sur le contour. */
 export const EDGE_COLOR_BY_TYPE: Record<EdgeType, number> = {

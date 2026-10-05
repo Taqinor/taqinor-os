@@ -109,6 +109,30 @@ def gabarit_manuel_actif(company):
             .first())
 
 
+#: ACAL220 - ce que l'inventaire ``documents/`` publie quand aucun gabarit
+#: « manuel » actif n'est depose pour la societe.
+MANQUE_GABARIT_MANUEL = {
+    'champ': 'gabarit',
+    'libelle': 'Gabarit « manuel » actif de la société',
+    'ou_saisir': 'Déposer un gabarit de genre « manuel » dans Réglages > '
+                 'Calepinage > Gabarits.',
+    'onglet': None,
+}
+
+
+def disponibilite(calepinage):
+    """``(disponible, motif, manque)`` - declaree a cote du rendu.
+
+    Le manuel ne se rend pas sans gabarit « manuel » actif
+    (``construire_manuel`` leve ``ManuelRefuse``, champ ``gabarit``) : la
+    carte de l'inventaire ``documents/`` appelle CETTE fonction au lieu de
+    dupliquer la condition de refus.
+    """
+    if gabarit_manuel_actif(getattr(calepinage, 'company', None)) is None:
+        return False, MESSAGE_AUCUN_GABARIT_MANUEL, [MANQUE_GABARIT_MANUEL]
+    return True, None, []
+
+
 def _designation_onduleurs(onduleurs):
     """« 1 × ONDULEUR-ESSAI-1 » par onduleur RÉFÉRENCÉ — jamais un sans nom."""
     lignes = []

@@ -1893,7 +1893,7 @@ from apps.ventes.domain.lignes import (  # noqa: E402,F401
     lignes_de_variante,
     prix_negocie,
 )
-from apps.ventes.domain.pipeline import (  # noqa: E402,F401
+from apps.ventes.domain.etape_composer import (  # noqa: E402,F401
     COMPOSITION_AVEC,
     COMPOSITION_SANS,
     IntentionComposition,

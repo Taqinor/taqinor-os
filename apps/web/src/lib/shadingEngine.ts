@@ -409,6 +409,18 @@ export function cellsSolarAccess(
 // vérification qui n'a pas eu lieu.
 
 /** CAL97 — accès solaire agrégé d'un ensemble de modules. */
+/**
+ * ACAL138 — la méthode de calcul NOMMÉE (contrat `$defs/solarAccess.method`, ACAL2) : ce que
+ * le calcul modélise (horizon lointain, ombrage des rangées voisines), sa résolution et une
+ * description lisible. Plus de phrase libre à la place de la structure.
+ */
+export interface MethodeAccesSolaire {
+  horizon: boolean;
+  rangees: boolean;
+  resolution: 'annuelle' | 'mensuelle';
+  description: string;
+}
+
 export interface SolarAccessSummary {
   /** Accès solaire (0–1) de chaque module, aligné sur les points fournis. */
   perModule: number[];
@@ -423,7 +435,7 @@ export interface SolarAccessSummary {
   /** Période évaluée : null = année entière, 0–11 = mois. */
   month: number | null;
   /** Méthode, en une phrase, à afficher À CÔTÉ du chiffre. */
-  method: string;
+  method: MethodeAccesSolaire;
   /** Hypothèses explicites du chiffre (jamais implicites). */
   assumptions: string[];
 }
@@ -463,10 +475,17 @@ export function solarAccessSummary(
     max: Math.max(...perModule),
     lowCount: perModule.filter((a) => a < SOLAR_ACCESS_LOW).length,
     month,
-    method:
-      'Part de l’irradiation qui atteint réellement chaque module : position du soleil calculée heure par heure ' +
-      '(astronomie standard), occultation par lancer de rayon sur les obstructions renseignées, ' +
-      'pondération par le profil horaire réel du lieu.',
+    // ACAL138 — méthode OBJET : ce calcul ne modélise ni l'horizon lointain (poste séparé,
+    // CAL93) ni l'ombrage mutuel des rangées — seulement les obstructions renseignées.
+    method: {
+      horizon: false,
+      rangees: false,
+      resolution: month == null ? 'annuelle' : 'mensuelle',
+      description:
+        'Part de l’irradiation qui atteint réellement chaque module : position du soleil calculée heure par heure ' +
+        '(astronomie standard), occultation par lancer de rayon sur les obstructions renseignées, ' +
+        'pondération par le profil horaire réel du lieu.',
+    },
     assumptions: [
       `Heure masquée : le rayonnement DIRECT est perdu, la part DIFFUSE (${Math.round(diffuseFraction * 100)} %) est conservée.`,
       'Ne comptent que les obstructions RENSEIGNÉES (obstacles de toiture à hauteur saisie, objets d’environnement, ombres tracées) — l’horizon lointain n’est pas modélisé.',
