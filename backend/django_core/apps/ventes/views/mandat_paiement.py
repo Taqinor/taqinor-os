@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from authentication.permissions import IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import MandatPaiement
-from ..serializers import MandatPaiementSerializer
+from ..serializers_facturation import MandatPaiementSerializer
 
 READ_ACTIONS = ['list', 'retrieve']
 

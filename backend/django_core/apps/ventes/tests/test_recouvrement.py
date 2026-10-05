@@ -54,7 +54,7 @@ class TestRecouvrement(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
 
     def test_is_overdue_relies_on_jours_retard(self):
-        from apps.ventes.serializers import FactureSerializer
+        from apps.ventes.serializers_facturation import FactureSerializer
         data = FactureSerializer(self.facture).data
         self.assertTrue(data['is_overdue'])
         self.assertEqual(data['jours_retard'], 45)
