@@ -37,7 +37,7 @@ vi.mock('../../api/calepinageApi', () => ({
 
    CE TEST PARCOURT LE CONTRAT. Il ne cite aucune clé à la main : il lit
    `Object.keys(exemple)` du fichier COMMITTÉ et exige un rendu pour chacune. Le
-   jour où le serveur publie une vingt-deuxième clé, ce test la réclame.
+   jour où le serveur publie une vingt-cinquième clé, ce test la réclame.
 
    IL VÉRIFIE AUSSI LA DISCIPLINE DU NULL, celle que le contrat impose : sur
    `exemple_vide`, une grandeur non mesurée vaut `null` — l'écran rend « — » et
@@ -78,10 +78,10 @@ beforeEach(() => {
 afterEach(() => { cleanup() })
 
 describe('FicheCalepinage — l’agrégat CAL17 est lu EN ENTIER', () => {
-  it('rend une clé du contrat, et le contrat en publie bien vingt-trois', () => {
+  it('rend une clé du contrat, et le contrat en publie bien vingt-quatre', () => {
     // Garde de dérive : si le contrat grossit, la liste ci-dessous grossit avec
     // lui et le test suivant exigera le rendu de la nouvelle clé.
-    expect(CLES.length).toBe(23)
+    expect(CLES.length).toBe(24)
   })
 
   it.each(CLES)('affiche la clé publiée « %s »', (cle) => {
