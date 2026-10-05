@@ -282,6 +282,9 @@ def geometrie_de_planche(roof_layout):
             'repere': str(zone.get('id') or 'ZONE-%d' % rang),
             'libelle': str(zone.get('label') or ''),
             'nature': str(zone.get('nature') or ''),
+            # ACAL290 - la source SAISIE de la zone, citee sur la planche ;
+            # vide quand elle n'est pas saisie (jamais inventee).
+            'source': _source_de_zone(zone),
             'points': points,
         })
 
@@ -626,7 +629,24 @@ def entrees_de_legende(geometrie, contenu=CONTENU_IMPLANTATION):
         entrees.append((ORANGE, '#ffffff', 'Obstacle à confirmer'))
     if geometrie.get('zones_interdites'):
         entrees.append((ORANGE, 'none', 'Zone interdite ou réservée'))
+        vues = []
+        for zone in geometrie['zones_interdites']:
+            source = zone.get('source')
+            if source and source not in vues:
+                vues.append(source)
+                entrees.append((ORANGE, 'none',
+                                'Zone interdite ou réservée — %s' % source))
     return tuple(entrees)
+
+
+def _source_de_zone(zone):
+    """La source citee d'une zone, ``''`` si absente ou illisible."""
+    from .zones_reglementaires import source_de_zone
+
+    try:
+        return source_de_zone(zone)
+    except ValueError:
+        return ''
 
 
 def _degres(valeur):
