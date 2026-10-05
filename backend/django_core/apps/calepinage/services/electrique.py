@@ -47,6 +47,7 @@ from core.electrique.types import TEMP_CHAUD_DEFAUT_C, TEMP_FROID_DEFAUT_C
 
 __all__ = [
     'SOURCE_SAISIE', 'SOURCE_TMY', 'MENTION_NON_SOURCEE',
+    'SOURCE_TMY_NOCT',  # ACAL164
     'TemperaturesSite', 'TemperaturesInvalides',
     'enregistrer_fournisseur_temperatures', 'fournisseur_temperatures',
     'temperatures_site', 'temperatures_pour_calepinage',
@@ -87,6 +88,18 @@ __all__ = [
 #: troisième n'existe pas : l'absence de source est ``None``, pas un libellé.
 SOURCE_SAISIE = 'saisie'
 SOURCE_TMY = 'tmy'
+#: ACAL164 — le chaud est une température de CELLULE, tirée de la T2m
+#: maximale du TMY par la formule NOCT de la fiche module.
+SOURCE_TMY_NOCT = 'TMY + NOCT fiche'
+
+#: ACAL164 — les conditions NOCT (IEC 61215 : 800 W/m², 20 °C ambiant) et
+#: l'éclairement de dimensionnement (STC, 1 000 W/m²). Formule :
+#: T_cellule = T_ambiante + (NOCT − 20) × G / 800.
+NOCT_AMBIANTE_C = 20.0
+NOCT_ECLAIREMENT_W_M2 = 800.0
+ECLAIREMENT_DIMENSIONNEMENT_W_M2 = 1000.0
+REFERENCE_NOCT = ('IEC 61215 — définition NOCT (800 W/m², 20 °C ambiant, '
+                  '1 m/s) : T_cellule = T_ambiante + (NOCT − 20) × G / 800')
 
 #: La phrase qui accompagne OBLIGATOIREMENT un verdict rendu sans source.
 MENTION_NON_SOURCEE = 'températures de référence, non sourcées'
@@ -240,7 +253,28 @@ def _depuis_fournisseur(pin, fournisseur):
     return (froid, chaud, ', '.join(morceaux))
 
 
-def temperatures_site(*, pin=None, saisie=None, fournisseur=None):
+def _temperature_cellule(ambiante_c, module_specs):
+    """``(chaud_cellule_c, detail)`` par la formule NOCT, ou ``None``.
+
+    ACAL164 — la T2m maximale du TMY est une température AMBIANTE ; le noyau
+    attend une température de CELLULE maximale (``temp_chaud_c``). Sans
+    ``noct_c`` publié par la fiche, rien n'est dérivé (``None``).
+    """
+    noct = _nombre((module_specs or {}).get('noct_c'))
+    if noct is None:
+        return None
+    chaud = (ambiante_c + (noct - NOCT_AMBIANTE_C)
+             * ECLAIREMENT_DIMENSIONNEMENT_W_M2 / NOCT_ECLAIREMENT_W_M2)
+    return (round(chaud, 2),
+            "cellule %.2f °C = T2m max %.2f °C + (NOCT %.1f − %.0f) × "
+            "%.0f / %.0f (%s)" % (
+                chaud, ambiante_c, noct, NOCT_AMBIANTE_C,
+                ECLAIREMENT_DIMENSIONNEMENT_W_M2, NOCT_ECLAIREMENT_W_M2,
+                REFERENCE_NOCT))
+
+
+def temperatures_site(*, pin=None, saisie=None, fournisseur=None,
+                      module_specs=None):
     """Les températures de dimensionnement du site ET leur source (CAL123).
 
     Args:
@@ -271,9 +305,22 @@ def temperatures_site(*, pin=None, saisie=None, fournisseur=None):
         fournisseur = _FOURNISSEUR
     tmy = _depuis_fournisseur(pin, fournisseur)
     if tmy is not None:
-        froid, chaud, detail = tmy
-        return TemperaturesSite(froid_c=froid, chaud_c=chaud,
-                                source=SOURCE_TMY, detail=detail)
+        froid, ambiante, detail = tmy
+        # ACAL164 — le CHAUD est une température de CELLULE : la T2m
+        # ambiante n'est jamais posée telle quelle dans ``chaud_c``.
+        cellule = _temperature_cellule(ambiante, module_specs)
+        if cellule is not None:
+            chaud, formule = cellule
+            return TemperaturesSite(
+                froid_c=froid, chaud_c=chaud, source=SOURCE_TMY_NOCT,
+                detail='%s ; %s' % (detail, formule))
+        return TemperaturesSite(
+            froid_c=froid, chaud_c=TEMP_CHAUD_DEFAUT_C, source=SOURCE_TMY,
+            mention=MENTION_NON_SOURCEE,
+            detail="%s ; chaud : repli du noyau électrique (%.1f °C de "
+                   "cellule) — la fiche module ne publie pas « noct_c », la "
+                   "T2m ambiante (%.2f °C) n'est pas une température de "
+                   "cellule" % (detail, TEMP_CHAUD_DEFAUT_C, ambiante))
 
     return TemperaturesSite(
         froid_c=TEMP_FROID_DEFAUT_C, chaud_c=TEMP_CHAUD_DEFAUT_C,
@@ -284,7 +331,7 @@ def temperatures_site(*, pin=None, saisie=None, fournisseur=None):
 
 
 def temperatures_pour_calepinage(calepinage, *, saisie=None,
-                                 fournisseur=None):
+                                 fournisseur=None, module_specs=None):
     """``temperatures_site`` avec l'épingle DU calepinage (lecture bornée).
 
     L'épingle est lue par ``selectors.contexte_geographique`` — la MÊME
@@ -300,7 +347,8 @@ def temperatures_pour_calepinage(calepinage, *, saisie=None,
             pin = layout['pin']
         if pin is None:
             pin = contexte_geographique(calepinage).get('pin')
-    return temperatures_site(pin=pin, saisie=saisie, fournisseur=fournisseur)
+    return temperatures_site(pin=pin, saisie=saisie, fournisseur=fournisseur,
+                             module_specs=module_specs)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1188,7 +1236,10 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
     if materiel is None:
         materiel = resoudre_materiel(getattr(calepinage, 'company', None),
                                      donnees, calepinage=calepinage)
-    temperatures = temperatures_pour_calepinage(calepinage, saisie=donnees)
+    # ACAL164 — la fiche module (``noct_c``) fait du chaud TMY une
+    # température de CELLULE.
+    temperatures = temperatures_pour_calepinage(
+        calepinage, saisie=donnees, module_specs=materiel.get('module'))
     conception = concevoir_par_pan(
         document, module_specs=materiel['module'],
         onduleur_specs=materiel['onduleur'], temperatures=temperatures,
