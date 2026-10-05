@@ -14,7 +14,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from .constants import SCOPE_READ_LEADS
+from .portees import SCOPE_READ_LEADS
 from .models import ApiKey
 
 User = get_user_model()

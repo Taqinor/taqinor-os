@@ -2123,6 +2123,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       </a>
     </section>
   ) : !ok ? (
+    <section class="mx-auto flex min-h-[60dvh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center">
     <!-- ── État « lien expiré / introuvable » ─────────────────────────────── -->
     <!-- WJ81 — la page ne reste JAMAIS blanche : ce cadre de marque (rappel
          visuel Taqinor, jamais une page d'erreur générique du navigateur/
@@ -2132,7 +2133,6 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
          proposés, plutôt que le seul lien « Retour à l'accueil ». W316 — un
          429 (rate-limit) est tout aussi RETRYABLE (relire dans un instant) :
          même bouton « Réessayer », jamais un cul-de-sac. -->
-    <section class="mx-auto flex min-h-[60dvh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center">
       <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
       <h1 class="display mt-6 text-3xl text-lune sm:text-4xl">Proposition indisponible</h1>
       <p class="v2-body mt-4 max-w-md">{errorDetail}</p>
@@ -2160,17 +2160,17 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
   ) : (
     <div class="proposition pb-28" data-sign-config={signConfig}>
       {apercuInterne && (
+        <div
+          id="apercu-interne-banner"
+          class="sticky top-0 z-50 border-b border-brass-400/60 bg-brass-50 px-4 py-2 text-center text-sm font-semibold text-azur-950 print:hidden"
+          role="status"
+        >
         <!-- L-INTPREV / LANE T-WEB (25/08/2026) — bandeau discret, TOUJOURS
              visible en haut de page (sticky) : le commercial ne doit jamais
              confondre son propre aperçu avec une visite du client. La
              signature/le contact sont désactivés plus bas ; aucune
              balise/beacon ne part depuis cette page (voir skipVisitBeacon et
              cfg.apercuInterne dans le script client). -->
-        <div
-          id="apercu-interne-banner"
-          class="sticky top-0 z-50 border-b border-brass-400/60 bg-brass-50 px-4 py-2 text-center text-sm font-semibold text-azur-950 print:hidden"
-          role="status"
-        >
           Aperçu interne — le client ne voit pas cette visite
         </div>
       )}
@@ -7331,12 +7331,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 </p>
               </>
             ) : (
-              <!-- WJ83 — garde-fou zéro-total : jamais "0 MAD TTC" comme un
-                   vrai prix. -->
               <p class="truncate text-sm text-lune-soft" data-i18n
                 data-fr="Prix communiqué par votre conseiller"
                 data-en="Price provided by your advisor"
                 data-ar="السعر يُبلَّغ من طرف مستشاركم">
+              <!-- WJ83 — garde-fou zéro-total : jamais "0 MAD TTC" comme un
+                   vrai prix. -->
                 Prix communiqué par votre conseiller
               </p>
             )}
@@ -7367,9 +7367,6 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               Signer
             </a>
           ) : (
-            <!-- WJ83 — sans prix réel, le CTA principal ne peut pas pointer vers
-                 une signature à 0 MAD : on renvoie vers le conseiller (WhatsApp),
-                 jamais vers un formulaire de signature sur un montant fabriqué. -->
             <a
               href={waLink}
               target="_blank"
@@ -7378,6 +7375,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
               data-i18n data-fr="Contacter mon conseiller" data-en="Contact my advisor" data-ar="التواصل مع مستشاري"
             >
+            <!-- WJ83 — sans prix réel, le CTA principal ne peut pas pointer vers
+                 une signature à 0 MAD : on renvoie vers le conseiller (WhatsApp),
+                 jamais vers un formulaire de signature sur un montant fabriqué. -->
               Contacter mon conseiller
             </a>
           )}
