@@ -544,6 +544,11 @@ const calepinageApi = {
     // `calepinage_fixation_bom.json` › `fixation_post`) : `{systeme_id|null}`
     // → `{systeme, systeme_source}` ; `null` retire le choix.
     appliquerFixation: (id, corps) => api.post(`${pivot(id)}fixation/`, corps), // ACAL
+
+    // ACAL238 — joindre (multipart `{dossier, piece, fichier}`) ou retirer
+    // (`{dossier, piece, retirer: true}`) une pièce d'un dossier réglementaire
+    // (contrat `dossiers_reglementaires.json` › `joindre_piece`).
+    joindrePiece: (id, corps) => api.post(`${pivot(id)}joindre-piece/`, corps), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

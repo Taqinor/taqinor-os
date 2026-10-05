@@ -732,3 +732,324 @@ def packs_france(calepinage, agregat=None):
         'pays': agregat['pays'],
         'packs': packs,
     }
+
+
+# ── ACAL238 — LA PORTE DE DÉPÔT DES GABARITS ET DES PIÈCES ─────────────────
+#
+# ``GabaritDossierReglementaire`` n'avait ni sérialiseur, ni route : aucune
+# société ne pouvait déposer le document fourni par l'administration, donc
+# aucun dossier n'apparaissait jamais. Ces services sont l'UNIQUE écrivain
+# d'un gabarit (genres dp_mairie, enedis, consuel, manuel… — une seule porte)
+# et des pièces jointes d'un dossier. La société et l'auteur viennent TOUJOURS
+# de l'appelant serveur, jamais du corps de la requête ; le fichier est une
+# ``records.Attachment`` (ARC26), rattachée à l'objet qu'elle documente.
+#
+# Défaut gravé : un gabarit se dépose en PDF SEULEMENT (un Word est refusé
+# sous « fichier ») ; chaque création / modification / suppression est
+# journalisée (auteur, avant, après) dans le fil générique ``records``.
+
+#: Le refus d'un fichier qui n'est pas un PDF (contrat ``refus_400``).
+MESSAGE_GABARIT_NON_PDF = (
+    "Un gabarit se dépose en PDF : le fichier reçu n'en est pas un.")
+
+#: Les champs qu'un dépôt / une modification de gabarit peut écrire.
+CHAMPS_GABARIT = ('pays', 'code', 'genre', 'intitule', 'version', 'actif',
+                  'pieces_attendues', 'champs')
+
+#: Les clés vérifiées, dans l'ordre du modèle, pour NOMMER l'élément fautif
+#: d'une liste (``pieces_attendues[1].source_reference``).
+_CLES_PIECE = ('code', 'intitule', 'source_reference')
+_CLES_CHAMP = ('code', 'libelle', 'type', 'cle_calepinage')
+
+__all__ += [
+    'GabaritRefuse', 'MESSAGE_GABARIT_NON_PDF', 'gabarit_publie',
+    'deposer_gabarit', 'modifier_gabarit', 'supprimer_gabarit',
+    'PieceRefusee', 'joindre_piece',
+]
+
+
+class GabaritRefuse(ValueError):
+    """Un dépôt refusé : ``erreurs`` = ``{champ nommé: message}``."""
+
+    def __init__(self, erreurs, *, statut=400):
+        super().__init__('; '.join(str(m) for m in erreurs.values()))
+        self.erreurs = dict(erreurs)
+        self.statut = statut
+
+
+class PieceRefusee(ValueError):
+    """Une pièce refusée, champ nommé."""
+
+    def __init__(self, message, *, champ='piece'):
+        super().__init__(message)
+        self.champ = champ
+
+
+def _est_pdf(fichier):
+    entete = fichier.read(5)
+    fichier.seek(0)
+    return entete == b'%PDF-'
+
+
+def gabarit_publie(gabarit):
+    """La forme publiée d'UN gabarit (contrat
+    ``gabarits_dossier_reglementaire.json``, ``detail.exemple``)."""
+    fichier = gabarit.fichier if gabarit.fichier_id else None
+    auteur = gabarit.depose_par if gabarit.depose_par_id else None
+    return {
+        'id': gabarit.pk,
+        'pays': gabarit.pays,
+        'code': gabarit.code,
+        'genre': gabarit.genre,
+        'intitule': gabarit.intitule,
+        'version': gabarit.version,
+        'actif': gabarit.actif,
+        'pieces_attendues': list(gabarit.pieces_attendues or []),
+        'champs': list(gabarit.champs or []),
+        'fichiers': ({'attachment': fichier.pk, 'nom': fichier.filename}
+                     if fichier is not None else None),
+        'depose_par': ({'id': auteur.pk, 'nom_complet': str(auteur)}
+                       if auteur is not None else None),
+        'depose_le': gabarit.depose_le,
+    }
+
+
+def _liste_saisie(valeur, champ):
+    """Une liste reçue en JSON (multipart) ou déjà décodée."""
+    if isinstance(valeur, str):
+        import json
+
+        try:
+            return json.loads(valeur) if valeur.strip() else []
+        except ValueError:
+            raise GabaritRefuse({champ: (
+                f"« {champ} » se donne en liste JSON : le texte reçu "
+                "n'est pas lisible.")})
+    return valeur
+
+
+def _booleen(valeur):
+    if isinstance(valeur, str):
+        return valeur.strip().lower() in ('1', 'true', 'vrai', 'oui', 'on')
+    return bool(valeur)
+
+
+def _premier_element_fautif(liste, cles, prefixe):
+    """Le chemin NOMMÉ de l'élément fautif d'une liste, ou le préfixe."""
+    if not isinstance(liste, list):
+        return prefixe
+    vus = set()
+    for rang, element in enumerate(liste):
+        if not isinstance(element, dict):
+            return f'{prefixe}[{rang}]'
+        code = str(element.get('code') or '').strip()
+        if not code or code in vus:
+            return f'{prefixe}[{rang}].code'
+        vus.add(code)
+        for cle in cles[1:]:
+            if prefixe == 'champs' and cle in ('type', 'cle_calepinage'):
+                continue
+            if not str(element.get(cle) or '').strip():
+                return f'{prefixe}[{rang}].{cle}'
+    if prefixe == 'champs':
+        from ..models import GabaritDossierReglementaire as Gabarit
+
+        for rang, element in enumerate(liste):
+            if str(element.get('type') or 'texte') not in Gabarit.TYPES_CHAMP:
+                return f'champs[{rang}].type'
+            cle = element.get('cle_calepinage')
+            if cle and cle not in Gabarit.CLES_PREREMPLISSAGE:
+                return f'champs[{rang}].cle_calepinage'
+    return prefixe
+
+
+def _valider(gabarit):
+    """``clean()`` du modèle, ses refus RE-NOMMÉS au chemin fautif."""
+    from django.core.exceptions import ValidationError
+
+    try:
+        gabarit.clean()
+    except ValidationError as refus:
+        erreurs = {}
+        for champ, messages in refus.message_dict.items():
+            nom = champ
+            if champ == 'pieces_attendues':
+                nom = _premier_element_fautif(gabarit.pieces_attendues,
+                                              _CLES_PIECE, champ)
+            elif champ == 'champs':
+                nom = _premier_element_fautif(gabarit.champs, _CLES_CHAMP,
+                                              champ)
+            erreurs[nom] = ' '.join(messages)
+        raise GabaritRefuse(erreurs)
+    from ..models import GabaritDossierReglementaire
+
+    doublon = (GabaritDossierReglementaire.objects
+               .filter(company=gabarit.company, pays=gabarit.pays,
+                       code=gabarit.code)
+               .exclude(pk=gabarit.pk).exists())
+    if doublon:
+        raise GabaritRefuse({'code': (
+            f"Un gabarit « {gabarit.code} » existe déjà pour ce pays dans la "
+            "société : modifiez-le plutôt que d'en déposer un second.")})
+
+
+def _appliquer(gabarit, donnees):
+    for champ in CHAMPS_GABARIT:
+        if champ not in donnees:
+            continue
+        valeur = donnees[champ]
+        if champ in ('pieces_attendues', 'champs'):
+            valeur = _liste_saisie(valeur, champ)
+        elif champ == 'actif':
+            valeur = _booleen(valeur)
+        elif valeur is None:
+            valeur = ''
+        setattr(gabarit, champ, valeur)
+
+
+def _stocker_pdf(fichier, *, company, cible, user):
+    """Le PDF déposé, en ``records.Attachment`` rattachée à ``cible``."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.records.models import Attachment
+    from apps.records.storage import store_attachment
+
+    donnees, erreur = store_attachment(fichier, company=company)
+    if erreur:
+        raise GabaritRefuse({'fichier': erreur})
+    return Attachment.objects.create(
+        company=company,
+        content_type=ContentType.objects.get_for_model(cible.__class__),
+        object_id=cible.pk,
+        uploaded_by=user if getattr(user, 'pk', None) else None,
+        **donnees)
+
+
+def _journaliser(gabarit, user, *, avant, apres):
+    """Auteur, avant, après — dans le fil générique (``records``)."""
+    import json
+
+    from apps.records.services import log_activity
+
+    texte = (lambda forme: json.dumps(forme, ensure_ascii=False,
+                                      sort_keys=True, default=str)
+             if forme is not None else '')
+    log_activity(
+        gabarit, 'creation' if avant is None else 'modification',
+        user=user if getattr(user, 'pk', None) else None,
+        field='gabarit', field_label='Gabarit de dossier réglementaire',
+        old_value=texte(avant), new_value=texte(apres),
+        company=gabarit.company)
+
+
+def deposer_gabarit(company, user, donnees, fichier=None):
+    """Crée un gabarit de la société ``company`` (jamais lue du corps)."""
+    from django.db import transaction
+    from django.utils import timezone
+
+    from ..models import GabaritDossierReglementaire
+
+    if fichier is not None and not _est_pdf(fichier):
+        raise GabaritRefuse({'fichier': MESSAGE_GABARIT_NON_PDF})
+    gabarit = GabaritDossierReglementaire(company=company)
+    _appliquer(gabarit, donnees or {})
+    _valider(gabarit)
+    with transaction.atomic():
+        gabarit.save()
+        if fichier is not None:
+            gabarit.fichier = _stocker_pdf(fichier, company=company,
+                                           cible=gabarit, user=user)
+            gabarit.depose_le = timezone.now()
+            gabarit.depose_par = user if getattr(user, 'pk', None) else None
+            gabarit.save(update_fields=['fichier', 'depose_le',
+                                        'depose_par'])
+        _journaliser(gabarit, user, avant=None,
+                     apres=gabarit_publie(gabarit))
+    return gabarit
+
+
+def modifier_gabarit(gabarit, user, donnees, fichier=None):
+    """Modifie un gabarit (mise à jour PARTIELLE), fichier compris."""
+    from django.db import transaction
+    from django.utils import timezone
+
+    if fichier is not None and not _est_pdf(fichier):
+        raise GabaritRefuse({'fichier': MESSAGE_GABARIT_NON_PDF})
+    avant = gabarit_publie(gabarit)
+    _appliquer(gabarit, donnees or {})
+    _valider(gabarit)
+    with transaction.atomic():
+        if fichier is not None:
+            gabarit.fichier = _stocker_pdf(fichier, company=gabarit.company,
+                                           cible=gabarit, user=user)
+            gabarit.depose_le = timezone.now()
+            gabarit.depose_par = user if getattr(user, 'pk', None) else None
+        gabarit.save()
+        _journaliser(gabarit, user, avant=avant,
+                     apres=gabarit_publie(gabarit))
+    return gabarit
+
+
+def supprimer_gabarit(gabarit, user):
+    """Supprime un gabarit INUTILISÉ ; utilisé par des dossiers → 409 nommé
+    (``PROTECT`` : un dossier ne perd jamais son gabarit)."""
+    from django.db import transaction
+
+    utilisations = gabarit.dossiers.count()
+    if utilisations:
+        raise GabaritRefuse({'detail': (
+            f"Ce gabarit est utilisé par {utilisations} dossier(s) : "
+            "archivez-le plutôt que de le supprimer.")}, statut=409)
+    with transaction.atomic():
+        _journaliser(gabarit, user, avant=gabarit_publie(gabarit),
+                     apres=None)
+        gabarit.delete()
+
+
+def joindre_piece(dossier, code, *, fichier=None, retirer=False, user=None):
+    """Joint (ou retire) la pièce ``code`` d'un dossier — sous verrou.
+
+    Écrit ``DossierReglementaire.pieces_jointes[code] = {attachment_id,
+    depose_le, fichier}`` ; ``retirer`` efface l'entrée (la pièce redevient
+    non fournie). Rend la forme du contrat (``joindre_piece``).
+    """
+    from django.db import transaction
+    from django.utils import timezone
+
+    from ..models import DossierReglementaire
+
+    code = str(code or '').strip()
+    attendues = {str(p.get('code') or '').strip()
+                 for p in dossier.gabarit.pieces_attendues or ()
+                 if isinstance(p, dict)}
+    if not code or code not in attendues:
+        raise PieceRefusee(
+            f"La pièce « {code} » n'existe pas dans ce dossier.")
+    if not retirer and fichier is None:
+        raise PieceRefusee("Joignez le fichier de la pièce (ou demandez son "
+                           "retrait avec « retirer »).", champ='fichier')
+    with transaction.atomic():
+        verrouille = (DossierReglementaire.objects.select_for_update()
+                      .get(pk=dossier.pk, company=dossier.company))
+        jointes = dict(verrouille.pieces_jointes or {})
+        if retirer:
+            jointes.pop(code, None)
+            reponse = {'piece': code, 'etat': ETAT_MANQUANTE,
+                       'attachment': None, 'depose_le': None}
+        else:
+            try:
+                piece = _stocker_pdf(fichier, company=verrouille.company,
+                                     cible=verrouille, user=user)
+            except GabaritRefuse as refus:
+                raise PieceRefusee(refus.erreurs['fichier'],
+                                   champ='fichier')
+            depose_le = timezone.now()
+            jointes[code] = {'attachment_id': piece.pk,
+                             'depose_le': depose_le.isoformat(),
+                             'fichier': piece.filename}
+            reponse = {'piece': code, 'etat': ETAT_FOURNIE,
+                       'attachment': piece.pk, 'depose_le': depose_le}
+        verrouille.pieces_jointes = jointes
+        verrouille.save(update_fields=['pieces_jointes'])
+    dossier.pieces_jointes = jointes
+    return reponse
