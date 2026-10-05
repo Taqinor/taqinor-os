@@ -695,9 +695,10 @@ const G_AGRICOLE = {
   },
   /**
    * Région agronomique (8 zones FAO). Elle pilote le moteur eau DE CE TUNNEL
-   * (`lib/agronomy.ts`, aperçu d'estimation en direct) et voyage au webhook par
-   * compatibilité ascendante — `lib/lead.ts` la valide et la transporte, mais
-   * `crm/webhooks.py _extract_web_questionnaire` ne la PERSISTE pas encore.
+   * (`lib/agronomy.ts`, aperçu d'estimation en direct) et voyage au webhook :
+   * `lib/lead.ts` la valide et la transporte, et le webhook la PERSISTE
+   * (`crm/webhooks.py`, WJ124 ; clé déclarée dans `tunnel_webhook_keys.json`) —
+   * dans la colonne `Lead.region_agricole` (AGR402).
    */
   regionAgricole: {
     webhookKey: 'regionAgricole',
