@@ -90,6 +90,7 @@ GROUPES = {
 #: déplacement (ex. SPL134 : ``PLACE['gardes'] = 'devis_gardes.py'``).
 PLACE = {
     'gardes': 'devis_gardes.py',  # SPL134
+    'edition': 'devis_edition.py',  # SPL135
 }
 
 DEFAUT = 'devis.py'
@@ -212,3 +213,11 @@ class GoldenDevisViewSet(SimpleTestCase):
                         continue
                     self.assertEqual(Path(inspect.getsourcefile(fn)).name,
                                      attendu)
+
+    def test_perform_update_vient_du_mixin_d_edition(self):
+        """SPL135 — la surcharge de ``perform_update`` est conservée dans le
+        MRO : elle vient de ``DevisEditionActionsMixin``, placé AVANT
+        ``CompanyScopedModelViewSet`` dans les bases."""
+        from apps.ventes.views.devis import DevisViewSet
+        self.assertEqual(DevisViewSet.perform_update.__qualname__,
+                         'DevisEditionActionsMixin.perform_update')

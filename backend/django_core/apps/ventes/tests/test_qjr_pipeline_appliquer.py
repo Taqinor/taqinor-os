@@ -343,7 +343,9 @@ class LIntentionDevisEstGelee(SimpleTestCase):
 CHEMINS_BASCULES = {
     # QJR93 — l'écran : ``atomic`` (écrire + rafraîchir) et ``replace-lines``
     # (écrire + rafraîchir). QJR94 — ``perform_update`` (rafraîchir).
-    'views/devis.py': 5,
+    # SPL135 — les trois vivent désormais dans ``views/devis_edition.py``
+    # (déplacement pur, ``DevisEditionActionsMixin``).
+    'views/devis_edition.py': 5,
     # QJR95 — la création depuis un calepinage 3D : ``build_devis_from_layout``
     # est devenue un adaptateur (elle LIT le layout, le pipeline fait le reste).
     # QJR96 — le devis AUTOMATIQUE et le TUNNEL : ``build_devis_auto`` est
