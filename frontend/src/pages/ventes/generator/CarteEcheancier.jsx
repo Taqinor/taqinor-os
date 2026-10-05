@@ -30,7 +30,7 @@ export default function CarteEcheancier({ saisie, setSaisie, mode }) {
         ) : (
           <>
             {saisie.map((t, i) => (
-              <div key={i} className="grid gap-1.5 sm:grid-cols-[1fr_10rem_6rem] sm:items-end">
+              <div key={i} className="grid gap-1.5 sm:grid-cols-[1fr_10rem_6rem_10rem] sm:items-end">
                 <Label htmlFor={`gen-echeance-${i}`}>{t.libelle}</Label>
                 <Input id={`gen-echeance-${i}`} type="number" min="0" step="any"
                        value={t.valeur}
@@ -42,11 +42,15 @@ export default function CarteEcheancier({ saisie, setSaisie, mode }) {
                   <option value={UNITE_PCT}>%</option>
                   <option value={UNITE_MONTANT}>MAD TTC</option>
                 </select>
+                <Input id={`gen-echeance-date-${i}`} type="date"
+                       aria-label={`Date prévue — ${t.libelle}`}
+                       value={t.date_prevue || ''}
+                       onChange={e => modifier(i, 'date_prevue', e.target.value)} />
               </div>
             ))}
             <p className="text-xs text-muted-foreground">
               La dernière tranche vaut toujours le reste du total : facture d'acompte
-              et PDF lisent ces mêmes valeurs.
+              et PDF lisent ces mêmes valeurs. La date prévue est facultative.
               {somme != null && somme !== 100 && (
                 <span className="text-warning"> Total des pourcentages : {somme} %.</span>
               )}

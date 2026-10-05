@@ -17,7 +17,7 @@ import ventesReducer from '../../features/ventes/store/ventesSlice'
 import { estimerMois } from '../../features/ventes/solar'
 import { documentContrat, exempleContrat } from '../../test/fixtures/contractSamples'
 import {
-  echeancierAvecAcompte, echeancierVersSaisie, saisieVersEcheancier,
+  echeancierAvecAcompte, echeancierVersSaisie, saisieVersEcheancier, saisieParDefaut,
 } from '../../features/ventes/echeancierEdition'
 
 vi.mock('../../api/crmApi', () => ({
@@ -153,6 +153,41 @@ describe('QJR624 — échéancier : helpers', () => {
     expect(e[0]).toMatchObject({ type: 'acompte', unite: 'montant', pct_or_montant: 20000 })
     expect(e[1]).toMatchObject({ type: 'materiel', unite: 'pct', pct_or_montant: 70 })
     expect(e[2]).toMatchObject({ type: 'solde', unite: 'pct', pct_or_montant: 10 })
+  })
+})
+
+// AGR220 — date de solde « après récolte » (forme du contrat partagé).
+const ECHEANCIER_AGRICOLE = documentContrat('ventes', 'devis_replace_lines_entete')
+  .corps_agricole.entete.echeancier
+
+describe('AGR220 — date facultative par tranche', () => {
+  it('relue puis renvoyée : enregistrer sans toucher = échéancier serveur identique', () => {
+    const rendu = saisieVersEcheancier(echeancierVersSaisie(ECHEANCIER_AGRICOLE))
+    expect(rendu.map(t => t.date_prevue ?? null))
+      .toEqual(ECHEANCIER_AGRICOLE.map(t => t.date_prevue ?? null))
+    expect(rendu[2].date_prevue).toBe('2027-03-31')
+    // Date absente : la clé n'est pas envoyée (le serveur l'omet quand null).
+    expect(rendu[0]).not.toHaveProperty('date_prevue')
+  })
+
+  it('mode agricole : la tranche de solde propose « Solde après récolte »', () => {
+    expect(saisieParDefaut('agricole')[2].libelle).toBe('Solde après récolte')
+    expect(saisieParDefaut('residentiel')[2].libelle).toBe('Solde')
+  })
+
+  it('date saisie dans la carte ⇒ envoyée dans entete.echeancier', async () => {
+    const rouvert = devisRouvert('exemple_envoye', ECHEANCIER_AGRICOLE)
+    ventesApi.getDevisById.mockResolvedValue(rouvert)
+    renderEdition(rouvert.data.id)
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
+    const carte = await screen.findByTestId('carte-echeancier')
+    expect(carte.querySelector('#gen-echeance-date-2').value).toBe('2027-03-31')
+    fireEvent.change(carte.querySelector('#gen-echeance-date-2'), { target: { value: '2027-04-15' } })
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
+    const [, , { entete }] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    expect(entete.echeancier[2].date_prevue).toBe('2027-04-15')
+    expect(entete.echeancier[0]).not.toHaveProperty('date_prevue')
   })
 })
 
