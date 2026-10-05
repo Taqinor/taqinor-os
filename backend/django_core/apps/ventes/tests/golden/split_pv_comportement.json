@@ -1,5 +1,19 @@
 {
-  "comportement": {},
+  "comportement": {
+    "data_confiance": "4cdbedcbda849d72547e611424733be7d6a1fec40f57400773a3948355a4a587",
+    "data_confiance_calepinage": "818614c816d88095e688751db4fd89429c3f0b0875d1d8a7b840d48d23b8b755",
+    "data_jeton_inconnu": "535407466c8611fc30780ef7bd85b57d4d98f0369ce86283cc215bfc94a1944c",
+    "data_standard": "396415793eca329a3c0ca09d1c42064ba72290e3aa23eda7adc233cc815b2468",
+    "data_standard_kit": "b0ffd6931a09248e4a416f9c9cd6deead7cd388cd35999db049459c702b79147",
+    "data_standard_reouverture": "396415793eca329a3c0ca09d1c42064ba72290e3aa23eda7adc233cc815b2468",
+    "engagement_cumul": "1bd01496b5e9a53fc5c9c357dab74e521499c2967bfd4b9259c805b3d55a3d41",
+    "engagement_section_inconnue": "5cb6693d2e2e09ec5e9d5e8ea999c738b8ec349d80e2ffdf7b1bda6f2c20d539",
+    "engagement_valide": "5cb6693d2e2e09ec5e9d5e8ea999c738b8ec349d80e2ffdf7b1bda6f2c20d539",
+    "otp_demande": "ec40d732b7c03a337a7d782c5280b6e78bdd31934f710b9969ecc57e592c9bea",
+    "ouverture_lien": "f7317c6e78c7fdbc2f14044df6b9d52a242bbc0094b022f6229cd3d73b6b430d",
+    "pay_page_inconnu": "535407466c8611fc30780ef7bd85b57d4d98f0369ce86283cc215bfc94a1944c",
+    "pay_webhook_inconnu": "535407466c8611fc30780ef7bd85b57d4d98f0369ce86283cc215bfc94a1944c"
+  },
   "sites_arrondi": [
     "round::_gammes_public::363a93bf620d",
     "round::_gammes_public::52b70f6bdf9c",
