@@ -31,13 +31,21 @@ export const SECTIONS_QUESTIONNAIRE = [
   { key: 'energie', label: "Factures d'électricité" },
   // AGR419 — sections du lead AGRICOLE (AGR411) : jamais servies à un autre.
   { key: 'pompage', label: 'Pompage (eau, forage, pompe actuelle, besoin)' },
+  // CIQ421 — sections du lead PRO (commercial/industriel, CIQ412) : jamais
+  // servies à un autre.
+  { key: 'reseau', label: 'Raccordement et consommation (tension, puissance souscrite, kWh, factures)' },
+  { key: 'activite', label: 'Activité et horaires (catégorie, équipes, jours, fermetures)' },
   { key: 'toiture', label: 'Toiture (type, surface, âge, propriétaire)' },
+  { key: 'site', label: 'Surface disponible (toiture, ombrière ou terrain)' },
   { key: 'gps', label: 'Position GPS de la maison' },
   { key: 'photo_facture', label: 'Photo de la facture' },
   { key: 'photo_compteur', label: 'Photo du compteur' },
   { key: 'photo_tableau', label: 'Photo du tableau électrique' },
   { key: 'photo_pompe', label: 'Photo de la plaque de la pompe' },
   { key: 'photo_forage', label: 'Photo de la tête de forage' },
+  { key: 'photo_factures', label: 'Les 12 dernières factures (PDF ou photos)' },
+  { key: 'photo_poste', label: 'Photo du compteur / poste de livraison' },
+  { key: 'societe', label: 'Société (raison sociale, ICE, RC, IF, siège, TVA)' },
   // Le lien étant envoyé à un lead qui a déjà donné sa position, l'adresse
   // n'est PAS reposée : le serveur la retire des questions dès que le GPS est
   // connu (crm/questionnaire.py `_COUVERT_PAR`). D'où le libellé prudent.
@@ -48,6 +56,9 @@ export const SECTIONS_QUESTIONNAIRE = [
 // `crm.questionnaire.SECTIONS_AGRICOLES_SEULES`) : ne servent QUE de repli
 // quand la réponse serveur ne porte encore aucune carte `questions`.
 const SECTIONS_AGRICOLES_SEULES = ['pompage', 'photo_pompe', 'photo_forage']
+// CIQ421 — idem pour les sections PRO (miroir de
+// `crm.questionnaire.SECTIONS_PRO_SEULES`) : repli seulement.
+const SECTIONS_PRO_SEULES = ['reseau', 'activite', 'site', 'societe', 'photo_factures', 'photo_poste']
 
 // AGR419 — les sections que le dialogue PROPOSE. La vérité vient de la
 // réponse du serveur (`data.questions` = la carte des sections que CE lead
@@ -60,7 +71,8 @@ export function sectionsVisibles(data) {
   if (questions && typeof questions === 'object' && Object.keys(questions).length > 0) {
     return SECTIONS_QUESTIONNAIRE.filter(({ key }) => key in questions)
   }
-  return SECTIONS_QUESTIONNAIRE.filter(({ key }) => !SECTIONS_AGRICOLES_SEULES.includes(key))
+  return SECTIONS_QUESTIONNAIRE.filter(({ key }) => !SECTIONS_AGRICOLES_SEULES.includes(key)
+    && !SECTIONS_PRO_SEULES.includes(key))
 }
 
 // AGR419 — un refus 400 du serveur nomme la section en cause (« clé ») : on

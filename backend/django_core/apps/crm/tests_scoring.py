@@ -479,12 +479,60 @@ class TestScoreAgricoleAGR409(SimpleTestCase):
         industriel = _make_lead(type_installation='industriel',
                                 email='u@x.ma', facture_hiver=900)
         vide = _make_lead()
+        # CIQ414 — commercial et industriel passent à la complétude PRO
+        # (téléphone, ville, facture : 3 critères → 9 ; e-mail, facture :
+        # 2 critères → 6) ; la facture garde le même barème. Résidentiel et
+        # vide : au point près.
         figes = {
             'residentiel': (residentiel, 30, 14),
-            'commercial': (commercial, 12, 20),
-            'industriel': (industriel, 9, 4),
+            'commercial': (commercial, 9, 20),
+            'industriel': (industriel, 6, 4),
             'vide': (vide, 0, 0),
         }
         for nom, (lead, completude, facture) in figes.items():
             self.assertEqual(_completeness_score(lead), completude, nom)
             self.assertEqual(_bill_points(lead), facture, nom)
+
+
+class TestScoreProCIQ414(SimpleTestCase):
+    """CIQ414 — un lead COMMERCIAL ou INDUSTRIEL : complétude pro (10
+    critères × 3 pts, total 30 inchangé) et facture déclarée, y compris la
+    borne basse d'une tranche Meta. Aucun nouveau poids."""
+
+    PRO_COMPLET = dict(
+        type_installation='commercial', telephone='0600', email='h@x.ma',
+        ville='Marrakech', bill_kwh=17600, tension_raccordement='bt',
+        compteur_puissance_kva=60, categorie_commerciale='hotel',
+        surface_toiture_m2=650, decideur='seul', societe='Hôtel SARL')
+
+    def test_lead_commercial_complet_completude_30(self):
+        self.assertEqual(
+            _completeness_score(_make_lead(**self.PRO_COMPLET)), 30)
+        industriel = dict(self.PRO_COMPLET, type_installation='industriel',
+                          categorie_commerciale=None, regime_equipes='2x8',
+                          bill_kwh=None, releve_conso={
+                              'mois': [{'mois': '2026-08', 'kwh': '400'}]})
+        self.assertEqual(_completeness_score(_make_lead(**industriel)), 30)
+
+    def test_tranche_ouverte_vaut_sa_borne_basse(self):
+        tranche = _make_lead(type_installation='commercial',
+                             facture_tranche_declaree={
+                                 'min_mad': 4000, 'max_mad': None,
+                                 'libelle': 'plus de 4000 dh',
+                                 'source': 'meta'})
+        facture = _make_lead(type_installation='commercial',
+                             facture_hiver=4000)
+        self.assertEqual(_bill_points(tranche), _bill_points(facture))
+        self.assertEqual(_bill_points(tranche), 14)
+
+    def test_kwh_seuls_zero_point_facture(self):
+        lead = _make_lead(type_installation='industriel',
+                          conso_mensuelle_kwh=40000)
+        self.assertEqual(_bill_points(lead), 0)
+
+    def test_la_tranche_ne_compte_pas_hors_pro(self):
+        lead = _make_lead(type_installation='residentiel',
+                          facture_tranche_declaree={
+                              'min_mad': 4000, 'max_mad': None,
+                              'libelle': 'plus de 4000', 'source': 'meta'})
+        self.assertEqual(_bill_points(lead), 0)

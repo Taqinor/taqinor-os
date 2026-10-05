@@ -16,9 +16,11 @@ test('whitelist des clés-sections, dans l’ordre du contrat serveur', () => {
   // coche donc dans l'ordre exact où le prospect répondra.
   assert.deepEqual(
     SECTIONS_QUESTIONNAIRE.map((s) => s.key),
-    ['occupation', 'equipements', 'energie', 'pompage', 'toiture', 'gps',
+    ['occupation', 'equipements', 'energie', 'pompage', 'reseau', 'activite',
+      'toiture', 'site', 'gps',
       'photo_facture', 'photo_compteur', 'photo_tableau',
-      'photo_pompe', 'photo_forage', 'contact'],
+      'photo_pompe', 'photo_forage', 'photo_factures', 'photo_poste',
+      'societe', 'contact'],
   )
   // Chaque clé porte un libellé FR non vide — jamais une case sans texte.
   for (const { label } of SECTIONS_QUESTIONNAIRE) {
@@ -37,6 +39,8 @@ test('défaut = manquantes (aucune question déjà stockée)', () => {
     photo_compteur: false, photo_tableau: false, toiture: true,
     occupation: false, equipements: false,
     pompage: false, photo_pompe: false, photo_forage: false,
+    reseau: false, activite: false, site: false, societe: false,
+    photo_factures: false, photo_poste: false,
   })
 })
 
@@ -139,6 +143,30 @@ test('AGR419 — un lead résidentiel voit la liste d’avant (les 9 sections)',
     ['occupation', 'equipements', 'energie', 'toiture', 'gps',
       'photo_facture', 'photo_compteur', 'photo_tableau', 'contact'],
   )
+})
+
+// CIQ421 — fixtures du contrat partagé `questionnaire_lien_mint.json`
+// (`exemple_pro`, check_api_shapes) : la vérité vient du serveur (CIQ412).
+test('CIQ421 — un lead commercial voit réseau, activité, site et société, jamais équipements', () => {
+  const data = exempleContrat('crm', 'questionnaire_lien_mint', 'exemple_pro')
+  const cles = sectionsVisibles(data).map((s) => s.key)
+  for (const attendue of ['reseau', 'activite', 'site', 'societe', 'photo_factures', 'photo_poste', 'contact']) {
+    assert.ok(cles.includes(attendue), attendue)
+  }
+  for (const interdite of ['equipements', 'occupation', 'energie', 'toiture', 'pompage']) {
+    assert.ok(!cles.includes(interdite), interdite)
+  }
+  for (const { label } of sectionsVisibles(data)) assert.ok(label.trim().length > 0)
+  // Le POST ne nomme que les sections servies (jamais une résidentielle).
+  const sel = questionsDepuisReponse(data)
+  assert.deepEqual(Object.keys(questionsPourEnvoi(sel, sectionsVisibles(data))), cles)
+})
+
+test('CIQ421 — un refus 400 d’une section résidentielle pour un pro nomme la section', () => {
+  const err = { response: { data: { detail: 'Section « occupation » non posée à un lead professionnel : le questionnaire pro ne pose ni occupation.' } } }
+  const msg = messageRefusSection(err)
+  assert.ok(msg.includes('Présence en journée'))
+  assert.ok(msg.includes('occupation'))
 })
 
 test('AGR419 — un refus 400 est affiché avec la section qu’il nomme', () => {

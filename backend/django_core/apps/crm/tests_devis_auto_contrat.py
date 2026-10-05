@@ -53,7 +53,9 @@ class TestDevisAutoContrat(TestCase):
         bloc = self._bloc(lead)
         self.assertEqual(bloc['manquants_detail'], [])
         self.assertTrue(bloc['pret'])
-        self.assertIn(['conso_mensuelle_kwh', 'bill_kwh'], bloc['requis'])
+        # CIQ404 — groupe pro du contrat CIQ1 (kWh, relevé ou facture MAD).
+        self.assertIn(['conso_mensuelle_kwh', 'bill_kwh', 'releve_conso',
+                       'facture_hiver'], bloc['requis'])
 
     def test_qjr603_pro_kwh_seulement_sans_facture_reste_pret(self):
         """QJR603 (D-QJR5-14) — le lead que le devis automatique dimensionne
@@ -84,8 +86,10 @@ class TestDevisAutoContrat(TestCase):
         detail = bloc['manquants_detail'][0]
         self.assertEqual(
             set(detail), set(CONTRAT['exemple']['devis_auto']['manquants_detail'][0]))
+        # CIQ404 — le groupe pro v2 (``exemple_commercial``) remplace le
+        # groupe v1 de l'``exemple`` historique.
         self.assertEqual(bloc['requis'],
-                         CONTRAT['exemple']['devis_auto']['requis'])
+                         CONTRAT['exemple_commercial']['devis_auto']['requis'])
 
     def test_agricole_requis_conforme_au_contrat(self):
         lead = Lead.objects.create(

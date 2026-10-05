@@ -1136,8 +1136,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                                new_lead.pk, exc_info=True)
         # QJR590 — une correction d'identité du lead suit sur SA fiche Client
         # (imprimée sur le PDF) tant que celle-ci n'a pas divergé à la main.
+        # CIQ403 — un client ENTREPRISE suit aussi son identité légale.
         if ecrits & {'nom', 'prenom', 'email', 'telephone', 'adresse',
-                     'ville'}:
+                     'ville', 'societe', 'fonction_contact', 'ice', 'rc',
+                     'if_fiscal', 'adresse_siege', 'tva_recuperable'}:
             from .services import synchroniser_identite_client
             try:
                 synchroniser_identite_client(new_lead, old, self.request.user)

@@ -198,3 +198,67 @@ class Agr408VisitePointEauAvantDevisTests(VisiteSansDevisTests):
                                 {'date_prevue': DEMAIN.isoformat()},
                                 format='json')
         self.assertEqual(reponse.status_code, 201, reponse.data)
+
+
+class Ciq411TextesProDuContratTests(SimpleTestCase):
+    """CIQ411 (D-CIQ-5) — le contrat dit EXACTEMENT le texte site pro."""
+
+    def test_l_avertissement_pro_est_celui_du_serveur(self):
+        exemple = CONTRAT['exemple_pro']
+        self.assertEqual(
+            exemple['avertissement_sans_devis'],
+            services.AVERTISSEMENT_VISITE_PRO.format(
+                motifs='site en moyenne tension'))
+        self.assertEqual(exemple['rappel_juridique'],
+                         services.RAPPEL_JURIDIQUE_VISITE_DOMICILE)
+        self.assertEqual(sorted(exemple), sorted(CONTRAT['exemple']))
+
+    def test_la_mention_pro_n_est_pas_une_exception(self):
+        self.assertNotIn('exception', services.MENTION_VISITE_PRO)
+        self.assertEqual(services.MENTION_VISITE_PRO,
+                         'Visite technique avant devis (règle site '
+                         'professionnel).')
+
+
+class Ciq411VisiteProAvantDevisTests(VisiteSansDevisTests):
+    """CIQ411 — un lead PRO en MT ou aux faits inconnus : la visite AVANT le
+    devis final est la règle site professionnel. (Hérite des tests CAD123
+    sur un lead résidentiel, qui restent verts.)"""
+
+    def _pro(self, **kwargs):
+        for champ, valeur in kwargs.items():
+            setattr(self.lead, champ, valeur)
+        self.lead.save()
+
+    def test_industriel_mt_lecture_porte_la_regle_pro(self):
+        self._pro(type_installation='industriel', tension_raccordement='mt',
+                  tension_source='facture',
+                  compteur_puissance_kva=Decimal('250'),
+                  type_surface='toiture', surface_toiture_m2=Decimal('2000'))
+        reponse = self.api.get(self._url('visites/'))
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        attendu = CONTRAT['exemple_pro']
+        self.assertEqual(reponse.data['avertissement_sans_devis'],
+                         attendu['avertissement_sans_devis'])
+        self.assertEqual(reponse.data['rappel_juridique'],
+                         attendu['rappel_juridique'])
+
+    def test_pro_note_de_planification_regle_site_professionnel(self):
+        self._pro(type_installation='commercial')
+        reponse = self.api.post(self._url('visites/planifier/'),
+                                {'date_prevue': DEMAIN.isoformat()},
+                                format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        note = self.lead.activites.filter(
+            body__startswith='Visite technique planifiée').get()
+        self.assertIn(services.MENTION_VISITE_PRO, note.body)
+        self.assertNotIn(services.MENTION_VISITE_SANS_DEVIS, note.body)
+
+    def test_pro_aux_faits_connus_inchange(self):
+        self._pro(type_installation='commercial', tension_raccordement='bt',
+                  tension_source='declare',
+                  compteur_puissance_kva=Decimal('60'),
+                  type_surface='toiture', surface_toiture_m2=Decimal('300'))
+        reponse = self.api.get(self._url('visites/'))
+        self.assertEqual(reponse.data['avertissement_sans_devis'],
+                         services.AVERTISSEMENT_VISITE_SANS_DEVIS)

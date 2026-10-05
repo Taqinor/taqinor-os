@@ -21,6 +21,7 @@ from .public_questionnaire_views import public_questionnaire
 from .public_visite_views import public_visite
 from .public_views import public_salle_vente, public_apporteur_mes_deals
 from .public_lead_ref_views import lead_ref_lookup
+from .public_affiner_views import lead_affiner_pro
 # VT12 — la SEULE surface visite restée côté CRM : la texture de toit du lead.
 from .views_visite import lead_photo_toit
 # VTA3 — ALIAS PWA DÉPRÉCIÉ. Le ViewSet vit désormais dans `apps.visites` ;
@@ -112,6 +113,11 @@ urlpatterns = [
     # headless: appele par le site public (apps/web), jamais par un ecran ERP
     path('public/lead-ref/<str:idempotency_key>/', lead_ref_lookup,
          name='public-lead-ref-lookup'),
+    # CIQ413 — relève « Affiner » : jeton du questionnaire PRO du lead créé
+    # par CETTE soumission (voir public_affiner_views.py, 404 opaque).
+    # headless: appele par le site public (apps/web), jamais par un ecran ERP
+    path('public/lead-affiner/<str:idempotency_key>/', lead_affiner_pro,
+         name='public-lead-affiner'),
     # Employés assignables (sélecteur de responsable) — ouvert à la Commerciale.
     path('assignable-users/', assignable_users, name='assignable-users'),
     # ZSAL3 — Tableau de bord « Mes équipes ». Doit précéder include(router.urls)
