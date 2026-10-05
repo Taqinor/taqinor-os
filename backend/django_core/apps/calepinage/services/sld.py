@@ -346,14 +346,49 @@ def _valider_edition(corps, dessin):
     for rubrique in ('libelles', 'reperes'):
         for clef, valeur in _rubrique_dict(corps, rubrique).items():
             champ = 'edition.%s.%s' % (rubrique, clef)
+            if valeur is None:
+                # ACAL160 — ``null`` EFFACE la clef, même d'un organe
+                # momentanément non dessiné : on retire ce qui est stocké.
+                edition[rubrique][_clef_effacable(clef, champ)] = None
+                continue
             _clef_dessinee(clef, clefs, champ=champ)
             edition[rubrique][clef] = _texte_valide(valeur, champ=champ)
     for clef, brut in _rubrique_dict(corps, 'positions').items():
         champ = 'edition.positions.%s' % clef
+        if brut is None:
+            edition['positions'][_clef_effacable(clef, champ)] = None
+            continue
         _clef_dessinee(clef, clefs, champ=champ)
         edition['positions'][clef] = _position_valide(brut, dessin,
                                                       champ=champ)
     return edition
+
+
+def _clef_effacable(clef, champ):
+    if not isinstance(clef, str) or not clef:
+        raise SldRefuse(
+            "Une clef d'édition doit être le nom d'un bloc : « %s » n'en est "
+            "pas un." % (clef,), champ=champ)
+    return clef
+
+
+def _fusionner_edition(stockee, postee):
+    """ACAL160 — l'édition postée FUSIONNÉE clé par clé dans la stockée.
+
+    Une rubrique absente du corps ne touche à rien ; une clef postée remplace
+    la sienne ; ``null`` l'efface. Les clefs d'organes momentanément non
+    dessinés restent STOCKÉES (elles reviennent avec l'organe).
+    """
+    fusion = _edition_vide()
+    for rubrique in RUBRIQUES:
+        valeurs = dict((stockee or {}).get(rubrique) or {})
+        for clef, valeur in (postee.get(rubrique) or {}).items():
+            if valeur is None:
+                valeurs.pop(clef, None)
+            else:
+                valeurs[clef] = valeur
+        fusion[rubrique] = valeurs
+    return fusion
 
 
 def _position_valide(brut, dessin, *, champ):
@@ -413,14 +448,25 @@ def enregistrer_edition_sld(calepinage, corps, *, dessin=None):
         dessin = _dessin_du_calepinage(calepinage)
     from .resultat import modifier_resultat
 
-    edition = _valider_edition(corps, dessin)
+    postee = _valider_edition(corps, dessin)
 
     def _poser(resultat):
-        # ACAL57 — l'écrivain unique, relecture sous verrou.
-        resultat[CLE_EDITION] = edition
+        # ACAL57 — l'écrivain unique, relecture sous verrou ; ACAL160 — la
+        # saisie est FUSIONNÉE clé par clé dans l'édition RELUE, jamais un
+        # remplacement de toute l'édition.
+        stockee = edition_sld(_Porteur(resultat))
+        fusion = _fusionner_edition(stockee, postee)
+        resultat[CLE_EDITION] = fusion
+        return fusion
 
-    modifier_resultat(calepinage, _poser)
-    return edition
+    return modifier_resultat(calepinage, _poser)
+
+
+class _Porteur:
+    """Un ``resultat`` relu, présenté à :func:`edition_sld`."""
+
+    def __init__(self, resultat):
+        self.resultat = resultat
 
 
 def _dessin_du_calepinage(calepinage):
