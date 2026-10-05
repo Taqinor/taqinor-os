@@ -1,0 +1,916 @@
+{
+  "calepinages.ajouterPhoto": [
+    {
+      "config": null,
+      "data": {
+        "FormData": [
+          [
+            "fichier",
+            {
+              "Blob": {
+                "type": "image/png",
+                "size": 3,
+                "name": "toit.png"
+              }
+            }
+          ],
+          [
+            "genre",
+            "photo"
+          ]
+        ]
+      },
+      "url": "/calepinage/calepinages/7/photos/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.approbation": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/approbation/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.archiver": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/archiver/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.bomFixation": [
+    {
+      "config": {
+        "params": 3
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/bom-fixation/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.calerPhoto": [
+    {
+      "config": null,
+      "data": {
+        "calage": {
+          "coins": {
+            "k": 1
+          }
+        }
+      },
+      "url": "/calepinage/calepinages/7/photos/3/calage/",
+      "verbe": "patch"
+    }
+  ],
+  "calepinages.chatterHistorique": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/chatter/historique/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.chatterNoter": [
+    {
+      "config": null,
+      "data": {
+        "body": 3
+      },
+      "url": "/calepinage/calepinages/7/chatter/noter/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.comparatifXlsx": [
+    {
+      "config": {
+        "params": {
+          "ids": "8,9"
+        },
+        "responseType": "blob"
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/comparatif.xlsx/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.comparer": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/comparer/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.comparerProjets": [
+    {
+      "config": null,
+      "data": {
+        "ids": [
+          7,
+          8
+        ]
+      },
+      "url": "/calepinage/calepinages/comparer-projets/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.composerPackTechnique": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/pack-technique/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.create": [
+    {
+      "config": null,
+      "data": 7,
+      "url": "/calepinage/calepinages/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.creerDepuisModele": [
+    {
+      "config": null,
+      "data": 7,
+      "url": "/calepinage/calepinages/creer-depuis-modele/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.creerVariante": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/variantes/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.creerVersionPoseReelle": [
+    {
+      "config": null,
+      "data": {
+        "creer_version": true
+      },
+      "url": "/calepinage/calepinages/7/pose-reelle/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.decisionApprobation": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/approbation/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.demarquerModele": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/demarquer-modele/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.deposerImageDocument": [
+    {
+      "config": null,
+      "data": {
+        "fichier": "data:x",
+        "genre": "plan"
+      },
+      "url": "/calepinage/calepinages/7/image-document/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.deposerMeteoFichier": [
+    {
+      "config": null,
+      "data": {
+        "FormData": [
+          [
+            "fichier",
+            {
+              "Blob": {
+                "type": "image/png",
+                "size": 3,
+                "name": "toit.png"
+              }
+            }
+          ],
+          [
+            "genre",
+            "photo"
+          ]
+        ]
+      },
+      "url": "/calepinage/calepinages/7/meteo-fichier/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.depuisLead": [
+    {
+      "config": null,
+      "data": {
+        "lead": 7
+      },
+      "url": "/calepinage/calepinages/depuis-lead/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.depuisModele": [
+    {
+      "config": null,
+      "data": 7,
+      "url": "/calepinage/calepinages/depuis-modele/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.designContext": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/design-context/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.deverrouiller": [
+    {
+      "config": null,
+      "data": {},
+      "url": "/calepinage/calepinages/7/deverrouiller/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.diagrammePertesSvg": [
+    {
+      "config": {
+        "params": 3,
+        "responseType": "blob"
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/diagramme-pertes.svg/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.documents": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/documents/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.dossiersReglementaires": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/dossiers-reglementaires/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.dupliquer": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/dupliquer/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.dupliquerVariante": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/variantes/3/",
+      "verbe": "get"
+    },
+    {
+      "config": null,
+      "data": {
+        "nom": "Ma copie",
+        "resultat": {
+          "r": 1
+        },
+        "roof_layout": {
+          "k": 1
+        }
+      },
+      "url": "/calepinage/calepinages/7/variantes/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.enregistrerChampsDossier": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/champs-dossier/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.enregistrerEntreeElectrique": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/entree-electrique/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.enregistrerLayoutCalepinage": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/layout/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.enregistrerPertes": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/enregistrer-pertes/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.enregistrerPoseReelle": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/pose-reelle/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.enregistrerRaccordement": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/raccordement/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.enregistrerReleve": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/releve/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.envoyerImage": [
+    {
+      "config": null,
+      "data": {
+        "FormData": [
+          [
+            "fichier",
+            {
+              "Blob": {
+                "type": "image/png",
+                "size": 3,
+                "name": "toit.png"
+              }
+            }
+          ],
+          [
+            "genre",
+            "photo"
+          ]
+        ]
+      },
+      "url": "/calepinage/calepinages/7/roof-image/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.equipements": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/equipements/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.etiquettes": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/etiquettes/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.evaluerElectrique": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/evaluer-electrique/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.exportCsv": [
+    {
+      "config": {
+        "params": {
+          "quoi": 3
+        },
+        "responseType": "blob"
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/export-csv/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.exporterConception": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/export-layout/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.exporterProjet": [
+    {
+      "config": {
+        "responseType": "blob"
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/export-projet.json/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.genererDevis": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/generer-devis/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.genererDossier": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/generer-dossier/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.get": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.horizon": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/horizon/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.importerConception": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/import-layout/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.importerPlan": [
+    {
+      "config": null,
+      "data": {
+        "FormData": [
+          [
+            "fichier",
+            {
+              "Blob": {
+                "type": "image/png",
+                "size": 3,
+                "name": "toit.png"
+              }
+            }
+          ],
+          [
+            "genre",
+            "photo"
+          ]
+        ]
+      },
+      "url": "/calepinage/calepinages/7/importer-plan/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.importerProjet": [
+    {
+      "config": null,
+      "data": {
+        "FormData": [
+          [
+            "fichier",
+            {
+              "Blob": {
+                "type": "image/png",
+                "size": 3,
+                "name": "toit.png"
+              }
+            }
+          ],
+          [
+            "genre",
+            "photo"
+          ]
+        ]
+      },
+      "url": "/calepinage/calepinages/import-projet/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.layout": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/layout/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.list": [
+    {
+      "config": {
+        "params": 7
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.marquerModele": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/marquer-modele/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.masseLestage": [
+    {
+      "config": {
+        "params": 3
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/masse-lestage/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.modeles": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/modeles/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.modulesDisponibles": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/modules-disponibles/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.pertes": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/pertes/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.photos": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/photos/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.planImporte": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/plan-importe/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.pompage": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/pompage/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.poseReelle": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/pose-reelle/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.poserEtiquette": [
+    {
+      "config": null,
+      "data": {
+        "tag_id": 3
+      },
+      "url": "/calepinage/calepinages/7/etiquettes/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.raccordement": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/raccordement/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.releve": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/releve/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.releveVisite": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/releve-visite/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.remove": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/",
+      "verbe": "delete"
+    }
+  ],
+  "calepinages.reprendreVisite": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/releve-visite/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.restaurerCorbeille": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/restaurer-corbeille/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.restaurerVersion": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/versions/3/restaurer/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.resultat": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/resultat/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.retenirVariante": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/variantes/3/retenir/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.retirerEtiquette": [
+    {
+      "config": {
+        "data": {
+          "tag_id": 3
+        }
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/etiquettes/",
+      "verbe": "delete"
+    }
+  ],
+  "calepinages.schemaUnifilaire": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/schema-unifilaire/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.simuler": [
+    {
+      "config": null,
+      "data": {
+        "forcer": true
+      },
+      "url": "/calepinage/calepinages/7/simuler/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.sldDxf": [
+    {
+      "config": {
+        "responseType": "blob"
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/schema-unifilaire.dxf/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.sorties": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/sorties/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.syncDevis": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/sync-devis/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.telechargerDocument": [
+    {
+      "config": {
+        "params": {
+          "k": 1
+        },
+        "responseType": "blob"
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/documents/x/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.telechargerSortie": [
+    {
+      "config": {
+        "params": {
+          "k": 1
+        },
+        "responseType": "blob"
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/sorties/x/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.troncons": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/troncons/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.update": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/",
+      "verbe": "patch"
+    }
+  ],
+  "calepinages.variantes": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/variantes/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.versions": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/versions/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.versionsDiff": [
+    {
+      "config": {
+        "params": {
+          "contre": {
+            "k": 1
+          }
+        }
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/versions/3/diff/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.zonesLestage": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/parametres/",
+      "verbe": "get"
+    }
+  ],
+  "moteur.calculer": [
+    {
+      "config": null,
+      "data": 7,
+      "url": "/calepinage/moteur/calculer/",
+      "verbe": "post"
+    }
+  ],
+  "moteur.pose": [
+    {
+      "config": null,
+      "data": 7,
+      "url": "/calepinage/moteur/pose/",
+      "verbe": "post"
+    }
+  ],
+  "moteur.resultat": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/moteur/resultat/7/",
+      "verbe": "get"
+    }
+  ],
+  "parametres.enregistrerProfilsTypes": [
+    {
+      "config": null,
+      "data": {
+        "profils": 7
+      },
+      "url": "/calepinage/parametres/profils-types/",
+      "verbe": "put"
+    }
+  ],
+  "parametres.get": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/parametres/",
+      "verbe": "get"
+    }
+  ],
+  "parametres.profilsTypes": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/parametres/profils-types/",
+      "verbe": "get"
+    }
+  ],
+  "parametres.suggererPentesIGN": [
+    {
+      "config": null,
+      "data": {
+        "roof_layout": 7
+      },
+      "url": "/calepinage/parametres/suggestion-pente/",
+      "verbe": "post"
+    }
+  ],
+  "parametres.suggestionPenteDisponible": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/parametres/suggestion-pente/",
+      "verbe": "get"
+    }
+  ],
+  "parametres.update": [
+    {
+      "config": null,
+      "data": 7,
+      "url": "/calepinage/parametres/",
+      "verbe": "put"
+    }
+  ]
+}

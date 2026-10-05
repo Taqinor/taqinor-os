@@ -3,12 +3,16 @@
 // existant (N4). Coche/décoche une tâche via `leads/{id}/playbook/`.
 import { useCallback, useEffect, useState } from 'react'
 import api from '../../../api/axios'
-import { Spinner, Checkbox, Card } from '../../../ui'
+import { Spinner, Checkbox, Card, Button } from '../../../ui'
 import { toast } from '../../../ui/confirm'
+import MessageVisiteDialog from '../../../features/crm/relances/MessageVisiteDialog'
 
 export default function PlaybookChecklistPanel({ leadId }) {
   const [progress, setProgress] = useState([])
   const [loading, setLoading] = useState(true)
+  // AGR527 — la clé du texte (`cle_message`, contrat `lead_playbook.json`)
+  // dont l'aperçu est ouvert ; null = modale fermée.
+  const [cleTexte, setCleTexte] = useState(null)
 
   const load = useCallback(() => {
     if (!leadId) return
@@ -55,9 +59,27 @@ export default function PlaybookChecklistPanel({ leadId }) {
             {p.fait && p.fait_par_nom && (
               <span className="text-xs text-muted-foreground">— {p.fait_par_nom}</span>
             )}
+            {/* AGR527 — le texte de la tâche (dossier FDA / 82-21) : aperçu
+                FR/darija puis « Ouvrir WhatsApp » au clic humain ; cocher la
+                tâche reste un geste séparé. */}
+            {p.cle_message && (
+              <Button
+                type="button" size="sm" variant="outline"
+                data-cle-message={p.cle_message}
+                onClick={() => setCleTexte(p.cle_message)}
+              >
+                Proposer le texte
+              </Button>
+            )}
           </li>
         ))}
       </ul>
+      {cleTexte && (
+        <MessageVisiteDialog
+          leadId={leadId} cle={cleTexte} open
+          onOpenChange={(ouvert) => { if (!ouvert) setCleTexte(null) }}
+        />
+      )}
     </Card>
   )
 }

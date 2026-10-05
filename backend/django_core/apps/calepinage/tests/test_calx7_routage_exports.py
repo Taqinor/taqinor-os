@@ -44,8 +44,9 @@ class DeuxExportsCsvEnregistresTest(SimpleTestCase):
 
     def test_les_deux_url_path_sont_enregistres(self):
         _viewset, actions = _actions()
+        # ACAL229 — le point du tableur est ÉCHAPPÉ dans la regex du routeur.
         chemins = {methode.url_path for methode in actions.values()}
-        for attendu in ('export.csv', 'export-csv'):
+        for attendu in (r'export\.csv', 'export-csv'):
             self.assertIn(
                 attendu, chemins,
                 f"L'URL « calepinages/<pk>/{attendu}/ » n'est pas "
@@ -64,9 +65,21 @@ class DeuxExportsCsvEnregistresTest(SimpleTestCase):
         self.assertIn('export_csv_simulation', actions,
                       "L'export de simulation (CAL144) n'est plus rattaché "
                       "au viewset pivot.")
-        self.assertEqual(actions['export_csv'].url_path, 'export.csv')
+        self.assertEqual(actions['export_csv'].url_path, r'export\.csv')
         self.assertEqual(actions['export_csv_simulation'].url_path,
                          'export-csv')
+
+    def test_la_resolution_reelle_atteint_chaque_export(self):
+        """ACAL229 — comparer des chaînes ne suffisait pas : le point NON
+        échappé de ``export.csv`` capturait ``export-csv/``. La résolution
+        RÉELLE de chaque URL mène à la bonne action."""
+        from django.urls import resolve
+
+        base = '/api/django/calepinage/calepinages/1/'
+        self.assertEqual(resolve(base + 'export.csv/').func.actions['get'],
+                         'export_csv')
+        self.assertEqual(resolve(base + 'export-csv/').func.actions['get'],
+                         'export_csv_simulation')
 
     def test_les_url_name_restent_reversibles_separement(self):
         """Deux actions ne peuvent pas partager un ``url_name``.

@@ -152,6 +152,10 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     lead_langue = serializers.SerializerMethodField()
     lead_score = serializers.SerializerMethodField()
     lead_priorite = serializers.SerializerMethodField()
+    # AGR531 (contrat `relance_etape_v2.json`, AGR500) — le segment du lead
+    # (`type_installation`, '' si non renseigné). Lecture seule : il ne sert
+    # qu'aux CONSIGNES d'écran, jamais au rythme de la cadence.
+    lead_segment = serializers.SerializerMethodField()
     devis_reference = serializers.SerializerMethodField()
     overdue = serializers.SerializerMethodField()
     # MRY30 — QUI a traité la touche, et QUAND. Le modèle les portait déjà
@@ -244,6 +248,8 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             # COCKPIT-CONTRÔLE — additifs (voir plus haut).
             'type_etape', 'est_tache', 'nb_reports', 'due_initial_at',
             'posee_le',
+            # AGR531 — additif (contrat `relance_etape_v2.json`).
+            'lead_segment',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
@@ -291,6 +297,11 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
 
     def get_lead_langue(self, obj) -> str:
         return obj.lead.langue_preferee or 'fr'
+
+    def get_lead_segment(self, obj) -> str:
+        """AGR531 — ``Lead.type_installation`` ou ``''`` (lead déjà chargé :
+        aucune requête de plus)."""
+        return getattr(obj.lead, 'type_installation', None) or ''
 
     def get_lead_contact_preference(self, obj) -> str:
         """CAD82 — ``whatsapp_only`` | ``phone_ok`` | '' (rien de posé)."""
@@ -835,6 +846,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # lues sur le lead, avec leur provenance : RETRIEVE SEULEMENT (une
     # requête d'historique), même porte ; ``null`` hors commercial/industriel.
     entrees_ci = serializers.SerializerMethodField()
+    # CIQ428 — indicateurs INTERNES du vendeur (« audit énergétique
+    # obligatoire probable », loi 47-09) : DÉTAIL SEULEMENT, jamais la liste,
+    # jamais une sortie client.
+    indicateurs_internes = serializers.SerializerMethodField()
     # MRY5 — prochaine touche de cadence, ANNOTÉE dans le queryset
     # (``LeadViewSet.get_queryset``), jamais un SerializerMethodField : la
     # liste et le kanban affichent le badge « touche due » pour 50 cartes,
@@ -1413,6 +1428,8 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             fields.pop('identite_entreprise', None)
             # CIQ405 — `entrees_ci` : détail seulement, même porte.
             fields.pop('entrees_ci', None)
+            # CIQ428 — `indicateurs_internes` : détail seulement, même porte.
+            fields.pop('indicateurs_internes', None)
         return fields
 
     def to_representation(self, instance):
@@ -1458,8 +1475,29 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     def get_entrees_ci(self, obj):
         """CIQ405 — ``{entrees, manquants, informations}`` (contrat CIQ1) :
         la SEULE lecture lead → entrées du moteur C&I."""
+        return self._entrees_ci(obj)
+
+    def _entrees_ci(self, obj):
+        """CIQ428 — ``entrees_ci`` calculé UNE fois par lead sérialisé (lu
+        par ``entrees_ci`` ET par ``indicateurs_internes``)."""
         from .selectors import entrees_ci_du_lead
-        return entrees_ci_du_lead(obj)
+        cache = getattr(self, '_cache_entrees_ci', None)
+        if cache is None:
+            cache = self._cache_entrees_ci = {}
+        cle = id(obj)
+        if cle not in cache:
+            cache[cle] = entrees_ci_du_lead(obj)
+        return cache[cle]
+
+    @extend_schema_field(serializers.DictField())
+    def get_indicateurs_internes(self, obj):
+        """CIQ428 — ``{audit_47_09}`` : l'indicateur INTERNE « audit
+        énergétique obligatoire probable » sur la seule électricité
+        DÉCLARÉE (``apps/crm/audit_energetique.py``) ; ``None`` hors
+        commercial / industriel. Vu par le vendeur seulement."""
+        from .audit_energetique import indicateur_du_lead
+        return {'audit_47_09': indicateur_du_lead(
+            obj.type_installation, self._entrees_ci(obj))}
 
     @extend_schema_field(serializers.DictField())
     def get_identite_entreprise(self, obj):
@@ -2211,15 +2249,32 @@ class LeadPlaybookProgressSerializer(serializers.ModelSerializer):
     etape_stage = serializers.CharField(source='tache.etape.stage', read_only=True)
     fait_par_nom = serializers.CharField(
         source='fait_par.username', read_only=True, default=None)
+    # AGR526 (contrat `lead_playbook.json`, AGR507) — la clé du TEXTE que la
+    # tâche propose (`dossier_fda` / `dossier_8221`), ou null.
+    cle_message = serializers.SerializerMethodField()
 
     class Meta:
         model = LeadPlaybookProgress
         fields = [
             'id', 'lead', 'tache', 'tache_libelle', 'tache_obligatoire',
             'etape_stage', 'fait', 'fait_par', 'fait_par_nom', 'fait_le',
-            'created_at',
+            'created_at', 'cle_message',
         ]
         read_only_fields = ['fait_par', 'fait_le', 'created_at']
+
+    def get_cle_message(self, obj):
+        """AGR526 — la ``cle_message`` de l'entrée ``PLAYBOOKS_SEGMENT_CAD125``
+        dont le ``nom`` est celui du playbook de la tâche, SEULEMENT si
+        ``cle_message_segment(lead)`` la confirme ; ``None`` sinon."""
+        from .services import PLAYBOOKS_SEGMENT_CAD125, cle_message_segment
+        playbook = getattr(getattr(obj.tache, 'etape', None), 'playbook', None)
+        nom = getattr(playbook, 'nom', None)
+        entree = next((e for e in PLAYBOOKS_SEGMENT_CAD125 if e['nom'] == nom),
+                      None)
+        if entree is None:
+            return None
+        cle = entree['cle_message']
+        return cle if cle_message_segment(obj.lead) == cle else None
 
 
 # ── LB48 — Vues enregistrées par compte ────────────────────────────────────

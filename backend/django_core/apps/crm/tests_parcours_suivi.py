@@ -250,6 +250,30 @@ class TableParcoursTests(SimpleTestCase):
         total = sum(len(cas_de_la_famille(famille)) for famille in FAMILLES)
         self.assertGreater(total, 100, 'la table ne produit presque aucun cas')
 
+    def test_agr533_variantes_segment_ne_changent_que_la_lecture(self):
+        """AGR533 — une ``variantes_segment`` (modèle, entrée d'étape, geste)
+        ne remplace que ``label`` / ``precision`` / ``effet`` : jamais la clé
+        serveur (``reponse``), l'issue ni la suite."""
+        from apps.crm.parcours_suivi_outils import refus_variantes_segment
+        t = table()
+        objets = list(t['modeles'].values()) + list(t['gestes'])
+        for etape in t['etapes']:
+            objets += etape['reponses']
+            objets += [e for e in etape.get('reponses_appel', ()) if isinstance(e, dict)]
+        porteurs = [o for o in objets if o.get('variantes_segment')]
+        self.assertTrue(porteurs)  # anti-faux-vert : la table en porte
+        for objet in porteurs:
+            with self.subTest(objet=objet.get('label')):
+                self.assertEqual(refus_variantes_segment(objet), [])
+        self.assertEqual(
+            t['modeles']['decision_famille']['variantes_segment']['agricole']['label'],
+            'Décision à plusieurs — associés / coopérative')
+        # La garde REFUSE une variante qui changerait la clé serveur ou la suite.
+        self.assertTrue(refus_variantes_segment(
+            {'variantes_segment': {'agricole': {'reponse': 'plus_tard'}}}))
+        self.assertTrue(refus_variantes_segment(
+            {'variantes_segment': {'agricole': {'label': 'x', 'suite': {'type': 'fin'}}}}))
+
 
 # ── 2. Chaque réponse de chaque étape ──────────────────────────────────────────────────────
 

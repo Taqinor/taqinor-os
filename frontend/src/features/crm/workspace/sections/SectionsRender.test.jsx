@@ -11,6 +11,7 @@ import SectionEnergie, { SectionPompage, SectionEquipements } from './SectionEne
 import SectionSite from './SectionSite'
 import SectionVisite from './SectionVisite'
 import SectionDivers, { SectionOrigine, SectionWebQuestionnaire } from './SectionDivers'
+import SectionPro from './SectionPro'
 import SectionsPane from '../SectionsPane'
 
 expect.extend(axeMatchers)
@@ -693,5 +694,204 @@ describe('AGR415 — SectionPompage : chaque colonne du contrat a son champ', ()
     cleanup()
     monter({ ...leadAgricole, projet_pompage: 'existant' })
     expect(document.querySelector('[data-rappel="forage-a-creuser"]')).toBeNull()
+  })
+})
+
+/* CIQ418 — la section « Professionnel » d'un lead commercial / industriel,
+   contre le contrat partagé `lead_pro.json` (CIQ1, check_api_shapes) : aucun
+   mock inventé. */
+describe('CIQ418 — SectionPro : chaque colonne du contrat est atteignable', () => {
+  const contrat = documentContrat('crm', 'lead_pro')
+  const colonnes = contrat.colonnes_pro
+  const leadCommercial = { ...contrat.exemple, nom: 'Hôtel' }
+  const leadIndustriel = { ...contrat.exemple_industriel, nom: 'Atelier' }
+  const colonnesDe = (segment) => colonnes.filter((c) => c.segment === 'commun' || c.segment === segment)
+  const toutDeplier = () => {
+    const ouvert = Object.fromEntries(
+      ['contact', 'pipeline', 'pro', 'energie', 'equipements', 'toiture', 'visite', 'divers']
+        .map((id) => [id, false]),
+    )
+    localStorage.setItem('taqinor.lw.collapsed', JSON.stringify(ouvert))
+  }
+  const monterPane = (lead) => render(
+    <SectionsPane
+      state={initState({ lead, mode: 'edit' })} setField={vi.fn()} errors={{}} mode="edit"
+      refData={{ users: [], tagOptions: [], motifOptions: [] }}
+    />,
+  )
+  const monterPro = (lead = leadCommercial, props = {}) => render(
+    <SectionPro state={initState({ lead, mode: 'edit' })} {...base} {...props} />,
+  )
+
+  it.each([
+    ['commercial', leadCommercial],
+    ['industriel', leadIndustriel],
+  ])('lead %s : chaque colonne a un inputId réel, atteignable dans la fiche', (segment, lead) => {
+    toutDeplier()
+    monterPane(lead)
+    for (const { nom } of colonnesDe(segment)) {
+      const entree = fieldLabels[nom]
+      expect(entree, nom).toBeTruthy()
+      expect(entree.pending, nom).toBeUndefined()
+      expect(document.getElementById(entree.inputId), `${nom} → #${entree.inputId}`).toBeInTheDocument()
+    }
+  })
+
+  it('plus aucun `pending` sur une colonne pro dans fieldLabels', () => {
+    for (const { nom } of colonnes) {
+      expect(fieldLabels[nom]?.pending, nom).toBeUndefined()
+    }
+  })
+
+  it('la question de l’appel sous chaque champ de la section = celle du contrat, mot pour mot', () => {
+    monterPro()
+    for (const { nom, question } of colonnesDe('commercial')) {
+      if (fieldLabels[nom].section !== 'pro') continue
+      const hint = document.getElementById(`${fieldLabels[nom].inputId}-hint`)
+      expect(hint, nom).toBeInTheDocument()
+      expect(hint.textContent, nom).toBe(question)
+    }
+  })
+
+  it('les choix fermés de chaque select sont ceux du contrat', () => {
+    monterPro(leadIndustriel)
+    for (const { nom, choix } of colonnesDe('industriel').filter((c) => Array.isArray(c.choix))) {
+      if (fieldLabels[nom].section !== 'pro') continue
+      const select = document.getElementById(fieldLabels[nom].inputId)
+      const valeurs = Array.from(select.options).map((o) => o.value).filter(Boolean)
+      expect(valeurs.sort(), nom).toEqual(choix.filter(Boolean).sort())
+    }
+  })
+
+  it('cinq blocs dans l’ordre de l’appel, puis les deux blocs questionnaire', () => {
+    monterPro()
+    const titres = Array.from(document.querySelectorAll('.lw-bloc-titre')).map((h) => h.textContent)
+    expect(titres).toEqual([
+      'Facture & conso', 'Raccordement', 'Activité & rythme', 'Surface', 'Décideur',
+      'Site & énergie', 'Société',
+    ])
+  })
+
+  it('toutes les saisies numériques sont step="any" ; 12,5 kVA n’est jamais arrondi', () => {
+    const setField = vi.fn()
+    monterPro(leadCommercial, { setField })
+    for (const n of document.querySelectorAll('input[type="number"]')) {
+      expect(n.getAttribute('step'), n.id).toBe('any')
+    }
+    fireEvent.change(document.getElementById('lf-compteur-puissance-kva'), { target: { value: '12.5' } })
+    expect(setField).toHaveBeenCalledWith('compteur_puissance_kva', '12.5')
+  })
+
+  it('enregistrer → rouvrir → enregistrer sans toucher : aucun écart avec le serveur', () => {
+    const state = initState({ lead: leadCommercial, mode: 'edit' })
+    render(<SectionPro state={state} {...base} />)
+    const relu = {}
+    for (const [nom, entree] of Object.entries(fieldLabels)) {
+      if (entree.section !== 'pro') continue
+      const el = document.getElementById(entree.inputId)
+      if (!el || !['INPUT', 'SELECT'].includes(el.tagName) || el.type === 'checkbox') continue
+      relu[nom] = el.value === '' ? null : el.value
+    }
+    relu.jours_ouverture = Array.from(document.querySelectorAll('[id^="lf-jours-ouverture"]'))
+      .map((c, i) => (c.checked ? i + 1 : null)).filter(Boolean)
+    expect(relu.jours_ouverture).toEqual(leadCommercial.jours_ouverture)
+    expect(dirtyKeys({ ...state, draft: relu })).toEqual([])
+  })
+
+  it('l’étoile « requis devis auto » ne marque que les groupes de la règle servie', () => {
+    monterPro({ ...leadCommercial, devis_auto: { ...leadCommercial.devis_auto, requis: [['releve_conso', 'compteur_puissance_kva']] } })
+    const etoiles = Array.from(document.querySelectorAll('label .req-auto'))
+      .map((e) => e.closest('label').getAttribute('for'))
+    expect([...etoiles].sort()).toEqual(['lf-compteur-puissance-kva', 'lf-releve-conso'])
+  })
+
+  it('le drapeau « visite avant devis » est affiché avec ses motifs', () => {
+    monterPro()
+    expect(document.querySelector('[data-visite-avant-devis]').textContent)
+      .toContain('puissance souscrite inconnue')
+  })
+
+  it('les provenances servies s’affichent en lecture seule', () => {
+    monterPro()
+    expect(document.querySelector('[data-provenance="tension_raccordement"]').textContent).toContain('facture')
+    expect(document.querySelector('[data-provenance="regime_equipes"]').textContent).toContain('déclaré')
+    expect(document.querySelector('[data-provenance="ice"]')).toBeNull()
+  })
+
+  it('les registres MT du relevé n’apparaissent qu’en moyenne tension', () => {
+    monterPro()
+    expect(document.getElementById('lf-releve-conso-0-kwh').value).toBe('17600.00')
+    expect(document.getElementById('lf-releve-conso-0-kwh_pointe')).toBeNull()
+    cleanup()
+    monterPro({ ...leadCommercial, tension_raccordement: 'mt' })
+    expect(document.getElementById('lf-releve-conso-0-kwh_pointe')).toBeInTheDocument()
+  })
+
+  it('« Type de site (pro) » (facility_type) n’est plus un champ de la fiche', () => {
+    toutDeplier()
+    monterPane(leadCommercial)
+    expect(document.getElementById('lf-facility-type')).toBeNull()
+    expect(fieldLabels.facility_type).toBeUndefined()
+  })
+
+  it('pro : les sections résidentielles s’ouvrent repliées, « Professionnel » ouverte', () => {
+    const { container } = monterPane(leadCommercial)
+    expect(tete(container, 'pro')).toHaveAttribute('aria-expanded', 'true')
+    for (const id of ['energie', 'equipements', 'toiture']) {
+      expect(tete(container, id), id).toHaveAttribute('aria-expanded', 'false')
+    }
+  })
+
+  it('un lead résidentiel est rendu à l’identique : aucune section « Professionnel »', () => {
+    const { container } = monterPane({ id: 9, nom: 'Résidentiel', type_installation: 'residentiel' })
+    expect(container.querySelector('[data-nav-id="pro"]')).toBeNull()
+    const chips = Array.from(container.querySelectorAll('.lw-secnav-chip')).map((b) => b.textContent)
+    expect(chips).toEqual([
+      'Contact', 'Suivi commercial', 'Profil énergétique', "Questionnaire d'appel",
+      'Toiture & site', 'Visite technique', 'Compléments',
+    ])
+  })
+})
+
+/* CIQ428 — l'indicateur INTERNE « audit énergétique obligatoire probable »
+   (contrat `lead_pro.json`, `indicateurs_internes.audit_47_09`) : affiché
+   SEULEMENT au seuil atteint ; un lead résidentiel ne porte rien. */
+describe('CIQ428 — indicateur audit 47-09 dans la section Professionnel', () => {
+  const contrat = documentContrat('crm', 'lead_pro')
+  const lead = { ...contrat.exemple, nom: 'Hôtel' }
+  const monterPro = (l) => render(<SectionPro state={initState({ lead: l, mode: 'edit' })} {...base} />)
+  const avec = (statut, motif = 'motif') => ({
+    ...lead,
+    indicateurs_internes: { audit_47_09: { ...contrat.exemple.indicateurs_internes.audit_47_09, statut, motif } },
+  })
+
+  it('le contrat porte la clé au détail', () => {
+    expect(contrat.exemple.indicateurs_internes).toHaveProperty('audit_47_09')
+  })
+
+  it('affiché au seuil atteint, avec la mention « indicatif — sur déclaratif »', () => {
+    monterPro(avec('seuil_atteint_electricite_seule', "l'électricité déclarée seule atteint 516 tep"))
+    const note = document.querySelector('[data-audit-47-09]')
+    expect(note.textContent).toContain('516 tep')
+    expect(note.textContent).toContain('Indicatif — sur')
+    expect(note.textContent).toContain('à vérifier avec le client')
+  })
+
+  it('absent quand le seuil n’est pas atteint ou indéterminable', () => {
+    for (const statut of ['non_determine', null]) {
+      monterPro(avec(statut))
+      expect(document.querySelector('[data-audit-47-09]')).toBeNull()
+      cleanup()
+    }
+  })
+
+  it('un lead résidentiel ne porte rien (aucune section Professionnel)', () => {
+    const { container } = render(
+      <SectionsPane
+        state={initState({ lead: { id: 3, nom: 'Villa', type_installation: 'residentiel' }, mode: 'edit' })}
+        setField={vi.fn()} errors={{}} mode="edit" refData={{ users: [], tagOptions: [], motifOptions: [] }}
+      />,
+    )
+    expect(container.querySelector('[data-audit-47-09]')).toBeNull()
   })
 })

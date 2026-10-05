@@ -25,7 +25,9 @@ CONTRAT = json.loads(
 
 #: Clés servies (non colonnes) de l'exemple : jamais posées sur le modèle.
 _SERVIES = {'id', 'entrees_ci', 'devis_auto', 'incoherence_segment',
-            'segment_suggere', 'identite_entreprise'}
+            'segment_suggere', 'identite_entreprise',
+            # CIQ428 — indicateur interne servi au détail.
+            'indicateurs_internes'}
 
 
 def _sans_date(entree):

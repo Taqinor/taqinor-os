@@ -68,8 +68,10 @@ test("la route de l'export est celle que le serveur déclare", () => {
     'GET /api/django/calepinage/calepinages/<int:pk>/export-projet.json/',
   )
   const vues = readFileSync(join(APP, 'views', 'documents.py'), 'utf8')
-  assert.ok(vues.includes("url_path='export-projet.json'"),
-    "aucune @action ne sert url_path='export-projet.json'")
+  // ACAL229 — le point d'un url_path est ÉCHAPPÉ dans la regex du routeur
+  // (r'export-projet\.json') : l'URL servie reste export-projet.json/.
+  assert.ok(vues.includes("url_path=r'export-projet\\.json'"),
+    "aucune @action ne sert url_path=r'export-projet\\.json'")
 })
 
 test('format_version est l’entier 2, sur les deux exemples', () => {

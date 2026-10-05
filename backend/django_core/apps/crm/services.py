@@ -2573,6 +2573,41 @@ VISITE_CADENCE = 'apres_devis'
 FILET_JOINT_DELAI_JOURS = 1
 
 
+#: AGR530 — la note de l'étape « Planifier la visite » posée à la place du
+#: devis pour un pompage au point d'eau inconnu.
+NOTE_RELEVE_POINT_EAU = (
+    'Relevé du point d’eau : niveau et débit inconnus — demandez d’abord une '
+    'photo de la fiche du foreur ou de l’autorisation ABH ; sinon le '
+    'technicien les mesure.')
+
+#: AGR530 — les gestes de VISITE : après eux, la reprise pose le devis.
+_CLES_GESTES_VISITE = (CLE_PLANIFIER, CLE_CONFIRMATION, CLE_DEBRIEF)
+
+
+def _poser_releve_point_eau(lead, user):
+    """AGR530 — pose « Planifier la visite » (clé ``CLE_PLANIFIER``) au lieu
+    du devis quand ``devis_auto.releve_eau_manquant`` le dit, sa note disant
+    pourquoi. ``None`` (la suite ordinaire s'applique) pour tout autre lead,
+    une visite déjà effectuée ou un rendez-vous déjà calé."""
+    from .devis_auto import releve_eau_manquant
+
+    lead.refresh_from_db()
+    if getattr(lead, 'visite_effectuee', False) or not releve_eau_manquant(
+            lead):
+        return None
+    etape = poser_filet_visite_a_planifier(lead, user)
+    if etape is None:
+        return None
+    etape.note = NOTE_RELEVE_POINT_EAU
+    etape.save(update_fields=['note'])
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'Étape « {etape.libelle} » posée automatiquement à la place du '
+              f'devis — {NOTE_RELEVE_POINT_EAU}'))
+    return etape
+
+
 def assurer_prochaine_etape_apres_succes(lead, user,
                                          libelle=None,
                                          avec_plan_devis=True,
@@ -2747,6 +2782,16 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         # RAPPEL, jamais « perdu (motif) ou relance ultérieure ».
         cle = (CLE_RAPPEL_CONVENU if issue_touche_close == 'rappel'
                else CLE_DECIDER_SUITE)
+    # AGR530 (D-AGR-4 côté cadence) — l'étape à poser serait le DEVIS, mais le
+    # lead est AGRICOLE et un groupe HYDRAULIQUE de la règle « devis auto
+    # prêt » manque (HMT/niveau, ou débit/besoin) : le devis ne se chiffre
+    # pas. La suite est « Planifier la visite — relevé du point d'eau ».
+    # Jamais après un geste de VISITE (« Ne veut plus de visite » : la reprise
+    # pose le devis comme aujourd'hui), ni après une visite effectuée.
+    if cle == CLE_DEVIS and cle_close not in _CLES_GESTES_VISITE:
+        visite = _poser_releve_point_eau(lead, user)
+        if visite is not None:
+            return visite
     config = cadence_config.config_cle(lead.company, cle)
     # CAD102 — le recalage suit le CANAL de l'étape posée : un message se cale
     # sur la fenêtre des messages, un appel sur celle des appels (la pause du
@@ -2807,7 +2852,11 @@ _PLACEHOLDERS_RENDUS = (
     # CAD127 (21/09/2026) — l'origine RÉELLE du lead : le nom de la personne
     # qui l'a recommandé, et le mois où il nous avait consultés. Vides quand
     # la donnée n'existe pas ⇒ leur phrase est OMISE, jamais un crochet.
-    'prescripteur', 'mois_dossier')
+    'prescripteur', 'mois_dossier',
+    # CIQ500 (05/10/2026) — la raison sociale du lead (``Lead.societe``,
+    # nettoyée — contrat CIQ1 `lead_pro.json`). Vide ⇒ la phrase qui la porte
+    # est OMISE (MRY13), jamais un blanc « pour  ».
+    'societe')
 
 #: Les trois placeholders de la preuve. Regroupés pour n'aller chercher une
 #: réalisation QUE si le texte en porte au moins un (même discipline que
@@ -3008,6 +3057,14 @@ def _civilite_et_prenom(lead, langue):
     return civilite, prenom
 
 
+def _societe_du_lead(lead):
+    """CIQ500 — la raison sociale du lead telle que servie par le contrat
+    CIQ1 (``Lead.societe``), NETTOYÉE : espaces de bord retirés et blancs
+    internes réduits à un seul. Vide ⇒ ``''`` (la phrase qui porte
+    ``{societe}`` est alors omise — MRY13 —, jamais un blanc)."""
+    return ' '.join(str(getattr(lead, 'societe', '') or '').split())
+
+
 #: CAD65 — les civilités du lead (``Lead.Civilite``) et leur rendu darija.
 _CIVILITES_CONNUES = ('M.', 'Mme')
 _CIVILITE_DARIJA = {'M.': 'السي', 'Mme': 'لالة'}
@@ -3032,6 +3089,31 @@ def _placer_civilite(corps, civilite):
 CLES_MESSAGE_VISITE = (
     'visite_proposition', 'visite_confirmation', 'visite_releve_point_eau',
 )
+
+#: AGR526 — les textes des DOSSIERS institutionnels (playbooks de segment
+#: CAD125) que le même rendu sert — mais SEULEMENT au lead pour qui
+#: ``cle_message_segment`` renvoie cette clé (jamais un FDA à un exploitant
+#: au gasoil, jamais un 82-21 à un résidentiel).
+CLES_MESSAGE_DOSSIER = ('dossier_fda', 'dossier_8221')
+
+
+def cle_message_visite_autorisee(lead, cle):
+    """AGR526 — ``cle`` est-elle un texte que ``message-visite`` rend pour CE
+    lead ? Une clé de visite toujours ; une clé de dossier seulement quand le
+    playbook de segment du lead la confirme (``cle_message_segment``)."""
+    if cle in CLES_MESSAGE_VISITE:
+        return True
+    return cle in CLES_MESSAGE_DOSSIER and cle_message_segment(lead) == cle
+
+
+def cles_message_visite_du_lead(lead):
+    """AGR526 — les clés que ``message-visite`` accepte pour CE lead (le
+    refus 400 les NOMME)."""
+    cles = list(CLES_MESSAGE_VISITE)
+    dossier = cle_message_segment(lead)
+    if dossier in CLES_MESSAGE_DOSSIER:
+        cles.append(dossier)
+    return cles
 
 
 def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
@@ -3063,7 +3145,9 @@ def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
     from apps.parametres.models_messages import MessageTemplate
     from apps.ventes.utils.whatsapp import build_wa_url, render_message_template
 
-    if cle not in CLES_MESSAGE_VISITE:
+    # AGR526 — une clé de DOSSIER n'est rendue qu'au lead dont le playbook de
+    # segment la confirme ; sinon ``None`` (la vue en fait un 400 sur ``cle``).
+    if not cle_message_visite_autorisee(lead, cle):
         return None
 
     date_visite = _date_visite_francais(
@@ -3079,6 +3163,8 @@ def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
             'conseiller': _nom_affiche_conseiller(lead, user),
             'marque': _nom_affiche_marque(lead),
             'date_visite': date_visite,
+            # CIQ500 — la raison sociale, vide ⇒ phrase omise (MRY13).
+            'societe': _societe_du_lead(lead),
         }
         corps = MessageTemplate.get_corps(lead.company, cle, langue) or ''
         # CAD126 — variante de SEGMENT par exception (pompage / B2B).
@@ -3120,6 +3206,9 @@ def journaliser_message_visite_ouvert(lead, user, *, cle, langue, etape=None):
         'visite_proposition': 'proposer la visite',
         # AGR414 — la visite de relevé du point d'eau (agricole).
         'visite_releve_point_eau': 'proposer le relevé du point d’eau',
+        # AGR526 — les textes de dossier des playbooks de segment.
+        'dossier_fda': 'demander où en est le dossier de subvention FDA',
+        'dossier_8221': 'demander où en est le dossier du site',
     }.get(cle, 'confirmer la visite')
     langue_txt = 'darija' if langue == 'darija' else 'français'
     if etape is not None:
@@ -3325,6 +3414,9 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
         'ville': (lead.ville or '').strip(),
         'conseiller': _nom_affiche_conseiller(lead, user),
         'marque': _nom_affiche_marque(lead),
+        # CIQ500 — la raison sociale du lead ; vide ⇒ phrase OMISE (MRY13)
+        # et `societe` listé dans `placeholders_manquants`.
+        'societe': _societe_du_lead(lead),
         'reference': '',
         'lien': '',
         'date_validite': '',
@@ -13044,6 +13136,13 @@ REPONSE_JOINT_TELEPHONE = 'joint_telephone'
 #: ``views.seed_tags``) ; la comparaison, elle, ignore casse et accents
 #: (``_lead_porte_tag`` avec ``_TAG_DECISION_A_PLUSIEURS``).
 TAG_DECISION_A_PLUSIEURS = 'Décision à plusieurs'
+#: AGR520 (05/10/2026) — « En attente d'un accord (DPA / banque) » : le client
+#: attend une décision ADMINISTRATIVE ou BANCAIRE (approbation préalable FDA —
+#: Guide FDA 2024 p.22-23 —, accord de crédit). Même veille que « Plus tard »,
+#: plus une étiquette ; jamais « je classe ? » ni le passage au Froid.
+REPONSE_ATTENTE_ACCORD = 'attente_accord'
+#: L'étiquette posée par cette réponse (seedée par ``views.seed_tags``).
+TAG_ATTENTE_ACCORD = 'Attend un accord (DPA / banque)'
 
 #: Les cadences de protocole (``None`` = toutes, filets et réveils compris).
 _TOUTES_CADENCES = None
@@ -13081,6 +13180,17 @@ REPONSES_TOUCHE = {
         'cadences': _CADENCES_PROTOCOLE_ET_DEUXIEME_AFFAIRE,
         'message': 'rappel_plus_tard',
         # La date convenue avec le client est OBLIGATOIRE (« Rappeler le »).
+        'date_requise': True,
+    },
+    # AGR520 — même place, mêmes cadences et même date OBLIGATOIRE que
+    # « Plus tard » ; AUCUN texte proposé (aucun accusé n'est validé pour ce
+    # cas) ; l'étiquette dit pourquoi le dossier dort.
+    REPONSE_ATTENTE_ACCORD: {
+        'libelle': "En attente d'un accord (DPA / banque)",
+        'outcome': 'rappel',
+        'note': "En attente d'un accord (DPA / banque)",
+        'cadences': _CADENCES_PROTOCOLE_ET_DEUXIEME_AFFAIRE,
+        'message': None,
         'date_requise': True,
     },
     REPONSE_QUESTION_PRIX: {
@@ -13508,6 +13618,62 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
                  'reprendre')
     corps = (f'Réponse du client sur la touche « {libelle} » : « '
              f'{spec["note"]} » — {suite}.')
+    if body:
+        corps += f' {body}'
+    if (note or '').strip():
+        corps += f' Note : {note.strip()}'
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=_CANAL_VERS_KIND.get(etape.canal, LeadActivity.Kind.NOTE),
+        body=corps, outcome=spec['outcome'])
+    if reprise is None:
+        etape.refresh_from_db()
+        return etape
+    return reprise
+
+
+# ── AGR520 — « En attente d'un accord (DPA / banque) » ─────────────────────
+
+def repondre_attente_accord(etape, user, quand, *, note='', body=''):
+    """AGR520 — le client attend une décision administrative ou bancaire
+    (approbation préalable du dossier FDA par la DPA, accord de crédit) : il
+    n'a dit ni oui ni non, et le relancer « je classe ? » (J7), « dernier
+    message » (J13) puis le mettre en pause (J14) serait faux.
+
+    1. l'étiquette « Attend un accord (DPA / banque) » est posée
+       (``poser_tag_lead``, idempotent) ;
+    2. EXACTEMENT la veille de « Plus tard » (``mettre_en_veille``) : aucun
+       barreau consommé, la même touche revient à la date convenue — au-delà
+       de ``VEILLE_BASCULE_REVEIL_JOURS``, la cadence s'arrête et un réveil
+       est daté de ce jour-là (sa première touche est un APPEL). Jamais de
+       passage au Froid par cette réponse : l'étape du dossier ne bouge pas ;
+    3. UNE ligne d'historique typée selon le canal (issue « à rappeler »).
+
+    Aucun texte n'est proposé. La date est OBLIGATOIRE (la vue la refuse en
+    400 nommant ``rappel_le`` sinon). Renvoie la touche qui portera la
+    reprise."""
+    from . import horaires
+
+    lead = etape.lead
+    spec = REPONSES_TOUCHE[REPONSE_ATTENTE_ACCORD]
+    libelle = (etape.libelle or '').strip() or etape.get_canal_display()
+    poser_tag_lead(lead, user, TAG_ATTENTE_ACCORD)
+    quand = _instant_de_veille(quand)
+    reprise = mettre_en_veille(lead, user, quand, etape=etape,
+                               journaliser=False)
+    if reprise is not None and reprise.pk == etape.pk:
+        suite = (f'dossier en veille jusqu’au {reprise.due_date:%d/%m/%Y}, '
+                 'reprise à cette même touche — aucun barreau consommé')
+    elif reprise is not None:
+        suite = (f'plus d’un mois d’attente : la cadence est arrêtée et un '
+                 f'réveil est daté du {reprise.due_date:%d/%m/%Y}')
+    else:
+        jour = quand.astimezone(horaires.CASABLANCA).date()
+        suite = (f'veille demandée jusqu’au {jour:%d/%m/%Y}, aucune touche à '
+                 'reprendre')
+    corps = (f'Réponse du client sur la touche « {libelle} » : « '
+             f'{spec["note"]} » — étiquette « {TAG_ATTENTE_ACCORD} » posée, '
+             f'{suite}.')
     if body:
         corps += f' {body}'
     if (note or '').strip():

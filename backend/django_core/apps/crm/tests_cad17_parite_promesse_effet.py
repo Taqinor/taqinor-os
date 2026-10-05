@@ -835,7 +835,9 @@ class PariteBase(TestCase):
         if cle == 'rappel':
             corps['rappel_le'] = DATE_CHOISIE.isoformat()
             corps['rappel_heure'] = HEURE_CHOISIE
-        if cle == 'plus_tard':
+        # AGR520 — toute réponse à date OBLIGATOIRE (« Plus tard », « En
+        # attente d'un accord ») est rejouée avec la date convenue.
+        if REPONSES_TOUCHE.get(cle, {}).get('date_requise'):
             corps['rappel_le'] = (DATE_LOINTAINE if variante == 'loin'
                                   else DATE_CHOISIE).isoformat()
         if cle == 'perdu':

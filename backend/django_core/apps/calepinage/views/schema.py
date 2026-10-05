@@ -107,7 +107,7 @@ class SchemaUnifilaireMixin:
 
     # ── CALX235 — le MÊME schéma, repris par un bureau d'études ───────────
     @action(detail=True, methods=['get'],
-            url_path='schema-unifilaire.dxf',
+            url_path=r'schema-unifilaire\.dxf',
             url_name='schema-unifilaire-dxf',
             permission_classes=[PeutVoirCalepinage])
     def schema_unifilaire_dxf(self, request, pk=None):

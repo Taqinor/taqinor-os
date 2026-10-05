@@ -1,5 +1,6 @@
 import api from './axios'
 import { makeResourceFactory } from './resource'
+import { pivot } from './calepinage/_base'
 
 /* ============================================================================
    CAL33 — Client API du module Calepinage autonome (`apps/calepinage`).
@@ -49,10 +50,6 @@ import { makeResourceFactory } from './resource'
 
 // Fabrique CRUD standard sur `/calepinage/<ressource>/`.
 const crud = makeResourceFactory(api, '/calepinage')
-
-// Racine du pivot. Écrite UNE fois : toute action ci-dessous s'y accroche, ce
-// qui rend une seconde forme d'URL mécaniquement impossible.
-const pivot = (id) => `/calepinage/calepinages/${id}/`
 
 // CALX37 — corps du POST de duplication d'une variante : `nom` saisi prime ;
 // sans lui, un nom dérivé de la source évite un POST refusé pour nom vide.
