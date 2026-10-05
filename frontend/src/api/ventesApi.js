@@ -286,6 +286,10 @@ const ventesApi = {
   // pas un AbortSignal toute seule.
   postEtudeHorairePreview: (body, config = {}) =>
     api.post('/ventes/etude-horaire/preview/', body, config),
+  // CIQ124 — aperçu serveur C&I (CIQ118) : LA source des chiffres commercial /
+  // industriel, aucune écriture. Forme : `contract_samples/etude_ci_preview.json`.
+  etudeCiPreview: (body, config = {}) =>
+    api.post('/ventes/etude-ci/preview/', body, config),
   // ANALYT1 (audit item 64) — « Lecture par le client » : visites distinctes
   // par section de la proposition web + alerte de friction (relecture
   // répétée). Réservé responsable/admin côté serveur (IsResponsableOrAdmin) —
