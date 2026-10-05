@@ -14,7 +14,10 @@ const toForm = (schema, valeurs) => {
   const out = {}
   for (const champ of schema) {
     const v = valeurs?.[champ.key]
-    out[champ.key] = champ.type === 'bool' ? Boolean(v) : (v == null ? '' : String(v))
+    // AGR422 — `tribool` : « pas encore relevé » reste vide (jamais un « Non »
+    // enregistré sans réponse) ; les cases `bool` gardent leur défaut faux.
+    if (champ.type === 'tribool') out[champ.key] = v === true ? 'oui' : v === false ? 'non' : ''
+    else out[champ.key] = champ.type === 'bool' ? Boolean(v) : (v == null ? '' : String(v))
   }
   return out
 }
@@ -23,7 +26,8 @@ const toPayload = (schema, form) => {
   const out = {}
   for (const champ of schema) {
     const v = form[champ.key]
-    out[champ.key] = champ.type === 'bool' ? Boolean(v) : (v === '' ? null : v)
+    if (champ.type === 'tribool') out[champ.key] = v === 'oui' ? true : v === 'non' ? false : null
+    else out[champ.key] = champ.type === 'bool' ? Boolean(v) : (v === '' ? null : v)
   }
   return out
 }
@@ -83,6 +87,25 @@ export default function VisiteMesuresForm({ visiteId, categorie, libelle, valeur
                   />
                   {champ.label}
                 </label>
+              )
+            }
+            if (champ.type === 'tribool') {
+              return (
+                <div key={champ.key}>
+                  <Label htmlFor={id}>{champ.label}</Label>
+                  <Select
+                    value={form[champ.key] || undefined}
+                    onValueChange={(v) => setChamp(champ.key, v)}
+                    disabled={lectureSeule}
+                  >
+                    <SelectTrigger id={id}><SelectValue placeholder="— (pas encore relevé)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="oui">Oui</SelectItem>
+                      <SelectItem value="non">Non</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {erreur && <p role="alert" className="mt-1 text-xs text-destructive">{erreur}</p>}
+                </div>
               )
             }
             if (champ.type === 'select') {

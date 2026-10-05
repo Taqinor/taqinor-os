@@ -16,7 +16,10 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../../ui'
 import { toast } from '../../ui/confirm'
-import { MESURES_SCHEMA, trierCategories, STATUT_VISITE_LABEL, ligneQualification } from './visiteHelpers'
+import {
+  MESURES_SCHEMA, trierCategories, STATUT_VISITE_LABEL, ligneQualification, estVisitePointEau, titreVisite,
+  CATEGORIES_POINT_EAU,
+} from './visiteHelpers'
 
 function MesuresRecap({ mesures, checklist }) {
   const categories = trierCategories(checklist)
@@ -36,7 +39,8 @@ function MesuresRecap({ mesures, checklist }) {
                   <dd>
                     {valeurs[champ.key] == null || valeurs[champ.key] === ''
                       ? '—'
-                      : champ.type === 'bool' ? (valeurs[champ.key] ? 'Oui' : 'Non')
+                      : (champ.type === 'bool' || champ.type === 'tribool') ? (valeurs[champ.key] ? 'Oui' : 'Non')
+                        : (champ.type === 'select' && CATEGORIES_POINT_EAU.includes(c.categorie)) ? (champ.options.find((o) => o.value === valeurs[champ.key])?.label ?? valeurs[champ.key])
                         : `${valeurs[champ.key]}${champ.unite ? ` ${champ.unite}` : ''}`}
                   </dd>
                 </div>
@@ -200,7 +204,12 @@ function DetailVisite({ visite, onRetour, onChanged }) {
     <div className="space-y-4">
       <Button type="button" variant="ghost" onClick={onRetour}>← Retour à la liste</Button>
       <div className="flex items-center justify-between">
-        <h3 className="text-base font-semibold">{visite.client_panel?.lead_nom ?? `Visite #${visite.id}`}</h3>
+        <div>
+          <h3 className="text-base font-semibold">{titreVisite(visite)}</h3>
+          {estVisitePointEau(visite) && (
+            <p className="text-xs text-muted-foreground">{visite.client_panel?.lead_nom ?? `Visite #${visite.id}`}</p>
+          )}
+        </div>
         <Badge tone="neutral">{STATUT_VISITE_LABEL[visite.statut] ?? visite.statut}</Badge>
       </div>
 
@@ -222,7 +231,9 @@ function DetailVisite({ visite, onRetour, onChanged }) {
           <Button type="button" variant="outline" onClick={() => setRenvoiOuvert(true)}>Renvoyer</Button>
         </div>
       )}
-      {visite.statut === 'validee' && (
+      {/* AGR422 — l'atelier 3D se construit depuis la TOITURE : pour un relevé
+          du point d'eau il n'y a aucun toit à calepiner, le lien est masqué. */}
+      {visite.statut === 'validee' && !estVisitePointEau(visite) && (
         <Button type="button" onClick={ouvrirAtelier}>Ouvrir l’atelier 3D</Button>
       )}
 
