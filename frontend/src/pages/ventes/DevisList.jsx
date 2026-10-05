@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
@@ -9,7 +9,6 @@ import {
 } from 'lucide-react'
 import {
   fetchDevis,
-  genererPdfDevis,
   convertirDevisEnBC,
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi from '../../api/ventesApi'
@@ -34,22 +33,8 @@ import { toastMilestone } from '../../lib/toast'
 // VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) filtre la liste sur les
 // membres de cette équipe — filtre client-side, aucun endpoint nouveau.
 import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
-import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
-import { openPdfBlob } from '../../utils/pdfBlob'
-import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import { clientProposalUrl } from '../../features/ventes/clientProposalLink'
-// QJR624 — l'acompte personnalisé du dialogue PDF s'écrit dans l'échéancier.
-import { echeancierAvecAcompte } from '../../features/ventes/echeancierEdition'
-// Incident fondateur 01/09 (round 2) — le moteur premium REFUSE 'full' quand
-// AUCUNE ligne du devis ne porte un onduleur classifié (« Devis {ref} :
-// aucune option ne contient d'onduleur — génération du PDF à options refusée
-// (règle de sécurité). », apps/ventes/quote_engine/builder.py ligne ~1176) :
-// un devis « Composition libre » (accessoiresOnly) sans onduleur atterrissait
-// tout droit sur ce refus. Le devis liste porte déjà `d.lignes` (RoofViewer
-// les lit) — même prédicats que la garde de DevisGenerator.validate(), aucun
-// nouveau champ backend (`variantes_servables` n'existe pas côté ERP,
-// uniquement côté /proposal public).
-import { isReseauInverter, isHybridInverter, isOffgridInverter } from '../../features/ventes/solar'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
@@ -82,6 +67,10 @@ import {
 // SPL203 — la ligne de la liste vit dans son propre fichier (move only).
 import DevisRow from './devisList/DevisRow.jsx'
 import { STATUT_DISPLAY } from './devisList/devisListConstants.js'
+// SPL204 — flux PDF et son dialogue (move only).
+import { useDevisPdf } from './devisList/useDevisPdf.js'
+import DevisPdfDialog from './devisList/DevisPdfDialog.jsx'
+import { frenchError } from './devisList/devisListHelpers.js'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
@@ -142,21 +131,6 @@ const DEVIS_DT_COLUMNS = [
 // Filtres segmentés (statut) : « Tous » + les 5 statuts visibles.
 const STATUT_FILTERS = STATUT_DEVIS_FILTRES
 
-// Extrait un message d'erreur lisible (français) d'une réponse DRF. Couvre
-// {detail}, les erreurs de champ ({statut: [...]} — ex. garde de remise T17),
-// et retombe sur un message générique sinon. Ne JAMAIS afficher de JSON brut.
-function frenchError(err, fallback) {
-  const data = err?.response?.data ?? err
-  if (typeof data === 'string') return data
-  if (data && typeof data === 'object') {
-    if (data.detail) return String(data.detail)
-    const first = Object.values(data).find(Boolean)
-    if (Array.isArray(first) && first.length) return String(first[0])
-    if (typeof first === 'string') return first
-  }
-  return fallback
-}
-
 // Nombre de jours calendaires entre aujourd'hui et une date ISO (peut être
 // négatif). null si la date est absente/invalide.
 function daysUntil(isoDate) {
@@ -184,158 +158,6 @@ function buildRelanceWaUrl(waData, reference) {
   if (!waData?.wa_url) return null
   const base = waData.wa_url.split('?')[0]   // https://wa.me/<numéro normalisé>
   return `${base}?text=${encodeURIComponent(buildRelanceMessage(waData, reference))}`
-}
-
-// ── ARC49 — Modale de génération PDF de la LISTE (formats du simulateur). ──
-// Extraite telle quelle de DevisList (« lignes divisées ») : mêmes contrôles,
-// mêmes libellés, MÊMES options envoyées à `generer-pdf`/`clean_pdf_options`
-// (règle #4 — la migration ne touche QUE le découpage du rendu, jamais le flux
-// PDF). Toute la logique de valeur reste dans `buildPdfOptions` côté parent.
-function DevisPdfDialog({
-  pdfTarget, batchPdf, selectedIds,
-  pdfMode, setPdfMode, pdfModeAutoOnepage, targetIsAgricole,
-  showMonthly, setShowMonthly,
-  targetHasEtude, includeEtude, setIncludeEtude,
-  includeCalepinage, setIncludeCalepinage,
-  devisFinal, setDevisFinal,
-  paymentMode, setPaymentMode,
-  customAcompte, setCustomAcompte,
-  onClose, onGenererLot, onGenererUn,
-}) {
-  return (
-    <ResponsiveDialog
-      open={!!pdfTarget || batchPdf}
-      onOpenChange={(o) => { if (!o) onClose() }}
-      title={batchPdf
-        ? `Générer le PDF — ${selectedIds.length} devis (format partagé)`
-        : `Générer le PDF — ${pdfTarget?.reference}`}
-      footer={(
-        <>
-          <Button variant="ghost" onClick={onClose}>Annuler</Button>
-          <Button onClick={() => (batchPdf ? onGenererLot() : onGenererUn(pdfTarget))}>
-            <FileText /> Générer
-          </Button>
-        </>
-      )}
-    >
-        <div className="flex flex-col gap-4">
-          <div className="grid gap-2">
-            <Label>Format</Label>
-            <RadioGroup value={pdfMode} onValueChange={setPdfMode} className="flex flex-col gap-2">
-              <label className="flex items-start gap-2 text-sm">
-                <RadioGroupItem value="full" className="mt-0.5" />
-                <span>
-                  {targetIsAgricole
-                    ? 'Devis premium (4 pages — étude, schéma, rentabilité, garanties)'
-                    : 'Devis premium (3 pages — options, analyse, garanties)'}
-                </span>
-              </label>
-              <label className="flex items-start gap-2 text-sm">
-                <RadioGroupItem value="onepage" className="mt-0.5" />
-                <span>Devis une page (liste produits uniquement, sans graphiques)</span>
-              </label>
-            </RadioGroup>
-            {/* Incident fondateur 01/09 round 2 — hint SEUL (jamais bloquant) :
-                le format une page a été présélectionné parce qu'aucune ligne
-                de ce devis ne classe d'onduleur (devis « Composition libre »
-                ou accessoires/main-d'œuvre). Disparaît dès que l'utilisateur
-                choisit lui-même 'full' (règle : jamais un message qui ne
-                correspond plus au choix affiché). */}
-            {pdfModeAutoOnepage && pdfMode === 'onepage' && !batchPdf && (
-              <p className="text-xs text-muted-foreground">
-                Options non détectées — format une page présélectionné (aucun onduleur sur ce devis).
-              </p>
-            )}
-          </div>
-
-          {pdfMode === 'full' && !targetIsAgricole && (
-            <label className="flex items-start gap-2 text-sm">
-              <Checkbox checked={showMonthly} onCheckedChange={v => setShowMonthly(!!v)} className="mt-0.5" />
-              <span>Économies mensuelles <span className="text-muted-foreground">(graphique mensuel page 2)</span></span>
-            </label>
-          )}
-
-          {pdfMode === 'full' && !batchPdf && !targetIsAgricole && (
-            <label className="flex items-start gap-2 text-sm aria-disabled:opacity-50" aria-disabled={!targetHasEtude}>
-              {/* T13 — case désactivée sans données d'étude (note explicative). */}
-              <Checkbox
-                checked={includeEtude && targetHasEtude}
-                disabled={!targetHasEtude}
-                onCheckedChange={v => setIncludeEtude(!!v)}
-                className="mt-0.5"
-              />
-              <span>
-                Inclure l'étude <span className="text-muted-foreground">(page autoconsommation — devis industriel)</span>
-                {!targetHasEtude && (
-                  <span className="block text-xs text-muted-foreground">
-                    Aucune donnée d'étude sur ce devis — option indisponible.
-                  </span>
-                )}
-              </span>
-            </label>
-          )}
-
-          {/* CAL184 — page « Calepinage » (planche cotée). TRI-ÉTAT : l'écran
-              n'invente aucune valeur par défaut, parce qu'il ne sait pas si ce
-              devis porte un calepinage dessinable — le serveur, lui, le sait.
-              « Automatique » lui laisse la main ; « Oui »/« Non » tranchent et
-              priment sur l'auto (whitelist `include_calepinage`, CAL183). */}
-          {pdfMode === 'full' && (
-            <div className="grid gap-2" data-testid="cal184-calepinage">
-              <Label>Calepinage</Label>
-              <RadioGroup
-                value={includeCalepinage}
-                onValueChange={setIncludeCalepinage}
-                className="flex flex-col gap-2"
-              >
-                <label className="flex items-start gap-2 text-sm">
-                  <RadioGroupItem value="auto" className="mt-0.5" />
-                  <span>
-                    Automatique
-                    <span className="text-muted-foreground"> (page ajoutée si ce devis porte un calepinage)</span>
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-sm">
-                  <RadioGroupItem value="oui" className="mt-0.5" />
-                  <span>Inclure la planche cotée</span>
-                </label>
-                <label className="flex items-start gap-2 text-sm">
-                  <RadioGroupItem value="non" className="mt-0.5" />
-                  <span>Ne pas inclure</span>
-                </label>
-              </RadioGroup>
-            </div>
-          )}
-
-          <label className="flex items-start gap-2 text-sm">
-            <Checkbox checked={devisFinal} onCheckedChange={v => setDevisFinal(!!v)} className="mt-0.5" />
-            <span>Devis Final <span className="text-muted-foreground">(ajoute modalités de paiement + RIB)</span></span>
-          </label>
-
-          {devisFinal && (
-            <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/40 p-3">
-              <RadioGroup value={paymentMode} onValueChange={setPaymentMode} className="flex flex-col gap-2">
-                <label className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem value="standard" />
-                  <span>Échéancier du devis</span>
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem value="custom" />
-                  <span>Acompte personnalisé <span className="text-muted-foreground">(enregistré dans l'échéancier du devis)</span></span>
-                </label>
-              </RadioGroup>
-              {paymentMode === 'custom' && (
-                <div className="grid gap-1.5">
-                  <Label htmlFor="pdf-acompte">Montant acompte (MAD)</Label>
-                  <Input id="pdf-acompte" type="number" min="0" step="any"
-                         value={customAcompte} onChange={e => setCustomAcompte(e.target.value)} />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-    </ResponsiveDialog>
-  )
 }
 
 export default function DevisList() {
@@ -372,35 +194,7 @@ export default function DevisList() {
 
   const [convertingId, setConvertingId] = useState(null)
   const [factureGenId, setFactureGenId] = useState(null) // devis id en cours de facturation
-  const [pdfGenerating, setPdfGenerating] = useState({}) // id → true
-  // QX21 — au-delà de 30 s, la génération n'est PAS abandonnée : elle reste
-  // visible comme « toujours en cours » (le job Celery continue côté serveur)
-  // et le polling se poursuit à un rythme plus espacé, sans jamais relancer un
-  // second job (un seul dispatch(genererPdfDevis) par appel de genererUnPdf).
-  const [pdfSlowPoll, setPdfSlowPoll] = useState({}) // id → true
-  // WIR217 — les minuteries de sondage PDF, et le drapeau d'annulation. Sans
-  // eux, quitter l'écran pendant une génération laissait la boucle vivante :
-  // elle continuait d'appeler l'API et de poser du state sur un composant
-  // démonté, indéfiniment. `clearTimeout` au démontage + garde en tête de
-  // boucle (une requête peut être en vol au moment du démontage).
-  const pollTimers = useRef({}) // id → handle de setTimeout
-  const pollAnnule = useRef(false)
-  useEffect(() => {
-    pollAnnule.current = false
-    const timers = pollTimers.current
-    return () => {
-      pollAnnule.current = true
-      Object.values(timers).forEach(clearTimeout)
-      pollTimers.current = {}
-    }
-  }, [])
-  const [pdfDownloading, setPdfDownloading] = useState({}) // id → true
   const [statutActionId, setStatutActionId] = useState(null) // envoi/refus en cours
-  // APX14 — le devis dont l'aperçu inline est ouvert (null = panneau fermé).
-  // `previewingId` en dérive pour que le libellé « Aperçu du PDF… » de la
-  // ligne reste exactement celui d'avant.
-  const [previewDevis, setPreviewDevis] = useState(null)
-  const previewingId = previewDevis?.id ?? null
   // APX15(b) — mode d'affichage de la liste : tableau ou board par statut
   // DOCUMENT. Parité exacte avec la bascule Liste/Kanban des factures.
   const [viewMode, setViewMode] = useState('liste')
@@ -618,27 +412,46 @@ export default function DevisList() {
 
   // ── Sélection multiple pour génération PDF par lot ──
   const [selectedIds, setSelectedIds] = useState([]) // ids cochés
-  const [batchPdf, setBatchPdf] = useState(false) // la modale PDF vise le lot
-
-  // ── Choix du format PDF (parité simulateur) ──
-  const [pdfTarget, setPdfTarget] = useState(null) // devis ciblé par la modale
-  const [pdfMode, setPdfMode] = useState('full')
-  const [showMonthly, setShowMonthly] = useState(true)
-  const [devisFinal, setDevisFinal] = useState(false)
-  const [paymentMode, setPaymentMode] = useState('standard')
-  const [customAcompte, setCustomAcompte] = useState('')
-  const [includeEtude, setIncludeEtude] = useState(false)
-  // CAL184 — page « Calepinage » (planche cotée, CAL182). TRI-ÉTAT, et le
-  // défaut est 'auto' : l'écran n'invente AUCUNE valeur. C'est le serveur qui
-  // sait si ce devis porte un calepinage dessinable — la liste, elle, ne le
-  // sait pas (la clé `calepinage` de la fiche devis n'est calculée qu'en
-  // DÉTAIL, pour ne pas faire de la liste un N+1). Dire « oui » ou « non » ici
-  // serait donc une supposition ; 'auto' laisse décider celui qui sait.
-  const [includeCalepinage, setIncludeCalepinage] = useState('auto')
-  // Incident fondateur 01/09 round 2 — préselection gracieuse (voir import
-  // solar.js ci-dessus) : posé UNIQUEMENT quand l'ouverture de la modale a dû
-  // rabattre 'full' sur 'onepage' faute d'onduleur classifié sur les lignes.
-  const [pdfModeAutoOnepage, setPdfModeAutoOnepage] = useState(false)
+  // SPL204 — flux PDF (format, génération + sondage WIR217, aperçu, partage).
+  const {
+    pdfGenerating,
+    pdfSlowPoll,
+    pdfDownloading,
+    previewDevis,
+    setPreviewDevis,
+    previewingId,
+    batchPdf,
+    setBatchPdf,
+    pdfTarget,
+    setPdfTarget,
+    pdfMode,
+    setPdfMode,
+    showMonthly,
+    setShowMonthly,
+    devisFinal,
+    setDevisFinal,
+    paymentMode,
+    setPaymentMode,
+    customAcompte,
+    setCustomAcompte,
+    includeEtude,
+    setIncludeEtude,
+    includeCalepinage,
+    setIncludeCalepinage,
+    pdfModeAutoOnepage,
+    targetHasEtude,
+    targetIsAgricole,
+    openPdfModal,
+    openBatchPdfModal,
+    handlePreview,
+    fetchDevisPreviewBlob,
+    handleGenererPdf,
+    handleGenererPdfLot,
+    handleProformaPdf,
+    handleBonCommandePdf,
+    handleTelechargerPdf,
+    handlePartagerPdf,
+  } = useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds })
 
   // ── Modale d'acceptation inline (nom / date / option) ──
   const [acceptTarget, setAcceptTarget] = useState(null) // devis en cours d'acceptation
@@ -681,45 +494,6 @@ export default function DevisList() {
     }
   }
 
-  // T13 — la case « Inclure l'étude » n'a de sens qu'avec des données d'étude.
-  const targetHasEtude = !!(pdfTarget?.etude_params
-    && Object.keys(pdfTarget.etude_params).length > 0)
-  // T14 — le format premium « full » n'est pas pertinent pour le pompage agricole.
-  const targetIsAgricole = pdfTarget?.mode_installation === 'agricole'
-
-  // Incident fondateur 01/09 round 2 — un devis « Composition libre » (ou tout
-  // devis dont aucune ligne ne classe onduleur réseau/hybride/hors réseau)
-  // fait REFUSER pdf_mode 'full' par le moteur (règle dure builder.py,
-  // ~ligne 1176) : agricole/pompage est DÉJÀ dégradé sans erreur côté serveur
-  // (aucun onduleur n'y est jamais attendu), donc seul le cas non-agricole est
-  // concerné ici.
-  const devisSansOnduleurClasse = (d) =>
-    d?.mode_installation !== 'agricole'
-    && !(d?.lignes ?? []).some(l =>
-      isReseauInverter(l.designation) || isHybridInverter(l.designation)
-      || isOffgridInverter(l.designation))
-
-  const openPdfModal = (d) => {
-    setBatchPdf(false)
-    setPdfTarget(d)
-    // Agricole a désormais son propre format premium (4 pages) — défaut « full ».
-    // Un devis sans onduleur classé (Composition libre) part directement sur
-    // 'onepage' — jamais le refus 400 que l'utilisateur découvrirait sinon
-    // seulement après avoir cliqué « Générer ».
-    const sansOnduleur = devisSansOnduleurClasse(d)
-    setPdfMode(sansOnduleur ? 'onepage' : 'full')
-    setPdfModeAutoOnepage(sansOnduleur)
-    setShowMonthly(true)
-    setDevisFinal(false)
-    setPaymentMode('standard')
-    setCustomAcompte('')
-    // T12/T13 — étude cochée par défaut pour un devis industriel disposant de
-    // données d'étude ; sinon décochée (et désactivée plus bas si absente).
-    const hasEtude = !!(d?.etude_params && Object.keys(d.etude_params).length > 0)
-    setIncludeEtude(d?.mode_installation === 'industriel' && hasEtude)
-    setIncludeCalepinage('auto')
-  }
-
   // VX248 — « a » génère le PDF du devis FOCALISÉ (le deep-link ?devis=<pk>
   // déjà surligné/scrollé — même record que highlightId ci-dessus, jamais un
   // second concept de « devis actif »). Absent hors deep-link (liste nue) :
@@ -730,20 +504,6 @@ export default function DevisList() {
     { a: () => openPdfModal(highlightedDevis) },
     !!highlightedDevis,
   )
-
-  // Ouvre la modale PDF pour le lot sélectionné (format partagé).
-  const openBatchPdfModal = () => {
-    setBatchPdf(true)
-    setPdfTarget(null)
-    setPdfMode('full')
-    setPdfModeAutoOnepage(false)
-    setShowMonthly(true)
-    setDevisFinal(false)
-    setPaymentMode('standard')
-    setCustomAcompte('')
-    setIncludeEtude(false)
-    setIncludeCalepinage('auto')
-  }
 
   const openAcceptModal = (d) => {
     setAcceptTarget(d)
@@ -1188,40 +948,6 @@ export default function DevisList() {
     }
   }
 
-  // T10 — Aperçu PDF en application : récupère le blob /proposal et l'ouvre dans
-  // un nouvel onglet (mêmes params que la modale d'aperçu de la fiche lead).
-  // VX48 — l'onglet est pré-ouvert SYNCHRONE dans le geste (avant l'await),
-  // sinon Safari iOS bloque silencieusement le window.open post-await.
-  // APX14 — « Aperçu » ne QUITTE plus l'écran : il ouvre le panneau inline
-  // (PdfCanvas, déjà consommé par 4 autres écrans, jamais par celui-ci).
-  // La SOURCE reste le moteur vendorisé `/proposal` — aucun chemin PDF
-  // nouveau, aucun changement de statut (règle #4). Télécharger et Ouvrir
-  // dans un onglet restent offerts DANS le panneau, en repli.
-  const handlePreview = (d) => { setPreviewDevis(d) }
-
-  // Récupère les octets du PDF de proposition du devis en aperçu. Passée au
-  // panneau, qui ne connaît aucune URL. Le message d'erreur reste celui,
-  // français, que la liste sait déjà produire (T11 — moteur sans onduleur).
-  const fetchDevisPreviewBlob = useCallback(async () => {
-    const d = previewDevis
-    if (!d) return null
-    try {
-      const params = proposalParams(
-        'full',
-        d.mode_installation === 'industriel'
-          && !!(d.etude_params && Object.keys(d.etude_params).length > 0),
-      )
-      const res = await ventesApi.getProposalPdf(d.id, params)
-      return pdfBlob(res.data)
-    } catch (err) {
-      const msg = frenchError(err, '')
-      if (/onduleur|inverter/i.test(msg)) {
-        throw new Error('Ce devis n\'a aucun onduleur — choisissez le format une page.')
-      }
-      throw new Error(msg || 'Aperçu du PDF indisponible.')
-    }
-  }, [previewDevis])
-
   const [chantierBusy, setChantierBusy] = useState(null)
   // « Créer le chantier » sur un devis accepté : crée (ou ouvre s'il existe
   // déjà) le chantier pré-rempli, puis navigue DIRECTEMENT sur SA fiche
@@ -1272,235 +998,6 @@ export default function DevisList() {
       toast.error(frenchError(err, 'Génération de facture impossible.'))
     } finally {
       setFactureGenId(null)
-    }
-  }
-
-  // Construit les options PDF depuis l'état de la modale (partagé une page / lot).
-  const buildPdfOptions = (d) => ({
-    pdf_mode: pdfMode,
-    show_monthly: showMonthly,
-    devis_final: devisFinal,
-    // T12/T13 — étude uniquement si premium ET données d'étude présentes.
-    include_etude: pdfMode === 'full' && includeEtude
-      && !!(d?.etude_params && Object.keys(d.etude_params).length > 0),
-    // CAL184 — tri-état envoyé TEL QUEL à la whitelist `clean_pdf_options` :
-    // `null` = auto (le serveur ajoute la planche si le devis en porte une),
-    // `true`/`false` = le commercial tranche et sa valeur prime sur l'auto.
-    include_calepinage: includeCalepinage === 'auto'
-      ? null : includeCalepinage === 'oui',
-  })
-
-  // QG1 — Lance la génération d'un PDF + polling silencieux jusqu'à fichier
-  // prêt. Le PDF s'ouvre/télécharge AUTOMATIQUEMENT dès qu'il est prêt (plus
-  // besoin d'un second clic sur le bouton vert, qui reste disponible pour
-  // re-télécharger). Renvoie une promesse résolue quand la génération est
-  // acceptée (pas attendue jusqu'au fichier final), pour permettre
-  // l'enchaînement par lot.
-  const genererUnPdf = async (d, { autoOpen = true } = {}) => {
-    setPdfGenerating(prev => ({ ...prev, [d.id]: true }))
-    setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
-    try {
-      // QJR624 (D-QJR5-10) — l'« acompte personnalisé » n'est plus une option
-      // de rendu : il est ÉCRIT dans l'échéancier du devis AVANT le rendu
-      // (facture d'acompte et PDF lisent la même valeur ; sur un envoyé, la
-      // correction est tracée par le serveur). Un refus (devis figé) arrête
-      // la génération avec le message du serveur.
-      if (devisFinal && paymentMode === 'custom' && customAcompte !== '') {
-        await ventesApi.patchDevis(d.id, {
-          echeancier: echeancierAvecAcompte(
-            d.echeancier, customAcompte, d.total_ttc, d.mode_installation),
-        })
-      }
-      await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()
-      let attempts = 0
-      // WIR217 — le drapeau « lent » était lu dans `pdfSlowPoll[d.id]`, une
-      // CLÔTURE PÉRIMÉE figée à `false` à la création de la boucle : la
-      // condition restait vraie et le toast « toujours en cours » repartait
-      // TOUTES LES 10 s. Un booléen LOCAL à cette boucle le dit UNE fois.
-      let slowAnnonce = false
-      // QX21 — 15 tentatives × 2 s = 30 s au rythme rapide ; passé ce cap, le
-      // job Celery n'est PAS relancé (un seul dispatch a eu lieu ci-dessus) —
-      // on continue simplement à interroger, plus espacé (10 s), et on affiche
-      // « toujours en cours » au lieu d'abandonner silencieusement.
-      const FAST_ATTEMPTS = 15
-      const poll = async () => {
-        // WIR217 — plus AUCUN sondage après démontage de l'écran.
-        if (pollAnnule.current) return
-        const slow = attempts >= FAST_ATTEMPTS
-        attempts += 1
-        if (slow && !slowAnnonce) {
-          slowAnnonce = true
-          setPdfSlowPoll(prev => ({ ...prev, [d.id]: true }))
-          if (autoOpen) {
-            toast(`${d.reference} : le PDF est toujours en cours de génération — la page continue de vérifier automatiquement.`)
-          }
-        }
-        try {
-          // WIR217 — on lit l'ÉTAT du rendu (contrat
-          // apps/ventes/contract_samples/devis_etat_pdf.json), pas seulement
-          // `fichier_pdf` : un échec DÉFINITIF de la tâche Celery (retries
-          // épuisés) était invisible et cette boucle ne s'arrêtait jamais.
-          const res = await ventesApi.etatPdfDevis(d.id)
-          if (res.data.statut === 'echec') {
-            // État TERMINAL : on arrête le sondage et on rend l'échec
-            // ACTIONNABLE (le message du serveur nomme la cause).
-            setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
-            toast.error(
-              `${d.reference} : la génération du PDF a échoué${res.data.erreur ? ` — ${res.data.erreur}` : '.'}`,
-              { action: { label: 'Réessayer', onClick: () => genererUnPdf(d, { autoOpen }) } },
-            )
-            return
-          }
-          if (res.data.fichier_pdf) {
-            dispatch(fetchDevis())
-            setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
-            if (autoOpen) {
-              // VX48 — l'auto-open existant (QG1) reste l'expérience PAR
-              // DÉFAUT et se déclenche EN PREMIER ; on n'affiche le toast
-              // d'action « Ouvrir » (tap = geste frais, seul geste que
-              // Safari iOS honore après ce polling asynchrone) que si le
-              // téléchargement/l'ouverture automatique échoue.
-              try {
-                const pdfRes = await ventesApi.telechargerPdfDevis(d.id)
-                openPdfBlob(pdfRes.data, filenameFromResponse(pdfRes, `${d.reference}.pdf`))
-              } catch {
-                toast.error(`${d.reference} : PDF prêt — l'ouverture automatique a échoué.`, {
-                  action: {
-                    label: 'Ouvrir',
-                    onClick: async () => {
-                      try {
-                        const pdfRes = await ventesApi.telechargerPdfDevis(d.id)
-                        openPdfBlob(pdfRes.data, filenameFromResponse(pdfRes, `${d.reference}.pdf`))
-                      } catch {
-                        toast.error(`${d.reference} : PDF indisponible — utilisez le bouton de téléchargement.`)
-                      }
-                    },
-                  },
-                })
-              }
-            }
-          } else {
-            pollTimers.current[d.id] = setTimeout(poll, slow ? 10000 : 2000)
-          }
-        } catch { /* ignore poll errors — la boucle continue */ }
-      }
-      pollTimers.current[d.id] = setTimeout(poll, 2000)
-      return true
-    } catch (err) {
-      // T11 — surface claire de l'absence d'onduleur (ValueError moteur premium).
-      const msg = frenchError(err, '')
-      if (/onduleur|inverter/i.test(msg)) {
-        toast.error(`${d.reference} : ce devis n'a aucun onduleur — choisissez le format une page.`)
-      } else {
-        toast.error(`${d.reference} : ${msg || 'erreur lors de la génération PDF.'}`)
-      }
-      return false
-    } finally {
-      setPdfGenerating(prev => ({ ...prev, [d.id]: false }))
-    }
-  }
-
-  const handleGenererPdf = async (d) => {
-    setPdfTarget(null)
-    await genererUnPdf(d)
-  }
-
-  // T7 — Génération PDF par lot : même format pour tous les devis sélectionnés.
-  // QG1 — pas d'ouverture automatique par lot (N devis => N ouvertures serait
-  // intrusif) : chacun reste téléchargeable via son bouton vert une fois prêt.
-  const handleGenererPdfLot = async () => {
-    const cibles = devis.filter(d => selectedIds.includes(d.id))
-    setBatchPdf(false)
-    let ok = 0
-    for (const d of cibles) {
-      if (await genererUnPdf(d, { autoOpen: false })) ok += 1
-    }
-    if (ok > 0) toast.success(`Génération lancée pour ${ok} devis.`)
-    setSelectedIds([])
-  }
-
-  // WIR103/XFAC10 — Proforma PDF : document sans aucun impact comptable
-  // (jamais une facture, jamais une écriture). Le backend était complet et
-  // testé mais n'avait AUCUN appelant côté client. Le POST renvoie le PDF.
-  const handleProformaPdf = async (d) => {
-    try {
-      const res = await ventesApi.getProformaPdf(d.id)
-      openPdfBlob(res.data, `Proforma_${d.reference}.pdf`)
-    } catch {
-      toast.error('Proforma indisponible.')
-    }
-  }
-
-  // ZSAL8 — PDF du bon de commande lié (endpoint GET .../pdf/ backend
-  // complet, jamais appelé côté client).
-  const handleBonCommandePdf = async (d) => {
-    const bcId = d.bon_commande_etat?.id
-    if (!bcId) return
-    try {
-      const res = await ventesApi.getBonCommandePdf(bcId)
-      openPdfBlob(res.data, filenameFromResponse(res, `${d.bon_commande_etat.reference}.pdf`))
-    } catch {
-      toast.error('PDF du bon de commande indisponible.')
-    }
-  }
-
-  const handleTelechargerPdf = async (d) => {
-    setPdfDownloading(prev => ({ ...prev, [d.id]: true }))
-    try {
-      const res = await ventesApi.telechargerPdfDevis(d.id)
-      // QD2 — nom cohérent posé par le serveur (repli sur la référence).
-      openPdfBlob(res.data, filenameFromResponse(res, `${d.reference}.pdf`))
-    } catch {
-      toast.error('Fichier introuvable. Régénérez le PDF.')
-    } finally {
-      setPdfDownloading(prev => ({ ...prev, [d.id]: false }))
-    }
-  }
-
-  // VX44 — « Partager le PDF » : quand la Web Share API accepte les fichiers
-  // (iOS 15+, Android Chrome), le PDF du devis part directement dans la feuille
-  // de partage native (WhatsApp, e-mail…) ; sinon repli propre sur le
-  // téléchargement. Aucun nouveau chemin PDF — c'est le PDF existant du devis
-  // (règle #4 : le rendu /proposal n'est pas touché).
-  const handlePartagerPdf = async (d) => {
-    setPdfDownloading(prev => ({ ...prev, [d.id]: true }))
-    try {
-      const res = await ventesApi.telechargerPdfDevis(d.id)
-      const filename = filenameFromResponse(res, `${d.reference}.pdf`)
-      const file = new File([res.data], filename, { type: 'application/pdf' })
-      const shareData = { files: [file], title: `Devis ${d.reference}` }
-      if (navigator.canShare?.(shareData) && navigator.share) {
-        let partage = false
-        try {
-          await navigator.share(shareData)
-          partage = true
-        } catch (err) {
-          // L'utilisateur a annulé la feuille de partage : ne rien signaler.
-          if (err?.name !== 'AbortError') {
-            openPdfBlob(res.data, filename)
-          }
-        }
-        // QJR659 (décision fondateur 01/10) — partage RÉSOLU = envoi (comme
-        // copier le lien, D-QJR5-3) ; jamais sur AbortError ni sur le repli
-        // téléchargement. Le serveur passe la garde de remise T17 puis
-        // mark_devis_sent (idempotent, ne régresse jamais un devis avancé).
-        if (partage && d.statut === 'brouillon') {
-          try {
-            await ventesApi.partagePdfDevis(d.id)
-            dispatch(fetchDevis())
-            toast.success('PDF partagé — devis marqué envoyé.')
-          } catch (err) {
-            toast.error(frenchError(err, 'PDF partagé, mais le devis n\'a pas pu être marqué envoyé.'))
-          }
-        }
-      } else {
-        // Pas de partage natif de fichiers : repli sur le téléchargement.
-        openPdfBlob(res.data, filename)
-      }
-    } catch {
-      toast.error('Fichier introuvable. Régénérez le PDF.')
-    } finally {
-      setPdfDownloading(prev => ({ ...prev, [d.id]: false }))
     }
   }
 

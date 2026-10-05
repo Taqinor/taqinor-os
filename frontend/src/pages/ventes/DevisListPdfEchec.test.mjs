@@ -17,9 +17,12 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { documentContrat, exempleContrat } from '../../test/fixtures/contractSamples.js'
+import { lireSourcesDevisList } from './devisList/lireSources.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const SRC = readFileSync(join(HERE, 'DevisList.jsx'), 'utf8')
+// SPL204 — le flux PDF vit dans devisList/useDevisPdf.js : DevisList.jsx +
+// devisList/*.{js,jsx} (le code suit son déplacement, assertions intactes).
+const SRC = lireSourcesDevisList()
 const API = readFileSync(join(HERE, '..', '..', 'api', 'ventesApi.js'), 'utf8')
 
 const genererUnPdfBody = SRC.slice(
