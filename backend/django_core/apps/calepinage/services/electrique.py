@@ -1860,10 +1860,22 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         calepinage, entree=entree, layout=layout, materiel=materiel)
     manquantes = tuple(conception.manquantes) + tuple(
         materiel_resolu['absents'])
+    # ACAL169 — ``publiable`` n'a qu'UNE définition : celle de
+    # ``verdict_publiable``, l'agrégateur. Une évaluation À CHAUD (dessin ou
+    # entrée en cours) ne se prononce pas sur ce qui est enregistré : elle
+    # garde « aucun bloquant » comme lecture provisoire.
+    a_chaud = (entree is not None or layout is not None
+               or materiel is not None)
+
+    def _publiable(bloquants_vus):
+        if a_chaud:
+            return not bloquants_vus
+        return verdict_publiable(calepinage)['publiable']
+
     if manquantes:
         return {
             'verdict': 'indetermine',
-            'publiable': False,
+            'publiable': False if a_chaud else _publiable(()),
             'bloquants': [],
             'alertes': [],
             'manquantes': list(manquantes),
@@ -1907,7 +1919,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     return {
         'verdict': 'bloquant' if bloquants else (
             'alerte' if alertes else 'conforme'),
-        'publiable': not bloquants,
+        'publiable': _publiable(bloquants),
         'bloquants': list(bloquants),
         'alertes': alertes,
         'manquantes': [],
@@ -1926,7 +1938,10 @@ def garde_publication(calepinage):
     autrement (on ne peut pas certifier ce qu'on n'a pas pu vérifier).
     """
     evaluation = evaluation_electrique(calepinage)
-    if evaluation['publiable']:
+    # ACAL169 — la garde lit les BLOQUANTS de l'évaluation, pas le
+    # ``publiable`` (désormais celui de l'agrégateur, plus sévère) : elle
+    # refuse EXACTEMENT ce qu'elle refusait (porte devis : D05-T26).
+    if evaluation['verdict'] != 'indetermine' and not evaluation['bloquants']:
         # CAL134 — la terre est l'autre condition de publication : sans prise
         # de terre vendue, la continuité de la terre EXISTANTE doit avoir été
         # justifiée (NF C 15-100 §542). Le refus est levé tel quel : il nomme
@@ -2142,6 +2157,71 @@ def _motifs_des_troncons(troncons):
     return motifs
 
 
+#: ACAL169 — les codes publiés par l'agrégateur pour les quatre sources que
+#: seule l'évaluation voyait, et pour le matériel indéterminé.
+CODE_FICHE_INCOMPLETE = 'FICHE_INCOMPLETE'
+CODE_AFFECTATION = 'AFFECTATION_REFUSEE'
+CODE_POLYSTRING = 'POLYSTRING'
+CODE_MICRO_ONDULEURS = 'MICRO_ONDULEURS'
+
+
+def _motifs_de_l_affectation(conception, donnees, materiel):
+    """ACAL169 — les refus de l'affectation IMPOSÉE, en motifs bloquants."""
+    from core.electrique.types import STATUT_BLOQUANT
+
+    from .chaines import (
+        AffectationInvalide, normaliser_affectation_imposee,
+        verdict_affectation,
+    )
+
+    try:
+        imposee = normaliser_affectation_imposee(
+            (donnees or {}).get('affectation_manuelle'))
+    except AffectationInvalide as refus:
+        return [_motif_publication(CODE_AFFECTATION, STATUT_BLOQUANT,
+                                   str(refus), 'affectation manuelle')]
+    return [_motif_publication(CODE_AFFECTATION, STATUT_BLOQUANT, texte,
+                               'affectation manuelle — règle de chaîne')
+            for texte in verdict_affectation(
+                conception, imposee,
+                specs_onduleur=(materiel or {}).get('onduleur'))]
+
+
+def _motifs_du_polystring(calepinage, conception, donnees):
+    """ACAL169 — les bloquants polystring (CALX206/207), en motifs."""
+    from core.electrique.types import STATUT_BLOQUANT
+
+    poly = _polystring_du_calepinage(
+        conception, saisie=(donnees or {}).get(CLE_POLYSTRING),
+        reglages=_reglages_electrique_societe(calepinage))
+    return [_motif_publication(CODE_POLYSTRING, STATUT_BLOQUANT, texte,
+                               'saisie polystring — fiche onduleur')
+            for texte in poly['bloquants']]
+
+
+def _motifs_des_micro_onduleurs(conception, materiel):
+    """ACAL169 — une branche AC non bornable ne se certifie pas.
+
+    Les motifs de la BORNE de branche (aucun plafond d'unités, aucun courant
+    publiés) refusent la publication (``sans_source``) ; les omissions de
+    l'équipement (longueur de branche…) restent des omissions assumées.
+    """
+    micro = _micro_onduleurs_du_calepinage(
+        conception, (materiel or {}).get('optimiseur'),
+        ((materiel or {}).get('designations') or {}).get('optimiseur', ''))
+    if micro['bloc'] is None:
+        return []
+    motifs_borne = list(micro['bloc'].get('motifs') or ())
+    motifs = [_motif_publication(CODE_MICRO_ONDULEURS,
+                                 STATUT_MOTIF_SANS_SOURCE, texte)
+              for texte in motifs_borne]
+    motifs.extend(_motif_publication(CODE_MICRO_ONDULEURS, STATUT_MOTIF_OMIS,
+                                     texte)
+                  for texte in micro['omissions']
+                  if texte not in motifs_borne)
+    return motifs
+
+
 def verdict_publiable(calepinage):
     """CALX248 — ``{publiable, motifs}`` : TOUT ce qui empêche de publier.
 
@@ -2161,7 +2241,7 @@ def verdict_publiable(calepinage):
     from .norme import norme_applicable
     from .troncons import troncons_du_calepinage
 
-    conception, _materiel, donnees, document = conception_du_calepinage(
+    conception, materiel, donnees, document = conception_du_calepinage(
         calepinage)
     norme = norme_applicable(parametres_societe(calepinage))
     reglages = _reglages_electrique_societe(calepinage)
@@ -2185,11 +2265,20 @@ def verdict_publiable(calepinage):
         conception, donnees.get('terre'), norme,
         getattr(calepinage, 'company', None))[0]))
     motifs.extend(_motifs_des_troncons(troncons_du_calepinage(calepinage)))
-    # Le matériel NON DÉSIGNÉ n'est pas une omission assumée : on ne certifie
-    # pas ce qu'on n'a pas pu vérifier (même règle que ``garde_publication``).
+    # ACAL169 — L'AGRÉGATEUR UNIQUE : affectation imposée, polystring et
+    # micro-onduleurs entrent ICI (jusqu'ici seule l'évaluation les voyait,
+    # et l'écran affichait « Publiable » sur une chaîne de 20 modules pour
+    # une borne de 12).
+    motifs.extend(_motifs_de_l_affectation(conception, donnees, materiel))
+    motifs.extend(_motifs_du_polystring(calepinage, conception, donnees))
+    motifs.extend(_motifs_des_micro_onduleurs(conception, materiel))
+    # ACAL169 — le matériel NON DÉSIGNÉ est INDÉTERMINÉ (D-ACAL-9 : un
+    # « indéterminé » ne bloque pas la génération) : publié, jamais bloquant.
+    from core.electrique.types import STATUT_NON_VERIFIABLE
+
     for manquante in getattr(conception, 'manquantes', ()) or ():
         motifs.append(_motif_publication(
-            'FICHE_INCOMPLETE', STATUT_BLOQUANT, manquante,
+            CODE_FICHE_INCOMPLETE, STATUT_NON_VERIFIABLE, manquante,
             'fiche technique du matériel retenu'))
 
     refusants = (STATUT_BLOQUANT, STATUT_MOTIF_SANS_SOURCE)
