@@ -47,6 +47,9 @@ TOIT = {
 def _champ_au_sol(modules):
     return dict(copy.deepcopy(TOIT), poseSurfaces=[{
         'kind': 'sol', 'id': 'sol-1', 'label': 'Champ au sol',
+        # ACAL59 — une surface pavée sans ``moduleWc`` est refusée nommée :
+        # le champ au sol déclare la puissance de son module.
+        'moduleWc': 550,
         'engine': {'modules': modules}}])
 
 
