@@ -48,7 +48,7 @@ class _Base(TestCase):
             company=self.company, titre=f'Chantier {segment}', ville=ville,
             mise_en_service=datetime.date(2026, 7, 1),
             puissance_kwc=Decimal('6'), segment=segment,
-            url_page='https://taqinor.ma/realisations/x/')
+            url_page=f'https://taqinor.ma/realisations/{segment}/')
 
     def _envoyer(self):
         devis = Devis.objects.create(
@@ -84,9 +84,14 @@ class LeadAgricoleTests(_Base):
         self.assertTrue(self._cles_creees())  # le suivi démarre bien
 
     def test_le_trou_de_numerotation_est_garde(self):
+        # La cadence est RÉACTIVE : l'envoi ne matérialise que la touche 1,
+        # les suivantes naissent une à une. Le trou se lit donc sur la
+        # partition planifiée, dont chaque touche née hérite son `ordre`.
         self._envoyer()
-        ordres = list(self.lead.relance_etapes.filter(
-            cadence='apres_devis').values_list('ordre', flat=True))
+        partition = calculer_echeances_cadence(
+            self.lead, 'apres_devis', datetime.datetime.now(
+                datetime.timezone.utc))
+        ordres = [g.ordre for g, _e in partition]
         self.assertNotIn(4, ordres)
         self.assertIn(5, ordres)
 
@@ -96,7 +101,8 @@ class LeadAgricoleTests(_Base):
         cles = self._cles_planifiees()
         self.assertEqual(len(cles), 10)
         self.assertIn('j4_preuve', cles)
-        self.assertIn('j4_preuve', self._cles_creees())
+        # Cadence RÉACTIVE : seule la touche 1 naît à l'envoi.
+        self.assertEqual(self._cles_creees(), ['j1_pdf'])
 
 
 class LeadResidentielTests(_Base):

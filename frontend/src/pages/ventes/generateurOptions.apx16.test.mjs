@@ -68,7 +68,10 @@ test('les gardes de saisie du générateur sont intactes (jamais de valeur rejet
   // extraire un champ suffirait à le soustraire au contrôle. Elle ne se
   // contente pas d'un fichier nommé : elle lit le répertoire entier.
   const dir = path.join(__dirname, 'generator')
-  const fichiers = readdirSync(dir).filter(f => f.endsWith('.jsx'))
+  // Les fichiers de TEST du répertoire ne sont pas des champs d'écran : un
+  // sélecteur `input[type="number"]` n'est pas un input à garder.
+  const fichiers = readdirSync(dir).filter(
+    f => f.endsWith('.jsx') && !f.endsWith('.test.jsx'))
   assert.ok(fichiers.length >= 3, 'les morceaux extraits du générateur sont introuvables')
   for (const f of fichiers) {
     const src = readFileSync(path.join(dir, f), 'utf8')

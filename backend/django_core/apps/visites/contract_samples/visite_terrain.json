@@ -1255,6 +1255,44 @@
           "libelle": "Plaque du compteur"
         }
       ]
+    },
+    "arrivee_le": null,
+    "client_panel": {
+      "lead_nom": "Client Démo",
+      "telephone": "+212600000000",
+      "whatsapp": "+212600000000",
+      "adresse": "Quartier Démo, Bouskoura",
+      "ville": "Bouskoura",
+      "gps_lat": 33.4589,
+      "gps_lng": -7.6528
+    },
+    "devis": [
+      {
+        "id": 214,
+        "numero": "DEV-202609-0012",
+        "statut": "envoye",
+        "date": "2026-09-02",
+        "total_ttc": "84500.00",
+        "lignes": [
+          {
+            "designation": "Panneau 550 Wc",
+            "quantite": "12.000",
+            "prix_unitaire_ttc": "1850.00",
+            "total_ttc": "22200.00"
+          }
+        ]
+      }
+    ],
+    "en_route_le": null,
+    "qualification": {
+      "temperature": "chaud",
+      "devis": "a_modifier",
+      "devis_details": "Ajouter une batterie 5 kWh.",
+      "decideur": "conjoint_famille",
+      "frein": "prix",
+      "declencheur": "coupures",
+      "rappel": "demain_matin",
+      "conseil_closing": "Insister sur l'autonomie pendant les coupures."
     }
   },
   "exemple_ci_mt": {
@@ -1446,6 +1484,44 @@
           "libelle": "Plaque du compteur"
         }
       ]
+    },
+    "arrivee_le": null,
+    "client_panel": {
+      "lead_nom": "Client Démo",
+      "telephone": "+212600000000",
+      "whatsapp": "+212600000000",
+      "adresse": "Quartier Démo, Bouskoura",
+      "ville": "Bouskoura",
+      "gps_lat": 33.4589,
+      "gps_lng": -7.6528
+    },
+    "devis": [
+      {
+        "id": 214,
+        "numero": "DEV-202609-0012",
+        "statut": "envoye",
+        "date": "2026-09-02",
+        "total_ttc": "84500.00",
+        "lignes": [
+          {
+            "designation": "Panneau 550 Wc",
+            "quantite": "12.000",
+            "prix_unitaire_ttc": "1850.00",
+            "total_ttc": "22200.00"
+          }
+        ]
+      }
+    ],
+    "en_route_le": null,
+    "qualification": {
+      "temperature": "chaud",
+      "devis": "a_modifier",
+      "devis_details": "Ajouter une batterie 5 kWh.",
+      "decideur": "conjoint_famille",
+      "frein": "prix",
+      "declencheur": "coupures",
+      "rappel": "demain_matin",
+      "conseil_closing": "Insister sur l'autonomie pendant les coupures."
     }
   },
   "exemple_ci_commerce": {
@@ -1564,6 +1640,44 @@
           "libelle": "Plaque du compteur"
         }
       ]
+    },
+    "arrivee_le": null,
+    "client_panel": {
+      "lead_nom": "Client Démo",
+      "telephone": "+212600000000",
+      "whatsapp": "+212600000000",
+      "adresse": "Quartier Démo, Bouskoura",
+      "ville": "Bouskoura",
+      "gps_lat": 33.4589,
+      "gps_lng": -7.6528
+    },
+    "devis": [
+      {
+        "id": 214,
+        "numero": "DEV-202609-0012",
+        "statut": "envoye",
+        "date": "2026-09-02",
+        "total_ttc": "84500.00",
+        "lignes": [
+          {
+            "designation": "Panneau 550 Wc",
+            "quantite": "12.000",
+            "prix_unitaire_ttc": "1850.00",
+            "total_ttc": "22200.00"
+          }
+        ]
+      }
+    ],
+    "en_route_le": null,
+    "qualification": {
+      "temperature": "chaud",
+      "devis": "a_modifier",
+      "devis_details": "Ajouter une batterie 5 kWh.",
+      "decideur": "conjoint_famille",
+      "frein": "prix",
+      "declencheur": "coupures",
+      "rappel": "demain_matin",
+      "conseil_closing": "Insister sur l'autonomie pendant les coupures."
     }
   },
   "non_releves_motifs": [

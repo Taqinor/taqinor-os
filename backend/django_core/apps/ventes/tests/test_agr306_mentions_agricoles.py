@@ -196,5 +196,7 @@ class BuilderTests(TestCase):
                          25000)
         self.assertEqual(
             synthese_agricole(data)['aide_fda']['releve_le'], '2026-11-15')
-        data = build_quote_data(residentiel, {'pdf_mode': 'full'})
+        # Résidentiel sans onduleur : le format à options est refusé (règle
+        # dure) ; la clé vérifiée ne dépend pas du format.
+        data = build_quote_data(residentiel, {'pdf_mode': 'onepage'})
         self.assertNotIn('regle_fda_societe', data)

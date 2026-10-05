@@ -1929,7 +1929,12 @@ def entrees_ci_du_lead(lead):
         if _entree_vide(valeur):
             manquants.append(colonne)
         else:
-            _entree(colonne, _entree_valeur(valeur), 'toit', chemin)
+            # La surface est un NOMBRE au contrat (`lead_pro.json`), même
+            # quand l'instance porte encore la chaîne décimale reçue par l'API
+            # (« 650.00 ») et pas le Decimal relu de la base.
+            _entree(colonne,
+                    (_ci_nombre(valeur) if colonne == 'surface_toiture_m2'
+                     else _entree_valeur(valeur)), 'toit', chemin)
 
     # 6. TVA récupérable (forme posée par `economie_ci.json`, CIQ3).
     if _entree_vide(lead.tva_recuperable):

@@ -345,6 +345,8 @@ class Qjr517PariteChampsLigne(_BaseSites):
             'prix_manuel': True,
             'ligne_composee': False,
             'lot': lot.id,
+            # AGR217 — la base légale d'exonération survit elle aussi.
+            'tva_base_legale': 'Base légale parité',
         }
         attendus = set(CHAMPS_LIGNE) - set(EXCLUSIONS_REMPLACEMENT)
         self.assertEqual(
@@ -370,6 +372,7 @@ class Qjr517PariteChampsLigne(_BaseSites):
             'prix_manuel': ligne.prix_manuel,
             'ligne_composee': ligne.ligne_composee,
             'lot': ligne.lot_id,
+            'tva_base_legale': ligne.tva_base_legale,
         }
         self.assertEqual(set(valeurs), attendus)
         self.assertEqual(valeurs, {
@@ -390,4 +393,5 @@ class Qjr517PariteChampsLigne(_BaseSites):
             'prix_manuel': True,
             'ligne_composee': False,
             'lot': lot.id,
+            'tva_base_legale': 'Base légale parité',
         })
