@@ -60,7 +60,7 @@ def obtenir_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
             (rien n'est créé, et l'appelant n'apprend rien de son existence) ;
             jeu de réglages inconnu (``preset_id``).
     """
-    from django.db import transaction
+    from django.db import IntegrityError, transaction
 
     from apps.ventes.selectors import get_devis_by_pk
 
@@ -99,17 +99,26 @@ def obtenir_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
         existant = calepinage_du_devis(devis_id, company)
         if existant is not None:
             return existant, False
-        calepinage = Calepinage.objects.create(
-            company=company,
-            devis=devis,
-            client_id=getattr(devis, 'client_id', None),
-            lead_id=getattr(devis, 'lead_id', None),
-            titre=titre or _titre_du_devis(devis),
-            roof_layout=roof_layout,
-            layout_hash=empreinte,
-            roof_image=getattr(devis, 'roof_image', None) or '',
-            cree_par=user,
-        )
+        try:
+            with transaction.atomic():
+                calepinage = Calepinage.objects.create(
+                    company=company,
+                    devis=devis,
+                    client_id=getattr(devis, 'client_id', None),
+                    lead_id=getattr(devis, 'lead_id', None),
+                    titre=titre or _titre_du_devis(devis),
+                    roof_layout=roof_layout,
+                    layout_hash=empreinte,
+                    roof_image=getattr(devis, 'roof_image', None) or '',
+                    cree_par=user,
+                )
+        except IntegrityError:
+            # ACAL33 — course perdue : la contrainte ``calepinage_un_par_devis``
+            # a gardé le calepinage du clic gagnant ; on le rend tel quel.
+            existant = calepinage_du_devis(devis_id, company)
+            if existant is None:
+                raise
+            return existant, False
     # CAL26 — la première ligne du chatter, par la primitive `records`.
     journaliser_creation(calepinage, user=user)
     _noter_jeu(calepinage, jeu, regles, user=user)
@@ -313,6 +322,8 @@ def demarrer_depuis_modele(modele, company, *, user=None, lead_id=None,
         services.modeles.ModeleInvalide: modèle non marqué, rattachement
             absent ou étranger (champ nommé par le service).
     """
+    from django.db import transaction
+
     from apps.ventes.selectors import get_devis_by_pk
 
     from .modeles import creer_depuis_modele
@@ -325,15 +336,32 @@ def demarrer_depuis_modele(modele, company, *, user=None, lead_id=None,
         if devis is None or devis.company_id != company.pk:
             raise CreationRefusee(f"Devis introuvable (#{devis_id}).",
                                   champ='devis_id')
+        # ACAL33 — un devis déjà rattaché est refusé AVANT toute copie : la
+        # base n'admet qu'un calepinage par devis, et le refus nomme le
+        # calepinage qui le tient.
+        from ..selectors import calepinage_du_devis
+        from .liens import _message_deja_lie
+
+        deja = calepinage_du_devis(devis.pk, company)
+        if deja is not None:
+            raise CreationRefusee(_message_deja_lie(devis, deja),
+                                  champ='devis_id')
         lead_id = getattr(devis, 'lead_id', None) or lead_id
         client_id = getattr(devis, 'client_id', None) or client_id
 
-    copie = creer_depuis_modele(modele, user=user, lead_id=lead_id,
-                                client_id=client_id, titre=titre)
+    with transaction.atomic():
+        copie = creer_depuis_modele(modele, user=user, lead_id=lead_id,
+                                    client_id=client_id, titre=titre)
+        if devis is not None:
+            # ACAL33 — le SEUL écrivain de ``Calepinage.devis`` ; un refus
+            # (course perdue) annule la copie entière.
+            from .liens import LiaisonRefusee, lier_devis
+
+            try:
+                lier_devis(copie, devis.pk, user=user)
+            except LiaisonRefusee as refus:
+                raise CreationRefusee(str(refus), champ='devis_id') from None
     champs = []
-    if devis is not None:
-        copie.devis = devis
-        champs.append('devis')
     regles = 0
     if jeu is not None:
         document, regles = _layout_regle(copie.roof_layout, jeu)

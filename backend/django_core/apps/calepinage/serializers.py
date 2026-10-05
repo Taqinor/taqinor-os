@@ -124,9 +124,12 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             'cree_par', 'created_at', 'updated_at',
             'responsable', 'responsable_nom',  # CALX406
         ]
+        #: ACAL33 — ``devis`` est LU, jamais écrit par le CRUD : le seul
+        #: écrivain est ``services.liens.lier_devis`` (refus nommés, journal,
+        #: unicité « un calepinage par devis »).
         read_only_fields = [
             'layout_hash', 'roof_image', 'version_moteur', 'cree_par',
-            'created_at', 'updated_at',
+            'created_at', 'updated_at', 'devis',
         ]
 
     # YAPIC6 — la nature est DÉCLARÉE (même patron que le jumeau côté ventes,

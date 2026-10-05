@@ -166,6 +166,13 @@ class Calepinage(TenantModel):
                 condition=(models.Q(lead_id__isnull=False)
                            | models.Q(client__isnull=False)),
                 name='calepinage_lead_ou_client'),
+            # ACAL33 — UN calepinage par devis (et par société) : deux
+            # conceptions sur un même devis rendaient la péremption et la
+            # resynchronisation ambiguës. Seul écrivain : liens.lier_devis.
+            models.UniqueConstraint(
+                fields=['company', 'devis'],
+                condition=models.Q(devis__isnull=False),
+                name='calepinage_un_par_devis'),
         ]
         indexes = [
             models.Index(fields=['company', 'statut'],
