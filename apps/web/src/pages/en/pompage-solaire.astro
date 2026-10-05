@@ -46,7 +46,7 @@ const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit') + '?mode=agricole';
 
 // W349 — form-bypass door: no field, no worksheet to fill.
-const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText());
+const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText('en', 'pompage'));
 
 // W348 — printable sizing worksheet (HMT/flow rate/hours/crop), to fill on
 // site then send back as a photo on WhatsApp: reuses ONLY the 4 variables
@@ -144,8 +144,8 @@ const jsonLd = {
             filling in — a bill (or meter) photo is enough to start. */}
         <div class="cine-in cine-in-3 mt-8 border-2 border-brass-400/60 bg-white/5 p-5 sm:p-6">
           <p class="text-base font-bold text-white sm:text-lg">
-            No time to read this page? Send a photo of your bill on WhatsApp — we'll take care of
-            everything.
+            Send on WhatsApp a photo of your pump’s nameplate or of the borehole head, and a butane
+            or diesel receipt if you have one.
           </p>
           <a
             href={zeroFormWaHref}

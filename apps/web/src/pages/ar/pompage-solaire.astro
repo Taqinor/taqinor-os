@@ -44,7 +44,7 @@ const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit') + '?mode=agricole';
 
 // W349 — باب بدون نموذج: لا حقل، لا فيشة للتعبئة. سطر دارجة مُضاف داخل الدالة.
-const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText('ar'));
+const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText('ar', 'pompage'));
 
 // W348 — فيشة تحديد مقاس قابلة للطباعة (HMT/الصبيب/الساعات/المحصول)، تُملأ
 // ميدانياً ثم تُرسل صورتها عبر واتساب: تُعيد استعمال المتغيرات الأربعة
@@ -139,8 +139,8 @@ const jsonLd = {
             الفاتورة (أو العداد) كافية للبدء. */}
         <div class="cine-in cine-in-3 mt-8 border-2 border-brass-400/60 bg-white/5 p-5 sm:p-6">
           <p class="text-base font-bold text-white sm:text-lg">
-            ماعندكش الوقت باش تقرا هاد الصفحة؟ صيفط صورة الفاتورة ديالك عبر واتساب — احنا نتكلفو
-            بكلشي.
+            صيفط عبر واتساب صورة ديال البلاكة د المضخة ولا د راس البير، وورقة د البوطان ولا د
+            الگازوال إلا كانت عندك.
           </p>
           <a
             href={zeroFormWaHref}

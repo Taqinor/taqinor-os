@@ -46,7 +46,7 @@ import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../lib/whatsapp';
 
 // W349 — porte sans formulaire : aucun champ, aucune fiche à remplir.
-const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText());
+const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText('fr', 'pompage'));
 
 // W348 — fiche de dimensionnement imprimable (HMT/débit/heures/culture), à
 // remplir sur place puis renvoyer en photo sur WhatsApp : reprend UNIQUEMENT
@@ -149,8 +149,8 @@ const jsonLd = {
             suffit pour démarrer l'échange. */}
         <div class="cine-in cine-in-3 mt-8 border-2 border-brass-400/60 bg-white/5 p-5 sm:p-6">
           <p class="text-base font-bold text-white sm:text-lg">
-            Pas le temps de lire cette page ? Envoyez une photo de votre facture sur WhatsApp —
-            on s’occupe de tout.
+            Envoyez sur WhatsApp une photo de la plaque de votre pompe ou de la tête du forage, et
+            un reçu de butane ou de gasoil si vous l’avez.
           </p>
           <a
             href={zeroFormWaHref}
