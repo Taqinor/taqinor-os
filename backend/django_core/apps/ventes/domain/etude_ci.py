@@ -491,6 +491,38 @@ def _registres_resolus(res):
     return None
 
 
+def _courbe_mesuree_resolue(courbe, annee_reference):
+    """CIQ133 — ``(valeurs horaires, début, source)`` d'une courbe MESURÉE, ou
+    ``None``. Un fichier passe par LE parseur du calepinage (façade
+    ``apps.calepinage.services.apercu_courbe_csv``) : aucun second lecteur.
+    Fichier illisible ⇒ 400 FR nommant la colonne (message du parseur)."""
+    if not isinstance(courbe, dict):
+        return None
+    source = courbe.get('source')
+    debut = courbe.get('debut') or courbe.get('date_debut')
+    if isinstance(courbe.get('contenu'), str) and courbe['contenu'].strip():
+        from rest_framework.exceptions import ValidationError
+
+        from apps.calepinage import services as calepinage_services
+        try:
+            apercu = calepinage_services.apercu_courbe_csv(
+                courbe['contenu'], colonne=courbe.get('colonne'),
+                unite=courbe.get('unite') or 'kwh', origine=source or '')
+        except calepinage_services.ImportCourbeInvalide as erreur:
+            raise ValidationError({'courbe_mesuree': [erreur.motif],
+                                   'champ': erreur.champ or 'fichier'})
+        return apercu['valeurs'], debut or '%d-01-01' % annee_reference, source
+    points = courbe.get('points')
+    if not isinstance(points, list) or not points:
+        return None
+    valeurs = [_num(p) or 0.0 for p in points]
+    if int(courbe.get('pas_minutes') or 60) == 15:
+        groupes = [valeurs[i:i + 4] for i in range(0, len(valeurs) - len(valeurs) % 4, 4)]
+        moyenne = (courbe.get('unite') or 'kwh') == 'kw'
+        valeurs = [sum(g) / 4.0 if moyenne else sum(g) for g in groupes]
+    return valeurs, debut, source
+
+
 def _garde_kwh_factures(res, tarif, alertes):
     """Décision du 30/09 : un kWh déclaré qui contredit la facture (> 2×) bloque."""
     from apps.ventes.etude_horaire import RATIO_KWH_FACTURE_MAX, RATIO_KWH_FACTURE_MIN
@@ -817,6 +849,9 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     tarif = tarif_ci.tarif_applicable(res.valeur('tarif_declare'), tension=tension)
     conso, _feuille = _consommation(res, tarif, alertes, hypotheses)
     registres = _registres_resolus(res)
+    mesuree = _courbe_mesuree_resolue(res.valeur('courbe_mesuree'), _aujourdhui().year - 1)
+    if conso is None and mesuree:
+        conso = round(sum(mesuree[0]), 3)
     if conso is None and registres:
         from apps.ventes.moteur_ci.charge import POSTES_MT, _registre
         conso = [sum(_registre(m, p) for p in POSTES_MT) for m in registres]
@@ -860,7 +895,14 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     rythme = {k: res.valeur(k) for k in (
         'jours_ouverts', 'plages', 'equipes', 'debut_equipe_h', 'fermetures',
         'ramadan', 'talon', 'categorie_commerciale', 'reponses_categorie')}
-    if registres:
+    if mesuree:
+        # CIQ133 — priorité : courbe mesurée > registres MT > déclaré > archétype.
+        from apps.ventes.moteur_ci.charge import courbe_mesuree_jours_types
+        valeurs, debut, source_mesure = mesuree
+        jours_types, prov_charge, al_charge = courbe_mesuree_jours_types(
+            valeurs, debut, annee_reference=_aujourdhui().year - 1,
+            kwh_mensuels=conso if isinstance(conso, list) else None, source=source_mesure)
+    elif registres:
         # CIQ132 — priorité : registres MT > profil déclaré > archétype.
         from apps.ventes.moteur_ci.charge import courbe_registres_mt
         jours_types, prov_charge, al_charge = courbe_registres_mt(

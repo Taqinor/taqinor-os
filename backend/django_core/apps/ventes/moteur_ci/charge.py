@@ -442,6 +442,92 @@ def _jours_types_gmt(calendrier, courbes):
             for (mois, type_jour) in sorted(groupes, key=lambda k: (k[0], ordre[k[1]]))]
 
 
+def _mois_le_plus_proche(mois, mesures):
+    return min(mesures, key=lambda m: (min(abs(m - mois), 12 - abs(m - mois)), m))
+
+
+def courbe_mesuree_jours_types(valeurs_horaires, debut, *, annee_reference,
+                               kwh_mensuels=None, source=None):
+    """CIQ133 — jours types (GMT) depuis une courbe de charge MESURÉE.
+
+    ``valeurs_horaires`` : kWh de chaque heure CIVILE consécutive depuis le
+    jour ``debut`` (date ISO), déjà ramenés au pas horaire (parseur unique
+    ``apps.calepinage.services.apercu_courbe_csv`` pour un fichier). Pour
+    chaque mois MESURÉ : moyenne par type de jour × heure, ``nb_jours`` = jours
+    réellement mesurés (énergie du mois = mesure). Mois NON mesurés : niveau =
+    kWh mensuel déclaré, FORME empruntée au mois mesuré le plus proche
+    (étiquetée) ; sans kWh déclaré, le mois est omis et dit.
+    """
+    alertes = []
+    provenance = {
+        'methode': 'courbe_mesuree', 'archetype': None, 'niveau_donnees': 'mesure',
+        'heures': 'GMT', 'annee_reference': annee_reference, 'repartition': 'mesure',
+        'talon': None, 'bornes': None, 'reponses_non_consommees': [],
+        'couverture': None, 'mois_forme_empruntee': [], 'source': source,
+    }
+    try:
+        jour = datetime.date.fromisoformat(str(debut)[:10])
+    except (TypeError, ValueError):
+        alertes.append(_alerte('courbe_mesuree_sans_debut', 'courbe_mesuree.debut',
+                               'Courbe mesurée sans date de début lisible : ignorée.',
+                               niveau='bloquant'))
+        return None, provenance, alertes
+    valeurs = [max(0.0, float(v or 0)) for v in valeurs_horaires or []]
+    nb_jours = len(valeurs) // HEURES
+    if nb_jours == 0:
+        alertes.append(_alerte('courbe_mesuree_vide', 'courbe_mesuree',
+                               'Courbe mesurée vide : ignorée.', niveau='bloquant'))
+        return None, provenance, alertes
+    groupes = {}
+    for i in range(nb_jours):
+        date = jour + datetime.timedelta(days=i)
+        civile = valeurs[i * HEURES:(i + 1) * HEURES]
+        gmt = _vers_gmt(civile, decalage_maroc_h(date))
+        cle = (date.month, _type_calendaire(date))
+        cumul, n = groupes.get(cle, ([0.0] * HEURES, 0))
+        groupes[cle] = ([c + g for c, g in zip(cumul, gmt)], n + 1)
+    fin = jour + datetime.timedelta(days=nb_jours - 1)
+    provenance['couverture'] = {'debut': jour.isoformat(), 'fin': fin.isoformat(),
+                                'jours': nb_jours}
+    mesures = sorted({m for m, _t in groupes})
+    sortie = [{'mois': m, 'type_jour': t, 'nb_jours': n, 'charge_kwh': [c / n for c in cumul]}
+              for (m, t), (cumul, n) in groupes.items()]
+
+    manquants = [m for m in range(1, 13) if m not in mesures]
+    niveaux = None
+    if isinstance(kwh_mensuels, (list, tuple)) and len(kwh_mensuels) == 12:
+        niveaux = [None if v is None else float(v) for v in kwh_mensuels]
+    compte = {}
+    for date in _jours_annee(annee_reference):
+        cle = (date.month, _type_calendaire(date))
+        compte[cle] = compte.get(cle, 0) + 1
+    for mois in manquants:
+        if niveaux is None or niveaux[mois - 1] is None:
+            alertes.append(_alerte('mois_non_mesure', 'courbe_mesuree',
+                                   'Mois %d non mesuré et sans kWh déclaré : omis.' % mois))
+            continue
+        modele = _mois_le_plus_proche(mois, mesures)
+        formes = [jt for jt in sortie if jt['mois'] == modele]
+        energie_modele = sum(sum(jt['charge_kwh']) * compte.get((mois, jt['type_jour']), 0)
+                             for jt in formes)
+        if energie_modele <= 0:
+            continue
+        facteur = niveaux[mois - 1] / energie_modele
+        for jt in formes:
+            n = compte.get((mois, jt['type_jour']), 0)
+            if n:
+                sortie.append({'mois': mois, 'type_jour': jt['type_jour'], 'nb_jours': n,
+                               'charge_kwh': [c * facteur for c in jt['charge_kwh']]})
+        provenance['mois_forme_empruntee'].append(mois)
+        alertes.append(_alerte(
+            'forme_empruntee', 'courbe_mesuree',
+            'Mois %d non mesuré : niveau déclaré, forme empruntée au mois mesuré %d.'
+            % (mois, modele), niveau='info'))
+    ordre = {'ouvre': 0, 'samedi': 1, 'dimanche': 2, 'ferme': 3}
+    sortie.sort(key=lambda jt: (jt['mois'], ordre[jt['type_jour']]))
+    return sortie, provenance, alertes
+
+
 #: CIQ130 — catégories dont l'élément d'horaire S'AJOUTE à des heures
 #: d'ouverture déjà déclarées (cuisson de nuit, garde de nuit) ; seul, il ne
 #: décrit pas la journée.

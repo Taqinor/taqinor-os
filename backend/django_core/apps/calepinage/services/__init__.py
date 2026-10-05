@@ -56,6 +56,7 @@ SOUS_MODULES = (
     'chaine_pertes',  # CALX147 — ordonnanceur de la chaîne de pertes
     'profils_types',  # CIQ118 — profils de charge saisis par la société
     'lestage',        # CIQ118 — masse posée du layout (charge de toiture)
+    'consommation',   # CIQ133 — import de courbe de charge mesurée (parseur unique)
 )
 
 __all__ = ['SOUS_MODULES']
