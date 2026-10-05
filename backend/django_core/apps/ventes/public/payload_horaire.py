@@ -164,7 +164,7 @@ def _profil_horaire_pour_devis(devis):
     from apps.crm.selectors import lead_bills_for_devis, site_location_for_devis
 
     from ..courbes_journalieres import equipements_du_devis, occupation_du_devis
-    from ..etude_horaire import profil_depuis_factures
+    from ..horaire.conso import profil_depuis_factures
 
     etude_params = getattr(devis, 'etude_params', None) or {}
     bloc_horaire = etude_params.get('etude_horaire') or {}

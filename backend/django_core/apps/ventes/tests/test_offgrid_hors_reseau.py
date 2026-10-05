@@ -44,7 +44,7 @@ class TestClassificationHorsReseau(SimpleTestCase):
     """``solar_design`` — la SEULE table backend (QJR78)."""
 
     def test_offgrid_reconnu_dans_ses_trois_orthographes(self):
-        from apps.ventes import solar_design as sd
+        from apps.ventes import solar_classification as sd
         for nom in ('Onduleur Off-Grid 5kW',
                     'Onduleur off grid 5kW',
                     'Onduleur OFFGRID 5kW',
@@ -56,7 +56,7 @@ class TestClassificationHorsReseau(SimpleTestCase):
 
     def test_hors_reseau_francais_nest_plus_un_onduleur_reseau(self):
         """LE défaut de l'incident : « hors réseau » contient « réseau »."""
-        from apps.ventes import solar_design as sd
+        from apps.ventes import solar_classification as sd
         for nom in ('Onduleur hors réseau 3kW', 'Onduleur hors reseau 3kW'):
             self.assertTrue(sd.is_offgrid_inverter(nom), nom)
             self.assertFalse(sd.is_reseau_inverter(nom), nom)
@@ -64,7 +64,7 @@ class TestClassificationHorsReseau(SimpleTestCase):
     def test_hybride_lemporte_sur_offgrid(self):
         """PRÉCÉDENCE : un hybride sait faire les deux — il reste HYBRIDE, donc
         il garde le panier « avec » que sa règle lui garantit déjà."""
-        from apps.ventes import solar_design as sd
+        from apps.ventes import solar_classification as sd
         nom = 'Onduleur Hybride Off-Grid 8kW'
         self.assertTrue(sd.is_hybrid_inverter(nom))
         self.assertFalse(sd.is_offgrid_inverter(nom))
@@ -73,7 +73,7 @@ class TestClassificationHorsReseau(SimpleTestCase):
     def test_hybride_lemporte_meme_sans_mot_onduleur(self):
         """ROUND 2 — la précédence hybride tient MÊME quand le nom ne porte
         pas le mot « onduleur » (le cas que le round 2 vient d'ouvrir)."""
-        from apps.ventes import solar_design as sd
+        from apps.ventes import solar_classification as sd
         self.assertFalse(sd.is_offgrid_inverter('Deye Hybride Off-Grid 6kw'))
 
     # ── ROUND 2 (incident fondateur 01/09/2026) ─────────────────────────────
@@ -83,7 +83,7 @@ class TestClassificationHorsReseau(SimpleTestCase):
     def test_noms_reels_fondateur_sans_mot_onduleur(self):
         """(a) LES deux orthographes réelles du catalogue prod, telles
         quelles — sans le mot « onduleur »."""
-        from apps.ventes import solar_design as sd
+        from apps.ventes import solar_classification as sd
         from apps.ventes.domain.catalogue import classer_produit
         for nom in ('Deye off-Grid 6kw', 'Deye off grid 6kw'):
             self.assertTrue(sd.is_offgrid_inverter(nom), nom)
@@ -97,7 +97,7 @@ class TestClassificationHorsReseau(SimpleTestCase):
         de produit (batterie, kit, câble, coffret) — sans le mot « onduleur »
         dans le nom, ces désignations ne doivent JAMAIS être volées par le
         classifieur onduleur autonome."""
-        from apps.ventes import solar_design as sd
+        from apps.ventes import solar_classification as sd
         from apps.ventes.domain.catalogue import classer_produit
         for nom in ('Batterie off-grid 5kWh', 'Kit solaire off-grid',
                     'Câble off-grid', 'Coffret off-grid'):
@@ -110,7 +110,7 @@ class TestClassificationHorsReseau(SimpleTestCase):
         """(e) Un panneau nommé « ... off-grid ... » reste un panneau : le
         mot-clé « panneau » de la liste d'exclusion protège ``is_panel`` —
         il ne le remplace jamais."""
-        from apps.ventes import solar_design as sd
+        from apps.ventes import solar_classification as sd
         from apps.ventes.domain.catalogue import classer_produit
         nom = 'Panneau off-grid 550W'
         self.assertTrue(sd.is_panel(nom), nom)
@@ -120,7 +120,7 @@ class TestClassificationHorsReseau(SimpleTestCase):
 
     def test_les_deux_familles_historiques_sont_intactes(self):
         """LA BARRE DE NON-RÉGRESSION : rien ne bouge sans mot-clé autonome."""
-        from apps.ventes import solar_design as sd
+        from apps.ventes import solar_classification as sd
         for nom in ('Onduleur réseau Huawei 5kW Monophasé',
                     'Onduleur reseau 8kW', 'Onduleur injection 10kW'):
             self.assertTrue(sd.is_reseau_inverter(nom), nom)

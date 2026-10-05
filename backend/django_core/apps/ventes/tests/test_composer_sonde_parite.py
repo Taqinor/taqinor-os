@@ -21,7 +21,7 @@ from django.test import TestCase
 from apps.crm.models import Client, Lead
 from apps.stock.models import Produit
 from apps.ventes import offres_tailles as ot
-from apps.ventes.domain import pipeline
+from apps.ventes.domain import etape_composer
 from apps.ventes.models import Devis, ParametresGammes
 
 CATALOGUE = (
@@ -92,9 +92,9 @@ class TriphaseGammeEpinglee(_Base):
     def test_carte_compose_comme_le_pipeline(self):
         lignes = self._contexte().composer(8, avec_batterie=False)
         self.assertIsNotNone(lignes)
-        attendu = pipeline.composer(pipeline.IntentionComposition(
+        attendu = etape_composer.composer(etape_composer.IntentionComposition(
             company=self.company, kwc=8 * 0.71, nb_panneaux=8,
-            panel_watt=710, scenario=pipeline.COMPOSITION_SANS,
+            panel_watt=710, scenario=etape_composer.COMPOSITION_SANS,
             phase='triphase', gamme_nom_devis=ParametresGammes.SLOT_PREMIUM,
             taux_tva=Decimal('20'), ville='Casablanca'))
         self.assertEqual(_empreinte(lignes), _empreinte(attendu))
@@ -102,7 +102,7 @@ class TriphaseGammeEpinglee(_Base):
         self.assertIn('Onduleur réseau Deye 5kW Triphasé', designations)
 
     def test_contexte_sonde_lit_le_devis(self):
-        contexte = pipeline.contexte_sonde_du_devis(self.devis)
+        contexte = etape_composer.contexte_sonde_du_devis(self.devis)
         self.assertEqual(contexte.phase, 'triphase')
         self.assertEqual(contexte.gamme_nom_devis,
                          ParametresGammes.SLOT_PREMIUM)
@@ -114,10 +114,10 @@ class SiteIsole(_Base):
     RACCORDEMENT = 'aucun'
 
     def test_aucun_onduleur_reseau_ni_hybride(self):
-        contexte = pipeline.contexte_sonde_du_devis(self.devis)
+        contexte = etape_composer.contexte_sonde_du_devis(self.devis)
         self.assertTrue(contexte.hors_reseau)
         for avec in (False, True):
-            lignes = pipeline.composer_sonde(contexte, 8, avec_batterie=avec)
+            lignes = etape_composer.composer_sonde(contexte, 8, avec_batterie=avec)
             noms = ' '.join(li.designation for li in lignes).lower()
             self.assertNotIn('réseau', noms)
             self.assertNotIn('hybride', noms)

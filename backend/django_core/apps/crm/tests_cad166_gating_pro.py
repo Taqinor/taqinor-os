@@ -24,7 +24,7 @@ from django.test import SimpleTestCase
 
 from apps.crm.devis_auto import champs_manquants, champs_manquants_detail
 from apps.crm.models import Lead
-from apps.ventes.etude_horaire import profil_depuis_factures
+from apps.ventes.horaire.conso import profil_depuis_factures
 
 
 def _lead_pro(**kwargs):

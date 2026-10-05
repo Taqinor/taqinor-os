@@ -231,7 +231,7 @@ def diagram_params_from_devis(devis):
     partagés avec ``solar_design`` (alignés sur ``quote_engine/builder.py``).
     N'écrit rien, ne lève jamais sur données incomplètes.
     """
-    from . import solar_design as sd
+    from . import solar_classification as sc
 
     n_panneaux = 0
     wc = 0
@@ -247,23 +247,23 @@ def diagram_params_from_devis(devis):
         if produit is not None:
             prod_nom = getattr(produit, "nom", "") or ""
         qte = _coerce_int(getattr(ligne, "quantite", 0), 0)
-        if sd.is_panel(desig, prod_nom):
+        if sc.is_panel(desig, prod_nom):
             n_panneaux += qte
-            pw = sd.parse_watt(desig) or sd.parse_watt(prod_nom)
+            pw = sc.parse_watt(desig) or sc.parse_watt(prod_nom)
             if pw:
                 wc = max(wc, int(pw))
-        elif sd.is_battery(desig):
+        elif sc.is_battery(desig):
             has_battery = True
-        elif sd.is_any_inverter(desig):
+        elif sc.is_any_inverter(desig):
             if not onduleur_nom:
                 onduleur_nom = desig[:80]
-            kw = sd.parse_kw(desig) or sd.parse_kw(prod_nom)
+            kw = sc.parse_kw(desig) or sc.parse_kw(prod_nom)
             if kw:
                 onduleur_kw = max(onduleur_kw, float(kw))
-            if sd.is_hybrid_inverter(desig):
+            if sc.is_hybrid_inverter(desig):
                 has_battery = has_battery or True
-            if not sd.is_reseau_inverter(desig) and \
-                    sd.is_hybrid_inverter(desig):
+            if not sc.is_reseau_inverter(desig) and \
+                    sc.is_hybrid_inverter(desig):
                 # Hybride : injection possible mais pas garantie ; on garde
                 # injection par défaut, l'utilisateur ajuste.
                 pass

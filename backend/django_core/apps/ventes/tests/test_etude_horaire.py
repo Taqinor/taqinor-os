@@ -36,6 +36,7 @@ from apps.ventes.horaire import batterie_lignes as BL
 from apps.ventes.horaire import public as HP
 from apps.ventes import courbes_journalieres as CJ
 from apps.ventes.horaire import base as horaire_base
+from apps.ventes.horaire import conso as HC
 from apps.ventes.quote_engine import bareme as B
 from apps.ventes.quote_engine import pricing
 
@@ -340,7 +341,7 @@ class PhysiqueDuMoteurTest(SimpleTestCase):
     VILLE = 'Casablanca'
 
     def _conso(self, mad=1200):
-        conso, _source, _detail = EH.profil_depuis_factures(
+        conso, _source, _detail = HC.profil_depuis_factures(
             facture_hiver_mad=mad)
         return conso
 
@@ -489,7 +490,7 @@ class RepliHonneteTest(SimpleTestCase):
     """Règle Z2 : sans ancrage réel, on OMET — on n'approxime pas."""
 
     def test_sans_facture_le_moteur_ne_calcule_rien(self):
-        conso, source, _ = EH.profil_depuis_factures()
+        conso, source, _ = HC.profil_depuis_factures()
         self.assertIsNone(conso)
         self.assertEqual(source, 'absente')
 
@@ -498,30 +499,30 @@ class RepliHonneteTest(SimpleTestCase):
             kwc=6.0, conso_kwh_mensuelles=None, ville='Casablanca'))
 
     def test_ville_inconnue_rend_none_jamais_une_cloche_inventee(self):
-        conso, _s, _d = EH.profil_depuis_factures(facture_hiver_mad=1200)
+        conso, _s, _d = HC.profil_depuis_factures(facture_hiver_mad=1200)
         self.assertIsNone(EH.calculer_etude_horaire(
             kwc=6.0, conso_kwh_mensuelles=conso, ville='Tombouctou'))
 
     def test_puissance_nulle_rend_none(self):
-        conso, _s, _d = EH.profil_depuis_factures(facture_hiver_mad=1200)
+        conso, _s, _d = HC.profil_depuis_factures(facture_hiver_mad=1200)
         self.assertIsNone(EH.calculer_etude_horaire(
             kwc=0, conso_kwh_mensuelles=conso, ville='Casablanca'))
 
     def test_priorite_des_sources_de_consommation(self):
         """12 kWh saisis > 12 factures réelles > facture hiver/été."""
-        _c, source, _d = EH.profil_depuis_factures(
+        _c, source, _d = HC.profil_depuis_factures(
             conso_kwh_mensuelles=[500] * 12, factures_mensuelles_mad=[900] * 12,
             facture_hiver_mad=1200)
         self.assertEqual(source, 'kwh_mensuels_saisis')
-        _c, source, _d = EH.profil_depuis_factures(
+        _c, source, _d = HC.profil_depuis_factures(
             factures_mensuelles_mad=[900] * 12, facture_hiver_mad=1200)
         self.assertEqual(source, 'factures_mensuelles_reelles')
-        _c, source, _d = EH.profil_depuis_factures(
+        _c, source, _d = HC.profil_depuis_factures(
             facture_hiver_mad=1200, facture_ete_mad=1600, ete_differente=True)
         self.assertEqual(source, 'facture_hiver_ete')
 
     def test_ete_distinct_produit_bien_douze_mois_differencies(self):
-        conso, _s, _d = EH.profil_depuis_factures(
+        conso, _s, _d = HC.profil_depuis_factures(
             facture_hiver_mad=800, facture_ete_mad=1600, ete_differente=True)
         self.assertEqual(len(conso), 12)
         self.assertGreater(conso[6], conso[0], 'juillet doit dépasser janvier')
@@ -551,7 +552,7 @@ class PricingInchangeTest(SimpleTestCase):
                 self.assertNotEqual(roi['savings_model'], 'horaire')
 
     def test_bloc_valide_prend_la_main(self):
-        conso, source, detail = EH.profil_depuis_factures(
+        conso, source, detail = HC.profil_depuis_factures(
             facture_hiver_mad=1200)
         bloc = EH.calculer_etude_horaire(
             kwc=6.0, conso_kwh_mensuelles=conso, ville='Casablanca',
@@ -570,7 +571,7 @@ class PricingInchangeTest(SimpleTestCase):
     def test_les_douze_mois_ne_sont_plus_une_cle_de_repartition(self):
         """Les économies mensuelles deviennent DOUZE CALCULS, pas un total
         annuel réparti par _SF."""
-        conso, _s, _d = EH.profil_depuis_factures(facture_hiver_mad=1200)
+        conso, _s, _d = HC.profil_depuis_factures(facture_hiver_mad=1200)
         bloc = EH.calculer_etude_horaire(
             kwc=6.0, conso_kwh_mensuelles=conso, ville='Casablanca',
             occupation=CJ.OCCUPATION_PRESENCE)
@@ -593,7 +594,7 @@ class PricingInchangeTest(SimpleTestCase):
         """Le devis a été repuissancé, l'étude pas rafraîchie : ses chiffres
         décrivent une AUTRE installation. Mieux vaut le repli honnête qu'un
         chiffre précis et faux."""
-        conso, _s, _d = EH.profil_depuis_factures(facture_hiver_mad=1200)
+        conso, _s, _d = HC.profil_depuis_factures(facture_hiver_mad=1200)
         bloc = EH.calculer_etude_horaire(
             kwc=6.0, conso_kwh_mensuelles=conso, ville='Casablanca',
             occupation=CJ.OCCUPATION_PRESENCE)
@@ -611,7 +612,7 @@ class PricingInchangeTest(SimpleTestCase):
     def test_productible_rendu_decrit_la_production_rendue(self):
         """« production ÷ kWc » et « productible » ne peuvent pas se
         contredire sur la même page."""
-        conso, _s, _d = EH.profil_depuis_factures(facture_hiver_mad=1200)
+        conso, _s, _d = HC.profil_depuis_factures(facture_hiver_mad=1200)
         bloc = EH.calculer_etude_horaire(
             kwc=6.0, conso_kwh_mensuelles=conso, ville='Casablanca',
             occupation=CJ.OCCUPATION_PRESENCE)
@@ -811,7 +812,7 @@ class GlitchSortieMoteurTest(SimpleTestCase):
     VILLE = 'Casablanca'
 
     def _conso(self, mad=2500):
-        conso, _source, _detail = EH.profil_depuis_factures(
+        conso, _source, _detail = HC.profil_depuis_factures(
             facture_hiver_mad=mad)
         return conso
 
@@ -990,7 +991,7 @@ class GlitchSortieMoteurTest(SimpleTestCase):
         à UTC+1, ce sont juillet et août, ~+30 MAD) : le test ne redeviendra
         donc pas rouge selon la base de fuseaux de la machine qui le joue.
         """
-        conso, _s, _d = EH.profil_depuis_factures(
+        conso, _s, _d = HC.profil_depuis_factures(
             facture_hiver_mad=2500, facture_ete_mad=4000, ete_differente=True)
         etude = EH.calculer_etude_horaire(
             kwc=16.0, conso_kwh_mensuelles=conso, ville=self.VILLE,
@@ -1072,7 +1073,7 @@ class BatterieDevantLaPointeTest(SimpleTestCase):
     VILLE = 'Casablanca'
 
     def _commun(self, **extra):
-        conso, _s, _d = EH.profil_depuis_factures(facture_hiver_mad=2500)
+        conso, _s, _d = HC.profil_depuis_factures(facture_hiver_mad=2500)
         base = dict(kwc=8.0, conso_kwh_mensuelles=conso, ville=self.VILLE,
                     occupation=CJ.OCCUPATION_PRESENCE,
                     equipements=CJ.composer_equipements(EQUIP_PISCINE_CLIM),
@@ -1805,7 +1806,7 @@ class JoursTypesPublicsTests(SimpleTestCase):
     VILLE = 'Casablanca'
 
     def _conso(self, mad=1200):
-        conso, _source, _detail = EH.profil_depuis_factures(
+        conso, _source, _detail = HC.profil_depuis_factures(
             facture_hiver_mad=mad)
         return conso
 

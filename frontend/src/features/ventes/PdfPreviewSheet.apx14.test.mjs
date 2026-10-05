@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { lireSourcesDevisList } from '../../pages/ventes/devisList/lireSources.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const sheet = readFileSync(path.join(__dirname, 'PdfPreviewSheet.jsx'), 'utf8')
@@ -45,7 +46,8 @@ test('les DEUX écrans montent l’aperçu inline', () => {
 })
 
 test('le devis garde le moteur /proposal, la facture son PDF legacy', () => {
-  const devis = page('DevisList.jsx')
+  // SPL204 — l'aperçu du devis vit dans devisList/useDevisPdf.js.
+  const devis = lireSourcesDevisList()
   // L'aperçu du devis passe toujours par getProposalPdf (le SEUL chemin).
   assert.match(devis, /fetchDevisPreviewBlob[\s\S]{0,900}?ventesApi\.getProposalPdf/)
   // Et il n'ouvre plus d'onglet dans le handler d'aperçu.
