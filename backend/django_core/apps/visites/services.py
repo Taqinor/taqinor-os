@@ -581,29 +581,47 @@ def valeur_liste(declaration, brute):
     if not isinstance(brute, list):
         return None, (f"« {declaration['libelle']} » attend une liste "
                       "d'éléments.")
-    formes = {sous['code']: sous for sous in declaration['forme']}
     prefixe = declaration.get('id_prefixe')
     propres = []
+    ids = set()
     for index, element in enumerate(brute, start=1):
-        if not isinstance(element, dict):
-            return None, (f"« {declaration['libelle']} » : l'élément {index} "
-                          'doit être un objet.')
-        propre = {}
+        propre, message = _valeur_objet(
+            declaration['forme'], element,
+            f"« {declaration['libelle']} » (élément {index})")
+        if message:
+            return None, message
         if prefixe:
-            propre['id'] = (str(element.get('id') or '').strip()
-                            or f'{prefixe}{index}')
-        for code, sous in formes.items():
-            valeur, message = valeur_mesure(sous, element.get(code))
-            if message:
-                return None, (f"« {declaration['libelle']} » (élément "
-                              f'{index}) : {message}')
-            propre[code] = valeur
-        inconnus = [c for c in element if c not in formes and c != 'id']
-        if inconnus:
-            return None, (f"« {declaration['libelle']} » (élément {index}) : "
-                          f'champ inconnu « {inconnus[0]} ».')
+            ident = str(element.get('id') or '').strip() or f'{prefixe}{index}'
+            if ident in ids:
+                return None, (f"« {declaration['libelle']} » : identifiant "
+                              f'« {ident} » en double.')
+            ids.add(ident)
+            propre = dict({'id': ident}, **propre)
+        # Une couverture fibrociment pose TOUJOURS le drapeau amiante
+        # (précaution — le technicien ne peut pas l'oublier ni l'effacer).
+        if propre.get('couverture') == 'fibrociment' and 'fibrociment' in propre:
+            propre['fibrociment'] = True
         propres.append(propre)
     return propres, None
+
+
+def _valeur_objet(forme, brute, contexte):
+    """Valide UN objet de ``forme`` (liste de déclarations) : renvoie
+    ``(objet complet, message)`` ; tous les champs de la forme sortent
+    (``None`` si non saisis) et un champ inconnu est refusé en le nommant."""
+    if not isinstance(brute, dict):
+        return None, f'{contexte} doit être un objet.'
+    formes = {sous['code']: sous for sous in forme}
+    propre = {}
+    for code, sous in formes.items():
+        valeur, message = valeur_mesure(sous, brute.get(code))
+        if message:
+            return None, f'{contexte} : {message}'
+        propre[code] = valeur
+    inconnus = [c for c in brute if c not in formes and c != 'id']
+    if inconnus:
+        return None, f'{contexte} : champ inconnu « {inconnus[0]} ».'
+    return propre, None
 
 
 def valeur_non_releves(connus, brute):
@@ -655,6 +673,27 @@ def valeur_mesure(declaration, brute):
     nature = declaration['nature']
     if nature == checklist.LISTE:
         return valeur_liste(declaration, brute)
+    if nature == checklist.OBJET:
+        return _valeur_objet(declaration['forme'], brute,
+                             f"« {declaration['libelle']} »")
+    if nature == checklist.ENTIER:
+        try:
+            nombre = Decimal(str(brute))
+        except (InvalidOperation, ValueError, TypeError):
+            nombre = None
+        if nombre is None or nombre != nombre.to_integral_value():
+            return None, (f"« {declaration['libelle']} » attend un entier "
+                          f'(reçu : {brute!r}).')
+        if nombre < 0:
+            return None, (f"« {declaration['libelle']} » ne peut pas être "
+                          'négatif.')
+        return int(nombre), None
+    if nature == checklist.PIECE:
+        # Référence d'une pièce jointe (identifiant) ou texte libre.
+        if isinstance(brute, bool) or not isinstance(brute, (int, str)):
+            return None, (f"« {declaration['libelle']} » attend une pièce "
+                          'jointe (identifiant) ou une référence.')
+        return brute, None
     if nature == checklist.NOMBRE:
         try:
             nombre = Decimal(str(brute))

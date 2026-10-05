@@ -130,6 +130,18 @@ def _visite_mesures(visite):
     return rendu
 
 
+def zones_toiture_saisies(visite):
+    """CIQ602 — les zones de toiture SAISIES d'une visite ``ci``, telles que
+    stockées (liste de dicts) ; ``[]`` pour tout autre gabarit ou sans saisie.
+    Fonction PURE sur l'objet reçu."""
+    if _gabarit(visite) != 'ci':
+        return []
+    saisies = visite.mesures if isinstance(visite.mesures, dict) else {}
+    bloc = saisies.get('toiture_ci') or {}
+    zones = bloc.get('zones_toiture') if isinstance(bloc, dict) else None
+    return [z for z in (zones or []) if isinstance(z, dict)]
+
+
 def _non_releves_plats(visite):
     """CIQ601 — les états « non relevé » d'une visite ``ci`` à plat :
     ``{'<categorie>.<clé>': motif}`` (forme du contrat ``exemple_ci``). Vide
@@ -466,6 +478,17 @@ def recap_visite_terrain(visite):
         puissance = nombre('comptage', 'puissance_souscrite_kva_constatee')
         if puissance:
             morceaux.append(f'puissance souscrite {puissance} kVA')
+        # CIQ602 — zones de toiture saisies ; le fibrociment pose le drapeau
+        # (précaution : aucune réglementation citée).
+        zones = zones_toiture_saisies(visite)
+        if zones:
+            morceaux.append(f'{len(zones)} zone(s) de toiture')
+        fibro = [z.get('libelle') or z.get('id') or 'zone'
+                 for z in zones if z.get('fibrociment')
+                 or z.get('couverture') == 'fibrociment']
+        if fibro:
+            morceaux.append('amiante possible — diagnostic requis ('
+                            + ', '.join(str(nom) for nom in fibro) + ')')
         # CIQ601 — une mesure « non relevée » se dit « non vérifié (motif) »,
         # jamais avec une valeur par défaut.
         from . import visite_checklist as checklist
@@ -930,10 +953,15 @@ def releve_pour_calepinage(lead):
             return dict(vide, motif_absence=MOTIF_VISITE_NON_VALIDEE)
         return vide
     medias = visite.medias.filter(company_id=lead.company_id).order_by('id')
-    return {
+    releve = {
         'visite_id': visite.id,
         'validee_le': None,
         'mesures': _releve_mesures_saisies(visite.mesures),
         'photos': _releve_photos_retenues(medias),
         'motif_absence': None,
     }
+    if getattr(visite, 'gabarit', None) == 'ci':
+        # CIQ602 — site professionnel : le relevé expose la LISTE des zones
+        # (une visite résidentielle garde exactement la forme historique).
+        releve['zones_toiture'] = zones_toiture_saisies(visite)
+    return releve

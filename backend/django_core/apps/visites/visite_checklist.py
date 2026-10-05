@@ -30,6 +30,11 @@ CHOIX = 'choix'
 #: CIQ600 — liste d'éléments (trajets de câbles, zones de toiture) : la
 #: déclaration porte ``forme`` (les champs d'UN élément).
 LISTE = 'liste'
+#: CIQ602 — entier (âge en années), objet imbriqué (étanchéité) et pièce
+#: justificative (identifiant de pièce jointe ou référence texte).
+ENTIER = 'entier'
+OBJET = 'objet'
+PIECE = 'piece'
 
 # Types de manquants exposés dans le bloc ``completude`` du contrat.
 MANQUE_PHOTO = 'photo'
@@ -399,6 +404,118 @@ CATEGORIES_POINT_EAU = [
 #: s'y ajoutent. Mêmes règles dures : AUCUN seuil, AUCUN verdict.
 CATEGORIES_CI = [
     {
+        # CIQ602 — LISTE de zones (un pan ou un bâtiment chacune), avec sa
+        # complétude par zone. Photos au niveau de la catégorie (contrat).
+        'categorie': 'toiture_ci',
+        'libelle': 'Toiture',
+        'slots': [
+            {
+                'code': 'toiture_vue_generale',
+                'libelle': 'Vue générale de la toiture',
+                'guide': ('Cadrer toute la toiture, si possible depuis un '
+                          'point haut.'),
+                'requis': True,
+                'min_photos': 2,
+            },
+            {
+                'code': 'toiture_structure_dessous',
+                'libelle': 'Structure vue du dessous',
+                'guide': 'Pannes, fermes ou portiques, vus depuis le bâtiment.',
+                'requis': True,
+                'min_photos': 1,
+            },
+            {
+                'code': 'toiture_etancheite',
+                'libelle': "Étanchéité (optionnel)",
+                'guide': "Relevés d'étanchéité, joints, points d'eau.",
+                'requis': False,
+                'min_photos': 1,
+            },
+            {
+                'code': 'toiture_lanterneaux',
+                'libelle': 'Lanterneaux et exutoires (optionnel)',
+                'guide': 'Les ouvertures en toiture et leur état.',
+                'requis': False,
+                'min_photos': 1,
+            },
+        ],
+        'mesures': [
+            {'code': 'zones_toiture',
+             'libelle': 'Zones de toiture (une par pan / bâtiment)',
+             'nature': LISTE, 'requis': True, 'id_prefixe': 'z',
+             # Surface : surface utile, OU longueur ET largeur.
+             'un_groupe_parmi': [['surface_utile_m2'],
+                                 ['longueur_m', 'largeur_m']],
+             'forme': [
+                 {'code': 'libelle', 'libelle': 'Nom de la zone',
+                  'nature': TEXTE, 'requis': True},
+                 {'code': 'batiment', 'libelle': 'Bâtiment',
+                  'nature': TEXTE, 'requis': False},
+                 {'code': 'longueur_m', 'libelle': 'Longueur (m)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'largeur_m', 'libelle': 'Largeur (m)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'surface_utile_m2',
+                  'libelle': 'Surface utile (m²)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'pente_deg', 'libelle': 'Pente (°)',
+                  'nature': NOMBRE, 'requis': True},
+                 {'code': 'orientation', 'libelle': 'Orientation du pan',
+                  'nature': CHOIX, 'requis': True,
+                  'choix': ['nord', 'nord_est', 'est', 'sud_est', 'sud',
+                            'sud_ouest', 'ouest', 'nord_ouest']},
+                 {'code': 'couverture', 'libelle': 'Type de couverture',
+                  'nature': CHOIX, 'requis': True,
+                  'choix': ['bac_acier', 'beton', 'fibrociment', 'tole',
+                            'tuile', 'autre']},
+                 {'code': 'age_ans', 'libelle': 'Âge de la couverture (ans)',
+                  'nature': ENTIER, 'requis': False},
+                 {'code': 'structure', 'libelle': 'Structure porteuse',
+                  'nature': CHOIX, 'requis': True,
+                  'choix': ['portique', 'ferme', 'dalle', 'autre']},
+                 {'code': 'portee_pannes_m',
+                  'libelle': 'Portée des pannes (m)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'entraxe_pannes_m',
+                  'libelle': 'Entraxe des pannes (m)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'epaisseur_bac_mm',
+                  'libelle': 'Épaisseur du bac (mm)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'etancheite', 'libelle': 'Étanchéité',
+                  'nature': OBJET, 'requis': False,
+                  'forme': [
+                      {'code': 'type', 'libelle': "Type d'étanchéité",
+                       'nature': TEXTE, 'requis': False},
+                      {'code': 'age_ans', 'libelle': "Âge de l'étanchéité (ans)",
+                       'nature': ENTIER, 'requis': False},
+                      {'code': 'sous_garantie',
+                       'libelle': "Étanchéité sous garantie",
+                       'nature': BOOLEEN, 'requis': False},
+                  ]},
+                 {'code': 'lanterneaux_exutoires',
+                  'libelle': 'Lanterneaux et exutoires',
+                  'nature': TEXTE, 'requis': False},
+                 {'code': 'ligne_de_vie_existante',
+                  'libelle': 'Ligne de vie existante',
+                  'nature': BOOLEEN, 'requis': False},
+                 # DÉCLARÉE seulement, avec sa pièce : l'application ne juge
+                 # jamais que la charge « suffit ».
+                 {'code': 'charge_admissible_declaree_kg_m2',
+                  'libelle': 'Charge admissible déclarée (kg/m²)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'charge_admissible_piece',
+                  'libelle': ('Pièce justifiant la charge admissible '
+                              '(bureau de contrôle ou propriétaire)'),
+                  'nature': PIECE, 'requis': False,
+                  'requis_si': 'charge_admissible_declaree_kg_m2'},
+                 {'code': 'fibrociment',
+                  'libelle': 'Amiante possible — diagnostic requis',
+                  'nature': BOOLEEN, 'requis': False},
+             ]},
+        ],
+    },
+    {
         'categorie': 'tableau_general',
         'libelle': 'Tableau général (TGBT)',
         'slots': [
@@ -707,13 +824,26 @@ def liste_manquants(champ, elements):
         repere = element.get('id') or str(index)
         nom = element.get('libelle') or f'élément {index}'
         for sous in champ['forme']:
-            if not sous.get('requis'):
-                continue
             valeur = element.get(sous['code'])
-            if valeur is None or valeur == '':
+            vide = valeur is None or valeur == ''
+            exigee = bool(sous.get('requis'))
+            # ``requis_si`` : exigé seulement quand l'autre champ est saisi
+            # (une charge déclarée exige sa pièce).
+            lie = sous.get('requis_si')
+            if lie and element.get(lie) not in (None, ''):
+                exigee = True
+            if exigee and vide:
                 manque.append((
                     f"{champ['code']}[{repere}].{sous['code']}",
                     f"{champ['libelle']} — {nom} : {sous['libelle']}"))
+        groupes = champ.get('un_groupe_parmi')
+        if groupes and not any(
+                all(element.get(code) not in (None, '') for code in groupe)
+                for groupe in groupes):
+            manque.append((
+                f"{champ['code']}[{repere}].{groupes[0][0]}",
+                f"{champ['libelle']} — {nom} : surface utile (ou longueur "
+                'et largeur)'))
     formes = {sous['code']: sous for sous in champ['forme']}
     for code in champ.get('au_moins_un') or []:
         if not any(el.get(code) not in (None, '') for el in elements):

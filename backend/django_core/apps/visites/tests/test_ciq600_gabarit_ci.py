@@ -22,15 +22,24 @@ CONTRAT = json.loads(
 GABARIT_CONTRAT = CONTRAT['gabarit_ci']
 EXEMPLE = CONTRAT['exemple_ci']
 
-#: Catégories du socle commun servies par CIQ600 (les zones de toiture
-#: arrivent avec CIQ602).
-SOCLE = ['tableau_general', 'comptage', 'cheminement', 'acces_securite',
-         'autres_autorisations', 'general']
+#: Catégories du gabarit ``ci`` (socle commun CIQ600 + zones de toiture
+#: CIQ602), dans l'ordre du contrat.
+SOCLE = ['toiture_ci', 'tableau_general', 'comptage', 'cheminement',
+         'acces_securite', 'autres_autorisations', 'general']
 
-PHOTOS_REQUISES = ['tgbt_ouvert', 'comptage_plaque', 'acces_toiture',
-                   'general_facade']
+#: (slot, nombre de photos) à poster pour la complétude des photos.
+PHOTOS_REQUISES = [('toiture_vue_generale', 2),
+                   ('toiture_structure_dessous', 1), ('tgbt_ouvert', 1),
+                   ('comptage_plaque', 1), ('acces_toiture', 1),
+                   ('general_facade', 1)]
+
+ZONE_COMPLETE = {
+    'libelle': 'Atelier nord', 'batiment': 'A', 'longueur_m': 40,
+    'largeur_m': 18, 'pente_deg': 8, 'orientation': 'sud',
+    'couverture': 'bac_acier', 'structure': 'portique'}
 
 MESURES_CI = {
+    'toiture_ci': {'zones_toiture': [ZONE_COMPLETE]},
     'tableau_general': {'calibre_a': 250, 'depart_disponible': True},
     'comptage': {'type_compteur': 'électronique triphasé',
                  'niveau_tension_constate': 'bt'},
@@ -43,7 +52,8 @@ MESURES_CI = {
 class ChecklistCiDuContrat(SimpleTestCase):
     def test_les_categories_du_socle_sont_celles_du_contrat(self):
         cats = [c['categorie'] for c in checklist.categories('ci')]
-        self.assertEqual(cats, [c for c in GABARIT_CONTRAT if c in SOCLE])
+        self.assertEqual(cats, list(GABARIT_CONTRAT))
+        self.assertEqual(cats, SOCLE)
 
     def test_mesures_requis_et_libelles_du_contrat(self):
         for cat in SOCLE:
@@ -111,9 +121,11 @@ class VisiteCiTests(VisiteTerrainBase):
             format='json')
 
     def _remplir(self, visite_id, avec_cheminement=True):
-        for slot in PHOTOS_REQUISES:
-            resp = self.poster_photo(visite_id, slot, nom=f'{slot}.png')
-            self.assertEqual(resp.status_code, 200, resp.data)
+        for slot, combien in PHOTOS_REQUISES:
+            for index in range(combien):
+                resp = self.poster_photo(visite_id, slot,
+                                         nom=f'{slot}-{index}.png')
+                self.assertEqual(resp.status_code, 200, resp.data)
         for categorie, valeurs in MESURES_CI.items():
             if categorie == 'cheminement' and not avec_cheminement:
                 continue
@@ -155,8 +167,8 @@ class VisiteCiTests(VisiteTerrainBase):
         visite_id = self.creer_visite()
         resp = self._terminer(visite_id)
         codes = {m['code'] for m in resp.data['manquants']}
-        for residentiel in ('toit_plat', 'pente_deg', 'largeur_mur_cm',
-                            'toiture_vue_generale', 'onduleur_mur'):
+        for residentiel in ('toit_plat', 'largeur_mur_cm', 'onduleur_mur',
+                            'calibre_disjoncteur_a'):
             self.assertNotIn(residentiel, codes)
 
     def test_un_slot_residentiel_est_refuse_sur_une_visite_ci(self):

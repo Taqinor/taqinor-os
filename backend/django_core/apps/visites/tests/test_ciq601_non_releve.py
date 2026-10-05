@@ -44,10 +44,12 @@ class NonReleveTests(VisiteTerrainBase):
     def _visite_sans_calibre(self):
         """Une visite ci complète SAUF le calibre de l'appareil de tête."""
         visite_id = self.creer_visite()
-        for slot in PHOTOS_REQUISES:
-            self.assertEqual(
-                self.poster_photo(visite_id, slot, nom=f'{slot}.png'
-                                  ).status_code, 200)
+        for slot, combien in PHOTOS_REQUISES:
+            for index in range(combien):
+                self.assertEqual(
+                    self.poster_photo(visite_id, slot,
+                                      nom=f'{slot}-{index}.png').status_code,
+                    200)
         for categorie, valeurs in MESURES_CI.items():
             valeurs = dict(valeurs)
             if categorie == 'tableau_general':
