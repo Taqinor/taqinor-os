@@ -19,5 +19,5 @@
 # Format : `<fichier>:<ligne>:<module>`.
 backend/django_core/apps/calepinage/services/pack_technique.py:224:apps.ged.services
 backend/django_core/apps/calepinage/services/pack_technique.py:351:apps.ged.services
-backend/django_core/apps/calepinage/services/reglementaire.py:612:apps.ged.services
+backend/django_core/apps/calepinage/services/reglementaire.py:609:apps.ged.services
 backend/django_core/apps/calepinage/services/terre.py:125:apps.ged.selectors

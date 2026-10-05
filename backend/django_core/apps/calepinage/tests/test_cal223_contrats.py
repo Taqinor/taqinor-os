@@ -398,8 +398,6 @@ POSES_AVANT_LEUR_ROUTE = {
     # ACAL1 (M0) — POST layout/section/ (écriture par section + If-Match) :
     # la porte arrive avec ACAL22.
     'calepinage_layout_section.json': 'ACAL22',
-    # ACAL15 (M0) — GET gabarits-dossiers/ : la porte arrive avec ACAL238.
-    'gabarits_dossier_reglementaire.json': 'ACAL238',
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne
@@ -533,6 +531,23 @@ class ClesServiesTest(unittest.TestCase):
                        equipements_du_calepinage(Faux()))
         self._comparer('calepinage_equipements.json',
                        equipements_du_calepinage(Faux()), 'exemple_vide')
+
+    def test_gabarit_publie(self):
+        # ACAL238 — la porte gabarits-dossiers/ publie chaque gabarit par
+        # ``gabarit_publie`` (couple vue <-> échantillon) : mêmes clés que
+        # ``detail.exemple``, et que chaque élément de ``exemple.gabarits``.
+        from apps.calepinage.models import GabaritDossierReglementaire
+        from apps.calepinage.services.reglementaire import gabarit_publie
+
+        servi = set(gabarit_publie(GabaritDossierReglementaire(
+            pays='ma', code='raccordement_bt', intitule='Dossier')))
+        echantillon = _charger('gabarits_dossier_reglementaire.json')
+        self.assertEqual(sorted(servi),
+                         sorted(echantillon['detail']['exemple']))
+        self.assertEqual(sorted(servi),
+                         sorted(echantillon['exemple']['gabarits'][0]))
+        self.assertEqual(sorted(servi),
+                         sorted(echantillon['exemple_post_201']['gabarit']))
 
     def test_dossiers_reglementaires(self):
         servi = composer_dossiers(calepinage_id=1, pays='ma', entrees=[],
