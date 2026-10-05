@@ -62,6 +62,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from .valeurs import nombre as _flottant
 
 __all__ = [
     'BASES_HEURE', 'BASES_RAYONNEMENT', 'BASE_HEURE_LOCALE_LEGALE',
@@ -888,16 +889,6 @@ def _horodatage(valeur):
                 int(texte[9:11]))
     except ValueError:
         return None
-
-
-def _flottant(valeur):
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre:
-        return None
-    return nombre
 
 
 def _coordonnee(valeur, *, champ, maxi):

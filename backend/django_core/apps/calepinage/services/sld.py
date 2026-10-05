@@ -416,13 +416,13 @@ def _position_valide(brut, dessin, *, champ):
             raise SldRefuse(
                 "La position de « %s » sort de la planche : %s doit rester "
                 "entre 0 et %s points (planche %s × %s, boîte d'organe "
-                "comprise)." % (clef, axe, _nombre(maximum),
-                                _nombre(largeur), _nombre(hauteur)),
+                "comprise)." % (clef, axe, _nombre_planche(maximum),
+                                _nombre_planche(largeur), _nombre_planche(hauteur)),
                 champ=champ)
     return point
 
 
-def _nombre(valeur):
+def _nombre_planche(valeur):
     """Un nombre de planche, au dixième, sans zéro inutile."""
     return ('%.1f' % float(valeur)).rstrip('0').rstrip('.')
 

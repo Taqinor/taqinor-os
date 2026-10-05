@@ -57,22 +57,13 @@ from .pvgis_serie import (
     BASE_PAR_DEFAUT, ClientPvgis, EntreeInvalide, PvgisIndisponible,
     _Limiteur,
 )
+from .valeurs import nombre as _nombre
 
 __all__ = ['temperatures_tmy']
 
 #: Le limiteur de cadence PARTAGÉ par tous les appels TMY de ce fournisseur
 #: (cf. la docstring du module). Sa construction n'ouvre aucune connexion.
 _LIMITEUR = _Limiteur()
-
-
-def _nombre(valeur):
-    """Flottant strict — ``None`` dès que ce n'est pas un nombre utilisable."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None
 
 
 def temperatures_tmy(lat, lon, *, client=None, base=BASE_PAR_DEFAUT):

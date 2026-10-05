@@ -39,18 +39,9 @@ La forme rendue est celle du contrat committé
 ``pertes``) — aucune clé inventée.
 """
 from __future__ import annotations
+from .valeurs import nombre as _nombre
 
 __all__ = ['pans_du_layout']
-
-
-def _nombre(valeur):
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre:
-        return None
-    return nombre
 
 
 def _premier(*valeurs):

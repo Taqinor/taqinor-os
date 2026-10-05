@@ -49,6 +49,7 @@ Module PUR : aucune base, aucun réseau, aucun prix.
 from __future__ import annotations
 
 import math
+from .valeurs import nombre as _nombre
 
 __all__ = ['PARAMETRES_REQUIS', 'gain_bifacial']
 
@@ -61,16 +62,6 @@ PARAMETRES_REQUIS = (
     ('taux_occupation', "le taux d'occupation du sol (GCR)"),
     ('pas_rangee_m', 'le pas entre rangées (m)'),
 )
-
-
-def _nombre(valeur):
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre or nombre in (float('inf'), float('-inf')):
-        return None
-    return nombre
 
 
 def gain_bifacial(*, bifacialite_pct=None, albedo=None, hauteur_pose_m=None,

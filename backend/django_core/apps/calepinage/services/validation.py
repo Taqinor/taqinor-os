@@ -71,6 +71,7 @@ from apps.calepinage.services import etapes as _etapes
 from apps.calepinage.services.chaine_pertes import (
     DECIMALES_KWH, appliquer_chaine,
 )
+from .valeurs import nombre as _flottant
 
 #: La clé du bloc dans ``Calepinage.resultat``.
 CLE_VALIDATION = 'validation'
@@ -481,16 +482,6 @@ def _horodatage_iso(maintenant):
 
 def _arrondi_kwh(valeur):
     return None if valeur is None else round(float(valeur), DECIMALES_KWH)
-
-
-def _flottant(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return None if nombre != nombre else nombre
 
 
 def _entier(valeur):

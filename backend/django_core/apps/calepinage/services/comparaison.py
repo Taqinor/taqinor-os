@@ -36,6 +36,7 @@ le comparatif n'a pas à savoir quel chemin a produit le chiffre.
 Module PUR : aucune base, aucun réseau, aucun prix.
 """
 from __future__ import annotations
+from .valeurs import nombre as _nombre
 
 __all__ = ['CLES_PRODUCTION', 'MOTIF_NON_SIMULEE', 'MOTIF_PERIMEE',
            'NOMBRE_PERTES_DOMINANTES', 'colonnes_production']
@@ -60,18 +61,6 @@ MOTIF_PERIMEE = (
 
 def _dict(valeur):
     return valeur if isinstance(valeur, dict) else {}
-
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre:
-        return None
-    return nombre
 
 
 def _empreinte_du_resultat(resultat):

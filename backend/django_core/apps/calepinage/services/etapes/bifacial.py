@@ -66,6 +66,7 @@ from __future__ import annotations
 
 from apps.calepinage.services import etapes as _etapes
 from apps.calepinage.services.bifacial import PARAMETRES_REQUIS, gain_bifacial
+from ..valeurs import nombre as _nombre
 
 #: La clé de réglage qui porte l'albédo (registre CALX145).
 CLE_ALBEDO = 'albedo_mensuel'
@@ -602,16 +603,3 @@ def _valeur(plan, chemins):
         if nombre is not None:
             return nombre
     return None
-
-
-def _nombre(valeur):
-    """Un flottant fini, ou ``None`` — un booléen n'est jamais un nombre."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre or nombre in (float('inf'), float('-inf')):
-        return None
-    return nombre

@@ -49,6 +49,7 @@ comme un calcul ne l'est pas.
 Module PUR : aucune base, aucun réseau, aucun prix.
 """
 from __future__ import annotations
+from .valeurs import nombre as _nombre
 
 __all__ = ['MODELE_FAIMAN', 'MODELE_NOCT', 'TEMPERATURE_STC_C',
            'HYPOTHESE_UV_ABSENT_DE_LA_FICHE',
@@ -89,16 +90,6 @@ MODELE_NOCT = 'noct'
 #: ce sont les conditions NOCT elles-mêmes, pas des réglages.
 NOCT_IRRADIANCE_W_M2 = 800.0
 NOCT_TEMPERATURE_AIR_C = 20.0
-
-
-def _nombre(valeur):
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre:
-        return None
-    return nombre
 
 
 def temperature_cellule(*, t_air_c, irradiance_w_m2, modele, noct_c=None,

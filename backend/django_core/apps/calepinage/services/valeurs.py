@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 
-__all__ = ['ValeurRefusee', 'nombre_fini']
+__all__ = ['ValeurRefusee', 'nombre', 'nombre_fini']
 
 
 class ValeurRefusee(ValueError):
@@ -71,3 +71,24 @@ def nombre_fini(valeur, champ, *, libelle='', mini=None, maxi=None,
         raise erreur(f'« {nom} » admet au plus {decimales} décimale(s) '
                      f'(reçu : {valeur!r}).', champ=champ)
     return nombre
+
+
+def nombre(valeur):
+    """ACAL323 — LA lecture tolérante d'un nombre du module : ``float`` FINI
+    ou ``None``, jamais un refus.
+
+    Un booléen n'est JAMAIS un nombre (``True`` n'est pas ``1.0``) ; ``nan`` et
+    ``±inf`` valent ``None`` (une valeur illisible est une valeur NON
+    RENSEIGNÉE, jamais une valeur corrigée) ; une chaîne numérique est lue
+    (``' 4 '`` → ``4.0``) ; tout le reste vaut ``None``. Survivant UNIQUE des
+    copies privées ``_nombre(valeur)`` / ``_flottant(valeur)`` du module
+    (garde AST ``tests/test_acal_nombre_unique.py``). Pour REFUSER en nommant
+    le champ, c'est :func:`nombre_fini`.
+    """
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    try:
+        lu = float(valeur)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return lu if math.isfinite(lu) else None

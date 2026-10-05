@@ -60,6 +60,7 @@ from .pvgis_serie import (
 )
 from .simulation_modules import production_module_par_module
 from .validation import ecart_vs_pvcalc
+from .valeurs import nombre as _nombre
 
 __all__ = [
     'CLE_SIMULATION', 'COLONNE_ENTREE_CHAINE', 'DETAIL_DEJA_CALCULE',
@@ -133,17 +134,6 @@ class SimulationRefusee(ValueError):
 # ═══════════════════════════════════════════════════════════════════════════
 # LE CONTEXTE — tout ce que les producteurs PURS ont besoin de lire
 # ═══════════════════════════════════════════════════════════════════════════
-
-def _nombre(valeur):
-    """Un flottant lisible, ou ``None`` — jamais un 0 de repli."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return None if nombre != nombre else nombre
-
 
 def _zones_du_document(document):
     """``{repère du pan: zone}`` — les deux repères mènent à la même zone."""

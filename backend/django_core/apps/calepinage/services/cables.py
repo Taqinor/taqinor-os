@@ -40,6 +40,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from typing import Tuple
+from .valeurs import nombre as _nombre
 
 __all__ = [
     'Longueur', 'longueur_dc', 'longueur_ac', 'cables_du_calepinage',
@@ -126,15 +127,6 @@ class Longueur:
                              'origine': origine}
                             for poste, valeur, origine in self.composantes],
         }
-
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None
 
 
 def _centres(panneaux):

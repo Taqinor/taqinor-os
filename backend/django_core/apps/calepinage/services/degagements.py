@@ -143,7 +143,7 @@ def _titre(cle):
     return _libelle(cle)
 
 
-def _nombre(valeur, champ, libelle):
+def _metres_positifs(valeur, champ, libelle):
     if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
         raise ReglageInvalide(
             f"« {libelle} » doit être un nombre de mètres "
@@ -210,7 +210,7 @@ def normaliser_section_degagements(valeur):
         if cle == CLE_ALLEES_CIRCULATION:
             propre[cle] = _allees_circulation(brut)
             continue
-        propre[cle] = _nombre(brut, f'{SECTION}.{cle}', _titre(cle))
+        propre[cle] = _metres_positifs(brut, f'{SECTION}.{cle}', _titre(cle))
     return propre
 
 
@@ -242,8 +242,8 @@ def _allee_circulation_entree(brut, indice):
             f"« {prefixe}.pays » doit être un code pays à deux lettres "
             f"(reçu : {brut.get('pays')!r}).", champ=f'{prefixe}.pays')
 
-    largeur = _nombre(brut.get('largeur_m'), f'{prefixe}.largeur_m',
-                      "Largeur d'allée de circulation")
+    largeur = _metres_positifs(brut.get('largeur_m'), f'{prefixe}.largeur_m',
+                               "Largeur d'allée de circulation")
     if largeur <= 0:
         raise ReglageInvalide(
             f"« {prefixe}.largeur_m » doit être strictement positive "

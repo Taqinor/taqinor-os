@@ -130,7 +130,7 @@ def _refus(message, champ):
     return ReglageInvalide(message, champ=champ)
 
 
-def _nombre(valeur, champ, libelle, *, positif=True):
+def _nombre_valide(valeur, champ, libelle, *, positif=True):
     if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
         raise _refus(f"« {libelle} » doit être un nombre "
                      f"(reçu : {type(valeur).__name__}).", champ)
@@ -158,7 +158,7 @@ def _rives(valeur, champ):
         raise _refus(
             f"Rive inconnue : « {', '.join(inconnues)} ». Rives admises : "
             f"{', '.join(RIVES)}.", f'{champ}.{inconnues[0]}')
-    return {str(cle): _nombre(brut, f'{champ}.{cle}', f'Rive {cle}')
+    return {str(cle): _nombre_valide(brut, f'{champ}.{cle}', f'Rive {cle}')
             for cle, brut in valeur.items()}
 
 
@@ -223,35 +223,35 @@ def _gabarit(cle, brut):
                     f"(reçu : {valeur!r}).", sous_champ)
             propre[nom] = valeur
         elif nom == 'facingAzimuthDeg':
-            azimut = _nombre(valeur, sous_champ, _libelle(nom), positif=False)
+            azimut = _nombre_valide(valeur, sous_champ, _libelle(nom), positif=False)
             if not (0.0 <= azimut <= 360.0):
                 raise _refus(
                     "« Azimut de face » est un cap entre 0 et 360 degrés "
                     f"(reçu : {valeur}).", sous_champ)
             propre[nom] = azimut
         elif nom == 'pitchDeg':
-            pente = _nombre(valeur, sous_champ, _libelle(nom))
+            pente = _nombre_valide(valeur, sous_champ, _libelle(nom))
             if pente >= 90.0:
                 raise _refus(
                     "« Pente » est un angle strictement inférieur à 90 "
                     f"degrés (reçu : {valeur}).", sous_champ)
             propre[nom] = pente
         elif nom == 'chassis_sous_pente_deg':
-            seuil = _nombre(valeur, sous_champ, _libelle(nom))
+            seuil = _nombre_valide(valeur, sous_champ, _libelle(nom))
             if not (0.0 < seuil < 90.0):
                 raise _refus(
                     "« Seuil châssis incliné » est un angle strictement "
                     f"entre 0 et 90 degrés (reçu : {valeur}).", sous_champ)
             propre[nom] = seuil
         elif nom == 'chassis_inclinaison_deg':
-            inclinaison = _nombre(valeur, sous_champ, _libelle(nom))
+            inclinaison = _nombre_valide(valeur, sous_champ, _libelle(nom))
             if inclinaison >= 90.0:
                 raise _refus(
                     "« Inclinaison du châssis » est un angle strictement "
                     f"inférieur à 90 degrés (reçu : {valeur}).", sous_champ)
             propre[nom] = inclinaison
         else:
-            propre[nom] = _nombre(valeur, sous_champ, _libelle(nom))
+            propre[nom] = _nombre_valide(valeur, sous_champ, _libelle(nom))
 
     # CALX405 — une inclinaison saisie sans son seuil ne dit à partir de
     # quelle pente l'appliquer : refusée en nommant la clé manquante,

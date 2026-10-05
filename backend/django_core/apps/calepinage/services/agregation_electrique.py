@@ -51,6 +51,7 @@ Aucun prix, aucune maille d'argent (D-CALX 5). Fonctions PURES : ni base, ni
 réseau, ni horloge.
 """
 from __future__ import annotations
+from .valeurs import nombre as _nombre
 
 __all__ = [
     'ETAPE_MISMATCH', 'ETAPE_ECRETAGE', 'affectation_du_calepinage',
@@ -81,15 +82,6 @@ MOTIF_SANS_PAR_MODULE = (
 MOTIF_SANS_CASCADE = (
     "aucune cascade de pertes n'est fournie pour cette chaîne : le mismatch "
     "et l'écrêtage ne sont pas lus, et aucune valeur n'est supposée.")
-
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None
 
 
 def _arrondi(valeur, decimales=3):
