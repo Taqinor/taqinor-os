@@ -4502,6 +4502,14 @@ class VeilleCouvertureView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses=inline_serializer(
+        name='AdsengineVeilleCouverture',
+        fields={
+            'couverture': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+            'acces': drf_serializers.DictField(),
+        },
+    ))
     def get(self, request):
         from . import competitor_intel as ci
         from . import veille_acces

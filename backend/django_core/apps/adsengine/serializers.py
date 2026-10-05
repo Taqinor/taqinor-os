@@ -1,6 +1,7 @@
 """Sérialiseurs du moteur publicitaire Meta Ads (Groupe ENG)."""
 import datetime
 from decimal import Decimal
+from typing import Any, Dict, List, Optional  # PLAN_VEILLE (ajout)
 
 from django.utils import timezone
 from rest_framework import serializers
@@ -1147,22 +1148,22 @@ class VeilleDecouverteSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_annonceurs_distincts(self, obj):
+    def get_annonceurs_distincts(self, obj) -> int:
         return obj.annonceurs_distincts
 
-    def get_cree_par(self, obj):
+    def get_cree_par(self, obj) -> Optional[str]:
         return _nom_utilisateur(obj.cree_par)
 
-    def get_cree_le(self, obj):
+    def get_cree_le(self, obj) -> Optional[str]:
         return _iso(obj.created_at)
 
-    def get_reprise_a(self, obj):
+    def get_reprise_a(self, obj) -> Optional[str]:
         return _iso(obj.reprise_a)
 
-    def get_termine_le(self, obj):
+    def get_termine_le(self, obj) -> Optional[str]:
         return _iso(obj.termine_le)
 
-    def get_requetes(self, obj):
+    def get_requetes(self, obj) -> List[Dict[str, Any]]:
         return [{
             'mot_cle': r.mot_cle, 'pays': r.pays, 'statut': r.statut,
             'pages_lues': r.pages_lues, 'appels': r.appels, 'pubs': r.pubs,
@@ -1198,19 +1199,19 @@ class VeilleAnnonceurSerializer(serializers.ModelSerializer):
     def _aveugle(self):
         return bool(self.context.get('aveugle'))
 
-    def get_lien_bibliotheque(self, obj):
+    def get_lien_bibliotheque(self, obj) -> Optional[str]:
         return lien_bibliotheque(obj.ad_archive_id_exemple)
 
-    def get_classe(self, obj):
+    def get_classe(self, obj) -> Optional[str]:
         return None if self._aveugle() else obj.classe
 
-    def get_classes_disponibles(self, obj):
+    def get_classes_disponibles(self, obj) -> List[Dict[str, Any]]:
         return classes_disponibles()
 
-    def get_doublon_de(self, obj):
+    def get_doublon_de(self, obj) -> Optional[int]:
         return None if self._aveugle() else obj.doublon_de_id
 
-    def get_verdict(self, obj):
+    def get_verdict(self, obj) -> Optional[Dict[str, Any]]:
         v = obj.verdict_courant
         if self._aveugle() or v is None:
             return None
@@ -1222,7 +1223,7 @@ class VeilleAnnonceurSerializer(serializers.ModelSerializer):
             'auteur': _nom_utilisateur(v.auteur), 'le': _iso(v.created_at),
         }
 
-    def get_dropshipper(self, obj):
+    def get_dropshipper(self, obj) -> Optional[Dict[str, Any]]:
         if self._aveugle():
             return None
         return {
@@ -1231,7 +1232,7 @@ class VeilleAnnonceurSerializer(serializers.ModelSerializer):
             'decide_par': obj.dropshipper_decide_par or None,
         }
 
-    def get_etiquette_mesure(self, obj):
+    def get_etiquette_mesure(self, obj) -> Optional[Dict[str, Any]]:
         if self._aveugle():
             return None
         etiquette = (obj.verdicts.filter(est_etiquette_mesure=True)
@@ -1243,7 +1244,7 @@ class VeilleAnnonceurSerializer(serializers.ModelSerializer):
                 'auteur': _nom_utilisateur(etiquette.auteur),
                 'le': _iso(etiquette.created_at)}
 
-    def get_historique(self, obj):
+    def get_historique(self, obj) -> List[Dict[str, Any]]:
         if self._aveugle():
             return []
         qs = (obj.verdicts.filter(est_etiquette_mesure=False)
