@@ -341,9 +341,6 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_pertes.json':
         'pertes et dérogations du calepinage (ACAL8) : lues sur le '
         'calepinage et les réglages société en base',
-    'calepinage_entree_electrique.json':
-        "entrée électrique stockée + matériel résolu (ACAL9) : lit le devis "
-        'lié et le stock en base',
     'calepinage_publication_electrique.json':
         'refus de publication électrique 422 + dérogation (ACAL9) : lit le '
         'verdict du calepinage en base',
