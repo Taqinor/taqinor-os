@@ -17,10 +17,12 @@ Run :
 """
 import json
 import pathlib
+from unittest import mock
 
 from django.test import SimpleTestCase
 
-from apps.calepinage.views.sorties import inventaire_des_sorties
+from apps.calepinage.views import sorties as vue_sorties
+from apps.calepinage.views.sorties import SANS_RESULTAT
 
 from .test_cal171_planche import LAYOUT
 
@@ -28,6 +30,21 @@ RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT = json.loads(
     (RACINE_APP / 'contract_samples' / 'calepinage_sorties.json')
     .read_text(encoding='utf-8'))
+
+
+def inventaire_des_sorties(calepinage):
+    """L'inventaire, la lecture STRICTE du servi étant le SEAM (ACAL214).
+
+    La disponibilité de la note ne dépend plus de « la colonne brute n'est
+    pas vide » mais du lecteur strict du résultat servi, prouvé de bout en
+    bout sur la chaîne RÉELLE par ``test_acal_resultat_servi_livrables.py``.
+    Ici le faux calepinage n'a pas de simulation : le seam dit « lisible »
+    quand un résultat est posé, et le motif d'absence sinon.
+    """
+    lisible = bool(calepinage.resultat)
+    with mock.patch.object(vue_sorties, '_motif_note',
+                           return_value=None if lisible else SANS_RESULTAT):
+        return vue_sorties.inventaire_des_sorties(calepinage)
 
 
 class FauxCalepinage:

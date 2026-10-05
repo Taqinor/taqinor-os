@@ -693,8 +693,11 @@ def avancement_du_dossier(dossier):
     }
 
 
-def packs_france(calepinage):
+def packs_france(calepinage, agregat=None):
     """CAL193 — les trois dossiers FR, chacun avec son avancement.
+
+    ACAL309 — ``agregat`` (``dossiers_du_calepinage(calepinage, pays='fr')``)
+    peut etre fourni par l'appelant pour ne le calculer qu'une fois.
 
     Un genre dont la société n'a déposé AUCUN gabarit sort avec
     ``gabarit_depose = False`` et le message qui dit quoi déposer : il n'est
@@ -702,7 +705,8 @@ def packs_france(calepinage):
     """
     from ..models import GabaritDossierReglementaire
 
-    agregat = dossiers_du_calepinage(calepinage, pays='fr')
+    if agregat is None:
+        agregat = dossiers_du_calepinage(calepinage, pays='fr')
     # Le GENRE vit sur le gabarit, pas dans le dossier composé : y ajouter une
     # clé ferait diverger la forme du contrat CAL247, que l'écran consomme.
     genre_par_gabarit = dict(

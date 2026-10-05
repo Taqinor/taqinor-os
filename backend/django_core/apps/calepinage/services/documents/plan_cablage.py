@@ -495,13 +495,13 @@ def plan_du_calepinage(calepinage, *, affectation=None):
 
 def rendre_plan_cablage_svg(calepinage, *, moment=None, affectation=None):
     """Le SVG du plan de câblage, pied d'empreinte compris (CAL173)."""
-    from ..planche import empreinte_du_calepinage
+    from ..planche import pied_du_calepinage
 
     plan = plan_du_calepinage(calepinage, affectation=affectation)
     return svg_de_plan_cablage(
         plan, titre='Plan de câblage — %s' % calepinage,
         sous_titre='Modules teintés par chaîne (affectation publiée)',
-        pied=empreinte_du_calepinage(calepinage, moment=moment))
+        pied=pied_du_calepinage(calepinage, moment=moment))
 
 
 def html_du_plan_cablage(calepinage, **options):

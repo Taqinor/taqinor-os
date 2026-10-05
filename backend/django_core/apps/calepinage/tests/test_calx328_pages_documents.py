@@ -109,10 +109,12 @@ INTERVALLES = {
         "page forcé : jamais vide, jamais une dérive à des dizaines de "
         "pages pour l'exemple du contrat."),
     'rapport_etude': (
-        2, 10,
-        "dix blocs (garde + neuf sections) en flux continu — jamais un "
-        "document d'une seule page pour neuf sections, jamais au-delà de "
-        "dix pages pour l'exemple du contrat."),
+        2, 14,
+        "ACAL226 - le rapport SERVI est pagine : garde, sommaire en page 2, "
+        "puis une section par page (neuf sections), soit onze pages mesurees "
+        "pour l'exemple du contrat ; jamais un document d'une seule page, "
+        "jamais au-dela de quatorze (annexes constructeur exclues : "
+        "l'exemple n'en porte aucune)."),
     'rapport_ombrage': (
         1, 6,
         "garde, un bloc par pan (deux pans dans l'exemple), la matrice "
@@ -180,10 +182,15 @@ class RenduReelPagesTest(unittest.TestCase):
     def _octets_note_calcul(self):
         from apps.calepinage.services.note_calcul import rendre_note_calcul
 
-        nu = SimpleNamespace(company=None, pk=None, titre='Villa Anfa',
-                             resultat=_resultat())
-        return rendre_note_calcul(nu, site=SITE, identite=IDENTITE,
-                                  styles=STYLES)
+        # ACAL214 — la note lit le résultat SERVI (chaîne réelle).
+        from .acal_livrables_helpers import (
+            calepinage_simule_reel, patch_materiel,
+        )
+
+        nu = calepinage_simule_reel()
+        with patch_materiel():
+            return rendre_note_calcul(nu, site=SITE, identite=IDENTITE,
+                                      styles=STYLES)
 
     def _octets_rapport_etude(self):
         from apps.calepinage.services.rapport import rendre_rapport

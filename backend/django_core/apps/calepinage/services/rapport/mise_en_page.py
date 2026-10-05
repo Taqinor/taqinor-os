@@ -184,9 +184,16 @@ def html_de_rapport_pagine(rapport):
     en page de référence sans sommaire ; celle-ci y ajoute la pagination
     attendue par ce lot.
     """
-    from . import CSS_RAPPORT, _html_section, feuille_de_section
+    from . import (
+        CSS_RAPPORT, _html_section, feuille_de_section, html_de_rapport,
+    )
     from ..documents.gabarit_document import document_html
     from ..documents.libelles_document import libelle
+
+    if len([s for s in rapport['sections'] if s['code'] != 'garde']) <= 1:
+        # Le sommaire est OMIS quand une seule section hors garde est retenue
+        # (la pièce « nomenclature » du dossier de fin de chantier).
+        return html_de_rapport(rapport)
 
     langue = rapport['langue']
     pages = pages_attendues(rapport)

@@ -45,6 +45,7 @@ from unittest import mock
 from apps.calepinage.services.documents import inventaire_des_documents
 from apps.calepinage.views.sorties import inventaire_des_sorties
 
+from .acal_livrables_helpers import LAYOUT_SIMULABLE, patch_materiel
 from .test_cal171_planche import LAYOUT
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
@@ -94,35 +95,14 @@ class FauxResultatCoute:
 
     pk = 3
     devis_id = None
-    roof_layout = {'zones': [{'id': 1}]}
+    # ACAL219 - une conception REELLEMENT lisible : les huit autres cartes
+    # lisent le resultat SERVI, qui se calcule sur le document.
+    roof_layout = LAYOUT_SIMULABLE
     resultat = {'prix_achat': 100}
     company = None
     layout_hash = 'b' * 64
     version_moteur = 'calepinage-1.0.0'
     titre = 'Calepinage 3'
-
-    def __str__(self):
-        return self.titre
-
-
-class FauxCablageTrace:
-    """Chaînage électrique ET cheminement mesuré PRÉSENTS — ``resultat
-    ['troncons']`` est un DICT (contrat ``calepinage_resultat.json``),
-    JAMAIS une liste : régression du bug où la grammaire ``[]`` le lisait
-    comme toujours absent."""
-
-    pk = 6
-    devis_id = None
-    roof_layout = {'zones': [{'id': 1}]}
-    resultat = {
-        'electrique': {'chainage': {'modules': 12, 'chaines': 2}},
-        'troncons': {'troncons': [{'id': 't1'}], 'totaux': {},
-                     'omissions': [], 'verdicts': []},
-    }
-    company = None
-    layout_hash = 'd' * 64
-    version_moteur = 'calepinage-1.0.0'
-    titre = 'Calepinage 6'
 
     def __str__(self):
         return self.titre
@@ -183,13 +163,12 @@ class InventaireVideTest(SansBaseMixin, unittest.TestCase):
             self.assertEqual(servie['disponible'], attendue['disponible'])
             self.assertEqual(servie['motif_indisponible'],
                              attendue['motif_indisponible'])
-            # ACAL14 a posé ``manque[].onglet`` (contrat v2) avant son
-            # producteur : ACAL220 le sert et retire ce filtre.
-            self.assertEqual(
-                servie['manque'],
-                [{k: v for k, v in ligne.items() if k != 'onglet'}
-                 for ligne in attendue['manque']])
+            self.assertEqual(servie['manque'], attendue['manque'])
             self.assertEqual(servie['versions'], attendue['versions'])
+            # ACAL220 - contrat v2.
+            for cle in ('methode', 'langues', 'apercu', 'autres_formats'):
+                self.assertEqual(servie[cle], attendue[cle],
+                                 '%s.%s' % (servie['code'], cle))
 
     def test_champ_roof_layout_en_premier_jamais_resultat(self):
         """Sans AUCUNE conception, c'est ``roof_layout`` qui est nommé —
@@ -233,6 +212,9 @@ class ChampReellementLeveTest(unittest.TestCase):
 
     def setUp(self):
         SansBaseMixin.setUp(self)
+        materiel = patch_materiel()
+        materiel.start()
+        self.addCleanup(materiel.stop)
         self.servi = inventaire_des_documents(FauxResultatCoute())
         self.par_code = {d['code']: d for d in self.servi['documents']}
 
@@ -249,43 +231,37 @@ class ChampReellementLeveTest(unittest.TestCase):
             document['manque'][0]['champ'],
             'roof_layout.zones[].geometry.solarAccess.values')
 
-    def test_plan_cablage_nomme_chainage_et_troncons(self):
+    def test_plan_cablage_nomme_le_seul_chainage(self):
+        # ACAL219 - le rendu ne lit jamais ``troncons`` : seul le chainage
+        # servi conditionne la carte (``test_acal_inventaire_vrai`` prouve
+        # le cas disponible sur la chaine reelle).
         document = self.par_code['plan_cablage']
         self.assertFalse(document['disponible'])
         champs = {ligne['champ'] for ligne in document['manque']}
-        self.assertEqual(champs, {'electrique.chainage', 'troncons'})
-
-    def test_plan_cablage_disponible_quand_troncons_est_un_dict_trace(self):
-        """RÉGRESSION : ``resultat['troncons']`` est un DICT non vide quand
-        un cheminement est tracé (jamais une liste) — la grammaire de
-        présence ne doit PAS exiger ``[]``."""
-        with mock.patch(
-                'apps.calepinage.services.documents._versions_pour',
-                return_value=[]),                 mock.patch(
-                'apps.calepinage.services.documents._images_pour',
-                return_value=[]):
-            servi = inventaire_des_documents(FauxCablageTrace())
-        document = next(d for d in servi['documents']
-                        if d['code'] == 'plan_cablage')
-        self.assertTrue(document['disponible'])
-        self.assertEqual(document['manque'], [])
+        self.assertEqual(champs, {'electrique.chainage'})
 
     def test_les_pieces_sans_service_dedie_restent_disponibles(self):
-        """La BASE (conception+résultat) suffit pour ``export_projet_json``,
-        ``manuel_proprietaire`` et ``presentation_compacte`` : aucune donnée
-        supplémentaire n'est encore exigée pour elles."""
-        for code in ('export_projet_json', 'manuel_proprietaire',
-                     'presentation_compacte'):
+        """La BASE (conception+résultat) suffit pour ``export_projet_json``
+        et ``presentation_compacte`` : aucune donnée supplémentaire."""
+        for code in ('export_projet_json', 'presentation_compacte'):
             self.assertTrue(self.par_code[code]['disponible'], code)
             self.assertEqual(self.par_code[code]['manque'], [])
 
-    def test_les_pieces_a_preuve_terrain_restent_indisponibles(self):
-        """Aucune preuve terrain déposée sur ce fixture : as-built et
-        dossier de fin de chantier attendent leurs images (CALX302)."""
+    def test_asbuilt_et_dossier_disponibles_des_que_la_base_existe(self):
+        """ACAL220 - le service as-built ne refuse jamais ; le dossier de
+        fin de chantier se produit des qu'une piece fusionnable existe.
+        Plus aucune « preuve terrain » n'est exigee (la porte d'images ne
+        conditionne ni l'un ni l'autre)."""
         for code in ('document_asbuilt', 'dossier_fin_chantier'):
-            self.assertFalse(self.par_code[code]['disponible'], code)
-            self.assertEqual(self.par_code[code]['manque'][0]['champ'],
-                             'images')
+            self.assertTrue(self.par_code[code]['disponible'], code)
+            self.assertEqual(self.par_code[code]['manque'], [])
+
+    def test_manuel_indisponible_sans_gabarit_actif(self):
+        """ACAL220 - sans gabarit « manuel » actif (ici : aucune societe),
+        la carte le dit en nommant le champ ``gabarit``."""
+        document = self.par_code['manuel_proprietaire']
+        self.assertFalse(document['disponible'])
+        self.assertEqual(document['manque'][0]['champ'], 'gabarit')
 
     def test_diagramme_de_pertes_suit_la_cascade_du_resultat(self):
         """Clôture M4 — le diagramme est rendu CÔTÉ SERVEUR depuis

@@ -31,8 +31,8 @@ from __future__ import annotations
 from html import escape
 
 __all__ = [
-    'CODE_DOCUMENT', 'photos_du_calepinage', 'planche_svg_du_calepinage',
-    'construire_document', 'html_de_document', 'html_du_document_asbuilt',
+    'CODE_DOCUMENT', 'photos_du_calepinage', 'construire_document',
+    'html_de_document', 'html_du_document_asbuilt',
     'rendre_document_asbuilt',
 ]
 
@@ -61,19 +61,6 @@ def photos_du_calepinage(calepinage):
             .order_by('prise_le', 'id')]
 
 
-def planche_svg_du_calepinage(calepinage):
-    """Le SVG de la planche de pose « en regard » — ``''`` sans conception
-    (JAMAIS une planche fabriquée : ``PlancheRefusee`` est avalée ici, le
-    document reste imprimable sans elle, la table d'écarts porte déjà le
-    signal d'absence pan par pan)."""
-    from ..planche import PlancheRefusee, rendre_planche_svg
-
-    try:
-        return rendre_planche_svg(calepinage)
-    except PlancheRefusee:
-        return ''
-
-
 def construire_document(calepinage, *, ecarts=None, photos=None,
                         svg_planche=None, identite=None, site=None,
                         styles=None, provenance=None, etat=None):
@@ -87,7 +74,9 @@ def construire_document(calepinage, *, ecarts=None, photos=None,
     if photos is None:
         photos = photos_du_calepinage(calepinage)
     if svg_planche is None:
-        svg_planche = planche_svg_du_calepinage(calepinage)
+        from ..planche import planche_svg_ou_vide
+
+        svg_planche = planche_svg_ou_vide(calepinage)
 
     from .gabarit_document import (
         etat_de_conception, identite_du_calepinage, styles_de_societe,

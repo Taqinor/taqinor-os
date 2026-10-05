@@ -35,9 +35,12 @@ filtre est silencieuse ; un refus ne l'est pas.
 """
 from __future__ import annotations
 
+from .garde_montants import MOTS_D_ARGENT, mots_d_argent
+from .rangees import rangees_du_pan
+
 __all__ = [
     'FEUILLES', 'MOTS_D_ARGENT', 'ExportRefuse', 'verifier_absence_de_prix',
-    'rangees_du_pan', 'table_modules', 'table_chaines', 'table_nomenclature',
+    'table_modules', 'table_chaines', 'table_nomenclature',
     'tables_du_resultat',
     'classeur_octets', 'csv_octets', 'exporter_xlsx', 'exporter_csv',
     'FEUILLE_COMPARATIF', 'exporter_comparatif_xlsx',
@@ -46,15 +49,8 @@ __all__ = [
 #: Les trois feuilles, dans l'ordre du classeur.
 FEUILLES = ('Modules', 'Chaînes', 'Nomenclature')
 
-#: Les mots qui n'ont RIEN à faire dans une sortie technique. La garde porte
-#: sur les en-têtes et sur les cellules texte — un prix glissé dans une
-#: désignation passerait sinon.
-MOTS_D_ARGENT = ('prix', 'achat', 'coût', 'cout', 'marge brute', 'montant',
-                 'mad', 'dh ht', 'tarif', 'remise', 'facture')
-
-#: Arrondi de groupement des rangées : le centimètre. Deux modules posés à
-#: moins d'un centimètre l'un de l'autre en ordonnée sont sur la même rangée.
-PAS_DE_RANGEE_M = 0.01
+# ACAL231 - ``MOTS_D_ARGENT`` (réexporté) est LA liste unique de
+# ``services/garde_montants.py`` : une seule garde, à frontières de mot.
 
 
 class ExportRefuse(ValueError):
@@ -65,42 +61,43 @@ class ExportRefuse(ValueError):
         self.champ = champ
 
 
-def verifier_absence_de_prix(entetes, lignes):
-    """Refuse une table qui charrie un mot d'argent (en-tête OU cellule)."""
+class _Designation(str):
+    """Une cellule de désignation du bordereau (ACAL231).
+
+    Le texte imprimé peut porter une spécification SAISIE (« décision
+    société — remise aux normes ») ; la garde ne lit que ``garde`` : la
+    désignation et la référence venues du catalogue ou du moteur.
+    """
+
+    garde = ''
+
+
+def verifier_absence_de_prix(entetes, lignes, *, colonnes_exclues=()):
+    """Refuse une table qui charrie un mot d'argent (en-tête OU cellule).
+
+    ACAL231 - garde UNIQUE à frontières de mot (``garde_montants``) : « Hammadi »,
+    « Madani » ou un pan « Remise » ne sont plus refusés. Elle ne porte jamais
+    sur un texte SAISI : ``colonnes_exclues`` écarte les colonnes de saisie
+    (libellé de pan, bâtiment) et une cellule ``_Designation`` ne présente à
+    la garde que ses parties catalogue/moteur.
+    """
     suspects = []
     for entete in entetes:
-        texte = str(entete).lower()
         suspects += ['en-tête « %s »' % entete
-                     for mot in MOTS_D_ARGENT if mot in texte]
+                     for _mot in mots_d_argent(entete)]
     for rang, ligne in enumerate(lignes, start=1):
-        for cellule in ligne:
-            if not isinstance(cellule, str):
+        for colonne, cellule in enumerate(ligne):
+            if colonne in colonnes_exclues or not isinstance(cellule, str):
                 continue
-            texte = cellule.lower()
+            lu = getattr(cellule, 'garde', None) or cellule
             suspects += ['ligne %d : « %s »' % (rang, cellule)
-                         for mot in MOTS_D_ARGENT if mot in texte]
+                         for _mot in mots_d_argent(lu)]
     if suspects:
         raise ExportRefuse(
             "Export refusé : une sortie technique ne porte aucun prix "
             "(`prix_achat` alimente un indicateur réservé au générateur). "
             "Trouvé — %s." % ' ; '.join(sorted(set(suspects))),
             champ='colonnes')
-
-
-def rangees_du_pan(modules):
-    """``centre -> numéro de rangée`` par GROUPEMENT sur l'ordonnée relevée.
-
-    PUBLIQUE parce qu'elle est la SEULE définition de « rangée » du module :
-    le plan de pose (CAL211) l'appelle pour numéroter ses repères. Deux
-    définitions de la rangée feraient diverger le plan remis à l'équipe et le
-    tableau remis au bureau d'études — la duplication de la donnée est la
-    seule source d'incohérence observée le 27/07/2026.
-    """
-    ordonnees = sorted({round(y / PAS_DE_RANGEE_M) for _x, y in modules})
-    rang_par_ordonnee = {valeur: rang
-                         for rang, valeur in enumerate(ordonnees, start=1)}
-    return {centre: rang_par_ordonnee[round(centre[1] / PAS_DE_RANGEE_M)]
-            for centre in modules}
 
 
 def _affectation_par_pan(resultat):
@@ -121,7 +118,8 @@ def table_modules(geometrie, resultat=None):
     par_pan = _affectation_par_pan(resultat)
     lignes = []
     for pan in geometrie.get('pans') or ():
-        rangees = rangees_du_pan(pan['modules'])
+        # ACAL230 - la rangée a UNE définition ORIENTÉE (``rangees.py``).
+        rangees = rangees_du_pan(pan['modules'], pan.get('azimut_deg'))
         affectations = par_pan.get(pan['repere'], [])
         for rang, centre in enumerate(pan['modules'], start=1):
             affectation = affectations[rang - 1] \
@@ -171,14 +169,20 @@ def _designation_bordereau(ligne):
     ou « décision société — <motif> » pour un organe ajouté à la main,
     ``services/protections.py::MENTION_SOCIETE``) est reprise TELLE QUELLE,
     jamais reformulée."""
-    parties = [str(ligne.get('designation') or '').strip()]
+    designation = str(ligne.get('designation') or '').strip()
+    parties = [designation]
     spec = str(ligne.get('spec') or '').strip()
     if spec:
         parties.append(spec)
     reference = ligne.get('reference')
     if reference:
         parties.append('réf. %s' % reference)
-    return ' — '.join(partie for partie in parties if partie)
+    cellule = _Designation(' — '.join(p for p in parties if p))
+    # La garde ne lit que le catalogue / le moteur : jamais la spécification
+    # (qui peut être le motif saisi d'un organe ajouté).
+    cellule.garde = ' — '.join(p for p in (
+        designation, ('réf. %s' % reference) if reference else '') if p)
+    return cellule
 
 
 def _lignes_bordereau_electrique(resultat):
@@ -238,8 +242,11 @@ def tables_du_resultat(geometrie, resultat=None):
         (FEUILLES[1],) + table_chaines(resultat),
         (FEUILLES[2],) + table_nomenclature(resultat),
     ]
-    for _titre, entetes, lignes in tables:
-        verifier_absence_de_prix(entetes, lignes)
+    for titre, entetes, lignes in tables:
+        # Colonnes Pan et Bâtiment : libellés SAISIS, hors garde (ACAL231).
+        verifier_absence_de_prix(
+            entetes, lignes,
+            colonnes_exclues=(0, 1) if titre == FEUILLES[0] else ())
     return tables
 
 
@@ -272,8 +279,11 @@ def classeur_octets(tables, *, provenance=None):
 
         feuille_provenance = (TITRE_FEUILLE, list(ENTETES),
                               [list(ligne) for ligne in provenance])
+        # Colonne « Valeur » exclue : elle porte le titre SAISI du calepinage
+        # (ACAL231) ; les libellés (colonne 0) restent gardés.
         verifier_absence_de_prix(feuille_provenance[1],
-                                 feuille_provenance[2])
+                                 feuille_provenance[2],
+                                 colonnes_exclues=(1,))
         tables = [feuille_provenance] + list(tables)
 
     titre, entetes, lignes = tables[0]
@@ -327,8 +337,12 @@ def _tables_du_calepinage(calepinage):
     from .planche import geometrie_de_planche
 
     geometrie = geometrie_de_planche(getattr(calepinage, 'roof_layout', None))
+    from .. import selectors
+
+    # ACAL216 — le résultat SERVI (pose, électrique, nomenclature), lecteur
+    # tolérant : jamais la colonne brute, qui ne porte ni pose ni électrique.
     tables = tables_du_resultat(geometrie,
-                                getattr(calepinage, 'resultat', None))
+                                selectors.resultat_servi(calepinage))
     # CALX359 — la feuille « Fixation », EN FIN, seulement quand la société
     # a un catalogue de fixation : sans lui, le classeur est EXACTEMENT
     # celui d'aujourd'hui (D12). Même garde de prix que les trois autres.
