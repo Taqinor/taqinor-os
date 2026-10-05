@@ -190,6 +190,8 @@ describe('W113 — hydrateFromLead', () => {
       surfacesPose: [],
       environment: [],
       shading12x24: null,
+      shadeObstructions: [],
+      shadeObstructionsNonLues: [],
       consSource: null,
       electrical: null,
     };

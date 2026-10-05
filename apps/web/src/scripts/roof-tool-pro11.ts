@@ -1814,6 +1814,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     appliquerHydratationAuCtx(ctx, h);
     if (h.environment !== undefined) obstaclesUi.redrawEnvironment();
     if (h.electrical !== undefined) coucheElectrique.rafraichir();
+    if (h.shadeObstructions !== undefined) shadingUi.rafraichirOmbres(); // ACAL27
     if (h.surfacesPose !== undefined) {
       monterAtelierPose(ctx, { setStatus: (msg: string) => setStatus(msg), recalc: () => updateAreaReadout() });
       updateAreaReadout();

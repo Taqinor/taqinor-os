@@ -18,7 +18,7 @@
  * extraite du wrapper `onApiReady.serializeLayout` : ses DEUX branches (devis / lead) passent
  * désormais la couche électrique, et un test peut appeler le VRAI sérialiseur câblé.
  */
-import { annualShadeFactor } from '../../lib/shadingEngine';
+import { annualShadeFactor, type ShadeObstruction } from '../../lib/shadingEngine';
 import { fallbackPerKwc } from '../../lib/productionEngine';
 import { type PerimeterSetbacks } from '../../lib/roofPro2';
 import { type Ctx } from './context';
@@ -54,6 +54,8 @@ function copie<T>(v: T): T {
  *    partagée avec `obstaclesUi`/`shadingUi`) ;
  *  - `shading12x24` → `ctx.shadeFactors` + `ctx.ombrageEnregistre` : la matrice enregistrée
  *    prime sur le recalcul tant qu'aucune source d'ombrage ne change (`shadingUi.ts`) ;
+ *  - `shadeObstructions` (ACAL27) → `ctx.shadeObstructions` (muté en place) + les entrées
+ *    non recalculables dans `ctx.shadeObstructionsNonLues` ;
  *  - les six champs `cons*` + `consSource` → la consommation du SITE (un facteur saisonnier
  *    `null` = non renseigné : le défaut de l'atelier est gardé) ;
  *  - `electrical` → `ctx.electrical` (null = aucune couche).
@@ -75,6 +77,19 @@ export function appliquerHydratationAuCtx(ctx: Ctx, h: HydratationAtelier): void
       ctx.ombrageEnregistre = null;
     }
   }
+  // ACAL27 — les ombres tracées relues (tableau partagé, muté en place) et celles que
+  // l'atelier ne sait pas recalculer (transmises telles quelles).
+  if (h.shadeObstructions !== undefined) {
+    const relues = (h.shadeObstructions ?? []).map((o) => copie(o));
+    const liste = ctx.shadeObstructions as ShadeObstruction[] | undefined;
+    if (liste) {
+      liste.length = 0;
+      liste.push(...relues);
+    } else {
+      (ctx as { shadeObstructions?: ShadeObstruction[] }).shadeObstructions = relues;
+    }
+  }
+  if (h.shadeObstructionsNonLues !== undefined) ctx.shadeObstructionsNonLues = copie(h.shadeObstructionsNonLues ?? []);
   if (h.consCurve !== undefined) ctx.consCurve = (h.consCurve ?? []).slice();
   if (h.consHandEdited !== undefined) ctx.consHandEdited = Boolean(h.consHandEdited);
   if (h.consAppliances !== undefined) ctx.consAppliances = copie(h.consAppliances ?? []);

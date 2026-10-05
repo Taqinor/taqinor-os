@@ -355,4 +355,7 @@ export interface Ctx {
    *  au premier calcul (null tant qu'il n'a pas eu lieu). Remise à null pour de bon dès la
    *  première modification. */
   ombrageEnregistre?: { matrice: number[][]; signature: string | null } | null;
+  /** ACAL27 — les entrées `shadeObstructions[]` RELUES que l'atelier ne sait pas recalculer
+   *  (un `contour`, un `centre` sans bout d'ombre) : transmises telles quelles au document. */
+  shadeObstructionsNonLues?: Array<Record<string, unknown>>;
 }

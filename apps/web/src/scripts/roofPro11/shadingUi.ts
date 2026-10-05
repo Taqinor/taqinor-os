@@ -77,6 +77,8 @@ export interface ShadingUi {
   handleMapClick: (lngLat: LngLat) => boolean;
   /** Recalcule hauteurs (hypothèse de prise de vue) + facteurs + affichages. */
   recomputeShading: () => void;
+  /** ACAL27 — redessine liste + lignes des ombres tracées (après hydratation), sans recalcul. */
+  rafraichirOmbres: () => void;
   /** WJ21 — ré-applique la heatmap d'accès solaire si elle est active (après un re-rendu
    *  qui a recréé les instances de panneaux). No-op si la heatmap est OFF. */
   refreshHeatmap: () => void;
@@ -193,6 +195,26 @@ export function signatureSourcesOmbrage(ctx: Pick<Ctx, 'shadeObstructions' | 'ob
       .map((o) => [o.id, o.centerLng, o.centerLat, o.lengthM, o.widthM, o.heightM, o.type ?? null]),
     e: ctx.environment ?? [],
   });
+}
+
+/**
+ * ACAL27 — LE calcul de la matrice d'ombrage proche depuis les sources de la session
+ * (ombres tracées + obstacles à hauteur + environnement), extrait de `recomputeFactors`
+ * pour être rejoué hors DOM : une ombre tracée relue du document redonne la MÊME matrice.
+ * Aucune source ou tracé ouvert ⇒ `null` (aucun dérate inventé). PURE.
+ */
+export function matriceOmbrageDesSources(
+  ctx: Pick<Ctx, 'shadeObstructions' | 'obstacles' | 'environment' | 'centroid' | 'centroidLat' | 'vertices'>,
+  roofHeightM: number,
+): { factors: number[][] | null; entries: number } {
+  const sources =
+    (ctx.shadeObstructions ?? []).length > 0 ||
+    (ctx.obstacles ?? []).some((o) => typeof o.heightM === 'number' && o.heightM > 0) ||
+    (ctx.environment ?? []).some((o) => typeof o.heightM === 'number' && o.heightM > 0);
+  if (!sources || (ctx.vertices ?? []).length < 3) return { factors: null, entries: 0 };
+  const enu = unifiedShadeEntries(ctx.shadeObstructions, ctx.obstacles, ctx.environment, ctx.centroid, roofHeightM);
+  if (!enu.length) return { factors: null, entries: 0 };
+  return { factors: hourlyShadeFactors(ctx.centroidLat, enu), entries: enu.length };
 }
 
 /** CAL95 — noms des mois pour le sélecteur saisonnier de la carte d'accès solaire. */
@@ -737,20 +759,15 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       }
       ctx.ombrageEnregistre = null;
     }
-    if (!hasShadeSources() || ctx.vertices.length < 3) {
-      lastEntryCount = 0;
+    // ACAL27 — l'UNIQUE calcul, partagé avec la relecture du document (`matriceOmbrageDesSources`).
+    const calcul = matriceOmbrageDesSources(ctx, roofHeightM());
+    lastEntryCount = calcul.entries;
+    if (!calcul.factors) {
       ctx.shadeFactors = null;
       ctx.shadeAnnualFactor = 1;
       return;
     }
-    const enu = activeShadeEntries();
-    lastEntryCount = enu.length;
-    if (!enu.length) {
-      ctx.shadeFactors = null;
-      ctx.shadeAnnualFactor = 1;
-      return;
-    }
-    ctx.shadeFactors = hourlyShadeFactors(ctx.centroidLat, enu);
+    ctx.shadeFactors = calcul.factors;
     // Facteur annuel pondéré par la vraie saisonnalité : profils PVGIS si présents,
     // sinon le repli interne étiqueté (forme saisonnière plausible, même pondération).
     const prod = ctx.prodPerKwc ?? fallbackPerKwc();
@@ -1113,7 +1130,9 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       return true;
     }
     ctx.shadeObstructions.push({
-      id: `shade-${++shadeCounter}`,
+      // ACAL27 — jamais un doublon d'une ombre RELUE du document : le compteur part du plus
+      // grand numéro déjà présent.
+      id: `shade-${(shadeCounter = Math.max(shadeCounter, ...ctx.shadeObstructions.map((o) => Number(/^shade-(\d+)$/.exec(o.id)?.[1] ?? 0))) + 1)}`,
       base,
       tip: lngLat,
       heightM: h,
@@ -1128,6 +1147,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   function reset() {
     ctx.shadeObstructions.length = 0;
     ctx.ombrageEnregistre = null; // ACAL26 — effacer l'ombrage est une modification
+    ctx.shadeObstructionsNonLues = []; // ACAL27 — « Effacer » vide aussi les ombres relues
     ctx.shadeFactors = null;
     ctx.shadeAnnualFactor = 1;
     setTracing(false);
@@ -1221,8 +1241,16 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     renderPropositionOsm();
   }
 
+  /** ACAL27 — redessine la liste et les lignes des ombres tracées après une hydratation,
+   *  SANS recalcul (la matrice enregistrée reste en vigueur, cf. `recomputeFactors`). */
+  function rafraichirOmbres() {
+    renderList();
+    drawShadeLines();
+  }
+
   return {
     handleMapClick,
+    rafraichirOmbres,
     recomputeShading,
     refreshHeatmap,
     reset,

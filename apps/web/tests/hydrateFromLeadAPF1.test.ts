@@ -97,6 +97,8 @@ describe('AP-F1 — hydrateFromLead accepte les DEUX formes de contour (UN SEUL 
       surfacesPose: [],
       environment: [],
       shading12x24: null,
+      shadeObstructions: [],
+      shadeObstructionsNonLues: [],
       consSource: null,
       electrical: null,
     };

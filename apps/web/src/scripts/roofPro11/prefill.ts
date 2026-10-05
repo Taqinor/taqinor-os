@@ -24,6 +24,7 @@ import { emptyCurve, type Appliance, type ApplianceBilling, type HourlyCurve } f
 import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
 import { deduceEdgeTypes, fusionnerAretesSaisies, type SerializedEdge, type EdgeDeductionZone } from './edges';
 import { type EnvironmentObject } from './environment';
+import { type ShadeObstruction } from '../../lib/shadingEngine'; // ACAL27
 import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone } from './zones';
 import { resolveSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { sortedHorizonPoints, horizonMaxHeightDeg, type HorizonProfile, type HorizonSource } from '../../lib/horizonEngine';
@@ -472,6 +473,78 @@ export function deserializeShading(json: unknown): number[][] | null {
   return serializeShading(raw as readonly (readonly number[])[] | null | undefined);
 }
 
+// ═══════════ ACAL27 — OMBRES TRACÉES (sérialisation, contrat `$defs/shadeObstruction`) ═══════════
+// Une ombre tracée (WJ19) est un PIED (`base`) et un BOUT d'ombre (`tip`) ; la hauteur en
+// est DÉDUITE et la demi-largeur supposée. Le contrat (ACAL2) décrit une obstruction par
+// `centre` + `rayonM` (ou un `contour`) et `hauteurM` : le pied est le centre, la
+// demi-largeur le rayon, et le bout voyage sous `bout` (clé additive, le contrat admet
+// des propriétés supplémentaires) — sans lui la hauteur ne se redéduirait pas. Une entrée
+// que l'atelier ne sait pas recalculer (un `contour`, un arbre posé par `centre` seul) est
+// transmise TELLE QUELLE : jamais complétée, jamais jetée.
+
+/** Genre écrit pour une ombre tracée dans l'atelier. */
+export const GENRE_OMBRE_TRACEE = 'ombre_tracee';
+
+function coupleFini(v: unknown): v is [number, number] {
+  return Array.isArray(v) && v.length >= 2 && Number.isFinite(v[0]) && Number.isFinite(v[1]);
+}
+
+/** ACAL27 — écrit `shadeObstructions[]` : les ombres tracées de la session puis les entrées
+ *  relues que l'atelier ne sait pas recalculer (verbatim). Rien ⇒ aucune clé. */
+export function serializeShadeObstructions(
+  list: readonly ShadeObstruction[] | null | undefined,
+  nonLues?: readonly Record<string, unknown>[] | null,
+): { shadeObstructions?: Array<Record<string, unknown>> } {
+  const out: Array<Record<string, unknown>> = [];
+  for (const o of list ?? []) {
+    if (!o || typeof o.id !== 'string' || !o.id || !coupleFini(o.base) || !coupleFini(o.tip)) continue;
+    out.push({
+      id: o.id,
+      kind: GENRE_OMBRE_TRACEE,
+      centre: [o.base[0], o.base[1]],
+      bout: [o.tip[0], o.tip[1]],
+      ...(Number.isFinite(o.halfWidthM) && o.halfWidthM > 0 ? { rayonM: o.halfWidthM } : {}),
+      ...(Number.isFinite(o.heightM) && o.heightM >= 0 ? { hauteurM: o.heightM } : {}),
+      source: 'ombre_tracee',
+    });
+  }
+  for (const e of nonLues ?? []) if (e && typeof e === 'object') out.push(JSON.parse(JSON.stringify(e)));
+  return out.length ? { shadeObstructions: out } : {};
+}
+
+/** ACAL27 — relit `shadeObstructions[]` : `lues` = les ombres tracées que le moteur
+ *  d'ombrage sait recalculer ; `nonLues` = le reste, recopié tel quel pour être réémis. */
+export function deserializeShadeObstructions(json: unknown): {
+  lues: ShadeObstruction[];
+  nonLues: Array<Record<string, unknown>>;
+} {
+  const brut = (json as { shadeObstructions?: unknown } | null | undefined)?.shadeObstructions;
+  const lues: ShadeObstruction[] = [];
+  const nonLues: Array<Record<string, unknown>> = [];
+  if (!Array.isArray(brut)) return { lues, nonLues };
+  for (const e of brut) {
+    if (!e || typeof e !== 'object') continue;
+    const o = e as Record<string, unknown>;
+    const id = typeof o.id === 'string' ? o.id : '';
+    if (
+      id && o.kind === GENRE_OMBRE_TRACEE && coupleFini(o.centre) && coupleFini(o.bout)
+      && typeof o.hauteurM === 'number' && Number.isFinite(o.hauteurM)
+      && typeof o.rayonM === 'number' && Number.isFinite(o.rayonM) && o.rayonM > 0
+    ) {
+      lues.push({
+        id,
+        base: [o.centre[0], o.centre[1]] as LngLat,
+        tip: [o.bout[0], o.bout[1]] as LngLat,
+        heightM: o.hauteurM,
+        halfWidthM: o.rayonM,
+      });
+    } else {
+      nonLues.push(JSON.parse(JSON.stringify(o)));
+    }
+  }
+  return { lues, nonLues };
+}
+
 // ═══════════ CAL102 — MESURES (sérialisation) ═══════════
 // Mêmes garanties que `shading12x24` : un tableau de MAUVAISE forme est REFUSÉ EN BLOC
 // (mieux vaut aucune mesure au rechargement qu'une mesure à moitié fausse) — mais ici
@@ -664,6 +737,10 @@ export interface SerializedLayout {
   /** PV71 — matrice d'ombrage 12 mois × 24 heures (facteurs 0–1), ou null si aucune ombre
    *  n'a été tracée. Taille FIXE, donc charge utile bornée. */
   shading12x24?: number[][] | null;
+  /** ACAL27 — les OMBRES TRACÉES (contrat `$defs/shadeObstruction`) : sans elles, la
+   *  matrice `shading12x24` ne pouvait pas être recalculée à l'identique à la réouverture.
+   *  Omis ou vide = aucune ombre tracée (comportement historique, byte pour byte). */
+  shadeObstructions?: Array<Record<string, unknown>>;
   /** CAL102 — mesures posées (distance/surface/angle), annotations du calepinage. Omis ou
    *  vide = aucune mesure (comportement historique, byte pour byte). */
   measurements?: Measurement[];
@@ -915,6 +992,9 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     // PV71 — les ombres tracées voyagent avec le design (sinon la production remonte
     // artificiellement au ré-import).
     shading12x24: serializeShading(ctx.shadeFactors),
+    // ACAL27 — les ombres tracées voyagent avec la matrice qu'elles produisent : relues par
+    // `appliquerHydratationAuCtx`, elles redonnent la MÊME matrice au recalcul.
+    ...serializeShadeObstructions(ctx.shadeObstructions, ctx.shadeObstructionsNonLues),
     // CAL102 — les mesures posées voyagent avec le design (sinon rouvrir le dossier les
     // perd, comme n'importe quelle autre annotation de l'atelier).
     ...(ctx.measurements && ctx.measurements.length ? { measurements: serializeMeasurements(ctx.measurements) } : {}),
@@ -1263,6 +1343,10 @@ export interface CouchesDocument {
   environment: EnvironmentObject[];
   /** `shading12x24` ENREGISTRÉE (`deserializeShading`), ou null. */
   shading12x24: number[][] | null;
+  /** ACAL27 — ombres tracées relues (`deserializeShadeObstructions`) : celles que l'atelier
+   *  sait recalculer, et les autres, transmises telles quelles. */
+  shadeObstructions: ShadeObstruction[];
+  shadeObstructionsNonLues: Array<Record<string, unknown>>;
   /** `consumption.source` relue telle quelle, ou null (aucun bloc / provenance illisible). */
   consSource: SourceConsommation | null;
   /** `electrical` relu par `lireCoucheElectrique`, ou null quand le document n'en porte pas. */
@@ -1289,6 +1373,10 @@ export function lireCouchesDocument(json: unknown): CouchesDocument {
     surfacesPose: lireSurfacesPose(doc),
     environment: doc && Array.isArray(doc.environment) ? deserializeEnvironment(doc) : [],
     shading12x24: doc ? deserializeShading(doc.shading12x24 ?? null) : null,
+    ...(() => {
+      const ombres = deserializeShadeObstructions(doc);
+      return { shadeObstructions: ombres.lues, shadeObstructionsNonLues: ombres.nonLues };
+    })(),
     consSource,
     electrical,
   };
