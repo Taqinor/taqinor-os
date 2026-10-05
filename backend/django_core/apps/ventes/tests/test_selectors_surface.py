@@ -123,6 +123,7 @@ RESTENT = [
 PLACE = {
     'facturation': 'apps.ventes.selectors_facturation',  # SPL143
     'calepinage': 'apps.ventes.selectors_calepinage',  # SPL144
+    'cadence': 'apps.ventes.selectors_cadence',  # SPL145
 }
 
 
