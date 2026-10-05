@@ -117,6 +117,26 @@ REPONSES_SPEC = frozenset({
     'joint_telephone',
     # AGR520 — « En attente d'un accord (DPA / banque) ».
     'attente_accord'})
+#: AGR533 — les SEULES clés qu'une variante de segment (`variantes_segment`)
+#: peut remplacer : ce qui se LIT. Jamais `reponse`, `outcome`, `geste` ni
+#: `suite` — la même clé serveur, le même effet.
+CLES_VARIANTE_SEGMENT = frozenset({'label', 'precision', 'effet'})
+
+
+def refus_variantes_segment(objet):
+    """AGR533 — les clés interdites qu'une ``variantes_segment`` de ``objet``
+    (modèle de réponse, entrée d'étape ou geste) voudrait changer : ``[]``
+    quand tout va bien. La garde de table le vérifie partout."""
+    refus = []
+    for segment, variante in (objet.get('variantes_segment') or {}).items():
+        if not isinstance(variante, dict) or not variante:
+            refus.append(f'{segment} : variante vide')
+            continue
+        for cle in sorted(set(variante) - CLES_VARIANTE_SEGMENT):
+            refus.append(f'{segment} : « {cle} » ne peut pas changer')
+    return refus
+
+
 #: Les gestes qu'une réponse peut ouvrir à la place d'un envoi direct.
 GESTES_PLANIFICATION = frozenset({'planification', 'planification_seule', 'replanification'})
 #: Les gestes SANS envoi propre : ils n'ont pas de clé de réponse (E14).

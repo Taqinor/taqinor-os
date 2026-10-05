@@ -55,7 +55,10 @@
       "precision": "Aucune offre n’est envoyée avant la décision du fondateur."
     },
     "devis_modifie": { "label": "Demande un devis modifié", "reponse": "devis_modifie" },
-    "decision_famille": { "label": "Décision à plusieurs — en famille", "reponse": "decision_famille" },
+    "decision_famille": {
+      "label": "Décision à plusieurs — en famille", "reponse": "decision_famille",
+      "variantes_segment": { "agricole": { "label": "Décision à plusieurs — associés / coopérative" } }
+    },
     "decision_proprietaire": {
       "label": "Décision à plusieurs — le propriétaire", "reponse": "decision_proprietaire",
       "precision": "La note dit qu’il faut joindre le propriétaire."
@@ -90,7 +93,13 @@
     },
     {
       "id": "piece_recue", "label": "Pièce reçue",
-      "effet": "Le client a envoyé sa facture, son adresse ou sa localisation : la touche est close « client joint », le document est joint à la fiche et l’étape « Préparer et envoyer le devis » est posée."
+      "effet": "Le client a envoyé sa facture, son adresse ou sa localisation : la touche est close « client joint », le document est joint à la fiche et l’étape « Préparer et envoyer le devis » est posée.",
+      "variantes_segment": {
+        "agricole": {
+          "label": "Pièce reçue : plaque, forage, ABH",
+          "effet": "L’exploitant a envoyé la plaque de sa pompe, la localisation de son forage ou son autorisation ABH : la touche est close « client joint », le document est joint à la fiche et l’étape « Préparer et envoyer le devis » est posée."
+        }
+      }
     },
     {
       "id": "sauter", "label": "Sauter",
