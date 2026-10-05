@@ -38,6 +38,11 @@ export default defineConfig({
       // fonction du builder qui est exercée, pas une doublure qui dériverait.
       // L'entrée `@roofpro/captureBoot` ci-dessus est déclarée AVANT : elle
       // reste prioritaire, son stub couvre toujours le lecteur de cartes.
+      // ACAL254 — moteurs d'horizon et de soleil PARTAGÉS avec l'atelier (même alias que
+      // `vite.config.js`) : `horizonEngine.ts` / `roofPro2.ts` / `shadingEngine.ts` sont
+      // importés tels quels, plus recopiés côté écran. Déclaré APRÈS `@roofpro` : les
+      // deux préfixes sont distincts (`@roofpro` ≠ `@rooflib`), aucun masquage.
+      '@rooflib': fileURLToPath(new URL('../apps/web/src/lib', import.meta.url)),
       '@roofpro': fileURLToPath(new URL('../apps/web/src/scripts/roofPro11', import.meta.url)),
     },
   },

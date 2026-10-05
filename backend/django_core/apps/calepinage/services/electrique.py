@@ -633,6 +633,38 @@ def _valider_cheminement(calepinage, cheminement, layout=None):
                 champ='cheminement.pans.%s.motif_parcours' % libelle)
 
 
+#: ACAL298 — les champs de l'entrée qui DÉSIGNENT un produit du catalogue.
+CHAMPS_PRODUIT_ENTREE = ('module_produit', 'onduleur_produit',
+                         'optimiseur_produit')
+
+
+def _valider_produits_designes(calepinage, donnees):
+    """ACAL298 — un produit désigné doit exister DANS la société du calepinage.
+
+    Lu par ``apps.stock.selectors.get_produit_scoped`` (borné société) AVANT
+    toute écriture. Un id d'une autre société et un id absent reçoivent le
+    MÊME message (jamais un oracle d'existence inter-sociétés). ``None`` ou
+    ``''`` restent admis : ils effacent la désignation.
+    """
+    from apps.stock.selectors import get_produit_scoped
+
+    company = getattr(calepinage, 'company', None)
+    for cle in CHAMPS_PRODUIT_ENTREE:
+        if cle not in donnees:
+            continue
+        valeur = donnees.get(cle)
+        if valeur is None or valeur == '':
+            continue
+        try:
+            produit = get_produit_scoped(company, valeur)
+        except (TypeError, ValueError):
+            produit = None
+        if produit is None:
+            raise EntreeInvalide(
+                "Produit introuvable dans votre catalogue (#%s)." % valeur,
+                champ=cle)
+
+
 def enregistrer_entree(calepinage, donnees, *, user=None):
     """Pose l'entrée électrique sur le calepinage (mise à jour PARTIELLE).
 
@@ -663,6 +695,7 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
 
     if 'cheminement' in donnees:
         _valider_cheminement(calepinage, donnees.get('cheminement'))
+    _valider_produits_designes(calepinage, donnees)
 
     saisies = donnees.get(CLE_DEROGATIONS)
     reglages = {cle: valeur for cle, valeur in donnees.items()

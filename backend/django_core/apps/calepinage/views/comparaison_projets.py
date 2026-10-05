@@ -58,7 +58,7 @@ def comparer_projets(self, request):
                         status=status.HTTP_400_BAD_REQUEST)
 
 
-@action(detail=True, methods=['get'], url_path='comparatif.xlsx',
+@action(detail=True, methods=['get'], url_path=r'comparatif\.xlsx',
         url_name='comparatif-xlsx', permission_classes=[PeutVoirCalepinage])
 def comparatif_xlsx(self, request, pk=None):
     """CALX341 — le comparatif en classeur ; AUCUN prix, AUCUN montant."""

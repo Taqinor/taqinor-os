@@ -126,7 +126,8 @@ class RoutageTest(SimpleTestCase):
         self.assertIn('comparatif_xlsx', actions)
         action = actions['comparatif_xlsx']
         self.assertTrue(action.detail)
-        self.assertEqual(action.url_path, 'comparatif.xlsx')
+        # ACAL229 — point échappé dans la regex du routeur.
+        self.assertEqual(action.url_path, r'comparatif\.xlsx')
         self.assertEqual(set(action.mapping), {'get'})
         self.assertEqual(
             [garde.__name__ for garde in action.kwargs['permission_classes']],
