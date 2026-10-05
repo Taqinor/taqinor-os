@@ -1,0 +1,2575 @@
+{
+ "serializers": {
+  "AffectationPaiementSerializer": {
+   "ast_sha256": "594a07c1e04c51a1ab30e584d544ce05acf740a272ca2cafc0c61897d9bfc32f",
+   "fields": {
+    "created_by": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "date_affectation": [
+     "DateTimeField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "facture": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "facture_reference": [
+     "CharField",
+     true,
+     false,
+     "facture.reference",
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "montant": [
+     "DecimalField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "paiement": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ]
+   }
+  },
+  "AvoirSerializer": {
+   "ast_sha256": "8b9861e8fda929076053ba2c7ad94517d86293f49d0725a3f2ac205a784da46c",
+   "fields": {
+    "arrondi_pas": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "arrondi_unites": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "client": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "client_nom": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
+    "company": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "created_by": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "date_emission": [
+     "DateField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "facture": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "facture_reference": [
+     "CharField",
+     true,
+     false,
+     "facture.reference",
+     false
+    ],
+    "fichier_pdf": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "lignes": [
+     "LigneAvoirSerializer",
+     true,
+     false,
+     null,
+     true
+    ],
+    "montant_ht": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "montant_ttc": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "montant_tva": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "motif": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "motif_retour": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "reference": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "remise_globale": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "restocke": [
+     "BooleanField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "statut": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "statut_display": [
+     "CharField",
+     true,
+     false,
+     "get_statut_display",
+     false
+    ],
+    "taux_tva": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "total_ht": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "total_ttc": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "total_tva": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "tva_par_taux": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ]
+   }
+  },
+  "BonCommandeSerializer": {
+   "ast_sha256": "e0a8b7d3b30382585ffdf5a30656b05b9ba3a240a2dac9b66f5e723d18daba4b",
+   "fields": {
+    "client": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "client_nom": [
+     "CharField",
+     true,
+     false,
+     "client.nom",
+     false
+    ],
+    "company": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "date_creation": [
+     "DateTimeField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "date_livraison_prevue": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "date_livraison_reelle": [
+     "DateField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "date_signature_domicile": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "devis": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "devis_reference": [
+     "CharField",
+     true,
+     false,
+     "devis.reference",
+     false
+    ],
+    "est_partiellement_livre": [
+     "BooleanField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "facture_active": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
+    "has_facture": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
+    "has_proof_of_delivery": [
+     "BooleanField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "lead": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "note": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "pv_livraison": [
+     "JSONField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "reference": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "reliquat_par_ligne": [
+     "ListField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "signe_au_domicile": [
+     "BooleanField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "statut": [
+     "ChoiceField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "total_ht": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
+    "total_ttc": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
+    "total_tva": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ]
+   }
+  },
+  "FactureActivitySerializer": {
+   "ast_sha256": "1a9436392d2ddee17276c2ef7b5982d8748ef588f69d36fdb8018362a0d20735",
+   "fields": {
+    "body": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "created_at": [
+     "DateTimeField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "facture": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "field": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "field_label": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "kind": [
+     "ChoiceField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "new_value": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "old_value": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "user_nom": [
+     "CharField",
+     true,
+     false,
+     "user.username",
+     false
+    ]
+   }
+  },
+  "FactureSerializer": {
+   "ast_sha256": "d73fb4654000fd9e8495069883fd903c5cc3dcfa4d90559b9e1db15ef97b9a8c",
+   "fields": {
+    "abandon_auto": [
+     "BooleanField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "abandon_date": [
+     "DateTimeField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "abandon_montant": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "abandon_motif": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "abandon_par": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "arrondi_pas": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "arrondi_unites": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "avoirs": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
+    "avoirs_total": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "bon_commande": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "client": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "client_nom": [
+     "CharField",
+     true,
+     false,
+     "client.nom",
+     false
+    ],
+    "client_telephone": [
+     "CharField",
+     true,
+     false,
+     "client.telephone",
+     false
+    ],
+    "company": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "condition_paiement_ref": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "conditions_paiement": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "created_by": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "date_echeance": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "date_emission": [
+     "DateField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "date_livraison": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "devis": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "devis_reference": [
+     "CharField",
+     true,
+     false,
+     "devis.reference",
+     false
+    ],
+    "devise": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "dgi_motif_rejet": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "dgi_reference": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "dgi_statut": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "entite": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "escompte_jours": [
+     "IntegerField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "escompte_pct": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "exclu_relances": [
+     "BooleanField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "exclu_relances_jusquau": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "fichier_pdf": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "fichier_ubl": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "is_overdue": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
+    "jours_retard": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "lead": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "libelle": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "lignes": [
+     "LigneFactureSerializer",
+     true,
+     false,
+     null,
+     true
+    ],
+    "mentions_manquantes": [
+     "ListField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "montant_du": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
+    "montant_ht": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "montant_paye": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "montant_ttc": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "montant_tva": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "note": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "paiements": [
+     "PaiementSerializer",
+     true,
+     false,
+     null,
+     true
+    ],
+    "pdf_render_meta": [
+     "JSONField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "periode_service_debut": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "periode_service_fin": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "pourcentage": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "prochaine_relance": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "reference": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "remise_globale": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "revue_statut": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "statut": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "statut_display": [
+     "CharField",
+     true,
+     false,
+     "get_statut_display",
+     false
+    ],
+    "statut_teledeclaration": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "taux_change": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "taux_tva": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "total_ht": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "total_ttc": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "total_tva": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "tva_par_taux": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
+    "type_facture": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "type_facture_display": [
+     "CharField",
+     true,
+     false,
+     "get_type_facture_display",
+     false
+    ],
+    "updated_at": [
+     "DateTimeField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "updated_by": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "updated_by_nom": [
+     "CharField",
+     true,
+     false,
+     "updated_by.username",
+     false
+    ]
+   }
+  },
+  "FactureWriteSerializer": {
+   "ast_sha256": "c6a5ffb31248c519eb49902dfcdbdc662dba72033436b0eba0231af2ffd93e57",
+   "fields": {
+    "abandon_auto": [
+     "BooleanField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "abandon_date": [
+     "DateTimeField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "abandon_montant": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "abandon_motif": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "abandon_par": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "arrondi_pas": [
+     "IntegerField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "arrondi_unites": [
+     "IntegerField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "bon_commande": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "client": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "company": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "condition_paiement_ref": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "conditions_paiement": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "created_by": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "date_echeance": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "date_emission": [
+     "DateField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "date_livraison": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "devis": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "devise": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "dgi_motif_rejet": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "dgi_reference": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "dgi_statut": [
+     "ChoiceField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "entite": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "escompte_jours": [
+     "IntegerField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "escompte_pct": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "exclu_relances": [
+     "BooleanField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "exclu_relances_jusquau": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "fichier_ubl": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "lead": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "libelle": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "montant_ht": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "montant_ttc": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "montant_tva": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "note": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "pdf_render_meta": [
+     "JSONField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "periode_service_debut": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "periode_service_fin": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "pourcentage": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "prochaine_relance": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "remise_globale": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "revue_statut": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "statut": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "statut_teledeclaration": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "taux_change": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "taux_tva": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "type_facture": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "updated_at": [
+     "DateTimeField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "updated_by": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ]
+   }
+  },
+  "FollowupLevelSerializer": {
+   "ast_sha256": "cb099e44f431f889ebc5c49e992dc53e826924b88dd723e7d3e2a4f78d78333f",
+   "fields": {
+    "canal": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "delai_jours": [
+     "IntegerField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "frais_fixes": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "message": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "nom": [
+     "CharField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "ordre": [
+     "IntegerField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "taux_interet_annuel": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ]
+   }
+  },
+  "LigneAvoirSerializer": {
+   "ast_sha256": "6c5ca4a42717bdc94bf565311015ed4d4dab18fbce649fda44da36682d48d8f9",
+   "fields": {
+    "designation": [
+     "CharField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "prix_unitaire": [
+     "DecimalField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "produit": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "quantite": [
+     "DecimalField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "remise": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "taux_tva": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "total_ht": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ]
+   }
+  },
+  "LigneFactureSerializer": {
+   "ast_sha256": "abac6b52d295b9459f6a41d327ecd66a8dd7fc4ce560804c6153e30543156129",
+   "fields": {
+    "designation": [
+     "CharField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "facture": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "prix_unitaire": [
+     "DecimalField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "produit": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "quantite": [
+     "DecimalField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "remise": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "source_devis": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "taux_tva": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "total_ht": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ]
+   }
+  },
+  "LigneNoteDebitSerializer": {
+   "ast_sha256": "91f11b2cfad2e416d935d9c6286813e2c6912636b7ce325ce5f81b0264a1d9c4",
+   "fields": {
+    "designation": [
+     "CharField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "prix_unitaire": [
+     "DecimalField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "produit": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "quantite": [
+     "DecimalField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "remise": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "taux_tva": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "total_ht": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ]
+   }
+  },
+  "LigneRemiseEncaissementSerializer": {
+   "ast_sha256": "b2b280ee7de25639cae0730b0f0f94c4f13b1441f98e0016f4cc8d3887c6d13c",
+   "fields": {
+    "date_paiement": [
+     "DateField",
+     true,
+     false,
+     "paiement.date_paiement",
+     false
+    ],
+    "facture_reference": [
+     "CharField",
+     true,
+     false,
+     "paiement.facture.reference",
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "mode": [
+     "CharField",
+     true,
+     false,
+     "paiement.mode",
+     false
+    ],
+    "montant": [
+     "DecimalField",
+     true,
+     false,
+     "paiement.montant",
+     false
+    ],
+    "paiement": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ]
+   }
+  },
+  "MandatPaiementSerializer": {
+   "ast_sha256": "a9b9fe15db402f711328487ab4f9f1f1cebf8c0e8dd657b8832fae3c06e21c96",
+   "fields": {
+    "client": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "client_nom": [
+     "CharField",
+     true,
+     false,
+     "client.nom",
+     false
+    ],
+    "company": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "consentement_horodate": [
+     "DateTimeField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "created_at": [
+     "DateTimeField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "derniers_chiffres": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "expiration_mois": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "provider": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "revoked_at": [
+     "DateTimeField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "statut": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "token": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ]
+   }
+  },
+  "NoteDebitSerializer": {
+   "ast_sha256": "26efd43d15b88eb2f8e94c7a1484ed8ed2a37464153d0d8058c70e581de0bdba",
+   "fields": {
+    "client": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "client_nom": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
+    "company": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "created_by": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "date_emission": [
+     "DateField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "facture": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "facture_reference": [
+     "CharField",
+     true,
+     false,
+     "facture.reference",
+     false
+    ],
+    "fichier_pdf": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "lignes": [
+     "LigneNoteDebitSerializer",
+     true,
+     false,
+     null,
+     true
+    ],
+    "montant_ht": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "montant_ttc": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "montant_tva": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "motif": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "reference": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "remise_globale": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "statut": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "statut_display": [
+     "CharField",
+     true,
+     false,
+     "get_statut_display",
+     false
+    ],
+    "taux_tva": [
+     "DecimalField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "total_ht": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "total_ttc": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "total_tva": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ]
+   }
+  },
+  "PaiementSerializer": {
+   "ast_sha256": "9b930a10630252408f5afff5d3802d68cce18ed774ef9e9863b955605c95eef8",
+   "fields": {
+    "banque_tiree": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "client": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "client_nom": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
+    "company": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "created_by": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "created_by_username": [
+     "CharField",
+     true,
+     false,
+     "created_by.username",
+     false
+    ],
+    "date_creation": [
+     "DateTimeField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "date_paiement": [
+     "DateField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "date_rejet": [
+     "DateField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "escompte_montant": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "facture": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "facture_reference": [
+     "CharField",
+     true,
+     false,
+     "facture.reference",
+     false
+    ],
+    "frais_rejet": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "idempotency_key": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "mode": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "mode_display": [
+     "CharField",
+     true,
+     false,
+     "get_mode_display",
+     false
+    ],
+    "montant": [
+     "DecimalField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "montant_disponible": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "motif_rejet": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "note": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "numero_cheque": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "provider_ref": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "reference": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "statut": [
+     "ChoiceField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "statut_affectation": [
+     "ChoiceField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "statut_affectation_display": [
+     "CharField",
+     true,
+     false,
+     "get_statut_affectation_display",
+     false
+    ],
+    "statut_display": [
+     "CharField",
+     true,
+     false,
+     "get_statut_display",
+     false
+    ]
+   }
+  },
+  "ParametrageRelanceClientSerializer": {
+   "ast_sha256": "1718d7f58e74b0edc4439fd91713beb7e964619aaa2c62340662b1b6758e0e29",
+   "fields": {
+    "client": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "mode": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "mode_display": [
+     "CharField",
+     true,
+     false,
+     "get_mode_display",
+     false
+    ],
+    "prochaine_relance_manuelle": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "responsable": [
+     "PrimaryKeyRelatedField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "responsable_username": [
+     "CharField",
+     true,
+     false,
+     "responsable.username",
+     false
+    ]
+   }
+  },
+  "PromessePaiementSerializer": {
+   "ast_sha256": "375b3bce985759b322d80450acde387c380e13152c3b5a42f1fc68e106db1dd9",
+   "fields": {
+    "company": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "created_by": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "created_by_username": [
+     "CharField",
+     true,
+     false,
+     "created_by.username",
+     false
+    ],
+    "date_creation": [
+     "DateTimeField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "date_promise": [
+     "DateField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "facture": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "facture_reference": [
+     "CharField",
+     true,
+     false,
+     "facture.reference",
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "montant_promis": [
+     "DecimalField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "note": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "statut": [
+     "ChoiceField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "statut_display": [
+     "CharField",
+     true,
+     false,
+     "get_statut_display",
+     false
+    ]
+   }
+  },
+  "RelanceLogSerializer": {
+   "ast_sha256": "f94effa933834321981fbf7f459235e203928ef8633f00bd46b845cf40595191",
+   "fields": {
+    "canal": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "courrier_pdf_key": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "created_by_nom": [
+     "CharField",
+     true,
+     false,
+     "created_by.username",
+     false
+    ],
+    "date": [
+     "DateField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "facture": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "niveau": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "niveau_nom": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "note": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ]
+   }
+  },
+  "RelancerFactureSerializer": {
+   "ast_sha256": "7ca7e3335369322d7222beb0cd89d0c4468e30786780cc84198e0ee8e2158e6c",
+   "fields": {
+    "envoyer_email": [
+     "BooleanField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "niveau": [
+     "IntegerField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "note": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "prochaine_relance": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ]
+   }
+  },
+  "RemiseEncaissementSerializer": {
+   "ast_sha256": "0e3dc23072ff1ab3f7b870ef70edc374a7ef304ec72d5fd1cb6db23f67b9c2ca",
+   "fields": {
+    "cloture_par": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "company": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "created_by": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "date_cloture": [
+     "DateTimeField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "date_collecte": [
+     "DateField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "date_creation": [
+     "DateTimeField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "ecart": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "fichier_pdf": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "lignes": [
+     "LigneRemiseEncaissementSerializer",
+     true,
+     false,
+     null,
+     true
+    ],
+    "montant_declare": [
+     "DecimalField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "montant_lignes": [
+     "DecimalField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "note": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "reference": [
+     "CharField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "statut": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "statut_display": [
+     "CharField",
+     true,
+     false,
+     "get_statut_display",
+     false
+    ],
+    "technicien": [
+     "PrimaryKeyRelatedField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "technicien_nom": [
+     "CharField",
+     true,
+     false,
+     "technicien.username",
+     false
+    ]
+   }
+  },
+  "RetenueSubieSerializer": {
+   "ast_sha256": "0ac1dd12d2f405fb953331731ace04deb18047bbb52ac367d1909a689ad6d429",
+   "fields": {
+    "attestation_date": [
+     "DateField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "attestation_fichier": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "attestation_recue": [
+     "BooleanField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "base": [
+     "DecimalField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "company": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "created_by": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "date_creation": [
+     "DateTimeField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "facture": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "facture_reference": [
+     "CharField",
+     true,
+     false,
+     "facture.reference",
+     false
+    ],
+    "id": [
+     "IntegerField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "montant": [
+     "DecimalField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "note": [
+     "CharField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "paiement": [
+     "PrimaryKeyRelatedField",
+     true,
+     false,
+     null,
+     false
+    ],
+    "taux": [
+     "DecimalField",
+     false,
+     true,
+     null,
+     false
+    ],
+    "type_retenue": [
+     "ChoiceField",
+     false,
+     false,
+     null,
+     false
+    ],
+    "type_retenue_display": [
+     "CharField",
+     true,
+     false,
+     "get_type_retenue_display",
+     false
+    ]
+   }
+  }
+ }
+}
