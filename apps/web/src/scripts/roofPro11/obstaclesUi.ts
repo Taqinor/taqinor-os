@@ -11,7 +11,7 @@
  * reste dans l'entrée car il est PARTAGÉ avec le tracé ; il route vers les
  * fonctions exportées ici (beginDraw/moveDraw/endDraw/tryBeginMove/doMove/endMove).
  */
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import {
   obstacleFromDrag,
   defaultObstacle,
