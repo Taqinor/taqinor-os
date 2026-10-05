@@ -739,6 +739,36 @@ def mesure_requise(champ, valeurs):
     return True
 
 
+#: CIQ603 — UN seul vocabulaire de type de toiture entre la visite et le lead :
+#: code de couverture de la visite → code ``Lead.TypeToiture``. Aucun code
+#: renommé, aucune donnée migrée : la table traduit à la lecture (relevé
+#: déclaré/constaté CIQ606, remontée au lead CIQ607). Un code ajouté d'un seul
+#: côté fait échouer ``test_ciq603_vocabulaire_toiture``.
+CORRESPONDANCE_TOITURE_LEAD = {
+    'tuile': 'tuiles',
+    'tole': 'tole_metal',
+    'bac_acier': 'bac_acier',
+    'beton': 'terrasse_beton',
+    'fibrociment': 'fibrociment',
+    'autre': 'autre',
+}
+
+
+def toiture_lead_depuis_visite(code):
+    """Le code ``Lead.TypeToiture`` qui correspond au code de couverture
+    ``code`` de la visite, ou ``None`` si le code est inconnu."""
+    return CORRESPONDANCE_TOITURE_LEAD.get(code)
+
+
+def toiture_visite_depuis_lead(code):
+    """Le code de couverture de la visite qui correspond au code
+    ``Lead.TypeToiture`` ``code`` (table réciproque), ou ``None``."""
+    for visite, lead in CORRESPONDANCE_TOITURE_LEAD.items():
+        if lead == code:
+            return visite
+    return None
+
+
 #: CIQ601 — clé, DANS ``mesures[categorie]``, de l'état « non relevé » :
 #: ``{clé_de_mesure: motif}``. Réservée au gabarit ``ci``.
 CLE_NON_RELEVES = '_non_releves'
