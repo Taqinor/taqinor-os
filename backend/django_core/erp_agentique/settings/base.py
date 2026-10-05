@@ -1417,6 +1417,14 @@ VEILLE_PAUSE_USAGE_PCT = int(os.environ.get('VEILLE_PAUSE_USAGE_PCT') or 75)
 # verdicts gardés. 90 = choix de prudence (Platform Terms §3.d.i).
 VEILLE_CONSERVATION_PUBS_JOURS = int(
     os.environ.get('VEILLE_CONSERVATION_PUBS_JOURS') or 90)
+# VEIL22 — tri IA DANS l'ERP (mise en service) : ÉTEINT sans clé. Clé séparée
+# de CLAUDE_API_KEY (service FastAPI) ; modèles en réglages, jamais en dur.
+# Dépendance PAYANTE (API Anthropic), inactive tant que la clé est vide.
+VEILLE_IA_CLE_API = os.environ.get('VEILLE_IA_CLE_API', '')
+VEILLE_IA_MODELE_TRI = os.environ.get('VEILLE_IA_MODELE_TRI', '')
+VEILLE_IA_MODELE_AMBIGU = os.environ.get('VEILLE_IA_MODELE_AMBIGU', '')
+VEILLE_IA_SEUIL_AMBIGU = float(os.environ.get('VEILLE_IA_SEUIL_AMBIGU') or 0.7)
+VEILLE_IA_DELAI_S = float(os.environ.get('VEILLE_IA_DELAI_S') or 60)
 
 # Stockage fichiers — MinIO / S3 (Phase 2 Sem. 4)
 MINIO_ENDPOINT = os.environ.get('MINIO_ENDPOINT', 'minio:9000')
