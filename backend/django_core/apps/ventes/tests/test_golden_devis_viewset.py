@@ -91,6 +91,7 @@ GROUPES = {
 PLACE = {
     'gardes': 'devis_gardes.py',  # SPL134
     'edition': 'devis_edition.py',  # SPL135
+    'cycle': 'devis_cycle.py',  # SPL136
 }
 
 DEFAUT = 'devis.py'
