@@ -4051,6 +4051,21 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         if _regle_fda:
             data["regle_fda_societe"] = _regle_fda
 
+    # ── CIQ303 — les entrées du lead PRO (CIQ405), lues par le SEUL sélecteur
+    # crm (jamais les modèles d'une autre app), pour ``ci/synthese`` : ses
+    # ``manquants`` disent ce qui reste « à confirmer ». C&I seulement, posé
+    # SEULEMENT quand le lead en rend : tout autre devis reste octet-identique.
+    # Jamais servi tel quel au client (la charge utile publique est une liste
+    # blanche). Ne casse jamais un rendu.
+    if mode in ("commercial", "industriel"):
+        try:
+            from apps.crm.selectors import entrees_ci_du_lead
+            _entrees_ci = entrees_ci_du_lead(getattr(devis, "lead", None))
+        except Exception:  # noqa: BLE001 — la synthèse omet, jamais ne casse
+            _entrees_ci = None
+        if _entrees_ci:
+            data["entrees_ci_lead"] = _entrees_ci
+
     return data
 
 
