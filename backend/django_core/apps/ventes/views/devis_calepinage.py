@@ -556,11 +556,20 @@ class DevisCalepinageActionsMixin:
         payload = request.data
         if isinstance(payload, dict) and set(payload.keys()) == {'roof_layout'}:
             payload = payload['roof_layout']
+        # ACAL41 (C-ACAL-090) — sur un ENVOYÉ, ce geste est une correction
+        # de la CONCEPTION imprimée : encadré comme sync-layout (début de geste
+        # AVANT la première écriture, fin de geste après) ; renvoyer le même
+        # document ne laisse aucune trace. Hors envoyé : no-op.
+        from ..domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis)
+        avant_geste = debut_de_geste_devis(devis, request.user)
         devis.roof_layout = payload
         devis.save(update_fields=['roof_layout'])
         # La MÊME empreinte que les deux autres chemins (écriture ciblée, aucun
         # statut touché) — puis la MÊME annonce.
         poser_layout_hash(devis, layout_hash(payload))
+        fin_de_geste_devis(devis, request.user, avant=avant_geste,
+                           objet='calepinage')
         _emettre_layout_finalise(devis, request.user)
         return Response({'roof_layout': devis.roof_layout})
 

@@ -186,6 +186,7 @@ _LIBELLES = {
     'entete': 'en-tête',
     'note': 'note',
     'option': 'option recommandée',
+    'conception': 'conception',
 }
 #: QJR557 — les gestes NOMMÉS dans le chatter (« corrigé après envoi :
 #: calepinage (lignes) »). Les autres objets gardent le résumé seul.
@@ -198,7 +199,7 @@ _OBJETS_NOMMES = {
 def empreinte_visible(devis):
     """Ce que le CLIENT voit de ce devis, relu en BASE (jamais l'instance en
     mémoire, qui peut être périmée ou déjà mutée) : ``{lignes, entete, note,
-    option}``."""
+    option, conception}``."""
     from apps.ventes.models import Devis, LigneDevis
 
     lignes = [
@@ -207,7 +208,8 @@ def empreinte_visible(devis):
         .order_by('ordre', 'id').values_list(*_CHAMPS_LIGNE_VISIBLES)
     ]
     ligne_devis = (Devis.objects.filter(pk=devis.pk)
-                   .values(*_CHAMPS_ENTETE_VISIBLES, 'note', 'etude_params')
+                   .values(*_CHAMPS_ENTETE_VISIBLES, 'note', 'etude_params',
+                           'layout_hash')
                    .first()) or {}
     etude = ligne_devis.get('etude_params') or {}
     if not isinstance(etude, dict):
@@ -218,6 +220,12 @@ def empreinte_visible(devis):
                         _CHAMPS_ENTETE_VISIBLES),
         'note': (ligne_devis.get('note') or '').strip(),
         'option': str(etude.get('recommended_option') or ''),
+        # ACAL41 (C-ACAL-090, D-ACAL-21) — la CONCEPTION imprimée : l'empreinte
+        # « imprimée » du layout (``geometrie.layout_hash`` étendue par ACAL40 :
+        # pans, surfaces de pose, exclusions, module, batterie, ombrage dessiné,
+        # horizon) relue en base. Une correction d'un ENVOYÉ qui ne déplace que
+        # des panneaux ou ne retouche que l'ombrage est ainsi tracée.
+        'conception': ligne_devis.get('layout_hash') or '',
     }
 
 
@@ -261,7 +269,8 @@ def fin_de_geste_devis(devis, user=None, *, avant=None, objet=''):
         if not _est_envoye(devis):
             return None
         apres = empreinte_visible(devis)
-        changes = [cle for cle in ('lignes', 'entete', 'note', 'option')
+        changes = [cle for cle in ('lignes', 'entete', 'note', 'option',
+                                   'conception')
                    if avant.get(cle) != apres.get(cle)]
         if not changes:
             return None
