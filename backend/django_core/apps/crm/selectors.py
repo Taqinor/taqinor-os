@@ -1971,6 +1971,42 @@ def entrees_ci_pour_lead_id(lead_id, company):
     return entrees_ci_du_lead(lead) if lead is not None else None
 
 
+def releve_declare_ci(lead):
+    """CIQ606 — ce que le lead DÉCLARE des cinq faits qu'une visite C&I
+    confronte au terrain : ``{niveau_tension, puissance_souscrite_kva,
+    type_toiture, surface_utile, statut_occupation}`` (``None`` = non
+    déclaré). Lecture SEULE, aucune requête, aucun défaut fabriqué.
+
+    ``niveau_tension`` suit le vocabulaire de la visite (``bt`` | ``mt`` |
+    ``inconnu``) : « ne sait pas » et une tension simplement SUPPOSÉE par le
+    site (``site_defaut_visible``) valent ``inconnu`` — jamais une déclaration.
+    ``type_toiture`` reste en codes ``Lead.TypeToiture``."""
+    if lead is None:
+        return {'niveau_tension': None, 'puissance_souscrite_kva': None,
+                'type_toiture': None, 'surface_utile': None,
+                'statut_occupation': None}
+    tension = lead.tension_raccordement
+    if _entree_vide(tension):
+        tension = None
+    elif (tension == 'ne_sait_pas'
+          or lead.tension_source == 'site_defaut_visible'):
+        tension = 'inconnu'
+
+    def _nombre(valeur):
+        valeur = _entree_valeur(valeur)
+        return None if _entree_vide(valeur) else float(valeur)
+
+    return {
+        'niveau_tension': tension,
+        'puissance_souscrite_kva': _nombre(lead.compteur_puissance_kva),
+        'type_toiture': (None if _entree_vide(lead.type_toiture)
+                         else lead.type_toiture),
+        'surface_utile': _nombre(lead.surface_toiture_m2),
+        'statut_occupation': (None if _entree_vide(lead.ownership)
+                              else lead.ownership),
+    }
+
+
 # DC13 — localisation chantier : lead d'abord, sinon repli sur le client ──────
 
 # YLEAD14 — Recyclage des leads non travaillés (SLA speed-to-lead) ───────────
