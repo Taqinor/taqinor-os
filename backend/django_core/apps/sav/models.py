@@ -1746,7 +1746,7 @@ class ContratMaintenance(models.Model):
         return self.equipements.filter(pk=equipement.pk).exists()
 
 
-class PrestationContrat(models.Model):
+class PrestationContrat(TenantModel):
     """CIQ640 (Groupe CIQ, D-CIQ-12) — prestation NOMMÉE d'un contrat O&M.
 
     Forme du contrat partagé ``contract_samples/contrat_om.json`` :
@@ -1762,6 +1762,9 @@ class PrestationContrat(models.Model):
         SUPERVISION = 'supervision', 'Supervision'
         AUTRE = 'autre', 'Autre'
 
+    # ARC1/SCA4 — socle ``TenantModel`` (FK company + created_at/updated_at) ;
+    # le champ est REDÉCLARÉ uniquement pour nommer l'accesseur inverse
+    # (motif documenté dans la docstring de ``core.models.TenantModel``).
     company = models.ForeignKey(
         # on_delete: cascade de tenant standard — une prestation n'existe pas
         # hors de sa société.

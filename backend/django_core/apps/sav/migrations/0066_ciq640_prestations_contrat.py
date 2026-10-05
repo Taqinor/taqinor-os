@@ -37,6 +37,8 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(
                     auto_created=True, primary_key=True, serialize=False,
                     verbose_name='ID')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('type', models.CharField(choices=[
                     ('nettoyage', 'Nettoyage'),
                     ('inspection', 'Inspection'),

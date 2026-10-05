@@ -1,4 +1,4 @@
-"""TAQINOR quote engine — C&I : la synthèse serveur d'un devis commercial ou
+"""Moteur de devis — C&I : la synthèse serveur d'un devis commercial ou
 industriel (CIQ303).
 
 :mod:`synthese` expose ``synthese_ci(data)``, fonction PURE (dict → dict) qui
