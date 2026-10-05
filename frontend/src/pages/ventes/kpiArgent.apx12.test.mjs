@@ -13,11 +13,17 @@ import path from 'node:path'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const read = (f) => readFileSync(path.join(__dirname, f), 'utf8')
 
-const SURFACES = ['DevisList.jsx', 'FactureList.jsx', 'DevisGenerator.jsx']
+// SPL206 — le bandeau de DevisList vit dans devisList/DevisListChrome.jsx.
+const SURFACES = ['devisList/DevisListChrome.jsx', 'FactureList.jsx', 'DevisGenerator.jsx']
 
 test('plus aucun glyphe de tendance en TEXTE dans pages/ventes/ (VX129)', () => {
   const offenders = []
-  for (const f of readdirSync(__dirname)) {
+  // SPL206 — devisList/ (fichiers extraits de DevisList.jsx) est balayé aussi.
+  const fichiers = [
+    ...readdirSync(__dirname),
+    ...readdirSync(path.join(__dirname, 'devisList')).map((f) => path.join('devisList', f)),
+  ]
+  for (const f of fichiers) {
     if (!f.endsWith('.jsx')) continue
     if (/[▲▼]/.test(read(f))) offenders.push(f)
   }
@@ -42,7 +48,8 @@ test('le total héros du rail du générateur est bien un Stat (donc .num tabula
 })
 
 test('le bandeau 5 statuts de DevisList n’est plus fait de div nus', () => {
-  const src = read('DevisList.jsx')
+  // SPL206 — le bandeau vit dans devisList/DevisListChrome.jsx (move only).
+  const src = read('devisList/DevisListChrome.jsx')
   assert.doesNotMatch(src, /<div key=\{key\} className="rounded-lg border border-border bg-card p-3">/)
   assert.match(src, /<Stat[\s\S]{0,200}?key=\{key\}/)
 })

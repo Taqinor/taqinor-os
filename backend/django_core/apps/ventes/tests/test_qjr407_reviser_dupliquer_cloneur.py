@@ -84,7 +84,7 @@ class _Base(TestCase):
 class Reviser(_Base):
 
     def _reviser(self):
-        from apps.ventes.domain.creation import cloner_devis
+        from apps.ventes.domain.creation_clone import cloner_devis
         return cloner_devis(
             self.source, user=self.user, note=self.source.note,
             version=self.source.version + 1,
@@ -109,7 +109,7 @@ class Reviser(_Base):
 class DupliquerVariante(_Base):
 
     def _variante(self, scale='0.8'):
-        from apps.ventes.domain.creation import cloner_devis
+        from apps.ventes.domain.creation_clone import cloner_devis
 
         def _echelle(ligne):
             return {'quantite': ligne.quantite * Decimal(scale),
@@ -137,13 +137,13 @@ class AtomiciteDuClonage(_Base):
         """ROUGE AVANT : le devis était créé PUIS les lignes clonées, hors
         transaction — un incident entre les deux laissait un brouillon
         orphelin sans lignes."""
-        from apps.ventes.domain import creation
+        from apps.ventes.domain import creation_clone
 
         avant = Devis.objects.filter(company=self.company).count()
-        with mock.patch.object(creation, 'cloner_lignes',
+        with mock.patch.object(creation_clone, 'cloner_lignes',
                                side_effect=RuntimeError('boom')):
             with self.assertRaises(RuntimeError):
-                creation.cloner_devis(self.source, user=self.user)
+                creation_clone.cloner_devis(self.source, user=self.user)
         self.assertEqual(Devis.objects.filter(company=self.company).count(),
                          avant)
 
@@ -152,7 +152,7 @@ class NonRegressionDuCheminDejaCorrect(_Base):
     """``dupliquer_devis`` (déjà correct) est inchangé au centime."""
 
     def test_dupliquer_devis_inchange(self):
-        from apps.ventes.domain.creation import dupliquer_devis
+        from apps.ventes.domain.creation_clone import dupliquer_devis
         copie = dupliquer_devis(self.source, user=self.user)
         self._assert_les_sept_champs(copie)
         self.assertEqual(copie.version, 1)
@@ -185,7 +185,7 @@ class RevisionGardeLeTravailManuel(_Base):
         self.source.refresh_from_db()
 
     def test_reviser_porte_le_travail_manuel_sans_aliasing(self):
-        from apps.ventes.domain.cycle_vie import reviser_devis
+        from apps.ventes.domain.revision import reviser_devis
         v2 = reviser_devis(self.source, user=self.user)
         v2.refresh_from_db()
         self.assertEqual(v2.roof_layout, self.LAYOUT)
@@ -196,7 +196,7 @@ class RevisionGardeLeTravailManuel(_Base):
         self.assertIsNone(v2.date_validite)
 
     def test_les_copies_ne_sont_pas_aliasees(self):
-        from apps.ventes.domain.creation import cloner_devis
+        from apps.ventes.domain.creation_clone import cloner_devis
         copie = cloner_devis(self.source, user=self.user, revision=True)
         self.assertIsNot(copie.roof_layout, self.source.roof_layout)
         self.assertIsNot(copie.overrides, self.source.overrides)
@@ -209,7 +209,7 @@ class RevisionGardeLeTravailManuel(_Base):
         self.assertEqual(self.source.roof_layout['orientation'], 'sud')
 
     def test_dupliquer_ne_les_porte_toujours_pas(self):
-        from apps.ventes.domain.creation import dupliquer_devis
+        from apps.ventes.domain.creation_clone import dupliquer_devis
         copie = dupliquer_devis(self.source, user=self.user)
         copie.refresh_from_db()
         self.assertIsNone(copie.roof_layout)

@@ -731,6 +731,14 @@ REFUS = {
     # vocabulaire de valeurs.
     "frontend/src/pages/ventes/DevisLineRowRemise.test.jsx": [
         ("Mêmes valeurs que", "TEST")],
+    # SPL192/SPL205 05/10/2026 — découpe de DevisList : le golden de flux
+    # reprend les réponses mockées de DevisList.test.jsx (aucun choix rendu),
+    # et « copie des liens » nomme l'ACTION de copier un lien (comportement),
+    # pas une liste de valeurs.
+    "frontend/src/pages/ventes/DevisList.flux.golden.test.jsx": [
+        ("mêmes valeurs que", "TEST")],
+    "frontend/src/pages/ventes/devisList/useDevisEnvoi.js": [
+        ("copie des liens", "COMPORTEMENT")],
     "frontend/src/pages/ventes/generator/LigneTable.jsx": [
         ("est ALIGNÉ sur", "COMPORTEMENT")],
     "frontend/src/router/moduleRoutes.jsx": [

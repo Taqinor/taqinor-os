@@ -9,13 +9,15 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourcesDevisList } from '../pages/ventes/devisList/lireSources.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const read = (rel) => readFileSync(join(HERE, rel), 'utf8')
 
 const PRINT_CSS = read('print.css')
 const INDEX_CSS = read('../index.css')
-const DEVIS = read('../pages/ventes/DevisList.jsx')
+// SPL206 — le bouton Imprimer vit dans devisList/DevisListChrome.jsx.
+const DEVIS = lireSourcesDevisList()
 const FACTURE = read('../pages/ventes/FactureList.jsx')
 const INSTALL = read('../pages/installations/InstallationDetail.jsx')
 

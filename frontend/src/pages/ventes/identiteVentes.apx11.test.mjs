@@ -19,14 +19,20 @@ const read = (f) => readFileSync(path.join(__dirname, f), 'utf8')
 
 // Les 5 écrans de FLUX nommés par la tâche + les 4 autres pages du dossier :
 // la clause « zéro en-tête legacy dans pages/ventes/ » vaut pour tout le dossier.
+// SPL206 — l'en-tête de la liste des devis vit dans devisList/DevisListChrome.jsx.
 const FLUX = [
-  'DevisList.jsx', 'DevisGenerator.jsx', 'FactureList.jsx',
+  'devisList/DevisListChrome.jsx', 'DevisGenerator.jsx', 'FactureList.jsx',
   'RelancesPage.jsx', 'BonCommandeList.jsx',
 ]
 
 test('plus aucun en-tête legacy dans pages/ventes/', () => {
   const offenders = []
-  for (const f of readdirSync(__dirname)) {
+  // SPL206 — devisList/ (fichiers extraits de DevisList.jsx) est balayé aussi.
+  const fichiers = [
+    ...readdirSync(__dirname),
+    ...readdirSync(path.join(__dirname, 'devisList')).map((f) => path.join('devisList', f)),
+  ]
+  for (const f of fichiers) {
     if (!f.endsWith('.jsx') || f.includes('.test.')) continue
     if (/className="page-header/.test(read(f))) offenders.push(f)
   }
@@ -36,7 +42,8 @@ test('plus aucun en-tête legacy dans pages/ventes/', () => {
 test('les 5 écrans de flux rendent l’en-tête unique ui/PageHeader (VX28)', () => {
   for (const f of FLUX) {
     const src = read(f)
-    assert.match(src, /import \{ PageHeader \} from '\.\.\/\.\.\/ui\/PageHeader'/, `${f} : import manquant`)
+    // SPL206 — un niveau de plus pour devisList/DevisListChrome.jsx.
+    assert.match(src, /import \{ PageHeader \} from '(\.\.\/)+ui\/PageHeader'/, `${f} : import manquant`)
     assert.match(src, /<PageHeader\b/, `${f} : PageHeader non rendu`)
   }
 })

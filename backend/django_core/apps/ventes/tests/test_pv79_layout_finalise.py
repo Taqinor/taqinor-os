@@ -178,7 +178,9 @@ class EmissionDepuisSyncLayoutTest(TestCase):
     def test_abonne_en_echec_ne_casse_pas_la_finalisation(self):
         from unittest import mock
 
-        from apps.ventes.views.devis import _emettre_layout_finalise
+        from apps.ventes.views.devis_calepinage import (
+            _emettre_layout_finalise,
+        )
 
         with mock.patch('core.events.layout_finalise.send',
                         side_effect=RuntimeError('abonné cassé')):

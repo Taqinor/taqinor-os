@@ -372,13 +372,13 @@ class TestSeuilExonerationTPPAN(SimpleTestCase):
         self.assertEqual(sortie['tppan_source'], '')
 
     def test_le_bloc_de_consommation_estimee_porte_la_reserve(self):
-        from apps.ventes import etude_horaire as EH
+        from apps.ventes.horaire import conso as HC
         from apps.ventes.quote_engine import bareme as B
-        _kwh, detail = EH.serie_kwh_depuis_mad([592.77] * 12)
+        _kwh, detail = HC.serie_kwh_depuis_mad([592.77] * 12)
         self.assertEqual(detail['tppan_source'], B.TPPAN_SOURCE)
 
     def test_sans_tppan_le_bloc_garde_sa_forme_d_avant(self):
         """Clé ADDITIVE : absente quand la TPPAN ne s'applique pas."""
-        from apps.ventes import etude_horaire as EH
-        _kwh, detail = EH.serie_kwh_depuis_mad([592.77] * 12, tppan=False)
+        from apps.ventes.horaire import conso as HC
+        _kwh, detail = HC.serie_kwh_depuis_mad([592.77] * 12, tppan=False)
         self.assertNotIn('tppan_source', detail)
