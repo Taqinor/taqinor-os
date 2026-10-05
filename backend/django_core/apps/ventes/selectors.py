@@ -663,6 +663,13 @@ def resoudre_plan_commission(company, owner):
     return qs.filter(owner__isnull=True).first()
 
 
+def _iso_jalon(d):
+    """ADOC112 — date ISO d'un jalon, ou None. Au niveau MODULE (et non
+    imbriquée dans :func:`devis_milestones`) : scripts/check_api_shapes.py lit
+    TOUS les ``return`` du corps de la fonction, fonctions internes comprises."""
+    return d.isoformat() if d is not None else None
+
+
 def devis_milestones(token):
     """QX34 — jalons post-signature d'un devis, résolus depuis un jeton
     ShareLink (lecture seule, public, tokenisé). Rien n'est muté.
@@ -684,11 +691,13 @@ def devis_milestones(token):
             .select_related('devis', 'devis__company')
             .filter(token=token).first())
     if link is None or not link.is_valid or not link.devis_id:
-        return None
+        # ADOC112 — ``return`` NU (vaut None) : scripts/check_api_shapes.py
+        # ignore un retour sans valeur et lit donc la forme du dict ci-dessous,
+        # confrontée au contrat contract_samples/suivi_public.json
+        # (`forme_serveur: complete`). Un ``return None`` explicite rendait
+        # toute la vue illisible statiquement.
+        return
     devis = link.devis
-
-    def _iso(d):
-        return d.isoformat() if d is not None else None
 
     # 1) Accepté.
     accepte = devis.statut in ('accepte',) or devis.date_acceptation is not None
@@ -746,19 +755,19 @@ def devis_milestones(token):
 
     milestones = [
         {'key': 'accepte', 'label': 'Proposition acceptée',
-         'done': bool(accepte), 'date': _iso(date_accepte)},
+         'done': bool(accepte), 'date': _iso_jalon(date_accepte)},
         {'key': 'acompte', 'label': 'Acompte reçu',
          'done': bool(acompte_recu),
-         'date': _iso(getattr(paiement, 'date_paiement', None))},
+         'date': _iso_jalon(getattr(paiement, 'date_paiement', None))},
         {'key': 'materiel', 'label': 'Matériel commandé',
          'done': j_appro is not None,
-         'date': _iso(getattr(j_appro, 'date_jalon', None))},
+         'date': _iso_jalon(getattr(j_appro, 'date_jalon', None))},
         {'key': 'installation', 'label': 'Installation',
          'done': j_pose is not None,
-         'date': _iso(getattr(j_pose, 'date_jalon', None))},
+         'date': _iso_jalon(getattr(j_pose, 'date_jalon', None))},
         {'key': 'facture', 'label': 'Facturé',
          'done': facture is not None,
-         'date': _iso(getattr(facture, 'date_emission', None))},
+         'date': _iso_jalon(getattr(facture, 'date_emission', None))},
     ]
     # ADOC130 — « Mis à jour le » = date du jalon fait le plus récent (jamais
     # l'horloge de la requête) ; null si aucun jalon fait. ISO => max lexical.

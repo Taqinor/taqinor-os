@@ -1873,12 +1873,4 @@ def suivi_public(request, token):
     data = devis_milestones(link.token)
     if data is None:
         return _not_found()
-    # ADOC112 — clés LITTÉRALES : la forme servie est lisible statiquement
-    # par scripts/check_api_shapes.py, qui la confronte au contrat
-    # contract_samples/suivi_public.json (`forme_serveur: complete`).
-    return _noindex(Response({
-        'reference': data['reference'],
-        'generated_at': data['generated_at'],
-        'mis_a_jour_le': data['mis_a_jour_le'],
-        'milestones': data['milestones'],
-    }))
+    return _noindex(Response(data))

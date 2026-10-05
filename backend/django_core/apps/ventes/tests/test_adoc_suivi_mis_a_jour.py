@@ -40,6 +40,12 @@ class SuiviMisAJourTests(TestCase):
             date_acceptation=datetime.date(2026, 8, 26),
             taux_tva=Decimal('20'))
         self.link = ShareLink.for_devis(self.devis)
+        # Les lectures sont gelées à des dates fixes (jusqu'au 14/11/2026) :
+        # le lien ne doit pas expirer entre elles (TTL ShareLink compté depuis
+        # l'horloge RÉELLE de création), sinon la 3e lecture rend 404.
+        self.link.expires_at = timezone.make_aware(
+            datetime.datetime(2099, 1, 1))
+        self.link.save(update_fields=['expires_at'])
         self.api = APIClient()
 
     def _get(self):
