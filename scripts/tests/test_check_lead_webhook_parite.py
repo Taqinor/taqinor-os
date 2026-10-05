@@ -228,9 +228,9 @@ class DepotReelTests(unittest.TestCase):
     def test_le_depot_reel_est_VERT(self):
         self.assertEqual(parite.constats(self.contrat, self.source), [])
 
-    def test_les_69_cles_du_registre_sont_toutes_declarees(self):
+    def test_les_70_cles_du_registre_sont_toutes_declarees(self):
         cles = self.contrat["cles"]
-        self.assertEqual(len(cles), 69)
+        self.assertEqual(len(cles), 70)  # ACAL20 : + roofLayout (refus en attente de PATCH-T03)
         for cle, entree in cles.items():
             self.assertIn(entree["destination"], parite.DESTINATIONS, cle)
 

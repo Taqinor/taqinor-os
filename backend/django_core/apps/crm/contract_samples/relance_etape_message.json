@@ -110,5 +110,39 @@
     "post_whatsapp": "POST .../whatsapp/ → même corps + `etape` (objet `relance_etape_v2` remis à jour : statut « fait »).",
     "permissions": "`message` = lecture (rôle normal suffisant) ; `whatsapp` = `IsResponsableOrAdmin` (il ÉCRIT : touche faite, activité WHATSAPP, premier contact, AuditLog).",
     "placeholders": "{civilite} {nom} {prenom} {ville} {reference} {lien} {lien_rdv} {date_validite} {conseiller} — aucun chiffre (prix, kWc, économies) n'est un placeholder."
+  },
+  "ajout_ciq10": {
+    "pourquoi": "CIQ10 (Groupe CIQ, 05/10/2026 ; audit L3 C&I du 03/10/2026 ; D-CIQ-6, convention 8 « contact B2B sur fixe : la touche WhatsApp devient un e-mail quand une adresse existe — règle de DONNÉE, aucun axe segment », convention 10 « preuve J4 OMISE pour le C&I tant qu'aucune réalisation C&I n'est saisie ») — le contexte de rendu des messages n'avait pas `societe` (apps/crm/services.py) alors que `Lead.societe` existe.",
+    "placeholder_societe": "`{societe}` = raison sociale du lead ; vide ⇒ la phrase qui le porte est OMISE (MRY13) et `societe` est listé dans `placeholders_manquants`.",
+    "objet": "texte — objet de l'e-mail ; chaîne VIDE hors canal e-mail",
+    "mailto_url": "texte ou null — `null` hors e-mail, sans adresse, ou PII masquée"
+  },
+  "exemple_email_societe": {
+    "message": "Bonjour, je reviens vers Hôtel Exemple SARL au sujet de votre projet solaire : vous trouverez notre proposition en pièce jointe.",
+    "wa_url": null,
+    "langue": "fr",
+    "phone": "+212522000452",
+    "placeholders_manquants": [],
+    "repli_langue": false,
+    "crochets": [],
+    "preuve_manquante": false,
+    "vocal": false,
+    "objet": "Votre projet solaire — Hôtel Exemple SARL",
+    "mailto_url": "mailto:direction@hotel-exemple.ma?subject=Votre%20projet%20solaire"
+  },
+  "exemple_societe_absente": {
+    "message": "Bonjour Aziz, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de votre facture (une photo suffit) et de votre adresse : je vous montre vos panneaux posés sur votre toit, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
+    "wa_url": "https://wa.me/212651971400?text=Bonjour%20Aziz%2C%20je%20n%27ai%20pas%20r%C3%A9ussi%20%C3%A0%20vous%20joindre.",
+    "langue": "fr",
+    "phone": "+212651971400",
+    "placeholders_manquants": [
+      "societe"
+    ],
+    "repli_langue": false,
+    "crochets": [],
+    "preuve_manquante": false,
+    "vocal": false,
+    "objet": "",
+    "mailto_url": null
   }
 }

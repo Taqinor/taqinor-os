@@ -175,5 +175,246 @@
   "exemple_400_tva_base_legale": {
     "detail": "Ligne 1 : une base légale est obligatoire pour un taux de TVA de 0 %.",
     "champ": "lignes[0].tva_base_legale"
+  },
+  "regles_ciq200": "CIQ200 (Groupe CIQ, audit L3 du 03/10/2026 ; D-CIQ-13, D-CIQ-14, Q5) — CONTRAT D'ABORD (PACT10), pose SEUL, apres AGR200. Aujourd'hui l'echeancier ne decrit que des tranches {libelle, type, pct_or_montant[, date_prevue]} ; les creneaux imprimes sont rabattus sur trois (termes_paiement_devis, apps/ventes/utils/echeancier.py:280-319) ; aucun champ ne porte une retenue de garantie sur l'echeancier d'un devis (la seule retenue est celle d'une situation BTP, domain/facturation_ops.py:427-486), ni un payeur autre que le client (creer_facture_tranche pose client=devis.client, echeancier.py:492-505), ni la reference de commande du client. AJOUTS, tous FACULTATIFS — absent = comportement d'hier : (1) TRANCHE `jalon` commande|livraison_materiel|mise_en_service|reception_definitive|reception_financeur|liberation_retenue ; `delai_reglement_jours` (entier, declare) ; `semaines_indicatives` (nombre, « indicatif », Q5) ; `payeur` client|tiers (defaut client). (2) ENTETE `retenue_garantie` {taux_pct, liberation: « reception_definitive »} — absente par defaut, JAMAIS de taux par defaut (D-CIQ-14) ; `penalites_retard_livraison` {taux_pct_par_semaine, plafond_pct} — les DEUX ou rien, sinon refus 400 nommant `entete.penalites_retard_livraison.plafond_pct` (`exemple_400_penalite_sans_plafond`) ; `caution` {nature, montant_ou_pct, plafond} ; `tiers_payeur` (id d'un `crm.Client` de la MEME societe, string-FK) ; `reference_commande_client` (texte, 60 caracteres au plus). (3) DEFAUT SOCIETE `CompanyProfile.payment_terms[mode]` : forme LISTE de jalons {jalon, pct} (l'ancienne forme {acompte, materiel, solde} reste LUE). Les taux, plafonds, cautions et delais des exemples sont ILLUSTRATIFS (saisis), jamais proposes par defaut. Les repartitions 40/50/10 (commercial) et 30/40/20/10 (industriel) sont les defauts SOCIETE editables de D-CIQ-13, pas des valeurs de serveur. `corps` et `corps_agricole` restent inchanges ; `corps_commercial`, `corps_industriel`, `corps_financeur` montrent les ajouts.",
+  "corps_commercial": {
+    "lignes": [
+      {
+        "produit": 12,
+        "designation": "Panneau Canadien Solar 710W",
+        "quantite": "8.00",
+        "prix_unitaire": "1450.00",
+        "remise": "0.00",
+        "taux_tva": "20.00",
+        "type_ligne": "produit",
+        "ordre": 0,
+        "variante": "",
+        "optionnelle": false,
+        "prix_manuel": false,
+        "quantite_manuelle": false,
+        "lot": null,
+        "ligne_composee": true
+      }
+    ],
+    "entete": {
+      "date_validite": "2026-11-15",
+      "taux_tva": "20.00",
+      "remise_globale": "0.00",
+      "note": "",
+      "mode_installation": "commercial",
+      "prix_cible_kwc": null,
+      "echeancier": [
+        {
+          "libelle": "Commande",
+          "type": "acompte",
+          "pct_or_montant": 40,
+          "date_prevue": null,
+          "jalon": "commande",
+          "delai_reglement_jours": 0,
+          "semaines_indicatives": 0,
+          "payeur": "client"
+        },
+        {
+          "libelle": "Livraison matériel",
+          "type": "materiel",
+          "pct_or_montant": 50,
+          "date_prevue": null,
+          "jalon": "livraison_materiel",
+          "delai_reglement_jours": 30,
+          "semaines_indicatives": 4,
+          "payeur": "client"
+        },
+        {
+          "libelle": "Mise en service",
+          "type": "solde",
+          "pct_or_montant": 10,
+          "date_prevue": null,
+          "jalon": "mise_en_service",
+          "delai_reglement_jours": 30,
+          "semaines_indicatives": 8,
+          "payeur": "client"
+        }
+      ],
+      "reference_commande_client": "BC-2026-0457 (saisi, illustratif)"
+    },
+    "expected_updated_at": "2026-10-04T09:00:00.000000+00:00"
+  },
+  "corps_industriel": {
+    "lignes": [
+      {
+        "produit": 12,
+        "designation": "Panneau Canadien Solar 710W",
+        "quantite": "8.00",
+        "prix_unitaire": "1450.00",
+        "remise": "0.00",
+        "taux_tva": "20.00",
+        "type_ligne": "produit",
+        "ordre": 0,
+        "variante": "",
+        "optionnelle": false,
+        "prix_manuel": false,
+        "quantite_manuelle": false,
+        "lot": null,
+        "ligne_composee": true
+      }
+    ],
+    "entete": {
+      "date_validite": "2026-11-15",
+      "taux_tva": "20.00",
+      "remise_globale": "0.00",
+      "note": "",
+      "mode_installation": "industriel",
+      "prix_cible_kwc": null,
+      "echeancier": [
+        {
+          "libelle": "Commande",
+          "type": "acompte",
+          "pct_or_montant": 30,
+          "date_prevue": null,
+          "jalon": "commande",
+          "delai_reglement_jours": 0,
+          "semaines_indicatives": 0,
+          "payeur": "client"
+        },
+        {
+          "libelle": "Livraison",
+          "type": "materiel",
+          "pct_or_montant": 40,
+          "date_prevue": null,
+          "jalon": "livraison_materiel",
+          "delai_reglement_jours": 30,
+          "semaines_indicatives": 8,
+          "payeur": "client"
+        },
+        {
+          "libelle": "Mise en service",
+          "type": "intermediaire",
+          "pct_or_montant": 20,
+          "date_prevue": null,
+          "jalon": "mise_en_service",
+          "delai_reglement_jours": 30,
+          "semaines_indicatives": 14,
+          "payeur": "client"
+        },
+        {
+          "libelle": "Réception définitive",
+          "type": "solde",
+          "pct_or_montant": 10,
+          "date_prevue": null,
+          "jalon": "reception_definitive",
+          "delai_reglement_jours": 45,
+          "semaines_indicatives": null,
+          "payeur": "client"
+        }
+      ],
+      "retenue_garantie": {
+        "taux_pct": 5,
+        "liberation": "reception_definitive"
+      },
+      "penalites_retard_livraison": {
+        "taux_pct_par_semaine": 0.5,
+        "plafond_pct": 5
+      },
+      "caution": {
+        "nature": "caution bancaire de bonne exécution",
+        "montant_ou_pct": "5 %",
+        "plafond": "10 %"
+      },
+      "reference_commande_client": "BC-2026-0457 (saisi, illustratif)"
+    },
+    "expected_updated_at": "2026-10-04T09:00:00.000000+00:00"
+  },
+  "corps_financeur": {
+    "lignes": [
+      {
+        "produit": 12,
+        "designation": "Panneau Canadien Solar 710W",
+        "quantite": "8.00",
+        "prix_unitaire": "1450.00",
+        "remise": "0.00",
+        "taux_tva": "20.00",
+        "type_ligne": "produit",
+        "ordre": 0,
+        "variante": "",
+        "optionnelle": false,
+        "prix_manuel": false,
+        "quantite_manuelle": false,
+        "lot": null,
+        "ligne_composee": true
+      }
+    ],
+    "entete": {
+      "date_validite": "2026-11-15",
+      "taux_tva": "20.00",
+      "remise_globale": "0.00",
+      "note": "",
+      "mode_installation": "commercial",
+      "prix_cible_kwc": null,
+      "echeancier": [
+        {
+          "libelle": "Commande",
+          "type": "acompte",
+          "pct_or_montant": 20,
+          "date_prevue": null,
+          "jalon": "commande",
+          "payeur": "client"
+        },
+        {
+          "libelle": "Règlement par l'organisme financeur à la réception signée",
+          "type": "solde",
+          "pct_or_montant": 80,
+          "date_prevue": null,
+          "jalon": "reception_financeur",
+          "delai_reglement_jours": 30,
+          "payeur": "tiers"
+        }
+      ],
+      "tiers_payeur": 218,
+      "reference_commande_client": "OF-2026-118 (saisi, illustratif)"
+    },
+    "expected_updated_at": "2026-10-04T09:00:00.000000+00:00"
+  },
+  "exemple_defaut_societe_payment_terms": {
+    "commercial": [
+      {
+        "jalon": "commande",
+        "pct": 40
+      },
+      {
+        "jalon": "livraison_materiel",
+        "pct": 50
+      },
+      {
+        "jalon": "mise_en_service",
+        "pct": 10
+      }
+    ],
+    "industriel": [
+      {
+        "jalon": "commande",
+        "pct": 30
+      },
+      {
+        "jalon": "livraison_materiel",
+        "pct": 40
+      },
+      {
+        "jalon": "mise_en_service",
+        "pct": 20
+      },
+      {
+        "jalon": "reception_definitive",
+        "pct": 10
+      }
+    ],
+    "ancienne_forme_toujours_lue": {
+      "acompte": 40,
+      "materiel": 50,
+      "solde": 10
+    }
+  },
+  "exemple_400_penalite_sans_plafond": {
+    "detail": "Pénalités de retard : le plafond (plafond_pct) est obligatoire avec le taux par semaine.",
+    "champ": "entete.penalites_retard_livraison.plafond_pct"
   }
 }

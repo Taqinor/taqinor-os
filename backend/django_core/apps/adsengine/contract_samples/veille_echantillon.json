@@ -1,0 +1,14 @@
+{
+  "endpoint": "POST /api/django/adsengine/veille/decouvertes/<id>/echantillon/",
+  "forme_serveur": "partielle",
+  "pourquoi": "VEIL5 (PACT10) — contrat posé SEUL et EN PREMIER : le tirage de l'échantillon de mesure (jeu d'étalonnage + jeu de test, fixés AVANT la mesure, D-VEIL-9). Corps `{taille_etalonnage, taille_test}`. Réponse `{etalonnage, test, deja_tire}` : deux listes d'identifiants d'annonceurs ; `deja_tire` vaut true quand l'échantillon existait déjà (le tirage est idempotent : un second appel ne retire jamais). L'étiquetage se fait à l'aveugle : aucune étiquette ni verdict n'est servi ici. Vue livrée par VEIL17.",
+  "corps": {
+    "taille_etalonnage": 5,
+    "taille_test": 10
+  },
+  "exemple": {
+    "etalonnage": [903, 911, 927, 940, 958],
+    "test": [961, 962, 970, 973, 981, 990, 994, 1003, 1010, 1022],
+    "deja_tire": false
+  }
+}

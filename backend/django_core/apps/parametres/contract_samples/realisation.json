@@ -50,5 +50,9 @@
     "consommateur": "parametres.selectors.realisation_pour_lead → crm.services.message_pour_etape remplit {ville_preuve}/{mois_preuve}/{lien_preuve} de la touche j4_preuve ; sans réalisation les trois restent vides et la phrase est OMISE.",
     "segment": "AGR505 (Groupe AGR, 02/10/2026 ; D-AGR-10) — `residentiel|commercial|industriel|agricole`, NULLABLE (null = non renseigné). Aujourd'hui `parametres.Realisation` n'a ni type ni segment : le repli (c) de `realisation_pour_lead` peut montrer un toit de villa « comparable à la vôtre » à un agriculteur.",
     "regle_preuve_segment": "Règle SYMÉTRIQUE (D-AGR-10) appliquée par `realisation_pour_lead` et par toute liste de références : un lead AGRICOLE ne reçoit qu'une réalisation `agricole` ; un lead NON agricole n'en reçoit JAMAIS une `agricole` ; une réalisation SANS segment (null) reste éligible pour un lead non agricole seulement. Aucune réalisation éligible = la preuve est OMISE, jamais un toit à la place."
+  },
+  "ajout_ciq10_segment_ci": {
+    "pourquoi": "CIQ10 (Groupe CIQ, 05/10/2026 ; audit L3 C&I du 03/10/2026 ; D-CIQ-6, convention 8 « contact B2B sur fixe : la touche WhatsApp devient un e-mail quand une adresse existe — règle de DONNÉE, aucun axe segment », convention 10 « preuve J4 OMISE pour le C&I tant qu'aucune réalisation C&I n'est saisie ») — `realisation.json` (AGR505) laissait un lead non agricole recevoir une villa.",
+    "regle": "Un lead `commercial`/`industriel` ne reçoit qu'une réalisation `commercial|industriel` : même segment d'abord, puis la puissance la plus proche de son dernier devis ; JAMAIS une réalisation résidentielle ni sans segment. Rien d'éligible ⇒ la touche J4 (preuve) est OMISE (convention 10)."
   }
 }
