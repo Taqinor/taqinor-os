@@ -1,0 +1,180 @@
+{
+  "endpoint": "GET /api/django/installations/chantiers/<int:pk>/recette/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Les sections `irradiance`, `energie`, `thermographie`, `limitation_injection`, `decouplage`, `echantillon_iv`, `instruments_par_essai`, `comparaison`, `reserves`, `reception` et `vue_portail` sont AJOUTEES par les taches backend du Groupe CIQ qui consomment ce contrat ; la tache qui sert une cle remet `forme_serveur: complete`.",
+  "pourquoi": "CIQ6 (Groupe CIQ, audit L3 du 03/10/2026 ; D-CIQ-12, D-CIQ-14) — CONTRAT D'ABORD (PACT10), pose SEUL sur `main`. Aujourd'hui `CommissioningRecord` (installations/models_chantier.py:171-290) porte des booleens et un `resultat` LIBRE (serializers_commissioning.py:32-50 ne le met pas en lecture seule ; le gate le lit tel quel, services.py:1434-1453) ; `performance_ok` est un booleen (models_chantier.py:234) ; ni irradiance, ni thermographie, ni essai de limitation d'injection ou de decouplage. Trois tolerances sont inventees (5 % installations/services.py:1751 ; 8 % et PR 0,75 ventes/commissioning.py:10,18). Une seconde recette vit cote ventes (FG274/FG275/FG278, DossiersReglementairesPage.jsx:32-36). `Reserve` ne s'attache qu'a une intervention (models_field.py:388-389) ; seul `date_reception` existe (models_installation.py:222). PROPRIETAIRE UNIQUE = la fiche `CommissioningRecord` du chantier : le gate, le PV et le portail ne lisent qu'elle ; les onglets ventes renvoient vers elle pour un chantier lie. Endpoints existants : `chantiers/{id}/recette/` (GET|POST) et `recettes-commissioning/{id}/` (PATCH). REGLES ECRITES : `record.resultat` est CALCULE (lecture seule) ; le seul choix humain est `reserves` (quand tous les essais sont vrais et qu'une reserve d'origine recette est ouverte) ; `pr_mesure` = energie mesuree / (kWc x irradiation mesuree), libelle « a titre d'information », JAMAIS un verdict ni une garantie (D-CIQ-12) ; `seuil_ecart_pmax_pct` null = ecart affiche sans verdict (`defaut_detecte` null) ; la regle d'echantillon I-V est un reglage societe SANS defaut ; le contrat n'ecrit AUCUN seuil, AUCUNE tolerance, AUCUNE correction d'irradiance ; `vue_portail` ne sert jamais l'instrument, le technicien, un prix ni `prix_achat`. Les valeurs sont ILLUSTRATIVES (saisies). `exemple` = cas commercial BT ; `exemple_mt` = limitation d'injection et decouplage exiges.",
+  "exemple": {
+    "installation": 88,
+    "record": {
+      "id": 31,
+      "date_recette": "2026-10-12",
+      "resultat": "reserves",
+      "resultat_calcule": true,
+      "irradiance": {
+        "irradiance_poa_wm2": 780,
+        "source": "mesuree",
+        "temperature_module_c": 41.5
+      },
+      "energie": {
+        "energie_mesuree_kwh": 412.6,
+        "fenetre_debut": "2026-10-12T09:00:00+01:00",
+        "fenetre_fin": "2026-10-12T15:00:00+01:00",
+        "pr_mesure": 0.81,
+        "pr_modele_devis": 0.78,
+        "libelle": "à titre d'information"
+      },
+      "terre_installation_ohm": 8.4,
+      "thermographie": {
+        "faite": true,
+        "constats": "Aucun point chaud relevé (valeur saisie, illustrative).",
+        "photos": []
+      },
+      "limitation_injection": {
+        "etat": "sans_objet",
+        "consigne": null
+      },
+      "decouplage": {
+        "etat": "sans_objet",
+        "piece": null
+      },
+      "echantillon_iv": {
+        "essais_realises": 4,
+        "chaines": 12
+      },
+      "instruments_par_essai": {
+        "isolement": {
+          "instrument_id": 5,
+          "etalonnage_expire": false
+        },
+        "iv": {
+          "instrument_id": 6,
+          "etalonnage_expire": false
+        }
+      }
+    },
+    "comparaison": {
+      "promesse_figee": {
+        "production_annuelle_kwh": 98500,
+        "pr_modelise": 0.78,
+        "source": "estimation moteur",
+        "figee_le": "2026-09-20T10:00:00+01:00"
+      },
+      "ecart_iv_pmax_pct": -2.1,
+      "seuil_ecart_pmax_pct": null,
+      "defaut_detecte": null,
+      "comparaison_annuelle": null,
+      "comparaison_annuelle_motif": "Moins de 12 mois de relevés."
+    },
+    "reserves": [
+      {
+        "id": 14,
+        "description": "Étiquette de repérage manquante sur le coffret AC",
+        "origine": "recette",
+        "bloquante": false,
+        "date_echeance": "2026-10-26",
+        "responsable": "Valeur saisie (illustrative)",
+        "statut": "ouverte",
+        "levee_le": null
+      }
+    ],
+    "reception": {
+      "date_reception_provisoire": "2026-10-13",
+      "date_reception_definitive": null,
+      "date_definitive_prevue": null,
+      "definitive_possible": false
+    },
+    "vue_portail": {
+      "date": "2026-10-12",
+      "resultat": "reserves",
+      "pr": 0.81,
+      "pr_libelle": "à titre d'information",
+      "reserves_ouvertes": [
+        {
+          "description": "Étiquette de repérage manquante sur le coffret AC",
+          "date_echeance": "2026-10-26"
+        }
+      ],
+      "date_reception_provisoire": "2026-10-13",
+      "date_reception_definitive": null
+    }
+  },
+  "exemple_mt": {
+    "installation": 91,
+    "record": {
+      "id": 34,
+      "date_recette": "2026-11-20",
+      "resultat": "conforme",
+      "resultat_calcule": true,
+      "irradiance": {
+        "irradiance_poa_wm2": 905,
+        "source": "mesuree",
+        "temperature_module_c": 47.0
+      },
+      "energie": {
+        "energie_mesuree_kwh": 5230.4,
+        "fenetre_debut": "2026-11-20T09:00:00+00:00",
+        "fenetre_fin": "2026-11-20T15:00:00+00:00",
+        "pr_mesure": 0.79,
+        "pr_modele_devis": 0.78,
+        "libelle": "à titre d'information"
+      },
+      "terre_installation_ohm": 3.1,
+      "thermographie": {
+        "faite": true,
+        "constats": "Valeur saisie (illustrative).",
+        "photos": []
+      },
+      "limitation_injection": {
+        "etat": "ok",
+        "consigne": "Consigne imposée par l'étude du distributeur (valeur saisie, illustrative)"
+      },
+      "decouplage": {
+        "etat": "ok",
+        "piece": "Réglages imposés par l'étude du distributeur — décret 2.25.100 art. 27"
+      },
+      "echantillon_iv": {
+        "essais_realises": 10,
+        "chaines": 60
+      },
+      "instruments_par_essai": {
+        "decouplage": {
+          "instrument_id": 9,
+          "etalonnage_expire": false
+        }
+      }
+    },
+    "comparaison": {
+      "promesse_figee": {
+        "production_annuelle_kwh": 1620000,
+        "pr_modelise": 0.78,
+        "source": "estimation moteur",
+        "figee_le": "2026-10-01T10:00:00+00:00"
+      },
+      "ecart_iv_pmax_pct": null,
+      "seuil_ecart_pmax_pct": null,
+      "defaut_detecte": null,
+      "comparaison_annuelle": null,
+      "comparaison_annuelle_motif": "Moins de 12 mois de relevés."
+    },
+    "reserves": [],
+    "reception": {
+      "date_reception_provisoire": "2026-11-21",
+      "date_reception_definitive": null,
+      "date_definitive_prevue": null,
+      "definitive_possible": true
+    },
+    "vue_portail": {
+      "date": "2026-11-20",
+      "resultat": "conforme",
+      "pr": 0.79,
+      "pr_libelle": "à titre d'information",
+      "reserves_ouvertes": [],
+      "date_reception_provisoire": "2026-11-21",
+      "date_reception_definitive": null
+    }
+  },
+  "exemple_vide": {
+    "installation": 92,
+    "record": null
+  }
+}
