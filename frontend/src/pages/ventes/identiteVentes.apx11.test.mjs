@@ -31,6 +31,8 @@ test('plus aucun en-tête legacy dans pages/ventes/', () => {
   const fichiers = [
     ...readdirSync(__dirname),
     ...readdirSync(path.join(__dirname, 'devisList')).map((f) => path.join('devisList', f)),
+    // SPL211 — factureList/ (fichiers extraits de FactureList.jsx) est balayé aussi.
+    ...readdirSync(path.join(__dirname, 'factureList')).map((f) => path.join('factureList', f)),
   ]
   for (const f of fichiers) {
     if (!f.endsWith('.jsx') || f.includes('.test.')) continue

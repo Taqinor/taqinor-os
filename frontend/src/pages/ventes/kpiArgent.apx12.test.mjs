@@ -22,6 +22,8 @@ test('plus aucun glyphe de tendance en TEXTE dans pages/ventes/ (VX129)', () => 
   const fichiers = [
     ...readdirSync(__dirname),
     ...readdirSync(path.join(__dirname, 'devisList')).map((f) => path.join('devisList', f)),
+    // SPL211 — factureList/ (fichiers extraits de FactureList.jsx) est balayé aussi.
+    ...readdirSync(path.join(__dirname, 'factureList')).map((f) => path.join('factureList', f)),
   ]
   for (const f of fichiers) {
     if (!f.endsWith('.jsx')) continue
