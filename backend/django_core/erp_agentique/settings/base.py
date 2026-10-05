@@ -1404,6 +1404,10 @@ VEILLE_SOCIETES_AUTORISEES = [
     int(_v) for _v in os.environ.get('VEILLE_SOCIETES_AUTORISEES', '').split(',')
     if _v.strip().isdigit()
 ]
+# VEIL13 — transport de REJEU du client ads_archive : posé ET interrupteur
+# faux → lecture de `<mot_cle>_<pays>_<page>.json` dans ce dossier, AUCUNE
+# connexion (démonstrations sans jeton, e2e VEIL46).
+META_AD_LIBRARY_FIXTURES_DIR = os.environ.get('META_AD_LIBRARY_FIXTURES_DIR', '')
 
 # Stockage fichiers — MinIO / S3 (Phase 2 Sem. 4)
 MINIO_ENDPOINT = os.environ.get('MINIO_ENDPOINT', 'minio:9000')
