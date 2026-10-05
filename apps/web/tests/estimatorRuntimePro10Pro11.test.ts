@@ -2168,3 +2168,35 @@ describe('runtime ACAL78 — recommencer efface les arêtes manuelles', () => {
     expect((apres.zones[0].edges ?? []).some((e) => e.manuel || e.retraitM !== undefined)).toBe(false);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL79 — boot RÉEL d'un devis vendu à 450 panneaux : le besoin imposé vaut 450, jamais
+// le plafond 400 des besoins déduits.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL79 — la cible vendue n’est jamais plafonnée', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('devis vendu à 450 panneaux → neededPanels 450 dans le document', async () => {
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      hydrate: { devis: { id: 12, geometrie: { roof_outline: squareCorners(60).map(([lng, lat]) => [lat, lng]) }, cible: { panneaux: 450 } } },
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    const doc = api!.serializeLayout() as { zones: Array<{ neededPanels: number; neededAuto: boolean }> };
+    expect(doc.zones[0].neededPanels).toBe(450);
+    expect(doc.zones[0].neededAuto).toBe(false);
+  });
+});

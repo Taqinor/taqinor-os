@@ -202,6 +202,8 @@ import {
   PRIORITES_REMPLISSAGE,
   type PrioriteRemplissage,
   type EntreeDepartage,
+  clampNeeded, // ACAL79 — la borne unique
+  besoinVendu, // ACAL79
 } from './roofPro11/optimizer';
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
@@ -1971,7 +1973,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
         }
         return;
       }
-      const n = h.neededPanels == null ? 0 : clampNeeded(h.neededPanels);
+      // ACAL79 — la cible VENDUE n'est jamais plafonnée (borne réservée aux besoins déduits).
+      const n = besoinVendu(h.neededPanels);
       neededPanels = n;
       neededAuto = false;
       const a = activeArea();
@@ -2093,8 +2096,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // deleteSelected/addObstacle/obstacleAtPoint + le glissé-dessin/déplacement + l'édition
   // numérique vivent dans le module ; créés plus bas via createObstaclesUi(ctx, …).
 
-  // — Plafond « panneaux nécessaires » (Change A) —
-  const clampNeeded = (n: number): number => Math.max(1, Math.min(400, Math.round(n)));
+  // — Plafond « panneaux nécessaires » (Change A) : ACAL79 — la borne UNIQUE est
+  // `optimizer.ts::clampNeeded` (importée), jamais une copie ici. —
 
   // ═══════════ OPTIMISEUR VIVANT (W34/V7 plat + W35/V8 pente + matrice V6 PVGIS) ═══════════
   // tiltOf/gridFor/placedFor/syncNeedControl/renderConfig/syncTiltControl + tout le solveur
