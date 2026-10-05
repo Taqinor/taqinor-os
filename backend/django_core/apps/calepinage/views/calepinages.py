@@ -288,7 +288,7 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                             status=status.HTTP_400_BAD_REQUEST)
         # Les autres champs écrivables du formulaire (statut, devis…) gardent
         # leur effet d'aujourd'hui, posés sur le calepinage créé.
-        restants = [champ for champ in ('statut', 'devis', 'appel_offre_id')
+        restants = [champ for champ in ('statut', 'devis')
                     if champ in donnees]
         for champ in restants:
             setattr(calepinage, champ, donnees[champ])

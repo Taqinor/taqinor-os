@@ -94,8 +94,6 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
 
     lead = serializers.IntegerField(source='lead_id', required=False,
                                     allow_null=True)
-    appel_offre = serializers.IntegerField(source='appel_offre_id',
-                                           required=False, allow_null=True)
     statut_libelle = serializers.CharField(source='get_statut_display',
                                            read_only=True)
     #: CAL189 — le calepinage décrit-il encore ce que le devis vend ?
@@ -118,7 +116,7 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         list_serializer_class = _CalepinageListSerializer
         fields = [
             'id', 'titre', 'statut', 'statut_libelle',
-            'lead', 'client', 'devis', 'appel_offre',
+            'lead', 'client', 'devis',
             'layout_hash', 'roof_image', 'version_moteur',
             'layout_stale', 'layout_nb_panneaux',
             'cree_par', 'created_at', 'updated_at',

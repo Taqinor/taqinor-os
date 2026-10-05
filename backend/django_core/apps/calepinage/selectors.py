@@ -478,16 +478,9 @@ def nomenclature_variante_retenue(calepinage_id, company):
     }
 
 
-def calepinage_de_l_affaire(appel_offre_id, company):
-    """CAL10 — le calepinage rattaché à cette affaire d'AO, ou ``None``."""
-    from .models import Calepinage
-
-    if company is None or not appel_offre_id:
-        return None
-    return (Calepinage.objects
-            .filter(company=company, appel_offre_id=appel_offre_id)
-            .order_by('-created_at', '-id')
-            .first())
+# ACAL326 (D-ACAL-16) — ``calepinage_de_l_affaire`` (pont AO, appelé
+# seulement par le code PARQUÉ backend/parked/ao/views.py) est retiré ; sa
+# recette de retour est consignée dans docs/parked-modules.md.
 
 
 #: CAL15 — les clés du contexte géographique. TOUJOURS toutes présentes.

@@ -103,7 +103,6 @@ backend/django_core/apps/calepinage/services/hors_reseau.py::banque_pour_autonom
 backend/django_core/apps/calepinage/services/hors_reseau.py::simuler_hors_reseau
 backend/django_core/apps/calepinage/services/images_document.py::image_recente
 backend/django_core/apps/calepinage/services/images_document.py::octets_et_mime
-backend/django_core/apps/calepinage/services/journal.py::journaliser_lien_appel_offre
 backend/django_core/apps/calepinage/services/kits.py::construire_kit_de_pose
 backend/django_core/apps/calepinage/services/lestage.py::feuille_de_lestage
 backend/django_core/apps/calepinage/services/lestage.py::masse_du_layout
