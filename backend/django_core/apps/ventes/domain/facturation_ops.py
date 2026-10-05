@@ -131,7 +131,7 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
 
 
 def decompter_stock_lignes(*, lignes, company, user, reference, note,
-                           multiplicateur=1):
+                           multiplicateur=1, manquants=None):
     """AUD116 — LE DÉCOMPTEUR UNIQUE de stock des lignes d'un devis.
 
     Il existait DEUX décompteurs pour le MÊME panier, et ils ne faisaient pas
@@ -154,6 +154,12 @@ def decompter_stock_lignes(*, lignes, company, user, reference, note,
     villas identiques » (``multivilla.nombre_proprietes``) : les lignes
     décrivent UNE villa mais le projet (facturé ×N) en consomme N fois le
     matériel. Défaut 1 = comportement historique strictement inchangé.
+
+    ``manquants`` (liste, facultatif) — mode NON BLOQUANT (facturation,
+    fondateur 05/10/2026) : au lieu de lever ``StockInsuffisantError``, la
+    sortie est posée quand même (le stock ERP passe sous zéro) et chaque
+    manque est ajouté à la liste ``(nom, disponible, requis)`` pour être
+    signalé. ``None`` = garde bloquante historique (livraison BC).
     """
     from decimal import Decimal, ROUND_HALF_UP
     from apps.stock.services import (
@@ -192,9 +198,12 @@ def decompter_stock_lignes(*, lignes, company, user, reference, note,
         try:
             check_negative_stock_guard(company, qte_avant, qte_apres)
         except ValueError:
-            raise StockInsuffisantError(
-                f'Stock insuffisant pour « {produit.nom} » '
-                f'(disponible : {qte_avant}, requis : {qte}).')
+            if manquants is not None:
+                manquants.append((produit.nom, qte_avant, qte))
+            else:
+                raise StockInsuffisantError(
+                    f'Stock insuffisant pour « {produit.nom} » '
+                    f'(disponible : {qte_avant}, requis : {qte}).')
         record_stock_movement(
             company=company,
             produit=produit,
@@ -254,14 +263,30 @@ def reserver_stock_devis_facture(*, devis, user, company):
     # ERR-QAC-MULTIVILLA-MATERIEL-XN — un devis ×N villas facturé ×N consomme
     # le matériel de N villas (N=1 inchangé).
     from apps.ventes.multivilla import nombre_proprietes
-    return decompter_stock_lignes(
+    # Fondateur 05/10/2026 — une facture n'est JAMAIS bloquée par le compteur
+    # de stock ERP : le matériel est souvent déjà posé chez le client quand on
+    # facture. La sortie est posée quand même (stock ERP sous zéro) et le
+    # manque est noté sur le devis pour recompter le stock.
+    manquants = []
+    moved = decompter_stock_lignes(
         lignes=option_lines(devis),
         company=company,
         user=user,
         reference=reference,
         note=f'Facturation directe — devis {reference}',
         multiplicateur=nombre_proprietes(devis),
+        manquants=manquants,
     )
+    if manquants:
+        from apps.ventes import activity
+        detail = ' ; '.join(
+            f'{nom} (stock ERP {dispo}, facturé {requis})'
+            for nom, dispo, requis in manquants)
+        activity.log_devis_note(
+            devis, user,
+            'Facturé malgré un stock ERP insuffisant — stock à recompter : '
+            f'{detail}.')
+    return moved
 
 
 def entete_facture_depuis_devis(devis):
