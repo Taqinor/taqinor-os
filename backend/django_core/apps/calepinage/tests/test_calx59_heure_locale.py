@@ -23,8 +23,6 @@ from __future__ import annotations
 
 import collections
 import datetime
-import json
-import pathlib
 import unittest
 import zoneinfo
 
@@ -33,36 +31,17 @@ from apps.calepinage.services.chaine_pertes import (
     BLOCS_HORAIRES_OMIS, CLE_CROISEMENT_HORAIRE, MOTIF_BASE_HORAIRE_INCONNUE,
     MOTIF_FUSEAU_ABSENT, appliquer_chaine,
 )
-from apps.calepinage.services.pertes_politique import politique_de_pertes
 from apps.calepinage.services.pvgis_serie import (
     BASE_HEURE_LOCALE_LEGALE, BASE_HEURE_LOCALE_STANDARD, BASE_HEURE_UTC,
-    ClientPvgis, _Cache,
 )
+from apps.calepinage.tests.test_pvgis_serie import serie_enregistree
 
-FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures_pvgis'
 FUSEAU = 'Africa/Casablanca'
-POSTES_ESSAI = [{'poste': 'shading', 'pct': 3.5, 'source': 'mesure'}]
-
-
-class TransportEnregistre:
-    def __init__(self, charge):
-        self.charge = charge
-
-    def __call__(self, url, timeout_s):
-        return 200, json.dumps(self.charge)
 
 
 def points_utc():
-    """Les points de la réponse RÉELLE, indexés en UTC (aucun `localtime`)."""
-    charge = json.loads(
-        (FIXTURES / 'seriescalc_casablanca_sud.json').read_text(
-            encoding='utf-8'))
-    client = ClientPvgis(TransportEnregistre(charge), cache=_Cache(),
-                         dormir=lambda _s: None)
-    return client.serie_horaire(
-        lat=33.5, lon=-7.6, inclinaison_deg=15.0, aspect_deg=0.0,
-        politique=politique_de_pertes(POSTES_ESSAI),
-        annee_debut=2020, annee_fin=2020)['points']
+    """Les points de la réponse RÉELLE enregistrée (indexée en UTC)."""
+    return serie_enregistree()['points']
 
 
 def serie_de(points):

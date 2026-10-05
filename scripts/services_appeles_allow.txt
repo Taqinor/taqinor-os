@@ -115,7 +115,6 @@ backend/django_core/apps/calepinage/services/note_calcul.py::html_de_note_calcul
 backend/django_core/apps/calepinage/services/p50p90.py::variabilite_interannuelle
 backend/django_core/apps/calepinage/services/pack_technique.py::rendre_pieces
 backend/django_core/apps/calepinage/services/pertes.py::moyenne_mensuelle
-backend/django_core/apps/calepinage/services/pertes.py::politique_du_calepinage
 backend/django_core/apps/calepinage/services/planche.py::dimensions_module
 backend/django_core/apps/calepinage/services/planche.py::echelle_de_dessin
 backend/django_core/apps/calepinage/services/planche.py::echelle_nommee
@@ -129,7 +128,6 @@ backend/django_core/apps/calepinage/services/planche.py::texte_d_orientation
 backend/django_core/apps/calepinage/services/planche.py::verifier_absence_d_argent
 backend/django_core/apps/calepinage/services/presets.py::enregistrer_jeu
 backend/django_core/apps/calepinage/services/presets.py::retirer_jeu
-backend/django_core/apps/calepinage/services/production.py::production_du_layout
 backend/django_core/apps/calepinage/services/profils_types.py::profil_de_repli
 backend/django_core/apps/calepinage/services/profils_types.py::profil_depuis_import
 backend/django_core/apps/calepinage/services/profils_types.py::profils_de_repli

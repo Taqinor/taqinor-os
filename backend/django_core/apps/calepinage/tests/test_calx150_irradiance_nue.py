@@ -37,7 +37,6 @@ import urllib.parse
 
 from django.test import SimpleTestCase
 
-from apps.calepinage.services.pertes_politique import politique_de_pertes
 from apps.calepinage.services.pvgis_serie import (
     COLONNES_IRRADIANCE, ClientPvgis, EntreeInvalide, PvgisIndisponible,
     _Cache, _Limiteur,
@@ -135,26 +134,6 @@ class ParametresEnvoyes(SimpleTestCase):
             appel(client(transport), annee_debut=2021, annee_fin=2019)
         self.assertEqual(leve.exception.champ, 'annee_fin')
         self.assertEqual(transport.appels, [])
-
-
-class CheminDaujourdhuiIntact(SimpleTestCase):
-    """``serie_horaire`` — l'estimation rapide du builder — ne bouge PAS."""
-
-    def test_serie_horaire_envoie_toujours_son_modele_pv_et_sa_perte(self):
-        transport = TransportEnregistre(
-            charger('seriescalc_casablanca_sud.json'))
-        resultat = client(transport).serie_horaire(
-            lat=33.5, lon=-7.6, inclinaison_deg=15.0, aspect_deg=0.0,
-            politique=politique_de_pertes(POSTES_ESSAI),
-            annee_debut=2020, annee_fin=2020)
-        params = requete(transport.appels[0])
-        self.assertEqual(params['pvcalculation'], ['1'])
-        self.assertEqual(params['loss'], ['5.75'])
-        self.assertEqual(params['mountingplace'], ['building'])
-        self.assertEqual(params['pvtechchoice'], ['crystSi'])
-        # Et sa provenance garde SES noms : ``production.py`` les lit.
-        self.assertEqual(resultat['base'], 'PVGIS-SARAH3')
-        self.assertIn('p_w', resultat['points'][0])
 
 
 class SerieRendue(SimpleTestCase):

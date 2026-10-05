@@ -1,4 +1,8 @@
-"""CAL135 — le client ``seriescalc`` : pertes explicites, zéro appel réseau.
+"""CAL135 — le client ``seriescalc`` : zéro appel réseau, aucun repli.
+
+ACAL329 — ``serie_horaire`` (le modèle PV de PVGIS, pertes passées en
+``loss``) est supprimée : la cadence, le cache et les refus du client sont
+prouvés ici sur ``serie_irradiance``, LA porte de la chaîne de pertes.
 
 Les réponses rejouées ici sont des réponses PVGIS **RÉELLES**, enregistrées le
 20/09/2026 depuis cette machine (``tests/fixtures_pvgis/*.json``, chacune
@@ -13,20 +17,12 @@ import json
 import pathlib
 import unittest
 
-from apps.calepinage.services.pertes_politique import politique_de_pertes
 from apps.calepinage.services.pvgis_serie import (
     BASE_PAR_DEFAUT, ClientPvgis, EntreeInvalide, PvgisIndisponible,
-    _Cache, _Limiteur, azimut_pvgis, cle_de_cache,
+    _Cache, _horodatage, _Limiteur, azimut_pvgis, cle_de_cache,
 )
 
 FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures_pvgis'
-
-#: Postes d'ESSAI — la mécanique, pas des pertes réelles (CAL139 les possède).
-POSTES_ESSAI = [
-    {'poste': 'shading', 'pct': 3.5, 'source': 'mesure'},
-    {'poste': 'soiling', 'pct': 2.25, 'source': 'societe'},
-    {'poste': 'inverter', 'pct': 1.5, 'source': 'fiche'},
-]
 
 
 def charger(nom):
@@ -58,10 +54,27 @@ def client(transport, **kwargs):
 
 def appel(cli, **extra):
     params = dict(lat=33.5, lon=-7.6, inclinaison_deg=15.0, aspect_deg=0.0,
-                  politique=politique_de_pertes(POSTES_ESSAI),
                   annee_debut=2020, annee_fin=2020)
     params.update(extra)
-    return cli.serie_horaire(**params)
+    return cli.serie_irradiance(**params)
+
+
+def serie_enregistree(nom='seriescalc_casablanca_sud.json', **extra):
+    """ACAL329 — la série RÉELLE d'une fixture, lue par ``serie_irradiance``.
+
+    Véhicule partagé des tests qui ont besoin de points horaires réels (le
+    défunt ``serie_horaire`` jouait ce rôle). Chaque point reçoit en plus
+    ``p_w`` : la colonne ``P`` de la MÊME réponse enregistrée, à la même
+    heure — aucune valeur fabriquée, l'énergie que ces tests faisaient déjà
+    circuler dans la chaîne.
+    """
+    charge = charger(nom)
+    resultat = appel(client(TransportEnregistre(charge)), **extra)
+    puissances = [ligne.get('P') for ligne in charge['outputs']['hourly']
+                  if _horodatage(ligne.get('time')) is not None]
+    for point, puissance in zip(resultat['points'], puissances):
+        point['p_w'] = float(puissance) if puissance is not None else None
+    return resultat
 
 
 class SerieHoraireTest(unittest.TestCase):
@@ -82,27 +95,20 @@ class SerieHoraireTest(unittest.TestCase):
         self.assertIsNotNone(premier['gi_w_m2'])
         self.assertIsNotNone(premier['t2m_c'])
         # La provenance vient de la RÉPONSE, pas de la demande.
-        self.assertEqual(resultat['base'], 'PVGIS-SARAH3')
-        self.assertEqual(resultat['fenetre_annees'], '2020-2020')
+        self.assertEqual(resultat['meteo']['base_rayonnement'],
+                         'PVGIS-SARAH3')
+        self.assertEqual(resultat['meteo']['fenetre_annees'], '2020-2020')
         self.assertEqual(len(transport.appels), 1)
 
-    def test_la_chaine_de_requete_porte_exactement_la_somme_publiee(self):
-        """CAL238 — ce que publie le résultat est ce qui est parti dans l'URL."""
+    def test_aucune_perte_n_est_passee_a_pvgis(self):
+        """ACAL329 — la chaîne de pertes possède chaque poste : la requête ne
+        porte ni ``loss`` ni modèle PV."""
         transport = TransportEnregistre(
             charger('seriescalc_casablanca_sud.json'))
-        resultat = appel(client(transport))
-
+        appel(client(transport))
         url = transport.appels[0]
-        # La somme des postes d'essai, calculée ici — jamais un pourcentage
-        # écrit en dur (le balayage de surface de CAL238 l'interdit, et il a
-        # raison : une perte en dur dans un test est une perte en dur).
-        somme = sum(poste['pct'] for poste in POSTES_ESSAI)
-        self.assertEqual(resultat['loss_passee_pct'], somme)
-        self.assertIn('loss=' + str(somme), url)
-        self.assertEqual([p['poste'] for p in resultat['pertes']],
-                         ['shading', 'soiling', 'inverter'])
-        # …et aucune perte par défaut ne s'est glissée dans la requête.
-        self.assertEqual(url.count('loss='), 1)
+        self.assertNotIn('loss=', url)
+        self.assertIn('pvcalculation=0', url)
 
     def test_le_choix_de_base_est_explicite_dans_la_requete(self):
         transport = TransportEnregistre(
@@ -115,13 +121,6 @@ class SerieHoraireTest(unittest.TestCase):
         with self.assertRaises(EntreeInvalide) as capture:
             appel(client(transport), base='PVGIS-INEXISTANTE')
         self.assertEqual(capture.exception.champ, 'base')
-        self.assertEqual(transport.appels, [])
-
-    def test_sans_politique_de_pertes_aucun_appel(self):
-        transport = TransportEnregistre({})
-        with self.assertRaises(EntreeInvalide) as capture:
-            appel(client(transport), politique=None)
-        self.assertEqual(capture.exception.champ, 'pertes')
         self.assertEqual(transport.appels, [])
 
     def test_fenetre_annees_a_lenvers_refusee(self):
