@@ -806,7 +806,8 @@ SPECTACULAR_SETTINGS = {
         # COTES_AC_DC). Sans ces entrées : « multiple names for the same
         # choice set ». Nommage de schéma uniquement — aucun choix ne change.
         'OuiNonEnum': 'apps.crm.models.Lead.OuiNon',
-        'CoteAcDcEnum': 'apps.stock.models.COTES_AC_DC',
+        # SPL113 — FicheTechnique vit dans stock/models_fiche_technique.py.
+        'CoteAcDcEnum': 'apps.stock.models_fiche_technique.COTES_AC_DC',
         # SOLMVP-sweep (2026-09-21) — `EtatGeneralPieceEnum`
         # (immobilier.PieceEtatLieux.EtatGeneral) est retiré : apps.immobilier
         # est sorti du MVP solaire (Groupe SOLMVP, coquille).
