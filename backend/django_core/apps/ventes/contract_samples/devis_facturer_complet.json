@@ -1,0 +1,26 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/<int:pk>/facturer-complet/",
+  "pourquoi": "Bouton « Facturer » d'un devis accepté (fondateur, 05/10/2026) : crée en UN appel atomique la facture complète (100 %, lignes du devis recopiées), l'émet (numéro définitif), puis consigne les paiements DÉJÀ reçus (0 à 3 lignes saisies : montant, date passée possible, mode, référence). Corps : {\"paiements\": [{\"montant\": \"45000.00\", \"date_paiement\": \"2026-08-12\", \"mode_paiement\": \"virement\", \"reference\": \"VIR-0812\"}]}. Refus 400 en français si le devis n'est pas accepté, s'il porte déjà une facture active (la réponse nomme les références existantes), ou si la somme des paiements dépasse le total TTC. montant_du = reste à payer après ces paiements (TEXTE décimal, jamais un flottant). Jamais de prix d'achat ni de marge.",
+  "exemple": {
+    "facture_id": 118,
+    "facture_reference": "FAC-2026-10-0007",
+    "statut": "partiellement_payee",
+    "total_ttc": "150000.00",
+    "montant_paye": "135000.00",
+    "montant_du": "15000.00",
+    "paiements": [
+      { "id": 301, "montant": "45000.00", "date_paiement": "2026-08-12", "mode_paiement": "virement", "reference": "VIR-0812" },
+      { "id": 302, "montant": "45000.00", "date_paiement": "2026-09-02", "mode_paiement": "cheque", "reference": "CHQ-55120" },
+      { "id": 303, "montant": "45000.00", "date_paiement": "2026-09-28", "mode_paiement": "virement", "reference": "" }
+    ]
+  },
+  "exemple_sans_paiement": {
+    "facture_id": 119,
+    "facture_reference": "FAC-2026-10-0008",
+    "statut": "emise",
+    "total_ttc": "78600.00",
+    "montant_paye": "0.00",
+    "montant_du": "78600.00",
+    "paiements": []
+  }
+}
