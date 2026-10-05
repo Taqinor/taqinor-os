@@ -52,7 +52,7 @@ const AGRICOLE = makeProposal({
   mode_installation: 'agricole',
   mode_kpis: {
     pompe_cv: 7.5, pompe_kw: 5.5, hmt_m: 60, debit_hmt_m3h: 16,
-    m3_jour: 112, champ_kwc: 9.24, bassin_m3: 224, fda_eligible: true,
+    m3_jour: 112, heures_pompage: 7, champ_kwc: 9.24,
   },
   monthly_production: [700, 800, 1100, 1300, 1500, 1600, 1650, 1550, 1300, 1050, 800, 650],
   quote: { puissance_kwc: 9.24 },
@@ -129,8 +129,11 @@ describe('WJ126 — agricoleKpis (pompage)', () => {
     expect(k.debit_hmt_m3h).toBe(16);
     expect(k.m3_jour).toBe(112);
     expect(k.champ_kwc).toBe(9.24);
-    expect(k.bassin_m3).toBe(224);
-    expect(k.fda_eligible).toBe(true);
+    // AGW301 — les heures de pompage (hypothèse du m³/jour) sont lues ; plus
+    // aucun bassin ni verdict FDA propre au client.
+    expect(k.heures_pompage).toBe(7);
+    expect(k).not.toHaveProperty('bassin_m3');
+    expect(k).not.toHaveProperty('fda_eligible');
   });
 
   it('renvoie null hors mode agricole (pas de bloc pompe ailleurs)', () => {
@@ -144,10 +147,11 @@ describe('WJ126 — agricoleKpis (pompage)', () => {
     expect(k.pompe_cv).toBeNull();
     expect(k.m3_jour).toBeNull();
     expect(k.champ_kwc).toBeNull();
-    expect(k.fda_eligible).toBe(false);
+    expect(k.heures_pompage).toBeNull();
+    expect(k).not.toHaveProperty('fda_eligible');
   });
 
-  it('champ manquant → null, jamais 0 fabriqué ; FDA absente → false', () => {
+  it('champ manquant → null, jamais 0 fabriqué (AGW301 : ni bassin ni FDA)', () => {
     const k = agricoleKpis(makeProposal({
       mode_installation: 'agricole',
       mode_kpis: { pompe_cv: 5, m3_jour: 80 },
@@ -155,8 +159,18 @@ describe('WJ126 — agricoleKpis (pompage)', () => {
     expect(k.pompe_cv).toBe(5);
     expect(k.m3_jour).toBe(80);
     expect(k.hmt_m).toBeNull();
-    expect(k.bassin_m3).toBeNull();
-    expect(k.fda_eligible).toBe(false);
+    expect(k.heures_pompage).toBeNull();
+    expect(k).not.toHaveProperty('bassin_m3');
+  });
+
+  it('AGW301 — un payload ancien qui porte encore bassin_m3/fda_eligible ne les ressort plus', () => {
+    const k = agricoleKpis(makeProposal({
+      mode_installation: 'agricole',
+      mode_kpis: { pompe_cv: 5, bassin_m3: 224, fda_eligible: true } as unknown as ProposalResponse['mode_kpis'],
+    }))!;
+    expect(k).not.toHaveProperty('bassin_m3');
+    expect(k).not.toHaveProperty('fda_eligible');
+    expect(k.pompe_cv).toBe(5);
   });
 
   it('coerce une chaîne numérique backend (pompe_cv "7.5")', () => {
@@ -324,5 +338,30 @@ describe('WJ126 — MONTHS_SHORT (axe du mini-graphe eau)', () => {
     expect(MONTHS_SHORT.fr).toHaveLength(12);
     expect(MONTHS_SHORT.en).toHaveLength(12);
     expect(MONTHS_SHORT.ar).toHaveLength(12);
+  });
+});
+
+// AGW301 — la page ne rend plus les trois cartes retirées et affiche les heures.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+describe('AGW301 — page /proposition agricole : cartes retirées, heures affichées', () => {
+  const page = readFileSync(
+    fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
+    'utf-8',
+  );
+  const code = page.replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
+  it('plus de « Bassin recommandé », « Subvention FDA » ni « Fini le carburant »', () => {
+    for (const bad of [
+      'Bassin recommandé', 'Recommended reservoir', 'حوض موصى به',
+      'Subvention FDA envisageable', 'FDA subsidy possible', 'دعم FDA ممكن',
+      'Fini le carburant', 'No more fuel', 'وداعاً للوقود',
+      'agri.bassin_m3', 'agri.fda_eligible',
+    ]) expect(code).not.toContain(bad);
+    expect(code).not.toMatch(/pouvant atteindre 30/);
+  });
+  it('les heures de pompage sont lues et affichées sous l\'eau/jour (hypothèse)', () => {
+    expect(code).toContain('agri.heures_pompage');
+    expect(code).toContain('h de pompage (hypothèse)');
+    expect(code).toContain('of pumping (assumption)');
   });
 });

@@ -244,19 +244,19 @@ const PROFESSIONNEL: Record<Locale, ServiceCopy> = {
   fr: {
     entretienQ: 'Un site professionnel demande-t-il un entretien particulier ?',
     entretienA:
-      'Le suivi de production en temps réel tourne en continu sur l’ensemble du parc et déclenche une alerte chez nous avant que vous ne constatiez quoi que ce soit. Un passage d’entretien programmé peut s’ajouter en contrat ; la cadence, le délai de réponse et le prix exacts restent en attente de validation du fondateur — aucun chiffre n’est publié tant qu’il n’est pas arrêté. Voir la page Maintenance & monitoring.',
+      'Le suivi de production en temps réel porte sur votre site et déclenche une alerte chez nous avant que vous ne constatiez quoi que ce soit. Un passage d’entretien programmé peut s’ajouter en contrat ; le délai d’intervention est fixé par votre contrat. Voir la page Maintenance & monitoring.',
     prixQ: 'Comment le prix d’un site professionnel est-il calculé ?',
     prixA:
-      'Le chiffrage se cale sur vos courbes de charge et sur les conditions de votre raccordement, jamais sur un gabarit générique. Les fourchettes indicatives publiées donnent un ordre de grandeur par tranche de facture ; le devis réel dépend de la visite technique et, en moyenne tension, du régime loi 82-21 applicable (accord de raccordement jusqu’à 5 MW, autorisation au-delà).',
+      'Le chiffrage se cale sur vos factures et votre rythme d’activité, heure par heure (la courbe mesurée si votre distributeur la fournit), et sur les conditions de votre raccordement, jamais sur un gabarit générique. Aucun chiffre n’est publié sur cette page : le devis réel dépend de la visite technique et du régime loi 82-21 applicable (déclaration sous 11 kW ; accord de raccordement de 11 kW à moins de 5 MW ; autorisation à partir de 5 MW).',
     inclusQ: 'Qu’est-ce qui est inclus dans une installation professionnelle ?',
     inclusA:
-      'Le matériel tier-1 (panneaux, onduleur, structure), le dossier technique complet, le montage du dossier loi 82-21 (accord de raccordement ou autorisation selon la puissance) et l’accès au suivi de production en temps réel pour l’ensemble du site.',
+      'Le matériel tier-1 (panneaux, onduleur, structure), le dossier technique complet, le montage du dossier loi 82-21 (accord de raccordement ou autorisation selon la puissance) et l’accès au suivi de production en temps réel pour votre site.',
     exclusQ: 'Qu’est-ce qui n’est pas couvert par la garantie ?',
     exclusA:
       'Le dommage accidentel ou un choc externe, une intervention par un tiers non habilité par Taqinor, un défaut d’entretien manifeste, un événement de force majeure (assurance du bâtiment, pas notre garantie matériel) et l’usure normale au-delà des seuils garantis. Liste indicative, à confirmer — voir la page Garanties.',
     delaisQ: 'Quel est le délai entre le premier contact et la mise en service ?',
     delaisA:
-      'Le même process en trois temps que pour un site résidentiel : diagnostic initial, échange direct avec un technicien, puis visite technique et étude complète. Sur un site professionnel, l’étude intègre en plus vos courbes de charge et, selon la puissance, le montage du dossier loi 82-21 — ce qui peut allonger le délai selon le régime applicable (accord de raccordement ou autorisation).',
+      'Le même process en trois temps que pour un site résidentiel : diagnostic initial, échange direct avec un technicien, puis visite technique et étude complète. Sur un site professionnel, l’étude intègre en plus vos factures et votre rythme d’activité et, selon la puissance, le montage du dossier loi 82-21 — ce qui peut allonger le délai selon le régime applicable (accord de raccordement ou autorisation).',
     garantiesQ: 'Quelles garanties couvrent une installation professionnelle ?',
     garantiesA:
       'Mêmes garanties tier-1 que le résidentiel : panneaux 12 ans produit / 30 ans performance linéaire (≥ 87,4 %), onduleur 10 ans, structure acier galvanisé 20 ans, installation et main-d’œuvre Taqinor 2 ans. Le détail par composant est ci-dessous et sur la page Garanties.',
@@ -264,19 +264,19 @@ const PROFESSIONNEL: Record<Locale, ServiceCopy> = {
   en: {
     entretienQ: 'Does a business site need particular maintenance?',
     entretienA:
-      'Real-time production monitoring runs continuously across the whole fleet and triggers an alert on our side before you notice anything. A scheduled maintenance visit can be added as a contract; the exact cadence, response time and price are still pending founder validation — no figure is published until it is settled. See the Maintenance & monitoring page.',
+      'Real-time production monitoring covers your site and triggers an alert on our side before you notice anything. A scheduled maintenance visit can be added as a contract; the response time is set by your contract. See the Maintenance & monitoring page.',
     prixQ: 'How is the price for a business site calculated?',
     prixA:
-      'The costing is set on your load curves and on your grid-connection conditions, never on a generic template. The published indicative ranges give an order of magnitude per bill bracket; the real quote depends on the technical visit and, in medium voltage, on the applicable law 82-21 regime (grid-connection agreement up to 5 MW, authorisation beyond).',
+      'The costing is set on your bills and your activity rhythm, hour by hour (the measured curve if your distributor supplies it), and on your grid-connection conditions, never on a generic template. No figure is published on this page: the real quote depends on the technical visit and on the applicable law 82-21 regime (declaration below 11 kW; connection agreement from 11 kW to under 5 MW; authorisation from 5 MW).',
     inclusQ: 'What is included in a business installation?',
     inclusA:
-      'Tier-1 equipment (panels, inverter, structure), the full technical file, building the law 82-21 file (grid-connection agreement or authorisation depending on power) and real-time production monitoring access for the whole site.',
+      'Tier-1 equipment (panels, inverter, structure), the full technical file, building the law 82-21 file (grid-connection agreement or authorisation depending on power) and real-time production monitoring access for your site.',
     exclusQ: 'What is not covered by the warranty?',
     exclusA:
       'Accidental damage or an external impact, an intervention by a third party not authorised by Taqinor, a clear lack of maintenance, a force-majeure event (a matter for the building’s insurance, not our hardware warranty) and normal wear beyond the guaranteed thresholds. Indicative list, to be confirmed — see the Warranties page.',
     delaisQ: 'What is the timeline from first contact to commissioning?',
     delaisA:
-      'The same three-step process as a residential site: initial assessment, direct exchange with a technician, then the technical visit and full assessment. On a business site, the assessment also factors in your load curves and, depending on power, building the law 82-21 file — which can extend the timeline depending on the applicable regime (grid-connection agreement or authorisation).',
+      'The same three-step process as a residential site: initial assessment, direct exchange with a technician, then the technical visit and full assessment. On a business site, the assessment also factors in your bills and your activity rhythm and, depending on power, building the law 82-21 file — which can extend the timeline depending on the applicable regime (grid-connection agreement or authorisation).',
     garantiesQ: 'What warranties cover a business installation?',
     garantiesA:
       'The same tier-1 warranties as residential: panels 12 years product / 30 years linear performance (≥ 87.4 %), inverter 10 years, galvanised steel structure 20 years, Taqinor installation and labour 2 years. The breakdown by component is below and on the Warranties page.',
@@ -284,19 +284,19 @@ const PROFESSIONNEL: Record<Locale, ServiceCopy> = {
   ar: {
     entretienQ: 'هل يحتاج الموقع المهني إلى صيانة خاصة؟',
     entretienA:
-      'تعمل متابعة الإنتاج في الوقت الحقيقي باستمرار على كامل الأسطول وتُطلق تنبيهاً لدينا قبل أن تلاحظوا أي شيء. يمكن إضافة زيارة صيانة مبرمجة ضمن عقد؛ الوتيرة الدقيقة وزمن الاستجابة والثمن ما زالت في انتظار مصادقة المؤسس — لا يُنشَر أي رقم قبل أن يُحسم. انظر صفحة الصيانة والمراقبة.',
+      'تغطّي متابعة الإنتاج في الوقت الحقيقي موقعكم وتُطلق تنبيهاً لدينا قبل أن تلاحظوا أي شيء. يمكن إضافة زيارة صيانة مبرمجة ضمن عقد؛ وأجل التدخّل يحدّده عقدكم. انظر صفحة الصيانة والمراقبة.',
     prixQ: 'كيف يُحسب ثمن موقع مهني؟',
     prixA:
-      'يُضبط التسعير على منحنيات الحمل لديكم وعلى شروط ربطكم بالشبكة، لا على نموذج عام أبداً. المجالات الإرشادية المنشورة تُعطي أمر مقدار حسب شريحة الفاتورة؛ الثمن الحقيقي يعتمد على الزيارة التقنية، وفي المتوسط الجهد، على نظام القانون 82-21 المطبَّق (اتفاقية ربط إلى غاية 5 ميغاواط، ترخيص فوق ذلك).',
+      'يُضبط التسعير على فواتيركم وإيقاع نشاطكم ساعةً بساعة (والمنحنى المقيس إن وفّره موزّعكم)، وعلى شروط ربطكم بالشبكة، لا على نموذج عام أبداً. لا يُنشر أي رقم في هذه الصفحة: الثمن الحقيقي يعتمد على الزيارة التقنية وعلى نظام القانون 82-21 المطبَّق (تصريح دون 11 كيلوواط؛ اتفاقية ربط من 11 كيلوواط إلى أقل من 5 ميغاواط؛ ترخيص ابتداءً من 5 ميغاواط).',
     inclusQ: 'ما الذي يُدرَج ضمن تركيبة مهنية؟',
     inclusA:
-      'عتاد من الفئة الأولى (ألواح، عاكس، بنية)، الملف التقني الكامل، إعداد ملف القانون 82-21 (اتفاقية ربط أو ترخيص حسب القدرة) وولوج متابعة الإنتاج في الوقت الحقيقي لكامل الموقع.',
+      'عتاد من الفئة الأولى (ألواح، عاكس، بنية)، الملف التقني الكامل، إعداد ملف القانون 82-21 (اتفاقية ربط أو ترخيص حسب القدرة) وولوج متابعة الإنتاج في الوقت الحقيقي لموقعكم.',
     exclusQ: 'ما الذي لا يُغطّيه الضمان؟',
     exclusA:
       'الضرر العرضي أو الصدمة الخارجية، تدخّل طرف ثالث غير معتمد من تاكينور، إهمال صيانة واضح، حدث قوة قاهرة (يخصّ تأمين المبنى، لا ضمان معداتنا) والتآكل العادي بما يتجاوز العتبات المضمونة. لائحة إرشادية، قيد التأكيد — انظر صفحة الضمانات.',
     delaisQ: 'ما الأجل بين أول اتصال والتشغيل الفعلي؟',
     delaisA:
-      'نفس المسار من ثلاث مراحل كما في الموقع السكني: تشخيص أولي، تواصل مباشر مع تقني، ثم الزيارة التقنية والدراسة الكاملة. في الموقع المهني، تُدمج الدراسة كذلك منحنيات الحمل، وحسب القدرة، إعداد ملف القانون 82-21 — ما قد يُطيل الأجل حسب النظام المطبَّق (اتفاقية ربط أو ترخيص).',
+      'نفس المسار من ثلاث مراحل كما في الموقع السكني: تشخيص أولي، تواصل مباشر مع تقني، ثم الزيارة التقنية والدراسة الكاملة. في الموقع المهني، تُدمج الدراسة كذلك فواتيركم وإيقاع نشاطكم، وحسب القدرة، إعداد ملف القانون 82-21 — ما قد يُطيل الأجل حسب النظام المطبَّق (اتفاقية ربط أو ترخيص).',
     garantiesQ: 'ما الضمانات التي تُغطّي تركيبة مهنية؟',
     garantiesA:
       'نفس ضمانات الفئة الأولى كما في السكني: الألواح 12 سنة على المنتج / 30 سنة على الأداء الخطي (≥ 87.4 %)، العاكس 10 سنوات، الهيكل الفولاذي المجلفن 20 سنة، التركيب واليد العاملة لتاكينور سنتان. التفصيل حسب المكوّن أسفله وعلى صفحة الضمانات.',

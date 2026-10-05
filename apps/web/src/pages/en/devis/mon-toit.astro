@@ -233,9 +233,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
              accordion) to keep this map step light — same id/name, webhook
              contract unchanged. -->
 
-        <p class="mt-5 text-lune-soft">
+        <p id="mt-step0-intro" class="mt-5 text-lune-soft">
           Search for your address and drop a pin on your roof. This is optional —
           you can also continue with your address alone.
+        </p>
+        <!-- AGW401 — agricultural variant of step 0 (shown by syncStep2Panels). -->
+        <p id="mt-step0-intro-agri" hidden class="mt-5 text-lune-soft">
+          Search for your address and drop a pin on your borehole or your plot. This is
+          optional — you can also continue with your address alone.
         </p>
 
         <!-- No-JavaScript / no map-key fallback (WJ4): ask for a plain-text
@@ -501,7 +506,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                    from the SHIFTS alone (SHIFT_DAY_SHARE_CEILING) — weekend
                    never entered any calculation. The sales rep fills it in the ERP. -->
               <p class="mt-2 text-xs text-lune-faint">
-                Solar shifts your FULL-rate hours (~1.01 MAD/kWh); PEAK is only covered
+                Solar shifts your FULL-rate hours; PEAK is only covered
                 with a battery — never the other way round. The more you produce at night
                 (3×8, continuous), the less solar alone covers — an honest estimate,
                 refined after a study.
@@ -716,10 +721,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <!-- Irrigation removed from the funnel (founder cut 18/08) — the
                  sales rep fills it in the ERP. -->
 
-            <!-- FDA subsidy — verified fact, honest wording (cap, application handled by us). -->
-            <p class="text-xs text-lune-faint">
-              FDA subsidy&nbsp;: up to 30&nbsp;% of the cost of a solar pumping kit (we
-              handle the application for you).
+            <!-- AGW405 — FDA aid: NO percentage and no "we handle the application" promise
+                 (founder decision Q22: promise nothing). Source: FDA Guide 2024 edition,
+                 pp. 20-23 (casainvest.ma), read October 2026 — the pilot only targets
+                 replacing butane pumps, requires prior approval BEFORE works and caps the aid. -->
+            <p id="mt-fda-note" class="text-xs text-lune-faint">
+              State aid (FDA) may be available to replace a butane pump, under conditions, with
+              prior approval from your DPA/ORMVA BEFORE the works — details on the
+              <a href="/en/financement" class="underline decoration-white/40 underline-offset-2 hover:text-white">Financing</a> page.
             </p>
           </div>
 
@@ -739,7 +748,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               <span id="mt-fuel-spend-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             </label>
             <p class="text-xs text-lune-faint">
-              Fuel spend is used to compute your saving — nothing else.
+              It is used for the study of your project; the saving is calculated in the quote.
             </p>
           </div>
         </div>
@@ -943,7 +952,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               </div>
               <div class="mt-doc-kpi mt-doc-kpi-green" id="mt-agri-fuel-card" hidden>
                 <p class="mt-doc-kpi-value" id="mt-agri-fuel">—</p>
-                <p class="mt-doc-kpi-label">Fuel savings</p>
+                <p class="mt-doc-kpi-label">Declared fuel spend</p>
               </div>
             </div>
 
@@ -2383,6 +2392,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // entirely different step-2 questionnaire); "Continue" requires an
   // explicit choice (validateStep0, inline nudge on the cards). ———
   let mode = savedWizard?.mode || '';
+  // AGW401 — l'intention déclarée par le visiteur en cliquant (?mode=…, liste
+  // FERMÉE des 4 modes) présélectionne VISIBLEMENT la carte (aria-pressed) ;
+  // elle reste modifiable. Valeur inconnue = aucun effet. SEUL lecteur de
+  // `?mode=` de ce tunnel. Aucune clé webhook nouvelle.
+  try {
+    const wantedMode = new URLSearchParams(window.location.search).get('mode');
+    if (wantedMode && ['residentiel', 'industriel', 'commercial', 'agricole'].includes(wantedMode)) mode = wantedMode;
+  } catch { /* URL illisible : aucun mode présélectionné */ }
   // WJ121 — in-flight session migration: the old single 'professionnel'
   // profile rehydrates as 'industriel' (the backend already maps
   // professionnel→industriel) — the site never EMITS 'professionnel' anymore.
@@ -2437,6 +2454,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (pro) pro.hidden = !(m === 'industriel' || m === 'professionnel');
     if (commercial) commercial.hidden = m !== 'commercial';
     if (agri) agri.hidden = m !== 'agricole';
+    // AGW401 — étape 0 en mode agricole : repère « forage / parcelle », sans le
+    // choix Pointer/Dessiner mon toit (GPS et ville conservés).
+    const introStd = $('mt-step0-intro');
+    const introAgri = $('mt-step0-intro-agri');
+    if (introStd) introStd.hidden = m === 'agricole';
+    if (introAgri) introAgri.hidden = m !== 'agricole';
+    const roofModeGrp = $('mt-roof-mode-group');
+    if (roofModeGrp) roofModeGrp.hidden = m === 'agricole' || !!(fallback && !fallback.hidden);
     syncRaisonSociale();
   }
   /** The company name now lives on the CONTACT screen (founder cut 18/08):
@@ -2897,6 +2922,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // `cityTouched`, and without this guard the next pin dropped on the map
     // would silently overwrite the city we just restored.
     if (savedWizard.fields?.['mt-city']) cityTouched = true;
+    // AGW403 — un curseur « heures de pompage » restauré à une valeur ≠ 7 a
+    // forcément été touché (affecter `.value` par script ne déclenche pas
+    // `input`) ; à 7 on ne peut pas le savoir : jamais une réponse inventée.
+    {
+      const hp = $('mt-heures-pompage') as HTMLInputElement | null;
+      const savedHp = savedWizard.fields?.['mt-heures-pompage'];
+      if (hp && savedHp && savedHp !== '7') hp.dataset.touche = '1';
+    }
     // WJ105 — a restored contact preference must re-sync the callback SLA
     // visibility (assigning `.checked` via script never fires `change`).
     syncCallbackSla();
@@ -3092,7 +3125,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const out = $('mt-heures-pompage-value');
     if (out && heuresInput) out.textContent = `${heuresInput.value} h`;
   }
+  // AGW403 — le curseur vaut 7 AVANT toute interaction : `data-touche="1"` est
+  // posé dès son premier événement input/change, et seul un curseur touché
+  // envoie `heuresPompage` (lecture.ts : type « nombreTouche »). L'estimation
+  // affichée garde ses 7 h par défaut (hypothèse interne), sans effet visible.
+  const marquerHeuresTouchees = () => { if (heuresInput) heuresInput.dataset.touche = '1'; };
+  heuresInput?.addEventListener('change', marquerHeuresTouchees);
   heuresInput?.addEventListener('input', () => {
+    marquerHeuresTouchees();
     syncHeuresLabel();
     computeEstimate();
   });
@@ -3378,6 +3418,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastSavingsLabel = '';
       lastKwc = null;
       estimateShown = null;
+      // CIW404 — un tarif périmé ne survit pas à une estimation en échec.
+      lastProTarifMadKwh = null;
       if (printBtn) printBtn.hidden = true;
     };
     const proBill = num(proBillId());
@@ -3442,30 +3484,18 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // WJ125 — lead payload (exact figures) + labels built BEFORE any render;
     // in the gated public journey we stop here WITHOUT writing a single figure.
     {
-      const s: Record<string, number | string> = {};
+      // CIW404 — en modes commercial/industriel, AUCUN chiffre d'hypothèse (kWc, production,
+      // économie, retour, taux de couverture / d'autoconsommation) ne part au CRM ni dans le
+      // message WhatsApp : ils viennent de constantes non sourcées (tarifs, prix au kWc, parts
+      // diurnes « à vérifier ») et le retour est la MÊME paire pour tous les leads d'une
+      // tension. Seul un drapeau « étude dédiée » reste ; l'écran garde le teaser (WJ125).
+      // Le seul chiffre montré au client sera celui du moteur serveur (/proposition, D-CIQ-0).
       const kOk = Number.isFinite(est.kwc) && est.kwc > 0;
-      if (kOk) s.kwc = est.kwc;
-      // The module count behind the announced sizing (n × 710 Wc = that kWc).
-      // estimatorPro has always computed it; the CRM never received it, so the
-      // adviser recounted it by hand from the kWc.
-      if (Number.isFinite(est.nbPanneaux) && est.nbPanneaux > 0) s.nbPanneaux = est.nbPanneaux;
-      if (Number.isFinite(est.prodAnnuelleKwh) && est.prodAnnuelleKwh > 0) s.prodKwh = Math.round(est.prodAnnuelleKwh);
-      if (Number.isFinite(est.tauxAutoconso) && est.tauxAutoconso > 0) s.tauxAutoconso = pct(est.tauxAutoconso);
-      if (Number.isFinite(est.tauxCouverture) && est.tauxCouverture > 0) s.tauxCouverture = pct(est.tauxCouverture);
-      const eOk = est.ecoAnnuelleMadLow > 0 && est.ecoAnnuelleMadHigh > 0;
-      if (eOk) { s.ecoMadYearLow = est.ecoAnnuelleMadLow; s.ecoMadYearHigh = est.ecoAnnuelleMadHigh; }
-      const rOk = est.paybackYearsLow > 0 && est.paybackYearsHigh > 0;
-      const rLabel = rOk
-        ? (est.paybackYearsLow === est.paybackYearsHigh
-          ? `${fmtYears(est.paybackYearsLow)} yrs`
-          : `${fmtYears(est.paybackYearsLow)} – ${fmtYears(est.paybackYearsHigh)} yrs`)
-        : null;
-      if (rLabel) s.paybackLabel = rLabel;
-      estimateShown = s;
+      estimateShown = null; // CIW404 — aucun chiffre vers le CRM
+      // `lastKwc` ne sert qu'à l'aperçu 3D local : il ne part jamais au CRM.
       lastKwc = kOk ? est.kwc : null;
-      lastKwcLabel = kOk ? `${formatKwc(est.kwc)} kWc` : '';
-      const eLabel = eOk ? formatMadRange(est.ecoAnnuelleMadLow, est.ecoAnnuelleMadHigh) : null;
-      lastSavingsLabel = eLabel ? `${eLabel}/yr` : '';
+      lastKwcLabel = '';
+      lastSavingsLabel = '';
     }
     if (PUBLIC_ESTIMATE_GATED) {
       updatePanels3dVisibility();
@@ -3523,10 +3553,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     }
     if (noteEl) noteEl.hidden = true;
     if (hypWrap) hypWrap.hidden = false;
-    estimateShown = shown;
+    // CIW404 — même règle côté écran non gaté : rien de chiffré vers le CRM ni WhatsApp.
+    estimateShown = null; // CIW404 — aucun chiffre vers le CRM
     lastKwc = kwcOk ? est.kwc : null;
-    lastKwcLabel = kwcOk ? `${formatKwc(est.kwc)} kWc` : '';
-    lastSavingsLabel = ecoLabel ? `${ecoLabel}/year` : '';
+    lastKwcLabel = '';
+    lastSavingsLabel = '';
     if (printBtn) printBtn.hidden = false;
     fillDocChrome();
     updatePanels3dVisibility();
@@ -3547,8 +3578,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     nbPanneaux: number;
     m3Jour: number;
     heures: number;
-    fuelSavingMadYearLow?: number;
-    fuelSavingMadYearHigh?: number;
     hypotheses: { pumpEff: number; pvFactor: number };
   }
   function computeAgricoleEstimate(): AgricoleEstimateOk | null {
@@ -3604,12 +3633,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       if (ag.m3Jour > 0) s.m3Jour = ag.m3Jour;
       // WJ124 — suggested reservoir = daily need (1×), low end of the 1-3× range.
       if (ag.m3Jour > 0) s.bassinM3 = ag.m3Jour;
-      const fOk = (ag.fuelSavingMadYearLow ?? 0) > 0 && (ag.fuelSavingMadYearHigh ?? 0) > 0;
-      if (fOk) { s.ecoMadYearLow = ag.fuelSavingMadYearLow as number; s.ecoMadYearHigh = ag.fuelSavingMadYearHigh as number; }
       estimateShown = s;
       lastKwc = null;
       lastKwcLabel = cOk ? `${formatKwc(ag.champKwc)} kWc (PV array)` : '';
-      lastSavingsLabel = fOk ? `${formatMadRange(ag.fuelSavingMadYearLow as number, ag.fuelSavingMadYearHigh as number)}/yr` : '';
+      // AGW404 — aucune économie carburant dans le payload ni dans le message WhatsApp.
+      lastSavingsLabel = '';
     }
     if (PUBLIC_ESTIMATE_GATED) {
       updatePanels3dVisibility();
@@ -3636,13 +3664,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     setCard('mt-agri-eau-card', 'mt-agri-eau', eauLabel);
     if (eauOk) shown.m3Jour = ag.m3Jour;
     if (eauOk) shown.bassinM3 = ag.m3Jour;
-    const fuelOk = (ag.fuelSavingMadYearLow ?? 0) > 0 && (ag.fuelSavingMadYearHigh ?? 0) > 0;
-    const fuelLabel = fuelOk ? `${formatMadRange(ag.fuelSavingMadYearLow as number, ag.fuelSavingMadYearHigh as number)}/year` : null;
+    // AGW404 — plus de bande « économie carburant » : la valeur DÉCLARÉE du visiteur, telle quelle
+    // (sans × 12 ni pourcentage), masquée si vide.
+    const depenseDeclaree = num('mt-fuel-spend');
+    const fuelLabel = depenseDeclaree != null && depenseDeclaree > 0 ? `${fmtNum(depenseDeclaree)} MAD/month` : null;
     setCard('mt-agri-fuel-card', 'mt-agri-fuel', fuelLabel);
-    if (fuelOk) {
-      shown.ecoMadYearLow = ag.fuelSavingMadYearLow as number;
-      shown.ecoMadYearHigh = ag.fuelSavingMadYearHigh as number;
-    }
     // Sun -> pump -> water flow band: only if all 3 figures exist.
     const flow = $('mt-doc-flow');
     const flowOk = ag.heures > 0 && pompeLabel != null && eauOk;
@@ -3670,7 +3696,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // stays null (the 3D block stays reserved for residential/pro roofs).
     lastKwc = null;
     lastKwcLabel = champLabel ? `${formatKwc(ag.champKwc)} kWc (PV array)` : '';
-    lastSavingsLabel = fuelLabel || '';
+    lastSavingsLabel = '';
     const printBtn = $('mt-print-estimate');
     if (printBtn) printBtn.hidden = false;
     fillDocChrome();
@@ -4398,7 +4424,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // `errors.roofType` no longer has a field to show on: "roof type" is
     // removed from the funnel (founder cut 18/08) and resolveRoofType
     // guarantees a valid value — the error can no longer occur from this page.
-    setFieldError('mt-bill', 'mt-bill-err', enMsg(errors.billRange));
+    // CIW404 — the range error goes on the VISIBLE field of the active profile (never on the residential <select> hidden in C&I).
+    if (isProMode(mode)) setFieldError(proBillId(), proBillErrId(), enMsg(errors.billRange));
+    else setFieldError('mt-bill', 'mt-bill-err', enMsg(errors.billRange));
     const cErr = $('mt-consent-err');
     const consentMsg = enMsg(errors.consent);
     if (cErr) { cErr.textContent = consentMsg ?? ''; cErr.hidden = !consentMsg; }

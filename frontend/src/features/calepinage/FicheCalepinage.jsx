@@ -71,7 +71,7 @@ function personne(p) {
    POURQUOI L'ÉTAT ARCHIVÉ EST LOCAL ICI, ET PAS LU DE L'AGRÉGAT.
    `selectors.appliquer_filtres_liste` EXCLUT les archivés par défaut (CAL208)
    et `retrieve` passe par `get_queryset()` : un calepinage archivé répond 404
-   au détail. L'agrégat CAL17 (23 clés) ne publie donc aucun drapeau d'archive
+   au détail. L'agrégat CAL17 (24 clés) ne publie donc aucun drapeau d'archive
    — en inventer un ici serait un chiffre inventé. L'écran retient ce QU'IL A
    FAIT : la réponse des deux actions porte `archive: true|false`, et c'est
    elle, et elle seule, qui bascule le bandeau.
@@ -618,6 +618,21 @@ export default function FicheCalepinage({ detail }) {
                 contraintes.source.reference,
               ].filter(Boolean).join(', ')}`,
             ].filter(Boolean).join(' · ')
+            : '—'}
+        </Champ>
+        {/* ACAL6 — champs personnalisés servis tels quels (`custom_data`,
+            `null` tant que rien n'est saisi) : une ligne « clé : valeur »,
+            jamais une valeur inventée. */}
+        <Champ cle="custom_data" label="Champs personnalisés">
+          {detail.custom_data && Object.keys(detail.custom_data).length > 0
+            ? Object.entries(detail.custom_data).map(([cle, valeur]) => (
+              <div key={cle}>
+                {cle} : {typeof valeur === 'boolean'
+                  ? (valeur ? 'Oui' : 'Non')
+                  : texte(typeof valeur === 'object' && valeur !== null
+                    ? JSON.stringify(valeur) : valeur)}
+              </div>
+            ))
             : '—'}
         </Champ>
         <Champ cle="permissions" label="Vous pouvez">

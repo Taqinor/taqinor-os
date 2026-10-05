@@ -17,7 +17,7 @@ from decimal import Decimal
 
 from django.test import TestCase
 
-from apps.ventes.etude_horaire import (
+from apps.ventes.horaire.batterie_lignes import (
     capacite_batterie_du_devis,
     ligne_dans_option,
 )

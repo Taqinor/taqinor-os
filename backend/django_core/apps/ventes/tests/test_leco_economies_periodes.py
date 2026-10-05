@@ -18,7 +18,7 @@ from django.test import SimpleTestCase
 
 from apps.parametres.pvgis_profils import JOURS_PAR_MOIS
 from apps.ventes.economies_periodes import construire_economies_periodes
-from apps.ventes.etude_horaire import saison_du_mois
+from apps.ventes.horaire.base import saison_du_mois
 
 # Douze valeurs volontairement TOUTES DIFFÉRENTES : une somme correcte ne peut
 # pas être obtenue par hasard, et un mois recopié à la place d'un autre se voit.

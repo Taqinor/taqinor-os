@@ -1,0 +1,138 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/pertes/",
+  "pourquoi": "ACAL8 (f) (D-ACAL-7/8) — LES PERTES du calepinage : GET pertes/ publie chaque poste de la chaîne avec son STATUT ; POST /api/django/calepinage/calepinages/<pk>/enregistrer-pertes/ enregistre une saisie (corps {postes: [{poste, pct, mensuel?, source, reference, force?, motif_force?}]}) et renvoie la même forme. `postes[]` = {poste, libelle, pct, mensuel, source, reference, force, motif_force, statut, etape, raison} avec statut ∈ applique | ecarte_par_etape | remplace_reglage_societe | hors_chaine | non_source | non_simule : 'applique' = entré dans la chaîne ; 'ecarte_par_etape' = remplacé par une étape physique (etape la nomme) ; 'remplace_reglage_societe' = un réglage de la société prime ; 'hors_chaine' = n'agit pas sur la production ; 'non_source' = saisi sans source (REFUSÉ dans la chaîne) ; 'non_simule' = jamais simulé. `simulable` (bool) et `motif_non_simulable` (texte nommé | null). Un pourcentage sans source n'entre jamais dans la chaîne : aucune valeur de repli. PACT10 : ce fichier part AVANT les moitiés D04-T22/T23 ; il porte la forme publiée par views/simulation.publication_des_pertes.",
+  "exemple": {
+    "calepinage": 1,
+    "postes": [
+      {
+        "mensuel": null,
+        "force": false,
+        "motif_force": "",
+        "etape": "thermique",
+        "raison": "Remplacé par l'étape thermique de la chaîne (coefficient de température du module).",
+        "poste": "temperature",
+        "libelle": "Échauffement cellule au-dessus du STC",
+        "pct": 8.0,
+        "source": "fiche",
+        "reference": "Fiche produit du module désigné",
+        "statut": "ecarte_par_etape"
+      },
+      {
+        "mensuel": null,
+        "force": false,
+        "motif_force": "",
+        "etape": null,
+        "raison": "",
+        "poste": "soiling",
+        "libelle": "Salissure et poussière",
+        "pct": 3.0,
+        "source": "saisie",
+        "reference": "Mesure terrain du 12/03/2026",
+        "statut": "applique"
+      },
+      {
+        "mensuel": null,
+        "force": false,
+        "motif_force": "",
+        "etape": null,
+        "raison": "Le réglage de la société prime sur la saisie du calepinage.",
+        "poste": "wiring",
+        "libelle": "Pertes ohmiques DC et AC",
+        "pct": 2.0,
+        "source": "societe",
+        "reference": "Réglage société — chute DC max",
+        "statut": "remplace_reglage_societe"
+      },
+      {
+        "mensuel": null,
+        "force": false,
+        "motif_force": "",
+        "etape": null,
+        "raison": "Aucune source : le poste n'entre pas dans la chaîne.",
+        "poste": "availability",
+        "libelle": "Indisponibilité réseau et maintenance",
+        "pct": 1.0,
+        "source": null,
+        "reference": null,
+        "statut": "non_source"
+      },
+      {
+        "mensuel": [
+          2.0,
+          2.0,
+          2.0,
+          2.0,
+          2.0,
+          2.0,
+          2.0,
+          2.0,
+          2.0,
+          2.0,
+          2.0,
+          2.0
+        ],
+        "force": true,
+        "motif_force": "Valeur forcée après mesure sur site.",
+        "etape": null,
+        "raison": "",
+        "poste": "mismatch",
+        "libelle": "Dispersion modules, connectique, LID",
+        "pct": 2.0,
+        "source": "saisie",
+        "reference": "Fiche fabricant",
+        "statut": "applique"
+      },
+      {
+        "mensuel": null,
+        "force": false,
+        "motif_force": "",
+        "etape": null,
+        "raison": "N'agit pas sur la production de l'année 1.",
+        "poste": "degradation",
+        "libelle": "Dégradation annuelle",
+        "pct": 0.5,
+        "source": "fiche",
+        "reference": "Garantie linéaire du module",
+        "statut": "hors_chaine"
+      }
+    ],
+    "simulable": true,
+    "motif_non_simulable": null
+  },
+  "exemple_non_simulable": {
+    "calepinage": 2,
+    "postes": [
+      {
+        "mensuel": null,
+        "force": false,
+        "motif_force": "",
+        "etape": null,
+        "raison": "Aucune simulation lancée.",
+        "poste": "soiling",
+        "libelle": "Salissure et poussière",
+        "pct": null,
+        "source": null,
+        "reference": null,
+        "statut": "non_simule"
+      }
+    ],
+    "simulable": false,
+    "motif_non_simulable": "Aucun module n'est posé : la chaîne de pertes n'a rien à appliquer."
+  },
+  "enregistrer_pertes": {
+    "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/enregistrer-pertes/",
+    "corps": {
+      "postes": [
+        {
+          "poste": "soiling",
+          "pct": 3.0,
+          "source": "saisie",
+          "reference": "Mesure terrain du 12/03/2026"
+        }
+      ]
+    },
+    "refus_sans_source": {
+      "postes[0].source": "Le poste « soiling » n'a aucune source : renseignez-la, ou retirez la saisie — aucun pourcentage sans origine n'entre dans la chaîne."
+    }
+  }
+}

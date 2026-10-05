@@ -113,7 +113,12 @@ class ParseKwhUnique(TestCase):
         defs = [n.name for n in ast.walk(ast.parse(source))
                 if isinstance(n, ast.FunctionDef)]
         self.assertNotIn('_parse_kwh', defs)
-        public = (racine / 'public_views.py').read_text(encoding='utf-8')
+        # SPL241 — ``public_views.py`` est découpé en ``public/*.py`` : la
+        # garde lit le GROUPE (jamais vide), pas un fichier qui se vide.
+        from apps.ventes.tests.split_golden import fichiers_du_groupe
+        public = ''.join(
+            chemin.read_text(encoding='utf-8')
+            for chemin in fichiers_du_groupe('public_views.py', 'public/*.py'))
         self.assertNotIn('builder import (\n        _is_battery, _is_panel, '
                          '_parse_kwh', public)
         self.assertIn('domain.catalogue import _parse_kwh', public)

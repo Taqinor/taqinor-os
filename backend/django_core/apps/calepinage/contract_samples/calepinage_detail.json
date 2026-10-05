@@ -1,13 +1,13 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/",
-  "forme_serveur": "complete",
-  "pourquoi": "Le détail d'UN calepinage du module autonome, en un seul appel : identité, rattachement (lead et/ou client, devis lié), statut, empreinte du layout, compteurs de versions et de variantes, et l'URL signée de l'image d'aperçu. PACT10 : ce contrat part SEUL sur `main` avant toute lane — l'écran de détail et le viewset naissent dans deux lanes file-disjointes qui, sans ce fichier, inventeraient mécaniquement deux formes (incident du 03/08/2026, « Appels d'offres — Tableau de bord », zéro clé sur six concordante). DÉCISIONS DE STRUCTURE TENUES ICI : une seule forme d'URL `/api/django/calepinage/calepinages/<pk>/…` ; le client est `crm.Client` et le lead `crm.Lead` (`ventes.Client` n'existe pas, `Devis.client` pointe déjà `'crm.Client'`) ; un calepinage SANS devis est un objet de première classe, donc `devis` est nullable et jamais omis. `exemple_vide` couvre le calepinage NEUF (créé, aucun layout dessiné, aucun calcul joué) : toutes les clés restent présentes, les grandeurs non mesurées valent `null` et JAMAIS `0` — publier un zéro ferait lire « aucune version » là où rien n'a encore été enregistré, exactement l'erreur que `marges_vers_json` évite déjà côté AO. Les valeurs de cet exemple sont des PLACEHOLDERS assumés (identifiants à un chiffre, empreinte visiblement factice, libellés « d'essai ») : aucun chiffre client, aucun prix d'achat, aucune marge. CAL17 — `contexte_geographique` (les cinq clés de `selectors.contexte_geographique` : pin, outline, adresse, ville, source) fait partie de l'agrégat : l'écran ouvre la carte pré-remplie sans un second appel, et une coordonnée inconnue vaut `null` — JAMAIS un centre du Maroc inventé. CAL17 — `forme_serveur: complete` (vocabulaire QJR228) : cet échantillon AFFIRME porter la carte complète de sa route, donc `scripts/check_api_shapes.py` lit la vue (`views/calepinages.py::detail_calepinage`, écrite en dictionnaire littéral pour être lisible statiquement) et rougit sur toute clé en trop ou en moins — sans attendre qu'un écran consomme la route. CALX406 — `responsable` (`{id, nom_complet}` ou `null`) est le responsable SAISI du calepinage (`Calepinage.responsable`, écrit par le sérialiseur du viewset, jamais désigné d'office) ; à défaut, celui du lead rattaché, comme avant ; `null` quand ni l'un ni l'autre n'existe — jamais un compte deviné. La LISTE du module lit ces mêmes lignes : sa colonne « Responsable » filtre par `?responsable=<id>`, et une société qui a saisi `presets.vue_restreinte_au_responsable: true` n'y montre à chacun que les calepinages dont il est responsable ou créateur (le porteur de `calepinage_approuver` voit tout).",
+  "forme_serveur": "partielle",
+  "pourquoi": "Le détail d'UN calepinage du module autonome, en un seul appel : identité, rattachement (lead et/ou client, devis lié), statut, empreinte du layout, compteurs de versions et de variantes, et l'URL signée de l'image d'aperçu. PACT10 : ce contrat part SEUL sur `main` avant toute lane — l'écran de détail et le viewset naissent dans deux lanes file-disjointes qui, sans ce fichier, inventeraient mécaniquement deux formes (incident du 03/08/2026, « Appels d'offres — Tableau de bord », zéro clé sur six concordante). DÉCISIONS DE STRUCTURE TENUES ICI : une seule forme d'URL `/api/django/calepinage/calepinages/<pk>/…` ; le client est `crm.Client` et le lead `crm.Lead` (`ventes.Client` n'existe pas, `Devis.client` pointe déjà `'crm.Client'`) ; un calepinage SANS devis est un objet de première classe, donc `devis` est nullable et jamais omis. `exemple_vide` couvre le calepinage NEUF (créé, aucun layout dessiné, aucun calcul joué) : toutes les clés restent présentes, les grandeurs non mesurées valent `null` et JAMAIS `0` — publier un zéro ferait lire « aucune version » là où rien n'a encore été enregistré, exactement l'erreur que `marges_vers_json` évite déjà côté AO. Les valeurs de cet exemple sont des PLACEHOLDERS assumés (identifiants à un chiffre, empreinte visiblement factice, libellés « d'essai ») : aucun chiffre client, aucun prix d'achat, aucune marge. CAL17 — `contexte_geographique` (les cinq clés de `selectors.contexte_geographique` : pin, outline, adresse, ville, source) fait partie de l'agrégat : l'écran ouvre la carte pré-remplie sans un second appel, et une coordonnée inconnue vaut `null` — JAMAIS un centre du Maroc inventé. CAL17 — `forme_serveur: complete` (vocabulaire QJR228) : cet échantillon AFFIRME porter la carte complète de sa route, donc `scripts/check_api_shapes.py` lit la vue (`views/calepinages.py::detail_calepinage`, écrite en dictionnaire littéral pour être lisible statiquement) et rougit sur toute clé en trop ou en moins — sans attendre qu'un écran consomme la route. CALX406 — `responsable` (`{id, nom_complet}` ou `null`) est le responsable SAISI du calepinage (`Calepinage.responsable`, écrit par le sérialiseur du viewset, jamais désigné d'office) ; à défaut, celui du lead rattaché, comme avant ; `null` quand ni l'un ni l'autre n'existe — jamais un compte deviné. La LISTE du module lit ces mêmes lignes : sa colonne « Responsable » filtre par `?responsable=<id>`, et une société qui a saisi `presets.vue_restreinte_au_responsable: true` n'y montre à chacun que les calepinages dont il est responsable ou créateur (le porteur de `calepinage_approuver` voit tout). ACAL6 (M0 UNIQUE de calepinage_detail.json) — SÉMANTIQUES DÉRIVÉES et AJOUTS : (a) `statut` est une valeur DÉRIVÉE en LECTURE SEULE (brouillon | valide | perime, D-ACAL-19 ; jamais écrite par le client) ; (b) `permissions.peut_supprimer` signifie « peut ARCHIVER » (défaut gravé : le DELETE dur est refusé, archiver est l'unique geste) ; (c) `image.url` est un chemin RELATIF même origine /api/django/calepinage/calepinages/<id>/roof-image/fichier/ (proxy Django — le navigateur ne lit jamais MinIO) ou null ; (d) `lead.supprime` (bool : lead dans la corbeille) ; (e) `custom_data` (objet | null — champs personnalisés branchés, D09-T33) ; (f) `permissions.peut_deroger` (bool — droit calepinage_approuver, D-ACAL-9). Aucune clé existante renommée ni retirée.",
   "exemple": {
     "id": 1,
     "reference": "CAL-2609-0001",
     "nom": "Toiture — bâtiment principal",
-    "statut": "en_cours",
-    "statut_libelle": "En cours",
+    "statut": "valide",
+    "statut_libelle": "Validé",
     "cree_le": "2026-09-19T09:00:00Z",
     "modifie_le": "2026-09-19T11:30:00Z",
     "cree_par": {
@@ -21,7 +21,8 @@
     "lead": {
       "id": 1,
       "nom": "Lead d'essai",
-      "ville": "Casablanca"
+      "ville": "Casablanca",
+      "supprime": false
     },
     "client": {
       "id": 1,
@@ -50,7 +51,7 @@
       "non_simulees": 1
     },
     "image": {
-      "url": "https://exemple.invalid/calepinage/1/apercu.png?signature=exemple",
+      "url": "/api/django/calepinage/calepinages/1/roof-image/fichier/",
       "genere_le": "2026-09-19T11:30:00Z",
       "expire_le": "2026-09-19T12:30:00Z"
     },
@@ -88,7 +89,11 @@
     "permissions": {
       "peut_modifier": true,
       "peut_supprimer": false,
-      "peut_retenir_variante": true
+      "peut_retenir_variante": true,
+      "peut_deroger": true
+    },
+    "custom_data": {
+      "toiture_accessible": true
     }
   },
   "exemple_vide": {
@@ -107,7 +112,8 @@
     "lead": {
       "id": 1,
       "nom": "Lead d'essai",
-      "ville": "Casablanca"
+      "ville": "Casablanca",
+      "supprime": false
     },
     "client": null,
     "devis": null,
@@ -143,7 +149,10 @@
     "permissions": {
       "peut_modifier": true,
       "peut_supprimer": true,
-      "peut_retenir_variante": false
-    }
-  }
+      "peut_retenir_variante": false,
+      "peut_deroger": false
+    },
+    "custom_data": null
+  },
+  "forme_serveur_note": "ACAL6 — `partielle` TANT QUE la moitié back (D03-T20/T21/T26, D06-T02/T03, D09-T33) ne sert pas la clé racine `custom_data` ; la première moitié back remet `complete`."
 }

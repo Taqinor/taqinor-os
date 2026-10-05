@@ -39,6 +39,12 @@ import AffectationChaines, {
 
 const contratResultat = () => reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
 
+/* ACAL8 — les modules sont nommés « <zone.id>#<n> » par le contrat (jamais
+   « <pan>#<n> ») : les identifiants viennent de l'échantillon, rien n'est retapé.
+   Ordre de l'échantillon : pan PAN-A (A1), pan PAN-B (B1, B2 affectés ; B3 non). */
+const [A1, , B1, B2, B3] = contratResultat().data.electrique.affectation
+  .map((ligne) => ligne.module)
+
 /** Le même résultat, mais avec les modules donnés marqués « manuelle ». */
 const resultatAvecManuelle = (modules, { chaine, mppt, onduleur }) => {
   const reponse = contratResultat()
@@ -83,11 +89,11 @@ describe('AffectationChaines (CAL234) — le geste', () => {
     rendre()
     await screen.findByTestId('cal234-ecran')
 
-    glisserSur(['PAN-B#1', 'PAN-B#2', 'PAN-B#3'])
+    glisserSur([B1, B2, B3])
 
     expect(screen.getByTestId('cal234-selection'))
       .toHaveTextContent('3 module(s) sélectionné(s).')
-    expect(screen.getByTestId('cal234-module-PAN-B#2'))
+    expect(screen.getByTestId(`cal234-module-${B2}`))
       .toHaveAttribute('data-selectionne', 'oui')
   })
 
@@ -108,7 +114,7 @@ describe('AffectationChaines (CAL234) — le verdict SERVEUR', () => {
     rendre()
     await screen.findByTestId('cal234-ecran')
 
-    glisserSur(['PAN-B#1', 'PAN-B#2'])
+    glisserSur([B1, B2])
     saisir('chaine', '2')
     saisir('mppt', '2')
     saisir('onduleur', '1')
@@ -120,8 +126,8 @@ describe('AffectationChaines (CAL234) — le verdict SERVEUR', () => {
     const [idAppele, corps] = calepinageApi.calepinages.evaluerElectrique.mock.calls.at(-1)
     expect(idAppele).toBe(1)
     expect(corps.entree_electrique.affectation_manuelle).toEqual([
-      { module: 'PAN-B#1', chaine: 2, mppt: 2, onduleur: 1 },
-      { module: 'PAN-B#2', chaine: 2, mppt: 2, onduleur: 1 },
+      { module: B1, chaine: 2, mppt: 2, onduleur: 1 },
+      { module: B2, chaine: 2, mppt: 2, onduleur: 1 },
     ])
     // Rien n'est enregistré par ce chemin.
     expect(calepinageApi.calepinages.enregistrerEntreeElectrique).not.toHaveBeenCalled()
@@ -136,7 +142,7 @@ describe('AffectationChaines (CAL234) — le verdict SERVEUR', () => {
     rendre()
     await screen.findByTestId('cal234-ecran')
 
-    glisserSur(['PAN-B#1', 'PAN-B#2'])
+    glisserSur([B1, B2])
     saisir('chaine', '2')
     saisir('mppt', '2')
     saisir('onduleur', '1')
@@ -150,7 +156,7 @@ describe('AffectationChaines (CAL234) — le verdict SERVEUR', () => {
     rendre()
     await screen.findByTestId('cal234-ecran')
 
-    glisserSur(['PAN-B#1'])
+    glisserSur([B1])
     saisir('chaine', '0')
     fireEvent.click(screen.getByTestId('cal234-affecter'))
 
@@ -175,11 +181,11 @@ describe('AffectationChaines (CAL234) — le verdict SERVEUR', () => {
 describe('AffectationChaines (CAL234) — enregistrer et revenir à l’auto', () => {
   it('valider persiste par entree-electrique et la ligne est relue « affectation manuelle »', async () => {
     calepinageApi.calepinages.enregistrerEntreeElectrique
-      .mockResolvedValue(resultatAvecManuelle(['PAN-B#1'], { chaine: 2, mppt: 2, onduleur: 1 }))
+      .mockResolvedValue(resultatAvecManuelle([B1], { chaine: 2, mppt: 2, onduleur: 1 }))
     rendre()
     await screen.findByTestId('cal234-ecran')
 
-    glisserSur(['PAN-B#1'])
+    glisserSur([B1])
     saisir('chaine', '2')
     saisir('mppt', '2')
     saisir('onduleur', '1')
@@ -194,15 +200,15 @@ describe('AffectationChaines (CAL234) — enregistrer et revenir à l’auto', (
       .toHaveTextContent('Affectation manuelle enregistrée.')
     const [, corps] = calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls.at(-1)
     expect(corps).toEqual({
-      affectation_manuelle: [{ module: 'PAN-B#1', chaine: 2, mppt: 2, onduleur: 1 }],
+      affectation_manuelle: [{ module: B1, chaine: 2, mppt: 2, onduleur: 1 }],
     })
-    expect(screen.getByTestId('cal234-module-PAN-B#1'))
+    expect(screen.getByTestId(`cal234-module-${B1}`))
       .toHaveAttribute('data-source', 'affectation manuelle')
   })
 
   it('relancer l’auto n’écrase rien sans confirmation explicite', async () => {
     calepinageApi.calepinages.resultat
-      .mockResolvedValue(resultatAvecManuelle(['PAN-B#1'], { chaine: 2, mppt: 2, onduleur: 1 }))
+      .mockResolvedValue(resultatAvecManuelle([B1], { chaine: 2, mppt: 2, onduleur: 1 }))
     calepinageApi.calepinages.enregistrerEntreeElectrique
       .mockResolvedValue(contratResultat())
     rendre()
@@ -225,12 +231,12 @@ describe('AffectationChaines (CAL234) — enregistrer et revenir à l’auto', (
 
   it('un refus 400 du serveur est rendu sous le champ qu’il nomme', async () => {
     calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValue({
-      response: { data: { affectation_manuelle: 'Le module « PAN-B#1 » est affecté deux fois.' } },
+      response: { data: { affectation_manuelle: `Le module « ${B1} » est affecté deux fois.` } },
     })
     rendre()
     await screen.findByTestId('cal234-ecran')
 
-    glisserSur(['PAN-B#1'])
+    glisserSur([B1])
     saisir('chaine', '2')
     saisir('mppt', '2')
     saisir('onduleur', '1')
@@ -288,7 +294,7 @@ describe('AffectationChaines (CAL234) — la teinte est celle de CAL126', () => 
   it('un module non affecté est GRIS et compté dans la légende', () => {
     const lignes = contratResultat().data.electrique.affectation
     const { couleurs, legende } = couleurParModule(lignes, 'chaine')
-    expect(couleurs.get('PAN-B#3')).toBe(AFFECTATION_UNASSIGNED)
+    expect(couleurs.get(B3)).toBe(AFFECTATION_UNASSIGNED)
     expect(legende.at(-1)).toMatchObject({ libelle: 'Non affecté', nombre: 1 })
   })
 })
@@ -339,7 +345,7 @@ describe('AffectationChaines (CALX53) — coefficients non sourcés', () => {
       & Node.DOCUMENT_POSITION_FOLLOWING
     expect(apres).toBeTruthy()
     // Les bornes restent servies : rien n'est omis à cause du défaut.
-    expect(screen.getByTestId('cal234-module-PAN-A#1')).toBeInTheDocument()
+    expect(screen.getByTestId(`cal234-module-${A1}`)).toBeInTheDocument()
   })
 })
 
@@ -372,7 +378,7 @@ describe('AffectationChaines (CALX16) — la chaîne la plus faible', () => {
     // pan ne le porte pas.
     expect(screen.getByTestId(`cal234-module-${designee.module}`))
       .toHaveAttribute('data-chaine-faible', 'oui')
-    expect(screen.getByTestId('cal234-module-PAN-A#1'))
+    expect(screen.getByTestId(`cal234-module-${A1}`))
       .toHaveAttribute('data-chaine-faible', 'non')
   })
 
@@ -392,7 +398,7 @@ describe('AffectationChaines (CALX16) — la chaîne la plus faible', () => {
     await screen.findByTestId('cal234-ecran')
 
     expect(screen.queryByTestId('calx16-chaine-faible')).toBeNull()
-    expect(screen.getByTestId('cal234-module-PAN-B#1'))
+    expect(screen.getByTestId(`cal234-module-${B1}`))
       .toHaveAttribute('data-chaine-faible', 'non')
   })
 })

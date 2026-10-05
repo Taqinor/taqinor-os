@@ -60,6 +60,8 @@ def _refus(refus):
                     status=status.HTTP_400_BAD_REQUEST)
 
 
+# api-only: AGR206 — lecture interne du bloc (contrat AGR3) ; /proposition
+# et le PDF le lisent côté serveur (selectors), aucun écran ne l'appelle encore.
 @action(detail=True, methods=['get'], url_path='economie-pompage',
         permission_classes=[IsAnyRole])
 def economie_pompage(self, request, pk=None):

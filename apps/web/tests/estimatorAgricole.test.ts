@@ -4,17 +4,49 @@
 // sanitisés). Honnêteté : hydraulique manquante ⇒ ok:false, jamais un chiffre
 // fabriqué ; compositions pompage sans onduleur ni batterie (règle ERP).
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   CV_STEPS,
   CV_TO_KW,
   HEURES_POMPAGE_DEFAUT,
+  HYDRAULIC_COEFF,
   PANEL_W,
   PUMP_EFF,
   PV_FACTOR,
+  RENDEMENT_GROUPE,
   estimateAgricole,
 } from '../src/lib/estimatorAgricole';
 import { buildLeadRecord, validateLead } from '../src/lib/lead';
 import type { EstimateBand } from '../src/lib/billRange';
+
+/** La table d'hypothèses du noyau — LUE (jamais recopiée) : jumeau JSON-égal. */
+const table = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../src/contract_samples/hypotheses_pompage.json', import.meta.url)), 'utf-8'),
+).exemple.hypotheses as Array<{ cle: string; valeur: unknown }>;
+const dansTable = (cle: string) => table.find((h) => h.cle === cle)?.valeur;
+
+describe('AGW409 — constantes hydrauliques lues dans le jumeau de la table d\'hypothèses', () => {
+  it('les constantes de l\'estimateur égalent celles du JSON', () => {
+    expect(HYDRAULIC_COEFF).toBe(dansTable('energie_hydraulique_wh_par_m3_m'));
+    expect(CV_TO_KW).toBe(dansTable('cv_vers_kw'));
+    expect(RENDEMENT_GROUPE).toBe(dansTable('rendement_groupe'));
+    expect(PUMP_EFF.immergee).toBe(RENDEMENT_GROUPE);
+    expect(PUMP_EFF.surface).toBe(RENDEMENT_GROUPE);
+  });
+
+  it('aucune constante hydraulique littérale ni bassin ne reste dans estimatorAgricole.ts', () => {
+    const src = readFileSync(fileURLToPath(new URL('../src/lib/estimatorAgricole.ts', import.meta.url)), 'utf-8')
+      .split(/\r?\n/)
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join('\n');
+    expect(src).not.toMatch(/2\.725/);
+    expect(src).not.toMatch(/0\.7355/);
+    expect(src).not.toMatch(/immergee:\s*0\./);
+    expect(src).not.toMatch(/surface:\s*0\./);
+    expect(src).not.toMatch(/bassin/i);
+  });
+});
 
 describe('estimateAgricole — constantes MIROIR de solar.js', () => {
   it('CV_TO_KW, heures par défaut, facteur champ et panneau identiques à l\'ERP', () => {
@@ -26,20 +58,21 @@ describe('estimateAgricole — constantes MIROIR de solar.js', () => {
 });
 
 describe('estimateAgricole — HMT déclarée + débit déclaré', () => {
-  it('60 m / 10 m³/h : pompe 5,5 CV, champ 1.4× miroir champFromKw', () => {
+  it('60 m / 10 m³/h : pompe 7,5 CV (rendement groupe de la table), champ 1.4× miroir champFromKw', () => {
     const r = estimateAgricole({ hmtM: 60, debitM3h: 10 });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.hmtM).toBe(60);
     expect(r.hmtEstimated).toBe(false);
     expect(r.debitM3h).toBe(10);
-    // hydraulique = 10×60×2.725/1000 = 1.635 kW ; /0.55 = 2.97 kW ; 4.04 CV → palier 5.5.
-    expect(r.pompeCv).toBe(5.5);
-    // MIROIR EXACT champFromKw(5.5 × 0.7355) : kW 4.05, champ 5.67 kW,
-    // 8 panneaux 710 W, kWc recalculé depuis les panneaux posés = 5.68.
-    expect(r.pompeKw).toBe(4.05);
-    expect(r.nbPanneaux).toBe(8);
-    expect(r.champKwc).toBe(5.68);
+    // AGW409 — hydraulique = 10×60×2.725/1000 = 1.635 kW ; /0.35 (table, EST.) = 4.67 kW ;
+    // 6.35 CV → palier 7.5 (avant AGW409 : 0.55 → 5.5 CV).
+    expect(r.pompeCv).toBe(7.5);
+    // MIROIR EXACT champFromKw(7.5 × 0.7355) : kW 5.52, champ 7.73 kW,
+    // 11 panneaux 710 W, kWc recalculé depuis les panneaux posés = 7.81.
+    expect(r.pompeKw).toBe(5.52);
+    expect(r.nbPanneaux).toBe(11);
+    expect(r.champKwc).toBe(7.81);
     // m³/jour = débit × heures (défaut 7 h) — même règle que l'ERP.
     expect(r.heures).toBe(7);
     expect(r.m3Jour).toBe(70);
@@ -117,14 +150,15 @@ describe('estimateAgricole — paliers CV commerciaux', () => {
     }
   });
 
-  it('pompe de surface : rendement 0.50 (moins bon) → palier ≥ immergée', () => {
+  it('pompe de surface : la table ne distingue pas — même rendement groupe, même palier (AGW409)', () => {
     const imm = estimateAgricole({ hmtM: 55, debitM3h: 8 });
     const surf = estimateAgricole({ hmtM: 55, debitM3h: 8, pompeType: 'surface' });
     expect(imm.ok && surf.ok).toBe(true);
     if (!imm.ok || !surf.ok) return;
-    expect(imm.pompeCv).toBe(3);
-    expect(surf.pompeCv).toBe(4);
-    expect(surf.hypotheses.pumpEff).toBe(0.5);
+    // 8×55×2.725/1000 = 1.199 kW ; /0.35 = 3.43 kW ; 4.66 CV → palier 5.5.
+    expect(imm.pompeCv).toBe(5.5);
+    expect(surf.pompeCv).toBe(5.5);
+    expect(surf.hypotheses.pumpEff).toBe(RENDEMENT_GROUPE);
   });
 
   it('au-delà du catalogue 30 CV : arrondi au CV entier supérieur (ordre de grandeur honnête)', () => {
@@ -136,21 +170,22 @@ describe('estimateAgricole — paliers CV commerciaux', () => {
   });
 });
 
-describe('estimateAgricole — économie gasoil (facultative, bande 75–90 %)', () => {
-  it('2 000 MAD/mois de gasoil → 18 000–21 600 MAD/an', () => {
+describe('estimateAgricole — AGW404 : plus aucune « économie carburant »', () => {
+  it('une dépense gasoil déclarée ne produit AUCUNE clé fuelSaving*', () => {
     const r = estimateAgricole({ hmtM: 60, debitM3h: 10, fuelSpendMadMonth: 2000 });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.fuelSavingMadYearLow).toBe(18_000);
-    expect(r.fuelSavingMadYearHigh).toBe(21_600);
+    expect(Object.keys(r).filter((k) => k.startsWith('fuelSaving'))).toEqual([]);
   });
 
-  it('sans dépense gasoil déclarée → aucun chiffre inventé (champs absents)', () => {
-    const r = estimateAgricole({ hmtM: 60, debitM3h: 10 });
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect(r.fuelSavingMadYearLow).toBeUndefined();
-    expect(r.fuelSavingMadYearHigh).toBeUndefined();
+  it('la dépense déclarée ne change pas le dimensionnement', () => {
+    const avec = estimateAgricole({ hmtM: 60, debitM3h: 10, fuelSpendMadMonth: 2000 });
+    const sans = estimateAgricole({ hmtM: 60, debitM3h: 10 });
+    expect(avec).toEqual(sans);
+  });
+
+  it('une dépense négative reste refusée (valeur fournie mais inutilisable)', () => {
+    expect(estimateAgricole({ hmtM: 60, debitM3h: 10, fuelSpendMadMonth: -5 })).toEqual({ ok: false, reason: 'invalid' });
   });
 });
 

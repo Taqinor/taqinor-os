@@ -12,7 +12,7 @@ CAUSE RACINE. Il y avait DEUX chemins pour la même donnée :
      barème de la société ou à la grille nationale du millésime. Sa sortie est
      persistée sur le devis (``etude_params['etude_horaire']``) et sert TOUT le
      reste : économies mensuelles, synthèse du PDF, dimensionnement.
-  2. ``public_views._monthly_consumption`` — un SECOND chemin, plus étroit :
+  2. ``payload_economie._monthly_consumption`` — un SECOND chemin, plus étroit :
      ``pricing.kwh_from_bill`` exige le ``distributeur`` du lead et, sans lui,
      signale une estimation que la garde M10 traduit (à juste titre) par une
      série vide. Or le webhook du tunnel pose explicitement « autre » quand le
@@ -32,7 +32,7 @@ from types import SimpleNamespace
 
 from django.test import SimpleTestCase
 
-from apps.ventes import public_views
+from apps.ventes.public import payload_economie
 from apps.ventes.services import rafraichir_etude_horaire_devis
 
 from .test_cj2b_economies_publiques import _CJ2bBase
@@ -59,7 +59,7 @@ def _devis_stub(etude_params):
 
 class LectureDuBlocHoraireTests(SimpleTestCase):
     def _lire(self, etude_params):
-        return public_views._monthly_consumption_etude(
+        return payload_economie._monthly_consumption_etude(
             _devis_stub(etude_params))
 
     def test_les_douze_mois_sont_rendus_dans_l_ordre_du_calendrier(self):
@@ -104,7 +104,7 @@ class LectureDuBlocHoraireTests(SimpleTestCase):
 
     def test_aucun_etude_params_ne_casse_rien(self):
         self.assertEqual(
-            public_views._monthly_consumption_etude(object()), [])
+            payload_economie._monthly_consumption_etude(object()), [])
 
 
 # ═══════════════════════════════════════════════════════════════════════════

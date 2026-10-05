@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/pose-reelle/",
-  "pourquoi": "CALX337 — LES ÉCARTS DE POSE RÉELLE, figés AVANT leur vue (PACT10 : le contrat part SEUL ; porte `views/asbuilt.py` + `services/asbuilt.py::version_depuis_ecarts`, CALX366 ; écran `atelier/PoseReelle.jsx`, CALX367). CONSTAT : `PoseReelle` (`apps/calepinage/models.py`) et `services/asbuilt.py` (`pans_prevus`, `ecarts_du_calepinage`, CAL212) existent et sont testés, mais aucune vue, aucune URL, aucun appel hors `tests/test_cal212_asbuilt.py` — rien ne peut saisir une pose ni lire un écart. PARITÉ : SolarGrade (https://solargrade.io/ — « tracking punch list completion », rapports de terrain) et Aurora (https://aurorasolar.com/api/ — évènements de fin de chantier poussés dans le SI). LA PORTE : `GET` / `POST calepinages/<pk>/pose-reelle/` (sous-ressource en `@action`, une seule forme d'URL). Les deux méthodes rendent la MÊME forme. `POST` enregistre la saisie d'UN pan (`corps_saisie` : `{pan, modules_poses, ecarts_position, releve_le}`) OU demande la reprise des écarts en version (`corps_creer_version` : `{creer_version: true}`) — la version est gelée par `services/versions.py::enregistrer_version`, LE chemin unique, avec un libellé qui nomme les pans en écart. LA RÉPONSE : `source` — d'où vient le PRÉVU (`variante retenue`, ou `document du calepinage` quand aucune variante n'est retenue ; publiée pour qu'un écart lu sur le document ne se lise jamais comme un écart avec la variante contractuelle) ; `lignes` — un pan par ligne : `pan` (id du pan dans le document), `modules_prevus`, `modules_poses`, `ecart` (posé − prévu), `ecarts_position` (texte libre saisi sur le chantier, `\"\"` sans saisie) et `mention` (le motif d'un vide, `\"\"` sinon — les deux mentions de CAL212, recopiées) ; `total_prevu` ; `total_pose` — la somme des pans RELEVÉS seulement, `null` si aucun pan n'a été relevé ; `version_creee` — l'id de la `CalepinageVersion` née de la reprise des écarts, `null` tant que personne ne l'a demandée (`exemple_version_creee`). UN PAN PRÉVU SANS SAISIE N'EST PAS CONFORME, IL EST NON RELEVÉ : `modules_poses: null`, `ecart: null` et la mention qui le dit (le pan `PAN-C` de l'`exemple`) — jamais `0`, qui dirait « conforme » alors que personne n'a compté. Un pan SAISI absent du prévu sort avec `modules_prevus: null` et sa mention. LES REFUS 400 NOMMENT LE CHAMP : un pan inconnu du document ⇒ `pan` (`refus_pan_inconnu`) ; un nombre de modules posés non entier ou négatif ⇒ `modules_poses` (`refus_modules_poses`). Lire exige `calepinage_voir`, saisir exige `calepinage_gerer` (garde choisie PAR MÉTHODE) ; la société et l'auteur du relevé sont posés côté serveur. Le geste est journalisé. Aucun statut de chantier ni de devis ne bouge. Valeurs : des PLACEHOLDERS assumés.",
+  "pourquoi": "CALX337 — LES ÉCARTS DE POSE RÉELLE, figés AVANT leur vue (PACT10 : le contrat part SEUL ; porte `views/asbuilt.py` + `services/asbuilt.py::version_depuis_ecarts`, CALX366 ; écran `atelier/PoseReelle.jsx`, CALX367). CONSTAT : `PoseReelle` (`apps/calepinage/models.py`) et `services/asbuilt.py` (`pans_prevus`, `ecarts_du_calepinage`, CAL212) existent et sont testés, mais aucune vue, aucune URL, aucun appel hors `tests/test_cal212_asbuilt.py` — rien ne peut saisir une pose ni lire un écart. PARITÉ : SolarGrade (https://solargrade.io/ — « tracking punch list completion », rapports de terrain) et Aurora (https://aurorasolar.com/api/ — évènements de fin de chantier poussés dans le SI). LA PORTE : `GET` / `POST calepinages/<pk>/pose-reelle/` (sous-ressource en `@action`, une seule forme d'URL). Les deux méthodes rendent la MÊME forme. `POST` enregistre la saisie d'UN pan (`corps_saisie` : `{pan, modules_poses, ecarts_position, releve_le}`) OU demande la reprise des écarts en version (`corps_creer_version` : `{creer_version: true}`) — la version est gelée par `services/versions.py::enregistrer_version`, LE chemin unique, avec un libellé qui nomme les pans en écart. LA RÉPONSE : `source` — d'où vient le PRÉVU (`variante retenue`, ou `document du calepinage` quand aucune variante n'est retenue ; publiée pour qu'un écart lu sur le document ne se lise jamais comme un écart avec la variante contractuelle) ; `lignes` — un pan par ligne : `pan` (id du pan dans le document), `modules_prevus`, `modules_poses`, `ecart` (posé − prévu), `ecarts_position` (texte libre saisi sur le chantier, `\"\"` sans saisie) et `mention` (le motif d'un vide, `\"\"` sinon — les deux mentions de CAL212, recopiées) ; `total_prevu` ; `total_pose` — la somme des pans RELEVÉS seulement, `null` si aucun pan n'a été relevé ; `version_creee` — l'id de la `CalepinageVersion` née de la reprise des écarts, `null` tant que personne ne l'a demandée (`exemple_version_creee`). UN PAN PRÉVU SANS SAISIE N'EST PAS CONFORME, IL EST NON RELEVÉ : `modules_poses: null`, `ecart: null` et la mention qui le dit (le pan `PAN-C` de l'`exemple`) — jamais `0`, qui dirait « conforme » alors que personne n'a compté. Un pan SAISI absent du prévu sort avec `modules_prevus: null` et sa mention. LES REFUS 400 NOMMENT LE CHAMP : un pan inconnu du document ⇒ `pan` (`refus_pan_inconnu`) ; un nombre de modules posés non entier ou négatif ⇒ `modules_poses` (`refus_modules_poses`). Lire exige `calepinage_voir`, saisir exige `calepinage_gerer` (garde choisie PAR MÉTHODE) ; la société et l'auteur du relevé sont posés côté serveur. Le geste est journalisé. Aucun statut de chantier ni de devis ne bouge. Valeurs : des PLACEHOLDERS assumés. ACAL16 (as-built v2, fusion de la partie as-built de D08-T03 — M0 UNIQUE de ce fichier) — chaque ligne de `lignes[]` porte : `releve_le` (AAAA-MM-JJ | null), `releve_par` ({id, nom_complet} | null), `prevu_fige` (bool : modules_prevus a été FIGÉ à la saisie), `prevu_actuel` (entier | null : le prévu de la conception courante) et `conception_modifiee` (bool : prevu_fige ≠ prevu_actuel) ; `zone_id` (identifiant stable de pan, C-ACAL-051), `libelle` (nom affiché, figé à l'affichage) et `orphelin` (bool : ligne dont le pan n'existe plus — hors totaux). Le bloc gelé resultat.asbuilt.lignes reprend les mêmes champs. `pan` désigne l'identifiant stable de pan (à défaut le libellé actuel). Le POST {pan, modules_poses, ecarts_position, releve_le} IMPOSE releve_le à la PREMIÈRE saisie d'un pan (400 sous releve_le) et le rend FACULTATIF en correction (le serveur garde la date existante). Nouvelle action : DELETE …/pose-reelle/<zone_id>/ → 204 | 404 {detail}.",
   "corps_saisie": {
     "pan": "PAN-B",
     "modules_poses": 3,
@@ -19,7 +19,18 @@
         "modules_poses": 8,
         "ecart": 0,
         "ecarts_position": "",
-        "mention": ""
+        "mention": "",
+        "zone_id": "z1",
+        "libelle": "PAN-A",
+        "orphelin": false,
+        "releve_le": "2026-09-22",
+        "releve_par": {
+          "id": 1,
+          "nom_complet": "Utilisateur d'essai"
+        },
+        "prevu_fige": true,
+        "prevu_actuel": 8,
+        "conception_modifiee": false
       },
       {
         "pan": "PAN-B",
@@ -27,7 +38,18 @@
         "modules_poses": 3,
         "ecart": -1,
         "ecarts_position": "Un module déplacé de 40 cm vers l'est (sortie de ventilation).",
-        "mention": ""
+        "mention": "",
+        "zone_id": "z2",
+        "libelle": "PAN-B",
+        "orphelin": false,
+        "releve_le": "2026-09-22",
+        "releve_par": {
+          "id": 1,
+          "nom_complet": "Utilisateur d'essai"
+        },
+        "prevu_fige": true,
+        "prevu_actuel": 5,
+        "conception_modifiee": true
       },
       {
         "pan": "PAN-C",
@@ -35,7 +57,34 @@
         "modules_poses": null,
         "ecart": null,
         "ecarts_position": "",
-        "mention": "Aucun relevé de pose n'a été saisi pour ce pan : l'écart n'est pas affiché (il serait supposé, pas mesuré)."
+        "mention": "Aucun relevé de pose n'a été saisi pour ce pan : l'écart n'est pas affiché (il serait supposé, pas mesuré).",
+        "zone_id": "z3",
+        "libelle": "PAN-C",
+        "orphelin": false,
+        "releve_le": null,
+        "releve_par": null,
+        "prevu_fige": false,
+        "prevu_actuel": 2,
+        "conception_modifiee": false
+      },
+      {
+        "pan": "z9",
+        "zone_id": "z9",
+        "libelle": "Ancien pan supprimé",
+        "modules_prevus": 0,
+        "modules_poses": 2,
+        "ecart": null,
+        "ecarts_position": "",
+        "mention": "Ce pan n'existe plus dans la conception : la ligne est conservée, hors totaux.",
+        "orphelin": true,
+        "releve_le": "2026-09-22",
+        "releve_par": {
+          "id": 1,
+          "nom_complet": "Utilisateur d'essai"
+        },
+        "prevu_fige": true,
+        "prevu_actuel": null,
+        "conception_modifiee": false
       }
     ],
     "total_prevu": 14,
@@ -51,7 +100,18 @@
         "modules_poses": 8,
         "ecart": 0,
         "ecarts_position": "",
-        "mention": ""
+        "mention": "",
+        "zone_id": "z1",
+        "libelle": "PAN-A",
+        "orphelin": false,
+        "releve_le": "2026-09-22",
+        "releve_par": {
+          "id": 1,
+          "nom_complet": "Utilisateur d'essai"
+        },
+        "prevu_fige": true,
+        "prevu_actuel": 8,
+        "conception_modifiee": false
       },
       {
         "pan": "PAN-B",
@@ -59,7 +119,18 @@
         "modules_poses": 3,
         "ecart": -1,
         "ecarts_position": "Un module déplacé de 40 cm vers l'est (sortie de ventilation).",
-        "mention": ""
+        "mention": "",
+        "zone_id": "z2",
+        "libelle": "PAN-B",
+        "orphelin": false,
+        "releve_le": "2026-09-22",
+        "releve_par": {
+          "id": 1,
+          "nom_complet": "Utilisateur d'essai"
+        },
+        "prevu_fige": true,
+        "prevu_actuel": 4,
+        "conception_modifiee": false
       },
       {
         "pan": "PAN-C",
@@ -67,7 +138,15 @@
         "modules_poses": null,
         "ecart": null,
         "ecarts_position": "",
-        "mention": "Aucun relevé de pose n'a été saisi pour ce pan : l'écart n'est pas affiché (il serait supposé, pas mesuré)."
+        "mention": "Aucun relevé de pose n'a été saisi pour ce pan : l'écart n'est pas affiché (il serait supposé, pas mesuré).",
+        "zone_id": "z3",
+        "libelle": "PAN-C",
+        "orphelin": false,
+        "releve_le": null,
+        "releve_par": null,
+        "prevu_fige": false,
+        "prevu_actuel": 2,
+        "conception_modifiee": false
       }
     ],
     "total_prevu": 14,
@@ -83,7 +162,15 @@
         "modules_poses": null,
         "ecart": null,
         "ecarts_position": "",
-        "mention": "Aucun relevé de pose n'a été saisi pour ce pan : l'écart n'est pas affiché (il serait supposé, pas mesuré)."
+        "mention": "Aucun relevé de pose n'a été saisi pour ce pan : l'écart n'est pas affiché (il serait supposé, pas mesuré).",
+        "zone_id": "z1",
+        "libelle": "PAN-A",
+        "orphelin": false,
+        "releve_le": null,
+        "releve_par": null,
+        "prevu_fige": false,
+        "prevu_actuel": 8,
+        "conception_modifiee": false
       },
       {
         "pan": "PAN-B",
@@ -91,7 +178,15 @@
         "modules_poses": null,
         "ecart": null,
         "ecarts_position": "",
-        "mention": "Aucun relevé de pose n'a été saisi pour ce pan : l'écart n'est pas affiché (il serait supposé, pas mesuré)."
+        "mention": "Aucun relevé de pose n'a été saisi pour ce pan : l'écart n'est pas affiché (il serait supposé, pas mesuré).",
+        "zone_id": "z2",
+        "libelle": "PAN-B",
+        "orphelin": false,
+        "releve_le": null,
+        "releve_par": null,
+        "prevu_fige": false,
+        "prevu_actuel": 4,
+        "conception_modifiee": false
       }
     ],
     "total_prevu": 12,
@@ -103,5 +198,23 @@
   },
   "refus_modules_poses": {
     "modules_poses": "Le nombre de modules réellement posés est un entier positif ou nul (reçu : « -2 »)."
+  },
+  "corps_correction": {
+    "pan": "z2",
+    "modules_poses": 4
+  },
+  "refus_releve_le_premiere_saisie": {
+    "releve_le": "La date du relevé est obligatoire à la première saisie d'un pan."
+  },
+  "delete_pose_reelle": {
+    "endpoint": "DELETE /api/django/calepinage/calepinages/<int:pk>/pose-reelle/<zone_id>/",
+    "statut": 204,
+    "refus_404": {
+      "detail": "Aucune pose réelle n'est saisie pour ce pan."
+    }
+  },
+  "bloc_gele": {
+    "cle": "resultat.asbuilt.lignes",
+    "note": "Mêmes champs que lignes[] : releve_le, releve_par, prevu_fige, prevu_actuel, conception_modifiee, zone_id, libelle, orphelin."
   }
 }

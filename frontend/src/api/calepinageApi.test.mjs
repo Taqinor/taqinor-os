@@ -109,13 +109,11 @@ function cheminsContractuels() {
    Cette table ne peut que MAIGRIR : le jour où une de ces routes gagne son
    échantillon de contrat, elle sort d'ici. */
 const SANS_ECHANTILLON = {
-  '/calepinage/calepinages/': 'CAL16 — liste filtrable + création (lead XOR client)',
   '/calepinage/calepinages/<>/roof-image/': 'CAL19 — image de toit, stockage ventes réutilisé',
   '/calepinage/calepinages/<>/versions/': 'CAL20 — historique, ordre antichronologique',
   '/calepinage/calepinages/<>/versions/<>/restaurer/': 'CAL20 — rejoue une version en en créant une NOUVELLE',
   '/calepinage/calepinages/<>/variantes/': 'CAL21 — CRUD de variante',
   '/calepinage/calepinages/<>/variantes/<>/retenir/': 'CAL21 — action, jamais un PATCH',
-  '/calepinage/calepinages/<>/generer-devis/': 'CAL24 — appelle build_devis_from_layout, aucun PDF',
   '/calepinage/calepinages/<>/sync-devis/': 'CAL25 — appelle sync_devis_from_layout, 409 propagé tel quel',
   '/calepinage/moteur/resultat/<>/': 'CAL23 — suivi du job de fond (kind calepinage)',
 }

@@ -156,7 +156,12 @@ function ListeManque({ manque, calepinageId, code }) {
   return (
     <ul className="mt-2 space-y-1 text-xs text-muted-foreground" data-testid={`cal-doc-manque-${code}`}>
       {manque.map((m) => {
-        const onglet = ongletCiteDans(m.ou_saisir)
+        // ACAL14 — le SERVEUR nomme l'onglet (`manque[].onglet`, clé du registre,
+        // ou null : geste hors registre) ; le repérage dans le texte ne sert
+        // que si la clé n'est pas servie du tout (serveur antérieur).
+        const onglet = 'onglet' in m
+          ? (ONGLETS.find((o) => o.cle === m.onglet) ?? null)
+          : ongletCiteDans(m.ou_saisir)
         return (
           <li key={`${code}-${m.champ}`} data-testid={`cal-doc-manque-item-${code}-${m.champ}`}>
             <strong className="text-foreground">{m.libelle}</strong>

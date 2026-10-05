@@ -34,8 +34,9 @@ from unittest import mock
 from django.test import SimpleTestCase
 
 from apps.ventes import courbes_journalieres as CJ
-from apps.ventes import etude_horaire as EH
-from apps.ventes import public_views
+from apps.ventes.horaire import batterie_lignes as BL
+from apps.ventes.horaire import public as HP
+from apps.ventes.public import payload_batterie, payload_horaire
 
 
 #: Profil horaire figé servi aux deux vues (le chemin de lecture du devis
@@ -70,16 +71,16 @@ class _BaseSurfacesPubliques(SimpleTestCase):
     """Outillage commun : profil figé, banque figée, moteur RÉEL."""
 
     def _jours_types(self, devis):
-        with mock.patch.object(public_views, '_profil_horaire_pour_devis',
+        with mock.patch.object(payload_horaire, '_profil_horaire_pour_devis',
                                return_value=_PROFIL):
-            return public_views._jours_types_publique(devis)
+            return payload_horaire._jours_types_publique(devis)
 
     def _couverture(self, devis):
-        with mock.patch.object(public_views, '_profil_horaire_pour_devis',
+        with mock.patch.object(payload_batterie, '_profil_horaire_pour_devis',
                                return_value=_PROFIL), \
-                mock.patch.object(EH, 'banque_batterie_du_devis',
+                mock.patch.object(BL, 'banque_batterie_du_devis',
                                   return_value=dict(_BANQUE)):
-            return public_views._couverture_batterie_publique(
+            return payload_batterie._couverture_batterie_publique(
                 devis, {'avec_ok': True}, True, None)
 
 
@@ -97,7 +98,7 @@ class JoursTypesPubliqueAppelantTests(_BaseSurfacesPubliques):
     def test_la_journee_type_servie_est_celle_du_devis(self):
         """La vue rend EXACTEMENT ce que le moteur rend pour CETTE date."""
         servi = self._jours_types(_devis(date_creation=JOUR_A))
-        attendu = EH.jours_types_publics(
+        attendu = HP.jours_types_publics(
             kwc=_KWC, conso_kwh_mensuelles=_CONSO, ville=_VILLE,
             lat=None, lon=None, occupation=CJ.OCCUPATION_PRESENCE,
             equipements=None, jour_reference=JOUR_A)
@@ -127,10 +128,10 @@ class CouvertureBatteriePubliqueAppelantTests(_BaseSurfacesPubliques):
 
     def test_la_couverture_servie_est_celle_du_devis(self):
         servi = self._couverture(_devis(date_creation=JOUR_A))
-        attendu = EH.couverture_batterie_publique(
+        attendu = HP.couverture_batterie_publique(
             kwc=_KWC, conso_kwh_mensuelles=_CONSO,
             capacite_utile_pack_kwh=_BANQUE['capacite_utile_pack_kwh'],
-            nb_packs_max=public_views._paliers_curseur_batterie(
+            nb_packs_max=payload_batterie._paliers_curseur_batterie(
                 None, _BANQUE['nb_packs'],
                 capacite_utile_pack_kwh=_BANQUE['capacite_utile_pack_kwh']),
             nb_packs_plancher=_BANQUE['nb_packs'],
@@ -147,7 +148,7 @@ class DevisSansJourDeReferenceTests(_BaseSurfacesPubliques):
     def test_jours_types_sans_date_garde_le_repli_d_horloge(self):
         from django.utils import timezone
         servi = self._jours_types(_devis(date_creation=None))
-        attendu = EH.jours_types_publics(
+        attendu = HP.jours_types_publics(
             kwc=_KWC, conso_kwh_mensuelles=_CONSO, ville=_VILLE,
             lat=None, lon=None, occupation=CJ.OCCUPATION_PRESENCE,
             equipements=None, jour_reference=timezone.localdate())
@@ -156,10 +157,10 @@ class DevisSansJourDeReferenceTests(_BaseSurfacesPubliques):
     def test_couverture_sans_date_garde_le_repli_d_horloge(self):
         from django.utils import timezone
         servi = self._couverture(_devis(date_creation=None))
-        attendu = EH.couverture_batterie_publique(
+        attendu = HP.couverture_batterie_publique(
             kwc=_KWC, conso_kwh_mensuelles=_CONSO,
             capacite_utile_pack_kwh=_BANQUE['capacite_utile_pack_kwh'],
-            nb_packs_max=public_views._paliers_curseur_batterie(
+            nb_packs_max=payload_batterie._paliers_curseur_batterie(
                 None, _BANQUE['nb_packs'],
                 capacite_utile_pack_kwh=_BANQUE['capacite_utile_pack_kwh']),
             nb_packs_plancher=_BANQUE['nb_packs'],
@@ -176,7 +177,7 @@ class ResolutionDeLaDateTests(SimpleTestCase):
     def test_delegue_a_la_source_unique_du_domaine(self):
         from apps.ventes.domain.entrees import jour_reference_du_devis
         devis = _devis(date_creation=JOUR_A)
-        self.assertEqual(public_views._jour_reference_publique(devis),
+        self.assertEqual(payload_horaire._jour_reference_publique(devis),
                          jour_reference_du_devis(devis))
 
     def test_une_resolution_impossible_ne_leve_pas(self):
@@ -184,4 +185,4 @@ class ResolutionDeLaDateTests(SimpleTestCase):
         with mock.patch('apps.ventes.domain.entrees.jour_reference_du_devis',
                         side_effect=RuntimeError('boom')):
             self.assertIsNone(
-                public_views._jour_reference_publique(_devis()))
+                payload_horaire._jour_reference_publique(_devis()))

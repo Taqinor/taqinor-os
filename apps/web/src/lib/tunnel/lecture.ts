@@ -29,7 +29,7 @@ import type { EtatTunnel } from './champs';
 
 /** Comment la valeur se lit sur l'élément — reproduit les helpers `val()`,
  *  `num()` et `coche()` que les trois pages portaient à l'identique. */
-export type TypeLectureDom = 'texte' | 'nombre' | 'case';
+export type TypeLectureDom = 'texte' | 'nombre' | 'case' | 'nombreTouche';
 
 export interface ChampDomTunnel {
   /** La propriété d'`EtatTunnel` alimentée. */
@@ -67,9 +67,10 @@ export const CHAMPS_DOM_TUNNEL = [
   { champ: 'profondeurM', domId: 'mt-profondeur', type: 'nombre' },
   { champ: 'hmtM', domId: 'mt-hmt', type: 'nombre' },
   { champ: 'besoinEau', domId: 'mt-water-need', type: 'nombre' },
-  // Le curseur part avec value="7" AVANT toute interaction : c'est le registre
-  // qui le gate sur le mode agricole, jamais cette lecture.
-  { champ: 'heuresPompage', domId: 'mt-heures-pompage', type: 'nombre' },
+  // AGW403 — le curseur part avec value="7" AVANT toute interaction : il n'est
+  // LU que s'il porte `data-touche="1"` (posé au premier input/change par les
+  // trois pages) ; le registre le gate en plus sur le mode agricole.
+  { champ: 'heuresPompage', domId: 'mt-heures-pompage', type: 'nombreTouche' },
   { champ: 'culture', domId: 'mt-culture', type: 'texte' },
   { champ: 'surfaceHa', domId: 'mt-surface-ha', type: 'nombre' },
   { champ: 'depenseCarburantMad', domId: 'mt-fuel-spend', type: 'nombre' },
@@ -116,6 +117,14 @@ function nombre(doc: Document, id: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** AGW403 — comme `nombre()`, mais `null` tant que l'élément n'a pas été touché
+ *  par le visiteur (`data-touche="1"`) : une valeur par défaut n'est pas une réponse. */
+function nombreTouche(doc: Document, id: string): number | null {
+  const el = doc.getElementById(id) as HTMLElement | null;
+  if (el?.getAttribute('data-touche') !== '1') return null;
+  return nombre(doc, id);
+}
+
 /** `coche()` des pages : `true` seulement si la case existe ET est cochée. */
 function coche(doc: Document, id: string): boolean {
   return (doc.getElementById(id) as HTMLInputElement | null)?.checked === true;
@@ -133,7 +142,13 @@ export function lireChampsDomTunnel(doc: Document): ChampsDomLus {
   const lus: Record<string, unknown> = {};
   for (const c of CHAMPS_DOM_TUNNEL) {
     lus[c.champ] =
-      c.type === 'nombre' ? nombre(doc, c.domId) : c.type === 'case' ? coche(doc, c.domId) : valeur(doc, c.domId);
+      c.type === 'nombre'
+        ? nombre(doc, c.domId)
+        : c.type === 'nombreTouche'
+          ? nombreTouche(doc, c.domId)
+          : c.type === 'case'
+            ? coche(doc, c.domId)
+            : valeur(doc, c.domId);
   }
   return lus as ChampsDomLus;
 }

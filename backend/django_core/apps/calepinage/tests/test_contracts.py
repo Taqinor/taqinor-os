@@ -112,9 +112,12 @@ class SectionImagerieTest(SimpleTestCase):
     """Les huit clés, toujours présentes dès que la section existe."""
 
     def test_les_huit_cles_dans_les_etats_regles(self):
+        # ACAL8 (M0) : ``site_effectif`` (fuseau effectif DÉRIVÉ, servi par
+        # ACAL129) s'ajoute aux huit clés saisies là où l'état la porte.
         for etat in ETATS_REGLES:
-            self.assertEqual(sorted(SITE[etat]['imagerie']),
-                             sorted(CLES_IMAGERIE), etat)
+            self.assertEqual(
+                sorted(set(SITE[etat]['imagerie']) - {'site_effectif'}),
+                sorted(CLES_IMAGERIE), etat)
 
     def test_chaque_cle_est_documentee(self):
         self.assertEqual(sorted(SITE.get('cles', {})),

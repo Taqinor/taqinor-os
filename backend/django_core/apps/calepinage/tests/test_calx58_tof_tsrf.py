@@ -38,6 +38,9 @@ from apps.calepinage.services.chaine_pertes import (
     CLE_CLIENT_PVGIS, CLE_SORTIES_PAR_PAN, appliquer_chaine,
 )
 from apps.calepinage.services.pvgis_serie import ClientPvgis, _Cache
+from apps.calepinage.tests._m0_en_attente import (
+    EN_ATTENTE_SIMULATION, affirmer_non_servies, sans,
+)
 
 RACINE = pathlib.Path(__file__).resolve().parents[1]
 FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures_pvgis'
@@ -317,9 +320,12 @@ class PublieParLaChaineTest(SimpleTestCase):
 
     def test_le_bloc_ombrage_a_les_cles_de_l_echantillon(self):
         bloc = self.resultat['ombrage']
-        self.assertEqual(sorted(bloc),
-                         sorted(CONTRAT['exemple']['ombrage']))
-        modele = CONTRAT['exemple']['ombrage']['par_pan'][0]
+        # ACAL8 (M0) : perte_ombrage_pct / cascade par pan, posées avant
+        # leur producteur (EN_ATTENTE_SIMULATION).
+        affirmer_non_servies(self, self.resultat, EN_ATTENTE_SIMULATION)
+        attendu = sans(CONTRAT['exemple'], EN_ATTENTE_SIMULATION)['ombrage']
+        self.assertEqual(sorted(bloc), sorted(attendu))
+        modele = attendu['par_pan'][0]
         for ligne in bloc['par_pan']:
             self.assertEqual(sorted(ligne), sorted(modele))
 

@@ -266,7 +266,7 @@ class TestGatePublicVentesIgnoreEquipe(TestCase):
             HTTP_USER_AGENT='Mozilla/5.0 (Android)')
 
     def test_appareil_equipe_ne_stampe_ni_ne_trace(self):
-        from apps.ventes.public_views import _stamp_view_si_public
+        from apps.ventes.public.lecture_views import _stamp_view_si_public
 
         resultat = _stamp_view_si_public(
             self.link, False, self._requete(APPAREIL_EQUIPE))
@@ -276,7 +276,7 @@ class TestGatePublicVentesIgnoreEquipe(TestCase):
         self.assertIsNone(self.link.first_viewed_at)
 
     def test_appareil_non_equipe_stampe_normalement(self):
-        from apps.ventes.public_views import _stamp_view_si_public
+        from apps.ventes.public.lecture_views import _stamp_view_si_public
 
         resultat = _stamp_view_si_public(
             self.link, False, self._requete(AUTRE_APPAREIL))

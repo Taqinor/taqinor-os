@@ -45,16 +45,19 @@ from .recouvrement import (
     client_score_comportement,  # XFAC15
 )
 from .public_views import (
-    proposal_data, proposal_accept, proposal_pdf,
+    proposal_data, proposal_pdf,
+    suivi_public,  # QX34
+)
+from .public.signature_views import (  # SPL253
+    proposal_accept,
     # QW5 — mêmes vues QJ27, aliasées ici sous le mount `ventes/` (le site
     # les appelle ici, pas sous `public/` — jamais de logique dupliquée).
     proposal_contact_request, proposal_request_otp,
     proposal_request_otp_lecture, proposal_verify_otp_lecture,  # L-NIV
-    proposal_engagement,  # XSAL16
-    proposal_virement_declare,  # QX33be
     proposal_activate_option,  # XSAL5
-    suivi_public,  # QX34
 )
+from .public.lecture_views import proposal_engagement  # XSAL16, SPL246
+from .public.paiement_views import proposal_virement_declare  # QX33be, SPL252
 from .dashboard_view import dashboard_quote_to_cash
 from .insights_view import cash_flow_forecast, analyse_facturation_view  # ZFAC10
 from .journal_view import journal_ventes, export_comptable, export_status

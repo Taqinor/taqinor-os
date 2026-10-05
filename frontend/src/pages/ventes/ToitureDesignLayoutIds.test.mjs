@@ -19,7 +19,11 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const SRC = readFileSync(join(HERE, 'ToitureDesign.jsx'), 'utf8')
+// SPL216 : le DOM du builder (rp9-*) vit désormais dans atelier/BuilderDom.jsx ;
+// on lit ce fichier ET ToitureDesign.jsx (qui l'appelle).
+const SRC = readFileSync(
+  join(HERE, '../../features/calepinage/atelier/BuilderDom.jsx'), 'utf8')
+  + readFileSync(join(HERE, 'ToitureDesign.jsx'), 'utf8')
 
 // Liste EXHAUSTIVE des ids rp9-layout-*/rp9-free-* interrogés par
 // roofPro11/layoutEditor.ts (et le sous-ensemble repris par

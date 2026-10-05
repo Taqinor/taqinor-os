@@ -53,10 +53,13 @@ class EnveloppeTest(unittest.TestCase):
     def test_les_deux_etats_portent_la_meme_clef_et_les_memes_champs(self):
         for etat in ('exemple', 'exemple_vide'):
             bloc = CASCADE[etat]['cascade']
+            # ACAL8 (contrat v2) : + etapes_omises,
+            # irradiation_incidente_kwh_m2.
             self.assertEqual(
                 sorted(bloc),
-                ['etapes', 'hash_entree', 'ordre', 'postes_non_sources',
-                 'total_pct'],
+                ['etapes', 'etapes_omises', 'hash_entree',
+                 'irradiation_incidente_kwh_m2', 'ordre',
+                 'postes_non_sources', 'total_pct'],
                 f'{etat} : les clés du bloc « cascade » ont bougé.')
 
     def test_vide_ne_publie_jamais_un_zero(self):
