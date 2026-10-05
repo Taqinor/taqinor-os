@@ -18,6 +18,7 @@ import {
   construireCorpsEconomiePompage, vueCarteEconomie,
 } from '../../../features/ventes/economiePompagePreviewPur'
 import { saisiesEconomiePompage } from '../../../features/ventes/quote/etudeMarcheBloc'
+import CarteEconomiePompageInterne from './CarteEconomiePompageInterne'
 
 const mad = (v) => `${formatNumber(v)} MAD`
 
@@ -133,7 +134,7 @@ export function CarteEconomiePompageVue({ reponse }) {
 }
 
 /** La carte montée dans PanneauAgricole : corps → aperçu serveur → vue. */
-export default function CarteEconomiePompage({ eco, moisCalendrier, sortieEtude, lignes }) {
+export default function CarteEconomiePompage({ eco, moisCalendrier, sortieEtude, lignes, majEco }) {
   const saisies = saisiesEconomiePompage(eco, {
     moisCalendrier, aujourdhui: new Date().toISOString().slice(0, 10) })
   const corps = construireCorpsEconomiePompage({ saisies, sortieEtude, lignes })
@@ -148,6 +149,8 @@ export default function CarteEconomiePompage({ eco, moisCalendrier, sortieEtude,
       )}
       {erreur && <p className="text-xs text-destructive" role="alert">{erreur}</p>}
       <CarteEconomiePompageVue reponse={donnees} />
+      {/* AGR214 — volet INTERNE (jamais imprimé), replié par défaut. */}
+      <CarteEconomiePompageInterne reponse={donnees} eco={eco} majEco={majEco} />
     </div>
   )
 }

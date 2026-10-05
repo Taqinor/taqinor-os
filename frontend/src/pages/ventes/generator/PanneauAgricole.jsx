@@ -691,7 +691,7 @@ export default function PanneauAgricole({
         {/* ── AGR213 — l'économie DÉCLARÉE en direct, servie par le serveur ── */}
         <CarteEconomiePompage eco={ecoPompage} moisCalendrier={moisCalendrier}
                               sortieEtude={apercuPompage?.donnees || null}
-                              lignes={lignesDevis} />
+                              lignes={lignesDevis} majEco={majEco} />
 
         {/* ── AGR129 — le résultat SERVEUR en direct (aperçu AGR127) ── */}
         {apercuPompage?.chargement && (
