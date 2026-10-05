@@ -725,12 +725,32 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT = {
     # Industriel / commercial : on parle à une ORGANISATION. « En famille »
     # ne décrit aucun processus d'achat B2B ; le site n'est pas « chez vous ».
     'industriel': {
+        # CIQ501 (05/10/2026) — base PARTAGÉE commercial + industriel : ni
+        # « une photo suffit », ni vue des bâtiments, ni 3D promise (non
+        # vérifiées pour le C&I), ni « chez vous », ni « voisin, frère », ni
+        # récompense. `{societe}` n'apparaît que dans une phrase AUTONOME :
+        # sans raison sociale, elle est omise (MRY13) et le message reste
+        # complet. ✎ Textes à valider par Reda (manuel), sans bloquer.
         'valeur_j1':
-            "Bonjour {civilite} {prenom}, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de vos relevés de consommation (une photo suffit) et de l'adresse du site : je vous montre l'installation sur vos bâtiments, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
+            "Bonjour {civilite} {prenom}, je n'ai pas réussi à vous joindre. Je prépare l'étude solaire de {societe}. Pour que l'estimation soit juste, j'ai besoin de vos factures d'électricité des 12 derniers mois (ou de vos relevés de consommation) et de l'adresse du site : je vous prépare ensuite l'étude, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
         'reveil_a1':
-            "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu une étude solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer l'installation posée sur VOS bâtiments, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer l'adresse du site.) Répondez STOP et je n'insiste plus.",
+            "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu une étude solaire chez nous. Si le projet revient d'actualité, je vous refais l'étude à jour — c'est gratuit, sans engagement. Je m'en occupe ? (Je dois juste confirmer l'adresse du site.) Répondez STOP et je n'insiste plus.",
+        'reveil_a2':
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : vos factures d'électricité des 12 derniers mois (ou vos relevés de consommation), et je vous envoie l'estimation à jour. Répondez STOP et je n'insiste plus.",
         'reveil_a3':
-            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de l'installation sur vos bâtiments, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je vous refais l'étude à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
+        # CIQ501 — crochets [jour]/[heure] conservés (CAD69).
+        'rappel_plus_tard':
+            "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez sous la main vos factures d'électricité des 12 derniers mois (ou vos relevés de consommation), elles m'aident à préparer l'estimation.",
+        # CIQ501 — une installation PROFESSIONNELLE, jamais « comparable à la
+        # vôtre » ; sans la phrase sur le suivi en temps réel (non garantie).
+        'j4_preuve':
+            "Voici une installation professionnelle que nous avons posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Petite vidéo du chantier : {lien_video_preuve}.",
+        # CIQ501 — convention 9 : AUCUNE récompense, jamais « voisin, frère ».
+        'parrainage':
+            "Si une autre entreprise de votre entourage, ou un autre site de votre groupe, réfléchit au solaire, vous pouvez lui envoyer votre lien de parrainage ; elle aura la même étude gratuite.",
+        'debrief_visite':
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle après le passage de notre technicien sur votre site : qu'avez-vous pensé de sa visite, et reste-t-il des questions avant qu'on avance ensemble ?",
         'dimanche_famille':
             "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je sais que la décision se prend à plusieurs. Si vous en parlez avec votre équipe, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou nous réunir à deux ou trois au moment qui vous arrange, comme vous préférez.",
         'visite_proposition':
