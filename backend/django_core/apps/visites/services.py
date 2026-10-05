@@ -487,8 +487,15 @@ def valider_visite(visite, user):
     from . import selectors
     from .models import VisiteTerrain
 
+    from django.utils import timezone
+
+    # CIQ604 — date et auteur du feu vert, posés SERVEUR (jamais lus d'un
+    # corps de requête) : « vérifié par visite le … » a une date honnête.
     visite.statut = VisiteTerrain.Statut.VALIDEE
-    visite.save(update_fields=['statut'])
+    visite.validee_le = timezone.now()
+    visite.validee_par = (user if getattr(user, 'pk', None) is not None
+                          else None)
+    visite.save(update_fields=['statut', 'validee_le', 'validee_par'])
     # AGR413 — les mesures du point d'eau voyagent avec l'événement (vides
     # pour une visite toiture) : c'est le CRM qui décide de les recopier.
     visite_validee.send(
@@ -550,6 +557,12 @@ def renvoyer_visite(visite, user, *, photos=None, mesures=None, motif=''):
 
     visite.statut = VisiteTerrain.Statut.A_REFAIRE
     champs = ['statut', 'mesures'] if touchee else ['statut']
+    if visite.validee_le is not None or visite.validee_par_id is not None:
+        # CIQ604 — un feu vert retiré n'a plus de date : elle ne survit pas à
+        # la réouverture (le prochain feu vert en posera une nouvelle).
+        visite.validee_le = None
+        visite.validee_par = None
+        champs += ['validee_le', 'validee_par']
     visite.save(update_fields=champs)
     journaliser_visite(visite, user, 'a_refaire', detail=f'Motif : {motif}')
     _notifier_commercial_visite(

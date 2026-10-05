@@ -924,11 +924,11 @@ def releve_pour_calepinage(lead):
       (aucune visite, ou visite pas encore validee) ;
     * LECTURE SEULE : rien n'est ecrit, ni ici ni sur le lead.
 
-    ``validee_le`` sort a ``None`` : ``VisiteTerrain`` n'horodate PAS le feu
-    vert (``services.valider_visite`` n'ecrit que ``statut``, sans meme
-    bouger ``updated_at``). Tant qu'aucun horodatage de validation n'est
-    stocke, aucune autre date (``date_realisee``, ``updated_at``) n'est
-    presentee a sa place — ce serait une date inventee.
+    ``validee_le`` (CIQ604) est l'horodatage ISO que
+    ``services.valider_visite`` pose cote serveur ; il sort a ``None`` pour une
+    visite validee AVANT cette tache (aucune reprise des anciennes) — aucune
+    autre date (``date_realisee``, ``updated_at``) n'est presentee a sa place,
+    ce serait une date inventee.
 
     Returns:
         dict — ``{visite_id, validee_le, mesures, photos, motif_absence}``.
@@ -955,7 +955,9 @@ def releve_pour_calepinage(lead):
     medias = visite.medias.filter(company_id=lead.company_id).order_by('id')
     releve = {
         'visite_id': visite.id,
-        'validee_le': None,
+        # CIQ604 — la date du feu vert, posée par ``valider_visite`` ; ``None``
+        # pour une visite validée avant la tâche (aucune date inventée).
+        'validee_le': _visite_horodatage(visite.validee_le),
         'mesures': _releve_mesures_saisies(visite.mesures),
         'photos': _releve_photos_retenues(medias),
         'motif_absence': None,
