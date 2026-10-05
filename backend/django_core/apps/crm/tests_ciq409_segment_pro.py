@@ -172,6 +172,13 @@ class IncoherenceCI(_Base):
             self.assertEqual(resp.status_code, 200)
             return resp, len(ctx.captured_queries)
 
+        # Base : le lead porte DÉJÀ un devis cohérent. Le préchargement des
+        # devis de la liste (lignes, chantiers, liens de partage) ne s'exécute
+        # que si un devis existe — coût CONSTANT, antérieur à ce drapeau ;
+        # mesuré sur une liste sans devis, il passait pour une requête du
+        # drapeau. Un premier appel chauffe les caches de requête.
+        self._devis('residentiel')
+        _compte()
         resp, avant = _compte()
         for ligne in resp.data.get('results', resp.data):
             self.assertNotIn('incoherence_segment', ligne)
