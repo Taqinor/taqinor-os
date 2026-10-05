@@ -606,6 +606,39 @@ def valeur_liste(declaration, brute):
     return propres, None
 
 
+def valeur_non_releves(connus, brute):
+    """CIQ601 — valide ``_non_releves`` = ``{clé: motif}``. Renvoie
+    ``(etats, erreurs)``. Chaque clé désigne une mesure de la catégorie
+    (``calibre_a``) ou un champ d'une liste (``trajets.longueur_dc_m``,
+    ``zones_toiture[z1].charge_admissible_declaree_kg_m2``) ; le motif est à
+    VOCABULAIRE FERMÉ. Chaque message NOMME le champ fautif."""
+    from . import visite_checklist as checklist
+
+    cle_erreur = checklist.CLE_NON_RELEVES
+    if not isinstance(brute, dict):
+        return None, {cle_erreur: ('« Non relevé » attend un objet '
+                                   '{mesure: motif}.')}
+    etats = {}
+    erreurs = {}
+    for cle, motif in brute.items():
+        libelle = checklist.libelle_cle_non_releve(connus, cle)
+        if libelle is None:
+            erreurs[f'{cle_erreur}.{cle}'] = (
+                f'Champ inconnu « {cle} » : on ne peut pas le déclarer non '
+                'relevé.')
+            continue
+        motif = (motif or '').strip() if isinstance(motif, str) else ''
+        if not motif:
+            erreurs[f'{cle_erreur}.{cle}'] = f'Motif requis pour {libelle}.'
+        elif motif not in checklist.MOTIFS_NON_RELEVE:
+            erreurs[f'{cle_erreur}.{cle}'] = (
+                f'Motif « {motif} » inconnu pour {libelle}. Choix possibles : '
+                + ', '.join(checklist.MOTIFS_NON_RELEVE) + '.')
+        else:
+            etats[cle] = motif
+    return etats, erreurs
+
+
 def valeur_mesure(declaration, brute):
     """Convertit/valide UNE valeur de mesure. Renvoie ``(valeur, message)``.
 
@@ -692,7 +725,17 @@ def enregistrer_mesures(visite, categorie, valeurs):
     connus = {champ['code']: champ for champ in declaration['mesures']}
     erreurs = {}
     propres = {}
+    non_releves = None
     for code, brute in valeurs.items():
+        if code == checklist.CLE_NON_RELEVES:
+            # CIQ601 — « non relevé + motif » : gabarit ``ci`` seulement.
+            if visite.gabarit != checklist.GABARIT_CI:
+                erreurs[code] = ('« Non relevé » n’existe que pour une '
+                                 'visite de site professionnel.')
+            else:
+                non_releves, messages = valeur_non_releves(connus, brute)
+                erreurs.update(messages)
+            continue
         champ = connus.get(code)
         if champ is None:
             erreurs[code] = (f'Champ inconnu dans la catégorie '
@@ -709,6 +752,17 @@ def enregistrer_mesures(visite, categorie, valeurs):
     stockees = visite.mesures if isinstance(visite.mesures, dict) else {}
     bloc = dict(stockees.get(categorie) or {})
     bloc.update(propres)
+    if visite.gabarit == checklist.GABARIT_CI:
+        etats = dict(bloc.get(checklist.CLE_NON_RELEVES) or {})
+        # Saisir ensuite une valeur EFFACE l'état « non relevé ».
+        for cle in list(etats):
+            if checklist.etat_obsolete(cle, propres):
+                del etats[cle]
+        etats.update(non_releves or {})
+        if etats:
+            bloc[checklist.CLE_NON_RELEVES] = etats
+        else:
+            bloc.pop(checklist.CLE_NON_RELEVES, None)
     stockees = dict(stockees)
     stockees[categorie] = bloc
     visite.mesures = stockees

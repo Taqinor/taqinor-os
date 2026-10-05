@@ -20,6 +20,8 @@ AFFICHE la liste des manquants, il ne la reconstitue jamais.
 """
 from __future__ import annotations
 
+import re
+
 # Natures de mesure acceptées (validation champ par champ côté API VT2).
 NOMBRE = 'nombre'
 BOOLEEN = 'booleen'
@@ -618,6 +620,76 @@ def mesure_requise(champ, valeurs):
     if dispense and bool((valeurs or {}).get(dispense)):
         return False
     return True
+
+
+#: CIQ601 — clé, DANS ``mesures[categorie]``, de l'état « non relevé » :
+#: ``{clé_de_mesure: motif}``. Réservée au gabarit ``ci``.
+CLE_NON_RELEVES = '_non_releves'
+
+#: CIQ601 — motifs FERMÉS (contrat ``non_releves_motifs``) et leur libellé
+#: lisible dans le récap : « non vérifié (<libellé>) ».
+MOTIFS_NON_RELEVE = {
+    'acces_refuse': 'accès refusé',
+    'dangereux': 'dangereux',
+    'site_ferme': 'site fermé',
+    'a_faire_par_electricien': 'à faire par un électricien',
+    'non_applicable': 'non applicable',
+}
+
+_CLE_NON_RELEVE = re.compile(
+    r'^([a-z0-9_]+)(?:\[([^\]]+)\])?(?:\.([a-z0-9_]+))?$')
+
+
+def decouper_cle_non_releve(cle):
+    """``(mesure, id_element, champ)`` d'une clé « non relevé », ou ``None``.
+
+    ``calibre_a`` → ``('calibre_a', None, None)`` ;
+    ``trajets.longueur_dc_m`` → ``('trajets', None, 'longueur_dc_m')`` ;
+    ``zones_toiture[z1].pente_deg`` → ``('zones_toiture', 'z1', 'pente_deg')``.
+    """
+    trouve = _CLE_NON_RELEVE.match(cle or '')
+    return trouve.groups() if trouve else None
+
+
+def libelle_cle_non_releve(connus, cle):
+    """Le libellé lisible de la clé « non relevé » ``cle`` d'après les mesures
+    ``connus`` (``{code: déclaration}``), ou ``None`` si la clé est inconnue."""
+    morceaux = decouper_cle_non_releve(cle)
+    if morceaux is None:
+        return None
+    mesure_code, ident, champ = morceaux
+    declaration = connus.get(mesure_code)
+    if declaration is None:
+        return None
+    if ident is None and champ is None:
+        return declaration['libelle']
+    if declaration['nature'] != LISTE:
+        return None
+    sous = {s['code']: s for s in declaration['forme']}
+    if champ is None or champ not in sous:
+        return None
+    return f"{declaration['libelle']} — {sous[champ]['libelle']}"
+
+
+def etat_obsolete(cle, propres):
+    """Une valeur vient-elle d'être saisie (``propres`` = valeurs validées de
+    CET enregistrement) pour la clé « non relevé » ``cle`` ? Alors l'état est
+    effacé : la mesure a été relevée."""
+    morceaux = decouper_cle_non_releve(cle)
+    if morceaux is None:
+        return False
+    mesure_code, ident, champ = morceaux
+    if mesure_code not in propres:
+        return False
+    valeur = propres[mesure_code]
+    if champ is None:
+        return valeur not in (None, '', [])
+    for element in valeur or []:
+        if ident is not None and element.get('id') != ident:
+            continue
+        if element.get(champ) not in (None, ''):
+            return True
+    return False
 
 
 def liste_manquants(champ, elements):

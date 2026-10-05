@@ -130,9 +130,34 @@ def _visite_mesures(visite):
     return rendu
 
 
-def _visite_manquants(blocs, mesures_rendues, gabarit=None):
+def _non_releves_plats(visite):
+    """CIQ601 — les états « non relevé » d'une visite ``ci`` à plat :
+    ``{'<categorie>.<clé>': motif}`` (forme du contrat ``exemple_ci``). Vide
+    pour tout autre gabarit : l'état n'existe que pour un site professionnel."""
     from . import visite_checklist as checklist
 
+    if _gabarit(visite) != checklist.GABARIT_CI:
+        return {}
+    saisies = visite.mesures if isinstance(visite.mesures, dict) else {}
+    plats = {}
+    for cat in checklist.categories(checklist.GABARIT_CI):
+        bloc = saisies.get(cat['categorie']) or {}
+        etats = bloc.get(checklist.CLE_NON_RELEVES) or {}
+        if not isinstance(etats, dict):
+            continue
+        for cle, motif in etats.items():
+            if motif in checklist.MOTIFS_NON_RELEVE:
+                plats[f"{cat['categorie']}.{cle}"] = motif
+    return plats
+
+
+def _visite_manquants(blocs, mesures_rendues, gabarit=None,
+                      non_releves=None):
+    from . import visite_checklist as checklist
+
+    # CIQ601 — une mesure « non relevée » AVEC son motif est traitée : elle
+    # ne bloque pas « Terminer ».
+    non_releves = non_releves or {}
     manquants = []
     for bloc in blocs:
         for slot in bloc['slots']:
@@ -156,6 +181,8 @@ def _visite_manquants(blocs, mesures_rendues, gabarit=None):
             if champ['nature'] == checklist.LISTE:
                 for code, libelle in checklist.liste_manquants(
                         champ, valeurs.get(champ['code'])):
+                    if f"{cat['categorie']}.{code}" in non_releves:
+                        continue
                     manquants.append({
                         'type': checklist.MANQUE_MESURE,
                         'categorie': cat['categorie'],
@@ -166,6 +193,9 @@ def _visite_manquants(blocs, mesures_rendues, gabarit=None):
             if not checklist.mesure_requise(champ, valeurs):
                 continue
             valeur = valeurs.get(champ['code'])
+            if (valeur is None or valeur == '') and (
+                    f"{cat['categorie']}.{champ['code']}" in non_releves):
+                continue
             if valeur is None or valeur == '':
                 manquants.append({
                     'type': checklist.MANQUE_MESURE,
@@ -213,7 +243,7 @@ def visite_terrain_manquants(visite):
     medias = list(visite.medias.select_related('attachment').all())
     blocs = _visite_checklist(visite, medias)
     return _visite_manquants(blocs, _visite_mesures(visite),
-                             _gabarit(visite))
+                             _gabarit(visite), _non_releves_plats(visite))
 
 
 def contexte_visite_terrain(visite):
@@ -221,9 +251,11 @@ def contexte_visite_terrain(visite):
     medias = list(visite.medias.select_related('attachment').all())
     blocs = _visite_checklist(visite, medias)
     mesures_rendues = _visite_mesures(visite)
-    manquants = _visite_manquants(blocs, mesures_rendues, _gabarit(visite))
+    non_releves = _non_releves_plats(visite)
+    manquants = _visite_manquants(blocs, mesures_rendues, _gabarit(visite),
+                                  non_releves)
     commercial = visite.commercial
-    return {
+    agregat = {
         'id': visite.id,
         'lead': visite.lead_id,
         'commercial': None if commercial is None else {
@@ -268,6 +300,11 @@ def contexte_visite_terrain(visite):
         # affiche alors le wizard vierge, il ne devine pas des valeurs.
         'qualification': visite.qualification,
     }
+    if _gabarit(visite) == 'ci':
+        # CIQ601 — les mesures « non relevées » et leur motif (contrat
+        # ``exemple_ci._non_releves``) ; absent des autres gabarits.
+        agregat['_non_releves'] = non_releves
+    return agregat
 
 
 def mesures_point_eau_pour_lead(visite):
@@ -429,6 +466,21 @@ def recap_visite_terrain(visite):
         puissance = nombre('comptage', 'puissance_souscrite_kva_constatee')
         if puissance:
             morceaux.append(f'puissance souscrite {puissance} kVA')
+        # CIQ601 — une mesure « non relevée » se dit « non vérifié (motif) »,
+        # jamais avec une valeur par défaut.
+        from . import visite_checklist as checklist
+
+        connus = {
+            cat['categorie']: {m['code']: m for m in cat['mesures']}
+            for cat in checklist.categories('ci')}
+        for cle, motif in _non_releves_plats(visite).items():
+            categorie_code, _, reste = cle.partition('.')
+            libelle = checklist.libelle_cle_non_releve(
+                connus.get(categorie_code, {}), reste)
+            if libelle:
+                morceaux.append(
+                    f'{libelle} non vérifié '
+                    f'({checklist.MOTIFS_NON_RELEVE[motif]})')
         moment = visite.date_realisee or visite.date_prevue
         entete = 'Relevé du site professionnel validé'
         if moment is not None:
