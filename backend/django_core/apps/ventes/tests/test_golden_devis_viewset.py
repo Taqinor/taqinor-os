@@ -42,7 +42,8 @@ VUES = Path(__file__).resolve().parent.parent / 'views'
 FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
     'golden_devis_viewset.json'
 
-NB_ROUTES = 54
+#: 54 + ``facturer-complet`` (05/10/2026, ajout de route, pas un déplacement).
+NB_ROUTES = 55
 MIXIN = re.compile(r'^Devis\w*ActionsMixin$')
 
 #: Les symboles que chaque tâche de la piste déplace (texte des tâches

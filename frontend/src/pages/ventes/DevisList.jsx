@@ -70,6 +70,7 @@ import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
 // même « record focalisé » que la surbrillance de ligne existante).
 import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import FacturerDevisDialog from '../../features/ventes/FacturerDevisDialog'
 // VX155 — la carte de victoire (enrichit VX40) remplace le toast plat +
 // celebrateDealSigned() appelés directement d'ici ; le burst reste posé,
 // mais DEPUIS <DealSignedCelebration> lui-même.
@@ -415,7 +416,7 @@ function DevisRow({ d, ctx }) {
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
-    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, factureGenId,
+    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, factureGenId, setFacturerTarget,
     openEdit, openVarianteModal, openGammeModal, handleDelete, handleEnvoyer, handleRelancer,
     handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, handleCopierApercuInterne, copierLienInterne, handlePreview, openPdfModal,
@@ -865,14 +866,23 @@ function DevisRow({ d, ctx }) {
               Échéancier complet
             </Button>
           ) : (
-            <Button
-              size="sm"
-              onClick={() => handleGenererFacture(d)}
-              loading={factureGenId === d.id}
-              title="Générer la prochaine tranche de facture"
-            >
-              Générer facture
-            </Button>
+            <>
+              {!(d.solde?.tranches_facturees > 0) && (
+                <Button size="sm" onClick={() => setFacturerTarget(d)}
+                        title="Facture complète + paiements déjà reçus">
+                  Facturer (facture complète)
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant={d.solde?.tranches_facturees > 0 ? 'default' : 'outline'}
+                onClick={() => handleGenererFacture(d)}
+                loading={factureGenId === d.id}
+                title="Générer la prochaine tranche de facture"
+              >
+                {d.solde?.tranches_facturees > 0 ? 'Générer facture' : 'Facturer par tranches (acompte…)'}
+              </Button>
+            </>
           )}
 
           {/* VX20 — menu « Plus » unique : regroupe TOUTES les actions
@@ -2277,6 +2287,7 @@ export default function DevisList() {
     }
   }
 
+  const [facturerTarget, setFacturerTarget] = useState(null)
   const handleGenererFacture = async (d) => {
     setFactureGenId(d.id)
     try {
@@ -2624,7 +2635,7 @@ export default function DevisList() {
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
-    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, factureGenId,
+    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, factureGenId, setFacturerTarget,
     openEdit, openVarianteModal, openGammeModal, handleDelete, handleEnvoyer, handleRelancer,
     handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, handleCopierApercuInterne, copierLienInterne, handlePreview, openPdfModal,
@@ -2891,6 +2902,12 @@ export default function DevisList() {
         onClose={() => { setPdfTarget(null); setBatchPdf(false) }}
         onGenererLot={handleGenererPdfLot}
         onGenererUn={handleGenererPdf}
+      />
+
+      <FacturerDevisDialog
+        devis={facturerTarget}
+        onOpenChange={(o) => { if (!o) setFacturerTarget(null) }}
+        onDone={() => dispatch(fetchDevis())}
       />
 
       {/* ── T9 — Modale d'acceptation inline (nom / date / option) — MB4

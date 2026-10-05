@@ -13,6 +13,7 @@ import ventesApi from '../../api/ventesApi'
 // (`company` est TOUJOURS imposée par le serveur, jamais envoyée d'ici).
 import api from '../../api/axios'
 import PaiementDialog from './PaiementDialog'
+import RelanceApercu from '../../features/ventes/RelanceApercu'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import {
   Button, Badge, Card, EmptyState, Spinner, Checkbox, Input,
@@ -62,6 +63,9 @@ export default function RelancesPage() {
   // pré-cochée (« Consigner » reste par défaut une écriture au journal).
   const [envoyerEmail, setEnvoyerEmail] = useState(false)
   const [busy, setBusy] = useState(false)
+  // Aperçu serveur (niveau suggéré + objet/message) et niveau choisi (ordre).
+  const [apercu, setApercu] = useState(null)
+  const [niveauChoisi, setNiveauChoisi] = useState(null)
   const [niveauFilter, setNiveauFilter] = useState('')  // '' = tous
   // VX112 — pré-filtre client depuis le drill-down de la balance âgée
   // (?client=<id> ; miroir du ?produit= de MouvementsPage), filtrage
@@ -230,20 +234,31 @@ export default function RelancesPage() {
     setEnvoyerEmail(false)
     const delaiSuivant = r.niveau_suivant?.delai_jours
     setProchaine(delaiSuivant != null ? todayPlus(delaiSuivant) : todayPlus(7))
+    setApercu(null)
+    setNiveauChoisi(null)
+    // Aperçu : niveau suggéré présélectionné, e-mail coché si l'adresse existe.
+    // Échec silencieux : la fenêtre reste utilisable comme avant.
+    Promise.resolve().then(() => ventesApi.getRelanceApercu(r.id)).then((res) => {
+      const a = res?.data
+      if (!a) return
+      setApercu(a)
+      if (a.niveau_suivant) setNiveauChoisi(a.niveau_suivant.ordre)
+      setEnvoyerEmail(!!a.peut_envoyer_email)
+    }).catch(() => {})
   }
 
   const relancer = async () => {
     setBusy(true)
     try {
       await ventesApi.relancerFacture(target.id, {
-        niveau: target.niveau?.ordre, note,
+        niveau: niveauChoisi ?? target.niveau?.ordre, note,
         prochaine_relance: prochaine || undefined,
         // AUD129 — envoi explicite seulement. Le corps de l'email reprend la
         // note saisie (le serveur applique `note or message du niveau`).
         envoyer_email: envoyerEmail,
       })
       setTarget(null); setNote(''); setProchaine('')
-      setEnvoyerEmail(false); load()
+      setEnvoyerEmail(false); setApercu(null); setNiveauChoisi(null); load()
     } catch { /* */ } finally { setBusy(false) }
   }
 
@@ -884,6 +899,8 @@ export default function RelancesPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
+            <RelanceApercu apercu={apercu} niveauChoisi={niveauChoisi}
+                           onChoisir={setNiveauChoisi} />
             <div className="grid gap-1.5">
               <Label htmlFor="relance-note">Note (appel, courrier remis…)</Label>
               <Textarea id="relance-note" rows={3} value={note}
@@ -894,14 +911,17 @@ export default function RelancesPage() {
                 et le corps de l'email reprend la note ci-dessus. */}
             <div className="flex items-start gap-2">
               <Checkbox id="relance-envoyer-email" checked={envoyerEmail}
+                        disabled={apercu ? !apercu.peut_envoyer_email : false}
                         onCheckedChange={v => setEnvoyerEmail(!!v)} />
               <div className="grid gap-0.5">
                 <Label htmlFor="relance-envoyer-email">
                   Envoyer l'email au client
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Le corps reprend la note ci-dessus
-                  {target?.niveau ? ', sinon le message du niveau' : ''}.
+                  {apercu && !apercu.peut_envoyer_email
+                    ? 'Aucun e-mail client'
+                    : <>Le corps reprend la note ci-dessus
+                      {target?.niveau ? ', sinon le message du niveau' : ''}.</>}
                 </p>
               </div>
             </div>

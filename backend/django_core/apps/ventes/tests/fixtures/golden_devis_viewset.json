@@ -175,6 +175,15 @@
       ]
     },
     {
+      "nom": "facturer_complet",
+      "url_path": "facturer-complet",
+      "url_name": "facturer-complet",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
       "nom": "from_layout",
       "url_path": "from-layout",
       "url_name": "from-layout",
@@ -536,6 +545,7 @@
     "envoyer_email",
     "etat_pdf",
     "etude_params",
+    "facturer_complet",
     "filter_backends",
     "filter_queryset",
     "finalize_response",

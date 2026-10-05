@@ -281,6 +281,9 @@ def relance_reminders():
     ).select_related('client', 'company').prefetch_related(
         'lignes', 'paiements', 'avoirs')
 
+    from .recouvrement import ensure_default_followup_levels
+    societes_pourvues = set()
+
     for facture in factures:
         # AUD131 — le prédicat partagé remplace le court-circuit local
         # `montant_du <= 0` (le filtre de statut est déjà appliqué en SQL).
@@ -288,6 +291,11 @@ def relance_reminders():
             facture.prochaine_relance = None
             facture.save(update_fields=['prochaine_relance'])
             continue
+        # Fondateur 05/10/2026 — les 3 niveaux par défaut existent toujours :
+        # une société qui n'en a aucun les reçoit (une fois par passage).
+        if facture.company_id not in societes_pourvues:
+            ensure_default_followup_levels(facture.company)
+            societes_pourvues.add(facture.company_id)
         levels = list(FollowupLevel.objects.filter(
             company=facture.company).order_by('delai_jours', 'ordre'))
         if not levels:
