@@ -1191,7 +1191,8 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
     return (conception, materiel, donnees, document)
 
 
-def resultat_electrique_complet(conception, *, norme=None, noyau=None):
+def resultat_electrique_complet(conception, *, norme=None, noyau=None,
+                                checklist=None):
     """ACAL55 — le ``ResultatElectrique`` COMPLET d'une conception, ou ``None``.
 
     La ``Conception`` de CAL124 porte un ``ResultatChaines`` (chaînes seules,
@@ -1234,7 +1235,36 @@ def resultat_electrique_complet(conception, *, norme=None, noyau=None):
             resultat, protections=tuple(noyau['protections'].protections))
     if isinstance(norme, dict) and not norme.get('applicable', False):
         resultat = dataclasses.replace(resultat, protections=())
+    elif checklist is not None:
+        # ACAL159 — la check-list DÉCIDÉE (écarts, ajouts) : la même que
+        # le bordereau, jamais la liste brute du noyau. Le tableau (``bom``)
+        # et les câbles sont refaits sur CES organes, par le noyau.
+        from core.electrique.cables import dimensionner_cables
+        from core.electrique.chaines import concevoir_chaines
+        from core.electrique.nomenclature import nomenclature
+        from core.electrique.protections import ResultatProtections
+
+        from .protections import resultat_protections_retenues
+
+        source = ResultatProtections(protections=resultat.protections)
+        if noyau and noyau.get('protections') is not None:
+            source = noyau['protections']
+        decidees = resultat_protections_retenues(source, checklist)
+        chaines = concevoir_chaines(entree)
+        cables = dimensionner_cables(entree, chaines, decidees)
+        resultat = dataclasses.replace(
+            resultat, protections=tuple(decidees.protections),
+            cables=tuple(cables.cables),
+            bom=tuple(nomenclature(entree, chaines, decidees,
+                                   cables).lignes))
     return resultat
+
+
+def checklist_decidee(conception, donnees, norme):
+    """ACAL159 — la check-list de protections DÉCIDÉE, lue sans jamais
+    lever : ``(checklist, avertissements)`` (décision périmée nommée)."""
+    return _checklist_protections_tolerante(
+        conception, (donnees or {}).get('protections'), norme)
 
 
 def _avec_resultat(conception, resultat):
@@ -1484,7 +1514,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         equipements=_equipements_electriques(document),
         branches=((micro['bloc'] or {}).get('branches') or ()
                   if micro['bloc'] is not None else ()),
-        troncons=troncons['troncons'])
+        troncons=troncons['troncons'],
+        checklist=protections)
 
     # CAL134 — la check-list de terre et sa justification exigée.
     terre, avis_terre = _checklist_terre_tolerante(
@@ -2772,7 +2803,8 @@ def _ligne_bordereau(ligne):
 
 
 def _bordereau_du_calepinage(calepinage, conception, noyau, *,
-                             equipements=(), branches=(), troncons=()):
+                             equipements=(), branches=(), troncons=(),
+                             checklist=None):
     """CALX246/230/232/247/227 — ``{lignes, alertes}``, ou l'omission motivée.
 
     ``noyau`` est le ``{entree, protections, cables}`` que
@@ -2788,10 +2820,16 @@ def _bordereau_du_calepinage(calepinage, conception, noyau, *,
     from core.electrique.nomenclature import nomenclature
 
     from .coffrets import coffret_ac, coffrets_dc
+    from .protections import resultat_protections_retenues
     from .troncons import metre_de_cable
 
     if not noyau:
         return {'lignes': [], 'alertes': []}
+    # ACAL159 — le bordereau chiffre la check-list DÉCIDÉE (``checklist``) :
+    # un organe écarté n'y figure plus, un organe société y figure — jamais
+    # la liste brute de ``concevoir_protections``.
+    noyau = dict(noyau, protections=resultat_protections_retenues(
+        noyau['protections'], checklist))
 
     company = getattr(calepinage, 'company', None)
     reglages = _reglages_electrique_societe(calepinage)

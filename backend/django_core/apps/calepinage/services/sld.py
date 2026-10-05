@@ -429,27 +429,54 @@ def _dessin_du_calepinage(calepinage):
     Une conception incomplète ou bloquée ne dessine rien : l'édition n'a
     alors aucun organe à nommer, et toute clef sera refusée en la nommant.
     """
-    from .electrique import (
-        bloquants_nommes, conception_du_calepinage,
-        resultat_electrique_complet,
-    )
+    from .electrique import bloquants_nommes, conception_du_calepinage
 
-    conception, _materiel, _donnees, _document = conception_du_calepinage(
+    conception, _materiel, donnees, _document = conception_du_calepinage(
         calepinage)
     if (list(getattr(conception, 'manquantes', ()) or ())
             or list(bloquants_nommes(conception) or ())):
         return {'svg': None, 'blocs': (), 'liaisons': ()}
     norme = _norme_du_calepinage(calepinage)
     # ACAL55 — le dessin lit un ``ResultatElectrique`` COMPLET (protections
-    # comprises), jamais le ``ResultatChaines`` de la conception.
-    return rendu_du_schema(getattr(conception, 'entree', None),
-                           resultat_electrique_complet(conception,
-                                                       norme=norme),
+    # comprises), jamais le ``ResultatChaines`` de la conception ; ACAL159 —
+    # réduit à la check-list DÉCIDÉE.
+    resultat, gabarit = resultat_et_gabarit_decides(conception, donnees,
+                                                    norme)
+    return rendu_du_schema(getattr(conception, 'entree', None), resultat,
                            edition=edition_sld(calepinage),
-                           gabarit=gabarit_de_schema(norme),
+                           gabarit=gabarit,
                            branches_onduleur=(
                                branches_onduleur_de_la_conception(
                                    conception)))
+
+
+def resultat_et_gabarit_decides(conception, donnees, norme):
+    """ACAL159 — ``(ResultatElectrique, gabarit)`` de la check-list DÉCIDÉE.
+
+    Le résultat ne porte que les organes RETENUS (un organe écarté n'est
+    plus dessiné) ; un organe AJOUTÉ par la société, qu'aucun bloc du noyau
+    partagé ne sait dessiner, est SIGNALÉ dans le bandeau de la planche au
+    lieu d'être tu.
+    """
+    from .electrique import checklist_decidee, resultat_electrique_complet
+    from .protections import ORIGINE_SOCIETE, organes_retenus
+
+    checklist, _avis = checklist_decidee(conception, donnees, norme)
+    resultat = resultat_electrique_complet(conception, norme=norme,
+                                           checklist=checklist)
+    gabarit = dict(gabarit_de_schema(norme))
+    ajoutes = [ligne for ligne in organes_retenus(checklist)
+               if ligne.get('origine') == ORIGINE_SOCIETE]
+    if ajoutes:
+        mention = ('Organe(s) ajouté(s) par décision société, non dessiné(s) '
+                   'sur la planche : %s.'
+                   % ', '.join('%s — %s' % (ligne['repere'],
+                                            ligne['designation'])
+                               for ligne in ajoutes))
+        gabarit['bandeau'] = ' '.join(
+            texte for texte in (gabarit.get('bandeau') or '', mention)
+            if texte)
+    return resultat, gabarit
 
 
 def _norme_du_calepinage(calepinage):
@@ -681,12 +708,9 @@ def schema_du_calepinage(calepinage):
     libellés français du service électrique tels quels. Aucune clé ne
     disparaît jamais (leçon PACT10 du 03/08/2026).
     """
-    from .electrique import (
-        bloquants_nommes, conception_du_calepinage,
-        resultat_electrique_complet,
-    )
+    from .electrique import bloquants_nommes, conception_du_calepinage
 
-    conception, _materiel, _donnees, _document = conception_du_calepinage(
+    conception, _materiel, donnees, _document = conception_du_calepinage(
         calepinage)
     manquantes = list(getattr(conception, 'manquantes', ()) or ())
     bloquants = list(bloquants_nommes(conception) or ())
@@ -702,12 +726,14 @@ def schema_du_calepinage(calepinage):
         return reponse
     edition = edition_sld(calepinage)
     norme = _norme_du_calepinage(calepinage)
+    # ACAL55 — l'adaptateur unique, jamais le ``ResultatChaines`` ; ACAL159
+    # — réduit à la check-list décidée, ajouts signalés au bandeau.
+    resultat, gabarit = resultat_et_gabarit_decides(conception, donnees,
+                                                    norme)
     dessin = rendu_du_schema(
-        getattr(conception, 'entree', None),
-        # ACAL55 — l'adaptateur unique, jamais le ``ResultatChaines``.
-        resultat_electrique_complet(conception, norme=norme),
+        getattr(conception, 'entree', None), resultat,
         edition=edition,
-        gabarit=gabarit_de_schema(norme),
+        gabarit=gabarit,
         cartouche=cartouche_du_calepinage(calepinage),
         # CALX238 (crochet de phase 2) — dix onduleurs identiques dessinent
         # UN sous-ensemble « typique de 10 », et la planche cesse de basculer
