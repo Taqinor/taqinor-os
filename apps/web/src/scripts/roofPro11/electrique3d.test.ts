@@ -20,8 +20,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import process from 'node:process';
+import { join } from 'node:path';
 import * as THREE from 'three';
 import {
   ID_CALQUE_ELECTRIQUE,
@@ -41,17 +40,10 @@ import { serialiserDocumentAtelier, appliquerHydratationAuCtx, type EtatSerialis
 import { hydrateFromDevis, type SerializedLayout } from './prefill'; // ACAL26
 import { uniformSetbacks } from '../../lib/roofPro2'; // ACAL26
 import { type Ctx } from './context'; // ACAL26
+import { racineDepot } from './harnaisAtelier';
 
 // ───────────────────────────────────────────── l'échantillon de contrat committé
 
-function racineDepot(): string {
-  let dossier = resolve(process.cwd());
-  for (let i = 0; i < 6; i += 1) {
-    if (existsSync(join(dossier, 'backend', 'django_core'))) return dossier;
-    dossier = dirname(dossier);
-  }
-  throw new Error(`Racine du dépôt introuvable depuis ${process.cwd()}`);
-}
 
 function contrat(nom: string): Record<string, unknown> {
   const chemin = join(

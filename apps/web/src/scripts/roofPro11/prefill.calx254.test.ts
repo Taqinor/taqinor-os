@@ -31,67 +31,14 @@ import {
   type DevisPayload,
 } from './prefill';
 import { type Ctx } from './context';
+import { panDeTest, ctxAvecConsommation, appareilDeTest } from './harnaisAtelier';
 import { type AreaRecord, type LeadPayload } from './types';
-import { type Appliance } from '../../lib/applianceConsumption';
 
-const VERTS: [number, number][] = [
-  [-7.6, 33.59],
-  [-7.599, 33.59],
-  [-7.599, 33.591],
-  [-7.6, 33.591],
-];
+const zone = panDeTest;
 
-function zone(id: string, opts: Partial<AreaRecord> = {}): AreaRecord {
-  return {
-    id,
-    label: `Zone ${id}`,
-    vertices: VERTS.map(([lng, lat]) => [lng, lat] as [number, number]),
-    obstacles: [],
-    roofType: 'pitched',
-    pitchDeg: 22,
-    facingAzimuthDeg: 180,
-    facingManual: false,
-    neededPanels: 12,
-    neededAuto: true,
-    result: null,
-    renderPlan: null,
-    ...opts,
-  };
-}
+const makeCtx = ctxAvecConsommation;
 
-/** Même fixture que `prefill.calx253.test.ts` : un `Ctx` minimal + l'état de
- *  consommation VIERGE d'aujourd'hui, surchargeable par test. */
-function makeCtx(areas: AreaRecord[], consOverrides: Partial<Ctx> = {}, activeId = areas[0].id): Ctx {
-  const active = areas.find((a) => a.id === activeId)!;
-  return {
-    areas,
-    activeAreaId: activeId,
-    vertices: active.vertices,
-    obstacles: active.obstacles,
-    roofType: active.roofType,
-    pitchDeg: active.pitchDeg,
-    facingAzimuthDeg: active.facingAzimuthDeg,
-    facingManual: active.facingManual ?? false,
-    neededPanels: active.neededPanels,
-    neededAuto: active.neededAuto,
-    layoutPlan: null,
-    layoutOptimalCount: 0,
-    consMode: false,
-    consCurve: new Array(24).fill(0),
-    consHandEdited: false,
-    consAppliances: [],
-    consDailyTarget: 0,
-    consApplCounter: 0,
-    consSeasonal: false,
-    consSummerFactor: 1.3,
-    consWinterFactor: 0.9,
-    ...consOverrides,
-  } as unknown as Ctx;
-}
-
-function appliance(kind: string, dailyKwh: number): Appliance {
-  return { kind, label: kind, dailyKwh, startHour: 8, endHour: 20, billing: 'onTop' };
-}
+const appliance = appareilDeTest;
 
 describe('CALX254 — tour complet : courbe éditée + facteurs saisonniers survivent au round-trip', () => {
   it('sérialiser puis ré-hydrater rend les 24 valeurs ET les deux facteurs, terme à terme', () => {

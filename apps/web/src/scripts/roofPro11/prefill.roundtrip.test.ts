@@ -13,9 +13,8 @@
    committé `roof_layout_v2.schema.json` (jamais une copie à la main).
    ========================================================================== */
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import process from 'node:process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { hydrateFromDevis, hydrateFromLead, type SerializedLayout } from './prefill';
 import {
   appliquerHydratationAuCtx,
@@ -27,16 +26,9 @@ import { creerCoucheElectrique, type DocumentElectrique } from './electrique3d';
 import { uniformSetbacks } from '../../lib/roofPro2';
 import { emptyCurve } from '../../lib/applianceConsumption';
 import { type Ctx } from './context';
+import { ctxDeBase, racineDepot } from './harnaisAtelier';
 import { type AreaRecord } from './types';
 
-function racineDepot(): string {
-  let dossier = resolve(process.cwd());
-  for (let i = 0; i < 6; i += 1) {
-    if (existsSync(join(dossier, 'backend', 'django_core'))) return dossier;
-    dossier = dirname(dossier);
-  }
-  throw new Error(`Racine du dépôt introuvable depuis ${process.cwd()}`);
-}
 
 function contrat(nom: string): Record<string, unknown> {
   const chemin = join(racineDepot(), 'backend', 'django_core', 'apps', 'calepinage', 'contract_samples', nom);
@@ -106,18 +98,7 @@ function documentRiche(): SerializedLayout {
 function ctxApresBoot(zones: AreaRecord[], activeId: string): Ctx {
   const active = zones.find((z) => z.id === activeId) ?? zones[0];
   return {
-    areas: zones,
-    activeAreaId: active.id,
-    vertices: active.vertices,
-    obstacles: active.obstacles,
-    roofType: active.roofType,
-    pitchDeg: active.pitchDeg,
-    facingAzimuthDeg: active.facingAzimuthDeg,
-    facingManual: active.facingManual ?? false,
-    neededPanels: active.neededPanels,
-    neededAuto: active.neededAuto,
-    layoutPlan: null,
-    layoutOptimalCount: 0,
+    ...ctxDeBase(zones, active.id),
     shadeObstructions: [],
     environment: [],
     shadeFactors: null,

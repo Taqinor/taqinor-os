@@ -14,6 +14,7 @@
  * 5. La mesure s'affiche avec SA PRÉCISION — jamais arrondie en silence.
  */
 import { describe, expect, it, vi } from 'vitest';
+import { methodesCarteInertes } from './harnaisAtelier';
 import {
   aideClavier,
   annoncePourVerdict,
@@ -249,12 +250,7 @@ function carteFactice() {
     getSource: () => undefined,
     addSource: vi.fn(),
     removeSource: vi.fn(),
-    getLayer: () => undefined,
-    addLayer: vi.fn(),
-    removeLayer: vi.fn(),
-    setLayoutProperty: vi.fn(),
-    setPaintProperty: vi.fn(),
-    on: vi.fn(),
+    ...methodesCarteInertes(),
     getZoom: () => 19,
     getCenter: () => ({ lng: -7.62, lat: 33.58 }),
     getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }),

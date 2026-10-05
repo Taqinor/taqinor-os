@@ -20,18 +20,12 @@ import {
   type ModulesDisponibles,
 } from './moduleSelect';
 import { type Ctx } from './context';
+import { panDeTest, ctxDeBase } from './harnaisAtelier';
 import { type AreaRecord } from './types';
 import { MODULE_ATELIER_PAR_DEFAUT, cotesDePavage, type Panel2Module } from '../../lib/roofPro2';
 import { packConfig } from '../../lib/estimatorBrainV2';
 import { solveLive } from '../../lib/estimatorBrainV7';
 import { solveLivePitched } from '../../lib/estimatorBrainV8';
-
-const VERTS: [number, number][] = [
-  [-7.6, 33.59],
-  [-7.599, 33.59],
-  [-7.599, 33.591],
-  [-7.6, 33.591],
-];
 
 /** Un module de catalogue COMPLET (toutes les cotes de pavage renseignées). */
 function moduleComplet(id: string, longueurMm: number, largeurMm: number, pmaxWc: number) {
@@ -68,21 +62,7 @@ function reponseCatalogue(): ModulesDisponibles {
 }
 
 function zone(id: string, opts: Partial<AreaRecord> = {}): AreaRecord {
-  return {
-    id,
-    label: `Zone ${id}`,
-    vertices: VERTS.map(([lng, lat]) => [lng, lat] as [number, number]),
-    obstacles: [],
-    roofType: 'flat',
-    pitchDeg: 22,
-    facingAzimuthDeg: 180,
-    facingManual: false,
-    neededPanels: 12,
-    neededAuto: true,
-    result: null,
-    renderPlan: null,
-    ...opts,
-  };
+  return panDeTest(id, { roofType: 'flat', ...opts });
 }
 
 /** Un plan de rendu MINIMAL : ce qu'il faut pour que `serializeLayout` émette `geometry`. */
@@ -101,23 +81,11 @@ function planDeRendu(nb: number, kwc: number) {
 }
 
 function makeCtx(areas: AreaRecord[], modulesDisponibles?: unknown, activeId = areas[0].id): Ctx {
-  const active = areas.find((a) => a.id === activeId)!;
   return {
+    ...ctxDeBase(areas, activeId),
     opts: { modulesDisponibles },
-    areas,
-    activeAreaId: activeId,
     activeArea: () => areas.find((a) => a.id === activeId),
-    vertices: active.vertices,
-    obstacles: active.obstacles,
     closed: true,
-    roofType: active.roofType,
-    pitchDeg: active.pitchDeg,
-    facingAzimuthDeg: active.facingAzimuthDeg,
-    facingManual: active.facingManual ?? false,
-    neededPanels: active.neededPanels,
-    neededAuto: active.neededAuto,
-    layoutPlan: null,
-    layoutOptimalCount: 0,
     dom: {},
   } as unknown as Ctx;
 }

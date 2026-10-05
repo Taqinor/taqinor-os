@@ -21,51 +21,13 @@ import { type HorizonProfile } from '../../lib/horizonEngine';
 import { type Measurement } from './mesureUi';
 import { type EnvironmentObject } from './environment';
 import { type Ctx } from './context';
+import { panDeTest, ctxMinimal } from './harnaisAtelier';
 import { type AreaRecord } from './types';
 import { creerCoucheElectrique } from './electrique3d';
 
-const VERTS: [number, number][] = [
-  [-7.6, 33.59],
-  [-7.599, 33.59],
-  [-7.599, 33.591],
-  [-7.6, 33.591],
-];
+const zone = panDeTest;
 
-function zone(id: string, opts: Partial<AreaRecord> = {}): AreaRecord {
-  return {
-    id,
-    label: `Zone ${id}`,
-    vertices: VERTS.map(([lng, lat]) => [lng, lat] as [number, number]),
-    obstacles: [],
-    roofType: 'pitched',
-    pitchDeg: 22,
-    facingAzimuthDeg: 180,
-    facingManual: false,
-    neededPanels: 12,
-    neededAuto: true,
-    result: null,
-    renderPlan: null,
-    ...opts,
-  };
-}
-
-function makeCtx(areas: AreaRecord[], activeId = areas[0].id): Ctx {
-  const active = areas.find((a) => a.id === activeId)!;
-  return {
-    areas,
-    activeAreaId: activeId,
-    vertices: active.vertices,
-    obstacles: active.obstacles,
-    roofType: active.roofType,
-    pitchDeg: active.pitchDeg,
-    facingAzimuthDeg: active.facingAzimuthDeg,
-    facingManual: active.facingManual ?? false,
-    neededPanels: active.neededPanels,
-    neededAuto: active.neededAuto,
-    layoutPlan: null,
-    layoutOptimalCount: 0,
-  } as unknown as Ctx;
-}
+const makeCtx = ctxMinimal;
 
 describe('CAL102 — serializeMeasurements', () => {
   it('conserve les mesures géométriquement valides, intactes', () => {

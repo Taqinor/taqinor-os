@@ -4,6 +4,7 @@
 // absent (repli `ma` : comportement marocain byte-identique), et la mention affichée
 // à côté du champ de recherche. PURE : aucun DOM, aucune carte.
 import { describe, expect, it, vi } from 'vitest';
+import { methodesCarteInertes } from './harnaisAtelier';
 import {
   GEOCODE_DEFAULT_COUNTRY,
   geocodeCountry,
@@ -317,12 +318,7 @@ describe('ACAL68 — poserFond quand la carte n’est pas prête', () => {
         sources.set(id, spec);
       },
       removeSource: (id: string) => sources.delete(id),
-      getLayer: () => undefined,
-      addLayer: vi.fn(),
-      removeLayer: vi.fn(),
-      setLayoutProperty: vi.fn(),
-      setPaintProperty: vi.fn(),
-      on: vi.fn(),
+      ...methodesCarteInertes(),
       once: (ev: string, f: () => void) => {
         if (ev === 'load') surLoad.push(f);
       },

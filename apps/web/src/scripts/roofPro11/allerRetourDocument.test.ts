@@ -11,9 +11,8 @@
    tests/estimatorRuntimePro10Pro11.test.ts (« runtime ACAL31 »).
    ========================================================================== */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import process from 'node:process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { hydrateFromDevis } from './prefill';
 import { appliquerHydratationAuCtx, serialiserDocumentAtelier } from './hydratation';
 import { creerCoucheElectrique } from './electrique3d';
@@ -21,15 +20,8 @@ import { uniformSetbacks } from '../../lib/roofPro2';
 import { emptyCurve } from '../../lib/applianceConsumption';
 import { reinitialiserNumerotation } from './numerotation';
 import { type Ctx } from './context';
+import { racineDepot } from './harnaisAtelier';
 
-function racineDepot(): string {
-  let dossier = resolve(process.cwd());
-  for (let i = 0; i < 6; i += 1) {
-    if (existsSync(join(dossier, 'backend', 'django_core'))) return dossier;
-    dossier = dirname(dossier);
-  }
-  throw new Error(`Racine du dépôt introuvable depuis ${process.cwd()}`);
-}
 
 const EXEMPLE = (JSON.parse(readFileSync(join(
   racineDepot(), 'backend', 'django_core', 'apps', 'calepinage', 'contract_samples', 'roof_layout_v2.schema.json',
