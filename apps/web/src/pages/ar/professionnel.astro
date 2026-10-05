@@ -24,7 +24,6 @@ import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
-import InstantEstimator from '../../components/InstantEstimator.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import Picture from '../../components/Picture.astro';
 import StickyCta from '../../components/StickyCta.astro';
@@ -35,8 +34,6 @@ import CertLogoRow from '../../components/CertLogoRow.astro';
 import Faq from '../../components/Faq.astro';
 import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
-import { localEstimateBand } from '../../lib/billRange';
-import { formatMAD } from '../../lib/format';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
@@ -66,96 +63,60 @@ const RC_PRO_ASSURANCE: string | null = null;
 const segments = [
   {
     n: '01', title: 'مستودع / مصنع',
-    body: "كل kWh يدخل في سعر تكلفة قطعة مُنتَجة. سطح عريض ومستوٍ يُسدّد نفسه في 3 إلى 5 سنوات وينتج بالضبط في الساعات التي تشتغل فيها الآلات — يأتي الإنتاج حين يكون الطلب حاضراً.",
-    proof: 'دليل: الجديدة، 17,04 kWc، مُتابَعة بمراقبة الإنتاج في الوقت الحقيقي',
-    financier: 'عبء تشغيلي يتحوّل إلى أصل مُسدَّد في 3 إلى 5 سنوات',
+    body: "كل kWh يدخل في سعر تكلفة قطعة مُنتَجة. سطح عريض ومستوٍ ينتج بالضبط في الساعات التي تشتغل فيها الآلات — يأتي الإنتاج حين يكون الطلب حاضراً.",
+    proof: '',
+    financier: 'عبء تشغيلي يتحوّل إلى أصل مُهلَك',
     technique: 'سطح عريض ومستوٍ · تركيب دون توقيف الإنتاج',
   },
   {
     n: '02', title: 'حظيرة فلاحية-صناعية',
     body: "تجفيف، تبريد، تحويل: الحظيرة الفلاحية تستهلك في وضح النهار، بالضبط حين تعطي الشمس. السطح، الموجود أصلاً، لا يكلّف شيئاً إضافياً — يحمل الألواح دون أن يأكل متراً مربعاً من الأرض.",
-    proof: 'دليل: هيكل فولاذي مُجلفن بضمان 20 سنة، مُركَّب على السطح القائم',
+    proof: 'ضمان: هيكل فولاذي مُجلفن 20 سنة، مُركَّب على السطح القائم',
     financier: 'صفر عقار إضافي مُجمَّد — السطح القائم يموّل الهيكل',
     technique: 'هيكل فولاذي مُجلفن بضمان 20 سنة · لا خسارة لمساحة أرضية',
   },
   {
     n: '03', title: 'تجارة / فندقة',
     body: "تكييف بعد الظهر، مغسلة في الصباح، مضخّات مسبح بلا انقطاع: منحنى المتجر أو الفندق يعانق منحنى الشمس، ساعة بساعة. تأتي الطاقة الشمسية لتسقّف بنداً يتسلّق كل موسم.",
-    proof: 'دليل: تسديد في 3 إلى 5 سنوات، نفس منطق الحمولة الصناعي',
+    proof: '',
     financier: 'يُسقّف بند تكاليف يتصاعد كل موسم سياحي',
     technique: 'منحنى استهلاك مُطابق لسطوع الشمس، ساعة بساعة',
   },
   {
     n: '04', title: 'مرافق جماعية',
     body: "مبنى عمومي أو عيادة لا يتحمّل الانقطاع. عاكسات هجينة مع بطاريات تُبقي المعدات الحرجة قائمة خلال هبوط الشبكة، وفي النهار تنخفض الفاتورة على باقي البناية.",
-    proof: 'دليل: عاكسات هجينة Deye/Huawei، ضمان 10 سنوات',
+    proof: 'ضمان: عاكسات هجينة Deye/Huawei، 10 سنوات',
     financier: 'يخفّض فاتورة المبنى مع تأمين استمرارية الخدمة',
     technique: 'عاكسات هجينة + بطاريات · استمرارية على المعدات الحرجة',
   },
 ];
 
-const PRIX_PAR_KWC = { bas: 8500, haut: 11000 };
-const arrondi10k = (v: number) => Math.round(v / 10000) * 10000;
-// W335 — «الاقتصاد التراكمي على 20 سنة»: مُشتقّ من الثوابت المنشورة أصلاً
-// (استثمار لكل kWc + مجال التسديد)، لا رقم جديد. المنطق: بعد بلوغ التسديد،
-// تستمر التركيبة في الإنتاج حتى ضمان الأداء لـ30 سنة؛ نُسقط على أفق 20 سنة
-// (نفس أفق الهيكل والإهلاك المحاسبي المذكور أدناه) مضاعف الاستثمار ×
-// (20 سنة / مدة التسديد) — مجرد ترتيب حجم، وليس رقم دراسة.
-const HORIZON_ANS = 20;
-const economieCumulee = (investMin: number, investMax: number, paybackMinAns: number, paybackMaxAns: number) => {
-  const bas = arrondi10k((investMin * HORIZON_ANS) / paybackMaxAns);
-  const haut = arrondi10k((investMax * HORIZON_ANS) / paybackMinAns);
-  return `${formatMAD(bas)} – ${formatMAD(haut)}`;
-};
-
-const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
-  const band = localEstimateBand(id);
-  const investMin = arrondi10k(band.kwcMin * PRIX_PAR_KWC.bas);
-  const investMax = arrondi10k(band.kwcMax * PRIX_PAR_KWC.haut);
-  return {
-    bill: id === '5000-10000' ? '5 000 – 10 000 MAD / شهر' : 'أكثر من 10 000 MAD / شهر',
-    kwc: band.kwcLabel,
-    investMin,
-    invest:
-      id === 'gt10000'
-        ? `ابتداءً من ${formatMAD(investMin)} — دراسة مخصّصة`
-        : `${formatMAD(investMin)} – ${formatMAD(investMax)}`,
-    payback: band.paybackLabel,
-    economie20ans: economieCumulee(investMin, investMax, 3, 5),
-    exemple: id === '5000-10000' ? 'مثال حقيقي: مرجع 468 — 17,04 kWc، الجديدة، أبريل 2026' : null,
-  };
-});
-
-// القاعدة ب14 (2026-07-04) — إجابة AEO قابلة للاستخراج، مُشتقّة من أول عتبة
-// مهنية أعلاه؛ لا رقم جديد.
-const proInvestFromLabel = formatMAD(proBrackets[0]?.investMin ?? 0);
-const proPaybackLabel = proBrackets[0]?.payback ?? '3–5 سنوات';
-
-// W335 — مقارنة هيكلية شراء (CAPEX) / ليزينغ (OPEX): من يملك، من يُهلك، أثر
-// اليوم الأول على الخزينة. لا سعر فائدة ولا بنك مُسمّى هنا — الخانات المُسمّاة
-// (CAM، Maghrebail…) موجودة في صفحة /financement (W258/WG11).
+// CIW401 — لا نشر لأي ثمن أو أجل تسديد في هذه الصفحة بعد الآن (ثمن 8 500-11 000
+// للـ kWc لم يكن مُسنَداً بمصدر؛ و«3 إلى 5 سنوات» كان يناقض مُقدِّر المهنيين). لن يعود
+// رقم عمومي إلا مُشتقاً من المحرّك الخادمي (D-CIQ-0). مقارنة «شراء نقدي أو عرض
+// تمويل مكتوب»: لا اسم لمنتج مالي ولا سعر فائدة ولا بنك — التفصيل في /financement.
 const capexOpex = [
   {
     critere: 'من يملك التركيبة',
     achat: 'شركتكم، ابتداءً من التشغيل',
-    leasing: 'المؤجِّر خلال مدة العقد؛ خيار الشراء في نهاية العقد حسب الصيغة',
+    financement: 'حسب ما ينص عليه العرض المكتوب الذي تتسلّمونه — اقرؤوه قبل التوقيع',
   },
   {
     critere: 'من يُسجّل الإهلاك',
-    achat: 'شركتكم، كأصل ثابت في ميزانيتها (انظر الجباية أدناه)',
-    leasing: 'المؤجِّر؛ تُسجّلون الكراء كعبء تشغيلي',
+    achat: 'شركتكم، كأصل ثابت في ميزانيتها',
+    financement: 'حسب العرض؛ خبيركم المحاسبي يؤكّد المعالجة',
   },
   {
     critere: 'أثر اليوم الأول على الخزينة',
-    achat: 'خروج فوري للخزينة (أو عند صرف القرض إن كان مموَّلاً)',
-    leasing: 'لا خروج مسبق للخزينة — كراء دوري يحل محل الفاتورة المُتجنَّبة',
+    achat: 'خروج فوري للخزينة',
+    financement: 'حسب العرض — التفاصيل في صفحة التمويل',
   },
 ];
 ---
 
 <Layout
-  title="الطاقة الشمسية الصناعية والفندقية والطبية بالمغرب — مُسدَّدة في 3 إلى 5 سنوات | Taqinor"
-  description="17,04 kWc بالجديدة، مُتابَعة بمراقبة الإنتاج في الوقت الحقيقي: تركيبات شمسية بالجهد المتوسط مُحدّدة المقاس على منحنيات حمولتك، الفائض مُقيَّم وفق القانون 82-21، من الربط بالشبكة (≤ 5 MW) إلى الترخيص."
+  title="الطاقة الشمسية الصناعية والفندقية والطبية بالمغرب | Taqinor"
+  description="تركيبات شمسية للمواقع الصناعية والفندقية والتجارية والعيادات: دراسة مُحدّدة المقاس على موقعكم، فائض مؤطَّر بالقانون 82-21، وإعداد ملف الربط أو الترخيص."
   ogSlug="professionnel"
 >
   <div class="v2">
@@ -186,9 +147,8 @@ const capexOpex = [
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">مستودع · فلاحي-صناعي · تجارة · مرافق جماعية</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-[20ch]">بند الكهرباء عندك، يمكنك قيادته بدل أن تخضع له</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          على موقع مهني، ليست الطاقة الشمسية واجهة: إنها معدّة إنتاج، تُسدَّد في <span dir="ltr" style="unicode-bidi:isolate">3</span> إلى
-          <span dir="ltr" style="unicode-bidi:isolate">5 سنوات</span>، ثم تشتغل بعدها أكثر من عشرين سنة. بالجديدة،
-          <span dir="ltr" style="unicode-bidi:isolate">17,04 kWc</span> مُتابَعة باستمرار بمراقبة الإنتاج في الوقت الحقيقي. أما تحديد المقاس، فينطلق من منحنيات
+          على موقع مهني، ليست الطاقة الشمسية واجهة: إنها معدّة إنتاج، تشتغل أكثر من عشرين سنة.
+          أما تحديد المقاس، فينطلق من منحنيات
           حمولتك — لا من قالب جاهز.
         </p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
@@ -204,11 +164,7 @@ const capexOpex = [
           </a>
         </div>
         {/* أرقام الغطاء — .lum يحمل الذهب (انضباط النحاس) */}
-        <dl class="cine-in cine-in-4 mt-10 grid max-w-2xl grid-cols-3 gap-3 border-t border-white/20 pt-6 sm:gap-6">
-          <div>
-            <dd class="fig lum text-base sm:text-4xl" dir="ltr" data-tally>3–5 سنوات</dd>
-            <dt class="tech-label mt-2 text-lune">التسديد</dt>
-          </div>
+        <dl class="cine-in cine-in-4 mt-10 grid max-w-md grid-cols-2 gap-3 border-t border-white/20 pt-6 sm:gap-6">
           <div>
             <dd class="fig lum text-base sm:text-4xl" dir="ltr" data-tally>+20 سنة</dd>
             <dt class="tech-label mt-2 text-lune">من الإنتاج</dt>
@@ -246,7 +202,7 @@ const capexOpex = [
                 <dd class="mt-0.5 text-xs leading-relaxed text-lune-soft">{s.technique}</dd>
               </div>
             </dl>
-            <p class="tech-label mt-3 text-lune-faint">{s.proof}</p>
+            {s.proof && <p class="tech-label mt-3 text-lune-faint">{s.proof}</p>}
           </div>
         ))}
       </div>
@@ -258,53 +214,23 @@ const capexOpex = [
       <div class="mx-auto max-w-4xl">
         {/* W274 — الفصل 02. "صيغتان ممكنتان" و"ما تتحقّق منه مصلحة المشتريات"
             أدناه تبقيان دون رقم: عناوين فرعية داخل نفس هذا القسم. */}
-        <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>شفافية الأسعار</p>
-        <h2 class="display v2-section-title mt-5 text-white">أي ميزانية تتوقّعها لموقع مهني</h2>
-        <p class="v2-lead mt-4 max-w-2xl font-bold text-white">
-          بالنسبة لموقع مهني، يبدأ الاستثمار من حوالي <span dir="ltr" style="unicode-bidi:isolate">{proInvestFromLabel}</span> ويُسترجع خلال
-          <span dir="ltr" style="unicode-bidi:isolate">{proPaybackLabel}</span>، للجزء المُستهلَك ذاتياً — ويعود كل kWc مركّب هناك أرخص عادةً منه في
-          السكني بفضل استمرارية سطح البناية.
-        </p>
+        <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>التمويل</p>
+        <h2 class="display v2-section-title mt-5 text-white">شراء نقدي أو عرض تمويل مكتوب</h2>
         <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
-          مجالات إرشادية لسطح مهني — <strong class="text-lune">لا تكون أبداً ثمناً نهائياً</strong>.
-          التسعير الحقيقي يتموضع على منحنيات حمولتك وعلى شروط
-          ربطك. على سطح مستودع كبير، يعود كل kWc مركّب أرخص منه في
-          السكني: كلما كان السطح متّصلاً أكثر، انخفضت التكلفة الواحدة، وبذلك يمرّ المجال
-          أدناه تحت ذاك الموجود في صفحة سكني.
+          لا يُنشر أي رقم هنا: تسعير موقع مهني يخرج من الدراسة، لا من معدّل. تُسلَّم لكم شروط التمويل
+          في عرض مكتوب، يُقرأ قبل التوقيع؛ أما المؤسسات والأسعار فتظهر في صفحة
+          <a href={L('/financement')} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">التمويل والمردودية</a> بعد التحقق منها.
         </p>
-        <div class="mt-10 border-t-2 border-brass-400/60" data-stagger>
-          {proBrackets.map((b, i) => (
-            <div class="v2-rise border-b border-white/10 py-5" style={`--v2-i:${i}`}>
-              <div class="grid gap-1.5 sm:grid-cols-[1fr_0.7fr_1.3fr_0.7fr] sm:items-baseline sm:gap-4">
-                <span class="font-display text-base font-bold text-white">{b.bill}</span>
-                <span class="fig lum text-xl sm:text-2xl" dir="ltr" data-tally>{b.kwc}</span>
-                <span class="fig text-lg text-lune sm:text-xl" dir="ltr">{b.invest}</span>
-                <span class="fig text-xl text-brass-300 sm:text-2xl" dir="ltr" data-tally>{b.payback}</span>
-              </div>
-              {/* W335 — اقتصاد تراكمي على 20 سنة، مُشتقّ من الأعمدة أعلاه (لا رقم جديد) */}
-              <p class="tech-label mt-2.5 text-lune-faint">
-                اقتصاد تراكمي على <span dir="ltr" style="unicode-bidi:isolate">20</span> سنة (تقديري): <span class="text-brass-300" dir="ltr" style="unicode-bidi:isolate">{b.economie20ans}</span>
-              </p>
-              {b.exemple && <p class="tech-label mt-1 text-lune-faint">{b.exemple}</p>}
-            </div>
-          ))}
-        </div>
 
-        {/* W335 — مقارنة هيكلية شراء (CAPEX) / ليزينغ (OPEX) — لا سعر فائدة ولا بنك مُسمّى هنا */}
-        <div class="mt-14">
-          <p class="tech-label v2-kicker rule-brass text-lune">صيغتان ممكنتان</p>
-          <h3 class="display mt-3 text-xl text-white">شراء (CAPEX) أو ليزينغ (OPEX): ما يتغيّر هيكلياً</h3>
-          <p class="v2-lead mt-3 max-w-2xl text-sm text-lune-soft">
-            الخانات المُسمّاة (بنوك، أسعار فائدة، عقود) موجودة في صفحة <a href={L('/financement')} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">التمويل والمردودية</a> بمجرد
-            التحقق منها. هنا، فقط الآلية — من يملك، من يُهلك، وأثرها على خزينتكم في اليوم الأول.
-          </p>
+        <div class="mt-10">
+          <h3 class="display text-xl text-white">شراء نقدي أو عرض تمويل مكتوب: ما يتغيّر هيكلياً</h3>
           <div class="mt-6 overflow-x-auto">
             <table class="w-full min-w-[560px] border-collapse text-sm">
               <thead>
                 <tr class="border-b-2 border-brass-400/60 text-start">
                   <th class="py-3 pe-4 font-display font-bold text-white">المعيار</th>
-                  <th class="py-3 pe-4 font-display font-bold text-white">شراء (CAPEX)</th>
-                  <th class="py-3 font-display font-bold text-white">ليزينغ (OPEX)</th>
+                  <th class="py-3 pe-4 font-display font-bold text-white">شراء نقدي</th>
+                  <th class="py-3 font-display font-bold text-white">عرض تمويل مكتوب</th>
                 </tr>
               </thead>
               <tbody data-stagger>
@@ -312,7 +238,7 @@ const capexOpex = [
                   <tr class="v2-rise border-b border-white/10" style={`--v2-i:${i}`}>
                     <td class="py-3 pe-4 font-semibold text-lune">{c.critere}</td>
                     <td class="py-3 pe-4 text-lune-soft">{c.achat}</td>
-                    <td class="py-3 text-lune-soft">{c.leasing}</td>
+                    <td class="py-3 text-lune-soft">{c.financement}</td>
                   </tr>
                 ))}
               </tbody>
@@ -331,31 +257,6 @@ const capexOpex = [
             <p class="tech-label mt-4 text-lune-faint">تأمين المسؤولية المدنية المهنية: {RC_PRO_ASSURANCE}</p>
           )}
         </div>
-      </div>
-    </section>
-
-    {/* دقّة الصنعة — صور ورش مع v3-grade */}
-    <div class="seam-soft" aria-hidden="true"></div>
-    <section class="section mx-auto max-w-6xl px-4">
-      <div class="grid gap-4 sm:grid-cols-2" data-stagger>
-        <figure class="v2-rise cine-card group relative overflow-hidden" style="--v2-i:0">
-          <Picture name="mesure-rails" alt="تخطيط وقياس بالمتر لقضبان التثبيت على سطح مهني"
-            widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 640px) 50vw, 100vw"
-            class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
-          <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-            <span class="tech-label block text-brass-300">النواصر · <span dir="ltr" style="unicode-bidi:isolate">3,72 kWc</span> · توزيع</span>
-            <span class="mt-0.5 block text-xs text-lune">كل قضيب يُخطَّط ويُقاس قبل التثبيت</span>
-          </figcaption>
-        </figure>
-        <figure class="v2-rise cine-card group relative overflow-hidden" style="--v2-i:1">
-          <Picture name="equipe-trois" alt="فريق تاكينور أمام صفّ طويل من الألواح في نهاية الورش"
-            widths={[1600, 1024, 640]} ratio={3 / 2} sizes="(min-width: 640px) 50vw, 100vw"
-            class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
-          <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-            <span class="tech-label block text-brass-300">الجديدة · <span dir="ltr" style="unicode-bidi:isolate">17,04 kWc</span></span>
-            <span class="mt-0.5 block text-xs text-lune">نهاية الورش · <span dir="ltr" style="unicode-bidi:isolate">24 × Canadian Solar 710 Wc</span> · <span dir="ltr" style="unicode-bidi:isolate">Deye 15 kW</span> ثلاثي الطور</span>
-          </figcaption>
-        </figure>
       </div>
     </section>
 
@@ -466,8 +367,25 @@ const capexOpex = [
       <ServiceWarrantyTable />
     </section>
 
-    <!-- الفصل الأخير — الغرفة البيضاء (W249: قناة واحدة، InstantEstimator) -->
-    <InstantEstimator variant="hero" />
+    <!-- الفصل الأخير (CIW401) — مدخلان إلى المسار، بلا أي رقم: المُقدِّر السكني لا مكان له هنا؛
+         ولن يعود رقم عمومي إلا مُشتقاً من المحرّك الخادمي. -->
+    <section class="section-tight bg-blanc-azur px-4 text-encre">
+      <div class="mx-auto max-w-4xl">
+        <h2 class="display text-2xl text-azur-700">ما نوع موقعكم؟</h2>
+        <div class="mt-6 grid gap-4 sm:grid-cols-2">
+          <a href={`${L('/devis/mon-toit')}?mode=industriel`} class="v2-rise border-t-2 border-brass-400 bg-blanc p-6">
+            <span class="display block text-lg text-azur-700">صناعي</span>
+            <span class="mt-2 block text-sm text-encre-soft">مصنع، ورشة، مستودع</span>
+            <span class="mt-4 inline-block border-b border-azur-600 pb-0.5 text-sm font-semibold text-azur-600">ابدأوا الدراسة <span class="inline-block rtl:-scale-x-100" aria-hidden="true">→</span></span>
+          </a>
+          <a href={`${L('/devis/mon-toit')}?mode=commercial`} class="v2-rise border-t-2 border-brass-400 bg-blanc p-6">
+            <span class="display block text-lg text-azur-700">تجاري</span>
+            <span class="mt-2 block text-sm text-encre-soft">فندق، متجر، عيادة، مدرسة</span>
+            <span class="mt-4 inline-block border-b border-azur-600 pb-0.5 text-sm font-semibold text-azur-600">ابدأوا الدراسة <span class="inline-block rtl:-scale-x-100" aria-hidden="true">→</span></span>
+          </a>
+        </div>
+      </div>
+    </section>
 
     <CtaBand
       title="سؤال حول موقعك قبل أن تلتزم؟ تحدّث مع إنسان."

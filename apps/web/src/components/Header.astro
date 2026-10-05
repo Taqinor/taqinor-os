@@ -112,8 +112,10 @@ const solutionIcons: Record<string, string> = {
 // et bascule au survol/focus de chaque lien. DATA-GATED : seuls les hrefs
 // listés ci-dessous ont une réalisation réelle à montrer (les 5 chantiers
 // publiés sont TOUS `segment: 'residentiel'` aujourd'hui — la plus grande,
-// El Jadida 17,04 kWc, sert aussi de preuve C&I sur /professionnel, verbatim
-// la même donnée). Les hrefs absents de cette table (pompage, batteries,
+// El Jadida 17,04 kWc). CIW401 : /professionnel n'a PLUS d'aperçu tant que
+// realisations.ts ne porte aucune réalisation de segment « professionnel » — une
+// villa n'est pas une preuve C&I (le menu ne rend alors rien pour ce lien, comme
+// pour les autres liens sans réalisation, W370). Les hrefs absents de cette table (pompage, batteries,
 // maintenance, régularisation) n'ont ENCORE aucune photo Taqinor publiée pour
 // ce type de chantier : la carte ne rend rien pour eux plutôt que d'inventer
 // ou de réutiliser une photo hors-sujet — jamais de placeholder.
@@ -127,13 +129,6 @@ const solutionPreview: Record<string, { photo: string; alt: string; ville: strin
     alt: bestRealisation.photos[0].alt,
     ville: bestRealisation.ville,
     // Non-null : `bestRealisation` vient du pool filtré sur kwcNum != null ci-dessus.
-    kwc: bestRealisation.kwc!,
-    production: bestRealisation.production,
-  },
-  '/professionnel': {
-    photo: bestRealisation.photos[0].name,
-    alt: bestRealisation.photos[0].alt,
-    ville: bestRealisation.ville,
     kwc: bestRealisation.kwc!,
     production: bestRealisation.production,
   },
