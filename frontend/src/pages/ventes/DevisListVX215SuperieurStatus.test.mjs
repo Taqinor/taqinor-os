@@ -36,7 +36,8 @@ test('VX215 : handleContacterSuperieur rafraîchit le statut APRÈS succès (jam
 })
 
 test('VX215 : le sondage (useVisibilityAwarePolling) est désactivé sans demande en attente', () => {
-  assert.match(SRC, /import useVisibilityAwarePolling from '..\/..\/hooks\/useVisibilityAwarePolling'/)
+  // SPL205 — le sondage vit dans devisList/useDevisEnvoi.js (un niveau de plus).
+  assert.match(SRC, /import useVisibilityAwarePolling from '(\.\.\/)+hooks\/useVisibilityAwarePolling(\.js)?'/)
   assert.match(
     SRC,
     /useVisibilityAwarePolling\(\s*\[\{ fn: \(\) => pendingSuperieurIds\.forEach\(refreshSuperieurStatus\), intervalMs: \d+ \}\],\s*\{ enabled: pendingSuperieurIds\.length > 0 \}/)
