@@ -87,6 +87,10 @@ def sept_rendus_texte(cal):
         roof_layout=cal.roof_layout, svg_planche='', styles={}, etat=etat)
     with patch_materiel():
         plan_pose = rendre_plan_pose_svg(cal, moment=MOMENT)
+        # Le plan de câblage REFUSE une conception sans chaîne publiée
+        # (CALX310) : l'affectation est celle du résultat SERVI, matériel
+        # connu — jamais une liste vide injectée.
+        plan_cablage = rendre_plan_cablage_svg(cal, moment=MOMENT)
     return {
         'planche': rendre_planche_svg(cal, moment=MOMENT),
         'plan_pose': plan_pose,
@@ -95,8 +99,7 @@ def sept_rendus_texte(cal):
         'plan_masse': rendre_plan_svg(cal, contenu=CONTENU_MASSE,
                                       moment=MOMENT),
         'note_calcul': html_de_note_calcul(note),
-        'plan_cablage': rendre_plan_cablage_svg(cal, moment=MOMENT,
-                                                affectation=[]),
+        'plan_cablage': plan_cablage,
         'presentation_compacte': html_de_presentation(presentation),
     }
 

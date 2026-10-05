@@ -35,7 +35,6 @@ from django.urls import reverse
 from apps.calepinage.services.raccordement import (
     CHAMPS_SAISIE, RaccordementInvalide, bloc_raccordement,
 )
-from apps.calepinage.tests._m0_en_attente import sans
 
 ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
                 / 'contract_samples')
@@ -43,11 +42,8 @@ RACCORDEMENT = json.loads(
     (ECHANTILLONS / 'calepinage_raccordement.json').read_text(
         encoding='utf-8'))
 
-#: ACAL9 (M0) a posé ces clés avant leur producteur : chaque tâche nommée
-#: les sert et retire son entrée.
-EN_ATTENTE = {'saisie.plafond_injection_kw': 'ACAL155',
-              'saisie.plafond_injection_justification': 'ACAL155',
-              'proposition_lead': 'ACAL157'}
+# ACAL155 (plafond d'injection) et ACAL157 (proposition du lead) servent
+# les clés posées par ACAL9 (M0) : l'échantillon est comparé TEL QUEL.
 
 #: Les cinq contrôles, dans l'ordre où le contrat les publie.
 CODES = ['elevation_tension', 'puissance_souscrite', 'regime_phases',
@@ -107,8 +103,7 @@ class FormeDuDocumentTest(SimpleTestCase):
 
         self.assertEqual(sorted(bloc['saisie']), sorted(CHAMPS_SAISIE))
         self.assertEqual(sorted(bloc['saisie']),
-                         sorted(sans(RACCORDEMENT['exemple'],
-                                     EN_ATTENTE)['saisie']))
+                         sorted(RACCORDEMENT['exemple']['saisie']))
 
     def test_les_quatre_grandeurs_calculees(self):
         bloc = bloc_raccordement(None, SAISIE, [TRONCON_AC], {})
@@ -145,7 +140,7 @@ class EtatVideTest(SimpleTestCase):
 
     def test_le_document_vide_est_celui_du_contrat(self):
         self.assertEqual(
-            self._vide(), sans(RACCORDEMENT['exemple_vide'], EN_ATTENTE),
+            self._vide(), RACCORDEMENT['exemple_vide'],
             "L'état vide servi diverge de l'échantillon committé : c'est "
             "exactement ce que le contrat CALX205 existe pour empêcher.")
 
