@@ -1,14 +1,14 @@
 /* CALX244 — le panneau « Raccordement réseau » de l'atelier.
 
    Ce qui est prouvé ici :
-     1. les SEPT champs de la saisie sont demandés, et remplis avec ce que le
+     1. les NEUF champs de la saisie sont demandés, et remplis avec ce que le
         serveur publie (exemple COMMITTÉ `calepinage_raccordement.json`,
         CALX205, relu par `node:fs` — jamais recopié à la main) ;
      2. les CINQ verdicts sont rendus PAR LEUR CODE, jamais par leur position,
         et un verdict `omis` affiche le MOTIF du serveur — jamais une pastille
         « Conforme », jamais un chiffre à la place du motif ;
      3. une valeur `null` du bloc `calcul` rend un TIRET, jamais un `0` ;
-     4. l'enregistrement poste les sept clés (un champ vidé vaut `null`) et
+     4. l'enregistrement poste les neuf clés (un champ vidé vaut `null`) et
         AFFICHE la réponse : aucun second appel de lecture n'est enchaîné ;
      5. un refus 400 pose le message SOUS le champ que le serveur NOMME, et le
         bandeau le nomme aussi (règle fondateur du 08/09/2026). */
@@ -60,7 +60,7 @@ beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('Raccordement (CALX244)', () => {
-  it('demande les SEPT champs du contrat, et rien de plus', async () => {
+  it('demande les NEUF champs du contrat, et rien de plus', async () => {
     servir(CONTRAT.exemple)
 
     rendre()
@@ -128,7 +128,7 @@ describe('Raccordement (CALX244)', () => {
     }
   })
 
-  it('poste les sept clés et affiche la réponse, sans seconde lecture', async () => {
+  it('poste les neuf clés et affiche la réponse, sans seconde lecture', async () => {
     servir(CONTRAT.exemple_vide)
     calepinageApi.calepinages.enregistrerRaccordement
       .mockResolvedValue({ data: CONTRAT.exemple_limite_saisie })
