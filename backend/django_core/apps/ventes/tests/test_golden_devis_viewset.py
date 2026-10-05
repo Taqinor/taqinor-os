@@ -97,6 +97,7 @@ PLACE = {
     'etudes': 'devis_etudes.py',  # SPL137
     'envoi': 'devis_envoi.py',  # SPL138
     'pdf': 'devis_pdf.py',  # SPL139
+    'calepinage': 'devis_calepinage.py',  # SPL140
 }
 
 DEFAUT = 'devis.py'
