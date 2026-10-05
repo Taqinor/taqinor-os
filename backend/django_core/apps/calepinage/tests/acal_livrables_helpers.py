@@ -87,8 +87,10 @@ def modifier_la_conception(pivot):
 
 def exiger_bibliotheques_pdf():
     """ACAL163/227 — saute l'essai quand WeasyPrint ou PyMuPDF manquent."""
+    import importlib
+
     try:
-        import fitz  # noqa: F401
-        import weasyprint  # noqa: F401
+        for bibliotheque in ('fitz', 'weasyprint'):
+            importlib.import_module(bibliotheque)
     except Exception:  # noqa: BLE001 - bibliothèques natives absentes
         raise unittest.SkipTest('WeasyPrint ou PyMuPDF indisponible')
