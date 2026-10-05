@@ -2,10 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Download, Plus, FileText, Check,
-  Copy, X, Search, AlertTriangle,
-  Printer,
-  LayoutList, LayoutGrid,
+  Plus, Check,
+  Copy, X, AlertTriangle,
 } from 'lucide-react'
 import {
   fetchDevis,
@@ -14,23 +12,17 @@ import {
 import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
-import importApi from '../../api/importApi'
 import {
-  Button, StatusPill, Card, EmptyState, Spinner,
-  // APX12 — le langage UNIQUE des KPI d'argent.
-  Stat,
+  Button, Card, EmptyState, Spinner,
   Skeleton, SkeletonTableRow,
-  RadioGroup, RadioGroupItem, Checkbox, Label, Input, Segmented, toast,
+  RadioGroup, RadioGroupItem, Checkbox, Label, Input, toast,
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
   Textarea,
 } from '../../ui'
-import { formatMAD } from '../../lib/format'
 // VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) filtre la liste sur les
 // membres de cette équipe — filtre client-side, aucun endpoint nouveau.
 import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
-import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
-import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { useHasPermission, useCanValiderVente, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
@@ -50,23 +42,21 @@ import PdfPreviewSheet from '../../features/ventes/PdfPreviewSheet'
 import DevisKanbanBoard from './DevisKanbanBoard'
 // APX17 — confirmation maison (VX19/L152), jamais une popup du système.
 import { useConfirmDialog } from '../../ui/confirm'
-// APX11 — l'en-tête UNIQUE de l'app (VX28) remplace l'idiome legacy.
-import { PageHeader } from '../../ui/PageHeader'
-// APX11 — identité Ventes : accent brass posé sur l'en-tête des écrans de flux.
-import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import {
-  peutEditerDevis, chantierEnCours, STATUT_DEVIS_FILTRES,
+  peutEditerDevis, chantierEnCours,
 } from '../../features/ventes/devisStatuts'
 // SPL203 — la ligne de la liste vit dans son propre fichier (move only).
 import DevisRow from './devisList/DevisRow.jsx'
-import { STATUT_DISPLAY } from './devisList/devisListConstants.js'
+import { STATUT_DISPLAY, DL_ECRAN } from './devisList/devisListConstants.js'
 // SPL204 — flux PDF et son dialogue (move only).
 import { useDevisPdf } from './devisList/useDevisPdf.js'
 import DevisPdfDialog from './devisList/DevisPdfDialog.jsx'
-import { frenchError } from './devisList/devisListHelpers.js'
+import { frenchError, useDevisListSynthese } from './devisList/devisListHelpers.js'
 // SPL205 — parcours d'envoi et ses dialogues (move only).
 import { useDevisEnvoi } from './devisList/useDevisEnvoi.js'
 import EnvoiDialogs from './devisList/EnvoiDialogs.jsx'
+// SPL206 — en-tête de page (titre, synthèse KPI, filtres, barre de lot).
+import DevisListChrome, { DevisPageHeader } from './devisList/DevisListChrome.jsx'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
@@ -99,9 +89,6 @@ function DevisTableSkeleton() {
   )
 }
 
-// WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
-const DL_ECRAN = 'ventes.devis'
-
 // ── ARC49 — Colonnes du frame `ui/datatable` en mode « ligne custom ».
 // L'écran rend chaque ligne via `renderRow` (<DevisRow>), donc ces définitions
 // ne servent qu'à décrire la grille au moteur (identité de colonnes) : aucun
@@ -123,21 +110,6 @@ const DEVIS_DT_COLUMNS = [
 // importée ici, les deux couches ne se mélangent jamais.
 // APX13 — la piste est désormais partagée avec FactureList et la liste des
 // bons de commande (`features/ventes/documentChain.js`) : UNE définition.
-
-// Filtres segmentés (statut) : « Tous » + les 5 statuts visibles.
-const STATUT_FILTERS = STATUT_DEVIS_FILTRES
-
-// Nombre de jours calendaires entre aujourd'hui et une date ISO (peut être
-// négatif). null si la date est absente/invalide.
-function daysUntil(isoDate) {
-  if (!isoDate) return null
-  const target = new Date(isoDate)
-  if (Number.isNaN(target.getTime())) return null
-  const today = new Date()
-  const a = Date.UTC(target.getFullYear(), target.getMonth(), target.getDate())
-  const b = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
-  return Math.round((a - b) / 86400000)
-}
 
 export default function DevisList() {
   // VX82 — titre d'onglet dédié (chrome navigateur vivant).
@@ -814,36 +786,8 @@ export default function DevisList() {
   // a été retirée : elle ne voyait que les devis déjà chargés dans la page, et
   // le panneau lit désormais le groupe complet servi par `getVariantes`.
 
-  // T6 — Résumé : nombre + total TTC par statut effectif (sur les devis chargés).
-  const summary = useMemo(() => {
-    const acc = {}
-    for (const key of Object.keys(STATUT_DISPLAY)) acc[key] = { count: 0, total: 0 }
-    for (const d of devis) {
-      const key = effStatutOf(d)
-      if (!acc[key]) acc[key] = { count: 0, total: 0 }
-      acc[key].count += 1
-      acc[key].total += Number(d.total_affiche ?? d.total_ttc ?? 0) || 0
-    }
-    return acc
-  }, [devis])
-
-  // T15 — Devis envoyés expirant dans ≤ 7 jours (et pas encore expirés).
-  const expiringSoon = useMemo(() => devis.filter(d => {
-    if (d.statut !== 'envoye' || d.is_expired) return false
-    const days = daysUntil(d.date_expiration)
-    return days !== null && days >= 0 && days <= 7
-  }), [devis])
-
-  // T16 — Répartition batterie sur les devis acceptés (option_acceptee).
-  const batteryInsight = useMemo(() => {
-    let avec = 0; let sans = 0
-    for (const d of devis) {
-      if (d.statut !== 'accepte') continue
-      if (d.option_acceptee === 'avec_batterie') avec += 1
-      else if (d.option_acceptee === 'sans_batterie') sans += 1
-    }
-    return { avec, sans }
-  }, [devis])
+  // SPL206 — dérivés de la synthèse (T6 / T15 / T16), déplacés avec l'en-tête.
+  const { summary, expiringSoon, batteryInsight } = useDevisListSynthese(devis, effStatutOf)
 
   const toggleSelected = (id) => setSelectedIds(prev =>
     prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -914,37 +858,14 @@ export default function DevisList() {
   // e2e `getByRole('heading')` sont inchangées) + icône et accent du module :
   // l'œil doit dire « je suis dans Ventes » sans lire le fil d'Ariane.
   const pageHeader = (
-    <PageHeader
-      style={VENTES_ACCENT_STYLE}
-      className="app-accent-rail"
-      icon={FileText}
-      title="Devis"
-      subtitle={
-        expiringSoon.length > 0
-          ? `${devis.length} devis · ${expiringSoon.length} à relancer (validité ≤ 7 jours)`
-          : `${devis.length} devis`
-      }
-      actions={(
-        <>
-          <Button size="sm" variant="outline" disabled={loading || !!error || xlsxBusy}
-                  onClick={() => {
-                    const pending = downloadBlobInGesture()
-                    setXlsxBusy(true)
-                    importApi.exportList('devis', devis.map(d => d.id))
-                      .then(r => pending.deliver(r.data, 'devis.xlsx'))
-                      .catch(() => {})
-                      .finally(() => setXlsxBusy(false))
-                  }}>
-            {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
-          </Button>
-          {/* VX80 — impression navigateur (feuille print.css : chrome masqué,
-              noir-sur-blanc, table complète). Distinct des PDF WeasyPrint. */}
-          <Button size="sm" variant="outline" onClick={() => window.print()}>
-            <Printer /> Imprimer
-          </Button>
-          <Button onClick={openNew}><Plus /> Nouveau devis</Button>
-        </>
-      )}
+    <DevisPageHeader
+      devis={devis}
+      expiringSoon={expiringSoon}
+      loading={loading}
+      error={error}
+      xlsxBusy={xlsxBusy}
+      setXlsxBusy={setXlsxBusy}
+      openNew={openNew}
     />
   )
 
@@ -999,122 +920,27 @@ export default function DevisList() {
     <div className="page">
       {pageHeader}
 
-      {/* ── T6 — Résumé par statut (nombre + total TTC des devis chargés) ──
-          APX12 — les 5 cartes étaient des `<div>` nus : elles passent au
-          langage UNIQUE des KPI d'argent (`<Stat>`, chiffres `.num`
-          tabulaires), comme le cockpit trésorerie et le rail du générateur. */}
-      {devis.length > 0 && (
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          {Object.keys(STATUT_DISPLAY).map(key => (
-            <Stat
-              key={key}
-              className="p-3 sm:p-3"
-              label={(
-                // `normal-case` : le libellé de Stat est en majuscules, la
-                // pastille de statut garde sa casse d'origine (« Brouillon »).
-                <StatusPill status={key} label={STATUT_DISPLAY[key]} className="normal-case tracking-normal" />
-              )}
-              value={summary[key]?.count ?? 0}
-              hint={formatMAD(summary[key]?.total ?? 0)}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* ── T16 — Répartition batterie sur les devis acceptés ── */}
-      {(batteryInsight.avec > 0 || batteryInsight.sans > 0) && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Devis acceptés — option choisie :{' '}
-          <span className="font-medium text-success">{batteryInsight.avec} avec batterie</span>
-          {' · '}
-          <span className="font-medium text-foreground">{batteryInsight.sans} sans batterie</span>
-        </p>
-      )}
-
-      {/* ── T15 — Rappel : devis envoyés expirant dans ≤ 7 jours ── */}
-      {expiringSoon.length > 0 && (
-        <div className="mt-3 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          <div>
-            <strong>{expiringSoon.length} devis expirant bientôt</strong> (validité ≤ 7 jours) :{' '}
-            {expiringSoon.map(d => d.reference).join(', ')}.
-          </div>
-        </div>
-      )}
-
-      {/* ── T5 — Filtre statut + recherche (référence / client) ── */}
-      {devis.length > 0 && (
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Segmented
-            options={STATUT_FILTERS}
-            value={statutFilter}
-            onChange={setStatutFilter}
-            size="sm"
-          />
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input
-              type="search"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Rechercher (référence ou client)…"
-              className="pl-8 sm:w-64"
-              aria-label="Rechercher un devis"
-            />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Button type="button" variant="link" size="sm" onClick={saveCurrentDevisView}>
-              ⭐ Enregistrer cette vue
-            </Button>
-            <ViewsManagerPopover ecran={DL_ECRAN} onApply={applyDevisView} />
-          </div>
-          {/* U7 — bascule pour réafficher les révisions remplacées (masquées
-              par défaut). N'apparaît que s'il y en a au moins une. */}
-          {supersededCount > 0 && (
-            <Button type="button" variant="link" size="sm"
-                    onClick={() => setShowSuperseded(s => !s)}>
-              {showSuperseded
-                ? `Masquer les versions remplacées (${supersededCount})`
-                : `Voir les versions remplacées (${supersededCount})`}
-            </Button>
-          )}
-          {/* APX15(b) — bascule Liste/Board, parité exacte avec celle des
-              factures (ZFAC9). Le board consomme `filteredDevis`, déjà en
-              mémoire : aucune donnée nouvelle, aucun appel réseau. */}
-          <div className="ml-auto flex items-center gap-1 rounded-md border border-border p-0.5"
-               role="group" aria-label="Mode d’affichage">
-            <Button
-              type="button" size="sm"
-              variant={viewMode === 'liste' ? 'secondary' : 'ghost'}
-              aria-pressed={viewMode === 'liste'}
-              onClick={() => setViewMode('liste')}
-            >
-              <LayoutList className="size-4" aria-hidden="true" /> Liste
-            </Button>
-            <Button
-              type="button" size="sm"
-              variant={viewMode === 'board' ? 'secondary' : 'ghost'}
-              aria-pressed={viewMode === 'board'}
-              onClick={() => setViewMode('board')}
-            >
-              <LayoutGrid className="size-4" aria-hidden="true" /> Board
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* ── T7 — Barre d'action du lot sélectionné ── */}
-      {selectedIds.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 p-2 text-sm">
-          <span className="font-medium">{selectedIds.length} devis sélectionné(s)</span>
-          <Button size="sm" onClick={openBatchPdfModal}>
-            <FileText /> Générer les PDF
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setSelectedIds([])}>
-            Effacer la sélection
-          </Button>
-        </div>
-      )}
+      {/* SPL206 — en-tête de page : synthèse, filtres, barre de lot (move only). */}
+      <DevisListChrome
+        devis={devis}
+        summary={summary}
+        batteryInsight={batteryInsight}
+        expiringSoon={expiringSoon}
+        statutFilter={statutFilter}
+        setStatutFilter={setStatutFilter}
+        query={query}
+        setQuery={setQuery}
+        saveCurrentDevisView={saveCurrentDevisView}
+        applyDevisView={applyDevisView}
+        supersededCount={supersededCount}
+        showSuperseded={showSuperseded}
+        setShowSuperseded={setShowSuperseded}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        selectedIds={selectedIds}
+        setSelectedIds={setSelectedIds}
+        openBatchPdfModal={openBatchPdfModal}
+      />
 
       {/* ── ARC49 — Modale de génération PDF (extraite en composant ; flux PDF
           inchangé, règle #4). MB4 — ResponsiveDialog → tiroir bas sur mobile. ── */}
