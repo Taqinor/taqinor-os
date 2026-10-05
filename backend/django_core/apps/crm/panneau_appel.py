@@ -32,6 +32,7 @@ from django.db import models
 
 from . import questionnaire
 from .models import Lead, RelanceEtape
+from .segment_suggere import segment_suggere
 
 logger = logging.getLogger(__name__)
 
@@ -406,6 +407,9 @@ def panneau_appel(lead, *, request=None, user=None) -> dict:
         'segment': segment,
         'segment_libelle': (lead.get_type_installation_display()
                             if segment else None),
+        # AGR406 — segment SUGGÉRÉ (lecture seule, jamais écrit) : le bandeau
+        # « Segment probable : … — à confirmer » de l'écran d'appel.
+        'segment_suggere': segment_suggere(lead),
         'touche': _touche_servie(etape),
         'script': _script_servi(etape, request=request, user=user),
         'champs_a_poser': questions_a_poser(lead),

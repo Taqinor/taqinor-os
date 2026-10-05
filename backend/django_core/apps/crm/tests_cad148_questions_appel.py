@@ -269,12 +269,12 @@ class LePanneauServiParLEndpoint(TestCase):
         corps = res.json()
         self.assertEqual(corps['lead_id'], self.lead.pk)
         # CAD155 / CAD172 — `fenetre_du_jour` et `profil_suppose` rejoignent
-        # la racine (même contrat).
+        # la racine (même contrat) ; AGR406 y ajoute `segment_suggere`.
         self.assertEqual(
             set(corps),
-            {'lead_id', 'segment', 'segment_libelle', 'touche', 'script',
-             'champs_a_poser', 'prefill', 'equipements', 'fenetre_du_jour',
-             'profil_suppose'})
+            {'lead_id', 'segment', 'segment_libelle', 'segment_suggere',
+             'touche', 'script', 'champs_a_poser', 'prefill', 'equipements',
+             'fenetre_du_jour', 'profil_suppose'})
         # La réponse déjà donnée n'est pas reposée.
         self.assertNotIn('occupation_jour', _champs(corps['champs_a_poser']))
         self.assertEqual(corps['prefill']['occupation_jour'], 'present')

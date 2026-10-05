@@ -901,6 +901,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # SEULEMENT (une requête ventes par lead — jamais sur la liste). Calculé
     # à la lecture ; le type du lead n'est JAMAIS écrit automatiquement.
     incoherence_segment = serializers.SerializerMethodField()
+    # AGR406 (contrat ``lead_pompage.json``) — segment SUGGÉRÉ depuis la
+    # première page et des mots-clés (``crm/segment_suggere.py``, pur, sans
+    # requête) : DÉTAIL SEULEMENT, jamais écrit.
+    segment_suggere = serializers.SerializerMethodField()
     # MRY5 — prochaine touche de cadence, ANNOTÉE dans le queryset
     # (``LeadViewSet.get_queryset``), jamais un SerializerMethodField : la
     # liste et le kanban affichent le badge « touche due » pour 50 cartes,
@@ -1483,6 +1487,8 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             fields.pop('indicateurs_internes', None)
             # AGR405 — `incoherence_segment` : détail seulement, même porte.
             fields.pop('incoherence_segment', None)
+            # AGR406 — `segment_suggere` : détail seulement, même porte.
+            fields.pop('segment_suggere', None)
         return fields
 
     def to_representation(self, instance):
@@ -1574,6 +1580,12 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         return incoherence_segment(
             obj.type_installation,
             devis_par_mode_pour_lead(obj.pk, obj.company))
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_segment_suggere(self, obj):
+        """AGR406 — ``null`` ou ``{valeur, raison}`` ; lecture seule."""
+        from .segment_suggere import segment_suggere
+        return segment_suggere(obj)
 
     @extend_schema_field(serializers.DictField())
     def get_entrees_pompage(self, obj):
