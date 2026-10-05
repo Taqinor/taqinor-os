@@ -828,9 +828,11 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         return _sans_cles_interdites(_json(etude))
 
     categorie = res.valeur('categorie_commerciale') if mode == 'commercial' else 'industriel'
+    # CIQ130 — la catégorie et ses réponses partent au noyau, qui en tire des
+    # éléments d'horaire déclarés (jamais des coefficients).
     rythme = {k: res.valeur(k) for k in (
         'jours_ouverts', 'plages', 'equipes', 'debut_equipe_h', 'fermetures',
-        'ramadan', 'talon')}
+        'ramadan', 'talon', 'categorie_commerciale', 'reponses_categorie')}
     jours_types, prov_charge, al_charge = courbe_declaree(
         {k: v for k, v in rythme.items() if v is not None}, conso,
         annee_reference=_aujourdhui().year - 1, archetype=categorie,

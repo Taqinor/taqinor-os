@@ -23,6 +23,7 @@ import calendar
 import datetime
 
 from apps.parametres.pvgis_profils import decalage_maroc_h
+from apps.ventes.moteur_ci.categories import elements_horaire
 from apps.ventes.moteur_ci.profils import forme_archetype
 
 HEURES = 24
@@ -321,6 +322,47 @@ def _choisir_borne(bornes, production_jours_types):
     return min(bornes, key=lambda cle: (_autoconso(bornes[cle], production_jours_types, kwc_ref), cle))
 
 
+#: CIQ130 — catégories dont l'élément d'horaire S'AJOUTE à des heures
+#: d'ouverture déjà déclarées (cuisson de nuit, garde de nuit) ; seul, il ne
+#: décrit pas la journée.
+CATEGORIES_PLAGES_ADDITIVES = frozenset({'boulangerie', 'sante'})
+
+
+def _fusionner_categorie(rythme, categorie, alertes):
+    """``(rythme fusionné, réponses non consommées)`` — la saisie gagne."""
+    plages_cat, fermetures_cat, non_consommees, alertes_cat = elements_horaire(
+        categorie, rythme.get('reponses_categorie'))
+    alertes.extend(alertes_cat)
+    if non_consommees:
+        alertes.append(_alerte(
+            'reponses_non_consommees', 'rythme.reponses_categorie',
+            'Réponses sans effet sur la courbe (aucun coefficient sourcé) : %s.'
+            % ', '.join(non_consommees), niveau='info', interne=True))
+    if not plages_cat and not fermetures_cat:
+        return rythme, non_consommees
+    rythme = dict(rythme)
+    if fermetures_cat:
+        saisies = list(rythme.get('fermetures') or [])
+        rythme['fermetures'] = saisies + [f for f in fermetures_cat if f not in saisies]
+    if plages_cat:
+        base = rythme.get('plages') or None
+        if not base:
+            equipes = _plages_equipes(rythme.get('equipes'), rythme.get('debut_equipe_h'))
+            base = {'ouvre': equipes} if equipes else None
+        if base is None and categorie in CATEGORIES_PLAGES_ADDITIVES:
+            alertes.append(_alerte(
+                'heures_jour_a_preciser', 'rythme.plages',
+                "Plage de nuit déclarée : heures d'ouverture de jour à préciser "
+                '(plage non placée).'))
+            return rythme, non_consommees
+        fusion = {k: [list(p) for p in v] for k, v in (base or {}).items()}
+        for type_jour, plages in plages_cat.items():
+            existantes = fusion.get(type_jour) or [list(p) for p in (base or {}).get('ouvre') or []]
+            fusion[type_jour] = existantes + [p for p in plages if p not in existantes]
+        rythme['plages'] = fusion
+    return rythme, non_consommees
+
+
 def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, feries=None,
                     profil_societe=None, production_jours_types=None):
     """Jours types de charge (heures GMT), provenance et alertes.
@@ -335,6 +377,10 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
     """
     rythme = rythme or {}
     alertes = []
+    # CIQ130 — les réponses de catégorie deviennent des éléments d'HORAIRE
+    # déclarés, fusionnés avec la saisie (la saisie gagne).
+    rythme, non_consommees = _fusionner_categorie(
+        rythme, rythme.get('categorie_commerciale') or archetype, alertes)
     calendrier, jours_declares, plages_declarees = _calendrier(
         rythme, annee_reference, feries, alertes)
     niveaux, repartition = _niveaux_mensuels(kwh_mensuels, calendrier, alertes)
@@ -342,6 +388,7 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
         'methode': None, 'archetype': None, 'niveau_donnees': None,
         'heures': 'GMT', 'annee_reference': annee_reference,
         'repartition': repartition, 'talon': None, 'bornes': None,
+        'reponses_non_consommees': non_consommees,
     }
     if niveaux is None:
         alertes.append(_alerte('consommation_absente', 'consommation',
