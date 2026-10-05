@@ -17,6 +17,7 @@ import * as maplibregl from 'maplibre-gl';
 import maplibreCssUrl from 'maplibre-gl/dist/maplibre-gl.css?url';
 import { isSimplePolygon, type LngLat } from '../../lib/roof';
 import { buildSatelliteStyle } from '../../lib/roofConfig';
+import type { RoofLayoutPublic } from '../../lib/roofLayoutPublic';
 import { GOLD, MOROCCO_CENTER } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
@@ -33,14 +34,9 @@ export { CAPTURE_STRINGS_FR };
  *  du webhook (<= 12 zones, contrat `lead_layout_public.json`). */
 export const MAX_PANS = 12;
 
-/** Document `roof_layout` v2 ÉMIS par la capture publique. Rien d'autre que ce que le
- *  visiteur a dessiné : ni pente, ni module, ni puissance (aucun chiffre ajouté). */
-export interface RoofLayoutPublic {
-  version: 2;
-  pin: { lat: number; lng: number } | null;
-  zones: Array<{ id: string; label: string; vertices: Array<[number, number]> }>;
-  source: 'lead';
-}
+/** Document `roof_layout` v2 ÉMIS par la capture publique — type pur dans
+ *  lib/roofLayoutPublic.ts (lu par lib/tunnel/champs.ts), réexporté ici. */
+export type { RoofLayoutPublic };
 
 /** Centroïde (moyenne des sommets) d'un pan, `{lat,lng}`. */
 export function centroidOf(pan: LngLat[]): { lat: number; lng: number } | null {

@@ -34,7 +34,7 @@
 import { billRangeFromExact } from '../billRange';
 import { MAX_CONSO_MENSUELLE_KWH } from '../estimatorPro';
 import type { LeadModeId } from '../lead';
-import type { RoofLayoutPublic } from '../../scripts/roofPro11/captureBoot';
+import type { RoofLayoutPublic } from '../roofLayoutPublic';
 
 /** Les modes du tunnel dans lesquels une question peut être posée. */
 export const MODES_TOUS: readonly LeadModeId[] = [
