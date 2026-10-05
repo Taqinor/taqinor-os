@@ -1588,15 +1588,15 @@ class TestPdfFormats4(TestPdfFormats):
 
 
 class TestQjr32DispatchModeNormalise(TestCase):
-    """QJR32 — LE DISPATCH LIT LE MODE NORMALISÉ.
+    """QJR32 — LE DISPATCH LIT LE MODE NORMALISÉ ; AGR312 — L'AGRICOLE A DE
+    NOUVEAU SON DOCUMENT COMPLET.
 
-    ``build_quote_data`` dégrade un devis agricole demandé en « full » vers le
-    format UNE PAGE (le format à options n'a pas de sens sans onduleur) et
-    publie le mode retenu dans ``data['pdf_mode']``. Les prédicats ``is_*``
-    lisaient encore la demande BRUTE : ils voyaient « full » et lançaient le
-    renderer agricole premium multi-pages sur des données bâties pour une
-    page — la dégradation annoncée par le builder était MORTE pour la
-    sélection du renderer.
+    QJR32 : les prédicats ``is_*`` lisent le ``pdf_mode`` NORMALISÉ publié par
+    ``build_quote_data`` (jamais la demande brute). AGR312 (D-AGR-2) : la
+    dégradation « full → une page » d'un devis agricole est RETIRÉE ; le
+    registre sert le marché agricole en format complet par le renderer de 3
+    pages (``agricole/renderer``), et le une-page reste servi pour
+    ``pdf_mode='onepage'`` par le moteur legacy.
     """
 
     LIGNES_POMPAGE = [
@@ -1620,42 +1620,53 @@ class TestQjr32DispatchModeNormalise(TestCase):
         self.devis.mode_installation = 'agricole'
         self.devis.save(update_fields=['mode_installation'])
 
-    def test_le_dispatch_suit_la_degradation_annoncee_par_le_builder(self):
-        """QJR236 — la dégradation reste, le renderer agricole n'existe plus.
-
-        Le builder DÉGRADE toujours la demande « full » d'un devis agricole
-        vers UNE page ; et depuis la décision DV1, AUCUNE entrée du registre ne
-        sert le marché agricole (le renderer premium multi-pages, injoignable
-        depuis QJR32, a été supprimé)."""
+    def test_full_n_est_plus_degrade_et_le_registre_sert_l_agricole(self):
+        """AGR312 — ``full`` reste ``full`` ; l'entrée ``agricole`` du
+        registre sert le format complet et PAS le une-page ; aucune autre
+        entrée ne sert un devis agricole."""
         from apps.ventes.quote_engine.builder import (
             build_quote_data, registre_renderers)
         data = build_quote_data(self.devis, {'pdf_mode': 'full'})
-        self.assertEqual(data['pdf_mode'], 'onepage')
-        self.assertNotIn('agricole',
-                         [m for m, _mod, _p in registre_renderers()])
+        self.assertEqual(data['pdf_mode'], 'full')
+        self.assertEqual(
+            build_quote_data(self.devis, {'pdf_mode': 'onepage'})['pdf_mode'],
+            'onepage')
+        marches = [m for m, _mod, _p in registre_renderers()]
+        self.assertIn('agricole', marches)
         for marche, _module, sert in registre_renderers():
             with self.subTest(marche=marche):
-                self.assertFalse(sert(self.devis, {'pdf_mode': 'full'}))
-                self.assertFalse(
-                    sert(self.devis, {'pdf_mode': data['pdf_mode']}))
+                self.assertEqual(sert(self.devis, {'pdf_mode': 'full'}),
+                                 marche == 'agricole')
+                self.assertFalse(sert(self.devis, {'pdf_mode': 'onepage'}))
 
     @patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket')
     @patch('apps.ventes.utils.pdf._upload_pdf')
-    def test_aucun_renderer_premium_et_le_pdf_sort_quand_meme(self, up, _b):
-        """Le repli vers le moteur legacy sert le document — et il est NOMMÉ
-        dans le journal (QJR235), jamais silencieux."""
+    def test_generate_premium_devis_pdf_full_trois_pages_onepage_une(
+            self, up, _b):
+        """Le chemin unique (``generer-pdf``, Celery, ``/proposal`` —
+        règle #4) rend le document agricole complet en 3 pages, et la
+        version courte en 1 page."""
+        import fitz
         from apps.ventes.quote_engine import generate_premium_devis_pdf
-        from apps.ventes.quote_engine import builder as B
 
-        with self.assertLogs(B.logger, level='INFO') as journal:
-            generate_premium_devis_pdf(self.devis.id,
-                                       pdf_options={'pdf_mode': 'full'})
-        up.assert_called_once()
-        self.assertEqual(up.call_args[0][0][:4], b'%PDF')
-        self.assertIn('agricole', '\n'.join(journal.output))
+        for options, pages_attendues in (({'pdf_mode': 'full'}, 3),
+                                         ({'pdf_mode': 'onepage'}, 1)):
+            with self.subTest(options=options):
+                up.reset_mock()
+                generate_premium_devis_pdf(self.devis.id,
+                                           pdf_options=options)
+                up.assert_called_once()
+                pdf_bytes = up.call_args[0][0]
+                self.assertEqual(pdf_bytes[:4], b'%PDF')
+                doc = fitz.open(stream=pdf_bytes, filetype='pdf')
+                try:
+                    self.assertEqual(len(doc), pages_attendues)
+                finally:
+                    doc.close()
 
-    def test_le_compte_de_pages_est_celui_que_la_degradation_annonce(self):
-        """Une page — exactement ce que le builder a construit."""
+    def test_le_legacy_ne_rend_jamais_l_agricole_en_format_a_options(self):
+        """Repli NOMMÉ (renderer agricole en refus) : le legacy rend la
+        version courte d'une page, même pour une donnée bâtie en ``full``."""
         from weasyprint import HTML
         from apps.ventes.quote_engine.builder import build_quote_data
         from apps.ventes.quote_engine import generate_devis_premium as G

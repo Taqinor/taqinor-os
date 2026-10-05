@@ -1556,11 +1556,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # CIQ301 — commercial / industriel : leurs économies ne sortent JAMAIS du
     # modèle résidentiel/BT (``calculate_savings_roi``) ni d'une étude JS.
     _mode_ci = mode.strip().lower() in ("commercial", "industriel")
-    # Mode agricole : le format à options n'a pas de sens (pas d'onduleur) —
-    # la demande « premium » dégrade proprement vers le format une page.
+    # AGR312 — plus de dégradation « full → une page » en agricole : le
+    # document complet est le renderer agricole de 3 pages (registre, plus
+    # bas) ; le une-page reste servi pour ``pdf_mode='onepage'``.
+    # ``include_etude`` / ``include_calepinage`` n'y ont aucun effet : le
+    # document agricole intègre son étude.
     pdf_mode = opts['pdf_mode']
-    if mode == "agricole" and pdf_mode == "full":
-        pdf_mode = "onepage"
+    _mode_agricole = mode.strip().lower() == "agricole"
 
     # QJR400 — LA RÈGLE DE SERVABILITÉ VIENT DU NOYAU (``utils.options``), elle
     # n'est plus recalculée ici. QJR-OFFGRID — l'option « avec » se sert d'un
@@ -1578,9 +1580,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # batterie qui manque. Une seule présentation, honnêtement étiquetée
         # « Sans batterie ».
         sans_ok, avec_ok = True, False
-    if not sans_ok and not avec_ok and pdf_mode == "full":
+    if (not sans_ok and not avec_ok and pdf_mode == "full"
+            and not _mode_agricole):
         # RÈGLE DURE : une option ne se rend JAMAIS sans onduleur. Un devis
         # sans aucun onduleur ne peut pas produire le document à options.
+        # AGR312 — le pompage n'a pas d'options à onduleur : son document
+        # complet (renderer agricole) est une liste unique, comme le une-page.
         raise ValueError(
             f"Devis {devis.reference} : aucune option ne contient d'onduleur — "
             "génération du PDF à options refusée (règle de sécurité).")
@@ -4351,8 +4356,8 @@ def _filigrane_standard_texte(devis):
 #
 # L'ORDRE EST SIGNIFIANT et repris tel quel : industriel (QX45), puis
 # commercial (QX46), puis résidentiel — le premier dont le prédicat accepte le
-# devis rend le document. (L'entrée agricole a été supprimée par QJR236 /
-# décision DV1 : elle était injoignable depuis QJR32.)
+# devis rend le document. (L'entrée agricole, supprimée par QJR236 / DV1
+# parce qu'injoignable, est REVENUE avec le renderer de 3 pages — AGR312.)
 #
 # LES IMPORTS SONT PARESSEUX, comme avant : chaque paquet de renderer importe
 # des dépendances lourdes, et ce module est chargé au démarrage.
@@ -4360,13 +4365,13 @@ def _filigrane_standard_texte(devis):
 def registre_renderers():
     """``[(marché, module renderer, prédicat)]`` — LA liste, dans l'ordre.
 
-    QJR236 (décision fondateur DV1) — L'ENTRÉE ``agricole`` A ÉTÉ RETIRÉE avec
-    son renderer. Depuis QJR32 (le dispatch lit le ``pdf_mode`` NORMALISÉ) elle
-    était INJOIGNABLE : ``build_quote_data`` dégrade par conception toute
-    demande agricole « full » en une page. Le devis agricole passe donc par le
-    repli NOMMÉ ci-dessous (``_journaliser_repli``) vers le moteur legacy, qui
-    le sert seul depuis juin — et le document rendu est byte-identique.
+    AGR312 (D-AGR-2) — L'ENTRÉE ``agricole`` EST DE RETOUR : le renderer de 3
+    pages (``agricole/renderer``) sert un devis agricole au format complet ;
+    ``build_quote_data`` ne dégrade plus la demande « full ». Le une-page
+    (``pdf_mode='onepage'``) reste au moteur legacy, et un refus du renderer
+    (``Unsupported``) passe par le repli NOMMÉ ``_journaliser_repli``.
     """
+    from .agricole import renderer as agricole
     from .commercial import renderer as commercial
     from .industriel import renderer as industriel
     from .residential import renderer as residential
@@ -4374,6 +4379,7 @@ def registre_renderers():
     return (
         ('industriel', industriel, industriel.is_industrial),
         ('commercial', commercial, commercial.is_commercial),
+        ('agricole', agricole, agricole.is_agricole),
         ('residentiel', residential, residential.is_residential),
     )
 

@@ -1031,12 +1031,11 @@ def _fdec_fr(v, decimales=2):
 def _renvoi_detail_complet():
     """AGR302 — où trouver les lignes retirées d'une table une-page tronquée.
 
-    Le pompage n'a PAS de devis multi-pages (QJR236) : le renvoi pointe vers
-    la proposition en ligne (QR de l'en-tête). AGR312 le fera renvoyer au
-    document agricole complet quand il sera branché.
+    AGR312 — le pompage a de nouveau son document complet : le renvoi pointe
+    vers le « document complet (3 pages) » du renderer agricole.
     """
     if (globals().get("MODE_INSTALLATION") or "").strip().lower() == "agricole":
-        return "votre proposition en ligne (QR)"
+        return "le document complet (3 pages)"
     return "le devis multi-pages"
 
 
@@ -4864,6 +4863,13 @@ def render_html_for(data: dict) -> str:
     concurrent doit prendre ``_RENDER_LOCK`` lui-même**, ou passer par
     ``generate_premium_pdf``.
     """
+    # AGR312 — le moteur legacy ne sert JAMAIS un devis agricole en format à
+    # options (pas d'onduleur) : le document complet est le renderer agricole
+    # de 3 pages (``agricole/renderer``) ; s'il refuse un devis (repli NOMMÉ
+    # du builder), le legacy rend la version courte d'une page.
+    if ((data.get("mode_installation") or "").strip().lower() == "agricole"
+            and data.get("pdf_mode", "full") != "onepage"):
+        data = {**data, "pdf_mode": "onepage"}
     apply_quote_data(data)
     if data.get("pdf_mode", "full") == "onepage":
         # QJR124 — plus de re-filtrage ici : ``builder`` filtre les accessoires
