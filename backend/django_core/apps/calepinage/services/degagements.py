@@ -446,3 +446,188 @@ def _largeur_allee_circulation(section, *, pays):
     return (None, 'Allée de circulation (%s) : non réglée — aucune largeur '
                   "n'est saisie pour ce pays (réglage manquant : %s)."
                   % (code, reglage))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CIQ136 — contraintes de site saisies PAR PROJET (assureur, incendie)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``Calepinage.contraintes_site`` : {assureur, degagements_m {lanterneau,
+# exutoire, joint_dilatation, rive}, ilot_max_m {longueur, largeur},
+# allee_ilot_m, source {document, date, reference}}. VIDE par défaut : le
+# calepinage d'aujourd'hui, au centimètre. Le préréglage FM Global se charge
+# SEULEMENT quand l'assureur déclaré est FM, jamais par défaut ; APSAD et les
+# autres : saisie avec leur source, aucune valeur fournie. Une valeur sans
+# source est refusée (règle du registre CAL45/CAL71). Dégagement effectif
+# d'un obstacle = max(atelier/société, projet), publié avec sa règle.
+
+ASSUREURS = ('aucun', 'fm_global', 'apsad', 'autre')
+CLES_DEGAGEMENT_PROJET = ('lanterneau', 'exutoire', 'joint_dilatation',
+                          'rive')
+
+#: FM Global Property Loss Prevention Data Sheet 1-15 « Roof-Mounted Solar
+#: Photovoltaic Panels » (avril 2026), §2.1.1.4 B-E (relevé W5-12) : champs
+#: ≤ 46 × 46 m, allées de 1,2 m entre champs, 1,2 m des joints de dilatation,
+#: 1,8 m des lanterneaux. Chaque valeur porte la section qui la fonde.
+DOCUMENT_FM = ('FM Global Data Sheet 1-15 « Roof-Mounted Solar Photovoltaic '
+               'Panels » (avril 2026)')
+PRESET_FM_DS_1_15 = {
+    'assureur': 'fm_global',
+    'degagements_m': {'lanterneau': 1.8, 'joint_dilatation': 1.2},
+    'ilot_max_m': {'longueur': 46.0, 'largeur': 46.0},
+    'allee_ilot_m': 1.2,
+    'source': {'document': DOCUMENT_FM, 'date': '2026-04',
+               'reference': '§2.1.1.4 B-E'},
+    'regles': {
+        'lanterneau': 'DS 1-15 §2.1.1.4 — 1,8 m des lanterneaux',
+        'joint_dilatation': 'DS 1-15 §2.1.1.4 — 1,2 m des joints de '
+                            'dilatation',
+        'ilot_max_m': 'DS 1-15 §2.1.1.4 — champs ≤ 46 × 46 m',
+        'allee_ilot_m': 'DS 1-15 §2.1.1.4 — allées de 1,2 m entre champs',
+    },
+}
+
+
+class ContraintesSiteInvalides(ValueError):
+    """Refus FR nommant le champ fautif (400 côté sérialiseur)."""
+
+    def __init__(self, champ, message):
+        super().__init__(message)
+        self.champ = champ
+        self.message = message
+
+
+def _metre(valeur, champ):
+    if valeur in (None, ''):
+        return None
+    if isinstance(valeur, bool):
+        raise ContraintesSiteInvalides(champ, f'{champ} doit être un nombre.')
+    try:
+        x = float(valeur)
+    except (TypeError, ValueError):
+        raise ContraintesSiteInvalides(champ, f'{champ} doit être un nombre.')
+    if x < 0 or x != x:
+        raise ContraintesSiteInvalides(champ, f'{champ} doit être positif.')
+    return x
+
+
+def normaliser_contraintes_site(valeur):
+    """La forme normalisée de ``contraintes_site`` ({} = aucune contrainte).
+
+    Raises:
+        ContraintesSiteInvalides: clé ou valeur invalide, ou valeur saisie
+            sans source.
+    """
+    if valeur in (None, '', {}):
+        return {}
+    if not isinstance(valeur, dict):
+        raise ContraintesSiteInvalides('contraintes_site',
+                                       'contraintes_site doit être un objet.')
+    permises = {'assureur', 'degagements_m', 'ilot_max_m', 'allee_ilot_m',
+                'source', 'regles'}
+    inconnues = set(valeur) - permises
+    if inconnues:
+        raise ContraintesSiteInvalides(
+            'contraintes_site', 'Clé(s) inconnue(s) : %s.'
+            % ', '.join(sorted(inconnues)))
+    assureur = str(valeur.get('assureur') or 'aucun').strip()
+    if assureur not in ASSUREURS:
+        raise ContraintesSiteInvalides(
+            'contraintes_site.assureur',
+            'Assureur inconnu « %s » (attendu : %s).'
+            % (assureur, ', '.join(ASSUREURS)))
+    brut_deg = valeur.get('degagements_m') or {}
+    brut_ilot = valeur.get('ilot_max_m') or {}
+    if not isinstance(brut_deg, dict) or not isinstance(brut_ilot, dict):
+        raise ContraintesSiteInvalides(
+            'contraintes_site', 'degagements_m et ilot_max_m sont des objets.')
+    inconnues = set(brut_deg) - set(CLES_DEGAGEMENT_PROJET)
+    if inconnues:
+        raise ContraintesSiteInvalides(
+            'contraintes_site.degagements_m',
+            'Dégagement inconnu : %s.' % ', '.join(sorted(inconnues)))
+    degagements = {cle: _metre(brut_deg.get(cle),
+                               f'contraintes_site.degagements_m.{cle}')
+                   for cle in CLES_DEGAGEMENT_PROJET}
+    degagements = {k: v for k, v in degagements.items() if v is not None}
+    ilot = {cle: _metre(brut_ilot.get(cle),
+                        f'contraintes_site.ilot_max_m.{cle}')
+            for cle in ('longueur', 'largeur')}
+    if (ilot['longueur'] is None) != (ilot['largeur'] is None):
+        raise ContraintesSiteInvalides(
+            'contraintes_site.ilot_max_m',
+            "L'îlot maximal exige sa longueur ET sa largeur.")
+    if ilot['longueur'] is not None and min(ilot.values()) <= 0:
+        raise ContraintesSiteInvalides(
+            'contraintes_site.ilot_max_m',
+            "Les dimensions de l'îlot doivent être strictement positives.")
+    allee = _metre(valeur.get('allee_ilot_m'), 'contraintes_site.allee_ilot_m')
+    source = valeur.get('source') or {}
+    if not isinstance(source, dict):
+        raise ContraintesSiteInvalides('contraintes_site.source',
+                                       'source doit être un objet.')
+    source = {'document': str(source.get('document') or '').strip(),
+              'date': (str(source['date']) if source.get('date') else None),
+              'reference': str(source.get('reference') or '').strip()}
+    a_des_valeurs = (bool(degagements) or ilot['longueur'] is not None
+                     or allee is not None)
+    if assureur == 'fm_global' and not a_des_valeurs:
+        # Préréglage chargé SEULEMENT pour un projet assuré FM.
+        return {**PRESET_FM_DS_1_15,
+                'degagements_m': dict(PRESET_FM_DS_1_15['degagements_m']),
+                'ilot_max_m': dict(PRESET_FM_DS_1_15['ilot_max_m']),
+                'source': dict(PRESET_FM_DS_1_15['source']),
+                'regles': dict(PRESET_FM_DS_1_15['regles'])}
+    if a_des_valeurs and not source['document']:
+        raise ContraintesSiteInvalides(
+            'contraintes_site.source',
+            'Une contrainte de site exige sa source (document, date, '
+            'référence) — jamais une valeur sans source.')
+    if not a_des_valeurs and assureur == 'aucun':
+        return {}
+    sortie = {'assureur': assureur, 'degagements_m': degagements,
+              'ilot_max_m': (ilot if ilot['longueur'] is not None else None),
+              'allee_ilot_m': allee, 'source': source}
+    regles = valeur.get('regles')
+    if isinstance(regles, dict):
+        sortie['regles'] = {str(k): str(v) for k, v in regles.items()}
+    return sortie
+
+
+def _citation(contraintes, cle):
+    source = (contraintes or {}).get('source') or {}
+    regle = ((contraintes or {}).get('regles') or {}).get(cle)
+    return regle or ' '.join(x for x in (source.get('document'),
+                                         source.get('reference')) if x)
+
+
+def degagement_projet(type_obstacle, contraintes=None):
+    """``(valeur ou None, phrase)`` — le dégagement EXIGÉ par le projet."""
+    deg = ((contraintes or {}).get('degagements_m') or {})
+    nom = str(type_obstacle or '')
+    valeur = deg.get(nom)
+    if valeur is None:
+        return (None, '')
+    return (float(valeur), 'contrainte du projet : %.2f m (%s)'
+            % (float(valeur), _citation(contraintes, nom)))
+
+
+def degagement_effectif(type_obstacle, section=None, contraintes=None):
+    """``(valeur, phrase)`` = max(atelier/société, projet), avec sa règle.
+
+    Sans contrainte de projet : ``degagement_du_type`` à l'identique."""
+    valeur, phrase = degagement_du_type(type_obstacle, section)
+    projet, phrase_projet = degagement_projet(type_obstacle, contraintes)
+    if projet is not None and projet > valeur:
+        return (projet, '%s — retenu au lieu de %s' % (phrase_projet, phrase))
+    return (valeur, phrase)
+
+
+def retrait_effectif(section=None, contraintes=None):
+    """Retrait de rive = max(société/atelier, projet), avec sa règle."""
+    valeur, phrase = retrait_perimetre(section)
+    projet, phrase_projet = degagement_projet('rive', contraintes)
+    if projet is not None and projet > valeur:
+        return (projet, 'Retrait de rive : %s — retenu au lieu de %s'
+                % (phrase_projet, phrase))
+    return (valeur, phrase)

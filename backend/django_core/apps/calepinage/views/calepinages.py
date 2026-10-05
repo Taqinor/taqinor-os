@@ -904,6 +904,9 @@ def detail_calepinage(calepinage, request=None):
         'image': _image(calepinage),
         'contexte_geographique': cal_selectors.contexte_geographique(
             calepinage),
+        # CIQ136 — contraintes de site du PROJET ({} = aucune).
+        'contraintes_site': getattr(calepinage, 'contraintes_site', None)
+        or {},
         'permissions': _permissions(calepinage, request),
     }
 

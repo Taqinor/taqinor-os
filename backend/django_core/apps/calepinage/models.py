@@ -81,6 +81,13 @@ class Calepinage(TenantModel):
     #: Document de conception (schéma v2, CAL232) — stocké tel quel.
     roof_layout = models.JSONField('Conception (roof_layout)',
                                    null=True, blank=True)
+    #: CIQ136 — contraintes de site saisies PAR PROJET (assureur, sécurité
+    #: incendie) : ``{assureur, degagements_m, ilot_max_m, allee_ilot_m,
+    #: source}``. VIDE par défaut (= calepinage d'aujourd'hui) ; normalisées
+    #: par ``services.degagements.normaliser_contraintes_site`` (valeur sans
+    #: source refusée, préréglage FM seulement pour un projet assuré FM).
+    contraintes_site = models.JSONField('Contraintes de site', default=dict,
+                                        blank=True)
     #: SHA-256 de la géométrie, calculé par ``apps.ventes.services.layout_hash``
     #: (jamais recodé ici). Vide tant qu'aucun layout n'a été enregistré.
     layout_hash = models.CharField('Empreinte du layout', max_length=64,

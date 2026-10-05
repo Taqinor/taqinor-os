@@ -94,6 +94,10 @@ TYPES_MOTEUR = {
     'cheminee': 'SOUCHE',
     'edicule': 'EDICULE',
     'antenne': 'ANTENNE',
+    # CIQ136 — obstacles visés par les contraintes de site (DS 1-15).
+    'lanterneau': 'LANTERNEAU',
+    'exutoire': 'LANTERNEAU',
+    'joint_dilatation': 'JOINT_DILATATION',
 }
 
 __all__ = [
@@ -316,7 +320,7 @@ def _provenance(brut, champ):
             + ', MESURE, MESURE_DOUTEUX.', f'{champ}.provenance')
 
 
-def _degagement(brut, provenance, section):
+def _degagement(brut, provenance, section, contraintes=None):
     """``(dégagement, phrase)`` — la règle société, RELEVÉE au plancher de provenance.
 
     CAL71 : la valeur et sa justification viennent de ``services/degagements``
@@ -332,9 +336,11 @@ def _degagement(brut, provenance, section):
     """
     from core.calepinage.obstacles import degagement_par_provenance
 
-    from .degagements import degagement_du_type
+    from .degagements import degagement_effectif
 
-    regle, phrase = degagement_du_type(brut.get('type'), section)
+    # CIQ136 — max(atelier/société, contrainte du PROJET), règle publiée.
+    regle, phrase = degagement_effectif(brut.get('type'), section,
+                                        contraintes)
     plancher = degagement_par_provenance(provenance)
     if plancher > regle:
         return (plancher,
@@ -343,7 +349,7 @@ def _degagement(brut, provenance, section):
     return (regle, phrase)
 
 
-def _obstacles(pans, vers_repere, section=None):
+def _obstacles(pans, vers_repere, section=None, contraintes=None):
     from core.calepinage.types import Obstacle, TypeObstacle
 
     sortie = []
@@ -382,7 +388,8 @@ def _obstacles(pans, vers_repere, section=None):
                     "« widthM » (est-ouest) sont attendus, strictement "
                     "positifs.", f'{champ}.lengthM')
             provenance = _provenance(brut, champ)
-            degagement, regle = _degagement(brut, provenance, section)
+            degagement, regle = _degagement(brut, provenance, section,
+                                            contraintes)
             x, y = vers_repere((lon, lat))
             demi_x, demi_y = vers_repere.demi(est_ouest / 2.0,
                                               nord_sud / 2.0)
@@ -552,7 +559,7 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
                          orientation='PORTRAIT', modules_par_table=1,
                          faitage_m=0.0, code_kit='PANNEAU',
                          allee_m=None, retrait_m=None, pas_recherche_m=0.01,
-                         regles_gabarit=None):
+                         regles_gabarit=None, contraintes_site=None):
     """Traduit un document ``roof_layout`` v2 en entrée du moteur pur.
 
     Args:
@@ -600,14 +607,16 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
     vers_repere = _VersRepere(projeteur_local(origine), axe)
 
     from .degagements import (
-        SECTION as SECTION_DEGAGEMENTS, allee_technique, retrait_perimetre,
+        SECTION as SECTION_DEGAGEMENTS, allee_technique, retrait_effectif,
     )
 
     sections = parametres or {}
     degagements = sections.get(SECTION_DEGAGEMENTS) or {}
     # CAL71 — le retrait de rive de la société, sinon celui de l'atelier
     # annoncé « non sourcé ». La phrase de règle voyage avec l'entrée.
-    retrait, regle_retrait = retrait_perimetre(degagements)
+    # CIQ136 — la rive du PROJET (contraintes de site) quand elle est plus
+    # exigeante ; sans contrainte, la règle d'aujourd'hui à l'identique.
+    retrait, regle_retrait = retrait_effectif(degagements, contraintes_site)
     force = _nombre(retrait_m) if retrait_m is not None else None
     if force is not None:
         retrait, regle_retrait = force, (
@@ -648,7 +657,7 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
         # retraduire ici produirait deux formulations de la même règle.
         raise TraductionRefusee(str(refus), refus.champ)
 
-    obstacles = _obstacles(pans, vers_repere, degagements)
+    obstacles = _obstacles(pans, vers_repere, degagements, contraintes_site)
     parametres_moteur = Parametres(
         kits=(kit,), rives=rives, axe_rangee=axe,
         pas_recherche_m=pas_recherche_m,
