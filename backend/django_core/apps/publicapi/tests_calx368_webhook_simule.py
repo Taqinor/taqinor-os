@@ -282,19 +282,20 @@ class EmetteurTests(SimpleTestCase):
         envoi.assert_not_called()
 
     def test_une_simulation_enregistree_annonce_une_fois(self):
-        from apps.calepinage.services import simulation
+        from apps.calepinage.services import resultat, simulation
         from apps.calepinage.tests.test_calx5_simulation import (
             _Calepinage as PivotSansBase, _simuler,
         )
 
-        # Le pivot du harnais CALX5, mais ENREGISTRÉ (``pk``) : la fusion est
-        # interceptée (aucune base), la recherche d'un fichier météo aussi.
+        # Le pivot du harnais CALX5, mais ENREGISTRÉ (``pk``) : l'écriture par
+        # l'écrivain unique (ACAL57, ``modifier_resultat``) est interceptée
+        # (aucune base), la recherche d'un fichier météo aussi.
         pivot = PivotSansBase()
         pivot.pk = 41
         pivot.company_id = 7
         with mock.patch.object(simulation, '_serie_meteo_deposee',
                                return_value=None), \
-                mock.patch.object(simulation, '_fusionner') as fusion, \
+                mock.patch.object(resultat, 'modifier_resultat') as fusion, \
                 mock.patch.object(events.calepinage_simule, 'send') as envoi:
             rendu = _simuler(pivot, enregistrer=True)
         self.assertFalse(rendu['deja_calcule'])

@@ -133,21 +133,9 @@ class InventaireVideTest(SansBaseMixin, unittest.TestCase):
     def test_correspond_mot_pour_mot_a_l_exemple_vide_committe(self):
         servi = inventaire_des_documents(FauxVide())
         attendu = copy.deepcopy(CONTRAT['exemple_vide'])
-        # ACAL14 (contrat v2) a RÉÉCRIT deux cartes avant leur producteur :
-        # ACAL220 les sert (fin de chantier en POST sans « .pdf », diagramme
-        # des pertes en SVG serveur) et retire ce tableau.
-        en_attente_acal220 = {
-            'dossier_fin_chantier': {
-                'endpoint': '/api/django/calepinage/calepinages/2/'
-                            'dossier-fin-chantier.pdf/'},
-            'diagramme_pertes': {
-                'format': 'png',
-                'endpoint': '/api/django/calepinage/calepinages/2/'
-                            'documents/',
-                'produit_par': 'navigateur'},
-        }
-        for document in attendu['documents']:
-            document.update(en_attente_acal220.get(document['code'], {}))
+        # ACAL220 sert les deux cartes réécrites par ACAL14 (contrat v2 :
+        # fin de chantier en POST sans « .pdf », diagramme des pertes en SVG
+        # serveur) : l'exemple vide committé est servi tel quel.
         self.assertEqual(servi['calepinage'], attendu['calepinage'])
         self.assertEqual(servi['layout_hash'], attendu['layout_hash'])
         self.assertEqual(servi['version_moteur'], attendu['version_moteur'])
@@ -212,9 +200,9 @@ class ChampReellementLeveTest(unittest.TestCase):
 
     def setUp(self):
         SansBaseMixin.setUp(self)
-        materiel = patch_materiel()
-        materiel.start()
-        self.addCleanup(materiel.stop)
+        self.materiel = patch_materiel()
+        self.materiel.start()
+        self.addCleanup(self.materiel.stop)
         self.servi = inventaire_des_documents(FauxResultatCoute())
         self.par_code = {d['code']: d for d in self.servi['documents']}
 
@@ -235,10 +223,23 @@ class ChampReellementLeveTest(unittest.TestCase):
         # ACAL219 - le rendu ne lit jamais ``troncons`` : seul le chainage
         # servi conditionne la carte (``test_acal_inventaire_vrai`` prouve
         # le cas disponible sur la chaine reelle).
-        document = self.par_code['plan_cablage']
+        # Sans chainage = AUCUN matériel désigné : la même conception lue
+        # SANS le matériel injecté du ``setUp`` ne publie aucun chaînage (le
+        # cas chaîné, lui, rend la carte disponible — voir
+        # ``test_plan_cablage_disponible_avec_le_materiel``).
+        self.materiel.stop()
+        servi = inventaire_des_documents(FauxResultatCoute())
+        document = {d['code']: d for d in servi['documents']}['plan_cablage']
         self.assertFalse(document['disponible'])
         champs = {ligne['champ'] for ligne in document['manque']}
         self.assertEqual(champs, {'electrique.chainage'})
+
+    def test_plan_cablage_disponible_avec_le_materiel(self):
+        # ACAL219 — module et onduleur connus, la conception se chaîne : la
+        # carte est disponible sans aucun manque.
+        document = self.par_code['plan_cablage']
+        self.assertTrue(document['disponible'])
+        self.assertEqual(document['manque'], [])
 
     def test_les_pieces_sans_service_dedie_restent_disponibles(self):
         """La BASE (conception+résultat) suffit pour ``export_projet_json``

@@ -103,6 +103,8 @@ class Regime(BaseApiCalepinage):
         self.assertIn('TN · triphasé', self._svg())
         lu = self.api.get(_url(self.calepinage.pk, 'entree-electrique'))
         self.assertEqual(lu.data['entree']['regime'], 'TN')
+        # Le POST a écrit en base : l'instance en mémoire est relue.
+        self.calepinage.refresh_from_db()
         codes = [motif['code']
                  for motif in verdict_publiable(self.calepinage)['motifs']]
         self.assertNotIn(CODE_REGIME_NON_PRECISE, codes)

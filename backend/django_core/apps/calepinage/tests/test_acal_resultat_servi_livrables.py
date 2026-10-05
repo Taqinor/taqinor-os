@@ -110,6 +110,11 @@ class NoteDeCalculSurCalepinageReelTest(SimpleTestCase):
         self.assertIsNone(sorties['note_calcul_pdf']['motif_indisponible'])
 
 
+#: La TABLE des productions mensuelles (la feuille de style embarquée nomme
+#: toujours la classe ``presentation-mensuelle`` : seul l'élément compte).
+TABLE_MENSUELLE = '<table class="presentation-mensuelle">'
+
+
 class PresentationCompacteSurResultatServiTest(SimpleTestCase):
     """ACAL215 — la page 2 lit la production SERVIE, jamais la colonne brute."""
 
@@ -120,7 +125,7 @@ class PresentationCompacteSurResultatServiTest(SimpleTestCase):
             servi, _stocke = _resultat_servi_et_stocke(perime)
             html = html_de_presentation_compacte(perime)
         # On compare le TEXTE produit (jamais une valeur numérique).
-        self.assertNotIn('presentation-mensuelle', html)
+        self.assertNotIn(TABLE_MENSUELLE, html)
         self.assertNotIn('Production P50 (kWh)', html)
         self.assertIn(escape(servi['motif'][:30]), html)
 
@@ -128,7 +133,7 @@ class PresentationCompacteSurResultatServiTest(SimpleTestCase):
         jamais = PivotSansBase(copy.deepcopy(LAYOUT_SIMULABLE))
         with patch_materiel():
             html = html_de_presentation_compacte(jamais)
-        self.assertNotIn('presentation-mensuelle', html)
+        self.assertNotIn(TABLE_MENSUELLE, html)
         # Le motif est échappé par la mise en page : on compare son début.
         self.assertIn(MOTIF_SANS_RESULTAT[:30], html)
 
@@ -138,7 +143,7 @@ class PresentationCompacteSurResultatServiTest(SimpleTestCase):
         with patch_materiel():
             servi, _stocke = _resultat_servi_et_stocke(pivot)
             html = html_de_presentation_compacte(pivot)
-        self.assertIn('presentation-mensuelle', html)
+        self.assertIn(TABLE_MENSUELLE, html)
         self.assertTrue(servi['hash_entree'])
         self.assertIn(servi['hash_entree'][:12], html)
 
@@ -168,10 +173,14 @@ class PlanDePoseEtClasseurSurResultatServiTest(SimpleTestCase):
         self.assertIn('Onduleur', svg)
 
     def test_plan_de_pose_non_chaine_le_dit_sans_erreur(self):
+        # « Non chaîné » = AUCUN matériel désigné (ni explicite, ni devis
+        # lié) : sans module ni onduleur, le moteur ne publie aucun chaînage.
+        # Avec du matériel, la conception SE chaîne même sans simulation
+        # (l'électrique du servi vient de la conception, pas du calcul).
         jamais = PivotSansBase(copy.deepcopy(LAYOUT_PLANCHE_SIMULABLE))
-        with patch_materiel():
-            svg = rendre_plan_pose_svg(jamais)
+        svg = rendre_plan_pose_svg(jamais)
         self.assertIn(MENTION_NON_CHAINE, svg)
+        self.assertNotIn('Chaînes : ', svg)
 
     def test_classeur_chaines_et_nomenclature_remplis(self):
         with patch_materiel():

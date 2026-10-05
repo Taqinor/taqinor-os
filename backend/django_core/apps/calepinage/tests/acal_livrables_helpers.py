@@ -70,7 +70,12 @@ def calepinage_simule_reel(layout=None):
     blocs n'existent que dans le résultat SERVI.
     """
     pivot = PivotSansBase(copy.deepcopy(layout or LAYOUT_SIMULABLE))
-    with patch_materiel():
+    # ACAL298 — l'entrée valide les produits désignés DANS la société par
+    # ``apps.stock.selectors.get_produit_scoped`` ; ce pivot n'a pas de base :
+    # le catalogue de la société est simulé (les ids 1 et 2 y existent).
+    catalogue = mock.patch('apps.stock.selectors.get_produit_scoped',
+                           side_effect=lambda company, pk: object())
+    with patch_materiel(), catalogue:
         enregistrer_entree(pivot, {'module_produit': 1, 'onduleur_produit': 2})
         simuler_calepinage(pivot, client=_ClientRejoue(), materiel=MATERIEL,
                            reglages=REGLAGES, enregistrer=True)
