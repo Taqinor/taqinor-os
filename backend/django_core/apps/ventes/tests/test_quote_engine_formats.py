@@ -1447,8 +1447,13 @@ class TestPdfFormats4(TestPdfFormats):
         self.assertEqual(data['total_avec'], data['totaux_avec']['ttc'])
         # production/économies de l'étude = celles de la page 1 (canoniques)
         self.assertEqual(data['prod_kwh'], data['etude']['production_annuelle'])
-        self.assertEqual(data['eco_s_ann'], data['etude']['economies_annuelles'])
-        self.assertEqual(data['roi_s'], data['etude']['payback'])
+        # CIQ301 — en C&I, la branche « étude saisie » ne s'applique plus :
+        # l'économie et le payback d'étude ne sont plus imposés (l'argent C&I
+        # viendra de ``synthese_ci.argent``, CIQ307), et les gabarits C&I ne
+        # republient AUCUNE des deux valeurs.
+        self.assertNotEqual(data['eco_s_ann'], 274711)
+        self.assertNotEqual(data['savings_method'].get('model')
+                            if data.get('savings_method') else None, 'etude')
         # prix/kWc recalculé depuis le total canonique (jamais l'ancien stocké)
         #
         # QJR410 (a) — LE CHIFFRE DÉCRIT L'OPTION QUE LE DOCUMENT TITRE.

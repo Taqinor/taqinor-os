@@ -1553,6 +1553,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     opts = clean_pdf_options(pdf_options)
     mode = devis.mode_installation or ""
+    # CIQ301 — commercial / industriel : leurs économies ne sortent JAMAIS du
+    # modèle résidentiel/BT (``calculate_savings_roi``) ni d'une étude JS.
+    _mode_ci = mode.strip().lower() in ("commercial", "industriel")
     # Mode agricole : le format à options n'a pas de sens (pas d'onduleur) —
     # la demande « premium » dégrade proprement vers le format une page.
     pdf_mode = opts['pdf_mode']
@@ -2443,7 +2446,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # vérité par document.
         _titree_avec = bool(deux_options or avec_ok)
         _ref_total = total_avec if _titree_avec else total_sans
-        if etude.get("economies_annuelles"):
+        # CIQ301 — la branche « étude saisie » (économie imposée + fractions
+        # mensuelles RÉSIDENTIELLES ``_sf``) ne s'applique PLUS au C&I : ses
+        # économies viendront du moteur C&I (``synthese_ci.argent``, CIQ307),
+        # jamais d'une clé d'étude reprise ni d'une saisonnalité résidentielle.
+        if etude.get("economies_annuelles") and not _mode_ci:
             eco = int(etude["economies_annuelles"])
             roi["eco_s_ann"] = eco
             roi["eco_a_ann"] = eco
@@ -2458,7 +2465,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             roi["eco_a_monthly"] = list(roi["eco_s_monthly"])
         # L'étude rendue reprend les valeurs canoniques (jamais deux versions)
         etude["production_annuelle"] = roi["prod_kwh"]
-        if etude.get("economies_annuelles"):
+        if etude.get("economies_annuelles") and not _mode_ci:
             etude["economies_annuelles"] = roi["eco_s_ann"]
             # QJR410 (a) — le payback était CÂBLÉ EN DUR sur le ROI « sans ».
             etude["payback"] = roi["roi_a"] if _titree_avec else roi["roi_s"]
@@ -2500,8 +2507,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     #     voyage AVEC le chiffre, comme MENTION_82_21 voyage avec l'injection.
     _tension_racc = str(etude.get("tension_raccordement") or "").strip().lower()
     _dossier_mt = _tension_racc == "mt"
+    # CIQ301 — en C&I, une économie d'étude n'est jamais reprise (ci-dessus) :
+    # un dossier MT commercial/industriel garde donc TOUJOURS son motif MT.
     masquer_economies = bool(_dossier_mt
-                             and not etude.get("economies_annuelles"))
+                             and (_mode_ci
+                                  or not etude.get("economies_annuelles")))
     tarif_mt_mention = ""
     if _dossier_mt and not masquer_economies:
         try:
@@ -2517,7 +2527,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     #   'estimation' — ancienne approximation production × autoconso × prix,
     #                  toujours étiquetée comme estimation (aucun chiffre inventé).
     savings_model = roi.get("savings_model", "estimation")
-    if etude.get("production_annuelle") and etude.get("economies_annuelles"):
+    if (etude.get("production_annuelle") and etude.get("economies_annuelles")
+            and not _mode_ci):
         savings_model = "etude"
     # QJR28 — la DÉCLARATION par colonne. Une étude saisie par un humain
     # impose UN chiffre aux deux options : les deux colonnes sont alors
