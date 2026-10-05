@@ -21,7 +21,6 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import * as THREE from 'three';
 import {
@@ -612,10 +611,10 @@ describe('CALX221 — le calque électrique', () => {
     const couche = creerCoucheElectrique({ electrical: DOC_HUIT, sceneOrigin: ORIGINE });
     expect(couche.idCalque).toBe(ID_CALQUE_ELECTRIQUE);
     expect(couche.groupe.name).toBe(ID_CALQUE_ELECTRIQUE);
-    // Le source ne déclare l'identifiant qu'une fois : le panneau de calques de
-    // l'ERP relit CE littéral (test jumeau côté frontend).
-    const source = readFileSync(fileURLToPath(new URL('./electrique3d.ts', import.meta.url)), 'utf8');
-    expect(source.split("ID_CALQUE_ELECTRIQUE = '").length - 1).toBe(1);
+    // ACAL342 — RÉÉCRIT sans lecture du source : le calque proposé par la couche (celui que
+    // l'ERP pilote) EST l'identifiant exporté, et lui seul.
+    expect(couche.setLayerState(ID_CALQUE_ELECTRIQUE, { visible: true })).toBe(true);
+    expect(couche.setLayerState(`${ID_CALQUE_ELECTRIQUE}-autre`, { visible: true })).toBe(false);
   });
 
   it('`setLayerState` masque le groupe et rend `true`', () => {

@@ -179,12 +179,6 @@ export interface RoofToolApi {
    *  même contour, mêmes modules, donc même compte et mêmes cotes. `null` tant
    *  qu'aucun contour fermé n'existe — jamais un plan inventé. */
   planView: (widthPx: number, heightPx: number) => unknown | null;
-  /** CAL93 — fixe (ou efface, `null`) le profil d'horizon lointain et recalcule SON
-   *  dérate propre (jamais mélangé à l'ombrage proche). */
-  setHorizonProfile: (profile: import('../../lib/horizonEngine').HorizonProfile | null) => void;
-  /** CAL93 — état courant du dérate d'horizon (`hasProfile`, `maskedHours` sur 12×24,
-   *  `annualFactor` — 1 = aucun effet). */
-  horizonStatus: () => { hasProfile: boolean; maskedHours: number; annualFactor: number };
   /** CALX3 — le document d'entrée du moteur de calepinage (`{schema_version, repere,
    *  contour, surfaces, kits, parametres, obstacles, zones, engagements}`), composé
    *  depuis la scène VIVANTE à chaque appel. `null` tant qu'aucun pan ne porte un

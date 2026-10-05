@@ -4210,9 +4210,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // AP-F2 — « Recommencer depuis le tracé client », posée par ToitureDesign.jsx à
     // côté de la note « Calepinage automatique depuis le tracé client — à vérifier ».
     recommencerDepuisTraceClient: () => recommencerDepuisTraceClient(),
-    // CAL93 — horizon lointain : fixer le profil (HorizonPanel) et lire son état.
-    setHorizonProfile: (profile) => shadingUi.setHorizonProfile(profile),
-    horizonStatus: () => shadingUi.horizonStatus(),
+    // ACAL342 — `setHorizonProfile` / `horizonStatus` ne sont plus exposés : aucun appelant
+    // côté ERP (0 usage) ; l'onglet Horizon pousse son profil par `appliquerSection('horizonProfile', …)`
+    // (ACAL26), et l'atelier garde son usage interne de `shadingUi.setHorizonProfile`.
     // CALX3 — le document d'entrée du moteur de calepinage, composé de la scène
     // VIVANTE à chaque appel (`null` tant qu'aucun pan n'est tracé).
     entreeMoteur: () => entreeMoteur(),
