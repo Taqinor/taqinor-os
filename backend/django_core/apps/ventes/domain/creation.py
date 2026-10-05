@@ -899,6 +899,70 @@ def _structure_demandee(lead, produit_id=None, type_demande=None):
     return None, 'acier'
 
 
+def _build_devis_auto_ci(*, lead, user, company, taux_tva=Decimal('20'),
+                         target_kwc=None):
+    """CIQ120 — devis automatique COMMERCIAL / INDUSTRIEL par le serveur.
+
+    Chaîne : ``etude_ci.etudier_ci`` (entrées du lead, CIQ405 ; garde
+    kWh-vs-factures) → taille retenue (ou ``target_kwc`` / la taille
+    souhaitée du lead, SOUVERAINES) → composition du moteur → devis BROUILLON
+    (référence ``utils/references.py``, lignes par l'écrivain unique) → étude
+    v2 écrite UNE fois par le rafraîchisseur (taille donnée = les lignes).
+    Tension, phases et puissance souscrite partent dans les ENTRÉES. Le type
+    du lead n'est JAMAIS changé (convention 20). Aucun statut touché (#4).
+    Refus ``AutoDevisError`` nommant la donnée manquante ou la cause moteur.
+    """
+    from apps.crm.services import resolve_client_for_lead
+    from apps.ventes.domain.etude_ci import (
+        entrees_pour_etude_params, etudier_ci, lignes_du_devis_ci,
+        refus_devis_auto_ci)
+    from apps.ventes.models import Devis
+    from apps.ventes.utils.references import create_with_reference
+
+    taille = target_kwc if target_kwc not in (None, '') else getattr(
+        lead, 'taille_souhaitee_kwc', None)
+    corps = {'mode': lead.type_installation}
+    if taille not in (None, ''):
+        try:
+            taille = float(taille)
+        except (TypeError, ValueError):
+            raise AutoDevisError('Puissance cible invalide.', field='target_kwc')
+        if taille <= 0:
+            raise AutoDevisError('La puissance cible doit être supérieure à zéro.',
+                                 field='target_kwc')
+        corps['taille_explicite_kwc'] = taille
+    etude = etudier_ci(company, corps, lead=lead)
+    refus = refus_devis_auto_ci(etude)
+    if refus:
+        raise AutoDevisError(refus[0], field=refus[1])
+    lignes = lignes_du_devis_ci(etude.get('composition'))
+    if not any(ligne['produit_id'] for ligne in lignes):
+        raise AutoDevisError('Aucun article C&I chiffré à composer.',
+                             field='composition')
+
+    client = resolve_client_for_lead(lead)
+    entrees = entrees_pour_etude_params(etude.get('entrees_resolues'))
+    entrees['mode'] = lead.type_installation
+
+    def _create(ref):
+        return Devis.objects.create(
+            company=company, reference=ref, client=client, lead=lead,
+            statut=Devis.Statut.BROUILLON, created_by=user,
+            taux_tva=taux_tva, mode_installation=lead.type_installation,
+            etude_params=entrees)
+
+    devis = create_with_reference(Devis, 'DEV', company, _create)
+    for ordre, ligne in enumerate(lignes):
+        creer_ligne(devis, produit_id=ligne['produit_id'],
+                    designation=ligne['designation'], quantite=ligne['quantite'],
+                    prix_unitaire=ligne['prix_unitaire'], ordre=ordre)
+    rafraichir_etudes_du_devis(devis)
+    logger.info('Auto-devis C&I %s: %s kWc (lead %s, company %s)', devis.reference,
+                (etude.get('taille') or {}).get('retenue_kwc'), getattr(lead, 'pk', '?'),
+                getattr(company, 'id', '?'))
+    return devis
+
+
 def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
                      remise_globale=Decimal('0'), target_kwc=None,
                      scenario=None, etude_extra=None, plafond_toit=None,
@@ -963,6 +1027,16 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     déjà pavé, au lieu d'une carte vierge.
     """
     marche = (getattr(lead, 'type_installation', '') or '').lower()
+    if marche in ('commercial', 'industriel'):
+        # CIQ120 — le C&I passe par LE moteur serveur (D-CIQ-0), origine
+        # « auto » seulement : le tunnel du site reste refusé pour le C&I.
+        if (origine or ORIGINE_AUTO) != ORIGINE_AUTO:
+            raise AutoDevisError(
+                "Le devis automatique depuis le site n'est pas ouvert au "
+                "commercial et à l'industriel : le commercial le lance depuis "
+                "la fiche lead.", field='type_installation')
+        return _build_devis_auto_ci(lead=lead, user=user, company=company,
+                                    taux_tva=taux_tva, target_kwc=target_kwc)
     if marche and marche != 'residentiel':
         raise AutoDevisError(
             "L'auto-devis ne gère que le résidentiel pour l'instant. Pour "

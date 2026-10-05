@@ -864,6 +864,88 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     return _sans_cles_interdites(_json(etude))
 
 
+# ── 5 bis. DEVIS AUTOMATIQUE (CIQ120) : de l'étude aux lignes ────────────────
+
+#: Clés d'ENTRÉE persistées dans ``Devis.etude_params`` (contrat CIQ2,
+#: ``cles_etude_params_ci_v2.entrees``) — les feuilles lues sur le lead seul
+#: (kWh déclaré, facture d'hiver) n'y sont pas recopiées : le rafraîchisseur
+#: relit le lead.
+CLES_ENTREES_PERSISTEES = ('mode', 'site', 'tension', 'phases',
+                           'puissance_souscrite_kva', 'consommation', 'rythme',
+                           'courbe_mesuree', 'toit', 'contraintes', 'options',
+                           'taille_explicite_kwc')
+
+
+def entrees_pour_etude_params(entrees_resolues):
+    """Les entrées RÉSOLUES, remises dans la forme ``etude_params`` C&I v2."""
+    arbre = {}
+    for feuille, chemin in FEUILLES:
+        entree = (entrees_resolues or {}).get(feuille)
+        if not isinstance(entree, dict) or _vide(entree.get('valeur')):
+            continue
+        morceaux = chemin.split('.')
+        if morceaux[0] not in CLES_ENTREES_PERSISTEES:
+            continue
+        noeud = arbre
+        for morceau in morceaux[:-1]:
+            noeud = noeud.setdefault(morceau, {})
+        noeud[morceaux[-1]] = entree['valeur']
+    tarif = (entrees_resolues or {}).get('tarif_declare')
+    if isinstance(tarif, dict) and isinstance(tarif.get('valeur'), dict):
+        arbre['tarif_declare'] = tarif['valeur']
+    return arbre
+
+
+def refus_devis_auto_ci(etude):
+    """``(message, champ)`` qui interdit un devis automatique C&I, ou ``None``.
+
+    Les refus nomment la donnée manquante de la règle « devis auto prêt » pro
+    (contrat CIQ1 : le groupe consommation) ou la cause du moteur."""
+    codes = {a.get('code'): a for a in etude.get('alertes') or []}
+    if 'mode_inconnu' in codes:
+        return codes['mode_inconnu']['message'], 'type_installation'
+    if 'kwh_incoherent_factures' in codes:
+        return codes['kwh_incoherent_factures']['message'], 'conso_mensuelle_kwh'
+    if 'consommation_absente' in codes or 'conversion_mad_impossible' in codes:
+        return ('Consommation (kWh) ou facture mensuelle (MAD) manquante : '
+                'aucun devis automatique sans consommation.', 'conso_mensuelle_kwh')
+    if 'production_indisponible' in codes:
+        return codes['production_indisponible']['message'], 'ville'
+    taille = etude.get('taille') or {}
+    if taille.get('raison_arret') == 'prix_manquants':
+        manquants = (etude.get('composition') or {}).get('prix_a_renseigner') or []
+        return ('Prix à renseigner : %s.' % ', '.join(str(m) for m in manquants),
+                'composition')
+    if 'tarif_omis' in codes:
+        return codes['tarif_omis']['message'], 'tarif_declare'
+    if not taille.get('retenue_kwc'):
+        alerte = next((a for a in etude.get('alertes') or []
+                       if a.get('niveau') == 'bloquant'), None)
+        return ((alerte or {}).get('message')
+                or 'Aucune taille C&I rentable dans l’horizon de 10 ans.', 'taille')
+    return None
+
+
+def lignes_du_devis_ci(composition):
+    """Les lignes du devis : les articles du catalogue que le moteur a
+    composés, au prix de VENTE HT. Une ligne sans article (« prix à
+    renseigner », « à confirmer à la visite ») reste dans l'étude, jamais une
+    ligne à 0."""
+    lignes = []
+    for ligne in (composition or {}).get('lignes') or []:
+        produit = ligne.get('produit')
+        quantite = _num(ligne.get('quantite'))
+        prix = _num(ligne.get('prix_unitaire_ht'))
+        if not produit or not quantite or quantite <= 0 or prix is None \
+                or not ligne.get('prix_connu'):
+            continue
+        lignes.append({'produit_id': produit,
+                       'designation': ligne.get('designation') or '',
+                       'quantite': Decimal(str(quantite)),
+                       'prix_unitaire': Decimal(str(prix))})
+    return lignes
+
+
 # ── 6. RAFRAÎCHISSEUR (CIQ119) : l'étude suit les LIGNES facturées ───────────
 
 CLE_ETUDE_CI = 'etude_ci'
