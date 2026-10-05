@@ -1,0 +1,90 @@
+{
+  "endpoint": "GET /api/django/sav/contrats-maintenance/<int:pk>/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Les cles `prestations`, `delai_intervention_heures` et `origine` sont AJOUTEES par les taches backend du Groupe CIQ (CIQ640) ; la tache qui les sert remet `forme_serveur: complete`.",
+  "pourquoi": "CIQ669 (Groupe CIQ, audit L3 du 03/10/2026 ; D-CIQ-12) — CONTRAT D'ABORD (PACT10), pose SEUL sur `main`. Aujourd'hui `ContratMaintenance` (sav/models.py:1444-1535) connait une periodicite, des quotas de visites et des SLA en JOURS (`sla_response_days`, `sla_resolution_days`), sans aucune prestation nommee ; l'ecran sav/ContratsMaintenance.jsx et le service CIQ640 n'ont aucune forme partagee. D-CIQ-12 : option O&M nommee (nettoyages, inspection, thermographie, test des protections), prix et delais SAISIS par Reda. Champs ajoutes : `prestations` [{id, type nettoyage|inspection|thermographie|test_protections|supervision|autre, libelle, incluse, frequence_an, prix_ht}] ; `delai_intervention_heures` ; `origine` {devis_id, ligne_om}. REGLE ECRITE : AUCUN nombre par defaut — `frequence_an` null = « a renseigner », `prix_ht` null = « a renseigner », `delai_intervention_heures` null = « non engage » ; les valeurs de `exemple` sont ILLUSTRATIVES (saisies), jamais proposees par defaut. `exemple` = contrat rempli ; `exemple_vide` = cree depuis un devis, rien de saisi.",
+  "exemple": {
+    "id": 12,
+    "prestations": [
+      {
+        "id": 101,
+        "type": "nettoyage",
+        "libelle": "Nettoyage des modules",
+        "incluse": true,
+        "frequence_an": 2,
+        "prix_ht": 3500
+      },
+      {
+        "id": 102,
+        "type": "inspection",
+        "libelle": "Inspection visuelle et serrage des connexions",
+        "incluse": true,
+        "frequence_an": 1,
+        "prix_ht": 1800
+      },
+      {
+        "id": 103,
+        "type": "thermographie",
+        "libelle": "Thermographie infrarouge",
+        "incluse": false,
+        "frequence_an": 1,
+        "prix_ht": 2500
+      },
+      {
+        "id": 104,
+        "type": "test_protections",
+        "libelle": "Test des protections",
+        "incluse": true,
+        "frequence_an": 1,
+        "prix_ht": null
+      }
+    ],
+    "delai_intervention_heures": 48,
+    "origine": {
+      "devis_id": 413,
+      "ligne_om": 7
+    }
+  },
+  "exemple_vide": {
+    "id": 13,
+    "prestations": [
+      {
+        "id": 111,
+        "type": "nettoyage",
+        "libelle": "Nettoyage des modules",
+        "incluse": false,
+        "frequence_an": null,
+        "prix_ht": null
+      },
+      {
+        "id": 112,
+        "type": "inspection",
+        "libelle": "Inspection",
+        "incluse": false,
+        "frequence_an": null,
+        "prix_ht": null
+      },
+      {
+        "id": 113,
+        "type": "thermographie",
+        "libelle": "Thermographie infrarouge",
+        "incluse": false,
+        "frequence_an": null,
+        "prix_ht": null
+      },
+      {
+        "id": 114,
+        "type": "test_protections",
+        "libelle": "Test des protections",
+        "incluse": false,
+        "frequence_an": null,
+        "prix_ht": null
+      }
+    ],
+    "delai_intervention_heures": null,
+    "origine": {
+      "devis_id": 414,
+      "ligne_om": null
+    }
+  }
+}

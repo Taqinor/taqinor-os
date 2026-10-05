@@ -1,0 +1,143 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<int:pk>/economie-ci/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Patron QJR501 : ce fichier ne porte QUE la forme du TARIF — l'entrée `etude_params.tarif_declare` et le sous-bloc `tarif` que l'action `economie-ci` (CIQ210) sert dans `economie_ci`. La réponse complète de la route est décrite par `economie_ci.json` (CIQ3). `exemple` = {tarif_declare, tarif} du cas MT déclaré sur facture ; la tâche qui sert la route remet `complete` sur `economie_ci.json`, jamais ici.",
+  "pourquoi": "CIQ11 (Groupe CIQ, audit L3 des devis commercial et industriel du 03/10/2026 ; décisions D-CIQ-1, D-CIQ-3, D-CIQ-4 ; conventions de l'orchestrateur « prix du POSTE HORAIRE », « facture du client d'abord », « une seule table BT pro sourcée ») — CONTRAT D'ABORD (PACT10), posé SEUL sur `main` avant toute moitié. Aujourd'hui quatre prix PLATS contradictoires valorisent le kWh C&I : `KWH_PRICE = 1.75` (frontend/src/features/ventes/solar.js:34), `onee_tarif_kwh` défaut 1,75 (apps/parametres/models_company.py:177-180, repli du PDF builder.py), `_FALLBACK_KWH_PRICE = 1.20` « à confirmer » (quote_engine/pricing.py:297), `force_motrice_prix_kwh_ttc` 0,95 (apps/parametres/models_tariff.py:130-135) ; la grille MT est figée dans quote_engine/constants_82_21.py (`TARIF_MT_ONEE`, `PLAGES_H: None`) ; aucune donnée ne porte le contrat d'électricité du CLIENT ni les prix lus sur SA facture — `TariffSettings` décrit UNE grille par société. Ce fichier fige : (1) l'ENTRÉE `etude_params.tarif_declare` (propriétaire ÉCRAN) ; (2) la SORTIE `tarif` servie dans `economie_ci` ; (3) la forme d'une ligne de la GRILLE OFFICIELLE (`apps/parametres/tarifs_officiels.py`, CIQ202) ; (4) les POSTES HORAIRES. RÈGLE ÉCRITE : facture du client d'abord ; grille officielle en repli ÉTIQUETÉ « grille ONEE, repli » ; sinon OMIS — jamais un prix plat. La grille « Grands Comptes » (494,09…) n'est PAS une grille MT (branche THT/HT) et n'y figure pas. Les valeurs de l'`exemple` MT sont ILLUSTRATIVES (aucun client réel, aucune facture réelle lue) ; les valeurs de `exemple_bt_repli` et de `grille_officielle` sont celles que CIQ202 source (captures Wayback de one.org.ma, libellé de page « TVA 18 % ») — leur HT est DÉRIVÉ (TTC ÷ 1,20, taux légal 2026) et porte `derive_ht_estimation: true`. Aucune clé de ce document n'est interdite par `CLES_INTERDITES`/`CLES_INTERDITES_EXACTES` (calepinage/services/note_calcul.py) : le prix du kWh est servi sous `tarif_kwh_ht`/`tarif_kwh_ttc`.",
+  "exemple": {
+    "tarif_declare": {
+      "contrat": "mt_general",
+      "option_bi_horaire": false,
+      "base_tarifs": "ht",
+      "mt": {
+        "tarif_pointe": 1.18,
+        "tarif_pleines": 0.84,
+        "tarif_creuses": 0.62,
+        "prime_fixe_kva_an": 427.18,
+        "puissance_souscrite_kva": 250
+      },
+      "bt": null,
+      "date_facture": "2026-08-31",
+      "provenance": "facture",
+      "saisi_le": "2026-09-15"
+    },
+    "tarif": {
+      "origine": "declare_facture",
+      "contrat": "mt_general",
+      "tarifs_par_poste": [
+        {"poste": "pointe", "tarif_kwh_ht": 1.18, "tarif_kwh_ttc": 1.416, "base_publiee": "ht", "derive_ht_estimation": false, "source": "facture du client du 31/08/2026", "releve_le": "2026-09-15"},
+        {"poste": "pleines", "tarif_kwh_ht": 0.84, "tarif_kwh_ttc": 1.008, "base_publiee": "ht", "derive_ht_estimation": false, "source": "facture du client du 31/08/2026", "releve_le": "2026-09-15"},
+        {"poste": "creuses", "tarif_kwh_ht": 0.62, "tarif_kwh_ttc": 0.744, "base_publiee": "ht", "derive_ht_estimation": false, "source": "facture du client du 31/08/2026", "releve_le": "2026-09-15"}
+      ],
+      "prime_fixe_annuelle_mad": 106795.0,
+      "tva_energie_pct": 20,
+      "tva_millesime": 2026,
+      "mention": "Tarifs relevés sur la facture d'électricité du client du 31/08/2026 (HT tels qu'imprimés ; TTC = HT × 1,20, TVA électricité 2026)."
+    }
+  },
+  "exemple_bt_repli": {
+    "tarif_declare": {
+      "contrat": "bt_patente",
+      "option_bi_horaire": false,
+      "base_tarifs": "ttc",
+      "mt": null,
+      "bt": {"tranches": []},
+      "date_facture": null,
+      "provenance": "oral",
+      "saisi_le": "2026-09-15"
+    },
+    "tarif": {
+      "origine": "grille_officielle",
+      "contrat": "bt_patente",
+      "tarifs_par_poste": [
+        {"poste": "tranche_1", "tarif_kwh_ht": 1.2622, "tarif_kwh_ttc": 1.5146, "base_publiee": "ttc", "derive_ht_estimation": true, "source": "grille ONEE BT patenté 0-150 kWh — capture Wayback one.org.ma 20250216142859 (libellé de page « TVA 18 % »)", "releve_le": "2026-10-03"},
+        {"poste": "tranche_2", "tarif_kwh_ht": 1.4242, "tarif_kwh_ttc": 1.709, "base_publiee": "ttc", "derive_ht_estimation": true, "source": "grille ONEE BT patenté > 150 kWh — capture Wayback one.org.ma 20250216142859 (libellé de page « TVA 18 % »)", "releve_le": "2026-10-03"}
+      ],
+      "prime_fixe_annuelle_mad": null,
+      "tva_energie_pct": 20,
+      "tva_millesime": 2026,
+      "mention": "Grille ONEE, repli : prix TTC tels que publiés sur one.org.ma (la page indique TVA 18 %, taux légal 2026 : 20 %) ; HT dérivé = TTC ÷ 1,20, estimation jusqu'à lecture d'une facture du client."
+    }
+  },
+  "exemple_omis": {
+    "tarif_declare": null,
+    "tarif": {
+      "origine": "omis",
+      "contrat": null,
+      "tarifs_par_poste": [],
+      "prime_fixe_annuelle_mad": null,
+      "tva_energie_pct": null,
+      "tva_millesime": null,
+      "mention": "Tarif non déclaré et contrat d'électricité inconnu : économies non chiffrées (aucun prix plat supposé)."
+    }
+  },
+  "tarif_declare": {
+    "proprietaire": "ecran",
+    "nature": "ENTRÉE de `etude_params`, recopiée par les copies et la V2 ; pré-remplie depuis la tension et la puissance souscrite du lead (contrat `lead_pro.json`, CIQ1) — jamais depuis une grille",
+    "regles": {
+      "contrat": "texte : bt_domestique | bt_patente | bt_force_motrice | mt_general",
+      "option_bi_horaire": "booléen — `bt_force_motrice` seulement (et ménages) ; demandé sur un `bt_patente` ⇒ 400 nommant `option_bi_horaire`",
+      "base_tarifs": "texte : ht | ttc — tels qu'IMPRIMÉS sur la facture ; jamais re-multipliés",
+      "mt": "objet ou null — {tarif_pointe, tarif_pleines, tarif_creuses (MAD/kWh dans `base_tarifs`), prime_fixe_kva_an (MAD/kVA/an), puissance_souscrite_kva} ; chaque valeur facultative, null = non lue",
+      "bt": "objet ou null — {tranches: [{seuil_min_kwh, seuil_max_kwh ou null, tarif_kwh}]} lus sur la facture, FACULTATIFS (liste vide = repli grille officielle du `contrat`)",
+      "date_facture": "date ISO ou null — la facture lue",
+      "provenance": "texte : facture | oral — `oral` n'est jamais imprimé comme « relevé sur facture »",
+      "saisi_le": "date ISO"
+    }
+  },
+  "regles_sortie_tarif": {
+    "origine": "declare_facture (prix lus sur la facture du client) | grille_officielle (repli ÉTIQUETÉ « grille ONEE, repli ») | omis (ni facture ni contrat connu — économies non chiffrées)",
+    "contrat": "même vocabulaire que `tarif_declare.contrat`, ou null si omis",
+    "tarifs_par_poste": "[{poste pointe|pleines|creuses|normales|tranche_n, tarif_kwh_ht, tarif_kwh_ttc, base_publiee ht|ttc, derive_ht_estimation (booléen : HT DÉRIVÉ de la base publiée ÷ (1 + TVA légale), non lu), source (texte), releve_le (date ISO)}] — MT : trois postes ; BT : une entrée par tranche ; liste vide si omis",
+    "prime_fixe_annuelle_mad": "nombre ou null — prime_fixe_kva_an × puissance_souscrite_kva ; MT seulement ; JAMAIS déduite des économies (le PV seul ne réduit pas la puissance souscrite)",
+    "tva_energie_pct": "nombre ou null — TVA légale de l'électricité du millésime (20 en 2026, `TVA_PAR_MILLESIME`, quote_engine/bareme.py), pas le libellé de la page ONEE",
+    "tva_millesime": "entier ou null — l'année du taux",
+    "mention": "texte — toujours présent : la provenance des chiffres, jamais un chiffre nu",
+    "valorisation": "Le kWh solaire évité se valorise au tarif du POSTE HORAIRE réellement couvert, heure par heure (`postes_horaires`), jamais à une moyenne pondérée incluant la pointe."
+  },
+  "grille_officielle": {
+    "module": "apps/parametres/tarifs_officiels.py (CIQ202) — module PUR de fondation, lu par ventes ET par parametres/tariff.py",
+    "forme_ligne": {
+      "cle": "texte — ex. mt_pointe, bt_patente_tranche_1",
+      "valeur": "nombre — tel que publié",
+      "unite": "texte — MAD/kWh ou MAD/kVA/an",
+      "base": "texte — « TTC publié »",
+      "tva_libelle_page": "nombre — le taux écrit sur la page (18), conservé pour la mention, jamais utilisé pour dériver",
+      "source_url": "texte",
+      "page_audience": "texte — ex. « Professionnels — Tarif vert »",
+      "releve_le": "date ISO",
+      "inchange_depuis": "date ISO ou null",
+      "regle_tranches": "texte — non_publiee | progressive | globale ; `non_publiee` = la page ne dit pas comment les tranches s'appliquent"
+    },
+    "exemple_ligne": {
+      "cle": "mt_pointe",
+      "valeur": 1.4157,
+      "unite": "MAD/kWh",
+      "base": "TTC publié",
+      "tva_libelle_page": 18,
+      "source_url": "https://www.one.org.ma/ (Professionnels — « Tarif vert », id1=2&id2=35)",
+      "page_audience": "Professionnels — Tarif Général (MT)",
+      "releve_le": "2026-10-03",
+      "inchange_depuis": "2023-11-30",
+      "regle_tranches": "non_publiee"
+    },
+    "exclusions": "La grille « Grands Comptes » (494,09 DH/kVA ; 1,3645 / 0,9736 / 0,7131) n'est PAS une grille MT (branche THT/HT, ANRE 02/26) : elle n'y figure pas. La pondération TGM de l'ANRE (10/21/17) n'y figure jamais comme profil ni comme tarif moyen. Le TURD (tarif d'accès) n'est jamais un tarif de vente."
+  },
+  "postes_horaires": {
+    "reference_horaire": "GMT",
+    "source": "page officielle ONEE MT (schéma one.org.ma/images/horr.jpg, page bi-horaire) ; décision ANRE 04/26 art. 7",
+    "decalage": "Aucun : le Maroc est à l'heure GMT toute l'année depuis le 20/09/2026 (décret 2.26.530, BO 7521). Les libellés d'heure civile passent par `decalage_maroc_h` (apps/parametres/pvgis_profils.py), jamais par une constante.",
+    "saisons": [
+      {"saison": "hiver", "du": "10-01", "au": "03-31", "postes": [
+        {"poste": "pointe", "de_h": 17, "a_h": 22},
+        {"poste": "pleines", "de_h": 7, "a_h": 17},
+        {"poste": "creuses", "de_h": 22, "a_h": 7}
+      ]},
+      {"saison": "ete", "du": "04-01", "au": "09-30", "postes": [
+        {"poste": "pointe", "de_h": 18, "a_h": 23},
+        {"poste": "pleines", "de_h": 7, "a_h": 18},
+        {"poste": "creuses", "de_h": 23, "a_h": 7}
+      ]}
+    ],
+    "regle": "Intervalles [de_h, a_h) en heure GMT ; `creuses` enjambe minuit. Fonction de référence : `poste_horaire(mois, heure_gmt)` (CIQ202). Les postes MT ne s'appliquent qu'à `mt_general` ; un BT n'a pas de poste (sauf bi-horaire force motrice)."
+  }
+}

@@ -1,0 +1,270 @@
+{
+  "endpoint": "GET /api/django/stock/produits/<int:pk>/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Contrat posé SEUL sur `main` (PACT10) avant le modèle : `exemple` ne montre QUE les champs ADDITIFS C&I du détail produit (plus `id`, `nom`, `marque`, `role_devis` pour situer l'objet). La tâche qui sert ces clés (CIQ101) remet `forme_serveur: complete` si la vue devient lisible statiquement.",
+  "pourquoi": "CIQ7 (Groupe CIQ, audit L3 des devis commercial et industriel du 03/10/2026 ; décisions D-CIQ-0, D-CIQ-2, D-CIQ-4) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main` avant toute moitié. Aujourd'hui `ROLES_DEVIS` (core/product_roles.py:58-70) n'a ni compteur à TC, ni limiteur d'injection, ni supervision, ni câble AC, ni protection C&I, ni structure par type de toit, ni cellule MT, ni prestation C&I ; le seul article de comptage est le Smart Meter Huawei (seed `SMART-MET`, apps/stock/management/commands/seed_catalogue.py:107, fiche :809), ajouté à UN exemplaire quel que soit le nombre d'onduleurs (frontend/src/features/ventes/solar.js) ; protections et câbles seedés sont à prix vide et plafonnent à 32 A / 2 chaînes ; la structure se lit sur un bouton acier/alu et l'onduleur dans le NOM (apps/ventes/domain/composition.py). Ce fichier fige QUATRE formes : (1) les nouveaux champs `Produit` (`role_ci`, `type_pose`, `delai_appro_jours`, `paliers_prix_vente`) ; (2) les champs de fiche C&I (onduleur, limiteur/compteur, logger, protection, câble, structure) — vide (`null`, chaîne vide, liste vide) = « non publié », JAMAIS une valeur par défaut ; (3) la forme d'un élément de `stock.selectors.produits_ci` (sélecteur sans route : clé annexe `element_produits_ci`) ; (4) les règles d'éligibilité. Le vocabulaire `ROLES_CI` est DISTINCT de `ROLES_DEVIS` (même arbitrage qu'AGR7/AGR100 pour `ROLES_POMPAGE`) : l'ordre résidentiel et `scripts/check_roles_mirror.py` restent intacts. AUCUNE clé `prix_achat` ni marge dans aucune forme : `prix_connu` dit seulement si un prix de vente est saisi (> 0). Les valeurs des exemples sont recopiées du seed (fiche `OND-R-HUA-150T`, seed_catalogue.py:51 et :1317 ; modèle constructeur supposé :1015) ou ILLUSTRATIVES ; ce sont les clés, leurs natures et leurs règles d'omission qui font le contrat.",
+  "exemple": {
+    "id": 51,
+    "nom": "Onduleur réseau Huawei 150kW Triphasé",
+    "marque": "Huawei",
+    "role_devis": "onduleur_reseau",
+    "role_ci": "onduleur_string_tri",
+    "type_pose": "",
+    "delai_appro_jours": null,
+    "paliers_prix_vente": []
+  },
+  "champs_produit": {
+    "role_ci": {
+      "nature": "texte",
+      "choix": "une clé de `ROLES_CI` ci-dessous, ou chaîne vide (aucun rôle C&I déclaré)",
+      "regle": "Déclaré sur la fiche produit. Vide = le produit n'entre pas dans une composition C&I par son rôle C&I ; le sélecteur peut encore le classer par sa fiche ou par son nom (`classement`). Le libellé FR voyage par l'API (`LIBELLES_ROLES_CI`, aucun miroir JS)."
+    },
+    "type_pose": {
+      "nature": "texte",
+      "choix": ["toiture_inclinee", "bac_acier", "toit_plat_leste", "toit_plat_fixe", "ombriere", "sol"],
+      "regle": "Structures (et prestations de pose) seulement ; vide sur tout autre produit. Les valeurs reprennent `calepinage.SystemeFixation.ModePose` (apps/calepinage/models.py, sans `autre`) plus `bac_acier`, posé par CIQ112 dans le même vocabulaire. Vide = non publié : la structure n'est alors JAMAIS choisie pour un type de toit."
+    },
+    "delai_appro_jours": {
+      "nature": "entier ou null",
+      "regle": "Article « sur commande » : délai d'approvisionnement saisi (jours). null = article tenu en stock ou délai non saisi — jamais supposé."
+    },
+    "paliers_prix_vente": {
+      "nature": "liste",
+      "forme": [{"seuil_min": "nombre (quantité, inclus)", "seuil_max": "nombre ou null (exclus ; null = sans plafond)", "prix_vente_ttc": "décimal (texte) — prix de VENTE TTC du palier"}],
+      "regle": "Prix de vente dégressif par quantité (CIQ123). Liste vide = le `prix_vente` du produit s'applique à toute quantité. Paliers sans recouvrement, triés par `seuil_min`. Jamais un prix d'achat."
+    }
+  },
+  "roles_ci": {
+    "onduleur_string_tri": "Onduleur string triphasé",
+    "compteur_injection": "Compteur d'injection",
+    "controleur_injection": "Contrôleur / limiteur d'injection",
+    "logger_supervision": "Logger de supervision",
+    "structure_ci": "Structure C&I",
+    "cable_ac": "Câble AC",
+    "protection_ac": "Protection AC",
+    "protection_dc": "Protection DC",
+    "coffret_ac": "Coffret AC",
+    "coffret_dc": "Coffret DC",
+    "mise_a_la_terre": "Mise à la terre",
+    "cellule_mt": "Cellule MT",
+    "etudes_ingenierie": "Études et ingénierie",
+    "pose_structure": "Pose de la structure",
+    "pose_modules": "Pose des modules",
+    "raccordement_ac": "Raccordement AC",
+    "mise_en_service": "Mise en service",
+    "dossier_raccordement": "Dossier de raccordement",
+    "levage_acces": "Levage et accès",
+    "transport_ci": "Transport C&I",
+    "om_ci": "Exploitation et maintenance (O&M)",
+    "batterie_ci": "Batterie C&I"
+  },
+  "fiches": {
+    "onduleur": {
+      "type_fiche": "onduleur",
+      "champs_onduleur_existants": ["ond_ac_kw", "ond_phases", "ond_n_mppt", "ond_mppt_v_min", "ond_mppt_v_max", "ond_v_max_abs", "ond_i_max_mppt_a", "ond_rendement_euro_pct"],
+      "champs": {
+        "ond_limitation_export": "texte : integree | compteur_requis | controleur_requis | non_publiee — vide = non publié",
+        "ond_compteurs_compatibles": "liste de textes (modèles de compteur compatibles publiés par le constructeur) — liste vide = non publié",
+        "ond_relais_decouplage": "texte : integre | externe | non_publie — vide = non publié",
+        "ond_cos_phi_min": "nombre ou null — facteur de puissance réglable mini (ex. 0,8 capacitif écrit en valeur absolue)",
+        "ond_cos_phi_max": "nombre ou null — facteur de puissance réglable maxi"
+      },
+      "exemple": {
+        "type_fiche": "onduleur",
+        "ond_ac_kw": "150",
+        "ond_phases": 3,
+        "ond_n_mppt": 7,
+        "ond_mppt_v_min": "200.0",
+        "ond_mppt_v_max": "1000.0",
+        "ond_v_max_abs": "1100.0",
+        "ond_i_max_mppt_a": "48.0",
+        "ond_rendement_euro_pct": "98.4",
+        "ond_limitation_export": "",
+        "ond_compteurs_compatibles": [],
+        "ond_relais_decouplage": "",
+        "ond_cos_phi_min": null,
+        "ond_cos_phi_max": null
+      },
+      "regle": "Les champs `ond_*` existants restent ceux du verrou PVOND (`CONTRAT_ONDULEUR`, apps/stock/selectors.py) ; les cinq nouveaux sont ADDITIFS et n'entrent PAS dans ce verrou (un onduleur résidentiel n'est jamais grisé pour eux). Dans l'exemple ils sont vides : la fiche seedée du SUN2000-150K-MG0 ne les porte pas."
+    },
+    "limiteur": {
+      "type_fiche": "limiteur",
+      "roles": ["compteur_injection", "controleur_injection"],
+      "champs": {
+        "lim_mode": "texte : compteur_direct | compteur_tc | controleur — vide = non publié",
+        "lim_i_max_a": "nombre ou null — courant maxi mesuré en direct (A) ; sans objet en TC",
+        "lim_onduleurs_max": "entier ou null — nombre d'onduleurs pilotés",
+        "lim_marques": "liste de textes — marques d'onduleur compatibles ; vide = non publié",
+        "lim_phases": "entier ou null — 1 ou 3"
+      },
+      "exemple": {
+        "type_fiche": "limiteur",
+        "lim_mode": "",
+        "lim_i_max_a": null,
+        "lim_onduleurs_max": null,
+        "lim_marques": [],
+        "lim_phases": null
+      },
+      "regle": "Exemple = le Smart Meter Huawei du seed (`SMART-MET`) : `lim_mode` et `lim_onduleurs_max` VIDES = non publiés — la fiche seedée (« Compteur intelligent triphasé/monophasé ») ne dit ni le mode de raccordement ni le nombre d'onduleurs pilotés ; `lim_phases` reste vide (la description dit « triphasé/monophasé » sans préciser le modèle) et `lim_marques` aussi (aucune liste de compatibilité publiée dans le seed). Le moteur ne suppose JAMAIS qu'un compteur pilote N onduleurs : `lim_onduleurs_max` vide ⇒ quantité non vérifiable, motif nommé."
+    },
+    "logger": {
+      "type_fiche": "logger",
+      "roles": ["logger_supervision"],
+      "champs": {
+        "log_onduleurs_max": "entier ou null — nombre d'onduleurs supervisés",
+        "log_marques": "liste de textes — marques supervisées ; vide = non publié"
+      },
+      "exemple": {
+        "type_fiche": "logger",
+        "log_onduleurs_max": null,
+        "log_marques": []
+      }
+    },
+    "protection": {
+      "type_fiche": "protection",
+      "roles": ["protection_ac", "protection_dc", "coffret_ac", "coffret_dc"],
+      "champs": {
+        "prot_type": "texte : disjoncteur | sectionneur | fusible | parafoudre | ddr | interrupteur",
+        "prot_cote": "texte : ac | dc",
+        "prot_calibre_a": "nombre ou null — calibre (A)",
+        "prot_pouvoir_coupure_ka": "nombre ou null — pouvoir de coupure (kA)",
+        "prot_poles": "entier ou null",
+        "prot_tension_v": "nombre ou null — tension assignée (V)"
+      },
+      "exemple": {
+        "type_fiche": "protection",
+        "prot_type": "disjoncteur",
+        "prot_cote": "ac",
+        "prot_calibre_a": 32,
+        "prot_pouvoir_coupure_ka": null,
+        "prot_poles": 4,
+        "prot_tension_v": null
+      },
+      "regle": "Exemple = le seed `DISJ-AC-C-32-4P` (« Disjoncteur AC courbe C 32 A tétrapolaire ») : calibre et pôles lus dans sa description, pouvoir de coupure et tension NON publiés."
+    },
+    "cable": {
+      "type_fiche": "cable",
+      "roles": ["cable_ac", "mise_a_la_terre"],
+      "champs": {
+        "cable_cote": "texte : ac | dc",
+        "cable_section_mm2": "nombre ou null — section (mm²)",
+        "cable_ame": "texte : cu | al — vide = non publié"
+      },
+      "exemple": {
+        "type_fiche": "cable",
+        "cable_cote": "ac",
+        "cable_section_mm2": null,
+        "cable_ame": ""
+      }
+    },
+    "structure": {
+      "type_fiche": "structure",
+      "roles": ["structure_ci"],
+      "champs": {
+        "struct_type_pose": "texte — même vocabulaire que `Produit.type_pose`",
+        "struct_masse_kg_m2": "nombre ou null — masse du système POSÉ (kg/m²), notice fabricant",
+        "struct_notice": "objet {document (texte), date (date ISO ou null), page (entier ou null)} — provenance de la masse"
+      },
+      "exemple": {
+        "type_fiche": "structure",
+        "struct_type_pose": "bac_acier",
+        "struct_masse_kg_m2": null,
+        "struct_notice": {"document": "", "date": null, "page": null}
+      },
+      "regle": "Une masse sans notice (document vide) est refusée à la saisie en nommant `struct_notice` : une charge de toit non sourcée ne se défend pas devant un bureau de contrôle."
+    }
+  },
+  "element_produits_ci": {
+    "source": "stock.selectors.produits_ci(company) — lecture seule, bornée à la société (+ produits globaux), produits archivés exclus ; aucune route propre",
+    "cles": {
+      "id": "entier",
+      "nom": "texte",
+      "marque": "texte",
+      "role_devis": "texte (clé de ROLES_DEVIS) ou vide",
+      "role_ci": "texte (clé de ROLES_CI) ou vide",
+      "classement": "texte : declare (role_ci saisi) | fiche (déduit du type de fiche) | nom (déduit du nom — repli)",
+      "type_pose": "texte ou vide",
+      "fiche": "objet (champs de la fiche C&I du produit, formes ci-dessus) ou null",
+      "prix_connu": "booléen — un prix de vente est saisi (> 0)",
+      "eligible_ci": "booléen — passe les règles d'éligibilité ci-dessous",
+      "motif_exclusion": "texte ou null — pourquoi `eligible_ci` est faux (null si éligible)"
+    },
+    "interdit": ["prix_achat", "marge"],
+    "exemples": [
+      {
+        "id": 51,
+        "nom": "Onduleur réseau Huawei 150kW Triphasé",
+        "marque": "Huawei",
+        "role_devis": "onduleur_reseau",
+        "role_ci": "onduleur_string_tri",
+        "classement": "declare",
+        "type_pose": "",
+        "fiche": {
+          "type_fiche": "onduleur",
+          "ond_ac_kw": "150",
+          "ond_phases": 3,
+          "ond_n_mppt": 7,
+          "ond_mppt_v_min": "200.0",
+          "ond_mppt_v_max": "1000.0",
+          "ond_v_max_abs": "1100.0",
+          "ond_i_max_mppt_a": "48.0",
+          "ond_rendement_euro_pct": "98.4",
+          "ond_limitation_export": "",
+          "ond_compteurs_compatibles": [],
+          "ond_relais_decouplage": "",
+          "ond_cos_phi_min": null,
+          "ond_cos_phi_max": null
+        },
+        "prix_connu": true,
+        "eligible_ci": true,
+        "motif_exclusion": null
+      },
+      {
+        "id": 107,
+        "nom": "Smart Meter",
+        "marque": "Huawei",
+        "role_devis": "smart_meter",
+        "role_ci": "compteur_injection",
+        "classement": "declare",
+        "type_pose": "",
+        "fiche": {
+          "type_fiche": "limiteur",
+          "lim_mode": "",
+          "lim_i_max_a": null,
+          "lim_onduleurs_max": null,
+          "lim_marques": [],
+          "lim_phases": null
+        },
+        "prix_connu": true,
+        "eligible_ci": true,
+        "motif_exclusion": null
+      },
+      {
+        "id": 640,
+        "nom": "Structure bac acier C&I",
+        "marque": "",
+        "role_devis": "structure",
+        "role_ci": "structure_ci",
+        "classement": "declare",
+        "type_pose": "bac_acier",
+        "fiche": {
+          "type_fiche": "structure",
+          "struct_type_pose": "bac_acier",
+          "struct_masse_kg_m2": null,
+          "struct_notice": {"document": "", "date": null, "page": null}
+        },
+        "prix_connu": false,
+        "eligible_ci": true,
+        "motif_exclusion": null
+      }
+    ],
+    "note_exemples": "Les `id` sont ILLUSTRATIFS. Le Smart Meter et l'onduleur sont des articles du seed ; la structure bac acier n'existe pas encore (créée « prix à renseigner » par la tâche catalogue) : `prix_connu: false` — le devis qui l'emploie est marqué « incomplet » (convention du groupe), jamais un prix supposé."
+  },
+  "regles": {
+    "onduleur_eligible": "Un onduleur est éligible C&I s'il porte `role_ci=onduleur_string_tri`, OU `role_devis=onduleur_reseau`, AVEC une fiche complète au verrou PVOND (`stock.selectors.onduleur_specs_manquantes` renvoie une liste vide). Sinon il est EXCLU, `eligible_ci=false`, et `motif_exclusion` nomme la cause (ex. « fiche incomplète : courant maxi par MPPT (A) » — les libellés de `CONTRAT_ONDULEUR`, jamais une clé brute).",
+    "phase": "La phase est ensuite filtrée par le raccordement DÉCLARÉ du client (`crm.Lead.raccordement`, règle PVCOMPAT) : jamais un onduleur triphasé (`ond_phases=3`) sur un raccordement monophasé — BLOQUANT, motif nommé. Raccordement `inconnu` ou vide ⇒ pas de filtre, mais question de visite (D-CIQ-5).",
+    "vide_non_publie": "Toute valeur de fiche vide est « non publiée » : le moteur ne la remplace JAMAIS par une valeur par défaut ; une règle qui en dépend rend « non vérifiable » avec un motif nommé.",
+    "prix": "`prix_connu=false` n'exclut pas un article (un article C&I manquant est créé « prix à renseigner ») ; le devis qui l'emploie est marqué « incomplet » tant qu'une ligne n'a pas de prix.",
+    "vocabulaire": "`ROLES_CI` est distinct de `ROLES_DEVIS` : aucun rôle résidentiel n'est ajouté, renommé ni réordonné ; `ordonner_par_role` et `scripts/check_roles_mirror.py` restent intacts."
+  }
+}
