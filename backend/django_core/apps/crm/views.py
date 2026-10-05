@@ -1482,8 +1482,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from .models import LeadActivity
         from .serializers import pii_masquee_pour
         from .services import (
-            _nom_affiche_conseiller, _nom_affiche_marque,
-            _omettre_phrases_incompletes,
+            _corps_pour_segment, _nom_affiche_conseiller, _nom_affiche_marque,
+            _omettre_phrases_incompletes, _societe_du_lead,
         )
 
         if pii_masquee_pour(request.user):
@@ -1521,10 +1521,16 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             langue = 'fr'
         corps = MessageTemplate.get_corps(
             lead.company, 'resume_associe', langue) or ''
+        # CIQ503 — variante B2B (« pour votre direction ou votre comité ») par
+        # le mécanisme CAD126 : jamais sur un texte personnalisé, jamais pour
+        # un agricole ou un résidentiel.
+        corps = _corps_pour_segment(corps, 'resume_associe', lead, langue)
         contexte = {
             'conseiller': _nom_affiche_conseiller(lead, request.user),
             'marque': _nom_affiche_marque(lead),
             'lien': url_proposition(devis) or '',
+            # CIQ503 — raison sociale ; vide ⇒ sa phrase est OMISE (MRY13).
+            'societe': _societe_du_lead(lead),
         }
         manquants = [cle for cle, valeur in contexte.items()
                      if '{' + cle + '}' in corps and not str(valeur).strip()]

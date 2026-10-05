@@ -458,6 +458,9 @@ CLES_RELANCE = [
     # AGR534 — le résumé transmis à l'ASSOCIÉ (contact secondaire), geste
     # manuel avec l'accord du client (`leads/<id>/resume-associe/`).
     'resume_associe',
+    # CIQ503 — l'accusé « en attente d'un accord » (texte de RÉPONSE,
+    # `CLES_MESSAGE_REPONSE`), neutre de segment, crochets à compléter.
+    'attente_accord_accuse',
 ]
 
 #: CAD60 (21/09/2026) — les textes à ENVOI MANUEL, hors cadence.
@@ -600,6 +603,11 @@ class MessageTemplate(models.Model):
         RESUME_ASSOCIE = (
             'resume_associe',
             "Résumé de la proposition transmis à l'associé (avec accord)")
+        # CIQ503 — l'accusé quand la décision attend un accord (comité,
+        # direction, banque) : texte de RÉPONSE, crochets à compléter.
+        ATTENTE_ACCORD_ACCUSE = (
+            'attente_accord_accuse',
+            "Réponse — en attente d'un accord (accusé)")
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -765,6 +773,11 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT = {
             "Pour verrouiller votre proposition, on peut passer sur votre site pour la vérification technique gratuite : le technicien confirme l'orientation et la structure des bâtiments ainsi que le tableau électrique, et répond à toutes les questions de votre équipe sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
         'visite_confirmation':
             "Bonjour, on confirme la visite technique prévue {date_visite} sur votre site. Le technicien vérifie la structure des bâtiments et le tableau électrique — prévoyez l'accès au local technique. La présence d'un responsable est importante : c'est l'occasion de répondre à toutes les questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
+        # CIQ503 (05/10/2026) — le résumé est présenté « pour votre direction
+        # ou votre comité » ; `{societe}` dans une phrase AUTONOME (omise sans
+        # raison sociale, MRY13). Aucun chiffre, aucune liste de pièces.
+        'resume_associe':
+            "Bonjour, je vous transmets, avec l'accord de notre client, le résumé de la proposition solaire préparée par {marque}, pour votre direction ou votre comité : {lien}. Elle concerne le projet de {societe}. Vous pouvez la consulter et me poser vos questions ici. — {conseiller}",
     },
 }
 # AGR511 (Groupe AGR, 02/10/2026 ; D-AGR-11) — VARIANTES DARIJA du pompage.
@@ -1029,4 +1042,21 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
 MESSAGE_TEMPLATE_DEFAULTS_DARIJA.update({
     'resume_associe':
         'السلام عليكم، كنصيفط ليكم، بموافقة الزبون ديالنا، الملخص ديال العرض ديال الطاقة الشمسية اللي وجدات {marque}: {lien}. تقدرو تشوفوه وتسولوني على أي حاجة هنا. — {conseiller}',
+})
+
+# ── CIQ503 (05/10/2026) — L'ACCUSÉ « EN ATTENTE D'UN ACCORD » ─────────────────
+# Le client dit « le comité se réunit le 20 » : aucun texte ne lui répondait.
+# Texte de RÉPONSE (`crm.services.CLES_MESSAGE_REPONSE`), NEUTRE de segment.
+# Les crochets se complètent à la main (CAD69) : ni chiffre, ni liste de
+# pièces (non sourcée — constat C6-13), ni promesse d'accord (Q22), ni
+# « crédit-bail » (D-CIQ-15). Source : `docs/crm/messages_meryem.md`.
+# ✎ Texte à valider par Reda ; darija à relire par un locuteur natif (la base
+# darija garde la « darija complète » de CAD62 ; CIQ504 en fait la relecture).
+MESSAGE_TEMPLATE_DEFAULTS.update({
+    'attente_accord_accuse':
+        "Très bien, c'est noté : la décision passe par [qui doit donner son accord]. Je vous rappelle le [jour] comme convenu. D'ici là, si [qui doit donner son accord] a besoin de la proposition ou de sa page résumé, dites-le-moi et je vous les envoie.",
+})
+MESSAGE_TEMPLATE_DEFAULTS_DARIJA.update({
+    'attente_accord_accuse':
+        'واخا، تقيدات: القرار كيدوز عند [شكون خاصو يعطي الموافقة]. غادي نعيط ليكم [النهار] كيف ما اتفقنا. وحتى لذاك الوقت، إلا [شكون خاصو يعطي الموافقة] احتاج العرض ولا ورقة الملخص ديالو، قولوها ليا ونصيفطهم ليكم.',
 })

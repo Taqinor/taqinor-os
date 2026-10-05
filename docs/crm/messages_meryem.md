@@ -341,6 +341,15 @@ Geste MANUEL (CAD144 : aucun automatisme vers le contact secondaire) : bouton «
 le lien est celui de la proposition déjà envoyée. ✎ Texte à valider par le fondateur ; darija à relire par un locuteur natif.
 FR : Bonjour, je vous transmets, avec l'accord de notre client, le résumé de la proposition solaire préparée par [Marque] : [lien de votre proposition]. Vous pouvez la consulter et me poser vos questions ici. — [Conseiller]
 DARIJA : السلام عليكم، كنصيفط ليكم، بموافقة الزبون ديالنا، الملخص ديال العرض ديال الطاقة الشمسية اللي وجدات [Marque]: [lien de votre proposition]. تقدرو تشوفوه وتسولوني على أي حاجة هنا. — [المستشار]
+B2B : Bonjour, je vous transmets, avec l'accord de notre client, le résumé de la proposition solaire préparée par [Marque], pour votre direction ou votre comité : [lien de votre proposition]. Elle concerne le projet de [société]. Vous pouvez la consulter et me poser vos questions ici. — [Conseiller]
+
+### attente_accord_accuse — l'accusé « en attente d'un accord » (CIQ503, 05/10/2026)
+Texte de RÉPONSE (proposé par la touche, comme `stop_contact` / `rappel_plus_tard`) quand le client dit que la
+décision attend un accord — « le comité se réunit le 20 ». Neutre de segment. Les crochets se complètent à la main
+(CAD69) : ni chiffre, ni liste de pièces, ni promesse d'accord, ni « crédit-bail ». ✎ Texte à valider par Reda ;
+darija à relire par un locuteur natif.
+FR : Très bien, c'est noté : la décision passe par [qui doit donner son accord]. Je vous rappelle le [jour] comme convenu. D'ici là, si [qui doit donner son accord] a besoin de la proposition ou de sa page résumé, dites-le-moi et je vous les envoie.
+DARIJA : واخا، تقيدات: القرار كيدوز عند [شكون خاصو يعطي الموافقة]. غادي نعيط ليكم [النهار] كيف ما اتفقنا. وحتى لذاك الوقت، إلا [شكون خاصو يعطي الموافقة] احتاج العرض ولا ورقة الملخص ديالو، قولوها ليا ونصيفطهم ليكم.
 
 ## Les documents : ce qui ouvre une touche, et ce qui n'en ouvre pas (CAD61, 21/09/2026)
 
