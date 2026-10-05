@@ -29,6 +29,7 @@ import { fileURLToPath } from 'node:url'
 import { uniq, gotoLeads, createLead } from './helpers'
 
 const here = dirname(fileURLToPath(import.meta.url))
+const API = '/api/django/calepinage'
 const ONGLETS_PATH = join(here, '..', 'src', 'features', 'calepinage', 'atelier', 'onglets.js')
 
 /** L'identifiant du calepinage ouvert, lu sur l'URL de son atelier. */
@@ -185,6 +186,20 @@ test('ACAL80: ouvrir l’atelier ne demande jamais /api/roof-yield et ne logue a
   await page.getByRole('button', { name: 'Créer le calepinage' }).click()
   await expect(page).toHaveURL(/\/calepinage\/\d+/)
   await expect(page.getByTestId('cal-rail-onglets')).toBeVisible()
+  // PRÉREQUIS D'ENVIRONNEMENT (même porte que `calepinage-parcours.spec.js`, FIX-M5-E2E) :
+  // l'atelier ne boote son constructeur QUE si le serveur publie une carte (design-context
+  // → `carte.available`). Le job e2e de la CI ne pose aucune clé MapTiler : sans carte, le
+  // constructeur ne tourne pas, donc il n'y a RIEN à observer (aucun pavage, aucun appel
+  // de rendement) et le marqueur de boot ne vient jamais. On le DIT (skip motivé) au lieu
+  // d'échouer 15 s plus loin ; là où la carte est servie, l'oracle complet se joue.
+  const calepinageId = idDansUrl(page.url())
+  const contexteRes = await page.request.get(
+    `${API}/calepinages/${calepinageId}/design-context/`)
+  expect(contexteRes.ok(), `design-context refusé : ${contexteRes.status()}`).toBeTruthy()
+  const { carte } = await contexteRes.json()
+  test.skip(!carte?.available,
+    'carte indisponible sur cet environnement (aucune clé MapTiler) : le constructeur de '
+    + 'l’atelier ne boote pas — oracle /api/roof-yield non rejouable ici')
   // L'atelier a démarré (le constructeur pose son marqueur de boot) : l'oracle porte sur
   // tout ce qui a été demandé jusque-là.
   await expect.poll(() => page.evaluate(() => Boolean(window.__taqinorRoofBooted))).toBe(true)
