@@ -1527,6 +1527,14 @@ FICHES_TECHNIQUES = {
         # fondateur, pas une limite fabricant sourcée. Migration stock 0132
         # recale les bases existantes (comble seulement si vide).
         'bat_max_modules_par_banc': 200,
+        # Rendement aller-retour (fondateur 05/10/2026) — « Considere 98%
+        # efficiency for deyness round trip » : valeur EXPLICITEMENT
+        # FONDATEUR, pas une valeur constructeur. Recherche du 05/10/2026 :
+        # ni la datasheet DL5.0C (20250228-EN) ni celle du Powerbox Pro
+        # (20241231-EN), ni leurs manuels, ne publient de « round-trip
+        # efficiency ». Comblé seulement si vide (une saisie n'est jamais
+        # écrasée). Sert ACAL173 (rendement de la FICHE sur la proposition).
+        'bat_rendement_ar_pct': Decimal('98.0'),
     },
     'BAT-DEY-10': {
         'type_fiche': 'batterie',
@@ -1555,6 +1563,14 @@ FICHES_TECHNIQUES = {
         # REVENDEURS n'apparaissent dans AUCUN document Dyness et ne sont donc
         # PAS retenus. À recaler si Dyness publie un jour la ligne « max ».
         'bat_max_decharge_kw': Decimal('5.12'),
+        # Rendement aller-retour (fondateur 05/10/2026) — « Considere 98%
+        # efficiency for deyness round trip » : valeur EXPLICITEMENT
+        # FONDATEUR, pas une valeur constructeur. Recherche du 05/10/2026 :
+        # ni la datasheet DL5.0C (20250228-EN) ni celle du Powerbox Pro
+        # (20241231-EN), ni leurs manuels, ne publient de « round-trip
+        # efficiency ». Comblé seulement si vide (une saisie n'est jamais
+        # écrasée). Sert ACAL173 (rendement de la FICHE sur la proposition).
+        'bat_rendement_ar_pct': Decimal('98.0'),
     },
     # PVLV (21/08/2026) — Deye BOS-B-Pack16-A3 (système BOS-B Pro-A3),
     # identifié par la facture Solarex S26/001708 + fiches officielles
