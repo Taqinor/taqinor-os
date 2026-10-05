@@ -154,6 +154,23 @@ def _refuser_numero_de_module_double(document):
             vus[numero] = place
 
 
+def _refuser_parcelle_trop_courte(document):
+    """ACAL232 - une parcelle de moins de 3 sommets est refusee a l'import.
+
+    Le schema la refuse deja (``minItems: 3``) mais sous le chemin
+    ``parcelle.vertices`` ; le refus NOMME ici ``roof_layout.parcelle``, le
+    champ que l'ecran sait pointer. Controle fait AVANT la validation du
+    schema.
+    """
+    parcelle = document.get('parcelle')
+    sommets = parcelle.get('vertices') if isinstance(parcelle, dict) else None
+    if isinstance(sommets, list) and len(sommets) < 3:
+        raise ImportLayoutRefuse(
+            "Document refusé au champ « roof_layout.parcelle » : une "
+            "parcelle exige au moins 3 sommets [lng, lat] "
+            f"(reçu : {len(sommets)}).", champ='roof_layout.parcelle')
+
+
 def _controles_croises(document):
     """Les refus que le vocabulaire JSON Schema ne sait pas exprimer.
 
@@ -180,6 +197,7 @@ def valider_document(document):
         raise ImportLayoutRefuse(
             'Le document importé doit être un objet '
             f'(reçu : {type(document).__name__}).', champ='roof_layout')
+    _refuser_parcelle_trop_courte(document)
     try:
         jsonschema.validate(document, _schema())
     except jsonschema.exceptions.ValidationError as erreur:

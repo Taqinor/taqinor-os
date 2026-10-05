@@ -29,7 +29,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage
-from ..selectors import calepinage_detail
+from ..selectors import calepinages_visibles
 from ..services.archivage import ArchivageInvalide, restaurer
 from ..services.archivage import archiver as archiver_service
 
@@ -42,8 +42,13 @@ def _attacher(viewset_classe):
 
 
 def _cible(request, pk):
-    company = getattr(request.user, 'company', None)
-    return calepinage_detail(pk, company)
+    """ACAL295 — le calepinage VISIBLE de l'appelant (archives comprises : on
+    restaure un archivé), ou ``None`` ⇒ le 404 d'un identifiant absent."""
+    from .calepinages import _identifiant_ou_404
+
+    return (calepinages_visibles(request.user, inclure_archives=True)
+            .filter(pk=_identifiant_ou_404(pk))
+            .select_related('client', 'devis').first())
 
 
 @action(detail=True, methods=['post'], url_path='archiver',

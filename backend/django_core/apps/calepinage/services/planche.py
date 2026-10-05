@@ -52,12 +52,13 @@ __all__ = [
     'svg_de_planche', 'html_de_planche', 'rendre_planche_svg',
     'rendre_planche_pdf', 'nom_de_fichier', 'entrees_de_legende',
     'texte_d_orientation', 'lignes_d_orientation', 'longueur_de_barre',
-    'hash_court', 'texte_d_empreinte', 'empreinte_du_calepinage',
+    'hash_court', 'texte_d_empreinte',
     'CONTENU_IMPLANTATION', 'CONTENU_TOITURE', 'CONTENU_MASSE',
     'CONTENU_POSE', 'CONTENUS', 'echelle_nommee', 'mention_d_echelle',
     'rendre_plan_svg', 'rendre_plan_pdf', 'PlanDePoseRefuse',
     'verifier_absence_d_argent', 'lignes_de_chaines', 'rendre_plan_pose_svg',
-    'rendre_plan_pose_pdf',
+    'rendre_plan_pose_pdf', 'planche_svg_ou_vide', 'MOTIF_SANS_PARCELLE',
+    'pied_du_calepinage',
 ]
 
 #: A3 PAYSAGE, en millimètres — le format des planches remises (même choix que
@@ -100,10 +101,20 @@ CONTENU_POSE = 'pose'
 CONTENUS = (CONTENU_IMPLANTATION, CONTENU_TOITURE, CONTENU_MASSE,
             CONTENU_POSE)
 
-#: Les clés sous lesquelles une PARCELLE SAISIE peut voyager dans le document
-#: de conception. Extension additive et optionnelle : absente, le plan de masse
-#: est REFUSÉ — jamais dessiné avec une limite devinée.
-CLES_PARCELLE = ('parcelle', 'parcel', 'parcelleCadastrale')
+#: La clé de la PARCELLE SAISIE dans le document de conception (schéma v2,
+#: ``roof_layout_v2.schema.json`` : ``parcelle: {vertices: [[lng, lat] >= 3]}``).
+#: ACAL232 : UNE seule clé — les alias ``parcel`` et ``parcelleCadastrale``
+#: n'avaient aucun écrivain. Absente, le plan de masse est REFUSÉ — jamais
+#: dessiné avec une limite devinée.
+CLES_PARCELLE = ('parcelle',)
+
+#: Le motif d'un plan de masse sans parcelle — UNE constante, partagée avec
+#: l'inventaire des sorties (``views/sorties.py::SANS_PARCELLE``) : il renvoie
+#: à l'endroit où la tracer.
+MOTIF_SANS_PARCELLE = (
+    "Aucune parcelle saisie : tracez la parcelle dans l'atelier 3D (bouton "
+    "Parcelle) puis enregistrez la conception. Le plan de masse ne dessine "
+    "jamais une limite de parcelle qui n'a pas été fournie.")
 
 
 class PlancheRefusee(ValueError):
@@ -271,6 +282,9 @@ def geometrie_de_planche(roof_layout):
             'repere': str(zone.get('id') or 'ZONE-%d' % rang),
             'libelle': str(zone.get('label') or ''),
             'nature': str(zone.get('nature') or ''),
+            # ACAL290 - la source SAISIE de la zone, citee sur la planche ;
+            # vide quand elle n'est pas saisie (jamais inventee).
+            'source': _source_de_zone(zone),
             'points': points,
         })
 
@@ -298,9 +312,9 @@ def geometrie_de_planche(roof_layout):
 def _parcelle_du_layout(roof_layout, local):
     """La parcelle SAISIE, projetée en mètres — ``[]`` si elle n'existe pas.
 
-    Aucune des trois graphies admises n'est obligatoire, et aucune n'est
-    déduite : sans parcelle saisie, le plan de masse est refusé (CAL194), il
-    n'est pas dessiné avec une limite plausible.
+    La parcelle n'est jamais obligatoire ni déduite : sans parcelle saisie,
+    le plan de masse est refusé (CAL194), il n'est pas dessiné avec une
+    limite plausible.
     """
     for cle in CLES_PARCELLE:
         brut = (roof_layout or {}).get(cle)
@@ -615,7 +629,24 @@ def entrees_de_legende(geometrie, contenu=CONTENU_IMPLANTATION):
         entrees.append((ORANGE, '#ffffff', 'Obstacle à confirmer'))
     if geometrie.get('zones_interdites'):
         entrees.append((ORANGE, 'none', 'Zone interdite ou réservée'))
+        vues = []
+        for zone in geometrie['zones_interdites']:
+            source = zone.get('source')
+            if source and source not in vues:
+                vues.append(source)
+                entrees.append((ORANGE, 'none',
+                                'Zone interdite ou réservée — %s' % source))
     return tuple(entrees)
+
+
+def _source_de_zone(zone):
+    """La source citee d'une zone, ``''`` si absente ou illisible."""
+    from .zones_reglementaires import source_de_zone
+
+    try:
+        return source_de_zone(zone)
+    except ValueError:
+        return ''
 
 
 def _degres(valeur):
@@ -754,7 +785,7 @@ def texte_d_empreinte(layout_hash, version_moteur, moment):
     return ' · '.join(termes)
 
 
-def empreinte_du_calepinage(calepinage, *, moment=None):
+def _empreinte_du_calepinage(calepinage, *, moment=None):
     """Le pied de planche d'un ``Calepinage``, depuis SES champs stockés.
 
     L'empreinte n'est jamais RECALCULÉE ici : c'est
@@ -771,13 +802,42 @@ def empreinte_du_calepinage(calepinage, *, moment=None):
                              moment)
 
 
+def pied_du_calepinage(calepinage, *, moment=None):
+    """ACAL235 - le pied de planche : l'empreinte, puis les mentions d'ETAT.
+
+    L'etat de la conception (verrouillee, archivee) est LU par
+    ``gabarit_document.etat_de_conception`` - jamais recopie, jamais un second
+    texte de mention : une planche, un plan de pose, de toiture, de masse ou de
+    cablage remis ne se font plus passer pour la conception courante. Une
+    conception courante n'imprime aucune mention. Une ligne par mention.
+
+    Un calepinage sans societe (faux d'essai pur) est courant : l'etat se lit
+    en base des que ``pk`` est pose.
+    """
+    lignes = [_empreinte_du_calepinage(calepinage, moment=moment)]
+    if getattr(calepinage, 'company_id', None):
+        from .documents.gabarit_document import (
+            etat_de_conception, mentions_d_etat,
+        )
+
+        lignes += mentions_d_etat(etat_de_conception(calepinage))
+    return '\n'.join(lignes)
+
+
 def _pied_svg(texte):
-    """Le pied de planche, en bas de feuille, sous la zone de dessin."""
+    """Le pied de planche, en bas de feuille, sous la zone de dessin.
+
+    La PREMIERE ligne (l'empreinte) est la plus basse ; chaque ligne suivante
+    (mentions d'etat, ACAL235) s'empile au-dessus.
+    """
     if not texte:
         return ''
-    return ('<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
-            % (_n(MARGE_MM), _n(FORMAT_A3_MM[1] - 3.5), GRIS_TEXTE,
-               escape(texte)))
+    lignes = str(texte).split('\n')
+    return ''.join(
+        '<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
+        % (_n(MARGE_MM), _n(FORMAT_A3_MM[1] - 3.5 - 3.6 * rang), GRIS_TEXTE,
+           escape(ligne))
+        for rang, ligne in enumerate(lignes))
 
 
 def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=(), pied='',
@@ -977,7 +1037,20 @@ def rendre_planche_svg(calepinage, *, moment=None, **options):
         sous_titre=options.pop('sous_titre', ''),
         bandeau=options.pop('bandeau', ()),
         pied=options.pop('pied', None)
-        or empreinte_du_calepinage(calepinage, moment=moment))
+        or pied_du_calepinage(calepinage, moment=moment))
+
+
+def planche_svg_ou_vide(calepinage):
+    """ACAL215 — le SVG de la planche « en regard », ``''`` sans conception.
+
+    UN survivant pour les deux documents qui l'embarquent (présentation
+    compacte, as-built) : ``PlancheRefusee`` est avalée, jamais une planche
+    fabriquée ; le document reste imprimable sans elle.
+    """
+    try:
+        return rendre_planche_svg(calepinage)
+    except PlancheRefusee:
+        return ''
 
 
 # ── CAL211 — le PLAN DE POSE de l'équipe terrain ────────────────────────────
@@ -997,24 +1070,26 @@ def rendre_planche_svg(calepinage, *, moment=None, **options):
 # AUCUN MONTANT : c'est une pièce de chantier. Le rendu est VÉRIFIÉ avant
 # d'être rendu (``verifier_absence_d_argent``), pas seulement écrit avec soin.
 
-#: Les mots d'argent qui n'ont rien à faire sur un plan de pose.
-MOTS_D_ARGENT_POSE = ('prix', 'prix_achat', 'montant', 'mad', 'dh ht',
-                      'coût', 'tarif', 'remise', 'facture', 'marge brute')
-
-
 class PlanDePoseRefuse(PlancheRefusee):
     """Le plan de pose refuse de sortir — il porterait un montant."""
 
 
 def verifier_absence_d_argent(document):
-    """Refuse un plan de pose qui porte un mot d'argent.
+    """Refuse un texte de plan de pose qui porte un mot d'argent.
 
     La règle est ARMÉE et pas seulement respectée : un montant glissé dans un
     libellé de produit passerait autrement sans bruit jusqu'au chantier — et
-    ``Produit.prix_achat`` ne doit paraître dans AUCUNE sortie.
+    ``Produit.prix_achat`` ne doit paraître dans AUCUN sortie.
+
+    ACAL231 — la garde est CELLE de ``services/garde_montants.py`` (une
+    liste, frontières de mot) et ne reçoit que des textes du catalogue ou du
+    moteur : ``rendre_plan_pose_svg`` lui passe le bandeau (désignations
+    d'onduleur, chaînes), jamais le titre du calepinage ni un libellé de pan
+    saisis.
     """
-    texte = (document or '').lower()
-    trouves = sorted({mot for mot in MOTS_D_ARGENT_POSE if mot in texte})
+    from .garde_montants import mots_d_argent
+
+    trouves = mots_d_argent(document)
     if trouves:
         raise PlanDePoseRefuse(
             "Plan de pose refusé : une pièce de chantier ne porte aucun "
@@ -1025,24 +1100,20 @@ def verifier_absence_d_argent(document):
 def _reperes_de_pose(pan, vers_feuille):
     """Repère de rangée (« R1 ») et flèche de SENS DE POSE, par rangée.
 
-    La RANGÉE a UNE seule définition dans ce module — le groupement des
-    centres relevés sur leur ordonnée (CAL179) : on l'appelle, on ne la
-    réécrit pas. Le SENS est celui dans lequel les modules d'une rangée se
-    suivent : il est MESURÉ sur les centres, jamais choisi. Une rangée d'un
-    seul module ne porte aucune flèche — il n'y a pas de sens à déduire.
+    La RANGÉE a UNE seule définition, ORIENTÉE par l'azimut du pan
+    (``services/rangees.py``, ACAL230) : on l'appelle, on ne la réécrit pas.
+    Le SENS est celui dans lequel les modules d'une rangée se suivent : il
+    est MESURÉ sur les centres, jamais choisi. Une rangée d'un seul module
+    ne porte aucune flèche — il n'y a pas de sens à déduire.
     """
-    from .export_tableur import rangees_du_pan
+    from .rangees import centres_par_rangee
 
     if not pan['modules']:
         return []
-    rangees = rangees_du_pan(pan['modules'])
-    par_rangee = {}
-    for centre in pan['modules']:
-        par_rangee.setdefault(rangees[centre], []).append(centre)
 
     morceaux = []
-    for numero, centres in sorted(par_rangee.items()):
-        centres = sorted(centres, key=lambda point: point[0])
+    for numero, centres in centres_par_rangee(pan['modules'],
+                                              pan.get('azimut_deg')):
         depart = vers_feuille(centres[0])
         morceaux.append(
             '<text x="%s" y="%s" font-size="3" font-weight="bold" '
@@ -1057,6 +1128,11 @@ def _reperes_de_pose(pan, vers_feuille):
             % (_n(depart[0]), _n(depart[1]), _n(arrivee[0]), _n(arrivee[1]),
                VERT_MODULE, _n(TRAIT_COTE)))
     return morceaux
+
+
+#: Dite sur le plan de pose quand l'électrique n'est pas chaîné : un bandeau
+#: muet se lirait « aucune chaîne à poser ».
+MENTION_NON_CHAINE = 'Électrique non chaîné — chaînes non calculées.'
 
 
 def lignes_de_chaines(resultat):
@@ -1103,11 +1179,18 @@ TITRE_DE_CONTENU = {
 
 def rendre_plan_pose_svg(calepinage, *, moment=None, **options):
     """CAL211 — le plan de POSE, VÉRIFIÉ sans montant, portant l'empreinte."""
+    from .. import selectors
+
     bandeau = tuple(options.pop('bandeau', ()))
-    bandeau += lignes_de_chaines(getattr(calepinage, 'resultat', None))
-    return verifier_absence_d_argent(
-        rendre_plan_svg(calepinage, contenu=CONTENU_POSE, moment=moment,
-                        bandeau=bandeau, **options))
+    # ACAL216 — les chaînes sont celles du résultat SERVI (lecteur tolérant :
+    # jamais la colonne brute, qui ne porte pas le bloc électrique).
+    chaines = lignes_de_chaines(selectors.resultat_servi(calepinage))
+    bandeau += chaines or (MENTION_NON_CHAINE,)
+    # ACAL231 - la garde ne porte que sur les textes du catalogue / du moteur
+    # (le bandeau), jamais sur le titre ou les libellés de pan SAISIS.
+    verifier_absence_d_argent('\n'.join(bandeau))
+    return rendre_plan_svg(calepinage, contenu=CONTENU_POSE, moment=moment,
+                           bandeau=bandeau, **options)
 
 
 def rendre_plan_pose_pdf(calepinage, *, company=None, **options):
@@ -1129,12 +1212,7 @@ def rendre_plan_svg(calepinage, *, contenu=CONTENU_IMPLANTATION, moment=None,
     """
     geometrie = geometrie_de_planche(getattr(calepinage, 'roof_layout', None))
     if contenu == CONTENU_MASSE and not geometrie.get('parcelle'):
-        raise PlancheRefusee(
-            "Plan de masse impossible : aucune parcelle n'a été saisie sur "
-            "cette conception. Le plan de masse ne dessine jamais une limite "
-            "de parcelle qui n'a pas été fournie — renseignez le contour de "
-            "la parcelle, puis redemandez le plan.",
-            champ='parcelle')
+        raise PlancheRefusee(MOTIF_SANS_PARCELLE, champ='parcelle')
     titre = options.pop('titre', None) or '%s — %s' % (
         TITRE_DE_CONTENU.get(contenu, 'Plan'), calepinage)
     return svg_de_planche(
@@ -1142,7 +1220,7 @@ def rendre_plan_svg(calepinage, *, contenu=CONTENU_IMPLANTATION, moment=None,
         sous_titre=options.pop('sous_titre', ''),
         bandeau=options.pop('bandeau', ()),
         pied=options.pop('pied', None)
-        or empreinte_du_calepinage(calepinage, moment=moment),
+        or pied_du_calepinage(calepinage, moment=moment),
         contenu=contenu)
 
 

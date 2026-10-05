@@ -47,6 +47,24 @@ const rendre = () => render(
 beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
+describe('DossiersReglementaires (ACAL309) - packs France', () => {
+  it('affiche les trois packs France et le lien de dépôt', async () => {
+    servir('exemple')
+    rendre()
+    await screen.findByTestId('cal196-ecran')
+    const packs = echantillon('exemple').packs_france
+    expect(packs).toHaveLength(3)
+    for (const pack of packs) {
+      expect(screen.getByTestId(`acal309-pack-${pack.genre}`)).toHaveTextContent(pack.libelle)
+      if (!pack.gabarit_depose) {
+        expect(screen.getByTestId(`acal309-message-${pack.genre}`)).toHaveTextContent(pack.message)
+        expect(screen.getByTestId(`acal309-depot-${pack.genre}`)).toHaveAttribute('href', '/calepinage/reglages')
+      }
+    }
+    expect(screen.getByTestId('acal309-avancement-enedis')).toHaveTextContent('pièces fournies')
+  })
+})
+
 describe('DossiersReglementaires (CAL196)', () => {
   it('liste les pièces de chaque dossier avec leur état et leur source', async () => {
     servir('exemple')

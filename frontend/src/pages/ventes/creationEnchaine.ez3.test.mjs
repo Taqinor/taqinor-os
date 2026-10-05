@@ -8,10 +8,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { lireSourcesDevisList } from './devisList/lireSources.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const gen = readFileSync(path.join(__dirname, 'DevisGenerator.jsx'), 'utf8')
-const liste = readFileSync(path.join(__dirname, 'DevisList.jsx'), 'utf8')
+// SPL205 — l'effet EZ3 vit dans devisList/useDevisEnvoi.js : DevisList.jsx +
+// devisList/*.{js,jsx} (le code suit son déplacement, assertions intactes).
+const liste = lireSourcesDevisList()
 
 test('l’id du devis créé n’est plus jeté', () => {
   assert.doesNotMatch(gen, /const finish = \(devisId\) => \{[\s\S]{0,160}?navigate\('\/ventes\/devis'\)/)

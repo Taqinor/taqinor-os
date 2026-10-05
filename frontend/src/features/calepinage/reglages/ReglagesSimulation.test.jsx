@@ -223,3 +223,39 @@ describe('CALX69 — lecture seule sans le droit de gérer', () => {
     expect(screen.queryByTestId('calx69-enregistrer')).not.toBeInTheDocument()
   })
 })
+
+describe('ACAL132 — le PUT fusionne : une clé stockée puis vidée part à `null`', () => {
+  it('envoie `null` pour la clé vidée et garde les autres clés servies', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    fireEvent.change(champValeur('mode_meteo'), { target: { value: '' } })
+    fireEvent.change(champSource('mode_meteo'), { target: { value: '' } })
+    fireEvent.change(champReference('mode_meteo'), { target: { value: '' } })
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalled())
+    const envoi = mocks.putParametres.mock.calls[0][0].simulation
+    expect(envoi.mode_meteo).toBeNull()
+    expect(envoi.resolution_minutes).toEqual(REGLAGES.simulation.resolution_minutes)
+    // Une clé jamais saisie n'est toujours PAS envoyée.
+    expect('fenetre_annees' in envoi).toBe(false)
+  })
+
+  it('le refus nommé DANS sa section (contrat `exemple_refus_type`) atterrit sous la clé', async () => {
+    const refus = exempleContrat('calepinage', 'parametres_calepinage', 'exemple_refus_type')
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide'))
+    mocks.putParametres.mockRejectedValueOnce({ response: { data: refus } })
+    rendre()
+    await screen.findByTestId('calx69-ligne-sigma_modele_pct')
+
+    fireEvent.change(champValeur('sigma_modele_pct'), { target: { value: 'abc' } })
+    fireEvent.change(champSource('sigma_modele_pct'), { target: { value: 'saisie' } })
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+
+    expect(await screen.findByTestId('calx69-erreur-sigma_modele_pct'))
+      .toHaveTextContent(refus.simulation.sigma_modele_pct)
+  })
+})

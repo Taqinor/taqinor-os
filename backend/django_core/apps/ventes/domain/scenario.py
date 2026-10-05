@@ -124,11 +124,11 @@ def ligne_panneau_dominante(lignes):
     prédicat panneau est le lecteur unique ``solar_design.is_panel`` — jamais
     une seconde définition.
     """
-    from apps.ventes import solar_design as _sd
+    from apps.ventes import solar_classification as _sc
 
     panneaux = [
         li for li in lignes
-        if _sd.is_panel(getattr(li, 'designation', '') or '',
+        if _sc.is_panel(getattr(li, 'designation', '') or '',
                         getattr(getattr(li, 'produit', None), 'nom', '') or '')]
     if not panneaux:
         return None

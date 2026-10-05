@@ -2,33 +2,11 @@
 // colonnes sont calculées ; ce test prouve que la somme des lignes == le total.
 import { describe, expect, it } from 'vitest';
 import { computePanStats, hasMultipleBuildings, PANEL_FOOTPRINT_M2 } from './panStats';
+import { panDeTest } from './harnaisAtelier';
 import { type AreaRecord } from './types';
 import { type AreaResult } from '../../lib/roofAreas';
 
-const VERTS: [number, number][] = [
-  [-7.6, 33.59],
-  [-7.599, 33.59],
-  [-7.599, 33.591],
-  [-7.6, 33.591],
-];
-
-function zone(id: string, opts: Partial<AreaRecord> = {}): AreaRecord {
-  return {
-    id,
-    label: `Zone ${id}`,
-    vertices: VERTS.map(([lng, lat]) => [lng, lat] as [number, number]),
-    obstacles: [],
-    roofType: 'pitched',
-    pitchDeg: 22,
-    facingAzimuthDeg: 180,
-    facingManual: false,
-    neededPanels: 12,
-    neededAuto: true,
-    result: null,
-    renderPlan: null,
-    ...opts,
-  };
-}
+const zone = panDeTest;
 
 const RESULT_OK: AreaResult = { panels: 10, kwc: 7.2, annualKwh: 12000, savingsLow: 1000, savingsHigh: 1500 };
 

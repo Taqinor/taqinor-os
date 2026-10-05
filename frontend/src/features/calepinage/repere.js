@@ -192,54 +192,10 @@ export function perimetreM(sommets) {
   return p
 }
 
-function orientation(p, q, r) {
-  const v = (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y)
-  if (Math.abs(v) < 1e-12) return 0
-  return v > 0 ? 1 : 2
-}
-
-function surSegment(p, q, r) {
-  return (
-    q.x <= Math.max(p.x, r.x) + 1e-12 &&
-    q.x >= Math.min(p.x, r.x) - 1e-12 &&
-    q.y <= Math.max(p.y, r.y) + 1e-12 &&
-    q.y >= Math.min(p.y, r.y) - 1e-12
-  )
-}
-
-/** Deux segments [p1,p2] et [p3,p4] se croisent-ils ? (cas colinéaires inclus) */
-export function segmentsSeCroisent(p1, p2, p3, p4) {
-  const o1 = orientation(p1, p2, p3)
-  const o2 = orientation(p1, p2, p4)
-  const o3 = orientation(p3, p4, p1)
-  const o4 = orientation(p3, p4, p2)
-  if (o1 !== o2 && o3 !== o4) return true
-  if (o1 === 0 && surSegment(p1, p3, p2)) return true
-  if (o2 === 0 && surSegment(p1, p4, p2)) return true
-  if (o3 === 0 && surSegment(p3, p1, p4)) return true
-  if (o4 === 0 && surSegment(p3, p2, p4)) return true
-  return false
-}
-
-/**
- * Le contour se recoupe-t-il ? Un polygone auto-intersecté n'a pas d'aire
- * exploitable : le calepinage y poserait des rangées dans le vide. Refusé à la
- * saisie (AOF84), jamais « réparé » en douce.
- */
-export function contourSeCroise(sommets) {
-  const n = Array.isArray(sommets) ? sommets.length : 0
-  if (n < 4) return false
-  for (let i = 0; i < n; i += 1) {
-    const a1 = sommets[i]
-    const a2 = sommets[(i + 1) % n]
-    for (let j = i + 1; j < n; j += 1) {
-      // On saute les segments adjacents (ils partagent un sommet par construction).
-      if (j === i || (j + 1) % n === i || (i + 1) % n === j) continue
-      if (segmentsSeCroisent(a1, a2, sommets[j], sommets[(j + 1) % n])) return true
-    }
-  }
-  return false
-}
+// ACAL77 — `segmentsSeCroisent` / `contourSeCroise` (et leurs aides `orientation` /
+// `surSegment`) sont SUPPRIMÉS : sans appelant de production (seule la copie parquée AO les
+// utilisait), ils doublaient la garde unique de l'atelier, `lib/roof.ts::isSimplePolygon`,
+// qui protège désormais aussi le glissé de sommet (obstaclesUi.ts::doVertexMove).
 
 /** Un point est-il dans le polygone ? (lancer de rayon, mètres locaux) */
 export function pointDansPolygone(point, sommets) {

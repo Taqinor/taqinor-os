@@ -73,7 +73,7 @@ fragment, aucun filtre de texte sur le SVG rendu.
 """
 from __future__ import annotations
 
-import re
+from .garde_montants import MOTS_D_ARGENT, premier_mot_d_argent
 
 __all__ = [
     'CLE_EDITION', 'RUBRIQUES', 'LONGUEUR_TEXTE_MAX', 'MOTS_D_ARGENT',
@@ -99,14 +99,11 @@ RUBRIQUES = ('libelles', 'reperes', 'positions')
 #: « ce texte ne sera pas lu » au lieu de l'accepter en silence.
 LONGUEUR_TEXTE_MAX = 120
 
-#: Les mots d'argent refusés dans un texte édité — la MÊME liste que la garde
-#: du contrat (``tests/test_calx204_contrat_sld.py::HORS_SUJET``), source
-#: unique de cette règle. Un schéma part au bureau de contrôle et au
-#: gestionnaire de réseau : aucun montant n'y a sa place (D-CALX 5).
-MOTS_D_ARGENT = ('prix', 'marge', 'montant', 'mad', 'tva', 'remise')
-
-_MOT_D_ARGENT_RE = re.compile(
-    r'\b(?:%s)\b' % '|'.join(MOTS_D_ARGENT), re.IGNORECASE)
+#: Les mots d'argent refusés dans un texte édité — la liste UNIQUE de
+#: ``services/garde_montants.py`` (ACAL231), que la garde du contrat
+#: (``tests/test_calx204_contrat_sld.py::HORS_SUJET``) importe aussi. Un schéma
+#: part au bureau de contrôle et au gestionnaire de réseau : aucun montant n'y
+#: a sa place (D-CALX 5).
 
 
 #: Les trois gabarits de planche (CALX237). Il n'y a PAS de gabarit
@@ -284,12 +281,12 @@ def _texte_valide(valeur, *, champ):
             "Le texte de « %s » dépasse %d caractères : la boîte du schéma "
             "n'en montre que les premiers, le reste ne serait jamais lu."
             % (champ.rsplit('.', 1)[-1], LONGUEUR_TEXTE_MAX), champ=champ)
-    mot = _MOT_D_ARGENT_RE.search(texte)
+    mot = premier_mot_d_argent(texte)
     if mot is not None:
         raise SldRefuse(
             "Le texte de « %s » contient le mot « %s » : le schéma "
             "unifilaire est une pièce technique, aucun montant n'y a sa "
-            "place." % (champ.rsplit('.', 1)[-1], mot.group(0)), champ=champ)
+            "place." % (champ.rsplit('.', 1)[-1], mot), champ=champ)
     return texte
 
 
@@ -346,14 +343,49 @@ def _valider_edition(corps, dessin):
     for rubrique in ('libelles', 'reperes'):
         for clef, valeur in _rubrique_dict(corps, rubrique).items():
             champ = 'edition.%s.%s' % (rubrique, clef)
+            if valeur is None:
+                # ACAL160 — ``null`` EFFACE la clef, même d'un organe
+                # momentanément non dessiné : on retire ce qui est stocké.
+                edition[rubrique][_clef_effacable(clef, champ)] = None
+                continue
             _clef_dessinee(clef, clefs, champ=champ)
             edition[rubrique][clef] = _texte_valide(valeur, champ=champ)
     for clef, brut in _rubrique_dict(corps, 'positions').items():
         champ = 'edition.positions.%s' % clef
+        if brut is None:
+            edition['positions'][_clef_effacable(clef, champ)] = None
+            continue
         _clef_dessinee(clef, clefs, champ=champ)
         edition['positions'][clef] = _position_valide(brut, dessin,
                                                       champ=champ)
     return edition
+
+
+def _clef_effacable(clef, champ):
+    if not isinstance(clef, str) or not clef:
+        raise SldRefuse(
+            "Une clef d'édition doit être le nom d'un bloc : « %s » n'en est "
+            "pas un." % (clef,), champ=champ)
+    return clef
+
+
+def _fusionner_edition(stockee, postee):
+    """ACAL160 — l'édition postée FUSIONNÉE clé par clé dans la stockée.
+
+    Une rubrique absente du corps ne touche à rien ; une clef postée remplace
+    la sienne ; ``null`` l'efface. Les clefs d'organes momentanément non
+    dessinés restent STOCKÉES (elles reviennent avec l'organe).
+    """
+    fusion = _edition_vide()
+    for rubrique in RUBRIQUES:
+        valeurs = dict((stockee or {}).get(rubrique) or {})
+        for clef, valeur in (postee.get(rubrique) or {}).items():
+            if valeur is None:
+                valeurs.pop(clef, None)
+            else:
+                valeurs[clef] = valeur
+        fusion[rubrique] = valeurs
+    return fusion
 
 
 def _position_valide(brut, dessin, *, champ):
@@ -411,14 +443,27 @@ def enregistrer_edition_sld(calepinage, corps, *, dessin=None):
     """
     if dessin is None:
         dessin = _dessin_du_calepinage(calepinage)
-    edition = _valider_edition(corps, dessin)
-    resultat = getattr(calepinage, 'resultat', None)
-    resultat = dict(resultat) if isinstance(resultat, dict) else {}
-    resultat[CLE_EDITION] = edition
-    calepinage.resultat = resultat
-    if getattr(calepinage, 'pk', None):
-        calepinage.save(update_fields=['resultat', 'updated_at'])
-    return edition
+    from .resultat import modifier_resultat
+
+    postee = _valider_edition(corps, dessin)
+
+    def _poser(resultat):
+        # ACAL57 — l'écrivain unique, relecture sous verrou ; ACAL160 — la
+        # saisie est FUSIONNÉE clé par clé dans l'édition RELUE, jamais un
+        # remplacement de toute l'édition.
+        stockee = edition_sld(_Porteur(resultat))
+        fusion = _fusionner_edition(stockee, postee)
+        resultat[CLE_EDITION] = fusion
+        return fusion
+
+    return modifier_resultat(calepinage, _poser)
+
+
+class _Porteur:
+    """Un ``resultat`` relu, présenté à :func:`edition_sld`."""
+
+    def __init__(self, resultat):
+        self.resultat = resultat
 
 
 def _dessin_du_calepinage(calepinage):
@@ -429,24 +474,70 @@ def _dessin_du_calepinage(calepinage):
     """
     from .electrique import bloquants_nommes, conception_du_calepinage
 
-    conception, _materiel, _donnees, _document = conception_du_calepinage(
+    conception, _materiel, donnees, _document = conception_du_calepinage(
         calepinage)
     if (list(getattr(conception, 'manquantes', ()) or ())
-            or list(bloquants_nommes(conception) or ())):
+            or list(bloquants_nommes(conception) or ())
+            or getattr(conception, 'micro_seul', False)):
         return {'svg': None, 'blocs': (), 'liaisons': ()}
-    return rendu_du_schema(getattr(conception, 'entree', None),
-                           getattr(conception, 'resultat', None),
+    norme = _norme_du_calepinage(calepinage)
+    # ACAL55 — le dessin lit un ``ResultatElectrique`` COMPLET (protections
+    # comprises), jamais le ``ResultatChaines`` de la conception ; ACAL159 —
+    # réduit à la check-list DÉCIDÉE.
+    resultat, gabarit = resultat_et_gabarit_decides(conception, donnees,
+                                                    norme)
+    return rendu_du_schema(getattr(conception, 'entree', None), resultat,
                            edition=edition_sld(calepinage),
-                           gabarit=_gabarit_du_calepinage(calepinage))
+                           gabarit=gabarit,
+                           branches_onduleur=(
+                               branches_onduleur_de_la_conception(
+                                   conception)))
 
 
-def _gabarit_du_calepinage(calepinage):
-    """Le gabarit applicable à CE calepinage (CALX237), via ses réglages."""
+def resultat_et_gabarit_decides(conception, donnees, norme, *,
+                                gabarit=None):
+    """ACAL159 — ``(ResultatElectrique, gabarit)`` de la check-list DÉCIDÉE.
+
+    Le résultat ne porte que les organes RETENUS (un organe écarté n'est
+    plus dessiné) ; un organe AJOUTÉ par la société, qu'aucun bloc du noyau
+    partagé ne sait dessiner, est SIGNALÉ dans le bandeau de la planche au
+    lieu d'être tu.
+    """
+    from .electrique import checklist_decidee, resultat_electrique_complet
+    from .protections import ORIGINE_SOCIETE, organes_retenus
+
+    checklist, _avis = checklist_decidee(conception, donnees, norme)
+    resultat = resultat_electrique_complet(conception, norme=norme,
+                                           checklist=checklist)
+    gabarit = dict(gabarit if gabarit is not None
+                   else gabarit_de_schema(norme))
+    ajoutes = [ligne for ligne in organes_retenus(checklist)
+               if ligne.get('origine') == ORIGINE_SOCIETE]
+    if ajoutes:
+        mention = ('Organe(s) ajouté(s) par décision société, non dessiné(s) '
+                   'sur la planche : %s.'
+                   % ', '.join('%s — %s' % (ligne['repere'],
+                                            ligne['designation'])
+                               for ligne in ajoutes))
+        gabarit['bandeau'] = ' '.join(
+            texte for texte in (gabarit.get('bandeau') or '', mention)
+            if texte)
+    return resultat, gabarit
+
+
+#: ACAL162 — pourquoi aucune planche n'est dessinée en micro-onduleurs seuls.
+MOTIF_SCHEMA_MICRO_SEUL = (
+    "aucun onduleur de chaîne : régime micro-onduleurs — le schéma "
+    "unifilaire de branches AC n'est pas encore dessiné ; les départs QAC.N "
+    "et les câbles W2.N sont publiés dans le résultat électrique")
+
+
+def _norme_du_calepinage(calepinage):
+    """Le verdict de norme applicable à CE calepinage, via ses réglages."""
     from .electrique import parametres_societe
     from .norme import norme_applicable
 
-    return gabarit_de_schema(norme_applicable(
-        parametres_societe(calepinage)))
+    return norme_applicable(parametres_societe(calepinage))
 
 
 # ──────────────────────────────────────────────── le dessin, édition comprise
@@ -672,7 +763,7 @@ def schema_du_calepinage(calepinage):
     """
     from .electrique import bloquants_nommes, conception_du_calepinage
 
-    conception, _materiel, _donnees, _document = conception_du_calepinage(
+    conception, _materiel, donnees, _document = conception_du_calepinage(
         calepinage)
     manquantes = list(getattr(conception, 'manquantes', ()) or ())
     bloquants = list(bloquants_nommes(conception) or ())
@@ -686,12 +777,23 @@ def schema_du_calepinage(calepinage):
     }
     if manquantes or bloquants:
         return reponse
+    if getattr(conception, 'micro_seul', False):
+        # ACAL162 — le gabarit de planche du noyau suppose un onduleur de
+        # chaîne : en régime micro-onduleurs SEUL, aucune planche n'est
+        # dessinée et la réponse le DIT (les branches QAC.N / W2.N sont
+        # publiées par le résultat électrique).
+        reponse['bloquants'] = [MOTIF_SCHEMA_MICRO_SEUL]
+        return reponse
     edition = edition_sld(calepinage)
+    norme = _norme_du_calepinage(calepinage)
+    # ACAL55 — l'adaptateur unique, jamais le ``ResultatChaines`` ; ACAL159
+    # — réduit à la check-list décidée, ajouts signalés au bandeau.
+    resultat, gabarit = resultat_et_gabarit_decides(conception, donnees,
+                                                    norme)
     dessin = rendu_du_schema(
-        getattr(conception, 'entree', None),
-        getattr(conception, 'resultat', None),
+        getattr(conception, 'entree', None), resultat,
         edition=edition,
-        gabarit=_gabarit_du_calepinage(calepinage),
+        gabarit=gabarit,
         cartouche=cartouche_du_calepinage(calepinage),
         # CALX238 (crochet de phase 2) — dix onduleurs identiques dessinent
         # UN sous-ensemble « typique de 10 », et la planche cesse de basculer

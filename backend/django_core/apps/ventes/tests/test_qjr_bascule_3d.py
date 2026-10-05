@@ -42,8 +42,10 @@ from django.test import TestCase
 
 from apps.crm.models import Lead
 from apps.stock.models import Produit
-from apps.ventes.domain.pipeline import (
-    MSG_AUCUN_PANNEAU, MSG_SANS_BATTERIE, MSG_SANS_ONDULEUR_RESEAU,
+from apps.ventes.domain.etape_composer import (
+    MSG_AUCUN_PANNEAU,
+    MSG_SANS_BATTERIE,
+    MSG_SANS_ONDULEUR_RESEAU,
 )
 from apps.ventes.domain.taille import AutoDevisError
 from apps.ventes.models import Devis

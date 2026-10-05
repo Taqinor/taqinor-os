@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { Download, Upload } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
 import { Button, Card } from '../../../ui'
@@ -43,6 +43,7 @@ const REFUS_SANS_MOTIF = 'Le serveur a refusé la demande sans en donner le moti
 const LIBELLE_BLOC = {
   roof_layout: 'Conception (roof_layout)',
   postes_pertes: 'Postes de pertes',
+  saisies: 'Saisies électriques (températures, longueurs, cheminement, protections…)',
   variantes: 'Variantes',
   resultat: 'Résultat de simulation',
   equipements: 'Équipements',
@@ -259,6 +260,11 @@ export default function Projet({ calepinageId: idPropose } = {}) {
               ))}
             </ul>
 
+            <p className="mt-2 text-xs text-lune-faint" data-testid="cal-projet-apercu-clone">
+              Le fichier importé n’est pas un clone identique : le titre et les
+              identifiants changent, et la simulation est relancée.
+            </p>
+
             {(apercu.ignores || []).length > 0 && (
               <>
                 <p className="mt-2 text-xs text-lune-faint">Blocs ignorés :</p>
@@ -285,6 +291,18 @@ export default function Projet({ calepinageId: idPropose } = {}) {
           <p role="status" className="mt-3 text-sm text-foreground" data-testid="cal-projet-resultat">
             Projet importé : calepinage n° {resultat.calepinage}
             {resultat.modules != null ? ` — ${resultat.modules} modules` : ''}.
+            {resultat.calepinage != null && (
+              <>
+                {' '}
+                <Link
+                  to={`/calepinage/${resultat.calepinage}`}
+                  className="underline"
+                  data-testid="cal-projet-ouvrir"
+                >
+                  {`Ouvrir le calepinage n° ${resultat.calepinage}`}
+                </Link>
+              </>
+            )}
           </p>
         )}
       </Card>

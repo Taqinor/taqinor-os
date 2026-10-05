@@ -13,7 +13,17 @@ import {
   moduleShadeReading,
   moduleShadeReadingsForPanels,
   type ModuleShadeReading,
+  matriceOmbrageDesSources, // ACAL27
 } from './shadingUi';
+import {
+  deserializeShadeObstructions,
+  hydrateFromDevis,
+  serializeLayout,
+  serializeShadeObstructions,
+  serializeShading,
+} from './prefill'; // ACAL27
+import { appliquerHydratationAuCtx } from './hydratation'; // ACAL27
+import { type Ctx } from './context'; // ACAL27
 import { propositionOsm, type Batiment, type BatimentOsmServeur } from './batiment';
 import { FLOORS, FLOOR_HEIGHT_M } from './constants';
 import { fallbackPerKwc } from '../../lib/productionEngine';
@@ -317,5 +327,79 @@ describe('CALX132 — libelleBoutonOsm : le texte du bouton de reprise, jamais u
   it('niveaux seuls : le libellé parle de niveaux, jamais d’une hauteur inventée', () => {
     const p = propositionOsm({ ...AVEC_HAUTEUR, height_m: null, source: null })!;
     expect(libelleBoutonOsm(p)).toBe('Reprendre les niveaux OSM (2 — openstreetmap, way 123456)');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL27 — les OMBRES TRACÉES voyagent avec le document : la matrice se recalcule à
+// l'identique à la réouverture (C-ACAL-045). Le chemin est le VRAI : `serializeLayout` →
+// `hydrateFromDevis` → `appliquerHydratationAuCtx` → `matriceOmbrageDesSources` (l'unique
+// calcul, celui que `recomputeFactors` appelle).
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL27 — ombres tracées : sérialisées, relues, même matrice', () => {
+  const RING: [number, number][] = [[-7.6, 33.5], [-7.5998, 33.5], [-7.5998, 33.5002], [-7.6, 33.5002]];
+  const ombre = {
+    id: 'shade-1',
+    base: [-7.5999, 33.49985] as [number, number], // pied au sud du toit
+    tip: [-7.5999, 33.50005] as [number, number], // bout d'ombre vers le nord
+    heightM: 40, // un immeuble de 40 m à ~28 m au sud : il masque le soleil d'hiver
+    halfWidthM: 6,
+  };
+  function ctxAtelier(ombres: typeof ombre[]): Ctx {
+    const zone = {
+      id: 'z1', label: 'Pan', vertices: RING, obstacles: [], roofType: 'flat' as const, pitchDeg: 10,
+      facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true, result: null, renderPlan: null,
+    };
+    return {
+      areas: [zone], activeAreaId: 'z1', vertices: RING, obstacles: [], roofType: 'flat', pitchDeg: 10,
+      facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true, layoutPlan: null,
+      layoutOptimalCount: 0, shadeObstructions: ombres.map((o) => ({ ...o })), environment: [],
+      shadeFactors: null, shadeAnnualFactor: 1, prodPerKwc: null, sunDay: Number.NaN, sunHour: Number.NaN,
+      centroid: [-7.5999, 33.5001], centroidLat: 33.5001,
+    } as unknown as Ctx;
+  }
+
+  it('ombre tracée → serializeLayout → hydrateFromDevis → appliquerHydratationAuCtx → recomputeFactors donne la même matrice et la même liste shadeObstructions', () => {
+    const avant = ctxAtelier([ombre]);
+    const calcul = matriceOmbrageDesSources(avant, 6);
+    expect(calcul.factors).not.toBeNull();
+    // L'ombre abaisse bien la matrice (sinon le test ne prouverait rien).
+    expect(calcul.factors!.flat().some((v) => v < 1)).toBe(true);
+    avant.shadeFactors = calcul.factors;
+    const doc = serializeLayout(avant);
+    expect(doc.shadeObstructions).toHaveLength(1);
+
+    const h = hydrateFromDevis({ id: 3, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const apres = ctxAtelier([]);
+    appliquerHydratationAuCtx(apres, h);
+    expect(apres.shadeObstructions).toEqual(avant.shadeObstructions);
+    const recalcul = matriceOmbrageDesSources(apres, 6);
+    expect(serializeShading(recalcul.factors)).toEqual(doc.shading12x24);
+
+    // Enregistrer à nouveau sans geste : les deux clés sont identiques.
+    apres.shadeFactors = recalcul.factors;
+    const doc2 = serializeLayout(apres);
+    expect(doc2.shadeObstructions).toEqual(doc.shadeObstructions);
+    expect(doc2.shading12x24).toEqual(doc.shading12x24);
+  });
+
+  it('sans shadeObstructions émises (le défaut d’avant), la matrice recalculée à la réouverture est nulle', () => {
+    const avant = ctxAtelier([ombre]);
+    avant.shadeFactors = matriceOmbrageDesSources(avant, 6).factors;
+    const doc = serializeLayout(avant);
+    delete (doc as { shadeObstructions?: unknown }).shadeObstructions;
+    const apres = ctxAtelier([]);
+    appliquerHydratationAuCtx(apres, hydrateFromDevis({ id: 3, geometrie: { roof_layout: doc } }));
+    expect(matriceOmbrageDesSources(apres, 6).factors).toBeNull();
+  });
+
+  it('une ombre que l’atelier ne sait pas recalculer (contour, centre seul) est transmise telle quelle', () => {
+    const exemple = [
+      { id: 'sh-1', kind: 'mur', contour: [[-7.6003, 33.5001], [-7.6001, 33.5001], [-7.6001, 33.50015]], hauteurM: 3, source: 'saisie' },
+      { id: 'sh-2', kind: 'arbre', centre: [-7.6004, 33.4999], rayonM: 2, hauteurM: 6, source: 'saisie' },
+    ];
+    const lu = deserializeShadeObstructions({ shadeObstructions: exemple });
+    expect(lu.lues).toEqual([]);
+    expect(serializeShadeObstructions(lu.lues, lu.nonLues)).toEqual({ shadeObstructions: exemple });
   });
 });

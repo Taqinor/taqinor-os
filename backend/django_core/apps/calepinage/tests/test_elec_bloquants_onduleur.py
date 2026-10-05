@@ -160,7 +160,11 @@ class FicheMuetteTest(SimpleTestCase):
         with self.assertRaises(PublicationBloquee) as capture:
             garde_publication(_Calepinage(24))
 
-        self.assertIn('module PV non désigné', capture.exception.bloquants)
+        # ACAL56 — l'absence NOMME le geste : « module PV non désigné —
+        # désignez-le dans l'onglet Matériel électrique ».
+        self.assertIn(
+            "module PV non désigné — désignez-le dans l'onglet Matériel "
+            "électrique", capture.exception.bloquants)
         self.assertIn('Complétez les fiches techniques',
                       str(capture.exception))
 

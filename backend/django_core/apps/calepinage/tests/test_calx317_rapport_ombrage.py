@@ -268,14 +268,58 @@ class AvertissementSansCourseDuSoleilTest(unittest.TestCase):
                       rapport['avertissements'])
 
 
-# ── ORM/DB/MinIO/HTTP — écrits, NON EXÉCUTÉS localement (CI validera) ──────
+# ── ORM/DB/HTTP — exécutés par le job backend-tests (WeasyPrint présent) ───
 
-class RapportOmbragePdfDbTest(unittest.TestCase):
-    """Marqueur : ``rendre_rapport_ombrage`` (``core.pdf.render_pdf``) et la
-    route ``GET rapport-ombrage.pdf/`` (tenant, ``PeutVoirCalepinage``, 400
-    ``shading12x24`` nommé) exigent une base + WeasyPrint — CI validera."""
+from apps.calepinage.models import Calepinage  # noqa: E402
 
-    @unittest.skip('ORM/WeasyPrint/HTTP — CI validera (non exécuté '
-                   'localement)')
+from .test_api_liste import BaseApiCalepinage, url_detail  # noqa: E402
+
+LAYOUT_OMBRAGE = {
+    'version': 2,
+    'pin': {'lat': 33.5731, 'lng': -7.5898},
+    'shading12x24': MATRICE_12X24,
+    'zones': [
+        {'id': 'a', 'label': 'PAN-A',
+         'geometry': {'count': 8, 'azimuthDeg': 180.0, 'tiltDeg': 15.0}},
+        {'id': 'b', 'label': 'PAN-B',
+         'geometry': {'count': 6, 'azimuthDeg': 90.0, 'tiltDeg': 20.0}},
+    ],
+}
+
+
+class RapportOmbrageApiTest(BaseApiCalepinage):
+    """``GET rapport-ombrage.pdf/`` : route, société, permission."""
+
+    def setUp(self):
+        super().setUp()
+        self.calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Villa Anfa',
+            roof_layout=LAYOUT_OMBRAGE)
+        self.sans_matrice = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Sans matrice',
+            roof_layout={'zones': LAYOUT_OMBRAGE['zones']})
+        self.etranger = Calepinage.objects.create(
+            company=self.autre, lead_id=7, titre='Chez la voisine',
+            roof_layout=LAYOUT_OMBRAGE)
+
+    def _url(self, calepinage):
+        return f'{url_detail(calepinage.pk)}rapport-ombrage.pdf/'
+
     def test_pdf_deux_pans_deux_blocs(self):
-        raise NotImplementedError
+        reponse = self.api.get(self._url(self.calepinage))
+        self.assertEqual(reponse.status_code, 200, getattr(
+            reponse, 'data', None))
+        self.assertTrue(reponse.content.startswith(b'%PDF'))
+
+    def test_matrice_absente_400_nomme_shading12x24(self):
+        reponse = self.api.get(self._url(self.sans_matrice))
+        self.assertEqual(reponse.status_code, 400)
+        self.assertIn('shading12x24', reponse.data)
+
+    def test_hors_societe_404(self):
+        self.assertEqual(self.api.get(self._url(self.etranger)).status_code,
+                         404)
+
+    def test_sans_droit_de_lecture_403(self):
+        self.assertEqual(
+            self.api_sans.get(self._url(self.calepinage)).status_code, 403)

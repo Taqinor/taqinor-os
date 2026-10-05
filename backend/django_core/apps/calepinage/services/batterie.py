@@ -129,7 +129,7 @@ def tranches_horaires():
     OFFERTES à l'écran pour proposer des heures ; elles ne s'appliquent pas
     toutes seules : ``decalage`` n'agit que sur des heures SAISIES.
     """
-    from apps.ventes.solar_design import DEFAULT_HOUR_TRANCHES
+    from apps.ventes.solar_finance import DEFAULT_HOUR_TRANCHES
 
     return list(DEFAULT_HOUR_TRANCHES)
 
@@ -139,6 +139,11 @@ def _hypotheses_de_reference():
 
     Elles ne s'appliquent QUE si la fiche ne dit rien, et elles sont alors
     publiées avec ``source: 'hypothese'`` et leur provenance nommée.
+
+    ACAL306 — le rendement aller-retour n'en fait PLUS partie (défaut gravé
+    « aucune valeur de repli, omission nommée, fiche obligatoire ») : une
+    fiche muette laisse le rendement VIDE avec ``motif_rendement_absent``,
+    et le bloc batterie (comme le hors-réseau) est omis en le nommant.
     """
     from apps.ventes import solar_design
 
@@ -147,12 +152,20 @@ def _hypotheses_de_reference():
                     'Hypothèse de référence du dépôt '
                     '(apps/ventes/solar_design.py) — la fiche ne publie pas '
                     'de profondeur de décharge.'),
-        'rendement_ar_pct': (
-            solar_design._BATTERY_DEFAULT_ROUND_TRIP * 100.0,
-            'Hypothèse de référence du dépôt '
-            '(apps/ventes/solar_design.py) — la fiche ne publie pas de '
-            'rendement aller-retour.'),
     }
+
+
+def _motif_rendement_absent(produit_batterie):
+    """ACAL306 — le motif d'omission d'une batterie à fiche muette sur le
+    rendement aller-retour, qui NOMME la fiche à compléter."""
+    designation = ''
+    for attribut in ('designation', 'nom', 'reference'):
+        designation = str(getattr(produit_batterie, attribut, '') or '').strip()
+        if designation:
+            break
+    fiche = f'« {designation} »' if designation else 'de la batterie'
+    return (f'Rendement aller-retour absent de la fiche {fiche} : '
+            'complétez la fiche.')
 
 
 def specs_batterie(produit_batterie, *, produit_onduleur=None, nb_packs=1):
@@ -195,6 +208,14 @@ def specs_batterie(produit_batterie, *, produit_onduleur=None, nb_packs=1):
             grandeurs[nom] = {'valeur': valeur_hypothese,
                               'source': 'hypothese', 'mention': mention}
             avertissements.append(f'« {nom} » : {mention}')
+            continue
+        if nom == 'rendement_ar_pct' and produit_batterie is not None:
+            # ACAL306 — aucun repli : la grandeur reste VIDE et son motif
+            # nomme la fiche ; l'étape batterie / hors réseau s'omet avec.
+            motif = _motif_rendement_absent(produit_batterie)
+            grandeurs[nom] = {'valeur': None, 'source': None,
+                              'mention': motif}
+            avertissements.append(motif)
             continue
         grandeurs[nom] = {
             'valeur': None, 'source': None,
@@ -684,7 +705,7 @@ def _tranches_par_pas(grille, longueur, heure_de_depart, mois):
     aucun sélecteur de ``ventes`` n'expose cette résolution, et ce module
     relit déjà ce fichier de la même façon (:func:`tranches_horaires`).
     """
-    from apps.ventes.solar_design import tranches_du_mois
+    from apps.ventes.solar_finance import tranches_du_mois
 
     parmois = {}
     tranches = []

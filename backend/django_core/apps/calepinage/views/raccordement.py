@@ -50,14 +50,12 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutLireOuEcrireCalepinage
-from ..services.raccordement import (
-    PREFIXE_CHAMP, RaccordementInvalide, bloc_raccordement,
+from ..services.raccordement import (  # ACAL155 : clé + lecture uniques
+    CLE_SAISIE, PREFIXE_CHAMP, RaccordementInvalide, bloc_raccordement,
+    proposition_du_lead, saisie_du_calepinage,
 )
 
 __all__ = ['raccordement', 'CLE_SAISIE', 'champ_du_refus']
-
-#: La clé de la saisie dans ``Calepinage.resultat`` (JSONField existant).
-CLE_SAISIE = 'raccordement_saisie'
 
 
 def champ_du_refus(champ):
@@ -76,28 +74,18 @@ def champ_du_refus(champ):
     return nom or 'raccordement'
 
 
-def _saisie_enregistree(calepinage):
-    """La saisie déjà posée sur ce calepinage, ou ``{}`` — jamais un repli.
-
-    Un ``resultat`` illisible (None, liste, texte) rend ``{}`` : l'état vide
-    du contrat CALX205, où les cinq verdicts sont omis en nommant ce qui
-    manque — pas une saisie devinée.
-    """
-    resultat = getattr(calepinage, 'resultat', None)
-    if not isinstance(resultat, dict):
-        return {}
-    saisie = resultat.get(CLE_SAISIE)
-    return saisie if isinstance(saisie, dict) else {}
-
-
 def _persister(calepinage, saisie):
-    """Écrit la saisie NORMALISÉE, sans toucher au reste de ``resultat``."""
-    resultat = getattr(calepinage, 'resultat', None)
-    resultat = dict(resultat) if isinstance(resultat, dict) else {}
-    resultat[CLE_SAISIE] = saisie
-    calepinage.resultat = resultat
-    if getattr(calepinage, 'pk', None):
-        calepinage.save(update_fields=['resultat', 'updated_at'])
+    """Écrit la saisie NORMALISÉE, sans toucher au reste de ``resultat``.
+
+    ACAL57 — par l'écrivain unique : relecture sous verrou au moment
+    d'écrire, jamais l'instantané lu au début de la requête.
+    """
+    from ..services.resultat import modifier_resultat
+
+    def _poser(resultat):
+        resultat[CLE_SAISIE] = saisie
+
+    modifier_resultat(calepinage, _poser)
     return saisie
 
 
@@ -119,7 +107,10 @@ def _bloc_du_calepinage(calepinage, saisie):
     troncons = troncons_du_calepinage(calepinage).get('troncons') or []
     reglages = (parametres_societe(calepinage)
                 .get(SECTION_ELECTRIQUE_SOCIETE) or {})
-    return bloc_raccordement(conception, saisie, troncons, reglages)
+    # ACAL157 — la proposition du LEAD voyage à côté de la saisie, jamais
+    # dedans : elle ne devient saisie que par un POST explicite.
+    return bloc_raccordement(conception, saisie, troncons, reglages,
+                             proposition_lead=proposition_du_lead(calepinage))
 
 
 @action(detail=True, methods=['get', 'post'], url_path='raccordement',
@@ -135,7 +126,7 @@ def raccordement(self, request, pk=None):
     calepinage = self.get_object()  # borné société par get_queryset
     ecriture = request.method.lower() == 'post'
     corps = request.data if isinstance(request.data, dict) else {}
-    saisie = corps if ecriture else _saisie_enregistree(calepinage)
+    saisie = corps if ecriture else saisie_du_calepinage(calepinage)
     try:
         bloc = _bloc_du_calepinage(calepinage, saisie)
     except RaccordementInvalide as refus:

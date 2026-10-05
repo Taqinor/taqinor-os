@@ -35,10 +35,16 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
-from apps.ventes.domain import creation as _creation
 from apps.ventes.domain import etudes as _etudes
 from apps.ventes.domain import lignes as _lignes
 from apps.ventes.domain import pipeline as _pipeline
+from apps.ventes.tests.test_split_devis_domaine import module_de
+
+# SPL244 — le PORTEUR de ``_arbitrage_du_calepinage`` (``domain/creation`` puis,
+# après SPL266, ``domain/creation_calepinage``) : le monkeypatch de
+# ``arbitrer_compte_calepinage`` vise l'espace de noms que le corps LIT,
+# jamais un nom ré-importé (faux no-op).
+_creation = module_de('_arbitrage_du_calepinage')
 
 VENTES = Path(__file__).resolve().parents[1]
 

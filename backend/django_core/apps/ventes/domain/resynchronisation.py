@@ -1208,12 +1208,14 @@ from apps.ventes.domain.lignes import (  # noqa: E402,F401
 # son étape ``reconcilier`` (import fonction-local, délibéré), donc il est
 # toujours complètement chargé quand cette ligne s'exécute.
 from apps.ventes.domain.pipeline import (  # noqa: E402,F401
-    COMPOSITION_AVEC,
-    COMPOSITION_LES_DEUX,
     MODE_RECONCILIER,
     ORIGINE_RESYNCHRONISATION,
     IntentionDevis,
     appliquer,
+)
+from apps.ventes.domain.etape_composer import (  # noqa: E402,F401
+    COMPOSITION_AVEC,
+    COMPOSITION_LES_DEUX,
 )
 from apps.ventes.domain.scenario import (  # noqa: E402,F401
     SCENARIO_LES_DEUX,

@@ -19,7 +19,7 @@ from authentication.models import Company
 from apps.crm.models import Client
 from apps.sav.models import ContratMaintenance
 from apps.stock.models import Produit
-from apps.ventes.domain.cycle_vie import reviser_devis
+from apps.ventes.domain.revision import reviser_devis
 from apps.ventes.models import Devis, LigneDevis
 from core.events import devis_accepted
 

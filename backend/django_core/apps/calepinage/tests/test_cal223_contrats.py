@@ -70,7 +70,11 @@ AVEC_PRODUCTEUR_PUR = ('calepinage_equipements.json',
                        # CALX109 — le catalogue de modules de la société :
                        # producteur PUR (``services/modules_stock.py``), la
                        # vue ne fait que lui passer le QuerySet du stock.
-                       'calepinage_modules_disponibles.json')
+                       'calepinage_modules_disponibles.json',
+                       # ACAL56 — l'entrée électrique servie : producteur
+                       # PUR sur un calepinage nu
+                       # (``services/electrique.py::entree_electrique_servie``).
+                       'calepinage_entree_electrique.json')
 
 #: Les autres, avec la RAISON — aucun n'est oublié, chacun est un choix.
 SANS_PRODUCTEUR_PUR = {
@@ -337,9 +341,6 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_pertes.json':
         'pertes et dérogations du calepinage (ACAL8) : lues sur le '
         'calepinage et les réglages société en base',
-    'calepinage_entree_electrique.json':
-        "entrée électrique stockée + matériel résolu (ACAL9) : lit le devis "
-        'lié et le stock en base',
     'calepinage_publication_electrique.json':
         'refus de publication électrique 422 + dérogation (ACAL9) : lit le '
         'verdict du calepinage en base',
@@ -408,7 +409,6 @@ POSES_AVANT_LEUR_ROUTE = {
 #: attente » est réellement servie).
 CLES_POSEES_AVANT_LEUR_PRODUCTEUR = {
     'dossiers_reglementaires.json': {'packs_france': 'ACAL238'},
-    'calepinage_raccordement.json': {'proposition_lead': 'ACAL157'},
     'site_imagerie.json': {'site_effectif': 'ACAL129'},
 }
 
@@ -573,6 +573,17 @@ class ClesServiesTest(unittest.TestCase):
         servi = modules_disponibles_du_calepinage(Faux(), [])
         self._comparer('calepinage_modules_disponibles.json', servi)
         self._comparer('calepinage_modules_disponibles.json', servi,
+                       'exemple_vide')
+
+    def test_entree_electrique(self):
+        # ACAL56 — calepinage nu : aucune société, aucun devis, aucune base.
+        from apps.calepinage.services.electrique import (
+            entree_electrique_servie,
+        )
+
+        servi = entree_electrique_servie(Faux(), {})
+        self._comparer('calepinage_entree_electrique.json', servi)
+        self._comparer('calepinage_entree_electrique.json', servi,
                        'exemple_vide')
 
     def test_site_imagerie(self):

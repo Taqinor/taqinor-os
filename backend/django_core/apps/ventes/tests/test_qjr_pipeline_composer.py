@@ -39,8 +39,9 @@ from django.test import SimpleTestCase, TestCase
 
 from apps.crm.models import Lead
 from apps.stock.models import Produit
-from apps.ventes.domain import creation as _creation
-from apps.ventes.domain import pipeline
+from apps.ventes.domain import creation_auto as _creation_auto
+from apps.ventes.domain import creation_calepinage as _creation_calepinage
+from apps.ventes.domain import etape_composer, pipeline
 
 User = get_user_model()
 
@@ -129,11 +130,11 @@ class LApercuEtLaCreationNeDiverguentPlus(_Base):
     slug = 'qjr80-non-divergence'
 
     def test_apercu_et_creation_a_l_octet(self):
-        apercu = _creation.composer_devis_residentiel(
+        apercu = _creation_auto.composer_devis_residentiel(
             company=self.company, nb_panneaux=NB_PANNEAUX,
             panel_watt=PANEL_WATT, scenario='sans',
             mppt_paires=MPPT_PAIRES, structure_type=STRUCTURE)
-        devis = _creation.build_devis_from_layout(
+        devis = _creation_calepinage.build_devis_from_layout(
             layout=self._layout(), user=self.user, company=self.company,
             lead=self.lead,
             mppt_paires=MPPT_PAIRES, structure_type=STRUCTURE)
@@ -148,7 +149,7 @@ class LApercuEtLaCreationNeDiverguentPlus(_Base):
     def test_les_deux_parametres_tombes_arrivent_vraiment_au_devis(self):
         """Sans cette assertion, l'égalité ci-dessus passerait aussi si les
         DEUX chemins ignoraient ``mppt_paires`` et ``structure_type``."""
-        devis = _creation.build_devis_from_layout(
+        devis = _creation_calepinage.build_devis_from_layout(
             layout=self._layout(), user=self.user, company=self.company,
             lead=self.lead,
             mppt_paires=MPPT_PAIRES, structure_type=STRUCTURE)
@@ -170,7 +171,7 @@ class LApercuEtLaCreationNeDiverguentPlus(_Base):
         """Un appelant qui ne renseigne NI ``mppt_paires`` NI
         ``structure_type`` compose exactement ce que ce dépôt composait avant
         QJR80 : 1 paire (60 m) et de l'ACIER."""
-        devis = _creation.build_devis_from_layout(
+        devis = _creation_calepinage.build_devis_from_layout(
             layout=self._layout(), user=self.user, company=self.company,
             lead=self.lead)
         lignes = list(devis.lignes.all())
@@ -214,30 +215,30 @@ class LesDeuxCheminsRemplissentLaMemeIntention(_Base):
         remplissent la MÊME intention.
         """
         vues = []
-        vrai = _creation.composer
+        vrai = _creation_auto.composer
 
         def espion(intention):
             vues.append(intention)
             return vrai(intention)
 
-        _creation.composer = espion
+        _creation_auto.composer = espion
         pipeline.composer = espion
         try:
             appel()
         finally:
-            _creation.composer = vrai
+            _creation_auto.composer = vrai
             pipeline.composer = vrai
         self.assertEqual(len(vues), 1)
         return vues[0]
 
     def test_meme_intention_des_deux_cotes(self):
         intention_apercu = self._capturer(
-            lambda: _creation.composer_devis_residentiel(
+            lambda: _creation_auto.composer_devis_residentiel(
                 company=self.company, nb_panneaux=NB_PANNEAUX,
                 panel_watt=PANEL_WATT, scenario='sans',
                 mppt_paires=MPPT_PAIRES, structure_type=STRUCTURE))
         intention_devis = self._capturer(
-            lambda: _creation.build_devis_from_layout(
+            lambda: _creation_calepinage.build_devis_from_layout(
                 layout=self._layout(), user=self.user, company=self.company,
                 lead=self.lead,
                 mppt_paires=MPPT_PAIRES, structure_type=STRUCTURE))
@@ -255,7 +256,7 @@ class LIntentionEstGeleeEtLeScenarioValide(SimpleTestCase):
     """Les garanties du jeu de paramètres lui-même — aucune base requise."""
 
     def test_intention_gelee(self):
-        intention = pipeline.IntentionComposition(company=None)
+        intention = etape_composer.IntentionComposition(company=None)
         with self.assertRaises(Exception):
             intention.mppt_paires = 4
 
@@ -266,7 +267,7 @@ class LIntentionEstGeleeEtLeScenarioValide(SimpleTestCase):
         import inspect
         from apps.ventes.domain.composition import composition_residentielle
         signature = inspect.signature(composition_residentielle)
-        intention = pipeline.IntentionComposition(company=None)
+        intention = etape_composer.IntentionComposition(company=None)
         for champ in ('structure_type', 'structure_produit_id', 'taux_tva',
                       'mppt_paires', 'phase'):
             self.assertEqual(signature.parameters[champ].default,
@@ -274,11 +275,11 @@ class LIntentionEstGeleeEtLeScenarioValide(SimpleTestCase):
 
     def test_scenario_inconnu_refuse_en_francais(self):
         with self.assertRaises(ValueError) as leve:
-            pipeline.composer(
-                pipeline.IntentionComposition(company=None,
-                                              scenario='peut-etre'))
+            etape_composer.composer(
+                etape_composer.IntentionComposition(company=None,
+                                                    scenario='peut-etre'))
         self.assertIn('Scénario de composition inconnu', str(leve.exception))
 
     def test_les_trois_scenarios_composables(self):
-        self.assertEqual(pipeline.SCENARIOS_COMPOSABLES,
+        self.assertEqual(etape_composer.SCENARIOS_COMPOSABLES,
                          ('sans', 'avec', 'les_deux'))

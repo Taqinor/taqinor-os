@@ -51,10 +51,12 @@ class TemperaturesSourceesTest(SimpleTestCase):
         temperatures = temperatures_site(pin=PIN, saisie=None,
                                          fournisseur=_fournisseur_tmy)
 
+        # ACAL164 (réécrit, règle (h)) — sans NOCT publié, le chaud n'est
+        # PAS la T2m ambiante : c'est le repli NOMMÉ du noyau.
         self.assertEqual(temperatures.source, SOURCE_TMY)
         self.assertEqual(temperatures.froid_c, 1.4)
-        self.assertEqual(temperatures.chaud_c, 62.0)
-        self.assertEqual(temperatures.mention, '')
+        self.assertEqual(temperatures.chaud_c, TEMP_CHAUD_DEFAUT_C)
+        self.assertEqual(temperatures.mention, MENTION_NON_SOURCEE)
         # La BASE météo employée est citée : un chiffre de production ou de
         # tension sans sa base n'est pas défendable (CAL136).
         self.assertIn('SARAH3', temperatures.detail)

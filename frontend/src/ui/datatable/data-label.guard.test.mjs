@@ -50,13 +50,31 @@ function listJsxFiles(dir) {
   return out
 }
 
+// SPL203 — une page découpée (move only) en un dossier frère de même nom à
+// minuscule initiale (pages/ventes/DevisList.jsx → pages/ventes/devisList/,
+// où vit la ligne DevisRow et ses `data-label`) est jugée comme UNE unité :
+// la page + ses fichiers extraits. Sans dossier frère, rien ne change.
+function lirePageEtSesExtraits(file) {
+  const nom = file.slice(dirname(file).length + 1).replace(/\.jsx$/, '')
+  const dossier = join(dirname(file), nom.charAt(0).toLowerCase() + nom.slice(1))
+  let extraits = []
+  try {
+    if (nom.charAt(0) !== nom.charAt(0).toLowerCase() && statSync(dossier).isDirectory()) {
+      extraits = readdirSync(dossier)
+        .filter((f) => /\.jsx?$/.test(f) && !f.includes('.test.'))
+        .map((f) => readFileSync(join(dossier, f), 'utf8'))
+    }
+  } catch { /* pas de dossier frère */ }
+  return [readFileSync(file, 'utf8'), ...extraits].join('\n')
+}
+
 test('tout fichier de page rendant un tableau data-table avec des <td> porte au moins un data-label', () => {
   const files = listJsxFiles(PAGES_DIR)
   const offenders = []
 
   for (const file of files) {
     if (PRE_EXISTING_EXCEPTIONS.has(file)) continue
-    const content = readFileSync(file, 'utf8')
+    const content = lirePageEtSesExtraits(file)
     if (!content.includes('className="data-table')) continue
     const hasTd = /<td[\s>]/.test(content)
     if (!hasTd) continue

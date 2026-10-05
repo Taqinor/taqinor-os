@@ -139,6 +139,34 @@ describe('Projet — import, un APERÇU avant toute écriture (CALX371)', () => 
     expect(screen.queryByTestId('cal-projet-apercu')).toBeNull()
   })
 
+  it('affiche les saisies reprises et les produits ignores (ACAL244)', async () => {
+    mocks.importerProjet.mockResolvedValue({ data: IMPORT_APERCU })
+    const utilisateur = userEvent.setup()
+    rendre()
+    await waitFor(() => expect(mocks.get).toHaveBeenCalled())
+    await utilisateur.upload(await screen.findByTestId('cal-projet-fichier'), fichierProjet())
+    await screen.findByTestId('cal-projet-apercu')
+    expect(screen.getByTestId('cal-projet-apercu-repris')).toHaveTextContent('Saisies électriques')
+    for (const item of IMPORT_APERCU.ignores) {
+      expect(screen.getByTestId('cal-projet-apercu-ignores')).toHaveTextContent(item.motif)
+    }
+    expect(screen.getByTestId('cal-projet-apercu-clone')).toHaveTextContent('pas un clone identique')
+  })
+
+  it('propose Ouvrir le calepinage apres import (ACAL244)', async () => {
+    mocks.importerProjet
+      .mockResolvedValueOnce({ data: IMPORT_APERCU })
+      .mockResolvedValueOnce({ data: IMPORT_EXEMPLE })
+    const utilisateur = userEvent.setup()
+    rendre()
+    await waitFor(() => expect(mocks.get).toHaveBeenCalled())
+    await utilisateur.upload(await screen.findByTestId('cal-projet-fichier'), fichierProjet())
+    await screen.findByTestId('cal-projet-apercu')
+    fireEvent.click(screen.getByTestId('cal-projet-confirmer'))
+    const lien = await screen.findByTestId('cal-projet-ouvrir')
+    expect(lien).toHaveAttribute('href', `/calepinage/${IMPORT_EXEMPLE.calepinage}`)
+  })
+
   it('annuler efface l’aperçu SANS jamais appeler le serveur en écriture', async () => {
     mocks.importerProjet.mockResolvedValue({ data: IMPORT_APERCU })
     const utilisateur = userEvent.setup()

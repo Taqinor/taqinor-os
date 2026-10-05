@@ -246,7 +246,7 @@ def _option_choisie(devis):
     convention « Les deux » mono-config = AVEC partout — sur un devis
     mono-option les deux vues portent de toute façon les mêmes lignes.
     """
-    from apps.ventes import solar_design as sd
+    from apps.ventes import solar_classification as sc
     from apps.ventes.services import VARIANTE_AVEC, VARIANTE_SANS
 
     toutes = _lignes_du_devis(devis)
@@ -254,8 +254,8 @@ def _option_choisie(devis):
     for ligne in toutes:
         variante = str(getattr(ligne, "variante", "") or "").strip().lower()
         blob = _blob_ligne(ligne)
-        ok_sans = not sd.is_battery(blob) and not sd.is_hybrid_inverter(blob)
-        ok_avec = not sd.is_reseau_inverter(blob)
+        ok_sans = not sc.is_battery(blob) and not sc.is_hybrid_inverter(blob)
+        ok_avec = not sc.is_reseau_inverter(blob)
         if variante == "sans":
             sans.append(ligne)
         elif variante == "avec":
@@ -270,9 +270,9 @@ def _option_choisie(devis):
         return any(predicat(_blob_ligne(ligne)) and _quantite_ligne(ligne) > 0
                    for ligne in lignes)
 
-    avec_servable = (_presente(avec, sd.is_hybrid_inverter)
-                     and _presente(avec, sd.is_battery))
-    sans_servable = _presente(sans, sd.is_reseau_inverter)
+    avec_servable = (_presente(avec, sc.is_hybrid_inverter)
+                     and _presente(avec, sc.is_battery))
+    sans_servable = _presente(sans, sc.is_reseau_inverter)
 
     if avec_servable:
         return avec, VARIANTE_AVEC
@@ -371,10 +371,10 @@ def specs_module_du_devis(devis):
     """``(specs, produit, libellé)`` du panneau du devis — fiche BRUTE, sans
     aucun repli. ``specs`` est le dict de ``specs_for_produit`` : une variable
     non saisie y est simplement ABSENTE (jamais rendue à ``None``)."""
-    from apps.ventes import solar_design as sd
+    from apps.ventes import solar_classification as sc
 
     produit, libelle = _produit_de_famille(
-        devis, lambda designation, nom: sd.is_panel(designation, nom))
+        devis, lambda designation, nom: sc.is_panel(designation, nom))
     return _specs_produit(produit), produit, libelle
 
 
@@ -409,11 +409,11 @@ def spec_module_du_devis(devis):
 
 def specs_onduleur_du_devis(devis):
     """``(specs, produit, libellé)`` de l'onduleur du devis — fiche BRUTE."""
-    from apps.ventes import solar_design as sd
+    from apps.ventes import solar_classification as sc
 
     produit, libelle = _produit_de_famille(
-        devis, lambda designation, nom: sd.is_any_inverter(designation)
-        or sd.is_any_inverter(nom))
+        devis, lambda designation, nom: sc.is_any_inverter(designation)
+        or sc.is_any_inverter(nom))
     return _specs_produit(produit), produit, libelle
 
 
@@ -548,7 +548,7 @@ def _batterie_du_devis(devis):
     unifilaire (cf. la docstring de ``_lignes_option_choisie``,
     DEV-202608-0024).
     """
-    from apps.ventes import solar_design as sd
+    from apps.ventes import solar_classification as sc
     presente = False
     kwh_total = 0.0
     designation_ref = ""
@@ -558,7 +558,7 @@ def _batterie_du_devis(devis):
         designation = ligne.designation or ""
         produit = getattr(ligne, "produit", None)
         nom = getattr(produit, "nom", "") or ""
-        if not (sd.is_battery(designation) or sd.is_battery(nom)):
+        if not (sc.is_battery(designation) or sc.is_battery(nom)):
             continue
         specs = _specs_produit(produit)
         quantite = _flottant(getattr(ligne, "quantite", 1), 1.0) or 1.0

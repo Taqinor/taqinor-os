@@ -239,7 +239,7 @@ def debut_de_geste_devis(devis, user=None):
         if not _est_envoye(devis):
             return None
         from apps.ventes.models import Devis
-        from apps.ventes.domain.cycle_vie import capturer_configuration_devis
+        from apps.ventes.domain.historique_config import capturer_configuration_devis
         frais = Devis.objects.get(pk=devis.pk)
         capturer_configuration_devis(frais, user=user, avant_correction=True)
         return empreinte_visible(frais)
@@ -309,7 +309,7 @@ def consigner_correction_apres_envoi(devis, *, user=None, objet='',
             frais.etude_params or {}).get('resync_apres_envoi')
     # QJR668 — les clauses/CGV gelées à l'envoi sont RE-gelées sur le contenu
     # corrigé (le PDF les imprime telles quelles) ; l'instance suit.
-    from apps.ventes.domain.cycle_vie import figer_clauses_devis
+    from apps.ventes.domain.envoi import figer_clauses_devis
     figer_clauses_devis(frais)
     devis.clauses_appliquees = frais.clauses_appliquees
     if frais.lead_id:

@@ -10,10 +10,14 @@ SIGNIFICATIF.
 
 LES TROIS RÈGLES
 ----------------
-1. **Une version par enregistrement SIGNIFICATIF.** « Significatif » = la
-   géométrie a changé, c'est-à-dire l'empreinte ``layout_hash`` diffère de
-   celle de la dernière version. Ré-enregistrer à l'identique (double-clic,
-   renvoi réseau) ne pollue pas l'historique.
+1. **Une version par enregistrement SIGNIFICATIF.** « Significatif » = le
+   DOCUMENT a changé : son empreinte « document »
+   (``services.layout.empreinte_document``, ACAL39 / D-ACAL-4) diffère de
+   celle du document de la dernière version. ``layout_hash`` (l'empreinte
+   « imprimée » des ventes, péremption du devis) n'en décide PAS : elle est
+   aveugle à l'horizon, aux champs au sol, à l'épingle. Ré-enregistrer à
+   l'identique (double-clic, renvoi réseau, état d'écran) ne pollue pas
+   l'historique.
 2. **Une version n'est JAMAIS modifiée après sa création.** C'est ce qui en
    fait une preuve : un instantané qu'on peut retoucher ne prouve rien. Le
    modèle lui-même refuse la ré-écriture (``CalepinageVersion.save``).
@@ -64,7 +68,7 @@ _RESULTAT_DU_CALEPINAGE = object()
 def enregistrer_version(calepinage, *, user=None, libelle='',
                         resultat=_RESULTAT_DU_CALEPINAGE,
                         meme_empreinte_admise=False):
-    """Dépose un instantané GELÉ — seulement si l'empreinte a changé.
+    """Dépose un instantané GELÉ — seulement si le DOCUMENT a changé.
 
     Returns:
         La ``CalepinageVersion`` créée, ou ``None`` si l'empreinte est
@@ -89,10 +93,14 @@ def enregistrer_version(calepinage, *, user=None, libelle='',
             "Impossible d'historiser un calepinage qui n'est pas encore "
             "enregistré.", champ='calepinage')
 
+    from .layout import empreinte_document
+
     precedente = derniere_version(calepinage)
     empreinte = calepinage.layout_hash or ''
+    # ACAL39 — dédoublonnage sur l'empreinte DOCUMENT, jamais layout_hash.
     if (not meme_empreinte_admise and precedente is not None
-            and (precedente.layout_hash or '') == empreinte):
+            and empreinte_document(precedente.roof_layout)
+            == empreinte_document(calepinage.roof_layout)):
         return None
 
     return CalepinageVersion.objects.create(

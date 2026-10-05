@@ -119,7 +119,7 @@ def _profil_depuis_corps(corps):
     devis — aucune règle dupliquée.
     """
     from .courbes_journalieres import composer_equipements
-    from .etude_horaire import profil_depuis_factures
+    from .horaire.conso import profil_depuis_factures
 
     conso, source, detail = profil_depuis_factures(
         facture_hiver_mad=_num(corps.get('facture_hiver')),
@@ -182,7 +182,7 @@ def _profil_depuis_lead(lead, corps, *, tranches=None,
         conso_mensuelle_kwh_pour_devis, lead_bills_for_devis)
 
     from .courbes_journalieres import equipements_du_devis, occupation_du_devis
-    from .etude_horaire import profil_depuis_factures
+    from .horaire.conso import profil_depuis_factures
 
     devis_duck = _DevisDepuisLead(lead)
     bills = lead_bills_for_devis(devis_duck) or {}

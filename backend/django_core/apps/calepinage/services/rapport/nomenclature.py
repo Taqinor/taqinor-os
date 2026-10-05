@@ -69,12 +69,20 @@ def html_de_section(contexte):
     aussi, que ``resultat`` : la MÊME table que le XLSX exporté, jamais une
     seconde lecture.
     """
-    from ..export_tableur import table_nomenclature, verifier_absence_de_prix
+    from ..export_tableur import (
+        ExportRefuse, table_nomenclature, verifier_absence_de_prix,
+    )
+    from .contrat import RapportRefuse
 
     resultat = contexte.get('resultat') or {}
     langue = contexte.get('langue') or 'fr'
     entetes, lignes = table_nomenclature(resultat)
     if not lignes:
         return ''
-    verifier_absence_de_prix(entetes, lignes)
+    try:
+        verifier_absence_de_prix(entetes, lignes)
+    except ExportRefuse as refus:
+        # ACAL231 - un refus d'export dans une section de rapport est un
+        # REFUS DE RAPPORT (400 nomme), jamais une 500.
+        raise RapportRefuse(str(refus), champ='nomenclature') from refus
     return html_de_table(entetes, lignes, langue)

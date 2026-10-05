@@ -54,7 +54,7 @@ CLE_MOTEUR = 'zones'
 __all__ = [
     'CLE_LAYOUT', 'CLE_MOTEUR', 'ZoneRefusee', 'natures_admises',
     'zones_moteur_depuis_layout', 'injecter_zones', 'chiffrage_zones',
-    'projeteur_local',
+    'projeteur_local', 'deprojeteur_local',
 ]
 
 
@@ -88,6 +88,23 @@ def projeteur_local(origine):
                 (float(point[1]) - lat0) * 110540.0)
 
     return projeter
+
+
+def deprojeteur_local(origine):
+    """ACAL69 — l'INVERSE de ``projeteur_local`` : ``(x, y) m -> (lon, lat)``.
+
+    Même ``origine`` ``(lon, lat)``, mêmes constantes (111320 · cos(lat0) pour
+    x, 110540 pour y) : un point projeté puis déprojeté revient où il était.
+    UN seul repère local dans le module — jamais une seconde formule recopiée.
+    """
+    lon0, lat0 = float(origine[0]), float(origine[1])
+    echelle_x = 111320.0 * math.cos(math.radians(lat0))
+
+    def deprojeter(point):
+        return (lon0 + float(point[0]) / echelle_x,
+                lat0 + float(point[1]) / 110540.0)
+
+    return deprojeter
 
 
 def _sommets(brute, champ, repere, projection):
