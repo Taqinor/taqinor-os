@@ -697,3 +697,125 @@ def flux_ci(base_eco, *, production_annee1_kwh=None, kwh_evites_an=None,
                                   if economie is not None and kwh else None),
     }
     return sortie
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CIQ207 — moteur ``economie_ci`` (4/6) : revente 82-21 du surplus HORAIRE,
+# MT/HT seulement, au tarif ANRE brut HT, plafonnée à 20 % de la production
+# annuelle, potentiel non garanti tenu HORS du retour.
+# ═════════════════════════════════════════════════════════════════════════════
+# Le tarif d'excédent ANRE (décision 04/26 art. 6-7) ne vise que MT/HT/THT ;
+# en BT il sera « fixé ultérieurement » ⇒ aucune ligne chiffrée. Le surplus
+# est la SOMME des cellules horaires de surplus de l'aperçu (CIQ2), jamais un
+# solde annuel production − autoconsommé. Aucune déduction TURD/TURT
+# (D-CIQ-4). La revente est une LIGNE À CÔTÉ : jamais additionnée au retour
+# ni au TRI de tête (:func:`flux_ci` ne la reçoit pas).
+
+TENSIONS_REVENTE = ('mt', 'ht', 'tht')
+MENTION_NON_GARANTI = (
+    "Potentiel annuel plafonné, non garanti : écrêtement et arrêts sans "
+    "compensation (loi 82-21 art. 32).")
+MENTION_SECOND_COMPTEUR = (
+    "Second compteur de l'énergie autoproduite exigé (ANRE 04/26 art. 9).")
+MENTION_TSS = (
+    "TSS éventuelle sur l'énergie injectée non déduite (ANRE 02/25 §4).")
+MENTION_TARIF_ARRETE = (
+    "Tarif arrêté à la signature de la convention puis indexé sur le tarif "
+    "général moyen (ANRE 04/26 art. 10) — tenu constant ici, aucune "
+    "indexation supposée.")
+MENTION_REVENTE_IGNOREE_BT = (
+    "Revente demandée : ignorée en basse tension (aucun tarif d'excédent BT).")
+MOTIF_TENSION_INCONNUE = (
+    "tension de raccordement non déclarée : revente non évaluée")
+MOTIF_PRODUCTION_INCONNUE = (
+    "production annuelle inconnue : plafond légal de 20 % non calculable — "
+    "revente non chiffrée")
+
+
+def _revente_omise(motif, hypotheses):
+    return {'statut': 'omise', 'kwh_an': None, 'plafond_kwh': None,
+            'tarifs': [], 'valeur_mad_an': None,
+            'mentions': [motif, MENTION_ART13], 'hypotheses': hypotheses}
+
+
+def _surplus_par_poste(apercu):
+    """{'pointe': kWh, 'hors_pointe': kWh} des cellules horaires (GMT)."""
+    officiels = tarif_ci.officiels
+    out = {'pointe': 0.0, 'hors_pointe': 0.0}
+    horaire = ((apercu.get('bilan') or {}).get('horaire')) or []
+    for bloc in horaire:
+        if not isinstance(bloc, dict):
+            continue
+        n = _f(bloc.get('nb_jours'))
+        surplus = bloc.get('surplus_kwh') or []
+        for h in range(min(24, len(surplus))):
+            kwh = _f(surplus[h]) * n
+            if not kwh:
+                continue
+            poste = officiels.poste_horaire(bloc.get('mois'), h)
+            out['pointe' if poste == 'pointe' else 'hors_pointe'] += kwh
+    return out
+
+
+def revente_ci(apercu_ci, *, tension, revente_demandee,
+               date_signature_prevue=None, production_annuelle_kwh=None):
+    """La revente 82-21 du surplus d'un site C&I (forme ``revente`` du
+    contrat ``economie_ci.json``), ou ``None`` (MT sans revente demandée).
+
+    ``production_annuelle_kwh`` : production du site (défaut :
+    ``bilan.production_kwh`` de l'aperçu) — base du plafond légal de 20 %.
+    """
+    from apps.ventes.quote_engine import constants_82_21 as c8221
+    apercu = apercu_ci if isinstance(apercu_ci, dict) else {}
+    t = (tension or '').strip().lower() if isinstance(tension, str) else None
+    if t and t not in TENSIONS_REVENTE:
+        bloc = _revente_bt(apercu)
+        if revente_demandee:
+            bloc['mentions'].append(MENTION_REVENTE_IGNOREE_BT)
+        return bloc
+    if not revente_demandee:
+        return None
+    hypotheses = [{'cle': 'revente_demandee', 'valeur': True,
+                   'statut': 'declare',
+                   'source': 'saisies_economie_ci.revente_demandee'}]
+    if not t:
+        return _revente_omise(MOTIF_TENSION_INCONNUE, hypotheses)
+    tarif, motif = c8221.tarif_excedent_en_vigueur(date_signature_prevue)
+    if tarif is None:
+        return _revente_omise(motif, hypotheses)
+    production = production_annuelle_kwh
+    if production is None:
+        production = (apercu.get('bilan') or {}).get('production_kwh')
+    production = _f(production)
+    if not production:
+        return _revente_omise(MOTIF_PRODUCTION_INCONNUE, hypotheses)
+
+    par_poste = _surplus_par_poste(apercu)
+    surplus = sum(par_poste.values())
+    plafond = production * c8221.PLAFOND_INJECTION_PCT / 100.0
+    kwh_an = min(surplus, plafond)
+    facteur = kwh_an / surplus if surplus else 0.0
+    prix = {'pointe': tarif['pointe'], 'hors_pointe': tarif['hors_pointe']}
+    tarifs, valeur = [], 0.0
+    for poste in ('pointe', 'hors_pointe'):
+        kwh = par_poste[poste] * facteur
+        if kwh <= 0:
+            continue
+        tarifs.append({'poste': poste, 'kwh': int(round(kwh)),
+                       'tarif_kwh_ht': prix[poste]})
+        valeur += kwh * prix[poste]
+    hypotheses.append({'cle': 'surplus_horaire_kwh',
+                       'valeur': int(round(surplus)), 'statut': 'source',
+                       'source': 'etude_ci.bilan.horaire (somme des heures '
+                                 'de surplus)'})
+    return {
+        'statut': 'calculee',
+        'kwh_an': int(round(kwh_an)),
+        'plafond_kwh': int(round(plafond)),
+        'tarifs': tarifs,
+        'valeur_mad_an': round(valeur, 2),
+        'mentions': [c8221.MENTION_82_21, MENTION_NON_GARANTI,
+                     MENTION_SECOND_COMPTEUR, MENTION_TSS,
+                     MENTION_TARIF_ARRETE, MENTION_ART13],
+        'hypotheses': hypotheses,
+    }
