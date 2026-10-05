@@ -71,7 +71,7 @@ DEPLACEMENTS = {
     'comp': ('split_dm_comp', 'apps/ventes/domain/pipeline.py',
              'apps/ventes/domain/etape_composer.py', 'SPL265', True),
     'cal': ('split_dm_cal', 'apps/ventes/domain/creation.py',
-            'apps/ventes/domain/creation_calepinage.py', 'SPL266', False),
+            'apps/ventes/domain/creation_calepinage.py', 'SPL266', True),
     'auto': ('split_dm_auto', 'apps/ventes/domain/creation.py',
              'apps/ventes/domain/creation_auto.py', 'SPL267', False),
     'clone': ('split_dm_clone', 'apps/ventes/domain/creation.py',

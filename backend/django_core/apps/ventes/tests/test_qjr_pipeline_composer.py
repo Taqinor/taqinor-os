@@ -40,6 +40,7 @@ from django.test import SimpleTestCase, TestCase
 from apps.crm.models import Lead
 from apps.stock.models import Produit
 from apps.ventes.domain import creation as _creation
+from apps.ventes.domain import creation_calepinage as _creation_calepinage
 from apps.ventes.domain import etape_composer, pipeline
 
 User = get_user_model()
@@ -133,7 +134,7 @@ class LApercuEtLaCreationNeDiverguentPlus(_Base):
             company=self.company, nb_panneaux=NB_PANNEAUX,
             panel_watt=PANEL_WATT, scenario='sans',
             mppt_paires=MPPT_PAIRES, structure_type=STRUCTURE)
-        devis = _creation.build_devis_from_layout(
+        devis = _creation_calepinage.build_devis_from_layout(
             layout=self._layout(), user=self.user, company=self.company,
             lead=self.lead,
             mppt_paires=MPPT_PAIRES, structure_type=STRUCTURE)
@@ -148,7 +149,7 @@ class LApercuEtLaCreationNeDiverguentPlus(_Base):
     def test_les_deux_parametres_tombes_arrivent_vraiment_au_devis(self):
         """Sans cette assertion, l'égalité ci-dessus passerait aussi si les
         DEUX chemins ignoraient ``mppt_paires`` et ``structure_type``."""
-        devis = _creation.build_devis_from_layout(
+        devis = _creation_calepinage.build_devis_from_layout(
             layout=self._layout(), user=self.user, company=self.company,
             lead=self.lead,
             mppt_paires=MPPT_PAIRES, structure_type=STRUCTURE)
@@ -170,7 +171,7 @@ class LApercuEtLaCreationNeDiverguentPlus(_Base):
         """Un appelant qui ne renseigne NI ``mppt_paires`` NI
         ``structure_type`` compose exactement ce que ce dépôt composait avant
         QJR80 : 1 paire (60 m) et de l'ACIER."""
-        devis = _creation.build_devis_from_layout(
+        devis = _creation_calepinage.build_devis_from_layout(
             layout=self._layout(), user=self.user, company=self.company,
             lead=self.lead)
         lignes = list(devis.lignes.all())
@@ -237,7 +238,7 @@ class LesDeuxCheminsRemplissentLaMemeIntention(_Base):
                 panel_watt=PANEL_WATT, scenario='sans',
                 mppt_paires=MPPT_PAIRES, structure_type=STRUCTURE))
         intention_devis = self._capturer(
-            lambda: _creation.build_devis_from_layout(
+            lambda: _creation_calepinage.build_devis_from_layout(
                 layout=self._layout(), user=self.user, company=self.company,
                 lead=self.lead,
                 mppt_paires=MPPT_PAIRES, structure_type=STRUCTURE))

@@ -400,12 +400,14 @@ sync_devis_from_layout = _resynchronisation.sync_devis_from_layout
 from apps.ventes.domain import creation as _creation  # noqa: E402
 create_draft_devis_from_ocr = _creation.create_draft_devis_from_ocr
 dupliquer_devis = _creation.dupliquer_devis
-build_devis_from_layout = _creation.build_devis_from_layout
+# SPL266 — le pont calepinage → devis vit dans ``domain/creation_calepinage.py``.
+from apps.ventes.domain import creation_calepinage as _creation_calepinage  # noqa: E402
+build_devis_from_layout = _creation_calepinage.build_devis_from_layout
 # CAL185 — chiffrer la VARIANTE RETENUE d'un calepinage, par LE chemin
 # de création de lignes (jamais un second).
 build_devis_depuis_calepinage_retenu = (
-    _creation.build_devis_depuis_calepinage_retenu)
-produits_a_renseigner = _creation.produits_a_renseigner
+    _creation_calepinage.build_devis_depuis_calepinage_retenu)
+produits_a_renseigner = _creation_calepinage.produits_a_renseigner
 SCENARIOS_DEMANDABLES = _creation.SCENARIOS_DEMANDABLES
 composer_devis_residentiel = _creation.composer_devis_residentiel
 build_devis_auto = _creation.build_devis_auto
