@@ -1254,7 +1254,7 @@ def lignes_pour_economie(devis):
     """Les lignes du devis à la forme lue par :func:`economie_pompage`.
 
     Montants TOTAUX HT/TTC client par ligne (remise de ligne ET remise
-    globale du devis appliquées) — JAMAIS ``prix_achat``. Rôle et garantie
+    globale du devis appliquées) — JAMAIS le prix d'achat. Rôle et garantie
     viennent du produit (FK lue, aucun import du modèle stock).
     """
     remise_globale = _decimal_ou_zero(getattr(devis, 'remise_globale', 0))
@@ -1340,9 +1340,12 @@ def economie_pompage_pour_devis(devis_id, company):
         EconomieInvalide: saisie refusée (champ nommé).
     """
     from .domain.pompage import etudier_pompage
-    from .models import Devis
+    # AGR201 — le module reste PUR (aucune requête écrite ici, garde
+    # ``test_module_pur_sans_modele``) : la lecture du devis passe par le
+    # sélecteur de l'app.
+    from .selectors import devis_de_la_societe
 
-    devis = Devis.objects.get(pk=devis_id, company=company)
+    devis = devis_de_la_societe(devis_id, company)
     saisies = (devis.etude_params or {}).get('saisies_economie_pompage') or {}
     sortie_etude = etudier_pompage(company, {}, devis=devis)
     return economie_pompage_depuis(company, saisies,

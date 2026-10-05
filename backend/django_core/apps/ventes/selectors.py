@@ -3955,6 +3955,14 @@ def devis_predecesseurs_revision_ids(devis):
 
 # ── AGR206 — économie de pompage DÉCLARÉE, lecture publique ────────────────
 
+def devis_de_la_societe(devis_id, company):
+    """AGR206 — le devis ``devis_id`` DE la société, ou ``Devis.DoesNotExist``
+    (inconnu ou d'une autre société). Lecture seule ; sert le module PUR
+    ``economie_pompage`` qui n'écrit aucune requête lui-même."""
+    from .models import Devis
+    return Devis.objects.get(pk=devis_id, company=company)
+
+
 def economie_pompage_publique_pour_devis(devis_id, company):
     """AGR206 — le bloc ``economie_pompage`` SANS ``vue_interne`` (D3 :
     /proposition et PDF). ``None`` si le devis est introuvable dans la
