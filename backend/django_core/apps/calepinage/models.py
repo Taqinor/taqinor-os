@@ -154,6 +154,18 @@ class Calepinage(TenantModel):
         related_name='calepinages_responsable',
         verbose_name='Responsable',
     )
+    #: ACAL81 — le système de fixation CHOISI pour ce calepinage (catalogue
+    #: de la société, CALX358). Vide = aucun choix : la nomenclature retombe
+    #: sur ``?systeme=`` ou l'UNIQUE système actif, comme avant (migration
+    #: ``0019`` additive). Seul écrivain : ``services.fixation
+    #: .appliquer_systeme`` (même refus pour un id absent ou étranger).
+    systeme_fixation = models.ForeignKey(
+        'SystemeFixation',
+        on_delete=models.SET_NULL,  # on_delete: un système retiré du catalogue laisse le calepinage sans choix, jamais détruit
+        null=True, blank=True,
+        related_name='calepinages',
+        verbose_name='Système de fixation',
+    )
 
     class Meta:
         verbose_name = 'Calepinage'

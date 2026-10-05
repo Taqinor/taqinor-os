@@ -307,7 +307,10 @@ class BomFixationEnBase(BaseApiCalepinage):
         self.assertEqual(reponse.data['systeme']['id'], systeme.pk)
         self.assertEqual([ligne['quantite'] for ligne in reponse.data['lignes']],
                          [24.0, 16])
-        self.assertEqual(sorted(reponse.data), ['lignes', 'refus', 'systeme'])
+        # ACAL81 — la réponse porte aussi ``systeme_source`` (contrat).
+        self.assertEqual(sorted(reponse.data),
+                         ['lignes', 'refus', 'systeme', 'systeme_source'])
+        self.assertEqual(reponse.data['systeme_source'], 'parametre')
 
     def test_plusieurs_systemes_sans_choix_refus_nomme(self):
         self._systeme(code='a')
