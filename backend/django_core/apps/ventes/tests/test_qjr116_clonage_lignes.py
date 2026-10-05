@@ -41,11 +41,15 @@ User = get_user_model()
 
 RACINE_VENTES = Path(__file__).resolve().parent.parent
 
-#: Les trois chemins de copie et le module qui les porte depuis M3.
+#: Les trois chemins de copie. SPL244 — le module PORTEUR est résolu par NOM
+#: de symbole dans le groupe ``domain/*.py`` (:func:`_appels_de`) : la découpe
+#: des fichiers-dieux (SPL262-SPL268) déplace ces corps sans rendre la garde
+#: introuvable, et un porteur absent ou en double reste rouge.
+GROUPE_DOMAINE = 'domain/*.py'
 CHEMINS_DE_COPIE = (
-    ('domain/creation.py', 'dupliquer_devis'),
-    ('domain/gammes.py', 'creer_variante_gamme'),
-    ('domain/cycle_vie.py', 'renouveler_devis'),
+    (GROUPE_DOMAINE, 'dupliquer_devis'),
+    (GROUPE_DOMAINE, 'creer_variante_gamme'),
+    (GROUPE_DOMAINE, 'renouveler_devis'),
 )
 
 #: QJR407 (02/09/2026) — LE CLONEUR DE DEVIS DU DOMAINE, seule délégation
@@ -58,35 +62,42 @@ CHEMINS_DE_COPIE = (
 #:
 #: UN SEUL niveau de délégation : la chaîne reste vérifiable d'un coup d'œil,
 #: et un chemin qui déléguerait à un quatrième intermédiaire échoue ici.
-CLONEUR_DELEGUE = ('domain/creation.py', 'cloner_devis')
+CLONEUR_DELEGUE = (GROUPE_DOMAINE, 'cloner_devis')
 
 
 def _appels_de(chemin, nom_fonction):
     """Les noms de fonctions appelées à l'intérieur de ``nom_fonction``.
 
     Lecture AST, jamais un grep : un appel cité dans un commentaire ou une
-    docstring ne doit ni compter ni manquer.
+    docstring ne doit ni compter ni manquer. ``chemin`` est un motif (glob)
+    relatif à ``apps/ventes`` : la fonction doit y être définie dans
+    EXACTEMENT un fichier (SPL244 — ni perdue, ni dupliquée par une découpe).
     """
-    arbre = ast.parse((RACINE_VENTES / chemin).read_text(encoding='utf-8'),
-                      filename=str(chemin))
-    for noeud in ast.walk(arbre):
-        if not isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if noeud.name != nom_fonction:
-            continue
-        appels = set()
-        for enfant in ast.walk(noeud):
-            if isinstance(enfant, ast.Call):
-                cible = enfant.func
-                if isinstance(cible, ast.Name):
-                    appels.add(cible.id)
-                elif isinstance(cible, ast.Attribute):
-                    appels.add(cible.attr)
-        return appels
-    raise AssertionError(
-        '%s : fonction « %s » introuvable — le chemin de copie a été renommé '
-        'ou déplacé ; mettez CHEMINS_DE_COPIE à jour dans le MÊME commit.'
-        % (chemin, nom_fonction))
+    trouvees = []
+    for fichier in sorted(RACINE_VENTES.glob(chemin)):
+        arbre = ast.parse(fichier.read_text(encoding='utf-8'),
+                          filename=str(fichier))
+        for noeud in ast.walk(arbre):
+            if not isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if noeud.name != nom_fonction:
+                continue
+            appels = set()
+            for enfant in ast.walk(noeud):
+                if isinstance(enfant, ast.Call):
+                    cible = enfant.func
+                    if isinstance(cible, ast.Name):
+                        appels.add(cible.id)
+                    elif isinstance(cible, ast.Attribute):
+                        appels.add(cible.attr)
+            trouvees.append((fichier.name, appels))
+    if len(trouvees) != 1:
+        raise AssertionError(
+            '%s : fonction « %s » trouvée %d fois (%s) — attendu exactement '
+            'une définition ; le chemin de copie a été renommé, perdu ou '
+            'dupliqué.' % (chemin, nom_fonction, len(trouvees),
+                           [nom for nom, _ in trouvees]))
+    return trouvees[0][1]
 
 
 class UnSeulCloneurDeLignes(SimpleTestCase):

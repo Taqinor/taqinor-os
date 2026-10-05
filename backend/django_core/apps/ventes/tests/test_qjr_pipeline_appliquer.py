@@ -28,6 +28,7 @@ Lancer :
         apps.ventes.tests.test_qjr_pipeline_appliquer -v 2
 """
 import ast
+import fnmatch
 from decimal import Decimal
 from pathlib import Path
 
@@ -351,7 +352,10 @@ CHEMINS_BASCULES = {
     # QJR96 — le devis AUTOMATIQUE et le TUNNEL : ``build_devis_auto`` est
     # devenue le second adaptateur de ce fichier (origines ``auto``/``tunnel``),
     # et ne repasse plus par ``build_devis_from_layout``.
-    'domain/creation.py': 2,
+    # SPL244 — clé de GROUPE : la découpe de ``creation.py`` (SPL266 pont
+    # calepinage, SPL267 devis automatique) répartit ces deux appels sur
+    # ``creation_*.py`` ; le TOTAL du groupe reste 2, aucun autre fichier admis.
+    'domain/creation*.py': 2,
     # QJR97 — la resynchronisation 3D : ``sync_devis_from_layout`` est devenue
     # un adaptateur qui DEMANDE le mode « réconcilier » ; le geste lui-même est
     # l'étape ``reconcilier`` de ce même module.
@@ -363,6 +367,18 @@ CHEMINS_BASCULES = {
     # ligne) demande le mode « rafraîchir » : études + caches (kWc, marge).
     'views/ligne_devis.py': 1,
 }
+
+
+#: SPL244 — motifs de GROUPE du ledger : un fichier de production qui y
+#: correspond est compté sous le motif (somme du groupe), jamais sous son nom.
+GROUPES_BASCULES = ('domain/creation*.py',)
+
+
+def _cle_du_ledger(fichier):
+    for motif in GROUPES_BASCULES:
+        if fnmatch.fnmatchcase(fichier, motif):
+            return motif
+    return fichier
 
 
 class LesCheminsBasculesSontDeclares(SimpleTestCase):
@@ -393,7 +409,8 @@ class LesCheminsBasculesSontDeclares(SimpleTestCase):
 
         constate = {}
         for fichier in appels:
-            constate[fichier] = constate.get(fichier, 0) + 1
+            cle = _cle_du_ledger(fichier)
+            constate[cle] = constate.get(cle, 0) + 1
 
         self.assertEqual(
             constate, CHEMINS_BASCULES,

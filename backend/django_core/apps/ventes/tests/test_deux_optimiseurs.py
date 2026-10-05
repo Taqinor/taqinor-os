@@ -46,7 +46,10 @@ from apps.ventes import dimensionnement, services
 # `_panneaux_dimensionnement_horaire` (importé au niveau module depuis
 # `domain/taille`). Un `patch` ne double que l'espace de noms qu'il vise :
 # la doublure du moteur se pose donc sur le LECTEUR, pas sur la façade.
-from apps.ventes.domain import creation as domain_creation
+# SPL244 — le lecteur est résolu par le module qui DÉFINIT `build_devis_auto`
+# (`domain/creation`, puis `domain/creation_auto` après SPL267) : un patch
+# posé sur l'ancien module réussirait encore mais n'intercepterait plus rien.
+from apps.ventes.tests.test_split_devis_domaine import module_de
 # QJR77 — même règle pour le moteur de paliers : `echelle_paliers_batterie`
 # et le mur physique vivent dans `domain/dimensionnement_devis` et s'y
 # appellent entre eux. `apps.ventes.dimensionnement` ne fait que les
@@ -60,6 +63,7 @@ from apps.ventes.utils.options import (
 from authentication.models import Company
 from apps.ventes.domain import taille as domaine_taille
 
+domain_creation = module_de('build_devis_auto')
 User = get_user_model()
 
 #: Même catalogue que celui semé par ``seed_catalogue`` — les DÉSIGNATIONS
