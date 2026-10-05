@@ -1,4 +1,4 @@
-// CIQ124 — fonctions PURES de l'aperçu C&I serveur (aucun import : elles
+// CIQ124 — fonctions PURES de l'aperçu C&I serveur (imports relatifs seulement : elles
 // tournent sous `node --test`, voir etudeCiPreview.test.mjs).
 //
 // Contrat partagé : `backend/django_core/apps/ventes/contract_samples/
@@ -17,23 +17,13 @@
 //      alertes INTERNES sont marquées (jamais imprimées au client) ;
 //   5. une réponse qui ne décrit plus la saisie courante n'est jamais montrée.
 
+import {
+  nombreOuNull, texteOuNull, creerLibelleProvenance, alertesDuServeur,
+} from './etudePreviewCommun.js'
+
+export { nombreOuNull }
+
 const MODES = ['commercial', 'industriel']
-
-/** Un nombre tapé → nombre, sinon `null` (jamais 0 inventé, jamais arrondi). */
-export const nombreOuNull = (v) => {
-  if (v === null || v === undefined || typeof v === 'boolean') return null
-  if (typeof v === 'number') return Number.isFinite(v) ? v : null
-  const brut = String(v).trim().replace(',', '.')
-  if (brut === '') return null
-  const n = Number(brut)
-  return Number.isFinite(n) ? n : null
-}
-
-const texteOuNull = (v) => {
-  if (v === null || v === undefined) return null
-  const t = String(v).trim()
-  return t === '' ? null : t
-}
 
 const booleenOuNull = (v) => {
   if (v === true || v === false) return v
@@ -193,31 +183,16 @@ const LIBELLES_DETAIL_LEAD = {
   derive: 'déduit',
 }
 
-/** Libellé FR d'une provenance `{origine, detail, date}` (jamais vide). */
-export function libelleProvenance(provenance) {
-  const p = provenance || {}
-  const base = LIBELLES_ORIGINE[p.origine] || 'origine inconnue'
-  const detail = p.origine === 'lead' ? LIBELLES_DETAIL_LEAD[p.detail] : null
-  const texte = detail ? `${base} — ${detail}` : base
-  return p.date ? `${texte} (${p.date})` : texte
-}
+export const libelleProvenance = creerLibelleProvenance(LIBELLES_ORIGINE, LIBELLES_DETAIL_LEAD)
 
 /**
  * TOUTES les alertes du serveur, dans l'ordre, aucune filtrée. Les alertes
  * `interne: true` sont MARQUÉES (affichage vendeur seulement), jamais
  * retirées. Une alerte sans message garde son code pour rester visible.
  */
-export function alertesAffichables(reponse) {
-  const alertes = Array.isArray(reponse?.alertes) ? reponse.alertes : []
-  return alertes.map((a, i) => ({
-    cle: `${a?.code || 'alerte'}-${a?.champ || ''}-${i}`,
-    code: a?.code || null,
-    champ: a?.champ || null,
-    niveau: a?.niveau || 'alerte',
-    interne: a?.interne === true,
-    message: a?.message || a?.code || 'Alerte du moteur C&I',
-  }))
-}
+export const alertesAffichables = (reponse) => alertesDuServeur(
+  reponse, 'Alerte du moteur C&I', (a) => ({ niveau: a?.niveau || 'alerte', interne: a?.interne === true }),
+)
 
 /**
  * La réponse à afficher pour la saisie COURANTE, ou `null` : une réponse

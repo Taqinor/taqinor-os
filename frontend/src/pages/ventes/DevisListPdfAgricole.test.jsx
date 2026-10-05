@@ -12,51 +12,16 @@ import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 
-vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    fetchDevis: () => ({ type: 'ventes/fetchDevis/noop' }),
-    genererPdfDevis: () => {
-      const action = { type: 'ventes/genererPdfDevis/noop' }
-      action.unwrap = () => Promise.resolve()
-      return action
-    },
-    convertirDevisEnBC: () => ({ type: 'ventes/convertirDevisEnBC/noop' }),
-  }
-})
+vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) =>
+  (await import('../../test/fixtures/devisListMocks.js')).ventesSliceMock(await importOriginal()))
 
-vi.mock('../../api/ventesApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      etatPdfDevis: vi.fn(() => Promise.resolve({
-        data: { devis: 1, statut: 'en_cours', fichier_pdf: false, erreur: null, date: null },
-      })),
-      getVariantes: vi.fn(() => Promise.resolve({ data: [] })),
-      historiqueDevis: vi.fn(() => Promise.resolve({ data: [] })),
-    },
-  }
-})
+vi.mock('../../api/ventesApi', async (importOriginal) =>
+  (await import('../../test/fixtures/devisListMocks.js')).ventesApiPdfMock(await importOriginal(), 1))
 
-vi.mock('../../api/crmApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: { ...actual.default, getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })) },
-  }
-})
+vi.mock('../../api/crmApi', async (importOriginal) =>
+  (await import('../../test/fixtures/devisListMocks.js')).crmApiMock(await importOriginal()))
 
-vi.mock('../../api/uxviewsApi', () => ({
-  default: {
-    listSavedViews: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    createSavedView: vi.fn(() => Promise.resolve({ data: { id: 1, ecran: 'ventes.devis' } })),
-    updateSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    deleteSavedView: vi.fn(() => Promise.resolve({})),
-  },
-}))
+vi.mock('../../api/uxviewsApi', async () => (await import('../../test/fixtures/devisListMocks.js')).uxviewsApiMock())
 
 import DevisList from './DevisList'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'

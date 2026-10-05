@@ -75,3 +75,15 @@ export function exempleContrat(app, nom, variante = 'exemple') {
 export function reponseContrat(app, nom, variante = 'exemple') {
   return { data: exempleContrat(app, nom, variante) }
 }
+
+/**
+ * Ce que l'écran tient en état : les mêmes clés que l'exemple, mais les nombres
+ * TAPÉS (donc en texte) — utilisé par les tests des aperçus serveur.
+ */
+export function enTexte(o) {
+  if (Array.isArray(o)) return o.map(enTexte)
+  if (o && typeof o === 'object') {
+    return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, enTexte(v)]))
+  }
+  return typeof o === 'number' ? String(o) : o
+}

@@ -36,6 +36,8 @@ ceux du moteur, seulement exprimés en %), aucun taux fixe (D-CIQ-1), aucun
 """
 from __future__ import annotations
 
+from ..lecture_pure import nombre_normalise
+
 #: Version de la forme servie (contrat CIQ4).
 VERSION = 1
 
@@ -127,17 +129,7 @@ def _dict(v):
     return v if isinstance(v, dict) else {}
 
 
-def _num(v):
-    """Nombre servi tel quel (int si entier exact, sinon float), ou None."""
-    if v is None or isinstance(v, bool):
-        return None
-    try:
-        f = float(v)
-    except (TypeError, ValueError):
-        return None
-    if f != f:  # NaN
-        return None
-    return int(f) if f == int(f) else f
+_num = nombre_normalise
 
 
 def _pct(fraction):

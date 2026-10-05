@@ -31,6 +31,7 @@ from __future__ import annotations
 import html
 
 from .. import i18n_labels as _i18n
+from ..lecture_pure import nombre_ou_none
 
 NAVY = "#1A2B4A"
 GOLD = "#F5A623"
@@ -76,14 +77,7 @@ def _lib(cle, langue):
     return t.get(_langue(langue)) or t["fr"]
 
 
-def _num(v):
-    if v is None or isinstance(v, bool):
-        return None
-    try:
-        f = float(v)
-    except (TypeError, ValueError):
-        return None
-    return None if f != f else f
+_num = nombre_ou_none
 
 
 def _fr(v):

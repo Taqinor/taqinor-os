@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from .. import i18n_labels
 from ..figures import ancre
+from ..lecture_pure import nombre_ou_none
 from ..montants import fmt_centimes
 from ..residential import theme
 from ..sequence import sequence_affichage
@@ -42,14 +43,7 @@ def _t(langue, cle, **valeurs):
 
 # ── formatage (aucun calcul) ────────────────────────────────────────────────
 
-def _num(v):
-    if v is None or isinstance(v, bool):
-        return None
-    try:
-        f = float(v)
-    except (TypeError, ValueError):
-        return None
-    return None if f != f else f
+_num = nombre_ou_none
 
 
 def _n(v, dec=1):

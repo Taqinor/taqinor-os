@@ -3,26 +3,12 @@
 // L'échantillon du contrat est LU dans le fichier partagé, jamais recopié.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import path from 'node:path'
+import { documentContrat, enTexte } from '../../test/fixtures/contractSamples.js'
 import {
   construireCorpsCi, alertesAffichables, libelleProvenance, reponseAJour,
 } from './etudeCiPreviewPur.js'
 
-const ICI = path.dirname(fileURLToPath(import.meta.url))
-const CONTRAT = JSON.parse(readFileSync(path.resolve(ICI,
-  '../../../../backend/django_core/apps/ventes/contract_samples/etude_ci_preview.json'),
-'utf8'))
-
-// Ce que l'écran tient en état : les mêmes clés, les nombres TAPÉS en texte.
-const enTexte = (o) => {
-  if (Array.isArray(o)) return o.map(enTexte)
-  if (o && typeof o === 'object') {
-    return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, enTexte(v)]))
-  }
-  return typeof o === 'number' ? String(o) : o
-}
+const CONTRAT = documentContrat('ventes', 'etude_ci_preview')
 
 test('corps conforme à l’échantillon du contrat (nombres tapés en texte)', () => {
   assert.deepEqual(construireCorpsCi(enTexte(CONTRAT.corps)), CONTRAT.corps)
