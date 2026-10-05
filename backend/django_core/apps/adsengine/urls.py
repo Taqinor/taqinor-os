@@ -59,7 +59,9 @@ from .views import (
     VariantFunnelView, VariantReportView, VisualFatigueView,
     WeatherTriggerView, WiringHealthView,
 )
-from .views import VeilleCouvertureView  # PLAN_VEILLE (ajout)
+from .views import (  # PLAN_VEILLE (ajout)
+    VeilleAnnonceurViewSet, VeilleCouvertureView, VeilleDecouverteViewSet,
+)
 from .whatsapp_webhook import WhatsAppCloudWebhookView
 
 router = DefaultRouter()
@@ -112,6 +114,11 @@ router.register(r'campaigns', AdCampaignMirrorViewSet,
 # PACT164 — règles de masquage automatique par mot-clé (ADSDEEP53).
 router.register(r'regles-mot-cle', CommentKeywordRuleViewSet,
                 basename='comment-keyword-rule')
+# PLAN_VEILLE — VEIL17 : découvertes de vendeurs (API officielle Ad Library).
+router.register(r'veille/decouvertes', VeilleDecouverteViewSet,
+                basename='veille-decouverte')
+router.register(r'veille/annonceurs', VeilleAnnonceurViewSet,
+                basename='veille-annonceur')
 
 urlpatterns = [
     path('status/', StatusView.as_view(), name='adsengine-status'),

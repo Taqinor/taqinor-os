@@ -605,3 +605,130 @@ def executer_etape(decouverte_id, etape=None, *, http_client=None, now=None):
         _progression(dec)
         return {'action': action, 'countdown': countdown,
                 'etape': dec.numero_etape}
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# VEIL17 — Verdict humain, étiquette de mesure, tirage de l'échantillon
+# ═════════════════════════════════════════════════════════════════════════════
+def _classes():
+    from .models import VEILLE_CLASSES
+    return {cle: libelle for cle, libelle, _b in VEILLE_CLASSES}
+
+
+def _valider_classe(classe):
+    classes = _classes()
+    if not classe:
+        raise LancementRefuse(
+            'Choisir une classe : aucune classe n\'est posée par défaut.')
+    if classe not in classes:
+        raise LancementRefuse(f'Classe inconnue : {classe}.')
+    return classe
+
+
+def _valider_tri(valeur, *, obligatoire=False):
+    if valeur in (None, ''):
+        if obligatoire:
+            raise LancementRefuse('Dropshipper : choisir oui, non ou '
+                                  'incertain.')
+        return None
+    if valeur not in ('oui', 'non', 'incertain'):
+        raise LancementRefuse('Dropshipper : oui, non ou incertain.')
+    return valeur
+
+
+def annonceurs_de(dec):
+    """Annonceurs vus par une découverte (même société)."""
+    from .models import VeilleAnnonceur
+    return (VeilleAnnonceur.objects
+            .filter(company_id=dec.company_id,
+                    pubs_vues__requete__decouverte_id=dec.pk).distinct())
+
+
+def poser_verdict_humain(annonceur, user, classe, dropshipper=None,
+                         doublon_de=None):
+    """Verdict HUMAIN : nouvelle ligne d'historique, devient le verdict
+    courant ; prime sur règle et IA (qui ne l'écrasent jamais)."""
+    from .models import VeilleAnnonceur, VeilleVerdict
+
+    classe = _valider_classe(classe)
+    dropshipper = _valider_tri(dropshipper)
+    cible = None
+    if classe == 'doublon' and doublon_de not in (None, ''):
+        cible = VeilleAnnonceur.objects.filter(
+            company_id=annonceur.company_id, pk=doublon_de).first()
+        if cible is None or cible.pk == annonceur.pk:
+            raise LancementRefuse('« Doublon de » : annonceur introuvable.')
+    with transaction.atomic():
+        ann = VeilleAnnonceur.objects.select_for_update().get(pk=annonceur.pk)
+        verdict = VeilleVerdict.objects.create(
+            company_id=ann.company_id, annonceur=ann, classe=classe,
+            motif_fr=f'Décision humaine : {_classes()[classe].lower()}.',
+            preuves=[], decide_par='humain', auteur=user,
+            dropshipper=dropshipper or ann.dropshipper_probable,
+            doublon_de=cible)
+        ann.classe = classe
+        ann.verdict_courant = verdict
+        ann.doublon_de = cible if classe == 'doublon' else None
+        champs = ['classe', 'verdict_courant', 'doublon_de', 'updated_at']
+        if dropshipper:
+            ann.dropshipper_probable = dropshipper
+            ann.dropshipper_indices = []
+            ann.dropshipper_decide_par = 'humain'
+            champs += ['dropshipper_probable', 'dropshipper_indices',
+                       'dropshipper_decide_par']
+        ann.save(update_fields=champs)
+    return ann
+
+
+def poser_etiquette(annonceur, user, classe, dropshipper):
+    """Étiquette de MESURE (mode aveugle) : ne touche PAS le verdict courant."""
+    from .models import VeilleVerdict
+
+    classe = _valider_classe(classe)
+    dropshipper = _valider_tri(dropshipper, obligatoire=True)
+    if not annonceur.jeu:
+        raise LancementRefuse(
+            "Cet annonceur n'appartient à aucun échantillon de mesure tiré.")
+    return VeilleVerdict.objects.create(
+        company_id=annonceur.company_id, annonceur=annonceur, classe=classe,
+        motif_fr='Étiquette de mesure (humain, à l\'aveugle).', preuves=[],
+        decide_par='humain', auteur=user, dropshipper=dropshipper,
+        est_etiquette_mesure=True, jeu=annonceur.jeu)
+
+
+def tirer_echantillon(dec, taille_etalonnage, taille_test, rng=None):
+    """Tirage aléatoire GELÉ de deux jeux disjoints (étalonnage, test) parmi
+    les annonceurs de la découverte. Idempotent : un second appel renvoie le
+    tirage existant (``deja_tire``) sans jamais retirer."""
+    import random
+
+    from .models import VeilleAnnonceur, VeilleDecouverte
+
+    taille_e = _entier_positif(taille_etalonnage, 'taille_etalonnage')
+    taille_t = _entier_positif(taille_test, 'taille_test')
+    with transaction.atomic():
+        VeilleDecouverte.objects.select_for_update().get(pk=dec.pk)
+        existant = VeilleAnnonceur.objects.filter(
+            company_id=dec.company_id, jeu_decouverte_id=dec.pk)
+        if existant.exists():
+            return {
+                'etalonnage': sorted(existant.filter(jeu='etalonnage')
+                                     .values_list('id', flat=True)),
+                'test': sorted(existant.filter(jeu='test')
+                               .values_list('id', flat=True)),
+                'deja_tire': True,
+            }
+        candidats = sorted(annonceurs_de(dec).filter(jeu__isnull=True)
+                           .values_list('id', flat=True))
+        if taille_e + taille_t > len(candidats):
+            raise LancementRefuse(
+                f'Échantillon impossible : {taille_e + taille_t} annonceurs '
+                f'demandés, {len(candidats)} disponibles.')
+        tirage = (rng or random.SystemRandom()).sample(
+            candidats, taille_e + taille_t)
+        etalonnage, test = sorted(tirage[:taille_e]), sorted(tirage[taille_e:])
+        VeilleAnnonceur.objects.filter(pk__in=etalonnage).update(
+            jeu='etalonnage', jeu_decouverte=dec)
+        VeilleAnnonceur.objects.filter(pk__in=test).update(
+            jeu='test', jeu_decouverte=dec)
+    return {'etalonnage': etalonnage, 'test': test, 'deja_tire': False}
