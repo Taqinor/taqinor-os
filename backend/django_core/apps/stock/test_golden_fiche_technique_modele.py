@@ -35,8 +35,11 @@ from django.test import TestCase
 
 from apps.stock.golden.ast_fingerprint import fingerprint, verifier_section
 from apps.stock.models import (
-    FicheTechnique, Produit, _est_nombre, _valider_courbe,
+    FicheTechnique, Produit,
     valider_courbe_irradiance, valider_courbe_rendement_onduleur)
+# SPL113 — les deux privés ne sont pas ré-exportés par la façade (aucun usage
+# hors bloc) : on les lit dans leur module.
+from apps.stock.models_fiche_technique import _est_nombre, _valider_courbe
 from authentication.models import Company
 
 GOLDEN = 'fiche_technique_modele'
@@ -145,6 +148,24 @@ def _decrire_modele():
 
 
 class GoldenFicheTechniqueModeleTests(TestCase):
+
+    def test_spl113_bloc_vit_dans_models_fiche_technique(self):
+        """SPL113 — le bloc a déménagé dans ``models_fiche_technique.py`` et
+        la façade ``apps.stock.models`` ré-exporte LE MÊME objet (pas un
+        jumeau)."""
+        import importlib
+
+        import apps.stock.models as facade
+        module = importlib.import_module('apps.stock.models_fiche_technique')
+        self.assertEqual(FicheTechnique.__module__,
+                         'apps.stock.models_fiche_technique')
+        self.assertIs(module.FicheTechnique, facade.FicheTechnique)
+        for nom in ('valider_courbe_irradiance',
+                    'valider_courbe_rendement_onduleur'):
+            self.assertIs(getattr(module, nom), getattr(facade, nom))
+        # Les deux privés ne sont PAS ré-exportés par la façade.
+        self.assertFalse(hasattr(facade, '_est_nombre'))
+        self.assertFalse(hasattr(facade, '_valider_courbe'))
 
     def test_empreintes_ast(self):
         """Empreintes AST des cinq symboles — indépendantes du fichier."""

@@ -17,7 +17,7 @@ from django.test import TestCase
 
 from apps.stock.models import FicheTechnique, Produit
 from apps.stock.selectors import specs_for_produit
-from apps.stock.serializers import FicheTechniqueSerializer
+from apps.stock.serializers_fiche_technique import FicheTechniqueSerializer
 from authentication.models import Company
 
 
