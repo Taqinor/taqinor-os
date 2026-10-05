@@ -63,6 +63,7 @@ from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
 from .diagram_views import schema_unifilaire, schema_unifilaire_devis  # FG252
 from .etude_horaire_view import etude_horaire_preview  # CJ2a
 from .etude_pompage_view import etude_pompage_preview  # AGR121
+from .etude_ci_view import etude_ci_preview  # CIQ118
 from .views.economie_pompage import economie_pompage_preview  # AGR206
 from .roof_load_view import roof_load_check  # FG253
 from .connection_declaration_view import declaration_raccordement  # FG272
@@ -231,6 +232,9 @@ urlpatterns = [
     # la source UNIQUE des chiffres d'économie que l'écran affichera (CJ2b).
     path('etude-horaire/preview/', etude_horaire_preview,
          name='etude-horaire-preview'),
+    # CIQ118 — aperçu serveur C&I (D-CIQ-0) : un seul calcul
+    # (``domain/etude_ci.etudier_ci``), aucune écriture.
+    path('etude-ci/preview/', etude_ci_preview, name='etude-ci-preview'),
     # AGR121 — aperçu serveur du pompage agricole (D-AGR-1) : un seul calcul
     # (``domain/pompage.etudier_pompage``), aucune écriture.
     path('etude-pompage/preview/', etude_pompage_preview,
