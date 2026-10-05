@@ -27,7 +27,7 @@ from apps.crm import horaires, stages
 from apps.crm.models import Client, Lead, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
-from apps.ventes.domain.cycle_vie import reviser_devis
+from apps.ventes.domain.revision import reviser_devis
 from apps.ventes.models import Devis
 
 User = get_user_model()

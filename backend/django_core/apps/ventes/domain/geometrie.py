@@ -1103,7 +1103,7 @@ from apps.ventes.domain.lignes import (  # noqa: E402,F401
 )
 from apps.ventes.domain.composition import _v_txt  # noqa: E402,F401
 from apps.ventes.domain.gammes import gamme_nom  # noqa: E402,F401
-from apps.ventes.domain.pipeline import (  # noqa: E402,F401
+from apps.ventes.domain.etape_composer import (  # noqa: E402,F401
     COMPOSITION_AVEC,
     COMPOSITION_LES_DEUX,
     COMPOSITION_SANS,

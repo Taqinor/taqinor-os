@@ -1,0 +1,17 @@
+{
+  "base": {},
+  "pur": {
+    "appariement": "ae07d816921f7a6908bf556bed9b92bbfcbb7fd57e312e4d848d31d19297cf56",
+    "batterie_incompatible": "f1e32c2c4d852c1d9bfd849fd00f5f69361b2b12fff872ffc9ffea07cb319f20",
+    "diff_aa": "c3802f148772f284d3776b00ebfe6d1fab3ba94fe30e4145162b25556fcb76e8",
+    "diff_ab": "071efc6da58c23feea28298e94eab4d8d8989ce8afaf49743e8fc25e0a449b47",
+    "diff_ba": "07e2459a65529232a2bf8aca155fe036fd932b2c0f9dec01b0dcc35b9a5d4679",
+    "diff_vide": "c3802f148772f284d3776b00ebfe6d1fab3ba94fe30e4145162b25556fcb76e8",
+    "estampiller": "9749d682cc49fcd52b064507a21769d09b2ead4087e389ffa214b0892cda7e2d",
+    "messages": "bc8750f5320e14ce0db236ea275e24f1a0b1dda5c4fba03cab1787a5d5b9441e",
+    "note_refus": "8ef6ca9f9230c099933361ccfa9e022012f6a427749d48a5ddc32a1edf559c3d",
+    "scenarios": "c744bab47d799078a8e782d3ae90c328bbf9fab9df890d936b7e634b380ccdbe",
+    "valeur_json": "987b9ab71d4c4b5eab126e995aca23e188e203ef53ad3428039f18e3ada36c66",
+    "verifier": "18c7afccf52582b17ec648fe7f03985fb93f240491a58ebf72f7cac5e2c81305"
+  }
+}

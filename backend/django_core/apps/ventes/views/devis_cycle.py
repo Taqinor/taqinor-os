@@ -239,7 +239,7 @@ class DevisCycleActionsMixin:
         # celle que le commercial avait tapée. QJR202 (purge des clés dérivées
         # + rafraîchissement FORCÉ des études sur la taille RÉELLE de la copie)
         # est porté par le cloneur, pour les quatre chemins à la fois.
-        from ..domain.creation import cloner_devis
+        from ..domain.creation_clone import cloner_devis
 
         for scale in scales:
             variant_note = _label_for(scale)
@@ -389,7 +389,7 @@ class DevisCycleActionsMixin:
         # est remplacé par LE service de domaine verrouillé. QJR407 (cloneur
         # unique, sept champs, lignes QJR224/QJR84) vit dans ``cloner_devis``,
         # appelé par ``reviser_devis``.
-        from ..domain.cycle_vie import RevisionError, reviser_devis
+        from ..domain.revision import RevisionError, reviser_devis
         old = self.get_object()
         try:
             nd = reviser_devis(old, user=request.user)

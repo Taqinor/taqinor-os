@@ -105,6 +105,11 @@ ALLOWED_UNCONSUMED = {
     # sortant) ; ``douane`` n'importe jamais cette app. Aucun abonné requis
     # aujourd'hui — réservé ici plutôt qu'orphelin, comme les seams ci-dessus.
     "dossier_export_cloture",
+    # ACAL91 — ``devis_revise`` : seam émis par
+    # ``apps/ventes/domain/revision.reviser_devis`` après le commit de la V+1.
+    # Son abonné prévu (le calepinage re-lie sa conception à la V+1, D-ACAL-3)
+    # est la tâche ACAL92 : à RETIRER d'ici dans le même commit que cet abonné.
+    "devis_revise",
     # SOLMVP23 — SEAMS DES MODULES SORTIS DU MVP SOLAIRE (Phase 2,
     # docs/parked-modules.md). Ces sept signaux restent DECLARES sur le bus (ils
     # sont au catalogue d'integration NTPLT12 et la migration de semis les
@@ -455,7 +460,8 @@ NO_STATIC_EMITTER = {
 
 
 def emitter_payload_keys() -> dict:
-    """{nom_signal -> set(kwargs)} relevés sur les appels ``<signal>.send(...)``.
+    """{nom_signal -> set(kwargs)} relevés sur les appels ``<signal>.send(...)``
+    (ou ``.send_robust(...)``).
 
     Balaie tous les ``.py`` de ``apps/`` et ``core/`` HORS tests/migrations et,
     pour chaque appel ``send`` porté par un signal de ``core.events`` (importé
@@ -490,7 +496,9 @@ def emitter_payload_keys() -> dict:
             for node in ast.walk(tree):
                 if not (isinstance(node, ast.Call)
                         and isinstance(node.func, ast.Attribute)
-                        and node.func.attr == "send"):
+                        # ACAL91 — ``send_robust`` (émission best-effort)
+                        # porte les mêmes kwargs que ``send``.
+                        and node.func.attr in ("send", "send_robust")):
                     continue
                 obj = node.func.value
                 sig = None

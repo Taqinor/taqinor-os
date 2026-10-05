@@ -140,7 +140,7 @@ class TestBuildFromLayout(TestCase):
 
         Refuser vaut mieux que créer puis effacer : un devis effacé rendrait sa
         référence au compteur, et le numéro suivant la reprendrait."""
-        from apps.ventes.domain.pipeline import MSG_SANS_ONDULEUR_RESEAU
+        from apps.ventes.domain.etape_composer import MSG_SANS_ONDULEUR_RESEAU
         from apps.ventes.domain.taille import AutoDevisError
 
         Produit.objects.all().update(prix_vente=0)

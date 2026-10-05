@@ -48,9 +48,8 @@ def _garde_kwh_declare(devis):
     silencieux. Partagée par ``/atomic`` (sous sa transaction, rien n'est
     créé) et ``replace-lines`` (avant toute écriture)."""
     from rest_framework.exceptions import ValidationError
-    from ..etude_horaire import (
-        CODE_KWH_INCOHERENT, MESSAGE_KWH_INCOHERENT,
-        controle_kwh_declare_du_devis)
+    from ..etude_horaire import controle_kwh_declare_du_devis
+    from ..horaire.conso import CODE_KWH_INCOHERENT, MESSAGE_KWH_INCOHERENT
     controle = controle_kwh_declare_du_devis(devis)
     if controle is not None and not controle['coherent']:
         raise ValidationError({'detail': MESSAGE_KWH_INCOHERENT,
@@ -435,7 +434,7 @@ class DevisEditionActionsMixin:
         super().perform_update(serializer)
         # QJR552 — l'instantané APRÈS le geste (brouillon ou envoyé : l'en-tête
         # corrigé, remise / échéancier, entre dans l'historique) ; dédoublonné.
-        from ..domain.cycle_vie import instantane_de_geste
+        from ..domain.historique_config import instantane_de_geste
         instantane_de_geste(serializer.instance, user=self.request.user)
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
         # alimente la puce de fraîcheur. Pattern archived_by.

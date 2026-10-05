@@ -276,7 +276,7 @@ class UnInstantaneParGeste(_Base):
             with connection.cursor() as curseur:
                 curseur.execute('SELECT * FROM table_qjr550_inexistante')
         with mock.patch(
-                'apps.ventes.domain.cycle_vie.configuration_devis_contenu',
+                'apps.ventes.domain.historique_config.configuration_devis_contenu',
                 side_effect=_boum):
             resp = self.api.post(
                 f'/api/django/ventes/devis/{self.devis.id}/replace-lines/',
