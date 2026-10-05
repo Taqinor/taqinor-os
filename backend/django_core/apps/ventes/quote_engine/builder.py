@@ -3976,6 +3976,21 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     if _dates_prevues is not None:
         data["payment_dates"] = _dates_prevues
 
+    # ── AGR306 — la règle FDA SAISIE par la société (AGR207), passée à
+    # ``agricole/synthese`` qui en imprime la RÈGLE (jamais un montant propre
+    # au client, D-AGR-6). Agricole seulement, et posée SEULEMENT quand elle
+    # est saisie : sinon le module retombe sur son repli daté (Guide FDA 2024)
+    # et tout autre devis reste octet-identique. Ne casse jamais un rendu.
+    if mode == "agricole":
+        try:
+            from apps.parametres.selectors import regle_fda_pompage_pour
+            _regle_fda = regle_fda_pompage_pour(
+                getattr(devis, "company", None))
+        except Exception:  # noqa: BLE001 — repli daté du module
+            _regle_fda = {}
+        if _regle_fda:
+            data["regle_fda_societe"] = _regle_fda
+
     return data
 
 

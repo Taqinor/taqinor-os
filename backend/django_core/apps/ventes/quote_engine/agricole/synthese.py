@@ -41,6 +41,7 @@ CE QU'ELLE NE FAIT JAMAIS :
 from __future__ import annotations
 
 from .garanties import garanties_pompage_et_omissions
+from .mentions import formalites, regle_fda
 from .schema import schema_svg
 
 #: Version de la forme servie (contrat AGR4).
@@ -359,6 +360,12 @@ def synthese_agricole(data):
     else:
         omissions.append({"bloc": "point_fonctionnement", "motif": motif})
 
+    # AGR306 — la RÈGLE de l'aide FDA (jamais un montant propre au client) :
+    # règle société saisie (AGR207, passée par le builder) sinon repli daté.
+    synthese["aide_fda"] = regle_fda(
+        data.get("regle_fda_societe"),
+        nom_societe=_dict(data.get("entreprise")).get("nom"))
+
     # AGR305 — garanties par composant, lues sur les fiches des lignes
     # (jamais ``theme.WARRANTIES``) ; composants sans durée → omissions.
     garanties, omissions_garanties = garanties_pompage_et_omissions(items)
@@ -372,6 +379,8 @@ def synthese_agricole(data):
         synthese, langue=data.get("langue_sortie") or "fr")
     synthese["options_kit"] = _bloc_options_kit(data.get("options_proposees"))
     synthese["non_inclus"] = list(NON_INCLUS)
+    # AGR306 — les formalités du client (82-21 hors réseau, 36-15 eau).
+    synthese["formalites"] = formalites()
 
     omissions.extend(dict(o) for o in OMISSIONS_DE_PRINCIPE)
     synthese["omissions"] = omissions
