@@ -47,12 +47,9 @@ export const HMT_MIN_M = 3;
 export const HMT_MAX_M = 400;
 export const DEBIT_MIN_M3H = 0.3;
 export const DEBIT_MAX_M3H = 120;
-/**
- * Économie sur le gasoil remplacé : bande 75–90 % de la dépense actuelle
- * (le solaire couvre l'essentiel du pompage diurne ; on ne promet jamais 100 %).
- */
-export const FUEL_SAVING_LOW = 0.75;
-export const FUEL_SAVING_HIGH = 0.9;
+// AGW404 — la bande « économie carburant » 75-90 % (FUEL_SAVING_LOW/HIGH) est
+// SUPPRIMÉE : aucune source, et une dépense « par mois » × 12 × pourcentage
+// n'est pas une économie. L'économie agricole est calculée dans le devis.
 
 export interface AgriInputs {
   hmtM?: number | null;
@@ -62,6 +59,7 @@ export interface AgriInputs {
   besoinM3j?: number | null;
   heuresPompage?: number | null;
   pompeType?: 'immergee' | 'surface' | null;
+  /** Dépense carburant DÉCLARÉE (MAD/mois) : validée mais jamais transformée en économie (AGW404). */
   fuelSpendMadMonth?: number | null;
 }
 
@@ -76,8 +74,6 @@ export interface AgriEstimate {
   nbPanneaux: number;
   m3Jour: number;
   heures: number;
-  fuelSavingMadYearLow?: number;
-  fuelSavingMadYearHigh?: number;
   hypotheses: { pumpEff: number; pvFactor: number };
 }
 
@@ -166,7 +162,7 @@ export function estimateAgricole(inputs: AgriInputs): AgriEstimateResult {
   // m³/jour = débit × heures — même règle que l'ERP (calculé UNE fois ici).
   const m3Jour = Math.round(debit * heures);
 
-  const base: AgriEstimate = {
+  return {
     ok: true,
     hmtM: round1(hmt),
     hmtEstimated,
@@ -179,12 +175,4 @@ export function estimateAgricole(inputs: AgriInputs): AgriEstimateResult {
     heures,
     hypotheses: { pumpEff: eff, pvFactor: PV_FACTOR },
   };
-
-  // Gasoil remplacé (facultatif) : bande annuelle 75–90 % de la dépense déclarée.
-  if (pos(fuelSpendMadMonth)) {
-    base.fuelSavingMadYearLow = Math.round(fuelSpendMadMonth * 12 * FUEL_SAVING_LOW);
-    base.fuelSavingMadYearHigh = Math.round(fuelSpendMadMonth * 12 * FUEL_SAVING_HIGH);
-  }
-
-  return base;
 }

@@ -799,7 +799,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
               <span id="mt-fuel-spend-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             </label>
             <p class="text-xs text-lune-faint">
-              La dépense carburant sert à calculer votre économie — rien d'autre.
+              Elle sert à l'étude de votre projet ; l'économie est calculée dans le devis.
             </p>
           </div>
         </div>
@@ -1018,7 +1018,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
               </div>
               <div class="mt-doc-kpi mt-doc-kpi-green" id="mt-agri-fuel-card" hidden>
                 <p class="mt-doc-kpi-value" id="mt-agri-fuel">—</p>
-                <p class="mt-doc-kpi-label">Économie carburant</p>
+                <p class="mt-doc-kpi-label">Dépense carburant déclarée</p>
               </div>
             </div>
 
@@ -3792,8 +3792,6 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     nbPanneaux: number;
     m3Jour: number;
     heures: number;
-    fuelSavingMadYearLow?: number;
-    fuelSavingMadYearHigh?: number;
     hypotheses: { pumpEff: number; pvFactor: number };
   }
   function computeAgricoleEstimate(): AgricoleEstimateOk | null {
@@ -3850,12 +3848,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       if (ag.m3Jour > 0) s.m3Jour = ag.m3Jour;
       // WJ124 — bassin suggéré = besoin journalier (1×), borne basse de la fourchette 1-3×.
       if (ag.m3Jour > 0) s.bassinM3 = ag.m3Jour;
-      const fOk = (ag.fuelSavingMadYearLow ?? 0) > 0 && (ag.fuelSavingMadYearHigh ?? 0) > 0;
-      if (fOk) { s.ecoMadYearLow = ag.fuelSavingMadYearLow as number; s.ecoMadYearHigh = ag.fuelSavingMadYearHigh as number; }
       estimateShown = s;
       lastKwc = null;
       lastKwcLabel = cOk ? `${formatKwc(ag.champKwc)} kWc (champ PV)` : '';
-      lastSavingsLabel = fOk ? `${formatMadRange(ag.fuelSavingMadYearLow as number, ag.fuelSavingMadYearHigh as number)}/an` : '';
+      // AGW404 — aucune économie carburant dans le payload ni dans le message WhatsApp.
+      lastSavingsLabel = '';
     }
     if (PUBLIC_ESTIMATE_GATED) {
       updatePanels3dVisibility();
@@ -3882,13 +3879,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     setCard('mt-agri-eau-card', 'mt-agri-eau', eauLabel);
     if (eauOk) shown.m3Jour = ag.m3Jour;
     if (eauOk) shown.bassinM3 = ag.m3Jour;
-    const fuelOk = (ag.fuelSavingMadYearLow ?? 0) > 0 && (ag.fuelSavingMadYearHigh ?? 0) > 0;
-    const fuelLabel = fuelOk ? `${formatMadRange(ag.fuelSavingMadYearLow as number, ag.fuelSavingMadYearHigh as number)}/an` : null;
+    // AGW404 — plus de bande « économie carburant » : la valeur DÉCLARÉE du visiteur, telle quelle
+    // (sans × 12 ni pourcentage), masquée si vide.
+    const depenseDeclaree = num('mt-fuel-spend');
+    const fuelLabel = depenseDeclaree != null && depenseDeclaree > 0 ? `${fmtNum(depenseDeclaree)} MAD/mois` : null;
     setCard('mt-agri-fuel-card', 'mt-agri-fuel', fuelLabel);
-    if (fuelOk) {
-      shown.ecoMadYearLow = ag.fuelSavingMadYearLow as number;
-      shown.ecoMadYearHigh = ag.fuelSavingMadYearHigh as number;
-    }
     // Bande de flux soleil → pompe → eau : uniquement si les 3 chiffres existent.
     const flow = $('mt-doc-flow');
     const flowOk = ag.heures > 0 && pompeLabel != null && eauOk;
@@ -3916,7 +3911,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // reste null (le bloc 3D reste réservé aux toits résidentiel/pro).
     lastKwc = null;
     lastKwcLabel = champLabel ? `${formatKwc(ag.champKwc)} kWc (champ PV)` : '';
-    lastSavingsLabel = fuelLabel || '';
+    lastSavingsLabel = '';
     const printBtn = $('mt-print-estimate');
     if (printBtn) printBtn.hidden = false;
     fillDocChrome();

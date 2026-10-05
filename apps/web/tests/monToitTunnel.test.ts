@@ -352,9 +352,8 @@ describe("Chantier 1 bis — l'estimation tient debout sans les questions coupé
     expect(r.pompeCv).toBeGreaterThan(0);
     expect(r.champKwc).toBeGreaterThan(0);
     expect(r.m3Jour).toBeGreaterThan(0);
-    // La dépense carburant — SEUL rescapé de l'accordéon « pompe actuelle » —
-    // continue de produire l'économie annoncée.
-    expect(r.fuelSavingMadYearLow ?? 0).toBeGreaterThan(0);
+    // AGW404 — la dépense carburant déclarée ne produit plus aucune « économie ».
+    expect(r).not.toHaveProperty('fuelSavingMadYearLow');
   });
 
   it("AGRICOLE : le besoin en eau se calcule sans la question d'irrigation", () => {

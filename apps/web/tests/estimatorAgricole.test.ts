@@ -136,21 +136,22 @@ describe('estimateAgricole — paliers CV commerciaux', () => {
   });
 });
 
-describe('estimateAgricole — économie gasoil (facultative, bande 75–90 %)', () => {
-  it('2 000 MAD/mois de gasoil → 18 000–21 600 MAD/an', () => {
+describe('estimateAgricole — AGW404 : plus aucune « économie carburant »', () => {
+  it('une dépense gasoil déclarée ne produit AUCUNE clé fuelSaving*', () => {
     const r = estimateAgricole({ hmtM: 60, debitM3h: 10, fuelSpendMadMonth: 2000 });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.fuelSavingMadYearLow).toBe(18_000);
-    expect(r.fuelSavingMadYearHigh).toBe(21_600);
+    expect(Object.keys(r).filter((k) => k.startsWith('fuelSaving'))).toEqual([]);
   });
 
-  it('sans dépense gasoil déclarée → aucun chiffre inventé (champs absents)', () => {
-    const r = estimateAgricole({ hmtM: 60, debitM3h: 10 });
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect(r.fuelSavingMadYearLow).toBeUndefined();
-    expect(r.fuelSavingMadYearHigh).toBeUndefined();
+  it('la dépense déclarée ne change pas le dimensionnement', () => {
+    const avec = estimateAgricole({ hmtM: 60, debitM3h: 10, fuelSpendMadMonth: 2000 });
+    const sans = estimateAgricole({ hmtM: 60, debitM3h: 10 });
+    expect(avec).toEqual(sans);
+  });
+
+  it('une dépense négative reste refusée (valeur fournie mais inutilisable)', () => {
+    expect(estimateAgricole({ hmtM: 60, debitM3h: 10, fuelSpendMadMonth: -5 })).toEqual({ ok: false, reason: 'invalid' });
   });
 });
 
