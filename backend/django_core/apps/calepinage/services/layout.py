@@ -1,25 +1,111 @@
-"""CAL13 — enregistrer une conception : empreinte + instantané de version.
+"""CAL13 / ACAL39 — enregistrer une conception : DEUX empreintes, deux usages.
 
-LE HASH N'EST PAS RECODÉ
-------------------------
-L'empreinte géométrique existe déjà côté ventes et elle est la SEULE :
-``apps.ventes.services.layout_hash`` (ré-export du corps réel qui vit dans
-``apps/ventes/domain/geometrie.py``). Le recoder ici produirait deux
-empreintes pour une même toiture — donc deux vérités, donc des versions
-fantômes. On l'IMPORTE, on ne le réécrit jamais.
+DEUX EMPREINTES (D-ACAL-4 + D-ACAL-21), JAMAIS CONFONDUES
+---------------------------------------------------------
+* **L'empreinte « document »** — :func:`empreinte_document`, définie ICI et
+  nulle part ailleurs : SHA-256 du document ENTIER (JSON trié), moins les
+  seules clés VOLATILES nommées dans :data:`CLES_VOLATILES` (état d'écran qui
+  ne change rien à la conception). Elle décide « inchangé », la version et le
+  journal : un horizon dessiné, un champ au sol retiré, une épingle recentrée
+  (D-ACAL-13) sont des changements de conception, même quand le devis n'en
+  voit rien. Le jeton If-Match (C-ACAL-044) et l'empreinte de simulation
+  (C-ACAL-073) la RÉUTILISERONT — jamais une seconde fonction.
+* **L'empreinte « imprimée »** — ``apps.ventes.services.layout_hash`` (corps
+  réel dans ``apps/ventes/domain/geometrie.py``), stockée dans
+  ``Calepinage.layout_hash`` : elle ne couvre que ce qui change un chiffre que
+  le client voit, et sert à la péremption du devis et à la dédup. Elle n'est
+  pas recodée ici : on l'IMPORTE.
 
 CE QUE FAIT LE SERVICE
 ----------------------
 1. il pose ``roof_layout`` sur le pivot ;
-2. il RECALCULE ``layout_hash`` par ce ré-export ;
-3. il crée une ``CalepinageVersion`` **seulement si l'empreinte a changé** —
-   un enregistrement à l'identique (double-clic, renvoi réseau) ne pollue pas
+2. il RECALCULE ``layout_hash`` (empreinte imprimée) par le ré-export ventes ;
+3. il crée une ``CalepinageVersion`` et une ligne de journal **seulement si
+   l'empreinte DOCUMENT a changé** — un enregistrement à l'identique (double
+   clic, renvoi réseau, simple changement d'état d'écran) ne pollue pas
    l'historique et répond ``inchange: True``.
 
 Aucun statut de devis n'est jamais écrit (règle #4), et la société/l'auteur
 sont posés côté serveur.
 """
 from __future__ import annotations
+
+
+import hashlib
+import json
+
+#: ACAL39 — les SEULES clés « volatiles » du document : état d'écran qui ne
+#: change rien à la conception, donc hors empreinte « document ». Chaque
+#: entrée est un CHEMIN ; ``[]`` parcourt une liste. Les pans se lisent aussi
+#: sous les alias historiques ``areas`` / ``pans`` (même règle que l'empreinte
+#: imprimée).
+#:
+#: * ``activeAreaId`` — le pan sélectionné à l'écran ;
+#: * ``scene`` — l'instant du soleil affiché ({sunDay, sunHour}, CALX88) : un
+#:   point de vue, aucun calcul n'en dépend ;
+#: * ``zones[].geometry.solarAccess.computedAt`` — l'horodatage d'un calcul,
+#:   pas son résultat ;
+#: * ``consumption.source.saisi_le`` — l'horodatage d'une saisie, pas la
+#:   saisie.
+#:
+#: ``pin`` n'y est PAS : un recentrage de l'épingle est versionné (D-ACAL-13).
+CLES_VOLATILES = (
+    'activeAreaId',
+    'scene',
+    'zones[].geometry.solarAccess.computedAt',
+    'consumption.source.saisi_le',
+)
+
+_ALIAS_PANS = ('zones', 'areas', 'pans')
+
+
+def _retirer_chemin(noeud, morceaux):
+    """Retire, EN PLACE (sur une copie), la clé désignée par ``morceaux``."""
+    if not morceaux or not isinstance(noeud, dict):
+        return
+    tete, reste = morceaux[0], morceaux[1:]
+    liste = tete.endswith('[]')
+    cle = tete[:-2] if liste else tete
+    if cle not in noeud:
+        return
+    if not reste:
+        noeud.pop(cle, None)
+        return
+    valeur = noeud[cle]
+    if liste:
+        for element in valeur if isinstance(valeur, list) else ():
+            _retirer_chemin(element, reste)
+    else:
+        _retirer_chemin(valeur, reste)
+
+
+def document_sans_volatiles(roof_layout):
+    """Une COPIE du document, privée des seules :data:`CLES_VOLATILES`."""
+    import copy
+
+    document = copy.deepcopy(roof_layout)
+    for chemin in CLES_VOLATILES:
+        morceaux = chemin.split('.')
+        if morceaux[0] == 'zones[]':
+            for alias in _ALIAS_PANS:
+                _retirer_chemin(document, [f'{alias}[]'] + morceaux[1:])
+        else:
+            _retirer_chemin(document, morceaux)
+    return document
+
+
+def empreinte_document(roof_layout):
+    """ACAL39 — l'empreinte « document » (D-ACAL-4) : SHA-256 hex du JSON trié.
+
+    Tout le document compte, sauf :data:`CLES_VOLATILES`. Un document absent
+    (``None``) rend ``''`` : « rien » n'a pas d'empreinte. Fonction PURE.
+    """
+    if roof_layout is None:
+        return ''
+    canonique = json.dumps(document_sans_volatiles(roof_layout),
+                           sort_keys=True, separators=(',', ':'),
+                           ensure_ascii=False, default=str)
+    return hashlib.sha256(canonique.encode('utf-8')).hexdigest()
 
 
 class LayoutRefuse(ValueError):
@@ -34,6 +120,9 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
                        libelle='', resultat=None, roof_image=None,
                        version_moteur=None):
     """Enregistre la conception et historise SEULEMENT si elle a changé.
+
+    « A changé » = l'empreinte DOCUMENT (:func:`empreinte_document`) de
+    ``roof_layout`` diffère de celle du document déjà enregistré.
 
     Args:
         calepinage: le pivot (déjà enregistré).
@@ -76,9 +165,18 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
     verifier_ecriture_autorisee(calepinage)
 
     ancien_layout = calepinage.roof_layout
-    ancienne = calepinage.layout_hash or ''
+    # ACAL39 — « inchangé » se décide sur l'empreinte DOCUMENT de l'ancien
+    # document relu, jamais sur layout_hash (empreinte imprimée, aveugle à
+    # l'horizon, aux champs au sol, à l'épingle…).
+    inchange = (empreinte_document(ancien_layout)
+                == empreinte_document(roof_layout))
+    if inchange and roof_layout is not None:
+        # Un calepinage NÉ avec un document (copie d'un devis, d'un modèle)
+        # n'a encore aucune version : le premier enregistrement la dépose.
+        from .versions import derniere_version
+
+        inchange = derniere_version(calepinage) is not None
     nouvelle = layout_hash(roof_layout) or ''
-    inchange = bool(ancienne) and ancienne == nouvelle
 
     champs = ['roof_layout', 'layout_hash', 'updated_at']
     with transaction.atomic():
