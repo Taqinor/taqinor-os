@@ -285,7 +285,7 @@ class TestTrackedModelsCoverage(TestCase):
     résolvent toutes en un vrai modèle (anti-typo app_label/ModelName).
     """
     def test_money_and_security_models_are_tracked(self):
-        from apps.audit.signals import TRACKED_MODELS
+        from apps.audit.modeles_suivis import TRACKED_MODELS
         attendus = {
             ('ventes', 'BonCommande'),
             # ODX17 — Paiement déplacé vers ``facturation`` (state-only).
@@ -304,7 +304,7 @@ class TestTrackedModelsCoverage(TestCase):
 
     def test_all_tracked_models_resolve(self):
         from django.apps import apps as django_apps
-        from apps.audit.signals import TRACKED_MODELS
+        from apps.audit.modeles_suivis import TRACKED_MODELS
         for app_label, model_name in TRACKED_MODELS:
             # Lève LookupError si la paire est erronée.
             django_apps.get_model(app_label, model_name)
@@ -317,7 +317,7 @@ class TestFournisseurAuditTrail(AuditBase):
     surface fraude)."""
 
     def test_fournisseur_is_tracked(self):
-        from apps.audit.signals import TRACKED_MODELS
+        from apps.audit.modeles_suivis import TRACKED_MODELS
         self.assertIn(('stock', 'Fournisseur'), TRACKED_MODELS)
 
     def test_fournisseur_rib_update_logs_filterable_audit_entry(self):
