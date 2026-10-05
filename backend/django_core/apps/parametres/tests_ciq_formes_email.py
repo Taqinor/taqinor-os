@@ -91,7 +91,10 @@ class FormesEmailTests(SimpleTestCase):
     def test_la_proposition_est_jointe(self):
         for cle in ('j1_pdf', 'j9_validite'):
             with self.subTest(cle=cle):
-                self.assertIn('joint', forme_email(cle)['corps'])
+                # « pièce jointe » (j1_pdf) ou « je vous joins » (j9_validite,
+                # texte du guide messages_meryem.md, tenu à l'égalité) : la
+                # pièce jointe est annoncée dans les deux cas.
+                self.assertRegex(forme_email(cle)['corps'], r'join[ts]')
 
     def test_objet_de_la_proposition(self):
         self.assertEqual(forme_email('j1_pdf')['objet'],
