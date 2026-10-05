@@ -9513,14 +9513,19 @@ FENETRE_DOUBLON_SOUMISSION_JOURS = 30
 
 
 def soumission_partenaire_deja_faite(company, partenaire_id, email_prospect,
-                                     fenetre_jours=None):
+                                     fenetre_jours=None,
+                                     telephone_prospect=None):
     """NTPRT28 — soumission RÉCENTE du même prospect par le même partenaire.
 
     Renvoie la soumission existante, ou ``None``. La comparaison se fait sur
-    l'email du prospect, normalisé (casse/espaces) : c'est la seule clé
-    stable dont on dispose côté partenaire. Un email VIDE ne déclenche jamais
-    de doublon — sinon deux prospects anonymes distincts s'annuleraient
-    mutuellement.
+    l'email du prospect, normalisé (casse/espaces) quand il est fourni.
+
+    ADOC145 (C-ADOC-057) — quand l'email est VIDE, la clé est le téléphone
+    du prospect, normalisé par ``normalize_phone`` (la MÊME normalisation que
+    la déduplication des leads CRM — jamais une seconde) : '0611111111' et
+    '+212 611111111' sont le même prospect. Sans email NI téléphone
+    exploitable, jamais de doublon — deux prospects anonymes distincts ne
+    s'annulent pas, et deux téléphones différents restent deux soumissions.
     """
     from datetime import timedelta
 
@@ -9529,17 +9534,24 @@ def soumission_partenaire_deja_faite(company, partenaire_id, email_prospect,
     from .models import SoumissionLeadPartenaire
 
     email = (email_prospect or '').strip().lower()
-    if company is None or not partenaire_id or not email:
+    telephone = normalize_phone(telephone_prospect)
+    if company is None or not partenaire_id or not (email or telephone):
         return None
     jours = (FENETRE_DOUBLON_SOUMISSION_JOURS if fenetre_jours is None
              else fenetre_jours)
     depuis = timezone.now() - timedelta(days=jours)
-    return (SoumissionLeadPartenaire.objects
-            .filter(company=company, partenaire_id=partenaire_id,
-                    email_prospect__iexact=email,
-                    date_soumission__gte=depuis)
-            .order_by('-date_soumission')
-            .first())
+    recentes = (SoumissionLeadPartenaire.objects
+                .filter(company=company, partenaire_id=partenaire_id,
+                        date_soumission__gte=depuis)
+                .order_by('-date_soumission'))
+    if email:
+        return recentes.filter(email_prospect__iexact=email).first()
+    # Le téléphone est stocké tel que saisi : la normalisation se fait ici,
+    # sur les seules soumissions récentes de CE partenaire (ensemble borné).
+    for soumission in recentes.exclude(telephone_prospect=''):
+        if normalize_phone(soumission.telephone_prospect) == telephone:
+            return soumission
+    return None
 
 
 def soumettre_lead_partenaire(company, partenaire_id, donnees):
@@ -9572,7 +9584,8 @@ def soumettre_lead_partenaire(company, partenaire_id, donnees):
     donnees = donnees or {}
     email = str(donnees.get('email_prospect') or '').strip()
     existante = soumission_partenaire_deja_faite(
-        company, partenaire.id, email)
+        company, partenaire.id, email,
+        telephone_prospect=donnees.get('telephone_prospect'))
     if existante is not None:
         return None, existante
 

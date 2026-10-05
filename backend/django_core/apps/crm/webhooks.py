@@ -246,6 +246,106 @@ def _clean_roof_outline(raw):
     return out if len(out) >= 3 else None
 
 
+#: ACAL305 (D-ACAL-27) — bornes du document multi-pans ``roofLayout`` du site
+#: (contrat ``contract_samples/tunnel_webhook_keys.json`` et
+#: ``apps/calepinage/contract_samples/lead_layout_public.json`` → ``bornes``).
+ROOF_LAYOUT_OCTETS_MAX = 65536
+ROOF_LAYOUT_ZONES_MAX = 12
+ROOF_LAYOUT_SOMMETS_MAX = 64
+
+
+def _clean_roof_couple(raw, *, lng_d_abord):
+    """Un couple de coordonnées nettoyé par ``_clean_roof_point`` (AUCUNE
+    seconde validation de coordonnées), rendu dans SON ordre d'origine —
+    ``[lng, lat]`` pour ``zones[].vertices``, ``[lat, lng]`` pour
+    ``outline``. ``None`` si illisible ou hors bornes."""
+    if not isinstance(raw, (list, tuple)) or len(raw) != 2:
+        return None
+    if any(isinstance(v, bool) for v in raw):
+        return None
+    lng, lat = (raw[0], raw[1]) if lng_d_abord else (raw[1], raw[0])
+    point = _clean_roof_point({'lat': lat, 'lng': lng})
+    if point is None:
+        return None
+    if lng_d_abord:
+        return [point['lng'], point['lat']]
+    return [point['lat'], point['lng']]
+
+
+def _clean_roof_layout(raw):
+    """ACAL305 (C-ACAL-005, D-ACAL-27) — le document multi-pans du visiteur,
+    BORNÉ, ou ``None``.
+
+    Bornes (contrat) : ≤ 64 Ko sérialisé, 1 à 12 zones, ≤ 64 sommets par
+    zone, chaque sommet nettoyé par ``_clean_roof_point`` (bornes [-90,90] /
+    [-180,180], coordonnées finies). TOUT OU RIEN : un document hors bornes
+    est ignoré en entier — jamais tronqué en silence (un pan amputé est une
+    toiture plausible et fausse) — avec un avertissement journalisé ; le lead
+    est créé normalement, le visiteur ne voit jamais d'erreur.
+
+    Seules la géométrie (``zones[].vertices``, ``pin``, ``outline``) est
+    normalisée ici ; la validation de schéma complète reste côté calepinage
+    (crm n'importe pas calepinage)."""
+    if raw in (None, '', {}):
+        return None
+
+    def _refus(raison):
+        logger.warning(
+            'website_lead_webhook: roofLayout ignoré (%s) — lead créé sans '
+            'tracé multi-pans', raison)
+        return None
+
+    if not isinstance(raw, dict):
+        return _refus('pas un objet')
+    try:
+        taille = len(json.dumps(raw, allow_nan=False).encode('utf-8'))
+    except (TypeError, ValueError):
+        return _refus('non sérialisable ou coordonnée non finie')
+    if taille > ROOF_LAYOUT_OCTETS_MAX:
+        return _refus(f'{taille} octets > {ROOF_LAYOUT_OCTETS_MAX}')
+    zones = raw.get('zones')
+    if not isinstance(zones, list) or not zones:
+        return _refus('aucune zone')
+    if len(zones) > ROOF_LAYOUT_ZONES_MAX:
+        return _refus(f'{len(zones)} zones > {ROOF_LAYOUT_ZONES_MAX}')
+    zones_propres = []
+    for zone in zones:
+        if not isinstance(zone, dict):
+            return _refus('zone illisible')
+        sommets = zone.get('vertices')
+        if not isinstance(sommets, list):
+            return _refus('zone sans sommets')
+        if len(sommets) > ROOF_LAYOUT_SOMMETS_MAX:
+            return _refus(
+                f'{len(sommets)} sommets > {ROOF_LAYOUT_SOMMETS_MAX}')
+        propres = [_clean_roof_couple(s, lng_d_abord=True) for s in sommets]
+        if any(p is None for p in propres):
+            return _refus('sommet hors bornes ou illisible')
+        zones_propres.append({**zone, 'vertices': propres})
+    document = {**raw, 'zones': zones_propres}
+    if raw.get('pin') is not None:
+        pin = _clean_roof_point(raw.get('pin'))
+        if pin is None:
+            return _refus('pin hors bornes')
+        document['pin'] = pin
+    outline = raw.get('outline')
+    if outline is not None:
+        if not isinstance(outline, list) \
+                or len(outline) > ROOF_LAYOUT_SOMMETS_MAX:
+            return _refus('contour illisible')
+        propres = [_clean_roof_couple(p, lng_d_abord=False) for p in outline]
+        if any(p is None for p in propres):
+            return _refus('contour hors bornes')
+        document['outline'] = propres
+    return document
+
+
+def _a_un_layout(valeur):
+    """Vrai quand le sac ``web_questionnaire`` porte un document multi-pans."""
+    return isinstance(valeur, dict) and isinstance(
+        valeur.get('roof_layout'), dict) and bool(valeur['roof_layout'])
+
+
 def _a_un_contour(valeur):
     """Vrai quand ``valeur`` est un contour de toit exploitable (≥ 3 sommets).
 
@@ -286,6 +386,35 @@ def _noter_trace_toit(lead):
     except Exception as _exc:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             'website_lead_webhook: note de tracé de toit échouée '
+            '(lead #%s) : %s', getattr(lead, 'pk', None), _exc)
+
+
+def _emettre_trace_toit_recu(lead):
+    """ACAL189 (C-ACAL-006) — le tracé arrive au RENVOI (< 60 s) : on le dit.
+
+    ``lead_created`` a été émis à la création, quand le lead n'avait encore
+    AUCUN contour : la reprise du tracé public (module Calepinage) n'avait
+    donc rien à reprendre. Quand le renvoi apporte un contour exploitable
+    (≥ 3 sommets), on émet ``core.events.lead_trace_toit_recu`` — l'app
+    consommatrice s'y abonne (patron M6) : ``crm`` n'importe jamais
+    ``apps.calepinage``. L'appelant ne nous appelle que si le lead n'avait
+    AUCUN tracé (contour ni document multi-pans ``roof_layout``, ACAL305)
+    avant le renvoi : un lead déjà tracé n'émet jamais rien.
+
+    Best-effort, comme toutes les écritures annexes de ce webhook : un
+    abonné en échec ne remet jamais le lead en cause."""
+    a_un_trace = (
+        _a_un_contour(getattr(lead, 'roof_outline', None))
+        or _a_un_layout(getattr(lead, 'web_questionnaire', None)))
+    if not a_un_trace:
+        return
+    try:
+        from core.events import lead_trace_toit_recu
+        lead_trace_toit_recu.send(
+            sender=Lead, lead=lead, company=lead.company)
+    except Exception as _exc:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'website_lead_webhook: émission lead_trace_toit_recu échouée '
             '(lead #%s) : %s', getattr(lead, 'pk', None), _exc)
 
 
@@ -548,6 +677,14 @@ def _extract_web_questionnaire(data):
     _num('equip_piscine_heures_jour', 'equip_piscine_heures_jour', hi=24)
     _choice('equip_piscine_creneau', 'equip_piscine_creneau',
             Lead.CreneauPiscine.values)
+
+    # ── ACAL305 (D-ACAL-27) — le tracé MULTI-PANS du visiteur (clé
+    # ``roofLayout`` du contrat ``tunnel_webhook_keys.json``) : liste blanche
+    # + bornes (``_clean_roof_layout``), rangé sous ``roof_layout`` — le
+    # porteur que lit la reprise du calepinage. Hors bornes : clé ignorée.
+    layout = _clean_roof_layout(data.get('roofLayout', data.get('roof_layout')))
+    if layout is not None:
+        out['roof_layout'] = layout
     return out
 
 
@@ -2061,6 +2198,15 @@ def _map_and_link_lead(raw, data, company):
         # deuxième envoi (le visiteur a dessiné puis re-soumis dans la minute)
         # mérite sa note, un contour déjà noté à la création n'en remet pas.
         avait_contour = _a_un_contour(getattr(existing, 'roof_outline', None))
+        # ACAL305 — même discipline pour le tracé MULTI-PANS : un renvoi le
+        # COMPLÈTE sur un lead qui n'en avait pas, mais ne l'écrase ni ne
+        # l'efface jamais (le sac ``web_questionnaire`` est réécrit en bloc
+        # ci-dessous : le document déjà reçu y est donc reporté).
+        avait_layout = _a_un_layout(getattr(existing, 'web_questionnaire', None))
+        if avait_layout and isinstance(fields.get('web_questionnaire'), dict):
+            fields['web_questionnaire'] = {
+                **fields['web_questionnaire'],
+                'roof_layout': existing.web_questionnaire['roof_layout']}
         # CLIOVR (25/08/2026) — même discipline que le GPS ci-dessus, mais
         # généralisée à TOUT champ corrigé À LA MAIN : un second POST < 60 s
         # (retry réseau, étape suivante du tunnel) ne doit jamais écraser une
@@ -2116,6 +2262,10 @@ def _map_and_link_lead(raw, data, company):
         activity.log_changes(avant, lead, None)
         if not avait_contour:
             _noter_trace_toit(lead)
+        # ACAL189/ACAL305 — un tracé (contour OU document multi-pans) arrivé
+        # au renvoi sur un lead qui n'en portait AUCUN : la reprise est dite.
+        if not avait_contour and not avait_layout:
+            _emettre_trace_toit_recu(lead)
         # QX14 — TOUS les autres chemins de création/mise à jour de lead
         # persistent le score via recompute_lead_score (views.py 561/574,
         # services.py 1088/1366/1429/2782) SAUF ce webhook — le score
