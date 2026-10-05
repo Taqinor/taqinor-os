@@ -1,10 +1,10 @@
 {
   "base": {
-    "apercu_residentiel": "5adc6891e4929cfa0f890100f3acb33dec772b8b19ef624c7c176603224bec35",
+    "apercu_residentiel": "df92829fc1a079adf4be59bef259665cdfcb1d84956cd40853dde270aae4b713",
     "auto": "d7296bfcfdf0d1d7c04d8088139909df3c0aaabb1d42961e97d8eaa1905a1b4a",
     "capture_dedoublonnee": "9749d682cc49fcd52b064507a21769d09b2ead4087e389ffa214b0892cda7e2d",
     "cloner": "2bb55789202414edab1adac203fa338f83dfbfe5b5de66e6326962e2cc62dda5",
-    "configuration": "2d46405fc402afc933eb340e42169303e9d30980ce5d7ecd063da7a9a189a00e",
+    "configuration": "4cc65d916f15142e14de2ae6e51ae7df0385d5265700e13b10022944f60de3ad",
     "dupliquer": "2bb55789202414edab1adac203fa338f83dfbfe5b5de66e6326962e2cc62dda5",
     "envoi": "96fee83ccd5e3f9ccc68d8b6bdd940ffcd579a980af9ab987400bf35ca4f465e",
     "layout_alu_mppt3": "64786cacbc1d5675a398af803a1c75adbbe8dcaa294cc0109fd93b93ac532f6c",

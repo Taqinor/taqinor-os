@@ -407,11 +407,19 @@ class ComportementBaseTests(TestCase):
         return res
 
     def test_digests_identiques(self):
-        _verifier_digests(self, 'base', self._scenarios())
+        _verifier_digests(self, 'base', self._scenarios(),
+                          cles_ids=CLES_IDS_BASE)
 
 
-def _verifier_digests(test, cle, scenarios):
-    digests = {nom: sg.digest(val) for nom, val in scenarios.items()}
+#: Les scénarios AVEC base exposent la clé étrangère ``produit`` (pk SQL) :
+#: sa valeur dépend de la séquence de la base (migrations de données, ordre
+#: des tests, shard CI) — pas du comportement. Elle est figée comme un id ;
+#: l'identité du produit reste vérifiée par ``designation``/``role``/prix.
+CLES_IDS_BASE = sg.CLES_IDS_PAR_DEFAUT | {'produit', 'produit_id'}
+
+
+def _verifier_digests(test, cle, scenarios, cles_ids=sg.CLES_IDS_PAR_DEFAUT):
+    digests = {nom: sg.digest(val, cles_ids) for nom, val in scenarios.items()}
     if os.environ.get('SPLIT_GOLDEN_CAPTURE') == '1':
         golden = sg.charger_golden('split_dm_comportement')
         golden[cle] = digests
