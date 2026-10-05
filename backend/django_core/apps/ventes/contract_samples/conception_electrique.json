@@ -60,8 +60,11 @@
       "onduleur": { "designation": "Deye SUN-10K-SG04LP3", "ac_kw": 10.0, "n_mppt": 2, "rendement_euro_pct": null },
       "batterie": { "presente": true, "designation": "Dyness 5,1 kWh", "kwh": 5.1, "v_nominal": 51.2 }
     },
-    "source_entree": { "temperatures": "calepinage", "longueurs": "surcharge", "regime": "defaut" },
     "version_moteur": "3.1.0",
     "schema_version": 2
+  },
+  "pourquoi_source_entree": "ACAL10 (PACT10, C-ACAL-061) — `exemple_source_entree` est un FRAGMENT posé SEUL sur main AVANT son producteur ACAL165 : la clé de premier niveau `source_entree` {temperatures, longueurs, regime}, chaque valeur dans 'calepinage' | 'surcharge' | 'defaut', dit d'où vient chaque entrée de l'étude électrique. Elle reste HORS de `exemple` tant que la vue ne l'émet pas (test_pv41_conception_electrique compare `exemple` À LA SORTIE RÉELLE, clé pour clé) ; ACAL165 la déplace dans `exemple` dans le même commit que le code qui la produit.",
+  "exemple_source_entree": {
+    "source_entree": { "temperatures": "calepinage", "longueurs": "surcharge", "regime": "defaut" }
   }
 }
