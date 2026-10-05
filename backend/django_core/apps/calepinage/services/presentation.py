@@ -11,14 +11,14 @@ page, derrière nginx comme en développement.
 """
 from __future__ import annotations
 
-__all__ = ['RACINE_API', 'url_fichier', 'url_fichier_photo',
+__all__ = ['RACINE_API', 'url_fichier_photo',
            'url_fichier_plan', 'url_fichier_roof_image']
 
 #: La racine de l'API du module, telle que ``urls.py`` la monte.
 RACINE_API = '/api/django/calepinage/calepinages'
 
 
-def url_fichier(calepinage_id, ressource, ressource_id=None):
+def _url_fichier(calepinage_id, ressource, ressource_id=None):
     """``/api/django/calepinage/calepinages/<id>/<ressource>[/<rid>]/fichier/``.
 
     ``ressource`` : ``photos`` (avec ``ressource_id`` = id de la photo),
@@ -30,12 +30,12 @@ def url_fichier(calepinage_id, ressource, ressource_id=None):
 
 
 def url_fichier_photo(calepinage_id, photo_id):
-    return url_fichier(calepinage_id, 'photos', photo_id)
+    return _url_fichier(calepinage_id, 'photos', photo_id)
 
 
 def url_fichier_plan(calepinage_id):
-    return url_fichier(calepinage_id, 'plan-importe')
+    return _url_fichier(calepinage_id, 'plan-importe')
 
 
 def url_fichier_roof_image(calepinage_id):
-    return url_fichier(calepinage_id, 'roof-image')
+    return _url_fichier(calepinage_id, 'roof-image')
