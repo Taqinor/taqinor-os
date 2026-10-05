@@ -10,17 +10,16 @@
       « affectation manuelle » ;
    5. relancer l'automatique DEMANDE une confirmation (aucun appel au premier
       clic) ;
-   6. la teinte est EXACTEMENT celle de CAL126 (`scene3d.ts`) — lue dans le
-      source TypeScript, jamais recopiée de tête.
+   6. ACAL324 — la teinte est CELLE SERVIE par chaque ligne
+      (`couleur_chaine` / `couleur_mppt`) : aucune palette locale, aucune
+      lecture de source.
 
    La charge utile du `resultat` vient du contrat COMMITTÉ
    `apps/calepinage/contract_samples/calepinage_resultat.json` (PACT10/13). */
-import { readFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { fichierContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
+import { reponseContrat } from '../../../test/fixtures/contractSamples'
 
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
@@ -33,9 +32,7 @@ vi.mock('../../../api/calepinageApi', () => ({
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
-import AffectationChaines, {
-  AFFECTATION_PALETTE, AFFECTATION_UNASSIGNED, couleurParModule,
-} from './AffectationChaines'
+import AffectationChaines, { couleurParModule } from './AffectationChaines'
 
 const contratResultat = () => reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
 
@@ -253,42 +250,35 @@ describe('AffectationChaines (CAL234) — enregistrer et revenir à l’auto', (
   })
 })
 
-describe('AffectationChaines (CAL234) — la teinte est celle de CAL126', () => {
-  /** Les couleurs 0-1 déclarées dans `scene3d.ts`, lues dans le SOURCE. */
-  const paletteScene3d = () => {
-    // La racine du dépôt est déduite du chemin d'un contrat committé : le
-    // helper partagé n'a pas à être modifié pour ce seul test.
-    const racine = resolve(
-      dirname(fichierContrat('calepinage', 'calepinage_resultat')),
-      '..', '..', '..', '..', '..',
-    )
-    const source = readFileSync(
-      join(racine, 'apps', 'web', 'src', 'scripts', 'roofPro11', 'scene3d.ts'),
-      'utf8',
-    )
-    const bloc = source.split('AFFECTATION_PALETTE: readonly Rgb01[] = [')[1].split('];')[0]
-    const palette = [...bloc.matchAll(/r:\s*([\d.]+),\s*g:\s*([\d.]+),\s*b:\s*([\d.]+)/g)]
-      .map((m) => m.slice(1, 4).map(Number))
-    const gris = source
-      .split('AFFECTATION_UNASSIGNED: Rgb01 = {')[1].split('}')[0]
-      .match(/r:\s*([\d.]+),\s*g:\s*([\d.]+),\s*b:\s*([\d.]+)/)
-      .slice(1, 4).map(Number)
-    return { palette, gris }
+describe('AffectationChaines (ACAL324) — la teinte est celle SERVIE', () => {
+  /** La table du contrat, une seule couleur changée sur la seule ligne visée. */
+  const tableServie = () => {
+    const lignes = JSON.parse(JSON.stringify(
+      contratResultat().data.electrique.affectation))
+    const premiere = lignes.find((ligne) => ligne.chaine != null)
+    for (const ligne of lignes) {
+      if (ligne.chaine === premiere.chaine) {
+        ligne.couleur_chaine = 'rgb(1, 2, 3)'
+        ligne.couleur_mppt = 'rgb(4, 5, 6)'
+      }
+    }
+    return { lignes, premiere }
   }
 
-  const enRgb = ([r, g, b]) => `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`
-
-  it('la palette de cet écran est EXACTEMENT celle de la 3D', () => {
-    const { palette, gris } = paletteScene3d()
-    expect(palette.length).toBe(AFFECTATION_PALETTE.length)
-    expect(palette.map(enRgb)).toEqual([...AFFECTATION_PALETTE])
-    expect(enRgb(gris)).toBe(AFFECTATION_UNASSIGNED)
+  it("la pastille d'un groupe prend la couleur servie par sa ligne", () => {
+    const { lignes, premiere } = tableServie()
+    const chaine = couleurParModule(lignes, 'chaine')
+    expect(chaine.couleurs.get(premiere.module)).toBe('rgb(1, 2, 3)')
+    expect(chaine.legende[0].couleur).toBe('rgb(1, 2, 3)')
+    const mppt = couleurParModule(lignes, 'mppt')
+    expect(mppt.couleurs.get(premiere.module)).toBe('rgb(4, 5, 6)')
   })
 
-  it('un module non affecté est GRIS et compté dans la légende', () => {
+  it('un module non affecté garde le GRIS servi et est compté en dernier', () => {
     const lignes = contratResultat().data.electrique.affectation
+    const libre = lignes.find((ligne) => ligne.chaine == null)
     const { couleurs, legende } = couleurParModule(lignes, 'chaine')
-    expect(couleurs.get('PAN-B#3')).toBe(AFFECTATION_UNASSIGNED)
+    expect(couleurs.get(libre.module)).toBe(libre.couleur_chaine)
     expect(legende.at(-1)).toMatchObject({ libelle: 'Non affecté', nombre: 1 })
   })
 })
