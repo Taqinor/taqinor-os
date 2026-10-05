@@ -819,3 +819,138 @@ def revente_ci(apercu_ci, *, tension, revente_demandee,
                      MENTION_TARIF_ARRETE, MENTION_ART13],
         'hypotheses': hypotheses,
     }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CIQ208 — moteur ``economie_ci`` (5/6) : financement construit UNIQUEMENT
+# depuis l'offre ÉCRITE d'un prêteur ou d'un bailleur (D-CIQ-15).
+# ═════════════════════════════════════════════════════════════════════════════
+# Aucun taux inventé : un taux ÉCRIT sur l'offre ⇒ échéancier par
+# ``economie.tableau_pret`` (la seule formule d'annuité du dépôt) ; sinon
+# l'échéance TAPÉE telle quelle, sans taux calculé. Le mot « crédit-bail »
+# n'apparaît dans aucune sortie tant que ``TariffSettings.
+# mention_credit_bail_autorisee`` (CIQ211) est faux (avis juridique d'abord,
+# loi 82-21 art. 2). PV80 tient : aucun financement hors commercial /
+# industriel.
+
+NATURES_FINANCEMENT = ('credit', 'credit_bail')
+MODES_FINANCEMENT_CI = ('commercial', 'industriel')
+SOURCE_FINANCEMENT = 'offre écrite saisie par le vendeur'
+
+
+def _date_courte(iso):
+    import datetime as _dt
+    try:
+        return _dt.date.fromisoformat(str(iso)[:10]).strftime('%d/%m/%Y')
+    except (TypeError, ValueError):
+        return None
+
+
+def _libelle_financement(offre, nature, credit_bail_autorise):
+    if nature == 'credit':
+        tete = 'Offre de crédit'
+    elif credit_bail_autorise:
+        tete = 'Offre de crédit-bail'
+    else:
+        tete = 'Offre de financement'
+    reference = str(offre.get('reference_offre') or '').strip()
+    preteur = str(offre.get('preteur') or '').strip()
+    if not reference:
+        return tete  # le prêteur n'est nommé qu'avec la référence de l'offre
+    morceaux = [tete]
+    if preteur:
+        morceaux.append(f'de {preteur}')
+    date = _date_courte(offre.get('date_offre'))
+    if date:
+        morceaux.append(f'du {date}')
+    return ' '.join(morceaux) + f' (réf. {reference})'
+
+
+def _nombre_offre(offre, cle, *, entier=False, requis=False):
+    champ = f'offre_financement.{cle}'
+    brut = offre.get(cle)
+    if brut is None or brut == '':
+        if requis:
+            raise SaisieEconomieCiInvalide(
+                f"{champ} : à saisir depuis l'offre écrite.", champ=champ)
+        return None
+    try:
+        valeur = float(brut)
+    except (TypeError, ValueError):
+        valeur = None
+    if valeur is None or valeur != valeur or valeur < 0 or (
+            entier and (valeur != int(valeur) or valeur < 1)):
+        raise SaisieEconomieCiInvalide(
+            f"{champ} : valeur « {brut} » refusée.", champ=champ)
+    return int(valeur) if entier else valeur
+
+
+def financement_ci(offre, base_eco, *, mode_installation,
+                   mention_credit_bail_autorisee=False):
+    """Le bloc ``financement`` du contrat ``economie_ci.json``, ou ``None``.
+
+    ``offre`` = ``saisies_economie_ci.offre_financement`` (None ⇒ aucun
+    financement). ``base_eco`` : sortie de :func:`base_economique` (économie
+    de l'année 1 en HT et TTC). ``mention_credit_bail_autorisee`` : réglage
+    ``TariffSettings`` (CIQ211), lu par l'orchestrateur. Refus nommés
+    ``offre_financement.<champ>`` (:class:`SaisieEconomieCiInvalide`).
+    """
+    mode = str(mode_installation or '').strip().lower()
+    if mode not in MODES_FINANCEMENT_CI or offre in (None, {}):
+        return None  # PV80 : jamais de financement résidentiel
+    if not isinstance(offre, dict):
+        raise SaisieEconomieCiInvalide(
+            "offre_financement : un objet est attendu.",
+            champ='offre_financement')
+    if not str(offre.get('source') or '').strip():
+        raise SaisieEconomieCiInvalide(
+            "offre_financement.source : le financement se construit "
+            "seulement depuis une offre ÉCRITE (« offre écrite de <prêteur> "
+            "du <date> »).", champ='offre_financement.source')
+    nature = offre.get('nature')
+    if nature not in NATURES_FINANCEMENT:
+        raise SaisieEconomieCiInvalide(
+            f"offre_financement.nature : choisir parmi "
+            f"{', '.join(NATURES_FINANCEMENT)}.",
+            champ='offre_financement.nature')
+    base_echeance = offre.get('base_echeance')
+    if base_echeance not in ('ht', 'ttc'):
+        raise SaisieEconomieCiInvalide(
+            "offre_financement.base_echeance : ht ou ttc.",
+            champ='offre_financement.base_echeance')
+    base = base_eco.get('base')
+    if (base == BASE_HT and base_echeance != 'ht') or (
+            base == BASE_TTC and base_echeance != 'ttc'):
+        raise SaisieEconomieCiInvalide(
+            f"offre_financement.base_echeance : échéance en "
+            f"{base_echeance.upper()} face à des économies en "
+            f"{base.upper()} — même base exigée.",
+            champ='offre_financement.base_echeance')
+    duree = _nombre_offre(offre, 'duree_mois', entier=True, requis=True)
+    taux = _nombre_offre(offre, 'taux_annuel_pct')
+    if taux is not None:
+        from apps.ventes import economie as eco_mod
+        principal = _nombre_offre(offre, 'montant_finance_mad', requis=True)
+        try:
+            tableau = eco_mod.tableau_pret(
+                principal_mad=principal, taux_annuel_pct=taux,
+                duree_mois=duree, type_pret='annuite')
+        except eco_mod.EconomieInvalide as refus:
+            raise SaisieEconomieCiInvalide(
+                f"offre_financement.{refus}",
+                champ=f'offre_financement.{refus.champ}') from refus
+        echeance = tableau['mensualite_mad']
+    else:
+        echeance = _nombre_offre(offre, 'echeance_mad', requis=True)
+    economie_an = base_eco.get(f'economie_annee1_{base_echeance}_mad')
+    mensuelle = None if economie_an is None else round(economie_an / 12, 2)
+    return {
+        'libelle_client': _libelle_financement(
+            offre, nature, mention_credit_bail_autorisee),
+        'echeance_mad': round(echeance, 2),
+        'economie_mensuelle_moyenne_mad': mensuelle,
+        'ecart_mensuel_mad': (None if mensuelle is None
+                              else round(mensuelle - echeance, 2)),
+        'duree_mois': duree,
+        'source': SOURCE_FINANCEMENT,
+    }
