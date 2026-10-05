@@ -3,6 +3,7 @@ import { Binoculars, Plus, ExternalLink } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import VeilleDecouverte from './VeilleDecouverte'
 import VeilleAnnonceurs from './VeilleAnnonceurs'
+import VeilleEtiquetage from './VeilleEtiquetage'
 
 /* ============================================================================
    PUB70 / PLAN_VEILLE — Écran « Veille concurrentielle ».
@@ -66,6 +67,7 @@ function BandeauCouverture({ couverture }) {
 const ONGLETS = [
   { cle: 'decouverte', libelle: 'Découverte' },
   { cle: 'annonceurs', libelle: 'Annonceurs' },
+  { cle: 'etiquetage', libelle: 'Échantillon de mesure' },
   { cle: 'manuel', libelle: 'Saisie manuelle' },
 ]
 
@@ -105,6 +107,7 @@ export default function VeilleScreen() {
           decouverteId={decouverteId} onSelection={setDecouverteId} />
       )}
       {onglet === 'annonceurs' && <VeilleAnnonceurs decouverteId={decouverteId} />}
+      {onglet === 'etiquetage' && <VeilleEtiquetage decouverteId={decouverteId} />}
       {onglet === 'manuel' && <SaisieManuelle />}
     </div>
   )
