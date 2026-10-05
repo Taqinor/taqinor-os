@@ -650,6 +650,7 @@ retiré plus un hook ajouté.
 | `cal-tapis-journee-type` | tapis horaire journée type. |
 | `cal-tapis-legende` | tapis horaire légende. |
 | `cal-tapis-mois` | tapis horaire mois. |
+| `cal-tapis-perime` | tapis horaire simulation périmée : motif servi, aucune série (ACAL218). |
 | `cal-tapis-pic` | tapis horaire pic. |
 | `cal-tapis-tronquee` | tapis horaire tronquée. |
 | `cal-tapis-vide` | tapis horaire état vide. |

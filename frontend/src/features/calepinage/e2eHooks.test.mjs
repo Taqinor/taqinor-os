@@ -523,6 +523,7 @@ export const ALL_HOOKS = [
   'cal-tapis-journee-type',
   'cal-tapis-legende',
   'cal-tapis-mois',
+  'cal-tapis-perime',
   'cal-tapis-pic',
   'cal-tapis-tronquee',
   'cal-tapis-vide',

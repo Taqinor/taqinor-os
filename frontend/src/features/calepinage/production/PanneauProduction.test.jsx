@@ -239,3 +239,20 @@ describe('PanneauProduction — geometriePresente (ERR-QAH-CALEPINAGE-EXPORT-CSV
     expect(calepinageApi.calepinages.exportCsv).toHaveBeenCalledTimes(1)
   })
 })
+
+/* ACAL218 — simulation périmée : le tapis horaire n'est pas monté, la porte
+   d'export n'est pas appelée, le motif SERVI est affiché. */
+describe('PanneauProduction — simulation périmée (ACAL218)', () => {
+  it('ne monte pas le tapis horaire quand simulation_perimee est vrai', async () => {
+    servir('exemple_perime')
+    rendre()
+
+    await screen.findByTestId('cal236-panneau')
+    const tapis = await screen.findByTestId('cal-tapis-perime')
+    expect(tapis).toHaveTextContent(
+      'simulation périmée : le document a changé depuis le calcul du 19/09/2026',
+    )
+    expect(screen.queryByTestId('cal-tapis')).toBeNull()
+    expect(calepinageApi.calepinages.exportCsv).not.toHaveBeenCalled()
+  })
+})
