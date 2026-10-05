@@ -14,7 +14,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .auth import PUBLIC_AUTHENTICATION_CLASSES, ApiKeyRateThrottle, HasApiScope
-from .constants import ALL_EVENTS, SCOPE_READ_EVENTS
+from .portees import SCOPE_READ_EVENTS
+from .constants import ALL_EVENTS
 from .events_feed import LIMITE_MAX, LIMITE_PAR_DEFAUT, lire, serialiser
 from .public_response import PublicApiResponseMixin
 

@@ -62,8 +62,8 @@ never block silently.
 
 ## BUILD QUEUE (fix highest-severity first)
 
-- [ ] WEBERR1 — [DÉGATÉ 29/09/2026 — décision fondateur (question interactive) : bump majeur autorisé, à construire au prochain « work on error plan »] **apps/web : astro 6.4.6 exposé à GHSA-26w7-cxv4-gfx2 (RCE via optimisation AVIF, critique, <7.2.8) et sharp 0.34.5 à GHSA-rgj7-g3m4-5g8c (high)** (`apps/web/package-lock.json`). Exposition réelle : faible — rien n'importe `astro:assets`, aucune config image dans `astro.config.mjs`, les trois `.avif` de `public/photos/` sont copiés tels quels, jamais optimisés. Véhicule : PR Dependabot #682 (astro 6.4.6→7.3.2 + sharp 0.35.4 + @astrojs/cloudflare 13.7→14.3 + wrangler 4.99→4.132) — CI ROUGE (web-build-test, Workers Builds). Trouvé via : autopilot 29/09. Sévérité : High. Confiance : high sur les avis. (DEP)
-- [ ] WEBERR2 — [DÉGATÉ 29/09/2026 — décision fondateur (question interactive) : bump majeur autorisé, à construire au prochain « work on error plan »] **apps/web : maplibre-gl 5.24.0 exposé à GHSA-jrc7-96c5-q579 (critique, corrigé en 6.4.1)** ; même analyse d'exposition que l'ERP (aucun Popup HTML alimenté par l'utilisateur). Véhicule : PR Dependabot #648 — CI ROUGE (web-build-test, Workers Builds). Trouvé via : autopilot 29/09. Sévérité : High. Confiance : high sur les avis. (DEP)
+- [x] WEBERR1 — [DÉGATÉ 29/09/2026 — décision fondateur (question interactive) : bump majeur autorisé, à construire au prochain « work on error plan »] **apps/web : astro 6.4.6 exposé à GHSA-26w7-cxv4-gfx2 (RCE via optimisation AVIF, critique, <7.2.8) et sharp 0.34.5 à GHSA-rgj7-g3m4-5g8c (high)** (`apps/web/package-lock.json`). Exposition réelle : faible — rien n'importe `astro:assets`, aucune config image dans `astro.config.mjs`, les trois `.avif` de `public/photos/` sont copiés tels quels, jamais optimisés. Véhicule : PR Dependabot #682 (astro 6.4.6→7.3.2 + sharp 0.35.4 + @astrojs/cloudflare 13.7→14.3 + wrangler 4.99→4.132) — CI ROUGE (web-build-test, Workers Builds). Trouvé via : autopilot 29/09. Sévérité : High. Confiance : high sur les avis. (DEP)
+- [x] WEBERR2 — [DÉGATÉ 29/09/2026 — décision fondateur (question interactive) : bump majeur autorisé, à construire au prochain « work on error plan »] **apps/web : maplibre-gl 5.24.0 exposé à GHSA-jrc7-96c5-q579 (critique, corrigé en 6.4.1)** ; même analyse d'exposition que l'ERP (aucun Popup HTML alimenté par l'utilisateur). Véhicule : PR Dependabot #648 — CI ROUGE (web-build-test, Workers Builds). Trouvé via : autopilot 29/09. Sévérité : High. Confiance : high sur les avis. (DEP)
 ### Critical
 
 _(none yet — the error-autopilot appends verified items here)_
@@ -101,5 +101,7 @@ with a non-negotiable rule. (none yet)
 ---
 
 ## DONE LOG (one plain-language line per fixed task)
+- 2026-10-05 — WEBERR2 : maplibre-gl 5.24 → 6.12 (import * as, plus de default export) — avis critique corrigé.
+- 2026-10-05 — WEBERR1 : astro 6.4.6 → 7.3.5, @astrojs/cloudflare 14.3.3, wrangler 4.147, sharp 0.35.5 ; override vite ^7 retiré (astro 7 exige vite 8), commentaires HTML après « ( » déplacés (Layout, proposition, suivi).
 
 - *(none yet)*

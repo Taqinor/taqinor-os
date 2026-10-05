@@ -28,7 +28,7 @@ from apps.installations.models import Installation
 from apps.stock.models import Produit
 
 from .auth import PUBLIC_AUTHENTICATION_CLASSES, HasApiScope, ApiKeyRateThrottle
-from .constants import (
+from .portees import (
     SCOPE_READ_CALEPINAGES, SCOPE_READ_LEADS, SCOPE_READ_DEVIS,
     SCOPE_READ_FACTURES, SCOPE_READ_CHANTIERS, SCOPE_READ_STOCK,
 )

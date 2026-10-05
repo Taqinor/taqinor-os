@@ -12,7 +12,7 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 
-from .constants import SCOPE_READ_LEADS
+from .portees import SCOPE_READ_LEADS
 from .models import ApiKey, BulkJob
 
 
@@ -93,7 +93,7 @@ class Ntapi16JobTrackingTests(TestCase):
     def test_jobs_endpoint_accepts_any_scope_not_only_read_leads(self):
         # Un job n'appartient pas à UN scope métier — toute clé valide de la
         # société peut suivre SES jobs, quel que soit le scope qu'elle porte.
-        from .constants import SCOPE_READ_STOCK
+        from .portees import SCOPE_READ_STOCK
         api_key, raw = _key(self.co_a, scopes=[SCOPE_READ_STOCK])
         BulkJob.objects.create(
             company=self.co_a, api_key=api_key, type=BulkJob.TYPE_EXPORT,
