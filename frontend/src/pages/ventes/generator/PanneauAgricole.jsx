@@ -32,6 +32,7 @@ import { Sprout } from 'lucide-react'
 import { GenCardHeader } from './CarteMetrique'
 import { formatNumber } from '../../../lib/format'
 import { alertesAffichables } from '../../../features/ventes/etudePompagePreviewPur'
+import CarteEconomiePompage from './CarteEconomiePompage'
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
 
@@ -379,6 +380,8 @@ export default function PanneauAgricole({
   farmHmtStatic, setFarmHmtStatic, farmHmtDrawdown, setFarmHmtDrawdown,
   // ── AGR128 — blocs nouveaux (cas de pompe, besoin, point d'eau, HMT) ──
   pompageSaisie, majPompage, apercuPompage,
+  // ── AGR213 — lignes de l'écran (investissement recalculé côté serveur) ──
+  lignesDevis = [],
 }) {
   if (marche !== CLE) return null
   const sp = pompageSaisie || {}
@@ -684,6 +687,11 @@ export default function PanneauAgricole({
         <EconomieDeclaree eco={ecoPompage} majEco={majEco}
                           reperes={reperesEnergie} moisCalendrier={moisCalendrier}
                           coherenceAvertit={coherenceAvertit} />
+
+        {/* ── AGR213 — l'économie DÉCLARÉE en direct, servie par le serveur ── */}
+        <CarteEconomiePompage eco={ecoPompage} moisCalendrier={moisCalendrier}
+                              sortieEtude={apercuPompage?.donnees || null}
+                              lignes={lignesDevis} />
 
         {/* ── AGR129 — le résultat SERVEUR en direct (aperçu AGR127) ── */}
         {apercuPompage?.chargement && (
