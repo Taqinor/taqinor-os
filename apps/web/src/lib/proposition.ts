@@ -3895,8 +3895,11 @@ export type InstallMode = 'residentiel' | 'industriel' | 'commercial' | 'agricol
 
 /**
  * WJ126/QX49 — KPI POMPAGE (agricole). Chaque nombre est soit une valeur backend
- * réelle, soit `null` (jamais fabriqué). `fda_eligible` : irrigation localisée
- * (goutte) → subvention FDA envisageable « sous réserve », jamais promise.
+ * réelle, soit `null` (jamais fabriqué). AGW301 — `bassin_m3` (×2 non sourcé) et
+ * `fda_eligible` (verdict propre au client, contraire à D-AGR-6) n'existent plus :
+ * la règle FDA sans montant et l'énergie déclarée reviennent par
+ * `synthese_agricole` (AGW304). `heures_pompage` = l'hypothèse (heures) derrière
+ * le m³/jour, servie par le moteur (contrat `proposal_data.json`, AGR301).
  */
 export interface AgricoleKpis {
   pompe_cv: number | null;
@@ -3904,9 +3907,8 @@ export interface AgricoleKpis {
   hmt_m: number | null;
   debit_hmt_m3h: number | null;
   m3_jour: number | null;
+  heures_pompage: number | null;
   champ_kwc: number | null;
-  bassin_m3: number | null;
-  fda_eligible: boolean;
 }
 
 /**
@@ -4008,7 +4010,7 @@ export function chiffresEconomiePhare(
 /**
  * WJ126 — Extrait les KPI pompage TYPÉS. Renvoie `null` hors mode agricole
  * (zéro fuite inter-mode). En mode agricole mais `mode_kpis` absent/partiel :
- * renvoie l'objet avec chaque champ à `null` (+ `fda_eligible: false`) — la page
+ * renvoie l'objet avec chaque champ à `null` — la page
  * rend alors le héros pompage et OMET honnêtement chaque valeur manquante.
  */
 export function agricoleKpis(
@@ -4022,9 +4024,8 @@ export function agricoleKpis(
     hmt_m: kpiNumber(k.hmt_m),
     debit_hmt_m3h: kpiNumber(k.debit_hmt_m3h),
     m3_jour: kpiNumber(k.m3_jour),
+    heures_pompage: kpiNumber(k.heures_pompage),
     champ_kwc: kpiNumber(k.champ_kwc),
-    bassin_m3: kpiNumber(k.bassin_m3),
-    fda_eligible: k.fda_eligible === true,
   };
 }
 

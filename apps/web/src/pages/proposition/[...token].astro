@@ -3020,7 +3020,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
 
       {/* ════════════════════════════════════════════════════════════════════
           WJ126 · VARIANTE AGRICOLE (pompage solaire) — héros pompe + eau/mois
-          + bassin + FDA (sous réserve) + carburant évité. Chaque chiffre vient
+          (AGW301 : plus de bassin, de FDA ni de carburant évité). Chaque chiffre vient
           du bloc KPI backend (`agri`) ; un champ manquant est OMIS (jamais 0).
           Aucune carte batterie ici (pompage = pas de batterie, CLAUDE.md).
           ════════════════════════════════════════════════════════════════════ */}
@@ -3047,6 +3047,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     data-fr={`à ${formatNumber(agri.hmt_m)} m HMT`}
                     data-en={`at ${formatNumber(agri.hmt_m)} m head`}
                     data-ar={`عند ${formatNumber(agri.hmt_m)} m (ع.ر.)`}>à {formatNumber(agri.hmt_m)} m HMT</p>
+                ) : null}
+                {agri.heures_pompage ? (
+                  <p class="mt-1 text-xs text-lune-faint" dir="ltr" data-i18n data-agri-heures-pompage
+                    data-fr={`estimation, sur ${formatNumber(agri.heures_pompage, 1)} h de pompage (hypothèse)`}
+                    data-en={`estimate, over ${formatNumber(agri.heures_pompage, 1)} h of pumping (assumption)`}
+                    data-ar={`تقدير، على ${formatNumber(agri.heures_pompage, 1)} س من الضخّ (فرضية)`}>estimation, sur {formatNumber(agri.heures_pompage, 1)} h de pompage (hypothèse)</p>
                 ) : null}
               </div>
             ) : null}
@@ -3093,36 +3099,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </div>
           )}
 
-          <div class="mt-5 grid gap-4 sm:grid-cols-2">
-            {agri.bassin_m3 ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Bassin recommandé" data-en="Recommended reservoir" data-ar="حوض موصى به">Bassin recommandé</p>
-                <p class="fig mt-2 text-2xl text-lune" dir="ltr">{formatNumber(agri.bassin_m3)} <span class="text-base text-lune-soft">m³</span></p>
-                <p class="mt-1 text-sm text-lune-faint" data-i18n
-                  data-fr="≈ 2 jours d'autonomie d'eau : pompez au soleil, irriguez à la demande."
-                  data-en="≈ 2 days of water autonomy: pump in the sun, irrigate on demand."
-                  data-ar="≈ يومان من استقلالية الماء: اضخّوا تحت الشمس واسقوا عند الحاجة.">≈ 2 jours d'autonomie d'eau : pompez au soleil, irriguez à la demande.</p>
-              </div>
-            ) : null}
-            {agri.fda_eligible ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-brass-300" data-i18n data-fr="Subvention FDA envisageable" data-en="FDA subsidy possible" data-ar="دعم FDA ممكن">Subvention FDA envisageable</p>
-                <p class="mt-2 text-sm text-lune-soft" data-i18n
-                  data-fr="Votre irrigation localisée (goutte-à-goutte) peut ouvrir droit à une aide du Fonds de Développement Agricole pouvant atteindre 30 %. Sous réserve d'éligibilité — votre conseiller vous accompagne dans le dossier."
-                  data-en="Your localized (drip) irrigation may qualify for Agricultural Development Fund support of up to 30%. Subject to eligibility — your advisor guides you through the application."
-                  data-ar="قد يؤهّل ريّكم الموضعي (بالتنقيط) للحصول على دعم من صندوق التنمية الفلاحية قد يصل إلى 30%. رهْن الأهلية — يرافقكم مستشاركم في الملف.">Votre irrigation localisée (goutte-à-goutte) peut ouvrir droit à une aide du Fonds de Développement Agricole pouvant atteindre 30 %. Sous réserve d'éligibilité — votre conseiller vous accompagne dans le dossier.</p>
-              </div>
-            ) : null}
-          </div>
-
-          {/* Carburant évité — QUALITATIF (aucun chiffre de gasoil dans le payload). */}
-          <div class="cine-card mt-5 rounded-xl p-5">
-            <p class="tech-label text-brass-300" data-i18n data-fr="Fini le carburant" data-en="No more fuel" data-ar="وداعاً للوقود">Fini le carburant</p>
-            <p class="mt-2 text-sm text-lune-soft" data-i18n
-              data-fr="Le pompage solaire tourne au soleil : plus de gasoil à acheter ni à transporter, plus de groupe à entretenir. Une pompe silencieuse, sans facture de carburant."
-              data-en="Solar pumping runs on sunlight: no more diesel to buy or haul, no generator to service. A quiet pump, with no fuel bill."
-              data-ar="يعمل الضخّ الشمسي بالطاقة الشمسية: لا مازوط للشراء أو النقل، ولا مولّد للصيانة. مضخة صامتة، بلا فاتورة وقود.">Le pompage solaire tourne au soleil : plus de gasoil à acheter ni à transporter, plus de groupe à entretenir. Une pompe silencieuse, sans facture de carburant.</p>
-          </div>
+          {/* AGW301 — « Bassin recommandé ≈ 2 jours », « Subvention FDA … 30 % » et « Fini le
+              carburant » RETIRÉS (zéro chiffre inventé ; D-AGR-6 : aucune promesse d'aide ;
+              le gasoil n'est pas le cas de tout agriculteur). La règle FDA sans montant et la
+              carte d'énergie DÉCLARÉE reviennent par `synthese_agricole` (AGW304). */}
         </section>
       )}
 
