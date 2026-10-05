@@ -13,7 +13,8 @@ résolus DANS la société de l'appelant, un identifiant étranger est ignoré.
 from __future__ import annotations
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -21,6 +22,25 @@ from authentication.permissions import IsAnyRole
 
 #: Identifiants de contexte retirés du corps avant le calcul.
 CLES_CONTEXTE = ('devis', 'lead')
+
+#: Forme de réponse = clés de ``exemple`` du contrat
+#: ``contract_samples/etude_ci_preview.json`` (PACT7 : jamais un objet vide).
+EtudeCiPreviewResponse = inline_serializer('EtudeCiPreviewResponse', {
+    'entrees_resolues': serializers.JSONField(),
+    'niveau_donnees': serializers.CharField(),
+    'sous_reserve_visite': serializers.JSONField(),
+    'profil_charge': serializers.JSONField(),
+    'production': serializers.JSONField(),
+    'taille': serializers.JSONField(),
+    'bilan': serializers.JSONField(),
+    'economie_ci': serializers.JSONField(),
+    'composition': serializers.JSONField(),
+    'regime_8221_suggere': serializers.JSONField(),
+    'alertes': serializers.ListField(child=serializers.JSONField()),
+    'hypotheses': serializers.ListField(child=serializers.JSONField()),
+    'methode': serializers.CharField(),
+    'version_moteur': serializers.CharField(),
+})
 
 
 def _devis_de_la_societe(company, devis_id):
@@ -48,7 +68,7 @@ def _lead_de_la_societe(company, lead_id):
     description=("Profil déclaré heure par heure, production PVGIS, taille par la "
                  "règle des 10 ans, bilan, économie, composition — forme du contrat "
                  "etude_ci_preview.json. Société = celle de l'appelant."),
-    request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT},
+    request=OpenApiTypes.OBJECT, responses={200: EtudeCiPreviewResponse},
 )
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
