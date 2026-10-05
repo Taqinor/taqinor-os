@@ -281,6 +281,24 @@ def mesures_point_eau_pour_lead(visite):
     return rendu
 
 
+def visite_point_eau_validee_du_lead(lead):
+    """AGR121 — la DERNIÈRE visite « relevé du point d'eau » VALIDÉE du lead,
+    ou ``None``. Porte de lecture du moteur agricole ventes (jamais
+    ``visites.models``) ; ses mesures se lisent ensuite par
+    :func:`mesures_point_eau_pour_lead`. Société = celle du LEAD."""
+    from . import visite_checklist as checklist
+    from .models import VisiteTerrain
+
+    if lead is None or getattr(lead, 'pk', None) is None:
+        return None
+    return (VisiteTerrain.objects
+            .filter(lead=lead, company_id=lead.company_id,
+                    statut=VisiteTerrain.Statut.VALIDEE,
+                    gabarit=checklist.GABARIT_POINT_EAU)
+            .order_by('-id')
+            .first())
+
+
 def texture_toit_pour_lead(lead):
     """VT12 — la texture de toit CALÉE d'un lead, ou des valeurs nulles.
 
