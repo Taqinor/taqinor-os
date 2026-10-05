@@ -9,8 +9,9 @@
 //  4. les nouvelles routes publiques NE sont PAS exclues du sitemap, /preview/ l'est ;
 //  5. (best-effort) les figures de marché volatiles sont labellisées « indicatif ».
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 
@@ -102,5 +103,39 @@ describe('W131 — figures de marché volatiles labellisées (best-effort)', () 
   it('le post coût affiche « indicatif » et jamais un prix unique non labellisé', () => {
     const post = read('../src/content/blog/prix-installation-solaire-maroc-2026.md');
     expect(post.toLowerCase()).toContain('indicati');
+  });
+});
+
+// AGW307 (reprise de l'ex-AGW406) — GARDE GLOBALE : aucune page de `apps/web/src/pages/**` ne
+// promet « jusqu'à 30 % » ni « ≈ 30 % » d'aide (D-AGR-6 : on imprime la RÈGLE de l'aide FDA —
+// plafonds, accord AVANT travaux — jamais un pourcentage « maximal » ni un montant propre au
+// client). Elle ne pouvait passer qu'après AGW301 (/proposition), AGW305, AGW306 (Financement)
+// et AGW405 (tunnel).
+describe('AGW307 — aucune page ne promet « jusqu’à 30 % » ni « ≈ 30 % »', () => {
+  const racine = fileURLToPath(new URL('../src/pages/', import.meta.url));
+  const fichiers: string[] = [];
+  const parcourir = (dir: string) => {
+    for (const nom of readdirSync(dir)) {
+      const chemin = join(dir, nom);
+      if (statSync(chemin).isDirectory()) parcourir(chemin);
+      else if (/\.(astro|ts|md|mdx)$/.test(nom)) fichiers.push(chemin);
+    }
+  };
+  parcourir(racine);
+
+  it('le parcours trouve bien les pages (garde non vide)', () => {
+    expect(fichiers.length).toBeGreaterThan(50);
+  });
+
+  it('aucun « jusqu’à 30 », « up to 30 », « حتى 30 » ni « ≈ 30 % » dans les pages', () => {
+    const interdits = [/jusqu['’]à 30/i, /up to 30/i, /حتى\s?30/, /≈\s?30\s?%/];
+    const fautifs: string[] = [];
+    for (const f of fichiers) {
+      const src = readFileSync(f, 'utf-8');
+      for (const re of interdits) {
+        if (re.test(src)) fautifs.push(`${f.slice(racine.length)} : ${re}`);
+      }
+    }
+    expect(fautifs).toEqual([]);
   });
 });
