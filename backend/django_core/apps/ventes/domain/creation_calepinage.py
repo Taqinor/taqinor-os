@@ -296,7 +296,11 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
             panel_watt=watt,
             kwc=kwc_composition,
             source='calepinage',
-            dimensionnement_avec=dimensionnement_avec),
+            dimensionnement_avec=dimensionnement_avec,
+            # ACAL63 — le devis vend le(s) module(s) DÉSIGNÉ(S) par le
+            # calepinage : une ligne panneau par modèle (``None`` sans fiche
+            # désignée ⇒ composition au wattage, inchangée).
+            modeles=modeles_designes(layout) or None),
         # QJR165 — le scénario vient du MÊME lecteur que la pré-vérification
         # qui précède cette création (``validate_composition_for_layout`` lit
         # déjà ``scenario_du_layout``). Le couple ``batterie``/``hybride`` +
@@ -454,6 +458,7 @@ from apps.ventes.domain.catalogue import (  # noqa: E402
 from apps.ventes.domain.geometrie import (  # noqa: E402
     arbitrer_compte_calepinage,
     lire_layout,
+    modeles_designes,
     poser_layout_hash,
 )
 from apps.ventes.domain.pipeline import (  # noqa: E402

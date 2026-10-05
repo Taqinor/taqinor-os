@@ -597,6 +597,21 @@ def modeles_des_pans(layout, pans, *, compte, watt):
             for (produit, puissance), nombre in groupes.items()]
 
 
+def modeles_designes(layout):
+    """ACAL63 (C-ACAL-042) — les modèles POSÉS qui désignent une FICHE
+    produit (``produit_id`` non nul), ou ``[]``. Un document sans fiche
+    désignée garde la composition au wattage (``_pick_product``), au bit
+    près ; dès qu'une fiche est désignée, la composition et la resynchro
+    vendent UNE ligne panneau PAR MODÈLE (les modèles sans fiche y suivent la
+    règle du wattage)."""
+    if not isinstance(layout, dict):
+        return []
+    modeles = lire_layout(layout).modeles
+    if not any(m.get('produit_id') for m in modeles):
+        return []
+    return [dict(m) for m in modeles if int(m['count'] or 0) > 0]
+
+
 def refus_des_pans(pans):
     """ACAL59 — les refus NOMMÉS portés par :func:`pans_du_document` (une
     surface pavée sans puissance module), dans l'ordre du document."""
@@ -770,6 +785,8 @@ def validate_composition_for_layout(layout, company, *, lead=None):
         scenario=(COMPOSITION_AVEC if hors_reseau else lecture.scenario),
         phase=phase,
         hors_reseau=hors_reseau,
+        # ACAL63 — un module DÉSIGNÉ non tarifé est refusé dès le pré-vol.
+        modeles=modeles_designes(layout) or None,
     ))
     # « Aucun panneau » reste l'erreur de composition qu'elle a toujours été
     # (rien à servir, isolé ou non) ; seul le manque de catalogue autonome
@@ -919,6 +936,21 @@ def _produit_panneau_du_devis(devis):
     return None
 
 
+def _produit_designe(company, produit_id):
+    """ACAL63 — la fiche ``stock.Produit`` désignée, TARIFÉE, dans le
+    catalogue de la société (``catalogue_de_la_societe`` : société ou global),
+    ou ``None``. Lecture seule."""
+    try:
+        cible = int(produit_id)
+    except (TypeError, ValueError):
+        return None
+    from apps.ventes.domain.catalogue import _has_price, catalogue_de_la_societe
+    for produit in catalogue_de_la_societe(company):
+        if getattr(produit, 'pk', None) == cible:
+            return produit if _has_price(produit) else None
+    return None
+
+
 def _panneau_pour_calepinage(layout, *, company=None, devis=None):
     """PV42 — le PANNEAU sur lequel calepiner, et la société qui le scope.
 
@@ -935,6 +967,14 @@ def _panneau_pour_calepinage(layout, *, company=None, devis=None):
     et le moteur retombe sur son kit villa par défaut.
     """
     produit = _produit_panneau_du_devis(devis)
+    if produit is None and company is not None:
+        # ACAL63 — le module DÉSIGNÉ par le calepinage (``modules[].
+        # produitId``) passe devant le choix au wattage.
+        for modele in modeles_designes(layout):
+            designe = _produit_designe(company, modele.get('produit_id'))
+            if designe is not None:
+                produit = designe
+                break
     if produit is None and company is not None:
         # QJR165 — LE LECTEUR UNIQUE, et sa forme ``watt_declare`` : ici
         # « aucun wattage déductible » doit rester ``None`` (aucune préférence

@@ -154,6 +154,10 @@ class CibleDevis:
     kwc: float = 0.0
     source: str = ''
     dimensionnement_avec: object = None
+    #: ACAL63 — les modèles DÉSIGNÉS par le calepinage
+    #: (``geometrie.modeles_designes`` : ``[{produit_id, watt, count}]``) ;
+    #: ``None`` (LE DÉFAUT) ⇒ composition au wattage, inchangée.
+    modeles: object = None
 
 
 @dataclass(frozen=True)
@@ -389,6 +393,8 @@ def intention_de_composition(intention, cible, *, avertissements=None):
         hors_reseau=bool(getattr(intention, 'hors_reseau', False)),
         # QJR604 — la ville du barème transport, lue UNE fois depuis le lead.
         ville=ville_du_lead(intention.lead),
+        # ACAL63 — une ligne panneau PAR MODÈLE désigné par le calepinage.
+        modeles=getattr(cible, 'modeles', None),
     )
 
 
