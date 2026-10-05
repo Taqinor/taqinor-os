@@ -732,3 +732,128 @@ def tirer_echantillon(dec, taille_etalonnage, taille_test, rng=None):
         VeilleAnnonceur.objects.filter(pk__in=test).update(
             jeu='test', jeu_decouverte=dec)
     return {'etalonnage': etalonnage, 'test': test, 'deja_tire': False}
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# VEIL21/VEIL22 — Fiche de tri IA (liste blanche) et import d'un verdict IA
+# ═════════════════════════════════════════════════════════════════════════════
+VERSION_CONSIGNE = 'consigne-v1'
+CHAMPS_FICHE = ('page_id', 'page_name', 'textes', 'titres', 'legendes',
+                'domaines', 'debut_min', 'fin_max', 'payeurs')
+MAX_TEXTES_FICHE = 10
+CHAMPS_VERDICT_IA = ('page_id', 'classe', 'confiance', 'dropshipper',
+                     'indices', 'modele', 'jetons_entree', 'jetons_sortie')
+
+
+def lire_consigne():
+    """La consigne versionnée UNIQUE (VEIL21 hors ligne et VEIL22 dans
+    l'ERP)."""
+    from pathlib import Path
+    chemin = (Path(__file__).resolve().parent / 'data' / 'veille_consigne'
+              / 'v1.md')
+    return chemin.read_text(encoding='utf-8')
+
+
+def fiche_tri(annonceur):
+    """Fiche envoyée au tri IA : champs de la LISTE BLANCHE seulement (aucun
+    jeton, aucune URL de snapshot, aucun identifiant interne)."""
+    from .models import VeillePubVue
+
+    pubs = list(VeillePubVue.objects.filter(
+        company_id=annonceur.company_id, annonceur=annonceur).order_by('id'))
+
+    def uniques(valeurs, limite=None):
+        sortie = []
+        for valeur in valeurs:
+            valeur = str(valeur or '').strip()
+            if valeur and valeur not in sortie:
+                sortie.append(valeur)
+            if limite and len(sortie) >= limite:
+                break
+        return sortie
+
+    debuts = [pv.debut_diffusion for pv in pubs if pv.debut_diffusion]
+    fins = [pv.fin_diffusion for pv in pubs if pv.fin_diffusion]
+    fiche = {
+        'page_id': annonceur.page_id,
+        'page_name': annonceur.page_name,
+        'textes': uniques((pv.extrait for pv in pubs), MAX_TEXTES_FICHE),
+        'titres': uniques((t for pv in pubs for t in (pv.titres or [])),
+                          MAX_TEXTES_FICHE),
+        'legendes': uniques((pv.legende for pv in pubs), MAX_TEXTES_FICHE),
+        'domaines': uniques(pv.domaine for pv in pubs),
+        'debut_min': min(debuts).date().isoformat() if debuts else None,
+        'fin_max': max(fins).date().isoformat() if fins else None,
+        'payeurs': uniques(p for pv in pubs for p in (pv.payeurs or [])),
+    }
+    return {cle: fiche[cle] for cle in CHAMPS_FICHE}
+
+
+def _entier_ou_none(valeur):
+    if valeur in (None, ''):
+        return None
+    entier = int(valeur)
+    if entier < 0:
+        raise ValueError
+    return entier
+
+
+def importer_verdict_ia(company, ligne, *, version_consigne=VERSION_CONSIGNE):
+    """Enregistre UN verdict IA ``{page_id, classe, confiance, dropshipper,
+    indices, modele, jetons_entree, jetons_sortie}``. Renvoie ``(statut,
+    message_fr)`` avec ``statut`` ∈ ``importe`` | ``ignore`` | ``erreur``.
+    Une décision humaine n'est JAMAIS écrasée."""
+    from .models import VeilleAnnonceur, VeilleVerdict
+
+    if not isinstance(ligne, dict):
+        return 'erreur', 'ligne illisible (objet JSON attendu)'
+    modele = str(ligne.get('modele') or '').strip()
+    if not modele:
+        return 'erreur', '« modele » manquant'
+    classe = ligne.get('classe')
+    if classe not in _classes():
+        return 'erreur', f'classe hors contrat : {classe!r}'
+    dropshipper = ligne.get('dropshipper') or 'incertain'
+    if dropshipper not in ('oui', 'non', 'incertain'):
+        return 'erreur', f'dropshipper invalide : {dropshipper!r}'
+    try:
+        confiance = (None if ligne.get('confiance') in (None, '')
+                     else float(ligne['confiance']))
+        jetons_entree = _entier_ou_none(ligne.get('jetons_entree'))
+        jetons_sortie = _entier_ou_none(ligne.get('jetons_sortie'))
+    except (TypeError, ValueError):
+        return 'erreur', 'confiance ou jetons illisibles'
+    if confiance is not None and not 0 <= confiance <= 1:
+        return 'erreur', 'confiance hors de 0..1'
+    indices = [
+        {'champ': str(i.get('champ', ''))[:80],
+         'valeur': str(i.get('valeur', ''))[:200]}
+        for i in (ligne.get('indices') or []) if isinstance(i, dict)]
+    page_id = str(ligne.get('page_id') or '').strip()
+    with transaction.atomic():
+        ann = (VeilleAnnonceur.objects.select_for_update()
+               .select_related('verdict_courant')
+               .filter(company=company, page_id=page_id).first())
+        if ann is None:
+            return 'erreur', f'page_id inconnu : {page_id!r}'
+        if ann.verdict_courant and ann.verdict_courant.decide_par == 'humain':
+            return 'ignore', 'décision humaine conservée'
+        motif = str(ligne.get('motif_fr') or '').strip()[:500] or (
+            f'Tri IA ({modele}) : {_classes()[classe].lower()}.')
+        verdict = VeilleVerdict.objects.create(
+            company=company, annonceur=ann, classe=classe, motif_fr=motif,
+            preuves=[], decide_par='ia', modele=modele[:80],
+            version_consigne=version_consigne, jetons_entree=jetons_entree,
+            jetons_sortie=jetons_sortie, confiance=confiance,
+            dropshipper=dropshipper, dropshipper_indices=indices)
+        ann.classe = classe
+        ann.verdict_courant = verdict
+        champs = ['classe', 'verdict_courant', 'updated_at']
+        if ann.dropshipper_decide_par != 'humain':
+            ann.dropshipper_probable = dropshipper
+            ann.dropshipper_indices = indices
+            ann.dropshipper_decide_par = 'ia'
+            champs += ['dropshipper_probable', 'dropshipper_indices',
+                       'dropshipper_decide_par']
+        ann.save(update_fields=champs)
+    return 'importe', ''
