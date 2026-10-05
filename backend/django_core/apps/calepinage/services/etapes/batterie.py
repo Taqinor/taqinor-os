@@ -314,6 +314,13 @@ def _grandeur(specs, nom):
     return _nombre(ligne.get('valeur')), ligne.get('source')
 
 
+def _mention(specs, nom):
+    grandeurs = (specs or {}).get('grandeurs')
+    ligne = grandeurs.get(nom) if isinstance(grandeurs, dict) else None
+    return str((ligne or {}).get('mention') or '') if isinstance(
+        ligne, dict) else ''
+
+
 def _groupes_declares(declaration):
     """Les groupes de batteries déclarés, chacun avec ses specs de fiche."""
     lus = []
@@ -334,6 +341,8 @@ def _groupes_declares(declaration):
             'puissance_decharge_kw': _nombre(
                 specs.get('puissance_decharge_kw')),
             'rendement_ar_pct': _grandeur(specs, 'rendement_ar_pct')[0],
+            # ACAL306 — le motif nommé d'une fiche muette sur le rendement.
+            'motif_rendement': _mention(specs, 'rendement_ar_pct'),
             # CALX63 — les cycles et la rétention de fin de vie PUBLIÉS.
             'cycles_publies': _grandeur(specs, 'cycles_publies')[0],
             'eol_pct': _grandeur(specs, 'eol_pct')[0],
@@ -410,6 +419,12 @@ def _flux_horaires(trace, charge, production):
             'etat': etats[rang],
         })
     return flux
+
+
+#: ACAL306 — repli de MOTIF (jamais de valeur) quand la fiche n'a pas dit
+#: laquelle compléter.
+MOTIF_RENDEMENT_ABSENT = ('Rendement aller-retour absent de la fiche de la '
+                          'batterie : complétez la fiche.')
 
 
 def _omission(motif, *, champ=''):
@@ -525,6 +540,14 @@ def _bloc_batterie_dispatch(serie, contexte=None, *, charge=None):
         return serie, _omission(
             MOTIF_SANS_CAPACITE,
             champ=f'{CLE_CONTEXTE}.groupes[].specs.capacite_utile_kwh')
+    # ACAL306 — un groupe dont la fiche ne publie pas son rendement
+    # aller-retour : le bloc est OMIS en nommant la fiche — jamais le
+    # rendement d'un autre groupe ni une valeur de repli à sa place.
+    muets = [g for g in groupes if g['rendement_ar_pct'] is None]
+    if muets:
+        return serie, _omission(
+            muets[0]['motif_rendement'] or MOTIF_RENDEMENT_ABSENT,
+            champ=f'{CLE_CONTEXTE}.groupes[].specs.rendement_ar_pct')
 
     pas = pas_minutes(serie, bloc_charge)
     if strategie == 'decalage' and pas != 60:
