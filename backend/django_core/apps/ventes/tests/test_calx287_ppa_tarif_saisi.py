@@ -21,7 +21,7 @@ import unittest
 from types import SimpleNamespace
 
 from apps.parametres import tariff
-from apps.ventes import solar_design as sd
+from apps.ventes import solar_finance as sd
 
 PARAMETRES = dict(
     annual_production_kwh=20000.0, grid_tariff=1.40, ppa_escalation=0.02,

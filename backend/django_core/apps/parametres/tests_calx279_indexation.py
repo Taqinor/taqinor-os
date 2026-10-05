@@ -19,7 +19,7 @@ from types import SimpleNamespace
 from django.test import SimpleTestCase, TestCase
 
 from apps.parametres import tariff
-from apps.ventes import solar_design as sd
+from apps.ventes import solar_finance as sd
 
 SOURCE = 'Historique des tarifs publiés (jeu d’essai)'
 

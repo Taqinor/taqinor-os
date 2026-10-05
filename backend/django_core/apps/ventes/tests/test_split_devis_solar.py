@@ -55,7 +55,7 @@ SOURCE = 'apps/ventes/solar_design.py'
 DEPLACEMENTS = {
     'base': ('split_sd_base', 'apps/ventes/solar_base.py', 'SPL259', True),
     'finance': ('split_sd_finance', 'apps/ventes/solar_finance.py', 'SPL260',
-                False),
+                True),
     'classif': ('split_sd_classif', 'apps/ventes/solar_classification.py',
                 'SPL261', False),
 }
