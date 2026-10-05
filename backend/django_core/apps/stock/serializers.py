@@ -230,6 +230,12 @@ class ProduitSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    # CIQ101 — déclarés en texte libre pour que le refus hors vocabulaire
+    # soit le message FR de ``validate_role_ci`` / ``validate_type_pose``.
+    role_ci = serializers.CharField(
+        required=False, allow_blank=True, max_length=32)
+    type_pose = serializers.CharField(
+        required=False, allow_blank=True, max_length=24)
 
     def get_fields(self):
         fields = super().get_fields()
@@ -559,6 +565,8 @@ class ProduitSerializer(serializers.ModelSerializer):
             # AGR100 — champs structurés pompage (contrat produit_pompage.json)
             'role_pompage', 'type_pompe', 'alimentation',
             'courbe_source', 'courbe_frequence_hz',
+            # CIQ101 — champs C&I (contrat produit_ci.json)
+            'role_ci', 'type_pose', 'delai_appro_jours',
             # Dates & data personnalisée
             'date_creation', 'date_mise_a_jour', 'custom_data',
             # FG20 — indicateur de marge (gardé par marge_voir, cf. get_fields)
@@ -757,6 +765,15 @@ class ProduitSerializer(serializers.ModelSerializer):
         from core.product_roles import ALIMENTATIONS_POMPAGE
         return self._refuser_hors_vocabulaire(
             'alimentation', value, ALIMENTATIONS_POMPAGE)
+
+    # ── CIQ101 — vocabulaires C&I : 400 FR nommant le champ ───────────────
+    def validate_role_ci(self, value):
+        from core.product_roles import ROLES_CI
+        return self._refuser_hors_vocabulaire('role_ci', value, ROLES_CI)
+
+    def validate_type_pose(self, value):
+        from core.product_roles import TYPES_POSE
+        return self._refuser_hors_vocabulaire('type_pose', value, TYPES_POSE)
 
     def validate_courbe_source(self, value):
         """Normalise la provenance en ``{document, date, page}`` (contrat
@@ -1971,6 +1988,17 @@ class FicheTechniqueSerializer(AttachmentSerializerMixin,
             'var_voc_reco_min_v', 'var_voc_reco_max_v', 'var_v_sortie_v',
             'var_i_sortie_nominal_a', 'var_protection_marche_a_sec',
             'var_rendement_mppt_pct',
+            # CIQ101 — fiches C&I (contrat produit_ci.json ; vide = non
+            # publié, jamais un défaut).
+            'ond_limitation_export', 'ond_compteurs_compatibles',
+            'ond_relais_decouplage', 'ond_cos_phi_min', 'ond_cos_phi_max',
+            'lim_mode', 'lim_i_max_a', 'lim_onduleurs_max', 'lim_marques',
+            'lim_phases',
+            'log_onduleurs_max', 'log_marques',
+            'prot_type', 'prot_cote', 'prot_calibre_a',
+            'prot_pouvoir_coupure_ka', 'prot_poles', 'prot_tension_v',
+            'cable_cote', 'cable_section_mm2', 'cable_ame',
+            'struct_type_pose', 'struct_masse_kg_m2', 'struct_notice',
             'pdf', 'pdf_url', 'pdf_filename', 'pdf_size', 'pdf_mime',
             'date_creation', 'date_mise_a_jour',
         ]
@@ -1993,6 +2021,99 @@ class FicheTechniqueSerializer(AttachmentSerializerMixin,
             raise serializers.ValidationError(
                 'Produit hors de votre entreprise.')
         return value
+
+    # ── CIQ101 — fiches C&I ──────────────────────────────────────────────
+    @staticmethod
+    def _liste_de_textes(champ, value):
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list) or not all(
+                isinstance(v, str) for v in value):
+            raise serializers.ValidationError(
+                f"`{champ}` doit être une liste de textes.")
+        return [v.strip() for v in value if v.strip()]
+
+    def validate_ond_compteurs_compatibles(self, value):
+        return self._liste_de_textes('ond_compteurs_compatibles', value)
+
+    def validate_lim_marques(self, value):
+        return self._liste_de_textes('lim_marques', value)
+
+    def validate_log_marques(self, value):
+        return self._liste_de_textes('log_marques', value)
+
+    def validate_lim_phases(self, value):
+        if value is not None and value not in (1, 3):
+            raise serializers.ValidationError(
+                '`lim_phases` vaut 1 ou 3 (ou vide = non publié).')
+        return value
+
+    def validate_struct_notice(self, value):
+        """Normalise en ``{document, date, page}`` ; vide = non publiée."""
+        if value in (None, {}, ''):
+            return {'document': '', 'date': None, 'page': None}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                '`struct_notice` doit être un objet '
+                '{"document": ..., "date": ..., "page": ...}.')
+        inconnues = set(value) - {'document', 'date', 'page'}
+        if inconnues:
+            raise serializers.ValidationError(
+                "`struct_notice` n'accepte que `document`, `date` et `page` "
+                f"(reçu en trop : {', '.join(sorted(inconnues))}).")
+        document = value.get('document') or ''
+        if not isinstance(document, str):
+            raise serializers.ValidationError(
+                '`struct_notice.document` doit être un texte.')
+        date = value.get('date') or None
+        if date is not None:
+            import datetime
+            try:
+                datetime.date.fromisoformat(str(date))
+            except ValueError:
+                raise serializers.ValidationError(
+                    '`struct_notice.date` doit être une date ISO '
+                    '(AAAA-MM-JJ).')
+            date = str(date)
+        page = value.get('page')
+        if page in ('', None):
+            page = None
+        elif isinstance(page, bool) or not isinstance(page, int):
+            raise serializers.ValidationError(
+                '`struct_notice.page` doit être un entier.')
+        return {'document': document.strip(), 'date': date, 'page': page}
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        # Une masse de structure sans notice (document vide) est refusée : une
+        # charge de toit non sourcée ne se défend pas devant un bureau de
+        # contrôle (contrat produit_ci.json, fiches.structure.regle).
+        inst = self.instance
+        masse = attrs.get('struct_masse_kg_m2',
+                          getattr(inst, 'struct_masse_kg_m2', None))
+        notice = attrs.get('struct_notice',
+                           getattr(inst, 'struct_notice', None)) or {}
+        if masse is not None and not (notice.get('document') or '').strip():
+            raise serializers.ValidationError({
+                'struct_notice': (
+                    'Masse de structure saisie sans notice : renseignez le '
+                    'document fabricant (`struct_notice.document`).')})
+        return attrs
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if 'struct_notice' in data:
+            src = data['struct_notice'] or {}
+            data['struct_notice'] = {
+                'document': src.get('document') or '',
+                'date': src.get('date') or None,
+                'page': src.get('page'),
+            }
+        for cle in ('ond_compteurs_compatibles', 'lim_marques',
+                    'log_marques'):
+            if cle in data and data[cle] is None:
+                data[cle] = []
+        return data
 
 
 # ── XPUR1 — conformité fournisseur & paramètres achats ──────────────────────

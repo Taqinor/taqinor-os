@@ -106,6 +106,64 @@ LIBELLES_ROLES_POMPAGE = {
 TYPES_POMPE = ('immergee', 'surface', 'dc')
 ALIMENTATIONS_POMPAGE = ('mono', 'tri', 'dc')
 
+#: CIQ101 (Groupe CIQ, contrat ``apps/stock/contract_samples/produit_ci.json``)
+#: — vocabulaire de rôles COMMERCIAL & INDUSTRIEL, DISTINCT de ``ROLES_DEVIS``
+#: (même arbitrage qu'AGR100 pour ``ROLES_POMPAGE``) : aucun rôle résidentiel
+#: n'est ajouté, renommé ni réordonné ; ``FAMILLE_VERS_ROLE`` et
+#: ``scripts/check_roles_mirror.py`` restent intacts.
+ROLES_CI = (
+    'onduleur_string_tri', 'compteur_injection', 'controleur_injection',
+    'logger_supervision', 'structure_ci', 'cable_ac', 'protection_ac',
+    'protection_dc', 'coffret_ac', 'coffret_dc', 'mise_a_la_terre',
+    'cellule_mt', 'etudes_ingenierie', 'pose_structure', 'pose_modules',
+    'raccordement_ac', 'mise_en_service', 'dossier_raccordement',
+    'levage_acces', 'transport_ci', 'om_ci', 'batterie_ci',
+)
+
+#: Libellés FR des rôles C&I (voyagent par l'API : aucun miroir JS).
+LIBELLES_ROLES_CI = {
+    'onduleur_string_tri': 'Onduleur string triphasé',
+    'compteur_injection': "Compteur d'injection",
+    'controleur_injection': "Contrôleur / limiteur d'injection",
+    'logger_supervision': 'Logger de supervision',
+    'structure_ci': 'Structure C&I',
+    'cable_ac': 'Câble AC',
+    'protection_ac': 'Protection AC',
+    'protection_dc': 'Protection DC',
+    'coffret_ac': 'Coffret AC',
+    'coffret_dc': 'Coffret DC',
+    'mise_a_la_terre': 'Mise à la terre',
+    'cellule_mt': 'Cellule MT',
+    'etudes_ingenierie': 'Études et ingénierie',
+    'pose_structure': 'Pose de la structure',
+    'pose_modules': 'Pose des modules',
+    'raccordement_ac': 'Raccordement AC',
+    'mise_en_service': 'Mise en service',
+    'dossier_raccordement': 'Dossier de raccordement',
+    'levage_acces': 'Levage et accès',
+    'transport_ci': 'Transport C&I',
+    'om_ci': 'Exploitation et maintenance (O&M)',
+    'batterie_ci': 'Batterie C&I',
+}
+
+#: CIQ101 — types de pose d'une STRUCTURE (et des prestations de pose) : les
+#: valeurs de ``calepinage.SystemeFixation.ModePose`` (sans ``autre``) plus
+#: ``bac_acier`` (posé dans ModePose par CIQ112, parité testée là-bas).
+TYPES_POSE = (
+    'toiture_inclinee', 'bac_acier', 'toit_plat_leste', 'toit_plat_fixe',
+    'ombriere', 'sol',
+)
+
+#: CIQ101 — vocabulaires des fiches C&I (vide = « non publié »).
+LIM_MODES = ('compteur_direct', 'compteur_tc', 'controleur')
+OND_LIMITATIONS_EXPORT = ('integree', 'compteur_requis', 'controleur_requis',
+                          'non_publiee')
+OND_RELAIS_DECOUPLAGE = ('integre', 'externe', 'non_publie')
+PROT_TYPES = ('disjoncteur', 'sectionneur', 'fusible', 'parafoudre', 'ddr',
+              'interrupteur')
+COTES_AC_DC = ('ac', 'dc')
+CABLE_AMES = ('cu', 'al')
+
 #: Les sources possibles de :func:`role_effectif`, par rang de priorité.
 SOURCES_ROLE = ('declare', 'categorie', 'nom')
 
