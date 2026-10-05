@@ -203,7 +203,7 @@ class LesCopiesPortentLeJeuDeChampsComplet(_BaseSites):
     def test_dupliquer_devis_clone_vraiment_a_l_identique(self):
         """NTUX13 dit « lignes clonées à l'identique » : ça n'était pas vrai —
         variante, optionnelle et les marqueurs D12 tombaient."""
-        from apps.ventes.domain.creation import dupliquer_devis
+        from apps.ventes.domain.creation_clone import dupliquer_devis
 
         copie = dupliquer_devis(self.devis, user=self.user)
         clonee = copie.lignes.get()

@@ -161,7 +161,7 @@ def reviser_devis(devis, *, user=None):
     from django.db import transaction
     from apps.ventes.models import Devis
     from apps.ventes import activity
-    from apps.ventes.domain.creation import cloner_devis
+    from apps.ventes.domain.creation_clone import cloner_devis
 
     with transaction.atomic():
         old = (Devis.objects.select_for_update(of=('self',))

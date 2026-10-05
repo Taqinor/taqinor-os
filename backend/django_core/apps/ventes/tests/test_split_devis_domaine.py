@@ -75,7 +75,7 @@ DEPLACEMENTS = {
     'auto': ('split_dm_auto', 'apps/ventes/domain/creation.py',
              'apps/ventes/domain/creation_auto.py', 'SPL267', True),
     'clone': ('split_dm_clone', 'apps/ventes/domain/creation.py',
-              'apps/ventes/domain/creation_clone.py', 'SPL268', False),
+              'apps/ventes/domain/creation_clone.py', 'SPL268', True),
 }
 
 #: Nombre total de symboles épinglés (somme des sept régions).

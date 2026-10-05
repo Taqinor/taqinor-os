@@ -105,7 +105,7 @@ class LaCopieReprendLaProvenance(_Base):
         self.assertIn('ligne_composee', CHAMPS_CLONES)
 
     def test_cloner_devis_copie_le_champ(self):
-        from apps.ventes.domain.creation import cloner_devis
+        from apps.ventes.domain.creation_clone import cloner_devis
         from apps.ventes.domain.lignes import creer_ligne
 
         for ordre, provenance in enumerate((True, False, None)):
@@ -120,7 +120,7 @@ class LaCopieReprendLaProvenance(_Base):
             [True, False, None])
 
     def test_le_modele_de_devis_capture_le_champ(self):
-        from apps.ventes.domain.creation import save_devis_as_preset
+        from apps.ventes.domain.creation_clone import save_devis_as_preset
         from apps.ventes.domain.lignes import creer_ligne
 
         creer_ligne(

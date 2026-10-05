@@ -212,7 +212,7 @@ class LeRenouvellementNHeritePasDeLAttribution(TestCase):
     def test_le_duplicata_non_plus(self):
         """Même clé, même raison : un duplicata ne recrédite pas le clic de
         son original."""
-        from apps.ventes.domain.creation import dupliquer_devis
+        from apps.ventes.domain.creation_clone import dupliquer_devis
 
         copie = dupliquer_devis(self.devis, user=None)
         self.assertNotIn('attribution', copie.etude_params or {})

@@ -399,7 +399,9 @@ sync_devis_from_layout = _resynchronisation.sync_devis_from_layout
 # ═════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import creation as _creation  # noqa: E402
 create_draft_devis_from_ocr = _creation.create_draft_devis_from_ocr
-dupliquer_devis = _creation.dupliquer_devis
+# SPL268 — clonage, duplication et modèles dans ``domain/creation_clone.py``.
+from apps.ventes.domain import creation_clone as _creation_clone  # noqa: E402
+dupliquer_devis = _creation_clone.dupliquer_devis
 # SPL266 — le pont calepinage → devis vit dans ``domain/creation_calepinage.py``.
 from apps.ventes.domain import creation_calepinage as _creation_calepinage  # noqa: E402
 build_devis_from_layout = _creation_calepinage.build_devis_from_layout
@@ -419,7 +421,7 @@ creer_devis_automatique_depuis_lead = _creation_auto.creer_devis_automatique_dep
 planifier_devis_automatique_pour_lead = _creation_auto.planifier_devis_automatique_pour_lead
 create_devis_pour_ticket = _creation.create_devis_pour_ticket
 create_devis_upsell_from_intervention = _creation.create_devis_upsell_from_intervention
-save_devis_as_preset = _creation.save_devis_as_preset
+save_devis_as_preset = _creation_clone.save_devis_as_preset
 
 # ═════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — NTMIG10/11 : création Devis/Facture depuis une MIGRATION

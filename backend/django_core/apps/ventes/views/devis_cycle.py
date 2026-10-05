@@ -239,7 +239,7 @@ class DevisCycleActionsMixin:
         # celle que le commercial avait tapée. QJR202 (purge des clés dérivées
         # + rafraîchissement FORCÉ des études sur la taille RÉELLE de la copie)
         # est porté par le cloneur, pour les quatre chemins à la fois.
-        from ..domain.creation import cloner_devis
+        from ..domain.creation_clone import cloner_devis
 
         for scale in scales:
             variant_note = _label_for(scale)

@@ -284,7 +284,7 @@ class LesTroisCopiesGardentLesDeuxOptions(_DevisADeuxOptimumsDivergents):
     slug = 'qjr116-copies'
 
     def test_dupliquer_devis_preserve_les_totaux_des_deux_options(self):
-        from apps.ventes.domain.creation import dupliquer_devis
+        from apps.ventes.domain.creation_clone import dupliquer_devis
 
         avant = self._totaux_des_deux_options(self.devis)
         copie = dupliquer_devis(self.devis, user=self.user)
@@ -315,7 +315,7 @@ class LesTroisCopiesGardentLesDeuxOptions(_DevisADeuxOptimumsDivergents):
         """La preuve directe, sous les totaux : chaque ligne garde SA
         variante et son caractère facultatif."""
         from apps.ventes.models import Devis
-        from apps.ventes.domain.creation import dupliquer_devis
+        from apps.ventes.domain.creation_clone import dupliquer_devis
         from apps.ventes.domain.gammes import creer_variante_gamme
         from apps.ventes.domain.revision import renouveler_devis
 
@@ -357,7 +357,7 @@ class LeLotSuitSonDevis(_DevisADeuxOptimumsDivergents):
         self.pan_sans.save(update_fields=['lot'])
 
     def test_le_duplicata_recree_ses_propres_lots(self):
-        from apps.ventes.domain.creation import dupliquer_devis
+        from apps.ventes.domain.creation_clone import dupliquer_devis
 
         copie = dupliquer_devis(self.devis, user=self.user)
         lots = list(copie.lots.all())
@@ -378,7 +378,7 @@ class LeLotSuitSonDevis(_DevisADeuxOptimumsDivergents):
     def test_un_devis_sans_lot_ne_cree_aucun_lot(self):
         """Le comportement d'hier — aucun chemin de création ne pose de lot :
         la copie d'un devis sans lot ne doit rien inventer."""
-        from apps.ventes.domain.creation import dupliquer_devis
+        from apps.ventes.domain.creation_clone import dupliquer_devis
 
         self.pan_sans.lot = None
         self.pan_sans.save(update_fields=['lot'])
