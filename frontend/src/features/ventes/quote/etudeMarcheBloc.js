@@ -19,7 +19,11 @@
 //   categorie, reponses                  catégorie commerciale + réponses du questionnaire
 //   pompage            objet de `buildEtudePompage` (ou {} si aucune pompe retenue)
 //   saisiePompage      { hmt, debit, heures, typePompe, alim, profondeur, distance }
-//   exploitation       { irrigation, region, crop, surfaceHa, fuel, fuelSpend, hmtStatic, hmtDrawdown }
+//   exploitation       { irrigation, region, crop, surfaceHa, hmtStatic, hmtDrawdown,
+//                        saisiesEconomie } — AGR212 : l'énergie et la dépense
+//                        DÉCLARÉES partent dans `saisies_economie_pompage`
+//                        (contrat economie_pompage.json) ; plus jamais
+//                        `current_fuel` / `fuel_spend_current`, plus jamais × 12.
 import { COMMERCIAL_CATEGORY_QUESTIONS } from '../solar.js'
 
 const nombre = (v) => {
@@ -124,8 +128,9 @@ export function projeterEtudeMarche(mode, {
       region: x.region || null,
       crop: x.crop || null,
       surface_ha: nombre(x.surfaceHa),
-      current_fuel: x.fuel || null,
-      fuel_spend_current: nombre(x.fuelSpend),
+      // AGR212 — `null` = rien de déclaré : la clé est RETIRÉE (Z2), jamais
+      // un « butane » par défaut.
+      saisies_economie_pompage: x.saisiesEconomie || null,
       hmt_static: nombre(x.hmtStatic),
       hmt_drawdown: nombre(x.hmtDrawdown),
     }
@@ -135,4 +140,110 @@ export function projeterEtudeMarche(mode, {
   // « zéro perte »). Objet vide ⇒ `null` (aucun appel du tout).
   const res = { ...choix, ...resoudreEntrees(entrees, null) }
   return Object.keys(res).length ? res : null
+}
+
+
+// ── AGR212 — les saisies DÉCLARÉES de l'économie de pompage ────────────────
+// État d'écran (texte tel que tapé) ⇄ forme `saisies_economie_pompage` du
+// contrat `apps/ventes/contract_samples/economie_pompage.json`. Aucun défaut :
+// une énergie non choisie est ABSENTE ; aucune dépense n'est jamais
+// multipliée par 12 (le serveur compte chaque mois coché).
+export const ECO_POMPAGE_VIDE = Object.freeze({
+  energie: '', quantite: '', unite: '', periode: '', joursSemaine: '',
+  prix: '', dateDeclaration: '', mois: null, moisProvenance: null,
+  confirme: false, factureMontant: '', facturePeriodicite: '',
+  facturePartFixe: '', entretien: '', coherenceConfirmee: false,
+  interne: Object.freeze({ taux_actualisation: null, pret: null }),
+})
+
+const CARBURANTS = ['butane', 'diesel']
+
+const vide = (v) => v === '' || v === null || v === undefined
+
+/**
+ * `eco` (état d'écran) → `saisies_economie_pompage`, ou `null` si rien n'est
+ * déclaré. `moisCalendrier` = mois où le besoin servi par l'aperçu (AGR2) est
+ * > 0 pour une culture : pré-cochés, provenance « calendrier de la culture »
+ * tant que le vendeur n'a ni touché les cases ni coché « confirmé ».
+ */
+export function saisiesEconomiePompage(eco, { moisCalendrier = null, aujourdhui = '' } = {}) {
+  const e = { ...ECO_POMPAGE_VIDE, ...(eco || {}) }
+  const date = e.dateDeclaration || aujourdhui || null
+  const carburant = CARBURANTS.includes(e.energie)
+  let mois = null
+  if (Array.isArray(e.mois)) {
+    mois = {
+      mois: [...e.mois].map(Number).sort((a, b) => a - b),
+      provenance: e.moisProvenance
+        || { origine: 'saisie', detail: null, date },
+    }
+  } else if (Array.isArray(moisCalendrier) && moisCalendrier.length) {
+    mois = {
+      mois: [...moisCalendrier].map(Number).sort((a, b) => a - b),
+      provenance: e.confirme
+        ? { origine: 'saisie', detail: null, date }
+        : { origine: 'calculee', detail: 'calendrier_culture', date },
+    }
+  }
+  const out = {}
+  if (e.energie) {
+    out.energie_actuelle = {
+      valeur: e.energie, provenance: { origine: 'saisie', detail: null, date },
+    }
+  }
+  out.consommation = carburant && !vide(e.quantite) ? {
+    quantite: nombre(e.quantite),
+    unite: e.unite || null,
+    periode: e.periode || null,
+    jours_irrigation_par_semaine: e.periode === 'jour_irrigation'
+      ? nombre(e.joursSemaine) : null,
+    saisi_le: date,
+  } : null
+  out.depense_unitaire_payee = carburant && !vide(e.prix)
+    ? { valeur: nombre(e.prix), saisi_le: date } : null
+  out.facture_reseau = e.energie === 'electrique' && !vide(e.factureMontant) ? {
+    montant_mad: nombre(e.factureMontant),
+    periodicite: e.facturePeriodicite || null,
+    part_fixe_mad_mois: nombre(e.facturePartFixe),
+    saisi_le: date,
+  } : null
+  out.mois_irrigation = mois
+  out.entretien_paye_mad_an = !vide(e.entretien)
+    ? { valeur: nombre(e.entretien), saisi_le: date } : null
+  out.coherence_confirmee = Boolean(e.coherenceConfirmee)
+  out.taux_actualisation = e.interne?.taux_actualisation ?? null
+  out.pret = e.interne?.pret ?? null
+  const declare = e.energie || out.mois_irrigation || out.entretien_paye_mad_an
+    || out.coherence_confirmee || out.taux_actualisation || out.pret
+  return declare ? out : null
+}
+
+const texte = (v) => (v === null || v === undefined ? '' : String(v))
+
+/** Inverse : `saisies_economie_pompage` stocké → état d'écran (`?edit=`). */
+export function ecoDepuisSaisies(saisies) {
+  const s = saisies && typeof saisies === 'object' ? saisies : null
+  if (!s) return { ...ECO_POMPAGE_VIDE }
+  const c = s.consommation || {}
+  const f = s.facture_reseau || {}
+  return {
+    ...ECO_POMPAGE_VIDE,
+    energie: s.energie_actuelle?.valeur || '',
+    quantite: texte(c.quantite),
+    unite: c.unite || '',
+    periode: c.periode || '',
+    joursSemaine: texte(c.jours_irrigation_par_semaine),
+    prix: texte(s.depense_unitaire_payee?.valeur),
+    dateDeclaration: s.energie_actuelle?.provenance?.date || c.saisi_le
+      || s.depense_unitaire_payee?.saisi_le || f.saisi_le
+      || s.entretien_paye_mad_an?.saisi_le || s.mois_irrigation?.provenance?.date || '',
+    mois: Array.isArray(s.mois_irrigation?.mois) ? [...s.mois_irrigation.mois] : null,
+    moisProvenance: s.mois_irrigation?.provenance || null,
+    factureMontant: texte(f.montant_mad),
+    facturePeriodicite: f.periodicite || '',
+    facturePartFixe: texte(f.part_fixe_mad_mois),
+    entretien: texte(s.entretien_paye_mad_an?.valeur),
+    coherenceConfirmee: Boolean(s.coherence_confirmee),
+    interne: { taux_actualisation: s.taux_actualisation ?? null, pret: s.pret ?? null },
+  }
 }

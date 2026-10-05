@@ -98,8 +98,18 @@ const FIXTURES = {
     crop: 'agrumes',
     surface_ha: 3,
     irrigation_method: 'goutte',
-    current_fuel: 'diesel',
-    fuel_spend_current: 36000,
+    // AGR212 — l'énergie DÉCLARÉE vit dans saisies_economie_pompage.
+    saisies_economie_pompage: {
+      energie_actuelle: { valeur: 'diesel', provenance: { origine: 'saisie', detail: null, date: '2026-09-12' } },
+      consommation: { quantite: 30, unite: 'litre', periode: 'semaine', jours_irrigation_par_semaine: null, saisi_le: '2026-09-12' },
+      depense_unitaire_payee: { valeur: 11.5, saisi_le: '2026-09-12' },
+      facture_reseau: null,
+      mois_irrigation: { mois: [5, 6, 7], provenance: { origine: 'calculee', detail: 'calendrier_culture', date: '2026-09-12' } },
+      entretien_paye_mad_an: null,
+      coherence_confirmee: false,
+      taux_actualisation: null,
+      pret: null,
+    },
     hmt_static: 40,
     hmt_drawdown: 8,
   }, [

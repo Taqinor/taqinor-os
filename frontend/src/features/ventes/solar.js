@@ -2962,59 +2962,45 @@ export function injection8221(productionKwh, autoconsommeKwh, pointe = false) {
   return { kwh: Math.round(kwh), dh: Math.round(dh) }
 }
 
-// ══ QXMT — Tarifs MOYENNE TENSION ONEE (raccordement MT, dossiers > 50 kW) ═══
-// Miroir STRICT de quote_engine/constants_82_21.py `TARIF_MT_ONEE` — un test de
-// parité backend (test_qx50_injection_82_21.py) échoue si l'un des deux dérive.
+// ══ QXMT — Tarifs MOYENNE TENSION ONEE (raccordement MT) ═══════════════════
+// Miroir de quote_engine/constants_82_21.py `TARIF_MT_ONEE`, qui LIT la seule
+// source `apps/parametres/tarifs_officiels.py` (CIQ202) — un test de parité
+// backend (test_qx50_injection_82_21.py) relit CE fichier. Le miroir disparaît
+// avec CIQ228 (aperçu serveur).
 //
-// RÈGLE FONDATEUR — ZÉRO CHIFFRE INVENTÉ (PLAN2 QXG6, contrainte « chaque
-// constante tarifaire porte sa source en commentaire »). Une valeur n'apparaît
-// ici QUE si une source OFFICIELLE ou de premier rang la publie (ONEE
-// one.org.ma, Bulletin officiel, ministère de l'énergie, ANRE), avec sa source
-// et sa date citées sur la ligne. Toute valeur non sourcée reste `null` :
-// l'étude OMET alors le calcul correspondant (économies / payback) au lieu
-// d'afficher un chiffre douteux. JAMAIS de placeholder chiffré, JAMAIS de
-// reprise d'une estimation « ordre de grandeur » (le site porte un blend
-// indicatif TARIF_MT_MAD_KWH = 1,15 dans apps/web/src/lib/estimatorPro.ts —
-// explicitement une hypothèse, donc INUTILISABLE pour une étude chiffrée).
-//
-// SOURCE DES TROIS PRIX + DE LA PRIME (relevée ET vérifiée le 18/08/2026) :
-//   ONEE — Branche Électricité, page officielle « Tarif Général (MT) »
-//   https://www.one.org.ma/fr/pages/interne.asp?esp=1&id1=14&id2=114&t2=1
-//   La page précise : « Les tarifs sont exprimés en dirhams TVA comprise
-//   (TVA est de 18 %) ». Elle n'affiche NI date d'entrée en vigueur NI numéro
-//   d'arrêté — d'où la mention de consultation portée par MENTION ci-dessous.
-// NON RETENU volontairement : la page ONEE « Grands Comptes » sans tag de
-// tension (494,09 DH/kVA ; 1,3645 / 0,9736 / 0,7131) est citée ailleurs comme
-// « MT » mais ne porte aucun libellé de tension et vit dans l'arborescence
-// THT/HT — ambiguë, donc écartée. Le TURD ANRE (5,92 c/kWh, décision
-// n°02-25-TURD, BO n°7400 du 01/05/2025) est un tarif d'ACCÈS au réseau payé
-// entre opérateurs, PAS un tarif de vente au client final : jamais mélangé ici.
+// RÈGLE FONDATEUR — ZÉRO CHIFFRE INVENTÉ (PLAN2 QXG6, D-CIQ-4). Prix TTC TELS
+// QUE PUBLIÉS par l'ONEE « Tarif Général (MT) » (one.org.ma, relevé le
+// 03/10/2026, inchangé depuis le 30/11/2023). La page garde un libellé « TVA
+// 18 % » périmé : le taux légal 2026 de l'électricité est 20 % — aucun TTC
+// n'est re-multiplié. NON RETENU : la grille « Grands Comptes » (494,09 DH/kVA)
+// — branche THT/HT, pas MT. Le TURD (6,07 c/kWh, décision ANRE 03/26) est un
+// tarif d'ACCÈS hors site, jamais un tarif de vente.
 export const TARIF_MT_ONEE = {
-  // Redevance de consommation par poste horaire, DH/kWh TVA (18 %) comprise.
-  // ONEE « Tarif Général (MT) », one.org.ma, consulté le 18/08/2026.
+  // Redevance de consommation par poste horaire, DH/kWh TTC publié.
   POINTE: 1.4157,
   PLEINES: 1.0101,
   CREUSES: 0.7398,
-  // Prime fixe / redevance de puissance, DH par kVA souscrit et par an.
-  // Même source et même date. DÉLIBÉRÉMENT NON déduite des économies : le
-  // solaire ne réduit pas la puissance souscrite, la compter en économie
-  // gonflerait le gain. Exposée pour que personne n'ait à la réinventer.
+  // Prime fixe, DH par kVA souscrit et par an. DÉLIBÉRÉMENT NON déduite des
+  // économies : le solaire ne réduit pas la puissance souscrite.
   PRIME_PUISSANCE_DH_KVA_AN: 512.62,
-  TVA_INCLUSE_PCT: 18,
-  // Durées officielles des plages horaires (heures/jour). Elles serviraient à
-  // répartir une consommation à profil plat quand le client ne fournit pas sa
-  // propre répartition. La page MT ne les publie QUE dans un diagramme image
-  // (non extractible) — plages MT à fournir par le fondateur (source
-  // officielle introuvable au 18/08/2026). `null` = AUCUNE répartition par
-  // défaut n'est inventée : le client doit saisir la sienne, sinon l'étude
-  // OMET la valorisation. (Les seules plages publiées en clair sur one.org.ma
-  // — 17h-22h etc. — appartiennent au tarif Optionnel « Super Pointe » THT/HT,
-  // explicitement PAS à la MT : les transposer serait un chiffre inventé.)
-  PLAGES_H: null,
+  // Plages horaires PUBLIÉES, heure GMT, intervalles [de_h, a_h) : schéma
+  // one.org.ma/images/horr.jpg, page bi-horaire ; décision ANRE 04/26 art. 7.
+  PLAGES_H: [
+    { saison: 'hiver', du: '10-01', au: '03-31', postes: [
+      { poste: 'pointe', de_h: 17, a_h: 22 },
+      { poste: 'pleines', de_h: 7, a_h: 17 },
+      { poste: 'creuses', de_h: 22, a_h: 7 },
+    ] },
+    { saison: 'ete', du: '04-01', au: '09-30', postes: [
+      { poste: 'pointe', de_h: 18, a_h: 23 },
+      { poste: 'pleines', de_h: 7, a_h: 18 },
+      { poste: 'creuses', de_h: 23, a_h: 7 },
+    ] },
+  ],
   // Mention affichée avec TOUT chiffre issu de ce barème (jamais un chiffre nu).
-  MENTION: 'Barème ONEE « Tarif Général (MT) », TVA 18 % comprise — '
-    + 'one.org.ma, consulté le 18/08/2026 (la page ne publie pas de date '
-    + "d'entrée en vigueur)",
+  MENTION: 'Barème ONEE « Tarif Général (MT) », prix TTC tels que publiés sur '
+    + 'one.org.ma (relevé le 03/10/2026 ; la page indique TVA 18 %, taux légal '
+    + '2026 : 20 %)',
 }
 
 // Le barème MT est-il exploitable ? true seulement si les TROIS postes horaires
