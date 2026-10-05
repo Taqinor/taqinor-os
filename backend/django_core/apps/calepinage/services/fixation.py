@@ -317,8 +317,27 @@ def _refus(message, champ='systeme'):
     return {'champ': champ, 'message': message}
 
 
-def resoudre_systeme(company, demande=None):
-    """``(systeme | None, [refus])`` — celui demandé, sinon l'UNIQUE actif."""
+#: ACAL81 — d'où vient le système appliqué (clé ``systeme_source`` du
+#: contrat ``calepinage_fixation_bom.json``).
+SOURCE_CALEPINAGE = 'calepinage'
+SOURCE_PARAMETRE = 'parametre'
+
+
+def _systeme_persiste(company, calepinage):
+    """Le système CHOISI sur le calepinage (ACAL81), borné société."""
+    systeme = getattr(calepinage, 'systeme_fixation', None)
+    if systeme is None or company is None:
+        return None
+    return systeme if systeme.company_id == company.pk else None
+
+
+def _resoudre_avec_source(company, demande=None, calepinage=None):
+    """``(systeme | None, [refus], source | None)``.
+
+    Ordre : le ``demande`` explicite (``?systeme=``) ; à défaut le système
+    PERSISTÉ sur le calepinage (ACAL81, source ``'calepinage'``) ; à défaut
+    l'UNIQUE système actif de la société (source ``'parametre'``).
+    """
     from .catalogue_fixation import systeme_de_societe, systemes_actifs
 
     texte = str(demande or '').strip()
@@ -327,32 +346,87 @@ def resoudre_systeme(company, demande=None):
         if systeme is None:
             return None, [_refus(
                 f"Système de fixation introuvable : « {texte} » (identifiant "
-                "d'un système du catalogue de la société attendu).")]
-        return systeme, []
+                "d'un système du catalogue de la société attendu).")], None
+        return systeme, [], SOURCE_PARAMETRE
+    persiste = _systeme_persiste(company, calepinage)
+    if persiste is not None:
+        return persiste, [], SOURCE_CALEPINAGE
     actifs = systemes_actifs(company)
     if not actifs:
         return None, [_refus(
             "Aucun système de fixation n'est saisi dans le catalogue de la "
             "société : la nomenclature de fixation n'est pas calculée. "
             "Saisissez un système et ses composants (rôle, unité, règle de "
-            "quantité, source) pour l'obtenir.")]
+            "quantité, source) pour l'obtenir.")], None
     if len(actifs) > 1:
         return None, [_refus(
             "Plusieurs systèmes de fixation sont actifs ("
             + ', '.join(f'« {s.code} »' for s in actifs)
-            + ") : choisissez celui de ce calepinage.")]
-    return actifs[0], []
+            + ") : choisissez celui de ce calepinage.")], None
+    return actifs[0], [], SOURCE_PARAMETRE
 
 
-def bom_de_fixation(calepinage, systeme, refus=()):
-    """La réponse du contrat CALX335, ``{systeme, lignes, refus}``.
+def resoudre_systeme(company, demande=None, calepinage=None, *,
+                     avec_source=False):
+    """``(systeme | None, [refus])`` — celui demandé, sinon celui CHOISI sur
+    le calepinage (ACAL81), sinon l'UNIQUE actif. ``avec_source=True`` rend
+    aussi la source (``'calepinage'`` / ``'parametre'`` / ``None``)."""
+    systeme, refus, source = _resoudre_avec_source(company, demande,
+                                                   calepinage)
+    if avec_source:
+        return systeme, refus, source
+    return systeme, refus
+
+
+class FixationRefusee(ValueError):
+    """ACAL81 — refus d'un choix de système, champ fautif nommé."""
+
+    def __init__(self, message, *, champ='systeme_id'):
+        super().__init__(message)
+        self.champ = champ
+
+
+def appliquer_systeme(calepinage, systeme_id):
+    """ACAL81 — persiste (ou efface, ``None``) le système CHOISI.
+
+    Un id d'une autre société et un id absent reçoivent le MÊME refus : on ne
+    confirme jamais l'existence de la donnée d'autrui. Rend
+    ``{systeme, systeme_source}`` (contrat ``fixation_post``).
+    """
+    from .catalogue_fixation import systeme_de_societe
+
+    company = getattr(calepinage, 'company', None)
+    if systeme_id is None:
+        systeme = None
+    else:
+        systeme = systeme_de_societe(company, systeme_id)
+        if systeme is None:
+            raise FixationRefusee(
+                f"Système de fixation introuvable : « {systeme_id} » "
+                "(identifiant d'un système du catalogue de la société "
+                "attendu).")
+    calepinage.systeme_fixation = systeme
+    calepinage.save(update_fields=['systeme_fixation', 'updated_at'])
+    return {
+        'systeme': ({'id': systeme.pk, 'code': systeme.code,
+                     'libelle': systeme.libelle} if systeme else None),
+        'systeme_source': SOURCE_CALEPINAGE if systeme else None,
+    }
+
+
+def bom_de_fixation(calepinage, systeme, refus=(), source=None):
+    """La réponse du contrat CALX335, ``{systeme, lignes, refus,
+    systeme_source}``.
 
     ``systeme`` est celui que ``resoudre_systeme`` a retenu (déjà borné
     société) ; ``None`` ⇒ aucune ligne, et ``refus`` (sa sortie) dit
-    pourquoi — jamais une nomenclature devinée.
+    pourquoi — jamais une nomenclature devinée. ``source`` (ACAL81) dit d'où
+    il vient : ``'calepinage'`` (choix persisté), ``'parametre'``, ou
+    ``None`` quand aucun système n'est retenu.
     """
     if systeme is None:
-        return {'systeme': None, 'lignes': [], 'refus': list(refus)}
+        return {'systeme': None, 'lignes': [], 'refus': list(refus),
+                'systeme_source': None}
 
     from apps.stock.selectors import valid_produit_ids
 
@@ -370,6 +444,7 @@ def bom_de_fixation(calepinage, systeme, refus=()):
                     'libelle': systeme.libelle},
         'lignes': _lignes_de_fixation(composants, grandeurs, produits),
         'refus': [],
+        'systeme_source': source,
     }
 
 
@@ -386,7 +461,9 @@ def table_fixation(calepinage):
     company = getattr(calepinage, 'company', None)
     if not systemes_actifs(company):
         return None
-    reponse = bom_de_fixation(calepinage, *resoudre_systeme(company))
+    reponse = bom_de_fixation(
+        calepinage, *resoudre_systeme(company, calepinage=calepinage,
+                                      avec_source=True))
     entetes = ['Composant', 'Rôle', 'Quantité', 'Unité', 'Règle appliquée',
                'Manquant']
     lignes = [[ligne['composant'], ligne['role'], ligne['quantite'],
