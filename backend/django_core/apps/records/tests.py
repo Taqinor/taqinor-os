@@ -148,7 +148,8 @@ class TestActivities(TestCase):
     def test_reassignment_notifies_new_owner_with_link(self):
         # VX85(c) — changer `assigned_to` notifie le NOUVEAU propriétaire
         # avec un lien profond ; l'ancien ne reçoit rien.
-        from apps.notifications.models import EventType, Notification
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
         colleague = User.objects.create_user(
             username='act_colleague', password='x', role_legacy='commercial',
             company=self.company)
@@ -170,7 +171,8 @@ class TestActivities(TestCase):
             ).exists())
 
     def test_reassignment_to_same_user_does_not_notify(self):
-        from apps.notifications.models import EventType, Notification
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
         act = Activity.objects.create(
             company=self.company, content_type=_ct_lead(),
             object_id=self.lead.id, activity_type=self.type_appel,
@@ -191,7 +193,8 @@ class TestAttachments(TestCase):
         cls.user = User.objects.create_user(
             username='att_resp', password='x', role_legacy='responsable',
             company=cls.company)
-        from apps.roles.models import Role, ALL_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
         admin_role = Role.objects.create(
             company=cls.company, nom='Administrateur',
             permissions=ALL_PERMISSIONS, est_systeme=True)
@@ -535,7 +538,8 @@ class TestMaFile(TestCase):
         self.assertEqual(resp.data['items'][0]['urgency'], 'overdue')
 
     def test_ma_file_mentions_unread_only_and_company_scoped(self):
-        from apps.notifications.models import EventType, Notification
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
         # Mention non lue de l'utilisateur → présente avec son lien.
         Notification.objects.create(
             company=self.company, recipient=self.user,
@@ -630,7 +634,8 @@ class TestVentesAttachmentTargets(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.company = Company.objects.create(nom='Vts Att', slug='vts-att')
-        from apps.roles.models import Role, COMMERCIAL_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
         role = Role.objects.create(
             company=cls.company, nom='Commercial',
             permissions=COMMERCIAL_PERMISSIONS, est_systeme=True)
@@ -693,7 +698,8 @@ class TestComments(TestCase):
         cls.resp = User.objects.create_user(
             username='cmt_resp', password='x', role_legacy='responsable',
             company=cls.company)
-        from apps.roles.models import Role, ALL_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
         admin_role = Role.objects.create(
             company=cls.company, nom='Administrateur',
             permissions=ALL_PERMISSIONS, est_systeme=True)
@@ -754,7 +760,8 @@ class TestComments(TestCase):
         silencieusement les mentions, et `notifications.selectors.
         mentions_non_lues` (VX83, « Ma file ») filtre justement sur
         `CHAT_MENTION`."""
-        from apps.notifications.models import EventType, Notification
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
         res = self.api.post('/api/django/records/comments/', {
             'model': 'crm.lead', 'id': self.lead.id,
             'body': 'Regarde ça @cmt_admin',
@@ -829,7 +836,8 @@ class TestTags(TestCase):
         cls.resp = User.objects.create_user(
             username='tag_resp', password='x', role_legacy='responsable',
             company=cls.company)
-        from apps.roles.models import Role, ALL_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
         admin_role = Role.objects.create(
             company=cls.company, nom='Administrateur',
             permissions=ALL_PERMISSIONS, est_systeme=True)

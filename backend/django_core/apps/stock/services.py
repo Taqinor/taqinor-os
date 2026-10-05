@@ -4076,7 +4076,7 @@ def notify_expiring_conformite_documents(company, jours=30):
     for doc in docs:
         try:
             from apps.notifications.services import notify_many
-            from apps.notifications.models import EventType
+            from apps.notifications.types_evenements import EventType
             from django.contrib.auth import get_user_model
             User = get_user_model()
             recipients = User.objects.filter(
@@ -4120,7 +4120,7 @@ def notify_expiring_documents_fournisseur(company, jours=30, *, link=None):
     for doc in docs:
         try:
             from apps.notifications.services import notify_many
-            from apps.notifications.models import EventType
+            from apps.notifications.types_evenements import EventType
             from django.contrib.auth import get_user_model
             User = get_user_model()
             recipients = User.objects.filter(
@@ -4577,7 +4577,7 @@ def notify_bcf_en_retard(company):
     for bc in en_retard:
         try:
             from apps.notifications.services import notify_many
-            from apps.notifications.models import EventType
+            from apps.notifications.types_evenements import EventType
             from django.contrib.auth import get_user_model
             User = get_user_model()
             recipients = User.objects.filter(
@@ -4626,7 +4626,7 @@ def notify_bcf_annule(bc):
     connue) qu'un BCF vient d'être annulé. N'échoue jamais l'annulation."""
     try:
         from apps.notifications.services import notify
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         if bc.created_by_id:
             notify(
                 bc.created_by, EventType.BCF_CANCELLED,
@@ -5974,7 +5974,7 @@ def notify_bcf_confirmation_fournisseur(bc):
     if bc.created_by_id is not None:
         try:
             from apps.notifications.services import notify
-            from apps.notifications.models import EventType
+            from apps.notifications.types_evenements import EventType
             notify(
                 bc.created_by, EventType.APPROVAL_DECIDED,
                 title='Confirmation fournisseur',
@@ -6117,10 +6117,10 @@ def provisionner_compte_fournisseur(company, fournisseur_id):
     from django.db import transaction
     from django.utils.crypto import get_random_string
 
-    from apps.roles.models import (
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import (
         PORTAIL_FOURNISSEUR_PERMISSIONS,
         ROLE_PORTAIL_FOURNISSEUR,
-        Role,
     )
     from authentication.models import CustomUser
 
@@ -6425,7 +6425,7 @@ def notify_annonce_livraison_fournisseur(annonce):
     bc = annonce.bon_commande_fournisseur
     if bc.created_by_id is not None:
         try:
-            from apps.notifications.models import EventType
+            from apps.notifications.types_evenements import EventType
             from apps.notifications.services import notify
             notify(
                 bc.created_by, EventType.APPROVAL_DECIDED,

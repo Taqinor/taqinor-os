@@ -611,7 +611,7 @@ class Command(BaseCommand):
         toute notification réelle). `skip_email` évite tout envoi réel en
         environnement de démo ; `respect_quiet_hours=False` garantit que le
         seed n'est jamais avalé silencieusement par une fenêtre de silence."""
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         from apps.notifications.services import notify
         company, admin = ctx['company'], ctx['admin']
         factures = ctx.get('factures') or []

@@ -28,8 +28,11 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.roles.models import (
-    Role, ADMIN_PERMISSIONS, COMMERCIAL_PERMISSIONS, VIEWER_PERMISSIONS,
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    ADMIN_PERMISSIONS,
+    COMMERCIAL_PERMISSIONS,
+    VIEWER_PERMISSIONS,
 )
 
 User = get_user_model()

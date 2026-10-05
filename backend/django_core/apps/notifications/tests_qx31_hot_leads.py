@@ -19,7 +19,8 @@ from django.test import TestCase, override_settings
 from authentication.models import Company
 from apps.crm import horaires
 from apps.crm.models import Lead, LeadActivity
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 
 
 User = get_user_model()

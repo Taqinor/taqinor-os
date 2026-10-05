@@ -8,7 +8,8 @@ from freezegun import freeze_time
 from authentication.models import Company
 
 from .approval_tokens import make_approval_token, read_approval_token
-from .models import EventType, PushSubscription
+from .models import PushSubscription
+from .types_evenements import EventType
 from .services import notify
 
 User = get_user_model()

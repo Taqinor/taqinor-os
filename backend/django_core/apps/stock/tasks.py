@@ -68,7 +68,7 @@ def recompute_reordering_task():
     from authentication.selectors import active_companies
     from apps.stock.services import produits_a_reapprovisionner
     from apps.notifications.services import notify_many
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
 
     today = timezone.localdate()
     result = {}
@@ -145,7 +145,7 @@ def relancer_bcf_en_retard_task():
                 continue
             try:
                 from apps.notifications.services import notify_many
-                from apps.notifications.models import EventType
+                from apps.notifications.types_evenements import EventType
                 from django.contrib.auth import get_user_model
                 User = get_user_model()
                 recipients = list(User.objects.filter(
@@ -207,7 +207,7 @@ def notifier_documents_conformite_expirants_task():
     plus une notification-lot par jour par société. Renvoie
     {company_id: nb_documents_notifies}."""
     from authentication.selectors import active_companies
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
     from .services import notify_expiring_conformite_documents
 
     result = {}
@@ -244,7 +244,7 @@ def notifier_documents_fournisseur_expirants_task():
     faux négatif qui ferait manquer des expirations sur une couche différente
     de documents. Renvoie {company_id: nb_documents_notifies}."""
     from authentication.selectors import active_companies
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
     from .services import notify_expiring_documents_fournisseur
 
     today = timezone.localdate()
@@ -277,7 +277,7 @@ def notifier_bcf_en_retard_buyer_task():
     partait donc jamais en pratique. Idempotent : au plus une notification-
     lot par jour par société. Renvoie {company_id: nb_bcf_notifies}."""
     from authentication.selectors import active_companies
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
     from .services import notify_bcf_en_retard
 
     result = {}
@@ -372,7 +372,7 @@ def alerter_surcapacite_zones_task(seuil_pct=None):
             result[company.id] = 0
             continue
         try:
-            from apps.notifications.models import EventType
+            from apps.notifications.types_evenements import EventType
             from apps.notifications.services import notify_many
             noms = ', '.join(
                 f"{z['zone']} ({z['taux_pct']} %)" for z in zones[:10])
@@ -427,7 +427,7 @@ def expiration_alerts_task():
             continue
         try:
             from apps.notifications.services import notify_many
-            from apps.notifications.models import EventType
+            from apps.notifications.types_evenements import EventType
             recipients = _recipients_reappro(company)
             noms = ', '.join(
                 e['produit_nom'] for e in expirants[:10])

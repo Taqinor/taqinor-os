@@ -25,7 +25,8 @@ from apps.crm.services import (
     notify_devis_opened,
     notify_new_lead,
 )
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.roles.models import Role
 from apps.ventes.models import Devis, ShareLink
 

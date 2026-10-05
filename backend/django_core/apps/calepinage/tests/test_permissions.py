@@ -29,7 +29,8 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 
 from apps.calepinage.permissions import CAL_GERER, CAL_VOIR, CODES
-from apps.roles.models import (
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
     ADMIN_VENTES_PERMISSIONS,
     ALL_PERMISSIONS,
     COMMERCIAL_PERMISSIONS,
@@ -37,7 +38,6 @@ from apps.roles.models import (
     ELEVATED_PERMISSIONS,
     PERMISSION_MODULE,
     RESPONSABLE_PERMISSIONS,
-    Role,
     UTILISATEUR_PERMISSIONS,
     VIEWER_PERMISSIONS,
 )

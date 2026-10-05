@@ -18,7 +18,8 @@ User = get_user_model()
 
 class CFWiringBase(TestCase):
     def setUp(self):
-        from apps.roles.models import Role, DIRECTEUR_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
         self.company = Company.objects.get_or_create(
             slug='cfw-co', defaults={'nom': 'CFW Co'})[0]
         # QG4 — la création de produits est réservée aux rôles Directeur +

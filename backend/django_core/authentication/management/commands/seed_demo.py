@@ -355,8 +355,10 @@ class Command(BaseCommand):
 
         from apps.crm.models import Client
         from apps.portail.models import ComptePortailClient
-        from apps.roles.models import (
-            PORTAIL_CLIENT_PERMISSIONS, ROLE_PORTAIL_CLIENT, Role,
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            PORTAIL_CLIENT_PERMISSIONS,
+            ROLE_PORTAIL_CLIENT,
         )
         from apps.sav.models import Equipement, Ticket
         from apps.stock.models import Produit

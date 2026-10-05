@@ -25,7 +25,8 @@ from testkit.time import frozen
 
 from apps.crm import horaires, services, stages
 from apps.crm.models import Client, Lead, RelanceEtape
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
 from apps.visites.models import VisiteTerrain

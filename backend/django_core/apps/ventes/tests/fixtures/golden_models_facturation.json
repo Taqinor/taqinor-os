@@ -2,7 +2,6 @@
  "modeles": {
   "AffectationPaiement": {
    "app_label": "ventes",
-   "ast_sha256": "e44c47cac2a18e41ae6b9de98812e75628103abd93b6fe8dc1aa36bb3478906f",
    "constraints": [],
    "db_table": "ventes_affectationpaiement",
    "fields": [
@@ -100,7 +99,6 @@
   },
   "BonCommande": {
    "app_label": "ventes",
-   "ast_sha256": "ebf3514d0a88a02bf5b88e889e4901f0ba05cc1bc610d000c095b8db8c928e05",
    "constraints": [],
    "db_table": "ventes_boncommande",
    "fields": [
@@ -303,7 +301,6 @@
   },
   "FactureActivity": {
    "app_label": "ventes",
-   "ast_sha256": "a3abda9fe9931cc2adff25ddc379a3d7a657585b6023dd359e2bcdb28bfd15c8",
    "constraints": [],
    "db_table": "ventes_factureactivity",
    "fields": [
@@ -462,7 +459,6 @@
   },
   "FactureSource": {
    "app_label": "ventes",
-   "ast_sha256": "fd7ea42a7be30f795ab6db60165830a0da848982028cd0c888b80d380dbfdec4",
    "constraints": [],
    "db_table": "ventes_facturesource",
    "fields": [
@@ -540,7 +536,6 @@
   },
   "LigneLivraisonBC": {
    "app_label": "ventes",
-   "ast_sha256": "0f75fef35758976ef5c53e232f7d32916ea81884526e10844364237b866e6443",
    "constraints": [],
    "db_table": "ventes_lignelivraisonbc",
    "fields": [
@@ -599,7 +594,6 @@
   },
   "LigneNoteDebit": {
    "app_label": "ventes",
-   "ast_sha256": "db42b6212afa5e4c44191dddb6cb56fd04955bd83cc5e6dcf6e2b23417cff6b2",
    "constraints": [],
    "db_table": "ventes_lignenotedebit",
    "fields": [
@@ -706,7 +700,6 @@
   },
   "LigneRemiseEncaissement": {
    "app_label": "ventes",
-   "ast_sha256": "4a1fce2b6b91d2a61ca06447959d2915923e1234b042e199629b44dcdd2d6f0d",
    "constraints": [
     "uniq_ligne_remise_par_paiement"
    ],
@@ -756,7 +749,6 @@
   },
   "LivraisonBC": {
    "app_label": "ventes",
-   "ast_sha256": "022a5f7ae585020eab8f5ee0fd0873c25c804023504ce62a3315dacb8e67a048",
    "constraints": [],
    "db_table": "ventes_livraisonbc",
    "fields": [
@@ -851,7 +843,6 @@
   },
   "MandatPaiement": {
    "app_label": "ventes",
-   "ast_sha256": "d7790a39d6eb986e18a0af105aaf7420bc6e67b608bf0f3cc246f9d152fadda8",
    "constraints": [],
    "db_table": "ventes_mandatpaiement",
    "fields": [
@@ -1006,7 +997,6 @@
   },
   "NoteDebit": {
    "app_label": "ventes",
-   "ast_sha256": "8ed9c56270b86324f74ea47d767bf517d878f50dcb26309cdbe1c694f61b048a",
    "constraints": [],
    "db_table": "ventes_notedebit",
    "fields": [
@@ -1221,7 +1211,6 @@
   },
   "ParametrageRelanceClient": {
    "app_label": "ventes",
-   "ast_sha256": "571bbe38a228bf89c27d275f789197ad4bf510731a28e6c21110b273acc16653",
    "constraints": [],
    "db_table": "ventes_parametragerelanceclient",
    "fields": [
@@ -1317,7 +1306,6 @@
   },
   "PaymentLink": {
    "app_label": "ventes",
-   "ast_sha256": "2a9b4910eb26f1022ceef16c1f89a481d38453f1ebcaaf171199d6a86eedcad1",
    "constraints": [
     "uniq_paymentlink_actif_par_facture"
    ],
@@ -1492,7 +1480,6 @@
   },
   "ProformaDocument": {
    "app_label": "ventes",
-   "ast_sha256": "666b7b95909d4ec2618b74097f969c934449a92fff83dd8746d2065e4a33c4c6",
    "constraints": [],
    "db_table": "ventes_proformadocument",
    "fields": [
@@ -1582,7 +1569,6 @@
   },
   "PromessePaiement": {
    "app_label": "ventes",
-   "ast_sha256": "72794069ad8e19105b0e25d8856a4cdc3c39973cc0af527d9269580be36521d0",
    "constraints": [],
    "db_table": "ventes_promessepaiement",
    "fields": [
@@ -1712,7 +1698,6 @@
   },
   "RemiseEncaissement": {
    "app_label": "ventes",
-   "ast_sha256": "3668f04936a8a1e01ae1fffc66ddb3fb0cc15d6fbf54634e03b58cceed0944e8",
    "constraints": [],
    "db_table": "ventes_remiseencaissement",
    "fields": [
@@ -1891,7 +1876,6 @@
   },
   "RetenueSubie": {
    "app_label": "ventes",
-   "ast_sha256": "4d46f390654d8ac91da749be2d0b171f511bd9cdc27236b618a9e3aadad29ee7",
    "constraints": [],
    "db_table": "ventes_retenuesubie",
    "fields": [
@@ -2078,7 +2062,6 @@
   },
   "TentativeDebitMandat": {
    "app_label": "ventes",
-   "ast_sha256": "46afcc60ac90e7cd6e6b8af7277ca8c4c3ecc1245977e3306ed900dacd308692",
    "constraints": [],
    "db_table": "ventes_tentativedebitmandat",
    "fields": [

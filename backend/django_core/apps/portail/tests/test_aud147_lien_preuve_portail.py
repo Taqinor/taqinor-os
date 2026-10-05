@@ -37,8 +37,10 @@ from apps.crm.models import Client
 from apps.installations.models import (
     Installation, Livraison, LivraisonLigne, PreuveLivraison,
 )
-from apps.roles.models import (
-    PORTAIL_CLIENT_PERMISSIONS, ROLE_PORTAIL_CLIENT, Role,
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    PORTAIL_CLIENT_PERMISSIONS,
+    ROLE_PORTAIL_CLIENT,
 )
 from authentication.models import Company, CustomUser
 

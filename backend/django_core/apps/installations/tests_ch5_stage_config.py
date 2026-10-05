@@ -44,7 +44,8 @@ def auth(user):
 def make_directeur(company):
     """Compte Directeur : rôle système « Directeur » (porte le signal
     `journal_activite_voir`)."""
-    from apps.roles.models import Role, DIRECTEUR_PERMISSIONS
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
     role = Role.objects.create(
         company=company, nom='Directeur', est_systeme=True,
         permissions=list(DIRECTEUR_PERMISSIONS))
@@ -58,7 +59,8 @@ def make_directeur(company):
 def make_responsable(company):
     """Compte NON-Directeur : rôle Technicien responsable (écrit ses chantiers
     mais ne configure pas les gates)."""
-    from apps.roles.models import Role, TECHNICIEN_RESP_PERMISSIONS
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import TECHNICIEN_RESP_PERMISSIONS
     role = Role.objects.create(
         company=company, nom='Technicien responsable', est_systeme=True,
         permissions=list(TECHNICIEN_RESP_PERMISSIONS))

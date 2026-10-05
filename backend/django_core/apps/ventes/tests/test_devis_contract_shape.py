@@ -14,7 +14,8 @@ forme du serializer uniquement).
 """
 from django.test import SimpleTestCase
 
-from apps.ventes.serializers import DevisSerializer, PaiementSerializer
+from apps.ventes.serializers import DevisSerializer
+from apps.ventes.serializers_facturation import PaiementSerializer
 
 # ── Ensemble GELÉ des clés du contrat Devis (docs/devis-json-contract.md) ──
 # Inclut prix_par_kwc (SCA47) : exposé sur l'API interne (BI NTDATA46/47),

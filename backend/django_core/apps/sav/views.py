@@ -937,7 +937,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 ticket, ticket.statut, request=self.request)
             # ZSAV9 — notifie les suiveurs de la transition (best-effort).
             from .services import notify_followers
-            from apps.notifications.models import EventType
+            from apps.notifications.types_evenements import EventType
             notify_followers(
                 ticket, event_type=EventType.SAV_TICKET_FOLLOWED_UPDATE,
                 title=f'Statut changé — {ticket.reference}',
@@ -1262,7 +1262,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             ticket, request.user, body, visible_client=visible_client)
         # ZSAV9 — notifie les suiveurs du ticket (jamais l'auteur de la note).
         from .services import notify_followers
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         notify_followers(
             ticket, event_type=EventType.SAV_TICKET_FOLLOWED_UPDATE,
             title=f'Nouvelle note — {ticket.reference}',
@@ -3325,7 +3325,7 @@ def scan_sla_breaches():
     Appelé par le scan journalier (management command ou Celery-beat).
     Aucune modification si sla_breach_enabled est False pour la société."""
     from apps.notifications.services import notify
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
 
     today = timezone.localdate()
     breached = list(Ticket.objects.filter(
@@ -3385,7 +3385,7 @@ def _destinataires_palier(palier, company):
     """NTSRV12 — destinataires d'un palier : l'utilisateur désigné, sinon les
     comptes actifs du rôle visé, sinon les destinataires par défaut de
     l'événement (``resolve_recipients``, mute-aware via ``notify()``)."""
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
     from apps.notifications.services import resolve_recipients
 
     if palier.notifier_utilisateur_id:
@@ -3412,7 +3412,7 @@ def _notifier_paliers(ticket, paliers, due_effectif, today):
     ``échéance + N jours`` — JAMAIS avant. IDEMPOTENT : l'id du palier est
     mémorisé sur le ticket (``sla_escalade_paliers_notifies``), donc le
     balayage du lendemain ne le rejoue pas."""
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
     from apps.notifications.services import notify
 
     if due_effectif is None:
@@ -3471,7 +3471,7 @@ def scan_sla_pre_alerts_and_escalations():
     configuré = comportement XSAV6 strictement inchangé.
     """
     from apps.notifications.services import notify, resolve_recipients
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
 
     today = timezone.localdate()
     qs = list(Ticket.objects.filter(

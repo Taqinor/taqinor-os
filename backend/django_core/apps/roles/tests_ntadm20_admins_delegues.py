@@ -10,13 +10,13 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company, CustomUser
 
-from .models import (
+from .models import Role
+from .permissions_registre import (
     ADMIN_RH_PERMISSIONS,
     ADMIN_VENTES_PERMISSIONS,
     CANONICAL_SYSTEM_ROLES,
     ROLE_ADMIN_RH,
     ROLE_ADMIN_VENTES,
-    Role,
 )
 
 User = get_user_model()
@@ -63,7 +63,7 @@ class Ntadm20ConstantesTests(TestCase):
         self.assertNotIn('stock_creer', ADMIN_RH_PERMISSIONS)
 
     def test_permissions_toutes_connues_du_catalogue(self):
-        from .models import ALL_PERMISSIONS
+        from .permissions_registre import ALL_PERMISSIONS
         for code in ADMIN_RH_PERMISSIONS + ADMIN_VENTES_PERMISSIONS:
             self.assertIn(code, ALL_PERMISSIONS, code)
 

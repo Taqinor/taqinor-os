@@ -120,7 +120,7 @@ def _notifier_demande(demande):
 
     for admin in destinataires:
         try:
-            from apps.notifications.models import EventType
+            from apps.notifications.types_evenements import EventType
             from apps.notifications.services import notify
             notify(admin, EventType.IMPERSONATION_REQUESTED, titre,
                    body=corps, link=lien, company=demande.company)

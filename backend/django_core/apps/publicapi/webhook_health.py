@@ -122,7 +122,7 @@ def _alerter_admins(webhook, compte, heures):
     doit jamais empêcher la DÉSACTIVATION elle-même (qui, elle, protège la
     cible et l'ERP)."""
     try:
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         from apps.notifications.services import notify_many, resolve_recipients
 
         cible = webhook.label or webhook.target_url

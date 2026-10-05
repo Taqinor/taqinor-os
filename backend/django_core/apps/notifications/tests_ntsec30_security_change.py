@@ -6,9 +6,8 @@ l'utilisateur qu'il ne peut PAS couper via ses préférences ; best-effort
 """
 from django.test import TestCase, override_settings
 
-from apps.notifications.models import (
-    EventType, Notification, NotificationPreference,
-)
+from apps.notifications.models import Notification, NotificationPreference
+from apps.notifications.types_evenements import EventType
 from apps.notifications.services import notify_security_change
 from testkit.factories import CompanyFactory, UserFactory
 

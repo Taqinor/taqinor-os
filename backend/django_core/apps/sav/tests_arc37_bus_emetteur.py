@@ -34,7 +34,8 @@ from authentication.models import Company
 
 from apps.crm.models import Client
 from apps.installations.models import Installation
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.records.models import Activity
 from apps.sav.models import Equipement, Ticket
 from apps.sav.services import retirer_piece

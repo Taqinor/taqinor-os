@@ -28,7 +28,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.audit.models import AuditLog
-from apps.audit.signals import TRACKED_MODELS
+from apps.audit.modeles_suivis import TRACKED_MODELS
 from apps.installations.models import (
     CommissioningRecord, Installation, Intervention, Livraison,
     PreuveLivraison,

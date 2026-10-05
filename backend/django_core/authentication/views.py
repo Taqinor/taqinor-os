@@ -526,7 +526,8 @@ def _create_system_roles(company):
     laissé ``est_systeme=False`` résoudrait à tort au palier limité et perdrait
     l'accès aux écrans Utilisateurs/Rôles. Additif : ne supprime jamais une ligne
     et ne touche pas aux permissions déjà posées."""
-    from apps.roles.models import Role, CANONICAL_SYSTEM_ROLES
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
     roles = {}
     for nom, perms in CANONICAL_SYSTEM_ROLES:
         role, created = Role.objects.get_or_create(

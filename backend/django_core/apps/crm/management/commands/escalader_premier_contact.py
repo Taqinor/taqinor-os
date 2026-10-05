@@ -139,7 +139,7 @@ def _alerter_le_superieur(company, escalades, palier_superieur):
     l'ouverture : trois notifications identiques ne disent rien de plus
     qu'une, et c'est ainsi qu'une alerte utile devient du bruit qu'on coupe.
     """
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
     from apps.notifications.services import notify_many
 
     retenus = [(lead, minutes) for lead, minutes, _sups in escalades
@@ -201,7 +201,7 @@ def escalader_premier_contact(dry_run=False, now=None):
     from apps.crm import horaires
     from apps.crm.stages import COLD, SIGNED
     from apps.crm.models import Lead, LeadActivity
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
     from apps.notifications.services import notify_many
 
     maintenant = now or timezone.now()

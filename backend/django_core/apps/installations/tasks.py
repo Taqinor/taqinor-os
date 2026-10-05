@@ -193,7 +193,7 @@ def _notifier_meteo_risque(interv):
     sur une pose planifiée (best-effort, ne lève jamais)."""
     try:
         from apps.notifications.services import notify
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
         return
     responsable = getattr(interv.installation, 'technicien_responsable', None)
@@ -320,7 +320,7 @@ def relancer_rfq_en_attente_task():
                     'bcf_relance_proposee', titre, recipient=acheteur):
                 continue
             try:
-                from apps.notifications.models import EventType
+                from apps.notifications.types_evenements import EventType
                 from apps.notifications.services import notify
                 notify(
                     acheteur, EventType.BCF_RELANCE_PROPOSEE,

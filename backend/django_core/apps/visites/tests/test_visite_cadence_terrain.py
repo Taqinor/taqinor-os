@@ -31,7 +31,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from testkit.time import frozen
 
 from apps.crm.models import Lead
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.roles.models import Role
 from apps.visites import qualification, selectors, services
 from apps.visites.models import VisiteMedia, VisiteTerrain

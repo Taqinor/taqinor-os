@@ -28,7 +28,8 @@ from apps.crm.management.commands.escalader_rappels_demandes import (
     escalader_rappels_demandes)
 from apps.crm.models import Lead
 from apps.crm.stages import NEW
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.parametres.models import CompanyProfile
 
 User = get_user_model()

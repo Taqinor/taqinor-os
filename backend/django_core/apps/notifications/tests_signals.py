@@ -11,7 +11,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from apps.crm.models import Client, Lead
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.ventes.models import Devis
 from authentication.models import Company
 

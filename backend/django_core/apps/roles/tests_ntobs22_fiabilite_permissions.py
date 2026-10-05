@@ -29,12 +29,12 @@ from django.test import SimpleTestCase, TestCase
 
 from authentication.models import Company, CustomUser
 
-from .models import (
+from .models import Role
+from .permissions_registre import (
     ADMIN_PERMISSIONS,
     ALL_PERMISSIONS,
     DIRECTEUR_PERMISSIONS,
     PERMISSION_MODULE,
-    Role,
 )
 
 User = get_user_model()

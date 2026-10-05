@@ -20,12 +20,12 @@ from apps.parametres.localisation import (
     PERMISSION_LOCALISATION_GERER,
     peut_gerer_localisation,
 )
-from apps.roles.models import (
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
     ADMIN_PERMISSIONS,
     ALL_PERMISSIONS,
     DIRECTEUR_PERMISSIONS,
     RESPONSABLE_PERMISSIONS,
-    Role,
 )
 from authentication.models import Company
 

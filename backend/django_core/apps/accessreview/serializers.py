@@ -43,7 +43,7 @@ class SodRuleSerializer(serializers.ModelSerializer):
         Une règle SoD posée sur un code inexistant ne matcherait jamais (SoD
         silencieusement inerte) ; on la rejette à l'écriture (400 FR)."""
         # Import local du catalogue foundation (roles) — pas de couplage import.
-        from apps.roles.models import ALL_PERMISSIONS
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
         if value not in set(ALL_PERMISSIONS):
             raise serializers.ValidationError(
                 "Code de permission inconnu : « %s ». Il doit figurer dans le "

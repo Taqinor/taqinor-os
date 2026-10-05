@@ -18,7 +18,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
 from apps.installations.models import Installation
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.ventes.models import BonCommande, Devis
 from authentication.models import Company
 

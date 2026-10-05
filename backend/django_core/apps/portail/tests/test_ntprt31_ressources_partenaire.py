@@ -22,8 +22,10 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.ged.models import AclGed, Cabinet, Document, DocumentVersion, Folder
-from apps.roles.models import (
-    PORTAIL_PARTENAIRE_PERMISSIONS, ROLE_PORTAIL_PARTENAIRE, Role,
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    PORTAIL_PARTENAIRE_PERMISSIONS,
+    ROLE_PORTAIL_PARTENAIRE,
 )
 from authentication.models import Company, CustomUser
 
@@ -125,7 +127,10 @@ class RessourcesPartenairePortailTests(TestCase):
         self.assertEqual(res.data['results'], [])
 
     def test_client_ne_peut_pas_atteindre_les_ressources_partenaire(self):
-        from apps.roles.models import PORTAIL_CLIENT_PERMISSIONS, ROLE_PORTAIL_CLIENT
+        from apps.roles.permissions_registre import (
+            PORTAIL_CLIENT_PERMISSIONS,
+            ROLE_PORTAIL_CLIENT,
+        )
         role_client, _ = Role.objects.get_or_create(
             company=self.company, nom=ROLE_PORTAIL_CLIENT,
             defaults={'permissions': list(PORTAIL_CLIENT_PERMISSIONS),

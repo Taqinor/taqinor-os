@@ -17,7 +17,8 @@ from django.utils import timezone
 from authentication.models import Company
 from apps.roles.models import Role
 
-from .models import EventType, Notification
+from .models import Notification
+from .types_evenements import EventType
 from .tasks import rappel_fetes_mobiles
 
 User = get_user_model()

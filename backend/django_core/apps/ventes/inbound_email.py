@@ -134,7 +134,7 @@ def _notify_devis_reply(devis, from_email, subject):
         pass
     try:
         from apps.notifications.services import notify
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         owner = getattr(devis, 'created_by', None)
         if owner is not None:
             notify(

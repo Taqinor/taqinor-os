@@ -22,7 +22,7 @@ import logging
 
 from celery import shared_task
 
-from .models import EventType
+from .types_evenements import EventType
 from .services import notify
 
 logger = logging.getLogger(__name__)

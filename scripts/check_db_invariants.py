@@ -175,18 +175,24 @@ def scan():
     """Return a list of (model, app, python_fields, cc_fields, canonical)."""
     out = []
     for model, (app, canonical) in TARGET_MODELS.items():
-        path = APPS_DIR / app / "models.py"
+        # SPL149 — un modèle déplacé dans ``models_<x>.py`` (même app_label,
+        # p. ex. ventes/models_facturation.py::BonCommande) reste lu : sinon il
+        # sortirait du registre en silence.
+        app_dir = APPS_DIR / app
+        paths = [app_dir / "models.py"] + sorted(app_dir.glob("models_*.py"))
         py_fields, cc_fields = set(), set()
-        if path.is_file():
+        for path in paths:
+            if not path.is_file():
+                continue
             try:
                 tree = ast.parse(path.read_text(encoding="utf-8"))
             except SyntaxError:
-                tree = None
-            if tree is not None:
-                cls = _find_class(tree, model)
-                if cls is not None:
-                    py_fields = python_invariants(cls)
-                    cc_fields = checkconstraint_fields(cls)
+                continue
+            cls = _find_class(tree, model)
+            if cls is not None:
+                py_fields = python_invariants(cls)
+                cc_fields = checkconstraint_fields(cls)
+                break
         out.append((model, app, py_fields, cc_fields, canonical))
     return out
 

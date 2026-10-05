@@ -8,7 +8,7 @@ corps ici. Les routes historiques ``/api/django/ventes/…`` continuent d'utilis
 les MÊMES classes.
 """
 
-from apps.ventes.serializers import (  # noqa: F401
+from apps.ventes.serializers_facturation import (  # noqa: F401
     AvoirSerializer,
     FactureActivitySerializer,
     FactureSerializer,

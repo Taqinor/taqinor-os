@@ -21,7 +21,8 @@ from django.utils import timezone
 
 from authentication.models import Company
 
-from .models import EventType, Notification
+from .models import Notification
+from .types_evenements import EventType
 from .services import notify
 
 User = get_user_model()

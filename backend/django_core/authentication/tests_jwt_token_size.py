@@ -25,7 +25,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from authentication.serializers import CustomTokenObtainPairSerializer
 from authentication.active_company import ACTIVE_COMPANY_CLAIM
-from apps.roles.models import Role, ALL_PERMISSIONS
+from apps.roles.models import Role
+from apps.roles.permissions_registre import ALL_PERMISSIONS
 
 User = get_user_model()
 

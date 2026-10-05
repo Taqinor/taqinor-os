@@ -23,7 +23,8 @@ from apps.crm.services import (
     notify_new_lead,
     notify_devis_opened,
 )
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 
 User = get_user_model()
 
