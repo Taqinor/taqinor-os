@@ -73,6 +73,12 @@ class NoteTvaPureTests(SimpleTestCase):
         self.assertEqual(note.count('base A'), 1)
 
 
+#: Le devis de test ne porte aucun onduleur : le format à options ('full')
+#: est refusé par la règle dure du builder. Les clés vérifiées ici (note TVA,
+#: attestation) ne dépendent pas du format — on rend donc la page unique.
+_ONEPAGE = {'pdf_mode': 'onepage'}
+
+
 class _Base(TestCase):
     def setUp(self):
         self.company = CompanyFactory()
@@ -138,7 +144,7 @@ class ReplaceLinesTests(_Base):
                            self._ligne(taux_tva='20.00', ordre=1)])
         self.assertEqual(r.status_code, 200, r.content)
         self.devis.refresh_from_db()
-        data = build_quote_data(self.devis, {'pdf_mode': 'full'})
+        data = build_quote_data(self.devis, _ONEPAGE)
         self.assertIn('exonération : ' + BASE, data['tva_note'])
 
 
@@ -197,12 +203,12 @@ class AttestationTests(_Base):
                 'attestee': True, 'le': '2026-10-02',
                 'signataire': 'Exploitant'}}
         self.devis.save(update_fields=['etude_params'])
-        data = build_quote_data(self.devis, {'pdf_mode': 'full'})
+        data = build_quote_data(self.devis, _ONEPAGE)
         self.assertEqual(data['attestation_usage_agricole'],
                          {'attestee': True, 'le': '2026-10-02',
                           'signataire': 'Exploitant'})
 
     def test_sans_attestation_cle_absente(self):
         from apps.ventes.quote_engine.builder import build_quote_data
-        data = build_quote_data(self.devis, {'pdf_mode': 'full'})
+        data = build_quote_data(self.devis, _ONEPAGE)
         self.assertNotIn('attestation_usage_agricole', data)

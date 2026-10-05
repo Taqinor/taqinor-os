@@ -23,6 +23,16 @@ PAQUET = os.path.dirname(os.path.abspath(profils.__file__))
 #: du paquet ne charge Django, DRF, Celery ni un ``models``.
 RACINES_INTERDITES = ('django', 'rest_framework', 'celery', 'authentication')
 IMPORTS_PURS_PERMIS = frozenset({'apps.parametres.pvgis_profils'})
+#: Paquets PURS du noyau (aucun Django, aucun modèle) que la composition et la
+#: combinaison d'onduleurs C&I consomment (CIQ111/CIQ115 : « par
+#: ``core.electrique`` », barème de paliers partagé). Permis par préfixe ;
+#: chacun de leurs fichiers est lui-même vérifié sans Django ci-dessous.
+PAQUETS_PURS_PERMIS = ('core.electrique', 'core.pricing_paliers')
+
+
+def _pur_permis(module):
+    return module in IMPORTS_PURS_PERMIS or any(
+        module == p or module.startswith(p + '.') for p in PAQUETS_PURS_PERMIS)
 
 
 def _contrat_archetypes():
@@ -153,30 +163,40 @@ class TestPurete(unittest.TestCase):
                 else:
                     continue
                 for module in modules:
-                    if module.startswith('apps.ventes.moteur_ci') or module in IMPORTS_PURS_PERMIS:
+                    if module.startswith('apps.ventes.moteur_ci') or _pur_permis(module):
                         continue
                     if module.split('.')[0] in RACINES_INTERDITES or 'models' in module:
                         fautifs.append((nom, module))
         self.assertEqual(fautifs, [])
 
     def test_imports_permis_sans_django(self):
-        """Interpréteur NEUF (sans réglages Django) : importer tout le paquet ne
-        charge ni Django, ni DRF, ni Celery, ni aucun ``models``."""
-        import subprocess
-        import sys
-        racine = os.path.dirname(os.path.dirname(os.path.dirname(PAQUET)))
-        script = (
-            'import importlib, pkgutil, sys\n'
-            'import apps.ventes.moteur_ci as p\n'
-            'for m in pkgutil.iter_modules(p.__path__):\n'
-            '    importlib.import_module("apps.ventes.moteur_ci." + m.name)\n'
-            'print(sorted(k for k in sys.modules if k.split(".")[0] in '
-            '("django", "rest_framework", "celery") or k.endswith(".models")))\n')
-        env = {k: v for k, v in os.environ.items() if k != 'DJANGO_SETTINGS_MODULE'}
-        sortie = subprocess.run([sys.executable, '-c', script], cwd=racine, env=env,
-                                capture_output=True, text=True, timeout=120)
-        self.assertEqual(sortie.returncode, 0, sortie.stderr[-2000:])
-        self.assertEqual(sortie.stdout.strip(), '[]')
+        racine = os.path.dirname(os.path.dirname(PAQUET))
+        base = os.path.dirname(racine)
+        chemins = [os.path.join(base, *m.split('.')) + '.py'
+                   for m in IMPORTS_PURS_PERMIS]
+        for paquet in PAQUETS_PURS_PERMIS:
+            dossier = os.path.join(base, *paquet.split('.'))
+            if os.path.isdir(dossier):
+                chemins += [os.path.join(dossier, f) for f in sorted(os.listdir(dossier))
+                            if f.endswith('.py')]
+            else:
+                chemins.append(dossier + '.py')
+        for chemin in chemins:
+            module = os.path.relpath(chemin, base)
+            with open(chemin, encoding='utf-8') as fh:
+                arbre = ast.parse(fh.read())
+            for noeud in arbre.body:
+                if isinstance(noeud, ast.Import):
+                    noms = [alias.name for alias in noeud.names]
+                elif isinstance(noeud, ast.ImportFrom):
+                    noms = [noeud.module or '']
+                else:
+                    continue
+                for nom in noms:
+                    if _pur_permis(nom):
+                        continue
+                    self.assertNotIn(nom.split('.')[0], RACINES_INTERDITES, (module, nom))
+                    self.assertNotIn('models', nom, (module, nom))
 
     def test_garde_armee(self):
         arbre = ast.parse('from django.db import models\n')

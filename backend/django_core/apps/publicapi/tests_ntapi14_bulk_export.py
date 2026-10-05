@@ -14,7 +14,7 @@ from authentication.models import Company
 from apps.crm.models import Lead
 
 from . import bulk
-from .constants import SCOPE_READ_LEADS, SCOPE_READ_STOCK
+from .portees import SCOPE_READ_LEADS, SCOPE_READ_STOCK
 from .models import ApiKey, BulkJob
 
 

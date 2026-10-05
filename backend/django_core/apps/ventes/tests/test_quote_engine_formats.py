@@ -451,6 +451,12 @@ class TestPdfFormats(TestCase):
         if etude_horaire is not None:
             etude['etude_horaire'] = etude_horaire
         self.devis.mode_installation = 'industriel'
+        # CIQ302 — un C&I à deux options NON accepté titre l'offre RÉSEAU
+        # seule (branche sans batterie) : la falaise, le remplissage et la
+        # part des pointes décrivent l'option AVEC batterie et seraient donc
+        # (à raison) omis. Ces gardes portent sur la branche AVEC : l'option
+        # AVEC est acceptée, ce qui lui rend la priorité (QJR401 / DR1).
+        self.devis.option_acceptee = 'avec_batterie'
         self.devis.etude_params = etude
         self.devis.save()
         return self.devis

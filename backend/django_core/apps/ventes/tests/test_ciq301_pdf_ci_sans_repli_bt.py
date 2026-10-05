@@ -132,10 +132,15 @@ class TestJeuxDEssaiSansEconomieFabriquee(SimpleTestCase):
 
 class _DevisCIMixin:
     def _devis(self, mode, reference, etude=None):
+        from django.contrib.auth import get_user_model
         from apps.ventes.tests._quote_engine_common import (
-            make_client, make_company, make_devis, make_user)
+            make_client, make_company, make_devis)
         company = make_company()
-        user = make_user(company)
+        # `make_user` pose un username FIXE : un second devis dans le même
+        # test (subTest commercial puis industriel) heurtait l'unicité.
+        user = get_user_model().objects.create_user(
+            username=f'ciq301-{reference}', password='x',
+            role_legacy='responsable', company=company)
         devis = make_devis(company, user, make_client(company), _LIGNES,
                            reference=reference,
                            etude_params=dict(etude or _ETUDE_ECRAN))

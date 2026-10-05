@@ -35,7 +35,7 @@
  * import('../../scripts/roofPro11/viewerFullBoot')` au tap/scroll, jamais dans
  * le chunk initial.
  */
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import maplibreCssUrl from 'maplibre-gl/dist/maplibre-gl.css?url';
 import { type RoofLayout } from '../../lib/proposition';
 import { buildSatelliteStyle } from '../../lib/roofConfig';

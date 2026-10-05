@@ -21,7 +21,7 @@ from core import api_usage
 from core.models import ApiUsagePlan, ApiUsageRecord
 from testkit.time import frozen
 
-from .constants import SCOPE_READ_LEADS
+from .portees import SCOPE_READ_LEADS
 from .models import ApiKey
 from .public_response import (
     RATE_LIMIT_LIMIT_HEADER, RATE_LIMIT_REMAINING_HEADER,

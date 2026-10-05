@@ -24,10 +24,8 @@ import re
 
 from django.test import SimpleTestCase
 
-from .constants import (
-    ALL_SCOPES, EXPORT_SCOPE_BY_ENTITY, IMPORT_SCOPE_BY_ENTITY,
-    PUBLIC_API_BASE,
-)
+from .portees import ALL_SCOPES, EXPORT_SCOPE_BY_ENTITY, IMPORT_SCOPE_BY_ENTITY
+from .constants import PUBLIC_API_BASE
 from .openapi import build_openapi_schema
 from .public_urls import router as public_router
 from .public_urls import urlpatterns as public_urlpatterns

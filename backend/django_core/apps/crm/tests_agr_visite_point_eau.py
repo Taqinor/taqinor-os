@@ -19,7 +19,8 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, services
-from apps.crm.cadence_config import CLE_DEVIS, CLE_PLANIFIER, cle_de
+from apps.crm.cadence_config import (
+    CLE_APPEL_APRES_REPONSE, CLE_DEVIS, CLE_PLANIFIER, cle_de)
 from apps.crm.devis_auto import releve_eau_manquant
 from apps.crm.models import Lead, RelanceEtape
 from apps.parametres.models import CompanyProfile
@@ -66,6 +67,18 @@ class _Base(TestCase):
         resp = self.api.post(f'/api/django/crm/relance-etapes/{appel.pk}/fait/',
                              {'outcome': 'joint'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
+        # Cadence RÉACTIVE : à la création seule la touche 1 (le MESSAGE
+        # d'identité) existe. Un message répondu pose d'abord « Appeler le
+        # client — il a répondu » (RELANCE-SUITE) ; c'est CET appel, abouti,
+        # qui décide de la suite que ce module verrouille.
+        rappel = lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE,
+            cle=CLE_APPEL_APRES_REPONSE).first()
+        if rappel is not None:
+            resp = self.api.post(
+                f'/api/django/crm/relance-etapes/{rappel.pk}/fait/',
+                {'outcome': 'joint'}, format='json')
+            self.assertEqual(resp.status_code, 200, resp.data)
 
     def _cles_ouvertes(self, lead):
         return {cle_de(e) for e in lead.relance_etapes.filter(

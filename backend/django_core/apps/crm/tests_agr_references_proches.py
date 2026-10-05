@@ -44,8 +44,8 @@ class ReferencesProchesTests(TestCase):
         return Realisation.objects.create(
             company=self.company, titre=f'Pompage {ville}', ville=ville,
             segment=segment, mise_en_service=datetime.date(2026, 6, 15),
-            url_page=f'https://taqinor.ma/realisations/{ville.lower()}/',
-            **kw)
+            **{'url_page': f'https://taqinor.ma/realisations/{ville.lower()}/',
+               **kw})
 
     def _get(self, lead=None):
         lead = lead or self.lead
@@ -78,8 +78,10 @@ class ReferencesProchesTests(TestCase):
         self.assertEqual(resp.data['segment'], 'agricole')
 
     def test_limite_a_cinq(self):
-        for _ in range(7):
-            self._real('Taroudant')
+        for n in range(7):
+            # url_page est unique par société (param_realisation_co_url).
+            self._real('Taroudant',
+                       url_page=f'https://taqinor.ma/realisations/t{n}/')
         self.assertEqual(len(self._get().data['references']), 5)
 
     def test_une_realisation_inactive_n_est_pas_servie(self):
