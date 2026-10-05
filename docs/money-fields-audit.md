@@ -60,7 +60,7 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/installations/models_ordre_soustraitance.py:136` | OrdreSousTraitance.montant | 12 | 2 |
 | `backend/django_core/apps/installations/models_ordre_soustraitance.py:139` | OrdreSousTraitance.montant_realise | 12 | 2 |
 | `backend/django_core/apps/installations/models_rfq.py:100` | RFQOffre.montant_ht | 12 | 2 |
-| `backend/django_core/apps/monitoring/models.py:423` | AbonnementMonitoring.montant | 12 | 2 |
+| `backend/django_core/apps/monitoring/models.py:436` | AbonnementMonitoring.montant | 12 | 2 |
 | `backend/django_core/apps/parametres/models_company.py:204` | CompanyProfile.tva_standard | 5 | 2 |
 | `backend/django_core/apps/parametres/models_company.py:206` | CompanyProfile.tva_panneaux | 5 | 2 |
 | `backend/django_core/apps/parametres/models_company.py:235` | CompanyProfile.remise_max_pct | 5 | 2 |
@@ -68,6 +68,7 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/sav/models.py:731` | Ticket.cout | 10 | 2 |
 | `backend/django_core/apps/sav/models.py:1378` | WarrantyClaim.cout_recupere | 10 | 2 |
 | `backend/django_core/apps/sav/models.py:1478` | ContratMaintenance.prix | 10 | 2 |
+| `backend/django_core/apps/sav/models.py:1782` | PrestationContrat.prix_ht | 10 | 2 |
 | `backend/django_core/apps/stock/models.py:442` | AchatsParametres.tolerance_prix_pct | 5 | 2 |
 | `backend/django_core/apps/stock/models.py:444` | AchatsParametres.tolerance_prix_absolu_mad | 12 | 2 |
 | `backend/django_core/apps/stock/models.py:470` | AchatsParametres.seuil_deviation_prix_pct | 5 | 2 |
