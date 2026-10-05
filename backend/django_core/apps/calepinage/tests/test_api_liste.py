@@ -7,7 +7,8 @@ Ce qui est prouvé ici :
   ignoré fait ouvrir le mauvais objet ;
 * un filtre ILLISIBLE (statut inconnu, date invalide) est refusé 400 en
   NOMMANT le champ, jamais avalé en silence ;
-* ``POST`` accepte lead XOR client, refuse les deux et refuse aucun, avec un
+* ``POST`` accepte lead, client, ou les deux s'ils sont COHÉRENTS (ACAL179),
+  refuse un client incohérent et refuse aucun, avec un
   message français qui NOMME le champ fautif ;
 * un ``company`` envoyé dans le corps est IGNORÉ (la société est celle de
   l'appelant, posée côté serveur) ;
@@ -174,11 +175,20 @@ class CreationTest(BaseApiCalepinage):
             self.client_a.pk)
 
     def test_les_deux_refuses_en_nommant_le_champ(self):
+        """ACAL179 — lead ET client sont admis, mais un client INCOHÉRENT
+        avec le lead (ici : le lead n'a pas ce client) est refusé en nommant
+        ``client`` ; le client DU lead passe."""
         reponse = self.api.post(
             URL, {'lead': self.lead.pk, 'client': self.client_a.pk},
             format='json')
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('client', reponse.data)
+        self.lead.client = self.client_a
+        self.lead.save(update_fields=['client'])
+        coherent = self.api.post(
+            URL, {'lead': self.lead.pk, 'client': self.client_a.pk},
+            format='json')
+        self.assertEqual(coherent.status_code, 201, coherent.data)
 
     def test_aucun_des_deux_refuse_en_nommant_le_champ(self):
         reponse = self.api.post(URL, {'titre': 'Orphelin'}, format='json')

@@ -45,9 +45,12 @@ class LierDevisSeulEcrivainTest(BaseApiCalepinage):
             company=self.company, lead_id=self.lead.pk, titre='Villa B')
 
     def test_patch_devis_sans_effet(self):
+        # ACAL179 — la clé en lecture seule est REFUSÉE en la nommant (jamais
+        # un 200 silencieux) ; dans tous les cas, devis n'est pas écrit.
         reponse = self.api.patch(url_detail(self.b.pk),
                                  {'devis': self.devis_2.pk}, format='json')
-        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('devis', reponse.data)
         self.b.refresh_from_db()
         self.assertIsNone(self.b.devis_id,
                           'le CRUD ne doit jamais écrire Calepinage.devis')

@@ -43,7 +43,10 @@ class Calepinage(TenantModel):
 
     Un calepinage naît d'un lead, d'un client, d'un devis ou d'une affaire
     d'appel d'offres — et il SURVIT à l'absence de devis : on peut concevoir
-    une toiture avant de chiffrer quoi que ce soit.
+    une toiture avant de chiffrer quoi que ce soit. Il porte un lead et/ou un
+    client (OU INCLUSIF, contrainte ``calepinage_lead_ou_client``) ; quand il
+    porte les deux, le client est celui du lead (ACAL179, règle du
+    sérialiseur).
     """
 
     class Statut(models.TextChoices):
