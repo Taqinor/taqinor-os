@@ -1,0 +1,439 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/consommation/proposer/",
+  "pourquoi": "ACAL21 (C-ACAL-145/125, D-ACAL-6) — CONSOMMATION PROPOSÉE PAR LE SERVEUR (lecture PURE : rien n'est écrit). Jusqu'ici le seul écrivain de roof_layout.consumption était l'atelier TS (consumption.ts, billToAnnualKwh de lib/estimatorBrainV2.ts sur un barème REGIE_TARIFF figé) : JUMEAU du barème société apps/parametres/tariff.py::kwh_depuis_facture — SURVIVANT : le serveur (FIX-T03 bascule l'atelier). Corps {source: 'lead' | 'factures' | 'appareils' | 'csv', factures?: {hiver_mad, ete_mad?, ete_differente?, classe}, appareils?: [{…forme de $defs/consumption.appareils}], charges?: {vehicule?, pac?, climatisation?: {btu, eer, heures_fonctionnement}}, ramadan?: {actif, jour}, csv?: {contenu, colonne?, unite?}} → 200 {consumption (conforme à $defs/consumption de roof_layout_v2.schema.json, source.{origine, saisi_le, bareme:'societe'}), kwh_annuel, courbe24, saisons, avertissements:[str]} ; `saisons` est TOUJOURS présente (lue côté serveur par la simulation, défaut gravé). 400 {<champ>: motif} pour une facture non finie, un appareil hors contrat, un CSV illisible (colonne nommée) ; 404 pour un lead absent. Les kWh proposés nourrissent l'autoconsommation et la batterie de l'étude TECHNIQUE, jamais le chiffre client du devis (D-ACAL-6). Valeurs ILLUSTRATIVES.",
+  "exemple": {
+    "consumption": {
+      "courbe24": [
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.6,
+        0.8,
+        0.9,
+        0.7,
+        0.6,
+        0.6,
+        0.7,
+        0.6,
+        0.6,
+        0.7,
+        0.9,
+        1.1,
+        1.2,
+        1.1,
+        0.9,
+        0.7,
+        0.5,
+        0.4
+      ],
+      "saisons": {
+        "ete": 1.2,
+        "hiver": 0.9
+      },
+      "appareils": [],
+      "methode": "facture",
+      "source": {
+        "origine": "lead",
+        "saisi_le": "2026-10-04T10:00:00Z",
+        "bareme": "societe"
+      }
+    },
+    "kwh_annuel": 9800.0,
+    "courbe24": [
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.6,
+      0.8,
+      0.9,
+      0.7,
+      0.6,
+      0.6,
+      0.7,
+      0.6,
+      0.6,
+      0.7,
+      0.9,
+      1.1,
+      1.2,
+      1.1,
+      0.9,
+      0.7,
+      0.5,
+      0.4
+    ],
+    "saisons": {
+      "ete": 1.2,
+      "hiver": 0.9
+    },
+    "avertissements": []
+  },
+  "corps_lead": {
+    "source": "lead"
+  },
+  "exemple_factures": {
+    "consumption": {
+      "courbe24": [
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.6,
+        0.8,
+        0.9,
+        0.7,
+        0.6,
+        0.6,
+        0.7,
+        0.6,
+        0.6,
+        0.7,
+        0.9,
+        1.1,
+        1.2,
+        1.1,
+        0.9,
+        0.7,
+        0.5,
+        0.4
+      ],
+      "saisons": {
+        "ete": 1.2,
+        "hiver": 0.9
+      },
+      "appareils": [],
+      "methode": "facture",
+      "source": {
+        "origine": "factures",
+        "saisi_le": "2026-10-04T10:00:00Z",
+        "bareme": "societe"
+      }
+    },
+    "kwh_annuel": 9200.0,
+    "courbe24": [
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.6,
+      0.8,
+      0.9,
+      0.7,
+      0.6,
+      0.6,
+      0.7,
+      0.6,
+      0.6,
+      0.7,
+      0.9,
+      1.1,
+      1.2,
+      1.1,
+      0.9,
+      0.7,
+      0.5,
+      0.4
+    ],
+    "saisons": {
+      "ete": 1.2,
+      "hiver": 0.9
+    },
+    "avertissements": [
+      "Facture d'été absente : la facture d'hiver est appliquée aux douze mois."
+    ]
+  },
+  "corps_factures": {
+    "source": "factures",
+    "factures": {
+      "hiver_mad": 850.0,
+      "ete_mad": 640.0,
+      "ete_differente": true,
+      "classe": "domestique"
+    }
+  },
+  "exemple_appareils_climatisation": {
+    "consumption": {
+      "courbe24": [
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.6,
+        0.8,
+        0.9,
+        0.7,
+        0.6,
+        0.6,
+        0.7,
+        0.6,
+        0.6,
+        0.7,
+        0.9,
+        1.1,
+        1.2,
+        1.1,
+        0.9,
+        0.7,
+        0.5,
+        0.4
+      ],
+      "saisons": {
+        "ete": 1.2,
+        "hiver": 0.9
+      },
+      "appareils": [
+        {
+          "nom": "Climatiseur salon",
+          "puissance_w": 1500,
+          "heures_par_jour": 6,
+          "quantite": 1
+        }
+      ],
+      "methode": "appareils",
+      "source": {
+        "origine": "appareils",
+        "saisi_le": "2026-10-04T10:00:00Z",
+        "bareme": "societe"
+      }
+    },
+    "kwh_annuel": 11400.0,
+    "courbe24": [
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.6,
+      0.8,
+      0.9,
+      0.7,
+      0.6,
+      0.6,
+      0.7,
+      0.6,
+      0.6,
+      0.7,
+      0.9,
+      1.1,
+      1.2,
+      1.1,
+      0.9,
+      0.7,
+      0.5,
+      0.4
+    ],
+    "saisons": {
+      "ete": 1.2,
+      "hiver": 0.9
+    },
+    "avertissements": []
+  },
+  "corps_appareils": {
+    "source": "appareils",
+    "appareils": [
+      {
+        "nom": "Climatiseur salon",
+        "puissance_w": 1500,
+        "heures_par_jour": 6,
+        "quantite": 1
+      }
+    ],
+    "charges": {
+      "climatisation": {
+        "btu": 12000,
+        "eer": 3.2,
+        "heures_fonctionnement": 1200
+      }
+    }
+  },
+  "exemple_ramadan": {
+    "consumption": {
+      "courbe24": [
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.6,
+        0.8,
+        0.9,
+        0.7,
+        0.6,
+        0.6,
+        0.7,
+        0.6,
+        0.6,
+        0.7,
+        0.9,
+        1.1,
+        1.2,
+        1.1,
+        0.9,
+        0.7,
+        0.5,
+        0.4
+      ],
+      "saisons": {
+        "ete": 1.2,
+        "hiver": 0.9
+      },
+      "appareils": [],
+      "methode": "courbe",
+      "source": {
+        "origine": "lead",
+        "saisi_le": "2026-10-04T10:00:00Z",
+        "bareme": "societe"
+      }
+    },
+    "kwh_annuel": 9800.0,
+    "courbe24": [
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.6,
+      0.8,
+      0.9,
+      0.7,
+      0.6,
+      0.6,
+      0.7,
+      0.6,
+      0.6,
+      0.7,
+      0.9,
+      1.1,
+      1.2,
+      1.1,
+      0.9,
+      0.7,
+      0.5,
+      0.4
+    ],
+    "saisons": {
+      "ete": 1.2,
+      "hiver": 0.9
+    },
+    "avertissements": [
+      "Ramadan actif : la courbe horaire est décalée (iftar, suhoor) ; le kWh annuel est inchangé."
+    ]
+  },
+  "corps_ramadan": {
+    "source": "lead",
+    "ramadan": {
+      "actif": true,
+      "jour": 12
+    }
+  },
+  "exemple_csv_15_min": {
+    "consumption": {
+      "courbe24": [
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.6,
+        0.8,
+        0.9,
+        0.7,
+        0.6,
+        0.6,
+        0.7,
+        0.6,
+        0.6,
+        0.7,
+        0.9,
+        1.1,
+        1.2,
+        1.1,
+        0.9,
+        0.7,
+        0.5,
+        0.4
+      ],
+      "saisons": {
+        "ete": 1.2,
+        "hiver": 0.9
+      },
+      "appareils": [],
+      "methode": "courbe",
+      "source": {
+        "origine": "csv",
+        "saisi_le": "2026-10-04T10:00:00Z",
+        "bareme": "societe"
+      }
+    },
+    "kwh_annuel": 10150.0,
+    "courbe24": [
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.6,
+      0.8,
+      0.9,
+      0.7,
+      0.6,
+      0.6,
+      0.7,
+      0.6,
+      0.6,
+      0.7,
+      0.9,
+      1.1,
+      1.2,
+      1.1,
+      0.9,
+      0.7,
+      0.5,
+      0.4
+    ],
+    "saisons": {
+      "ete": 1.2,
+      "hiver": 0.9
+    },
+    "avertissements": [
+      "Pas de 15 minutes agrégé à l'heure."
+    ]
+  },
+  "corps_csv": {
+    "source": "csv",
+    "csv": {
+      "contenu": "horodatage;kwh\n2026-01-01T00:00:00+01:00;0.12\n…",
+      "colonne": "kwh",
+      "unite": "kWh"
+    }
+  },
+  "refus_400_facture": {
+    "factures.hiver_mad": "La facture d'hiver n'est pas finie : saisissez un montant en dirhams."
+  },
+  "refus_400_appareil": {
+    "appareils[0].puissance_w": "La puissance de l'appareil est hors contrat : un nombre positif est attendu."
+  },
+  "refus_400_csv": {
+    "csv.colonne": "La colonne « kwh_x » est introuvable dans le fichier (colonnes : horodatage, kwh)."
+  },
+  "refus_404_lead": {
+    "detail": "Introuvable."
+  }
+}

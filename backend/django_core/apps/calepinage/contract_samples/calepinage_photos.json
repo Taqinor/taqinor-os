@@ -1,0 +1,134 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/photos/",
+  "pourquoi": "ACAL13 (C-ACAL-020/024) — LES PHOTOS DU SITE : GET photos/ → {photos: [...]} ; POST photos/ (multipart : photo, genre, prise_le, legende) → 201 {photo}. `url` est un chemin RELATIF même origine /api/django/calepinage/calepinages/<id>/photos/<photo_id>/fichier/ (proxy Django : le navigateur ne lit JAMAIS MinIO). PATCH / DELETE photos/<photo_id>/ : PATCH {genre, prise_le, legende} → 200 {photo} ; DELETE → 204. Le calage à QUATRE coins ([lat, lng] × 4) se pose par photos/<id>/calage ; 400 {calage} quand les coins sont confondus ou croisés. Aucun statut ne bouge (règle #4). PACT10 : le contrat part AVANT D06-T28/T30/T32.",
+  "exemple": {
+    "photos": [
+      {
+        "id": 5,
+        "genre": "drone",
+        "prise_le": "2026-09-18",
+        "legende": "Vue drone — pan sud",
+        "calage": {
+          "coins": [
+            [
+              33.5731,
+              -7.5898
+            ],
+            [
+              33.5731,
+              -7.5896
+            ],
+            [
+              33.5729,
+              -7.5896
+            ],
+            [
+              33.5729,
+              -7.5898
+            ]
+          ]
+        },
+        "file_key": "roofs/3/calepinage-12-photo-5.jpg",
+        "filename": "drone-sud.jpg",
+        "mime": "image/jpeg",
+        "size": 2048000,
+        "url": "/api/django/calepinage/calepinages/12/photos/5/fichier/",
+        "ajoutee_par": "concepteur.essai",
+        "created_at": "2026-09-18T10:00:00Z"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "photos": []
+  },
+  "exemple_post_201": {
+    "photo": {
+      "id": 5,
+      "genre": "drone",
+      "prise_le": "2026-09-18",
+      "legende": "Vue drone — pan sud",
+      "calage": {
+        "coins": [
+          [
+            33.5731,
+            -7.5898
+          ],
+          [
+            33.5731,
+            -7.5896
+          ],
+          [
+            33.5729,
+            -7.5896
+          ],
+          [
+            33.5729,
+            -7.5898
+          ]
+        ]
+      },
+      "file_key": "roofs/3/calepinage-12-photo-5.jpg",
+      "filename": "drone-sud.jpg",
+      "mime": "image/jpeg",
+      "size": 2048000,
+      "url": "/api/django/calepinage/calepinages/12/photos/5/fichier/",
+      "ajoutee_par": "concepteur.essai",
+      "created_at": "2026-09-18T10:00:00Z"
+    }
+  },
+  "patch_photo": {
+    "endpoint": "PATCH /api/django/calepinage/calepinages/<int:pk>/photos/<int:photo_id>/",
+    "corps": {
+      "genre": "oblique",
+      "prise_le": "2026-09-19",
+      "legende": "Vue oblique — pan nord"
+    },
+    "exemple": {
+      "photo": {
+        "id": 5,
+        "genre": "oblique",
+        "prise_le": "2026-09-19",
+        "legende": "Vue oblique — pan nord",
+        "calage": {
+          "coins": [
+            [
+              33.5731,
+              -7.5898
+            ],
+            [
+              33.5731,
+              -7.5896
+            ],
+            [
+              33.5729,
+              -7.5896
+            ],
+            [
+              33.5729,
+              -7.5898
+            ]
+          ]
+        },
+        "file_key": "roofs/3/calepinage-12-photo-5.jpg",
+        "filename": "drone-sud.jpg",
+        "mime": "image/jpeg",
+        "size": 2048000,
+        "url": "/api/django/calepinage/calepinages/12/photos/5/fichier/",
+        "ajoutee_par": "concepteur.essai",
+        "created_at": "2026-09-18T10:00:00Z"
+      }
+    }
+  },
+  "delete_photo": {
+    "endpoint": "DELETE /api/django/calepinage/calepinages/<int:pk>/photos/<int:photo_id>/",
+    "statut": 204,
+    "corps": null
+  },
+  "fichier": {
+    "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/photos/<int:photo_id>/fichier/",
+    "note": "octets de l'image, Content-Type de la pièce ; 404 identique pour une photo d'une autre société et une photo absente."
+  },
+  "refus_calage_400": {
+    "calage": "Les coins du calage sont confondus ou croisés : tracez un quadrilatère simple."
+  }
+}

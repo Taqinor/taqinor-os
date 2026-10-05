@@ -39,6 +39,7 @@ from django.test import SimpleTestCase
 from apps.calepinage.services.electrique import (
     BLOCS_SIMULATION, CLE_SIMULATION, enregistrer_entree, resultat_calepinage,
 )
+from apps.calepinage.tests._m0_en_attente import EN_ATTENTE_RESULTAT
 
 ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
                 / 'contract_samples')
@@ -349,8 +350,14 @@ class ContratPartageTest(SimpleTestCase):
                     _empreinte_du_document(LAYOUT))),
             'exemple_vide': _Calepinage(LAYOUT),
         }
+        # ACAL8 (M0) a posé ces clés racine avant leurs producteurs.
+        en_attente = {cle for cle in EN_ATTENTE_RESULTAT if '.' not in cle}
         for etat, calepinage in etats.items():
-            manquantes = sorted(set(CONTRAT[etat]) - self._servi(calepinage))
+            servi = self._servi(calepinage)
+            self.assertEqual(sorted(en_attente & servi), [],
+                             'clés désormais servies : retirer leur entrée '
+                             'de EN_ATTENTE_RESULTAT.')
+            manquantes = sorted(set(CONTRAT[etat]) - en_attente - servi)
             self.assertEqual(
                 manquantes, [],
                 f'{etat} : le serveur ne sert PAS la ou les clés '

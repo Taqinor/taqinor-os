@@ -324,6 +324,13 @@ export const ALL_HOOKS = [
   'cal-coupe-sol',
   'cal-coupe-svg',
   'cal-coupe-vide',
+  // ── atelier/OutilsVue.jsx ── (SPL215 — repris tels quels de ToitureDesign)
+  'cal-export-hd',
+  'cal-export-hd-message',
+  'cal-onglet-2d',
+  'cal-onglet-3d',
+  'cal-onglets-vue',
+  'cal-panneau-calques',
   // ── atelier/PanneauActivite.jsx ──
   'cal-activite',
   'cal-activite-erreur',

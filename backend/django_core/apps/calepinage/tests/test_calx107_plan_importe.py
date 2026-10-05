@@ -209,9 +209,14 @@ class ContratPlanImporteTest(SimpleTestCase):
         self.assertEqual(refus['champ'], 'kind')
 
     def test_aucune_url_de_chemin_disque_dans_les_exemples(self):
-        """Une URL servie, jamais un chemin de fichier local."""
+        """Une URL servie, jamais un chemin de fichier local.
+
+        ACAL13 (contrat v2) : l'URL est le chemin RELATIF de la route qui
+        sert le fichier (``…/plan-importe/fichier/``), plus une URL signée.
+        """
         for cle in ('exemple', 'exemple_taille_inconnue'):
-            self.assertTrue(_contrat()[cle]['url'].startswith('https://'))
+            self.assertTrue(_contrat()[cle]['url'].startswith(
+                '/api/django/calepinage/calepinages/'))
 
 
 class PlanImporteApiTest(TestCase):

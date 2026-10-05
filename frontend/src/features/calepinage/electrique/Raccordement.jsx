@@ -48,7 +48,7 @@ import RetourAtelier from '../atelier/RetourAtelier'
 /** Le préfixe que le serveur met devant le champ fautif d'un refus. */
 export const PREFIXE_CHAMP = 'raccordement.'
 
-/** Les sept champs de la saisie, dans l'ordre où l'écran les demande. */
+/** Les neuf champs de la saisie, dans l'ordre où l'écran les demande. */
 export const CHAMPS = [
   {
     cle: 'puissance_souscrite_kva',
@@ -94,6 +94,22 @@ export const CHAMPS = [
     texte: true,
     aide: 'Le contrat de raccordement ou la prescription du gestionnaire de réseau. Obligatoire dès qu’un cos φ est saisi.',
   },
+  // ACAL9 — les deux champs du plafond d'injection (lus par les étapes
+  // autoconsommation et batterie) : un plafond est une saisie qui porte sa
+  // justification, refusée par le SERVEUR sans elle.
+  {
+    cle: 'plafond_injection_kw',
+    libelle: 'Plafond d’injection',
+    unite: 'kW',
+    aide: 'Le plafond d’injection au réseau imposé à ce site. Laissez vide tant qu’il n’est pas connu — rien n’est supposé.',
+  },
+  {
+    cle: 'plafond_injection_justification',
+    libelle: 'Justification du plafond',
+    unite: '',
+    texte: true,
+    aide: 'Le contrat de raccordement ou la prescription du gestionnaire de réseau qui impose le plafond. Obligatoire dès qu’un plafond est saisi.',
+  },
 ]
 
 /** Le libellé FRANÇAIS de chaque statut publié par le contrat. */
@@ -136,7 +152,7 @@ export function erreursParChamp(donnees) {
 }
 
 /**
- * Le corps POSTÉ : les SEPT champs, un champ vidé valant `null` (« pas
+ * Le corps POSTÉ : les NEUF champs, un champ vidé valant `null` (« pas
  * saisi »), jamais `0` ni une chaîne vide qui se lirait comme une valeur.
  */
 export function corpsDeSaisie(saisie) {

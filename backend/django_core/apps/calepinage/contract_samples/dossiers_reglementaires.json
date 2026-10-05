@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/dossiers-reglementaires/",
-  "pourquoi": "Les dossiers réglementaires attachés à un calepinage : ce qui est disponible pour le PAYS de la société, l'état pièce par pièce, les champs « à compléter » et la génération. PACT10 — POURQUOI CE CONTRAT EXISTE : l'écran des dossiers (CAL196) s'appuyait sur `calepinage_sorties.json` (CAL175), qui décrit les SORTIES d'un calepinage (planche, note de calcul, DXF, CSV, image, pack) et ne dit RIEN des dossiers ; l'écran n'avait donc aucun contrat et aurait inventé ses clés. Celui-ci part SEUL sur `main`, sans une ligne de code. LA RÈGLE QUI GOUVERNE CET ÉCHANTILLON — AUCUNE PIÈCE RÉGLEMENTAIRE INVENTÉE : l'ERP ne fabrique aucun formulaire officiel qu'il n'a pas reçu (CAL190), et une société sans gabarit déposé ne voit AUCUN dossier proposé — pas de gabarit fictif en base, et rien de fictif ici non plus. Par construction, CHAQUE pièce de cet exemple porte sa `source`, et cette source est TOUJOURS un objet déposé ou saisi PAR LA SOCIÉTÉ (`gabarit_societe` : le fichier de gabarit qu'elle a téléversé, avec son nom, sa date et son auteur ; `saisie_societe` : une pièce qu'elle a déclarée elle-même). Aucun intitulé de cet exemple ne prétend nommer une pièce officielle marocaine ou française : les intitulés sont explicitement « portés par le gabarit déposé ». C'est la seule façon de publier un contrat complet sans affirmer un fait réglementaire que personne n'a vérifié — et c'est cohérent avec la décision de structure #8 du groupe (pour `pays=ma`, AUCUNE norme n'est supposée ; le calcul concerné est OMIS tant que la société n'a pas choisi la sienne). `pays` est le `Company.pays` (ISO 3166-1 alpha-2, défaut `MA`). GABARIT MANQUANT SIGNALÉ COMME TEL : un dossier dont la société a créé l'entrée mais dont le fichier de gabarit n'a pas (ou plus) été déposé reste VISIBLE avec `gabarit.present = false`, `peut_generer = false` et le motif en clair — le masquer donnerait l'illusion que le dossier n'existe pas, alors que c'est le fichier qui manque. CHAMPS « À COMPLÉTER » : ils viennent du SERVEUR et d'eux seuls ; `valeur` vaut `null` quand le serveur n'a rien à préremplir, et l'écran n'affiche alors AUCUNE valeur — il n'en devine pas. CHAMPS SAISIS (CALX41) : ce que l'utilisateur a ENREGISTRÉ sort dans sa propre liste `champs_saisis`, chaque entrée portant les mêmes clés qu'une entrée de `champs_a_completer` — un champ enregistré quitte « à compléter » (qui ne liste QUE ce qui reste à faire, et que l'avancement compte) sans disparaître de l'écran : un champ qui s'évanouirait une fois rempli serait un champ que personne ne peut plus relire ni corriger. Rien n'y est deviné : `valeur` est la saisie de l'utilisateur, telle quelle. `exemple_vide` = société sans AUCUN gabarit déposé : toutes les clés sont présentes, `dossiers` est une liste VIDE (pas un dossier fantôme), et `message_aucun_gabarit` dit pourquoi et quoi faire. Valeurs : des PLACEHOLDERS assumés, aucun chiffre client, aucun prix.",
+  "pourquoi": "Les dossiers réglementaires attachés à un calepinage : ce qui est disponible pour le PAYS de la société, l'état pièce par pièce, les champs « à compléter » et la génération. PACT10 — POURQUOI CE CONTRAT EXISTE : l'écran des dossiers (CAL196) s'appuyait sur `calepinage_sorties.json` (CAL175), qui décrit les SORTIES d'un calepinage (planche, note de calcul, DXF, CSV, image, pack) et ne dit RIEN des dossiers ; l'écran n'avait donc aucun contrat et aurait inventé ses clés. Celui-ci part SEUL sur `main`, sans une ligne de code. LA RÈGLE QUI GOUVERNE CET ÉCHANTILLON — AUCUNE PIÈCE RÉGLEMENTAIRE INVENTÉE : l'ERP ne fabrique aucun formulaire officiel qu'il n'a pas reçu (CAL190), et une société sans gabarit déposé ne voit AUCUN dossier proposé — pas de gabarit fictif en base, et rien de fictif ici non plus. Par construction, CHAQUE pièce de cet exemple porte sa `source`, et cette source est TOUJOURS un objet déposé ou saisi PAR LA SOCIÉTÉ (`gabarit_societe` : le fichier de gabarit qu'elle a téléversé, avec son nom, sa date et son auteur ; `saisie_societe` : une pièce qu'elle a déclarée elle-même). Aucun intitulé de cet exemple ne prétend nommer une pièce officielle marocaine ou française : les intitulés sont explicitement « portés par le gabarit déposé ». C'est la seule façon de publier un contrat complet sans affirmer un fait réglementaire que personne n'a vérifié — et c'est cohérent avec la décision de structure #8 du groupe (pour `pays=ma`, AUCUNE norme n'est supposée ; le calcul concerné est OMIS tant que la société n'a pas choisi la sienne). `pays` est le `Company.pays` (ISO 3166-1 alpha-2, défaut `MA`). GABARIT MANQUANT SIGNALÉ COMME TEL : un dossier dont la société a créé l'entrée mais dont le fichier de gabarit n'a pas (ou plus) été déposé reste VISIBLE avec `gabarit.present = false`, `peut_generer = false` et le motif en clair — le masquer donnerait l'illusion que le dossier n'existe pas, alors que c'est le fichier qui manque. CHAMPS « À COMPLÉTER » : ils viennent du SERVEUR et d'eux seuls ; `valeur` vaut `null` quand le serveur n'a rien à préremplir, et l'écran n'affiche alors AUCUNE valeur — il n'en devine pas. CHAMPS SAISIS (CALX41) : ce que l'utilisateur a ENREGISTRÉ sort dans sa propre liste `champs_saisis`, chaque entrée portant les mêmes clés qu'une entrée de `champs_a_completer` — un champ enregistré quitte « à compléter » (qui ne liste QUE ce qui reste à faire, et que l'avancement compte) sans disparaître de l'écran : un champ qui s'évanouirait une fois rempli serait un champ que personne ne peut plus relire ni corriger. Rien n'y est deviné : `valeur` est la saisie de l'utilisateur, telle quelle. `exemple_vide` = société sans AUCUN gabarit déposé : toutes les clés sont présentes, `dossiers` est une liste VIDE (pas un dossier fantôme), et `message_aucun_gabarit` dit pourquoi et quoi faire. Valeurs : des PLACEHOLDERS assumés, aucun chiffre client, aucun prix. ACAL15 — `dossiers[]` gagne `document` (id du document GED généré | null), `genere_le`, `genere_sur_conception_perimee` (bool | null — la conception a changé depuis la génération) ; `champs_a_completer[].valeur_calepinage` et `ecart_saisie` (bool : la saisie diffère de la valeur du calepinage) ; la réponse gagne `packs_france` [{genre, libelle, gabarit_depose, message, dossiers[] avec avancement}] (forme de services/reglementaire.packs_france : DP / Enedis / Consuel — packs branchés, D-ACAL-20) ; et POST calepinages/<pk>/joindre-piece/ (multipart {dossier, piece, fichier}) → 201 {piece, etat:'fournie', attachment, depose_le} ; retrait : {dossier, piece, retirer:true}.",
   "exemple": {
     "calepinage": 1,
     "pays": "MA",
@@ -16,7 +16,10 @@
           "present": true,
           "fichier": "gabarit-essai.pdf",
           "depose_le": "2026-09-01T10:00:00Z",
-          "depose_par": { "id": 1, "nom_complet": "Utilisateur d'essai" },
+          "depose_par": {
+            "id": 1,
+            "nom_complet": "Utilisateur d'essai"
+          },
           "version": "1"
         },
         "pieces": [
@@ -73,7 +76,9 @@
             "type": "texte",
             "valeur": null,
             "obligatoire": true,
-            "message": "Aucune valeur n'est préremplie : le serveur n'a rien à proposer pour ce champ."
+            "message": "Aucune valeur n'est préremplie : le serveur n'a rien à proposer pour ce champ.",
+            "valeur_calepinage": null,
+            "ecart_saisie": false
           },
           {
             "code": "date_depot",
@@ -81,7 +86,9 @@
             "type": "date",
             "valeur": null,
             "obligatoire": true,
-            "message": "Aucune valeur n'est préremplie : le serveur n'a rien à proposer pour ce champ."
+            "message": "Aucune valeur n'est préremplie : le serveur n'a rien à proposer pour ce champ.",
+            "valeur_calepinage": null,
+            "ecart_saisie": false
           }
         ],
         "champs_saisis": [
@@ -96,7 +103,9 @@
         ],
         "peut_generer": false,
         "motif_non_generable": "Deux champs obligatoires restent à compléter et une pièce obligatoire n'est pas fournie.",
-        "genere_le": null
+        "genere_le": "2026-10-02T09:00:00Z",
+        "document": 77,
+        "genere_sur_conception_perimee": false
       },
       {
         "id": 2,
@@ -115,7 +124,41 @@
         "champs_saisis": [],
         "peut_generer": false,
         "motif_non_generable": "Le fichier de gabarit de la société n'a pas été déposé : l'ERP ne fabrique aucun formulaire officiel qu'il n'a pas reçu.",
-        "genere_le": null
+        "genere_le": null,
+        "document": null,
+        "genere_sur_conception_perimee": null
+      }
+    ],
+    "packs_france": [
+      {
+        "genre": "dp",
+        "libelle": "Déclaration préalable de travaux",
+        "gabarit_depose": false,
+        "message": "Aucun gabarit « DP » déposé : déposez le modèle officiel pour générer le dossier.",
+        "dossiers": []
+      },
+      {
+        "genre": "enedis",
+        "libelle": "Raccordement Enedis",
+        "gabarit_depose": true,
+        "message": "",
+        "dossiers": [
+          {
+            "id": 1,
+            "intitule": "Demande de raccordement",
+            "avancement": {
+              "fournies": 1,
+              "total": 3
+            }
+          }
+        ]
+      },
+      {
+        "genre": "consuel",
+        "libelle": "Attestation Consuel",
+        "gabarit_depose": false,
+        "message": "Aucun gabarit « Consuel » déposé.",
+        "dossiers": []
       }
     ]
   },
@@ -124,6 +167,31 @@
     "pays": "MA",
     "gabarits_deposes": 0,
     "message_aucun_gabarit": "Aucun gabarit de dossier réglementaire n'a été déposé pour cette société : aucun dossier n'est proposé. Déposez un gabarit dans les réglages du module pour en voir apparaître un.",
-    "dossiers": []
+    "dossiers": [],
+    "packs_france": []
+  },
+  "joindre_piece": {
+    "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/joindre-piece/",
+    "corps": "multipart : dossier, piece, fichier",
+    "exemple_201": {
+      "piece": "plan_masse",
+      "etat": "fournie",
+      "attachment": 602,
+      "depose_le": "2026-10-04T09:00:00Z"
+    },
+    "corps_retrait": {
+      "dossier": 1,
+      "piece": "plan_masse",
+      "retirer": true
+    },
+    "exemple_retrait": {
+      "piece": "plan_masse",
+      "etat": "manquante",
+      "attachment": null,
+      "depose_le": null
+    },
+    "refus_400": {
+      "piece": "La pièce « plan_x » n'existe pas dans ce dossier."
+    }
   }
 }

@@ -1,0 +1,72 @@
+{
+  "initRoofToolPro8_appels": [
+    {
+      "maptilerKey": "cle-d-essai",
+      "reducedMotion": false,
+      "hydrate": {
+        "devis": {
+          "id": null,
+          "geometrie": {
+            "roof_layout": {
+              "schema_version": 2,
+              "result": {
+                "panels": 12,
+                "kwc": 8.64
+              }
+            },
+            "roof_point": {
+              "lat": 33.5731,
+              "lng": -7.5898
+            },
+            "roof_outline": [
+              [
+                33.5731,
+                -7.5898
+              ],
+              [
+                33.5732,
+                -7.5898
+              ],
+              [
+                33.5732,
+                -7.5897
+              ]
+            ]
+          },
+          "cible": {
+            "panneaux": 12,
+            "panel_watt": 720,
+            "scenario": "reseau"
+          },
+          "cibleVendue": true,
+          "fullName": "Toiture — bâtiment principal"
+        }
+      },
+      "referenceContour": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "modulesDisponibles": null,
+      "reglagesAtelier": null,
+      "onApiReady": "[fn]"
+    }
+  ],
+  "api_builder_appels": [
+    {
+      "appel": "setReferenceContourVisible",
+      "args": [
+        true
+      ]
+    }
+  ]
+}

@@ -29,10 +29,14 @@ from apps.calepinage.services.chaines import (
 from apps.calepinage.services.electrique import (
     resultat_calepinage, temperatures_site, verdicts_electriques,
 )
+from apps.calepinage.tests._m0_en_attente import EN_ATTENTE_RESULTAT, sans
 
 CONTRAT = json.loads(
     (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
      / 'calepinage_resultat.json').read_text(encoding='utf-8'))
+#: L'exemple privé des clés posées par ACAL8 avant leurs producteurs
+#: (couleurs ACAL285, affectation_obsolete ACAL265…).
+EXEMPLE_SERVI = sans(CONTRAT['exemple'], EN_ATTENTE_RESULTAT)
 
 MODULE = {
     'vmp_v': 41.5, 'voc_v': 49.6, 'isc_a': 18.4, 'imp_a': 17.1,
@@ -95,7 +99,7 @@ class AffectationTest(SimpleTestCase):
         self.assertEqual(lignes[-1]['pan'], 'PAN-B')
 
     def test_les_cinq_cles_du_contrat_sont_toujours_presentes(self):
-        attendues = sorted(CONTRAT['exemple']['electrique']['affectation'][0])
+        attendues = sorted(EXEMPLE_SERVI['electrique']['affectation'][0])
 
         for ligne in affectation(_conception()):
             self.assertEqual(sorted(ligne), attendues)
@@ -167,15 +171,15 @@ class FormeDuResultatTest(SimpleTestCase):
 
         self.assertEqual(
             sorted(bloc),
-            sorted(set(CONTRAT['exemple']['electrique'])
+            sorted(set(EXEMPLE_SERVI['electrique'])
                    - set(self.POSEE_PAR_LE_RESULTAT)))
         self.assertEqual(sorted(bloc['onduleurs'][0]),
-                         sorted(CONTRAT['exemple']['electrique']
+                         sorted(EXEMPLE_SERVI['electrique']
                                 ['onduleurs'][0]))
         self.assertEqual(sorted(bloc['chainage']),
-                         sorted(CONTRAT['exemple']['electrique']['chainage']))
+                         sorted(EXEMPLE_SERVI['electrique']['chainage']))
         self.assertEqual(sorted(bloc['verdicts'][0]),
-                         sorted(CONTRAT['exemple']['electrique']
+                         sorted(EXEMPLE_SERVI['electrique']
                                 ['verdicts'][0]))
 
     def test_la_cinquieme_cle_est_celle_du_resultat_et_reste_conditionnelle(
@@ -192,7 +196,7 @@ class FormeDuResultatTest(SimpleTestCase):
     def test_les_cinq_codes_de_verdict_du_contrat_sont_servis(self):
         codes = [v['code'] for v in verdicts_electriques(_conception())]
         attendus = [v['code']
-                    for v in CONTRAT['exemple']['electrique']['verdicts']]
+                    for v in EXEMPLE_SERVI['electrique']['verdicts']]
 
         self.assertEqual(codes, attendus)
 

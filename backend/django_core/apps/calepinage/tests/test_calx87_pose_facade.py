@@ -45,6 +45,13 @@ ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
 SCHEMA = json.loads((ECHANTILLONS / 'roof_layout_v2.schema.json')
                     .read_text(encoding='utf-8'))
 
+#: ACAL2 a rendu l'`exemple` du schéma COMPLET (il porte désormais `poseSurfaces`) :
+#: le « document de départ » d'aujourd'hui est cet exemple privé de la
+#: clé de CALX87 — c'est contre lui que l'additivité se prouve.
+CLES_CALX87 = ('poseSurfaces',)
+DEPART = {cle: valeur for cle, valeur in SCHEMA['exemple'].items()
+          if cle not in CLES_CALX87}
+
 #: Une FAÇADE bornée en hauteur (un mur n'est presque jamais posable sur
 #: toute sa hauteur) et une OMBRIÈRE qui décrit enfin ses appuis.
 EXEMPLE_SURFACES = [
@@ -75,7 +82,7 @@ EXEMPLE_SURFACES = [
 
 def document_avec_surfaces():
     """L'exemple du schéma, augmenté du fragment de CALX87."""
-    document = copy.deepcopy(SCHEMA['exemple'])
+    document = copy.deepcopy(DEPART)
     document['poseSurfaces'] = copy.deepcopy(EXEMPLE_SURFACES)
     return document
 
@@ -100,12 +107,14 @@ class ToutEstAdditifTest(SimpleTestCase):
 
         Draft202012Validator.check_schema(SCHEMA)
 
-    def test_l_exemple_du_schema_ne_porte_aucune_surface_de_pose(self):
-        """La preuve que le document historique n'a pas été réécrit."""
-        self.assertNotIn('poseSurfaces', SCHEMA['exemple'])
+    def test_l_exemple_complet_porte_les_surfaces_et_le_depart_non(self):
+        """ACAL2 : l'exemple est complet ; le départ ne porte aucune surface."""
+        self.assertIn('poseSurfaces', SCHEMA['exemple'])
+        self.assertNotIn('poseSurfaces', DEPART)
+        self.assertEqual(erreurs(SCHEMA['exemple']), [])
 
     def test_un_document_sans_surface_reste_valide(self):
-        self.assertEqual(erreurs(SCHEMA['exemple']), [])
+        self.assertEqual(erreurs(DEPART), [])
         self.assertEqual(erreurs({}), [])
 
     def test_un_document_avec_facade_et_ombriere_est_valide(self):
@@ -115,7 +124,7 @@ class ToutEstAdditifTest(SimpleTestCase):
         """`sol` et `ombriere` sont ce qu'ils étaient avant CALX87."""
         for genre in ('sol', 'ombriere'):
             with self.subTest(kind=genre):
-                document = copy.deepcopy(SCHEMA['exemple'])
+                document = copy.deepcopy(DEPART)
                 document['poseSurfaces'] = [{'kind': genre, 'id': 'ps-1'}]
                 self.assertEqual(erreurs(document), [])
                 valider_document(document)
@@ -124,7 +133,7 @@ class ToutEstAdditifTest(SimpleTestCase):
         """Définition opérationnelle d'« additif » : rien d'autre ne change."""
         document = document_avec_surfaces()
         document.pop('poseSurfaces')
-        self.assertEqual(document, SCHEMA['exemple'])
+        self.assertEqual(document, DEPART)
 
 
 class LesTroisGenresTest(SimpleTestCase):

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -21,105 +20,25 @@ import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamp
    forme, ce test casse tout seul.
    ========================================================================== */
 
-vi.mock('../../api/axios', () => ({
-  default: { get: vi.fn(), post: vi.fn() },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisDesignContext: vi.fn(),
-    getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    syncDevisLayout: vi.fn(),
-    shareLinkDevis: vi.fn(),
-    whatsappPreviewDevis: vi.fn(),
-    reviserDevis: vi.fn(),
-  },
-}))
-// Le double SUIT la surface RÉELLE de `calepinageApi` : chaque méthode du
-// module est remplacée par un espion qui résout `{ data: null }`. Une
-// liste écrite à la main laissait `calepinageApi.parametres` indéfini —
-// et le panneau « allées » de l'atelier (CAL71) faisait alors planter tout
-// l'écran (`Cannot read properties of undefined`), ce qui rendait les
-// assertions illisibles.
-vi.mock('../../api/calepinageApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  const espionner = (groupe) => Object.fromEntries(
-    Object.entries(groupe).map(([cle, valeur]) => [
-      cle,
-      typeof valeur === 'function'
-        ? vi.fn(() => Promise.resolve({ data: null }))
-        : valeur,
-    ]),
-  )
-  return {
-    default: Object.fromEntries(
-      Object.entries(actual.default).map(([nom, groupe]) => [
-        nom,
-        (groupe && typeof groupe === 'object') ? espionner(groupe) : groupe,
-      ]),
-    ),
-  }
-})
-vi.mock('../../api/crmApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getLeadPhotoToit: vi.fn(() => Promise.resolve({
-        data: { visite_id: null, url: null, texture_calage: null },
-      })),
-    },
-  }
-})
-vi.mock('../../lib/toast', () => ({ toastInfo: vi.fn() }))
 // CALX27 — le bandeau « lecture seule » de l'atelier lit `useHasPermission`
 // (store Redux) : ce test rend la page sans Provider, on fige le droit à faux.
 vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }))
 
-const LAYOUT = { version: 2, zones: [{ id: 'z1' }] }
-const serializeLayout = vi.fn(() => LAYOUT)
-const snapshot = vi.fn(() => null)
-const setReferenceContourVisible = vi.fn()
-const recommencerDepuisTraceClient = vi.fn(() => true)
-const initRoofToolPro8 = vi.fn((options) => {
-  options?.onApiReady?.({
-    serializeLayout, snapshot, setReferenceContourVisible,
-    recommencerDepuisTraceClient,
-  })
-})
-vi.mock('@roofbuilder', () => ({ initRoofToolPro8: (...a) => initRoofToolPro8(...a) }))
-
+import '../../test/toitureDesignHarnessCalepinage'
+import {
+  initRoofToolPro8, rendreCalepinage, rendreDevis, reinitialiserBoot, LAYOUT, snapshot,
+} from '../../test/toitureDesignHarness'
 import ventesApi from '../../api/ventesApi'
 import calepinageApi from '../../api/calepinageApi'
 import { toastInfo } from '../../lib/toast'
-import ToitureDesign from './ToitureDesign'
 
 const CTX = exempleContrat('calepinage', 'calepinage_design_context')
 const CTX_VIDE = exempleContrat('calepinage', 'calepinage_design_context',
   'exemple_vide')
 
-function rendreCalepinage(id) {
-  return render(
-    <MemoryRouter initialEntries={[`/calepinage/${id}`]}>
-      <Routes>
-        <Route path="/calepinage/:id"
-          element={<ToitureDesign mode="calepinage" />} />
-      </Routes>
-    </MemoryRouter>,
-  )
-}
-
 beforeEach(() => {
   vi.clearAllMocks()
-  delete window.__taqinorRoofBooted
-  serializeLayout.mockReturnValue(LAYOUT)
-  snapshot.mockReturnValue(null)
-  initRoofToolPro8.mockImplementation((options) => {
-    options?.onApiReady?.({
-      serializeLayout, snapshot, setReferenceContourVisible,
-      recommencerDepuisTraceClient,
-    })
-  })
+  reinitialiserBoot()
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -365,14 +284,7 @@ describe('ToitureDesign — le mode devis ne bouge pas (garde CAL37)', () => {
       reponseContrat('ventes', 'devis_design_context'))
     const CTX_DEVIS = exempleContrat('ventes', 'devis_design_context')
 
-    render(
-      <MemoryRouter initialEntries={[`/ventes/devis/${CTX_DEVIS.devis.id}/design`]}>
-        <Routes>
-          <Route path="/ventes/devis/:id/design"
-            element={<ToitureDesign mode="devis" />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    rendreDevis(CTX_DEVIS.devis.id)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(ventesApi.getDevisDesignContext).toHaveBeenCalledTimes(1)

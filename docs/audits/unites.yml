@@ -592,17 +592,20 @@ unites:
     coutures:
       - "second canal d'événements : backend/django_core/apps/publicapi/signals.py (pre_save/post_save sur Lead, Devis, Installation, Intervention, Facture, …)"
       - "contrats : backend/django_core/apps/agent/contract_samples/"
-    P: 3
-    I: 3
-    score: 9
+    P: 4
+    I: 5
+    score: 20
     niveau: L1
-    statut: à auditer
+    statut: audité
     groupe: AANA
     plan: docs/plans/PLAN_AUDIT_ANALYSE.md
-    plans_alimentes: []
-    pr: null
-    date: null
-    notes: "backend/fastapi_ia ajouté au registre (absent de la synthèse) : propriétaire à confirmer par la session de propriété."
+    plans_alimentes:
+      - docs/plans/PLAN_AUDIT_ANALYSE.md
+      - docs/plans/PLAN_AUDIT_LEAD.md
+      - docs/plans/PLAN_AUDIT_DEPLOY.md
+    pr: 802
+    date: 2026-10-05
+    notes: "Audit L1 du 2026-10-05 (docs/audits/2026-10-05-analyse.md) : 42 constats confirmés par exécution, dont 5 S1 de fuite inter-sociétés / secrets (agent SQL, import, favoris) et 2 S1 de chiffres de pilotage ; re-score P3×I3 → P4×I5 (fuite locataire + argent), contre-visite en L2. backend/fastapi_ia ajouté au registre (absent de la synthèse) : propriétaire à confirmer par la session de propriété."
 
   - id: X6
     rang: 19

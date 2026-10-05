@@ -1,0 +1,63 @@
+{
+  "initRoofToolPro8_appels": [
+    {
+      "maptilerKey": "cle-demo",
+      "reducedMotion": false,
+      "hydrate": {
+        "devis": {
+          "id": 412,
+          "geometrie": {
+            "roof_layout": {
+              "version": 2,
+              "zones": []
+            },
+            "roof_point": {
+              "lat": 33.5731,
+              "lng": -7.5898
+            },
+            "roof_outline": []
+          },
+          "cible": {
+            "panneaux": 24,
+            "panel_watt": 710,
+            "scenario": "reseau"
+          },
+          "fullName": "Youssef Alaoui",
+          "phone": "+212661234567",
+          "city": "Casablanca"
+        }
+      },
+      "referenceContour": null,
+      "bankable": null,
+      "reglagesAtelier": {
+        "zones_types": {
+          "souche_type": {
+            "libelle": "Souche de cheminée type",
+            "nature": "INTERDITE",
+            "retrait_m": 0.8,
+            "hauteur_m": 1.1,
+            "source": "Consigne de pose interne v3, fiche souche",
+            "type": "cheminee",
+            "forme": "rectangle",
+            "longueur_m": 0.9,
+            "largeur_m": 0.6
+          }
+        },
+        "degagements": {
+          "retrait_rive_m": 0.5,
+          "allee_technique_m": 0.9,
+          "source": "valeur atelier actuelle, non sourcée"
+        }
+      },
+      "onApiReady": "[fn]"
+    }
+  ],
+  "api_builder_appels": [
+    {
+      "appel": "setReferenceContourVisible",
+      "args": [
+        true
+      ]
+    }
+  ]
+}

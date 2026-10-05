@@ -1,0 +1,169 @@
+{
+  "endpoint": "GET /api/django/calepinage/gabarits-dossiers/",
+  "pourquoi": "ACAL15 (C-ACAL-135) — DÉPÔT DE GABARIT de dossier réglementaire (GabaritDossierReglementaire n'avait ni sérialiseur ni route). GET gabarits-dossiers/ → {gabarits: [...]} ; POST (multipart : fichier PDF + pays, code, genre, intitule, pieces_attendues [{code, intitule, obligatoire, source_reference}], champs [{code, libelle, type, cle_calepinage}]) → 201 {gabarit}. GET / PATCH / DELETE gabarits-dossiers/<id>/ : réponse {id, pays, code, genre, intitule, version, actif, pieces_attendues, champs, fichiers {attachment, nom} | null, depose_par, depose_le} ; 400 sous le champ nommé ; 409 NOMMÉ si le gabarit est utilisé par des dossiers. Société et auteur viennent du SERVEUR. PACT10 : le contrat part AVANT D07-T30/T32 (serveur) et D07-T34 (écran).",
+  "exemple": {
+    "gabarits": [
+      {
+        "id": 3,
+        "pays": "MA",
+        "code": "raccordement_bt",
+        "genre": "raccordement",
+        "intitule": "Dossier de raccordement BT",
+        "version": "1",
+        "actif": true,
+        "pieces_attendues": [
+          {
+            "code": "plan_masse",
+            "intitule": "Plan de masse",
+            "obligatoire": true,
+            "source_reference": "Cahier des charges du gestionnaire de réseau"
+          }
+        ],
+        "champs": [
+          {
+            "code": "puissance_kwc",
+            "libelle": "Puissance installée (kWc)",
+            "type": "nombre",
+            "cle_calepinage": "resultat.pose.kwc"
+          }
+        ],
+        "fichiers": {
+          "attachment": 601,
+          "nom": "gabarit-raccordement-bt.pdf"
+        },
+        "depose_par": {
+          "id": 1,
+          "nom_complet": "Utilisateur d'essai"
+        },
+        "depose_le": "2026-10-01T10:00:00Z"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "gabarits": []
+  },
+  "exemple_post_201": {
+    "gabarit": {
+      "id": 3,
+      "pays": "MA",
+      "code": "raccordement_bt",
+      "genre": "raccordement",
+      "intitule": "Dossier de raccordement BT",
+      "version": "1",
+      "actif": true,
+      "pieces_attendues": [
+        {
+          "code": "plan_masse",
+          "intitule": "Plan de masse",
+          "obligatoire": true,
+          "source_reference": "Cahier des charges du gestionnaire de réseau"
+        }
+      ],
+      "champs": [
+        {
+          "code": "puissance_kwc",
+          "libelle": "Puissance installée (kWc)",
+          "type": "nombre",
+          "cle_calepinage": "resultat.pose.kwc"
+        }
+      ],
+      "fichiers": {
+        "attachment": 601,
+        "nom": "gabarit-raccordement-bt.pdf"
+      },
+      "depose_par": {
+        "id": 1,
+        "nom_complet": "Utilisateur d'essai"
+      },
+      "depose_le": "2026-10-01T10:00:00Z"
+    }
+  },
+  "detail": {
+    "endpoint": "GET /api/django/calepinage/gabarits-dossiers/<int:id>/",
+    "exemple": {
+      "id": 3,
+      "pays": "MA",
+      "code": "raccordement_bt",
+      "genre": "raccordement",
+      "intitule": "Dossier de raccordement BT",
+      "version": "1",
+      "actif": true,
+      "pieces_attendues": [
+        {
+          "code": "plan_masse",
+          "intitule": "Plan de masse",
+          "obligatoire": true,
+          "source_reference": "Cahier des charges du gestionnaire de réseau"
+        }
+      ],
+      "champs": [
+        {
+          "code": "puissance_kwc",
+          "libelle": "Puissance installée (kWc)",
+          "type": "nombre",
+          "cle_calepinage": "resultat.pose.kwc"
+        }
+      ],
+      "fichiers": {
+        "attachment": 601,
+        "nom": "gabarit-raccordement-bt.pdf"
+      },
+      "depose_par": {
+        "id": 1,
+        "nom_complet": "Utilisateur d'essai"
+      },
+      "depose_le": "2026-10-01T10:00:00Z"
+    }
+  },
+  "patch": {
+    "endpoint": "PATCH /api/django/calepinage/gabarits-dossiers/<int:id>/",
+    "corps": {
+      "intitule": "Dossier de raccordement BT v2",
+      "actif": false
+    },
+    "exemple": {
+      "id": 3,
+      "pays": "MA",
+      "code": "raccordement_bt",
+      "genre": "raccordement",
+      "intitule": "Dossier de raccordement BT v2",
+      "version": "1",
+      "actif": false,
+      "pieces_attendues": [
+        {
+          "code": "plan_masse",
+          "intitule": "Plan de masse",
+          "obligatoire": true,
+          "source_reference": "Cahier des charges du gestionnaire de réseau"
+        }
+      ],
+      "champs": [
+        {
+          "code": "puissance_kwc",
+          "libelle": "Puissance installée (kWc)",
+          "type": "nombre",
+          "cle_calepinage": "resultat.pose.kwc"
+        }
+      ],
+      "fichiers": {
+        "attachment": 601,
+        "nom": "gabarit-raccordement-bt.pdf"
+      },
+      "depose_par": {
+        "id": 1,
+        "nom_complet": "Utilisateur d'essai"
+      },
+      "depose_le": "2026-10-01T10:00:00Z"
+    }
+  },
+  "delete": {
+    "endpoint": "DELETE /api/django/calepinage/gabarits-dossiers/<int:id>/",
+    "statut": 204,
+    "refus_409": {
+      "detail": "Ce gabarit est utilisé par 2 dossier(s) : archivez-le plutôt que de le supprimer."
+    }
+  },
+  "refus_400": {
+    "fichier": "Un gabarit se dépose en PDF : le fichier reçu n'en est pas un."
+  }
+}
