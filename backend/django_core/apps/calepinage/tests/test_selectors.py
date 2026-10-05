@@ -67,13 +67,6 @@ class IsolationTest(BaseLecture):
         self.assertEqual(selectors.liste_calepinages(None).count(), 0)
         self.assertIsNone(selectors.calepinage_detail(self.mien.pk, None))
         self.assertIsNone(selectors.calepinage_du_devis(1, None))
-        self.assertIsNone(selectors.calepinage_de_l_affaire(7, None))
-
-    def test_affaire_d_une_autre_societe_invisible(self):
-        Calepinage.objects.create(company=self.autre, client=self.client_b,
-                                  appel_offre_id=99)
-        self.assertIsNone(
-            selectors.calepinage_de_l_affaire(99, self.company))
 
 
 class FiltresTest(BaseLecture):
@@ -150,7 +143,6 @@ class AucuneEcritureTest(BaseLecture):
         list(selectors.versions(self.mien))
         list(selectors.variantes(self.mien))
         selectors.calepinage_du_devis(1, self.company)
-        selectors.calepinage_de_l_affaire(7, self.company)
         selectors.parametres_de_societe(self.company)
         apres = (Calepinage.objects.count(),
                  CalepinageVersion.objects.count(),
@@ -159,13 +151,7 @@ class AucuneEcritureTest(BaseLecture):
 
 
 class AffaireTest(BaseLecture):
-    def test_calepinage_de_l_affaire(self):
-        trouve = selectors.calepinage_de_l_affaire(7, self.company)
-        self.assertEqual(trouve.pk, self.sur_lead.pk)
-
-    def test_affaire_inconnue(self):
-        self.assertIsNone(
-            selectors.calepinage_de_l_affaire(999, self.company))
-
+    # ACAL326 — les tests de ``calepinage_de_l_affaire`` (pont AO retiré)
+    # sont partis avec lui ; reste la lecture du devis.
     def test_devis_sans_calepinage(self):
         self.assertIsNone(selectors.calepinage_du_devis(999, self.company))

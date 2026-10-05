@@ -35,8 +35,11 @@ from datetime import timedelta
 
 from django.utils.dateparse import parse_date, parse_datetime
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
 from rest_framework import filters, status
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DrfValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -53,7 +56,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from .. import selectors
 from ..models import Calepinage
 from ..permissions import (
-    CAL_APPROUVER, CAL_GERER, CAL_VOIR, PeutApprouverCalepinage,
+    CAL_APPROUVER, CAL_GERER, CAL_VOIR,
     PeutGererCalepinage, PeutLireOuEcrireCalepinage, PeutVoirCalepinage,
 )
 from ..serializers import CalepinageSerializer, CalepinageVarianteSerializer
@@ -214,8 +217,11 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
     # ── Liste : des filtres qui filtrent VRAIMENT ──────────────────────────
     def get_queryset(self):
         params = getattr(self.request, 'query_params', {}) or {}
-        lignes = selectors.appliquer_filtres_liste(
-            super().get_queryset(),
+        # ACAL295 — LE prédicat d'accès (``selectors.calepinages_visibles``) :
+        # société + filtres de liste + vue restreinte au responsable, le même
+        # pour la liste, le détail et chaque action ``detail=True``.
+        lignes = selectors.calepinages_visibles(
+            self.request.user, base=super().get_queryset(),
             lead_id=_entier(params.get('lead'), 'lead'),
             client_id=_entier(params.get('client'), 'client'),
             statut=_statut(params.get('statut')),
@@ -226,8 +232,6 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         responsable_id = _entier(params.get('responsable'), 'responsable')
         if responsable_id:
             lignes = lignes.filter(responsable_id=responsable_id)
-        # CALX406 — la vue restreinte au responsable, si la société l'a SAISIE.
-        lignes = _restreindre_au_responsable(lignes, self.request)
         # CALX343 — ``?etiquette=<id>`` (répétable, ET logique) : filtre porté
         # par ``services/etiquettes.py`` (``records.TaggedItem``), jamais par
         # ``selectors.py``. Absent ⇒ rien n'est filtré ; illisible ⇒ 400 qui
@@ -244,10 +248,66 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         except EtiquetteRefusee as refus:
             raise DrfValidationError({refus.champ: str(refus)})
 
-    def perform_create(self, serializer):
-        """Société ET auteur posés côté serveur — jamais lus du corps."""
-        serializer.save(company=self.request.user.company,
-                        cree_par=self.request.user)
+    @extend_schema(responses={201: CalepinageSerializer,
+                              409: inline_serializer(
+                                  'CalepinageCreationConflit', {
+                                      'lead': drf_serializers.CharField(
+                                          required=False),
+                                      'calepinage_existant':
+                                          drf_serializers.IntegerField(
+                                              required=False),
+                                      'detail': drf_serializers.CharField(
+                                          required=False),
+                                  })})
+    def create(self, request, *args, **kwargs):
+        """ACAL182 — la porte de l'écran Nouveau passe par ``creation.py``.
+
+        Le sérialiseur VALIDE (lead XOR client, lead/client/responsable de la
+        société) ; la création elle-même est celle des autres portes —
+        ``ouvrir_ou_creer_pour_lead`` (verrou, un seul calepinage ouvert par
+        lead, chatter, client du lead, même titre de repli) ou
+        ``creer_pour_client``. Un lead qui a déjà un calepinage OUVERT ⇒ 409
+        ``{lead, calepinage_existant}`` (contrat
+        ``calepinage_creation_conflit.json``), rien n'est créé. Société et
+        auteur toujours posés côté serveur, jamais lus du corps.
+        """
+        from ..services.creation import (
+            CreationRefusee, corps_conflit, creer_pour_client,
+            ouvrir_ou_creer_pour_lead,
+        )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        donnees = serializer.validated_data
+        company = request.user.company
+        titre = str(donnees.get('titre') or '')
+        responsable = donnees.get('responsable')
+        try:
+            if donnees.get('lead_id'):
+                calepinage, cree = ouvrir_ou_creer_pour_lead(
+                    donnees['lead_id'], company, user=request.user,
+                    titre=titre, responsable=responsable)
+                if not cree:
+                    return Response(corps_conflit(calepinage, request.user),
+                                    status=status.HTTP_409_CONFLICT)
+            else:
+                client = donnees.get('client')
+                calepinage = creer_pour_client(
+                    getattr(client, 'pk', None), company, user=request.user,
+                    titre=titre, responsable=responsable)
+        except CreationRefusee as refus:
+            return Response({refus.champ or 'detail': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # Les autres champs écrivables du formulaire (statut, devis…) gardent
+        # leur effet d'aujourd'hui, posés sur le calepinage créé.
+        restants = [champ for champ in ('statut', 'devis')
+                    if champ in donnees]
+        for champ in restants:
+            setattr(calepinage, champ, donnees[champ])
+        if restants:
+            calepinage.save(update_fields=restants + ['updated_at'])
+        return Response(self.get_serializer(calepinage).data,
+                        status=status.HTTP_201_CREATED)
 
     def filter_queryset(self, queryset):
         """CALX390 — la LISTE charge d'avance les lignes du devis lié.
@@ -413,7 +473,7 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         """
         calepinage = self.get_object()
         variante = selectors.variantes(calepinage).filter(
-            pk=variante_id).first()
+            pk=_identifiant_ou_404(variante_id)).first()
         if variante is None:
             return Response({'detail': 'Variante introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -448,7 +508,7 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         """
         calepinage = self.get_object()
         variante = selectors.variantes(calepinage).filter(
-            pk=variante_id).first()
+            pk=_identifiant_ou_404(variante_id)).first()
         if variante is None:
             return Response({'detail': 'Variante introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -500,7 +560,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         calepinage — est introuvable (404).
         """
         calepinage = self.get_object()  # borné société par get_queryset
-        version = selectors.versions(calepinage).filter(pk=version_id).first()
+        version = selectors.versions(calepinage).filter(
+            pk=_identifiant_ou_404(version_id)).first()
         if version is None:
             return Response({'detail': 'Version introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -978,45 +1039,10 @@ def _responsable(calepinage, company):
         else None
 
 
-#: CALX406 — clé, DANS la section ``presets`` des réglages société (même
-#: place que ``approbation_exigee``, CALX347 : aucune section neuve), qui
-#: réduit la liste de chacun à SES calepinages. Absente ⇒ vue inchangée (D12).
-CLE_VUE_RESTREINTE = 'vue_restreinte_au_responsable'
-
-
-def vue_restreinte_au_responsable(company):
-    """CALX406 — le réglage société, lu SANS deviner : ``True`` et rien d'autre.
-
-    Une valeur absente, ``False``, ``"oui"`` ou ``1`` laisse la vue
-    inchangée : on ne restreint jamais la vue d'une société qui n'a pas
-    explicitement choisi de le faire.
-    """
-    if company is None:
-        return False
-    presets = selectors.parametres_de_societe(company).get('presets') or {}
-    return presets.get(CLE_VUE_RESTREINTE) is True
-
-
-def _restreindre_au_responsable(lignes, request):
-    """La liste réduite aux calepinages DE l'appelant, si la société l'a voulu.
-
-    « Les siens » = ceux dont il est ``responsable`` OU qu'il a créés
-    (``cree_par``) — sinon un concepteur perdrait de vue ce qu'il vient
-    d'ouvrir. Le porteur de ``calepinage_approuver`` voit TOUT : un relecteur
-    doit pouvoir relire. Sa garde est vérifiée D'ABORD : elle ne coûte aucune
-    requête (le rôle est déjà chargé par la garde de lecture), et le réglage
-    société n'est lu que pour ceux qu'il peut restreindre.
-    """
-    from django.db.models import Q
-
-    user = getattr(request, 'user', None)
-    if user is None or not getattr(user, 'is_authenticated', False):
-        return lignes
-    if PeutApprouverCalepinage().has_permission(request, None):
-        return lignes
-    if not vue_restreinte_au_responsable(getattr(user, 'company', None)):
-        return lignes
-    return lignes.filter(Q(responsable=user) | Q(cree_par=user))
+# ACAL295 — la clé ``CLE_VUE_RESTREINTE``, le réglage
+# ``vue_restreinte_au_responsable`` et la restriction elle-même vivent dans
+# ``selectors.py`` (``calepinages_visibles``) : UN prédicat d'accès pour toutes
+# les routes, plus de jumeau ici.
 
 
 def _lead_objet(calepinage, company):
@@ -1176,6 +1202,29 @@ def _permissions(calepinage, request):
 
 
 # ── Lecture des paramètres de requête : refusée en NOMMANT le champ ────────
+
+#: ACAL277 — la plus grande clé primaire qu'une colonne ``bigint`` PostgreSQL
+#: peut porter : au-delà, la base lève ``DataError`` (500) au lieu de « rien ».
+_ID_MAX = 2 ** 63 - 1
+
+
+def _identifiant_ou_404(valeur):
+    """ACAL277 — l'identifiant d'un chemin ``[^/.]+``, ou ``None``.
+
+    La regex de route accepte ``abc`` : ``filter(pk='abc')`` levait
+    ``ValueError`` ⇒ 500 (SIT-G2-12). Ici un identifiant non numérique, nul
+    ou hors de la plage d'une clé primaire rend ``None`` : ``filter(pk=None)``
+    ne trouve rien et la route répond SON 404 — corps IDENTIQUE à celui d'un
+    identifiant absent (même oracle, défaut gravé). Utilisé par les cinq
+    routes à identifiant de chemin (variante, retenir, restaurer, diff,
+    calage de photo).
+    """
+    texte = str(valeur if valeur is not None else '').strip()
+    if not (texte.isascii() and texte.isdigit()):
+        return None
+    ident = int(texte)
+    return ident if 0 < ident <= _ID_MAX else None
+
 
 def _entier(valeur, champ):
     """Un identifiant entier, ou ``None`` quand le filtre est absent."""

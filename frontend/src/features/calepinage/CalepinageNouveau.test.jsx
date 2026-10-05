@@ -174,12 +174,20 @@ describe('CalepinageNouveau (CAL36)', () => {
     expect(screen.queryByText(/Coordonnées GPS saisies/)).not.toBeInTheDocument()
   })
 
-  it('un CLIENT part de son ADRESSE (géocodage serveur), jamais d’une épingle', async () => {
+  it('l’onglet Client ne promet aucun géocodage serveur et n’affiche pas de « Source du repère »', async () => {
+    // ACAL336 — aucun géocodage n'existe : l'adresse PRÉREMPLIT la recherche
+    // de l'atelier, c'est l'utilisateur qui place le bâtiment.
     rendre()
     allerSurOnglet('Client')
     await choisirDansCombobox('Client', 'Client d’essai')
     expect(await screen.findByText('12 rue d’essai')).toBeInTheDocument()
-    expect(screen.getByText(/Géocodage de l’adresse du client/)).toBeInTheDocument()
+    expect(screen.getByTestId('cal-nouveau-client-repere')).toHaveTextContent(
+      'Un client ne porte pas d’épingle de toiture : son adresse préremplit la recherche de l’atelier, placez le bâtiment sur la carte',
+    )
+    expect(screen.queryByText(/Géocodage/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/géocodage/)).not.toBeInTheDocument()
+    expect(screen.getByTestId('cal-nouveau-client-repere').parentElement)
+      .not.toHaveTextContent('Source du repère')
   })
 
   it('un CLIENT sans adresse : « non renseigné », rien n’est deviné', async () => {
@@ -188,6 +196,9 @@ describe('CalepinageNouveau (CAL36)', () => {
     await choisirDansCombobox('Client', 'Client sans adresse')
     await waitFor(() => expect(screen.getAllByText('non renseigné').length).toBeGreaterThan(0))
     expect(screen.queryByText(/Géocodage de l’adresse du client/)).not.toBeInTheDocument()
+    // ACAL336 — sans adresse, rien de faux : la phrase « son adresse
+    // préremplit… » n'est pas affichée.
+    expect(screen.queryByTestId('cal-nouveau-client-repere')).not.toBeInTheDocument()
   })
 
   it('créer depuis un LEAD envoie `{lead}` et redirige vers `/calepinage/:id`', async () => {

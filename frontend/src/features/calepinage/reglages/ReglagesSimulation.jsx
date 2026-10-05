@@ -171,6 +171,7 @@ function lignesDepuis(registre, section) {
         valeurTexte: texteDeValeur(existant.valeur),
         source: typeof existant.source === 'string' ? existant.source : '',
         reference: typeof existant.reference === 'string' ? existant.reference : '',
+        stockee: true,
       }
       : { ...LIGNE_VIDE }
   }
@@ -188,7 +189,13 @@ function validerSection(registre, lignes) {
     const valeurTexte = (ligne.valeurTexte || '').trim()
     const source = (ligne.source || '').trim()
     const reference = (ligne.reference || '').trim()
-    if (!valeurTexte && !source && !reference) continue
+    // ACAL132 — le PUT FUSIONNE clé par clé : une clé STOCKÉE puis vidée à
+    // l'écran est envoyée à `null` pour être RETIRÉE (l'omettre la garderait
+    // stockée) ; une clé jamais saisie reste omise.
+    if (!valeurTexte && !source && !reference) {
+      if (ligne.stockee) section[cle] = null
+      continue
+    }
     if (!valeurTexte) {
       erreurs[cle] = `« ${libelle} » doit porter une valeur : une clé `
         + 'entamée sans valeur ne règle rien. Videz aussi sa source pour '
@@ -345,6 +352,14 @@ export default function ReglagesSimulation() {
       if (corps && typeof corps === 'object') {
         const mappees = {}
         for (const [champ, valeur] of Object.entries(corps)) {
+          // ACAL132 — une clé d'une section à registre est nommée DANS sa
+          // section : `{simulation: {sigma_modele_pct: motif}}`.
+          if (valeur && typeof valeur === 'object' && !Array.isArray(valeur)) {
+            for (const [cle, motif] of Object.entries(valeur)) {
+              mappees[cle] = Array.isArray(motif) ? motif.join(' ') : String(motif)
+            }
+            continue
+          }
           mappees[champ] = Array.isArray(valeur) ? valeur.join(' ') : String(valeur)
         }
         setErreurs(mappees)

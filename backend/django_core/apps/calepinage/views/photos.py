@@ -92,8 +92,12 @@ class PhotosSiteMixin:
             PhotoRefusee, calage_photo_site, photo_en_ligne,
         )
 
+        # ACAL277 — import local : ``calepinages.py`` importe CE module.
+        from .calepinages import _identifiant_ou_404
+
         calepinage = self.get_object()  # borné société par get_queryset
-        photo = calepinage.photos_site.filter(pk=photo_id).first()
+        photo = calepinage.photos_site.filter(
+            pk=_identifiant_ou_404(photo_id)).first()
         if photo is None:
             return Response({'detail': 'Photo introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)

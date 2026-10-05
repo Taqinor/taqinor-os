@@ -47,19 +47,15 @@ class ReleveRefuse(ValueError):
         self.champ = champ
 
 
-def _nombre(valeur, champ, libelle, *, obligatoire=False):
-    if valeur is None or valeur == '':
-        if obligatoire:
-            raise ReleveRefuse(f"« {libelle} » est obligatoire.", champ)
-        return None
-    if isinstance(valeur, bool):
-        raise ReleveRefuse(f"« {libelle} » doit être un nombre.", champ)
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        raise ReleveRefuse(
-            f"« {libelle} » doit être un nombre en mètres "
-            f"(reçu : {valeur!r}).", champ)
+def _nombre(valeur, champ, libelle, *, obligatoire=False, positif=False):
+    """ACAL277 — un réel FINI (``nan``/``inf``/``1e400`` refusés, jamais un
+    500), strictement positif pour une longueur (``positif``)."""
+    from .valeurs import nombre_fini
+
+    return nombre_fini(valeur, champ, libelle=libelle,
+                       obligatoire=obligatoire,
+                       mini=0 if positif else None, mini_exclu=positif,
+                       erreur=ReleveRefuse)
 
 
 def _chaine_du_document(brute, rang):
@@ -87,7 +83,8 @@ def _chaine_du_document(brute, rang):
             nom=str(cote.get('nom') or f'c{i + 1}'),
             # ``valeur`` absente = cote MANQUANTE, à déduire par fermeture.
             valeur=_nombre(cote.get('valeur'), champ,
-                           f'cote {cote.get("nom") or i + 1}')))
+                           f'cote {cote.get("nom") or i + 1}',
+                           positif=True)))
 
     tolerance = _nombre(brute.get('tolerance_m'), champ, 'Tolérance')
     if tolerance is None:
@@ -101,10 +98,12 @@ def _chaine_du_document(brute, rang):
         return Chaine(
             nom=nom, cotes=tuple(cotes),
             total_mesure=_nombre(brute.get('total_mesure'), champ,
-                                 'Total mesuré'),
+                                 'Total mesuré', positif=True),
             tolerance_m=tolerance,
             depart=_nombre(brute.get('depart'), champ, 'Départ') or 0.0)
-    except ValueError as erreur:
+    except ReleveRefuse:
+        raise
+    except (ValueError, OverflowError) as erreur:
         # Le noyau refuse deux cotes manquantes : deux inconnues, une seule
         # équation. On relaie SON message plutôt que d'en inventer un autre.
         raise ReleveRefuse(str(erreur), champ)
@@ -132,8 +131,14 @@ def resoudre_chaines(chaines, *, compensation=False):
 
     resolues, a_confirmer = [], []
     for rang, brute in enumerate(chaines):
-        resultat = resoudre(_chaine_du_document(brute, rang),
-                            compensation=compensation)
+        chaine = _chaine_du_document(brute, rang)
+        try:
+            resultat = resoudre(chaine, compensation=compensation)
+        except (ValueError, OverflowError) as erreur:
+            # ACAL277 — le noyau (core/calepinage/units.py) refuse une
+            # grandeur hors de son domaine : relayé en refus NOMMÉ, jamais
+            # un 500.
+            raise ReleveRefuse(str(erreur), f'chaines[{rang}]')
         cotes = []
         for cote in resultat.cotes:
             confirme = cote.statut is StatutCote.A_CONFIRMER

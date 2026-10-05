@@ -401,14 +401,22 @@ def _valeur_de_champ(champ, code, valeur):
     propre = _valeur_reelle(valeur)
     if propre is None:
         return None
+    from .valeurs import nombre_fini
+
     if str(champ.get('type') or 'texte') == 'nombre':
         nombre = _nombre_saisi(propre)
         if nombre is None:
             raise ChampsDossierInvalides(
                 f"Le champ « {libelle} » attend un nombre "
                 f"(reçu : « {propre} »).", champ=code)
+        # ACAL277 — « nan », « inf », « 1e400 » se lisent comme des
+        # nombres mais n'en sont pas : refus nommé, jamais un JSON NaN.
+        nombre_fini(nombre, code, libelle=libelle,
+                    erreur=ChampsDossierInvalides)
         return nombre
     if isinstance(propre, (int, float)) and not isinstance(propre, bool):
+        nombre_fini(propre, code, libelle=libelle,
+                    erreur=ChampsDossierInvalides)
         return propre
     return propre if isinstance(propre, bool) else str(propre)
 

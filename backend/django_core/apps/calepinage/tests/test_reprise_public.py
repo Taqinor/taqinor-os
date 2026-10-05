@@ -212,15 +212,17 @@ class LaRepriseCreeUnCalepinagePreTrace(SimpleTestCase):
         from apps.calepinage.services import reprise_public
 
         faux_calepinage = object()
+        # ACAL182 — la porte UNIQUE ``ouvrir_ou_creer_pour_lead`` décide
+        # (verrou + un seul ouvert par lead) : elle rend ``cree=False`` quand
+        # le lead a déjà son calepinage ouvert.
         with mock.patch('apps.crm.selectors.get_company_lead',
                         return_value=lead), \
-                mock.patch('apps.calepinage.selectors.liste_calepinages') \
-                as liste, \
-                mock.patch('apps.calepinage.services.creation.creer_pour_lead',
-                           return_value=faux_calepinage) as creer, \
+                mock.patch('apps.calepinage.services.creation'
+                           '.ouvrir_ou_creer_pour_lead',
+                           return_value=(faux_calepinage,
+                                         not deja_repris)) as creer, \
                 mock.patch('apps.calepinage.services.layout'
                            '.enregistrer_layout') as enregistrer:
-            liste.return_value.exists.return_value = deja_repris
             rendu = reprise_public.reprendre_trace_public(1, object())
         return rendu, creer, enregistrer, faux_calepinage
 
@@ -241,10 +243,11 @@ class LaRepriseCreeUnCalepinagePreTrace(SimpleTestCase):
 
     def test_un_lead_deja_repris_n_en_recoit_pas_un_second(self):
         lead = LeadFactice(roof_outline=CONTOUR_LATLNG)
-        rendu, creer, _enregistrer, _ = self._reprendre(lead,
+        rendu, _creer, enregistrer, _ = self._reprendre(lead,
                                                         deja_repris=True)
         self.assertIsNone(rendu)
-        creer.assert_not_called()
+        # La porte a rendu l'ouvert existant : aucun tracé n'est réécrit.
+        enregistrer.assert_not_called()
 
     def test_un_lead_introuvable_ne_cree_rien(self):
         rendu, creer, _enregistrer, _ = self._reprendre(None)
