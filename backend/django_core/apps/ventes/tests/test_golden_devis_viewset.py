@@ -93,6 +93,7 @@ PLACE = {
     'edition': 'devis_edition.py',  # SPL135
     'cycle': 'devis_cycle.py',  # SPL136
     'etudes': 'devis_etudes.py',  # SPL137
+    'envoi': 'devis_envoi.py',  # SPL138
 }
 
 DEFAUT = 'devis.py'
