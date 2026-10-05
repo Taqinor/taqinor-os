@@ -1476,6 +1476,9 @@ export interface CouchesDocument {
   shadeObstructionsNonLues: Array<Record<string, unknown>>;
   /** ACAL29 — choix de conception épinglés relus, ou null (aucun choix épinglé). */
   choixConception: ChoixConceptionLu | null;
+  /** ACAL30 — le catalogue `modules[]` du document relu (copie) : fusionné en lecture
+   *  seule au catalogue de la société pour qu'un produit archivé reste résoluble. */
+  modulesDuDocument: Array<Record<string, unknown>>;
   /** `consumption.source` relue telle quelle, ou null (aucun bloc / provenance illisible). */
   consSource: SourceConsommation | null;
   /** `electrical` relu par `lireCoucheElectrique`, ou null quand le document n'en porte pas. */
@@ -1507,6 +1510,9 @@ export function lireCouchesDocument(json: unknown): CouchesDocument {
       return { shadeObstructions: ombres.lues, shadeObstructionsNonLues: ombres.nonLues };
     })(),
     choixConception: lireChoixConception(doc),
+    modulesDuDocument: doc && Array.isArray(doc.modules)
+      ? (JSON.parse(JSON.stringify(doc.modules)) as Array<Record<string, unknown>>).filter((m) => m && typeof m === 'object')
+      : [],
     consSource,
     electrical,
   };

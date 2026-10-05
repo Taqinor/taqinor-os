@@ -360,4 +360,7 @@ export interface Ctx {
   shadeObstructionsNonLues?: Array<Record<string, unknown>>;
   /** ACAL29 — le bloc `choixConception` RELU (ses clés inconnues sont retransmises). */
   choixConceptionRelu?: Record<string, unknown> | null;
+  /** ACAL30 — les entrées `modules[]` du document relu (fusionnées en lecture seule au
+   *  catalogue de la société : un produit archivé reste résoluble, jamais remplacé par 720 Wc). */
+  modulesDuDocument?: Array<Record<string, unknown>>;
 }

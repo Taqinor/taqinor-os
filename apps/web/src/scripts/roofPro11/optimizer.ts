@@ -51,6 +51,7 @@ import {
   cotesPourPan,
   estRefus,
   lireModulesDisponibles,
+  catalogueAvecModulesDuDocument,
 } from './moduleSelect';
 import { type Panel2Module } from '../../lib/roofPro2';
 import {
@@ -355,7 +356,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   const cotesDuModuleDuPanActif = (): Panel2Module | undefined => {
     const moduleId = ctx.activeArea()?.moduleId;
     if (!moduleId) return undefined;
-    const cotes = cotesPourPan(catalogueModules, moduleId);
+    // ACAL30 — un module archivé (repris du document) se pave avec SES cotes, jamais le défaut.
+    const cotes = cotesPourPan(catalogueAvecModulesDuDocument(catalogueModules, ctx.modulesDuDocument).catalogue, moduleId);
     return estRefus(cotes) ? undefined : cotes;
   };
 

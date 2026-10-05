@@ -193,6 +193,7 @@ describe('W113 — hydrateFromLead', () => {
       shadeObstructions: [],
       shadeObstructionsNonLues: [],
       choixConception: null,
+      modulesDuDocument: [],
       consSource: null,
       electrical: null,
     };

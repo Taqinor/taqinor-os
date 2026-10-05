@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -128,7 +129,10 @@ describe('CALX109 câblage — le catalogue de modules atteint le constructeur',
     expect(initRoofToolPro8.mock.calls[0][0].modulesDisponibles).toEqual(MODULES)
   })
 
-  it('un refus de droits ou une panne réseau ne bloque pas le boot (aucun module inventé)', async () => {
+  // ACAL30 — RÉÉCRIT : un catalogue illisible n'empêche pas de REGARDER la conception (le
+  // boot a lieu, aucun module inventé), mais il INTERDIT l'enregistrement : sans catalogue,
+  // le module de chaque pan retombait en silence sur le défaut 720 Wc (porte ATL-10).
+  it('catalogue en échec → Enregistrer refusé (le boot a lieu, aucun module inventé, aucun POST)', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))
     calepinageApi.calepinages.modulesDisponibles.mockRejectedValue(new Error('403'))
@@ -136,8 +140,25 @@ describe('CALX109 câblage — le catalogue de modules atteint le constructeur',
     rendreCalepinage(CTX.calepinage.id)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
-    // `null` = aucun catalogue : l'atelier pose son module par défaut, NOMMÉ.
+    // `null` = aucun catalogue transmis : rien n'est inventé côté atelier.
     expect(initRoofToolPro8.mock.calls[0][0].modulesDisponibles).toBeNull()
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+    expect(await screen.findByText(/Catalogue des modules indisponible : rien n’est enregistré, rechargez/))
+      .toBeTruthy()
+    expect(calepinageApi.calepinages.enregistrerLayoutCalepinage).not.toHaveBeenCalled()
+  })
+
+  it('catalogue lu : Enregistrer part normalement (le refus ne vaut que pour l’échec)', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_modules_disponibles'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinage.mockResolvedValue(
+      { data: { inchange: true, version: null } })
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerLayoutCalepinage).toHaveBeenCalled())
   })
 
   it('le mode DEVIS ne fait AUCUNE requête de catalogue (porte propre au calepinage)', async () => {

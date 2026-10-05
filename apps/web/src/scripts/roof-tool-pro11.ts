@@ -4096,7 +4096,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
           // CAL93 — le profil d'horizon lointain RÉGLÉ voyage avec le document.
           horizonProfile: ctx.horizonProfile as import('./roofPro11/prefill').SerializeMeta['horizonProfile'],
           // CALX109/CALX110 câblage — le catalogue + le module de chaque pan.
-          modules: affectationDesPans(catalogueModulesAtelier, ctx.areas),
+          // ACAL30 — les modules du document absents du catalogue (archivés) restent résolubles.
+          modules: affectationDesPans(catalogueModulesAtelier, ctx.areas, ctx.modulesDuDocument),
           // ACAL26 — la couche électrique (organes + cheminements) dans les DEUX branches.
           coucheElectrique,
         },

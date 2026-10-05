@@ -155,6 +155,7 @@ describe('PV19 — garde-fous', () => {
       shadeObstructions: [],
       shadeObstructionsNonLues: [],
       choixConception: null,
+      modulesDuDocument: [],
       consSource: null,
       electrical: null,
     });
@@ -198,7 +199,7 @@ describe('PV19 — le boot LEAD reste strictement inchangé (golden)', () => {
     expect(Object.keys(h).sort()).toEqual([
       'center', 'choixConception', 'consAppliances', 'consCurve', 'consHandEdited', 'consSeasonal', 'consSource',
       'consSummerFactor', 'consWinterFactor', 'contact', 'electrical', 'environment',
-      'shadeObstructions', 'shadeObstructionsNonLues', 'shading12x24', 'surfacesPose', 'vertices',
+      'modulesDuDocument', 'shadeObstructions', 'shadeObstructionsNonLues', 'shading12x24', 'surfacesPose', 'vertices',
     ]);
     expect(hydrateFromLead(null)).toEqual({
       vertices: [],
@@ -216,6 +217,7 @@ describe('PV19 — le boot LEAD reste strictement inchangé (golden)', () => {
       shadeObstructions: [],
       shadeObstructionsNonLues: [],
       choixConception: null,
+      modulesDuDocument: [],
       consSource: null,
       electrical: null,
     });

@@ -108,6 +108,7 @@ export function appliquerHydratationAuCtx(ctx: Ctx, h: HydratationAtelier): void
       ctx.choixConceptionRelu = null;
     }
   }
+  if (h.modulesDuDocument !== undefined) ctx.modulesDuDocument = copie(h.modulesDuDocument ?? []); // ACAL30
   if (h.consCurve !== undefined) ctx.consCurve = (h.consCurve ?? []).slice();
   if (h.consHandEdited !== undefined) ctx.consHandEdited = Boolean(h.consHandEdited);
   if (h.consAppliances !== undefined) ctx.consAppliances = copie(h.consAppliances ?? []);

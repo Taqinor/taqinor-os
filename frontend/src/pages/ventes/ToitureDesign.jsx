@@ -151,6 +151,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
 
   // — État de la génération du devis —
   const [sending, setSending] = useState(false)
+  // ACAL30 — le catalogue des modules n'a pas pu être lu : l'enregistrement est REFUSÉ
+  // (jamais un retour silencieux au module par défaut 720 Wc).
+  const [catalogueIndisponible, setCatalogueIndisponible] = useState(false)
   const [genError, setGenError] = useState(null)
   const [genStatus, setGenStatus] = useState(null)
   // L-SECT — ne porte plus que { reference } : le lien, le menu WhatsApp, le
@@ -252,6 +255,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
     setBrouillonPropose,
     setBuilderApiActuel,
     setBuilderReady,
+    setCatalogueIndisponible,
     setContexte,
     setContourMessage,
     setHashBaseBrouillon,
@@ -556,6 +560,10 @@ export default function ToitureDesign({ mode = 'lead' }) {
     const apiTool = builderApi.current
     if (!apiTool) {
       setGenError('Outil non prêt — ajustez la conception puis réessayez.')
+      return
+    }
+    if (catalogueIndisponible) {
+      setGenError('Catalogue des modules indisponible : rien n’est enregistré, rechargez la page.')
       return
     }
     setSending(true)

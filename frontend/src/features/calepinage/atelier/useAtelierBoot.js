@@ -29,6 +29,7 @@ export function useAtelierBoot(ctx) {
     setBrouillonPropose,
     setBuilderApiActuel,
     setBuilderReady,
+    setCatalogueIndisponible,
     setContexte,
     setContourMessage,
     setHashBaseBrouillon,
@@ -351,10 +352,16 @@ export function useAtelierBoot(ctx) {
       // (droits, réseau, société sans fiche « module »), l'atelier pose le
       // module par défaut, NOMMÉ. Le contexte agrégé ne le porte pas (contrat
       // `calepinage_design_context.json`, PACT10) : c'est sa propre porte.
+      // ACAL30 — un catalogue ILLISIBLE ne bloque pas l'ouverture (on regarde la
+      // conception), mais il INTERDIT l'enregistrement : sans lui, le module de chaque
+      // pan retomberait en silence sur le module par défaut (720 Wc).
       const modulesPromise = Promise.resolve()
         .then(() => calepinageApi.calepinages.modulesDisponibles(calepinageId))
         .then((res) => res.data)
-        .catch(() => null)
+        .catch(() => {
+          setCatalogueIndisponible?.(true)
+          return null
+        })
       // CALX104/CALX403 — même porte, même discipline best-effort.
       const reglagesPromise = chargerReglagesAtelier()
 
