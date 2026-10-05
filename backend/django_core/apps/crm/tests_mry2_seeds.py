@@ -38,6 +38,29 @@ def make_api(user):
 
 
 class MotifsStandardTests(TestCase):
+    def test_agr521_une_societe_personnalisee_recoit_les_motifs_pompage(self):
+        """AGR521 — « Subvention non obtenue » et « Eau insuffisante /
+        forage » arrivent à la LECTURE de la liste, sans toucher les motifs
+        existants ; rejouer ne crée aucun doublon."""
+        company = make_company('agr521-motifs')
+        perso = MotifPerte.objects.create(
+            company=company, nom='Motif perso AGR', est_junk=True)
+        user = User.objects.create_user(
+            username='agr521-motifs', password='x', company=company)
+        api = make_api(user)
+        for _ in range(2):
+            self.assertEqual(
+                api.get('/api/django/crm/motifs-perte/').status_code, 200)
+        motifs = MotifPerte.objects.filter(company=company)
+        for nom in ('Subvention non obtenue', 'Eau insuffisante / forage'):
+            with self.subTest(nom=nom):
+                self.assertEqual(motifs.filter(nom=nom).count(), 1)
+                self.assertFalse(motifs.get(nom=nom).est_junk)
+        perso.refresh_from_db()
+        self.assertEqual(perso.nom, 'Motif perso AGR')
+        self.assertTrue(perso.est_junk)
+        self.assertEqual(motifs.count(), len(_DEFAULT_MOTIFS_PERTE) + 1)
+
     def test_les_cinq_motifs_de_meryem_sont_dans_les_defauts(self):
         noms = {nom for nom, _ in _DEFAULT_MOTIFS_PERTE}
         for attendu in ('Locataire', 'Consommation trop faible',

@@ -1454,6 +1454,91 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'phone': phone, 'message': message, 'links': links,
         })
 
+    @extend_schema(responses=inline_serializer('CrmResumeAssocie', {
+        'wa_url': serializers.CharField(),
+        'phone': serializers.CharField(),
+        'message': serializers.CharField(),
+    }))
+    @action(detail=True, methods=['post'], url_path='resume-associe',
+            permission_classes=[IsResponsableOrAdmin])
+    def resume_associe(self, request, pk=None):
+        """AGR534 (contrat ``lead_resume_associe.json``, AGR504) — PRÉPARE le
+        lien WhatsApp vers l'ASSOCIÉ (contact secondaire) avec le résumé de la
+        proposition déjà envoyée. N'ENVOIE rien (décision D5) : le commercial
+        ouvre ``wa_url``. Corps ``{devis_id, accord_client: true, langue?}``.
+
+        Refus 403 sans ``client_pii_voir`` (le numéro est une PII) ; 400
+        nommant ``accord_client`` (accord non coché),
+        ``contact_secondaire_telephone`` (vide ou invalide) ou ``devis_id``
+        (devis absent, d'un autre lead, ou jamais envoyé). Effet : UNE ligne
+        d'historique ; aucun statut, aucune date d'envoi, aucune cadence
+        touchés (CAD144, règle #4 : le lien est la proposition existante)."""
+        from apps.parametres.models_messages import MessageTemplate
+        from apps.ventes.selectors import devis_for_lead
+        from apps.ventes.utils.client_links import url_proposition
+        from apps.ventes.utils.phone import normalize_phone_e164
+        from apps.ventes.utils.whatsapp import build_wa_url, render_message_template
+
+        from .models import LeadActivity
+        from .serializers import pii_masquee_pour
+        from .services import (
+            _nom_affiche_conseiller, _nom_affiche_marque,
+            _omettre_phrases_incompletes,
+        )
+
+        if pii_masquee_pour(request.user):
+            return Response(
+                {'detail': "Vous n'avez pas la permission de voir les "
+                           'coordonnées du client.'},
+                status=status.HTTP_403_FORBIDDEN)
+        lead = self.get_object()
+        accord = request.data.get('accord_client')
+        if not (accord is True or str(accord).strip().lower() == 'true'):
+            return Response(
+                {'accord_client': [
+                    "Cochez l'accord du client avant de partager le résumé "
+                    'avec son associé.']},
+                status=status.HTTP_400_BAD_REQUEST)
+        phone = (lead.contact_secondaire_telephone or '').strip()
+        if not phone or not normalize_phone_e164(phone):
+            return Response(
+                {'contact_secondaire_telephone': [
+                    'Aucun numéro valide pour le contact secondaire : '
+                    'renseignez-le sur la fiche.']},
+                status=status.HTTP_400_BAD_REQUEST)
+        brut = str(request.data.get('devis_id') or '').strip()
+        devis = (devis_for_lead(lead, [int(brut)]) if brut.isdigit() else [])
+        if not devis or devis[0].statut == 'brouillon':
+            return Response(
+                {'devis_id': [
+                    "Ce devis n'a jamais été envoyé au client : rien à "
+                    'partager.']},
+                status=status.HTTP_400_BAD_REQUEST)
+        devis = devis[0]
+        langue = (request.data.get('langue') or lead.langue_preferee
+                  or 'fr').strip()
+        if langue not in ('fr', 'darija'):
+            langue = 'fr'
+        corps = MessageTemplate.get_corps(
+            lead.company, 'resume_associe', langue) or ''
+        contexte = {
+            'conseiller': _nom_affiche_conseiller(lead, request.user),
+            'marque': _nom_affiche_marque(lead),
+            'lien': url_proposition(devis) or '',
+        }
+        manquants = [cle for cle, valeur in contexte.items()
+                     if '{' + cle + '}' in corps and not str(valeur).strip()]
+        message = render_message_template(
+            _omettre_phrases_incompletes(corps, manquants), contexte)
+        nom = (lead.contact_secondaire_nom or '').strip() or 'l’associé'
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=request.user,
+            kind=LeadActivity.Kind.NOTE,
+            body=f'Résumé transmis à {nom} — accord du client noté '
+                 f'(proposition {devis.reference}).')
+        return Response({'wa_url': build_wa_url(phone, message),
+                         'phone': phone, 'message': message})
+
     @action(detail=True, methods=['post'], url_path='whatsapp-devis',
             permission_classes=[IsResponsableOrAdmin])
     def whatsapp_devis(self, request, pk=None):
@@ -2798,18 +2883,22 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         LECTURE PURE : le serveur REND, il n'ENVOIE pas (décision D5).
         """
         from .serializers import pii_masquee_pour
-        from .services import CLES_MESSAGE_VISITE, message_visite_pour_lead
+        from .services import cles_message_visite_du_lead, message_visite_pour_lead
 
         cle = (request.query_params.get('cle') or '').strip()
+        lead = self.get_object()
         # CAD111 — les liens wa.me sont construits ICI (E.164) ; un rôle sans
         # `client_pii_voir` ne reçoit aucun numéro (liens nuls, `phone` vide).
+        # AGR526 — `dossier_fda` / `dossier_8221` seulement pour le lead dont
+        # le playbook de segment les confirme.
         rendu = message_visite_pour_lead(
-            self.get_object(), cle, user=request.user,
+            lead, cle, user=request.user,
             masquer_numero=pii_masquee_pour(request.user))
         if rendu is None:
             return Response(
                 {'cle': ['Message de visite inconnu « ' + cle + ' ». Clés '
-                         'connues : ' + ', '.join(CLES_MESSAGE_VISITE) + '.']},
+                         'connues : '
+                         + ', '.join(cles_message_visite_du_lead(lead)) + '.']},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(rendu)
 
@@ -2832,15 +2921,16 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         rattache l'ouverture à la touche, que son panneau « Fait » reconnaît.
         Refus 400 nommant le champ (``cle``, ``langue``, ``etape``)."""
         from .services import (
-            CLES_MESSAGE_VISITE, LANGUES_MESSAGE_VISITE,
-            journaliser_message_visite_ouvert,
+            LANGUES_MESSAGE_VISITE, cle_message_visite_autorisee,
+            cles_message_visite_du_lead, journaliser_message_visite_ouvert,
         )
         lead = self.get_object()
         cle = (request.data.get('cle') or '').strip()
-        if cle not in CLES_MESSAGE_VISITE:
+        # AGR526 — mêmes clés que la lecture `message-visite` pour CE lead.
+        if not cle_message_visite_autorisee(lead, cle):
             raise DRFValidationError({'erreurs': {'cle': (
                 f'« Message de visite » inconnu : « {cle} ». Clés connues : '
-                + ', '.join(CLES_MESSAGE_VISITE) + '.')}})
+                + ', '.join(cles_message_visite_du_lead(lead)) + '.')}})
         langue = (request.data.get('langue') or 'fr').strip()
         if langue not in LANGUES_MESSAGE_VISITE:
             raise DRFValidationError({'erreurs': {'langue': (
@@ -3127,6 +3217,11 @@ _DEFAULT_MOTIFS_PERTE = [
     ('Déjà équipé', False),
     ('Ne plus contacter', False),
     ('Devis refusé', False),
+    # AGR521 (05/10/2026) — pompage : un accord refusé (subvention FDA, DPA)
+    # ou un forage trop faible finissait en « Autre » / « Reporté », et rien
+    # n'était appris. Pertes commerciales réelles, jamais « junk ».
+    ('Subvention non obtenue', False),
+    ('Eau insuffisante / forage', False),
 ]
 
 # MRY2 — étiquettes standard. `Lead.tags` reste un TEXTE LIBRE : cette liste
@@ -3154,6 +3249,9 @@ _DEFAULT_TAGS = [
     # comme les autres étiquettes de clôture ; un test garde les deux libellés
     # identiques.
     'Deuxième affaire sans réponse',
+    # AGR520 (05/10/2026) — l'étiquette posée par la réponse « En attente
+    # d'un accord (DPA / banque) » (`services.TAG_ATTENTE_ACCORD`).
+    'Attend un accord (DPA / banque)',
 ]
 
 
@@ -4091,10 +4189,12 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         réponse et dit où elle vaut."""
         from .services import (
             REPONSE_DECISION_FAMILLE, REPONSE_DECISION_PROPRIETAIRE,
-            REPONSE_DEVIS_MODIFIE, REPONSE_JOINT_TELEPHONE,
+            REPONSE_ATTENTE_ACCORD, REPONSE_DEVIS_MODIFIE,
+            REPONSE_JOINT_TELEPHONE,
             REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU, REPONSE_PLUS_TARD,
             REPONSE_QUESTION_PRIX, REPONSE_VISITE_ABANDONNEE,
             refus_motif_perte, refus_reponse_touche,
+            repondre_attente_accord,
             repondre_decision_a_plusieurs, repondre_devis_modifie,
             repondre_joint_telephone, repondre_ne_plus_contacter,
             repondre_perdu, repondre_plus_tard, repondre_question_prix,
@@ -4152,6 +4252,10 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 etape, request.user, note=note, body=body)
         elif reponse == REPONSE_PLUS_TARD:
             etape = repondre_plus_tard(
+                etape, request.user, quand, note=note, body=body)
+        elif reponse == REPONSE_ATTENTE_ACCORD:
+            # AGR520 — étiquette + la veille de « Plus tard ».
+            etape = repondre_attente_accord(
                 etape, request.user, quand, note=note, body=body)
         elif reponse == REPONSE_QUESTION_PRIX:
             etape = repondre_question_prix(
@@ -5284,8 +5388,11 @@ def lead_playbook_view(request, lead_id):
         return Response({'detail': 'Lead introuvable.'}, status=status.HTTP_404_NOT_FOUND)
 
     if request.method == 'GET':
+        # AGR526 — `tache__etape__playbook` : la clé de texte (`cle_message`)
+        # se lit sur le NOM du playbook, sans requête par ligne.
         progress = lead.playbook_progress.select_related(
-            'tache', 'tache__etape', 'fait_par').all()
+            'tache', 'tache__etape', 'tache__etape__playbook', 'lead',
+            'fait_par').all()
         return Response(LeadPlaybookProgressSerializer(progress, many=True).data)
 
     tache_id = request.data.get('tache')

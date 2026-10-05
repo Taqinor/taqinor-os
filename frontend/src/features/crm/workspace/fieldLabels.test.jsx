@@ -30,10 +30,11 @@ const SECTION_FILES = [
   'SectionSite.jsx',
   'SectionVisite.jsx',
   'SectionDivers.jsx',
+  'SectionPro.jsx', // CIQ418 — « Professionnel » (lead commercial / industriel)
 ]
 
 const REGISTRY_SECTIONS = [
-  'contact', 'pipeline', 'energie', 'equipements', 'pompage', 'toiture', 'visite', 'divers',
+  'contact', 'pipeline', 'pro', 'energie', 'equipements', 'pompage', 'toiture', 'visite', 'divers',
 ]
 
 function htmlForIdsIn(source) {

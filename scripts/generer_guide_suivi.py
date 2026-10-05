@@ -738,7 +738,30 @@ OU_TROUVER = (
     ('Ce guide', 'Documents (GED) \u2192 cabinet \u00ab Documentation \u00bb \u2192 dossier \u00ab Guides \u00bb'),
     ('Le guide de la visite technique',
      'Même dossier : \u00ab Guide \u2014 La visite technique dans le suivi commercial \u00bb'),
+    # AGR533 — le texte de liaison du dossier FDA (playbook de segment AGR525).
+    ('Dossier FDA (agricole, pompe au butane)',
+     'Fiche du lead \u2192 \u00ab Tâches du playbook \u00bb : la tâche du dossier FDA, '
+     'et son bouton \u00ab Proposer le texte \u00bb'),
 )
+
+#: AGR533 — le nom d'un segment dans le guide (variantes_segment de la table).
+NOMS_SEGMENT = {'agricole': 'Agricole', 'commercial': 'Commercial',
+                'industriel': 'Industriel', 'residentiel': 'Résidentiel'}
+
+
+def mention_segments(objet: dict) -> str:
+    """AGR533 — les variantes de SEGMENT d'une réponse ou d'un geste
+    (``variantes_segment`` : seuls libellé / précision / effet changent, la
+    clé serveur et la suite restent), en une ligne sous la cellule."""
+    morceaux = []
+    for segment, variante in (objet.get('variantes_segment') or {}).items():
+        texte = f'{NOMS_SEGMENT.get(segment, segment)} : \u00ab {variante.get("label", objet.get("label", ""))} \u00bb'
+        if variante.get('effet'):
+            texte += f' \u2014 {adapter(variante["effet"])}'
+        morceaux.append(texte)
+    if not morceaux:
+        return ''
+    return '<br><span class="note">' + esc_ecran(' · '.join(morceaux)) + '</span>'
 
 
 def bloc(contenu: str) -> str:
@@ -783,7 +806,7 @@ def html_boutons(table: dict) -> str:
               '<tr><th style="width:24%">Bouton</th><th>Ce qu\u2019il fait</th></tr>']
     for g in table['gestes']:
         lignes.append(f'<tr><td><strong>{esc(g["label"])}</strong></td>'
-                      f'<td>{esc_ecran(adapter(g["effet"]))}</td></tr>')
+                      f'<td>{esc_ecran(adapter(g["effet"]))}{mention_segments(g)}</td></tr>')
     lignes.append('</table>')
     return '\n'.join(lignes)
 
@@ -869,7 +892,7 @@ def html_fiche(table: dict, etape: dict) -> str:
         if r.get('geste'):
             pastilles += '<span class="pastille">ouvre la planification</span>'
         lignes.append(f'<tr><td><strong>{esc(r["label"])}</strong>{pastilles}</td>'
-                      f'<td>{esc_ecran(adapter(r["effet"]))}</td></tr>')
+                      f'<td>{esc_ecran(adapter(r["effet"]))}{mention_segments(r)}</td></tr>')
     if len(lignes_appel) and len(reponses_resolues(table, etape)) < 2:
         lignes.extend(lignes_appel)
     lignes.append('</table>')

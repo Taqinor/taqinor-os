@@ -57,6 +57,45 @@ function cinWarning(value) {
     : 'Le format CIN paraît inhabituel — vérifiez la saisie.'
 }
 
+// CIQ422 (contrat `client_entreprise.json`, CIQ402 — D-CIQ-3/D-CIQ-11) — la
+// TVA récupérable d'un client ENTREPRISE (économies en HT si oui).
+// source-choix: crm.Client.tva_recuperable
+const TVA_RECUPERABLE = [
+  { value: 'oui', label: 'Oui' },
+  { value: 'non', label: 'Non' },
+  { value: 'ne_sait_pas', label: 'Je ne sais pas' },
+]
+
+// CIQ422 — les étapes qui EXIGENT l'ICE, lues dans `identite_entreprise`
+// servi (contrat `client_entreprise.json`) : la phrase du bandeau en découle.
+const ETAPES_ICE = {
+  devis: 'demandé au devis',
+  acceptation_en_ligne: 'obligatoire à l’acceptation en ligne',
+  facture: 'à la facture',
+}
+function phraseIceManquant(identite) {
+  const requis = identite?.requis_pour
+  if (!requis) {
+    return 'ICE manquant — demandé au devis, obligatoire à l’acceptation en ligne et à la facture.'
+  }
+  const exigent = Object.keys(ETAPES_ICE).filter((k) => (requis[k] || []).includes('ice'))
+  const morceaux = ['demandé au devis', ...exigent.filter((k) => k !== 'devis').map((k) => ETAPES_ICE[k])]
+  const fin = morceaux.length > 1
+    ? `${morceaux.slice(0, -1).join(', ')} et ${morceaux[morceaux.length - 1].replace('obligatoire ', '')}`
+    : morceaux[0]
+  return `ICE manquant — ${fin}.`
+}
+
+// CIQ422 — le conflit d'identité (`conflit_identite_entreprise`, contrat
+// `client_entreprise.json` → `exemple_conflit`) renvoyé par le serveur : son
+// message s'affiche SOUS le champ ICE. Valeurs DRF en liste ou en chaîne.
+function conflitIdentite(data) {
+  const premier = (v) => (Array.isArray(v) ? v[0] : v)
+  if (!data || typeof data !== 'object') return null
+  if (String(premier(data.code) ?? '') !== 'conflit_identite_entreprise') return null
+  return String(premier(data.message) ?? '') || null
+}
+
 // VX92 — « Créer un autre » : persisté par utilisateur/poste (localStorage),
 // défaut OFF (comportement historique inchangé). Un salon = 10 leads/clients
 // créés d'affilée ; sans ce toggle chaque création coûte un cycle
@@ -105,6 +144,12 @@ export default function ClientForm({ client = null, onClose }) {
     ice:         client?.ice         ?? '',
     if_fiscal:   client?.if_fiscal   ?? '',
     rc:          client?.rc          ?? '',
+    // CIQ422 — identité d'une ENTREPRISE (contrat `client_entreprise.json`) :
+    // siège, personne « à l'attention de », TVA récupérable.
+    adresse_siege:    client?.adresse_siege    ?? '',
+    contact_nom:      client?.contact_nom      ?? '',
+    contact_fonction: client?.contact_fonction ?? '',
+    tva_recuperable:  client?.tva_recuperable  ?? '',
     // N93 — langue des documents client-facing (facture / devis). FR par défaut.
     langue_document: client?.langue_document ?? 'fr',
     // XSAL9 — société mère (hiérarchie de comptes / consolidation groupe).
@@ -116,6 +161,13 @@ export default function ClientForm({ client = null, onClose }) {
 
   const [fields, setFields] = useState(initial)
   const isEntreprise = fields.type_client === 'entreprise'
+  // CIQ422 — conflit d'identité renvoyé par le serveur (sous le champ ICE).
+  const [conflitIce, setConflitIce] = useState(null)
+  // CIQ422 — bandeau NON bloquant : l'ICE manque (servi par
+  // `identite_entreprise`, ou constaté à la saisie pour un nouveau client).
+  const identite = client?.identite_entreprise
+  const iceManquant = isEntreprise && !String(fields.ice ?? '').trim()
+    && (!identite || identite.type_client !== 'entreprise' || (identite.manquants || []).includes('ice'))
 
   // WIR67 — champs personnalisés du module « client » (même motif que
   // LeadForm) : le backend valide/persiste `custom_data` du Client.
@@ -173,6 +225,8 @@ export default function ClientForm({ client = null, onClose }) {
       setIceEmailDupChecked(false)
       setDupWarning(null)
     }
+    // CIQ422 — corriger l'ICE efface le conflit affiché dessous.
+    if (k === 'ice') setConflitIce(null)
     setFields((f) => {
       const next = { ...f, [k]: v }
       // À la CRÉATION uniquement : la première fois qu'un identifiant entreprise
@@ -290,6 +344,14 @@ export default function ClientForm({ client = null, onClose }) {
         ice:       isEntreprise ? (fields.ice.trim() || null) : null,
         if_fiscal: isEntreprise ? (fields.if_fiscal.trim() || null) : null,
         rc:        isEntreprise ? (fields.rc.trim() || null) : null,
+        // CIQ422 — identité d'une entreprise ; un particulier n'envoie rien
+        // de plus qu'avant (rendu et charge utile inchangés).
+        ...(isEntreprise ? {
+          adresse_siege:    fields.adresse_siege.trim()    || null,
+          contact_nom:      fields.contact_nom.trim()      || null,
+          contact_fonction: fields.contact_fonction.trim() || null,
+          tva_recuperable:  fields.tva_recuperable         || null,
+        } : {}),
         // N93 — langue des documents (facture / devis) pour ce client.
         langue_document: fields.langue_document,
         // XSAL9 — société mère (hiérarchie de comptes), optionnelle.
@@ -319,6 +381,8 @@ export default function ClientForm({ client = null, onClose }) {
         }
       }
     } catch (err) {
+      // CIQ422 — conflit d'identité : affiché SOUS le champ ICE.
+      setConflitIce(conflitIdentite(err?.response?.data ?? err))
       // VX171 — mapping DRF générique (detail / {champ:[…]} / array).
       setFromResponse(err)
     } finally {
@@ -473,7 +537,18 @@ export default function ClientForm({ client = null, onClose }) {
                         {idWarnings.ice}
                       </p>
                     )}
+                    {conflitIce && (
+                      <p className="mt-1 text-xs text-warning" role="alert" data-testid="cf-ice-conflit">
+                        {conflitIce}
+                      </p>
+                    )}
                   </FormField>
+                  {/* CIQ422 — bandeau NON bloquant tiré d'`identite_entreprise`. */}
+                  {iceManquant && (
+                    <p className="sm:col-span-2 text-xs text-warning" role="status" data-testid="cf-ice-manquant">
+                      {phraseIceManquant(identite)}
+                    </p>
+                  )}
                   <FormField label="IF (Identifiant Fiscal) — optionnel" htmlFor="cf-if">
                     <Input
                       id="cf-if"
@@ -499,6 +574,45 @@ export default function ClientForm({ client = null, onClose }) {
                         {idWarnings.rc}
                       </p>
                     )}
+                  </FormField>
+                  {/* CIQ422 — siège, personne « à l'attention de », TVA. */}
+                  <FormField label="Adresse du siège — si différente du site" htmlFor="cf-adresse-siege" fullWidth>
+                    <Textarea
+                      id="cf-adresse-siege"
+                      rows={2}
+                      value={fields.adresse_siege}
+                      onChange={e => setField('adresse_siege', e.target.value)}
+                      placeholder="Siège social"
+                    />
+                  </FormField>
+                  <FormField label="À l'attention de" htmlFor="cf-contact-nom">
+                    <Input
+                      id="cf-contact-nom"
+                      value={fields.contact_nom}
+                      onChange={e => setField('contact_nom', e.target.value)}
+                      placeholder="Nom du contact"
+                    />
+                  </FormField>
+                  <FormField label="Fonction du contact" htmlFor="cf-contact-fonction">
+                    <Input
+                      id="cf-contact-fonction"
+                      value={fields.contact_fonction}
+                      onChange={e => setField('contact_fonction', e.target.value)}
+                      placeholder="ex : Directeur"
+                    />
+                  </FormField>
+                  <FormField label="TVA récupérable" htmlFor="cf-tva-recuperable" fullWidth>
+                    <select
+                      id="cf-tva-recuperable"
+                      className="form-select"
+                      value={fields.tva_recuperable}
+                      onChange={e => setField('tva_recuperable', e.target.value)}
+                    >
+                      <option value="">—</option>
+                      {TVA_RECUPERABLE.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
                   </FormField>
                 </>
               ) : (
