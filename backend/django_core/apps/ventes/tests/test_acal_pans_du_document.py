@@ -52,7 +52,7 @@ class PansDuDocument(SimpleTestCase):
         self.assertIn('Carport', refus[0])
         with self.assertRaises(AutoDevisError) as leve:
             validate_composition_for_layout(sans, None)
-        self.assertEqual(leve.exception.field, 'poseSurfaces')
+        self.assertEqual(leve.exception.field, 'poseSurfaces.0.moduleWc')
         self.assertIn('Carport', leve.exception.message)
 
     def test_pan_non_pave_ne_compte_pas(self):

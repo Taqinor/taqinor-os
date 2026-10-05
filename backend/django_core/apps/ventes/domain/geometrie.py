@@ -404,7 +404,8 @@ def scenario_du_layout(layout):
 #: ``toiture`` est rendue avec le reste pour qu'un appelant qui en a besoin
 #: (``_calepinage_range``, le journal) ne rejoue pas ``extract_roof_config``.
 LectureLayout = namedtuple(
-    'LectureLayout', 'compte watt watt_declare kwc scenario toiture pans')
+    'LectureLayout',
+    'compte watt watt_declare kwc scenario toiture pans modeles')
 
 
 def _nombre_fini(valeur):
@@ -464,6 +465,7 @@ def pans_du_document(layout):
     layout = layout if isinstance(layout, dict) else {}
     pans = []
     watt_annonce = _nombre_fini(layout.get('panelWatt') or layout.get('watt'))
+    catalogue = _catalogue_modules(layout)
     zones = (layout.get('zones') or layout.get('areas')
              or layout.get('pans') or [])
     for index, zone in enumerate(zones if isinstance(zones, list) else []):
@@ -483,9 +485,16 @@ def pans_du_document(layout):
             modules, source = _entier_pose(res.get('count')), 'result.count'
         else:
             modules, source = 0, 'aucune'
+        # ACAL62 — le MODÈLE posé sur ce pan (``geometry.moduleId`` →
+        # ``modules[]``). Un renvoi qui ne résout pas est un refus NOMMÉ
+        # (même règle que ``io_layout._refuser_module_inconnu``), porté
+        # par le pan et prononcé par la composition.
+        module_id = geo.get('moduleId')
+        modele = catalogue.get(module_id) if module_id is not None else None
+        watt_pan = (_nombre_fini(modele.get('pmaxWc')) if modele else None)
         kwc = _nombre_fini(geo.get('kwc')) or _nombre_fini(res.get('kwc'))
-        if kwc is None and modules and watt_annonce:
-            kwc = modules * watt_annonce / 1000.0
+        if kwc is None and modules and (watt_pan or watt_annonce):
+            kwc = modules * (watt_pan or watt_annonce) / 1000.0
         orientation = orientation_du_pan(zone)
         pan = {
             'cle': str(zone.get('id') or 'zone-%d' % (index + 1)),
@@ -496,10 +505,19 @@ def pans_du_document(layout):
             'inclinaison_deg': orientation['inclinaison_deg'],
             'azimut_deg': orientation['azimut_deg'],
             'source': source,
+            'module_id': module_id,
+            'produit_id': (modele or {}).get('produitId'),
+            'module_wc': watt_pan,
         }
         if modules <= 0:
             pan['kwc'] = None
             pan['avertissement'] = 'pan %s non pavé — non chiffré' % libelle
+        elif module_id is not None and modele is None:
+            pan['refus_champ'] = 'zones.%d.geometry.moduleId' % index
+            pan['refus'] = (
+                "Pan « %s » : le module « %s » ne figure pas dans « modules » "
+                "(modèles déclarés : %s)."
+                % (libelle, module_id, ', '.join(sorted(catalogue)) or 'aucun'))
         pans.append(pan)
 
     surfaces = layout.get('poseSurfaces')
@@ -529,10 +547,14 @@ def pans_du_document(layout):
             'azimut_deg': ((rangee + 90.0) % 360.0
                            if rangee is not None else None),
             'source': 'engine.modules',
+            'module_id': None,
+            'produit_id': None,
+            'module_wc': watt,
         }
         if modules <= 0:
             pan['avertissement'] = 'pan %s non pavé — non chiffré' % libelle
         elif watt is None:
+            pan['refus_champ'] = 'poseSurfaces.%d.moduleWc' % index
             pan['refus'] = (
                 "Surface de pose « %s » : la puissance du module (moduleWc) "
                 "n'est pas renseignée — ses %d modules ne peuvent pas être "
@@ -540,6 +562,39 @@ def pans_du_document(layout):
                 % (libelle, modules))
         pans.append(pan)
     return pans
+
+
+def _catalogue_modules(layout):
+    """``{id: entrée}`` des modèles déclarés dans ``modules[]`` (CALX82)."""
+    catalogue = layout.get('modules') if isinstance(layout, dict) else None
+    if not isinstance(catalogue, list):
+        return {}
+    return {entree['id']: entree for entree in catalogue
+            if isinstance(entree, dict) and isinstance(entree.get('id'), str)}
+
+
+def modeles_des_pans(layout, pans, *, compte, watt):
+    """ACAL62 (C-ACAL-042) — les MODÈLES de module posés :
+    ``[{produit_id, watt, count}]``, regroupés par (produit, puissance) dans
+    l'ordre du document, comptes par pan issus de :func:`pans_du_document`
+    (surfaces de pose comprises : leur modèle est leur ``moduleWc``).
+
+    Un document SANS ``modules[]`` garde le comportement d'aujourd'hui au bit
+    près : ``[{produit_id: None, watt: <watt lu>, count: <compte>}]``."""
+    if not _catalogue_modules(layout):
+        return [{'produit_id': None, 'watt': watt, 'count': compte}]
+    groupes = {}
+    for pan in pans or ():
+        if pan.get('modules', 0) <= 0:
+            continue
+        puissance = pan.get('module_wc')
+        cle = (pan.get('produit_id'),
+               int(round(puissance)) if puissance else watt)
+        groupes[cle] = groupes.get(cle, 0) + int(pan['modules'])
+    if not groupes:
+        return [{'produit_id': None, 'watt': watt, 'count': compte}]
+    return [{'produit_id': produit, 'watt': puissance, 'count': nombre}
+            for (produit, puissance), nombre in groupes.items()]
 
 
 def refus_des_pans(pans):
@@ -636,14 +691,18 @@ def lire_layout(layout, *, toiture=None, compte=None, kwc=None):
     if watt_declare is None and kwc and compte:
         watt_declare = int(round(kwc * 1000 / compte / 10) * 10)
 
+    watt = watt_declare if watt_declare is not None else LAYOUT_WATT_REPLI
     return LectureLayout(
         compte=compte,
-        watt=watt_declare if watt_declare is not None else LAYOUT_WATT_REPLI,
+        watt=watt,
         watt_declare=watt_declare,
         kwc=kwc,
         scenario=scenario_du_layout(layout),
         toiture=toiture,
         pans=pans,
+        # ACAL62 — les modèles POSÉS (produit, watt, nombre), plus un seul
+        # entier ``panelWatt`` : la composition (D08-T24) les lira.
+        modeles=modeles_des_pans(layout, pans, compte=compte, watt=watt),
     )
 
 
@@ -691,9 +750,12 @@ def validate_composition_for_layout(layout, company, *, lead=None):
         AutoDevisError, phase_et_isolement_du_lead)
     # ACAL59 (D-ACAL-5) — une surface pavée sans puissance module est
     # REFUSÉE en la nommant (422), jamais chiffrée à une puissance de repli.
-    refus_surfaces = refus_des_pans(lecture.pans)
-    if refus_surfaces:
-        raise AutoDevisError(refus_surfaces[0], field='poseSurfaces')
+    # ACAL62 — de même un pan qui désigne un module absent de ``modules[]``.
+    refusants = [p for p in lecture.pans if p.get('refus')]
+    if refusants:
+        raise AutoDevisError(refusants[0]['refus'],
+                             field=refusants[0].get('refus_champ')
+                             or 'poseSurfaces')
     phase, hors_reseau = phase_et_isolement_du_lead(lead)
 
     # PVMRQ — pas de devis ici (pré-vol AVANT création) ⇒ pas de gamme connue :
