@@ -27,6 +27,7 @@ import { type Obstacle } from '../../lib/obstacles';
 import { PANEL2_LONG_M, PANEL2_SHORT_M, PANEL2_WATT } from '../../lib/roofPro2';
 import {
   inferPanelPose,
+  type RoofLayoutModule,
   type RoofLayout,
   type RoofLayoutZone,
   type RoofLayoutZoneGeometry,
@@ -39,6 +40,8 @@ import {
   type PanelGrid,
 } from '../../lib/estimatorBrainV2';
 import { DEG2M, DEG2RAD } from './constants';
+import { cotesPourPan, estRefus, type ModuleDocument } from './moduleSelect';
+import { normaliserSurfacePose, type SurfacePose } from './poseSurfaces';
 import { type AreaRecord, type ZoneRenderPlan } from './types';
 
 /** Mètres par pixel à l'équateur au zoom 0 — MapLibre travaille en tuiles 512 px
@@ -89,6 +92,9 @@ export interface ViewerFullPlan {
   spanM: number;
   /** Somme des panneaux RÉELLEMENT posés (jamais une cible dimensionnée). */
   totalPanels: number;
+  /** ACAL262 — surfaces de pose publiées (ombrière, champ au sol, façade) avec
+   *  leurs tables moteur : dessinées par scene3d (`ctx.surfacesPose`). */
+  surfacesPose: SurfacePose[];
 }
 
 /** Aire (m²) d'un anneau plan, valeur absolue (formule du lacet). */
@@ -125,6 +131,38 @@ function fallbackPose(g: RoofLayoutZoneGeometry): ViewerPanelPose {
   return g.flush ? 'portrait' : 'landscape';
 }
 
+/** ACAL262 — module publié -> forme `ModuleDocument` attendue par `cotesPourPan`
+ *  (les champs non publiés — poids, épaisseur, produit — restent `null`). */
+function moduleDocumentDePublic(m: RoofLayoutModule): ModuleDocument {
+  return {
+    id: m.id,
+    produitId: null,
+    libelle: m.id,
+    longueurMm: m.longueurMm,
+    largeurMm: m.largeurMm,
+    epaisseurMm: null,
+    poidsKg: null,
+    pmaxWc: m.pmaxWc ?? null,
+    source: 'proposition publique',
+  };
+}
+
+/** Cotes (m) + watt du module d'un pan, ou null -> repli PANEL2_*. */
+function cotesDuModuleDuPan(
+  moduleId: string | undefined,
+  modules: readonly RoofLayoutModule[] | null | undefined,
+): { longM: number; courtM: number; watt: number } | null {
+  if (!moduleId || !modules || modules.length === 0) return null;
+  const cotes = cotesPourPan(modules.map(moduleDocumentDePublic), moduleId);
+  if (estRefus(cotes)) return null;
+  return { longM: cotes.longM, courtM: cotes.courtM, watt: cotes.watt || PANEL2_WATT };
+}
+
+/** ACAL262 — le panneau porte son `angleDeg` (mode free) quand il est publié. */
+function withAngle(p: PackedPanel, angleDeg: number | undefined): PackedPanel {
+  return typeof angleDeg === 'number' ? ({ ...p, angleDeg } as PackedPanel) : p;
+}
+
 /**
  * `PanelGrid` (forme attendue par scene3d) reconstruite depuis le calepinage
  * RÉEL d'un pan. scene3d ne lit de la grille que `panels`, `rowWidthM` et
@@ -132,20 +170,29 @@ function fallbackPose(g: RoofLayoutZoneGeometry): ViewerPanelPose {
  * champs existent pour honorer le type et restent cohérents (jamais un chiffre
  * client : la puissance affichée au client vient du payload devis, pas d'ici).
  */
-export function gridFromGeometry(g: RoofLayoutZoneGeometry): PanelGrid {
+export function gridFromGeometry(
+  g: RoofLayoutZoneGeometry,
+  modules?: readonly RoofLayoutModule[] | null,
+): PanelGrid {
   const pose = inferPanelPose(g) ?? fallbackPose(g);
-  // Portrait = grand côté DANS LA PENTE (mêmes deux poses que le builder :
-  // lib/estimatorBrainV2 `makeGrid('portrait', PANEL2_LONG_M, PANEL2_SHORT_M)`).
-  const slopeLenM = pose === 'portrait' ? PANEL2_LONG_M : PANEL2_SHORT_M;
-  const rowWidthM = pose === 'portrait' ? PANEL2_SHORT_M : PANEL2_LONG_M;
+  // ACAL262 — cotes du MODULE de ce pan (`moduleSelect.cotesPourPan`, la même
+  // règle que l'atelier) ; repli PANEL2_* UNIQUEMENT sans module (ancien devis,
+  // module absent de la liste ou à cotes incomplètes) — jamais un refus bloquant.
+  const cotes = cotesDuModuleDuPan(g.moduleId, modules);
+  const longM = cotes ? cotes.longM : PANEL2_LONG_M;
+  const courtM = cotes ? cotes.courtM : PANEL2_SHORT_M;
+  const watt = cotes ? cotes.watt : PANEL2_WATT;
+  // Portrait = grand côté DANS LA PENTE (mêmes deux poses que le builder).
+  const slopeLenM = pose === 'portrait' ? longM : courtM;
+  const rowWidthM = pose === 'portrait' ? courtM : longM;
   const panels: PackedPanel[] = g.panels.map((p) =>
-    p.face ? { cx: p.cx, cy: p.cy, face: p.face } : { cx: p.cx, cy: p.cy },
+    withAngle(p.face ? { cx: p.cx, cy: p.cy, face: p.face } : { cx: p.cx, cy: p.cy }, p.angleDeg),
   );
   const tilt = g.tiltDeg * DEG2RAD;
   return {
     panelOrientation: pose,
     count: panels.length,
-    kwc: (panels.length * PANEL2_WATT) / 1000,
+    kwc: (panels.length * watt) / 1000,
     // Pas d'empilement : NON publié par le backend et JAMAIS lu par scene3d
     // (les centres réels portent déjà l'espacement) — 0 = « non renseigné ».
     rowPitchM: 0,
@@ -193,10 +240,13 @@ export function obstaclesOfZone(zone: RoofLayoutZone): Obstacle[] {
 }
 
 /** Plan de rendu d'un pan, ou null si son calepinage réel est absent/vide. */
-export function zoneRenderPlan(zone: RoofLayoutZone): ZoneRenderPlan | null {
+export function zoneRenderPlan(
+  zone: RoofLayoutZone,
+  modules?: readonly RoofLayoutModule[] | null,
+): ZoneRenderPlan | null {
   const g = zone.geometry;
   if (!g || g.panels.length === 0) return null;
-  const grid = gridFromGeometry(g);
+  const grid = gridFromGeometry(g, modules);
   const pack = packFromZone(zone, g, grid);
   return {
     pack,
@@ -227,7 +277,7 @@ export function buildViewerFullPlan(layout: RoofLayout | null | undefined): View
   if (!layout || !Array.isArray(layout.zones) || layout.zones.length === 0) return null;
 
   const zones: ViewerFullZone[] = layout.zones.map((z) => {
-    const plan = zoneRenderPlan(z);
+    const plan = zoneRenderPlan(z, layout.modules);
     return {
       id: z.id,
       label: z.label,
@@ -295,7 +345,13 @@ export function buildViewerFullPlan(layout: RoofLayout | null | undefined): View
   let totalPanels = 0;
   for (const z of zones) totalPanels += z.panelCount;
 
-  return { zones, activeIndex, center: [lng0, lat0] as LngLat, spanM, totalPanels };
+  const surfacesPose: SurfacePose[] = [];
+  for (const brut of layout.poseSurfaces ?? []) {
+    const surface = normaliserSurfacePose(brut);
+    if (surface) surfacesPose.push(surface);
+  }
+
+  return { zones, activeIndex, center: [lng0, lat0] as LngLat, spanM, totalPanels, surfacesPose };
 }
 
 /**

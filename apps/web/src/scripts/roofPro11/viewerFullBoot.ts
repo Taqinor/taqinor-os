@@ -182,6 +182,8 @@ export function bootViewerFull(
     sunHour: DEFAULT_SUN_HOUR,
     sunDay: WINTER_SOLSTICE_DAY,
     centroidLat: plan.center[1],
+    // ACAL262 — surfaces de pose publiées (tables moteur) : scene3d les dessine.
+    surfacesPose: plan.surfacesPose,
   } as unknown as Ctx;
 
   // — Carte : MÊME imagerie que les pages mon-toit et que l'ERP
