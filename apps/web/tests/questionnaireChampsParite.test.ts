@@ -31,3 +31,26 @@ describe('questionnaire — parité colonnes_ecrites ↔ collectSectionRaw', () 
     }
   }
 });
+
+// AGW408 — choix fermés du bloc pompage IDENTIQUES au contrat lead_pompage.json.
+describe('questionnaire — pompage : choix fermés = contrat', () => {
+  const lp = JSON.parse(
+    read('../../../backend/django_core/apps/crm/contract_samples/lead_pompage.json'),
+  ) as { colonnes: Array<{ nom: string; choix?: string[] }> };
+  const choix = (nom: string) => lp.colonnes.find((c) => c.nom === nom)?.choix;
+
+  it('source_eau / irrigation_methode / pompe_alim_actuelle', async () => {
+    const lib = await import('../src/lib/questionnaire');
+    expect([...lib.SOURCE_EAU_VALUES]).toEqual(choix('source_eau'));
+    expect([...lib.IRRIGATION_METHODE_VALUES]).toEqual(choix('irrigation_methode'));
+    expect([...lib.POMPE_ALIM_VALUES]).toEqual(choix('pompe_alim_actuelle'));
+  });
+
+  it('page : champs numériques step="any" et 12 mois en boutons', () => {
+    expect(src).toContain('data-mois={m}');
+    expect(src).toContain('MOIS_IRRIGATION_VALUES');
+    const bloc = src.slice(src.indexOf("id === 'pompage'"), src.indexOf("id === 'toiture'"));
+    expect(bloc).not.toMatch(/step="1"/);
+    expect(bloc).toContain('step="any"');
+  });
+});

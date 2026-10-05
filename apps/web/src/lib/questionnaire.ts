@@ -41,11 +41,14 @@ export const QUESTIONNAIRE_SECTIONS = [
   'occupation',
   'equipements',
   'energie',
+  'pompage',
   'toiture',
   'gps',
   'photo_facture',
   'photo_compteur',
   'photo_tableau',
+  'photo_pompe',
+  'photo_forage',
   'contact',
 ] as const;
 export type QuestionnaireSectionId = (typeof QUESTIONNAIRE_SECTIONS)[number];
@@ -55,7 +58,13 @@ export function isQuestionnaireSectionId(v: unknown): v is QuestionnaireSectionI
 }
 
 export function isPhotoSection(section: QuestionnaireSectionId): boolean {
-  return section === 'photo_facture' || section === 'photo_compteur' || section === 'photo_tableau';
+  return (
+    section === 'photo_facture' ||
+    section === 'photo_compteur' ||
+    section === 'photo_tableau' ||
+    section === 'photo_pompe' ||
+    section === 'photo_forage'
+  );
 }
 
 /** Libellés fr/en/ar + pictogramme — affichage seul, jamais lu par la logique. */
@@ -71,6 +80,9 @@ export const SECTION_META: Record<QuestionnaireSectionId, SectionMeta> = {
   photo_compteur: { icon: '🔢', title: { fr: 'Photo du compteur', en: 'Photo of the meter', ar: 'صورة العداد' } },
   photo_tableau: { icon: '🔌', title: { fr: 'Photo du tableau électrique', en: 'Photo of the electrical panel', ar: 'صورة اللوحة الكهربائية' } },
   toiture: { icon: '🏠', title: { fr: 'Toiture', en: 'Roof', ar: 'السطح' } },
+  pompage: { icon: '💧', title: { fr: 'Votre pompage', en: 'Your water pumping', ar: 'الضخ والسقي' } },
+  photo_pompe: { icon: '⚙️', title: { fr: 'Photo de la pompe (plaque)', en: 'Photo of the pump (nameplate)', ar: 'صورة المضخة (اللوحة)' } },
+  photo_forage: { icon: '🕳️', title: { fr: 'Photo du forage', en: 'Photo of the borehole', ar: 'صورة البئر' } },
   occupation: { icon: '🕒', title: { fr: 'Occupation du logement', en: 'Home occupancy', ar: 'شغل المنزل' } },
   equipements: { icon: '🧰', title: { fr: 'Équipements', en: 'Appliances', ar: 'التجهيزات' } },
 };
@@ -235,13 +247,18 @@ export const ECRANS: readonly EcranDef[] = [
     title: { fr: 'Votre électricité', en: 'Your electricity', ar: 'كهرباؤكم' },
   },
   {
+    id: 'pompage',
+    sections: ['pompage'],
+    title: { fr: 'Votre pompage', en: 'Your water pumping', ar: 'الضخ والسقي' },
+  },
+  {
     id: 'toit',
     sections: ['toiture', 'gps'],
     title: { fr: 'Votre toit', en: 'Your roof', ar: 'سطحكم' },
   },
   {
     id: 'photos',
-    sections: ['photo_facture', 'photo_compteur', 'photo_tableau'],
+    sections: ['photo_facture', 'photo_compteur', 'photo_tableau', 'photo_pompe', 'photo_forage'],
     title: { fr: 'Vos photos', en: 'Your photos', ar: 'صوركم' },
   },
   {
@@ -312,6 +329,13 @@ export type OwnershipId = (typeof OWNERSHIP_VALUES)[number];
 
 // Mêmes libellés/valeurs que le tunnel /devis/mon-toit (L-WEBT, crm.Lead.occupation_jour).
 export const OCCUPATION_JOUR_VALUES = ['present', 'absent', 'partiel'] as const;
+// AGW408 — vocabulaire du bloc pompage, IDENTIQUE au contrat
+// `lead_pompage.json` (colonnes crm.Lead : choix fermés).
+export const SOURCE_EAU_VALUES = ['puits', 'forage', 'bassin', 'riviere'] as const;
+export const IRRIGATION_METHODE_VALUES = ['goutte', 'aspersion', 'gravitaire'] as const;
+export const POMPE_ALIM_VALUES = ['aucune', 'diesel', 'butane', 'electrique'] as const;
+export const MOIS_IRRIGATION_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+
 export type OccupationJourId = (typeof OCCUPATION_JOUR_VALUES)[number];
 
 export type EquipementKey =
@@ -361,6 +385,17 @@ export function cleanBoundedInt(v: unknown, max: number): number | null {
 
 export function cleanEnum<T extends string>(v: unknown, allowed: readonly T[]): T | null {
   return typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as T) : null;
+}
+
+/** AGW408 — mois d'irrigation : entiers 1-12 DISTINCTS, triés ; liste vide ⇒ `null` (rien à envoyer). */
+export function cleanMoisIrrigation(v: unknown): number[] | null {
+  if (!Array.isArray(v)) return null;
+  const mois = new Set<number>();
+  for (const m of v) {
+    const n = Number(m);
+    if (Number.isInteger(n) && n >= 1 && n <= 12) mois.add(n);
+  }
+  return mois.size > 0 ? [...mois].sort((a, b) => a - b) : null;
 }
 
 /** 'oui'/'non' → booléen explicite, sinon `undefined` (question pas encore répondue). */
@@ -437,6 +472,8 @@ export function buildSectionReponses(
     case 'photo_facture':
     case 'photo_compteur':
     case 'photo_tableau':
+    case 'photo_pompe':
+    case 'photo_forage':
       // Rien dans `reponses` — la photo voyage dans le champ `photo` du corps POST.
       break;
     case 'toiture': {
@@ -453,6 +490,41 @@ export function buildSectionReponses(
       if (age != null) out.roof_age = age;
       const ownership = cleanEnum(raw.ownership, OWNERSHIP_VALUES);
       if (ownership) out.ownership = ownership;
+      break;
+    }
+    case 'pompage': {
+      const source = cleanEnum(raw.source_eau, SOURCE_EAU_VALUES);
+      if (source) out.source_eau = source;
+      const niveau = cleanPositiveNumber(raw.niveau_statique_m, 1_000);
+      if (niveau != null) out.niveau_statique_m = niveau;
+      const besoin = cleanPositiveNumber(raw.besoin_eau_m3j, 100_000);
+      if (besoin != null) out.besoin_eau_m3j = besoin;
+      const surface = cleanPositiveNumber(raw.surface_irriguee_ha, 100_000);
+      if (surface != null) out.surface_irriguee_ha = surface;
+      const culture = cleanStr(raw.culture, 100);
+      if (culture) out.culture = culture;
+      const methode = cleanEnum(raw.irrigation_methode, IRRIGATION_METHODE_VALUES);
+      if (methode) out.irrigation_methode = methode;
+      const alim = cleanEnum(raw.pompe_alim_actuelle, POMPE_ALIM_VALUES);
+      if (alim) out.pompe_alim_actuelle = alim;
+      // Les questions carburant ne valent que pour une pompe à butane /
+      // diesel : si la réponse « alimentation » dit autre chose, on ne
+      // transmet pas une valeur laissée dans un champ masqué.
+      const carburantPose = alim === undefined || alim === null || alim === 'butane' || alim === 'diesel';
+      if (carburantPose) {
+        if (alim === null || alim === 'butane') {
+          const bouteilles = cleanPositiveNumber(raw.butane_bouteilles_jour, 1_000);
+          if (bouteilles != null) out.butane_bouteilles_jour = bouteilles;
+        }
+        const prix = cleanPositiveNumber(raw.carburant_prix_unitaire_mad, 99_999);
+        if (prix != null) out.carburant_prix_unitaire_mad = prix;
+        const depense = cleanPositiveNumber(raw.depense_carburant_mad_mois, 10_000_000);
+        if (depense != null) out.depense_carburant_mad_mois = depense;
+      }
+      const mois = cleanMoisIrrigation(raw.mois_irrigation);
+      if (mois) out.mois_irrigation = mois;
+      const compteur = cleanOuiNon(raw.compteur_eau);
+      if (compteur !== undefined) out.compteur_eau = compteur;
       break;
     }
     case 'occupation': {
@@ -503,6 +575,11 @@ const SECTION_COLONNES_ECRITES: Partial<Record<QuestionnaireSectionId, readonly 
   energie: ['facture_hiver', 'facture_ete', 'ete_differente', 'conso_mensuelle_kwh', 'raccordement'],
   toiture: ['type_toiture', 'surface_toiture_m2', 'roof_age', 'ownership'],
   occupation: ['occupation_jour'],
+  pompage: [
+    'source_eau', 'niveau_statique_m', 'besoin_eau_m3j', 'surface_irriguee_ha', 'culture',
+    'irrigation_methode', 'pompe_alim_actuelle', 'butane_bouteilles_jour',
+    'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois', 'mois_irrigation', 'compteur_eau',
+  ],
   equipements: [
     'equip_piscine', 'equip_piscine_pompe_kw', 'equip_voiture_electrique', 'equip_ve_km_semaine',
     'equip_clim', 'equip_clim_pieces', 'equip_chauffe_eau_electrique',
