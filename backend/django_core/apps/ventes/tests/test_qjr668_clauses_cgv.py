@@ -364,12 +364,19 @@ class UneSeuleFonctionDeRemplissageTests(TestCase):
         return noms
 
     def test_conditions_publiques_sans_format_local(self):
-        arbre, fonction = self._fonction(
-            self.VENTES / 'public_views.py', '_conditions_publiques')
+        # SPL241 — ``public_views.py`` est découpé en ``public/*.py`` : la
+        # fonction est cherchée dans le GROUPE (jamais vide).
+        from apps.ventes.tests.split_golden import (
+            fichiers_du_groupe, source_du_symbole)
+        groupe = fichiers_du_groupe('public_views.py', 'public/*.py')
+        fonction = ast.parse(
+            source_du_symbole('_conditions_publiques', groupe)).body[0]
         appels = self._appels(fonction)
         self.assertNotIn('format', appels)
         self.assertIn('cgv_bullets_remplies', appels)
-        definies = {n.name for n in ast.walk(arbre)
+        definies = {n.name for chemin in groupe
+                    for n in ast.walk(ast.parse(
+                        chemin.read_text(encoding='utf-8')))
                     if isinstance(n, ast.FunctionDef)}
         self.assertNotIn('_pct_lisible', definies)
 

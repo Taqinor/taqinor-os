@@ -12,11 +12,31 @@
  * (HMT × débit → kW pompe, formule AMEE) que l'ERP obtient, lui, des courbes
  * constructeur réelles (debitAtHmt/selectPompeByCurve) — l'ERP reste la source
  * autoritaire au moment du devis chiffré.
+ *
+ * AGW409 — les constantes HYDRAULIQUES (énergie hydraulique, CV → kW, rendement
+ * groupe) ne sont PLUS écrites ici : elles sont LUES dans le jumeau de la table
+ * d'hypothèses du noyau (`src/contract_samples/hypotheses_pompage.json`, JSON-égal
+ * à `apps/ventes/contract_samples/hypotheses_pompage.json`, export de
+ * `core/pompage/hypotheses.py` — contrôle (a) de scripts/check_api_shapes.py).
+ * Aucun bassin ici : pas de multiplicateur de stockage côté site. Chaque chiffre
+ * affiché est une ESTIMATION (le rendement groupe est une hypothèse « EST. »).
  */
+import hypothesesPompage from '../contract_samples/hypotheses_pompage.json';
 
-// ── Constantes MIROIR de frontend/src/features/ventes/solar.js ──────────────
-/** 1 CV = 0.7355 kW — miroir solar.js CV_TO_KW. */
-export const CV_TO_KW = 0.7355;
+/** Valeur numérique d'une hypothèse de la table unique — échoue fort si absente. */
+function hypothese(cle: string): number {
+  const h = (hypothesesPompage.exemple.hypotheses as Array<{ cle: string; valeur: unknown }>).find(
+    (x) => x.cle === cle,
+  );
+  if (!h || typeof h.valeur !== 'number' || !Number.isFinite(h.valeur) || h.valeur <= 0) {
+    throw new Error(`hypotheses_pompage.json : hypothèse numérique « ${cle} » introuvable`);
+  }
+  return h.valeur;
+}
+
+// ── Constantes lues dans la table d'hypothèses (jamais recopiées) ───────────
+/** 1 CV = 0,7355 kW — table : `cv_vers_kw` (miroir solar.js CV_TO_KW). */
+export const CV_TO_KW = hypothese('cv_vers_kw');
 /** Heures de pompage effectives/jour — miroir solar.js HEURES_POMPAGE_DEFAUT. */
 export const HEURES_POMPAGE_DEFAUT = 7;
 /** Champ PV ≈ 1.4 × puissance pompe (marché 1.3–1.5×) — miroir champFromKw. */
@@ -24,18 +44,19 @@ export const PV_FACTOR = 1.4;
 /** Puissance panneau de référence (W) — miroir solar.js (panneau 710 W). */
 export const PANEL_W = 710;
 
-// ── Hypothèses PROPRES à ce module (documentées) ──────────────────────────────
+// ── Conventions de dimensionnement PROPRES au site (non hydrauliques, documentées) ──
 /**
- * Puissance hydraulique : P(kW) = débit(m³/h) × HMT(m) × 2.725 / 1000.
- * 2.725 = ρ·g/3600 (1000 kg/m³ × 9.81 m/s² / 3600 s) — formule standard
- * du dimensionnement pompage (guides AMEE/pompage solaire).
+ * Puissance hydraulique : P(kW) = débit(m³/h) × HMT(m) × coeff / 1000, avec
+ * coeff = ρ·g/3600 — table : `energie_hydraulique_wh_par_m3_m`.
  */
-export const HYDRAULIC_COEFF = 2.725;
+export const HYDRAULIC_COEFF = hypothese('energie_hydraulique_wh_par_m3_m');
 /**
- * Rendement global groupe motopompe (hypothèses prudentes usuelles) :
- * immergée ≈ 0.55, surface ≈ 0.50. Défaut : immergée (cas forage majoritaire).
+ * Rendement global groupe motopompe — table : `rendement_groupe` (statut
+ * « EST. »). Une seule valeur pour immergée et surface : la table ne distingue
+ * pas, et le site n'invente pas de différence.
  */
-export const PUMP_EFF = { immergee: 0.55, surface: 0.5 } as const;
+export const RENDEMENT_GROUPE = hypothese('rendement_groupe');
+export const PUMP_EFF = { immergee: RENDEMENT_GROUPE, surface: RENDEMENT_GROUPE } as const;
 /** Paliers CV commerciaux des pompes du marché (catalogue usuel). */
 export const CV_STEPS = [0.5, 1, 1.5, 2, 3, 4, 5.5, 7.5, 10, 12.5, 15, 20, 25, 30] as const;
 /** Hauteur de refoulement par défaut quand seul le puits est connu (m). */
@@ -47,12 +68,9 @@ export const HMT_MIN_M = 3;
 export const HMT_MAX_M = 400;
 export const DEBIT_MIN_M3H = 0.3;
 export const DEBIT_MAX_M3H = 120;
-/**
- * Économie sur le gasoil remplacé : bande 75–90 % de la dépense actuelle
- * (le solaire couvre l'essentiel du pompage diurne ; on ne promet jamais 100 %).
- */
-export const FUEL_SAVING_LOW = 0.75;
-export const FUEL_SAVING_HIGH = 0.9;
+// AGW404 — la bande « économie carburant » 75-90 % (FUEL_SAVING_LOW/HIGH) est
+// SUPPRIMÉE : aucune source, et une dépense « par mois » × 12 × pourcentage
+// n'est pas une économie. L'économie agricole est calculée dans le devis.
 
 export interface AgriInputs {
   hmtM?: number | null;
@@ -62,6 +80,7 @@ export interface AgriInputs {
   besoinM3j?: number | null;
   heuresPompage?: number | null;
   pompeType?: 'immergee' | 'surface' | null;
+  /** Dépense carburant DÉCLARÉE (MAD/mois) : validée mais jamais transformée en économie (AGW404). */
   fuelSpendMadMonth?: number | null;
 }
 
@@ -76,8 +95,6 @@ export interface AgriEstimate {
   nbPanneaux: number;
   m3Jour: number;
   heures: number;
-  fuelSavingMadYearLow?: number;
-  fuelSavingMadYearHigh?: number;
   hypotheses: { pumpEff: number; pvFactor: number };
 }
 
@@ -166,7 +183,7 @@ export function estimateAgricole(inputs: AgriInputs): AgriEstimateResult {
   // m³/jour = débit × heures — même règle que l'ERP (calculé UNE fois ici).
   const m3Jour = Math.round(debit * heures);
 
-  const base: AgriEstimate = {
+  return {
     ok: true,
     hmtM: round1(hmt),
     hmtEstimated,
@@ -179,12 +196,4 @@ export function estimateAgricole(inputs: AgriInputs): AgriEstimateResult {
     heures,
     hypotheses: { pumpEff: eff, pvFactor: PV_FACTOR },
   };
-
-  // Gasoil remplacé (facultatif) : bande annuelle 75–90 % de la dépense déclarée.
-  if (pos(fuelSpendMadMonth)) {
-    base.fuelSavingMadYearLow = Math.round(fuelSpendMadMonth * 12 * FUEL_SAVING_LOW);
-    base.fuelSavingMadYearHigh = Math.round(fuelSpendMadMonth * 12 * FUEL_SAVING_HIGH);
-  }
-
-  return base;
 }

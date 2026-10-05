@@ -2,7 +2,7 @@
 une facture **TOTALE** avec le barème COMPLET, jamais avec le modèle
 énergie-seule.
 
-CE QUE LE ROUGE PROUVAIT. ``public_views._monthly_consumption`` lit les
+CE QUE LE ROUGE PROUVAIT. ``payload_economie._monthly_consumption`` lit les
 factures du lead (``facture_hiver`` / ``facture_ete``), c'est-à-dire ce que le
 client a saisi dans « Votre facture d'électricité mensuelle (MAD) » : le TOTAL
 de son papier — location de compteur, entretien de branchement et TPPAN
@@ -29,7 +29,7 @@ from unittest import mock
 
 from django.test import SimpleTestCase
 
-from apps.ventes import public_views
+from apps.ventes.public import payload_economie
 from apps.ventes.quote_engine import bareme
 
 
@@ -45,7 +45,7 @@ class InversionFactureTotaleTests(SimpleTestCase):
     def _serie(self, bills):
         with mock.patch(
                 'apps.crm.selectors.lead_bills_for_devis', return_value=bills):
-            return public_views._monthly_consumption(object())
+            return payload_economie._monthly_consumption(object())
 
     def test_facture_totale_rend_les_kwh_du_bareme_complet(self):
         """ROUGE avant QJR405 : la série valait l'inversion énergie-seule.
@@ -122,7 +122,7 @@ class M10EstimationMasqueLeGrapheTests(SimpleTestCase):
     def _serie(self, bills):
         with mock.patch(
                 'apps.crm.selectors.lead_bills_for_devis', return_value=bills):
-            return public_views._monthly_consumption(object())
+            return payload_economie._monthly_consumption(object())
 
     def test_sans_distributeur_la_serie_reste_vide(self):
         total = bareme.facture_mad(359.0)['total_mad']

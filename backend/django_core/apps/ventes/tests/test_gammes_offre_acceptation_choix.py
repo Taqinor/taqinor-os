@@ -15,7 +15,7 @@ from unittest import mock
 from rest_framework.test import APIClient
 
 from apps.ventes.models import ShareLink
-from apps.ventes.public_views import _gammes_public
+from apps.ventes.public.payload_variantes import _gammes_public
 from apps.ventes.services import gamme_soeur
 from apps.ventes.tests._gammes_offre_common import GammeBase, url_accept
 

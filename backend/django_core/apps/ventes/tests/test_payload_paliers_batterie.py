@@ -22,7 +22,7 @@ from rest_framework.test import APIClient
 from apps.crm.models import Client, Lead
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis, ShareLink
-from apps.ventes.public_views import _echelle_paliers_batterie_publique
+from apps.ventes.public.payload_batterie import _echelle_paliers_batterie_publique
 
 User = get_user_model()
 

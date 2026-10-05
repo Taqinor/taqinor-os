@@ -1,0 +1,212 @@
+# -*- coding: utf-8 -*-
+"""SPL130 — golden de ``DevisViewSet`` capturé AVANT la découpe de
+``views/devis.py`` (piste SPL134-SPL142, déplacements purs).
+
+Ce que le golden fige (``fixtures/golden_devis_viewset.json``, capturé sur le
+code du 04/10/2026, avant tout déplacement) :
+
+* ``routes`` — chaque route de ``DevisViewSet.get_extra_actions()`` (nom,
+  ``url_path``, ``url_name``, ``detail``, méthodes triées) : 53 ``@action`` de
+  la classe + ``economie`` greffée par ``views/economie.py`` = 54 ;
+* ``noms_publics`` — ``sorted(n for n in dir(DevisViewSet)
+  if not n.startswith('__'))`` : un mixin oublié dans les bases ou un nom
+  renommé en route rougit ;
+* ``corps`` — sha256 de ``ast.dump`` de CHAQUE symbole que SPL134-SPL142
+  déplacent (``GROUPES``), retrouvé PAR NOM dans ``views/devis*.py`` (classe
+  ``DevisViewSet``, toute classe ``Devis*ActionsMixin`` ou niveau module) :
+  l'empreinte ne dépend pas de l'emplacement, un corps modifié rougit.
+
+``PLACE`` (vide ici) est rempli par chaque déplacement : ``groupe → fichier
+de views/`` attendu. Tant qu'un groupe déclaré dans ``PLACE`` vit encore dans
+``views/devis.py``, le test d'emplacement est ROUGE ; un symbole présent deux
+fois (jumeau) l'est aussi. Le gel action × rôle vit déjà dans
+``test_devis_matrice_permissions.py`` : il n'est pas dupliqué ici.
+
+Le golden ne se régénère JAMAIS pour faire passer un déplacement : un golden
+rouge est un bug du déplacement (NE PAS FAIRE du plan transverse).
+
+Run :
+    powershell -File scripts/test-backend.ps1 -RestoreDb \
+        -Modules "apps.ventes.tests.test_golden_devis_viewset"
+"""
+import ast
+import hashlib
+import inspect
+import json
+import re
+from pathlib import Path
+
+from django.test import SimpleTestCase
+
+VUES = Path(__file__).resolve().parent.parent / 'views'
+FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
+    'golden_devis_viewset.json'
+
+NB_ROUTES = 54
+MIXIN = re.compile(r'^Devis\w*ActionsMixin$')
+
+#: Les symboles que chaque tâche de la piste déplace (texte des tâches
+#: SPL134-SPL142, se repérer par NOM).
+GROUPES = {
+    # SPL134 → views/devis_gardes.py
+    'gardes': ['_refus_modifiabilite', '_reponse_non_modifiable',
+               '_refus_verrou'],
+    # SPL135 → views/devis_edition.py
+    'edition': ['_garde_kwh_declare', '_valider_etude_ecran',
+                '_gardes_mise_a_jour', '_DevisModifie', 'atomic',
+                'replace_lines', 'perform_update'],
+    # SPL136 → views/devis_cycle.py
+    'cycle': ['_LotCreationSerializer', 'save_preset', '_reponse_derive',
+              '_refus_derive_fige', 'reappliquer_lead', 'acquitter_derive',
+              'dupliquer_variante', 'dupliquer_variante_gamme', 'variantes',
+              'dupliquer', 'approuver_remise', 'reviser',
+              'historique_configuration', 'lots', 'renouveler', 'accepter',
+              'refuser', 'historique', 'noter'],
+    # SPL137 → views/devis_etudes.py
+    'etudes': ['_jeton', '_offres_tailles_reponse', '_overrides_reponse',
+               'overrides', '_rafraichir_etudes_apres_surcharge',
+               'etude_params', 'offres_tailles', 'offres_tailles_config',
+               'offres_tailles_regenerer', 'offres_tailles_appliquer'],
+    # SPL138 → views/devis_envoi.py
+    'envoi': ['_gamme_envoi_payload', '_appliquer_gamme_envoi',
+              '_RemiseEnvoiRefusee', '_exiger_remise_envoi', 'share_link',
+              'envoyer_email', 'lecture_client', 'whatsapp_preview',
+              'whatsapp', 'pdf_partage', 'contacter_superieur',
+              'superior_contact_status'],
+    # SPL139 → views/devis_pdf.py
+    'pdf': ['generer_pdf', 'etat_pdf', 'proposal', 'telecharger_pdf'],
+    # SPL140 → views/devis_calepinage.py
+    'calepinage': ['_emettre_layout_finalise', 'from_layout',
+                   'design_context', 'sync_layout', 'conception_electrique',
+                   'simuler', 'simulation_status', 'ajouter_boq_electrique',
+                   'layout', 'roof_image'],
+    # SPL141 → views/devis_facturation.py
+    'facturation': ['convertir_en_bc', 'generer_facture', 'proforma_pdf'],
+    # SPL142 → views/devis_cadence.py
+    'cadence': ['action_requise'],
+}
+
+#: groupe → fichier de ``views/`` où il DOIT vivre ; rempli par chaque
+#: déplacement (ex. SPL134 : ``PLACE['gardes'] = 'devis_gardes.py'``).
+PLACE = {}
+
+DEFAUT = 'devis.py'
+
+
+def _fichiers_vues_devis():
+    return [VUES / 'devis.py'] + sorted(VUES.glob('devis_*.py'))
+
+
+def _symboles():
+    """{nom: [(fichier, noeud)]} des symboles de ``views/devis*.py`` : niveau
+    module + corps de ``DevisViewSet`` et de toute ``Devis*ActionsMixin``."""
+    trouves = {}
+    for chemin in _fichiers_vues_devis():
+        arbre = ast.parse(chemin.read_text(encoding='utf-8'))
+        for noeud in arbre.body:
+            if isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                  ast.ClassDef)):
+                trouves.setdefault(noeud.name, []).append((chemin.name, noeud))
+            if isinstance(noeud, ast.ClassDef) and (
+                    noeud.name == 'DevisViewSet' or MIXIN.match(noeud.name)):
+                for membre in noeud.body:
+                    if isinstance(membre, (ast.FunctionDef,
+                                           ast.AsyncFunctionDef,
+                                           ast.ClassDef)):
+                        trouves.setdefault(membre.name, []).append(
+                            (chemin.name, membre))
+    return trouves
+
+
+def _empreinte(noeud):
+    return hashlib.sha256(ast.dump(noeud).encode('utf-8')).hexdigest()
+
+
+def capturer_routes():
+    from apps.ventes.views.devis import DevisViewSet
+    routes = [{
+        'nom': fn.__name__,
+        'url_path': fn.url_path,
+        'url_name': fn.url_name,
+        'detail': fn.detail,
+        'methodes': sorted(fn.mapping),
+    } for fn in DevisViewSet.get_extra_actions()]
+    return sorted(routes, key=lambda r: r['nom'])
+
+
+#: Posés sur la CLASSE par ``ViewSetMixin.as_view()`` dès que l'URLconf est
+#: chargée (DRF) : leur présence dépend de l'ordre des tests, pas du code.
+POSES_PAR_AS_VIEW = {'basename', 'description', 'detail', 'name', 'suffix'}
+
+
+def capturer_noms_publics():
+    from apps.ventes.views.devis import DevisViewSet
+    return sorted(n for n in dir(DevisViewSet)
+                  if not n.startswith('__') and n not in POSES_PAR_AS_VIEW)
+
+
+def capturer_corps():
+    trouves = _symboles()
+    corps = {}
+    for noms in GROUPES.values():
+        for nom in noms:
+            (_fichier, noeud), = trouves[nom]
+            corps[nom] = _empreinte(noeud)
+    return dict(sorted(corps.items()))
+
+
+def _golden():
+    return json.loads(FIXTURE.read_text(encoding='utf-8'))
+
+
+class GoldenDevisViewSet(SimpleTestCase):
+
+    def test_routes_identiques(self):
+        routes = capturer_routes()
+        self.assertEqual(len(routes), NB_ROUTES)
+        self.assertEqual(routes, _golden()['routes'])
+
+    def test_noms_publics_identiques(self):
+        self.assertEqual(capturer_noms_publics(), _golden()['noms_publics'])
+
+    def test_corps_non_vides_et_couvrent_les_groupes(self):
+        corps = _golden()['corps']
+        attendus = {n for noms in GROUPES.values() for n in noms}
+        self.assertGreaterEqual(len(corps), 60)
+        self.assertEqual(set(corps), attendus)
+
+    def test_empreintes_des_corps_identiques(self):
+        trouves = _symboles()
+        golden = _golden()['corps']
+        for nom, empreinte in golden.items():
+            with self.subTest(symbole=nom):
+                occurrences = trouves.get(nom, [])
+                self.assertEqual(len(occurrences), 1,
+                                 '%s : %d définition(s) dans views/devis*.py'
+                                 % (nom, len(occurrences)))
+                self.assertEqual(_empreinte(occurrences[0][1]), empreinte)
+
+    def test_chaque_groupe_vit_a_sa_place(self):
+        from apps.ventes.views.devis import DevisViewSet
+        trouves = _symboles()
+        for groupe, noms in GROUPES.items():
+            attendu = PLACE.get(groupe, DEFAUT)
+            for nom in noms:
+                with self.subTest(groupe=groupe, symbole=nom):
+                    occurrences = trouves.get(nom, [])
+                    self.assertEqual(
+                        [f for f, _n in occurrences], [attendu],
+                        'aucun jumeau : %s doit vivre UNE fois, dans '
+                        'views/%s' % (nom, attendu))
+                    membre = None
+                    for base in DevisViewSet.__mro__:
+                        if nom in base.__dict__:
+                            membre = base.__dict__[nom]
+                            break
+                    if membre is None:
+                        continue  # niveau module : l'AST fait foi
+                    fn = inspect.unwrap(getattr(membre, '__func__', membre))
+                    if not callable(fn) or isinstance(fn, type):
+                        continue
+                    self.assertEqual(Path(inspect.getsourcefile(fn)).name,
+                                     attendu)
