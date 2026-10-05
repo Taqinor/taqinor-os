@@ -197,6 +197,12 @@ def valider_document(document):
         raise ImportLayoutRefuse(
             'Le document importé doit être un objet '
             f'(reçu : {type(document).__name__}).', champ='roof_layout')
+    # ACAL86 — un ``battery`` BOOLÉEN historique est normalisé À LA LECTURE
+    # (le lecteur unique ventes ``battery_du_document``) : on valide une
+    # COPIE superficielle, le document de l'appelant n'est jamais modifié.
+    if isinstance(document.get('battery'), bool):
+        from apps.ventes.services import battery_du_document
+        document = dict(document, battery=battery_du_document(document))
     _refuser_parcelle_trop_courte(document)
     try:
         jsonschema.validate(document, _schema())

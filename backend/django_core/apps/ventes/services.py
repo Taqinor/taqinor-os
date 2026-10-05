@@ -225,6 +225,7 @@ orientation_du_pan = _geometrie.orientation_du_pan
 layout_hash = _geometrie.layout_hash
 poser_layout_hash = _geometrie.poser_layout_hash
 validate_composition_for_layout = _geometrie.validate_composition_for_layout
+battery_du_document = _geometrie.battery_du_document
 DRAPEAU_MOTEUR_CALEPINAGE = _geometrie.DRAPEAU_MOTEUR_CALEPINAGE
 TOLERANCE_ARBITRAGE_MODULES = _geometrie.TOLERANCE_ARBITRAGE_MODULES
 TOLERANCE_ARBITRAGE_PCT = _geometrie.TOLERANCE_ARBITRAGE_PCT
@@ -534,6 +535,7 @@ __all__ = [
     'avertissement_batterie_plafond_banc',
     'avertissement_batterie_rupture_stock',
     'avertissement_vivier_batterie_vide',
+    'battery_du_document',
     'bcf_share_url',
     'build_devis_auto',
     'build_devis_depuis_calepinage_retenu',

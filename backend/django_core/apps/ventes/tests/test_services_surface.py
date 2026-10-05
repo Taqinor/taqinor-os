@@ -126,6 +126,7 @@ SURFACE_PUBLIQUE = (
     "avertissement_batterie_plafond_banc",
     "avertissement_batterie_rupture_stock",
     "avertissement_vivier_batterie_vide",
+    "battery_du_document",
     "bcf_share_url",
     "build_devis_auto",
     "build_devis_depuis_calepinage_retenu",

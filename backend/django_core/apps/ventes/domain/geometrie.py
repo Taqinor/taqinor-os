@@ -325,6 +325,28 @@ def layout_hash(layout):
     return hashlib.sha256(blob.encode()).hexdigest()
 
 
+def battery_du_document(layout):
+    """ACAL86 (C-ACAL-100) — LE lecteur de ``battery`` d'un document de pose,
+    au format du contrat ``roof_layout_v2`` : objet NON VIDE ou ``None``.
+
+    Les documents HISTORIQUES stockés avec un booléen sont normalisés À LA
+    LECTURE (défaut gravé : aucune migration, aucun document réécrit) :
+    ``True`` → ``{'declaree': True}`` (une batterie déclarée, capacité
+    inconnue — aucune valeur de kWh n'est inventée), ``False``/absent/vide →
+    ``None``, objet non vide → une COPIE de l'objet. ``layout_hash`` n'est pas
+    concerné : il lit ``bool(battery)``, identique avant et après."""
+    import copy as _copy
+
+    if not isinstance(layout, dict):
+        return None
+    valeur = layout.get('battery')
+    if isinstance(valeur, bool):
+        return {'declaree': True} if valeur else None
+    if isinstance(valeur, dict) and valeur:
+        return _copy.deepcopy(valeur)
+    return None
+
+
 def poser_layout_hash(devis, empreinte):
     """CAL24 — pose l'empreinte du calepinage sur un devis, et RIEN d'autre.
 
