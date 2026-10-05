@@ -83,8 +83,8 @@ from ..rapport import valeur_au_chemin  # noqa: E402 — après la section CALX2
 MANQUE_ROOF_LAYOUT = {
     'champ': 'roof_layout',
     'libelle': 'Conception enregistrée (toiture et modules)',
-    'ou_saisir': "Dessiner et enregistrer une conception sur l'onglet "
-                 "Toiture.",
+    'ou_saisir': "Dessiner et enregistrer une conception dans l'atelier 3D.",
+    'onglet': None,
 }
 
 #: Le champ manquant quand la conception existe mais qu'AUCUN résultat n'a
@@ -93,8 +93,9 @@ MANQUE_ROOF_LAYOUT = {
 MANQUE_RESULTAT = {
     'champ': 'resultat',
     'libelle': 'Résultat de calcul enregistré (simulation)',
-    'ou_saisir': 'Lancez le calcul de simulation avant d’imprimer ce '
-                 'document.',
+    'ou_saisir': "Lancer la simulation dans l'onglet Production avant "
+                 "d'imprimer ce document.",
+    'onglet': 'production',
 }
 
 #: Motif commun aux deux manques ci-dessus — MOT POUR MOT l'exemple committé.
@@ -111,8 +112,9 @@ _MANQUE_CHAMPS_CONNUS = {
     'temperatures': {
         'champ': 'temperatures',
         'libelle': 'Températures de site lisibles',
-        'ou_saisir': "Vérifiez les températures sur l'onglet Équipements "
+        'ou_saisir': "Vérifier les températures dans l'onglet Équipements "
                      'électriques.',
+        'onglet': 'equipements-electriques',
     },
 }
 
@@ -120,8 +122,9 @@ _MANQUE_CHAMPS_CONNUS = {
 MANQUE_SOLAR_ACCESS = {
     'champ': 'roof_layout.zones[].geometry.solarAccess.values',
     'libelle': 'Accès solaire par module (matrice d’ombrage)',
-    'ou_saisir': "Calculer l'ombrage sur l'onglet Toiture avant d'imprimer "
-                 'ce rapport.',
+    'ou_saisir': "Calculer l'ombrage dans l'atelier 3D avant d'imprimer ce "
+                 'rapport.',
+    'onglet': None,
 }
 MOTIF_SANS_OMBRAGE = (
     "Aucun accès solaire par module mesuré : le rapport d'ombrage ne se "
@@ -131,7 +134,10 @@ MOTIF_SANS_OMBRAGE = (
 MANQUE_CHAINAGE = {
     'champ': 'electrique.chainage',
     'libelle': 'Schéma unifilaire (chaînage électrique)',
-    'ou_saisir': "Chaîner l'électrique sur l'onglet Électrique.",
+    'ou_saisir': "Désigner le module et l'onduleur dans l'onglet Équipements "
+                 "électriques, puis chaîner dans l'onglet Affectation des "
+                 "chaînes.",
+    'onglet': 'affectation',
 }
 #: ACAL219 - le rendu du plan de cablage ne lit que ``electrique.affectation``
 #: (jamais ``troncons``) : seul le chainage conditionne sa disponibilite.
@@ -139,47 +145,36 @@ MOTIF_SANS_CHAINAGE = (
     "Aucun chaînage électrique calculé : le plan de câblage dessine les "
     "chaînes affectées, et aucune n'existe encore.")
 
-#: ``document_asbuilt`` / ``dossier_fin_chantier`` / ``diagramme_pertes`` —
-#: MOT POUR MOT l'exemple committé.
-MANQUE_IMAGES_ASBUILT = {
-    'champ': 'images',
-    'libelle': 'Preuve terrain (photo déposée depuis le chantier)',
-    'ou_saisir': "Déposer au moins une photo depuis l'onglet Documents.",
-}
-MOTIF_SANS_ASBUILT = (
-    "Aucune preuve terrain déposée : le document as-built compare "
-    "l'implantation posée à la conception, et rien ne l'atteste encore.")
-
-MANQUE_IMAGES_DOSSIER = {
-    'champ': 'images',
-    'libelle': 'Preuves terrain (photos)',
-    'ou_saisir': "Déposer au moins une photo de fin de chantier depuis "
-                 "l'onglet Documents.",
-}
-MOTIF_SANS_DOSSIER = (
-    "Aucune preuve terrain déposée : le dossier de fin de chantier "
-    "fusionne les pièces techniques et les preuves terrain, et la seconde "
-    "manque encore.")
-
-MANQUE_IMAGES_DIAGRAMME = {
-    'champ': 'images',
-    'libelle': 'Diagramme de pertes (image déposée par le navigateur)',
-    'ou_saisir': "Ouvrir le panneau Pertes et déposer l'image du "
-                 "diagramme.",
-}
+#: ``diagramme_pertes`` (CALX308) — rendu CÔTÉ SERVEUR depuis la cascade du
+#: résultat SERVI : sans cascade, il se dit indisponible en la nommant.
 MOTIF_SANS_DIAGRAMME = (
     "Aucune cascade de pertes calculée : le diagramme est rendu par le "
     "serveur depuis le résultat de simulation, et il n'existe pas encore.")
-
-#: CALX308 — le vrai manque du diagramme : la cascade du résultat.
 MANQUE_CASCADE_DIAGRAMME = {
     'champ': 'cascade',
     'libelle': 'Cascade de pertes du résultat de simulation',
-    'ou_saisir': "Lancer la simulation depuis l'onglet Production.",
+    'ou_saisir': "Lancer la simulation dans l'onglet Production.",
+    'onglet': 'production',
+}
+
+#: ``dossier_fin_chantier`` (ACAL220) — disponible dès qu'UNE pièce
+#: fusionnable existe (plan de pose, as-built, plan de câblage, manuel).
+MOTIF_SANS_PIECE_DOSSIER = (
+    "Aucune pièce à fusionner : le dossier de fin de chantier assemble le "
+    "plan de pose, le document as-built, le plan de câblage et le manuel, "
+    "et aucune n'est disponible.")
+MANQUE_PIECES_DOSSIER = {
+    'champ': 'pieces',
+    'libelle': 'Au moins une pièce fusionnable (plan de pose, as-built, '
+               'plan de câblage, manuel)',
+    'ou_saisir': "Enregistrer une conception dans l'atelier 3D, puis "
+                 "ouvrir l'onglet Documents.",
+    'onglet': 'documents',
 }
 
 #: ``code -> (libellé, format, chemin sous le calepinage, produit_par)`` —
-#: l'ORDRE et les LIBELLÉS sont ceux du contrat committé.
+#: l'ORDRE et les LIBELLÉS sont ceux du contrat committé (ACAL220 : le
+#: diagramme est un SVG rendu par le serveur ; le dossier se PRODUIT en POST).
 _DEFINITIONS_DOCUMENTS = (
     ('rapport_etude',
      "Rapport d'étude (site, système, pertes, production, électrique)",
@@ -197,14 +192,32 @@ _DEFINITIONS_DOCUMENTS = (
     ('document_asbuilt', "Document as-built (conforme à l'exécution)",
      'pdf', 'document-asbuilt.pdf/', 'serveur'),
     ('dossier_fin_chantier',
-     'Dossier de fin de chantier (pièces fusionnées + preuves terrain)',
-     'pdf', 'dossier-fin-chantier.pdf/', 'serveur'),
-    ('diagramme_pertes',
-     'Diagramme de pertes (cascade, capturé par le navigateur)',
-     'png', 'documents/', 'navigateur'),
+     'Dossier de fin de chantier (pièces techniques fusionnées)',
+     'pdf', 'dossier-fin-chantier/', 'serveur'),
+    ('diagramme_pertes', 'Diagramme de pertes (cascade des pertes)',
+     'svg', 'diagramme-pertes.svg/', 'serveur'),
     ('presentation_compacte', 'Présentation compacte (synthèse une page)',
      'pdf', 'presentation-compacte.pdf/', 'serveur'),
 )
+
+
+#: ACAL220 — la MÉTHODE de chaque document (le dossier de fin de chantier
+#: CRÉE des documents GED : il se déclenche en POST, jamais en GET).
+METHODES = {'dossier_fin_chantier': 'POST'}
+
+#: ACAL220 — les langues RÉELLEMENT acceptées par la route du document
+#: (``?langue=`` lu par ``views/documents.py``) ; toute autre pièce est servie
+#: en français seulement.
+LANGUES_PAR_DOCUMENT = {
+    'rapport_etude': ['fr', 'en'],
+    'rapport_ombrage': ['fr', 'en'],
+    'diagramme_pertes': ['fr', 'en'],
+}
+
+#: ACAL220 — les formats annexes d'un document (même calepinage).
+AUTRES_FORMATS = {
+    'plan_cablage': (('dxf', 'plan-cablage.dxf/'),),
+}
 
 
 def _base_documents(calepinage):
@@ -228,6 +241,7 @@ def _manque_pour_champ(champ):
         'libelle': lisible[:1].upper() + lisible[1:] if lisible else 'Donnée',
         'ou_saisir': 'Corrigez « %s » avant d’imprimer ce document.'
                      % (champ or 'cette donnée'),
+        'onglet': None,
     }
 
 
@@ -278,10 +292,16 @@ def _etat_du_document(code, calepinage, resultat, refus_rapport=None):
             return False, MOTIF_SANS_CHAINAGE, [MANQUE_CHAINAGE]
         return True, None, []
 
+    if code == 'manuel_proprietaire':
+        # ACAL220 - la disponibilite vient de la fonction declaree a cote du
+        # rendu : sans gabarit « manuel » actif, le manuel ne se rend pas.
+        from .manuel_proprietaire import disponibilite
+
+        return disponibilite(calepinage)
     if code == 'document_asbuilt':
-        return False, MOTIF_SANS_ASBUILT, [MANQUE_IMAGES_ASBUILT]
-    if code == 'dossier_fin_chantier':
-        return False, MOTIF_SANS_DOSSIER, [MANQUE_IMAGES_DOSSIER]
+        # ACAL220 - le service ne refuse jamais : conception et resultat
+        # (la base, deja acquise ici) suffisent.
+        return True, None, []
     if code == 'diagramme_pertes':
         # CALX308 (clôture M4) — le diagramme est rendu CÔTÉ SERVEUR depuis
         # ``resultat['cascade']`` (route GET diagramme-pertes.svg/) : sa
@@ -291,9 +311,10 @@ def _etat_du_document(code, calepinage, resultat, refus_rapport=None):
             return True, None, []
         return False, MOTIF_SANS_DIAGRAMME, [MANQUE_CASCADE_DIAGRAMME]
 
-    # export_projet_json / manuel_proprietaire / presentation_compacte : la
-    # BASE (conception+résultat) suffit — aucun service dédié n'existe
-    # encore pour eux, aucun défaut supplémentaire ne peut donc être levé.
+    # export_projet_json / presentation_compacte : la BASE
+    # (conception+résultat) suffit — aucun défaut supplémentaire ne peut être
+    # levé. ``dossier_fin_chantier`` se déduit des autres états (voir
+    # ``inventaire_des_documents``).
     return True, None, []
 
 
@@ -317,7 +338,7 @@ def _images_pour(calepinage):
 
 
 def _entree_document(code, libelle, format_, endpoint, produit_par,
-                     disponible, motif, manque, versions):
+                     disponible, motif, manque, versions, base=''):
     return {
         'code': code,
         'libelle': libelle,
@@ -328,6 +349,13 @@ def _entree_document(code, libelle, format_, endpoint, produit_par,
         'motif_indisponible': None if disponible else motif,
         'manque': [] if disponible else list(manque or ()),
         'versions': list(versions or ()),
+        # ACAL220 — contrat v2 : méthode, langues, aperçu, autres formats.
+        'methode': METHODES.get(code, 'GET'),
+        'langues': list(LANGUES_PAR_DOCUMENT.get(code, ['fr'])),
+        'apercu': code in MISES_EN_PAGE,
+        'autres_formats': [
+            {'format': extension, 'endpoint': base + chemin}
+            for extension, chemin in AUTRES_FORMATS.get(code, ())],
     }
 
 
@@ -349,20 +377,33 @@ def inventaire_des_documents(calepinage):
     resultat, refus_rapport = (_lecture_servie(calepinage) if base_ok
                                else ({}, None))
 
-    documents = []
-    for code, libelle, format_, chemin, produit_par in _DEFINITIONS_DOCUMENTS:
+    etats = {}
+    for code, _l, _f, _c, _p in _DEFINITIONS_DOCUMENTS:
         if not base_ok:
             manque_base = MANQUE_ROOF_LAYOUT if not a_conception \
                 else MANQUE_RESULTAT
-            disponible, motif, manque = (False, MOTIF_SANS_CONCEPTION_DOCUMENT,
-                                         [manque_base])
-        else:
-            disponible, motif, manque = _etat_du_document(
-                code, calepinage, resultat, refus_rapport)
+            etats[code] = (False, MOTIF_SANS_CONCEPTION_DOCUMENT,
+                           [manque_base])
+        elif code != 'dossier_fin_chantier':
+            etats[code] = _etat_du_document(code, calepinage, resultat,
+                                            refus_rapport)
+    if base_ok:
+        # ACAL220 - le dossier de fin de chantier est disponible des qu'une
+        # piece fusionnable existe (plan de pose = la conception ; as-built,
+        # plan de cablage, manuel = leur propre etat).
+        fusionnables = ('document_asbuilt', 'plan_cablage',
+                        'manuel_proprietaire')
+        etats['dossier_fin_chantier'] = (
+            (True, None, []) if any(etats[c][0] for c in fusionnables)
+            else (False, MOTIF_SANS_PIECE_DOSSIER, [MANQUE_PIECES_DOSSIER]))
+
+    documents = []
+    for code, libelle, format_, chemin, produit_par in _DEFINITIONS_DOCUMENTS:
+        disponible, motif, manque = etats[code]
         versions = _versions_pour(calepinage, code) if disponible else []
         documents.append(_entree_document(
             code, libelle, format_, base + chemin, produit_par,
-            disponible, motif, manque, versions))
+            disponible, motif, manque, versions, base=base))
 
     langue = resolution_langue(calepinage)['langue'] if a_conception else None
     return {

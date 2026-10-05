@@ -150,6 +150,10 @@ class InventaireVideTest(SansBaseMixin, unittest.TestCase):
                              attendue['motif_indisponible'])
             self.assertEqual(servie['manque'], attendue['manque'])
             self.assertEqual(servie['versions'], attendue['versions'])
+            # ACAL220 - contrat v2.
+            for cle in ('methode', 'langues', 'apercu', 'autres_formats'):
+                self.assertEqual(servie[cle], attendue[cle],
+                                 '%s.%s' % (servie['code'], cle))
 
     def test_champ_roof_layout_en_premier_jamais_resultat(self):
         """Sans AUCUNE conception, c'est ``roof_layout`` qui est nommé —
@@ -222,21 +226,27 @@ class ChampReellementLeveTest(unittest.TestCase):
         self.assertEqual(champs, {'electrique.chainage'})
 
     def test_les_pieces_sans_service_dedie_restent_disponibles(self):
-        """La BASE (conception+résultat) suffit pour ``export_projet_json``,
-        ``manuel_proprietaire`` et ``presentation_compacte`` : aucune donnée
-        supplémentaire n'est encore exigée pour elles."""
-        for code in ('export_projet_json', 'manuel_proprietaire',
-                     'presentation_compacte'):
+        """La BASE (conception+résultat) suffit pour ``export_projet_json``
+        et ``presentation_compacte`` : aucune donnée supplémentaire."""
+        for code in ('export_projet_json', 'presentation_compacte'):
             self.assertTrue(self.par_code[code]['disponible'], code)
             self.assertEqual(self.par_code[code]['manque'], [])
 
-    def test_les_pieces_a_preuve_terrain_restent_indisponibles(self):
-        """Aucune preuve terrain déposée sur ce fixture : as-built et
-        dossier de fin de chantier attendent leurs images (CALX302)."""
+    def test_asbuilt_et_dossier_disponibles_des_que_la_base_existe(self):
+        """ACAL220 - le service as-built ne refuse jamais ; le dossier de
+        fin de chantier se produit des qu'une piece fusionnable existe.
+        Plus aucune « preuve terrain » n'est exigee (la porte d'images ne
+        conditionne ni l'un ni l'autre)."""
         for code in ('document_asbuilt', 'dossier_fin_chantier'):
-            self.assertFalse(self.par_code[code]['disponible'], code)
-            self.assertEqual(self.par_code[code]['manque'][0]['champ'],
-                             'images')
+            self.assertTrue(self.par_code[code]['disponible'], code)
+            self.assertEqual(self.par_code[code]['manque'], [])
+
+    def test_manuel_indisponible_sans_gabarit_actif(self):
+        """ACAL220 - sans gabarit « manuel » actif (ici : aucune societe),
+        la carte le dit en nommant le champ ``gabarit``."""
+        document = self.par_code['manuel_proprietaire']
+        self.assertFalse(document['disponible'])
+        self.assertEqual(document['manque'][0]['champ'], 'gabarit')
 
     def test_diagramme_de_pertes_suit_la_cascade_du_resultat(self):
         """Clôture M4 — le diagramme est rendu CÔTÉ SERVEUR depuis
