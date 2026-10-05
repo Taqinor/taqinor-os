@@ -841,3 +841,51 @@ describe('AGW405 — bloc FDA du tunnel : aucun pourcentage, aucune promesse', (
     });
   }
 });
+
+// ———————————————————————————————————————————————————————————————————————————
+// CIW400 — `?mode=industriel` et `?mode=commercial` présélectionnent VISIBLEMENT
+// la bonne carte dans les 3 langues, par la lecture d'AGW401 (jamais un second
+// lecteur). On EXÉCUTE le bloc de lecture réel de chaque page.
+// ———————————————————————————————————————————————————————————————————————————
+describe('CIW400 — ?mode=industriel|commercial présélectionnent la carte (lecture AGW401)', () => {
+  /** Exécute le bloc de lecture de ?mode= de la page, avec une URL simulée. */
+  const lireMode = (src: string, search: string): string => {
+    const m = /try \{\s*const wantedMode[\s\S]*?\n  \}(?=\s*catch)/.exec(src);
+    expect(m).not.toBeNull();
+    const fn = new Function('window', `let mode = ''; ${m![0]} catch (e) {} return mode;`);
+    return fn({ location: { search } }) as string;
+  };
+  /** Les `data-mode` des cartes réellement rendues (MODES) dans la page. */
+  const cartes = (src: string): string[] => {
+    const modes = slice(src, 'const MODES = [', '];');
+    return [...modes.matchAll(/id: '([a-z]+)'/g)].map((x) => x[1]);
+  };
+
+  for (const [lang, rel] of LOCALES) {
+    const src = read(rel);
+    it(`${lang} — ?mode=commercial et ?mode=industriel → la carte correspondante (rendue) est choisie`, () => {
+      expect(lireMode(src, '?mode=commercial')).toBe('commercial');
+      expect(lireMode(src, '?mode=industriel')).toBe('industriel');
+      expect(cartes(src)).toEqual(expect.arrayContaining(['commercial', 'industriel']));
+      // la carte active passe par syncModeCards → aria-pressed="true" (visible, modifiable)
+      expect(src).toContain("b.setAttribute('aria-pressed', String(on));");
+    });
+    it(`${lang} — valeur inconnue ou absente : aucun mode (comportement d'aujourd'hui)`, () => {
+      expect(lireMode(src, '?mode=xyz')).toBe('');
+      expect(lireMode(src, '?mode=')).toBe('');
+      expect(lireMode(src, '')).toBe('');
+      expect(lireMode(src, '?bill=3000')).toBe('');
+    });
+    it(`${lang} — la liste fermée de lecture = exactement les cartes rendues ; un seul lecteur`, () => {
+      const liste = /\[('residentiel'[^\]]*)\]\.includes\(wantedMode\)/.exec(stripLineComments(src));
+      expect(liste).not.toBeNull();
+      const ids = [...liste![1].matchAll(/'([a-z]+)'/g)].map((x) => x[1]).sort();
+      expect(ids).toEqual([...cartes(src)].sort());
+      expect(stripLineComments(src).match(/URLSearchParams\(/g)?.length).toBe(1);
+      expect(stripLineComments(src).match(/get\('mode'\)/g)?.length).toBe(1);
+    });
+    it(`${lang} — aucune facture n'est pré-remplie depuis l'URL (?bill= n'est lu par personne)`, () => {
+      expect(stripLineComments(src)).not.toMatch(/get\('bill'\)/);
+    });
+  }
+});
