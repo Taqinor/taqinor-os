@@ -57,7 +57,7 @@ DEPLACEMENTS = {
     'finance': ('split_sd_finance', 'apps/ventes/solar_finance.py', 'SPL260',
                 True),
     'classif': ('split_sd_classif', 'apps/ventes/solar_classification.py',
-                'SPL261', False),
+                'SPL261', True),
 }
 
 #: Symboles de niveau module de chaque région (lus par la capture).

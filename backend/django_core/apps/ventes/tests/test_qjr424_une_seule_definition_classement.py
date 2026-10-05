@@ -29,7 +29,7 @@ from pathlib import Path
 from django.test import SimpleTestCase
 
 from apps.ventes import electrical_service
-from apps.ventes import solar_design as sd
+from apps.ventes import solar_classification as sd
 from apps.ventes.quote_engine.residential import theme
 from apps.ventes.tests import split_golden
 from apps.ventes.utils.options import texte_classement

@@ -32,9 +32,9 @@ import re
 import unicodedata
 
 # QJR78 — LA table de classification produit du backend (voir plus bas).
-# ``solar_design`` est du stdlib pur : cet import ne tire ni Django, ni
-# modèle, ni I/O, et ne peut donc pas boucler.
-from apps.ventes import solar_design as _sd
+# ``solar_classification`` (SPL261) est du stdlib pur : cet import ne tire
+# ni Django, ni modèle, ni I/O, et ne peut donc pas boucler.
+from apps.ventes import solar_classification as _sc
 from core.product_roles import est_panneau as _est_panneau
 
 
@@ -182,8 +182,8 @@ def ordre_lignes_societe(company):
 # expression que celle de ``solar_design``.
 _WATT_RE = re.compile(r"(\d{3,4})\s*(?:wc|w)\b", re.IGNORECASE)
 
-_is_panel = _sd.is_panel
-_is_battery = _sd.is_battery
+_is_panel = _sc.is_panel
+_is_battery = _sc.is_battery
 
 
 # ── PVCBL — les CÂBLES suivent la taille du calepinage (F8, fondateur
@@ -466,10 +466,10 @@ def _filtrer_onduleurs_complets(candidats):
 
 
 # QJR78 — même table unique que ci-dessus (``solar_design``).
-_is_hybrid_inverter = _sd.is_hybrid_inverter
-_is_reseau_inverter = _sd.is_reseau_inverter
+_is_hybrid_inverter = _sc.is_hybrid_inverter
+_is_reseau_inverter = _sc.is_reseau_inverter
 # QJR-OFFGRID — la TROISIÈME famille d'onduleur (autonome / site isolé).
-_is_offgrid_inverter = _sd.is_offgrid_inverter
+_is_offgrid_inverter = _sc.is_offgrid_inverter
 
 
 def _has_price(produit) -> bool:
@@ -767,7 +767,7 @@ def classer_produit(nom):
     # « Off-Grid » anglais n'était classé nulle part (donc jamais composable).
     # Le prédicat est celui de la table unique ``solar_design`` — il tolère les
     # deux orthographes, accentuée et non.
-    if _sd.is_offgrid_inverter(nom or ''):
+    if _sc.is_offgrid_inverter(nom or ''):
         return 'onduleur_offgrid'
     if 'onduleur' in n and ('reseau' in n or 'injection' in n):
         return 'onduleur_reseau'

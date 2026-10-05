@@ -18,6 +18,7 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase
 
+from apps.ventes import solar_classification as sc
 from apps.ventes import solar_design as sd
 from apps.ventes import solar_finance as sf
 
@@ -220,12 +221,12 @@ class MatchInverterTest(TestCase):
         for nom in ["Onduleur réseau Huawei 5kW", "Onduleur injection 6kW",
                     "Onduleur hybride Deye 8kW", "Batterie 5 kWh",
                     "Panneau 550W", "Câble solaire"]:
-            self.assertEqual(sd.is_reseau_inverter(nom),
+            self.assertEqual(sc.is_reseau_inverter(nom),
                              b._is_reseau_inverter(nom), nom)
-            self.assertEqual(sd.is_hybrid_inverter(nom),
+            self.assertEqual(sc.is_hybrid_inverter(nom),
                              b._is_hybrid_inverter(nom), nom)
-            self.assertEqual(sd.is_battery(nom), b._is_battery(nom), nom)
-            self.assertEqual(sd.is_panel(nom), b._is_panel(nom), nom)
+            self.assertEqual(sc.is_battery(nom), b._is_battery(nom), nom)
+            self.assertEqual(sc.is_panel(nom), b._is_panel(nom), nom)
 
 
 # ── FG249 : optimisation inclinaison/azimut (PVGIS stubbé, aucun réseau) ───────
@@ -2286,7 +2287,7 @@ class TableUniqueDeClassificationTest(SimpleTestCase):
         from apps.ventes.domain import catalogue
         from apps.ventes.quote_engine import builder
         return {
-            'solar_design': sd.is_panel,
+            'solar_classification': sc.is_panel,
             'domain/catalogue (écran, composition)': catalogue._is_panel,
             'quote_engine/builder (PDF)': builder._is_panel,
         }
@@ -2296,7 +2297,7 @@ class TableUniqueDeClassificationTest(SimpleTestCase):
         for nom, fonction in self._lecteurs().items():
             with self.subTest(lecteur=nom):
                 self.assertIs(
-                    fonction, sd.is_panel,
+                    fonction, sc.is_panel,
                     "%s ne pointe plus la table de solar_design : une seconde "
                     "copie a été réintroduite, et c'est exactement ce qui a "
                     "produit l'incident DEV-202608-0024." % nom)
@@ -2325,16 +2326,16 @@ class TableUniqueDeClassificationTest(SimpleTestCase):
         from apps.ventes.domain import catalogue
         from apps.ventes.quote_engine import builder
         for nom, gauche, droite in (
-                ('_is_battery (catalogue)', catalogue._is_battery, sd.is_battery),
-                ('_is_battery (builder)', builder._is_battery, sd.is_battery),
+                ('_is_battery (catalogue)', catalogue._is_battery, sc.is_battery),
+                ('_is_battery (builder)', builder._is_battery, sc.is_battery),
                 ('_is_hybrid_inverter (catalogue)',
-                 catalogue._is_hybrid_inverter, sd.is_hybrid_inverter),
+                 catalogue._is_hybrid_inverter, sc.is_hybrid_inverter),
                 ('_is_hybrid_inverter (builder)',
-                 builder._is_hybrid_inverter, sd.is_hybrid_inverter),
+                 builder._is_hybrid_inverter, sc.is_hybrid_inverter),
                 ('_is_reseau_inverter (catalogue)',
-                 catalogue._is_reseau_inverter, sd.is_reseau_inverter),
+                 catalogue._is_reseau_inverter, sc.is_reseau_inverter),
                 ('_is_reseau_inverter (builder)',
-                 builder._is_reseau_inverter, sd.is_reseau_inverter)):
+                 builder._is_reseau_inverter, sc.is_reseau_inverter)):
             with self.subTest(alias=nom):
                 self.assertIs(gauche, droite,
                               "%s ne pointe plus la table de solar_design." % nom)
@@ -2342,7 +2343,7 @@ class TableUniqueDeClassificationTest(SimpleTestCase):
     def test_la_facade_services_expose_la_meme_table(self):
         """Le quatrième chemin de lecture : le ré-export de `services.py`."""
         from apps.ventes import services
-        self.assertIs(services._is_panel, sd.is_panel)
-        self.assertIs(services._is_battery, sd.is_battery)
-        self.assertIs(services._is_hybrid_inverter, sd.is_hybrid_inverter)
-        self.assertIs(services._is_reseau_inverter, sd.is_reseau_inverter)
+        self.assertIs(services._is_panel, sc.is_panel)
+        self.assertIs(services._is_battery, sc.is_battery)
+        self.assertIs(services._is_hybrid_inverter, sc.is_hybrid_inverter)
+        self.assertIs(services._is_reseau_inverter, sc.is_reseau_inverter)
