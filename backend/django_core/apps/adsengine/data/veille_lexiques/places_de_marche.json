@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "motif": "D-VEIL-1 : places de marché et géants CLASSÉS À PART (jamais supprimés). Liste modifiable : ajouter un page_id, un domaine exact ou une racine de domaine (toutes extensions).",
+  "page_ids": [],
+  "domaines": [
+    "shein.com", "temu.com", "aliexpress.com", "etsy.com", "wish.com",
+    "asos.com", "cdiscount.com", "laredoute.fr", "hm.com", "zara.com",
+    "primark.com", "boohoo.com", "prettylittlething.com"
+  ],
+  "racines": ["amazon", "zalando", "vinted", "ebay", "shein", "temu"],
+  "domaines_sociaux": [
+    "instagram.com", "facebook.com", "fb.me", "fb.com", "wa.me",
+    "whatsapp.com", "linktr.ee", "tiktok.com", "youtube.com", "m.me",
+    "messenger.com", "bit.ly", "pinterest.com", "snapchat.com"
+  ]
+}
