@@ -10,11 +10,10 @@ import { estimatePro, SHIFT_DAY_SHARE_CEILING } from '../src/lib/estimatorPro';
 import { EQUIPES_MODES, validateLead } from '../src/lib/lead';
 import {
   injectionAnnuelle,
-  netTarifDhKwh,
+  tarifExcedentDhKwh,
   PLAFOND_INJECTION_PCT,
   MENTION_82_21,
   ANRE_TARIF_HORS_POINTE,
-  FRAIS_RESEAU_DH_KWH,
 } from '../src/lib/constants82_21';
 import { etatVide, type EtatTunnel } from '../src/lib/tunnel/champs';
 import { construireCorps } from '../src/lib/tunnel/corps';
@@ -81,23 +80,25 @@ describe('WJ123 — estimatePro : un 3x8 ne voit plus l’autoconso d’un burea
 });
 
 describe('WJ123 — injection 82-21 (QX50) : constantes MIROIR + OFF par défaut', () => {
-  it('les constantes correspondent au module backend (plafond 20 %, tarif net honnête)', () => {
+  it('les constantes suivent D-CIQ-4 (plafond 20 % en vigueur, tarif HT sans frais réseau)', () => {
     expect(PLAFOND_INJECTION_PCT).toBe(20);
-    expect(MENTION_82_21).toBe('Tarif ANRE 03/2026-02/2027, plafond en révision');
-    // tarif net = rachat hors pointe − frais réseau, jamais négatif.
-    expect(netTarifDhKwh(false)).toBeCloseTo(ANRE_TARIF_HORS_POINTE - FRAIS_RESEAU_DH_KWH, 6);
-    expect(netTarifDhKwh(false)).toBeGreaterThan(0);
+    // CIW403 — plus de « plafond en révision » : plafond EN VIGUEUR (loi 82-21 art. 12).
+    expect(MENTION_82_21).not.toContain('en révision');
+    expect(MENTION_82_21).toContain('loi 82-21 art. 12');
+    // Tarif d'excédent = tarif ANRE tel quel, aucune déduction de frais réseau.
+    expect(tarifExcedentDhKwh(false)).toBe(ANRE_TARIF_HORS_POINTE);
+    expect(tarifExcedentDhKwh(false)).toBeGreaterThan(0);
   });
 
-  it('injectionAnnuelle plafonne le surplus à 20 % de la production', () => {
+  it('injectionAnnuelle (MT) plafonne le surplus à 20 % de la production', () => {
     // Production 100 000 kWh, autoconsommé 50 000 → surplus 50 000 mais plafonné à 20 000.
-    const inj = injectionAnnuelle(100_000, 50_000);
+    const inj = injectionAnnuelle(100_000, 50_000, 'mt');
     expect(inj.kwh).toBe(20_000);
-    expect(inj.dh).toBe(Math.round(20_000 * netTarifDhKwh(false)));
+    expect(inj.dh).toBe(Math.round(20_000 * tarifExcedentDhKwh(false)));
   });
 
   it('surplus nul (autoconso ≥ production) → 0 injection', () => {
-    expect(injectionAnnuelle(80_000, 90_000)).toEqual({ kwh: 0, dh: 0 });
+    expect(injectionAnnuelle(80_000, 90_000, 'mt')).toEqual({ kwh: 0, dh: 0 });
   });
 
   it("estimatePro n'expose PAS de ligne d'injection par défaut (parcours public gaté)", () => {
@@ -107,7 +108,7 @@ describe('WJ123 — injection 82-21 (QX50) : constantes MIROIR + OFF par défaut
   });
 
   it("estimatePro expose la ligne d'injection UNIQUEMENT sur demande, avec sa mention", () => {
-    const est = estimatePro({ monthlyMad: 50_000, equipes: '1x8', enableInjection: true });
+    const est = estimatePro({ monthlyMad: 50_000, equipes: '1x8', raccordement: 'mt', enableInjection: true });
     expect(est.ok).toBe(true);
     if (est.ok) {
       expect(est.injectionPotential).toBeDefined();
