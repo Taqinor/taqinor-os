@@ -5601,6 +5601,90 @@ def _meta_project_timeline(valeur_normalisee):
     return ''
 
 
+# ── CIQ407 — formulaire Meta « pour mon entreprise » (D-CIQ-19) ─────────────
+#
+# Mots ENTIERS sur du texte normalisé (``_norm_form_text``). L'ORDRE compte :
+# un mot d'industrie l'emporte sur « entreprise »/« société » (« Entreprise
+# industrielle » est une usine) ; un cas qui touche deux segments que rien
+# ne départage ne pose AUCUN type (il reste dans la note).
+_META_MOTS_RESIDENTIEL = (r'villa', r'maison', r'appartement', r'domicile',
+                          r'residen\w*')
+_META_MOTS_INDUSTRIEL = (r'usine', r'industri\w*', r'atelier', r'hangar')
+_META_MOTS_AGRICOLE = (r'ferme', r'agricole', r'pompage', r'puits')
+#: Activité → ``Lead.categorie_commerciale`` (liste fermée du contrat CIQ1).
+_META_CATEGORIES = (
+    ((r'hotel', r'riad'), 'hotel'),
+    ((r'restaurant', r'cafe', r'snack'), 'restaurant'),
+    ((r'entrepot frigorifique', r'chambre froide', r'froid'), 'froid'),
+    ((r'supermarche', r'magasin', r'commerce', r'boutique'), 'commerce'),
+    ((r'bureau', r'bureaux'), 'bureau'),
+    ((r'clinique', r'cabinet', r'sante', r'centre medical'), 'sante'),
+    ((r'ecole', r'creche', r'lycee'), 'ecole'),
+    ((r'hammam', r'spa', r'gym', r'salle de sport'), 'hammam'),
+    ((r'boulangerie', r'patisserie'), 'boulangerie'),
+)
+_META_MOTS_COMMERCIAL = (r'entreprise', r'societe', r'local')
+_META_MOTS_TRANCHE_OUVERTE = ('plus de', 'au dela', 'superieur', '>',
+                              'more than', 'over')
+
+
+def _meta_mot_entier(texte, motifs):
+    return any(_re.search(rf'\b{motif}\b', texte) for motif in motifs)
+
+
+def _meta_categorie(valeur_normalisee):
+    """CIQ407 — la catégorie commerciale d'une réponse, ou '' (mots entiers ;
+    la première catégorie de la table qui répond gagne)."""
+    for motifs, cle in _META_CATEGORIES:
+        if _meta_mot_entier(valeur_normalisee, motifs):
+            return cle
+    return ''
+
+
+def _meta_type_installation(valeur_normalisee):
+    """CIQ407 — le segment d'une réponse « où installer », ou ''.
+
+    Industrie AVANT entreprise/société ; « local » en mot entier seulement ;
+    une activité commerciale reconnue (clinique, école…) vaut commercial. Un
+    cas ambigu (résidentiel ou agricole ET autre chose) ne pose rien."""
+    v = valeur_normalisee
+    residentiel = _meta_mot_entier(v, _META_MOTS_RESIDENTIEL)
+    industriel = _meta_mot_entier(v, _META_MOTS_INDUSTRIEL)
+    agricole = _meta_mot_entier(v, _META_MOTS_AGRICOLE)
+    commercial = (_meta_mot_entier(v, _META_MOTS_COMMERCIAL)
+                  or bool(_meta_categorie(v)))
+    pro = industriel or commercial
+    if sum((residentiel, agricole, pro)) != 1:
+        return ''
+    if residentiel:
+        return Lead.TypeInstallation.RESIDENTIEL
+    if agricole:
+        return Lead.TypeInstallation.AGRICOLE
+    if industriel:
+        return Lead.TypeInstallation.INDUSTRIEL
+    return Lead.TypeInstallation.COMMERCIAL
+
+
+def _meta_tranche_facture(valeur_normalisee, libelle):
+    """CIQ407 (D-CIQ-19) — ``(montant, tranche)`` d'une réponse de facture.
+
+    Tranche FERMÉE (deux nombres) : montant = milieu (inchangé) + tranche
+    {min, max}. Tranche OUVERTE (« plus de X ») : AUCUN montant, tranche
+    {X, None}. Nombre unique sans « plus de » : un montant, pas de tranche."""
+    texte = _re.sub(r'(?<=\d)[\s.](?=\d{3}\b)', '', valeur_normalisee)
+    nums = [int(n) for n in _re.findall(r'\d{3,6}', texte)]
+    if len(nums) >= 2:
+        bas, haut = sorted(nums[:2])
+        return (bas + haut) // 2, {'min_mad': bas, 'max_mad': haut,
+                                   'libelle': libelle, 'source': 'meta'}
+    if nums:
+        if any(mot in texte for mot in _META_MOTS_TRANCHE_OUVERTE):
+            return None, {'min_mad': nums[0], 'max_mad': None,
+                          'libelle': libelle, 'source': 'meta'}
+        return nums[0], None
+    return None, None
+
+
 def _parse_meta_form_extras(field_data):
     """Réponses NON-contact du formulaire Meta → champs CRM structurés.
 
@@ -5623,16 +5707,26 @@ def _parse_meta_form_extras(field_data):
         if not raw_value:
             continue
         extras['qa'].append((raw_name, raw_value))
+        # CIQ407 — raison sociale et fonction : champs Meta standard,
+        # recopiés en remplissage seulement (et cités dans la note).
+        if raw_name.lower() == 'company_name':
+            extras['societe'] = raw_value.strip()[:255]
+            continue
+        if raw_name.lower() == 'job_title':
+            extras['fonction_contact'] = raw_value.strip()[:120]
+            continue
         q = _norm_form_text(raw_name)
         v = _norm_form_text(raw_value)
         if 'facture' in q:
-            nums = [int(n) for n in _re.findall(r'\d{3,6}', v)]
-            if len(nums) >= 2:
-                extras['facture_estimee'] = (nums[0] + nums[1]) // 2
-            elif nums:
-                # Tranche ouverte (« plus de 4000 dh ») : borne déclarée,
-                # jamais un montant inventé au-delà.
-                extras['facture_estimee'] = nums[0]
+            # CIQ407 (D-CIQ-19) — une tranche OUVERTE (« plus de 4000 dh »)
+            # n'est JAMAIS un montant : elle va dans la tranche déclarée,
+            # la facture reste vide.
+            montant, tranche = _meta_tranche_facture(
+                v, raw_value.replace('_', ' '))
+            if montant is not None:
+                extras['facture_estimee'] = montant
+            if tranche is not None:
+                extras['facture_tranche'] = tranche
             extras['facture_declaree'] = raw_value
         elif 'quand' in q or 'commencer' in q or 'delai' in q:
             if 'plus tot possible' in v or 'ce mois' in v or 'immediat' in v:
@@ -5661,16 +5755,19 @@ def _parse_meta_form_extras(field_data):
             if delai:
                 extras['project_timeline'] = delai
         elif 'install' in q:
-            if any(k in v for k in ('villa', 'maison', 'appartement',
-                                    'domicile', 'residen')):
-                extras['type_installation'] = Lead.TypeInstallation.RESIDENTIEL
-            elif any(k in v for k in ('entreprise', 'societe', 'commerce',
-                                      'bureau', 'magasin', 'hotel', 'local')):
-                extras['type_installation'] = Lead.TypeInstallation.COMMERCIAL
-            elif 'usine' in v or 'industri' in v:
-                extras['type_installation'] = Lead.TypeInstallation.INDUSTRIEL
-            elif any(k in v for k in ('ferme', 'agricole', 'pompage', 'puits')):
-                extras['type_installation'] = Lead.TypeInstallation.AGRICOLE
+            # CIQ407 — industrie AVANT entreprise/société, mots entiers ; un
+            # cas ambigu ne pose aucun type (il reste dans la note).
+            segment = _meta_type_installation(v)
+            if segment:
+                extras['type_installation'] = segment
+            categorie = _meta_categorie(v)
+            if categorie and segment == Lead.TypeInstallation.COMMERCIAL:
+                extras['categorie_commerciale'] = categorie
+        elif 'activite' in q or 'secteur' in q or 'etablissement' in q:
+            # CIQ407 — question d'activité du formulaire modifié par Reda.
+            categorie = _meta_categorie(v)
+            if categorie:
+                extras['categorie_commerciale'] = categorie
         else:
             # AGR410 — FORM-AGRI-1 : questions de pompage reconnues par
             # mots-clés (``_meta_reponse_agricole``).
@@ -5783,6 +5880,21 @@ def _apply_meta_form_extras(lead, extras):
             and lead.type_installation != Lead.TypeInstallation.AGRICOLE):
         lead.facture_hiver = Decimal(int(extras['facture_estimee']))
         changed.append('facture_hiver')
+    # CIQ407 (D-CIQ-19) — la tranche déclarée : toujours pour une tranche
+    # OUVERTE (jamais un montant), en plus du milieu pour un PRO.
+    tranche = extras.get('facture_tranche')
+    if (tranche and lead.facture_tranche_declaree is None
+            and lead.type_installation != Lead.TypeInstallation.AGRICOLE
+            and (tranche['max_mad'] is None or lead.type_installation in (
+                Lead.TypeInstallation.COMMERCIAL,
+                Lead.TypeInstallation.INDUSTRIEL))):
+        lead.facture_tranche_declaree = dict(tranche)
+        changed.append('facture_tranche_declaree')
+    # CIQ407 — activité, raison sociale, fonction : remplissage seulement.
+    for champ in ('categorie_commerciale', 'societe', 'fonction_contact'):
+        if extras.get(champ) and not getattr(lead, champ, None):
+            setattr(lead, champ, extras[champ])
+            changed.append(champ)
     # AGR410 — réponses de pompage : remplissage seulement, jamais
     # d'écrasement.
     for champ in ('source_eau', 'pompe_alim_actuelle', 'surface_irriguee_ha',
@@ -5833,6 +5945,12 @@ def _ensure_meta_form_note(lead, extras, form_id=''):
             '« %s » — à préciser au premier appel)'
             % (int(extras['facture_estimee']),
                extras.get('facture_declaree', '').replace('_', ' ')))
+    elif (extras.get('facture_tranche') or {}).get('max_mad', 0) is None:
+        # CIQ407 (D-CIQ-19) — tranche ouverte : AUCUN montant pré-rempli.
+        lines.append(
+            '(tranche ouverte « %s » : aucune facture pré-remplie — le '
+            'montant réel est à demander au premier appel)'
+            % extras.get('facture_declaree', '').replace('_', ' '))
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE, body='\n'.join(lines))
