@@ -31,6 +31,7 @@ import {
 import { Sprout } from 'lucide-react'
 import { GenCardHeader } from './CarteMetrique'
 import { formatNumber } from '../../../lib/format'
+import { alertesAffichables } from '../../../features/ventes/etudePompagePreviewPur'
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
 
@@ -71,6 +72,180 @@ function ChoixNatif({ id, label, valeur, onChange, options }) {
   )
 }
 
+// AGR129 — pastille de couverture du mois : bornes = tolérance de conception
+// -5 / +20 % (AGR110, source secondaire — contrôle de conception seulement).
+function pastilleCouverture(pct) {
+  if (pct === null || pct === undefined) return null
+  if (pct < 95) return 'rouge'
+  if (pct > 120) return 'orange'
+  return 'vert'
+}
+
+const CLASSES_PASTILLE = {
+  vert: 'bg-success/15 text-success',
+  orange: 'bg-warning/15 text-warning',
+  rouge: 'bg-destructive/15 text-destructive',
+}
+
+const LIBELLES_TAILLE = {
+  recommandee: 'Recommandée', inferieure: 'Inférieure', superieure: 'Supérieure',
+}
+const LIBELLES_NON_INCLUS = { forage: 'forage', genie_civil: 'génie civil' }
+
+// AGR129 — le RÉSULTAT SERVEUR en direct (aucune valeur calculée ici : tout
+// vient de la réponse de l'aperçu AGR127).
+function ResultatPompage({ donnees, saisie, majPompage }) {
+  if (!donnees) return null
+  const d = donnees
+  const options = d.kit?.options || []
+  const cochees = new Set(saisie?.options_cochees || [])
+  const basculer = (cle) => {
+    const suivant = new Set(cochees)
+    if (suivant.has(cle)) suivant.delete(cle); else suivant.add(cle)
+    majPompage?.('options_cochees', [...suivant])
+  }
+  const tailleChoisie = saisie?.taille || 'recommandee'
+  const alertes = alertesAffichables(d)
+  const prod = d.production?.m3_jour_mois || null
+  const besoin = d.besoin?.m3_jour_mois || null
+  const couv = d.couverture_pct_mois || null
+  const moisCritique = d.conception?.mois_critique ?? null
+  return (
+    <div className="mt-4 grid gap-3" data-testid="resultat-pompage">
+      <div className="rounded-lg border border-info/30 bg-info/10 p-3 text-sm">
+        <div data-testid="resultat-pompe">
+          <strong>Pompe proposée :</strong> {d.pompe?.nom || 'aucune'}
+          {d.puissance_retenue?.kw != null && (
+            <> · puissance retenue {fmtNum(d.puissance_retenue.kw)} kW
+              {d.puissance_retenue.cv != null && <> ({fmtNum(d.puissance_retenue.cv)} CV)</>}</>
+          )}
+        </div>
+        <div><strong>Variateur :</strong> {d.variateur?.nom || d.variateur?.motif || 'aucun'}</div>
+        {d.champ && (
+          <div data-testid="resultat-chaines">
+            Champ {fmtNum(d.champ.kwc)} kWc ({fmtNum(d.champ.nb_panneaux)} panneaux) —
+            chaînes {d.champ.chaines?.verifiable
+              ? 'vérifiées'
+              : `non vérifiables${d.champ.chaines?.motif ? ` : ${d.champ.chaines.motif}` : ''}`}
+          </div>
+        )}
+      </div>
+
+      {couv && (
+        <table className="w-full text-xs" data-testid="resultat-mois">
+          <thead>
+            <tr><th className="text-left">Mois</th><th>Production (m³/j)</th>
+              <th>Besoin (m³/j)</th><th>Couverture</th></tr>
+          </thead>
+          <tbody>
+            {couv.map((pct, i) => {
+              const pastille = pastilleCouverture(pct)
+              return (
+                <tr key={i} data-testid={`mois-${i + 1}`}
+                    className={moisCritique === i + 1 ? 'font-semibold' : ''}>
+                  <td>{MOIS[i][1]}{moisCritique === i + 1 ? ' (mois critique)' : ''}</td>
+                  <td className="text-center">{prod ? fmtNum(prod[i]) : '—'}</td>
+                  <td className="text-center">{besoin ? fmtNum(besoin[i]) : '—'}</td>
+                  <td className="text-center">
+                    {pct == null ? '—' : (
+                      <span className={`rounded px-1.5 py-0.5 ${CLASSES_PASTILLE[pastille]}`}
+                            data-pastille={pastille}>{pct} %</span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+
+      <div className="grid gap-1 text-sm">
+        <div data-testid="resultat-ha">
+          Hectares irrigables : {d.ha_irrigables?.valeur != null
+            ? <>{fmtNum(d.ha_irrigables.valeur)} ha{d.besoin?.source_et0 === 'EST.' ? ' (estimation)' : ''}</>
+            : (d.ha_irrigables?.motif || '—')}
+        </div>
+        <div data-testid="resultat-autonomie">
+          Autonomie du réservoir : {d.autonomie_reservoir_jours?.valeur != null
+            ? <>{fmtNum(d.autonomie_reservoir_jours.valeur)} jours</>
+            : (d.autonomie_reservoir_jours?.motif || '—')}
+        </div>
+      </div>
+
+      {(d.tailles || []).length > 0 && (
+        <div className="grid gap-2 sm:grid-cols-3" data-testid="resultat-tailles">
+          {d.tailles.map((t) => (
+            <button type="button" key={t.cle}
+                    data-testid={`taille-${t.cle}`}
+                    aria-pressed={tailleChoisie === t.cle}
+                    onClick={() => majPompage?.('taille', t.cle)}
+                    className={`rounded-lg border p-2 text-left text-xs ${
+                      tailleChoisie === t.cle ? 'border-primary bg-primary/10' : 'border-border'}`}>
+              <div className="font-semibold">{LIBELLES_TAILLE[t.cle] || t.cle}</div>
+              <div>{t.pompe_nom}</div>
+              <div>{fmtNum(t.champ_kwc)} kWc · {fmtNum(t.nb_panneaux)} panneaux</div>
+              {t.couverture_mois_critique_pct != null && (
+                <div>Couverture au mois critique : {t.couverture_mois_critique_pct} %</div>
+              )}
+              {!t.prix_connu && <div className="text-warning">prix à renseigner</div>}
+            </button>
+          ))}
+          {(d.tailles_omises || []).map((t) => (
+            <div key={t.cle} className="rounded-lg border border-dashed p-2 text-xs text-muted-foreground">
+              {LIBELLES_TAILLE[t.cle] || t.cle} : {t.motif}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {options.length > 0 && (
+        <div className="grid gap-1 text-sm" data-testid="resultat-options">
+          <span className="font-semibold">Options du kit</span>
+          {options.map((o) => (
+            <label key={o.cle}
+                   className={`flex items-center gap-2 ${o.prix_connu ? '' : 'text-muted-foreground'}`}>
+              <input type="checkbox" data-testid={`option-${o.cle}`}
+                     checked={cochees.has(o.cle)}
+                     onChange={() => basculer(o.cle)} />
+              {o.libelle}{!o.prix_connu && ` — ${o.motif || 'prix à renseigner'}`}
+            </label>
+          ))}
+        </div>
+      )}
+      {(d.kit?.non_inclus || []).length > 0 && (
+        <p className="text-xs text-muted-foreground" data-testid="resultat-non-inclus">
+          Non inclus : {d.kit.non_inclus.map((c) => LIBELLES_NON_INCLUS[c] || c).join(', ')}
+        </p>
+      )}
+
+      {(d.hypotheses || []).length > 0 && (
+        <details className="text-xs" data-testid="resultat-hypotheses">
+          <summary>Hypothèses ({d.hypotheses.length})</summary>
+          <ul className="mt-1 grid gap-0.5">
+            {d.hypotheses.map((h) => (
+              <li key={h.cle}>
+                {h.cle} = {String(h.valeur)} —{' '}
+                {h.statut === 'estimation' ? 'EST.' : (h.source || 'EST.')}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {alertes.length > 0 && (
+        <ul className="grid gap-1" data-testid="resultat-alertes">
+          {alertes.map((a) => (
+            <li key={a.cle} role="status" data-code={a.code}
+                className="rounded-lg border border-warning/40 bg-warning/10 p-2 text-sm text-warning">
+              {a.message}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 const MOIS = [['1', 'Janvier'], ['2', 'Février'], ['3', 'Mars'], ['4', 'Avril'],
   ['5', 'Mai'], ['6', 'Juin'], ['7', 'Juillet'], ['8', 'Août'],
   ['9', 'Septembre'], ['10', 'Octobre'], ['11', 'Novembre'], ['12', 'Décembre']]
@@ -81,7 +256,7 @@ const CLE = 'agricole'
 export default function PanneauAgricole({
   marche,
   // ── Pompe et forage ──
-  pompeCv, setPompeCv, pompageSel, pompageDims, pompeType, setPompeType,
+  pompeCv, setPompeCv, pompeType, setPompeType,
   pompeAlim, dispatchSizing, pompeHmt, setPompeHmt, pompeDebit, setPompeDebit,
   pompeHeures, setPompeHeures, pompeProfondeur, setPompeProfondeur,
   pompeDistance, setPompeDistance,
@@ -91,7 +266,6 @@ export default function PanneauAgricole({
   farmFuel, setFarmFuel, farmFuelSpend, setFarmFuelSpend,
   farmFuelPeriod, setFarmFuelPeriod, farmFuelSpendAnnual,
   farmHmtStatic, setFarmHmtStatic, farmHmtDrawdown, setFarmHmtDrawdown,
-  farmWaterDemand, pumpM3Day,
   // ── AGR128 — blocs nouveaux (cas de pompe, besoin, point d'eau, HMT) ──
   pompageSaisie, majPompage, apercuPompage,
 }) {
@@ -144,12 +318,6 @@ export default function PanneauAgricole({
             est dimensionnée par le serveur).
           </p>
         ))}
-        {pompageDims && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            ≈ {pompageSel?.kw ?? pompageDims.kw} kW · champ PV conseillé {pompageDims.champKw} kWc
-            ({pompageDims.nbPanneaux} panneaux 710 W)
-          </p>
-        )}
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <div className="grid gap-1.5">
             <Label>Type de pompe</Label>
@@ -436,51 +604,17 @@ export default function PanneauAgricole({
             </div>
           </div>
 
-          {/* Readout FAO-56 : besoin estimé vs débit livré par la pompe.
-              Purement informatif (le backend recalcule le besoin lui-même). */}
-          {farmWaterDemand && (
-            pumpM3Day != null ? (
-              <div className={`mt-3 rounded-lg border p-3 text-sm ${
-                pumpM3Day >= farmWaterDemand.m3DayPeak
-                  ? 'border-success/30 bg-success/10 text-success'
-                  : 'border-warning/40 bg-warning/10 text-warning'
-              }`}>
-                Besoin estimé ≈ <strong>{fmtNum(farmWaterDemand.m3DayPeak)} m³/jour</strong>
-                {' '}(pointe estivale) — votre pompe livre{' '}
-                <strong>{fmtNum(pumpM3Day)} m³/jour</strong>{' '}
-                {pumpM3Day >= farmWaterDemand.m3DayPeak ? '✓' : '⚠ insuffisant'}
-              </div>
-            ) : (
-              <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
-                Besoin estimé ≈ <strong>{fmtNum(farmWaterDemand.m3DayPeak)} m³/jour</strong>
-                {' '}(pointe estivale). Renseignez HMT + débit souhaité pour comparer
-                au débit livré par la pompe.
-              </div>
-            )
-          )}
         </div>
 
-        {/* ── Résultat du dimensionnement (source des chiffres du PDF) ── */}
-        {pompageSel?.mode === 'courbe' && (
-          <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
-            <strong>Pompe sélectionnée : {pompageSel.pump.nom}</strong>
-            <div className="mt-1">
-              {pompageSel.cv} CV ({pompageSel.kw} kW) · débit à {pompeHmt} m
-              de HMT : <strong>{pompageSel.debitHmt} m³/h</strong>
-              {pompageSel.m3Jour != null && (
-                <> · <strong>≈ {pompageSel.m3Jour} m³/jour</strong> sur {pompeHeures} h
-                de pompage effectif</>
-              )}
-            </div>
-          </div>
+        {/* ── AGR129 — le résultat SERVEUR en direct (aperçu AGR127) ── */}
+        {apercuPompage?.chargement && (
+          <p className="mt-3 text-xs text-muted-foreground">Calcul du pompage…</p>
         )}
-        {pompageSel?.sansPrix?.length > 0 && (
-          <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
-            Seules des pompes <strong>sans prix renseigné</strong> conviennent à cette
-            HMT et ce débit ({pompageSel.sansPrix.join(', ')}). Renseignez leur prix
-            dans Stock pour les chiffrer — aucune pompe ne sera ajoutée au devis.
-          </div>
+        {apercuPompage?.erreur && (
+          <p className="mt-3 text-xs text-destructive" role="alert">{apercuPompage.erreur}</p>
         )}
+        <ResultatPompage donnees={apercuPompage?.donnees}
+                         saisie={pompageSaisie} majPompage={majPompage} />
       </CardContent>
     </Card>
   )

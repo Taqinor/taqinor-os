@@ -1,6 +1,9 @@
 // AGR128 — générateur agricole : besoin, point d'eau, HMT détaillée, cas de
 // pompe ; plus de CV / distance / région / culture / énergie pré-remplis.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -59,7 +62,7 @@ beforeEach(() => {
 
 const PROPS_VIDES = {
   marche: 'agricole',
-  pompeCv: '', setPompeCv: vi.fn(), pompageSel: null, pompageDims: null,
+  pompeCv: '', setPompeCv: vi.fn(),
   pompeType: '', setPompeType: vi.fn(), pompeAlim: '', dispatchSizing: vi.fn(),
   pompeHmt: '', setPompeHmt: vi.fn(), pompeDebit: '', setPompeDebit: vi.fn(),
   pompeHeures: '', setPompeHeures: vi.fn(), pompeProfondeur: '',
@@ -70,7 +73,7 @@ const PROPS_VIDES = {
   farmFuelSpend: '', setFarmFuelSpend: vi.fn(), farmFuelPeriod: 'mois',
   setFarmFuelPeriod: vi.fn(), farmFuelSpendAnnual: '',
   farmHmtStatic: '', setFarmHmtStatic: vi.fn(), farmHmtDrawdown: '',
-  setFarmHmtDrawdown: vi.fn(), farmWaterDemand: null, pumpM3Day: null,
+  setFarmHmtDrawdown: vi.fn(),
   pompageSaisie: POMPAGE_SAISIE_VIDE, majPompage: vi.fn(), apercuPompage: null,
 }
 
@@ -179,5 +182,67 @@ describe('générateur — formulaire agricole vide', () => {
     // Aucun appel d'aperçu tant que l'essentiel manque.
     expect(api.post).not.toHaveBeenCalledWith(
       '/ventes/etude-pompage/preview/', expect.anything(), expect.anything())
+  })
+})
+
+// ── AGR129 — le résultat serveur en direct ─────────────────────────────────
+const ICI = path.dirname(fileURLToPath(import.meta.url))
+const CONTRAT = JSON.parse(readFileSync(path.resolve(ICI,
+  '../../../../../backend/django_core/apps/ventes/contract_samples/etude_pompage_preview.json'),
+'utf8'))
+const REPONSE = {
+  ...CONTRAT.exemple,
+  alertes: CONTRAT.exemple_pompe_existante.alertes,
+}
+
+describe('résultat serveur (AGR129)', () => {
+  it('réponse d’exemple avec 3 alertes → 3 alertes visibles', () => {
+    expect(REPONSE.alertes).toHaveLength(3)
+    render(<PanneauAgricole {...PROPS_VIDES}
+      apercuPompage={{ donnees: REPONSE, chargement: false, erreur: null }} />)
+    const alertes = screen.getByTestId('resultat-alertes').querySelectorAll('li')
+    expect(alertes).toHaveLength(3)
+    expect(screen.getByTestId('resultat-pompe').textContent)
+      .toContain(REPONSE.pompe.nom)
+    expect(screen.getByTestId('resultat-non-inclus').textContent)
+      .toContain('génie civil')
+  })
+
+  it('cocher une option → le corps suivant porte l’option', () => {
+    const majPompage = vi.fn()
+    render(<PanneauAgricole {...PROPS_VIDES} majPompage={majPompage}
+      apercuPompage={{ donnees: REPONSE }} />)
+    fireEvent.click(screen.getByTestId('option-sonde_niveau'))
+    expect(majPompage).toHaveBeenCalledWith('options_cochees', ['sonde_niveau'])
+    const saisie = poserSaisie(
+      poserSaisie(poserSaisie(POMPAGE_SAISIE_VIDE, 'mode_pompe', 'neuve'),
+        'besoin.mode', 'volume_declare'), 'besoin.volume_m3_jour', '135')
+    const corps = construireCorpsPompage(etatPompageEcran(
+      poserSaisie(saisie, 'options_cochees', ['sonde_niveau']), { pompeHmt: '60' }))
+    expect(corps.options_cochees).toEqual(['sonde_niveau'])
+  })
+
+  it('les 3 tailles en cartes, Recommandée par défaut ; choisir → taille', () => {
+    const majPompage = vi.fn()
+    render(<PanneauAgricole {...PROPS_VIDES} majPompage={majPompage}
+      apercuPompage={{ donnees: REPONSE }} />)
+    expect(screen.getByTestId('taille-recommandee').getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(screen.getByTestId('taille-superieure'))
+    expect(majPompage).toHaveBeenCalledWith('taille', 'superieure')
+  })
+
+  it('pastilles de couverture : vert 95-120, orange > 120, rouge < 95', () => {
+    const donnees = { ...REPONSE, couverture_pct_mois: [99, 169, 80, ...REPONSE.couverture_pct_mois.slice(3)] }
+    render(<PanneauAgricole {...PROPS_VIDES} apercuPompage={{ donnees }} />)
+    const pastille = (m) => screen.getByTestId(`mois-${m}`).querySelector('[data-pastille]')
+      .getAttribute('data-pastille')
+    expect(pastille(1)).toBe('vert')
+    expect(pastille(2)).toBe('orange')
+    expect(pastille(3)).toBe('rouge')
+  })
+
+  it('aucune valeur affichée sans réponse serveur', () => {
+    render(<PanneauAgricole {...PROPS_VIDES} apercuPompage={null} />)
+    expect(screen.queryByTestId('resultat-pompage')).toBeNull()
   })
 })

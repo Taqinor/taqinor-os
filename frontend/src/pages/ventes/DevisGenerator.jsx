@@ -35,7 +35,6 @@ import {
   // le snap (les deux autres points ne l'affichent qu'avant de naviguer vers
   // ce générateur).
 } from '../../features/ventes/autoQuote'
-import { waterDemandFromFarm } from '../../features/ventes/agronomy'
 // AGR127/AGR128 — aperçu SERVEUR du pompage (aucun calcul local).
 import {
   useEtudePompagePreview, construireCorpsPompage, manquantsPompage,
@@ -3890,20 +3889,9 @@ export default function DevisGenerator({
     return farmFuelPeriod === 'mois' ? Math.round(v * 12) : Math.round(v)
   })()
 
-  // Besoin en eau de POINTE (FAO-56) — informatif, le backend le recalcule.
-  const farmWaterDemand = useMemo(() => {
-    if (modeInstallation !== 'agricole') return null
-    if (!(parseFloat(farmSurfaceHa) > 0)) return null
-    // AGR128 — culture et région ne sont plus pré-remplies : sans elles,
-    // aucun besoin estimé (jamais une culture supposée).
-    if (!farmCrop || !farmRegion) return null
-    return waterDemandFromFarm({
-      crop: farmCrop, region: farmRegion,
-      surfaceHa: farmSurfaceHa, method: farmIrrigation,
-    })
-  }, [modeInstallation, farmCrop, farmRegion, farmSurfaceHa, farmIrrigation])
-  // Volume jour livré par la pompe choisie (m³/jour) — comparé au besoin.
-  const pumpM3Day = pompageSel?.m3Jour ?? null
+  // AGR129 — le besoin en eau et l'eau livrée viennent de l'aperçu SERVEUR
+  // (`apercuPompage`, AGR127) : plus de besoin FAO-56 calculé dans le
+  // navigateur (le jumeau `agronomy.js` disparaît avec AGR131).
 
   // QJR568 — prix/kWc et prix cible au kWc FACTURÉ des lignes.
   const pkwc = prixParKwc(kpiTotal, kwpLignes)
@@ -4451,7 +4439,6 @@ export default function DevisGenerator({
         <PanneauAgricole
           marche={modeInstallation}
           pompeCv={pompeCv} setPompeCv={setPompeCv}
-          pompageSel={pompageSel} pompageDims={pompageDims}
           pompeType={pompeType} setPompeType={setPompeType}
           pompeAlim={pompeAlim} dispatchSizing={dispatchSizing}
           pompeHmt={pompeHmt} setPompeHmt={setPompeHmt}
@@ -4469,7 +4456,6 @@ export default function DevisGenerator({
           farmFuelSpendAnnual={farmFuelSpendAnnual}
           farmHmtStatic={farmHmtStatic} setFarmHmtStatic={setFarmHmtStatic}
           farmHmtDrawdown={farmHmtDrawdown} setFarmHmtDrawdown={setFarmHmtDrawdown}
-          farmWaterDemand={farmWaterDemand} pumpM3Day={pumpM3Day}
           pompageSaisie={pompageSaisie} majPompage={majPompage}
           apercuPompage={apercuPompage}
         />
