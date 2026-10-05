@@ -50,7 +50,7 @@ __all__ = [
     'FORMAT_A3_MM', 'MARGE_MM', 'LARGEUR_BANDEAU_MM', 'PAS_D_ECHELLE_M',
     'PlancheRefusee', 'dimensions_module', 'geometrie_de_planche',
     'svg_de_planche', 'html_de_planche', 'rendre_planche_svg',
-    'rendre_planche_pdf', 'nom_de_fichier', 'entrees_de_legende',
+    'rendre_planche_pdf', 'nom_de_fichier',
     'texte_d_orientation', 'lignes_d_orientation', 'longueur_de_barre',
     'hash_court', 'texte_d_empreinte',
     'CONTENU_IMPLANTATION', 'CONTENU_TOITURE', 'CONTENU_MASSE',
@@ -598,7 +598,7 @@ def mention_d_echelle(echelle):
             'se reporter à la barre d\'échelle.' % denominateur)
 
 
-def entrees_de_legende(geometrie, contenu=CONTENU_IMPLANTATION):
+def _entrees_de_legende(geometrie, contenu=CONTENU_IMPLANTATION):
     """Les entrées de légende des éléments RÉELLEMENT dessinés, et d'eux seuls.
 
     ``contenu`` compte autant que la géométrie : un plan de toiture ne DESSINE
@@ -967,7 +967,7 @@ def _bandeau_svg(titre, sous_titre, lignes, geometrie,
                                      escape(sous_titre)))
         y += 6.0
 
-    entrees = entrees_de_legende(geometrie, contenu)
+    entrees = _entrees_de_legende(geometrie, contenu)
     if entrees:
         blocs, y = _legende_svg(x, y, entrees)
         morceaux.extend(blocs)

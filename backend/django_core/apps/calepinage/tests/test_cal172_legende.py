@@ -10,8 +10,11 @@ Run :
 """
 from django.test import SimpleTestCase
 
+# ACAL328 — la légende est un détail d'implémentation de la planche (son
+# seul faux appelant, le rendu matplotlib AO, est parqué) : préfixée `_`.
+from apps.calepinage.services.planche import _entrees_de_legende as entrees_de_legende  # noqa: E501
 from apps.calepinage.services.planche import (
-    LARGEUR_BARRE_MM, entrees_de_legende, geometrie_de_planche,
+    LARGEUR_BARRE_MM, geometrie_de_planche,
     lignes_d_orientation, longueur_de_barre, svg_de_planche,
     texte_d_orientation,
 )
