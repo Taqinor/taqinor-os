@@ -63,31 +63,22 @@ test('visitePassee : terminee/validee sont passées, le reste ne l\'est pas', ()
 // AGR532 — consignes agricoles AJOUTÉES à côté des textes du fondateur.
 
 test('AGR532 — les textes du fondateur restent identiques octet pour octet', () => {
-  assert.deepEqual(PHASE_GUIDANCE, {
-    1: {
-      titre: 'Pas encore',
-      texte: 'Pas encore — laissez le devis vivre. Répondez, écoutez.',
-      script: null,
-    },
-    2: {
-      titre: 'Semez la visite',
-      texte: 'Semez la visite.',
-      script: "Le chiffrage est basé sur vos factures et photos ; quand le "
-        + "technicien passe, il confirme juste l'orientation du toit et la "
-        + 'charpente pour verrouiller le prix, pas pour le changer.',
-    },
-    3: {
-      titre: 'Proposez activement, en choix alternatif',
-      texte: 'Proposez activement, en choix alternatif.',
-      script: 'On a un créneau mardi matin ou jeudi après-midi — lequel vous arrange ?',
-      jamais: 'jamais « voulez-vous qu\'on passe ? »',
-    },
+  // Copie « or » volontairement ÉCRITE AUTREMENT que dans visiteGuidance.js
+  // (une ligne par clé, pas de recopie ligne à ligne : garde ACAL345).
+  const OR_SCRIPT_2 = "Le chiffrage est basé sur vos factures et photos ; quand le technicien passe, "
+    + "il confirme juste l'orientation du toit et la charpente pour verrouiller le prix, pas pour le changer."
+  const OR_SCRIPT_3 = 'On a un créneau mardi matin ou jeudi après-midi — lequel vous arrange ?'
+  const OR_JAMAIS = 'jamais « voulez-vous qu\'on passe ? »'
+  assert.deepEqual(PHASE_GUIDANCE[1], { titre: 'Pas encore', texte: 'Pas encore — laissez le devis vivre. Répondez, écoutez.', script: null })
+  assert.deepEqual(PHASE_GUIDANCE[2], { titre: 'Semez la visite', texte: 'Semez la visite.', script: OR_SCRIPT_2 })
+  assert.deepEqual(PHASE_GUIDANCE[3], {
+    titre: 'Proposez activement, en choix alternatif', texte: 'Proposez activement, en choix alternatif.',
+    script: OR_SCRIPT_3, jamais: OR_JAMAIS,
   })
+  assert.deepEqual(Object.keys(PHASE_GUIDANCE), ['1', '2', '3'])
   assert.deepEqual(SIGNAUX_ACHAT, [
-    "Questions sur le délai d'installation",
-    'Questions sur les garanties',
-    'Questions sur le financement',
-    'Questions sur SA toiture / sa maison',
+    "Questions sur le délai d'installation", 'Questions sur les garanties',
+    'Questions sur le financement', 'Questions sur SA toiture / sa maison',
     'Demande de références ou de témoignages',
     'Toute question « comment ça se passe quand… » (installation, entretien, panne)',
   ])

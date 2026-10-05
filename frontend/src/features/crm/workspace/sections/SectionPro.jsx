@@ -3,7 +3,7 @@ import { getField } from '../draftCore'
 import { jumpToField } from '../jumpToField'
 import fieldLabels from '../fieldLabels'
 import { COMMERCIAL_CATEGORY_QUESTIONS } from '../../../ventes/solar'
-import { enumOptions } from './enumOptions'
+import SelectEnum from './SelectEnum'
 
 /* CIQ418 — « Professionnel » : la fiche d'un lead COMMERCIAL ou INDUSTRIEL.
    Contrat partagé `lead_pro.json` (CIQ1, check_api_shapes) : chaque colonne
@@ -215,16 +215,9 @@ function Texte({ 'data-field-anchor': id, cle, ctx, type = 'text' }) {
 }
 
 function Choix({ 'data-field-anchor': id, cle, ctx, choix }) {
-  const { state, setField, errors } = ctx
   return (
     <Champ id={id} cle={cle} ctx={ctx}>
-      <select
-        id={id} className={errors[cle] ? 'form-select is-invalid' : 'form-select'}
-        aria-invalid={errors[cle] ? true : undefined}
-        value={getField(state, cle) ?? ''} onChange={(e) => setField(cle, e.target.value)}
-      >
-        {enumOptions(choix)}
-      </select>
+      <SelectEnum id={id} cle={cle} ctx={ctx} choix={choix} />
     </Champ>
   )
 }

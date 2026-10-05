@@ -6,6 +6,7 @@
 // périmé à l'écran). Aucun calcul local : D-AGR-1, un seul calcul serveur.
 import { useEffect, useState } from 'react'
 import { useDebouncedValue } from '../../lib/debounce'
+import { useApercuServeur } from '../../lib/useApercuServeur'
 import api from '../../api/axios'
 
 export {
@@ -22,48 +23,8 @@ export const postEtudePompagePreview = (body, config = {}) =>
  * appel, `donnees` reste `null`). Ne lève jamais.
  */
 export function useEtudePompagePreview(corps) {
-  const corpsKey = corps ? JSON.stringify(corps) : null
-  const debouncedKey = useDebouncedValue(corpsKey, 500)
-  const [donnees, setDonnees] = useState(null)
-  const [chargement, setChargement] = useState(false)
-  const [erreur, setErreur] = useState(null)
-  const [corpsServi, setCorpsServi] = useState(null)
-
-  useEffect(() => {
-    if (!debouncedKey) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète l'absence de corps
-      setDonnees(null)
-      setCorpsServi(null)
-      setChargement(false)
-      setErreur(null)
-      return undefined
-    }
-    let body
-    try { body = JSON.parse(debouncedKey) } catch { body = null }
-    if (!body) return undefined
-
-    let cancelled = false
-    const controller = new AbortController()
-    // Jamais de résultat périmé pendant le recalcul : on efface avant l'appel.
-    setChargement(true)
-    setErreur(null)
-    setDonnees(null)
-    setCorpsServi(null)
-    postEtudePompagePreview(body, { signal: controller.signal })
-      .then((res) => {
-        if (cancelled) return
-        setDonnees(res.data)
-        setCorpsServi(debouncedKey)
-      })
-      .catch((err) => {
-        if (cancelled) return
-        if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') return
-        setErreur('Aperçu du pompage indisponible pour le moment.')
-      })
-      .finally(() => { if (!cancelled) setChargement(false) })
-    return () => { cancelled = true; controller.abort() }
-  }, [debouncedKey])
-
+  const { donnees, chargement, erreur, corpsServi } = useApercuServeur(
+    corps, postEtudePompagePreview, 'Aperçu du pompage indisponible pour le moment.')
   return { donnees, chargement, erreur, corpsServi }
 }
 

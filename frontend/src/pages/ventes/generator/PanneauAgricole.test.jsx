@@ -44,21 +44,12 @@ vi.mock('../../../api/axios', () => ({
 }))
 
 import api from '../../../api/axios'
+import { installerCalesJsdom } from '../../../test/fixtures/calesJsdom'
 import DevisGenerator from '../DevisGenerator'
 
 beforeEach(() => {
   vi.clearAllMocks()
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
-  if (!window.matchMedia) {
-    window.matchMedia = vi.fn().mockImplementation((q) => ({
-      matches: false, media: q, onchange: null,
-      addListener: vi.fn(), removeListener: vi.fn(),
-      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
-    }))
-  }
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
+  installerCalesJsdom()
 })
 
 const PROPS_VIDES = {
