@@ -75,7 +75,7 @@ class ResyncParite(TestCase):
             company=self.company, nom='Panneau Canadien Solar 710W',
             sku='A34-PAN', prix_vente=Decimal('1166.67'),
             prix_achat=Decimal('700'), quantite_stock=100)
-        Produit.objects.create(
+        self.onduleur = Produit.objects.create(
             company=self.company, nom='Onduleur réseau Huawei 10kW Monophasé',
             sku='A34-OND', prix_vente=Decimal('14000'),
             prix_achat=Decimal('9000'), quantite_stock=100)
@@ -98,6 +98,14 @@ class ResyncParite(TestCase):
             devis=devis, produit=self.panneau, designation=self.panneau.nom,
             quantite=Decimal('12'), prix_unitaire=Decimal('1166.67'),
             remise=Decimal('0'))
+        # Un devis réel porte son onduleur : la resynchro ne POSE jamais un
+        # onduleur absent (elle l'accorde au scénario), et la proposition
+        # publique refuse un document sans onduleur (règle de sécurité du
+        # moteur) — sans cette ligne, AUCUNE des deux voies n'est rendable.
+        LigneDevis.objects.create(
+            devis=devis, produit=self.onduleur,
+            designation=self.onduleur.nom, quantite=Decimal('1'),
+            prix_unitaire=Decimal('14000'), remise=Decimal('0'), ordre=1)
         rafraichir_etudes_du_devis(devis)
         devis.refresh_from_db()
         self.assertIsNotNone((devis.etude_params or {}).get('etude_horaire'))
