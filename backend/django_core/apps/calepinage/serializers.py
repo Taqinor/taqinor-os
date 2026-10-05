@@ -35,6 +35,7 @@ from rest_framework import serializers
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import Calepinage, CalepinageVariante
+from .services.presentation import image_apercu, reference_calepinage
 
 
 def _lead_apercu(lead):
@@ -111,6 +112,16 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
     #: CALX406 — le NOM du responsable, pour la colonne de la liste (le champ
     #: ``responsable`` lui-même reste l'identifiant, en lecture-écriture).
     responsable_nom = serializers.SerializerMethodField()
+    #: ACAL196 — ce que la LISTE affiche, DÉRIVÉ et en lecture seule : la
+    #: référence (la même que le détail), l'aperçu (chemin RELATIF du proxy
+    #: Django, aucune signature par ligne), l'instant de dernière
+    #: modification, et l'aperçu du client rattaché (le champ ``client`` reste
+    #: l'identifiant, clé d'écriture inchangée).
+    reference = serializers.SerializerMethodField()
+    image = serializers.SerializerMethodField()
+    modifie_le = serializers.DateTimeField(source='updated_at',
+                                           read_only=True)
+    client_apercu = serializers.SerializerMethodField()
 
     #: AUD601 — une FK cross-app ne pointe jamais la ligne d'une autre société.
     #: CALX406 — le responsable non plus : un compte d'une société voisine est
@@ -130,6 +141,7 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             'layout_stale', 'layout_nb_panneaux',
             'cree_par', 'created_at', 'updated_at',
             'responsable', 'responsable_nom',  # CALX406
+            'reference', 'image', 'modifie_le', 'client_apercu',  # ACAL196
             'contraintes_site',  # CIQ136
         ]
         #: ACAL33 — ``devis`` est LU, jamais écrit par le CRUD : le seul
@@ -168,6 +180,29 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_layout_nb_panneaux(self, calepinage):
         return self._peremption(calepinage)['layout_nb_panneaux']
+
+    @extend_schema_field(serializers.CharField())
+    def get_reference(self, calepinage):
+        """ACAL196 — « CAL-AAMM-NNNN », la même que le détail."""
+        return reference_calepinage(calepinage)
+
+    @extend_schema_field(serializers.DictField())
+    def get_image(self, calepinage):
+        """ACAL196 — ``{url, genere_le, expire_le}`` ; chemin relatif du
+        proxy Django, trois ``null`` sans rendu enregistré."""
+        return image_apercu(calepinage)
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_client_apercu(self, calepinage):
+        """ACAL196 — ``{id, nom, ville}`` du client rattaché, ``None`` sans
+        client. Lu sur le client DÉJÀ CHARGÉ par la liste
+        (``select_related('client')``) : aucune requête par ligne."""
+        client = getattr(calepinage, 'client', None)
+        if client is None:
+            return None
+        ville = (getattr(client, 'ville', '') or '').strip() or None
+        # ``Client.__str__`` ajoute une espace finale sans prénom : rognée.
+        return {'id': client.pk, 'nom': str(client).strip(), 'ville': ville}
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_responsable_nom(self, calepinage):

@@ -85,6 +85,7 @@ export const CHAMPS = [
     cle: 'cos_phi_impose',
     libelle: 'Cos φ imposé',
     unite: '',
+    simulation: true, // ACAL156 — lu par la simulation (autoconsommation, batterie)
     aide: 'Celui que le contrat de raccordement de CE site impose — à ne pas confondre avec le réglage société « cos φ retenu à défaut de mesure ».',
   },
   {
@@ -101,6 +102,7 @@ export const CHAMPS = [
     cle: 'plafond_injection_kw',
     libelle: 'Plafond d’injection',
     unite: 'kW',
+    simulation: true, // ACAL156 — lu par la simulation (autoconsommation, batterie)
     aide: 'Le plafond d’injection au réseau imposé à ce site. Laissez vide tant qu’il n’est pas connu — rien n’est supposé.',
   },
   {
@@ -172,6 +174,54 @@ function idChamp(cle) {
 function valeurAffichee(saisie, cle) {
   const valeur = saisie?.[cle]
   return valeur === null || valeur === undefined ? '' : String(valeur)
+}
+
+/**
+ * ACAL158 — la saisie est-elle VIDE (ni puissance souscrite ni phases) ? Seule une saisie
+ * vide laisse reprendre les valeurs du lead : une saisie enregistrée n'est jamais écrasée.
+ */
+export function saisieVide(saisie) {
+  const vide = (v) => v === null || v === undefined || v === ''
+  return vide(saisie?.puissance_souscrite_kva) && vide(saisie?.phases)
+}
+
+/**
+ * ACAL158 — « valeurs du lead » : la proposition du serveur (`proposition_lead`), avec sa source
+ * visible. Le bouton REMPLIT le formulaire sans rien enregistrer ; absent dès qu'une saisie
+ * existe (la proposition reste alors lisible, jamais appliquée).
+ */
+function PropositionLead({ proposition, peutReprendre, onReprendre }) {
+  if (!proposition) return null
+  return (
+    <div
+      className="flex flex-col gap-2 border border-border/60 px-3 py-2 text-sm"
+      data-testid="acal158-proposition"
+    >
+      <p>
+        {'Valeurs du lead : '}
+        <strong data-testid="acal158-valeurs">
+          {[
+            proposition.puissance_souscrite_kva != null
+              ? `${formatNumber(proposition.puissance_souscrite_kva, { decimals: 1 })} kVA` : null,
+            proposition.phases != null ? `${proposition.phases} phase${proposition.phases > 1 ? 's' : ''}` : null,
+          ].filter(Boolean).join(' · ') || '—'}
+        </strong>
+        {proposition.source
+          ? <span className="text-xs text-lune-faint" data-testid="acal158-source">{` — source : ${proposition.source}`}</span>
+          : null}
+      </p>
+      {peutReprendre
+        ? (
+          <div>
+            <Button type="button" onClick={onReprendre} data-testid="acal158-reprendre">
+              Reprendre les valeurs du lead
+            </Button>
+            <span className="ml-2 text-xs text-lune-faint">Rien n’est enregistré avant « Enregistrer ».</span>
+          </div>
+        )
+        : <p className="text-xs text-lune-faint">Une saisie existe déjà : la proposition n’est pas appliquée.</p>}
+    </div>
+  )
 }
 
 /** Le bandeau qui NOMME les champs fautifs et y renvoie d'un clic. */
@@ -264,6 +314,17 @@ export default function Raccordement({ calepinageId } = {}) {
     setBrouillon({ ...saisie, [cle]: valeur })
   }
 
+  // ACAL158 — reprendre = remplir le brouillon (puissance, phases), JAMAIS poster.
+  const proposition = bloc?.proposition_lead ?? null
+  const reprendreLead = () => {
+    if (!proposition) return
+    setBrouillon({
+      ...saisie,
+      puissance_souscrite_kva: proposition.puissance_souscrite_kva ?? saisie.puissance_souscrite_kva ?? null,
+      phases: proposition.phases ?? saisie.phases ?? null,
+    })
+  }
+
   const enregistrer = (evenement) => {
     evenement.preventDefault()
     setEnregistrement(true)
@@ -318,13 +379,34 @@ export default function Raccordement({ calepinageId } = {}) {
 
         <BandeauRefus erreurs={erreurs} />
 
+        <PropositionLead
+          proposition={proposition}
+          peutReprendre={saisieVide(bloc?.saisie)}
+          onReprendre={reprendreLead}
+        />
+
+        <p className="text-xs text-lune-faint" data-testid="acal156-note-simulation">
+          {'Le cos φ imposé et le plafond d’injection enregistrés ici sont lus par la simulation '
+            + '(autoconsommation et batterie) : après un changement, relancez-la — le panneau '
+            + 'Production signale un résultat périmé.'}
+        </p>
+
         <form className="flex flex-col gap-3" onSubmit={enregistrer} data-testid="calx244-formulaire">
           <div className="grid gap-3 sm:grid-cols-2">
-            {CHAMPS.map(({ cle, libelle, unite, texte, aide }) => (
+            {CHAMPS.map(({ cle, libelle, unite, texte, aide, simulation }) => (
               <div key={cle} className="flex flex-col gap-1">
                 <Label htmlFor={idChamp(cle)}>
                   {unite ? `${libelle} (${unite})` : libelle}
                 </Label>
+                {/* ACAL156 — une valeur ENREGISTRÉE de ces deux champs alimente la simulation :
+                    l'écran le dit, plutôt que de laisser croire à une saisie décorative. */}
+                {simulation && valeurAffichee(bloc?.saisie, cle) !== ''
+                  ? (
+                    <Badge tone="info" data-testid={`acal156-simulation-${cle}`}>
+                      utilisé par la simulation
+                    </Badge>
+                  )
+                  : null}
                 <Input
                   id={idChamp(cle)}
                   name={cle}

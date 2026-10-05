@@ -11,7 +11,7 @@ import { AlertCircle } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
 import useResource from '../../hooks/useResource'
 import { renderTrustedSvg } from '../../lib/trustedSvg'
-import { Button, Card, Spinner } from '../../ui'
+import { Button, Card, Input, Label, Spinner } from '../../ui'
 import RetourAtelier from './atelier/RetourAtelier'
 import { telechargerBlob } from './exportImage'
 
@@ -166,14 +166,107 @@ function Motifs({ donnees }) {
   ))
 }
 
+/**
+ * ACAL161 — l'ÉDITEUR du schéma : renommer le libellé ou le repère d'un bloc DESSINÉ. L'écran
+ * ne crée ni ne supprime aucun organe et ne change aucune grandeur : il poste
+ * `{libelles: {clef: texte}, reperes: {clef: texte}}` (les rubriques MODIFIÉES seulement ; un
+ * champ vidé vaut `null`, qui efface l'édition de cette rubrique). Le refus du serveur
+ * (`edition.libelles.<clef>`, `edition.reperes.<clef>`) se pose SOUS le champ nommé, mot pour mot.
+ */
+export function corpsEdition(blocs, saisie) {
+  const corps = {}
+  for (const [rubrique, cle] of [['libelles', 'titre'], ['reperes', 'repere']]) {
+    for (const bloc of blocs) {
+      const v = saisie[rubrique]?.[bloc.clef]
+      if (v === undefined || v === (bloc[cle] ?? '')) continue
+      corps[rubrique] = { ...(corps[rubrique] ?? {}), [bloc.clef]: v.trim() === '' ? null : v }
+    }
+  }
+  return corps
+}
+
+function EditionSchema({ id, donnees, onPoste }) {
+  const blocs = Array.isArray(donnees?.blocs) ? donnees.blocs : []
+  const [saisie, setSaisie] = useState({ libelles: {}, reperes: {} })
+  const [erreurs, setErreurs] = useState({})
+  const [enCours, setEnCours] = useState(false)
+  if (blocs.length === 0) return null
+
+  const corps = corpsEdition(blocs, saisie)
+  const modifie = Object.keys(corps).length > 0
+  const poser = (rubrique, clef, valeur) => setSaisie((s) => ({ ...s, [rubrique]: { ...s[rubrique], [clef]: valeur } }))
+
+  const enregistrer = (evenement) => {
+    evenement.preventDefault()
+    setEnCours(true)
+    setErreurs({})
+    calepinageApi.calepinages.enregistrerEditionSld(id, corps)
+      .then((reponse) => {
+        onPoste(reponse?.data)
+        setSaisie({ libelles: {}, reperes: {} })
+      })
+      .catch((err) => {
+        const donneesRefus = err?.response?.data
+        const parChamp = {}
+        if (donneesRefus && typeof donneesRefus === 'object') {
+          for (const [cle, m] of Object.entries(donneesRefus)) parChamp[cle] = Array.isArray(m) ? m.join(' ') : String(m)
+        }
+        setErreurs(Object.keys(parChamp).length ? parChamp : { edition: 'Édition non enregistrée : le serveur n’a pas accepté la saisie.' })
+      })
+      .finally(() => setEnCours(false))
+  }
+
+  const refus = (rubrique, clef) => erreurs[`edition.${rubrique}.${clef}`]
+  const connus = new Set(blocs.flatMap((b) => [`edition.libelles.${b.clef}`, `edition.reperes.${b.clef}`]))
+  const generaux = Object.entries(erreurs).filter(([cle]) => !connus.has(cle))
+
+  return (
+    <form className="flex flex-col gap-3" onSubmit={enregistrer} data-testid="acal161-edition">
+      <h3 className="text-sm font-semibold">Libellés et repères des blocs</h3>
+      {generaux.map(([cle, m]) => (
+        <p key={cle} role="alert" className="text-sm text-destructive" data-testid="acal161-bandeau">{`${cle} : ${m}`}</p>
+      ))}
+      <ul className="flex flex-col gap-2">
+        {blocs.map((bloc) => (
+          <li key={bloc.clef} className="grid gap-2 sm:grid-cols-2" data-testid={`acal161-bloc-${bloc.clef}`}>
+            {[['libelles', 'titre', 'Libellé'], ['reperes', 'repere', 'Repère']].map(([rubrique, cle, libelle]) => (
+              <div key={rubrique} className="flex flex-col gap-1">
+                <Label htmlFor={`acal161-${rubrique}-${bloc.clef}`}>{`${libelle} — ${bloc.clef}`}</Label>
+                <Input
+                  id={`acal161-${rubrique}-${bloc.clef}`}
+                  value={saisie[rubrique][bloc.clef] ?? (bloc[cle] ?? '')}
+                  invalid={Boolean(refus(rubrique, bloc.clef))}
+                  onChange={(e) => poser(rubrique, bloc.clef, e.target.value)}
+                />
+                {refus(rubrique, bloc.clef)
+                  ? <p className="text-xs text-destructive" data-testid={`acal161-erreur-${rubrique}-${bloc.clef}`}>{refus(rubrique, bloc.clef)}</p>
+                  : null}
+              </div>
+            ))}
+          </li>
+        ))}
+      </ul>
+      <div>
+        <Button type="submit" disabled={!modifie || enCours} data-testid="acal161-enregistrer">
+          {enCours ? 'Enregistrement…' : 'Enregistrer l’édition'}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
 export default function SchemaUnifilairePanel({ calepinageId }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
-  const { data, loading, error } = useResource(
+  const { data: lu, loading, error } = useResource(
     () => calepinageApi.calepinages.schemaUnifilaire(id), id,
     { select: (r) => r.data, errorMessage: 'Schéma unifilaire indisponible.' },
   )
+  // ACAL161 — la réponse du POST d'édition (le MÊME document, édition appliquée) remplace
+  // la lecture : le SVG relu porte le texte, sans second GET.
+  const [poste, setPoste] = useState(null)
+  const data = poste ?? lu
 
   const balisage = renderTrustedSvg(data?.svg)
   const [motifExport, setMotifExport] = useState(null)
@@ -264,6 +357,7 @@ export default function SchemaUnifilairePanel({ calepinageId }) {
             {motifExport
               ? <p className="text-sm text-destructive" data-testid="calx236-erreur-export">{motifExport}</p>
               : null}
+            <EditionSchema id={id} donnees={data} onPoste={setPoste} />
           </>
         )
         : <Motifs donnees={data} />}

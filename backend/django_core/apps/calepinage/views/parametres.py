@@ -23,6 +23,7 @@ ligne en base est un GET qui ment).
 """
 from __future__ import annotations
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.response import Response
@@ -39,6 +40,40 @@ from ..services.parametres import (
 )
 
 __all__ = ['ParametresCalepinageView', 'SuggestionPenteIGNView']
+
+#: ACAL288 — la clé DÉRIVÉE de la section ``documents`` (contrat
+#: ``parametres_calepinage.json``) et son refus en écriture
+#: (``exemple_refus_catalogue_rapport``).
+CLE_CATALOGUE = 'catalogue_rapport'
+MESSAGE_CATALOGUE = ("Clé dérivée en lecture seule : elle ne s'enregistre "
+                     "pas.")
+
+
+def _catalogue_rapport():
+    """``[{code, titre, obligatoire}]`` dans l'ordre du contrat
+    ``rapport_etude.json`` (``sections_declarees``) — aucun second
+    catalogue."""
+    from ..services.rapport.contrat import sections_declarees
+
+    return [{'code': section['code'], 'titre': section['titre'],
+             'obligatoire': bool(section.get('obligatoire'))}
+            for section in sections_declarees()]
+
+
+def _refus_nomme(refus):
+    """Le ``ValidationError`` de ``full_clean`` en corps 400 NOMMÉ : une
+    section garde sa clé ; une clé qui n'est pas une section (le code de la
+    section de rapport fautive) est rangée sous ``documents``."""
+    from ..selectors import SECTIONS_PARAMETRES
+
+    corps = {}
+    for champ, messages in getattr(refus, 'message_dict', {}).items():
+        texte = ' '.join(str(m) for m in messages)
+        if champ in SECTIONS_PARAMETRES:
+            corps[champ] = texte
+        else:
+            corps.setdefault('documents', {})[champ] = texte
+    return corps or {'detail': ' '.join(str(m) for m in refus.messages)}
 
 
 def _forme_registre():
@@ -83,6 +118,9 @@ def _forme_reglages(nom, avec_registre=False):
         # leur vocabulaire vit là, pas dans la forme HTTP.
         'simulation': serializers.DictField(),
         'electrique_societe': serializers.DictField(),
+        # CALX307 — configuration documentaire ; ACAL288 : porte en lecture
+        # la clé DÉRIVÉE ``catalogue_rapport``.
+        'documents': serializers.DictField(),
     }
     if avec_registre:
         champs['registre'] = _forme_registre()
@@ -109,6 +147,11 @@ class ParametresCalepinageView(APIView):
         # publié en LECTURE SEULE : l'écran n'a plus à le redéclarer,
         # ``services/parametres_cles.py`` reste la seule déclaration.
         reponse['registre'] = registre_des_reglages()
+        # ACAL288 — le catalogue des sections du rapport d'étude, DÉRIVÉ du
+        # contrat ``rapport_etude.json`` (jamais stocké, jamais accepté en
+        # écriture) : l'écran coche parmi CES sections, dans CET ordre.
+        reponse['documents'] = dict(reponse.get('documents') or {},
+                                    catalogue_rapport=_catalogue_rapport())
         return Response(reponse)
 
     @extend_schema(request=_forme_reglages('CalepinageParametresRequete'),
@@ -121,6 +164,11 @@ class ParametresCalepinageView(APIView):
                 {'detail': "Le corps attendu est un objet « section : "
                            "réglages »."},
                 status=status.HTTP_400_BAD_REQUEST)
+        documents = donnees.get('documents')
+        if isinstance(documents, dict) and CLE_CATALOGUE in documents:
+            # ACAL288 — clé DÉRIVÉE : refusée en la nommant, rien d'écrit.
+            return Response({'documents': {CLE_CATALOGUE: MESSAGE_CATALOGUE}},
+                            status=status.HTTP_400_BAD_REQUEST)
         try:
             reglages = enregistrer_parametres(
                 getattr(request.user, 'company', None), donnees,
@@ -138,6 +186,12 @@ class ParametresCalepinageView(APIView):
                 return Response({refus.section: {refus.champ: str(refus)}},
                                 status=status.HTTP_400_BAD_REQUEST)
             return Response({refus.champ or 'detail': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except DjangoValidationError as refus:
+            # ACAL288 — ``full_clean`` refuse (ex. section obligatoire du
+            # rapport décochée, code inconnu) : 400 qui NOMME le champ, jamais
+            # un 500. Une clé hors sections vient de ``documents``.
+            return Response(_refus_nomme(refus),
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(reglages)
 

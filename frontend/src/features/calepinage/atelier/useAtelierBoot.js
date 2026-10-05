@@ -15,6 +15,24 @@ import {
 // initialisation du builder), déplacé VERBATIM depuis pages/ventes/ToitureDesign.jsx
 // (move only : le corps de l'effet est inchangé ; seuls les imports et la
 // déstructuration de `ctx` en tête sont ajoutés).
+/**
+ * ACAL286 — pousse au builder la table d'affectation SERVIE (`electrique.affectation[]`, avec
+ * `couleur_chaine` / `couleur_mppt`) pour teinter les modules du pan actif. Best-effort : un
+ * résultat illisible ou absent éteint la teinte (comportement d'avant), jamais une erreur
+ * d'écran. Aucune écriture : la teinte est dérivée du résultat serveur.
+ */
+export async function pousserAffectationAtelier(builder, calepinageId) {
+  if (!builder || typeof builder.setAffectationChaines !== 'function' || !calepinageId) return
+  let lignes = null
+  try {
+    const res = await calepinageApi.calepinages.resultat(calepinageId)
+    lignes = res?.data?.electrique?.affectation ?? null
+  } catch {
+    lignes = null
+  }
+  builder.setAffectationChaines(Array.isArray(lignes) ? lignes : null, 'chaine')
+}
+
 export function useAtelierBoot(ctx) {
   // Identifiants et drapeaux de mode, puis refs, puis setters d'état.
   const { cibleId, calepinageId, devisId, leadId, estCalepinage, estDevis } = ctx
@@ -428,7 +446,11 @@ export function useAtelierBoot(ctx) {
           // Django, c'est donc à l'écran d'aller chercher le fichier. ACAL68 :
           // APRÈS l'hydratation (jamais depuis `onApiReady`, où `fondDuDocument()`
           // vaut null ou le fond du document précédent en navigation SPA).
-          onHydrationTerminee: () => poserFondDuDocument(builderApi.current),
+          onHydrationTerminee: () => {
+            poserFondDuDocument(builderApi.current)
+            // ACAL286 — la teinte par chaîne vient de la table servie (best-effort).
+            pousserAffectationAtelier(builderApi.current, calepinageId)
+          },
         })
         // La barre de recherche d'adresse part PRÉ-REMPLIE, exactement comme en
         // mode devis (`bootDevis` ci-dessus, PV23bis) et en mode lead (`boot()`).

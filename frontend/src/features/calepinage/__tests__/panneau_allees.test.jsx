@@ -113,7 +113,7 @@ describe('CAL70 — l’écran lit le réglage société et le plateau du moteur
     expect(screen.queryByTestId('cal-allees-suggestion')).toBeNull()
   })
 
-  it('reprendre le plateau REMPLIT le champ, sans écrire tout seul', async () => {
+  it('reprendre le plateau REMPLIT l’allée de CE calepinage, sans écrire tout seul', async () => {
     getParametres.mockResolvedValue({ data: { degagements: {} } })
     calculer.mockResolvedValue({ data: RESULTAT_AVEC_PLATEAU })
     rendre()
@@ -124,7 +124,9 @@ describe('CAL70 — l’écran lit le réglage société et le plateau du moteur
     fireEvent.click(screen.getByTestId('cal-allees-appliquer-suggestion'))
     const attendue = RESULTAT_AVEC_PLATEAU.suggestions
       .find((s) => s.code === 'ALLEE_GRATUITE').action.patch.allee_m
-    expect(document.getElementById('cal-allees-largeur')).toHaveValue(attendue)
+    expect(document.getElementById('cal-allees-largeur-calepinage')).toHaveValue(attendue)
+    // Le défaut société n'est pas touché : champ inchangé, aucune écriture.
+    expect(document.getElementById('cal-allees-largeur')).toHaveValue(null)
     // Rien n'est encore enregistré : c'est un geste EXPLICITE.
     expect(updateParametres).not.toHaveBeenCalled()
   })
@@ -139,6 +141,9 @@ describe('CAL70 — l’écran lit le réglage société et le plateau du moteur
 
     fireEvent.change(document.getElementById('cal-allees-largeur'),
       { target: { value: '1.2' } })
+    // ACAL258 — le défaut société se CONFIRME avant d'écrire.
+    expect(screen.getByTestId('cal-allees-enregistrer')).toBeDisabled()
+    fireEvent.click(screen.getByTestId('cal-allees-confirmer-societe'))
     fireEvent.click(screen.getByTestId('cal-allees-enregistrer'))
 
     await waitFor(() => expect(updateParametres).toHaveBeenCalledTimes(1))
@@ -147,7 +152,7 @@ describe('CAL70 — l’écran lit le réglage société et le plateau du moteur
     expect(corps.degagements.retrait_rive_m).toBe(0.5)
     expect(corps.degagements.source).toBe('devis technique')
     expect(await screen.findByTestId('cal-allees-message'))
-      .toHaveTextContent('enregistrée')
+      .toHaveTextContent('tous vos calepinages')
   })
 
   it('sans surface à analyser, le DIT plutôt que d’interroger le moteur', async () => {
@@ -168,6 +173,7 @@ describe('CAL70 — l’écran lit le réglage société et le plateau du moteur
 
     expect(screen.queryByTestId('cal-allees-champ')).toBeNull()
     expect(screen.queryByTestId('cal-allees-enregistrer')).toBeNull()
+    expect(screen.queryByTestId('cal-allees-enregistrer-calepinage')).toBeNull()
     expect(screen.queryByTestId('cal-allees-rechercher')).toBeNull()
   })
 })

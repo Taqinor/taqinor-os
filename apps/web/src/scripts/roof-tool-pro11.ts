@@ -183,6 +183,7 @@ import {
   type Measurement,
   type MeasureKind,
 } from './roofPro11/mesureUi';
+import { createParcelleUi } from './roofPro11/parcelle'; // ACAL233
 import { type ModeClavier } from './roofPro11/clavier'; // CALX128 câblage
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
@@ -195,7 +196,7 @@ import {
   rotationMolette,
   surLeFond,
 } from './roofPro11/calageFondUi'; // CALX108 câblage
-import { createScene3d, projectPlanView, panelQuadsLngLat } from './roofPro11/scene3d';
+import { buildAffectationColoring, createScene3d, projectPlanView, panelQuadsLngLat, type AffectationMode, type AffectationRow } from './roofPro11/scene3d';
 import {
   createOptimizer,
   departagerRemplissage,
@@ -1407,6 +1408,38 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   });
   mesureCancelBtn?.addEventListener('click', () => mesureUi.cancel());
 
+  // ═══════════ ACAL233 — la PARCELLE (clé racine `parcelle`) ═══════════
+  // Les boutons n'existent que dans le DOM complet de l'ERP (BuilderDom.jsx) : la page publique
+  // (captureOnly) ne les porte jamais, donc `parcelleBtn` y est null et rien n'est câblé.
+  const parcelleBtn = $<HTMLButtonElement>('rp9-parcelle');
+  const parcelleClearBtn = $<HTMLButtonElement>('rp9-parcelle-clear');
+  const parcelleUi = createParcelleUi(ctx, { render: () => renderParcelle(), setStatus: (m) => setStatus(m) });
+  function renderParcelle() {
+    const src = map.getSource?.('rp9-parcelle') as maplibregl.GeoJSONSource | undefined;
+    if (src) {
+      const features: object[] = [];
+      const pts = parcelleUi.isActive() ? parcelleUi.sessionPoints() : (ctx.parcelle?.vertices ?? []);
+      if (pts.length >= 2) {
+        const anneau = parcelleUi.isActive() ? pts : [...pts, pts[0]];
+        features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: anneau }, properties: {} });
+      }
+      src.setData({ type: 'FeatureCollection', features } as never);
+    }
+    if (parcelleBtn) {
+      parcelleBtn.textContent = parcelleUi.isActive() ? 'Terminer la parcelle' : 'Parcelle';
+      parcelleBtn.setAttribute('aria-pressed', String(parcelleUi.isActive()));
+    }
+    if (parcelleClearBtn) parcelleClearBtn.hidden = !ctx.parcelle && !parcelleUi.isActive();
+  }
+  parcelleBtn?.addEventListener('click', () => {
+    if (parcelleUi.isActive()) parcelleUi.finish();
+    else parcelleUi.begin();
+  });
+  parcelleClearBtn?.addEventListener('click', () => {
+    parcelleUi.clear();
+    setStatus('Parcelle effacée — enregistrez pour la retirer du document.');
+  });
+
   // WJ19 — « Ombres voisines » (shadow-tracing → dérate honnête). Le module câble
   // lui-même ses boutons/curseurs ; l'entrée route seulement le clic carte (plus bas)
   // et le reset. `renderActive` est déclaré plus bas → wrapper paresseux.
@@ -1712,6 +1745,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       },
       paint: { 'text-color': '#ffffff', 'text-halo-color': '#070b1d', 'text-halo-width': 1.6 },
     });
+    // ACAL233 — calque de la parcelle (pointillés), distinct du tracé du toit.
+    map.addSource('rp9-parcelle', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } as never });
+    map.addLayer({
+      id: 'rp9-parcelle-line',
+      type: 'line',
+      source: 'rp9-parcelle',
+      paint: { 'line-color': '#ffd479', 'line-width': 2.5, 'line-dasharray': [2, 2] },
+    });
     map.addLayer(customLayer);
     updateCompass();
     // W113 — HYDRATATION depuis un lead (étude Meriem) : sème le contour/pin du client
@@ -1808,6 +1849,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       // CAL93 — l'horizon passe par l'API de `shadingUi` (matrice/facteur/note cohérents).
       shadingUi.setHorizonProfile((ctx.horizonProfile ?? null) as unknown as import('../lib/horizonEngine').HorizonProfile | null);
       redrawExclusionZones();
+      renderParcelle(); // ACAL233
       // CALX119 — contrôles du soleil de scène alignés sur l'instant relu.
       if (sunHourEl) sunHourEl.value = String(Math.round(ctx.sunHour));
       if (sunHourValueEl) sunHourValueEl.textContent = `${Math.round(ctx.sunHour)} h`;
@@ -2798,6 +2840,11 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       mesureUi.addPoint(lngLat);
       return;
     }
+    // ACAL233 — session de parcelle active : le tap pose un sommet (refusé s'il croise).
+    if (parcelleUi.isActive()) {
+      parcelleUi.addPoint(lngLat);
+      return;
+    }
     // WJ19 — tracé d'ombre actif : le module consomme le clic (pied puis bout).
     if (shadingUi.handleMapClick(lngLat)) return;
     // CALX94 câblage — mode « corriger une arête » armé : le clic DÉSIGNE un segment du
@@ -2843,6 +2890,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   });
   map.on('dblclick', (e) => {
     e.preventDefault();
+    if (parcelleUi.isActive()) return; // ACAL233 — le double-clic ne ferme pas le toit pendant la parcelle
     cancelPendingVertex();
     close();
   });
@@ -3968,7 +4016,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       retraits: { ...setbacks },
       kit: kitDeLaScene(),
       // ACAL257 — l'allée du calepinage (document) et les dégagements de la société.
-      alleeTechniqueM: (ctx.documentRelu?.alleeTechnique as { largeurM?: number } | undefined)?.largeurM ?? null,
+      alleeTechniqueM: ctx.alleeTechnique?.largeurM ?? null, // ACAL258 — l'allée de CE calepinage (état vivant)
       degagementsSociete: opts.reglagesAtelier?.degagements ?? null,
     };
   }
@@ -4157,6 +4205,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       }
       appliquerHydratation(hydratationDeSection(cle, valeur));
       recalc();
+    },
+    // ACAL286 — la table d'affectation SERVIE (électrique.affectation[], couleurs de chaîne /
+    // MPPT) teinte les modules du pan actif ; table vide ou non servie ⇒ teinte éteinte.
+    // Aucune écriture : la teinte est dérivée du résultat serveur, jamais sérialisée.
+    setAffectationChaines: (rows: readonly AffectationRow[] | null | undefined, mode: AffectationMode = 'chaine') => {
+      const coloring = buildAffectationColoring(rows, mode);
+      ctx.affectationColoration = coloring.colorByModule.size > 0 ? coloring : null;
+      scene3d.rafraichirAffectation();
     },
     snapshot: () => scene3d.snapshot(),
     // CAL180 — export « image HD » : rendu hors écran 2×/3×, blob PNG rendu à la page.
