@@ -3979,6 +3979,14 @@ def default_responsable_for(company, lead_attrs=None):
     profile = CompanyProfile.objects.filter(company=company).first()
     explicit = profile.responsable_defaut_leads if profile else None
 
+    # CIQ416 (D-CIQ-20) — un lead COMMERCIAL ou INDUSTRIEL va au responsable
+    # des leads pro quand il est désigné (et actif), AVANT le round-robin et
+    # le défaut. Réglage vide, ou autre segment : comportement identique à
+    # l'octet. Le routage n'est pas un rythme (CAD52/CAD124 tiennent).
+    responsable_pro = responsable_leads_pro(profile, lead_attrs)
+    if responsable_pro is not None:
+        return responsable_pro
+
     if profile is not None and profile.round_robin_leads_actif:
         balanced = _next_balanced_round_robin_commercial(
             company, profile.round_robin_plafond_leads_ouverts)
@@ -3990,6 +3998,28 @@ def default_responsable_for(company, lead_attrs=None):
     if explicit is not None:
         return explicit
     return pick_round_robin_owner(company)
+
+
+def _type_des_attrs(lead_attrs):
+    if not lead_attrs:
+        return None
+    if isinstance(lead_attrs, dict):
+        return lead_attrs.get('type_installation')
+    return getattr(lead_attrs, 'type_installation', None)
+
+
+def responsable_leads_pro(profile, lead_attrs=None):
+    """CIQ416 — le responsable des leads pro (``CompanyProfile.
+    responsable_leads_pro``, CIQ415) quand ``lead_attrs`` désigne un lead
+    commercial ou industriel et que ce responsable est actif ; sinon None."""
+    if profile is None or _type_des_attrs(lead_attrs) not in (
+            Lead.TypeInstallation.COMMERCIAL,
+            Lead.TypeInstallation.INDUSTRIEL):
+        return None
+    responsable = getattr(profile, 'responsable_leads_pro', None)
+    if responsable is None or not getattr(responsable, 'is_active', True):
+        return None
+    return responsable
 
 
 def pick_round_robin_owner(company):
@@ -6155,7 +6185,11 @@ def create_lead_from_meta_lead_ads(
     if inherited_owner is not None:
         extra['owner'] = inherited_owner
     else:
-        default = default_responsable_for(company)
+        # CIQ416 — le type lu sur le formulaire route un lead pro vers son
+        # responsable désigné (sinon : comportement inchangé).
+        default = default_responsable_for(
+            company,
+            lead_attrs={'type_installation': extras.get('type_installation')})
         if default is not None:
             extra['owner'] = default
     # À la CRÉATION, le délai déclaré pose la priorité pleinement (haute,
@@ -6776,6 +6810,13 @@ def notify_new_lead(lead, *, sous_seuil=False) -> None:
         recipients = avec_direction(
             lead_notification_recipients(lead),
             getattr(lead, 'company', None))
+        # CIQ416 (D-CIQ-20) — un lead PRO se dit pro dès le titre, et son
+        # responsable désigné est ajouté aux destinataires.
+        segment = getattr(lead, 'type_installation', None)
+        pro = segment in (Lead.TypeInstallation.COMMERCIAL,
+                          Lead.TypeInstallation.INDUSTRIEL)
+        if pro:
+            recipients = _avec_responsable_pro(recipients, lead)
         if not recipients:
             return
         from apps.notifications.services import notify_many
@@ -6783,6 +6824,8 @@ def notify_new_lead(lead, *, sous_seuil=False) -> None:
         wa_url = _build_lead_wa_reply_url(lead)
         suffixe = ' (sous le seuil)' if sous_seuil else ''
         body_parts = [f'Un nouveau lead vient d\'arriver : {nom}{suffixe}.']
+        if pro:
+            body_parts.extend(lignes_notification_pro(lead))
         if sous_seuil:
             body_parts.append(
                 'Facture déclarée sous le seuil de 1 000 MAD — à traiter '
@@ -6806,10 +6849,12 @@ def notify_new_lead(lead, *, sous_seuil=False) -> None:
                 'section « Toiture & site ».')
         if wa_url:
             body_parts.append(f'Répondre maintenant : {wa_url}')
+        titre = (f'Nouveau lead PRO ({segment}) : {nom}{suffixe}' if pro
+                 else f'Nouveau lead : {nom}{suffixe}')
         notify_many(
             recipients,
             'lead_new',
-            f'Nouveau lead : {nom}{suffixe}',
+            titre,
             body='\n'.join(body_parts),
             link=f'/crm/leads?lead={lead.pk}',
             company=lead.company,
@@ -6819,6 +6864,61 @@ def notify_new_lead(lead, *, sous_seuil=False) -> None:
         logging.getLogger(__name__).warning(
             'QJ2: notify_new_lead échoué pour lead #%s : %s',
             getattr(lead, 'pk', '?'), exc)
+
+
+def _avec_responsable_pro(recipients, lead):
+    """CIQ416 — ajoute le responsable des leads pro aux destinataires (sans
+    doublon). Best-effort : un profil absent ne change rien."""
+    from apps.parametres.models import CompanyProfile
+    profile = CompanyProfile.objects.filter(
+        company_id=getattr(lead, 'company_id', None)).first()
+    responsable = responsable_leads_pro(
+        profile, {'type_installation': lead.type_installation})
+    liste = list(recipients or [])
+    if responsable is not None and responsable.pk not in {
+            getattr(u, 'pk', None) for u in liste}:
+        liste.append(responsable)
+    return liste
+
+
+def _montant_fr(valeur):
+    from decimal import Decimal
+    nombre = Decimal(str(valeur))
+    if nombre == nombre.to_integral_value():
+        return f'{int(nombre):,}'.replace(',', ' ')
+    return f'{nombre:,.2f}'.replace(',', ' ').replace('.', ',')
+
+
+def lignes_notification_pro(lead):
+    """CIQ416 — le corps d'un lead PRO : catégorie, facture ou kWh DÉCLARÉS
+    (jamais une estimation) et tension si elle est déclarée. Une donnée
+    absente n'écrit aucune ligne."""
+    lignes = []
+    categorie = getattr(lead, 'categorie_commerciale', None)
+    if categorie:
+        libelle = dict(Lead.CategorieCommerciale.choices).get(
+            categorie, categorie)
+        lignes.append(f'Activité : {libelle}.')
+    elif getattr(lead, 'secteur_industriel', None):
+        lignes.append(f'Activité : {lead.secteur_industriel}.')
+    tranche = getattr(lead, 'facture_tranche_declaree', None)
+    kwh = (getattr(lead, 'conso_mensuelle_kwh', None)
+           or getattr(lead, 'bill_kwh', None))
+    if getattr(lead, 'facture_hiver', None):
+        lignes.append('Facture déclarée : '
+                      f'{_montant_fr(lead.facture_hiver)} MAD/mois.')
+    elif isinstance(tranche, dict) and tranche.get('libelle'):
+        lignes.append(f'Facture déclarée : « {tranche["libelle"]} ».')
+    if kwh:
+        lignes.append(f'Consommation déclarée : {_montant_fr(kwh)} kWh/mois.')
+    tension = getattr(lead, 'tension_raccordement', None)
+    if (tension in ('bt', 'mt')
+            and getattr(lead, 'tension_source', None)
+            != 'site_defaut_visible'):
+        lignes.append('Raccordement : ' + (
+            'moyenne tension (MT).' if tension == 'mt'
+            else 'basse tension (BT).'))
+    return lignes
 
 
 def notify_devis_opened(devis_reference: str, lead, *, ip='',
