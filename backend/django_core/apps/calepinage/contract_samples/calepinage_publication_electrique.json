@@ -1,0 +1,132 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/generer-devis/",
+  "pourquoi": "ACAL9 (d) (D-ACAL-9, C-ACAL-062) — REFUS DE PUBLICATION ÉLECTRIQUE : un verdict électrique « bloquant » REFUSE « Générer le devis » et « Resynchroniser le devis » (POST …/sync-devis/) en NOMMANT les bloquants : 422 {detail, electrique{verdict:'bloquant', bloquants[], derogation_possible}}. Le succès (201/200) gagne la clé `electrique` {verdict, manquantes, derogation}. Corps OPTIONNEL `derogation_electrique` {motif} : réservé au droit calepinage_approuver (D-ACAL-9), consigné dans le fil avec l'auteur et l'horodatage ; la dérogation ne passe JAMAIS outre un bloquant non dérogeable. Complète calepinage_publication.json (mêmes routes, mêmes codes). Variante : GET resultat/?variante=<id> → `variante` {id, nom} ; ligne de comparer/ → `verdict_electrique` {verdict, bloquants[]}. PACT10 : aucun code, ce fichier part AVANT D05-T26/T28.",
+  "exemple_refus_422": {
+    "detail": "Le verdict électrique est bloquant : le devis n'est pas généré.",
+    "electrique": {
+      "verdict": "bloquant",
+      "bloquants": [
+        {
+          "code": "voc_cold_under_vmax",
+          "libelle": "Voc à froid sous la tension maximale admissible de l'onduleur",
+          "detail": "Voc à froid 1 120 V pour 1 100 V admis."
+        }
+      ],
+      "derogation_possible": true
+    }
+  },
+  "exemple": {
+    "devis": 412,
+    "reference": "DEV-202610-0042",
+    "statut": "brouillon",
+    "layout_hash": "c3d5e7f90b1d3f5a7c9e1b3d5f7a9c1e",
+    "deduplique": false,
+    "avertissements": [],
+    "marques_manquantes": [],
+    "electrique": {
+      "verdict": "conforme",
+      "manquantes": [],
+      "derogation": null
+    }
+  },
+  "exemple_avec_manquantes": {
+    "devis": 412,
+    "reference": "DEV-202610-0042",
+    "statut": "brouillon",
+    "layout_hash": "c3d5e7f90b1d3f5a7c9e1b3d5f7a9c1e",
+    "deduplique": false,
+    "avertissements": [],
+    "marques_manquantes": [],
+    "electrique": {
+      "verdict": "incomplet",
+      "manquantes": [
+        "Onduleur : fiche technique incomplète (vmaxDcV)."
+      ],
+      "derogation": null
+    }
+  },
+  "corps_derogation": {
+    "derogation_electrique": {
+      "motif": "Onduleur de remplacement commandé : la fiche sera complétée avant la pose."
+    }
+  },
+  "exemple_derogue": {
+    "devis": 412,
+    "reference": "DEV-202610-0042",
+    "statut": "brouillon",
+    "layout_hash": "c3d5e7f90b1d3f5a7c9e1b3d5f7a9c1e",
+    "deduplique": false,
+    "avertissements": [],
+    "marques_manquantes": [],
+    "electrique": {
+      "verdict": "bloquant",
+      "manquantes": [],
+      "derogation": {
+        "motif": "Onduleur de remplacement commandé : la fiche sera complétée avant la pose.",
+        "auteur": {
+          "id": 2,
+          "nom_complet": "Relecteur d'essai"
+        },
+        "horodatage": "2026-10-04T10:30:00+01:00"
+      }
+    }
+  },
+  "sync_devis": {
+    "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/sync-devis/",
+    "exemple_refus_422": {
+      "detail": "Le verdict électrique est bloquant : le devis n'est pas resynchronisé.",
+      "electrique": {
+        "verdict": "bloquant",
+        "bloquants": [
+          {
+            "code": "ratio_dc_ac",
+            "libelle": "Ratio DC/AC dans la fourchette retenue par la société",
+            "detail": "Ratio 1,9 pour 1,5 admis."
+          }
+        ],
+        "derogation_possible": true
+      }
+    },
+    "exemple": {
+      "inchange": false,
+      "panneaux": 24,
+      "kwc": 17.28,
+      "scenario": "reseau",
+      "batterie": false,
+      "lignes_modifiees": 1,
+      "lignes_ajoutees": 0,
+      "avertissements": [],
+      "electrique": {
+        "verdict": "conforme",
+        "manquantes": [],
+        "derogation": null
+      }
+    }
+  },
+  "resultat_variante": {
+    "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/resultat/?variante=<id>",
+    "cle_ajoutee": {
+      "variante": {
+        "id": 12,
+        "nom": "Variante — paysage, allée élargie"
+      }
+    }
+  },
+  "comparer_ligne": {
+    "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/comparer/",
+    "cle_ajoutee_par_ligne": {
+      "verdict_electrique": {
+        "verdict": "conforme",
+        "bloquants": []
+      }
+    },
+    "exemple_bloquant": {
+      "verdict_electrique": {
+        "verdict": "bloquant",
+        "bloquants": [
+          "voc_cold_under_vmax"
+        ]
+      }
+    }
+  }
+}
