@@ -6,7 +6,12 @@ from rest_framework import serializers
 
 from apps.records.storage import AttachmentSerializerMixin, attachment_url
 
-from .models import FicheTechnique
+# Import DIRECT du module du modèle (pas la façade ``.models``) : sans cycle
+# (``models_fiche_technique`` n'importe rien de stock), et c'est ce que lit
+# ``scripts/check_api_shapes.py`` pour garder les ``choices`` de la fiche
+# (type_fiche, bat_chimie) dans docs/api-contracts.md — son résolveur ne
+# suit pas les ré-exports de façade (deux classes ``FicheTechnique``).
+from .models_fiche_technique import FicheTechnique
 
 
 class FicheTechniqueSerializer(AttachmentSerializerMixin,
