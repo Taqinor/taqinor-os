@@ -203,7 +203,7 @@ import {
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { lireBatiments } from './roofPro11/batiment'; // CALX100 — `buildings[]` du document
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout, deserializeSetbacksFromLayout, deserializeHorizonProfileFromLayout, deserializeSceneFromLayout } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout, deserializeSetbacksFromLayout, deserializeHorizonProfileFromLayout, deserializeSceneFromLayout } from './roofPro11/prefill';
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
 
 let booted = false;
@@ -2446,6 +2446,15 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
 
   // ═══════════ « PLUSIEURS ZONES » — ajouter / sélectionner / supprimer ═══════════
 
+  /** ACAL28 — capture la pose VIVANTE du pan actif avant de le quitter : ce pan est ensuite
+   *  réémis verbatim par `serializeLayout` et reposé à ses positions quand on y revient. */
+  function capturerGeometrieActive() {
+    const a = activeArea();
+    if (!a || !closed || vertices.length < 3) return;
+    const geo = geometrieZoneActive(ctx);
+    if (geo) a.geometrieEnregistree = geo;
+  }
+
   /** Charge l'enregistrement d'une zone dans l'état d'édition (géométrie + réglages),
    *  recompute le centroïde, et la rend en 3D via le pipeline mono-zone. */
   function loadArea(a: AreaRecord) {
@@ -2507,6 +2516,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (closed) {
       go3DView();
       recalc();
+      // ACAL28 — un pan qui porte sa pose enregistrée est REPOSÉ à ses positions (comme le
+      // boot pour la zone active), jamais re-pavé sur l'optimum.
+      const geo = a.geometrieEnregistree;
+      if (geo?.panels?.length) layoutEditor.hydrateLayout(geo.panels, geo.origin, geo.mode === 'free' ? 'free' : 'lattice');
     } else {
       renderAreasPanel();
       setStatus('Zone vide sélectionnée — tracez son contour.');
@@ -2518,6 +2531,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    *  liste des zones conservées). N'agit que si la zone active est fermée. */
   function addArea() {
     if (!closed || vertices.length < 3) return;
+    capturerGeometrieActive(); // ACAL28
     snapshotActiveAreaGeometry();
     snapshotActiveAreaResult();
     const fresh = newAreaRecord();
@@ -2533,6 +2547,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (id === activeAreaId) return;
     const target = areas.find((a) => a.id === id);
     if (!target) return;
+    capturerGeometrieActive(); // ACAL28
     snapshotActiveAreaGeometry();
     snapshotActiveAreaResult();
     activeAreaId = id;

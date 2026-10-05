@@ -860,6 +860,13 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     // (a.renderPlan) ou, pour la zone active, le plan gagnant vivant (ctx.layoutPlan). Les
     // panneaux POSÉS = les `count` premiers du pavage (l'occupation personnalisée reste un
     // sur-ensemble de la lattice ; on exporte le design du gagnant). Absent si pas de plan.
+    // ACAL28 — un pan NON actif qui porte sa géométrie enregistrée (document relu, ou pose
+    // capturée en le quittant) est réémis VERBATIM : avant, seule une zone à `renderPlan` ou
+    // active sortait une géométrie, et un « Enregistrer » sans geste perdait les autres pans.
+    if (!isActive && a.geometrieEnregistree) {
+      zone.geometry = JSON.parse(JSON.stringify(a.geometrieEnregistree)) as SerializedZoneGeometry;
+      return zone;
+    }
     const rp = a.renderPlan;
     const g = rp
       ? { pack: rp.pack, grid: rp.grid, tiltDeg: rp.tiltDeg, family: rp.family, flush: rp.flush, count: rp.count }
@@ -927,6 +934,9 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       // de modules posés) ; sinon omis, jamais complété.
       const access = serializeSolarAccess(meta?.solarAccessByZone?.[a.id], posed);
       if (access) zone.geometry.solarAccess = access;
+    } else if (a.geometrieEnregistree) {
+      // ACAL28 — pan actif pas (encore) re-pavé : sa géométrie enregistrée, jamais rien.
+      zone.geometry = JSON.parse(JSON.stringify(a.geometrieEnregistree)) as SerializedZoneGeometry;
     }
     return zone;
   });
@@ -972,7 +982,14 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     kwcTotal += z.geometry.kwc;
   }
   let annualKwhTotal = 0;
-  for (const a of ctx.areas) if (a.result) annualKwhTotal += a.result.annualKwh;
+  // ACAL28 — un pan non recalculé dans la session garde sa production ENREGISTRÉE
+  // (`annualKwhEnregistre`, posée à la relecture), jamais 0.
+  for (const a of ctx.areas) {
+    if (a.result) annualKwhTotal += a.result.annualKwh;
+    else if (typeof a.annualKwhEnregistre === 'number' && Number.isFinite(a.annualKwhEnregistre)) {
+      annualKwhTotal += a.annualKwhEnregistre;
+    }
+  }
   const savings = typeof meta?.savingsMad === 'number' && Number.isFinite(meta.savingsMad) ? meta.savingsMad : null;
 
   const layout: SerializedLayout = {
@@ -1147,6 +1164,18 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
   // « aucun fond », et la mémoire est remise à zéro.
   semerFondDepuisDocument(json); // CALX107 câblage
   const zones = Array.isArray(json?.zones) ? json.zones : [];
+  // ACAL28 — production enregistrée attribuée à chaque pan au prorata de son kWc (le
+  // document ne porte que le total) : un pan jamais recalculé ne compte jamais pour 0.
+  const totalKwh = json?.result?.annualKwh;
+  const totalKwc = json?.result?.kwc;
+  const partEnregistree = (z: SerializedZone): number | undefined => {
+    const kwc = z.geometry?.kwc;
+    if (typeof totalKwh !== 'number' || !Number.isFinite(totalKwh) || typeof totalKwc !== 'number' || !(totalKwc > 0)) {
+      return undefined;
+    }
+    if (typeof kwc !== 'number' || !Number.isFinite(kwc)) return undefined;
+    return (totalKwh * kwc) / totalKwc;
+  };
   return zones.map((z) => ({
     id: z.id,
     label: z.label,
@@ -1190,7 +1219,23 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
     ...(typeof z.geometry?.moduleId === 'string' && z.geometry.moduleId.trim()
       ? { moduleId: z.geometry.moduleId.trim() }
       : {}),
+    // ACAL28 — la géométrie ENREGISTRÉE du pan (copie profonde) : réémise verbatim tant que
+    // le pan n'est pas actif, reposée à ses positions quand on le charge.
+    ...(z.geometry && typeof z.geometry === 'object' && Array.isArray(z.geometry.panels)
+      ? { geometrieEnregistree: JSON.parse(JSON.stringify(z.geometry)) as SerializedZoneGeometry }
+      : {}),
+    ...(partEnregistree(z) !== undefined ? { annualKwhEnregistre: partEnregistree(z) } : {}),
   }));
+}
+
+/**
+ * ACAL28 — la géométrie VIVANTE du pan actif, telle que `serializeLayout` l'écrirait (une
+ * seule source : on sérialise et on lit la zone active). Capturée par l'atelier quand on
+ * QUITTE un pan, pour que ce pan soit ensuite réémis et reposé à SES positions.
+ */
+export function geometrieZoneActive(ctx: Ctx, meta?: SerializeMeta): SerializedZoneGeometry | null {
+  const zone = serializeLayout(ctx, null, meta).zones.find((z) => z.id === ctx.activeAreaId);
+  return zone?.geometry ? (JSON.parse(JSON.stringify(zone.geometry)) as SerializedZoneGeometry) : null;
 }
 
 // ═══════════ PV19 — HYDRATATION DEPUIS UN DEVIS ═══════════

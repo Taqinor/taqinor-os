@@ -13,7 +13,7 @@ import {
   type ObstacleType,
   type ObstacleProvenance,
 } from '../../lib/obstacles';
-import { type SerializeMeta, type DevisPayload, type RawContourPoint } from './prefill';
+import { type SerializeMeta, type DevisPayload, type RawContourPoint, type SerializedZoneGeometry } from './prefill';
 import { type AreaResult } from '../../lib/roofAreas';
 import { geodesicAreaM2, geodesicPerimeterM, isSimplePolygon, type LngLat } from '../../lib/roof';
 import { type ProductionSource, type SpecificDateProfile } from '../../lib/productionEngine';
@@ -645,6 +645,15 @@ export interface AreaRecord {
    *  (`moduleSelect.MODULE_PAR_DEFAUT_ATELIER`), NOMMÉ à l'écran — document et pavage
    *  strictement identiques à ceux d'aujourd'hui, octet pour octet. */
   moduleId?: string;
+  /** ACAL28 — la géométrie ENREGISTRÉE de ce pan (`zones[].geometry` du document relu, ou
+   *  la pose vivante capturée quand on quitte le pan). Copie profonde. Un pan qui n'est pas
+   *  actif est réémis VERBATIM depuis elle (jamais re-pavé ni perdu) ; un pan chargé est
+   *  reposé à ses positions par `layoutEditor.hydrateLayout`. Absente = pan jamais posé. */
+  geometrieEnregistree?: SerializedZoneGeometry;
+  /** ACAL28 — production annuelle (kWh) ENREGISTRÉE attribuée à ce pan tant qu'il n'est pas
+   *  recalculé dans la session : part du `result.annualKwh` du document au prorata de son
+   *  kWc enregistré (le document ne porte pas de production par pan). Jamais 0 par défaut. */
+  annualKwhEnregistre?: number;
 }
 
 // ═══════════ W50 — fenêtre « Production estimée » ═══════════

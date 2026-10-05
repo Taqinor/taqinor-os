@@ -214,3 +214,71 @@ describe('ACAL26 — les deux boots relisent les cinq couches et « Enregistrer 
     expect(ctx.electrical?.equipements).toHaveLength(1);
   });
 });
+
+/* ============================================================================
+   ACAL28 — un calepinage MULTI-PANS rouvert puis enregistré sans geste garde la
+   géométrie enregistrée de CHAQUE pan (live ATL-03 : zB perdue, result.panels 30).
+   ========================================================================== */
+describe('ACAL28 — chaque pan garde sa géométrie enregistrée', () => {
+  function geometrie(n: number, face?: 'E' | 'W') {
+    return {
+      azimuthDeg: 180,
+      tiltDeg: 10,
+      family: face ? ('eastwest' as const) : ('south' as const),
+      flush: false,
+      kwc: (n * 720) / 1000,
+      count: n,
+      origin: [-7.6, 33.5] as [number, number],
+      panels: Array.from({ length: n }, (_, i) => ({
+        cx: i * 1.2,
+        cy: 0,
+        ...(face ? { face: i % 2 ? ('W' as const) : ('E' as const) } : {}),
+      })),
+    };
+  }
+  function documentDeuxPans(): SerializedLayout {
+    const pan = (id: string, n: number, face?: 'E' | 'W') => ({
+      id,
+      label: id,
+      vertices: [[-7.6, 33.5], [-7.5998, 33.5], [-7.5998, 33.5002], [-7.6, 33.5002]],
+      obstacles: [],
+      roofType: 'flat',
+      pitchDeg: 10,
+      facingAzimuthDeg: 180,
+      facingManual: false,
+      neededPanels: n,
+      neededAuto: false,
+      geometry: geometrie(n, face),
+    });
+    return JSON.parse(JSON.stringify({
+      version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'zA',
+      zones: [pan('zA', 12), pan('zB', 6, 'E')],
+      result: { panels: 18, kwc: 12.96, annualKwh: 21000, savings: null },
+    })) as SerializedLayout;
+  }
+
+  it('deux zones avec geometry : serializeLayout réémet zB.geometry et result.panels 18', () => {
+    const doc = documentDeuxPans();
+    const h = hydrateFromDevis({ id: 4, geometrie: { roof_layout: doc }, cibleVendue: false });
+    const ctx = ctxApresBoot(h.zones!, h.activeAreaId!);
+    appliquerHydratationAuCtx(ctx, h);
+    const sortie = serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, { devisId: 4, panelWatt: null, scenario: null }));
+    expect(sortie.zones[1].geometry).toStrictEqual(doc.zones[1].geometry);
+    expect(sortie.zones[0].geometry).toStrictEqual(doc.zones[0].geometry);
+    expect(sortie.result?.panels).toBe(18);
+    // Les faces E/O des chevrons dos à dos de zB sont réémises telles quelles.
+    expect(sortie.zones[1].geometry?.panels.map((p) => p.face)).toEqual(['E', 'W', 'E', 'W', 'E', 'W']);
+    // Aucun pan n'est recalculé ici : la production enregistrée est conservée, jamais 0.
+    expect(sortie.result?.annualKwh).toBeCloseTo(21000, 6);
+  });
+
+  it('sans géométrie enregistrée sur l’AreaRecord (le défaut d’avant), zB disparaît du document', () => {
+    const doc = documentDeuxPans();
+    const h = hydrateFromDevis({ id: 4, geometrie: { roof_layout: doc }, cibleVendue: false });
+    for (const z of h.zones!) delete z.geometrieEnregistree;
+    const ctx = ctxApresBoot(h.zones!, h.activeAreaId!);
+    const sortie = serialiserDocumentAtelier(ctx, null, etatWrapper(ctx, null));
+    expect(sortie.zones[1].geometry).toBeUndefined();
+    expect(sortie.result?.panels).toBe(0);
+  });
+});
