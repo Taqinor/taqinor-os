@@ -1,5 +1,10 @@
 """ACAL226 - le rapport d'etude SERVI est pagine, sommaire, annexes.
 
+ACAL227 - et il se termine (avant les fiches constructeur) par le schema
+unifilaire NATIF du calepinage ; sans schema, aucune page vide et le motif
+est dit dans la section electrique ; la piece schema du dossier
+reglementaire sort de la MEME fonction (``bloc_schema_unifilaire``).
+
 Un calepinage simule par les VRAIS ecrivains ; WeasyPrint et PyMuPDF REELS
 (``@tag('pdf')``, hors du palier CI leger - meme regime que
 ``test_calx306_pages_rapport.py``). Les fiches constructeur sont injectees par
@@ -21,7 +26,10 @@ from apps.calepinage.services.rapport import (
 from apps.calepinage.services.rapport import systeme
 from apps.calepinage.services.rapport.mise_en_page import pages_attendues
 
-from .acal_livrables_helpers import calepinage_simule_reel, patch_materiel
+from .acal_livrables_helpers import (
+    calepinage_simule_reel, exiger_bibliotheques_pdf, patch_materiel,
+)
+from .test_acal_sld_conception_reelle import BaseConceptionReelle
 
 OPTIONS = dict(site={}, identite={}, styles={}, etat={})
 ANNEXE_AVEC_PDF = {'famille': 'onduleur', 'designation': 'ONDULEUR-ESSAI',
@@ -117,3 +125,84 @@ class RapportEtudeServiTest(unittest.TestCase):
         html_pdf = rendu.call_args_list[-1].kwargs['html']
         self.assertEqual(html_pdf, html_du_rapport(self.pivot, **OPTIONS))
         self.assertIn('Sommaire', html_pdf)
+
+
+def _pages(octets):
+    from apps.calepinage.services.pack_technique import compter_pages
+
+    return compter_pages(octets)
+
+
+def _sans_espaces(texte):
+    return ' '.join(str(texte).split())
+
+
+@tag('pdf')
+class SchemaJointAuRapportTest(BaseConceptionReelle):
+    """ACAL227 - calepinage reel (Produit et fiches en base, aucune
+    doublure du schema ni du materiel)."""
+
+    def setUp(self):
+        exiger_bibliotheques_pdf()
+        super().setUp()
+        self._norme_francaise()
+
+    def _corps_seul(self, calepinage):
+        import core.pdf
+
+        return core.pdf.render_pdf(
+            html=html_du_rapport(calepinage, **OPTIONS),
+            company=calepinage.company)
+
+    def test_schema_unifilaire_joint_au_rapport(self):
+        from apps.calepinage.services.rapport.electrique import (
+            bloc_schema_unifilaire,
+        )
+
+        schema, motif = bloc_schema_unifilaire(self.calepinage)
+        self.assertIsNone(motif)
+        octets = rendre_rapport(self.calepinage, **OPTIONS)
+        self.assertEqual(
+            _pages(octets),
+            _pages(self._corps_seul(self.calepinage)) + _pages(schema))
+        # Le schema FERME le rapport (aucune fiche constructeur ici).
+        nombre = _pages(schema)
+        self.assertEqual(_texte(octets)[-nombre:], _texte(schema))
+
+    def test_sans_schema_aucune_page_vide_et_motif_dit(self):
+        from apps.calepinage.models import Calepinage
+        from apps.calepinage.services.electrique import enregistrer_entree
+        from apps.calepinage.services.rapport.electrique import (
+            MOTIF_SCHEMA_INDISPONIBLE,
+        )
+
+        # Module designe, onduleur NON designe : le schema ne se dessine pas.
+        muet = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Sans onduleur',
+            roof_layout=self.calepinage.roof_layout)
+        enregistrer_entree(muet, {
+            'module_produit': self.module.pk,
+            'temperature_min_c': -5.0, 'temperature_max_c': 70.0,
+        })
+        octets = rendre_rapport(muet, **OPTIONS)
+        self.assertEqual(_pages(octets), _pages(self._corps_seul(muet)))
+        html = html_du_rapport(muet, paginer=False, **OPTIONS)
+        debut = html.index('data-section="electrique"')
+        section = html[debut:html.index('</section>', debut)]
+        self.assertIn('data-motif="schema_unifilaire"', section)
+        self.assertIn(MOTIF_SCHEMA_INDISPONIBLE[:-1], section)
+        self.assertIn(MOTIF_SCHEMA_INDISPONIBLE[:-1],
+                      _sans_espaces(' '.join(_texte(octets))))
+
+    def test_dossier_reglementaire_reutilise_la_meme_piece_schema(self):
+        from apps.calepinage.services.rapport import electrique
+        from apps.calepinage.services.reglementaire import _rendus_du_module
+
+        with mock.patch.object(electrique, 'bloc_schema_unifilaire',
+                               wraps=electrique.bloc_schema_unifilaire) as fn:
+            octets = rendre_rapport(self.calepinage, **OPTIONS)
+            piece = _rendus_du_module(
+                self.calepinage, self.company)['schema_unifilaire']()
+        self.assertEqual(fn.call_count, 2)
+        nombre = _pages(piece)
+        self.assertEqual(_texte(octets)[-nombre:], _texte(piece))

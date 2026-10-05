@@ -10,17 +10,22 @@
    2. une ligne non calculable affiche le `manquant` SERVEUR, jamais un tiret
       muet ni un zéro ;
    3. un catalogue vide affiche l'état vide nommant le réglage à remplir ;
-   4. « Appliquer » un identifiant de système relance la lecture avec
-      `?systeme=` ;
+   4. ACAL82 — « Appliquer » PERSISTE le choix (`POST fixation/`) puis relit
+      `bom-fixation/` SANS paramètre ; le champ reprend le système que le
+      serveur dit persisté (`systeme_source: 'calepinage'`) ;
    5. le téléchargement du classeur utilise l'`endpoint` de l'inventaire des
       sorties TEL QUEL, jamais un chemin reconstruit. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { reponseContrat } from '../../../test/fixtures/contractSamples'
+import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 
 vi.mock('../../../api/calepinageApi', () => ({
-  default: { calepinages: { bomFixation: vi.fn(), sorties: vi.fn(), telechargerSortie: vi.fn() } },
+  default: {
+    calepinages: {
+      bomFixation: vi.fn(), sorties: vi.fn(), telechargerSortie: vi.fn(), appliquerFixation: vi.fn(),
+    },
+  },
 }))
 vi.mock('../../../utils/downloadBlob', () => ({
   downloadBlob: vi.fn(),
@@ -95,20 +100,62 @@ describe('Fixation (CALX360) — catalogue vide', () => {
   })
 })
 
-describe('Fixation (CALX360) — choix du système', () => {
-  it('« Appliquer » relance la lecture avec `?systeme=`', async () => {
+describe('Fixation (ACAL82) — choix du système persisté', () => {
+  it('« Appliquer » → POST fixation/ ; remonté avec systeme_source calepinage → S2 sélectionné', async () => {
+    const parametre = reponseContrat('calepinage', 'calepinage_fixation_bom', 'exemple_parametre')
+    const persiste = reponseContrat('calepinage', 'calepinage_fixation_bom', 'exemple')
+    const post = exempleContrat('calepinage', 'calepinage_fixation_bom', 'fixation_post')
+    calepinageApi.calepinages.bomFixation
+      .mockResolvedValueOnce(parametre)
+      .mockResolvedValue(persiste)
+    calepinageApi.calepinages.appliquerFixation.mockResolvedValue({ data: post.exemple })
+    servirSorties('exemple')
+    rendre()
+    await screen.findByTestId('calx360-panneau')
+
+    // Lecture sans paramètre : le serveur décide (jamais `?systeme=`).
+    expect(calepinageApi.calepinages.bomFixation).toHaveBeenCalledWith(41)
+    // Source « parametre » : rien n'est persisté, le champ est vide.
+    expect(screen.getByTestId('acal82-champ-systeme')).toHaveValue('')
+
+    const choisi = String(post.corps.systeme_id)
+    fireEvent.change(screen.getByTestId('acal82-champ-systeme'), { target: { value: choisi } })
+    fireEvent.click(screen.getByTestId('calx360-appliquer-systeme'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.appliquerFixation)
+      .toHaveBeenCalledWith(41, { systeme_id: choisi }))
+    await waitFor(() => expect(calepinageApi.calepinages.bomFixation).toHaveBeenCalledTimes(2))
+    calepinageApi.calepinages.bomFixation.mock.calls.forEach((appel) => {
+      expect(appel).toEqual([41])
+    })
+    const champ = await screen.findByTestId('acal82-champ-systeme')
+    expect(champ).toHaveValue(String(persiste.data.systeme.id))
+  })
+
+  it('au rechargement, le champ montre le système PERSISTÉ lu du serveur', async () => {
     servir('exemple')
     servirSorties('exemple')
     rendre()
     await screen.findByTestId('calx360-panneau')
 
-    expect(calepinageApi.calepinages.bomFixation).toHaveBeenCalledWith(41, undefined)
+    const exemple = echantillon('exemple')
+    expect(exemple.systeme_source).toBe('calepinage')
+    expect(screen.getByTestId('acal82-champ-systeme')).toHaveValue(String(exemple.systeme.id))
+  })
 
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '7' } })
+  it('un refus 400 du serveur est affiché en nommant son motif', async () => {
+    servir('exemple_parametre')
+    servirSorties('exemple')
+    calepinageApi.calepinages.appliquerFixation.mockRejectedValue({
+      response: { data: { systeme_id: 'Système de fixation introuvable : « 999 ».' } },
+    })
+    rendre()
+    await screen.findByTestId('calx360-panneau')
+    fireEvent.change(screen.getByTestId('acal82-champ-systeme'), { target: { value: '999' } })
     fireEvent.click(screen.getByTestId('calx360-appliquer-systeme'))
 
-    await waitFor(() => expect(calepinageApi.calepinages.bomFixation)
-      .toHaveBeenCalledWith(41, { systeme: '7' }))
+    expect(await screen.findByTestId('acal82-erreur-application'))
+      .toHaveTextContent('introuvable')
   })
 })
 

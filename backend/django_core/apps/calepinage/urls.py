@@ -17,6 +17,7 @@ from rest_framework.routers import SimpleRouter
 
 from .views.calepinages import CalepinageViewSet
 from .views.consommation import ProfilsTypesView
+from .views.gabarits_dossier import GabaritDossierViewSet
 from .views.moteur import (
     MoteurCalculerView,
     MoteurPoseView,
@@ -42,6 +43,11 @@ from .views import rattachements as _rattachements  # noqa: F401
 # ``tests/test_structure_urls.py`` mesure.
 router = SimpleRouter()
 router.register(r'calepinages', CalepinageViewSet, basename='calepinage')
+# ACAL238 — le dépôt des gabarits de dossier réglementaire : un RÉGLAGE
+# société (aucun calepinage n'y entre), chemin figé par le contrat
+# ``contract_samples/gabarits_dossier_reglementaire.json`` (ACAL15).
+router.register(r'gabarits-dossiers', GabaritDossierViewSet,
+                basename='calepinage-gabarit-dossier')
 
 urlpatterns = [
     # CAL22 — la porte NEUTRE du moteur. Ce n'est PAS une seconde famille

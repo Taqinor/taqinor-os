@@ -14,7 +14,8 @@ import {
   buildAffectationColoring,
   affectationColorFn,
   affectationGroupKey,
-  AFFECTATION_PALETTE,
+  couleurParAffectation,
+  lireCouleurServie,
   AFFECTATION_UNASSIGNED,
   type AffectationRow,
   projectPlanView,
@@ -313,12 +314,15 @@ describe('CAL180 — hdTargetSize', () => {
 // `electrique.affectation` du serveur (CAL125) : aucun calcul de partition côté écran.
 // Un module non affecté est GRIS et COMPTÉ dans la légende. Les lignes ci-dessous sont
 // exactement celles de `contract_samples/calepinage_resultat.json`.
+const BLEU = 'rgb(30, 144, 255)';
+const ORANGE = 'rgb(255, 140, 0)';
+const GRIS = 'rgb(140, 143, 148)';
 const AFFECTATION: AffectationRow[] = [
-  { module: 'PAN-A#1', pan: 'PAN-A', chaine: 1, onduleur: 1, mppt: 1 },
-  { module: 'PAN-A#2', pan: 'PAN-A', chaine: 1, onduleur: 1, mppt: 1 },
-  { module: 'PAN-B#1', pan: 'PAN-B', chaine: 2, onduleur: 1, mppt: 2 },
-  { module: 'PAN-B#2', pan: 'PAN-B', chaine: 2, onduleur: 1, mppt: 2 },
-  { module: 'PAN-B#3', pan: 'PAN-B', chaine: null, onduleur: null, mppt: null },
+  { module: 'PAN-A#1', pan: 'PAN-A', chaine: 1, onduleur: 1, mppt: 1, couleur_chaine: BLEU, couleur_mppt: ORANGE },
+  { module: 'PAN-A#2', pan: 'PAN-A', chaine: 1, onduleur: 1, mppt: 1, couleur_chaine: BLEU, couleur_mppt: ORANGE },
+  { module: 'PAN-B#1', pan: 'PAN-B', chaine: 2, onduleur: 1, mppt: 2, couleur_chaine: ORANGE, couleur_mppt: BLEU },
+  { module: 'PAN-B#2', pan: 'PAN-B', chaine: 2, onduleur: 1, mppt: 2, couleur_chaine: ORANGE, couleur_mppt: BLEU },
+  { module: 'PAN-B#3', pan: 'PAN-B', chaine: null, onduleur: null, mppt: null, couleur_chaine: GRIS, couleur_mppt: GRIS },
 ];
 
 describe('CAL126 — la couleur vient de la table, jamais d’un calcul d’écran', () => {
@@ -329,12 +333,22 @@ describe('CAL126 — la couleur vient de la table, jamais d’un calcul d’écr
     expect(colorByModule.get('PAN-A#1')).not.toEqual(colorByModule.get('PAN-B#1'));
   });
 
-  it('les couleurs sortent de la palette déclarée — aucune couleur improvisée', () => {
-    const { colorByModule } = buildAffectationColoring(AFFECTATION, 'chaine');
-    for (const [module, c] of colorByModule) {
-      if (module === 'PAN-B#3') continue; // non affecté : gris
-      expect(AFFECTATION_PALETTE).toContainEqual(c);
-    }
+  it('la couleur est celle de la ligne SERVIE, selon le mode — jamais une palette locale', () => {
+    const chaine = buildAffectationColoring(AFFECTATION, 'chaine').colorByModule;
+    expect(chaine.get('PAN-A#1')).toEqual(lireCouleurServie(BLEU));
+    expect(chaine.get('PAN-B#1')).toEqual(lireCouleurServie(ORANGE));
+    // Mode MPPT : la couleur d'entrée, pas celle de chaîne (échanger les deux champs ⇒ rouge).
+    const mppt = buildAffectationColoring(AFFECTATION, 'mppt').colorByModule;
+    expect(mppt.get('PAN-A#1')).toEqual(lireCouleurServie(ORANGE));
+    expect(mppt.get('PAN-B#1')).toEqual(lireCouleurServie(BLEU));
+  });
+
+  it('une couleur servie illisible ou absente laisse le module gris', () => {
+    expect(lireCouleurServie('rgb(300, 0, 0)')).toBeNull();
+    expect(lireCouleurServie(null)).toBeNull();
+    const { colorByModule } = buildAffectationColoring(
+      [{ module: 'X#1', chaine: 1, mppt: 1 }], 'chaine');
+    expect(colorByModule.get('X#1')).toEqual(AFFECTATION_UNASSIGNED);
   });
 
   it('un module NON affecté est gris et COMPTÉ dans la légende (il ne disparaît pas)', () => {
@@ -353,6 +367,33 @@ describe('CAL126 — la couleur vient de la table, jamais d’un calcul d’écr
       ['Chaîne 1', 2],
       ['Chaîne 2', 2],
     ]);
+  });
+});
+
+describe('ACAL286 — la teinte atteint le canal instanceColor du module PAN-A#1', () => {
+  /** Un buffer `instanceColor` minimal : on lit ce qui a été écrit, comme le canal réel. */
+  const tampon = (n: number) => {
+    const rgb: number[][] = Array.from({ length: n }, () => [1, 1, 1]);
+    return { rgb, setXYZ: (i: number, r: number, g: number, b: number) => { rgb[i] = [r, g, b]; } };
+  };
+
+  it('setStringColoring appliquée : la couleur d’instance du module PAN-A#1 est la couleur_chaine de sa ligne', () => {
+    const coloring = buildAffectationColoring(AFFECTATION, 'chaine');
+    // Cellules de lattice occupées 4, 7, 9 du pan « PAN-A » : rangs 1, 2, 3.
+    const cellules = [4, 7, 9];
+    const fn = couleurParAffectation(coloring, cellules, 'PAN-A')!;
+    const buf = tampon(cellules.length);
+    cellules.forEach((c, i) => { const col = fn(c); buf.setXYZ(i, col.r, col.g, col.b); });
+    const bleu = lireCouleurServie(BLEU)!;
+    expect(buf.rgb[0]).toEqual([bleu.r, bleu.g, bleu.b]); // PAN-A#1
+    expect(buf.rgb[1]).toEqual([bleu.r, bleu.g, bleu.b]); // PAN-A#2 : même chaîne
+    // PAN-A#3 n'est pas dans la table : gris, jamais une couleur de groupe au hasard.
+    expect(buf.rgb[2]).toEqual([AFFECTATION_UNASSIGNED.r, AFFECTATION_UNASSIGNED.g, AFFECTATION_UNASSIGNED.b]);
+  });
+
+  it('table vide ou non servie ⇒ aucune coloration (null)', () => {
+    expect(couleurParAffectation(null, [0, 1], 'PAN-A')).toBeNull();
+    expect(couleurParAffectation(buildAffectationColoring([], 'chaine'), [0, 1], 'PAN-A')).toBeNull();
   });
 });
 

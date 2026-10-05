@@ -341,11 +341,87 @@ def chaines_max_par_mppt(specs):
     return None
 
 
+# ───────────────────────────────────────────────────────── la batterie
+def batterie_du_calepinage(calepinage, donnees, materiel=None, company=None):
+    """ACAL166/ACAL168 — LA résolution de la batterie d'un calepinage.
+
+    UNE fonction pour deux lecteurs : la simulation (``simulation._declaration_
+    batterie``) et le dessin du schéma (``entree_electrique``) lisent la MÊME
+    déclaration, jamais deux copies qui divergeraient.
+
+    La déclaration est celle de l'ENTRÉE électrique enregistrée
+    (``donnees['batterie']``). Le PRODUIT et les PACKS prennent, à défaut de
+    saisie, la ligne batterie du devis lié (``equipements_du_calepinage``) ;
+    leur provenance voyage (``explicite`` | ``devis`` | ``defaut``). Les
+    grandeurs viennent de la FICHE du produit : rien n'est supposé.
+
+    Returns:
+        ``None`` quand aucun produit batterie n'est résolu (ni saisi, ni sur le
+        devis) ; sinon ``{produit, produit_onduleur, packs, provenance, saisie,
+        specs, designation, declaree}`` — ``declaree`` : vrai quand l'entrée
+        porte une déclaration de batterie (et pas seulement une ligne de devis).
+    """
+    from apps.stock.selectors import get_produit_scoped
+
+    from .batterie import specs_batterie
+    from .equipements import equipements_du_calepinage
+
+    company = company or getattr(calepinage, 'company', None)
+    if company is None:
+        return None
+    saisie = (donnees or {}).get('batterie') if isinstance(
+        donnees, dict) else None
+    saisie = dict(saisie) if isinstance(saisie, dict) else {}
+
+    equipements = equipements_du_calepinage(calepinage)
+    bloc = equipements.get('batterie') if isinstance(equipements,
+                                                     dict) else None
+    produit_devis = None
+    packs_devis = None
+    if isinstance(bloc, dict) and bloc.get('produit'):
+        produit_devis = bloc['produit']
+        quantite = _nombre(bloc.get('quantite'))
+        if quantite is not None and quantite >= 1:
+            packs_devis = int(round(quantite))
+    identifiant = saisie.get('produit')
+    if identifiant in (None, ''):
+        identifiant = produit_devis
+    if identifiant in (None, ''):
+        return None
+    produit = get_produit_scoped(company, identifiant)
+    if produit is None:
+        return None
+    produit_onduleur = None
+    onduleur_id = ((materiel or {}).get('produits') or {}).get('onduleur')
+    if onduleur_id not in (None, ''):
+        produit_onduleur = get_produit_scoped(company, onduleur_id)
+
+    provenance = {
+        'produit': ('explicite' if saisie.get('produit') not in (None, '')
+                    else 'devis'),
+        'packs': ('explicite' if saisie.get('packs') not in (None, '')
+                  else ('devis' if packs_devis else 'defaut')),
+    }
+    packs = int(_nombre(saisie.get('packs')) or packs_devis or 1) or 1
+    return {
+        'produit': produit, 'produit_onduleur': produit_onduleur,
+        'packs': packs, 'provenance': provenance, 'saisie': saisie,
+        'specs': specs_batterie(produit, produit_onduleur=produit_onduleur,
+                                nb_packs=packs),
+        'designation': ('%s %s' % (
+            (getattr(produit, 'marque', '') or '').strip(),
+            (getattr(produit, 'nom', '') or '').strip())).strip(),
+        'declaree': bool(saisie),
+    }
+
+
 # ─────────────────────────────────────────────────────────── la conception
 def entree_electrique(layout, module, onduleur, temperatures, *,
                       dc_m=0.0, ac_m=0.0, phases=None, longueur_forcee=None,
                       zone_keraunique=False, inclure_prise_terre=False,
-                      plafond_kwc_par_onduleur=None, regime=None):
+                      plafond_kwc_par_onduleur=None, regime=None,
+                      batterie=False, batterie_designation='',
+                      batterie_kwh=None, batterie_v_nominal=None):
     """L'``EntreeElectrique`` du noyau, construite depuis le CALEPINAGE.
 
     Les températures viennent de CAL123 (``services.electrique``) : elles sont
@@ -371,6 +447,13 @@ def entree_electrique(layout, module, onduleur, temperatures, *,
         # ACAL152 — le régime SAISI, ou ``None`` (« non précisé ») : jamais
         # le « TT » par défaut du noyau.
         regime=regime or None,
+        # ACAL168 — le parc de stockage DÉCLARÉ : le schéma dessine le bloc
+        # « Batterie » et nomme son matériel. Le booléen est la seule chose
+        # qui pilote les règles ; l'identité, elle, est descriptive.
+        batterie=bool(batterie),
+        batterie_designation=str(batterie_designation or ''),
+        batterie_kwh=float(batterie_kwh or 0.0),
+        batterie_v_nominal=float(batterie_v_nominal or 0.0),
     )
 
 

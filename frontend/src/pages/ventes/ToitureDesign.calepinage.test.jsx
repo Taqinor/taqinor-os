@@ -26,7 +26,8 @@ vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }
 
 import '../../test/toitureDesignHarnessCalepinage'
 import {
-  initRoofToolPro8, rendreCalepinage, rendreDevis, reinitialiserBoot, LAYOUT, snapshot,
+  initRoofToolPro8, rendreCalepinage, rendreDevis, reinitialiserBoot, reinitialiserBootMinimal,
+  LAYOUT, snapshot,
 } from '../../test/toitureDesignHarness'
 import ventesApi from '../../api/ventesApi'
 import calepinageApi from '../../api/calepinageApi'
@@ -275,6 +276,40 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     // Le panneau du module reste monté : consulter une conception figée est
     // exactement ce que la lecture seule doit permettre.
     expect(screen.getByTestId('cal-atelier-panneaux')).toBeTruthy()
+  })
+})
+
+describe('ToitureDesign — teinte par chaîne (ACAL286)', () => {
+  it('le boot calepinage pousse l’affectation servie (payload = contrat committé)', async () => {
+    const setAffectationChaines = vi.fn()
+    reinitialiserBootMinimal({ setAffectationChaines })
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.resultat.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_resultat'))
+
+    rendreCalepinage(CTX.calepinage.id)
+
+    await waitFor(() => expect(setAffectationChaines).toHaveBeenCalled())
+    expect(calepinageApi.calepinages.resultat)
+      .toHaveBeenCalledWith(String(CTX.calepinage.id))
+    const [lignes, mode] = setAffectationChaines.mock.calls[0]
+    expect(lignes)
+      .toEqual(exempleContrat('calepinage', 'calepinage_resultat').electrique.affectation)
+    expect(lignes[0].couleur_chaine).toBeTruthy()
+    expect(mode).toBe('chaine')
+  })
+
+  it('résultat illisible : la teinte est éteinte (null), l’écran ne casse pas', async () => {
+    const setAffectationChaines = vi.fn()
+    reinitialiserBootMinimal({ setAffectationChaines })
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.resultat.mockRejectedValue(new Error('réseau'))
+
+    rendreCalepinage(CTX.calepinage.id)
+
+    await waitFor(() => expect(setAffectationChaines).toHaveBeenCalledWith(null, 'chaine'))
   })
 })
 
