@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { FormField, Input } from '../../../../ui'
 import { factureAuMois, getField } from '../draftCore'
 import { jumpToField } from '../jumpToField'
+import fieldLabels from '../fieldLabels'
 // CAD157 — les mentions « ce que le chiffre ne compte pas » : UNE source de
 // texte (le script d'appel guidé), partagée par la fiche et le panneau.
 import { NON_COMPTE_PLAQUE, NON_COMPTE_TRANCHE_ONEE } from '../../relances/appelGuidance'
@@ -517,43 +518,337 @@ export function SectionEquipements({ state, setField, errors = {} }) {
   )
 }
 
-// Sous-bloc Pompage (agricole) — nav-section dédiée, mais fichier ÉNERGIE
-// (blueprint file map). Champs requis pour le devis automatique.
+// ── AGR415 — Sous-bloc Pompage (agricole) ─────────────────────────────────
+// Nav-section dédiée, mais fichier ÉNERGIE (blueprint file map). Cinq blocs,
+// dans l'ordre de l'APPEL : Énergie actuelle / Eau / Besoin / Pompe actuelle
+// & site / Règles & aides. Chaque champ porte un libellé court (fieldLabels) et
+// la QUESTION de l'appel en aide (= `help_text` serveur, contrat partagé
+// `lead_pompage.json` — `SectionsRender.test.jsx` compare les deux). Aucun
+// arrondi : `step="any"`, la saisie 12,5 reste 12,5.
+
+// Vocabulaires — chacun DÉCLARE sa source serveur (garde
+// scripts/check_choices_declares.py) ; libellés = ceux du modèle.
+// source-choix: crm.Lead.source_eau
+const SOURCE_EAU = { puits: 'Puits', forage: 'Forage', bassin: 'Bassin', riviere: 'Rivière' }
+// source-choix: crm.Lead.niveau_statique_source
+const NIVEAU_STATIQUE_SOURCE = {
+  declare: 'Déclaré par le client', site_web: 'Saisi sur le site', mesure_visite: 'Mesuré en visite',
+}
+// source-choix: crm.Lead.debit_forage_source
+const DEBIT_FORAGE_SOURCE = {
+  essai: 'Essai de pompage', foreur: 'Donné par le foreur',
+  client: 'Estimation du client', mesure_visite: 'Mesuré en visite',
+}
+// source-choix: crm.Lead.besoin_eau_source
+const BESOIN_EAU_SOURCE = {
+  client: 'Déclaré par le client', site_web: 'Saisi sur le site',
+  pompe_actuelle: 'Calculé depuis la pompe actuelle',
+}
+// source-choix: crm.Lead.irrigation_methode
+const IRRIGATION_METHODE = {
+  goutte: 'Goutte-à-goutte', aspersion: 'Aspersion', gravitaire: 'Gravitaire (à la raie)',
+}
+// source-choix: crm.Lead.region_agricole
+const REGION_AGRICOLE = {
+  'souss-massa': 'Souss-Massa', doukkala: 'Doukkala', tadla: 'Tadla', saiss: 'Saïss',
+  oriental: 'Oriental', 'draa-tafilalet': 'Drâa-Tafilalet', 'gharb-loukkos': 'Gharb-Loukkos',
+  haouz: 'Haouz',
+}
+// source-choix: crm.Lead.pompe_actuelle_type
+const POMPE_ACTUELLE_TYPE = { immergee: 'Immergée', surface: 'De surface', ne_sait_pas: 'Ne sait pas' }
+// source-choix: crm.Lead.pompe_alim_actuelle
+const POMPE_ALIM_ACTUELLE = {
+  aucune: 'Aucune pompe', diesel: 'Diesel', butane: 'Butane', electrique: 'Électrique (réseau)',
+}
+// source-choix: crm.Lead.electricite_sur_place
+const ELECTRICITE_SUR_PLACE = {
+  aucune: 'Aucune', monophase: 'Monophasé', triphase: 'Triphasé', ne_sait_pas: 'Ne sait pas',
+}
+// source-choix: crm.Lead.autorisation_prelevement
+const AUTORISATION_PRELEVEMENT = { oui: 'Oui', non: 'Non', en_cours: 'En cours', ne_sait_pas: 'Ne sait pas' }
+// source-choix: crm.Lead.projet_pompage
+const PROJET_POMPAGE = { existant: 'Remplacer une pompe existante', nouveau_forage: 'Nouveau forage' }
+// source-choix: crm.Lead.pompe_hmt_source
+const POMPE_HMT_SOURCE = { declaree: 'Déclarée', site_web: 'Saisie sur le site' }
+// source-choix: crm.Lead.decideur
+const DECIDEUR = {
+  seul: 'Décide seul', conjoint_famille: 'Avec le conjoint / la famille',
+  associe_direction: 'Avec un associé / la direction', proprietaire_tiers: 'Le propriétaire (un tiers) décide',
+}
+
+const MOIS_FR = [
+  [1, 'janv.'], [2, 'févr.'], [3, 'mars'], [4, 'avr.'], [5, 'mai'], [6, 'juin'],
+  [7, 'juil.'], [8, 'août'], [9, 'sept.'], [10, 'oct.'], [11, 'nov.'], [12, 'déc.'],
+]
+
+// La question orale sous chaque champ — copie du `help_text` serveur (colonnes
+// de `lead_pompage.json`), gardée à l'identique par un test de contrat.
+const QUESTIONS_POMPAGE = {
+  source_eau: "« D'où vient l'eau : un puits, un forage, un bassin ou une rivière ? »",
+  niveau_statique_m: "« À quelle profondeur se trouve l'eau quand la pompe est arrêtée ? »",
+  niveau_statique_source: "« Ce niveau, vous l'avez mesuré, ou on vous l'a dit ? » (posé avec le niveau ; mesure_visite = relevé par TAQINOR)",
+  profondeur_forage_m: "« Quelle est la profondeur totale du forage ? »",
+  debit_forage_m3h: "« Combien d'eau le forage peut-il donner par heure ? »",
+  debit_forage_source: "« Ce débit vient d'un essai de pompage, du foreur, ou c'est votre estimation ? »",
+  besoin_eau_m3j: "« De combien de mètres cubes d'eau avez-vous besoin par jour au plus fort de la saison ? »",
+  besoin_eau_source: "« Ce volume, c'est votre chiffre, celui du site, ou on le calcule depuis votre pompe actuelle ? »",
+  culture: "« Qu'est-ce que vous cultivez ? »",
+  surface_irriguee_ha: "« Combien d'hectares irriguez-vous ? »",
+  irrigation_methode: "« Vous irriguez au goutte-à-goutte, par aspersion ou à la raie (gravitaire) ? »",
+  region_agricole: "« Dans quelle région se trouve l'exploitation ? »",
+  pompe_actuelle_cv: "« Quelle est la puissance de votre pompe ACTUELLE, en chevaux ? »",
+  pompe_actuelle_type: "« Votre pompe actuelle est-elle immergée dans le forage, ou en surface ? »",
+  pompe_actuelle_debit_m3h: "« Combien d'eau votre pompe actuelle sort-elle par heure ? »",
+  pompage_heures_jour: "« Combien d'heures par jour la pompe ACTUELLE tourne-t-elle ? »",
+  pompe_alim_actuelle: "« Votre pompe actuelle marche à quoi — diesel, butane, électricité, ou vous n'en avez pas ? »",
+  butane_bouteilles_jour: "« Combien de bouteilles de butane utilisez-vous par jour d'irrigation ? »",
+  carburant_litres_mois: "« Combien de litres de carburant la pompe consomme-t-elle par mois ? »",
+  carburant_prix_unitaire_mad: "« Combien payez-vous la bouteille (ou le litre) ? »",
+  depense_carburant_mad_mois: "« Combien dépensez-vous en carburant par mois ? »",
+  mois_irrigation: "« Quels mois de l'année irriguez-vous ? »",
+  distance_forage_champ_m: "« Quelle distance entre le forage et l'endroit où on poserait les panneaux ? »",
+  electricite_sur_place: "« Avez-vous l'électricité sur place : monophasé, triphasé, ou pas du tout ? »",
+  autorisation_prelevement: "« Avez-vous une autorisation de prélèvement de l'agence de bassin (ABH) ? »",
+  autorisation_numero: "« Quel est le numéro de cette autorisation ? »",
+  autorisation_debit_l_s: "« Quel débit l'autorisation vous accorde-t-elle, en litres par seconde ? »",
+  autorisation_volume_m3_an: "« Quel volume par an l'autorisation vous accorde-t-elle ? »",
+  compteur_eau: "« Avez-vous un compteur d'eau sur le forage ? »",
+  projet_pompage: "« C'est pour remplacer une pompe qui tourne déjà, ou pour un nouveau forage ? »",
+  deja_beneficiaire_fda: "« Avez-vous déjà reçu une aide du Fonds de développement agricole (FDA) pour l'irrigation ou le pompage ? »",
+  pompe_hmt_m: "« Savez-vous la hauteur totale à laquelle la pompe doit monter l'eau (HMT) ? »",
+  pompe_hmt_source: "« Cette HMT, c'est vous qui la donnez, ou elle vient du site ? »",
+  pompe_debit_m3h: "« Quel débit souhaitez-vous, en mètres cubes par heure ? »",
+  decideur: "« Qui décide avec vous de ce projet ? »",
+}
+
+// Provenances servies (`entrees_pompage.entrees[].provenance`, AGR404) —
+// affichées en LECTURE SEULE sous le champ, jamais éditées ici.
+const PROVENANCES = {
+  client: 'déclaré', site_web: 'site web', mesure_visite: 'mesuré en visite', derive: 'calculé',
+}
+
+function provenanceDe(state, cle) {
+  const entrees = state?.server?.entrees_pompage?.entrees
+  const e = Array.isArray(entrees) ? entrees.find((x) => x.colonne === cle) : null
+  return e ? (PROVENANCES[e.provenance] ?? e.provenance) : null
+}
+
+// Un champ pompage = libellé court (fieldLabels) + question de l'appel (aide)
+// + provenance (lecture seule) + erreur serveur SOUS le champ. Le `htmlFor` du
+// FormField vient du `data-field-anchor` posé à l'appel (lu par la garde
+// fieldLabels.test.jsx : chaque ancre a son entrée).
+function ChampPompage({ 'data-field-anchor': id, cle, ctx, label, children }) {
+  const { state, requis, errors } = ctx
+  const etiquette = label ?? fieldLabels[cle]?.label ?? cle
+  const prov = provenanceDe(state, cle)
+  return (
+    <FormField
+      label={<>{etiquette}{requis.has(cle) && <span className="req-auto"> *</span>}</>}
+      htmlFor={id} error={errors[cle]} hint={QUESTIONS_POMPAGE[cle]}
+    >
+      {children}
+      {prov && <span className="gen-hint" data-provenance={cle}>Provenance : {prov}</span>}
+    </FormField>
+  )
+}
+
+function PompNombre({ 'data-field-anchor': id, cle, ctx, label, placeholder }) {
+  const { state, setField, errors } = ctx
+  return (
+    <ChampPompage data-field-anchor={id} cle={cle} ctx={ctx} label={label}>
+      <Input
+        id={id} type="number" step="any" placeholder={placeholder} invalid={!!errors[cle]}
+        value={getField(state, cle) ?? ''} onChange={(e) => setField(cle, e.target.value)}
+      />
+    </ChampPompage>
+  )
+}
+
+function PompTexte({ 'data-field-anchor': id, cle, ctx, label }) {
+  const { state, setField, errors } = ctx
+  return (
+    <ChampPompage data-field-anchor={id} cle={cle} ctx={ctx} label={label}>
+      <Input
+        id={id} type="text" invalid={!!errors[cle]}
+        value={getField(state, cle) ?? ''} onChange={(e) => setField(cle, e.target.value)}
+      />
+    </ChampPompage>
+  )
+}
+
+function PompChoix({ 'data-field-anchor': id, cle, ctx, label, choix }) {
+  const { state, setField, errors } = ctx
+  return (
+    <ChampPompage data-field-anchor={id} cle={cle} ctx={ctx} label={label}>
+      <select
+        id={id} className={errors[cle] ? 'form-select is-invalid' : 'form-select'}
+        aria-invalid={errors[cle] ? true : undefined}
+        value={getField(state, cle) ?? ''} onChange={(e) => setField(cle, e.target.value)}
+      >
+        {enumOptions(choix)}
+      </select>
+    </ChampPompage>
+  )
+}
+
+function PompOuiNon({ 'data-field-anchor': id, cle, ctx, label }) {
+  const { state, setField, errors } = ctx
+  return (
+    <ChampPompage data-field-anchor={id} cle={cle} ctx={ctx} label={label}>
+      <TriStateSelect
+        id={id} invalid={!!errors[cle]} value={getField(state, cle)}
+        onChange={onTriStateChange(setField, cle)}
+      />
+    </ChampPompage>
+  )
+}
+
+// Mois d'irrigation : liste d'entiers 1-12 (jamais « tous les mois » par
+// défaut — vide = question pas encore posée).
+function PompMois({ 'data-field-anchor': id, cle, ctx }) {
+  const { state, setField } = ctx
+  const brut = getField(state, cle)
+  const choisis = Array.isArray(brut) ? brut : []
+  const basculer = (m) => {
+    const suite = choisis.includes(m) ? choisis.filter((x) => x !== m) : [...choisis, m]
+    setField(cle, suite.length ? [...suite].sort((a, b) => a - b) : null)
+  }
+  return (
+    <ChampPompage data-field-anchor={id} cle={cle} ctx={ctx}>
+      <div role="group" aria-label={fieldLabels[cle].label} className="form-row">
+        {MOIS_FR.map(([m, nom], i) => (
+          <label key={m} className="form-check-label">
+            <input
+              type="checkbox" id={i === 0 ? id : `${id}-${m}`}
+              checked={choisis.includes(m)} onChange={() => basculer(m)}
+            />
+            {' '}{nom}
+          </label>
+        ))}
+      </div>
+    </ChampPompage>
+  )
+}
+
+function BlocPompage({ titre, children }) {
+  return (
+    <div className="lw-bloc-pompage" role="group" aria-label={titre}>
+      <h4 className="lw-bloc-titre">{titre}</h4>
+      {children}
+    </div>
+  )
+}
+
+const nombreOuNull = (v) => {
+  if (v === '' || v === null || v === undefined) return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
 export function SectionPompage({ state, setField, errors = {} }) {
-  const v = (k) => getField(state, k) ?? ''
+  // L'étoile « requis devis auto » : les SEULS groupes de la règle servie
+  // (`devis_auto.requis`, AGR403) — jamais une liste recopiée ici.
+  const requis = new Set((state?.server?.devis_auto?.requis ?? []).flat())
+  const ctx = { state, setField, errors, requis }
+  const debit = nombreOuNull(getField(state, 'pompe_debit_m3h'))
+  const hmt = nombreOuNull(getField(state, 'pompe_hmt_m'))
+  const debitEgalHmt = debit !== null && hmt !== null && debit === hmt
+  const nouveauForage = getField(state, 'projet_pompage') === 'nouveau_forage'
+  const prixDeclareLe = state?.server?.carburant_prix_declare_le
   return (
     <>
-      <div className="form-row">
-        <FormField
-          label={<>Pompe (CV)<span className="req-auto"> *</span></>} htmlFor="lf-pompe-cv"
-          error={errors.pompe_cv}
-        >
-          <Input
-            id="lf-pompe-cv" type="number" step="any" placeholder="ex: 10" invalid={!!errors.pompe_cv}
-            value={v('pompe_cv')} onChange={(e) => setField('pompe_cv', e.target.value)}
+      <BlocPompage titre="Énergie actuelle">
+        <div className="form-row">
+          <PompChoix data-field-anchor="lf-pompe-alim-actuelle" cle="pompe_alim_actuelle" ctx={ctx} choix={POMPE_ALIM_ACTUELLE} />
+          <PompNombre data-field-anchor="lf-butane-bouteilles-jour" cle="butane_bouteilles_jour" ctx={ctx} placeholder="ex: 4" />
+          <PompNombre data-field-anchor="lf-carburant-litres-mois" cle="carburant_litres_mois" ctx={ctx} placeholder="ex: 120" />
+        </div>
+        <div className="form-row">
+          <PompNombre data-field-anchor="lf-carburant-prix" cle="carburant_prix_unitaire_mad" ctx={ctx} placeholder="ex: 50" />
+          <PompNombre data-field-anchor="lf-depense-carburant" cle="depense_carburant_mad_mois" ctx={ctx} placeholder="ex: 1500" />
+        </div>
+        {prixDeclareLe && (
+          <p className="gen-hint" data-prix-declare-le>Prix déclaré le {prixDeclareLe} (posé par le serveur).</p>
+        )}
+      </BlocPompage>
+
+      <BlocPompage titre="Eau">
+        <div className="form-row">
+          <PompChoix data-field-anchor="lf-source-eau" cle="source_eau" ctx={ctx} choix={SOURCE_EAU} />
+          <PompNombre data-field-anchor="lf-niveau-statique" cle="niveau_statique_m" ctx={ctx} placeholder="ex: 32" />
+          <PompChoix data-field-anchor="lf-niveau-statique-source" cle="niveau_statique_source" ctx={ctx} choix={NIVEAU_STATIQUE_SOURCE} />
+        </div>
+        <div className="form-row">
+          <PompNombre data-field-anchor="lf-profondeur-forage" cle="profondeur_forage_m" ctx={ctx} placeholder="ex: 90" />
+          <PompNombre data-field-anchor="lf-debit-forage" cle="debit_forage_m3h" ctx={ctx} placeholder="ex: 36" />
+          <PompChoix data-field-anchor="lf-debit-forage-source" cle="debit_forage_source" ctx={ctx} choix={DEBIT_FORAGE_SOURCE} />
+        </div>
+      </BlocPompage>
+
+      <BlocPompage titre="Besoin">
+        <div className="form-row">
+          <PompNombre data-field-anchor="lf-besoin-eau" cle="besoin_eau_m3j" ctx={ctx} placeholder="ex: 135" />
+          <PompChoix data-field-anchor="lf-besoin-eau-source" cle="besoin_eau_source" ctx={ctx} choix={BESOIN_EAU_SOURCE} />
+          <PompNombre data-field-anchor="lf-pompe-debit" cle="pompe_debit_m3h" ctx={ctx} placeholder="ex: 12" />
+        </div>
+        {debitEgalHmt && (
+          <p className="gen-hint" role="status" data-avertissement="debit-egal-hmt">
+            Valeurs identiques : vérifiez que le débit n&apos;a pas été recopié de la HMT.
+          </p>
+        )}
+        <div className="form-row">
+          <PompNombre data-field-anchor="lf-pompe-hmt" cle="pompe_hmt_m" ctx={ctx} placeholder="ex: 80" />
+          <PompChoix data-field-anchor="lf-pompe-hmt-source" cle="pompe_hmt_source" ctx={ctx} choix={POMPE_HMT_SOURCE} />
+        </div>
+        <div className="form-row">
+          <PompTexte data-field-anchor="lf-culture" cle="culture" ctx={ctx} />
+          <PompNombre data-field-anchor="lf-surface-irriguee" cle="surface_irriguee_ha" ctx={ctx} placeholder="ex: 4" />
+          <PompChoix data-field-anchor="lf-irrigation-methode" cle="irrigation_methode" ctx={ctx} choix={IRRIGATION_METHODE} />
+          <PompChoix data-field-anchor="lf-region-agricole" cle="region_agricole" ctx={ctx} choix={REGION_AGRICOLE} />
+        </div>
+        <PompMois data-field-anchor="lf-mois-irrigation" cle="mois_irrigation" ctx={ctx} />
+      </BlocPompage>
+
+      <BlocPompage titre="Pompe actuelle & site">
+        <div className="form-row">
+          <PompNombre
+            data-field-anchor="lf-pompe-actuelle-cv" cle="pompe_actuelle_cv" ctx={ctx} placeholder="ex: 7,5"
+            label="Pompe actuelle (CV) — information, jamais la pompe du devis"
           />
-        </FormField>
-        <FormField
-          label={<>HMT (m)<span className="req-auto"> *</span></>} htmlFor="lf-pompe-hmt"
-          error={errors.pompe_hmt_m}
-        >
-          <Input
-            id="lf-pompe-hmt" type="number" step="any" placeholder="ex: 80" invalid={!!errors.pompe_hmt_m}
-            value={v('pompe_hmt_m')} onChange={(e) => setField('pompe_hmt_m', e.target.value)}
-          />
-        </FormField>
-        <FormField
-          label={<>Débit souhaité (m³/h)<span className="req-auto"> *</span></>} htmlFor="lf-pompe-debit"
-          error={errors.pompe_debit_m3h}
-        >
-          <Input
-            id="lf-pompe-debit" type="number" step="any" placeholder="ex: 12" invalid={!!errors.pompe_debit_m3h}
-            value={v('pompe_debit_m3h')} onChange={(e) => setField('pompe_debit_m3h', e.target.value)}
-          />
-        </FormField>
-      </div>
+          <PompChoix data-field-anchor="lf-pompe-actuelle-type" cle="pompe_actuelle_type" ctx={ctx} choix={POMPE_ACTUELLE_TYPE} />
+          <PompNombre data-field-anchor="lf-pompe-actuelle-debit" cle="pompe_actuelle_debit_m3h" ctx={ctx} />
+          <PompNombre data-field-anchor="lf-pompage-heures-jour" cle="pompage_heures_jour" ctx={ctx} placeholder="ex: 8" />
+        </div>
+        <div className="form-row">
+          <PompNombre data-field-anchor="lf-distance-forage-champ" cle="distance_forage_champ_m" ctx={ctx} placeholder="ex: 25" />
+          <PompChoix data-field-anchor="lf-electricite-sur-place" cle="electricite_sur_place" ctx={ctx} choix={ELECTRICITE_SUR_PLACE} />
+          <PompChoix data-field-anchor="lf-projet-pompage" cle="projet_pompage" ctx={ctx} choix={PROJET_POMPAGE} />
+        </div>
+        {nouveauForage && (
+          <p className="gen-hint" role="note" data-rappel="forage-a-creuser">
+            Rappel interne : pour un forage à creuser, vérifier auprès de l&apos;ABH que la zone n&apos;est
+            pas en périmètre d&apos;interdiction, et que le foreur a son permis (loi 36-15 consolidée du
+            18/07/2024, art. 112 et 114).
+          </p>
+        )}
+      </BlocPompage>
+
+      <BlocPompage titre="Règles & aides">
+        <div className="form-row">
+          <PompChoix data-field-anchor="lf-autorisation-prelevement" cle="autorisation_prelevement" ctx={ctx} choix={AUTORISATION_PRELEVEMENT} />
+          <PompTexte data-field-anchor="lf-autorisation-numero" cle="autorisation_numero" ctx={ctx} />
+          <PompNombre data-field-anchor="lf-autorisation-debit" cle="autorisation_debit_l_s" ctx={ctx} />
+          <PompNombre data-field-anchor="lf-autorisation-volume" cle="autorisation_volume_m3_an" ctx={ctx} />
+        </div>
+        <div className="form-row">
+          <PompOuiNon data-field-anchor="lf-compteur-eau" cle="compteur_eau" ctx={ctx} />
+          <PompOuiNon data-field-anchor="lf-deja-beneficiaire-fda" cle="deja_beneficiaire_fda" ctx={ctx} />
+          <PompChoix data-field-anchor="lf-decideur" cle="decideur" ctx={ctx} choix={DECIDEUR} />
+        </div>
+      </BlocPompage>
       <p className="gen-hint">
-        <span className="req-auto">*</span> Requis pour le devis automatique en mode agricole.
+        <span className="req-auto">*</span> Requis pour le devis automatique en mode agricole (règle
+        servie : l&apos;un des champs de chaque groupe).
       </p>
     </>
   )

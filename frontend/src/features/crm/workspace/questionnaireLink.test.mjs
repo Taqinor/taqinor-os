@@ -4,8 +4,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   SECTIONS_QUESTIONNAIRE, questionsDepuisReponse, questionsPourEnvoi,
-  nbSectionsChoisies, questionnaireWhatsappText,
+  nbSectionsChoisies, questionnaireWhatsappText, sectionsVisibles,
+  messageRefusSection,
 } from './questionnaireLink.js'
+import { exempleContrat } from '../../../test/fixtures/contractSamples.js'
 import { buildWaUrl } from '../../ventes/clientProposalLink.js'
 
 test('whitelist des clés-sections, dans l’ordre du contrat serveur', () => {
@@ -14,8 +16,9 @@ test('whitelist des clés-sections, dans l’ordre du contrat serveur', () => {
   // coche donc dans l'ordre exact où le prospect répondra.
   assert.deepEqual(
     SECTIONS_QUESTIONNAIRE.map((s) => s.key),
-    ['occupation', 'equipements', 'energie', 'toiture', 'gps',
-      'photo_facture', 'photo_compteur', 'photo_tableau', 'contact'],
+    ['occupation', 'equipements', 'energie', 'pompage', 'toiture', 'gps',
+      'photo_facture', 'photo_compteur', 'photo_tableau',
+      'photo_pompe', 'photo_forage', 'contact'],
   )
   // Chaque clé porte un libellé FR non vide — jamais une case sans texte.
   for (const { label } of SECTIONS_QUESTIONNAIRE) {
@@ -33,6 +36,7 @@ test('défaut = manquantes (aucune question déjà stockée)', () => {
     contact: false, gps: false, energie: true, photo_facture: false,
     photo_compteur: false, photo_tableau: false, toiture: true,
     occupation: false, equipements: false,
+    pompage: false, photo_pompe: false, photo_forage: false,
   })
 })
 
@@ -102,4 +106,46 @@ test('ADDENDUM — le message WhatsApp ne contient JAMAIS url_interne (jeton dis
   const waUrl = buildWaUrl('212600000000', msg)
   assert.ok(!waUrl.includes(reponseServeur.url_interne))
   assert.ok(!waUrl.includes('tok-interne'))
+})
+
+// AGR419 — les sections viennent de la réponse du serveur (contrat partagé
+// `questionnaire_lien_mint.json`, check_api_shapes), jamais d'une liste devinée.
+test('AGR419 — un lead agricole voit pompage et ses photos, jamais equipements', () => {
+  const data = exempleContrat('crm', 'questionnaire_lien_mint', 'exemple_agricole')
+  const cles = sectionsVisibles(data).map((s) => s.key)
+  assert.deepEqual(cles, ['pompage', 'gps', 'photo_compteur', 'photo_pompe', 'photo_forage', 'contact'])
+  for (const interdite of ['equipements', 'occupation', 'energie', 'toiture', 'photo_facture', 'photo_tableau']) {
+    assert.ok(!cles.includes(interdite), interdite)
+  }
+  // Chaque section servie a un libellé français non vide.
+  for (const { label } of sectionsVisibles(data)) assert.ok(label.trim().length > 0)
+  // Le défaut des cases = les manquantes servies ; le POST ne nomme que les
+  // sections visibles (jamais equipements → pas de 400).
+  const sel = questionsDepuisReponse(data)
+  assert.deepEqual(Object.keys(questionsPourEnvoi(sel, sectionsVisibles(data))), cles)
+  assert.equal(nbSectionsChoisies(sel, sectionsVisibles(data)), 5)
+})
+
+test('AGR419 — un lead résidentiel voit la liste d’avant (les 9 sections)', () => {
+  const data = exempleContrat('crm', 'questionnaire_lien_mint')
+  assert.deepEqual(
+    sectionsVisibles(data).map((s) => s.key),
+    ['occupation', 'equipements', 'energie', 'toiture', 'gps',
+      'photo_facture', 'photo_compteur', 'photo_tableau', 'contact'],
+  )
+  // Pas encore de réponse serveur : périmètre historique, jamais pompage.
+  assert.deepEqual(
+    sectionsVisibles(null).map((s) => s.key),
+    ['occupation', 'equipements', 'energie', 'toiture', 'gps',
+      'photo_facture', 'photo_compteur', 'photo_tableau', 'contact'],
+  )
+})
+
+test('AGR419 — un refus 400 est affiché avec la section qu’il nomme', () => {
+  const err = { response: { data: { detail: 'Section « equipements » non posée à un lead agricole : le questionnaire pompage ne pose ni factures.' } } }
+  const msg = messageRefusSection(err)
+  assert.ok(msg.includes('Équipements (piscine, VE, clim, chauffe-eau)'))
+  assert.ok(msg.includes('equipements'))
+  assert.equal(messageRefusSection({ response: { data: { detail: 'Autre erreur.' } } }), null)
+  assert.equal(messageRefusSection(null), null)
 })
