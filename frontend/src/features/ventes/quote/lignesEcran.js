@@ -19,7 +19,7 @@
 // main, persistée : D-QJR5-4).
 //
 // Module PUR (aucun React, aucun import.meta) : exécuté par `node --test`.
-import { ttcExactFromHt, htFromTtc } from '../solar.js'
+import { ttcExactFromHt, htFromTtc, tauxTvaOuDefaut } from '../solar.js'
 
 const TYPES_STRUCTURE = new Set(['section', 'note'])
 
@@ -50,7 +50,7 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
     .slice()
     .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0) || (a.id ?? 0) - (b.id ?? 0))
     .map((l) => {
-      const taux = parseFloat(l.taux_tva ?? tauxDevis) || 20
+      const taux = tauxTvaOuDefaut(l.taux_tva ?? tauxDevis, 20)
       const produit = l.produit ?? l.produit_id
       // Marqueur d'écran `compose` ⇄ provenance persistée `ligne_composee`
       // (ERR-QJR570) : composée ⇒ remplacée par la prochaine recomposition,
