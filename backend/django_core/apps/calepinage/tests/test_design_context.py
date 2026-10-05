@@ -22,6 +22,7 @@ import pathlib
 from unittest import mock
 
 from apps.calepinage.models import Calepinage
+from apps.calepinage.tests._m0_en_attente import affirmer_non_servies, sans
 from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis
 
@@ -30,6 +31,23 @@ from .test_api_liste import BaseApiCalepinage, url_detail
 CONTRAT = json.loads(
     (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
      / 'calepinage_design_context.json').read_text(encoding='utf-8'))
+
+#: ACAL5 (forme_serveur ``partielle``) a posé ces clés avant leurs moitiés
+#: back : chaque tâche nommée sert sa clé et retire son entrée ; la table
+#: vide, ``forme_serveur`` redevient ``complete``.
+EN_ATTENTE = {
+    'revision_possible': 'ACAL36',
+    'calepinage.devis_lie': 'ACAL36',
+    'calepinage.lead_supprime': 'ACAL178',
+    'geometrie.empreinte_document': 'ACAL22',
+    'geometrie.repere_lead': 'ACAL191',
+    'geometrie.ecart_m': 'ACAL191',
+    'geometrie.derive': 'ACAL191',
+    'geometrie.contour_utilisable': 'ACAL250',
+    'geometrie.source_repere': 'ACAL250',
+    'cible.refus': 'ACAL194',
+}
+EXEMPLE_SERVI = sans(CONTRAT['exemple'], EN_ATTENTE)
 
 LAYOUT = {'schema_version': 2, 'result': {'panels': 12, 'kwc': 8.64},
           'pin': {'lat': 33.5731, 'lng': -7.5898},
@@ -66,15 +84,18 @@ class ContexteConceptionTest(BaseApiCalepinage):
         return reponse.data
 
     def test_sept_cles_toujours_presentes(self):
-        attendues = set(CONTRAT['exemple'])
-        self.assertEqual(set(self._contexte(self.avec_devis)), attendues)
-        self.assertEqual(set(self._contexte(self.nu)), attendues)
+        attendues = set(EXEMPLE_SERVI)
+        for calepinage in (self.avec_devis, self.nu):
+            contexte = self._contexte(calepinage)
+            affirmer_non_servies(self, contexte, EN_ATTENTE)
+            self.assertEqual(set(contexte), attendues)
 
     def test_sous_blocs_conformes(self):
         contexte = self._contexte(self.avec_devis)
+        affirmer_non_servies(self, contexte, EN_ATTENTE)
         for bloc in ('calepinage', 'geometrie', 'carte'):
             self.assertEqual(set(contexte[bloc]),
-                             set(CONTRAT['exemple'][bloc]), bloc)
+                             set(EXEMPLE_SERVI[bloc]), bloc)
 
     def test_sans_devis_ni_facture_la_cible_est_nulle(self):
         contexte = self._contexte(self.nu)

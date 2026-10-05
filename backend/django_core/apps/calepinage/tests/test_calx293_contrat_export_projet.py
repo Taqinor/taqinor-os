@@ -108,7 +108,9 @@ class EnveloppeTest(unittest.TestCase):
                      'equipements', 'roof_layout', 'layout_hash',
                      'version_moteur', 'resultat', 'pertes',
                      'avertissements', 'provenance',
-                     'postes_pertes', 'variantes'}
+                     'postes_pertes', 'variantes',
+                     # ACAL17 (format 3) : le bloc ``saisies`` portable.
+                     'saisies'}
         self.assertEqual(set(CONTRAT['exemple']), attendues)
         self.assertEqual(set(CONTRAT['exemple_vide']), attendues,
                          "exemple_vide doit garder TOUTES les clés (règle "
@@ -124,14 +126,15 @@ class FormatVersionTest(unittest.TestCase):
     du module.
     """
 
-    def test_format_version_vaut_deux(self):
-        self.assertEqual(CONTRAT['exemple']['format_version'], 2)
+    def test_format_version_vaut_trois(self):
+        # ACAL17 (2026-10-05) : format 3 (bloc ``saisies``).
+        self.assertEqual(CONTRAT['exemple']['format_version'], 3)
         self.assertIsInstance(CONTRAT['exemple']['format_version'], int)
 
     def test_format_version_est_le_meme_sur_l_exemple_vide(self):
         # Le NUMÉRO DE FORMAT ne dépend jamais de l'état du calepinage —
         # seul son CONTENU change entre `exemple` et `exemple_vide`.
-        self.assertEqual(CONTRAT['exemple_vide']['format_version'], 2)
+        self.assertEqual(CONTRAT['exemple_vide']['format_version'], 3)
 
     def test_produit_le_est_un_horodatage_distinct_de_format_version(self):
         """CALX293 : `produit_le` (horodatage réel) et `format_version`

@@ -54,8 +54,11 @@ class ContratFixationBomTest(unittest.TestCase):
     def test_trois_blocs_dans_chaque_etat(self):
         for etat in ('exemple', 'exemple_vide'):
             with self.subTest(etat=etat):
+                # ACAL1 (contrat v2) : + ``systeme_source`` (provenance du
+                # système appliqué : calepinage, paramètre société, ou null).
                 self.assertEqual(sorted(CONTRAT[etat]),
-                                 ['lignes', 'refus', 'systeme'])
+                                 ['lignes', 'refus', 'systeme',
+                                  'systeme_source'])
 
     def test_systeme_applique(self):
         self.assertEqual(sorted(CONTRAT['exemple']['systeme']),

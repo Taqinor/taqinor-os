@@ -18,6 +18,7 @@ Ce qui est prouvé ici :
 Run :
     python manage.py test apps.calepinage.tests.test_parametres_societe -v2
 """
+import copy
 import json
 import pathlib
 
@@ -48,8 +49,14 @@ def _sections_ecrivables(exemple):
     section de réglages — ``parametres_de_societe`` ne le rend donc pas, et
     un PUT le refuse comme toute clé inconnue.
     """
-    return {cle: valeur for cle, valeur in exemple.items()
-            if cle not in SECTIONS_LECTURE_SEULE}
+    sections = {cle: copy.deepcopy(valeur) for cle, valeur in exemple.items()
+                if cle not in SECTIONS_LECTURE_SEULE}
+    # ACAL8 (contrat v2) : ``documents.catalogue_rapport`` est une clé
+    # DÉRIVÉE en lecture seule (servie par la vue, ACAL288 ; un PUT qui la
+    # porte est refusé) — jamais une valeur réglée de la société.
+    if isinstance(sections.get('documents'), dict):
+        sections['documents'].pop('catalogue_rapport', None)
+    return sections
 
 
 class ContratTest(TestCase):

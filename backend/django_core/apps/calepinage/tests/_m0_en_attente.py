@@ -120,3 +120,42 @@ EN_ATTENTE_RESULTAT = {
     'electrique.affectation[].couleur_mppt': 'ACAL285',
     'electrique.affectation_obsolete': 'ACAL265',
 }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Export / import de projet v3 (ACAL17, M0) — producteur : ACAL243.
+# Le serveur exporte et relit le format 2 tant qu'ACAL243 n'a pas livré le
+# bloc ``saisies`` ; ces deux fonctions ramènent un état du contrat v3 à ce
+# que le serveur v2 sert. ACAL243 les supprime avec ses appelants.
+# ═══════════════════════════════════════════════════════════════════════════
+
+TACHE_EXPORT_V3 = 'ACAL243'
+
+
+def export_projet_v2(document):
+    """Un fichier ``export_projet.json`` v3 ramené au format 2 servi."""
+    servi = sans(document, {'saisies': TACHE_EXPORT_V3})
+    servi['format_version'] = 2
+    return servi
+
+
+def import_projet_v2(reponse):
+    """Une réponse ``calepinage_projet_json.json`` v3 ramenée à celle du
+    serveur v2 : ni ``saisies`` reprises, ni produits ignorés, ni ``ouvrir``.
+    """
+    servi = sans(reponse, {'ouvrir': TACHE_EXPORT_V3})
+    if 'format_version' in servi:
+        servi['format_version'] = 2
+    if 'repris' in servi:
+        servi['repris'] = [bloc for bloc in servi['repris']
+                           if bloc != 'saisies']
+    if 'ignores' in servi:
+        servi['ignores'] = [ligne for ligne in servi['ignores']
+                            if ligne.get('bloc') != 'saisies.produits']
+    return servi
+
+
+def refus_version_v2(refus):
+    """Le refus de version v3 (« versions lues : 1, 2, 3 ») ramené au v2."""
+    return {champ: message.replace('1, 2, 3)', '1, 2)')
+            for champ, message in refus.items()}

@@ -34,6 +34,9 @@ from apps.calepinage.services.export_projet import (
     FORMAT_VERSION, FORMATS_IMPORTABLES, MOTIF_FORMAT_1, ImportProjetRefuse,
     _analyser_projet, importer_projet,
 )
+from apps.calepinage.tests._m0_en_attente import (
+    export_projet_v2, import_projet_v2, refus_version_v2,
+)
 
 from .test_api_liste import URL, BaseApiCalepinage
 
@@ -44,8 +47,21 @@ def charger(nom):
     return json.loads((ECHANTILLONS / nom).read_text(encoding='utf-8'))
 
 
-CONTRAT = charger('calepinage_projet_json.json')
-EXPORT = charger('export_projet.json')
+#: ACAL17 a posé le format 3 (bloc ``saisies``, produits ignorés,
+#: ``ouvrir``) avant son producteur : tant qu'ACAL243 n'a pas livré, le
+#: serveur exporte et relit le format 2 — les états des deux contrats sont
+#: ramenés au format 2 avant d'être rejoués contre le service.
+CONTRAT_V3 = charger('calepinage_projet_json.json')
+CONTRAT = dict(
+    CONTRAT_V3,
+    exemple=import_projet_v2(CONTRAT_V3['exemple']),
+    exemple_apercu=import_projet_v2(CONTRAT_V3['exemple_apercu']),
+    exemple_refus_version=refus_version_v2(
+        CONTRAT_V3['exemple_refus_version']))
+EXPORT_V3 = charger('export_projet.json')
+EXPORT = dict(EXPORT_V3,
+              exemple=export_projet_v2(EXPORT_V3['exemple']),
+              exemple_vide=export_projet_v2(EXPORT_V3['exemple_vide']))
 RESULTAT = charger('calepinage_resultat.json')
 
 
