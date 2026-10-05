@@ -10,10 +10,8 @@ HMAC `X-Taqinor-Signature`.
 La source de vérité des scopes/évènements reste `constants.py` : on lit
 `SCOPE_CHOICES`/`EVENT_CHOICES` pour ne jamais diverger de l'implémentation.
 """
-from .constants import (
-    SCOPE_CHOICES, EVENT_CHOICES, EVENT_CALEPINAGE_SIMULE,
-    SCOPE_READ_FIABILITE,
-)
+from .portees import SCOPE_CHOICES, SCOPE_READ_FIABILITE
+from .constants import EVENT_CHOICES, EVENT_CALEPINAGE_SIMULE
 from .auth import AUTH_KEYWORD
 from .delivery import (
     SIGNATURE_HEADER, SIGNATURE_HEADER_V2, EVENT_HEADER, TIMESTAMP_HEADER,

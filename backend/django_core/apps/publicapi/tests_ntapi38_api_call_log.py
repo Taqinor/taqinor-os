@@ -27,7 +27,7 @@ from apps.crm.models import Lead
 from core.models import ApiUsagePlan
 
 from . import call_log
-from .constants import SCOPE_READ_LEADS
+from .portees import SCOPE_READ_LEADS
 from .models import ApiCallLog, ApiKey
 
 

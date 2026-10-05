@@ -17,9 +17,8 @@ from django.test import TestCase
 from authentication.models import Company
 
 from . import delivery
-from .constants import (
-    ALL_EVENTS, EVENT_CALEPINAGE_VALIDE, SCOPE_READ_CALEPINAGES,
-)
+from .portees import SCOPE_READ_CALEPINAGES
+from .constants import ALL_EVENTS, EVENT_CALEPINAGE_VALIDE
 from .models import Webhook
 
 RESULTAT = {

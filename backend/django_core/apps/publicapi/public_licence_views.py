@@ -12,7 +12,7 @@ from apps.parametres.models import CompanyProfile
 from authentication.services import sieges_utilises
 
 from .auth import PUBLIC_AUTHENTICATION_CLASSES, ApiKeyRateThrottle, HasApiScope
-from .constants import SCOPE_READ_LICENCE
+from .portees import SCOPE_READ_LICENCE
 from .public_response import PublicApiResponseMixin
 
 

@@ -34,7 +34,7 @@ from .bulk import (
     BulkJobError, create_export_job, create_import_job, relancer_job,
     _export_registry, _serialize_row,
 )
-from .constants import EXPORT_SCOPE_BY_ENTITY, IMPORT_SCOPE_BY_ENTITY
+from .portees import EXPORT_SCOPE_BY_ENTITY, IMPORT_SCOPE_BY_ENTITY
 from .models import ApiKey, BulkJob
 from .public_response import PublicApiResponseMixin
 from .public_serializers import BulkJobSerializer
