@@ -3127,6 +3127,11 @@ _DEFAULT_MOTIFS_PERTE = [
     ('Déjà équipé', False),
     ('Ne plus contacter', False),
     ('Devis refusé', False),
+    # AGR521 (05/10/2026) — pompage : un accord refusé (subvention FDA, DPA)
+    # ou un forage trop faible finissait en « Autre » / « Reporté », et rien
+    # n'était appris. Pertes commerciales réelles, jamais « junk ».
+    ('Subvention non obtenue', False),
+    ('Eau insuffisante / forage', False),
 ]
 
 # MRY2 — étiquettes standard. `Lead.tags` reste un TEXTE LIBRE : cette liste
