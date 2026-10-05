@@ -18,8 +18,6 @@ qui rendent un PDF (WeasyPrint + PyMuPDF réels) portent ``@tag('pdf')``.
 """
 from __future__ import annotations
 
-import unittest
-
 from django.test import tag
 
 from apps.calepinage.models import Calepinage
@@ -34,6 +32,7 @@ from apps.calepinage.services.sld import (
 )
 from apps.ventes.models import Devis
 
+from .acal_livrables_helpers import exiger_bibliotheques_pdf
 from .test_acal_sld_conception_reelle import BaseConceptionReelle
 
 LIBELLE_EDITE = 'Champ PV toiture sud ACAL163'
@@ -86,11 +85,7 @@ class SchemaIndisponible(BaseConceptionReelle):
 class SchemaDuDossier(BaseConceptionReelle):
 
     def setUp(self):
-        try:
-            import fitz  # noqa: F401
-            import weasyprint  # noqa: F401
-        except Exception:  # noqa: BLE001 - bibliothèques natives absentes
-            raise unittest.SkipTest('WeasyPrint ou PyMuPDF indisponible')
+        exiger_bibliotheques_pdf()
         super().setUp()
         self._norme_francaise()
 

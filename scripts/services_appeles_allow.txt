@@ -136,10 +136,8 @@ backend/django_core/apps/calepinage/services/profils_types.py::profils_de_repli
 backend/django_core/apps/calepinage/services/provenance_document.py::document_de_provenance
 backend/django_core/apps/calepinage/services/pvgis_serie.py::vider_le_cache
 backend/django_core/apps/calepinage/services/rapport/annexe_hypotheses.py::html_de_section
-backend/django_core/apps/calepinage/services/rapport/electrique.py::bloc_schema_unifilaire
 backend/django_core/apps/calepinage/services/rapport/electrique.py::html_de_section
 backend/django_core/apps/calepinage/services/rapport/electrique.py::html_table_verdicts
-backend/django_core/apps/calepinage/services/rapport/electrique.py::rendre_rapport_avec_schema
 backend/django_core/apps/calepinage/services/rapport/mise_en_page.py::html_de_rapport_pagine
 backend/django_core/apps/calepinage/services/rapport/mise_en_page.py::html_du_sommaire
 backend/django_core/apps/calepinage/services/rapport/mise_en_page.py::pages_attendues

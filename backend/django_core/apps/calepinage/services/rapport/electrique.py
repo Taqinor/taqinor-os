@@ -21,8 +21,9 @@ CALX299)
   et lisent ``schema_du_calepinage`` — AVEC OU SANS devis lié (ACAL163,
   C-ACAL-061 : l'ancienne lecture ``schema_unifilaire_svg(devis=…)`` est
   supprimée). ``bloc_schema_unifilaire`` est l'UNIQUE fonction qui encapsule
-  le schéma : la pièce ``schema_unifilaire`` du dossier réglementaire
-  (``reglementaire._rendus_du_module``) l'appelle aussi.
+  le schéma : ``rendre_rapport`` (ACAL227, via ``rendre_rapport_avec_schema``)
+  et la pièce ``schema_unifilaire`` du dossier réglementaire
+  (``reglementaire._rendus_du_module``) l'appellent tous deux.
 
 Le motif
 ========
@@ -40,7 +41,7 @@ from . import nombre_tel_que_servi
 __all__ = [
     'CSS_SECTION', 'MOTIF_SCHEMA_INDISPONIBLE', 'MENTION_NON_VERIFIABLE',
     'html_de_section', 'html_table_verdicts', 'bloc_schema_unifilaire',
-    'rendre_rapport_avec_schema',
+    'html_motif_schema', 'motif_du_schema', 'rendre_rapport_avec_schema',
 ]
 
 #: La feuille de la section — hachure d'un verdict non vérifiable, mêmes gris
@@ -171,12 +172,23 @@ def html_de_section(contexte):
     if table_verdicts:
         blocs.append('<h3>Verdicts</h3>')
         blocs.append(table_verdicts)
+    # ACAL227 — le schéma non joint est DIT ici (jamais une page vide).
+    blocs.append(html_motif_schema(contexte.get('motif_schema')))
     return ''.join(b for b in blocs if b)
+
+
+def html_motif_schema(motif):
+    """ACAL227 — le paragraphe qui dit pourquoi le schéma unifilaire n'est
+    pas joint au rapport ; ``''`` quand il l'est."""
+    if not motif:
+        return ''
+    return ('<p class="motif schema-unifilaire" '
+            'data-motif="schema_unifilaire">%s</p>' % escape(str(motif)))
 
 
 # ── Le schéma unifilaire — lit la base, prend le calepinage ─────────────────
 
-def _motif_du_schema(schema):
+def motif_du_schema(schema):
     """Le motif d'un schéma NON dessiné : l'ouverture, complétée des
     ``bloquants``/``manquantes`` du service, tels quels (ACAL163)."""
     raisons = [str(r) for r in (schema.get('bloquants') or ()) if r]
@@ -186,22 +198,27 @@ def _motif_du_schema(schema):
     return '%s — %s' % (MOTIF_SCHEMA_INDISPONIBLE[:-1], ' ; '.join(raisons))
 
 
-def bloc_schema_unifilaire(calepinage, *, company=None):
+def bloc_schema_unifilaire(calepinage, *, company=None, schema=None):
     """``(octets_pdf, motif)`` — le schéma unifilaire NATIF du calepinage
     (``sld.schema_du_calepinage`` : conception réelle, édition appliquée),
     encapsulé par ``html_de_planche`` + ``render_pdf`` ; ou ``(None, motif)``
     quand le service ne le dessine pas (``svg`` ``None``), le motif NOMMANT
     ses bloquants/manquantes. Avec ou sans devis lié (ACAL163).
+
+    ``schema`` — la réponse de ``schema_du_calepinage`` déjà lue par
+    l'appelant (ACAL227 : le rapport la lit UNE fois pour le motif ET la
+    page) ; à défaut, elle est lue ici.
     """
     from core.pdf import render_pdf
 
     from ..planche import html_de_planche
     from ..sld import schema_du_calepinage
 
-    schema = schema_du_calepinage(calepinage)
+    if schema is None:
+        schema = schema_du_calepinage(calepinage)
     svg = schema.get('svg')
     if not svg:
-        return None, _motif_du_schema(schema)
+        return None, motif_du_schema(schema)
     octets = render_pdf(
         html=html_de_planche(svg),
         company=company or getattr(calepinage, 'company', None))
