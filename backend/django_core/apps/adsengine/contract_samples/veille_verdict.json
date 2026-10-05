@@ -1,0 +1,60 @@
+{
+  "endpoint": "POST /api/django/adsengine/veille/annonceurs/<id>/verdict/",
+  "forme_serveur": "partielle",
+  "pourquoi": "VEIL5 (PACT10) — contrat posé SEUL et EN PREMIER : le verdict HUMAIN sur un annonceur. Corps `{classe, dropshipper}` (classe parmi `classes_disponibles` servies par l'annonceur ; dropshipper = oui | non | incertain, attribut et jamais classe). La réponse est l'annonceur COMPLET au format `veille_annonceur.json` (VEIL3), verdict.decide_par = humain, l'ancien verdict passant dans `historique`. Vue livrée par VEIL17.",
+  "corps": {
+    "classe": "place_de_marche",
+    "dropshipper": "non"
+  },
+  "exemple": {
+    "id": 903,
+    "page_id": "104512345678901",
+    "page_name": "Maison Lilas",
+    "pays_vus": ["FR", "BE"],
+    "mots_cles": ["robe été"],
+    "nb_pubs_vues": 14,
+    "extraits": [
+      {
+        "texte": "Nouvelle collection d'été : robes légères, livraison offerte dès 60 €.",
+        "ad_archive_id": "1203948571928374"
+      }
+    ],
+    "domaines": [{ "domaine": "maison-lilas.fr", "nb": 11 }],
+    "lien_bibliotheque": "https://www.facebook.com/ads/library/?id=1203948571928374",
+    "classe": "place_de_marche",
+    "classes_disponibles": [
+      { "cle": "vendeur", "libelle_fr": "Vendeur", "est_bruit": false },
+      { "cle": "place_de_marche", "libelle_fr": "Place de marché ou géant", "est_bruit": true },
+      { "cle": "hors_sujet", "libelle_fr": "Hors sujet (hors vêtements, chaussures, sacs)", "est_bruit": true },
+      { "cle": "pas_vendeur", "libelle_fr": "Pas un vendeur", "est_bruit": true },
+      { "cle": "doublon", "libelle_fr": "Doublon d'un autre annonceur", "est_bruit": true },
+      { "cle": "incertain", "libelle_fr": "Incertain", "est_bruit": false }
+    ],
+    "doublon_de": null,
+    "verdict": {
+      "classe": "place_de_marche",
+      "motif_fr": "Décision humaine : place de marché.",
+      "preuves": [],
+      "decide_par": "humain",
+      "modele": null,
+      "version_consigne": null,
+      "auteur": "Reda Kasri",
+      "le": "2026-10-04T10:05:00Z"
+    },
+    "dropshipper": {
+      "probable": "non",
+      "indices": [],
+      "decide_par": "humain"
+    },
+    "jeu": null,
+    "etiquette_mesure": null,
+    "historique": [
+      {
+        "classe": "vendeur",
+        "motif_fr": "Boutique en ligne de vêtements : pubs de produits avec prix et livraison, domaine propre.",
+        "decide_par": "regle",
+        "le": "2026-10-04T09:40:00Z"
+      }
+    ]
+  }
+}

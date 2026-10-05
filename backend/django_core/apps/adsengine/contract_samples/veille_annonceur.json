@@ -1,0 +1,69 @@
+{
+  "endpoint": "GET /api/django/adsengine/veille/annonceurs/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "VEIL3 (PACT10) — contrat posé SEUL et EN PREMIER : l'annonceur découvert (une Page distincte, pas une pub) et son verdict motivé. Règles portées par la forme. (1) `classes_disponibles` est SERVI par le serveur (D-VEIL-1/2/3) : l'écran ne code jamais la liste en dur. Classes : vendeur, place_de_marche, hors_sujet, pas_vendeur, doublon (avec `doublon_de`), incertain. (2) `dropshipper` est un ATTRIBUT, jamais une classe (D-VEIL-2). (3) `lien_bibliotheque` est CONSTRUIT (https://www.facebook.com/ads/library/?id=<ad_archive_id>), jamais lu ni suivi par le serveur ; aucun champ `ad_snapshot_url` brut n'est servi (son jeton est retiré avant stockage). (4) `extraits` : au plus 5, texte au plus 200 caractères. (5) `etiquette_mesure` n'est JAMAIS servie en mode aveugle (null). (6) `verdict.decide_par` : regle | ia | humain. Vue livrée par VEIL17.",
+  "exemple": {
+    "id": 903,
+    "page_id": "104512345678901",
+    "page_name": "Maison Lilas",
+    "pays_vus": ["FR", "BE"],
+    "mots_cles": ["robe été"],
+    "nb_pubs_vues": 14,
+    "extraits": [
+      {
+        "texte": "Nouvelle collection d'été : robes légères, livraison offerte dès 60 €.",
+        "ad_archive_id": "1203948571928374"
+      },
+      {
+        "texte": "-20 % sur toute la boutique ce week-end seulement.",
+        "ad_archive_id": "1203948571928399"
+      }
+    ],
+    "domaines": [
+      { "domaine": "maison-lilas.fr", "nb": 11 },
+      { "domaine": "instagram.com", "nb": 3 }
+    ],
+    "lien_bibliotheque": "https://www.facebook.com/ads/library/?id=1203948571928374",
+    "classe": "vendeur",
+    "classes_disponibles": [
+      { "cle": "vendeur", "libelle_fr": "Vendeur", "est_bruit": false },
+      { "cle": "place_de_marche", "libelle_fr": "Place de marché ou géant", "est_bruit": true },
+      { "cle": "hors_sujet", "libelle_fr": "Hors sujet (hors vêtements, chaussures, sacs)", "est_bruit": true },
+      { "cle": "pas_vendeur", "libelle_fr": "Pas un vendeur", "est_bruit": true },
+      { "cle": "doublon", "libelle_fr": "Doublon d'un autre annonceur", "est_bruit": true },
+      { "cle": "incertain", "libelle_fr": "Incertain", "est_bruit": false }
+    ],
+    "doublon_de": null,
+    "verdict": {
+      "classe": "vendeur",
+      "motif_fr": "Boutique en ligne de vêtements : pubs de produits avec prix et livraison, domaine propre.",
+      "preuves": [
+        {
+          "champ": "ad_creative_bodies",
+          "valeur": "Nouvelle collection d'été : robes légères, livraison offerte dès 60 €.",
+          "ad_archive_id": "1203948571928374"
+        },
+        {
+          "champ": "ad_creative_link_captions",
+          "valeur": "maison-lilas.fr",
+          "ad_archive_id": "1203948571928374"
+        }
+      ],
+      "decide_par": "regle",
+      "modele": null,
+      "version_consigne": "regles-v1",
+      "auteur": null,
+      "le": "2026-10-04T09:40:00Z"
+    },
+    "dropshipper": {
+      "probable": "incertain",
+      "indices": [
+        { "champ": "ad_creative_link_captions", "valeur": "maison-lilas.fr" }
+      ],
+      "decide_par": "regle"
+    },
+    "jeu": null,
+    "etiquette_mesure": null,
+    "historique": []
+  }
+}

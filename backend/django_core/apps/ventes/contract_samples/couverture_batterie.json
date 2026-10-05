@@ -12,6 +12,12 @@
     "argent": "AUCUN prix dans ce bloc — donc a fortiori aucun prix d'achat et aucune marge (RULE #4). Les prix du curseur restent ceux, reels, de ``balayage_stockage``/``totaux_avec``. Deplacer le curseur reste une EXPLORATION : ni le prix officiel du devis ni la signature ne bougent."
   },
   "exemple": {
+    "fiche_batterie": {
+      "rendement_ar_pct": null,
+      "dod_pct": 90,
+      "source": null,
+      "simulation_omise_motif": "Rendement aller-retour non publié par la fiche de la batterie : simulation omise"
+    },
     "couverture_batterie": {
       "capacite_utile_pack_kwh": 4.6,
       "rendement": 0.9,
@@ -281,6 +287,12 @@
     }
   },
   "exemple_autonomie_atteignable": {
+    "fiche_batterie": {
+      "rendement_ar_pct": 94.0,
+      "dod_pct": 90,
+      "source": "fiche",
+      "simulation_omise_motif": null
+    },
     "couverture_batterie": {
       "capacite_utile_pack_kwh": 4.6,
       "rendement": 0.9,
