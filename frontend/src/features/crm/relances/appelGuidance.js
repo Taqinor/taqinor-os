@@ -66,6 +66,30 @@ export const MESSAGE_SEGMENT_A_CONFIRMER =
   "Segment non renseigné sur la fiche : script résidentiel par défaut, à "
   + 'confirmer avec le client.'
 
+// AGR418 — segment VIDE mais SUGGÉRÉ par le serveur (`segment_suggere`,
+// AGR406, contrat panneau_appel.json) : le bandeau le DIT, avec la raison
+// servie, et demande de confirmer — jamais un changement automatique.
+export const SEGMENT_PROBABLE_CONSIGNE = 'confirmez avec le client.'
+
+/** « Segment probable : agricole (raison) — confirmez avec le client. », ou
+ *  `null` sans suggestion servie. Valeur et raison sont lues au serveur. */
+export function messageSegmentProbable(suggestion) {
+  const valeur = suggestion?.valeur
+  if (!valeur) return null
+  const raison = suggestion.raison ? ` (${suggestion.raison})` : ''
+  return `Segment probable : ${valeur}${raison} — ${SEGMENT_PROBABLE_CONSIGNE}`
+}
+
+// AGR418 (D-AGR-4) — en fin d'appel agricole, quand le niveau d'eau ou le
+// débit du forage reste inconnu (`devis_auto.visite_point_eau_avant_devis`
+// servi par le détail du lead, AGR403) : on propose la visite gratuite de
+// relevé du point d'eau AVANT le devis, et son message existant
+// (`visite_releve_point_eau`, AGR414). Textes ✎ dans messages_meryem.md.
+export const VISITE_POINT_EAU_TITRE = 'Planifier la visite — relevé du point d’eau'
+export const VISITE_POINT_EAU_CONSIGNE = 'Le niveau d’eau ou le débit du forage '
+  + 'reste inconnu : proposez la visite gratuite de relevé du point d’eau avant '
+  + 'le devis.'
+
 /** Message de refus d'un segment non livré — toujours une phrase complète,
  *  qui nomme le segment avec le libellé servi par le serveur (repli sur sa
  *  clé : un refus ne survient que pour un segment NON vide). */
@@ -140,17 +164,53 @@ export function estToucheDeRappel(touche) {
 // est une colonne `crm.Lead` existante servie par le contrat (aucune n'est
 // fabriquée ici), et une étape déjà répondue saute. Cinq étapes au plus,
 // comme le budget de l'appel 1 (l'ouverture promet « deux minutes »).
-// Agricole : la pompe d'abord (puissance, HMT, débit voulu — les trois
-// entrées du générateur en mode agricole), puis les heures de pompage et
-// l'énergie actuelle (le carburant consommé n'a de sens qu'ensuite).
+// AGR418 (Groupe AGR, D-AGR-3/D-AGR-4) — l'appel agricole RÉÉCRIT en cinq
+// étapes qui collectent ce qui dimensionne, dans l'ordre du serveur (AGR407,
+// `CHAMPS_ORAUX_AGRICOLE`) : (1) l'énergie actuelle, puis — SELON la réponse —
+// bouteilles/jour + prix (butane), litres/mois + prix (diesel) ou la dépense
+// par mois (électrique) : le prix est DÉCLARÉ (Q17), jamais supposé ;
+// (2) l'eau : source, niveau, débit du forage ; (3) le besoin en m³/jour,
+// SINON la surface irriguée et la culture ; (4) les heures de la pompe
+// ACTUELLE et la distance forage → panneaux ; (5) l'irrigation (méthode,
+// mois — douze boutons, nature `choix_multiple`) et l'électricité sur place.
+// Le CV de la pompe n'est plus demandé : il se relève sur la plaque, en
+// visite. `champs` liste TOUTES les colonnes d'une étape ; `selon` (facultatif)
+// choisit, d'après ce que la fiche porte déjà, celles qui s'appliquent.
+const COMPLEMENTS_ENERGIE = Object.freeze({
+  butane: Object.freeze(['butane_bouteilles_jour', 'carburant_prix_unitaire_mad']),
+  diesel: Object.freeze(['carburant_litres_mois', 'carburant_prix_unitaire_mad']),
+  electrique: Object.freeze(['depense_carburant_mad_mois']),
+})
+
 export const ORDRE_AGRICOLE = Object.freeze([
-  Object.freeze({ etape: 'pompe', champs: Object.freeze(['pompe_cv']) }),
-  Object.freeze({ etape: 'hmt', champs: Object.freeze(['pompe_hmt_m']) }),
-  Object.freeze({ etape: 'debit', champs: Object.freeze(['pompe_debit_m3h']) }),
-  Object.freeze({ etape: 'heures_pompage', champs: Object.freeze(['pompage_heures_jour']) }),
   Object.freeze({
     etape: 'energie_actuelle',
-    champs: Object.freeze(['pompe_alim_actuelle', 'carburant_litres_mois']),
+    champs: Object.freeze([
+      'pompe_alim_actuelle', 'butane_bouteilles_jour', 'carburant_litres_mois',
+      'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois',
+    ]),
+    selon: (prefill) => [
+      'pompe_alim_actuelle',
+      ...(COMPLEMENTS_ENERGIE[prefill?.pompe_alim_actuelle] || []),
+    ],
+  }),
+  Object.freeze({
+    etape: 'eau',
+    champs: Object.freeze(['source_eau', 'niveau_statique_m', 'debit_forage_m3h']),
+  }),
+  Object.freeze({
+    etape: 'besoin',
+    champs: Object.freeze(['besoin_eau_m3j', 'surface_irriguee_ha', 'culture']),
+    selon: (prefill) => (prefill && 'besoin_eau_m3j' in prefill
+      ? [] : ['besoin_eau_m3j', 'surface_irriguee_ha', 'culture']),
+  }),
+  Object.freeze({
+    etape: 'heures_distance',
+    champs: Object.freeze(['pompage_heures_jour', 'distance_forage_champ_m']),
+  }),
+  Object.freeze({
+    etape: 'irrigation_electricite',
+    champs: Object.freeze(['irrigation_methode', 'mois_irrigation', 'electricite_sur_place']),
   }),
 ])
 
@@ -192,8 +252,10 @@ export function questionsDeLAppel(panneau) {
   }
   const etapes = etapesDuPanneau(panneau)
   const out = []
-  for (const { etape, champs } of etapes) {
-    const entrees = champs.map((champ) => aPoser.get(champ)).filter(Boolean)
+  for (const { etape, champs, selon } of etapes) {
+    // AGR418 — une étape conditionnelle ne pose que ses colonnes du cas.
+    const liste = typeof selon === 'function' ? selon(dejaRenseigne) : champs
+    const entrees = liste.map((champ) => aPoser.get(champ)).filter(Boolean)
     if (!entrees.length) continue
     const [principale, ...complements] = entrees
     out.push({ ...principale, etape, complements })
@@ -537,8 +599,6 @@ export function messageErreurServeur(entree, donnees) {
 // dans `docs/crm/messages_meryem.md` (re-dérivés par la garde CAD153).
 export const A_NOTER_FORCE_MOTRICE = 'À noter dans la note d’appel : le '
   + 'compteur de la pompe est-il en abonnement force motrice ?'
-export const A_NOTER_SURFACE_CULTURE = 'À noter dans la note d’appel : la '
-  + 'surface irriguée et la culture.'
 export const A_NOTER_TENSION = 'À noter dans la note d’appel : le site est-il '
   + 'raccordé en basse ou en moyenne tension ?'
 export const A_NOTER_RYTHME = 'À noter dans la note d’appel : le rythme '
@@ -558,7 +618,9 @@ export const A_NOTER_PROCESS = 'À noter dans la note d’appel : les process '
 /** Les consignes à noter, par famille (le résidentiel n'en a aucune). */
 export const A_NOTER_PAR_FAMILLE = Object.freeze({
   residentiel: Object.freeze([]),
-  agricole: Object.freeze([A_NOTER_FORCE_MOTRICE, A_NOTER_SURFACE_CULTURE]),
+  // AGR418 — surface et culture ont maintenant leur colonne (étape « besoin ») :
+  // il ne reste à noter que la force motrice.
+  agricole: Object.freeze([A_NOTER_FORCE_MOTRICE]),
   pro: Object.freeze([
     A_NOTER_TENSION, A_NOTER_RYTHME, A_NOTER_GROUPE, A_NOTER_PROCESS,
   ]),
@@ -584,7 +646,7 @@ export const GARDE_FOUS_PAR_FAMILLE = Object.freeze({
 /** Ce que le panneau affiche pour CE lead.
  *  - segment non livré : `{ livre: false, segment, message }` ;
  *  - segment livré (CAD161 résidentiel, CAD175 agricole et pro) :
- *    `{ livre: true, segment, famille, segmentAConfirmer, avertissement,
+ *    `{ livre: true, segment, famille, segmentAConfirmer, segmentProbable, avertissement,
  *    phase, accroche, questions, objections, interdits, issues, enTete,
  *    profilSuppose, fenetre, aNoter, gardeFous }`, `phase` valant
  *    `'appel_1'` ou `'rappel'`. La question « en tête » (Q5, présence en
@@ -610,12 +672,18 @@ export function guidanceAppel(panneau, options = {}) {
   const profilSuppose = famille === 'residentiel'
     && (drapeau === null ? Boolean(entreePresence) : drapeau)
   const enTete = profilSuppose ? entreePresence : null
+  // AGR418 — segment vide + suggestion servie : le bandeau nomme le segment
+  // probable et sa raison, au lieu du seul « à confirmer ».
+  const segmentProbable = segmentAConfirmer
+    ? messageSegmentProbable(vu.segment_suggere) : null
   return {
     livre: true,
     segment,
     famille,
     segmentAConfirmer,
-    avertissement: segmentAConfirmer ? MESSAGE_SEGMENT_A_CONFIRMER : null,
+    segmentProbable,
+    avertissement: segmentAConfirmer
+      ? (segmentProbable || MESSAGE_SEGMENT_A_CONFIRMER) : null,
     phase: estToucheDeRappel(touche) ? 'rappel' : 'appel_1',
     accroche: texteAccroche(vu),
     questions: questionsDeLAppel(vu),

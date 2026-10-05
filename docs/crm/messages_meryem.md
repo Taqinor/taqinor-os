@@ -537,13 +537,26 @@ NON_COMPTE_FUTURES_CHARGES : Charges futures cochées sur le site (clim, véhicu
 NON_COMPTE_TRANCHE_ONEE : Tarif / tranche ONEE : sert au dossier, pas au chiffre — l'estimation part du montant de la facture.
 NON_COMPTE_PLAQUE : Pas compté dans le chiffre tant que la puissance manque : photo de la plaque pour que ce soit compté.
 A_NOTER_FORCE_MOTRICE : À noter dans la note d’appel : le compteur de la pompe est-il en abonnement force motrice ?
-A_NOTER_SURFACE_CULTURE : À noter dans la note d’appel : la surface irriguée et la culture.
 A_NOTER_TENSION : À noter dans la note d’appel : le site est-il raccordé en basse ou en moyenne tension ?
 A_NOTER_RYTHME : À noter dans la note d’appel : le rythme d'activité (journée, jusqu'au soir, en continu) et le week-end.
 A_NOTER_GROUPE : À noter dans la note d’appel : le site a-t-il un groupe électrogène ?
 A_NOTER_PROCESS : À noter dans la note d’appel : les process critiques, qui ne doivent jamais s’arrêter.
 AUCUNE_ESTIMATION_SEGMENT : Aucun chiffre d'économie au téléphone pour ce segment : le calcul ne sait pas encore le traiter.
 CARBURANT_DECLARE_SEUL : L'économie de carburant se calcule uniquement sur ce que le client déclare (litres ou dirhams par mois) — jamais sur un prix de gasoil supposé.
+SEGMENT_PROBABLE_CONSIGNE : confirmez avec le client.
+VISITE_POINT_EAU_TITRE : Planifier la visite — relevé du point d’eau
+VISITE_POINT_EAU_CONSIGNE : Le niveau d’eau ou le débit du forage reste inconnu : proposez la visite gratuite de relevé du point d’eau avant le devis.
+
+AGR418 (05/10/2026) — l'appel AGRICOLE est réécrit en cinq étapes, dans l'ordre du serveur (AGR407) : l'énergie
+actuelle (puis, selon la réponse, bouteilles par jour et prix payé, litres par mois et prix payé, ou dépense par
+mois — prix DÉCLARÉ, Q17), l'eau (source, niveau, débit du forage), le besoin en m³ par jour (sinon la surface
+irriguée et la culture, qui ont maintenant leur colonne), les heures de la pompe ACTUELLE et la distance forage →
+panneaux, puis l'irrigation (méthode, mois en douze boutons) et l'électricité sur place. Le CV de la pompe se relève
+sur la plaque, en visite. Les consignes « à noter » agricoles se réduisent à la force motrice. Un lead SANS segment
+qui porte un `segment_suggere` affiche « Segment probable : … (raison) — confirmez avec le client. ». En fin d'appel,
+si le niveau ou le débit du forage reste inconnu (`devis_auto.visite_point_eau_avant_devis`), le panneau propose la
+visite de relevé du point d'eau et son message `visite_releve_point_eau`. Aucun chiffre d'économie. ✎ Formulations à
+valider par le fondateur.
 
 CAD155 (24/09/2026) — `CONSIGNE_CRENEAU`, `RAMADAN_PAS_DE_SOIR` et `JOUR_NON_APPELABLE` n'écrivent AUCUNE heure : la
 fenêtre et ses créneaux sont LUS du moteur (`apps/crm/horaires.py::fenetre_du_jour`, servi par le panneau), Ramadan

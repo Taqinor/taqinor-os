@@ -32,6 +32,7 @@ import { Badge, Button, Input } from '../../../ui'
 import { toastInfo } from '../../../lib/toast'
 import crmApi from '../../../api/crmApi'
 import fieldLabels from '../workspace/fieldLabels'
+import MessageVisiteDialog from './MessageVisiteDialog'
 import {
   guidanceAppel, texteQuestion, decouperQuestion, scriptTouche,
   normaliserSaisie, messageErreurServeur, fenetreAppel,
@@ -39,6 +40,7 @@ import {
   EXPLICATION_PROFIL_SUPPOSE, CONSIGNE_ISSUE, ISSUE_EN_AVANCE,
   AUCUNE_QUESTION, CONSIGNE_CRENEAU, RAMADAN_PAS_DE_SOIR, JOUR_NON_APPELABLE,
   NON_COMPTE_TITRE, NON_COMPTE_FUTURES_CHARGES, NON_COMPTE_TRANCHE_ONEE,
+  VISITE_POINT_EAU_TITRE, VISITE_POINT_EAU_CONSIGNE,
 } from './appelGuidance'
 
 const PANNEAU_INDISPONIBLE = 'Questions indisponibles pour le moment — le '
@@ -61,6 +63,13 @@ function texteDeLaQuestion(entree) {
 function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregistrer }) {
   const id = `panneau-appel-${entree.champ}`
   const { question, consigne } = texteDeLaQuestion(entree)
+  // AGR418 — `choix_multiple` (mois d'irrigation…) : des boutons À COCHER, puis
+  // « Enregistrer » écrit la LISTE (jamais une seule valeur par clic).
+  const multiple = entree.nature === 'choix_multiple' && Array.isArray(entree.choix)
+  const coches = multiple && Array.isArray(saisie) ? saisie : []
+  const basculer = (valeur) => onSaisie(coches.includes(valeur)
+    ? coches.filter((v) => v !== valeur)
+    : [...coches, valeur].sort((a, b) => (a > b ? 1 : -1)))
   return (
     <div className="flex flex-col gap-1" data-testid={`question-appel-${entree.champ}`}>
       {Array.isArray(entree.choix) ? (
@@ -73,7 +82,28 @@ function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregis
           {consigne}
         </p>
       )}
-      {Array.isArray(entree.choix) ? (
+      {multiple ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label={entree.libelle}>
+            {entree.choix.map((c) => (
+              <Button
+                key={String(c.valeur)} type="button" size="sm"
+                variant={coches.includes(c.valeur) ? 'default' : 'outline'}
+                aria-pressed={coches.includes(c.valeur)}
+                disabled={occupe} onClick={() => basculer(c.valeur)}
+              >
+                {c.libelle}
+              </Button>
+            ))}
+          </div>
+          <Button
+            type="button" size="sm" disabled={occupe || coches.length === 0}
+            onClick={() => onChoix(coches)}
+          >
+            Enregistrer
+          </Button>
+        </div>
+      ) : Array.isArray(entree.choix) ? (
         <div className="flex flex-wrap gap-1.5" role="group" aria-label={entree.libelle}>
           {entree.choix.map((c) => (
             <Button
@@ -87,7 +117,8 @@ function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregis
       ) : (
         <div className="flex flex-wrap items-center gap-1.5">
           <Input
-            id={id} className="w-44" value={saisie} invalid={Boolean(erreur)}
+            id={id} className="w-44" value={typeof saisie === 'string' ? saisie : ''}
+            invalid={Boolean(erreur)}
             inputMode={entree.nature === 'nombre' ? 'decimal' : undefined}
             onChange={(e) => onSaisie(e.target.value)}
           />
@@ -181,6 +212,28 @@ export default function PanneauScriptAppel({
       .catch(() => { if (active) setScript({ chargement: false, rendu: null, erreur: true }) })
     return () => { active = false }
   }, [actif, scriptLigne, etapeId])
+
+  // AGR418 (D-AGR-4) — fin d'appel AGRICOLE : la visite de relevé du point
+  // d'eau est-elle requise AVANT le devis ? La règle est celle du SERVEUR
+  // (`devis_auto.visite_point_eau_avant_devis`, détail du lead, AGR403) —
+  // jamais recalculée ici. Relue avec le panneau (même `version`).
+  const segmentPanneau = etat.panneau?.segment || null
+  const [visitePointEau, setVisitePointEau] = useState(null)
+  const [messagePointEau, setMessagePointEau] = useState(false)
+  useEffect(() => {
+    let active = true
+    if (!actif || !leadId || segmentPanneau !== 'agricole'
+        || typeof crmApi.getLead !== 'function') {
+      queueMicrotask(() => { if (active) setVisitePointEau(null) })
+      return () => { active = false }
+    }
+    crmApi.getLead(leadId)
+      .then((r) => {
+        if (active) setVisitePointEau(r?.data?.devis_auto?.visite_point_eau_avant_devis ?? null)
+      })
+      .catch(() => { if (active) setVisitePointEau(null) })
+    return () => { active = false }
+  }, [actif, leadId, segmentPanneau, version])
 
   const panneau = etat.panneau
   const toucheLigne = etape
@@ -440,6 +493,32 @@ export default function PanneauScriptAppel({
             {g.interdits.map((t) => <li key={t}>{t}</li>)}
           </ul>
         </details>
+      )}
+      {/* AGR418 — fin d'appel agricole : niveau ou débit du forage inconnu →
+          la visite de relevé AVANT le devis, et son message (AGR414). */}
+      {g?.livre && g.famille === 'agricole' && visitePointEau?.requise && (
+        <div
+          className="flex flex-col gap-1.5 rounded-md border border-warning/40 bg-warning/10 p-2"
+          role="status" data-testid="visite-point-eau"
+        >
+          <p className="font-medium text-foreground">{VISITE_POINT_EAU_TITRE}</p>
+          <p>{VISITE_POINT_EAU_CONSIGNE}</p>
+          {Array.isArray(visitePointEau.motifs) && visitePointEau.motifs.length > 0 && (
+            <ul className="ml-4 list-disc">
+              {visitePointEau.motifs.map((m) => <li key={m}>{m}</li>)}
+            </ul>
+          )}
+          <Button
+            type="button" size="sm" variant="outline" className="self-start"
+            onClick={() => setMessagePointEau(true)}
+          >
+            Proposer la visite (message)
+          </Button>
+          <MessageVisiteDialog
+            leadId={leadId} cle="visite_releve_point_eau" etapeId={etapeId}
+            open={messagePointEau} onOpenChange={setMessagePointEau}
+          />
+        </div>
       )}
       {(onComposer || onSaisirIssue) && (
         <div className="flex flex-col gap-1">

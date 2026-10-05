@@ -24,6 +24,13 @@ import {
   Button, Spinner,
 } from '../../../ui'
 
+const TITRE_DEFAUT = 'Message — proposer la visite'
+// AGR418 — la visite de relevé du point d'eau (AGR414), proposée en fin
+// d'appel agricole AVANT le devis : son titre la nomme.
+const TITRES = {
+  visite_releve_point_eau: 'Message — visite de relevé du point d’eau',
+}
+
 export default function MessageVisiteDialog({
   leadId, cle = 'visite_proposition', open, onOpenChange,
   // CAD111 — la touche depuis laquelle le message est ouvert (facultatif).
@@ -90,7 +97,7 @@ export default function MessageVisiteDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Message — proposer la visite</DialogTitle>
+          <DialogTitle>{TITRES[cle] || TITRE_DEFAUT}</DialogTitle>
         </DialogHeader>
         {loading ? (
           <Spinner />

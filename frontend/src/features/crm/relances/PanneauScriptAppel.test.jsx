@@ -443,13 +443,13 @@ describe('CAD175 — le bon jeu de questions, et aucune estimation chiffrée', (
    *  d'énergie ou à un pourcentage. */
   const ESTIMATION = /\d[\d\s.,]*\s*(MAD|DH|dirhams?|%|kWh)/i
 
-  it('lead agricole : la pompe d’abord, les consignes à noter, le garde-fou carburant — aucun chiffre', async () => {
+  it('lead agricole (AGR418) : énergie → eau → heures/distance → irrigation, les consignes à noter, le garde-fou carburant — aucun chiffre', async () => {
     armer({
       panneau: {
         ...AGRICOLE,
         champs_a_poser: [
-          occupationServie, entree('pompe_cv'), entree('pompe_hmt_m'), entree('pompe_debit_m3h'),
-          ...AGRICOLE.champs_a_poser, entree('carburant_litres_mois'),
+          occupationServie, entree('butane_bouteilles_jour'), entree('carburant_prix_unitaire_mad'),
+          entree('debit_forage_m3h'), ...AGRICOLE.champs_a_poser, entree('irrigation_methode'),
         ],
       },
     })
@@ -457,12 +457,13 @@ describe('CAD175 — le bon jeu de questions, et aucune estimation chiffrée', (
     const liste = await screen.findByTestId('questions-appel')
     const posees = [...liste.querySelectorAll('[data-testid^="question-appel-"]')]
       .map((n) => n.getAttribute('data-testid').replace('question-appel-', ''))
-    // `pompe_alim_actuelle` est déjà sur la fiche : le carburant la complète.
+    // `pompe_alim_actuelle` (butane) est déjà sur la fiche : bouteilles/jour
+    // ouvre l'étape, le prix payé la complète.
     expect(posees).toEqual([
-      'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h', 'pompage_heures_jour', 'carburant_litres_mois',
+      'butane_bouteilles_jour', 'debit_forage_m3h', 'pompage_heures_jour', 'irrigation_methode',
     ])
     // Une colonne sans question écrite se lit avec le libellé de la FICHE.
-    expect(within(liste).getByText(fieldLabels.pompe_cv.label)).toBeInTheDocument()
+    expect(within(liste).getByText(fieldLabels.butane_bouteilles_jour.label)).toBeInTheDocument()
     // La présence à la maison n'est pas une question de pompage.
     expect(screen.queryByTestId('bandeau-profil-suppose')).not.toBeInTheDocument()
     expect(screen.getByTestId('a-noter')).toHaveTextContent(guidance.A_NOTER_FORCE_MOTRICE)
@@ -497,14 +498,94 @@ describe('CAD175 — le bon jeu de questions, et aucune estimation chiffrée', (
   })
 
   it('une réponse agricole s’écrit par le chemin de la fiche, normalisée', async () => {
-    armer({ panneau: { ...AGRICOLE, champs_a_poser: [entree('pompe_cv')] } })
+    armer({ panneau: { ...AGRICOLE, champs_a_poser: [entree('debit_forage_m3h')] } })
     crmApi.updateLead.mockResolvedValue({ data: { id: AGRICOLE.lead_id, score: 30 } })
     render(<PanneauScriptAppel mode="fiche" leadId={AGRICOLE.lead_id} />)
-    const question = await screen.findByTestId('question-appel-pompe_cv')
+    const question = await screen.findByTestId('question-appel-debit_forage_m3h')
     fireEvent.change(within(question).getByRole('textbox'), { target: { value: '7,5' } })
     fireEvent.click(within(question).getByRole('button', { name: 'Enregistrer' }))
     await waitFor(() => expect(crmApi.updateLead)
-      .toHaveBeenCalledWith(AGRICOLE.lead_id, { pompe_cv: '7.5' }))
+      .toHaveBeenCalledWith(AGRICOLE.lead_id, { debit_forage_m3h: '7.5' }))
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// AGR418 — le script agricole réécrit, nourri de `exemple_agricole` (contrat
+// panneau_appel.json, sortie RÉELLE du serveur AGR407).
+// ════════════════════════════════════════════════════════════════════════════
+describe('AGR418 — script d’appel agricole en cinq étapes', () => {
+  const EXEMPLE_AGRICOLE = exempleContrat('crm', 'panneau_appel', 'exemple_agricole')
+  const DEVIS_AUTO_AGRICOLE = exempleContrat('crm', 'devis_auto_pret', 'exemple_agricole')
+
+  const posees = async () => {
+    const liste = await screen.findByTestId('questions-appel')
+    return [...liste.querySelectorAll('[data-testid^="question-appel-"]')]
+      .map((n) => n.getAttribute('data-testid').replace('question-appel-', ''))
+  }
+
+  it('une étape déjà répondue est sautée (énergie, eau, besoin pré-remplis)', async () => {
+    armer({ panneau: EXEMPLE_AGRICOLE })
+    render(<PanneauScriptAppel mode="fiche" leadId={EXEMPLE_AGRICOLE.lead_id} />)
+    expect(await posees()).toEqual([
+      'butane_bouteilles_jour', 'debit_forage_m3h', 'pompage_heures_jour', 'irrigation_methode',
+    ])
+    expect(screen.queryByTestId('question-appel-besoin_eau_m3j')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('question-appel-source_eau')).not.toBeInTheDocument()
+  })
+
+  it('aucune clé d’économie n’est rendue, aucun chiffre d’économie', async () => {
+    armer({ panneau: EXEMPLE_AGRICOLE })
+    render(<PanneauScriptAppel mode="fiche" leadId={EXEMPLE_AGRICOLE.lead_id} />)
+    await screen.findByTestId('questions-appel')
+    expect(screen.getByTestId('panneau-script-appel').textContent)
+      .not.toMatch(/\d[\d\s.,]*\s*(MAD|DH|dirhams?|%|kWh)/i)
+  })
+
+  it('visite requise (devis_auto servi) : la proposition de visite apparaît, avec son message', async () => {
+    armer({ panneau: EXEMPLE_AGRICOLE })
+    crmApi.getLead = vi.fn(() => Promise.resolve({ data: DEVIS_AUTO_AGRICOLE }))
+    try {
+      render(<PanneauScriptAppel mode="fiche" leadId={EXEMPLE_AGRICOLE.lead_id} />)
+      const bloc = await screen.findByTestId('visite-point-eau')
+      expect(bloc).toHaveTextContent(guidance.VISITE_POINT_EAU_TITRE)
+      for (const motif of DEVIS_AUTO_AGRICOLE.devis_auto.visite_point_eau_avant_devis.motifs) {
+        expect(bloc).toHaveTextContent(motif)
+      }
+      expect(within(bloc).getByRole('button', { name: /Proposer la visite/ })).toBeInTheDocument()
+    } finally {
+      delete crmApi.getLead
+    }
+  })
+
+  it('visite non requise : aucune proposition', async () => {
+    armer({ panneau: EXEMPLE_AGRICOLE })
+    crmApi.getLead = vi.fn(() => Promise.resolve({
+      data: { devis_auto: { visite_point_eau_avant_devis: { requise: false, motifs: [] } } },
+    }))
+    try {
+      render(<PanneauScriptAppel mode="fiche" leadId={EXEMPLE_AGRICOLE.lead_id} />)
+      await screen.findByTestId('questions-appel')
+      await waitFor(() => expect(crmApi.getLead).toHaveBeenCalled())
+      expect(screen.queryByTestId('visite-point-eau')).not.toBeInTheDocument()
+    } finally {
+      delete crmApi.getLead
+    }
+  })
+
+  it('mois d’irrigation : douze boutons à cocher, « Enregistrer » écrit la liste', async () => {
+    const mois = EXEMPLE_AGRICOLE.champs_a_poser.find((q) => q.champ === 'mois_irrigation')
+    armer({ panneau: { ...EXEMPLE_AGRICOLE, champs_a_poser: [mois], prefill: {} } })
+    crmApi.updateLead.mockResolvedValue({ data: { id: EXEMPLE_AGRICOLE.lead_id } })
+    render(<PanneauScriptAppel mode="fiche" leadId={EXEMPLE_AGRICOLE.lead_id} />)
+    const question = await screen.findByTestId('question-appel-mois_irrigation')
+    const groupe = within(question).getByRole('group')
+    expect(within(groupe).getAllByRole('button')).toHaveLength(12)
+    fireEvent.click(within(groupe).getByRole('button', { name: 'Juillet' }))
+    fireEvent.click(within(groupe).getByRole('button', { name: 'Mai' }))
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+    fireEvent.click(within(question).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead)
+      .toHaveBeenCalledWith(EXEMPLE_AGRICOLE.lead_id, { mois_irrigation: [5, 7] }))
   })
 })
 

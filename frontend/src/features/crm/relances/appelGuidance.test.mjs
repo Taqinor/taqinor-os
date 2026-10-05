@@ -490,21 +490,99 @@ function leadVierge175(segment, orauxSegment) {
   return { ...base, segment, segment_libelle: segment, champs_a_poser: [...base.champs_a_poser, ...oraux] }
 }
 
+// AGR418 — les colonnes que le SERVEUR sert à un lead agricole (AGR407,
+// `CHAMPS_ORAUX_AGRICOLE`), dans son ordre.
 const ORAUX_AGRICOLE = [
-  'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h', 'pompage_heures_jour',
-  'pompe_alim_actuelle', 'carburant_litres_mois',
+  'pompe_alim_actuelle', 'butane_bouteilles_jour', 'carburant_litres_mois',
+  'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois',
+  'source_eau', 'niveau_statique_m', 'debit_forage_m3h',
+  'besoin_eau_m3j', 'surface_irriguee_ha', 'culture',
+  'pompage_heures_jour', 'distance_forage_champ_m',
+  'irrigation_methode', 'mois_irrigation', 'electricite_sur_place',
 ]
 
-test('CAD175 — agricole vierge : pompe, HMT, débit, heures, énergie actuelle — dans cet ordre', () => {
+test('AGR418 — agricole vierge : énergie → eau → besoin → heures/distance → irrigation/électricité', () => {
   const g = guidanceAppel(leadVierge175('agricole', ORAUX_AGRICOLE))
-  assert.deepEqual(g.questions.map((q) => q.champ),
-    ['pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h', 'pompage_heures_jour', 'pompe_alim_actuelle'])
-  // Le carburant complète l'énergie actuelle : une seule question.
-  assert.deepEqual(g.questions[4].complements.map((q) => q.champ), ['carburant_litres_mois'])
+  assert.deepEqual(guidance.ORDRE_AGRICOLE.map((e) => e.etape),
+    ['energie_actuelle', 'eau', 'besoin', 'heures_distance', 'irrigation_electricite'])
+  assert.deepEqual(g.questions.map((q) => q.champ), [
+    'pompe_alim_actuelle', 'source_eau', 'besoin_eau_m3j', 'pompage_heures_jour',
+    'irrigation_methode',
+  ])
+  assert.equal(g.questions.length, 5)
   assert.ok(g.questions.length <= BUDGET_APPEL_1)
+  // Énergie actuelle inconnue : la suite dépend de la réponse — rien d'autre.
+  assert.deepEqual(g.questions[0].complements, [])
+  assert.deepEqual(g.questions[1].complements.map((q) => q.champ),
+    ['niveau_statique_m', 'debit_forage_m3h'])
+  assert.deepEqual(g.questions[2].complements.map((q) => q.champ),
+    ['surface_irriguee_ha', 'culture'])
+  assert.deepEqual(g.questions[4].complements.map((q) => q.champ),
+    ['mois_irrigation', 'electricite_sur_place'])
+  // Plus jamais la CV de la pompe : elle se relève sur la plaque, en visite.
+  assert.ok(!g.questions.some((q) => /^pompe_(cv|hmt_m|debit_m3h)$/.test(q.champ)))
   // Aucune question résidentielle ne se glisse (facture, présence, toit).
   assert.ok(!g.questions.some((q) => CINQ.includes(q.champ)))
-  assert.deepEqual(g.aNoter, [guidance.A_NOTER_FORCE_MOTRICE, guidance.A_NOTER_SURFACE_CULTURE])
+  // Surface et culture ont leur colonne : il ne reste à noter que la force motrice.
+  assert.deepEqual(g.aNoter, [guidance.A_NOTER_FORCE_MOTRICE])
+})
+
+test('AGR418 — chaque colonne des cinq étapes est servie par le contrat (exemple_agricole)', () => {
+  const servies = new Set([
+    ...exemple('exemple_agricole').champs_a_poser.map((q) => q.champ),
+    ...Object.keys(exemple('exemple_agricole').prefill),
+  ])
+  for (const { champs } of guidance.ORDRE_AGRICOLE) {
+    for (const champ of champs) assert.ok(servies.has(champ), champ)
+  }
+})
+
+test('AGR418 — énergie actuelle : la suite SELON la réponse (prix déclaré, Q17)', () => {
+  const cas = {
+    butane: ['butane_bouteilles_jour', 'carburant_prix_unitaire_mad'],
+    diesel: ['carburant_litres_mois', 'carburant_prix_unitaire_mad'],
+    electrique: ['depense_carburant_mad_mois'],
+  }
+  for (const [alim, attendus] of Object.entries(cas)) {
+    const panneau = leadVierge175('agricole', ORAUX_AGRICOLE)
+    panneau.champs_a_poser = panneau.champs_a_poser.filter((q) => q.champ !== 'pompe_alim_actuelle')
+    panneau.prefill = { pompe_alim_actuelle: alim }
+    const g = guidanceAppel(panneau)
+    const energie = g.questions[0]
+    assert.equal(energie.etape, 'energie_actuelle', alim)
+    assert.deepEqual([energie.champ, ...energie.complements.map((q) => q.champ)], attendus, alim)
+  }
+})
+
+test('AGR418 — besoin connu : ni surface ni culture ne se reposent ; exemple_agricole saute ce qui est répondu', () => {
+  const g = guidanceAppel(exemple('exemple_agricole'))
+  const etapes = g.questions.map((q) => q.etape)
+  assert.ok(!etapes.includes('besoin'))
+  assert.deepEqual(g.questions[0].champ, 'butane_bouteilles_jour')
+  assert.deepEqual(g.questions[0].complements.map((q) => q.champ), ['carburant_prix_unitaire_mad'])
+  assert.equal(g.questions[1].champ, 'debit_forage_m3h')
+  const mois = g.questions.find((q) => q.etape === 'irrigation_electricite')
+    .complements.find((q) => q.champ === 'mois_irrigation')
+  assert.equal(mois.nature, 'choix_multiple')
+  assert.equal(mois.choix.length, 12)
+})
+
+test('AGR418 — segment vide + segment_suggere : « Segment probable : … — confirmez avec le client. »', () => {
+  const suggestion = { valeur: 'agricole', raison: '1re page /pompage-solaire' }
+  const g = guidanceAppel({ ...exemple(), segment: null, segment_libelle: null, segment_suggere: suggestion })
+  assert.equal(g.segmentAConfirmer, true)
+  assert.equal(g.avertissement,
+    'Segment probable : agricole (1re page /pompage-solaire) — confirmez avec le client.')
+  const sans = guidanceAppel({ ...exemple(), segment: null, segment_libelle: null, segment_suggere: null })
+  assert.equal(sans.avertissement, MESSAGE_SEGMENT_A_CONFIRMER)
+  // Un segment saisi n'affiche jamais la suggestion.
+  assert.equal(guidanceAppel({ ...exemple(), segment_suggere: suggestion }).avertissement, null)
+})
+
+test('AGR418 — aucune clé d\'économie rendue par la guidance agricole', () => {
+  const g = guidanceAppel(exemple('exemple_agricole'))
+  const cles = JSON.stringify(Object.keys(g))
+  assert.doesNotMatch(cles, /econom|payback|gain/i)
 })
 
 test('CAD175 — industriel vierge : conso, puissance souscrite, surface, décideur — jamais la présence', () => {
