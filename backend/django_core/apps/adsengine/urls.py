@@ -59,6 +59,7 @@ from .views import (
     VariantFunnelView, VariantReportView, VisualFatigueView,
     WeatherTriggerView, WiringHealthView,
 )
+from .views import VeilleCouvertureView  # PLAN_VEILLE (ajout)
 from .whatsapp_webhook import WhatsAppCloudWebhookView
 
 router = DefaultRouter()
@@ -339,5 +340,8 @@ urlpatterns = [
     path('tests-terrain/<str:ft>/structures/',
          FieldTestStructuresView.as_view(),
          name='adsengine-tests-terrain-structures'),
+    # PLAN_VEILLE — VEIL10 : couverture de l'API Ad Library PAR PAYS.
+    path('veille/couverture/', VeilleCouvertureView.as_view(),
+         name='adsengine-veille-couverture'),
     path('', include(router.urls)),
 ]

@@ -1232,10 +1232,6 @@ ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
         "GET adsengine/veille/decouvertes/<id>/ (le POST de lancement renvoie "
         "la meme forme) — la decouverte et son journal, pose SEUL et EN "
         "PREMIER (PACT10) : la vue arrive avec VEIL17 (VEIL2)",
-    "adsengine/veille_couverture.json":
-        "GET adsengine/veille/couverture/ — couverture de l'API Ad Library "
-        "PAR PAYS + etat de l'acces, pose SEUL et EN PREMIER (PACT10) : la "
-        "vue arrive avec VEIL10 (VEIL1)",
     "calepinage/calepinage_simulation.json":
         "POST calepinages/<pk>/simuler/, et les blocs ecrits par fusion dans "
         "Calepinage.resultat (simulation, production, pertes, cascade, meteo, "

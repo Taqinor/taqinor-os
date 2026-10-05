@@ -2808,9 +2808,10 @@ class CompetitorPage(TenantModel):
     """PUB70 — Page concurrente SUIVIE pour la veille publicitaire (périmètre
     HONNÊTE, ZÉRO scraping — règle #5).
 
-    L'API officielle Ad Library ne couvre PAS les pubs commerciales marocaines
-    (elle ne sert que politique / enjeux sociaux). La veille est donc MANUELLE et
-    OUTILLÉE : on suit des Pages concurrentes, on ouvre l'Ad Library WEB via un
+    La couverture de l'API officielle Ad Library dépend du PAYS (VEIL10 —
+    ``competitor_intel.VEILLE_COUVERTURE`` : UE couverte pour le commercial,
+    Royaume-Uni à confirmer, Maroc/hors UE politique seulement). Pour le Maroc,
+    la veille reste donc MANUELLE et OUTILLÉE : on suit des Pages concurrentes, on ouvre l'Ad Library WEB via un
     lien profond (``ad_library_url``), et l'humain SAISIT les hooks/angles
     observés (``CompetitorAdObservation``) — jamais une collecte automatisée
     (toute automatisation = GATED : décision fondateur + dossier ``tos_risk/``).

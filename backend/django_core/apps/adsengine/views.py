@@ -598,9 +598,10 @@ class CompetitorPageViewSet(AdsengineViewSet):
     @action(detail=False, methods=['get'],
             permission_classes=[HasPermissionOrLegacy('adsengine_view')])
     def veille(self, request):
-        """PUB70 — Tableau de veille : le finding API (couverture commerciale =
-        NON), la cadence par concurrent, et la matière de brief (hooks/angles
-        saisis). Lecture seule, company-scopé."""
+        """PUB70 — Tableau de veille : le finding API (résumé ; la couverture se
+        lit PAR PAYS sur ``veille/couverture/``, VEIL10), la cadence par
+        concurrent, et la matière de brief (hooks/angles saisis). Lecture
+        seule, company-scopé."""
         from . import competitor_intel as ci
 
         company = request.user.company
@@ -4483,4 +4484,28 @@ class FieldTestStructuresView(APIView):
                 {'id': a.pk, 'kind': a.kind, 'reason_fr': a.reason_fr}
                 for a in actions
             ],
+        })
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PLAN_VEILLE — pilote de veille publicitaire (API officielle Ad Library)
+# ═════════════════════════════════════════════════════════════════════════════
+class VeilleCouvertureView(APIView):
+    """VEIL10 — ``GET veille/couverture/`` : couverture de l'API Ad Library PAR
+    PAYS (table unique ``competitor_intel.VEILLE_COUVERTURE``) + état de l'accès
+    (contrat ``contract_samples/veille_couverture.json``). Lecture
+    ``adsengine_view``, company-scopée. Aucune clé de dépenses/impressions."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from . import competitor_intel as ci
+
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        acces = {'etat': 'non_configure', 'expire_le': None}
+        return Response({
+            'couverture': ci.couverture_liste(),
+            'acces': acces,
         })
