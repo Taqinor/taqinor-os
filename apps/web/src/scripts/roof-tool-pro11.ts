@@ -4016,7 +4016,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       retraits: { ...setbacks },
       kit: kitDeLaScene(),
       // ACAL257 — l'allée du calepinage (document) et les dégagements de la société.
-      alleeTechniqueM: (ctx.documentRelu?.alleeTechnique as { largeurM?: number } | undefined)?.largeurM ?? null,
+      alleeTechniqueM: ctx.alleeTechnique?.largeurM ?? null, // ACAL258 — l'allée de CE calepinage (état vivant)
       degagementsSociete: opts.reglagesAtelier?.degagements ?? null,
     };
   }

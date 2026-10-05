@@ -17,7 +17,7 @@ import {
   hydrateFromDevis,
   lireCouchesDocument,
 } from './prefill';
-import { appliquerHydratationAuCtx } from './hydratation';
+import { appliquerHydratationAuCtx, hydratationDeSection } from './hydratation';
 import { uniformSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { type HorizonProfile } from '../../lib/horizonEngine';
 import { type Measurement } from './mesureUi';
@@ -574,5 +574,33 @@ describe('ACAL233 — la parcelle tracée voyage par la clé racine `parcelle`',
     expect(ctx.parcelle).not.toBeNull();
     ctx.parcelle = null;
     expect('parcelle' in serializeLayout(ctx)).toBe(false);
+  });
+});
+
+describe('ACAL258 — l’allée technique de CE calepinage voyage par la clé racine `alleeTechnique`', () => {
+  const ALLEE = { largeurM: 1.4, source: 'suggestion_moteur' };
+
+  it('appliquerSection(alleeTechnique) pose l’allée dans le ctx et serializeLayout la ressort', () => {
+    const ctx = makeCtx([zone('z1')]);
+    expect('alleeTechnique' in serializeLayout(ctx)).toBe(false);
+    appliquerHydratationAuCtx(ctx, hydratationDeSection('alleeTechnique', ALLEE));
+    expect(ctx.alleeTechnique).toEqual(ALLEE);
+    expect((serializeLayout(ctx) as unknown as Record<string, unknown>).alleeTechnique).toEqual(ALLEE);
+  });
+
+  it('un document rouvert puis enregistré sans geste garde l’allée (octet-identique)', () => {
+    const doc = { alleeTechnique: { ...ALLEE, note: 'clé inconnue conservée' } };
+    const ctx = makeCtx([zone('z1')]);
+    appliquerHydratationAuCtx(ctx, lireCouchesDocument(doc));
+    expect(JSON.stringify((serializeLayout(ctx) as unknown as Record<string, unknown>).alleeTechnique))
+      .toBe(JSON.stringify(doc.alleeTechnique));
+  });
+
+  it('une allée illisible (largeur nulle, source absente) n’est jamais inventée ni réémise', () => {
+    for (const mauvaise of [{ largeurM: 0, source: 'saisie' }, { largeurM: 1.2 }, 'x', null]) {
+      const ctx = makeCtx([zone('z1')]);
+      appliquerHydratationAuCtx(ctx, hydratationDeSection('alleeTechnique', mauvaise));
+      expect('alleeTechnique' in (serializeLayout(ctx) as unknown as Record<string, unknown>)).toBe(false);
+    }
   });
 });

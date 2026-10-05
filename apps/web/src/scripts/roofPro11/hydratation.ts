@@ -28,6 +28,7 @@ import {
   deserializeMeasurements,
   deserializeSceneFromLayout,
   deserializeSetbacksFromLayout,
+  lireAlleeTechnique, // ACAL258
   lireCouchesDocument,
   serializeLayout,
   type ConsumptionHydration,
@@ -43,7 +44,10 @@ import { lireParcelle } from './parcelle'; // ACAL233
 
 /** Ce que l'hydratation peut poser dans le ctx — chaque clé ABSENTE est laissée intacte
  *  (c'est ce qui permet d'appliquer UNE section sans toucher aux autres). */
-export type HydratationAtelier = Partial<CouchesDocument & ConsumptionHydration>;
+export type HydratationAtelier = Partial<CouchesDocument & ConsumptionHydration> & {
+  /** ACAL258 — l'allée technique de CE calepinage (`null` la retire). */
+  alleeTechnique?: Ctx['alleeTechnique'];
+};
 
 /** Copie profonde JSON-sûre (le document est un JSON pur) : aucun alias entre le payload
  *  relu et l'état vivant de l'atelier. */
@@ -142,8 +146,10 @@ export function appliquerHydratationAuCtx(ctx: Ctx, h: HydratationAtelier): void
       ctx.batiments = lireBatiments(doc);
       if (doc.underlay != null) ctx.underlay = copie(doc.underlay);
       ctx.parcelle = lireParcelle(doc); // ACAL233
+      ctx.alleeTechnique = lireAlleeTechnique(doc); // ACAL258
     }
   }
+  if (h.alleeTechnique !== undefined) ctx.alleeTechnique = copie(h.alleeTechnique ?? null); // ACAL258
   if (h.modulesDuDocument !== undefined) ctx.modulesDuDocument = copie(h.modulesDuDocument ?? []); // ACAL30
   if (h.consCurve !== undefined) ctx.consCurve = (h.consCurve ?? []).slice();
   if (h.consHandEdited !== undefined) ctx.consHandEdited = Boolean(h.consHandEdited);
@@ -156,7 +162,7 @@ export function appliquerHydratationAuCtx(ctx: Ctx, h: HydratationAtelier): void
 }
 
 /** ACAL26 — les sections qu'un onglet du Rail peut appliquer une à une. */
-export type CleSectionAtelier = 'horizonProfile' | 'poseSurfaces' | 'underlay' | 'environment';
+export type CleSectionAtelier = 'horizonProfile' | 'poseSurfaces' | 'underlay' | 'environment' | 'alleeTechnique';
 
 /**
  * ACAL26 — traduit UNE section `{cle: valeur}` en hydratation partielle, avec les MÊMES
@@ -165,6 +171,7 @@ export type CleSectionAtelier = 'horizonProfile' | 'poseSurfaces' | 'underlay' |
  * `semerFondDepuisDocument`) : ils rendent une hydratation vide, l'appelant les route.
  */
 export function hydratationDeSection(cle: CleSectionAtelier, valeur: unknown): HydratationAtelier {
+  if (cle === 'alleeTechnique') return { alleeTechnique: lireAlleeTechnique({ alleeTechnique: valeur }) }; // ACAL258
   const lu = lireCouchesDocument({ [cle]: valeur });
   if (cle === 'poseSurfaces') return { surfacesPose: lu.surfacesPose };
   if (cle === 'environment') return { environment: lu.environment };

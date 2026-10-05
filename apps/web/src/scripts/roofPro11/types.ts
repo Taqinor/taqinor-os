@@ -141,9 +141,16 @@ export interface RoofToolApi {
    *  devis-lead : la page les CONNAÎT, l'outil ne les devine jamais. */
   serializeLayout: (billKwh?: number | null, meta?: SerializeMeta) => unknown;
   /** ACAL26 — applique UNE section du document (`horizonProfile`, `poseSurfaces`,
-   *  `underlay`, `environment`) par la MÊME fonction d'hydratation que le boot
+   *  `underlay`, `environment`, `alleeTechnique` — ACAL258) par la MÊME fonction d'hydratation que le boot
    *  (`hydratation.ts::appliquerHydratationAuCtx`) — pour les onglets du Rail. */
   appliquerSection: (cle: import('./hydratation').CleSectionAtelier, valeur: unknown) => void;
+  /** ACAL286 — la table d'affectation SERVIE (`electrique.affectation[]`, avec `couleur_chaine` /
+   *  `couleur_mppt`) teinte les modules du pan actif par chaîne ou par entrée MPPT ; table vide ou
+   *  non servie ⇒ teinte éteinte. Aucune écriture : la teinte est dérivée du résultat serveur. */
+  setAffectationChaines: (
+    rows: readonly import('./scene3d').AffectationRow[] | null | undefined,
+    mode?: import('./scene3d').AffectationMode,
+  ) => void;
   /** ACAL71 — un contour géoréférencé [[lng, lat], …] devient un NOUVEAU pan de l'atelier
    *  (identifiant `prochainId`), refusé — motif nommé, aucun pan — s'il se croise ou sort
    *  de l'amplitude GPS. */
