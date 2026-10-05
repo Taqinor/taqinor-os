@@ -74,3 +74,4 @@ la chaîne web et se perd sans trace à l'arrivée.
 | Fichier | Ce qu'il apparie |
 | --- | --- |
 | `lead_pro.json` + `devis_auto_pret.json` (`exemple_commercial`, `exemple_industriel`, `regle_pro_ciq1`) | Lead commercial/industriel : colonnes pro et leurs questions orales (5 étapes D-CIQ-7), `entrees_ci` vers les clés `etude_params` C&I v2, règle pro « devis auto prêt » + `visite_avant_devis` (D-CIQ-5), `incoherence_segment`, `segment_suggere`, `identite_entreprise` (CIQ1) |
+| `client_entreprise.json` + `lead_client_ecart.json` (`exemple_entreprise`) | Client « entreprise » créé ou rattaché depuis un lead pro sans doublon (ICE → e-mail → téléphone, `conflit_identite_entreprise`), bloc `identite_entreprise` {type_client, complete, manquants, requis_pour} (D-CIQ-11, CIQ8) |
