@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4724, operations: 7510, components: 2157}
+counts: {paths: 4736, operations: 7520, components: 2180}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -971,9 +971,11 @@ operations:
 - get /api/django/crm/leads/{id}/panneau-appel/ -> django_crm_leads_panneau_appel_retrieve
 - get /api/django/crm/leads/{id}/points-contact/ -> django_crm_leads_points_contact_retrieve
 - post /api/django/crm/leads/{id}/questionnaire-lien/ -> django_crm_leads_questionnaire_lien_create
+- get /api/django/crm/leads/{id}/references-proches/ -> django_crm_leads_references_proches_retrieve
 - post /api/django/crm/leads/{id}/relance/arreter/ -> django_crm_leads_relance_arreter_create
 - post /api/django/crm/leads/{id}/relance/initialiser/ -> django_crm_leads_relance_initialiser_create
 - post /api/django/crm/leads/{id}/restaurer/ -> django_crm_leads_restaurer_create
+- post /api/django/crm/leads/{id}/resume-associe/ -> django_crm_leads_resume_associe_create
 - get /api/django/crm/leads/{id}/salle-vente-analytics/ -> django_crm_leads_salle_vente_analytics_retrieve
 - post /api/django/crm/leads/{id}/synchroniser-client/ -> django_crm_leads_synchroniser_client_create
 - get /api/django/crm/leads/{id}/visites/ -> django_crm_leads_visites_retrieve
@@ -1064,6 +1066,7 @@ operations:
 - post /api/django/crm/public/chat/sessions/ -> django_crm_public_chat_sessions_create
 - get /api/django/crm/public/chat/sessions/{token}/ -> django_crm_public_chat_sessions_retrieve
 - post /api/django/crm/public/chat/sessions/{token}/messages/ -> django_crm_public_chat_sessions_messages_create
+- post /api/django/crm/public/lead-affiner/{idempotency_key}/ -> django_crm_public_lead_affiner_create
 - get /api/django/crm/public/lead-ref/{idempotency_key}/ -> django_crm_public_lead_ref_retrieve
 - get /api/django/crm/public/questionnaire/{token}/ -> django_crm_public_questionnaire_retrieve
 - post /api/django/crm/public/questionnaire/{token}/ -> django_crm_public_questionnaire_create
@@ -3517,6 +3520,7 @@ operations:
 - post /api/django/ventes/devis/{id}/dupliquer-variante-gamme/ -> django_ventes_devis_dupliquer_variante_gamme_create
 - post /api/django/ventes/devis/{id}/dupliquer-variante/ -> django_ventes_devis_dupliquer_variante_create
 - post /api/django/ventes/devis/{id}/dupliquer/ -> django_ventes_devis_dupliquer_create
+- get /api/django/ventes/devis/{id}/economie-pompage/ -> django_ventes_devis_economie_pompage_retrieve
 - get /api/django/ventes/devis/{id}/economie/ -> django_ventes_devis_economie_retrieve
 - post /api/django/ventes/devis/{id}/envoyer-email/ -> django_ventes_devis_envoyer_email_create
 - get /api/django/ventes/devis/{id}/etat-pdf/ -> django_ventes_devis_etat_pdf_retrieve
@@ -3579,9 +3583,11 @@ operations:
 - put /api/django/ventes/dossiers-reglementaires/{id}/ -> django_ventes_dossiers_reglementaires_update
 - post /api/django/ventes/dossiers-reglementaires/{id}/generer-checklist/ -> django_ventes_dossiers_reglementaires_generer_checklist_create
 - post /api/django/ventes/dossiers-reglementaires/{id}/generer-schema/ -> django_ventes_dossiers_reglementaires_generer_schema_create
+- post /api/django/ventes/economie-pompage/preview/ -> django_ventes_economie_pompage_preview_create
 - get /api/django/ventes/email-config/ -> django_ventes_email_config_retrieve
 - get /api/django/ventes/etats/analyse-facturation/ -> django_ventes_etats_analyse_facturation_retrieve
 - post /api/django/ventes/etude-horaire/preview/ -> django_ventes_etude_horaire_preview_create
+- post /api/django/ventes/etude-pompage/preview/ -> django_ventes_etude_pompage_preview_create
 - get /api/django/ventes/export-comptable/ -> django_ventes_export_comptable_retrieve
 - get /api/django/ventes/export/status/{token}/ -> django_ventes_export_status_retrieve
 - get /api/django/ventes/factures-lignes/ -> django_ventes_factures_lignes_list
@@ -3745,7 +3751,6 @@ operations:
 - get /api/django/ventes/tests-pr-reception/{id}/ -> django_ventes_tests_pr_reception_retrieve
 - patch /api/django/ventes/tests-pr-reception/{id}/ -> django_ventes_tests_pr_reception_partial_update
 - put /api/django/ventes/tests-pr-reception/{id}/ -> django_ventes_tests_pr_reception_update
-- get /api/django/ventes/toiture/charge/ -> django_ventes_toiture_charge_retrieve
 - post /api/django/ventes/toiture/charge/ -> django_ventes_toiture_charge_create
 - get /api/django/visites/leads-recherche/ -> django_visites_leads_recherche_retrieve
 - get /api/django/visites/ma-journee/ -> django_visites_ma_journee_retrieve
@@ -4764,9 +4769,11 @@ operations:
 - get /api/v1/crm/leads/{id}/panneau-appel/ -> v1_crm_leads_panneau_appel_retrieve
 - get /api/v1/crm/leads/{id}/points-contact/ -> v1_crm_leads_points_contact_retrieve
 - post /api/v1/crm/leads/{id}/questionnaire-lien/ -> v1_crm_leads_questionnaire_lien_create
+- get /api/v1/crm/leads/{id}/references-proches/ -> v1_crm_leads_references_proches_retrieve
 - post /api/v1/crm/leads/{id}/relance/arreter/ -> v1_crm_leads_relance_arreter_create
 - post /api/v1/crm/leads/{id}/relance/initialiser/ -> v1_crm_leads_relance_initialiser_create
 - post /api/v1/crm/leads/{id}/restaurer/ -> v1_crm_leads_restaurer_create
+- post /api/v1/crm/leads/{id}/resume-associe/ -> v1_crm_leads_resume_associe_create
 - get /api/v1/crm/leads/{id}/salle-vente-analytics/ -> v1_crm_leads_salle_vente_analytics_retrieve
 - post /api/v1/crm/leads/{id}/synchroniser-client/ -> v1_crm_leads_synchroniser_client_create
 - get /api/v1/crm/leads/{id}/visites/ -> v1_crm_leads_visites_retrieve
@@ -4857,6 +4864,7 @@ operations:
 - post /api/v1/crm/public/chat/sessions/ -> v1_crm_public_chat_sessions_create
 - get /api/v1/crm/public/chat/sessions/{token}/ -> v1_crm_public_chat_sessions_retrieve
 - post /api/v1/crm/public/chat/sessions/{token}/messages/ -> v1_crm_public_chat_sessions_messages_create
+- post /api/v1/crm/public/lead-affiner/{idempotency_key}/ -> v1_crm_public_lead_affiner_create
 - get /api/v1/crm/public/lead-ref/{idempotency_key}/ -> v1_crm_public_lead_ref_retrieve
 - get /api/v1/crm/public/questionnaire/{token}/ -> v1_crm_public_questionnaire_retrieve
 - post /api/v1/crm/public/questionnaire/{token}/ -> v1_crm_public_questionnaire_create
@@ -7276,6 +7284,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/dupliquer-variante-gamme/ -> v1_ventes_devis_dupliquer_variante_gamme_create
 - post /api/v1/ventes/devis/{id}/dupliquer-variante/ -> v1_ventes_devis_dupliquer_variante_create
 - post /api/v1/ventes/devis/{id}/dupliquer/ -> v1_ventes_devis_dupliquer_create
+- get /api/v1/ventes/devis/{id}/economie-pompage/ -> v1_ventes_devis_economie_pompage_retrieve
 - get /api/v1/ventes/devis/{id}/economie/ -> v1_ventes_devis_economie_retrieve
 - post /api/v1/ventes/devis/{id}/envoyer-email/ -> v1_ventes_devis_envoyer_email_create
 - get /api/v1/ventes/devis/{id}/etat-pdf/ -> v1_ventes_devis_etat_pdf_retrieve
@@ -7338,9 +7347,11 @@ operations:
 - put /api/v1/ventes/dossiers-reglementaires/{id}/ -> v1_ventes_dossiers_reglementaires_update
 - post /api/v1/ventes/dossiers-reglementaires/{id}/generer-checklist/ -> v1_ventes_dossiers_reglementaires_generer_checklist_create
 - post /api/v1/ventes/dossiers-reglementaires/{id}/generer-schema/ -> v1_ventes_dossiers_reglementaires_generer_schema_create
+- post /api/v1/ventes/economie-pompage/preview/ -> v1_ventes_economie_pompage_preview_create
 - get /api/v1/ventes/email-config/ -> v1_ventes_email_config_retrieve
 - get /api/v1/ventes/etats/analyse-facturation/ -> v1_ventes_etats_analyse_facturation_retrieve
 - post /api/v1/ventes/etude-horaire/preview/ -> v1_ventes_etude_horaire_preview_create
+- post /api/v1/ventes/etude-pompage/preview/ -> v1_ventes_etude_pompage_preview_create
 - get /api/v1/ventes/export-comptable/ -> v1_ventes_export_comptable_retrieve
 - get /api/v1/ventes/export/status/{token}/ -> v1_ventes_export_status_retrieve
 - get /api/v1/ventes/factures-lignes/ -> v1_ventes_factures_lignes_list
@@ -7504,7 +7515,6 @@ operations:
 - get /api/v1/ventes/tests-pr-reception/{id}/ -> v1_ventes_tests_pr_reception_retrieve
 - patch /api/v1/ventes/tests-pr-reception/{id}/ -> v1_ventes_tests_pr_reception_partial_update
 - put /api/v1/ventes/tests-pr-reception/{id}/ -> v1_ventes_tests_pr_reception_update
-- get /api/v1/ventes/toiture/charge/ -> v1_ventes_toiture_charge_retrieve
 - post /api/v1/ventes/toiture/charge/ -> v1_ventes_toiture_charge_create
 - get /api/v1/visites/leads-recherche/ -> v1_visites_leads_recherche_retrieve
 - get /api/v1/visites/ma-journee/ -> v1_visites_ma_journee_retrieve
@@ -7687,6 +7697,7 @@ components:
 - BulkJobTypeEnum
 - Cabinet
 - CabinetRequest
+- CableAmeEnum
 - CadenceEnum
 - CadenceRelanceEtape
 - CadenceRelanceEtapeRequest
@@ -7734,6 +7745,7 @@ components:
 - CanalResolutionEnum
 - CatalogueAchat
 - Categorie
+- CategorieCommercialeEnum
 - CategorieEquipement
 - CategorieEquipementRequest
 - CategorieFournisseur
@@ -7839,6 +7851,8 @@ components:
 - ControleQualiteModeleRequest
 - ControleReceptionStock
 - ControleReceptionStockResultatEnum
+- CosPhiSourceEnum
+- CoteAcDcEnum
 - CouvertureEnum
 - CreativeAsset
 - CreativeAssetRequest
@@ -7867,6 +7881,7 @@ components:
 - CrmMesStatsRelance
 - CrmMessageVisiteOuvert
 - CrmMesureCadence
+- CrmResumeAssocie
 - CustomFieldDef
 - CustomFieldDefRequest
 - CustomFieldDefTypeEnum
@@ -7994,6 +8009,7 @@ components:
 - DrillRequeteRequest
 - EcheanceFactureFournisseur
 - EcheanceFactureFournisseurRequest
+- EconomiePompageResponse
 - ElectriciteSurPlaceEnum
 - ElementSupprime
 - EmailTemplate
@@ -8036,6 +8052,7 @@ components:
 - EtudeHorairePreviewRequestRequest
 - EtudeHorairePreviewResponse
 - EtudeHoraireProfil
+- EtudePompagePreviewResponse
 - EventTypeEnum
 - ExigenceDossier
 - ExigenceDossierRequest
@@ -8191,6 +8208,7 @@ components:
 - LangueInterfaceReponse
 - LanguePortailEnum
 - Lead
+- LeadAffinerProResponse
 - LeadPhotoToit
 - LeadRefLookupResponse
 - LeadRequest
@@ -8226,6 +8244,7 @@ components:
 - LigneRetourClientRequest
 - LigneRetourFournisseur
 - LigneRetourFournisseurRequest
+- LimModeEnum
 - ListePrix
 - ListePrixRequest
 - Livraison
@@ -8372,7 +8391,9 @@ components:
 - OnboardingItemMasquable
 - OnboardingLocalisationRequestRequest
 - OnboardingLocalisationResponse
+- OndLimitationExportEnum
 - OndPhasesEnum
+- OndRelaisDecouplageEnum
 - OperateurEnum
 - OptionAccepteeEnum
 - OrdreAssemblage
@@ -8386,6 +8407,7 @@ components:
 - OrdreDemontageStatutEnum
 - OrientationEnum
 - OrigineEnum
+- OuiNonEnum
 - OutboxEvent
 - OutboxEventStatutEnum
 - Outillage
@@ -9212,6 +9234,7 @@ components:
 - PromessePaiementStatutEnum
 - ProposalTemplate
 - ProposalTemplateRequest
+- ProtTypeEnum
 - ProtocolEnum
 - PublicAbonnerReponse
 - PublicAbonnerRequeteRequest
@@ -9261,6 +9284,7 @@ components:
 - PublicTicketCreateRequeteRequest
 - PublicVisiteReponse
 - PublicVisiteRequestRequest
+- PuissanceSouscriteSourceEnum
 - PutAway
 - PutAwayRequest
 - PutAwayStatutEnum
@@ -9291,7 +9315,8 @@ components:
 - RecherchePortailResultat
 - ReconciliationSnapshot
 - ReconciliationSnapshotStatusEnum
-- Regime8221E51Enum
+- Regime8221492Enum
+- RegimeEquipesEnum
 - RegionAgricoleEnum
 - Register
 - RegisterRequest
@@ -9363,6 +9388,7 @@ components:
 - RevueCompteRequest
 - RevueStatutEnum
 - Role
+- RoleCiEnum
 - RoleDevisEnum
 - RoleLegacyEnum
 - RolePerimetreEnum
@@ -9535,10 +9561,12 @@ components:
 - StockUniteDeplacementErreur
 - StockZonesSurcapacite
 - StrategiePickingDefautEnum
+- StructTypePoseEnum
 - StructurePrefEnum
 - SubventionDossier
 - SubventionDossierRequest
 - SubventionDossierStatutEnum
+- SurfaceSourceEnum
 - TableauBordAchats
 - TacheReapproInterne
 - TacheReapproInterneRequest
@@ -9559,6 +9587,8 @@ components:
 - TenantTheme
 - TenantThemeRequest
 - TenantUsageSnapshot
+- TensionRaccordementEnum
+- TensionSourceEnum
 - TestPerformanceReception
 - TestPerformanceReceptionRequest
 - TestedVariableEnum
@@ -9587,6 +9617,7 @@ components:
 - TrustCenterEntry
 - TrustCenterEntryCategorieEnum
 - TrustedDevice
+- TvaRecuperableEnum
 - TypeAccesEnum
 - TypeAchatEnum
 - TypeActionEnum
@@ -9616,9 +9647,11 @@ components:
 - TypeNomenclatureEnum
 - TypePartenaireEnum
 - TypePompeEnum
+- TypePoseEnum
 - TypeProprietaireEnum
 - TypeQuaiEnum
 - TypeRegleEnum
+- TypeSurfaceEnum
 - TypeTicketApplicableEnum
 - TypeTiersParticulierEntrepriseEnum
 - TypeToitureEnum
