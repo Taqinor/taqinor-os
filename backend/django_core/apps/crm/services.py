@@ -2573,6 +2573,41 @@ VISITE_CADENCE = 'apres_devis'
 FILET_JOINT_DELAI_JOURS = 1
 
 
+#: AGR530 — la note de l'étape « Planifier la visite » posée à la place du
+#: devis pour un pompage au point d'eau inconnu.
+NOTE_RELEVE_POINT_EAU = (
+    'Relevé du point d’eau : niveau et débit inconnus — demandez d’abord une '
+    'photo de la fiche du foreur ou de l’autorisation ABH ; sinon le '
+    'technicien les mesure.')
+
+#: AGR530 — les gestes de VISITE : après eux, la reprise pose le devis.
+_CLES_GESTES_VISITE = (CLE_PLANIFIER, CLE_CONFIRMATION, CLE_DEBRIEF)
+
+
+def _poser_releve_point_eau(lead, user):
+    """AGR530 — pose « Planifier la visite » (clé ``CLE_PLANIFIER``) au lieu
+    du devis quand ``devis_auto.releve_eau_manquant`` le dit, sa note disant
+    pourquoi. ``None`` (la suite ordinaire s'applique) pour tout autre lead,
+    une visite déjà effectuée ou un rendez-vous déjà calé."""
+    from .devis_auto import releve_eau_manquant
+
+    lead.refresh_from_db()
+    if getattr(lead, 'visite_effectuee', False) or not releve_eau_manquant(
+            lead):
+        return None
+    etape = poser_filet_visite_a_planifier(lead, user)
+    if etape is None:
+        return None
+    etape.note = NOTE_RELEVE_POINT_EAU
+    etape.save(update_fields=['note'])
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'Étape « {etape.libelle} » posée automatiquement à la place du '
+              f'devis — {NOTE_RELEVE_POINT_EAU}'))
+    return etape
+
+
 def assurer_prochaine_etape_apres_succes(lead, user,
                                          libelle=None,
                                          avec_plan_devis=True,
@@ -2747,6 +2782,16 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         # RAPPEL, jamais « perdu (motif) ou relance ultérieure ».
         cle = (CLE_RAPPEL_CONVENU if issue_touche_close == 'rappel'
                else CLE_DECIDER_SUITE)
+    # AGR530 (D-AGR-4 côté cadence) — l'étape à poser serait le DEVIS, mais le
+    # lead est AGRICOLE et un groupe HYDRAULIQUE de la règle « devis auto
+    # prêt » manque (HMT/niveau, ou débit/besoin) : le devis ne se chiffre
+    # pas. La suite est « Planifier la visite — relevé du point d'eau ».
+    # Jamais après un geste de VISITE (« Ne veut plus de visite » : la reprise
+    # pose le devis comme aujourd'hui), ni après une visite effectuée.
+    if cle == CLE_DEVIS and cle_close not in _CLES_GESTES_VISITE:
+        visite = _poser_releve_point_eau(lead, user)
+        if visite is not None:
+            return visite
     config = cadence_config.config_cle(lead.company, cle)
     # CAD102 — le recalage suit le CANAL de l'étape posée : un message se cale
     # sur la fenêtre des messages, un appel sur celle des appels (la pause du

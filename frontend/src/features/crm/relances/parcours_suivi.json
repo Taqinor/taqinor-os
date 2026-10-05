@@ -112,8 +112,8 @@
       "reponses": [
         {
           "modele": "joint",
-          "effet": "La prise de contact s’arrête. Le dossier passe « Contacté ». Étape suivante : « Préparer et envoyer le devis » — pour demain, et possible dès maintenant.",
-          "suite": { "type": "etape", "cle": "devis", "jour": "demain" }
+          "effet": "La prise de contact s’arrête. Le dossier passe « Contacté ». Étape suivante : « Préparer et envoyer le devis » — pour demain, et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.",
+          "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }]
         },
         {
           "modele": "visite",
@@ -184,8 +184,8 @@
         },
         {
           "modele": "joint_telephone",
-          "effet": "Appel passé au lieu du message, et le client a décroché : même suite qu’un appel abouti — « Préparer et envoyer le devis », pour demain et possible dès maintenant.",
-          "suite": { "type": "etape", "cle": "devis", "jour": "demain" }
+          "effet": "Appel passé au lieu du message, et le client a décroché : même suite qu’un appel abouti — « Préparer et envoyer le devis », pour demain et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.",
+          "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }]
         },
         {
           "modele": "visite",
@@ -238,7 +238,7 @@
       "reconnaissance": { "cles": ["appel_apres_reponse"] },
       "question": "Résultat de l’appel ?",
       "reponses": [
-        { "modele": "joint", "effet": "Étape suivante : « Préparer et envoyer le devis », pour demain et possible dès maintenant.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" } },
+        { "modele": "joint", "effet": "Étape suivante : « Préparer et envoyer le devis », pour demain et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
         { "modele": "visite", "effet": "Planification, ou étape « Planifier la visite » si la date n’est pas fixée.", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
         { "modele": "pas_de_reponse", "effet": "Étape suivante : « Message — proposer un créneau pour l’appel », aujourd’hui.", "suite": { "type": "etape", "cle": "message_creneau", "jour": "aujourdhui" } },
         { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée.", "suite": { "type": "etape", "cle": "message_creneau", "jour": "aujourdhui" } },
@@ -270,11 +270,11 @@
       "reconnaissance": { "cles": ["dernier_appel"] },
       "question": "Résultat de l’appel ?",
       "reponses": [
-        { "modele": "joint", "effet": "Étape suivante : « Préparer et envoyer le devis », pour demain et possible dès maintenant.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" } },
+        { "modele": "joint", "effet": "Étape suivante : « Préparer et envoyer le devis », pour demain et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
         { "modele": "visite", "effet": "Planification, ou étape « Planifier la visite » si la date n’est pas fixée.", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
-        { "modele": "pas_de_reponse", "effet": "On chiffre quand même : « Préparer et envoyer le devis » est posée pour demain (« Pas de réponse » reste dans l’historique).", "suite": { "type": "etape", "cle": "devis", "jour": "demain" } },
-        { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" } },
-        { "modele": "occupe", "effet": "Comme « Pas de réponse » ; la note « Occupé » est gardée.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" } },
+        { "modele": "pas_de_reponse", "effet": "On chiffre quand même : « Préparer et envoyer le devis » est posée pour demain (« Pas de réponse » reste dans l’historique). Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
+        { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
+        { "modele": "occupe", "effet": "Comme « Pas de réponse » ; la note « Occupé » est gardée. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
         { "modele": "rappel", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "refus", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
         { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
@@ -287,7 +287,7 @@
       "reconnaissance": { "cles": ["rappel_convenu"] },
       "question": "Résultat de l’appel ?",
       "reponses": [
-        { "modele": "joint", "effet": "Étape suivante : « Préparer et envoyer le devis », pour demain et possible dès maintenant.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" } },
+        { "modele": "joint", "effet": "Étape suivante : « Préparer et envoyer le devis », pour demain et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" }, "variantes": [{ "contexte": "agricole_sans_releve_eau", "suite": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } }] },
         { "modele": "visite", "effet": "Planification, ou étape « Planifier la visite » si la date n’est pas fixée.", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
         { "modele": "pas_de_reponse", "effet": "Étape suivante : « Rappeler — dernier essai avant de chiffrer », demain.", "suite": { "type": "etape", "cle": "dernier_appel", "jour": "demain" } },
         { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée.", "suite": { "type": "etape", "cle": "dernier_appel", "jour": "demain" } },

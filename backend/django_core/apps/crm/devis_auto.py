@@ -83,6 +83,18 @@ def _rempli(lead, champ):
     return not compagnon or bool(getattr(lead, compagnon, None))
 
 
+def releve_eau_manquant(lead) -> bool:
+    """AGR530 (D-AGR-4 côté cadence) — lead AGRICOLE dont un groupe
+    HYDRAULIQUE de la règle « devis auto prêt » (AGR403 :
+    ``GROUPES_HYDRAULIQUES_AGRICOLES``) n'a aucun champ rempli : le devis ne
+    peut pas se chiffrer, la suite est le relevé du point d'eau. Faux pour
+    tout autre segment."""
+    if (getattr(lead, 'type_installation', None) or '') != _MODE_AGRICOLE:
+        return False
+    return any(not any(_rempli(lead, champ) for champ in groupe)
+               for groupe in GROUPES_HYDRAULIQUES_AGRICOLES)
+
+
 def champs_requis(lead) -> list[list[str]]:
     """QJR600 (contrat ``devis_auto_pret.json``) — la règle STRUCTURÉE : une
     liste de groupes « l'un des » (noms de champs ``Lead``). Le devis

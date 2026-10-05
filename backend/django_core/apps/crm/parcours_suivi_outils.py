@@ -121,7 +121,12 @@ REPONSES_SPEC = frozenset({
 GESTES_PLANIFICATION = frozenset({'planification', 'planification_seule', 'replanification'})
 #: Les gestes SANS envoi propre : ils n'ont pas de clé de réponse (E14).
 GESTES_SANS_CLE = frozenset({'planification_seule', 'replanification'})
-CONTEXTES_VARIANTE = frozenset({'derniere_touche', 'perdu_junk'})
+#: AGR530 — ``agricole_sans_releve_eau`` : le lead est un pompage dont le
+#: point d'eau est inconnu (groupe hydraulique manquant) — la suite annoncée
+#: « devis » devient « Planifier la visite — relevé du point d'eau ».
+CONTEXTE_AGRICOLE_SANS_RELEVE_EAU = 'agricole_sans_releve_eau'
+CONTEXTES_VARIANTE = frozenset({'derniere_touche', 'perdu_junk',
+                                CONTEXTE_AGRICOLE_SANS_RELEVE_EAU})
 JOURS = frozenset({'aujourdhui', 'demain', 'date_choisie'})
 ETATS_FIN = frozenset({'froid', 'perdu', 'ne_plus_contacter'})
 #: La clé serveur de la réponse « Fait — passer à la suite » (aucune issue).
@@ -1036,6 +1041,11 @@ class ParcoursBase(TestCase):
             lead, etape = self.amener_generique_appel()
         else:
             lead, etape = self.amener(cas.type_id)
+        if cas.contexte == CONTEXTE_AGRICOLE_SANS_RELEVE_EAU:
+            # AGR530 — le même dossier, devenu un pompage au point d'eau
+            # inconnu (aucune donnée hydraulique) : la seule différence.
+            Lead.objects.filter(pk=lead.pk).update(type_installation='agricole')
+            lead.refresh_from_db()
         avant = self.photo(lead, etape)
         reponse = cas.reponse
         resp, envoye = self.repondre(
