@@ -21,6 +21,7 @@ constantes.
 """
 from __future__ import annotations
 
+from .. import i18n_labels
 from ..figures import ancre
 from ..montants import fmt_centimes
 from ..residential import theme
@@ -31,35 +32,12 @@ from .synthese import CONDITION_ECONOMIES
 
 NB_PAGES = 3
 
-#: Libellés lisibles des entrées de provenance (contrat AGR2).
-LIBELLES_ENTREES = {
-    "volume_m3_jour": "Volume d'eau par jour",
-    "niveau_statique_m": "Niveau statique",
-    "niveau_dynamique_m": "Niveau dynamique",
-    "debit_exploitation_m3h": "Débit d'exploitation du forage",
-    "profondeur_forage_m": "Profondeur du forage",
-    "hmt_m": "Hauteur manométrique totale",
-    "energie_actuelle": "Énergie actuelle",
-    "plaque": "Plaque de la pompe",
-    "localisation": "Localisation",
-    "cultures": "Cultures",
-    "surface_ha": "Surface",
-}
-
-LIBELLES_ENERGIE = {
-    "butane": "butane (bouteilles)",
-    "diesel": "gasoil (groupe électrogène)",
-    "electrique": "réseau électrique (facture)",
-    "aucune": "aucune (nouveau forage)",
-}
-
-LIBELLES_NON_INCLUS = {"forage": "le forage", "genie_civil": "le génie civil"}
-
-MOIS_COURTS = ("Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août",
-               "Sep", "Oct", "Nov", "Déc")
-MOIS_LONGS = ("janvier", "février", "mars", "avril", "mai", "juin",
-              "juillet", "août", "septembre", "octobre", "novembre",
-              "décembre")
+def _t(langue, cle, **valeurs):
+    """AGR314 — libellé STRUCTUREL ``cle`` du catalogue unique
+    (``quote_engine.i18n_labels``, repli français ; une clé absente lève
+    ``KeyError`` au test), ses gabarits remplis de valeurs DÉJÀ formatées."""
+    texte = i18n_labels.libelle(cle, langue)
+    return texte.format(**valeurs) if valeurs else texte
 
 
 # ── formatage (aucun calcul) ────────────────────────────────────────────────
@@ -119,8 +97,14 @@ def _css(C, fonts, compact):
     serif, display = fonts["serif"], fonts["display"]
     # Densité adaptative de la page 3 (jamais de débordement : le tableau se
     # resserre avant de pousser la clôture hors de la page).
-    td_pad = "2.4px 6px" if compact else "5px 7px"
-    td_fs = "7.6pt" if compact else "8.8pt"
+    # ``compact`` : 0 aéré, 1 resserré, 2 serré (AGR314 — tableau long + 8
+    # options, ou police arabe aux lignes plus hautes).
+    td_pad = {0: "5px 7px", 1: "2.4px 6px"}.get(compact, "1.4px 5px")
+    td_fs = {0: "8.8pt", 1: "7.6pt"}.get(compact, "7pt")
+    serre = ("" if compact < 2 else
+             ".ag-title{font-size:19pt;}.ag-sec{font-size:11pt;"
+             "margin:5px 0 3px;}.ag-li{font-size:7.4pt;}"
+             ".ag-small{font-size:7.2pt;}.ag-box{padding:5px 9px;}")
     return f"""
 .ag-pad {{ padding:11mm 13mm 0 13mm; }}
 .ag-kicker {{ font-size:7.8pt; letter-spacing:.22em; text-transform:uppercase;
@@ -196,7 +180,7 @@ def _css(C, fonts, compact):
 .ag-accord-v {{ display:table-cell; text-align:right; font-size:8pt;
   color:{C['ink']}; vertical-align:middle; }}
 .ag-opts {{ width:100%; border-collapse:collapse; margin:2px 0 4px; }}
-.ag-opt {{ font-size:{'7.2pt' if compact else '7.8pt'}; padding:1.5px 4px 1.5px 0;
+.ag-opt {{ font-size:{('7.8pt', '7.2pt')[min(compact, 1)] if compact < 2 else '6.8pt'}; padding:1.5px 4px 1.5px 0;
   width:50%; vertical-align:top; }}
 .ag-case {{ display:inline-block; width:8px; height:8px;
   border:1.2px solid {C['navy']}; border-radius:2px; margin-right:5px;
@@ -216,37 +200,39 @@ def _css(C, fonts, compact):
   letter-spacing:.06em; }}
 .ag-sig-n {{ font-size:8.6pt; font-weight:700; color:{C['navy']};
   margin-top:1px; }}
-.ag-sig-z {{ height:{'13mm' if compact else '17mm'}; }}
+.ag-sig-z {{ height:{('17mm', '13mm', '9mm')[min(compact, 2)]}; }}
 .ag-sig-h {{ font-size:6.6pt; color:{C['muted_2']}; }}
 .ag-qr {{ width:26mm; text-align:center; vertical-align:middle;
   font-size:6.8pt; color:{C['navy']}; font-weight:700; }}
 .ag-qr img {{ width:22mm; height:22mm; }}
-"""
+""" + serre
 
 
 # ── page 1 — l'eau et l'argent ──────────────────────────────────────────────
 
-def _hero(synthese):
+def _hero(synthese, lg):
     eau = synthese.get("eau") or {}
     m3 = _n(eau.get("m3_jour"))
     hmt = _n(eau.get("hmt_m"))
     heures = _n(eau.get("heures_pompage"))
     if m3 is None:
-        return ('<div class="ag-hero"><div class="ag-hero-v">Pompage solaire'
-                '</div><div class="ag-hero-l">Volume d\'eau par jour non '
-                'calculé : à confirmer par la visite.</div></div>')
-    a_hmt = (f' à {hmt} m de hauteur{ancre("pompe_hmt_m", hmt)}'
-             if hmt is not None else "")
-    sur = f"sur {heures} h de pompage" if heures is not None else ""
-    pastille = ('<span class="ag-hero-e">Estimation</span>'
+        return (f'<div class="ag-hero"><div class="ag-hero-v">'
+                f'{_t(lg, "agr_hero_sans_volume_titre")}</div>'
+                f'<div class="ag-hero-l">{_t(lg, "agr_hero_sans_volume")}'
+                f'</div></div>')
+    a_hmt = (f' {_t(lg, "agr_hero_a_hmt", hmt=hmt)}'
+             f'{ancre("pompe_hmt_m", hmt)}' if hmt is not None else "")
+    sur = (_t(lg, "sur_heures_pompage", heures=heures)
+           if heures is not None else "")
+    pastille = (f'<span class="ag-hero-e">{_t(lg, "estimation")}</span>'
                 if eau.get("estimation") else "")
     return (f'<div class="ag-hero"><div class="ag-hero-v">{m3}'
-            f'{ancre("pompe_volume_m3_jour", m3)} <small>m³ d\'eau par jour'
-            f'{a_hmt}</small></div>'
+            f'{ancre("pompe_volume_m3_jour", m3)} <small>'
+            f'{_t(lg, "agr_hero_m3_jour")}{a_hmt}</small></div>'
             f'<div class="ag-hero-l">{sur}</div>{pastille}</div>')
 
 
-def _cartes(synthese):
+def _cartes(synthese, lg):
     eau = synthese.get("eau") or {}
     pompe = synthese.get("pompe") or {}
     champ = synthese.get("champ") or {}
@@ -255,20 +241,21 @@ def _cartes(synthese):
     if cv is not None or kw is not None:
         v = f"{cv} CV" if cv is not None else f"{kw} kW"
         s = f"{kw} kW" if cv is not None and kw is not None else ""
-        cartes.append(("Puissance pompe", v, s))
+        cartes.append((_t(lg, "puissance_pompe"), v, s))
     debit, hmt = _n(eau.get("debit_hmt_m3h")), _n(eau.get("hmt_m"))
     if debit is not None:
-        cartes.append((f"Débit à {hmt} m" if hmt else "Débit",
+        cartes.append((_t(lg, "debit_a_hmt", hmt=hmt) if hmt
+                       else _t(lg, "agr_debit"),
                        f'{debit} m³/h{ancre("pompe_debit_m3h", debit)}', ""))
     kwc = _n(champ.get("kwc"), 2)
     if kwc is not None:
         nb = _n(champ.get("nb_panneaux"), 0)
-        cartes.append(("Champ PV", f"{kwc} kWc",
-                       f"{nb} panneaux" if nb else ""))
+        cartes.append((_t(lg, "champ_pv"), f"{kwc} kWc",
+                       _t(lg, "agr_panneaux_n", n=nb) if nb else ""))
     ha = _n(((synthese.get("besoin_vs_livre") or {})
              .get("hectares_irrigables")))
     if ha is not None:
-        cartes.append(("Surface irrigable", f"{ha} ha", ""))
+        cartes.append((_t(lg, "agr_surface_irrigable"), f"{ha} ha", ""))
     if not cartes:
         return ""
     cellules = "".join(
@@ -279,7 +266,12 @@ def _cartes(synthese):
     return f'<div class="ag-cards">{cellules}</div>'
 
 
-def _argent(synthese, langue):
+def _composant(lg, cle):
+    return (_t(lg, f"agr_composant_{cle}")
+            if f"agr_composant_{cle}" in i18n_labels.LIBELLES else cle)
+
+
+def _argent(synthese, lg):
     eco = synthese.get("economies")
     if not isinstance(eco, dict):
         return ""
@@ -287,27 +279,29 @@ def _argent(synthese, langue):
     dep = eco.get("depense_actuelle") or {}
     energie = (synthese.get("energie_actuelle") or {}).get("valeur")
     if _mad(dep.get("annuelle_mad")) is not None:
-        quoi = LIBELLES_ENERGIE.get(energie, "")
-        lignes.append((f"Votre dépense actuelle par an"
+        cle_energie = f"agr_energie_{energie}"
+        quoi = (_t(lg, cle_energie)
+                if cle_energie in i18n_labels.LIBELLES else "")
+        lignes.append((_t(lg, "agr_depense_actuelle")
                        + (f" — {quoi}" if quoi else ""),
                        f"{_mad(dep.get('annuelle_mad'))} MAD"))
     charges = eco.get("charges_solaires") or {}
     if _mad(charges.get("total_mad_an")) is not None:
-        lignes.append(("Charges du solaire par an (barème)",
+        lignes.append((_t(lg, "agr_charges_solaires"),
                        f"{_mad(charges.get('total_mad_an'))} MAD"))
     flux = ((eco.get("economie") or {}).get("flux") or [])
     an1 = next((f for f in flux if isinstance(f, dict)
                 and f.get("annee") == 1), None)
     if an1 and _mad(an1.get("flux_mad")) is not None:
-        lignes.append(("Économie nette, année 1",
+        lignes.append((_t(lg, "agr_economie_nette_an1"),
                        f"{_mad(an1.get('flux_mad'))} MAD"))
     retour = _n((eco.get("economie") or {}).get("retour_ans"))
     if retour is not None:
-        lignes.append(("Retour sur investissement, sans aide",
-                       f"{retour} ans"))
+        lignes.append((_t(lg, "agr_retour_sans_aide"),
+                       _t(lg, "agr_n_ans", n=retour)))
     m3 = eco.get("mad_par_m3") or {}
     if _num(m3.get("actuel")) is not None and _num(m3.get("solaire")) is not None:
-        lignes.append(("Coût du m³ : avant / avec le solaire",
+        lignes.append((_t(lg, "agr_cout_m3"),
                        f"{_n(m3.get('actuel'), 2)} / {_n(m3.get('solaire'), 2)}"
                        " MAD"))
     for r in eco.get("remplacements") or []:
@@ -315,8 +309,9 @@ def _argent(synthese, langue):
             continue
         montant = _mad(r.get("montant_ttc_mad"))
         if r.get("annee") and montant is not None:
-            lignes.append((f"Remplacement {r.get('composant')}, année "
-                           f"{r.get('annee')} (compté)",
+            lignes.append((_t(lg, "agr_remplacement",
+                              composant=_composant(lg, r.get("composant")),
+                              annee=r.get("annee")),
                            f"{montant} MAD TTC"))
     if not lignes:
         return ""
@@ -326,19 +321,26 @@ def _argent(synthese, langue):
     dates = sorted(str(e.get("saisi_le"))[:10]
                    for e in eco.get("entrees_declarees") or []
                    if isinstance(e, dict) and _date_fr(e.get("saisi_le")))
-    declare = ("Consommation et prix payé : "
-               + mentions.phrase_provenance(
-                   "declare", langue, date=dates[-1] if dates else None)
-               + ".")
-    notes = (f'{declare} Indexation du carburant : 0 %. L\'aide FDA '
-             f'éventuelle n\'est pas comptée. '
-             f'{CONDITION_ECONOMIES.get(langue) or CONDITION_ECONOMIES["fr"]}')
-    return (f'<div class="ag-sec">Votre argent</div>'
+    declare = _t(lg, "agr_conso_prix_paye", phrase=mentions.phrase_provenance(
+        "declare", lg, date=dates[-1] if dates else None))
+    notes = (f'{declare} {_t(lg, "agr_indexation")} '
+             f'{_t(lg, "agr_fda_non_comptee")} '
+             f'{CONDITION_ECONOMIES.get(lg) or CONDITION_ECONOMIES["fr"]}')
+    return (f'<div class="ag-sec">{_t(lg, "agr_votre_argent")}</div>'
             f'<div class="ag-box ag-box-gold"><table class="ag-tbl">{corps}'
             f'</table><div class="ag-note">{notes}</div></div>')
 
 
-def _provenance(synthese, langue, nom_societe):
+def _entree(lg, cle):
+    """Libellé d'une entrée de provenance (contrat AGR2) ; une clé hors
+    catalogue (donnée nouvelle) est imprimée lisible, jamais traduite."""
+    cle_i18n = f"agr_entree_{cle}"
+    if cle_i18n in i18n_labels.LIBELLES:
+        return _t(lg, cle_i18n)
+    return str(cle).replace("_", " ")
+
+
+def _provenance(synthese, lg, nom_societe):
     prov = synthese.get("provenance") or {}
     lignes = []
     for cle, p in prov.items():
@@ -347,46 +349,45 @@ def _provenance(synthese, langue, nom_societe):
         detail = p.get("detail")
         if detail in ("mesure_visite", "foreur"):
             phrase = mentions.phrase_provenance(
-                "mesure", langue, date=p.get("date"), nom_societe=nom_societe)
+                "mesure", lg, date=p.get("date"), nom_societe=nom_societe)
         elif p.get("origine") in ("saisie", "lead"):
             phrase = mentions.phrase_provenance(
-                "declare", langue, date=p.get("date"))
+                "declare", lg, date=p.get("date"))
         else:
-            phrase = mentions.phrase_provenance("a_confirmer", langue)
-        lib = LIBELLES_ENTREES.get(cle, cle.replace("_", " "))
-        lignes.append(f'<div class="ag-li"><b>{lib}</b> : {phrase}</div>')
-    visite = [LIBELLES_ENTREES.get(c, c.replace("_", " "))
-              for c in synthese.get("a_confirmer_par_visite") or []]
+            phrase = mentions.phrase_provenance("a_confirmer", lg)
+        lignes.append(f'<div class="ag-li"><b>{_entree(lg, cle)}</b> : '
+                      f'{phrase}</div>')
+    visite = [_entree(lg, c) for c in synthese.get("a_confirmer_par_visite")
+              or []]
     bloc_visite = (
-        '<div class="ag-note"><b>À confirmer par la visite :</b> '
-        + ", ".join(visite).lower() + ".</div>") if visite else ""
+        f'<div class="ag-note"><b>{_t(lg, "agr_a_confirmer_visite")}</b> '
+        + ", ".join(visite) + ".</div>") if visite else ""
     if not lignes and not bloc_visite:
         return ""
-    return (f'<div class="ag-sec">D\'où viennent ces chiffres</div>'
+    return (f'<div class="ag-sec">{_t(lg, "agr_provenance_titre")}</div>'
             f'<div class="ag-box">{"".join(lignes)}{bloc_visite}</div>')
 
 
 def page1(ctx):
     d, synthese = ctx["d"], ctx["synthese"]
-    langue = _langue(d)
+    lg = _langue(d)
     client = theme.titlecase_name(d.get("client_full") or d.get("client_name"))
-    validite = (f" · offre valable jusqu'au {d.get('valid_until')}"
+    validite = (" · " + _t(lg, "agr_valable_court", date=d.get("valid_until"))
                 if d.get("valid_until") else "")
-    entete = (f'<div class="ag-kicker">Proposition · pompage solaire</div>'
-              f'<div class="ag-title">L\'eau de votre exploitation, '
-              f'pompée par le soleil</div>'
-              f'<div class="ag-sub">{client or ""} · Réf. {d.get("ref", "")}'
-              f' · {d.get("date", "")}{validite}</div>')
-    return (f'<div class="ag-pad">{entete}{_qj(10)}{_hero(synthese)}'
-            f'{_qj(15)}{_cartes(synthese)}{_qj(25)}'
-            f'{_argent(synthese, langue)}{_qj(25)}'
-            f'{_provenance(synthese, langue, ctx["nom_societe"])}'
+    entete = (f'<div class="ag-kicker">{_t(lg, "agr_kicker_p1")}</div>'
+              f'<div class="ag-title">{_t(lg, "agr_titre_p1")}</div>'
+              f'<div class="ag-sub">{client or ""} · {_t(lg, "reference")} '
+              f'{d.get("ref", "")} · {d.get("date", "")}{validite}</div>')
+    return (f'<div class="ag-pad">{entete}{_qj(10)}{_hero(synthese, lg)}'
+            f'{_qj(15)}{_cartes(synthese, lg)}{_qj(25)}'
+            f'{_argent(synthese, lg)}{_qj(25)}'
+            f'{_provenance(synthese, lg, ctx["nom_societe"])}'
             f'</div>')
 
 
 # ── page 2 — comment ça marche ──────────────────────────────────────────────
 
-def _barres_besoin(bvl):
+def _barres_besoin(bvl, lg):
     """Barres « besoin / livré » par mois, en SVG (mise à l'échelle seule)."""
     mois = bvl.get("mois") or []
     valeurs = [(_num(m.get("besoin_m3_jour")), _num(m.get("livre_m3_jour")))
@@ -408,41 +409,45 @@ def _barres_besoin(bvl):
         corps.append(f'<text x="{x + pas / 2 - 4:.1f}" y="{y0 + 16}" '
                      f'font-size="12" text-anchor="middle" fill="#6B7280" '
                      f'font-family="DejaVu Sans, Arial, sans-serif">'
-                     f'{MOIS_COURTS[i]}</text>')
+                     f'{_t(lg, f"agr_moisc_{i + 1}")}</text>')
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {l_vb} '
             f'{h_vb + 10}" width="100%">{"".join(corps)}</svg>')
 
 
 def page2(ctx):
     d, synthese = ctx["d"], ctx["synthese"]
-    langue = _langue(d)
+    lg = _langue(d)
     schema = synthese.get("schema_svg") or ""
-    courbe = courbe_svg(synthese, langue=langue)
+    courbe = courbe_svg(synthese, langue=lg)
     if courbe:
         bloc_courbe = f'<div class="ag-svg">{courbe}</div>'
     else:
-        motif = (TEXTE_COURBE_ABSENTE.get(langue)
-                 or TEXTE_COURBE_ABSENTE["fr"])
-        bloc_courbe = f'<div class="ag-omis">{motif} Point de fonctionnement omis.</div>'
+        motif = TEXTE_COURBE_ABSENTE.get(lg) or TEXTE_COURBE_ABSENTE["fr"]
+        bloc_courbe = (f'<div class="ag-omis">{motif} '
+                       f'{_t(lg, "agr_point_omis")}</div>')
     bvl = synthese.get("besoin_vs_livre")
-    barres = _barres_besoin(bvl) if isinstance(bvl, dict) else None
+    barres = _barres_besoin(bvl, lg) if isinstance(bvl, dict) else None
     if barres:
-        serre = bvl.get("mois_le_plus_serre")
         try:
-            serre_txt = MOIS_LONGS[int(serre) - 1]
-        except (TypeError, ValueError, IndexError):
+            serre = int(bvl.get("mois_le_plus_serre"))
+            serre_txt = (_t(lg, f"agr_mois_{serre}")
+                         if 1 <= serre <= 12 else None)
+        except (TypeError, ValueError):
             serre_txt = None
-        legende = ('<div class="ag-note">Gris : votre besoin par jour ; '
-                   'bleu : l\'eau livrée par jour.'
-                   + (f' Mois le plus serré : <b>{serre_txt}</b>.'
+        legende = (f'<div class="ag-note">{_t(lg, "agr_legende_barres")}'
+                   + (f' {_t(lg, "agr_mois_serre", mois=serre_txt)}'
                       if serre_txt else "") + '</div>')
         bloc_besoin = f'<div class="ag-svg">{barres}</div>{legende}'
     else:
-        motif = (_omission(synthese, "besoin_vs_livre")
-                 or "comparaison besoin / eau livrée omise")
-        bloc_besoin = f'<div class="ag-omis">Besoin et eau livrée par mois : {motif}.</div>'
+        motif = _omission(synthese, "besoin_vs_livre")
+        # Le motif de la synthèse est écrit en français : il n'est imprimé
+        # tel quel que dans un document français.
+        texte = (_t(lg, "agr_besoin_omis_motif", motif=motif)
+                 if motif and lg == "fr" else _t(lg, "agr_besoin_omis"))
+        bloc_besoin = f'<div class="ag-omis">{texte}</div>'
     plaque_html = ""
     if synthese.get("mode_pompe") == "existante":
+        titre = f'<div class="ag-sec">{_t(lg, "agr_pompe_existante")}</div>'
         plaque = (synthese.get("pompe") or {}).get("plaque")
         if isinstance(plaque, dict):
             elems = []
@@ -452,30 +457,28 @@ def page2(ctx):
                 elems.append(f"{_n(plaque.get('tension_v'), 0)} V")
             if plaque.get("phases"):
                 elems.append(str(plaque.get("phases")))
-            plaque_html = (
-                '<div class="ag-sec">Votre pompe existante</div>'
-                '<div class="ag-box">Plaque relevée : '
-                + (" · ".join(elems) or "non lisible")
-                + '. Le variateur et les panneaux sont dimensionnés sur '
-                  'cette plaque.</div>')
+            plaque_html = (titre + '<div class="ag-box">' + _t(
+                lg, "agr_plaque_relevee",
+                plaque=" · ".join(elems) or _t(lg, "agr_plaque_illisible"))
+                + '</div>')
         else:
-            plaque_html = (
-                '<div class="ag-sec">Votre pompe existante</div>'
-                f'<div class="ag-omis">{_omission(synthese, "pompe.plaque") or "plaque non relevée"}.</div>')
+            plaque_html = (titre + '<div class="ag-omis">'
+                           + _t(lg, "agr_plaque_non_relevee") + '</div>')
     aide = (synthese.get("aide_fda") or {}).get("textes") or {}
-    aide_txt = aide.get(langue) or aide.get("fr") or ""
-    aide_html = (f'<div class="ag-sec">Aide de l\'État (FDA) : la règle</div>'
+    aide_txt = aide.get(lg) or aide.get("fr") or ""
+    aide_html = (f'<div class="ag-sec">{_t(lg, "agr_aide_titre")}</div>'
                  f'<div class="ag-box ag-small">{aide_txt}</div>'
                  if aide_txt else "")
     return (f'<div class="ag-pad">'
-            f'<div class="ag-kicker">Votre installation</div>'
-            f'<div class="ag-title">Comment ça marche</div>{_qj(10)}'
+            f'<div class="ag-kicker">{_t(lg, "agr_kicker_p2")}</div>'
+            f'<div class="ag-title">{_t(lg, "agr_titre_p2")}</div>{_qj(10)}'
             f'<div class="ag-box ag-svg">{schema}</div>{_qj(30)}'
             f'<div class="ag-cols"><div class="ag-col">'
-            f'<div class="ag-sec">Point de fonctionnement</div>{bloc_courbe}'
-            f'</div><div class="ag-col">'
-            f'<div class="ag-sec">Besoin et eau livrée</div>{bloc_besoin}'
-            f'</div></div>{_qj(30)}{plaque_html}{_qj(15)}{aide_html}</div>')
+            f'<div class="ag-sec">{_t(lg, "agr_point_fonctionnement")}</div>'
+            f'{bloc_courbe}</div><div class="ag-col">'
+            f'<div class="ag-sec">{_t(lg, "agr_besoin_livre_titre")}</div>'
+            f'{bloc_besoin}</div></div>{_qj(30)}{plaque_html}{_qj(15)}'
+            f'{aide_html}</div>')
 
 
 # ── page 3 — équipement, prix, garanties ────────────────────────────────────
@@ -509,81 +512,96 @@ def _lignes(d):
     return "".join(rows)
 
 
-def _totaux(d):
+def _totaux(d, lg):
     tot = d.get("totaux_all") or {}
-    lignes = [("Sous-total HT", "sous_total_ht", tot.get("ht_brut"), "")]
+    lignes = [("sous_total_ht", tot.get("ht_brut"), "")]
     if (_num(tot.get("remise")) or 0) > 0:
-        lignes.append(("Remise", "remise", tot.get("remise"), "- "))
+        lignes.append(("remise", tot.get("remise"), "- "))
     if (_num(tot.get("arrondi")) or 0) > 0:
-        lignes.append(("Arrondi commercial", "arrondi", tot.get("arrondi"),
-                       "- "))
-    lignes += [("Total HT", "total_ht", tot.get("ht_net"), ""),
-               ("TVA", "tva", tot.get("tva"), "")]
+        lignes.append(("arrondi", tot.get("arrondi"), "- "))
+    lignes += [("total_ht", tot.get("ht_net"), ""),
+               ("tva", tot.get("tva"), "")]
     corps = ""
-    for lib, cle, val, signe in lignes:
+    for cle, val, signe in lignes:
         f = fmt_centimes(_num(val) or 0)
-        corps += (f'<tr><td>{lib}{ancre(cle, f)}</td>'
+        corps += (f'<tr><td>{_t(lg, cle)}{ancre(cle, f)}</td>'
                   f'<td class="r">{signe}{f} MAD</td></tr>')
     ttc = fmt_centimes(_num(tot.get("ttc")) or 0)
-    corps += (f'<tr class="ag-tot-ttc"><td>Total TTC'
+    corps += (f'<tr class="ag-tot-ttc"><td>{_t(lg, "total_ttc")}'
               f'{ancre("total_ttc", ttc)}</td><td class="r">{ttc} MAD</td></tr>')
     return f'<table class="ag-tot-t">{corps}</table>'
 
 
-def _garanties(synthese):
+def _duree(lg, mois):
+    """La durée d'une garantie (mois structurés de la fiche) en mots."""
+    if mois % 12 == 0:
+        ans = mois // 12
+        return _t(lg, "agr_n_an" if ans == 1 else "agr_n_ans", n=ans)
+    return _t(lg, "agr_n_mois", n=mois)
+
+
+def _libelle_garantie(lg, g):
+    cle = f"agr_garantie_{g.get('composant')}"
+    mois = g.get("mois")
+    if cle in i18n_labels.LIBELLES and isinstance(mois, int) and mois > 0:
+        return _t(lg, cle, duree=_duree(lg, mois))
+    return g.get("libelle") or ""
+
+
+def _garanties(synthese, lg):
     gar = [g for g in synthese.get("garanties") or [] if isinstance(g, dict)]
     if not gar:
-        return ('<div class="ag-small"><b>Garanties</b> : durées '
-                'constructeur à lire sur les fiches produits.</div>')
-    return ('<div class="ag-small"><b>Garanties</b></div>'
-            + "".join(f'<div class="ag-li">{g.get("libelle")}</div>'
+        return (f'<div class="ag-small"><b>{_t(lg, "agr_garanties")}</b> : '
+                f'{_t(lg, "agr_garanties_fiches")}</div>')
+    return (f'<div class="ag-small"><b>{_t(lg, "agr_garanties")}</b></div>'
+            + "".join(f'<div class="ag-li">{_libelle_garantie(lg, g)}</div>'
                       for g in gar))
 
 
-def _formalites(synthese, langue):
+def _formalites(synthese, lg):
     items = []
     for f in synthese.get("formalites") or []:
         textes = (f or {}).get("textes") or {}
-        texte = textes.get(langue) or textes.get("fr")
+        texte = textes.get(lg) or textes.get("fr")
         if texte:
             items.append(f'<div class="ag-li" data-formalite="{f.get("cle")}">'
                          f'{texte}</div>')
     if not items:
         return ""
-    return ('<div class="ag-sec">Formalités</div>'
+    return (f'<div class="ag-sec">{_t(lg, "agr_formalites")}</div>'
             f'<div class="ag-box">{"".join(items)}</div>')
 
 
 def page3(ctx):
     d, synthese = ctx["d"], ctx["synthese"]
-    langue = _langue(d)
-    non_inclus = ", ".join(LIBELLES_NON_INCLUS.get(c, c)
-                           for c in synthese.get("non_inclus") or [])
+    lg = _langue(d)
+    non_inclus = ", ".join(
+        _t(lg, f"agr_non_inclus_{c}")
+        if f"agr_non_inclus_{c}" in i18n_labels.LIBELLES else str(c)
+        for c in synthese.get("non_inclus") or [])
     non_inclus_html = (f'<div class="ag-small" style="margin-top:4px;">'
-                       f'<b>Non inclus</b> : {non_inclus}.</div>'
-                       if non_inclus else "")
+                       f'<b>{_t(lg, "agr_non_inclus")}</b> : {non_inclus}.'
+                       f'</div>' if non_inclus else "")
+    entetes = "".join(
+        (f'<th>{_t(lg, cle)}</th>' if cle == "designation"
+         else f'<th class="r">{_t(lg, cle)}</th>')
+        for cle in ("designation", "qte", "pu_ht", "tva", "total_ht"))
     return (f'<div class="ag-pad">'
-            f'<div class="ag-kicker">Votre kit de pompage</div>'
-            f'<div class="ag-title">Équipement, prix et garanties</div>'
-            f'<table class="ag-lines"><tr><th>Désignation</th>'
-            f'<th class="r">Qté</th><th class="r">P.U. HT</th>'
-            f'<th class="r">TVA</th><th class="r">Total HT</th></tr>'
+            f'<div class="ag-kicker">{_t(lg, "agr_kicker_p3")}</div>'
+            f'<div class="ag-title">{_t(lg, "agr_titre_p3")}</div>'
+            f'<table class="ag-lines"><tr>{entetes}</tr>'
             f'{_lignes(d)}</table>{_qj(20)}'
-            f'<div class="ag-tot"><div class="ag-tot-g">{_garanties(synthese)}'
-            f'{non_inclus_html}</div><div class="ag-tot-d">{_totaux(d)}'
-            f'</div></div>{_qj(20)}{_formalites(synthese, langue)}{_qj(30)}'
-            f'{cloture(ctx)}</div>')
+            f'<div class="ag-tot"><div class="ag-tot-g">'
+            f'{_garanties(synthese, lg)}{non_inclus_html}</div>'
+            f'<div class="ag-tot-d">{_totaux(d, lg)}</div></div>{_qj(20)}'
+            f'{_formalites(synthese, lg)}{_qj(30)}{cloture(ctx)}</div>')
 
 
 # ── AGR311 — clôture de la page 3 (canon v6) ────────────────────────────────
 
 #: Créneaux de l'échéancier (``PAYMENT_TERMS_BY_MODE['agricole']``, résolu
-#: par le builder dans ``payment_terms``) et leur moment.
-CRENEAUX = (
-    ("acompte", "Acompte à la commande"),
-    ("materiel", "À la réception du matériel"),
-    ("solde", "Après mise en marche"),
-)
+#: par le builder dans ``payment_terms``), dans l'ordre.
+CRENEAUX = ("acompte", "materiel", "solde")
 
 
 def _lien_signature(d):
@@ -593,7 +611,7 @@ def _lien_signature(d):
     return lien if "/proposition/" in lien else None
 
 
-def _options_a_cocher(synthese):
+def _options_a_cocher(synthese, lg):
     options = [o for o in synthese.get("options_kit") or []
                if isinstance(o, dict) and o.get("designation")]
     if not options:
@@ -608,12 +626,11 @@ def _options_a_cocher(synthese):
         "<tr>" + "".join(cases[i:i + 2])
         + ("<td></td>" if len(cases[i:i + 2]) == 1 else "") + "</tr>"
         for i in range(0, len(cases), 2))
-    return ('<div class="ag-small"><b>Options du kit</b> (cochez celles que '
-            'vous retenez ; prix du supplément, hors total ci-dessus)</div>'
+    return (f'<div class="ag-small">{_t(lg, "agr_options_kit")}</div>'
             f'<table class="ag-opts">{lignes}</table>')
 
 
-def _echeancier(d):
+def _echeancier(d, lg):
     termes = d.get("payment_terms") or {}
     tot = _num((d.get("totaux_all") or {}).get("ttc"))
     montants = None
@@ -624,12 +641,13 @@ def _echeancier(d):
             montants = m
             break
     cases = []
-    for cle, libelle in CRENEAUX:
+    for cle in CRENEAUX:
         pct = _num(termes.get(cle))
         if not pct:
             continue
         montant = _mad((montants or {}).get(cle)) if montants else None
-        cases.append(f'<td><div class="ag-ech-l">{libelle}</div>'
+        cases.append(f'<td><div class="ag-ech-l">'
+                     f'{_t(lg, f"agr_creneau_{cle}")}</div>'
                      f'<div class="ag-ech-v">{_n(pct)} %'
                      + (f' · {montant} MAD' if montant else "")
                      + '</div></td>')
@@ -643,10 +661,11 @@ def cloture(ctx):
     QR « Scannez pour signer » (lien tokenisé seulement), échéancier. AUCUNE
     annexe de rétractation 31-08 : un achat d'exploitation n'est pas un achat
     « non professionnel » (art. 2) — question confiée au juriste."""
-    d, synthese, C = ctx["d"], ctx["synthese"], ctx["C"]
+    d, synthese = ctx["d"], ctx["synthese"]
+    lg = _langue(d)
     brand = ctx["ident"].get("brand_name") or ""
     client = theme.titlecase_name(d.get("client_full") or d.get("client_name"))
-    validite = (f"Offre valable jusqu'au <b>{d.get('valid_until')}</b>"
+    validite = (_t(lg, "agr_valable", date=d.get("valid_until"))
                 if d.get("valid_until") else "")
     lien = _lien_signature(d)
     qr_html = ""
@@ -654,31 +673,42 @@ def cloture(ctx):
         uri = theme.qr_data_uri(lien, front=(26, 43, 74))
         if uri:
             qr_html = (f'<td class="ag-qr"><img src="{uri}" alt="QR">'
-                       f'<div>Scannez pour signer</div></td>')
+                       f'<div>{_t(lg, "agr_scannez")}</div></td>')
     sig = (
         '<table class="ag-sigs"><tr>'
-        f'<td class="ag-sig"><div class="ag-sig-w">Bon pour accord — le client'
+        f'<td class="ag-sig"><div class="ag-sig-w">{_t(lg, "agr_bpa_client")}'
         f'</div><div class="ag-sig-n">{client or ""}</div>'
-        '<div class="ag-sig-z"></div><div class="ag-sig-h">Nom, date, mention '
-        '« Bon pour accord » et signature</div></td>'
-        f'<td class="ag-sig"><div class="ag-sig-w">Pour {brand}</div>'
-        '<div class="ag-sig-n">Cachet et signature</div>'
-        '<div class="ag-sig-z"></div><div class="ag-sig-h">Date</div></td>'
+        f'<div class="ag-sig-z"></div><div class="ag-sig-h">'
+        f'{_t(lg, "agr_bpa_mention")}</div></td>'
+        f'<td class="ag-sig"><div class="ag-sig-w">'
+        f'{_t(lg, "agr_bpa_pour", societe=brand)}</div>'
+        f'<div class="ag-sig-n">{_t(lg, "agr_bpa_cachet")}</div>'
+        f'<div class="ag-sig-z"></div><div class="ag-sig-h">'
+        f'{_t(lg, "bpa_date")}</div></td>'
         f'{qr_html}</tr></table>')
     return (f'<div class="ag-accord"><div class="ag-accord-hd">'
-            f'<span class="ag-accord-t">Bon pour accord</span>'
+            f'<span class="ag-accord-t">{_t(lg, "bon_pour_accord")}</span>'
             f'<span class="ag-accord-v">{validite}</span></div>'
-            f'{_options_a_cocher(synthese)}{_echeancier(d)}{sig}</div>')
+            f'{_options_a_cocher(synthese, lg)}{_echeancier(d, lg)}{sig}'
+            f'</div>')
 
 
 # ── assemblage ──────────────────────────────────────────────────────────────
 
-def densite_compacte(d) -> bool:
-    """Page 3 resserrée quand le tableau et les options sont longs (≥ 9
-    lignes affichées, ou ≥ 12 lignes + options)."""
+def densite_compacte(d) -> int:
+    """Densité de la page 3 : 0 aérée, 1 resserrée (≥ 9 lignes affichées, ou
+    ≥ 12 lignes + options), 2 serrée (≥ 16 lignes + options)."""
     lignes = len(_items(d)) + len(d.get("lignes_structure") or [])
     options = len((d.get("synthese") or {}).get("options_kit") or [])
-    return lignes >= 9 or lignes + options >= 12
+    if i18n_labels.est_rtl(_langue(d)):
+        # AGR314 — la police arabe a des lignes plus hautes : on resserre
+        # plus tôt (mesuré : 12 lignes + 8 options à ~275 mm sur 284).
+        seuils = (7, 9, 13)
+    else:
+        seuils = (9, 12, 16)
+    if lignes + options >= seuils[2]:
+        return 2
+    return 1 if lignes >= seuils[0] or lignes + options >= seuils[1] else 0
 
 
 def build_ctx(d):
@@ -712,8 +742,19 @@ def build_html(d: dict, elastic: dict | None = None) -> str:
         + '</div>'
         for n, inner in enumerate(pages, start=1))
     langue = _langue(d)
-    racine = "<html>" if langue == "fr" else f'<html lang="{langue}">'
+    # AGR314 — même traitement de langue que le une-page legacy
+    # (``_attributs_langue_html``) : ``lang`` + ``dir="rtl"`` en arabe, d'où
+    # WeasyPrint tire l'alignement à droite et l'ordre miroir des tableaux ;
+    # la police arabe vendorisée s'applique à tout le document arabe.
+    if langue == "fr":
+        racine = "<html>"
+    else:
+        racine = (f'<html lang="{langue}" '
+                  f'dir="{i18n_labels.direction(langue)}">')
+    css_arabe = (
+        "body,body *{font-family:'Noto Sans Arabic','DM Sans',sans-serif"
+        " !important;}" if i18n_labels.est_rtl(langue) else "")
     return (f"<!doctype html>{racine}<head><meta charset='utf-8'>"
             f"<style>{theme.base_css()}{theme.css_langue(d)}"
-            f"{_css(ctx['C'], ctx['fonts'], ctx['compact'])}</style></head>"
-            f"<body>{body}</body></html>")
+            f"{_css(ctx['C'], ctx['fonts'], ctx['compact'])}{css_arabe}"
+            f"</style></head><body>{body}</body></html>")
