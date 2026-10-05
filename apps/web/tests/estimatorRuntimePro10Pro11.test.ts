@@ -2253,3 +2253,45 @@ describe('runtime ACAL80 — point de rendement injectable', () => {
     expect(demandesRendement()).toBeGreaterThan(0);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL99 — boot RÉEL d'un calepinage lié à un devis de 12, enregistré à 8 : l'atelier
+// garde 8 (il ne ré-impose plus la cible du devis).
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL99 — la conception enregistrée prime sur la cible du devis', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('enregistré à 8, devis à 12 → rouvrir → Enregistrer garde 8', async () => {
+    const doc = {
+      version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'area-1',
+      zones: [{
+        id: 'area-1', label: 'Toit', vertices: squareCorners(16), obstacles: [], roofType: 'flat', pitchDeg: 22,
+        facingAzimuthDeg: 180, facingManual: false, neededPanels: 8, neededAuto: false,
+        geometry: {
+          azimuthDeg: 180, tiltDeg: 10, family: 'south', flush: false, kwc: 5.76, count: 8,
+          origin: squareCorners(16)[0], panels: Array.from({ length: 8 }, (_, i) => ({ cx: i * 1.2, cy: 0 })),
+        },
+      }],
+    };
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      hydrate: { devis: { id: 21, geometrie: { roof_layout: doc as never }, cible: { panneaux: 12 } } },
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    const sortie = api!.serializeLayout() as { zones: Array<{ neededPanels: number }> };
+    expect(sortie.zones[0].neededPanels).toBe(8);
+  });
+});
