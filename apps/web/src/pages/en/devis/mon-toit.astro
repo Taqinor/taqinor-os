@@ -1486,6 +1486,17 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               <span>Chat on WhatsApp</span>
             </a>
           </div>
+
+          <!-- CIW409 — commercial / industriel sous le seuil : JAMAIS « pas rentable à votre échelle »
+               (seuil calibré villa, tarif deviné, aucun calcul de retour). Message NEUTRE ; le seuil,
+               `qualified`, l'étiquette CRM et le pixel restent INCHANGÉS (convention 17). -->
+          <div id="mt-belowthreshold-pro" hidden class="border border-ok-600/40 bg-ok-600/10 p-4 text-sm text-white">
+            <p class="font-semibold">Thank you — an advisor is reviewing your request and will call you back.</p>
+            <a id="mt-belowthreshold-pro-wa" href="#" target="_blank" rel="noopener"
+              class="mt-3 inline-flex items-center gap-2 bg-ok-600 px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
+              <span>Chat on WhatsApp</span>
+            </a>
+          </div>
         </form>
       </div>
 
@@ -4651,9 +4662,18 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           }
         } else {
           // below the threshold: NO fake "recorded" — an adapted message + WhatsApp.
-          if (belowEl) belowEl.hidden = false;
-          const belowWa = $('mt-belowthreshold-wa') as HTMLAnchorElement | null;
-          if (belowWa) belowWa.href = waUrl;
+          if (mode === 'commercial' || mode === 'industriel') {
+            // CIW409 — jamais le texte « pas rentable à votre échelle » pour un pro :
+            // message neutre (le seuil / `qualified` / l'étiquette restent inchangés).
+            const neutreEl = $('mt-belowthreshold-pro');
+            if (neutreEl) neutreEl.hidden = false;
+            const neutreWa = $('mt-belowthreshold-pro-wa') as HTMLAnchorElement | null;
+            if (neutreWa) neutreWa.href = waUrl;
+          } else {
+            if (belowEl) belowEl.hidden = false;
+            const belowWa = $('mt-belowthreshold-wa') as HTMLAnchorElement | null;
+            if (belowWa) belowWa.href = waUrl;
+          }
         }
         // disable the fields after submission (except the WhatsApp links).
         Array.from(form.elements).forEach((el) => ((el as HTMLInputElement).disabled = true));

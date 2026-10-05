@@ -889,3 +889,46 @@ describe('CIW400 — ?mode=industriel|commercial présélectionnent la carte (le
     });
   }
 });
+
+// CIW409 — un petit commerce / une usine sous le seuil n'est JAMAIS informé que
+// « le solaire n'est pas rentable à votre échelle » (seuil calibré villa, tarif
+// deviné, aucun calcul de retour) : message NEUTRE à la place. Le seuil, le
+// drapeau `qualified`, l'étiquette CRM et le pixel restent INCHANGÉS ;
+// le résidentiel est identique.
+describe('CIW409 — sous le seuil : message neutre pour commercial / industriel (3 langues)', () => {
+  for (const [lang, rel] of LOCALES) {
+    const src = read(rel);
+    const html = stripHtmlComments(src);
+
+    it(`${lang} — le bloc neutre existe une fois, caché, sans « rentable / profitable / échelle »`, () => {
+      expect(html.match(/id="mt-belowthreshold-pro"/g)).toHaveLength(1);
+      const a = html.indexOf('id="mt-belowthreshold-pro"');
+      const bloc = html.slice(a, html.indexOf('</div>', a));
+      expect(bloc).toContain('hidden');
+      expect(bloc).not.toMatch(/rentable|profitable|مربح|échelle|scale|نطاق/i);
+      expect(bloc).toMatch(/conseiller|advisor|مستشار/);
+    });
+
+    it(`${lang} — la branche commerciale / industrielle sous le seuil montre le bloc neutre, jamais l'ancien`, () => {
+      const code = stripLineComments(src);
+      const a = code.indexOf("if (mode === 'commercial' || mode === 'industriel') {");
+      expect(a).toBeGreaterThan(-1);
+      const b = code.indexOf('} else {', a);
+      const branchePro = code.slice(a, b);
+      expect(branchePro).toContain("$('mt-belowthreshold-pro')");
+      expect(branchePro).not.toContain('belowEl');
+      expect(branchePro).not.toContain("'mt-belowthreshold-wa'");
+      // …et l'ancien bloc reste servi par la branche résidentielle / agricole.
+      const brancheResid = code.slice(b, code.indexOf('}', code.indexOf('belowWa.href', b)) + 1);
+      expect(brancheResid).toContain('belowEl.hidden = false');
+    });
+
+    it(`${lang} — le seuil, le drapeau qualified et l'ancien texte résidentiel sont inchangés`, () => {
+      expect(src).toContain('if (data.qualified) {');
+      expect(html.match(/id="mt-belowthreshold"/g)).toHaveLength(1);
+      const a = html.indexOf('id="mt-belowthreshold"');
+      const bloc = html.slice(a, html.indexOf('</div>', a));
+      expect(bloc).toMatch(/pas encore rentable|isn't profitable yet/);
+    });
+  }
+});
