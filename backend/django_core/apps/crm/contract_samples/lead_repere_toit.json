@@ -1,0 +1,32 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ACAL19 (PACT10) — le lead PUBLIE son repère toit : clé `repere_toit` en LECTURE SEULE sur le détail du lead = {pin: {lat, lng} | null, source: 'gps' | 'roof_point' | null, contour_utilisable: bool}. Valeurs rendues par `crm.selectors.repere_toit` (QJR598), dont le drapeau `contour_utilisable` était jeté par les contextes de conception. Trois états : GPS corrigé hors contour (le contour n'est pas utilisable, le GPS prime), épingle seule (roof_point), rien. Producteurs futurs : crm/serializers.py (D08-T05) ; lecteurs : ToitureDesign.jsx, CalepinageNouveau.jsx, prefill.ts (D08-T07). Hors périmètre : recentrage d'un calepinage déjà tracé quand le GPS change (D-ACAL-13).",
+  "exemple": {
+    "repere_toit": {
+      "pin": {
+        "lat": 33.5731,
+        "lng": -7.5898
+      },
+      "source": "gps",
+      "contour_utilisable": false
+    }
+  },
+  "exemple_epingle_seule": {
+    "repere_toit": {
+      "pin": {
+        "lat": 31.6295,
+        "lng": -7.9811
+      },
+      "source": "roof_point",
+      "contour_utilisable": true
+    }
+  },
+  "exemple_rien": {
+    "repere_toit": {
+      "pin": null,
+      "source": null,
+      "contour_utilisable": false
+    }
+  }
+}

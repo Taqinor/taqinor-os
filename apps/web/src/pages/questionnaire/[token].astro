@@ -27,9 +27,14 @@ import {
   champDemande,
   ecransActifs,
   initialEcranIndex,
+  IRRIGATION_METHODE_VALUES,
+  isPhotoSection,
+  MOIS_IRRIGATION_VALUES,
   parseQuestionnaireGet,
+  POMPE_ALIM_VALUES,
   questionnaireEndpoint,
   SECTION_META,
+  SOURCE_EAU_VALUES,
   TYPE_TOITURE_VALUES,
 } from '../../lib/questionnaire';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
@@ -157,6 +162,41 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
   if (v === false) return 'non';
   return '';
 }
+// AGW408 — section pompage (agricole). Libellés FR = la question orale du
+// contrat `lead_pompage.json` / help_text de la colonne ; EN/AR traduits.
+const POMPAGE_INPUT_CLS =
+  'w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50';
+const POMPAGE_NUM = {
+  niveau_statique_m: { id: 'q-niveau-statique', fr: "À quelle profondeur se trouve l'eau quand la pompe est arrêtée ? (m)", en: 'How deep is the water when the pump is off? (m)', ar: 'على أي عمق يوجد الماء عندما تكون المضخة متوقفة؟ (م)' },
+  besoin_eau_m3j: { id: 'q-besoin-eau', fr: "De combien de mètres cubes d'eau avez-vous besoin par jour au plus fort de la saison ? (m³/jour)", en: 'How many cubic metres of water do you need per day at the peak of the season? (m³/day)', ar: 'كم متراً مكعباً من الماء تحتاجون يومياً في ذروة الموسم؟ (م³/اليوم)' },
+  surface_irriguee_ha: { id: 'q-surface-irriguee', fr: "Combien d'hectares irriguez-vous ? (ha)", en: 'How many hectares do you irrigate? (ha)', ar: 'كم هكتاراً تسقون؟ (هكتار)' },
+  butane_bouteilles_jour: { id: 'q-butane-bouteilles', fr: 'Combien de bouteilles de butane par jour en saison ? (bouteilles de 12 kg)', en: 'How many butane cylinders per day in season? (12 kg cylinders)', ar: 'كم قنينة بوتان في اليوم خلال الموسم؟ (قنينات 12 كلغ)' },
+  carburant_prix_unitaire_mad: { id: 'q-carburant-prix', fr: 'Vous la payez combien, la bouteille (ou le litre de gasoil) ? (MAD)', en: 'How much do you pay for a cylinder (or a litre of diesel)? (MAD)', ar: 'بكم تشترون القنينة (أو لتر الغازوال)؟ (درهم)' },
+  depense_carburant_mad_mois: { id: 'q-depense-carburant', fr: 'Combien dépensez-vous en carburant par mois ? (MAD/mois)', en: 'How much do you spend on fuel per month? (MAD/month)', ar: 'كم تنفقون على الوقود شهرياً؟ (درهم/الشهر)' },
+} as const;
+const SOURCE_EAU_LABELS: Record<string, string> = {
+  puits: 'Puits', forage: 'Forage', bassin: 'Bassin', riviere: 'Rivière',
+};
+const IRRIGATION_LABELS: Record<string, string> = {
+  goutte: 'Goutte-à-goutte', aspersion: 'Aspersion', gravitaire: 'Gravitaire (à la raie)',
+};
+const ALIM_LABELS: Record<string, string> = {
+  aucune: 'Pas de pompe actuellement', diesel: 'Diesel (gasoil)', butane: 'Butane', electrique: 'Électricité',
+};
+const MOIS_LABELS: Record<number, { fr: string; en: string; ar: string }> = {
+  1: { fr: 'Janv.', en: 'Jan', ar: 'يناير' }, 2: { fr: 'Févr.', en: 'Feb', ar: 'فبراير' },
+  3: { fr: 'Mars', en: 'Mar', ar: 'مارس' }, 4: { fr: 'Avr.', en: 'Apr', ar: 'أبريل' },
+  5: { fr: 'Mai', en: 'May', ar: 'ماي' }, 6: { fr: 'Juin', en: 'Jun', ar: 'يونيو' },
+  7: { fr: 'Juil.', en: 'Jul', ar: 'يوليوز' }, 8: { fr: 'Août', en: 'Aug', ar: 'غشت' },
+  9: { fr: 'Sept.', en: 'Sep', ar: 'شتنبر' }, 10: { fr: 'Oct.', en: 'Oct', ar: 'أكتوبر' },
+  11: { fr: 'Nov.', en: 'Nov', ar: 'نونبر' }, 12: { fr: 'Déc.', en: 'Dec', ar: 'دجنبر' },
+};
+const moisPrefill: number[] = Array.isArray(prefill.mois_irrigation)
+  ? (prefill.mois_irrigation as unknown[]).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 12)
+  : [];
+const alimPrefill = prefillStr('pompe_alim_actuelle');
+const carburantMasque = alimPrefill === 'aucune' || alimPrefill === 'electrique';
+const butaneMasque = carburantMasque || alimPrefill === 'diesel';
 /** Le lead porte-t-il déjà sa position ? (les DEUX coordonnées, jamais une
  *  seule) — sert à dire au client qu'on ne la lui redemande pas. */
 const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '';
@@ -392,21 +432,27 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
                         </>
                       )}
 
-                      {(id === 'photo_facture' || id === 'photo_compteur' || id === 'photo_tableau') && (
+                      {isPhotoSection(id) && (
                         <>
                           <p class="text-sm text-encre-soft" data-i18n
                             data-en={
                               id === 'photo_facture' ? 'Take a clear photo of your latest electricity bill.'
                               : id === 'photo_compteur' ? 'Take a photo of your electricity meter.'
+                              : id === 'photo_pompe' ? 'Take a photo of your pump nameplate (the plate with the power and model).'
+                              : id === 'photo_forage' ? 'Take a photo of your borehole (wellhead).'
                               : 'Take a photo of your electrical panel, open.'
                             }
                             data-ar={
                               id === 'photo_facture' ? 'التقطوا صورة واضحة لآخر فاتورة كهرباء.'
                               : id === 'photo_compteur' ? 'التقطوا صورة لعداد الكهرباء.'
+                              : id === 'photo_pompe' ? 'التقطوا صورة للوحة المعلومات على مضختكم (القدرة والطراز).'
+                              : id === 'photo_forage' ? 'التقطوا صورة لبئركم (رأس البئر).'
                               : 'التقطوا صورة للوحة الكهربائية مفتوحة.'
                             }>
                             {id === 'photo_facture' && 'Prenez une photo bien lisible de votre facture d’électricité.'}
                             {id === 'photo_compteur' && 'Prenez une photo de votre compteur électrique.'}
+                            {id === 'photo_pompe' && 'Prenez une photo de la plaque de votre pompe (puissance et modèle).'}
+                            {id === 'photo_forage' && 'Prenez une photo de votre forage (tête de puits).'}
                             {id === 'photo_tableau' && 'Prenez une photo de votre tableau électrique, ouvert.'}
                           </p>
                           <p class="text-xs text-encre-faint" data-i18n
@@ -425,6 +471,130 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
                               n'envoie que ce qui a été fourni (isEmptyPostBody), donc une
                               photo non prise est déjà passée. Un bouton « passer » par
                               photo aurait fait sauter les DEUX autres avec elle. */}
+                        </>
+                      )}
+
+                      {id === 'pompage' && (
+                        <>
+                          {demande('pompage', 'source_eau') && (
+                            <div>
+                              <label for="q-source-eau" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Where does the water come from: a well, a borehole, a reservoir or a river?"
+                                data-ar="من أين يأتي الماء: بئر، ثقب (فوراج)، حوض أم واد؟">
+                                D'où vient l'eau : un puits, un forage, un bassin ou une rivière ?
+                              </label>
+                              <select id="q-source-eau" class={POMPAGE_INPUT_CLS}>
+                                <option value="" selected={prefillStr('source_eau') === ''}>— Choisir…</option>
+                                {SOURCE_EAU_VALUES.map((v) => (
+                                  <option value={v} selected={prefillStr('source_eau') === v}>{SOURCE_EAU_LABELS[v]}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {demande('pompage', 'niveau_statique_m') && (
+                            <div>
+                              <label for={POMPAGE_NUM.niveau_statique_m.id} class="mb-1 block text-sm font-semibold" data-i18n data-en={POMPAGE_NUM.niveau_statique_m.en} data-ar={POMPAGE_NUM.niveau_statique_m.ar}>{POMPAGE_NUM.niveau_statique_m.fr}</label>
+                              <input id={POMPAGE_NUM.niveau_statique_m.id} type="number" min="0" step="any" inputmode="decimal" value={prefillStr('niveau_statique_m')} class={POMPAGE_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('pompage', 'besoin_eau_m3j') && (
+                            <div>
+                              <label for={POMPAGE_NUM.besoin_eau_m3j.id} class="mb-1 block text-sm font-semibold" data-i18n data-en={POMPAGE_NUM.besoin_eau_m3j.en} data-ar={POMPAGE_NUM.besoin_eau_m3j.ar}>{POMPAGE_NUM.besoin_eau_m3j.fr}</label>
+                              <input id={POMPAGE_NUM.besoin_eau_m3j.id} type="number" min="0" step="any" inputmode="decimal" value={prefillStr('besoin_eau_m3j')} class={POMPAGE_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('pompage', 'culture') && (
+                            <div>
+                              <label for="q-culture" class="mb-1 block text-sm font-semibold" data-i18n data-en="What do you grow?" data-ar="ماذا تزرعون؟">Qu'est-ce que vous cultivez ?</label>
+                              <input id="q-culture" type="text" maxlength="100" value={prefillStr('culture')} class={POMPAGE_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('pompage', 'surface_irriguee_ha') && (
+                            <div>
+                              <label for={POMPAGE_NUM.surface_irriguee_ha.id} class="mb-1 block text-sm font-semibold" data-i18n data-en={POMPAGE_NUM.surface_irriguee_ha.en} data-ar={POMPAGE_NUM.surface_irriguee_ha.ar}>{POMPAGE_NUM.surface_irriguee_ha.fr}</label>
+                              <input id={POMPAGE_NUM.surface_irriguee_ha.id} type="number" min="0" step="any" inputmode="decimal" value={prefillStr('surface_irriguee_ha')} class={POMPAGE_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('pompage', 'irrigation_methode') && (
+                            <div>
+                              <label for="q-irrigation-methode" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Do you irrigate by drip, sprinkler or furrow (gravity)?"
+                                data-ar="هل تسقون بالتنقيط أم بالرش أم بالأخاديد (الجاذبية)؟">
+                                Vous irriguez au goutte-à-goutte, par aspersion ou à la raie (gravitaire) ?
+                              </label>
+                              <select id="q-irrigation-methode" class={POMPAGE_INPUT_CLS}>
+                                <option value="" selected={prefillStr('irrigation_methode') === ''}>— Choisir…</option>
+                                {IRRIGATION_METHODE_VALUES.map((v) => (
+                                  <option value={v} selected={prefillStr('irrigation_methode') === v}>{IRRIGATION_LABELS[v]}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {demande('pompage', 'pompe_alim_actuelle') && (
+                            <div>
+                              <label for="q-pompe-alim" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="What does your current pump run on: diesel, butane, electricity, or do you have none?"
+                                data-ar="بماذا تشتغل مضختكم الحالية: ديزل، بوتان، كهرباء، أم لا توجد لديكم؟">
+                                Votre pompe actuelle marche à quoi — diesel, butane, électricité, ou vous n'en avez pas ?
+                              </label>
+                              <select id="q-pompe-alim" class={POMPAGE_INPUT_CLS}>
+                                <option value="" selected={alimPrefill === ''}>— Choisir…</option>
+                                {POMPE_ALIM_VALUES.map((v) => (
+                                  <option value={v} selected={alimPrefill === v}>{ALIM_LABELS[v]}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {demande('pompage', 'butane_bouteilles_jour') && (
+                            <div id="q-butane-wrap" class:list={[butaneMasque ? 'hidden' : '']}>
+                              <label for={POMPAGE_NUM.butane_bouteilles_jour.id} class="mb-1 block text-sm font-semibold" data-i18n data-en={POMPAGE_NUM.butane_bouteilles_jour.en} data-ar={POMPAGE_NUM.butane_bouteilles_jour.ar}>{POMPAGE_NUM.butane_bouteilles_jour.fr}</label>
+                              <input id={POMPAGE_NUM.butane_bouteilles_jour.id} type="number" min="0" step="any" inputmode="decimal" value={prefillStr('butane_bouteilles_jour')} class={POMPAGE_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('pompage', 'carburant_prix_unitaire_mad') && (
+                            <div class:list={['q-carburant-wrap', carburantMasque ? 'hidden' : '']}>
+                              <label for={POMPAGE_NUM.carburant_prix_unitaire_mad.id} class="mb-1 block text-sm font-semibold" data-i18n data-en={POMPAGE_NUM.carburant_prix_unitaire_mad.en} data-ar={POMPAGE_NUM.carburant_prix_unitaire_mad.ar}>{POMPAGE_NUM.carburant_prix_unitaire_mad.fr}</label>
+                              <input id={POMPAGE_NUM.carburant_prix_unitaire_mad.id} type="number" min="0" step="any" inputmode="decimal" value={prefillStr('carburant_prix_unitaire_mad')} class={POMPAGE_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('pompage', 'depense_carburant_mad_mois') && (
+                            <div class:list={['q-carburant-wrap', carburantMasque ? 'hidden' : '']}>
+                              <label for={POMPAGE_NUM.depense_carburant_mad_mois.id} class="mb-1 block text-sm font-semibold" data-i18n data-en={POMPAGE_NUM.depense_carburant_mad_mois.en} data-ar={POMPAGE_NUM.depense_carburant_mad_mois.ar}>{POMPAGE_NUM.depense_carburant_mad_mois.fr}</label>
+                              <input id={POMPAGE_NUM.depense_carburant_mad_mois.id} type="number" min="0" step="any" inputmode="decimal" value={prefillStr('depense_carburant_mad_mois')} class={POMPAGE_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('pompage', 'mois_irrigation') && (
+                            <fieldset class="border-0 p-0">
+                              <legend class="mb-1 text-sm font-semibold" data-i18n data-en="Which months of the year do you irrigate?" data-ar="في أي أشهر السنة تسقون؟">
+                                Vous irriguez quels mois ?
+                              </legend>
+                              <div id="q-mois-irrigation" class="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                                {MOIS_IRRIGATION_VALUES.map((m) => (
+                                  <button type="button" data-mois={m} aria-pressed={moisPrefill.includes(m)}
+                                    class:list={['q-mois-btn min-h-[44px] border p-3 text-center text-sm font-semibold text-encre transition-colors', moisPrefill.includes(m) ? 'border-brass-400 bg-brass-50' : 'border-azur-900/15']}>
+                                    <span data-i18n data-en={MOIS_LABELS[m].en} data-ar={MOIS_LABELS[m].ar}>{MOIS_LABELS[m].fr}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </fieldset>
+                          )}
+                          {demande('pompage', 'compteur_eau') && (
+                            <fieldset class="border-0 p-0">
+                              <legend class="mb-1 text-sm font-semibold" data-i18n data-en="Do you have a water meter on the borehole?" data-ar="هل لديكم عداد ماء على البئر؟">
+                                Avez-vous un compteur d'eau sur le forage ?
+                              </legend>
+                              <div class="flex gap-4">
+                                <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                  <input type="radio" name="q-compteur-eau" id="q-compteur-eau-oui" value="oui" checked={prefillBoolRadio('compteur_eau') === 'oui'} class="h-5 w-5 accent-azur-600" />
+                                  <span data-i18n data-en="Yes" data-ar="نعم">Oui</span>
+                                </label>
+                                <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                  <input type="radio" name="q-compteur-eau" id="q-compteur-eau-non" value="non" checked={prefillBoolRadio('compteur_eau') === 'non'} class="h-5 w-5 accent-azur-600" />
+                                  <span data-i18n data-en="No" data-ar="لا">Non</span>
+                                </label>
+                              </div>
+                            </fieldset>
+                          )}
                         </>
                       )}
 
@@ -853,6 +1023,25 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
       });
     });
 
+    // ── Pompage : 12 mois en boutons + questions carburant selon l'alimentation ──
+    document.querySelectorAll<HTMLButtonElement>('.q-mois-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (init.interne) return;
+        const on = btn.getAttribute('aria-pressed') !== 'true';
+        btn.setAttribute('aria-pressed', String(on));
+        btn.classList.toggle('border-brass-400', on);
+        btn.classList.toggle('bg-brass-50', on);
+        btn.classList.toggle('border-azur-900/15', !on);
+        touched.add('pompage');
+      });
+    });
+    $('q-pompe-alim')?.addEventListener('change', () => {
+      const alim = (($('q-pompe-alim') as HTMLSelectElement | null)?.value) || '';
+      const sansCarburant = alim === 'aucune' || alim === 'electrique';
+      document.querySelectorAll<HTMLElement>('.q-carburant-wrap').forEach((el) => el.classList.toggle('hidden', sansCarburant));
+      $('q-butane-wrap')?.classList.toggle('hidden', sansCarburant || alim === 'diesel');
+    });
+
     // ── GPS : partage immédiat + aperçu + POST section (pas d'attente du Continuer) ──
     $('q-gps-btn')?.addEventListener('click', () => {
       if (init.interne) return;
@@ -925,7 +1114,7 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
       });
     }
 
-    (['photo_facture', 'photo_compteur', 'photo_tableau'] as const).forEach((section) => {
+    (['photo_facture', 'photo_compteur', 'photo_tableau', 'photo_pompe', 'photo_forage'] as const).forEach((section) => {
       const input = $(`q-${section}-input`) as HTMLInputElement | null;
       const preview = $(`q-${section}-preview`) as HTMLImageElement | null;
       const errEl = $(`q-${section}-err`);
@@ -981,7 +1170,25 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
         case 'photo_facture':
         case 'photo_compteur':
         case 'photo_tableau':
+        case 'photo_pompe':
+        case 'photo_forage':
           return {};
+        case 'pompage':
+          return {
+            source_eau: fieldVal('q-source-eau') || undefined,
+            niveau_statique_m: numOrUndef('q-niveau-statique'),
+            besoin_eau_m3j: numOrUndef('q-besoin-eau'),
+            surface_irriguee_ha: numOrUndef('q-surface-irriguee'),
+            culture: fieldVal('q-culture') || undefined,
+            irrigation_methode: fieldVal('q-irrigation-methode') || undefined,
+            pompe_alim_actuelle: fieldVal('q-pompe-alim') || undefined,
+            butane_bouteilles_jour: numOrUndef('q-butane-bouteilles'),
+            carburant_prix_unitaire_mad: numOrUndef('q-carburant-prix'),
+            depense_carburant_mad_mois: numOrUndef('q-depense-carburant'),
+            mois_irrigation: Array.from(document.querySelectorAll<HTMLButtonElement>('.q-mois-btn[aria-pressed="true"]'))
+              .map((b) => Number(b.dataset.mois)),
+            compteur_eau: radioValue('q-compteur-eau'),
+          };
         case 'toiture':
           return {
             type_toiture: fieldVal('q-type-toiture') || undefined,

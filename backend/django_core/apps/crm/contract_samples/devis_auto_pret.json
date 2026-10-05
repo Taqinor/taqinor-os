@@ -70,5 +70,58 @@
         ]
       ]
     }
-  }
+  },
+  "exemple_commercial": {
+    "devis_auto": {
+      "pret": true,
+      "manquants": [],
+      "manquants_detail": [],
+      "requis": [
+        [
+          "conso_mensuelle_kwh",
+          "bill_kwh",
+          "releve_conso",
+          "facture_hiver"
+        ]
+      ],
+      "source_conso": "facture_hiver",
+      "visite_avant_devis": {
+        "requise": true,
+        "motifs": [
+          "puissance souscrite inconnue",
+          "surface disponible inconnue"
+        ]
+      }
+    }
+  },
+  "exemple_industriel": {
+    "devis_auto": {
+      "pret": false,
+      "manquants": [
+        "Consommation (kWh), relevé de factures, ou facture en MAD si la basse tension est déclarée"
+      ],
+      "manquants_detail": [
+        {
+          "champ": "conso_mensuelle_kwh",
+          "label": "Consommation (kWh), relevé de factures, ou facture en MAD si la basse tension est déclarée"
+        }
+      ],
+      "requis": [
+        [
+          "conso_mensuelle_kwh",
+          "bill_kwh",
+          "releve_conso",
+          "facture_hiver"
+        ]
+      ],
+      "source_conso": null,
+      "visite_avant_devis": {
+        "requise": true,
+        "motifs": [
+          "site en moyenne tension"
+        ]
+      }
+    }
+  },
+  "regle_pro_ciq1": "CIQ1 (Groupe CIQ) — règle PRO v2 (contrat `lead_pro.json`, `regles_devis_auto`) : groupe « l'un des » [['conso_mensuelle_kwh','bill_kwh','releve_conso','facture_hiver']] ; `facture_hiver` (MAD) ne compte pour un commercial que si la tension n'est pas « mt », pour un industriel que si la tension « bt » est DÉCLARÉE (exemple_industriel : facture en MAD présente mais site MT ⇒ non comptée) ; le bloc gagne `source_conso` et `visite_avant_devis` {requise, motifs} (D-CIQ-5) pour un commercial/industriel, null ailleurs. `pret` ne mesure que les données."
 }

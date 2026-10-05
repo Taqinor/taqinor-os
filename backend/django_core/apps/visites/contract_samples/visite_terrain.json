@@ -785,5 +785,836 @@
       "mesure": "administratif.compteur_eau",
       "colonne_lead": "compteur_eau"
     }
+  ],
+  "gabarit_ci_regle": "CIQ5 (Groupe CIQ, 03/10/2026 ; D-CIQ-5) — CONTRAT D'ABORD (PACT10), ce MÊME fichier étendu (jamais un second). Valeur de gabarit `ci` : posée à la PLANIFICATION quand le lead est `commercial` ou `industriel`, sinon inchangée (toiture / point_eau) ; le type du lead n'est JAMAIS changé par une visite. Le gabarit `ci` remplace les catégories résidentielles par `gabarit_ci` ; le SUPPLÉMENT MT (`gabarit_ci_supplement_mt`) s'affiche quand la mesure `comptage.niveau_tension_constate` vaut `mt` (`bt` / `inconnu` = socle commun + BT). `_non_releves` = {code_mesure: motif}, motifs FERMÉS : acces_refuse | dangereux | site_ferme | a_faire_par_electricien | non_applicable — une mesure requise non relevée avec son motif ne bloque pas « terminer ». `releve_ci` = {declare, constate, ecart} pour niveau_tension, puissance_souscrite_kva, type_toiture, surface_utile, statut_occupation (déclaré = colonnes du contrat crm `lead_pro.json`, CIQ1 ; `statut_occupation` = colonne Lead existante `ownership`) + `validee_le`. `retour_lead_ci` = table mesure → colonne Lead de `lead_pro.json`, appliquée à la VALIDATION (jamais avant), provenance `{origine: 'mesure_visite', detail, date}`. AUCUN seuil, aucun verdict (règle VT1), aucun chiffre de dimensionnement. `exemple`, `exemple_point_eau` et leurs clés restent identiques à l'octet. Valeurs ILLUSTRATIVES ; `site_commerce` est la catégorie de CIQ651.",
+  "gabarit_ci": {
+    "toiture_ci": {
+      "photos": {
+        "toiture_vue_generale": "requise",
+        "toiture_structure_dessous": "requise",
+        "toiture_etancheite": "facultative",
+        "toiture_lanterneaux": "facultative"
+      },
+      "mesures": {
+        "zones_toiture": {
+          "type": "liste",
+          "requis": true,
+          "libelle": "Zones de toiture (une par pan / bâtiment)",
+          "forme": {
+            "id": "texte",
+            "libelle": "texte",
+            "batiment": "texte",
+            "longueur_m": "décimal ou null",
+            "largeur_m": "décimal ou null",
+            "surface_utile_m2": "décimal ou null (à la place de longueur × largeur)",
+            "pente_deg": "décimal",
+            "orientation": "texte",
+            "couverture": "texte (bac_acier|beton|fibrociment|tole|tuile|autre)",
+            "age_ans": "entier ou null",
+            "structure": "portique|ferme|dalle|autre",
+            "portee_pannes_m": "décimal ou null",
+            "entraxe_pannes_m": "décimal ou null",
+            "epaisseur_bac_mm": "décimal ou null",
+            "etancheite": {
+              "type": "texte",
+              "age_ans": "entier ou null",
+              "sous_garantie": "booléen ou null"
+            },
+            "lanterneaux_exutoires": "texte",
+            "ligne_de_vie_existante": "booléen ou null",
+            "charge_admissible_declaree_kg_m2": "décimal ou null",
+            "charge_admissible_piece": "pièce jointe (bureau de contrôle ou propriétaire) ou null",
+            "fibrociment": "booléen — vrai ⇒ « amiante possible — diagnostic requis »"
+          }
+        }
+      }
+    },
+    "tableau_general": {
+      "photos": {
+        "tgbt_ouvert": "requise"
+      },
+      "mesures": {
+        "calibre_a": {
+          "type": "décimal",
+          "requis": true,
+          "libelle": "Calibre de l'appareil de tête (A)",
+          "unite": "A"
+        },
+        "depart_disponible": {
+          "type": "booléen",
+          "requis": true,
+          "libelle": "Départ disponible pour le PV"
+        },
+        "regime_neutre": {
+          "type": "choix",
+          "requis": false,
+          "libelle": "Régime de neutre",
+          "choix": [
+            "TT",
+            "TN",
+            "IT",
+            "inconnu"
+          ]
+        },
+        "parafoudre_existant": {
+          "type": "booléen",
+          "requis": false,
+          "libelle": "Parafoudre existant"
+        }
+      }
+    },
+    "comptage": {
+      "photos": {
+        "comptage_plaque": "requise",
+        "comptage_contrat": "facultative"
+      },
+      "mesures": {
+        "type_compteur": {
+          "type": "texte",
+          "requis": true,
+          "libelle": "Type de compteur"
+        },
+        "niveau_tension_constate": {
+          "type": "choix",
+          "requis": true,
+          "libelle": "Niveau de tension constaté",
+          "choix": [
+            "bt",
+            "mt",
+            "inconnu"
+          ]
+        },
+        "puissance_souscrite_kva_constatee": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "Puissance souscrite constatée (plaque / contrat)",
+          "unite": "kVA"
+        }
+      }
+    },
+    "cheminement": {
+      "photos": {
+        "cheminement_parcours": "facultative"
+      },
+      "mesures": {
+        "trajets": {
+          "type": "liste",
+          "requis": true,
+          "libelle": "Trajets de câbles",
+          "forme": {
+            "libelle": "texte",
+            "longueur_dc_m": "décimal",
+            "longueur_ac_m": "décimal"
+          }
+        }
+      }
+    },
+    "acces_securite": {
+      "photos": {
+        "acces_toiture": "requise"
+      },
+      "mesures": {
+        "escalier": {
+          "type": "booléen",
+          "requis": false,
+          "libelle": "Escalier d'accès"
+        },
+        "echelle": {
+          "type": "booléen",
+          "requis": false,
+          "libelle": "Échelle nécessaire"
+        },
+        "nacelle": {
+          "type": "booléen",
+          "requis": false,
+          "libelle": "Nacelle nécessaire"
+        },
+        "grue_possible": {
+          "type": "booléen",
+          "requis": false,
+          "libelle": "Grue possible"
+        },
+        "horaires_acces": {
+          "type": "texte",
+          "requis": false,
+          "libelle": "Horaires d'accès au site"
+        },
+        "zones_fragiles": {
+          "type": "texte",
+          "requis": false,
+          "libelle": "Zones fragiles (lanterneaux, bac corrodé…)"
+        }
+      }
+    },
+    "autres_autorisations": {
+      "photos": {},
+      "mesures": {
+        "texte": {
+          "type": "texte",
+          "requis": false,
+          "libelle": "Autres autorisations à confirmer avec le client (décret 2.25.100 art. 26)"
+        }
+      }
+    },
+    "general": {
+      "photos": {
+        "general_facade": "requise"
+      },
+      "mesures": {}
+    }
+  },
+  "gabarit_ci_supplement_mt": {
+    "poste_mt": {
+      "photos": {
+        "cellule_mt": "requise",
+        "transformateur_plaque": "requise"
+      },
+      "mesures": {
+        "cellule_protection": {
+          "type": "texte",
+          "requis": true,
+          "libelle": "Cellule et protection existantes"
+        },
+        "transformateurs": {
+          "type": "liste",
+          "requis": true,
+          "libelle": "Transformateurs",
+          "forme": {
+            "nb": "entier",
+            "kva": "décimal"
+          }
+        },
+        "tgbt_courant_assigne_a": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "TGBT : courant assigné (A)",
+          "unite": "A"
+        },
+        "tgbt_jeu_de_barres": {
+          "type": "texte",
+          "requis": false,
+          "libelle": "TGBT : jeu de barres"
+        }
+      }
+    },
+    "factures_mt": {
+      "photos": {
+        "factures_mt": "requise"
+      },
+      "mesures": {
+        "registres": {
+          "type": "liste",
+          "requis": false,
+          "libelle": "12 factures : registres pointe / pleines / creuses (photos)",
+          "forme": {
+            "mois": "AAAA-MM",
+            "pointe_kwh": "décimal",
+            "pleines_kwh": "décimal",
+            "creuses_kwh": "décimal"
+          }
+        },
+        "cos_phi_constate": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "cos φ constaté"
+        },
+        "source_cos_phi": {
+          "type": "choix",
+          "requis": false,
+          "libelle": "Source du cos φ",
+          "choix": [
+            "facture",
+            "mesure",
+            "inconnu"
+          ]
+        }
+      }
+    },
+    "reactif_secours": {
+      "photos": {},
+      "mesures": {
+        "condensateurs_kvar": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "Batterie de condensateurs (kvar)",
+          "unite": "kvar"
+        },
+        "condensateurs_etat": {
+          "type": "texte",
+          "requis": false,
+          "libelle": "État de la batterie de condensateurs"
+        },
+        "groupe_kva": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "Groupe électrogène (kVA)",
+          "unite": "kVA"
+        },
+        "groupe_inverseur": {
+          "type": "booléen",
+          "requis": false,
+          "libelle": "Inverseur de source"
+        }
+      }
+    },
+    "charges_principales": {
+      "photos": {},
+      "mesures": {
+        "charges": {
+          "type": "liste",
+          "requis": false,
+          "libelle": "Charges principales (moteurs, variateurs, fours, soudage)",
+          "forme": {
+            "libelle": "texte",
+            "puissance_kw": "décimal ou null"
+          }
+        }
+      }
+    },
+    "reseau_assurance": {
+      "photos": {},
+      "mesures": {
+        "poste_source": {
+          "type": "texte",
+          "requis": false,
+          "libelle": "Poste source"
+        },
+        "capacite_poste_source": {
+          "type": "texte",
+          "requis": false,
+          "libelle": "Capacité lue sur la plateforme ANRE (saisie manuelle, aucun scraping — règle #5)"
+        },
+        "capacite_consultee_le": {
+          "type": "date",
+          "requis": false,
+          "libelle": "Date de consultation de la plateforme"
+        },
+        "assureur": {
+          "type": "texte",
+          "requis": false,
+          "libelle": "Assureur du site"
+        },
+        "exigences_assureur_piece": {
+          "type": "pièce",
+          "requis": false,
+          "libelle": "Exigences écrites de l'assureur"
+        },
+        "compartimentage_sprinklers": {
+          "type": "texte",
+          "requis": false,
+          "libelle": "Compartimentage / sprinklers"
+        },
+        "profil_charge_mesure_fichier": {
+          "type": "pièce",
+          "requis": false,
+          "libelle": "Fichier de profil de charge mesuré (facultatif)"
+        }
+      }
+    }
+  },
+  "exemple_ci": {
+    "id": 7,
+    "lead": 118,
+    "commercial": {
+      "id": 5,
+      "nom_affiche": "Commercial Démo"
+    },
+    "statut": "en_cours",
+    "gabarit": "ci",
+    "date_prevue": "2026-10-08",
+    "date_realisee": null,
+    "notes": "",
+    "modifiable": true,
+    "raison_lecture_seule": "",
+    "photo_toit": null,
+    "checklist": [
+      {
+        "categorie": "comptage",
+        "libelle": "Comptage",
+        "slots": [
+          {
+            "code": "comptage_plaque",
+            "libelle": "Plaque du compteur",
+            "guide": "Plaque lisible : type, calibre, puissance.",
+            "requis": true,
+            "min_photos": 1,
+            "etat": "manquant",
+            "photos": []
+          }
+        ]
+      }
+    ],
+    "mesures": {
+      "toiture_ci": {
+        "zones_toiture": [
+          {
+            "id": "z1",
+            "libelle": "Atelier nord",
+            "batiment": "A",
+            "longueur_m": 40.0,
+            "largeur_m": 18.0,
+            "surface_utile_m2": null,
+            "pente_deg": 8.0,
+            "orientation": "sud",
+            "couverture": "bac_acier",
+            "age_ans": 12,
+            "structure": "portique",
+            "portee_pannes_m": 6.0,
+            "entraxe_pannes_m": 1.8,
+            "epaisseur_bac_mm": 0.75,
+            "etancheite": {
+              "type": "aucune",
+              "age_ans": null,
+              "sous_garantie": null
+            },
+            "lanterneaux_exutoires": "4 lanterneaux en faîtage",
+            "ligne_de_vie_existante": false,
+            "charge_admissible_declaree_kg_m2": null,
+            "charge_admissible_piece": null,
+            "fibrociment": false
+          }
+        ]
+      },
+      "tableau_general": {
+        "calibre_a": 250.0,
+        "depart_disponible": true,
+        "regime_neutre": "TT",
+        "parafoudre_existant": false
+      },
+      "comptage": {
+        "type_compteur": "électronique triphasé",
+        "niveau_tension_constate": "bt",
+        "puissance_souscrite_kva_constatee": null
+      },
+      "cheminement": {
+        "trajets": [
+          {
+            "libelle": "toiture → local onduleurs",
+            "longueur_dc_m": 45.0,
+            "longueur_ac_m": null
+          },
+          {
+            "libelle": "local onduleurs → TGBT",
+            "longueur_dc_m": null,
+            "longueur_ac_m": 30.0
+          }
+        ]
+      },
+      "acces_securite": {
+        "escalier": false,
+        "echelle": true,
+        "nacelle": true,
+        "grue_possible": true,
+        "horaires_acces": "lun–ven 8 h–17 h",
+        "zones_fragiles": "lanterneaux"
+      },
+      "autres_autorisations": {
+        "texte": "à confirmer avec le client"
+      },
+      "general": {}
+    },
+    "_non_releves": {
+      "comptage.puissance_souscrite_kva_constatee": "a_faire_par_electricien",
+      "toiture_ci.zones_toiture[z1].charge_admissible_declaree_kg_m2": "non_applicable"
+    },
+    "releve_ci": {
+      "niveau_tension": {
+        "declare": "bt",
+        "constate": "bt",
+        "ecart": false
+      },
+      "puissance_souscrite_kva": {
+        "declare": null,
+        "constate": null,
+        "ecart": null
+      },
+      "type_toiture": {
+        "declare": "terrasse_beton",
+        "constate": "bac_acier",
+        "ecart": true
+      },
+      "surface_utile": {
+        "declare": 650.0,
+        "constate": 720.0,
+        "ecart": true
+      },
+      "statut_occupation": {
+        "declare": "proprietaire",
+        "constate": "proprietaire",
+        "ecart": false
+      },
+      "validee_le": null
+    },
+    "completude": {
+      "complet": false,
+      "manquants": [
+        {
+          "type": "photo",
+          "categorie": "comptage",
+          "code": "comptage_plaque",
+          "libelle": "Plaque du compteur"
+        }
+      ]
+    }
+  },
+  "exemple_ci_mt": {
+    "id": 7,
+    "lead": 118,
+    "commercial": {
+      "id": 5,
+      "nom_affiche": "Commercial Démo"
+    },
+    "statut": "en_cours",
+    "gabarit": "ci",
+    "date_prevue": "2026-10-08",
+    "date_realisee": null,
+    "notes": "",
+    "modifiable": true,
+    "raison_lecture_seule": "",
+    "photo_toit": null,
+    "checklist": [
+      {
+        "categorie": "comptage",
+        "libelle": "Comptage",
+        "slots": [
+          {
+            "code": "comptage_plaque",
+            "libelle": "Plaque du compteur",
+            "guide": "Plaque lisible : type, calibre, puissance.",
+            "requis": true,
+            "min_photos": 1,
+            "etat": "manquant",
+            "photos": []
+          }
+        ]
+      }
+    ],
+    "mesures": {
+      "toiture_ci": {
+        "zones_toiture": [
+          {
+            "id": "z1",
+            "libelle": "Atelier nord",
+            "batiment": "A",
+            "longueur_m": 40.0,
+            "largeur_m": 18.0,
+            "surface_utile_m2": null,
+            "pente_deg": 8.0,
+            "orientation": "sud",
+            "couverture": "bac_acier",
+            "age_ans": 12,
+            "structure": "portique",
+            "portee_pannes_m": 6.0,
+            "entraxe_pannes_m": 1.8,
+            "epaisseur_bac_mm": 0.75,
+            "etancheite": {
+              "type": "aucune",
+              "age_ans": null,
+              "sous_garantie": null
+            },
+            "lanterneaux_exutoires": "4 lanterneaux en faîtage",
+            "ligne_de_vie_existante": false,
+            "charge_admissible_declaree_kg_m2": null,
+            "charge_admissible_piece": null,
+            "fibrociment": false
+          }
+        ]
+      },
+      "tableau_general": {
+        "calibre_a": 250.0,
+        "depart_disponible": true,
+        "regime_neutre": "TT",
+        "parafoudre_existant": false
+      },
+      "comptage": {
+        "type_compteur": "comptage MT",
+        "niveau_tension_constate": "mt",
+        "puissance_souscrite_kva_constatee": 250.0
+      },
+      "cheminement": {
+        "trajets": [
+          {
+            "libelle": "toiture → local onduleurs",
+            "longueur_dc_m": 45.0,
+            "longueur_ac_m": null
+          },
+          {
+            "libelle": "local onduleurs → TGBT",
+            "longueur_dc_m": null,
+            "longueur_ac_m": 30.0
+          }
+        ]
+      },
+      "acces_securite": {
+        "escalier": false,
+        "echelle": true,
+        "nacelle": true,
+        "grue_possible": true,
+        "horaires_acces": "lun–ven 8 h–17 h",
+        "zones_fragiles": "lanterneaux"
+      },
+      "autres_autorisations": {
+        "texte": "à confirmer avec le client"
+      },
+      "general": {},
+      "poste_mt": {
+        "cellule_protection": "cellule disjoncteur existante",
+        "transformateurs": [
+          {
+            "nb": 1,
+            "kva": 400.0
+          }
+        ],
+        "tgbt_courant_assigne_a": 630.0,
+        "tgbt_jeu_de_barres": "cuivre"
+      },
+      "factures_mt": {
+        "registres": [
+          {
+            "mois": "2026-08",
+            "pointe_kwh": 6000.0,
+            "pleines_kwh": 26000.0,
+            "creuses_kwh": 8000.0
+          }
+        ],
+        "cos_phi_constate": null,
+        "source_cos_phi": "inconnu"
+      },
+      "reactif_secours": {
+        "condensateurs_kvar": null,
+        "condensateurs_etat": "",
+        "groupe_kva": 200.0,
+        "groupe_inverseur": true
+      },
+      "charges_principales": {
+        "charges": [
+          {
+            "libelle": "compresseurs froid",
+            "puissance_kw": null
+          }
+        ]
+      },
+      "reseau_assurance": {
+        "poste_source": "",
+        "capacite_poste_source": "",
+        "capacite_consultee_le": null,
+        "assureur": "",
+        "exigences_assureur_piece": null,
+        "compartimentage_sprinklers": "",
+        "profil_charge_mesure_fichier": null
+      }
+    },
+    "_non_releves": {
+      "reactif_secours.condensateurs_kvar": "acces_refuse",
+      "reseau_assurance.capacite_poste_source": "a_faire_par_electricien"
+    },
+    "releve_ci": {
+      "niveau_tension": {
+        "declare": "ne_sait_pas",
+        "constate": "mt",
+        "ecart": true
+      },
+      "puissance_souscrite_kva": {
+        "declare": null,
+        "constate": 250.0,
+        "ecart": null
+      },
+      "type_toiture": {
+        "declare": "terrasse_beton",
+        "constate": "bac_acier",
+        "ecart": true
+      },
+      "surface_utile": {
+        "declare": 650.0,
+        "constate": 720.0,
+        "ecart": true
+      },
+      "statut_occupation": {
+        "declare": "proprietaire",
+        "constate": "proprietaire",
+        "ecart": false
+      },
+      "validee_le": null
+    },
+    "completude": {
+      "complet": false,
+      "manquants": [
+        {
+          "type": "photo",
+          "categorie": "comptage",
+          "code": "comptage_plaque",
+          "libelle": "Plaque du compteur"
+        }
+      ]
+    }
+  },
+  "exemple_ci_commerce": {
+    "id": 7,
+    "lead": 118,
+    "commercial": {
+      "id": 5,
+      "nom_affiche": "Commercial Démo"
+    },
+    "statut": "en_cours",
+    "gabarit": "ci",
+    "date_prevue": "2026-10-08",
+    "date_realisee": null,
+    "notes": "",
+    "modifiable": true,
+    "raison_lecture_seule": "",
+    "photo_toit": null,
+    "checklist": [
+      {
+        "categorie": "comptage",
+        "libelle": "Comptage",
+        "slots": [
+          {
+            "code": "comptage_plaque",
+            "libelle": "Plaque du compteur",
+            "guide": "Plaque lisible : type, calibre, puissance.",
+            "requis": true,
+            "min_photos": 1,
+            "etat": "manquant",
+            "photos": []
+          }
+        ]
+      }
+    ],
+    "mesures": {
+      "site_commerce": {
+        "categorie": "restaurant",
+        "horaires_constates": "11 h–23 h, 7/7",
+        "equipements_principaux": "chambres froides ×2, four électrique"
+      },
+      "toiture_ci": {
+        "zones_toiture": [
+          {
+            "id": "z1",
+            "libelle": "Terrasse",
+            "batiment": "",
+            "longueur_m": null,
+            "largeur_m": null,
+            "surface_utile_m2": 140.0,
+            "pente_deg": 0.0,
+            "orientation": "sud",
+            "couverture": "beton",
+            "age_ans": null,
+            "structure": "dalle",
+            "portee_pannes_m": null,
+            "entraxe_pannes_m": null,
+            "epaisseur_bac_mm": null,
+            "etancheite": {
+              "type": "multicouche",
+              "age_ans": 6,
+              "sous_garantie": true
+            },
+            "lanterneaux_exutoires": "",
+            "ligne_de_vie_existante": false,
+            "charge_admissible_declaree_kg_m2": null,
+            "charge_admissible_piece": null,
+            "fibrociment": false
+          }
+        ]
+      },
+      "comptage": {
+        "type_compteur": "électronique triphasé",
+        "niveau_tension_constate": "bt",
+        "puissance_souscrite_kva_constatee": 36.0
+      }
+    },
+    "_non_releves": {
+      "comptage.puissance_souscrite_kva_constatee": "a_faire_par_electricien",
+      "toiture_ci.zones_toiture[z1].charge_admissible_declaree_kg_m2": "non_applicable"
+    },
+    "releve_ci": {
+      "niveau_tension": {
+        "declare": "bt",
+        "constate": "bt",
+        "ecart": false
+      },
+      "puissance_souscrite_kva": {
+        "declare": null,
+        "constate": null,
+        "ecart": null
+      },
+      "type_toiture": {
+        "declare": "terrasse_beton",
+        "constate": "bac_acier",
+        "ecart": true
+      },
+      "surface_utile": {
+        "declare": 650.0,
+        "constate": 720.0,
+        "ecart": true
+      },
+      "statut_occupation": {
+        "declare": "proprietaire",
+        "constate": "proprietaire",
+        "ecart": false
+      },
+      "validee_le": null
+    },
+    "completude": {
+      "complet": false,
+      "manquants": [
+        {
+          "type": "photo",
+          "categorie": "comptage",
+          "code": "comptage_plaque",
+          "libelle": "Plaque du compteur"
+        }
+      ]
+    }
+  },
+  "non_releves_motifs": [
+    "acces_refuse",
+    "dangereux",
+    "site_ferme",
+    "a_faire_par_electricien",
+    "non_applicable"
+  ],
+  "retour_lead_ci": [
+    {
+      "mesure": "comptage.niveau_tension_constate",
+      "colonne_lead": "tension_raccordement",
+      "provenance": {
+        "colonne_lead": "tension_source",
+        "valeur": "mesure_visite"
+      }
+    },
+    {
+      "mesure": "comptage.puissance_souscrite_kva_constatee",
+      "colonne_lead": "compteur_puissance_kva",
+      "provenance": {
+        "colonne_lead": "puissance_souscrite_source",
+        "valeur": "mesure_visite"
+      }
+    },
+    {
+      "mesure": "toiture_ci.zones_toiture[].couverture",
+      "colonne_lead": "type_toiture",
+      "regle": "bac_acier→bac_acier, beton→terrasse_beton, fibrociment→fibrociment, tole→tole_metal, tuile→tuiles, autre→autre ; plusieurs zones de couvertures différentes ⇒ non recopié (écart montré)"
+    },
+    {
+      "mesure": "toiture_ci.zones_toiture[].surface_utile_m2 (ou longueur × largeur), somme des zones",
+      "colonne_lead": "surface_toiture_m2",
+      "provenance": {
+        "colonne_lead": "surface_source",
+        "valeur": "mesure_visite"
+      }
+    },
+    {
+      "mesure": "factures_mt.cos_phi_constate",
+      "colonne_lead": "cos_phi",
+      "provenance": {
+        "colonne_lead": "cos_phi_source",
+        "valeur": "mesure_visite"
+      },
+      "regle": "seulement si `source_cos_phi` ≠ inconnu"
+    },
+    {
+      "mesure": "reactif_secours.groupe_kva",
+      "colonne_lead": "groupe_kva"
+    }
   ]
 }

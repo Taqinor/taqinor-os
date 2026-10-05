@@ -1,0 +1,77 @@
+{
+  "endpoint": "GET /api/django/adsengine/veille/decouvertes/<id>/mesures/",
+  "forme_serveur": "partielle",
+  "pourquoi": "VEIL4 (PACT10) — contrat posé SEUL et EN PREMIER : les mesures d'une découverte (de quoi décider si la voie officielle tient le pilote). RÈGLE : toute valeur non calculable vaut `null` accompagné d'un `motif_fr` — JAMAIS 0 (un zéro mentirait : « calculé et nul » ≠ « non calculable »). Les parts sont des fractions 0..1. `saturation` = nouveaux page_id cumulés par numéro de page, par requête et global (la courbe qui s'aplatit dit qu'on a tout trouvé). `rappel_concurrents_nommes` = {trouves, total, absents}. `doublons` = recouvrement entre requêtes, même annonceur multi-pays, domaine partagé par au moins 2 page_id. Vue livrée par VEIL18.",
+  "exemple": {
+    "decouverte_id": 17,
+    "annonceurs_distincts": {
+      "par_mot_cle": [
+        { "mot_cle": "robe été", "valeur": 330 },
+        { "mot_cle": "baskets running", "valeur": 140 }
+      ],
+      "par_pays": [
+        { "pays": "FR", "valeur": 290 },
+        { "pays": "BE", "valeur": 160 }
+      ],
+      "total": 412
+    },
+    "pubs_par_appel": {
+      "moyenne": 77.6,
+      "mediane": 80,
+      "min": 12,
+      "max": 100,
+      "motif_fr": null
+    },
+    "appels_par_mot_cle": [
+      { "mot_cle": "robe été", "appels": 27 },
+      { "mot_cle": "baskets running", "appels": 14 }
+    ],
+    "saturation": {
+      "global": [
+        { "page": 1, "nouveaux_page_id_cumules": 61 },
+        { "page": 2, "nouveaux_page_id_cumules": 112 },
+        { "page": 3, "nouveaux_page_id_cumules": 150 }
+      ],
+      "par_requete": [
+        {
+          "mot_cle": "robe été",
+          "pays": "FR",
+          "courbe": [
+            { "page": 1, "nouveaux_page_id_cumules": 40 },
+            { "page": 2, "nouveaux_page_id_cumules": 71 },
+            { "page": 3, "nouveaux_page_id_cumules": 94 }
+          ]
+        }
+      ]
+    },
+    "rappel_concurrents_nommes": {
+      "trouves": 4,
+      "total": 5,
+      "absents": ["Boutique Exemple"],
+      "motif_fr": null
+    },
+    "doublons": {
+      "recouvrement_entre_requetes": 0.18,
+      "annonceurs_multi_pays": 37,
+      "domaines_partages": 6,
+      "motif_fr": null
+    },
+    "taux_remplissage_domaine": {
+      "valeur": null,
+      "motif_fr": "Aucune pub n'a encore été analysée : le domaine affiché n'est pas calculable."
+    },
+    "part_pubs_actives_5_jours": 0.62,
+    "part_par_classe": [
+      { "classe": "vendeur", "part": 0.41 },
+      { "classe": "place_de_marche", "part": 0.04 },
+      { "classe": "hors_sujet", "part": 0.22 },
+      { "classe": "pas_vendeur", "part": 0.1 },
+      { "classe": "doublon", "part": 0.05 },
+      { "classe": "incertain", "part": 0.18 }
+    ],
+    "part_dropshipper": {
+      "valeur": null,
+      "motif_fr": "Aucun verdict de dropshipper rendu : la part n'est pas calculable."
+    }
+  }
+}

@@ -1,0 +1,231 @@
+{
+  "endpoint": "GET /api/django/ventes/dossiers-reglementaires/<int:pk>/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Les cles `regime`, `niveaux`, `pieces` et `resume` sont AJOUTEES par les taches backend du Groupe CIQ qui consomment ce contrat ; la tache qui sert une cle remet `forme_serveur: complete` une fois la vue lisible statiquement.",
+  "pourquoi": "CIQ12 (Groupe CIQ, audit L3 du 03/10/2026 ; D-CIQ-4, D-CIQ-6, D-CIQ-18) — CONTRAT D'ABORD (PACT10), pose SEUL sur `main`. Aujourd'hui deux etats du meme dossier 82-21 ne se parlent pas : `RegulatoryDossier` (ventes/models_regulatory.py:64-133, 7 statuts, FK chaine optionnelle `chantier` l.85-88) et `Installation.regime_8221/dossier_statut` (installations/models_installation.py:180-204), seuls lus par le gate (installations/services.py:1468-1477), la preparation (:1260) et le pack (:1927-1942). Le regime vient des seuls kWc (installations/regime.py:1-36) ; les pieces n'ont aucune source (ventes/regulatory_docs.py:25-62). Ce fichier fige : (1) `regime` sourcee — loi 82-21 art. 2-6 (BO 7400) et decret 2.25.100 (BO 7489 du 09/03/2026, en vigueur le 09/06/2026, art. 5, 11, 18) : declaration < 11 kW ; accord de raccordement de 11 kW a < 5 MW (BT ou MT, chez le distributeur) ; autorisation >= 5 MW (services deconcentres de l'energie, apres avis technique) ; (2) `niveaux` ; (3) `pieces` par etape avec sa source ; (4) `resume`, le statut UNIQUE servi au chantier (propriete : le dossier ; `source: saisie_chantier` seulement tant qu'aucun dossier n'est lie). REGLES ECRITES : le contrat n'ecrit AUCUN montant, AUCUN delai promis au client, jamais l'ANRE comme guichet ; `non_concerne` n'est JAMAIS le defaut d'un site C&I (puissance inconnue = `a_qualifier` vrai) ; `guichet_statut: a_confirmer` tant qu'un arrete (plateforme et formulaires, decret art. 25) n'est pas publie ; la puissance retenue = max(kWc DC, kW AC des onduleurs) avec `base_puissance: a_confirmer_avec_le_distributeur` (unite non precisee par les textes) ; les pieces marquees « a confirmer » restent affichees comme telles, jamais presentees comme certaines. Les valeurs de l'exemple sont ILLUSTRATIVES (saisies), jamais des defauts. `exemple` = accord de raccordement d'un site commercial BT ; `exemple_mt` = site MT.",
+  "exemple": {
+    "id": 57,
+    "regime": {
+      "code": "accord_raccordement",
+      "libelle": "Accord de raccordement",
+      "base": "loi 82-21 art. 4 ; décret 2.25.100 art. 5, 11",
+      "guichet": "distributeur",
+      "guichet_statut": "a_confirmer",
+      "puissance_retenue_kw": 150,
+      "base_puissance": "a_confirmer_avec_le_distributeur",
+      "a_qualifier": false
+    },
+    "niveaux": [
+      {
+        "code": "BT",
+        "libelle": "Basse tension (≤ 1 000 V)",
+        "base": "loi 82-21 art. 2"
+      },
+      {
+        "code": "MT",
+        "libelle": "Moyenne tension (5,5 à 30 kV)",
+        "base": "loi 82-21 art. 2"
+      }
+    ],
+    "niveau": "BT",
+    "pieces": [
+      {
+        "code": "identite_rc",
+        "label": "Identité et registre de commerce du demandeur",
+        "etape": "depot",
+        "obligatoire": true,
+        "source": "décret 2.25.100 art. 1"
+      },
+      {
+        "code": "titre_droit_usage",
+        "label": "Titre de propriété ou droit d'usage du site",
+        "etape": "depot",
+        "obligatoire": true,
+        "source": "décret 2.25.100 art. 1"
+      },
+      {
+        "code": "engagement_non_cession",
+        "label": "Engagement de non-cession de la production",
+        "etape": "depot",
+        "obligatoire": true,
+        "source": "décret 2.25.100 art. 1"
+      },
+      {
+        "code": "schema_unifilaire",
+        "label": "Schéma unifilaire, plan de situation, coordonnées GPS",
+        "etape": "depot",
+        "obligatoire": true,
+        "source": "décret 2.25.100 art. 12"
+      },
+      {
+        "code": "fiches_equipements",
+        "label": "Fiches techniques avec fabricant et modèle",
+        "etape": "depot",
+        "obligatoire": true,
+        "source": "décret 2.25.100 art. 12"
+      },
+      {
+        "code": "planning_travaux",
+        "label": "Planning de réalisation",
+        "etape": "depot",
+        "obligatoire": true,
+        "source": "décret 2.25.100 art. 12"
+      },
+      {
+        "code": "conso_3_ans",
+        "label": "Consommation des trois dernières années",
+        "etape": "depot",
+        "obligatoire": true,
+        "source": "décret 2.25.100 art. 12"
+      },
+      {
+        "code": "etude_impact",
+        "label": "Étude d'impact",
+        "etape": "depot",
+        "obligatoire": false,
+        "source": "selon la législation en vigueur — à confirmer (décret 2.25.100 art. 12)"
+      },
+      {
+        "code": "frais_etude",
+        "label": "Frais d'étude et réglages imposés par le distributeur",
+        "etape": "etude",
+        "obligatoire": true,
+        "source": "décret 2.25.100 art. 27"
+      },
+      {
+        "code": "certificat_organisme_agree",
+        "label": "Certificat d'un organisme agréé",
+        "etape": "exploitation",
+        "obligatoire": true,
+        "source": "décret 2.25.100 art. 15 (accord et autorisation seulement)"
+      },
+      {
+        "code": "preuve_propriete",
+        "label": "Preuve de propriété",
+        "etape": "exploitation",
+        "obligatoire": true,
+        "source": "décret 2.25.100 art. 15 (accord et autorisation seulement)"
+      },
+      {
+        "code": "attestation_assurance",
+        "label": "Attestation d'assurance",
+        "etape": "exploitation",
+        "obligatoire": true,
+        "source": "décret 2.25.100 art. 15 (accord et autorisation seulement ; la déclaration, art. 9, ne l'exige pas)"
+      },
+      {
+        "code": "autres_autorisations",
+        "label": "Autres autorisations requises du site",
+        "etape": "travaux",
+        "obligatoire": false,
+        "source": "décret 2.25.100 art. 26 (à la charge du client)"
+      }
+    ],
+    "resume": {
+      "source": "dossier",
+      "statut": "etude_en_cours",
+      "reference": "Valeur saisie (illustrative)",
+      "operateur": "Distributeur (saisi)",
+      "date_depot": "2026-10-05",
+      "date_decision": null,
+      "pieces_manquantes": ["conso_3_ans"],
+      "etude": {
+        "frais_notifies_le": "2026-10-20",
+        "paiement_limite_le": "2026-10-30",
+        "payee_le": null,
+        "conclusion": null,
+        "reglages_imposes": null
+      },
+      "capacite": {
+        "etat": null,
+        "date": null
+      },
+      "convention_signee_le": null,
+      "travaux_limite_le": null,
+      "demande_exploitation_le": null,
+      "accord_exploitation_le": null,
+      "equipements_figes": [
+        {
+          "fabricant": "Valeur saisie (illustrative)",
+          "modele": "Valeur saisie (illustrative)",
+          "quantite": 211,
+          "puissance": 710
+        }
+      ],
+      "alertes_modification": [
+        {
+          "code": "equipement_modifie",
+          "message": "Un équipement figé au dépôt a changé : le dossier doit être mis à jour.",
+          "base": "loi 82-21 art. 8-9"
+        }
+      ]
+    }
+  },
+  "exemple_mt": {
+    "id": 58,
+    "regime": {
+      "code": "accord_raccordement",
+      "libelle": "Accord de raccordement",
+      "base": "loi 82-21 art. 4 ; décret 2.25.100 art. 5, 11",
+      "guichet": "distributeur",
+      "guichet_statut": "a_confirmer",
+      "puissance_retenue_kw": 1200,
+      "base_puissance": "a_confirmer_avec_le_distributeur",
+      "a_qualifier": false
+    },
+    "niveau": "MT",
+    "pieces": [
+      {
+        "code": "convention_raccordement",
+        "label": "Convention de raccordement",
+        "etape": "convention",
+        "obligatoire": true,
+        "source": "décret 2.25.100 art. 14"
+      },
+      {
+        "code": "reglages_decouplage",
+        "label": "Réglages imposés par l'étude du distributeur (limitation d'injection, découplage)",
+        "etape": "comptage",
+        "obligatoire": true,
+        "source": "décret 2.25.100 art. 27"
+      }
+    ],
+    "resume": {
+      "source": "dossier",
+      "statut": "convention_signee",
+      "reference": "Valeur saisie (illustrative)",
+      "operateur": "Distributeur (saisi)",
+      "date_depot": "2026-10-05",
+      "date_decision": "2026-11-20",
+      "pieces_manquantes": [],
+      "etude": {
+        "frais_notifies_le": "2026-10-20",
+        "paiement_limite_le": "2026-10-30",
+        "payee_le": "2026-10-28",
+        "conclusion": "favorable",
+        "reglages_imposes": "Valeur saisie d'après l'étude du distributeur (illustrative)"
+      },
+      "capacite": {
+        "etat": "provisoire",
+        "date": "2026-11-18"
+      },
+      "convention_signee_le": "2026-12-02",
+      "travaux_limite_le": "2028-12-02",
+      "demande_exploitation_le": null,
+      "accord_exploitation_le": null,
+      "equipements_figes": [
+        {
+          "fabricant": "Valeur saisie (illustrative)",
+          "modele": "Valeur saisie (illustrative)",
+          "quantite": 1,
+          "puissance": 1000
+        }
+      ],
+      "alertes_modification": []
+    }
+  },
+  "regles_dates": {
+    "paiement_limite_le": "date de notification des frais d'étude + 10 jours (décret 2.25.100 art. 13)",
+    "travaux_limite_le": "accord : convention signée + 2 ans (art. 14) ; déclaration : récépissé + 12 mois (art. 8)"
+  }
+}

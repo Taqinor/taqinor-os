@@ -19,5 +19,31 @@
   },
   "exemple_400": {
     "detail": "Ce lead n'est lié à aucune fiche client."
+  },
+  "exemple_entreprise": {
+    "get_lead": {
+      "client": 640,
+      "client_nom": "Hôtel Exemple SARL",
+      "client_ecart": [
+        "ice",
+        "adresse_siege"
+      ]
+    },
+    "post": {
+      "client_ecart": [],
+      "champs_mis_a_jour": [
+        "ice",
+        "adresse_siege"
+      ]
+    },
+    "champs_synchronises": {
+      "nom": "↔ lead.societe",
+      "contact_nom": "↔ prénom + nom du lead",
+      "ice": "↔ lead.ice",
+      "rc": "↔ lead.rc",
+      "if_fiscal": "↔ lead.if_fiscal",
+      "adresse_siege": "↔ lead.adresse_siege"
+    },
+    "regle": "CIQ8 — pour un client `entreprise`, `client_ecart` compare en plus ces six champs (vocabulaire de `client_entreprise.json`)."
   }
 }
