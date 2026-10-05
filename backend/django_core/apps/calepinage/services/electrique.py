@@ -639,6 +639,161 @@ def _valider_cheminement(calepinage, cheminement, layout=None):
                 champ='cheminement.pans.%s.motif_parcours' % libelle)
 
 
+#: ACAL150 — les longueurs et bornes numériques de l'entrée : ``(clé,
+#: libellé, strictement positive, entière)``. Une valeur non finie (NaN,
+#: infini) ou négative est REFUSÉE en nommant le champ.
+NOMBRES_ENTREE = (
+    ('dc_m', 'Longueur de liaison DC (m)', False, False),
+    ('ac_m', 'Longueur de liaison AC (m)', False, False),
+    ('plafond_kwc_par_onduleur', 'Plafond de kWc par onduleur', True, False),
+    ('longueur_chaine_forcee', 'Longueur de chaîne imposée (modules)', True,
+     True),
+)
+
+#: Les phases ADMISES — monophasé ou triphasé, rien d'autre.
+PHASES_ADMISES = (1, 3)
+
+#: Les saisies qui doivent être des OBJETS (``{...}``) quand elles sont posées.
+OBJETS_ENTREE = ('protections', 'terre', 'exigence_marche')
+
+
+def _fini(valeur):
+    import math
+
+    return valeur is not None and math.isfinite(valeur)
+
+
+def _valider_entree(calepinage, fusionnee, postee):
+    """ACAL150 — refuse une entrée incohérente AVANT tout enregistrement.
+
+    ``fusionnee`` est l'entrée stockée + la saisie postée ; ``postee`` la
+    saisie seule. Les températures se jugent par PAIRE sur l'entrée fusionnée
+    (``_saisie``, LA règle de cohérence) ; le reste n'est jugé que sur ce qui
+    est POSTÉ, pour qu'une saisie ancienne ne bloque pas une écriture sans
+    rapport. Les décisions (protections, terre, polystring) passent par
+    LEURS validateurs, ceux du calcul — aucune règle n'est recopiée ici.
+
+    Raises:
+        TemperaturesInvalides / EntreeInvalide: le champ fautif est NOMMÉ.
+    """
+    for cle in ('temperature_min_c', 'temperature_max_c'):
+        brut = postee.get(cle)
+        if brut not in (None, '') and not _fini(_nombre(brut)):
+            raise TemperaturesInvalides(
+                "Température illisible (« %s ») : saisissez un nombre en "
+                "°C, ou laissez le champ vide." % brut, champ=cle)
+    _saisie(fusionnee)
+
+    if postee.get('phases') not in (None, ''):
+        phases = _nombre(postee.get('phases'))
+        if phases not in tuple(float(p) for p in PHASES_ADMISES):
+            raise EntreeInvalide(
+                "Nombre de phases « %s » refusé : 1 (monophasé) ou 3 "
+                "(triphasé)." % postee.get('phases'), champ='phases')
+    for cle, libelle, strict, entiere in NOMBRES_ENTREE:
+        brut = postee.get(cle)
+        if brut in (None, ''):
+            continue
+        valeur = _nombre(brut)
+        if (not _fini(valeur) or valeur < 0 or (strict and valeur <= 0)
+                or (entiere and valeur != int(valeur))):
+            raise EntreeInvalide(
+                "%s illisible ou hors plage (« %s ») : saisissez un nombre "
+                "%s%s, ou laissez le champ vide."
+                % (libelle, brut, 'strictement positif' if strict
+                   else 'positif ou nul', ' entier' if entiere else ''),
+                champ=cle)
+    for cle in OBJETS_ENTREE:
+        valeur = postee.get(cle)
+        if valeur is not None and not isinstance(valeur, dict):
+            raise EntreeInvalide(
+                "« %s » doit être un objet {...} (reçu : %s)."
+                % (cle, type(valeur).__name__), champ=cle)
+    poly = postee.get(CLE_POLYSTRING)
+    if poly not in (None, '') and not isinstance(poly, (list, tuple)):
+        raise EntreeInvalide(
+            "« polystring » doit être une liste de groupes {mppt, pans} "
+            "(reçu : %s)." % type(poly).__name__, champ=CLE_POLYSTRING)
+
+    if not any(postee.get(cle) for cle in ('protections', 'terre',
+                                           CLE_POLYSTRING)):
+        return
+    from .norme import norme_applicable
+    from .polystring import PolystringRefuse, _saisie_normalisee
+    from .protections import DecisionInvalide, checklist_protections
+    from .terre import TerreInvalide, checklist_terre
+
+    conception, _materiel, _donnees, _doc = conception_du_calepinage(
+        calepinage, entree=fusionnee)
+    norme = norme_applicable(parametres_societe(calepinage))
+    try:
+        if postee.get('protections'):
+            checklist_protections(conception,
+                                  decisions=postee.get('protections'),
+                                  norme=norme)
+        if postee.get('terre'):
+            checklist_terre(conception, decisions=postee.get('terre'),
+                            norme=norme,
+                            company=getattr(calepinage, 'company', None))
+    except (DecisionInvalide, TerreInvalide) as refus:
+        raise EntreeInvalide(str(refus), champ=refus.champ or 'protections')
+    if poly and conception.chaines:
+        try:
+            _saisie_normalisee(conception, poly)
+        except PolystringRefuse as refus:
+            raise EntreeInvalide(str(refus), champ='%s.%s' % (
+                CLE_POLYSTRING, refus.champ or 'groupes'))
+
+
+def _checklist_protections_tolerante(conception, decisions, norme):
+    """ACAL150 — la check-list LUE sans jamais lever : ``(checklist, avis)``.
+
+    Une décision stockée devenue PÉRIMÉE (organe écarté qui n'existe plus
+    dans le plan) n'est ni effacée ni appliquée : elle reste stockée (elle
+    revient avec l'organe) et devient l'avertissement nommé « décision
+    périmée : organe X ». Une décision illisible est signalée de même.
+    """
+    from .protections import DecisionInvalide, checklist_protections
+
+    if decisions is not None and not isinstance(decisions, dict):
+        return (checklist_protections(conception, decisions=None,
+                                      norme=norme),
+                ['décision illisible : « protections » enregistrées sous une '
+                 'forme inattendue — ignorées'])
+    try:
+        return checklist_protections(conception, decisions=decisions,
+                                     norme=norme), []
+    except DecisionInvalide:
+        pass
+    base = checklist_protections(conception, decisions=None, norme=norme)
+    connus = {ligne['repere'] for ligne in base['organes']}
+    ecartes = [ecart for ecart in (decisions or {}).get('ecartes') or ()
+               if isinstance(ecart, dict)]
+    avis = ['décision périmée : organe %s' % ecart.get('repere')
+            for ecart in ecartes if ecart.get('repere') not in connus]
+    gardees = dict(decisions or {}, ecartes=[
+        ecart for ecart in ecartes if ecart.get('repere') in connus])
+    try:
+        return checklist_protections(conception, decisions=gardees,
+                                     norme=norme), avis
+    except DecisionInvalide as refus:
+        return base, avis + ['décision illisible : %s' % refus]
+
+
+def _checklist_terre_tolerante(conception, decisions, norme, company):
+    """ACAL150 — la check-list de terre LUE sans jamais lever."""
+    from .terre import TerreInvalide, checklist_terre
+
+    try:
+        return checklist_terre(conception, decisions=decisions, norme=norme,
+                               company=company), []
+    except TerreInvalide as refus:
+        return (checklist_terre(conception, decisions=None, norme=norme,
+                                company=company),
+                ['décision de terre périmée ou illisible : %s (champ « %s »)'
+                 % (refus, refus.champ or 'terre')])
+
+
 def enregistrer_entree(calepinage, donnees, *, user=None):
     """Pose l'entrée électrique sur le calepinage (mise à jour PARTIELLE).
 
@@ -675,6 +830,11 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
     saisies = donnees.get(CLE_DEROGATIONS)
     reglages = {cle: valeur for cle, valeur in donnees.items()
                 if cle != CLE_DEROGATIONS}
+    # ACAL150 — TOUTE la saisie est validée AVANT la moindre écriture : un
+    # refus laisse ``resultat['entree_electrique']`` intact.
+    fusionnee = dict(entree_stockee(calepinage))
+    fusionnee.update(reglages)
+    _valider_entree(calepinage, fusionnee, reglages)
     traces = None
     if CLE_DEROGATIONS in donnees:
         # Le refus arrive AVANT toute écriture : rien n'est posé tant que
@@ -1226,10 +1386,10 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
 
     # CAL132 — la check-list de protections, éditable, chaque ligne gardant
     # sa source. C'est ELLE que la nomenclature et le schéma lisent.
-    from .protections import checklist_protections
-
-    protections = checklist_protections(
-        conception, decisions=donnees.get('protections'), norme=norme)
+    # ACAL150 — lecture TOLÉRANTE : une décision périmée devient un
+    # avertissement nommé, jamais un 500.
+    protections, avis_decisions = _checklist_protections_tolerante(
+        conception, donnees.get('protections'), norme)
 
     # CALX224-228 — le CHEMINEMENT mesuré, tronçon par tronçon. Calculé UNE
     # fois ici : le bordereau en tire son métré (CALX227) et le résultat le
@@ -1255,11 +1415,9 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         troncons=troncons['troncons'])
 
     # CAL134 — la check-list de terre et sa justification exigée.
-    from .terre import checklist_terre
-
-    terre = checklist_terre(conception, decisions=donnees.get('terre'),
-                            norme=norme,
-                            company=getattr(calepinage, 'company', None))
+    terre, avis_terre = _checklist_terre_tolerante(
+        conception, donnees.get('terre'), norme,
+        getattr(calepinage, 'company', None))
 
     # CAL170 — quelle longueur de chaîne a été retenue, et d'où elle vient.
     reconciliation = longueur_chaine_retenue(conception)
@@ -1279,7 +1437,9 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     messages.extend(cables['omissions'])
     messages.extend(bordereau['alertes'])
     messages.extend(protections['omissions'])
+    messages.extend(avis_decisions)
     messages.extend(terre['omissions'])
+    messages.extend(avis_terre)
     if reconciliation['origine'] == ORIGINE_LONGUEUR_DOSSIER:
         messages.append(reconciliation['detail'])
     elif reconciliation['hors_tolerance']:
@@ -1604,16 +1764,16 @@ def garde_publication(calepinage):
         # de terre vendue, la continuité de la terre EXISTANTE doit avoir été
         # justifiée (NF C 15-100 §542). Le refus est levé tel quel : il nomme
         # son champ.
-        from .terre import checklist_terre, garde_terre
+        from .terre import garde_terre
 
         conception, _materiel, donnees, _document = conception_du_calepinage(
             calepinage)
         from .norme import norme_applicable
 
-        garde_terre(checklist_terre(
-            conception, decisions=donnees.get('terre'),
-            norme=norme_applicable(parametres_societe(calepinage)),
-            company=getattr(calepinage, 'company', None)))
+        garde_terre(_checklist_terre_tolerante(
+            conception, donnees.get('terre'),
+            norme_applicable(parametres_societe(calepinage)),
+            getattr(calepinage, 'company', None))[0])
         return evaluation
     if evaluation['verdict'] == 'indetermine':
         raise PublicationBloquee(
@@ -1828,7 +1988,6 @@ def verdict_publiable(calepinage):
     from core.electrique.types import STATUT_BLOQUANT
 
     from .norme import norme_applicable
-    from .terre import checklist_terre
     from .troncons import troncons_du_calepinage
 
     conception, _materiel, donnees, document = conception_du_calepinage(
@@ -1840,9 +1999,9 @@ def verdict_publiable(calepinage):
     motifs.extend(_motifs_de_la_norme(norme))
     motifs.extend(_motifs_du_raccordement(
         conception, donnees.get('raccordement'), reglages))
-    motifs.extend(_motifs_de_la_terre(checklist_terre(
-        conception, decisions=donnees.get('terre'), norme=norme,
-        company=getattr(calepinage, 'company', None))))
+    motifs.extend(_motifs_de_la_terre(_checklist_terre_tolerante(
+        conception, donnees.get('terre'), norme,
+        getattr(calepinage, 'company', None))[0]))
     motifs.extend(_motifs_des_troncons(troncons_du_calepinage(calepinage)))
     # Le matériel NON DÉSIGNÉ n'est pas une omission assumée : on ne certifie
     # pas ce qu'on n'a pas pu vérifier (même règle que ``garde_publication``).

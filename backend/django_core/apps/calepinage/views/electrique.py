@@ -32,8 +32,15 @@ from ..services.electrique import (
     entree_electrique_servie, entree_stockee, evaluation_electrique,
     resultat_calepinage, verdict_publiable,
 )
+from ..services.protections import DecisionInvalide
+from ..services.terre import TerreInvalide
 
 __all__ = ['ElectriqueActionsMixin']
+
+#: ACAL150 — les refus qui DOIVENT rester des 400 nommés (jamais un 500) :
+#: températures, décision de check-list, décision de terre. La lecture du
+#: résultat les tolère déjà ; la vue les attrape quand même, par sûreté.
+_REFUS_DE_LECTURE = (TemperaturesInvalides, DecisionInvalide, TerreInvalide)
 
 
 class ElectriqueActionsMixin:
@@ -59,7 +66,7 @@ class ElectriqueActionsMixin:
         calepinage = self.get_object()
         try:
             return Response(resultat_calepinage(calepinage))
-        except TemperaturesInvalides as refus:
+        except _REFUS_DE_LECTURE as refus:
             return Response({refus.champ or 'temperatures': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
 
@@ -94,7 +101,7 @@ class ElectriqueActionsMixin:
         try:
             enregistrer_entree(calepinage, corps, user=request.user)
             return Response(resultat_calepinage(calepinage))
-        except (EntreeInvalide, TemperaturesInvalides) as refus:
+        except (EntreeInvalide, *_REFUS_DE_LECTURE) as refus:
             return Response({refus.champ or 'entree_electrique': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
 
@@ -145,6 +152,6 @@ class ElectriqueActionsMixin:
                 None if (layout is not None or entree is not None)
                 else verdict_publiable(calepinage))
             return Response(evaluation)
-        except (EntreeInvalide, TemperaturesInvalides) as refus:
+        except (EntreeInvalide, *_REFUS_DE_LECTURE) as refus:
             return Response({refus.champ or 'entree_electrique': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
