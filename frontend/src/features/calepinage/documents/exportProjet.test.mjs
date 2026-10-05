@@ -12,9 +12,10 @@ import { dirname, join, resolve } from 'node:path'
    `test_calx312_export_projet.py` affirme contre le document RÉELLEMENT
    servi — au lieu d'écrire un payload à la main. Un tiers (ou un écran) qui
    lit ce fichier peut donc compter sur ce qui est vérifié ici :
-   - `format_version` est l'ENTIER 2 (CALX370 : `postes_pertes` et
-     `variantes` rejoignent le fichier, qui se RÉIMPORTE), jamais une date ;
-   - les quatorze clés sont TOUJOURS présentes, même sur un calepinage vide ;
+   - `format_version` est l'ENTIER 3 (CALX370 : `postes_pertes` et
+     `variantes` rejoignent le fichier, qui se RÉIMPORTE ; ACAL17 : le bloc
+     `saisies` rejoint à son tour le fichier), jamais une date ;
+   - les quinze clés sont TOUJOURS présentes, même sur un calepinage vide ;
    - `provenance` (CALX314) est une liste {libelle, valeur}, sans valeur vide ;
    - un calepinage non simulé exporte `resultat: null` et `pertes: []` ;
    - aucune clé de la famille prix_* / cout_* / marge_* n'y figure (D5) ;
@@ -45,6 +46,8 @@ const CLES = [
   'avertissements', 'provenance',
   // CALX370 — format 2 : ce que la réimportation restitue.
   'postes_pertes', 'variantes',
+  // ACAL17 — format 3 : les saisies d'électricité/raccordement/SLD voyagent.
+  'saisies',
 ]
 
 function clesDeMontant(noeud, chemin = '<racine>') {
@@ -72,9 +75,9 @@ test("la route de l'export est celle que le serveur déclare", () => {
     "aucune @action ne sert url_path='export-projet.json'")
 })
 
-test('format_version est l’entier 2, sur les deux exemples', () => {
+test('format_version est l’entier 3, sur les deux exemples', () => {
   for (const cle of ['exemple', 'exemple_vide']) {
-    assert.equal(CONTRAT[cle].format_version, 2)
+    assert.equal(CONTRAT[cle].format_version, 3)
     assert.ok(Number.isInteger(CONTRAT[cle].format_version))
     assert.match(CONTRAT[cle].produit_le, /Z$/)
   }
@@ -94,7 +97,7 @@ test('la provenance est une liste {libelle, valeur}, jamais une valeur vide', ()
   assert.equal(empreinte.valeur, 'non calculée')
 })
 
-test('les quatorze clés sont toujours présentes, même vides', () => {
+test('les quinze clés sont toujours présentes, même vides', () => {
   assert.deepEqual(Object.keys(CONTRAT.exemple).sort(), [...CLES].sort())
   assert.deepEqual(Object.keys(CONTRAT.exemple_vide).sort(), [...CLES].sort())
 })

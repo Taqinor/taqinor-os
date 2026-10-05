@@ -125,39 +125,44 @@ describe('PanneauDocuments — bascule sur `documents/` (CALX320)', () => {
     }
   })
 
-  it('« ou_saisir » devient un LIEN quand le texte cite un onglet du registre (« l’onglet Documents »)', async () => {
-    servirInventaire('exemple') // document_asbuilt : manque cite « l'onglet Documents »
+  it('« ou_saisir » devient un LIEN vers l’onglet que NOMME le serveur (`manque[].onglet`, ACAL14)', async () => {
+    servirInventaire('exemple') // dossier_fin_chantier : images → onglet « documents »
 
     rendre()
 
-    const lien = await screen.findByTestId('cal-doc-manque-lien-document_asbuilt-images')
-    expect(lien).toHaveAttribute('href', '/calepinage/1?onglet=documents')
-    expect(lien).toHaveTextContent(documentDe('exemple', 'document_asbuilt').manque[0].ou_saisir)
+    const manque = documentDe('exemple', 'dossier_fin_chantier').manque
+      .find((m) => m.champ === 'images')
+    expect(manque.onglet).toBe('documents')
+    const lien = await screen.findByTestId('cal-doc-manque-lien-dossier_fin_chantier-images')
+    expect(lien).toHaveAttribute('href', `/calepinage/1?onglet=${manque.onglet}`)
+    expect(lien).toHaveTextContent(manque.ou_saisir)
   })
 
-  it('« ou_saisir » devient un LIEN vers « le panneau Pertes » pour le diagramme de pertes', async () => {
+  it('l’onglet du lien est CELUI du contrat, jamais retrouvé dans la phrase : plan_cablage → « affectation »', async () => {
     servirInventaire('exemple')
 
     rendre()
 
-    const lien = await screen.findByTestId('cal-doc-manque-lien-diagramme_pertes-images')
-    expect(lien).toHaveAttribute('href', '/calepinage/1?onglet=pertes')
+    const manque = documentDe('exemple', 'plan_cablage').manque
+      .find((m) => m.champ === 'electrique.chainage')
+    expect(manque.onglet).toBe('affectation')
+    const lien = await screen.findByTestId('cal-doc-manque-lien-plan_cablage-electrique.chainage')
+    expect(lien).toHaveAttribute('href', '/calepinage/1?onglet=affectation')
   })
 
-  it('« ou_saisir » qui ne cite AUCUN onglet du registre (« l’onglet Toiture »/« Électrique ») reste un texte SIMPLE, jamais un lien', async () => {
-    servirInventaire('exemple') // plan_cablage : chaînage → « onglet Électrique », tronçons → aucun onglet cité
+  it('un « manque » dont `onglet` vaut null (geste dans l’atelier 3D / Réglages) reste un texte SIMPLE, jamais un lien', async () => {
+    servirInventaire('exemple')
 
     rendre()
 
-    await screen.findByTestId('cal-doc-sortie-plan_cablage')
-    expect(screen.queryByTestId('cal-doc-manque-lien-plan_cablage-electrique.chainage')).toBeNull()
-    expect(screen.queryByTestId('cal-doc-manque-lien-plan_cablage-troncons')).toBeNull()
+    await screen.findByTestId('cal-doc-sortie-rapport_ombrage')
+    const manque = documentDe('exemple', 'rapport_ombrage').manque[0]
+    expect(manque.onglet).toBeNull()
+    expect(screen.queryByTestId(`cal-doc-manque-lien-rapport_ombrage-${manque.champ}`)).toBeNull()
     // Le texte NOMMÉ (celui du contrat, jamais retapé ici) reste lisible
     // malgré l'absence de lien.
-    const manqueChainage = documentDe('exemple', 'plan_cablage').manque
-      .find((m) => m.champ === 'electrique.chainage')
-    expect(screen.getByTestId('cal-doc-manque-item-plan_cablage-electrique.chainage'))
-      .toHaveTextContent(manqueChainage.ou_saisir)
+    expect(screen.getByTestId(`cal-doc-manque-item-rapport_ombrage-${manque.champ}`))
+      .toHaveTextContent(manque.ou_saisir)
   })
 
   it('l’empreinte de la conception (layout_hash) s’affiche en tête de panneau', async () => {

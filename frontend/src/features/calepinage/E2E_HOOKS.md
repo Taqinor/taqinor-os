@@ -396,6 +396,17 @@ retiré plus un hook ajouté.
 | `cal-coupe-svg` | coupe rendu SVG. |
 | `cal-coupe-vide` | coupe état vide. |
 
+## OutilsVue (`atelier/OutilsVue.jsx`) — SPL215
+
+| Hook | Sémantique |
+|---|---|
+| `cal-export-hd` | outils de vue — rangée des exports HD (2×, 3×…). |
+| `cal-export-hd-message` | outils de vue — message du dernier export HD. |
+| `cal-onglet-2d` | outils de vue — onglet « Vue 2D ». |
+| `cal-onglet-3d` | outils de vue — onglet « Vue 3D ». |
+| `cal-onglets-vue` | outils de vue — conteneur des onglets 2D/3D. |
+| `cal-panneau-calques` | outils de vue — panneau des calques. |
+
 ## PanneauActivite (`atelier/PanneauActivite.jsx`)
 
 | Hook | Sémantique |
