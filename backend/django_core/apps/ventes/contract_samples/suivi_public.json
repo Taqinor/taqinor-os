@@ -1,8 +1,7 @@
 {
   "endpoint": "GET /api/django/ventes/suivi/<token>/",
   "pourquoi": "ADOC112 (PACT10) — contrat du suivi public post-signature (QX34, public_views.suivi_public -> selectors.devis_milestones), pose SEUL avant ses moitiés : ADOC121/ADOC130 (serveur) et ADOC132/ADOC133 (page apps/web suivi/[token].astro + lib/suivi.ts). Trois fautes de la v1 que ce contrat interdit : (1) `date` d'un jalon est une date ISO ou null, JAMAIS un statut (la v1 servait date='signe' pour Installation) ; (2) `generated_at` est l'horodatage TECHNIQUE de la réponse et ne doit jamais être affiché comme « mis à jour » ; la page lit `mis_a_jour_le` ; (3) « Installation » n'est plus faite à la signature.",
-  "forme_serveur": "partielle",
-  "forme_serveur_provisoire": "Tant que ADOC121/ADOC130 ne sont pas sur main, le serveur sert encore `date` = statut du chantier pour installation et n'émet pas `mis_a_jour_le`. Le contrat ci-dessous est la forme CIBLE ; ADOC130 la passe à « complète ».",
+  "forme_serveur": "complete",
   "regles": {
     "cles_jalons": ["accepte", "acompte", "materiel", "installation", "facture"],
     "ordre": "les cinq entrées sont toujours présentes, dans cet ordre",

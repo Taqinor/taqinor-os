@@ -760,9 +760,14 @@ def devis_milestones(token):
          'done': facture is not None,
          'date': _iso(getattr(facture, 'date_emission', None))},
     ]
+    # ADOC130 — « Mis à jour le » = date du jalon fait le plus récent (jamais
+    # l'horloge de la requête) ; null si aucun jalon fait. ISO => max lexical.
+    dates_faites = [m['date'] for m in milestones
+                    if m['done'] and m['date']]
     return {
         'reference': devis.reference,
         'generated_at': timezone.now().isoformat(),
+        'mis_a_jour_le': max(dates_faites) if dates_faites else None,
         'milestones': milestones,
     }
 
