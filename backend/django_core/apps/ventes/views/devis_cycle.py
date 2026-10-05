@@ -389,7 +389,7 @@ class DevisCycleActionsMixin:
         # est remplacé par LE service de domaine verrouillé. QJR407 (cloneur
         # unique, sept champs, lignes QJR224/QJR84) vit dans ``cloner_devis``,
         # appelé par ``reviser_devis``.
-        from ..domain.cycle_vie import RevisionError, reviser_devis
+        from ..domain.revision import RevisionError, reviser_devis
         old = self.get_object()
         try:
             nd = reviser_devis(old, user=request.user)

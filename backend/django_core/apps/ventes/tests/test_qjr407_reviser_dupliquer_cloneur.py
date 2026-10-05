@@ -185,7 +185,7 @@ class RevisionGardeLeTravailManuel(_Base):
         self.source.refresh_from_db()
 
     def test_reviser_porte_le_travail_manuel_sans_aliasing(self):
-        from apps.ventes.domain.cycle_vie import reviser_devis
+        from apps.ventes.domain.revision import reviser_devis
         v2 = reviser_devis(self.source, user=self.user)
         v2.refresh_from_db()
         self.assertEqual(v2.roof_layout, self.LAYOUT)

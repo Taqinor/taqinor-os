@@ -301,7 +301,7 @@ class LesTroisCopiesGardentLesDeuxOptions(_DevisADeuxOptimumsDivergents):
 
     def test_renouveler_devis_preserve_les_totaux_des_deux_options(self):
         from apps.ventes.models import Devis
-        from apps.ventes.domain.cycle_vie import renouveler_devis
+        from apps.ventes.domain.revision import renouveler_devis
 
         avant = self._totaux_des_deux_options(self.devis)
         self.devis.statut = Devis.Statut.ACCEPTE
@@ -317,7 +317,7 @@ class LesTroisCopiesGardentLesDeuxOptions(_DevisADeuxOptimumsDivergents):
         from apps.ventes.models import Devis
         from apps.ventes.domain.creation import dupliquer_devis
         from apps.ventes.domain.gammes import creer_variante_gamme
-        from apps.ventes.domain.cycle_vie import renouveler_devis
+        from apps.ventes.domain.revision import renouveler_devis
 
         def _empreinte(devis):
             return sorted(

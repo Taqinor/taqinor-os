@@ -253,7 +253,7 @@ class LesTroisCopiesNePublientPlusLesChiffresDuSource(_SourceAvecEtudeMarquee):
 
     def test_renouveler_devis(self):
         from apps.ventes.models import Devis
-        from apps.ventes.domain.cycle_vie import renouveler_devis
+        from apps.ventes.domain.revision import renouveler_devis
 
         self.devis.statut = Devis.Statut.ACCEPTE
         self.devis.save(update_fields=['statut'])

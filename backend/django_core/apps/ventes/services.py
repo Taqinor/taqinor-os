@@ -171,7 +171,9 @@ from apps.ventes.domain import historique_config as _historique_config  # noqa: 
 configuration_devis_contenu = _historique_config.configuration_devis_contenu
 capturer_configuration_devis = _historique_config.capturer_configuration_devis
 diff_configurations_devis = _historique_config.diff_configurations_devis
-renouveler_devis = _cycle_vie.renouveler_devis
+# SPL263 — renouvellement / révision dans ``domain/revision.py``.
+from apps.ventes.domain import revision as _revision  # noqa: E402
+renouveler_devis = _revision.renouveler_devis
 mark_devis_sent = _cycle_vie.mark_devis_sent
 
 

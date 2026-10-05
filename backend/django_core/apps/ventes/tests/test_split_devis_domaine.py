@@ -65,7 +65,7 @@ DEPLACEMENTS = {
     'hist': ('split_dm_hist', 'apps/ventes/domain/cycle_vie.py',
              'apps/ventes/domain/historique_config.py', 'SPL262', True),
     'rev': ('split_dm_rev', 'apps/ventes/domain/cycle_vie.py',
-            'apps/ventes/domain/revision.py', 'SPL263', False),
+            'apps/ventes/domain/revision.py', 'SPL263', True),
     'envoi': ('split_dm_envoi', 'apps/ventes/domain/cycle_vie.py',
               'apps/ventes/domain/envoi.py', 'SPL264', False),
     'comp': ('split_dm_comp', 'apps/ventes/domain/pipeline.py',

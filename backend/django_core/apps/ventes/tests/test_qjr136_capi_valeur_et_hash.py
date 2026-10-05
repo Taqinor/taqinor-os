@@ -193,7 +193,7 @@ class LeRenouvellementNHeritePasDeLAttribution(TestCase):
             })
 
     def test_le_snapshot_du_source_ne_part_pas_dans_le_renouvellement(self):
-        from apps.ventes.domain.cycle_vie import renouveler_devis
+        from apps.ventes.domain.revision import renouveler_devis
 
         nouveau = renouveler_devis(self.devis, user=None)
         self.assertNotIn('attribution', nouveau.etude_params or {})
@@ -202,7 +202,7 @@ class LeRenouvellementNHeritePasDeLAttribution(TestCase):
             (nouveau.etude_params or {}).get('scenario'), 'Sans batterie')
 
     def test_le_devis_source_garde_son_attribution(self):
-        from apps.ventes.domain.cycle_vie import renouveler_devis
+        from apps.ventes.domain.revision import renouveler_devis
 
         renouveler_devis(self.devis, user=None)
         self.devis.refresh_from_db()
