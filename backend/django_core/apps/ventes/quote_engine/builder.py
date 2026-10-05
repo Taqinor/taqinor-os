@@ -22,9 +22,9 @@ from pathlib import Path
 # charge utile JSON publique et le comparatif de gammes (une seule vérité).
 from apps.ventes.utils.anticopie import agreger_lignes_kit
 # QJR78 — LA table de classification produit du backend (une seule, cf. plus
-# bas). ``solar_design`` est du stdlib pur : cet import ne tire ni Django, ni
-# modèle, ni I/O, et ne peut donc pas boucler.
-from apps.ventes import solar_design as _sd
+# bas). ``solar_classification`` (SPL261) est du stdlib pur : cet import ne
+# tire ni Django, ni modèle, ni I/O, et ne peut donc pas boucler.
+from apps.ventes import solar_classification as _sc
 # NTI18N5 — catalogue des libellés structurels du document (fr/en/ar). Données
 # pures, aucun import Django : c'est ICI que la langue déjà résolue choisit sa
 # table de libellés, une fois, pour que le gabarit n'ait plus à la résoudre.
@@ -339,7 +339,7 @@ def _normalize_site_host(site: str) -> str:
 # `services.py` à la version étroite — un « Module PV 550 W » était panneau pour
 # le PDF et pas pour l'écran. Les alias ci-dessous gardent les noms locaux, donc
 # aucun appelant de ce fichier ne change.
-_is_battery = _sd.is_battery
+_is_battery = _sc.is_battery
 
 
 # Capacité batterie lisible sur une désignation (« Batterie 5 kWh », « 10kwh »).
@@ -434,10 +434,10 @@ class _LigneArgentPdf:
         self.taux_tva_effectif = _D(str(row.get("taux_tva", taux_defaut)))
 
 
-_is_hybrid_inverter = _sd.is_hybrid_inverter
-_is_reseau_inverter = _sd.is_reseau_inverter
+_is_hybrid_inverter = _sc.is_hybrid_inverter
+_is_reseau_inverter = _sc.is_reseau_inverter
 # QJR-OFFGRID — la TROISIÈME famille d'onduleur (autonome / site isolé).
-_is_offgrid_inverter = _sd.is_offgrid_inverter
+_is_offgrid_inverter = _sc.is_offgrid_inverter
 
 
 # ── M2 — DÉTECTION PANNEAU ÉLARGIE (audit adversarial du 19/08/2026) ─────────
@@ -452,12 +452,12 @@ _is_offgrid_inverter = _sd.is_offgrid_inverter
 # été DÉPLACÉ tel quel (mêmes qualifiants, mêmes marques, mêmes exclusions,
 # même ordre), et les trois lecteurs backend l'importent de là. Le PDF ne perd
 # donc rien de l'élargissement du 19/08 ; l'écran, lui, le gagne.
-_PANEL_MODULE_QUALIFIERS = _sd._PANEL_MODULE_QUALIFIERS
-_PANEL_BRANDS = _sd._PANEL_BRANDS
-_is_panel = _sd.is_panel
-_is_inverter = _sd.is_inverter
-_is_smart_meter = _sd.is_smart_meter
-_is_wifi_dongle = _sd.is_wifi_dongle
+_PANEL_MODULE_QUALIFIERS = _sc._PANEL_MODULE_QUALIFIERS
+_PANEL_BRANDS = _sc._PANEL_BRANDS
+_is_panel = _sc.is_panel
+_is_inverter = _sc.is_inverter
+_is_smart_meter = _sc.is_smart_meter
+_is_wifi_dongle = _sc.is_wifi_dongle
 
 
 # QJR200 — ``_quote_is_huawei`` A ÉTÉ SUPPRIMÉ D'ICI. La règle QF9 (« un panier

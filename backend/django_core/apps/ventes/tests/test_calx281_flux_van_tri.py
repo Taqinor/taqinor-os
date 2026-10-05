@@ -35,7 +35,7 @@ import json
 import unittest
 from pathlib import Path
 
-from apps.ventes import economie, solar_design
+from apps.ventes import economie, solar_finance
 from apps.ventes.economie import EconomieInvalide, flux_de_tresorerie
 
 CONTRAT = (Path(__file__).resolve().parents[1] / 'contract_samples'
@@ -132,11 +132,11 @@ class ActualisationTest(unittest.TestCase):
                             for ligne in bloc['flux']))
 
     def test_la_van_relit_npv_de_solar_design(self):
-        self.assertIs(economie._npv, solar_design._npv)
-        self.assertIs(economie._irr, solar_design._irr)
+        self.assertIs(economie._npv, solar_finance._npv)
+        self.assertIs(economie._irr, solar_finance._irr)
         bloc = reference(taux_actualisation_pct=5)
         flux = [ligne['flux_mad'] for ligne in bloc['flux']]
-        self.assertAlmostEqual(bloc['van_mad'], solar_design._npv(0.05, flux),
+        self.assertAlmostEqual(bloc['van_mad'], solar_finance._npv(0.05, flux),
                                places=2)
 
 
@@ -145,10 +145,10 @@ class TriTest(unittest.TestCase):
         bloc = reference()
         flux = [ligne['flux_mad'] for ligne in bloc['flux']]
         self.assertAlmostEqual(bloc['tri_pct'],
-                               solar_design._irr(flux) * 100, places=4)
+                               solar_finance._irr(flux) * 100, places=4)
         # Le TRI annule la VAN.
         self.assertAlmostEqual(
-            solar_design._npv(bloc['tri_pct'] / 100, flux), 0, delta=1)
+            solar_finance._npv(bloc['tri_pct'] / 100, flux), 0, delta=1)
 
     def test_flux_sans_changement_de_signe_aucun_tri(self):
         bloc = reference(investissement_mad=0)

@@ -65,7 +65,7 @@ from __future__ import annotations
 import math
 from decimal import ROUND_HALF_UP, Decimal
 
-from .solar_design import _irr, _npv
+from .solar_finance import _irr, _npv
 
 __all__ = [
     'AMORTISSEMENT_MODES', 'EconomieInvalide', 'HYPOTHESES_FINANCIERES',

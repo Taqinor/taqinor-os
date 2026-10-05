@@ -22,7 +22,7 @@ from types import SimpleNamespace
 from django.test import TestCase
 
 from apps.parametres import tariff
-from apps.ventes import solar_design as sd
+from apps.ventes import solar_finance as sd
 
 
 def _reglages(**champs):
