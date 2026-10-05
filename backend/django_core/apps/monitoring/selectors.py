@@ -313,15 +313,20 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
 
     metrics = om_metrics(installation, window_days=window_days, today=today)
     mesuree_pct = metrics.get('availability_pct')
-    garantie_pct = Decimal(str(sla.disponibilite_garantie_pct))
+    # CIQ644 — taux SANS défaut : une ligne sans taux garanti n'a ni écart ni
+    # pénalité (jamais un 98 % supposé).
+    garantie_pct = (None if sla.disponibilite_garantie_pct is None
+                    else Decimal(str(sla.disponibilite_garantie_pct)))
 
-    if mesuree_pct is None:
+    if mesuree_pct is None or garantie_pct is None:
         return {
             'has_sla': True,
             'installation': installation.id,
             'window_days': window_days,
+            'libelle_indicateur': LIBELLE_INDICE_SUIVI,
             'disponibilite_garantie_pct': garantie_pct,
-            'disponibilite_mesuree_pct': None,
+            'disponibilite_mesuree_pct': (
+                None if mesuree_pct is None else Decimal(str(mesuree_pct))),
             'ecart_pct': None,
             'sous_garantie': False,
             'jours_indisponibilite_excedentaire': None,
@@ -342,13 +347,34 @@ def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
         'has_sla': True,
         'installation': installation.id,
         'window_days': window_days,
+        'libelle_indicateur': LIBELLE_INDICE_SUIVI,
         'disponibilite_garantie_pct': garantie_pct,
         'disponibilite_mesuree_pct': Decimal(str(mesuree_pct)),
         'ecart_pct': _q(ecart_pct),
         'sous_garantie': sous_garantie,
         'jours_indisponibilite_excedentaire': _q(jours_excedentaires),
-        'penalite_mad': _q(penalite),
+        # CIQ644 — aucune pénalité tant que l'engagement de production n'est
+        # pas validé par la société (``garantie_production_autorisee``, CIQ622).
+        'penalite_mad': (_q(penalite)
+                         if _garantie_production_autorisee(installation)
+                         else None),
     }
+
+
+#: CIQ644 — l'indicateur compte les jours AVEC RELEVÉ : c'est un indice de
+#: suivi, jamais une « disponibilité contractuelle ».
+LIBELLE_INDICE_SUIVI = 'indice de suivi (jours avec relevé)'
+
+
+def _garantie_production_autorisee(installation):
+    """Réglage société ``garantie_production_autorisee`` (CIQ622), False
+    par défaut ou si le profil est introuvable."""
+    company_id = getattr(installation, 'company_id', None)
+    if company_id is None:
+        return False
+    from apps.parametres.models import CompanyProfile
+    profil = CompanyProfile.objects.filter(company_id=company_id).first()
+    return bool(getattr(profil, 'garantie_production_autorisee', False))
 
 
 def benchmark_parc(company, *, window_days=365, today=None):

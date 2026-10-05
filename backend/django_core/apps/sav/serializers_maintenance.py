@@ -2,7 +2,22 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from .models import ContratMaintenance
+from .models import ContratMaintenance, PrestationContrat
+
+
+class PrestationContratSerializer(serializers.ModelSerializer):
+    """CIQ640 — prestation nommée (forme ``contract_samples/contrat_om.json``).
+
+    Éditable (CIQ648) par le PATCH du contrat : ``incluse``, ``frequence_an``
+    et ``prix_ht`` seulement ; ``id`` désigne la prestation du contrat,
+    ``type`` / ``libelle`` restent ceux semés (prestations nommées)."""
+    id = serializers.IntegerField(required=False)
+
+    class Meta:
+        model = PrestationContrat
+        fields = ['id', 'type', 'libelle', 'incluse', 'frequence_an',
+                  'prix_ht']
+        read_only_fields = ['type', 'libelle']
 
 
 class ContratMaintenanceSerializer(serializers.ModelSerializer):
@@ -23,6 +38,10 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
     equipements_detail = serializers.SerializerMethodField()
     # XCTR3 — droits inclus (entitlements), compteurs consommés/restants.
     droits_restants = serializers.SerializerMethodField()
+    # CIQ640 — contrat O&M C&I : prestations nommées imbriquées (lecture) et
+    # origine {devis_id, ligne_om} (contrat partagé ``contrat_om.json``).
+    prestations = PrestationContratSerializer(many=True, required=False)
+    origine = serializers.SerializerMethodField()
 
     class Meta:
         model = ContratMaintenance
@@ -43,8 +62,14 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
                   # XCTR3 — droits inclus (entitlements).
                   'visites_incluses_an', 'deplacements_inclus_an',
                   'pieces_couvertes_pct', 'droits_restants',
+                  # CIQ640 — contrat O&M C&I (contrat_om.json).
+                  'prestations', 'delai_intervention_heures', 'origine',
                   'date_creation']
         read_only_fields = ['derniere_visite', 'derniere_facturation', 'date_creation']
+
+    def get_origine(self, obj):
+        return {'devis_id': obj.origine_devis_id,
+                'ligne_om': obj.origine_ligne_om_id}
 
     def get_droits_restants(self, obj):
         from .selectors import droits_restants
@@ -59,6 +84,31 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
             }
             for e in obj.equipements.select_related('produit').all()
         ]
+
+    # CIQ648 — prestations éditées par le PATCH du contrat (jamais créées ni
+    # rattachées à un autre contrat : l'``id`` doit être une prestation de CE
+    # contrat). Vide = « à renseigner » (NULL), jamais un nombre pré-rempli.
+    _CHAMPS_PRESTATION = ('incluse', 'frequence_an', 'prix_ht')
+
+    def create(self, validated_data):
+        validated_data.pop('prestations', None)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        prestations = validated_data.pop('prestations', None)
+        if prestations is not None:
+            existantes = {p.pk: p for p in instance.prestations.all()}
+            if any(e.get('id') not in existantes for e in prestations):
+                raise ValidationError(
+                    {'prestations': 'Prestation inconnue pour ce contrat.'})
+            for entree in prestations:
+                prestation = existantes[entree['id']]
+                champs = [c for c in self._CHAMPS_PRESTATION if c in entree]
+                for champ in champs:
+                    setattr(prestation, champ, entree[champ])
+                if champs:
+                    prestation.save(update_fields=champs)
+        return super().update(instance, validated_data)
 
     def validate_equipements(self, value):
         """XCTR2 — un équipement d'une autre société est refusé (400) : le

@@ -165,6 +165,13 @@ class TestWarrantyReportEndpoint(TestCase):
             puissance_installee_kwc=Decimal('10'))
         self.config = MonitoringConfig.objects.create(
             company=self.company, installation=self.inst)
+        # CIQ646 — le rapport de garantie n'existe que pour une société qui a
+        # validé l'engagement (CIQ622) : ces cas la valident.
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company=self.company)
+        profil.garantie_production_autorisee = True
+        profil.garantie_production_validation = 'Juriste, 01/10/2026'
+        profil.save()
 
     def test_endpoint_404_without_warranty(self):
         r = self.api.get(

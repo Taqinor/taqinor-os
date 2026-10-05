@@ -21,6 +21,7 @@ from apps.crm.models import Client
 from apps.installations.models import Installation
 from apps.monitoring.models import ProductionReading, SlaDisponibilite
 from apps.monitoring.selectors import disponibilite_vs_garantie
+from apps.parametres.models import CompanyProfile
 
 
 def make_inst(company, ref):
@@ -37,6 +38,12 @@ class TestDisponibiliteVsGarantie(TestCase):
         self.company, _ = Company.objects.get_or_create(
             slug='ntnrg14-co', defaults={'nom': 'NTNRG14 Co'})
         self.today = date(2026, 6, 30)
+        # CIQ644 — la pénalité n'est chiffrée que si la société a validé
+        # l'engagement de production (CIQ622) : ces cas la valident.
+        profil = CompanyProfile.get(company=self.company)
+        profil.garantie_production_autorisee = True
+        profil.garantie_production_validation = 'Juriste, 01/10/2026'
+        profil.save()
 
     def test_no_sla_is_graceful_noop(self):
         inst = make_inst(self.company, 'NTNRG14-1')
