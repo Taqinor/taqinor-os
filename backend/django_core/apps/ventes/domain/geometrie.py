@@ -201,14 +201,57 @@ def extract_roof_config(layout):
     return cfg
 
 
-def layout_hash(layout):
-    """QJ17 — deterministic SHA-256 fingerprint of a roof layout dict.
+#: ACAL40 (D-ACAL-4 + D-ACAL-21) — les clés de l'empreinte « IMPRIMÉE » :
+#: tout ce qui change un chiffre que le client voit. ``a|b`` = alias lus dans
+#: cet ordre. Les six premières entrées sont le canonique HISTORIQUE (QJ17),
+#: toujours présent ; les suivantes n'entrent que PRÉSENTES et NON VIDES
+#: (R3) — un document qui ne les porte pas garde son empreinte à l'octet.
+#: Les obstacles d'ombrage d'un pan (``zones[].obstacles``, ``hauteurM``
+#: compris) entrent avec le pan lui-même.
+CLES_IMPRIMEES = (
+    'zones|areas|pans',
+    'result',
+    'scenario',
+    'panelWatt|watt',
+    'battery',
+    'poseSurfaces',
+    'exclusionZones',
+    'modules',
+    'shading12x24',
+    'environment',
+    'shadeObstructions',
+    'horizonProfile',
+)
 
-    Used to detect duplicate ``from-layout`` submissions (same geometry re-sent
-    after a network retry or a double-click).  Only the geometry-bearing keys are
-    hashed (``zones``/``areas``/``pans``, ``result``, ``scenario``, ``panelWatt``,
-    ``watt``, ``battery``) so that transient UI state (``pin``, ``outline``,
-    ``billKwh``, ``activeAreaId``, ``renderPlan``…) never prevents deduplication.
+#: Les clés ajoutées par ACAL40 — hors canonique historique, présentes et non
+#: vides seulement.
+_CLES_IMPRIMEES_AJOUTEES = CLES_IMPRIMEES[5:]
+
+
+def _vide(valeur):
+    return valeur is None or valeur in ('', [], {})
+
+
+def layout_hash(layout):
+    """L'empreinte « IMPRIMÉE » d'une conception (D-ACAL-4 + D-ACAL-21) :
+    SHA-256 déterministe des seules :data:`CLES_IMPRIMEES`.
+
+    Trois usages, une seule fonction :
+
+    * **péremption** — un devis porte l'empreinte de la conception qu'il
+      chiffre ; le badge « à jour » de la fiche (``selectors.calepinage_du_devis``)
+      et ``layout_stale`` comparent les deux empreintes ;
+    * **dédup** — ``from-layout`` et ``devis_brouillon_pour_layout`` (QJ17)
+      rendent le brouillon existant d'un lead à la même empreinte (double clic,
+      renvoi réseau) ;
+    * **trace « corrigé après envoi »** — une resynchronisation d'un devis
+      ENVOYÉ dont l'empreinte a bougé est une correction tracée (D-ACAL-21 :
+      une retouche d'ombrage ou d'horizon en est une).
+
+    L'état d'écran (``pin``, ``outline``, ``billKwh``, ``activeAreaId``,
+    ``scene``…) n'y entre jamais : il est versionné par l'empreinte
+    « document » du calepinage (``apps.calepinage.services.layout``), pas
+    imprimé.
     """
     import hashlib
     import json as _json
@@ -222,6 +265,10 @@ def layout_hash(layout):
         'panelWatt': layout.get('panelWatt') or layout.get('watt'),
         'battery': bool(layout.get('battery')),
     }
+    for cle in _CLES_IMPRIMEES_AJOUTEES:
+        valeur = layout.get(cle)
+        if not _vide(valeur):
+            canonical[cle] = valeur
     blob = _json.dumps(canonical, sort_keys=True, separators=(',', ':'),
                        default=str)
     return hashlib.sha256(blob.encode()).hexdigest()
