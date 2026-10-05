@@ -589,6 +589,10 @@ CLES_DERIVEES_NON_COPIEES = (
     # QJR591 — la ville de chiffrage figée : une copie se rechiffre sur la
     # ville de SON lead, jamais sur celle de la source.
     'ville_calcul',
+    # CIQ117 — les dérivées exclusives du moteur C&I : une copie/V2 les
+    # RECALCULE sur sa propre composition, jamais héritées du source.
+    'etude_ci',
+    'production_figee',
 )
 
 #: QJR136 / ES13 — L'ATTRIBUTION PUBLICITAIRE NE SE RECOPIE PAS NON PLUS.
