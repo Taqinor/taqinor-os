@@ -10,9 +10,10 @@
 //      d'une couleur en dur (donc lisible clair ET sombre).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { fichiersPagesVentes } from './fichiersPagesVentes.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const read = (f) => readFileSync(path.join(__dirname, f), 'utf8')
@@ -27,14 +28,8 @@ const FLUX = [
 
 test('plus aucun en-tête legacy dans pages/ventes/', () => {
   const offenders = []
-  // SPL206 — devisList/ (fichiers extraits de DevisList.jsx) est balayé aussi.
-  const fichiers = [
-    ...readdirSync(__dirname),
-    ...readdirSync(path.join(__dirname, 'devisList')).map((f) => path.join('devisList', f)),
-    // SPL211 — factureList/ (fichiers extraits de FactureList.jsx) est balayé aussi.
-    ...readdirSync(path.join(__dirname, 'factureList')).map((f) => path.join('factureList', f)),
-  ]
-  for (const f of fichiers) {
+  // SPL206/SPL211 — devisList/ et factureList/ (fichiers extraits) sont balayés aussi.
+  for (const f of fichiersPagesVentes()) {
     if (!f.endsWith('.jsx') || f.includes('.test.')) continue
     if (/className="page-header/.test(read(f))) offenders.push(f)
   }
