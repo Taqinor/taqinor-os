@@ -1749,11 +1749,16 @@ def _mode_kpis(data):
             'champ_kwc': _kpi_num(etude.get('champ_kwc')) or _kpi_num(data.get('puissance_kwc')),
         }
     if mode in ('industriel', 'commercial'):
+        # CIQ300 — ``economies_annuelles`` et ``payback`` ne sont PLUS lus dans
+        # l'étude JS persistée (``etudeMarcheBloc.js`` : payback calculé sur un
+        # prix pondéré par la consommation, pointe comprise — C3-02) : nuls
+        # tant que CIQ306 ne les projette pas depuis ``synthese_ci``. Clés
+        # gardées (forme ``mode_kpis`` C&I v2 du contrat CIQ4).
         return {
             'taux_autoconso': _kpi_num(etude.get('taux_autoconso')),
             'taux_couverture': _kpi_num(etude.get('taux_couverture')),
-            'economies_annuelles': _kpi_num(etude.get('economies_annuelles')),
-            'payback': _kpi_num(etude.get('payback')),
+            'economies_annuelles': None,
+            'payback': None,
             # Injection 82-21 (QX50) — présente seulement si calculée sur le devis.
             'injection_kwh_an': _kpi_num(etude.get('injection_kwh_an')),
             'injection_dh_an': _kpi_num(etude.get('injection_dh_an')),
@@ -3097,10 +3102,30 @@ CLES_ECONOMIES_RESIDENTIELLES = (
 #: Blocs publics dérivés de ces économies : ABSENTS en agricole.
 BLOCS_ECONOMIES_RESIDENTIELLES = ('economies_mensuelles', 'economies_periodes')
 
+#: CIQ300 — en commercial / industriel, la liste ``quote_vide_en_ci`` du
+#: contrat partagé ``proposal_data.json`` (CIQ4, ``notes_ciq4``) : les clés
+#: résidentielles + les trois factures avant/après du modèle BT. Égalité
+#: avec le contrat gardée par test_ciq300.
+CLES_ECONOMIES_RESIDENTIELLES_CI = CLES_ECONOMIES_RESIDENTIELLES + (
+    'facture_sans_solaire', 'facture_avec_solaire_s', 'facture_avec_solaire_a',
+)
+
+#: CIQ300 — marchés dont la proposition ne republie AUCUNE économie
+#: résidentielle / BT / JS (l'argent C&I viendra de ``synthese_ci``, CIQ306).
+MODES_CI = ('commercial', 'industriel')
+
+
+def _mode_public(data):
+    return str((data or {}).get('mode_installation') or '').strip().lower()
+
 
 def _est_agricole(data):
-    return (str((data or {}).get('mode_installation') or '')
-            .strip().lower() == 'agricole')
+    return _mode_public(data) == 'agricole'
+
+
+def _est_ci(data):
+    """CIQ300 — devis commercial ou industriel."""
+    return _mode_public(data) in MODES_CI
 
 
 def _vider_economies_residentielles(data):
@@ -3118,10 +3143,20 @@ def _vider_economies_residentielles(data):
     UNE seule fonction, appelée par ``proposal_data`` ET par
     ``_data_pour_taille_detail`` : les deux préparations restent jumelles.
     Mute ``data`` en place et le rend.
+
+    CIQ300 — la MÊME garde s'applique aux devis COMMERCIAL et INDUSTRIEL :
+    ``calculate_savings_roi`` y chiffre le barème BT résidentiel × 0,60
+    (``pricing.AUTOCONSO_SANS``) — un site MT dont le PDF masque les économies
+    affichait en ligne « Vous économisez sur 25 ans » au barème BT (C3-01,
+    C3-VB-01). Liste : ``quote_vide_en_ci`` du contrat ``proposal_data.json``.
     """
-    if not _est_agricole(data):
+    if _est_agricole(data):
+        cles = CLES_ECONOMIES_RESIDENTIELLES
+    elif _est_ci(data):
+        cles = CLES_ECONOMIES_RESIDENTIELLES_CI
+    else:
         return data
-    for cle in CLES_ECONOMIES_RESIDENTIELLES:
+    for cle in cles:
         data[cle] = None
     for cle in BLOCS_ECONOMIES_RESIDENTIELLES:
         data.pop(cle, None)
@@ -3241,8 +3276,10 @@ def proposal_data(request, token):
                        'roi_s', 'roi_a', 'savings_method', 'hypotheses'):
                 data[_k] = None
         # AGR300 — devis AGRICOLE : aucune économie résidentielle republiée.
+        # CIQ300 — idem COMMERCIAL / INDUSTRIEL (même fonction).
         _vider_economies_residentielles(data)
         _agricole_public = _est_agricole(data)
+        _ci_public = _est_ci(data)
         # M1 (audit du 19/08/2026) — la série « facture avant PV » ne franchit
         # la frontière publique que si elle est RÉELLE. Le builder ne fabrique
         # plus de proxy (facture ≈ économie / taux d'autoconsommation) : quand
@@ -3532,7 +3569,9 @@ def proposal_data(request, token):
         # ci-dessus : même patron additif — la clé n'est AJOUTÉE que lorsque la
         # couche économique est servable (hérite l'ancrage Z2 de `synthese`,
         # déjà calculé plus haut), sinon la page garde son affichage actuel.
-        _economies = (None if _agricole_public else
+        # CIQ300 — C&I : ni séries mensuelles ni bandeau de périodes (ils
+        # déclinent le modèle résidentiel) — clés ABSENTES (contrat CIQ4).
+        _economies = (None if (_agricole_public or _ci_public) else
                       _economies_mensuelles_publiques(
                           devis, data, synthese, niveau))
         if _economies is not None:
@@ -3548,7 +3587,9 @@ def proposal_data(request, token):
         # moindre doute, jamais bloquante pour le reste de la page.
         _etude_params_devis = getattr(devis, 'etude_params', None) or {}
         _dimensionnement = _etude_params_devis.get('dimensionnement')
-        _tranche = _tranche_tarifaire_publique(_dimensionnement)
+        # CIQ300 — la tranche BT résidentielle n'a pas de sens en C&I (absente).
+        _tranche = (None if _ci_public
+                    else _tranche_tarifaire_publique(_dimensionnement))
         if _tranche is not None:
             # QJR14 — le résiduel vient de ``meilleure_falaise`` : une
             # combinaison seulement TROUVÉE par le balayage. Il ne franchit la
@@ -3583,8 +3624,10 @@ def proposal_data(request, token):
         # section que les économies (`sections.economies` décochée ⇒ ni les 12
         # valeurs mensuelles ni ces variantes ne partent : les deux disent la
         # même chose au client, elles ne peuvent pas se dégrader séparément).
+        # CIQ300 — variantes d'économies du modèle résidentiel : absentes en C&I.
         _profils = (_profils_comparatifs_publique(_etude_params_devis, niveau)
-                    if _section_servie(link, 'economies') else None)
+                    if (_section_servie(link, 'economies')
+                        and not _ci_public) else None)
         if _profils is not None:
             payload['profils_comparatifs'] = _profils
         # L-ECO (fondateur, 24/08/2026) — le bandeau d'économies sous le graphe

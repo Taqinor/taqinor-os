@@ -80,7 +80,10 @@ class TestModeKpisPure(SimpleTestCase):
                           'economies_annuelles': 420000, 'payback': 3.1}}
         k = _mode_kpis(data)
         self.assertEqual(k['taux_autoconso'], 88)
-        self.assertEqual(k['economies_annuelles'], 420000)
+        # CIQ300 — économies et payback ne sont plus lus dans l'étude JS
+        # persistée : nuls tant que CIQ306 ne les projette pas de synthese_ci.
+        self.assertIsNone(k['economies_annuelles'])
+        self.assertIsNone(k['payback'])
         self.assertIsNone(k['injection_dh_an'])     # pas d'injection → None
 
     def test_commercial_kpis_with_injection(self):
@@ -167,7 +170,10 @@ class TestProposalPayloadModes(TestCase):
         p = self._payload(devis).json()
         self.assertEqual(p['mode_installation'], 'industriel')
         self.assertIsNone(p['categorie_commerciale'])
-        self.assertEqual(p['mode_kpis']['payback'], 3.1)
+        # CIQ300 — le payback JS persisté (3,1) n'est plus republié.
+        self.assertIsNone(p['mode_kpis']['payback'])
+        self.assertIsNone(p['mode_kpis']['economies_annuelles'])
+        self.assertEqual(p['mode_kpis']['taux_autoconso'], 88)
 
     def test_agricole_payload_reel_sans_bassin_ni_fda_avec_heures(self):
         """AGR301 — vérifié en RÉEL via le client Django : un devis agricole
