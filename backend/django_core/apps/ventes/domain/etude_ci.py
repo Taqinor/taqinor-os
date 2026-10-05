@@ -285,6 +285,80 @@ def _couche_corps(res, corps):
         res.poser_arbre(corps, _provenance('saisie', None, _aujourdhui().isoformat()))
 
 
+#: CIQ141 — couverture constatée à la visite → type de pose CIQ7 : seulement
+#: les correspondances CERTAINES (une dalle béton lestée ou fixée reste à dire).
+POSE_DE_LA_COUVERTURE_VISITE = {'bac_acier': 'bac_acier', 'tuile': 'toiture_inclinee'}
+
+
+def _poser_mesure(res, feuille, valeur, provenance):
+    """Une mesure de visite passe devant le lead, jamais devant une saisie
+    (corps) ni le devis."""
+    if _vide(valeur):
+        return
+    actuelle = res.provenance(feuille) or {}
+    if actuelle.get('origine') in ('saisie', 'devis'):
+        return
+    res.poser(feuille, valeur, provenance)
+
+
+def _couche_visite(res, lead, alertes):
+    """CIQ141 — le relevé de la dernière visite ``ci`` VALIDÉE du lead (façade
+    ``apps.visites.selectors.releve_ci_pour_lead``, jamais ses modèles) :
+    vérifié par la visite > déclaré > absent. Une mesure « non relevée » ne
+    remplace rien et lève une alerte nommée."""
+    if lead is None:
+        return
+    from apps.visites.selectors import releve_ci_pour_lead
+    releve = releve_ci_pour_lead(lead)
+    if not releve:
+        return
+    prov = _provenance('mesure_visite', 'visite %s' % releve.get('visite_id'),
+                       releve.get('validee_le'))
+    # Longueurs de cheminement : par trajet, sommées.
+    trajets = releve.get('trajets') or []
+    for cle in ('longueur_dc_m', 'longueur_ac_m'):
+        valeurs = [_num(t.get(cle)) for t in trajets if _num(t.get(cle)) is not None]
+        if valeurs:
+            _poser_mesure(res, cle, round(sum(valeurs), 2), prov)
+    # Zones de toiture : la plus grande surface utile devient le toit de l'étude.
+    zones = []
+    for zone in releve.get('zones_toiture') or []:
+        surface = _num(zone.get('surface_utile_m2'))
+        if surface is None and _num(zone.get('longueur_m')) and _num(zone.get('largeur_m')):
+            surface = _num(zone['longueur_m']) * _num(zone['largeur_m'])
+        zones.append((surface or 0.0, zone))
+    if len(zones) > 1:
+        alertes.append(_alerte('plusieurs_zones_toiture', 'toit',
+                               'Plusieurs zones de toiture relevées : calepinage requis.'))
+    if zones:
+        surface, zone = max(zones, key=lambda z: z[0])
+        if surface:
+            _poser_mesure(res, 'surface_utile_m2', round(surface, 2), prov)
+            _poser_mesure(res, 'surface_type', 'mesuree', prov)
+        couverture = zone.get('couverture')
+        _poser_mesure(res, 'couverture', couverture, prov)
+        _poser_mesure(res, 'type_pose', POSE_DE_LA_COUVERTURE_VISITE.get(couverture), prov)
+        _poser_mesure(res, 'pente_deg', _num(zone.get('pente_deg')), prov)
+        charge = _num(zone.get('charge_admissible_declaree_kg_m2'))
+        if charge is not None:
+            piece = zone.get('charge_admissible_piece')
+            source = 'pièce %s, zone « %s » (visite %s du %s)' % (
+                piece if not _vide(piece) else 'non jointe', zone.get('libelle') or '?',
+                releve.get('visite_id'), releve.get('validee_le'))
+            _poser_mesure(res, 'charge_admissible_kg_m2', charge, prov)
+            _poser_mesure(res, 'charge_admissible_source', source, prov)
+    # Comptage : seulement si le lead ne le porte pas encore.
+    tension = (releve.get('niveau_tension') or {}).get('constate')
+    if tension and res.valeur('tension') in (None, 'inconnue'):
+        res.poser('tension', tension, prov)
+    puissance = (releve.get('puissance_souscrite_kva') or {}).get('constate')
+    if puissance is not None and res.valeur('puissance_souscrite_kva') is None:
+        res.poser('puissance_souscrite_kva', puissance, prov)
+    for mesure, motif in sorted((releve.get('non_releves') or {}).items()):
+        alertes.append(_alerte('mesure_non_verifiee', mesure,
+                               '%s non vérifiée à la visite (%s).' % (mesure, motif)))
+
+
 def resoudre_entrees(entrees, *, devis=None, lead=None):
     res = _Resolution()
     _couche_lead(res, lead)
@@ -711,6 +785,11 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         alertes.append(_alerte('mode_inconnu', 'mode',
                                'Mode commercial ou industriel requis.', niveau='bloquant'))
         return _sans_cles_interdites(_vide_etude(res, alertes, hypotheses))
+    _couche_visite(res, lead, alertes)
+    if _num(res.valeur('longueur_dc_m')) is None and _num(res.valeur('longueur_ac_m')) is None:
+        alertes.append(_alerte(
+            'longueurs_non_relevees', 'contraintes',
+            'Longueurs de câble non relevées — à confirmer à la visite.'))
     tension = res.valeur('tension')
     tarif = tarif_ci.tarif_applicable(res.valeur('tarif_declare'), tension=tension)
     conso, _feuille = _consommation(res, tarif, alertes, hypotheses)
