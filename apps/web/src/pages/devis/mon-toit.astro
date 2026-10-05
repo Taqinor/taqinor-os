@@ -241,10 +241,17 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
              l'étape 2 (accordéon « Votre contexte ») pour garder cette étape
              carte légère — mêmes id/name, contrat webhook inchangé. -->
 
-        <p class="mt-5 text-lune-soft" data-i18n
+        <p id="mt-step0-intro" class="mt-5 text-lune-soft" data-i18n
           data-fr="Cherchez votre adresse et posez un repère sur votre toit. C'est facultatif — vous pouvez aussi continuer avec votre adresse seule."
           data-ar="ابحث عن عنوانك وضع علامة على سطحك. هذا اختياري — يمكنك أيضاً المتابعة بعنوانك فقط.">
           Cherchez votre adresse et posez un repère sur votre toit. C'est facultatif —
+          vous pouvez aussi continuer avec votre adresse seule.
+        </p>
+        <!-- AGW401 — variante agricole de l'étape 0 (affichée par syncStep2Panels). -->
+        <p id="mt-step0-intro-agri" hidden class="mt-5 text-lune-soft" data-i18n
+          data-fr="Cherchez votre adresse et posez un repère sur votre forage ou votre parcelle. C'est facultatif — vous pouvez aussi continuer avec votre adresse seule."
+          data-ar="ابحث عن عنوانك وضع علامة على بئرك أو قطعتك الأرضية. هذا اختياري — يمكنك أيضاً المتابعة بعنوانك فقط.">
+          Cherchez votre adresse et posez un repère sur votre forage ou votre parcelle. C'est facultatif —
           vous pouvez aussi continuer avec votre adresse seule.
         </p>
 
@@ -545,7 +552,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                    ÉQUIPES seules (SHIFT_DAY_SHARE_CEILING) — le week-end
                    n'entrait dans aucun calcul. Le commercial le complète dans l'ERP. -->
               <p class="mt-2 text-xs text-lune-faint">
-                Le solaire déplace vos heures PLEINES (~1,01 DH/kWh) ; la POINTE ne se
+                Le solaire déplace vos heures PLEINES ; la POINTE ne se
                 couvre qu'avec une batterie — jamais l'inverse. Plus vous produisez la
                 nuit (3×8, continu), moins le solaire seul couvre — une estimation
                 honnête, affinée après étude.
@@ -769,10 +776,15 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                  retombe sur son efficience par défaut (IRRIGATION_EFFICIENCY_DEFAUT),
                  exactement comme pour un visiteur qui ne répondait pas. -->
 
-            <!-- Subvention FDA — fait vérifié, formulation honnête (plafond, dossier). -->
-            <p class="text-xs text-lune-faint">
-              Subvention FDA&nbsp;: jusqu'à 30&nbsp;% du coût d'un kit de pompage solaire
-              (dossier accompagné par nos soins).
+            <!-- AGW405 — Aide FDA : AUCUN pourcentage ni promesse d'accompagnement (décision
+                 Q22 « ne rien promettre »). Source : Guide FDA édition 2024, p. 20-23
+                 (casainvest.ma), lu en octobre 2026 — le pilote ne vise que le remplacement
+                 du butane, exige l'accord préalable AVANT travaux et plafonne l'aide par projet.
+                 « Dossier accompagné par nos soins » retiré tant que Reda ne l'a pas confirmé. -->
+            <p id="mt-fda-note" class="text-xs text-lune-faint">
+              Aide de l'État (FDA) possible pour remplacer une pompe au butane, sous conditions,
+              avec accord préalable de votre DPA/ORMVA AVANT les travaux — détails sur la page
+              <a href="/financement" class="underline decoration-white/40 underline-offset-2 hover:text-white">Financement</a>.
             </p>
           </div>
 
@@ -792,7 +804,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
               <span id="mt-fuel-spend-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             </label>
             <p class="text-xs text-lune-faint">
-              La dépense carburant sert à calculer votre économie — rien d'autre.
+              Elle sert à l'étude de votre projet ; l'économie est calculée dans le devis.
             </p>
           </div>
         </div>
@@ -1011,7 +1023,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
               </div>
               <div class="mt-doc-kpi mt-doc-kpi-green" id="mt-agri-fuel-card" hidden>
                 <p class="mt-doc-kpi-value" id="mt-agri-fuel">—</p>
-                <p class="mt-doc-kpi-label">Économie carburant</p>
+                <p class="mt-doc-kpi-label">Dépense carburant déclarée</p>
               </div>
             </div>
 
@@ -2561,6 +2573,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // pilote des questions d'étape 2 entièrement différentes) ; « Continuer »
   // exige un choix explicite (validateStep0, nudge inline sur les cartes). ———
   let mode = savedWizard?.mode || '';
+  // AGW401 — l'intention déclarée par le visiteur en cliquant (?mode=…, liste
+  // FERMÉE des 4 modes) présélectionne VISIBLEMENT la carte (aria-pressed) ;
+  // elle reste modifiable. Valeur inconnue = aucun effet. SEUL lecteur de
+  // `?mode=` de ce tunnel. Aucune clé webhook nouvelle.
+  try {
+    const wantedMode = new URLSearchParams(window.location.search).get('mode');
+    if (wantedMode && ['residentiel', 'industriel', 'commercial', 'agricole'].includes(wantedMode)) mode = wantedMode;
+  } catch { /* URL illisible : aucun mode présélectionné */ }
   // WJ121 — migration des sessions en cours : l'ancien profil unique
   // 'professionnel' est réhydraté comme 'industriel' (le backend mappe déjà
   // professionnel→industriel) — le site n'ÉMET plus jamais 'professionnel'.
@@ -2619,6 +2639,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (pro) pro.hidden = !(m === 'industriel' || m === 'professionnel');
     if (commercial) commercial.hidden = m !== 'commercial';
     if (agri) agri.hidden = m !== 'agricole';
+    // AGW401 — étape 0 en mode agricole : repère « forage / parcelle », sans le
+    // choix Pointer/Dessiner mon toit (GPS et ville conservés).
+    const introStd = $('mt-step0-intro');
+    const introAgri = $('mt-step0-intro-agri');
+    if (introStd) introStd.hidden = m === 'agricole';
+    if (introAgri) introAgri.hidden = m !== 'agricole';
+    const roofModeGrp = $('mt-roof-mode-group');
+    if (roofModeGrp) roofModeGrp.hidden = m === 'agricole' || !!(fallback && !fallback.hidden);
     syncRaisonSociale();
   }
   /** La raison sociale vit désormais sur l'écran CONTACT (coupe fondateur
@@ -3094,6 +3122,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // normalement `cityTouched`, et sans ce garde-fou le prochain repère posé
     // sur la carte écraserait silencieusement la ville qu'on vient de restaurer.
     if (savedWizard.fields?.['mt-city']) cityTouched = true;
+    // AGW403 — un curseur « heures de pompage » restauré à une valeur ≠ 7 a
+    // forcément été touché (affecter `.value` par script ne déclenche pas
+    // `input`) ; à 7 on ne peut pas le savoir : jamais une réponse inventée.
+    {
+      const hp = $('mt-heures-pompage') as HTMLInputElement | null;
+      const savedHp = savedWizard.fields?.['mt-heures-pompage'];
+      if (hp && savedHp && savedHp !== '7') hp.dataset.touche = '1';
+    }
     // WJ105 — une préférence de contact restaurée doit re-synchroniser la
     // visibilité de la SLA de rappel (affecter `.checked` par script ne
     // déclenche pas `change`).
@@ -3293,7 +3329,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     const out = $('mt-heures-pompage-value');
     if (out && heuresInput) out.textContent = `${heuresInput.value} h`;
   }
+  // AGW403 — le curseur vaut 7 AVANT toute interaction : `data-touche="1"` est
+  // posé dès son premier événement input/change, et seul un curseur touché
+  // envoie `heuresPompage` (lecture.ts : type « nombreTouche »). L'estimation
+  // affichée garde ses 7 h par défaut (hypothèse interne), sans effet visible.
+  const marquerHeuresTouchees = () => { if (heuresInput) heuresInput.dataset.touche = '1'; };
+  heuresInput?.addEventListener('change', marquerHeuresTouchees);
   heuresInput?.addEventListener('input', () => {
+    marquerHeuresTouchees();
     syncHeuresLabel();
     computeEstimate();
   });
@@ -3584,6 +3627,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       lastSavingsLabel = '';
       lastKwc = null;
       estimateShown = null;
+      // CIW404 — un tarif périmé ne survit pas à une estimation en échec.
+      lastProTarifMadKwh = null;
       if (printBtn) printBtn.hidden = true;
     };
     const proBill = num(proBillId());
@@ -3649,30 +3694,18 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // WJ125 — payload lead (chiffres exacts) + labels construits AVANT tout
     // rendu ; en parcours public gaté on s'arrête ici SANS écrire un chiffre.
     {
-      const s: Record<string, number | string> = {};
+      // CIW404 — en modes commercial/industriel, AUCUN chiffre d'hypothèse (kWc, production,
+      // économie, retour, taux de couverture / d'autoconsommation) ne part au CRM ni dans le
+      // message WhatsApp : ils viennent de constantes non sourcées (tarifs, prix au kWc, parts
+      // diurnes « à vérifier ») et le retour est la MÊME paire pour tous les leads d'une
+      // tension. Seul un drapeau « étude dédiée » reste ; l'écran garde le teaser (WJ125).
+      // Le seul chiffre montré au client sera celui du moteur serveur (/proposition, D-CIQ-0).
       const kOk = Number.isFinite(est.kwc) && est.kwc > 0;
-      if (kOk) s.kwc = est.kwc;
-      // Le nombre de modules du dimensionnement annoncé (nb × 710 Wc = ce kWc).
-      // estimatorPro le calcule depuis toujours ; le CRM ne le recevait jamais et
-      // le conseiller le recomptait à la main depuis le kWc.
-      if (Number.isFinite(est.nbPanneaux) && est.nbPanneaux > 0) s.nbPanneaux = est.nbPanneaux;
-      if (Number.isFinite(est.prodAnnuelleKwh) && est.prodAnnuelleKwh > 0) s.prodKwh = Math.round(est.prodAnnuelleKwh);
-      if (Number.isFinite(est.tauxAutoconso) && est.tauxAutoconso > 0) s.tauxAutoconso = pct(est.tauxAutoconso);
-      if (Number.isFinite(est.tauxCouverture) && est.tauxCouverture > 0) s.tauxCouverture = pct(est.tauxCouverture);
-      const eOk = est.ecoAnnuelleMadLow > 0 && est.ecoAnnuelleMadHigh > 0;
-      if (eOk) { s.ecoMadYearLow = est.ecoAnnuelleMadLow; s.ecoMadYearHigh = est.ecoAnnuelleMadHigh; }
-      const rOk = est.paybackYearsLow > 0 && est.paybackYearsHigh > 0;
-      const rLabel = rOk
-        ? (est.paybackYearsLow === est.paybackYearsHigh
-          ? `${fmtYears(est.paybackYearsLow)} ans`
-          : `${fmtYears(est.paybackYearsLow)} – ${fmtYears(est.paybackYearsHigh)} ans`)
-        : null;
-      if (rLabel) s.paybackLabel = rLabel;
-      estimateShown = s;
+      estimateShown = null; // CIW404 — aucun chiffre vers le CRM
+      // `lastKwc` ne sert qu'à l'aperçu 3D local : il ne part jamais au CRM.
       lastKwc = kOk ? est.kwc : null;
-      lastKwcLabel = kOk ? `${formatKwc(est.kwc)} kWc` : '';
-      const eLabel = eOk ? formatMadRange(est.ecoAnnuelleMadLow, est.ecoAnnuelleMadHigh) : null;
-      lastSavingsLabel = eLabel ? `${eLabel}/an` : '';
+      lastKwcLabel = '';
+      lastSavingsLabel = '';
     }
     if (PUBLIC_ESTIMATE_GATED) {
       updatePanels3dVisibility();
@@ -3730,10 +3763,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     }
     if (noteEl) noteEl.hidden = true;
     if (hypWrap) hypWrap.hidden = false;
-    estimateShown = shown;
+    // CIW404 — même règle côté écran non gaté : rien de chiffré vers le CRM ni WhatsApp.
+    estimateShown = null; // CIW404 — aucun chiffre vers le CRM
     lastKwc = kwcOk ? est.kwc : null;
-    lastKwcLabel = kwcOk ? `${formatKwc(est.kwc)} kWc` : '';
-    lastSavingsLabel = ecoLabel ? `${ecoLabel}/an` : '';
+    lastKwcLabel = '';
+    lastSavingsLabel = '';
     if (printBtn) printBtn.hidden = false;
     fillDocChrome();
     updatePanels3dVisibility();
@@ -3754,8 +3788,6 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     nbPanneaux: number;
     m3Jour: number;
     heures: number;
-    fuelSavingMadYearLow?: number;
-    fuelSavingMadYearHigh?: number;
     hypotheses: { pumpEff: number; pvFactor: number };
   }
   function computeAgricoleEstimate(): AgricoleEstimateOk | null {
@@ -3812,12 +3844,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       if (ag.m3Jour > 0) s.m3Jour = ag.m3Jour;
       // WJ124 — bassin suggéré = besoin journalier (1×), borne basse de la fourchette 1-3×.
       if (ag.m3Jour > 0) s.bassinM3 = ag.m3Jour;
-      const fOk = (ag.fuelSavingMadYearLow ?? 0) > 0 && (ag.fuelSavingMadYearHigh ?? 0) > 0;
-      if (fOk) { s.ecoMadYearLow = ag.fuelSavingMadYearLow as number; s.ecoMadYearHigh = ag.fuelSavingMadYearHigh as number; }
       estimateShown = s;
       lastKwc = null;
       lastKwcLabel = cOk ? `${formatKwc(ag.champKwc)} kWc (champ PV)` : '';
-      lastSavingsLabel = fOk ? `${formatMadRange(ag.fuelSavingMadYearLow as number, ag.fuelSavingMadYearHigh as number)}/an` : '';
+      // AGW404 — aucune économie carburant dans le payload ni dans le message WhatsApp.
+      lastSavingsLabel = '';
     }
     if (PUBLIC_ESTIMATE_GATED) {
       updatePanels3dVisibility();
@@ -3844,13 +3875,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     setCard('mt-agri-eau-card', 'mt-agri-eau', eauLabel);
     if (eauOk) shown.m3Jour = ag.m3Jour;
     if (eauOk) shown.bassinM3 = ag.m3Jour;
-    const fuelOk = (ag.fuelSavingMadYearLow ?? 0) > 0 && (ag.fuelSavingMadYearHigh ?? 0) > 0;
-    const fuelLabel = fuelOk ? `${formatMadRange(ag.fuelSavingMadYearLow as number, ag.fuelSavingMadYearHigh as number)}/an` : null;
+    // AGW404 — plus de bande « économie carburant » : la valeur DÉCLARÉE du visiteur, telle quelle
+    // (sans × 12 ni pourcentage), masquée si vide.
+    const depenseDeclaree = num('mt-fuel-spend');
+    const fuelLabel = depenseDeclaree != null && depenseDeclaree > 0 ? `${fmtNum(depenseDeclaree)} MAD/mois` : null;
     setCard('mt-agri-fuel-card', 'mt-agri-fuel', fuelLabel);
-    if (fuelOk) {
-      shown.ecoMadYearLow = ag.fuelSavingMadYearLow as number;
-      shown.ecoMadYearHigh = ag.fuelSavingMadYearHigh as number;
-    }
     // Bande de flux soleil → pompe → eau : uniquement si les 3 chiffres existent.
     const flow = $('mt-doc-flow');
     const flowOk = ag.heures > 0 && pompeLabel != null && eauOk;
@@ -3878,7 +3907,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // reste null (le bloc 3D reste réservé aux toits résidentiel/pro).
     lastKwc = null;
     lastKwcLabel = champLabel ? `${formatKwc(ag.champKwc)} kWc (champ PV)` : '';
-    lastSavingsLabel = fuelLabel || '';
+    lastSavingsLabel = '';
     const printBtn = $('mt-print-estimate');
     if (printBtn) printBtn.hidden = false;
     fillDocChrome();
@@ -4602,7 +4631,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // `errors.roofType` n'a plus de champ où s'afficher : le type de toit est
     // retiré du tunnel (coupe fondateur 18/08) et resolveRoofType garantit une
     // valeur valide — l'erreur ne peut donc plus se produire depuis cette page.
-    setFieldError('mt-bill', 'mt-bill-err', errors.billRange ?? null);
+    // CIW404 — l'erreur de tranche va sur le champ VISIBLE du profil actif (jamais sur le <select> résidentiel caché en C&I).
+    if (isProMode(mode)) setFieldError(proBillId(), proBillErrId(), errors.billRange ?? null);
+    else setFieldError('mt-bill', 'mt-bill-err', errors.billRange ?? null);
     const cErr = $('mt-consent-err');
     if (cErr) { cErr.textContent = errors.consent ?? ''; cErr.hidden = !errors.consent; }
   }

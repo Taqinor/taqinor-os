@@ -37,7 +37,7 @@ const steps = [
   { title: 'Inventaire technique', body: 'Relevé de l’installation existante : puissance installée, mode de raccordement, niveau de tension, équipements de protection et de comptage.' },
   { title: 'Détermination du régime', body: 'Selon la puissance et le raccordement, l’installation relève de la déclaration, de l’accord de raccordement ou de l’autorisation (décret 2-25-100).' },
   { title: 'Constitution du dossier', body: 'Fiches techniques, schéma unifilaire, attestations de conformité et formulaires du régime applicable — préparés par nos soins.' },
-  { title: 'Dépôt de la demande de régularisation', body: 'Dépôt auprès du gestionnaire de réseau ou de l’autorité compétente, dans le cadre de la fenêtre ouverte par l’Article 33.' },
+  { title: 'Dépôt de la demande de régularisation', body: 'Dépôt auprès du gestionnaire de réseau ou de l’autorité compétente, dans le délai prévu par l’Article 33.' },
   { title: 'Suivi jusqu’à la mise en conformité', body: 'Suivi de l’instruction, réponses aux compléments demandés, et le cas échéant mise à niveau technique de l’installation.' },
 ];
 
@@ -54,7 +54,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Régularisation Article 33 — installations solaires existantes',
-  description: 'La loi 82-21 est en vigueur depuis le 9 juin 2026. L’Article 33 ouvre une fenêtre de 18 mois pour régulariser les installations solaires existantes.',
+  description: 'Le décret d’application 2-25-100 est en vigueur depuis le 9 juin 2026. L’Article 33 de la loi 82-21 prévoit un délai de 18 mois pour régulariser les installations solaires existantes ; le point de départ de ce délai est à confirmer auprès des services de l’énergie.',
   about: { '@type': 'Thing', name: 'Régularisation loi 82-21 — Article 33' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
   publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -78,7 +78,7 @@ const howToLd = {
 
 <Layout
   title="Régularisation Article 33 — installations solaires existantes | Taqinor"
-  description="La loi 82-21 est en vigueur depuis le 9 juin 2026. L'Article 33 ouvre une fenêtre de 18 mois pour régulariser les installations solaires existantes : procédure en 5 étapes, sanctions encourues, prise en charge complète du dossier."
+  description="Le décret d'application 2-25-100 est en vigueur depuis le 9 juin 2026. L'Article 33 de la loi 82-21 prévoit un délai de 18 mois pour régulariser les installations solaires existantes (point de départ à confirmer auprès des services de l'énergie) : procédure en 5 étapes, sanctions encourues, prise en charge complète du dossier."
   ogSlug="article-33"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -94,12 +94,12 @@ const howToLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Loi 82-21 — Article 33</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-3xl">Votre installation solaire existe déjà ? Régularisez-la maintenant.</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          Le décret 2-25-100, publié au Bulletin Officiel le 9 mars 2026, est entré en vigueur le
-          9 juin 2026, et la décision 04/26 de l'ANRE fixe le tarif de rachat du surplus pour le
-          moyen et le haut tension (le tarif du régime déclaration en basse tension, celui de la
-          quasi-totalité des installations résidentielles, n'est pas encore publié) ; depuis ce jour
-          le régime de la loi 82-21 vaut pour toutes les installations
-          d'autoproduction, jusqu'à celles montées bien avant le texte.
+          Le décret d'application 2-25-100, publié au Bulletin Officiel le 9 mars 2026, est entré en
+          vigueur le 9 juin 2026. La décision 04/26 de l'ANRE fixe le tarif d'excédent pour les
+          installations raccordées en MT/HT/THT ; en basse tension, la revente du surplus n'est pas
+          ouverte, même à 11 kW ou plus sous accord de raccordement. Le régime de la loi 82-21 vaut
+          pour toutes les installations
+                    d'autoproduction, jusqu'à celles montées bien avant le texte.
         </p>
       </div>
     </section>
@@ -108,25 +108,27 @@ const howToLd = {
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section mx-auto max-w-3xl px-4">
       <div class="v2-rise border-2 border-brass-400/50 bg-nuit-800/60 p-6 sm:p-8">
-        <p class="tech-label v2-kicker text-brass-300">Où en est la loi ? · vérifié le 3 juillet 2026</p>
+        <p class="tech-label v2-kicker text-brass-300">Où en est la loi ? · vérifié le 5 octobre 2026</p>
+        {/* CIW413 — mêmes phrases tarifaires que CIW412 (décision ANRE 04/26 art. 6-7 ; décret
+            2.25.100 art. 12 ; D-CIQ-4) : le tarif vise la TENSION, la basse tension n'est pas ouverte. */}
         <div class="mt-4 grid gap-5 sm:grid-cols-2">
           <div>
             <p class="tech-label text-lune">En vigueur</p>
             <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              Décret <strong class="text-white">2-25-100</strong> (BO du 9 mars 2026, en vigueur depuis
-              le 9 juin 2026) et décision ANRE <strong class="text-white">04/26</strong> :
-              <strong class="text-white">0,18–0,21 DH/kWh</strong> de rachat du surplus pour le
-              <strong class="text-white"> moyenne, haute et très haute tension (MT/HT/THT)</strong> uniquement.
+              Le décret d'application <strong class="text-white">2-25-100</strong> (BO du 9 mars 2026, en
+              vigueur depuis le 9 juin 2026) et la décision ANRE <strong class="text-white">04/26</strong>.
+              Tarif d'excédent ANRE (décision 04/26) : <strong class="text-white">0,18 DH/kWh hors pointe,
+              0,21 DH/kWh en pointe, hors taxes</strong>, pour les installations raccordées en
+              <strong class="text-white"> moyenne, haute ou très haute tension (MT/HT/THT)</strong>,
+              quel que soit leur régime.
             </p>
           </div>
           <div>
             <p class="tech-label text-lune">Pas encore publié</p>
             <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              Le tarif de rachat en <strong class="text-white">basse tension (BT)</strong> — le régime
-              déclaration de la quasi-totalité des installations résidentielles — reste non publié,
-              avec une échéance évoquée autour de <strong class="text-white">2027</strong>, non
-              confirmée. La fenêtre de régularisation de l'Article 33, elle, est ouverte dès
-              aujourd'hui, indépendamment de ce tarif.
+              En <strong class="text-white">basse tension (BT)</strong>, quel que soit le régime — y compris
+              un commerce de 11 kW ou plus sous accord de raccordement — la revente du surplus n'est
+              pas ouverte à ce jour. L'Article 33 se dépose sans attendre, indépendamment de ce tarif.
             </p>
           </div>
         </div>
@@ -138,11 +140,12 @@ const howToLd = {
         <p class="tech-label v2-kicker rule-brass text-lune">Le texte</p>
         <h2 class="display v2-section-title mt-4 text-white">Ce que dit l'Article 33</h2>
         <p class="v2-lead mt-5 text-lune-soft">
-          L'Article 33 de la loi 82-21 laisse aux exploitants d'installations existantes une
-          fenêtre de <strong class="fig lum text-xl">18 mois</strong> pour déposer leur demande de régularisation.
-          Elle court depuis le 9 juin 2026, alors autant déposer sans tarder. Une fois le dossier
-          régularisé, l'installation est en règle au regard de la loi ; sans cette démarche, elle
-          reste en situation irrégulière.
+          L'Article 33 de la loi 82-21 dispose que les installations existantes doivent être
+          régularisées « dans un délai de dix-huit (18) mois à compter de la date d'entrée en vigueur
+          de la présente loi » (loi 82-21, art. 33), soit <strong class="fig lum text-xl">18 mois</strong>.
+          Le point de départ de ce délai est à confirmer auprès des services de l'énergie : déposez
+          sans attendre. Une fois le dossier régularisé, l'installation est en règle au regard de la
+          loi ; sans cette démarche, elle reste en situation irrégulière.
         </p>
       </div>
 
