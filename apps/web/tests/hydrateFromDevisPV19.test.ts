@@ -148,6 +148,12 @@ describe('PV19 — garde-fous', () => {
       consSeasonal: false,
       consSummerFactor: null,
       consWinterFactor: null,
+      // ACAL26 — les cinq couches relues du document : vides quand il n'y a pas de document.
+      surfacesPose: [],
+      environment: [],
+      shading12x24: null,
+      consSource: null,
+      electrical: null,
     });
     const empty = hydrateFromDevis({});
     expect(empty.zones).toBeNull();
@@ -184,9 +190,12 @@ describe('PV19 — le boot LEAD reste strictement inchangé (golden)', () => {
     // Aucun champ devis ne s'invite dans l'hydratation lead.
     // CALX254 — hydrateFromLead ré-hydrate aussi la consommation (contrat CALX251) : les
     // six clés cons* s'ajoutent, jamais un champ devis.
+    // ACAL26 — et les cinq couches du document (surfaces de pose, environnement, matrice
+    // d'ombrage, provenance de la consommation, couche électrique), jamais un champ devis.
     expect(Object.keys(h).sort()).toEqual([
-      'center', 'consAppliances', 'consCurve', 'consHandEdited', 'consSeasonal',
-      'consSummerFactor', 'consWinterFactor', 'contact', 'vertices',
+      'center', 'consAppliances', 'consCurve', 'consHandEdited', 'consSeasonal', 'consSource',
+      'consSummerFactor', 'consWinterFactor', 'contact', 'electrical', 'environment',
+      'shading12x24', 'surfacesPose', 'vertices',
     ]);
     expect(hydrateFromLead(null)).toEqual({
       vertices: [],
@@ -198,6 +207,11 @@ describe('PV19 — le boot LEAD reste strictement inchangé (golden)', () => {
       consSeasonal: false,
       consSummerFactor: null,
       consWinterFactor: null,
+      surfacesPose: [],
+      environment: [],
+      shading12x24: null,
+      consSource: null,
+      electrical: null,
     });
   });
 });

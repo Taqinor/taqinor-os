@@ -27,7 +27,7 @@ import { type EnvironmentObject } from './environment';
 import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone } from './zones';
 import { resolveSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { sortedHorizonPoints, horizonMaxHeightDeg, type HorizonProfile, type HorizonSource } from '../../lib/horizonEngine';
-import { type CoucheElectrique, type DocumentElectrique } from './electrique3d';
+import { lireCoucheElectrique, type CoucheElectrique, type DocumentElectrique } from './electrique3d';
 import { numeroterDocument, registreAtelier } from './numerotation'; // CALX111
 
 import { emettreBatiments, type Batiment } from './batiment'; // CALX100
@@ -41,7 +41,7 @@ import {
 } from './moduleSelect';
 
 import { underlayPourDocument } from './underlay'; // CALX107
-import { emettreSurfacesPose } from './poseSurfaces'; // CALX123
+import { emettreSurfacesPose, lireSurfacesPose, type SurfacePose } from './poseSurfaces'; // CALX123 ; ACAL26 — relecture
 
 import {
   ecrireOptimisationDansDocument,
@@ -588,7 +588,10 @@ export function serializeConsumption(ctx: Ctx): { consumption?: SerializedConsum
   const consDailyTarget =
     typeof ctx.consDailyTarget === 'number' && Number.isFinite(ctx.consDailyTarget) ? ctx.consDailyTarget : 0;
   const consSeasonal = Boolean(ctx.consSeasonal);
-  const touche = consHandEdited || appareilsSrc.length > 0 || consDailyTarget > 0 || consSeasonal;
+  // ACAL26 — un bloc RELU du document (`ctx.consSource` posée par l'hydratation) est
+  // toujours réémis : rouvrir puis enregistrer sans geste ne l'efface jamais.
+  const relu = ctx.consSource != null;
+  const touche = consHandEdited || appareilsSrc.length > 0 || consDailyTarget > 0 || consSeasonal || relu;
   if (!touche) return {};
 
   const courbe24 =
@@ -601,7 +604,14 @@ export function serializeConsumption(ctx: Ctx): { consumption?: SerializedConsum
   const consumption: SerializedConsumption = {
     courbe24,
     methode,
-    source: { origine: 'atelier', saisi_le: new Date().toISOString() },
+    // ACAL26 — la provenance RELUE du document (`ctx.consSource`, posée par
+    // `appliquerHydratationAuCtx`) voyage telle quelle : rouvrir puis enregistrer sans
+    // geste ne réhorodate jamais la saisie. Sans provenance relue (saisie de cette
+    // session), l'atelier signe le bloc.
+    source:
+      ctx.consSource && typeof ctx.consSource.origine === 'string' && typeof ctx.consSource.saisi_le === 'string'
+        ? { origine: ctx.consSource.origine, saisi_le: ctx.consSource.saisi_le }
+        : { origine: 'atelier', saisi_le: new Date().toISOString() },
   };
 
   const summerFactor =
@@ -1231,8 +1241,61 @@ export function deserializeConsumptionFromLayout(json: unknown): ConsumptionHydr
   };
 }
 
+// ═══════════ ACAL26 — LES COUCHES DU DOCUMENT RELUES AU BOOT ═══════════
+// Cinq clés du document existaient en écriture SANS lecteur au boot : surfaces de pose,
+// environnement, matrice d'ombrage enregistrée, provenance de la consommation et couche
+// électrique. Rouvrir puis « Enregistrer » sans geste les effaçait (live ATL-01/04/05/06).
+// `lireCouchesDocument` les relit avec les lecteurs EXISTANTS (jamais réécrits) ; les DEUX
+// boots (devis et lead) les rendent, et `hydratation.ts::appliquerHydratationAuCtx` est la
+// SEULE fonction qui les pose dans le ctx.
+
+/** Provenance déclarative du bloc `consumption` (contrat `$defs/consumption.source`). */
+export interface SourceConsommation {
+  origine: string;
+  saisi_le: string;
+}
+
+/** ACAL26 — les couches du document que le boot relit en plus des zones. */
+export interface CouchesDocument {
+  /** `poseSurfaces[]` relues par `lireSurfacesPose` (vide sans clé). */
+  surfacesPose: SurfacePose[];
+  /** `environment[]` relu par `deserializeEnvironment` (vide sans clé). */
+  environment: EnvironmentObject[];
+  /** `shading12x24` ENREGISTRÉE (`deserializeShading`), ou null. */
+  shading12x24: number[][] | null;
+  /** `consumption.source` relue telle quelle, ou null (aucun bloc / provenance illisible). */
+  consSource: SourceConsommation | null;
+  /** `electrical` relu par `lireCoucheElectrique`, ou null quand le document n'en porte pas. */
+  electrical: DocumentElectrique | null;
+}
+
+/** ACAL26 — relit les cinq couches d'un document (ou `null` : tout vide). PURE. */
+export function lireCouchesDocument(json: unknown): CouchesDocument {
+  const doc = (json && typeof json === 'object' ? json : null) as Record<string, unknown> | null;
+  const brutSource = (doc?.consumption as { source?: unknown } | null | undefined)?.source as
+    | { origine?: unknown; saisi_le?: unknown }
+    | null
+    | undefined;
+  const consSource =
+    brutSource && typeof brutSource.origine === 'string' && typeof brutSource.saisi_le === 'string'
+      ? { origine: brutSource.origine, saisi_le: brutSource.saisi_le }
+      : null;
+  let electrical: DocumentElectrique | null = null;
+  if (doc && doc.electrical && typeof doc.electrical === 'object') {
+    const lu = lireCoucheElectrique(doc);
+    electrical = { equipements: lu.equipements, cheminements: lu.cheminements };
+  }
+  return {
+    surfacesPose: lireSurfacesPose(doc),
+    environment: doc && Array.isArray(doc.environment) ? deserializeEnvironment(doc) : [],
+    shading12x24: doc ? deserializeShading(doc.shading12x24 ?? null) : null,
+    consSource,
+    electrical,
+  };
+}
+
 /** Ce que l'hydratation devis rend au boot (rien n'est appliqué ici). */
-export interface DevisHydration extends ConsumptionHydration {
+export interface DevisHydration extends ConsumptionHydration, CouchesDocument {
   /** Contour lng/lat de la zone ACTIVE (vide si seul un pin est disponible). */
   vertices: LngLat[];
   /** Centre de vol lng/lat, ou null. */
@@ -1285,6 +1348,7 @@ export function hydrateFromDevis(devis: DevisPayload | null | undefined): DevisH
     devisId: null,
     cibleVendue: true,
     ...deserializeConsumptionFromLayout(null), // CALX254
+    ...lireCouchesDocument(null), // ACAL26
   };
   if (!devis) return empty;
 
@@ -1337,6 +1401,10 @@ export function hydrateFromDevis(devis: DevisPayload | null | undefined): DevisH
     // CALX254 — la consommation affinée voyage avec le design du devis (contrat CALX251),
     // comme les zones ci-dessus ; document sans `consumption` ⇒ l'état par défaut.
     ...deserializeConsumptionFromLayout(layout),
+    // ACAL26 — surfaces de pose, environnement, matrice d'ombrage, provenance de la
+    // consommation et couche électrique : relues ici, appliquées par
+    // `hydratation.ts::appliquerHydratationAuCtx` (une seule fonction, deux boots).
+    ...lireCouchesDocument(layout),
   };
 }
 
@@ -1351,12 +1419,13 @@ export function hydrateFromLead(lead: LeadPayload | null | undefined): {
   vertices: LngLat[];
   center: LngLat | null;
   contact: { name?: string; phone?: string; city?: string };
-} & ConsumptionHydration {
+} & ConsumptionHydration & CouchesDocument {
   const empty = {
     vertices: [] as LngLat[],
     center: null as LngLat | null,
     contact: {},
     ...deserializeConsumptionFromLayout(null), // CALX254
+    ...lireCouchesDocument(null), // ACAL26
   };
   if (!lead) return empty;
   // AP-F1 (fondateur 26/08/2026) — UN SEUL validateur de contour : avant ce correctif,
@@ -1386,7 +1455,14 @@ export function hydrateFromLead(lead: LeadPayload | null | undefined): {
   // `LeadPayload` ne le type pas explicitement (son index `[k: string]: unknown` le tolère
   // déjà), donc on le lit défensivement ici. Un lead d'aujourd'hui n'en porte aucun ⇒ l'état
   // par défaut, exactement le comportement historique.
-  return { vertices, center, contact, ...deserializeConsumptionFromLayout((lead as { roof_layout?: unknown }).roof_layout) };
+  const layoutLead = (lead as { roof_layout?: unknown }).roof_layout;
+  return {
+    vertices,
+    center,
+    contact,
+    ...deserializeConsumptionFromLayout(layoutLead),
+    ...lireCouchesDocument(layoutLead), // ACAL26 — mêmes couches que le boot devis
+  };
 }
 
 /** Un point du contour brut, TEL QUE rencontré en base : `[lat, lng]` (le

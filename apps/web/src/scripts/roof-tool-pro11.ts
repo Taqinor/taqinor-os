@@ -146,7 +146,15 @@ import { affectationDesPans, lireModulesDisponibles } from './roofPro11/moduleSe
 import { etiquette, registreAtelier } from './roofPro11/numerotation'; // CALX403 câblage — le repère d'un module vient du DOCUMENT
 import { poserSourceCellulesSurAllees } from './roofPro11/teinteAllees'; // CALX403 câblage
 import { creerInfoBulleOmbrage } from './roofPro11/infoBulleOmbrage'; // CALX122 câblage
-import { fondDuDocument, motifFondRefuse } from './roofPro11/fondDocument'; // CALX107 câblage
+import { fondDuDocument, motifFondRefuse, semerFondDepuisDocument } from './roofPro11/fondDocument'; // CALX107 câblage
+import { monterAtelierPose } from './roofPro11/poseSurfaces'; // ACAL26 — liste rafraîchie après hydratation
+import {
+  appliquerHydratationAuCtx,
+  hydratationDeSection,
+  serialiserDocumentAtelier,
+  type CleSectionAtelier,
+  type HydratationAtelier,
+} from './roofPro11/hydratation'; // ACAL26 — une seule hydratation pour les deux boots
 import { createConsumption } from './roofPro11/consumption';
 import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
@@ -470,6 +478,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   let shadeFactors: number[][] | null = null;
   let shadeAnnualFactor = 1;
   // CAL67 — objets d'environnement (arbres/bâtiments voisins) posés HORS contour.
+  // ACAL26 — référence STABLE semée au boot par `appliquerHydratationAuCtx` (mutée en place).
   const environment: import('./roofPro11/environment').EnvironmentObject[] = [];
   // CAL69 — zones INTERDITE/RESERVEE/PREFEREE tracées dans l'atelier (contrat CAL68).
   // Partagées via ctx : obstaclesUi les écrit, `obstructionRings` les lit.
@@ -1797,12 +1806,27 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (map.getLayer('rp9-ref-contour-line')) map.setLayoutProperty('rp9-ref-contour-line', 'visibility', vis);
   }
 
+  /** ACAL26 — pose les couches relues du document (surfaces de pose, environnement,
+   *  matrice d'ombrage enregistrée, consommation, couche électrique) par la SEULE fonction
+   *  `appliquerHydratationAuCtx`, puis rafraîchit les écrans qui les montrent. Appelée par
+   *  les DEUX boots (lead et devis) et par `appliquerSection` (onglets du Rail). */
+  function appliquerHydratation(h: HydratationAtelier) {
+    appliquerHydratationAuCtx(ctx, h);
+    if (h.environment !== undefined) obstaclesUi.redrawEnvironment();
+    if (h.electrical !== undefined) coucheElectrique.rafraichir();
+    if (h.surfacesPose !== undefined) {
+      monterAtelierPose(ctx, { setStatus: (msg: string) => setStatus(msg), recalc: () => updateAreaReadout() });
+      updateAreaReadout();
+    }
+  }
+
   /** W113 — applique l'hydratation d'un lead à l'état d'édition (zone active) : sème le
    *  contour (ou un pin centré), recentre la carte, pré-remplit les champs contact du
    *  diagnostic, puis ferme + recalc si un vrai contour (≥3 sommets) est fourni. Renvoie
    *  true si quelque chose a été semé (pour ne pas re-géocoder par-dessus). */
   function applyHydration(lead: import('./roofPro11/types').LeadPayload): boolean {
     const h = hydrateFromLead(lead);
+    appliquerHydratation(h); // ACAL26 — même fonction que le boot devis
     // Champs contact du diagnostic (handoff, jamais un POST — même garde que prefill).
     const setIf = (id: string, v?: string) => {
       const el = $<HTMLInputElement>(id);
@@ -1878,6 +1902,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   function applyDevisHydration(devis: import('./roofPro11/prefill').DevisPayload): boolean {
     devisMode = true;
     const h = hydrateFromDevis(devis);
+    appliquerHydratation(h); // ACAL26 — même fonction que le boot lead
     // CAL37 — figé pour la session, comme `devisMode` : un calepinage autonome
     // (`cibleVendue: false`) n'a AUCUNE vente derrière lui.
     cibleVendue = h.cibleVendue;
@@ -2373,12 +2398,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     prodPanels = 0;
     prodPlaneKey = '';
     if (prodWindowEl) prodWindowEl.hidden = true;
-    // W68 — réinitialise l'affinage de consommation (courbe + appareils).
+    // W68 — replie le panneau « Affiner ma consommation ». ACAL26 : la consommation est
+    // celle du SITE (une facture, un bloc `consumption`) — ajouter un pan (`addArea`) ne la
+    // remet plus à zéro ; seul « Effacer » (`reset`) repart d'une consommation vierge.
     consMode = false;
-    consCurve = emptyCurve();
-    consHandEdited = false;
-    consAppliances = [];
-    consDailyTarget = 0;
     if (consToggleEl) consToggleEl.setAttribute('aria-expanded', 'false');
     if (consPanelEl) consPanelEl.hidden = true;
     if (consWindowEl) consWindowEl.hidden = true;
@@ -2404,6 +2427,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    *  seule zone vide active. */
   function reset() {
     clearEditorState();
+    // ACAL26 — « Effacer » repart d'un site vierge : la consommation du site (courbe,
+    // appareils, provenance relue) part avec lui (`clearEditorState` ne la touche plus).
+    consCurve = emptyCurve();
+    consHandEdited = false;
+    consAppliances = [];
+    consDailyTarget = 0;
+    ctx.consSource = null;
     areas.length = 0;
     areaCounter = 0;
     const fresh = newAreaRecord();
@@ -2455,8 +2485,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     layoutSel = null;
     if (layoutToggleEl) layoutToggleEl.setAttribute('aria-pressed', 'false');
     if (layoutPanelEl) layoutPanelEl.hidden = true;
+    // ACAL26 — la consommation est celle du SITE : changer de pan replie le panneau mais
+    // ne remet plus la courbe éditée à la main à zéro.
     consMode = false;
-    consHandEdited = false;
     if (consToggleEl) consToggleEl.setAttribute('aria-expanded', 'false');
     if (consPanelEl) consPanelEl.hidden = true;
     redrawTrace();
@@ -4032,40 +4063,43 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // le layout finalisé (W113) + instantané PNG de la 3D (W115). Boot complet seulement
   // (jamais en capture). Absent → aucun effet.
   opts.onApiReady?.({
+    // ACAL26 — le wrapper délègue au sérialiseur CÂBLÉ (`hydratation.ts`) : la composition
+    // de la meta (origine devis, accès solaire, retraits, horizon, modules) est la même
+    // qu'avant, et ses DEUX branches portent désormais la couche électrique.
     serializeLayout: (billKwh?: number | null, meta?: import('./roofPro11/prefill').SerializeMeta) =>
-      serializeLayout(
+      serialiserDocumentAtelier(
         ctx,
         billKwh ?? (closed && vertices.length >= 3 ? billToAnnualKwh(monthlyBill()) : null),
-        // PV19 — l'origine devis (id / puissance panneau / scénario vendus) sert de socle ;
-        // ce que l'appelant fournit explicitement l'emporte toujours.
-        devisOrigin
-          ? {
-              source: 'devis',
-              devisId: devisOrigin.devisId,
-              ...(devisOrigin.panelWatt != null ? { panelWatt: devisOrigin.panelWatt } : {}),
-              ...(devisOrigin.scenario ? { scenario: devisOrigin.scenario } : {}),
-              // CAL248 — l'accès solaire par module du pan actif voyage avec le document
-              // (l'appelant peut toujours l'écraser explicitement).
-              ...(activeSolarAccessMeta() ?? {}),
-              // CAL76 — les quatre retraits de rive RÉGLÉS voyagent avec le document.
-              setbacksM: { ...setbacks },
-              // CAL93 — le profil d'horizon lointain RÉGLÉ voyage avec le document.
-              ...(ctx.horizonProfile ? { horizonProfile: ctx.horizonProfile } : {}),
-              // CALX109/CALX110 câblage — le catalogue + le module de chaque pan.
-              modules: affectationDesPans(catalogueModulesAtelier, ctx.areas),
-              ...(meta ?? {}),
-            }
-          : {
-              ...(activeSolarAccessMeta() ?? {}),
-              setbacksM: { ...setbacks },
-              ...(ctx.horizonProfile ? { horizonProfile: ctx.horizonProfile } : {}),
-              // CALX109/CALX110 câblage — le catalogue + le module de chaque pan. Aucun pan
-              // n'a choisi ⇒ `ecrireModulesDansDocument` ne touche à RIEN et le document
-              // repart identique, octet pour octet (comportement d'aujourd'hui).
-              modules: affectationDesPans(catalogueModulesAtelier, ctx.areas),
-              ...(meta ?? {}),
-            },
+        {
+          // PV19 — l'origine devis (id / puissance panneau / scénario vendus) sert de socle.
+          devisOrigin,
+          // CAL248 — l'accès solaire par module du pan actif voyage avec le document.
+          solarAccess: activeSolarAccessMeta(),
+          // CAL76 — les quatre retraits de rive RÉGLÉS voyagent avec le document.
+          setbacks,
+          // CAL93 — le profil d'horizon lointain RÉGLÉ voyage avec le document.
+          horizonProfile: ctx.horizonProfile as import('./roofPro11/prefill').SerializeMeta['horizonProfile'],
+          // CALX109/CALX110 câblage — le catalogue + le module de chaque pan.
+          modules: affectationDesPans(catalogueModulesAtelier, ctx.areas),
+          // ACAL26 — la couche électrique (organes + cheminements) dans les DEUX branches.
+          coucheElectrique,
+        },
+        meta,
       ),
+    // ACAL26 — un onglet du Rail applique UNE section du document par la même fonction que
+    // le boot (horizonProfile, poseSurfaces, underlay, environment).
+    appliquerSection: (cle: CleSectionAtelier, valeur: unknown) => {
+      if (cle === 'horizonProfile') {
+        shadingUi.setHorizonProfile(deserializeHorizonProfileFromLayout({ horizonProfile: valeur }));
+        return;
+      }
+      if (cle === 'underlay') {
+        semerFondDepuisDocument({ underlay: valeur });
+        return;
+      }
+      appliquerHydratation(hydratationDeSection(cle, valeur));
+      recalc();
+    },
     snapshot: () => scene3d.snapshot(),
     // CAL180 — export « image HD » : rendu hors écran 2×/3×, blob PNG rendu à la page.
     renderImageHd: (scale) => scene3d.renderOffscreen(scale),

@@ -133,6 +133,10 @@ export interface RoofToolApi {
    *  PV13 — `meta` (optionnel) porte scénario / puissance panneau / batterie / origine
    *  devis-lead : la page les CONNAÎT, l'outil ne les devine jamais. */
   serializeLayout: (billKwh?: number | null, meta?: SerializeMeta) => unknown;
+  /** ACAL26 — applique UNE section du document (`horizonProfile`, `poseSurfaces`,
+   *  `underlay`, `environment`) par la MÊME fonction d'hydratation que le boot
+   *  (`hydratation.ts::appliquerHydratationAuCtx`) — pour les onglets du Rail. */
+  appliquerSection: (cle: import('./hydratation').CleSectionAtelier, valeur: unknown) => void;
   /** Instantané PNG (data URL) de la 3D rendue, ou null. */
   snapshot: () => string | null;
   /** L-MAP — bascule d'affichage du calque de référence géo-référencé

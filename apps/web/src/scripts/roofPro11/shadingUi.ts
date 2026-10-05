@@ -178,6 +178,23 @@ export function unifiedShadeEntries(
   ];
 }
 
+/**
+ * ACAL26 — empreinte des SOURCES d'ombrage proche de la session : ombres tracées (pied et
+ * bout — la hauteur s'en déduit), obstacles de toiture à hauteur saisie, objets
+ * d'environnement. Tant qu'elle n'a pas bougé depuis l'ouverture, la matrice ENREGISTRÉE
+ * du document (`ctx.ombrageEnregistre`) prime sur le recalcul : rouvrir un dossier ne fait
+ * plus remonter la production en silence. PURE.
+ */
+export function signatureSourcesOmbrage(ctx: Pick<Ctx, 'shadeObstructions' | 'obstacles' | 'environment'>): string {
+  return JSON.stringify({
+    s: (ctx.shadeObstructions ?? []).map((o) => [o.id, o.base, o.tip, o.halfWidthM ?? null]),
+    o: (ctx.obstacles ?? [])
+      .filter((o) => typeof o.heightM === 'number' && o.heightM > 0)
+      .map((o) => [o.id, o.centerLng, o.centerLat, o.lengthM, o.widthM, o.heightM, o.type ?? null]),
+    e: ctx.environment ?? [],
+  });
+}
+
 /** CAL95 — noms des mois pour le sélecteur saisonnier de la carte d'accès solaire. */
 export const HEATMAP_MONTH_LABELS: readonly string[] = [
   'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
@@ -705,6 +722,21 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   /** (Re)calcule la matrice de dérate + le facteur annuel depuis la source unifiée.
    *  Horizon évalué au CENTROÏDE du tracé (documenté) ; hauteur de champ = toit 3D. */
   function recomputeFactors() {
+    // ACAL26 — la matrice ENREGISTRÉE du document rouvert est conservée tant qu'aucune
+    // source d'ombrage n'a été modifiée dans la session ; la première modification la
+    // retire pour de bon (le recalcul reprend la main).
+    const enregistre = ctx.ombrageEnregistre;
+    if (enregistre) {
+      const signature = signatureSourcesOmbrage(ctx);
+      if (enregistre.signature === null) enregistre.signature = signature;
+      if (enregistre.signature === signature) {
+        lastEntryCount = ctx.vertices.length >= 3 ? activeShadeEntries().length : 0;
+        ctx.shadeFactors = enregistre.matrice.map((r) => r.slice());
+        ctx.shadeAnnualFactor = annualShadeFactor(ctx.prodPerKwc ?? fallbackPerKwc(), ctx.shadeFactors);
+        return;
+      }
+      ctx.ombrageEnregistre = null;
+    }
     if (!hasShadeSources() || ctx.vertices.length < 3) {
       lastEntryCount = 0;
       ctx.shadeFactors = null;
@@ -1095,6 +1127,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
 
   function reset() {
     ctx.shadeObstructions.length = 0;
+    ctx.ombrageEnregistre = null; // ACAL26 — effacer l'ombrage est une modification
     ctx.shadeFactors = null;
     ctx.shadeAnnualFactor = 1;
     setTracing(false);

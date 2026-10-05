@@ -341,4 +341,18 @@ export interface Ctx {
    *  le document repart inchangé, octet pour octet. Le PLAN de pose vit sous
    *  `engine` et vient du moteur serveur : l'atelier ne le recalcule jamais. */
   surfacesPose?: import('./poseSurfaces').SurfacePose[];
+  /** CALX219-223 / ACAL26 — la couche électrique du document (organes + cheminements),
+   *  écrite par `electrique3d.ts` et RELUE au boot par `appliquerHydratationAuCtx`.
+   *  Absente/null = le document ne porte pas de couche électrique. */
+  electrical?: import('./electrique3d').DocumentElectrique | null;
+  /** ACAL26 — provenance RELUE du bloc `consumption` (`source.origine`/`source.saisi_le`).
+   *  Tant qu'elle est posée, `serializeConsumption` la réémet telle quelle : rouvrir puis
+   *  enregistrer sans geste ne réhorodate jamais la saisie. null/absent = aucune relue. */
+  consSource?: import('./prefill').SourceConsommation | null;
+  /** ACAL26 — la matrice d'ombrage 12×24 ENREGISTRÉE dans le document rouvert. Elle prime
+   *  sur le recalcul tant qu'aucune source d'ombrage (ombres tracées, obstacles à hauteur,
+   *  environnement) n'a changé dans la session : `signature` est l'empreinte de ces sources
+   *  au premier calcul (null tant qu'il n'a pas eu lieu). Remise à null pour de bon dès la
+   *  première modification. */
+  ombrageEnregistre?: { matrice: number[][]; signature: string | null } | null;
 }
