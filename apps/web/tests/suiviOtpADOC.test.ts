@@ -11,6 +11,9 @@ const contrat = JSON.parse(
   lire('../../../backend/django_core/apps/ventes/contract_samples/suivi_public.json'),
 ) as { exemple_403_otp: { detail: string }; exemple_404: { detail: string } };
 const PAGE = lire('../src/pages/suivi/[token].astro');
+// Logique client et formulaire PARTAGÉS avec /proposition (garde ACAL345).
+const OTP_LIB = lire('../src/lib/otpLecture.ts');
+const OTP_FORM = lire('../src/components/OtpLectureForm.astro');
 
 describe('ADOC133 — etatErreurSuivi', () => {
   it('403 otp_required (exemple du contrat) ⇒ otp', () => {
@@ -39,8 +42,11 @@ describe('ADOC133 — la page /suivi', () => {
   });
 
   it('utilise le proxy existant /api/proposition-otp, mode lecture, même jeton', () => {
-    expect(PAGE).toContain("fetch('/api/proposition-otp'");
-    expect(PAGE).toContain("mode: 'lecture'");
-    expect(PAGE).toContain('window.location.reload()');
+    expect(PAGE).toContain("brancherOtpLecture('votre suivi')");
+    expect(PAGE).toContain('<OtpLectureForm valider="Ouvrir mon suivi" />');
+    expect(OTP_LIB).toContain("fetch('/api/proposition-otp'");
+    expect(OTP_LIB).toContain("mode: 'lecture'");
+    expect(OTP_LIB).toContain('window.location.reload()');
+    expect(OTP_FORM).toContain('id="otp-lecture-form"');
   });
 });

@@ -20,6 +20,9 @@ import { mapAcceptResponseToUiState, OTP_LECTURE_DETAIL } from '../src/lib/propo
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 const PROPOSITION = read('../src/pages/proposition/[...token].astro');
 const PROXY = read('../src/pages/api/proposition-otp.ts');
+// Formulaire et logique client PARTAGÉS avec /suivi (garde ACAL345).
+const OTP_FORM = read('../src/components/OtpLectureForm.astro');
+const OTP_LIB = read('../src/lib/otpLecture.ts');
 
 describe('audit C5 — l’OTP de LECTURE a enfin son écran', () => {
   it('le 403 de la lecture est reconnu, pas recopié', () => {
@@ -36,15 +39,18 @@ describe('audit C5 — l’OTP de LECTURE a enfin son écran', () => {
     const erreur = PROPOSITION.indexOf('État « lien expiré / introuvable »');
     expect(ecran).toBeGreaterThan(0);
     expect(erreur).toBeGreaterThan(ecran);
-    for (const hook of ['id="otp-lecture"', 'id="otp-lecture-form"',
+    expect(PROPOSITION).toContain('id="otp-lecture"');
+    expect(PROPOSITION).toContain('<OtpLectureForm valider="Ouvrir ma proposition" />');
+    for (const hook of ['id="otp-lecture-form"',
       'id="otp-lecture-demander"', 'id="otp-lecture-code"',
       'id="otp-lecture-valider"', 'id="otp-lecture-message"']) {
-      expect(PROPOSITION, `hook manquant : ${hook}`).toContain(hook);
+      expect(OTP_FORM, `hook manquant : ${hook}`).toContain(hook);
     }
     // Le code est saisi puis la MÊME url est rechargée : le serveur a
     // déverrouillé la lecture de ce lien, rien ne voyage dans l'URL.
-    expect(PROPOSITION).toContain('window.location.reload();');
-    expect(PROPOSITION).toContain("mode: 'lecture'");
+    expect(PROPOSITION).toContain("brancherOtpLecture('votre proposition');");
+    expect(OTP_LIB).toContain('window.location.reload();');
+    expect(OTP_LIB).toContain("mode: 'lecture'");
   });
 
   it('le proxy envoie `otp_code`, le champ que le backend lit VRAIMENT', () => {
