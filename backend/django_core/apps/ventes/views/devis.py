@@ -1,12 +1,10 @@
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from drf_spectacular.utils import extend_schema
 from ..models import Devis
 from ..serializers import (
     DevisSerializer,
     DevisWriteSerializer,
-    DevisActionRequiseSerializer,  # PACT17 — forme déclarée de l'agrégat
 )
 from authentication.permissions import (
     IsAnyRole,
@@ -35,6 +33,7 @@ from .devis_envoi import DevisEnvoiActionsMixin  # SPL138
 from .devis_pdf import DevisPdfActionsMixin  # SPL139
 from .devis_calepinage import DevisCalepinageActionsMixin  # SPL140
 from .devis_facturation import DevisFacturationActionsMixin  # SPL141
+from .devis_cadence import DevisCadenceActionsMixin  # SPL142
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -55,6 +54,7 @@ class DevisViewSet(DevisEditionActionsMixin,
                    DevisPdfActionsMixin,
                    DevisCalepinageActionsMixin,
                    DevisFacturationActionsMixin,
+                   DevisCadenceActionsMixin,
                    IdempotentCreateMixin, EntiteScopeMixin,
                    CompanyScopedModelViewSet):
     # YAPIC9 — pilote de core.idempotency.IdempotentCreateMixin : sans
@@ -537,37 +537,6 @@ class DevisViewSet(DevisEditionActionsMixin,
         profile.variante_pct = pct
         profile.save(update_fields=['variante_pct'])
         return Response({'variante_pct': str(profile.variante_pct)})
-
-    @extend_schema(responses=DevisActionRequiseSerializer)
-    @action(detail=False, methods=['get'], url_path='action-requise',
-            permission_classes=[IsAnyRole])
-    def action_requise(self, request):
-        """PACT17 (QX29/QX30) — « Relances du jour » : les devis nécessitant
-        une action, groupés par MOTIF.
-
-        L'écran ``DevisActionBoardPage`` appelait cet agrégat depuis sa
-        création et l'entrée de menu était publiée aux rôles responsable/admin
-        — mais la moitié serveur n'avait jamais été construite : le chemin
-        retombait sur la route de DÉTAIL du routeur (``devis/<pk>/`` accepte
-        n'importe quel segment), donc un 404, donc un écran mort. Cette action
-        est cette moitié manquante, miroir de ``/sav/tickets/file-action/``
-        (ZSAV6).
-
-        CAD115 (SIG9) — le tableau est désormais ouvert au rôle qui relance
-        réellement (nav ``['normal','responsable','admin']``), et chaque
-        ligne publie ``prochaine_touche_crm`` pour arbitrer avec la file
-        calendaire du CRM.
-
-        Lecture PURE via ``selectors.devis_action_requise``, bornée à
-        ``request.user.company`` — jamais de devis d'une autre société. RÈGLE
-        #4 : aucune écriture, aucun statut touché.
-
-        Renvoie ``{'buckets': {clé: {'count', 'ids'}, …}, 'wa_drafts':
-        {id: message}}`` — forme déclarée par ``DevisActionRequiseSerializer``
-        (PACT7 : jamais ``response=dict``).
-        """
-        from ..selectors import devis_action_requise
-        return Response(devis_action_requise(request.user.company))
 
     @action(detail=False, methods=['get'], url_path='prefill-site',
             permission_classes=[IsAnyRole])

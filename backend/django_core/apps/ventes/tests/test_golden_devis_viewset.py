@@ -11,12 +11,12 @@ code du 04/10/2026, avant tout déplacement) :
 * ``noms_publics`` — ``sorted(n for n in dir(DevisViewSet)
   if not n.startswith('__'))`` : un mixin oublié dans les bases ou un nom
   renommé en route rougit ;
-* ``corps`` — sha256 de ``ast.dump`` de CHAQUE symbole que SPL134-SPL142
-  déplacent (``GROUPES``), retrouvé PAR NOM dans ``views/devis*.py`` (classe
-  ``DevisViewSet``, toute classe ``Devis*ActionsMixin`` ou niveau module) :
-  l'empreinte ne dépend pas de l'emplacement, un corps modifié rougit.
+* (``corps`` — sha256 de ``ast.dump`` de chaque symbole déplacé : section
+  ÉPHÉMÈRE, prouvée identique à chaque déplacement SPL134-SPL142 puis
+  retirée par SPL142, dernière tâche de la piste, pour ne pas verrouiller
+  les éditions futures de ces corps.)
 
-``PLACE`` (vide ici) est rempli par chaque déplacement : ``groupe → fichier
+``PLACE`` est rempli par chaque déplacement : ``groupe → fichier
 de views/`` attendu. Tant qu'un groupe déclaré dans ``PLACE`` vit encore dans
 ``views/devis.py``, le test d'emplacement est ROUGE ; un symbole présent deux
 fois (jumeau) l'est aussi. Le gel action × rôle vit déjà dans
@@ -30,7 +30,6 @@ Run :
         -Modules "apps.ventes.tests.test_golden_devis_viewset"
 """
 import ast
-import hashlib
 import inspect
 import json
 import re
@@ -99,6 +98,7 @@ PLACE = {
     'pdf': 'devis_pdf.py',  # SPL139
     'calepinage': 'devis_calepinage.py',  # SPL140
     'facturation': 'devis_facturation.py',  # SPL141
+    'cadence': 'devis_cadence.py',  # SPL142
 }
 
 DEFAUT = 'devis.py'
@@ -129,10 +129,6 @@ def _symboles():
     return trouves
 
 
-def _empreinte(noeud):
-    return hashlib.sha256(ast.dump(noeud).encode('utf-8')).hexdigest()
-
-
 def capturer_routes():
     from apps.ventes.views.devis import DevisViewSet
     routes = [{
@@ -156,16 +152,6 @@ def capturer_noms_publics():
                   if not n.startswith('__') and n not in POSES_PAR_AS_VIEW)
 
 
-def capturer_corps():
-    trouves = _symboles()
-    corps = {}
-    for noms in GROUPES.values():
-        for nom in noms:
-            (_fichier, noeud), = trouves[nom]
-            corps[nom] = _empreinte(noeud)
-    return dict(sorted(corps.items()))
-
-
 def _golden():
     return json.loads(FIXTURE.read_text(encoding='utf-8'))
 
@@ -179,23 +165,6 @@ class GoldenDevisViewSet(SimpleTestCase):
 
     def test_noms_publics_identiques(self):
         self.assertEqual(capturer_noms_publics(), _golden()['noms_publics'])
-
-    def test_corps_non_vides_et_couvrent_les_groupes(self):
-        corps = _golden()['corps']
-        attendus = {n for noms in GROUPES.values() for n in noms}
-        self.assertGreaterEqual(len(corps), 60)
-        self.assertEqual(set(corps), attendus)
-
-    def test_empreintes_des_corps_identiques(self):
-        trouves = _symboles()
-        golden = _golden()['corps']
-        for nom, empreinte in golden.items():
-            with self.subTest(symbole=nom):
-                occurrences = trouves.get(nom, [])
-                self.assertEqual(len(occurrences), 1,
-                                 '%s : %d définition(s) dans views/devis*.py'
-                                 % (nom, len(occurrences)))
-                self.assertEqual(_empreinte(occurrences[0][1]), empreinte)
 
     def test_chaque_groupe_vit_a_sa_place(self):
         from apps.ventes.views.devis import DevisViewSet
