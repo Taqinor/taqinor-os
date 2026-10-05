@@ -18,7 +18,7 @@ CE QU'ELLE LIT — ``data`` SEUL (la charge utile de ``build_quote_data``) :
     (QJR625), jamais celui d'une étude ;
   * ``data['option_servie']`` / ``data['option_batterie']`` (CIQ302) ;
   * ``data['payment_terms']`` + le total TTC de l'offre servie ;
-  * ``data['entrees_ci_lead']`` : ``crm.selectors.entrees_ci_du_lead`` posé
+  * ``data['_entrees_ci_lead']`` : ``crm.selectors.entrees_ci_du_lead`` posé
     par le builder (CIQ405) — ses ``manquants`` disent ce qui reste à relever.
 
 CE QU'ELLE REND — les clés « cœur » de la forme ``synthese_ci`` du contrat
@@ -315,7 +315,7 @@ def synthese_ci(data):
     omissions = []
 
     statut, a_confirmer = _statut_et_a_confirmer(
-        etude_ci, data.get("entrees_ci_lead"))
+        etude_ci, data.get("_entrees_ci_lead"))
     option = _option_servie(data)
 
     synthese = {

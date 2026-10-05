@@ -39,7 +39,7 @@ def _data(**surcharges):
                                    'date': '2026-09-12'}}},
         },
         'all_items': [],
-        'economie_pompage': _bloc_agr3(),
+        '_economie_pompage': _bloc_agr3(),
     }
     data.update(surcharges)
     return data
@@ -70,7 +70,7 @@ class Agr307EconomiesTests(SimpleTestCase):
 
     def test_bloc_absent_cle_absente_et_motif(self):
         data = _data()
-        del data['economie_pompage']
+        del data['_economie_pompage']
         s = synthese_agricole(data)
         self.assertNotIn('economies', s)
         self.assertEqual(_motifs(s)['economies'], MOTIF_ECONOMIES_ABSENTES)
@@ -79,7 +79,7 @@ class Agr307EconomiesTests(SimpleTestCase):
         bloc = _bloc_agr3()
         bloc['publiable_client'] = False
         bloc['motifs_non_publiable'] = ['barème des charges non saisi']
-        s = synthese_agricole(_data(economie_pompage=bloc))
+        s = synthese_agricole(_data(_economie_pompage=bloc))
         self.assertNotIn('economies', s)
         self.assertEqual(_motifs(s)['economies'],
                          'barème des charges non saisi')
@@ -106,7 +106,7 @@ class Agr307EconomiesTests(SimpleTestCase):
         bloc['vue_interne'] = {
             'van_mad': 1.0, 'scenario_butane_non_subventionne': {'x': 1},
             'aide_fda_indicative': 9000.0}
-        s = synthese_agricole(_data(economie_pompage=bloc))
+        s = synthese_agricole(_data(_economie_pompage=bloc))
         cles = set(_cles(s))
         for interdite in ('vue_interne', 'scenario_butane_non_subventionne',
                           'aide_fda_indicative', 'prix_achat'):

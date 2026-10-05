@@ -406,6 +406,7 @@ const NON_LU: Readonly<Record<string, string>> = {
   // ── Contrôle de la réponse, pas une valeur de proposition ────────────────
   'detail': 'Message d’erreur des réponses 404/403 (jeton expiré, OTP non vérifié) : la page traite l’échec par le code HTTP, elle ne lit pas ce texte.',
   'mode_kpis': 'Bloc de KPI propre aux modes non résidentiels : rendu par le frontmatter selon `mode_installation`, jamais par le lecteur typé.',
+  'synthese_agricole': 'AGR308 — synthèse d’un devis de pompage, servie par `synthese_agricole(data)` (la même fonction que le PDF) : sa forme complète est `exemple_agricole.synthese_agricole` ; lue par la page agricole (AGW300+), jamais par le lecteur typé du devis.',
   'niveau_masque[]': 'Liste de ce que le niveau `standard` a retiré : servie au rendu serveur pour l’expliquer au client, hors périmètre du lecteur typé.',
   'resync_apres_envoi': 'Drapeau de resynchronisation après envoi : lu par le frontmatter pour son bandeau, pas par `lireProposal`.',
   // ── QJR536 (contrat QJR501) ──────────────────────────────────────────────

@@ -105,7 +105,7 @@ class TestSyntheseCiCoeur(SimpleTestCase):
             _etude_ci(sous_reserve_visite={
                 "valeur": True, "motif": "site MT : relevé à la visite"}),
             mode_installation="industriel",
-            entrees_ci_lead={"entrees": [], "manquants": [
+            _entrees_ci_lead={"entrees": [], "manquants": [
                 "compteur_puissance_kva", "type_toiture",
                 "surface_toiture_m2", "jours_ouverture"]}))
         self.assertEqual(s["statut_etude"], STATUT_SOUS_RESERVE)

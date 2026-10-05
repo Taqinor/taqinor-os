@@ -4056,7 +4056,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # SEULEMENT quand le moteur en rend un : sinon la synthèse omet le
         # bloc avec son motif. Ne casse jamais un rendu. Sans aucune saisie
         # d'économie, le moteur rendrait un bloc « omis » : on ne l'appelle
-        # pas (il relit l'étude de pompage, PVGIS compris).
+        # pas (il relit l'étude de pompage, PVGIS compris). Clé PRÉFIXÉE ``_``
+        # (AGR308) : ``quote`` ne la republie jamais — le bloc ne sort que par
+        # ``synthese_agricole``, sous la case « économies » du lien.
         _ep_eco = getattr(devis, "etude_params", None)
         if (getattr(devis, "pk", None) and isinstance(_ep_eco, dict)
                 and _ep_eco.get("saisies_economie_pompage")):
@@ -4071,14 +4073,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                                  getattr(devis, "reference", "?"))
                 _eco_pompage = None
             if _eco_pompage:
-                data["economie_pompage"] = _eco_pompage
+                data["_economie_pompage"] = _eco_pompage
 
     # ── CIQ303 — les entrées du lead PRO (CIQ405), lues par le SEUL sélecteur
     # crm (jamais les modèles d'une autre app), pour ``ci/synthese`` : ses
     # ``manquants`` disent ce qui reste « à confirmer ». C&I seulement, posé
     # SEULEMENT quand le lead en rend : tout autre devis reste octet-identique.
-    # Jamais servi tel quel au client (la charge utile publique est une liste
-    # blanche). Ne casse jamais un rendu.
+    # Clé PRÉFIXÉE ``_`` : la charge utile publique republie ``data`` sous
+    # ``quote`` après ``_sans_cles_internes`` — elle n'y sort jamais. Ne casse
+    # jamais un rendu.
     if mode in ("commercial", "industriel"):
         try:
             from apps.crm.selectors import entrees_ci_du_lead
@@ -4086,7 +4089,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         except Exception:  # noqa: BLE001 — la synthèse omet, jamais ne casse
             _entrees_ci = None
         if _entrees_ci:
-            data["entrees_ci_lead"] = _entrees_ci
+            data["_entrees_ci_lead"] = _entrees_ci
 
     return data
 

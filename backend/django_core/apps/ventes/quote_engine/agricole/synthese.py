@@ -430,8 +430,8 @@ def synthese_agricole(data):
     synthese["schema_svg"] = schema_svg(
         synthese, langue=data.get("langue_sortie") or "fr")
     # AGR307 — l'argent : le bloc public AGR3 tel quel (posé par le builder
-    # dans ``data['economie_pompage']``), sinon absent et motivé.
-    economies, motif = _bloc_economies(data.get("economie_pompage"))
+    # dans ``data['_economie_pompage']``), sinon absent et motivé.
+    economies, motif = _bloc_economies(data.get("_economie_pompage"))
     if economies is not None:
         synthese["economies"] = economies
     else:

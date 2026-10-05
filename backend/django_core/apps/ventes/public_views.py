@@ -3241,6 +3241,16 @@ def proposal_data(request, token):
         # la plus économe (déjà importée juste au-dessus, zéro calcul de plus).
         _resid_public = is_residential(devis, {'pdf_mode': 'full'})
         synthese = synthese_economies(data) if _resid_public else None
+        # AGR308 — la synthèse AGRICOLE, par LA MÊME fonction que le PDF
+        # (``agricole/synthese.synthese_agricole``), sur ce ``data`` déjà
+        # assaini (``_strip_confidential_deep``, aucun ``prix_achat``) et AVANT
+        # la dégradation « standard » des lignes plus bas (les garanties et la
+        # courbe se lisent sur les lignes RÉELLES, comme au PDF). Clé ADDITIVE :
+        # absente hors agricole, jamais ``null``.
+        synthese_agricole_pub = None
+        if str(data.get('mode_installation') or '').strip().lower() == 'agricole':
+            from .quote_engine.agricole.synthese import synthese_agricole
+            synthese_agricole_pub = synthese_agricole(data)
         # PV86 — VÉRITÉ UNIQUE : la charge utile publique ne transporte QUE les
         # totaux/lignes de l'option réellement proposée. Un devis mono-option
         # laissait passer le second panier (calculé pour le découpage interne) :
@@ -3541,6 +3551,15 @@ def proposal_data(request, token):
         # exactement comme sur un devis sans simulation.
         if bankable is not None and _section_servie(link, 'bankable'):
             payload['bankable'] = bankable
+        # AGR308 — synthèse agricole (additive). Son bloc ``economies`` obéit à
+        # la case « Synthèse d'économies » du lien, comme la synthèse
+        # résidentielle (L-SECT) : décochée, l'argent ne part pas.
+        if synthese_agricole_pub is not None:
+            if not _section_servie(link, 'economies'):
+                synthese_agricole_pub = {
+                    cle: val for cle, val in synthese_agricole_pub.items()
+                    if cle != 'economies'}
+            payload['synthese_agricole'] = synthese_agricole_pub
         # COURBES (21/08/2026) — graphe « une journée type » : formes horaires
         # PVGIS (live au point GPS, sinon courbe de référence de la ville),
         # niveaux RÉELS (productible × kWc du devis / factures du lead), pic en
