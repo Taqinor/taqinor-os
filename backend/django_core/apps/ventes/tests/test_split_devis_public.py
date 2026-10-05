@@ -51,7 +51,7 @@ GROUPE = ('public_views.py', 'public/*.py')
 
 #: Une entrée par région : (golden, module cible, SPL qui la déplace, actif).
 DEPLACEMENTS = {
-    'noyau': ('split_pv_noyau', 'apps/ventes/public/noyau.py', 'SPL245', False),
+    'noyau': ('split_pv_noyau', 'apps/ventes/public/noyau.py', 'SPL245', True),
     'lecture': ('split_pv_lecture', 'apps/ventes/public/lecture_views.py',
                 'SPL246', False),
     'horaire': ('split_pv_horaire', 'apps/ventes/public/payload_horaire.py',

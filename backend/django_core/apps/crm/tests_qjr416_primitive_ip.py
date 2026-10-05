@@ -36,7 +36,7 @@ from django.test import RequestFactory, SimpleTestCase, override_settings
 
 from apps.crm import public_views as crm_public
 from apps.crm import visites
-from apps.ventes import public_views as ventes_public
+from apps.ventes.public import noyau as ventes_public
 from apps.ventes.tests.split_golden import fichiers_du_groupe
 from core.throttling import ip_de_requete
 

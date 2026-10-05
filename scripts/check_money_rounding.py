@@ -138,7 +138,8 @@ TARGET_FILES = [
     DJANGO_CORE / "apps" / "frais" / "services.py",
     DJANGO_CORE / "apps" / "frais" / "selectors.py",
     DJANGO_CORE / "apps" / "einvoice" / "services.py",
-] + sorted(p for p in (VENTES / "domain").glob("*.py"))
+] + sorted(p for p in (VENTES / "domain").glob("*.py")) + sorted(
+    (VENTES / "public").glob("*.py"))
 
 MONEY_NAME_RE = re.compile(
     r"(prix|montant|total|_ht|_ttc|tva|remise|acompte|solde|amount|price|"
