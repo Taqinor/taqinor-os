@@ -664,9 +664,10 @@
       "cle_registre": "roofLayout",
       "groupe": "G_CARTE",
       "requis": false,
-      "destination": "refus",
-      "champ_lead": null,
-      "note": "EN ATTENTE DU CABLAGE (ACAL20, D-ACAL-27) : 70e cle, posee SEULE avant le code (PACT10). Objet facultatif = le trace multi-pans du visiteur (document roof_layout v2). Porteur ERP prevu : Lead.web_questionnaire['roof_layout'] (cle_blob), SANS colonne ni migration. Bornes : <= 64 Ko serialise, <= 12 zones, <= 64 sommets par zone, coordonnees finies ; hors bornes = cle IGNOREE, jamais une erreur pour le visiteur. Declaree `refus` tant que `_extract_web_questionnaire` ne la lit pas (la garde check_lead_webhook_parite.py rougirait sur `web_questionnaire` non lu) : PATCH-T03 la cable et la passe en `web_questionnaire` + `cle_blob: roof_layout`, PATCH-T02 l'emet cote site (nom emis `roofLayout`, nom range `roof_layout`)."
+      "destination": "web_questionnaire",
+      "champ_lead": "web_questionnaire",
+      "cle_blob": "roof_layout",
+      "note": "CABLEE (ACAL305, D-ACAL-27) : objet facultatif = le trace multi-pans du visiteur (document roof_layout v2), lu par _extract_web_questionnaire (_clean_roof_layout) et range dans Lead.web_questionnaire['roof_layout'], SANS colonne ni migration. Bornes : <= 64 Ko serialise, <= 12 zones, <= 64 sommets par zone, chaque sommet nettoye par _clean_roof_point (coordonnees finies) ; hors bornes = cle IGNOREE (avertissement journalise), jamais une erreur pour le visiteur. Au renvoi < 60 s : complete un lead qui n'en avait pas, n'ecrase jamais un document deja recu. Emise cote site par ACAL304 (nom emis `roofLayout`, nom range `roof_layout`)."
     }
   },
   "ajout_ciq400": {
