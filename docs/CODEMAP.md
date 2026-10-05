@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 7bcd9f431088571dcc07387e07f8a009e47f77df0140fcf147ceb5e8c2c41875
+Structure fingerprint: efeb68d59ee9d3966254d4a26679153b662b2e8579302501c8d3c3ce048a14a9
 Plan fingerprint: 66de76def246feec5e4cea01d0a569fb9da623d31ea1dc698dc524570496a4f4
 
 
@@ -339,6 +339,15 @@ Model counts are the real class count across `models*.py`/`models/`.
 - **visites** : gabarit `ci` (CIQ600, migrations 0006-0007 : zones de toiture, relevé C&I, `validee_le`).
 - **core** : `core/reglementaire/` (`regime_8221.py` : régime loi 82-21) ; `core/calepinage/contenance_declaree.py` + `ilots.py` (contenance déclarée, îlots de toiture).
 - **frontend** : `features/crm/workspace/sections/SectionPro.jsx` (section PRO du lead), `features/ventes/etudePompagePreview.js` + `etudePompagePreviewPur.js` (client de l'aperçu serveur ; remplace le jumeau JS `agronomy.js`, SUPPRIMÉ — AGR131), `PanneauAgricole.jsx` consomme l'aperçu.
+
+### ventes / crm / sav / monitoring — Groupes CIQ et AGR, vague 2 (05/10/2026)
+
+- **ventes — aperçu C&I** : `POST /ventes/etude-ci/preview/` (`etude_ci_view.py` → `domain/etude_ci.py` `etudier_ci`, calcul unique, sans écriture, CIQ118) ; `moteur_ci/autoconso.py` (autoconsommation heure par heure), `taille.py` (taille = règle des 10 ans), `categories.py` (catégories commerciales).
+- **ventes — rendu** : `quote_engine/ci/` (`synthese.py` : `synthese_ci`, forme servie CIQ4) ; `quote_engine/agricole/{renderer,pages,render}.py` (document agricole 3 p. / 1 p., AGR312) ; `quote_engine/lecture_pure.py` (lectures de nombres partagées, ACAL345).
+- **crm** : `segment_suggere.py` (segment suggéré du lead) ; `mesure_cadence.py` `par_segment` + commande `mesurer_par_segment`.
+- **sav** : modèle `PrestationContrat` (prestations d'un `ContratMaintenance`).
+- **monitoring** : `@action` config `POST configs/{id}/import-releves/` (CIQ645, import de relevés).
+- **frontend** : `features/ventes/etudeCiPreview.js` + `etudeCiPreviewPur.js` (client de l'aperçu C&I), `etudePreviewCommun.js` (briques communes C&I/pompage), `economiePompagePreviewPur.js` ; `pages/ventes/generator/CarteEconomiePompage.jsx` + `CarteEconomiePompageInterne.jsx` (carte économie pompage, client / vendeur).
 
 ### calepinage — Groupe CALX (lots 1 « rendre visible et opérant », 3 « simulation sourcée » et 4 « électrique pro », 21/09/2026 ; complète la ligne du tableau ci-dessus)  *( `/api/django/calepinage/` )*
 - **Forme d'URL unique (CAL233)** : l'objet métier est servi sous `calepinages/<pk>/…` (sous-ressources en `@action` du routeur DRF, `SimpleRouter`), les réglages société sous `parametres/…`, et le moteur — un calcul SANS état — sous `moteur/calculer|pose|resultat/<job_id>/`. `tests/test_structure_urls.py` refuse toute quatrième famille.
