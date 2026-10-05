@@ -51,23 +51,42 @@ export function typeEtape(etape) {
   return types.find((t) => t.id === 'generique')
 }
 
+/** AGR533 — les SEULES clés qu'une variante de segment peut remplacer :
+ *  ce qui se LIT, jamais ce qui s'envoie (`reponse`, `outcome`) ni la suite. */
+export const CLES_VARIANTE_SEGMENT = ['label', 'precision', 'effet']
+
+/** AGR533 — applique `variantes_segment[segment]` (une réponse ou un geste) :
+ *  seuls `label` / `precision` / `effet` changent ; la clé serveur et la
+ *  suite restent celles de la table. Sans variante : l'objet tel quel. */
+export function appliquerVarianteSegment(objet, segment) {
+  const variante = segment ? objet?.variantes_segment?.[segment] : null
+  if (!variante) return objet
+  const lecture = {}
+  for (const cle of CLES_VARIANTE_SEGMENT) {
+    if (variante[cle] !== undefined) lecture[cle] = variante[cle]
+  }
+  return { ...objet, ...lecture }
+}
+
 /** Une réponse COMPLÈTE : le modèle fusionné avec l'entrée de l'étape
- *  (`{...modeles[modele], ...entree}`), plus son identifiant. */
-export function reponseComplete(entree) {
+ *  (`{...modeles[modele], ...entree}`), plus son identifiant — et, AGR533, sa
+ *  variante de SEGMENT (`etape.lead_segment`) appliquée. */
+export function reponseComplete(entree, segment = '') {
   const modele = PARCOURS.modeles[entree.modele] || {}
-  return { id: entree.modele, ...modele, ...entree }
+  return appliquerVarianteSegment({ id: entree.modele, ...modele, ...entree }, segment)
 }
 
 /** Les réponses que la ligne PROPOSE sur cette touche, dans l'ordre de la
  *  table. Sur le type générique, les précisions d'appel (Répondeur, Occupé,
  *  Numéro invalide, A bloqué) s'ajoutent quand la touche est un appel. */
 export function reponsesDeLEtape(type, etape) {
-  const reponses = (type.reponses || []).map(reponseComplete)
+  const segment = etape?.lead_segment || ''
+  const reponses = (type.reponses || []).map((entree) => reponseComplete(entree, segment))
   if (type.reponses_appel && familleCanal(etape?.canal) === 'appel') {
     // Une entrée est un identifiant de modèle ou un objet `{ modele, effet, suite… }`
     // (l'étape générique décrit ses réponses d'appel : guide + garde les lisent).
     const extras = type.reponses_appel.map((entree) => reponseComplete(
-      typeof entree === 'string' ? { modele: entree } : entree))
+      typeof entree === 'string' ? { modele: entree } : entree, segment))
     // Insérées après la première réponse (« Fait — passer à la suite »),
     // comme les précisions d'appel l'étaient avant : jamais en tête.
     reponses.splice(1, 0, ...extras)
@@ -88,9 +107,10 @@ export function estTacheSansAppel(type) {
   return estTache(type) && type.id !== 'planifier'
 }
 
-/** Les gestes du panneau, lus dans la table (pour l'écran et les tests). */
-export function gestes() {
-  return PARCOURS.gestes || []
+/** Les gestes du panneau, lus dans la table (pour l'écran et les tests).
+ *  AGR533 — `segment` (facultatif) applique leurs variantes de segment. */
+export function gestes(segment = '') {
+  return (PARCOURS.gestes || []).map((g) => appliquerVarianteSegment(g, segment))
 }
 
 export { PARCOURS }

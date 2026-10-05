@@ -95,13 +95,19 @@ class WebQuestionnaireWebhookTests(TestCase):
         self.assertEqual(str(lead.facture_hiver), '15000.00')
         # QJR595 — la puissance souscrite est promue vers sa colonne.
         self.assertEqual(str(lead.compteur_puissance_kva), '250.00')
+        # CIQ406 — tension, type de surface et groupe électrogène quittent le
+        # sac pour leurs colonnes ; tension pré-cochée (pas de tensionSource)
+        # = défaut visible du site, jamais une déclaration.
+        self.assertEqual(lead.tension_raccordement, 'mt')
+        self.assertEqual(lead.tension_source, 'site_defaut_visible')
+        self.assertEqual(lead.type_surface, 'toiture')
+        self.assertEqual(lead.type_toiture, 'bac_acier')
+        self.assertEqual(lead.groupe_electrogene, 'oui')
+        self.assertEqual(lead.puissance_souscrite_source, 'site_web')
         # Le reste (sans colonne) atterrit dans web_questionnaire.
         self.assertEqual(lead.web_questionnaire, {
-            'tension_raccordement': 'mt',
             'activity_profile': 'day',
-            'surface_type': 'bac_acier',
             'surface_m2': 800.0,
-            'has_generator': True,
         })
         # Note chatter créée (résumé FR, réponses fournies uniquement).
         note = LeadActivity.objects.filter(
@@ -316,15 +322,18 @@ class TrousDeMappingCombles(TestCase):
         ))
         self.assertEqual(res.status_code, 201, res.content)
         lead = Lead.objects.get(pk=res.json()['lead_id'])
+        # CIQ406 — équipes, cos φ et groupe électrogène promus en colonnes ;
+        # `weekend` et `surface_m2` restent au sac.
         self.assertEqual(lead.web_questionnaire, {
-            'equipes': '3x8',
             'weekend': True,
-            'cos_phi_connu': 0.92,
-            'has_generator': True,
-            'groupe_kva': 400.0,
-            'diesel_dh_mois': 18000.0,
             'surface_m2': 3100.0,
         })
+        self.assertEqual(lead.regime_equipes, '3x8')
+        self.assertEqual(str(lead.cos_phi), '0.920')
+        self.assertEqual(lead.cos_phi_source, 'site_web')
+        self.assertEqual(lead.groupe_electrogene, 'oui')
+        self.assertEqual(str(lead.groupe_kva), '400.00')
+        self.assertEqual(str(lead.groupe_depense_mad_mois), '18000.00')
         # QJR595 — la surface de toiture du client pro est promue vers la
         # colonne du lead (elle ne quitte la bag que promue) ; surface_m2
         # (peut être au sol) reste dans la bag.
@@ -662,6 +671,131 @@ class Agr402RepriseDeLExistantTests(TestCase):
         # Colonne déjà remplie : rien n'est déplacé, la clé reste au sac.
         self.assertEqual(str(rempli.besoin_eau_m3j), '50.00')
         self.assertEqual(rempli.web_questionnaire, {'besoin_m3j': 120})
+        etat = list(Lead.objects.filter(company=company).order_by('pk')
+                    .values())
+        migration.deplacer(django_apps, None)
+        self.assertEqual(
+            list(Lead.objects.filter(company=company).order_by('pk')
+                 .values()), etat)
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class Ciq406PromotionProTests(TestCase):
+    """CIQ406 — les réponses PRO du site quittent le sac pour leurs colonnes
+    CIQ401 (contrat ``tunnel_webhook_keys.json`` → ``ajout_ciq400``)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='CIQ406 Co', slug='ciq406-co')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data):
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json',
+            HTTP_X_WEBHOOK_SECRET=SECRET)
+
+    def _lead(self, **extra):
+        res = self.post(payload_site(mode='professionnel', **extra))
+        self.assertEqual(res.status_code, 201, res.content)
+        return Lead.objects.get(pk=res.json()['lead_id'])
+
+    def test_contrat_declare_les_cles_promues(self):
+        from pathlib import Path
+        contrat = json.loads(
+            (Path(__file__).resolve().parent / 'contract_samples'
+             / 'tunnel_webhook_keys.json').read_text(encoding='utf-8'))
+        ajout = contrat['ajout_ciq400']
+        self.assertEqual(ajout['cle_nouvelle']['tensionSource']['champ_lead'],
+                         'tension_source')
+        self.assertEqual(
+            {v['champ_lead'] for v in ajout['promues_en_colonne'].values()},
+            {'categorie_commerciale', 'reponses_categorie', 'regime_equipes',
+             'type_surface', 'groupe_electrogene', 'groupe_kva',
+             'groupe_depense_mad_mois', 'cos_phi'})
+
+    def test_industriel_sans_tension_source_defaut_visible(self):
+        lead = self._lead(tensionRaccordement='bt')
+        self.assertEqual(lead.tension_raccordement, 'bt')
+        self.assertEqual(lead.tension_source, 'site_defaut_visible')
+        self.assertNotIn('tension_raccordement', lead.web_questionnaire or {})
+
+    def test_tension_touchee_site_web(self):
+        lead = self._lead(tensionRaccordement='mt', tensionSource='touchee')
+        self.assertEqual(lead.tension_source, 'site_web')
+        self.assertNotIn('tension_source', lead.web_questionnaire or {})
+
+    def test_categorie_et_reponses_promues_activite_reste_au_sac(self):
+        lead = self._lead(categorieCommerciale='hotel', chambres=40,
+                          piscine=True, effectif=12, activityProfile='day',
+                          fermetureEstivale=True, weekend=False)
+        self.assertEqual(lead.categorie_commerciale, 'hotel')
+        self.assertEqual(lead.reponses_categorie,
+                         {'chambres': 40, 'piscine': True})
+        # `effectif` n'est pas une question hôtel : il reste au sac.
+        self.assertEqual(lead.web_questionnaire, {
+            'effectif': 12.0, 'activity_profile': 'day',
+            'fermeture_estivale': True, 'weekend': False})
+
+    def test_surface_terrasse_donne_toiture_et_terrasse_beton(self):
+        lead = self._lead(surfaceType='terrasse')
+        self.assertEqual(lead.type_surface, 'toiture')
+        self.assertEqual(lead.type_toiture, 'terrasse_beton')
+        lead = self._lead(surfaceType='ombriere', phoneE164='+212661000999')
+        self.assertEqual(lead.type_surface, 'ombriere')
+        self.assertIsNone(lead.type_toiture)
+
+    def test_une_colonne_deja_remplie_n_est_jamais_ecrasee(self):
+        self._lead(tensionRaccordement='bt', tensionSource='touchee',
+                   equipes='1x8')
+        self.post(payload_site(mode='professionnel',
+                               tensionRaccordement='mt', equipes='3x8',
+                               categorieCommerciale='bureau'))
+        leads = Lead.objects.filter(company=self.company)
+        self.assertEqual(leads.count(), 1)
+        lead = leads.get()
+        self.assertEqual(lead.tension_raccordement, 'bt')
+        self.assertEqual(lead.tension_source, 'site_web')
+        self.assertEqual(lead.regime_equipes, '1x8')
+        self.assertEqual(lead.categorie_commerciale, 'bureau')
+
+
+class Ciq406RepriseDeLExistantTests(TestCase):
+    """La migration de données 0125 : déplace si la colonne est vide, retire
+    la clé déplacée, idempotente, sans écrasement."""
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(
+            'apps.crm.migrations.0125_ciq406_sac_pro_vers_colonnes')
+
+    def test_reprise_idempotente_et_sans_ecrasement(self):
+        from django.apps import apps as django_apps
+        company = Company.objects.create(nom='CIQ406 R', slug='ciq406-r')
+        # Forme PROD 03/10/2026 du lead industriel.
+        industriel = Lead.objects.create(
+            company=company, nom='Usine', type_installation='industriel',
+            web_questionnaire={'puissance_kva': 250,
+                               'activity_profile': 'day',
+                               'tension_raccordement': 'bt'})
+        rempli = Lead.objects.create(
+            company=company, nom='Rempli', tension_raccordement='mt',
+            tension_source='facture',
+            web_questionnaire={'tension_raccordement': 'bt',
+                               'equipes': '2x8'})
+        migration = self._migration()
+        migration.deplacer(django_apps, None)
+        industriel.refresh_from_db()
+        rempli.refresh_from_db()
+        self.assertEqual(industriel.tension_raccordement, 'bt')
+        self.assertEqual(industriel.tension_source, 'site_defaut_visible')
+        self.assertEqual(industriel.web_questionnaire, {
+            'puissance_kva': 250, 'activity_profile': 'day'})
+        self.assertEqual(rempli.tension_raccordement, 'mt')
+        self.assertEqual(rempli.tension_source, 'facture')
+        self.assertEqual(rempli.regime_equipes, '2x8')
+        self.assertEqual(rempli.web_questionnaire,
+                         {'tension_raccordement': 'bt'})
         etat = list(Lead.objects.filter(company=company).order_by('pk')
                     .values())
         migration.deplacer(django_apps, None)

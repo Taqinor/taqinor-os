@@ -74,3 +74,6 @@ __all__ = [
 # CALX288 — rattache l'action ``economie`` au ``DevisViewSet`` (import DERNIER,
 # exécuté avant ``router.register`` puisque ``urls.py`` importe ce paquet).
 from . import economie as _economie_action  # noqa: F401,E402
+# AGR206 — rattache l'action ``economie_pompage`` au ``DevisViewSet`` (même
+# patron : import DERNIER, avant ``router.register``).
+from . import economie_pompage as _economie_pompage_action  # noqa: F401,E402

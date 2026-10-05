@@ -43,8 +43,9 @@ class LeGatingDuDevisAutomatiquePro(SimpleTestCase):
 
     def test_un_pro_SANS_aucune_des_deux_reste_bloque(self):
         """Non-régression : on n'ouvre pas la porte à un dossier vide."""
+        # CIQ404 — libellé du groupe pro (contrat CIQ1).
         self.assertEqual(champs_manquants(_lead_pro()),
-                         ['consommation mensuelle (kWh)'])
+                         ['Consommation (kWh) ou facture mensuelle (MAD)'])
 
     def test_le_meme_repli_vaut_pour_l_industriel(self):
         lead = Lead(nom='Usine', type_installation='industriel',

@@ -71,19 +71,68 @@ def _produit_pompage(produit):
     }
 
 
-def _pin(calepinage, request):
-    """Le point GPS du calepinage, pour l'irradiation RÉELLE du site.
+def _site(calepinage, request):
+    """Le point GPS et la ville du calepinage, pour l'irradiation RÉELLE.
 
-    Lu dans le contexte de conception déjà servi (CAL231) : jamais une ville
-    devinée ni des coordonnées de repli — sans pin, PVGIS n'est pas interrogé
-    et les volumes restent le calcul plat, annoncé comme tel.
+    Lus dans le contexte de conception déjà servi (CAL231) : jamais une ville
+    devinée ni des coordonnées de repli — sans pin ni ville, PVGIS n'est pas
+    interrogé et seuls les volumes plats sont publiés, annoncés comme tels.
     """
     try:
         contexte = contexte_conception(calepinage, request)
     except Exception:   # noqa: BLE001 — le pompage survit à une carte muette
-        return None, None
+        return None, None, None
     pin = ((contexte or {}).get('geometrie') or {}).get('pin') or {}
-    return pin.get('lat'), pin.get('lng')
+    ville = ((contexte or {}).get('calepinage') or {}).get('client_ville') or None
+    return pin.get('lat'), pin.get('lng'), ville
+
+
+def _kwc_retenu(calepinage):
+    """AGR125 — le kWc du champ de la variante RETENUE de ce calepinage.
+
+    Même lecture que ``selectors.calepinage_retenu_pour_devis`` : résultat du
+    moteur (``resultat['pose']``), sinon résumé de l'atelier 3D
+    (``roof_layout['result']``). Aucune variante retenue ⇒ ``None``.
+    """
+    from ..models import CalepinageVariante
+
+    variante = (CalepinageVariante.objects
+                .filter(calepinage=calepinage, retenue=True).first())
+    if variante is None:
+        return None
+    resultat = variante.resultat if isinstance(variante.resultat, dict) else {}
+    pose = resultat.get('pose') if isinstance(resultat.get('pose'), dict) else {}
+    if pose.get('kwc') is not None:
+        return _nombre(pose.get('kwc'))
+    layout = (variante.roof_layout
+              if isinstance(variante.roof_layout, dict) else {})
+    result = layout.get('result') if isinstance(layout.get('result'), dict) else {}
+    return _nombre(result.get('kwc'))
+
+
+def _salissure_societe(company):
+    """Le supplément de salissure RÉGLÉ par la société (AGR107), ou ``None``.
+
+    Le MÊME réglage que lit le devis (``ventes.domain.pompage``) : jamais un
+    défaut appliqué d'office.
+    """
+    from apps.parametres.models import CompanyProfile
+
+    profil = CompanyProfile.objects.filter(company=company).first()
+    return _nombre(getattr(profil, 'agricole_salissure_supp_pct', None))
+
+
+def _rendement_mppt(company, variateur_id):
+    """Rendement MPPT PUBLIÉ par la fiche du variateur (fraction), ou ``None``."""
+    if variateur_id is None:
+        return None
+    from apps.stock.selectors import produits_pompage
+
+    for produit in produits_pompage(company):
+        if produit.get('id') == variateur_id:
+            pct = _nombre((produit.get('fiche') or {}).get('var_rendement_mppt_pct'))
+            return pct / 100.0 if pct else None
+    return None
 
 
 @action(detail=True, methods=['post'], url_path='pompage',
@@ -114,23 +163,33 @@ def pompage(self, request, pk=None):
     erreurs = {}
     avertissements = []
 
-    # ── 1. La HMT : calculée sur les données de puits, sinon SAISIE ─────────
-    hmt = dim.hmt_puits_iteree(
+    # ── 1. La HMT : MÊME calcul que le devis (AGR111/AGR125), sinon SAISIE ─
+    hmt = dim.hmt_du_puits(
         hmt_saisie=_nombre(corps.get('hmt_saisie')),
+        debit_m3h=debit_souhaite,
         niveau_statique_m=_nombre(corps.get('niveau_statique_m')),
+        niveau_dynamique_m=_nombre(corps.get('niveau_dynamique_m')),
         coefficient_rabattement_m_par_m3h=_nombre(
             corps.get('coefficient_rabattement_m_par_m3h')),
         longueur_tuyauterie_m=_nombre(corps.get('longueur_tuyauterie_m')),
         coefficient_frottement=_nombre(corps.get('coefficient_frottement')),
         hauteur_refoulement_m=_nombre(corps.get('hauteur_refoulement_m')),
-        debit_initial_m3h=debit_souhaite,
+        denivele_m=_nombre(corps.get('denivele_m')),
+        diametre_interieur_mm=_nombre(corps.get('diametre_interieur_mm')),
+        materiau_conduite=corps.get('materiau_conduite') or None,
+        c_hazen_williams=_nombre(corps.get('c_hazen_williams')),
+        pertes_singulieres_m=_nombre(corps.get('pertes_singulieres_m')),
+        pression_service_bar=_nombre(corps.get('pression_service_bar')),
     )
+    manquantes = hmt.pop('manquantes', None) or []
+    for alerte in hmt.pop('alertes', None) or []:
+        avertissements.append(alerte.get('message') or str(alerte))
     if hmt['hmt_m'] is None:
+        noms = [dim.LIBELLES_COMPOSANTES_HMT.get(m, m) for m in manquantes]
         erreurs['hmt_saisie'] = (
-            'Renseignez la HMT, ou les cinq données de puits (niveau '
-            'statique, rabattement spécifique, longueur de tuyauterie, '
-            'coefficient de frottement, hauteur de refoulement) pour '
-            'qu’elle soit calculée.')
+            'Renseignez la HMT, ou toutes ses composantes pour qu’elle soit '
+            'calculée comme au devis'
+            + (' — manquant : ' + ', '.join(noms) if noms else '') + '.')
     if debit_souhaite is None or debit_souhaite <= 0:
         erreurs['debit_souhaite_m3h'] = (
             'Le débit souhaité (m³/h) est obligatoire : sans lui, '
@@ -199,12 +258,34 @@ def pompage(self, request, pk=None):
                 + ', '.join(str(n) for n in choix['sans_prix'] if n))
 
     # ── 3. Les volumes — JAMAIS sans pompe à courbe retenue ────────────────
+    # AGR125 — MÊME calcul que le devis : production heure par heure sur le
+    # MÊME profil PVGIS du site (``ventes.domain.pompage.profils_horaires_site``),
+    # pour le kWc du champ (saisi, sinon variante retenue) et la plaque de la
+    # pompe retenue. Le calcul plat reste publié à côté.
     volumes = None
     if pompe_servie is not None and choix['debit_hmt_m3h']:
-        lat, lon = _pin(calepinage, request)
-        volumes = dim.pompage_mensuel_pvgis(
+        from apps.parametres.pvgis_profils import productible_mensuel
+        from apps.ventes.domain.pompage import profils_horaires_site
+        from core.pompage.selection import kw_pompe
+
+        lat, lon, ville = _site(calepinage, request)
+        profils = profils_horaires_site(ville=ville, lat=lat, lon=lon)
+        source_irradiation = None
+        if profils is not None:
+            resolu = productible_mensuel(ville=ville, lat=lat, lon=lon)
+            source_irradiation = resolu[1] if resolu else None
+        kwc = _nombre(corps.get('kwc'))
+        if kwc is None or kwc <= 0:
+            kwc = _kwc_retenu(calepinage)
+        plaque_kw, _source_kw = kw_pompe(choix['pompe'])
+        volumes = dim.volumes_mensuels(
             debit_hmt_m3h=choix['debit_hmt_m3h'], pumping_hours=heures,
-            lat=lat, lon=lon)
+            courbe_pompe=choix['pompe'].get('courbe_pompe'),
+            hmt_m=hmt['hmt_m'], kwc=kwc, p_plaque_kw=plaque_kw,
+            rendement_mppt=_rendement_mppt(
+                calepinage.company, (variateur_servi or {}).get('produit')),
+            salissure_pct=_salissure_societe(calepinage.company),
+            profils_horaires=profils, source_irradiation=source_irradiation)
 
     besoin = dim.couverture_besoin_eau(
         besoin_m3_jour=besoin_jour, besoin_m3_mois=besoin_mois,

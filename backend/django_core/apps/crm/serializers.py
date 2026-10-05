@@ -23,7 +23,7 @@ from .models import (
 )
 from .devis_auto import (
     champs_manquants_detail, champs_requis, message_manquants,
-    visite_point_eau_avant_devis)
+    source_conso, visite_avant_devis, visite_point_eau_avant_devis)
 from .scoring import compute_score, score_label, score_reasons
 
 
@@ -152,6 +152,10 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     lead_langue = serializers.SerializerMethodField()
     lead_score = serializers.SerializerMethodField()
     lead_priorite = serializers.SerializerMethodField()
+    # AGR531 (contrat `relance_etape_v2.json`, AGR500) — le segment du lead
+    # (`type_installation`, '' si non renseigné). Lecture seule : il ne sert
+    # qu'aux CONSIGNES d'écran, jamais au rythme de la cadence.
+    lead_segment = serializers.SerializerMethodField()
     devis_reference = serializers.SerializerMethodField()
     overdue = serializers.SerializerMethodField()
     # MRY30 — QUI a traité la touche, et QUAND. Le modèle les portait déjà
@@ -244,6 +248,8 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             # COCKPIT-CONTRÔLE — additifs (voir plus haut).
             'type_etape', 'est_tache', 'nb_reports', 'due_initial_at',
             'posee_le',
+            # AGR531 — additif (contrat `relance_etape_v2.json`).
+            'lead_segment',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
@@ -291,6 +297,11 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
 
     def get_lead_langue(self, obj) -> str:
         return obj.lead.langue_preferee or 'fr'
+
+    def get_lead_segment(self, obj) -> str:
+        """AGR531 — ``Lead.type_installation`` ou ``''`` (lead déjà chargé :
+        aucune requête de plus)."""
+        return getattr(obj.lead, 'type_installation', None) or ''
 
     def get_lead_contact_preference(self, obj) -> str:
         """CAD82 — ``whatsapp_only`` | ``phone_ok`` | '' (rien de posé)."""
@@ -566,6 +577,10 @@ class ClientSerializer(_CompanyScopedRelationsMixin,
     # created_by est forcé côté serveur (perform_create) — jamais lu du corps.
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
     created_by_nom = serializers.SerializerMethodField()
+    # CIQ402 (contrat CIQ8 ``client_entreprise.json``, D-CIQ-11) — ce qui
+    # manque à l'identité légale d'un client entreprise et ce que chaque
+    # étape exige (rien ne bloque un devis). Pur, sans requête.
+    identite_entreprise = serializers.SerializerMethodField()
 
     # FG20 — coordonnées personnelles masquées quand le rôle n'a pas
     # ``client_pii_voir``. Source unique des champs PII partagée avec le Lead.
@@ -655,6 +670,16 @@ class ClientSerializer(_CompanyScopedRelationsMixin,
 
     def get_created_by_nom(self, obj):
         return getattr(obj.created_by, 'username', None)
+
+    @extend_schema_field(serializers.DictField())
+    def get_identite_entreprise(self, obj):
+        from .models import identite_entreprise
+        return identite_entreprise(
+            entreprise=obj.type_client == Client.TypeClient.ENTREPRISE,
+            raison_sociale=obj.nom,
+            raison_a_confirmer=obj.raison_sociale_a_confirmer,
+            ice=obj.ice, rc=obj.rc, if_fiscal=obj.if_fiscal,
+            adresse_siege=obj.adresse_siege, adresse=obj.adresse)
 
     def get_devis_count(self, obj):
         return obj.devis.count()
@@ -813,6 +838,18 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # dimensionnement agricole lues sur le lead, avec leur provenance :
     # RETRIEVE SEULEMENT (une requête d'historique), même porte.
     entrees_pompage = serializers.SerializerMethodField()
+    # CIQ402 (contrat CIQ8 ``client_entreprise.json``) — l'identité légale
+    # attendue d'un lead pro (manquants, requis_pour). Pur, sans requête ;
+    # RETRIEVE SEULEMENT, même porte que les autres blocs de détail.
+    identite_entreprise = serializers.SerializerMethodField()
+    # CIQ405 (contrat CIQ1 ``lead_pro.json``) — les entrées du moteur C&I
+    # lues sur le lead, avec leur provenance : RETRIEVE SEULEMENT (une
+    # requête d'historique), même porte ; ``null`` hors commercial/industriel.
+    entrees_ci = serializers.SerializerMethodField()
+    # CIQ428 — indicateurs INTERNES du vendeur (« audit énergétique
+    # obligatoire probable », loi 47-09) : DÉTAIL SEULEMENT, jamais la liste,
+    # jamais une sortie client.
+    indicateurs_internes = serializers.SerializerMethodField()
     # MRY5 — prochaine touche de cadence, ANNOTÉE dans le queryset
     # (``LeadViewSet.get_queryset``), jamais un SerializerMethodField : la
     # liste et le kanban affichent le badge « touche due » pour 50 cartes,
@@ -921,6 +958,11 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # AGR403 (D-AGR-4) — {requise, motifs} pour un agricole, null
             # ailleurs : une information, jamais un blocage de `pret`.
             'visite_point_eau_avant_devis': visite_point_eau_avant_devis(obj),
+            # CIQ404 (contrat CIQ1, D-CIQ-5) — la colonne qui remplit le
+            # groupe pro et la visite AVANT le devis final : commercial et
+            # industriel seulement, null ailleurs ; jamais un blocage.
+            'source_conso': source_conso(obj),
+            'visite_avant_devis': visite_avant_devis(obj),
         }
 
     def get_next_activity(self, obj):
@@ -1196,7 +1238,65 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
                     'lead', company, attrs.get('custom_data'))
         self._poser_provenances_pompage(attrs)
         self._valider_dossier_subvention(attrs)
+        self._valider_colonnes_pro(attrs)
+        self._poser_provenances_pro(attrs)
         return attrs
+
+    # CIQ401 (contrat CIQ1 ``lead_pro.json``) — DRF n'appelle pas
+    # ``Model.clean`` : les règles croisées des colonnes pro vivent ici (les
+    # règles par champ sont les ``validators`` du modèle).
+    def _valider_colonnes_pro(self, attrs):
+        instance = self.instance
+
+        def _valeur(champ):
+            if champ in attrs:
+                return attrs[champ]
+            return getattr(instance, champ, None)
+
+        if 'heure_debut' in attrs or 'heure_fin' in attrs:
+            debut, fin = _valeur('heure_debut'), _valeur('heure_fin')
+            if debut is not None and fin is not None and debut >= fin:
+                champ = 'heure_fin' if 'heure_fin' in attrs else 'heure_debut'
+                raise serializers.ValidationError({champ: [
+                    "« Heure de fin » : elle doit être après l'heure de "
+                    'début.']})
+        if attrs.get('reponses_categorie') is not None:
+            reponses = attrs['reponses_categorie']
+            categorie = _valeur('categorie_commerciale')
+            cles = Lead.REPONSES_CATEGORIE_CLES
+            permises = (set(cles.get(categorie, ())) if categorie
+                        else {c for liste in cles.values() for c in liste})
+            if not isinstance(reponses, dict) or set(reponses) - permises:
+                raise serializers.ValidationError({'reponses_categorie': [
+                    "« Réponses propres à l'activité » : seules les questions "
+                    "de la catégorie déclarée sont acceptées."]})
+        if attrs.get('releve_conso') is not None:
+            from .models import normaliser_releve_conso
+            attrs['releve_conso'] = normaliser_releve_conso(
+                attrs['releve_conso'])
+
+    # CIQ401 — une valeur pro SAISIE dans l'ERP (fiche ou appel) porte sa
+    # provenance, posée ici et jamais par le corps (colonnes ``*_source`` en
+    # lecture seule). Le cos φ n'a pas ``declare`` dans son vocabulaire : il
+    # se lit sur la facture. La source ne change que si la valeur change ;
+    # une valeur vidée vide sa source.
+    _PROVENANCES_PRO_SAISIE = (
+        ('tension_raccordement', 'tension_source', 'declare'),
+        ('compteur_puissance_kva', 'puissance_souscrite_source', 'declare'),
+        ('surface_toiture_m2', 'surface_source', 'declare'),
+        ('cos_phi', 'cos_phi_source', 'facture'),
+    )
+
+    def _poser_provenances_pro(self, attrs):
+        instance = self.instance
+        for valeur, source, origine in self._PROVENANCES_PRO_SAISIE:
+            if valeur not in attrs:
+                continue
+            if instance is not None and getattr(instance, valeur) == attrs[
+                    valeur]:
+                continue
+            attrs[source] = (origine if attrs[valeur] not in (None, '')
+                             else None)
 
     #: AGR522 (contrat ``lead_dossier_subvention.json``, ``exemple_400``).
     MESSAGE_DATE_SUBVENTION = (
@@ -1281,6 +1381,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             'niveau_statique_source', 'debit_forage_source',
             'besoin_eau_source', 'pompe_hmt_source',
             'carburant_prix_declare_le',
+            # CIQ401 — provenances des colonnes pro : posées par le serveur
+            # selon le chemin d'écriture (fiche, webhook, visite).
+            'tension_source', 'puissance_souscrite_source', 'surface_source',
+            'cos_phi_source',
         ]
 
     # FG20 — coordonnées personnelles masquées sans ``client_pii_voir``.
@@ -1320,6 +1424,12 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             fields.pop('provenance_site', None)
             # AGR404 — `entrees_pompage` : détail seulement, même porte.
             fields.pop('entrees_pompage', None)
+            # CIQ402 — `identite_entreprise` : détail seulement, même porte.
+            fields.pop('identite_entreprise', None)
+            # CIQ405 — `entrees_ci` : détail seulement, même porte.
+            fields.pop('entrees_ci', None)
+            # CIQ428 — `indicateurs_internes` : détail seulement, même porte.
+            fields.pop('indicateurs_internes', None)
         return fields
 
     def to_representation(self, instance):
@@ -1360,6 +1470,48 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         """
         from .selectors import conception_3d_du_lead
         return conception_3d_du_lead(obj)
+
+    @extend_schema_field(serializers.DictField())
+    def get_entrees_ci(self, obj):
+        """CIQ405 — ``{entrees, manquants, informations}`` (contrat CIQ1) :
+        la SEULE lecture lead → entrées du moteur C&I."""
+        return self._entrees_ci(obj)
+
+    def _entrees_ci(self, obj):
+        """CIQ428 — ``entrees_ci`` calculé UNE fois par lead sérialisé (lu
+        par ``entrees_ci`` ET par ``indicateurs_internes``)."""
+        from .selectors import entrees_ci_du_lead
+        cache = getattr(self, '_cache_entrees_ci', None)
+        if cache is None:
+            cache = self._cache_entrees_ci = {}
+        cle = id(obj)
+        if cle not in cache:
+            cache[cle] = entrees_ci_du_lead(obj)
+        return cache[cle]
+
+    @extend_schema_field(serializers.DictField())
+    def get_indicateurs_internes(self, obj):
+        """CIQ428 — ``{audit_47_09}`` : l'indicateur INTERNE « audit
+        énergétique obligatoire probable » sur la seule électricité
+        DÉCLARÉE (``apps/crm/audit_energetique.py``) ; ``None`` hors
+        commercial / industriel. Vu par le vendeur seulement."""
+        from .audit_energetique import indicateur_du_lead
+        return {'audit_47_09': indicateur_du_lead(
+            obj.type_installation, self._entrees_ci(obj))}
+
+    @extend_schema_field(serializers.DictField())
+    def get_identite_entreprise(self, obj):
+        """CIQ402 — bloc ``identite_entreprise`` (contrat CIQ8) du lead :
+        entreprise si le lead est commercial/industriel ou porte une
+        raison sociale ; la raison sociale est ``societe``."""
+        from .models import identite_entreprise
+        entreprise = (obj.type_installation in ('commercial', 'industriel')
+                      or bool((obj.societe or '').strip()))
+        return identite_entreprise(
+            entreprise=entreprise, raison_sociale=obj.societe,
+            raison_a_confirmer=False, ice=obj.ice, rc=obj.rc,
+            if_fiscal=obj.if_fiscal, adresse_siege=obj.adresse_siege,
+            adresse=obj.adresse)
 
     @extend_schema_field(serializers.DictField())
     def get_entrees_pompage(self, obj):
@@ -2097,15 +2249,32 @@ class LeadPlaybookProgressSerializer(serializers.ModelSerializer):
     etape_stage = serializers.CharField(source='tache.etape.stage', read_only=True)
     fait_par_nom = serializers.CharField(
         source='fait_par.username', read_only=True, default=None)
+    # AGR526 (contrat `lead_playbook.json`, AGR507) — la clé du TEXTE que la
+    # tâche propose (`dossier_fda` / `dossier_8221`), ou null.
+    cle_message = serializers.SerializerMethodField()
 
     class Meta:
         model = LeadPlaybookProgress
         fields = [
             'id', 'lead', 'tache', 'tache_libelle', 'tache_obligatoire',
             'etape_stage', 'fait', 'fait_par', 'fait_par_nom', 'fait_le',
-            'created_at',
+            'created_at', 'cle_message',
         ]
         read_only_fields = ['fait_par', 'fait_le', 'created_at']
+
+    def get_cle_message(self, obj):
+        """AGR526 — la ``cle_message`` de l'entrée ``PLAYBOOKS_SEGMENT_CAD125``
+        dont le ``nom`` est celui du playbook de la tâche, SEULEMENT si
+        ``cle_message_segment(lead)`` la confirme ; ``None`` sinon."""
+        from .services import PLAYBOOKS_SEGMENT_CAD125, cle_message_segment
+        playbook = getattr(getattr(obj.tache, 'etape', None), 'playbook', None)
+        nom = getattr(playbook, 'nom', None)
+        entree = next((e for e in PLAYBOOKS_SEGMENT_CAD125 if e['nom'] == nom),
+                      None)
+        if entree is None:
+            return None
+        cle = entree['cle_message']
+        return cle if cle_message_segment(obj.lead) == cle else None
 
 
 # ── LB48 — Vues enregistrées par compte ────────────────────────────────────

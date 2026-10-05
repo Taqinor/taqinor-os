@@ -7,7 +7,8 @@ code du 04/10/2026, avant tout déplacement) :
 
 * ``routes`` — chaque route de ``DevisViewSet.get_extra_actions()`` (nom,
   ``url_path``, ``url_name``, ``detail``, méthodes triées) : 53 ``@action`` de
-  la classe + ``economie`` greffée par ``views/economie.py`` = 54 ;
+  la classe + ``economie`` greffée par ``views/economie.py`` = 54 (+
+  ``economie_pompage`` greffée par ``views/economie_pompage.py``, AGR206 = 55) ;
 * ``noms_publics`` — ``sorted(n for n in dir(DevisViewSet)
   if not n.startswith('__'))`` : un mixin oublié dans les bases ou un nom
   renommé en route rougit ;
@@ -43,8 +44,9 @@ VUES = Path(__file__).resolve().parent.parent / 'views'
 FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
     'golden_devis_viewset.json'
 
-#: 54 + ``facturer-complet`` (05/10/2026, ajout de route, pas un déplacement).
-NB_ROUTES = 55
+#: 54 + ``facturer-complet`` (05/10/2026, ajout de route) + la route de la
+#: vague 1 (fusion du 05/10).
+NB_ROUTES = 56
 MIXIN = re.compile(r'^Devis\w*ActionsMixin$')
 
 #: Les symboles que chaque tâche de la piste déplace (texte des tâches

@@ -27,6 +27,13 @@ import Etiquettes from './Etiquettes'
    chiffre à la place de l'inconnu.
    ========================================================================== */
 
+/** CIQ136 — libellés des assureurs du contrat `calepinage_detail.json`. */
+const ASSUREURS = {
+  fm_global: 'FM Global',
+  apsad: 'APSAD',
+  autre: 'Autre assureur',
+}
+
 /** Une valeur du serveur, ou le tiret de l'inconnu. Jamais un zéro de repli. */
 function texte(brut) {
   if (brut === null || brut === undefined || brut === '') return '—'
@@ -180,6 +187,7 @@ export default function FicheCalepinage({ detail }) {
   const variantes = detail.variantes ?? {}
   const image = detail.image ?? {}
   const geo = detail.contexte_geographique ?? {}
+  const contraintes = detail.contraintes_site ?? {}
   const permissions = detail.permissions ?? {}
 
   // Les gestes AUTORISÉS, nommés par le serveur. On liste ce qui est permis :
@@ -595,6 +603,21 @@ export default function FicheCalepinage({ detail }) {
           {geo.pin || geo.ville || geo.adresse
             ? [geo.adresse, geo.ville, geo.source && `source : ${geo.source}`]
               .filter(Boolean).join(' · ')
+            : '—'}
+        </Champ>
+        {/* CIQ136 — contraintes de site PAR PROJET (assureur, incendie) :
+            vides par défaut (« — »), jamais un préréglage affiché sans que
+            l'assureur déclaré soit FM ; chaque règle publiée avec sa source. */}
+        <Champ cle="contraintes_site" label="Contraintes de site">
+          {contraintes.assureur && contraintes.assureur !== 'aucun'
+            ? [
+              ASSUREURS[contraintes.assureur] || contraintes.assureur,
+              ...Object.values(contraintes.regles || {}),
+              contraintes.source?.document && `source : ${[
+                contraintes.source.document, contraintes.source.date,
+                contraintes.source.reference,
+              ].filter(Boolean).join(', ')}`,
+            ].filter(Boolean).join(' · ')
             : '—'}
         </Champ>
         {/* ACAL6 — champs personnalisés servis tels quels (`custom_data`,

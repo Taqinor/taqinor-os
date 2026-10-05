@@ -392,7 +392,10 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
 # prospect nous avait consultés, dérivé de la date de création de SA fiche.
 # Les deux sont VIDES quand la donnée n'existe pas — leur phrase est alors
 # OMISE (MRY13), jamais un crochet envoyé au client.
-PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}", "{lien_video_preuve}", "{marque}", "{lien_google}", "{prescripteur}", "{mois_dossier}"]
+# CIQ500 (05/10/2026) — `{societe}` : la raison sociale du lead (`Lead.societe`,
+# nettoyée). Vide ⇒ sa phrase est OMISE (MRY13) ; à n'utiliser que dans une
+# phrase AUTONOME (la salutation reste civilité + prénom — CAD65).
+PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}", "{lien_video_preuve}", "{marque}", "{lien_google}", "{prescripteur}", "{mois_dossier}", "{societe}"]
 
 #: Les clés du moteur de relances (MRY12), dans l'ordre du fichier source.
 CLES_RELANCE = [
@@ -452,6 +455,9 @@ CLES_RELANCE = [
     # CAD128 — le client DÉJÀ SIGNÉ qui redemande un devis : cadence courte,
     # texte propre. Jamais le protocole contact sur un client acquis.
     'deuxieme_affaire',
+    # AGR534 — le résumé transmis à l'ASSOCIÉ (contact secondaire), geste
+    # manuel avec l'accord du client (`leads/<id>/resume-associe/`).
+    'resume_associe',
 ]
 
 #: CAD60 (21/09/2026) — les textes à ENVOI MANUEL, hors cadence.
@@ -589,6 +595,11 @@ class MessageTemplate(models.Model):
         RELANCE_EMAIL_J10 = (
             'relance_email_j10',
             "Relance — e-mail générique (J10)")
+        # AGR534 — le résumé de la proposition transmis à l'associé (contact
+        # secondaire), avec l'accord du client : geste manuel, aucune cadence.
+        RESUME_ASSOCIE = (
+            'resume_associe',
+            "Résumé de la proposition transmis à l'associé (avec accord)")
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -722,12 +733,32 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT = {
     # Industriel / commercial : on parle à une ORGANISATION. « En famille »
     # ne décrit aucun processus d'achat B2B ; le site n'est pas « chez vous ».
     'industriel': {
+        # CIQ501 (05/10/2026) — base PARTAGÉE commercial + industriel : ni
+        # « une photo suffit », ni vue des bâtiments, ni 3D promise (non
+        # vérifiées pour le C&I), ni « chez vous », ni « voisin, frère », ni
+        # récompense. `{societe}` n'apparaît que dans une phrase AUTONOME :
+        # sans raison sociale, elle est omise (MRY13) et le message reste
+        # complet. ✎ Textes à valider par Reda (manuel), sans bloquer.
         'valeur_j1':
-            "Bonjour {civilite} {prenom}, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de vos relevés de consommation (une photo suffit) et de l'adresse du site : je vous montre l'installation sur vos bâtiments, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
+            "Bonjour {civilite} {prenom}, je n'ai pas réussi à vous joindre. Je prépare l'étude solaire de {societe}. Pour que l'estimation soit juste, j'ai besoin de vos factures d'électricité des 12 derniers mois (ou de vos relevés de consommation) et de l'adresse du site : je vous prépare ensuite l'étude, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
         'reveil_a1':
-            "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu une étude solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer l'installation posée sur VOS bâtiments, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer l'adresse du site.) Répondez STOP et je n'insiste plus.",
+            "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu une étude solaire chez nous. Si le projet revient d'actualité, je vous refais l'étude à jour — c'est gratuit, sans engagement. Je m'en occupe ? (Je dois juste confirmer l'adresse du site.) Répondez STOP et je n'insiste plus.",
+        'reveil_a2':
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : vos factures d'électricité des 12 derniers mois (ou vos relevés de consommation), et je vous envoie l'estimation à jour. Répondez STOP et je n'insiste plus.",
         'reveil_a3':
-            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de l'installation sur vos bâtiments, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je vous refais l'étude à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
+        # CIQ501 — crochets [jour]/[heure] conservés (CAD69).
+        'rappel_plus_tard':
+            "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez sous la main vos factures d'électricité des 12 derniers mois (ou vos relevés de consommation), elles m'aident à préparer l'estimation.",
+        # CIQ501 — une installation PROFESSIONNELLE, jamais « comparable à la
+        # vôtre » ; sans la phrase sur le suivi en temps réel (non garantie).
+        'j4_preuve':
+            "Voici une installation professionnelle que nous avons posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Petite vidéo du chantier : {lien_video_preuve}.",
+        # CIQ501 — convention 9 : AUCUNE récompense, jamais « voisin, frère ».
+        'parrainage':
+            "Si une autre entreprise de votre entourage, ou un autre site de votre groupe, réfléchit au solaire, vous pouvez lui envoyer votre lien de parrainage ; elle aura la même étude gratuite.",
+        'debrief_visite':
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle après le passage de notre technicien sur votre site : qu'avez-vous pensé de sa visite, et reste-t-il des questions avant qu'on avance ensemble ?",
         'dimanche_famille':
             "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je sais que la décision se prend à plusieurs. Si vous en parlez avec votre équipe, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou nous réunir à deux ou trois au moment qui vous arrange, comme vous préférez.",
         'visite_proposition':
@@ -804,6 +835,81 @@ def variante_segment(cle, type_installation, langue='fr'):
     else:
         return None
     return table.get(segment, {}).get(cle)
+
+
+# ── CIQ502 (05/10/2026) — FORME E-MAIL (objet + corps) DES TOUCHES ────────
+#
+# Le seul texte e-mail du catalogue était `relance_email_j10` (barreau
+# historique de la cadence générique). Les sept touches WhatsApp du suivi
+# après devis et `reveil_a2`/`reveil_a3` n'avaient qu'un texte WhatsApp
+# (« Répondez STOP », « ici ») — or un acheteur B2B transmet un e-mail et sa
+# pièce jointe à sa direction ou à sa banque (convention 8 : contact sur fixe
+# avec une adresse e-mail ⇒ la touche part en e-mail, règle de DONNÉE).
+#
+# Dict SÉPARÉ `{cle: {'objet', 'corps'}}`, en FRANÇAIS, NEUTRE de segment (un
+# particulier sur fixe avec e-mail les reçoit aussi) : ni « famille », ni
+# « toit », ni « chez vous », ni aucun mot interdit aux textes B2B (CIQ501).
+# Mêmes placeholders et même omission MRY13 que les textes WhatsApp. La porte
+# de sortie de CAD110 devient « répondez-le simplement à cet e-mail ».
+# `j1_pdf` et `j9_validite` rappellent que la proposition est JOINTE.
+# `vocal_j3` et les clés de la cadence contact n'en ont pas : ce sont des
+# appels avec script (CIQ505). Source : lignes `E-MAIL OBJET : ` / `E-MAIL : `
+# de `docs/crm/messages_meryem.md`. ✎ À valider par Reda.
+MESSAGE_TEMPLATE_FORMES_EMAIL = {
+    'j1_pdf': {
+        'objet': 'Votre proposition {reference} — {marque}',
+        'corps':
+            "Bonjour {civilite} {prenom}, j'espère que vous allez bien. Vous trouverez votre proposition solaire en pièce jointe. Sa référence : {reference}. Prenez le temps de la lire tranquillement, et dites-moi ce qui vous a le plus parlé. Je reste à votre disposition pour la moindre question. — {conseiller}, {marque}",
+    },
+    'dimanche_famille': {
+        'objet': 'Votre proposition {reference} — la page résumé',
+        'corps':
+            'Bonjour {civilite} {prenom}, je sais que la décision se prend souvent à plusieurs. Si vous en parlez autour de vous, je peux vous envoyer la page résumé de votre proposition (une page, les chiffres clés) pour la partager, ou organiser un appel avec les personnes concernées au moment qui vous arrange. — {conseiller}, {marque}',
+    },
+    'j4_preuve': {
+        'objet': 'Une installation réalisée par {marque}',
+        'corps':
+            'Bonjour {civilite} {prenom}, je vous présente une installation que nous avons posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Une courte vidéo du chantier : {lien_video_preuve}. — {conseiller}, {marque}',
+    },
+    'j6_garanties': {
+        'objet': 'Les garanties de votre proposition {reference}',
+        'corps':
+            "Bonjour {civilite} {prenom}, les garanties de votre installation sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement figure dans votre proposition : {lien}. Ce qui est couvert, et pour combien d'années : https://taqinor.ma/garanties — {conseiller}, {marque}",
+    },
+    'j9_validite': {
+        'objet': 'Validité de votre proposition {reference}',
+        'corps':
+            "Bonjour {civilite} {prenom}, je vous joins de nouveau votre proposition. Elle est valable jusqu'au {date_validite}. Au-delà, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux. — {conseiller}, {marque}",
+    },
+    'j13_dernier': {
+        'objet': 'Votre projet solaire — {marque}',
+        'corps':
+            "Bonjour {civilite} {prenom}, je ne veux pas insister : dites-moi simplement si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail. — {conseiller}, {marque}",
+    },
+    'j14_pause': {
+        'objet': 'Votre dossier mis en pause — {marque}',
+        'corps':
+            'Bonjour {civilite} {prenom}, je mets votre dossier en pause. Votre proposition reste enregistrée chez nous ; un simple message suffit pour la réactiver. Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail. — {conseiller}, {marque}',
+    },
+    'reveil_a2': {
+        'objet': 'Votre projet solaire — {marque}',
+        'corps':
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où nous l'avions laissé : envoyez-moi vos dernières factures (ou vos relevés de consommation) en réponse à cet e-mail, et je vous envoie l'estimation à jour. Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail.",
+    },
+    'reveil_a3': {
+        'objet': 'Votre dossier solaire — {marque}',
+        'corps':
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant cela, je peux vous refaire l'étude à jour. Je vous la prépare, ou je classe le dossier ? Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail.",
+    },
+}
+
+
+def forme_email(cle):
+    """CIQ502 — ``{'objet', 'corps'}`` de la forme e-mail de ``cle``, ou
+    ``None`` quand la touche n'en a pas (``vocal_j3``, cadence contact…).
+    Une COPIE : l'appelant peut la rendre sans toucher au catalogue."""
+    forme = MESSAGE_TEMPLATE_FORMES_EMAIL.get(cle)
+    return dict(forme) if forme else None
 
 
 # ── CAD127 (21/09/2026) — LE PREMIER MESSAGE DIT LA VÉRITÉ SUR L'ORIGINE ──
@@ -906,4 +1012,21 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
 MESSAGE_TEMPLATE_DEFAULTS.update({
     'relance_email_j10':
         "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous ai contacté récemment au sujet de votre demande solaire, sans succès pour l'instant. Si le projet vous intéresse toujours, répondez simplement à cet e-mail ou appelez-moi : je reste à votre disposition.",
+})
+
+# ── AGR534 (05/10/2026) — LE RÉSUMÉ TRANSMIS À L'ASSOCIÉ ──────────────────────
+# `dimanche_famille` agricole promet « la page résumé … pour la partager » :
+# `POST leads/<id>/resume-associe/` prépare le lien WhatsApp vers le contact
+# SECONDAIRE (CAD144 : jamais un automatisme — c'est un geste manuel, avec
+# l'accord du client coché). Aucun chiffre, aucun prénom codé en dur
+# ({conseiller}, {marque}, {lien} résolus côté serveur ; {lien} = la
+# proposition publique existante, règle #4). Source : `docs/crm/messages_meryem.md`.
+# ✎ Texte à valider par Reda ; darija à relire par un locuteur natif.
+MESSAGE_TEMPLATE_DEFAULTS.update({
+    'resume_associe':
+        "Bonjour, je vous transmets, avec l'accord de notre client, le résumé de la proposition solaire préparée par {marque} : {lien}. Vous pouvez la consulter et me poser vos questions ici. — {conseiller}",
+})
+MESSAGE_TEMPLATE_DEFAULTS_DARIJA.update({
+    'resume_associe':
+        'السلام عليكم، كنصيفط ليكم، بموافقة الزبون ديالنا، الملخص ديال العرض ديال الطاقة الشمسية اللي وجدات {marque}: {lien}. تقدرو تشوفوه وتسولوني على أي حاجة هنا. — {conseiller}',
 })

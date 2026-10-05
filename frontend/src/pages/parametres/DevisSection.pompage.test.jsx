@@ -16,6 +16,7 @@ vi.mock('../../api/ventesApi', () => ({
 }))
 
 import DevisSection from './DevisSection'
+import { formDevisBase } from '../../test/fixtures/devisSectionForm'
 import {
   REGLAGES_POMPAGE, formReglagesPompage, payloadReglagesPompage, nombreOuNull,
 } from './peConstants'
@@ -29,14 +30,7 @@ function withStore(ui) {
   return <Provider store={store}>{ui}</Provider>
 }
 
-const baseForm = {
-  payment_terms: {}, doc_prefixes: {}, doc_numbering: {},
-  quote_validity_days: 30, agricole_pump_hours: 7,
-  delai_visite_technique: '', delai_installation: '',
-  commission_mode: 'off', commission_valeur: '',
-  dgi_export_actif: false, tva_standard: 20, tva_panneaux: 10,
-  ...formReglagesPompage({}),
-}
+const baseForm = formDevisBase()
 
 function rendre(form = baseForm, set = vi.fn()) {
   render(withStore(

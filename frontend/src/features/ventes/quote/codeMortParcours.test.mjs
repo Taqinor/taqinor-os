@@ -11,7 +11,6 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import * as solar from '../solar.js'
-import * as agronomy from '../agronomy.js'
 
 const ICI = dirname(fileURLToPath(import.meta.url))
 
@@ -30,12 +29,14 @@ test('solar.js n’exporte plus les fonctions sans appelant', () => {
   assert.equal(typeof solar.onduleurSpecsManquantes, 'function')
 })
 
-test('agronomy.js n’exporte plus les fonctions sans appelant', () => {
-  for (const nom of ['requiredFlow', 'hectaresIrrigable',
-    'annualWaterFromMonthly', 'datePalmCitedPerTree']) {
-    assert.equal(nom in agronomy, false, `agronomy.${nom} est encore exporté`)
-  }
-  assert.equal(typeof agronomy.waterDemandFromFarm, 'function')
+// AGR131 — le jumeau JS du besoin en eau (`agronomy.js`) est SUPPRIMÉ :
+// l'écran lit `besoin` dans l'aperçu serveur (AGR127/AGR129).
+test('agronomy.js n’existe plus et plus rien ne l’importe', () => {
+  assert.equal(existsSync(join(ICI, '..', 'agronomy.js')), false)
+  const generateur = readFileSync(
+    join(ICI, '..', '..', '..', 'pages', 'ventes', 'DevisGenerator.jsx'), 'utf-8')
+  assert.equal(generateur.includes('waterDemandFromFarm'), false)
+  assert.equal(/from '[^']*agronomy'/.test(generateur), false)
 })
 
 test('aucun module du calculateur ne se dit « IMPORTÉ PAR PERSONNE »', () => {

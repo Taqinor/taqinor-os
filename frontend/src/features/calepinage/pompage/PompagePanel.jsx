@@ -52,6 +52,19 @@ const CHAMPS = [
     ['hauteur_refoulement_m', 'Hauteur de refoulement (m)'],
     ['hmt_saisie', 'HMT saisie (m) — si le puits n’est pas mesuré'],
   ]],
+  /* AGR125 — les composantes de la HMT « comme au devis » (core/pompage
+     `hmt_composantes`). AUCUN défaut : pertes singulières et pression de
+     service restent vides tant qu'elles ne sont pas saisies ; le serveur
+     nomme ce qui manque et retombe sur la HMT saisie. */
+  ['hmt_composantes', 'La HMT calculée comme au devis', [
+    ['niveau_dynamique_m', 'Niveau dynamique mesuré (m)'],
+    ['denivele_m', 'Dénivelé (m)'],
+    ['diametre_interieur_mm', 'Diamètre intérieur de la conduite (mm)'],
+    ['materiau_conduite', 'Matériau de la conduite (PVC, PEHD…)', 'text'],
+    ['c_hazen_williams', 'Coefficient de Hazen-Williams (C)'],
+    ['pertes_singulieres_m', 'Pertes singulières (m)'],
+    ['pression_service_bar', 'Pression de service (bar)'],
+  ]],
   ['besoin', 'Le besoin', [
     ['debit_souhaite_m3h', 'Débit souhaité (m³/h)'],
     ['besoin_m3_jour', 'Besoin en eau (m³/jour)'],
@@ -68,12 +81,12 @@ const LIBELLE_CHAMP = Object.fromEntries(
   CHAMPS.flatMap(([, , champs]) => champs),
 )
 
-function Champ({ cle, label, valeurSaisie, erreur, onChange }) {
+function Champ({ cle, label, type = 'number', valeurSaisie, erreur, onChange }) {
   return (
     <label className="block" data-testid={`cal-pompage-champ-${cle}`}>
       <span className="tech-label text-lune-faint">{label}</span>
       <input
-        type="number"
+        type={type}
         /* Règle fondateur : l'écran ne SNAPPE ni ne REFUSE jamais une saisie. */
         step="any"
         name={cle}
@@ -210,7 +223,11 @@ export default function PompagePanel({ calepinageId: idPropose }) {
     if (!calepinageId) return
     setEnCours(true)
     setRefus(null)
-    Promise.resolve(calepinageApi.calepinages.pompage(calepinageId, saisie))
+    // Un champ vide n'est JAMAIS envoyé : l'absence reste une absence.
+    const corps = Object.fromEntries(
+      Object.entries(saisie).filter(([, v]) => v !== '' && v != null),
+    )
+    Promise.resolve(calepinageApi.calepinages.pompage(calepinageId, corps))
       .then((res) => setResultat(res?.data ?? null))
       .catch((e) => {
         setResultat(null)
@@ -261,11 +278,12 @@ export default function PompagePanel({ calepinageId: idPropose }) {
           <fieldset key={groupe} className="mt-4" data-testid={`cal-pompage-groupe-${groupe}`}>
             <legend className="tech-label text-lune-faint">{titre}</legend>
             <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {champs.map(([cle, label]) => (
+              {champs.map(([cle, label, type]) => (
                 <Champ
                   key={cle}
                   cle={cle}
                   label={label}
+                  type={type}
                   valeurSaisie={saisie[cle]}
                   erreur={erreurs[cle]}
                   onChange={majChamp}

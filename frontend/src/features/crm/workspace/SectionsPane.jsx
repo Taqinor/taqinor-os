@@ -1,6 +1,7 @@
 import { createElement, useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   User, TrendingUp, Zap, Droplet, Home, ClipboardList, Globe, FileText, ClipboardCheck, Phone,
+  Building2,
 } from 'lucide-react'
 import { ErrorBoundary } from '../../../ui'
 import { useKeyboardAwareScroll } from '../../../hooks/useKeyboardAwareScroll'
@@ -16,12 +17,20 @@ import SectionEnergie, { SectionPompage, SectionEquipements } from './sections/S
 import SectionSite from './sections/SectionSite'
 import SectionVisite from './sections/SectionVisite'
 import SectionDivers, { SectionOrigine, SectionWebQuestionnaire } from './sections/SectionDivers'
+import SectionPro from './sections/SectionPro'
 
 // LW11 — Le centre : registre de sections + nav-chips sticky (scroll-spy rAF,
 // aria-current), repli persisté par section, wrapper `<form>` en création.
 // Chaque section est PURE (présentation) et reçoit { state, setField, errors,
 // mode, refData } ; SectionsPane possède la STRUCTURE (anchors data-nav-id,
 // entête repliable, ErrorBoundary par section — motif VX205).
+
+// AGR416 — sections résidentielles repliées à l'ouverture d'un lead agricole.
+const SECTIONS_REPLIEES_AGRICOLE = ['energie', 'equipements', 'toiture']
+// CIQ418 — même repli pour un lead COMMERCIAL / INDUSTRIEL : les sections
+// résidentielles s'ouvrent repliées (jamais retirées), « Professionnel » ouverte.
+const SEGMENTS_PRO = ['commercial', 'industriel']
+const SECTIONS_REPLIEES_PRO = ['energie', 'equipements', 'toiture']
 
 const COLLAPSE_KEY = 'taqinor.lw.collapsed'
 const readCollapsed = () => {
@@ -76,6 +85,7 @@ export default function SectionsPane({
   useKeyboardAwareScroll({ containerRef: scrollRef })
 
   const agricole = getField(state, 'type_installation') === 'agricole'
+  const pro = SEGMENTS_PRO.includes(getField(state, 'type_installation'))
   const hasWebOrigin = WEB_ORIGIN_FIELDS.some((k) => {
     const v = state.server ? state.server[k] : undefined
     return v !== undefined && v !== null && v !== ''
@@ -93,6 +103,9 @@ export default function SectionsPane({
   const registry = [
     { id: 'contact', label: 'Contact', Icon: User, Comp: SectionContact },
     { id: 'pipeline', label: 'Suivi commercial', Icon: TrendingUp, Comp: SectionPipeline },
+    // CIQ418 — lead commercial / industriel : la section « Professionnel »
+    // (contrat `lead_pro.json`), montée seulement pour ces segments.
+    ...(pro ? [{ id: 'pro', label: 'Professionnel', Icon: Building2, Comp: SectionPro }] : []),
     { id: 'energie', label: 'Profil énergétique', Icon: Zap, Comp: SectionEnergie },
     // L4 (+ extension fondateur) — questionnaire d'appel : occupation en
     // journée + équipements (piscine/VE/clim/chauffe-eau), regroupés avec un
@@ -159,6 +172,20 @@ export default function SectionsPane({
       for (const s of registry) {
         if (s.id === 'origine' || s.id === 'questionnaire') continue
         auto[s.id] = sectionAutoRepliee(state, s.id, { porteUnManquant: pointees.has(s.id) })
+      }
+      // AGR416 — lead AGRICOLE : les sections résidentielles (factures,
+      // questionnaire d'appel, toiture) s'ouvrent REPLIÉES — jamais retirées,
+      // l'ordre ne change pour aucun segment — et « Pompage » reste ouverte.
+      // Le choix persisté de l'utilisatrice (`stored`) prime toujours.
+      if (agricole) {
+        for (const id of SECTIONS_REPLIEES_AGRICOLE) auto[id] = true
+        auto.pompage = false
+      }
+      // CIQ418 — lead PRO : sections résidentielles repliées, « Professionnel »
+      // ouverte ; le choix persisté (`stored`) prime toujours.
+      if (pro) {
+        for (const id of SECTIONS_REPLIEES_PRO) auto[id] = true
+        auto.pro = false
       }
     }
     return { ...auto, ...stored }

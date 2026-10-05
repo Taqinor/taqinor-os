@@ -287,10 +287,10 @@ def type_etape(etape):
 REPONSES_PAR_TYPE = {
     TYPE_CONTACT_APPEL: (
         'joint', 'visite_acceptee', 'non_joint', 'rappel', 'plus_tard',
-        'refuse', 'ne_plus_contacter'),
+        'attente_accord', 'refuse', 'ne_plus_contacter'),
     TYPE_CONTACT_MESSAGE: (
         'joint', 'joint_telephone', 'visite_acceptee', 'non_joint', 'rappel',
-        'plus_tard', 'refuse', 'ne_plus_contacter'),
+        'plus_tard', 'attente_accord', 'refuse', 'ne_plus_contacter'),
     TYPE_DEVIS: (
         'sans_issue', 'visite_acceptee', 'rappel', 'refuse',
         'ne_plus_contacter'),
@@ -310,12 +310,13 @@ REPONSES_PAR_TYPE = {
         'perdu', 'rappel', 'sans_issue', 'ne_plus_contacter'),
     TYPE_SUIVI_APPEL: (
         'joint', 'visite_acceptee', 'non_joint', 'rappel', 'refuse',
-        'plus_tard', 'question_prix', 'devis_modifie', 'decision_famille',
-        'decision_proprietaire', 'ne_plus_contacter'),
+        'plus_tard', 'attente_accord', 'question_prix', 'devis_modifie',
+        'decision_famille', 'decision_proprietaire', 'ne_plus_contacter'),
     TYPE_SUIVI_MESSAGE: (
         'joint', 'joint_telephone', 'visite_acceptee', 'non_joint', 'rappel',
-        'refuse', 'plus_tard', 'question_prix', 'devis_modifie',
-        'decision_famille', 'decision_proprietaire', 'ne_plus_contacter'),
+        'refuse', 'plus_tard', 'attente_accord', 'question_prix',
+        'devis_modifie', 'decision_famille', 'decision_proprietaire',
+        'ne_plus_contacter'),
     TYPE_QUESTION_PRIX: (
         'sans_issue', 'rappel', 'refuse', 'ne_plus_contacter'),
     TYPE_PLANIFIER: (
@@ -332,10 +333,10 @@ REPONSES_PAR_TYPE = {
         'sans_issue', 'rappel', 'refuse', 'ne_plus_contacter'),
     TYPE_REVEIL_APPEL: (
         'joint', 'visite_acceptee', 'non_joint', 'rappel', 'plus_tard',
-        'refuse', 'ne_plus_contacter'),
+        'attente_accord', 'refuse', 'ne_plus_contacter'),
     TYPE_REVEIL_MESSAGE: (
         'joint', 'joint_telephone', 'visite_acceptee', 'non_joint', 'rappel',
-        'plus_tard', 'refuse', 'ne_plus_contacter'),
+        'plus_tard', 'attente_accord', 'refuse', 'ne_plus_contacter'),
     TYPE_GENERIQUE: (
         'sans_issue', 'visite_acceptee', 'rappel', 'refuse',
         'ne_plus_contacter'),
@@ -760,9 +761,10 @@ def _codes_sauter(etape, *, nature, derniere, au_froid, est_actif):
 def _codes_reponse_client(cle, *, nature, derniere):
     """Les RÉPONSES DU CLIENT (``REPONSES_TOUCHE``, CAD-A)."""
     from .services import (
-        REPONSE_DECISION_FAMILLE, REPONSE_DECISION_PROPRIETAIRE,
-        REPONSE_DEVIS_MODIFIE, REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU,
-        REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX, REPONSE_VISITE_ABANDONNEE)
+        REPONSE_ATTENTE_ACCORD, REPONSE_DECISION_FAMILLE,
+        REPONSE_DECISION_PROPRIETAIRE, REPONSE_DEVIS_MODIFIE,
+        REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU, REPONSE_PLUS_TARD,
+        REPONSE_QUESTION_PRIX, REPONSE_VISITE_ABANDONNEE)
 
     if cle == REPONSE_NE_PLUS_CONTACTER:
         return [NE_PLUS_CONTACTER]
@@ -770,7 +772,9 @@ def _codes_reponse_client(cle, *, nature, derniere):
         return [LEAD_PERDU]
     if cle == REPONSE_VISITE_ABANDONNEE:
         return [VISITE_ABANDONNEE, SUITE_SI_PLUS_RIEN_OUVERT]
-    if cle == REPONSE_PLUS_TARD:
+    if cle in (REPONSE_PLUS_TARD, REPONSE_ATTENTE_ACCORD):
+        # AGR520 — « En attente d'un accord » : EXACTEMENT la veille de
+        # « Plus tard » (l'étiquette posée en plus n'annonce rien d'autre).
         return [VEILLE_MEME_TOUCHE]
     a_cote = nature in (NATURE_VISITE, NATURE_PASSATION)
     if cle == REPONSE_QUESTION_PRIX:

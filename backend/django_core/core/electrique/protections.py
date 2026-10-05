@@ -47,6 +47,7 @@ from core.electrique.types import (
 
 __all__ = [
     "CALIBRES_FUSIBLE_GPV_A", "CALIBRES_DISJONCTEUR_A",
+    "CALIBRES_DISJONCTEUR_ETENDUS_A", "CALIBRES_DISJONCTEUR_CI_A",
     "SEUIL_CHAINES_PARALLELES_FUSIBLE", "FACTEUR_FUSIBLE_MIN",
     "FACTEUR_FUSIBLE_MAX", "FACTEUR_FUSIBLE_PLANCHER",
     "LONGUEUR_DC_SANS_PARAFOUDRE_M", "SENSIBILITE_DDR_MA",
@@ -62,6 +63,18 @@ CALIBRES_FUSIBLE_GPV_A = (4, 6, 8, 10, 12, 15, 16, 20, 25, 30, 32)
 #: Calibres normalisés de disjoncteurs BT (NF C 15-100 / IEC 60947-2).
 CALIBRES_DISJONCTEUR_A = (6, 10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125,
                           160, 200, 250)
+
+#: CIQ139 — calibres normalisés AU-DELÀ de 250 A, pour les onduleurs C&I
+#: (≈ 144 A à 100 kW, ≈ 217 A à 150 kW en triphasé 400 V). RELEVÉS dans
+#: IEC 60059:1999+A1:2009 (édition 2.1), article 3 « Ratings », tableau
+#: « Standard current ratings » (série R10 de l'ISO 3) : 315 · 400 · 500 ·
+#: 630 A. Le relevé s'arrête à 630 A (aucune valeur extrapolée au-delà).
+#: Séparés de ``CALIBRES_DISJONCTEUR_A`` (dont dépendent les bornes des
+#: branches de micro-onduleurs, CALX209) : seul un courant d'emploi AU-DESSUS
+#: de 250 A les atteint — en deçà, le calibre choisi est inchangé.
+CALIBRES_DISJONCTEUR_ETENDUS_A = (315, 400, 500, 630)
+CALIBRES_DISJONCTEUR_CI_A = (CALIBRES_DISJONCTEUR_A
+                             + CALIBRES_DISJONCTEUR_ETENDUS_A)
 
 #: Nombre de chaînes en PARALLÈLE à partir duquel le fusible devient exigé
 #: (IEC 62548 §7.3.3 — en deçà, le courant inverse reste sous la tenue module).
@@ -143,12 +156,17 @@ def calibre_fusible_chaine(isc_a):
 
 
 def calibre_disjoncteur(ib_a):
-    """Plus petit calibre normalisé ≥ Ib (NF C 15-100 §433.1 : Ib ≤ In)."""
+    """Plus petit calibre normalisé ≥ Ib (NF C 15-100 §433.1 : Ib ≤ In).
+
+    CIQ139 — au-delà de 250 A, les calibres relevés IEC 60059 (315 → 630 A)
+    prennent le relais ; un courant d'emploi au-delà de 630 A garde le
+    dernier calibre relevé, et ``Ib ≤ In`` (``verifier_ib_in_iz``) le dit
+    NON CONFORME — jamais un calibre extrapolé."""
     ib = float(ib_a or 0.0)
-    for calibre in CALIBRES_DISJONCTEUR_A:
+    for calibre in CALIBRES_DISJONCTEUR_CI_A:
         if calibre + 1e-9 >= ib:
             return float(calibre)
-    return float(CALIBRES_DISJONCTEUR_A[-1])
+    return float(CALIBRES_DISJONCTEUR_CI_A[-1])
 
 
 def courant_emploi_ac(puissance_ac_kw, phases):

@@ -147,6 +147,15 @@
       ]
     },
     {
+      "nom": "economie_pompage",
+      "url_path": "economie-pompage",
+      "url_name": "economie-pompage",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
       "nom": "envoyer_email",
       "url_path": "envoyer-email",
       "url_name": "envoyer-email",
@@ -541,6 +550,7 @@
     "dupliquer_variante",
     "dupliquer_variante_gamme",
     "economie",
+    "economie_pompage",
     "entite_field",
     "envoyer_email",
     "etat_pdf",

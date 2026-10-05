@@ -8,6 +8,18 @@
   "type": "object",
   "additionalProperties": true,
   "properties": {
+    "modePoseDeclare": {
+      "description": "CIQ112 — OPTIONNEL : mode de pose DÉDUIT du toit déclaré sur le lead (contrat CIQ1 : `bac_acier` → bac acier, `tuiles` → toiture inclinée, surface `ombriere` / `terrain` → ombrière / sol ; une terrasse béton ou une tôle restent muettes), posé à la création du calepinage depuis le lead. Chaque pan sans son propre `modePose` le reçoit à la traduction. Absent ⇒ comportement d'aujourd'hui.",
+      "type": "string",
+      "enum": [
+        "toiture_inclinee",
+        "bac_acier",
+        "toit_plat_leste",
+        "toit_plat_fixe",
+        "ombriere",
+        "sol"
+      ]
+    },
     "version": {
       "description": "1 = document historique, 2 = document émis par serializeLayout depuis PV13. Absent sur certains documents anciens : c'est toléré.",
       "type": "integer",
@@ -336,6 +348,18 @@
           "enum": [
             "flat",
             "pitched"
+          ]
+        },
+        "modePose": {
+          "description": "CIQ112 — OPTIONNEL : mode de pose DÉCLARÉ du pan, lu EN PREMIER par la règle de pose (`services/traduction._politique`) : `bac_acier` ou `toiture_inclinee` ⇒ pose affleurante (un bac acier peu pentu n'est plus pavé en rangées) ; `toit_plat_leste` ou `toit_plat_fixe` ⇒ anti-ombrage ; `sol`, `ombriere` ou clé absente ⇒ règle géométrique d'aujourd'hui, octet-identique. Vocabulaire = `core.product_roles.TYPES_POSE` = `SystemeFixation.ModePose` (sans `autre`).",
+          "type": "string",
+          "enum": [
+            "toiture_inclinee",
+            "bac_acier",
+            "toit_plat_leste",
+            "toit_plat_fixe",
+            "ombriere",
+            "sol"
           ]
         },
         "pitchDeg": {

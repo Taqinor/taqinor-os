@@ -227,11 +227,16 @@ def _mode_kpis(data):
             'champ_kwc': _kpi_num(etude.get('champ_kwc')) or _kpi_num(data.get('puissance_kwc')),
         }
     if mode in ('industriel', 'commercial'):
+        # CIQ300 — ``economies_annuelles`` et ``payback`` ne sont PLUS lus dans
+        # l'étude JS persistée (``etudeMarcheBloc.js`` : payback calculé sur un
+        # prix pondéré par la consommation, pointe comprise — C3-02) : nuls
+        # tant que CIQ306 ne les projette pas depuis ``synthese_ci``. Clés
+        # gardées (forme ``mode_kpis`` C&I v2 du contrat CIQ4).
         return {
             'taux_autoconso': _kpi_num(etude.get('taux_autoconso')),
             'taux_couverture': _kpi_num(etude.get('taux_couverture')),
-            'economies_annuelles': _kpi_num(etude.get('economies_annuelles')),
-            'payback': _kpi_num(etude.get('payback')),
+            'economies_annuelles': None,
+            'payback': None,
             # Injection 82-21 (QX50) — présente seulement si calculée sur le devis.
             'injection_kwh_an': _kpi_num(etude.get('injection_kwh_an')),
             'injection_dh_an': _kpi_num(etude.get('injection_dh_an')),

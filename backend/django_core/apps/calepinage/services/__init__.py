@@ -70,6 +70,14 @@ def __getattr__(nom):
     """
     from importlib import import_module
 
+    # CIQ113 — contenance d'une surface DÉCLARÉE (noyau pur), exposée à
+    # ``ventes`` par cette façade : jamais ``apps.calepinage.models``.
+    if nom == 'contenance_surface_declaree':
+        from core.calepinage.contenance_declaree import (
+            contenance_surface_declaree,
+        )
+        return contenance_surface_declaree
+
     for sous_module in SOUS_MODULES:
         chemin = f'{__name__}.{sous_module}'
         try:

@@ -153,7 +153,35 @@ def normaliser_tranche(entree, index=0) -> dict:
         nature = None
     key = nature or f'tranche_{index}'
     libelle = entree.get('libelle') or TRANCHE_LABELS.get(key, key)
-    return {'key': key, 'libelle': libelle, 'valeur': valeur, 'unite': unite}
+    sortie = {'key': key, 'libelle': libelle, 'valeur': valeur, 'unite': unite}
+    # AGR219 (contrat AGR200) — date prévue FACULTATIVE de la tranche (solde
+    # « après récolte »). Absente ⇒ clé absente : un échéancier sans date
+    # sort identique à l'octet. Aucune facture n'est datée par elle.
+    date_prevue = date_prevue_tranche(entree, index)
+    if date_prevue is not None:
+        sortie['date_prevue'] = date_prevue
+    return sortie
+
+
+def date_prevue_tranche(entree, index=0):
+    """AGR219 — la ``date_prevue`` d'une tranche, ISO ``AAAA-MM-JJ``, ou
+    ``None`` (non prévue). Lève ``EcheancierInvalide`` (FR, nommant
+    ``echeancier[i].date_prevue``) sur une date illisible."""
+    import re
+    from datetime import date
+
+    brut = entree.get('date_prevue') if isinstance(entree, dict) else None
+    if brut is None or (isinstance(brut, str) and not brut.strip()):
+        return None
+    try:
+        texte = brut.strip() if isinstance(brut, str) else ''
+        if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', texte):
+            raise ValueError(texte)
+        return date.fromisoformat(texte).isoformat()
+    except ValueError:
+        raise EcheancierInvalide(
+            f"Tranche n°{index + 1} : « echeancier[{index}].date_prevue » "
+            f"doit être une date au format AAAA-MM-JJ (reçu « {brut} »).")
 
 
 def valider_echeancier(entries) -> list:
@@ -277,7 +305,35 @@ def montants_tranches(total_ttc, pourcentages) -> dict:
     return out
 
 
-def termes_paiement_devis(devis, termes_defaut, lignes=None) -> dict:
+def dates_prevues_par_creneau(devis):
+    """AGR219 — la ``date_prevue`` de chaque créneau ``{acompte, materiel,
+    solde}``, par la MÊME correspondance que :func:`termes_paiement_devis`
+    (3 tranches → positionnelles ; sinon par clé, la PREMIÈRE tranche est
+    l'acompte). ``None`` quand aucune tranche du devis n'en porte : rien à
+    rendre, aucune date inventée."""
+    if devis is None:
+        return None
+    try:
+        tranches = tranches_normalisees(devis)
+    except Exception:  # noqa: BLE001 — best-effort, rendu sans date
+        return None
+    if not any(t.get('date_prevue') for t in tranches):
+        return None
+    dates = {'acompte': None, 'materiel': None, 'solde': None}
+    if len(tranches) == 3:
+        for cle, tr in zip(('acompte', 'materiel', 'solde'), tranches):
+            dates[cle] = tr.get('date_prevue')
+    else:
+        par_cle = {t['key']: t.get('date_prevue') for t in tranches}
+        for cle in ('materiel', 'solde'):
+            if cle in par_cle:
+                dates[cle] = par_cle[cle]
+        dates['acompte'] = tranches[0].get('date_prevue')
+    return dates
+
+
+def termes_paiement_devis(devis, termes_defaut, lignes=None, *,
+                          avec_dates=False) -> dict:
     """QJR622 — L'échéancier DU DEVIS rabattu sur les trois créneaux
     ``{acompte, materiel, solde}`` que les conditions imprimées nomment.
 
@@ -291,7 +347,18 @@ def termes_paiement_devis(devis, termes_defaut, lignes=None) -> dict:
     * sinon → par clé, et la PREMIÈRE tranche EST l'acompte (celle que
       ``next_tranche`` sert au client) ;
     * ``devis`` absent, échéancier vide ou en erreur → la société seule.
+
+    AGR219 — ``avec_dates=True`` ajoute ``dates_prevues`` (la date prévue
+    par créneau, :func:`dates_prevues_par_creneau`) SEULEMENT quand une
+    tranche en porte une ; sans date (ou sans le drapeau), sortie identique
+    à l'octet.
     """
+    if avec_dates:
+        slots = termes_paiement_devis(devis, termes_defaut, lignes)
+        dates = dates_prevues_par_creneau(devis)
+        if dates is not None:
+            slots['dates_prevues'] = dates
+        return slots
     termes = termes_defaut or {}
     slots = {'acompte': termes.get('acompte', 30),
              'materiel': termes.get('materiel', 60),

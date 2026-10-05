@@ -44,6 +44,9 @@ FIGEE = {
     'action_requise': ANY, 'etat_pdf': ANY, 'historique': ANY,
     # CALX288 (views/economie.py, rattachée au viewset pivot) : lecture.
     'economie': ANY,
+    # AGR206 (views/economie_pompage.py, même patron) : lecture du bloc
+    # économie de pompage, garde déclarée IsAnyRole comme `economie`.
+    'economie_pompage': ANY,
     'prefill_site': ANY, 'superior_contact_status': ANY,
     'approuver_remise': ADMIN,
     'proposal': PORTAIL,

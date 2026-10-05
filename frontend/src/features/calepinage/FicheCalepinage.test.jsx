@@ -78,10 +78,11 @@ beforeEach(() => {
 afterEach(() => { cleanup() })
 
 describe('FicheCalepinage — l’agrégat CAL17 est lu EN ENTIER', () => {
-  it('rend une clé du contrat, et le contrat en publie bien vingt-quatre', () => {
+  it('rend une clé du contrat, et le contrat en publie bien vingt-cinq', () => {
     // Garde de dérive : si le contrat grossit, la liste ci-dessous grossit avec
     // lui et le test suivant exigera le rendu de la nouvelle clé.
-    expect(CLES.length).toBe(24)
+    // CIQ136 — `contraintes_site` ; ACAL6 — `custom_data` : 25 clés.
+    expect(CLES.length).toBe(25)
   })
 
   it.each(CLES)('affiche la clé publiée « %s »', (cle) => {
@@ -107,6 +108,11 @@ describe('FicheCalepinage — l’agrégat CAL17 est lu EN ENTIER', () => {
       .toHaveTextContent('Oui')
     expect(screen.getByTestId('cal-fiche-contexte_geographique'))
       .toHaveTextContent(DETAIL.contexte_geographique.ville)
+    // CIQ136 — l'assureur déclaré et la règle citée avec sa source.
+    expect(screen.getByTestId('cal-fiche-contraintes_site'))
+      .toHaveTextContent('FM Global')
+    expect(screen.getByTestId('cal-fiche-contraintes_site'))
+      .toHaveTextContent(DETAIL.contraintes_site.regles.lanterneau)
   })
 
   it('les rattachements sont des LIENS vers les écrans qui les portent', () => {
@@ -135,6 +141,8 @@ describe('FicheCalepinage — l’agrégat CAL17 est lu EN ENTIER', () => {
     // Ni devis, ni client, ni aperçu : aucun lien mort n'est fabriqué.
     expect(screen.getByTestId('cal-fiche-devis')).toHaveTextContent('—')
     expect(screen.getByTestId('cal-fiche-client')).toHaveTextContent('—')
+    // CIQ136 — aucune contrainte de site par défaut : « — », jamais FM.
+    expect(screen.getByTestId('cal-fiche-contraintes_site')).toHaveTextContent('—')
     expect(screen.queryByRole('link', { name: 'Voir l’aperçu' })).toBeNull()
     // Les permissions de l'exemple vide : modifier + supprimer, PAS retenir.
     expect(screen.getByTestId('cal-fiche-permissions'))

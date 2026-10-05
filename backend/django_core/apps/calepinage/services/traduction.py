@@ -95,6 +95,10 @@ TYPES_MOTEUR = {
     'cheminee': 'SOUCHE',
     'edicule': 'EDICULE',
     'antenne': 'ANTENNE',
+    # CIQ136 — obstacles visés par les contraintes de site (DS 1-15).
+    'lanterneau': 'LANTERNEAU',
+    'exutoire': 'LANTERNEAU',
+    'joint_dilatation': 'JOINT_DILATATION',
 }
 
 __all__ = [
@@ -152,6 +156,8 @@ class Traduction:
     #: seuil ⇒ tuple vide — la traduction reste octet pour octet identique
     #: à celle d'avant CALX405 (D12).
     propositions_chassis: Tuple[Tuple[str, dict], ...] = ()
+    #: CIQ137 — la règle d'îlots du projet publiée avec sa source ('' sans).
+    regle_ilots: str = ''
     avertissements: Tuple[str, ...] = field(default=())
 
 
@@ -310,7 +316,7 @@ def _provenance(brut, champ):
             + ', MESURE, MESURE_DOUTEUX.', f'{champ}.provenance')
 
 
-def _degagement(brut, provenance, section):
+def _degagement(brut, provenance, section, contraintes=None):
     """``(dégagement, phrase)`` — la règle société, RELEVÉE au plancher de provenance.
 
     CAL71 : la valeur et sa justification viennent de ``services/degagements``
@@ -326,9 +332,11 @@ def _degagement(brut, provenance, section):
     """
     from core.calepinage.obstacles import degagement_par_provenance
 
-    from .degagements import degagement_du_type
+    from .degagements import degagement_effectif
 
-    regle, phrase = degagement_du_type(brut.get('type'), section)
+    # CIQ136 — max(atelier/société, contrainte du PROJET), règle publiée.
+    regle, phrase = degagement_effectif(brut.get('type'), section,
+                                        contraintes)
     plancher = degagement_par_provenance(provenance)
     if plancher > regle:
         return (plancher,
@@ -337,7 +345,7 @@ def _degagement(brut, provenance, section):
     return (regle, phrase)
 
 
-def _obstacles(pans, vers_repere, section=None):
+def _obstacles(pans, vers_repere, section=None, contraintes=None):
     from core.calepinage.types import Obstacle, TypeObstacle
 
     sortie = []
@@ -376,7 +384,8 @@ def _obstacles(pans, vers_repere, section=None):
                     "« widthM » (est-ouest) sont attendus, strictement "
                     "positifs.", f'{champ}.lengthM')
             provenance = _provenance(brut, champ)
-            degagement, regle = _degagement(brut, provenance, section)
+            degagement, regle = _degagement(brut, provenance, section,
+                                            contraintes)
             x, y = vers_repere((lon, lat))
             demi_x, demi_y = vers_repere.demi(est_ouest / 2.0,
                                               nord_sud / 2.0)
@@ -462,15 +471,51 @@ def _axe_unique(pans, kit):
     return premier
 
 
-def _politique(plat, pente, latitude_deg):
+#: CIQ112 — modes de pose qui DÉCIDENT la politique, lus AVANT la géométrie.
+MODES_POSE_AFFLEURANTS = ('bac_acier', 'toiture_inclinee')
+MODES_POSE_ANTI_OMBRAGE = ('toit_plat_leste', 'toit_plat_fixe')
+
+#: CIQ112 — type de toit DÉCLARÉ sur le lead (contrat CIQ1 ``lead_pro.json``)
+#: → mode de pose. Seules les correspondances SANS ambiguïté répondent : une
+#: terrasse béton peut être lestée OU fixée, une tôle n'est pas forcément un
+#: bac acier, un fibrocimment n'impose rien — la géométrie reste juge.
+MODE_POSE_PAR_TYPE_TOITURE = {
+    'bac_acier': 'bac_acier',
+    'tuiles': 'toiture_inclinee',
+}
+MODE_POSE_PAR_TYPE_SURFACE = {
+    'ombriere': 'ombriere',
+    'terrain': 'sol',
+}
+
+
+def mode_pose_declare_du_lead(lead):
+    """Le mode de pose DÉDUIT du toit déclaré sur le lead, ou ``''``."""
+    surface = (getattr(lead, 'type_surface', '') or '').strip()
+    if surface in MODE_POSE_PAR_TYPE_SURFACE:
+        return MODE_POSE_PAR_TYPE_SURFACE[surface]
+    toiture = (getattr(lead, 'type_toiture', '') or '').strip()
+    return MODE_POSE_PAR_TYPE_TOITURE.get(toiture, '')
+
+
+def _politique(plat, pente, latitude_deg, mode_pose=None):
     """Toit PLAT → anti-ombrage ; toit en PENTE → pose affleurante.
 
     Même règle que l'adaptateur villa (``politique_villa``), à une différence
     ASSUMÉE et documentée en tête de module : la latitude du site est
     DÉCLARÉE quand le document la porte.
+
+    CIQ112 — le ``modePose`` du pan est lu EN PREMIER : bac acier ou toiture
+    inclinée ⇒ affleurante (un bac acier peu pentu n'est plus pavé en
+    rangées) ; toit plat lesté ou fixé ⇒ anti-ombrage. Absent (ou sol /
+    ombrière / autre) ⇒ la règle géométrique d'aujourd'hui, inchangée.
     """
     from core.calepinage.politique_pas import Affleurant, AntiOmbrage
 
+    if mode_pose in MODES_POSE_AFFLEURANTS:
+        return Affleurant()
+    if mode_pose in MODES_POSE_ANTI_OMBRAGE:
+        return AntiOmbrage(latitude_deg=latitude_deg)
     if plat and pente < 5.0:
         return AntiOmbrage(latitude_deg=latitude_deg)
     return Affleurant()
@@ -510,7 +555,7 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
                          orientation='PORTRAIT', modules_par_table=1,
                          faitage_m=0.0, code_kit='PANNEAU',
                          allee_m=None, retrait_m=None, pas_recherche_m=0.01,
-                         regles_gabarit=None):
+                         regles_gabarit=None, contraintes_site=None):
     """Traduit un document ``roof_layout`` v2 en entrée du moteur pur.
 
     Args:
@@ -558,14 +603,16 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
     vers_repere = _VersRepere(projeteur_local(origine), axe)
 
     from .degagements import (
-        SECTION as SECTION_DEGAGEMENTS, allee_technique, retrait_perimetre,
+        SECTION as SECTION_DEGAGEMENTS, allee_technique, retrait_effectif,
     )
 
     sections = parametres or {}
     degagements = sections.get(SECTION_DEGAGEMENTS) or {}
     # CAL71 — le retrait de rive de la société, sinon celui de l'atelier
     # annoncé « non sourcé ». La phrase de règle voyage avec l'entrée.
-    retrait, regle_retrait = retrait_perimetre(degagements)
+    # CIQ136 — la rive du PROJET (contraintes de site) quand elle est plus
+    # exigeante ; sans contrainte, la règle d'aujourd'hui à l'identique.
+    retrait, regle_retrait = retrait_effectif(degagements, contraintes_site)
     force = _nombre(retrait_m) if retrait_m is not None else None
     if force is not None:
         retrait, regle_retrait = force, (
@@ -588,7 +635,12 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
             contour=tuple(vers_repere(p) for p in sommets),
             rives=rives, axe_rangee=axe, pente_deg=pente,
             azimut_deg=azimut))
-        politiques.append((repere_pan, _politique(plat, pente, latitude)))
+        # CIQ112 — le mode de pose du PAN, sinon celui DÉCLARÉ pour le
+        # document (toit du lead, posé à la création) ; absent ⇒ géométrie.
+        mode_pose = (pan.get('modePose')
+                     or (roof_layout or {}).get('modePoseDeclare') or None)
+        politiques.append((repere_pan, _politique(plat, pente, latitude,
+                                                  mode_pose)))
         proposition = _proposition_chassis(pente, regles_gabarit)
         if proposition is not None:
             propositions_chassis.append((repere_pan, proposition))
@@ -601,7 +653,27 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
         # retraduire ici produirait deux formulations de la même règle.
         raise TraductionRefusee(str(refus), refus.champ)
 
-    obstacles = _obstacles(pans, vers_repere, degagements)
+    # CIQ137 — îlots bornés : les allées coupe-feu du PROJET deviennent des
+    # zones INTERDITE du moteur (pose, comptage et validation les respectent
+    # par construction). Sans ``ilot_max_m`` : aucune zone, octet-identique.
+    from core.calepinage.ilots import lire_contraintes, regle_ilots, zones_allees
+
+    regle_des_ilots = ''
+    lu = lire_contraintes(contraintes_site)
+    if lu is not None:
+        longueur_i, largeur_i, allee_i, citation = lu
+        allees = []
+        for surface in surfaces:
+            xs = [p[0] for p in surface.contour]
+            ys = [p[1] for p in surface.contour]
+            allees.extend(zones_allees(
+                surface.repere, (min(xs), max(xs), min(ys), max(ys)),
+                longueur_i, largeur_i, allee_i))
+        zones = zones + tuple(allees)
+        regle_des_ilots = regle_ilots(longueur_i, largeur_i, allee_i,
+                                      citation)
+
+    obstacles = _obstacles(pans, vers_repere, degagements, contraintes_site)
     parametres_moteur = Parametres(
         kits=(kit,), rives=rives, axe_rangee=axe,
         pas_recherche_m=pas_recherche_m,
@@ -624,4 +696,5 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
         kit=kit,
         axe_rangee=axe.value,
         regle_retrait=regle_retrait,
-        propositions_chassis=tuple(propositions_chassis))
+        propositions_chassis=tuple(propositions_chassis),
+        regle_ilots=regle_des_ilots)

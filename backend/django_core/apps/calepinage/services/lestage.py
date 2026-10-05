@@ -109,7 +109,7 @@ __all__ = [
     'SECTION', 'PARAMETRES', 'NOMBRES_DE_FORME', 'CLE_ZONES',
     'CLE_ZONE_PAR_DEFAUT', 'PARAMETRES_DE_SITE', 'CLE_ZONE_DOCUMENT',
     'normaliser_section_lestage', 'feuille_de_lestage',
-    'surface_module_m2', 'masse_du_layout', 'masse_et_lestage',
+    '_surface_module_m2', 'masse_du_layout', 'masse_et_lestage',
 ]
 
 
@@ -489,7 +489,7 @@ def _surface_du_pan(zone):
     return aire if aire > 0 else None
 
 
-def surface_module_m2(cotes):
+def _surface_module_m2(cotes):
     """La surface d'un module depuis ses cotes de pose (mm), ou ``None``.
 
     ``cotes`` est le dict de ``apps.stock.selectors.dimensions_de_pose``.
@@ -643,7 +643,7 @@ def masse_et_lestage(calepinage, *, produit_module_id=None, layout=None):
     masse = masse_du_layout(layout, poids_module_kg=cotes.get('poids_kg'),
                             designation_module=designation, section=section)
     feuille = feuille_de_lestage(
-        section, surface_module_m2=surface_module_m2(cotes),
+        section, surface_module_m2=_surface_module_m2(cotes),
         masse_module_kg=cotes.get('poids_kg'), societe=societe)
     if zone is not None:
         feuille['zone'] = zone

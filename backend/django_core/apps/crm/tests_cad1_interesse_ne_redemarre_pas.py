@@ -48,6 +48,7 @@ from apps.crm.models import Client, Lead, RelanceEtape
 from apps.crm.services import (
     calculer_echeances_cadence, marquer_etape_relance)
 from apps.parametres.models import CompanyProfile
+from apps.parametres.models_realisations import Realisation
 from apps.parametres.models_relance import CadenceRelanceEtape
 from apps.ventes.models import Devis
 
@@ -88,6 +89,12 @@ class _Base(TestCase):
             client=self.client_vente, lead=self.lead,
             statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20.00'),
             date_envoi=DEPART)
+        # AGR514 (D-AGR-10) — la touche 4 « preuve » n'est posée que s'il
+        # existe une réalisation éligible : ce module verrouille le plan
+        # COMPLET, il lui en donne donc une.
+        Realisation.objects.create(
+            company=self.company, titre='Chantier témoin', ville='Casablanca',
+            url_page=f'https://taqinor.ma/realisations/{self.slug}/')
         self.gabarits = CadenceRelanceEtape.cadence_pour(
             self.company, 'apres_devis')
         self.echeances = calculer_echeances_cadence(

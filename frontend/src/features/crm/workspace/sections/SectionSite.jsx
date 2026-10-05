@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { FormField, Input } from '../../../../ui'
+import crmApi from '../../../../api/crmApi'
 import { getField } from '../draftCore'
 import TraceToitClient from './TraceToitClient'
 // STKCAT10 — LE MÊME sélecteur de structures que le générateur de devis
@@ -22,6 +24,68 @@ const OMBRAGES = { aucun: 'Aucun', partiel: 'Partiel', important: 'Important' }
 const STRUCTURES = { acier: 'Acier', aluminium: 'Aluminium' }
 const BATTERIES = { sans: 'Sans batterie', avec: 'Avec batterie', les_deux: 'Les deux options' }
 
+const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+
+// « 2026-07 » → « juillet 2026 » ; absent/illisible → '' (jamais approximé).
+function moisFr(valeur) {
+  const m = /^(\d{4})-(\d{2})/.exec(valeur ?? '')
+  const mois = m ? MOIS_FR[Number(m[2]) - 1] : null
+  return mois ? `${mois} ${m[1]}` : ''
+}
+
+// AGR517 — « Références de pompage proches » d'un lead AGRICOLE. Lecture
+// seule : le serveur choisit, trie (distance croissante) et borne ; aucun
+// chiffre n'est calculé ici. Liste vide = on le dit, on ne cite jamais un toit.
+function ReferencesProches({ leadId }) {
+  const [refs, setRefs] = useState(null)
+  useEffect(() => {
+    let vivant = true
+    Promise.resolve()
+      .then(() => crmApi.getLeadReferencesProches(leadId))
+      .then((r) => { if (vivant) setRefs(r?.data?.references ?? []) })
+      .catch(() => { if (vivant) setRefs([]) })
+    return () => { vivant = false }
+  }, [leadId])
+  if (refs === null) return null
+  return (
+    <div data-testid="references-proches" className="mb-3">
+      <p className="form-label">Références de pompage proches</p>
+      {refs.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Aucune réalisation de pompage saisie : rien à montrer — ne citez
+          jamais un toit à la place.
+        </p>
+      ) : (
+        <ul className="space-y-1.5">
+          {refs.map((r) => (
+            <li key={r.id} data-testid="reference-proche" className="text-sm">
+              <span className="font-medium">{r.titre}</span>
+              {' — '}{r.ville}
+              {r.distance_km != null ? ` (${r.distance_km} km)` : ''}
+              {moisFr(r.mise_en_service) ? ` — mise en service ${moisFr(r.mise_en_service)}` : ''}
+              {r.url_page && (
+                <>
+                  {' — '}
+                  <a href={r.url_page} target="_blank" rel="noreferrer noopener"
+                     className="underline">page publique</a>
+                </>
+              )}
+              {r.lien_video && (
+                <>
+                  {' — '}
+                  <a href={r.lien_video} target="_blank" rel="noreferrer noopener"
+                     className="underline">vidéo</a>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 // LW11 — Toiture & site : port 1:1 des champs (recon 01 §2).
 // L-DESSIN (fondateur 25/08/2026) — en TÊTE de section, le tracé que le client
 // a dessiné sur la carte du site public. `roof_point`/`roof_outline` sont des
@@ -29,8 +93,12 @@ const BATTERIES = { sans: 'Sans batterie', avec: 'Avec batterie', les_deux: 'Les
 // `state.server` via getField, comme IdentityRail.
 export default function SectionSite({ state, setField, errors = {} }) {
   const v = (k) => getField(state, k) ?? ''
+  const leadId = state?.server?.id ?? null
   return (
     <>
+      {getField(state, 'type_installation') === 'agricole' && leadId != null && (
+        <ReferencesProches leadId={leadId} />
+      )}
       {/* VT13 — `leadId` (id serveur du lead, jamais un brouillon) laisse le
           bloc demander au serveur la photo réelle du toit issue de la visite
           terrain validée ; absent (création), rien ne change. */}

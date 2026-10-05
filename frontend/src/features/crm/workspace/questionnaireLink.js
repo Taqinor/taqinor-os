@@ -29,16 +29,63 @@ export const SECTIONS_QUESTIONNAIRE = [
   { key: 'occupation', label: 'Présence en journée' },
   { key: 'equipements', label: 'Équipements (piscine, VE, clim, chauffe-eau)' },
   { key: 'energie', label: "Factures d'électricité" },
+  // AGR419 — sections du lead AGRICOLE (AGR411) : jamais servies à un autre.
+  { key: 'pompage', label: 'Pompage (eau, forage, pompe actuelle, besoin)' },
+  // CIQ421 — sections du lead PRO (commercial/industriel, CIQ412) : jamais
+  // servies à un autre.
+  { key: 'reseau', label: 'Raccordement et consommation (tension, puissance souscrite, kWh, factures)' },
+  { key: 'activite', label: 'Activité et horaires (catégorie, équipes, jours, fermetures)' },
   { key: 'toiture', label: 'Toiture (type, surface, âge, propriétaire)' },
+  { key: 'site', label: 'Surface disponible (toiture, ombrière ou terrain)' },
   { key: 'gps', label: 'Position GPS de la maison' },
   { key: 'photo_facture', label: 'Photo de la facture' },
   { key: 'photo_compteur', label: 'Photo du compteur' },
   { key: 'photo_tableau', label: 'Photo du tableau électrique' },
+  { key: 'photo_pompe', label: 'Photo de la plaque de la pompe' },
+  { key: 'photo_forage', label: 'Photo de la tête de forage' },
+  { key: 'photo_factures', label: 'Les 12 dernières factures (PDF ou photos)' },
+  { key: 'photo_poste', label: 'Photo du compteur / poste de livraison' },
+  { key: 'societe', label: 'Société (raison sociale, ICE, RC, IF, siège, TVA)' },
   // Le lien étant envoyé à un lead qui a déjà donné sa position, l'adresse
   // n'est PAS reposée : le serveur la retire des questions dès que le GPS est
   // connu (crm/questionnaire.py `_COUVERT_PAR`). D'où le libellé prudent.
   { key: 'contact', label: 'Coordonnées (email, ville, adresse si pas de GPS)' },
 ]
+
+// AGR419 — les sections AGRICOLES seules (miroir de
+// `crm.questionnaire.SECTIONS_AGRICOLES_SEULES`) : ne servent QUE de repli
+// quand la réponse serveur ne porte encore aucune carte `questions`.
+// source-choix: crm.questionnaire.SECTIONS_AGRICOLES_SEULES
+const SECTIONS_AGRICOLES_SEULES = ['pompage', 'photo_pompe', 'photo_forage']
+// CIQ421 — idem pour les sections PRO (miroir de
+// `crm.questionnaire.SECTIONS_PRO_SEULES`) : repli seulement.
+// source-choix: crm.questionnaire.SECTIONS_PRO_SEULES
+const SECTIONS_PRO_SEULES = ['reseau', 'activite', 'site', 'societe', 'photo_factures', 'photo_poste']
+
+// AGR419 — les sections que le dialogue PROPOSE. La vérité vient de la
+// réponse du serveur (`data.questions` = la carte des sections que CE lead
+// accepte, filtrée par segment — AGR411), jamais d'une liste devinée ici :
+// un lead agricole voit pompage + ses photos, jamais « Équipements » ; un
+// lead résidentiel voit la liste d'avant. Sans carte servie (aucune réponse
+// encore), on retombe sur le périmètre historique (hors pompage).
+export function sectionsVisibles(data) {
+  const questions = data && typeof data === 'object' ? data.questions : null
+  if (questions && typeof questions === 'object' && Object.keys(questions).length > 0) {
+    return SECTIONS_QUESTIONNAIRE.filter(({ key }) => key in questions)
+  }
+  return SECTIONS_QUESTIONNAIRE.filter(({ key }) => !SECTIONS_AGRICOLES_SEULES.includes(key)
+    && !SECTIONS_PRO_SEULES.includes(key))
+}
+
+// AGR419 — un refus 400 du serveur nomme la section en cause (« clé ») : on
+// l'affiche avec son libellé français. null = pas un refus de section.
+export function messageRefusSection(err) {
+  const detail = err?.response?.data?.detail
+  if (typeof detail !== 'string') return null
+  const m = detail.match(/«\s*([a-z_]+)\s*»/)
+  const section = m ? SECTIONS_QUESTIONNAIRE.find(({ key }) => key === m[1]) : null
+  return section ? `Section refusée : ${section.label} — ${detail}` : null
+}
 
 // État des cases à l'ouverture / après un mint : `data` est la réponse BRUTE
 // du serveur ({questions, manquantes, ...}) — jamais devinée localement.
@@ -52,8 +99,10 @@ export function questionsDepuisReponse(data) {
   const dejaChoisies = questions && typeof questions === 'object'
     && Object.keys(questions).length > 0
   if (dejaChoisies) {
+    // AGR419 — seules les sections que le serveur SERT pour ce lead.
     return Object.fromEntries(
-      SECTIONS_QUESTIONNAIRE.map(({ key }) => [key, !!questions[key]]),
+      SECTIONS_QUESTIONNAIRE.filter(({ key }) => key in questions)
+        .map(({ key }) => [key, !!questions[key]]),
     )
   }
   const manquantes = (data && typeof data === 'object' && data.manquantes
@@ -65,16 +114,16 @@ export function questionsDepuisReponse(data) {
 
 // Payload à poster — jamais une clé hors whitelist, même si `sel` en portait
 // une par accident (état local corrompu, etc.).
-export function questionsPourEnvoi(sel) {
+export function questionsPourEnvoi(sel, visibles = SECTIONS_QUESTIONNAIRE) {
   const src = sel && typeof sel === 'object' ? sel : {}
   return Object.fromEntries(
-    SECTIONS_QUESTIONNAIRE.map(({ key }) => [key, !!src[key]]),
+    visibles.map(({ key }) => [key, !!src[key]]),
   )
 }
 
-export function nbSectionsChoisies(sel) {
+export function nbSectionsChoisies(sel, visibles = SECTIONS_QUESTIONNAIRE) {
   const src = sel && typeof sel === 'object' ? sel : {}
-  return SECTIONS_QUESTIONNAIRE.filter(({ key }) => src[key]).length
+  return visibles.filter(({ key }) => src[key]).length
 }
 
 // Message WhatsApp — sobre, ne reçoit QUE `url` (jamais `url_interne` : le

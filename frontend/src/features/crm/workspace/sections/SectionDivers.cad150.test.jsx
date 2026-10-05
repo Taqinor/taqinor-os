@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { initState } from '../draftCore'
-import SectionDivers from './SectionDivers'
+import SectionDivers, { SectionWebQuestionnaire } from './SectionDivers'
 import SectionEnergie from './SectionEnergie'
 import SectionPipeline from './SectionPipeline'
 import { documentContrat } from '../../../../test/fixtures/contractSamples'
@@ -75,5 +75,33 @@ describe('CAD150 — champs captés par le site, toujours éditables', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Préférence de contact' }),
       { target: { value: 'whatsapp_only' } })
     expect(setField).toHaveBeenCalledWith('contact_preference', 'whatsapp_only')
+  })
+})
+
+/* AGR416 — pour un lead AGRICOLE, les clés `ecoMad*` de web_estimate (bande
+   carburant non sourcée de l'ancien site) portent la mention « retirée, ne pas
+   la répéter » ; un lead résidentiel est rendu à l'identique. Lead de base =
+   contrat `lead_pompage.json` (importé). */
+describe('AGR416 — « économie » du site : libellé agricole', () => {
+  const pompage = documentContrat('crm', 'lead_pompage')
+  const estimation = { ecoMadYearLow: 12000, ecoMadYearHigh: 15000, kwc: 6 }
+
+  it('lead agricole : les clés ecoMad* sont libellées « bande non sourcée, retirée »', () => {
+    rendre(SectionWebQuestionnaire, { ...pompage.exemple, web_estimate: estimation })
+    const mention = "Économie montrée par l'ancien site (bande non sourcée, retirée) — ne pas la répéter"
+    expect(screen.getAllByText(new RegExp(mention.replace(/[()]/g, '\\$&'))))
+      .toHaveLength(2)
+    expect(screen.queryByText('Économie annuelle min (MAD)')).toBeNull()
+    // Les clés non concernées gardent leur libellé.
+    expect(screen.getByText('Puissance (kWc)')).toBeInTheDocument()
+  })
+
+  it('lead résidentiel : libellés inchangés', () => {
+    rendre(SectionWebQuestionnaire, {
+      ...pompage.exemple, type_installation: 'residentiel', web_estimate: estimation,
+    })
+    expect(screen.getByText('Économie annuelle min (MAD)')).toBeInTheDocument()
+    expect(screen.getByText('Économie annuelle max (MAD)')).toBeInTheDocument()
+    expect(screen.queryByText(/bande non sourcée/)).toBeNull()
   })
 })

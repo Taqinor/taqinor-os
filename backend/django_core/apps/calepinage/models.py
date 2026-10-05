@@ -84,6 +84,13 @@ class Calepinage(TenantModel):
     #: Document de conception (schéma v2, CAL232) — stocké tel quel.
     roof_layout = models.JSONField('Conception (roof_layout)',
                                    null=True, blank=True)
+    #: CIQ136 — contraintes de site saisies PAR PROJET (assureur, sécurité
+    #: incendie) : ``{assureur, degagements_m, ilot_max_m, allee_ilot_m,
+    #: source}``. VIDE par défaut (= calepinage d'aujourd'hui) ; normalisées
+    #: par ``services.degagements.normaliser_contraintes_site`` (valeur sans
+    #: source refusée, préréglage FM seulement pour un projet assuré FM).
+    contraintes_site = models.JSONField('Contraintes de site', default=dict,
+                                        blank=True)
     #: SHA-256 de la géométrie, calculé par ``apps.ventes.services.layout_hash``
     #: (jamais recodé ici). Vide tant qu'aucun layout n'a été enregistré.
     layout_hash = models.CharField('Empreinte du layout', max_length=64,
@@ -1384,6 +1391,10 @@ class SystemeFixation(TenantModel):
 
     class ModePose(models.TextChoices):
         TOITURE_INCLINEE = 'toiture_inclinee', 'Toiture inclinée'
+        # CIQ112 — bac acier (le toit C&I le plus courant) : pose AFFLEURANTE
+        # même faiblement pentu. Choix ADDITIF ; vocabulaire partagé avec le
+        # catalogue (``core.product_roles.TYPES_POSE``, parité testée).
+        BAC_ACIER = 'bac_acier', 'Bac acier'
         TOIT_PLAT_LESTE = 'toit_plat_leste', 'Toit plat — lesté'
         TOIT_PLAT_FIXE = 'toit_plat_fixe', 'Toit plat — fixé'
         SOL = 'sol', 'Au sol'

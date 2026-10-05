@@ -22,7 +22,8 @@ from authentication.models import Company
 from apps.crm import stages
 from apps.crm.devis_auto import (
     champs_manquants, champs_manquants_detail, champs_requis,
-    message_manquants, visite_point_eau_avant_devis)
+    message_manquants, source_conso, visite_avant_devis,
+    visite_point_eau_avant_devis)
 from apps.crm.models import Lead, LeadActivity
 from apps.ventes.models import Devis
 
@@ -37,6 +38,127 @@ MSG_AGRICOLE = f'Manque : {LIB_HMT}, {LIB_DEBIT}'
 CONTRAT_DEVIS_AUTO = json.loads(
     (Path(__file__).resolve().parent / 'contract_samples'
      / 'devis_auto_pret.json').read_text(encoding='utf-8'))
+
+# CIQ404 — libellés du groupe pro (industriel = exemple_industriel du contrat).
+LIB_PRO = {
+    'commercial': 'Consommation (kWh) ou facture mensuelle (MAD)',
+    'industriel': CONTRAT_DEVIS_AUTO['exemple_industriel']['devis_auto'][
+        'manquants'][0],
+}
+
+
+def _bloc_pro(lead):
+    detail = champs_manquants_detail(lead)
+    manquants = [e['label'] for e in detail]
+    return {
+        'pret': not manquants,
+        'manquants': manquants,
+        'manquants_detail': detail,
+        'requis': champs_requis(lead),
+        'source_conso': source_conso(lead),
+        'visite_avant_devis': visite_avant_devis(lead),
+    }
+
+
+class TestDevisAutoProCIQ404(SimpleTestCase):
+    """CIQ404 (D-CIQ-5, contrat CIQ1) — facture en MAD acceptée pour un BT,
+    kWh exigés en MT, drapeau « visite avant devis ». Règle pure."""
+
+    def _lead(self, **kw):
+        return Lead(nom='Pro', **kw)
+
+    def test_commercial_mad_sans_kwh_pret_source_facture(self):
+        lead = self._lead(type_installation='commercial',
+                          facture_hiver=Decimal('25000'))
+        self.assertEqual(champs_manquants(lead), [])
+        self.assertEqual(source_conso(lead), 'facture_hiver')
+
+    def test_commercial_mt_et_mad_seul_pas_pret(self):
+        lead = self._lead(type_installation='commercial',
+                          tension_raccordement='mt',
+                          facture_hiver=Decimal('25000'))
+        self.assertEqual(champs_manquants(lead), [LIB_PRO['commercial']])
+        self.assertIsNone(source_conso(lead))
+
+    def test_industriel_mad_seul_tension_vide_pas_pret(self):
+        lead = self._lead(type_installation='industriel',
+                          facture_hiver=Decimal('40000'))
+        detail = champs_manquants_detail(lead)
+        self.assertEqual([e['champ'] for e in detail],
+                         ['conso_mensuelle_kwh'])
+        self.assertEqual(detail[0]['label'], LIB_PRO['industriel'])
+
+    def test_industriel_bt_declaree_et_mad_pret(self):
+        lead = self._lead(type_installation='industriel',
+                          tension_raccordement='bt', tension_source='declare',
+                          facture_hiver=Decimal('40000'))
+        self.assertEqual(champs_manquants(lead), [])
+        # Défaut visible du site : la basse tension n'est PAS déclarée.
+        lead.tension_source = 'site_defaut_visible'
+        self.assertNotEqual(champs_manquants(lead), [])
+
+    def test_industriel_releve_seul_pret(self):
+        lead = self._lead(type_installation='industriel', releve_conso={
+            'mois': [{'mois': '2026-08', 'kwh': '40000.00'}],
+            'source': 'lu_sur_facture'})
+        self.assertEqual(champs_manquants(lead), [])
+        self.assertEqual(source_conso(lead), 'releve_conso')
+
+    def test_visite_avant_devis(self):
+        mt = self._lead(type_installation='industriel',
+                        tension_raccordement='mt')
+        self.assertTrue(visite_avant_devis(mt)['requise'])
+        self.assertIn('site en moyenne tension',
+                      visite_avant_devis(mt)['motifs'])
+        bt = self._lead(type_installation='commercial',
+                        tension_raccordement='bt', tension_source='declare',
+                        compteur_puissance_kva=Decimal('60'),
+                        type_surface='toiture',
+                        surface_toiture_m2=Decimal('300'))
+        self.assertEqual(visite_avant_devis(bt),
+                         {'requise': False, 'motifs': []})
+        defaut = self._lead(type_installation='commercial',
+                            tension_raccordement='bt',
+                            tension_source='site_defaut_visible')
+        self.assertIn('tension de raccordement inconnue',
+                      visite_avant_devis(defaut)['motifs'])
+
+    def test_residentiel_et_agricole_inchanges(self):
+        for mode in ('residentiel', 'agricole', None):
+            lead = self._lead(type_installation=mode)
+            self.assertIsNone(visite_avant_devis(lead), mode)
+            self.assertIsNone(source_conso(lead), mode)
+        self.assertEqual(champs_requis(self._lead()), [['facture_hiver']])
+
+    def test_exemples_commercial_et_industriel_du_contrat(self):
+        commercial = self._lead(
+            type_installation='commercial', tension_raccordement='bt',
+            tension_source='declare', facture_hiver=Decimal('4000'),
+            type_surface='toiture')
+        self.assertEqual(
+            _bloc_pro(commercial),
+            CONTRAT_DEVIS_AUTO['exemple_commercial']['devis_auto'])
+        industriel = self._lead(
+            type_installation='industriel', tension_raccordement='mt',
+            tension_source='facture', facture_hiver=Decimal('40000'),
+            compteur_puissance_kva=Decimal('250'), type_surface='toiture',
+            surface_toiture_m2=Decimal('2000'))
+        self.assertEqual(
+            _bloc_pro(industriel),
+            CONTRAT_DEVIS_AUTO['exemple_industriel']['devis_auto'])
+
+    def test_questionnaire_energie_ferme_pour_le_commercial_en_mad(self):
+        from unittest import mock
+        from apps.crm import questionnaire
+        lead = self._lead(type_installation='commercial',
+                          facture_hiver=Decimal('25000'),
+                          raccordement='triphase')
+        with mock.patch.object(questionnaire, '_libelles_pieces_jointes',
+                               return_value=[]):
+            # CIQ412 — un pro ne reçoit plus la section énergie résidentielle
+            # du tout (clé absente) : elle n'est donc jamais rouverte.
+            self.assertFalse(
+                questionnaire.manquantes(lead).get('energie', False))
 
 
 class TestAgricoleSansCvAGR403(SimpleTestCase):
@@ -103,8 +225,10 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
             champs_requis(Lead(nom='x', ete_differente=True)),
             [['facture_hiver'], ['facture_ete']])
         for mode in ('industriel', 'commercial'):
+            # CIQ404 — groupe pro du contrat CIQ1.
             self.assertEqual(champs_requis(Lead(nom='x', type_installation=mode)),
-                             [['conso_mensuelle_kwh', 'bill_kwh']])
+                             [['conso_mensuelle_kwh', 'bill_kwh',
+                               'releve_conso', 'facture_hiver']])
 
     def test_sortie_reelle_egale_l_exemple_agricole_du_contrat(self):
         attendu = CONTRAT_DEVIS_AUTO['exemple_agricole']['devis_auto']
@@ -167,7 +291,7 @@ class TestChampsManquants(TestCase):
         for mode in ('industriel', 'commercial'):
             lead = self._lead(type_installation=mode)
             self.assertEqual(champs_manquants(lead),
-                             ['consommation mensuelle (kWh)'], mode)
+                             [LIB_PRO[mode]], mode)
             lead.conso_mensuelle_kwh = 1234.5
             self.assertEqual(champs_manquants(lead), [], mode)
 

@@ -622,6 +622,11 @@ export default function ParametresEntreprise() {
       // AGR108 — vide reste vide (aucun repli numérique).
       ...formReglagesPompage(profile),
       reperes_energie_agricole: formReperes(profile),
+      // CIQ106 — forfaits C&I et bande interne prix/kWc, relus TELS QUE le
+      // serveur les sert (CIQ105) : sans cette relecture, une saisie partielle
+      // écraserait les autres prestations au PATCH.
+      forfaits_ci: profile.forfaits_ci ?? {},
+      bande_prix_kwc_ci: profile.bande_prix_kwc_ci ?? null,
       [CHAMP_ECART_RECETTE]: profile[CHAMP_ECART_RECETTE] ?? '',
       delai_visite_technique: profile.delai_visite_technique ?? '',
       delai_installation: profile.delai_installation ?? '',

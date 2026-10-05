@@ -451,6 +451,12 @@ class TestPdfFormats(TestCase):
         if etude_horaire is not None:
             etude['etude_horaire'] = etude_horaire
         self.devis.mode_installation = 'industriel'
+        # CIQ302 — un C&I à deux options NON accepté titre l'offre RÉSEAU
+        # seule (branche sans batterie) : la falaise, le remplissage et la
+        # part des pointes décrivent l'option AVEC batterie et seraient donc
+        # (à raison) omis. Ces gardes portent sur la branche AVEC : l'option
+        # AVEC est acceptée, ce qui lui rend la priorité (QJR401 / DR1).
+        self.devis.option_acceptee = 'avec_batterie'
         self.devis.etude_params = etude
         self.devis.save()
         return self.devis
@@ -1447,8 +1453,13 @@ class TestPdfFormats4(TestPdfFormats):
         self.assertEqual(data['total_avec'], data['totaux_avec']['ttc'])
         # production/économies de l'étude = celles de la page 1 (canoniques)
         self.assertEqual(data['prod_kwh'], data['etude']['production_annuelle'])
-        self.assertEqual(data['eco_s_ann'], data['etude']['economies_annuelles'])
-        self.assertEqual(data['roi_s'], data['etude']['payback'])
+        # CIQ301 — en C&I, la branche « étude saisie » ne s'applique plus :
+        # l'économie et le payback d'étude ne sont plus imposés (l'argent C&I
+        # viendra de ``synthese_ci.argent``, CIQ307), et les gabarits C&I ne
+        # republient AUCUNE des deux valeurs.
+        self.assertNotEqual(data['eco_s_ann'], 274711)
+        self.assertNotEqual(data['savings_method'].get('model')
+                            if data.get('savings_method') else None, 'etude')
         # prix/kWc recalculé depuis le total canonique (jamais l'ancien stocké)
         #
         # QJR410 (a) — LE CHIFFRE DÉCRIT L'OPTION QUE LE DOCUMENT TITRE.
@@ -1461,8 +1472,12 @@ class TestPdfFormats4(TestPdfFormats):
         # sur ce jeu de lignes : option « avec » = 68 994 HT → 82 792,80 TTC,
         # ÷ 7,7 kWc = 10 752,31 → 10 752 (l'ancienne attente, 51 232,80 ÷ 7,7
         # = 6 653,6 → 6 654, décrivait l'option NON titrée).
-        self.assertEqual(data['display_total'], data['totaux_avec']['ttc'],
-                         "le document titre l'option « avec » : c'est son "
+        # CIQ302 — un INDUSTRIEL à deux options titre l'offre RÉSEAU seule
+        # (la batterie n'est qu'une option) : c'est son total qui est mis en
+        # avant en page 1, et le prix par kWc se dérive de CE total.
+        self.assertEqual(data['option_servie'], 'sans')
+        self.assertEqual(data['display_total'], data['totaux_sans']['ttc'],
+                         "le document titre l'offre réseau : c'est son "
                          'total qui est mis en avant en page 1')
         # Les deux options partagent le MÊME champ PV (une seule ligne de
         # panneaux, commune) : le kWc de référence ne prête donc à aucune
