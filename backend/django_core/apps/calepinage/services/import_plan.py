@@ -62,8 +62,14 @@ def analyser_plan(contenu, *, nom_fichier=''):
         raise PlanIllisible(str(refus)) from refus
 
 
-def contour_du_calque(analyse, nom_calque):
+def contour_du_calque(analyse, nom_calque, *, entite=None):
     """Le contour proposé par UN calque de l'analyse.
+
+    Args:
+        entite: rang (1, 2, …) de l'entité choisie dans
+            ``calques[].entites_detail`` ; absent, l'entité FERMÉE de plus
+            grande AIRE (``analyse_plan._entite_principale`` : le toit si
+            choisi seul, sinon la parcelle).
 
     Returns:
         ``[[x, y], …]`` dans l'unité du fichier.
@@ -71,7 +77,8 @@ def contour_du_calque(analyse, nom_calque):
     Raises:
         PlanIllisible: calque inconnu (le message liste les calques
             disponibles — un refus qui ne dit pas quoi choisir est inutile),
-        ou calque sans tracé exploitable.
+            entité inexistante (champ ``entite``), tracé NON FERMÉ, ou moins
+            de 3 sommets.
     """
     calques = (analyse or {}).get('calques') or []
     par_nom = {calque.get('nom'): calque for calque in calques}
@@ -83,11 +90,50 @@ def contour_du_calque(analyse, nom_calque):
             f"Le calque « {nom_calque} » n'existe pas dans ce plan "
             f'(calques disponibles : {disponibles}).', champ='calque')
 
-    sommets = calque.get('sommets') or []
-    if len(sommets) < 2:
+    points = calque.get('entites_pts')
+    if points is None:      # analyse « ancienne forme » : sommets seuls
+        sommets = calque.get('sommets') or []
+        points = [sommets] if sommets else []
+        fermees = [True] if len(sommets) >= 3 else [False]
+    else:
+        fermees = calque.get('entites_fermees') or [True] * len(points)
+    if not points:
         raise PlanIllisible(
             f"Le calque « {nom_calque} » ne porte aucun tracé exploitable "
             "comme contour.", champ='calque')
+
+    if entite is not None:
+        if (isinstance(entite, bool) or not isinstance(entite, int)
+                or not 1 <= entite <= len(points)):
+            raise PlanIllisible(
+                f"L'entité {entite!r} n'existe pas dans le calque "
+                f"« {nom_calque} » (entités disponibles : 1 à "
+                f"{len(points)}).", champ='entite')
+        rang = entite - 1
+    else:
+        from ..analyse_plan import _entite_principale
+
+        entites = [{'fermee': fermees[i], 'aire': detail.get('aire') or 0.0}
+                   for i, detail in enumerate(
+                       calque.get('entites_detail')
+                       or [{} for _ in points])]
+        principale = _entite_principale(entites)
+        rang = entites.index(principale) if principale is not None else None
+
+    if rang is None or not fermees[rang]:
+        segments = sum(max(1, len(pts) - 1) for pts in points) \
+            if rang is None else max(1, len(points[rang]) - 1)
+        mot = 'segment isolé' if segments == 1 else 'segments isolés'
+        raise PlanIllisible(
+            f"Le calque « {nom_calque} » ne porte aucun contour fermé : "
+            f"tracé non fermé : {segments} {mot}. Fermez le tracé dans le "
+            "dessin, ou choisissez un autre calque.", champ='calque')
+    sommets = points[rang]
+    if len(sommets) < 3:
+        raise PlanIllisible(
+            f"Le calque « {nom_calque} » : l'entité choisie n'a que "
+            f"{len(sommets)} sommet(s) ; un contour demande au moins 3 "
+            "sommets.", champ='calque')
     return [[float(x), float(y)] for x, y in sommets]
 
 

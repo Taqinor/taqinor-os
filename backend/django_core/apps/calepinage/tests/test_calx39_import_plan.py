@@ -87,6 +87,12 @@ class CalepinageNu:
     roof_layout = None
 
 
+class CalepinageEpingle(CalepinageNu):
+    """Un calepinage NU dont le document porte l'épingle du contrat."""
+
+    roof_layout = {'pin': {'lat': 33.5, 'lng': -7.6}}
+
+
 class FausseRequete:
     """Le strict nécessaire d'une requête multipart : ``FILES`` et ``data``."""
 
@@ -159,7 +165,12 @@ class ContratImportPlanTest(SimpleTestCase):
     """L'échantillon committé EST ce que la porte rend."""
 
     def test_l_exemple_est_la_reponse_reelle_avec_calque(self):
-        reponse = _appeler(calque=CALQUE)
+        # ACAL69/212 : la réponse porte aussi ``contour_lnglat`` quand le
+        # corps du contrat (``corps_calage``) est envoyé avec une épingle.
+        corps = _contrat()['corps_calage']
+        reponse = _appeler(vue=FausseVue(CalepinageEpingle()),
+                           calque=CALQUE, entite=corps['entite'],
+                           calage=json.dumps(corps['calage']))
         self.assertEqual(reponse.status_code, 200)
         self.assertEqual(reponse.data, _contrat()['exemple'])
 

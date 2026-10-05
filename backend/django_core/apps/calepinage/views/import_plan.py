@@ -70,6 +70,9 @@ CHAMP_FICHIER = 'fichier'
 #: Le champ qui porte le calque choisi.
 CHAMP_CALQUE = 'calque'
 
+#: ACAL212 — le rang de l'entité retenue comme contour dans le calque.
+CHAMP_ENTITE = 'entite'
+
 #: ACAL69 — le champ (JSON en multipart) qui porte le calage.
 CHAMP_CALAGE = 'calage'
 
@@ -202,10 +205,20 @@ def importer_plan(self, request, pk=None):
                       str(refus))
 
     calque_demande = str(request.data.get(CHAMP_CALQUE) or '').strip()
+    entite_brute = request.data.get(CHAMP_ENTITE)
+    entite = None
+    if entite_brute not in (None, ''):
+        try:
+            entite = int(str(entite_brute).strip())
+        except ValueError:
+            return _refus(CHAMP_ENTITE,
+                          "« entite » est le rang (1, 2, …) de l'entité "
+                          "choisie dans le calque.")
     contour, cotes = None, None
     if calque_demande:
         try:
-            contour = contour_du_calque(analyse, calque_demande)
+            contour = contour_du_calque(analyse, calque_demande,
+                                        entite=entite)
         except PlanIllisible as refus:
             return _refus(getattr(refus, 'champ', '') or CHAMP_CALQUE,
                           str(refus))
@@ -239,7 +252,8 @@ def importer_plan(self, request, pk=None):
                           else MOTIF_ECHELLE_DECLAREE),
         'calques': [{'nom': calque.get('nom') or '',
                      'entites': calque.get('entites') or 0,
-                     'sommets': len(calque.get('sommets') or [])}
+                     'sommets': len(calque.get('sommets') or []),
+                     'entites_detail': calque.get('entites_detail') or []}
                     for calque in (analyse.get('calques') or [])],
         'calque': calque_demande or None,
         'contour': contour,
