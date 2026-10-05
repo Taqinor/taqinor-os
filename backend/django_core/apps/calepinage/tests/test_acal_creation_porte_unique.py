@@ -67,6 +67,18 @@ class PorteUniqueTest(BaseApiCalepinage):
         return Lead.objects.create(company=self.company, nom=nom,
                                    client=self.client_lead, **champs)
 
+    def _poser_trace(self, lead):
+        """Le tracé public posé APRÈS la création du lead.
+
+        Un lead CRÉÉ avec un tracé déclenche déjà la reprise (récepteur
+        ``lead_created`` → ``reprendre_trace_public``, CAL110) : la porte
+        serait franchie avant le geste testé. ``update`` n'émet aucun
+        signal — le geste mesuré est alors le SEUL créateur.
+        """
+        Lead.objects.filter(pk=lead.pk).update(roof_outline=CONTOUR_LATLNG)
+        lead.refresh_from_db()
+        return lead
+
     def _portes(self):
         """``(nom, geste)`` — chaque geste crée sur SON lead et rend le pk."""
         def post_liste(lead):
@@ -87,6 +99,7 @@ class PorteUniqueTest(BaseApiCalepinage):
             return reponse.data['id']
 
         def reprise(lead):
+            self._poser_trace(lead)
             calepinage = reprendre_trace_public(lead.pk, self.company)
             self.assertIsNotNone(calepinage)
             return calepinage.pk
@@ -99,8 +112,7 @@ class PorteUniqueTest(BaseApiCalepinage):
     def test_chaque_porte_ecrit_chatter_client_et_meme_titre(self):
         for rang, (nom, geste) in enumerate(self._portes()):
             with self.subTest(porte=nom):
-                lead = self._lead(f'Toiture {rang}',
-                                  roof_outline=CONTOUR_LATLNG)
+                lead = self._lead(f'Toiture {rang}')
                 calepinage = Calepinage.objects.get(pk=geste(lead))
                 self.assertEqual(calepinage.lead_id, lead.pk)
                 self.assertEqual(calepinage.client_id, self.client_lead.pk)
@@ -108,8 +120,9 @@ class PorteUniqueTest(BaseApiCalepinage):
                 self.assertEqual(_creations(calepinage), 1)
 
     def test_second_appel_renvoie_l_existant_409_ou_cree_false(self):
-        lead = self._lead('Villa ouverte', roof_outline=CONTOUR_LATLNG)
+        lead = self._lead('Villa ouverte')
         existant = creer_pour_lead(lead.pk, self.company, user=self.user)
+        self._poser_trace(lead)
 
         reponse = self.api.post(f'{URL}depuis-lead/', {'lead': lead.pk},
                                 format='json')
