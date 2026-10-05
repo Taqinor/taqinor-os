@@ -42,6 +42,7 @@ import {
 } from './moduleSelect';
 
 import { underlayPourDocument } from './underlay'; // CALX107
+import { emettrePourDocument } from './parcelle'; // ACAL233
 import { emettreSurfacesPose, lireSurfacesPose, type SurfacePose } from './poseSurfaces'; // CALX123 ; ACAL26 — relecture
 
 import {
@@ -1159,6 +1160,10 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
 
     ...emettreBatiments(ctx.batiments), // CALX100 — hauteurs SAISIES + provenance (batiment.ts)
 
+    ...emettreAlleeTechnique(ctx.alleeTechnique), // ACAL258 — l'allée de CE calepinage ; aucune allée ⇒ aucune clé
+
+    ...emettrePourDocument(ctx.parcelle), // ACAL233 — la parcelle tracée ; aucune parcelle ⇒ aucune clé
+
     ...underlayPourDocument(ctx), // CALX107 — le calque de fond calé voyage par le document (contrat CALX86) ; aucun fond ⇒ aucune clé
 
     ...emettreSurfacesPose(ctx.surfacesPose), // CALX123 — les surfaces de pose tracées (contrat `poseSurfaces[]`) ; aucune surface ⇒ aucune clé
@@ -1190,6 +1195,23 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   return reconcilierAvecDocumentRelu(ecrit, ctx);
 }
 
+// ═══════════ ACAL258 — L'ALLÉE TECHNIQUE DE CE CALEPINAGE ═══════════
+/** L'allée technique du document relu (`{largeurM > 0, source}`, clés inconnues conservées), ou `null`. */
+export function lireAlleeTechnique(doc: unknown): Ctx['alleeTechnique'] {
+  const brut = (doc as { alleeTechnique?: unknown } | null | undefined)?.alleeTechnique;
+  if (!brut || typeof brut !== 'object' || Array.isArray(brut)) return null;
+  const { largeurM, source } = brut as { largeurM?: unknown; source?: unknown };
+  if (typeof largeurM !== 'number' || !Number.isFinite(largeurM) || largeurM <= 0) return null;
+  if (typeof source !== 'string' || !source) return null;
+  return JSON.parse(JSON.stringify(brut)) as NonNullable<Ctx['alleeTechnique']>;
+}
+
+/** Fragment du document : `{ alleeTechnique }` quand elle existe, `{}` sinon (aucune clé inventée). */
+export function emettreAlleeTechnique(allee: Ctx['alleeTechnique']): { alleeTechnique?: NonNullable<Ctx['alleeTechnique']> } {
+  if (!allee || typeof allee.largeurM !== 'number' || !(allee.largeurM > 0)) return {};
+  return { alleeTechnique: JSON.parse(JSON.stringify(allee)) as NonNullable<Ctx['alleeTechnique']> };
+}
+
 /** ACAL307 — positions (et faces) d'une pose, sans les numéros : ce qui définit un pavage. */
 function empreintePose(panels: unknown): string {
   return JSON.stringify(
@@ -1218,7 +1240,7 @@ const CLES_RACINE_ATELIER = new Set([
   'version', 'pin', 'outline', 'billKwh', 'zones', 'activeAreaId', 'result', 'scenario', 'panelWatt',
   'battery', 'source', 'devisId', 'shading12x24', 'shadeObstructions', 'choixConception', 'measurements',
   'environment', 'exclusionZones', 'setbacksM', 'horizonProfile', 'scene', 'buildings', 'underlay',
-  'poseSurfaces', 'consumption', 'modules', 'optimisation', 'electrical',
+  'poseSurfaces', 'consumption', 'modules', 'optimisation', 'electrical', 'parcelle', 'alleeTechnique',
 ]);
 /** Clés de PAN que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
 const CLES_PAN_ATELIER = new Set([

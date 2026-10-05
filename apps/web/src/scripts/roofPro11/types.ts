@@ -141,9 +141,16 @@ export interface RoofToolApi {
    *  devis-lead : la page les CONNAÎT, l'outil ne les devine jamais. */
   serializeLayout: (billKwh?: number | null, meta?: SerializeMeta) => unknown;
   /** ACAL26 — applique UNE section du document (`horizonProfile`, `poseSurfaces`,
-   *  `underlay`, `environment`) par la MÊME fonction d'hydratation que le boot
+   *  `underlay`, `environment`, `alleeTechnique` — ACAL258) par la MÊME fonction d'hydratation que le boot
    *  (`hydratation.ts::appliquerHydratationAuCtx`) — pour les onglets du Rail. */
   appliquerSection: (cle: import('./hydratation').CleSectionAtelier, valeur: unknown) => void;
+  /** ACAL286 — la table d'affectation SERVIE (`electrique.affectation[]`, avec `couleur_chaine` /
+   *  `couleur_mppt`) teinte les modules du pan actif par chaîne ou par entrée MPPT ; table vide ou
+   *  non servie ⇒ teinte éteinte. Aucune écriture : la teinte est dérivée du résultat serveur. */
+  setAffectationChaines: (
+    rows: readonly import('./scene3d').AffectationRow[] | null | undefined,
+    mode?: import('./scene3d').AffectationMode,
+  ) => void;
   /** ACAL71 — un contour géoréférencé [[lng, lat], …] devient un NOUVEAU pan de l'atelier
    *  (identifiant `prochainId`), refusé — motif nommé, aucun pan — s'il se croise ou sort
    *  de l'amplitude GPS. */
@@ -852,6 +859,63 @@ export function lireGabaritsObstacle(section: unknown): {
       continue;
     }
     gabarits.push({ ...commun, longueurM, largeurM });
+  }
+  return { gabarits, refuses };
+}
+
+/**
+ * ACAL291 — un gabarit de ZONE réglementaire de la société (section `zones_types`, genre
+ * `bande` | `polygone`) : une zone qui retire de la surface au nom d'une SOURCE écrite. La
+ * géométrie reste celle que l'utilisateur trace ; le gabarit apporte libellé, nature, retrait,
+ * hauteur et source.
+ */
+export interface GabaritZone {
+  cle: string;
+  libelle: string;
+  nature: 'INTERDITE' | 'RESERVEE' | 'PREFEREE';
+  /** Retrait (m) du gabarit (`retrait_m`), 0 quand la société n'en a pas saisi. */
+  retraitM: number;
+  hauteurM?: number;
+  /** Source textuelle OBLIGATOIRE — elle voyage avec la zone posée. */
+  source: string;
+}
+
+/**
+ * ACAL291 — lit les gabarits de ZONE de la section `zones_types`. Un gabarit d'obstacle (forme,
+ * type d'obstacle, cotes ou rayon saisis, ou sans `genre`) est IGNORÉ — il relève de
+ * `lireGabaritsObstacle`. Un gabarit de zone sans source, ou d'une nature qui ne se trace pas
+ * (ENVELOPPE est le contour du toit), n'est pas proposé : il rejoint `refuses` avec son motif.
+ */
+export function lireGabaritsZone(section: unknown): { gabarits: GabaritZone[]; refuses: GabaritRefuse[] } {
+  const gabarits: GabaritZone[] = [];
+  const refuses: GabaritRefuse[] = [];
+  if (!section || typeof section !== 'object' || Array.isArray(section)) return { gabarits, refuses };
+  for (const [cle, brut] of Object.entries(section as Record<string, unknown>)) {
+    if (!brut || typeof brut !== 'object' || Array.isArray(brut)) continue;
+    const e = brut as Record<string, unknown>;
+    const genre = texteReglage(e.genre);
+    if (genre !== 'bande' && genre !== 'polygone') continue;
+    if (texteReglage(e.forme) || texteReglage(e.type) || e.longueur_m != null || e.rayon_m != null) continue;
+    const libelle = texteReglage(e.libelle) ?? cle;
+    const source = texteReglage(e.source);
+    if (!source) {
+      refuses.push({ cle, libelle, motif: `« ${libelle} » n’est pas proposé : sa source (source) n’est pas saisie.` });
+      continue;
+    }
+    const nature = texteReglage(e.nature);
+    if (nature !== 'INTERDITE' && nature !== 'RESERVEE' && nature !== 'PREFEREE') {
+      refuses.push({ cle, libelle, motif: `« ${libelle} » n’est pas proposé : sa nature (${nature ?? 'non saisie'}) ne se trace pas comme une zone.` });
+      continue;
+    }
+    const hauteurM = nombreReglage(e.hauteur_m);
+    gabarits.push({
+      cle,
+      libelle,
+      nature,
+      retraitM: typeof e.retrait_m === 'number' && Number.isFinite(e.retrait_m) && e.retrait_m > 0 ? e.retrait_m : 0,
+      ...(hauteurM != null ? { hauteurM } : {}),
+      source,
+    });
   }
   return { gabarits, refuses };
 }

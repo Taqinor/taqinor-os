@@ -549,6 +549,16 @@ const calepinageApi = {
     // (`{dossier, piece, retirer: true}`) une pièce d'un dossier réglementaire
     // (contrat `dossiers_reglementaires.json` › `joindre_piece`).
     joindrePiece: (id, corps) => api.post(`${pivot(id)}joindre-piece/`, corps), // ACAL
+
+    // ACAL149 — la RELECTURE de l'entrée électrique enregistrée + le matériel
+    // résolu et les candidats (contrat `calepinage_entree_electrique.json`).
+    // Le POST reste `enregistrerEntreeElectrique` (au-dessus).
+    entreeElectrique: (id) => api.get(`${pivot(id)}entree-electrique/`),
+
+    // ACAL161 — l'ÉDITION du schéma unifilaire (libellés et repères par clef de bloc ;
+    // `null` efface une rubrique). Le serveur fusionne clé par clé (ACAL160) et renvoie le
+    // MÊME document que le GET `schemaUnifilaire`, édition appliquée.
+    enregistrerEditionSld: (id, edition) => api.post(`${pivot(id)}schema-unifilaire/`, edition),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

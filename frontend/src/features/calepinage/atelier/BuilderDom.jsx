@@ -86,6 +86,9 @@ export default function BuilderDom({
             <button type="button" id="rp9-undo-point" hidden className={chipClass}>Annuler le dernier point</button>
             <button type="button" id="rp9-clear" className={chipClass}>Effacer</button>
             <button type="button" id="rp9-add-area" disabled className={chipClass}>+ Ajouter une zone</button>
+            {/* ACAL233 — la parcelle du site (clé racine `parcelle`, plan de masse). */}
+            <button type="button" id="rp9-parcelle" aria-pressed="false" className={chipClass}>Parcelle</button>
+            <button type="button" id="rp9-parcelle-clear" hidden className={chipClass}>Effacer la parcelle</button>
             {/* L-MAP — bascule du calque de référence, seulement quand un
                 contour client existe (rien à basculer sinon). */}
             {toitClientPresent && (

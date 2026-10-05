@@ -10,7 +10,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../../api/calepinageApi', () => ({
-  default: { calepinages: { schemaUnifilaire: vi.fn(), sldDxf: vi.fn() } },
+  default: { calepinages: { schemaUnifilaire: vi.fn(), sldDxf: vi.fn(), enregistrerEditionSld: vi.fn() } },
 }))
 
 // CALX236 — `telechargerBlob` est le SEUL point de sortie du navigateur
@@ -22,7 +22,8 @@ vi.mock('./exportImage', () => ({
 }))
 
 import calepinageApi from '../../api/calepinageApi'
-import SchemaUnifilairePanel, { motifDuRefusDxf } from './SchemaUnifilairePanel'
+import SchemaUnifilairePanel, { motifDuRefusDxf, corpsEdition } from './SchemaUnifilairePanel'
+import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 const servir = (data) => {
   calepinageApi.calepinages.schemaUnifilaire.mockResolvedValue({ data })
@@ -251,5 +252,91 @@ describe('SchemaUnifilairePanel — export DXF (CALX235/236)', () => {
   it('motifDuRefusDxf ne devine rien quand le corps est illisible', async () => {
     await expect(motifDuRefusDxf(new Error('réseau')))
       .resolves.toContain('n’a pas pu être produit')
+  })
+})
+
+/* ACAL161 — l'éditeur de libellés et de repères. Les réponses viennent de l'exemple COMMITTÉ
+   `calepinage_sld.json` (avant et après édition), jamais d'un objet tapé à la main. */
+describe('SchemaUnifilairePanel — édition des libellés et repères (ACAL161)', () => {
+  const AVANT = exempleContrat('calepinage', 'calepinage_sld', 'exemple')
+  const APRES = exempleContrat('calepinage', 'calepinage_sld', 'exemple_apres_edition')
+  const REFUS = exempleContrat('calepinage', 'calepinage_sld', 'refus_clef_inconnue')
+  const champ = (rubrique, clef) => document.getElementById(`acal161-${rubrique}-${clef}`)
+
+  it('modifier un libellé poste {libelles:{clef:texte}} et le SVG relu porte le texte', async () => {
+    servir({ ...AVANT, svg: '<svg><text>Avant</text></svg>' })
+    calepinageApi.calepinages.enregistrerEditionSld.mockResolvedValue({
+      data: { ...APRES, svg: '<svg><text>Comptage renommé</text></svg>' },
+    })
+
+    rendre()
+    const champLibelle = await screen.findByLabelText(/Libellé — compteur_production/)
+    await userEvent.clear(champLibelle)
+    await userEvent.type(champLibelle, 'Comptage renommé')
+    await userEvent.click(screen.getByTestId('acal161-enregistrer'))
+
+    expect(calepinageApi.calepinages.enregistrerEditionSld)
+      .toHaveBeenCalledWith(12, { libelles: { compteur_production: 'Comptage renommé' } })
+    // Le SVG relu (réponse du POST, édition appliquée) porte le texte.
+    expect(await screen.findByText('Comptage renommé', { selector: 'text' })).toBeInTheDocument()
+    expect(calepinageApi.calepinages.schemaUnifilaire).toHaveBeenCalledTimes(1)
+  })
+
+  it('un repère modifié part, un champ vidé envoie null, sans toucher = aucun envoi', async () => {
+    servir(AVANT)
+    calepinageApi.calepinages.enregistrerEditionSld.mockResolvedValue({ data: APRES })
+
+    rendre()
+    await screen.findByTestId('acal161-edition')
+    expect(screen.getByTestId('acal161-enregistrer')).toBeDisabled()
+
+    await userEvent.clear(champ('reperes', 'ddr'))
+    await userEvent.type(champ('reperes', 'disjoncteur_ac'), 'QAC2')
+    await userEvent.click(screen.getByTestId('acal161-enregistrer'))
+
+    const [, corps] = calepinageApi.calepinages.enregistrerEditionSld.mock.calls[0]
+    expect(corps).toEqual({ reperes: { ddr: null, disjoncteur_ac: 'QAC1QAC2' } })
+  })
+
+  it('refus nommé sous le champ visé, mot pour mot', async () => {
+    servir(AVANT)
+    calepinageApi.calepinages.enregistrerEditionSld.mockRejectedValue({ response: { status: 400, data: REFUS } })
+
+    rendre()
+    await screen.findByTestId('acal161-edition')
+    await userEvent.type(champ('libelles', 'ddr'), ' x')
+    await userEvent.click(screen.getByTestId('acal161-enregistrer'))
+
+    // La clef du refus de l'exemple est `edition.positions.coffret_ac` : aucune ligne ne la porte,
+    // le message reste visible en bandeau, jamais avalé.
+    expect(await screen.findByTestId('acal161-bandeau')).toHaveTextContent(REFUS['edition.positions.coffret_ac'])
+  })
+
+  it('un libellé refusé s’affiche sous son champ', async () => {
+    servir(AVANT)
+    calepinageApi.calepinages.enregistrerEditionSld.mockRejectedValue({
+      response: { status: 400, data: { 'edition.libelles.ddr': 'Le libellé « ddr » ne peut pas contenir de montant.' } },
+    })
+
+    rendre()
+    await screen.findByTestId('acal161-edition')
+    await userEvent.type(champ('libelles', 'ddr'), ' 1000 MAD')
+    await userEvent.click(screen.getByTestId('acal161-enregistrer'))
+
+    expect(await screen.findByTestId('acal161-erreur-libelles-ddr')).toHaveTextContent('montant')
+  })
+
+  it('aucun éditeur sans bloc dessiné (svg nul)', async () => {
+    servir({ calepinage: 12, svg: null, blocs: [], edition: {}, bloquants: [], manquantes: ['fiche'] })
+
+    rendre()
+    await screen.findByTestId('cal195-panneau')
+    expect(screen.queryByTestId('acal161-edition')).toBeNull()
+  })
+
+  it('corpsEdition ne renvoie que les rubriques modifiées', () => {
+    const blocs = [{ clef: 'a', titre: 'A', repere: '' }]
+    expect(corpsEdition(blocs, { libelles: { a: 'A' }, reperes: {} })).toEqual({})
+    expect(corpsEdition(blocs, { libelles: {}, reperes: { a: 'R1' } })).toEqual({ reperes: { a: 'R1' } })
   })
 })
