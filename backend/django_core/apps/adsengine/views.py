@@ -48,6 +48,10 @@ from .serializers import (
     MetaConnectionSerializer, ProposalTemplateSerializer,
     ReconciliationSnapshotSerializer, RulePolicySerializer,
 )
+from .models import VeilleAnnonceur, VeilleDecouverte  # PLAN_VEILLE (ajout)
+from .serializers import (  # PLAN_VEILLE (ajout)
+    VeilleAnnonceurSerializer, VeilleDecouverteSerializer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -598,9 +602,10 @@ class CompetitorPageViewSet(AdsengineViewSet):
     @action(detail=False, methods=['get'],
             permission_classes=[HasPermissionOrLegacy('adsengine_view')])
     def veille(self, request):
-        """PUB70 — Tableau de veille : le finding API (couverture commerciale =
-        NON), la cadence par concurrent, et la matière de brief (hooks/angles
-        saisis). Lecture seule, company-scopé."""
+        """PUB70 — Tableau de veille : le finding API (résumé ; la couverture se
+        lit PAR PAYS sur ``veille/couverture/``, VEIL10), la cadence par
+        concurrent, et la matière de brief (hooks/angles saisis). Lecture
+        seule, company-scopé."""
         from . import competitor_intel as ci
 
         company = request.user.company
@@ -4484,3 +4489,299 @@ class FieldTestStructuresView(APIView):
                 for a in actions
             ],
         })
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PLAN_VEILLE — pilote de veille publicitaire (API officielle Ad Library)
+# ═════════════════════════════════════════════════════════════════════════════
+class VeilleCouvertureView(APIView):
+    """VEIL10 — ``GET veille/couverture/`` : couverture de l'API Ad Library PAR
+    PAYS (table unique ``competitor_intel.VEILLE_COUVERTURE``) + état de l'accès
+    (contrat ``contract_samples/veille_couverture.json``). Lecture
+    ``adsengine_view``, company-scopée. Aucune clé de dépenses/impressions."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses=inline_serializer(
+        name='AdsengineVeilleCouverture',
+        fields={
+            'couverture': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+            'acces': drf_serializers.DictField(),
+        },
+    ))
+    def get(self, request):
+        from . import competitor_intel as ci
+        from . import veille_acces
+
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        # VEIL12 — ``?verifier=1`` déclenche UN ``debug_token`` à la demande
+        # (gestionnaire seulement) ; sinon l'état est lu sans aucun appel.
+        if (request.query_params.get('verifier') == '1'
+                and _user_has_or_legacy(request.user, 'adsengine_manage')):
+            acces = veille_acces.verifier(company)
+        else:
+            acces = veille_acces.etat(company)
+        return Response({
+            'couverture': ci.couverture_liste(),
+            'acces': acces,
+        })
+
+
+def _veille_refus_si_non_autorisee(request):
+    """VEIL17 — Lancer / verdict / étiquette / échantillon / export exigent la
+    société dans ``VEILLE_SOCIETES_AUTORISEES`` (D-VEIL-12) : sinon 403 FR et
+    aucun appel. ``None`` quand tout va bien."""
+    from . import veille_acces
+
+    if not veille_acces.societe_autorisee(getattr(request.user, 'company',
+                                                  None)):
+        return Response(
+            {'detail': veille_acces.MESSAGES_FR[veille_acces.NON_AUTORISE]},
+            status=403)
+    return None
+
+
+class VeilleDecouverteViewSet(AdsengineViewSet):
+    """VEIL17 — ``veille/decouvertes/`` : lancer (POST → 202), lister, lire,
+    ``annuler/``, ``reprendre/``, ``mesures/``, ``echantillon/``.
+
+    Company-scopé (hérité) ; ``company`` jamais lue du corps. Lire =
+    ``adsengine_view`` ; écrire = ``adsengine_manage`` ET société autorisée."""
+
+    queryset = VeilleDecouverte.objects.all()
+    serializer_class = VeilleDecouverteSerializer
+    http_method_names = ['get', 'post', 'head', 'options']
+    ordering_fields = ['created_at', 'statut']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        return (super().get_queryset().select_related('cree_par')
+                .prefetch_related('requetes'))
+
+    def create(self, request, *args, **kwargs):
+        from . import veille_decouverte as vd
+
+        refus = _veille_refus_si_non_autorisee(request)
+        if refus is not None:
+            return refus
+        donnees = dict(request.data or {})
+        donnees.pop('company', None)  # jamais lue du corps
+        try:
+            dec = vd.creer_decouverte(request.user.company, request.user,
+                                      donnees)
+        except vd.LancementRefuse as exc:
+            return Response({'detail': exc.message_fr},
+                            status=exc.statut_http)
+        if dec.background_job_id is None:
+            try:
+                vd.lancer(dec, request.user)
+            except Exception:  # noqa: BLE001 — broker injoignable
+                logger.warning('veille: lancement impossible (#%s)', dec.pk,
+                               exc_info=True)
+                dec.erreurs = list(dec.erreurs or []) + [{
+                    'code': None,
+                    'message_fr': 'Lancement impossible pour le moment : '
+                                  'utiliser « Reprendre ».',
+                    'a': dec.created_at.isoformat()}]
+                dec.save(update_fields=['erreurs', 'updated_at'])
+        dec.refresh_from_db()
+        return Response(self.get_serializer(dec).data, status=202)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def annuler(self, request, pk=None):
+        from . import veille_decouverte as vd
+
+        refus = _veille_refus_si_non_autorisee(request)
+        if refus is not None:
+            return refus
+        dec = vd.annuler(self.get_object())
+        return Response(self.get_serializer(dec).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def reprendre(self, request, pk=None):
+        from . import veille_decouverte as vd
+
+        refus = _veille_refus_si_non_autorisee(request)
+        if refus is not None:
+            return refus
+        try:
+            dec = vd.reprendre(self.get_object())
+        except vd.LancementRefuse as exc:
+            return Response({'detail': exc.message_fr},
+                            status=exc.statut_http)
+        return Response(self.get_serializer(dec).data)
+
+    @action(detail=True, methods=['get'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def mesures(self, request, pk=None):
+        from . import veille_mesures
+
+        return Response(veille_mesures.calculer(self.get_object()))
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def echantillon(self, request, pk=None):
+        from . import veille_decouverte as vd
+
+        refus = _veille_refus_si_non_autorisee(request)
+        if refus is not None:
+            return refus
+        corps = request.data or {}
+        try:
+            tirage = vd.tirer_echantillon(
+                self.get_object(), corps.get('taille_etalonnage'),
+                corps.get('taille_test'))
+        except vd.LancementRefuse as exc:
+            return Response({'detail': exc.message_fr},
+                            status=exc.statut_http)
+        return Response({'etalonnage': tirage['etalonnage'],
+                         'test': tirage['test'],
+                         'deja_tire': tirage['deja_tire']})
+
+
+class VeilleAnnonceurViewSet(AdsengineViewSet):
+    """VEIL17 — ``veille/annonceurs/`` : lecture (filtres ``classe``,
+    ``dropshipper``, ``decouverte``, ``jeu``, ``sans_etiquette``), verdict
+    humain, étiquette de mesure, export CSV.
+
+    MODE AVEUGLE (mesure) : dès que ``jeu`` est filtré, ou ``aveugle=1`` /
+    ``sans_etiquette=1``, aucune classe machine, verdict, motif IA ni étiquette
+    n'est servi."""
+
+    queryset = VeilleAnnonceur.objects.all()
+    serializer_class = VeilleAnnonceurSerializer
+    http_method_names = ['get', 'post', 'head', 'options']
+    ordering_fields = ['page_name', 'nb_pubs_vues', 'classe', 'created_at']
+    ordering = ['page_name', 'id']
+
+    def _aveugle(self):
+        params = self.request.query_params
+        return bool(params.get('jeu') or params.get('aveugle') == '1'
+                    or params.get('sans_etiquette') == '1')
+
+    def get_serializer_context(self):
+        contexte = super().get_serializer_context()
+        contexte['aveugle'] = self._aveugle()
+        return contexte
+
+    def get_queryset(self):
+        qs = (super().get_queryset()
+              .select_related('verdict_courant', 'verdict_courant__auteur'))
+        params = self.request.query_params
+        classe = params.get('classe')
+        if classe:
+            qs = qs.filter(classe=classe)
+        dropshipper = params.get('dropshipper')
+        if dropshipper:
+            qs = qs.filter(dropshipper_probable=dropshipper)
+        decouverte = params.get('decouverte')
+        if decouverte:
+            if not str(decouverte).isdigit():
+                return qs.none()
+            qs = qs.filter(
+                pubs_vues__requete__decouverte_id=int(decouverte)).distinct()
+        jeu = params.get('jeu')
+        if jeu:
+            qs = qs.filter(jeu=jeu)
+        if params.get('sans_etiquette') == '1':
+            qs = qs.exclude(verdicts__est_etiquette_mesure=True)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        return Response(
+            {'detail': 'Un annonceur naît d\'une découverte, jamais d\'une '
+                       'saisie.'}, status=405)
+
+    def _repondre(self, annonceur, *, aveugle=False):
+        annonceur.refresh_from_db()
+        return Response(VeilleAnnonceurSerializer(
+            annonceur, context={'request': self.request,
+                                'aveugle': aveugle}).data)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def verdict(self, request, pk=None):
+        from . import veille_decouverte as vd
+
+        refus = _veille_refus_si_non_autorisee(request)
+        if refus is not None:
+            return refus
+        corps = request.data or {}
+        try:
+            annonceur = vd.poser_verdict_humain(
+                self.get_object(), request.user, corps.get('classe'),
+                corps.get('dropshipper'), corps.get('doublon_de'))
+        except vd.LancementRefuse as exc:
+            return Response({'detail': exc.message_fr},
+                            status=exc.statut_http)
+        return self._repondre(annonceur)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def etiquette(self, request, pk=None):
+        from . import veille_decouverte as vd
+
+        refus = _veille_refus_si_non_autorisee(request)
+        if refus is not None:
+            return refus
+        corps = request.data or {}
+        annonceur = self.get_object()
+        try:
+            vd.poser_etiquette(annonceur, request.user, corps.get('classe'),
+                               corps.get('dropshipper'))
+        except vd.LancementRefuse as exc:
+            return Response({'detail': exc.message_fr},
+                            status=exc.statut_http)
+        return self._repondre(annonceur, aveugle=True)
+
+    @action(detail=False, methods=['get'], url_path='export-csv',
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def export_csv(self, request):
+        """Export CSV (``;`` + BOM UTF-8) des MÊMES lignes que la liste
+        filtrée — outil de la mise en service, jamais remis pendant le
+        pilote (D-VEIL-7)."""
+        import csv
+        import io
+
+        from django.http import HttpResponse
+
+        refus = _veille_refus_si_non_autorisee(request)
+        if refus is not None:
+            return refus
+        lignes = self.filter_queryset(self.get_queryset())
+        donnees = VeilleAnnonceurSerializer(
+            lignes, many=True,
+            context={'request': request, 'aveugle': self._aveugle()}).data
+        tampon = io.StringIO()
+        ecrivain = csv.writer(tampon, delimiter=';')
+        colonnes = ['id', 'page_id', 'page_name', 'pays_vus', 'mots_cles',
+                    'nb_pubs_vues', 'extraits', 'domaines',
+                    'lien_bibliotheque', 'classe', 'doublon_de', 'verdict',
+                    'dropshipper', 'jeu']
+        ecrivain.writerow(colonnes)
+        for ligne in donnees:
+            verdict = ligne.get('verdict') or {}
+            dropshipper = ligne.get('dropshipper') or {}
+            ecrivain.writerow([
+                ligne['id'], ligne['page_id'], ligne['page_name'],
+                ', '.join(ligne['pays_vus'] or []),
+                ', '.join(ligne['mots_cles'] or []),
+                ligne['nb_pubs_vues'],
+                ' | '.join(e.get('texte', '') for e in ligne['extraits']
+                           or []),
+                ', '.join(f"{d.get('domaine')} ({d.get('nb')})"
+                          for d in ligne['domaines'] or []),
+                ligne['lien_bibliotheque'] or '', ligne['classe'] or '',
+                ligne['doublon_de'] or '', verdict.get('motif_fr') or '',
+                dropshipper.get('probable') or '', ligne['jeu'] or '',
+            ])
+        reponse = HttpResponse('﻿' + tampon.getvalue(),
+                               content_type='text/csv; charset=utf-8')
+        reponse['Content-Disposition'] = (
+            'attachment; filename="veille-annonceurs.csv"')
+        return reponse
