@@ -138,7 +138,11 @@ TARGET_FILES = [
     DJANGO_CORE / "apps" / "frais" / "services.py",
     DJANGO_CORE / "apps" / "frais" / "selectors.py",
     DJANGO_CORE / "apps" / "einvoice" / "services.py",
-] + sorted(p for p in (VENTES / "domain").glob("*.py"))
+] + sorted(p for p in (VENTES / "domain").glob("*.py")) + sorted(
+    # SPL131 -- la decoupe de `ventes/selectors.py` (SPL143-SPL147) sort ses
+    # blocs dans des modules `selectors_<proprietaire>.py` : ils restent
+    # scannes d'office, comme `domain/` ci-dessus.
+    VENTES.glob("selectors_*.py"))
 
 MONEY_NAME_RE = re.compile(
     r"(prix|montant|total|_ht|_ttc|tva|remise|acompte|solde|amount|price|"
