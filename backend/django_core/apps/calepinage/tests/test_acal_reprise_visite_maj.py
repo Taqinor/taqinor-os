@@ -14,12 +14,12 @@ from __future__ import annotations
 
 from apps.calepinage.models import PhotoSite, ReleveTerrain
 from apps.calepinage.tests.test_calx364_reprise_visite import (
-    RepriseVisiteEnBase,
+    SocleRepriseVisite,
     url_reprise,
 )
 
 
-class BaseMaj(RepriseVisiteEnBase):
+class BaseMaj(SocleRepriseVisite):
 
     def setUp(self):
         super().setUp()
