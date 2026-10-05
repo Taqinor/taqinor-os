@@ -47,6 +47,13 @@ function toIsoLocal(d) {
 // Vocabulaire de `kind` identique à `TimelineTab.matchesTimelineFilter`.
 const ECHANGE_KINDS = new Set(['note', 'appel', 'email'])
 
+// AGR417 — libellés des segments (`crm.Lead.TypeInstallation`) dans les
+// bandeaux « incohérence » et « segment probable ».
+const SEGMENT_LABELS = {
+  residentiel: 'Résidentiel', commercial: 'Commercial',
+  industriel: 'Industriel', agricole: 'Agricole',
+}
+
 // QJR590 — libellés des champs d'identité de `client_ecart`.
 const ECART_LABELS = {
   nom: 'nom', prenom: 'prénom', email: 'e-mail', telephone: 'téléphone', adresse: 'adresse',
@@ -191,6 +198,45 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
       toast.error(`Module Calepinage : ${
         Array.isArray(motif) ? motif.join(' ') : (motif
           || 'le calepinage n’a pas pu être ouvert.')}`)
+    }
+  }
+
+  // ── AGR417 (D-AGR-9) — segment : incohérence lead ↔ devis et suggestion ────
+  // Deux blocs SERVIS par le détail du lead (contrat lead_pompage.json) :
+  // `incoherence_segment` (AGR405) et `segment_suggere` (AGR406). Jamais rien
+  // d'automatique : le bouton demande une confirmation, puis fait UN PATCH de
+  // `type_installation` — le journal ancien→nouveau existant trace le geste.
+  // `null` côté serveur ⇒ aucun bandeau.
+  const incoherence = (server.incoherence_segment
+    && typeof server.incoherence_segment === 'object')
+    ? server.incoherence_segment : null
+  const suggestion = (server.segment_suggere
+    && typeof server.segment_suggere === 'object')
+    ? server.segment_suggere : null
+  const [segmentBusy, setSegmentBusy] = useState(false)
+  const changerSegment = async (valeur) => {
+    if (!leadId || !valeur || segmentBusy) return
+    const libelle = SEGMENT_LABELS[valeur] || valeur
+    const ok = await confirm({
+      title: `Passer ce lead en « ${libelle} » ?`,
+      description: 'Le type du lead change à la main ; le changement est '
+        + 'tracé dans l’historique.',
+      confirmLabel: `Passer en ${libelle}`,
+      cancelLabel: 'Annuler',
+      destructive: false,
+    })
+    if (!ok) return
+    setSegmentBusy(true)
+    try {
+      await crmApi.updateLead(leadId, { type_installation: valeur })
+      onAction?.('refresh')
+    } catch (err) {
+      const corps = err?.response?.data
+      const motif = corps?.type_installation ?? corps?.detail
+      toast.error(`Type du lead : ${Array.isArray(motif) ? motif.join(' ')
+        : (motif || 'le changement n’a pas été enregistré.')}`)
+    } finally {
+      setSegmentBusy(false)
     }
   }
 
@@ -363,6 +409,46 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
               onClick={synchroniserClient}
             >
               Mettre à jour la fiche client
+            </Button>
+          )}
+        </div>
+      )}
+      {/* AGR417 — incohérence de segment (AGR405) : le message est celui du
+          serveur ; le bouton propose le changement, jamais automatique. */}
+      {incoherence && (
+        <div
+          className="lw-banner-card lw-banner-card--warning" role="status"
+          data-testid="lw-incoherence-segment"
+        >
+          <span>{incoherence.message}</span>
+          {incoherence.mode_devis && (
+            <Button
+              type="button" size="sm" variant="outline"
+              disabled={segmentBusy}
+              onClick={() => changerSegment(incoherence.mode_devis)}
+            >
+              Passer en {SEGMENT_LABELS[incoherence.mode_devis] || incoherence.mode_devis}
+            </Button>
+          )}
+        </div>
+      )}
+      {/* AGR417 — segment suggéré (AGR406) : jamais écrit par le serveur. */}
+      {suggestion && suggestion.valeur && (
+        <div
+          className="lw-banner-card lw-banner-card--info" role="status"
+          data-testid="lw-segment-suggere"
+        >
+          <span>
+            Segment probable : {(SEGMENT_LABELS[suggestion.valeur] || suggestion.valeur).toLowerCase()}
+            {suggestion.raison ? ` (${suggestion.raison})` : ''} — à confirmer
+          </span>
+          {suggestion.valeur !== incoherence?.mode_devis && (
+            <Button
+              type="button" size="sm" variant="outline"
+              disabled={segmentBusy}
+              onClick={() => changerSegment(suggestion.valeur)}
+            >
+              Passer en {SEGMENT_LABELS[suggestion.valeur] || suggestion.valeur}
             </Button>
           )}
         </div>

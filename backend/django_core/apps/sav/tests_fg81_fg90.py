@@ -289,14 +289,14 @@ class TestMaintenanceChecklist(TestCase):
         tmpl = self._make_template()
         r = other_api.get('/api/django/sav/checklist-templates/')
         self.assertEqual(r.status_code, 200)
-        # Aucun modèle de la société d'origine n'est visible ; seul le modèle
-        # « Entretien pompage solaire » semé pour l'autre société (AGR619)
-        # peut apparaître.
+        # Aucun modèle de la société d'origine n'est visible ; seuls les
+        # modèles semés pour l'autre société (AGR619 pompage, CIQ641 site
+        # professionnel) peuvent apparaître.
         ids = [x['id'] for x in r.data['results']]
         self.assertNotIn(tmpl.pk, ids)
         self.assertEqual(
             [x['nom'] for x in r.data['results']],
-            ['Entretien pompage solaire'])
+            ['Entretien pompage solaire', 'Entretien site professionnel'])
 
 
 # ── FG83 — RMA ────────────────────────────────────────────────────────────────

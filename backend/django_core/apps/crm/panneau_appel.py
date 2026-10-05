@@ -32,6 +32,7 @@ from django.db import models
 
 from . import questionnaire
 from .models import Lead, RelanceEtape
+from .segment_suggere import segment_suggere
 
 logger = logging.getLogger(__name__)
 
@@ -70,15 +71,139 @@ CHAMPS_A_DEFAUT_NON_NUL = ('ete_differente',)
 #: en mode agricole, colonnes `pompe_*` déjà existantes), en tête. AGR401 —
 #: la puissance posée est celle de la pompe ACTUELLE (`pompe_actuelle_cv`,
 #: information) : la puissance retenue est une sortie du dimensionnement.
-CHAMPS_ORAUX_AGRICOLE = (
-    'pompe_actuelle_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
-    'pompage_heures_jour', 'pompe_alim_actuelle', 'carburant_litres_mois',
+#: AGR407 — les CINQ étapes de l'appel agricole, dans l'ordre, chacune avec
+#: les colonnes qui DIMENSIONNENT (contrat AGR1 ``lead_pompage.json``) :
+#: (1) énergie actuelle, (2) eau, (3) besoin, (4) heures actuelles +
+#: distance, (5) irrigation + électricité. ``pompe_actuelle_cv`` sort de
+#: l'appel : elle se relève sur la PLAQUE, en visite. Aucune clé d'économie.
+ETAPES_AGRICOLES = (
+    ('energie_actuelle', ('pompe_alim_actuelle', 'butane_bouteilles_jour',
+                          'carburant_litres_mois',
+                          'carburant_prix_unitaire_mad',
+                          'depense_carburant_mad_mois')),
+    ('eau', ('source_eau', 'niveau_statique_m', 'debit_forage_m3h')),
+    ('besoin', ('besoin_eau_m3j', 'surface_irriguee_ha', 'culture')),
+    ('heures_distance', ('pompage_heures_jour', 'distance_forage_champ_m')),
+    ('irrigation_electricite', ('irrigation_methode', 'mois_irrigation',
+                                'electricite_sur_place')),
 )
+CHAMPS_ORAUX_AGRICOLE = tuple(
+    champ for _etape, champs in ETAPES_AGRICOLES for champ in champs)
 
-#: CAD175 — industriel et commercial : la puissance souscrite est une
-#: question PREMIÈRE (en résidentiel elle ne se pose qu'en dernier recours,
-#: la photo du compteur suffit). Colonne existante (vague 2, CAD154).
-CHAMPS_ORAUX_PRO = ('compteur_puissance_kva',)
+#: CIQ410 (D-CIQ-7) — les CINQ étapes du premier appel pro, dans l'ordre :
+#: (1) la facture, (2) le raccordement, (3) l'activité et le rythme, (4) la
+#: surface, (5) qui décide. Toutes les colonnes POSSIBLES ; celles qui
+#: s'appliquent à CE lead (commercial/industriel, BT/MT) sont choisies par
+#: :func:`_champs_pro_du_lead`. La puissance souscrite reste une question
+#: PREMIÈRE (CAD175). Aucune clé d'économie.
+ETAPES_PRO = (
+    ('facture', ('conso_mensuelle_kwh', 'facture_hiver')),
+    ('raccordement', ('tension_raccordement', 'compteur_puissance_kva',
+                      'raccordement')),
+    ('activite_rythme', ('categorie_commerciale', 'reponses_categorie',
+                         'secteur_industriel', 'regime_equipes',
+                         'jours_ouverture', 'heure_debut', 'heure_fin',
+                         'fermeture_mois')),
+    ('surface', ('type_surface', 'type_toiture', 'surface_toiture_m2')),
+    ('decideur', ('decideur',)),
+)
+CHAMPS_ORAUX_PRO = tuple(
+    champ for _etape, champs in ETAPES_PRO for champ in champs)
+
+#: CIQ410 — la question PRO de chaque colonne, reprise MOT POUR MOT du
+#: contrat CIQ1 (``lead_pro.json`` : ``questions_pro`` pour les variantes
+#: par segment, ``colonnes_pro[].question`` sinon) — jamais une surcharge du
+#: ``help_text`` résidentiel (« la photo du compteur », « votre maison »).
+QUESTIONS_PRO = {
+    'conso_mensuelle_kwh': {
+        'commercial': "« Combien payez-vous d'électricité par mois, à peu "
+                      "près ? Ou combien de kWh, si vous l'avez sous les "
+                      "yeux ? »",
+        'industriel': '« Combien de kWh consommez-vous par mois ? Ils sont '
+                      'sur votre facture, avec les heures de pointe, pleines '
+                      'et creuses. »'},
+    'tension_raccordement': {
+        'commercial': '« Votre site est-il raccordé en basse tension, avec '
+                      'un compteur ordinaire, ou en moyenne tension, avec un '
+                      'poste de transformation ? »',
+        'industriel': '« Votre site a-t-il son propre poste de '
+                      'transformation, en moyenne tension ? »'},
+    'compteur_puissance_kva': '« Quelle est votre puissance souscrite, en '
+                              'kVA ? Elle est écrite sur votre facture ou '
+                              'votre contrat. »',
+    'decideur': {
+        'commercial': '« Qui prendra la décision pour ce projet ? »',
+        'industriel': "« Qui décide d'un tel investissement chez vous : la "
+                      'direction, un comité, le groupe ? »'},
+    'raccordement': '« Votre compteur est-il monophasé ou triphasé ? »',
+    'categorie_commerciale': '« Quelle est votre activité : hôtel, '
+                             'restaurant ou café, commerce, bureaux, santé, '
+                             'école, hammam, boulangerie, froid, ou autre '
+                             'chose ? »',
+    'reponses_categorie': "Les questions propres à l'activité, posées "
+                          "juste après elle (une réponse par ligne).",
+    'secteur_industriel': '« Que fabriquez-vous ou que transformez-vous sur '
+                          'ce site ? »',
+    'regime_equipes': '« Travaillez-vous en une équipe de jour, en deux '
+                      'équipes, en trois équipes, ou en continu ? »',
+    'jours_ouverture': '« Quels jours de la semaine êtes-vous ouverts ou en '
+                       'production ? »',
+    'heure_debut': '« À quelle heure commence votre journée de travail ? »',
+    'heure_fin': '« Et à quelle heure se termine-t-elle ? »',
+    'fermeture_mois': "« Fermez-vous certains mois de l'année, pour des "
+                      'congés ou une saison creuse ? Lesquels ? »',
+    'type_surface': '« Où pourrait-on poser les panneaux : sur la toiture, '
+                    'sur une ombrière de parking, ou sur un terrain ? »',
+    'type_toiture': '« Comment est faite votre toiture : terrasse béton, '
+                    'tôle, tuiles, bac acier, fibrociment ? »',
+    'surface_toiture_m2': '« Quelle surface est disponible pour les '
+                          'panneaux, à peu près, en mètres carrés ? »',
+}
+# Même question pour la facture en dirhams : « en dirhams ou en kWh ».
+QUESTIONS_PRO['facture_hiver'] = QUESTIONS_PRO['conso_mensuelle_kwh']
+
+#: CIQ410 — préfixe commun des questions orales (même forme que les
+#: ``help_text`` du modèle).
+PREFIXE_QUESTION = "Question à l'appel : "
+
+#: CIQ410 — choix PRO de « qui décide » : vocabulaire inchangé, seule la
+#: présentation est filtrée (« avec le conjoint / la famille » n'a pas de
+#: sens pour une entreprise).
+DECIDEUR_PRO = ('seul', 'associe_direction', 'proprietaire_tiers')
+
+#: CIQ410 — au plus TROIS questions propres à l'activité, prises dans
+#: l'ordre de ``Lead.REPONSES_CATEGORIE_CLES``. Libellés : questions ajoutées
+#: du contrat CIQ1 (``questions_ajoutees``), sinon les libellés du
+#: générateur (``COMMERCIAL_CATEGORY_QUESTIONS``, frontend ventes/solar.js).
+MAX_REPONSES_CATEGORIE = 3
+LIBELLES_REPONSES_CATEGORIE = {
+    'chambres': 'Nombre de chambres',
+    'occupation_pct': "« Quel est votre taux d'occupation moyen sur "
+                      "l'année, à peu près ? »",
+    'piscine': 'Piscine chauffée',
+    'heures_piscine': "« La piscine fonctionne combien d'heures par jour ? »",
+    'blanchisserie': '« Lavez-vous le linge sur place ? »',
+    'reception_24h': '« La réception est-elle ouverte 24 heures sur 24 ? »',
+    'chambres_froides': 'Chambres froides',
+    'horaires': 'Horaires',
+    'cuisson': 'Cuisson',
+    'ouvert_journee_ramadan': '« Pendant le Ramadan, êtes-vous ouverts en '
+                              'journée ? »',
+    'surface_vente_m2': 'Surface de vente (m²)',
+    'effectif': 'Effectif',
+    'clim': 'Climatisation centralisée',
+    'lits': 'Nombre de lits',
+    'garde_nuit': 'Garde de nuit',
+    'internat': 'Internat',
+    'fermeture_estivale': 'Fermeture estivale',
+    'surface_m2': 'Surface (m²)',
+    'chauffe': 'Chauffe eau',
+    'four': 'Four',
+    'cuisson_nocturne': 'Cuisson nocturne',
+    'temperature_consigne': 'Température de consigne (°C)',
+    'volume_m3': 'Volume froid (m³)',
+    'saisonnalite_recolte': 'Pic saisonnier (récolte)',
+}
 
 #: (clé de couche, libellé, booléen déclaratif du lead, grandeurs qui rendent
 #: la couche composable). La clé de couche est celle que
@@ -138,10 +263,35 @@ CHOIX_BOOLEEN = (
 )
 
 
+#: AGR407 — les 12 mois, vocabulaire FERMÉ d'une liste d'entiers 1-12.
+CHOIX_MOIS = tuple(
+    {'valeur': numero, 'libelle': libelle} for numero, libelle in enumerate(
+        ('Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet',
+         'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'), start=1))
+
+#: AGR407 / CIQ410 — colonnes JSON « liste d'entiers » servies en
+#: ``choix_multiple`` (l'écran rend des boutons à cocher, jamais un champ
+#: libre) : la clé est la colonne, la valeur son vocabulaire fermé.
+#: CIQ410 — les 7 jours, 1 = lundi … 7 = dimanche (contrat CIQ1).
+CHOIX_JOURS = tuple(
+    {'valeur': numero, 'libelle': libelle} for numero, libelle in enumerate(
+        ('Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi',
+         'Dimanche'), start=1))
+
+CHOIX_MULTIPLES = {
+    'mois_irrigation': CHOIX_MOIS,
+    'jours_ouverture': CHOIX_JOURS,
+    'fermeture_mois': CHOIX_MOIS,
+}
+
+
 def _choix(champ):
     """``[{valeur, libelle}]`` d'un champ à vocabulaire fermé, sinon ``None``.
 
-    Un booléen est un vocabulaire fermé (Oui/Non, :data:`CHOIX_BOOLEEN`)."""
+    Un booléen est un vocabulaire fermé (Oui/Non, :data:`CHOIX_BOOLEEN`) ;
+    une liste d'entiers de :data:`CHOIX_MULTIPLES` aussi."""
+    if champ in CHOIX_MULTIPLES:
+        return [dict(choix) for choix in CHOIX_MULTIPLES[champ]]
     meta = Lead._meta.get_field(champ)
     if isinstance(meta, models.BooleanField):
         return [dict(choix) for choix in CHOIX_BOOLEEN]
@@ -155,7 +305,11 @@ def _choix(champ):
 def _nature(champ):
     """CAD152 — la NATURE de la saisie : ``choix`` (vocabulaire fermé, dont
     Oui/Non), ``nombre`` (l'écran normalise la virgule décimale avant
-    d'écrire) ou ``texte``. Lue sur le champ lui-même, jamais devinée."""
+    d'écrire) ou ``texte``. Lue sur le champ lui-même, jamais devinée.
+    AGR407 — ``choix_multiple`` pour une liste d'entiers à vocabulaire
+    fermé (:data:`CHOIX_MULTIPLES`)."""
+    if champ in CHOIX_MULTIPLES:
+        return 'choix_multiple'
     meta = Lead._meta.get_field(champ)
     if isinstance(meta, models.BooleanField) or meta.choices:
         return 'choix'
@@ -165,31 +319,132 @@ def _nature(champ):
     return 'texte'
 
 
+def _segment_pro(lead):
+    """``'commercial'`` / ``'industriel'`` pour un lead pro, sinon ``None``."""
+    segment = getattr(lead, 'type_installation', None) or ''
+    if segment in (Lead.TypeInstallation.INDUSTRIEL,
+                   Lead.TypeInstallation.COMMERCIAL):
+        return str(segment)
+    return None
+
+
+def _cles_categorie_a_poser(lead):
+    """CIQ410 — les (au plus 3) clés propres à l'activité encore sans
+    réponse ; ``()`` tant que la catégorie n'est pas connue."""
+    categorie = getattr(lead, 'categorie_commerciale', None) or ''
+    cles = Lead.REPONSES_CATEGORIE_CLES.get(categorie, ())
+    reponses = getattr(lead, 'reponses_categorie', None)
+    reponses = reponses if isinstance(reponses, dict) else {}
+    return tuple(c for c in cles[:MAX_REPONSES_CATEGORIE]
+                 if reponses.get(c) is None)
+
+
+def _question_pro(lead, champ, segment):
+    """CIQ410 — la question PRO d'une colonne (``QUESTIONS_PRO``)."""
+    texte = QUESTIONS_PRO[champ]
+    if isinstance(texte, dict):
+        texte = texte[segment]
+    if champ == 'reponses_categorie':
+        texte = '%s %s' % (texte, ' ; '.join(
+            LIBELLES_REPONSES_CATEGORIE.get(c, c)
+            for c in _cles_categorie_a_poser(lead)))
+    return PREFIXE_QUESTION + texte
+
+
 def _question(lead, champ, section):
     meta = Lead._meta.get_field(champ)
+    choix = _choix(champ)
+    nature = _nature(champ)
+    # « Chaque champ EST le script d'appel » : le texte vient d'ici et de
+    # nulle part ailleurs. Une formulation à améliorer se corrige dans le
+    # `help_text` du modèle, jamais dans ce module. CIQ410 — un lead PRO lit
+    # la question pro du contrat CIQ1, jamais la consigne résidentielle.
+    question = str(meta.help_text or '')
+    segment = _segment_pro(lead)
+    if segment and champ in QUESTIONS_PRO:
+        question = _question_pro(lead, champ, segment)
+        if champ == 'decideur' and choix:
+            choix = [c for c in choix if c['valeur'] in DECIDEUR_PRO]
+        if champ == 'reponses_categorie':
+            nature = 'objet'
     return {
         'champ': champ,
         'section': section,
         'libelle': str(meta.verbose_name),
-        # « Chaque champ EST le script d'appel » : le texte vient d'ici et de
-        # nulle part ailleurs. Une formulation à améliorer se corrige dans le
-        # `help_text` du modèle, jamais dans ce module.
-        'question': str(meta.help_text or ''),
-        'choix': _choix(champ),
-        'nature': _nature(champ),
+        'question': question,
+        'choix': choix,
+        'nature': nature,
     }
 
 
+def _champs_pro_du_lead(lead, segment):
+    """CIQ410 — les colonnes des cinq étapes qui s'appliquent à CE lead.
+
+    (1) UNE question de facture : en kWh d'abord pour un industriel ou un
+    site MT, en dirhams sinon ; (2) mono/tri seulement pour un commercial
+    hors MT ; (3) catégorie + ses questions (commercial) ou secteur + équipes
+    (industriel), puis le rythme ; (4) la surface ; (5) qui décide."""
+    mt = (getattr(lead, 'tension_raccordement', None) or '') == 'mt'
+    champs = []
+    kwh_d_abord = segment == 'industriel' or mt
+    champs.append('conso_mensuelle_kwh' if kwh_d_abord else 'facture_hiver')
+    champs += ['tension_raccordement', 'compteur_puissance_kva']
+    if segment == 'commercial' and not mt:
+        champs.append('raccordement')
+    if segment == 'commercial':
+        champs.append('categorie_commerciale')
+        if _cles_categorie_a_poser(lead):
+            champs.append('reponses_categorie')
+    else:
+        champs += ['secteur_industriel', 'regime_equipes']
+    champs += ['jours_ouverture', 'heure_debut', 'heure_fin',
+               'fermeture_mois', 'type_surface', 'type_toiture',
+               'surface_toiture_m2', 'decideur']
+    return tuple(champs)
+
+
+#: CIQ410 — l'étape « facture » est répondue dès qu'UNE de ces colonnes
+#: porte une réponse (kWh, dirhams ou kWh du diagnostic).
+CHAMPS_FACTURE_PRO = ('conso_mensuelle_kwh', 'facture_hiver', 'bill_kwh')
+
+
+def _reponse_connue_panneau(lead, champ):
+    """``_reponse_connue`` + les deux règles de groupe du pro (CIQ410)."""
+    if _segment_pro(lead) and champ in ('conso_mensuelle_kwh',
+                                        'facture_hiver'):
+        return any(_reponse_connue(lead, c) for c in CHAMPS_FACTURE_PRO)
+    if champ == 'reponses_categorie' and _segment_pro(lead):
+        return not _cles_categorie_a_poser(lead)
+    return _reponse_connue(lead, champ)
+
+
 def champs_oraux_du_segment(lead):
-    """Les questions orales qui s'appliquent à CE lead, dans l'ordre."""
-    champs = list(CHAMPS_ORAUX)
+    """Les questions orales qui s'appliquent à CE lead, dans l'ordre.
+
+    AGR407 — agricole : les cinq étapes d'abord (l'ordre du script), puis
+    les questions orales communes. CIQ410 — pro : de même, les cinq étapes
+    de D-CIQ-7 d'abord."""
     segment = getattr(lead, 'type_installation', None)
     if segment == Lead.TypeInstallation.AGRICOLE:
-        champs += list(CHAMPS_ORAUX_AGRICOLE)
-    elif segment in (Lead.TypeInstallation.INDUSTRIEL,
-                     Lead.TypeInstallation.COMMERCIAL):
-        champs += list(CHAMPS_ORAUX_PRO)
-    return tuple(champs)
+        etapes = tuple(CHAMPS_ORAUX_AGRICOLE)
+    elif _segment_pro(lead):
+        etapes = _champs_pro_du_lead(lead, _segment_pro(lead))
+    else:
+        return tuple(CHAMPS_ORAUX)
+    return etapes + tuple(c for c in CHAMPS_ORAUX if c not in etapes)
+
+
+def _sections_du_panneau(lead):
+    """Les sections du questionnaire que le panneau lit pour CE lead.
+
+    AGR407 — un lead agricole ne reçoit AUCUNE section résidentielle
+    (facture, toit, occupation, équipements : refusées par AGR411) : ses
+    questions sont les cinq étapes orales. CIQ410 — un lead pro non plus
+    (occupation, foyer, équipements, type_bien n'ont aucun sens pour une
+    entreprise). Les autres gardent le périmètre historique, inchangé."""
+    if questionnaire.est_agricole(lead) or _segment_pro(lead):
+        return ()
+    return questionnaire.SECTIONS_HORS_POMPAGE
 
 
 def questions_a_poser(lead):
@@ -200,10 +455,10 @@ def questions_a_poser(lead):
     le questionnaire client ne porte pas). ``tranche_onee`` est retirée : elle
     se dérive, on ne la demande pas.
     """
-    carte = questionnaire.champs_encore_a_obtenir(
-        lead, questionnaire.SECTIONS_HORS_POMPAGE)
+    sections = _sections_du_panneau(lead)
+    carte = questionnaire.champs_encore_a_obtenir(lead, sections)
     questions, vus = [], set()
-    for section in questionnaire.SECTIONS_HORS_POMPAGE:
+    for section in sections:
         a_obtenir = set(carte.get(section, ()))
         for champ in questionnaire.CHAMPS_PAR_SECTION.get(section, ()):
             if champ in CHAMPS_JAMAIS_DEMANDES or champ in vus:
@@ -219,7 +474,7 @@ def questions_a_poser(lead):
             vus.add(champ)
             questions.append(_question(lead, champ, section))
     for champ in champs_oraux_du_segment(lead):
-        if champ in vus or _reponse_connue(lead, champ):
+        if champ in vus or _reponse_connue_panneau(lead, champ):
             continue
         vus.add(champ)
         questions.append(_question(lead, champ, None))
@@ -232,9 +487,12 @@ def prefill_du_panneau(lead):
     est là ne se redemande pas, mais se RELIT — et rien n'y est inventé.
     """
     candidats = []
-    for section in questionnaire.SECTIONS_HORS_POMPAGE:
+    for section in _sections_du_panneau(lead):
         candidats.extend(questionnaire.CHAMPS_PAR_SECTION.get(section, ()))
     candidats.extend(champs_oraux_du_segment(lead))
+    if _segment_pro(lead):
+        # CIQ410 — la facture se relit quelle que soit sa colonne.
+        candidats.extend(CHAMPS_FACTURE_PRO)
     out = {}
     for champ in candidats:
         if champ in CHAMPS_JAMAIS_DEMANDES or champ in out:
@@ -406,11 +664,14 @@ def panneau_appel(lead, *, request=None, user=None) -> dict:
         'segment': segment,
         'segment_libelle': (lead.get_type_installation_display()
                             if segment else None),
+        # AGR406 — segment SUGGÉRÉ (lecture seule, jamais écrit) : le bandeau
+        # « Segment probable : … — à confirmer » de l'écran d'appel.
+        'segment_suggere': segment_suggere(lead),
         'touche': _touche_servie(etape),
         'script': _script_servi(etape, request=request, user=user),
         'champs_a_poser': questions_a_poser(lead),
         'prefill': prefill_du_panneau(lead),
-        'equipements': drapeaux_equipements(lead),
+        'equipements': ([] if _segment_pro(lead) else drapeaux_equipements(lead)),
         'fenetre_du_jour': fenetre_du_jour_servie(lead),
         'profil_suppose': profil_suppose_servi(lead),
     }

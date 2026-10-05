@@ -238,12 +238,15 @@ class CompanyProfile(models.Model):
     # tant qu'il n'est pas renseigné, aucun devis n'exige d'approbation.
     discount_approval_threshold = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True)
-    # ── Seuils de régime loi 82-21 (N43) — kWc, éditables. Défauts = cadre
-    # marocain standard : déclaration < 11 kWc, autorisation ANRE > 1 MW.
+    # ── Seuils de régime loi 82-21 (N43 → CIQ614, 03/10/2026) — SURCHARGES
+    # société seulement, NULL et SANS défaut. La valeur de référence vient des
+    # textes, via le noyau ``core.reglementaire.regime_8221`` (déclaration
+    # < 11 kW, autorisation ≥ 5 MW, décret 2.25.100 art. 5, 18) et est exposée
+    # avec son article (``seuils_sources`` du sérialiseur). Vide = seuil sourcé.
     seuil_regime_declaration_kwc = models.DecimalField(
-        max_digits=8, decimal_places=2, default=Decimal('11'))
+        max_digits=8, decimal_places=2, null=True, blank=True)
     seuil_regime_anre_kwc = models.DecimalField(
-        max_digits=10, decimal_places=2, default=Decimal('1000'))
+        max_digits=10, decimal_places=2, null=True, blank=True)
     # ── AGR606 (Groupe AGR, 02/10/2026) — écart de recette pompage toléré (%)
     # entre débit mesuré et débit promis. NULL et SANS défaut (décision C5-12 :
     # « seuil à saisir par toi, je ne propose pas de chiffre ») : vide = écart
@@ -258,6 +261,34 @@ class CompanyProfile(models.Model):
     # ou sans source = « prix à renseigner », JAMAIS le barème résidentiel
     # (L-FORFAIT intouché). Validé par le sérialiseur (source obligatoire).
     forfaits_ci = models.JSONField(default=dict, blank=True)
+    # ── CIQ622 (Groupe CIQ, 03/10/2026) — réglages C&I de recette, de suivi
+    # et de garantie, TOUS SANS DÉFAUT (D-CIQ-12, D-CIQ-14 : « saisis par
+    # Reda »). Vide = « écart affiché sans verdict » / « non engagé » ; jamais
+    # une tolérance inventée codée en dur. Validés par le sérialiseur
+    # (0 < % ≤ 100 ; heures et mois > 0).
+    # Écart de recette toléré sur la puissance crête mesurée (%).
+    recette_ecart_pmax_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
+    # Part des chaînes à tracer en courbe I-V à la recette (%).
+    recette_echantillon_iv_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
+    # Seuil interne de performance ratio (%) — ALERTE INTERNE seulement,
+    # jamais affiché au client (D-CIQ-12).
+    recette_pr_seuil_interne = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
+    # Délai d'intervention du suivi de production (heures) — D-CIQ-12.
+    delai_intervention_suivi_heures = models.PositiveIntegerField(
+        null=True, blank=True)
+    # Délai entre réception provisoire et définitive (mois) — D-CIQ-14.
+    delai_reception_definitive_mois = models.PositiveIntegerField(
+        null=True, blank=True)
+    # Contrôle de sécurité obligatoire avant la mise en service.
+    securite_obligatoire_avant_demarrage = models.BooleanField(default=False)
+    # Garantie de production : jamais imprimée tant que la société ne l'a pas
+    # autorisée APRÈS validation (assureur ou juriste) — texte obligatoire
+    # « qui a validé et quand » dès que l'autorisation est cochée.
+    garantie_production_autorisee = models.BooleanField(default=False)
+    garantie_production_validation = models.TextField(blank=True, default='')
     # Bande INTERNE de contrôle du prix au kWc C&I ``{min_ht, max_ht, source,
     # date}`` : NULL par défaut, remplie seulement par la tâche manuelle
     # QXG6(b) (trois offres réelles). Servie au vendeur SEULEMENT — jamais au

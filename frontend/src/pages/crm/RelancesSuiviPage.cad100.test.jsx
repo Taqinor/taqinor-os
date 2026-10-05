@@ -111,6 +111,40 @@ describe('RelancesSuiviPage — CAD178 (gestes clés par famille d\'appareil)', 
     expect(within(tableau).getByText('Tablette')).toBeInTheDocument()
   })
 
+  it('AGR541 — tableau « Par segment » : une ligne par segment, `null` → « — », jamais 0 %', async () => {
+    mount()
+    const tableau = await screen.findByTestId('mesure-par-segment')
+    expect(MESURE.par_segment.map((l) => l.segment)).toEqual(
+      ['residentiel', 'commercial', 'industriel', 'agricole', 'non_renseigne'])
+    for (const ligne of MESURE.par_segment) {
+      expect(within(tableau).getByTestId(`mesure-segment-${ligne.segment}`)).toBeInTheDocument()
+    }
+    const residentiel = within(tableau).getByTestId('mesure-segment-residentiel')
+    const res = MESURE.par_segment[0]
+    expect(residentiel).toHaveTextContent('Résidentiel')
+    expect(residentiel).toHaveTextContent(`${res.taux_joint_pct} %`)
+    expect(residentiel).toHaveTextContent(`${res.taux_froid_pct} %`)
+    // Non renseigné : délai de signature `null` côté serveur → « — ».
+    const nonRenseigne = MESURE.par_segment.find((l) => l.segment === 'non_renseigne')
+    expect(nonRenseigne.delai_median_signature_jours).toBeNull()
+    const cellules = within(within(tableau).getByTestId('mesure-segment-non_renseigne'))
+      .getAllByRole('cell').map((c) => c.textContent)
+    expect(cellules).toContain('—')
+    expect(cellules.join(' ')).not.toMatch(/\b0 %/)
+    expect(within(tableau).getByTestId('aide-incoherents'))
+      .toHaveTextContent('leads non agricoles avec un devis agricole — corriger le type sur la fiche')
+    expect(tableau.querySelectorAll('input, select, button')).toHaveLength(0)
+  })
+
+  it('AGR541 — contrat vide : chaque taux `null` s’affiche « — »', async () => {
+    crmApi.getMesureCadence.mockResolvedValue(reponseContrat('crm', 'mesure_cadence', 'exemple_vide'))
+    mount()
+    const tableau = await screen.findByTestId('mesure-par-segment')
+    const agricole = within(tableau).getByTestId('mesure-segment-agricole')
+    expect(agricole.textContent).not.toMatch(/%/)
+    expect(within(agricole).getAllByText('—').length).toBeGreaterThanOrEqual(4)
+  })
+
   it('aucun geste compté rend « — », jamais une ligne à zéro fabriquée', async () => {
     crmApi.getMesureCadence.mockResolvedValue({
       data: { ...MESURE, gestes_par_appareil: [] },

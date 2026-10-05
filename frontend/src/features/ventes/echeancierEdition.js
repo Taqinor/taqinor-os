@@ -23,6 +23,8 @@ const LIBELLES = [
   ['Solde', 'solde'],
 ]
 
+export const LIBELLE_SOLDE_AGRICOLE = 'Solde après récolte'
+
 const MOTS_MONTANT = new Set(['montant', 'mad', 'dh', 'dhs', 'amount', 'fixe'])
 
 function nombre(v) {
@@ -38,7 +40,9 @@ function arrondi2(n) {
 export function saisieParDefaut(mode) {
   const pcts = DEFAUTS[mode] || DEFAUTS.residentiel
   return LIBELLES.map(([libelle, type], i) => ({
-    libelle, type, unite: UNITE_PCT, valeur: String(pcts[i]),
+    // AGR220 — en agricole, le solde se règle après la récolte (modifiable).
+    libelle: mode === 'agricole' && type === 'solde' ? LIBELLE_SOLDE_AGRICOLE : libelle,
+    type, unite: UNITE_PCT, valeur: String(pcts[i]), date_prevue: '',
   }))
 }
 
@@ -58,6 +62,8 @@ export function echeancierVersSaisie(echeancier) {
         ? t.type : (LIBELLES[i]?.[1] || ''),
       unite,
       valeur: String(t?.pct_or_montant ?? ''),
+      // AGR220 — date facultative (AAAA-MM-JJ) relue telle que le serveur la sert.
+      date_prevue: typeof t?.date_prevue === 'string' ? t.date_prevue : '',
     }
   })
 }
@@ -66,12 +72,19 @@ export function echeancierVersSaisie(echeancier) {
  *  l'échéancier de la société). */
 export function saisieVersEcheancier(saisie) {
   if (!Array.isArray(saisie)) return []
-  return saisie.map((t) => ({
-    libelle: t.libelle,
-    type: t.type,
-    unite: t.unite === UNITE_MONTANT ? UNITE_MONTANT : UNITE_PCT,
-    pct_or_montant: nombre(t.valeur),
-  }))
+  return saisie.map((t) => {
+    const tranche = {
+      libelle: t.libelle,
+      type: t.type,
+      unite: t.unite === UNITE_MONTANT ? UNITE_MONTANT : UNITE_PCT,
+      pct_or_montant: nombre(t.valeur),
+    }
+    // AGR220 — `date_prevue` seulement si saisie (le serveur l'omet quand null :
+    // enregistrer sans toucher redonne l'échéancier serveur à l'identique).
+    const d = String(t.date_prevue ?? '').trim()
+    if (d) tranche.date_prevue = d
+    return tranche
+  })
 }
 
 /** Somme des pourcentages quand toutes les tranches sont en %, sinon `null`. */

@@ -1566,6 +1566,20 @@ class ContratMaintenance(models.Model):
         verbose_name='Unité d\'usage',
         help_text='kWh (monitoring PV) ou m³ (pompage). Vide = pas d\'usage.')
 
+    # ── CIQ640 (Groupe CIQ, D-CIQ-12) — contrat O&M C&I ─────────────────────
+    # Délai d'intervention ENGAGÉ en heures (repris du réglage société
+    # ``delai_intervention_suivi_heures``, CIQ622) : NULL = non engagé. Jamais
+    # un chiffre par défaut (contrat partagé ``contract_samples/contrat_om.json``).
+    delai_intervention_heures = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="Délai d'intervention (heures)",
+        help_text='Vide = non engagé.')
+    # Origine du contrat O&M : le devis accepté et sa ligne O&M (identifiants
+    # simples, aucune FK cross-app — la création passe par l'évènement
+    # ``devis_accepted``). NULL = contrat saisi à la main ou XCTR1.
+    origine_devis_id = models.PositiveIntegerField(null=True, blank=True)
+    origine_ligne_om_id = models.PositiveIntegerField(null=True, blank=True)
+
     class Meta:
         ordering = ['-date_creation']
         verbose_name = 'Contrat de maintenance'
@@ -1730,6 +1744,51 @@ class ContratMaintenance(models.Model):
         if not self.equipements.exists():
             return True
         return self.equipements.filter(pk=equipement.pk).exists()
+
+
+class PrestationContrat(TenantModel):
+    """CIQ640 (Groupe CIQ, D-CIQ-12) — prestation NOMMÉE d'un contrat O&M.
+
+    Forme du contrat partagé ``contract_samples/contrat_om.json`` :
+    ``{id, type, libelle, incluse, frequence_an, prix_ht}``. AUCUN nombre par
+    défaut : ``frequence_an`` NULL = « à renseigner », ``prix_ht`` NULL =
+    « à renseigner ». ``company`` est posée côté serveur (celle du contrat).
+    """
+    class Type(models.TextChoices):
+        NETTOYAGE = 'nettoyage', 'Nettoyage'
+        INSPECTION = 'inspection', 'Inspection'
+        THERMOGRAPHIE = 'thermographie', 'Thermographie'
+        TEST_PROTECTIONS = 'test_protections', 'Test des protections'
+        SUPERVISION = 'supervision', 'Supervision'
+        AUTRE = 'autre', 'Autre'
+
+    # ARC1/SCA4 — socle ``TenantModel`` (FK company + created_at/updated_at) ;
+    # le champ est REDÉCLARÉ uniquement pour nommer l'accesseur inverse
+    # (motif documenté dans la docstring de ``core.models.TenantModel``).
+    company = models.ForeignKey(
+        # on_delete: cascade de tenant standard — une prestation n'existe pas
+        # hors de sa société.
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='prestations_contrat')
+    contrat = models.ForeignKey(
+        # on_delete: la prestation est une ligne du contrat O&M — elle n'a
+        # aucun sens sans lui.
+        ContratMaintenance, on_delete=models.CASCADE,
+        related_name='prestations')
+    type = models.CharField(max_length=20, choices=Type.choices)
+    libelle = models.CharField(max_length=160)
+    incluse = models.BooleanField(default=False)
+    frequence_an = models.PositiveSmallIntegerField(null=True, blank=True)
+    prix_ht = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        ordering = ['id']
+        verbose_name = 'Prestation de contrat'
+        verbose_name_plural = 'Prestations de contrat'
+
+    def __str__(self):
+        return f'{self.libelle} (contrat #{self.contrat_id})'
 
 
 # ── FG280 — Alarmes / défauts onduleur ────────────────────────────────────────

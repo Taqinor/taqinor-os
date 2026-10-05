@@ -522,3 +522,64 @@ describe('IdentityRail — QJR590 fiche client liée', () => {
     expect(screen.queryByTestId('lw-client-lie')).toBeNull()
   })
 })
+
+/* AGR417 (D-AGR-9) — incohérence de segment (AGR405) et segment suggéré
+   (AGR406), fixtures importées du contrat partagé lead_pompage.json. Le
+   changement de type est TOUJOURS manuel : confirmation, puis un PATCH
+   {type_installation} seul. */
+describe('IdentityRail — AGR417 bandeaux de segment', () => {
+  const INCOHERENT = exempleContrat('crm', 'lead_pompage', 'exemple_incoherent')
+
+  it('le bandeau d’incohérence s’affiche avec le message du serveur', () => {
+    render(<IdentityRail state={makeState(INCOHERENT)} onAction={vi.fn()} users={[]} />)
+    const bandeau = screen.getByTestId('lw-incoherence-segment')
+    expect(bandeau.textContent).toContain(INCOHERENT.incoherence_segment.message)
+    expect(within(bandeau).getByRole('button', { name: 'Passer en Agricole' })).toBeInTheDocument()
+  })
+
+  it('le segment suggéré s’affiche « à confirmer » avec sa raison', () => {
+    render(<IdentityRail state={makeState(INCOHERENT)} onAction={vi.fn()} users={[]} />)
+    const bandeau = screen.getByTestId('lw-segment-suggere')
+    expect(bandeau.textContent).toContain('Segment probable : agricole')
+    expect(bandeau.textContent).toContain(INCOHERENT.segment_suggere.raison)
+    expect(bandeau.textContent).toContain('à confirmer')
+  })
+
+  it('sans clic, aucun PATCH', () => {
+    render(<IdentityRail state={makeState(INCOHERENT)} onAction={vi.fn()} users={[]} />)
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+  })
+
+  it('confirmation refusée → aucun PATCH', async () => {
+    const spy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<IdentityRail state={makeState(INCOHERENT)} onAction={vi.fn()} users={[]} />)
+    fireEvent.click(within(screen.getByTestId('lw-incoherence-segment'))
+      .getByRole('button', { name: 'Passer en Agricole' }))
+    await waitFor(() => expect(spy).toHaveBeenCalled())
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it('après confirmation : PATCH {type_installation: agricole} seul, puis refresh', async () => {
+    const spy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    crmApi.updateLead.mockResolvedValueOnce({ data: {} })
+    const onAction = vi.fn()
+    render(<IdentityRail state={makeState(INCOHERENT)} onAction={onAction} users={[]} />)
+    fireEvent.click(within(screen.getByTestId('lw-incoherence-segment'))
+      .getByRole('button', { name: 'Passer en Agricole' }))
+    await waitFor(() => expect(crmApi.updateLead)
+      .toHaveBeenCalledWith(INCOHERENT.id, { type_installation: 'agricole' }))
+    expect(crmApi.updateLead).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+    spy.mockRestore()
+  })
+
+  it('null côté serveur → aucun bandeau', () => {
+    render(<IdentityRail
+      state={makeState({ ...INCOHERENT, incoherence_segment: null, segment_suggere: null })}
+      onAction={vi.fn()} users={[]}
+    />)
+    expect(screen.queryByTestId('lw-incoherence-segment')).toBeNull()
+    expect(screen.queryByTestId('lw-segment-suggere')).toBeNull()
+  })
+})

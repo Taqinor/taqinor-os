@@ -187,6 +187,12 @@ GRANDFATHERED_WEASYPRINT = frozenset({
     # RETIRÉES avec les fichiers eux-mêmes : le renderer agricole premium
     # multi-pages était injoignable depuis QJR32 et a été supprimé. Le PDF
     # agricole une-page reste rendu par le moteur legacy, déjà listé plus haut.
+    # AGR310 (D-AGR, 02/10/2026 — moteur serveur agricole ROUVERT) — le
+    # renderer agricole 3 pages revient, miroir règle #4 de residential/
+    # industriel : rendu en DEUX passes (mesure des pages puis joints
+    # élastiques, ``Document.render()`` + ``len(pages)``) que
+    # ``core.pdf.render_pdf`` (bytes seuls) ne sait pas exprimer.
+    "apps/ventes/quote_engine/agricole/renderer.py",
     "apps/ventes/quote_engine/residential/render.py",
     "apps/ventes/quote_engine/residential/renderer.py",
     # QX45/QX46 — renderers dédiés industriel/commercial (mêmes mirrors rule #4

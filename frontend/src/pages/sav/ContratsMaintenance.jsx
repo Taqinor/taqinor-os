@@ -85,6 +85,143 @@ export function ContratStatutPill({ contrat }) {
   return <StatusPill tone={tone} label={label} />
 }
 
+/* CIQ648 (Groupe CIQ, D-CIQ-12) — contrat O&M C&I : prestations nommées
+   (type, incluse, fréquence par an, prix HT) et délai d'intervention en
+   heures, forme du contrat partagé `apps/sav/contract_samples/contrat_om.json`.
+   AUCUN nombre pré-rempli : vide = « à renseigner » / « non engagé » ; une
+   valeur tapée part telle quelle (step="any") ; refus 400 sous le champ. */
+const TYPES_PRESTATION = {
+  nettoyage: 'Nettoyage',
+  inspection: 'Inspection',
+  thermographie: 'Thermographie',
+  test_protections: 'Test des protections',
+  supervision: 'Supervision',
+  autre: 'Autre',
+}
+const versTexte = (v) => (v === null || v === undefined ? '' : String(v))
+const nombreOuNul = (v) => {
+  const t = versTexte(v).trim().replace(',', '.')
+  return t === '' ? null : t
+}
+const etatOm = (contrat) => ({
+  delai_intervention_heures: versTexte(contrat?.delai_intervention_heures),
+  prestations: (contrat?.prestations ?? []).map((p) => ({
+    id: p.id, type: p.type, libelle: p.libelle, incluse: !!p.incluse,
+    frequence_an: versTexte(p.frequence_an), prix_ht: versTexte(p.prix_ht),
+  })),
+})
+const payloadOm = (etat) => ({
+  delai_intervention_heures: nombreOuNul(etat.delai_intervention_heures),
+  prestations: etat.prestations.map((p) => ({
+    id: p.id, incluse: !!p.incluse,
+    frequence_an: nombreOuNul(p.frequence_an), prix_ht: nombreOuNul(p.prix_ht),
+  })),
+})
+const messageErreur = (v) => {
+  if (v == null) return ''
+  return (Array.isArray(v) ? v : [v])
+    .map((m) => (typeof m === 'string' ? m : JSON.stringify(m))).join(' ')
+}
+
+export function PrestationsOmEditor({ contrat, onSaved }) {
+  const [etat, setEtat] = useState(() => etatOm(contrat))
+  const [erreur, setErreur] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const setPrestation = (id, champ, valeur) => setEtat((e) => ({
+    ...e,
+    prestations: e.prestations.map((p) => (p.id === id ? { ...p, [champ]: valeur } : p)),
+  }))
+  const enregistrer = async (ev) => {
+    ev.preventDefault()
+    setBusy(true)
+    setErreur(null)
+    try {
+      const res = await savApi.saveContratOm(contrat.id, payloadOm(etat))
+      toast.success('Contrat O&M enregistré.')
+      onSaved?.(res?.data)
+    } catch (e) {
+      setErreur(e?.response?.data ?? { detail: 'Enregistrement impossible.' })
+    } finally {
+      setBusy(false)
+    }
+  }
+  const erreurDelai = messageErreur(erreur?.delai_intervention_heures)
+  const erreurPrestations = messageErreur(erreur?.prestations) || messageErreur(erreur?.detail)
+  const delaiVide = etat.delai_intervention_heures.trim() === ''
+  return (
+    <form noValidate onSubmit={enregistrer} className="flex flex-col gap-3">
+      <FormField label="Délai d'intervention (heures)">
+        <Input type="number" step="any" aria-label="Délai d'intervention (heures)"
+               name="delai_intervention_heures"
+               value={etat.delai_intervention_heures}
+               invalid={Boolean(erreurDelai)}
+               aria-describedby={erreurDelai ? 'om-delai-erreur' : undefined}
+               onChange={(e) => setEtat((s) => ({ ...s, delai_intervention_heures: e.target.value }))} />
+        {delaiVide && !erreurDelai && (
+          <p className="text-xs text-muted-foreground">Vide : non engagé.</p>
+        )}
+        {erreurDelai && (
+          <p id="om-delai-erreur" role="alert" className="text-xs font-medium text-destructive">
+            {erreurDelai}
+          </p>
+        )}
+      </FormField>
+      {etat.prestations.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Aucune prestation O&amp;M sur ce contrat.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-muted-foreground">
+              <th>Prestation</th><th>Incluse</th><th>Fréquence / an</th><th>Prix HT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {etat.prestations.map((p) => (
+              <tr key={p.id} className="border-t border-border" data-testid={`prestation-${p.id}`}>
+                <td>
+                  {p.libelle}
+                  <span className="block text-xs text-muted-foreground">
+                    {TYPES_PRESTATION[p.type] ?? p.type}
+                  </span>
+                </td>
+                <td>
+                  <input type="checkbox" aria-label={`${p.libelle} — incluse`}
+                         checked={p.incluse}
+                         onChange={(e) => setPrestation(p.id, 'incluse', e.target.checked)} />
+                </td>
+                <td>
+                  <Input type="number" step="any" className="h-8"
+                         aria-label={`${p.libelle} — fréquence par an`}
+                         placeholder="à renseigner" value={p.frequence_an}
+                         onChange={(e) => setPrestation(p.id, 'frequence_an', e.target.value)} />
+                  {p.frequence_an.trim() === '' && (
+                    <span className="text-xs text-muted-foreground">à renseigner</span>
+                  )}
+                </td>
+                <td>
+                  <Input type="number" step="any" className="h-8"
+                         aria-label={`${p.libelle} — prix HT`}
+                         placeholder="à renseigner" value={p.prix_ht}
+                         onChange={(e) => setPrestation(p.id, 'prix_ht', e.target.value)} />
+                  {p.prix_ht.trim() === '' && (
+                    <span className="text-xs text-muted-foreground">à renseigner</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {erreurPrestations && (
+        <p role="alert" className="text-xs font-medium text-destructive">{erreurPrestations}</p>
+      )}
+      <div className="flex justify-end">
+        <Button type="submit" loading={busy}><Check /> Enregistrer</Button>
+      </div>
+    </form>
+  )
+}
+
 export function Component() {
   const [rows, setRows] = useState([])
   const [clients, setClients] = useState([])
@@ -109,6 +246,8 @@ export function Component() {
   const [edit, setEdit] = useState(null) // L320 — { id, periodicite, prix, actif }
   // L675 — choix de la date du rapport PDF : { row, date }.
   const [pdfDialog, setPdfDialog] = useState(null)
+  // CIQ648 — édition des prestations O&M et du délai d'intervention.
+  const [omDialog, setOmDialog] = useState(null)
 
   // WIR231 — Rentabilité gardée EXCLUSIVEMENT par prix_achat_voir : l'option
   // n'apparaît même pas dans le Segmented sans la permission (unmount total,
@@ -455,6 +594,10 @@ export function Component() {
           <Button variant="outline" size="sm" onClick={() => openRapport(row)}>
             <Download /> Rapport PDF
           </Button>
+          <Button variant="ghost" size="sm" onClick={() => setOmDialog(row)}
+                  title="Prestations O&M et délai d'intervention">
+            O&amp;M
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => startEdit(row)} title="Éditer">
             <Pencil />
           </Button>
@@ -776,6 +919,24 @@ export function Component() {
             emptyTitle="Aucun contrat"
           />
         )}
+
+        {/* CIQ648 — prestations O&M (fréquence, prix « à renseigner ») et
+            délai d'intervention en heures, sans aucun nombre pré-rempli. */}
+        <Dialog open={!!omDialog} onOpenChange={(o) => { if (!o) setOmDialog(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Contrat O&amp;M — {omDialog?.client_nom ?? ''}</DialogTitle>
+              <DialogDescription>
+                Prestations, fréquences et prix saisis par la société : vide =
+                « à renseigner ».
+              </DialogDescription>
+            </DialogHeader>
+            {omDialog && (
+              <PrestationsOmEditor key={omDialog.id} contrat={omDialog}
+                                   onSaved={() => { setOmDialog(null); load() }} />
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* L675 — choix de la date de visite avant téléchargement du rapport. */}
         <Dialog open={!!pdfDialog} onOpenChange={(o) => { if (!o) setPdfDialog(null) }}>

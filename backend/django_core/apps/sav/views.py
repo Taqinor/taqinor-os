@@ -2264,9 +2264,13 @@ class MaintenanceChecklistTemplateViewSet(CompanyScopedModelViewSet):
         if getattr(self, 'action', None) == 'list':
             # AGR619 — sème une seule fois « Entretien pompage solaire » à
             # l'affichage des modèles (même patron que seed_checklist_etapes).
-            from .services import ensure_modele_entretien_pompage
-            ensure_modele_entretien_pompage(
-                getattr(self.request.user, 'company', None))
+            from .services import (
+                ensure_modele_entretien_ci, ensure_modele_entretien_pompage,
+            )
+            company = getattr(self.request.user, 'company', None)
+            ensure_modele_entretien_pompage(company)
+            # CIQ641 — et « Entretien site professionnel » (C&I), même patron.
+            ensure_modele_entretien_ci(company)
         qs = super().get_queryset()
         return qs.filter(actif=True)
 

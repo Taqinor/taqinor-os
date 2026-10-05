@@ -37,6 +37,11 @@ CHAMPS_LOT5 = [
 # solaires de la société + règle FDA datée. Vides par défaut ([] / {}).
 CHAMPS_POMPAGE = ['charges_pompage_solaire', 'regle_fda_pompage']
 
+# CIQ211 (Groupe CIQ) — sensibilités C&I saisies par Reda (liste vide par
+# défaut) et mention « crédit-bail » (fausse tant qu'aucun avis juridique).
+CHAMPS_CI = ['sensibilites_ci', 'mention_credit_bail_autorisee',
+             'mention_credit_bail_source']
+
 
 class TariffSettingsSerializer(serializers.ModelSerializer):
     class Meta:
@@ -56,7 +61,7 @@ class TariffSettingsSerializer(serializers.ModelSerializer):
             'azimut_defaut_deg',
             'version',
             'date_modification',
-        ] + CHAMPS_LOT5 + CHAMPS_POMPAGE
+        ] + CHAMPS_LOT5 + CHAMPS_POMPAGE + CHAMPS_CI
         # version/date posés serveur ; company jamais exposée ni acceptée.
         read_only_fields = ['version', 'date_modification']
 
@@ -72,7 +77,7 @@ class TariffSettingsSerializer(serializers.ModelSerializer):
         base = self.instance if self.instance is not None else TariffSettings()
         etat = SimpleNamespace(**{
             champ: attrs.get(champ, getattr(base, champ, None))
-            for champ in CHAMPS_LOT5 + CHAMPS_POMPAGE
+            for champ in CHAMPS_LOT5 + CHAMPS_POMPAGE + CHAMPS_CI
             + ['residential_tiers']})
         erreurs = erreurs_reglages_tarif(etat)
         if erreurs:
@@ -87,7 +92,12 @@ class TariffSettingsSerializer(serializers.ModelSerializer):
             data['charges_pompage_solaire'] = []
         if data.get('regle_fda_pompage') is None:
             data['regle_fda_pompage'] = {}
+        if data.get('sensibilites_ci') is None:
+            data['sensibilites_ci'] = []
         return data
+
+    def validate_sensibilites_ci(self, value):
+        return [] if value is None else value
 
     def validate_charges_pompage_solaire(self, value):
         return [] if value is None else value

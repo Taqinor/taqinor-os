@@ -529,7 +529,15 @@ def rafraichir_etudes_du_devis(devis, *, force=False):
             devis, force=force),
         # Idempotente par empreinte : mêmes entrées ⇒ aucune écriture.
         'conception_electrique': rafraichir_conception_electrique_devis(devis),
+        # CIQ119 — commercial / industriel : l'étude suit les LIGNES facturées
+        # (taille donnée, aucun redimensionnement) ; no-op sur tout autre marché.
+        'etude_ci': _rafraichir_etude_ci(devis, force=force),
     }
+
+
+def _rafraichir_etude_ci(devis, *, force=False):
+    from apps.ventes.domain.etude_ci import rafraichir_etude_ci_devis
+    return rafraichir_etude_ci_devis(devis, force=force)
 
 
 # ── QJR117 — UNE COPIE DE DEVIS NE SERT PAS LES CHIFFRES DU SOURCE ──────────

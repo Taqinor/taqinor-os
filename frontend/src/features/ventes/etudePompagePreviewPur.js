@@ -1,4 +1,4 @@
-// AGR127 — fonctions PURES de l'aperçu pompage serveur (aucun import : elles
+// AGR127 — fonctions PURES de l'aperçu pompage serveur (imports relatifs seulement : elles
 // tournent sous `node --test`, voir etudePompagePreview.test.mjs).
 //
 // Contrat partagé : `backend/django_core/apps/ventes/contract_samples/
@@ -15,6 +15,12 @@
 //      corps vaut `null` : AUCUN appel réseau ;
 //   4. toutes les alertes du serveur sont rendues, aucune n'est filtrée.
 
+import {
+  nombreOuNull, texteOuNull, creerLibelleProvenance, alertesDuServeur,
+} from './etudePreviewCommun.js'
+
+export { nombreOuNull }
+
 // Les champs NUMÉRIQUES du corps, par bloc (les autres sont du texte).
 const NUM_PLAQUE = ['kw', 'tension_v', 'cv', 'courant_a']
 const NUM_BESOIN = ['volume_m3_jour', 'debit_souhaite_m3h', 'mois_pointe',
@@ -30,22 +36,6 @@ const NUM_CONDUITE = ['diametre_interieur_mm', 'longueur_m', 'c_hazen_williams']
 
 const MODES_POMPE = ['neuve', 'existante']
 const TAILLES = ['recommandee', 'inferieure', 'superieure']
-
-/** Un nombre tapé → nombre, sinon `null` (jamais 0 inventé, jamais arrondi). */
-export const nombreOuNull = (v) => {
-  if (v === null || v === undefined || typeof v === 'boolean') return null
-  if (typeof v === 'number') return Number.isFinite(v) ? v : null
-  const brut = String(v).trim().replace(',', '.')
-  if (brut === '') return null
-  const n = Number(brut)
-  return Number.isFinite(n) ? n : null
-}
-
-const texteOuNull = (v) => {
-  if (v === null || v === undefined) return null
-  const t = String(v).trim()
-  return t === '' ? null : t
-}
 
 const positif = (v) => {
   const n = nombreOuNull(v)
@@ -293,26 +283,13 @@ const LIBELLES_DETAIL_LEAD = {
   derive: 'déduit',
 }
 
-/** Libellé FR d'une provenance `{origine, detail, date}` (jamais vide). */
-export function libelleProvenance(provenance) {
-  const p = provenance || {}
-  const base = LIBELLES_ORIGINE[p.origine] || 'origine inconnue'
-  const detail = p.origine === 'lead' ? LIBELLES_DETAIL_LEAD[p.detail] : null
-  const texte = detail ? `${base} — ${detail}` : base
-  return p.date ? `${texte} (${p.date})` : texte
-}
+export const libelleProvenance = creerLibelleProvenance(LIBELLES_ORIGINE, LIBELLES_DETAIL_LEAD)
 
 /**
  * TOUTES les alertes du serveur, dans l'ordre, aucune filtrée (QX48(f) :
  * jamais bloquantes). Une alerte sans message garde son code pour rester
  * visible.
  */
-export function alertesAffichables(reponse) {
-  const alertes = Array.isArray(reponse?.alertes) ? reponse.alertes : []
-  return alertes.map((a, i) => ({
-    cle: `${a?.code || 'alerte'}-${a?.champ || ''}-${i}`,
-    code: a?.code || null,
-    champ: a?.champ || null,
-    message: a?.message || a?.code || 'Alerte du moteur de pompage',
-  }))
-}
+export const alertesAffichables = (reponse) => alertesDuServeur(
+  reponse, 'Alerte du moteur de pompage',
+)

@@ -28,6 +28,19 @@ the OS at `apps/ventes/quote_engine/` and is now the default quote-PDF path:
 
 Document statuses, pipeline stages, invoices and orders are all preserved.
 
+### Renderer registry (2026-10-05, AGR312)
+
+`builder.registre_renderers()` is the ONE list of premium renderers, in order:
+`industriel` (4 pages), `commercial` (3 pages), `agricole` (3 pages — eau et
+argent / comment ça marche / équipement, prix, garanties et signature;
+`quote_engine/agricole/renderer.py` + `pages.py`, every value from
+`agricole/synthese.synthese_agricole`, the same function `/proposition`
+serves — D-AGR-2), `residentiel` (3 pages). A devis no entry serves (or whose
+renderer raises `Unsupported`) falls back, with a NAMED log line, to the legacy
+engine — which always renders an agricole devis as the 1-page short version.
+`build_quote_data` no longer degrades an agricole `full` request to one page;
+`pdf_mode='onepage'` stays the short version.
+
 ## Two layers — permanently separate
 
 The founder has confirmed these are two distinct, permanent layers. The new

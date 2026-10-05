@@ -45,13 +45,17 @@ export default function DevisPdfDialog({
                 <RadioGroupItem value="full" className="mt-0.5" />
                 <span>
                   {targetIsAgricole
-                    ? 'Devis premium (4 pages — étude, schéma, rentabilité, garanties)'
+                    ? 'Document agricole complet (3 pages — eau et argent, fonctionnement, équipement et signature)'
                     : 'Devis premium (3 pages — options, analyse, garanties)'}
                 </span>
               </label>
               <label className="flex items-start gap-2 text-sm">
                 <RadioGroupItem value="onepage" className="mt-0.5" />
-                <span>Devis une page (liste produits uniquement, sans graphiques)</span>
+                <span>
+                  {targetIsAgricole
+                    ? 'Version courte (1 page)'
+                    : 'Devis une page (liste produits uniquement, sans graphiques)'}
+                </span>
               </label>
             </RadioGroup>
             {/* Incident fondateur 01/09 round 2 — hint SEUL (jamais bloquant) :

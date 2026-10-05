@@ -30,7 +30,11 @@ class EntretienPompageTests(TestCase):
         self.api = auth(self.user)
 
     def _modeles(self):
-        return MaintenanceChecklistTemplate.objects.filter(company=self.co)
+        # CIQ641 — l'affichage sème aussi « Entretien site professionnel » :
+        # on ne compte que le modèle pompage (marqueur = sa première étape).
+        marqueur = MODELE_ENTRETIEN_POMPAGE_ETAPES[0][0]
+        return MaintenanceChecklistTemplate.objects.filter(
+            company=self.co, items__cle=marqueur)
 
     def test_cree_une_seule_fois_a_l_affichage(self):
         r = self.api.get(URL)
@@ -56,7 +60,9 @@ class EntretienPompageTests(TestCase):
         modele.save(update_fields=['actif'])
         r = self.api.get(URL)
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.data['results'], [])
+        noms = [x['nom'] for x in r.data['results']]
+        self.assertNotIn('Visite forage', noms)
+        self.assertNotIn(MODELE_ENTRETIEN_POMPAGE_NOM, noms)
         self.assertEqual(self._modeles().count(), 1)
 
     def test_ticket_preventif_recoit_les_10_etapes(self):
