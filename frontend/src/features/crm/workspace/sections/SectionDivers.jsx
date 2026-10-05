@@ -67,6 +67,17 @@ const optionsDe = (labels) => [
   ...Object.entries(labels).map(([k, l]) => <option key={k} value={k}>{l}</option>),
 ]
 
+// AGR524 (contrat `lead_dossier_subvention.json`) — état du dossier d'aide FDA.
+// INTERNE : jamais montré au client (PDF, /proposition, messages).
+// source-choix: crm.Lead.dossier_subvention
+const DOSSIER_SUBVENTION = {
+  non_concerne: 'Non concerné',
+  a_deposer: 'À déposer',
+  depose: 'Déposé',
+  accorde: 'Accordé (approbation préalable)',
+  refuse: 'Refusé',
+}
+
 // CAD159 — libellés des champs de ce bloc (mêmes que leurs FormField).
 const LIBELLES_QUALIFICATION = {
   ownership: "Statut d'occupation",
@@ -133,6 +144,43 @@ function QualificationSite({ state, setField, errors }) {
             />
           )}
         />
+      </div>
+    </div>
+  )
+}
+
+/* AGR524 — « Dossier de subvention » + « Date de l'étape » : affichés pour un
+   lead AGRICOLE, ou dès qu'une valeur existe (jamais pour un résidentiel
+   vierge). L'erreur serveur (date obligatoire pour déposé / accordé / refusé)
+   s'affiche SOUS le champ fautif — la règle reste celle du serveur. */
+function DossierSubvention({ state, setField, errors }) {
+  const etat = getField(state, 'dossier_subvention') ?? ''
+  const date = getField(state, 'dossier_subvention_le') ?? ''
+  const agricole = getField(state, 'type_installation') === 'agricole'
+  if (!agricole && !etat && !date) return null
+  return (
+    <div className="mt-3" data-testid="dossier-subvention">
+      <p className="form-label">Dossier de subvention (FDA)</p>
+      <p className="text-xs text-muted-foreground" data-testid="dossier-subvention-interne">
+        Information interne, jamais montrée au client.
+      </p>
+      <div className="form-row">
+        <FormField label="Dossier de subvention" htmlFor="lf-dossier-subvention" error={errors.dossier_subvention}>
+          <select
+            id="lf-dossier-subvention"
+            className={errors.dossier_subvention ? 'form-select is-invalid' : 'form-select'}
+            aria-invalid={errors.dossier_subvention ? true : undefined}
+            value={etat} onChange={(e) => setField('dossier_subvention', e.target.value)}
+          >
+            {optionsDe(DOSSIER_SUBVENTION)}
+          </select>
+        </FormField>
+        <FormField label="Date de l'étape" htmlFor="lf-dossier-subvention-le" error={errors.dossier_subvention_le}>
+          <Input
+            id="lf-dossier-subvention-le" type="date" invalid={!!errors.dossier_subvention_le}
+            value={date} onChange={(e) => setField('dossier_subvention_le', e.target.value)}
+          />
+        </FormField>
       </div>
     </div>
   )
@@ -343,6 +391,7 @@ export default function SectionDivers({ state, setField, errors = {} }) {
         />
       </div>
       <QualificationSite state={state} setField={setField} errors={errors} />
+      <DossierSubvention state={state} setField={setField} errors={errors} />
     </>
   )
 }

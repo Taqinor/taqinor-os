@@ -203,6 +203,9 @@ const fieldLabels = {
   project_timeline: { label: 'Horizon du projet', section: 'divers', inputId: 'lf-project-timeline' },
   facility_type: { label: 'Type de site (pro)', section: 'divers', inputId: 'lf-facility-type' },
   roof_age: { label: 'Âge de la toiture (ans)', section: 'divers', inputId: 'lf-roof-age' },
+  // AGR524 — état du dossier d'aide FDA (interne).
+  dossier_subvention: { label: 'Dossier de subvention', section: 'divers', inputId: 'lf-dossier-subvention' },
+  dossier_subvention_le: { label: 'Date de l’étape', section: 'divers', inputId: 'lf-dossier-subvention-le' },
 
   // ── Vague 1 du script d'appel guidé (CAD149/CAD174) ───────────────────
   // Libellé = EXACTEMENT le `verbose_name` du champ côté serveur

@@ -91,6 +91,8 @@ export const TRACKED_KEYS = [
   // (décision fondateur du 21/09/2026) : voir CHAMPS_SITE plus bas.
   'distributeur', 'bill_kwh', 'ownership', 'financing_intent',
   'project_timeline', 'facility_type', 'roof_age',
+  // AGR524 — état du dossier d'aide FDA (interne, jamais montré au client).
+  'dossier_subvention', 'dossier_subvention_le',
 ]
 
 // ── canonEq — égalité CANONIQUE (le cœur du « fini le phantom dirty ») ───────
@@ -250,7 +252,8 @@ export const SECTION_FIELDS = {
   // CAD150 — la qualification captée par le site (CHAMPS_SITE hors énergie)
   // est éditable ici, avec sa provenance.
   divers: ['note', 'custom_data', 'ownership', 'financing_intent',
-    'project_timeline', 'facility_type', 'roof_age'],
+    'project_timeline', 'facility_type', 'roof_age',
+    'dossier_subvention', 'dossier_subvention_le'],
 }
 
 // La section de TRAVAIL : on n'y touche jamais automatiquement. C'est là qu'on
@@ -419,6 +422,7 @@ export function buildCreateDefaults({ currentUserId = null, lastVille = '' } = {
     // CAD150 — champs captés par le site : vides à la création manuelle.
     distributeur: '', bill_kwh: '', ownership: '', financing_intent: '',
     project_timeline: '', facility_type: '', roof_age: '',
+    dossier_subvention: '', dossier_subvention_le: '',
   }
 }
 
