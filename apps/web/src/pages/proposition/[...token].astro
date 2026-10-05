@@ -44,7 +44,25 @@ import {
   autoconsoKpis,
   hasInjection,
   autoconsoCashflow,
-  agricoleMonthlyDelivery,
+  syntheseAgricole,
+  omissionSynthese,
+  courbeGeometrie,
+  libelleEntree,
+  phraseProvenance,
+  AGR_LBL,
+  AGR_MOIS_LONG,
+  syntheseAgricoleArgent,
+  etatActivationOption,
+  confirmationOption,
+  libelleGarantie,
+  AGR_ARGENT_LBL,
+  AGR_ENERGIE_LBL,
+  AGR_NON_INCLUS_LBL,
+  AGR_COMPOSANT_LBL,
+  remplirLbl,
+  type SyntheseAgricoleArgent,
+  type SyntheseAgricole,
+  type Lbl3,
   commercialArchetype,
   MONTHS_SHORT,
   formatMAD,
@@ -197,6 +215,7 @@ import {
   groupEquipment,
   equipmentDelta,
   equipmentPresence,
+  garantiesCodeesEnDurAffichees,
   EQUIPMENT_GROUP_LABELS,
 } from '../../lib/propositionPage';
 // WJ131 — appariement PUR « ligne de devis → fiche technique /produits/<slug> »
@@ -562,10 +581,59 @@ const autoCashflow = ok && isAutoconso ? autoconsoCashflow(data!, reco ?? 'sans_
 const cashMaxAbs = autoCashflow ? Math.max(...autoCashflow.map((p) => Math.abs(p.cumulative)), 1) : 1;
 // Année du point mort (première année à trésorerie cumulée ≥ 0), pour le libellé.
 const cashBreakEven = autoCashflow ? (autoCashflow.find((p) => p.cumulative >= 0)?.year ?? null) : null;
-// Livraison d'eau mensuelle estimée (agricole) — dérivée de m3_jour + production
-// mensuelle ; null (bloc omis) si l'une des deux manque. Jamais de courbe besoin.
-const waterDelivery = ok && isAgricole ? agricoleMonthlyDelivery(data!, agri) : null;
-const waterMax = waterDelivery ? Math.max(...waterDelivery.map((m) => m.m3), 1) : 1;
+// AGW303 — LA SYNTHÈSE AGRICOLE SERVIE (`synthese_agricole`, la MÊME fonction que le PDF).
+// La page LIT : besoin vs eau livrée, schéma, courbe + point, provenance, plaque. Aucun
+// calcul (la livraison d'eau dérivée dans le navigateur, `agricoleMonthlyDelivery`, est
+// supprimée). Sans synthèse servie : cartes pompe seules, ni graphe ni schéma.
+const synth: SyntheseAgricole | null = ok ? syntheseAgricole(data!) : null;
+const bvl = synth?.besoinVsLivre ?? null;
+const bvlMax = bvl ? Math.max(...bvl.mois.map((m) => Math.max(m.besoin, m.livre)), 1) : 1;
+const courbeGeo = courbeGeometrie(synth?.pointFonctionnement ?? null);
+const motifCourbe = omissionSynthese(synth, 'point_fonctionnement');
+// Plaque de la pompe existante, formatée (kW · V · phases) ; `null` = non relevée.
+const plaqueTexte: Lbl3 | null = (() => {
+  const pl = synth?.pompe?.plaque;
+  if (!pl) return null;
+  const elems: string[] = [];
+  if (pl.kw !== null) elems.push(`${formatNumber(pl.kw, 1)} kW`);
+  if (pl.tensionV !== null) elems.push(`${formatNumber(pl.tensionV, 0)} V`);
+  if (pl.phases) elems.push(pl.phases);
+  return {
+    fr: AGR_LBL.plaqueRelevee.fr.replace('{plaque}', elems.length > 0 ? elems.join(' · ') : AGR_LBL.plaqueIllisible.fr),
+    en: AGR_LBL.plaqueRelevee.en.replace('{plaque}', elems.length > 0 ? elems.join(' · ') : AGR_LBL.plaqueIllisible.en),
+    ar: AGR_LBL.plaqueRelevee.ar.replace('{plaque}', elems.length > 0 ? elems.join(' · ') : AGR_LBL.plaqueIllisible.ar),
+  };
+})();
+const aConfirmerLbl: Lbl3 = {
+  fr: (synth?.aConfirmerParVisite ?? []).map((c) => libelleEntree(c).fr).join(', '),
+  en: (synth?.aConfirmerParVisite ?? []).map((c) => libelleEntree(c).en).join(', '),
+  ar: (synth?.aConfirmerParVisite ?? []).map((c) => libelleEntree(c).ar).join('، '),
+};
+// AGW304 — l'ARGENT déclaré, l'énergie actuelle, la règle FDA, les garanties par composant, les
+// options du kit et les formalités : LUS dans `synthese_agricole`, rien n'est calculé ici.
+const argent: SyntheseAgricoleArgent | null = ok ? syntheseAgricoleArgent(data!) : null;
+const energieLbl: Lbl3 | null = argent?.energieActuelle
+  ? (AGR_ENERGIE_LBL[argent.energieActuelle.valeur] ?? null)
+  : null;
+const energiePhrase: Lbl3 | null = argent?.energieActuelle ? phraseProvenance(argent.energieActuelle.provenance) : null;
+// Notes du bloc argent : provenance de la conso et du prix payé (date de DÉCLARATION servie),
+// indexation 0 % (D-AGR-5), aide FDA non comptée, condition — les mots du devis.
+const argentNotes: Lbl3 = (() => {
+  const phrase = phraseProvenance({ cle: 'conso', origine: 'saisie', detail: null, date: argent?.economies?.declareLe ?? null });
+  const conso = remplirLbl(AGR_ARGENT_LBL.consoPrixPaye, { phrase: '\u0000' });
+  const voix = (k: 'fr' | 'en' | 'ar') =>
+    [conso[k].replace('\u0000', phrase[k]), AGR_ARGENT_LBL.indexation[k], AGR_ARGENT_LBL.fdaNonComptee[k], AGR_ARGENT_LBL.condition[k]].join(' ');
+  return { fr: voix('fr'), en: voix('en'), ar: voix('ar') };
+})();
+const nonInclusLbl: Lbl3 = (() => {
+  const noms = (argent?.nonInclus ?? []).map((c) => AGR_NON_INCLUS_LBL[c] ?? { fr: c, en: c, ar: c });
+  const j = (k: 'fr' | 'en' | 'ar') => noms.map((n) => n[k]).join(k === 'ar' ? '، ' : ', ');
+  return {
+    fr: `${AGR_ARGENT_LBL.nonInclus.fr} : ${j('fr')}.`,
+    en: `${AGR_ARGENT_LBL.nonInclus.en}: ${j('en')}.`,
+    ar: `${AGR_ARGENT_LBL.nonInclus.ar}: ${j('ar')}.`,
+  };
+})();
 // Archétype de bloc commercial (miroir backend) — seulement en mode commercial.
 const comArchetype = ok && isCommercial ? commercialArchetype(data?.categorie_commerciale) : null;
 
@@ -2720,6 +2788,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             lu sur les lignes des deux options). Un devis de POMPAGE promettait
             sinon une garantie onduleur pour un matériel absent du devis. La
             garantie de POSE, elle, est l'engagement de Taqinor : toujours vraie. */}
+        {garantiesCodeesEnDurAffichees(installMode) && (
         <div class="cine-card mt-5 rounded-xl p-5">
           {/* ── QUICK WIN (fondateur, 26/08/2026) — DEUX GARANTIES PANNEAU, PAS
                  UNE. « 30 ans de performance panneaux » se lisait comme LA
@@ -2790,6 +2859,20 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             {equipPresence.panneaux ? "Deux garanties : le panneau, et la puissance qu’il délivre. Elles portent sur le matériel — transférables avec le bien, valables quel que soit l’installateur." : "Les garanties portent sur le matériel — transférables avec le bien, valables quel que soit l’installateur."}
           </p>
         </div>
+        )}
+        {/* AGW304 — AGRICOLE : les garanties par composant SERVIES (pompe, variateur, panneaux), jamais complétées
+            par une constante ; la garantie de pose n'apparaît que si la synthèse la sert. */}
+        {isAgricole && argent && argent.garanties.length > 0 && (
+          <div class="cine-card mt-5 rounded-xl p-5" data-agri-garanties>
+            <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.garanties.fr} data-en={AGR_ARGENT_LBL.garanties.en} data-ar={AGR_ARGENT_LBL.garanties.ar}>{AGR_ARGENT_LBL.garanties.fr}</p>
+            <ul class="mt-3 space-y-1.5 text-sm text-lune-soft">
+              {argent.garanties.map((g) => {
+                const { lbl } = libelleGarantie(g);
+                return <li data-garantie-composant={g.composant} data-i18n data-fr={lbl.fr} data-en={lbl.en} data-ar={lbl.ar}>{lbl.fr}</li>;
+              })}
+            </ul>
+          </div>
+        )}
 
 
           {/* ── PREVIEW v2 · LE DÉLAI ET LE RESPONSABLE ──────────────────────
@@ -3057,6 +3140,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 <p class="fig mt-2 text-2xl text-lune" dir="ltr">{formatNumber(agri.champ_kwc, 2)} <span class="text-base text-lune-soft">kWc</span></p>
               </div>
             ) : null}
+            {bvl && bvl.hectaresIrrigables !== null ? (
+              <div class="cine-card rounded-xl p-5" data-agri-hectares>
+                <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.surfaceIrrigable.fr} data-en={AGR_LBL.surfaceIrrigable.en} data-ar={AGR_LBL.surfaceIrrigable.ar}>{AGR_LBL.surfaceIrrigable.fr}</p>
+                <p class="fig mt-2 text-2xl text-lune" dir="ltr">{formatNumber(bvl.hectaresIrrigables, 1)} <span class="text-base text-lune-soft">ha</span></p>
+              </div>
+            ) : null}
           </div>
           {/* Honnêteté : aucun KPI pompe exploitable → message d'omission clair. */}
           {(!agri.pompe_cv && !agri.pompe_kw && !agri.m3_jour && !agri.champ_kwc) ? (
@@ -3072,25 +3161,259 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               data-ar={`التدفق المقدّر ≈ ${formatNumber(agri.debit_hmt_m3h)} m³/h عند ارتفاع الرفع المعتمد.`}>Débit estimé ≈ {formatNumber(agri.debit_hmt_m3h)} m³/h à la hauteur de refoulement retenue.</p>
           ) : null}
 
-          {/* Livraison d'eau mensuelle estimée — suit l'ensoleillement. Omise si
-              m3_jour ou la production mensuelle manque (jamais une courbe besoin
-              fabriquée : la série besoin/culture n'est pas dans ce payload). */}
-          {waterDelivery && (
-            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-              <p class="tech-label text-lune-faint" data-i18n data-fr="Votre eau au fil des mois" data-en="Your water month by month" data-ar="ماؤكم على مدار الأشهر">Votre eau au fil des mois</p>
+          {/* ── AGW303 — la synthèse agricole SERVIE (`synthese_agricole`, la MÊME fonction
+              que le PDF — AGR304/AGR308) : la page LIT, elle ne calcule rien. Chaque bloc
+              est OMIS quand le serveur ne le sert pas (jamais un zéro, jamais un graphe
+              vide). ─────────────────────────────────────────────────────────────── */}
+
+          {/* Besoin vs eau livrée, mois par mois (12 barres doubles) + mois le plus serré. */}
+          {bvl && (
+            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-besoin-livre>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.titreBesoinLivre.fr} data-en={AGR_LBL.titreBesoinLivre.en} data-ar={AGR_LBL.titreBesoinLivre.ar}>{AGR_LBL.titreBesoinLivre.fr}</p>
               <div class="mt-4 flex items-end gap-1.5" dir="ltr" role="img"
-                aria-label="Livraison d'eau estimée par mois, suivant l'ensoleillement">
-                {waterDelivery.map((m) => (
+                aria-label="Besoin et eau livrée par jour, mois par mois">
+                {bvl.mois.map((m, i) => (
                   <div class="flex flex-1 flex-col items-center gap-1">
-                    <span class="w-full rounded-t" style={`height:${Math.max(4, Math.round((m.m3 / waterMax) * 72))}px; background: var(--color-azur-300, #7fb4e8)`}></span>
-                    <span class="text-[10px] text-lune-faint">{MONTHS_SHORT.fr[m.monthIndex]}</span>
+                    <div class="flex w-full items-end gap-px">
+                      <span class="w-1/2 rounded-t" data-barre="besoin" style={`height:${Math.max(3, Math.round((m.besoin / bvlMax) * 72))}px; background: var(--color-lune-faint, #9ca3af)`}></span>
+                      <span class="w-1/2 rounded-t" data-barre="livre" style={`height:${Math.max(3, Math.round((m.livre / bvlMax) * 72))}px; background: var(--color-azur-300, #7fb4e8)`}></span>
+                    </div>
+                    <span class="text-[10px] text-lune-faint" data-i18n data-fr={MONTHS_SHORT.fr[i]} data-en={MONTHS_SHORT.en[i]} data-ar={MONTHS_SHORT.ar[i]}>{MONTHS_SHORT.fr[i]}</span>
                   </div>
                 ))}
               </div>
-              <p class="mt-3 text-xs text-lune-faint" data-i18n
-                data-fr="Capacité de livraison indicative — le pompage solaire suit l'ensoleillement (dérivée du débit journalier et de la production estimée, jamais un relevé mesuré)."
-                data-en="Indicative delivery capacity — solar pumping follows the sun (derived from the daily flow and estimated production, never a measured reading)."
-                data-ar="قدرة تسليم إرشادية — يتبع الضخّ الشمسي أشعة الشمس (مشتقّة من التدفق اليومي والإنتاج المقدّر، وليست قراءة مقيسة).">Capacité de livraison indicative — le pompage solaire suit l'ensoleillement (dérivée du débit journalier et de la production estimée, jamais un relevé mesuré).</p>
+              <p class="mt-3 text-xs text-lune-faint" data-i18n data-fr={AGR_LBL.legendeBarres.fr} data-en={AGR_LBL.legendeBarres.en} data-ar={AGR_LBL.legendeBarres.ar}>{AGR_LBL.legendeBarres.fr}</p>
+              {bvl.moisLePlusSerre !== null && (
+                <p class="mt-1 text-sm text-lune-soft" data-agri-mois-serre data-i18n
+                  data-fr={`${AGR_LBL.moisSerre.fr} ${AGR_MOIS_LONG.fr[bvl.moisLePlusSerre - 1]}.`}
+                  data-en={`${AGR_LBL.moisSerre.en} ${AGR_MOIS_LONG.en[bvl.moisLePlusSerre - 1]}.`}
+                  data-ar={`${AGR_LBL.moisSerre.ar} ${AGR_MOIS_LONG.ar[bvl.moisLePlusSerre - 1]}.`}>{AGR_LBL.moisSerre.fr} {AGR_MOIS_LONG.fr[bvl.moisLePlusSerre - 1]}.</p>
+              )}
+              {bvl.baseBesoin === 'agronomique_plein' && (
+                <p class="mt-1 text-xs text-lune-faint" data-i18n data-fr={AGR_LBL.agronomique.fr} data-en={AGR_LBL.agronomique.en} data-ar={AGR_LBL.agronomique.ar}>{AGR_LBL.agronomique.fr}</p>
+              )}
+            </div>
+          )}
+
+          {/* Schéma forage → pompe → variateur → panneaux → bassin → irrigation : le SVG
+              SERVI, inséré tel quel (déjà échappé côté serveur) — jamais un second dessin. */}
+          {synth?.dessinSchema && (
+            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-schema>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.titreComment.fr} data-en={AGR_LBL.titreComment.en} data-ar={AGR_LBL.titreComment.ar}>{AGR_LBL.titreComment.fr}</p>
+              <div class="mt-4 w-full overflow-x-auto" dir="ltr" set:html={synth.dessinSchema}></div>
+            </div>
+          )}
+
+          {/* Courbe constructeur + point de fonctionnement ; sans courbe, la phrase d'omission. */}
+          {synth && (
+            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-point>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.pointFonctionnement.fr} data-en={AGR_LBL.pointFonctionnement.en} data-ar={AGR_LBL.pointFonctionnement.ar}>{AGR_LBL.pointFonctionnement.fr}</p>
+              {courbeGeo ? (
+                <div class="mt-3" dir="ltr">
+                  <svg viewBox={`0 0 ${courbeGeo.largeur} ${courbeGeo.hauteur}`} class="w-full max-w-lg" role="img" aria-label="Courbe de la pompe et point de fonctionnement">
+                    <line x1={courbeGeo.axe.x0} y1={courbeGeo.axe.y0} x2={courbeGeo.axe.x1} y2={courbeGeo.axe.y0} stroke="currentColor" stroke-width="1" opacity="0.5" />
+                    <line x1={courbeGeo.axe.x0} y1={courbeGeo.axe.y0} x2={courbeGeo.axe.x0} y2={courbeGeo.axe.y1} stroke="currentColor" stroke-width="1" opacity="0.5" />
+                    <polyline points={courbeGeo.polyline} fill="none" stroke="#7fb4e8" stroke-width="2.5" />
+                    <line x1={courbeGeo.point.x} y1={courbeGeo.axe.y0} x2={courbeGeo.point.x} y2={courbeGeo.point.y} stroke="#e8b54a" stroke-width="1" stroke-dasharray="4 3" />
+                    <line x1={courbeGeo.axe.x0} y1={courbeGeo.point.y} x2={courbeGeo.point.x} y2={courbeGeo.point.y} stroke="#e8b54a" stroke-width="1" stroke-dasharray="4 3" />
+                    <circle cx={courbeGeo.point.x} cy={courbeGeo.point.y} r="5" fill="#e8b54a" />
+                    <text x={courbeGeo.axe.x1} y={courbeGeo.axe.y0 + 16} font-size="11" text-anchor="end" fill="currentColor" opacity="0.7">{formatNumber(courbeGeo.debitMax)}</text>
+                    <text x={courbeGeo.axe.x0 - 6} y={courbeGeo.axe.y1 + 8} font-size="11" text-anchor="end" fill="currentColor" opacity="0.7">{formatNumber(courbeGeo.hmtMax)}</text>
+                    <text x={courbeGeo.axe.x0 - 6} y={courbeGeo.axe.y0} font-size="11" text-anchor="end" fill="currentColor" opacity="0.7">0</text>
+                  </svg>
+                  <p class="mt-2 text-xs text-lune-faint">
+                    <span data-i18n data-fr={AGR_LBL.axeDebit.fr} data-en={AGR_LBL.axeDebit.en} data-ar={AGR_LBL.axeDebit.ar}>{AGR_LBL.axeDebit.fr}</span> ·
+                    <span data-i18n data-fr={AGR_LBL.axeHmt.fr} data-en={AGR_LBL.axeHmt.en} data-ar={AGR_LBL.axeHmt.ar}>{AGR_LBL.axeHmt.fr}</span>
+                    — <span class="fig">{formatNumber(synth.pointFonctionnement!.point.debitM3h)} m³/h · {formatNumber(synth.pointFonctionnement!.point.hmtM)} m</span>
+                  </p>
+                </div>
+              ) : (
+                <p class="mt-3 text-sm text-lune-faint" data-agri-point-omis data-i18n
+                  data-fr={`${motifCourbe && !motifCourbe.startsWith('courbe constructeur non disponible') ? motifCourbe : AGR_LBL.courbeAbsente.fr} ${AGR_LBL.pointOmis.fr}`}
+                  data-en={`${AGR_LBL.courbeAbsente.en} ${AGR_LBL.pointOmis.en}`}
+                  data-ar={`${AGR_LBL.courbeAbsente.ar} ${AGR_LBL.pointOmis.ar}`}>{motifCourbe && !motifCourbe.startsWith('courbe constructeur non disponible') ? motifCourbe : AGR_LBL.courbeAbsente.fr} {AGR_LBL.pointOmis.fr}</p>
+              )}
+            </div>
+          )}
+
+          {/* Pompe existante conservée : plaque relevée et compatibilité. */}
+          {synth && synth.modePompe === 'existante' && (
+            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-plaque>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.pompeExistante.fr} data-en={AGR_LBL.pompeExistante.en} data-ar={AGR_LBL.pompeExistante.ar}>{AGR_LBL.pompeExistante.fr}</p>
+              {plaqueTexte ? (
+                <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr={plaqueTexte.fr} data-en={plaqueTexte.en} data-ar={plaqueTexte.ar}>{plaqueTexte.fr}</p>
+              ) : (
+                <p class="mt-2 text-sm text-lune-faint" data-i18n data-fr={AGR_LBL.plaqueNonRelevee.fr} data-en={AGR_LBL.plaqueNonRelevee.en} data-ar={AGR_LBL.plaqueNonRelevee.ar}>{AGR_LBL.plaqueNonRelevee.fr}</p>
+              )}
+            </div>
+          )}
+
+          {/* D'où viennent ces chiffres : déclaré par vous le … / mesuré par TAQINOR le … /
+              à confirmer par la visite — la provenance SERVIE, jamais une date inventée. */}
+          {synth && (synth.provenance.length > 0 || synth.aConfirmerParVisite.length > 0) && (
+            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-provenance>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.titreProvenance.fr} data-en={AGR_LBL.titreProvenance.en} data-ar={AGR_LBL.titreProvenance.ar}>{AGR_LBL.titreProvenance.fr}</p>
+              {synth.provenance.length > 0 && (
+                <ul class="mt-3 space-y-1 text-sm text-lune-soft">
+                  {synth.provenance.map((e) => {
+                    const lib = libelleEntree(e.cle);
+                    const ph = phraseProvenance(e);
+                    return (
+                      <li>
+                        <strong class="text-lune" data-i18n data-fr={lib.fr} data-en={lib.en} data-ar={lib.ar}>{lib.fr}</strong> :
+                        {' '}<span data-i18n data-fr={ph.fr} data-en={ph.en} data-ar={ph.ar}>{ph.fr}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {synth.aConfirmerParVisite.length > 0 && (
+                <p class="mt-3 text-sm text-lune-soft" data-agri-a-confirmer data-i18n
+                  data-fr={`${AGR_LBL.aConfirmerVisite.fr} ${aConfirmerLbl.fr}.`}
+                  data-en={`${AGR_LBL.aConfirmerVisite.en} ${aConfirmerLbl.en}.`}
+                  data-ar={`${AGR_LBL.aConfirmerVisite.ar} ${aConfirmerLbl.ar}.`}><strong class="text-lune">{AGR_LBL.aConfirmerVisite.fr}</strong> {aConfirmerLbl.fr}.</p>
+              )}
+            </div>
+          )}
+
+
+          {/* ── AGW304 — L'ARGENT DÉCLARÉ, L'ÉNERGIE ACTUELLE, LA RÈGLE FDA, LES OPTIONS DU KIT ET LES
+              FORMALITÉS, tels que SERVIS par `synthese_agricole` (la MÊME fonction que le PDF).
+              Aucun calcul ici ; chaque bloc est OMIS quand le serveur ne le sert pas. Jamais un
+              montant d'aide propre au client, jamais de pourcentage maximal promis, jamais « gratuit ». ──── */}
+          {argent?.economies && (
+            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-argent>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.titreArgent.fr} data-en={AGR_ARGENT_LBL.titreArgent.en} data-ar={AGR_ARGENT_LBL.titreArgent.ar}>{AGR_ARGENT_LBL.titreArgent.fr}</p>
+              <dl class="mt-3 divide-y divide-white/10 text-sm">
+                {argent.economies.depenseActuelleMadAn !== null && (
+                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="depense-actuelle">
+                    <dt class="text-lune-soft" data-i18n
+                      data-fr={`${AGR_ARGENT_LBL.depenseActuelle.fr}${energieLbl ? ` — ${energieLbl.fr}` : ''}`}
+                      data-en={`${AGR_ARGENT_LBL.depenseActuelle.en}${energieLbl ? ` — ${energieLbl.en}` : ''}`}
+                      data-ar={`${AGR_ARGENT_LBL.depenseActuelle.ar}${energieLbl ? ` — ${energieLbl.ar}` : ''}`}>{AGR_ARGENT_LBL.depenseActuelle.fr}{energieLbl ? ` — ${energieLbl.fr}` : ''}</dt>
+                    <dd class="fig text-lune" dir="ltr">{formatMAD(argent.economies.depenseActuelleMadAn)}</dd>
+                  </div>
+                )}
+                {argent.economies.chargesSolairesMadAn !== null && (
+                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="charges-solaires">
+                    <dt class="text-lune-soft" data-i18n data-fr={AGR_ARGENT_LBL.chargesSolaires.fr} data-en={AGR_ARGENT_LBL.chargesSolaires.en} data-ar={AGR_ARGENT_LBL.chargesSolaires.ar}>{AGR_ARGENT_LBL.chargesSolaires.fr}</dt>
+                    <dd class="fig text-lune" dir="ltr">{formatMAD(argent.economies.chargesSolairesMadAn)}</dd>
+                  </div>
+                )}
+                {argent.economies.economieNetteAn1 !== null && (
+                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="economie-nette-an1">
+                    <dt class="text-lune-soft" data-i18n data-fr={AGR_ARGENT_LBL.economieNetteAn1.fr} data-en={AGR_ARGENT_LBL.economieNetteAn1.en} data-ar={AGR_ARGENT_LBL.economieNetteAn1.ar}>{AGR_ARGENT_LBL.economieNetteAn1.fr}</dt>
+                    <dd class="fig lum" dir="ltr">{formatMAD(argent.economies.economieNetteAn1)}</dd>
+                  </div>
+                )}
+                {argent.economies.retourAns !== null && (
+                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="retour-sans-aide">
+                    <dt class="text-lune-soft" data-i18n data-fr={AGR_ARGENT_LBL.retourSansAide.fr} data-en={AGR_ARGENT_LBL.retourSansAide.en} data-ar={AGR_ARGENT_LBL.retourSansAide.ar}>{AGR_ARGENT_LBL.retourSansAide.fr}</dt>
+                    <dd class="fig text-lune" dir="ltr" data-i18n
+                      data-fr={`${formatNumber(argent.economies.retourAns, 1)} ans`} data-en={`${formatNumber(argent.economies.retourAns, 1)} years`} data-ar={`${formatNumber(argent.economies.retourAns, 1)} سنوات`}>{formatNumber(argent.economies.retourAns, 1)} ans</dd>
+                  </div>
+                )}
+                {argent.economies.coutM3 && (
+                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="cout-m3">
+                    <dt class="text-lune-soft" data-i18n data-fr={AGR_ARGENT_LBL.coutM3.fr} data-en={AGR_ARGENT_LBL.coutM3.en} data-ar={AGR_ARGENT_LBL.coutM3.ar}>{AGR_ARGENT_LBL.coutM3.fr}</dt>
+                    <dd class="fig text-lune" dir="ltr">{formatNumber(argent.economies.coutM3.actuel, 2)} / {formatNumber(argent.economies.coutM3.solaire, 2)} MAD</dd>
+                  </div>
+                )}
+                {argent.economies.remplacements.map((r) => {
+                  const comp = AGR_COMPOSANT_LBL[r.composant] ?? { fr: r.composant, en: r.composant, ar: r.composant };
+                  const lbl = {
+                    fr: AGR_ARGENT_LBL.remplacement.fr.replace('{composant}', comp.fr).replace('{annee}', String(r.annee)),
+                    en: AGR_ARGENT_LBL.remplacement.en.replace('{composant}', comp.en).replace('{annee}', String(r.annee)),
+                    ar: AGR_ARGENT_LBL.remplacement.ar.replace('{composant}', comp.ar).replace('{annee}', String(r.annee)),
+                  };
+                  return (
+                    <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="remplacement">
+                      <dt class="text-lune-soft" data-i18n data-fr={lbl.fr} data-en={lbl.en} data-ar={lbl.ar}>{lbl.fr}</dt>
+                      <dd class="fig text-lune" dir="ltr">{formatMAD(r.montantTtc)} TTC</dd>
+                    </div>
+                  );
+                })}
+              </dl>
+              <p class="mt-3 text-xs text-lune-faint" data-agri-argent-notes data-i18n
+                data-fr={argentNotes.fr} data-en={argentNotes.en} data-ar={argentNotes.ar}>{argentNotes.fr}</p>
+            </div>
+          )}
+
+          {/* Énergie actuelle — seulement si DÉCLARÉE (jamais le défaut de l'écran). */}
+          {argent?.energieActuelle && energieLbl && (
+            <div class="cine-card mt-5 rounded-xl p-5" data-agri-energie>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.energieActuelle.fr} data-en={AGR_ARGENT_LBL.energieActuelle.en} data-ar={AGR_ARGENT_LBL.energieActuelle.ar}>{AGR_ARGENT_LBL.energieActuelle.fr}</p>
+              <p class="mt-2 text-sm text-lune-soft">
+                <strong class="text-lune" data-i18n data-fr={energieLbl.fr} data-en={energieLbl.en} data-ar={energieLbl.ar}>{energieLbl.fr}</strong> —
+                <span data-i18n data-fr={energiePhrase!.fr} data-en={energiePhrase!.en} data-ar={energiePhrase!.ar}>{energiePhrase!.fr}</span>
+              </p>
+            </div>
+          )}
+
+          {/* La RÈGLE de l'aide FDA (D-AGR-6) : conditions, plafonds, accord AVANT travaux,
+              versement après réalisation, source — JAMAIS un montant propre au client. */}
+          {argent?.aideFda?.textes && (
+            <div class="cine-card mt-5 rounded-xl p-5" data-agri-fda>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.aideTitre.fr} data-en={AGR_ARGENT_LBL.aideTitre.en} data-ar={AGR_ARGENT_LBL.aideTitre.ar}>{AGR_ARGENT_LBL.aideTitre.fr}</p>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft" data-i18n
+                data-fr={argent.aideFda.textes.fr} data-en={argent.aideFda.textes.en} data-ar={argent.aideFda.textes.ar}>{argent.aideFda.textes.fr}</p>
+            </div>
+          )}
+
+          {/* AGW308 — options du kit À COCHER : chaque option nommée porte « Ajouter au devis » (si le devis
+              n'est pas figé ; INACTIF en aperçu interne, R4) → confirmation → /api/proposition-option →
+              rechargement des totaux servis. Aucun retrait en ligne (le backend n'a pas d'endpoint). */}
+          {argent && argent.optionsKit.length > 0 && (
+            <div class="cine-card mt-5 rounded-xl p-5" id="agri-options-kit" data-agri-options-kit data-token={token}>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.optionsKit.fr} data-en={AGR_ARGENT_LBL.optionsKit.en} data-ar={AGR_ARGENT_LBL.optionsKit.ar}>{AGR_ARGENT_LBL.optionsKit.fr}</p>
+              <ul class="mt-3 space-y-2 text-sm text-lune-soft">
+                {argent.optionsKit.map((o) => {
+                  const etat = etatActivationOption({ ligneId: o.ligneId, apercuInterne, offreVivante: offerState === 'live' });
+                  const conf = confirmationOption(o.designation, o.totalTtc !== null ? formatMAD(o.totalTtc) : null);
+                  return (
+                    <li class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2" data-agri-option-kit data-ligne-id={o.ligneId ?? ''}>
+                      <span class="text-lune">{o.designation}</span>
+                      <span class="flex flex-wrap items-baseline gap-3">
+                        {o.totalTtc !== null && <span class="fig text-lune" dir="ltr">+ {formatMAD(o.totalTtc)} TTC</span>}
+                        {etat !== 'masque' && (
+                          <button type="button" data-option-ajouter data-ligne-id={o.ligneId ?? ''}
+                            data-confirm-fr={conf.fr} data-confirm-en={conf.en} data-confirm-ar={conf.ar}
+                            disabled={etat === 'apercu'} aria-disabled={etat === 'apercu' ? 'true' : undefined}
+                            class="border border-brass-400/60 px-3 py-1.5 text-xs font-semibold text-brass-300 transition-colors hover:bg-brass-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            data-i18n data-fr="Ajouter au devis" data-en="Add to quote" data-ar="إضافة إلى العرض">Ajouter au devis</button>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div id="agri-option-confirm" hidden role="dialog" aria-modal="true" aria-labelledby="agri-option-confirm-texte"
+                class="mt-4 border border-brass-400/50 bg-black/20 p-4">
+                <p id="agri-option-confirm-texte" class="text-sm text-lune"></p>
+                <div class="mt-3 flex flex-wrap gap-3">
+                  <button type="button" id="agri-option-confirm-ok" class="bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950 disabled:opacity-60"
+                    data-i18n data-fr="Confirmer l’ajout" data-en="Confirm" data-ar="تأكيد الإضافة">Confirmer l’ajout</button>
+                  <button type="button" id="agri-option-confirm-annuler" class="border border-white/30 px-4 py-2 text-sm text-lune-soft"
+                    data-i18n data-fr="Annuler" data-en="Cancel" data-ar="إلغاء">Annuler</button>
+                </div>
+              </div>
+              <p id="agri-option-msg" hidden role="alert" class="mt-3 text-sm text-brass-300"></p>
+            </div>
+          )}
+          {argent && argent.nonInclus.length > 0 && (
+            <p class="mt-3 text-sm text-lune-soft" data-agri-non-inclus data-i18n
+              data-fr={nonInclusLbl.fr} data-en={nonInclusLbl.en} data-ar={nonInclusLbl.ar}>{nonInclusLbl.fr}</p>
+          )}
+
+          {/* Formalités du client (loi 82-21 art. 3 hors réseau, loi 36-15 eau), telles que servies. */}
+          {argent && argent.formalites.length > 0 && (
+            <div class="cine-card mt-5 rounded-xl p-5" data-agri-formalites>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.formalites.fr} data-en={AGR_ARGENT_LBL.formalites.en} data-ar={AGR_ARGENT_LBL.formalites.ar}>{AGR_ARGENT_LBL.formalites.fr}</p>
+              <ul class="mt-3 space-y-2 text-sm text-lune-soft">
+                {argent.formalites.map((f) => (
+                  <li data-formalite={f.cle ?? ''} data-i18n data-fr={f.textes.fr} data-en={f.textes.en} data-ar={f.textes.ar}>{f.textes.fr}</li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -8897,6 +9220,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     buildContactBody,
     formatMAD,
     formatNumber,
+    normalizeOptionResponse,
+    optionMessage,
+    OPTION_MSG,
+    OPTION_PROXY_PATH,
     type ContactChannel,
   } from '../../lib/proposition';
   // OPTIONS CHARGEABLES — lecture du contrat `taille_detail.json`.
@@ -10564,6 +10891,82 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       } else {
         translate = clampTranslate(translate, viewportSize(), contentSize, scale);
         apply();
+      }
+    });
+  })();
+
+  // ── AGW308 — OPTIONS DU KIT À COCHER (agricole) : « Ajouter au devis » → confirmation →
+  // POST same-origin /api/proposition-option { token, ligne_id } → rechargement de la page
+  // (les totaux sont ceux que le serveur sert : jamais recalculés ici). Aperçu interne : bouton
+  // inactif (rendu `disabled` côté serveur). Aucune option ne se retire en ligne.
+  (() => {
+    const racine = document.getElementById('agri-options-kit');
+    const panneau = document.getElementById('agri-option-confirm');
+    if (!racine || !panneau) return;
+    const texteEl = document.getElementById('agri-option-confirm-texte');
+    const okBtn = document.getElementById('agri-option-confirm-ok') as HTMLButtonElement | null;
+    const annulerBtn = document.getElementById('agri-option-confirm-annuler') as HTMLButtonElement | null;
+    const msgEl = document.getElementById('agri-option-msg');
+    const tokenOption = racine.dataset.token ?? '';
+    let enAttente: { ligneId: number; declencheur: HTMLButtonElement } | null = null;
+
+    const langue = (): 'fr' | 'en' | 'ar' => {
+      const l = (window as unknown as { __propCurrentLang?: () => string }).__propCurrentLang?.();
+      return l === 'en' || l === 'ar' ? l : 'fr';
+    };
+    const montrerMessage = (m: { fr: string; en: string; ar: string }): void => {
+      if (!msgEl) return;
+      msgEl.textContent = m[langue()];
+      msgEl.hidden = false;
+    };
+    const fermer = (): void => {
+      panneau.hidden = true;
+      enAttente?.declencheur.focus();
+      enAttente = null;
+    };
+
+    racine.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>('[data-option-ajouter]');
+      if (!btn || btn.disabled) return;
+      const ligneId = Number(btn.dataset.ligneId);
+      if (!Number.isInteger(ligneId) || ligneId <= 0) return;
+      enAttente = { ligneId, declencheur: btn };
+      const l = langue();
+      if (texteEl) texteEl.textContent = (l === 'en' ? btn.dataset.confirmEn : l === 'ar' ? btn.dataset.confirmAr : btn.dataset.confirmFr) ?? '';
+      if (msgEl) msgEl.hidden = true;
+      panneau.hidden = false;
+      okBtn?.focus();
+    });
+    annulerBtn?.addEventListener('click', fermer);
+    panneau.addEventListener('keydown', (ev) => {
+      if ((ev as KeyboardEvent).key === 'Escape') fermer();
+    });
+    okBtn?.addEventListener('click', async () => {
+      if (!enAttente || !tokenOption) return;
+      okBtn.disabled = true;
+      try {
+        const res = await fetch(OPTION_PROXY_PATH, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify({ token: tokenOption, ligne_id: enAttente.ligneId }),
+        });
+        let json: unknown = null;
+        try {
+          json = await res.json();
+        } catch {
+          json = null;
+        }
+        const r = normalizeOptionResponse(res.status, json);
+        if (r.ok) {
+          // Les totaux servis sont rechargés : la page ne recalcule jamais un total.
+          window.location.reload();
+          return;
+        }
+        montrerMessage(optionMessage(res.status, json));
+      } catch {
+        montrerMessage(OPTION_MSG.reseau);
+      } finally {
+        okBtn.disabled = false;
       }
     });
   })();

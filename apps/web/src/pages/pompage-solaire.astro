@@ -432,23 +432,19 @@ const jsonLd = {
       </div>
     </section>
 
-    {/* W261 — Carte financement/subvention, gatée WG11 : FDA 30 % + Saquii ne
-        sont PAS republiés comme un fait confirmé tant que les termes n'ont
-        pas été vérifiés auprès des sources primaires (DPA/ORMVA/CAM) — voir
-        docs/WEB_PLAN.md WG11. Affiché ici comme piste à vérifier, jamais
-        comme une offre ou un partenariat Taqinor. */}
+    {/* W261 / AGW307 — D-AGR-6 lève WG11 pour la RÈGLE sourcée de l'aide FDA (Guide FDA 2024) : conditions, plafonds, accord AVANT travaux, versement après réalisation, jamais un montant propre au client. Le paragraphe Saquii reste non vérifié. */}
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <div class="v2-rise cine-card border-2 border-dashed border-white/25 p-7">
           {/* W274 chapitre 03 */}
-          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Piste de financement — à vérifier</p>
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Aide de l’État — la règle sourcée</p>
           <h2 class="display mt-3 text-xl text-white">Subvention agricole (FDA) et financement (Saquii)</h2>
-          <p class="mt-4 max-w-2xl text-sm leading-relaxed text-lune-soft">
-            L’État marocain propose historiquement une subvention du Fonds de Développement Agricole
-            pour le pompage solaire, et le Crédit Agricole du Maroc propose des mécanismes de
-            financement dédiés au solaire agricole. Les taux, plafonds et conditions actuels
-            évoluent et dépendent de votre DPA/ORMVA — nous ne publions aucun pourcentage ni
-            montant tant qu’il n’a pas été vérifié auprès de l’organisme concerné.
+          <p class="mt-4 max-w-2xl text-sm leading-relaxed text-lune-soft" data-fda-regle>
+            Aide de l’État (Fonds de développement agricole) au pompage solaire : 30 % de l’investissement, plafonnée à 3 000 DH par hectare, 3 000 DH par kWc et 30 000 DH par projet. Conditions : remplacement d’une pompe au butane, irrigation localisée, compteur d’eau. Accord préalable à obtenir avant travaux ; l’aide n’est pas déduite du prix et elle est versée après réalisation ; un seul projet par exploitation. Décision de la DPA/ORMVA, non garantie ; Taqinor n’est pas organisme subventionneur.
+          </p>
+          <p class="mt-2 max-w-2xl text-xs text-lune-faint" data-fda-source>Source : Guide FDA 2024, p. 20-23 — relevé le 2 octobre 2026.</p>
+          <p class="mt-4 max-w-2xl text-sm leading-relaxed text-lune-soft" data-saquii>
+            Le Crédit Agricole du Maroc propose des mécanismes de financement dédiés au solaire agricole (Saquii). Les taux, plafonds et conditions actuels évoluent et dépendent de votre dossier — nous ne publions aucun pourcentage ni montant tant qu’il n’a pas été vérifié auprès de l’organisme concerné.
           </p>
           <p class="mt-4 text-sm font-semibold text-lune-faint">
             À vérifier auprès de votre DPA avant tout engagement — Taqinor n’est ni prêteur ni

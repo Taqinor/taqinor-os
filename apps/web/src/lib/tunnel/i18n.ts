@@ -55,6 +55,7 @@ const FR: LibellesTunnel = {
   // professionnel
   raisonSociale: 'Raison sociale',
   tensionRaccordement: 'Tension de raccordement',
+  tensionSource: 'Provenance de la tension de raccordement',
   profilActivite: "Profil d'activité",
   typeSurface: 'Type de surface',
   surfaceM2: 'Surface disponible (m²)',
@@ -134,6 +135,7 @@ const EN: LibellesTunnel = {
   creneauVisiteSemaine: 'Site visit slot (week)',
   raisonSociale: 'Company name',
   tensionRaccordement: 'Grid connection voltage',
+  tensionSource: 'Source of the grid connection voltage',
   profilActivite: 'Activity profile',
   typeSurface: 'Surface type',
   surfaceM2: 'Available surface (m²)',
@@ -207,6 +209,7 @@ const AR: LibellesTunnel = {
   creneauVisiteSemaine: 'موعد الزيارة (الأسبوع)',
   raisonSociale: 'اسم الشركة',
   tensionRaccordement: 'جهد الربط بالشبكة',
+  tensionSource: 'مصدر جهد الربط بالشبكة',
   profilActivite: 'طبيعة النشاط',
   typeSurface: 'نوع المساحة',
   surfaceM2: 'المساحة المتاحة (م²)',

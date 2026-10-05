@@ -2,6 +2,8 @@
 // Aucune dépendance DOM ni réseau : parsing de la réponse GET, construction
 // du corps POST par section, sanitisation des champs, photos.
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   ECRANS,
   QUESTIONNAIRE_SECTIONS,
@@ -25,7 +27,7 @@ import {
 
 // ── Verrous de source (contrat backend, ne changent jamais sans le savoir) ──
 describe('verrous de source — contrat backend', () => {
-  it('QUESTIONNAIRE_SECTIONS = exactement les 12 clés du contrat, dans cet ordre', () => {
+  it('QUESTIONNAIRE_SECTIONS = exactement les 18 clés du contrat, dans cet ordre', () => {
     // Ordre = crm.QuestionnaireLien.SECTIONS_CLES (recherche 25/08/2026) :
     // engagement croissant, `contact` TOUJOURS en dernier.
     expect(QUESTIONNAIRE_SECTIONS).toEqual([
@@ -33,15 +35,31 @@ describe('verrous de source — contrat backend', () => {
       'equipements',
       'energie',
       'pompage',
+      'reseau',
+      'activite',
       'toiture',
+      'site',
       'gps',
       'photo_facture',
       'photo_compteur',
       'photo_tableau',
       'photo_pompe',
       'photo_forage',
+      'photo_factures',
+      'photo_poste',
+      'societe',
       'contact',
     ]);
+  });
+
+  it('CIW406 — la liste des sections = `sections` du contrat questionnaire_lead.json', () => {
+    const contrat = JSON.parse(
+      readFileSync(
+        fileURLToPath(new URL('../../../backend/django_core/apps/crm/contract_samples/questionnaire_lead.json', import.meta.url)),
+        'utf-8',
+      ),
+    ) as { sections: string[] };
+    expect([...QUESTIONNAIRE_SECTIONS]).toEqual(contrat.sections);
   });
 
   it('`contact` est la DERNIÈRE section — données personnelles en dernier', () => {
@@ -64,12 +82,16 @@ describe('verrous de source — contrat backend', () => {
     );
   });
 
-  it('isPhotoSection distingue les 5 sections photo des autres', () => {
+  it('isPhotoSection distingue les 7 sections photo des autres', () => {
     expect(isPhotoSection('photo_facture')).toBe(true);
     expect(isPhotoSection('photo_compteur')).toBe(true);
     expect(isPhotoSection('photo_tableau')).toBe(true);
     expect(isPhotoSection('photo_pompe')).toBe(true);
     expect(isPhotoSection('photo_forage')).toBe(true);
+    expect(isPhotoSection('photo_factures')).toBe(true);
+    expect(isPhotoSection('photo_poste')).toBe(true);
+    expect(isPhotoSection('reseau')).toBe(false);
+    expect(isPhotoSection('societe')).toBe(false);
     expect(isPhotoSection('pompage')).toBe(false);
     expect(isPhotoSection('contact')).toBe(false);
     expect(isPhotoSection('gps')).toBe(false);
@@ -217,9 +239,9 @@ describe('initialSectionIndex', () => {
 describe('ECRANS / ecransActifs', () => {
   const toutes = QUESTIONNAIRE_SECTIONS as unknown as (typeof QUESTIONNAIRE_SECTIONS)[number][];
 
-  it('les 12 sections tiennent sur 7 écrans au maximum, jamais 12', () => {
-    expect(ECRANS).toHaveLength(7);
-    expect(ecransActifs(toutes)).toHaveLength(7);
+  it('les 18 sections tiennent sur 10 écrans au maximum, jamais 18', () => {
+    expect(ECRANS).toHaveLength(10);
+    expect(ecransActifs(toutes)).toHaveLength(10);
   });
 
   it('chaque section est couverte par exactement UN écran', () => {
@@ -238,13 +260,14 @@ describe('ECRANS / ecransActifs', () => {
     }
   });
 
-  it('les cinq photos tiennent sur UN écran, toiture+GPS sur un autre', () => {
+  it('les sept photos tiennent sur UN écran, toiture+site+GPS sur un autre', () => {
     const photos = ECRANS.find((e) => e.id === 'photos');
     expect(photos!.sections).toEqual([
       'photo_facture', 'photo_compteur', 'photo_tableau', 'photo_pompe', 'photo_forage',
+      'photo_factures', 'photo_poste',
     ]);
     expect(ECRANS.find((e) => e.id === 'pompage')!.sections).toEqual(['pompage']);
-    expect(ECRANS.find((e) => e.id === 'toit')!.sections).toEqual(['toiture', 'gps']);
+    expect(ECRANS.find((e) => e.id === 'toit')!.sections).toEqual(['toiture', 'site', 'gps']);
   });
 
   it('les coordonnées sont le DERNIER écran', () => {
@@ -626,5 +649,171 @@ describe('AGW408 — pompage : corps POST', () => {
       prefill: { source_eau: 'forage' }, repondu: {}, interne: false,
     });
     expect(r?.sections).toEqual(['pompage', 'gps', 'photo_pompe', 'photo_forage']);
+  });
+});
+
+// ── CIW406 — sections PRO (réseau, activité, site, société) ──────────────
+describe('CIW406 — sections pro : corps POST', () => {
+  it('réseau : tension fermée, kVA/kWh, relevé ≤ 12 mois, registres MT seulement en MT', () => {
+    const releve = [
+      { mois: '2026-08', kwh: '41000', kwh_pointe: '5000', kwh_pleines: '30000', kwh_creuses: '6000' },
+      { mois: '2026-07', kwh: '39000' },
+      { mois: '2026-07', kwh: '1' }, // doublon écarté
+      { mois: 'juillet', kwh: '10' }, // mois illisible écarté
+      { mois: '2026-06', kwh: '' }, // sans kWh : jamais un 0 fabriqué
+    ];
+    const mt = buildSectionReponses('reseau', {
+      tension_raccordement: 'mt', compteur_puissance_kva: '630', conso_mensuelle_kwh: '41000', releve_conso: releve, cos_phi: '0.92',
+    });
+    expect(mt.tension_raccordement).toBe('mt');
+    expect(mt.compteur_puissance_kva).toBe(630);
+    expect(mt.conso_mensuelle_kwh).toBe(41000);
+    expect(mt.cos_phi).toBe(0.92);
+    expect(mt.releve_conso).toEqual({
+      mois: [
+        { mois: '2026-08', kwh: 41000, kwh_pointe: 5000, kwh_pleines: 30000, kwh_creuses: 6000 },
+        { mois: '2026-07', kwh: 39000 },
+      ],
+      source: 'declare',
+    });
+    const bt = buildSectionReponses('reseau', { tension_raccordement: 'bt', releve_conso: releve });
+    expect((bt.releve_conso as { mois: Array<Record<string, unknown>> }).mois[0]).toEqual({ mois: '2026-08', kwh: 41000 });
+  });
+
+  it('réseau : au plus 12 mois, tension hors liste écartée, cos φ > 1 écarté', () => {
+    const releve = Array.from({ length: 14 }, (_, i) => ({ mois: `2025-${String((i % 12) + 1).padStart(2, '0')}`, kwh: '100' }));
+    const out = buildSectionReponses('reseau', { tension_raccordement: 'ht', releve_conso: releve, cos_phi: '1.4' });
+    expect(out.tension_raccordement).toBeUndefined();
+    expect(out.cos_phi).toBeUndefined();
+    expect((out.releve_conso as { mois: unknown[] }).mois.length).toBeLessThanOrEqual(12);
+  });
+
+  it('activité commerciale : catégorie + SEULES ses clés fermées, typées', () => {
+    const out = buildSectionReponses('activite', {
+      categorie_commerciale: 'hotel',
+      reponses_categorie: { chambres: '40', occupation_pct: '62', piscine: 'oui', blanchisserie: 'non', effectif: '9', horaires: 'midi' },
+      jours_ouverture: [1, 2, 3, 3, 9],
+      heure_debut: '8', heure_fin: '22',
+      fermeture_mois: [8, 1],
+      groupe_electrogene: 'oui', groupe_kva: '100', groupe_litres_mois: '300', groupe_depense_mad_mois: '2500',
+      pv_existant_kwc: '12',
+    });
+    expect(out.categorie_commerciale).toBe('hotel');
+    expect(out.reponses_categorie).toEqual({ chambres: 40, occupation_pct: 62, piscine: true, blanchisserie: false });
+    expect(out.jours_ouverture).toEqual([1, 2, 3]);
+    expect(out.heure_debut).toBe(8);
+    expect(out.heure_fin).toBe(22);
+    expect(out.fermeture_mois).toEqual([1, 8]);
+    expect(out.groupe_kva).toBe(100);
+    expect(out.groupe_litres_mois).toBe(300);
+    expect(out.groupe_depense_mad_mois).toBe(2500);
+    expect(out.pv_existant_kwc).toBe(12);
+  });
+
+  it('activité : horaires incohérents (début ≥ fin) jamais envoyés ; groupe « non » sans détails', () => {
+    const out = buildSectionReponses('activite', {
+      heure_debut: '20', heure_fin: '8', groupe_electrogene: 'non', groupe_kva: '100', groupe_litres_mois: '300',
+    });
+    expect(out.heure_debut).toBeUndefined();
+    expect(out.heure_fin).toBeUndefined();
+    expect(out.groupe_electrogene).toBe('non');
+    expect(out.groupe_kva).toBeUndefined();
+    expect(out.groupe_litres_mois).toBeUndefined();
+  });
+
+  it('activité industrielle : secteur, export UE, équipes ; catégorie hors liste écartée', () => {
+    const out = buildSectionReponses('activite', {
+      secteur_industriel: '  Conserverie  ', export_ue_declare: 'oui', regime_equipes: '3x8', categorie_commerciale: 'usine',
+    });
+    expect(out.secteur_industriel).toBe('Conserverie');
+    expect(out.export_ue_declare).toBe('oui');
+    expect(out.regime_equipes).toBe('3x8');
+    expect(out.categorie_commerciale).toBeUndefined();
+    expect(out.reponses_categorie).toBeUndefined();
+  });
+
+  it('une consigne de froid négative est conservée (−18 °C)', () => {
+    const out = buildSectionReponses('activite', {
+      categorie_commerciale: 'froid', reponses_categorie: { temperature_consigne: '-18', volume_m3: '900' },
+    });
+    expect(out.reponses_categorie).toEqual({ temperature_consigne: -18, volume_m3: 900 });
+  });
+
+  it('site : surface, type de toiture PRO (liste fermée), m² disponibles', () => {
+    const out = buildSectionReponses('site', { type_surface: 'ombriere', type_toiture: 'bac_acier', surface_toiture_m2: '650' });
+    expect(out).toEqual({ type_surface: 'ombriere', type_toiture: 'bac_acier', surface_toiture_m2: 650 });
+    // le vocabulaire résidentiel (villa…) n'est pas un choix de la section « site »
+    expect(buildSectionReponses('site', { type_toiture: 'villa' }).type_toiture).toBeUndefined();
+  });
+
+  it('société : identité complète, e-mail secondaire validé, TVA en liste fermée', () => {
+    const out = buildSectionReponses('societe', {
+      societe: 'Hôtel Exemple SARL', ice: '001234567000089', rc: '12345', if_fiscal: '5566',
+      adresse_siege: '1 rue X, Casablanca', fonction_contact: 'Directeur', contact_secondaire_nom: 'Sara',
+      contact_secondaire_telephone: '0600000000', contact_secondaire_email: 'pas-un-email', contact_secondaire_fonction: 'DAF',
+      tva_recuperable: 'oui',
+    });
+    expect(out.societe).toBe('Hôtel Exemple SARL');
+    expect(out.ice).toBe('001234567000089');
+    expect(out.contact_secondaire_email).toBeUndefined();
+    expect(out.tva_recuperable).toBe('oui');
+    expect(buildSectionReponses('societe', { tva_recuperable: 'peut-être' }).tva_recuperable).toBeUndefined();
+  });
+
+  it('photo_factures / photo_poste : photo seule, aucune réponse', () => {
+    const photo = 'data:image/jpeg;base64,' + 'A'.repeat(200);
+    for (const s of ['photo_factures', 'photo_poste'] as const) {
+      const body = buildQuestionnairePostBody(s, {}, photo);
+      expect(body.reponses).toEqual({});
+      expect(body.photo).toBe(photo);
+    }
+  });
+
+  it('prefill_vu limité aux colonnes de la section pro', () => {
+    const body = buildQuestionnairePostBody(
+      'site', { type_surface: 'toiture' }, null, undefined,
+      { type_surface: 'toiture', surface_toiture_m2: 650, ice: 'x' },
+    );
+    expect(body.prefill_vu).toEqual({ type_surface: 'toiture', surface_toiture_m2: 650 });
+  });
+});
+
+describe('CIW406 — contrat : exemple_pro et choix fermés', () => {
+  const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+  const contrat = JSON.parse(
+    read('../../../backend/django_core/apps/crm/contract_samples/questionnaire_lead.json'),
+  ) as { exemple_pro: Record<string, unknown>; segment_pro: { sections_pro: string[]; refusees_400: string[] } };
+  const lp = JSON.parse(
+    read('../../../backend/django_core/apps/crm/contract_samples/lead_pro.json'),
+  ) as { colonnes_pro: Array<{ nom: string; choix?: string[] }>; reponses_categorie_par_categorie: { cles: Record<string, string[]> } };
+  const choix = (nom: string) => lp.colonnes_pro.find((c) => c.nom === nom)?.choix;
+
+  it('l’exemple pro du contrat est exploitable : 7 sections pro, écrans pro seulement', () => {
+    const parsed = parseQuestionnaireGet(contrat.exemple_pro);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.sections).toEqual(contrat.segment_pro.sections_pro);
+    const ids = ecransActifs(parsed!.sections).map((e) => e.id);
+    expect(ids).toEqual(['reseau', 'activite', 'toit', 'photos', 'societe', 'coordonnees']);
+    // Aucune section résidentielle refusée n'est servie ni dessinée.
+    for (const refusee of contrat.segment_pro.refusees_400) {
+      expect(parsed!.sections).not.toContain(refusee);
+    }
+  });
+
+  it('choix fermés = contrat lead_pro.json', async () => {
+    const lib = await import('../src/lib/questionnaire');
+    expect([...lib.TENSION_VALUES]).toEqual(choix('tension_raccordement'));
+    expect([...lib.TYPE_SURFACE_VALUES]).toEqual(choix('type_surface'));
+    expect([...lib.TYPE_TOITURE_PRO_VALUES]).toEqual(choix('type_toiture'));
+    expect([...lib.REGIME_EQUIPES_VALUES]).toEqual(choix('regime_equipes'));
+    expect([...lib.TVA_RECUPERABLE_VALUES]).toEqual(choix('tva_recuperable'));
+    expect([...lib.CATEGORIE_COMMERCIALE_VALUES]).toEqual(choix('categorie_commerciale'));
+  });
+
+  it('questions de catégorie = clés fermées du contrat (par catégorie)', async () => {
+    const lib = await import('../src/lib/questionnaire');
+    for (const [cat, cles] of Object.entries(lp.reponses_categorie_par_categorie.cles)) {
+      expect(lib.REPONSES_CATEGORIE_QUESTIONS[cat].map((q) => q.key), cat).toEqual(cles);
+    }
   });
 });

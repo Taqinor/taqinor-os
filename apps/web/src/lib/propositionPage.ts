@@ -496,6 +496,17 @@ export function equipmentPresence(
 }
 
 /**
+ * AGW304 — le bloc « garanties » historique (30 ans panneaux, 10 ans onduleur, 2 ans de pose
+ * « toujours vraie ») est CODÉ EN DUR. En agricole il n'a pas lieu d'être : les garanties de
+ * la pompe, du variateur et des panneaux viennent de `synthese_agricole.garanties` (durées des
+ * fiches produits, jamais complétées par une constante), et la garantie de pose n'apparaît que
+ * si la synthèse la sert. `mode` = clé machine de `resolveInstallMode`.
+ */
+export function garantiesCodeesEnDurAffichees(mode: string | null | undefined): boolean {
+  return mode !== 'agricole';
+}
+
+/**
  * Ce que la SECONDE option ajoute par rapport à la première (devis à deux
  * options : le tableau montre l'option retenue, cette liste dit honnêtement ce
  * que l'autre ajoute — sans dupliquer tout un second tableau). Comparaison sur

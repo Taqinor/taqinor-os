@@ -169,6 +169,7 @@ describe('construireCorps — les gates conservés', () => {
       mode: 'industriel',
       tension: 'bt',
       activite: 'day',
+      activiteTouchee: true,
     });
     expect(indus.tensionRaccordement).toBe('bt');
     expect(indus.activityProfile).toBe('day');
@@ -186,7 +187,7 @@ describe('construireCorps — les gates conservés', () => {
 
   it("CIW408 — le payload INDUSTRIEL (et l'alias professionnel) est inchangé", () => {
     for (const mode of ['industriel', 'professionnel'] as const) {
-      const indus = corps({ ...etatResidentiel(), mode, tension: 'mt', activite: 'continuous' });
+      const indus = corps({ ...etatResidentiel(), mode, tension: 'mt', activite: 'continuous', tensionTouchee: true, activiteTouchee: true });
       expect(indus.tensionRaccordement).toBe('mt');
       expect(indus.activityProfile).toBe('continuous');
     }
@@ -541,4 +542,62 @@ describe('CIW404 — gros compte en kWh : tranche gt10000, jamais d\'erreur sur 
       expect(src).not.toMatch(/s\.paybackLabel = rLabel/);
     });
   }
+});
+
+// CIW410 — la tension, l'activité et les équipes ne partent comme DÉCLARÉES que si
+// le visiteur les a touchées : BT et « Journée » sont présélectionnés VISIBLEMENT
+// (WJ123) et ne doivent pas se confondre avec une réponse.
+describe('CIW410 — tensionSource et activityProfile : déclaré seulement si touché', () => {
+  const industriel = (extra: Partial<EtatTunnel> = {}) =>
+    corps({ ...etatResidentiel(), mode: 'industriel', tension: 'bt', activite: 'day', ...extra });
+
+  it('industriel SANS clic : tensionSource « defaut_visible », pas d’activityProfile, BT toujours émise', () => {
+    const b = industriel();
+    expect(b.tensionSource).toBe('defaut_visible');
+    expect(b.tensionRaccordement).toBe('bt');
+    expect(b).not.toHaveProperty('activityProfile');
+  });
+
+  it('clic sur MT (ou BT) : tensionSource « touchee »', () => {
+    const mt = industriel({ tension: 'mt', tensionTouchee: true });
+    expect(mt.tensionRaccordement).toBe('mt');
+    expect(mt.tensionSource).toBe('touchee');
+    expect(industriel({ tensionTouchee: true }).tensionSource).toBe('touchee');
+  });
+
+  it('activité touchée : activityProfile part ; équipes inchangées (déjà sans défaut)', () => {
+    const b = industriel({ activite: 'continuous', activiteTouchee: true, equipes: '3x8' });
+    expect(b.activityProfile).toBe('continuous');
+    expect(b.equipes).toBe('3x8');
+    expect(industriel({ equipes: '' })).not.toHaveProperty('equipes');
+  });
+
+  it('jamais de tensionSource hors panneau industriel (commercial, résidentiel, agricole)', () => {
+    for (const mode of ['commercial', 'residentiel', 'agricole'] as const) {
+      const b = corps({ ...etatResidentiel(), mode, tension: 'bt', tensionTouchee: true });
+      expect(b, mode).not.toHaveProperty('tensionSource');
+    }
+  });
+
+  it('la liste blanche de lead.ts accepte tensionSource et écarte toute autre valeur', async () => {
+    const { validateLead } = await import('../src/lib/lead');
+    const base = { ...corps(etatResidentiel()) } as Record<string, unknown>;
+    const ok = validateLead({ ...base, tensionSource: 'touchee' });
+    expect(ok.lead.tensionSource).toBe('touchee');
+    expect(validateLead({ ...base, tensionSource: 'defaut_visible' }).lead.tensionSource).toBe('defaut_visible');
+    expect(validateLead({ ...base, tensionSource: 'declare' }).lead.tensionSource).toBeUndefined();
+  });
+
+  it('le registre déclare la clé du contrat CIQ400 (tunnel_webhook_keys.json)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const contrat = JSON.parse(readFileSync(
+      fileURLToPath(new URL('../../../backend/django_core/apps/crm/contract_samples/tunnel_webhook_keys.json', import.meta.url)),
+      'utf-8',
+    )) as { ajout_ciq400: { cle_nouvelle: { tensionSource: { cle_registre: string; groupe: string; valeurs: string[] } } } };
+    const c = contrat.ajout_ciq400.cle_nouvelle.tensionSource;
+    expect(CHAMPS_TUNNEL.some((d) => d.cle === c.cle_registre && d.webhookKey === 'tensionSource')).toBe(true);
+    expect(c.groupe).toBe('G_PRO');
+    expect(c.valeurs).toEqual(['touchee', 'defaut_visible']);
+  });
 });
