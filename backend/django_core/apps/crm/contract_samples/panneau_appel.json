@@ -28,9 +28,18 @@
         "libelle": "Présence en journée",
         "question": "Question à l'appel : « Y a-t-il quelqu'un à la maison en journée ? »",
         "choix": [
-          { "valeur": "present", "libelle": "Présent en journée" },
-          { "valeur": "absent", "libelle": "Absent en journée" },
-          { "valeur": "partiel", "libelle": "Présence partielle (télétravail/mi-temps)" }
+          {
+            "valeur": "present",
+            "libelle": "Présent en journée"
+          },
+          {
+            "valeur": "absent",
+            "libelle": "Absent en journée"
+          },
+          {
+            "valeur": "partiel",
+            "libelle": "Présence partielle (télétravail/mi-temps)"
+          }
         ],
         "nature": "choix"
       },
@@ -48,10 +57,22 @@
         "libelle": "Qui décide",
         "question": "Question à l'appel : « Qui décide avec vous de ce projet ? »",
         "choix": [
-          { "valeur": "seul", "libelle": "Décide seul" },
-          { "valeur": "conjoint_famille", "libelle": "Avec le conjoint / la famille" },
-          { "valeur": "associe_direction", "libelle": "Avec un associé / la direction" },
-          { "valeur": "proprietaire_tiers", "libelle": "Le propriétaire (un tiers) décide" }
+          {
+            "valeur": "seul",
+            "libelle": "Décide seul"
+          },
+          {
+            "valeur": "conjoint_famille",
+            "libelle": "Avec le conjoint / la famille"
+          },
+          {
+            "valeur": "associe_direction",
+            "libelle": "Avec un associé / la direction"
+          },
+          {
+            "valeur": "proprietaire_tiers",
+            "libelle": "Le propriétaire (un tiers) décide"
+          }
         ],
         "nature": "choix"
       }
@@ -76,7 +97,10 @@
         "libelle": "Climatisation",
         "declare": true,
         "compte_dans_etude": false,
-        "champs_manquants": ["equip_clim_kw", "equip_clim_pieces"]
+        "champs_manquants": [
+          "equip_clim_kw",
+          "equip_clim_pieces"
+        ]
       },
       {
         "cle": "ve",
@@ -90,7 +114,10 @@
         "libelle": "Chauffe-eau électrique",
         "declare": true,
         "compte_dans_etude": false,
-        "champs_manquants": ["equip_chauffe_eau_kw", "equip_chauffe_eau_creneau"]
+        "champs_manquants": [
+          "equip_chauffe_eau_kw",
+          "equip_chauffe_eau_creneau"
+        ]
       }
     ],
     "fenetre_du_jour": {
@@ -158,7 +185,10 @@
       "appelable": true,
       "debut": "09:00",
       "fin": "20:00",
-      "pause": { "debut": "11:30", "fin": "15:00" },
+      "pause": {
+        "debut": "11:30",
+        "fin": "15:00"
+      },
       "ramadan": false
     },
     "profil_suppose": true
@@ -180,7 +210,9 @@
     "script": {
       "message": "Bonjour, je reviens vers vous au sujet de votre projet solaire.",
       "langue": "darija",
-      "placeholders_manquants": ["date_validite"]
+      "placeholders_manquants": [
+        "date_validite"
+      ]
     },
     "champs_a_poser": [],
     "prefill": {
@@ -254,9 +286,18 @@
         "libelle": "Présence en journée",
         "question": "Question à l'appel : « Y a-t-il quelqu'un à la maison en journée ? »",
         "choix": [
-          { "valeur": "present", "libelle": "Présent en journée" },
-          { "valeur": "absent", "libelle": "Absent en journée" },
-          { "valeur": "partiel", "libelle": "Présence partielle (télétravail/mi-temps)" }
+          {
+            "valeur": "present",
+            "libelle": "Présent en journée"
+          },
+          {
+            "valeur": "absent",
+            "libelle": "Absent en journée"
+          },
+          {
+            "valeur": "partiel",
+            "libelle": "Présence partielle (télétravail/mi-temps)"
+          }
         ],
         "nature": "choix"
       }
@@ -304,6 +345,343 @@
     },
     "profil_suppose": true
   },
+  "exemple_agricole": {
+    "lead_id": 977,
+    "segment": "agricole",
+    "segment_libelle": "Agricole",
+    "segment_suggere": null,
+    "touche": null,
+    "script": null,
+    "champs_a_poser": [
+      {
+        "champ": "butane_bouteilles_jour",
+        "section": null,
+        "libelle": "Butane — bouteilles par jour",
+        "question": "Question à l'appel : « Combien de bouteilles de butane par jour en saison ? » (bouteilles de 12 kg par jour d'irrigation, vide = pas encore posée).",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "carburant_litres_mois",
+        "section": null,
+        "libelle": "Carburant consommé (litres/mois)",
+        "question": "Question à l'appel : « Combien de litres de carburant la pompe consomme-t-elle par mois ? » (litres/mois, vide = pas encore posée). C’est l’unité qui manquait à côté de la dépense en dirhams : l’économie de carburant se calcule sur ce que le client DÉCLARE, aucun prix de gasoil de référence n’est écrit nulle part.",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "carburant_prix_unitaire_mad",
+        "section": null,
+        "libelle": "Prix payé (bouteille ou litre, MAD)",
+        "question": "Question à l'appel : « Vous la payez combien, la bouteille (ou le litre de gasoil) ? » (MAD, vide = pas encore posée). Prix PAYÉ déclaré, jamais pré-rempli.",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "depense_carburant_mad_mois",
+        "section": null,
+        "libelle": "Dépense carburant (MAD/mois)",
+        "question": "Question à l'appel : « Combien dépensez-vous en carburant par mois ? » (MAD/mois, vide = pas encore posée). Information : jamais convertie en consommation.",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "debit_forage_m3h",
+        "section": null,
+        "libelle": "Débit du forage (m³/h)",
+        "question": "Question à l'appel : « Le débit de votre forage est-il connu (essai, foreur) ? Combien d'eau peut-il donner par heure ? » (m³/h, vide = pas encore posée).",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "surface_irriguee_ha",
+        "section": null,
+        "libelle": "Surface irriguée (ha)",
+        "question": "Question à l'appel : « Combien d'hectares irriguez-vous ? » (vide = pas encore posée).",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "culture",
+        "section": null,
+        "libelle": "Culture",
+        "question": "Question à l'appel : « Qu'est-ce que vous cultivez ? » (vide = pas encore posée).",
+        "choix": null,
+        "nature": "texte"
+      },
+      {
+        "champ": "pompage_heures_jour",
+        "section": null,
+        "libelle": "Pompage — heures par jour",
+        "question": "Question à l'appel : « Combien d'heures par jour la pompe ACTUELLE tourne-t-elle ? » (h/jour, vide = pas encore posée). Heures de la pompe ACTUELLE : elles servent seulement à estimer un volume déclaré (débit actuel × heures), jamais des heures de pompage solaire. Colonne dédiée de la réponse que le site envoie déjà sous « heures de pompage ».",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "distance_forage_champ_m",
+        "section": null,
+        "libelle": "Distance forage — panneaux (m)",
+        "question": "Question à l'appel : « À quelle distance du forage peut-on poser les panneaux ? » (mètres, vide = pas encore posée).",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "irrigation_methode",
+        "section": null,
+        "libelle": "Méthode d'irrigation",
+        "question": "Question à l'appel : « Vous arrosez comment : goutte-à-goutte, aspersion ou à la raie ? » (vide = pas encore posée).",
+        "choix": [
+          {
+            "valeur": "goutte",
+            "libelle": "Goutte-à-goutte"
+          },
+          {
+            "valeur": "aspersion",
+            "libelle": "Aspersion"
+          },
+          {
+            "valeur": "gravitaire",
+            "libelle": "Gravitaire (à la raie)"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "mois_irrigation",
+        "section": null,
+        "libelle": "Mois d'irrigation",
+        "question": "Question à l'appel : « Vous irriguez quels mois ? » (liste de mois 1 à 12, vide = pas encore posée).",
+        "choix": [
+          {
+            "valeur": 1,
+            "libelle": "Janvier"
+          },
+          {
+            "valeur": 2,
+            "libelle": "Février"
+          },
+          {
+            "valeur": 3,
+            "libelle": "Mars"
+          },
+          {
+            "valeur": 4,
+            "libelle": "Avril"
+          },
+          {
+            "valeur": 5,
+            "libelle": "Mai"
+          },
+          {
+            "valeur": 6,
+            "libelle": "Juin"
+          },
+          {
+            "valeur": 7,
+            "libelle": "Juillet"
+          },
+          {
+            "valeur": 8,
+            "libelle": "Août"
+          },
+          {
+            "valeur": 9,
+            "libelle": "Septembre"
+          },
+          {
+            "valeur": 10,
+            "libelle": "Octobre"
+          },
+          {
+            "valeur": 11,
+            "libelle": "Novembre"
+          },
+          {
+            "valeur": 12,
+            "libelle": "Décembre"
+          }
+        ],
+        "nature": "choix_multiple"
+      },
+      {
+        "champ": "electricite_sur_place",
+        "section": null,
+        "libelle": "Électricité au forage",
+        "question": "Question à l'appel : « Y a-t-il l'électricité au forage : monophasé, triphasé ou rien ? » (vide = pas encore posée).",
+        "choix": [
+          {
+            "valeur": "aucune",
+            "libelle": "Aucune"
+          },
+          {
+            "valeur": "monophase",
+            "libelle": "Monophasé"
+          },
+          {
+            "valeur": "triphase",
+            "libelle": "Triphasé"
+          },
+          {
+            "valeur": "ne_sait_pas",
+            "libelle": "Ne sait pas"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "decideur",
+        "section": null,
+        "libelle": "Qui décide",
+        "question": "Question à l'appel : « Qui décide avec vous de ce projet ? » (vide = pas encore posée). Renseigné à « avec le conjoint / la famille » ou « avec un associé / la direction », il pose l’étiquette « Décision à plusieurs » qui pilote la touche du dimanche en famille. Question ORALE uniquement : jamais dans le questionnaire envoyé au client.",
+        "choix": [
+          {
+            "valeur": "seul",
+            "libelle": "Décide seul"
+          },
+          {
+            "valeur": "conjoint_famille",
+            "libelle": "Avec le conjoint / la famille"
+          },
+          {
+            "valeur": "associe_direction",
+            "libelle": "Avec un associé / la direction"
+          },
+          {
+            "valeur": "proprietaire_tiers",
+            "libelle": "Le propriétaire (un tiers) décide"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "devis_concurrents",
+        "section": null,
+        "libelle": "Autres devis en cours",
+        "question": "Question à l'appel : « Avez-vous déjà reçu ou demandé un autre devis ? » (vide = pas encore posée). État de la comparaison EN COURS — le post-mortem d’une affaire perdue reste, lui, dans la fiche « concurrent ». Question ORALE uniquement.",
+        "choix": [
+          {
+            "valeur": "non",
+            "libelle": "Non, aucun autre devis"
+          },
+          {
+            "valeur": "en_attente",
+            "libelle": "En attente d’un autre devis"
+          },
+          {
+            "valeur": "recu",
+            "libelle": "A déjà reçu un autre devis"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "frein_principal",
+        "section": null,
+        "libelle": "Frein principal",
+        "question": "Question à l'appel : « Qu'est-ce qui vous retient aujourd’hui ? » (vide = pas encore posée). Même vocabulaire que la qualification de visite, pour que le terrain et le téléphone se relisent. Question ORALE.",
+        "choix": [
+          {
+            "valeur": "aucun",
+            "libelle": "Aucun frein"
+          },
+          {
+            "valeur": "prix",
+            "libelle": "Prix"
+          },
+          {
+            "valeur": "compare",
+            "libelle": "Compare d’autres devis"
+          },
+          {
+            "valeur": "timing",
+            "libelle": "Timing"
+          },
+          {
+            "valeur": "technique",
+            "libelle": "Technique"
+          },
+          {
+            "valeur": "confiance",
+            "libelle": "Confiance"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "declencheur",
+        "section": null,
+        "libelle": "Ce qui a accroché",
+        "question": "Question à l'appel : « Qu'est-ce qui vous a donné envie de vous renseigner ? » (vide = pas encore posée). Même vocabulaire que la qualification de visite. Question ORALE.",
+        "choix": [
+          {
+            "valeur": "economies",
+            "libelle": "Les économies"
+          },
+          {
+            "valeur": "coupures",
+            "libelle": "Les coupures / l’autonomie"
+          },
+          {
+            "valeur": "ecologie",
+            "libelle": "L’écologie"
+          },
+          {
+            "valeur": "technologie",
+            "libelle": "La technologie"
+          }
+        ],
+        "nature": "choix"
+      }
+    ],
+    "prefill": {
+      "pompe_alim_actuelle": "butane",
+      "source_eau": "forage",
+      "niveau_statique_m": 32.0,
+      "besoin_eau_m3j": 135.0
+    },
+    "equipements": [
+      {
+        "cle": "piscine",
+        "libelle": "Piscine",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      },
+      {
+        "cle": "clim",
+        "libelle": "Climatisation",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      },
+      {
+        "cle": "ve",
+        "libelle": "Véhicule électrique",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      },
+      {
+        "cle": "chauffe_eau",
+        "libelle": "Chauffe-eau électrique",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      }
+    ],
+    "fenetre_du_jour": {
+      "date": "2026-09-25",
+      "appelable": true,
+      "debut": "09:00",
+      "fin": "20:00",
+      "pause": {
+        "debut": "11:30",
+        "fin": "15:00"
+      },
+      "ramadan": false
+    },
+    "profil_suppose": true
+  },
   "notes": {
     "questions": "`question` est le `help_text` du champ `crm.Lead`, servi tel quel. L'écran ne le réécrit pas : améliorer une formulation, c'est modifier le `help_text`. `section` vaut `null` pour une question ORALE — celles que le questionnaire envoyé au client ne porte pas (décideur, concurrents, frein, déclencheur ; pour le segment agricole la pompe — puissance, HMT, débit — puis les heures de pompage, l'alimentation actuelle et le carburant ; pour l'industriel et le commercial la puissance souscrite du compteur, CAD175).",
     "jamais_redemande": "Une colonne que la fiche porte déjà est ABSENTE de `champs_a_poser` et PRÉSENTE dans `prefill`. `tranche_onee` n'apparaît nulle part : elle se dérive de la facture et de la consommation, on ne la demande pas.",
@@ -317,6 +695,7 @@
     "profil_suppose": "CAD172 (décision fondateur du 21/09/2026, Q5) — `true` tant que `occupation_jour` n'a pas de réponse : l'étude SUPPOSE le profil de journée (présence en résidentiel) et la proposition porte le bandeau « Profil supposé, à confirmer ». C'est LE MÊME drapeau que la courbe de la proposition (`apps/ventes/courbes_journalieres.py::profil_suppose`) ; l'écran d'appel s'en sert pour faire remonter la question en tête (résidentiel seulement). `false` dès la réponse.",
     "permissions": "Lecture seule, company-scopée comme tout `LeadViewSet` (garde fine `crm_voir`) : aucune écriture, aucun effet de bord.",
     "segment": "Clé de `crm.Lead.TypeInstallation` (`residentiel`, `commercial`, `industriel`, `agricole`), ou `null` quand le lead n'a pas de type d'installation saisi. CAD161 (décision fondateur du 21/09/2026) : le panneau guidé est livré pour le RÉSIDENTIEL d'abord — `frontend/src/features/crm/relances/appelGuidance.js` refuse les trois autres segments avec un message explicite (jamais une page vide) et traite `null` comme le résidentiel, « segment à confirmer » (même repli que `variante_segment`, CAD126). Le serveur sert TOUS les segments tels quels : la seconde livraison (agricole et industriel, CAD175) lit ce même champ, sans aucune migration de contrat. CAD175 (livrée) : `appelGuidance.js` sert désormais un jeu de questions PAR SEGMENT (résidentiel, agricole, industriel/commercial) et ne refuse plus qu'une clé de segment inconnue ; sur l'agricole et l'industriel, aucun chiffre d'économie n'est annoncé.",
-    "segment_suggere": "AGR406 — `null` ou `{valeur, raison}` (même forme que `lead_pompage.json`) : segment PROBABLE lu sur la première page et sur des mots d'une liste fermée (`crm/segment_suggere.py`), servi SANS écriture ; toujours `null` quand le type du lead vaut déjà ce segment. L'écran affiche « Segment probable : … — confirmez avec le client » ; le type ne change qu'à la main (D-AGR-9)."
+    "segment_suggere": "AGR406 — `null` ou `{valeur, raison}` (même forme que `lead_pompage.json`) : segment PROBABLE lu sur la première page et sur des mots d'une liste fermée (`crm/segment_suggere.py`), servi SANS écriture ; toujours `null` quand le type du lead vaut déjà ce segment. L'écran affiche « Segment probable : … — confirmez avec le client » ; le type ne change qu'à la main (D-AGR-9).",
+    "exemple_agricole": "AGR407 — un lead AGRICOLE dont le site a déjà donné l'énergie actuelle, la source, le niveau et le besoin : `champs_a_poser` ne contient QUE le reste des cinq étapes (énergie actuelle → eau → besoin → heures/distance → irrigation/électricité), dans cet ordre, puis les questions orales communes ; aucune section résidentielle (facture, toit, occupation, équipements). `pompe_actuelle_cv` n'est plus posée : elle se relève sur la plaque, en visite. `mois_irrigation` est servi en nature `choix_multiple` (12 mois). Aucune clé d'économie (garde CAD175). Les tests serveur comparent cet exemple à la sortie RÉELLE."
   }
 }

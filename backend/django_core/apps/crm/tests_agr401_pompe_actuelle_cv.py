@@ -63,8 +63,10 @@ class LeCvDuSiteEstLaPompeActuelle(SimpleTestCase):
             self.assertNotIn('pompe_actuelle_cv', groupe)
 
     def test_appelants_renommes(self):
-        self.assertIn('pompe_actuelle_cv',
-                      panneau_appel.CHAMPS_ORAUX_AGRICOLE)
+        # AGR407 — la CV de la pompe actuelle sort de l'appel : elle se
+        # relève sur la PLAQUE, en visite (re-pin de l'assertion AGR401).
+        self.assertNotIn('pompe_actuelle_cv',
+                         panneau_appel.CHAMPS_ORAUX_AGRICOLE)
         self.assertIn('pompe_actuelle_cv', activity.TRACKED_FIELDS)
         self.assertNotIn('pompe_cv', activity.TRACKED_FIELDS)
         # L'ancienne clé ne sert plus qu'à RELIRE l'historique.

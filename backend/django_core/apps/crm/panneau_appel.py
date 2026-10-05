@@ -71,10 +71,24 @@ CHAMPS_A_DEFAUT_NON_NUL = ('ete_differente',)
 #: en mode agricole, colonnes `pompe_*` déjà existantes), en tête. AGR401 —
 #: la puissance posée est celle de la pompe ACTUELLE (`pompe_actuelle_cv`,
 #: information) : la puissance retenue est une sortie du dimensionnement.
-CHAMPS_ORAUX_AGRICOLE = (
-    'pompe_actuelle_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
-    'pompage_heures_jour', 'pompe_alim_actuelle', 'carburant_litres_mois',
+#: AGR407 — les CINQ étapes de l'appel agricole, dans l'ordre, chacune avec
+#: les colonnes qui DIMENSIONNENT (contrat AGR1 ``lead_pompage.json``) :
+#: (1) énergie actuelle, (2) eau, (3) besoin, (4) heures actuelles +
+#: distance, (5) irrigation + électricité. ``pompe_actuelle_cv`` sort de
+#: l'appel : elle se relève sur la PLAQUE, en visite. Aucune clé d'économie.
+ETAPES_AGRICOLES = (
+    ('energie_actuelle', ('pompe_alim_actuelle', 'butane_bouteilles_jour',
+                          'carburant_litres_mois',
+                          'carburant_prix_unitaire_mad',
+                          'depense_carburant_mad_mois')),
+    ('eau', ('source_eau', 'niveau_statique_m', 'debit_forage_m3h')),
+    ('besoin', ('besoin_eau_m3j', 'surface_irriguee_ha', 'culture')),
+    ('heures_distance', ('pompage_heures_jour', 'distance_forage_champ_m')),
+    ('irrigation_electricite', ('irrigation_methode', 'mois_irrigation',
+                                'electricite_sur_place')),
 )
+CHAMPS_ORAUX_AGRICOLE = tuple(
+    champ for _etape, champs in ETAPES_AGRICOLES for champ in champs)
 
 #: CAD175 — industriel et commercial : la puissance souscrite est une
 #: question PREMIÈRE (en résidentiel elle ne se pose qu'en dernier recours,
@@ -139,10 +153,27 @@ CHOIX_BOOLEEN = (
 )
 
 
+#: AGR407 — les 12 mois, vocabulaire FERMÉ d'une liste d'entiers 1-12.
+CHOIX_MOIS = tuple(
+    {'valeur': numero, 'libelle': libelle} for numero, libelle in enumerate(
+        ('Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet',
+         'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'), start=1))
+
+#: AGR407 / CIQ410 — colonnes JSON « liste d'entiers » servies en
+#: ``choix_multiple`` (l'écran rend des boutons à cocher, jamais un champ
+#: libre) : la clé est la colonne, la valeur son vocabulaire fermé.
+CHOIX_MULTIPLES = {
+    'mois_irrigation': CHOIX_MOIS,
+}
+
+
 def _choix(champ):
     """``[{valeur, libelle}]`` d'un champ à vocabulaire fermé, sinon ``None``.
 
-    Un booléen est un vocabulaire fermé (Oui/Non, :data:`CHOIX_BOOLEEN`)."""
+    Un booléen est un vocabulaire fermé (Oui/Non, :data:`CHOIX_BOOLEEN`) ;
+    une liste d'entiers de :data:`CHOIX_MULTIPLES` aussi."""
+    if champ in CHOIX_MULTIPLES:
+        return [dict(choix) for choix in CHOIX_MULTIPLES[champ]]
     meta = Lead._meta.get_field(champ)
     if isinstance(meta, models.BooleanField):
         return [dict(choix) for choix in CHOIX_BOOLEEN]
@@ -156,7 +187,11 @@ def _choix(champ):
 def _nature(champ):
     """CAD152 — la NATURE de la saisie : ``choix`` (vocabulaire fermé, dont
     Oui/Non), ``nombre`` (l'écran normalise la virgule décimale avant
-    d'écrire) ou ``texte``. Lue sur le champ lui-même, jamais devinée."""
+    d'écrire) ou ``texte``. Lue sur le champ lui-même, jamais devinée.
+    AGR407 — ``choix_multiple`` pour une liste d'entiers à vocabulaire
+    fermé (:data:`CHOIX_MULTIPLES`)."""
+    if champ in CHOIX_MULTIPLES:
+        return 'choix_multiple'
     meta = Lead._meta.get_field(champ)
     if isinstance(meta, models.BooleanField) or meta.choices:
         return 'choix'
@@ -182,15 +217,31 @@ def _question(lead, champ, section):
 
 
 def champs_oraux_du_segment(lead):
-    """Les questions orales qui s'appliquent à CE lead, dans l'ordre."""
-    champs = list(CHAMPS_ORAUX)
+    """Les questions orales qui s'appliquent à CE lead, dans l'ordre.
+
+    AGR407 — agricole : les cinq étapes d'abord (l'ordre du script), puis
+    les questions orales communes."""
     segment = getattr(lead, 'type_installation', None)
     if segment == Lead.TypeInstallation.AGRICOLE:
-        champs += list(CHAMPS_ORAUX_AGRICOLE)
-    elif segment in (Lead.TypeInstallation.INDUSTRIEL,
-                     Lead.TypeInstallation.COMMERCIAL):
+        return tuple(CHAMPS_ORAUX_AGRICOLE) + tuple(
+            c for c in CHAMPS_ORAUX if c not in CHAMPS_ORAUX_AGRICOLE)
+    champs = list(CHAMPS_ORAUX)
+    if segment in (Lead.TypeInstallation.INDUSTRIEL,
+                   Lead.TypeInstallation.COMMERCIAL):
         champs += list(CHAMPS_ORAUX_PRO)
     return tuple(champs)
+
+
+def _sections_du_panneau(lead):
+    """Les sections du questionnaire que le panneau lit pour CE lead.
+
+    AGR407 — un lead agricole ne reçoit AUCUNE section résidentielle
+    (facture, toit, occupation, équipements : refusées par AGR411) : ses
+    questions sont les cinq étapes orales. Les autres gardent le périmètre
+    historique, inchangé."""
+    if questionnaire.est_agricole(lead):
+        return ()
+    return questionnaire.SECTIONS_HORS_POMPAGE
 
 
 def questions_a_poser(lead):
@@ -201,10 +252,10 @@ def questions_a_poser(lead):
     le questionnaire client ne porte pas). ``tranche_onee`` est retirée : elle
     se dérive, on ne la demande pas.
     """
-    carte = questionnaire.champs_encore_a_obtenir(
-        lead, questionnaire.SECTIONS_HORS_POMPAGE)
+    sections = _sections_du_panneau(lead)
+    carte = questionnaire.champs_encore_a_obtenir(lead, sections)
     questions, vus = [], set()
-    for section in questionnaire.SECTIONS_HORS_POMPAGE:
+    for section in sections:
         a_obtenir = set(carte.get(section, ()))
         for champ in questionnaire.CHAMPS_PAR_SECTION.get(section, ()):
             if champ in CHAMPS_JAMAIS_DEMANDES or champ in vus:
@@ -233,7 +284,7 @@ def prefill_du_panneau(lead):
     est là ne se redemande pas, mais se RELIT — et rien n'y est inventé.
     """
     candidats = []
-    for section in questionnaire.SECTIONS_HORS_POMPAGE:
+    for section in _sections_du_panneau(lead):
         candidats.extend(questionnaire.CHAMPS_PAR_SECTION.get(section, ()))
     candidats.extend(champs_oraux_du_segment(lead))
     out = {}
