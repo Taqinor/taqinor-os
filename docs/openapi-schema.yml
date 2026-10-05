@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4764, operations: 7564, components: 2173}
+counts: {paths: 4766, operations: 7568, components: 2173}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -592,6 +592,8 @@ operations:
 - get /api/django/calepinage/calepinages/{id}/pertes/ -> django_calepinage_calepinages_pertes_retrieve
 - get /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_retrieve
 - post /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_create
+- delete /api/django/calepinage/calepinages/{id}/photos/{photo_id}/ -> django_calepinage_calepinages_photos_destroy
+- patch /api/django/calepinage/calepinages/{id}/photos/{photo_id}/ -> django_calepinage_calepinages_photos_partial_update
 - patch /api/django/calepinage/calepinages/{id}/photos/{photo_id}/calage/ -> django_calepinage_calepinages_photos_calage_partial_update
 - get /api/django/calepinage/calepinages/{id}/photos/{photo_id}/fichier/ -> django_calepinage_calepinages_photos_fichier_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-cablage.dxf/ -> django_calepinage_calepinages_plan_cablage.dxf_retrieve
@@ -4412,6 +4414,8 @@ operations:
 - get /api/v1/calepinage/calepinages/{id}/pertes/ -> v1_calepinage_calepinages_pertes_retrieve
 - get /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_retrieve
 - post /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_create
+- delete /api/v1/calepinage/calepinages/{id}/photos/{photo_id}/ -> v1_calepinage_calepinages_photos_destroy
+- patch /api/v1/calepinage/calepinages/{id}/photos/{photo_id}/ -> v1_calepinage_calepinages_photos_partial_update
 - patch /api/v1/calepinage/calepinages/{id}/photos/{photo_id}/calage/ -> v1_calepinage_calepinages_photos_calage_partial_update
 - get /api/v1/calepinage/calepinages/{id}/photos/{photo_id}/fichier/ -> v1_calepinage_calepinages_photos_fichier_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-cablage.dxf/ -> v1_calepinage_calepinages_plan_cablage.dxf_retrieve

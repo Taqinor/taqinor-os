@@ -468,7 +468,15 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
     @action(detail=True, methods=['patch'], url_path='calage')
     def calage(self, request, pk=None):
-        """VT11 — enregistre les 4 coins du drapage sur le contour du toit."""
+        """VT11 — enregistre les 4 coins du drapage sur le contour du toit.
+
+        ACAL202 — la forme est jugée par LE validateur unique du noyau
+        (``core.calepinage.calage.valider_quatre_coins``, partagé avec le
+        calage des photos de site du calepinage) : coins confondus, alignés
+        ou croisés sont refusés en nommant ``texture_calage``.
+        """
+        from core.calepinage.calage import CalageInvalide, valider_quatre_coins
+
         visite = self.get_object()
         refus = self._refus_si_gelee(visite)
         if refus is not None:
@@ -478,27 +486,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             visite.texture_calage = None
             visite.save(update_fields=['texture_calage'])
             return self._agregat(visite)
-        coins = (calage or {}).get('coins') if isinstance(calage, dict) else None
-        if not isinstance(coins, list) or len(coins) != 4:
-            return _erreur(
-                'texture_calage',
-                'Le calage attend exactement 4 coins [latitude, longitude].')
-        propres = []
-        for coin in coins:
-            if not isinstance(coin, (list, tuple)) or len(coin) != 2:
-                return _erreur('texture_calage',
-                               'Chaque coin doit être une paire '
-                               '[latitude, longitude].')
-            lat, message = _coordonnee(coin[0])
-            if message or lat is None:
-                return _erreur('texture_calage',
-                               'Latitude de coin invalide.')
-            lng, message = _coordonnee(coin[1])
-            if message or lng is None:
-                return _erreur('texture_calage',
-                               'Longitude de coin invalide.')
-            propres.append([float(lat), float(lng)])
-        visite.texture_calage = {'coins': propres}
+        try:
+            normalise = valider_quatre_coins(calage)
+        except CalageInvalide as refus_calage:
+            return _erreur('texture_calage', str(refus_calage))
+        visite.texture_calage = normalise
         visite.save(update_fields=['texture_calage'])
         return self._agregat(visite)
 

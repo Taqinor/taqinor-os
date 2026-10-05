@@ -39,6 +39,7 @@ from uuid import uuid4
 MAX_OCTETS = 15 * 1024 * 1024
 
 __all__ = ['PhotoRefusee', 'ajouter_photo_site', 'calage_photo_site',
+           'modifier_photo_site', 'supprimer_photo_site',
            'photo_en_ligne', 'lire_octets_piece', 'MAX_OCTETS']
 
 
@@ -173,50 +174,89 @@ def ajouter_photo_site(calepinage, fichier, *, genre=None, prise_le=None,
 def calage_photo_site(photo, calage):
     """CAL53 — pose ou efface le calage (4 coins ``[lat, lng]``) d'une photo.
 
-    Même discipline que ``apps.visites.views.VisiteTerrainViewSet.calage``
-    (VT11) : ``calage`` vaut ``None`` pour EFFACER (photo non calée), ou un
-    objet ``{"coins": [[lat, lng] × 4]}`` — jamais un objet à trois ou cinq
-    coins, jamais une coordonnée hors amplitude GPS. Chaque refus NOMME le
-    champ ``calage``, jamais un « non enregistré » générique.
+    ``calage`` vaut ``None`` pour EFFACER (photo non calée), ou un objet
+    ``{"coins": [[lat, lng] × 4]}``. ACAL202 : la forme est jugée par LE
+    validateur unique du noyau (``core.calepinage.calage.valider_quatre_coins``,
+    partagé avec ``apps.visites``) — un quadrilatère confondu, aligné ou croisé
+    est refusé. Chaque refus NOMME le champ ``calage``.
 
     Args:
         photo: la ``PhotoSite`` — sa société fait foi (bornée par l'appelant).
         calage: ``None``, ou ``{"coins": [...]}``.
 
     Raises:
-        PhotoRefusee: forme invalide — champ ``calage``.
+        PhotoRefusee: forme invalide ou quadrilatère dégénéré — champ
+            ``calage``.
     """
+    from core.calepinage.calage import CalageInvalide, valider_quatre_coins
+
     if calage is None:
         photo.calage = None
         photo.save(update_fields=['calage'])
         return photo
-
-    coins = calage.get('coins') if isinstance(calage, dict) else None
-    if not isinstance(coins, list) or len(coins) != 4:
-        raise PhotoRefusee(
-            'Le calage attend exactement 4 coins [latitude, longitude].',
-            champ='calage')
-
-    propres = []
-    for coin in coins:
-        if not isinstance(coin, (list, tuple)) or len(coin) != 2:
-            raise PhotoRefusee(
-                'Chaque coin doit être une paire [latitude, longitude].',
-                champ='calage')
-        try:
-            lat, lng = float(coin[0]), float(coin[1])
-        except (TypeError, ValueError):
-            raise PhotoRefusee(
-                'Coordonnée de calage invalide (latitude/longitude '
-                'attendues).', champ='calage') from None
-        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
-            raise PhotoRefusee(
-                'Coordonnée de calage hors amplitude GPS.', champ='calage')
-        propres.append([lat, lng])
-
-    photo.calage = {'coins': propres}
+    try:
+        photo.calage = valider_quatre_coins(calage)
+    except CalageInvalide as refus:
+        raise PhotoRefusee(str(refus), champ='calage') from None
     photo.save(update_fields=['calage'])
     return photo
+
+
+#: ACAL202 — les seuls champs qu'un PATCH de photo peut changer. Le fichier,
+#: la société, l'auteur, la provenance et le calage (route dédiée) n'en sont
+#: jamais.
+CHAMPS_MODIFIABLES = ('genre', 'prise_le', 'legende')
+
+
+def modifier_photo_site(photo, donnees):
+    """ACAL202 — corrige le genre, la date de prise de vue et/ou la légende.
+
+    Seules les clés PRÉSENTES changent ; chacune est validée comme à la
+    création (date saisie, jamais future ; genre parmi les choix). Une clé
+    hors ``CHAMPS_MODIFIABLES`` est ignorée.
+
+    Raises:
+        PhotoRefusee: date absente/illisible/future, genre inconnu — le champ
+            fautif est nommé.
+    """
+    donnees = donnees if hasattr(donnees, 'keys') else {}
+    champs = []
+    if 'prise_le' in donnees:
+        photo.prise_le = _date_saisie(donnees.get('prise_le'))
+        champs.append('prise_le')
+    if 'genre' in donnees:
+        photo.genre = _genre_saisi(donnees.get('genre'))
+        champs.append('genre')
+    if 'legende' in donnees:
+        legende = donnees.get('legende')
+        photo.legende = (legende if isinstance(legende, str) else '')[:200]
+        champs.append('legende')
+    if champs:
+        photo.save(update_fields=champs)
+    return photo
+
+
+def supprimer_photo_site(photo):
+    """ACAL202 — retire la photo ET sa pièce jointe propre.
+
+    La pièce d'une photo DÉPOSÉE ici (rattachée au calepinage) part avec elle.
+    Une photo REPRISE d'une visite (CALX364) partage la pièce de la visite :
+    seule la fiche photo du calepinage est retirée, la preuve de la visite
+    reste intacte.
+    """
+    from django.contrib.contenttypes.models import ContentType
+    from django.db import transaction
+
+    piece = photo.attachment
+    calepinage = photo.calepinage
+    propre = (
+        piece.content_type_id
+        == ContentType.objects.get_for_model(type(calepinage)).pk
+        and piece.object_id == calepinage.pk)
+    with transaction.atomic():
+        photo.delete()
+        if propre and not piece.photos_site_calepinage.exists():
+            piece.delete()
 
 
 #: Les pièces jointes générales (``records.store_attachment``) vivent dans le
