@@ -16,24 +16,29 @@ ANCIEN_DEFAUT_DECLARATION = Decimal('11')
 ANCIEN_DEFAUT_ANRE = Decimal('1000')
 
 
-def anciens_defauts_vers_null(apps, schema_editor):
+def _remplacer(apps, champ, filtre, valeur):
+    """Ligne par ligne (``.iterator()`` + ``save(update_fields=…)``) — le patron
+    sûr de ``check_safe_migrations`` : aucun UPDATE global non borné."""
     CompanyProfile = apps.get_model('parametres', 'CompanyProfile')
-    CompanyProfile.objects.filter(
-        seuil_regime_declaration_kwc=ANCIEN_DEFAUT_DECLARATION,
-    ).update(seuil_regime_declaration_kwc=None)
-    CompanyProfile.objects.filter(
-        seuil_regime_anre_kwc=ANCIEN_DEFAUT_ANRE,
-    ).update(seuil_regime_anre_kwc=None)
+    for profil in CompanyProfile.objects.filter(**filtre).iterator():
+        setattr(profil, champ, valeur)
+        profil.save(update_fields=[champ])
+
+
+def anciens_defauts_vers_null(apps, schema_editor):
+    _remplacer(apps, 'seuil_regime_declaration_kwc',
+               {'seuil_regime_declaration_kwc': ANCIEN_DEFAUT_DECLARATION},
+               None)
+    _remplacer(apps, 'seuil_regime_anre_kwc',
+               {'seuil_regime_anre_kwc': ANCIEN_DEFAUT_ANRE}, None)
 
 
 def null_vers_anciens_defauts(apps, schema_editor):
-    CompanyProfile = apps.get_model('parametres', 'CompanyProfile')
-    CompanyProfile.objects.filter(
-        seuil_regime_declaration_kwc__isnull=True,
-    ).update(seuil_regime_declaration_kwc=ANCIEN_DEFAUT_DECLARATION)
-    CompanyProfile.objects.filter(
-        seuil_regime_anre_kwc__isnull=True,
-    ).update(seuil_regime_anre_kwc=ANCIEN_DEFAUT_ANRE)
+    _remplacer(apps, 'seuil_regime_declaration_kwc',
+               {'seuil_regime_declaration_kwc__isnull': True},
+               ANCIEN_DEFAUT_DECLARATION)
+    _remplacer(apps, 'seuil_regime_anre_kwc',
+               {'seuil_regime_anre_kwc__isnull': True}, ANCIEN_DEFAUT_ANRE)
 
 
 class Migration(migrations.Migration):
