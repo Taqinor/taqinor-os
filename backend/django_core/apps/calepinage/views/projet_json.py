@@ -63,6 +63,8 @@ IMPORT_PROJET_SCHEMA = inline_serializer('CalepinageImportProjet', {
     'repris': serializers.ListField(child=serializers.CharField()),
     'ignores': serializers.ListField(child=serializers.DictField()),
     'avertissements': serializers.ListField(child=serializers.CharField()),
+    # ACAL243 — le chemin d'écran du calepinage importé (null à l'aperçu).
+    'ouvrir': serializers.CharField(allow_null=True),
 })
 
 
