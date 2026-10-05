@@ -392,7 +392,10 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
 # prospect nous avait consultés, dérivé de la date de création de SA fiche.
 # Les deux sont VIDES quand la donnée n'existe pas — leur phrase est alors
 # OMISE (MRY13), jamais un crochet envoyé au client.
-PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}", "{lien_video_preuve}", "{marque}", "{lien_google}", "{prescripteur}", "{mois_dossier}"]
+# CIQ500 (05/10/2026) — `{societe}` : la raison sociale du lead (`Lead.societe`,
+# nettoyée). Vide ⇒ sa phrase est OMISE (MRY13) ; à n'utiliser que dans une
+# phrase AUTONOME (la salutation reste civilité + prénom — CAD65).
+PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}", "{lien_video_preuve}", "{marque}", "{lien_google}", "{prescripteur}", "{mois_dossier}", "{societe}"]
 
 #: Les clés du moteur de relances (MRY12), dans l'ordre du fichier source.
 CLES_RELANCE = [

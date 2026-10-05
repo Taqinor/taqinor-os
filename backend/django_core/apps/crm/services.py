@@ -2807,7 +2807,11 @@ _PLACEHOLDERS_RENDUS = (
     # CAD127 (21/09/2026) — l'origine RÉELLE du lead : le nom de la personne
     # qui l'a recommandé, et le mois où il nous avait consultés. Vides quand
     # la donnée n'existe pas ⇒ leur phrase est OMISE, jamais un crochet.
-    'prescripteur', 'mois_dossier')
+    'prescripteur', 'mois_dossier',
+    # CIQ500 (05/10/2026) — la raison sociale du lead (``Lead.societe``,
+    # nettoyée — contrat CIQ1 `lead_pro.json`). Vide ⇒ la phrase qui la porte
+    # est OMISE (MRY13), jamais un blanc « pour  ».
+    'societe')
 
 #: Les trois placeholders de la preuve. Regroupés pour n'aller chercher une
 #: réalisation QUE si le texte en porte au moins un (même discipline que
@@ -3008,6 +3012,14 @@ def _civilite_et_prenom(lead, langue):
     return civilite, prenom
 
 
+def _societe_du_lead(lead):
+    """CIQ500 — la raison sociale du lead telle que servie par le contrat
+    CIQ1 (``Lead.societe``), NETTOYÉE : espaces de bord retirés et blancs
+    internes réduits à un seul. Vide ⇒ ``''`` (la phrase qui porte
+    ``{societe}`` est alors omise — MRY13 —, jamais un blanc)."""
+    return ' '.join(str(getattr(lead, 'societe', '') or '').split())
+
+
 #: CAD65 — les civilités du lead (``Lead.Civilite``) et leur rendu darija.
 _CIVILITES_CONNUES = ('M.', 'Mme')
 _CIVILITE_DARIJA = {'M.': 'السي', 'Mme': 'لالة'}
@@ -3079,6 +3091,8 @@ def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
             'conseiller': _nom_affiche_conseiller(lead, user),
             'marque': _nom_affiche_marque(lead),
             'date_visite': date_visite,
+            # CIQ500 — la raison sociale, vide ⇒ phrase omise (MRY13).
+            'societe': _societe_du_lead(lead),
         }
         corps = MessageTemplate.get_corps(lead.company, cle, langue) or ''
         # CAD126 — variante de SEGMENT par exception (pompage / B2B).
@@ -3325,6 +3339,9 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
         'ville': (lead.ville or '').strip(),
         'conseiller': _nom_affiche_conseiller(lead, user),
         'marque': _nom_affiche_marque(lead),
+        # CIQ500 — la raison sociale du lead ; vide ⇒ phrase OMISE (MRY13)
+        # et `societe` listé dans `placeholders_manquants`.
+        'societe': _societe_du_lead(lead),
         'reference': '',
         'lien': '',
         'date_validite': '',
