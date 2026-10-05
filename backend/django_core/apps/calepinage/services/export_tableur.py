@@ -35,9 +35,11 @@ filtre est silencieuse ; un refus ne l'est pas.
 """
 from __future__ import annotations
 
+from .rangees import rangees_du_pan
+
 __all__ = [
     'FEUILLES', 'MOTS_D_ARGENT', 'ExportRefuse', 'verifier_absence_de_prix',
-    'rangees_du_pan', 'table_modules', 'table_chaines', 'table_nomenclature',
+    'table_modules', 'table_chaines', 'table_nomenclature',
     'tables_du_resultat',
     'classeur_octets', 'csv_octets', 'exporter_xlsx', 'exporter_csv',
     'FEUILLE_COMPARATIF', 'exporter_comparatif_xlsx',
@@ -51,10 +53,6 @@ FEUILLES = ('Modules', 'Chaînes', 'Nomenclature')
 #: désignation passerait sinon.
 MOTS_D_ARGENT = ('prix', 'achat', 'coût', 'cout', 'marge brute', 'montant',
                  'mad', 'dh ht', 'tarif', 'remise', 'facture')
-
-#: Arrondi de groupement des rangées : le centimètre. Deux modules posés à
-#: moins d'un centimètre l'un de l'autre en ordonnée sont sur la même rangée.
-PAS_DE_RANGEE_M = 0.01
 
 
 class ExportRefuse(ValueError):
@@ -87,22 +85,6 @@ def verifier_absence_de_prix(entetes, lignes):
             champ='colonnes')
 
 
-def rangees_du_pan(modules):
-    """``centre -> numéro de rangée`` par GROUPEMENT sur l'ordonnée relevée.
-
-    PUBLIQUE parce qu'elle est la SEULE définition de « rangée » du module :
-    le plan de pose (CAL211) l'appelle pour numéroter ses repères. Deux
-    définitions de la rangée feraient diverger le plan remis à l'équipe et le
-    tableau remis au bureau d'études — la duplication de la donnée est la
-    seule source d'incohérence observée le 27/07/2026.
-    """
-    ordonnees = sorted({round(y / PAS_DE_RANGEE_M) for _x, y in modules})
-    rang_par_ordonnee = {valeur: rang
-                         for rang, valeur in enumerate(ordonnees, start=1)}
-    return {centre: rang_par_ordonnee[round(centre[1] / PAS_DE_RANGEE_M)]
-            for centre in modules}
-
-
 def _affectation_par_pan(resultat):
     """``pan -> [affectations]`` telles que le moteur les publie, dans l'ordre."""
     affectations = (((resultat or {}).get('electrique') or {})
@@ -121,7 +103,8 @@ def table_modules(geometrie, resultat=None):
     par_pan = _affectation_par_pan(resultat)
     lignes = []
     for pan in geometrie.get('pans') or ():
-        rangees = rangees_du_pan(pan['modules'])
+        # ACAL230 - la rangée a UNE définition ORIENTÉE (``rangees.py``).
+        rangees = rangees_du_pan(pan['modules'], pan.get('azimut_deg'))
         affectations = par_pan.get(pan['repere'], [])
         for rang, centre in enumerate(pan['modules'], start=1):
             affectation = affectations[rang - 1] \

@@ -27,7 +27,7 @@ from unittest import mock
 
 from django.test import SimpleTestCase
 
-from apps.calepinage.services.export_tableur import rangees_du_pan
+from apps.calepinage.services.rangees import rangees_du_pan
 from apps.calepinage.services.planche import (
     CONTENU_POSE, CONTENU_TOITURE, PlanDePoseRefuse, geometrie_de_planche,
     lignes_de_chaines, rendre_plan_pose_svg, svg_de_planche,
@@ -107,7 +107,8 @@ class ReperesDePoseTest(SimpleTestCase):
     def test_la_numerotation_est_celle_du_tableau(self):
         # UNE seule définition de « rangée » : celle de CAL179.
         pan = self.geometrie['pans'][0]
-        numeros = set(rangees_du_pan(pan['modules']).values())
+        numeros = set(rangees_du_pan(pan['modules'],
+                                     pan['azimut_deg']).values())
         for numero in numeros:
             self.assertIn('>R%d</text>' % numero, self.svg)
 

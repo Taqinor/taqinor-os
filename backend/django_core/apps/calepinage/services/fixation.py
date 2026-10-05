@@ -16,13 +16,12 @@ jonctions entre modules voisins, extrémités de rangées, longueur des rangées
 — puis applique à chaque composant du système choisi la règle de quantité
 SAISIE par la société (``{base, facteur?, diviseur?}``, CALX358).
 
-* **Les rangées** : même groupement au centimètre que la planche et le
-  tableur (``export_tableur.rangees_du_pan``, ``PAS_DE_RANGEE_M``), ORIENTÉ
-  par l'azimut du pan — pour un pan plein sud c'est exactement le groupement
-  par ordonnée ; pour un pan tourné, les modules d'une même rangée physique
-  ne partagent plus la même ordonnée et le groupement par ordonnée seule en
-  ferait autant de rangées. Sans azimut connu, c'est ``rangees_du_pan`` tel
-  quel.
+* **Les rangées** : LA définition unique de ``services/rangees.py``
+  (ACAL230 : même groupement au centimètre que le plan de pose et le tableur,
+  ORIENTÉ par l'azimut du pan) — pour un pan plein sud c'est exactement le
+  groupement par ordonnée ; pour un pan tourné, les modules d'une même
+  rangée physique ne partagent plus la même ordonnée. Sans azimut connu,
+  c'est le regroupement par ordonnée.
 * **Les segments** : une rangée se coupe là où un module manque (écart entre
   voisins supérieur au pas relevé, à la tolérance de rangée près) — un rail
   ne court pas au-dessus d'un trou, et chaque segment a DEUX extrémités.
@@ -71,34 +70,18 @@ def _majuscule(texte):
 def _rangees_orientees(modules, azimut_deg):
     """``[[t, …] par rangée]`` : positions le long de la rangée, par rangée.
 
-    Même tolérance que ``export_tableur.rangees_du_pan`` (le centimètre) ;
-    l'axe de groupement est la ligne de plus grande pente du pan (azimut),
-    l'axe de position lui est perpendiculaire.
+    Délègue à ``rangees.positions_par_rangee`` : la MÊME définition que le
+    plan de pose et le tableur (le centimètre ; axe de groupement = ligne de
+    plus grande pente du pan, axe de position perpendiculaire).
     """
-    from .export_tableur import PAS_DE_RANGEE_M, rangees_du_pan
+    from .rangees import positions_par_rangee
 
-    if azimut_deg is None:
-        rangs = rangees_du_pan(modules)
-        par_rang = {}
-        for centre in modules:
-            par_rang.setdefault(rangs[centre], []).append(centre[0])
-        return [sorted(positions) for _rang, positions
-                in sorted(par_rang.items())]
-
-    angle = math.radians(azimut_deg)
-    sin_a, cos_a = math.sin(angle), math.cos(angle)
-    par_rang = {}
-    for est, nord in modules:
-        pente = est * sin_a + nord * cos_a
-        position = est * cos_a - nord * sin_a
-        cle = round(pente / PAS_DE_RANGEE_M)
-        par_rang.setdefault(cle, []).append(position)
-    return [sorted(positions) for _cle, positions in sorted(par_rang.items())]
+    return positions_par_rangee(modules, azimut_deg)
 
 
 def _pas_du_pan(rangees):
     """Le pas centre à centre RELEVÉ : le plus petit écart entre voisins."""
-    from .export_tableur import PAS_DE_RANGEE_M
+    from .rangees import PAS_DE_RANGEE_M
 
     ecarts = [droite - gauche
               for positions in rangees
@@ -109,7 +92,7 @@ def _pas_du_pan(rangees):
 
 def _segments(positions, pas):
     """Les segments CONTINUS d'une rangée (un trou coupe le rail)."""
-    from .export_tableur import PAS_DE_RANGEE_M
+    from .rangees import PAS_DE_RANGEE_M
 
     if not positions:
         return []

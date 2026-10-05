@@ -6,7 +6,7 @@ Ce qui est prouvé ici :
   jonctions entre voisins, extrémités (2 par segment continu), longueur des
   rangées (étendue + pas RELEVÉ) — un trou coupe la rangée, un pan tourné
   groupe ses rangées selon son azimut (plein sud : exactement le groupement
-  de ``export_tableur.rangees_du_pan``), un pan sans voisin ne publie pas de
+  de ``rangees.rangees_du_pan``), un pan sans voisin ne publie pas de
   longueur et le NOMME ;
 * le cœur PUR ``_lignes_de_fixation`` rend EXACTEMENT les lignes de
   l'exemple committé (contrat CALX335) ; une règle non saisie ou un
@@ -36,7 +36,7 @@ from types import SimpleNamespace
 from django.test import SimpleTestCase
 
 from apps.calepinage.services import fixation
-from apps.calepinage.services.export_tableur import rangees_du_pan
+from apps.calepinage.services.rangees import rangees_du_pan
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT = json.loads(

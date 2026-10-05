@@ -1038,24 +1038,20 @@ def verifier_absence_d_argent(document):
 def _reperes_de_pose(pan, vers_feuille):
     """Repère de rangée (« R1 ») et flèche de SENS DE POSE, par rangée.
 
-    La RANGÉE a UNE seule définition dans ce module — le groupement des
-    centres relevés sur leur ordonnée (CAL179) : on l'appelle, on ne la
-    réécrit pas. Le SENS est celui dans lequel les modules d'une rangée se
-    suivent : il est MESURÉ sur les centres, jamais choisi. Une rangée d'un
-    seul module ne porte aucune flèche — il n'y a pas de sens à déduire.
+    La RANGÉE a UNE seule définition, ORIENTÉE par l'azimut du pan
+    (``services/rangees.py``, ACAL230) : on l'appelle, on ne la réécrit pas.
+    Le SENS est celui dans lequel les modules d'une rangée se suivent : il
+    est MESURÉ sur les centres, jamais choisi. Une rangée d'un seul module
+    ne porte aucune flèche — il n'y a pas de sens à déduire.
     """
-    from .export_tableur import rangees_du_pan
+    from .rangees import centres_par_rangee
 
     if not pan['modules']:
         return []
-    rangees = rangees_du_pan(pan['modules'])
-    par_rangee = {}
-    for centre in pan['modules']:
-        par_rangee.setdefault(rangees[centre], []).append(centre)
 
     morceaux = []
-    for numero, centres in sorted(par_rangee.items()):
-        centres = sorted(centres, key=lambda point: point[0])
+    for numero, centres in centres_par_rangee(pan['modules'],
+                                              pan.get('azimut_deg')):
         depart = vers_feuille(centres[0])
         morceaux.append(
             '<text x="%s" y="%s" font-size="3" font-weight="bold" '
