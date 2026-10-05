@@ -79,8 +79,13 @@ def configuration_document(parametres, *, code=CODE_RAPPORT_ETUDE):
     réglage passe ``None``, aucune valeur n'est fabriquée). Rien n'est
     validé ici ; ``sections_retenues`` s'en charge.
     """
-    documents = getattr(parametres, 'documents', None) if parametres \
-        is not None else None
+    if isinstance(parametres, dict):
+        # ACAL288 — la forme rendue par ``selectors.parametres_de_societe``
+        # (celle que passe ``GET rapport-etude.pdf``) : un dict de sections.
+        documents = parametres.get('documents')
+    else:
+        documents = getattr(parametres, 'documents', None) if parametres \
+            is not None else None
     documents = documents if isinstance(documents, dict) else {}
     config = documents.get(code)
     return config if isinstance(config, dict) else {}
