@@ -335,7 +335,7 @@ def chaines_max_par_mppt(specs):
 def entree_electrique(layout, module, onduleur, temperatures, *,
                       dc_m=0.0, ac_m=0.0, phases=None, longueur_forcee=None,
                       zone_keraunique=False, inclure_prise_terre=False,
-                      plafond_kwc_par_onduleur=None):
+                      plafond_kwc_par_onduleur=None, regime=None):
     """L'``EntreeElectrique`` du noyau, construite depuis le CALEPINAGE.
 
     Les températures viennent de CAL123 (``services.electrique``) : elles sont
@@ -358,6 +358,9 @@ def entree_electrique(layout, module, onduleur, temperatures, *,
         zone_keraunique=bool(zone_keraunique),
         inclure_prise_terre=bool(inclure_prise_terre),
         plafond_kwc_par_onduleur=plafond_kwc_par_onduleur,
+        # ACAL152 — le régime SAISI, ou ``None`` (« non précisé ») : jamais
+        # le « TT » par défaut du noyau.
+        regime=regime or None,
     )
 
 

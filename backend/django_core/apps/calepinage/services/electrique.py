@@ -348,6 +348,7 @@ CHAMPS_ENTREE = (
     'polystring',           # CALX206 — pans mis en parallèle sur une entrée
     'derogations',          # CALX215 — alertes PASSÉES OUTRE (geste, pas réglage)
     'transformateur',       # ACAL151 — {declare, 3 grandeurs sourcées}
+    'regime',               # ACAL152 — régime de neutre SAISI (TT/TN/IT)
 )
 
 #: CALX215 — la clé par laquelle une alerte est PASSÉE OUTRE. C'est un GESTE,
@@ -685,6 +686,13 @@ def _valider_entree(calepinage, fusionnee, postee):
                 "°C, ou laissez le champ vide." % brut, champ=cle)
     _saisie(fusionnee)
 
+    if postee.get('regime') not in (None, ''):
+        from core.electrique.types import REGIMES_CONNUS
+
+        if str(postee.get('regime')).strip().upper() not in REGIMES_CONNUS:
+            raise EntreeInvalide(
+                "Régime de neutre « %s » inconnu : saisissez TT, TN ou IT."
+                % postee.get('regime'), champ='regime')
     if postee.get('phases') not in (None, ''):
         phases = _nombre(postee.get('phases'))
         if phases not in tuple(float(p) for p in PHASES_ADMISES):
@@ -798,6 +806,11 @@ def _valider_transformateur(saisie):
                 "« %s » est saisi sans sa source : une valeur sans source "
                 "n'est pas une saisie (fiche, plaque, procès-verbal…)."
                 % champ, champ='%s.source' % chemin)
+
+
+def _regime_non_precise(donnees):
+    """ACAL152 — vrai tant qu'aucun régime de neutre n'est SAISI."""
+    return not str((donnees or {}).get('regime') or '').strip()
 
 
 def _checklist_protections_tolerante(conception, decisions, norme):
@@ -1138,6 +1151,10 @@ def _options_entree(entree):
     for cle in ('zone_keraunique', 'inclure_prise_terre'):
         if (entree or {}).get(cle) is not None:
             options[cle] = bool(entree[cle])
+    # ACAL152 — le régime de neutre SAISI ; absent, il reste « non précisé ».
+    regime = str((entree or {}).get('regime') or '').strip().upper()
+    if regime:
+        options['regime'] = regime
     return options
 
 
@@ -1492,6 +1509,10 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     messages.extend(cables['omissions'])
     messages.extend(bordereau['alertes'])
     messages.extend(protections['omissions'])
+    if _regime_non_precise(donnees) and protections['organes']:
+        from core.electrique.protections import MOTIF_REGIME_NON_PRECISE
+
+        messages.append(MOTIF_REGIME_NON_PRECISE)
     messages.extend(avis_decisions)
     messages.extend(terre['omissions'])
     messages.extend(avis_terre)
@@ -1873,6 +1894,10 @@ def garde_publication(calepinage):
 #: pourquoi, et ça ne bloque pas la publication.
 STATUT_MOTIF_OMIS = 'omis'
 
+#: ACAL152 — le motif de publication quand le régime de neutre n'est pas
+#: saisi : la protection différentielle ne peut pas être décidée.
+CODE_REGIME_NON_PRECISE = 'REGIME_NEUTRE_NON_PRECISE'
+
 #: Le statut d'une entrée qui a JUGÉ sans provenance : elle, elle bloque.
 STATUT_MOTIF_SANS_SOURCE = 'sans_source'
 
@@ -2054,6 +2079,13 @@ def verdict_publiable(calepinage):
     motifs.extend(_motifs_de_la_norme(norme))
     motifs.extend(_motifs_du_raccordement(
         conception, donnees.get('raccordement'), reglages))
+    if _regime_non_precise(donnees) and not getattr(
+            conception, 'manquantes', ()) and conception.chaines:
+        from core.electrique.protections import MOTIF_REGIME_NON_PRECISE
+
+        motifs.append(_motif_publication(
+            CODE_REGIME_NON_PRECISE, STATUT_MOTIF_OMIS,
+            MOTIF_REGIME_NON_PRECISE, 'NF C 15-100 §411 — régime de neutre'))
     motifs.extend(_motifs_de_la_terre(_checklist_terre_tolerante(
         conception, donnees.get('terre'), norme,
         getattr(calepinage, 'company', None))[0]))
