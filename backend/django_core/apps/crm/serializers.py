@@ -730,6 +730,52 @@ class _PuissanceKwField(serializers.DecimalField):
         return super().to_internal_value(brut)
 
 
+#: AGR405 — libellés des segments dans le message d'incohérence (contrat
+#: ``lead_pompage.json`` : « typé « résidentiel » … devis agricole »).
+_LIBELLES_SEGMENT = {
+    'residentiel': 'résidentiel', 'commercial': 'commercial',
+    'industriel': 'industriel', 'agricole': 'agricole',
+}
+
+
+def _message_incoherence(segment_lead, mode_devis):
+    cible = _LIBELLES_SEGMENT.get(mode_devis, mode_devis)
+    if segment_lead:
+        debut = ('Ce lead est typé « %s »'
+                 % _LIBELLES_SEGMENT.get(segment_lead, segment_lead))
+    else:
+        debut = "Ce lead n'a pas de type"
+    return ('%s mais porte un devis %s. Changer le type du lead en « %s » ?'
+            % (debut, cible, cible))
+
+
+def incoherence_segment(type_lead, devis):
+    """AGR405 (D-AGR-9) — ``None`` ou ``{segment_lead, mode_devis, devis:
+    [{id, reference}], message}`` : le lead porte au moins un devis agricole
+    alors que son type n'est pas « agricole » (vide compris) ; ou, à
+    l'inverse, le lead est agricole et TOUS ses devis sont résidentiels.
+    Fonction PURE sur la lecture mince ``devis`` de ventes ; elle n'écrit
+    rien — le commercial change le type à la main."""
+    type_lead = type_lead or ''
+    par_mode = {}
+    for d in devis or ():
+        par_mode.setdefault(d.get('mode_installation') or '', []).append(d)
+    mode = None
+    if type_lead != 'agricole' and par_mode.get('agricole'):
+        mode = 'agricole'
+    elif type_lead == 'agricole' and set(par_mode) == {'residentiel'}:
+        mode = 'residentiel'
+    if mode is None:
+        return None
+    return {
+        'segment_lead': type_lead or None,
+        'mode_devis': mode,
+        'devis': [{'id': d['id'], 'reference': d['reference']}
+                  for d in par_mode[mode]],
+        'message': _message_incoherence(type_lead, mode),
+    }
+
+
 class LeadSerializer(SameCompanyFKSerializerMixin,
                      _CompanyScopedRelationsMixin,
                      serializers.ModelSerializer):
@@ -850,6 +896,11 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # obligatoire probable », loi 47-09) : DÉTAIL SEULEMENT, jamais la liste,
     # jamais une sortie client.
     indicateurs_internes = serializers.SerializerMethodField()
+    # AGR405 (D-AGR-9, contrat ``lead_pompage.json``) — drapeau
+    # d'incohérence entre le type du lead et le mode de ses devis : DÉTAIL
+    # SEULEMENT (une requête ventes par lead — jamais sur la liste). Calculé
+    # à la lecture ; le type du lead n'est JAMAIS écrit automatiquement.
+    incoherence_segment = serializers.SerializerMethodField()
     # MRY5 — prochaine touche de cadence, ANNOTÉE dans le queryset
     # (``LeadViewSet.get_queryset``), jamais un SerializerMethodField : la
     # liste et le kanban affichent le badge « touche due » pour 50 cartes,
@@ -1430,6 +1481,8 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             fields.pop('entrees_ci', None)
             # CIQ428 — `indicateurs_internes` : détail seulement, même porte.
             fields.pop('indicateurs_internes', None)
+            # AGR405 — `incoherence_segment` : détail seulement, même porte.
+            fields.pop('incoherence_segment', None)
         return fields
 
     def to_representation(self, instance):
@@ -1512,6 +1565,15 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             raison_a_confirmer=False, ice=obj.ice, rc=obj.rc,
             if_fiscal=obj.if_fiscal, adresse_siege=obj.adresse_siege,
             adresse=obj.adresse)
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_incoherence_segment(self, obj):
+        """AGR405 — ``null`` ou ``{segment_lead, mode_devis, devis, message}``
+        (contrat ``lead_pompage.json``). Lecture seule, D-AGR-9."""
+        from apps.ventes.selectors import devis_par_mode_pour_lead
+        return incoherence_segment(
+            obj.type_installation,
+            devis_par_mode_pour_lead(obj.pk, obj.company))
 
     @extend_schema_field(serializers.DictField())
     def get_entrees_pompage(self, obj):

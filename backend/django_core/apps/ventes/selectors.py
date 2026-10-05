@@ -2655,6 +2655,21 @@ def devis_envoyes_en_attente(company, since=None):
     return qs.order_by('date_envoi', 'id')
 
 
+def devis_par_mode_pour_lead(lead_id, company):
+    """AGR405 (D-AGR-9) — les devis d'UN lead, en lecture MINCE :
+    ``[{id, reference, mode_installation, statut}]``, du plus ancien au plus
+    récent. Lecture cross-app pour ``apps.crm`` (le drapeau
+    ``incoherence_segment`` du DÉTAIL d'un lead, jamais la liste), bornée par
+    ``company`` : un devis d'une autre société n'est jamais vu. Lecture
+    seule — le type du lead n'est jamais touché ici."""
+    from .models import Devis
+    if not lead_id or company is None:
+        return []
+    return list(Devis.objects.filter(company=company, lead_id=lead_id)
+                .order_by('id')
+                .values('id', 'reference', 'mode_installation', 'statut'))
+
+
 def lead_a_un_devis(lead):
     """MRY11 — Ce lead a-t-il déjà REÇU une proposition (devis sorti du
     brouillon : envoyé, accepté, refusé ou expiré) ?
