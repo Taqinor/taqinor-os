@@ -16,27 +16,11 @@ import {
 // (move only : le corps de l'effet est inchangé ; seuls les imports et la
 // déstructuration de `ctx` en tête sont ajoutés).
 export function useAtelierBoot(ctx) {
-  const {
-    builderApi,
-    calepinageId,
-    cibleId,
-    devisId,
-    estCalepinage,
-    estDevis,
-    leadId,
-    poursuivreBootRef,
-    reducedMotion,
-    setBrouillonPropose,
-    setBuilderApiActuel,
-    setBuilderReady,
-    setContexte,
-    setContourMessage,
-    setHashBaseBrouillon,
-    setLead,
-    setLoadError,
-    setStatus,
-    utilisateurCourantId,
-  } = ctx
+  // Identifiants et drapeaux de mode, puis refs, puis setters d'état.
+  const { cibleId, calepinageId, devisId, leadId, estCalepinage, estDevis } = ctx
+  const { builderApi, poursuivreBootRef, reducedMotion, utilisateurCourantId } = ctx
+  const { setBrouillonPropose, setBuilderApiActuel, setBuilderReady, setContexte } = ctx
+  const { setContourMessage, setHashBaseBrouillon, setLead, setLoadError, setStatus } = ctx
   useEffect(() => {
     let cancelled = false
     // Sans identifiant, l'état initial affiche déjà l'erreur — rien à booter.
