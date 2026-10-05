@@ -3634,57 +3634,131 @@ export interface AssumptionItem {
   valueEn: string;
 }
 
+/** AGW302 — provenance d'une donnée de `synthese_agricole.provenance` (forme
+ *  {origine, detail, date} du contrat AGR2) → mot d'affichage, ou `null` si on
+ *  ne sait pas le dire honnêtement (jamais un mot inventé). */
+function provenanceMot(e: unknown): { fr: string; en: string; ar: string } | null {
+  if (!e || typeof e !== 'object') return null;
+  const detail = String((e as { detail?: unknown }).detail ?? '');
+  if (detail === 'mesure_visite') return { fr: 'mesuré lors de la visite', en: 'measured during the site visit', ar: 'مقيس خلال الزيارة' };
+  if (detail === 'foreur') return { fr: 'relevé par le foreur', en: 'recorded by the driller', ar: 'مسجَّل من طرف الحفّار' };
+  if (detail === 'client') return { fr: 'déclaré par le client', en: 'declared by the client', ar: 'مصرَّح به من طرف الزبون' };
+  return null;
+}
+
 /**
  * WJ32 — Hypothèses RÉELLES qui sous-tendent les chiffres de la page, sourcées
  * UNIQUEMENT depuis des champs backend/constantes déjà affichées ailleurs sur
  * la page (jamais une nouvelle valeur inventée ici) :
- *  - tarif : loi 82-21 autoconsommation, dérive 0 % (BILL_INFLATION_RATE) ;
- *  - horizon : SAVINGS_HORIZON_YEARS (25 ans, durée de vie économique retenue —
- *    la garantie de performance panneau va au-delà : 30 ans, cf. warranty.ts) ;
- *  - type d'installation : `quote.inst_type` (résidentiel/industriel/agricole) ;
- * Toujours au moins 2 lignes (tarif + horizon sont des constantes du module,
- * jamais absentes) — le bloc n'est donc jamais vide.
+ *  - AGW302 : le mode vient de `resolveInstallMode` (clé machine), jamais de
+ *    `quote.inst_type` ;
+ *  - hors agricole — cadre tarifaire : loi 82-21 autoconsommation, tarif du
+ *    distributeur (SRM régionale, Q16), dérive 0 % (BILL_INFLATION_RATE) ; horizon :
+ *    SAVINGS_HORIZON_YEARS (25 ans, durée de vie économique retenue — la garantie de
+ *    performance panneau va au-delà : 30 ans, cf. warranty.ts) ;
+ *  - agricole — heures de pompage, HMT retenue et débit à cette HMT lus dans le
+ *    payload, provenance déclaré/mesuré quand `synthese_agricole` est servie ; aucune
+ *    mention 82-21 ni horizon de panneau ;
+ *  - type d'installation : libellé du mode (résidentiel/industriel/commercial/agricole).
  */
 export function proposalAssumptions(p: ProposalResponse): AssumptionItem[] {
-  const items: AssumptionItem[] = [
-    {
-      label: 'Cadre tarifaire',
-      labelAr: 'الإطار التعريفي',
-      labelEn: 'Tariff framework',
-      value: 'Autoconsommation basse tension (loi 82-21), tarif ONEE supposé constant (0 % de dérive) — toute hausse réelle ne ferait qu\'augmenter l\'économie.',
-      valueAr: 'الاستهلاك الذاتي في التوتر المنخفض (القانون 82-21)، بافتراض تعريفة ONEE ثابتة (0 % تغير) — أي ارتفاع فعلي لن يزيد إلا من التوفير.',
-      valueEn: 'Low-voltage self-consumption (law 82-21), assuming a constant ONEE tariff (0 % drift) — any real increase would only raise your savings.',
-    },
-    {
-      label: 'Horizon d\'analyse',
-      labelAr: 'أفق التحليل',
-      labelEn: 'Analysis horizon',
-      value: `${SAVINGS_HORIZON_YEARS} ans — durée de garantie de performance standard d'un panneau photovoltaïque.`,
-      valueAr: `${SAVINGS_HORIZON_YEARS} سنة — مدة ضمان الأداء المعيارية للوح الشمسي.`,
-      valueEn: `${SAVINGS_HORIZON_YEARS} years — standard performance warranty duration of a solar panel.`,
-    },
-  ];
-  const instType = p.quote?.inst_type;
-  if (instType) {
-    const label =
-      instType === 'agricole'
-        ? 'Pompage solaire (dimensionné HMT + débit souhaité)'
-        : instType === 'industriel' || instType === 'commercial'
-          ? 'Autoconsommation industrielle/commerciale (étude taux de couverture)'
-          : 'Résidentiel (simulateur)';
-    const labelAr =
-      instType === 'agricole'
-        ? 'ضخ شمسي (محسوب حسب HMT ومعدل الضخ المرغوب)'
-        : instType === 'industriel' || instType === 'commercial'
-          ? 'استهلاك ذاتي صناعي/تجاري (دراسة معدل التغطية)'
-          : 'سكني (المحاكي)';
-    const labelEn =
-      instType === 'agricole'
-        ? 'Solar pumping (sized on head + desired flow rate)'
-        : instType === 'industriel' || instType === 'commercial'
-          ? 'Industrial/commercial self-consumption (coverage-rate study)'
-          : 'Residential (simulator)';
-    items.push({ label: 'Type d\'installation', labelAr: 'نوع التركيب', labelEn: 'Installation type', value: label, valueAr: labelAr, valueEn: labelEn });
+  // AGW302 — le mode se lit sur la CLÉ MACHINE (`resolveInstallMode`), jamais sur
+  // `quote.inst_type` (libellé capitalisé « Agricole »/« Industrielle »/… qui ne
+  // matchait aucun littéral minuscule : la branche « Résidentiel » était TOUJOURS prise).
+  const mode = resolveInstallMode(p);
+  const items: AssumptionItem[] = [];
+
+  if (mode === 'agricole') {
+    // Pompage : ni « loi 82-21 / tarif » d'autoconsommation, ni horizon 25 ans de
+    // panneau — les hypothèses du pompage, lues dans le payload (jamais inventées).
+    const k = agricoleKpis(p);
+    if (k?.heures_pompage) {
+      const h = formatNumber(k.heures_pompage, 1);
+      items.push({
+        label: 'Heures de pompage', labelAr: 'ساعات الضخّ', labelEn: 'Pumping hours',
+        value: `${h} h par jour (hypothèse) — le volume d'eau par jour en découle.`,
+        valueAr: `${h} س في اليوم (فرضية) — ويُستخلص منها حجم الماء اليومي.`,
+        valueEn: `${h} h per day (assumption) — the daily water volume follows from it.`,
+      });
+    }
+    if (k?.hmt_m) {
+      const hmt = formatNumber(k.hmt_m, 1);
+      const debit = k.debit_hmt_m3h ? formatNumber(k.debit_hmt_m3h, 1) : null;
+      items.push({
+        label: 'HMT retenue et débit', labelAr: 'الارتفاع المانومتري المعتمد والتدفق', labelEn: 'Selected head and flow',
+        value: debit ? `HMT ${hmt} m ; débit ${debit} m³/h à cette HMT.` : `HMT ${hmt} m.`,
+        valueAr: debit ? `الارتفاع ${hmt} م ؛ التدفق ${debit} م³/س عند هذا الارتفاع.` : `الارتفاع ${hmt} م.`,
+        valueEn: debit ? `Head ${hmt} m; flow ${debit} m³/h at that head.` : `Head ${hmt} m.`,
+      });
+    }
+    // Provenance déclaré/mesuré — seulement quand `synthese_agricole` est servie.
+    const prov = (p as { synthese_agricole?: { provenance?: Record<string, unknown> } }).synthese_agricole?.provenance;
+    if (prov && typeof prov === 'object') {
+      const champs: Array<[string, { fr: string; en: string; ar: string }]> = [
+        ['volume_m3_jour', { fr: "volume d'eau", en: 'water volume', ar: 'حجم الماء' }],
+        ['niveau_statique_m', { fr: 'niveau statique', en: 'static level', ar: 'المستوى الساكن' }],
+        ['niveau_dynamique_m', { fr: 'niveau dynamique', en: 'dynamic level', ar: 'المستوى الديناميكي' }],
+        ['debit_exploitation_m3h', { fr: "débit d'exploitation", en: 'operating flow', ar: 'تدفق الاستغلال' }],
+      ];
+      const lignes = champs
+        .map(([cle, nom]) => ({ nom, mot: provenanceMot(prov[cle]) }))
+        .filter((x) => x.mot !== null) as Array<{ nom: { fr: string; en: string; ar: string }; mot: { fr: string; en: string; ar: string } }>;
+      if (lignes.length > 0) {
+        items.push({
+          label: 'Provenance des données', labelAr: 'مصدر المعطيات', labelEn: 'Data provenance',
+          value: lignes.map((x) => `${x.nom.fr} : ${x.mot.fr}`).join(' ; ') + '.',
+          valueAr: lignes.map((x) => `${x.nom.ar}: ${x.mot.ar}`).join(' ؛ ') + '.',
+          valueEn: lignes.map((x) => `${x.nom.en}: ${x.mot.en}`).join('; ') + '.',
+        });
+      }
+    }
+  } else {
+    items.push(
+      {
+        label: 'Cadre tarifaire',
+        labelAr: 'الإطار التعريفي',
+        labelEn: 'Tariff framework',
+        // Q16 — le distributeur est la SRM régionale, pas « l'ONEE ».
+        value: 'Autoconsommation (loi 82-21), tarif de votre distributeur (SRM de votre région) supposé constant (0 % de dérive) — toute hausse réelle ne ferait qu\'augmenter l\'économie.',
+        valueAr: 'الاستهلاك الذاتي (القانون 82-21)، بافتراض تعريفة موزّعكم (الشركة الجهوية متعددة الخدمات SRM لجهتكم) ثابتة (0 % تغير) — أي ارتفاع فعلي لن يزيد إلا من التوفير.',
+        valueEn: 'Self-consumption (law 82-21), assuming a constant tariff from your distributor (the SRM of your region) (0 % drift) — any real increase would only raise your savings.',
+      },
+      {
+        label: 'Horizon d\'analyse',
+        labelAr: 'أفق التحليل',
+        labelEn: 'Analysis horizon',
+        value: `${SAVINGS_HORIZON_YEARS} ans — durée de garantie de performance standard d'un panneau photovoltaïque.`,
+        valueAr: `${SAVINGS_HORIZON_YEARS} سنة — مدة ضمان الأداء المعيارية للوح الشمسي.`,
+        valueEn: `${SAVINGS_HORIZON_YEARS} years — standard performance warranty duration of a solar panel.`,
+      },
+    );
+  }
+
+  const modeBrut =
+    p.mode_installation ??
+    (p.quote as { mode_installation?: string | null } | undefined)?.mode_installation ??
+    '';
+  if (p.quote?.inst_type || String(modeBrut).trim() !== '') {
+    const TYPES: Record<InstallMode, { fr: string; ar: string; en: string }> = {
+      agricole: {
+        fr: 'Pompage solaire (dimensionné HMT + débit souhaité)',
+        ar: 'ضخ شمسي (محسوب حسب HMT ومعدل الضخ المرغوب)',
+        en: 'Solar pumping (sized on head + desired flow rate)',
+      },
+      industriel: {
+        fr: 'Autoconsommation industrielle (étude taux de couverture)',
+        ar: 'استهلاك ذاتي صناعي (دراسة معدل التغطية)',
+        en: 'Industrial self-consumption (coverage-rate study)',
+      },
+      commercial: {
+        fr: 'Autoconsommation commerciale (étude taux de couverture)',
+        ar: 'استهلاك ذاتي تجاري (دراسة معدل التغطية)',
+        en: 'Commercial self-consumption (coverage-rate study)',
+      },
+      residentiel: { fr: 'Résidentiel (simulateur)', ar: 'سكني (المحاكي)', en: 'Residential (simulator)' },
+    };
+    const t = TYPES[mode];
+    items.push({ label: 'Type d\'installation', labelAr: 'نوع التركيب', labelEn: 'Installation type', value: t.fr, valueAr: t.ar, valueEn: t.en });
   }
   return items;
 }
