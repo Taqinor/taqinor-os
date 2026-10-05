@@ -4,6 +4,7 @@ import adsengineApi from './adsengineApi'
 import VeilleDecouverte from './VeilleDecouverte'
 import VeilleAnnonceurs from './VeilleAnnonceurs'
 import VeilleEtiquetage from './VeilleEtiquetage'
+import VeilleMesures from './VeilleMesures'
 
 /* ============================================================================
    PUB70 / PLAN_VEILLE — Écran « Veille concurrentielle ».
@@ -68,6 +69,7 @@ const ONGLETS = [
   { cle: 'decouverte', libelle: 'Découverte' },
   { cle: 'annonceurs', libelle: 'Annonceurs' },
   { cle: 'etiquetage', libelle: 'Échantillon de mesure' },
+  { cle: 'mesures', libelle: 'Mesures' },
   { cle: 'manuel', libelle: 'Saisie manuelle' },
 ]
 
@@ -108,6 +110,7 @@ export default function VeilleScreen() {
       )}
       {onglet === 'annonceurs' && <VeilleAnnonceurs decouverteId={decouverteId} />}
       {onglet === 'etiquetage' && <VeilleEtiquetage decouverteId={decouverteId} />}
+      {onglet === 'mesures' && <VeilleMesures decouverteId={decouverteId} />}
       {onglet === 'manuel' && <SaisieManuelle />}
     </div>
   )
