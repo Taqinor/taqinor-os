@@ -539,6 +539,11 @@ const calepinageApi = {
     versionsDiff: (id, versionId, contreId) =>
       api.get(`${pivot(id)}versions/${versionId}/diff/`,
         { params: contreId ? { contre: contreId } : {} }),
+
+    // ACAL82 — persiste le système de fixation CHOISI (ACAL81, contrat
+    // `calepinage_fixation_bom.json` › `fixation_post`) : `{systeme_id|null}`
+    // → `{systeme, systeme_source}` ; `null` retire le choix.
+    appliquerFixation: (id, corps) => api.post(`${pivot(id)}fixation/`, corps), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
