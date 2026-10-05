@@ -87,6 +87,13 @@ class ContratCommitteTest(SimpleTestCase):
         self.assertEqual(service._composer_reponse(lecture_de(etat), None),
                          etat)
 
+    def test_reprise_a_corriger_porte_l_ecart(self):
+        """ACAL210 — relevé repris, visite remesurée : ``a_jour`` faux."""
+        etat = CONTRAT['exemple_a_corriger']
+        self.assertEqual(
+            service._composer_reponse(lecture_de(etat), etat['releve'],
+                                      etat['ecart']), etat)
+
     def test_le_bloc_releve_construit_depuis_des_objets(self):
         releve, photos = releve_de_l_exemple()
         self.assertEqual(service._releve_en_ligne(releve, photos),
