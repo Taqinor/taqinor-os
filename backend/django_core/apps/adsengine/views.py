@@ -4500,11 +4500,18 @@ class VeilleCouvertureView(APIView):
 
     def get(self, request):
         from . import competitor_intel as ci
+        from . import veille_acces
 
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
             return err
-        acces = {'etat': 'non_configure', 'expire_le': None}
+        # VEIL12 — ``?verifier=1`` déclenche UN ``debug_token`` à la demande
+        # (gestionnaire seulement) ; sinon l'état est lu sans aucun appel.
+        if (request.query_params.get('verifier') == '1'
+                and _user_has_or_legacy(request.user, 'adsengine_manage')):
+            acces = veille_acces.verifier(company)
+        else:
+            acces = veille_acces.etat(company)
         return Response({
             'couverture': ci.couverture_liste(),
             'acces': acces,

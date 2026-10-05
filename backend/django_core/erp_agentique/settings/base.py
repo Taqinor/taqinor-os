@@ -1388,6 +1388,23 @@ META_LEAD_ADS_APP_SECRET = os.environ.get('META_LEAD_ADS_APP_SECRET', '')
 # première Company (même repli que WEBSITE_LEADS_COMPANY_ID).
 META_LEAD_ADS_COMPANY_ID = os.environ.get('META_LEAD_ADS_COMPANY_ID') or None
 
+# ── PLAN_VEILLE — VEIL12 : accès Meta Ad Library (pilote de veille) ─────────
+# SÉPARÉ de TOUT ce qui sert aux campagnes TAQINOR (MetaConnection,
+# META_SYSTEM_USER_TOKEN, META_LEAD_ADS_*) : lu UNIQUEMENT ici, depuis
+# l'environnement, par apps/adsengine/veille_acces.py. Interrupteur faux par
+# défaut ; jeton vide = « non configuré » et ZÉRO requête réseau.
+META_AD_LIBRARY_ENABLED = os.environ.get(
+    'META_AD_LIBRARY_ENABLED', '').strip().lower() in ('1', 'true', 'yes', 'on')
+META_AD_LIBRARY_ACCESS_TOKEN = os.environ.get('META_AD_LIBRARY_ACCESS_TOKEN', '')
+META_AD_LIBRARY_APP_ID = os.environ.get('META_AD_LIBRARY_APP_ID', '')
+META_AD_LIBRARY_APP_SECRET = os.environ.get('META_AD_LIBRARY_APP_SECRET', '')
+# D-VEIL-12 — identifiants des sociétés autorisées à lancer une découverte sous
+# ce jeton (liste séparée par des virgules). Défaut VIDE = personne.
+VEILLE_SOCIETES_AUTORISEES = [
+    int(_v) for _v in os.environ.get('VEILLE_SOCIETES_AUTORISEES', '').split(',')
+    if _v.strip().isdigit()
+]
+
 # Stockage fichiers — MinIO / S3 (Phase 2 Sem. 4)
 MINIO_ENDPOINT = os.environ.get('MINIO_ENDPOINT', 'minio:9000')
 MINIO_ACCESS_KEY = os.environ.get('MINIO_ROOT_USER', 'erp_admin')
