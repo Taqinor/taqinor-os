@@ -44,7 +44,15 @@ import {
   autoconsoKpis,
   hasInjection,
   autoconsoCashflow,
-  agricoleMonthlyDelivery,
+  syntheseAgricole,
+  omissionSynthese,
+  courbeGeometrie,
+  libelleEntree,
+  phraseProvenance,
+  AGR_LBL,
+  AGR_MOIS_LONG,
+  type SyntheseAgricole,
+  type Lbl3,
   commercialArchetype,
   MONTHS_SHORT,
   formatMAD,
@@ -562,10 +570,34 @@ const autoCashflow = ok && isAutoconso ? autoconsoCashflow(data!, reco ?? 'sans_
 const cashMaxAbs = autoCashflow ? Math.max(...autoCashflow.map((p) => Math.abs(p.cumulative)), 1) : 1;
 // Année du point mort (première année à trésorerie cumulée ≥ 0), pour le libellé.
 const cashBreakEven = autoCashflow ? (autoCashflow.find((p) => p.cumulative >= 0)?.year ?? null) : null;
-// Livraison d'eau mensuelle estimée (agricole) — dérivée de m3_jour + production
-// mensuelle ; null (bloc omis) si l'une des deux manque. Jamais de courbe besoin.
-const waterDelivery = ok && isAgricole ? agricoleMonthlyDelivery(data!, agri) : null;
-const waterMax = waterDelivery ? Math.max(...waterDelivery.map((m) => m.m3), 1) : 1;
+// AGW303 — LA SYNTHÈSE AGRICOLE SERVIE (`synthese_agricole`, la MÊME fonction que le PDF).
+// La page LIT : besoin vs eau livrée, schéma, courbe + point, provenance, plaque. Aucun
+// calcul (la livraison d'eau dérivée dans le navigateur, `agricoleMonthlyDelivery`, est
+// supprimée). Sans synthèse servie : cartes pompe seules, ni graphe ni schéma.
+const synth: SyntheseAgricole | null = ok ? syntheseAgricole(data!) : null;
+const bvl = synth?.besoinVsLivre ?? null;
+const bvlMax = bvl ? Math.max(...bvl.mois.map((m) => Math.max(m.besoin, m.livre)), 1) : 1;
+const courbeGeo = courbeGeometrie(synth?.pointFonctionnement ?? null);
+const motifCourbe = omissionSynthese(synth, 'point_fonctionnement');
+// Plaque de la pompe existante, formatée (kW · V · phases) ; `null` = non relevée.
+const plaqueTexte: Lbl3 | null = (() => {
+  const pl = synth?.pompe?.plaque;
+  if (!pl) return null;
+  const elems: string[] = [];
+  if (pl.kw !== null) elems.push(`${formatNumber(pl.kw, 1)} kW`);
+  if (pl.tensionV !== null) elems.push(`${formatNumber(pl.tensionV, 0)} V`);
+  if (pl.phases) elems.push(pl.phases);
+  return {
+    fr: AGR_LBL.plaqueRelevee.fr.replace('{plaque}', elems.length > 0 ? elems.join(' · ') : AGR_LBL.plaqueIllisible.fr),
+    en: AGR_LBL.plaqueRelevee.en.replace('{plaque}', elems.length > 0 ? elems.join(' · ') : AGR_LBL.plaqueIllisible.en),
+    ar: AGR_LBL.plaqueRelevee.ar.replace('{plaque}', elems.length > 0 ? elems.join(' · ') : AGR_LBL.plaqueIllisible.ar),
+  };
+})();
+const aConfirmerLbl: Lbl3 = {
+  fr: (synth?.aConfirmerParVisite ?? []).map((c) => libelleEntree(c).fr).join(', '),
+  en: (synth?.aConfirmerParVisite ?? []).map((c) => libelleEntree(c).en).join(', '),
+  ar: (synth?.aConfirmerParVisite ?? []).map((c) => libelleEntree(c).ar).join('، '),
+};
 // Archétype de bloc commercial (miroir backend) — seulement en mode commercial.
 const comArchetype = ok && isCommercial ? commercialArchetype(data?.categorie_commerciale) : null;
 
@@ -3057,6 +3089,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 <p class="fig mt-2 text-2xl text-lune" dir="ltr">{formatNumber(agri.champ_kwc, 2)} <span class="text-base text-lune-soft">kWc</span></p>
               </div>
             ) : null}
+            {bvl && bvl.hectaresIrrigables !== null ? (
+              <div class="cine-card rounded-xl p-5" data-agri-hectares>
+                <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.surfaceIrrigable.fr} data-en={AGR_LBL.surfaceIrrigable.en} data-ar={AGR_LBL.surfaceIrrigable.ar}>{AGR_LBL.surfaceIrrigable.fr}</p>
+                <p class="fig mt-2 text-2xl text-lune" dir="ltr">{formatNumber(bvl.hectaresIrrigables, 1)} <span class="text-base text-lune-soft">ha</span></p>
+              </div>
+            ) : null}
           </div>
           {/* Honnêteté : aucun KPI pompe exploitable → message d'omission clair. */}
           {(!agri.pompe_cv && !agri.pompe_kw && !agri.m3_jour && !agri.champ_kwc) ? (
@@ -3072,25 +3110,118 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               data-ar={`التدفق المقدّر ≈ ${formatNumber(agri.debit_hmt_m3h)} m³/h عند ارتفاع الرفع المعتمد.`}>Débit estimé ≈ {formatNumber(agri.debit_hmt_m3h)} m³/h à la hauteur de refoulement retenue.</p>
           ) : null}
 
-          {/* Livraison d'eau mensuelle estimée — suit l'ensoleillement. Omise si
-              m3_jour ou la production mensuelle manque (jamais une courbe besoin
-              fabriquée : la série besoin/culture n'est pas dans ce payload). */}
-          {waterDelivery && (
-            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-              <p class="tech-label text-lune-faint" data-i18n data-fr="Votre eau au fil des mois" data-en="Your water month by month" data-ar="ماؤكم على مدار الأشهر">Votre eau au fil des mois</p>
+          {/* ── AGW303 — la synthèse agricole SERVIE (`synthese_agricole`, la MÊME fonction
+              que le PDF — AGR304/AGR308) : la page LIT, elle ne calcule rien. Chaque bloc
+              est OMIS quand le serveur ne le sert pas (jamais un zéro, jamais un graphe
+              vide). ─────────────────────────────────────────────────────────────── */}
+
+          {/* Besoin vs eau livrée, mois par mois (12 barres doubles) + mois le plus serré. */}
+          {bvl && (
+            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-besoin-livre>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.titreBesoinLivre.fr} data-en={AGR_LBL.titreBesoinLivre.en} data-ar={AGR_LBL.titreBesoinLivre.ar}>{AGR_LBL.titreBesoinLivre.fr}</p>
               <div class="mt-4 flex items-end gap-1.5" dir="ltr" role="img"
-                aria-label="Livraison d'eau estimée par mois, suivant l'ensoleillement">
-                {waterDelivery.map((m) => (
+                aria-label="Besoin et eau livrée par jour, mois par mois">
+                {bvl.mois.map((m, i) => (
                   <div class="flex flex-1 flex-col items-center gap-1">
-                    <span class="w-full rounded-t" style={`height:${Math.max(4, Math.round((m.m3 / waterMax) * 72))}px; background: var(--color-azur-300, #7fb4e8)`}></span>
-                    <span class="text-[10px] text-lune-faint">{MONTHS_SHORT.fr[m.monthIndex]}</span>
+                    <div class="flex w-full items-end gap-px">
+                      <span class="w-1/2 rounded-t" data-barre="besoin" style={`height:${Math.max(3, Math.round((m.besoin / bvlMax) * 72))}px; background: var(--color-lune-faint, #9ca3af)`}></span>
+                      <span class="w-1/2 rounded-t" data-barre="livre" style={`height:${Math.max(3, Math.round((m.livre / bvlMax) * 72))}px; background: var(--color-azur-300, #7fb4e8)`}></span>
+                    </div>
+                    <span class="text-[10px] text-lune-faint" data-i18n data-fr={MONTHS_SHORT.fr[i]} data-en={MONTHS_SHORT.en[i]} data-ar={MONTHS_SHORT.ar[i]}>{MONTHS_SHORT.fr[i]}</span>
                   </div>
                 ))}
               </div>
-              <p class="mt-3 text-xs text-lune-faint" data-i18n
-                data-fr="Capacité de livraison indicative — le pompage solaire suit l'ensoleillement (dérivée du débit journalier et de la production estimée, jamais un relevé mesuré)."
-                data-en="Indicative delivery capacity — solar pumping follows the sun (derived from the daily flow and estimated production, never a measured reading)."
-                data-ar="قدرة تسليم إرشادية — يتبع الضخّ الشمسي أشعة الشمس (مشتقّة من التدفق اليومي والإنتاج المقدّر، وليست قراءة مقيسة).">Capacité de livraison indicative — le pompage solaire suit l'ensoleillement (dérivée du débit journalier et de la production estimée, jamais un relevé mesuré).</p>
+              <p class="mt-3 text-xs text-lune-faint" data-i18n data-fr={AGR_LBL.legendeBarres.fr} data-en={AGR_LBL.legendeBarres.en} data-ar={AGR_LBL.legendeBarres.ar}>{AGR_LBL.legendeBarres.fr}</p>
+              {bvl.moisLePlusSerre !== null && (
+                <p class="mt-1 text-sm text-lune-soft" data-agri-mois-serre data-i18n
+                  data-fr={`${AGR_LBL.moisSerre.fr} ${AGR_MOIS_LONG.fr[bvl.moisLePlusSerre - 1]}.`}
+                  data-en={`${AGR_LBL.moisSerre.en} ${AGR_MOIS_LONG.en[bvl.moisLePlusSerre - 1]}.`}
+                  data-ar={`${AGR_LBL.moisSerre.ar} ${AGR_MOIS_LONG.ar[bvl.moisLePlusSerre - 1]}.`}>{AGR_LBL.moisSerre.fr} {AGR_MOIS_LONG.fr[bvl.moisLePlusSerre - 1]}.</p>
+              )}
+              {bvl.baseBesoin === 'agronomique_plein' && (
+                <p class="mt-1 text-xs text-lune-faint" data-i18n data-fr={AGR_LBL.agronomique.fr} data-en={AGR_LBL.agronomique.en} data-ar={AGR_LBL.agronomique.ar}>{AGR_LBL.agronomique.fr}</p>
+              )}
+            </div>
+          )}
+
+          {/* Schéma forage → pompe → variateur → panneaux → bassin → irrigation : le SVG
+              SERVI, inséré tel quel (déjà échappé côté serveur) — jamais un second dessin. */}
+          {synth?.schemaSvg && (
+            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-schema>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.titreComment.fr} data-en={AGR_LBL.titreComment.en} data-ar={AGR_LBL.titreComment.ar}>{AGR_LBL.titreComment.fr}</p>
+              <div class="mt-4 w-full overflow-x-auto" dir="ltr" set:html={synth.schemaSvg}></div>
+            </div>
+          )}
+
+          {/* Courbe constructeur + point de fonctionnement ; sans courbe, la phrase d'omission. */}
+          {synth && (
+            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-point>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.pointFonctionnement.fr} data-en={AGR_LBL.pointFonctionnement.en} data-ar={AGR_LBL.pointFonctionnement.ar}>{AGR_LBL.pointFonctionnement.fr}</p>
+              {courbeGeo ? (
+                <div class="mt-3" dir="ltr">
+                  <svg viewBox={`0 0 ${courbeGeo.largeur} ${courbeGeo.hauteur}`} class="w-full max-w-lg" role="img" aria-label="Courbe de la pompe et point de fonctionnement">
+                    <line x1={courbeGeo.axe.x0} y1={courbeGeo.axe.y0} x2={courbeGeo.axe.x1} y2={courbeGeo.axe.y0} stroke="currentColor" stroke-width="1" opacity="0.5" />
+                    <line x1={courbeGeo.axe.x0} y1={courbeGeo.axe.y0} x2={courbeGeo.axe.x0} y2={courbeGeo.axe.y1} stroke="currentColor" stroke-width="1" opacity="0.5" />
+                    <polyline points={courbeGeo.polyline} fill="none" stroke="#7fb4e8" stroke-width="2.5" />
+                    <line x1={courbeGeo.point.x} y1={courbeGeo.axe.y0} x2={courbeGeo.point.x} y2={courbeGeo.point.y} stroke="#e8b54a" stroke-width="1" stroke-dasharray="4 3" />
+                    <line x1={courbeGeo.axe.x0} y1={courbeGeo.point.y} x2={courbeGeo.point.x} y2={courbeGeo.point.y} stroke="#e8b54a" stroke-width="1" stroke-dasharray="4 3" />
+                    <circle cx={courbeGeo.point.x} cy={courbeGeo.point.y} r="5" fill="#e8b54a" />
+                    <text x={courbeGeo.axe.x1} y={courbeGeo.axe.y0 + 16} font-size="11" text-anchor="end" fill="currentColor" opacity="0.7">{formatNumber(courbeGeo.debitMax)}</text>
+                    <text x={courbeGeo.axe.x0 - 6} y={courbeGeo.axe.y1 + 8} font-size="11" text-anchor="end" fill="currentColor" opacity="0.7">{formatNumber(courbeGeo.hmtMax)}</text>
+                    <text x={courbeGeo.axe.x0 - 6} y={courbeGeo.axe.y0} font-size="11" text-anchor="end" fill="currentColor" opacity="0.7">0</text>
+                  </svg>
+                  <p class="mt-2 text-xs text-lune-faint">
+                    <span data-i18n data-fr={AGR_LBL.axeDebit.fr} data-en={AGR_LBL.axeDebit.en} data-ar={AGR_LBL.axeDebit.ar}>{AGR_LBL.axeDebit.fr}</span> ·
+                    <span data-i18n data-fr={AGR_LBL.axeHmt.fr} data-en={AGR_LBL.axeHmt.en} data-ar={AGR_LBL.axeHmt.ar}>{AGR_LBL.axeHmt.fr}</span>
+                    — <span class="fig">{formatNumber(synth.pointFonctionnement!.point.debitM3h)} m³/h · {formatNumber(synth.pointFonctionnement!.point.hmtM)} m</span>
+                  </p>
+                </div>
+              ) : (
+                <p class="mt-3 text-sm text-lune-faint" data-agri-point-omis data-i18n
+                  data-fr={`${motifCourbe && !motifCourbe.startsWith('courbe constructeur non disponible') ? motifCourbe : AGR_LBL.courbeAbsente.fr} ${AGR_LBL.pointOmis.fr}`}
+                  data-en={`${AGR_LBL.courbeAbsente.en} ${AGR_LBL.pointOmis.en}`}
+                  data-ar={`${AGR_LBL.courbeAbsente.ar} ${AGR_LBL.pointOmis.ar}`}>{motifCourbe && !motifCourbe.startsWith('courbe constructeur non disponible') ? motifCourbe : AGR_LBL.courbeAbsente.fr} {AGR_LBL.pointOmis.fr}</p>
+              )}
+            </div>
+          )}
+
+          {/* Pompe existante conservée : plaque relevée et compatibilité. */}
+          {synth && synth.modePompe === 'existante' && (
+            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-plaque>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.pompeExistante.fr} data-en={AGR_LBL.pompeExistante.en} data-ar={AGR_LBL.pompeExistante.ar}>{AGR_LBL.pompeExistante.fr}</p>
+              {plaqueTexte ? (
+                <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr={plaqueTexte.fr} data-en={plaqueTexte.en} data-ar={plaqueTexte.ar}>{plaqueTexte.fr}</p>
+              ) : (
+                <p class="mt-2 text-sm text-lune-faint" data-i18n data-fr={AGR_LBL.plaqueNonRelevee.fr} data-en={AGR_LBL.plaqueNonRelevee.en} data-ar={AGR_LBL.plaqueNonRelevee.ar}>{AGR_LBL.plaqueNonRelevee.fr}</p>
+              )}
+            </div>
+          )}
+
+          {/* D'où viennent ces chiffres : déclaré par vous le … / mesuré par TAQINOR le … /
+              à confirmer par la visite — la provenance SERVIE, jamais une date inventée. */}
+          {synth && (synth.provenance.length > 0 || synth.aConfirmerParVisite.length > 0) && (
+            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-provenance>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.titreProvenance.fr} data-en={AGR_LBL.titreProvenance.en} data-ar={AGR_LBL.titreProvenance.ar}>{AGR_LBL.titreProvenance.fr}</p>
+              {synth.provenance.length > 0 && (
+                <ul class="mt-3 space-y-1 text-sm text-lune-soft">
+                  {synth.provenance.map((e) => {
+                    const lib = libelleEntree(e.cle);
+                    const ph = phraseProvenance(e);
+                    return (
+                      <li>
+                        <strong class="text-lune" data-i18n data-fr={lib.fr} data-en={lib.en} data-ar={lib.ar}>{lib.fr}</strong> :
+                        {' '}<span data-i18n data-fr={ph.fr} data-en={ph.en} data-ar={ph.ar}>{ph.fr}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {synth.aConfirmerParVisite.length > 0 && (
+                <p class="mt-3 text-sm text-lune-soft" data-agri-a-confirmer data-i18n
+                  data-fr={`${AGR_LBL.aConfirmerVisite.fr} ${aConfirmerLbl.fr}.`}
+                  data-en={`${AGR_LBL.aConfirmerVisite.en} ${aConfirmerLbl.en}.`}
+                  data-ar={`${AGR_LBL.aConfirmerVisite.ar} ${aConfirmerLbl.ar}.`}><strong class="text-lune">{AGR_LBL.aConfirmerVisite.fr}</strong> {aConfirmerLbl.fr}.</p>
+              )}
             </div>
           )}
 

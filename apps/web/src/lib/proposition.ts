@@ -4282,39 +4282,359 @@ export function autoconsoCashflow(
   return pts;
 }
 
-/** WJ126 — Livraison d'eau estimée d'un mois (m³). */
-export interface WaterDeliveryMonth {
-  /** Index du mois (0 = janvier). */
-  monthIndex: number;
-  /** Volume estimé livré ce mois (m³) — dérivé, jamais mesuré. */
-  m3: number;
+// ════════════════════════════════════════════════════════════════════════════
+// AGW303 — Jumeau web du document agricole (1/2) : `synthese_agricole`.
+//
+// LA PAGE NE CALCULE RIEN. Le serveur sert `synthese_agricole` (fonction pure du
+// moteur, la MÊME que le PDF — contrat partagé `proposal_data.json` ›
+// `exemple_agricole`, AGR304/AGR308) ; ces extracteurs la LISENT, défensivement :
+// une clé absente → `null`, une série partielle → `null`, jamais un 0 fabriqué.
+// Remplace `agricoleMonthlyDelivery` (livraison d'eau dérivée dans le navigateur
+// de `m3_jour × 365` répartis sur la production — retirée).
+// ════════════════════════════════════════════════════════════════════════════
+
+const estRecord = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === 'object' && !Array.isArray(v);
+
+/** Nombre fini ou `null` — strict : une chaîne n'est JAMAIS convertie ici. */
+function nombreServi(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+function texteServi(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() !== '' ? v : null;
+}
+
+/** Une entrée de provenance servie (forme unique {origine, detail, date}, AGR2). */
+export interface SyntheseProvenance {
+  cle: string;
+  origine: string | null;
+  detail: string | null;
+  date: string | null;
+}
+
+export interface SyntheseBesoinLivreMois {
+  /** m³/jour de BESOIN du mois (servi par le moteur). */
+  besoin: number;
+  /** m³/jour LIVRÉ ce mois-là (servi par le moteur). */
+  livre: number;
+}
+
+export interface SyntheseAgricole {
+  version: number | null;
+  /** `neuve` | `existante` | `null` (non renseigné — jamais deviné). */
+  modePompe: 'neuve' | 'existante' | null;
+  eau: {
+    m3Jour: number | null;
+    heuresPompage: number | null;
+    hmtM: number | null;
+    debitHmtM3h: number | null;
+    /** `true` = le m³/jour est une estimation (jamais présenté comme mesuré). */
+    estimation: boolean;
+  } | null;
+  provenance: SyntheseProvenance[];
+  /** Entrées du point d'eau NON mesurées (D-AGR-4) — clés machine. */
+  aConfirmerParVisite: string[];
+  pompe: {
+    cv: number | null;
+    kw: number | null;
+    plaque: { kw: number | null; tensionV: number | null; phases: string | null; cv: number | null; courantA: number | null } | null;
+  } | null;
+  champ: { kwc: number | null; nbPanneaux: number | null } | null;
+  /** 12 mois COMPLETS ou `null` : jamais une série partielle complétée de zéros. */
+  besoinVsLivre: {
+    mois: SyntheseBesoinLivreMois[];
+    /** 1-12, ou `null`. */
+    moisLePlusSerre: number | null;
+    hectaresIrrigables: number | null;
+    baseBesoin: string | null;
+  } | null;
+  pointFonctionnement: {
+    courbe: Array<[number, number]>;
+    point: { debitM3h: number; hmtM: number };
+  } | null;
+  /** SVG tel que servi (déjà échappé côté serveur) — inséré tel quel, jamais réécrit. */
+  schemaSvg: string | null;
+  omissions: Array<{ bloc: string; motif: string }>;
+}
+
+function lireProvenance(v: unknown): SyntheseProvenance[] {
+  if (!estRecord(v)) return [];
+  const out: SyntheseProvenance[] = [];
+  for (const [cle, e] of Object.entries(v)) {
+    if (!estRecord(e) || !texteServi(e.origine)) continue;
+    out.push({ cle, origine: texteServi(e.origine), detail: texteServi(e.detail), date: texteServi(e.date) });
+  }
+  return out;
+}
+
+function lireBesoinVsLivre(v: unknown): SyntheseAgricole['besoinVsLivre'] {
+  if (!estRecord(v) || !Array.isArray(v.mois) || v.mois.length !== 12) return null;
+  const mois: SyntheseBesoinLivreMois[] = [];
+  for (const m of v.mois) {
+    if (!estRecord(m)) return null;
+    const besoin = nombreServi(m.besoin_m3_jour);
+    const livre = nombreServi(m.livre_m3_jour);
+    if (besoin === null || livre === null) return null; // série partielle → null
+    mois.push({ besoin, livre });
+  }
+  const serre = nombreServi(v.mois_le_plus_serre);
+  return {
+    mois,
+    moisLePlusSerre: serre !== null && Number.isInteger(serre) && serre >= 1 && serre <= 12 ? serre : null,
+    hectaresIrrigables: nombreServi(v.hectares_irrigables),
+    baseBesoin: texteServi(v.base_besoin),
+  };
+}
+
+function lirePointFonctionnement(v: unknown): SyntheseAgricole['pointFonctionnement'] {
+  if (!estRecord(v) || !Array.isArray(v.courbe) || v.courbe.length < 2 || !estRecord(v.point)) return null;
+  const courbe: Array<[number, number]> = [];
+  for (const pt of v.courbe) {
+    if (!Array.isArray(pt) || pt.length !== 2) return null;
+    const q = nombreServi(pt[0]);
+    const h = nombreServi(pt[1]);
+    if (q === null || h === null) return null;
+    courbe.push([q, h]);
+  }
+  const debit = nombreServi(v.point.debit_m3h);
+  const hmt = nombreServi(v.point.hmt_m);
+  if (debit === null || hmt === null) return null;
+  return { courbe, point: { debitM3h: debit, hmtM: hmt } };
+}
+
+function lirePompe(v: unknown): SyntheseAgricole['pompe'] {
+  if (!estRecord(v)) return null;
+  const pl = estRecord(v.plaque) ? v.plaque : null;
+  return {
+    cv: nombreServi(v.cv),
+    kw: nombreServi(v.kw),
+    plaque: pl
+      ? {
+          kw: nombreServi(pl.kw),
+          tensionV: nombreServi(pl.tension_v),
+          phases: texteServi(pl.phases),
+          cv: nombreServi(pl.cv),
+          courantA: nombreServi(pl.courant_a),
+        }
+      : null,
+  };
 }
 
 /**
- * WJ126 — Répartition MENSUELLE INDICATIVE de la livraison d'eau (agricole) :
- * capacité annuelle ≈ `m3_jour × 365` répartie selon la PART d'ensoleillement de
- * chaque mois (`monthly_production`), le pompage solaire suivant le soleil. C'est
- * une DÉRIVATION documentée à partir de deux valeurs PRÉSENTES (m3_jour +
- * production mensuelle), pas un chiffre inventé ; la page l'étiquette clairement
- * « estimation — capacité, suit l'ensoleillement ». Renvoie `null` (bloc omis)
- * si `m3_jour` ou la série de production manque. AUCUNE série de BESOIN culture
- * n'existe dans ce payload (elle vient de QX48/WJ124) — la page n'affiche donc
- * QUE la livraison, jamais une courbe « besoin » fabriquée.
+ * AGW303 — extracteur PUR de `synthese_agricole` (partie eau / besoin / schéma /
+ * point de fonctionnement / provenance / plaque). `null` hors mode agricole, quand
+ * la clé est absente ou vide (un payload sans synthèse garde ses cartes pompe et
+ * n'affiche ni graphe ni schéma). Aucune valeur n'est calculée, convertie ou
+ * complétée ici.
  */
-export function agricoleMonthlyDelivery(
-  p: Pick<ProposalResponse, 'monthly_production'>,
-  k: AgricoleKpis | null,
-): WaterDeliveryMonth[] | null {
-  if (!k || k.m3_jour === null || k.m3_jour <= 0) return null;
-  const prod = monthlySeries(p.monthly_production);
-  if (!prod) return null;
-  const sum = prod.reduce((a, b) => a + b, 0);
-  if (sum <= 0) return null;
-  const annual = k.m3_jour * 365;
-  return prod.map((v, i) => ({
-    monthIndex: i,
-    m3: Math.round((v / sum) * annual),
-  }));
+export function syntheseAgricole(
+  p: Pick<ProposalResponse, 'mode_installation' | 'quote'> | null | undefined,
+): SyntheseAgricole | null {
+  if (!p || resolveInstallMode(p) !== 'agricole') return null;
+  const brut = (p as { synthese_agricole?: unknown }).synthese_agricole;
+  if (!estRecord(brut) || Object.keys(brut).length === 0) return null;
+
+  const eauBrute = estRecord(brut.eau) ? brut.eau : null;
+  const champBrut = estRecord(brut.champ) ? brut.champ : null;
+  const mode = brut.mode_pompe === 'neuve' || brut.mode_pompe === 'existante' ? brut.mode_pompe : null;
+  const omissions: Array<{ bloc: string; motif: string }> = [];
+  if (Array.isArray(brut.omissions)) {
+    for (const o of brut.omissions) {
+      if (estRecord(o) && texteServi(o.bloc) && texteServi(o.motif)) {
+        omissions.push({ bloc: o.bloc as string, motif: o.motif as string });
+      }
+    }
+  }
+  const svg = texteServi(brut.schema_svg);
+  return {
+    version: nombreServi(brut.version),
+    modePompe: mode,
+    eau: eauBrute
+      ? {
+          m3Jour: nombreServi(eauBrute.m3_jour),
+          heuresPompage: nombreServi(eauBrute.heures_pompage),
+          hmtM: nombreServi(eauBrute.hmt_m),
+          debitHmtM3h: nombreServi(eauBrute.debit_hmt_m3h),
+          estimation: eauBrute.estimation !== false, // sauf « false » explicite : une estimation
+        }
+      : null,
+    provenance: lireProvenance(brut.provenance),
+    aConfirmerParVisite: Array.isArray(brut.a_confirmer_par_visite)
+      ? brut.a_confirmer_par_visite.filter((x): x is string => typeof x === 'string')
+      : [],
+    pompe: lirePompe(brut.pompe),
+    champ: champBrut ? { kwc: nombreServi(champBrut.kwc), nbPanneaux: nombreServi(champBrut.nb_panneaux) } : null,
+    besoinVsLivre: lireBesoinVsLivre(brut.besoin_vs_livre),
+    pointFonctionnement: lirePointFonctionnement(brut.point_fonctionnement),
+    schemaSvg: svg !== null && svg.trimStart().startsWith('<svg') ? svg : null,
+    omissions,
+  };
+}
+
+/** Le motif d'omission servi pour un bloc (`besoin_vs_livre`, `point_fonctionnement`…), ou `null`. */
+export function omissionSynthese(s: SyntheseAgricole | null, bloc: string): string | null {
+  return s?.omissions.find((o) => o.bloc === bloc)?.motif ?? null;
+}
+
+/** Date ISO (AAAA-MM-JJ…) → JJ/MM/AAAA ; illisible → `null` (jamais une date inventée). */
+export function dateJjMmAaaa(iso: string | null | undefined): string | null {
+  const t = String(iso ?? '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(t) ? `${t.slice(8, 10)}/${t.slice(5, 7)}/${t.slice(0, 4)}` : null;
+}
+
+export type ProvenanceKind = 'declare' | 'mesure' | 'a_confirmer';
+
+/**
+ * Classe une provenance servie — MÊME règle que le renderer agricole
+ * (`pages._provenance`) : `mesure_visite` / `foreur` → mesuré par TAQINOR ;
+ * origine `saisie` / `lead` → déclaré par vous ; sinon à confirmer. Sans date lisible,
+ * « déclaré » / « mesuré » retombent sur « à confirmer par la visite » (jamais une
+ * date inventée).
+ */
+export function provenanceKind(e: SyntheseProvenance): { kind: ProvenanceKind; date: string | null } {
+  const date = dateJjMmAaaa(e.date);
+  if (e.detail === 'mesure_visite' || e.detail === 'foreur') {
+    return date ? { kind: 'mesure', date } : { kind: 'a_confirmer', date: null };
+  }
+  if (e.origine === 'saisie' || e.origine === 'lead') {
+    return date ? { kind: 'declare', date } : { kind: 'a_confirmer', date: null };
+  }
+  return { kind: 'a_confirmer', date: null };
+}
+
+/** Un libellé à trois voix (FR par défaut, `data-en` / `data-ar` de la page). */
+export interface Lbl3 {
+  fr: string;
+  en: string;
+  ar: string;
+}
+
+/**
+ * AGW303 — libellés STRUCTURELS de la section pompage de /proposition. Les mots sont
+ * ceux du catalogue du document PDF (`quote_engine/i18n_labels.py`, préfixe `agr_`) :
+ * site et devis ne disent jamais deux choses. L'arabe est écrit maintenant et relu par
+ * un natif ensuite (D-AGR-11, manuel). Les DONNÉES servies ne sont jamais traduites.
+ */
+export const AGR_LBL = {
+  titreBesoinLivre: { fr: 'Besoin et eau livrée', en: 'Need and water delivered', ar: 'الحاجة والماء المضخوخ' },
+  legendeBarres: {
+    fr: "Gris : votre besoin par jour ; bleu : l'eau livrée par jour.",
+    en: 'Grey: your daily need; blue: water delivered per day.',
+    ar: 'الرمادي: حاجتكم اليومية؛ الأزرق: الماء المضخوخ يوميا.',
+  },
+  moisSerre: { fr: 'Mois le plus serré :', en: 'Tightest month:', ar: 'الشهر الأصعب:' },
+  surfaceIrrigable: { fr: 'Surface irrigable', en: 'Irrigable area', ar: 'المساحة القابلة للسقي' },
+  titreComment: { fr: 'Comment ça marche', en: 'How it works', ar: 'كيف تعمل' },
+  pointFonctionnement: { fr: 'Point de fonctionnement', en: 'Operating point', ar: 'نقطة التشغيل' },
+  pointOmis: { fr: 'Point de fonctionnement omis.', en: 'Operating point omitted.', ar: 'نقطة التشغيل غير معروضة.' },
+  courbeAbsente: {
+    fr: 'Courbe constructeur non disponible pour cette pompe.',
+    en: 'Manufacturer curve not available for this pump.',
+    ar: 'منحنى الصانع غير متوفر لهذه المضخة.',
+  },
+  axeDebit: { fr: 'Débit (m³/h)', en: 'Flow (m³/h)', ar: 'الصبيب (م³/س)' },
+  axeHmt: { fr: 'HMT (m)', en: 'Head (m)', ar: 'الارتفاع (م)' },
+  titreProvenance: { fr: "D'où viennent ces chiffres", en: 'Where these figures come from', ar: 'مصدر هذه الأرقام' },
+  aConfirmerVisite: { fr: 'À confirmer par la visite :', en: 'To be confirmed by the site visit:', ar: 'يؤكد خلال الزيارة:' },
+  declare: { fr: 'déclaré par vous le {date}', en: 'declared by you on {date}', ar: 'صرحتم به بتاريخ {date}' },
+  mesure: { fr: 'mesuré par TAQINOR le {date}', en: 'measured by TAQINOR on {date}', ar: 'قاسته TAQINOR بتاريخ {date}' },
+  aConfirmer: { fr: 'à confirmer par la visite', en: 'to be confirmed by the site visit', ar: 'يجب تأكيده خلال الزيارة' },
+  agronomique: { fr: 'besoin agronomique plein (FAO-56)', en: 'full agronomic need (FAO-56)', ar: 'الحاجة الفلاحية الكاملة (FAO-56)' },
+  pompeExistante: { fr: 'Votre pompe existante', en: 'Your existing pump', ar: 'مضختكم الحالية' },
+  plaqueRelevee: {
+    fr: 'Plaque relevée : {plaque}. Le variateur et les panneaux sont dimensionnés sur cette plaque.',
+    en: 'Nameplate read: {plaque}. The drive and the panels are sized on this nameplate.',
+    ar: 'اللوحة المسجلة: {plaque}. تم تحديد المغير والألواح على أساس هذه اللوحة.',
+  },
+  plaqueIllisible: { fr: 'non lisible', en: 'not legible', ar: 'غير مقروءة' },
+  plaqueNonRelevee: {
+    fr: 'Plaque de la pompe non relevée : compatibilité à vérifier à la visite.',
+    en: 'Pump nameplate not read: compatibility to be checked at the site visit.',
+    ar: 'لوحة المضخة غير مسجلة: يتم التحقق من التوافق خلال الزيارة.',
+  },
+} satisfies Record<string, Lbl3>;
+
+/** Libellés des entrées de provenance (catalogue `agr_entree_*`). */
+export const AGR_ENTREE_LBL: Record<string, Lbl3> = {
+  volume_m3_jour: { fr: "Volume d'eau par jour", en: 'Daily water volume', ar: 'حجم الماء اليومي' },
+  niveau_statique_m: { fr: 'Niveau statique', en: 'Static water level', ar: 'المستوى الساكن' },
+  niveau_dynamique_m: { fr: 'Niveau dynamique', en: 'Dynamic water level', ar: 'المستوى الدينامي' },
+  debit_exploitation_m3h: { fr: "Débit d'exploitation du forage", en: 'Borehole operating flow', ar: 'صبيب استغلال الثقب' },
+  profondeur_forage_m: { fr: 'Profondeur du forage', en: 'Borehole depth', ar: 'عمق الثقب' },
+  hmt_m: { fr: 'Hauteur manométrique totale', en: 'Total dynamic head', ar: 'الارتفاع المانومتري الكلي' },
+  energie_actuelle: { fr: 'Énergie actuelle', en: 'Current energy', ar: 'الطاقة الحالية' },
+  plaque: { fr: 'Plaque de la pompe', en: 'Pump nameplate', ar: 'لوحة المضخة' },
+  localisation: { fr: 'Localisation', en: 'Location', ar: 'الموقع' },
+  cultures: { fr: 'Cultures', en: 'Crops', ar: 'الزراعات' },
+  surface_ha: { fr: 'Surface', en: 'Area', ar: 'المساحة' },
+};
+
+/** Mois en toutes lettres (légende du mois le plus serré). */
+export const AGR_MOIS_LONG: Record<PropLang, string[]> = {
+  fr: ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'],
+  en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+  ar: ['يناير', 'فبراير', 'مارس', 'أبريل', 'ماي', 'يونيو', 'يوليوز', 'غشت', 'شتنبر', 'أكتوبر', 'نونبر', 'دجنبر'],
+};
+
+/** Remplit les `{cle}` d'un libellé, dans les trois voix. */
+export function remplirLbl(l: Lbl3, valeurs: Record<string, string>): Lbl3 {
+  const f = (t: string) => t.replace(/\{(\w+)\}/g, (m, k: string) => (k in valeurs ? valeurs[k] : m));
+  return { fr: f(l.fr), en: f(l.en), ar: f(l.ar) };
+}
+
+/** Libellé d'une entrée de provenance ; clé hors catalogue → lisible, jamais traduite. */
+export function libelleEntree(cle: string): Lbl3 {
+  const l = AGR_ENTREE_LBL[cle];
+  if (l) return l;
+  const brut = cle.replace(/_/g, ' ');
+  return { fr: brut, en: brut, ar: brut };
+}
+
+/** La phrase de provenance d'une entrée servie, à trois voix (date déjà formatée). */
+export function phraseProvenance(e: SyntheseProvenance): Lbl3 {
+  const { kind, date } = provenanceKind(e);
+  if (kind === 'declare') return remplirLbl(AGR_LBL.declare, { date: date as string });
+  if (kind === 'mesure') return remplirLbl(AGR_LBL.mesure, { date: date as string });
+  return AGR_LBL.aConfirmer;
+}
+
+/**
+ * Géométrie du graphe « courbe de la pompe + point de fonctionnement » : MISE À
+ * L'ÉCHELLE seule (aucune valeur calculée). `null` sans point de fonctionnement.
+ */
+export interface CourbeGeometrie {
+  largeur: number;
+  hauteur: number;
+  polyline: string;
+  point: { x: number; y: number };
+  axe: { x0: number; y0: number; x1: number; y1: number };
+  debitMax: number;
+  hmtMax: number;
+}
+
+export function courbeGeometrie(pf: SyntheseAgricole['pointFonctionnement']): CourbeGeometrie | null {
+  if (!pf) return null;
+  const L = 360;
+  const H = 220;
+  const x0 = 44;
+  const y0 = 184;
+  const x1 = 344;
+  const y1 = 16;
+  const debitMax = Math.max(...pf.courbe.map(([q]) => q), pf.point.debitM3h) || 1;
+  const hmtMax = Math.max(...pf.courbe.map(([, h]) => h), pf.point.hmtM) || 1;
+  const px = (q: number) => x0 + (q / debitMax) * (x1 - x0);
+  const py = (h: number) => y0 - (h / hmtMax) * (y0 - y1);
+  const r = (n: number) => Math.round(n * 10) / 10;
+  return {
+    largeur: L,
+    hauteur: H,
+    polyline: pf.courbe.map(([q, h]) => `${r(px(q))},${r(py(h))}`).join(' '),
+    point: { x: r(px(pf.point.debitM3h)), y: r(py(pf.point.hmtM)) },
+    axe: { x0, y0, x1, y1 },
+    debitMax,
+    hmtMax,
+  };
 }
 
 /** WJ126 — Archétype de bloc commercial (contenu QUALITATIF, aucun chiffre). */
