@@ -7,12 +7,10 @@
 //   node --test src/pages/ventes/DevisListBcPdf.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import { lireSourcesDevisList } from './devisList/lireSources.mjs'
 
-const HERE = dirname(fileURLToPath(import.meta.url))
-const SRC = readFileSync(join(HERE, 'DevisList.jsx'), 'utf8')
+// SPL203 — DevisList.jsx + devisList/*.{js,jsx} (le code suit ses déplacements).
+const SRC = lireSourcesDevisList()
 
 test('ZSAL8 : le menu « ⋯ » propose « Bon de commande (PDF) » quand un BC existe', () => {
   assert.match(SRC, /d\.bon_commande_etat\?\.exists &&\s*\(\s*<DropdownMenuItem onSelect={\(\) => handleBonCommandePdf\(d\)}>\s*Bon de commande \(PDF\)/)

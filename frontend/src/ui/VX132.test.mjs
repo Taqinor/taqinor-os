@@ -7,12 +7,14 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourcesDevisList } from '../pages/ventes/devisList/lireSources.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SKELETON_SRC = readFileSync(join(HERE, 'Skeleton.jsx'), 'utf8')
 const TOKENS_SRC = readFileSync(join(HERE, '..', 'design', 'tokens.css'), 'utf8')
 const DATATABLE_SRC = readFileSync(join(HERE, 'datatable', 'DataTable.jsx'), 'utf8')
-const DEVIS_LIST_SRC = readFileSync(join(HERE, '..', 'pages', 'ventes', 'DevisList.jsx'), 'utf8')
+// SPL203 — DevisList.jsx + devisList/*.{js,jsx} (DevisRow y lit PDF_GENERATION_LABELS).
+const DEVIS_LIST_SRC = lireSourcesDevisList()
 const FACTURE_LIST_SRC = readFileSync(join(HERE, '..', 'pages', 'ventes', 'FactureList.jsx'), 'utf8')
 
 test('(a) Skeleton consomme .skeleton-shimmer (balayage directionnel, pas le pulse Tailwind)', () => {

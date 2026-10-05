@@ -10,9 +10,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourcesDevisList } from './devisList/lireSources.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const SRC = readFileSync(join(HERE, 'DevisList.jsx'), 'utf8')
+// SPL203 — DevisList.jsx + devisList/*.{js,jsx} (le code suit ses déplacements).
+const SRC = lireSourcesDevisList()
 const API_SRC = readFileSync(join(HERE, '../../api/ventesApi.js'), 'utf8')
 
 test('VX215 : ventesApi expose superiorContactStatus (GET, lecture seule)', () => {
