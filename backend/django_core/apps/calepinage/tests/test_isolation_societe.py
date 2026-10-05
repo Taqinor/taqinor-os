@@ -172,7 +172,10 @@ class BalayageIsolationTest(BaseApiCalepinage):
             'job_id': (self.job_etranger.pk if etranger else 0),
             'photo_id': (self.photo_etrangere.pk if etranger else 0),
         }
-        chemin = reste.lstrip('^').replace('$', '')
+        # ACAL229 — un ``url_path`` à extension s'écrit ``r'nom\.ext'``
+        # (point ÉCHAPPÉ dans la regex du routeur) : l'URL réellement servie
+        # porte le point LITTÉRAL ``nom.ext``.
+        chemin = reste.lstrip('^').replace('$', '').replace(r'\.', '.')
         for nom, valeur in valeurs.items():
             # ORDRE CRUCIAL : la forme REGEX du routeur DRF
             # (``(?P<pk>[^/.]+)``) contient ``<pk>`` comme sous-chaîne. La

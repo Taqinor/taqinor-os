@@ -4,7 +4,23 @@
    dans un troisième fichier serait une indirection sans bénéfice pour deux consommateurs
    du même repère. */
 import { useMemo } from 'react'
-import { sortedHorizonPoints, horizonHeightAtAzimuth, sunPathForDay, sunPosition, JOUR_EQUINOXE, JOUR_SOLSTICE_ETE, JOUR_SOLSTICE_HIVER } from './horizonMath'
+import { sortedHorizonPoints, horizonHeightAtAzimuth } from '@rooflib/horizonEngine'
+import { sunDirection as sunPosition, WINTER_SOLSTICE_DAY as JOUR_SOLSTICE_HIVER } from '@rooflib/roofPro2'
+
+/** Jours de repère de l'année (équinoxe, solstice d'été) — l'hiver vient du moteur. */
+const JOUR_EQUINOXE = 80
+const JOUR_SOLSTICE_ETE = 172
+
+/** La course du soleil d'un jour, points AU-DESSUS de l'horizon seulement, tous les
+ *  `stepH` heures — échantillonnée avec `sunDirection` du moteur (jamais une copie). */
+function sunPathForDay(latDeg, dayOfYear, stepH = 0.25) {
+  const points = []
+  for (let h = 0; h <= 24; h += stepH) {
+    const p = sunPosition(latDeg, dayOfYear, h)
+    if (p.elevationDeg > 0) points.push({ ...p, hour: h })
+  }
+  return points
+}
 
 /* ============================================================================
    CAL93/CAL96 — LE DIAGRAMME AZIMUT/HAUTEUR PARTAGÉ.
@@ -50,7 +66,7 @@ export const COURBES_REPERE = [
  *
  * CALX118 — `sunDay`/`sunHour` (le soleil de SCÈNE, contrat CALX88 `scene{sunDay,
  * sunHour}`) positionnent un repère DISTINCT des trois courbes de référence : le MÊME
- * `sunPosition` (`horizonMath.js`, jamais une seconde formule) est appelé avec CES deux
+ * `sunPosition` (`@rooflib/roofPro2 sunDirection`, jamais une seconde formule) est appelé avec CES deux
  * valeurs. Absentes → aucun repère (comportement historique, byte pour byte) ; sous
  * l'horizon (élévation ≤ 0) → aucun repère non plus, jamais un point inventé sous terre.
  */

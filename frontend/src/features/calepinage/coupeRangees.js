@@ -14,18 +14,15 @@
  *
  * DEUX CONSTANTES PHYSIQUES DU MODULE (720 Wc, le même produit posé partout
  * dans le dépôt — `PANEL2_SHORT_M`/`FRONT_STRUT_M` de `roofPro2.ts`) sont
- * dupliquées ci-dessous, pour la même raison que `horizonMath.js` et
- * `obstructionMath.js` juste à côté : `frontend/vitest.config.js` (hors
- * périmètre de cette lane) ne déclare pas l'alias `@rooflib`/le plugin de
- * transpilation TS du builder, donc un import statique de
- * `apps/web/src/lib/roofPro2.ts` échouerait dès la résolution du module sous
- * Vitest. Elles servent UNIQUEMENT à dessiner l'empreinte et la hauteur du
+ * dupliquées ci-dessous (ACAL255 les remplacera par les cotes du module du pan ;
+ * le soleil, lui, est IMPORTÉ de `@rooflib/roofPro2` depuis ACAL254).
+ * Elles servent UNIQUEMENT à dessiner l'empreinte et la hauteur du
  * module déjà posé — le pas lui-même reste toujours MESURÉ, jamais recalculé
  * à partir d'elles.
  *
  * LE RAYON SOLAIRE DE CONCEPTION est obtenu par un vrai IMPORT (pas une
- * copie) de `sunPosition` (`./horizonMath.js`, elle-même la formule exacte de
- * `apps/web/src/lib/roofPro2.ts sunDirection`) à midi solaire au solstice
+ * copie) de `sunDirection`
+ * (`@rooflib/roofPro2`, le moteur de l'atelier) à midi solaire au solstice
  * d'hiver — la même hypothèse que `describeRowPitch` affiche déjà en texte.
  *
  * ZÉRO CHIFFRE INVENTÉ. Un pan sans panneaux posés, ou avec moins de deux
@@ -33,7 +30,7 @@
  * et le motif exact est renvoyé (jamais un pas de remplacement).
  */
 
-import { sunPosition, JOUR_SOLSTICE_HIVER } from './horizonMath.js'
+import { sunDirection as sunPosition, WINTER_SOLSTICE_DAY as JOUR_SOLSTICE_HIVER } from '@rooflib/roofPro2'
 
 const DEG2RAD = Math.PI / 180
 

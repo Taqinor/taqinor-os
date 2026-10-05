@@ -738,6 +738,18 @@ _DJANGO_CONVERTER = re.compile(r"<[^>]+>")
 _REGEX_GROUP = re.compile(r"\(\?P<[^>]+>[^)]*\)")
 
 
+def _point_litteral(text: str) -> str:
+    """ACAL229 — un point ECHAPPE (``\\.``) est un point LITTERAL.
+
+    Les ``@action`` du calepinage echappent le point de leur ``url_path``
+    (``r'export\\.csv'``) : non echappe, il accepte n'importe quel caractere
+    et ``export.csv/`` capturait ``export-csv/``. Le chemin servi reste
+    ``export.csv/`` : la garde le lit tel quel, pas comme un segment regex
+    opaque.
+    """
+    return text.replace("\\.", ".")
+
+
 def normalise_route(raw: str, regex: bool = False):
     """('seg', '<>') + drapeau opaque (route non representable segment a segment)."""
     text = raw
@@ -745,6 +757,7 @@ def normalise_route(raw: str, regex: bool = False):
     if regex:
         text = text.lstrip("^").rstrip("$")
         text = _REGEX_GROUP.sub(ANY, text)
+        text = _point_litteral(text)
         if re.search(r"[\[\]()*+?{}\\|]", text):
             opaque = True
     if "path:" in text:                 # <path:x> avale plusieurs segments
@@ -755,6 +768,7 @@ def normalise_route(raw: str, regex: bool = False):
     # devenaient alors de faux positifs.
     text = _REGEX_GROUP.sub(ANY, text)
     text = _DJANGO_CONVERTER.sub(ANY, text)
+    text = _point_litteral(text)
     segments = []
     for segment in text.split("/"):
         if not segment:

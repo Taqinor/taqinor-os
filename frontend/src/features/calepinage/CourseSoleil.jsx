@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import SunDiagram, { COURBES_REPERE } from './SunDiagram'
-import { sunPosition, JOUR_SOLSTICE_HIVER } from './horizonMath'
+import { sunDirection as sunPosition, WINTER_SOLSTICE_DAY as JOUR_SOLSTICE_HIVER } from '@rooflib/roofPro2'
 import { HAUTEUR_TOIT_HYPOTHESE_M, centroideDuContour, obstructionsDuPan } from './obstructionMath'
 import RetourAtelier from './atelier/RetourAtelier'
 

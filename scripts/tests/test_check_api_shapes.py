@@ -1329,5 +1329,84 @@ class PlancherInventaireTests(unittest.TestCase):
         self.assertGreater(entree["serialiseurs"]["valeur"], 0)
 
 
+class CalepinageApiGoldenTests(unittest.TestCase):
+    """SPL291 — fige les 16 fonctions de calepinageApi.js que la garde
+    resout aujourd'hui, AVANT tout eclatement en fragments (SPL292-SPL295).
+    Un deplacement qui ferait sortir une fonction de l'index (cle (fichier,
+    nom) introuvable) passerait a vide — ce test le rougit."""
+
+    FACADE = ROOT / "frontend" / "src" / "api" / "calepinageApi.js"
+    RESOLUES = [
+        "calculer", "comparerProjets", "creerDepuisModele", "depuisLead",
+        "depuisModele", "enregistrerProfilsTypes", "get", "importerProjet",
+        "modeles", "pose", "profilsTypes", "resultat", "suggererPentesIGN",
+        "suggestionPenteDisponible", "update", "zonesLestage",
+    ]
+
+    def test_les_16_fonctions_calepinage_sont_resolues(self):
+        fonctions = shapes.ApiFunctions([self.FACADE])
+        fonctions.collect()
+        noms = sorted(nom for (module, nom) in fonctions.functions
+                      if module == self.FACADE.resolve())
+        self.assertEqual(noms, self.RESOLUES)
+
+    # SPL292 — une fonction deplacee dans un fragment `api/calepinage/*.js`
+    # reste indexee sous la FACADE (le module importe/mocke par les ecrans).
+    FACADE_SEULE = (
+        "import api from './axios'\n"
+        "const calepinageApi = {\n"
+        "  calepinages: {\n"
+        "    modeles: () => api.get('/calepinage/calepinages/modeles/'),\n"
+        "    depuisLead: (leadId) =>\n"
+        "      api.post('/calepinage/calepinages/depuis-lead/', {}),\n"
+        "  },\n"
+        "}\n"
+        "export default calepinageApi\n"
+    )
+    FACADE_ECLATEE = (
+        "import api from './axios'\n"
+        "import { sorties } from './calepinage/sorties'\n"
+        "const calepinageApi = {\n"
+        "  calepinages: {\n"
+        "    modeles: () => api.get('/calepinage/calepinages/modeles/'),\n"
+        "    ...sorties,\n"
+        "  },\n"
+        "}\n"
+        "export default calepinageApi\n"
+    )
+    FRAGMENT = (
+        "import api from '../axios'\n"
+        "export const sorties = {\n"
+        "    depuisLead: (leadId) =>\n"
+        "      api.post('/calepinage/calepinages/depuis-lead/', {}),\n"
+        "}\n"
+    )
+    BASE = ("export const pivot = (id) => "
+            "`/calepinage/calepinages/${id}/`\n")
+
+    def _couples(self, racine, fichiers):
+        fonctions = shapes.ApiFunctions(fichiers)
+        fonctions.collect()
+        return {(Path(m).relative_to(racine.resolve()).as_posix(), nom, *appel)
+                for (m, nom), appels in fonctions.functions.items()
+                for appel in appels}
+
+    def test_un_fragment_est_indexe_sous_la_facade(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            seule = write(racine / "a" / "api" / "calepinageApi.js",
+                          self.FACADE_SEULE)
+            avant = self._couples(racine / "a", [seule])
+            facade = write(racine / "b" / "api" / "calepinageApi.js",
+                           self.FACADE_ECLATEE)
+            frag = write(racine / "b" / "api" / "calepinage" / "sorties.js",
+                         self.FRAGMENT)
+            base = write(racine / "b" / "api" / "calepinage" / "_base.js",
+                         self.BASE)
+            apres = self._couples(racine / "b", [facade, frag, base])
+        self.assertEqual(len(avant), 2)
+        self.assertEqual(apres, avant)
+
+
 if __name__ == "__main__":
     unittest.main()

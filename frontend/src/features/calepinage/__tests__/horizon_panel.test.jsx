@@ -31,9 +31,10 @@ const {
   default: HorizonPanel,
 } = await import('../HorizonPanel')
 const {
-  sortedHorizonPoints, horizonHeightAtAzimuth, horizonMaxHeightDeg, sunPosition,
-  heuresMasqueesEstimation, JOUR_EQUINOXE,
-} = await import('../horizonMath')
+  sortedHorizonPoints, horizonHeightAtAzimuth, horizonMaxHeightDeg, hourlyHorizonFactors, maskedHourCount,
+} = await import('@rooflib/horizonEngine')
+const { sunDirection: sunPosition } = await import('@rooflib/roofPro2')
+const JOUR_EQUINOXE = 80
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -45,7 +46,7 @@ const CONTRAT = 'calepinage_horizon'
 
 /* ── 1. Le moteur pur (mêmes garanties que apps/web/tests/horizonEngine.test.ts) ── */
 
-describe('CAL93 — horizonMath (moteur pur)', () => {
+describe('CAL93 — horizonEngine (moteur partagé avec l’atelier)', () => {
   it('trie par azimut et écarte les points non finis', () => {
     const sorted = sortedHorizonPoints([
       { azimuthDeg: 200, heightDeg: 5 },
@@ -74,13 +75,13 @@ describe('CAL93 — horizonMath (moteur pur)', () => {
     expect(Math.abs(midi.elevationDeg - (90 - lat))).toBeLessThan(1)
   })
 
-  it('heuresMasqueesEstimation : 0 sans profil exploitable, > 0 avec un mur haut partout', () => {
-    expect(heuresMasqueesEstimation(33.5731, [])).toBe(0)
+  it('heures masquées (maskedHourCount) : 0 sans profil exploitable, > 0 avec un mur haut partout', () => {
+    expect(maskedHourCount(hourlyHorizonFactors(33.5731, []))).toBe(0)
     const mur = [
       { azimuthDeg: 0, heightDeg: 60 }, { azimuthDeg: 90, heightDeg: 60 },
       { azimuthDeg: 180, heightDeg: 60 }, { azimuthDeg: 270, heightDeg: 60 },
     ]
-    expect(heuresMasqueesEstimation(33.5731, mur)).toBeGreaterThan(0)
+    expect(maskedHourCount(hourlyHorizonFactors(33.5731, mur))).toBeGreaterThan(0)
   })
 })
 

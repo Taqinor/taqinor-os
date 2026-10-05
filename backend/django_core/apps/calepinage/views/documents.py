@@ -40,7 +40,7 @@ from .calepinages import CalepinageViewSet
         description="Langue de sortie demandée (fr, en ; ar retombe sur le "
                     "français en le disant au pied du document).")],
 )
-@action(detail=True, methods=['get'], url_path='rapport-etude.pdf',
+@action(detail=True, methods=['get'], url_path=r'rapport-etude\.pdf',
         url_name='rapport-etude-pdf', permission_classes=[PeutVoirCalepinage])
 def rapport_etude_pdf(self, request, pk=None):
     """CALX297 — le rapport d'étude : site, système, pertes, production…
@@ -101,7 +101,7 @@ CalepinageViewSet.rapport_etude_pdf = rapport_etude_pdf
         name='langue', type=OpenApiTypes.STR, required=False,
         description='Langue des libellés (fr, en ; ar retombe sur fr).')],
 )
-@action(detail=True, methods=['get'], url_path='diagramme-pertes.svg',
+@action(detail=True, methods=['get'], url_path=r'diagramme-pertes\.svg',
         url_name='diagramme-pertes-svg',
         permission_classes=[PeutVoirCalepinage])
 def diagramme_pertes_svg(self, request, pk=None):
@@ -268,7 +268,7 @@ def _refus_plan_cablage(refus):
 
 
 @extend_schema(responses={200: OpenApiTypes.BINARY})
-@action(detail=True, methods=['get'], url_path='plan-cablage.pdf',
+@action(detail=True, methods=['get'], url_path=r'plan-cablage\.pdf',
         url_name='plan-cablage-pdf', permission_classes=[PeutVoirCalepinage])
 def plan_cablage_pdf(self, request, pk=None):
     """CALX310 — le plan de câblage : modules teintés par chaîne, légende.
@@ -297,7 +297,7 @@ CalepinageViewSet.plan_cablage_pdf = plan_cablage_pdf
 
 
 @extend_schema(responses={200: OpenApiTypes.BINARY})
-@action(detail=True, methods=['get'], url_path='plan-cablage.dxf',
+@action(detail=True, methods=['get'], url_path=r'plan-cablage\.dxf',
         url_name='plan-cablage-dxf', permission_classes=[PeutVoirCalepinage])
 def plan_cablage_dxf(self, request, pk=None):
     """CALX310 — le DXF de pose AVEC le calque ``CHAINES``.
@@ -356,7 +356,7 @@ EXPORT_PROJET_SCHEMA = inline_serializer('CalepinageExportProjet', {
 
 
 @extend_schema(responses={200: EXPORT_PROJET_SCHEMA})
-@action(detail=True, methods=['get'], url_path='export-projet.json',
+@action(detail=True, methods=['get'], url_path=r'export-projet\.json',
         url_name='export-projet-json', permission_classes=[PeutVoirCalepinage],
         renderer_classes=[JSONRenderer])
 def export_projet_json(self, request, pk=None):
@@ -452,7 +452,7 @@ CalepinageViewSet.image_document = image_document
         description="Langue de sortie demandée (fr, en ; ar retombe sur le "
                     "français en le disant au pied du document).")],
 )
-@action(detail=True, methods=['get'], url_path='rapport-ombrage.pdf',
+@action(detail=True, methods=['get'], url_path=r'rapport-ombrage\.pdf',
         url_name='rapport-ombrage-pdf',
         permission_classes=[PeutVoirCalepinage])
 def rapport_ombrage_pdf(self, request, pk=None):
@@ -491,7 +491,7 @@ CalepinageViewSet.rapport_ombrage_pdf = rapport_ombrage_pdf
 
 
 @extend_schema(responses={200: OpenApiTypes.BINARY})
-@action(detail=True, methods=['get'], url_path='manuel-proprietaire.pdf',
+@action(detail=True, methods=['get'], url_path=r'manuel-proprietaire\.pdf',
         url_name='manuel-proprietaire-pdf',
         permission_classes=[PeutVoirCalepinage])
 def manuel_proprietaire_pdf(self, request, pk=None):
@@ -524,7 +524,7 @@ CalepinageViewSet.manuel_proprietaire_pdf = manuel_proprietaire_pdf
 
 # ── CALX318 — le document as-built (prévu, posé, écarts, photos) ───────────
 @extend_schema(responses={200: OpenApiTypes.BINARY})
-@action(detail=True, methods=['get'], url_path='document-asbuilt.pdf',
+@action(detail=True, methods=['get'], url_path=r'document-asbuilt\.pdf',
         url_name='document-asbuilt-pdf',
         permission_classes=[PeutVoirCalepinage])
 def document_asbuilt_pdf(self, request, pk=None):
@@ -553,7 +553,7 @@ CalepinageViewSet.document_asbuilt_pdf = document_asbuilt_pdf
 
 # ── CALX315 — la présentation compacte interne, deux pages, sans montant ───
 @extend_schema(responses={200: OpenApiTypes.BINARY})
-@action(detail=True, methods=['get'], url_path='presentation-compacte.pdf',
+@action(detail=True, methods=['get'], url_path=r'presentation-compacte\.pdf',
         url_name='presentation-compacte-pdf',
         permission_classes=[PeutVoirCalepinage])
 def presentation_compacte_pdf(self, request, pk=None):
