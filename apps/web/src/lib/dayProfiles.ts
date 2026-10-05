@@ -264,30 +264,57 @@ export const DEFAULT_LAT = 33.57;
 export const DEFAULT_LON = -7.59;
 
 /**
- * FUSEAU RETENU POUR LE RAMADAN : UTC+0.
+ * HEURE CIVILE MAROCAINE — décalage à la date, jamais une constante.
  *
- * Le Maroc vit à UTC+1 toute l'année SAUF pendant le Ramadan, où il repasse à
- * UTC+0. C'est exactement ce qu'affirme la note servie par le backend
- * (`courbes_journalieres.NOTE_HORAIRE` — notre source de vérité dans ce dépôt :
- * « Pendant le Ramadan, le Maroc repasse à UTC+0 : la courbe se décale alors
- * d'une heure plus tôt »), et ce que documente « Time in Morocco »
- * (en.wikipedia.org). L'iftar que le client connaît — celui de son
- * calendrier, de la sirène et de la télévision — est donc une heure UTC+0.
- * C'est celle-là qu'on calcule et qu'on affiche.
- *
- * CE QUE ÇA IMPLIQUE, ET QU'ON DIT : la FORME de production servie par le
- * serveur, elle, reste en heure civile ordinaire (UTC+1) — le backend ne
- * modélise pas le décalage Ramadan, il le DIT. La page affiche donc la note
- * horaire du serveur à côté de la puce Ramadan plutôt que de bricoler un
- * décalage d'une heure sur une courbe qu'elle n'a pas produite.
+ * Fuseau IANA `Africa/Casablanca`. Décret n° 2.26.530 relatif à l'heure
+ * légale (BO n° 7521 du 29/06/2026), en vigueur la nuit du 19 au 20/09/2026 :
+ * le Maroc est à l'heure GMT (UTC+0) toute l'année, sans AUCUNE bascule,
+ * saisonnière ou de Ramadan. Avant cette date, il vivait à UTC+1 hors Ramadan
+ * (UTC+0 pendant le mois) — ce que la base de fuseaux de l'environnement
+ * (Intl) sait dire pour le passé ; elle peut ignorer le décret, d'où le
+ * seuil explicite ci-dessous. Miroir exact de `decalage_maroc_h` /
+ * `note_horaire()` côté ERP (`apps/parametres/pvgis_profils.py`).
  */
-export const RAMADAN_TZ_OFFSET_HOURS = 0;
+export const FUSEAU_MAROC = 'Africa/Casablanca';
+
+/** Première seconde de l'heure GMT définitive (décret 2.26.530). */
+export const HEURE_GMT_DEFINITIVE_MS = Date.UTC(2026, 8, 20, 0, 0, 0);
+
+/** Décalage (heures entières) de l'heure civile marocaine vs UTC à `quand`. */
+export function decalageMarocH(quand: Date = new Date()): number {
+  const ms = quand.getTime();
+  if (!Number.isFinite(ms)) return 0;
+  if (ms >= HEURE_GMT_DEFINITIVE_MS) return 0;
+  try {
+    const part = new Intl.DateTimeFormat('en-US', {
+      timeZone: FUSEAU_MAROC,
+      timeZoneName: 'longOffset',
+    })
+      .formatToParts(quand)
+      .find((x) => x.type === 'timeZoneName')?.value;
+    const m = /GMT([+-])(\d{2}):(\d{2})/.exec(part ?? '');
+    if (m) return (m[1] === '-' ? -1 : 1) * Number(m[2]);
+  } catch {
+    /* fuseau indisponible : repli ci-dessous */
+  }
+  // Repli : 0 est l'heure légale du jour (même repli que l'ERP).
+  return 0;
+}
+
+/** Note d'affichage de l'heure, DÉRIVÉE du décalage (jamais figée). */
+export function noteHoraire(quand: Date = new Date()): string {
+  const d = decalageMarocH(quand);
+  if (d === 0) {
+    return "Heures en heure civile marocaine — l'heure GMT (UTC+0), sans changement d'heure saisonnier.";
+  }
+  return `Heures en heure civile marocaine (UTC${d > 0 ? '+' : '-'}${Math.abs(d)}).`;
+}
 
 /** L'approximation du fajr retenue : lever du soleil MOINS 80 minutes. */
 export const FAJR_BEFORE_SUNRISE_MIN = 80;
 
 export interface RamadanWindow {
-  /** Fin du suhoor / imsak (heure décimale, fuseau `RAMADAN_TZ_OFFSET_HOURS`). */
+  /** Fin du suhoor / imsak (heure décimale, heure civile marocaine à la date). */
   imsakHour: number;
   /** Iftar = coucher du soleil (heure décimale, même fuseau). */
   iftarHour: number;
@@ -448,7 +475,7 @@ export function ramadanWindow(
     refDay,
     Number.isFinite(lat) ? lat : DEFAULT_LAT,
     Number.isFinite(lon) ? lon : DEFAULT_LON,
-    RAMADAN_TZ_OFFSET_HOURS,
+    decalageMarocH(refDay),
   );
   if (!sun) return null;
   return {
@@ -478,7 +505,7 @@ export function formatHourLabel(hour: number, lang: 'fr' | 'en' | 'ar' = 'fr'): 
 
 /** Production servie pour UNE saison (forme 24 h + niveaux réels). */
 export interface ServedProduction {
-  /** 24 parts en HEURE LOCALE (UTC+1), somme = 1. */
+  /** 24 parts en HEURE LOCALE (heure civile marocaine), somme = 1. */
   forme: number[];
   /** Énergie du jour moyen de la saison (kWh). */
   kwhJour: number;
@@ -492,7 +519,7 @@ export interface ServedProduction {
  * factures réelles du lead) — servi depuis CJ1.
  *
  * CJ2b (21/08/2026) — `forme` est la FORME horaire, désormais servable elle
- * aussi : 24 parts en HEURE LOCALE (UTC+1), somme = 1, EXACTEMENT la même
+ * aussi : 24 parts en HEURE LOCALE (heure civile marocaine), somme = 1, EXACTEMENT la même
  * convention que `ServedProduction.forme`. Optionnelle : un backend qui ne sert
  * que le niveau (le cas fréquent avant CJ2b) laisse `forme` absente, et
  * `proposalCurve.rawConsumptionShape` retombe alors sur la silhouette

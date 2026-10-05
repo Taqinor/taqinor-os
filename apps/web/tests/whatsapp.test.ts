@@ -145,3 +145,76 @@ describe('caseStudyWhatsappText (W350 — bouton WhatsApp propre à une étude d
     expect(msg).not.toContain('undefined');
   });
 });
+
+// ———————————————————————————————————————————————————————————————————————————
+// AGW402 — porte WhatsApp pompage : un message FR/AR/EN sans « facture », et
+// l'anglais de l'accueil n'est plus servi en français.
+// ———————————————————————————————————————————————————————————————————————————
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { zeroFormWhatsappText } from '../src/lib/whatsapp';
+
+describe('AGW402 — zeroFormWhatsappText variante pompage', () => {
+  it('pompage FR/AR/EN : non vide, sans « facture »/« bill »/« فاتورة », ni prix', () => {
+    for (const loc of ['fr', 'en', 'ar'] as const) {
+      const t = zeroFormWhatsappText(loc, 'pompage');
+      expect(t.length).toBeGreaterThan(20);
+      expect(t).not.toMatch(/facture|bill|فاتورة/i);
+      expect(t).not.toMatch(/MAD|DH|dirham|درهم|%/);
+    }
+    expect(zeroFormWhatsappText('fr', 'pompage')).toBe(
+      'Bonjour, je souhaite un pompage solaire pour mon exploitation. ' +
+        'Je vous envoie ma position et une photo de la plaque de ma pompe (ou de mon forage).',
+    );
+  });
+
+  it('la variante pompage est distincte selon la langue', () => {
+    const set = new Set(['fr', 'en', 'ar'].map((l) => zeroFormWhatsappText(l as 'fr' | 'en' | 'ar', 'pompage')));
+    expect(set.size).toBe(3);
+  });
+
+  it('accueil : EN en anglais, FR identique à l’octet', () => {
+    const en = zeroFormWhatsappText('en');
+    expect(en).toContain('Hello');
+    expect(en).not.toContain('Bonjour');
+    expect(zeroFormWhatsappText()).toBe(
+      'Bonjour, voici une photo de ma facture d’électricité (ou je vous envoie un vocal juste après). ' +
+        'Merci de vous occuper de tout.',
+    );
+    expect(zeroFormWhatsappText('fr')).toBe(zeroFormWhatsappText());
+  });
+
+  it('les 3 pages pompage utilisent la variante pompage ; l’accueil EN passe sa langue', () => {
+    const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+    expect(read('../src/pages/pompage-solaire.astro')).toContain("zeroFormWhatsappText('fr', 'pompage')");
+    expect(read('../src/pages/en/pompage-solaire.astro')).toContain("zeroFormWhatsappText('en', 'pompage')");
+    expect(read('../src/pages/ar/pompage-solaire.astro')).toContain("zeroFormWhatsappText('ar', 'pompage')");
+    expect(read('../src/pages/en/index.astro')).toContain("zeroFormWhatsappText('en')");
+  });
+});
+
+// ———————————————————————————————————————————————————————————————————————————
+// CIW404 — le message WhatsApp d'un lead commercial/industriel ne porte aucune
+// économie ni retour (les libellés restent vides dans le bloc pro des 3 pages).
+// ———————————————————————————————————————————————————————————————————————————
+describe('CIW404 — WhatsApp pro sans économie ni retour', () => {
+  it('sans libellé d\'économie : aucun « MAD/an », « économies estimées » ni retour', () => {
+    const t = captureWhatsappText({ fullName: 'Karim', city: 'Casablanca', kwcLabel: undefined, savingsLabel: undefined });
+    expect(t).not.toMatch(/MAD\/an|économies estimées|retour/i);
+  });
+
+  for (const [lang, rel] of [
+    ['FR', '../src/pages/devis/mon-toit.astro'],
+    ['EN', '../src/pages/en/devis/mon-toit.astro'],
+    ['AR', '../src/pages/ar/devis/mon-toit.astro'],
+  ] as const) {
+    it(`${lang} — le bloc pro vide lastSavingsLabel/lastKwcLabel (jamais de libellé chiffré hérité des hypothèses)`, () => {
+      const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+      const debut = src.indexOf('function computeProEstimate');
+      const fin = src.indexOf('interface AgricoleEstimateOk', debut);
+      const bloc = fin > debut ? src.slice(debut, fin) : src.slice(debut, debut + 12000);
+      expect(bloc).not.toMatch(/lastSavingsLabel = (?!'')/);
+      expect(bloc).not.toMatch(/lastKwcLabel = (?!'')/);
+    });
+  }
+});

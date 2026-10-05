@@ -352,9 +352,8 @@ describe("Chantier 1 bis — l'estimation tient debout sans les questions coupé
     expect(r.pompeCv).toBeGreaterThan(0);
     expect(r.champKwc).toBeGreaterThan(0);
     expect(r.m3Jour).toBeGreaterThan(0);
-    // La dépense carburant — SEUL rescapé de l'accordéon « pompe actuelle » —
-    // continue de produire l'économie annoncée.
-    expect(r.fuelSavingMadYearLow ?? 0).toBeGreaterThan(0);
+    // AGW404 — la dépense carburant déclarée ne produit plus aucune « économie ».
+    expect(r).not.toHaveProperty('fuelSavingMadYearLow');
   });
 
   it("AGRICOLE : le besoin en eau se calcule sans la question d'irrigation", () => {
@@ -739,6 +738,154 @@ describe("Chantier 5 — le GPS rend l'adresse secondaire, jamais bloquante", ()
     it(`${lang} — le champ reste visible dans les deux cas (il sert au courrier, jamais retiré)`, () => {
       expect(dom).toContain('id="mt-city"');
       expect(dom).not.toContain('id="mt-city" hidden');
+    });
+  }
+});
+
+// ———————————————————————————————————————————————————————————————————————————
+// AGW401 — `?mode=` présélectionne VISIBLEMENT la carte (liste fermée des 4
+// modes, UN SEUL lecteur par tunnel) ; l'étape 0 agricole parle de forage.
+// ———————————————————————————————————————————————————————————————————————————
+describe('AGW401 — ?mode= présélectionne la carte, étape 0 agricole', () => {
+  for (const [lang, rel] of LOCALES) {
+    const src = read(rel);
+    const script = stripLineComments(src);
+
+    it(`${lang} — un seul lecteur de ?mode= et liste fermée des 4 modes`, () => {
+      expect(script.match(/URLSearchParams\(/g)?.length).toBe(1);
+      expect(script).toContain("get('mode')");
+      expect(script).toContain("['residentiel', 'industriel', 'commercial', 'agricole'].includes(wantedMode)");
+      // Valeur inconnue : aucune affectation hors de la liste fermée.
+      expect(script.match(/mode = wantedMode;/g)?.length).toBe(1);
+    });
+
+    it(`${lang} — la présélection passe par syncModeCards (aria-pressed) au démarrage`, () => {
+      expect(script).toContain("b.setAttribute('aria-pressed', String(on));");
+      const afterRead = script.slice(script.indexOf('mode = wantedMode;'));
+      expect(afterRead.indexOf('syncModeCards();')).toBeGreaterThan(-1);
+    });
+
+    it(`${lang} — étape 0 agricole : texte forage/parcelle, Pointer/Dessiner masqué`, () => {
+      expect(src).toContain('id="mt-step0-intro-agri"');
+      expect(src).toMatch(/id="mt-step0-intro-agri" hidden/);
+      expect(src).toMatch(/forage|borehole/);
+      expect(script).toContain("introAgri.hidden = m !== 'agricole';");
+      expect(script).toContain("roofModeGrp.hidden = m === 'agricole'");
+    });
+  }
+  it('FR/AR — le texte forage est livré en français et en arabe', () => {
+    for (const rel of ['../src/pages/devis/mon-toit.astro', '../src/pages/ar/devis/mon-toit.astro']) {
+      const src = read(rel);
+      expect(src).toContain('posez un repère sur votre forage ou votre parcelle');
+      expect(src).toContain('ضع علامة على بئرك أو قطعتك الأرضية');
+    }
+  });
+});
+
+// ———————————————————————————————————————————————————————————————————————————
+// AGW400 — /pompage-solaire (FR/EN/AR) envoie au tunnel avec `?mode=agricole` ;
+// l'accueil, lui, n'impose aucun mode.
+// ———————————————————————————————————————————————————————————————————————————
+describe('AGW400 — liens pompage → tunnel avec ?mode=agricole', () => {
+  const POMPAGE: Array<[string, string]> = [
+    ['FR', '../src/pages/pompage-solaire.astro'],
+    ['EN', '../src/pages/en/pompage-solaire.astro'],
+    ['AR', '../src/pages/ar/pompage-solaire.astro'],
+  ];
+  const ACCUEIL = ['../src/pages/index.astro', '../src/pages/en/index.astro', '../src/pages/ar/index.astro'];
+
+  for (const [lang, rel] of POMPAGE) {
+    it(`${lang} — tout lien vers le tunnel porte mode=agricole`, () => {
+      const src = stripLineComments(read(rel));
+      // FR : href littéraux ; EN/AR : constante `devisHref` utilisée partout.
+      const litteraux = lang === 'FR' ? (src.match(/["']\/devis\/mon-toit[^"']*["']/g) ?? []) : [];
+      for (const l of litteraux) expect(l).toContain('mode=agricole');
+      if (lang !== 'FR') {
+        expect(src).toContain("const devisHref = L('/devis/mon-toit') + '?mode=agricole';");
+        expect(src).not.toMatch(/href=\{?["']\/devis\/mon-toit["']/);
+      } else {
+        expect(litteraux.length).toBeGreaterThanOrEqual(4);
+      }
+    });
+  }
+
+  for (const rel of ACCUEIL) {
+    it(`accueil ${rel.split('/').slice(-2).join('/')} — aucun lien du tunnel n'impose mode=agricole`, () => {
+      expect(read(rel)).not.toContain('mode=agricole');
+    });
+  }
+});
+
+// ———————————————————————————————————————————————————————————————————————————
+// AGW405 — plus de « Subvention FDA : jusqu'à 30 % » ni de « dossier accompagné
+// par nos soins » dans le tunnel ; lien vers /financement.
+// ———————————————————————————————————————————————————————————————————————————
+describe('AGW405 — bloc FDA du tunnel : aucun pourcentage, aucune promesse', () => {
+  const LIENS: Record<string, string> = { FR: '/financement', EN: '/en/financement', AR: '/ar/financement' };
+  for (const [lang, rel] of LOCALES) {
+    const src = read(rel);
+    const bloc = slice(src, '<p id="mt-fda-note"', '</p>');
+    it(`${lang} — le bloc FDA existe, sans « 30 » ni « up to 30 » ni « حتى 30 »`, () => {
+      expect(bloc).not.toBe('');
+      expect(bloc).not.toMatch(/30/);
+      expect(bloc).not.toMatch(/up to 30|حتى 30|jusqu'à 30/i);
+      expect(bloc).not.toMatch(/%|٪/);
+    });
+    it(`${lang} — plus de promesse d'accompagnement du dossier`, () => {
+      expect(src).not.toContain('dossier accompagné par nos soins');
+      expect(src).not.toContain('handle the application for you');
+      expect(src).not.toContain('نتكفّل بمواكبة الملف');
+    });
+    it(`${lang} — le lien vers la page Financement est présent`, () => {
+      expect(bloc).toContain(`href="${LIENS[lang]}"`);
+    });
+  }
+});
+
+// ———————————————————————————————————————————————————————————————————————————
+// CIW400 — `?mode=industriel` et `?mode=commercial` présélectionnent VISIBLEMENT
+// la bonne carte dans les 3 langues, par la lecture d'AGW401 (jamais un second
+// lecteur). On EXÉCUTE le bloc de lecture réel de chaque page.
+// ———————————————————————————————————————————————————————————————————————————
+describe('CIW400 — ?mode=industriel|commercial présélectionnent la carte (lecture AGW401)', () => {
+  /** Exécute le bloc de lecture de ?mode= de la page, avec une URL simulée. */
+  const lireMode = (src: string, search: string): string => {
+    const m = /try \{\s*const wantedMode[\s\S]*?\n  \}(?=\s*catch)/.exec(src);
+    expect(m).not.toBeNull();
+    const fn = new Function('window', `let mode = ''; ${m![0]} catch (e) {} return mode;`);
+    return fn({ location: { search } }) as string;
+  };
+  /** Les `data-mode` des cartes réellement rendues (MODES) dans la page. */
+  const cartes = (src: string): string[] => {
+    const modes = slice(src, 'const MODES = [', '];');
+    return [...modes.matchAll(/id: '([a-z]+)'/g)].map((x) => x[1]);
+  };
+
+  for (const [lang, rel] of LOCALES) {
+    const src = read(rel);
+    it(`${lang} — ?mode=commercial et ?mode=industriel → la carte correspondante (rendue) est choisie`, () => {
+      expect(lireMode(src, '?mode=commercial')).toBe('commercial');
+      expect(lireMode(src, '?mode=industriel')).toBe('industriel');
+      expect(cartes(src)).toEqual(expect.arrayContaining(['commercial', 'industriel']));
+      // la carte active passe par syncModeCards → aria-pressed="true" (visible, modifiable)
+      expect(src).toContain("b.setAttribute('aria-pressed', String(on));");
+    });
+    it(`${lang} — valeur inconnue ou absente : aucun mode (comportement d'aujourd'hui)`, () => {
+      expect(lireMode(src, '?mode=xyz')).toBe('');
+      expect(lireMode(src, '?mode=')).toBe('');
+      expect(lireMode(src, '')).toBe('');
+      expect(lireMode(src, '?bill=3000')).toBe('');
+    });
+    it(`${lang} — la liste fermée de lecture = exactement les cartes rendues ; un seul lecteur`, () => {
+      const liste = /\[('residentiel'[^\]]*)\]\.includes\(wantedMode\)/.exec(stripLineComments(src));
+      expect(liste).not.toBeNull();
+      const ids = [...liste![1].matchAll(/'([a-z]+)'/g)].map((x) => x[1]).sort();
+      expect(ids).toEqual([...cartes(src)].sort());
+      expect(stripLineComments(src).match(/URLSearchParams\(/g)?.length).toBe(1);
+      expect(stripLineComments(src).match(/get\('mode'\)/g)?.length).toBe(1);
+    });
+    it(`${lang} — aucune facture n'est pré-remplie depuis l'URL (?bill= n'est lu par personne)`, () => {
+      expect(stripLineComments(src)).not.toMatch(/get\('bill'\)/);
     });
   }
 });

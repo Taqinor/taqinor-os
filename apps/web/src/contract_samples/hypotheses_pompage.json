@@ -1,0 +1,72 @@
+{
+  "endpoint": "GET /api/django/ventes/etude-pompage/hypotheses/",
+  "pourquoi": "AGR2 (posé dans le même commit que `etude_pompage_preview.json`, Groupe AGR, 02/10/2026) — la table UNIQUE des hypothèses de pompage d'AGR110 (`core/pompage/hypotheses.py`), exportée ici. Aujourd'hui le rendement groupe vaut 0,5 « EST. » à l'écran mais 0,55/0,50 sur le site, le bassin 2× au serveur mais 1× sur le site : un même projet peut afficher deux puissances et deux bassins (C2-18). Ce fichier est la SEULE source des constantes de l'estimateur du site (AGW409, jumeau `apps/web/src/contract_samples/hypotheses_pompage.json`, contrôle (a) de check_api_shapes) ; AGR110 le tient ÉGAL à l'export de la table par un test qui le relit (jamais recopié). Chaque entrée = {cle, valeur, statut, source, usage}. `statut` : physique (constante physique) | source (source primaire citée) | source_secondaire (source citée de seconde main) | EST. (estimation explicite, plage citée). `usage` : calcul | controle_conception | alerte | indication — une entrée `indication` n'est JAMAIS une valeur par défaut d'un réglage. La même table voyage, filtrée sur les entrées utilisées, dans `hypotheses` de la réponse de POST /api/django/ventes/etude-pompage/preview/. La route ci-dessus est la lecture de la table ENTIÈRE ; aucune vue n'est exigée tant qu'aucun écran ne la demande (la garde s'abstient sur une route non servie). AUCUN multiplicateur de bassin, AUCUN derate empilé sur PVGIS, AUCUN seuil non sourcé (NE PAS FAIRE du Groupe AGR).",
+  "exemple": {
+    "version": 1,
+    "hypotheses": [
+      {
+        "cle": "energie_hydraulique_wh_par_m3_m",
+        "valeur": 2.725,
+        "statut": "physique",
+        "source": "ρ·g/3600 (ρ = 1000 kg/m³, g = 9,81 m/s²)",
+        "usage": "calcul"
+      },
+      {
+        "cle": "cv_vers_kw",
+        "valeur": 0.7355,
+        "statut": "physique",
+        "source": "1 CV (cheval-vapeur métrique) = 735,5 W",
+        "usage": "calcul"
+      },
+      {
+        "cle": "rendement_groupe",
+        "valeur": 0.35,
+        "statut": "EST.",
+        "source": "borne basse de la plage AMEE 0,35-0,55, Guide PSIA, PDF du 14/01/2019 (décision fondateur 03/10/2026 : seule valeur qui tient AMEE et SPIS à ± 20 %)",
+        "usage": "calcul"
+      },
+      {
+        "cle": "ratio_champ_pompe_bande_alerte",
+        "valeur": {"min": 1.2, "max": 1.5},
+        "statut": "source",
+        "source": "docs/superpowers/specs/2026-06-24-agricole-quote-redesign-design.md:58",
+        "usage": "alerte"
+      },
+      {
+        "cle": "hazen_williams_c_pvc_pehd",
+        "valeur": 150,
+        "statut": "source",
+        "source": "bulletin IPEX mis en ligne 08/2022 ; AWWA M23",
+        "usage": "calcul"
+      },
+      {
+        "cle": "pertes_pvgis_comprises_pct",
+        "valeur": 14,
+        "statut": "source",
+        "source": "backend/django_core/apps/parametres/pvgis_profils.py:128 (PVGIS_LOSS_PCT) — déjà comprises : AUCUN derate supplémentaire (les 0,82-0,90 de Water Mission sont refusés : double comptage)",
+        "usage": "calcul"
+      },
+      {
+        "cle": "tolerance_conception_pct",
+        "valeur": {"min": -5, "max": 20},
+        "statut": "source_secondaire",
+        "source": "Water Mission 2019 citant IEC 62253:2011 (texte de la norme non lu) — contrôle de conception et affichage seulement, JAMAIS un seuil de recette (AGR606 : réglage société sans défaut)",
+        "usage": "controle_conception"
+      },
+      {
+        "cle": "part_debit_essai_pct",
+        "valeur": {"min": 80, "max": 90},
+        "statut": "source",
+        "source": "Water Mission 2021 — indication à côté du réglage société AGR107, jamais un défaut",
+        "usage": "indication"
+      },
+      {
+        "cle": "pression_goutte_a_goutte_bar",
+        "valeur": {"min": 1.5, "max": 3},
+        "statut": "source",
+        "source": "AMEE — indication à côté de la saisie, jamais un défaut",
+        "usage": "indication"
+      }
+    ]
+  }
+}

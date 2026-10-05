@@ -278,7 +278,7 @@ class TestFluxPublicsMemeGating(_Base):
 
 class TestComparatifGammes(_Base):
     def test_standard_publie_le_kit_agrege(self):
-        from apps.ventes.public_views import _gamme_lignes_publiques
+        from apps.ventes.public.payload_variantes import _gamme_lignes_publiques
         lignes = _gamme_lignes_publiques(self.devis, est_standard=True)
         noms = _designations(lignes)
         self.assertIn(LIBELLE_KIT, noms)
@@ -286,7 +286,7 @@ class TestComparatifGammes(_Base):
                          'FUITE : le comparatif republie la nomenclature')
 
     def test_confiance_garde_la_composition_detaillee(self):
-        from apps.ventes.public_views import _gamme_lignes_publiques
+        from apps.ventes.public.payload_variantes import _gamme_lignes_publiques
         noms = _designations(_gamme_lignes_publiques(self.devis))
         self.assertTrue(DESIGNATIONS_KIT <= noms)
         self.assertNotIn(LIBELLE_KIT, noms)

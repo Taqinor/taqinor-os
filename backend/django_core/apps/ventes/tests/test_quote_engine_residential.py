@@ -1453,7 +1453,7 @@ class TestProductionMensuellePageDetail(SimpleTestCase):
     s'omet dès qu'il n'y a plus la place ou plus de production."""
 
     def test_serie_identique_a_celle_de_la_proposition_en_ligne(self):
-        from apps.ventes.public_views import _monthly_production
+        from apps.ventes.public.payload_economie import _monthly_production
         from apps.ventes.quote_engine.productible import production_mensuelle
         for annuel in (8065, 70568, 1, 123456):
             self.assertEqual(production_mensuelle(annuel),

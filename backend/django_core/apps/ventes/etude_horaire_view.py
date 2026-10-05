@@ -430,7 +430,7 @@ def etude_horaire_preview(request):
     # (``services.rafraichir_etude_horaire_devis`` ne l'expose nulle part sur
     # l'APERÇU jusqu'ici) : best-effort, ``None`` quand rien n'est
     # décomposable (aucune couche équipement, ou série non exploitable).
-    from .etude_horaire import estimation_conso_mensuelle
+    from .horaire.public import estimation_conso_mensuelle
     estimation_conso = estimation_conso_mensuelle(conso, equipements)
 
     return Response(_reponse(

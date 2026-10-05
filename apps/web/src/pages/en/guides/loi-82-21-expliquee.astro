@@ -49,7 +49,7 @@ const faq = [
   },
   {
     q: 'What should I do if my existing solar installation is not declared?',
-    a: 'Article 33 opens, since 9 June 2026, an 18-month window to regularise it. After that deadline, it stays in an irregular situation under the law, with the penalties that brings.',
+    a: 'Article 33 provides "within eighteen (18) months from the date of entry into force of this law"; the starting point of that period is to be confirmed with the energy authorities: file without waiting. After the period, the installation stays in an irregular situation under the law, with the penalties that brings.',
   },
 ];
 
@@ -97,31 +97,36 @@ const regimes = [
 
       <!-- W259 — « Where does the law stand? »: distinguishes LIVE (MV/HV) from PENDING (LV residential). -->
       <div class="v2-rise mt-10 border-2 border-brass-400/50 bg-nuit-800/60 p-6 sm:p-8">
-        <p class="tech-label v2-kicker text-brass-300">Where does the law stand? · verified on 3 July 2026</p>
+        <p class="tech-label v2-kicker text-brass-300">Where does the law stand? · verified on 5 October 2026</p>
+        {/* CIW412 — sources: ANRE decision 04/26 art. 6-7 (the surplus tariff targets the VOLTAGE
+            MV/HV/EHV, whatever the regime); decree 2.25.100 art. 12 (connection agreement from
+            11 kW to under 5 MW); D-CIQ-4. In low voltage, resale is not open. */}
         <div class="mt-4 grid gap-5 sm:grid-cols-2">
           <div>
             <p class="tech-label text-lune">In force</p>
             <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              Decree <strong class="text-white">2-25-100</strong> (Bulletin Officiel of 9 March 2026,
-              in force since 9 June 2026) and ANRE decision <strong class="text-white">04/26</strong>:
-              <strong class="text-white">0.18–0.21 DH/kWh</strong> surplus buy-back, but only for the
-              connection-agreement and authorisation regimes, at
-              <strong class="text-white"> medium, high and very high voltage (MV/HV/EHV)</strong>.
+              Implementing decree <strong class="text-white">2-25-100</strong> (Bulletin Officiel of
+              9 March 2026, in force since <strong class="text-white">9 June 2026</strong>) and ANRE
+              decision <strong class="text-white">04/26</strong>. ANRE surplus tariff (decision 04/26):
+              <strong class="text-white">0.18 DH/kWh off-peak, 0.21 DH/kWh at peak, excluding taxes</strong>,
+              for installations connected at
+              <strong class="text-white"> medium, high or very high voltage (MV/HV/EHV)</strong>,
+              whatever their regime.
             </p>
           </div>
           <div>
             <p class="tech-label text-lune">Not yet published</p>
             <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              The buy-back tariff for the <strong class="text-white">low-voltage (LV) declaration
-              regime</strong> — the one that covers almost every villa — is not published yet, with a
-              timeline mentioned around <strong class="text-white">2027</strong>, unconfirmed as of
-              today.
+              In <strong class="text-white">low voltage (LV)</strong>, whatever the regime — including a
+              shop of 11 kW or more under a connection agreement — resale of the surplus is not open
+              as of today. Do not take the MV/HV tariff above as the one for your home or your shop.
             </p>
           </div>
         </div>
         <p class="mt-5 text-xs leading-relaxed text-lune-faint">
-          Already have an installation in place? The Article 33 regularization window is open today,
-          regardless of this tariff —
+          Already have an installation in place? Article 33 provides "within eighteen (18) months from
+          the date of entry into force of this law"; the starting point of that period is to be
+          confirmed with the energy authorities: file without waiting, regardless of this tariff —
           <a href={L('/regularization-article-33')} class="border-b border-brass-300/60 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">regularize your existing installation →</a>.
         </p>
       </div>
@@ -140,13 +145,14 @@ const regimes = [
 
       <h2 class="display v2-section-title mt-14 text-white">And if my installation already exists?</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        The law does not forget the installations put in place before it. Its Article 33 has opened,
-        since 9 June 2026, an 18-month window to bring them into line: that's the time you have to
-        file the missing paperwork — declaration, connection agreement or authorisation, depending
-        on the regime that applies to you above. Regularised within that window, an existing
-        installation joins the legal framework just like a new one. Once the window closes, it stays
-        in an irregular situation under Law 82-21, with the penalties that brings. There is nothing
-        to gain by waiting, and the process can begin today.
+        The law does not forget the installations put in place before it. Its Article 33 provides "within
+        eighteen (18) months from the date of entry into force of this law" to bring them into line:
+        the starting point of that period is to be confirmed with the energy authorities — file the
+        missing paperwork without waiting: declaration, connection agreement or authorisation,
+        depending on the regime that applies to you above. Regularised within the period, an
+        existing installation joins the legal framework just like a new one. Once the period closes,
+        it stays in an irregular situation under Law 82-21, with the penalties that brings. There is
+        nothing to gain by waiting, and the process can begin today.
       </p>
       <div class="mt-8 flex flex-wrap gap-3">
         <a href={L('/loi-82-21')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Identify my regime in 3 questions →</a>

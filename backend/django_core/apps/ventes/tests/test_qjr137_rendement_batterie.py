@@ -25,6 +25,7 @@ from django.test import SimpleTestCase
 
 from apps.ventes import courbes_journalieres as CJ
 from apps.ventes import etude_horaire as EH
+from apps.ventes.horaire import batterie_lignes as BL
 from apps.ventes.quote_engine.pricing import (
     BATTERY_ROUNDTRIP,
     cashflow_assumptions,
@@ -82,47 +83,47 @@ class LectureDesLignesTests(SimpleTestCase):
     """``rendement_batterie_des_lignes`` : prouvé, ou rien."""
 
     def test_une_fiche_publiee_est_lue(self):
-        res = EH.rendement_batterie_des_lignes(
+        res = BL.rendement_batterie_des_lignes(
             [_ligne(Decimal('95.0'))], roles=['batterie'])
         self.assertAlmostEqual(res['rendement'], 0.95, places=6)
-        self.assertEqual(res['source'], EH.RENDEMENT_SOURCE_FICHE)
+        self.assertEqual(res['source'], BL.RENDEMENT_SOURCE_FICHE)
 
     def test_deux_fiches_publiees_retiennent_la_plus_basse(self):
         """Un rendement de banque ne se moyenne pas : on borne, prudemment."""
-        res = EH.rendement_batterie_des_lignes(
+        res = BL.rendement_batterie_des_lignes(
             [_ligne(Decimal('95.0')), _ligne(Decimal('88.0'))],
             roles=['batterie', 'batterie'])
         self.assertAlmostEqual(res['rendement'], 0.88, places=6)
 
     def test_une_seule_fiche_muette_rend_la_banque_non_prouvee(self):
-        res = EH.rendement_batterie_des_lignes(
+        res = BL.rendement_batterie_des_lignes(
             [_ligne(Decimal('95.0')), _ligne(None)],
             roles=['batterie', 'batterie'])
         self.assertIsNone(res['rendement'])
-        self.assertEqual(res['source'], EH.RENDEMENT_SOURCE_HYPOTHESE)
+        self.assertEqual(res['source'], BL.RENDEMENT_SOURCE_HYPOTHESE)
 
     def test_aucune_ligne_batterie_rend_l_hypothese(self):
-        res = EH.rendement_batterie_des_lignes(
+        res = BL.rendement_batterie_des_lignes(
             [_FausseLigne(_FauxProduit(None), designation='Panneau 550 W')],
             roles=['panneau'])
         self.assertIsNone(res['rendement'])
-        self.assertEqual(res['source'], EH.RENDEMENT_SOURCE_HYPOTHESE)
+        self.assertEqual(res['source'], BL.RENDEMENT_SOURCE_HYPOTHESE)
 
     def test_une_ligne_a_quantite_nulle_est_ignoree(self):
-        res = EH.rendement_batterie_des_lignes(
+        res = BL.rendement_batterie_des_lignes(
             [_ligne(Decimal('95.0'), quantite=0)], roles=['batterie'])
         self.assertIsNone(res['rendement'])
 
     def test_valeur_aberrante_ne_devient_jamais_un_rendement(self):
         for aberrant in (Decimal('0'), Decimal('-5.0')):
-            res = EH.rendement_batterie_des_lignes(
+            res = BL.rendement_batterie_des_lignes(
                 [_ligne(aberrant)], roles=['batterie'])
             self.assertIsNone(res['rendement'], msg=str(aberrant))
 
     def test_lignes_illisibles_ne_levent_jamais(self):
-        res = EH.rendement_batterie_des_lignes(None)
+        res = BL.rendement_batterie_des_lignes(None)
         self.assertIsNone(res['rendement'])
-        self.assertEqual(res['source'], EH.RENDEMENT_SOURCE_HYPOTHESE)
+        self.assertEqual(res['source'], BL.RENDEMENT_SOURCE_HYPOTHESE)
 
 
 class MoteurHoraireTests(SimpleTestCase):
@@ -156,10 +157,10 @@ class MoteurHoraireTests(SimpleTestCase):
 
     def test_le_rendement_publie_voyage_avec_sa_source(self):
         etude = self._etude(batterie_rendement=0.95,
-                            batterie_rendement_source=EH.RENDEMENT_SOURCE_FICHE)
+                            batterie_rendement_source=BL.RENDEMENT_SOURCE_FICHE)
         self.assertEqual(etude['rendement_batterie'], 0.95)
         self.assertEqual(etude['rendement_batterie_source'],
-                         EH.RENDEMENT_SOURCE_FICHE)
+                         BL.RENDEMENT_SOURCE_FICHE)
 
     def test_sans_rendement_publie_la_forme_du_bloc_ne_bouge_pas(self):
         """Le parc de devis déjà calculé garde sa forme À L'OCTET."""

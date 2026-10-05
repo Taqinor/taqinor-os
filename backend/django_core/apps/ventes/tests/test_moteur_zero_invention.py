@@ -662,16 +662,26 @@ class M1GhiSourceUniqueTests(SimpleTestCase):
         # tire WeasyPrint (dépendance native lourde) et ce test doit rester
         # pur. Ce qu'on vérifie est justement textuel : plus aucune seconde
         # copie de la table GHI, seulement l'import de l'unique dérivation.
-        import os
-        chemin = os.path.join(os.path.dirname(__file__), "..",
-                              "public_views.py")
-        with open(os.path.abspath(chemin), encoding="utf-8") as fh:
-            src = fh.read()
-        self.assertIn(
-            "from .quote_engine.constants import "
-            "MOROCCO_SOLAR_MONTHLY_WEIGHTS", src)
-        self.assertNotIn("83.99", src)
-        self.assertNotIn("_GHI_MONTHLY", src)
+        #
+        # SPL241 — ``public_views.py`` est découpé en ``public/*.py`` : la
+        # garde lit le GROUPE (jamais vide) et cherche l'import en AST,
+        # indépendamment de sa profondeur relative (``.`` ou ``..``).
+        import ast
+
+        from apps.ventes.tests.split_golden import fichiers_du_groupe
+        importe = False
+        for chemin in fichiers_du_groupe("public_views.py", "public/*.py"):
+            src = chemin.read_text(encoding="utf-8")
+            self.assertNotIn("83.99", src, chemin)
+            self.assertNotIn("_GHI_MONTHLY", src, chemin)
+            importe = importe or any(
+                isinstance(n, ast.ImportFrom)
+                and n.module == "quote_engine.constants"
+                and any(a.name == "MOROCCO_SOLAR_MONTHLY_WEIGHTS"
+                        for a in n.names)
+                for n in ast.walk(ast.parse(src)))
+        self.assertTrue(importe, "MOROCCO_SOLAR_MONTHLY_WEIGHTS n'est plus "
+                                 "importé de quote_engine.constants")
 
     def test_les_poids_derivent_de_la_table_ghi_verrouillee(self):
         from apps.ventes.quote_engine import constants

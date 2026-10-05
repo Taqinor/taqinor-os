@@ -477,10 +477,9 @@ export interface ValidatedLead {
   fuelSpendMad?: number;
   // — WJ124 : région agronomique (8 zones FAO) — pilote le moteur eau agricole
   //   (agronomy.ts) quand le débit/HMT n'est pas connu. Même discipline WJ30.
-  //   NOTE (revue 2026-07-17) : émise dès aujourd'hui (compat ascendante) mais le
-  //   webhook QX51 ne la PERSISTE PAS encore (aucun champ region_agricole dans
-  //   crm/webhooks.py `_extract_web_questionnaire`) — champ agricole hors du
-  //   périmètre commercial/industriel de QX51 ; en attente d'un ajout backend.
+  //   NOTE (AGW407) : persistée par le webhook depuis WJ124 (crm/webhooks.py) ;
+  //   clé déclarée dans tunnel_webhook_keys.json ; colonne `region_agricole`
+  //   sur le Lead depuis AGR402.
   regionAgricole?: RegionAgricoleId;
   // — WJ122 : mode COMMERCIAL — catégorie + réponses par catégorie (facultatives,
   //   validées une à une, écartées si malformées, jamais bloquantes). Les clés
@@ -1140,7 +1139,13 @@ export async function runSimulation(
   // WJ97 — un rappel rapide n'a pas de `billRange` : aucune fourchette kWc/ROI
   // à estimer (on ne fabrique jamais un chiffre sans facture connue) — bande
   // vide, honnête, jamais un devis local basé sur une hypothèse.
-  if (!lead.billRange) {
+  // CIW411 — un lead COMMERCIAL ou INDUSTRIEL n'a pas de bande résidentielle non plus :
+  // `engineEstimateBand` (ou le simulateur) calcule kWc et retour pour une VILLA ; attacher
+  // « 30 kWc et plus (étude dédiée) · 3 à 5 ans » à un pro, c'était un chiffre résidentiel
+  // non sourcé dans `Lead.roi_band` (prod 03/10/2026). Bande vide, aucun appel au simulateur ;
+  // `billRange`, `qualified` et la tranche restent INCHANGÉS (convention 17). Résidentiel et
+  // agricole identiques.
+  if (!lead.billRange || lead.mode === 'commercial' || lead.mode === 'industriel' || lead.mode === 'professionnel') {
     return { kwcMin: 0, kwcMax: 0, kwcLabel: '', paybackLabel: '', source: 'local' };
   }
   const fallback = engineEstimateBand(lead.billRange);

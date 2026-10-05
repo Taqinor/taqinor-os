@@ -131,7 +131,7 @@ class TestGatePublicReconnaitLappareilEquipe(TestCase):
     def test_appareil_equipe_par_entete_ne_stampe_ni_ne_trace(self):
         """LE CŒUR DU CORRECTIF — c'est CE chemin (en-tête posé par le Worker
         depuis le cookie `tq_appareil`) que le site emprunte réellement."""
-        from apps.ventes.public_views import _stamp_view_si_public
+        from apps.ventes.public.lecture_views import _stamp_view_si_public
 
         resultat = _stamp_view_si_public(
             self.link, False, self._requete(entete=APPAREIL_EQUIPE))
@@ -143,7 +143,7 @@ class TestGatePublicReconnaitLappareilEquipe(TestCase):
     def test_appareil_equipe_par_cookie_ne_stampe_ni_ne_trace(self):
         """Chemin PDF direct : la requête arrive sur api.taqinor.ma sans passer
         par le SSR, mais porte le cookie posé sur le domaine du site."""
-        from apps.ventes.public_views import _stamp_view_si_public
+        from apps.ventes.public.lecture_views import _stamp_view_si_public
 
         resultat = _stamp_view_si_public(
             self.link, False, self._requete(cookie=APPAREIL_EQUIPE))
@@ -154,7 +154,7 @@ class TestGatePublicReconnaitLappareilEquipe(TestCase):
 
     def test_appareil_inconnu_stampe_normalement(self):
         """TÉMOIN — un vrai client garde exactement le comportement d'avant."""
-        from apps.ventes.public_views import _stamp_view_si_public
+        from apps.ventes.public.lecture_views import _stamp_view_si_public
 
         resultat = _stamp_view_si_public(
             self.link, False, self._requete(entete=AUTRE_APPAREIL))
@@ -165,7 +165,7 @@ class TestGatePublicReconnaitLappareilEquipe(TestCase):
         """MULTI-TENANT (revue adversariale 16/09) — le registre est scopé
         société : le navigateur d'un utilisateur d'une AUTRE société de cet
         ERP, qui peut être NOTRE prospect, n'est pas « équipe » pour nous."""
-        from apps.ventes.public_views import _stamp_view_si_public
+        from apps.ventes.public.lecture_views import _stamp_view_si_public
 
         AppareilEquipe.objects.create(
             company=make_company('qjeq3-gate-autre'),

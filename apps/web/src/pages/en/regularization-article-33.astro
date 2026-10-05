@@ -34,7 +34,7 @@ const steps = [
   { title: 'Technical inventory', body: 'Survey of the existing installation: installed power, connection mode, voltage level, protection and metering equipment.' },
   { title: 'Determining the regime', body: 'Depending on the power and the connection, the installation falls under declaration, connection agreement or authorisation (decree 2-25-100).' },
   { title: 'Building the file', body: 'Technical data sheets, single-line diagram, conformity certificates and the forms for the applicable regime — prepared by us.' },
-  { title: 'Filing the regularization request', body: 'Filed with the grid operator or the competent authority, within the window opened by Article 33.' },
+  { title: 'Filing the regularization request', body: 'Filed with the grid operator or the competent authority, within the period provided by Article 33.' },
   { title: 'Follow-up through to compliance', body: 'Tracking the review, responding to requests for additional documents, and where applicable a technical upgrade of the installation.' },
 ];
 
@@ -49,7 +49,7 @@ const sanctions = [
 
 <Layout
   title="Article 33 regularization — existing solar installations | Taqinor"
-  description="Law 82-21 has been in force since 9 June 2026. Article 33 opens an 18-month window to regularize existing solar installations: a 5-step procedure, the penalties at stake, and full handling of the file."
+  description="Implementing decree 2-25-100 has been in force since 9 June 2026. Article 33 of Law 82-21 provides an 18-month period to regularize existing solar installations (starting point to be confirmed with the energy authorities): a 5-step procedure, the penalties at stake, and full handling of the file."
   ogSlug="article-33"
 >
   <div class="v2">
@@ -63,10 +63,12 @@ const sanctions = [
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Law 82-21 — Article 33</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-3xl">Does your solar installation already exist? Regularize it now.</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          Decree 2-25-100 was published in the Bulletin Officiel on 9 March 2026 and entered into
-          force on 9 June 2026, and the ANRE decision sets the buy-back tariff for the surplus.
-          Since that date, the Law 82-21 regime applies to every self-production installation —
-          right down to those put up long before the text.
+          Implementing decree 2-25-100 was published in the Bulletin Officiel on 9 March 2026 and
+          entered into force on 9 June 2026. The ANRE decision sets the surplus tariff for
+          installations connected at MV/HV/EHV; in low voltage, resale of the surplus is not open,
+          even at 11 kW or more under a connection agreement. The Law 82-21 regime applies to every
+          self-production installation —
+                    right down to those put up long before the text.
         </p>
       </div>
     </section>
@@ -75,25 +77,27 @@ const sanctions = [
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section mx-auto max-w-3xl px-4">
       <div class="v2-rise border-2 border-brass-400/50 bg-nuit-800/60 p-6 sm:p-8">
-        <p class="tech-label v2-kicker text-brass-300">Where does the law stand? · verified on 3 July 2026</p>
+        <p class="tech-label v2-kicker text-brass-300">Where does the law stand? · verified on 5 October 2026</p>
+        {/* CIW413 — same tariff sentences as CIW412 (ANRE decision 04/26 art. 6-7; decree 2.25.100
+            art. 12; D-CIQ-4): the tariff targets the VOLTAGE, low voltage is not open. */}
         <div class="mt-4 grid gap-5 sm:grid-cols-2">
           <div>
             <p class="tech-label text-lune">In force</p>
             <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              Decree <strong class="text-white">2-25-100</strong> (Bulletin Officiel of 9 March 2026,
-              in force since 9 June 2026) and ANRE decision <strong class="text-white">04/26</strong>:
-              <strong class="text-white">0.18–0.21 DH/kWh</strong> surplus buy-back for
-              <strong class="text-white"> medium, high and very high voltage (MV/HV/EHV)</strong> only.
+              Implementing decree <strong class="text-white">2-25-100</strong> (Bulletin Officiel of
+              9 March 2026, in force since 9 June 2026) and ANRE decision <strong class="text-white">04/26</strong>.
+              ANRE surplus tariff (decision 04/26): <strong class="text-white">0.18 DH/kWh off-peak,
+              0.21 DH/kWh at peak, excluding taxes</strong>, for installations connected at
+              <strong class="text-white"> medium, high or very high voltage (MV/HV/EHV)</strong>,
+              whatever their regime.
             </p>
           </div>
           <div>
             <p class="tech-label text-lune">Not yet published</p>
             <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              The <strong class="text-white">low-voltage (LV)</strong> buy-back tariff — the
-              declaration regime that covers almost every residential installation — remains
-              unpublished, with a timeline mentioned around <strong class="text-white">2027</strong>,
-              unconfirmed. The Article 33 regularization window, however, is open today, regardless of
-              this tariff.
+              In <strong class="text-white">low voltage (LV)</strong>, whatever the regime — including a
+              shop of 11 kW or more under a connection agreement — resale of the surplus is not open
+              as of today. File under Article 33 without waiting, regardless of this tariff.
             </p>
           </div>
         </div>
@@ -105,10 +109,12 @@ const sanctions = [
         <p class="tech-label v2-kicker rule-brass text-lune">The text</p>
         <h2 class="display v2-section-title mt-4 text-white">What Article 33 says</h2>
         <p class="v2-lead mt-5 text-lune-soft">
-          Article 33 of Law 82-21 grants operators of existing installations a
-          window of <strong class="fig lum text-xl">18 months</strong> to file a regularization request.
-          This window has been open since 9 June 2026: file now. A regularized installation is
-          legally secure; an installation that is not regularized is in an irregular situation.
+          Article 33 of Law 82-21 provides that existing installations must be regularized "within
+          eighteen (18) months from the date of entry into force of this law" (Law 82-21, art. 33),
+          i.e. <strong class="fig lum text-xl">18 months</strong>. The starting point of that period is
+          to be confirmed with the energy authorities: file without waiting. A regularized
+          installation is legally secure; an installation that is not regularized is in an irregular
+          situation.
         </p>
       </div>
 

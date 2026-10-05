@@ -29,6 +29,7 @@ from django.test import TestCase
 
 from apps.crm.models import Client
 from apps.ventes.models import Devis, LigneDevis
+from apps.ventes.tests.split_golden import fichiers_du_groupe
 
 User = get_user_model()
 
@@ -51,11 +52,15 @@ LECTEURS_LEGITIMES = {
     # déplacement n'a rien ajouté, il a changé le chemin d'un producteur
     # déjà déclaré ici. L'invariant de QJR48 est intact.
     'apps/ventes/domain/dimensionnement_devis.py',
-    # Projection publique des PALIERS batterie (jamais d'``etude_params``).
-    'apps/ventes/public_views.py',
     # Comparateurs de financement — un tout autre domaine.
     'apps/compta/services.py',
     'apps/parametres/tariff.py',
+} | {
+    # Projection publique des PALIERS batterie (jamais d'``etude_params``).
+    # SPL241 — ``public_views.py`` est découpé en ``public/*.py`` : le lecteur
+    # légitime est le GROUPE (jamais vide), où que vive le palier publié.
+    chemin.relative_to(RACINE).as_posix()
+    for chemin in fichiers_du_groupe('public_views.py', 'public/*.py')
 }
 
 #: Les modules qui NOMMENT la clé sans jamais la LIRE (29/08/2026, vague M2).

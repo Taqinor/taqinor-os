@@ -164,7 +164,7 @@ def _bloc_horaire_deja_a_jour(devis, kwc, cle='etude_horaire'):
             return False
         if abs(kwc_bloc - float(kwc)) / float(kwc) > _HORAIRE_TOLERANCE_KWC:
             return False
-        from apps.ventes.etude_horaire import capacite_batterie_du_devis
+        from apps.ventes.horaire.batterie_lignes import capacite_batterie_du_devis
         actuelle = capacite_batterie_du_devis(devis)
         rangee = bloc.get('batterie_kwh_utile')
         if (actuelle is None) != (rangee is None):

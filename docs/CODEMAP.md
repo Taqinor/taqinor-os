@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 0ae51c6c360c756b075e0279659bf53b48ba4922b2acdd69d5d0d207c3d3f519
+Structure fingerprint: 977d6d04ad2e83355bef337daaf3ba7c3f1a24dec83d00d5e511556573796b1e
 Plan fingerprint: 46284c39f438628eab0aebad3e7c116570ecc932a2ba1503cdb1cab115cc095f
 
 
@@ -223,7 +223,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `crm` | `crm/` | 43 | Leads (funnel via STAGES.py), Clients, chatter (`LeadActivity`), canaux/tags/motifs de perte, `SiteProfile`, salle de vente, forecast, parrainage, playbooks, équipes. |
 | `visites` | `visites/` | 2 | Visites techniques terrain (`VisiteTerrain`, `VisiteMedia`) — autonomous app; the field rep has no CRM access. |
 | `calepinage` | `calepinage/` | 10 | Roof design studio: `Calepinage` + variantes/versions, `ReleveTerrain`, `PhotoSite`, `PoseReelle`, `DossierReglementaire`. Holds the villa engine + kit catalogue + roof-marker helper repatriated from `ao`. |
-| `ventes` | `ventes/` | 49 | Devis (statuts brouillon/envoye/accepte/refuse/expire), BonCommande, `ShareLink`, listes de prix, mandats/remises, `quote_engine/` (rule #4). `coherence/` = auditeur d'invariants nocturne en lecture seule (`ViolationCoherence`, `manage.py audit_coherence`, beat `ventes.audit_coherence_nuit` 04:15). |
+| `ventes` | `ventes/` | 49 | Devis (statuts brouillon/envoye/accepte/refuse/expire), BonCommande, `ShareLink`, listes de prix, mandats/remises, `quote_engine/` (rule #4). `coherence/` = auditeur d'invariants nocturne en lecture seule (`ViolationCoherence`, `manage.py audit_coherence`, beat `ventes.audit_coherence_nuit` 04:15). Découpes SPL (move-only, goldens dans `tests/golden/` via `tests/split_golden.py`) : `selectors.py` = façade ré-exportant `selectors_{cadence,calepinage,facturation,portail,publicite,stock}.py` ; `public_views.py` garde document/proposal/suivi publics, le reste vit dans `public/` (`noyau`, `lecture_views` engagement, `paiement_views`, `signature_views`, `payload_*`) ; `etude_horaire.py` délègue à `horaire/` (`base`, `batterie_lignes`, `public`). |
 | `facturation` | `facturation/` | 7 | Factures, `Paiement`, `Avoir`, `FollowupLevel`, `RelanceLog` — state-only split out of `ventes` (ODX17); legacy `/ventes/factures…` paths still served. |
 | `stock` | `stock/` | 71 | Catalogue (`Produit`, `Marque`, `Categorie`, kits, `courbe_pompe`), `Fournisseur`, `MouvementStock`, emplacements/lots/inventaires, portail fournisseur. |
 | `achats` | `achats/` | 10 | Supplier POs/receptions/invoices/payments/returns, `PrixFournisseur` — state-only split out of `stock` (ODX19). |

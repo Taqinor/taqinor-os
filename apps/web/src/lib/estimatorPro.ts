@@ -244,7 +244,8 @@ export function estimatePro(inputs: ProInputs): ProEstimateResult {
   // TOUJOURS accompagnée de sa mention réglementaire.
   let injectionPotential: { kwh: number; dh: number; mention: string } | undefined;
   if (enableInjection) {
-    const inj = injectionAnnuelle(prodA, autoconsomme);
+    // CIW403 — le raccordement est transmis : 0 kWh valorisé hors MT/HT/THT.
+    const inj = injectionAnnuelle(prodA, autoconsomme, raccordement);
     injectionPotential = { kwh: inj.kwh, dh: inj.dh, mention: MENTION_82_21 };
   }
 
