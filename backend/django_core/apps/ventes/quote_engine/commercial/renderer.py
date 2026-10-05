@@ -108,23 +108,16 @@ def _augment(data: dict) -> dict:
     masque = bool(d.get("masquer_economies"))
     d["com_masquer_economies"] = masque
     d["com_mt_mention"] = d.get("tarif_mt_mention") or ""
-    # QJR119 — voir ``industriel/renderer.py`` : ``None`` traverse jusqu'au
-    # gabarit, qui omet la carte, au lieu d'être écrasé en un « 0 MAD » qui se
-    # lit comme un chiffre mesuré.
-    eco = _num(etude.get("economies_annuelles"))
-    if eco is None and not masque:
-        eco = _num(d.get("eco_s_ann"))
-    d["com_economies"] = round(eco) if eco else None
-    pb = _num(etude.get("payback"))
-    if pb is None and not masque and not d.get("roi_s_jamais"):
-        # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — jamais remboursé ⇒ None.
-        pb = _num(d.get("roi_s"))
-    # QJR145 (g) — ``com_payback`` est CONSERVÉ bien qu'aucun gabarit ne
-    # l'imprime : sa nullité EST le contrat vérifié des gardes QXMT/QJR119
-    # (« aucun repli sur le chiffre basse tension », « jamais un 0 »), épinglé
-    # par test_quote_engine_builder et test_qjr119_zero_fabrique. Le retirer
-    # supprimerait la garde, pas du code mort.
-    d["com_payback"] = pb if pb else None
+    # CIQ301 — AUCUN REPLI SUR LE MODÈLE RÉSIDENTIEL/BT. ``eco_s_ann``/``roi_s``
+    # sortent de ``calculate_savings_roi`` (barème BT résidentiel ×
+    # ``AUTOCONSO_SANS`` 0,60) et ``etude['payback']`` de l'étude JS (prix
+    # pondéré par la consommation, pointe comprise) : aucun ne décrit un site
+    # commercial. La tuile argent est OMISE (``None`` ⇒ carte absente, jamais
+    # un « 0 », QJR119) jusqu'à ce que ``synthese_ci.argent`` la serve (CIQ307).
+    # QJR145 (g) — ``com_payback`` est CONSERVÉ (nul) : sa nullité EST le
+    # contrat épinglé par test_quote_engine_builder et test_qjr119.
+    d["com_economies"] = None
+    d["com_payback"] = None
 
     d["site_url"] = d.get("site_url") or "taqinor.ma"
     return d

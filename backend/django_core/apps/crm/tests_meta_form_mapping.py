@@ -63,9 +63,14 @@ class MetaFormMappingTests(TestCase):
         self.assertEqual(lead.whatsapp, lead.telephone)
 
     def test_open_range_uses_declared_bound_never_invents(self):
+        # CIQ407 (D-CIQ-19) — une tranche OUVERTE n'est jamais un montant :
+        # la facture reste vide, la tranche est déclarée telle quelle.
         lead = self._create(leadgen_id='9002', phone='+212600000102',
                             facture='plus_de_4000dh')
-        self.assertEqual(lead.facture_hiver, Decimal('4000'))
+        self.assertIsNone(lead.facture_hiver)
+        self.assertEqual(lead.facture_tranche_declaree, {
+            'min_mad': 4000, 'max_mad': None, 'libelle': 'plus de 4000dh',
+            'source': 'meta'})
 
     def test_entreprise_maps_commercial_and_renseigne_basse(self):
         lead = self._create(leadgen_id='9003', phone='+212600000103',
@@ -230,3 +235,83 @@ class MetaFormAgricoleParseTests(SimpleTestCase):
         self.assertNotIn('source_eau', extras)
         self.assertEqual(extras['type_installation'],
                          Lead.TypeInstallation.RESIDENTIEL)
+
+
+class MetaFormEntrepriseCIQ407Tests(TestCase):
+    """CIQ407 (D-CIQ-19) — formulaire « pour mon entreprise » : une tranche
+    ouverte n'est jamais un montant, l'industrie n'est plus rangée en
+    commerce, raison sociale et fonction recopiées en remplissage."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor CIQ407', slug='taqinor-ciq407')
+        self.n = 0
+
+    def _create(self, *, install='pour_mon_entreprise',
+                facture='plus_de_4000dh', extra=()):
+        self.n += 1
+        rows = _field_data(phone=f'+2126000004{self.n:02d}',
+                           install=install, facture=facture,
+                           quand=None) + list(extra)
+        return create_lead_from_meta_lead_ads(
+            company=self.company, leadgen_id=f'94{self.n:02d}',
+            field_data=rows, form_id='FORM-PRO')
+
+    def test_tranche_fermee_pro_garde_le_milieu_et_pose_la_tranche(self):
+        lead = self._create(facture='entre_1000_et_2000_dh')
+        lead.refresh_from_db()
+        self.assertEqual(lead.type_installation, 'commercial')
+        self.assertEqual(lead.facture_hiver, Decimal('1500'))
+        self.assertEqual(lead.facture_tranche_declaree['min_mad'], 1000)
+        self.assertEqual(lead.facture_tranche_declaree['max_mad'], 2000)
+        self.assertEqual(lead.facture_tranche_declaree['source'], 'meta')
+
+    def test_tranche_ouverte_aucun_montant(self):
+        lead = self._create()
+        lead.refresh_from_db()
+        self.assertIsNone(lead.facture_hiver)
+        self.assertEqual(lead.facture_tranche_declaree['min_mad'], 4000)
+        self.assertIsNone(lead.facture_tranche_declaree['max_mad'])
+        note = LeadActivity.objects.get(
+            lead=lead, body__startswith='[Formulaire Meta]')
+        self.assertNotIn('pré-remplie à', note.body)
+
+    def test_industrie_avant_entreprise(self):
+        for reponse in ('entreprise_industrielle',
+                        'usine_/_entreprise_industrielle',
+                        'local_industriel', 'atelier'):
+            lead = self._create(install=reponse)
+            self.assertEqual(lead.type_installation, 'industriel', reponse)
+
+    def test_clinique_commercial_categorie_sante(self):
+        lead = self._create(install='clinique')
+        lead.refresh_from_db()
+        self.assertEqual(lead.type_installation, 'commercial')
+        self.assertEqual(lead.categorie_commerciale, 'sante')
+
+    def test_ambigu_aucun_type(self):
+        lead = self._create(install='maison_ou_entreprise')
+        self.assertFalse(lead.type_installation)
+        lead = self._create(install='entrepot')
+        self.assertFalse(lead.type_installation)
+
+    def test_mot_entier_seulement(self):
+        from apps.crm.services import _meta_type_installation
+        self.assertEqual(_meta_type_installation('localisation'), '')
+        self.assertEqual(_meta_type_installation('cafetiere'), '')
+
+    def test_company_name_et_job_title(self):
+        lead = self._create(extra=[
+            {'name': 'company_name', 'values': ['Hôtel Atlas SARL']},
+            {'name': 'job_title', 'values': ['Directeur']}])
+        lead.refresh_from_db()
+        self.assertEqual(lead.societe, 'Hôtel Atlas SARL')
+        self.assertEqual(lead.fonction_contact, 'Directeur')
+
+    def test_residentiel_form_4_inchange(self):
+        lead = self._create(install='sur_ma_villa',
+                            facture='entre_1000_dh_à_2000_dh')
+        lead.refresh_from_db()
+        self.assertEqual(lead.type_installation, 'residentiel')
+        self.assertEqual(lead.facture_hiver, Decimal('1500'))
+        self.assertIsNone(lead.facture_tranche_declaree)

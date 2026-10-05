@@ -10,8 +10,11 @@ Pondérations (total max = 100) :
     Montant facture_hiver en MAD/mois — AGR409 : pour un lead AGRICOLE
     seulement, la dépense mensuelle DÉCLARÉE (carburant ou facture d'une
     pompe électrique) sur le MÊME barème, et une complétude propre de 10
-    critères pompage (total 30 inchangé). Poids PROVISOIRES (CAD133) : on
-    ne les recale qu'après la mesure CADM7.
+    critères pompage (total 30 inchangé). CIQ414 : pour un lead COMMERCIAL
+    ou INDUSTRIEL seulement, la facture déclarée ou, à défaut, la borne
+    BASSE de la tranche déclarée (jamais au-delà, jamais une conversion des
+    kWh), et une complétude pro de 10 critères (total 30 inchangé). Poids
+    PROVISOIRES (CAD133) : on ne les recale qu'après la mesure CADM7.
   Canal d'acquisition          15 pts max
     Référence/appel entrant = fort ; Meta Ads = faible
   Type d'installation           8 pts max
@@ -128,15 +131,38 @@ _COMPLETENESS_FIELDS_AGRICOLE = [
 ]
 
 
+#: CIQ414 — la complétude d'un lead COMMERCIAL ou INDUSTRIEL (et de lui
+#: seul) : 10 critères à 3 pts, total 30 INCHANGÉ — ceux que le parcours pro
+#: remplit vraiment (orientation, type de toiture et raccordement n'en font
+#: pas partie). Un tuple = « l'un des ». Poids PROVISOIRES (CAD133).
+_COMPLETENESS_FIELDS_PRO = [
+    'telephone', 'email', 'ville',
+    ('conso_mensuelle_kwh', 'bill_kwh', 'releve_conso', 'facture_hiver'),
+    'tension_raccordement', 'compteur_puissance_kva',
+    ('categorie_commerciale', 'regime_equipes'),
+    'surface_toiture_m2', 'decideur', 'societe',
+]
+
+_TYPES_PRO = ('commercial', 'industriel')
+
+
 def _rempli(lead, champ) -> bool:
+    if champ == 'releve_conso':
+        releve = getattr(lead, 'releve_conso', None)
+        mois = releve.get('mois') if isinstance(releve, dict) else None
+        return any(isinstance(m, dict) and m.get('kwh') not in (None, '')
+                   for m in (mois or []))
     return getattr(lead, champ, None) not in (None, '', False)
 
 
 def _completeness_score(lead) -> int:
-    criteres = (_COMPLETENESS_FIELDS_AGRICOLE
-                if (getattr(lead, 'type_installation', None) or '')
-                == 'agricole'
-                else _COMPLETENESS_FIELDS)
+    type_installation = getattr(lead, 'type_installation', None) or ''
+    if type_installation == 'agricole':
+        criteres = _COMPLETENESS_FIELDS_AGRICOLE
+    elif type_installation in _TYPES_PRO:
+        criteres = _COMPLETENESS_FIELDS_PRO
+    else:
+        criteres = _COMPLETENESS_FIELDS
     filled = sum(
         1 for critere in criteres
         if (any(_rempli(lead, c) for c in critere)
@@ -173,7 +199,27 @@ def _bill_points(lead) -> int:
     barème ``_bill_score`` (aucun nouveau poids ni palier, CAD133/CADM7)."""
     if (getattr(lead, 'type_installation', None) or '') == 'agricole':
         return _bill_score(depense_declaree_mensuelle(lead))
+    if (getattr(lead, 'type_installation', None) or '') in _TYPES_PRO:
+        return _bill_score(facture_declaree_pro(lead))
     return _bill_score(lead.facture_hiver)
+
+
+def facture_declaree_pro(lead) -> Decimal | None:
+    """CIQ414 — la facture DÉCLARÉE d'un lead pro (MAD/mois) pour le score :
+    ``facture_hiver``, sinon la borne BASSE de ``facture_tranche_declaree``
+    (« plus de 4 000 » vaut 4 000, jamais au-delà). Un pro qui n'a déclaré
+    que des kWh n'a AUCUNE facture : aucune conversion inventée (le point se
+    rouvre après la tâche manuelle « Mesure lecture seule des leads pro »)."""
+    facture = getattr(lead, 'facture_hiver', None)
+    if facture is not None:
+        return Decimal(str(facture))
+    tranche = getattr(lead, 'facture_tranche_declaree', None)
+    if isinstance(tranche, dict) and tranche.get('min_mad') is not None:
+        try:
+            return Decimal(str(tranche['min_mad']))
+        except (ArithmeticError, ValueError):
+            return None
+    return None
 
 
 # ── Recency ──────────────────────────────────────────────────────────────────

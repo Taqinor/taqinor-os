@@ -417,6 +417,10 @@ def _extract_web_questionnaire(data):
     # NB : `tensionRaccordement` (bt/mt = basse/moyenne tension) n'est PAS
     # Lead.raccordement (monophase/triphase) — vocabulaires distincts.
     _choice('tensionRaccordement', 'tension_raccordement', ('bt', 'mt'))
+    # CIQ406 (contrat ``tunnel_webhook_keys.json`` → ``ajout_ciq400``) — la
+    # tension a-t-elle été TOUCHÉE par le visiteur, ou est-ce la valeur
+    # pré-cochée ? Absente = pré-cochée (jamais une déclaration supposée).
+    _choice('tensionSource', 'tension_source', ('touchee', 'defaut_visible'))
     _num('puissanceKva', 'puissance_kva', hi=100000)
     _choice('activityProfile', 'activity_profile',
             ('day', 'day_evening', 'continuous'))
@@ -822,6 +826,113 @@ def promouvoir_pompage_du_sac(sac: dict, fields: dict) -> None:
         fields[colonne] = sac.pop(cle)
         if source:
             fields[source] = 'site_web'
+
+
+#: CIQ406 — clés du sac rangées dans ``reponses_categorie`` (clés FERMÉES de
+#: ``Lead.REPONSES_CATEGORIE_CLES``, mêmes noms que le sac). ``surface_m2``
+#: n'en fait jamais partie (c'est la surface DISPONIBLE pour les panneaux,
+#: parfois au sol) ; ``fermeture_estivale`` reste au sac (un booléen ne dit
+#: pas quels mois).
+_PRO_CLES_REPONSES = (
+    'chambres', 'occupation_pct', 'piscine', 'blanchisserie',
+    'chambres_froides', 'horaires', 'cuisson', 'surface_vente_m2',
+    'effectif', 'clim', 'lits', 'garde_nuit', 'internat', 'four',
+    'cuisson_nocturne', 'temperature_consigne', 'volume_m3',
+    'saisonnalite_recolte', 'chauffe',
+)
+
+#: CIQ406 — ``surfaceType`` du site → (type_surface, type_toiture ou None).
+_PRO_TYPE_SURFACE = {
+    'bac_acier': ('toiture', 'bac_acier'),
+    'terrasse': ('toiture', 'terrasse_beton'),
+    'ombriere': ('ombriere', None),
+    'terrain': ('terrain', None),
+}
+
+#: CIQ406 — colonnes pro remplies SEULEMENT si vides lors d'un renvoi du
+#: tunnel sur un lead existant ; la provenance suit le sort de SA valeur.
+PRO_SI_VIDE = {
+    'tension_raccordement': 'tension_source',
+    'categorie_commerciale': None,
+    'reponses_categorie': None,
+    'regime_equipes': None,
+    'type_surface': None,
+    'type_toiture': None,
+    'groupe_electrogene': None,
+    'groupe_kva': None,
+    'groupe_depense_mad_mois': None,
+    'cos_phi': 'cos_phi_source',
+    'compteur_puissance_kva': 'puissance_souscrite_source',
+    'surface_toiture_m2': 'surface_source',
+}
+
+
+def _nombre_json(valeur):
+    """Un float entier redevient un entier (40.0 → 40) ; le reste tel quel."""
+    if isinstance(valeur, float) and valeur.is_integer():
+        return int(valeur)
+    return valeur
+
+
+def promouvoir_pro_du_sac(sac: dict, fields: dict) -> None:
+    """CIQ406 — déplace les réponses PRO du site du sac vers leurs colonnes
+    CIQ401 (remplissage seulement : une colonne déjà posée dans ``fields``
+    n'est jamais écrasée ; une valeur hors colonne reste dans le sac).
+
+    ``activity_profile``, ``weekend`` et ``fermeture_estivale`` RESTENT au
+    sac (informations). La note de chatter cite toujours tout le payload.
+    """
+    def _libre(colonne):
+        return fields.get(colonne) in (None, '')
+
+    # Tension : « touchée » → site_web ; sinon défaut visible du site.
+    origine = sac.pop('tension_source', None)
+    tension = sac.get('tension_raccordement')
+    if tension in ('bt', 'mt') and _libre('tension_raccordement'):
+        fields['tension_raccordement'] = sac.pop('tension_raccordement')
+        fields['tension_source'] = (
+            'site_web' if origine == 'touchee' else 'site_defaut_visible')
+    categorie = sac.get('categorie_commerciale')
+    if categorie in Lead.REPONSES_CATEGORIE_CLES \
+            and _libre('categorie_commerciale'):
+        fields['categorie_commerciale'] = sac.pop('categorie_commerciale')
+    # Réponses par catégorie : seulement les clés FERMÉES de la catégorie
+    # connue (sinon de toutes les catégories).
+    categorie = fields.get('categorie_commerciale') or categorie
+    permises = (set(Lead.REPONSES_CATEGORIE_CLES[categorie])
+                if categorie in Lead.REPONSES_CATEGORIE_CLES
+                else set(_PRO_CLES_REPONSES))
+    if _libre('reponses_categorie'):
+        reponses = {}
+        for cle in _PRO_CLES_REPONSES:
+            if cle in permises and sac.get(cle) is not None:
+                reponses[cle] = _nombre_json(sac.pop(cle))
+        if reponses:
+            fields['reponses_categorie'] = reponses
+    equipes = sac.get('equipes')
+    if equipes in ('1x8', '2x8', '3x8', 'continu') \
+            and _libre('regime_equipes'):
+        fields['regime_equipes'] = sac.pop('equipes')
+    surface = _PRO_TYPE_SURFACE.get(sac.get('surface_type'))
+    if surface is not None and _libre('type_surface'):
+        sac.pop('surface_type')
+        fields['type_surface'] = surface[0]
+        if surface[1] and _libre('type_toiture'):
+            fields['type_toiture'] = surface[1]
+    groupe = sac.get('has_generator')
+    if isinstance(groupe, bool) and _libre('groupe_electrogene'):
+        fields['groupe_electrogene'] = 'oui' if sac.pop('has_generator') \
+            else 'non'
+    for cle, colonne, borne in (
+            ('groupe_kva', 'groupe_kva', 1000000),
+            ('diesel_dh_mois', 'groupe_depense_mad_mois', 100000000)):
+        valeur = sac.get(cle)
+        if valeur is not None and 0 <= valeur < borne and _libre(colonne):
+            fields[colonne] = sac.pop(cle)
+    cos_phi = sac.get('cos_phi_connu')
+    if cos_phi is not None and 0 < cos_phi <= 1 and _libre('cos_phi'):
+        fields['cos_phi'] = round(sac.pop('cos_phi_connu'), 3)
+        fields['cos_phi_source'] = 'site_web'
 
 
 def _map_payload_to_fields(data: dict) -> dict:
@@ -1255,6 +1366,14 @@ def _map_payload_to_fields(data: dict) -> dict:
                 and fields.get('surface_toiture_m2') is None):
             fields['surface_toiture_m2'] = questionnaire.pop(
                 'surface_toiture_m2')
+        # CIQ401 — une valeur promue depuis le site porte sa provenance.
+        if 'compteur_puissance_kva' in fields:
+            fields['puissance_souscrite_source'] = 'site_web'
+        if fields.get('surface_toiture_m2') is not None:
+            fields['surface_source'] = 'site_web'
+        # CIQ406 — les réponses PRO du site quittent le sac pour leurs
+        # colonnes CIQ401 (même geste qu'AGR402 au-dessus).
+        promouvoir_pro_du_sac(questionnaire, fields)
         if questionnaire:
             fields['web_questionnaire'] = questionnaire
     estimate = _clean_estimate_shown(
@@ -1969,6 +2088,14 @@ def _map_and_link_lead(raw, data, company):
         provenances_gardees = {
             POMPAGE_SI_VIDE[colonne] for colonne in pompage_garde
             if POMPAGE_SI_VIDE[colonne]}
+        # CIQ406 — idem pour les colonnes pro : jamais d'écrasement.
+        pro_garde = {
+            colonne for colonne in PRO_SI_VIDE
+            if getattr(existing, colonne) not in (None, '')}
+        pompage_garde |= pro_garde
+        provenances_gardees |= {
+            PRO_SI_VIDE[colonne] for colonne in pro_garde
+            if PRO_SI_VIDE[colonne]}
         for key, value in fields.items():
             if value is None or value == '':
                 continue

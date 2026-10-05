@@ -77,6 +77,9 @@ _CROCHETS = [
     # différents, et la conversion est une suite de `re.sub`.
     (r'\[mois du dossier\]', '{mois_dossier}'),
     (r'\[prescripteur\]', '{prescripteur}'),
+    # CIQ500/CIQ501 (05/10/2026) — la raison sociale du lead (`Lead.societe`),
+    # dans une phrase AUTONOME des textes B2B : vide, la phrase est omise.
+    (r'\[société\]', '{societe}'),
     (r'\[mois\]', '{mois_preuve}'),
     (r'\[ville\]', '{ville_preuve}'),
     (r'\[Conseiller\]', '{conseiller}'),

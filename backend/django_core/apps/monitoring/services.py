@@ -6,8 +6,8 @@ Services monitoring — synchronisation des relevés + évaluation N52.
 fournisseur n'est configuré (renvoie 0 relevé importé).
 
 `evaluate_underperformance` compare la production récente d'un système à son
-attendu (config.expected_annual_kwh, sinon estimée depuis la puissance et le
-productible). Sous le seuil société (MonitoringSettings), on ouvre (idempotent)
+attendu (config.expected_annual_kwh ; sans référence semée = « en attente de
+référence », aucun drapeau — CIQ643). Sous le seuil société (MonitoringSettings), on ouvre (idempotent)
 un drapeau ; et si la société a activé l'auto-ticket, on crée UN ticket SAV
 préventif lié au drapeau — jamais deux pour un même drapeau ouvert. Repasse
 au-dessus du seuil : on ferme le drapeau ouvert.
@@ -33,8 +33,8 @@ from .models import (
 )
 from .providers import _coerce_reading, get_provider
 
-# Productible conservateur (kWh/kWc/an) pour estimer l'attendu si non renseigné.
-DEFAULT_PRODUCTIBLE_KWH_KWC = Decimal('1500')
+# CIQ643 — plus d'attendu inventé : sans ``expected_annual_kwh`` semé (recette
+# FG278 ou étude du devis), aucune évaluation ni drapeau.
 # Fenêtre (jours) de récence pour l'évaluation de performance.
 RECENT_WINDOW_DAYS = 365
 
@@ -121,10 +121,8 @@ def _expected_recent_kwh(installation, config, window_days):
     """Production attendue (kWh) sur la fenêtre. None si inconnaissable."""
     annual = config.expected_annual_kwh
     if annual is None:
-        kwc = installation.puissance_installee_kwc
-        if not kwc:
-            return None
-        annual = Decimal(str(kwc)) * DEFAULT_PRODUCTIBLE_KWH_KWC
+        # CIQ643 — pas de repli inventé : « en attente de référence ».
+        return None
     return Decimal(str(annual)) * Decimal(window_days) / Decimal('365')
 
 
@@ -177,6 +175,9 @@ def evaluate_underperformance(installation, *, user=None, today=None):
         result['data_status'] = 'stale_data' if has_ever else 'no_data_ever'
         return result
     if not expected or expected <= 0:
+        # CIQ643 — des relevés récents existent mais aucune référence n'a été
+        # semée : aucune évaluation, aucun drapeau.
+        result['data_status'] = 'en_attente_reference'
         return result
 
     actual = recent_production_kwh(installation, today=today)

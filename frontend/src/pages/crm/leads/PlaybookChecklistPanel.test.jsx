@@ -1,47 +1,40 @@
-// NTCRM13 — Playbook checklist widget on the lead fiche: a commercial sees
-// and checks tasks for the current stage.
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+// AGR527 — « Proposer le texte » sur la tâche de playbook qui porte une
+// `cle_message` (contrat partagé `lead_playbook.json`, AGR507/AGR526) : le
+// clic ouvre `MessageVisiteDialog` avec CETTE clé ; une tâche sans clé n'a pas
+// de bouton. Mock importé de l'échantillon du contrat — jamais inventé.
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import api from '../../../api/axios'
+import PlaybookChecklistPanel from './PlaybookChecklistPanel'
 
 vi.mock('../../../api/axios', () => ({
   default: { get: vi.fn(), post: vi.fn() },
 }))
-vi.mock('../../../ui/confirm', () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
+vi.mock('../../../features/crm/relances/MessageVisiteDialog', () => ({
+  default: ({ cle, open }) => (open ? <div data-testid="message-visite-dialog">{cle}</div> : null),
 }))
 
-import api from '../../../api/axios'
-import PlaybookChecklistPanel from './PlaybookChecklistPanel'
+const liste = exempleContrat('crm', 'lead_playbook', 'exemple_liste')
 
-describe('PlaybookChecklistPanel (NTCRM13)', () => {
-  beforeEach(() => vi.clearAllMocks())
+afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-  it('lists tasks for the lead and lets a commercial check one', async () => {
-    api.get.mockResolvedValue({
-      data: [
-        {
-          id: 1, tache: 10, tache_libelle: 'Appeler le client',
-          tache_obligatoire: true, fait: false, fait_par_nom: null,
-        },
-      ],
-    })
-    api.post.mockResolvedValue({ data: {} })
-
-    render(<PlaybookChecklistPanel leadId={99} />)
-    expect(await screen.findByText('Appeler le client')).toBeInTheDocument()
-    expect(screen.getByText('obligatoire')).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('checkbox'))
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      '/crm/leads/99/playbook/', { tache: 10, fait: true },
-    ))
+describe('AGR527 — PlaybookChecklistPanel : « Proposer le texte »', () => {
+  it('une tâche avec cle_message porte le bouton ; le clic ouvre la modale avec cette clé', async () => {
+    api.get.mockResolvedValue({ data: [liste[0]] })
+    render(<PlaybookChecklistPanel leadId={1512} />)
+    const bouton = await screen.findByRole('button', { name: 'Proposer le texte' })
+    expect(screen.queryByTestId('message-visite-dialog')).toBeNull()
+    fireEvent.click(bouton)
+    expect(screen.getByTestId('message-visite-dialog').textContent).toBe('dossier_fda')
+    // Cocher la tâche reste un geste séparé : aucun POST au clic.
+    expect(api.post).not.toHaveBeenCalled()
   })
 
-  it('renders nothing when there is no active playbook for this stage', async () => {
-    api.get.mockResolvedValue({ data: [] })
-    const { container } = render(<PlaybookChecklistPanel leadId={100} />)
-    await waitFor(() => expect(api.get).toHaveBeenCalled())
-    expect(container.querySelector('[data-testid="playbook-checklist-panel"]')).toBeNull()
+  it('une tâche sans cle_message n’a pas de bouton', async () => {
+    api.get.mockResolvedValue({ data: [liste[2]] })
+    render(<PlaybookChecklistPanel leadId={1512} />)
+    await waitFor(() => expect(screen.getByText(liste[2].tache_libelle)).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: 'Proposer le texte' })).toBeNull()
   })
 })

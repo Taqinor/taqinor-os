@@ -132,15 +132,48 @@ const fieldLabels = {
   },
 
   // ── Pompage (agricole) ────────────────────────────────────────────────
-  pompe_cv: { libelleCourt: 'puissance de la pompe (CV)', label: 'Pompe (CV)', section: 'pompage', inputId: 'lf-pompe-cv' },
-  // AGR401 — ex-`pompe_cv` renommée côté serveur (pompe ACTUELLE). Libellé =
-  // `verbose_name` serveur ; `pending` jusqu'à son FormField (AGR415).
+  // AGR401 — `pompe_cv` est l'alias lecture seule DÉPRÉCIÉ de
+  // `pompe_actuelle_cv` : même champ à l'écran (AGR415).
+  pompe_cv: {
+    libelleCourt: 'puissance de la pompe actuelle (CV)', label: 'Pompe actuelle (CV)',
+    section: 'pompage', inputId: 'lf-pompe-actuelle-cv',
+  },
   pompe_actuelle_cv: {
     libelleCourt: 'puissance de la pompe actuelle (CV)', label: 'Pompe actuelle (CV)',
-    section: 'pompage', inputId: 'lf-pompe-actuelle-cv', pending: 'AGR415',
+    section: 'pompage', inputId: 'lf-pompe-actuelle-cv',
   },
   pompe_hmt_m: { libelleCourt: 'hauteur manométrique (HMT)', label: 'HMT (m)', section: 'pompage', inputId: 'lf-pompe-hmt' },
   pompe_debit_m3h: { libelleCourt: 'débit souhaité (m³/h)', label: 'Débit souhaité (m³/h)', section: 'pompage', inputId: 'lf-pompe-debit' },
+  // AGR415 — toutes les colonnes du contrat `lead_pompage.json`, chacune avec
+  // son vrai inputId (fin des `pending` pompage).
+  source_eau: { label: 'Source d’eau', section: 'pompage', inputId: 'lf-source-eau' },
+  niveau_statique_m: { libelleCourt: 'niveau d’eau (m)', label: 'Niveau d’eau statique (m)', section: 'pompage', inputId: 'lf-niveau-statique' },
+  niveau_statique_source: { label: 'Origine du niveau d’eau', section: 'pompage', inputId: 'lf-niveau-statique-source' },
+  profondeur_forage_m: { label: 'Profondeur du forage (m)', section: 'pompage', inputId: 'lf-profondeur-forage' },
+  debit_forage_m3h: { label: 'Débit du forage (m³/h)', section: 'pompage', inputId: 'lf-debit-forage' },
+  debit_forage_source: { label: 'Origine du débit du forage', section: 'pompage', inputId: 'lf-debit-forage-source' },
+  besoin_eau_m3j: { libelleCourt: 'besoin en eau (m³/jour)', label: 'Besoin en eau (m³/jour)', section: 'pompage', inputId: 'lf-besoin-eau' },
+  besoin_eau_source: { label: 'Origine du besoin en eau', section: 'pompage', inputId: 'lf-besoin-eau-source' },
+  culture: { label: 'Culture', section: 'pompage', inputId: 'lf-culture' },
+  surface_irriguee_ha: { label: 'Surface irriguée (ha)', section: 'pompage', inputId: 'lf-surface-irriguee' },
+  irrigation_methode: { label: 'Méthode d’irrigation', section: 'pompage', inputId: 'lf-irrigation-methode' },
+  region_agricole: { label: 'Région agricole', section: 'pompage', inputId: 'lf-region-agricole' },
+  pompe_actuelle_type: { label: 'Type de pompe actuelle', section: 'pompage', inputId: 'lf-pompe-actuelle-type' },
+  pompe_actuelle_debit_m3h: { label: 'Débit de la pompe actuelle (m³/h)', section: 'pompage', inputId: 'lf-pompe-actuelle-debit' },
+  butane_bouteilles_jour: { label: 'Butane — bouteilles par jour d’irrigation', section: 'pompage', inputId: 'lf-butane-bouteilles-jour' },
+  carburant_prix_unitaire_mad: { label: 'Prix payé (MAD par bouteille ou par litre)', section: 'pompage', inputId: 'lf-carburant-prix' },
+  depense_carburant_mad_mois: { label: 'Dépense carburant (MAD/mois)', section: 'pompage', inputId: 'lf-depense-carburant' },
+  mois_irrigation: { label: 'Mois d’irrigation', section: 'pompage', inputId: 'lf-mois-irrigation' },
+  distance_forage_champ_m: { label: 'Distance forage → champ (m)', section: 'pompage', inputId: 'lf-distance-forage-champ' },
+  electricite_sur_place: { label: 'Électricité sur place', section: 'pompage', inputId: 'lf-electricite-sur-place' },
+  autorisation_prelevement: { label: 'Autorisation de prélèvement (ABH)', section: 'pompage', inputId: 'lf-autorisation-prelevement' },
+  autorisation_numero: { label: 'Numéro de l’autorisation', section: 'pompage', inputId: 'lf-autorisation-numero' },
+  autorisation_debit_l_s: { label: 'Débit autorisé (L/s)', section: 'pompage', inputId: 'lf-autorisation-debit' },
+  autorisation_volume_m3_an: { label: 'Volume autorisé (m³/an)', section: 'pompage', inputId: 'lf-autorisation-volume' },
+  compteur_eau: { label: 'Compteur d’eau sur le forage', section: 'pompage', inputId: 'lf-compteur-eau' },
+  projet_pompage: { label: 'Projet de pompage', section: 'pompage', inputId: 'lf-projet-pompage' },
+  deja_beneficiaire_fda: { label: 'Déjà bénéficiaire du FDA', section: 'pompage', inputId: 'lf-deja-beneficiaire-fda' },
+  pompe_hmt_source: { label: 'Origine de la HMT', section: 'pompage', inputId: 'lf-pompe-hmt-source' },
 
   // ── Toiture & site ─────────────────────────────────────────────────────
   type_toiture: { libelleCourt: 'type de toiture', label: 'Type de toiture', section: 'toiture', inputId: 'lf-type-toiture' },
@@ -155,6 +188,59 @@ const fieldLabels = {
   structure_produit: { libelleCourt: 'produit de structure', label: 'Structure', section: 'toiture', inputId: 'lf-structure-produit' },
   nb_etages: { label: 'Étages / hauteur', section: 'toiture', inputId: 'lf-nb-etages' },
 
+  // ── Professionnel (commercial / industriel) — CIQ418 ───────────────────
+  // Toutes les colonnes du contrat partagé `lead_pro.json` (CIQ1) que la
+  // section « Professionnel » saisit (libellé = `verbose_name` serveur). Les
+  // colonnes RÉUTILISÉES (raison sociale, raccordement, toiture, surface,
+  // financement) gardent leur section d'origine : un seul champ par donnée.
+  // `facility_type` (« Type de site (pro) ») est MASQUÉ : la colonne reste.
+  tension_raccordement: { label: 'Tension de raccordement', section: 'pro', inputId: 'lf-tension-raccordement' },
+  tension_source: { label: 'Provenance de la tension', section: 'pro', inputId: 'lf-tension-source' },
+  compteur_puissance_kva: {
+    label: 'Puissance souscrite du compteur (kVA)', section: 'pro', inputId: 'lf-compteur-puissance-kva',
+  },
+  puissance_souscrite_source: {
+    label: 'Provenance de la puissance souscrite', section: 'pro', inputId: 'lf-puissance-souscrite-source',
+  },
+  categorie_commerciale: {
+    label: 'Activité (catégorie commerciale)', section: 'pro', inputId: 'lf-categorie-commerciale',
+  },
+  reponses_categorie: { label: "Réponses propres à l'activité", section: 'pro', inputId: 'lf-reponses-categorie' },
+  secteur_industriel: { label: 'Secteur industriel', section: 'pro', inputId: 'lf-secteur-industriel' },
+  export_ue_declare: { label: "Exporte vers l'Union européenne", section: 'pro', inputId: 'lf-export-ue' },
+  regime_equipes: { label: 'Régime des équipes', section: 'pro', inputId: 'lf-regime-equipes' },
+  jours_ouverture: { label: "Jours d'ouverture", section: 'pro', inputId: 'lf-jours-ouverture' },
+  heure_debut: { label: 'Heure de début de journée', section: 'pro', inputId: 'lf-heure-debut' },
+  heure_fin: { label: 'Heure de fin de journée', section: 'pro', inputId: 'lf-heure-fin' },
+  fermeture_mois: { label: 'Mois de fermeture', section: 'pro', inputId: 'lf-fermeture-mois' },
+  type_surface: { label: 'Type de surface', section: 'pro', inputId: 'lf-type-surface' },
+  surface_source: { label: 'Provenance de la surface', section: 'pro', inputId: 'lf-surface-source' },
+  groupe_electrogene: { label: 'Groupe électrogène', section: 'pro', inputId: 'lf-groupe-electrogene' },
+  groupe_kva: { label: 'Groupe électrogène — puissance (kVA)', section: 'pro', inputId: 'lf-groupe-kva' },
+  groupe_litres_mois: { label: 'Groupe électrogène — gasoil (L/mois)', section: 'pro', inputId: 'lf-groupe-litres-mois' },
+  groupe_depense_mad_mois: {
+    label: 'Groupe électrogène — dépense (MAD/mois)', section: 'pro', inputId: 'lf-groupe-depense',
+  },
+  pv_existant_kwc: { label: 'Photovoltaïque existant (kWc)', section: 'pro', inputId: 'lf-pv-existant' },
+  cos_phi: { label: 'Cos φ', section: 'pro', inputId: 'lf-cos-phi' },
+  cos_phi_source: { label: 'Provenance du cos φ', section: 'pro', inputId: 'lf-cos-phi-source' },
+  releve_conso: { label: 'Relevé mensuel de consommation', section: 'pro', inputId: 'lf-releve-conso' },
+  tva_recuperable: { label: 'TVA récupérable', section: 'pro', inputId: 'lf-tva-recuperable' },
+  ice: { label: 'ICE', section: 'pro', inputId: 'lf-ice' },
+  rc: { label: 'Registre de commerce (RC)', section: 'pro', inputId: 'lf-rc' },
+  if_fiscal: { label: 'Identifiant fiscal (IF)', section: 'pro', inputId: 'lf-if-fiscal' },
+  adresse_siege: { label: 'Adresse du siège', section: 'pro', inputId: 'lf-adresse-siege' },
+  fonction_contact: { label: 'Fonction du contact', section: 'pro', inputId: 'lf-fonction-contact' },
+  contact_secondaire_fonction: {
+    label: 'Contact secondaire (fonction)', section: 'pro', inputId: 'lf-contact-secondaire-fonction',
+  },
+  contact_secondaire_email: {
+    label: 'Contact secondaire (e-mail)', section: 'pro', inputId: 'lf-contact-secondaire-email',
+  },
+  facture_tranche_declaree: {
+    label: 'Tranche de facture déclarée', section: 'pro', inputId: 'lf-facture-tranche',
+  },
+
   // ── Visite technique ───────────────────────────────────────────────────
   visite_effectuee: { label: 'Visite effectuée', section: 'visite', inputId: 'lf-visite-effectuee' },
   visite_prevue_le: { label: 'Visite prévue le', section: 'visite', inputId: 'lf-visite-prevue' },
@@ -168,8 +254,10 @@ const fieldLabels = {
   ownership: { label: "Statut d'occupation", section: 'divers', inputId: 'lf-ownership' },
   financing_intent: { label: 'Financement envisagé', section: 'divers', inputId: 'lf-financing-intent' },
   project_timeline: { label: 'Horizon du projet', section: 'divers', inputId: 'lf-project-timeline' },
-  facility_type: { label: 'Type de site (pro)', section: 'divers', inputId: 'lf-facility-type' },
   roof_age: { label: 'Âge de la toiture (ans)', section: 'divers', inputId: 'lf-roof-age' },
+  // AGR524 — état du dossier d'aide FDA (interne).
+  dossier_subvention: { label: 'Dossier de subvention', section: 'divers', inputId: 'lf-dossier-subvention' },
+  dossier_subvention_le: { label: 'Date de l’étape', section: 'divers', inputId: 'lf-dossier-subvention-le' },
 
   // ── Vague 1 du script d'appel guidé (CAD149/CAD174) ───────────────────
   // Libellé = EXACTEMENT le `verbose_name` du champ côté serveur
@@ -190,8 +278,9 @@ const fieldLabels = {
     pending: 'PanneauScriptAppel (CAD152/153)',
   },
   decideur: {
-    label: 'Qui décide', section: 'pipeline', inputId: 'lf-decideur',
-    pending: 'PanneauScriptAppel (CAD152/153)',
+    // AGR415 — saisi dans le bloc « Règles & aides » du pompage (contrat
+    // `lead_pompage.json`) : plus `pending`.
+    label: 'Qui décide', section: 'pompage', inputId: 'lf-decideur',
   },
   devis_concurrents: {
     label: 'Autres devis en cours', section: 'pipeline', inputId: 'lf-devis-concurrents',
@@ -203,17 +292,17 @@ const fieldLabels = {
   },
   pompage_heures_jour: {
     label: 'Pompage — heures par jour', section: 'pompage',
-    inputId: 'lf-pompage-heures-jour', pending: 'PanneauScriptAppel (CAD152/153)',
+    inputId: 'lf-pompage-heures-jour',
   },
   pompe_alim_actuelle: {
     // AGR404 — champ de provenance du lead (bannière « valeurs modifiées »).
     libelleCourt: 'énergie de la pompe actuelle',
     label: 'Pompe actuelle — alimentation', section: 'pompage',
-    inputId: 'lf-pompe-alim-actuelle', pending: 'PanneauScriptAppel (CAD152/153)',
+    inputId: 'lf-pompe-alim-actuelle',
   },
   carburant_litres_mois: {
     label: 'Carburant consommé (litres/mois)', section: 'pompage',
-    inputId: 'lf-carburant-litres-mois', pending: 'PanneauScriptAppel (CAD152/153)',
+    inputId: 'lf-carburant-litres-mois',
   },
 
   // CAD153 — la garde « tout champ écrit par le panneau d'appel, et tout
@@ -246,10 +335,6 @@ const fieldLabels = {
   declencheur: {
     label: 'Ce qui a accroché', section: 'pipeline',
     inputId: 'lf-declencheur', pending: 'vague 2 (CAD154)',
-  },
-  compteur_puissance_kva: {
-    label: 'Puissance souscrite du compteur (kVA)', section: 'energie',
-    inputId: 'lf-compteur-puissance-kva', pending: 'vague 2 (CAD154)',
   },
   chauffage_electrique_hiver: {
     label: 'Chauffage électrique en hiver', section: 'equipements',

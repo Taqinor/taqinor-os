@@ -30,10 +30,11 @@ const SECTION_FILES = [
   'SectionSite.jsx',
   'SectionVisite.jsx',
   'SectionDivers.jsx',
+  'SectionPro.jsx', // CIQ418 — « Professionnel » (lead commercial / industriel)
 ]
 
 const REGISTRY_SECTIONS = [
-  'contact', 'pipeline', 'energie', 'equipements', 'pompage', 'toiture', 'visite', 'divers',
+  'contact', 'pipeline', 'pro', 'energie', 'equipements', 'pompage', 'toiture', 'visite', 'divers',
 ]
 
 function htmlForIdsIn(source) {
@@ -55,6 +56,10 @@ const idsByFile = Object.fromEntries(
 )
 const allKnownIds = new Set(Object.values(idsByFile).flatMap((s) => [...s]))
 const mappedInputIds = new Set(Object.values(fieldLabels).map((f) => f.inputId))
+
+const CAD149_SAISIS_PAR_SECTION_POMPAGE = [
+  'decideur', 'pompage_heures_jour', 'pompe_alim_actuelle', 'carburant_litres_mois',
+]
 
 describe('fieldLabels — la carte ne dérive pas des sections réelles (règle fondateur 08/09/2026)', () => {
   for (const file of SECTION_FILES) {
@@ -105,7 +110,7 @@ describe('fieldLabels — la carte ne dérive pas des sections réelles (règle 
   // — le garde-fou de la tâche (l'écran et le `help_text` disent la même
   // chose). `pending` est EXPLICITE : ces champs n'ont pas encore leur
   // `<FormField>` dans une des six sections classiques.
-  it('les huit champs CAD149 (vague 1) ont une entrée fieldLabels, marquée pending', () => {
+  it('les huit champs CAD149 (vague 1) ont une entrée fieldLabels, marquée pending (sauf celles saisies par SectionPompage)', () => {
     const attendus = {
       type_bien: 'Type de bien',
       objectif_projet: 'Objectif du projet',
@@ -120,7 +125,14 @@ describe('fieldLabels — la carte ne dérive pas des sections réelles (règle 
       const entree = fieldLabels[cle]
       expect(entree, cle).toBeTruthy()
       expect(entree.label, cle).toBe(label)
-      expect(entree.pending, cle).toBeTruthy()
+      // AGR415 — decideur + les trois colonnes de pompage ont désormais leur
+      // `<FormField>` (SectionPompage) : plus `pending`, un vrai inputId.
+      if (CAD149_SAISIS_PAR_SECTION_POMPAGE.includes(cle)) {
+        expect(entree.pending, cle).toBeUndefined()
+        expect(allKnownIds.has(entree.inputId), cle).toBe(true)
+      } else {
+        expect(entree.pending, cle).toBeTruthy()
+      }
     }
   })
 })

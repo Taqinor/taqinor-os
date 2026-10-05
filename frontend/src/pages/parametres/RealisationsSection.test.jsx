@@ -41,6 +41,7 @@ vi.mock('../../api/parametresApi', () => ({
 import parametresApi from '../../api/parametresApi'
 import { ThemeProvider } from '../../design/ThemeProvider'
 import RealisationsSection from './RealisationsSection'
+import contratRealisation from '../../../../backend/django_core/apps/parametres/contract_samples/realisation.json'
 
 beforeEach(() => {
   parametresApi.getRealisations.mockClear()
@@ -105,6 +106,66 @@ describe('RealisationsSection', () => {
       }))
     expect(Object.keys(parametresApi.createRealisation.mock.calls[0][0]))
       .not.toContain('company')
+  })
+
+  it('AGR515 — segment : rien de pré-coché, et créer avec « Agricole » l\'envoie', async () => {
+    await renderSection()
+    await screen.findByText('Villa à Bouskoura')
+    const form = screen.getByTestId('realisation-formulaire')
+    const choix = within(form).getByLabelText('Segment')
+    expect(choix).toHaveValue('')
+    expect(within(form).getByText(/ne sert de preuve qu'aux leads agricoles/))
+      .toBeInTheDocument()
+    fireEvent.change(within(form).getByLabelText('Titre'),
+      { target: { value: 'Pompage à Berkane' } })
+    fireEvent.change(within(form).getByLabelText('Ville'),
+      { target: { value: 'Berkane' } })
+    fireEvent.change(within(form).getByLabelText('Lien de la page publique'),
+      { target: { value: 'https://exemple.ma/realisations/pompage-berkane/' } })
+    fireEvent.change(choix, { target: { value: 'agricole' } })
+    fireEvent.click(within(form).getByRole('button', { name: /Ajouter la réalisation/ }))
+    await waitFor(() => expect(parametresApi.createRealisation).toHaveBeenCalled())
+    expect(parametresApi.createRealisation.mock.calls[0][0].segment).toBe('agricole')
+  })
+
+  it('AGR515 — sans segment choisi, la création n\'envoie pas la clé segment', async () => {
+    await renderSection()
+    await screen.findByText('Villa à Bouskoura')
+    const form = screen.getByTestId('realisation-formulaire')
+    fireEvent.change(within(form).getByLabelText('Titre'), { target: { value: 'Hangar' } })
+    fireEvent.change(within(form).getByLabelText('Ville'), { target: { value: 'Berrechid' } })
+    fireEvent.change(within(form).getByLabelText('Lien de la page publique'),
+      { target: { value: 'https://exemple.ma/realisations/hangar/' } })
+    fireEvent.click(within(form).getByRole('button', { name: /Ajouter la réalisation/ }))
+    await waitFor(() => expect(parametresApi.createRealisation).toHaveBeenCalled())
+    expect(parametresApi.createRealisation.mock.calls[0][0]).not.toHaveProperty('segment')
+  })
+
+  it('AGR515 — choisir Agricole, rouvrir, ne rien toucher : même segment, aucun envoi', async () => {
+    // Le « serveur » est l'échantillon de contrat, jamais un mock écrit à la main.
+    let serveur = JSON.parse(JSON.stringify(contratRealisation.exemple_liste))
+    parametresApi.getRealisations.mockImplementation(
+      async () => ({ data: JSON.parse(JSON.stringify(serveur)) }))
+    parametresApi.updateRealisation.mockImplementation(async (id, patch) => {
+      serveur = serveur.map(r => (r.id === id ? { ...r, ...patch } : r))
+      return { data: serveur.find(r => r.id === id) }
+    })
+    const premiere = render(<ThemeProvider><RealisationsSection /></ThemeProvider>)
+    const ligne = await screen.findByLabelText('Segment de Ferme à Mechraa Bel Ksiri')
+    expect(ligne).toHaveValue('')
+    fireEvent.change(ligne, { target: { value: 'agricole' } })
+    await waitFor(() => expect(parametresApi.updateRealisation)
+      .toHaveBeenCalledWith(13, { segment: 'agricole' }))
+    const apres = JSON.parse(JSON.stringify(serveur))
+    premiere.unmount()
+    parametresApi.updateRealisation.mockClear()
+    render(<ThemeProvider><RealisationsSection /></ThemeProvider>)
+    await waitFor(() => expect(
+      screen.getByLabelText('Segment de Ferme à Mechraa Bel Ksiri'),
+    ).toHaveValue('agricole'))
+    expect(parametresApi.updateRealisation).not.toHaveBeenCalled()
+    expect(serveur).toEqual(apres)
+    expect(serveur[0].segment).toBe('residentiel')
   })
 
   it('n envoie ni puissance ni mois quand ils sont laissés vides', async () => {

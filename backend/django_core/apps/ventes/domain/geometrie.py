@@ -272,6 +272,9 @@ CLES_IMPRIMEES = (
     'environment',
     'shadeObstructions',
     'horizonProfile',
+    # CIQ112 — le mode de pose DÉCLARÉ (toit du lead) choisit la règle de
+    # pose des pans qui n'ont pas le leur : il change le calepinage chiffré.
+    'modePoseDeclare',
 )
 
 #: Les clés ajoutées par ACAL40 — hors canonique historique, présentes et non

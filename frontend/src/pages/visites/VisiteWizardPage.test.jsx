@@ -113,6 +113,8 @@ vi.mock('../../ui/confirm', async (importOriginal) => {
 })
 
 import VisiteWizardPage from './VisiteWizardPage'
+import { MESURES_SCHEMA } from './visiteHelpers'
+import { documentContrat } from '../../test/fixtures/contractSamples'
 
 function withProviders() {
   return render(
@@ -258,5 +260,113 @@ describe('VisiteWizardPage — VISITE-QUALIF', () => {
     const bloc = await screen.findByTestId('visite-qualification')
     expect(bloc).toHaveTextContent('Froid')
     expect(screen.queryByRole('button', { name: /enregistrer la qualification/i })).not.toBeInTheDocument()
+  })
+})
+
+/* AGR422 — gabarit « relevé du point d'eau » : le mock est l'`exemple_point_eau`
+   du contrat partagé `visite_terrain.json` (check_api_shapes), jamais inventé. */
+describe('VisiteWizardPage — AGR422 (gabarit point_eau)', () => {
+  const contrat = documentContrat('visites', 'visite_terrain')
+  const POINT_EAU = { ...contrat.exemple_point_eau, qualification: null }
+
+  const catId = (categorie, cle) => `visite-mesure-${categorie}-${cle}`
+
+  it('titre « Visite de relevé du point d’eau », jamais de champ de toit', async () => {
+    getVisite.mockResolvedValue({ data: POINT_EAU })
+    withProviders()
+    expect(await screen.findByRole('heading', { name: 'Visite de relevé du point d’eau' })).toBeInTheDocument()
+    expect(screen.queryByText('Longueur de la zone utile')).not.toBeInTheDocument()
+    expect(screen.queryByText('Orientation')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /calage du toit/i })).not.toBeInTheDocument()
+  })
+
+  it('l’ordre des onglets suit le gabarit servi', async () => {
+    getVisite.mockResolvedValue({ data: POINT_EAU })
+    withProviders()
+    await screen.findByRole('heading', { name: 'Visite de relevé du point d’eau' })
+    const onglets = screen.getAllByRole('tab').map((t) => t.textContent)
+    expect(onglets).toEqual(POINT_EAU.checklist.map((c) => c.libelle))
+  })
+
+  it('le schéma de mesures reprend les codes ET les choix du contrat, tels quels', () => {
+    const gabarit = contrat.gabarit_point_eau
+    for (const [categorie, bloc] of Object.entries(gabarit)) {
+      const schema = MESURES_SCHEMA[categorie]
+      expect(schema, categorie).toBeTruthy()
+      expect(schema.map((c) => c.key), categorie).toEqual(Object.keys(bloc.mesures))
+      for (const champ of schema) {
+        const def = bloc.mesures[champ.key]
+        expect(champ.label, champ.key).toBe(def.libelle)
+        if (def.type === 'choix') {
+          expect(champ.options.map((o) => o.value), champ.key).toEqual(def.choix)
+          for (const o of champ.options) expect(o.label.trim().length).toBeGreaterThan(0)
+        }
+      }
+    }
+    // Le gabarit toiture est inchangé.
+    expect(MESURES_SCHEMA.toiture.map((c) => c.key)).toEqual([
+      'longueur_m', 'largeur_m', 'toit_plat', 'pente_deg', 'orientation',
+      'type_couverture', 'etat_couverture', 'obstacles_notes',
+    ])
+  })
+
+  it('on saisit une mesure (12,5 jamais arrondi) et on coche « non mesurable »', async () => {
+    getVisite.mockResolvedValue({ data: POINT_EAU })
+    const user = userEvent.setup()
+    withProviders()
+    const niveau = await screen.findByLabelText(/Niveau statique \(pompe arrêtée\)/)
+    expect(niveau.id).toBe(catId('point_eau', 'niveau_statique_m'))
+    expect(niveau).toHaveAttribute('step', 'any')
+    await user.clear(niveau)
+    await user.type(niveau, '12.5')
+    expect(niveau).toHaveValue(12.5)
+    const caseDebit = await screen.findByRole('checkbox', { name: 'Débit non mesurable sur place' })
+    expect(caseDebit).not.toBeChecked()
+    await user.click(caseDebit)
+    expect(caseDebit).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Niveau non mesurable sur place' })).toBeInTheDocument()
+  })
+
+  it('chaque catégorie du gabarit affiche ses mesures et le tri-état n’enregistre pas « Non » sans réponse', async () => {
+    getVisite.mockResolvedValue({ data: POINT_EAU })
+    const user = userEvent.setup()
+    withProviders()
+    await screen.findByRole('heading', { name: 'Visite de relevé du point d’eau' })
+    for (const categorie of ['pompe_existante', 'electricite', 'site_pv', 'administratif']) {
+      const libelle = POINT_EAU.checklist.find((c) => c.categorie === categorie).libelle
+      await user.click(screen.getByRole('tab', { name: libelle }))
+      const form = await screen.findByTestId(`visite-mesures-${categorie}`)
+      for (const champ of MESURES_SCHEMA[categorie]) {
+        expect(form.querySelector(`#${catId(categorie, champ.key)}`), `${categorie}.${champ.key}`).toBeTruthy()
+      }
+    }
+    // « compteur_eau » (requis) vaut null dans l'exemple : le sélecteur reste
+    // sur « pas encore relevé ».
+    expect(screen.getByLabelText("Compteur d'eau sur le forage")).toHaveTextContent('pas encore relevé')
+  })
+
+  it('terminer sans aucun champ de toit : activé dès que le serveur dit complet', async () => {
+    getVisite.mockResolvedValue({
+      data: { ...POINT_EAU, completude: { complet: true, manquants: [] } },
+    })
+    withProviders()
+    const bouton = await screen.findByRole('button', { name: /terminer la visite/i })
+    expect(bouton).not.toBeDisabled()
+    expect(screen.queryByText('Longueur de la zone utile')).not.toBeInTheDocument()
+  })
+
+  it('la complétude vient TOUJOURS du serveur : manquants affichés tels quels', async () => {
+    getVisite.mockResolvedValue({ data: POINT_EAU })
+    withProviders()
+    const bloc = await screen.findByTestId('visite-manquants')
+    for (const m of POINT_EAU.completude.manquants) expect(bloc).toHaveTextContent(m.libelle)
+    expect(await screen.findByRole('button', { name: /il manque des éléments/i })).toBeDisabled()
+  })
+
+  it('une visite toiture garde son titre (nom du client) et ses champs', async () => {
+    getVisite.mockResolvedValue({ data: { ...VISITE_INCOMPLETE, gabarit: 'toiture' } })
+    withProviders()
+    expect(await screen.findByRole('heading', { name: 'Client Démo' })).toBeInTheDocument()
+    expect(screen.getByText('Longueur de la zone utile (m)')).toBeInTheDocument()
   })
 })

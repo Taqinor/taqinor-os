@@ -58,6 +58,8 @@ REGIME_CHOICES = [
     ('declaration_bt', "Déclaration basse tension"),
     ('accord_raccordement', "Accord de raccordement"),
     ('autorisation_anre', "Autorisation ANRE"),
+    # AGR603 — loi 82-21 art. 3 : installation non raccordée = déclaration.
+    ('declaration_hors_reseau', "Déclaration hors réseau (loi 82-21, art. 3)"),
 ]
 
 

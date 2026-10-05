@@ -56,23 +56,28 @@ const PROJECT_TIMELINE = {
   immediat: 'Dès que possible', '3_mois': 'Moins de 3 mois', '6_mois': '3 à 6 mois',
   plus_tard: 'Plus tard / je me renseigne',
 }
-// source-choix: crm.Lead.facility_type
-const FACILITY_TYPE = {
-  bureau: 'Bureau', entrepot: 'Entrepôt', usine: 'Usine', commerce: 'Commerce',
-  agricole: 'Agricole', autre: 'Autre',
-}
 
 const optionsDe = (labels) => [
   <option key="" value="">—</option>,
   ...Object.entries(labels).map(([k, l]) => <option key={k} value={k}>{l}</option>),
 ]
 
+// AGR524 (contrat `lead_dossier_subvention.json`) — état du dossier d'aide FDA.
+// INTERNE : jamais montré au client (PDF, /proposition, messages).
+// source-choix: crm.Lead.dossier_subvention
+const DOSSIER_SUBVENTION = {
+  non_concerne: 'Non concerné',
+  a_deposer: 'À déposer',
+  depose: 'Déposé',
+  accorde: 'Accordé (approbation préalable)',
+  refuse: 'Refusé',
+}
+
 // CAD159 — libellés des champs de ce bloc (mêmes que leurs FormField).
 const LIBELLES_QUALIFICATION = {
   ownership: "Statut d'occupation",
   financing_intent: 'Financement envisagé',
   project_timeline: 'Horizon du projet',
-  facility_type: 'Type de site (pro)',
   roof_age: 'Âge de la toiture (ans)',
 }
 
@@ -118,11 +123,8 @@ function QualificationSite({ state, setField, errors }) {
         />
       </div>
       <div className="form-row">
-        <ChampSite
-          state={state} champ="facility_type" label="Type de site (pro)" htmlFor="lf-facility-type"
-          error={errors.facility_type}
-          renderControl={select('facility_type', 'lf-facility-type', FACILITY_TYPE)}
-        />
+        {/* CIQ418 — « Type de site (pro) » (`facility_type`) est MASQUÉ : la
+            fiche d'un pro a sa section « Professionnel ». La colonne reste. */}
         <ChampSite
           state={state} champ="roof_age" label="Âge de la toiture (ans)" htmlFor="lf-roof-age"
           error={errors.roof_age}
@@ -133,6 +135,43 @@ function QualificationSite({ state, setField, errors }) {
             />
           )}
         />
+      </div>
+    </div>
+  )
+}
+
+/* AGR524 — « Dossier de subvention » + « Date de l'étape » : affichés pour un
+   lead AGRICOLE, ou dès qu'une valeur existe (jamais pour un résidentiel
+   vierge). L'erreur serveur (date obligatoire pour déposé / accordé / refusé)
+   s'affiche SOUS le champ fautif — la règle reste celle du serveur. */
+function DossierSubvention({ state, setField, errors }) {
+  const etat = getField(state, 'dossier_subvention') ?? ''
+  const date = getField(state, 'dossier_subvention_le') ?? ''
+  const agricole = getField(state, 'type_installation') === 'agricole'
+  if (!agricole && !etat && !date) return null
+  return (
+    <div className="mt-3" data-testid="dossier-subvention">
+      <p className="form-label">Dossier de subvention (FDA)</p>
+      <p className="text-xs text-muted-foreground" data-testid="dossier-subvention-interne">
+        Information interne, jamais montrée au client.
+      </p>
+      <div className="form-row">
+        <FormField label="Dossier de subvention" htmlFor="lf-dossier-subvention" error={errors.dossier_subvention}>
+          <select
+            id="lf-dossier-subvention"
+            className={errors.dossier_subvention ? 'form-select is-invalid' : 'form-select'}
+            aria-invalid={errors.dossier_subvention ? true : undefined}
+            value={etat} onChange={(e) => setField('dossier_subvention', e.target.value)}
+          >
+            {optionsDe(DOSSIER_SUBVENTION)}
+          </select>
+        </FormField>
+        <FormField label="Date de l'étape" htmlFor="lf-dossier-subvention-le" error={errors.dossier_subvention_le}>
+          <Input
+            id="lf-dossier-subvention-le" type="date" invalid={!!errors.dossier_subvention_le}
+            value={date} onChange={(e) => setField('dossier_subvention_le', e.target.value)}
+          />
+        </FormField>
       </div>
     </div>
   )
@@ -189,8 +228,6 @@ const STRUCTURED_LABELS = {
   project_timeline: 'Horizon du projet',
   financing_intent: 'Financement envisagé',
   futures_charges: 'Charges futures',
-  facility_type: "Type d'établissement",
-  site_count: 'Nombre de sites',
   visit_window_part: 'Créneau de visite souhaité',
   visit_window_week: 'Semaine de visite souhaitée',
   client_ref: 'Référence client (site)',
@@ -260,8 +297,27 @@ const ESTIMATE_LABELS = {
   bassinM3: 'Bassin recommandé (m³)',
 }
 
+// AGR416 — pour un lead AGRICOLE, les clés `ecoMad*` de `web_estimate` sont
+// la bande « économie carburant 75-90 % » de l'ancien site : NON SOURCÉE,
+// retirée. Elles restent visibles (elles disent ce que le visiteur a vu) mais
+// ne se présentent plus jamais comme une économie à répéter.
+const MENTION_ECO_NON_SOURCEE =
+  "Économie montrée par l'ancien site (bande non sourcée, retirée) — ne pas la répéter"
+const ESTIMATE_LABELS_AGRICOLE = {
+  ...ESTIMATE_LABELS,
+  ecoMadMonthLow: `${ESTIMATE_LABELS.ecoMadMonthLow} — ${MENTION_ECO_NON_SOURCEE}`,
+  ecoMadMonthHigh: `${ESTIMATE_LABELS.ecoMadMonthHigh} — ${MENTION_ECO_NON_SOURCEE}`,
+  ecoMadYearLow: `${ESTIMATE_LABELS.ecoMadYearLow} — ${MENTION_ECO_NON_SOURCEE}`,
+  ecoMadYearHigh: `${ESTIMATE_LABELS.ecoMadYearHigh} — ${MENTION_ECO_NON_SOURCEE}`,
+}
+
+// CIQ418 — deux colonnes MORTES masquées du récapitulatif (les colonnes
+// restent) : la fiche d'un pro a sa section « Professionnel ».
+const STRUCTURED_MASQUES = new Set(['facility_type', 'site_count'])
+
 function itemsFromStructured(server) {
   return WEB_QUESTIONNAIRE_STRUCTURED_FIELDS
+    .filter((k) => !STRUCTURED_MASQUES.has(k))
     .map((k) => (estValeurWebRenseignee(server[k])
       ? { term: STRUCTURED_LABELS[k] || humaniser(k), description: formatStructured(k, server[k]) }
       : null))
@@ -290,7 +346,10 @@ export function SectionWebQuestionnaire({ state }) {
   const server = state.server || {}
   const structures = itemsFromStructured(server)
   const questionnaire = itemsFromObject(server.web_questionnaire, null)
-  const estimation = itemsFromObject(server.web_estimate, ESTIMATE_LABELS)
+  const estimation = itemsFromObject(
+    server.web_estimate,
+    getField(state, 'type_installation') === 'agricole'
+      ? ESTIMATE_LABELS_AGRICOLE : ESTIMATE_LABELS)
 
   if (!structures.length && !questionnaire.length && !estimation.length) return null
 
@@ -343,6 +402,7 @@ export default function SectionDivers({ state, setField, errors = {} }) {
         />
       </div>
       <QualificationSite state={state} setField={setField} errors={errors} />
+      <DossierSubvention state={state} setField={setField} errors={errors} />
     </>
   )
 }

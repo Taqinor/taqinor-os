@@ -114,12 +114,39 @@ def reponse_de(type_id, modele):
 REPONSES_SPEC = frozenset({
     'ne_plus_contacter', 'plus_tard', 'question_prix', 'devis_modifie',
     'decision_famille', 'decision_proprietaire', 'perdu', 'visite_abandonnee',
-    'joint_telephone'})
+    'joint_telephone',
+    # AGR520 — « En attente d'un accord (DPA / banque) ».
+    'attente_accord'})
+#: AGR533 — les SEULES clés qu'une variante de segment (`variantes_segment`)
+#: peut remplacer : ce qui se LIT. Jamais `reponse`, `outcome`, `geste` ni
+#: `suite` — la même clé serveur, le même effet.
+CLES_VARIANTE_SEGMENT = frozenset({'label', 'precision', 'effet'})
+
+
+def refus_variantes_segment(objet):
+    """AGR533 — les clés interdites qu'une ``variantes_segment`` de ``objet``
+    (modèle de réponse, entrée d'étape ou geste) voudrait changer : ``[]``
+    quand tout va bien. La garde de table le vérifie partout."""
+    refus = []
+    for segment, variante in (objet.get('variantes_segment') or {}).items():
+        if not isinstance(variante, dict) or not variante:
+            refus.append(f'{segment} : variante vide')
+            continue
+        for cle in sorted(set(variante) - CLES_VARIANTE_SEGMENT):
+            refus.append(f'{segment} : « {cle} » ne peut pas changer')
+    return refus
+
+
 #: Les gestes qu'une réponse peut ouvrir à la place d'un envoi direct.
 GESTES_PLANIFICATION = frozenset({'planification', 'planification_seule', 'replanification'})
 #: Les gestes SANS envoi propre : ils n'ont pas de clé de réponse (E14).
 GESTES_SANS_CLE = frozenset({'planification_seule', 'replanification'})
-CONTEXTES_VARIANTE = frozenset({'derniere_touche', 'perdu_junk'})
+#: AGR530 — ``agricole_sans_releve_eau`` : le lead est un pompage dont le
+#: point d'eau est inconnu (groupe hydraulique manquant) — la suite annoncée
+#: « devis » devient « Planifier la visite — relevé du point d'eau ».
+CONTEXTE_AGRICOLE_SANS_RELEVE_EAU = 'agricole_sans_releve_eau'
+CONTEXTES_VARIANTE = frozenset({'derniere_touche', 'perdu_junk',
+                                CONTEXTE_AGRICOLE_SANS_RELEVE_EAU})
 JOURS = frozenset({'aujourdhui', 'demain', 'date_choisie'})
 ETATS_FIN = frozenset({'froid', 'perdu', 'ne_plus_contacter'})
 #: La clé serveur de la réponse « Fait — passer à la suite » (aucune issue).
@@ -1034,6 +1061,11 @@ class ParcoursBase(TestCase):
             lead, etape = self.amener_generique_appel()
         else:
             lead, etape = self.amener(cas.type_id)
+        if cas.contexte == CONTEXTE_AGRICOLE_SANS_RELEVE_EAU:
+            # AGR530 — le même dossier, devenu un pompage au point d'eau
+            # inconnu (aucune donnée hydraulique) : la seule différence.
+            Lead.objects.filter(pk=lead.pk).update(type_installation='agricole')
+            lead.refresh_from_db()
         avant = self.photo(lead, etape)
         reponse = cas.reponse
         resp, envoye = self.repondre(

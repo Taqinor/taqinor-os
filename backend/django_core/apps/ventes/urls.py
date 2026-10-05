@@ -65,6 +65,8 @@ from .numbering_view import numerotation_audit, numerotation_preview
 from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
 from .diagram_views import schema_unifilaire, schema_unifilaire_devis  # FG252
 from .etude_horaire_view import etude_horaire_preview  # CJ2a
+from .etude_pompage_view import etude_pompage_preview  # AGR121
+from .views.economie_pompage import economie_pompage_preview  # AGR206
 from .roof_load_view import roof_load_check  # FG253
 from .connection_declaration_view import declaration_raccordement  # FG272
 from .calendrier_view import calendrier_reglementaire  # FG273
@@ -232,6 +234,14 @@ urlpatterns = [
     # la source UNIQUE des chiffres d'économie que l'écran affichera (CJ2b).
     path('etude-horaire/preview/', etude_horaire_preview,
          name='etude-horaire-preview'),
+    # AGR121 — aperçu serveur du pompage agricole (D-AGR-1) : un seul calcul
+    # (``domain/pompage.etudier_pompage``), aucune écriture.
+    path('etude-pompage/preview/', etude_pompage_preview,
+         name='etude-pompage-preview'),
+    # AGR206 — aperçu de l'économie DÉCLARÉE de pompage (même calcul que
+    # ``GET devis/<pk>/economie-pompage/``), aucune écriture.
+    path('economie-pompage/preview/', economie_pompage_preview,
+         name='economie-pompage-preview'),
     # N87 — état du compte d'envoi email (informatif, lecture seule).
     path('email-config/', email_config, name='email-config'),
     # Config carte pour l'outil de conception 3D de toiture (ERP même origine) :

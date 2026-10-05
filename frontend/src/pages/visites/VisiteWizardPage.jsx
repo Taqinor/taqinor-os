@@ -26,7 +26,7 @@ import {
 } from '../../ui'
 import { toast } from '../../ui/confirm'
 import {
-  trierCategories, progressionPhotos,
+  trierCategories, progressionPhotos, titreVisite, estVisitePointEau,
   ETAT_SLOT_LABEL, ETAT_SLOT_TONE, STATUT_VISITE_LABEL,
 } from './visiteHelpers'
 import VisiteMesuresForm from './VisiteMesuresForm'
@@ -204,8 +204,10 @@ export default function VisiteWizardPage() {
   return (
     <div className="page max-w-[820px] pb-24">
       <PageHeader
-        title={visite.client_panel?.lead_nom ?? `Visite #${visite.id}`}
-        subtitle={STATUT_VISITE_LABEL[visite.statut] ?? visite.statut}
+        title={titreVisite(visite)}
+        subtitle={estVisitePointEau(visite)
+          ? `${visite.client_panel?.lead_nom ?? `Visite #${visite.id}`} — ${STATUT_VISITE_LABEL[visite.statut] ?? visite.statut}`
+          : (STATUT_VISITE_LABEL[visite.statut] ?? visite.statut)}
         actions={<Button type="button" variant="ghost" onClick={() => navigate('/visites')}>Retour</Button>}
       />
 

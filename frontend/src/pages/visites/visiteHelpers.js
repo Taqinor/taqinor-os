@@ -69,6 +69,74 @@ export const MESURES_SCHEMA = {
   cheminement: [
     { key: 'longueur_estimee_m', label: 'Longueur estimée du cheminement', unite: 'm', type: 'number' },
   ],
+  // AGR422 — gabarit « relevé du point d'eau » (contrat AGR5,
+  // `visite_terrain.json` → `gabarit_point_eau`) : codes et choix repris TELS
+  // QUELS, jamais renommés (le serveur les valide). Les cases « non mesurable »
+  // sont de vraies cases ; tout autre booléen est un tri-état (Oui / Non /
+  // pas encore relevé) — jamais un « Non » enregistré sans réponse. Aucun
+  // seuil ni verdict : le module montre, le bureau d'études juge (VT1).
+  point_eau: [
+    {
+      key: 'source_eau', label: 'Source d\'eau', unite: '', type: 'select',
+      options: [{ value: 'puits', label: 'Puits' }, { value: 'forage', label: 'Forage' }, { value: 'bassin', label: 'Bassin' }, { value: 'riviere', label: 'Rivière' }],
+    },
+    { key: 'niveau_statique_m', label: 'Niveau statique (pompe arrêtée)', unite: 'm', type: 'number' },
+    { key: 'niveau_non_mesurable', label: 'Niveau non mesurable sur place', unite: '', type: 'bool' },
+    { key: 'niveau_dynamique_m', label: 'Niveau dynamique (pompe en marche)', unite: 'm', type: 'number' },
+    { key: 'debit_mesure_m3h', label: 'Débit mesuré', unite: 'm³/h', type: 'number' },
+    { key: 'debit_non_mesurable', label: 'Débit non mesurable sur place', unite: '', type: 'bool' },
+    {
+      key: 'debit_methode', label: 'Méthode de mesure du débit', unite: '', type: 'select',
+      options: [{ value: 'essai_pompage', label: 'Essai de pompage' }, { value: 'seau_chronometre', label: 'Seau chronométré' }, { value: 'compteur', label: 'Compteur' }, { value: 'declaration_foreur', label: 'Déclaration du foreur' }],
+    },
+    { key: 'profondeur_forage_m', label: 'Profondeur du forage', unite: 'm', type: 'number' },
+    { key: 'diametre_tubage_mm', label: 'Diamètre du tubage', unite: 'mm', type: 'number' },
+    { key: 'hauteur_refoulement_m', label: 'Hauteur de refoulement', unite: 'm', type: 'number' },
+    { key: 'longueur_conduite_m', label: 'Longueur de la conduite', unite: 'm', type: 'number' },
+    { key: 'diametre_conduite_mm', label: 'Diamètre de la conduite', unite: 'mm', type: 'number' },
+    { key: 'bassin_volume_m3', label: 'Volume du bassin', unite: 'm³', type: 'number' },
+  ],
+  pompe_existante: [
+    { key: 'pompe_presente', label: 'Une pompe est-elle déjà installée ?', unite: '', type: 'tribool' },
+    {
+      key: 'pompe_actuelle_type', label: 'Type de la pompe actuelle', unite: '', type: 'select',
+      options: [{ value: 'immergee', label: 'Immergée' }, { value: 'surface', label: 'De surface' }, { value: 'ne_sait_pas', label: 'Ne sait pas' }],
+    },
+    { key: 'pompe_actuelle_cv', label: 'Puissance de la pompe actuelle', unite: 'CV', type: 'number' },
+    { key: 'tension_v', label: 'Tension de la pompe actuelle', unite: 'V', type: 'number' },
+    {
+      key: 'alimentation', label: 'Alimentation de la pompe actuelle', unite: '', type: 'select',
+      options: [{ value: 'mono', label: 'Monophasé' }, { value: 'tri', label: 'Triphasé' }],
+    },
+  ],
+  electricite: [
+    {
+      key: 'electricite_sur_place', label: 'Électricité sur place', unite: '', type: 'select',
+      options: [{ value: 'aucune', label: 'Aucune' }, { value: 'monophase', label: 'Monophasé' }, { value: 'triphase', label: 'Triphasé' }, { value: 'ne_sait_pas', label: 'Ne sait pas' }],
+    },
+  ],
+  site_pv: [
+    { key: 'distance_forage_champ_m', label: 'Distance forage → zone de pose', unite: 'm', type: 'number' },
+    {
+      key: 'type_pose', label: 'Type de pose', unite: '', type: 'select',
+      options: [{ value: 'sol', label: 'Au sol' }, { value: 'ombriere', label: 'Ombrière' }],
+    },
+    { key: 'cloture', label: 'Zone clôturée', unite: '', type: 'tribool' },
+    { key: 'gardiennage', label: 'Site gardé', unite: '', type: 'tribool' },
+    { key: 'ombrage_notes', label: 'Ombrages (arbres, bâtiments)', unite: '', type: 'text' },
+  ],
+  administratif: [
+    {
+      key: 'autorisation_prelevement', label: 'Autorisation de prélèvement ABH', unite: '', type: 'select',
+      options: [{ value: 'oui', label: 'Oui' }, { value: 'non', label: 'Non' }, { value: 'en_cours', label: 'En cours' }, { value: 'ne_sait_pas', label: 'Ne sait pas' }],
+    },
+    { key: 'autorisation_numero', label: 'Numéro d\'autorisation', unite: '', type: 'text' },
+    { key: 'autorisation_debit_l_s', label: 'Débit autorisé', unite: 'L/s', type: 'number' },
+    { key: 'autorisation_volume_m3_an', label: 'Volume annuel autorisé', unite: 'm³/an', type: 'number' },
+    { key: 'compteur_eau', label: 'Compteur d\'eau sur le forage', unite: '', type: 'tribool' },
+    { key: 'justificatif_foncier', label: 'Justificatif foncier', unite: '', type: 'text' },
+    { key: 'foreur_permis', label: 'Permis du foreur (forage neuf)', unite: '', type: 'text' },
+  ],
   general: [],
 }
 
@@ -76,7 +144,32 @@ export const MESURES_SCHEMA = {
 // cheminement [optionnel] → général) — SECOURS uniquement si le serveur ne
 // renvoie pas déjà `checklist` dans cet ordre ; on trie sur cette clé mais on
 // garde toute catégorie inconnue du serveur À LA FIN plutôt que de la perdre.
-const ORDRE_CATEGORIES = ['toiture', 'tableau', 'local_onduleur', 'cheminement', 'general']
+// AGR422 — le gabarit `point_eau` suit l'ordre servi : point_eau → pompe_existante
+// → electricite → site_pv → administratif → general.
+const ORDRE_CATEGORIES = [
+  'toiture', 'tableau', 'local_onduleur', 'cheminement',
+  'point_eau', 'pompe_existante', 'electricite', 'site_pv', 'administratif',
+  'general',
+]
+
+// AGR422 — gabarit servi par la visite (`visite.gabarit`) ; absent = toiture.
+export const GABARIT_POINT_EAU = 'point_eau'
+
+// Les catégories PROPRES au gabarit point_eau (le gabarit toiture ne les porte pas).
+export const CATEGORIES_POINT_EAU = [
+  'point_eau', 'pompe_existante', 'electricite', 'site_pv', 'administratif',
+]
+
+export function estVisitePointEau(visite) {
+  return visite?.gabarit === GABARIT_POINT_EAU
+}
+
+// Titre de l'écran : « Visite de relevé du point d'eau » pour le gabarit
+// point_eau, sinon le nom du client (inchangé).
+export function titreVisite(visite) {
+  if (estVisitePointEau(visite)) return 'Visite de relevé du point d’eau'
+  return visite?.client_panel?.lead_nom ?? `Visite #${visite?.id}`
+}
 
 export function trierCategories(checklist) {
   if (!Array.isArray(checklist)) return []

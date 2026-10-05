@@ -20,7 +20,7 @@ import unittest
 from apps.calepinage.services.lestage import (
     masse_du_layout,
     normaliser_section_lestage,
-    surface_module_m2,
+    _surface_module_m2,
 )
 
 #: Deux pans DE SURFACES DIFFÉRENTES : c'est ce qui prouve que la masse par m²
@@ -137,10 +137,10 @@ class SurfaceModuleTest(unittest.TestCase):
 
     def test_surface_depuis_les_cotes_de_pose(self):
         self.assertAlmostEqual(
-            surface_module_m2({'longueur_mm': 2278, 'largeur_mm': 1134}),
+            _surface_module_m2({'longueur_mm': 2278, 'largeur_mm': 1134}),
             2.278 * 1.134)
 
     def test_cote_manquante_pas_de_surface(self):
-        self.assertIsNone(surface_module_m2({'longueur_mm': 2278}))
-        self.assertIsNone(surface_module_m2({}))
-        self.assertIsNone(surface_module_m2(None))
+        self.assertIsNone(_surface_module_m2({'longueur_mm': 2278}))
+        self.assertIsNone(_surface_module_m2({}))
+        self.assertIsNone(_surface_module_m2(None))

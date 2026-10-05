@@ -19,7 +19,7 @@ base. Un écart entre le guide et le code casse ici.
 """
 import pathlib
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.parametres.models_messages import (
     CLES_VARIANTES_SEGMENT, MESSAGE_TEMPLATE_DEFAULTS,
@@ -34,6 +34,18 @@ MOTS_QUI_MENTENT = ('toit', 'famille', 'facture')
 
 #: Les segments à qui ces mots ne doivent plus être affirmés.
 SEGMENTS_EXPOSES = (SEGMENT_POMPAGE,) + tuple(SEGMENTS_B2B)
+
+#: CIQ501 (05/10/2026) — les mots qui MENTENT à une entreprise (commercial et
+#: industriel, base PARTAGÉE) : ni famille, ni « chez vous », ni « voisin,
+#: frère », ni récompense (convention 9), ni 3D promise, ni « une photo
+#: suffit », ni installation « comparable ». « facture » n'en est plus : un
+#: pro transmet ses factures des 12 derniers mois (ou ses relevés).
+MOTS_QUI_MENTENT_B2B = ('famille', 'chez vous', 'voisin', 'frère',
+                        'récompense', '3D', 'une photo suffit', 'comparable')
+
+#: La liste de mots vérifiée PAR SEGMENT.
+MOTS_PAR_SEGMENT = {SEGMENT_POMPAGE: MOTS_QUI_MENTENT,
+                    **{s: MOTS_QUI_MENTENT_B2B for s in SEGMENTS_B2B}}
 
 #: Étiquette du guide → segments concernés.
 ETIQUETTES = {'POMPAGE': (SEGMENT_POMPAGE,), 'B2B': tuple(SEGMENTS_B2B)}
@@ -116,7 +128,9 @@ class AucunMotQuiMentTests(SimpleTestCase):
         vérifié sur les clés de SA table, et sur les textes de base qu'il
         reçoit pour les clés communes à tous les segments exposés (sans
         variante pour lui, c'est le texte de base qui part). Aucun mot n'est
-        retiré de ``MOTS_QUI_MENTENT``."""
+        retiré de ``MOTS_QUI_MENTENT``. CIQ501 — chaque segment a SA liste
+        (``MOTS_PAR_SEGMENT``) : le B2B est vérifié contre
+        ``MOTS_QUI_MENTENT_B2B``."""
         communes = set.intersection(*(
             set(MESSAGE_TEMPLATE_VARIANTES_SEGMENT[s])
             for s in SEGMENTS_EXPOSES))
@@ -130,9 +144,9 @@ class AucunMotQuiMentTests(SimpleTestCase):
                     # il ne doit alors contenir aucun mot piégé non plus.
                     texte = MESSAGE_TEMPLATE_DEFAULTS[cle]
                 bas = texte.lower()
-                for mot in MOTS_QUI_MENTENT:
+                for mot in MOTS_PAR_SEGMENT[segment]:
                     with self.subTest(segment=segment, cle=cle, mot=mot):
-                        self.assertNotIn(mot, bas)
+                        self.assertNotIn(mot.lower(), bas)
 
 
 class Agr510PompageTests(SimpleTestCase):
@@ -220,7 +234,10 @@ class PortéeDesVariantesTests(SimpleTestCase):
                         len(MESSAGE_TEMPLATE_DEFAULTS) // 2)
 
     def test_les_variantes_gardent_les_placeholders_du_texte_de_base(self):
-        """Un placeholder perdu ferait disparaître le nom du conseiller."""
+        """Un placeholder perdu ferait disparaître le nom du conseiller.
+
+        CIQ501 — seule addition permise : ``{societe}`` dans une variante
+        B2B (phrase AUTONOME, omise sans raison sociale — CIQ500)."""
         import re
         for cle in CLES_VARIANTES_SEGMENT:
             attendus = set(re.findall(r'\{(\w+)\}',
@@ -229,9 +246,11 @@ class PortéeDesVariantesTests(SimpleTestCase):
                 texte = variante_segment(cle, segment)
                 if texte is None:
                     continue
+                trouves = set(re.findall(r'\{(\w+)\}', texte))
+                if segment in SEGMENTS_B2B:
+                    trouves -= {'societe'}
                 with self.subTest(cle=cle, segment=segment):
-                    self.assertEqual(set(re.findall(r'\{(\w+)\}', texte)),
-                                     attendus)
+                    self.assertEqual(trouves, attendus)
 
     def test_aucun_prenom_code_en_dur_dans_une_variante(self):
         for textes in MESSAGE_TEMPLATE_VARIANTES_SEGMENT.values():
@@ -380,3 +399,135 @@ class Agr511RenduCorpsPourSegmentTests(SimpleTestCase):
         rendu = self._rendre(MESSAGE_TEMPLATE_DEFAULTS['valeur_j1'],
                              'valeur_j1', self.agricole, 'fr')
         self.assertEqual(rendu, variante_segment('valeur_j1', SEGMENT_POMPAGE))
+
+
+# ── CIQ501 (05/10/2026) — textes B2B FR, base partagée commercial+industriel ─
+
+#: Les clés qui recevaient un texte résidentiel (ou une promesse non
+#: vérifiée) et ont désormais leur variante B2B.
+CLES_B2B_CIQ501 = ('valeur_j1', 'reveil_a1', 'reveil_a2', 'reveil_a3',
+                   'rappel_plus_tard', 'j4_preuve', 'parrainage',
+                   'debrief_visite')
+
+
+class Ciq501TextesB2BTests(SimpleTestCase):
+    def test_les_cles_b2b_ont_leur_variante(self):
+        for cle in CLES_B2B_CIQ501:
+            for segment in SEGMENTS_B2B:
+                with self.subTest(cle=cle, segment=segment):
+                    self.assertIsNotNone(variante_segment(cle, segment))
+
+    def test_anti_faux_vert_les_mots_b2b_sont_dans_les_textes_de_base(self):
+        base = ' '.join(MESSAGE_TEMPLATE_DEFAULTS[c]
+                        for c in CLES_B2B_CIQ501).lower()
+        for mot in ('chez vous', 'voisin', 'frère', 'récompense',
+                    'une photo suffit', 'comparable'):
+            with self.subTest(mot=mot):
+                self.assertIn(mot, base)
+
+    def test_valeur_j1_demande_les_factures_des_12_derniers_mois(self):
+        texte = variante_segment('valeur_j1', 'commercial')
+        self.assertIn("factures d'électricité des 12 derniers mois", texte)
+        self.assertIn('relevés de consommation', texte)
+        self.assertIn("l'adresse du site", texte)
+        self.assertNotIn('bâtiments', texte)
+
+    def test_reveils_refont_l_etude_sans_3d_ni_du_nouveau(self):
+        for cle in ('reveil_a1', 'reveil_a3'):
+            texte = variante_segment(cle, 'industriel')
+            with self.subTest(cle=cle):
+                self.assertIn("je vous refais l'étude à jour", texte)
+                self.assertNotIn('3d', texte.lower())
+                self.assertNotIn('du nouveau', texte.lower())
+
+    def test_crochets_jour_heure_conserves(self):
+        texte = variante_segment('rappel_plus_tard', 'commercial')
+        self.assertIn('[jour]', texte)
+        self.assertIn('[heure]', texte)
+
+    def test_parrainage_sans_aucune_recompense(self):
+        texte = variante_segment('parrainage', 'commercial').lower()
+        for mot in ('récompense', 'cadeau', 'commission', 'prime', 'dh'):
+            with self.subTest(mot=mot):
+                self.assertNotIn(mot, texte)
+        self.assertIn('autre entreprise', texte)
+
+    def test_societe_seulement_dans_une_phrase_autonome(self):
+        """Sans raison sociale, la phrase qui porte ``{societe}`` est omise
+        (MRY13) : le reste doit former un message complet."""
+        from apps.crm.services import _omettre_phrases_incompletes
+        for segment in SEGMENTS_B2B:
+            for cle, texte in MESSAGE_TEMPLATE_VARIANTES_SEGMENT[
+                    segment].items():
+                if '{societe}' not in texte:
+                    continue
+                reste = _omettre_phrases_incompletes(texte, ['societe'])
+                with self.subTest(segment=segment, cle=cle):
+                    self.assertNotIn('{societe}', reste)
+                    # Une seule phrase disparaît, jamais davantage.
+                    self.assertEqual(
+                        reste.count('. ') + 1, texte.count('. '))
+                    self.assertTrue(reste.startswith('Bonjour'))
+
+    def test_j6_garanties_reste_tel_quel(self):
+        for segment in SEGMENTS_B2B:
+            self.assertIsNone(variante_segment('j6_garanties', segment))
+
+
+class Ciq501RenduLeadCommercialTests(TestCase):
+    """(b) — ``valeur_j1`` d'un lead COMMERCIAL sans société : la phrase
+    ``{societe}`` est omise, la salutation et la demande restent ; un lead
+    résidentiel garde EXACTEMENT son texte."""
+
+    def setUp(self):
+        import datetime
+
+        from django.contrib.auth import get_user_model
+
+        from authentication.models import Company
+
+        from apps.crm import horaires
+        from apps.parametres.models import CompanyProfile
+
+        self.company, _ = Company.objects.get_or_create(
+            slug='ciq501', defaults={'nom': 'ciq501'})
+        CompanyProfile.objects.get_or_create(company=self.company)
+        self.user = get_user_model().objects.create_user(
+            username='ciq501-u', password='x', role_legacy='responsable',
+            company=self.company, first_name='Meryem')
+        self.lundi = datetime.datetime(2026, 9, 7, 9, 0,
+                                       tzinfo=horaires.CASABLANCA)
+
+    def _rendu(self, **lead_kw):
+        from apps.crm.models import Lead, RelanceEtape
+        from apps.crm.services import message_pour_etape
+        lead = Lead.objects.create(
+            company=self.company, nom='Benali', prenom='Aziz',
+            ville='Casablanca', telephone='+212651971400', owner=self.user,
+            **lead_kw)
+        etape = RelanceEtape.objects.create(
+            company=self.company, lead=lead, ordre=1, canal='whatsapp',
+            due_date=self.lundi.date(), due_at=self.lundi, cadence='contact',
+            template_cle='valeur_j1')
+        return message_pour_etape(etape, user=self.user)
+
+    def test_commercial_sans_societe_garde_salutation_et_demande(self):
+        rendu = self._rendu(type_installation='commercial', societe='')
+        message = rendu['message']
+        self.assertTrue(message.startswith('Bonjour Aziz'))
+        self.assertIn("factures d'électricité des 12 derniers mois", message)
+        self.assertNotIn('{societe}', message)
+        self.assertNotIn("l'étude solaire de", message)
+        self.assertIn('societe', rendu['placeholders_manquants'])
+
+    def test_commercial_avec_societe_la_nomme(self):
+        rendu = self._rendu(type_installation='commercial',
+                            societe='Hôtel Exemple SARL')
+        self.assertIn("l'étude solaire de Hôtel Exemple SARL.",
+                      rendu['message'])
+
+    def test_residentiel_garde_exactement_son_texte(self):
+        rendu = self._rendu(type_installation='residentiel')
+        attendu = MESSAGE_TEMPLATE_DEFAULTS['valeur_j1'].replace(
+            '{civilite} ', '').replace('{prenom}', 'Aziz')
+        self.assertEqual(rendu['message'], attendu)

@@ -588,14 +588,19 @@ class TestDossierMoyenneTension(TestCase):
         self.assertNotIn('Économies / an', html)
         self.assertIn('MOYENNE TENSION', html)
 
-    def test_la_couverture_CFO_garde_sa_vignette_hors_MT(self):
+    def test_la_couverture_CFO_n_imprime_plus_l_economie_BT_hors_MT(self):
+        # CIQ301 — même en BT, la vignette ne reprend plus ``eco_s_ann``
+        # (barème BT résidentiel) : elle attend ``synthese_ci.argent``
+        # (CIQ307). Omise, jamais un « 0 », et sans motif MT.
         from apps.ventes.quote_engine.industriel import (
             cover, render as industriel_render, renderer as industriel)
 
         data = self._data({'tension_raccordement': 'BT'}, 'DEV-MT-0009')
+        self.assertGreater(data['eco_s_ann'], 0)   # la valeur BT EXISTE…
         ctx = industriel_render.build_ctx(industriel._augment(data))
         html = cover.build(ctx)
-        self.assertIn('Économies / an', html)
+        self.assertNotIn('Économies / an', html)   # …et n'est PAS reprise
+        self.assertNotIn('MOYENNE TENSION', html)
 
 
 class TestCanonicalProductible(TestCase):

@@ -133,3 +133,51 @@ class TestIdentiteClientSuitLead(TestCase):
             format='json')
         self.assertEqual(r.status_code, 400)
         self.assertEqual(set(r.json()), set(CONTRAT['exemple_400']))
+
+
+class TestIdentiteEntrepriseSuitLead(TestCase):
+    """CIQ403 — pour un client ENTREPRISE, la synchro QJR590 recopie aussi
+    l'identité légale (contrat ``lead_client_ecart.json`` →
+    ``exemple_entreprise``) ; un champ divergé à la main reste intact."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='CIQ403 Synchro', slug='ciq403-synchro')
+        self.user = User.objects.create_user(
+            username='ciq403_synchro', password='x',
+            role_legacy='responsable', company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Alaoui', prenom='Karim',
+            societe='Hôtel Atlas', type_installation='commercial',
+            email='direction@atlas.example', telephone='0612340403')
+        self.client_obj = resolve_client_for_lead(self.lead)
+        self.lead.refresh_from_db()
+        self.url = f'/api/django/crm/leads/{self.lead.id}/'
+
+    def test_ice_et_siege_suivent_le_lead(self):
+        r = self.api.patch(self.url, {
+            'ice': '000000000000000', 'adresse_siege': '1 rue du Siège',
+            'societe': 'Hôtel Atlas SARL', 'fonction_contact': 'Directeur',
+        }, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.client_obj.refresh_from_db()
+        self.assertEqual(self.client_obj.ice, '000000000000000')
+        self.assertEqual(self.client_obj.adresse_siege, '1 rue du Siège')
+        self.assertEqual(self.client_obj.nom, 'Hôtel Atlas SARL')
+        self.assertEqual(self.client_obj.contact_fonction, 'Directeur')
+        self.assertEqual(r.json()['client_ecart'], [])
+
+    def test_ecart_entreprise_nomme_les_champs_du_contrat(self):
+        Client.objects.filter(pk=self.client_obj.pk).update(
+            ice='111111111111111', adresse_siege='Ailleurs')
+        r = self.api.patch(self.url, {'ice': '000000000000000',
+                                      'adresse_siege': 'Ici'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.client_obj.refresh_from_db()
+        self.assertEqual(self.client_obj.ice, '111111111111111')
+        self.assertEqual(
+            r.json()['client_ecart'],
+            CONTRAT['exemple_entreprise']['get_lead']['client_ecart'])

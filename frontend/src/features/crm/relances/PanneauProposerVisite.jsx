@@ -7,10 +7,7 @@
 import { useState } from 'react'
 import { MapPin, ChevronDown, ChevronRight, MessageCircle } from 'lucide-react'
 import { Button, Badge } from '../../../ui'
-import {
-  phaseVisite, PHASE_GUIDANCE, SIGNAUX_ACHAT, REGLE_OBJECTION,
-  REGLE_VRAI_CLIENT,
-} from './visiteGuidance'
+import { phaseVisite, guidanceVisite } from './visiteGuidance'
 import MessageVisiteDialog from './MessageVisiteDialog'
 
 const PHASE_TONE = { 1: 'neutral', 2: 'info', 3: 'primary' }
@@ -22,7 +19,10 @@ export default function PanneauProposerVisite({ etape, onPlanifier }) {
   if (!etape || etape.cadence !== 'apres_devis') return null
 
   const phase = phaseVisite(etape)
-  const guidance = PHASE_GUIDANCE[phase]
+  // AGR532 — consignes selon le segment servi (`lead_segment`) : agricole →
+  // constantes agricoles ; sinon les textes du fondateur, tels quels.
+  const consignes = guidanceVisite(etape.lead_segment)
+  const guidance = consignes.phases[phase]
 
   return (
     <div className="mt-1.5 rounded-md border border-dashed border-border p-2" data-testid="panneau-proposer-visite">
@@ -52,11 +52,11 @@ export default function PanneauProposerVisite({ etape, onPlanifier }) {
               Signaux d&apos;achat = proposez tout de suite
             </p>
             <ul className="ml-4 list-disc">
-              {SIGNAUX_ACHAT.map((s) => <li key={s}>{s}</li>)}
+              {consignes.signaux.map((s) => <li key={s}>{s}</li>)}
             </ul>
           </div>
-          <p className="font-medium text-foreground">{REGLE_OBJECTION}</p>
-          <p className="font-medium text-foreground">{REGLE_VRAI_CLIENT}</p>
+          <p className="font-medium text-foreground">{consignes.regleObjection}</p>
+          <p className="font-medium text-foreground">{consignes.regleVraiClient}</p>
           <div className="flex flex-wrap justify-end gap-1.5">
             <Button
               type="button" size="sm" variant="outline"

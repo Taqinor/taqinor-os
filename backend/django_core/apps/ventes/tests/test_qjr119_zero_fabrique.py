@@ -136,10 +136,17 @@ class TestNonRegressionDossierChiffre(SimpleTestCase):
         txt = _visible(i_render.build_html(self.ind))
         self.assertIn("Baseline énergétique — 12 mois", txt)
         self.assertIn("Facture électrique actuelle", txt)
-        self.assertIn("Économies / an", txt)
+        # CIQ301 — plus aucune économie reprise du modèle BT : la carte et la
+        # page finance attendent ``synthese_ci.argent`` (CIQ307).
+        self.assertNotIn("Économies / an", txt)
+        self.assertNotIn("Cashflow cumulé", txt)
+        # …mais une série SERVIE remplit toujours la page finance.
+        servie = dict(self.ind, **i_sample.serie_finance())
+        txt = _visible(i_render.build_html(servie))
         self.assertIn("Cashflow cumulé", txt)
         self.assertIn("Payback", txt)
 
-    def test_commercial_garde_sa_carte_economies(self):
+    def test_commercial_n_imprime_plus_l_economie_bt(self):
+        # CIQ301 — la carte « Économies / an » ne reprend plus ``eco_s_ann``.
         txt = _visible(c_render.build_html(self.com))
-        self.assertIn("Économies / an", txt)
+        self.assertNotIn("Économies / an", txt)

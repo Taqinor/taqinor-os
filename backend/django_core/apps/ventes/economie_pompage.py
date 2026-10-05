@@ -1231,3 +1231,123 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
 
     bloc['publiable_client'] = not motifs
     return bloc
+
+
+# ── AGR206 — le branchement : lecture du devis (UN seul calcul) ────────────
+#
+# Appelants de :func:`economie_pompage_pour_devis` (grep du 05/10/2026) :
+#   * ``views/economie_pompage.py`` — ``GET devis/<pk>/economie-pompage/`` ;
+#   * ``selectors.economie_pompage_publique_pour_devis`` et
+#     ``selectors.economie_pompage_publiable`` (D3 /proposition et PDF, D5
+#     messages).
+# Le calcul se fait à la LECTURE et n'est JAMAIS stocké (pas de copie
+# périmée) ; un devis d'une autre société est introuvable.
+
+def _decimal_ou_zero(valeur):
+    try:
+        return float(valeur or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def lignes_pour_economie(devis):
+    """Les lignes du devis à la forme lue par :func:`economie_pompage`.
+
+    Montants TOTAUX HT/TTC client par ligne (remise de ligne ET remise
+    globale du devis appliquées) — JAMAIS le prix d'achat. Rôle et garantie
+    viennent du produit (FK lue, aucun import du modèle stock).
+    """
+    remise_globale = _decimal_ou_zero(getattr(devis, 'remise_globale', 0))
+    facteur = 1.0 - remise_globale / 100.0
+    lignes = []
+    for ligne in devis.lignes.select_related('produit__categorie').all():
+        produit = getattr(ligne, 'produit', None)
+        categorie = getattr(produit, 'categorie', None) if produit else None
+        tva = ligne.taux_tva if ligne.taux_tva is not None else devis.taux_tva
+        ht = (_decimal_ou_zero(ligne.quantite)
+              * _decimal_ou_zero(ligne.prix_unitaire)
+              * (1.0 - _decimal_ou_zero(ligne.remise) / 100.0)) * facteur
+        lignes.append({
+            'designation': ligne.designation,
+            'quantite': _decimal_ou_zero(ligne.quantite),
+            'taux_tva': _decimal_ou_zero(tva),
+            'total_ht_mad': round(ht, 2),
+            'total_ttc_mad': round(
+                ht * (1.0 + _decimal_ou_zero(tva) / 100.0), 2),
+            'optionnelle': bool(getattr(ligne, 'optionnelle', False)),
+            'type_ligne': getattr(ligne, 'type_ligne', None),
+            'type_equipement': getattr(categorie, 'type_equipement', None),
+            'role_pompage': getattr(produit, 'role_pompage', None) or None,
+            'garantie_mois': getattr(produit, 'garantie_mois', None),
+        })
+    return lignes
+
+
+def reglages_pompage(company):
+    """``{charges_pompage_solaire, regle_fda_pompage}`` saisis (AGR207)."""
+    from apps.parametres.selectors import (
+        charges_pompage_pour, regle_fda_pompage_pour)
+    return {'charges_pompage_solaire': charges_pompage_pour(company),
+            'regle_fda_pompage': regle_fda_pompage_pour(company)}
+
+
+def reperes_pompage(company):
+    """Repères énergie SOURCÉS (AGR208), ``{cle: {valeur, source,
+    releve_le}}`` — y compris le repère interne (vue interne seulement)."""
+    from apps.parametres.selectors import (
+        repere_butane_non_subventionne_interne,
+        reperes_energie_agricole_affiches)
+    reperes = {r['cle']: r for r in reperes_energie_agricole_affiches(company)}
+    interne = repere_butane_non_subventionne_interne(company)
+    if interne:
+        reperes[interne['cle']] = interne
+    return reperes
+
+
+def _surface_irriguee(sortie_etude):
+    """Surface connue des cultures déclarées (aide FDA indicative), ou
+    ``None`` — jamais une surface supposée."""
+    besoin = (sortie_etude or {}).get('besoin') or {}
+    cultures = besoin.get('cultures') or []
+    surfaces = [c.get('surface_ha') for c in cultures
+                if isinstance(c, dict) and c.get('surface_ha') is not None]
+    if not surfaces:
+        return None
+    try:
+        return round(sum(float(s) for s in surfaces), 4)
+    except (TypeError, ValueError):
+        return None
+
+
+def economie_pompage_depuis(company, saisies, *, sortie_etude, lignes):
+    """Le calcul commun de la lecture d'un devis ET de l'aperçu (D-AGR-1)."""
+    return economie_pompage(
+        saisies or {}, sortie_etude=sortie_etude, lignes=lignes,
+        reglages=reglages_pompage(company), reperes=reperes_pompage(company),
+        surface_irriguee_ha=_surface_irriguee(sortie_etude))
+
+
+def economie_pompage_pour_devis(devis_id, company):
+    """AGR206 — le bloc ``economie_pompage`` d'un devis (contrat AGR3).
+
+    Lit ``etude_params.saisies_economie_pompage``, les lignes, les réglages
+    (AGR207), les repères (AGR208) et la sortie du moteur pompage SERVEUR
+    (AGR2, ``domain/pompage.etudier_pompage``). Calculé à la lecture, jamais
+    stocké.
+
+    Raises:
+        Devis.DoesNotExist: devis inconnu ou d'une autre société.
+        EconomieInvalide: saisie refusée (champ nommé).
+    """
+    from .domain.pompage import etudier_pompage
+    # AGR201 — le module reste PUR (aucune requête écrite ici, garde
+    # ``test_module_pur_sans_modele``) : la lecture du devis passe par le
+    # sélecteur de l'app.
+    from .selectors import devis_de_la_societe
+
+    devis = devis_de_la_societe(devis_id, company)
+    saisies = (devis.etude_params or {}).get('saisies_economie_pompage') or {}
+    sortie_etude = etudier_pompage(company, {}, devis=devis)
+    return economie_pompage_depuis(company, saisies,
+                                   sortie_etude=sortie_etude,
+                                   lignes=lignes_pour_economie(devis))

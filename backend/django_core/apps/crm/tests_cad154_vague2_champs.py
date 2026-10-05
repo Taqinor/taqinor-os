@@ -160,8 +160,13 @@ class OuChaqueQuestionSePose(SimpleTestCase):
     def test_la_puissance_du_compteur_n_est_pas_demandee_par_ecrit(self):
         """La voie NORMALE est la photo du compteur, que le questionnaire
         demande déjà — on ne fait pas lire une plaque en dernier recours."""
+        # CIQ412 — un lead PRO (commercial/industriel) se voit demander son
+        # kVA souscrit dans la section « reseau », qui ne lui est servie qu'à
+        # lui (SECTIONS_PRO_SEULES). Pour tout autre lead, la règle tient.
         toutes = set()
-        for colonnes in questionnaire.CHAMPS_PAR_SECTION.values():
+        for section, colonnes in questionnaire.CHAMPS_PAR_SECTION.items():
+            if section in questionnaire.SECTIONS_PRO_SEULES:
+                continue
             toutes.update(colonnes)
         self.assertNotIn('compteur_puissance_kva', toutes)
         self.assertIn('photo_compteur', questionnaire.CHAMPS_PAR_SECTION)

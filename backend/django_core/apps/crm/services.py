@@ -26,6 +26,7 @@ import re as _re
 
 from django.apps import apps as django_apps
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError as DRFValidationError
 
 # CRX26 — LA date MÉTIER (Africa/Casablanca), lue EXPLICITEMENT : elle ne dépend
 # d'aucun réglage global. Avant AUD836, ``settings.TIME_ZONE`` valait ``'UTC'``
@@ -780,6 +781,23 @@ def _adapter_gabarits_reveil(lead, etapes, *, rang_initial=0):
 #: prend en famille, le dimanche. Posé sur tous, il envoyait un message
 #: dominical inapproprié à des prospects qui décident seuls.
 _TEMPLATE_DIMANCHE_FAMILLE = 'dimanche_famille'
+_TEMPLATE_PREUVE_J4 = 'j4_preuve'
+
+
+def _realisation_eligible(lead):
+    """AGR514 — une réalisation éligible existe-t-elle pour ce lead ?
+
+    Consomme le sélecteur de la fondation `parametres` (frontière respectée).
+    Un catalogue illisible vaut « aucune » : jamais une preuve inventée."""
+    try:
+        from apps.parametres.selectors import realisation_pour_lead
+        return realisation_pour_lead(lead) is not None
+    except Exception:  # noqa: BLE001
+        logger.warning('Preuve J4 : catalogue illisible (lead #%s)',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+        return False
+
+
 _TAG_DECISION_A_PLUSIEURS = 'décision à plusieurs'
 
 
@@ -889,8 +907,20 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
     # et ferait dérailler le quota de huit réveils par jour ouvré.
     ancre = depart if cadence == 'reveil' else origine
 
+    # AGR514 (D-AGR-10) — J4 « preuve » n'est posée que s'il existe une
+    # réalisation ÉLIGIBLE à montrer (sélecteur filtré par segment, AGR513).
+    # Filtre sur une DONNÉE, pas sur un segment : le gabarit reste unique
+    # (CAD124) et le trou de numérotation `ordre` est gardé. Calculé une seule
+    # fois, et seulement si le gabarit porte cette touche.
+    preuve_disponible = None
+
     echeances = []
     for gabarit in gabarits:
+        if (getattr(gabarit, 'template_cle', '') or '') == _TEMPLATE_PREUVE_J4:
+            if preuve_disponible is None:
+                preuve_disponible = _realisation_eligible(lead)
+            if not preuve_disponible:
+                continue
         if ((getattr(gabarit, 'template_cle', '') or '')
                 == _TEMPLATE_DIMANCHE_FAMILLE
                 and not _lead_porte_tag(lead, _TAG_DECISION_A_PLUSIEURS)):
@@ -2543,6 +2573,41 @@ VISITE_CADENCE = 'apres_devis'
 FILET_JOINT_DELAI_JOURS = 1
 
 
+#: AGR530 — la note de l'étape « Planifier la visite » posée à la place du
+#: devis pour un pompage au point d'eau inconnu.
+NOTE_RELEVE_POINT_EAU = (
+    'Relevé du point d’eau : niveau et débit inconnus — demandez d’abord une '
+    'photo de la fiche du foreur ou de l’autorisation ABH ; sinon le '
+    'technicien les mesure.')
+
+#: AGR530 — les gestes de VISITE : après eux, la reprise pose le devis.
+_CLES_GESTES_VISITE = (CLE_PLANIFIER, CLE_CONFIRMATION, CLE_DEBRIEF)
+
+
+def _poser_releve_point_eau(lead, user):
+    """AGR530 — pose « Planifier la visite » (clé ``CLE_PLANIFIER``) au lieu
+    du devis quand ``devis_auto.releve_eau_manquant`` le dit, sa note disant
+    pourquoi. ``None`` (la suite ordinaire s'applique) pour tout autre lead,
+    une visite déjà effectuée ou un rendez-vous déjà calé."""
+    from .devis_auto import releve_eau_manquant
+
+    lead.refresh_from_db()
+    if getattr(lead, 'visite_effectuee', False) or not releve_eau_manquant(
+            lead):
+        return None
+    etape = poser_filet_visite_a_planifier(lead, user)
+    if etape is None:
+        return None
+    etape.note = NOTE_RELEVE_POINT_EAU
+    etape.save(update_fields=['note'])
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'Étape « {etape.libelle} » posée automatiquement à la place du '
+              f'devis — {NOTE_RELEVE_POINT_EAU}'))
+    return etape
+
+
 def assurer_prochaine_etape_apres_succes(lead, user,
                                          libelle=None,
                                          avec_plan_devis=True,
@@ -2717,6 +2782,16 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         # RAPPEL, jamais « perdu (motif) ou relance ultérieure ».
         cle = (CLE_RAPPEL_CONVENU if issue_touche_close == 'rappel'
                else CLE_DECIDER_SUITE)
+    # AGR530 (D-AGR-4 côté cadence) — l'étape à poser serait le DEVIS, mais le
+    # lead est AGRICOLE et un groupe HYDRAULIQUE de la règle « devis auto
+    # prêt » manque (HMT/niveau, ou débit/besoin) : le devis ne se chiffre
+    # pas. La suite est « Planifier la visite — relevé du point d'eau ».
+    # Jamais après un geste de VISITE (« Ne veut plus de visite » : la reprise
+    # pose le devis comme aujourd'hui), ni après une visite effectuée.
+    if cle == CLE_DEVIS and cle_close not in _CLES_GESTES_VISITE:
+        visite = _poser_releve_point_eau(lead, user)
+        if visite is not None:
+            return visite
     config = cadence_config.config_cle(lead.company, cle)
     # CAD102 — le recalage suit le CANAL de l'étape posée : un message se cale
     # sur la fenêtre des messages, un appel sur celle des appels (la pause du
@@ -2777,7 +2852,11 @@ _PLACEHOLDERS_RENDUS = (
     # CAD127 (21/09/2026) — l'origine RÉELLE du lead : le nom de la personne
     # qui l'a recommandé, et le mois où il nous avait consultés. Vides quand
     # la donnée n'existe pas ⇒ leur phrase est OMISE, jamais un crochet.
-    'prescripteur', 'mois_dossier')
+    'prescripteur', 'mois_dossier',
+    # CIQ500 (05/10/2026) — la raison sociale du lead (``Lead.societe``,
+    # nettoyée — contrat CIQ1 `lead_pro.json`). Vide ⇒ la phrase qui la porte
+    # est OMISE (MRY13), jamais un blanc « pour  ».
+    'societe')
 
 #: Les trois placeholders de la preuve. Regroupés pour n'aller chercher une
 #: réalisation QUE si le texte en porte au moins un (même discipline que
@@ -2978,6 +3057,14 @@ def _civilite_et_prenom(lead, langue):
     return civilite, prenom
 
 
+def _societe_du_lead(lead):
+    """CIQ500 — la raison sociale du lead telle que servie par le contrat
+    CIQ1 (``Lead.societe``), NETTOYÉE : espaces de bord retirés et blancs
+    internes réduits à un seul. Vide ⇒ ``''`` (la phrase qui porte
+    ``{societe}`` est alors omise — MRY13 —, jamais un blanc)."""
+    return ' '.join(str(getattr(lead, 'societe', '') or '').split())
+
+
 #: CAD65 — les civilités du lead (``Lead.Civilite``) et leur rendu darija.
 _CIVILITES_CONNUES = ('M.', 'Mme')
 _CIVILITE_DARIJA = {'M.': 'السي', 'Mme': 'لالة'}
@@ -3002,6 +3089,31 @@ def _placer_civilite(corps, civilite):
 CLES_MESSAGE_VISITE = (
     'visite_proposition', 'visite_confirmation', 'visite_releve_point_eau',
 )
+
+#: AGR526 — les textes des DOSSIERS institutionnels (playbooks de segment
+#: CAD125) que le même rendu sert — mais SEULEMENT au lead pour qui
+#: ``cle_message_segment`` renvoie cette clé (jamais un FDA à un exploitant
+#: au gasoil, jamais un 82-21 à un résidentiel).
+CLES_MESSAGE_DOSSIER = ('dossier_fda', 'dossier_8221')
+
+
+def cle_message_visite_autorisee(lead, cle):
+    """AGR526 — ``cle`` est-elle un texte que ``message-visite`` rend pour CE
+    lead ? Une clé de visite toujours ; une clé de dossier seulement quand le
+    playbook de segment du lead la confirme (``cle_message_segment``)."""
+    if cle in CLES_MESSAGE_VISITE:
+        return True
+    return cle in CLES_MESSAGE_DOSSIER and cle_message_segment(lead) == cle
+
+
+def cles_message_visite_du_lead(lead):
+    """AGR526 — les clés que ``message-visite`` accepte pour CE lead (le
+    refus 400 les NOMME)."""
+    cles = list(CLES_MESSAGE_VISITE)
+    dossier = cle_message_segment(lead)
+    if dossier in CLES_MESSAGE_DOSSIER:
+        cles.append(dossier)
+    return cles
 
 
 def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
@@ -3033,7 +3145,9 @@ def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
     from apps.parametres.models_messages import MessageTemplate
     from apps.ventes.utils.whatsapp import build_wa_url, render_message_template
 
-    if cle not in CLES_MESSAGE_VISITE:
+    # AGR526 — une clé de DOSSIER n'est rendue qu'au lead dont le playbook de
+    # segment la confirme ; sinon ``None`` (la vue en fait un 400 sur ``cle``).
+    if not cle_message_visite_autorisee(lead, cle):
         return None
 
     date_visite = _date_visite_francais(
@@ -3049,6 +3163,8 @@ def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
             'conseiller': _nom_affiche_conseiller(lead, user),
             'marque': _nom_affiche_marque(lead),
             'date_visite': date_visite,
+            # CIQ500 — la raison sociale, vide ⇒ phrase omise (MRY13).
+            'societe': _societe_du_lead(lead),
         }
         corps = MessageTemplate.get_corps(lead.company, cle, langue) or ''
         # CAD126 — variante de SEGMENT par exception (pompage / B2B).
@@ -3090,6 +3206,9 @@ def journaliser_message_visite_ouvert(lead, user, *, cle, langue, etape=None):
         'visite_proposition': 'proposer la visite',
         # AGR414 — la visite de relevé du point d'eau (agricole).
         'visite_releve_point_eau': 'proposer le relevé du point d’eau',
+        # AGR526 — les textes de dossier des playbooks de segment.
+        'dossier_fda': 'demander où en est le dossier de subvention FDA',
+        'dossier_8221': 'demander où en est le dossier du site',
     }.get(cle, 'confirmer la visite')
     langue_txt = 'darija' if langue == 'darija' else 'français'
     if etape is not None:
@@ -3295,6 +3414,9 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
         'ville': (lead.ville or '').strip(),
         'conseiller': _nom_affiche_conseiller(lead, user),
         'marque': _nom_affiche_marque(lead),
+        # CIQ500 — la raison sociale du lead ; vide ⇒ phrase OMISE (MRY13)
+        # et `societe` listé dans `placeholders_manquants`.
+        'societe': _societe_du_lead(lead),
         'reference': '',
         'lien': '',
         'date_validite': '',
@@ -3949,6 +4071,14 @@ def default_responsable_for(company, lead_attrs=None):
     profile = CompanyProfile.objects.filter(company=company).first()
     explicit = profile.responsable_defaut_leads if profile else None
 
+    # CIQ416 (D-CIQ-20) — un lead COMMERCIAL ou INDUSTRIEL va au responsable
+    # des leads pro quand il est désigné (et actif), AVANT le round-robin et
+    # le défaut. Réglage vide, ou autre segment : comportement identique à
+    # l'octet. Le routage n'est pas un rythme (CAD52/CAD124 tiennent).
+    responsable_pro = responsable_leads_pro(profile, lead_attrs)
+    if responsable_pro is not None:
+        return responsable_pro
+
     if profile is not None and profile.round_robin_leads_actif:
         balanced = _next_balanced_round_robin_commercial(
             company, profile.round_robin_plafond_leads_ouverts)
@@ -3960,6 +4090,28 @@ def default_responsable_for(company, lead_attrs=None):
     if explicit is not None:
         return explicit
     return pick_round_robin_owner(company)
+
+
+def _type_des_attrs(lead_attrs):
+    if not lead_attrs:
+        return None
+    if isinstance(lead_attrs, dict):
+        return lead_attrs.get('type_installation')
+    return getattr(lead_attrs, 'type_installation', None)
+
+
+def responsable_leads_pro(profile, lead_attrs=None):
+    """CIQ416 — le responsable des leads pro (``CompanyProfile.
+    responsable_leads_pro``, CIQ415) quand ``lead_attrs`` désigne un lead
+    commercial ou industriel et que ce responsable est actif ; sinon None."""
+    if profile is None or _type_des_attrs(lead_attrs) not in (
+            Lead.TypeInstallation.COMMERCIAL,
+            Lead.TypeInstallation.INDUSTRIEL):
+        return None
+    responsable = getattr(profile, 'responsable_leads_pro', None)
+    if responsable is None or not getattr(responsable, 'is_active', True):
+        return None
+    return responsable
 
 
 def pick_round_robin_owner(company):
@@ -4157,6 +4309,17 @@ _MERGE_FILL_FIELDS = [
     'autorisation_prelevement', 'autorisation_numero',
     'autorisation_debit_l_s', 'autorisation_volume_m3_an', 'compteur_eau',
     'projet_pompage', 'deja_beneficiaire_fda', 'pompe_hmt_source',
+    # CIQ401 — colonnes du lead pro (contrat CIQ1) : préservées à la fusion.
+    'tension_raccordement', 'tension_source', 'compteur_puissance_kva',
+    'puissance_souscrite_source', 'categorie_commerciale',
+    'reponses_categorie', 'secteur_industriel', 'export_ue_declare',
+    'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin',
+    'fermeture_mois', 'type_surface', 'surface_source', 'groupe_electrogene',
+    'groupe_kva', 'groupe_litres_mois', 'groupe_depense_mad_mois',
+    'pv_existant_kwc', 'cos_phi', 'cos_phi_source', 'releve_conso',
+    'tva_recuperable', 'ice', 'rc', 'if_fiscal', 'adresse_siege',
+    'fonction_contact', 'contact_secondaire_fonction',
+    'contact_secondaire_email', 'facture_tranche_declaree',
     # Visite technique (légère) — préservée à la fusion.
     'visite_prevue_le', 'visite_effectuee', 'visite_notes',
     # Intake site web (taqinor.ma) — attribution + diagnostic préservés.
@@ -4850,12 +5013,22 @@ def resolve_client_for_lead(lead: Lead) -> Client:
         attacher_tiers_au_lead(lead, lead.client)
         return lead.client
 
+    lead_ice = _ice_normalise(getattr(lead, 'ice', None))
+
     def _find_existing():
+        # CIQ403 (contrat CIQ8, ``rattachement``) — l'ICE d'abord : jamais un
+        # second client pour le même ICE dans la même société.
+        if lead_ice:
+            for candidate in Client.objects.filter(
+                    company=lead.company, ice__isnull=False).exclude(ice=''):
+                if _ice_normalise(candidate.ice) == lead_ice:
+                    return candidate
         if lead.email:
             match = Client.objects.filter(
                 company=lead.company, email__iexact=lead.email,
             ).first()
             if match is not None:
+                _verifier_ice_compatible(match, lead_ice, "l'e-mail")
                 return match
         # QX17 — repli téléphone : un client marocain récurrent n'a pas
         # toujours le MÊME email (ou aucun) d'un dossier à l'autre — le
@@ -4871,6 +5044,7 @@ def resolve_client_for_lead(lead: Lead) -> Client:
             return None
         for candidate in Client.objects.filter(company=lead.company):
             if normalize_phone(candidate.telephone) == lead_phone:
+                _verifier_ice_compatible(candidate, lead_ice, 'le téléphone')
                 return candidate
         return None
 
@@ -4898,6 +5072,49 @@ def resolve_client_for_lead(lead: Lead) -> Client:
     # nom du lead n'est touché (QW7).
     attacher_tiers_au_lead(lead, client)
     return client
+
+
+class ConflitIdentiteEntreprise(DRFValidationError):
+    """CIQ403 (contrat CIQ8 ``exemple_conflit``) — l'e-mail ou le téléphone
+    du lead désigne un client dont l'ICE DIFFÈRE de celui du lead : jamais
+    une réutilisation silencieuse. Sous-classe de ``ValidationError`` DRF :
+    tout appelant HTTP rend un 400 qui nomme ``ice`` sans être modifié."""
+
+    default_code = 'conflit_identite_entreprise'
+
+    def __init__(self, message):
+        super().__init__({'code': 'conflit_identite_entreprise',
+                          'champ': 'ice', 'message': message})
+
+
+def _ice_normalise(valeur):
+    """ICE comparable : espaces retirés ; vide = ``''``."""
+    return _re.sub(r'\s', '', str(valeur or '')).upper()
+
+
+def _verifier_ice_compatible(client, lead_ice, par):
+    client_ice = _ice_normalise(client.ice)
+    if lead_ice and client_ice and client_ice != lead_ice:
+        raise ConflitIdentiteEntreprise(
+            f'Le client trouvé par {par} (« {client.nom} ») porte l\'ICE '
+            f'{client.ice}, différent de celui du lead ({lead_ice}) : '
+            "vérifier l'ICE avant de créer ou de rattacher le client.")
+
+
+def lead_est_entreprise(lead):
+    """CIQ403 (contrat CIQ8, ``creation_depuis_lead.quand_entreprise``) —
+    le client d'un lead commercial/industriel, ou qui porte une raison
+    sociale, est une ENTREPRISE ; sinon un particulier (inchangé)."""
+    return (getattr(lead, 'type_installation', None)
+            in ('commercial', 'industriel')
+            or bool((getattr(lead, 'societe', None) or '').strip()))
+
+
+def _nom_personne(lead):
+    return ' '.join(
+        p.strip() for p in (getattr(lead, 'prenom', None),
+                            getattr(lead, 'nom', None))
+        if p and p.strip())
 
 
 def _resoudre_ou_creer_client(lead, _find_existing):
@@ -4930,16 +5147,38 @@ def _resoudre_ou_creer_client(lead, _find_existing):
             # a gagné la course, l'unique_together (company, email) lève une
             # IntegrityError — on la rattrape et on réutilise le client existant
             # (style get_or_create), au lieu de propager un 500.
-            with transaction.atomic():
-                client = Client.objects.create(
-                    company=lead.company,
-                    nom=lead.nom,
-                    prenom=lead.prenom,
-                    email=lead.email,
-                    telephone=(lead.telephone or '')[:20] or None,
-                    adresse=adresse or None,
-                    langue_document=langue_document,
+            champs = dict(
+                company=lead.company,
+                nom=lead.nom,
+                prenom=lead.prenom,
+                email=lead.email,
+                telephone=(lead.telephone or '')[:20] or None,
+                adresse=adresse or None,
+                langue_document=langue_document,
+            )
+            if lead_est_entreprise(lead):
+                # CIQ403 — client ENTREPRISE (contrat CIQ8) : la raison
+                # sociale nomme le client, la personne devient « à
+                # l'attention de ». Sans raison sociale : le nom de la
+                # personne, marqué à confirmer (jamais bloquant). Les
+                # identifiants sont recopiés tels que DÉCLARÉS.
+                raison = (lead.societe or '').strip()
+                personne = _nom_personne(lead)
+                champs.update(
+                    type_client=Client.TypeClient.ENTREPRISE,
+                    nom=raison or personne or lead.nom,
+                    prenom=None,
+                    raison_sociale_a_confirmer=not raison,
+                    contact_nom=personne or None,
+                    contact_fonction=lead.fonction_contact or None,
+                    ice=(lead.ice or '').strip() or None,
+                    rc=lead.rc or None,
+                    if_fiscal=lead.if_fiscal or None,
+                    adresse_siege=lead.adresse_siege or None,
+                    tva_recuperable=lead.tva_recuperable or None,
                 )
+            with transaction.atomic():
+                client = Client.objects.create(**champs)
         except IntegrityError:
             # CRX24 — attrape AUSSI la contrainte insensible à la casse
             # ``crx24_client_email_unique_ci`` : ``_find_existing`` cherche en
@@ -4956,22 +5195,53 @@ def _resoudre_ou_creer_client(lead, _find_existing):
 #: Champs d'identité recopiés du lead vers sa fiche Client (contrat
 #: ``lead_client_ecart.json``) — ordre stable, celui de l'écart servi.
 IDENTITE_CLIENT_CHAMPS = ('nom', 'prenom', 'email', 'telephone', 'adresse')
+#: CIQ403 (contrat ``lead_client_ecart.json`` → ``exemple_entreprise``) — un
+#: client ENTREPRISE suit en plus son identité légale ; ``prenom`` n'a pas de
+#: sens pour lui (la personne est ``contact_nom``).
+IDENTITE_CLIENT_CHAMPS_ENTREPRISE = (
+    'nom', 'email', 'telephone', 'adresse', 'contact_nom',
+    'contact_fonction', 'ice', 'rc', 'if_fiscal', 'adresse_siege',
+    'tva_recuperable',
+)
 
 
-def identite_client_depuis_lead(lead):
+def _champs_identite(client):
+    if getattr(client, 'type_client', None) == Client.TypeClient.ENTREPRISE:
+        return IDENTITE_CLIENT_CHAMPS_ENTREPRISE
+    return IDENTITE_CLIENT_CHAMPS
+
+
+def identite_client_depuis_lead(lead, *, entreprise=False):
     """Identité Client telle que :func:`_resoudre_ou_creer_client` la
-    recopie d'un lead (adresse = adresse + ', ' + ville ; téléphone ≤ 20)."""
+    recopie d'un lead (adresse = adresse + ', ' + ville ; téléphone ≤ 20).
+
+    CIQ403 — ``entreprise=True`` : nom ← societe (sinon la personne),
+    contact_nom ← prénom + nom, et l'identité légale déclarée."""
     adresse = getattr(lead, 'adresse', None) or ''
     ville = getattr(lead, 'ville', None)
     if ville:
         adresse = ', '.join(p for p in (adresse, ville) if p)
-    return {
+    identite = {
         'nom': getattr(lead, 'nom', None),
         'prenom': getattr(lead, 'prenom', None),
         'email': getattr(lead, 'email', None),
         'telephone': (getattr(lead, 'telephone', None) or '')[:20] or None,
         'adresse': adresse or None,
     }
+    if entreprise:
+        personne = _nom_personne(lead) or None
+        identite.update(
+            nom=(getattr(lead, 'societe', None) or '').strip() or personne,
+            prenom=None,
+            contact_nom=personne,
+            contact_fonction=getattr(lead, 'fonction_contact', None),
+            ice=(getattr(lead, 'ice', None) or '').strip() or None,
+            rc=getattr(lead, 'rc', None),
+            if_fiscal=getattr(lead, 'if_fiscal', None),
+            adresse_siege=getattr(lead, 'adresse_siege', None),
+            tva_recuperable=getattr(lead, 'tva_recuperable', None),
+        )
+    return identite
 
 
 def _identite_egale(champ, a, b):
@@ -5001,8 +5271,10 @@ def client_ecart(lead):
     client = _client_synchronisable(lead)
     if client is None:
         return []
-    cible = identite_client_depuis_lead(lead)
-    return [c for c in IDENTITE_CLIENT_CHAMPS
+    champs = _champs_identite(client)
+    cible = identite_client_depuis_lead(
+        lead, entreprise=champs is IDENTITE_CLIENT_CHAMPS_ENTREPRISE)
+    return [c for c in champs
             if not _identite_egale(c, getattr(client, c, None), cible[c])]
 
 
@@ -5029,10 +5301,13 @@ def synchroniser_identite_client(lead, avant, user, *, force=False):
     client = _client_synchronisable(lead)
     if client is None:
         return [], None
-    cible = identite_client_depuis_lead(lead)
-    ancienne = identite_client_depuis_lead(avant) if avant is not None else {}
+    champs_suivis = _champs_identite(client)
+    entreprise = champs_suivis is IDENTITE_CLIENT_CHAMPS_ENTREPRISE
+    cible = identite_client_depuis_lead(lead, entreprise=entreprise)
+    ancienne = (identite_client_depuis_lead(avant, entreprise=entreprise)
+                if avant is not None else {})
     champs = []
-    for c in IDENTITE_CLIENT_CHAMPS:
+    for c in champs_suivis:
         actuelle = getattr(client, c, None)
         if _identite_egale(c, actuelle, cible[c]):
             continue
@@ -5448,6 +5723,90 @@ def _meta_project_timeline(valeur_normalisee):
     return ''
 
 
+# ── CIQ407 — formulaire Meta « pour mon entreprise » (D-CIQ-19) ─────────────
+#
+# Mots ENTIERS sur du texte normalisé (``_norm_form_text``). L'ORDRE compte :
+# un mot d'industrie l'emporte sur « entreprise »/« société » (« Entreprise
+# industrielle » est une usine) ; un cas qui touche deux segments que rien
+# ne départage ne pose AUCUN type (il reste dans la note).
+_META_MOTS_RESIDENTIEL = (r'villa', r'maison', r'appartement', r'domicile',
+                          r'residen\w*')
+_META_MOTS_INDUSTRIEL = (r'usine', r'industri\w*', r'atelier', r'hangar')
+_META_MOTS_AGRICOLE = (r'ferme', r'agricole', r'pompage', r'puits')
+#: Activité → ``Lead.categorie_commerciale`` (liste fermée du contrat CIQ1).
+_META_CATEGORIES = (
+    ((r'hotel', r'riad'), 'hotel'),
+    ((r'restaurant', r'cafe', r'snack'), 'restaurant'),
+    ((r'entrepot frigorifique', r'chambre froide', r'froid'), 'froid'),
+    ((r'supermarche', r'magasin', r'commerce', r'boutique'), 'commerce'),
+    ((r'bureau', r'bureaux'), 'bureau'),
+    ((r'clinique', r'cabinet', r'sante', r'centre medical'), 'sante'),
+    ((r'ecole', r'creche', r'lycee'), 'ecole'),
+    ((r'hammam', r'spa', r'gym', r'salle de sport'), 'hammam'),
+    ((r'boulangerie', r'patisserie'), 'boulangerie'),
+)
+_META_MOTS_COMMERCIAL = (r'entreprise', r'societe', r'local')
+_META_MOTS_TRANCHE_OUVERTE = ('plus de', 'au dela', 'superieur', '>',
+                              'more than', 'over')
+
+
+def _meta_mot_entier(texte, motifs):
+    return any(_re.search(rf'\b{motif}\b', texte) for motif in motifs)
+
+
+def _meta_categorie(valeur_normalisee):
+    """CIQ407 — la catégorie commerciale d'une réponse, ou '' (mots entiers ;
+    la première catégorie de la table qui répond gagne)."""
+    for motifs, cle in _META_CATEGORIES:
+        if _meta_mot_entier(valeur_normalisee, motifs):
+            return cle
+    return ''
+
+
+def _meta_type_installation(valeur_normalisee):
+    """CIQ407 — le segment d'une réponse « où installer », ou ''.
+
+    Industrie AVANT entreprise/société ; « local » en mot entier seulement ;
+    une activité commerciale reconnue (clinique, école…) vaut commercial. Un
+    cas ambigu (résidentiel ou agricole ET autre chose) ne pose rien."""
+    v = valeur_normalisee
+    residentiel = _meta_mot_entier(v, _META_MOTS_RESIDENTIEL)
+    industriel = _meta_mot_entier(v, _META_MOTS_INDUSTRIEL)
+    agricole = _meta_mot_entier(v, _META_MOTS_AGRICOLE)
+    commercial = (_meta_mot_entier(v, _META_MOTS_COMMERCIAL)
+                  or bool(_meta_categorie(v)))
+    pro = industriel or commercial
+    if sum((residentiel, agricole, pro)) != 1:
+        return ''
+    if residentiel:
+        return Lead.TypeInstallation.RESIDENTIEL
+    if agricole:
+        return Lead.TypeInstallation.AGRICOLE
+    if industriel:
+        return Lead.TypeInstallation.INDUSTRIEL
+    return Lead.TypeInstallation.COMMERCIAL
+
+
+def _meta_tranche_facture(valeur_normalisee, libelle):
+    """CIQ407 (D-CIQ-19) — ``(montant, tranche)`` d'une réponse de facture.
+
+    Tranche FERMÉE (deux nombres) : montant = milieu (inchangé) + tranche
+    {min, max}. Tranche OUVERTE (« plus de X ») : AUCUN montant, tranche
+    {X, None}. Nombre unique sans « plus de » : un montant, pas de tranche."""
+    texte = _re.sub(r'(?<=\d)[\s.](?=\d{3}\b)', '', valeur_normalisee)
+    nums = [int(n) for n in _re.findall(r'\d{3,6}', texte)]
+    if len(nums) >= 2:
+        bas, haut = sorted(nums[:2])
+        return (bas + haut) // 2, {'min_mad': bas, 'max_mad': haut,
+                                   'libelle': libelle, 'source': 'meta'}
+    if nums:
+        if any(mot in texte for mot in _META_MOTS_TRANCHE_OUVERTE):
+            return None, {'min_mad': nums[0], 'max_mad': None,
+                          'libelle': libelle, 'source': 'meta'}
+        return nums[0], None
+    return None, None
+
+
 def _parse_meta_form_extras(field_data):
     """Réponses NON-contact du formulaire Meta → champs CRM structurés.
 
@@ -5470,16 +5829,26 @@ def _parse_meta_form_extras(field_data):
         if not raw_value:
             continue
         extras['qa'].append((raw_name, raw_value))
+        # CIQ407 — raison sociale et fonction : champs Meta standard,
+        # recopiés en remplissage seulement (et cités dans la note).
+        if raw_name.lower() == 'company_name':
+            extras['societe'] = raw_value.strip()[:255]
+            continue
+        if raw_name.lower() == 'job_title':
+            extras['fonction_contact'] = raw_value.strip()[:120]
+            continue
         q = _norm_form_text(raw_name)
         v = _norm_form_text(raw_value)
         if 'facture' in q:
-            nums = [int(n) for n in _re.findall(r'\d{3,6}', v)]
-            if len(nums) >= 2:
-                extras['facture_estimee'] = (nums[0] + nums[1]) // 2
-            elif nums:
-                # Tranche ouverte (« plus de 4000 dh ») : borne déclarée,
-                # jamais un montant inventé au-delà.
-                extras['facture_estimee'] = nums[0]
+            # CIQ407 (D-CIQ-19) — une tranche OUVERTE (« plus de 4000 dh »)
+            # n'est JAMAIS un montant : elle va dans la tranche déclarée,
+            # la facture reste vide.
+            montant, tranche = _meta_tranche_facture(
+                v, raw_value.replace('_', ' '))
+            if montant is not None:
+                extras['facture_estimee'] = montant
+            if tranche is not None:
+                extras['facture_tranche'] = tranche
             extras['facture_declaree'] = raw_value
         elif 'quand' in q or 'commencer' in q or 'delai' in q:
             if 'plus tot possible' in v or 'ce mois' in v or 'immediat' in v:
@@ -5508,16 +5877,19 @@ def _parse_meta_form_extras(field_data):
             if delai:
                 extras['project_timeline'] = delai
         elif 'install' in q:
-            if any(k in v for k in ('villa', 'maison', 'appartement',
-                                    'domicile', 'residen')):
-                extras['type_installation'] = Lead.TypeInstallation.RESIDENTIEL
-            elif any(k in v for k in ('entreprise', 'societe', 'commerce',
-                                      'bureau', 'magasin', 'hotel', 'local')):
-                extras['type_installation'] = Lead.TypeInstallation.COMMERCIAL
-            elif 'usine' in v or 'industri' in v:
-                extras['type_installation'] = Lead.TypeInstallation.INDUSTRIEL
-            elif any(k in v for k in ('ferme', 'agricole', 'pompage', 'puits')):
-                extras['type_installation'] = Lead.TypeInstallation.AGRICOLE
+            # CIQ407 — industrie AVANT entreprise/société, mots entiers ; un
+            # cas ambigu ne pose aucun type (il reste dans la note).
+            segment = _meta_type_installation(v)
+            if segment:
+                extras['type_installation'] = segment
+            categorie = _meta_categorie(v)
+            if categorie and segment == Lead.TypeInstallation.COMMERCIAL:
+                extras['categorie_commerciale'] = categorie
+        elif 'activite' in q or 'secteur' in q or 'etablissement' in q:
+            # CIQ407 — question d'activité du formulaire modifié par Reda.
+            categorie = _meta_categorie(v)
+            if categorie:
+                extras['categorie_commerciale'] = categorie
         else:
             # AGR410 — FORM-AGRI-1 : questions de pompage reconnues par
             # mots-clés (``_meta_reponse_agricole``).
@@ -5630,6 +6002,21 @@ def _apply_meta_form_extras(lead, extras):
             and lead.type_installation != Lead.TypeInstallation.AGRICOLE):
         lead.facture_hiver = Decimal(int(extras['facture_estimee']))
         changed.append('facture_hiver')
+    # CIQ407 (D-CIQ-19) — la tranche déclarée : toujours pour une tranche
+    # OUVERTE (jamais un montant), en plus du milieu pour un PRO.
+    tranche = extras.get('facture_tranche')
+    if (tranche and lead.facture_tranche_declaree is None
+            and lead.type_installation != Lead.TypeInstallation.AGRICOLE
+            and (tranche['max_mad'] is None or lead.type_installation in (
+                Lead.TypeInstallation.COMMERCIAL,
+                Lead.TypeInstallation.INDUSTRIEL))):
+        lead.facture_tranche_declaree = dict(tranche)
+        changed.append('facture_tranche_declaree')
+    # CIQ407 — activité, raison sociale, fonction : remplissage seulement.
+    for champ in ('categorie_commerciale', 'societe', 'fonction_contact'):
+        if extras.get(champ) and not getattr(lead, champ, None):
+            setattr(lead, champ, extras[champ])
+            changed.append(champ)
     # AGR410 — réponses de pompage : remplissage seulement, jamais
     # d'écrasement.
     for champ in ('source_eau', 'pompe_alim_actuelle', 'surface_irriguee_ha',
@@ -5680,6 +6067,12 @@ def _ensure_meta_form_note(lead, extras, form_id=''):
             '« %s » — à préciser au premier appel)'
             % (int(extras['facture_estimee']),
                extras.get('facture_declaree', '').replace('_', ' ')))
+    elif (extras.get('facture_tranche') or {}).get('max_mad', 0) is None:
+        # CIQ407 (D-CIQ-19) — tranche ouverte : AUCUN montant pré-rempli.
+        lines.append(
+            '(tranche ouverte « %s » : aucune facture pré-remplie — le '
+            'montant réel est à demander au premier appel)'
+            % extras.get('facture_declaree', '').replace('_', ' '))
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE, body='\n'.join(lines))
@@ -5884,7 +6277,11 @@ def create_lead_from_meta_lead_ads(
     if inherited_owner is not None:
         extra['owner'] = inherited_owner
     else:
-        default = default_responsable_for(company)
+        # CIQ416 — le type lu sur le formulaire route un lead pro vers son
+        # responsable désigné (sinon : comportement inchangé).
+        default = default_responsable_for(
+            company,
+            lead_attrs={'type_installation': extras.get('type_installation')})
         if default is not None:
             extra['owner'] = default
     # À la CRÉATION, le délai déclaré pose la priorité pleinement (haute,
@@ -6505,6 +6902,13 @@ def notify_new_lead(lead, *, sous_seuil=False) -> None:
         recipients = avec_direction(
             lead_notification_recipients(lead),
             getattr(lead, 'company', None))
+        # CIQ416 (D-CIQ-20) — un lead PRO se dit pro dès le titre, et son
+        # responsable désigné est ajouté aux destinataires.
+        segment = getattr(lead, 'type_installation', None)
+        pro = segment in (Lead.TypeInstallation.COMMERCIAL,
+                          Lead.TypeInstallation.INDUSTRIEL)
+        if pro:
+            recipients = _avec_responsable_pro(recipients, lead)
         if not recipients:
             return
         from apps.notifications.services import notify_many
@@ -6512,6 +6916,8 @@ def notify_new_lead(lead, *, sous_seuil=False) -> None:
         wa_url = _build_lead_wa_reply_url(lead)
         suffixe = ' (sous le seuil)' if sous_seuil else ''
         body_parts = [f'Un nouveau lead vient d\'arriver : {nom}{suffixe}.']
+        if pro:
+            body_parts.extend(lignes_notification_pro(lead))
         if sous_seuil:
             body_parts.append(
                 'Facture déclarée sous le seuil de 1 000 MAD — à traiter '
@@ -6535,10 +6941,12 @@ def notify_new_lead(lead, *, sous_seuil=False) -> None:
                 'section « Toiture & site ».')
         if wa_url:
             body_parts.append(f'Répondre maintenant : {wa_url}')
+        titre = (f'Nouveau lead PRO ({segment}) : {nom}{suffixe}' if pro
+                 else f'Nouveau lead : {nom}{suffixe}')
         notify_many(
             recipients,
             'lead_new',
-            f'Nouveau lead : {nom}{suffixe}',
+            titre,
             body='\n'.join(body_parts),
             link=f'/crm/leads?lead={lead.pk}',
             company=lead.company,
@@ -6548,6 +6956,61 @@ def notify_new_lead(lead, *, sous_seuil=False) -> None:
         logging.getLogger(__name__).warning(
             'QJ2: notify_new_lead échoué pour lead #%s : %s',
             getattr(lead, 'pk', '?'), exc)
+
+
+def _avec_responsable_pro(recipients, lead):
+    """CIQ416 — ajoute le responsable des leads pro aux destinataires (sans
+    doublon). Best-effort : un profil absent ne change rien."""
+    from apps.parametres.models import CompanyProfile
+    profile = CompanyProfile.objects.filter(
+        company_id=getattr(lead, 'company_id', None)).first()
+    responsable = responsable_leads_pro(
+        profile, {'type_installation': lead.type_installation})
+    liste = list(recipients or [])
+    if responsable is not None and responsable.pk not in {
+            getattr(u, 'pk', None) for u in liste}:
+        liste.append(responsable)
+    return liste
+
+
+def _montant_fr(valeur):
+    from decimal import Decimal
+    nombre = Decimal(str(valeur))
+    if nombre == nombre.to_integral_value():
+        return f'{int(nombre):,}'.replace(',', ' ')
+    return f'{nombre:,.2f}'.replace(',', ' ').replace('.', ',')
+
+
+def lignes_notification_pro(lead):
+    """CIQ416 — le corps d'un lead PRO : catégorie, facture ou kWh DÉCLARÉS
+    (jamais une estimation) et tension si elle est déclarée. Une donnée
+    absente n'écrit aucune ligne."""
+    lignes = []
+    categorie = getattr(lead, 'categorie_commerciale', None)
+    if categorie:
+        libelle = dict(Lead.CategorieCommerciale.choices).get(
+            categorie, categorie)
+        lignes.append(f'Activité : {libelle}.')
+    elif getattr(lead, 'secteur_industriel', None):
+        lignes.append(f'Activité : {lead.secteur_industriel}.')
+    tranche = getattr(lead, 'facture_tranche_declaree', None)
+    kwh = (getattr(lead, 'conso_mensuelle_kwh', None)
+           or getattr(lead, 'bill_kwh', None))
+    if getattr(lead, 'facture_hiver', None):
+        lignes.append('Facture déclarée : '
+                      f'{_montant_fr(lead.facture_hiver)} MAD/mois.')
+    elif isinstance(tranche, dict) and tranche.get('libelle'):
+        lignes.append(f'Facture déclarée : « {tranche["libelle"]} ».')
+    if kwh:
+        lignes.append(f'Consommation déclarée : {_montant_fr(kwh)} kWh/mois.')
+    tension = getattr(lead, 'tension_raccordement', None)
+    if (tension in ('bt', 'mt')
+            and getattr(lead, 'tension_source', None)
+            != 'site_defaut_visible'):
+        lignes.append('Raccordement : ' + (
+            'moyenne tension (MT).' if tension == 'mt'
+            else 'basse tension (BT).'))
+    return lignes
 
 
 def notify_devis_opened(devis_reference: str, lead, *, ip='',
@@ -10285,6 +10748,29 @@ MENTION_VISITE_POINT_EAU = (
     'Visite de relevé du point d’eau, avant devis (règle pompage).')
 
 
+#: CIQ411 (D-CIQ-5) — la règle SITE PROFESSIONNEL : pour un lead commercial
+#: ou industriel dont le site est en MT, ou dont la tension, la puissance
+#: souscrite ou le toit restent inconnus, la visite technique se fait AVANT le
+#: devis final. Ce n'est pas une exception ; jamais un blocage.
+AVERTISSEMENT_VISITE_PRO = (
+    'Site professionnel : {motifs} — la visite technique se fait AVANT le '
+    'devis final (un devis indicatif reste possible, marqué « estimation '
+    'sous réserve de visite »).')
+
+#: CIQ411 — la phrase de la note de planification dans ce cas.
+MENTION_VISITE_PRO = 'Visite technique avant devis (règle site professionnel).'
+
+
+def visite_pro_avant_devis(lead):
+    """CIQ411 — ``devis_auto.visite_avant_devis(lead)`` (CIQ404) : le bloc
+    {requise, motifs} d'un lead commercial/industriel, ``None`` ailleurs."""
+    from .devis_auto import visite_avant_devis
+    if lead is None:
+        return None
+    bloc = visite_avant_devis(lead)
+    return bloc if bloc and bloc.get('requise') else None
+
+
 def visite_point_eau_requise(lead):
     """AGR408 — ``visite_point_eau_avant_devis(lead).requise`` (AGR403) :
     vrai seulement pour un lead AGRICOLE au point d'eau inconnu."""
@@ -10392,6 +10878,12 @@ def avertissement_visite(lead):
         texte = (AVERTISSEMENT_VISITE_POINT_EAU
                  if visite_point_eau_requise(lead)
                  else AVERTISSEMENT_VISITE_SANS_DEVIS)
+        # CIQ411 (D-CIQ-5) — site pro en MT ou aux faits inconnus : la
+        # visite AVANT le devis final est la règle, pas une exception.
+        pro = visite_pro_avant_devis(lead)
+        if pro is not None:
+            texte = AVERTISSEMENT_VISITE_PRO.format(
+                motifs=', '.join(pro['motifs']))
         return {'avertissement_sans_devis': texte,
                 'rappel_juridique': RAPPEL_JURIDIQUE_VISITE_DOMICILE}
     return {'avertissement_sans_devis': '', 'rappel_juridique': ''}
@@ -10472,9 +10964,13 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
         # dans le suivi : on a averti, on n'a pas bloqué, on le dit.
         # AGR408 (D-AGR-4) — pour un lead agricole au point d'eau inconnu,
         # c'est la RÈGLE pompage, pas une exception.
-        corps += (f' {MENTION_VISITE_POINT_EAU}'
-                  if visite_point_eau_requise(lead)
-                  else f' {MENTION_VISITE_SANS_DEVIS}')
+        # CIQ411 (D-CIQ-5) — site pro : visite avant devis, la règle.
+        if visite_pro_avant_devis(lead) is not None:
+            corps += f' {MENTION_VISITE_PRO}'
+        else:
+            corps += (f' {MENTION_VISITE_POINT_EAU}'
+                      if visite_point_eau_requise(lead)
+                      else f' {MENTION_VISITE_SANS_DEVIS}')
     if devis_en_attente:
         corps += f' {mention_devis_apres_visite(libelle_devis)}'
     # Note SYSTÈME (``user=None``) : PLANIFIER n'est pas AVOIR contacté le
@@ -12640,6 +13136,13 @@ REPONSE_JOINT_TELEPHONE = 'joint_telephone'
 #: ``views.seed_tags``) ; la comparaison, elle, ignore casse et accents
 #: (``_lead_porte_tag`` avec ``_TAG_DECISION_A_PLUSIEURS``).
 TAG_DECISION_A_PLUSIEURS = 'Décision à plusieurs'
+#: AGR520 (05/10/2026) — « En attente d'un accord (DPA / banque) » : le client
+#: attend une décision ADMINISTRATIVE ou BANCAIRE (approbation préalable FDA —
+#: Guide FDA 2024 p.22-23 —, accord de crédit). Même veille que « Plus tard »,
+#: plus une étiquette ; jamais « je classe ? » ni le passage au Froid.
+REPONSE_ATTENTE_ACCORD = 'attente_accord'
+#: L'étiquette posée par cette réponse (seedée par ``views.seed_tags``).
+TAG_ATTENTE_ACCORD = 'Attend un accord (DPA / banque)'
 
 #: Les cadences de protocole (``None`` = toutes, filets et réveils compris).
 _TOUTES_CADENCES = None
@@ -12677,6 +13180,17 @@ REPONSES_TOUCHE = {
         'cadences': _CADENCES_PROTOCOLE_ET_DEUXIEME_AFFAIRE,
         'message': 'rappel_plus_tard',
         # La date convenue avec le client est OBLIGATOIRE (« Rappeler le »).
+        'date_requise': True,
+    },
+    # AGR520 — même place, mêmes cadences et même date OBLIGATOIRE que
+    # « Plus tard » ; AUCUN texte proposé (aucun accusé n'est validé pour ce
+    # cas) ; l'étiquette dit pourquoi le dossier dort.
+    REPONSE_ATTENTE_ACCORD: {
+        'libelle': "En attente d'un accord (DPA / banque)",
+        'outcome': 'rappel',
+        'note': "En attente d'un accord (DPA / banque)",
+        'cadences': _CADENCES_PROTOCOLE_ET_DEUXIEME_AFFAIRE,
+        'message': None,
         'date_requise': True,
     },
     REPONSE_QUESTION_PRIX: {
@@ -13104,6 +13618,62 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
                  'reprendre')
     corps = (f'Réponse du client sur la touche « {libelle} » : « '
              f'{spec["note"]} » — {suite}.')
+    if body:
+        corps += f' {body}'
+    if (note or '').strip():
+        corps += f' Note : {note.strip()}'
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=_CANAL_VERS_KIND.get(etape.canal, LeadActivity.Kind.NOTE),
+        body=corps, outcome=spec['outcome'])
+    if reprise is None:
+        etape.refresh_from_db()
+        return etape
+    return reprise
+
+
+# ── AGR520 — « En attente d'un accord (DPA / banque) » ─────────────────────
+
+def repondre_attente_accord(etape, user, quand, *, note='', body=''):
+    """AGR520 — le client attend une décision administrative ou bancaire
+    (approbation préalable du dossier FDA par la DPA, accord de crédit) : il
+    n'a dit ni oui ni non, et le relancer « je classe ? » (J7), « dernier
+    message » (J13) puis le mettre en pause (J14) serait faux.
+
+    1. l'étiquette « Attend un accord (DPA / banque) » est posée
+       (``poser_tag_lead``, idempotent) ;
+    2. EXACTEMENT la veille de « Plus tard » (``mettre_en_veille``) : aucun
+       barreau consommé, la même touche revient à la date convenue — au-delà
+       de ``VEILLE_BASCULE_REVEIL_JOURS``, la cadence s'arrête et un réveil
+       est daté de ce jour-là (sa première touche est un APPEL). Jamais de
+       passage au Froid par cette réponse : l'étape du dossier ne bouge pas ;
+    3. UNE ligne d'historique typée selon le canal (issue « à rappeler »).
+
+    Aucun texte n'est proposé. La date est OBLIGATOIRE (la vue la refuse en
+    400 nommant ``rappel_le`` sinon). Renvoie la touche qui portera la
+    reprise."""
+    from . import horaires
+
+    lead = etape.lead
+    spec = REPONSES_TOUCHE[REPONSE_ATTENTE_ACCORD]
+    libelle = (etape.libelle or '').strip() or etape.get_canal_display()
+    poser_tag_lead(lead, user, TAG_ATTENTE_ACCORD)
+    quand = _instant_de_veille(quand)
+    reprise = mettre_en_veille(lead, user, quand, etape=etape,
+                               journaliser=False)
+    if reprise is not None and reprise.pk == etape.pk:
+        suite = (f'dossier en veille jusqu’au {reprise.due_date:%d/%m/%Y}, '
+                 'reprise à cette même touche — aucun barreau consommé')
+    elif reprise is not None:
+        suite = (f'plus d’un mois d’attente : la cadence est arrêtée et un '
+                 f'réveil est daté du {reprise.due_date:%d/%m/%Y}')
+    else:
+        jour = quand.astimezone(horaires.CASABLANCA).date()
+        suite = (f'veille demandée jusqu’au {jour:%d/%m/%Y}, aucune touche à '
+                 'reprendre')
+    corps = (f'Réponse du client sur la touche « {libelle} » : « '
+             f'{spec["note"]} » — étiquette « {TAG_ATTENTE_ACCORD} » posée, '
+             f'{suite}.')
     if body:
         corps += f' {body}'
     if (note or '').strip():

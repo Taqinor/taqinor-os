@@ -142,6 +142,16 @@ class DimancheFamilleTests(_Base):
 
     slug = 'mry7-dimanche'
 
+    def setUp(self):
+        super().setUp()
+        # AGR514 — J4 « preuve » n'est posée qu'avec une réalisation
+        # éligible : les comptes 9/10 ci-dessous la supposent présente.
+        from apps.parametres.models_realisations import Realisation
+        Realisation.objects.create(
+            company=self.company, titre='Villa', ville='Casablanca',
+            mise_en_service=datetime.date(2026, 7, 1),
+            puissance_kwc=Decimal('6'), url_page='https://taqinor.ma/r/v/')
+
     def _dimanche_famille(self):
         return self._touches('apres_devis').filter(
             template_cle='dimanche_famille')

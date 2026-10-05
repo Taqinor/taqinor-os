@@ -78,6 +78,9 @@ class VisiteTerrain(TenantModel):
     class Gabarit(models.TextChoices):
         TOITURE = 'toiture', 'Toiture'
         POINT_EAU = 'point_eau', "Relevé du point d'eau"
+        #: CIQ600 (D-CIQ-5) — relevé d'un site professionnel (commercial ou
+        #: industriel) : socle commun + BT, zones de toiture répétables.
+        CI = 'ci', 'Relevé commerce / industrie'
 
     statut = models.CharField(
         max_length=12, choices=Statut.choices, default=Statut.BROUILLON,
@@ -141,6 +144,22 @@ class VisiteTerrain(TenantModel):
     # une qualification faite.
     qualification = models.JSONField(
         null=True, blank=True, verbose_name='Qualification de fin de visite')
+    # ── CIQ604 — LE FEU VERT HORODATÉ (posé SERVEUR par ``valider_visite``) ──
+    #
+    # NULL tant que la visite n'est pas validée, et pour toute visite validée
+    # AVANT cette tâche (D-CIQ-21 : aucune reprise des anciennes — jamais une
+    # date inventée à la place).
+    validee_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Validée le')
+    validee_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        # on_delete: l'auteur du feu vert peut quitter la société ; la visite
+        # et sa date restent (la trace « validée le … » ne disparaît pas).
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='visites_validees',
+        verbose_name='Validée par',
+    )
 
     class Meta:
         # Table PHYSIQUE historique — le move ne déplace AUCUNE donnée.

@@ -18,7 +18,9 @@ import path from 'node:path'
 
 const ici = path.dirname(fileURLToPath(import.meta.url))
 const hook = readFileSync(path.join(ici, 'useSizingMoteur.js'), 'utf8')
-const apercu = readFileSync(path.join(ici, '..', '..', 'etudeHorairePreview.js'), 'utf8')
+// ACAL345 : la logique vit dans le hook partagé lib/useApercuServeur.js.
+const apercu = readFileSync(path.join(ici, '..', '..', '..', '..', 'lib', 'useApercuServeur.js'), 'utf8')
+const horaire = readFileSync(path.join(ici, '..', '..', 'etudeHorairePreview.js'), 'utf8')
 
 test('useSizingMoteur ne rejoue plus de second debounce', () => {
   assert.doesNotMatch(hook, /useDebouncedValue\(/)

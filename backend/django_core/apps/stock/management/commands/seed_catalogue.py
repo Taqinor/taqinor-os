@@ -601,6 +601,95 @@ BATTERIE_DEYE_HV = [
     ('Batterie Deye BOS-B Pro haute tension — 16 kWh', 'BAT-DYN-HV-16', 48000, 500, 5),
 ]
 
+
+# ── CIQ103 — articles C&I GÉNÉRIQUES « prix à renseigner » (D-CIQ-12) ───────
+# Patron OSP/VEICHI : PRIX VIDES (0, jamais auto-chiffrés), ``role_ci`` /
+# ``type_pose`` DÉCLARÉS à la création, aucune marque ni caractéristique
+# constructeur inventée. Seule la grandeur qui DÉFINIT l'article (sa
+# désignation : section d'un câble, calibre/pôles d'une protection, type de
+# pose d'une structure, mode d'un compteur à TC / d'un contrôleur) est posée
+# dans sa fiche — la composition C&I (CIQ115) apparie par rôle ET grandeur.
+# Tout le reste (pouvoir de coupure, masse, compatibilités, nombre d'onduleurs
+# pilotés) reste VIDE = non publié. Sections et calibres = EXACTEMENT les
+# listes normalisées du moteur électrique (étendues par CIQ139), IMPORTÉES —
+# jamais une liste choisie à la main. Aucun onduleur ni batterie C&I inventés :
+# ce sont des produits réels, à saisir par le fondateur.
+# (nom, sku, role_ci, type_pose, qte, seuil, fiche ou None)
+def _articles_ci():
+    from core.electrique.cables import SECTIONS_MM2_CI
+    from core.electrique.protections import CALIBRES_DISJONCTEUR_CI_A
+
+    def _fmt(nombre):
+        texte = ('%g' % nombre)
+        return texte.replace('.', ',')
+
+    lignes = []
+    for s in SECTIONS_MM2_CI:
+        lignes.append((
+            f'Câble AC cuivre {_fmt(s)} mm² (au mètre)',
+            f'CI-CAB-AC-CU-{"%g" % s}-M', 'cable_ac', '', 5000, 200,
+            {'type_fiche': 'cable', 'cable_cote': 'ac',
+             'cable_section_mm2': float(s), 'cable_ame': 'cu'}))
+    for prot_type, libelle, prefixe in (
+            ('disjoncteur', 'Disjoncteur AC', 'CI-DISJ-AC'),
+            ('sectionneur', 'Sectionneur AC', 'CI-SECT-AC')):
+        for c in CALIBRES_DISJONCTEUR_CI_A:
+            lignes.append((
+                f'{libelle} {c} A tétrapolaire (C&I)',
+                f'{prefixe}-{c}A-4P', 'protection_ac', '', 100, 5,
+                {'type_fiche': 'protection', 'prot_type': prot_type,
+                 'prot_cote': 'ac', 'prot_calibre_a': float(c),
+                 'prot_poles': 4}))
+    lignes.extend([
+        ('Coffret AC C&I', 'CI-COF-AC', 'coffret_ac', '', 20, 2, None),
+        ('Coffret DC C&I', 'CI-COF-DC', 'coffret_dc', '', 20, 2, None),
+        ('Compteur triphasé à TC (injection)', 'CI-CPT-TC',
+         'compteur_injection', '', 20, 2,
+         {'type_fiche': 'limiteur', 'lim_mode': 'compteur_tc'}),
+        ("Contrôleur d'injection C&I", 'CI-CTRL-INJ', 'controleur_injection',
+         '', 20, 2, {'type_fiche': 'limiteur', 'lim_mode': 'controleur'}),
+        ('Logger de supervision C&I', 'CI-LOGGER', 'logger_supervision', '',
+         20, 2, {'type_fiche': 'logger'}),
+        ('Structure bac acier C&I', 'CI-STRUCT-BAC', 'structure_ci',
+         'bac_acier', 20, 2,
+         {'type_fiche': 'structure', 'struct_type_pose': 'bac_acier'}),
+        ('Structure toit plat lestée C&I', 'CI-STRUCT-PLAT-LEST',
+         'structure_ci', 'toit_plat_leste', 20, 2,
+         {'type_fiche': 'structure', 'struct_type_pose': 'toit_plat_leste'}),
+        ('Structure ombrière C&I', 'CI-STRUCT-OMBR', 'structure_ci',
+         'ombriere', 20, 2,
+         {'type_fiche': 'structure', 'struct_type_pose': 'ombriere'}),
+        ('Cellule MT (poste de livraison)', 'CI-CELLULE-MT', 'cellule_mt', '',
+         20, 2, None),
+        # Prestations C&I — jamais le barème résidentiel (L-FORFAIT intouché).
+        ('Études et ingénierie C&I', 'CI-ETUDES', 'etudes_ingenierie', '',
+         999, 0, None),
+        ('Pose de la structure C&I', 'CI-POSE-STRUCT', 'pose_structure', '',
+         999, 0, None),
+        ('Pose des modules C&I', 'CI-POSE-MOD', 'pose_modules', '', 999, 0,
+         None),
+        ('Raccordement AC C&I', 'CI-RACC-AC', 'raccordement_ac', '', 999, 0,
+         None),
+        ('Mise en service C&I', 'CI-MES', 'mise_en_service', '', 999, 0,
+         None),
+        ('Dossier de raccordement C&I', 'CI-DOSSIER-RACC',
+         'dossier_raccordement', '', 999, 0, None),
+        ('Levage et accès C&I', 'CI-LEVAGE', 'levage_acces', '', 999, 0,
+         None),
+        ('Transport C&I', 'CI-TRANSPORT', 'transport_ci', '', 999, 0, None),
+        # Option O&M NOMMÉE (D-CIQ-12) — toujours proposée, prix à renseigner.
+        ('Exploitation et maintenance (O&M) C&I', 'CI-OM', 'om_ci', '', 999,
+         0, None),
+    ])
+    return lignes
+
+
+ARTICLES_CI_PRIX_A_RENSEIGNER = _articles_ci()
+
+#: CIQ103 — rôle C&I des articles DÉJÀ seedés (``lim_mode`` laissé vide : la
+#: fiche du Smart Meter ne publie pas son mode de raccordement).
+ROLES_CI_ARTICLES_EXISTANTS = {'SMART-MET': 'compteur_injection'}
+
 # AUD201 (R2-31, correctif 1) — SKU réellement SEMÉS par ce fichier : union de
 # tous les jeux de création (le SKU est toujours le 2ᵉ élément du tuple). Les
 # boucles de maintenance plus bas (réforme TVA, re-catégorisation, renommage)
@@ -612,6 +701,7 @@ SKUS_SEMES = frozenset(
         *CATALOGUE, *POMPAGE, *VEICHI, *OSP,
         *CABLES_PROTECTIONS_VIDES, *OPTIONS_POMPAGE,
         *SKU_POMPAGE_PRIX_A_RENSEIGNER, *BATTERIE_DEYE_HV,
+        *ARTICLES_CI_PRIX_A_RENSEIGNER,
     )
 )
 
@@ -1974,6 +2064,47 @@ class Command(BaseCommand):
                 created_by=None, save_produit=False,
             )
             created.append(nom)
+
+        # ── CIQ103 — articles C&I génériques : PRIX VIDES (0), rôle C&I et
+        # type de pose DÉCLARÉS, fiche limitée à la grandeur de désignation.
+        # Additif : un SKU ou un nom déjà présent est sauté, jamais réécrit
+        # (ni prix, ni nom, ni rôle, ni fiche).
+        from apps.stock.models import FicheTechnique as _FicheCI
+        for (nom, sku, role_ci, type_pose, qte, seuil,
+             fiche_ci) in ARTICLES_CI_PRIX_A_RENSEIGNER:
+            if (Produit.objects.filter(company=company, sku=sku).exists()
+                    or Produit.objects.filter(
+                        company=company, nom__iexact=nom,
+                        is_archived=False).exists()):
+                skipped.append(nom)
+                continue
+            produit = Produit.objects.create(
+                company=company, nom=nom, sku=sku,
+                categorie=get_categorie(classify_categorie(nom)),
+                prix_achat=Decimal('0'),
+                prix_vente=Decimal('0'),  # à renseigner par le fondateur
+                quantite_stock=qte, seuil_alerte=seuil,
+                tva=Decimal('20.00'),
+                role_ci=role_ci, type_pose=type_pose,
+            )
+            if fiche_ci:
+                _FicheCI.objects.create(
+                    company=company, produit=produit, **fiche_ci)
+            record_stock_movement(
+                company=company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                quantite=qte, quantite_avant=0, quantite_apres=qte,
+                reference='SEED-CATALOGUE',
+                note='Stock initial (C&I — prix à renseigner)',
+                created_by=None, save_produit=False,
+            )
+            created.append(nom)
+        # Rôle C&I des articles EXISTANTS (jumeau de la migration stock
+        # 0164_ciq103) — gardé sur ``role_ci`` vide : une saisie n'est jamais
+        # réécrite, aucun prix ni nom touché.
+        for sku, role_ci in ROLES_CI_ARTICLES_EXISTANTS.items():
+            Produit.objects.filter(
+                company=company, sku=sku, role_ci='').update(role_ci=role_ci)
 
         # PVLV (21/08/2026) — le bloc « onduleurs Deye basse tension à prix
         # vides » a disparu : les deux SKU LV vivent dans ``CATALOGUE`` avec

@@ -3509,6 +3509,206 @@ def produits_pompage(company, avec_prix=False):
     return out
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# CIQ102 — UNE seule lecture serveur du catalogue C&I (contrat
+# ``contract_samples/produit_ci.json`` → ``element_produits_ci``).
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: Champs servis par fiche C&I (ordre du contrat). L'onduleur sert ses champs
+#: PVOND existants puis les cinq champs C&I ADDITIFS (hors verrou PVOND).
+FICHE_CI_CHAMPS = {
+    'onduleur': (
+        'ond_ac_kw', 'ond_phases', 'ond_n_mppt', 'ond_mppt_v_min',
+        'ond_mppt_v_max', 'ond_v_max_abs', 'ond_i_max_mppt_a',
+        'ond_rendement_euro_pct',
+        'ond_limitation_export', 'ond_compteurs_compatibles',
+        'ond_relais_decouplage', 'ond_cos_phi_min', 'ond_cos_phi_max',
+    ),
+    'limiteur': ('lim_mode', 'lim_i_max_a', 'lim_onduleurs_max',
+                 'lim_marques', 'lim_phases'),
+    'logger': ('log_onduleurs_max', 'log_marques'),
+    'protection': ('prot_type', 'prot_cote', 'prot_calibre_a',
+                   'prot_pouvoir_coupure_ka', 'prot_poles', 'prot_tension_v'),
+    'cable': ('cable_cote', 'cable_section_mm2', 'cable_ame'),
+    'structure': ('struct_type_pose', 'struct_masse_kg_m2', 'struct_notice'),
+}
+
+#: Rôles qui fixent la TAILLE d'une composition C&I : un prix vide les rend
+#: inéligibles (on ne choisit jamais un onduleur sans prix). Les autres rôles
+#: restent éligibles « prix à renseigner » (le devis est alors « incomplet »).
+ROLES_CI_DE_TAILLE = ('onduleur_string_tri',)
+
+#: Repli par MOTS du nom (jumelle de l'ancienne lecture JS/serveur) — ordre
+#: significatif : le premier motif qui répond l'emporte.
+_ROLES_CI_PAR_NOM = (
+    (('smartlogger', 'logger', 'datalogger'), 'logger_supervision'),
+    (('limiteur', "controleur d'injection", 'controleur injection'),
+     'controleur_injection'),
+    (('smart meter', 'compteur'), 'compteur_injection'),
+    (('cellule mt',), 'cellule_mt'),
+)
+
+
+def _valeur_fiche_ci(fiche, champ):
+    from decimal import Decimal
+
+    valeur = getattr(fiche, champ, None)
+    if champ == 'struct_notice':
+        src = valeur if isinstance(valeur, dict) else {}
+        return {'document': src.get('document') or '',
+                'date': src.get('date') or None,
+                'page': src.get('page')}
+    if champ in ('ond_compteurs_compatibles', 'lim_marques', 'log_marques'):
+        return list(valeur) if isinstance(valeur, list) else []
+    if isinstance(valeur, Decimal):
+        return str(valeur)
+    if valeur is None:
+        return None
+    return valeur
+
+
+def _fiche_ci_dict(produit):
+    """Les champs de la fiche C&I du produit, ou ``None``."""
+    fiche = getattr(produit, 'fiche_technique', None)
+    if fiche is None or fiche.type_fiche not in FICHE_CI_CHAMPS:
+        return None
+    out = {'type_fiche': fiche.type_fiche}
+    for champ in FICHE_CI_CHAMPS[fiche.type_fiche]:
+        out[champ] = _valeur_fiche_ci(fiche, champ)
+    return out
+
+
+def _role_ci_par_fiche(produit, fiche):
+    """Rôle C&I DÉDUIT de la fiche (``role_devis`` + ``type_fiche``)."""
+    if fiche is None:
+        return None
+    t = fiche.type_fiche
+    if t == 'onduleur':
+        reseau = (produit.role_devis == 'onduleur_reseau'
+                  or famille_onduleur(produit) == FAMILLE_ONDULEUR_RESEAU)
+        if reseau and fiche.ond_phases == 3:
+            return 'onduleur_string_tri'
+        return None
+    if t == 'limiteur':
+        return ('controleur_injection' if fiche.lim_mode == 'controleur'
+                else 'compteur_injection')
+    if t == 'logger':
+        return 'logger_supervision'
+    if t == 'protection':
+        return {'ac': 'protection_ac', 'dc': 'protection_dc'}.get(
+            fiche.prot_cote)
+    if t == 'cable':
+        return 'cable_ac' if fiche.cable_cote == 'ac' else None
+    if t == 'structure':
+        return 'structure_ci'
+    return None
+
+
+def _role_ci_par_nom(produit):
+    nom = _norme(produit.nom)
+    if 'onduleur' in nom and ('triphas' in nom or ' tri' in nom) and (
+            'reseau' in nom or 'injection' in nom):
+        if 'hybride' not in nom:
+            return 'onduleur_string_tri'
+    for motifs, role in _ROLES_CI_PAR_NOM:
+        if any(m in nom for m in motifs):
+            return role
+    return None
+
+
+def role_ci_pour(produit):
+    """``(role_ci, classement)`` — déclaré > fiche > nom, ou ``(None, None)``."""
+    if produit.role_ci:
+        return produit.role_ci, 'declare'
+    fiche = getattr(produit, 'fiche_technique', None)
+    role = _role_ci_par_fiche(produit, fiche)
+    if role:
+        return role, 'fiche'
+    role = _role_ci_par_nom(produit)
+    if role:
+        return role, 'nom'
+    return None, None
+
+
+def _eligibilite_ci(produit, role, prix_connu):
+    """``(eligible_ci, motif_exclusion)`` — règles du contrat."""
+    if role == 'onduleur_string_tri':
+        fiche = getattr(produit, 'fiche_technique', None)
+        if fiche is None or fiche.type_fiche != 'onduleur':
+            return False, 'fiche onduleur absente'
+        manquantes = onduleur_specs_manquantes(produit)
+        if manquantes:
+            return False, 'fiche incomplète : ' + ', '.join(manquantes)
+        if fiche.ond_phases is None:
+            return False, 'phase non publiée'
+        if fiche.ond_phases != 3:
+            return False, ('onduleur monophasé : un onduleur string C&I est '
+                           'triphasé')
+    if role in ROLES_CI_DE_TAILLE and not prix_connu:
+        return False, 'prix de vente non saisi'
+    return True, None
+
+
+def etat_ci_produit(produit):
+    """CIQ104 — l'état C&I d'UN produit (fiche produit / filtre catalogue
+    « C&I à compléter »), ou ``None`` s'il n'a aucun rôle C&I. Même règle que
+    :func:`produits_ci` ; aucune requête de plus quand ``fiche_technique`` est
+    préchargée. Jamais de prix d'achat."""
+    role, classement = role_ci_pour(produit)
+    if role is None:
+        return None
+    prix_connu = bool(produit.prix_vente and produit.prix_vente > 0)
+    eligible, motif = _eligibilite_ci(produit, role, prix_connu)
+    from core.product_roles import LIBELLES_ROLES_CI
+    return {'role_ci': role, 'libelle': LIBELLES_ROLES_CI.get(role, role),
+            'classement': classement, 'prix_connu': prix_connu,
+            'eligible_ci': eligible, 'motif_exclusion': motif}
+
+
+def produits_ci(company, avec_prix=False):
+    """Le catalogue C&I de la société (+ produits globaux), forme
+    ``element_produits_ci`` de ``produit_ci.json``.
+
+    Rôle : ``role_ci`` déclaré, sinon déduit de la fiche (``role_devis`` +
+    ``type_fiche`` / ``ond_phases``), sinon des mots du nom (repli) ;
+    ``classement`` dit lequel. Produits ARCHIVÉS exclus ; lecture seule,
+    bornée à la société ; une seule requête (catégorie et fiche préchargées).
+    ``avec_prix=True`` ne garde que les produits à prix de vente saisi (> 0).
+    Aucune clé ``prix_achat`` ni marge — JAMAIS.
+    """
+    from django.db.models import Q
+
+    from .models import Produit
+
+    qs = (Produit.objects
+          .filter(Q(company=company) | Q(company__isnull=True),
+                  is_archived=False)
+          .select_related('categorie', 'fiche_technique'))
+    if avec_prix:
+        qs = qs.filter(prix_vente__gt=0)
+    out = []
+    for p in qs.order_by('nom', 'id'):
+        role, classement = role_ci_pour(p)
+        if role is None:
+            continue
+        prix_connu = bool(p.prix_vente and p.prix_vente > 0)
+        eligible, motif = _eligibilite_ci(p, role, prix_connu)
+        out.append({
+            'id': p.id,
+            'nom': p.nom,
+            'marque': p.marque or '',
+            'role_devis': p.role_devis or '',
+            'role_ci': role,
+            'classement': classement,
+            'type_pose': p.type_pose or '',
+            'fiche': _fiche_ci_dict(p),
+            'prix_connu': prix_connu,
+            'eligible_ci': eligible,
+            'motif_exclusion': motif,
+        })
+    return out
+
+
 # ── STKCAT27 ── la recherche SANS ACCENTS est-elle disponible sur cette base ?
 #
 # Sonde process-wide, mise en cache : `apps.stock.views.produit` s'en sert pour

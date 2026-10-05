@@ -23,8 +23,8 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services.degagements import (
     DEGAGEMENT_ATELIER_DEFAUT_M, MENTION_NON_SOURCEE, RETRAIT_ATELIER_M,
-    SECTION, degagement_du_type, normaliser_section_degagements,
-    retrait_perimetre, types_admis,
+    SECTION, _degagement_du_type, normaliser_section_degagements,
+    _retrait_perimetre, types_admis,
 )
 from apps.calepinage.services.parametres import ReglageInvalide
 from apps.calepinage.services.traduction import entree_depuis_layout
@@ -44,23 +44,23 @@ class SansReglageRienNeChange(SimpleTestCase):
                    'chien_assis': 0.50, 'edicule': 0.50,
                    'antenne': 0.30, 'autre': 0.30}
         for nom, valeur in attendu.items():
-            self.assertEqual(degagement_du_type(nom, {})[0], valeur, nom)
+            self.assertEqual(_degagement_du_type(nom, {})[0], valeur, nom)
 
     def test_un_obstacle_sans_type_garde_le_degagement_de_base(self):
-        self.assertEqual(degagement_du_type(None, {})[0],
+        self.assertEqual(_degagement_du_type(None, {})[0],
                          DEGAGEMENT_ATELIER_DEFAUT_M)
 
     def test_le_retrait_de_perimetre_est_celui_de_l_atelier(self):
-        self.assertEqual(retrait_perimetre({})[0], RETRAIT_ATELIER_M)
+        self.assertEqual(_retrait_perimetre({})[0], RETRAIT_ATELIER_M)
 
     def test_la_phrase_annonce_une_valeur_non_sourcee(self):
         for nom in types_admis():
-            self.assertIn(MENTION_NON_SOURCEE, degagement_du_type(nom, {})[1])
-        self.assertIn(MENTION_NON_SOURCEE, retrait_perimetre({})[1])
+            self.assertIn(MENTION_NON_SOURCEE, _degagement_du_type(nom, {})[1])
+        self.assertIn(MENTION_NON_SOURCEE, _retrait_perimetre({})[1])
 
     def test_aucune_phrase_ne_presente_la_valeur_comme_une_norme(self):
         for nom in types_admis():
-            phrase = degagement_du_type(nom, {})[1].lower()
+            phrase = _degagement_du_type(nom, {})[1].lower()
             self.assertNotIn('norme', phrase)
             self.assertNotIn('réglementaire', phrase)
 
@@ -68,7 +68,7 @@ class SansReglageRienNeChange(SimpleTestCase):
 class LeReglageSocieteChangeLeCalepinage(SimpleTestCase):
 
     def test_la_valeur_saisie_prime(self):
-        valeur, phrase = degagement_du_type('cheminee', {'cheminee': 0.80})
+        valeur, phrase = _degagement_du_type('cheminee', {'cheminee': 0.80})
         self.assertEqual(valeur, 0.80)
         self.assertIn('votre société', phrase)
         self.assertNotIn(MENTION_NON_SOURCEE, phrase)
@@ -76,10 +76,10 @@ class LeReglageSocieteChangeLeCalepinage(SimpleTestCase):
     def test_la_source_saisie_est_citee(self):
         section = {'cheminee': 0.80, 'source': 'Consigne de pose interne v3'}
         self.assertIn('Consigne de pose interne v3',
-                      degagement_du_type('cheminee', section)[1])
+                      _degagement_du_type('cheminee', section)[1])
 
     def test_le_retrait_saisi_prime(self):
-        valeur, phrase = retrait_perimetre({'retrait_rive_m': 0.35})
+        valeur, phrase = _retrait_perimetre({'retrait_rive_m': 0.35})
         self.assertEqual(valeur, 0.35)
         self.assertIn('votre société', phrase)
 

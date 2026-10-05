@@ -983,10 +983,12 @@ def reconcilier(devis, intention):
         # ── Étude : les clés géométriques + le scénario, jamais les champs
         # d'étude du générateur ──
         etude = dict(verrou.etude_params or {})
-        if result.get('annualKwh') is not None:
-            etude['production_annuelle'] = int(result['annualKwh'])
-        if result.get('savings') is not None:
-            etude['economies_annuelles'] = int(result['savings'])
+        # CIQ117 — commercial/industriel : le layout n'apporte que la
+        # géométrie et le kWc, jamais production ni économies (le moteur C&I
+        # les calcule) ; résidentiel/agricole inchangés.
+        from apps.ventes.domain.etude_schema import cles_etude_du_layout
+        etude.update(cles_etude_du_layout(
+            getattr(verrou, 'mode_installation', None), result))
         # QJR63 — LE kWc VIENT DE SON PROPRIÉTAIRE, PLUS DU LAYOUT. Ce site
         # écrivait ``kwc`` — celui du CALEPINAGE — même quand la règle de
         # plafond de variante venait de faire atterrir le devis sur un AUTRE

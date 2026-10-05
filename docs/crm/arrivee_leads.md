@@ -108,6 +108,26 @@ type est vide. Sur un lead agricole, la tranche de facture ne remplit **pas** `f
 (note seulement). Jamais d'écrasement. Les clés de la fixture de test sont **provisoires** : les
 remplacer par les clés brutes du premier lead réel (`tests_meta_form_mapping.py`).
 
+### 3 ter. Formulaire « pour mon entreprise » modifié par Reda (CIQ407, D-CIQ-19)
+
+Reda modifie le formulaire Meta **à la main** (campagne `PAUSED`, règle #3). Ce que le code lit
+(`crm/services._parse_meta_form_extras`) :
+
+| Réponse | Colonne du lead |
+|---|---|
+| facture en tranche **ouverte** (« plus de 4 000 DH », « plus de 20 000 DH ») | `facture_tranche_declaree` {min_mad, max_mad: null, libelle, source: meta} — `facture_hiver` reste **vide** |
+| facture en tranche **fermée** (« entre 1 000 et 2 000 DH ») | `facture_hiver` = milieu (inchangé) ; pour un lead pro, `facture_tranche_declaree` {min, max} **en plus** |
+| facture à nombre unique | `facture_hiver` (un montant) |
+| où installer : usine / industrie / atelier / hangar | `type_installation = industriel` (l'industrie l'emporte sur « entreprise ») |
+| où installer : entreprise / société / local (mot entier) / activité commerciale | `type_installation = commercial` |
+| activité (hôtel/riad, restaurant/café, commerce/supermarché/magasin, bureau, clinique/cabinet/santé, école, hammam/spa/gym, boulangerie, froid/entrepôt frigorifique) | `categorie_commerciale` (mots entiers) |
+| `company_name` / `job_title` (champs Meta standard) | `societe` / `fonction_contact` |
+
+Règles : mots **entiers** ; un cas ambigu (« maison ou entreprise », « entrepôt ») ne pose **aucun**
+type — il reste dans la note `[Formulaire Meta]`, où `segment_suggere` le lit. Remplissage seulement,
+jamais d'écrasement. Les clés de question du formulaire modifié sont **provisoires** : les remplacer par
+les clés brutes du premier lead réel (`tests_meta_form_mapping.py`).
+
 ## 4. Alerte « webhook muet »
 
 Quand le filet 15 min **crée** un lead dont l'heure Meta a plus de 20 minutes, une notification

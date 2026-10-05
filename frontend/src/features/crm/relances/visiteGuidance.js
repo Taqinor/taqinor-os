@@ -86,6 +86,56 @@ export const REGLE_VRAI_CLIENT =
   'La visite se fait avec le client lui-même — jamais le gardien ni la bonne. '
   + 'Confirmez sa présence au créneau choisi.'
 
+// AGR532 — consignes AGRICOLES, AJOUTÉES à côté des textes du fondateur
+// (jamais à leur place, jamais reformulés) : une exploitation n'a ni toit ni
+// charpente, et le décideur n'est pas « la bonne ». ✎ Textes à valider par
+// Reda (tâche manuelle) ; aucun chiffre.
+export const PHASE_GUIDANCE_AGRICOLE = {
+  1: PHASE_GUIDANCE[1],
+  2: {
+    ...PHASE_GUIDANCE[2],
+    script: "Le chiffrage est basé sur ce que vous m'avez dit de votre pompe et "
+      + "de votre forage ; quand le technicien passe, il mesure le niveau et le "
+      + "débit de l'eau et confirme l'emplacement du champ de panneaux, pour "
+      + 'verrouiller le prix, pas pour le changer.',
+  },
+  3: PHASE_GUIDANCE[3],
+}
+
+export const SIGNAUX_ACHAT_AGRICOLE = [
+  'Questions sur le débit que la pompe donnera',
+  'Questions sur la surface irriguée couverte',
+  'Questions sur le forage (profondeur, niveau, autorisation)',
+  "Questions sur le dossier d'aide (FDA)",
+  'Questions sur les garanties',
+  "Questions sur le délai d'installation",
+]
+
+export const REGLE_VRAI_CLIENT_AGRICOLE =
+  "La visite se fait avec l'exploitant lui-même — jamais le gardien ni l'ouvrier. "
+  + 'Confirmez sa présence au créneau choisi.'
+
+/** AGR532 — les consignes de visite selon le segment du lead
+ *  (`etape.lead_segment`, contrat `relance_etape_v2.json`) : agricole → les
+ *  constantes agricoles ; tout autre segment → les textes du fondateur, tels
+ *  quels. */
+export function guidanceVisite(segment) {
+  if (segment === 'agricole') {
+    return {
+      phases: PHASE_GUIDANCE_AGRICOLE,
+      signaux: SIGNAUX_ACHAT_AGRICOLE,
+      regleObjection: REGLE_OBJECTION,
+      regleVraiClient: REGLE_VRAI_CLIENT_AGRICOLE,
+    }
+  }
+  return {
+    phases: PHASE_GUIDANCE,
+    signaux: SIGNAUX_ACHAT,
+    regleObjection: REGLE_OBJECTION,
+    regleVraiClient: REGLE_VRAI_CLIENT,
+  }
+}
+
 // Statut RÉEL des visites du module `apps/visites` (VISCAD1, distinct des
 // statuts RelanceEtape) — tons de badge SEULEMENT, le LIBELLÉ affiché reste
 // TOUJOURS `statut_libelle` (rendu serveur, jamais réinventé ici).

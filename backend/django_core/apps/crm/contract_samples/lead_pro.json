@@ -210,6 +210,21 @@
           "ice"
         ]
       }
+    },
+    "indicateurs_internes": {
+      "audit_47_09": {
+        "seuil_tep": 500,
+        "secteur": "tertiaire",
+        "source": {
+          "texte": "Loi 47-09 ; décret 2-17-746 (art. 1, art. 2 et annexe)",
+          "url": "https://www.mem.gov.ma/Lists/Lst_Textes_Reglementaires/Attachments/201/AEO-RecueilJuridique201120.pdf",
+          "releve_le": "2026-10-03"
+        },
+        "provenance": null,
+        "statut": null,
+        "tep_electricite": null,
+        "motif": "relevé de moins de 12 mois et aucun kWh mensuel déclaré"
+      }
     }
   },
   "exemple_industriel": {
@@ -318,7 +333,7 @@
       ],
       "segment": "commun",
       "etape_appel": 2,
-      "question": "(posée avec la tension) « Vous le lisez sur votre facture, ou c'est de mémoire ? » — `site_defaut_visible` = valeur pré-cochée du site non modifiée par le client ; `mesure_visite` = relevé par TAQINOR"
+      "question": "(posée avec la tension) « Vous le lisez sur votre facture, ou c'est de mémoire ? » — `site_defaut_visible` = valeur pré-cochée du site non modifiée par le client ; `mesure_visite` = relevé par notre technicien lors de la visite"
     },
     {
       "nom": "compteur_puissance_kva",
@@ -835,6 +850,7 @@
     "colonnes": "toutes nullables : vide = question pas encore posée ; jamais une valeur par défaut enregistrée comme une réponse",
     "tranche": "D-CIQ-19 : une tranche ouverte (« plus de 4 000 DH ») va dans `facture_tranche_declaree`, JAMAIS dans `facture_hiver`",
     "credit_bail": "valeur interne de `financing_intent`, jamais imprimée avant l'avis juridique (D-CIQ-15)",
-    "cos_phi": "jamais supposé ; un cos φ dégradé par le PV = alerte interne + question de visite, jamais un chiffre client"
+    "cos_phi": "jamais supposé ; un cos φ dégradé par le PV = alerte interne + question de visite, jamais un chiffre client",
+    "indicateurs_internes": "CIQ428 — `indicateurs_internes.audit_47_09` (DÉTAIL seulement, jamais la liste ni une sortie client) : indicateur INTERNE « audit énergétique obligatoire probable » (loi 47-09 ; décret 2-17-746 art. 1, art. 2 et annexe : 1 GWh = 86 tep ; seuil 500 tep tertiaire = commercial, 1 500 tep industrie) calculé sur la seule électricité DÉCLARÉE (relevé de 12 mois, sinon kWh mensuel × 12 ; jamais une conso inversée depuis des dirhams ni une tranche). `statut` = `seuil_atteint_electricite_seule` | `non_determine` (les carburants ne sont pas comptés) | null (sans kWh déclarés, avec `motif`) ; `audit_47_09` vaut null hors commercial/industriel."
   }
 }
