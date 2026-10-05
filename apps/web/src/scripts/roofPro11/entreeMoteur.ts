@@ -45,7 +45,7 @@ import { type Obstacle, type ObstacleType, type ObstacleProvenance } from '../..
 import { type PerimeterSetbacks } from '../../lib/roofPro2';
 import { type ExclusionZone, type ExclusionNature } from './zones';
 import { ORDRE_RENDU_CALQUES, MAPLIBRE_LAYERS_PAR_CALQUE } from './mapDraw';
-import { clearanceForType } from './types';
+import { anneauObstacle, clearanceForType, degagementObstacle, type ObstacleEtendu } from './types'; // ACAL257
 
 /** Rayon terrestre WGS84 (demi-grand axe) — projection ENU locale. */
 const RAYON_TERRE_M = 6378137;
@@ -98,6 +98,10 @@ export interface SceneMoteur {
   /** Les quatre retraits de rive SAISIS. */
   retraits: PerimeterSetbacks;
   kit: KitScene;
+  /** ACAL257 — la largeur d'allée technique de CE calepinage (`document.alleeTechnique.largeurM`). */
+  alleeTechniqueM?: number | null;
+  /** ACAL257 — la section `degagements` des réglages société, BRUTE (`allee_technique_m`…). */
+  degagementsSociete?: unknown;
 }
 
 // ────────────────────────────────────────────────────────── ce qu'on produit
@@ -141,6 +145,18 @@ export interface ParametresMoteur {
   axe_rangee: AxeRangee;
   mode_pose: string;
   degagement_defaut_m: number;
+  /** ACAL257 — largeur d'allée technique : celle du calepinage, sinon celle de la société.
+   *  Absente = aucune saisie (le moteur garde sa constante). */
+  allee_m?: number;
+}
+
+/** ACAL257 — la largeur d'allée que le moteur reçoit : document d'abord, puis société. */
+export function largeurAlleeMoteur(scene: Pick<SceneMoteur, 'alleeTechniqueM' | 'degagementsSociete'>): number | null {
+  const doc = scene.alleeTechniqueM;
+  if (typeof doc === 'number' && Number.isFinite(doc) && doc >= 0) return doc;
+  const soc = (scene.degagementsSociete as { allee_technique_m?: unknown } | null | undefined)?.allee_technique_m;
+  if (typeof soc === 'number' && Number.isFinite(soc) && soc >= 0) return soc;
+  return null;
 }
 
 export interface ObstacleMoteur {
@@ -339,18 +355,24 @@ function obstacleDe(
   axe: AxeRangee,
   repere: string,
 ): ObstacleMoteur {
-  const [est, nord] = versLocal(ancrage, o.centerLng, o.centerLat);
-  const [x, y] = versRepereRangee(est, nord, axe);
-  // `widthM` est une étendue EST-OUEST, `lengthM` une étendue NORD-SUD : sur des
-  // rangées nord-sud les deux échangent leur rôle en même temps que les axes.
-  const [demiX, demiY] = versRepereRangee(o.widthM / 2, o.lengthM / 2, axe);
-  const degagement = clearanceForType(o.type);
+  // ACAL257 — l'emprise est celle de la FORME RÉELLE (`anneauObstacle` : contour d'un
+  // polygone, disque d'un cercle, rectangle sinon) — la MÊME que le pavage de l'atelier —,
+  // projetée dans le repère des rangées ; le moteur reçoit son rectangle englobant. Le
+  // dégagement est celui de l'obstacle (`degagementObstacle` : le sien, sinon son type),
+  // jamais le seul dégagement de type.
+  const anneau = anneauObstacle(o as ObstacleEtendu).map(([lng, lat]) => {
+    const [est, nord] = versLocal(ancrage, lng, lat);
+    return versRepereRangee(est, nord, axe);
+  });
+  const xs = anneau.map((p) => p[0]);
+  const ys = anneau.map((p) => p[1]);
+  const degagement = degagementObstacle(o as ObstacleEtendu);
   return {
     repere,
-    x0: x - Math.abs(demiX),
-    x1: x + Math.abs(demiX),
-    y0: y - Math.abs(demiY),
-    y1: y + Math.abs(demiY),
+    x0: Math.min(...xs),
+    x1: Math.max(...xs),
+    y0: Math.min(...ys),
+    y1: Math.max(...ys),
     type_obstacle: typeObstacleMoteur(o.type),
     provenance: provenanceMoteur(o.provenance),
     degagement_m: degagement,
@@ -451,6 +473,8 @@ export function composerEntreeMoteur(scene: SceneMoteur): DocumentMoteur | null 
       // moteur qui correspond à ce que l'atelier dessine.
       mode_pose: 'rangees_explicites_dp',
       degagement_defaut_m: clearanceForType(null),
+      // ACAL257 — l'allée du calepinage, sinon celle de la société ; aucune ⇒ clé absente.
+      ...(largeurAlleeMoteur(scene) != null ? { allee_m: largeurAlleeMoteur(scene) as number } : {}),
     },
     obstacles,
     zones,

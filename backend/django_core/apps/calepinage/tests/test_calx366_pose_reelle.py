@@ -45,9 +45,9 @@ CONTRAT = json.loads(
 #: ACAL16 (contrat as-built v2) a posé ces champs de ligne, et une ligne
 #: ORPHELINE (pan supprimé, hors totaux), avant leur producteur : ACAL267
 #: les sert et retire ce tableau (``SERVI`` redevient ``CONTRAT``).
-EN_ATTENTE_ACAL267 = ('zone_id', 'libelle', 'orphelin', 'releve_le',
-                      'releve_par', 'prevu_fige', 'prevu_actuel',
-                      'conception_modifiee')
+#: ``releve_le`` / ``releve_par`` sont servis depuis ACAL245.
+EN_ATTENTE_ACAL267 = ('zone_id', 'libelle', 'orphelin', 'prevu_fige',
+                      'prevu_actuel', 'conception_modifiee')
 
 
 def _sans_v2(etat):
@@ -68,10 +68,12 @@ PREVUS = [{'pan': 'PAN-A', 'modules': 8}, {'pan': 'PAN-B', 'modules': 4},
           {'pan': 'PAN-C', 'modules': 2}]
 SAISIES = [
     {'pan': 'PAN-A', 'modules_poses': 8, 'ecarts_position': '',
-     'releve_le': '2026-09-22'},
+     'releve_le': '2026-09-22',
+     'releve_par': CONTRAT['exemple']['lignes'][0]['releve_par']},
     {'pan': 'PAN-B', 'modules_poses': 3,
      'ecarts_position': CONTRAT['corps_saisie']['ecarts_position'],
-     'releve_le': '2026-09-22'},
+     'releve_le': '2026-09-22',
+     'releve_par': CONTRAT['exemple']['lignes'][1]['releve_par']},
 ]
 
 

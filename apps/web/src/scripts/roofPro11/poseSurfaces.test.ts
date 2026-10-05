@@ -28,6 +28,7 @@ import { azimutNormaleArete } from './snap';
 // surfaces de pose qui l'alimentent.
 import { computePanStats, computeSiteStats, htmlTableSite } from './panStats';
 import { type ModuleDocument } from './moduleSelect';
+import { panDeTest } from './harnaisAtelier';
 import { type AreaRecord } from './types';
 import { type AreaResult } from '../../lib/roofAreas';
 
@@ -644,21 +645,11 @@ const CONTOUR_PAN: LngLat[] = rectangle(30, 20, 33.59, -7.6);
 
 /** Un pan de toit rattaché à un bâtiment (CAL59). */
 function pan(id: string, buildingId: string | null): AreaRecord {
-  return {
-    id,
+  return panDeTest(id, {
     label: `Pan ${id}`,
     vertices: CONTOUR_PAN.map(([lng, lat]) => [lng, lat] as LngLat),
-    obstacles: [],
-    roofType: 'pitched',
-    pitchDeg: 22,
-    facingAzimuthDeg: 180,
-    facingManual: false,
-    neededPanels: 12,
-    neededAuto: true,
-    result: null,
-    renderPlan: null,
     ...(buildingId ? { buildingId } : {}),
-  } as AreaRecord;
+  } as Partial<AreaRecord>);
 }
 
 const RESULTAT_PAN: AreaResult = {

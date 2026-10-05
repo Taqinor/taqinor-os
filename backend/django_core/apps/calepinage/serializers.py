@@ -5,15 +5,24 @@ toujours forcée côté serveur (``CompanyScopedModelViewSet.perform_create``).
 Un ``company`` envoyé dans le corps est donc ignoré, pas « refusé » : il
 n'existe simplement pas pour ce sérialiseur.
 
-LE RATTACHEMENT EST UN « OU EXCLUSIF » PORTÉ ET NOMMÉ
------------------------------------------------------
-La base garantit déjà qu'un calepinage a un lead OU un client
-(``CheckConstraint`` ``calepinage_lead_ou_client``), mais une contrainte de
-base rend une ``IntegrityError`` — un « non enregistré » générique côté écran.
-Le sérialiseur refuse donc AVANT, en français, en NOMMANT le champ fautif
-(règle fondateur « erreurs → le champ fautif »). Les deux à la fois sont
-refusés aussi : un calepinage rattaché à un lead ET à un client d'un autre
-dossier serait retrouvé depuis deux fiches qui ne parlent pas du même client.
+LE RATTACHEMENT : AU MOINS UN, ET COHÉRENT (ACAL179)
+---------------------------------------------------
+La base garantit qu'un calepinage a un lead et/ou un client (``CheckConstraint``
+``calepinage_lead_ou_client``, OU INCLUSIF), mais une contrainte de base rend
+une ``IntegrityError`` — un « non enregistré » générique côté écran. Le
+sérialiseur refuse donc AVANT, en français, en NOMMANT le champ fautif (règle
+fondateur « erreurs → le champ fautif »). Lead ET client à la fois sont
+ADMIS — c'est ce que posent depuis-lead, la création pour un devis,
+``lier_devis`` et la duplication — à une condition : le client est CELUI DU
+LEAD (un calepinage retrouvé depuis deux fiches doit parler du même client).
+La règle n'agit que sur les champs ÉCRITS : renommer (``{titre}``) ou confier
+(``{responsable}``) un calepinage lead+client passe toujours.
+
+PATCH STRICT (ACAL179) : une clé en lecture seule (``nom``, dérivé du titre ;
+``devis``, écrit par ``lier_devis`` seul…) ou inconnue dans le corps d'une
+modification est REFUSÉE en la nommant — jamais un 200 silencieux qui
+n'écrit rien. ``company`` (et ``id``) restent ignorés, jamais lus : la société
+est forcée côté serveur.
 
 Les lectures cross-app passent par les ``selectors.py`` des apps cibles
 (``apps.crm.selectors``) — jamais un import de leurs modèles.
@@ -94,8 +103,6 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
 
     lead = serializers.IntegerField(source='lead_id', required=False,
                                     allow_null=True)
-    appel_offre = serializers.IntegerField(source='appel_offre_id',
-                                           required=False, allow_null=True)
     statut_libelle = serializers.CharField(source='get_statut_display',
                                            read_only=True)
     #: CAL189 — le calepinage décrit-il encore ce que le devis vend ?
@@ -118,15 +125,18 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         list_serializer_class = _CalepinageListSerializer
         fields = [
             'id', 'titre', 'statut', 'statut_libelle',
-            'lead', 'client', 'devis', 'appel_offre',
+            'lead', 'client', 'devis',
             'layout_hash', 'roof_image', 'version_moteur',
             'layout_stale', 'layout_nb_panneaux',
             'cree_par', 'created_at', 'updated_at',
             'responsable', 'responsable_nom',  # CALX406
         ]
+        #: ACAL33 — ``devis`` est LU, jamais écrit par le CRUD : le seul
+        #: écrivain est ``services.liens.lier_devis`` (refus nommés, journal,
+        #: unicité « un calepinage par devis »).
         read_only_fields = [
             'layout_hash', 'roof_image', 'version_moteur', 'cree_par',
-            'created_at', 'updated_at',
+            'created_at', 'updated_at', 'devis',
         ]
 
     # YAPIC6 — la nature est DÉCLARÉE (même patron que le jumeau côté ventes,
@@ -284,20 +294,20 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
                     nom or getattr(proprietaire, 'username', ''))
         return data
 
+    #: ACAL179 — clés ignorées (jamais lues, jamais refusées) d'un PATCH :
+    #: la société est forcée côté serveur, l'id est celui de l'URL.
+    CLES_IGNOREES = frozenset({'company', 'id'})
+
     def validate(self, attrs):
-        """Lead XOR client, et un lead qui existe VRAIMENT dans la société."""
+        """Au moins un rattachement, un client COHÉRENT avec le lead (règle
+        appliquée aux seuls champs écrits), un lead qui existe VRAIMENT dans
+        la société, et un PATCH strict sur ses clés (ACAL179)."""
+        self._refuser_cles_non_inscriptibles()
         attrs = super().validate(attrs)
         instance = getattr(self, 'instance', None)
         lead_id = attrs.get('lead_id', getattr(instance, 'lead_id', None))
         client = attrs.get('client', getattr(instance, 'client', None))
 
-        if lead_id and client is not None:
-            raise serializers.ValidationError({
-                'client': (
-                    "Un calepinage se rattache à un lead OU à un client, pas "
-                    "aux deux : laissez « Client » vide, ou retirez le lead."
-                ),
-            })
         if not lead_id and client is None:
             raise serializers.ValidationError({
                 'client': (
@@ -305,26 +315,74 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
                     "renseignez « Client » ou « Lead »."
                 ),
             })
+        lead = None
         if lead_id and 'lead_id' in attrs:
-            self._exiger_lead_de_la_societe(lead_id)
+            lead = self._exiger_lead_de_la_societe(lead_id)
+        ecrit = 'lead_id' in attrs or 'client' in attrs
+        if ecrit and lead_id and client is not None:
+            if lead is None:
+                lead = self._lead_de_la_requete(lead_id)
+            if lead is not None and lead.client_id != client.pk:
+                raise serializers.ValidationError({
+                    'client': (
+                        "Le client doit être celui du lead : ce lead "
+                        + (f"est rattaché à un autre client (#{lead.client_id})"
+                           if lead.client_id else "n'a pas de client")
+                        + ". Laissez « Client » vide, ou choisissez le "
+                        "client du lead."
+                    ),
+                })
         return attrs
 
-    def _exiger_lead_de_la_societe(self, lead_id):
-        """Un lead d'une AUTRE société est « introuvable », jamais « interdit ».
+    def _refuser_cles_non_inscriptibles(self):
+        """ACAL179 — un PATCH qui écrit une clé en lecture seule ou inconnue
+        est refusé EN LA NOMMANT (jamais un 200 qui n'écrit rien)."""
+        if getattr(self, 'instance', None) is None:
+            return
+        corps = getattr(self, 'initial_data', None)
+        if not isinstance(corps, dict):
+            return
+        inscriptibles = {nom for nom, champ in self.fields.items()
+                         if not champ.read_only}
+        erreurs = {}
+        for cle in corps:
+            if cle in inscriptibles or cle in self.CLES_IGNOREES:
+                continue
+            if cle == 'nom':
+                erreurs[cle] = "Champ en lecture seule : renommez par titre."
+            elif cle in self.fields:
+                erreurs[cle] = "Champ en lecture seule : il ne s'écrit pas ici."
+            else:
+                erreurs[cle] = "Champ inconnu : il ne s'écrit pas ici."
+        if erreurs:
+            raise serializers.ValidationError(erreurs)
 
-        Lecture cross-app par le sélecteur crm uniquement : ce module
-        n'importe jamais ``apps.crm.models``.
-        """
+    def _lead_de_la_requete(self, lead_id):
         from apps.crm.selectors import get_company_lead
 
         request = self.context.get('request')
         company = getattr(getattr(request, 'user', None), 'company', None)
         if company is None:
-            return
-        if get_company_lead(company, lead_id) is None:
+            return None
+        return get_company_lead(company, lead_id)
+
+    def _exiger_lead_de_la_societe(self, lead_id):
+        """Un lead d'une AUTRE société est « introuvable », jamais « interdit ».
+
+        Lecture cross-app par le sélecteur crm uniquement : ce module
+        n'importe jamais ``apps.crm.models``. Rend le lead (ou ``None`` sans
+        société connue).
+        """
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return None
+        lead = self._lead_de_la_requete(lead_id)
+        if lead is None:
             raise serializers.ValidationError({
                 'lead': f"Lead introuvable (#{lead_id}).",
             })
+        return lead
 
 
 class CalepinageVarianteSerializer(serializers.ModelSerializer):

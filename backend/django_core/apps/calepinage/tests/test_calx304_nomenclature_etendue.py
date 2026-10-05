@@ -37,6 +37,7 @@ from html import escape
 from apps.calepinage.services.export_tableur import (
     ExportRefuse, table_nomenclature, verifier_absence_de_prix,
 )
+from apps.calepinage.services.rapport.contrat import RapportRefuse
 from apps.calepinage.services.rapport.nomenclature import (
     html_de_section, html_de_table,
 )
@@ -226,9 +227,13 @@ class HtmlDeSectionTest(unittest.TestCase):
             'categorie': 'Structure', 'designation': 'Rail — 120 MAD',
             'quantite': 1, 'unite': 'u', 'spec': '', 'produit_id': None,
             'reference': None}])
-        with self.assertRaises(ExportRefuse) as capture:
+        # ACAL231 — dans une section de RAPPORT, le refus d'export devient un
+        # refus de rapport (400 nommé), jamais une 500 ; la cause reste.
+        with self.assertRaises(RapportRefuse) as capture:
             html_de_section(contexte(resultat))
         self.assertIn('mad', str(capture.exception).lower())
+        self.assertEqual(capture.exception.champ, 'nomenclature')
+        self.assertIsInstance(capture.exception.__cause__, ExportRefuse)
 
     def test_la_fixture_du_contrat_s_imprime_sans_montant(self):
         html = html_de_section(contexte(copy.deepcopy(RESULTAT_CONTRAT)))

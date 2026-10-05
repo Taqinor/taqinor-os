@@ -287,3 +287,30 @@ describe('CALX116 — panelsInLasso', () => {
     expect(boxZoomEnable).not.toHaveBeenCalled();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL28 — `hydrateLayout` en mode LIBRE repose la face E/O enregistrée (chevrons dos à
+// dos conservés), comme l'entrée en mode libre (`enterFreeMode`).
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL28 — hydrateLayout free conserve face E/W', () => {
+  it('hydrateLayout free conserve face E/W', () => {
+    const { map } = makeMap();
+    const plan = makePlan(40);
+    (plan.grid as unknown as { panels: unknown[] }).panels = [
+      { cx: 0, cy: 0 },
+      { cx: -3, cy: 0 },
+    ];
+    const ctx = makeFreeCtx(plan, []);
+    (ctx as unknown as { freeMode: boolean; freeState: unknown }).freeMode = false;
+    (ctx as unknown as { freeMode: boolean; freeState: unknown }).freeState = null;
+    const editor = createLayoutEditor(ctx, makeDeps(map));
+    const enregistres = [
+      { cx: 0, cy: 0, face: 'E' as const },
+      { cx: -3, cy: 0, face: 'W' as const },
+      { cx: -6, cy: 0 },
+    ];
+    expect(editor.hydrateLayout(enregistres, [-7.6, 33.5], 'free')).toBe(true);
+    const reposes = editor.freePanels();
+    expect(reposes.map((p) => p.face)).toEqual(['E', 'W', undefined]);
+  });
+});

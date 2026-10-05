@@ -62,8 +62,14 @@ def analyser_plan(contenu, *, nom_fichier=''):
         raise PlanIllisible(str(refus)) from refus
 
 
-def contour_du_calque(analyse, nom_calque):
+def contour_du_calque(analyse, nom_calque, *, entite=None):
     """Le contour proposé par UN calque de l'analyse.
+
+    Args:
+        entite: rang (1, 2, …) de l'entité choisie dans
+            ``calques[].entites_detail`` ; absent, l'entité FERMÉE de plus
+            grande AIRE (``analyse_plan._entite_principale`` : le toit si
+            choisi seul, sinon la parcelle).
 
     Returns:
         ``[[x, y], …]`` dans l'unité du fichier.
@@ -71,7 +77,8 @@ def contour_du_calque(analyse, nom_calque):
     Raises:
         PlanIllisible: calque inconnu (le message liste les calques
             disponibles — un refus qui ne dit pas quoi choisir est inutile),
-        ou calque sans tracé exploitable.
+            entité inexistante (champ ``entite``), tracé NON FERMÉ, ou moins
+            de 3 sommets.
     """
     calques = (analyse or {}).get('calques') or []
     par_nom = {calque.get('nom'): calque for calque in calques}
@@ -83,11 +90,50 @@ def contour_du_calque(analyse, nom_calque):
             f"Le calque « {nom_calque} » n'existe pas dans ce plan "
             f'(calques disponibles : {disponibles}).', champ='calque')
 
-    sommets = calque.get('sommets') or []
-    if len(sommets) < 2:
+    points = calque.get('entites_pts')
+    if points is None:      # analyse « ancienne forme » : sommets seuls
+        sommets = calque.get('sommets') or []
+        points = [sommets] if sommets else []
+        fermees = [True] if len(sommets) >= 3 else [False]
+    else:
+        fermees = calque.get('entites_fermees') or [True] * len(points)
+    if not points:
         raise PlanIllisible(
             f"Le calque « {nom_calque} » ne porte aucun tracé exploitable "
             "comme contour.", champ='calque')
+
+    if entite is not None:
+        if (isinstance(entite, bool) or not isinstance(entite, int)
+                or not 1 <= entite <= len(points)):
+            raise PlanIllisible(
+                f"L'entité {entite!r} n'existe pas dans le calque "
+                f"« {nom_calque} » (entités disponibles : 1 à "
+                f"{len(points)}).", champ='entite')
+        rang = entite - 1
+    else:
+        from ..analyse_plan import _entite_principale
+
+        entites = [{'fermee': fermees[i], 'aire': detail.get('aire') or 0.0}
+                   for i, detail in enumerate(
+                       calque.get('entites_detail')
+                       or [{} for _ in points])]
+        principale = _entite_principale(entites)
+        rang = entites.index(principale) if principale is not None else None
+
+    if rang is None or not fermees[rang]:
+        segments = sum(max(1, len(pts) - 1) for pts in points) \
+            if rang is None else max(1, len(points[rang]) - 1)
+        mot = 'segment isolé' if segments == 1 else 'segments isolés'
+        raise PlanIllisible(
+            f"Le calque « {nom_calque} » ne porte aucun contour fermé : "
+            f"tracé non fermé : {segments} {mot}. Fermez le tracé dans le "
+            "dessin, ou choisissez un autre calque.", champ='calque')
+    sommets = points[rang]
+    if len(sommets) < 3:
+        raise PlanIllisible(
+            f"Le calque « {nom_calque} » : l'entité choisie n'a que "
+            f"{len(sommets)} sommet(s) ; un contour demande au moins 3 "
+            "sommets.", champ='calque')
     return [[float(x), float(y)] for x, y in sommets]
 
 
@@ -108,3 +154,118 @@ def cotes_hors_tout(contour):
         'hauteur': round(max(ys) - min(ys), 4),
         'sommets': len(points),
     }
+
+
+class CalageIllisible(ValueError):
+    """ACAL69 — calage refusé, le CHAMP fautif nommé (calage ou pin)."""
+
+    def __init__(self, message, *, champ='calage'):
+        super().__init__(message)
+        self.champ = champ
+
+
+def _nombre_fini(valeur, libelle):
+    import math
+
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        raise CalageIllisible(f"Calage illisible : « {libelle} » doit être "
+                              "un nombre.")
+    if not math.isfinite(float(valeur)):
+        raise CalageIllisible(f"Calage illisible : « {libelle} » doit être "
+                              "un nombre fini.")
+    return float(valeur)
+
+
+def lire_calage(brut):
+    """Valide le corps ``calage`` (dict, ou JSON en texte : multipart).
+
+    Returns:
+        ``(point_a, point_b, distance_m, rotation_deg)``.
+
+    Raises:
+        CalageIllisible: forme, nombre, distance <= 0 ou A = B (échelle
+            indéterminée) — jamais une échelle devinée.
+    """
+    import json
+
+    if isinstance(brut, str):
+        try:
+            brut = json.loads(brut)
+        except ValueError as exc:
+            raise CalageIllisible(
+                "Calage illisible : le champ « calage » n'est pas un JSON "
+                "valide.") from exc
+    if not isinstance(brut, dict):
+        raise CalageIllisible(
+            "Calage illisible : {pointA, pointB, distanceM, rotationDeg} "
+            "est attendu.")
+    points = []
+    for cle in ('pointA', 'pointB'):
+        point = brut.get(cle)
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            raise CalageIllisible(f"Calage illisible : « {cle} » doit être "
+                                  "un point [x, y].")
+        points.append((_nombre_fini(point[0], cle),
+                       _nombre_fini(point[1], cle)))
+    distance = _nombre_fini(brut.get('distanceM'), 'distanceM')
+    if distance <= 0:
+        raise CalageIllisible("Calage refusé : la distance réelle entre les "
+                              "deux points doit être positive.")
+    rotation = brut.get('rotationDeg')
+    rotation = 0.0 if rotation is None else _nombre_fini(rotation,
+                                                         'rotationDeg')
+    ab = ((points[1][0] - points[0][0]) ** 2
+          + (points[1][1] - points[0][1]) ** 2) ** 0.5
+    if ab == 0:
+        raise CalageIllisible("Calage refusé : les deux points sont "
+                              "confondus, l'échelle serait indéterminée.")
+    return points[0], points[1], distance, rotation
+
+
+def contour_lnglat(contour, calage, pin):
+    """ACAL69 — le contour du plan, calé, posé en ``[lng, lat]`` sur l'épingle.
+
+    Échelle = ``distanceM / |AB|`` (la calibration, jamais une estimation) ;
+    rotation ``rotationDeg`` en degrés, sens trigonométrique (anti-horaire,
+    Y vers le nord) autour de A ; le CENTRE de l'emprise du contour calé est
+    ensuite posé sur l'épingle, par ``zones.deprojeteur_local`` — l'inverse du
+    repère local unique du module (le même que CAL237).
+
+    Args:
+        contour: ``[[x, y], …]`` dans l'unité du fichier.
+        calage: ``(point_a, point_b, distance_m, rotation_deg)``
+            (``lire_calage``).
+        pin: ``{'lat', 'lng'}``.
+
+    Raises:
+        CalageIllisible: ``pin`` (sans épingle exploitable) ou contour vide.
+    """
+    import math
+
+    from .zones import deprojeteur_local
+
+    if (not isinstance(pin, dict) or pin.get('lat') is None
+            or pin.get('lng') is None):
+        raise CalageIllisible(
+            "Ce calepinage n'a pas d'épingle : posez-la sur la carte avant "
+            "de caler le plan.", champ='pin')
+    if not contour:
+        raise CalageIllisible("Aucun contour à caler : choisissez un calque.",
+                              champ='calque')
+    (ax, ay), (bx, by), distance_m, rotation = calage
+    echelle = distance_m / math.hypot(bx - ax, by - ay)
+    cos_r = math.cos(math.radians(rotation))
+    sin_r = math.sin(math.radians(rotation))
+    locaux = []
+    for x, y in contour:
+        dx, dy = (x - ax) * echelle, (y - ay) * echelle
+        locaux.append((dx * cos_r - dy * sin_r, dx * sin_r + dy * cos_r))
+    xs = [p[0] for p in locaux]
+    ys = [p[1] for p in locaux]
+    cx, cy = (min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0
+    deprojeter = deprojeteur_local((float(pin['lng']), float(pin['lat'])))
+    sortie = []
+    for x, y in locaux:
+        lng, lat = deprojeter((x - cx, y - cy))
+        sortie.append([round(lng, 9), round(lat, 9)])
+    return sortie

@@ -186,3 +186,78 @@ describe('PlanImporteCalage (CALX39) — les refus nomment leur champ', () => {
     expect(calepinageApi.calepinages.importerPlan).not.toHaveBeenCalled()
   })
 })
+
+describe('PlanImporteCalage (ACAL213) — le choix de l’entité et le garde-fou 3 sommets', () => {
+  it('liste les entités du calque avec leur aire et envoie entite', async () => {
+    const utilisateur = userEvent.setup()
+    calepinageApi.calepinages.importerPlan
+      .mockResolvedValueOnce(reponse('exemple_sans_calque'))
+      .mockResolvedValueOnce(reponse('exemple'))
+    rendre()
+    await screen.findByTestId('cal-calage-sans-plan')
+    await deposer(utilisateur)
+    await screen.findByTestId('cal-calage-analyse')
+
+    const avecCalque = contrat('exemple')
+    await utilisateur.selectOptions(screen.getByTestId('cal-calage-calque'),
+      avecCalque.calque)
+    const detail = contrat('exemple_sans_calque').calques
+      .find((calque) => calque.nom === avecCalque.calque).entites_detail[0]
+    const ligne = await screen.findByTestId(`cal-calage-entite-${detail.rang}`)
+    expect(screen.getByTestId('cal-calage-entites'))
+      .toHaveTextContent(`aire ${Number(detail.aire).toFixed(2)}`)
+    expect(screen.getByTestId('cal-calage-entites'))
+      .toHaveTextContent(`${Number(detail.emprise.largeur).toFixed(2)} × `
+        + `${Number(detail.emprise.hauteur).toFixed(2)}`)
+
+    await utilisateur.click(ligne)
+    await utilisateur.click(screen.getByTestId('cal-calage-proposer'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.importerPlan)
+      .toHaveBeenCalledTimes(2))
+    const [, corps] = calepinageApi.calepinages.importerPlan.mock.calls[1]
+    expect(corps.get('calque')).toBe(avecCalque.calque)
+    expect(corps.get('entite')).toBe(String(detail.rang))
+  })
+
+  it('un refus nommé du serveur (tracé non fermé) est affiché sous Calque', async () => {
+    const utilisateur = userEvent.setup()
+    calepinageApi.calepinages.importerPlan
+      .mockResolvedValueOnce(reponse('exemple_sans_calque'))
+      .mockRejectedValueOnce({
+        response: { data: { calque: 'tracé non fermé : 4 segments isolés' } },
+      })
+    rendre()
+    await screen.findByTestId('cal-calage-sans-plan')
+    await deposer(utilisateur)
+    await screen.findByTestId('cal-calage-analyse')
+    await utilisateur.selectOptions(screen.getByTestId('cal-calage-calque'),
+      contrat('exemple').calque)
+    await utilisateur.click(screen.getByTestId('cal-calage-proposer'))
+
+    expect(await screen.findByTestId('cal-calage-erreur-calque'))
+      .toHaveTextContent('tracé non fermé : 4 segments isolés')
+  })
+
+  it('Convertir est désactivé sous trois sommets, avec le motif', async () => {
+    calepinageApi.calepinages.layout.mockResolvedValue({
+      data: { roof_layout: { planImporte: { contour: [[0, 0], [5, 0]] } } },
+    })
+    rendre()
+
+    const bouton = await screen.findByTestId('cal-calage-convertir')
+    expect(bouton).toBeDisabled()
+    expect(screen.getByTestId('cal-calage-convertir-motif'))
+      .toHaveTextContent('au moins 3 sommets')
+  })
+
+  it('Convertir reste actif dès trois sommets', async () => {
+    calepinageApi.calepinages.layout.mockResolvedValue({
+      data: { roof_layout: { planImporte: { contour: [[0, 0], [5, 0], [5, 4]] } } },
+    })
+    rendre()
+
+    expect(await screen.findByTestId('cal-calage-convertir')).toBeEnabled()
+    expect(screen.queryByTestId('cal-calage-convertir-motif')).toBeNull()
+  })
+})

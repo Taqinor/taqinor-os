@@ -325,7 +325,8 @@ def _codes_retenus(sections, declarees):
 
 def construire_rapport(calepinage, *, langue=None, sections=None,
                        resultat=None, resultat_stocke=None, site=None,
-                       identite=None, styles=None, mentions=None, etat=None):
+                       identite=None, styles=None, mentions=None, etat=None,
+                       fiches_sans_pdf=None):
     """Le rapport, prêt à mettre en page — aucune grandeur recalculée.
 
     Args:
@@ -341,6 +342,9 @@ def construire_rapport(calepinage, *, langue=None, sections=None,
         etat: l'état de la conception (CALX325 — verrouillée, archivée) ; LU
             par ``gabarit_document.etat_de_conception`` quand il n'est pas
             fourni. Il ajoute sa mention au pied, il ne refuse jamais rien.
+        fiches_sans_pdf: ACAL226 — les fiches retenues SANS PDF constructeur
+            (``['Onduleur X : fiche PDF non déposée au catalogue']``), dites
+            dans la section « système » ; vide par défaut.
     """
     from ... import selectors
     from ..documents.gabarit_document import (
@@ -403,6 +407,7 @@ def construire_rapport(calepinage, *, langue=None, sections=None,
         'resultat': resultat,
         'resultat_stocke': (resultat_stocke if isinstance(resultat_stocke,
                                                           dict) else {}),
+        'fiches_sans_pdf': [str(f) for f in fiches_sans_pdf or () if f],
     }
 
 
@@ -419,6 +424,7 @@ def contexte_de_section(rapport, section):
         'identite': rapport['identite'],
         'styles': rapport['styles'],
         'provenance': rapport['provenance'],
+        'fiches_sans_pdf': rapport.get('fiches_sans_pdf') or [],
         'libelle': functools.partial(libelle, langue=rapport['langue']),
     }
 
@@ -489,18 +495,64 @@ def html_de_rapport(rapport):
         etat=rapport.get('etat'))
 
 
-def html_du_rapport(calepinage, **options):
-    """L'UNIQUE mise en page du rapport : le PDF et l'aperçu la partagent."""
-    return html_de_rapport(construire_rapport(calepinage, **options))
+def html_du_rapport(calepinage, *, paginer=True, **options):
+    """L'UNIQUE mise en page du rapport : le PDF et l'aperçu la partagent.
+
+    ACAL226 — c'est la version PAGINÉE (garde, sommaire en page 2, une
+    section par page) qui est servie ; ``html_de_rapport`` n'est plus que
+    l'assembleur interne des sections. ``paginer=False`` (essais purs sans
+    rendu PDF) rend l'assemblage brut : ``pages_attendues`` rend chaque
+    section pour compter ses pages.
+    """
+    from .mise_en_page import html_de_rapport_pagine
+
+    if 'fiches_sans_pdf' not in options:
+        options['fiches_sans_pdf'] = _fiches_sans_pdf(calepinage)
+    rapport = construire_rapport(calepinage, **options)
+    return (html_de_rapport_pagine(rapport) if paginer
+            else html_de_rapport(rapport))
+
+
+def _annexes_du_calepinage(calepinage):
+    """Les fiches constructeur retenues d'un calepinage ENREGISTRÉ.
+
+    Un calepinage non enregistré (``pk`` absent : essais purs) ou sans société
+    n'a aucune annexe — la lecture des équipements exige la base.
+    """
+    if not getattr(calepinage, 'pk', None) \
+            or getattr(calepinage, 'company', None) is None:
+        return []
+    from .systeme import annexes_pdf
+
+    return annexes_pdf(calepinage)
+
+
+def _fiches_sans_pdf(calepinage):
+    from .systeme import LIBELLE_FAMILLE
+
+    return ['%s : %s' % (a['designation'] or LIBELLE_FAMILLE.get(
+        a['famille'], a['famille']), a['motif'])
+        for a in _annexes_du_calepinage(calepinage) if not a['pdf_key']]
 
 
 def rendre_rapport(calepinage, *, company=None, **options):
     """Octets PDF du rapport, via ``core.pdf.render_pdf`` (ARC11).
+
+    ACAL226 — le rapport paginé (sommaire, une section par page) est suivi,
+    pour chaque fiche retenue qui porte un PDF constructeur, d'une page
+    séparatrice et de ce PDF (``systeme.rendre_rapport_avec_annexes``). Une
+    fiche sans PDF n'ajoute AUCUNE page et est dite dans la section système.
 
     La société est celle du calepinage quand l'appelant ne la fournit pas —
     jamais lue d'une requête.
     """
     from core.pdf import render_pdf
 
-    return render_pdf(html=html_du_rapport(calepinage, **options),
-                      company=company or getattr(calepinage, 'company', None))
+    company = company or getattr(calepinage, 'company', None)
+    octets = render_pdf(html=html_du_rapport(calepinage, **options),
+                        company=company)
+    if any(a['pdf_key'] for a in _annexes_du_calepinage(calepinage)):
+        from .systeme import rendre_rapport_avec_annexes
+
+        octets, _manques = rendre_rapport_avec_annexes(calepinage, octets)
+    return octets

@@ -25,9 +25,13 @@ index.html).
 
 CE QUI LA FAIT SE TAIRE
 ------------------------
-* Aucun transformateur déclaré ⇒ étape omise avec un motif NEUTRE (« aucun
-  transformateur dans cette installation ») et AUCUN champ à saisir : ce
-  n'est pas un oubli, il n'y a donc rien à signaler à l'utilisateur.
+* La question n'est pas répondue (aucune clé ``transformateur``) ⇒ étape
+  omise en le DISANT (ACAL151) : « transformateur non déclaré : déclarez-le
+  ou répondez ‘pas de transformateur’ ». Ne rien dire ferait passer un oubli
+  pour une réponse.
+* « Pas de transformateur » RÉPONDU (``declare: false``) ⇒ étape omise avec
+  un motif NEUTRE et AUCUN champ à saisir : la société a répondu, elle n'est
+  pas re-questionnée.
 * Transformateur déclaré mais pertes non saisies ⇒ étape omise en nommant
   LES DEUX champs.
 * Pertes saisies mais puissance nominale absente ⇒ omise en nommant la
@@ -61,6 +65,13 @@ MOTIF_ABSENT = (
     'Aucun transformateur dans cette installation : le poste ne la concerne '
     'pas et rien ne reste à renseigner.')
 
+#: ACAL151 — la question n'a pas été répondue : ce n'est PAS « aucun
+#: transformateur ». Le poste de perte en pourcentage « transformateur »
+#: (``services/pertes.py``) reste une saisie à part, reliée à cette étape.
+MOTIF_NON_DECLARE = (
+    "transformateur non déclaré : déclarez-le ou répondez ‘pas de "
+    "transformateur’")
+
 REFERENCE = (
     'PVsyst — Array and system losses : la perte de transformateur externe '
     'est un poste de perte à part entière du diagramme '
@@ -70,16 +81,22 @@ REFERENCE = (
 LIBELLE = 'Transformateur'
 
 __all__ = ['CLE_ENTREE', 'CLE_TRANSFORMATEUR', 'CHAMP_A_VIDE',
-           'CHAMP_EN_CHARGE', 'CHAMP_NOMINAL', 'MOTIF_ABSENT', 'REFERENCE',
-           'LIBELLE', 'appliquer']
+           'CHAMP_EN_CHARGE', 'CHAMP_NOMINAL', 'MOTIF_ABSENT',
+           'MOTIF_NON_DECLARE', 'REFERENCE', 'LIBELLE', 'appliquer']
+
+#: Les deux silences distincts de ``_declaration``.
+_NON_DECLARE = 'non_declare'
+_ABSENT = 'absent'
 
 
 def appliquer(serie, contexte):
     """``(serie, etape)`` — à vide + en charge, ou un silence neutre."""
     contexte = contexte if isinstance(contexte, dict) else {}
     declaration = _declaration(contexte)
-    if declaration is None:
+    if declaration == _ABSENT:
         return serie, _etapes.etape_omise(LIBELLE, MOTIF_ABSENT)
+    if declaration == _NON_DECLARE:
+        return serie, _etapes.etape_omise(LIBELLE, MOTIF_NON_DECLARE)
 
     a_vide = _saisie(declaration, CHAMP_A_VIDE)
     en_charge = _saisie(declaration, CHAMP_EN_CHARGE)
@@ -123,21 +140,24 @@ def appliquer(serie, contexte):
 # ── la déclaration, LUE de l'entrée électrique ─────────────────────────
 
 def _declaration(contexte):
-    """Le transformateur déclaré, ou ``None`` s'il n'y en a pas.
+    """Le transformateur déclaré (dict), ``_ABSENT`` ou ``_NON_DECLARE``.
 
     Un ``declare: False`` explicite vaut « pas de transformateur » : une
-    société qui a répondu la question ne doit pas être re-questionnée.
+    société qui a répondu la question ne doit pas être re-questionnée. Sans
+    AUCUNE réponse, l'étape le dit (ACAL151) au lieu de se taire.
     """
     entree = contexte.get(CLE_ENTREE)
     if not isinstance(entree, dict):
-        return None
+        return _NON_DECLARE
     declare = entree.get(CLE_TRANSFORMATEUR)
     if declare is True:
         return {}
+    if declare is False:
+        return _ABSENT
     if not isinstance(declare, dict) or not declare:
-        return None
+        return _NON_DECLARE
     if declare.get('declare') is False:
-        return None
+        return _ABSENT
     return declare
 
 

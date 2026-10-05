@@ -17,7 +17,7 @@ from datetime import datetime
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.planche import (
-    TAILLE_HASH_COURT, empreinte_du_calepinage, hash_court,
+    TAILLE_HASH_COURT, _empreinte_du_calepinage, hash_court,
     rendre_planche_svg, texte_d_empreinte,
 )
 from apps.calepinage.tests.test_cal171_planche import LAYOUT
@@ -61,7 +61,7 @@ class TexteDEmpreinteTest(SimpleTestCase):
 
     def test_l_empreinte_est_lue_du_calepinage_jamais_recalculee(self):
         self.assertIn('aaaaaaaaaaaa',
-                      empreinte_du_calepinage(FauxCalepinage(), moment=MOMENT))
+                      _empreinte_du_calepinage(FauxCalepinage(), moment=MOMENT))
 
 
 class DeuxRendusTest(SimpleTestCase):

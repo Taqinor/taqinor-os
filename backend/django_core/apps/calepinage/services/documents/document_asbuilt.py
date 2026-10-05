@@ -31,8 +31,8 @@ from __future__ import annotations
 from html import escape
 
 __all__ = [
-    'CODE_DOCUMENT', 'photos_du_calepinage', 'planche_svg_du_calepinage',
-    'construire_document', 'html_de_document', 'html_du_document_asbuilt',
+    'CODE_DOCUMENT', 'photos_du_calepinage', 'construire_document',
+    'html_de_document', 'html_du_document_asbuilt',
     'rendre_document_asbuilt',
 ]
 
@@ -49,29 +49,32 @@ LIBELLE_SOURCE_PREVU = {
 
 def photos_du_calepinage(calepinage):
     """Les photos de site (CAL52), LÉGENDÉES et DATÉES, dans l'ordre de prise
-    de vue — ``[]`` pour un calepinage non enregistré ou sans photo."""
+    de vue — ``[]`` pour un calepinage non enregistré ou sans photo.
+
+    ACAL200 : ``url`` est ici une data URI lue par le SERVEUR (bucket résolu
+    par la clé de la pièce) — le moteur de PDF n'a ni session ni accès au
+    proxy, et une photo reprise d'une visite s'affichait en cadre vide.
+    Octets illisibles ⇒ ``url`` vide (« Image indisponible »), jamais un lien
+    mort.
+    """
     if not getattr(calepinage, 'pk', None):
         return []
+    import base64
+
     from ...models import PhotoSite
-    from ..photos import photo_en_ligne
+    from ..photos import lire_octets_piece, photo_en_ligne
 
-    return [photo_en_ligne(photo) for photo in
-            PhotoSite.objects.filter(calepinage=calepinage)
-            .select_related('attachment', 'ajoutee_par')
-            .order_by('prise_le', 'id')]
-
-
-def planche_svg_du_calepinage(calepinage):
-    """Le SVG de la planche de pose « en regard » — ``''`` sans conception
-    (JAMAIS une planche fabriquée : ``PlancheRefusee`` est avalée ici, le
-    document reste imprimable sans elle, la table d'écarts porte déjà le
-    signal d'absence pan par pan)."""
-    from ..planche import PlancheRefusee, rendre_planche_svg
-
-    try:
-        return rendre_planche_svg(calepinage)
-    except PlancheRefusee:
-        return ''
+    photos = []
+    for photo in (PhotoSite.objects.filter(calepinage=calepinage)
+                  .select_related('attachment', 'ajoutee_par')
+                  .order_by('prise_le', 'id')):
+        ligne = photo_en_ligne(photo)
+        octets = lire_octets_piece(photo.attachment.file_key)
+        ligne['url'] = ('data:%s;base64,%s' % (
+            photo.attachment.mime or 'image/png',
+            base64.b64encode(octets).decode('ascii'))) if octets else ''
+        photos.append(ligne)
+    return photos
 
 
 def construire_document(calepinage, *, ecarts=None, photos=None,
@@ -87,7 +90,9 @@ def construire_document(calepinage, *, ecarts=None, photos=None,
     if photos is None:
         photos = photos_du_calepinage(calepinage)
     if svg_planche is None:
-        svg_planche = planche_svg_du_calepinage(calepinage)
+        from ..planche import planche_svg_ou_vide
+
+        svg_planche = planche_svg_ou_vide(calepinage)
 
     from .gabarit_document import (
         etat_de_conception, identite_du_calepinage, styles_de_societe,

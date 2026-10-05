@@ -106,7 +106,7 @@ describe('PoseReelle (CALX367) — saisir un pan', () => {
       { target: { value: String(corps.modules_poses) } })
     fireEvent.change(within(grille).getByTestId('cal-pose-position-PAN-B'),
       { target: { value: corps.ecarts_position } })
-    fireEvent.change(screen.getByTestId('cal-pose-champ-releve_le').querySelector('input'),
+    fireEvent.change(within(grille).getByTestId('cal-pose-date-PAN-B'),
       { target: { value: corps.releve_le } })
     fireEvent.click(within(grille).getByTestId('cal-pose-enregistrer-PAN-B'))
 
@@ -151,6 +151,46 @@ describe('PoseReelle (CALX367) — saisir un pan', () => {
 
     expect(await screen.findByTestId('cal-pose-erreur-pan-PAN-C')).toHaveTextContent(refus.pan)
     expect(screen.getByTestId('cal-pose-bandeau')).toHaveTextContent('pan')
+  })
+})
+
+describe('PoseReelle (ACAL246) — brouillons, date par ligne, message de version', () => {
+  it('garde les brouillons des autres pans après un enregistrement', async () => {
+    servir('exemple_vide')
+    calepinageApi.calepinages.enregistrerPoseReelle
+      .mockResolvedValue(reponseContrat('calepinage', NOM, 'exemple'))
+    rendre()
+    const grille = await screen.findByTestId('cal-pose-grille')
+    fireEvent.change(within(grille).getByTestId('cal-pose-modules-PAN-A'), { target: { value: '5' } })
+    fireEvent.change(within(grille).getByTestId('cal-pose-modules-PAN-B'), { target: { value: '6' } })
+    expect(screen.getByTestId('cal-pose-brouillon-PAN-B')).toBeInTheDocument()
+    fireEvent.click(within(grille).getByTestId('cal-pose-enregistrer-PAN-A'))
+    await screen.findByTestId('cal-pose-message')
+    expect(screen.getByTestId('cal-pose-modules-PAN-B')).toHaveValue(6)
+  })
+
+  it('préremplit la date par ligne et ne l’envoie pas si inchangée', async () => {
+    servir('exemple')
+    calepinageApi.calepinages.enregistrerPoseReelle
+      .mockResolvedValue(reponseContrat('calepinage', NOM, 'exemple'))
+    rendre()
+    const grille = await screen.findByTestId('cal-pose-grille')
+    const date = echantillon('exemple').lignes[0].releve_le
+    expect(within(grille).getByTestId('cal-pose-date-PAN-A')).toHaveValue(date)
+    fireEvent.click(within(grille).getByTestId('cal-pose-enregistrer-PAN-A'))
+    await screen.findByTestId('cal-pose-message')
+    const corps = calepinageApi.calepinages.enregistrerPoseReelle.mock.calls[0][1]
+    expect(corps).not.toHaveProperty('releve_le')
+  })
+
+  it('message « déjà gelée » quand le serveur répond 200', async () => {
+    servir('exemple')
+    calepinageApi.calepinages.creerVersionPoseReelle.mockResolvedValue({
+      ...reponseContrat('calepinage', NOM, 'exemple_version_creee'), status: 200,
+    })
+    rendre()
+    fireEvent.click(await screen.findByTestId('cal-pose-creer-version'))
+    expect(await screen.findByTestId('cal-pose-message')).toHaveTextContent('déjà gelée')
   })
 })
 

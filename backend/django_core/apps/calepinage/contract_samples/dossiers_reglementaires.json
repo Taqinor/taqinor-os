@@ -131,7 +131,7 @@
     ],
     "packs_france": [
       {
-        "genre": "dp",
+        "genre": "dp_mairie",
         "libelle": "Déclaration préalable de travaux",
         "gabarit_depose": false,
         "message": "Aucun gabarit « DP » déposé : déposez le modèle officiel pour générer le dossier.",
@@ -147,8 +147,13 @@
             "id": 1,
             "intitule": "Demande de raccordement",
             "avancement": {
-              "fournies": 1,
-              "total": 3
+              "pieces_total": 3,
+              "pieces_fournies": 1,
+              "pieces_a_completer": 0,
+              "pieces_manquantes": 2,
+              "champs_a_completer": 0,
+              "champs_saisis": 0,
+              "pourcentage": 33
             }
           }
         ]

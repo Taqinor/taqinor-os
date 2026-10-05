@@ -401,14 +401,22 @@ def _valeur_de_champ(champ, code, valeur):
     propre = _valeur_reelle(valeur)
     if propre is None:
         return None
+    from .valeurs import nombre_fini
+
     if str(champ.get('type') or 'texte') == 'nombre':
         nombre = _nombre_saisi(propre)
         if nombre is None:
             raise ChampsDossierInvalides(
                 f"Le champ « {libelle} » attend un nombre "
                 f"(reçu : « {propre} »).", champ=code)
+        # ACAL277 — « nan », « inf », « 1e400 » se lisent comme des
+        # nombres mais n'en sont pas : refus nommé, jamais un JSON NaN.
+        nombre_fini(nombre, code, libelle=libelle,
+                    erreur=ChampsDossierInvalides)
         return nombre
     if isinstance(propre, (int, float)) and not isinstance(propre, bool):
+        nombre_fini(propre, code, libelle=libelle,
+                    erreur=ChampsDossierInvalides)
         return propre
     return propre if isinstance(propre, bool) else str(propre)
 
@@ -685,8 +693,11 @@ def avancement_du_dossier(dossier):
     }
 
 
-def packs_france(calepinage):
+def packs_france(calepinage, agregat=None):
     """CAL193 — les trois dossiers FR, chacun avec son avancement.
+
+    ACAL309 — ``agregat`` (``dossiers_du_calepinage(calepinage, pays='fr')``)
+    peut etre fourni par l'appelant pour ne le calculer qu'une fois.
 
     Un genre dont la société n'a déposé AUCUN gabarit sort avec
     ``gabarit_depose = False`` et le message qui dit quoi déposer : il n'est
@@ -694,7 +705,8 @@ def packs_france(calepinage):
     """
     from ..models import GabaritDossierReglementaire
 
-    agregat = dossiers_du_calepinage(calepinage, pays='fr')
+    if agregat is None:
+        agregat = dossiers_du_calepinage(calepinage, pays='fr')
     # Le GENRE vit sur le gabarit, pas dans le dossier composé : y ajouter une
     # clé ferait diverger la forme du contrat CAL247, que l'écran consomme.
     genre_par_gabarit = dict(

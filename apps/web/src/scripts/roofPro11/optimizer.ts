@@ -51,6 +51,7 @@ import {
   cotesPourPan,
   estRefus,
   lireModulesDisponibles,
+  catalogueAvecModulesDuDocument,
 } from './moduleSelect';
 import { type Panel2Module } from '../../lib/roofPro2';
 import {
@@ -247,6 +248,49 @@ export function cibleOptimisationSaisie(): CibleOptimisation | null {
   return resoudreCibleOptimisation(choixOptimisation).saisie;
 }
 
+/**
+ * ACAL79 — LA borne des besoins DÉDUITS (facture, consommation) : [1, 400] panneaux. Seule
+ * définition de l'atelier : `roof-tool-pro11.ts` et `consumption.ts` l'importent d'ici.
+ * Elle ne s'applique JAMAIS à une cible VENDUE (voir `besoinVendu`).
+ */
+export function clampNeeded(n: number): number {
+  return Math.max(1, Math.min(400, Math.round(n)));
+}
+
+/**
+ * ACAL79 — la cible VENDUE d'un devis telle que l'atelier l'impose : le nombre de panneaux
+ * du devis, arrondi, jamais plafonné (un devis vendu à 450 panneaux s'ouvre à 450, pas à
+ * 400 — sinon le dialogue « Le calepinage diverge du devis » s'ouvrait à tort et sa
+ * confirmation ramenait les lignes du devis à 400). `null` (aucune ligne panneau) ⇒ 0.
+ */
+export function besoinVendu(panneaux: number | null | undefined): number {
+  return typeof panneaux === 'number' && Number.isFinite(panneaux) ? Math.max(0, Math.round(panneaux)) : 0;
+}
+
+/** ACAL80 — le point de rendement PVGIS par défaut (pages publiques d'apps/web). */
+export const RENDEMENT_PVGIS_DEFAUT = '/api/roof-yield';
+
+/**
+ * ACAL80 — LE seul appel au point de rendement. `url` null ⇒ AUCUNE requête : l'ERP n'a
+ * pas cette route (son nginx ne sert pas apps/web — 42 erreurs 405 par ouverture de
+ * l'atelier) ; l'appelant retombe alors sur la table committée (cache à null), exactement
+ * comme quand PVGIS est injoignable. Rend le kWh annuel, ou null.
+ */
+export async function lireRendement(
+  url: string | null,
+  corps: unknown,
+  fetcher: typeof fetch = fetch,
+): Promise<number | null> {
+  if (!url) return null;
+  const res = await fetcher(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(corps),
+  });
+  const data = await res.json();
+  return res.ok && data.ok && typeof data.annualKwh === 'number' ? data.annualKwh : null;
+}
+
 /** Dépendances injectées (rendu 3D + matrice + fenêtres + entrée). Les fonctions
  *  déclarées plus tard dans l'entrée sont passées en wrappers paresseux pour éviter
  *  les TDZ ; les modules frères sont passés directement. */
@@ -342,6 +386,9 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   /** CALX109 câblage — le catalogue CHOISISSABLE de la société, lu UNE fois (`ctx.opts` est
    *  figé au boot). Vide sans catalogue : l'atelier reste sur son module par défaut. */
   const catalogueModules = lireModulesDisponibles(ctx.opts?.modulesDisponibles).choisissables;
+  /** ACAL80 — le point de rendement INJECTÉ par la page (null dans l'ERP : aucune requête). */
+  const urlRendement: string | null =
+    ctx.opts?.rendementPvgis === undefined ? RENDEMENT_PVGIS_DEFAUT : ctx.opts.rendementPvgis;
 
   /**
    * CALX109 câblage — les cotes du module posé sur le pan ACTIF, ou `undefined`.
@@ -355,7 +402,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   const cotesDuModuleDuPanActif = (): Panel2Module | undefined => {
     const moduleId = ctx.activeArea()?.moduleId;
     if (!moduleId) return undefined;
-    const cotes = cotesPourPan(catalogueModules, moduleId);
+    // ACAL30 — un module archivé (repris du document) se pave avec SES cotes, jamais le défaut.
+    const cotes = cotesPourPan(catalogueAvecModulesDuDocument(catalogueModules, ctx.modulesDuDocument).catalogue, moduleId);
     return estRefus(cotes) ? undefined : cotes;
   };
 
@@ -461,8 +509,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   const aspectForLeg = (family: ConfigFamily, azimuthDeg: number): number =>
     family === 'eastwest' ? azimuthDeg - 90 : azimuthDeg - 180;
 
-  // — Plafond « panneaux nécessaires » (Change A) —
-  const clampNeeded = (n: number): number => Math.max(1, Math.min(400, Math.round(n)));
+  // — Plafond « panneaux nécessaires » (Change A) : la borne UNIQUE, au niveau du module
+  // (ACAL79 — la copie de roof-tool-pro11.ts est supprimée). —
   /** Posés = min(plafond besoin, ce qui tient). Sans besoin (0) HORS devis (mode lead/
    *  estimateur) il n'y a pas de besoin à plafonner → on montre ce qui tient (comportement
    *  historique). L2 — EN DEVIS (`ctx.devisMode`), un besoin nul est une CIBLE VENDUE DE
@@ -1331,13 +1379,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const key = pitchedKey(pitch, facing);
     if (ctx.pitchedYieldCache.has(key)) return ctx.pitchedYieldCache.get(key) ?? null;
     try {
-      const res = await fetch('/api/roof-yield', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ lat: ctx.centroid[1], lon: ctx.centroid[0], mountingplace: 'building', legs: [pitchedPlaneLeg(pitch, facing, 1)] }),
-      });
-      const data = await res.json();
-      const v = res.ok && data.ok && typeof data.annualKwh === 'number' ? data.annualKwh : null;
+      const v = await lireRendement(urlRendement, { lat: ctx.centroid[1], lon: ctx.centroid[0], mountingplace: 'building', legs: [pitchedPlaneLeg(pitch, facing, 1)] }); // ACAL80
       ctx.pitchedYieldCache.set(key, v);
       return v;
     } catch {
@@ -1409,15 +1451,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const key = pvgisKey(family, tiltDeg, azimuthDeg);
     if (ctx.pvgisCache.has(key)) return ctx.pvgisCache.get(key) ?? null;
     try {
-      const res = await fetch('/api/roof-yield', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ lat: ctx.centroid[1], lon: ctx.centroid[0], legs: legsFor(family, tiltDeg, azimuthDeg, kwc) }),
-      });
-      const data = await res.json();
-      if (res.ok && data.ok && typeof data.annualKwh === 'number') {
-        ctx.pvgisCache.set(key, data.annualKwh);
-        return data.annualKwh;
+      const kwh = await lireRendement(urlRendement, { lat: ctx.centroid[1], lon: ctx.centroid[0], legs: legsFor(family, tiltDeg, azimuthDeg, kwc) }); // ACAL80
+      if (kwh != null) {
+        ctx.pvgisCache.set(key, kwh);
+        return kwh;
       }
       ctx.pvgisCache.set(key, null); // PVGIS a répondu « estimate » → repli table mémorisé
       return null;
@@ -1447,15 +1484,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const key = v4Key(tiltDeg, aspect);
     if (ctx.v4YieldCache.has(key)) return ctx.v4YieldCache.get(key) ?? null;
     try {
-      const res = await fetch('/api/roof-yield', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ lat: ctx.centroid[1], lon: ctx.centroid[0], mountingplace: 'free', legs: [{ kwc: 1, tiltDeg, aspect }] }),
-      });
-      const data = await res.json();
-      if (res.ok && data.ok && typeof data.annualKwh === 'number') {
-        ctx.v4YieldCache.set(key, data.annualKwh);
-        return data.annualKwh;
+      const kwh = await lireRendement(urlRendement, { lat: ctx.centroid[1], lon: ctx.centroid[0], mountingplace: 'free', legs: [{ kwc: 1, tiltDeg, aspect }] }); // ACAL80
+      if (kwh != null) {
+        ctx.v4YieldCache.set(key, kwh);
+        return kwh;
       }
       ctx.v4YieldCache.set(key, null);
       return null;

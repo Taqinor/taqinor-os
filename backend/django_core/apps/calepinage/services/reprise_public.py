@@ -173,8 +173,7 @@ def reprendre_trace_public(lead_id, company, *, user=None):
     """
     from apps.crm.selectors import get_company_lead
 
-    from .. import selectors
-    from .creation import creer_pour_lead
+    from .creation import ouvrir_ou_creer_pour_lead
     from .layout import enregistrer_layout
 
     if company is None or not lead_id:
@@ -188,12 +187,12 @@ def reprendre_trace_public(lead_id, company, *, user=None):
     if document is None:
         return None
 
-    if selectors.liste_calepinages(company, lead_id=lead_id).exists():
-        # Déjà repris (rejeu d'événement, lead ré-enregistré) : on ne crée
-        # jamais un second calepinage pour le même tracé.
+    # ACAL182 — la porte UNIQUE (verrou du lead + un seul ouvert par lead) :
+    # déjà repris (rejeu d'événement, lead ré-enregistré) ou lead qui a déjà
+    # un calepinage OUVERT ⇒ on ne crée jamais un second calepinage.
+    calepinage, cree = ouvrir_ou_creer_pour_lead(lead_id, company, user=user)
+    if not cree:
         return None
-
-    calepinage = creer_pour_lead(lead_id, company, user=user)
     enregistrer_layout(calepinage, document, user=user,
                        libelle='Tracé repris du parcours public « mon toit »')
     return calepinage

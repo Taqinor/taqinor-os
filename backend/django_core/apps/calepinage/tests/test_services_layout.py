@@ -76,12 +76,23 @@ class EmpreinteNonRecodeeTest(BaseLayout):
         self.assertEqual(rendu['layout_hash'], layout_hash(LAYOUT))
 
     def test_etat_d_interface_ne_cree_pas_de_version(self):
-        """``pin`` est de l'état d'écran, pas de la géométrie."""
+        """ACAL39 — ``scene``/``activeAreaId`` sont de l'état d'écran."""
+        enregistrer_layout(self.pivot, LAYOUT)
+        ecran = dict(LAYOUT, activeAreaId='z1',
+                     scene={'sunDay': 172, 'sunHour': 12.0})
+        rendu = enregistrer_layout(self.pivot, ecran)
+        self.assertTrue(rendu['inchange'])
+        self.assertEqual(self.pivot.versions.count(), 1)
+
+    def test_recentrer_l_epingle_cree_une_version(self):
+        """ACAL39 / D-ACAL-13 — ``pin`` est DANS l'empreinte document : un
+        recentrage est versionné (l'empreinte imprimée, elle, ne bouge pas)."""
         enregistrer_layout(self.pivot, LAYOUT)
         avec_pin = dict(LAYOUT, pin={'lat': 33.57, 'lng': -7.58})
         rendu = enregistrer_layout(self.pivot, avec_pin)
-        self.assertTrue(rendu['inchange'])
-        self.assertEqual(self.pivot.versions.count(), 1)
+        self.assertFalse(rendu['inchange'])
+        self.assertEqual(rendu['layout_hash'], layout_hash(LAYOUT))
+        self.assertEqual(self.pivot.versions.count(), 2)
 
 
 class ChampsOptionnelsTest(BaseLayout):

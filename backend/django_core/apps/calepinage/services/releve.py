@@ -31,7 +31,8 @@ La société et l'auteur viennent TOUJOURS du serveur.
 from __future__ import annotations
 
 __all__ = ['ReleveRefuse', 'enregistrer_releve', 'resoudre_chaines',
-           'releve_en_ligne']
+           'releve_en_ligne', 'releve_courant_id', 'modifier_releve',
+           'supprimer_releve']
 
 
 class ReleveRefuse(ValueError):
@@ -47,19 +48,15 @@ class ReleveRefuse(ValueError):
         self.champ = champ
 
 
-def _nombre(valeur, champ, libelle, *, obligatoire=False):
-    if valeur is None or valeur == '':
-        if obligatoire:
-            raise ReleveRefuse(f"« {libelle} » est obligatoire.", champ)
-        return None
-    if isinstance(valeur, bool):
-        raise ReleveRefuse(f"« {libelle} » doit être un nombre.", champ)
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        raise ReleveRefuse(
-            f"« {libelle} » doit être un nombre en mètres "
-            f"(reçu : {valeur!r}).", champ)
+def _nombre(valeur, champ, libelle, *, obligatoire=False, positif=False):
+    """ACAL277 — un réel FINI (``nan``/``inf``/``1e400`` refusés, jamais un
+    500), strictement positif pour une longueur (``positif``)."""
+    from .valeurs import nombre_fini
+
+    return nombre_fini(valeur, champ, libelle=libelle,
+                       obligatoire=obligatoire,
+                       mini=0 if positif else None, mini_exclu=positif,
+                       erreur=ReleveRefuse)
 
 
 def _chaine_du_document(brute, rang):
@@ -87,7 +84,8 @@ def _chaine_du_document(brute, rang):
             nom=str(cote.get('nom') or f'c{i + 1}'),
             # ``valeur`` absente = cote MANQUANTE, à déduire par fermeture.
             valeur=_nombre(cote.get('valeur'), champ,
-                           f'cote {cote.get("nom") or i + 1}')))
+                           f'cote {cote.get("nom") or i + 1}',
+                           positif=True)))
 
     tolerance = _nombre(brute.get('tolerance_m'), champ, 'Tolérance')
     if tolerance is None:
@@ -101,10 +99,12 @@ def _chaine_du_document(brute, rang):
         return Chaine(
             nom=nom, cotes=tuple(cotes),
             total_mesure=_nombre(brute.get('total_mesure'), champ,
-                                 'Total mesuré'),
+                                 'Total mesuré', positif=True),
             tolerance_m=tolerance,
             depart=_nombre(brute.get('depart'), champ, 'Départ') or 0.0)
-    except ValueError as erreur:
+    except ReleveRefuse:
+        raise
+    except (ValueError, OverflowError) as erreur:
         # Le noyau refuse deux cotes manquantes : deux inconnues, une seule
         # équation. On relaie SON message plutôt que d'en inventer un autre.
         raise ReleveRefuse(str(erreur), champ)
@@ -132,8 +132,14 @@ def resoudre_chaines(chaines, *, compensation=False):
 
     resolues, a_confirmer = [], []
     for rang, brute in enumerate(chaines):
-        resultat = resoudre(_chaine_du_document(brute, rang),
-                            compensation=compensation)
+        chaine = _chaine_du_document(brute, rang)
+        try:
+            resultat = resoudre(chaine, compensation=compensation)
+        except (ValueError, OverflowError) as erreur:
+            # ACAL277 — le noyau (core/calepinage/units.py) refuse une
+            # grandeur hors de son domaine : relayé en refus NOMMÉ, jamais
+            # un 500.
+            raise ReleveRefuse(str(erreur), f'chaines[{rang}]')
         cotes = []
         for cote in resultat.cotes:
             confirme = cote.statut is StatutCote.A_CONFIRMER
@@ -247,6 +253,124 @@ def enregistrer_releve(calepinage, donnees, *, user=None):
                 pk__in=[p for p in photo_ids if isinstance(p, int)]
             ).update(releve=releve)
     return releve
+
+
+def releve_courant_id(calepinage):
+    """ACAL204 — l'id du relevé EN VIGUEUR, ou ``None`` sans relevé de saisie.
+
+    Le plus récent des relevés de provenance ``saisie`` (par date de relevé,
+    puis par id) : un relevé repris d'une visite n'est jamais « le courant »
+    d'un écran de saisie — il se lit à part (``releve-visite/``).
+    """
+    from ..models import ProvenanceTerrain
+
+    if calepinage is None or calepinage.pk is None:
+        return None
+    return (calepinage.releves_terrain
+            .filter(provenance=ProvenanceTerrain.SAISIE)
+            .order_by('-releve_le', '-id')
+            .values_list('pk', flat=True).first())
+
+
+def _releve_de_saisie(releve):
+    """Refuse (400 nommé) un relevé repris d'une visite : ni modifiable ni
+    supprimable ici (ses mesures sont celles de la visite, D7)."""
+    from ..models import ProvenanceTerrain
+
+    if releve.provenance != ProvenanceTerrain.SAISIE:
+        raise ReleveRefuse(
+            "Ce relevé a été repris d'une visite technique : il n'est ni "
+            "modifiable ni supprimable ici. Mettez la reprise à jour depuis "
+            "la visite.", 'releve')
+
+
+def modifier_releve(releve, donnees, *, user=None):
+    """ACAL204 — corrige LE MÊME relevé de saisie (jamais une nouvelle ligne).
+
+    Partiel : seules les clés PRÉSENTES de ``donnees`` changent
+    (``releve_le``, ``chaines``, ``azimut_boussole_deg``,
+    ``precision_azimut_deg``, ``notes``, ``photo_ids``). La géométrie résolue
+    est recalculée quand ``chaines`` change ; mêmes refus nommés que
+    ``enregistrer_releve`` (dont l'azimut sans précision déclarée).
+
+    Raises:
+        ReleveRefuse: relevé de visite, saisie refusée (champ nommé).
+        VerrouilleRefuse (409): calepinage verrouillé (devis lié envoyé).
+    """
+    from django.core.exceptions import ValidationError
+    from django.db import transaction
+    from django.utils.dateparse import parse_date
+
+    from ..models import PhotoSite
+    from .verrou import verifier_ecriture_autorisee
+
+    if not isinstance(donnees, dict):
+        raise ReleveRefuse("Le corps attendu est un objet de relevé.",
+                           'releve')
+    verifier_ecriture_autorisee(releve.calepinage)
+    _releve_de_saisie(releve)
+
+    if 'releve_le' in donnees:
+        brut = donnees.get('releve_le')
+        releve_le = brut if hasattr(brut, 'year') else parse_date(
+            (brut or '').strip() if isinstance(brut, str) else '')
+        if releve_le is None:
+            raise ReleveRefuse(
+                "La date du relevé est obligatoire et s'écrit AAAA-MM-JJ : "
+                "elle est SAISIE, jamais déduite de la date d'envoi.",
+                'releve_le')
+        releve.releve_le = releve_le
+    if 'chaines' in donnees:
+        releve.geometrie = resoudre_chaines(donnees.get('chaines'))
+        releve.chaines = donnees.get('chaines') or []
+    if 'azimut_boussole_deg' in donnees:
+        releve.azimut_boussole_deg = _nombre(
+            donnees.get('azimut_boussole_deg'), 'azimut_boussole_deg',
+            'Azimut boussole')
+    if 'precision_azimut_deg' in donnees:
+        releve.precision_azimut_deg = _nombre(
+            donnees.get('precision_azimut_deg'), 'precision_azimut_deg',
+            "Précision de l'azimut")
+    if 'notes' in donnees:
+        releve.notes = str(donnees.get('notes') or '')
+    try:
+        releve.full_clean(exclude=['company', 'calepinage', 'releve_par'])
+    except ValidationError as erreur:
+        champ, messages = sorted(erreur.message_dict.items())[0]
+        raise ReleveRefuse(messages[0], champ)
+
+    with transaction.atomic():
+        releve.save()
+        photo_ids = donnees.get('photo_ids')
+        if isinstance(photo_ids, list):
+            voulues = [p for p in photo_ids
+                       if isinstance(p, int) and not isinstance(p, bool)]
+            propres = PhotoSite.objects.filter(
+                calepinage=releve.calepinage,
+                company=releve.calepinage.company)
+            # Décocher ce qui n'est plus voulu, cocher ce qui l'est : BORNÉ
+            # au calepinage (une photo d'ailleurs n'est jamais rattachée).
+            propres.filter(releve=releve).exclude(
+                pk__in=voulues).update(releve=None)
+            propres.filter(pk__in=voulues).update(releve=releve)
+    return releve
+
+
+def supprimer_releve(releve):
+    """ACAL204 — retire un relevé de saisie (verrou et provenance vérifiés).
+
+    Les photos qu'il portait restent au calepinage (``releve`` repasse à
+    ``NULL``) : retirer un relevé n'efface jamais une photo de site.
+    """
+    from django.db import transaction
+
+    from .verrou import verifier_ecriture_autorisee
+
+    verifier_ecriture_autorisee(releve.calepinage)
+    _releve_de_saisie(releve)
+    with transaction.atomic():
+        releve.photos.update(releve=None)
+        releve.delete()
 
 
 def releve_en_ligne(releve):

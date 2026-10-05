@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { reponseContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
    CALX25 — LE RELEVÉ TERRAIN SUR UN PANNEAU, AUCUN CALCUL CÔTÉ ÉCRAN.
@@ -71,11 +72,17 @@ const RESULTAT = {
 
 const releve = vi.fn()
 const enregistrerReleve = vi.fn()
+const corrigerReleve = vi.fn()
+const supprimerReleve = vi.fn()
+const photos = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       releve: (...a) => releve(...a),
       enregistrerReleve: (...a) => enregistrerReleve(...a),
+      corrigerReleve: (...a) => corrigerReleve(...a),
+      supprimerReleve: (...a) => supprimerReleve(...a),
+      photos: (...a) => photos(...a),
     },
   },
 }))
@@ -191,5 +198,102 @@ describe('CALX25 — la géométrie résolue OU le point de rupture nommé', () 
 
     expect(await screen.findByTestId('cal-releve-erreur-chaine-0'))
       .toHaveTextContent('une seule cote manquante')
+  })
+})
+
+/* ============================================================================
+   ACAL205 — relire et préremplir le relevé courant ; « Enregistrer » CORRIGE
+   ce relevé (PATCH), « Nouveau relevé » crée une ligne (POST). Les réponses
+   viennent du contrat committé `calepinage_releve.json` (jamais tapées à la
+   main).
+   ========================================================================== */
+
+describe('ACAL205 — le relevé courant est relu, corrigé, ou doublé', () => {
+  const lectureContrat = () => {
+    const reponse = reponseContrat('calepinage', 'calepinage_releve')
+    // GET : l'historique et le courant (le POST porte en plus `releve`).
+    return { data: { releves: reponse.data.releves, releve_courant_id: reponse.data.releve_courant_id } }
+  }
+
+  beforeEach(() => {
+    releve.mockResolvedValue(lectureContrat())
+    photos.mockResolvedValue(reponseContrat('calepinage', 'calepinage_photos'))
+  })
+
+  it('préremplit le relevé courant au montage', async () => {
+    rendre()
+    const courant = lectureContrat().data.releves[0]
+
+    expect(await screen.findByDisplayValue(courant.releve_le)).toBeInTheDocument()
+    expect(releve).toHaveBeenCalledWith(1)
+    expect(screen.getByTestId('cal-releve-chaine-0-nom').querySelector('input').value)
+      .toBe(courant.chaines[0].nom)
+    expect(screen.getByDisplayValue(courant.notes)).toBeInTheDocument()
+    expect(screen.getByTestId('cal-releve-historique')).toBeInTheDocument()
+  })
+
+  it('Enregistrer corrige le même relevé (PATCH)', async () => {
+    corrigerReleve.mockResolvedValue({ data: { releve: lectureContrat().data.releves[0], releve_courant_id: 1 } })
+    rendre()
+    const courant = lectureContrat().data.releves[0]
+    await screen.findByDisplayValue(courant.releve_le)
+
+    fireEvent.click(screen.getByTestId('cal-releve-envoyer'))
+
+    await waitFor(() => expect(corrigerReleve).toHaveBeenCalledTimes(1))
+    expect(corrigerReleve.mock.calls[0][0]).toBe(1)
+    expect(corrigerReleve.mock.calls[0][1]).toBe(lectureContrat().data.releve_courant_id)
+    expect(enregistrerReleve).not.toHaveBeenCalled()
+    expect(await screen.findByTestId('cal-releve-message')).toHaveTextContent('corrigé')
+  })
+
+  it('Nouveau relevé crée une ligne', async () => {
+    enregistrerReleve.mockResolvedValue(reponseContrat('calepinage', 'calepinage_releve'))
+    rendre()
+    await screen.findByDisplayValue(lectureContrat().data.releves[0].releve_le)
+
+    fireEvent.click(screen.getByTestId('cal-releve-nouveau'))
+
+    await waitFor(() => expect(enregistrerReleve).toHaveBeenCalledTimes(1))
+    expect(corrigerReleve).not.toHaveBeenCalled()
+  })
+
+  it('les photos du calepinage sont cochables et partent en photo_ids', async () => {
+    corrigerReleve.mockResolvedValue({ data: { releve: lectureContrat().data.releves[0], releve_courant_id: 1 } })
+    rendre()
+    await screen.findByDisplayValue(lectureContrat().data.releves[0].releve_le)
+    const premiere = reponseContrat('calepinage', 'calepinage_photos').data.photos[0]
+    const case1 = await screen.findByTestId(`cal-releve-photo-${premiere.id}`)
+    const etait = case1.checked
+
+    fireEvent.click(case1)
+    fireEvent.click(screen.getByTestId('cal-releve-envoyer'))
+
+    await waitFor(() => expect(corrigerReleve).toHaveBeenCalled())
+    const ids = corrigerReleve.mock.calls[0][2].photo_ids
+    expect(ids.includes(premiere.id)).toBe(!etait)
+  })
+
+  it('Supprimer retire le relevé courant', async () => {
+    const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    supprimerReleve.mockResolvedValue({})
+    rendre()
+    await screen.findByDisplayValue(lectureContrat().data.releves[0].releve_le)
+    releve.mockResolvedValue({ data: { releves: [], releve_courant_id: null } })
+
+    fireEvent.click(screen.getByTestId('cal-releve-supprimer'))
+
+    await waitFor(() => expect(supprimerReleve).toHaveBeenCalledWith(1, lectureContrat().data.releve_courant_id))
+    expect(await screen.findByTestId('cal-releve-message')).toHaveTextContent('supprimé')
+    confirmation.mockRestore()
+  })
+
+  it('sans relevé courant, le bouton crée (POST) et il n’y a ni Nouveau ni Supprimer', async () => {
+    releve.mockResolvedValue({ data: { releves: [], releve_courant_id: null } })
+    rendre()
+    await waitFor(() => expect(releve).toHaveBeenCalled())
+
+    expect(screen.queryByTestId('cal-releve-nouveau')).toBeNull()
+    expect(screen.queryByTestId('cal-releve-supprimer')).toBeNull()
   })
 })
