@@ -166,9 +166,11 @@ INSTALLATION_SHARE_UTM_CAMPAIGN = _cycle_vie.INSTALLATION_SHARE_UTM_CAMPAIGN
 installation_share_link = _cycle_vie.installation_share_link
 bcf_share_url = _cycle_vie.bcf_share_url
 contexte_clauses_devis = _cycle_vie.contexte_clauses_devis
-configuration_devis_contenu = _cycle_vie.configuration_devis_contenu
-capturer_configuration_devis = _cycle_vie.capturer_configuration_devis
-diff_configurations_devis = _cycle_vie.diff_configurations_devis
+# SPL262 — l'historique de configuration vit dans ``domain/historique_config.py``.
+from apps.ventes.domain import historique_config as _historique_config  # noqa: E402
+configuration_devis_contenu = _historique_config.configuration_devis_contenu
+capturer_configuration_devis = _historique_config.capturer_configuration_devis
+diff_configurations_devis = _historique_config.diff_configurations_devis
 renouveler_devis = _cycle_vie.renouveler_devis
 mark_devis_sent = _cycle_vie.mark_devis_sent
 

@@ -1324,7 +1324,7 @@ def finaliser(devis, intention):
 
 def _instantane(devis, intention):
     """QJR550 — l'instantané de configuration du geste (best-effort)."""
-    from apps.ventes.domain.cycle_vie import instantane_de_geste
+    from apps.ventes.domain.historique_config import instantane_de_geste
     try:
         instantane_de_geste(devis, user=intention.user)
     except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant
@@ -1503,7 +1503,7 @@ def _appliquer_sur_devis_existant(devis, intention, mode):
     # QJR552 — l'instantané « avant » (``debut_de_geste_devis``) et
     # l'instantané « après » (``_instantane``, envoyé compris) encadrent ici
     # ``ecrire_lignes`` / ``reconcilier`` ; une seule implémentation de
-    # capture (``cycle_vie.capturer_configuration_devis``).
+    # capture (``historique_config.capturer_configuration_devis``).
     from apps.ventes.domain.modifiabilite import (
         debut_de_geste_devis, fin_de_geste_devis)
     avant_geste = (debut_de_geste_devis(devis, intention.user)

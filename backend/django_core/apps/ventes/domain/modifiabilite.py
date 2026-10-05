@@ -239,7 +239,7 @@ def debut_de_geste_devis(devis, user=None):
         if not _est_envoye(devis):
             return None
         from apps.ventes.models import Devis
-        from apps.ventes.domain.cycle_vie import capturer_configuration_devis
+        from apps.ventes.domain.historique_config import capturer_configuration_devis
         frais = Devis.objects.get(pk=devis.pk)
         capturer_configuration_devis(frais, user=user, avant_correction=True)
         return empreinte_visible(frais)

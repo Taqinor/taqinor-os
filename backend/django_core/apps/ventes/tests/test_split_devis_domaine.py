@@ -63,7 +63,7 @@ DOMAINE = Path(sg.DJANGO_CORE) / 'apps' / 'ventes' / 'domain'
 #: Une entrée par région : (golden, source, cible, SPL qui la déplace, actif).
 DEPLACEMENTS = {
     'hist': ('split_dm_hist', 'apps/ventes/domain/cycle_vie.py',
-             'apps/ventes/domain/historique_config.py', 'SPL262', False),
+             'apps/ventes/domain/historique_config.py', 'SPL262', True),
     'rev': ('split_dm_rev', 'apps/ventes/domain/cycle_vie.py',
             'apps/ventes/domain/revision.py', 'SPL263', False),
     'envoi': ('split_dm_envoi', 'apps/ventes/domain/cycle_vie.py',

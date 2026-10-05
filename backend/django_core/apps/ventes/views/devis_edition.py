@@ -434,7 +434,7 @@ class DevisEditionActionsMixin:
         super().perform_update(serializer)
         # QJR552 — l'instantané APRÈS le geste (brouillon ou envoyé : l'en-tête
         # corrigé, remise / échéancier, entre dans l'historique) ; dédoublonné.
-        from ..domain.cycle_vie import instantane_de_geste
+        from ..domain.historique_config import instantane_de_geste
         instantane_de_geste(serializer.instance, user=self.request.user)
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
         # alimente la puce de fraîcheur. Pattern archived_by.
