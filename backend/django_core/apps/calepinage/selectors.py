@@ -10,6 +10,8 @@ toujours celle passée en argument, jamais lue d'un corps de requête.
 """
 from __future__ import annotations
 
+import re
+
 #: CAL45 — les sections de réglages, dans l'ordre du contrat publié
 #: (``contract_samples/parametres_calepinage.json``). Source unique de la FORME
 #: rendue : l'endpoint, l'écran et les tests lisent la même liste.
@@ -75,7 +77,7 @@ def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
     return appliquer_filtres_liste(
         Calepinage.objects.filter(company=company),
         lead_id=lead_id, client_id=client_id, statut=statut, depuis=depuis,
-        q=q, inclure_archives=inclure_archives)
+        q=q, inclure_archives=inclure_archives, company=company)
 
 
 #: CALX406 / ACAL295 — la clé de ``presets`` qui restreint la vue au
@@ -142,7 +144,7 @@ def calepinages_visibles(user, *, inclure_archives=False, base=None,
     elif company is not None:
         base = base.filter(company=company)
     lignes = appliquer_filtres_liste(base, inclure_archives=inclure_archives,
-                                     **filtres)
+                                     company=company, **filtres)
     return restreindre_aux_siens(lignes, user)
 
 
@@ -160,9 +162,33 @@ def calepinage_ouvert_du_lead(company, lead_id):
     return liste_calepinages(company, lead_id=lead_id).first()
 
 
+#: ACAL196 — « CAL-AAMM-NNNN » : le numéro à la fin est l'identifiant.
+_REFERENCE_AFFICHEE = re.compile(r'^CAL-(?:\d{4}-)?(\d{1,18})$',
+                                 re.IGNORECASE)
+
+
+def _condition_recherche(terme, company):
+    """ACAL196 — la condition « q » : titre OU référence OU lead OU client."""
+    from django.db.models import Q
+
+    condition = (Q(titre__icontains=terme)
+                 | Q(client__nom__icontains=terme))
+    reference = _REFERENCE_AFFICHEE.match(terme)
+    if reference:
+        condition |= Q(pk=int(reference.group(1)))
+    if company is not None:
+        from apps.crm.selectors import rechercher_leads_minimal
+
+        ids = [lead['id'] for lead in
+               rechercher_leads_minimal(company, terme, limit=50)]
+        if ids:
+            condition |= Q(lead_id__in=ids)
+    return condition
+
+
 def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
                             statut=None, depuis=None, q=None,
-                            inclure_archives=False):
+                            inclure_archives=False, company=None):
     """CAL16 — LES filtres de la liste, écrits UNE fois.
 
     Le viewset (``views/calepinages.py``) et ce sélecteur servent la même
@@ -176,6 +202,11 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     (corbeille, ``apps.trash.selectors.ids_dans_corbeille`` — jamais un
     import direct de ``ElementSupprime``, frontière inter-apps).
 
+    ACAL196 — ``q`` cherche le TITRE, la RÉFÉRENCE affichée (CAL-AAMM-NNNN,
+    décodée en identifiant), le nom du LEAD rattaché (50 leads au plus, par
+    ``crm.selectors.rechercher_leads_minimal``, borné à ``company``) et le
+    nom du CLIENT rattaché.
+
     L'ordre est celui du plus récent au plus ancien, dans les deux chemins.
     """
     if lead_id:
@@ -188,7 +219,7 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
         lignes = lignes.filter(created_at__gte=depuis)
     terme = (q or '').strip()
     if terme:
-        lignes = lignes.filter(titre__icontains=terme)
+        lignes = lignes.filter(_condition_recherche(terme, company))
     if not inclure_archives:
         from apps.trash.selectors import ids_dans_corbeille
 
