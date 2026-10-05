@@ -344,6 +344,18 @@ class FiguresPariteSurfacesTests(TestCase):
     def test_commercial(self):
         self._verifier('commercial')
 
+    def test_ci_proposition_sans_economie_residentielle(self):
+        """CIQ300 — la surface proposition d'un devis industriel ou commercial
+        ne porte plus ``economie_annuelle`` ni ``payback_ans`` (modèle
+        résidentiel/BT ou étude JS ; l'argent C&I viendra de ``synthese_ci``)."""
+        for cas in ('industriel', 'commercial'):
+            with self.subTest(cas=cas):
+                spec = CAS[cas]
+                surfaces, _ = self._surfaces(self._devis(cas, spec), spec)
+                cles = [k.split('@')[0] for k in surfaces['proposition']]
+                self.assertNotIn('economie_annuelle', cles)
+                self.assertNotIn('payback_ans', cles)
+
 
 # ── Gardes du vocabulaire (aucune BD) ────────────────────────────────────────
 
