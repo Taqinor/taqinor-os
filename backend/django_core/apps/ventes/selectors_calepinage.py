@@ -85,15 +85,28 @@ def calepinage_du_devis(devis, company=None):
     calepinage = _lire(getattr(devis, 'pk', None), company)
     if calepinage is None:
         return None
-    empreinte_devis = getattr(devis, 'layout_hash', '') or ''
-    empreinte_cal = calepinage.layout_hash or ''
     return {
         'id': calepinage.pk,
         'titre': calepinage.titre or '',
-        'layout_hash': empreinte_cal or None,
-        'a_jour': (empreinte_devis == empreinte_cal
-                   if empreinte_devis and empreinte_cal else None),
+        'layout_hash': (calepinage.layout_hash or '') or None,
+        'a_jour': _conception_a_jour(devis, calepinage),
     }
+
+
+def _conception_a_jour(devis, calepinage):
+    """ACAL46 — LE prédicat « la conception du devis est celle de son
+    calepinage » : comparaison des DEUX empreintes imprimées (ACAL40), jamais
+    un recalcul de géométrie. ``True``/``False``, ou ``None`` (inconnu) dès
+    qu'une empreinte manque — on ne déclare pas « périmé » ce qu'on n'a pas
+    mesuré. Partagé par :func:`calepinage_du_devis` (badge ``a_jour``) et
+    :func:`peremption_layout_devis` (``conception_divergente``)."""
+    if devis is None or calepinage is None:
+        return None
+    empreinte_devis = getattr(devis, 'layout_hash', '') or ''
+    empreinte_cal = getattr(calepinage, 'layout_hash', '') or ''
+    if not (empreinte_devis and empreinte_cal):
+        return None
+    return empreinte_devis == empreinte_cal
 
 
 def schema_unifilaire_svg(*, devis=None, entree=None, resultat=None,
@@ -162,7 +175,7 @@ def lignes_produits_calepinage(devis):
     ]
 
 
-def peremption_layout_devis(devis):
+def peremption_layout_devis(devis, calepinage=None):
     """CAL189 — ``{layout_stale, layout_nb_panneaux}`` d'un devis.
 
     LE MÊME CALCUL QUE LA PAGE PUBLIQUE, pas un second. ``layout_stale``
@@ -170,8 +183,13 @@ def peremption_layout_devis(devis):
     (``public_views.py`` ← ``quote_engine/builder.py``) : l'API interne ne
     l'exposait nulle part, donc l'écran ERP ne pouvait pas dire au commercial
     que sa 3D ne décrit plus ce que le devis vend. Le compte de modules du
-    layout est lu par le HELPER du moteur PDF (``_panneaux_du_layout``), et les
-    comptes des LIGNES par les mêmes primitives que le reste du domaine.
+    layout est lu par le HELPER du moteur PDF (``_panneaux_du_layout``).
+
+    ACAL46 (C-ACAL-112) — les comptes des LIGNES viennent de LA règle
+    partagée ``domain.dimensionnement_devis.comptes_panneaux_valides`` (lignes
+    comptées dans les totaux — jamais une ligne optionnelle —, classifieur
+    désignation + nom du produit, deux options sans/avec) : le moteur PDF lit
+    la même, le recompte local est SUPPRIMÉ.
 
     Un document à DEUX OPTIONS a DEUX comptes valides (LAYSTALE) : le
     calepinage n'est périmé que s'il ne correspond à AUCUNE des deux — sinon on
@@ -180,35 +198,34 @@ def peremption_layout_devis(devis):
     ``layout_stale`` vaut ``False`` quand le devis ne porte AUCUNE ligne de
     panneau : il n'y a alors rien à comparer, et un « périmé » là-dessus serait
     une alerte inventée.
+
+    ACAL46 — ``calepinage`` (optionnel, le calepinage lié déjà lu par
+    l'appelant) : la réponse porte en plus ``conception_divergente`` (les deux
+    empreintes diffèrent — :func:`_conception_a_jour`, le prédicat du badge
+    ``a_jour``) et ``calepinage_nb_panneaux``. Sans calepinage fourni, ces
+    deux clés valent ``None`` (inconnu) et AUCUNE requête n'est ajoutée.
+    Clés INTERNES : jamais dans la charge publique.
     """
-    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.domain.dimensionnement_devis import (
+        comptes_panneaux_valides)
     from apps.ventes.quote_engine.builder import _panneaux_du_layout
-    from apps.ventes.services import _is_panel
 
     if devis is None:
-        return {'layout_stale': None, 'layout_nb_panneaux': None}
+        return {'layout_stale': None, 'layout_nb_panneaux': None,
+                'conception_divergente': None,
+                'calepinage_nb_panneaux': None}
     layout_nb_panneaux = _panneaux_du_layout(
         getattr(devis, 'roof_layout', None))
-
-    comptes = {}
-    for ligne in _lignes_produit_du_devis(devis):
-        if not _is_panel(getattr(ligne, 'designation', '') or ''):
-            continue
-        variante = (getattr(ligne, 'variante', '') or '')
-        cle = 'avec' if variante == 'avec' else 'sans'
-        try:
-            quantite = int(float(getattr(ligne, 'quantite', 0) or 0))
-        except (TypeError, ValueError):
-            continue
-        comptes[cle] = comptes.get(cle, 0) + quantite
-        if variante == '':
-            # Une ligne COMMUNE compte dans les deux options.
-            comptes['avec'] = comptes.get('avec', 0) + quantite
-    valides = {n for n in comptes.values() if n}
+    valides = comptes_panneaux_valides(devis)
+    a_jour = _conception_a_jour(devis, calepinage)
     return {
         'layout_stale': bool(layout_nb_panneaux and valides
                              and layout_nb_panneaux not in valides),
         'layout_nb_panneaux': layout_nb_panneaux,
+        'conception_divergente': (None if a_jour is None else not a_jour),
+        'calepinage_nb_panneaux': (
+            _panneaux_du_layout(getattr(calepinage, 'roof_layout', None))
+            if calepinage is not None else None),
     }
 
 

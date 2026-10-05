@@ -209,6 +209,30 @@ def _svg_planche_inline(svg: str) -> str:
         % (CALEPINAGE_LARGEUR_PX, CALEPINAGE_HAUTEUR_PX), svg, count=1)
 
 
+def _conception_divergente_du_devis(devis) -> bool:
+    """ACAL46 — le calepinage LIÉ a-t-il divergé du devis (empreintes
+    imprimées différentes) ? Lecture par ``apps.calepinage.selectors`` (jamais
+    ses modèles) puis LE prédicat partagé de la fiche
+    (``selectors.peremption_layout_devis`` → ``conception_divergente``).
+    ``False`` quand rien n'est mesurable (pas de calepinage, empreinte
+    absente) ; ne lève jamais — rendu seul (règle #4)."""
+    try:
+        from apps.calepinage.selectors import (
+            calepinage_du_devis as _lire_calepinage)
+        from apps.ventes.selectors import peremption_layout_devis
+
+        calepinage = _lire_calepinage(getattr(devis, 'pk', None),
+                                      getattr(devis, 'company', None))
+        if calepinage is None:
+            return False
+        return bool(peremption_layout_devis(
+            devis, calepinage=calepinage).get('conception_divergente'))
+    except Exception:  # noqa: BLE001 — une lecture ratée ne casse pas un PDF
+        logger.warning("ACAL46: divergence de conception illisible pour le "
+                       "devis %s", getattr(devis, "pk", None))
+        return False
+
+
 def _planche_calepinage(devis):
     """CAL182 — la PLANCHE COTÉE du calepinage de ce devis : (svg, empreinte).
 
@@ -2141,14 +2165,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # n'est périmé que s'il ne correspond à AUCUNE des deux variantes.
     # Hors de ce cas (document mono-option, devis non divergent — tout
     # l'existant) la comparaison est celle d'hier, au drapeau près.
+    # ACAL46 (C-ACAL-112) — les comptes VALIDES viennent de LA règle partagée
+    # avec la fiche devis (``dimensionnement_devis.comptes_panneaux_valides``,
+    # lue aussi par ``selectors.peremption_layout_devis``) : lignes comptées
+    # dans les totaux (jamais une optionnelle), désignation + nom du produit,
+    # deux options sans/avec. Le calcul inline d'ici est SUPPRIMÉ — badge et
+    # PDF ne peuvent plus diverger.
+    from apps.ventes.domain.dimensionnement_devis import (
+        comptes_panneaux_valides as _comptes_panneaux_valides)
+    # Document RÉTRÉCI à une option (L-2OPT, variante du lien public) : seul
+    # le compte de l'option RENDUE est valide (LAYSTALE) — même règle, un
+    # argument.
     layout_nb_panneaux = _panneaux_du_layout(roof_layout)
-    if panneaux_divergents and deux_options:
-        _comptes_valides = {n for n in (nb_panneaux_sans, nb_panneaux_avec)
-                            if n}
-    else:
-        _comptes_valides = {nb_panneaux}
+    _option_rendue = (('avec' if avec_ok else 'sans')
+                      if (panneaux_divergents and not deux_options) else None)
+    _comptes_valides = _comptes_panneaux_valides(devis, option=_option_rendue)
     layout_stale = bool(
-        layout_nb_panneaux and puissance_des_lignes
+        layout_nb_panneaux and _comptes_valides
         and layout_nb_panneaux not in _comptes_valides)
 
     # ── Canonical performance figures: ONE source of truth ───────────────────
@@ -3673,10 +3706,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     _veut_planche = bool(
         opts['include_calepinage'] is not False
         and (pdf_options or {}).get("_embed_calepinage_planche"))
-    if layout_stale and (_veut_affiche or _veut_planche):
+    # ACAL46 (C-ACAL-112) — ET la planche n'est pas imprimée quand le
+    # CALEPINAGE LIÉ a divergé du devis (empreintes imprimées différentes :
+    # 16 panneaux dessinés, 12 vendus, sans resynchronisation). Lu SEULEMENT
+    # sur le chemin de rendu (jamais pour la charge publique), par le prédicat
+    # partagé avec le badge ``a_jour`` (``selectors.peremption_layout_devis``).
+    _conception_divergente = bool(
+        (_veut_affiche or _veut_planche)
+        and _conception_divergente_du_devis(devis))
+    _page_retiree = layout_stale or _conception_divergente
+    if _conception_divergente:
+        avertissements_internes.append(
+            "planche : le calepinage a changé depuis la dernière "
+            "resynchronisation")
+    elif layout_stale and (_veut_affiche or _veut_planche):
         avertissements_internes.append(
             "planche de calepinage antérieure à la dernière correction")
-    if _veut_affiche and not layout_stale:
+    if _veut_affiche and not _page_retiree:
         data["roof_render"] = _roof_render_data_uri(devis)
     # PV46/PVSLD — annexe technique : les clés ne sont ajoutées QUE si le devis
     # porte une conception électrique (PV41). Sans étude, aucune clé nouvelle →
@@ -3714,7 +3760,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # ``None`` (AUTO) et sous ``True`` on demande la planche, et son absence
     # dégrade gracieusement — exactement comme l'étude et l'annexe : la page
     # n'est ni rendue ni comptée, jamais rendue blanche.
-    if _veut_planche and not layout_stale:
+    if _veut_planche and not _page_retiree:
         _planche_svg, _planche_empreinte = _planche_calepinage(devis)
         if _planche_svg:
             data["include_calepinage"] = True
