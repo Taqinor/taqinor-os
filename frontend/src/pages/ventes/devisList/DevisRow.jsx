@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux'
 import {
   Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
   Copy, Send, X, Eye, AlertTriangle, Box, ExternalLink,
-  Link2, MoreHorizontal, Bell, Share2,
+  Link2, Link2Off, MoreHorizontal, Bell, Share2,
 } from 'lucide-react'
 import { fetchDevis } from '../../../features/ventes/store/ventesSlice.js'
 import ventesApi from '../../../api/ventesApi.js'
@@ -97,7 +97,7 @@ export default function DevisRow({ d, ctx }) {
     openEmailModal, handleCopierLienProposition, handleCopierApercuInterne, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
     handleProformaPdf, handleBonCommandePdf,
-    handleChantier, handleGenererFacture,
+    handleChantier, handleGenererFacture, handleRevoquerLienPublic,
   } = ctx
   // NTI18N12 — calendrier hégirien EN PLUS de la date grégorienne (jamais en
   // remplacement, jamais stocké) : uniquement quand locale=ar ET la
@@ -714,6 +714,15 @@ export default function DevisRow({ d, ctx }) {
                 >
                   <HardHat className="size-3.5" aria-hidden="true" />
                   {d.chantier ? `Voir le chantier ${d.chantier.reference}` : 'Créer le chantier'}
+                </DropdownMenuItem>
+              )}
+              {/* ADOC131 (D-ADOC-4) — le lien public d'un devis accepté vit
+                  jusqu'à la réception du chantier + 90 jours ; le responsable
+                  peut le couper (confirmation) : proposition ET suivi → 404. */}
+              {d.statut === 'accepte' && (
+                <DropdownMenuItem onSelect={() => handleRevoquerLienPublic(d)}>
+                  <Link2Off className="size-3.5" aria-hidden="true" />
+                  Révoquer le lien client
                 </DropdownMenuItem>
               )}
               {/* VX97 — journal des changements (qui/quand/ancien→nouveau),

@@ -1401,6 +1401,10 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         devis.option_acceptee = option
         devis.save(update_fields=[
             'statut', 'date_acceptation', 'accepte_par_nom', 'option_acceptee'])
+        # ADOC131 (D-ADOC-4) — le lien public du devis reste vivant pendant
+        # le chantier (jusqu'à la réception + 90 jours) : même transaction.
+        from apps.ventes.domain.suivi import ouvrir_suivi
+        ouvrir_suivi(devis)
 
         # ── QJR134 / ES3 — L'AVAL EST DANS LA MÊME TRANSACTION ─────────────
         #

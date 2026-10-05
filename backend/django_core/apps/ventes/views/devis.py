@@ -537,6 +537,18 @@ class DevisViewSet(DevisEditionActionsMixin,
         profile.save(update_fields=['variante_pct'])
         return Response({'variante_pct': str(profile.variante_pct)})
 
+    @action(detail=True, methods=['post'], url_path='revoquer-lien-public',
+            permission_classes=[IsResponsableOrAdmin])
+    def revoquer_lien_public(self, request, pk=None):
+        """ADOC131 (D-ADOC-4) — « Révoquer le lien client » : coupe
+        immédiatement le lien public du devis (proposition ET suivi, même
+        jeton) en posant ``ShareLink.revoque_le``. Devis d'une autre société →
+        404 (``get_object`` borné à la société). Aucun statut écrit."""
+        from ..domain.suivi import revoquer_liens_publics
+        devis = self.get_object()
+        nombre, quand = revoquer_liens_publics(devis)
+        return Response({'revoques': nombre, 'revoque_le': quand})
+
     @action(detail=False, methods=['get'], url_path='prefill-site',
             permission_classes=[IsAnyRole])
     def prefill_site(self, request):

@@ -558,6 +558,8 @@
     avertissements:inconnu, consommation:objet, detail:texte, dimensionnement:inconnu, estimation_conso:inconnu, etude:inconnu, profil:objet
 - frontend/src/api/ventesApi.js :: resoudrePlanCommission -> /api/django/ventes/plans-commission/resoudre
     owner:inconnu, plan:inconnu, source:inconnu
+- frontend/src/api/ventesApi.js :: revoquerLienPublic -> /api/django/ventes/devis/<>/revoquer-lien-public
+    revoque_le:inconnu, revoques:inconnu
 - frontend/src/api/ventesApi.js :: setVarianteConfig -> /api/django/ventes/devis/variante-config
     detail:texte, variante_pct:texte
 - frontend/src/api/ventesApi.js :: shareLinkDevis -> /api/django/ventes/devis/<>/share-link

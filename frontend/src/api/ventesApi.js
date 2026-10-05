@@ -104,6 +104,10 @@ const ventesApi = {
   // UN appel atomique. Contrat : apps/ventes/contract_samples/devis_facturer_complet.json.
   facturerComplet: (devisId, { paiements = [] } = {}) =>
     api.post(`/ventes/devis/${devisId}/facturer-complet/`, { paiements }),
+  // ADOC131 (D-ADOC-4) — « Révoquer le lien client » : coupe immédiatement le
+  // lien public (proposition ET suivi, même jeton). → { revoques, revoque_le }.
+  revoquerLienPublic: (devisId) =>
+    api.post(`/ventes/devis/${devisId}/revoquer-lien-public/`),
   genererPdfDevis: (id, options = {}) => api.post(`/ventes/devis/${id}/generer-pdf/`, options),
   // WIR217 — état du rendu PDF : `pret` | `en_cours` | `echec` (+ `erreur`).
   // Le sondage lisait `fichier_pdf` SEUL : un échec définitif de la tâche
