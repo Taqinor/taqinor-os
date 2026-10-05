@@ -946,7 +946,9 @@ def _branches_micro_du_champ(conception, materiel):
 
     specs = (materiel or {}).get('optimiseur')
     if conception is None or conception.fiche_incomplete \
-            or conception.resultat is None or not est_micro_onduleur(specs):
+            or not est_micro_onduleur(specs) or (
+                conception.resultat is None
+                and not getattr(conception, 'micro_seul', False)):
         return ()
     bloc = branches_du_champ(
         conception, specs,

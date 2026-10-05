@@ -9,8 +9,10 @@ MÊME action et rendent la MÊME forme :
   déjà reprise (``deja_repris`` / ``releve``). Garde ``calepinage_voir``.
 * ``POST`` — la reprend : UN ``ReleveTerrain`` de provenance ``visite``, les
   photos rattachées à leurs pièces jointes EXISTANTES. 201 quand le relevé
-  vient d'être créé, 200 quand il existait déjà (rien n'est recréé). Garde
-  ``calepinage_gerer``. Sans visite validée : 400 qui NOMME ``visite_id`` avec
+  vient d'être créé, 200 quand il existait déjà (rien n'est recréé ; avec
+  ``{remplacer: true}`` — ACAL210 — il est mis à jour EN PLACE depuis la
+  visite). Garde ``calepinage_gerer``. Sans visite validée : 400 qui NOMME
+  ``visite_id`` avec
   le motif servi par la porte de ``visites``, et RIEN n'est écrit.
 
 L'OBJET D'ABORD (CAL29) : ``get_object()`` est borné par le queryset du
@@ -38,8 +40,11 @@ def releve_visite(self, request, pk=None):
     calepinage = self.get_object()  # borné société par get_queryset
     if request.method.lower() != 'post':
         return Response(etat_reprise(calepinage))
+    remplacer = str(request.data.get('remplacer')).strip().lower() in (
+        'true', '1')
     try:
-        reponse, cree = reprendre_visite(calepinage, user=request.user)
+        reponse, cree = reprendre_visite(calepinage, user=request.user,
+                                         remplacer=remplacer)
     except RepriseRefusee as refus:
         return Response(refus.corps(), status=status.HTTP_400_BAD_REQUEST)
     return Response(reponse, status=(status.HTTP_201_CREATED if cree

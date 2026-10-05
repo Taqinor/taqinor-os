@@ -91,8 +91,6 @@ export interface Ctx {
   // — Obstacles : sélection + glissé-dessin + glissé-déplacement (mutable) —
   /** Identifiant de l'obstacle sélectionné, ou null. */
   selectedObsId: string | null;
-  /** Compteur d'identifiants d'obstacle (obs-N). */
-  obsCounter: number;
   /** Le mode « ajout d'obstacle » est-il actif ? */
   obstacleMode: boolean;
   /** Glissé-dessin d'un obstacle en cours (point de départ) ou null. */
@@ -259,12 +257,8 @@ export interface Ctx {
   // CAL69 — zones INTERDITE/RESERVEE/PREFEREE tracées dans l'atelier, persistées telles
   // quelles sous `exclusionZones` (contrat CAL68). Absentes = aucune zone.
   exclusionZones?: ExclusionZone[];
-  zoneCounter?: number;
   /** Nature en attente de tracé : posée par le panneau, lue par `endDraw`. */
   pendingZoneNature?: ExclusionNature | null;
-  /** CAL67 — compteur d'identifiants d'objet d'environnement (env-N). Optionnel : absent
-   *  sur un `ctx` antérieur à CAL67 → `obstaclesUi.ts` l'initialise à 0 au premier ajout. */
-  envCounter?: number;
   /** CALX84/CALX100 — les BÂTIMENTS du site tels que le DOCUMENT les décrit (hauteur,
    *  étages, hauteur d'étage, provenance, relevé d'acrotère). Jusqu'ici la hauteur CAL60
    *  vivait dans une `Map` locale de `shadingUi.ts` et n'était JAMAIS sérialisée : rouvrir
@@ -341,4 +335,35 @@ export interface Ctx {
    *  le document repart inchangé, octet pour octet. Le PLAN de pose vit sous
    *  `engine` et vient du moteur serveur : l'atelier ne le recalcule jamais. */
   surfacesPose?: import('./poseSurfaces').SurfacePose[];
+  /** CALX219-223 / ACAL26 — la couche électrique du document (organes + cheminements),
+   *  écrite par `electrique3d.ts` et RELUE au boot par `appliquerHydratationAuCtx`.
+   *  Absente/null = le document ne porte pas de couche électrique. */
+  electrical?: import('./electrique3d').DocumentElectrique | null;
+  /** ACAL26 — provenance RELUE du bloc `consumption` (`source.origine`/`source.saisi_le`).
+   *  Tant qu'elle est posée, `serializeConsumption` la réémet telle quelle : rouvrir puis
+   *  enregistrer sans geste ne réhorodate jamais la saisie. null/absent = aucune relue. */
+  consSource?: import('./prefill').SourceConsommation | null;
+  /** ACAL31 — un geste sur la consommation a-t-il eu lieu dans la session ? Tant que non,
+   *  la courbe relue du document n'est jamais recomposée. */
+  consGesteSession?: boolean;
+  /** ACAL26 — la matrice d'ombrage 12×24 ENREGISTRÉE dans le document rouvert. Elle prime
+   *  sur le recalcul tant qu'aucune source d'ombrage (ombres tracées, obstacles à hauteur,
+   *  environnement) n'a changé dans la session : `signature` est l'empreinte de ces sources
+   *  au premier calcul (null tant qu'il n'a pas eu lieu). Remise à null pour de bon dès la
+   *  première modification. */
+  ombrageEnregistre?: { matrice: number[][]; signature: string | null } | null;
+  /** ACAL27 — les entrées `shadeObstructions[]` RELUES que l'atelier ne sait pas recalculer
+   *  (un `contour`, un `centre` sans bout d'ombre) : transmises telles quelles au document. */
+  shadeObstructionsNonLues?: Array<Record<string, unknown>>;
+  /** ACAL29 — le bloc `choixConception` RELU (ses clés inconnues sont retransmises). */
+  choixConceptionRelu?: Record<string, unknown> | null;
+  /** ACAL30 — les entrées `modules[]` du document relu (fusionnées en lecture seule au
+   *  catalogue de la société : un produit archivé reste résoluble, jamais remplacé par 720 Wc). */
+  modulesDuDocument?: Array<Record<string, unknown>>;
+  /** ACAL31 — le document RELU (copie), source de ce que l'atelier réémet sans geste. */
+  documentRelu?: Record<string, unknown> | null;
+  /** ACAL31 — les retraits de rive RÉGLÉS (référence stable de l'atelier), relus du document. */
+  setbacks?: import('../../lib/roofPro2').PerimeterSetbacks;
+  /** ACAL31 — le calque de fond du document (contrat CALX86), réémis par `underlayPourDocument`. */
+  underlay?: unknown;
 }

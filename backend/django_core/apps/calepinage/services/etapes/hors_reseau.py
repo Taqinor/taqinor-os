@@ -130,6 +130,9 @@ def _fiche_du_pack(contexte):
             'dod_pct': dod,
             'source_dod': source_dod,
             'rendement_ar_pct': _grandeur(specs, 'rendement_ar_pct')[0],
+            # ACAL306 — le motif nommé d'une fiche muette sur le rendement.
+            'motif_rendement': str(((specs.get('grandeurs') or {}).get(
+                'rendement_ar_pct') or {}).get('mention') or ''),
             'puissance_charge_kw': _nombre(specs.get('puissance_charge_kw')),
             'puissance_decharge_kw': _nombre(
                 specs.get('puissance_decharge_kw')),
@@ -218,6 +221,13 @@ def bloc_hors_reseau(serie, contexte=None, *, charge=None):
     conso_journaliere = total_conso / jours_couverts
 
     fiche = _fiche_du_pack(contexte)
+    if fiche['rendement_ar_pct'] is None and fiche.get('motif_rendement'):
+        # ACAL306 — même rendement que le bloc batterie : fiche muette ⇒
+        # omission NOMMÉE, aucune valeur de repli.
+        return serie, _omission(
+            fiche['motif_rendement'],
+            champ=f'{bloc_batterie.CLE_CONTEXTE}.groupes[].specs'
+                  '.rendement_ar_pct')
     try:
         rendu = dimensionner_hors_reseau(
             courbe, production,

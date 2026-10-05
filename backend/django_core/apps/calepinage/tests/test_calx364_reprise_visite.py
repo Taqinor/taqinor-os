@@ -36,17 +36,16 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.models import PhotoSite, ProvenanceTerrain, ReleveTerrain
 from apps.calepinage.services import reprise_visite as service
-from apps.calepinage.tests._m0_en_attente import sans
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT = json.loads(
     (RACINE_APP / 'contract_samples' / 'calepinage_releve_visite.json')
     .read_text(encoding='utf-8'))
 
-#: ACAL13 (M0) a posé l'état de reprise ``a_jour`` / ``ecart`` avant son
-#: producteur : ACAL210 le sert et retire cette entrée.
-EN_ATTENTE = {'a_jour': 'ACAL210', 'ecart': 'ACAL210'}
-SERVI = {etat: sans(CONTRAT[etat], EN_ATTENTE)
+#: ACAL13 (M0) avait posé l'état de reprise ``a_jour`` / ``ecart`` avant
+#: son producteur ; ACAL210 le sert : chaque état du contrat est servi tel
+#: quel (plus aucune clé en attente).
+SERVI = {etat: CONTRAT[etat]
          for etat in ('exemple', 'exemple_avant_reprise', 'exemple_vide')}
 
 #: Les cinq clés que sert la porte de ``visites`` (CALX363).
@@ -93,6 +92,13 @@ class ContratCommitteTest(SimpleTestCase):
         etat = SERVI['exemple_vide']
         self.assertEqual(service._composer_reponse(lecture_de(etat), None),
                          etat)
+
+    def test_reprise_a_corriger_porte_l_ecart(self):
+        """ACAL210 — relevé repris, visite remesurée : ``a_jour`` faux."""
+        etat = CONTRAT['exemple_a_corriger']
+        self.assertEqual(
+            service._composer_reponse(lecture_de(etat), etat['releve'],
+                                      etat['ecart']), etat)
 
     def test_le_bloc_releve_construit_depuis_des_objets(self):
         releve, photos = releve_de_l_exemple()
@@ -288,8 +294,9 @@ def url_reprise(pk):
     return f'{url_detail(pk)}releve-visite/'
 
 
-class RepriseVisiteEnBase(BaseApiCalepinage):
-    """La porte réelle, sur de vraies visites et de vraies pièces jointes."""
+class SocleRepriseVisite(BaseApiCalepinage):
+    """Le décor réel (visites, pièces jointes) — SANS test : les classes
+    filles (ici et ACAL210) n'héritent que du décor, jamais des tests."""
 
     def setUp(self):
         super().setUp()
@@ -327,6 +334,10 @@ class RepriseVisiteEnBase(BaseApiCalepinage):
 
     def _releves(self):
         return ReleveTerrain.objects.filter(calepinage=self.calepinage)
+
+
+class RepriseVisiteEnBase(SocleRepriseVisite):
+    """La porte réelle, sur de vraies visites et de vraies pièces jointes."""
 
     def test_get_sans_visite_a_la_forme_vide_du_contrat(self):
         from apps.visites.selectors import MOTIF_AUCUNE_VISITE

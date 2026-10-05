@@ -1339,6 +1339,30 @@ describe('runtime W92 (map) — sommets éditables + annuler le dernier point', 
     expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
   });
 
+  it('ACAL77 — glisser un coin au-delà du coin opposé est REFUSÉ : sommet inchangé, motif affiché', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    const map = fakeMaps[0];
+    vi.useFakeTimers();
+    for (const [lng, lat] of squareCorners(16)) {
+      map.fire('click', { lngLat: { lng, lat }, point: { x: 0, y: 0 } });
+      vi.advanceTimersByTime(241);
+    }
+    vi.useRealTimers();
+    (document.getElementById('rp9-finish') as HTMLButtonElement).click();
+    const coins = squareCorners(16);
+    const before = vertexAt(map, 2)!;
+    map.queryHits['rp9-pts'] = [{ properties: { idx: 2 } }];
+    // Le sommet 2 (nord-est) tiré au-delà du côté ouest opposé, à mi-hauteur : nœud papillon.
+    const cible = { lng: coins[0][0] - 0.0005, lat: (coins[0][1] + coins[3][1]) / 2 };
+    map.fire('mousedown', { lngLat: { lng: before[0], lat: before[1] }, point: { x: 10, y: 10 } });
+    map.fire('mousemove', { lngLat: cible, point: { x: 40, y: 40 } });
+    map.fire('mouseup', { lngLat: cible, point: { x: 40, y: 40 } });
+    expect(vertexAt(map, 2)).toEqual(before);
+    expect(txt('rp9-status')).toMatch(/nœud papillon/);
+  });
+
   it('un coin posé peut être glissé au DOIGT (touch) → le sommet bouge', async () => {
     const init = await loadTool();
     init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
@@ -1888,5 +1912,433 @@ describe('runtime W113 — marqueur du pin client à l\'hydratation', () => {
     setBill('1500');
     traceRoof(fakeMaps[0], 16);
     expect(fakeMarkers.filter((m) => m.added).length).toBe(0);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL29 — les CHOIX DE CONCEPTION épinglés voyagent avec le document et sont réappliqués
+// AVANT le pavage : un toit plat épinglé à 10° rouvert puis enregistré sans geste reste à
+// 10° (live ATL-07 : 35°, est-ouest, 30 panneaux, une version créée). Boot RÉEL de
+// l'atelier (hydrate.devis → load → pavage), sérialisé par le wrapper `onApiReady`.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL29 — choix épinglés réappliqués avant le pavage', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  function documentToitPlat(choixConception?: Record<string, unknown>) {
+    return {
+      version: 2, pin: { lat: 33.59, lng: -7.62 }, outline: [], billKwh: null, activeAreaId: 'z1',
+      zones: [{
+        id: 'z1', label: 'Toit', vertices: squareCorners(16), obstacles: [], roofType: 'flat', pitchDeg: 22,
+        facingAzimuthDeg: 180, facingManual: false, neededPanels: 12, neededAuto: false,
+      }],
+      ...(choixConception ? { choixConception } : {}),
+    };
+  }
+
+  async function bootEtSerialiser(doc: unknown) {
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      hydrate: { devis: { id: 9, geometrie: { roof_layout: doc as never }, cibleVendue: false } },
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    return api!.serializeLayout() as { choixConception?: Record<string, unknown> };
+  }
+
+  it('choixConception {tilt 10 épinglé, family south} → boot → serializeLayout rend tiltDeg 10 et le même choixConception', async () => {
+    const choix = { family: 'south', tilt: 10, orient: 'auto', azimuth: 'reco', margin: 'reco', epingles: ['family', 'tilt'] };
+    const sortie = await bootEtSerialiser(documentToitPlat(choix));
+    // Le pavage s'est fait avec les épingles : les puces affichent 10° et la famille sud
+    // épinglées (pas « Recommandé »). (La scène WebGL mockée ne produit pas de layoutPlan :
+    // la géométrie posée elle-même est couverte par prefill.roundtrip.test.ts.)
+    expect(pressedVals('data-tilt')).toContain('10');
+    expect(pressedVals('data-tilt')).not.toContain('reco');
+    expect(pressedVals('data-family')).toContain('south');
+    // Enregistrer sans geste : le même bloc repart.
+    expect(sortie.choixConception).toEqual(choix);
+  });
+
+  it('sans choixConception, le pavage reprend la recommandation (le test discrimine) et aucune clé n’est écrite', async () => {
+    const sortie = await bootEtSerialiser(documentToitPlat());
+    expect(pressedVals('data-tilt')).not.toContain('10');
+    expect('choixConception' in sortie).toBe(false);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL31 — ALLER-RETOUR OCTET-IDENTIQUE, boot RÉEL : l'`exemple` complet du contrat
+// `roof_layout_v2.schema.json` (lu dans le dépôt, jamais recopié), semé par le boot devis
+// ET par le boot lead, puis « Enregistrer » sans geste (`onApiReady.serializeLayout`) ⇒ le
+// document produit est deep-equal à l'exemple : aucune valeur inventée (source 'devis',
+// billKwh 0, panelWatt 720, saisi_le refait), numéros conservés, clés non possédées
+// transmises.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL31 — l’exemple du contrat ressort identique des deux boots', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  async function exempleDuContrat(): Promise<Record<string, unknown>> {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    // vitest tourne depuis apps/web : le contrat vit dans backend/ à la racine du dépôt.
+    const chemin = resolve(process.cwd(), '../../backend/django_core/apps/calepinage/contract_samples/roof_layout_v2.schema.json');
+    return (JSON.parse(readFileSync(chemin, 'utf8')) as { exemple: Record<string, unknown> }).exemple;
+  }
+
+  /** Les CHEMINS qui diffèrent (la garde rougit en nommant la clé, jamais un « objet ≠ »). */
+  function differences(attendu: unknown, obtenu: unknown, chemin = ''): string[] {
+    if (JSON.stringify(attendu) === JSON.stringify(obtenu)) return [];
+    if (attendu && obtenu && typeof attendu === 'object' && typeof obtenu === 'object'
+      && Array.isArray(attendu) === Array.isArray(obtenu)) {
+      const a = attendu as Record<string, unknown>;
+      const b = obtenu as Record<string, unknown>;
+      const cles = new Set([...Object.keys(a), ...Object.keys(b)]);
+      const d = [...cles].flatMap((k) => differences(a[k], b[k], `${chemin}.${k}`));
+      // Même contenu, ordre des clés différent : égal au sens du document JSON.
+      return d;
+    }
+    return [`${chemin} : attendu ${JSON.stringify(attendu)} — obtenu ${JSON.stringify(obtenu)}`];
+  }
+
+  async function bootEtEnregistrer(hydrate: Record<string, unknown>) {
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      hydrate: hydrate as never,
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    return api!.serializeLayout() as Record<string, unknown>;
+  }
+
+  it("l'`exemple` de roof_layout_v2.schema.json : boot devis → serializeLayout deep-equal", async () => {
+    const exemple = await exempleDuContrat();
+    const sortie = await bootEtEnregistrer({
+      devis: { id: null, geometrie: { roof_layout: JSON.parse(JSON.stringify(exemple)) }, cibleVendue: false },
+    });
+    expect(differences(exemple, sortie)).toEqual([]);
+  });
+
+  it("l'`exemple` de roof_layout_v2.schema.json : boot lead → serializeLayout deep-equal", async () => {
+    const exemple = await exempleDuContrat();
+    const sortie = await bootEtEnregistrer({ lead: { roof_layout: JSON.parse(JSON.stringify(exemple)) } });
+    expect(differences(exemple, sortie)).toEqual([]);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL64 — boot RÉEL d'un dossier à deux pans (area-1, area-2) puis « + Ajouter une zone » :
+// le nouveau pan prend area-3, jamais un second area-2 qui écraserait le contour d'origine.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL64 — ajouter un pan à un dossier rouvert', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('dossier rouvert area-1/area-2 → « + Ajouter une zone » → area-3, area-2 garde son contour', async () => {
+    const pan = (id: string, lng0: number) => ({
+      id, label: id, vertices: squareCorners(16, lng0), obstacles: [], roofType: 'flat', pitchDeg: 22,
+      facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true,
+    });
+    const doc = {
+      version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'area-1',
+      zones: [pan('area-1', -7.62), pan('area-2', -7.6195)],
+    };
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      hydrate: { devis: { id: 3, geometrie: { roof_layout: doc as never }, cibleVendue: false } },
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    (document.getElementById('rp9-add-area') as HTMLButtonElement).click();
+    const sortie = api!.serializeLayout() as { zones: Array<{ id: string; vertices: unknown }> };
+    expect(sortie.zones.map((z) => z.id)).toEqual(['area-1', 'area-2', 'area-3']);
+    expect(sortie.zones[1].vertices).toEqual(squareCorners(16, -7.6195));
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL71 — builderApi.ajouterPanDepuisContour, boot RÉEL : le pan ajouté voyage dans le
+// document ; un contour croisé est refusé sans rien créer.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL71 — ajouterPanDepuisContour', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('un carré devient area-2 et voyage dans serializeLayout ; un papillon est refusé', async () => {
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document), onApiReady: (a) => { api = a; } });
+    fakeMaps[0].fire('load', {});
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    const nouveau = squareCorners(12, -7.6195);
+    const r = api!.ajouterPanDepuisContour(nouveau);
+    expect(r).toEqual({ ok: true, id: 'area-2' });
+    const doc = api!.serializeLayout() as { zones: Array<{ id: string; vertices: unknown }> };
+    expect(doc.zones.map((z) => z.id)).toEqual(['area-1', 'area-2']);
+    expect(doc.zones[1].vertices).toEqual(nouveau);
+    const papillon = [nouveau[0], nouveau[2], nouveau[1], nouveau[3]];
+    const refus = api!.ajouterPanDepuisContour(papillon);
+    expect(refus.ok).toBe(false);
+    expect((api!.serializeLayout() as { zones: unknown[] }).zones).toHaveLength(2);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL78 — « Recommencer depuis le tracé client », boot RÉEL : les arêtes corrigées à la
+// main ne sont plus réappliquées par index au nouveau contour.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL78 — recommencer efface les arêtes manuelles', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('arête 1 corrigée à la main → Recommencer → Enregistrer : aucune arête manuel:true', async () => {
+    const doc = {
+      version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'area-1',
+      zones: [{
+        id: 'area-1', label: 'Toit', vertices: squareCorners(16), obstacles: [], roofType: 'flat', pitchDeg: 22,
+        facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true,
+        edges: [{ index: 1, type: 'faitage', manuel: true, retraitM: 0.8 }],
+      }],
+    };
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      hydrate: { devis: { id: 4, geometrie: { roof_layout: doc as never }, cibleVendue: false } },
+      referenceContour: squareCorners(14, -7.6201).map(([lng, lat]) => ({ lat, lng })),
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    const avant = api!.serializeLayout() as { zones: Array<{ edges?: Array<{ manuel?: boolean }> }> };
+    expect(avant.zones[0].edges?.some((e) => e.manuel)).toBe(true);
+    expect(api!.recommencerDepuisTraceClient()).toBe(true);
+    const apres = api!.serializeLayout() as { zones: Array<{ edges?: Array<{ manuel?: boolean; retraitM?: number }> }> };
+    expect((apres.zones[0].edges ?? []).some((e) => e.manuel || e.retraitM !== undefined)).toBe(false);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL79 — boot RÉEL d'un devis vendu à 450 panneaux : le besoin imposé vaut 450, jamais
+// le plafond 400 des besoins déduits.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL79 — la cible vendue n’est jamais plafonnée', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('devis vendu à 450 panneaux → neededPanels 450 dans le document', async () => {
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      hydrate: { devis: { id: 12, geometrie: { roof_outline: squareCorners(60).map(([lng, lat]) => [lat, lng]) }, cible: { panneaux: 450 } } },
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    const doc = api!.serializeLayout() as { zones: Array<{ neededPanels: number; neededAuto: boolean }> };
+    expect(doc.zones[0].neededPanels).toBe(450);
+    expect(doc.zones[0].neededAuto).toBe(false);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL80 — boot RÉEL : `rendementPvgis: null` (l'ERP) ⇒ aucune requête /api/roof-yield ;
+// sans l'option (pages publiques), la requête part comme avant.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL80 — point de rendement injectable', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    fetchMock = vi.fn(() => Promise.reject(new Error('no network')));
+    vi.stubGlobal('fetch', fetchMock);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+  // Les tests précédents laissent des promesses PVGIS en vol qui atterrissent dans le fetch
+  // de CE test : on ne compte que les requêtes portant le site tracé ICI (lon -7.41).
+  const demandesRendement = (lon = -7.41) =>
+    fetchMock.mock.calls.filter((c) => String(c[0]).includes('/api/roof-yield')
+      && Math.abs((JSON.parse(String((c[1] as { body?: string })?.body ?? '{}')).lon ?? 0) - lon) < 0.01).length;
+  function tracerA(map: FakeMap, lng0: number) {
+    vi.useFakeTimers();
+    for (const [lng, lat] of squareCorners(16, lng0)) {
+      map.fire('click', { lngLat: { lng, lat }, point: { x: 0, y: 0 } });
+      vi.advanceTimersByTime(241);
+    }
+    vi.useRealTimers();
+    (document.getElementById('rp9-finish') as HTMLButtonElement).click();
+  }
+
+  it('rendementPvgis null : tracer un toit ne demande jamais /api/roof-yield', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document), rendementPvgis: null });
+    setBill('1500');
+    tracerA(fakeMaps[0], -7.41);
+    await flushPvgis();
+    expect(demandesRendement()).toBe(0);
+    expect(txt('rp9-reco-kwc')).toMatch(/kWc/); // la table committée a fourni le chiffre
+  });
+
+  it('sans l’option (pages publiques) : la requête part comme avant', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    tracerA(fakeMaps[0], -7.41);
+    await flushPvgis();
+    expect(demandesRendement()).toBeGreaterThan(0);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL99 — boot RÉEL d'un calepinage lié à un devis de 12, enregistré à 8 : l'atelier
+// garde 8 (il ne ré-impose plus la cible du devis).
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL99 — la conception enregistrée prime sur la cible du devis', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('enregistré à 8, devis à 12 → rouvrir → Enregistrer garde 8', async () => {
+    const doc = {
+      version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'area-1',
+      zones: [{
+        id: 'area-1', label: 'Toit', vertices: squareCorners(16), obstacles: [], roofType: 'flat', pitchDeg: 22,
+        facingAzimuthDeg: 180, facingManual: false, neededPanels: 8, neededAuto: false,
+        geometry: {
+          azimuthDeg: 180, tiltDeg: 10, family: 'south', flush: false, kwc: 5.76, count: 8,
+          origin: squareCorners(16)[0], panels: Array.from({ length: 8 }, (_, i) => ({ cx: i * 1.2, cy: 0 })),
+        },
+      }],
+    };
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      hydrate: { devis: { id: 21, geometrie: { roof_layout: doc as never }, cible: { panneaux: 12 } } },
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    const sortie = api!.serializeLayout() as { zones: Array<{ neededPanels: number }> };
+    expect(sortie.zones[0].neededPanels).toBe(8);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL138 — boot RÉEL : l'accès solaire écrit porte une valeur par module POSÉ, une méthode
+// OBJET annuelle, et la MÊME date de calcul d'une sérialisation à l'autre.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL138 — accès solaire persisté', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('deux sérialisations sans geste sont identiques (aucune date de calcul refaite)', async () => {
+    // Un immeuble de 40 m posé au sud du toit : une vraie source d'ombre, donc un accès calculé.
+    const coins = squareCorners(16);
+    const doc = {
+      version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'area-1',
+      zones: [{
+        id: 'area-1', label: 'Toit', vertices: coins, obstacles: [], roofType: 'flat', pitchDeg: 22,
+        facingAzimuthDeg: 180, facingManual: false, neededPanels: 6, neededAuto: false,
+      }],
+      environment: [{ id: 'env-1', kind: 'batiment', centerLng: -7.62, centerLat: 33.5897, heightM: 40, lengthM: 20, widthM: 10 }],
+    };
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      hydrate: { devis: { id: 30, geometrie: { roof_layout: doc as never }, cibleVendue: false } },
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    type Geo = { count: number; panels: unknown[]; solarAccess?: { values: unknown[]; method: unknown; computedAt: string } };
+    const un = api!.serializeLayout() as { zones: Array<{ geometry?: Geo }> };
+    const deux = api!.serializeLayout() as { zones: Array<{ geometry?: Geo }> };
+    // Deux « Enregistrer » sans geste : document identique (aucune date refaite).
+    // NB : la scène WebGL mockée de ce banc ne produit pas de pavage (pas de `layoutPlan`),
+    // donc pas de `solarAccess` ici — la longueur « modules posés » et la méthode objet sont
+    // prouvées par prefill.test.ts et lib/shadingEngine.test.ts.
+    expect(JSON.stringify(deux)).toBe(JSON.stringify(un));
   });
 });

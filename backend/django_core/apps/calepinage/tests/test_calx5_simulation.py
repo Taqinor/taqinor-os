@@ -667,7 +667,11 @@ class EcritureTest(TestCase):
             resultat={'entree_electrique': {'phases': 3},
                       'pertes': [{'poste': 'soiling', 'pct': 2.0}]})
 
-        service._fusionner(calepinage, {'production': {'total': {}}})
+        # ACAL57 — ``_fusionner`` a disparu au profit de l'écrivain unique.
+        from apps.calepinage.services.resultat import modifier_resultat
+
+        modifier_resultat(calepinage, lambda resultat: resultat.update(
+            {'production': {'total': {}}}))
 
         calepinage.refresh_from_db()
         self.assertEqual(calepinage.resultat['entree_electrique'],

@@ -36,8 +36,8 @@ const here = dirname(fileURLToPath(import.meta.url))
 const GOLDEN_PATH = join(here, 'calepinageApi.golden.json')
 const API_PATH = join(here, 'calepinageApi.js')
 
-// Valeur CAPTURÉE le 04/10/2026 (79 `calepinages` + 3 `moteur` + 6 `parametres`).
-const NOMBRE_CLES_EXTRAITES = 88
+// Valeur CAPTURÉE le 04/10/2026 (79 `calepinages` + 3 `moteur` + 6 `parametres`, puis +2 en vague B ACAL).
+const NOMBRE_CLES_EXTRAITES = 90
 
 /* ── L'axios factice ENREGISTREUR (module autonome, servi en data: URL) ──── */
 const AXIOS_ENREGISTREUR = `
@@ -161,12 +161,12 @@ test('SPL291 — le golden couvre toutes les clés de feuille + le CRUD partagé
   for (const m of ['list', 'get', 'create', 'update', 'remove']) {
     assert.ok(cles.includes(`calepinages.${m}`), `crud('calepinages').${m} absent du golden`)
   }
-  // 88 clés de feuille + 5 méthodes CRUD.
+  // 90 clés de feuille + 5 méthodes CRUD.
   assert.equal(cles.length, NOMBRE_CLES_EXTRAITES + 5)
   for (const id of cles) assert.ok(golden[id].length >= 1, `${id} n'a émis aucun appel HTTP`)
 })
 
-test('SPL291 — extraireCles(calepinageApi.js) rend exactement les 88 clés capturées', () => {
+test('SPL291 — extraireCles(calepinageApi.js) rend exactement les 90 clés capturées', () => {
   const cles = extraireCles(readFileSync(API_PATH, 'utf8'))
   assert.equal(cles.length, NOMBRE_CLES_EXTRAITES)
   const runtime = new Set(Object.keys(golden))

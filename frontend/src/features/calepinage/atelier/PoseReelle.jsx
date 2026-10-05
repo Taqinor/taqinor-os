@@ -31,16 +31,25 @@ function ecartLisible(ecart) {
 }
 
 /** Les champs de saisie d'une réponse du serveur, pan par pan. */
+function saisieDe(ligne) {
+  return {
+    modules: ligne.modules_poses === null || ligne.modules_poses === undefined
+      ? ''
+      : String(ligne.modules_poses),
+    position: ligne.ecarts_position || '',
+    // ACAL246 - la date de releve est PAR LIGNE, prefillee depuis le serveur ;
+    // `dateModifiee` : l'utilisateur l'a changee (seule alors elle est envoyee).
+    date: ligne.releve_le || '',
+    dateModifiee: false,
+    brouillon: false,
+  }
+}
+
+const VIDE = { modules: '', position: '', date: '', dateModifiee: false, brouillon: false }
+
 function saisiesDe(lignes) {
   const saisies = {}
-  for (const ligne of lignes || []) {
-    saisies[ligne.pan] = {
-      modules: ligne.modules_poses === null || ligne.modules_poses === undefined
-        ? ''
-        : String(ligne.modules_poses),
-      position: ligne.ecarts_position || '',
-    }
-  }
+  for (const ligne of lignes || []) saisies[ligne.pan] = saisieDe(ligne)
   return saisies
 }
 
@@ -50,19 +59,23 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
 
   const [etat, setEtat] = useState(null)
   const [saisies, setSaisies] = useState({})
-  // La date du relevé est SAISIE (jamais la date du jour devinée) : vide tant
-  // que personne ne l'a donnée — le serveur refuse alors en nommant `releve_le`.
-  const [releveLe, setReleveLe] = useState('')
   const [erreurLecture, setErreurLecture] = useState(null)
   // `{ pan, champs: {champ: message} }` — le pan dont la saisie a été refusée.
   const [refus, setRefus] = useState(null)
   const [enCours, setEnCours] = useState(null)
   const [message, setMessage] = useState(null)
 
-  const appliquer = useCallback((res) => {
+  // `pan` : seule CETTE ligne est rehydratee (les brouillons des autres pans
+  // survivent a un enregistrement) ; `null` : aucune ; absent : toute la grille.
+  const appliquer = useCallback((res, pan) => {
     const donnees = res?.data && typeof res.data === 'object' ? res.data : {}
     setEtat(donnees)
-    setSaisies(saisiesDe(donnees.lignes))
+    if (pan === undefined) {
+      setSaisies(saisiesDe(donnees.lignes))
+    } else if (pan !== null) {
+      const ligne = (donnees.lignes || []).find((l) => l.pan === pan)
+      if (ligne) setSaisies((s) => ({ ...s, [pan]: saisieDe(ligne) }))
+    }
     return donnees
   }, [])
 
@@ -76,7 +89,13 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
   useEffect(() => { charger() }, [charger])
 
   const majSaisie = (pan, champ, valeur) => setSaisies((s) => ({
-    ...s, [pan]: { ...(s[pan] || { modules: '', position: '' }), [champ]: valeur },
+    ...s,
+    [pan]: {
+      ...(s[pan] || VIDE),
+      [champ]: valeur,
+      brouillon: true,
+      ...(champ === 'date' ? { dateModifiee: true } : {}),
+    },
   }))
 
   const corpsRefus = (err, repli) => {
@@ -85,18 +104,21 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
   }
 
   const enregistrer = (pan) => {
-    const saisie = saisies[pan] || { modules: '', position: '' }
+    const saisie = saisies[pan] || VIDE
     setEnCours(pan)
     setRefus(null)
     setMessage(null)
-    Promise.resolve(calepinageApi.calepinages.enregistrerPoseReelle(calepinageId, {
+    const corps = {
       pan,
       modules_poses: saisie.modules,
       ecarts_position: saisie.position,
-      releve_le: releveLe,
-    }))
+    }
+    // La date n'est envoyee que si modifiee : une correction du texte conserve
+    // la date et l'auteur du releve (ACAL245).
+    if (saisie.dateModifiee) corps.releve_le = saisie.date
+    Promise.resolve(calepinageApi.calepinages.enregistrerPoseReelle(calepinageId, corps))
       .then((res) => {
-        appliquer(res)
+        appliquer(res, pan)
         setMessage(`Pose du pan ${pan} enregistrée.`)
       })
       .catch((err) => setRefus({ pan, champs: corpsRefus(err, 'La saisie a été refusée par le serveur.') }))
@@ -109,10 +131,15 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
     setMessage(null)
     Promise.resolve(calepinageApi.calepinages.creerVersionPoseReelle(calepinageId))
       .then((res) => {
-        const donnees = appliquer(res)
-        setMessage(donnees.version_creee
-          ? `Version n° ${donnees.version_creee} gelée depuis les écarts.`
-          : 'Aucune version n’a été gelée.')
+        // Les brouillons sont conservés : la version ne rehydrate aucune ligne.
+        const donnees = appliquer(res, null)
+        let texte = 'Aucune version n’a été gelée.'
+        if (donnees.version_creee) {
+          texte = res?.status === 200
+            ? `Version n° ${donnees.version_creee} déjà gelée (écarts inchangés).`
+            : `Version n° ${donnees.version_creee} gelée depuis les écarts.`
+        }
+        setMessage(texte)
       })
       .catch((err) => setRefus({ pan: null, champs: corpsRefus(err, 'La version a été refusée par le serveur.') }))
       .finally(() => setEnCours(null))
@@ -166,20 +193,9 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
               : `total posé ${etat.total_pose}`}
           </p>
 
-          <label className="mt-3 block" data-testid="cal-pose-champ-releve_le">
-            <span className="tech-label text-lune-faint">Relevé le</span>
-            <input
-              type="date"
-              value={releveLe}
-              onChange={(e) => setReleveLe(e.target.value)}
-              className="mt-1 rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
-            />
-          </label>
-          {refus?.champs?.releve_le && (
-            <p role="alert" data-testid="cal-pose-erreur-releve_le" className="mt-1 text-xs text-red-300">
-              {refus.champs.releve_le}
-            </p>
-          )}
+          <p className="mt-2 text-xs text-lune-faint" data-testid="cal-pose-brouillon-note">
+            Les saisies non enregistrées ne sont pas conservées si vous quittez la page.
+          </p>
 
           <table className="mt-4 w-full text-sm" role="grid" data-testid="cal-pose-grille">
             <thead>
@@ -188,13 +204,15 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
                 <th scope="col">Prévu</th>
                 <th scope="col">Posé</th>
                 <th scope="col">Écart</th>
+                <th scope="col">Relevé le</th>
                 <th scope="col">Écarts de position</th>
                 <th scope="col"><span className="sr-only">Action</span></th>
               </tr>
             </thead>
             <tbody>
               {lignes.map((ligne) => {
-                const saisie = saisies[ligne.pan] || { modules: '', position: '' }
+                const saisie = saisies[ligne.pan] || VIDE
+                const erreurDate = erreurDe(ligne.pan, 'releve_le')
                 const erreurPan = erreurDe(ligne.pan, 'pan')
                 const erreurModules = erreurDe(ligne.pan, 'modules_poses')
                 return (
@@ -232,6 +250,31 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
                       {ligne.mention && (
                         <p className="mt-1 text-xs text-lune-faint" data-testid={`cal-pose-mention-${ligne.pan}`}>
                           {ligne.mention}
+                        </p>
+                      )}
+                    </td>
+                    <td className="py-2">
+                      <input
+                        type="date"
+                        aria-label={`Relevé le — ${ligne.pan}`}
+                        data-testid={`cal-pose-date-${ligne.pan}`}
+                        value={saisie.date}
+                        onChange={(e) => majSaisie(ligne.pan, 'date', e.target.value)}
+                        className="rounded border border-white/15 bg-black/30 px-2 py-1 text-white"
+                      />
+                      {ligne.releve_par?.nom_complet && (
+                        <p className="mt-1 text-xs text-lune-faint" data-testid={`cal-pose-auteur-${ligne.pan}`}>
+                          {`par ${ligne.releve_par.nom_complet}`}
+                        </p>
+                      )}
+                      {erreurDate && (
+                        <p role="alert" data-testid={`cal-pose-erreur-releve_le-${ligne.pan}`} className="mt-1 text-xs text-red-300">
+                          {erreurDate}
+                        </p>
+                      )}
+                      {saisie.brouillon && (
+                        <p className="mt-1 text-xs text-brass-300" data-testid={`cal-pose-brouillon-${ligne.pan}`}>
+                          Brouillon non enregistré
                         </p>
                       )}
                     </td>

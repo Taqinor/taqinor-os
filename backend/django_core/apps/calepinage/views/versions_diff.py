@@ -36,11 +36,6 @@ __all__ = ['versions_diff']
 INTROUVABLE = 'Version introuvable.'
 
 
-def _identifiant(brut):
-    texte = str(brut or '').strip()
-    return int(texte) if texte.isdigit() and int(texte) > 0 else None
-
-
 # Le paramètre de chemin ``version_id`` n'est pas un champ du modèle pivot :
 # sans cette déclaration, drf-spectacular ne sait pas le typer (même
 # déclaration que ``restaurer``, ``views/calepinages.py``).
@@ -62,9 +57,12 @@ def versions_diff(self, request, pk=None, version_id=None):
     from .. import selectors
     from ..services.diff_versions import comparer_versions, etat_courant
 
+    from .calepinages import _identifiant_ou_404
+
     calepinage = self.get_object()  # borné société par get_queryset
     historique = selectors.versions(calepinage)
-    ident = _identifiant(version_id)
+    # ACAL277 — LA conversion des cinq routes à identifiant de chemin.
+    ident = _identifiant_ou_404(version_id)
     gauche = historique.filter(pk=ident).first() if ident else None
     if gauche is None:
         return Response({'detail': INTROUVABLE},
@@ -75,7 +73,7 @@ def versions_diff(self, request, pk=None, version_id=None):
     if brut in (None, ''):
         droite = etat_courant(calepinage)
     else:
-        contre = _identifiant(brut)
+        contre = _identifiant_ou_404(brut)
         if contre is None:
             return Response(
                 {'contre': ("Le paramètre « contre » attend l'identifiant "

@@ -126,14 +126,14 @@ describe('PanneauDocuments — bascule sur `documents/` (CALX320)', () => {
   })
 
   it('« ou_saisir » devient un LIEN vers l’onglet que NOMME le serveur (`manque[].onglet`, ACAL14)', async () => {
-    servirInventaire('exemple') // dossier_fin_chantier : images → onglet « documents »
+    servirInventaire('exemple') // dossier_fin_chantier : pieces → onglet « documents »
 
     rendre()
 
     const manque = documentDe('exemple', 'dossier_fin_chantier').manque
-      .find((m) => m.champ === 'images')
+      .find((m) => m.champ === 'pieces')
     expect(manque.onglet).toBe('documents')
-    const lien = await screen.findByTestId('cal-doc-manque-lien-dossier_fin_chantier-images')
+    const lien = await screen.findByTestId('cal-doc-manque-lien-dossier_fin_chantier-pieces')
     expect(lien).toHaveAttribute('href', `/calepinage/1?onglet=${manque.onglet}`)
     expect(lien).toHaveTextContent(manque.ou_saisir)
   })

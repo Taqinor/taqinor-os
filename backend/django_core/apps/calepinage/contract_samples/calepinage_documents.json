@@ -60,7 +60,7 @@
           {
             "champ": "roof_layout.zones[].geometry.solarAccess.values",
             "libelle": "Accès solaire par module (matrice d'ombrage)",
-            "ou_saisir": "Calculer l'ombrage sur l'onglet Toiture avant d'imprimer ce rapport.",
+            "ou_saisir": "Calculer l'ombrage dans l'atelier 3D avant d'imprimer ce rapport.",
             "onglet": null
           }
         ],
@@ -97,12 +97,12 @@
         "endpoint": "/api/django/calepinage/calepinages/1/plan-cablage.pdf/",
         "produit_par": "serveur",
         "disponible": false,
-        "motif_indisponible": "Aucun schéma unifilaire tracé et aucun cheminement mesuré : le plan de câblage assemble les deux, et aucun des deux n'existe encore.",
+        "motif_indisponible": "Aucun chaînage électrique calculé : le plan de câblage dessine les chaînes affectées, et aucune n'existe encore.",
         "manque": [
           {
             "champ": "electrique.chainage",
             "libelle": "Schéma unifilaire (chaînage électrique)",
-            "ou_saisir": "Chaîner l'électrique sur l'onglet Électrique.",
+            "ou_saisir": "Désigner le module et l'onduleur dans l'onglet Équipements électriques, puis chaîner dans l'onglet Affectation des chaînes.",
             "onglet": "affectation"
           }
         ],
@@ -131,8 +131,7 @@
         "versions": [],
         "methode": "GET",
         "langues": [
-          "fr",
-          "en"
+          "fr"
         ],
         "apercu": true,
         "autres_formats": []
@@ -156,17 +155,17 @@
       },
       {
         "code": "dossier_fin_chantier",
-        "libelle": "Dossier de fin de chantier (pièces fusionnées + preuves terrain)",
+        "libelle": "Dossier de fin de chantier (pièces techniques fusionnées)",
         "format": "pdf",
         "endpoint": "/api/django/calepinage/calepinages/1/dossier-fin-chantier/",
         "produit_par": "serveur",
         "disponible": false,
-        "motif_indisponible": "Aucune preuve terrain déposée : le dossier de fin de chantier fusionne les pièces techniques et les preuves terrain, et la seconde manque encore.",
+        "motif_indisponible": "Aucune pièce à fusionner : le dossier de fin de chantier assemble le plan de pose, le document as-built, le plan de câblage et le manuel, et aucune n'est disponible.",
         "manque": [
           {
-            "champ": "images",
-            "libelle": "Preuves terrain (photos)",
-            "ou_saisir": "Déposer au moins une photo de fin de chantier depuis l'onglet Documents.",
+            "champ": "pieces",
+            "libelle": "Au moins une pièce fusionnable (plan de pose, as-built, plan de câblage, manuel)",
+            "ou_saisir": "Enregistrer une conception dans l'atelier 3D, puis ouvrir l'onglet Documents.",
             "onglet": "documents"
           }
         ],
@@ -180,7 +179,7 @@
       },
       {
         "code": "diagramme_pertes",
-        "libelle": "Diagramme de pertes (cascade, capturé par le navigateur)",
+        "libelle": "Diagramme de pertes (cascade des pertes)",
         "format": "svg",
         "endpoint": "/api/django/calepinage/calepinages/1/diagramme-pertes.svg/",
         "produit_par": "serveur",
@@ -190,7 +189,8 @@
         "versions": [],
         "methode": "GET",
         "langues": [
-          "fr"
+          "fr",
+          "en"
         ],
         "apercu": false,
         "autres_formats": []
@@ -207,8 +207,7 @@
         "versions": [],
         "methode": "GET",
         "langues": [
-          "fr",
-          "en"
+          "fr"
         ],
         "apercu": true,
         "autres_formats": []
@@ -242,7 +241,7 @@
           {
             "champ": "roof_layout",
             "libelle": "Conception enregistrée (toiture et modules)",
-            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture.",
+            "ou_saisir": "Dessiner et enregistrer une conception dans l'atelier 3D.",
             "onglet": null
           }
         ],
@@ -267,7 +266,7 @@
           {
             "champ": "roof_layout",
             "libelle": "Conception enregistrée (toiture et modules)",
-            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture.",
+            "ou_saisir": "Dessiner et enregistrer une conception dans l'atelier 3D.",
             "onglet": null
           }
         ],
@@ -292,7 +291,7 @@
           {
             "champ": "roof_layout",
             "libelle": "Conception enregistrée (toiture et modules)",
-            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture.",
+            "ou_saisir": "Dessiner et enregistrer une conception dans l'atelier 3D.",
             "onglet": null
           }
         ],
@@ -316,7 +315,7 @@
           {
             "champ": "roof_layout",
             "libelle": "Conception enregistrée (toiture et modules)",
-            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture.",
+            "ou_saisir": "Dessiner et enregistrer une conception dans l'atelier 3D.",
             "onglet": null
           }
         ],
@@ -345,15 +344,14 @@
           {
             "champ": "roof_layout",
             "libelle": "Conception enregistrée (toiture et modules)",
-            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture.",
+            "ou_saisir": "Dessiner et enregistrer une conception dans l'atelier 3D.",
             "onglet": null
           }
         ],
         "versions": [],
         "methode": "GET",
         "langues": [
-          "fr",
-          "en"
+          "fr"
         ],
         "apercu": true,
         "autres_formats": []
@@ -370,7 +368,7 @@
           {
             "champ": "roof_layout",
             "libelle": "Conception enregistrée (toiture et modules)",
-            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture.",
+            "ou_saisir": "Dessiner et enregistrer une conception dans l'atelier 3D.",
             "onglet": null
           }
         ],
@@ -384,7 +382,7 @@
       },
       {
         "code": "dossier_fin_chantier",
-        "libelle": "Dossier de fin de chantier (pièces fusionnées + preuves terrain)",
+        "libelle": "Dossier de fin de chantier (pièces techniques fusionnées)",
         "format": "pdf",
         "endpoint": "/api/django/calepinage/calepinages/2/dossier-fin-chantier/",
         "produit_par": "serveur",
@@ -394,7 +392,7 @@
           {
             "champ": "roof_layout",
             "libelle": "Conception enregistrée (toiture et modules)",
-            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture.",
+            "ou_saisir": "Dessiner et enregistrer une conception dans l'atelier 3D.",
             "onglet": null
           }
         ],
@@ -408,7 +406,7 @@
       },
       {
         "code": "diagramme_pertes",
-        "libelle": "Diagramme de pertes (cascade, capturé par le navigateur)",
+        "libelle": "Diagramme de pertes (cascade des pertes)",
         "format": "svg",
         "endpoint": "/api/django/calepinage/calepinages/2/diagramme-pertes.svg/",
         "produit_par": "serveur",
@@ -418,14 +416,15 @@
           {
             "champ": "roof_layout",
             "libelle": "Conception enregistrée (toiture et modules)",
-            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture.",
+            "ou_saisir": "Dessiner et enregistrer une conception dans l'atelier 3D.",
             "onglet": null
           }
         ],
         "versions": [],
         "methode": "GET",
         "langues": [
-          "fr"
+          "fr",
+          "en"
         ],
         "apercu": false,
         "autres_formats": []
@@ -442,15 +441,14 @@
           {
             "champ": "roof_layout",
             "libelle": "Conception enregistrée (toiture et modules)",
-            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture.",
+            "ou_saisir": "Dessiner et enregistrer une conception dans l'atelier 3D.",
             "onglet": null
           }
         ],
         "versions": [],
         "methode": "GET",
         "langues": [
-          "fr",
-          "en"
+          "fr"
         ],
         "apercu": true,
         "autres_formats": []

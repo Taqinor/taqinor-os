@@ -265,8 +265,11 @@ def _html_rapport_etude():
 
     nu = SimpleNamespace(company=None, client_id=None, lead_id=None,
                          titre='Villa Anfa', resultat=None, pk=None)
+    # ACAL226 - palier PUR : l'assemblage brut (``paginer=False``) ; la
+    # pagination rend chaque section en PDF pour compter ses pages, et le
+    # palier PDF REEL ci-dessous prouve la piece servie.
     return html_du_rapport(nu, resultat=_resultat(), site=SITE,
-                           identite=IDENTITE, styles=STYLES)
+                           identite=IDENTITE, styles=STYLES, paginer=False)
 
 
 def _html_rapport_ombrage():
@@ -515,6 +518,15 @@ class MontantInjecteParUnGabaritEstDetecteTest(unittest.TestCase):
         self.assertEqual(_mots_de_montant_dans(_texte_visible(html)), [])
 
 
+def _rendre_note_servie(module_note, calepinage):
+    """ACAL214 — la note d'un calepinage SIMULÉ, lue sur le résultat servi."""
+    from .acal_livrables_helpers import patch_materiel
+
+    with patch_materiel():
+        return module_note.rendre_note_calcul(
+            calepinage, site=SITE, identite=IDENTITE, styles=STYLES)
+
+
 @tag('pdf')
 class AucunMontantDansLePdfReelTest(unittest.TestCase):
     """RÉEL — WeasyPrint + PyMuPDF (hors du palier CI léger, image de
@@ -546,8 +558,10 @@ class AucunMontantDansLePdfReelTest(unittest.TestCase):
         )
         from apps.calepinage.services.rapport import rendre_rapport
 
-        nu_note = SimpleNamespace(company=None, pk=None, titre='Villa Anfa',
-                                  resultat=_resultat())
+        # ACAL214 — la note lit le résultat SERVI : un calepinage fabriqué
+        # par les vrais écrivains (jamais le contrat collé dans la colonne).
+        from .acal_livrables_helpers import calepinage_simule_reel
+        nu_note = calepinage_simule_reel()
         nu_rapport = SimpleNamespace(company=None, client_id=None,
                                      lead_id=None, titre='Villa Anfa',
                                      resultat=None, pk=None)
@@ -578,8 +592,8 @@ class AucunMontantDansLePdfReelTest(unittest.TestCase):
                                    roof_layout=layout_avec_parcelle())
 
         return {
-            'note_calcul_pdf': _note_calcul.rendre_note_calcul(
-                nu_note, site=SITE, identite=IDENTITE, styles=STYLES),
+            'note_calcul_pdf': _rendre_note_servie(
+                _note_calcul, nu_note),
             'rapport_etude': rendre_rapport(
                 nu_rapport, resultat=_resultat(), site=SITE,
                 identite=IDENTITE, styles=STYLES),

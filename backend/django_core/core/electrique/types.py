@@ -319,8 +319,12 @@ class EntreeElectrique:
     ac_m: float = 0.0
     #: 1 = monophasé 230 V, 3 = triphasé 400 V.
     phases: int = 1
-    #: Régime de neutre (NF C 15-100) — TT par défaut (raccordement BT public).
-    regime: str = REGIME_TT
+    #: Régime de neutre (NF C 15-100) — TT par défaut pour les constructeurs
+    #: qui le DÉCIDENT (le devis passe toujours un régime explicite).
+    #: ACAL152 — ``None``/``""`` veut dire « NON PRÉCISÉ » : aucune protection
+    #: différentielle n'est alors décidée, et l'omission est nommée. Le
+    #: calepinage passe ``None`` tant que le régime n'est pas SAISI.
+    regime: Optional[str] = REGIME_TT
     batterie: bool = False
     #: Identité du parc de stockage — descriptive, jamais calculatoire (le
     #: booléen ``batterie`` ci-dessus reste la seule chose qui pilote les

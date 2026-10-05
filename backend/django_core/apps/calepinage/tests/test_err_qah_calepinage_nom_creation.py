@@ -41,15 +41,30 @@ class NomPersisteTest(BaseApiCalepinage):
         self.assertEqual(ligne['nom'], 'MON-ETUDE')
 
     def test_sans_titre_saisi_le_repli_est_le_meme_partout(self):
-        """Aucun nom saisi : le MÊME repli ``Calepinage #<pk>`` partout —
-        jamais une divergence entre la liste et le détail."""
-        reponse = self.api.post(URL, {'lead': self.lead.pk}, format='json')
-        self.assertEqual(reponse.status_code, 201, reponse.data)
-        pk = reponse.data['id']
-        attendu = f'Calepinage #{pk}'
+        """Aucun nom saisi : le MÊME repli pour TOUTES les portes (ACAL182 —
+        ``POST calepinages/``, ``depuis-lead``, ``depuis-modele`` sans modèle
+        passent par ``services/creation.py``), et le même partout ensuite —
+        création, détail, liste."""
+        from apps.crm.models import Lead
 
-        self.assertEqual(reponse.data['nom'], attendu)
-        self.assertEqual(self.api.get(url_detail(pk)).data['nom'], attendu)
-        ligne = next(ligne for ligne in self._lignes(self.api.get(URL))
-                     if ligne['id'] == pk)
-        self.assertEqual(ligne['nom'], attendu)
+        lead_3 = Lead.objects.create(company=self.company,
+                                     nom='Toiture Ain Diab')
+        portes = (
+            (URL, {'lead': self.lead.pk}, self.lead),
+            (f'{URL}depuis-lead/', {'lead': self.lead_2.pk}, self.lead_2),
+            (f'{URL}depuis-modele/', {'lead_id': lead_3.pk}, lead_3),
+        )
+        for url, corps, lead in portes:
+            with self.subTest(porte=url):
+                reponse = self.api.post(url, corps, format='json')
+                self.assertEqual(reponse.status_code, 201, reponse.data)
+                pk = reponse.data.get('id') or reponse.data.get('calepinage')
+                attendu = f'Calepinage {lead.nom}'
+                self.assertEqual(Calepinage.objects.get(pk=pk).titre,
+                                 attendu)
+                self.assertEqual(self.api.get(url_detail(pk)).data['nom'],
+                                 attendu)
+                ligne = next(ligne for ligne in
+                             self._lignes(self.api.get(URL))
+                             if ligne['id'] == pk)
+                self.assertEqual(ligne['nom'], attendu)
