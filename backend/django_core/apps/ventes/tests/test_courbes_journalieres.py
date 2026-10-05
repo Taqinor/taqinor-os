@@ -990,15 +990,17 @@ class ProductionParSaisonUniqueTests(SimpleTestCase):
 
     def test_garde_ast_la_copie_delegue(self):
         import ast
-        import inspect
-        import textwrap
 
-        from apps.ventes import etude_horaire as eh
+        from apps.ventes.tests.split_golden import (
+            fichiers_du_groupe, source_du_symbole)
 
         self.assertTrue(callable(getattr(cj, 'production_par_saison', None)))
         self.assertFalse(hasattr(cj, '_production'))
-        arbre = ast.parse(textwrap.dedent(
-            inspect.getsource(eh.production_journaliere_par_saison)))
+        # SPL242 — ``etude_horaire.py`` est découpé en ``horaire/*.py`` : la
+        # fonction est cherchée dans le GROUPE (jamais vide).
+        arbre = ast.parse(source_du_symbole(
+            'production_journaliere_par_saison',
+            fichiers_du_groupe('etude_horaire.py', 'horaire/*.py')))
         appels = {
             (n.func.attr if isinstance(n.func, ast.Attribute)
              else getattr(n.func, 'id', None))

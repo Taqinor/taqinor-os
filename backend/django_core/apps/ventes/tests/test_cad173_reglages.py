@@ -30,14 +30,16 @@ from django.test import SimpleTestCase
 from apps.crm import questionnaire
 from apps.ventes import courbes_journalieres as CJ
 from apps.ventes import etude_horaire as EH
+from apps.ventes.tests.split_golden import fichiers_du_groupe
 
 RACINE = Path(__file__).resolve().parents[5]
 MESSAGES = RACINE / 'docs' / 'crm' / 'messages_meryem.md'
+#: SPL242 — ``etude_horaire.py`` est découpé en ``horaire/*.py`` : la garde lit
+#: le GROUPE (jamais vide), pas un fichier qui se vide.
 SOURCES_MOTEUR = (
     RACINE / 'backend' / 'django_core' / 'apps' / 'ventes'
     / 'courbes_journalieres.py',
-    RACINE / 'backend' / 'django_core' / 'apps' / 'ventes' / 'etude_horaire.py',
-)
+) + tuple(fichiers_du_groupe('etude_horaire.py', 'horaire/*.py'))
 
 
 class Q11_LePlafonnementEstEXPOSE(SimpleTestCase):

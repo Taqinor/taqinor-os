@@ -2013,12 +2013,17 @@ class JourReferenceTousLesAppelantsTests(SimpleTestCase):
         """
         import ast
 
-        arbre = ast.parse(Path(EH.__file__).read_text(encoding='utf-8'))
+        from apps.ventes.tests.split_golden import fichiers_du_groupe
+
+        # SPL242 — ``etude_horaire.py`` est découpé en ``horaire/*.py`` : la
+        # garde lit le GROUPE (jamais vide), total inchangé.
+        arbres = [ast.parse(chemin.read_text(encoding='utf-8')) for chemin
+                  in fichiers_du_groupe('etude_horaire.py', 'horaire/*.py')]
         horloge = {'localdate', 'now', 'today', 'localtime'}
         appels = [
             '%s.%s' % (getattr(noeud.func.value, 'id', '?'),
                        noeud.func.attr)
-            for noeud in ast.walk(arbre)
+            for arbre in arbres for noeud in ast.walk(arbre)
             if isinstance(noeud, ast.Call)
             and isinstance(noeud.func, ast.Attribute)
             and noeud.func.attr in horloge
@@ -2031,9 +2036,13 @@ class JourReferenceTousLesAppelantsTests(SimpleTestCase):
         """Garde de source : aucun appel à ``jours_types_annee`` n'oublie la date."""
         import ast
 
-        arbre = ast.parse(Path(EH.__file__).read_text(encoding='utf-8'))
+        from apps.ventes.tests.split_golden import fichiers_du_groupe
+
+        # SPL242 — même groupe que ci-dessus, total inchangé (4).
+        arbres = [ast.parse(chemin.read_text(encoding='utf-8')) for chemin
+                  in fichiers_du_groupe('etude_horaire.py', 'horaire/*.py')]
         sites = [
-            noeud for noeud in ast.walk(arbre)
+            noeud for arbre in arbres for noeud in ast.walk(arbre)
             if isinstance(noeud, ast.Call)
             and isinstance(noeud.func, ast.Name)
             and noeud.func.id == 'jours_types_annee'
