@@ -1763,9 +1763,13 @@ class PrestationContrat(models.Model):
         AUTRE = 'autre', 'Autre'
 
     company = models.ForeignKey(
+        # on_delete: cascade de tenant standard — une prestation n'existe pas
+        # hors de sa société.
         'authentication.Company', on_delete=models.CASCADE,
         related_name='prestations_contrat')
     contrat = models.ForeignKey(
+        # on_delete: la prestation est une ligne du contrat O&M — elle n'a
+        # aucun sens sans lui.
         ContratMaintenance, on_delete=models.CASCADE,
         related_name='prestations')
     type = models.CharField(max_length=20, choices=Type.choices)
