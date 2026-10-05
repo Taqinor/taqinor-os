@@ -31,6 +31,7 @@ from django.test import SimpleTestCase
 from apps.ventes import electrical_service
 from apps.ventes import solar_design as sd
 from apps.ventes.quote_engine.residential import theme
+from apps.ventes.tests import split_golden
 from apps.ventes.utils.options import texte_classement
 
 # Les trois formes couvertes par CHAQUE test de ce module (Done de QJR424) :
@@ -84,7 +85,14 @@ class UnGrepConfirmeUneSeuleDefinitionVivante(SimpleTestCase):
             source)
 
     def test_solar_design_importe_texte_classement_et_a_supprime_sa_copie(self):
-        source = self._lire('solar_design.py')
+        # SPL243 — la classification quitte ``solar_design.py`` pour
+        # ``solar_classification.py`` (SPL261) : la garde lit le GROUPE
+        # (fichier d'origine + module neuf), jamais un ensemble vide.
+        fichiers = split_golden.fichiers_du_groupe(
+            'solar_design.py', 'solar_classification.py')
+        self.assertTrue(fichiers)
+        source = ''.join(f.read_text(encoding='utf-8') for f in fichiers)
+        self.assertTrue(source.strip())
         self.assertIn(
             'from apps.ventes.utils.options import texte_classement', source)
         self.assertIn('texte_classement(designation, produit_nom).lower()',
