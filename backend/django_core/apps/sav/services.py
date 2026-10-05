@@ -1190,12 +1190,21 @@ def creer_contrat_depuis_devis_accepte(*, devis, user=None):
                 notes__contains=f'[devis:{pred_id}]').exists():
             return None
 
+    lignes = list(devis.lignes.select_related('produit').all())
     lignes_recurrentes = [
-        ligne for ligne in devis.lignes.select_related('produit').all()
+        ligne for ligne in lignes
         if getattr(ligne.produit, 'est_recurrent', False)
     ]
-    if not lignes_recurrentes:
+    # CIQ640 — ligne O&M C&I (rôle ``om_ci`` du contrat CIQ7) : contrat O&M
+    # avec ses prestations nommées, fréquences et prix « à renseigner ».
+    lignes_om = [
+        ligne for ligne in lignes
+        if getattr(ligne.produit, 'role_ci', None) == ROLE_OM_CI
+    ]
+    if not lignes_recurrentes and not lignes_om:
         return None
+    if not lignes_recurrentes:
+        return _creer_contrat_om(devis, lignes_om[0], marqueur)
 
     prix = sum((ligne.total_ht * (
         1 + (ligne.taux_tva_effectif or 0) / Decimal('100'))
@@ -1225,7 +1234,73 @@ def creer_contrat_depuis_devis_accepte(*, devis, user=None):
     if installation is not None:
         kwargs['installation'] = installation
 
-    return ContratMaintenance.objects.create(**kwargs)
+    contrat = ContratMaintenance.objects.create(**kwargs)
+    if lignes_om:
+        _poser_om(contrat, devis, lignes_om[0])
+    return contrat
+
+
+#: CIQ640 — rôle produit de la ligne O&M C&I (``core.product_roles.ROLES_CI``).
+ROLE_OM_CI = 'om_ci'
+
+#: CIQ640 — les quatre prestations nommées d'un contrat O&M C&I (D-CIQ-12),
+#: libellés du contrat partagé ``contract_samples/contrat_om.json``. AUCUNE
+#: fréquence ni prix : « à renseigner » par Reda.
+PRESTATIONS_OM_CI = (
+    ('nettoyage', 'Nettoyage des modules'),
+    ('inspection', 'Inspection'),
+    ('thermographie', 'Thermographie infrarouge'),
+    ('test_protections', 'Test des protections'),
+)
+
+
+def _delai_intervention_societe(company):
+    """``delai_intervention_suivi_heures`` du réglage société (CIQ622), ou
+    None (non engagé)."""
+    from apps.parametres.models import CompanyProfile
+    try:
+        return CompanyProfile.get(company=company).delai_intervention_suivi_heures
+    except Exception:  # noqa: BLE001 — profil absent : non engagé
+        return None
+
+
+def _poser_om(contrat, devis, ligne_om):
+    """CIQ640 — délai, origine et prestations nommées d'un contrat O&M."""
+    from .models import PrestationContrat
+
+    contrat.delai_intervention_heures = _delai_intervention_societe(
+        devis.company)
+    contrat.origine_devis_id = devis.pk
+    contrat.origine_ligne_om_id = ligne_om.pk
+    contrat.save(update_fields=['delai_intervention_heures',
+                                'origine_devis_id', 'origine_ligne_om_id'])
+    PrestationContrat.objects.bulk_create([
+        PrestationContrat(company=devis.company, contrat=contrat,
+                          type=type_, libelle=libelle)
+        for type_, libelle in PRESTATIONS_OM_CI])
+
+
+def _creer_contrat_om(devis, ligne_om, marqueur):
+    """CIQ640 — contrat O&M C&I d'un devis accepté SANS ligne récurrente :
+    prix « à renseigner » (NULL), aucune facturation, prestations vides."""
+    from .models import ContratMaintenance
+
+    kwargs = dict(
+        company=devis.company,
+        client=devis.client,
+        date_debut=devis.date_acceptation or timezone.localdate(),
+        prix=None,
+        actif=True,
+        facturation_active=False,
+        notes=f'Créé automatiquement depuis le devis {marqueur} '
+              f'(ligne O&M — CIQ640 ; prix et fréquences à renseigner).',
+    )
+    installation = getattr(devis, 'installation', None)
+    if installation is not None:
+        kwargs['installation'] = installation
+    contrat = ContratMaintenance.objects.create(**kwargs)
+    _poser_om(contrat, devis, ligne_om)
+    return contrat
 
 
 # ── ZMFG7 — Alias e-mail par catégorie d'équipement ──────────────────────────

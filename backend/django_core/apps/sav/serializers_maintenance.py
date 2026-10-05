@@ -2,7 +2,16 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from .models import ContratMaintenance
+from .models import ContratMaintenance, PrestationContrat
+
+
+class PrestationContratSerializer(serializers.ModelSerializer):
+    """CIQ640 — prestation nommée (forme ``contract_samples/contrat_om.json``)."""
+
+    class Meta:
+        model = PrestationContrat
+        fields = ['id', 'type', 'libelle', 'incluse', 'frequence_an',
+                  'prix_ht']
 
 
 class ContratMaintenanceSerializer(serializers.ModelSerializer):
@@ -23,6 +32,10 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
     equipements_detail = serializers.SerializerMethodField()
     # XCTR3 — droits inclus (entitlements), compteurs consommés/restants.
     droits_restants = serializers.SerializerMethodField()
+    # CIQ640 — contrat O&M C&I : prestations nommées imbriquées (lecture) et
+    # origine {devis_id, ligne_om} (contrat partagé ``contrat_om.json``).
+    prestations = PrestationContratSerializer(many=True, read_only=True)
+    origine = serializers.SerializerMethodField()
 
     class Meta:
         model = ContratMaintenance
@@ -43,8 +56,14 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
                   # XCTR3 — droits inclus (entitlements).
                   'visites_incluses_an', 'deplacements_inclus_an',
                   'pieces_couvertes_pct', 'droits_restants',
+                  # CIQ640 — contrat O&M C&I (contrat_om.json).
+                  'prestations', 'delai_intervention_heures', 'origine',
                   'date_creation']
         read_only_fields = ['derniere_visite', 'derniere_facturation', 'date_creation']
+
+    def get_origine(self, obj):
+        return {'devis_id': obj.origine_devis_id,
+                'ligne_om': obj.origine_ligne_om_id}
 
     def get_droits_restants(self, obj):
         from .selectors import droits_restants
