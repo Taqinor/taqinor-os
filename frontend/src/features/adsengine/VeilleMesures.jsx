@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import adsengineApi from './adsengineApi'
 import { nomPays } from './VeilleLibelles'
+import { formatNumber } from '../../lib/format'
 
 /* ============================================================================
    VEIL33 — Panneau « Mesures » d'une découverte (contrat veille_mesures.json).
@@ -14,7 +15,7 @@ const NON_MESURABLE = 'non mesurable'
 const nombre = (v) => (v === null || v === undefined ? NON_MESURABLE : String(v).replace('.', ','))
 const part = (v) => (v === null || v === undefined
   ? NON_MESURABLE
-  : `${(v * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`)
+  : `${formatNumber(Math.round(v * 1000) / 10)} %`)
 
 function Valeur({ testid, texte, motif }) {
   return (
