@@ -1,6 +1,5 @@
 {
   "endpoint": "POST /api/django/crm/public/lead-affiner/<str:idempotency_key>/",
-  "forme_serveur": "complete",
   "pourquoi": "CIQ400 (Groupe CIQ, audit L3 C&I du 03/10/2026 ; D-CIQ-8, D-CIQ-11, Q21) — l'envoi du site ne renvoie rien au navigateur (`/api/capture-lead` répond avant le webhook, apps/web/src/pages/api/capture-lead.ts) et une seconde soumission crée un NOUVEAU lead (règle du 18/08, crm/webhooks.py) : rien ne permet l'étape « Affiner », FACULTATIVE et APRÈS la porte de contact (D-CIQ-8). Cette route rend le jeton du questionnaire PRO du lead créé par CE payload.",
   "exemple": {
     "questionnaire_token": "pQ7x…"

@@ -22,13 +22,20 @@ def declarer_roles_ci(apps, schema_editor):
     Produit = apps.get_model('stock', 'Produit')
     for sku, role in ROLE_CI_PAR_SKU.items():
         # Gardé sur « rôle vide » : une saisie du fondateur n'est jamais écrasée.
-        Produit.objects.filter(sku=sku, role_ci='').update(role_ci=role)
+        # Ligne par ligne via .iterator() (YOPSB4 : jamais d'update global).
+        qs = Produit.objects.filter(sku=sku, role_ci='')
+        for produit in qs.iterator():
+            produit.role_ci = role
+            produit.save(update_fields=['role_ci'])
 
 
 def retirer_roles_ci(apps, schema_editor):
     Produit = apps.get_model('stock', 'Produit')
     for sku, role in ROLE_CI_PAR_SKU.items():
-        Produit.objects.filter(sku=sku, role_ci=role).update(role_ci='')
+        qs = Produit.objects.filter(sku=sku, role_ci=role)
+        for produit in qs.iterator():
+            produit.role_ci = ''
+            produit.save(update_fields=['role_ci'])
 
 
 class Migration(migrations.Migration):

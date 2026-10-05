@@ -110,7 +110,7 @@ __all__ = [
     'SECTION', 'DEGAGEMENTS_ATELIER', 'DEGAGEMENT_ATELIER_DEFAUT_M',
     'RETRAIT_ATELIER_M', 'CLE_RETRAIT', 'CLE_ALLEE', 'CLE_SOURCE',
     'MENTION_NON_SOURCEE', 'CLE_ALLEES_CIRCULATION', 'types_admis',
-    'degagement_du_type', 'retrait_perimetre', 'allee_technique',
+    '_degagement_du_type', '_retrait_perimetre', 'allee_technique',
     '_largeur_allee_circulation', 'normaliser_section_degagements',
 ]
 
@@ -310,7 +310,7 @@ def _source(section):
     return str((section or {}).get(CLE_SOURCE) or '').strip()
 
 
-def degagement_du_type(type_obstacle, section=None):
+def _degagement_du_type(type_obstacle, section=None):
     """``(valeur, phrase)`` — le dégagement appliqué, et POURQUOI.
 
     Args:
@@ -345,10 +345,10 @@ def degagement_du_type(type_obstacle, section=None):
     return (float(saisi), phrase)
 
 
-def retrait_perimetre(section=None):
+def _retrait_perimetre(section=None):
     """``(valeur, phrase)`` — le retrait de rive appliqué, et POURQUOI.
 
-    Même discipline que ``degagement_du_type`` : la valeur de l'atelier est
+    Même discipline que ``_degagement_du_type`` : la valeur de l'atelier est
     annoncée NON SOURCÉE tant que la société n'a pas saisi la sienne.
     """
     section = section or {}
@@ -601,7 +601,7 @@ def _citation(contraintes, cle):
                                          source.get('reference')) if x)
 
 
-def degagement_projet(type_obstacle, contraintes=None):
+def _degagement_projet(type_obstacle, contraintes=None):
     """``(valeur ou None, phrase)`` — le dégagement EXIGÉ par le projet."""
     deg = ((contraintes or {}).get('degagements_m') or {})
     nom = str(type_obstacle or '')
@@ -615,9 +615,9 @@ def degagement_projet(type_obstacle, contraintes=None):
 def degagement_effectif(type_obstacle, section=None, contraintes=None):
     """``(valeur, phrase)`` = max(atelier/société, projet), avec sa règle.
 
-    Sans contrainte de projet : ``degagement_du_type`` à l'identique."""
-    valeur, phrase = degagement_du_type(type_obstacle, section)
-    projet, phrase_projet = degagement_projet(type_obstacle, contraintes)
+    Sans contrainte de projet : ``_degagement_du_type`` à l'identique."""
+    valeur, phrase = _degagement_du_type(type_obstacle, section)
+    projet, phrase_projet = _degagement_projet(type_obstacle, contraintes)
     if projet is not None and projet > valeur:
         return (projet, '%s — retenu au lieu de %s' % (phrase_projet, phrase))
     return (valeur, phrase)
@@ -625,8 +625,8 @@ def degagement_effectif(type_obstacle, section=None, contraintes=None):
 
 def retrait_effectif(section=None, contraintes=None):
     """Retrait de rive = max(société/atelier, projet), avec sa règle."""
-    valeur, phrase = retrait_perimetre(section)
-    projet, phrase_projet = degagement_projet('rive', contraintes)
+    valeur, phrase = _retrait_perimetre(section)
+    projet, phrase_projet = _degagement_projet('rive', contraintes)
     if projet is not None and projet > valeur:
         return (projet, 'Retrait de rive : %s — retenu au lieu de %s'
                 % (phrase_projet, phrase))

@@ -1271,7 +1271,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                              # ligne il retomberait sur le `[IsAdminRole()]`
                              # final et la commerciale — qui est justement
                              # celle qui appelle — serait refusée (bug CI #25).
-                             'panneau_appel'):
+                             'panneau_appel',
+                             # AGR516 — les réalisations proches sont une
+                             # LECTURE de la fiche : même garde fine que
+                             # l'@action (sinon `[IsAdminRole()]` final).
+                             'references_proches'):
             # CRX19/CRX37 — l'historique COMPLET d'un lead (et ses jalons
             # devis, qui sont le même historique vu côté ventes) exige
             # ``crm_voir``. get_permissions() PRIME sur le permission_classes
@@ -1280,6 +1284,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # rôle) et `jalons_devis`, absent de toutes les listes, sur le
             # `return [IsAdminRole()]` final (403 pour la Commerciale).
             return [HasPermissionOrLegacy('crm_voir')()]
+        elif self.action == 'resume_associe':
+            # AGR534 — la permission DÉCLARÉE sur l'@action (responsable ou
+            # admin) ; get_permissions() PRIME sur elle (bug CI #25), d'où
+            # cette branche explicite plutôt que le `[IsAdminRole()]` final.
+            return [IsResponsableOrAdmin()]
         elif self.action == 'locataire':
             # CAD164 — LIRE la proposition « locataire » est une lecture de la
             # fiche (`crm_voir`) ; créer la fiche du propriétaire ou clore

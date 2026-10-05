@@ -55,9 +55,11 @@ export const SECTIONS_QUESTIONNAIRE = [
 // AGR419 — les sections AGRICOLES seules (miroir de
 // `crm.questionnaire.SECTIONS_AGRICOLES_SEULES`) : ne servent QUE de repli
 // quand la réponse serveur ne porte encore aucune carte `questions`.
+// source-choix: crm.questionnaire.SECTIONS_AGRICOLES_SEULES
 const SECTIONS_AGRICOLES_SEULES = ['pompage', 'photo_pompe', 'photo_forage']
 // CIQ421 — idem pour les sections PRO (miroir de
 // `crm.questionnaire.SECTIONS_PRO_SEULES`) : repli seulement.
+// source-choix: crm.questionnaire.SECTIONS_PRO_SEULES
 const SECTIONS_PRO_SEULES = ['reseau', 'activite', 'site', 'societe', 'photo_factures', 'photo_poste']
 
 // AGR419 — les sections que le dialogue PROPOSE. La vérité vient de la

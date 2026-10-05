@@ -60,7 +60,16 @@ CONDITIONS_FDA = (
 )
 
 #: Le nom de l'installateur quand ``data['entreprise']`` n'en porte aucun.
-NOM_PAR_DEFAUT = "TAQINOR"
+#: SCA29 (white-label) : jamais une marque en dur — le nom vient de
+#: CompanyProfile via ``data['entreprise']`` ; à défaut, une désignation
+#: neutre, par langue.
+NOMS_PAR_DEFAUT = {"fr": "l'installateur", "en": "the installer",
+                   "ar": "شركة التركيب"}
+
+
+def _nom_installateur(nom_societe, langue):
+    return (nom_societe or "").strip() or NOMS_PAR_DEFAUT[langue]
+
 
 # ── Formalités du client ────────────────────────────────────────────────────
 #: Loi 36-15 relative à l'eau : l'article (26 et suivants, version consolidée
@@ -106,7 +115,7 @@ def _textes_fda(plafonds, source, nom):
                f"Accord préalable à obtenir AVANT les travaux ; l'aide n'est "
                f"pas déduite du prix et elle est versée après réalisation ; "
                f"un seul projet par exploitation. Décision de la DPA/ORMVA, "
-               f"non garantie ; {nom} n'est pas organisme subventionneur. "
+               f"non garantie ; {_nom_installateur(nom, 'fr')} n'est pas organisme subventionneur. "
                f"Source : {source}."),
         "en": (f"State aid (Agricultural Development Fund) for solar pumping: "
                f"{en(t)}% of the investment, capped at {en(ha)} MAD per "
@@ -115,7 +124,7 @@ def _textes_fda(plafonds, source, nom):
                f"irrigation, water meter. Prior approval must be obtained "
                f"BEFORE the works; the aid is not deducted from the price and "
                f"is paid after completion; one project per farm. Decision of "
-               f"the DPA/ORMVA, not guaranteed; {nom} is not a subsidising "
+               f"the DPA/ORMVA, not guaranteed; {_nom_installateur(nom, 'en')} is not a subsidising "
                f"body. Source: {source}."),
         "ar": (f"دعم الدولة (صندوق التنمية الفلاحية) للضخ بالطاقة الشمسية: "
                f"{fr(t)} % من الاستثمار، في حدود {fr(ha)} درهم للهكتار "
@@ -124,7 +133,7 @@ def _textes_fda(plafonds, source, nom):
                f"يجب الحصول على الموافقة المسبقة قبل الأشغال؛ لا يُخصم الدعم "
                f"من الثمن ويُصرف بعد الإنجاز؛ مشروع واحد لكل استغلالية. قرار "
                f"المديرية الإقليمية للفلاحة / المكتب الجهوي للاستثمار "
-               f"الفلاحي، غير مضمون؛ {nom} ليست جهة مانحة للدعم. "
+               f"الفلاحي، غير مضمون؛ {_nom_installateur(nom, 'ar')} ليست جهة مانحة للدعم. "
                f"المصدر: {source}."),
     }
 
@@ -147,7 +156,7 @@ def regle_fda(regle_societe=None, *, nom_societe=None):
     # nomme (« édition et pages du Guide FDA »).
     edition = (base.get("edition") or source) if saisie \
         else REPLI_FDA["edition"]
-    nom = (nom_societe or "").strip() or NOM_PAR_DEFAUT
+    nom = (nom_societe or "").strip() or None
     return {
         "conditions": list(CONDITIONS_FDA),
         "plafonds": plafonds,
@@ -241,7 +250,7 @@ def phrase_provenance(cle, langue="fr", *, date=None, nom_societe=None):
         jour = _date_jjmmaaaa(date)
         if jour is None:
             return PHRASES_PROVENANCE["a_confirmer"][langue]
-        societe = (nom_societe or "").strip() or NOM_PAR_DEFAUT
+        societe = _nom_installateur(nom_societe, langue)
         return PHRASES_PROVENANCE[cle][langue].format(date=jour,
                                                       societe=societe)
     return PHRASES_PROVENANCE[cle][langue]

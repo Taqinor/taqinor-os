@@ -72,7 +72,7 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     # lectures). MÊME champ, déclaration identique avant/après (vérifié contre
     # origin/dev-cad : `date_emission = models.DateField(auto_now_add=True)`).
     # Bug-class #34.
-    "backend/django_core/apps/ventes/models.py:1376",  # NoteDebit.date_emission (1361->1376 : ERR-QJR570 LigneDevis.ligne_composee insère 15 lignes avant) (1354->1361 : ERR-QAC-MULTIVILLA-MATERIEL-XN insère 7 lignes avant, reliquat_par_ligne ×N) (1350->1354 : QJR669 remplace le gel de Devis.save par rafraichir_prix_par_kwc) (1346->1350 : ERR-QAC-MULTIVILLA-TOTAL-XN insère 4 lignes avant) (1260->1251 : SOLMVP11 retire 9 lignes avant) (1221->1260 : STKCAT2 vocabulaire + STKCAT23 LigneDevis.role_devis insérés avant, champ relu byte-identique) (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08) puis 1157->1180 (AUD188 : contraintes Devis/LigneDevis insérées avant), même champ date-ancre relu
+    "backend/django_core/apps/ventes/models.py:1385",  # NoteDebit.date_emission (1376->1385 : AGR217 LigneDevis.tva_base_legale insère 9 lignes avant, champ relu byte-identique) (1361->1376 : ERR-QJR570 LigneDevis.ligne_composee insère 15 lignes avant) (1354->1361 : ERR-QAC-MULTIVILLA-MATERIEL-XN insère 7 lignes avant, reliquat_par_ligne ×N) (1350->1354 : QJR669 remplace le gel de Devis.save par rafraichir_prix_par_kwc) (1346->1350 : ERR-QAC-MULTIVILLA-TOTAL-XN insère 4 lignes avant) (1260->1251 : SOLMVP11 retire 9 lignes avant) (1221->1260 : STKCAT2 vocabulaire + STKCAT23 LigneDevis.role_devis insérés avant, champ relu byte-identique) (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08) puis 1157->1180 (AUD188 : contraintes Devis/LigneDevis insérées avant), même champ date-ancre relu
     # NTASS — champs DATE métier (jour, pas horodatage) : date d'ajout d'un
     # actif couvert et date de déclaration d'un sinistre ; même motif que les
     # dates-ancre ventes ci-dessus (l'horodatage précis vit dans TenantModel.
@@ -173,7 +173,7 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # AVANT CommissionPartenaire) — MÊME champ, déclaration identique
     # (`paye_le = models.DateField(null=True, blank=True,
     # verbose_name='Payée le')`). Bug-class #34.
-    "backend/django_core/apps/crm/models.py:3305",  # CommissionPartenaire.paye_le
+    "backend/django_core/apps/crm/models.py:3808",  # CommissionPartenaire.paye_le (3305->3808 : vague 1 CIQ/AGR insère +503 lignes de modèles Lead/visites AVANT ; déclaration relue identique, bug-class #34)
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.

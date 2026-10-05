@@ -6,6 +6,8 @@ import datetime
 
 from django.utils import timezone
 
+from testkit.time import frozen
+
 from apps.visites import selectors, services
 from apps.visites.models import VisiteTerrain
 from apps.visites.tests.test_visite_terrain import (
@@ -26,13 +28,13 @@ class ValideeLeTests(VisiteTerrainBase):
 
     def test_valider_pose_la_date_et_l_auteur(self):
         visite = self._visite_terminee()
-        avant = timezone.now()
-        services.valider_visite(visite, self.valideur)
+        instant = datetime.datetime(2026, 10, 5, 9, 30,
+                                    tzinfo=datetime.timezone.utc)
+        with frozen(instant):
+            services.valider_visite(visite, self.valideur)
         visite.refresh_from_db()
         self.assertEqual(visite.statut, VisiteTerrain.Statut.VALIDEE)
-        self.assertIsNotNone(visite.validee_le)
-        self.assertGreaterEqual(visite.validee_le, avant)
-        self.assertLessEqual(visite.validee_le, timezone.now())
+        self.assertEqual(visite.validee_le, instant)
         self.assertEqual(visite.validee_par_id, self.valideur.id)
 
     def test_la_route_valider_pose_l_auteur_serveur(self):

@@ -147,7 +147,11 @@ class FormalitesEtPhrasesTests(SimpleTestCase):
                          'déclaré par vous le 12/09/2026')
         self.assertEqual(
             phrase_provenance('mesure', date='2026-09-15'),
-            'mesuré par TAQINOR le 15/09/2026')
+            "mesuré par l'installateur le 15/09/2026")
+        self.assertEqual(
+            phrase_provenance('mesure', date='2026-09-15',
+                              nom_societe='Solaire Atlas'),
+            'mesuré par Solaire Atlas le 15/09/2026')
         self.assertEqual(phrase_provenance('declare'),
                          'à confirmer par la visite')
         self.assertEqual(phrase_provenance('agronomique'),
