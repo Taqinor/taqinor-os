@@ -668,8 +668,9 @@ def devis_milestones(token):
     ShareLink (lecture seule, public, tokenisé). Rien n'est muté.
 
     Dérive la timeline à partir des LIGNES EXISTANTES (aucun nouveau statut) :
-    accepté → acompte reçu (Paiement) → matériel commandé (BonCommande) →
-    installation (chantier via le sélecteur installations) → facturé.
+    accepté → acompte reçu (Paiement encaissé) → matériel (jalon portail
+    `appro`) → installation (jalon portail `pose`) → facturé (facture hors
+    brouillon/annulée).
 
     Renvoie ``None`` si le jeton est invalide/expiré/sans devis, sinon un dict
     ``{reference, milestones: [{key, label, done, date}]}``. Multi-tenant :
@@ -693,48 +694,55 @@ def devis_milestones(token):
     accepte = devis.statut in ('accepte',) or devis.date_acceptation is not None
     date_accepte = getattr(devis, 'date_acceptation', None)
 
-    # 2) Acompte reçu — un Paiement existe sur une facture liée au devis.
+    # 2) Acompte reçu — un Paiement ENCAISSÉ (jamais rejeté : ADOC121) sur une
+    #    facture liée au devis ou à son bon de commande.
+    from django.db.models import Q
     from .models import Paiement
     paiement = (Paiement.objects
-                .filter(facture__devis=devis)
-                .order_by('date_paiement')
+                .filter(Q(facture__devis=devis)
+                        | Q(facture__bon_commande__devis=devis))
+                .exclude(statut=Paiement.Statut.REJETE)
+                .order_by('date_paiement', 'id')
                 .first())
-    if paiement is None:
-        # Chaîne BC → facture.
-        paiement = (Paiement.objects
-                    .filter(facture__bon_commande__devis=devis)
-                    .order_by('date_paiement')
-                    .first())
     acompte_recu = paiement is not None
 
-    # 3) Matériel commandé — un BonCommande existe.
-    bc = getattr(devis, 'bon_commande', None)
-    materiel_commande = bc is not None
-    date_bc = getattr(bc, 'date_creation', None) if bc else None
-
-    # 4) Installation — chantier lié (via sélecteur installations, jamais
-    #    d'import de son modèle).
+    # 3) et 4) Matériel / Installation — D-ADOC-3 : lus des jalons portail
+    #    SYNCHRONISÉS du chantier (phases `appro` / `pose`), la MÊME ligne que
+    #    « Mes chantiers » (portail.selectors.jalons_du_chantier). Pas de
+    #    chantier, ou chantier annulé ⇒ rien n'est fait. Cross-app via
+    #    sélecteurs uniquement.
     chantier = None
     try:
         from apps.installations.selectors import installation_for_devis
-        chantier = installation_for_devis(devis)
+        chantier = installation_for_devis(devis, company=devis.company)
     except Exception:  # noqa: BLE001 — best-effort
         chantier = None
-    installation_faite = chantier is not None
+    jalons_phase = {}
+    if chantier is not None and not getattr(chantier, 'annule', False):
+        try:
+            from apps.portail.selectors import jalons_du_chantier
+            for j in jalons_du_chantier(devis.company, chantier.id):
+                if j.cle_phase in ('appro', 'pose') and j.atteint:
+                    jalons_phase.setdefault(j.cle_phase, j)
+        except Exception:  # noqa: BLE001 — best-effort
+            jalons_phase = {}
+    j_appro = jalons_phase.get('appro')
+    j_pose = jalons_phase.get('pose')
 
-    # 5) Facturé — au moins une facture liée.
+    # 5) Facturé — au moins une facture HORS brouillon / annulée.
     # AUD114 — `bc.factures` N'EXISTE PAS : l'accesseur inverse de
-    # `Facture.bon_commande` est `facture` au SINGULIER (OneToOneField), donc
-    # cette ligne levait AttributeError et le client qui cliquait le lien de
-    # suivi que l'ERP lui avait envoyé recevait une page 500. Le court-circuit
-    # du `or` ne sauvait rien : la branche gauche est justement fausse pour une
-    # facture de la chaîne BC (cf. AUD112). Requête explicite (pas `hasattr`,
-    # qui avale l'erreur) et parenthésage du ternaire, qui se lisait en réalité
-    # `A or (B if bc else False)`.
+    # `Facture.bon_commande` est `facture` au SINGULIER ; requête explicite.
     from .models import Facture as _Facture
-    facture_emise = devis.factures.exists() or (
-        bc is not None
-        and _Facture.objects.filter(bon_commande=bc).exists())
+    bc = getattr(devis, 'bon_commande', None)
+    q_fact = Q(devis=devis)
+    if bc is not None:
+        q_fact |= Q(bon_commande=bc)
+    facture = (_Facture.objects
+               .filter(q_fact)
+               .exclude(statut__in=[_Facture.Statut.BROUILLON,
+                                    _Facture.Statut.ANNULEE])
+               .order_by('date_emission', 'id')
+               .first())
 
     milestones = [
         {'key': 'accepte', 'label': 'Proposition acceptée',
@@ -743,15 +751,14 @@ def devis_milestones(token):
          'done': bool(acompte_recu),
          'date': _iso(getattr(paiement, 'date_paiement', None))},
         {'key': 'materiel', 'label': 'Matériel commandé',
-         'done': bool(materiel_commande),
-         'date': (date_bc.date().isoformat()
-                  if hasattr(date_bc, 'date') else _iso(date_bc))},
+         'done': j_appro is not None,
+         'date': _iso(getattr(j_appro, 'date_jalon', None))},
         {'key': 'installation', 'label': 'Installation',
-         'done': bool(installation_faite),
-         'date': (getattr(chantier, 'statut', None)
-                  if chantier is not None else None)},
+         'done': j_pose is not None,
+         'date': _iso(getattr(j_pose, 'date_jalon', None))},
         {'key': 'facture', 'label': 'Facturé',
-         'done': bool(facture_emise), 'date': None},
+         'done': facture is not None,
+         'date': _iso(getattr(facture, 'date_emission', None))},
     ]
     return {
         'reference': devis.reference,
