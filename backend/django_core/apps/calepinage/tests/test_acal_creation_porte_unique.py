@@ -24,7 +24,6 @@ from __future__ import annotations
 import json
 import pathlib
 import threading
-import time
 import unittest
 
 from django.contrib.contenttypes.models import ContentType
@@ -200,8 +199,10 @@ class VerrouCreationTest(TransactionTestCase):
         a.start()
         b.start()
         self.assertTrue(a_le_verrou.wait(15))
-        time.sleep(1.0)
-        # B est BLOQUÉ sur le verrou tant que A n'a pas validé.
+        # B est BLOQUÉ sur le verrou tant que A n'a pas validé : il est
+        # toujours vivant après une seconde d'attente sur lui.
+        b.join(1.0)
+        self.assertTrue(b.is_alive())
         self.assertNotIn('b', resultat)
         relacher.set()
         a.join(15)

@@ -35,8 +35,11 @@ from datetime import timedelta
 
 from django.utils.dateparse import parse_date, parse_datetime
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
 from rest_framework import filters, status
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DrfValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -246,7 +249,16 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
             raise DrfValidationError({refus.champ: str(refus)})
 
     @extend_schema(responses={201: CalepinageSerializer,
-                              409: OpenApiTypes.OBJECT})
+                              409: inline_serializer(
+                                  'CalepinageCreationConflit', {
+                                      'lead': drf_serializers.CharField(
+                                          required=False),
+                                      'calepinage_existant':
+                                          drf_serializers.IntegerField(
+                                              required=False),
+                                      'detail': drf_serializers.CharField(
+                                          required=False),
+                                  })})
     def create(self, request, *args, **kwargs):
         """ACAL182 — la porte de l'écran Nouveau passe par ``creation.py``.
 

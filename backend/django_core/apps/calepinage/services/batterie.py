@@ -155,7 +155,7 @@ def _hypotheses_de_reference():
     }
 
 
-def motif_rendement_absent(produit_batterie):
+def _motif_rendement_absent(produit_batterie):
     """ACAL306 — le motif d'omission d'une batterie à fiche muette sur le
     rendement aller-retour, qui NOMME la fiche à compléter."""
     designation = ''
@@ -212,7 +212,7 @@ def specs_batterie(produit_batterie, *, produit_onduleur=None, nb_packs=1):
         if nom == 'rendement_ar_pct' and produit_batterie is not None:
             # ACAL306 — aucun repli : la grandeur reste VIDE et son motif
             # nomme la fiche ; l'étape batterie / hors réseau s'omet avec.
-            motif = motif_rendement_absent(produit_batterie)
+            motif = _motif_rendement_absent(produit_batterie)
             grandeurs[nom] = {'valeur': None, 'source': None,
                               'mention': motif}
             avertissements.append(motif)
