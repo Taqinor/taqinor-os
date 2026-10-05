@@ -13,6 +13,7 @@ from decimal import Decimal
 from django.test import TestCase
 
 from apps.crm.models import Client
+from apps.stock.models import Produit
 from apps.ventes.models import Facture, LigneFacture, Paiement
 from apps.ventes.utils.pdf import (
     _company_context, _render_html, empreinte_donnees_facture_pdf,
@@ -39,8 +40,11 @@ class TestPdfFactureDejaPaye(TestCase):
             company=self.company, reference=f'FAC-DPY-{_nxt()}',
             client=self.client_obj, statut=Facture.Statut.EMISE,
             taux_tva=Decimal('20.00'))
+        produit = Produit.objects.create(
+            company=self.company, nom='Kit PV', sku=f'DPY-{_nxt()}',
+            prix_vente=Decimal('125000'))
         LigneFacture.objects.create(
-            facture=self.facture, designation='Kit PV',
+            facture=self.facture, produit=produit, designation='Kit PV',
             quantite=Decimal('1'), prix_unitaire=Decimal('125000'),
             taux_tva=Decimal('20.00'))
 

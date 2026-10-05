@@ -22,16 +22,15 @@ vi.mock('../../api/ventesApi', () => ({
     relancerFacture: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
-vi.mock('../../api/axios', () => ({
-  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
-}))
-vi.mock('../../ui/confirm', () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
-  useConfirmDialog: () => ({
-    confirm: () => Promise.resolve(true),
-    confirmDelete: () => Promise.resolve(true),
-  }),
-}))
+// Axios et confirmations neutralisés (la page lit aussi des endpoints REST directs).
+vi.mock('../../api/axios', () => ({ default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }))
+vi.mock('../../ui/confirm', () => {
+  const oui = async () => true
+  return {
+    toast: { success: vi.fn(), error: vi.fn() },
+    useConfirmDialog: () => ({ confirm: oui, confirmDelete: oui }),
+  }
+})
 
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'

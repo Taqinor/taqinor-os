@@ -352,6 +352,8 @@ def valider_paiements_saisis(paiements, *, aujourdhui=None):
 
     from django.utils import timezone
 
+    from core.money import quantize_mad
+
     from apps.ventes.models import Paiement
 
     if paiements is None:
@@ -379,7 +381,7 @@ def valider_paiements_saisis(paiements, *, aujourdhui=None):
         if not montant.is_finite() or montant <= 0:
             raise FacturationRefusee(
                 f'Paiement n°{numero} : le montant doit être positif.')
-        if montant != montant.quantize(Decimal('0.01')):
+        if montant != quantize_mad(montant):
             raise FacturationRefusee(
                 f'Paiement n°{numero} : le montant a plus de deux décimales.')
         brut_date = brut.get('date_paiement')
@@ -404,7 +406,7 @@ def valider_paiements_saisis(paiements, *, aujourdhui=None):
                 f'Paiement n°{numero} : référence trop longue (120 caractères '
                 'au plus).')
         normalises.append({
-            'montant': montant.quantize(Decimal('0.01')),
+            'montant': quantize_mad(montant),
             'date_paiement': date_paiement,
             'mode': mode,
             'reference': reference,

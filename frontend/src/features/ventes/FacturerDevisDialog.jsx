@@ -12,15 +12,9 @@ import {
 } from '../../ui'
 import { formatMAD } from '../../lib/format'
 import { openPdfBlob } from '../../utils/pdfBlob'
+// Mêmes modes que la modale d'encaissement (une seule liste).
+import { MODES_PAIEMENT } from './modesPaiement'
 
-const MODES_PAIEMENT = [
-  { value: 'especes', label: 'Espèces' },
-  { value: 'virement', label: 'Virement' },
-  { value: 'cheque', label: 'Chèque' },
-  { value: 'carte', label: 'Carte' },
-  { value: 'prelevement', label: 'Prélèvement' },
-  { value: 'autre', label: 'Autre' },
-]
 
 const MAX_LIGNES = 5
 const LIGNES_DEFAUT = 3
