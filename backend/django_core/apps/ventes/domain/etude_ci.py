@@ -670,8 +670,32 @@ def _vide_etude(res, alertes, hypotheses, sous_reserve=None):
     }
 
 
-def etudier_ci(company, entrees, *, devis=None, lead=None):
-    """L'étude C&I complète (forme ``exemple`` du contrat), sans écriture."""
+def _combinaison_imposee(onduleurs_imposes, catalogue_onduleurs):
+    """CIQ119 — les onduleurs RÉELLEMENT au devis, au format CIQ111."""
+    prix = {o['produit']: o.get('prix') for o in catalogue_onduleurs}
+    combinaison, total = [], Decimal('0')
+    for item in onduleurs_imposes:
+        combinaison.append({'produit': item['produit'], 'nom': item.get('nom') or '',
+                            'kw_ac': item.get('kw_ac'), 'quantite': item['quantite'],
+                            's_max_kva': item.get('s_max_kva')})
+        if prix.get(item['produit']) is not None:
+            total += Decimal(str(prix[item['produit']])) * int(item['quantite'])
+    return {'combinaison': combinaison,
+            'ratio_dc_ac': {'valeur': None, 'bornes': None,
+                            'source': 'onduleurs du devis (lignes facturées)'},
+            'chaines': None, 'exclus': [], 'prix_vente_total_ht': str(total),
+            'motif': None, 'alertes': [], 'hypotheses': []}
+
+
+def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None,
+               onduleurs_imposes=None):
+    """L'étude C&I complète (forme ``exemple`` du contrat), sans écriture.
+
+    ``production_figee`` (CIQ119) : le bloc ``production`` déjà figé sur le
+    devis — il remplace l'appel PVGIS. ``onduleurs_imposes`` (CIQ119) :
+    ``[{produit, nom, kw_ac, quantite}]`` lus sur les LIGNES du devis — la
+    combinaison n'est alors pas recherchée.
+    """
     from apps.ventes import economie_ci, tarif_ci
     from apps.ventes.moteur_ci.charge import courbe_declaree
     from apps.ventes.moteur_ci.composition import composer_ci
@@ -693,22 +717,26 @@ def etudier_ci(company, entrees, *, devis=None, lead=None):
     _garde_kwh_factures(res, tarif, alertes)
 
     site = res.valeur('site') or {}
-    lecture = lire_production(site)
-    if lecture is None:
+    lecture = None if production_figee else lire_production(site)
+    if lecture is None and not production_figee:
         alertes.append(_alerte('production_indisponible', 'production',
                                'Profil PVGIS indisponible : production non calculée, étude omise.',
                                niveau='bloquant'))
         return _sans_cles_interdites(_vide_etude(res, alertes, hypotheses))
-    productibles, formes, source = lecture
-    production, hyp_prod, al_prod = bloc_production_ci(
-        productible_mensuel=productibles, formes_saison=formes, derate=PRODUCTION_DERATE,
-        coordonnees_figees={'lat': _num(site.get('lat')), 'lon': _num(site.get('lon')),
-                            'date_appel': _aujourdhui().isoformat()},
-        source=source, toit={'type_pose': res.valeur('type_pose'),
-                             'pente_deg': res.valeur('pente_deg'),
-                             'azimut_deg': res.valeur('azimut_deg')})
-    alertes.extend(al_prod)
-    hypotheses.extend(hyp_prod)
+    if production_figee:
+        production = production_figee
+    else:
+        productibles, formes, source = lecture
+        production, hyp_prod, al_prod = bloc_production_ci(
+            productible_mensuel=productibles, formes_saison=formes,
+            derate=PRODUCTION_DERATE,
+            coordonnees_figees={'lat': _num(site.get('lat')), 'lon': _num(site.get('lon')),
+                                'date_appel': _aujourdhui().isoformat()},
+            source=source, toit={'type_pose': res.valeur('type_pose'),
+                                 'pente_deg': res.valeur('pente_deg'),
+                                 'azimut_deg': res.valeur('azimut_deg')})
+        alertes.extend(al_prod)
+        hypotheses.extend(hyp_prod)
     if production is None:
         return _sans_cles_interdites(_vide_etude(res, alertes, hypotheses))
 
@@ -758,6 +786,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None):
     }
 
     def combiner(kwc):
+        if onduleurs_imposes:
+            return _combinaison_imposee(onduleurs_imposes, catalogue['onduleurs'])
         return combiner_onduleurs(kwc, catalogue['onduleurs'], phase=phase)
 
     def composer(kwc, onduleurs):
@@ -832,3 +862,90 @@ def etudier_ci(company, entrees, *, devis=None, lead=None):
         'version_moteur': VERSION_MOTEUR,
     }
     return _sans_cles_interdites(_json(etude))
+
+
+# ── 6. RAFRAÎCHISSEUR (CIQ119) : l'étude suit les LIGNES facturées ───────────
+
+CLE_ETUDE_CI = 'etude_ci'
+CLE_PRODUCTION_FIGEE = 'production_figee'
+
+
+def _onduleurs_des_lignes(devis, catalogue):
+    """``[{produit, nom, kw_ac, quantite}]`` des onduleurs C&I au devis."""
+    par_id = {o['produit']: o for o in catalogue['onduleurs']}
+    quantites = {}
+    for ligne in devis.lignes.all():
+        if getattr(ligne, 'type_ligne', 'produit') != 'produit' \
+                or getattr(ligne, 'optionnelle', False):
+            continue
+        if ligne.produit_id in par_id:
+            quantites[ligne.produit_id] = quantites.get(ligne.produit_id, 0) + int(
+                ligne.quantite or 0)
+    return [dict(par_id[pid], quantite=q) for pid, q in sorted(quantites.items()) if q > 0]
+
+
+def _empreinte(entrees_stockees, kwc, onduleurs):
+    import hashlib
+    import json
+    charge = {'entrees': entrees_stockees, 'kwc': kwc,
+              'onduleurs': [(o['produit'], o['quantite']) for o in onduleurs],
+              'version': VERSION_MOTEUR}
+    return hashlib.sha256(json.dumps(_json(charge), sort_keys=True, default=str)
+                          .encode('utf-8')).hexdigest()[:16]
+
+
+def rafraichir_etude_ci_devis(devis, *, force=False):
+    """CIQ119 — (re)pose ``etude_ci`` / ``production_figee`` d'un devis C&I.
+
+    Commercial ou industriel SEULEMENT. Relit les LIGNES (kWc réel par
+    ``etudes.puissances_etude_horaire``, onduleurs réellement au devis), les
+    entrées stockées et ``production_figee`` ; appelle :func:`etudier_ci` en
+    « taille donnée » (aucun redimensionnement) et n'écrit QUE les dérivées
+    ``moteur_ci`` par ``etude_schema.ecrire`` (``update_fields`` : aucun
+    statut, aucune ligne, aucun total — règle #4). Empreinte identique ⇒
+    aucune écriture. Plus aucun panneau ⇒ dérivées RETIRÉES, jamais périmées.
+    Ne lève jamais : une étude n'empêche pas d'enregistrer un devis.
+    """
+    from .etude_schema import MOTEUR_CI, ecrire
+    from .etudes import CLES_DERIVEES_NON_COPIEES, puissances_etude_horaire
+    try:
+        mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+        if mode not in MODES:
+            return None
+        params = dict(getattr(devis, 'etude_params', None) or {})
+        kwc, _kwc_sans = puissances_etude_horaire(devis)
+        if not kwc:
+            if CLE_ETUDE_CI in params or CLE_PRODUCTION_FIGEE in params:
+                ecrire(devis, proprietaire=MOTEUR_CI,
+                       **{CLE_ETUDE_CI: None, CLE_PRODUCTION_FIGEE: None})
+            return None
+        company = getattr(devis, 'company', None)
+        catalogue = lire_catalogue_ci(company)
+        onduleurs = _onduleurs_des_lignes(devis, catalogue)
+        stockees = {k: v for k, v in params.items() if k not in CLES_DERIVEES_NON_COPIEES}
+        empreinte = _empreinte(stockees, kwc, onduleurs)
+        existant = params.get(CLE_ETUDE_CI) or {}
+        if not force and existant.get('empreinte') == empreinte:
+            return existant
+        etude = etudier_ci(
+            company, {'mode': mode, 'taille_explicite_kwc': kwc}, devis=devis,
+            lead=getattr(devis, 'lead', None),
+            production_figee=params.get(CLE_PRODUCTION_FIGEE),
+            onduleurs_imposes=onduleurs or None)
+        if etude.get('bilan') is None:
+            if CLE_ETUDE_CI in params or CLE_PRODUCTION_FIGEE in params:
+                ecrire(devis, proprietaire=MOTEUR_CI,
+                       **{CLE_ETUDE_CI: None, CLE_PRODUCTION_FIGEE: None})
+            return None
+        bloc = {cle: etude.get(cle) for cle in (
+            'entrees_resolues', 'profil_charge', 'production', 'taille', 'bilan',
+            'composition', 'economie_ci', 'alertes', 'hypotheses')}
+        bloc['version'] = VERSION_MOTEUR
+        bloc['empreinte'] = empreinte
+        ecrire(devis, proprietaire=MOTEUR_CI,
+               **{CLE_ETUDE_CI: bloc, CLE_PRODUCTION_FIGEE: etude.get('production')})
+        return bloc
+    except Exception:  # noqa: BLE001 — jamais bloquant pour un devis
+        logger.warning('etude_ci non rafraîchie sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return None
