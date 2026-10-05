@@ -44,6 +44,7 @@ relevée sur le plan ni saisie n'est pas dimensionnée — elle sort en
 omission, nommant ``longueur_m``.
 """
 from __future__ import annotations
+from .valeurs import nombre as _nombre
 
 __all__ = [
     'REGIME_BRANCHE_AC', 'CHAMP_UNITES_MAX', 'CHAMP_I_MAX',
@@ -309,15 +310,6 @@ def _cable(cable):
         'conforme': cable.conforme,
         'regle_source': cable.regle_source,
     }
-
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None
 
 
 def _entier(valeur):

@@ -33,10 +33,12 @@ CE QUE CE CLIENT GARANTIT
 
 CALX150 — LA MÉTÉO EST UNE ENTRÉE, PAS UNE PRODUCTION
 -----------------------------------------------------
-``serie_horaire`` (ci-dessus) demande à PVGIS de faire tourner SON modèle PV
-(``pvcalculation=1``) et lui passe EN PLUS la somme de nos postes en ``loss``
-— c'est l'estimation rapide du constructeur de toiture, elle reste telle
-quelle. ``serie_irradiance`` est l'autre porte : elle demande l'irradiance
+ACAL329 — ``serie_horaire`` (le modèle PV de PVGIS, ``pvcalculation=1``,
+somme de nos postes passée en ``loss``) est SUPPRIMÉE : ce modèle est
+abandonné. Seule la comparaison ``validation.ecart_vs_pvcalc``
+(``services/simulation.py``) demande encore une production à PVGIS, par
+``_appeler`` + ``_params_communs``. ``serie_irradiance`` est LA porte : elle
+demande l'irradiance
 NUE (``pvcalculation=0``, donc AUCUN ``loss``, AUCUN ``peakpower``, ni
 ``mountingplace`` ni ``pvtechchoice`` — ces deux derniers sont sans effet
 quand PVGIS ne calcule pas de PV, et les laisser ferait mentir le contrat sur
@@ -60,6 +62,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from .valeurs import nombre as _flottant
 
 __all__ = [
     'BASES_HEURE', 'BASES_RAYONNEMENT', 'BASE_HEURE_LOCALE_LEGALE',
@@ -68,7 +71,6 @@ __all__ = [
     'COLONNES_IRRADIANCE', 'CONVENTION_AZIMUT', 'ClientPvgis',
     'EntreeInvalide', 'MOTIF_COMPOSANTES_ABSENTES', 'MOTIF_TMY_HORIZONTAL',
     'PvgisIndisponible', 'RACINE_API', 'azimut_pvgis', 'cle_de_cache',
-    'vider_le_cache',
 ]
 
 #: v5_3 — la version courante de l'API PVGIS. ``apps/ventes/weather_feed.py``
@@ -282,11 +284,6 @@ class _Cache:
 _CACHE_PARTAGE = _Cache()
 
 
-def vider_le_cache():
-    """Vide le cache partagé — pour les tests, et eux seuls."""
-    _CACHE_PARTAGE.vider()
-
-
 def _transport_urllib(url, timeout_s):
     """Transport RÉSEAU par défaut : rend ``(statut, corps)``, jamais d'appel
     caché ailleurs dans le module."""
@@ -378,88 +375,6 @@ class ClientPvgis:
         raise PvgisIndisponible(
             f'{dernier_motif} après {self.retentatives_529 + 1} tentatives : '
             'aucune production n\'est publiée.')
-
-    # ── la série horaire ────────────────────────────────────────────────
-    def serie_horaire(self, *, lat, lon, inclinaison_deg, aspect_deg,
-                      politique, puissance_kwc=1.0, annee_debut, annee_fin,
-                      base=BASE_PAR_DEFAUT, montage='building'):
-        """Série horaire ``seriescalc`` d'un plan, pertes PASSÉES explicitement.
-
-        Args:
-            politique: la ``PolitiquePertes`` de CAL238 — OBLIGATOIRE. Sa
-                somme est la valeur ``loss`` de la requête, et elle est
-                republiée avec le résultat.
-            aspect_deg: azimut PVGIS (0 = Sud, −90 = Est, +90 = Ouest). Un
-                azimut de FACE se convertit par ``azimut_pvgis()``.
-
-        Returns:
-            dict — ``points`` (heure par heure), ``base`` (celle que PVGIS dit
-            avoir utilisée), ``fenetre_annees``, ``loss_passee_pct`` et le
-            détail des postes, ``url``.
-
-        Raises:
-            EntreeInvalide: coordonnées, angles, années ou politique absents.
-            PvgisIndisponible: réseau, surcharge, réponse inexploitable.
-        """
-        params = self._params_communs(
-            lat=lat, lon=lon, base=base, politique=politique)
-        params.update({
-            'startyear': _entier(annee_debut, champ='annee_debut'),
-            'endyear': _entier(annee_fin, champ='annee_fin'),
-            'pvcalculation': 1,
-            'peakpower': _puissance(puissance_kwc),
-            'angle': _angle(inclinaison_deg, champ='inclinaison_deg',
-                            mini=0.0, maxi=90.0),
-            'aspect': _angle(aspect_deg, champ='aspect_deg',
-                             mini=-180.0, maxi=180.0),
-            'pvtechchoice': 'crystSi',
-            'mountingplace': montage,
-            'outputformat': 'json',
-        })
-        if params['endyear'] < params['startyear']:
-            raise EntreeInvalide(
-                "La fenêtre d'années est à l'envers : « annee_fin » "
-                f"({params['endyear']}) précède « annee_debut » "
-                f"({params['startyear']}).", champ='annee_fin')
-
-        charge, depuis_cache = self._appeler('seriescalc', params)
-        lignes = (((charge or {}).get('outputs') or {}).get('hourly'))
-        if not isinstance(lignes, list) or not lignes:
-            raise PvgisIndisponible(
-                'La réponse de PVGIS ne porte aucune série horaire : aucune '
-                'production n\'est publiée.')
-
-        points = []
-        for ligne in lignes:
-            horodatage = _horodatage(ligne.get('time'))
-            if horodatage is None:
-                continue
-            annee, mois, jour, heure = horodatage
-            points.append({
-                'annee': annee, 'mois': mois, 'jour': jour, 'heure': heure,
-                'p_w': _flottant(ligne.get('P')),
-                'gi_w_m2': _flottant(ligne.get('G(i)')),
-                't2m_c': _flottant(ligne.get('T2m')),
-                # CALX164 — la réponse PVGIS porte la vitesse du vent et le
-                # modèle thermique de Faiman en a besoin (terme Uv × vent) :
-                # ce chemin la laissait tomber, si bien que la cellule
-                # chauffait toujours comme par temps calme.
-                'ws10m': _flottant(ligne.get('WS10m')),
-            })
-        if not points:
-            raise PvgisIndisponible(
-                'La série horaire de PVGIS est inexploitable (aucun '
-                'horodatage lisible) : aucune production n\'est publiée.')
-
-        resultat = {
-            'service': 'seriescalc',
-            'points': points,
-            'puissance_kwc': params['peakpower'],
-            'url': self.construire_url('seriescalc', params),
-            'depuis_cache': depuis_cache,
-        }
-        resultat.update(_provenance(charge, base, politique))
-        return resultat
 
     # ── l'irradiance NUE, celle que la chaîne de pertes consomme ────────
     def serie_irradiance(self, *, lat, lon, inclinaison_deg, aspect_deg,
@@ -903,9 +818,8 @@ def _bloc_meteo(charge, base_demandee, params, *, url, depuis_cache, annees,
                 obtenue_le, horizon=None):
     """Le bloc ``meteo`` de CALX143 — les clés que ce CLIENT peut sourcer.
 
-    Les noms sont ceux du contrat (``base_rayonnement``, pas ``base``) :
-    ``_provenance`` garde les siens pour ``serie_horaire``, dont les lecteurs
-    d'aujourd'hui vivent. Restent à la chaîne de pertes : ``mode`` (réglage
+    Les noms sont ceux du contrat (``base_rayonnement``, pas ``base``).
+    Restent à la chaîne de pertes : ``mode`` (réglage
     société), ``heure.fuseau_site`` / ``heure.decalage_minutes`` (CALX59),
     ``albedo_face_avant`` (CALX148) et la clé CONDITIONNELLE ``station``, que
     ``seriescalc`` ne porte pas et qui reste ABSENTE.
@@ -965,30 +879,6 @@ def _bloc_horizon(meteo):
     }
 
 
-def _provenance(charge, base_demandee, politique):
-    """Ce que PVGIS dit avoir utilisé + la perte réellement passée.
-
-    La base publiée est celle de la RÉPONSE (``meteo_data.radiation_db``),
-    pas celle qu'on a demandée : si PVGIS bascule sur ERA5 faute de couverture,
-    le chiffre affiché à côté de la production doit le dire.
-    """
-    meteo = (((charge or {}).get('inputs') or {}).get('meteo_data') or {})
-    an_min = meteo.get('year_min')
-    an_max = meteo.get('year_max')
-    fenetre = (f'{an_min}-{an_max}'
-               if an_min is not None and an_max is not None else None)
-    publication = politique.publication()
-    return {
-        'base': meteo.get('radiation_db') or base_demandee,
-        'base_demandee': base_demandee,
-        'base_meteo': meteo.get('meteo_db'),
-        'fenetre_annees': fenetre,
-        'loss_passee_pct': publication['loss_passee_pct'],
-        'pertes': publication['pertes'],
-        'pertes_non_sourcees': publication['postes_non_sources'],
-    }
-
-
 def _horodatage(valeur):
     """``'20200101:0009'`` → ``(2020, 1, 1, 0)``, ou ``None`` si illisible."""
     texte = str(valeur or '')
@@ -999,16 +889,6 @@ def _horodatage(valeur):
                 int(texte[9:11]))
     except ValueError:
         return None
-
-
-def _flottant(valeur):
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre:
-        return None
-    return nombre
 
 
 def _coordonnee(valeur, *, champ, maxi):
@@ -1047,17 +927,3 @@ def _entier(valeur, *, champ):
         raise EntreeInvalide(
             f'« {champ} » doit être une année (reçu : {valeur!r}).',
             champ=champ)
-
-
-def _puissance(valeur):
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        raise EntreeInvalide(
-            f'La puissance crête est illisible (reçu : {valeur!r}).',
-            champ='puissance_kwc')
-    if nombre <= 0:
-        raise EntreeInvalide(
-            'La puissance crête demandée à PVGIS doit être strictement '
-            f'positive (reçu : {nombre}).', champ='puissance_kwc')
-    return nombre

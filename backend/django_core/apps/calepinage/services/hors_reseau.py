@@ -31,6 +31,7 @@ CE QUE CE MODULE GARANTIT
 Module PUR : aucune base, aucun réseau, aucun prix.
 """
 from __future__ import annotations
+from .valeurs import nombre as _nombre
 
 __all__ = ['ETATS_PROTECTION', 'HorsReseauInvalide', 'SEUILS_PROTECTION',
            'banque_pour_autonomie', 'dimensionner_hors_reseau',
@@ -48,16 +49,6 @@ class HorsReseauInvalide(ValueError):
         super().__init__(message)
         self.champ = champ
         self.motif = message
-
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return None if nombre != nombre else nombre
 
 
 def banque_pour_autonomie(*, consommation_journaliere_kwh=None,

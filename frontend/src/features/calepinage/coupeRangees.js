@@ -12,39 +12,35 @@
  * et `pasMesure` (`ModeTerrain.jsx`) le font déjà pour leurs propres jeux de
  * données — aucune seconde formule de pas n'est introduite ici.
  *
- * DEUX CONSTANTES PHYSIQUES DU MODULE (720 Wc, le même produit posé partout
- * dans le dépôt — `PANEL2_SHORT_M`/`FRONT_STRUT_M` de `roofPro2.ts`) sont
- * dupliquées ci-dessous (ACAL255 les remplacera par les cotes du module du pan ;
- * le soleil, lui, est IMPORTÉ de `@rooflib/roofPro2` depuis ACAL254).
- * Elles servent UNIQUEMENT à dessiner l'empreinte et la hauteur du
- * module déjà posé — le pas lui-même reste toujours MESURÉ, jamais recalculé
- * à partir d'elles.
- *
- * LE RAYON SOLAIRE DE CONCEPTION est obtenu par un vrai IMPORT (pas une
- * copie) de `sunDirection`
- * (`@rooflib/roofPro2`, le moteur de l'atelier) à midi solaire au solstice
- * d'hiver — la même hypothèse que `describeRowPitch` affiche déjà en texte.
+ * LE MODULE ET LE SOLEIL NE SONT PLUS DES CONSTANTES (ACAL255). La montée et
+ * l'empreinte se dessinent au PETIT CÔTÉ du module RÉEL du pan
+ * (`zone.geometry.moduleId` → `modules[]` du document, cotes lues par
+ * `moduleSelect.cotesPourPan`) ; un pan sans module désigné, ou dont le module
+ * n'a pas de cotes, n'a PAS de coupe (« module non renseigné ») — jamais
+ * 1,303 m supposé. Le soleil est celui du DIMENSIONNEMENT réellement appliqué
+ * par le moteur de pas V2 : `estimatorBrainV2.DESIGN_SOLAR_HOUR` (10 h solaire)
+ * au solstice d'hiver, la projection et le plancher de 5° étant ceux de son
+ * `shadeLengthM` (parité vérifiée contre `rowPitchM` dans les tests). Le pas
+ * lui-même reste toujours MESURÉ, jamais recalculé.
  *
  * ZÉRO CHIFFRE INVENTÉ. Un pan sans panneaux posés, ou avec moins de deux
  * rangées distinctes, n'a pas de pas mesurable : la coupe n'est PAS dessinée,
  * et le motif exact est renvoyé (jamais un pas de remplacement).
  */
 
-import { sunDirection as sunPosition, WINTER_SOLSTICE_DAY as JOUR_SOLSTICE_HIVER } from '@rooflib/roofPro2'
+import { DESIGN_SOLAR_HOUR, sunPositionWinterSolstice } from '@rooflib/estimatorBrainV2'
+import { FRONT_STRUT_M } from '@rooflib/roofPro2'
+import { cotesPourPan } from '@roofpro/moduleSelect'
 
 const DEG2RAD = Math.PI / 180
+/** Plancher d'élévation du moteur V2 (`shadeLengthM`) : soleil très bas → 5°. */
+const ELEVATION_PLANCHER_DEG = 5
 
-/** Petit côté du module 720 Wc (m, dans le sens de la pente) — même valeur que
- *  `PANEL2_SHORT_M` de `apps/web/src/lib/roofPro2.ts`. */
-export const PROFONDEUR_MODULE_M = 1.303
-
-/** Hauteur du montant avant (bas) du châssis lesté (m) — même valeur que
- *  `FRONT_STRUT_M` de `apps/web/src/lib/roofPro2.ts`. Sans objet en pose
- *  affleurante (pas de châssis). */
-export const MONTANT_AVANT_M = 0.1
-
-/** Heure solaire de conception (midi) — même hypothèse que `describeRowPitch`. */
-export const HEURE_CONCEPTION = 12
+/** Motif quand aucun module n'est désigné sur le pan (jamais un module supposé). */
+export const MOTIF_MODULE_NON_RENSEIGNE = (
+  'Module non renseigné sur ce pan : choisissez le module du pan, la coupe '
+  + 'n’est pas calculée (aucune cote de module supposée).'
+)
 
 /**
  * Le pas inter-rangées MESURÉ sur les panneaux déjà posés (m, centre à centre),
@@ -79,9 +75,10 @@ export function pasRangeeMesure(panels, azimuthDeg) {
  * La coupe transversale de deux rangées consécutives du pan actif, ou l'état
  * « non calculée » avec son motif exact. `zone` est l'entrée `zones[]` du
  * document `roof_layout` v2 (`zone.geometry`, posée par `serializeLayout`) ;
- * `latitudeDeg` vient de `layout.pin.lat` — AUCUNE des deux n'est devinée.
+ * `latitudeDeg` vient de `layout.pin.lat`, `modules` est le catalogue `modules[]`
+ * de la racine du document — AUCUN des trois n'est deviné.
  */
-export function construireCoupe({ zone, latitudeDeg } = {}) {
+export function construireCoupe({ zone, latitudeDeg, modules } = {}) {
   const geometrie = zone?.geometry ?? null
   if (!geometrie) {
     return { disponible: false, motif: 'Ce pan n’a encore aucune géométrie posée : la coupe n’est pas calculée.' }
@@ -104,19 +101,36 @@ export function construireCoupe({ zone, latitudeDeg } = {}) {
     }
   }
 
+  // ACAL255 — le module RÉEL du pan : jamais un petit côté supposé.
+  const moduleId = typeof geometrie.moduleId === 'string' ? geometrie.moduleId.trim() : ''
+  if (!moduleId) return { disponible: false, motif: MOTIF_MODULE_NON_RENSEIGNE }
+  const cotes = cotesPourPan(Array.isArray(modules) ? modules : [], moduleId)
+  if (!Number.isFinite(cotes?.courtM)) {
+    return {
+      disponible: false,
+      motif: cotes?.message ?? MOTIF_MODULE_NON_RENSEIGNE,
+    }
+  }
+  const profondeurModuleM = cotes.courtM
+
   const flush = !!geometrie.flush
   const tiltRad = tiltDeg * DEG2RAD
-  const riseM = PROFONDEUR_MODULE_M * Math.sin(tiltRad)
-  const depthFootprintM = PROFONDEUR_MODULE_M * Math.cos(tiltRad)
+  const riseM = profondeurModuleM * Math.sin(tiltRad)
+  const depthFootprintM = profondeurModuleM * Math.cos(tiltRad)
   // Pose affleurante (toit en pente) : pas de châssis, le module épouse la
   // pente — aucune hauteur hors-tout distincte du toit lui-même.
-  const hauteurHorsToutM = flush ? null : MONTANT_AVANT_M + riseM
+  const hauteurHorsToutM = flush ? null : FRONT_STRUT_M + riseM
 
-  const soleil = sunPosition(latitudeDeg, JOUR_SOLSTICE_HIVER, HEURE_CONCEPTION)
+  // Le soleil de DIMENSIONNEMENT du moteur V2 (10 h solaire, solstice d'hiver).
+  const soleil = sunPositionWinterSolstice(latitudeDeg, DESIGN_SOLAR_HOUR)
   const rayonSolaireDeg = soleil.elevationDeg
-  // Rangées jointives (affleurant), ou soleil sous l'horizon au midi de
-  // conception (latitude extrême) : aucun espacement anti-ombrage à dessiner.
-  const longueurOmbreM = flush || rayonSolaireDeg <= 0 ? 0 : riseM / Math.tan(rayonSolaireDeg * DEG2RAD)
+  // Rangées jointives (affleurant) : aucun espacement anti-ombrage à dessiner.
+  // Sinon la longueur d'ombre de `estimatorBrainV2.shadeLengthM` (rangées plein
+  // sud : projection |cos γ|, élévation plancher 5°).
+  const longueurOmbreM = flush
+    ? 0
+    : Math.max(0, (riseM * Math.abs(Math.cos(soleil.azimuthFromSouthDeg * DEG2RAD)))
+      / Math.tan(Math.max(ELEVATION_PLANCHER_DEG, rayonSolaireDeg) * DEG2RAD))
 
   return {
     disponible: true,
@@ -124,6 +138,9 @@ export function construireCoupe({ zone, latitudeDeg } = {}) {
     flush,
     family: geometrie.family ?? null,
     rowPitchM,
+    profondeurModuleM,
+    montantAvantM: FRONT_STRUT_M,
+    heureConceptionH: DESIGN_SOLAR_HOUR,
     depthFootprintM,
     riseM,
     hauteurHorsToutM,

@@ -44,6 +44,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from core.electrique.types import TEMP_CHAUD_DEFAUT_C, TEMP_FROID_DEFAUT_C
+from .valeurs import nombre as _nombre
 
 __all__ = [
     'SOURCE_SAISIE', 'SOURCE_TMY', 'MENTION_NON_SOURCEE',
@@ -175,16 +176,6 @@ def enregistrer_fournisseur_temperatures(fournisseur):
 def fournisseur_temperatures():
     """Le fournisseur TMY courant, ou ``None`` s'il n'y en a pas."""
     return _FOURNISSEUR
-
-
-def _nombre(valeur):
-    """Flottant tolérant — ``None`` quand la valeur n'est pas un nombre."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None
 
 
 def _saisie(donnees):

@@ -29,16 +29,13 @@ from apps.calepinage.services.chaine_pertes import (
 )
 from apps.calepinage.services.electrique import BLOCS_SIMULATION
 from apps.calepinage.services.export_csv import export_csv
-from apps.calepinage.services.pertes_politique import politique_de_pertes
-from apps.calepinage.services.pvgis_serie import ClientPvgis, _Cache
+from apps.calepinage.tests.test_pvgis_serie import serie_enregistree
 
 RACINE = pathlib.Path(__file__).resolve().parents[1]
-FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures_pvgis'
 CONTRAT = json.loads(
     (RACINE / 'contract_samples' / 'calepinage_serie_horaire.json')
     .read_text(encoding='utf-8'))
 
-POSTES_ESSAI = [{'poste': 'shading', 'pct': 3.5, 'source': 'mesure'}]
 
 #: Les SEPT colonnes historiques que `services/export_csv.py` lit depuis
 #: CAL144 — elles ne bougent ni de nom, ni d'unité, ni de nature.
@@ -46,24 +43,8 @@ SEPT_HISTORIQUES = ('annee', 'mois', 'jour', 'heure', 'p_w', 'gi_w_m2',
                     't2m_c')
 
 
-class TransportEnregistre:
-    def __init__(self, charge):
-        self.charge = charge
-
-    def __call__(self, url, timeout_s):
-        return 200, json.dumps(self.charge)
-
-
 def points_reels():
-    charge = json.loads(
-        (FIXTURES / 'seriescalc_casablanca_sud.json').read_text(
-            encoding='utf-8'))
-    client = ClientPvgis(TransportEnregistre(charge), cache=_Cache(),
-                         dormir=lambda _s: None)
-    return client.serie_horaire(
-        lat=33.5, lon=-7.6, inclinaison_deg=15.0, aspect_deg=0.0,
-        politique=politique_de_pertes(POSTES_ESSAI),
-        annee_debut=2020, annee_fin=2020)['points']
+    return serie_enregistree()['points']
 
 
 POINTS = points_reels()

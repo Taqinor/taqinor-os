@@ -1344,7 +1344,11 @@ class CalepinageApiGoldenTests(unittest.TestCase):
     ]
 
     def test_les_16_fonctions_calepinage_sont_resolues(self):
-        fonctions = shapes.ApiFunctions([self.FACADE])
+        # SPL293+ : la façade ET ses fragments (rattachés à la façade).
+        fichiers = [self.FACADE] + sorted(
+            f for f in (self.FACADE.parent / "calepinage").glob("*.js")
+            if f.name != "_base.js")
+        fonctions = shapes.ApiFunctions(fichiers)
         fonctions.collect()
         noms = sorted(nom for (module, nom) in fonctions.functions
                       if module == self.FACADE.resolve())

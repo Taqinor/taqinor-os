@@ -35,7 +35,15 @@ présentes. Chaque bloc est LU, rien n'est recalculé :
 * ``postes_pertes`` (CALX370) — les postes SAISIS (``Calepinage.pertes``),
   TELS QUELS : l'entrée de la simulation, que la réimportation restitue ;
 * ``variantes`` (CALX370) — ``[{nom, retenue, roof_layout, layout_hash,
-  resultat}]``, la retenue en tête (``selectors.variantes``).
+  resultat}]``, la retenue en tête (``selectors.variantes``) ;
+* ``saisies`` (ACAL243, format 3) — les SAISIES électriques portables :
+  ``{entree_electrique, produits_designes, raccordement_saisie,
+  sld_edition}``. ``entree_electrique`` porte les clés de
+  ``electrique.CHAMPS_ENTREE`` (source unique, jamais recopiée ici) sauf
+  ``CLES_NON_PORTABLES`` (les trois identifiants produit, rangés à part dans
+  ``produits_designes`` — ils n'ont de sens que dans la société de départ —
+  et les dérogations, des GESTES jamais exportés). Le registre des clés de
+  saisie est ``services/resultat.CLES_SAISIES``.
 
 La réimportation (``importer_projet``, CALX370) est l'inverse de ce fichier,
 dans CE module : voir la section qui la porte, en fin de fichier.
@@ -68,6 +76,7 @@ import math
 from decimal import Decimal
 
 __all__ = [
+    'CLES_NON_PORTABLES', 'CLES_ENTREE_PORTABLES',
     'FORMAT_VERSION', 'CODE_DOCUMENT', 'CLES_DOCUMENT', 'CLES_SITE',
     'FAMILLES_EQUIPEMENT', 'MOTIF_SANS_CONCEPTION', 'MOTIF_NON_SIMULE',
     'ExportProjetRefuse', 'horodatage_utc', 'cle_de_montant',
@@ -82,7 +91,9 @@ __all__ = [
 #: un bloc s'ajoute ; jamais une date, jamais le ``schema_version`` du layout.
 #: CALX370 — 2 : ``postes_pertes`` et ``variantes`` rejoignent le fichier (le
 #: projet se RÉIMPORTE, il ne se lit plus seulement).
-FORMAT_VERSION = 2
+#: ACAL243 — 3 : le bloc ``saisies`` (entrée électrique portable, produits
+#: désignés, raccordement, édition du schéma) rejoint le fichier.
+FORMAT_VERSION = 3
 
 #: Le code du document dans l'inventaire (contrat ``calepinage_documents``).
 CODE_DOCUMENT = 'export_projet_json'
@@ -92,7 +103,16 @@ CODE_DOCUMENT = 'export_projet_json'
 CLES_DOCUMENT = ('format_version', 'produit_le', 'calepinage', 'site',
                  'equipements', 'roof_layout', 'layout_hash',
                  'version_moteur', 'resultat', 'pertes', 'avertissements',
-                 'provenance', 'postes_pertes', 'variantes')
+                 'provenance', 'postes_pertes', 'variantes', 'saisies')
+
+#: ACAL243 — les clés de ``CHAMPS_ENTREE`` qui ne VOYAGENT PAS dans
+#: ``saisies.entree_electrique`` : les trois identifiants produit (bloc
+#: ``produits_designes``, repris seulement s'ils existent dans la société
+#: d'arrivée) et les dérogations (un GESTE daté et signé, jamais exporté).
+#: Toute autre clé de ``CHAMPS_ENTREE`` — y compris une clé ajoutée demain —
+#: est portable : la liste n'est jamais recopiée ici.
+CLES_NON_PORTABLES = ('module_produit', 'onduleur_produit',
+                      'optimiseur_produit', 'derogations')
 
 #: CALX370 — les clés d'une variante exportée, dans l'ordre du fichier.
 CLES_VARIANTE = ('nom', 'retenue', 'roof_layout', 'layout_hash', 'resultat')
@@ -339,6 +359,8 @@ def document_de_projet(calepinage, *, moment=None, resultat=_LIRE,
         # ci-dessus restant la liste SERVIE) et les variantes.
         'postes_pertes': _bloc_postes_pertes(calepinage),
         'variantes': _bloc_variantes(calepinage),
+        # ACAL243 — format 3 : les saisies électriques portables.
+        'saisies': _bloc_saisies(calepinage),
     }
     verifier_aucun_montant(document)
     octets_de_projet(document)  # JSON strict, ou refus nommé
@@ -346,6 +368,51 @@ def document_de_projet(calepinage, *, moment=None, resultat=_LIRE,
 
 
 # ── CALX370 — les blocs de la réimportation ─────────────────────────────────
+
+def _cles_entree_portables():
+    """``CHAMPS_ENTREE`` (source unique) privée de ``CLES_NON_PORTABLES``."""
+    from .electrique import CHAMPS_ENTREE
+
+    return tuple(cle for cle in CHAMPS_ENTREE
+                 if cle not in CLES_NON_PORTABLES)
+
+
+#: Les clés de l'entrée électrique exportées et reprises (ordre du registre).
+CLES_ENTREE_PORTABLES = _cles_entree_portables()
+
+#: Les identifiants produit de l'entrée — bloc ``saisies.produits_designes``.
+CLES_PRODUITS_DESIGNES = tuple(cle for cle in CLES_NON_PORTABLES
+                               if cle.endswith('_produit'))
+
+
+def _bloc_saisies(calepinage):
+    """ACAL243 — les saisies PORTABLES, lues TELLES QU'ENREGISTRÉES.
+
+    Rien n'est normalisé ni recalculé : ce qui a été validé à l'écriture est
+    restitué à l'identique, et sera revalidé à la réimportation.
+    """
+    from .electrique import CLE_ENTREE
+    from .raccordement import CLE_SAISIE
+    from .sld import CLE_EDITION
+
+    resultat = getattr(calepinage, 'resultat', None)
+    resultat = resultat if isinstance(resultat, dict) else {}
+    entree = resultat.get(CLE_ENTREE)
+    entree = entree if isinstance(entree, dict) else {}
+
+    def _objet(cle):
+        valeur = resultat.get(cle)
+        return copy.deepcopy(valeur) if isinstance(valeur, dict) else None
+
+    return {
+        CLE_ENTREE: {cle: copy.deepcopy(entree[cle])
+                     for cle in CLES_ENTREE_PORTABLES if cle in entree},
+        'produits_designes': {cle: entree.get(cle)
+                              for cle in CLES_PRODUITS_DESIGNES},
+        CLE_SAISIE: _objet(CLE_SAISIE),
+        CLE_EDITION: _objet(CLE_EDITION),
+    }
+
 
 def _bloc_postes_pertes(calepinage):
     """Les postes de pertes SAISIS (``Calepinage.pertes``, CAL139), TELS QUELS.
@@ -410,10 +477,21 @@ def _bloc_variantes(calepinage):
 
 #: Les versions du fichier que cette réimportation sait relire. Une version
 #: inconnue est REFUSÉE en la nommant — jamais « au mieux ».
-FORMATS_IMPORTABLES = (1, 2)
+FORMATS_IMPORTABLES = (1, 2, 3)
 
 #: Les blocs du fichier que la réimportation ÉCRIT.
-BLOCS_REPRIS = ('roof_layout', 'postes_pertes', 'variantes')
+BLOCS_REPRIS = ('roof_layout', 'postes_pertes', 'variantes', 'saisies')
+
+#: ACAL243 — le bloc des produits désignés ABSENTS de la société d'arrivée.
+BLOC_PRODUITS_IGNORES = 'saisies.produits'
+MOTIF_PRODUITS_IGNORES = (
+    "Ces produits ne sont pas dans le catalogue de la société d'arrivée : "
+    'choisissez-les dans le vôtre.')
+
+#: ACAL243 — ce que le fichier réimporté NE restitue PAS à l'identique : le
+#: titre (s'il est remplacé), les identifiants (calepinage, client, produits
+#: absents) et ``produit_le`` changent ; le bloc ``saisies`` d'un nouvel
+#: export, lui, est identique à celui du fichier importé.
 
 #: Les blocs LUS mais jamais écrits, et pourquoi (réponse de l'import).
 BLOCS_IGNORES = (
@@ -551,6 +629,124 @@ def _valider_variantes(variantes):
     return propres
 
 
+def _refus_saisie(chemin, message):
+    return ImportProjetRefuse(
+        'Fichier de projet refusé au champ « %s » : %s' % (chemin, message),
+        champ=chemin)
+
+
+def _objet_ou_rien(valeur, chemin):
+    if valeur is not None and not isinstance(valeur, dict):
+        raise _refus_saisie(chemin, 'un objet ou null est attendu (reçu : %s).'
+                            % type(valeur).__name__)
+    return valeur
+
+
+def _valider_edition_sld(edition):
+    """L'édition du schéma : sa FORME et ses textes (garde d'argent comprise).
+
+    Les clefs ne sont pas confrontées au dessin : une édition stockée garde
+    aussi les clefs d'organes momentanément non dessinés (ACAL160) — elles
+    reviennent avec l'organe.
+    """
+    from .sld import RUBRIQUES, SldRefuse, _point_lisible, _texte_valide
+
+    chemin = 'saisies.sld_edition'
+    if edition is None:
+        return None
+    _objet_ou_rien(edition, chemin)
+    inconnues = sorted(set(edition) - set(RUBRIQUES))
+    if inconnues:
+        raise _refus_saisie('%s.%s' % (chemin, inconnues[0]),
+                            'rubrique inconnue (rubriques : %s).'
+                            % ', '.join(RUBRIQUES))
+    propre = {}
+    for rubrique in RUBRIQUES:
+        valeurs = _objet_ou_rien(edition.get(rubrique),
+                                 '%s.%s' % (chemin, rubrique)) or {}
+        propre[rubrique] = {}
+        for clef, valeur in valeurs.items():
+            ici = '%s.%s.%s' % (chemin, rubrique, clef)
+            if rubrique == 'positions':
+                point = _point_lisible(valeur)
+                if point is None:
+                    raise _refus_saisie(ici, 'une position { x, y } est '
+                                             'attendue.')
+                propre[rubrique][clef] = point
+                continue
+            try:
+                propre[rubrique][clef] = _texte_valide(valeur, champ=ici)
+            except SldRefuse as refus:
+                raise _refus_saisie(ici, str(refus)) from refus
+    return propre
+
+
+def _valider_saisies(saisies):
+    """ACAL243 — le bloc ``saisies`` du format 3, validé SANS écrire.
+
+    Les valeurs de l'entrée électrique sont jugées à l'écriture par
+    ``electrique.enregistrer_entree`` (ses validateurs dépendent de la
+    conception) ; ici : la forme, les clés admises, le raccordement et
+    l'édition du schéma (validateurs purs). Chaque refus nomme
+    ``saisies.<clé>``.
+    """
+    from .raccordement import (
+        PREFIXE_CHAMP, RaccordementInvalide, _saisie_publiee,
+    )
+
+    vide = {'entree_electrique': {}, 'produits': {},
+            'raccordement_saisie': None, 'sld_edition': None}
+    if saisies is None:
+        return vide
+    _objet_ou_rien(saisies, 'saisies')
+    connus = ('entree_electrique', 'produits_designes',
+              'raccordement_saisie', 'sld_edition')
+    inconnues = sorted(set(saisies) - set(connus))
+    if inconnues:
+        raise _refus_saisie('saisies.%s' % inconnues[0],
+                            'bloc de saisie inconnu (blocs : %s).'
+                            % ', '.join(connus))
+    entree = _objet_ou_rien(saisies.get('entree_electrique'),
+                            'saisies.entree_electrique') or {}
+    for cle in entree:
+        if cle not in CLES_ENTREE_PORTABLES:
+            raise _refus_saisie(
+                'saisies.entree_electrique.%s' % cle,
+                'clé non portable de l’entrée électrique (clés portables : '
+                '%s).' % ', '.join(CLES_ENTREE_PORTABLES))
+    produits = {}
+    designes = _objet_ou_rien(saisies.get('produits_designes'),
+                              'saisies.produits_designes') or {}
+    for cle, valeur in designes.items():
+        chemin = 'saisies.produits_designes.%s' % cle
+        if cle not in CLES_PRODUITS_DESIGNES:
+            raise _refus_saisie(chemin, 'produit désigné inconnu (clés : %s).'
+                                % ', '.join(CLES_PRODUITS_DESIGNES))
+        if valeur is None:
+            continue
+        if isinstance(valeur, bool) or not isinstance(valeur, int):
+            raise _refus_saisie(chemin, 'un identifiant entier ou null est '
+                                        'attendu.')
+        produits[cle] = valeur
+    raccordement = _objet_ou_rien(saisies.get('raccordement_saisie'),
+                                  'saisies.raccordement_saisie')
+    if raccordement is not None:
+        try:
+            raccordement = _saisie_publiee(raccordement)
+        except RaccordementInvalide as refus:
+            champ = str(refus.champ or '')
+            if champ.startswith(PREFIXE_CHAMP):
+                champ = champ[len(PREFIXE_CHAMP):]
+            raise _refus_saisie(
+                'saisies.raccordement_saisie' + ('.%s' % champ if champ
+                                                 else ''),
+                str(refus)) from refus
+    return {'entree_electrique': copy.deepcopy(entree),
+            'produits': produits,
+            'raccordement_saisie': raccordement,
+            'sld_edition': _valider_edition_sld(saisies.get('sld_edition'))}
+
+
 def _modules_du_document(document):
     """Le nombre de modules POSÉS (``zones[].geometry.count``), ou ``None``."""
     if not isinstance(document, dict):
@@ -609,6 +805,10 @@ def _analyser_projet(document):
                                  'postes_pertes')
         variantes = _valider_variantes(document.get('variantes'))
 
+    # ACAL243 — formats 1 et 2 : aucune saisie ; format 3 : le bloc validé.
+    repris = version >= 3 and 'saisies' in BLOCS_REPRIS
+    saisies = _valider_saisies(document.get('saisies') if repris else None)
+
     bloc = document.get('calepinage')
     titre = _texte((bloc or {}).get('titre')) if isinstance(bloc, dict) else ''
     return {
@@ -618,6 +818,7 @@ def _analyser_projet(document):
                                        'roof_layout'),
         'postes': postes,
         'variantes': variantes,
+        'saisies': saisies,
         'avertissements': avertissements,
     }
 
@@ -636,8 +837,16 @@ def _resume(plan, *, calepinage=None, ecrit, avertissements=()):
     """La réponse de la réimportation — forme ``calepinage_projet_json``."""
     retenue = next((v['nom'] for v in plan['variantes'] if v['retenue']),
                    None)
+    ignores = [{'bloc': bloc, 'motif': motif}
+               for bloc, motif in BLOCS_IGNORES]
+    absents = plan.get('produits_absents') or []
+    if absents:
+        ignores.append({'bloc': BLOC_PRODUITS_IGNORES,
+                        'motif': MOTIF_PRODUITS_IGNORES,
+                        'ids': list(absents)})
+    pk = getattr(calepinage, 'pk', None)
     return {
-        'calepinage': getattr(calepinage, 'pk', None),
+        'calepinage': pk,
         'titre': (_texte(getattr(calepinage, 'titre', ''))
                   if calepinage is not None else plan['titre']),
         'format_version': plan['format_version'],
@@ -647,10 +856,41 @@ def _resume(plan, *, calepinage=None, ecrit, avertissements=()):
         'variantes': len(plan['variantes']),
         'variante_retenue': retenue,
         'repris': list(BLOCS_REPRIS),
-        'ignores': [{'bloc': bloc, 'motif': motif}
-                    for bloc, motif in BLOCS_IGNORES],
+        'ignores': ignores,
         'avertissements': list(plan['avertissements']) + list(avertissements),
+        # ACAL17/243 — le chemin d'écran du calepinage importé.
+        'ouvrir': ('/calepinage/%d' % pk) if ecrit and pk else None,
     }
+
+
+def _trier_produits(plan, company):
+    """ACAL243 — les produits désignés EXISTANT dans la société d'arrivée.
+
+    Lus par ``apps.stock.selectors.valid_produit_ids`` (borné société) ; les
+    absents sont NOMMÉS (``produits_absents``) et ne sont jamais repris. Sans
+    société (aperçu hors base), aucun produit n'est reconnu. Le produit de
+    la batterie déclarée (``entree_electrique.batterie.produit``, ACAL166)
+    suit la même règle : absent, il est retiré de la déclaration et nommé.
+    """
+    produits = plan['saisies']['produits']
+    batterie = plan['saisies']['entree_electrique'].get('batterie')
+    pid_batterie = (batterie.get('produit')
+                    if isinstance(batterie, dict) else None)
+    if isinstance(pid_batterie, bool) or not isinstance(pid_batterie, int):
+        pid_batterie = None
+    candidats = list(produits.values()) + (
+        [pid_batterie] if pid_batterie is not None else [])
+    presents = set()
+    if company is not None and candidats:
+        from apps.stock.selectors import valid_produit_ids
+
+        presents = valid_produit_ids(company, candidats)
+    plan['saisies']['produits'] = {cle: pid for cle, pid in produits.items()
+                                   if pid in presents}
+    if pid_batterie is not None and pid_batterie not in presents:
+        batterie.pop('produit')
+    plan['produits_absents'] = list(dict.fromkeys(
+        pid for pid in candidats if pid not in presents))
 
 
 def importer_projet(document, company, *, user=None, lead_id=None,
@@ -658,7 +898,7 @@ def importer_projet(document, company, *, user=None, lead_id=None,
     """Réimporte le fichier de projet dans ``company`` — un NOUVEAU calepinage.
 
     Args:
-        document: le fichier (``document_de_projet``, format 1 ou 2).
+        document: le fichier (``document_de_projet``, format 1, 2 ou 3).
         company: la société d'ARRIVÉE — posée par le serveur, jamais lue du
             fichier ni du corps de requête.
         user: l'auteur, posé par le serveur.
@@ -683,6 +923,7 @@ def importer_projet(document, company, *, user=None, lead_id=None,
         raise ImportProjetRefuse(
             'Indiquez le lead OU le client de votre société auquel rattacher '
             'le projet importé (un seul des deux).', champ='lead')
+    _trier_produits(plan, company)
     if apercu:
         return _resume(plan, ecrit=False)
 
@@ -707,6 +948,7 @@ def importer_projet(document, company, *, user=None, lead_id=None,
                     libelle='Import du fichier de projet')
             if plan['postes']:
                 enregistrer_pertes(calepinage, plan['postes'])
+            _ecrire_saisies(calepinage, plan['saisies'], user=user)
             avertissements.extend(
                 _creer_variantes(calepinage, plan['variantes'], user=user))
     except CreationRefusee as refus:
@@ -717,6 +959,46 @@ def importer_projet(document, company, *, user=None, lead_id=None,
             str(refus), champ=refus.champ or 'roof_layout') from refus
     return _resume(plan, calepinage=calepinage, ecrit=True,
                    avertissements=avertissements)
+
+
+def _ecrire_saisies(calepinage, saisies, *, user=None):
+    """ACAL243 — les saisies par leurs ÉCRIVAINS uniques, refus NOMMÉ.
+
+    L'entrée électrique (et les produits PRÉSENTS dans la société d'arrivée)
+    passe par ``electrique.enregistrer_entree`` — toute sa validation
+    comprise ; le raccordement et l'édition du schéma, déjà normalisés par
+    ``_valider_saisies``, par l'écrivain unique de ``resultat``
+    (``services/resultat.modifier_resultat``). Appelé DANS la transaction de
+    l'import : un refus annule tout.
+    """
+    from .electrique import (
+        EntreeInvalide, TemperaturesInvalides, enregistrer_entree,
+    )
+    from .raccordement import CLE_SAISIE
+    from .resultat import modifier_resultat
+    from .sld import CLE_EDITION
+
+    donnees = dict(saisies['entree_electrique'])
+    donnees.update(saisies['produits'])
+    if donnees:
+        try:
+            enregistrer_entree(calepinage, donnees, user=user)
+        except (EntreeInvalide, TemperaturesInvalides) as refus:
+            champ = str(getattr(refus, 'champ', '') or '')
+            bloc = ('produits_designes' if champ in CLES_PRODUITS_DESIGNES
+                    else 'entree_electrique')
+            raise _refus_saisie(
+                'saisies.%s' % bloc + ('.%s' % champ if champ else ''),
+                str(refus)) from refus
+    poses = {cle: saisies[bloc]
+             for cle, bloc in ((CLE_SAISIE, 'raccordement_saisie'),
+                               (CLE_EDITION, 'sld_edition'))
+             if saisies[bloc] is not None}
+    if poses:
+        def _poser(resultat):
+            resultat.update(copy.deepcopy(poses))
+
+        modifier_resultat(calepinage, _poser)
 
 
 def _creer_variantes(calepinage, variantes, *, user=None):

@@ -68,6 +68,7 @@ import math
 from apps.calepinage.services import etapes
 from apps.calepinage.services.pvgis_serie import MOTIF_COMPOSANTES_ABSENTES
 from core.calepinage.soleil import position_solaire
+from ..valeurs import nombre as _nombre
 
 #: Le nom du poste — celui de ``chaine_pertes.ORDRE_ETAPES``.
 POSTE = 'iam'
@@ -455,14 +456,3 @@ def _instant_utc(point, decalage_minutes):
     except (KeyError, TypeError, ValueError):
         return None
     return moment - datetime.timedelta(minutes=decalage_minutes)
-
-
-def _nombre(valeur):
-    """Un flottant lisible, ou ``None`` — jamais une valeur de remplacement."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return None if nombre != nombre else nombre

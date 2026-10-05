@@ -75,6 +75,7 @@ import math
 
 from .cables import ORIGINE_PLAN, ORIGINE_SAISIE, Longueur
 from .zones import projeteur_local
+from .valeurs import nombre as _nombre
 
 __all__ = [
     'ORIGINE_MIXTE', 'COTE_DC', 'COTE_AC', 'COTE_TERRE',
@@ -114,16 +115,6 @@ CLE_CIBLE = {COTE_DC: 'chute_dc_cible_pct', COTE_AC: 'chute_ac_cible_pct'}
 CLE_MAXIMUM = {COTE_DC: 'chute_dc_max_pct', COTE_AC: 'chute_ac_max_pct'}
 CLE_PLANCHER_DC = 'section_min_dc_mm2'
 CLE_COEFF_ISC = 'coeff_isc_dimensionnement'
-
-
-def _nombre(valeur):
-    """``float`` ou ``None`` — un booléen n'est jamais une mesure."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None
 
 
 # ───────────────────────────────────────────── CALX224 : la longueur mesurée

@@ -55,6 +55,7 @@ from apps.calepinage.services import etapes as _etapes
 from apps.calepinage.services.thermique import (
     MODELE_FAIMAN, MODELE_NOCT, TEMPERATURE_STC_C, perte_thermique,
     temperature_cellule)
+from ..valeurs import nombre as _nombre
 
 #: La clé de réglage société lue ici (registre CALX145).
 CLE_REGLAGE = 'thermique_par_pose'
@@ -335,15 +336,3 @@ def _est_un_gain(avant, apres):
     if depart is None or arrivee is None:
         return False
     return arrivee > depart
-
-
-def _nombre(valeur):
-    if isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre:
-        return None
-    return nombre

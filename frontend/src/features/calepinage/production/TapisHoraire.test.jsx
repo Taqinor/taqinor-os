@@ -283,3 +283,24 @@ describe('ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — geometriePresente', (
     expect(exportCsv).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('ACAL218 — simulation périmée', () => {
+  it('affiche le motif sans serie quand perime', async () => {
+    const motif = 'simulation périmée : le document a changé depuis le calcul'
+    // Même avec une série fournie : celle d'un ancien toit n'est pas montrée.
+    rendre({ perime: true, motif, serie: serieSynthetique() })
+
+    const carte = await screen.findByTestId('cal-tapis-perime')
+    expect(carte).toHaveTextContent(motif)
+    expect(screen.queryByTestId('cal-tapis')).toBeNull()
+    expect(exportCsv).not.toHaveBeenCalled()
+  }, 30_000)
+
+  it('sans motif servi, un motif français par défaut', async () => {
+    rendre({ perime: true })
+
+    expect(await screen.findByTestId('cal-tapis-perime'))
+      .toHaveTextContent('La simulation est périmée')
+    expect(exportCsv).not.toHaveBeenCalled()
+  })
+})

@@ -108,7 +108,7 @@ class PolitiquePertes:
         }
 
 
-def _nombre(valeur, *, champ):
+def _pourcentage(valeur, *, champ):
     """Un pourcentage lisible, ou un refus NOMMANT le champ."""
     if isinstance(valeur, bool) or valeur is None:
         raise PertesInvalides(
@@ -190,7 +190,7 @@ def politique_de_pertes(postes):
                     'poste est alors publié comme non sourcé).',
                     champ=nom)
 
-        pct = _nombre(brut.get('pct'), champ=nom)
+        pct = _pourcentage(brut.get('pct'), champ=nom)
         total += pct
         publies.append({
             'poste': nom,

@@ -72,6 +72,7 @@ from apps.calepinage.services.pvgis_serie import MOTIF_COMPOSANTES_ABSENTES
 from core.calepinage.ombre_rangees import (
     fraction_ombree, fraction_ombree_est_ouest)
 from core.calepinage.soleil import position_solaire
+from ..valeurs import nombre as _nombre
 
 __all__ = ['CHAMPS_GEOMETRIE', 'CHAMP_KWC', 'CHAMP_PAS', 'FAMILLE_EST_OUEST',
            'REFERENCE', 'SOURCE', 'appliquer']
@@ -256,19 +257,6 @@ def _texte(plan, chemins):
         if isinstance(courant, str) and courant.strip():
             return courant.strip()
     return ''
-
-
-def _nombre(valeur):
-    """Un flottant fini, ou ``None`` — un booléen n'est jamais un nombre."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre or nombre in (float('inf'), float('-inf')):
-        return None
-    return nombre
 
 
 def _parts_est_ouest(plan):

@@ -52,6 +52,7 @@ from __future__ import annotations
 
 from apps.calepinage.services import etapes as _etapes
 from apps.calepinage.services.thermique import TEMPERATURE_STC_C
+from .valeurs import nombre as _nombre
 
 #: L'irradiance de RÉFÉRENCE (W/m²) qui définit le rendement de référence
 #: dans la norme : ce sont les conditions STC elles-mêmes, pas un réglage.
@@ -307,15 +308,3 @@ def _periode(points):
 
 
 # ── lecture élémentaire ────────────────────────────────────────────────
-
-def _nombre(valeur):
-    """Un flottant fini, ou ``None`` — un booléen n'est jamais un nombre."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre or nombre in (float('inf'), float('-inf')):
-        return None
-    return nombre

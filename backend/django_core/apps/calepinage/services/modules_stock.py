@@ -40,6 +40,7 @@ prix. Le calepinage ne calcule d'ailleurs jamais d'argent (D-CALX 5).
 from __future__ import annotations
 
 from apps.stock.selectors import dimensions_de_pose
+from .valeurs import nombre
 
 #: Les cotes SANS LESQUELLES on ne sait pas paver : longueur et largeur (la
 #: maille), puissance unitaire (le kWc du pan). L'épaisseur et le poids sont
@@ -84,22 +85,15 @@ __all__ = ['CHAMPS_REQUIS', 'LIBELLES_CHAMPS', 'SOURCE_FICHE', 'PREFIXE_ID',
            'modules_disponibles_du_calepinage']
 
 
-def _nombre(valeur):
-    """Un ``float`` JSON-sûr, ou ``None`` — jamais un ``Decimal`` sérialisé.
+def _cote_positive(valeur):
+    """Une cote strictement POSITIVE (``valeurs.nombre``), ou ``None``.
 
     Une cote non finie (``NaN``/infini, qu'une importation bancale peut poser)
     vaut ``None`` : le schéma v2 exige un nombre strictement positif, et une
     valeur illisible est une valeur NON RENSEIGNÉE, jamais une valeur corrigée.
     """
-    if valeur is None:
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre or nombre in (float('inf'), float('-inf')):
-        return None
-    return nombre if nombre > 0 else None
+    lu = nombre(valeur)
+    return lu if lu is not None and lu > 0 else None
 
 
 def _identifiant_module(produit_id):
@@ -128,11 +122,11 @@ def _entree_module(produit):
         'id': _identifiant_module(getattr(produit, 'pk', None)),
         'produitId': getattr(produit, 'pk', None),
         'libelle': _libelle(produit),
-        'longueurMm': _nombre(cotes.get('longueur_mm')),
-        'largeurMm': _nombre(cotes.get('largeur_mm')),
-        'epaisseurMm': _nombre(cotes.get('epaisseur_mm')),
-        'poidsKg': _nombre(cotes.get('poids_kg')),
-        'pmaxWc': _nombre(cotes.get('puissance_wc')),
+        'longueurMm': _cote_positive(cotes.get('longueur_mm')),
+        'largeurMm': _cote_positive(cotes.get('largeur_mm')),
+        'epaisseurMm': _cote_positive(cotes.get('epaisseur_mm')),
+        'poidsKg': _cote_positive(cotes.get('poids_kg')),
+        'pmaxWc': _cote_positive(cotes.get('puissance_wc')),
         'source': SOURCE_FICHE,
     }
     manquants = [champ for champ in CHAMPS_REQUIS if module[champ] is None]

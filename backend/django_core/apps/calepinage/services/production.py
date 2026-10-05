@@ -1,4 +1,13 @@
-"""CAL138 — production PAR PAN, avec l'orientation et l'inclinaison RÉELLES.
+"""CAL138 — les PANS du document de pose, avec orientation et inclinaison.
+
+ACAL329 — ``production_du_layout`` (un appel PVGIS ``pvcalculation=1`` par
+pan, pertes PASSÉES à PVGIS) est SUPPRIMÉE : ce modèle est abandonné, la
+production du module a UN seul producteur, ``services/chaine_pertes.py``
+(irradiance NUE de ``ClientPvgis.serie_irradiance`` puis chaque poste de
+perte appliqué par la cascade). Reste ici la lecture des pans, consommée par
+``asbuilt``, ``lestage``, ``reglementaire`` et la présentation compacte. Le
+texte ci-dessous décrit la règle d'origine (CAL138), dont la lecture des pans
+reste fidèle.
 
 LE CONSTAT
 ----------
@@ -30,29 +39,9 @@ La forme rendue est celle du contrat committé
 ``pertes``) — aucune clé inventée.
 """
 from __future__ import annotations
+from .valeurs import nombre as _nombre
 
-from .p50p90 import bankable
-from .pvgis_serie import BASE_PAR_DEFAUT, EntreeInvalide, azimut_pvgis
-
-__all__ = ['PanSansOrientation', 'pans_du_layout', 'production_du_layout']
-
-#: Arrondi d'affichage des énergies (Wh près, en kWh) — un arrondi
-#: d'AFFICHAGE, pas un calcul : les sommes se font sur les valeurs pleines.
-DECIMALES_KWH = 1
-
-
-class PanSansOrientation(EntreeInvalide):
-    """Un pan porte des modules mais aucune orientation exploitable."""
-
-
-def _nombre(valeur):
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre:
-        return None
-    return nombre
+__all__ = ['pans_du_layout']
 
 
 def _premier(*valeurs):
@@ -94,202 +83,3 @@ def pans_du_layout(layout):
                                         zone.get('pitchDeg')),
         })
     return pans
-
-
-def _agreger(points):
-    """Énergie annuelle (kWh/an), mensuelle et irradiation, depuis la série.
-
-    La série peut couvrir PLUSIEURS années (fenêtre multi-années) : on divise
-    par le nombre d'années RÉELLEMENT présentes, jamais par une constante.
-    """
-    annees = {p['annee'] for p in points if p.get('annee') is not None}
-    nombre_annees = len(annees) or 1
-    total_wh = 0.0
-    irradiation_wh_m2 = 0.0
-    mensuel_wh = {mois: 0.0 for mois in range(1, 13)}
-    # CAL142 — le total de CHAQUE année, gardé séparément : c'est la seule
-    # façon de MESURER la variabilité interannuelle plutôt que de la supposer.
-    annuel_wh = {}
-    for point in points:
-        puissance = point.get('p_w')
-        if puissance is not None:
-            total_wh += puissance          # 1 point = 1 heure ⇒ W = Wh
-            mois = point.get('mois')
-            if mois in mensuel_wh:
-                mensuel_wh[mois] += puissance
-            annee = point.get('annee')
-            if annee is not None:
-                annuel_wh[annee] = annuel_wh.get(annee, 0.0) + puissance
-        irradiance = point.get('gi_w_m2')
-        if irradiance is not None:
-            irradiation_wh_m2 += irradiance
-    return {
-        'annees': nombre_annees,
-        'kwh_par_kwc': total_wh / 1000.0 / nombre_annees,
-        'mensuel_kwh_par_kwc': {
-            mois: valeur / 1000.0 / nombre_annees
-            for mois, valeur in mensuel_wh.items()},
-        'annuel_kwh_par_kwc': {annee: valeur / 1000.0
-                               for annee, valeur in annuel_wh.items()},
-        'irradiation_kwh_m2': irradiation_wh_m2 / 1000.0 / nombre_annees,
-    }
-
-
-def production_du_layout(layout, *, lat, lon, politique, client,
-                         annee_debut, annee_fin, base=BASE_PAR_DEFAUT,
-                         montage='building'):
-    """La production d'un calepinage, pan par pan PUIS au total.
-
-    Args:
-        layout: le document ``roof_layout`` v2 (pans, géométrie posée).
-        lat, lon: le point GPS du site.
-        politique: la ``PolitiquePertes`` de CAL238 (obligatoire).
-        client: un ``ClientPvgis`` (réseau injectable).
-        annee_debut, annee_fin: la fenêtre d'années demandée à PVGIS.
-
-    Returns:
-        dict aux clés du contrat : ``production`` (``base`` / ``total`` /
-        ``mensuel`` / ``par_pan``), ``pertes`` et ``avertissements``.
-
-    Raises:
-        PanSansOrientation: un pan porte des modules mais pas d'orientation —
-            on refuse EN NOMMANT le pan plutôt que de supposer « plein sud ».
-    """
-    pans = pans_du_layout(layout)
-    avertissements = []
-    par_pan = []
-    mensuel_total = {mois: 0.0 for mois in range(1, 13)}
-    annuel_total = {}
-    total_kwh = 0.0
-    total_kwc = 0.0
-    irradiation_ponderee = 0.0
-    provenance = None
-
-    for pan in pans:
-        kwc = pan['kwc'] or 0.0
-        ligne = {
-            'pan': pan['pan'],
-            'modules': pan['modules'],
-            'kwc': round(kwc, 3) if kwc else 0.0,
-            'azimut_deg': pan['azimut_deg'],
-            'inclinaison_deg': pan['inclinaison_deg'],
-            'p50_kwh': None,
-            'p75_kwh': None,
-            'p90_kwh': None,
-            'performance_ratio': None,
-            'specific_yield_kwh_kwc': None,
-            'shading_annual_loss_pct': None,
-        }
-        if not pan['modules'] or kwc <= 0:
-            # Un pan sans module ne PÈSE rien : ni appel, ni kWh, ni 0 kWh.
-            avertissements.append(
-                f'Le pan « {pan["pan"]} » ne porte aucun module : il ne '
-                'produit rien et n\'entre dans aucun total.')
-            par_pan.append(ligne)
-            continue
-        if pan['azimut_deg'] is None or pan['inclinaison_deg'] is None:
-            raise PanSansOrientation(
-                f'Le pan « {pan["pan"]} » porte {pan["modules"]} module(s) '
-                'mais son orientation ou son inclinaison est inconnue : la '
-                'production ne peut pas être calculée sans elles (aucune '
-                'orientation « plein sud » n\'est supposée).',
-                champ=f'zones[{pan["pan"]}].facingAzimuthDeg')
-
-        # Un appel PAR KWc : deux pans de même plan partagent le cache, et
-        # l'échelle se fait ici — jamais une seconde requête pour une
-        # puissance différente.
-        serie = client.serie_horaire(
-            lat=lat, lon=lon,
-            inclinaison_deg=pan['inclinaison_deg'],
-            aspect_deg=azimut_pvgis(pan['azimut_deg']),
-            politique=politique, puissance_kwc=1.0,
-            annee_debut=annee_debut, annee_fin=annee_fin,
-            base=base, montage=montage)
-        if provenance is None:
-            provenance = serie
-
-        agrege = _agreger(serie['points'])
-        kwh = agrege['kwh_par_kwc'] * kwc
-        total_kwh += kwh
-        total_kwc += kwc
-        # CAL142 — la production de CHAQUE année, au prorata des modules du
-        # pan : σ se mesurera sur ces totaux, jamais sur une hypothèse.
-        for annee, valeur in agrege['annuel_kwh_par_kwc'].items():
-            annuel_total[annee] = annuel_total.get(annee, 0.0) + valeur * kwc
-        for mois, valeur in agrege['mensuel_kwh_par_kwc'].items():
-            mensuel_total[mois] += valeur * kwc
-        irradiation = agrege['irradiation_kwh_m2']
-        irradiation_ponderee += irradiation * kwc
-
-        ligne['p50_kwh'] = round(kwh, DECIMALES_KWH)
-        ligne['specific_yield_kwh_kwc'] = round(agrege['kwh_par_kwc'],
-                                                DECIMALES_KWH)
-        # CAL142 — les quantiles du PAN, sur sa propre variabilité mesurée.
-        quantiles_pan = bankable(
-            kwh,
-            totaux_par_annee={annee: valeur * kwc for annee, valeur
-                              in agrege['annuel_kwh_par_kwc'].items()},
-            kwc=kwc)
-        ligne['p75_kwh'] = quantiles_pan['p75_kwh']
-        ligne['p90_kwh'] = quantiles_pan['p90_kwh']
-        if irradiation > 0:
-            # PR = énergie livrée / (kWc × irradiation sur le PLAN du pan) —
-            # calculé sur la série reçue, jamais recopié d'une table.
-            ligne['performance_ratio'] = round(
-                agrege['kwh_par_kwc'] / irradiation, 3)
-        par_pan.append(ligne)
-
-    if provenance is None:
-        avertissements.append(
-            'Aucun pan ne porte de module : aucune production n\'a été '
-            'demandée à PVGIS.')
-
-    publication = politique.publication()
-    performance_totale = None
-    if total_kwc > 0 and irradiation_ponderee > 0:
-        performance_totale = round(
-            total_kwh / (irradiation_ponderee), 3)
-    # CAL142 — P50/P75/P90 du TOTAL, avec σ mesuré sur les années réellement
-    # présentes dans la fenêtre (ou annoncé comme hypothèse s'il n'y en a
-    # qu'une). Le moteur de statistiques est celui de ``ventes``, appelé avec
-    # des pertes neutralisées : elles sont déjà dans la production PVGIS.
-    quantiles = bankable(total_kwh if provenance else None,
-                         totaux_par_annee=annuel_total,
-                         kwc=total_kwc or None)
-    avertissements.append(quantiles['commentaire'])
-
-    return {
-        'production': {
-            'base': {
-                'source': 'pvgis' if provenance else None,
-                'base_rayonnement': (provenance or {}).get('base'),
-                'fenetre_annees': (provenance or {}).get('fenetre_annees'),
-                'loss_passee_pct': publication['loss_passee_pct'],
-                'commentaire': publication['commentaire'],
-            },
-            'total': {
-                'kwc': round(total_kwc, 3),
-                'p50_kwh': (round(total_kwh, DECIMALES_KWH)
-                            if provenance else None),
-                'p75_kwh': quantiles['p75_kwh'],
-                'p90_kwh': quantiles['p90_kwh'],
-                'performance_ratio': performance_totale,
-                'specific_yield_kwh_kwc': (
-                    round(total_kwh / total_kwc, DECIMALES_KWH)
-                    if total_kwc > 0 else None),
-                'annual_variability': quantiles['annual_variability'],
-                'annual_variability_source': quantiles['sigma_source'],
-                'annual_variability_annees': quantiles['sigma_annees'],
-                'total_loss_pct': publication['loss_passee_pct'],
-            },
-            'mensuel': [
-                {'mois': mois,
-                 'p50_kwh': (round(mensuel_total[mois], DECIMALES_KWH)
-                             if provenance else None)}
-                for mois in range(1, 13)
-            ] if provenance else [],
-            'par_pan': par_pan,
-        },
-        'pertes': publication['pertes'],
-        'avertissements': avertissements,
-    }

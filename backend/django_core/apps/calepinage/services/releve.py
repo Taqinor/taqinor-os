@@ -48,7 +48,7 @@ class ReleveRefuse(ValueError):
         self.champ = champ
 
 
-def _nombre(valeur, champ, libelle, *, obligatoire=False, positif=False):
+def _nombre_valide(valeur, champ, libelle, *, obligatoire=False, positif=False):
     """ACAL277 — un réel FINI (``nan``/``inf``/``1e400`` refusés, jamais un
     500), strictement positif pour une longueur (``positif``)."""
     from .valeurs import nombre_fini
@@ -83,11 +83,11 @@ def _chaine_du_document(brute, rang):
         cotes.append(Cote(
             nom=str(cote.get('nom') or f'c{i + 1}'),
             # ``valeur`` absente = cote MANQUANTE, à déduire par fermeture.
-            valeur=_nombre(cote.get('valeur'), champ,
-                           f'cote {cote.get("nom") or i + 1}',
-                           positif=True)))
+            valeur=_nombre_valide(cote.get('valeur'), champ,
+                                  f'cote {cote.get("nom") or i + 1}',
+                                  positif=True)))
 
-    tolerance = _nombre(brute.get('tolerance_m'), champ, 'Tolérance')
+    tolerance = _nombre_valide(brute.get('tolerance_m'), champ, 'Tolérance')
     if tolerance is None:
         tolerance = TOL_FERMETURE_DEFAUT_M
     if tolerance < 0:
@@ -98,10 +98,10 @@ def _chaine_du_document(brute, rang):
     try:
         return Chaine(
             nom=nom, cotes=tuple(cotes),
-            total_mesure=_nombre(brute.get('total_mesure'), champ,
-                                 'Total mesuré', positif=True),
+            total_mesure=_nombre_valide(brute.get('total_mesure'), champ,
+                                        'Total mesuré', positif=True),
             tolerance_m=tolerance,
-            depart=_nombre(brute.get('depart'), champ, 'Départ') or 0.0)
+            depart=_nombre_valide(brute.get('depart'), champ, 'Départ') or 0.0)
     except ReleveRefuse:
         raise
     except (ValueError, OverflowError) as erreur:
@@ -226,11 +226,11 @@ def enregistrer_releve(calepinage, donnees, *, user=None):
         calepinage=calepinage,
         chaines=donnees.get('chaines') or [],
         geometrie=geometrie,
-        azimut_boussole_deg=_nombre(donnees.get('azimut_boussole_deg'),
-                                    'azimut_boussole_deg', 'Azimut boussole'),
-        precision_azimut_deg=_nombre(donnees.get('precision_azimut_deg'),
-                                     'precision_azimut_deg',
-                                     "Précision de l'azimut"),
+        azimut_boussole_deg=_nombre_valide(donnees.get('azimut_boussole_deg'),
+                                           'azimut_boussole_deg', 'Azimut boussole'),
+        precision_azimut_deg=_nombre_valide(donnees.get('precision_azimut_deg'),
+                                            'precision_azimut_deg',
+                                            "Précision de l'azimut"),
         releve_le=releve_le,
         notes=str(donnees.get('notes') or ''),
         releve_par=user if getattr(user, 'pk', None) else None,
@@ -324,11 +324,11 @@ def modifier_releve(releve, donnees, *, user=None):
         releve.geometrie = resoudre_chaines(donnees.get('chaines'))
         releve.chaines = donnees.get('chaines') or []
     if 'azimut_boussole_deg' in donnees:
-        releve.azimut_boussole_deg = _nombre(
+        releve.azimut_boussole_deg = _nombre_valide(
             donnees.get('azimut_boussole_deg'), 'azimut_boussole_deg',
             'Azimut boussole')
     if 'precision_azimut_deg' in donnees:
-        releve.precision_azimut_deg = _nombre(
+        releve.precision_azimut_deg = _nombre_valide(
             donnees.get('precision_azimut_deg'), 'precision_azimut_deg',
             "Précision de l'azimut")
     if 'notes' in donnees:
