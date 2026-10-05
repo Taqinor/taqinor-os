@@ -123,6 +123,12 @@ class ParametresCalepinageView(APIView):
             reglages = enregistrer_parametres(
                 getattr(request.user, 'company', None), donnees)
         except ReglageInvalide as refus:
+            # ACAL132 — une clé d'une section À REGISTRE est nommée DANS sa
+            # section (``{simulation: {sigma_modele_pct: motif}}``, contrat
+            # ``parametres_calepinage.json::exemple_refus_type``).
+            if getattr(refus, 'section', ''):
+                return Response({refus.section: {refus.champ: str(refus)}},
+                                status=status.HTTP_400_BAD_REQUEST)
             return Response({refus.champ or 'detail': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(reglages)

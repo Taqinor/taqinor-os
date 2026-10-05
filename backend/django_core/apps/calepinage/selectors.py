@@ -634,13 +634,29 @@ def registre_des_reglages():
 
     Lecture PURE : aucune valeur, aucun défaut, aucun accès base — la
     déclaration seule, sans dépendre de ``company``.
+
+    ACAL132 — chaque ligne publie AUSSI le ``type`` de sa valeur (et
+    ``minimum`` / ``maximum`` / ``valeurs`` quand ils existent), lu dans
+    ``parametres_cles.TYPES_CLES`` : l'écran saisit dans le type que le PUT
+    validera, sans le redéclarer.
     """
-    from .services.parametres_cles import REGISTRES
+    from .services.parametres_cles import REGISTRES, type_de_cle
+
+    def _ligne(section, cle, libelle, unite, reference):
+        ligne = {'cle': cle, 'libelle': libelle, 'unite': unite,
+                 'reference': reference}
+        typage = type_de_cle(section, cle)
+        ligne['type'] = typage.get('type')
+        for borne in ('minimum', 'maximum'):
+            if typage.get(borne) is not None:
+                ligne[borne] = typage[borne]
+        if typage.get('valeurs'):
+            ligne['valeurs'] = list(typage['valeurs'])
+        return ligne
 
     return {
         section: [
-            {'cle': cle, 'libelle': libelle, 'unite': unite,
-             'reference': reference}
+            _ligne(section, cle, libelle, unite, reference)
             for cle, libelle, unite, reference in declarations
         ]
         for section, declarations in REGISTRES.items()

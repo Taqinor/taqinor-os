@@ -93,14 +93,38 @@ class RegistreServiTest(SimpleTestCase):
             tuple(ligne['cle'] for ligne in servi[SECTION_ELECTRIQUE_SOCIETE]),
             _cles(CLES_ELECTRIQUE_SOCIETE))
 
-    def test_chaque_ligne_porte_exactement_les_quatre_champs(self):
+    def test_chaque_ligne_porte_les_quatre_champs_et_son_type(self):
+        """ACAL132 — les quatre champs du registre + le ``type`` de la
+        valeur ; ``minimum`` / ``maximum`` / ``valeurs`` seulement quand le
+        type en déclare — jamais une autre clé."""
         servi = registre_des_reglages()
         for section, lignes in servi.items():
             with self.subTest(section=section):
                 for ligne in lignes:
-                    self.assertEqual(
-                        sorted(ligne),
-                        ['cle', 'libelle', 'reference', 'unite'])
+                    self.assertTrue(
+                        {'cle', 'libelle', 'reference', 'unite',
+                         'type'} <= set(ligne), ligne)
+                    self.assertTrue(
+                        set(ligne) <= {'cle', 'libelle', 'reference', 'unite',
+                                       'type', 'minimum', 'maximum',
+                                       'valeurs'}, ligne)
+
+    def test_le_type_servi_est_celui_de_types_cles(self):
+        """ACAL132 — le type publié est LU dans ``TYPES_CLES``, jamais
+        redéclaré : chaque clé du registre en a un."""
+        from apps.calepinage.services.parametres_cles import type_de_cle
+
+        servi = registre_des_reglages()
+        for section, lignes in servi.items():
+            for ligne in lignes:
+                with self.subTest(section=section, cle=ligne['cle']):
+                    attendu = type_de_cle(section, ligne['cle'])
+                    self.assertTrue(attendu.get('type'))
+                    self.assertEqual(ligne['type'], attendu['type'])
+                    self.assertEqual(ligne.get('minimum'),
+                                     attendu.get('minimum'))
+                    self.assertEqual(ligne.get('maximum'),
+                                     attendu.get('maximum'))
 
     def test_ne_depend_d_aucune_societe(self):
         """Lecture PURE : deux appels rendent le même document."""
