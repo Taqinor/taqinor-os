@@ -25,8 +25,7 @@ from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from ..services.fixation import (
-    FixationRefusee, appliquer_systeme, bom_de_fixation,
-    resoudre_systeme_et_source,
+    FixationRefusee, appliquer_systeme, bom_de_fixation, resoudre_systeme,
 )
 
 __all__ = ['bom_fixation', 'fixation']
@@ -41,9 +40,9 @@ def bom_fixation(self, request, pk=None):
     avant l'unique système actif.
     """
     calepinage = self.get_object()  # borné société par get_queryset
-    systeme, refus, source = resoudre_systeme_et_source(
+    systeme, refus, source = resoudre_systeme(
         calepinage.company, request.query_params.get('systeme'),
-        calepinage=calepinage)
+        calepinage=calepinage, avec_source=True)
     return Response(bom_de_fixation(calepinage, systeme, refus, source))
 
 

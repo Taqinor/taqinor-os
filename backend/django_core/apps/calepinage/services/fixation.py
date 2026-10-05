@@ -331,7 +331,7 @@ def _systeme_persiste(company, calepinage):
     return systeme if systeme.company_id == company.pk else None
 
 
-def resoudre_systeme_et_source(company, demande=None, calepinage=None):
+def _resoudre_avec_source(company, demande=None, calepinage=None):
     """``(systeme | None, [refus], source | None)``.
 
     Ordre : le ``demande`` explicite (``?systeme=``) ; à défaut le système
@@ -366,11 +366,15 @@ def resoudre_systeme_et_source(company, demande=None, calepinage=None):
     return actifs[0], [], SOURCE_PARAMETRE
 
 
-def resoudre_systeme(company, demande=None, calepinage=None):
+def resoudre_systeme(company, demande=None, calepinage=None, *,
+                     avec_source=False):
     """``(systeme | None, [refus])`` — celui demandé, sinon celui CHOISI sur
-    le calepinage (ACAL81), sinon l'UNIQUE actif."""
-    systeme, refus, _source = resoudre_systeme_et_source(
-        company, demande, calepinage)
+    le calepinage (ACAL81), sinon l'UNIQUE actif. ``avec_source=True`` rend
+    aussi la source (``'calepinage'`` / ``'parametre'`` / ``None``)."""
+    systeme, refus, source = _resoudre_avec_source(company, demande,
+                                                   calepinage)
+    if avec_source:
+        return systeme, refus, source
     return systeme, refus
 
 
@@ -458,8 +462,8 @@ def table_fixation(calepinage):
     if not systemes_actifs(company):
         return None
     reponse = bom_de_fixation(
-        calepinage, *resoudre_systeme_et_source(company,
-                                                calepinage=calepinage))
+        calepinage, *resoudre_systeme(company, calepinage=calepinage,
+                                      avec_source=True))
     entetes = ['Composant', 'Rôle', 'Quantité', 'Unité', 'Règle appliquée',
                'Manquant']
     lignes = [[ligne['composant'], ligne['role'], ligne['quantite'],

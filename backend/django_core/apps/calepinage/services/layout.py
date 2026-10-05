@@ -79,7 +79,7 @@ def _retirer_chemin(noeud, morceaux):
         _retirer_chemin(valeur, reste)
 
 
-def document_sans_volatiles(roof_layout):
+def _document_sans_volatiles(roof_layout):
     """Une COPIE du document, privée des seules :data:`CLES_VOLATILES`."""
     import copy
 
@@ -102,7 +102,7 @@ def empreinte_document(roof_layout):
     """
     if roof_layout is None:
         return ''
-    canonique = json.dumps(document_sans_volatiles(roof_layout),
+    canonique = json.dumps(_document_sans_volatiles(roof_layout),
                            sort_keys=True, separators=(',', ':'),
                            ensure_ascii=False, default=str)
     return hashlib.sha256(canonique.encode('utf-8')).hexdigest()
