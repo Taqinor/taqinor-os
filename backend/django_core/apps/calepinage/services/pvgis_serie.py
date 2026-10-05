@@ -70,7 +70,6 @@ __all__ = [
     'COLONNES_IRRADIANCE', 'CONVENTION_AZIMUT', 'ClientPvgis',
     'EntreeInvalide', 'MOTIF_COMPOSANTES_ABSENTES', 'MOTIF_TMY_HORIZONTAL',
     'PvgisIndisponible', 'RACINE_API', 'azimut_pvgis', 'cle_de_cache',
-    'vider_le_cache',
 ]
 
 #: v5_3 — la version courante de l'API PVGIS. ``apps/ventes/weather_feed.py``
@@ -282,11 +281,6 @@ class _Cache:
 
 #: Le cache PARTAGÉ du processus (un client neuf ne repart pas de zéro).
 _CACHE_PARTAGE = _Cache()
-
-
-def vider_le_cache():
-    """Vide le cache partagé — pour les tests, et eux seuls."""
-    _CACHE_PARTAGE.vider()
 
 
 def _transport_urllib(url, timeout_s):

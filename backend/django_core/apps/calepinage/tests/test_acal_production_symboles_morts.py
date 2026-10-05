@@ -34,7 +34,7 @@ MODULES = (SERVICES / 'production.py', SERVICES / 'pvgis_serie.py')
 
 #: Symboles encore présents dont la SUPPRESSION appartient à une autre tâche
 #: — la tâche nommée retire l'entrée dans le commit qui supprime le symbole.
-EN_ATTENTE = {'vider_le_cache': 'ACAL293'}
+EN_ATTENTE = {}
 
 
 def _arbre(chemin):

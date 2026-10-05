@@ -45,6 +45,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from apps.records.views import ChatterViewSetMixin
+from authentication.permissions import IsResponsableOrAdmin
 from core.idempotency import (
     IDEMPOTENCY_KEY_HEADER, IdempotencyConflict, IdempotencyRecord,
     _fingerprint,
@@ -211,6 +212,21 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         if declared is not None:
             permissions.extend(declared)
         return permissions
+
+    # ── ACAL293 — une note du chatter notifie le responsable ───────────────
+    @action(detail=True, methods=['post'], url_path='chatter/noter',
+            permission_classes=[IsResponsableOrAdmin])
+    def chatter_noter(self, request, pk=None):
+        """La note est écrite par ``records`` (inchangé), PUIS le responsable
+        du calepinage — à défaut le propriétaire du lead — reçoit UNE
+        notification avec le lien et l'extrait. Best-effort : une notification
+        en échec ne fait jamais échouer la note déjà écrite. Survivant de
+        l'ancien jumeau ``services/commentaires.py`` (CAL205), supprimé."""
+        reponse = super().chatter_noter(request, pk=pk)
+        if reponse.status_code == 201:
+            _notifier_la_note(self.get_object(), request.user,
+                              (request.data.get('body') or '').strip())
+        return reponse
 
     # ── Liste : des filtres qui filtrent VRAIMENT ──────────────────────────
     def get_queryset(self):
@@ -1046,6 +1062,44 @@ def _responsable(calepinage, company):
 # ``vue_restreinte_au_responsable`` et la restriction elle-même vivent dans
 # ``selectors.py`` (``calepinages_visibles``) : UN prédicat d'accès pour toutes
 # les routes, plus de jumeau ici.
+
+
+def _destinataire_de_la_note(calepinage):
+    """Le RESPONSABLE du calepinage, sinon le propriétaire du lead rattaché
+    (défaut gravé ACAL293), sinon ``None`` — jamais un compte deviné."""
+    propre = getattr(calepinage, 'responsable', None)
+    if propre is not None:
+        return propre
+    lead = _lead_objet(calepinage, getattr(calepinage, 'company', None))
+    return getattr(lead, 'owner', None) if lead is not None else None
+
+
+def _notifier_la_note(calepinage, auteur, texte):
+    """ACAL293 — UNE notification au destinataire, jamais à l'auteur lui-même.
+
+    Le nom affiché est celui de l'AUTEUR résolu (jamais un prénom codé en
+    dur) ; l'``EventType`` est l'existant ``CHAT_MESSAGE``.
+    """
+    import logging
+
+    destinataire = _destinataire_de_la_note(calepinage)
+    if destinataire is None or getattr(destinataire, 'pk', None) == getattr(
+            auteur, 'pk', None):
+        return
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        nom = (getattr(auteur, 'get_full_name', lambda: '')() or '').strip() \
+            or getattr(auteur, 'username', '') or 'Un équipier'
+        notify(destinataire, EventType.CHAT_MESSAGE,
+               '%s a noté sur votre calepinage' % nom,
+               body=texte[:200], link='/calepinage/%d' % calepinage.pk,
+               company=calepinage.company)
+    except Exception:  # noqa: BLE001 — une notif ne casse jamais la note
+        logging.getLogger(__name__).exception(
+            'ACAL293 : notification de la note en échec (calepinage %s)',
+            calepinage.pk)
 
 
 def _lead_objet(calepinage, company):

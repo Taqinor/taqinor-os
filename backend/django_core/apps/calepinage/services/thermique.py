@@ -41,8 +41,9 @@ CE QUI SE PASSE QUAND LA FICHE NE DIT RIEN
 ------------------------------------------
 Aucun modèle n'est appliqué, AUCUNE valeur n'est fabriquée : le service rend
 ``calculable = False`` avec son motif, et l'appelant CONSERVE le poste
-forfaitaire qu'il avait — en l'ÉTIQUETANT ``hypothese`` (c'est ce que fait
-``poste_thermique``). Un forfait annoncé est honnête ; un forfait présenté
+forfaitaire qu'il avait — en l'ÉTIQUETANT ``hypothese`` (l'enveloppe
+``poste_thermique``, sans appelant, a été supprimée par ACAL293 : la chaîne de
+pertes lit ``perte_thermique``). Un forfait annoncé est honnête ; un forfait présenté
 comme un calcul ne l'est pas.
 
 Module PUR : aucune base, aucun réseau, aucun prix.
@@ -52,7 +53,7 @@ from __future__ import annotations
 __all__ = ['MODELE_FAIMAN', 'MODELE_NOCT', 'TEMPERATURE_STC_C',
            'HYPOTHESE_UV_ABSENT_DE_LA_FICHE',
            'HYPOTHESE_VENT_ABSENT_DE_LA_SERIE', 'GABARIT_VENT_PARTIEL',
-           'COLONNE_VENT', 'perte_thermique', 'poste_thermique',
+           'COLONNE_VENT', 'perte_thermique',
            'temperature_cellule']
 
 #: La colonne de vent de la série horaire (PVGIS ``WS10m``, CALX150/CALX164).
@@ -275,38 +276,3 @@ def perte_thermique(specs_module, points):
             f'({modele}), depuis la fiche produit'
             + (' — ' + ' ; '.join(hypotheses) if hypotheses else '') + '.'),
     }
-
-
-def poste_thermique(specs_module, points, *, forfait_pct=None,
-                    source_forfait='hypothese'):
-    """Le POSTE de perte thermique prêt pour CAL139 — calculé, ou annoncé.
-
-    Args:
-        forfait_pct: le poste forfaitaire à CONSERVER quand la fiche ne permet
-            aucun calcul. ``None`` ⇒ aucun poste n'est rendu du tout (rien
-            n'est inventé, pas même un forfait).
-
-    Returns:
-        ``(poste | None, diagnostic)`` — ``poste`` est un dict de la forme
-        attendue par ``services/pertes.py`` ; ``diagnostic`` est le retour
-        complet de :func:`perte_thermique`, à afficher tel quel.
-    """
-    diagnostic = perte_thermique(specs_module, points)
-    if diagnostic['calculable']:
-        return {
-            'poste': 'thermique',
-            'libelle': 'Échauffement des modules',
-            'pct': diagnostic['pct'],
-            'source': 'fiche',
-            'reference': diagnostic['motif'],
-        }, diagnostic
-
-    if forfait_pct is None:
-        return None, diagnostic
-    return {
-        'poste': 'thermique',
-        'libelle': 'Échauffement des modules (forfait)',
-        'pct': float(forfait_pct),
-        'source': source_forfait,
-        'reference': diagnostic['motif'],
-    }, diagnostic

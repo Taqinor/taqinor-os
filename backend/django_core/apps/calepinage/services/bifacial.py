@@ -50,7 +50,7 @@ from __future__ import annotations
 
 import math
 
-__all__ = ['PARAMETRES_REQUIS', 'gain_bifacial', 'poste_bifacial']
+__all__ = ['PARAMETRES_REQUIS', 'gain_bifacial']
 
 #: Les paramètres SANS LESQUELS aucun gain n'est calculé, et le libellé
 #: français que le motif emploie pour nommer celui qui manque.
@@ -199,25 +199,3 @@ def gain_bifacial(*, bifacialite_pct=None, albedo=None, hauteur_pose_m=None,
             'de sol libre vue depuis la rangée'
             + (' — ' + ' ; '.join(hypotheses) if hypotheses else '') + '.'),
     }
-
-
-def poste_bifacial(**parametres):
-    """Le gain publié comme POSTE SÉPARÉ, jamais fondu dans une production.
-
-    Returns:
-        ``(poste | None, diagnostic)``. ``poste`` porte un ``gain_pct``
-        POSITIF et la mention explicite qu'il s'agit d'un GAIN — il n'entre
-        jamais dans la somme des pertes envoyée à PVGIS (CAL238 additionne des
-        PERTES ; y glisser un gain ferait une soustraction invisible).
-    """
-    diagnostic = gain_bifacial(**parametres)
-    if not diagnostic['calculable']:
-        return None, diagnostic
-    return {
-        'poste': 'gain_bifacial',
-        'libelle': 'Gain de face arrière (bifacial)',
-        'gain_pct': diagnostic['gain_pct'],
-        'source': diagnostic['source'],
-        'reference': diagnostic['motif'],
-        'facteurs': diagnostic['facteurs'],
-    }, diagnostic
