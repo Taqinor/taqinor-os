@@ -200,6 +200,68 @@ describe('Raccordement (CALX244)', () => {
   })
 })
 
+describe('Raccordement — plafond d’injection (ACAL156)', () => {
+  it('poste les neuf champs et relit la saisie persistée : « utilisé par la simulation »', async () => {
+    servir(CONTRAT.exemple_vide)
+    const persistee = {
+      ...CONTRAT.exemple,
+      saisie: {
+        ...CONTRAT.exemple.saisie,
+        plafond_injection_kw: 3,
+        plafond_injection_justification: 'Contrat de raccordement du site (essai)',
+      },
+    }
+    calepinageApi.calepinages.enregistrerRaccordement.mockResolvedValue({ data: persistee })
+
+    rendre()
+    await screen.findByTestId('calx244-formulaire')
+    expect(screen.queryByTestId('acal156-simulation-plafond_injection_kw')).toBeNull()
+    await userEvent.type(document.getElementById('calx244-champ-plafond_injection_kw'), '3')
+    await userEvent.type(
+      document.getElementById('calx244-champ-plafond_injection_justification'),
+      'Contrat de raccordement du site (essai)')
+    await userEvent.click(screen.getByTestId('calx244-enregistrer'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerRaccordement).toHaveBeenCalledTimes(1))
+    const [, corps] = calepinageApi.calepinages.enregistrerRaccordement.mock.calls[0]
+    expect(Object.keys(corps).sort()).toEqual(Object.keys(CONTRAT.exemple.saisie).sort())
+    expect(corps.plafond_injection_kw).toBe('3')
+    // La saisie PERSISTÉE (réponse du serveur) est relue : le plafond porte sa mention.
+    expect(await screen.findByTestId('acal156-simulation-plafond_injection_kw'))
+      .toHaveTextContent('utilisé par la simulation')
+    expect(screen.getByTestId('acal156-note-simulation')).toHaveTextContent('Production')
+  })
+
+  it('plafond sans justification refusé sous le champ', async () => {
+    servir(CONTRAT.exemple_vide)
+    calepinageApi.calepinages.enregistrerRaccordement.mockRejectedValue({
+      response: { status: 400, data: CONTRAT.refus_plafond_sans_justification },
+    })
+
+    rendre()
+    await screen.findByTestId('calx244-formulaire')
+    await userEvent.type(document.getElementById('calx244-champ-plafond_injection_kw'), '3')
+    await userEvent.click(screen.getByTestId('calx244-enregistrer'))
+
+    expect(await screen.findByTestId('calx244-erreur-plafond_injection_justification'))
+      .toHaveTextContent(CONTRAT.refus_plafond_sans_justification.plafond_injection_justification.slice(0, 40))
+  })
+
+  it('un champ vidé envoie null, jamais 0', async () => {
+    servir(CONTRAT.exemple)
+    calepinageApi.calepinages.enregistrerRaccordement.mockResolvedValue({ data: CONTRAT.exemple_vide })
+
+    rendre()
+    await screen.findByTestId('calx244-formulaire')
+    await userEvent.clear(document.getElementById('calx244-champ-puissance_souscrite_kva'))
+    await userEvent.click(screen.getByTestId('calx244-enregistrer'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerRaccordement).toHaveBeenCalled())
+    const [, corps] = calepinageApi.calepinages.enregistrerRaccordement.mock.calls[0]
+    expect(corps.puissance_souscrite_kva).toBeNull()
+  })
+})
+
 describe('Fonctions pures (CALX244)', () => {
   it('erreursParChamp retire le préfixe que le serveur pose', () => {
     expect(erreursParChamp(CONTRAT.refus_limite_sans_source))

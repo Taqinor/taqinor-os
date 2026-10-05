@@ -85,6 +85,7 @@ export const CHAMPS = [
     cle: 'cos_phi_impose',
     libelle: 'Cos φ imposé',
     unite: '',
+    simulation: true, // ACAL156 — lu par la simulation (autoconsommation, batterie)
     aide: 'Celui que le contrat de raccordement de CE site impose — à ne pas confondre avec le réglage société « cos φ retenu à défaut de mesure ».',
   },
   {
@@ -101,6 +102,7 @@ export const CHAMPS = [
     cle: 'plafond_injection_kw',
     libelle: 'Plafond d’injection',
     unite: 'kW',
+    simulation: true, // ACAL156 — lu par la simulation (autoconsommation, batterie)
     aide: 'Le plafond d’injection au réseau imposé à ce site. Laissez vide tant qu’il n’est pas connu — rien n’est supposé.',
   },
   {
@@ -318,13 +320,28 @@ export default function Raccordement({ calepinageId } = {}) {
 
         <BandeauRefus erreurs={erreurs} />
 
+        <p className="text-xs text-lune-faint" data-testid="acal156-note-simulation">
+          {'Le cos φ imposé et le plafond d’injection enregistrés ici sont lus par la simulation '
+            + '(autoconsommation et batterie) : après un changement, relancez-la — le panneau '
+            + 'Production signale un résultat périmé.'}
+        </p>
+
         <form className="flex flex-col gap-3" onSubmit={enregistrer} data-testid="calx244-formulaire">
           <div className="grid gap-3 sm:grid-cols-2">
-            {CHAMPS.map(({ cle, libelle, unite, texte, aide }) => (
+            {CHAMPS.map(({ cle, libelle, unite, texte, aide, simulation }) => (
               <div key={cle} className="flex flex-col gap-1">
                 <Label htmlFor={idChamp(cle)}>
                   {unite ? `${libelle} (${unite})` : libelle}
                 </Label>
+                {/* ACAL156 — une valeur ENREGISTRÉE de ces deux champs alimente la simulation :
+                    l'écran le dit, plutôt que de laisser croire à une saisie décorative. */}
+                {simulation && valeurAffichee(bloc?.saisie, cle) !== ''
+                  ? (
+                    <Badge tone="info" data-testid={`acal156-simulation-${cle}`}>
+                      utilisé par la simulation
+                    </Badge>
+                  )
+                  : null}
                 <Input
                   id={idChamp(cle)}
                   name={cle}
