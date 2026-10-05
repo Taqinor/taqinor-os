@@ -136,9 +136,16 @@ TARIFF = {
     'amortissement_duree_ans': 10,
     'amortissement_coefficient': Decimal('1.750'),
     'fiscalite_source': 'Avis fiscal 2026 référence 5544332211',
+    # CIQ211 — sensibilités C&I (gardées) + mention crédit-bail (D-CIQ-15).
+    'sensibilites_ci': [
+        {'cle': 'indexation_tarif', 'variation_pct': 2,
+         'source': 'Hypothèse saisie le 2026-10-03'}],
+    'mention_credit_bail_autorisee': True,
+    'mention_credit_bail_source': 'Avis juridique 2026 référence 4433221100',
 }
 # Champs TEXTE LIBRE de la tarification : brouillés (non vides), jamais gardés.
-TARIFF_FREE_TEXT = ('tou_source', 'indexation_source', 'fiscalite_source')
+TARIFF_FREE_TEXT = ('tou_source', 'indexation_source', 'fiscalite_source',
+                    'mention_credit_bail_source')
 
 
 def _tarif_lu_par_le_moteur(company):

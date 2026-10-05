@@ -94,12 +94,16 @@ class _Base(TestCase):
 
 class ParSegmentTests(_Base):
     def test_a_deux_residentiels_et_un_agricole_comptes_justes(self):
-        r1 = self._lead('R1', 'residentiel', stage=stages.COLD)
+        r1 = self._lead('R1', 'residentiel')
         r2 = self._lead('R2', 'residentiel', tags=TAG_ATTENTE_ACCORD)
         self._lead('A1', 'agricole', dossier_subvention='a_deposer')
         self._lead('S1', None)
         self._touche(r1, 'joint')
         self._touche(r2, 'non_joint')
+        # Froid AU MOMENT DE LA MESURE : posé APRÈS la touche, car un client
+        # joint sur un lead froid le réactive vers CONTACTED (receivers M1) —
+        # posé avant, la touche « joint » l'aurait sorti du Froid.
+        Lead.objects.filter(pk=r1.pk).update(stage=stages.COLD)
         self._devis(r2, 'residentiel', envoye_il_y_a=1)
         self._devis(r2, 'agricole')  # brouillon : compte l'incohérence
         LeadActivity.objects.create(

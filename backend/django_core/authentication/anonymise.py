@@ -186,7 +186,14 @@ MODEL_POLICY = {
                  # FDA datée : montants, libellés de charge et source du
                  # barème, gardés TELS QUELS comme ``taxes`` (une date
                  # « 2026-10-02 » ressemblerait à un téléphone au brouilleur).
-                 'charges_pompage_solaire', 'regle_fda_pompage'},
+                 'charges_pompage_solaire', 'regle_fda_pompage',
+                 # CIQ211 — scénarios de sensibilité C&I saisis par Reda :
+                 # clé fermée, variation en %, source du scénario — gardés
+                 # TELS QUELS comme le barème (le brouilleur prendrait une
+                 # variation ou une date pour un téléphone). La référence
+                 # d'avis ``mention_credit_bail_source`` (texte libre) reste
+                 # brouillée par défaut, comme les autres « source ».
+                 'sensibilites_ci'},
     },
 }
 

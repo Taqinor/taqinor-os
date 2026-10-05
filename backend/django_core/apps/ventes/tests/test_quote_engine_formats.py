@@ -1827,9 +1827,10 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # — D-AGR-13) et un « Bon pour accord » compact est ajouté. Mesuré
         # localement (sqlite, sans WeasyPrint — environnement NON canonique,
         # donc jamais épinglé à la main) : le HTML d'avant ne dépendait pas de
-        # la demande full/onepage (AGR312) et AGR313 le change.
+        # la demande full/onepage (AGR312) et AGR313 le change. Ré-épinglée
+        # depuis le run CI 37341683181 (2026-10-05, PR #810 vague 2).
         EMPREINTE_EPINGLEE = (
-            '965980be35121a6952cd39a478f6a4c3f04d5144a820fc53ea33b436418dbaa8')
+            'cba880aaa37496a9abebaae6eb86b1e327df07c0ebd441190e1a9259484dc233')
 
         self.assertEqual(
             empreinte, EMPREINTE_EPINGLEE,
