@@ -97,7 +97,7 @@
         "endpoint": "/api/django/calepinage/calepinages/1/plan-cablage.pdf/",
         "produit_par": "serveur",
         "disponible": false,
-        "motif_indisponible": "Aucun schéma unifilaire tracé et aucun cheminement mesuré : le plan de câblage assemble les deux, et aucun des deux n'existe encore.",
+        "motif_indisponible": "Aucun chaînage électrique calculé : le plan de câblage dessine les chaînes affectées, et aucune n'existe encore.",
         "manque": [
           {
             "champ": "electrique.chainage",

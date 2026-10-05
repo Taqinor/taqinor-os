@@ -133,15 +133,11 @@ MANQUE_CHAINAGE = {
     'libelle': 'Schéma unifilaire (chaînage électrique)',
     'ou_saisir': "Chaîner l'électrique sur l'onglet Électrique.",
 }
-MANQUE_TRONCONS = {
-    'champ': 'troncons',
-    'libelle': 'Cheminements mesurés',
-    'ou_saisir': "Tracer au moins un cheminement sur le plan avant "
-                 "d'imprimer.",
-}
-MOTIF_SANS_CABLAGE = (
-    "Aucun schéma unifilaire tracé et aucun cheminement mesuré : le plan "
-    "de câblage assemble les deux, et aucun des deux n'existe encore.")
+#: ACAL219 - le rendu du plan de cablage ne lit que ``electrique.affectation``
+#: (jamais ``troncons``) : seul le chainage conditionne sa disponibilite.
+MOTIF_SANS_CHAINAGE = (
+    "Aucun chaînage électrique calculé : le plan de câblage dessine les "
+    "chaînes affectées, et aucune n'existe encore.")
 
 #: ``document_asbuilt`` / ``dossier_fin_chantier`` / ``diagramme_pertes`` —
 #: MOT POUR MOT l'exemple committé.
@@ -235,17 +231,35 @@ def _manque_pour_champ(champ):
     }
 
 
-def _etat_du_document(code, calepinage, resultat):
-    """``(disponible, motif, manque)`` — la BASE (conception+résultat) est
-    déjà acquise ici ; chaque défaut supplémentaire est RÉELLEMENT levé par
-    le service concerné, jamais un texte inventé pour l'occasion."""
-    if code == 'rapport_etude':
-        from ..rapport import RapportRefuse, resultat_du_rapport
+def _lecture_servie(calepinage):
+    """``(servi, refus)`` - le resultat SERVI, lu UNE fois par appel.
 
-        try:
-            resultat_du_rapport(calepinage)
-        except RapportRefuse as refus:
-            return False, str(refus), [_manque_pour_champ(refus.champ)]
+    ACAL219 - la lecture STRICTE du rapport (``resultat_du_rapport``) sert a
+    la fois la carte ``rapport_etude`` (son refus, MOT POUR MOT) et les huit
+    autres cartes (le meme ``servi``) : une seule execution de
+    ``resultat_calepinage`` par appel de ``documents/``. Seul un refus du
+    lecteur strict (cle de cout, temperatures illisibles) declenche une
+    seconde lecture, TOLERANTE, pour que les autres cartes restent evaluees.
+    """
+    from ... import selectors
+    from ..rapport import RapportRefuse, resultat_du_rapport
+
+    try:
+        servi, _stocke = resultat_du_rapport(calepinage)
+    except RapportRefuse as refus:
+        return selectors.resultat_servi(calepinage), refus
+    return servi, None
+
+
+def _etat_du_document(code, calepinage, resultat, refus_rapport=None):
+    """``(disponible, motif, manque)`` — la BASE (conception+résultat) est
+    déjà acquise ici ; ``resultat`` est le résultat SERVI (ACAL219) ; chaque
+    défaut supplémentaire est RÉELLEMENT levé par le service concerné,
+    jamais un texte inventé pour l'occasion."""
+    if code == 'rapport_etude':
+        if refus_rapport is not None:
+            return (False, str(refus_rapport),
+                    [_manque_pour_champ(refus_rapport.champ)])
         return True, None, []
 
     if code == 'rapport_ombrage':
@@ -257,18 +271,11 @@ def _etat_du_document(code, calepinage, resultat):
         return True, None, []
 
     if code == 'plan_cablage':
-        # ``resultat['troncons']`` est un DICT (``{troncons[], totaux,
-        # omissions[], verdicts[]}``, contrat ``calepinage_resultat.json``)
-        # OU ``null`` tant qu'aucun cheminement n'est tracé — JAMAIS une
-        # liste vide (« mesuré, et il n'y a rien » serait faux). La
-        # grammaire ``[]`` ne s'applique donc pas ici : présence du dict.
-        manque = []
+        # ACAL219 - le rendu ne lit que ``electrique.affectation`` (jamais
+        # ``troncons``) : le chainage servi est la seule condition. Sans
+        # chainage, la carte reste indisponible et le dit.
         if not valeur_au_chemin(resultat, 'electrique.chainage')[0]:
-            manque.append(MANQUE_CHAINAGE)
-        if not valeur_au_chemin(resultat, 'troncons')[0]:
-            manque.append(MANQUE_TRONCONS)
-        if manque:
-            return False, MOTIF_SANS_CABLAGE, manque
+            return False, MOTIF_SANS_CHAINAGE, [MANQUE_CHAINAGE]
         return True, None, []
 
     if code == 'document_asbuilt':
@@ -337,8 +344,10 @@ def inventaire_des_documents(calepinage):
     a_conception = bool(getattr(calepinage, 'roof_layout', None))
     resultat_brut = getattr(calepinage, 'resultat', None)
     a_resultat = isinstance(resultat_brut, dict) and bool(resultat_brut)
-    resultat = resultat_brut if isinstance(resultat_brut, dict) else {}
     base_ok = a_conception and a_resultat
+    # ACAL219 - le resultat SERVI, lu UNE fois pour les neuf cartes.
+    resultat, refus_rapport = (_lecture_servie(calepinage) if base_ok
+                               else ({}, None))
 
     documents = []
     for code, libelle, format_, chemin, produit_par in _DEFINITIONS_DOCUMENTS:
@@ -349,7 +358,7 @@ def inventaire_des_documents(calepinage):
                                          [manque_base])
         else:
             disponible, motif, manque = _etat_du_document(
-                code, calepinage, resultat)
+                code, calepinage, resultat, refus_rapport)
         versions = _versions_pour(calepinage, code) if disponible else []
         documents.append(_entree_document(
             code, libelle, format_, base + chemin, produit_par,
