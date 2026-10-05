@@ -35,6 +35,7 @@ from django.test import SimpleTestCase
 
 from apps.ventes import courbes_journalieres as CJ
 from apps.ventes import etude_horaire as EH
+from apps.ventes.horaire import public as HP
 from apps.ventes.public import payload_batterie, payload_horaire
 
 
@@ -97,7 +98,7 @@ class JoursTypesPubliqueAppelantTests(_BaseSurfacesPubliques):
     def test_la_journee_type_servie_est_celle_du_devis(self):
         """La vue rend EXACTEMENT ce que le moteur rend pour CETTE date."""
         servi = self._jours_types(_devis(date_creation=JOUR_A))
-        attendu = EH.jours_types_publics(
+        attendu = HP.jours_types_publics(
             kwc=_KWC, conso_kwh_mensuelles=_CONSO, ville=_VILLE,
             lat=None, lon=None, occupation=CJ.OCCUPATION_PRESENCE,
             equipements=None, jour_reference=JOUR_A)
@@ -127,7 +128,7 @@ class CouvertureBatteriePubliqueAppelantTests(_BaseSurfacesPubliques):
 
     def test_la_couverture_servie_est_celle_du_devis(self):
         servi = self._couverture(_devis(date_creation=JOUR_A))
-        attendu = EH.couverture_batterie_publique(
+        attendu = HP.couverture_batterie_publique(
             kwc=_KWC, conso_kwh_mensuelles=_CONSO,
             capacite_utile_pack_kwh=_BANQUE['capacite_utile_pack_kwh'],
             nb_packs_max=payload_batterie._paliers_curseur_batterie(
@@ -147,7 +148,7 @@ class DevisSansJourDeReferenceTests(_BaseSurfacesPubliques):
     def test_jours_types_sans_date_garde_le_repli_d_horloge(self):
         from django.utils import timezone
         servi = self._jours_types(_devis(date_creation=None))
-        attendu = EH.jours_types_publics(
+        attendu = HP.jours_types_publics(
             kwc=_KWC, conso_kwh_mensuelles=_CONSO, ville=_VILLE,
             lat=None, lon=None, occupation=CJ.OCCUPATION_PRESENCE,
             equipements=None, jour_reference=timezone.localdate())
@@ -156,7 +157,7 @@ class DevisSansJourDeReferenceTests(_BaseSurfacesPubliques):
     def test_couverture_sans_date_garde_le_repli_d_horloge(self):
         from django.utils import timezone
         servi = self._couverture(_devis(date_creation=None))
-        attendu = EH.couverture_batterie_publique(
+        attendu = HP.couverture_batterie_publique(
             kwc=_KWC, conso_kwh_mensuelles=_CONSO,
             capacite_utile_pack_kwh=_BANQUE['capacite_utile_pack_kwh'],
             nb_packs_max=payload_batterie._paliers_curseur_batterie(

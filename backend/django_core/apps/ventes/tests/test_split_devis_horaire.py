@@ -46,7 +46,7 @@ SOURCE = 'apps/ventes/etude_horaire.py'
 DEPLACEMENTS = {
     'base': ('split_eh_base', 'apps/ventes/horaire/base.py', 'SPL254', True),
     'public': ('split_eh_public', 'apps/ventes/horaire/public.py', 'SPL255',
-               False),
+               True),
     'bat': ('split_eh_bat', 'apps/ventes/horaire/batterie_lignes.py',
             'SPL256', False),
     'conso': ('split_eh_conso', 'apps/ventes/horaire/conso.py', 'SPL257',

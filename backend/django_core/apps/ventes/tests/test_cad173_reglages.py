@@ -29,7 +29,7 @@ from django.test import SimpleTestCase
 
 from apps.crm import questionnaire
 from apps.ventes import courbes_journalieres as CJ
-from apps.ventes import etude_horaire as EH
+from apps.ventes.horaire import public as HP
 from apps.ventes.horaire import base as horaire_base
 from apps.ventes.tests.split_golden import fichiers_du_groupe
 
@@ -135,7 +135,7 @@ class Q12_LaSaisonDeLaClimEtDeLaPiscine(SimpleTestCase):
     def test_la_publication_client_suit_les_MEMES_mois(self):
         """Deux portes différentes publieraient d'autres mois que ceux
         réellement servis — c'est exactement le défaut que Q12 ferme."""
-        estimation = EH.estimation_conso_mensuelle([600.0] * 12, self.PISCINE)
+        estimation = HP.estimation_conso_mensuelle([600.0] * 12, self.PISCINE)
         self.assertIsNotNone(estimation)
         ajouts = estimation['ajouts']['piscine']
         for index, valeur in enumerate(ajouts):

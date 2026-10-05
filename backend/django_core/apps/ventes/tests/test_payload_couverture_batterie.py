@@ -29,13 +29,15 @@ from apps.crm.models import Client, Lead
 from apps.stock.models import Produit
 from apps.ventes.etude_horaire import (
     BATTERY_ROUNDTRIP,
-    COUVERTURE_PACKS_PLAFOND,
     _mettre_a_l_echelle,
-    _pas_fins_ventilables,
-    couverture_batterie_publique,
     jours_types_annee,
     simuler_batterie_jour,
     simuler_batterie_pas_fins,
+)
+from apps.ventes.horaire.public import (
+    COUVERTURE_PACKS_PLAFOND,
+    _pas_fins_ventilables,
+    couverture_batterie_publique,
 )
 from apps.ventes.models import Devis, LigneDevis, ShareLink
 from apps.ventes.public.payload_batterie import (
@@ -228,7 +230,7 @@ class CouvertureBatteriePubliqueTests(SimpleTestCase):
                 jour['pas_fins'] = [dict(p) for p in jour['pas_fins']]
                 jour['pas_fins'][0].pop('heure', None)
                 break
-        with mock.patch('apps.ventes.etude_horaire.jours_types_annee',
+        with mock.patch('apps.ventes.horaire.public.jours_types_annee',
                         return_value=(jours, [], {})):
             self.assertIsNone(_bloc(equipements=EQUIPEMENTS_PISCINE))
 
@@ -658,7 +660,7 @@ class GardesPayloadTests(_PayloadBase):
         from unittest import mock
         devis = self._devis('cb-boom')
         with mock.patch(
-                'apps.ventes.etude_horaire.couverture_batterie_publique',
+                'apps.ventes.horaire.public.couverture_batterie_publique',
                 side_effect=RuntimeError('boom')):
             payload = self._payload(devis)
         self.assertNotIn('couverture_batterie', payload)

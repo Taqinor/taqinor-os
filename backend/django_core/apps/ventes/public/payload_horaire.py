@@ -195,7 +195,7 @@ def _estimation_conso_publique(devis):
     ``etude_horaire.estimation_conso_mensuelle``). ``None`` best-effort — un
     bloc d'affichage additif ne fait jamais tomber la page client."""
     try:
-        from ..etude_horaire import estimation_conso_mensuelle
+        from ..horaire.public import estimation_conso_mensuelle
         _kwc, conso, _v, _lat, _lon, _occ, equipements = (
             _profil_horaire_pour_devis(devis))
         return estimation_conso_mensuelle(conso, equipements)
@@ -240,7 +240,7 @@ def _jours_types_publique(devis):
     QJR406 — la date de référence du DEVIS est transmise (voir
     :func:`_jour_reference_publique`), jamais l'horloge du rendu."""
     try:
-        from ..etude_horaire import jours_types_publics
+        from ..horaire.public import jours_types_publics
         kwc, conso, ville, lat, lon, occupation, equipements = (
             _profil_horaire_pour_devis(devis))
         if not kwc:
@@ -341,7 +341,7 @@ def _dimensionnement_options_publique(devis, data):
     ``None``. ``None`` best-effort — un bloc d'affichage additif ne fait
     jamais tomber la page client."""
     try:
-        from ..etude_horaire import production_annuelle_pour_kwc
+        from ..horaire.public import production_annuelle_pour_kwc
         sans = _dimensionnement_option_depuis_items(data.get('sans_items'))
         out = {'sans': sans, 'divergent': False}
         avec = None
@@ -377,7 +377,7 @@ def _production_par_option_publique(devis, data, dimensionnement_options):
     if not dimensionnement_options or not dimensionnement_options.get('divergent'):
         return resultat
     try:
-        from ..etude_horaire import production_journaliere_par_saison
+        from ..horaire.public import production_journaliere_par_saison
         ville, lat, lon = _localisation_pour_moteur_horaire(devis, data)
         sans_kwc = (dimensionnement_options.get('sans') or {}).get('puissance_kwc')
         if sans_kwc:

@@ -28,6 +28,7 @@ from django.test import SimpleTestCase
 
 from apps.ventes import courbes_journalieres as CJ
 from apps.ventes import etude_horaire as EH
+from apps.ventes.horaire import public as HP
 
 VILLE = 'Casablanca'
 #: Même profil de référence, PROUVÉ par ``test_payload_couverture_batterie.py``
@@ -51,7 +52,7 @@ class CouvertureBatteriePubliqueRendementTest(SimpleTestCase):
             capacite_utile_pack_kwh=CAP_PACK, nb_packs_max=4,
             ville=VILLE, occupation=CJ.OCCUPATION_PRESENCE)
         params.update(overrides)
-        return EH.couverture_batterie_publique(**params)
+        return HP.couverture_batterie_publique(**params)
 
     def test_rouge_le_rendement_de_fiche_est_rendu_et_etiquete(self):
         """ROUGE avant le correctif : cette signature n'acceptait même pas

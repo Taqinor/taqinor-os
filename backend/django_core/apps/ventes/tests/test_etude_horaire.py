@@ -32,6 +32,7 @@ from pathlib import Path
 from django.test import SimpleTestCase
 
 from apps.ventes import etude_horaire as EH
+from apps.ventes.horaire import public as HP
 from apps.ventes import courbes_journalieres as CJ
 from apps.ventes.horaire import base as horaire_base
 from apps.ventes.quote_engine import bareme as B
@@ -1534,19 +1535,19 @@ class EstimationConsoMensuelleTests(SimpleTestCase):
     CONSO_12 = [400.0] * 12
 
     def test_aucun_equipement_renvoie_none(self):
-        self.assertIsNone(EH.estimation_conso_mensuelle(self.CONSO_12, {}))
-        self.assertIsNone(EH.estimation_conso_mensuelle(self.CONSO_12, None))
+        self.assertIsNone(HP.estimation_conso_mensuelle(self.CONSO_12, {}))
+        self.assertIsNone(HP.estimation_conso_mensuelle(self.CONSO_12, None))
 
     def test_serie_invalide_renvoie_none(self):
         equip = {'piscine': {'kw': 1.5, 'heures': list(range(10, 18)),
                              'saisons': ['ete'], 'mode': 'redistribution'}}
-        self.assertIsNone(EH.estimation_conso_mensuelle([100.0] * 11, equip))
-        self.assertIsNone(EH.estimation_conso_mensuelle([], equip))
+        self.assertIsNone(HP.estimation_conso_mensuelle([100.0] * 11, equip))
+        self.assertIsNone(HP.estimation_conso_mensuelle([], equip))
 
     def test_piscine_redistribution_retire_de_la_base_ete_seulement(self):
         equip = {'piscine': {'kw': 1.5, 'heures': list(range(10, 18)),
                              'saisons': ['ete'], 'mode': 'redistribution'}}
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_12, equip)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_12, equip)
         self.assertIsNotNone(bloc)
         self.assertEqual(len(bloc['base_mensuelle']), 12)
         self.assertEqual(len(bloc['totale_mensuelle']), 12)
@@ -1573,7 +1574,7 @@ class EstimationConsoMensuelleTests(SimpleTestCase):
     def test_ve_addition_grossit_le_total_toutes_saisons(self):
         equip = {'ve': {'kwh_jour': 4.0, 'heures': [21, 22, 23],
                         'saisons': None, 'mode': 'addition'}}
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_12, equip)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_12, equip)
         self.assertIsNotNone(bloc)
         self.assertEqual(bloc['base_mensuelle'], [400.0] * 12)
         for i in range(12):
@@ -1587,7 +1588,7 @@ class EstimationConsoMensuelleTests(SimpleTestCase):
     def test_couche_sans_grandeur_reelle_ne_produit_aucun_ajout(self):
         equip = {'piscine': {'kw': 0, 'heures': [], 'saisons': ['ete'],
                              'mode': 'redistribution'}}
-        self.assertIsNone(EH.estimation_conso_mensuelle(self.CONSO_12, equip))
+        self.assertIsNone(HP.estimation_conso_mensuelle(self.CONSO_12, equip))
 
 
 class EstimationConsoRenormaliseeTests(SimpleTestCase):
@@ -1618,7 +1619,7 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
     def test_le_total_ne_depasse_JAMAIS_la_consommation_reelle(self):
         """ROUGE avant QJR16 : juillet sortait à 347,2 kWh pour 300 consommés
         (base écrêtée à zéro, ajout brut publié par-dessus)."""
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
         self.assertIsNotNone(bloc)
         for index, conso in enumerate(self.CONSO_MODESTE):
             self.assertLessEqual(
@@ -1629,7 +1630,7 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
     def test_la_base_n_est_plus_ecretee_a_zero(self):
         """L'écrêtage silencieux était le SYMPTÔME : une base à zéro disait
         « ce client ne consomme QUE sa clim », ce qui est faux."""
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
         mois_ete = [i for i, v in enumerate(bloc['ajouts']['clim']) if v > 0]
         self.assertTrue(mois_ete)
         for index in mois_ete:
@@ -1641,7 +1642,7 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
         l'ajout mensuel publié à l'énergie que
         ``forme_consommation_detaillee`` place RÉELLEMENT dans la journée du
         même mois, multipliée par le nombre de jours."""
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
         for index, conso_mois in enumerate(self.CONSO_MODESTE):
             jours = EH.JOURS_PAR_MOIS[index]
             saison = horaire_base.saison_du_mois(index + 1)
@@ -1662,7 +1663,7 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
         """Juillet, dérivation complète : brute 1,4 × 8 × 31 = 347,2 kWh,
         facteur 300 ÷ (300 + 347,2) = 0,4635352, ajout 160,94 kWh, base
         139,06 kWh — et 160,94 + 139,06 = 300,00 kWh."""
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
         juillet = 6
         self.assertAlmostEqual(bloc['ajouts']['clim'][juillet], 160.94,
                                delta=0.02)
@@ -1676,14 +1677,14 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
         vaut 1,0 et la base reste la consommation brute."""
         equip = {'ve': {'kwh_jour': 4.0, 'heures': [21, 22, 23],
                         'saisons': None, 'mode': 'addition'}}
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, equip)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_MODESTE, equip)
         self.assertEqual(bloc['base_mensuelle'], list(self.CONSO_MODESTE))
 
     def test_le_ve_reste_le_seul_ajout_qui_depasse_la_facture(self):
         equip = dict(self.CLIM)
         equip['ve'] = {'kwh_jour': 4.0, 'heures': [21, 22, 23],
                        'saisons': None, 'mode': 'addition'}
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, equip)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_MODESTE, equip)
         for index, conso in enumerate(self.CONSO_MODESTE):
             attendu = conso + bloc['ajouts']['ve'][index]
             self.assertAlmostEqual(bloc['totale_mensuelle'][index], attendu,
@@ -1697,7 +1698,7 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
             'clim': True, 'clim_pieces': 5,
         })
         for conso in ([400.0] * 12, [300.0] * 12, [1200.0] * 12):
-            bloc = EH.estimation_conso_mensuelle(conso, equip)
+            bloc = HP.estimation_conso_mensuelle(conso, equip)
             self.assertIsNotNone(bloc)
             for index, valeur in enumerate(conso):
                 self.assertLessEqual(bloc['totale_mensuelle'][index],
@@ -1753,7 +1754,7 @@ class EstimationConsoFacteurCompositeurTests(SimpleTestCase):
     def test_avec_ve_l_ajout_publie_egale_ce_que_le_composeur_place(self):
         """ROUGE avant QJR207 : la somme publiée dépassait l'énergie placée."""
         equip = self._equipements()
-        bloc = EH.estimation_conso_mensuelle(self.CONSO, equip)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO, equip)
         self.assertIsNotNone(bloc)
         publie_total = place_total = 0.0
         for index in range(12):
@@ -1771,7 +1772,7 @@ class EstimationConsoFacteurCompositeurTests(SimpleTestCase):
         """Non-régression : sans couche d'addition, ``base == conso`` et le
         facteur ne bouge pas d'un centième."""
         equip = self._equipements(avec_ve=False)
-        bloc = EH.estimation_conso_mensuelle(self.CONSO, equip)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO, equip)
         for index in range(12):
             self.assertAlmostEqual(
                 bloc['ajouts']['clim'][index],
@@ -1781,7 +1782,7 @@ class EstimationConsoFacteurCompositeurTests(SimpleTestCase):
     def test_le_contrat_public_du_total_est_preserve(self):
         """``totale_mensuelle`` reste la facture + la SEULE charge VE : le
         correctif déplace la frontière base/couche, jamais le total."""
-        bloc = EH.estimation_conso_mensuelle(self.CONSO, self._equipements())
+        bloc = HP.estimation_conso_mensuelle(self.CONSO, self._equipements())
         for index, conso in enumerate(self.CONSO):
             self.assertAlmostEqual(
                 bloc['totale_mensuelle'][index],
@@ -1792,7 +1793,7 @@ class EstimationConsoFacteurCompositeurTests(SimpleTestCase):
     def test_le_facteur_n_a_qu_une_seule_definition(self):
         """La publication IMPORTE le facteur du composeur — elle n'en tient
         pas une copie (c'est la copie qui avait divergé)."""
-        self.assertIs(EH.renormalisation_redistribution,
+        self.assertIs(HP.renormalisation_redistribution,
                       CJ.renormalisation_redistribution)
 
 
@@ -1808,7 +1809,7 @@ class JoursTypesPublicsTests(SimpleTestCase):
         return conso
 
     def test_quatre_mois_avec_les_six_cles_du_contrat(self):
-        bloc = EH.jours_types_publics(
+        bloc = HP.jours_types_publics(
             kwc=6.0, conso_kwh_mensuelles=self._conso(), ville=self.VILLE,
             occupation=CJ.OCCUPATION_PRESENCE)
         self.assertIsNotNone(bloc)
@@ -1826,15 +1827,15 @@ class JoursTypesPublicsTests(SimpleTestCase):
                     min(mois['prod_jour_kwh'], mois['conso_jour_kwh']) + 1e-6)
 
     def test_sans_puissance_renvoie_none(self):
-        self.assertIsNone(EH.jours_types_publics(
+        self.assertIsNone(HP.jours_types_publics(
             kwc=0, conso_kwh_mensuelles=self._conso(), ville=self.VILLE))
 
     def test_sans_localisation_renvoie_none(self):
-        self.assertIsNone(EH.jours_types_publics(
+        self.assertIsNone(HP.jours_types_publics(
             kwc=6.0, conso_kwh_mensuelles=self._conso(), ville=None))
 
     def test_sans_consommation_renvoie_none(self):
-        self.assertIsNone(EH.jours_types_publics(
+        self.assertIsNone(HP.jours_types_publics(
             kwc=6.0, conso_kwh_mensuelles=[], ville=self.VILLE))
 
 
@@ -1939,7 +1940,7 @@ class JourReferenceTousLesAppelantsTests(SimpleTestCase):
     # ── 1. jours_types_publics (sortie CLIENT : payload ``jours_types``) ────
 
     def _jours_types(self, jour_reference):
-        return EH.jours_types_publics(
+        return HP.jours_types_publics(
             kwc=6.0, conso_kwh_mensuelles=self.CONSO, ville=self.VILLE,
             occupation=CJ.OCCUPATION_PRESENCE,
             jour_reference=jour_reference)
@@ -1985,7 +1986,7 @@ class JourReferenceTousLesAppelantsTests(SimpleTestCase):
     # ── 4. couverture_batterie_publique (sortie CLIENT : curseur N packs) ───
 
     def _couverture(self, jour_reference):
-        return EH.couverture_batterie_publique(
+        return HP.couverture_batterie_publique(
             kwc=8.5, conso_kwh_mensuelles=[900.0] * 12,
             capacite_utile_pack_kwh=4.6, nb_packs_max=2,
             ville=self.VILLE, jour_reference=jour_reference)

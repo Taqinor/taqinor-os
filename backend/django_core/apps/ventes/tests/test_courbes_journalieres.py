@@ -18,6 +18,7 @@ from django.test import SimpleTestCase
 
 from apps.parametres import pvgis_profils as pp
 from apps.ventes import courbes_journalieres as cj
+from apps.ventes.horaire import public as HP
 from apps.ventes.domain import taille as domaine_taille
 
 CASA_CONSO = [900, 880, 860, 840, 900, 1100,
@@ -880,14 +881,12 @@ class CouchesPublieesEgalesCouchesIntegreesTests(SimpleTestCase):
         return equip
 
     def test_le_composeur_et_la_decomposition_lisent_la_meme_liste(self):
-        from apps.ventes import etude_horaire as eh
-
         self.assertEqual(cj.COUCHES_REDISTRIBUTION,
                          ('piscine', 'clim', 'chauffe_eau'))
-        self.assertIs(eh.COUCHES_REDISTRIBUTION, cj.COUCHES_REDISTRIBUTION)
+        self.assertIs(HP.COUCHES_REDISTRIBUTION, cj.COUCHES_REDISTRIBUTION)
 
     def test_en_ete_les_couches_publiees_sont_exactement_les_integrees(self):
-        from apps.ventes.etude_horaire import estimation_conso_mensuelle
+        from apps.ventes.horaire.public import estimation_conso_mensuelle
 
         equip = self._tout()
         _forme, couches = cj.forme_consommation_detaillee(
@@ -899,7 +898,7 @@ class CouchesPublieesEgalesCouchesIntegreesTests(SimpleTestCase):
     def test_en_hiver_seul_le_chauffe_eau_reste_integre(self):
         """Piscine et clim sont hors saison : elles ne sont ni placées ni
         publiées ce mois-là (leur ajout de janvier vaut zéro)."""
-        from apps.ventes.etude_horaire import estimation_conso_mensuelle
+        from apps.ventes.horaire.public import estimation_conso_mensuelle
 
         equip = self._tout()
         _forme, couches = cj.forme_consommation_detaillee(
@@ -914,7 +913,7 @@ class CouchesPublieesEgalesCouchesIntegreesTests(SimpleTestCase):
         """La somme des couches publiées (base + ajouts de redistribution)
         égale la consommation réelle — donc la même énergie que la forme
         intégrée, qui somme elle aussi au niveau facture."""
-        from apps.ventes.etude_horaire import estimation_conso_mensuelle
+        from apps.ventes.horaire.public import estimation_conso_mensuelle
 
         estimation = estimation_conso_mensuelle(CASA_CONSO, self._tout())
         for index, attendu in enumerate(CASA_CONSO):
@@ -925,7 +924,7 @@ class CouchesPublieesEgalesCouchesIntegreesTests(SimpleTestCase):
     def test_le_ve_reste_le_seul_ajout_par_dessus_le_total(self):
         """Non-régression de la distinction redistribution/addition : le VE
         n'entre PAS dans COUCHES_REDISTRIBUTION."""
-        from apps.ventes.etude_horaire import estimation_conso_mensuelle
+        from apps.ventes.horaire.public import estimation_conso_mensuelle
 
         self.assertNotIn('ve', cj.COUCHES_REDISTRIBUTION)
         equip = dict(VE_COUCHE)
@@ -1011,13 +1010,11 @@ class ProductionParSaisonUniqueTests(SimpleTestCase):
         self.assertFalse(any(isinstance(n, ast.For) for n in ast.walk(arbre)))
 
     def test_egalite_des_dicts_trois_villes(self):
-        from apps.ventes import etude_horaire as eh
-
         for ville in ('Casablanca', 'Marrakech', 'Agadir'):
             mensuel = pp.productible_mensuel(ville=ville)
             self.assertTrue(mensuel, ville)
             attendu = cj.production_par_saison(5, mensuel, ville, None, None)
             self.assertTrue(attendu, ville)
             self.assertEqual(
-                eh.production_journaliere_par_saison(5, ville=ville),
+                HP.production_journaliere_par_saison(5, ville=ville),
                 attendu, ville)

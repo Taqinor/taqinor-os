@@ -386,9 +386,8 @@ def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
     if not est_residentiel or not bool(data.get('avec_ok')):
         return None
     try:
-        from ..etude_horaire import (
-            banque_batterie_du_devis, couverture_batterie_publique,
-        )
+        from ..etude_horaire import banque_batterie_du_devis
+        from ..horaire.public import couverture_batterie_publique
         # QJR167 — cette surface ne rend le curseur « N batteries » que quand
         # ``avec_ok`` (garde ci-dessus) : l'option effective est donc TOUJOURS
         # « avec », nommée explicitement (jamais le défaut implicite).
