@@ -175,3 +175,47 @@ describe('CAL159 — l’écran est ATTEIGNABLE', () => {
     expect(Array.isArray(route.roles) && route.roles.length > 0).toBe(true)
   })
 })
+
+describe('AGR125 — la HMT calculée comme au devis (pertes singulières, pression)', () => {
+  it('les champs sont vides par défaut et en step="any"', () => {
+    rendre()
+    for (const re of [/Pertes singulières/, /Pression de service/]) {
+      const champ = screen.getByLabelText(re)
+      expect(champ).toHaveValue(null)
+      expect(champ).toHaveAttribute('step', 'any')
+    }
+  })
+
+  it('envoie pertes_singulieres_m et pression_service_bar tapés, tels quels', () => {
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    fireEvent.change(screen.getByLabelText(/Pertes singulières/), { target: { value: '1.35' } })
+    fireEvent.change(screen.getByLabelText(/Pression de service/), { target: { value: '2.5' } })
+    calculer()
+    expect(pompage).toHaveBeenCalledWith(1, expect.objectContaining({
+      pertes_singulieres_m: '1.35', pression_service_bar: '2.5',
+    }))
+  })
+
+  it('n’envoie PAS un champ resté vide (aucun défaut inventé)', () => {
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    fireEvent.change(screen.getByLabelText(/Débit souhaité/), { target: { value: '8' } })
+    calculer()
+    const corps = pompage.mock.calls[0][1]
+    expect(corps).toEqual({ debit_souhaite_m3h: '8' })
+    expect(corps).not.toHaveProperty('pertes_singulieres_m')
+    expect(corps).not.toHaveProperty('pression_service_bar')
+  })
+
+  it('affiche le message « manquant » du serveur sous le champ HMT et dans le bandeau', async () => {
+    const manquant = 'Renseignez la HMT, ou toutes ses composantes pour qu’elle soit '
+      + 'calculée comme au devis — manquant : pertes singulières, pression de service.'
+    pompage.mockResolvedValue({ data: { ...RESULTAT_VIDE, erreurs: { hmt_saisie: manquant } } })
+    rendre()
+    calculer()
+    expect(await screen.findByTestId('cal-pompage-erreur-hmt_saisie'))
+      .toHaveTextContent('manquant : pertes singulières, pression de service')
+    expect(screen.getByTestId('cal-pompage-bandeau')).toBeInTheDocument()
+  })
+})
