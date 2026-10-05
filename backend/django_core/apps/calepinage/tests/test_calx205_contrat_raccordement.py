@@ -52,11 +52,13 @@ RACCORDEMENT = charger('calepinage_raccordement.json')
 
 ETATS = ('exemple', 'exemple_limite_saisie', 'exemple_vide')
 
-#: Les sept champs de la saisie — `source_limite` et `source_cos_phi` sont
-#: des champs À PART ENTIÈRE, pas des annotations facultatives.
+#: Les neuf champs de la saisie — `source_limite` et `source_cos_phi` sont
+#: des champs À PART ENTIÈRE, pas des annotations facultatives. ACAL9
+#: (contrat F06) : + le plafond d'injection et sa justification.
 CHAMPS_SAISIE = {'puissance_souscrite_kva', 'phases', 'tension_nominale_v',
                  'limite_elevation_pct', 'source_limite', 'cos_phi_impose',
-                 'source_cos_phi'}
+                 'source_cos_phi', 'plafond_injection_kw',
+                 'plafond_injection_justification'}
 
 #: Les quatre grandeurs calculées.
 CHAMPS_CALCUL = {'elevation_pct', 'ecart_limite_pct', 'puissance_injectee_kva',
@@ -112,11 +114,13 @@ class TroisBlocsTest(SimpleTestCase):
 
     def test_les_trois_blocs_dans_chaque_etat(self):
         for etat in ETATS:
+            # ACAL9 : + `proposition_lead` (objet ou null) dans chaque état.
             self.assertEqual(sorted(RACCORDEMENT[etat]),
-                             ['calcul', 'saisie', 'verdicts'],
+                             ['calcul', 'proposition_lead', 'saisie',
+                              'verdicts'],
                              f'{etat} : les blocs de réponse ont bougé.')
 
-    def test_les_sept_champs_de_saisie(self):
+    def test_les_neuf_champs_de_saisie(self):
         for etat in ETATS:
             self.assertEqual(
                 set(RACCORDEMENT[etat]['saisie']), CHAMPS_SAISIE,

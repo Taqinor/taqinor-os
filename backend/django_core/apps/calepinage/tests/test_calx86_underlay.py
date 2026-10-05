@@ -50,6 +50,13 @@ ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
 SCHEMA = json.loads((ECHANTILLONS / 'roof_layout_v2.schema.json')
                     .read_text(encoding='utf-8'))
 
+#: ACAL2 a rendu l'`exemple` du schéma COMPLET (il porte désormais `underlay`) :
+#: le « document de départ » d'aujourd'hui est cet exemple privé de la
+#: clé de CALX86 — c'est contre lui que l'additivité se prouve.
+CLES_CALX86 = ('underlay',)
+DEPART = {cle: valeur for cle, valeur in SCHEMA['exemple'].items()
+          if cle not in CLES_CALX86}
+
 #: Un PLAN importé : sans échelle propre, donc calé à DEUX points avec une
 #: distance réelle SAISIE et tracée. `pointsImage` est dans le repère du
 #: fichier, jamais converti.
@@ -78,14 +85,14 @@ EXEMPLE_PHOTO = {
 
 def document_avec_plan():
     """L'exemple du schéma, augmenté du fond `plan` de CALX86."""
-    document = copy.deepcopy(SCHEMA['exemple'])
+    document = copy.deepcopy(DEPART)
     document['underlay'] = copy.deepcopy(EXEMPLE_PLAN)
     return document
 
 
 def document_avec_photo():
     """L'exemple du schéma, augmenté du fond `photo` de CALX86."""
-    document = copy.deepcopy(SCHEMA['exemple'])
+    document = copy.deepcopy(DEPART)
     document['underlay'] = copy.deepcopy(EXEMPLE_PHOTO)
     return document
 
@@ -110,14 +117,16 @@ class CleAdditiveTest(SimpleTestCase):
 
         Draft202012Validator.check_schema(SCHEMA)
 
-    def test_l_exemple_du_schema_ne_porte_pas_de_fond(self):
-        """La preuve que le document historique n'a pas été réécrit."""
-        self.assertNotIn('underlay', SCHEMA['exemple'])
+    def test_l_exemple_complet_porte_le_fond_et_le_depart_non(self):
+        """ACAL2 : l'exemple est complet ; le départ ne porte aucun fond."""
+        self.assertIn('underlay', SCHEMA['exemple'])
+        self.assertNotIn('underlay', DEPART)
+        self.assertEqual(erreurs(SCHEMA['exemple']), [])
 
     def test_un_document_sans_fond_reste_valide(self):
-        self.assertEqual(erreurs(SCHEMA['exemple']), [])
+        self.assertEqual(erreurs(DEPART), [])
         self.assertEqual(erreurs({}), [])
-        valider_document(copy.deepcopy(SCHEMA['exemple']))
+        valider_document(copy.deepcopy(DEPART))
 
     def test_un_document_avec_un_plan_est_valide(self):
         self.assertEqual(erreurs(document_avec_plan()), [])
@@ -131,7 +140,7 @@ class CleAdditiveTest(SimpleTestCase):
             with self.subTest(fond=fabrique.__name__):
                 document = fabrique()
                 document.pop('underlay')
-                self.assertEqual(document, SCHEMA['exemple'])
+                self.assertEqual(document, DEPART)
 
 
 class DeuxGenresDeuxCalagesTest(SimpleTestCase):

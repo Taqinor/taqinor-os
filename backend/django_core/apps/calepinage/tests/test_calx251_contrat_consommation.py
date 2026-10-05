@@ -44,6 +44,13 @@ ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
 SCHEMA = json.loads((ECHANTILLONS / 'roof_layout_v2.schema.json')
                     .read_text(encoding='utf-8'))
 
+#: ACAL2 a rendu l'`exemple` du schéma COMPLET (il porte désormais `consumption`) :
+#: le « document de départ » d'aujourd'hui est cet exemple privé de la
+#: clé de CALX251 — c'est contre lui que l'additivité se prouve.
+CLES_CALX251 = ('consumption',)
+DEPART = {cle: valeur for cle, valeur in SCHEMA['exemple'].items()
+          if cle not in CLES_CALX251}
+
 #: Un bloc `consumption` d'EXEMPLE, réellement conforme au schéma — courbe
 #: éditée à la main (`methode: 'courbe'`), modulation saisonnière W95 activée,
 #: deux appareils. Ses nombres sont des valeurs d'EXEMPLE (D-CALX 7), jamais
@@ -68,7 +75,7 @@ EXEMPLE_CONSUMPTION = {
 
 def document_avec_consumption():
     """L'exemple du schéma, augmenté du fragment CALX251."""
-    document = copy.deepcopy(SCHEMA['exemple'])
+    document = copy.deepcopy(DEPART)
     document['consumption'] = copy.deepcopy(EXEMPLE_CONSUMPTION)
     return document
 
@@ -91,11 +98,12 @@ class SchemaBienFormeTest(unittest.TestCase):
 class CleAdditiveTest(unittest.TestCase):
     """`consumption` est OPTIONNELLE : rien de ce qui existe ne bouge."""
 
-    def test_l_exemple_du_schema_ne_porte_pas_la_consommation(self):
-        """La preuve que le document historique n'a pas été réécrit —
-        `serializeLayout` n'émet ce bloc que lorsque l'atelier a réellement
-        été touché (CALX253)."""
-        self.assertNotIn('consumption', SCHEMA['exemple'])
+    def test_l_exemple_complet_porte_la_consommation_et_le_depart_non(self):
+        """ACAL2 : l'exemple est complet ; le départ (document qui n'a
+        jamais touché l'atelier — `serializeLayout` n'émet ce bloc que
+        lorsque l'atelier a réellement été touché, CALX253) ne la porte pas."""
+        self.assertIn('consumption', SCHEMA['exemple'])
+        self.assertNotIn('consumption', DEPART)
 
     def test_l_exemple_du_fichier_valide_contre_le_schema(self):
         """Done CALX251 : « l'exemple du fichier valide contre le schéma »."""
@@ -103,7 +111,7 @@ class CleAdditiveTest(unittest.TestCase):
 
     def test_un_document_v2_sans_consumption_reste_valide(self):
         """Done CALX251 : « un document v2 SANS consumption reste valide »."""
-        self.assertEqual(erreurs(SCHEMA['exemple']), [])
+        self.assertEqual(erreurs(DEPART), [])
         self.assertEqual(erreurs({}), [])
         self.assertEqual(erreurs({'version': 2, 'zones': []}), [])
 
@@ -114,7 +122,7 @@ class CleAdditiveTest(unittest.TestCase):
         """Définition opérationnelle d'« additif » : rien d'autre ne change."""
         document = document_avec_consumption()
         document.pop('consumption')
-        self.assertEqual(document, SCHEMA['exemple'])
+        self.assertEqual(document, DEPART)
 
 
 class FormeDuBlocTest(unittest.TestCase):
@@ -132,7 +140,7 @@ class FormeDuBlocTest(unittest.TestCase):
         self.assertNotIn('appareils', requis)
 
     def test_un_document_sans_saisons_ni_appareils_est_valide(self):
-        document = copy.deepcopy(SCHEMA['exemple'])
+        document = copy.deepcopy(DEPART)
         document['consumption'] = {
             'courbe24': [0.0] * 24,
             'methode': 'facture',

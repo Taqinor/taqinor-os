@@ -24,6 +24,7 @@ Les classes ``…EnBase`` exigent l'ORM : la CI est leur gate.
 Run :
     python manage.py test apps.calepinage.tests.test_calx366_pose_reelle -v2
 """
+import copy
 import datetime
 import inspect
 import json
@@ -40,6 +41,27 @@ RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT = json.loads(
     (RACINE_APP / 'contract_samples' / 'calepinage_asbuilt_ecarts.json')
     .read_text(encoding='utf-8'))
+
+#: ACAL16 (contrat as-built v2) a posé ces champs de ligne, et une ligne
+#: ORPHELINE (pan supprimé, hors totaux), avant leur producteur : ACAL267
+#: les sert et retire ce tableau (``SERVI`` redevient ``CONTRAT``).
+EN_ATTENTE_ACAL267 = ('zone_id', 'libelle', 'orphelin', 'releve_le',
+                      'releve_par', 'prevu_fige', 'prevu_actuel',
+                      'conception_modifiee')
+
+
+def _sans_v2(etat):
+    """Un état du contrat v2 ramené à ce que le serveur sert aujourd'hui."""
+    servi = copy.deepcopy(etat)
+    servi['lignes'] = [
+        {cle: valeur for cle, valeur in ligne.items()
+         if cle not in EN_ATTENTE_ACAL267}
+        for ligne in servi['lignes'] if not ligne.get('orphelin')]
+    return servi
+
+
+SERVI = {etat: _sans_v2(CONTRAT[etat])
+         for etat in ('exemple', 'exemple_version_creee', 'exemple_vide')}
 
 PANS = ['PAN-A', 'PAN-B', 'PAN-C']
 PREVUS = [{'pan': 'PAN-A', 'modules': 8}, {'pan': 'PAN-B', 'modules': 4},
@@ -63,17 +85,17 @@ class ContratCommitteTest(SimpleTestCase):
 
     def test_exemple(self):
         self.assertEqual(service._forme_contrat(ecarts(), None),
-                         CONTRAT['exemple'])
+                         SERVI['exemple'])
 
     def test_exemple_version_creee(self):
         self.assertEqual(service._forme_contrat(ecarts(), 31),
-                         CONTRAT['exemple_version_creee'])
+                         SERVI['exemple_version_creee'])
 
     def test_exemple_vide(self):
         vide = ecarts(prevus=PREVUS[:2], saisies=[],
                       source=service.SOURCE_CALEPINAGE)
         self.assertEqual(service._forme_contrat(vide, None),
-                         CONTRAT['exemple_vide'])
+                         SERVI['exemple_vide'])
 
     def test_refus_pan_inconnu(self):
         corps = dict(CONTRAT['corps_saisie'], pan='PAN-Z')
@@ -208,7 +230,7 @@ class VersionDepuisEcartsTest(SimpleTestCase):
         self.assertIn('PAN-B', kwargs['libelle'])
         bloc = kwargs['resultat']['asbuilt']
         self.assertEqual(bloc['total_pose'], 11)
-        self.assertEqual(bloc['lignes'], CONTRAT['exemple']['lignes'])
+        self.assertEqual(bloc['lignes'], SERVI['exemple']['lignes'])
         # Le résultat du moteur est GARDÉ, le bloc as-built s'y ajoute.
         self.assertEqual(kwargs['resultat']['production'],
                          {'p50_kwh': None})
@@ -216,7 +238,7 @@ class VersionDepuisEcartsTest(SimpleTestCase):
 
     def test_memes_ecarts_rendent_la_version_deja_gelee(self):
         bloc = {'source': service.SOURCE_VARIANTE, 'total_prevu': 14,
-                'total_pose': 11, 'lignes': CONTRAT['exemple']['lignes']}
+                'total_pose': 11, 'lignes': SERVI['exemple']['lignes']}
         precedente = SimpleNamespace(pk=31, resultat={'asbuilt': bloc})
         with mock.patch.object(service, 'ecarts_du_calepinage',
                                return_value=ecarts()), \
@@ -317,14 +339,14 @@ class PoseReelleEnBase(BaseApiCalepinage):
     def test_get_sans_saisie_jamais_zero(self):
         reponse = self.api.get(url_pose(self.calepinage.pk))
         self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertEqual(sorted(reponse.data), sorted(CONTRAT['exemple']))
+        self.assertEqual(sorted(reponse.data), sorted(SERVI['exemple']))
         self.assertEqual(reponse.data['source'], service.SOURCE_CALEPINAGE)
         self.assertEqual(reponse.data['total_prevu'], 14)
         self.assertIsNone(reponse.data['total_pose'])
         self.assertIsNone(reponse.data['version_creee'])
         for ligne in reponse.data['lignes']:
             self.assertEqual(sorted(ligne),
-                             sorted(CONTRAT['exemple']['lignes'][0]))
+                             sorted(SERVI['exemple']['lignes'][0]))
             self.assertIsNone(ligne['modules_poses'], ligne['pan'])
             self.assertIsNone(ligne['ecart'], ligne['pan'])
 

@@ -39,10 +39,15 @@ from apps.calepinage.services.chaine_pertes import ORDRE_ETAPES
 from apps.calepinage.services.simulation import (
     SimulationRefusee, construire_contexte, simuler_calepinage,
 )
+from apps.calepinage.tests._m0_en_attente import (
+    EN_ATTENTE_SIMULATION as EN_ATTENTE, affirmer_non_servies, sans,
+)
 
 CONTRAT = json.loads(
     (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
      / 'calepinage_simulation.json').read_text(encoding='utf-8'))
+#: L'exemple privé des clés posées par ACAL8 avant leurs producteurs.
+SERVI = sans(CONTRAT['exemple'], EN_ATTENTE)
 
 MODULE = {
     'vmp_v': 41.5, 'voc_v': 49.6, 'isc_a': 18.4, 'imp_a': 17.1,
@@ -562,19 +567,23 @@ class ContratTest(SimpleTestCase):
         self.assertIsInstance(CONTRAT['exemple_vide']['pertes'], list)
 
     def test_l_entete_de_simulation_a_les_quatre_cles(self):
+        # ACAL8 (contrat v2) : + version_simulation, reglages_utilises,
+        # meteo_fichier — servies par leurs producteurs (EN_ATTENTE).
         self.assertEqual(
             sorted(CONTRAT['exemple']['simulation']),
-            ['calcule_le', 'duree_s', 'hash_entree', 'version_moteur'])
+            ['calcule_le', 'duree_s', 'hash_entree', 'meteo_fichier',
+             'reglages_utilises', 'version_moteur', 'version_simulation'])
+        affirmer_non_servies(self, self.blocs, EN_ATTENTE)
         self.assertEqual(sorted(self.blocs[service.CLE_SIMULATION]),
-                         sorted(CONTRAT['exemple']['simulation']))
+                         sorted(SERVI['simulation']))
 
     def test_la_cascade_servie_a_les_cles_de_l_echantillon(self):
         self.assertEqual(sorted(self.blocs['cascade']),
-                         sorted(CONTRAT['exemple']['cascade']))
+                         sorted(SERVI['cascade']))
 
     def test_la_meteo_servie_a_les_cles_de_l_echantillon(self):
         self.assertEqual(sorted(self.blocs['meteo']),
-                         sorted(CONTRAT['exemple']['meteo']))
+                         sorted(SERVI['meteo']))
 
     def test_la_serie_horaire_servie_a_les_cles_de_l_echantillon(self):
         self.assertEqual(sorted(self.blocs['serie_horaire']),

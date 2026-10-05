@@ -36,11 +36,18 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.models import PhotoSite, ProvenanceTerrain, ReleveTerrain
 from apps.calepinage.services import reprise_visite as service
+from apps.calepinage.tests._m0_en_attente import sans
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT = json.loads(
     (RACINE_APP / 'contract_samples' / 'calepinage_releve_visite.json')
     .read_text(encoding='utf-8'))
+
+#: ACAL13 (M0) a posé l'état de reprise ``a_jour`` / ``ecart`` avant son
+#: producteur : ACAL210 le sert et retire cette entrée.
+EN_ATTENTE = {'a_jour': 'ACAL210', 'ecart': 'ACAL210'}
+SERVI = {etat: sans(CONTRAT[etat], EN_ATTENTE)
+         for etat in ('exemple', 'exemple_avant_reprise', 'exemple_vide')}
 
 #: Les cinq clés que sert la porte de ``visites`` (CALX363).
 CLES_LECTURE = ('visite_id', 'validee_le', 'mesures', 'photos',
@@ -56,7 +63,7 @@ def lecture_de(etat):
 
 def releve_de_l_exemple():
     """Des objets qui portent EXACTEMENT les valeurs de ``exemple.releve``."""
-    bloc = CONTRAT['exemple']['releve']
+    bloc = SERVI['exemple']['releve']
     releve = SimpleNamespace(
         pk=bloc['id'], provenance=bloc['provenance'],
         releve_le=datetime.date.fromisoformat(bloc['releve_le']),
@@ -73,24 +80,24 @@ class ContratCommitteTest(SimpleTestCase):
     """Les trois états du contrat CALX336, rejoués à l'identique."""
 
     def test_avant_reprise(self):
-        etat = CONTRAT['exemple_avant_reprise']
+        etat = SERVI['exemple_avant_reprise']
         self.assertEqual(service._composer_reponse(lecture_de(etat), None),
                          etat)
 
     def test_apres_reprise(self):
-        etat = CONTRAT['exemple']
+        etat = SERVI['exemple']
         self.assertEqual(
             service._composer_reponse(lecture_de(etat), etat['releve']), etat)
 
     def test_sans_visite_validee(self):
-        etat = CONTRAT['exemple_vide']
+        etat = SERVI['exemple_vide']
         self.assertEqual(service._composer_reponse(lecture_de(etat), None),
                          etat)
 
     def test_le_bloc_releve_construit_depuis_des_objets(self):
         releve, photos = releve_de_l_exemple()
         self.assertEqual(service._releve_en_ligne(releve, photos),
-                         CONTRAT['exemple']['releve'])
+                         SERVI['exemple']['releve'])
 
     def test_un_releve_sans_auteur_ni_date(self):
         releve, _photos = releve_de_l_exemple()
@@ -98,7 +105,7 @@ class ContratCommitteTest(SimpleTestCase):
         releve.releve_le = None
         releve.created_at = None
         bloc = service._releve_en_ligne(releve, [])
-        self.assertEqual(sorted(bloc), sorted(CONTRAT['exemple']['releve']))
+        self.assertEqual(sorted(bloc), sorted(SERVI['exemple']['releve']))
         self.assertEqual(bloc['releve_par'], '')
         self.assertIsNone(bloc['releve_le'])
         self.assertIsNone(bloc['created_at'])
@@ -123,7 +130,7 @@ class SansLeadTest(SimpleTestCase):
 
     def test_l_etat_a_la_forme_du_contrat(self):
         etat = service.etat_reprise(self.calepinage())
-        self.assertEqual(sorted(etat), sorted(CONTRAT['exemple_vide']))
+        self.assertEqual(sorted(etat), sorted(SERVI['exemple_vide']))
         self.assertFalse(etat['deja_repris'])
         self.assertIsNone(etat['releve'])
 
@@ -139,7 +146,7 @@ class VisiteNonValideeTest(SimpleTestCase):
     """Le motif de la porte ``visites`` est relayé MOT POUR MOT."""
 
     def test_refus_porte_le_motif_de_la_visite(self):
-        etat = CONTRAT['exemple_vide']
+        etat = SERVI['exemple_vide']
         calepinage = SimpleNamespace(pk=1, lead_id=3, company=None,
                                      company_id=1)
         with mock.patch.object(service, '_lecture_visite',
@@ -207,7 +214,7 @@ class SchemaAdditifTest(SimpleTestCase):
     def test_valeurs_de_provenance(self):
         self.assertEqual(ProvenanceTerrain.SAISIE, 'saisie')
         self.assertEqual(ProvenanceTerrain.VISITE, 'visite')
-        self.assertEqual(CONTRAT['exemple']['releve']['provenance'],
+        self.assertEqual(SERVI['exemple']['releve']['provenance'],
                          ProvenanceTerrain.VISITE)
 
     def test_defaut_saisie_sur_les_deux_modeles(self):
@@ -327,7 +334,7 @@ class RepriseVisiteEnBase(BaseApiCalepinage):
         reponse = self.api.get(url_reprise(self.calepinage.pk))
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertEqual(sorted(reponse.data),
-                         sorted(CONTRAT['exemple_vide']))
+                         sorted(SERVI['exemple_vide']))
         self.assertIsNone(reponse.data['visite_id'])
         self.assertEqual(reponse.data['motif_absence'], MOTIF_AUCUNE_VISITE)
         self.assertFalse(reponse.data['deja_repris'])
@@ -353,11 +360,11 @@ class RepriseVisiteEnBase(BaseApiCalepinage):
         reponse = self.api.post(url_reprise(self.calepinage.pk))
 
         self.assertEqual(reponse.status_code, 201, reponse.data)
-        self.assertEqual(sorted(reponse.data), sorted(CONTRAT['exemple']))
+        self.assertEqual(sorted(reponse.data), sorted(SERVI['exemple']))
         self.assertTrue(reponse.data['deja_repris'])
         self.assertEqual(reponse.data['visite_id'], visite.pk)
         bloc = reponse.data['releve']
-        self.assertEqual(sorted(bloc), sorted(CONTRAT['exemple']['releve']))
+        self.assertEqual(sorted(bloc), sorted(SERVI['exemple']['releve']))
         self.assertEqual(bloc['provenance'], 'visite')
         self.assertEqual(bloc['releve_par'], self.user.username)
 

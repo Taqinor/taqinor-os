@@ -489,7 +489,10 @@ class CheminDeclareTest(unittest.TestCase):
                 f"url_path='{segment}'" in sources
                 or f"'{segment}/'" in sources
                 or f"{segment}/'" in sources
-                or f"/{segment}'" in sources,
+                or f"/{segment}'" in sources
+                # ACAL12 — la collection elle-même (``POST calepinages/``) est
+                # déclarée par le routeur DRF.
+                or f"register(r'{segment}'" in sources,
                 f"{chemin.name} : le chemin « {route} » n'est déclaré nulle "
                 f"part dans urls.py ni dans une @action du module "
                 f"(segment cherché : « {segment} »).")
@@ -571,16 +574,20 @@ class ClesServiesTest(unittest.TestCase):
         donnees = _charger('site_imagerie.json')
         for etat in ('exemple', 'exemple_vide',
                      'exemple_section_declaree_sans_valeur'):
-            absentes = (set(donnees[etat]) - set(SECTIONS_PARAMETRES)
-                        - set(CLES_POSEES_AVANT_LEUR_PRODUCTEUR
-                              ['site_imagerie.json']))
+            absentes = set(donnees[etat]) - set(SECTIONS_PARAMETRES)
             self.assertEqual(
                 sorted(absentes), [],
                 f"site_imagerie.json ({etat}) : section(s) {sorted(absentes)} "
                 "que le serveur ne sert pas.")
         self.assertEqual(list(donnees['cles']), list(site.CLES))
         self.assertEqual(sorted(site.section_vide()), sorted(donnees['cles']))
+        # ``site_effectif`` est une clé de la section ``imagerie`` posée par
+        # ACAL8 avant son producteur (CLES_POSEES_AVANT_LEUR_PRODUCTEUR).
+        en_attente = set(CLES_POSEES_AVANT_LEUR_PRODUCTEUR['site_imagerie.json'])
+        self.assertEqual(sorted(en_attente & set(site.CLES)), [],
+                         'site.CLES sert désormais la clé en attente : '
+                         'retirer son entrée.')
         self.assertEqual(
-            sorted(donnees['exemple_section_declaree_sans_valeur']
-                   ['imagerie']),
+            sorted(set(donnees['exemple_section_declaree_sans_valeur']
+                       ['imagerie']) - en_attente),
             sorted(site.CLES))
