@@ -57,6 +57,7 @@ import datetime
 from apps.calepinage.services import etapes
 from apps.calepinage.services.pvgis_serie import MOTIF_COMPOSANTES_ABSENTES
 from core.calepinage.soleil import position_solaire
+from ..valeurs import nombre as _nombre
 
 #: Le nom du poste — celui de ``chaine_pertes.ORDRE_ETAPES``, qui est aussi
 #: le nom de ce fichier : c'est toute l'inscription au registre (CALX147).
@@ -412,14 +413,3 @@ def _hauteur_interpolee(azimuts, releves, azimut):
     if portee <= 0.0:
         return releves[bas]
     return releves[bas] + (releves[haut] - releves[bas]) * (ecart / portee)
-
-
-def _nombre(valeur):
-    """Un flottant lisible, ou ``None`` — jamais une valeur de remplacement."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return None if nombre != nombre else nombre

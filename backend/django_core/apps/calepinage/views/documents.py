@@ -352,6 +352,8 @@ EXPORT_PROJET_SCHEMA = inline_serializer('CalepinageExportProjet', {
         child=drf_serializers.DictField()),
     'variantes': drf_serializers.ListField(
         child=drf_serializers.DictField()),
+    # ACAL243 — format 3 : les saisies électriques portables.
+    'saisies': drf_serializers.DictField(),
 })
 
 

@@ -273,6 +273,12 @@ export const MOUNTING_FAMILY_BALLASTED = 'Bacs lestés inclinés';
 /** CAL86 — famille de pose d'un toit EN PENTE : modules affleurants sur la couverture. */
 export const MOUNTING_FAMILY_FLUSH = 'Pose affleurante sur pente';
 
+/** ACAL255 — heure solaire du moment de dimensionnement de l'espacement (10 h, solstice
+ *  d'hiver) : MIROIR de `estimatorBrainV2.DESIGN_SOLAR_HOUR` (fichier d'un autre
+ *  propriétaire, et importer ce moteur ici créerait un cycle). Un test d'égalité
+ *  (`roofPro2.describeRowPitch.test.ts`) échoue si les deux divergent. */
+export const DESIGN_SOLAR_HOUR_V2 = 10;
+
 /** CAL86 — ce qui est AFFICHÉ à propos du pas inter-rangées : le pas appliqué, la famille
  *  de pose, et l'hypothèse d'élévation solaire qui a produit ce pas. */
 export interface RowPitchDisclosure {
@@ -303,14 +309,19 @@ export function describeRowPitch(opts: {
   const flush = !!opts.flush;
   const rowPitchM = Number.isFinite(opts.rowPitchM) && opts.rowPitchM > 0 ? opts.rowPitchM : 0;
   const family = flush ? MOUNTING_FAMILY_FLUSH : MOUNTING_FAMILY_BALLASTED;
-  const designElevDeg = flush ? null : designSunElevationDeg(opts.latitudeDeg);
+  // ACAL255 — l'élévation affichée est celle du soleil de DIMENSIONNEMENT réellement
+  // appliqué (10 h solaire au solstice d'hiver, `estimatorBrainV2.DESIGN_SOLAR_HOUR`),
+  // plus celle de midi : le pas affiché et le soleil qui l'a produit ne se contredisent pas.
+  const designElevDeg = flush
+    ? null
+    : sunDirection(opts.latitudeDeg, WINTER_SOLSTICE_DAY, DESIGN_SOLAR_HOUR_V2).elevationDeg;
   const pas = rowPitchM.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const ew = opts.configFamily === 'eastwest' ? ' (pas entre chevrons est-ouest)' : '';
   const label = flush
     ? `${family} — rangées jointives : pas de ${pas} m${ew}, aucun espacement anti-ombrage (la pente porte les modules).`
     : `${family} — pas entre rangées ${pas} m${ew}, calé sur une élévation solaire de ` +
       `${(designElevDeg as number).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}° ` +
-      `(midi au solstice d’hiver à la latitude du site, ${opts.latitudeDeg.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}°).`;
+      `(soleil de ${DESIGN_SOLAR_HOUR_V2} h au solstice d’hiver à la latitude du site, ${opts.latitudeDeg.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}°).`;
   return { rowPitchM, family, flush, designElevDeg, label };
 }
 

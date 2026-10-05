@@ -42,17 +42,12 @@ AUCUN MONTANT : ni prix, ni coût, ni marge (D5). Lecture PURE : aucune
 from __future__ import annotations
 
 import math
+from .valeurs import nombre as _nombre
 
 __all__ = ['resoudre_systeme', 'bom_de_fixation', 'table_fixation']
 
 #: Les rôles dont la quantité « u » se commande à l'unité.
 UNITE_A_L_UNITE = 'u'
-
-
-def _nombre(valeur):
-    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
-        return None
-    return float(valeur)
 
 
 def _fr(valeur):

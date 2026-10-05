@@ -113,7 +113,7 @@ def _texte(valeur, champ, libelle, *, obligatoire=False):
     return valeur.strip()
 
 
-def _nombre(valeur, champ, libelle, *, obligatoire=False):
+def _metres_valides(valeur, champ, libelle, *, obligatoire=False):
     if valeur is None:
         if obligatoire:
             raise _refus(
@@ -243,10 +243,10 @@ def _modele(cle, brut):
         'libelle': _texte(brut.get('libelle'), f'{racine}.libelle',
                           'Libellé') or cle,
         'nature': _nature(brut.get('nature'), f'{racine}.nature'),
-        'retrait_m': _nombre(brut.get('retrait_m'), f'{racine}.retrait_m',
-                             'Retrait') or 0.0,
-        'hauteur_m': _nombre(brut.get('hauteur_m'), f'{racine}.hauteur_m',
-                             'Hauteur'),
+        'retrait_m': _metres_valides(brut.get('retrait_m'), f'{racine}.retrait_m',
+                                     'Retrait') or 0.0,
+        'hauteur_m': _metres_valides(brut.get('hauteur_m'), f'{racine}.hauteur_m',
+                                     'Hauteur'),
         'source': source,
     }
 
@@ -260,7 +260,7 @@ def _modele(cle, brut):
         modele['sommets'] = []
         if genre == 'bande':
             # Largeur SAISIE, jamais un « standard » repris d'ailleurs.
-            modele['largeur_m'] = _nombre(
+            modele['largeur_m'] = _metres_valides(
                 brut.get('largeur_m'), f'{racine}.largeur_m',
                 'Largeur de la bande', obligatoire=True)
             cote = _texte(brut.get('cote'), f'{racine}.cote', 'Côté')
@@ -280,8 +280,8 @@ def _modele(cle, brut):
         # zone réglementaire, et lui en donner le vocabulaire le ferait passer
         # pour telle. Ses cotes sont OBLIGATOIRES, chacune nommée si absente.
         for champ, libelle in COTES_PAR_FORME[forme]:
-            modele[champ] = _nombre(brut.get(champ), f'{racine}.{champ}',
-                                    libelle, obligatoire=True)
+            modele[champ] = _metres_valides(brut.get(champ), f'{racine}.{champ}',
+                                            libelle, obligatoire=True)
 
     # CALX104 câblage — les quatre clés du gabarit d'OBSTACLE. Elles sont
     # OPTIONNELLES et ne sont posées QUE si elles ont été saisies : un gabarit
@@ -291,12 +291,12 @@ def _modele(cle, brut):
         modele['type'] = type_obstacle
     if forme is not None:
         modele['forme'] = forme
-    longueur_m = _nombre(brut.get('longueur_m'), f'{racine}.longueur_m',
-                         'Longueur du gabarit')
+    longueur_m = _metres_valides(brut.get('longueur_m'), f'{racine}.longueur_m',
+                                 'Longueur du gabarit')
     if longueur_m is not None:
         modele['longueur_m'] = longueur_m
-    rayon_m = _nombre(brut.get('rayon_m'), f'{racine}.rayon_m',
-                      'Rayon du gabarit')
+    rayon_m = _metres_valides(brut.get('rayon_m'), f'{racine}.rayon_m',
+                              'Rayon du gabarit')
     if rayon_m is not None:
         modele['rayon_m'] = rayon_m
     return modele

@@ -66,6 +66,7 @@ Module PUR : aucune base, aucun réseau.
 from __future__ import annotations
 
 from apps.calepinage.services import etapes as _etapes
+from ..valeurs import nombre as _nombre
 
 #: Les clés de réglage société lues ici (registre CALX145).
 CLE_HORIZON = 'annees_exploitation'
@@ -297,15 +298,3 @@ def _entier(valeur):
         return int(valeur)
     except (TypeError, ValueError):
         return None
-
-
-def _nombre(valeur):
-    if isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre:
-        return None
-    return nombre

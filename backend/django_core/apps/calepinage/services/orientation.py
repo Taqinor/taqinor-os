@@ -48,6 +48,7 @@ from __future__ import annotations
 from apps.calepinage.services.ombrage_chaines import acces_par_module
 from apps.calepinage.services.pvgis_serie import (
     BASE_PAR_DEFAUT, EntreeInvalide, PvgisIndisponible)
+from .valeurs import nombre as _nombre
 
 #: Le service PVGIS qui sait optimiser les angles (``seriescalc`` ne le sait
 #: pas : ``optimalangles`` n'est pas un de ses paramètres).
@@ -384,15 +385,3 @@ def _coordonnees(lat, lon):
     if abs(latitude) > 90.0 or abs(longitude) > 180.0:
         return None
     return round(latitude, 4), round(longitude, 4)
-
-
-def _nombre(valeur):
-    if isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre:
-        return None
-    return nombre

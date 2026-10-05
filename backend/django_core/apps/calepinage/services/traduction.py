@@ -75,6 +75,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
+from .valeurs import nombre as _nombre
 
 #: CAL72 — les deux vocabulaires de provenance du dépôt sont acceptés :
 #: les relévés de toiture disent MESURE / MESURE_DOUTEUX là où
@@ -167,13 +168,6 @@ def _document(roof_layout):
             "La conception doit être un objet : reçu "
             f"{type(roof_layout).__name__}.", 'roof_layout')
     return roof_layout
-
-
-def _nombre(valeur):
-    """Le nombre, ou ``None`` — un booléen n'est JAMAIS un nombre ici."""
-    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
-        return None
-    return float(valeur)
 
 
 def _pans(roof_layout):

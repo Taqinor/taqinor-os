@@ -78,6 +78,7 @@ from apps.calepinage.services.p50p90 import bankable
 from apps.calepinage.services.site import (
     decalage_utc_minutes, fuseau_du_site,
 )
+from .valeurs import nombre as _flottant
 
 #: L'ORDRE DE LA CHAÎNE — le seul endroit du dépôt qui le déclare (CALX148).
 #: ``services/pertes.py::CATALOGUE`` est un TUPLE de noms sans rang, et
@@ -1252,16 +1253,6 @@ def _ajouter(cumul, valeur):
     if valeur is None:
         return cumul
     return valeur if cumul is None else cumul + valeur
-
-
-def _flottant(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return None if nombre != nombre else nombre
 
 
 def _arrondi_kwh(valeur):

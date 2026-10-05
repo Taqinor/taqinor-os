@@ -41,6 +41,7 @@ from rest_framework.response import Response
 from ..permissions import PeutVoirCalepinage
 from ..services import pompage as dim
 from .calepinages import CalepinageViewSet, contexte_conception
+from ..services.valeurs import nombre as _nombre
 
 __all__ = ['pompage']
 
@@ -52,16 +53,6 @@ __all__ = ['pompage']
 _TYPE_POMPE_DEFAUT = 'immerge'
 _ALIM_DEFAUT = 'tri'
 _HEURES_DEFAUT = 7.0
-
-
-def _nombre(valeur):
-    """La saisie en flottant, ou ``None`` — jamais 0 en guise d'absence."""
-    if valeur is None or valeur == '':
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None
 
 
 def _produit_pompage(produit):

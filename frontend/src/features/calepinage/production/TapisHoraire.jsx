@@ -78,6 +78,11 @@ const SANS_SERIE = (
   + 'tapis reste vide plutôt que de peindre des zéros.'
 )
 
+const PERIMEE = (
+  'La simulation est périmée : relancez-la, le tapis reste vide plutôt que '
+  + "de montrer la série d'un ancien toit."
+)
+
 /** Un nombre, ou `null` — jamais `0` par défaut. */
 function nombre(valeur) {
   if (valeur === null || valeur === undefined || valeur === '') return null
@@ -238,16 +243,20 @@ function journeesTypes(points, cle) {
 
 export default function TapisHoraire({
   calepinageId, serie: serieProposee, geometriePresente = true,
+  perime = false, motif = '',
 }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
-  const fournie = (serieProposee && Array.isArray(serieProposee.points)
+  // ACAL218 — simulation PÉRIMÉE (le toit a changé depuis le calcul) : ni la
+  // série fournie ni la porte d'export ne sont lues — jamais la série d'un
+  // ancien toit à côté du bandeau « périmé ». L'écran dit le motif SERVI.
+  const fournie = (!perime && serieProposee && Array.isArray(serieProposee.points)
     && serieProposee.points.length) ? serieProposee : null
 
   const [chargee, setChargee] = useState(null)
   const [refus, setRefus] = useState(null)
-  const [enCours, setEnCours] = useState(!fournie)
+  const [enCours, setEnCours] = useState(!fournie && !perime)
   const [cleGrandeur, setCleGrandeur] = useState(GRANDEURS[0].cle)
   const [moisChoisi, setMoisChoisi] = useState(null)
   // ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — un seul essai PAR étude.
@@ -263,7 +272,7 @@ export default function TapisHoraire({
   const idDejaTente = useRef(null)
 
   const charger = useCallback(() => {
-    if (fournie || !id || idDejaTente.current === id) return Promise.resolve()
+    if (perime || fournie || !id || idDejaTente.current === id) return Promise.resolve()
     idDejaTente.current = id
     // ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — `geometriePresente`
     // vient de `PanneauProduction.jsx`, qui le sait déjà SANS requête de
@@ -288,7 +297,7 @@ export default function TapisHoraire({
       .then(async (res) => setChargee(lireCsvHoraire(await texteDuFichier(res?.data))))
       .catch(async (erreur) => setRefus(await motifDuRefus(erreur) || SANS_SERIE))
       .finally(() => setEnCours(false))
-  }, [fournie, id, geometriePresente])
+  }, [perime, fournie, id, geometriePresente])
 
   useEffect(() => { charger() }, [charger])
 
@@ -305,6 +314,17 @@ export default function TapisHoraire({
     () => journeesTypes(points, grandeur.cle), [points, grandeur])
   const charges = useMemo(
     () => journeesTypes(points, 'charge_kwh'), [points])
+
+  if (perime) {
+    return (
+      <Card className="p-4" data-testid="cal-tapis-perime">
+        <ChartEmpty
+          title="Simulation périmée"
+          description={motif || PERIMEE}
+        />
+      </Card>
+    )
+  }
 
   if (enCours) return <Spinner />
 

@@ -421,7 +421,8 @@ export default function PanneauProduction({ calepinageId }) {
         PRODUCTION) : la porte d'export refuserait de toute façon, pour un
         geste que personne n'a demandé en ouvrant simplement l'onglet. */}
     <TapisHoraire calepinageId={id} serie={data?.serie_horaire}
-      geometriePresente={geometriePresente} />
+      geometriePresente={geometriePresente}
+      perime={perime} motif={data?.motif} />
     </>
   )
 }

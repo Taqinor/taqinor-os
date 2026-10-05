@@ -4,8 +4,8 @@ Trois garanties sont vérifiées ici :
 
 1. **Aucune perte sans source AFFICHÉE** — un poste sans source est publié
    comme non sourcé (il ne disparaît pas, et il n'hérite d'aucune valeur).
-2. **La valeur ``loss`` envoyée à PVGIS est EXACTEMENT la somme publiée** —
-   test croisé avec le client CAL135, en relisant l'URL réellement construite.
+2. (ACAL329) La valeur ``loss`` passée à PVGIS n'existe plus : le modèle
+   « PVGIS applique les pertes » et ``politique_du_calepinage`` sont supprimés.
 3. **Aucun 14 % ni 20 % caché ne subsiste dans le module** — test de SURFACE
    sur les sources du paquet ``apps/calepinage``.
 
@@ -13,21 +13,15 @@ Tests PURS : aucune base, aucun réseau (le transport PVGIS est injecté).
 """
 from __future__ import annotations
 
-import json
 import pathlib
 import unittest
-import urllib.parse
 
 from apps.calepinage.services.pertes import (
     CATALOGUE, CATALOGUE_PAR_POSTE, PertesInvalides, moyenne_mensuelle,
-    politique_du_calepinage, postes_du_calepinage, valider_postes,
-)
-from apps.calepinage.services.pvgis_serie import (
-    _Cache, ClientPvgis,
+    postes_du_calepinage, valider_postes,
 )
 
 RACINE_MODULE = pathlib.Path(__file__).resolve().parent.parent
-FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures_pvgis'
 
 
 class FauxCalepinage:
@@ -122,82 +116,13 @@ class ValidationTest(unittest.TestCase):
         self.assertIn('août', str(refus.exception))
 
 
-class PolitiqueDuCalepinageTest(unittest.TestCase):
-
-    def test_sans_poste_aucune_politique_donc_aucune_simulation(self):
-        with self.assertRaises(PertesInvalides) as refus:
-            politique_du_calepinage(FauxCalepinage([]))
-        self.assertEqual(refus.exception.champ, 'pertes')
+class PostesDuCalepinageTest(unittest.TestCase):
 
     def test_aucun_poste_n_est_ajoute_d_office(self):
         cal = FauxCalepinage([{'poste': 'onduleur', 'pct': 2.5,
                                'source': 'fiche'}])
         self.assertEqual([p['poste'] for p in postes_du_calepinage(cal)],
                          ['onduleur'])
-
-    def test_la_somme_publiee_est_celle_des_postes(self):
-        cal = FauxCalepinage([
-            {'poste': 'onduleur', 'pct': 2.5, 'source': 'fiche'},
-            {'poste': 'ohmique_dc', 'pct': 1.25, 'source': 'saisie'},
-            {'poste': 'salissure', 'mensuel': [3.0] * 12,
-             'source': 'societe'},
-        ])
-        politique = politique_du_calepinage(cal)
-        self.assertAlmostEqual(politique.total_pct, 6.75, places=6)
-        self.assertEqual(len(politique.publication()['pertes']), 3)
-
-
-class LossEnvoyeeAPvgisTest(unittest.TestCase):
-    """CAL139 × CAL135/CAL238 — la perte PARTIE est la perte PUBLIÉE."""
-
-    def setUp(self):
-        self.charge = json.loads(
-            (FIXTURES / 'seriescalc_casablanca_sud.json')
-            .read_text(encoding='utf-8'))
-        self.urls = []
-
-    def transport(self, url, timeout_s):
-        self.urls.append(url)
-        return 200, json.dumps(self.charge)
-
-    def test_la_valeur_loss_de_l_url_est_la_somme_publiee(self):
-        cal = FauxCalepinage([
-            {'poste': 'thermique', 'pct': 7.4, 'source': 'fiche'},
-            {'poste': 'salissure', 'mensuel': [2.0, 2.0, 3.0, 4.0, 5.0, 6.0,
-                                               6.0, 6.0, 4.0, 3.0, 2.0, 2.0],
-             'source': 'societe'},
-            {'poste': 'onduleur', 'pct': 2.5, 'source': 'fiche'},
-        ])
-        politique = politique_du_calepinage(cal)
-        client = ClientPvgis(self.transport, cache=_Cache(),
-                             dormir=lambda _s: None)
-        resultat = client.serie_horaire(
-            lat=33.5731, lon=-7.5898, inclinaison_deg=15.0, aspect_deg=0.0,
-            politique=politique, annee_debut=2020, annee_fin=2020)
-
-        requete = urllib.parse.parse_qs(
-            urllib.parse.urlparse(self.urls[0]).query)
-        loss_partie = requete['loss'][0]
-        self.assertEqual(loss_partie, politique.valeur_loss)
-        self.assertEqual(float(loss_partie), resultat['loss_passee_pct'])
-        somme = sum(poste['pct'] for poste in resultat['pertes'])
-        self.assertAlmostEqual(float(loss_partie), somme, places=3)
-
-    def test_chaque_poste_republie_porte_sa_source(self):
-        cal = FauxCalepinage([
-            {'poste': 'thermique', 'pct': 7.4, 'source': 'fiche'},
-            {'poste': 'mismatch', 'pct': 2.0},
-        ])
-        politique = politique_du_calepinage(cal)
-        client = ClientPvgis(self.transport, cache=_Cache(),
-                             dormir=lambda _s: None)
-        resultat = client.serie_horaire(
-            lat=33.5731, lon=-7.5898, inclinaison_deg=15.0, aspect_deg=0.0,
-            politique=politique, annee_debut=2020, annee_fin=2020)
-        sources = {p['poste']: p['source'] for p in resultat['pertes']}
-        self.assertEqual(sources['thermique'], 'fiche')
-        self.assertIsNone(sources['mismatch'])
-        self.assertEqual(resultat['pertes_non_sourcees'], ['mismatch'])
 
 
 class SurfaceAucunForfaitCacheTest(unittest.TestCase):
@@ -221,12 +146,10 @@ class SurfaceAucunForfaitCacheTest(unittest.TestCase):
                      'p50p90.py', 'horizon.py'):
             self.assertIn(neuf, couverts, neuf)
 
-    def test_le_module_ne_fabrique_aucune_politique_par_defaut(self):
-        """Le SEUL chemin vers ``loss`` est la liste persistée du calepinage."""
+    def test_le_module_ne_fabrique_aucun_poste_par_defaut(self):
+        """Sans liste persistée, aucun poste n'est supposé."""
         cal = FauxCalepinage(None)
         self.assertEqual(postes_du_calepinage(cal), [])
-        with self.assertRaises(PertesInvalides):
-            politique_du_calepinage(cal)
 
 
 if __name__ == '__main__':  # pragma: no cover

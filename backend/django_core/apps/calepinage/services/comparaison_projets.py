@@ -37,6 +37,7 @@ La forme publiée est celle du contrat committé
 montant n'y entre (D-CALX 5 : l'argent vit dans ``apps/ventes``).
 """
 from __future__ import annotations
+from .valeurs import nombre as _nombre
 
 __all__ = [
     'BORNE_PROJETS', 'COLONNES', 'ComparaisonRefusee', 'MOTIF_INTROUVABLE',
@@ -152,15 +153,6 @@ def _colonnes():
 
 def _dict(valeur):
     return valeur if isinstance(valeur, dict) else {}
-
-
-def _nombre(valeur):
-    """Un NOMBRE au sens strict (ni booléen, ni texte), sinon ``None``."""
-    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
-        return None
-    if valeur != valeur:  # NaN
-        return None
-    return valeur
 
 
 def _mesures_du_calepinage(calepinage, *, simule=False):

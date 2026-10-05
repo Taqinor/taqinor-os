@@ -57,6 +57,7 @@ from apps.calepinage.services.autoconsommation import (BilanInvalide,
                                                        MOTIF_SANS_COURBE,
                                                        bilan_autoconsommation)
 from apps.calepinage.services.etapes import batterie as bloc_batterie
+from ..valeurs import nombre as _nombre
 
 LIBELLE = "Plafond d'injection au point de livraison"
 
@@ -115,16 +116,6 @@ def mode_hors_reseau(contexte):
     if not isinstance(declaration, dict):
         return False
     return bool(declaration.get('actif'))
-
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return None if nombre != nombre else nombre
 
 
 def _colonne(serie, nom):

@@ -45,6 +45,7 @@ le pan n'a de modules, les modules au-delà sont publiés SANS accès (et
 l'avertissement le dit), jamais complétés.
 """
 from __future__ import annotations
+from .valeurs import nombre as _nombre
 
 __all__ = ['MOTIF_SANS_ACCES', 'acces_par_module', 'ombrage_des_chaines']
 
@@ -53,18 +54,6 @@ MOTIF_SANS_ACCES = (
     "(« zones[].geometry.solarAccess ») : aucun écart d'ombrage n'est "
     'signalé. Le silence est explicite — un module sans accès calculé n’est '
     'pas un module non ombré.')
-
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre:
-        return None
-    return nombre
 
 
 def acces_par_module(layout):

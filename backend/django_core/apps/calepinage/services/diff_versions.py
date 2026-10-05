@@ -35,6 +35,7 @@ Module PUR : aucune base, aucun réseau ; il lit des attributs
 from __future__ import annotations
 
 from types import SimpleNamespace
+from .valeurs import nombre as _nombre
 
 __all__ = [
     'CHAMPS_FIXES', 'LIBELLE_ETAT_COURANT', 'comparer_versions',
@@ -61,19 +62,6 @@ LIBELLE_ETAT_COURANT = 'État courant'
 
 def _dict(valeur):
     return valeur if isinstance(valeur, dict) else {}
-
-
-def _nombre(valeur):
-    """Un NOMBRE au sens strict (ni booléen, ni texte illisible), ou None."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre or abs(nombre) == float('inf'):
-        return None
-    return nombre
 
 
 def _entier(valeur):

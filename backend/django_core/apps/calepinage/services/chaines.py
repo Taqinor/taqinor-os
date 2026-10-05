@@ -46,6 +46,7 @@ from core.electrique.types import (
     COEFFICIENTS_TEMPERATURE, EntreeElectrique, GroupePan, SpecModule,
     SpecOnduleur, fr,
 )
+from .valeurs import nombre as _nombre
 
 __all__ = [
     'PanPose', 'Conception', 'REGLE_UNE_ORIENTATION_PAR_CHAINE',
@@ -159,15 +160,6 @@ class Conception:
 
 
 # ─────────────────────────────────────────────────────── lecture du document
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None
-
-
 def _entier(valeur):
     nombre = _nombre(valeur)
     if nombre is None or nombre < 0:

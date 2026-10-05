@@ -1,10 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { lireSourceCalepinageApi } from './calepinage/lireSource.mjs'
+import { corpsDuFragment, lireSourceCalepinageApi } from './calepinage/lireSource.mjs'
 import { extraireCles } from './calepinageApi.usage.test.mjs'
 
 /* ============================================================================
@@ -96,7 +96,18 @@ test('SPL292 — dépôt réel : façade + `_base.js`, 94 clés, la racine `pivo
   const facade = readFileSync(join(here, 'calepinageApi.js'), 'utf8')
   const base = readFileSync(join(here, 'calepinage', '_base.js'), 'utf8')
   const texte = lireSourceCalepinageApi()
-  assert.equal(texte, `${facade}\n${base}`)
+  // SPL293+ — les fragments (`...<theme>,`) sont spliçés : le texte recomposé
+  // n'est plus façade + base, mais ne contient plus AUCUNE ligne de spread de
+  // fragment, finit par `_base.js` et porte le corps de chaque fragment.
+  const fragments = readdirSync(join(here, 'calepinage'))
+    .filter((f) => f.endsWith('.js') && f !== '_base.js').map((f) => f.slice(0, -3))
+  for (const nom of fragments) {
+    assert.doesNotMatch(texte, new RegExp(`^ {4}\\.\\.\\.${nom},`, 'm'))
+    assert.ok(facade.includes(`    ...${nom},`), `la façade compose ...${nom}`)
+    const corps = corpsDuFragment(readFileSync(join(here, 'calepinage', `${nom}.js`), 'utf8'), nom)
+    assert.ok(corps.length > 0 && texte.includes(corps.join('\n')), `corps de ${nom} spliçé`)
+  }
+  assert.ok(texte.endsWith(base))
   assert.equal(extraireCles(texte).length, 94)
   assert.match(texte, /const pivot = \(id\) => `\/calepinage\/calepinages\/\$\{id\}\/`/)
   // Aucun jumeau : `pivot` n'est plus DÉFINI dans la façade.

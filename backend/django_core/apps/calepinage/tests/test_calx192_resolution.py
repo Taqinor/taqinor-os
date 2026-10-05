@@ -21,39 +21,17 @@ Run :
 """
 from __future__ import annotations
 
-import json
-import pathlib
 import unittest
 
 from apps.calepinage.services.chaine_pertes import (
     CLE_CHARGE, CLE_METEO_AU_PAS, MOTIF_RESOLUTION_DIVERGENTE,
     PAS_METEO_ATTENDU_MINUTES, appliquer_chaine,
 )
-from apps.calepinage.services.pertes_politique import politique_de_pertes
-from apps.calepinage.services.pvgis_serie import ClientPvgis, _Cache
-
-FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures_pvgis'
-POSTES_ESSAI = [{'poste': 'shading', 'pct': 3.5, 'source': 'mesure'}]
-
-
-class TransportEnregistre:
-    def __init__(self, charge):
-        self.charge = charge
-
-    def __call__(self, url, timeout_s):
-        return 200, json.dumps(self.charge)
+from apps.calepinage.tests.test_pvgis_serie import serie_enregistree
 
 
 def points_reels():
-    charge = json.loads(
-        (FIXTURES / 'seriescalc_casablanca_sud.json').read_text(
-            encoding='utf-8'))
-    client = ClientPvgis(TransportEnregistre(charge), cache=_Cache(),
-                         dormir=lambda _s: None)
-    return client.serie_horaire(
-        lat=33.5, lon=-7.6, inclinaison_deg=15.0, aspect_deg=0.0,
-        politique=politique_de_pertes(POSTES_ESSAI),
-        annee_debut=2020, annee_fin=2020)['points']
+    return serie_enregistree()['points']
 
 
 POINTS = points_reels()

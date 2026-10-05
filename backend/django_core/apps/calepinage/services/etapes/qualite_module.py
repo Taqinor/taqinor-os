@@ -44,6 +44,7 @@ quand ils sont en dessous.
 from __future__ import annotations
 
 from apps.calepinage.services import etapes
+from ..valeurs import nombre as _nombre
 
 #: Les deux champs de fiche lus, sous les noms que ``specs_for_produit``
 #: (CALX60) publie.
@@ -298,20 +299,6 @@ def _produit_designe(contexte):
 def _libelle():
     from apps.calepinage.services.chaine_pertes import LIBELLES
     return LIBELLES['qualite_module']
-
-
-def _nombre(valeur):
-    """``float(valeur)`` quand c'est un nombre, sinon ``None``.
-
-    Les Decimal des champs de fiche passent par ici ; un texte, un ``None``
-    ou un booléen n'entrent jamais dans un calcul.
-    """
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None
 
 
 def _texte(valeur):

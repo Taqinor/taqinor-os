@@ -24,18 +24,13 @@ import pathlib
 import unittest
 
 from apps.calepinage.services.horizon import lire_profil
-from apps.calepinage.services.pertes_politique import politique_de_pertes
-from apps.calepinage.services.pvgis_serie import (
-    ClientPvgis, _Cache, azimut_pvgis,
-)
+from apps.calepinage.services.pvgis_serie import azimut_pvgis
 from apps.calepinage.tests._m0_en_attente import sans
+from apps.calepinage.tests.test_pvgis_serie import serie_enregistree
 
 RACINE = pathlib.Path(__file__).resolve().parents[1]
 ECHANTILLONS = RACINE / 'contract_samples'
 FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures_pvgis'
-
-#: Postes d'ESSAI : la mécanique de l'appel, pas des pertes réelles.
-POSTES_ESSAI = [{'poste': 'shading', 'pct': 3.5, 'source': 'mesure'}]
 
 
 def charger(chemin):
@@ -52,27 +47,10 @@ EN_ATTENTE_METEO = {'fichier': 'ACAL146',
                     'heure.provenance_fuseau': 'ACAL129'}
 
 
-class TransportEnregistre:
-    """Rejoue une réponse enregistrée — le réseau n'est jamais touché."""
-
-    def __init__(self, charge):
-        self.charge = charge
-        self.appels = []
-
-    def __call__(self, url, timeout_s):
-        self.appels.append(url)
-        return 200, json.dumps(self.charge)
-
-
 def serie_de_la_fixture():
     """La réponse `seriescalc` réelle, passée par le client du module."""
     charge = charger(FIXTURES / 'seriescalc_casablanca_sud.json')
-    client = ClientPvgis(TransportEnregistre(charge), cache=_Cache(),
-                         dormir=lambda _s: None)
-    return charge, client.serie_horaire(
-        lat=33.5, lon=-7.6, inclinaison_deg=15.0, aspect_deg=0.0,
-        politique=politique_de_pertes(POSTES_ESSAI),
-        annee_debut=2020, annee_fin=2020)
+    return charge, serie_enregistree()
 
 
 class EnveloppeTest(unittest.TestCase):
@@ -118,16 +96,19 @@ class DeriveDeLaFixtureTest(unittest.TestCase):
         self.attendu = METEO['exemple']['meteo']
 
     def test_les_trois_valeurs_exigees_par_le_plan(self):
-        self.assertEqual(self.serie['base'], 'PVGIS-SARAH3')
-        self.assertEqual(self.serie['base_meteo'], 'ERA5')
-        self.assertEqual(self.serie['fenetre_annees'], '2020-2020')
+        self.assertEqual(self.serie['meteo']['base_rayonnement'],
+                         'PVGIS-SARAH3')
+        self.assertEqual(self.serie['meteo']['base_meteo'], 'ERA5')
+        self.assertEqual(self.serie['meteo']['fenetre_annees'], '2020-2020')
 
     def test_le_bloc_committe_reprend_la_reponse_cle_par_cle(self):
         self.assertEqual(self.attendu['service'], self.serie['service'])
-        self.assertEqual(self.attendu['base_rayonnement'], self.serie['base'])
-        self.assertEqual(self.attendu['base_meteo'], self.serie['base_meteo'])
+        self.assertEqual(self.attendu['base_rayonnement'],
+                         self.serie['meteo']['base_rayonnement'])
+        self.assertEqual(self.attendu['base_meteo'],
+                         self.serie['meteo']['base_meteo'])
         self.assertEqual(self.attendu['fenetre_annees'],
-                         self.serie['fenetre_annees'])
+                         self.serie['meteo']['fenetre_annees'])
         self.assertEqual(self.attendu['depuis_cache'],
                          self.serie['depuis_cache'])
         self.assertEqual(self.attendu['point']['lat'],

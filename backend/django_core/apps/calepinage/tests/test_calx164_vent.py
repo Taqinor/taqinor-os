@@ -4,8 +4,8 @@
 CE QUI EST PROUVÉ ICI
 ---------------------
 1. **Le vent traverse** : ``WS10m`` de la réponse PVGIS enregistrée est lu par
-   les DEUX portes du client (``serie_irradiance``, CALX150, et le chemin
-   d'aujourd'hui ``serie_horaire``), et il arrive tel quel sur chaque point
+   ``serie_irradiance`` (CALX150 ; ACAL329 a supprimé ``serie_horaire``),
+   sur deux réponses enregistrées, et il arrive tel quel sur chaque point
    que ``services/thermique.py::perte_thermique`` consomme.
 2. **Il refroidit vraiment** (test de propriété) : avec une fiche portant
    ``uv_w_m3sk``, la température de cellule calculée sur les vents RÉELS de la
@@ -39,8 +39,8 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services import etapes as _etapes
 from apps.calepinage.services.etapes import thermique as etape_thermique
-from apps.calepinage.services.pertes_politique import politique_de_pertes
 from apps.calepinage.services.pvgis_serie import ClientPvgis, _Cache
+from apps.calepinage.tests.test_pvgis_serie import serie_enregistree
 from apps.calepinage.services.thermique import (
     COLONNE_VENT, GABARIT_VENT_PARTIEL, HYPOTHESE_UV_ABSENT_DE_LA_FICHE,
     HYPOTHESE_VENT_ABSENT_DE_LA_SERIE, MODELE_FAIMAN, perte_thermique,
@@ -48,8 +48,6 @@ from apps.calepinage.services.thermique import (
 
 FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures_pvgis'
 
-#: Postes d'ESSAI — la mécanique de ``serie_horaire``, pas des pertes réelles.
-POSTES_ESSAI = [{'poste': 'shading', 'pct': 3.5, 'source': 'mesure'}]
 
 #: Fiche d'ESSAI portant le couple complet Uc/Uv (les noms sont ceux de
 #: ``apps.stock.selectors.specs_for_produit``, champs CAL111). Ces valeurs
@@ -85,11 +83,9 @@ def client(charge):
 
 
 def points_du_chemin_rapide():
-    """Les points de ``serie_horaire`` — le chemin du constructeur 3D."""
-    return client(charger('seriescalc_casablanca_sud.json')).serie_horaire(
-        lat=33.5, lon=-7.6, inclinaison_deg=15.0, aspect_deg=0.0,
-        politique=politique_de_pertes(POSTES_ESSAI),
-        annee_debut=2020, annee_fin=2020)['points']
+    """Les points de la réponse ``seriescalc_casablanca_sud`` (ACAL329 : lue
+    par ``serie_irradiance``, ``serie_horaire`` n'existe plus)."""
+    return serie_enregistree()['points']
 
 
 def points_de_l_irradiance_nue():
@@ -111,7 +107,7 @@ def sans_vent(points):
 class LeVentTraverseLeClientTest(SimpleTestCase):
     """``WS10m`` est lu par les deux portes, et vaut celui de la réponse."""
 
-    def test_serie_horaire_publie_enfin_le_vent(self):
+    def test_la_reponse_sud_publie_le_vent(self):
         points = points_du_chemin_rapide()
         self.assertTrue(points)
         manquants = [p for p in points if p.get(COLONNE_VENT) is None]
@@ -133,9 +129,8 @@ class LeVentTraverseLeClientTest(SimpleTestCase):
         charge = charger('seriescalc_casablanca_sud.json')
         for ligne in charge['outputs']['hourly']:
             ligne.pop('WS10m', None)
-        points = client(charge).serie_horaire(
+        points = client(charge).serie_irradiance(
             lat=33.5, lon=-7.6, inclinaison_deg=15.0, aspect_deg=0.0,
-            politique=politique_de_pertes(POSTES_ESSAI),
             annee_debut=2020, annee_fin=2020)['points']
         self.assertTrue(points)
         for point in points:

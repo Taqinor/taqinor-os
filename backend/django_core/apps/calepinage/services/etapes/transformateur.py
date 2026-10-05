@@ -50,6 +50,7 @@ Module PUR : aucune base, aucun réseau.
 from __future__ import annotations
 
 from apps.calepinage.services import etapes as _etapes
+from ..valeurs import nombre as _nombre
 
 #: La clé sous laquelle ``services/electrique.py`` range l'entrée électrique
 #: du calepinage, et celle du transformateur à l'intérieur.
@@ -229,15 +230,3 @@ def _appliquer(serie, a_vide_kw, en_charge_kw, nominal_kw):
 
 def _arrondi(valeur):
     return round(valeur, 3)
-
-
-def _nombre(valeur):
-    if isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    if nombre != nombre:
-        return None
-    return nombre

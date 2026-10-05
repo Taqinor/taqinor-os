@@ -35,6 +35,7 @@ import des modèles de la GED.
 from __future__ import annotations
 
 import datetime
+from .valeurs import nombre as _nombre
 
 __all__ = [
     'TerreInvalide', 'checklist_terre', 'garde_terre', 'LIGNES_MESUREES',
@@ -91,15 +92,6 @@ class TerreInvalide(ValueError):
     def __init__(self, message, *, champ=''):
         super().__init__(message)
         self.champ = champ
-
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None
 
 
 def _piece_jointe(decisions, company):

@@ -47,6 +47,7 @@ auxiliaires se retranchent après la conversion, jamais sur du continu.
 from __future__ import annotations
 
 from apps.calepinage.services import etapes
+from ..valeurs import nombre as _nombre
 
 LIBELLE = 'Auxiliaires'
 
@@ -221,12 +222,3 @@ def _publie(terme):
         return None
     return {'valeur': terme['valeur'], 'source': terme['source'],
             'origine': terme['origine'], 'reference': terme['reference']}
-
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None
