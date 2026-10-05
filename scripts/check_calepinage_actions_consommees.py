@@ -165,8 +165,13 @@ _GROUPE_CONVERTISSEUR = re.compile(r"\(\?P<[^>]+>[^)]*\)")
 
 
 def segments_statiques(url_path: str) -> list:
-    """Segments non-vides d'un `url_path`, groupes de capture DRF retires."""
-    sans_groupes = _GROUPE_CONVERTISSEUR.sub("", url_path)
+    """Segments non-vides d'un `url_path`, groupes de capture DRF retires.
+
+    ACAL229 — un point ECHAPPE (antislash-point, `r'export\\.csv'`) est un
+    point litteral : le frontend ecrit `export.csv`, c'est donc `export.csv`
+    qu'on y cherche (sinon chaque export echappe deviendrait une dette).
+    """
+    sans_groupes = _GROUPE_CONVERTISSEUR.sub("", url_path).replace("\\.", ".")
     return [s for s in sans_groupes.split("/") if s]
 
 
