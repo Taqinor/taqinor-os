@@ -44,8 +44,10 @@ _DEFAULT_WATT = 710
 # ── Conditions de paiement par mode d'installation (SOURCE UNIQUE) ──
 # Décision propriétaire 2026-06-12. Tous les formats PDF ET l'échéancier
 # devis → factures (acompte/tranches) lisent CE mapping ; plus aucun
-# pourcentage de paiement en dur ailleurs. Agricole = défaut résidentiel
-# (30/60/10) en attente d'un éventuel veto du fondateur.
+# pourcentage de paiement en dur ailleurs. Agricole = 30/60/10 CONSERVÉ
+# (décision du 02/10/2026, AGR219 : MESURER avant tout autre réglage, comme
+# CAD52) ; la trésorerie « après récolte » se dit par la ``date_prevue``
+# facultative d'une tranche (``utils/echeancier.py``), jamais par un autre %.
 PAYMENT_TERMS_BY_MODE = {
     "residentiel": {"acompte": 30, "materiel": 60, "solde": 10},
     "industriel": {"acompte": 50, "materiel": 40, "solde": 10},
@@ -3220,11 +3222,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # par la MÊME correspondance que la page publique (QJR622) ; le réglage
     # société n'est plus que le repli. Les pourcentages sont rendus en nombres
     # simples (int si entiers) : le dict de rendu reste sérialisable JSON.
-    payment_terms = {
-        cle: _pct_simple(val)
-        for cle, val in termes_paiement_devis(
-            devis, payment_terms_for(getattr(devis, "company", None), mode),
-            lignes).items()}
+    _termes = termes_paiement_devis(
+        devis, payment_terms_for(getattr(devis, "company", None), mode),
+        lignes, avec_dates=True)
+    # AGR219 — la date prévue par créneau (solde « après récolte »), hors
+    # des pourcentages ; posée dans ``data`` SEULEMENT si une tranche en porte.
+    _dates_prevues = _termes.pop("dates_prevues", None)
+    payment_terms = {cle: _pct_simple(val) for cle, val in _termes.items()}
 
     # D2/N60/N67/N59 — textes éditables du devis (en-têtes/CGV/validité/garanties
     # /BPA/tampon). SURCHARGES non vides seulement ; toute clé absente → le moteur
@@ -3965,6 +3969,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     _attestation = _attestation_usage_agricole(devis)
     if _attestation is not None:
         data["attestation_usage_agricole"] = _attestation
+
+    # ── AGR219 — dates prévues des tranches (D3). Additif : posé SEULEMENT
+    # quand une tranche en porte une → un échéancier sans date reste
+    # octet-identique. Aucune facture n'est datée par elles.
+    if _dates_prevues is not None:
+        data["payment_dates"] = _dates_prevues
 
     return data
 
