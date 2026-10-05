@@ -644,8 +644,11 @@ def _echelle_paliers_batterie(devis):
         puissances_batterie_des_lignes,
     )
     from apps.ventes.domain.etudes import entrees_dimensionnement_du_devis
-    from apps.ventes.domain.pipeline import (
-        composer_sonde, contexte_sonde_du_devis, sonder_wattage)
+    from apps.ventes.domain.etape_composer import (
+        composer_sonde,
+        contexte_sonde_du_devis,
+        sonder_wattage,
+    )
 
     entrees = entrees_dimensionnement_du_devis(devis)
     conso = (entrees or {}).get('conso_kwh_mensuelles')

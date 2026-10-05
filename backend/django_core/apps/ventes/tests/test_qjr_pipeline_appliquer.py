@@ -34,7 +34,7 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
-from apps.ventes.domain import pipeline
+from apps.ventes.domain import etape_composer, pipeline
 
 RACINE_VENTES = Path(__file__).resolve().parent.parent
 
@@ -156,11 +156,11 @@ class LOrdreDesHuitEtapes(SimpleTestCase):
         """Refuser vaut mieux que créer puis effacer : un devis effacé rendrait
         sa référence au compteur, et le numéro suivant la reprendrait."""
         journal = []
-        with _Etapes(journal, refus=[pipeline.MSG_SANS_ONDULEUR_HYBRIDE]):
+        with _Etapes(journal, refus=[etape_composer.MSG_SANS_ONDULEUR_HYBRIDE]):
             with self.assertRaises(Exception) as leve:
                 pipeline.appliquer(None, _intention())
 
-        self.assertIn(pipeline.MSG_SANS_ONDULEUR_HYBRIDE, str(leve.exception))
+        self.assertIn(etape_composer.MSG_SANS_ONDULEUR_HYBRIDE, str(leve.exception))
         self.assertEqual(journal[-1], 'verifier')
         for interdit in ('_verrouiller', '_creer_brouillon', 'ecrire_lignes',
                          'ecrire_etude_params', 'rafraichir_etudes',

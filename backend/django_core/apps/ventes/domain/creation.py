@@ -1881,16 +1881,18 @@ from apps.ventes.domain.geometrie import (  # noqa: E402,F401
 )
 from apps.ventes.domain.entrees import entrees_depuis_lead  # noqa: E402,F401
 from apps.ventes.domain.pipeline import (  # noqa: E402,F401
-    COMPOSITION_AVEC,
-    COMPOSITION_LES_DEUX,
-    COMPOSITION_SANS,
     ORIGINE_AUTO,
     ORIGINE_CALEPINAGE,
     ORIGINE_TUNNEL,
     CibleDevis,
-    IntentionComposition,
     IntentionDevis,
     appliquer,
+)
+from apps.ventes.domain.etape_composer import (  # noqa: E402,F401
+    COMPOSITION_AVEC,
+    COMPOSITION_LES_DEUX,
+    COMPOSITION_SANS,
+    IntentionComposition,
     composer,
     verifier,
 )

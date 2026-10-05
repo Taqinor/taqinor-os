@@ -40,7 +40,7 @@ from django.test import SimpleTestCase, TestCase
 from apps.crm.models import Lead
 from apps.stock.models import Produit
 from apps.ventes.domain import creation as _creation
-from apps.ventes.domain import pipeline
+from apps.ventes.domain import etape_composer, pipeline
 
 User = get_user_model()
 
@@ -255,7 +255,7 @@ class LIntentionEstGeleeEtLeScenarioValide(SimpleTestCase):
     """Les garanties du jeu de paramètres lui-même — aucune base requise."""
 
     def test_intention_gelee(self):
-        intention = pipeline.IntentionComposition(company=None)
+        intention = etape_composer.IntentionComposition(company=None)
         with self.assertRaises(Exception):
             intention.mppt_paires = 4
 
@@ -266,7 +266,7 @@ class LIntentionEstGeleeEtLeScenarioValide(SimpleTestCase):
         import inspect
         from apps.ventes.domain.composition import composition_residentielle
         signature = inspect.signature(composition_residentielle)
-        intention = pipeline.IntentionComposition(company=None)
+        intention = etape_composer.IntentionComposition(company=None)
         for champ in ('structure_type', 'structure_produit_id', 'taux_tva',
                       'mppt_paires', 'phase'):
             self.assertEqual(signature.parameters[champ].default,
@@ -274,11 +274,11 @@ class LIntentionEstGeleeEtLeScenarioValide(SimpleTestCase):
 
     def test_scenario_inconnu_refuse_en_francais(self):
         with self.assertRaises(ValueError) as leve:
-            pipeline.composer(
-                pipeline.IntentionComposition(company=None,
-                                              scenario='peut-etre'))
+            etape_composer.composer(
+                etape_composer.IntentionComposition(company=None,
+                                                    scenario='peut-etre'))
         self.assertIn('Scénario de composition inconnu', str(leve.exception))
 
     def test_les_trois_scenarios_composables(self):
-        self.assertEqual(pipeline.SCENARIOS_COMPOSABLES,
+        self.assertEqual(etape_composer.SCENARIOS_COMPOSABLES,
                          ('sans', 'avec', 'les_deux'))

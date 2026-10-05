@@ -36,7 +36,7 @@ from django.test import SimpleTestCase, TestCase
 
 from apps.crm.models import Lead
 from apps.stock.models import Produit
-from apps.ventes.domain import geometrie, pipeline
+from apps.ventes.domain import etape_composer, geometrie
 
 User = get_user_model()
 
@@ -61,20 +61,20 @@ class _CatalogueFictif:
             return None
 
         self._anciens = {
-            '_pick_product': pipeline._pick_product,
-            '_pick_batterie': pipeline._pick_batterie,
+            '_pick_product': etape_composer._pick_product,
+            '_pick_batterie': etape_composer._pick_batterie,
             '_plage_batterie_de_l_onduleur':
-                pipeline._plage_batterie_de_l_onduleur,
+                etape_composer._plage_batterie_de_l_onduleur,
         }
-        pipeline._pick_product = _pick
-        pipeline._pick_batterie = (
+        etape_composer._pick_product = _pick
+        etape_composer._pick_batterie = (
             lambda company, onduleur=None: object() if self.batterie else None)
-        pipeline._plage_batterie_de_l_onduleur = lambda onduleur: self.plage
+        etape_composer._plage_batterie_de_l_onduleur = lambda onduleur: self.plage
         return self
 
     def __exit__(self, *exc):
         for nom, valeur in self._anciens.items():
-            setattr(pipeline, nom, valeur)
+            setattr(etape_composer, nom, valeur)
         return False
 
 
@@ -83,21 +83,21 @@ class LEtapeVerifierParleLesTroisScenarios(SimpleTestCase):
 
     def _verifier(self, scenario, **catalogue):
         with _CatalogueFictif(**catalogue):
-            return pipeline.verifier(pipeline.IntentionComposition(
+            return etape_composer.verifier(etape_composer.IntentionComposition(
                 company=None, nb_panneaux=9, kwc=6.39, scenario=scenario))
 
     def test_scenario_sans_exige_le_reseau_et_lui_seul(self):
         self.assertIsNone(self._verifier('sans', hybride=False,
                                          batterie=False))
         self.assertEqual(self._verifier('sans', reseau=False),
-                         [pipeline.MSG_SANS_ONDULEUR_RESEAU])
+                         [etape_composer.MSG_SANS_ONDULEUR_RESEAU])
 
     def test_scenario_avec_exige_hybride_et_batterie(self):
         self.assertIsNone(self._verifier('avec', reseau=False))
         self.assertEqual(self._verifier('avec', hybride=False),
-                         [pipeline.MSG_SANS_ONDULEUR_HYBRIDE])
+                         [etape_composer.MSG_SANS_ONDULEUR_HYBRIDE])
         self.assertEqual(self._verifier('avec', batterie=False),
-                         [pipeline.MSG_SANS_BATTERIE])
+                         [etape_composer.MSG_SANS_BATTERIE])
 
     def test_scenario_les_deux_exige_LES_DEUX_moities(self):
         """LA généralisation : un devis à deux options qui ne sait servir
@@ -106,17 +106,17 @@ class LEtapeVerifierParleLesTroisScenarios(SimpleTestCase):
         self.assertIsNone(self._verifier('les_deux'))
         # Le réseau manque : le scénario « avec » seul ne l'aurait jamais vu.
         self.assertEqual(self._verifier('les_deux', reseau=False),
-                         [pipeline.MSG_SANS_ONDULEUR_RESEAU])
+                         [etape_composer.MSG_SANS_ONDULEUR_RESEAU])
         # L'hybride manque : le scénario « sans » seul ne l'aurait jamais vu.
         self.assertEqual(self._verifier('les_deux', hybride=False),
-                         [pipeline.MSG_SANS_ONDULEUR_HYBRIDE])
+                         [etape_composer.MSG_SANS_ONDULEUR_HYBRIDE])
         # Les deux moitiés manquent : les DEUX manques sont nommés.
         self.assertEqual(
             self._verifier('les_deux', reseau=False, hybride=False,
                            batterie=False),
-            [pipeline.MSG_SANS_ONDULEUR_RESEAU,
-             pipeline.MSG_SANS_ONDULEUR_HYBRIDE,
-             pipeline.MSG_SANS_BATTERIE])
+            [etape_composer.MSG_SANS_ONDULEUR_RESEAU,
+             etape_composer.MSG_SANS_ONDULEUR_HYBRIDE,
+             etape_composer.MSG_SANS_BATTERIE])
 
     def test_batterie_incompatible_dit_la_plage_de_l_onduleur(self):
         """PVOND — « aucune batterie » et « aucune batterie COMPATIBLE »
@@ -127,9 +127,9 @@ class LEtapeVerifierParleLesTroisScenarios(SimpleTestCase):
 
     def test_sans_panneau_ni_puissance_rien_a_composer(self):
         with _CatalogueFictif():
-            erreurs = pipeline.verifier(pipeline.IntentionComposition(
+            erreurs = etape_composer.verifier(etape_composer.IntentionComposition(
                 company=None, scenario='sans'))
-        self.assertEqual(erreurs, [pipeline.MSG_AUCUN_PANNEAU])
+        self.assertEqual(erreurs, [etape_composer.MSG_AUCUN_PANNEAU])
 
 
 class LeScenarioSeLitDansLeLayout(SimpleTestCase):
@@ -200,7 +200,7 @@ class LesCinqCheminsDisentLaMemePhrase(TestCase):
         erreurs = geometrie.validate_composition_for_layout(
             {'result': {'panels': 9, 'kwc': 6.39},
              'scenario': 'avec_batterie'}, self.company)
-        self.assertEqual(erreurs[0], pipeline.MSG_SANS_ONDULEUR_HYBRIDE)
+        self.assertEqual(erreurs[0], etape_composer.MSG_SANS_ONDULEUR_HYBRIDE)
 
     def test_le_chemin_3d_deux_options_voit_les_deux_moities(self):
         """Un layout DÉCLARÉ « les deux » : l'étape vérifie désormais les DEUX
@@ -208,7 +208,7 @@ class LesCinqCheminsDisentLaMemePhrase(TestCase):
         erreurs = geometrie.validate_composition_for_layout(
             {'result': {'panels': 9, 'kwc': 6.39},
              'scenario': 'les_deux'}, self.company)
-        self.assertIn(pipeline.MSG_SANS_ONDULEUR_HYBRIDE, erreurs)
+        self.assertIn(etape_composer.MSG_SANS_ONDULEUR_HYBRIDE, erreurs)
 
     def test_le_tunnel_refuse_avec_le_meme_message_que_la_3d(self):
         """LE test de QJR82. Le lead du tunnel ne dit rien de sa batterie :
@@ -250,7 +250,7 @@ class LesCinqCheminsDisentLaMemePhrase(TestCase):
         resp = api.post('/api/django/ventes/devis/auto/',
                         {'lead': lead.id}, format='json')
         self.assertEqual(resp.status_code, 422, resp.data)
-        self.assertIn(pipeline.MSG_SANS_ONDULEUR_HYBRIDE, str(resp.data))
+        self.assertIn(etape_composer.MSG_SANS_ONDULEUR_HYBRIDE, str(resp.data))
 
     def test_un_catalogue_complet_ne_refuse_rien(self):
         """Le témoin négatif : rien ne change pour une société équipée."""
