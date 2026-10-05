@@ -36,7 +36,7 @@ const steps = [
   { title: 'الجرد التقني', body: 'معاينة التركيبة القائمة: القدرة المُركّبة، نمط الربط، مستوى الجهد، معدات الحماية والعدّ.' },
   { title: 'تحديد النظام', body: 'حسب القدرة والربط، تندرج التركيبة ضمن التصريح أو اتفاق الربط أو الترخيص (مرسوم <span dir="ltr">2-25-100</span>).' },
   { title: 'تكوين الملف', body: 'بطاقات تقنية، مخطط أحادي الخط، شهادات المطابقة واستمارات النظام المطبَّق — مُعدّة من طرفنا.' },
-  { title: 'إيداع طلب التسوية', body: 'الإيداع لدى مدبّر الشبكة أو السلطة المختصة، في إطار النافذة التي تفتحها المادة <span dir="ltr">33</span>.' },
+  { title: 'إيداع طلب التسوية', body: 'الإيداع لدى مدبّر الشبكة أو السلطة المختصة، في إطار الأجل الذي تنص عليه المادة <span dir="ltr">33</span>.' },
   { title: 'المتابعة حتى المطابقة', body: 'متابعة الدراسة، الردّ على المستندات التكميلية المطلوبة، وعند الاقتضاء تحيين تقني للتركيبة.' },
 ];
 
@@ -51,7 +51,7 @@ const sanctions = [
 
 <Layout
   title="تسوية المادة 33 — التركيبات الشمسية القائمة | Taqinor"
-  description="القانون 82-21 ساري المفعول منذ 9 يونيو 2026. المادة 33 تفتح نافذة من 18 شهراً لتسوية التركيبات الشمسية القائمة: مسطرة من 5 مراحل، العقوبات المحتملة، وتكفّل كامل بالملف."
+  description="المرسوم التطبيقي 2-25-100 ساري المفعول منذ 9 يونيو 2026. تنص المادة 33 من القانون 82-21 على أجل 18 شهراً لتسوية التركيبات الشمسية القائمة (نقطة الانطلاق يجب تأكيدها لدى مصالح الطاقة): مسطرة من 5 مراحل، العقوبات المحتملة، وتكفّل كامل بالملف."
   ogSlug="article-33"
 >
   <div class="v2">
@@ -66,11 +66,11 @@ const sanctions = [
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">القانون <span dir="ltr">82-21</span> — المادة <span dir="ltr">33</span></p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-3xl">تركيبتك الشمسية قائمة بالفعل؟ سوّها الآن.</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          المرسوم <span dir="ltr">2-25-100</span>، الذي نُشِر بالجريدة الرسمية في <span dir="ltr">9 مارس 2026</span>، دخل حيّز التنفيذ في
-          <span dir="ltr">9 يونيو 2026</span>، وقرار ANRE رقم <span dir="ltr">04/26</span> يحدّد تعريفة شراء الفائض للتوتر المتوسط والعالي (أمّا
-          تعريفة نظام التصريح للتوتر المنخفض، وهي حالة أغلب التركيبات السكنية، فلم تُنشَر بعد)؛
-          ومنذ ذلك التاريخ يُطبَّق نظام القانون <span dir="ltr">82-21</span> على جميع تركيبات الإنتاج الذاتي — حتى تلك
-          المُركّبة قبل صدور النص بزمن.
+          المرسوم التطبيقي <span dir="ltr">2-25-100</span>، الذي نُشِر بالجريدة الرسمية في <span dir="ltr">9 مارس 2026</span>، دخل حيّز التنفيذ في
+          <span dir="ltr">9 يونيو 2026</span>. وقرار ANRE رقم <span dir="ltr">04/26</span> يحدّد تعريفة الفائض للتركيبات المربوطة بالتوتر
+          المتوسط والعالي والعالي جداً (<span dir="ltr">MT/HT/THT</span>)؛ أمّا في التوتر المنخفض، فإعادة بيع الفائض غير مفتوحة،
+          حتى بقدرة <span dir="ltr">11 kW</span> فأكثر بموجب اتفاق ربط. ويُطبَّق نظام القانون <span dir="ltr">82-21</span> على جميع تركيبات الإنتاج الذاتي — حتى تلك
+                    المُركّبة قبل صدور النص بزمن.
         </p>
       </div>
     </section>
@@ -79,24 +79,27 @@ const sanctions = [
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section mx-auto max-w-3xl px-4">
       <div class="v2-rise border-2 border-brass-400/50 bg-nuit-800/60 p-6 sm:p-8">
-        <p class="tech-label v2-kicker text-brass-300">أين وصل القانون؟ · تم التحقّق في <span dir="ltr">3 يوليوز 2026</span></p>
+        <p class="tech-label v2-kicker text-brass-300">أين وصل القانون؟ · تم التحقّق في <span dir="ltr">5 أكتوبر 2026</span></p>
+        {/* CIW413 — نفس جمل التعريفة في CIW412 (مقرر ANRE 04/26 المادتان 6-7؛ المرسوم 2.25.100 المادة 12؛
+            D-CIQ-4): التعريفة تخص التوتر، والتوتر المنخفض غير مفتوح. */}
         <div class="mt-4 grid gap-5 sm:grid-cols-2">
           <div>
             <p class="tech-label text-lune">ساري المفعول</p>
             <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              المرسوم <strong class="text-white" dir="ltr">2-25-100</strong> (الجريدة الرسمية بتاريخ <span dir="ltr">9 مارس 2026</span>،
-              ساري منذ <span dir="ltr">9 يونيو 2026</span>) وقرار ANRE رقم <strong class="text-white" dir="ltr">04/26</strong>:
-              <strong class="text-white" dir="ltr"> 0,18–0,21 درهم/kWh</strong> لشراء الفائض في
-              <strong class="text-white"> التوتر المتوسط والعالي والعالي جداً (<span dir="ltr">MT/HT/THT</span>)</strong> فقط.
+              المرسوم التطبيقي <strong class="text-white" dir="ltr">2-25-100</strong> (الجريدة الرسمية بتاريخ <span dir="ltr">9 مارس 2026</span>،
+              ساري منذ <span dir="ltr">9 يونيو 2026</span>) وقرار ANRE رقم <strong class="text-white" dir="ltr">04/26</strong>.
+              تعريفة الفائض (قرار ANRE 04/26):
+              <strong class="text-white" dir="ltr"> 0,18 درهم/kWh خارج الذروة، 0,21 درهم/kWh في الذروة، دون احتساب الرسوم</strong>،
+              للتركيبات المربوطة بـ<strong class="text-white">التوتر المتوسط أو العالي أو العالي جداً (<span dir="ltr">MT/HT/THT</span>)</strong>،
+              أياً كان نظامها.
             </p>
           </div>
           <div>
             <p class="tech-label text-lune">لم يُنشَر بعد</p>
             <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              تعريفة الشراء في <strong class="text-white">التوتر المنخفض (<span dir="ltr">BT</span>)</strong> — نظام
-              التصريح الذي يشمل أغلب التركيبات السكنية — تبقى غير منشورة، مع أجل يُتداوَل في حدود
-              <strong class="text-white" dir="ltr"> 2027</strong>، غير مؤكَّد. أمّا نافذة تسوية المادة <span dir="ltr">33</span>،
-              فهي مفتوحة منذ اليوم، بصرف النظر عن هذه التعريفة.
+              في <strong class="text-white">التوتر المنخفض (<span dir="ltr">BT</span>)</strong>، أياً كان النظام — بما في ذلك محل
+              تجاري بقدرة <span dir="ltr">11 kW</span> فأكثر بموجب اتفاق ربط — إعادة بيع الفائض غير مفتوحة إلى حدود اليوم.
+              أودِعوا ملف المادة <span dir="ltr">33</span> دون انتظار، بصرف النظر عن هذه التعريفة.
             </p>
           </div>
         </div>
@@ -109,9 +112,10 @@ const sanctions = [
         <p class="tech-label v2-kicker rule-brass text-lune">النص</p>
         <h2 class="display v2-section-title mt-4 text-white">ما تقوله المادة <span dir="ltr">33</span></h2>
         <p class="v2-lead mt-5 text-lune-soft">
-          المادة <span dir="ltr">33</span> من القانون <span dir="ltr">82-21</span> تمنح مستغلّي التركيبات القائمة
-          نافذة من <strong class="fig lum text-xl" dir="ltr">18 شهراً</strong> لإيداع طلب تسوية.
-          هذه النافذة مفتوحة منذ <span dir="ltr">9 يونيو 2026</span>: أودِع الآن. تركيبة مُسوّاة مؤمَّنة قانونياً؛
+          تنص المادة <span dir="ltr">33</span> من القانون <span dir="ltr">82-21</span> على تسوية التركيبات القائمة
+          «خلال ثمانية عشر (<span dir="ltr">18</span>) شهراً ابتداءً من تاريخ دخول هذا القانون حيّز التنفيذ»
+          (القانون <span dir="ltr">82-21</span>، المادة <span dir="ltr">33</span>)، أي <strong class="fig lum text-xl" dir="ltr">18 شهراً</strong>.
+          نقطة انطلاق هذا الأجل يجب تأكيدها لدى مصالح الطاقة: أودِع دون انتظار. تركيبة مُسوّاة مؤمَّنة قانونياً؛
           تركيبة غير مُسوّاة في وضعية غير قانونية.
         </p>
       </div>

@@ -28,7 +28,7 @@ from rest_framework.test import APIClient
 from apps.crm.models import Client, Lead
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis, ShareLink
-from apps.ventes.public_views import (
+from apps.ventes.public.payload_horaire import (
     _dimensionnement_option_depuis_items,
     _dimensionnement_options_publique,
     _production_par_option_publique,

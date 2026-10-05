@@ -784,3 +784,60 @@ describe('WJ68 — validateLead élargi : mode professionnel facultatif', () => 
     expect(r.lead).not.toHaveProperty('siteCount');
   });
 });
+
+// ———————————————————————————————————————————————————————————————————————————
+// CIW411 — lead commercial/industriel : plus de bande « kWc · retour »
+// résidentielle (`roi_band`) ; résidentiel et agricole identiques.
+// ———————————————————————————————————————————————————————————————————————————
+describe('CIW411 — runSimulation sans bande résidentielle pour les leads pro', () => {
+  const env: LeadEnv = { SIMULATOR_API_URL: 'https://sim.example/api' };
+  const fetchSpy = () =>
+    vi.fn(async () =>
+      new Response(JSON.stringify({ kwcMin: 6, kwcMax: 8, kwcLabel: '6 à 8 kWc', paybackLabel: '4 à 5 ans' })),
+    );
+
+  for (const mode of ['commercial', 'industriel', 'professionnel'] as const) {
+    it(`${mode} avec billRange gt10000 → bande vide, aucun fetch vers SIMULATOR_API_URL`, async () => {
+      const fetchFn = fetchSpy();
+      const lead = makeLead({ mode, billRange: 'gt10000' });
+      const band = await runSimulation(lead, env, fetchFn as unknown as typeof fetch);
+      expect(band).toEqual({ kwcMin: 0, kwcMax: 0, kwcLabel: '', paybackLabel: '', source: 'local' });
+      expect(fetchFn).not.toHaveBeenCalled();
+    });
+  }
+
+  it('sans simulateur configuré : un pro n\'a ni kWc ni retour (pas de repli résidentiel local)', async () => {
+    const band = await runSimulation(makeLead({ mode: 'industriel', billRange: 'gt10000' }), {});
+    expect(band.kwcLabel).toBe('');
+    expect(band.paybackLabel).toBe('');
+    expect(band.kwcLabel).not.toContain('étude dédiée');
+  });
+
+  it('buildLeadRecord d\'un pro porte kwcLabel \'\' et paybackLabel \'\' ; billRange et qualified inchangés', async () => {
+    const lead = makeLead({ mode: 'commercial', billRange: 'gt10000' });
+    const band = await runSimulation(lead, {});
+    const record = buildLeadRecord(lead, band, new Date());
+    expect(record.band.kwcLabel).toBe('');
+    expect(record.band.paybackLabel).toBe('');
+    expect(record.billRange).toBe('gt10000');
+    expect(record.qualified).toBe(true);
+    expect(redactLeadForLog(record).kwcLabel).toBe('');
+  });
+
+  it('résidentiel : la bande est identique à avant (local et simulateur)', async () => {
+    const local = await runSimulation(makeLead(), {});
+    expect(local.kwcLabel).toBe('8 à 16 kWc');
+    const fetchFn = fetchSpy();
+    const sim = await runSimulation(makeLead({ mode: 'residentiel' }), env, fetchFn as unknown as typeof fetch);
+    expect(sim.source).toBe('simulator');
+    expect(sim.kwcLabel).toBe('6 à 8 kWc');
+    expect(fetchFn).toHaveBeenCalledOnce();
+  });
+
+  it('agricole inchangé : le moteur de bande continue d\'être appelé quand une facture existe', async () => {
+    const fetchFn = fetchSpy();
+    const band = await runSimulation(makeLead({ mode: 'agricole', billRange: '1500-3000' }), env, fetchFn as unknown as typeof fetch);
+    expect(band.source).toBe('simulator');
+    expect(fetchFn).toHaveBeenCalledOnce();
+  });
+});

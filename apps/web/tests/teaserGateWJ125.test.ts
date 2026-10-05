@@ -122,9 +122,12 @@ describe.each(Object.entries(PAGES))('WJ125 — %s mon-toit.astro : rendu public
   });
 
   it('le CALCUL reste : estimateShown + labels sont toujours construits et joints au lead', () => {
-    // estimateShown est reconstruit dans les 3 moteurs (résidentiel objet + pro/agri `s`).
+    // estimateShown est reconstruit dans les moteurs résidentiel (objet) et agricole (`s`).
+    // CIW404 — le moteur PRO (commercial/industriel) ne joint plus AUCUN chiffre d'hypothèse
+    // au lead (`estimateShown = null`) : constantes non sourcées.
     expect(src).toContain('estimateShown = {');
-    expect((src.match(/estimateShown = s;/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect((src.match(/estimateShown = s;/g) ?? []).length).toBeGreaterThanOrEqual(1);
+    expect((src.match(/estimateShown = null; \/\/ CIW404 — aucun chiffre vers le CRM/g) ?? []).length).toBe(2);
     // La page le verse à son état ; c'est le module partagé qui l'émet sous la
     // clé `estimateShown` (comportement épinglé dans le describe suivant, hors
     // de cette boucle par locale — QJW5).

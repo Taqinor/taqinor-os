@@ -18,7 +18,6 @@ non gardée.
 """
 import ast
 from decimal import Decimal
-from pathlib import Path
 
 from django.core.cache import cache
 from django.test import TestCase
@@ -27,8 +26,8 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 
 from apps.crm.models import Client
-from apps.ventes import public_views
 from apps.ventes.models import Devis, LigneDevis, ShareLink
+from apps.ventes.tests.split_golden import fichiers_du_groupe
 
 
 class _BaseActivationOption(TestCase):
@@ -159,10 +158,12 @@ class InventaireDesActionsPubliquesTests(TestCase):
     }
 
     def test_l_inventaire_couvre_toutes_les_actions_publiques(self):
-        source = Path(public_views.__file__).read_text(encoding='utf-8')
-        arbre = ast.parse(source)
+        # SPL241 — ``public_views.py`` est découpé en ``public/*.py`` : la
+        # garde lit le GROUPE (jamais vide), pas un fichier qui se vide.
+        arbres = [ast.parse(chemin.read_text(encoding='utf-8'))
+                  for chemin in fichiers_du_groupe('public_views.py', 'public/*.py')]
         actions = {}
-        for noeud in ast.walk(arbre):
+        for noeud in (n for arbre in arbres for n in ast.walk(arbre)):
             if not isinstance(noeud, ast.FunctionDef):
                 continue
             for decorateur in noeud.decorator_list:

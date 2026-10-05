@@ -26,7 +26,7 @@ from rest_framework.test import APIClient
 
 from apps.crm.models import Client, Lead, LeadActivity
 from apps.ventes.models import Devis, ShareLink
-from apps.ventes.public_views import _est_robot_apercu
+from apps.ventes.public.lecture_views import _est_robot_apercu
 
 UA_WHATSAPP = 'WhatsApp/2.23.24.76 A'
 UA_FBEXT = 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'

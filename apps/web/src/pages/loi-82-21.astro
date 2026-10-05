@@ -46,27 +46,30 @@ import { REGIMES } from '../lib/regime';
     <!-- W259 — « Où en est la loi ? » : distingue LIVE (MT/HT) de PENDING (BT résidentiel). -->
     <section class="mx-auto max-w-4xl px-4">
       <div class="v2-rise border-2 border-brass-400/50 bg-nuit-800/60 p-6 sm:p-8">
-        <p class="tech-label v2-kicker text-brass-300">Où en est la loi ? · vérifié le 3 juillet 2026</p>
+        <p class="tech-label v2-kicker text-brass-300">Où en est la loi ? · vérifié le 5 octobre 2026</p>
+        {/* CIW412 — sources : décision ANRE 04/26 art. 6-7 (le tarif d'excédent vise la TENSION
+            MT/HT/THT, quel que soit le régime) ; décret 2.25.100 art. 12 (accord de raccordement
+            de 11 kW à moins de 5 MW) ; D-CIQ-4. En basse tension la revente n'est pas ouverte. */}
         <div class="mt-4 grid gap-5 sm:grid-cols-2">
           <div>
             <p class="tech-label text-lune">En vigueur</p>
             <p class="mt-2 text-sm leading-relaxed text-lune-soft">
               Le décret d'application <strong class="text-white">2-25-100</strong> (Bulletin Officiel du
               9 mars 2026, en vigueur depuis le <strong class="text-white">9 juin 2026</strong>) et la
-              décision <strong class="text-white">04/26</strong> de l'ANRE, qui fixe le tarif de rachat du
-              surplus à <strong class="text-white">0,18–0,21 DH/kWh</strong>. Cela couvre les régimes
-              accord de raccordement et autorisation — <strong class="text-white">moyenne, haute et
-              très haute tension (MT/HT/THT)</strong>.
+              décision <strong class="text-white">04/26</strong> de l'ANRE. Tarif d'excédent ANRE
+              (décision 04/26) : <strong class="text-white">0,18 DH/kWh hors pointe, 0,21 DH/kWh en
+              pointe, hors taxes</strong>, pour les installations raccordées en
+              <strong class="text-white"> moyenne, haute ou très haute tension (MT/HT/THT)</strong>,
+              quel que soit leur régime.
             </p>
           </div>
           <div>
             <p class="tech-label text-lune">Pas encore publié</p>
             <p class="mt-2 text-sm leading-relaxed text-lune-soft">
-              Le tarif de rachat du surplus pour le régime <strong class="text-white">déclaration en
-              basse tension (BT)</strong> — celui de la quasi-totalité des installations résidentielles —
-              n'est, à ce jour, pas publié. Une échéance est évoquée autour de
-              <strong class="text-white"> 2027</strong>, sans date officielle confirmée. Ne prenez pas le
-              tarif MT/HT ci-dessus pour celui de votre villa.
+              En <strong class="text-white">basse tension (BT)</strong>, quel que soit le régime — y compris
+              un commerce de 11 kW ou plus sous accord de raccordement — la revente du surplus n'est
+              pas ouverte à ce jour. Ne prenez pas le tarif MT/HT ci-dessus pour celui de votre villa
+              ou de votre commerce.
             </p>
           </div>
         </div>

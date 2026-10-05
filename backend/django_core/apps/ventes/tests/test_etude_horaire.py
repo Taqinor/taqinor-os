@@ -32,7 +32,10 @@ from pathlib import Path
 from django.test import SimpleTestCase
 
 from apps.ventes import etude_horaire as EH
+from apps.ventes.horaire import batterie_lignes as BL
+from apps.ventes.horaire import public as HP
 from apps.ventes import courbes_journalieres as CJ
+from apps.ventes.horaire import base as horaire_base
 from apps.ventes.quote_engine import bareme as B
 from apps.ventes.quote_engine import pricing
 
@@ -1355,7 +1358,7 @@ class LectureDesPuissancesDeLaCompositionTest(SimpleTestCase):
         table = {ligne.produit: ligne.specs for ligne in lignes}
         with mock.patch('apps.stock.selectors.specs_for_produit',
                         side_effect=lambda p: table.get(p, {})):
-            return EH.puissances_batterie_des_lignes(list(lignes))
+            return BL.puissances_batterie_des_lignes(list(lignes))
 
     def test_un_seul_pack_rend_sa_valeur_de_fiche(self):
         resultat = self._lire(
@@ -1439,7 +1442,7 @@ class LectureDesPuissancesDeLaCompositionTest(SimpleTestCase):
         table = {ligne.produit: ligne.specs for ligne in lignes}
         with mock.patch('apps.stock.selectors.specs_for_produit',
                         side_effect=lambda p: table.get(p, {})):
-            resultat = EH.puissances_batterie_des_lignes(
+            resultat = BL.puissances_batterie_des_lignes(
                 lignes, roles=['batterie', 'onduleur_hybride'])
         self.assertAlmostEqual(resultat['packs_decharge_kw'], 2 * 5.12)
         self.assertAlmostEqual(resultat['ond_decharge_kw'], 6.14)
@@ -1533,19 +1536,19 @@ class EstimationConsoMensuelleTests(SimpleTestCase):
     CONSO_12 = [400.0] * 12
 
     def test_aucun_equipement_renvoie_none(self):
-        self.assertIsNone(EH.estimation_conso_mensuelle(self.CONSO_12, {}))
-        self.assertIsNone(EH.estimation_conso_mensuelle(self.CONSO_12, None))
+        self.assertIsNone(HP.estimation_conso_mensuelle(self.CONSO_12, {}))
+        self.assertIsNone(HP.estimation_conso_mensuelle(self.CONSO_12, None))
 
     def test_serie_invalide_renvoie_none(self):
         equip = {'piscine': {'kw': 1.5, 'heures': list(range(10, 18)),
                              'saisons': ['ete'], 'mode': 'redistribution'}}
-        self.assertIsNone(EH.estimation_conso_mensuelle([100.0] * 11, equip))
-        self.assertIsNone(EH.estimation_conso_mensuelle([], equip))
+        self.assertIsNone(HP.estimation_conso_mensuelle([100.0] * 11, equip))
+        self.assertIsNone(HP.estimation_conso_mensuelle([], equip))
 
     def test_piscine_redistribution_retire_de_la_base_ete_seulement(self):
         equip = {'piscine': {'kw': 1.5, 'heures': list(range(10, 18)),
                              'saisons': ['ete'], 'mode': 'redistribution'}}
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_12, equip)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_12, equip)
         self.assertIsNotNone(bloc)
         self.assertEqual(len(bloc['base_mensuelle']), 12)
         self.assertEqual(len(bloc['totale_mensuelle']), 12)
@@ -1572,7 +1575,7 @@ class EstimationConsoMensuelleTests(SimpleTestCase):
     def test_ve_addition_grossit_le_total_toutes_saisons(self):
         equip = {'ve': {'kwh_jour': 4.0, 'heures': [21, 22, 23],
                         'saisons': None, 'mode': 'addition'}}
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_12, equip)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_12, equip)
         self.assertIsNotNone(bloc)
         self.assertEqual(bloc['base_mensuelle'], [400.0] * 12)
         for i in range(12):
@@ -1586,7 +1589,7 @@ class EstimationConsoMensuelleTests(SimpleTestCase):
     def test_couche_sans_grandeur_reelle_ne_produit_aucun_ajout(self):
         equip = {'piscine': {'kw': 0, 'heures': [], 'saisons': ['ete'],
                              'mode': 'redistribution'}}
-        self.assertIsNone(EH.estimation_conso_mensuelle(self.CONSO_12, equip))
+        self.assertIsNone(HP.estimation_conso_mensuelle(self.CONSO_12, equip))
 
 
 class EstimationConsoRenormaliseeTests(SimpleTestCase):
@@ -1617,7 +1620,7 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
     def test_le_total_ne_depasse_JAMAIS_la_consommation_reelle(self):
         """ROUGE avant QJR16 : juillet sortait à 347,2 kWh pour 300 consommés
         (base écrêtée à zéro, ajout brut publié par-dessus)."""
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
         self.assertIsNotNone(bloc)
         for index, conso in enumerate(self.CONSO_MODESTE):
             self.assertLessEqual(
@@ -1628,7 +1631,7 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
     def test_la_base_n_est_plus_ecretee_a_zero(self):
         """L'écrêtage silencieux était le SYMPTÔME : une base à zéro disait
         « ce client ne consomme QUE sa clim », ce qui est faux."""
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
         mois_ete = [i for i, v in enumerate(bloc['ajouts']['clim']) if v > 0]
         self.assertTrue(mois_ete)
         for index in mois_ete:
@@ -1640,10 +1643,10 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
         l'ajout mensuel publié à l'énergie que
         ``forme_consommation_detaillee`` place RÉELLEMENT dans la journée du
         même mois, multipliée par le nombre de jours."""
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
         for index, conso_mois in enumerate(self.CONSO_MODESTE):
             jours = EH.JOURS_PAR_MOIS[index]
-            saison = EH.saison_du_mois(index + 1)
+            saison = horaire_base.saison_du_mois(index + 1)
             # CAD173 (Q12) — le MOIS est passé au composeur, comme le fait
             # `jours_types_annee` : clim et piscine suivent l'été de la
             # FACTURE (mai→octobre). Sans lui, les deux côtés compareraient
@@ -1661,7 +1664,7 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
         """Juillet, dérivation complète : brute 1,4 × 8 × 31 = 347,2 kWh,
         facteur 300 ÷ (300 + 347,2) = 0,4635352, ajout 160,94 kWh, base
         139,06 kWh — et 160,94 + 139,06 = 300,00 kWh."""
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_MODESTE, self.CLIM)
         juillet = 6
         self.assertAlmostEqual(bloc['ajouts']['clim'][juillet], 160.94,
                                delta=0.02)
@@ -1675,14 +1678,14 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
         vaut 1,0 et la base reste la consommation brute."""
         equip = {'ve': {'kwh_jour': 4.0, 'heures': [21, 22, 23],
                         'saisons': None, 'mode': 'addition'}}
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, equip)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_MODESTE, equip)
         self.assertEqual(bloc['base_mensuelle'], list(self.CONSO_MODESTE))
 
     def test_le_ve_reste_le_seul_ajout_qui_depasse_la_facture(self):
         equip = dict(self.CLIM)
         equip['ve'] = {'kwh_jour': 4.0, 'heures': [21, 22, 23],
                        'saisons': None, 'mode': 'addition'}
-        bloc = EH.estimation_conso_mensuelle(self.CONSO_MODESTE, equip)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO_MODESTE, equip)
         for index, conso in enumerate(self.CONSO_MODESTE):
             attendu = conso + bloc['ajouts']['ve'][index]
             self.assertAlmostEqual(bloc['totale_mensuelle'][index], attendu,
@@ -1696,7 +1699,7 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
             'clim': True, 'clim_pieces': 5,
         })
         for conso in ([400.0] * 12, [300.0] * 12, [1200.0] * 12):
-            bloc = EH.estimation_conso_mensuelle(conso, equip)
+            bloc = HP.estimation_conso_mensuelle(conso, equip)
             self.assertIsNotNone(bloc)
             for index, valeur in enumerate(conso):
                 self.assertLessEqual(bloc['totale_mensuelle'][index],
@@ -1742,7 +1745,7 @@ class EstimationConsoFacteurCompositeurTests(SimpleTestCase):
         """L'énergie mensuelle que ``forme_consommation_detaillee`` place
         RÉELLEMENT dans la couche ``cle`` — la seule référence qui compte."""
         jours = EH.JOURS_PAR_MOIS[index]
-        saison = EH.saison_du_mois(index + 1)
+        saison = horaire_base.saison_du_mois(index + 1)
         # CAD173 (Q12) — même porte que `jours_types_annee` : le MOIS décide.
         _forme, couches = CJ.forme_consommation_detaillee(
             self.CONSO[index] / jours, CJ.OCCUPATION_PRESENCE, saison=saison,
@@ -1752,7 +1755,7 @@ class EstimationConsoFacteurCompositeurTests(SimpleTestCase):
     def test_avec_ve_l_ajout_publie_egale_ce_que_le_composeur_place(self):
         """ROUGE avant QJR207 : la somme publiée dépassait l'énergie placée."""
         equip = self._equipements()
-        bloc = EH.estimation_conso_mensuelle(self.CONSO, equip)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO, equip)
         self.assertIsNotNone(bloc)
         publie_total = place_total = 0.0
         for index in range(12):
@@ -1770,7 +1773,7 @@ class EstimationConsoFacteurCompositeurTests(SimpleTestCase):
         """Non-régression : sans couche d'addition, ``base == conso`` et le
         facteur ne bouge pas d'un centième."""
         equip = self._equipements(avec_ve=False)
-        bloc = EH.estimation_conso_mensuelle(self.CONSO, equip)
+        bloc = HP.estimation_conso_mensuelle(self.CONSO, equip)
         for index in range(12):
             self.assertAlmostEqual(
                 bloc['ajouts']['clim'][index],
@@ -1780,7 +1783,7 @@ class EstimationConsoFacteurCompositeurTests(SimpleTestCase):
     def test_le_contrat_public_du_total_est_preserve(self):
         """``totale_mensuelle`` reste la facture + la SEULE charge VE : le
         correctif déplace la frontière base/couche, jamais le total."""
-        bloc = EH.estimation_conso_mensuelle(self.CONSO, self._equipements())
+        bloc = HP.estimation_conso_mensuelle(self.CONSO, self._equipements())
         for index, conso in enumerate(self.CONSO):
             self.assertAlmostEqual(
                 bloc['totale_mensuelle'][index],
@@ -1791,7 +1794,7 @@ class EstimationConsoFacteurCompositeurTests(SimpleTestCase):
     def test_le_facteur_n_a_qu_une_seule_definition(self):
         """La publication IMPORTE le facteur du composeur — elle n'en tient
         pas une copie (c'est la copie qui avait divergé)."""
-        self.assertIs(EH.renormalisation_redistribution,
+        self.assertIs(HP.renormalisation_redistribution,
                       CJ.renormalisation_redistribution)
 
 
@@ -1807,7 +1810,7 @@ class JoursTypesPublicsTests(SimpleTestCase):
         return conso
 
     def test_quatre_mois_avec_les_six_cles_du_contrat(self):
-        bloc = EH.jours_types_publics(
+        bloc = HP.jours_types_publics(
             kwc=6.0, conso_kwh_mensuelles=self._conso(), ville=self.VILLE,
             occupation=CJ.OCCUPATION_PRESENCE)
         self.assertIsNotNone(bloc)
@@ -1825,15 +1828,15 @@ class JoursTypesPublicsTests(SimpleTestCase):
                     min(mois['prod_jour_kwh'], mois['conso_jour_kwh']) + 1e-6)
 
     def test_sans_puissance_renvoie_none(self):
-        self.assertIsNone(EH.jours_types_publics(
+        self.assertIsNone(HP.jours_types_publics(
             kwc=0, conso_kwh_mensuelles=self._conso(), ville=self.VILLE))
 
     def test_sans_localisation_renvoie_none(self):
-        self.assertIsNone(EH.jours_types_publics(
+        self.assertIsNone(HP.jours_types_publics(
             kwc=6.0, conso_kwh_mensuelles=self._conso(), ville=None))
 
     def test_sans_consommation_renvoie_none(self):
-        self.assertIsNone(EH.jours_types_publics(
+        self.assertIsNone(HP.jours_types_publics(
             kwc=6.0, conso_kwh_mensuelles=[], ville=self.VILLE))
 
 
@@ -1938,7 +1941,7 @@ class JourReferenceTousLesAppelantsTests(SimpleTestCase):
     # ── 1. jours_types_publics (sortie CLIENT : payload ``jours_types``) ────
 
     def _jours_types(self, jour_reference):
-        return EH.jours_types_publics(
+        return HP.jours_types_publics(
             kwc=6.0, conso_kwh_mensuelles=self.CONSO, ville=self.VILLE,
             occupation=CJ.OCCUPATION_PRESENCE,
             jour_reference=jour_reference)
@@ -1984,7 +1987,7 @@ class JourReferenceTousLesAppelantsTests(SimpleTestCase):
     # ── 4. couverture_batterie_publique (sortie CLIENT : curseur N packs) ───
 
     def _couverture(self, jour_reference):
-        return EH.couverture_batterie_publique(
+        return HP.couverture_batterie_publique(
             kwc=8.5, conso_kwh_mensuelles=[900.0] * 12,
             capacite_utile_pack_kwh=4.6, nb_packs_max=2,
             ville=self.VILLE, jour_reference=jour_reference)
@@ -2013,12 +2016,17 @@ class JourReferenceTousLesAppelantsTests(SimpleTestCase):
         """
         import ast
 
-        arbre = ast.parse(Path(EH.__file__).read_text(encoding='utf-8'))
+        from apps.ventes.tests.split_golden import fichiers_du_groupe
+
+        # SPL242 — ``etude_horaire.py`` est découpé en ``horaire/*.py`` : la
+        # garde lit le GROUPE (jamais vide), total inchangé.
+        arbres = [ast.parse(chemin.read_text(encoding='utf-8')) for chemin
+                  in fichiers_du_groupe('etude_horaire.py', 'horaire/*.py')]
         horloge = {'localdate', 'now', 'today', 'localtime'}
         appels = [
             '%s.%s' % (getattr(noeud.func.value, 'id', '?'),
                        noeud.func.attr)
-            for noeud in ast.walk(arbre)
+            for arbre in arbres for noeud in ast.walk(arbre)
             if isinstance(noeud, ast.Call)
             and isinstance(noeud.func, ast.Attribute)
             and noeud.func.attr in horloge
@@ -2031,9 +2039,13 @@ class JourReferenceTousLesAppelantsTests(SimpleTestCase):
         """Garde de source : aucun appel à ``jours_types_annee`` n'oublie la date."""
         import ast
 
-        arbre = ast.parse(Path(EH.__file__).read_text(encoding='utf-8'))
+        from apps.ventes.tests.split_golden import fichiers_du_groupe
+
+        # SPL242 — même groupe que ci-dessus, total inchangé (4).
+        arbres = [ast.parse(chemin.read_text(encoding='utf-8')) for chemin
+                  in fichiers_du_groupe('etude_horaire.py', 'horaire/*.py')]
         sites = [
-            noeud for noeud in ast.walk(arbre)
+            noeud for arbre in arbres for noeud in ast.walk(arbre)
             if isinstance(noeud, ast.Call)
             and isinstance(noeud.func, ast.Name)
             and noeud.func.id == 'jours_types_annee'
@@ -2063,15 +2075,15 @@ class JourReferenceTousLesAppelantsTests(SimpleTestCase):
         from types import SimpleNamespace
         from unittest import mock
 
-        from apps.ventes import public_views
+        from apps.ventes.public import payload_horaire
 
         profil = (6.0, self.CONSO, self.VILLE, None, None,
                   CJ.OCCUPATION_PRESENCE, None)
-        with mock.patch.object(public_views, '_profil_horaire_pour_devis',
+        with mock.patch.object(payload_horaire, '_profil_horaire_pour_devis',
                                return_value=profil):
-            a = public_views._jours_types_publique(
+            a = payload_horaire._jours_types_publique(
                 SimpleNamespace(date_creation=self.JOUR_A, overrides={}))
-            b = public_views._jours_types_publique(
+            b = payload_horaire._jours_types_publique(
                 SimpleNamespace(date_creation=self.JOUR_B, overrides={}))
         self.assertIsNotNone(a)
         self.assertIsNotNone(b)

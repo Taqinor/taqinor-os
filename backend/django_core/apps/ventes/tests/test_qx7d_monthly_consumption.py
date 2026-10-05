@@ -15,7 +15,7 @@ from unittest import mock
 
 from django.test import SimpleTestCase
 
-from apps.ventes import public_views
+from apps.ventes.public import payload_economie
 from apps.ventes.quote_engine import pricing
 
 
@@ -23,7 +23,7 @@ class MonthlyConsumptionQX7dTests(SimpleTestCase):
     def _run(self, bills):
         with mock.patch(
                 'apps.crm.selectors.lead_bills_for_devis', return_value=bills):
-            return public_views._monthly_consumption(object())
+            return payload_economie._monthly_consumption(object())
 
     def test_uses_tranche_aware_conversion_not_flat_175(self):
         bills = {'facture_hiver': 800.0, 'facture_ete': None,

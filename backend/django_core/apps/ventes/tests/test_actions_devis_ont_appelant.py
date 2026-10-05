@@ -2,9 +2,11 @@
 """QJR667 — toute ``@action`` de ``DevisViewSet`` a un appelant ÉCRAN.
 
 Une action sans appelant est une fonctionnalité morte côté utilisateur : le
-backend la maintient, aucun écran ne la déclenche. La garde lit l'AST de
-``views/devis.py`` (chaque ``@action`` du ``DevisViewSet`` et son
-``url_path``), puis cherche ce chemin dans les clients d'API du frontend
+backend la maintient, aucun écran ne la déclenche. La garde découvre les
+actions par ``DevisViewSet.get_extra_actions()`` (SPL130 : indépendant du
+fichier qui les définit — ``views/devis*.py``, ``views/economie.py``), lit leur
+source par ``inspect``, puis cherche leur ``url_path`` dans les clients d'API
+du frontend
 (``frontend/src``, dont ``api/*.js`` et les pages qui appellent l'API en
 direct) et dans le site (``apps/web/src``).
 
@@ -13,42 +15,43 @@ en attente de son écran) porte, dans les lignes qui précèdent sa fonction (le
 décorateur inclus), un marqueur ``# api-only: <raison>`` — la raison est
 OBLIGATOIRE, un marqueur nu échoue.
 """
-import ast
+import inspect
 import os
 import re
+from pathlib import Path
 
 from django.test import SimpleTestCase
 
 RACINE = os.path.abspath(os.path.join(
     os.path.dirname(__file__), '..', '..', '..', '..', '..'))
-VUE_DEVIS = os.path.join(RACINE, 'backend', 'django_core', 'apps', 'ventes',
-                         'views', 'devis.py')
+VUES = Path(RACINE) / 'backend' / 'django_core' / 'apps' / 'ventes' / 'views'
 EXTENSIONS = ('.js', '.jsx', '.ts', '.tsx', '.mjs', '.astro')
 MARQUEUR = re.compile(r'#\s*api-only\s*:\s*(\S.*)$')
+#: 53 ``@action`` de ``views/devis.py`` + ``economie`` (views/economie.py).
+NB_ACTIONS = 54
+
+
+def _vues_devis():
+    """``views/devis.py`` et ses modules de découpe ``views/devis_*.py``."""
+    return [VUES / 'devis.py'] + sorted(VUES.glob('devis_*.py'))
 
 
 def _actions_devis():
-    """[(nom, url_path, ligne_decorateur_haut, ligne_def)] du DevisViewSet."""
-    with open(VUE_DEVIS, encoding='utf-8') as f:
-        source = f.read()
-    arbre = ast.parse(source)
-    classe = next(n for n in arbre.body
-                  if isinstance(n, ast.ClassDef) and n.name == 'DevisViewSet')
+    """[(nom, url_path, ligne_decorateur_haut, ligne_def, lignes, fichier)]
+    de chaque route de ``DevisViewSet.get_extra_actions()``."""
+    from apps.ventes.views.devis import DevisViewSet
     sortie = []
-    for fn in classe.body:
-        if not isinstance(fn, ast.FunctionDef):
-            continue
-        for deco in fn.decorator_list:
-            if not (isinstance(deco, ast.Call)
-                    and getattr(deco.func, 'id', None) == 'action'):
-                continue
-            url_path = fn.name.replace('_', '-')
-            for kw in deco.keywords:
-                if kw.arg == 'url_path':
-                    url_path = ast.literal_eval(kw.value)
-            haut = min(d.lineno for d in fn.decorator_list)
-            sortie.append((fn.name, url_path, haut, fn.lineno))
-    return sortie, source.splitlines()
+    for fn in DevisViewSet.get_extra_actions():
+        brut = inspect.unwrap(fn)
+        chemin = inspect.getsourcefile(brut)
+        bloc, haut = inspect.getsourcelines(brut)
+        decalage = next(i for i, ligne in enumerate(bloc)
+                        if re.match(r'\s*(async\s+)?def\s', ligne))
+        with open(chemin, encoding='utf-8') as f:
+            lignes = f.read().splitlines()
+        sortie.append((fn.__name__, fn.url_path, haut, haut + decalage,
+                       lignes, os.path.basename(chemin)))
+    return sortie
 
 
 def _textes_ecrans():
@@ -78,22 +81,22 @@ def _motif_appelant(url_path):
 
 class ChaqueActionDevisAUnAppelantEcran(SimpleTestCase):
     def test_garde_connait_les_actions(self):
-        actions, _lignes = _actions_devis()
-        self.assertGreater(len(actions), 40)
-        self.assertIn('generer-pdf', [u for _n, u, _h, _d in actions])
+        actions = _actions_devis()
+        self.assertEqual(len(actions), NB_ACTIONS)
+        self.assertIn('generer-pdf', [a[1] for a in actions])
 
     def test_chaque_action_a_un_appelant_ecran_ou_un_marqueur_api_only(self):
-        actions, lignes = _actions_devis()
+        actions = _actions_devis()
         ecrans = _textes_ecrans()
         orphelines = []
-        for nom, url_path, haut, def_ligne in actions:
+        for nom, url_path, haut, def_ligne, lignes, fichier in actions:
             if _motif_appelant(url_path).search(ecrans):
                 continue
             bloc = lignes[max(0, haut - 4):def_ligne]
             if any(MARQUEUR.search(ligne) for ligne in bloc):
                 continue
-            orphelines.append('%s (url_path=%r, views/devis.py:%d)'
-                              % (nom, url_path, def_ligne))
+            orphelines.append('%s (url_path=%r, views/%s:%d)'
+                              % (nom, url_path, fichier, def_ligne))
         self.assertEqual(
             orphelines, [],
             "Action(s) DevisViewSet sans appelant écran : ajouter l'appel "
@@ -101,9 +104,20 @@ class ChaqueActionDevisAUnAppelantEcran(SimpleTestCase):
             "« # api-only: <raison> » au-dessus du décorateur.")
 
     def test_un_marqueur_api_only_porte_toujours_une_raison(self):
-        with open(VUE_DEVIS, encoding='utf-8') as f:
-            nus = [i + 1 for i, ligne in enumerate(f)
-                   if re.search(r'#\s*api-only\b', ligne)
-                   and not MARQUEUR.search(ligne)]
+        nus = []
+        for chemin in _vues_devis():
+            with open(chemin, encoding='utf-8') as f:
+                nus += ['%s:%d' % (chemin.name, i + 1)
+                        for i, ligne in enumerate(f)
+                        if re.search(r'#\s*api-only', ligne)
+                        and not MARQUEUR.search(ligne)]
         self.assertEqual(nus, [], 'marqueur api-only sans raison, lignes %s'
                          % nus)
+
+    def test_les_marqueurs_api_only_sont_tous_lus(self):
+        """Non-vacuité : les deux marqueurs (``dupliquer``, ``renouveler``)
+        sont trouvés, où que leurs actions vivent."""
+        marques = [ligne for chemin in _vues_devis()
+                   for ligne in chemin.read_text(encoding='utf-8')
+                   .splitlines() if MARQUEUR.search(ligne)]
+        self.assertGreaterEqual(len(marques), 2)

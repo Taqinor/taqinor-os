@@ -17,7 +17,11 @@ from django.test import SimpleTestCase
 from apps.ventes.views.devis import DevisViewSet
 
 VUES = Path(__file__).resolve().parent.parent / 'views'
-MODULES = ('devis.py', 'ligne_devis.py')
+#: SPL130 — ``views/devis.py`` + ses modules de découpe ``views/devis_*.py``
+#: (SPL134-SPL142) + ``ligne_devis.py`` : la garde suit le code déplacé.
+MODULES = ('devis.py',
+           *sorted(p.name for p in VUES.glob('devis_*.py')),
+           'ligne_devis.py')
 
 #: Noms importés DEPUIS ces modules ailleurs (tests compris) : ils restent
 #: même s'ils n'y sont pas lus.

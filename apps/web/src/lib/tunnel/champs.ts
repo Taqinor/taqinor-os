@@ -32,6 +32,7 @@
 // l'ordre d'émission des clés du corps (celui du littéral `buildBody()` FR).
 
 import { billRangeFromExact } from '../billRange';
+import { MAX_CONSO_MENSUELLE_KWH } from '../estimatorPro';
 import type { LeadModeId } from '../lead';
 
 /** Les modes du tunnel dans lesquels une question peut être posée. */
@@ -53,6 +54,16 @@ export const MODES_PRO: readonly LeadModeId[] = ['professionnel', 'industriel', 
  */
 export function estModePro(mode: string): boolean {
   return (MODES_PRO as readonly string[]).includes(mode);
+}
+
+/**
+ * CIW408 — le seul panneau qui POSE la tension de raccordement et le profil
+ * d'activité (boutons « BT / MT » et « Journée… ») est le panneau INDUSTRIEL ;
+ * en mode commercial il est caché, donc ces deux réponses n'existent pas.
+ */
+export const MODES_INDUSTRIEL: readonly LeadModeId[] = ['professionnel', 'industriel'];
+export function estModeIndustriel(mode: string): boolean {
+  return (MODES_INDUSTRIEL as readonly string[]).includes(mode);
 }
 
 /** Les 6 paramètres de tracking repris de `sessionStorage` (capture first-touch). */
@@ -285,6 +296,11 @@ export function trancheFactureProfessionnelle(etat: EtatTunnel): string {
   let mad: number | null = null;
   if (etat.factureProUnite === 'mad') mad = v;
   else if (etat.tarifProMadKwh != null && etat.tarifProMadKwh > 0) mad = v * etat.tarifProMadKwh;
+  // CIW404 — une conso au-delà du plafond technique de l'estimateur (aucun tarif posé, la
+  // tranche resterait vide et l'erreur s'afficherait sur un champ résidentiel CACHÉ) prend
+  // la tranche la plus haute, comme le fait déjà le chemin en MAD : « gt10000 » reste
+  // factuellement vrai pour tout gros compte.
+  if (mad == null && etat.factureProUnite !== 'mad' && v > MAX_CONSO_MENSUELLE_KWH) return 'gt10000';
   if (mad == null || !(mad > 0)) return '';
   return billRangeFromExact(mad) ?? (mad > 10_000 ? 'gt10000' : '');
 }
@@ -513,23 +529,24 @@ const G_PRO = {
     requis: false,
   },
   /**
-   * `tension` et `activite` ont un DÉFAUT VISIBLE ('bt' / 'day') : elles ne
-   * partent que si un profil C&I est actif — sinon on émettrait une donnée que
-   * le visiteur n'a jamais choisie.
+   * `tension` et `activite` ont un DÉFAUT ('bt' / 'day') qui n'est VISIBLE que dans
+   * le panneau INDUSTRIEL. CIW408 — en mode commercial (panneau caché) elles ne
+   * partent JAMAIS : un hôtel arrivait au CRM avec « raccordement BT · activité de
+   * jour » qu'il n'avait jamais vu. Aucun défaut silencieux.
    */
   tensionRaccordement: {
     webhookKey: 'tensionRaccordement',
     domId: null,
-    modes: MODES_PRO,
-    lire: (e) => (estModePro(e.mode) ? e.tension : undefined),
+    modes: MODES_INDUSTRIEL,
+    lire: (e) => (estModeIndustriel(e.mode) ? e.tension : undefined),
     nettoyer: chaineOuOmise,
     requis: false,
   },
   profilActivite: {
     webhookKey: 'activityProfile',
     domId: null,
-    modes: MODES_PRO,
-    lire: (e) => (estModePro(e.mode) ? e.activite : undefined),
+    modes: MODES_INDUSTRIEL,
+    lire: (e) => (estModeIndustriel(e.mode) ? e.activite : undefined),
     nettoyer: chaineOuOmise,
     requis: false,
   },
@@ -672,6 +689,10 @@ const G_AGRICOLE = {
    * vaut « 7 » AVANT toute interaction. Sans le gate, un lead résidentiel
    * transporterait « 7 h/j » que personne n'a saisi et le CRM l'afficherait
    * comme une réponse du visiteur sur une villa.
+   * AGW403 — et même en agricole, `heuresPompage` n'est non-nul que si le
+   * visiteur a TOUCHÉ le curseur (lecture.ts, type « nombreTouche ») : un 7
+   * par défaut n'est jamais envoyé comme une réponse (le panneau d'appel
+   * sautait alors la question).
    */
   heuresPompage: {
     webhookKey: 'heuresPompage',
@@ -691,9 +712,10 @@ const G_AGRICOLE = {
   },
   /**
    * Région agronomique (8 zones FAO). Elle pilote le moteur eau DE CE TUNNEL
-   * (`lib/agronomy.ts`, aperçu d'estimation en direct) et voyage au webhook par
-   * compatibilité ascendante — `lib/lead.ts` la valide et la transporte, mais
-   * `crm/webhooks.py _extract_web_questionnaire` ne la PERSISTE pas encore.
+   * (`lib/agronomy.ts`, aperçu d'estimation en direct) et voyage au webhook :
+   * `lib/lead.ts` la valide et la transporte, et le webhook la PERSISTE
+   * (`crm/webhooks.py`, WJ124 ; clé déclarée dans `tunnel_webhook_keys.json`) —
+   * dans la colonne `Lead.region_agricole` (AGR402).
    */
   regionAgricole: {
     webhookKey: 'regionAgricole',
@@ -731,7 +753,14 @@ const G_ESTIMATION = {
     webhookKey: 'estimateShown',
     domId: null,
     modes: MODES_TOUS,
-    lire: (e) => e.estimationAffichee,
+    // CIW404 — en commercial/industriel, AUCUN chiffre d'hypothèse ne part (constantes non
+    // sourcées : tarifs, prix au kWc, parts diurnes « à vérifier »). La clé est OMISE : le
+    // drapeau « étude dédiée » n'a pas de clé dans le contrat (liste blanche de lead.ts et du
+    // webhook) — l'écran garde son teaser (WJ125), le CRM ne reçoit rien de chiffré.
+    lire: (e) =>
+      e.mode === 'industriel' || e.mode === 'commercial' || e.mode === 'professionnel'
+        ? undefined
+        : e.estimationAffichee,
     nettoyer: (v) => (v != null && typeof v === 'object' ? v : undefined),
     requis: false,
   },
