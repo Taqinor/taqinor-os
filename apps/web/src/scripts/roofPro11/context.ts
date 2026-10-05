@@ -349,6 +349,9 @@ export interface Ctx {
    *  Tant qu'elle est posée, `serializeConsumption` la réémet telle quelle : rouvrir puis
    *  enregistrer sans geste ne réhorodate jamais la saisie. null/absent = aucune relue. */
   consSource?: import('./prefill').SourceConsommation | null;
+  /** ACAL31 — un geste sur la consommation a-t-il eu lieu dans la session ? Tant que non,
+   *  la courbe relue du document n'est jamais recomposée. */
+  consGesteSession?: boolean;
   /** ACAL26 — la matrice d'ombrage 12×24 ENREGISTRÉE dans le document rouvert. Elle prime
    *  sur le recalcul tant qu'aucune source d'ombrage (ombres tracées, obstacles à hauteur,
    *  environnement) n'a changé dans la session : `signature` est l'empreinte de ces sources
@@ -363,4 +366,10 @@ export interface Ctx {
   /** ACAL30 — les entrées `modules[]` du document relu (fusionnées en lecture seule au
    *  catalogue de la société : un produit archivé reste résoluble, jamais remplacé par 720 Wc). */
   modulesDuDocument?: Array<Record<string, unknown>>;
+  /** ACAL31 — le document RELU (copie), source de ce que l'atelier réémet sans geste. */
+  documentRelu?: Record<string, unknown> | null;
+  /** ACAL31 — les retraits de rive RÉGLÉS (référence stable de l'atelier), relus du document. */
+  setbacks?: import('../../lib/roofPro2').PerimeterSetbacks;
+  /** ACAL31 — le calque de fond du document (contrat CALX86), réémis par `underlayPourDocument`. */
+  underlay?: unknown;
 }

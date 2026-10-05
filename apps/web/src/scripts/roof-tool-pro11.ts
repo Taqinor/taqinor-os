@@ -201,9 +201,8 @@ import {
   type EntreeDepartage,
 } from './roofPro11/optimizer';
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
-import { lireBatiments } from './roofPro11/batiment'; // CALX100 — `buildings[]` du document
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout, deserializeSetbacksFromLayout, deserializeHorizonProfileFromLayout, deserializeSceneFromLayout } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
 
 let booted = false;
@@ -938,6 +937,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     shadeObstructions,
     environment,
     exclusionZones,
+    setbacks, // ACAL31 — référence stable, relue par `appliquerHydratationAuCtx`
     get envCounter() {
       return envCounter;
     },
@@ -1819,6 +1819,22 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       monterAtelierPose(ctx, { setStatus: (msg: string) => setStatus(msg), recalc: () => updateAreaReadout() });
       updateAreaReadout();
     }
+    if (h.documentRelu) {
+      // ACAL31 — couches relues par `appliquerHydratationAuCtx` : on resynchronise leurs écrans.
+      // CAL93 — l'horizon passe par l'API de `shadingUi` (matrice/facteur/note cohérents).
+      shadingUi.setHorizonProfile((ctx.horizonProfile ?? null) as unknown as import('../lib/horizonEngine').HorizonProfile | null);
+      redrawExclusionZones();
+      // CALX119 — contrôles du soleil de scène alignés sur l'instant relu.
+      if (sunHourEl) sunHourEl.value = String(Math.round(ctx.sunHour));
+      if (sunHourValueEl) sunHourValueEl.textContent = `${Math.round(ctx.sunHour)} h`;
+      if (sunDateEl) sunDateEl.value = dayOfYearToDateValue(ctx.sunDay);
+      document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((o) =>
+        o.setAttribute('aria-pressed', String(
+          (o.dataset.sunSeason === 'summer' && ctx.sunDay === 172) ||
+            (o.dataset.sunSeason !== 'summer' && ctx.sunDay === WINTER_SOLSTICE_DAY),
+        )),
+      );
+    }
   }
 
   /** W113 — applique l'hydratation d'un lead à l'état d'édition (zone active) : sème le
@@ -1826,6 +1842,21 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    *  diagnostic, puis ferme + recalc si un vrai contour (≥3 sommets) est fourni. Renvoie
    *  true si quelque chose a été semé (pour ne pas re-géocoder par-dessus). */
   function applyHydration(lead: import('./roofPro11/types').LeadPayload): boolean {
+    // ACAL31 — un lead qui porte déjà un DOCUMENT de conception (`roof_layout` avec des pans,
+    // calepinage autonome CAL37) se rouvre comme lui : mêmes pans, même hydratation, sans
+    // aucune cible vendue (`cibleVendue: false`) — sinon « Enregistrer » sans geste perdait
+    // tous ses pans. Un lead sans document garde le boot historique (contour / pin).
+    const docLead = (lead as { roof_layout?: import('./roofPro11/prefill').SerializedLayout | null }).roof_layout;
+    if (docLead && Array.isArray(docLead.zones) && docLead.zones.length) {
+      return applyDevisHydration({
+        id: null,
+        geometrie: { roof_layout: docLead, roof_point: lead.roof_point ?? null },
+        cibleVendue: false,
+        fullName: lead.fullName,
+        phone: lead.phone,
+        city: lead.city,
+      });
+    }
     const h = hydrateFromLead(lead);
     appliquerHydratation(h); // ACAL26 — même fonction que le boot devis
     // Champs contact du diagnostic (handoff, jamais un POST — même garde que prefill).
@@ -1908,44 +1939,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // (`cibleVendue: false`) n'a AUCUNE vente derrière lui.
     cibleVendue = h.cibleVendue;
     const layout = devis.geometrie?.roof_layout ?? null;
-    // CAL102 — les mesures posées voyagent avec le design (même esprit que le repli
-    // `shading12x24` : un JSON douteux rend un tableau vide, jamais une exception).
-    measurements = deserializeMeasurements(layout);
-    // CAL69 — les zones d'exclusion voyagent avec le design, comme les mesures : on les
-    // relit telles qu'écrites, puis on les redessine et on laisse le recalcul en tenir
-    // compte (INTERDITE/RESERVEE retirent du posable, PREFEREE non).
-    exclusionZones.length = 0;
-    for (const z of deserializeExclusionZonesFromLayout(layout)) exclusionZones.push(z);
-    // CAL76 — les quatre retraits de rive RÉGLÉS voyagent avec le document ; absents
-    // (devis antérieur à CAL76), `setbacks` garde son défaut historique inchangé.
-    const savedSetbacks = deserializeSetbacksFromLayout(layout);
-    if (savedSetbacks) Object.assign(setbacks, savedSetbacks);
-    // CAL93 — le profil d'horizon lointain voyage avec le document ; absent (devis
-    // antérieur à CAL93, ou jamais renseigné), aucun horizon n'est modélisé (comportement
-    // historique). `shadingUi` a déjà été construit (ligne ~1327) : on passe par SON API
-    // pour que la matrice/le facteur/la note soient recalculés cohéremment.
-    shadingUi.setHorizonProfile(deserializeHorizonProfileFromLayout(layout));
-    // CALX119 — l'instant du soleil de scène (jour + heure) voyage avec le document ;
-    // absent (devis antérieur à CALX88/CALX119), `ctx.sunDay`/`ctx.sunHour` gardent leur
-    // défaut historique (solstice d'hiver, midi) — comportement d'aujourd'hui, jamais un
-    // jour deviné. Les contrôles (curseur/date/raccourcis saison) déjà câblés plus bas
-    // sont resynchronisés ici pour ne pas afficher un instant périmé.
-    const savedScene = deserializeSceneFromLayout(layout);
-    if (savedScene) {
-      ctx.sunDay = savedScene.sunDay;
-      ctx.sunHour = savedScene.sunHour;
-      if (sunHourEl) sunHourEl.value = String(Math.round(savedScene.sunHour));
-      if (sunHourValueEl) sunHourValueEl.textContent = `${Math.round(savedScene.sunHour)} h`;
-      if (sunDateEl) sunDateEl.value = dayOfYearToDateValue(savedScene.sunDay);
-      document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((o) =>
-        o.setAttribute('aria-pressed', String(
-          (o.dataset.sunSeason === 'summer' && savedScene.sunDay === 172) ||
-            (o.dataset.sunSeason !== 'summer' && savedScene.sunDay === WINTER_SOLSTICE_DAY),
-        )),
-      );
-    }
-
-    ctx.batiments = lireBatiments(layout); // CALX100 — hauteurs SAISIES + provenance, relues
+    // ACAL31 — mesures (CAL102), zones d'exclusion (CAL69), retraits (CAL76), horizon (CAL93),
+    // scène (CALX119), bâtiments (CALX100) et fond (CALX107) sont relus par
+    // `appliquerHydratationAuCtx` ci-dessus — la MÊME fonction pour les deux boots.
     const setIf = (id: string, v?: string) => {
       const el = $<HTMLInputElement>(id);
       if (el && v && !el.value.trim()) el.value = v;
@@ -1954,7 +1950,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     setIf('lf-phone', h.contact.phone);
     setIf('lf-city', h.contact.city);
     // Origine du design : reprise telle quelle dans l'export (meta de sérialisation).
-    devisOrigin = { devisId: h.devisId, panelWatt: h.panelWatt, scenario: h.scenario };
+    // ACAL31 — seulement quand le payload porte un id de devis : un calepinage sans devis
+    // n'écrit jamais `source: 'devis'` ni un `devisId: null` inventé (le document relu fait foi).
+    devisOrigin = h.devisId != null ? { devisId: h.devisId, panelWatt: h.panelWatt, scenario: h.scenario } : null;
 
     /** Impose la cible VENDUE sur l'état vivant + la zone active (avant le calcul).
      *  `h.neededPanels == null` = devis SANS ligne panneau : cible vendue de ZÉRO,
@@ -4085,7 +4083,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     serializeLayout: (billKwh?: number | null, meta?: import('./roofPro11/prefill').SerializeMeta) =>
       serialiserDocumentAtelier(
         ctx,
-        billKwh ?? (closed && vertices.length >= 3 ? billToAnnualKwh(monthlyBill()) : null),
+        // ACAL31 — sans facture saisie, le billKwh RELU (ou null), jamais un 0 inventé.
+        billKwh ?? (closed && vertices.length >= 3 && monthlyBill() > 0
+          ? billToAnnualKwh(monthlyBill())
+          : typeof ctx.documentRelu?.billKwh === 'number' ? (ctx.documentRelu.billKwh as number) : null),
         {
           // PV19 — l'origine devis (id / puissance panneau / scénario vendus) sert de socle.
           devisOrigin,

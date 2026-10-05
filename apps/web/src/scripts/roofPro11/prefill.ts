@@ -771,6 +771,11 @@ export function serializeConsumption(ctx: Ctx): { consumption?: SerializedConsum
     consumption.saisons = { ete: summerFactor, hiver: winterFactor };
   }
 
+  // ACAL31 — une liste d'appareils VIDE relue du document repart vide (jamais retirée).
+  const appareilsRelus = (ctx.documentRelu?.consumption as { appareils?: unknown } | undefined)?.appareils;
+  if (appareilsSrc.length === 0 && ctx.consSource != null && Array.isArray(appareilsRelus) && appareilsRelus.length === 0) {
+    consumption.appareils = [];
+  }
   if (appareilsSrc.length > 0) {
     consumption.appareils = appareilsSrc.map((a) => ({
       kind: a.kind,
@@ -1070,6 +1075,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     }
   }
   const savings = typeof meta?.savingsMad === 'number' && Number.isFinite(meta.savingsMad) ? meta.savingsMad : null;
+  const relu = ctx.documentRelu ?? null; // ACAL31
 
   const layout: SerializedLayout = {
     version: 2,
@@ -1080,11 +1086,18 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     activeAreaId: ctx.activeAreaId,
     // — ajouts v2 (aucun champ v1 déplacé ni modifié) —
     result: { panels: panelsTotal, kwc: kwcTotal, annualKwh: annualKwhTotal, savings },
-    scenario: meta?.scenario ?? 'reseau',
-    panelWatt: typeof meta?.panelWatt === 'number' && Number.isFinite(meta.panelWatt) ? meta.panelWatt : PANEL2_WATT,
-    battery: meta?.battery ?? null,
-    source: meta?.source ?? 'lead',
-    devisId: meta?.devisId ?? null,
+    // ACAL31 — sans valeur fournie par l'appelant, l'atelier réémet celle du document RELU
+    // (scénario, puissance panneau, batterie, origine) : jamais une valeur inventée.
+    scenario: meta?.scenario ?? (relu?.scenario as LayoutScenario | undefined) ?? 'reseau',
+    panelWatt:
+      typeof meta?.panelWatt === 'number' && Number.isFinite(meta.panelWatt)
+        ? meta.panelWatt
+        : typeof relu?.panelWatt === 'number' && Number.isFinite(relu.panelWatt)
+          ? relu.panelWatt
+          : PANEL2_WATT,
+    battery: meta && 'battery' in meta ? meta.battery ?? null : ((relu?.battery as SerializedBattery | null | undefined) ?? null),
+    source: meta?.source ?? (relu?.source === 'devis' || relu?.source === 'lead' ? relu.source : 'lead'),
+    devisId: meta && 'devisId' in meta ? meta.devisId ?? null : ((relu?.devisId as string | number | null | undefined) ?? null),
     // PV71 — les ombres tracées voyagent avec le design (sinon la production remonte
     // artificiellement au ré-import).
     shading12x24: serializeShading(ctx.shadeFactors),
@@ -1142,7 +1155,84 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   // d'export (`ecrireDansDocument`) : jamais une deuxième copie de sa logique ici — elle
   // gère seule la copie profonde et l'absence de la clé quand le document ne porte ni
   // organe ni cheminement. Sans couche fournie, `layout` repart inchangé (byte pour byte).
-  return meta?.coucheElectrique ? meta.coucheElectrique.ecrireDansDocument(layout) : layout;
+  const ecrit = meta?.coucheElectrique ? meta.coucheElectrique.ecrireDansDocument(layout) : layout;
+  // ACAL31 — ce que l'atelier n'a pas changé repart tel qu'il a été LU.
+  return reconcilierAvecDocumentRelu(ecrit, ctx);
+}
+
+// ═══════════ ACAL31 — ALLER-RETOUR OCTET-IDENTIQUE ═══════════
+/** Clés RACINE que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
+const CLES_RACINE_ATELIER = new Set([
+  'version', 'pin', 'outline', 'billKwh', 'zones', 'activeAreaId', 'result', 'scenario', 'panelWatt',
+  'battery', 'source', 'devisId', 'shading12x24', 'shadeObstructions', 'choixConception', 'measurements',
+  'environment', 'exclusionZones', 'setbacksM', 'horizonProfile', 'scene', 'buildings', 'underlay',
+  'poseSurfaces', 'consumption', 'modules', 'optimisation', 'electrical',
+]);
+/** Clés de PAN que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
+const CLES_PAN_ATELIER = new Set([
+  'id', 'label', 'vertices', 'obstacles', 'roofType', 'pitchDeg', 'facingAzimuthDeg', 'facingManual',
+  'neededPanels', 'neededAuto', 'geometry', 'buildingId', 'edges',
+]);
+
+const memeJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+const copieJson = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
+/**
+ * ACAL31 — réconcilie le document émis avec le document RELU, sans rien inventer :
+ *  - clés racine et de pan que l'atelier ne possède pas (pitchSuggestion, parcelle, …) :
+ *    transmises telles quelles ;
+ *  - repère (`pin`/`outline`) : celui du document tant que le pan actif n'a pas bougé ;
+ *  - arêtes d'un pan dont ni la forme ni les arêtes saisies n'ont changé : celles du document
+ *    (ni recalculées ni ajoutées) ;
+ *  - `result` : celui du document tant qu'aucune géométrie de pan n'a changé ;
+ *  - `modules[]` relu gardé quand aucun pan n'en désigne (catalogue du document intact).
+ */
+function reconcilierAvecDocumentRelu<T extends SerializedLayout>(layout: T, ctx: Ctx): T {
+  const relu = ctx.documentRelu;
+  if (!relu || typeof relu !== 'object') return layout;
+  const sortie = layout as unknown as Record<string, unknown>;
+  for (const [cle, valeur] of Object.entries(relu)) {
+    if (!CLES_RACINE_ATELIER.has(cle) && !(cle in sortie)) sortie[cle] = copieJson(valeur);
+  }
+  const zonesRelues = Array.isArray(relu.zones) ? (relu.zones as Array<Record<string, unknown>>) : [];
+  const parId = new Map(zonesRelues.filter((z) => z && typeof z.id === 'string').map((z) => [z.id as string, z]));
+  let geometriesIntactes = zonesRelues.length === layout.zones.length;
+  for (const zone of layout.zones) {
+    const rz = parId.get(zone.id);
+    if (!rz) {
+      geometriesIntactes = false;
+      continue;
+    }
+    const z = zone as unknown as Record<string, unknown>;
+    for (const [cle, valeur] of Object.entries(rz)) {
+      if (!CLES_PAN_ATELIER.has(cle) && !(cle in z)) z[cle] = copieJson(valeur);
+    }
+    const formeIntacte = ['vertices', 'roofType', 'pitchDeg', 'facingAzimuthDeg'].every((k) => memeJson(z[k], rz[k]));
+    const area = ctx.areas.find((a) => a.id === zone.id);
+    const aretesSaisiesIntactes = memeJson(area?.edges ?? null, rz.edges ?? null);
+    if (formeIntacte && aretesSaisiesIntactes) {
+      if (Array.isArray(rz.edges)) z.edges = copieJson(rz.edges);
+      else delete z.edges;
+    }
+    // Besoin AUTO (dérivé de la facture) : même facture, même pan ⇒ le besoin relu, jamais
+    // un 0 recalculé faute de facture saisie dans cette session.
+    if (formeIntacte && z.neededAuto === true && rz.neededAuto === true && typeof rz.neededPanels === 'number'
+      && memeJson(sortie.billKwh ?? null, relu.billKwh ?? null)) {
+      z.neededPanels = rz.neededPanels;
+    }
+    if (!memeJson(z.geometry ?? null, rz.geometry ?? null)) geometriesIntactes = false;
+  }
+  // Repère : celui du document tant que le pan actif est celui relu, à la même forme.
+  const actifRelu = parId.get(ctx.activeAreaId);
+  const actif = layout.zones.find((z) => z.id === ctx.activeAreaId);
+  if (relu.activeAreaId === ctx.activeAreaId && actifRelu && actif && memeJson(actif.vertices, actifRelu.vertices)) {
+    if ('pin' in relu) sortie.pin = copieJson(relu.pin);
+    if ('outline' in relu) sortie.outline = copieJson(relu.outline);
+  }
+  if (geometriesIntactes && relu.result && typeof relu.result === 'object') sortie.result = copieJson(relu.result);
+  const modulePose = layout.zones.some((z) => typeof z.geometry?.moduleId === 'string');
+  if (!('modules' in sortie) && !modulePose && Array.isArray(relu.modules)) sortie.modules = copieJson(relu.modules);
+  return layout;
 }
 
 /**
@@ -1479,6 +1569,9 @@ export interface CouchesDocument {
   /** ACAL30 — le catalogue `modules[]` du document relu (copie) : fusionné en lecture
    *  seule au catalogue de la société pour qu'un produit archivé reste résoluble. */
   modulesDuDocument: Array<Record<string, unknown>>;
+  /** ACAL31 — le document RELU tel quel (copie profonde), ou null : source des valeurs que
+   *  l'atelier réémet sans geste (repère, résultat, arêtes, clés qu'il ne possède pas). */
+  documentRelu: Record<string, unknown> | null;
   /** `consumption.source` relue telle quelle, ou null (aucun bloc / provenance illisible). */
   consSource: SourceConsommation | null;
   /** `electrical` relu par `lireCoucheElectrique`, ou null quand le document n'en porte pas. */
@@ -1510,6 +1603,7 @@ export function lireCouchesDocument(json: unknown): CouchesDocument {
       return { shadeObstructions: ombres.lues, shadeObstructionsNonLues: ombres.nonLues };
     })(),
     choixConception: lireChoixConception(doc),
+    documentRelu: doc ? (JSON.parse(JSON.stringify(doc)) as Record<string, unknown>) : null,
     modulesDuDocument: doc && Array.isArray(doc.modules)
       ? (JSON.parse(JSON.stringify(doc.modules)) as Array<Record<string, unknown>>).filter((m) => m && typeof m === 'object')
       : [],

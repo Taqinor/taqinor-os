@@ -222,7 +222,8 @@ describe('CALX110 câblage — `SerializeMeta.modules` est enfin fourni par l’
   });
 
   it('l’entrée du constructeur passe bien l’affectation à `serializeLayout`', () => {
-    expect(SOURCE_ENTREE).toContain('modules: affectationDesPans(catalogueModulesAtelier, ctx.areas),');
+    // ACAL30 — les modules du document (archivés) sont fusionnés en lecture seule.
+    expect(SOURCE_ENTREE).toContain('modules: affectationDesPans(catalogueModulesAtelier, ctx.areas, ctx.modulesDuDocument),');
     expect(SOURCE_ENTREE).toContain('lireModulesDisponibles(opts.modulesDisponibles).choisissables');
   });
 });

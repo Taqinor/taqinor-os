@@ -220,8 +220,29 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
 
   /** Recompose la courbe de conso depuis le socle (facture) + appareils, SAUF si
    *  l'utilisateur l'a éditée à la main (auquel cas on garde son override). */
+  /** ACAL31 — un GESTE sur la consommation du site : il signe la saisie (`source.saisi_le`)
+   *  et met fin à la courbe relue du document. Jamais appelé par une sérialisation. */
+  function horodaterGeste() {
+    ctx.consSource = { origine: 'atelier', saisi_le: new Date().toISOString() };
+    ctx.consGesteSession = true;
+  }
+  /** ACAL31 — la cible journalière vue au premier rendu après la relecture du document. */
+  let cibleRelue: number | undefined;
+
   function rebuildConsCurve() {
-    ctx.consDailyTarget = billDailyKwh();
+    const cible = billDailyKwh();
+    // ACAL31 — une courbe RELUE du document (aucun geste depuis l'ouverture) n'est pas
+    // recomposée : rouvrir puis enregistrer la réémet telle quelle. Une facture modifiée
+    // dans la session est un geste — la courbe se recompose et la saisie est signée.
+    if (ctx.consSource && !ctx.consGesteSession) {
+      if (cibleRelue === undefined) cibleRelue = cible;
+      if (cible === cibleRelue) {
+        ctx.consDailyTarget = cible;
+        return;
+      }
+      horodaterGeste();
+    }
+    ctx.consDailyTarget = cible;
     if (ctx.consHandEdited) return; // override manuel respecté
     const base = baselineCurve(ctx.consDailyTarget);
     ctx.consCurve = composeConsumption(base, ctx.consAppliances);
@@ -598,6 +619,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
       }
       if (!appliance) return;
       ctx.consAppliances.push(appliance);
+      horodaterGeste(); // ACAL31
       ctx.consHandEdited = false; // un nouvel appareil recompose la courbe (l'override manuel est repris)
       if (applNoteEl) applNoteEl.textContent = `${appliance.label} ajouté (${fmt1(appliance.dailyKwh)} kWh/j).`;
       renderConsumption();
@@ -613,6 +635,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
         const a = ctx.consAppliances[i];
         if (a) {
           a.billing = a.billing === 'onTop' ? 'inBill' : 'onTop';
+          horodaterGeste(); // ACAL31
           ctx.consHandEdited = false;
           renderConsumption();
         }
@@ -620,6 +643,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
         const i = parseInt(del.dataset.applDel ?? '', 10);
         if (i >= 0 && i < ctx.consAppliances.length) {
           ctx.consAppliances.splice(i, 1);
+          horodaterGeste(); // ACAL31
           ctx.consHandEdited = false;
           renderConsumption();
         }
@@ -632,6 +656,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
     // recalage ne doit que reproportionner la FORME, jamais supprimer cette énergie légitime.
     consRecalEl?.addEventListener('click', () => {
       ctx.consCurve = rescaleToDaily(ctx.consCurve, billDailyKwh() + onTopDailyKwh());
+      horodaterGeste(); // ACAL31
       ctx.consHandEdited = true; // c'est un override manuel recalé
       renderConsumption();
     });
@@ -640,6 +665,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
     // depuis le socle facture + appareils composés — la forme calculée est ainsi RESTAURABLE
     // après n'importe quelle édition à la main.
     consResetEl?.addEventListener('click', () => {
+      horodaterGeste(); // ACAL31
       ctx.consHandEdited = false;
       rebuildConsCurve();
       renderConsumption();
@@ -649,6 +675,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
     // saisonnière qui change HONNÊTEMENT l'autoconsommation annuelle.
     consSeasonalToggleEl?.addEventListener('click', () => {
       ctx.consSeasonal = !ctx.consSeasonal;
+      horodaterGeste(); // ACAL31
       renderConsumption();
     });
 
@@ -659,10 +686,12 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
     }
     consSummerFactorEl?.addEventListener('input', () => {
       ctx.consSummerFactor = readFactor(consSummerFactorEl);
+      horodaterGeste(); // ACAL31
       renderConsumptionSummaryOnly();
     });
     consWinterFactorEl?.addEventListener('input', () => {
       ctx.consWinterFactor = readFactor(consWinterFactorEl);
+      horodaterGeste(); // ACAL31
       renderConsumptionSummaryOnly();
     });
 
@@ -673,6 +702,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
       if (!Number.isFinite(h) || h < 0 || h >= HOURS_PER_DAY) return;
       const v = parseFloat((inp.value || '').replace(',', '.'));
       ctx.consCurve[h] = Number.isFinite(v) && v >= 0 ? v : 0;
+      horodaterGeste(); // ACAL31
       ctx.consHandEdited = true;
       // On ne re-rend pas la saisie (curseur), seulement le reste de la synthèse.
       renderConsGraph();
@@ -711,6 +741,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
       consDragHour = h;
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
       ctx.consCurve[h] = valueFromPointer(e.clientY);
+      horodaterGeste(); // ACAL31
       ctx.consHandEdited = true;
       renderConsGraph();
       renderConsumptionSummaryOnly();
@@ -738,6 +769,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
       if (e.key === 'ArrowUp') ctx.consCurve[h] += step;
       else if (e.key === 'ArrowDown') ctx.consCurve[h] = Math.max(0, ctx.consCurve[h] - step);
       else return;
+      horodaterGeste(); // ACAL31
       ctx.consHandEdited = true;
       e.preventDefault();
       renderConsGraph();

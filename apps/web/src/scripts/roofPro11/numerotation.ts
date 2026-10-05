@@ -484,7 +484,13 @@ export function numeroterDocument(
   registre: RegistreNumerotation = registreAtelier,
 ): RefusNumerotation | null {
   registre.absorberDocument(document);
-  if (!etat.actif) return null;
+  if (!etat.actif) {
+    // ACAL31 — bascule éteinte : LECTURE SEULE. Les numéros déjà absorbés (document rouvert)
+    // sont réécrits sur les mêmes emplacements — aucune attribution neuve, aucun numéro
+    // perdu parce que le pan actif a été re-pavé.
+    reecrireNumerosAbsorbes(document, registre);
+    return null;
+  }
   const zones = (document as DocumentNumerotable | null)?.zones;
   if (!Array.isArray(zones)) return null;
   let refus: RefusNumerotation | null = null;
@@ -506,6 +512,32 @@ export function numeroterDocument(
     if (resultat.numerotation) geometrie.numerotation = resultat.numerotation;
   }
   return refus;
+}
+
+/** ACAL31 — réécrit `n`/`rangee`/`numerotation` absorbés sur les emplacements identiques. */
+function reecrireNumerosAbsorbes(document: unknown, registre: RegistreNumerotation): void {
+  const zones = (document as DocumentNumerotable | null)?.zones;
+  if (!Array.isArray(zones)) return;
+  for (const zone of zones) {
+    const panId = zone?.id;
+    const geometrie = zone?.geometry;
+    if (!panId || !geometrie || !Array.isArray(geometrie.panels)) continue;
+    const absorbes = registre.modules(panId);
+    if (absorbes.length) {
+      const parPlace = new Map(absorbes.map((m) => [cleEmplacement(m.cx, m.cy), m]));
+      geometrie.panels = geometrie.panels.map((p) => {
+        const m = parPlace.get(cleEmplacement(p.cx, p.cy));
+        if (!m) return p;
+        return {
+          ...p,
+          ...(typeof m.n === 'number' && p.n === undefined ? { n: m.n } : {}),
+          ...(typeof m.rangee === 'string' && p.rangee === undefined ? { rangee: m.rangee } : {}),
+        };
+      });
+    }
+    const convention = registre.convention(panId);
+    if (convention && !geometrie.numerotation) geometrie.numerotation = { ...convention };
+  }
 }
 
 // ════════════════════════════ Étiquettes 3D et plan (décision PURE) ════════════════════════════

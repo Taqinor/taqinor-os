@@ -23,6 +23,11 @@ import { fallbackPerKwc } from '../../lib/productionEngine';
 import { type PerimeterSetbacks } from '../../lib/roofPro2';
 import { type Ctx } from './context';
 import {
+  deserializeExclusionZonesFromLayout,
+  deserializeHorizonProfileFromLayout,
+  deserializeMeasurements,
+  deserializeSceneFromLayout,
+  deserializeSetbacksFromLayout,
   lireCouchesDocument,
   serializeLayout,
   type ConsumptionHydration,
@@ -33,6 +38,7 @@ import {
 } from './prefill';
 import { type CoucheElectrique } from './electrique3d';
 import { type AffectationModules } from './moduleSelect';
+import { lireBatiments } from './batiment'; // ACAL31
 
 /** Ce que l'hydratation peut poser dans le ctx — chaque clé ABSENTE est laissée intacte
  *  (c'est ce qui permet d'appliquer UNE section sans toucher aux autres). */
@@ -106,6 +112,34 @@ export function appliquerHydratationAuCtx(ctx: Ctx, h: HydratationAtelier): void
       ctx.choixConceptionRelu = copie(choix.brut);
     } else {
       ctx.choixConceptionRelu = null;
+    }
+  }
+  // ACAL31 — le document relu : il porte aussi les couches que le boot devis lisait EN LIGNE
+  // (mesures, zones d'exclusion, retraits, horizon, scène, bâtiments, fond) — désormais lues
+  // ici, pour les DEUX boots, par les mêmes lecteurs.
+  if (h.documentRelu !== undefined) {
+    const doc = h.documentRelu;
+    ctx.documentRelu = doc ? copie(doc) : null;
+    if (doc) {
+      ctx.measurements = deserializeMeasurements(doc);
+      const zx = ctx.exclusionZones as unknown[] | undefined;
+      const relues = deserializeExclusionZonesFromLayout(doc);
+      if (zx) {
+        zx.length = 0;
+        zx.push(...relues);
+      } else {
+        ctx.exclusionZones = relues;
+      }
+      const retraits = deserializeSetbacksFromLayout(doc);
+      if (retraits && ctx.setbacks) Object.assign(ctx.setbacks, retraits);
+      ctx.horizonProfile = deserializeHorizonProfileFromLayout(doc) as unknown as Ctx['horizonProfile'];
+      const scene = deserializeSceneFromLayout(doc);
+      if (scene) {
+        ctx.sunDay = scene.sunDay;
+        ctx.sunHour = scene.sunHour;
+      }
+      ctx.batiments = lireBatiments(doc);
+      if (doc.underlay != null) ctx.underlay = copie(doc.underlay);
     }
   }
   if (h.modulesDuDocument !== undefined) ctx.modulesDuDocument = copie(h.modulesDuDocument ?? []); // ACAL30

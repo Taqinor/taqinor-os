@@ -1952,3 +1952,74 @@ describe('runtime ACAL29 — choix épinglés réappliqués avant le pavage', ()
     expect('choixConception' in sortie).toBe(false);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL31 — ALLER-RETOUR OCTET-IDENTIQUE, boot RÉEL : l'`exemple` complet du contrat
+// `roof_layout_v2.schema.json` (lu dans le dépôt, jamais recopié), semé par le boot devis
+// ET par le boot lead, puis « Enregistrer » sans geste (`onApiReady.serializeLayout`) ⇒ le
+// document produit est deep-equal à l'exemple : aucune valeur inventée (source 'devis',
+// billKwh 0, panelWatt 720, saisi_le refait), numéros conservés, clés non possédées
+// transmises.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL31 — l’exemple du contrat ressort identique des deux boots', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  async function exempleDuContrat(): Promise<Record<string, unknown>> {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    // vitest tourne depuis apps/web : le contrat vit dans backend/ à la racine du dépôt.
+    const chemin = resolve(process.cwd(), '../../backend/django_core/apps/calepinage/contract_samples/roof_layout_v2.schema.json');
+    return (JSON.parse(readFileSync(chemin, 'utf8')) as { exemple: Record<string, unknown> }).exemple;
+  }
+
+  /** Les CHEMINS qui diffèrent (la garde rougit en nommant la clé, jamais un « objet ≠ »). */
+  function differences(attendu: unknown, obtenu: unknown, chemin = ''): string[] {
+    if (JSON.stringify(attendu) === JSON.stringify(obtenu)) return [];
+    if (attendu && obtenu && typeof attendu === 'object' && typeof obtenu === 'object'
+      && Array.isArray(attendu) === Array.isArray(obtenu)) {
+      const a = attendu as Record<string, unknown>;
+      const b = obtenu as Record<string, unknown>;
+      const cles = new Set([...Object.keys(a), ...Object.keys(b)]);
+      const d = [...cles].flatMap((k) => differences(a[k], b[k], `${chemin}.${k}`));
+      // Même contenu, ordre des clés différent : égal au sens du document JSON.
+      return d;
+    }
+    return [`${chemin} : attendu ${JSON.stringify(attendu)} — obtenu ${JSON.stringify(obtenu)}`];
+  }
+
+  async function bootEtEnregistrer(hydrate: Record<string, unknown>) {
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      hydrate: hydrate as never,
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    return api!.serializeLayout() as Record<string, unknown>;
+  }
+
+  it("l'`exemple` de roof_layout_v2.schema.json : boot devis → serializeLayout deep-equal", async () => {
+    const exemple = await exempleDuContrat();
+    const sortie = await bootEtEnregistrer({
+      devis: { id: null, geometrie: { roof_layout: JSON.parse(JSON.stringify(exemple)) }, cibleVendue: false },
+    });
+    expect(differences(exemple, sortie)).toEqual([]);
+  });
+
+  it("l'`exemple` de roof_layout_v2.schema.json : boot lead → serializeLayout deep-equal", async () => {
+    const exemple = await exempleDuContrat();
+    const sortie = await bootEtEnregistrer({ lead: { roof_layout: JSON.parse(JSON.stringify(exemple)) } });
+    expect(differences(exemple, sortie)).toEqual([]);
+  });
+});

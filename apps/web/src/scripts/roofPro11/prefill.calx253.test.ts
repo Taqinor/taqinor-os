@@ -227,8 +227,14 @@ describe('CALX253 — contrat partagé roof_layout_v2.schema.json (CALX251), lu 
     expect(defs.consumptionAppliance.properties.billing.enum).toEqual(['onTop', 'inBill']);
   });
 
-  it("l'exemple RACINE du schéma ne porte PAS `consumption` (additif — CALX84 même discipline)", () => {
+  // ACAL31 — RÉÉCRIT (jamais supprimé) : depuis le M0 ACAL2, l'`exemple` racine est le
+  // document COMPLET (toutes les clés racine) que la garde d'aller-retour ACAL31 sème ; il
+  // porte donc `consumption`, dans la forme exacte de `$defs/consumption`.
+  it("l'exemple RACINE du schéma porte `consumption` dans la forme du contrat (ACAL2/ACAL31)", () => {
     const exemple = schema().exemple as Record<string, unknown>;
-    expect('consumption' in exemple).toBe(false);
+    const c = exemple.consumption as Record<string, unknown>;
+    expect(Array.isArray(c.courbe24) && (c.courbe24 as unknown[]).length).toBe(24);
+    expect(['facture', 'courbe', 'appareils']).toContain(c.methode);
+    expect(Object.keys(c.source as object).sort()).toEqual(['origine', 'saisi_le']);
   });
 });

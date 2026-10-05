@@ -238,6 +238,25 @@ describe('CALX111 — crochet document (serializeLayout)', () => {
     expect(numerosDe(suivant.zones[0].geometry.panels)).toEqual([1, 2, 4, 5]);
   });
 
+  it('bascule éteinte : les numéros absorbés sont réécrits (ACAL31 — lecture seule, aucune attribution)', () => {
+    const registre = creerRegistre();
+    const relu = documentUnPan([
+      { cx: 0, cy: 0, n: 1, rangee: 'A' },
+      { cx: 1.2, cy: 0, n: 2, rangee: 'A' },
+      { cx: 0, cy: 1.8, n: 4, rangee: 'B' },
+    ]);
+    relu.zones[0].geometry.numerotation = { prefixe: 'PV', depart: 1, sens: 'ligne' };
+    registre.absorberDocument(relu);
+    // Le pan actif re-pavé ressort SANS numéros : la bascule éteinte les réécrit à l'identique,
+    // et le module neuf (1.2, 1.8) n'en reçoit AUCUN (jamais d'attribution bascule éteinte).
+    const repave = documentUnPan(QUATRE.map((m) => ({ ...m })));
+    expect(numeroterDocument(repave, { ...saisieCourante(), actif: false }, registre)).toBeNull();
+    const geometrie = repave.zones[0].geometry;
+    expect(numerosDe(geometrie.panels)).toEqual([1, 2, 4, undefined]);
+    expect(geometrie.panels.map((m) => m.rangee)).toEqual(['A', 'A', 'B', undefined]);
+    expect((geometrie as { numerotation?: ConventionNumerotation }).numerotation).toEqual({ prefixe: 'PV', depart: 1, sens: 'ligne' });
+  });
+
   it('CALX83 — l’unicité est par PAN : deux pans portent chacun leur nº 1', () => {
     definirSaisie({ actif: true, depart: 1, sens: 'ligne' });
     const document = {

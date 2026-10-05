@@ -917,6 +917,9 @@ export interface ExclusionZone {
   axe?: LngLat[];
   /** CALX401 — largeur SAISIE (m) du passage. Aucune largeur n'est livrée par le dépôt. */
   largeurM?: number;
+  /** ACAL31 — provenance déclarative de la zone (contrat `exclusionZones[].source`), relue
+   *  et réécrite telle quelle — jamais inventée. Absente = non renseignée. */
+  source?: string;
 }
 
 /** Retrait PLANCHER/PLAFOND (m) — mêmes ordres de grandeur que les obstacles. */
@@ -1031,6 +1034,7 @@ export function serializeExclusionZones(
       // tout : les trois clés sont indissociables (le contrat exige `axe` + `largeurM`
       // dès que `usage` vaut `circulation`), donc on n'en émet jamais une partie.
       ...champsAlleeCirculation(z),
+      ...(typeof z.source === 'string' && z.source ? { source: z.source } : {}), // ACAL31
     });
   }
   return out;
@@ -1047,6 +1051,7 @@ export interface ZoneSerialisee {
   usage?: UsageZone;
   axe?: LngLat[];
   largeurM?: number;
+  source?: string; // ACAL31
 }
 
 /** Relecture d'un document : tolérante aux formes bancales, ne fabrique jamais de zone. */
@@ -1071,6 +1076,7 @@ export function deserializeExclusionZones(json: unknown): ExclusionZone[] {
     // SAISIE). Une allée amputée de son axe ou de sa largeur n'est plus une allée : elle
     // se relit alors comme la zone d'exclusion ordinaire qu'elle reste, jamais complétée.
     zone = { ...zone, ...champsAlleeCirculation(raw) };
+    if (typeof z.source === 'string' && z.source) zone.source = z.source; // ACAL31 — relue telle quelle
     out.push(zone);
   }
   return out;
