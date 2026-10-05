@@ -1284,6 +1284,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # rôle) et `jalons_devis`, absent de toutes les listes, sur le
             # `return [IsAdminRole()]` final (403 pour la Commerciale).
             return [HasPermissionOrLegacy('crm_voir')()]
+        elif self.action == 'resume_associe':
+            # AGR534 — la permission DÉCLARÉE sur l'@action (responsable ou
+            # admin) ; get_permissions() PRIME sur elle (bug CI #25), d'où
+            # cette branche explicite plutôt que le `[IsAdminRole()]` final.
+            return [IsResponsableOrAdmin()]
         elif self.action == 'locataire':
             # CAD164 — LIRE la proposition « locataire » est une lecture de la
             # fiche (`crm_voir`) ; créer la fiche du propriétaire ou clore
