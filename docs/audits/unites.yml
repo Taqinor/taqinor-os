@@ -603,7 +603,7 @@ unites:
       - docs/plans/PLAN_AUDIT_ANALYSE.md
       - docs/plans/PLAN_AUDIT_LEAD.md
       - docs/plans/PLAN_AUDIT_DEPLOY.md
-    pr: null
+    pr: 802
     date: 2026-10-05
     notes: "Audit L1 du 2026-10-05 (docs/audits/2026-10-05-analyse.md) : 42 constats confirmés par exécution, dont 5 S1 de fuite inter-sociétés / secrets (agent SQL, import, favoris) et 2 S1 de chiffres de pilotage ; re-score P3×I3 → P4×I5 (fuite locataire + argent), contre-visite en L2. backend/fastapi_ia ajouté au registre (absent de la synthèse) : propriétaire à confirmer par la session de propriété."
 
