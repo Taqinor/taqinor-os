@@ -32,7 +32,8 @@ from apps.calepinage.services.provenance_document import (
     NON_PUBLIEE, lignes_de_provenance,
 )
 from apps.crm.models import Lead
-from apps.roles.models import DIRECTEUR_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
 from authentication.models import Company
 
 from .acal_livrables_helpers import calepinage_simule_reel, patch_materiel
