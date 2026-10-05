@@ -47,6 +47,8 @@ dans un texte client utilise le rôle « le fondateur », jamais son prénom.
 
 **Variantes de segment (CAD126, 21/09/2026).** Les textes ci-dessous sont 100 % résidentiels : « sur votre toit » part à un pompage au bord d'un forage, « en famille » à une entreprise, et `valeur_j1` demande « votre facture » — sans objet pour une exploitation au butane. Les clés qui MENTENT portent donc une variante `POMPAGE` (agricole) et/ou `B2B` (industriel et commercial), sur le modèle du dictionnaire darija : dict séparé, repli sur le FR quand la variante est absente. **Par exception seulement** — on ne fabrique pas une matrice 27 × langues × segments —, en français seulement (sauf la darija du pompage, ci-dessous), et jamais sur un texte qu'une société a personnalisé. **AGR511 (02/10/2026, D-AGR-11)** : le pompage a AUSSI sa variante darija, ligne `POMPAGE DARIJA : ` sous chaque clé concernée, traduite phrase par phrase du `POMPAGE` validé (jamais une traduction automatique) — ✎ relecture native Reda à faire, sans bloquer l'envoi ; un `corps_darija` personnalisé par une société n'est jamais remplacé. Le B2B darija garde le texte darija de base (hors périmètre AGR). **CIQ501 (05/10/2026)** : la base `B2B` (commercial + industriel, textes partagés) ne promet plus ni vue 3D, ni « une photo suffit », ni vue des bâtiments ; elle demande les factures d'électricité des 12 derniers mois (ou les relevés de consommation) et l'adresse du site, et couvre aussi `reveil_a2`, `rappel_plus_tard`, `j4_preuve`, `parrainage` (aucune récompense — convention 9) et `debrief_visite` (« sur votre site »). `j6_garanties` reste tel quel (aucune page de garanties pro vérifiée). ✎ Textes B2B à valider par Reda, sans bloquer.
 
+**Forme e-mail (CIQ502, 05/10/2026).** Les sept touches WhatsApp du suivi après devis (`j1_pdf`, `dimanche_famille`, `j4_preuve`, `j6_garanties`, `j9_validite`, `j13_dernier`, `j14_pause`) et `reveil_a2`/`reveil_a3` ont aussi une forme e-mail : ligne `E-MAIL OBJET : ` (l'objet) et ligne `E-MAIL : ` (le corps) sous leur clé. En français, NEUTRE de segment (un particulier sur fixe avec e-mail la reçoit aussi), mêmes placeholders, même omission MRY13 ; ni « WhatsApp », ni « STOP », ni « ici », ni « famille », ni « toit », ni « chez vous », ni aucun mot interdit aux textes B2B. La porte de sortie (CAD110) devient « si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail ». `j1_pdf` et `j9_validite` rappellent que la proposition est jointe. `vocal_j3` et la cadence contact n'en ont pas (appels avec script). ✎ À valider par Reda.
+
 ## Cadence « contact » (Protocole v3, chapitre 5)
 
 ### identite — J0, WhatsApp, dans les cinq minutes (M1)
@@ -160,6 +162,8 @@ DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] م
 POMPAGE : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Il y a un mois, vous vous renseigniez sur le pompage solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de la plaque de votre pompe, et dites-moi ce qu'elle consomme aujourd'hui (butane, gasoil ou électricité). Je vous envoie ensuite le chiffrage à jour. Répondez STOP et je n'insiste plus.
 POMPAGE DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. هادي شهر كنتو كتسولو على الضخ بالطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال البلاكة ديال البومبة ديالكم، وقولوا ليا شنو كتستهلك دابا (البوطا، المازوط ولا الضو). من بعد نصيفط ليكم الحساب ديال الثمن محين. جاوبو STOP وما نلحوش عليكم.
 B2B : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : vos factures d'électricité des 12 derniers mois (ou vos relevés de consommation), et je vous envoie l'estimation à jour. Répondez STOP et je n'insiste plus.
+E-MAIL OBJET : Votre projet solaire — [Marque]
+E-MAIL : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où nous l'avions laissé : envoyez-moi vos dernières factures (ou vos relevés de consommation) en réponse à cet e-mail, et je vous envoie l'estimation à jour. Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail.
 
 ### rappel_plus_tard — réponse à « rappelez-moi plus tard » (M9)
 FR : Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez votre facture sous la main, une photo m'aide à préparer l'estimation.
@@ -177,6 +181,8 @@ DARIJA : واخا، فهمتكم، ما غاديش نعاود نعيط ليكم.
 ### j1_pdf — J1, WhatsApp
 FR : Bonjour {civilite} [Prénom], j'espère que vous allez bien. Je vous ai envoyé votre proposition solaire — est-ce que le PDF s'ouvre bien de votre côté ? Prenez le temps de la regarder tranquillement, et dites-moi ce qui vous a le plus parlé. Je suis là pour la moindre question.
 DARIJA : السلام عليكم {civilite} [الاسم]، كنتمنى تكونو بخير. صيفطت ليكم العرض ديال الطاقة الشمسية ديالكم — واش كيحل عندكم مزيان الـ PDF؟ خدو الوقت باش تشوفوه بشوية، وقولوا ليا شنو اللي عجبكم بزاف. أنا هنا لأي سؤال.
+E-MAIL OBJET : Votre proposition [référence] — [Marque]
+E-MAIL : Bonjour {civilite} [Prénom], j'espère que vous allez bien. Vous trouverez votre proposition solaire en pièce jointe. Sa référence : [référence]. Prenez le temps de la lire tranquillement, et dites-moi ce qui vous a le plus parlé. Je reste à votre disposition pour la moindre question. — [Conseiller], [Marque]
 
 ### appel_suivi_j2 — J2, script de l'« Appel de suivi » (CAD98, 23/09/2026)
 Les trois « Appel de suivi » après devis (J2, J7, J11) n'avaient aucun script, alors que chaque appel de la cadence
@@ -191,10 +197,14 @@ DARIJA : هادي تجهيزة شبيهة بديالكم، تركبات ف [mois
 POMPAGE : Voici une station de pompage solaire que nous avons posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Petite vidéo du chantier : [lien vidéo].
 POMPAGE DARIJA : هادي محطة ديال الضخ بالطاقة الشمسية ركبناها ف [mois] ف [ville] : [lien preuve]. القوة المركبة: [puissance preuve] kWc. فيديو صغير ديال الشانطي: [lien vidéo].
 B2B : Voici une installation professionnelle que nous avons posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Petite vidéo du chantier : [lien vidéo].
+E-MAIL OBJET : Une installation réalisée par [Marque]
+E-MAIL : Bonjour {civilite} [Prénom], je vous présente une installation que nous avons posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Une courte vidéo du chantier : [lien vidéo]. — [Conseiller], [Marque]
 
 ### j6_garanties — J6, WhatsApp (avec les certificats de garantie des fabricants)
 FR : Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : [lien de votre proposition]. Ce qui est couvert et pour combien d'années : https://taqinor.ma/garanties
 DARIJA : هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: [lien de votre proposition]. شنو المغطى وشحال ديال السنين: https://taqinor.ma/garanties
+E-MAIL OBJET : Les garanties de votre proposition [référence]
+E-MAIL : Bonjour {civilite} [Prénom], les garanties de votre installation sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement figure dans votre proposition : [lien de votre proposition]. Ce qui est couvert, et pour combien d'années : https://taqinor.ma/garanties — [Conseiller], [Marque]
 
 ### appel_suivi_j7 — J7, script de l'« Appel de suivi » (CAD98, 23/09/2026)
 Après la preuve (J4) et les garanties (J6) : on cherche ce qui freine encore la décision. ✎ À valider (voir J2).
@@ -204,6 +214,8 @@ DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] م
 ### j9_validite — J9, WhatsApp
 FR : Votre proposition est valable jusqu'au [date]. Après, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux.
 DARIJA : العرض ديالكم صالح حتى [date]. من بعد، خاصني نعاود نتأكد من الأثمنة وتوفر المعدات: ماشي باش نضغط عليكم، باش ما نعطيكمش ثمن غير صحيح.
+E-MAIL OBJET : Validité de votre proposition [référence]
+E-MAIL : Bonjour {civilite} [Prénom], je vous joins de nouveau votre proposition. Elle est valable jusqu'au [date]. Au-delà, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux. — [Conseiller], [Marque]
 
 ### appel_suivi_j11 — J11, script de l'« Appel de suivi » (CAD98, 23/09/2026)
 Le point d'étape avant le dernier message (J13). Ni date d'échéance ni « dernier appel » : la validité est dite par
@@ -215,11 +227,15 @@ DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] م
 CAD110 — porte de sortie (voir note, section `je_classe_j7`) : les deux DERNIÈRES touches après-devis.
 FR : Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Répondez STOP et je n'insiste plus.
 DARIJA : ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال كيهمكم، وإلا لا، نخليكم ف حالكم. جاوبو STOP وما نلحوش عليكم.
+E-MAIL OBJET : Votre projet solaire — [Marque]
+E-MAIL : Bonjour {civilite} [Prénom], je ne veux pas insister : dites-moi simplement si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail. — [Conseiller], [Marque]
 
 ### j14_pause — J14, WhatsApp, passage en Froid
 CAD110 — porte de sortie (voir note, section `je_classe_j7`).
 FR : Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la réactiver. Répondez STOP et je n'insiste plus.
 DARIJA : غادي نحط الملف ديالكم فالوقفة. العرض ديالكم كيبقى محفوظ عندنا؛ رسالة وحدة كافية باش نرجعو نفعلوه. جاوبو STOP وما نلحوش عليكم.
+E-MAIL OBJET : Votre dossier mis en pause — [Marque]
+E-MAIL : Bonjour {civilite} [Prénom], je mets votre dossier en pause. Votre proposition reste enregistrée chez nous ; un simple message suffit pour la réactiver. Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail. — [Conseiller], [Marque]
 
 ### dimanche_famille — premier dimanche 16 h après J3, leads « Décision à plusieurs » (M7)
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je sais que la décision se prend en famille. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.
@@ -234,6 +250,8 @@ ne peut calculer ([la raison réelle], [montant en dirhams], [nouveau total TTC]
 cas par cas — jamais à l'avance. **Ne cherchez pas le bouton : il n'existe pas, et c'est voulu.** On copie le texte
 depuis le catalogue des messages au moment choisi, on remplit les blancs, on envoie. Un bouton conditionnel
 enverrait un jour une offre que le fondateur n'a pas décidée.
+E-MAIL OBJET : Votre proposition [référence] — la page résumé
+E-MAIL : Bonjour {civilite} [Prénom], je sais que la décision se prend souvent à plusieurs. Si vous en parlez autour de vous, je peux vous envoyer la page résumé de votre proposition (une page, les chiffres clés) pour la partager, ou organiser un appel avec les personnes concernées au moment qui vous arrange. — [Conseiller], [Marque]
 
 ### annonce_appel_reda — le vendredi, annoncer l'appel de Reda du dimanche (M11)
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Le fondateur, qui valide chaque étude, aimerait vous appeler dimanche vers 18 h pour répondre à vos questions en cinq minutes. Ça vous convient, ou préférez-vous un autre moment ?
@@ -261,6 +279,8 @@ DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] م
 POMPAGE : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je vous refais le chiffrage à jour de votre installation de pompage. Je vous le prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.
 POMPAGE DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نعاود ليكم الحساب ديال الثمن محين ديال التجهيزة ديال الضخ ديالكم. نوجدو ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.
 B2B : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je vous refais l'étude à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.
+E-MAIL OBJET : Votre dossier solaire — [Marque]
+E-MAIL : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant cela, je peux vous refaire l'étude à jour. Je vous la prépare, ou je classe le dossier ? Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail.
 
 ### reveil_b — la saison des factures (B du Guide)
 CAD110 — porte de sortie (voir note, section `je_classe_j7`).

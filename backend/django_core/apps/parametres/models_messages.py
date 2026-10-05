@@ -829,6 +829,81 @@ def variante_segment(cle, type_installation, langue='fr'):
     return table.get(segment, {}).get(cle)
 
 
+# ── CIQ502 (05/10/2026) — FORME E-MAIL (objet + corps) DES TOUCHES ────────
+#
+# Le seul texte e-mail du catalogue était `relance_email_j10` (barreau
+# historique de la cadence générique). Les sept touches WhatsApp du suivi
+# après devis et `reveil_a2`/`reveil_a3` n'avaient qu'un texte WhatsApp
+# (« Répondez STOP », « ici ») — or un acheteur B2B transmet un e-mail et sa
+# pièce jointe à sa direction ou à sa banque (convention 8 : contact sur fixe
+# avec une adresse e-mail ⇒ la touche part en e-mail, règle de DONNÉE).
+#
+# Dict SÉPARÉ `{cle: {'objet', 'corps'}}`, en FRANÇAIS, NEUTRE de segment (un
+# particulier sur fixe avec e-mail les reçoit aussi) : ni « famille », ni
+# « toit », ni « chez vous », ni aucun mot interdit aux textes B2B (CIQ501).
+# Mêmes placeholders et même omission MRY13 que les textes WhatsApp. La porte
+# de sortie de CAD110 devient « répondez-le simplement à cet e-mail ».
+# `j1_pdf` et `j9_validite` rappellent que la proposition est JOINTE.
+# `vocal_j3` et les clés de la cadence contact n'en ont pas : ce sont des
+# appels avec script (CIQ505). Source : lignes `E-MAIL OBJET : ` / `E-MAIL : `
+# de `docs/crm/messages_meryem.md`. ✎ À valider par Reda.
+MESSAGE_TEMPLATE_FORMES_EMAIL = {
+    'j1_pdf': {
+        'objet': 'Votre proposition {reference} — {marque}',
+        'corps':
+            "Bonjour {civilite} {prenom}, j'espère que vous allez bien. Vous trouverez votre proposition solaire en pièce jointe. Sa référence : {reference}. Prenez le temps de la lire tranquillement, et dites-moi ce qui vous a le plus parlé. Je reste à votre disposition pour la moindre question. — {conseiller}, {marque}",
+    },
+    'dimanche_famille': {
+        'objet': 'Votre proposition {reference} — la page résumé',
+        'corps':
+            'Bonjour {civilite} {prenom}, je sais que la décision se prend souvent à plusieurs. Si vous en parlez autour de vous, je peux vous envoyer la page résumé de votre proposition (une page, les chiffres clés) pour la partager, ou organiser un appel avec les personnes concernées au moment qui vous arrange. — {conseiller}, {marque}',
+    },
+    'j4_preuve': {
+        'objet': 'Une installation réalisée par {marque}',
+        'corps':
+            'Bonjour {civilite} {prenom}, je vous présente une installation que nous avons posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Une courte vidéo du chantier : {lien_video_preuve}. — {conseiller}, {marque}',
+    },
+    'j6_garanties': {
+        'objet': 'Les garanties de votre proposition {reference}',
+        'corps':
+            "Bonjour {civilite} {prenom}, les garanties de votre installation sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement figure dans votre proposition : {lien}. Ce qui est couvert, et pour combien d'années : https://taqinor.ma/garanties — {conseiller}, {marque}",
+    },
+    'j9_validite': {
+        'objet': 'Validité de votre proposition {reference}',
+        'corps':
+            "Bonjour {civilite} {prenom}, je vous joins de nouveau votre proposition. Elle est valable jusqu'au {date_validite}. Au-delà, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux. — {conseiller}, {marque}",
+    },
+    'j13_dernier': {
+        'objet': 'Votre projet solaire — {marque}',
+        'corps':
+            "Bonjour {civilite} {prenom}, je ne veux pas insister : dites-moi simplement si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail. — {conseiller}, {marque}",
+    },
+    'j14_pause': {
+        'objet': 'Votre dossier mis en pause — {marque}',
+        'corps':
+            'Bonjour {civilite} {prenom}, je mets votre dossier en pause. Votre proposition reste enregistrée chez nous ; un simple message suffit pour la réactiver. Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail. — {conseiller}, {marque}',
+    },
+    'reveil_a2': {
+        'objet': 'Votre projet solaire — {marque}',
+        'corps':
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où nous l'avions laissé : envoyez-moi vos dernières factures (ou vos relevés de consommation) en réponse à cet e-mail, et je vous envoie l'estimation à jour. Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail.",
+    },
+    'reveil_a3': {
+        'objet': 'Votre dossier solaire — {marque}',
+        'corps':
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant cela, je peux vous refaire l'étude à jour. Je vous la prépare, ou je classe le dossier ? Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail.",
+    },
+}
+
+
+def forme_email(cle):
+    """CIQ502 — ``{'objet', 'corps'}`` de la forme e-mail de ``cle``, ou
+    ``None`` quand la touche n'en a pas (``vocal_j3``, cadence contact…).
+    Une COPIE : l'appelant peut la rendre sans toucher au catalogue."""
+    forme = MESSAGE_TEMPLATE_FORMES_EMAIL.get(cle)
+    return dict(forme) if forme else None
+
+
 # ── CAD127 (21/09/2026) — LE PREMIER MESSAGE DIT LA VÉRITÉ SUR L'ORIGINE ──
 #
 # « Vous venez de remplir notre formulaire » est FAUX pour la moitié des
