@@ -16,7 +16,10 @@ from authentication.models import Company
 from apps.adsengine import veille_decouverte as vd
 from apps.adsengine.models import VeilleAnnonceur
 
-RACINE = pathlib.Path(__file__).resolve().parents[5]
+# Dans le conteneur de test local, seul backend/django_core est monté (/app) :
+# la racine du dépôt n'existe pas et ScriptTrierTests se saute (voir setUp).
+_PARENTS = pathlib.Path(__file__).resolve().parents
+RACINE = _PARENTS[5] if len(_PARENTS) > 5 else _PARENTS[-1]
 SCRIPT = RACINE / 'tools' / 'veille_tri' / 'trier.py'
 
 

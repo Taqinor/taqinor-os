@@ -832,7 +832,7 @@ def importer_verdict_ia(company, ligne, *, version_consigne=VERSION_CONSIGNE):
         for i in (ligne.get('indices') or []) if isinstance(i, dict)]
     page_id = str(ligne.get('page_id') or '').strip()
     with transaction.atomic():
-        ann = (VeilleAnnonceur.objects.select_for_update()
+        ann = (VeilleAnnonceur.objects.select_for_update(of=('self',))
                .select_related('verdict_courant')
                .filter(company=company, page_id=page_id).first())
         if ann is None:

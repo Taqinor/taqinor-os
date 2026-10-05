@@ -117,8 +117,13 @@ class MigrationAllerRetourTests(TestCase):
         cle = ('adsengine', '0057_veille_decouverte')
         migration = loader.get_migration(*cle)
         etat_apres = loader.project_state(cle)
-        etat_avant = loader.project_state(
-            ('adsengine', '0056_pub128_field_test_result'))
+        # L'état « avant » doit contenir TOUTES les dépendances de 0057 (dont
+        # core.BackgroundJob), pas seulement l'ascendance de 0056.
+        etat_avant = loader.project_state([
+            ('adsengine', '0056_pub128_field_test_result'),
+            ('core', '0033_ntplt29_backgroundjob'),
+            ('authentication', '0001_initial'),
+        ])
 
         with connection.schema_editor() as editor:
             migration.unapply(etat_apres.clone(), editor)
