@@ -56,6 +56,7 @@ __all__ = [
     'MOTIF_CHAINE_FAIBLE_ABSENTE',
     'entree_stockee', 'enregistrer_entree', 'resoudre_materiel',
     'conception_du_calepinage', 'resultat_calepinage',
+    'resultat_electrique_complet',  # ACAL55
     'verdicts_electriques', 'bornes_ratio', 'bloc_ratio_dc_ac',
     'ecretage_depuis_serie', 'SOURCE_BORNE_MARCHE', 'SOURCE_BORNE_SOCIETE',
     'SOURCE_BORNE_NOYAU',
@@ -779,6 +780,62 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         onduleur_designation=materiel['designations']['onduleur'],
         **_options_entree(donnees))
     return (conception, materiel, donnees, document)
+
+
+def resultat_electrique_complet(conception, *, norme=None, noyau=None):
+    """ACAL55 — le ``ResultatElectrique`` COMPLET d'une conception, ou ``None``.
+
+    La ``Conception`` de CAL124 porte un ``ResultatChaines`` (chaînes seules,
+    ``core.electrique.chaines``) ; le dessin du schéma unifilaire, son export
+    DXF et le coffret AC du bordereau lisent, eux, la forme du noyau complet
+    (``protections``, ``cables``, ``bom``). Leur présenter le ``ResultatChaines``
+    levait ``AttributeError: 'ResultatChaines' object has no attribute
+    'protections'`` (``core/electrique/schema.py``) dès qu'une conception
+    devenait calculable. Cette fonction est l'UNIQUE adaptateur : chaque
+    appelant (schéma GET/POST, DXF, bordereau) passe par elle.
+
+    Source réelle : ``core.electrique.concevoir`` — le seul constructeur de
+    ``ResultatElectrique``, déjà employé par ``apps/ventes/electrical_service``.
+    Le calcul est déterministe : deux appels rendent le même objet.
+
+    Args:
+        norme: le verdict ``services/norme.py::norme_applicable``. Une norme
+            NON applicable retire les organes de protection (``protections=()``) :
+            le dessin reste la topologie du gabarit standard (CALX237), sans
+            aucun calibre décidé sous une référence que personne n'a choisie.
+        noyau: le ``{entree, protections, cables}`` de ``cables_du_calepinage``
+            — fourni, l'entrée (longueurs mesurées) et les organes retenus sont
+            CEUX-LÀ, pas un second dimensionnement qui en divergerait.
+
+    Rend ``None`` quand la conception ne permet rien (fiche muette, rien posé).
+    """
+    import dataclasses
+
+    from core.electrique import concevoir
+
+    if conception is None or getattr(conception, 'resultat', None) is None:
+        return None
+    entree = ((noyau or {}).get('entree')
+              or getattr(conception, 'entree', None))
+    if entree is None:
+        return None
+    resultat = concevoir(entree)
+    if noyau and noyau.get('protections') is not None:
+        resultat = dataclasses.replace(
+            resultat, protections=tuple(noyau['protections'].protections))
+    if isinstance(norme, dict) and not norme.get('applicable', False):
+        resultat = dataclasses.replace(resultat, protections=())
+    return resultat
+
+
+def _avec_resultat(conception, resultat):
+    """La MÊME conception, portant ``resultat`` (ACAL55) — jamais modifiée."""
+    import dataclasses
+    import types
+
+    if dataclasses.is_dataclass(conception):
+        return dataclasses.replace(conception, resultat=resultat)
+    return types.SimpleNamespace(**{**vars(conception), 'resultat': resultat})
 
 
 def _date_de_calcul(simulation):
@@ -2293,8 +2350,6 @@ def _bordereau_du_calepinage(calepinage, conception, noyau, *,
     côté/section) remplace les deux lignes de câblage forfaitaires : c'est ce
     que le magasinier coupe. Aucun tronçon tracé ⇒ sortie d'aujourd'hui.
     """
-    import types as _types
-
     from core.electrique.nomenclature import nomenclature
 
     from .coffrets import coffret_ac, coffrets_dc
@@ -2314,12 +2369,11 @@ def _bordereau_du_calepinage(calepinage, conception, noyau, *,
                                     capacites=capacites)
 
     # ``coffret_ac`` lit ``conception.resultat.protections`` (forme du
-    # ``ResultatElectrique`` du noyau) ; la conception du calepinage porte,
-    # elle, un ``ResultatChaines``. On lui présente donc les organes que
-    # ``concevoir_protections`` vient de retenir — les MÊMES objets, pas une
-    # seconde liste.
-    porteur = _types.SimpleNamespace(resultat=_types.SimpleNamespace(
-        protections=noyau['protections'].protections))
+    # ``ResultatElectrique`` du noyau). ACAL55 — l'adaptateur UNIQUE
+    # ``resultat_electrique_complet`` la fournit, bâti sur les organes que
+    # ``concevoir_protections`` vient de retenir (les MÊMES objets).
+    porteur = _avec_resultat(conception, resultat_electrique_complet(
+        conception, noyau=noyau))
     resultat_coffret_ac = coffret_ac(porteur, branches)
 
     valeur_structure, source_structure = _valeur_reglee(reglages,

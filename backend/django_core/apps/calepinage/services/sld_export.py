@@ -125,6 +125,7 @@ def _dessin_et_tableau(calepinage):
 
     from .electrique import (
         bloquants_nommes, conception_du_calepinage, parametres_societe,
+        resultat_electrique_complet,
     )
     from .norme import norme_applicable
     from .sld import (
@@ -146,9 +147,11 @@ def _dessin_et_tableau(calepinage):
             "caractéristique devinée est un défaut invisible." % premier,
             champ=champ)
 
-    gabarit = gabarit_de_schema(norme_applicable(
-        parametres_societe(calepinage)))
-    resultat = getattr(conception, 'resultat', None)
+    norme = norme_applicable(parametres_societe(calepinage))
+    gabarit = gabarit_de_schema(norme)
+    # ACAL55 — le DXF transpose un ``ResultatElectrique`` COMPLET (le tableau
+    # lit ``bom``, le dessin ``protections``), jamais le ``ResultatChaines``.
+    resultat = resultat_electrique_complet(conception, norme=norme)
     dessin = rendu_du_schema(
         getattr(conception, 'entree', None), resultat,
         edition=edition_sld(calepinage), gabarit=gabarit,

@@ -427,26 +427,35 @@ def _dessin_du_calepinage(calepinage):
     Une conception incomplète ou bloquée ne dessine rien : l'édition n'a
     alors aucun organe à nommer, et toute clef sera refusée en la nommant.
     """
-    from .electrique import bloquants_nommes, conception_du_calepinage
+    from .electrique import (
+        bloquants_nommes, conception_du_calepinage,
+        resultat_electrique_complet,
+    )
 
     conception, _materiel, _donnees, _document = conception_du_calepinage(
         calepinage)
     if (list(getattr(conception, 'manquantes', ()) or ())
             or list(bloquants_nommes(conception) or ())):
         return {'svg': None, 'blocs': (), 'liaisons': ()}
+    norme = _norme_du_calepinage(calepinage)
+    # ACAL55 — le dessin lit un ``ResultatElectrique`` COMPLET (protections
+    # comprises), jamais le ``ResultatChaines`` de la conception.
     return rendu_du_schema(getattr(conception, 'entree', None),
-                           getattr(conception, 'resultat', None),
+                           resultat_electrique_complet(conception,
+                                                       norme=norme),
                            edition=edition_sld(calepinage),
-                           gabarit=_gabarit_du_calepinage(calepinage))
+                           gabarit=gabarit_de_schema(norme),
+                           branches_onduleur=(
+                               branches_onduleur_de_la_conception(
+                                   conception)))
 
 
-def _gabarit_du_calepinage(calepinage):
-    """Le gabarit applicable à CE calepinage (CALX237), via ses réglages."""
+def _norme_du_calepinage(calepinage):
+    """Le verdict de norme applicable à CE calepinage, via ses réglages."""
     from .electrique import parametres_societe
     from .norme import norme_applicable
 
-    return gabarit_de_schema(norme_applicable(
-        parametres_societe(calepinage)))
+    return norme_applicable(parametres_societe(calepinage))
 
 
 # ──────────────────────────────────────────────── le dessin, édition comprise
@@ -670,7 +679,10 @@ def schema_du_calepinage(calepinage):
     libellés français du service électrique tels quels. Aucune clé ne
     disparaît jamais (leçon PACT10 du 03/08/2026).
     """
-    from .electrique import bloquants_nommes, conception_du_calepinage
+    from .electrique import (
+        bloquants_nommes, conception_du_calepinage,
+        resultat_electrique_complet,
+    )
 
     conception, _materiel, _donnees, _document = conception_du_calepinage(
         calepinage)
@@ -687,11 +699,13 @@ def schema_du_calepinage(calepinage):
     if manquantes or bloquants:
         return reponse
     edition = edition_sld(calepinage)
+    norme = _norme_du_calepinage(calepinage)
     dessin = rendu_du_schema(
         getattr(conception, 'entree', None),
-        getattr(conception, 'resultat', None),
+        # ACAL55 — l'adaptateur unique, jamais le ``ResultatChaines``.
+        resultat_electrique_complet(conception, norme=norme),
         edition=edition,
-        gabarit=_gabarit_du_calepinage(calepinage),
+        gabarit=gabarit_de_schema(norme),
         cartouche=cartouche_du_calepinage(calepinage),
         # CALX238 (crochet de phase 2) — dix onduleurs identiques dessinent
         # UN sous-ensemble « typique de 10 », et la planche cesse de basculer
