@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { ROUTE, LIST_ROUTE, TYPE_LABEL, TYPE_ACCENT, pathForType, useEntitySearch } from './entityRoutes'
 import reportingApi from '../../api/reportingApi'
+import { readFileSync } from 'node:fs'
+import { fichierContrat } from '../../test/fixtures/contractSamples'
 
 vi.mock('../../api/reportingApi', () => ({
   default: { search: vi.fn() },
@@ -117,5 +119,33 @@ describe('ODY27 — pathForType', () => {
   it('un type INCONNU renvoie une chaîne vide (donc jamais masqué par erreur)', () => {
     expect(pathForType('type-inexistant')).toBe('')
     expect(pathForType(undefined)).toBe('')
+  })
+})
+
+// ACAL199 — chaque type de la recherche serveur (échantillon partagé ACAL198,
+// `reporting/contract_samples/recherche_types.json`) doit être routable.
+// Type connu SANS route d'ouverture (hors périmètre ACAL199, inchangé) :
+// `campagne_pub` n'a pas encore de page de détail côté front.
+const SANS_ROUTE_CONNUS = ['campagne_pub']
+
+describe('ACAL199 — types de recherche serveur et ROUTE', () => {
+  const { types } = JSON.parse(
+    readFileSync(fichierContrat('reporting', 'recherche_types'), 'utf8'),
+  )
+
+  it('chaque type de recherche_types.json a une ROUTE', () => {
+    const sansRoute = types.filter(
+      (t) => !ROUTE[t] && !SANS_ROUTE_CONNUS.includes(t),
+    )
+    expect(sansRoute, `types sans ROUTE : ${sansRoute.join(', ')}`).toEqual([])
+  })
+
+  it('calepinage : route, liste, libellé et accent ; pathForType non vide', () => {
+    expect(types).toContain('calepinage')
+    expect(ROUTE.calepinage(7)).toBe('/calepinage/7')
+    expect(LIST_ROUTE.calepinage('hammadi')).toBe('/calepinage?q=hammadi')
+    expect(TYPE_LABEL.calepinage).toBe('Calepinage')
+    expect(TYPE_ACCENT.calepinage).toBe('brass')
+    expect(pathForType('calepinage')).toBe('/calepinage/1')
   })
 })
