@@ -94,3 +94,57 @@ OPTIONNELLE. Chiffre client / multi-société : toujours correctness, CONFIRMÉ 
 `rapport_backend_sombre`, `check_api_shapes`, `check_api_contract`, `check_openapi_shapes`,
 `check_tests_source_regex`, `check_invariants`, `core/event_coverage.py` (abonnés/émetteurs ged/portail),
 `lint-imports`, `makemigrations --check --dry-run` (conteneur), `audit_coherence` (aucune règle J6 attendue).
+
+**Décisions fondateur (AskUserQuestion, 05/10/2026), gravées pour le groupe ADOC.**
+D-ADOC-1 : brancher les six surfaces portail servies sans écran (mes documents, demandes SAV, mon équipe,
+contrats de maintenance, consommation, recherche / export) — jamais les retirer. D-ADOC-2 : un document
+client régénéré = NOUVELLE VERSION du même document GED, historique gardé ; le portail montre la version en
+vigueur avec sa date. D-ADOC-3 : source unique de l'avancement client = jalons synchronisés du chantier
+(CHT11) ; la saisie manuelle devient une correction tracée ; le suivi public lit la même source. D-ADOC-4 : à
+l'acceptation, le lien public de suivi est prolongé jusqu'à réception du chantier + 90 jours, révocable.
+
+## 3. Plan des lanes (phase 3)
+
+| Ronde | Lanes (modèle / effort) | Travail |
+|---|---|---|
+| Scouts | détecteurs, dédoublonnage (haiku / low) | `doc/detecteurs.txt`, `doc/dedupe.md` |
+| R2 | 9 lanes : GEDCYC cycle de vie GED (sonnet/medium) · GEDACC accès et conservation (opus/high) · SIGN signature et dépôt public (opus/high) · CHANT documents de chantier (sonnet/medium) · COUTURE `document_produit` → GED (sonnet/medium) · PCLIENT portail client (opus/high) · PEXT portails externes + administration (opus/high) · PFRONT écrans portail (sonnet/medium) · SUIVI suivi public (sonnet/medium) | 113 constats jugés + 32 optionnels |
+| R3 | réfuteurs frais opus/high : 2 lentilles (code ; frères + déjà-corrigé) sur S1/S2, 1 lentille sur S3 — 151 verdicts | 2 réfutés |
+| Porte empirique | 9 rédacteurs de sondes (sonnet/medium) ; exécution par l'orchestrateur seul, chaque sonde dans une transaction ANNULÉE (`docker exec … manage.py shell`) + 23 commandes grep front | 63 sondes, 60 reproduites |
+| Live | orchestrateur : Playwright (portail client) + 3 sondes HTTP (étanchéité, confinement, documents chantier) | §4 |
+| Tâches | 3 rédacteurs (opus/high), relecture bloquante de l'orchestrateur contre §C.2 | groupe ADOC |
+
+Fable : **aucun appel** (lot L2 sans moteur ni argent possédé ; la revue opus + la porte empirique suffisent,
+CLAUDE.md « a small batch … does NOT get a Fable pass » appliqué par analogie).
+
+## 4. Manifeste de couverture (phase 4)
+
+- **Lanes R2 (9).** Fichiers lus / non lus par lane au scratchpad (`doc/wf1.json`, champs `lus` / `non_lus`).
+  Principaux non lus : `ged/services.py` 2656-4130 (signature, lu par SIGN seulement) et 6090-6149 ;
+  `ged/views.py` 2080-2480 en diagonale par GEDCYC (couvert par GEDACC) ; tests des apps lus par noms ;
+  `portail/branding.py`, `portail/pdf_commissions.py` ; `templates/pdf/bon_livraison.html` (ZSTK4) ;
+  `ventes/public/lecture_views.py`.
+- **Détecteurs exécutés** à `7e325e0ae`, tous verts : `check_parked_apps`, `check_services_appeles` (474
+  fonctions, 166 dettes gelées), `check_ecrans_atteignables` (540 écrans, 10 dettes), `check_api_shapes` (303
+  endpoints + 424 ressources ; **aucun** contrat J6 hors des 13 échantillons portail), `check_api_contract`
+  (1 956 appels résolus), `check_openapi_shapes`, `check_tests_source_regex`, `check_invariants` (19),
+  `lint-imports` (17 contrats tenus), `makemigrations --check` ged/portail/documents (aucun changement).
+  `rapport_backend_sombre.py` (non bloquant) : 879 ressources, **264 « sans écran par oubli »** dont les six
+  surfaces portail de C-ADOC-050. Tous verts alors que 60 défauts se reproduisent : aucune garde n'attrape
+  ces classes (d'où les gardes M3).
+- **Non exécutés** : `tests/test_tenant_sweep.py` (DB de test hors porte orchestrateur ; C5 couvert par les
+  sondes inter-sociétés), `audit_coherence` (aucune règle J6 : la commande ne couvre que ventes/crm),
+  `scripts/audit_couplage.py` (n'existe pas), calibration des réfuteurs (§7).
+- **Run live (orchestrateur, pile locale `7e325e0ae`).** Compte portail client provisionné en local
+  (`client-294`, société 2) + client B (même société) + client C (société 6). Sondes : 13 endpoints × 3
+  comptes, aucune clé interne (`prix_achat`, marge, notes) dans les JSON ; IDOR A → B et A → C = 404 sur 6
+  détails ; compte portail sur 6 endpoints internes = 403 ; documents de chantier société 6 depuis société 2 =
+  404 ; GED société 6 depuis société 2 = 404 sur 17 actions (sonde #GEDX, contrôle positif OK). Playwright :
+  connexion → tableau de bord → devis (`/proposal` 200, PDF 362 Ko, « Document mis à jour le » affiché) →
+  chantiers (détail, jalons, photos) → factures. Capture
+  `docs/qa-explorer/captures/2026-10-05/adoc-portail-accueil.jpg`. Incident d'environnement : gunicorn local
+  bloqué (504 partout, autre session lourde sur la machine) → redémarrage du seul conteneur web + nginx.
+  **Non joués** : portails fournisseur / partenaire en écran (bloqués par C-ADOC-061), page publique de
+  signature et `apps/web` suivi en écran (non servie par le nginx local), rejeu indépendant Chrome DevTools
+  (les candidats live sont prouvés par sonde HTTP rejouable).
+- **Migration en attente** sur la pile locale (`adsengine`, autre session) : non appliquée, hors J6.
