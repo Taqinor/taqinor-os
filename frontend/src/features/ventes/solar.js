@@ -1499,8 +1499,15 @@ export function classifyProduct(nom) {
 // DC6 — le taux 20 n'est qu'un DÉFAUT de repli ; le taux réel (10 % panneaux,
 // 20 % le reste, ou le taux standard édité de la société) est toujours passé
 // par l'appelant via tauxTva.
+// AGR216 — un taux 0 % saisi RESTE 0 % : seuls null / '' / NaN retombent sur le
+// défaut (0 est « faux » en JS, `|| 20` le réécrivait en 20).
+export function tauxTvaOuDefaut(taux, defaut = TVA_STANDARD_DEFAUT) {
+  const t = parseFloat(taux)
+  return Number.isFinite(t) ? t : defaut
+}
+
 export function ttcFromHt(prixVenteHt, tauxTva = TVA_STANDARD_DEFAUT) {
-  const factor = 1 + (parseFloat(tauxTva) || TVA_STANDARD_DEFAUT) / 100
+  const factor = 1 + tauxTvaOuDefaut(tauxTva) / 100
   return Math.round((parseFloat(prixVenteHt) || 0) * factor)
 }
 
@@ -1511,7 +1518,7 @@ export function ttcFromHt(prixVenteHt, tauxTva = TVA_STANDARD_DEFAUT) {
 // 36 873,11 au devis) puis PERSISTÉE au ré-enregistrement. Au centime,
 // `htFromTtc` retrouve exactement le HT d'origine (erreur < 0,005 ÷ (1 + t)).
 export function ttcExactFromHt(prixHt, tauxTva = TVA_STANDARD_DEFAUT) {
-  const factor = 1 + (parseFloat(tauxTva) || TVA_STANDARD_DEFAUT) / 100
+  const factor = 1 + tauxTvaOuDefaut(tauxTva) / 100
   return Math.round((parseFloat(prixHt) || 0) * factor * 100) / 100
 }
 
@@ -1521,7 +1528,7 @@ export function ttcExactFromHt(prixHt, tauxTva = TVA_STANDARD_DEFAUT) {
 // suit le taux standard de la société (tvaStandard, Paramètres), défaut 20.
 export function tauxTvaOf(produit, tvaStandard) {
   const t = parseFloat(produit?.tva)
-  if (Number.isFinite(t) && t > 0) return t
+  if (Number.isFinite(t) && t >= 0) return t
   const std = Number(tvaStandard) > 0 ? Number(tvaStandard) : TVA_STANDARD_DEFAUT
   return std
 }
@@ -1530,7 +1537,7 @@ export function tauxTvaOf(produit, tvaStandard) {
 // prix HT à 2 décimales. Pour tout TTC saisi à la dirham près, l'aller-retour
 // TTC → HT(2 déc.) → TTC réaffiché redonne exactement la valeur tapée.
 export function htFromTtc(ttc, tauxTva = TVA_STANDARD_DEFAUT) {
-  const factor = 1 + (parseFloat(tauxTva) || TVA_STANDARD_DEFAUT) / 100
+  const factor = 1 + tauxTvaOuDefaut(tauxTva) / 100
   return ((parseFloat(ttc) || 0) / factor).toFixed(2)
 }
 

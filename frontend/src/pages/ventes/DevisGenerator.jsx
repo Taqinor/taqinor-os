@@ -110,7 +110,7 @@ import {
   // par l'avertissement de vente et par l'étude commerciale.
   CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, computeROI, ttcFromHt,
-  tauxTvaOf, controlerFacturesSaisies,
+  tauxTvaOf, tauxTvaOuDefaut, controlerFacturesSaisies,
   paybackMoteurHoraire, inverterCostFromLines, appartientAuPanierSans,
   appartientAuPanierAvec,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
@@ -2955,7 +2955,7 @@ export default function DevisGenerator({
   const appliquerCompositionServeur = (data) => {
     const generated = (data.lignes || []).map(li => {
       const produit = produits.find(p => String(p.id) === String(li.produit))
-      const taux = produit ? tauxTvaOf(produit) : (parseFloat(li.taux_tva) || 20)
+      const taux = produit ? tauxTvaOf(produit) : tauxTvaOuDefaut(li.taux_tva, 20)
       const prixTtc = produit
         ? ttcFromHt(li.prix_unitaire_ht, taux)
         : (li.prix_unitaire_ttc ?? 0)
