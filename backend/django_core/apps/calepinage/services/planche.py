@@ -52,7 +52,7 @@ __all__ = [
     'svg_de_planche', 'html_de_planche', 'rendre_planche_svg',
     'rendre_planche_pdf', 'nom_de_fichier', 'entrees_de_legende',
     'texte_d_orientation', 'lignes_d_orientation', 'longueur_de_barre',
-    'hash_court', 'texte_d_empreinte', 'empreinte_du_calepinage',
+    'hash_court', 'texte_d_empreinte',
     'CONTENU_IMPLANTATION', 'CONTENU_TOITURE', 'CONTENU_MASSE',
     'CONTENU_POSE', 'CONTENUS', 'echelle_nommee', 'mention_d_echelle',
     'rendre_plan_svg', 'rendre_plan_pdf', 'PlanDePoseRefuse',
@@ -785,7 +785,7 @@ def texte_d_empreinte(layout_hash, version_moteur, moment):
     return ' · '.join(termes)
 
 
-def empreinte_du_calepinage(calepinage, *, moment=None):
+def _empreinte_du_calepinage(calepinage, *, moment=None):
     """Le pied de planche d'un ``Calepinage``, depuis SES champs stockés.
 
     L'empreinte n'est jamais RECALCULÉE ici : c'est
@@ -814,7 +814,7 @@ def pied_du_calepinage(calepinage, *, moment=None):
     Un calepinage sans societe (faux d'essai pur) est courant : l'etat se lit
     en base des que ``pk`` est pose.
     """
-    lignes = [empreinte_du_calepinage(calepinage, moment=moment)]
+    lignes = [_empreinte_du_calepinage(calepinage, moment=moment)]
     if getattr(calepinage, 'company_id', None):
         from .documents.gabarit_document import (
             etat_de_conception, mentions_d_etat,

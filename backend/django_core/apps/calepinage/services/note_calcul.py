@@ -45,7 +45,7 @@ from html import escape
 __all__ = [
     'CLES_INTERDITES', 'NoteRefusee', 'CLES_VERDICT', 'CLES_MARGES',
     'construire_note_calcul', 'verdict_de_preuve', 'html_de_note_calcul',
-    'rendre_note_calcul', 'resultat_servi_et_stocke',
+    'rendre_note_calcul',
     'motif_note_indisponible',
 ]
 
@@ -242,7 +242,7 @@ def _source_lisible(code):
     return LIBELLE_SOURCE.get(texte, str(code))
 
 
-def resultat_servi_et_stocke(calepinage):
+def _resultat_servi_et_stocke(calepinage):
     """``(servi, stocke)`` — LE lecteur strict, refus converti en ``NoteRefusee``.
 
     ACAL214 — la note ne lit plus la colonne brute ``Calepinage.resultat`` :
@@ -278,12 +278,12 @@ def motif_note_indisponible(calepinage):
     """``None`` si la note se rend, sinon le motif (français) du refus.
 
     Lecture PURE : aucun PDF n'est produit, rien n'est écrit. C'est le MÊME
-    contrôle que le rendu (``resultat_servi_et_stocke`` +
+    contrôle que le rendu (``_resultat_servi_et_stocke`` +
     ``_controler_servi``) : l'inventaire des sorties ne déclare la note
     disponible que si la lecture stricte réussit.
     """
     try:
-        servi, _stocke = resultat_servi_et_stocke(calepinage)
+        servi, _stocke = _resultat_servi_et_stocke(calepinage)
         _controler_servi(servi)
     except NoteRefusee as refus:
         return str(refus)
@@ -294,7 +294,7 @@ def construire_note_calcul(resultat, *, site=None, identite=None, styles=None,
                            stocke=None, etat=None):
     """Le résultat SERVI -> la note, prête à mettre en page.
 
-    ``resultat`` est le résultat servi (``resultat_servi_et_stocke``) ;
+    ``resultat`` est le résultat servi (``_resultat_servi_et_stocke``) ;
     ``stocke`` (facultatif) est ``Calepinage.resultat`` tel qu'enregistré, d'où
     sont lus le régime de preuve et les marges. Sans ``stocke``, ``resultat``
     porte tout (forme du contrat, essais purs).
@@ -674,7 +674,7 @@ def rendre_note_calcul(calepinage, *, company=None, site=None, identite=None,
         styles = styles_de_societe(company)
     from .documents.gabarit_document import etat_de_conception
 
-    servi, stocke = resultat_servi_et_stocke(calepinage)
+    servi, stocke = _resultat_servi_et_stocke(calepinage)
     note = construire_note_calcul(servi, site=site, identite=identite,
                                   styles=styles, stocke=stocke,
                                   etat=etat_de_conception(calepinage))

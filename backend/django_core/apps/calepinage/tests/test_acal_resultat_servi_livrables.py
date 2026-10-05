@@ -19,7 +19,7 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services.note_calcul import (
     NoteRefusee, construire_note_calcul, motif_note_indisponible,
-    rendre_note_calcul, resultat_servi_et_stocke,
+    rendre_note_calcul, _resultat_servi_et_stocke,
 )
 from apps.calepinage.services.documents.presentation_compacte import (
     MOTIF_SANS_RESULTAT, html_de_presentation_compacte,
@@ -59,7 +59,7 @@ class NoteDeCalculSurCalepinageReelTest(SimpleTestCase):
 
     def test_la_note_lit_pose_et_production_du_servi(self):
         with patch_materiel():
-            servi, stocke = resultat_servi_et_stocke(self.pivot)
+            servi, stocke = _resultat_servi_et_stocke(self.pivot)
             note = construire_note_calcul(servi, stocke=stocke, site=SITE)
         self.assertEqual(note['pose']['total_modules'],
                          servi['pose']['total_modules'])
@@ -117,7 +117,7 @@ class PresentationCompacteSurResultatServiTest(SimpleTestCase):
             self):
         perime = modifier_la_conception(calepinage_simule_reel())
         with patch_materiel():
-            servi, _stocke = resultat_servi_et_stocke(perime)
+            servi, _stocke = _resultat_servi_et_stocke(perime)
             html = html_de_presentation_compacte(perime)
         # On compare le TEXTE produit (jamais une valeur numérique).
         self.assertNotIn('presentation-mensuelle', html)
@@ -136,7 +136,7 @@ class PresentationCompacteSurResultatServiTest(SimpleTestCase):
             self):
         pivot = calepinage_simule_reel()
         with patch_materiel():
-            servi, _stocke = resultat_servi_et_stocke(pivot)
+            servi, _stocke = _resultat_servi_et_stocke(pivot)
             html = html_de_presentation_compacte(pivot)
         self.assertIn('presentation-mensuelle', html)
         self.assertTrue(servi['hash_entree'])
