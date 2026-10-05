@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { initState } from './draftCore'
 import SectionsPane from './SectionsPane'
+import { documentContrat } from '../../../test/fixtures/contractSamples'
 
 /* CRX36 — le repli automatique des sections est recalculé au CHANGEMENT DE
    LEAD, plus seulement au montage du composant.
@@ -94,5 +95,47 @@ describe('CRX36 — repli des sections recalculé au changement de lead', () => 
     const enCoursDeSaisie = { ...state, fields: { ...state.fields, ville: 'Rabat' } }
     rerender(<SectionsPane state={enCoursDeSaisie} {...base} />)
     expect(sectionsDepliees()).toEqual(avant)
+  })
+})
+
+/* AGR416 — lead AGRICOLE : trois sections résidentielles repliées, Pompage
+   ouverte. Lead de base = l'exemple du contrat partagé `lead_pompage.json`
+   (importé, jamais inventé) ; on y ajoute les champs RÉSIDENTIELS partiels qui,
+   sur un lead résidentiel, laissent ces sections OUVERTES — de sorte que le
+   repli observé ne vient QUE du segment. */
+describe('AGR416 — repli des sections résidentielles d’un lead agricole', () => {
+  const contrat = documentContrat('crm', 'lead_pompage')
+  const residentielPartiel = {
+    facture_hiver: 900, surface_toiture_m2: 80, equip_piscine: true,
+  }
+  const etatPour = (extra) => initState({
+    lead: { ...contrat.exemple, ...residentielPartiel, ...extra }, mode: 'edit',
+  })
+  const ouvertes = () => sectionsDepliees()
+  const LIBELLES = ['Profil énergétique', "Questionnaire d'appel", 'Toiture & site']
+
+  it('lead agricole : énergie, questionnaire d’appel et toiture repliés, Pompage ouvert', () => {
+    render(<SectionsPane state={etatPour({})} {...base} />)
+    const liste = ouvertes()
+    for (const l of LIBELLES) expect(liste.some((t) => t.includes(l))).toBe(false)
+    expect(liste.some((t) => t.includes('Pompage'))).toBe(true)
+    // Repliées, jamais supprimées.
+    for (const l of LIBELLES) {
+      expect(screen.getAllByRole('button', { expanded: false })
+        .some((b) => b.textContent.includes(l))).toBe(true)
+    }
+  })
+
+  it('même lead en résidentiel : ces trois sections restent ouvertes, aucune « Pompage »', () => {
+    render(<SectionsPane state={etatPour({ type_installation: 'residentiel' })} {...base} />)
+    const liste = ouvertes()
+    for (const l of LIBELLES) expect(liste.some((t) => t.includes(l))).toBe(true)
+    expect(screen.queryByText('Pompage')).toBeNull()
+  })
+
+  it('un choix persisté de l’utilisatrice prime sur le repli agricole', () => {
+    localStorage.setItem('taqinor.lw.collapsed', JSON.stringify({ toiture: false }))
+    render(<SectionsPane state={etatPour({})} {...base} />)
+    expect(ouvertes().some((t) => t.includes('Toiture & site'))).toBe(true)
   })
 })

@@ -308,6 +308,20 @@ const ESTIMATE_LABELS = {
   bassinM3: 'Bassin recommandé (m³)',
 }
 
+// AGR416 — pour un lead AGRICOLE, les clés `ecoMad*` de `web_estimate` sont
+// la bande « économie carburant 75-90 % » de l'ancien site : NON SOURCÉE,
+// retirée. Elles restent visibles (elles disent ce que le visiteur a vu) mais
+// ne se présentent plus jamais comme une économie à répéter.
+const MENTION_ECO_NON_SOURCEE =
+  "Économie montrée par l'ancien site (bande non sourcée, retirée) — ne pas la répéter"
+const ESTIMATE_LABELS_AGRICOLE = {
+  ...ESTIMATE_LABELS,
+  ecoMadMonthLow: `${ESTIMATE_LABELS.ecoMadMonthLow} — ${MENTION_ECO_NON_SOURCEE}`,
+  ecoMadMonthHigh: `${ESTIMATE_LABELS.ecoMadMonthHigh} — ${MENTION_ECO_NON_SOURCEE}`,
+  ecoMadYearLow: `${ESTIMATE_LABELS.ecoMadYearLow} — ${MENTION_ECO_NON_SOURCEE}`,
+  ecoMadYearHigh: `${ESTIMATE_LABELS.ecoMadYearHigh} — ${MENTION_ECO_NON_SOURCEE}`,
+}
+
 function itemsFromStructured(server) {
   return WEB_QUESTIONNAIRE_STRUCTURED_FIELDS
     .map((k) => (estValeurWebRenseignee(server[k])
@@ -338,7 +352,10 @@ export function SectionWebQuestionnaire({ state }) {
   const server = state.server || {}
   const structures = itemsFromStructured(server)
   const questionnaire = itemsFromObject(server.web_questionnaire, null)
-  const estimation = itemsFromObject(server.web_estimate, ESTIMATE_LABELS)
+  const estimation = itemsFromObject(
+    server.web_estimate,
+    getField(state, 'type_installation') === 'agricole'
+      ? ESTIMATE_LABELS_AGRICOLE : ESTIMATE_LABELS)
 
   if (!structures.length && !questionnaire.length && !estimation.length) return null
 
