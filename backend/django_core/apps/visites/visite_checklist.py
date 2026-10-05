@@ -25,6 +25,9 @@ NOMBRE = 'nombre'
 BOOLEEN = 'booleen'
 TEXTE = 'texte'
 CHOIX = 'choix'
+#: CIQ600 — liste d'éléments (trajets de câbles, zones de toiture) : la
+#: déclaration porte ``forme`` (les champs d'UN élément).
+LISTE = 'liste'
 
 # Types de manquants exposés dans le bloc ``completude`` du contrat.
 MANQUE_PHOTO = 'photo'
@@ -387,18 +390,169 @@ CATEGORIES_POINT_EAU = [
     },
 ]
 
+#: CIQ600 (D-CIQ-5, contrat CIQ5 ``visite_terrain.json`` → ``gabarit_ci``) —
+#: la visite d'un site PROFESSIONNEL (lead commercial ou industriel) : socle
+#: commun + BT. Elle REMPLACE le gabarit résidentiel (toit_plat, local
+#: onduleur…). Les zones de toiture (CIQ602) et le supplément MT (CIQ660)
+#: s'y ajoutent. Mêmes règles dures : AUCUN seuil, AUCUN verdict.
+CATEGORIES_CI = [
+    {
+        'categorie': 'tableau_general',
+        'libelle': 'Tableau général (TGBT)',
+        'slots': [
+            {
+                'code': 'tgbt_ouvert',
+                'libelle': 'TGBT ouvert (appareil de tête et départs)',
+                'guide': 'Capot ouvert, calibres et étiquettes lisibles.',
+                'requis': True,
+                'min_photos': 1,
+            },
+        ],
+        'mesures': [
+            {'code': 'calibre_a',
+             'libelle': "Calibre de l'appareil de tête (A)",
+             'unite': 'A', 'nature': NOMBRE, 'requis': True},
+            {'code': 'depart_disponible',
+             'libelle': 'Départ disponible pour le PV',
+             'nature': BOOLEEN, 'requis': True},
+            {'code': 'regime_neutre', 'libelle': 'Régime de neutre',
+             'nature': CHOIX, 'requis': False,
+             'choix': ['TT', 'TN', 'IT', 'inconnu']},
+            {'code': 'parafoudre_existant', 'libelle': 'Parafoudre existant',
+             'nature': BOOLEEN, 'requis': False},
+        ],
+    },
+    {
+        'categorie': 'comptage',
+        'libelle': 'Comptage',
+        'slots': [
+            {
+                'code': 'comptage_plaque',
+                'libelle': 'Plaque du compteur',
+                'guide': 'Plaque lisible : type, calibre, puissance.',
+                'requis': True,
+                'min_photos': 1,
+            },
+            {
+                'code': 'comptage_contrat',
+                'libelle': 'Contrat ou facture (optionnel)',
+                'guide': 'La page du contrat qui porte la puissance souscrite.',
+                'requis': False,
+                'min_photos': 1,
+            },
+        ],
+        'mesures': [
+            {'code': 'type_compteur', 'libelle': 'Type de compteur',
+             'nature': TEXTE, 'requis': True},
+            {'code': 'niveau_tension_constate',
+             'libelle': 'Niveau de tension constaté',
+             'nature': CHOIX, 'requis': True,
+             'choix': ['bt', 'mt', 'inconnu']},
+            {'code': 'puissance_souscrite_kva_constatee',
+             'libelle': 'Puissance souscrite constatée (plaque / contrat)',
+             'unite': 'kVA', 'nature': NOMBRE, 'requis': False},
+        ],
+    },
+    {
+        'categorie': 'cheminement',
+        'libelle': 'Cheminement des câbles',
+        'slots': [
+            {
+                'code': 'cheminement_parcours',
+                'libelle': 'Parcours toit → onduleur',
+                'guide': 'Photos du trajet prévu des câbles (optionnel).',
+                'requis': False,
+                'min_photos': 1,
+            },
+        ],
+        'mesures': [
+            # Longueurs DC et AC REQUISES : au moins un trajet porte chacune.
+            {'code': 'trajets', 'libelle': 'Trajets de câbles',
+             'nature': LISTE, 'requis': True,
+             'au_moins_un': ['longueur_dc_m', 'longueur_ac_m'],
+             'forme': [
+                 {'code': 'libelle', 'libelle': 'Trajet', 'nature': TEXTE,
+                  'requis': False},
+                 {'code': 'longueur_dc_m', 'libelle': 'Longueur DC (m)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'longueur_ac_m', 'libelle': 'Longueur AC (m)',
+                  'nature': NOMBRE, 'requis': False},
+             ]},
+        ],
+    },
+    {
+        'categorie': 'acces_securite',
+        'libelle': 'Accès et sécurité',
+        'slots': [
+            {
+                'code': 'acces_toiture',
+                'libelle': 'Accès à la toiture',
+                'guide': 'Escalier, échelle, trappe : comment on monte.',
+                'requis': True,
+                'min_photos': 1,
+            },
+        ],
+        'mesures': [
+            {'code': 'escalier', 'libelle': "Escalier d'accès",
+             'nature': BOOLEEN, 'requis': False},
+            {'code': 'echelle', 'libelle': 'Échelle nécessaire',
+             'nature': BOOLEEN, 'requis': False},
+            {'code': 'nacelle', 'libelle': 'Nacelle nécessaire',
+             'nature': BOOLEEN, 'requis': False},
+            {'code': 'grue_possible', 'libelle': 'Grue possible',
+             'nature': BOOLEEN, 'requis': False},
+            {'code': 'horaires_acces', 'libelle': "Horaires d'accès au site",
+             'nature': TEXTE, 'requis': False},
+            {'code': 'zones_fragiles',
+             'libelle': 'Zones fragiles (lanterneaux, bac corrodé…)',
+             'nature': TEXTE, 'requis': False},
+        ],
+    },
+    {
+        'categorie': 'autres_autorisations',
+        'libelle': 'Autres autorisations',
+        'slots': [],
+        'mesures': [
+            {'code': 'texte',
+             'libelle': ('Autres autorisations à confirmer avec le client '
+                         '(décret 2.25.100 art. 26)'),
+             'nature': TEXTE, 'requis': False},
+        ],
+    },
+    {
+        'categorie': 'general',
+        'libelle': 'Général',
+        'slots': [
+            {
+                'code': 'general_facade',
+                'libelle': 'Façade du bâtiment',
+                'guide': "Vue d'ensemble depuis la rue.",
+                'requis': True,
+                'min_photos': 1,
+            },
+        ],
+        'mesures': [],
+    },
+]
+
 #: AGR412 — les gabarits de visite (``VisiteTerrain.gabarit``).
 GABARIT_TOITURE = 'toiture'
 GABARIT_POINT_EAU = 'point_eau'
+GABARIT_CI = 'ci'
 _PAR_GABARIT = {
     GABARIT_TOITURE: CATEGORIES,
     GABARIT_POINT_EAU: CATEGORIES_POINT_EAU,
+    GABARIT_CI: CATEGORIES_CI,
 }
 
 
-def categories(gabarit=GABARIT_TOITURE):
+def categories(gabarit=GABARIT_TOITURE, niveau=None):
     """Les catégories du ``gabarit``, dans l'ordre du wizard (toiture par
-    défaut : un gabarit inconnu retombe sur la checklist historique)."""
+    défaut : un gabarit inconnu retombe sur la checklist historique).
+
+    ``niveau`` = la mesure ``comptage.niveau_tension_constate`` : seul le
+    gabarit ``ci`` le lira (le supplément MT est branché par CIQ660) ; ``bt``,
+    ``inconnu`` ou ``None`` servent le socle commun + BT."""
     return _PAR_GABARIT.get(gabarit or GABARIT_TOITURE, CATEGORIES)
 
 
@@ -464,3 +618,35 @@ def mesure_requise(champ, valeurs):
     if dispense and bool((valeurs or {}).get(dispense)):
         return False
     return True
+
+
+def liste_manquants(champ, elements):
+    """CIQ600 — ce qui manque dans une mesure ``LISTE`` : liste de
+    ``(code, libelle)``. Une liste vide manque en bloc quand elle est requise ;
+    sinon chaque champ requis d'un élément, puis la règle ``au_moins_un``
+    (au moins un élément porte chacun des champs cités)."""
+    elements = [el for el in (elements or []) if isinstance(el, dict)]
+    manque = []
+    if not elements:
+        if champ.get('requis'):
+            manque.append((champ['code'], champ['libelle']))
+        return manque
+    for index, element in enumerate(elements, start=1):
+        repere = element.get('id') or str(index)
+        nom = element.get('libelle') or f'élément {index}'
+        for sous in champ['forme']:
+            if not sous.get('requis'):
+                continue
+            valeur = element.get(sous['code'])
+            if valeur is None or valeur == '':
+                manque.append((
+                    f"{champ['code']}[{repere}].{sous['code']}",
+                    f"{champ['libelle']} — {nom} : {sous['libelle']}"))
+    formes = {sous['code']: sous for sous in champ['forme']}
+    for code in champ.get('au_moins_un') or []:
+        if not any(el.get(code) not in (None, '') for el in elements):
+            manque.append((
+                f"{champ['code']}.{code}",
+                f"{champ['libelle']} : {formes[code]['libelle']} "
+                '(au moins un trajet)'))
+    return manque

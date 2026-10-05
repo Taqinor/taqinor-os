@@ -271,11 +271,15 @@ def visite_en_attente(lead):
 def gabarit_pour_lead(lead):
     """AGR412 (D-AGR-4) — le gabarit d'une visite d'après le TYPE du lead que
     le CRM passe (l'objet lead lui-même : aucun import de ``apps.crm``) :
-    ``point_eau`` pour un lead agricole, ``toiture`` sinon."""
+    ``point_eau`` pour un lead agricole, ``ci`` (CIQ600, D-CIQ-5) pour un lead
+    commercial ou industriel, ``toiture`` sinon."""
     from .models import VisiteTerrain
 
-    if (getattr(lead, 'type_installation', None) or '') == 'agricole':
+    type_lead = getattr(lead, 'type_installation', None) or ''
+    if type_lead == 'agricole':
         return VisiteTerrain.Gabarit.POINT_EAU
+    if type_lead in ('commercial', 'industriel'):
+        return VisiteTerrain.Gabarit.CI
     return VisiteTerrain.Gabarit.TOITURE
 
 
@@ -380,9 +384,13 @@ def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
 
     C'est la porte que le CRM appelle depuis la fiche lead (frontière M3 : il
     n'importe jamais ``apps.visites.models``). Doctrine fondateur : la visite
-    se place APRÈS l'envoi du devis, comme outil de closing — la planifier est
-    donc un GESTE COMMERCIAL, pas une opération d'administration du planning
-    terrain.
+    se place, selon le segment du lead (D-CIQ-5) : résidentiel, APRÈS l'envoi
+    du devis, comme outil de closing ; site professionnel (commercial ou
+    industriel), AVANT le devis final si le site est MT ou si tension,
+    puissance souscrite ou toit restent inconnus après l'appel. Planifier est
+    un GESTE COMMERCIAL, pas une opération d'administration du planning
+    terrain. Le gabarit de la visite (``toiture`` / ``point_eau`` / ``ci``)
+    suit le type du lead, recalculé tant que la visite est brouillon.
 
     Renvoie ``(visite, erreurs)`` — même forme que ``enregistrer_mesures`` :
     ``erreurs`` est le dict ``{champ: [messages FR]}`` servi tel quel en 400,
@@ -564,6 +572,40 @@ def renvoyer_visite(visite, user, *, photos=None, mesures=None, motif=''):
 # incrément) : rejouer deux fois la même opération donne exactement le même
 # état — c'est ce que le moteur hors-ligne exige de tout handler.
 
+def valeur_liste(declaration, brute):
+    """CIQ600 — valide une mesure ``LISTE`` (liste d'objets dont les champs
+    sont ceux de ``declaration['forme']``). Renvoie ``(elements, message)`` :
+    chaque élément porte TOUS les champs de la forme (``None`` si non saisi),
+    un champ inconnu est refusé en le nommant, et la valeur d'un champ passe
+    par ``valeur_mesure`` (nature, positivité)."""
+    if not isinstance(brute, list):
+        return None, (f"« {declaration['libelle']} » attend une liste "
+                      "d'éléments.")
+    formes = {sous['code']: sous for sous in declaration['forme']}
+    prefixe = declaration.get('id_prefixe')
+    propres = []
+    for index, element in enumerate(brute, start=1):
+        if not isinstance(element, dict):
+            return None, (f"« {declaration['libelle']} » : l'élément {index} "
+                          'doit être un objet.')
+        propre = {}
+        if prefixe:
+            propre['id'] = (str(element.get('id') or '').strip()
+                            or f'{prefixe}{index}')
+        for code, sous in formes.items():
+            valeur, message = valeur_mesure(sous, element.get(code))
+            if message:
+                return None, (f"« {declaration['libelle']} » (élément "
+                              f'{index}) : {message}')
+            propre[code] = valeur
+        inconnus = [c for c in element if c not in formes and c != 'id']
+        if inconnus:
+            return None, (f"« {declaration['libelle']} » (élément {index}) : "
+                          f'champ inconnu « {inconnus[0]} ».')
+        propres.append(propre)
+    return propres, None
+
+
 def valeur_mesure(declaration, brute):
     """Convertit/valide UNE valeur de mesure. Renvoie ``(valeur, message)``.
 
@@ -578,6 +620,8 @@ def valeur_mesure(declaration, brute):
     if brute is None or brute == '':
         return None, None
     nature = declaration['nature']
+    if nature == checklist.LISTE:
+        return valeur_liste(declaration, brute)
     if nature == checklist.NOMBRE:
         try:
             nombre = Decimal(str(brute))

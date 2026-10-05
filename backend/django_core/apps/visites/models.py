@@ -78,6 +78,9 @@ class VisiteTerrain(TenantModel):
     class Gabarit(models.TextChoices):
         TOITURE = 'toiture', 'Toiture'
         POINT_EAU = 'point_eau', "Relevé du point d'eau"
+        #: CIQ600 (D-CIQ-5) — relevé d'un site professionnel (commercial ou
+        #: industriel) : socle commun + BT, zones de toiture répétables.
+        CI = 'ci', 'Relevé commerce / industrie'
 
     statut = models.CharField(
         max_length=12, choices=Statut.choices, default=Statut.BROUILLON,

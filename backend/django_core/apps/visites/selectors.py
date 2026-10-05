@@ -113,13 +113,18 @@ def _visite_mesures(visite):
 
     saisies = visite.mesures if isinstance(visite.mesures, dict) else {}
     rendu = {}
-    for cat in checklist.categories(_gabarit(visite)):
+    gabarit = _gabarit(visite)
+    for cat in checklist.categories(gabarit):
         champs = cat['mesures']
-        if not champs:
+        # CIQ600 — le contrat ``ci`` rend aussi les catégories sans mesure
+        # (``general: {}``) ; les autres gabarits restent identiques.
+        if not champs and gabarit != checklist.GABARIT_CI:
             continue
         valeurs = saisies.get(cat['categorie']) or {}
         rendu[cat['categorie']] = {
-            champ['code']: valeurs.get(champ['code'], None)
+            champ['code']: valeurs.get(
+                champ['code'],
+                [] if champ['nature'] == checklist.LISTE else None)
             for champ in champs
         }
     return rendu
@@ -148,6 +153,16 @@ def _visite_manquants(blocs, mesures_rendues, gabarit=None):
     for cat in checklist.categories(gabarit):
         valeurs = mesures_rendues.get(cat['categorie']) or {}
         for champ in cat['mesures']:
+            if champ['nature'] == checklist.LISTE:
+                for code, libelle in checklist.liste_manquants(
+                        champ, valeurs.get(champ['code'])):
+                    manquants.append({
+                        'type': checklist.MANQUE_MESURE,
+                        'categorie': cat['categorie'],
+                        'code': code,
+                        'libelle': libelle,
+                    })
+                continue
             if not checklist.mesure_requise(champ, valeurs):
                 continue
             valeur = valeurs.get(champ['code'])
@@ -226,8 +241,9 @@ def contexte_visite_terrain(visite):
         'notes': visite.notes or '',
         'modifiable': visite.modifiable,
         'raison_lecture_seule': visite.raison_lecture_seule,
-        # AGR412 — aucun toit à assembler sur un relevé du point d'eau.
-        'photo_toit': None if _gabarit(visite) == 'point_eau' else {
+        # AGR412 — aucun toit à assembler sur un relevé du point d'eau ;
+        # CIQ600 — ni sur un relevé de site professionnel (zones de toiture).
+        'photo_toit': None if _gabarit(visite) in ('point_eau', 'ci') else {
             'assemblage_etat': visite.assemblage_etat,
             'assemblage_erreur': visite.assemblage_erreur or '',
             'url': (f'/api/django/visites/visites/{visite.id}/photo-toit/'
@@ -396,6 +412,25 @@ def recap_visite_terrain(visite):
             morceaux.append(f'autorisation ABH {autorisation}')
         moment = visite.date_realisee or visite.date_prevue
         entete = "Relevé du point d'eau validé"
+        if moment is not None:
+            entete += f' — réalisé le {moment.strftime("%d/%m/%Y")}'
+        if not morceaux:
+            return entete + '.'
+        return entete + ' : ' + ', '.join(morceaux) + '.'
+    if _gabarit(visite) == 'ci':
+        # CIQ600 — relevé d'un site professionnel : seules les valeurs
+        # réellement saisies, jamais une mesure résidentielle ni un défaut.
+        calibre = nombre('tableau_general', 'calibre_a')
+        if calibre:
+            morceaux.append(f"appareil de tête {calibre} A")
+        tension = valeur('comptage', 'niveau_tension_constate')
+        if tension:
+            morceaux.append(f'tension {tension}')
+        puissance = nombre('comptage', 'puissance_souscrite_kva_constatee')
+        if puissance:
+            morceaux.append(f'puissance souscrite {puissance} kVA')
+        moment = visite.date_realisee or visite.date_prevue
+        entete = 'Relevé du site professionnel validé'
         if moment is not None:
             entete += f' — réalisé le {moment.strftime("%d/%m/%Y")}'
         if not morceaux:
