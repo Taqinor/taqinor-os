@@ -584,12 +584,12 @@ const calepinageApi = {
 }
 
 export default calepinageApi
-// ACAL ACAL1 — contrat calepinage_layout_section.json (M0, remplacé par l'usage réel dans la moitié cliente)
-// ACAL3 — contrat calepinage_publication.json (M0, remplacé par l'usage réel dans la moitié cliente)
-// ACAL9 — contrat calepinage_entree_electrique.json (M0, remplacé par l'usage réel dans la moitié cliente)
-// ACAL9 — contrat calepinage_publication_electrique.json (M0, remplacé par l'usage réel dans la moitié cliente)
-// ACAL11 — contrat calepinage_liste.json (M0, remplacé par l'usage réel dans la moitié cliente)
-// ACAL12 — contrat calepinage_creation_conflit.json (M0, remplacé par l'usage réel dans la moitié cliente)
-// ACAL13 — contrat calepinage_photos.json (M0, remplacé par l'usage réel dans la moitié cliente)
-// ACAL15 — contrat gabarits_dossier_reglementaire.json (M0, remplacé par l'usage réel dans la moitié cliente)
-// ACAL21 — contrat calepinage_consommation_proposee.json (M0, remplacé par l'usage réel dans la moitié cliente)
+// ACAL1 — contrat calepinage_layout_section.json (M0)
+// ACAL3 — contrat calepinage_publication.json (M0)
+// ACAL9 — contrat calepinage_entree_electrique.json (M0)
+// ACAL9 — contrat calepinage_publication_electrique.json (M0)
+// ACAL11 — contrat calepinage_liste.json (M0)
+// ACAL12 — contrat calepinage_creation_conflit.json (M0)
+// ACAL13 — contrat calepinage_photos.json (M0)
+// ACAL15 — contrat gabarits_dossier_reglementaire.json (M0)
+// ACAL21 — contrat calepinage_consommation_proposee.json (M0)
