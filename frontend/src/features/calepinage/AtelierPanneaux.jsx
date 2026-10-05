@@ -341,7 +341,12 @@ export default function AtelierPanneaux({
 
       {/* CAL70 — les allées de maintenance et le plateau gratuit du moteur.
           Même appel de `entreeMoteur()` que ci-dessus, même raison. */}
-      <PanneauAllees entree={builderApi?.entreeMoteur?.() ?? null} lectureSeule={enLectureSeule} />
+      <PanneauAllees
+        entree={builderApi?.entreeMoteur?.() ?? null}
+        lectureSeule={enLectureSeule}
+        calepinageId={calepinageId}
+        builderApi={builderApi}
+      />
 
       {/* CAL101 — l'aide-mémoire des raccourcis, à portée de « ? ». */}
       <div className="mt-4">

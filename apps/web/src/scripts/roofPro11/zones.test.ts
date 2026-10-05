@@ -30,7 +30,7 @@ import {
 } from './zones';
 import { hydrateFromDevis, serializeLayout, type SerializedLayout } from './prefill'; // ACAL64
 import { type Ctx } from './context'; // ACAL64
-import { type AreaRecord } from './types';
+import { lireGabaritsZone, lireGabaritsObstacle, type AreaRecord } from './types';
 import { type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
 
@@ -487,5 +487,47 @@ describe('ACAL71 — nouveauPanDepuisContour', () => {
     if (!hors.ok) expect(hors.motif).toMatch(/amplitude GPS/);
     expect(nouveauPanDepuisContour([[-7.6, 33.5], [-7.5, 33.5]], []).ok).toBe(false);
     expect(nouveauPanDepuisContour('pas un contour', []).ok).toBe(false);
+  });
+});
+
+describe('ACAL291 — une zone posée depuis un gabarit réglementaire porte sa source', () => {
+  const SECTION = {
+    coupe_feu: {
+      libelle: 'Bande coupe-feu', nature: 'INTERDITE', genre: 'bande', largeur_m: 1, cote: 'nord',
+      retrait_m: 0.5, hauteur_m: 0.2, source: 'Note de service SDIS n°7',
+    },
+    sans_source: { libelle: 'Servitude', nature: 'RESERVEE', genre: 'polygone', sommets: [[0, 0], [1, 0], [1, 1]] },
+    cheminee: { libelle: 'Cheminée', nature: 'INTERDITE', forme: 'rectangle', longueur_m: 1, largeur_m: 1, source: 'catalogue' },
+    souche: { libelle: 'Souche ronde', nature: 'INTERDITE', genre: 'polygone', forme: 'cercle', rayon_m: 0.4, source: 'catalogue' },
+  };
+
+  it('zone posée depuis un gabarit porte sa source et la ressort au même octet après serialize → deserialize → serialize', () => {
+    const { gabarits } = lireGabaritsZone(SECTION);
+    const g = gabarits.find((x) => x.cle === 'coupe_feu')!;
+    const zone = exclusionZoneFromDrag('zone-1', g.nature, A, B, g);
+    expect(zone).toMatchObject({
+      label: 'Bande coupe-feu', nature: 'INTERDITE', setbackM: 0.5, heightM: 0.2, source: 'Note de service SDIS n°7',
+    });
+    const un = serializeExclusionZones([zone]);
+    expect(un[0].source).toBe('Note de service SDIS n°7');
+    const deux = serializeExclusionZones(deserializeExclusionZones(un));
+    expect(JSON.stringify(deux)).toBe(JSON.stringify(un));
+  });
+
+  it('une zone dessinée sans gabarit n’a pas de source', () => {
+    const zone = exclusionZoneFromDrag('zone-2', 'INTERDITE', A, B);
+    expect('source' in zone).toBe(false);
+    expect('source' in serializeExclusionZones([zone])[0]).toBe(false);
+  });
+
+  it('lireGabaritsZone ignore les gabarits d’obstacle et refuse un gabarit sans source', () => {
+    const { gabarits, refuses } = lireGabaritsZone(SECTION);
+    expect(gabarits.map((g) => g.cle)).toEqual(['coupe_feu']);
+    expect(refuses.map((r) => r.cle)).toEqual(['sans_source']);
+    expect(refuses[0].motif).toContain('source');
+    // Le jumeau obstacle reste inchangé : il lit toujours la cheminée.
+    expect(lireGabaritsObstacle(SECTION).gabarits.some((g) => g.cle === 'cheminee')).toBe(true);
+    // Section absente / bancale : l'état vide, jamais une zone inventée.
+    expect(lireGabaritsZone(undefined)).toEqual({ gabarits: [], refuses: [] });
   });
 });

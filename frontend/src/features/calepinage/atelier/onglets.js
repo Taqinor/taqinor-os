@@ -89,6 +89,10 @@ export const ONGLETS = [
   { cle: 'projet', libelle: 'Projet', groupe: 'Dossiers', ordre: 270, composant: lazy(() => import('./Projet')) }, // CALX371
 
   { cle: 'diff-versions', libelle: 'Comparer les versions', groupe: 'Dossiers', ordre: 185, composant: lazy(() => import('./DiffVersions')) }, // CALX346
+
+  { cle: 'materiel-electrique', libelle: 'Matériel électrique', groupe: 'Système', ordre: 215, composant: lazy(() => import('../electrique/MaterielElectrique')) }, // ACAL149
+  { cle: 'saisies-electriques', libelle: 'Saisies électriques', groupe: 'Système', ordre: 216, composant: lazy(() => import('../electrique/SaisiesElectriques')) }, // ACAL153
+  { cle: 'decisions-electriques', libelle: 'Décisions électriques', groupe: 'Système', ordre: 217, composant: lazy(() => import('../electrique/DecisionsElectriques')) }, // ACAL154
 ]
 
 /**

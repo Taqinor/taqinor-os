@@ -55,7 +55,7 @@ def _identifiant(brut):
 
 
 def _reponse(calepinage, *, cree):
-    from .calepinages import _reference
+    from ..services.presentation import reference_calepinage as _reference
 
     return {
         'calepinage': calepinage.pk,
