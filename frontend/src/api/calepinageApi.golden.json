@@ -319,6 +319,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.enregistrerEditionSld": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/schema-unifilaire/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.enregistrerEntreeElectrique": [
     {
       "config": null,

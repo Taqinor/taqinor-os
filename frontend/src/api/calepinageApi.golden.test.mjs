@@ -37,7 +37,7 @@ const GOLDEN_PATH = join(here, 'calepinageApi.golden.json')
 const API_PATH = join(here, 'calepinageApi.js')
 
 // Valeur CAPTURÉE le 04/10/2026 (79 `calepinages` + 3 `moteur` + 6 `parametres`).
-const NOMBRE_CLES_EXTRAITES = 91
+const NOMBRE_CLES_EXTRAITES = 92
 
 /* ── L'axios factice ENREGISTREUR (module autonome, servi en data: URL) ──── */
 const AXIOS_ENREGISTREUR = `
@@ -166,7 +166,7 @@ test('SPL291 — le golden couvre toutes les clés de feuille + le CRUD partagé
   for (const id of cles) assert.ok(golden[id].length >= 1, `${id} n'a émis aucun appel HTTP`)
 })
 
-test('SPL291 — extraireCles(calepinageApi.js) rend exactement les 91 clés capturées', () => {
+test('SPL291 — extraireCles(calepinageApi.js) rend exactement les 92 clés capturées', () => {
   const cles = extraireCles(readFileSync(API_PATH, 'utf8'))
   assert.equal(cles.length, NOMBRE_CLES_EXTRAITES)
   const runtime = new Set(Object.keys(golden))
@@ -188,7 +188,7 @@ test('SPL291 — test-du-test : une URL mutée ou une clé retirée rougit', () 
   const avecCleNeuve = { ...structuredClone(golden), 'calepinages.capaciteNeuve': [] }
   assert.deepEqual(comparerAuGolden(golden, avecCleNeuve), [], 'une clé neuve ne rougit pas')
 
-  // Nombre de clés muté dans une copie du source ⇒ extraireCles s'écarte de 91.
+  // Nombre de clés muté dans une copie du source ⇒ extraireCles s'écarte de 92.
   const src = readFileSync(API_PATH, 'utf8')
   const mute = src.replace(/^ {4}modeles: \(\) =>[^\n]*\n/m, '')
   assert.notEqual(mute, src)

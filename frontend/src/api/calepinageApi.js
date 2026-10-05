@@ -544,6 +544,11 @@ const calepinageApi = {
     // résolu et les candidats (contrat `calepinage_entree_electrique.json`).
     // Le POST reste `enregistrerEntreeElectrique` (au-dessus).
     entreeElectrique: (id) => api.get(`${pivot(id)}entree-electrique/`),
+
+    // ACAL161 — l'ÉDITION du schéma unifilaire (libellés et repères par clef de bloc ;
+    // `null` efface une rubrique). Le serveur fusionne clé par clé (ACAL160) et renvoie le
+    // MÊME document que le GET `schemaUnifilaire`, édition appliquée.
+    enregistrerEditionSld: (id, edition) => api.post(`${pivot(id)}schema-unifilaire/`, edition),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
