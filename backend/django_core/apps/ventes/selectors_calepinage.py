@@ -223,13 +223,16 @@ def devis_brouillon_pour_layout(company, lead_id, empreinte):
 
     Scopée société, et seulement les BROUILLONS : un devis déjà envoyé ne se
     « réutilise » pas — il se révise.
+
+    ACAL88 (C-ACAL-104) — et seulement les brouillons ACTIFS : un brouillon
+    archivé (``is_active=False``, QJR661) n'est plus jamais rendu.
     """
     from .models import Devis
 
     if company is None or not lead_id or not empreinte:
         return None
     return (Devis.objects
-            .filter(company=company, lead_id=lead_id,
+            .filter(company=company, lead_id=lead_id, is_active=True,
                     statut=Devis.Statut.BROUILLON, layout_hash=empreinte)
             .order_by('-date_creation')
             .first())

@@ -13,7 +13,6 @@ dans les corps (patchs ``apps.ventes.utils.pdf.*``,
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from ..models import Devis
 from authentication.permissions import IsResponsableOrAdmin
 from ..utils.client_links import chemin_proposition
 from .devis_gardes import _refus_modifiabilite, _reponse_non_modifiable
@@ -68,7 +67,8 @@ class DevisCalepinageActionsMixin:
         from decimal import Decimal
         from ..services import (
             AutoDevisError, build_devis_from_layout, layout_hash,
-            validate_composition_for_layout)
+            poser_layout_hash, validate_composition_for_layout)
+        from ..selectors import devis_brouillon_pour_layout
         from ..models import ShareLink
 
         company = request.user.company
@@ -175,19 +175,13 @@ class DevisCalepinageActionsMixin:
 
         # QJ17 — idempotency: dedupe by lead + layout hash.
         # Re-clicking « Générer » returns the existing brouillon, not a duplicate.
+        # ACAL88 — la dédup est CELLE du sélecteur (brouillons ACTIFS
+        # seulement, la même que le module calepinage) : la copie inline est
+        # SUPPRIMÉE, un brouillon archivé n'est plus jamais rendu.
         lhash = layout_hash(layout)
         existing = None
         if lead_obj is not None and lhash:
-            existing = (
-                Devis.objects.filter(
-                    company=company,
-                    lead=lead_obj,
-                    statut=Devis.Statut.BROUILLON,
-                    layout_hash=lhash,
-                )
-                .order_by('-date_creation')
-                .first()
-            )
+            existing = devis_brouillon_pour_layout(company, lead_obj.pk, lhash)
         if existing is not None:
             link = ShareLink.for_devis(existing)
             import logging as _logging
@@ -201,6 +195,8 @@ class DevisCalepinageActionsMixin:
                     'statut': existing.statut,
                     'proposal_token': link.token,
                     'proposal_path': chemin_proposition(existing, link.token),
+                    'avertissements': [],
+                    'marques_manquantes': [],
                     'deduplicated': True,
                 },
                 status=status.HTTP_200_OK)
@@ -215,6 +211,9 @@ class DevisCalepinageActionsMixin:
         # CAL185 — le rapport « à renseigner » n'existe que sur l'entrée
         # calepinage ; l'entrée historique est byte-identique.
         rapport = None
+        # ACAL88 — le canal de la construction (U3) : ce que la composition a
+        # refusé de faire remonte dans la réponse (contrat devis_from_layout).
+        journal = {}
         try:
             if nomenclature is not None:
                 from ..services import build_devis_depuis_calepinage_retenu
@@ -225,7 +224,8 @@ class DevisCalepinageActionsMixin:
             else:
                 devis = build_devis_from_layout(
                     layout=layout, user=request.user, company=company,
-                    lead=lead_obj, client=client_obj, **_composition)
+                    lead=lead_obj, client=client_obj, journal=journal,
+                    **_composition)
         except AutoDevisError as refus:
             # ACAL32 — un refus de composition (site isolé non servable…) est
             # un 422 NOMMÉ, jamais un 500 ; rien n'a été écrit.
@@ -234,9 +234,8 @@ class DevisCalepinageActionsMixin:
 
         # QJ17 — persist the layout hash on the newly-created devis so future
         # duplicate requests are caught in O(1).
-        if lhash:
-            Devis.objects.filter(pk=devis.pk).update(layout_hash=lhash)
-            devis.layout_hash = lhash
+        # ACAL88 — l'écriture inline est SUPPRIMÉE : le poseur unique.
+        poser_layout_hash(devis, lhash)
 
         # PV79 — la conception 3D est FINALISÉE. Aucun statut ne bouge : on
         # ANNONCE seulement le fait, et les abonnés (crm : note au chatter du
@@ -250,6 +249,12 @@ class DevisCalepinageActionsMixin:
             'statut': devis.statut,
             'proposal_token': link.token,
             'proposal_path': chemin_proposition(devis, link.token),
+            # ACAL88 / ACAL4 — la branche ToitureDesign.jsx qui les lit
+            # devient vivante.
+            'avertissements': list(
+                (rapport or journal).get('avertissements') or ()),
+            'marques_manquantes': list(
+                (rapport or journal).get('marques_manquantes') or ()),
         }
         # CAL185 — clés AJOUTÉES seulement sur l'entrée calepinage : la
         # réponse de l'entrée historique ne bouge pas d'un octet.
