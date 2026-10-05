@@ -71,9 +71,13 @@ class ChecklistPointEauDuContrat(SimpleTestCase):
     def test_le_gabarit_suit_le_type_du_lead(self):
         self.assertEqual(services.gabarit_pour_lead(
             Lead(nom='x', type_installation='agricole')), 'point_eau')
-        for autre in (None, '', 'residentiel', 'commercial', 'industriel'):
+        for autre in (None, '', 'residentiel'):
             self.assertEqual(services.gabarit_pour_lead(
                 Lead(nom='x', type_installation=autre)), 'toiture')
+        # CIQ600 — un site professionnel reçoit le gabarit ``ci``.
+        for pro in ('commercial', 'industriel'):
+            self.assertEqual(services.gabarit_pour_lead(
+                Lead(nom='x', type_installation=pro)), 'ci')
 
 
 class VisitePointEauTests(VisiteTerrainBase):

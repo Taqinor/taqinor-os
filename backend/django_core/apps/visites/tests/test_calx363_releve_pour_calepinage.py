@@ -343,9 +343,30 @@ class ReleveEnBaseTest(TestCase):
             'attachment_id': retenue.id,
         }])
         self.assertIsNone(rendu['motif_absence'])
-        # Aucun horodatage de validation n'est stocké : jamais une autre
-        # date à sa place.
+        # Une visite validée AVANT CIQ604 (créée ici sans horodatage) garde
+        # ``None`` : jamais une autre date à sa place.
         self.assertIsNone(rendu['validee_le'])
+
+    def test_la_visite_validee_par_le_service_porte_sa_date(self):
+        # CIQ604 — ``valider_visite`` pose ``validee_le`` côté serveur.
+        from django.contrib.auth import get_user_model
+
+        from apps.visites import services
+        from apps.visites.models import VisiteTerrain
+
+        valideur = get_user_model().objects.create_user(
+            username='calx363-valideur', password='x', company=self.company,
+            role_legacy='normal')
+        visite = self._visite(VisiteTerrain.Statut.TERMINEE)
+        services.valider_visite(visite, valideur)
+        visite.refresh_from_db()
+
+        rendu = selectors.releve_pour_calepinage(self.lead)
+
+        self.assertEqual(rendu['visite_id'], visite.id)
+        self.assertIsNotNone(visite.validee_le)
+        self.assertEqual(rendu['validee_le'], visite.validee_le.isoformat())
+        self.assertEqual(visite.validee_par_id, valideur.id)
 
     def test_une_visite_d_une_autre_societe_ne_sort_pas(self):
         from apps.visites.models import VisiteTerrain
