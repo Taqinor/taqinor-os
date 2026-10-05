@@ -175,6 +175,11 @@ _CLES_PK = {'devis', 'company', 'client', 'produit', 'lead', 'facture',
             'created_by', 'share_link', 'variante_de', 'remplace_par'}
 
 
+#: Champs de ``ShareLink`` ajoutés APRÈS la capture du golden (ADOC131) ;
+#: leur valeur après ouverture est vérifiée à part (toujours ``None``).
+_CHAMPS_POSTERIEURS_AU_GOLDEN = ('suivi_prolonge_le', 'revoque_le')
+
+
 def _figer(obj):
     """Fige ce qui varie d'un run à l'autre (dates ISO, clés primaires)."""
     if isinstance(obj, dict):
@@ -221,9 +226,16 @@ class ComportementPublicTests(TestCase):
         lien = self._lien(devis)
         res['data_standard'] = _reponse(self._data(lien))
         lien.refresh_from_db()
+        # ADOC131 — ``suivi_prolonge_le`` / ``revoque_le`` sont postérieurs au
+        # golden (capturé avant découpe) : l'ouverture ne doit JAMAIS les
+        # poser (seules l'acceptation et la révocation le font) — vérifié ici,
+        # puis exclus du digest qui reste celui des champs d'avant.
+        self.assertIsNone(lien.suivi_prolonge_le)
+        self.assertIsNone(lien.revoque_le)
         res['ouverture_lien'] = _figer(json.loads(json.dumps(
             {k: v for k, v in model_to_dict(lien).items()
-             if not lien._meta.get_field(k).is_relation}, default=str)))
+             if not lien._meta.get_field(k).is_relation
+             and k not in _CHAMPS_POSTERIEURS_AU_GOLDEN}, default=str)))
         res['data_standard_reouverture'] = _reponse(self._data(lien))
         res['data_confiance'] = _reponse(self._data(
             self._lien(devis, 'confiance')))
