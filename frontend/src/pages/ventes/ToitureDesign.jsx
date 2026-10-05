@@ -46,13 +46,10 @@ import AtelierPanneaux from '../../features/calepinage/AtelierPanneaux'
 // CAL103 — le panneau de CALQUES de l'atelier (visibilité + opacité, ordre de rendu
 // déterminé, état persisté par utilisateur). Additif : les bascules historiques
 // (tracé client, photo réelle) restent en place et continuent de fonctionner.
-import PanneauCalques from '../../features/calepinage/PanneauCalques'
 // CAL180 — export « image HD » : rendu HORS ÉCRAN 2×/3× de la scène, rendu au
 // navigateur. L'affiche client (`roof-image`) n'est pas touchée.
-import { exporterImageHd, FACTEURS_HD } from '../../features/calepinage/exportImage'
 // CAL104 — vue 2D PLAN orthographique (cotée, nord en haut) + plein écran, montée en
 // ONGLET à côté de la 3D : le plan PROJETTE ce que la 3D a posé, il ne re-pave rien.
-import Vue2DPlan from '../../features/calepinage/Vue2DPlan'
 // CALX65 — le bandeau qui NOMME laquelle des deux productions parle (estimation
 // rapide du constructeur vs simulation) ; ne modifie AUCUN chiffre de la carte
 // « Recommandation » (`rp9-results` ci-dessous), il se contente de la commenter.
@@ -72,11 +69,12 @@ import { contourExploitable } from '../../features/crm/workspace/traceToit'
 import { normaliserTextureToit } from '../../features/crm/workspace/photoToit'
 // CALX129 — bascule plein écran RÉVERSIBLE du conteneur de la scène 3D, MÊME
 // mécanique que celle de `Vue2DPlan.jsx` (CAL104) — voir l'en-tête du module.
-import { basculerPleinEcran, estEnPleinEcranSur } from '../../features/calepinage/pleinEcran'
 import {
   dataUrlToBlob, pinDepuisLead, cibleActiveDuContexte, httpMessage,
   stockageBrouillonLocal, formaterHeureBrouillon,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
+import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
+import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues.js'
 import { useAtelierBoot } from '../../features/calepinage/atelier/useAtelierBoot.js'
 import '../../styles/roofbuilder.css'
 
@@ -222,32 +220,6 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const [brouillonPropose, setBrouillonPropose] = useState(null)
   const gestionnaireBrouillonRef = useRef(null)
   const poursuivreBootRef = useRef(null)
-  // CAL180 — état de l'export image HD (message affiché SOUS le bouton : soit la taille
-  // réellement obtenue, soit le motif du refus — jamais un « ça a marché » supposé).
-  // CAL104 — onglet vue 2D : le plan est DEMANDÉ au builder (`planView`), jamais
-  // reconstruit ici — sinon la 2D et la 3D divergeraient silencieusement.
-  const [vue2d, setVue2d] = useState(false)
-  const [plan2d, setPlan2d] = useState(null)
-  // CALX111 câblage — le pan dont on dessine le plan. `Vue2DPlan` accepte `panId` depuis
-  // CALX111 pour lire les numéros de module du DOCUMENT ; personne ne le lui passait, donc
-  // le plan 2D sortait MUET (`if (!plan || !panId) return []`). Capturé au MÊME instant
-  // que le plan : les deux décrivent le même pan.
-  const [panId2d, setPanId2d] = useState(null)
-  const ouvrirVue2d = () => {
-    setPlan2d(builderApi.current?.planView?.(900, 560) ?? null)
-    setPanId2d(builderApi.current?.panActifId?.() || null) // CALX111 câblage
-    setVue2d(true)
-  }
-  const [hdBusy, setHdBusy] = useState(false)
-  const [hdMessage, setHdMessage] = useState(null)
-  const exporterHd = async (scale) => {
-    if (hdBusy) return
-    setHdBusy(true)
-    setHdMessage(null)
-    const res = await exporterImageHd(builderApi, { scale, reference: calepinageId ?? devisId ?? 'calepinage' })
-    setHdMessage(res.ok ? `Image HD exportée : ${res.width} × ${res.height} px (${res.nom}).` : res.motif)
-    setHdBusy(false)
-  }
   // WIR227/QJ25 — contour OSM du bâtiment épinglé (mode lead uniquement) :
   // message serveur (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie
   // rien, jamais rédigé ici. Le tracé manuel reste toujours disponible.
@@ -260,26 +232,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const [photoToitCharge, setPhotoToitCharge] = useState(null)
   const [photoToitVisible, setPhotoToitVisible] = useState(true)
 
-  // CALX129 — plein écran RÉVERSIBLE du conteneur de la scène 3D. `mapWrapRef`
-  // pointe `.rp9-map-wrap`, l'enveloppe ADDITIVE déjà posée par L-MAP autour de
-  // `#rp9-map` (jamais l'id lui-même : le builder ne cherche que ses propres
-  // id, et cette enveloppe couvre aussi `ToitClientOverlay`). Le composant
-  // n'est ni démonté ni ré-amorcé : seule sa classe change.
-  const mapWrapRef = useRef(null)
-  const [pleinEcran3d, setPleinEcran3d] = useState(false)
-
-  // Sortie par Échap suivie via l'évènement du document — jamais supposé que
-  // le bouton est la seule sortie (même repli que Vue2DPlan.jsx).
-  useEffect(() => {
-    const onChange = () => setPleinEcran3d(estEnPleinEcranSur(document, mapWrapRef.current))
-    document.addEventListener('fullscreenchange', onChange)
-    return () => document.removeEventListener('fullscreenchange', onChange)
-  }, [])
-
-  const basculerPleinEcran3d = () => {
-    Promise.resolve(basculerPleinEcran(mapWrapRef.current, document, pleinEcran3d))
-      .then((etat) => setPleinEcran3d(etat.enPleinEcran))
-  }
+  const {
+    vue2d, setVue2d, plan2d, panId2d, ouvrirVue2d,
+    hdBusy, hdMessage, exporterHd,
+    mapWrapRef, pleinEcran3d, basculerPleinEcran3d,
+  } = useAtelierVues({ builderApi, calepinageId, devisId })
 
   // ── Boot : charge lead + config carte, puis initialise le builder ──────────
   useAtelierBoot({
@@ -1666,90 +1623,16 @@ export default function ToitureDesign({ mode = 'lead' }) {
             les boutons que les tâches suivantes y accrochent). Rendu AUSSI en
             lecture seule : consulter une conception figée reste utile, seule
             l'écriture disparaît. */}
-        {/* CAL103 — PANNEAU DE CALQUES : une seule liste pour imagerie, cadastre,
-            photo calée, plan importé, tracé client, obstacles, zones, panneaux,
-            ombres et mesures — visibilité + opacité, dans un ordre de rendu
-            déterminé. Monté dès que le builder expose son API (sans elle, il n'y
-            aurait rien à piloter).
-            CALX54 — `builderApi` (ci-dessous) est l'OBJET posé par `onApiReady`
-            (`builderApiActuel`, même raison que CALX8 pour `AtelierPanneaux` :
-            `builderApi.current` est une réf, illisible pendant le rendu) — le
-            panneau lit lui-même `calquesDisponibles()` dessus pour n'afficher
-            que les calques réellement installés sur la scène. */}
-        {builderReady && (
-          <div className="mt-4" data-testid="cal-panneau-calques">
-            <PanneauCalques
-              utilisateurId={utilisateurCourantId}
-              builderApi={builderApiActuel}
-              onChange={(id, etat) => {
-                // CALX22x câblage — le calque « Électrique » vit dans la couche 3D du
-                // constructeur (`electrique3d.ts`), pas sur la carte : le `setLayerState`
-                // général route TOUT vers `mapDraw.setLayerState`, qui ne le connaît pas
-                // (rend `false`, rien ne bascule). On route au plus près du builder, sur
-                // l'identifiant que SA couche déclare elle-même (`idCalque`) — jamais une
-                // chaîne recopiée ici.
-                const electrique = builderApi.current?.electrique
-                if (electrique && id === electrique.idCalque) electrique.setLayerState(id, etat)
-                else builderApi.current?.setLayerState?.(id, etat)
-              }}
-            />
-          </div>
-        )}
-
-        {/* CAL104 — ONGLETS 3D / 2D PLAN. La 3D n'est JAMAIS démontée (elle reste
-            dans le DOM, simplement masquée) : basculer d'onglet ne re-boote pas le
-            builder, donc ni la sélection ni l'historique ne sont perdus. */}
-        {builderReady && (
-          <div className="mt-4" data-testid="cal-onglets-vue">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className={chipClass}
-                aria-pressed={!vue2d}
-                data-testid="cal-onglet-3d"
-                onClick={() => setVue2d(false)}
-              >
-                Vue 3D
-              </button>
-              <button
-                type="button"
-                className={chipClass}
-                aria-pressed={vue2d}
-                data-testid="cal-onglet-2d"
-                onClick={ouvrirVue2d}
-              >
-                Vue 2D — plan
-              </button>
-            </div>
-            {vue2d && (
-              <div className="mt-2">
-                <Vue2DPlan plan={plan2d} compte3d={plan2d?.panelCount ?? null} panId={panId2d} />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* CAL180 — EXPORT IMAGE HD : la scène rendue hors écran à 2× ou 3×, remise
-            au navigateur. Aucun PNG n'est posté ici et l'affiche client existante
-            reste strictement inchangée. */}
-        {builderReady && (
-          <div className="mt-4 flex flex-wrap items-center gap-2" data-testid="cal-export-hd">
-            <span className="tech-label text-lune-faint">Image HD</span>
-            {FACTEURS_HD.map((f) => (
-              <button
-                key={f}
-                type="button"
-                className={chipClass}
-                disabled={hdBusy}
-                data-testid={`cal-export-hd-${f}`}
-                onClick={() => exporterHd(f)}
-              >
-                {`Exporter ${f}×`}
-              </button>
-            ))}
-            {hdMessage && <span className="text-xs text-lune-faint" data-testid="cal-export-hd-message">{hdMessage}</span>}
-          </div>
-        )}
+        <OutilsVue
+          builderReady={builderReady}
+          utilisateurCourantId={utilisateurCourantId}
+          builderApiActuel={builderApiActuel}
+          builderApi={builderApi}
+          chipClass={chipClass}
+          vue2d={vue2d} setVue2d={setVue2d} plan2d={plan2d} panId2d={panId2d}
+          ouvrirVue2d={ouvrirVue2d}
+          hdBusy={hdBusy} hdMessage={hdMessage} exporterHd={exporterHd}
+        />
 
         {estCalepinage && contexte && (
           <AtelierPanneaux
