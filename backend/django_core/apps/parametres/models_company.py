@@ -261,6 +261,34 @@ class CompanyProfile(models.Model):
     # ou sans source = « prix à renseigner », JAMAIS le barème résidentiel
     # (L-FORFAIT intouché). Validé par le sérialiseur (source obligatoire).
     forfaits_ci = models.JSONField(default=dict, blank=True)
+    # ── CIQ622 (Groupe CIQ, 03/10/2026) — réglages C&I de recette, de suivi
+    # et de garantie, TOUS SANS DÉFAUT (D-CIQ-12, D-CIQ-14 : « saisis par
+    # Reda »). Vide = « écart affiché sans verdict » / « non engagé » ; jamais
+    # une tolérance inventée codée en dur. Validés par le sérialiseur
+    # (0 < % ≤ 100 ; heures et mois > 0).
+    # Écart de recette toléré sur la puissance crête mesurée (%).
+    recette_ecart_pmax_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
+    # Part des chaînes à tracer en courbe I-V à la recette (%).
+    recette_echantillon_iv_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
+    # Seuil interne de performance ratio (%) — ALERTE INTERNE seulement,
+    # jamais affiché au client (D-CIQ-12).
+    recette_pr_seuil_interne = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
+    # Délai d'intervention du suivi de production (heures) — D-CIQ-12.
+    delai_intervention_suivi_heures = models.PositiveIntegerField(
+        null=True, blank=True)
+    # Délai entre réception provisoire et définitive (mois) — D-CIQ-14.
+    delai_reception_definitive_mois = models.PositiveIntegerField(
+        null=True, blank=True)
+    # Contrôle de sécurité obligatoire avant la mise en service.
+    securite_obligatoire_avant_demarrage = models.BooleanField(default=False)
+    # Garantie de production : jamais imprimée tant que la société ne l'a pas
+    # autorisée APRÈS validation (assureur ou juriste) — texte obligatoire
+    # « qui a validé et quand » dès que l'autorisation est cochée.
+    garantie_production_autorisee = models.BooleanField(default=False)
+    garantie_production_validation = models.TextField(blank=True, default='')
     # Bande INTERNE de contrôle du prix au kWc C&I ``{min_ht, max_ht, source,
     # date}`` : NULL par défaut, remplie seulement par la tâche manuelle
     # QXG6(b) (trois offres réelles). Servie au vendeur SEULEMENT — jamais au

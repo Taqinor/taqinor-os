@@ -48,6 +48,12 @@ PROFILE_CONFIG_FIELDS = [
     'seuil_regime_declaration_kwc', 'seuil_regime_anre_kwc',
     # AGR606 — écart de recette pompage toléré (%), sans défaut.
     'recette_pompage_ecart_max_pct',
+    # CIQ622 — réglages C&I de recette / suivi / garantie, sans défaut.
+    'recette_ecart_pmax_pct', 'recette_echantillon_iv_pct',
+    'recette_pr_seuil_interne', 'delai_intervention_suivi_heures',
+    'delai_reception_definitive_mois',
+    'securite_obligatoire_avant_demarrage',
+    'garantie_production_autorisee', 'garantie_production_validation',
     'devise_defaut', 'lead_sla_hours', 'overage_seuil_pct',
     # MRY8 — fenêtres d'appel de la société (forme `fenetres_appel` du
     # contrat MRY25) : elles decident QUAND une touche de cadence tombe
