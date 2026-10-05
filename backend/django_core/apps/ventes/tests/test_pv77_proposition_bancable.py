@@ -199,7 +199,7 @@ class PropositionBancableTest(TestCase):
 
     # ── Le filtre lui-même, unitairement ─────────────────────────────────────
     def test_le_filtre_ne_touche_pas_un_devis_sans_simulation(self):
-        from apps.ventes.public_views import _sans_internes_bancables
+        from apps.ventes.public.payload_economie import _sans_internes_bancables
 
         data = {'etude': {'production_annuelle': 1}, 'autre': 2}
         self.assertIs(_sans_internes_bancables(data), data)
@@ -208,7 +208,7 @@ class PropositionBancableTest(TestCase):
         self.assertIs(_sans_internes_bancables(sans_etude), sans_etude)
 
     def test_le_filtre_retire_les_deux_cles_bancables(self):
-        from apps.ventes.public_views import _sans_internes_bancables
+        from apps.ventes.public.payload_economie import _sans_internes_bancables
 
         data = {'etude': {'production_annuelle': 1, 'simulation': SIMULATION,
                           'bankable': SIMULATION}}
@@ -218,6 +218,6 @@ class PropositionBancableTest(TestCase):
         self.assertIn('simulation', data['etude'])
 
     def test_le_titre_est_none_sans_simulation(self):
-        from apps.ventes.public_views import _bankable_headline
+        from apps.ventes.public.payload_economie import _bankable_headline
 
         self.assertIsNone(_bankable_headline(self.devis, {}))

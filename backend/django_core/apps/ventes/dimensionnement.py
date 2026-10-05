@@ -999,10 +999,12 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         calculer_etude_horaire,
         equipements_sans_recharge_ve_nocturne,
         plancher_batterie_recharge_ve,
+        recharge_ve_nocturne_kwh_jour,
+    )
+    from apps.ventes.horaire.batterie_lignes import (
         # L-DECH — SOURCE UNIQUE : l'étude d'un devis et ce balayage lisent la
         # MÊME lecture de fiches, jamais deux implémentations parallèles.
         puissances_batterie_des_lignes,
-        recharge_ve_nocturne_kwh_jour,
     )
     from apps.ventes.domain.pipeline import (
         ContexteSonde, composer_sonde, reglages_de_composition,

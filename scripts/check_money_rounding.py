@@ -142,7 +142,9 @@ TARGET_FILES = [
     # SPL131 -- la decoupe de `ventes/selectors.py` (SPL143-SPL147) sort ses
     # blocs dans des modules `selectors_<proprietaire>.py` : ils restent
     # scannes d'office, comme `domain/` ci-dessus.
-    VENTES.glob("selectors_*.py"))
+    # SPL245 -- idem pour `ventes/public/*.py` (decoupe de public_views.py).
+    list(VENTES.glob("selectors_*.py"))
+    + list((VENTES / "public").glob("*.py")))
 
 MONEY_NAME_RE = re.compile(
     r"(prix|montant|total|_ht|_ttc|tva|remise|acompte|solde|amount|price|"

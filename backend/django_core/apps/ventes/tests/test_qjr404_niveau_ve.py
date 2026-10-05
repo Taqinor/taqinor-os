@@ -24,6 +24,7 @@ from django.test import SimpleTestCase
 
 from apps.ventes import courbes_journalieres as CJ
 from apps.ventes import etude_horaire as EH
+from apps.ventes.horaire import public as HP
 
 
 class NiveauVeCourbeRenduTest(SimpleTestCase):
@@ -100,7 +101,7 @@ class NiveauVeCourbeRenduTest(SimpleTestCase):
         sans code séparé à corriger pour eux."""
         niveau_attendu = self._niveau_annuel_attendu_avec_ve()
 
-        couverture = EH.couverture_batterie_publique(
+        couverture = HP.couverture_batterie_publique(
             kwc=6.0, conso_kwh_mensuelles=self.CONSO,
             capacite_utile_pack_kwh=5.0, nb_packs_max=2,
             ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE,

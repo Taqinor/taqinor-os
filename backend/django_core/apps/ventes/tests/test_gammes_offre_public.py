@@ -16,7 +16,7 @@ from decimal import Decimal
 from rest_framework.test import APIClient
 
 from apps.ventes.models import LigneDevis, ShareLink
-from apps.ventes.public_views import _gammes_public, _variant_summaries
+from apps.ventes.public.payload_variantes import _gammes_public, _variant_summaries
 from apps.ventes.services import (
     GAMME_ENVOI_LES_DEUX, GAMME_ENVOI_SEULE, regler_envoi_gamme,
 )

@@ -628,6 +628,7 @@ class PreparationTests(_Base):
 
     def test_le_bloc_derive_des_deux_cotes_est_IDENTIQUE(self):
         from apps.ventes import public_views as pv
+        from apps.ventes.public import noyau
         devis = self._devis('det-prep')
         lien = self._lien(devis)
 
@@ -636,5 +637,5 @@ class PreparationTests(_Base):
         data, resid = pv._data_pour_taille_detail(devis, lien)
         ici = (pv._offres_tailles_publique(devis, data, resid,
                                            pv._tailles_servies(lien))
-               if pv._section_servie(lien, 'economies') else None)
+               if noyau._section_servie(lien, 'economies') else None)
         self.assertEqual(payload.get('offres_tailles'), ici)

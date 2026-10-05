@@ -29,15 +29,18 @@ from django.test import SimpleTestCase
 
 from apps.crm import questionnaire
 from apps.ventes import courbes_journalieres as CJ
-from apps.ventes import etude_horaire as EH
+from apps.ventes.horaire import public as HP
+from apps.ventes.horaire import base as horaire_base
+from apps.ventes.tests.split_golden import fichiers_du_groupe
 
 RACINE = Path(__file__).resolve().parents[5]
 MESSAGES = RACINE / 'docs' / 'crm' / 'messages_meryem.md'
+#: SPL242 — ``etude_horaire.py`` est découpé en ``horaire/*.py`` : la garde lit
+#: le GROUPE (jamais vide), pas un fichier qui se vide.
 SOURCES_MOTEUR = (
     RACINE / 'backend' / 'django_core' / 'apps' / 'ventes'
     / 'courbes_journalieres.py',
-    RACINE / 'backend' / 'django_core' / 'apps' / 'ventes' / 'etude_horaire.py',
-)
+) + tuple(fichiers_du_groupe('etude_horaire.py', 'horaire/*.py'))
 
 
 class Q11_LePlafonnementEstEXPOSE(SimpleTestCase):
@@ -90,7 +93,7 @@ class Q12_LaSaisonDeLaClimEtDeLaPiscine(SimpleTestCase):
 
     def test_les_mois_sont_ceux_de_la_facture_d_ete(self):
         self.assertEqual(sorted(CJ.MOIS_REDISTRIBUTION_ETE),
-                         sorted(mois + 1 for mois in EH.MOIS_ETE_FACTURE))
+                         sorted(mois + 1 for mois in horaire_base.MOIS_ETE_FACTURE))
 
     def test_mai_et_octobre_sont_DESORMAIS_actifs(self):
         for mois in (5, 10):
@@ -132,7 +135,7 @@ class Q12_LaSaisonDeLaClimEtDeLaPiscine(SimpleTestCase):
     def test_la_publication_client_suit_les_MEMES_mois(self):
         """Deux portes différentes publieraient d'autres mois que ceux
         réellement servis — c'est exactement le défaut que Q12 ferme."""
-        estimation = EH.estimation_conso_mensuelle([600.0] * 12, self.PISCINE)
+        estimation = HP.estimation_conso_mensuelle([600.0] * 12, self.PISCINE)
         self.assertIsNotNone(estimation)
         ajouts = estimation['ajouts']['piscine']
         for index, valeur in enumerate(ajouts):

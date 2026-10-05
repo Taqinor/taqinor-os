@@ -62,7 +62,8 @@ def _corps_sans_docstring(fonction):
     Une garde « telle chaîne n'apparaît plus » doit lire le CODE : une
     docstring qui EXPLIQUE la règle remplacée la cite forcément.
     """
-    source = textwrap.dedent(inspect.getsource(fonction))
+    source = textwrap.dedent(
+        fonction if isinstance(fonction, str) else inspect.getsource(fonction))
     noeud = ast.parse(source).body[0]
     premier = noeud.body[0] if noeud.body else None
     if not (isinstance(premier, ast.Expr)
@@ -450,14 +451,20 @@ class ChargeUtilePubliqueTests(_DevisBase):
         ``source.replace(__doc__)`` — depuis Python 3.13 ``__doc__`` est
         désindenté et n'est plus un sous-texte de la source.
         """
-        from apps.ventes import public_views
+        from apps.ventes.tests.split_golden import (
+            fichiers_du_groupe, source_du_symbole, symboles_de_niveau_module)
 
+        # SPL241 — ``public_views.py`` est découpé en ``public/*.py`` : la
+        # garde lit le GROUPE (jamais vide), où que vive la fonction.
+        groupe = fichiers_du_groupe('public_views.py', 'public/*.py')
         corps = _corps_sans_docstring(
-            public_views._remplissage_batterie_publiable)
+            source_du_symbole('_remplissage_batterie_publiable', groupe))
         self.assertIn('module.decrit(', corps)
         self.assertNotIn('decrit_la_capacite', corps)
         # Et la variante « capacité seule » n'a plus de lecture nommée ici.
-        self.assertFalse(hasattr(public_views, '_meme_capacite_batterie'))
+        for fichier in groupe:
+            self.assertNotIn('_meme_capacite_batterie',
+                             symboles_de_niveau_module(fichier))
 
     def test_un_devis_sans_batterie_ne_recoit_aucun_des_deux(self):
         payload = self._payload(self._devis_sans_batterie(_dim()))
