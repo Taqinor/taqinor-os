@@ -52,7 +52,7 @@ import EquipeSection from './EquipeSection'
 import MessagesSection from './MessagesSection'
 import EmailSection from './EmailSection'
 import ApiWebhooksSection from './ApiWebhooksSection'
-import AvanceSection from './AvanceSection'
+import AvanceSection, { formReglagesCi, payloadReglagesCi } from './AvanceSection'
 import SecuriteCompteSection from './SecuriteCompteSection'
 import TraductionsSection from './TraductionsSection'
 import I18nCoverageSection from './I18nCoverageSection'
@@ -165,8 +165,9 @@ export default function ParametresEntreprise() {
     onee_tarif_kwh: 1.75,
     productible_kwh_kwc: 1600,
     discount_approval_threshold: '',
-    seuil_regime_declaration_kwc: 11,
-    seuil_regime_anre_kwc: 1000,
+    // CIQ639 — seuils 82-21 = SURCHARGES vides (seuils des textes servis par
+    // `seuils_sources`) + réglages C&I de CIQ622, tous sans défaut.
+    ...formReglagesCi({}),
     rendement_global: 0.8,
     prix_cible_kwc_defaut: '',
     remise_max_pct: '',
@@ -639,8 +640,8 @@ export default function ParametresEntreprise() {
       onee_tarif_kwh: profile.onee_tarif_kwh ?? 1.75,
       productible_kwh_kwc: profile.productible_kwh_kwc ?? 1600,
       discount_approval_threshold: profile.discount_approval_threshold ?? '',
-      seuil_regime_declaration_kwc: profile.seuil_regime_declaration_kwc ?? 11,
-      seuil_regime_anre_kwc: profile.seuil_regime_anre_kwc ?? 1000,
+      // CIQ639 — surcharges 82-21 et réglages C&I : vide = '' (aucun défaut).
+      ...formReglagesCi(profile),
       rendement_global: profile.rendement_global ?? 0.8,
       prix_cible_kwc_defaut: profile.prix_cible_kwc_defaut ?? '',
       remise_max_pct: profile.remise_max_pct ?? '',
@@ -788,8 +789,8 @@ export default function ParametresEntreprise() {
       onee_tarif_kwh: Number(form.onee_tarif_kwh) || 1.75,
       productible_kwh_kwc: Number(form.productible_kwh_kwc) || 1600,
       discount_approval_threshold: form.discount_approval_threshold === '' ? null : Number(form.discount_approval_threshold),
-      seuil_regime_declaration_kwc: Number(form.seuil_regime_declaration_kwc) || 11,
-      seuil_regime_anre_kwc: Number(form.seuil_regime_anre_kwc) || 1000,
+      // CIQ639 — vide = null (seuil des textes / non engagé), tapé = tel quel.
+      ...payloadReglagesCi(form),
       rendement_global: Number(form.rendement_global) || 0.8,
       prix_cible_kwc_defaut: form.prix_cible_kwc_defaut === '' ? null : Number(form.prix_cible_kwc_defaut),
       remise_max_pct: form.remise_max_pct === '' ? null : Number(form.remise_max_pct),
