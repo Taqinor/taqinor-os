@@ -4,7 +4,15 @@
  * exclue du sitemap par le filtre /preview/ de astro.config.mjs, non liée
  * depuis aucune page publique). Réservée à la revue du fondateur.
  * Lister ici toutes les routes /preview/* pour y accéder d'un coup d'œil.
+ *
+ * ACAL332 — les liens /preview/toiture* ne s'affichent qu'en `astro dev` : en
+ * build ces pages sont retirées du dossier publié (hook d'astro.config.mjs),
+ * un lien y serait mort. La liste vit dans scripts/liens-preview.mjs (sans
+ * import Node : la page est pré-rendue dans workerd).
  */
+import { liensPreview } from '../../../scripts/liens-preview.mjs';
+
+const liens = liensPreview(import.meta.env.DEV);
 ---
 <!doctype html>
 <html lang="fr">
@@ -62,36 +70,14 @@
     <h1>Prévisualisations privées</h1>
     <span class="badge">noindex · hors nav · fondateur seulement</span>
     <ul>
-      <li>
-        <a href="/preview/diagnostic">
-          <span class="label">Diagnostic (prévisualisation)</span>
-          <span class="path">/preview/diagnostic</span>
-        </a>
-      </li>
-      <li>
-        <a href="/preview/toiture">
-          <span class="label">Estimateur toiture (tracé)</span>
-          <span class="path">/preview/toiture</span>
-        </a>
-      </li>
-      <li>
-        <a href="/preview/toiture-3d">
-          <span class="label">Estimateur toiture 3D</span>
-          <span class="path">/preview/toiture-3d</span>
-        </a>
-      </li>
-      <li>
-        <a href="/preview/toiture-3d-pro">
-          <span class="label">Estimateur toiture 3D Pro</span>
-          <span class="path">/preview/toiture-3d-pro</span>
-        </a>
-      </li>
-      <li class="featured">
-        <a href="/preview/toiture-3d-pro-11">
-          <span class="label">Estimateur 3D Pro v11 (canonique)</span>
-          <span class="path">/preview/toiture-3d-pro-11</span>
-        </a>
-      </li>
+      {liens.map((lien) => (
+        <li class={lien.featured ? 'featured' : undefined}>
+          <a href={lien.href}>
+            <span class="label">{lien.label}</span>
+            <span class="path">{lien.href}</span>
+          </a>
+        </li>
+      ))}
     </ul>
     <hr />
     <footer>Page privée · non publiée · non liée depuis aucune page publique · accueil <code>/</code> et formulaire en production inchangés</footer>

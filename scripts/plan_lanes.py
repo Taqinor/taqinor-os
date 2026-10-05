@@ -1196,7 +1196,10 @@ def _apps_backend(fichiers) -> set[str]:
     """Apps dont la tâche touche l'`urls.py` ou les `selectors.py`."""
     out = set()
     for chemin in fichiers:
-        if not chemin.endswith(_PRODUCTEURS_BACKEND):
+        # Nom de fichier EXACT (ACAL350) : `tests/test_selectors.py` ou
+        # `test_urls.py` finissent aussi par « selectors.py » / « urls.py »
+        # mais ne PRODUISENT aucun contrat — un test n'est pas un producteur.
+        if chemin.rsplit("/", 1)[-1] not in _PRODUCTEURS_BACKEND:
             continue
         m = _BACKEND_APP_RE.search(chemin)
         if m:

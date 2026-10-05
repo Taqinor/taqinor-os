@@ -20,7 +20,7 @@ from authentication.models import Company
 from core.api_deprecation import DEFAULT_DEPRECATION_DOC_URL, deprecation_pour
 from core.models import ApiDeprecation
 
-from .constants import SCOPE_READ_LEADS
+from .portees import SCOPE_READ_LEADS
 from .models import ApiKey
 
 

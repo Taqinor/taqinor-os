@@ -33,6 +33,8 @@ export const ROUTE = {
   contrat: () => '/sav/contrats',
   dossier: () => '/chantiers',
   produit: () => '/stock',
+  // ACAL199 — le calepinage s'ouvre sur son atelier (/calepinage/:id).
+  calepinage: (id) => `/calepinage/${id}`,
 }
 
 // Route de LISTE par type, filtrée par la requête (lien « voir tout »). On reste
@@ -47,6 +49,7 @@ export const LIST_ROUTE = {
   ticket: (q) => `/sav?q=${encodeURIComponent(q)}`,
   bon_commande: (q) => `/ventes/bons-commande?q=${encodeURIComponent(q)}`,
   contrat: (q) => `/sav/contrats?q=${encodeURIComponent(q)}`,
+  calepinage: (q) => `/calepinage?q=${encodeURIComponent(q)}`,
 }
 
 // Libellé de groupe par type d'entité (utilisé par CommandPalette pour les
@@ -60,6 +63,7 @@ export const TYPE_LABEL = {
   equipement: 'Équipement',
   ticket: 'SAV',
   produit: 'Produit',
+  calepinage: 'Calepinage',
 }
 
 // VX13 — pastille d'accent du module d'origine (VX8 : une des 7 clés
@@ -79,6 +83,7 @@ export const TYPE_ACCENT = {
   ticket: 'destructive',
   contrat: 'destructive',
   produit: 'lune',
+  calepinage: 'brass',
 }
 
 /**

@@ -14,12 +14,7 @@ vi.mock('../../api/reportingApi', () => ({
 
 import reportingApi from '../../api/reportingApi'
 import GlobalSearch from './GlobalSearch'
-
-// Le serveur renvoie DEUX groupes : un de l'app Ventes, un de l'app CRM.
-const GROUPS = [
-  { type: 'devis', label: 'Devis', results: [{ id: 1, label: 'DV-2026-0001' }] },
-  { type: 'lead', label: 'Leads', results: [{ id: 2, label: 'Lead Casablanca' }] },
-]
+import { reponseContrat } from '../../test/fixtures/contractSamples'
 
 function renderSearch({ role = 'admin', permissions = [], modulesDesactives = [] } = {}) {
   const store = configureStore({
@@ -40,7 +35,7 @@ async function search(opts) {
 describe('ODY27 — recherche globale filtrée par app installée', () => {
   beforeEach(() => {
     reportingApi.search.mockReset()
-    reportingApi.search.mockResolvedValue({ data: { groups: GROUPS } })
+    reportingApi.search.mockResolvedValue(reponseContrat('reporting', 'recherche_types'))
   })
   afterEach(() => { cleanup(); vi.clearAllMocks() })
 

@@ -13,7 +13,7 @@ from django.test import TestCase
 
 from authentication.models import Company
 
-from .constants import SCOPE_READ_LEADS, SCOPE_WRITE_LEADS
+from .portees import SCOPE_READ_LEADS, SCOPE_WRITE_LEADS
 from .errors import public_api_exception_handler
 from .idempotency import IdempotencyConflict
 from .models import ApiKey

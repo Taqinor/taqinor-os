@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 from apps.crm.models import Lead
 
-from .constants import SCOPE_READ_LEADS, SCOPE_READ_STOCK, SCOPE_WRITE_LEADS
+from .portees import SCOPE_READ_LEADS, SCOPE_READ_STOCK, SCOPE_WRITE_LEADS
 from .models import ApiKey
 
 

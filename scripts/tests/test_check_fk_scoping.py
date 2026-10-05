@@ -98,7 +98,7 @@ class LigneSerializer(serializers.ModelSerializer):
 class BaseArbre(unittest.TestCase):
     """Reconstruit un mini-dépôt et y pointe la garde."""
 
-    def _monter(self, serializers_src, allowlist=""):
+    def _monter(self, serializers_src, allowlist="", extra=None):
         tmp = Path(tempfile.mkdtemp())
         apps = tmp / "backend" / "django_core" / "apps"
         (apps / "stock").mkdir(parents=True)
@@ -109,6 +109,9 @@ class BaseArbre(unittest.TestCase):
         (apps / "ao" / "models.py").write_text(MODELS_AO, encoding="utf-8")
         (apps / "ao" / "serializers.py").write_text(serializers_src,
                                                     encoding="utf-8")
+        # SPL72 — fichiers supplémentaires de l'app ``ao`` (scissions).
+        for nom, contenu in (extra or {}).items():
+            (apps / "ao" / nom).write_text(contenu, encoding="utf-8")
         allow = tmp / "scripts" / "fk_scoping_allow.txt"
         allow.write_text(allowlist, encoding="utf-8")
 
@@ -177,6 +180,101 @@ class TestCouverture(BaseArbre):
                       "::LigneSerializer.produit\n")
         code, out = self._main()
         self.assertEqual(code, 0, out)
+
+
+MODELS_AO_SCINDE = '''
+from django.db import models
+
+
+class Ligne(models.Model):
+    company = models.ForeignKey('authentication.Company',
+                                on_delete=models.CASCADE)
+'''
+
+# ``Ligne`` est définie dans ``models_lignes.py`` (scission de models.py).
+MODELS_LIGNES = '''
+from django.db import models
+
+
+class Ligne(models.Model):
+    company = models.ForeignKey('authentication.Company',
+                                on_delete=models.CASCADE)
+    produit = models.ForeignKey('stock.Produit', on_delete=models.PROTECT)
+'''
+
+SER_VIDE = "from rest_framework import serializers\n"
+
+SER_X_NU = '''
+from rest_framework import serializers
+from .models import Ligne
+
+
+class LigneXSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Ligne
+        fields = ['id', 'produit']
+'''
+
+SER_BASE_MIXIN = '''
+from rest_framework import serializers
+from .models import Ligne
+
+
+class _ScopeMixin:
+    same_company_fields = ('produit',)
+
+
+class LigneSerializer(_ScopeMixin, serializers.ModelSerializer):
+    class Meta:
+        model = Ligne
+        fields = ['id', 'produit']
+'''
+
+SER_X_SOUS_CLASSE = '''
+from rest_framework import serializers
+from .models import Ligne
+from .serializers import _ScopeMixin
+
+
+class LigneXSerializer(_ScopeMixin, serializers.ModelSerializer):
+    class Meta:
+        model = Ligne
+        fields = ['id', 'produit']
+'''
+
+
+class TestScissionSPL72(BaseArbre):
+    """SPL72 — la garde suit les fichiers issus d'une scission (golden rouge
+    avant le correctif : ces fichiers étaient SAUTÉS en silence)."""
+
+    def test_fk_non_scopee_dans_serializers_x_est_refusee(self):
+        self._monter(SER_VIDE, extra={"serializers_x.py": SER_X_NU})
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("serializers_x.py::LigneXSerializer.produit", out)
+
+    def test_suffixe_serializers_est_decouvert(self):
+        self._monter(SER_VIDE, extra={"x_serializers.py": SER_X_NU})
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("x_serializers.py::LigneXSerializer.produit", out)
+
+    def test_modele_defini_dans_models_x_est_vu(self):
+        tmp = self._monter(SER_NU, extra={"models_lignes.py": MODELS_LIGNES})
+        # ``models.py`` ne définit plus la FK : seule ``models_lignes.py`` la porte.
+        (tmp / "backend" / "django_core" / "apps" / "ao" / "models.py"
+         ).write_text(MODELS_AO_SCINDE, encoding="utf-8")
+        sites = cfs.collect_sites()
+        self.assertIn("produit", {c for _, _, c, _, _ in sites})
+
+    def test_sous_classe_couverte_par_un_mixin_d_un_autre_fichier(self):
+        self._monter(SER_BASE_MIXIN,
+                     extra={"serializers_x.py": SER_X_SOUS_CLASSE})
+        code, out = self._main()
+        self.assertEqual(code, 0, out)
+        sites = cfs.collect_sites()
+        self.assertTrue(any(cls == "LigneXSerializer" and couvert
+                            for _, cls, _, _, couvert in sites), sites)
 
 
 class TestDepotReel(unittest.TestCase):

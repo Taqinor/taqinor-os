@@ -1,0 +1,547 @@
+[
+ [
+  "LEAD_ASSIGNED",
+  "lead_assigned",
+  "Nouveau lead assigné"
+ ],
+ [
+  "COMPTE_A_REACTIVER",
+  "compte_a_reactiver",
+  "Compte à réactiver"
+ ],
+ [
+  "LEAD_NON_CONTACTE",
+  "lead_non_contacte",
+  "Lead non contacté (SLA)"
+ ],
+ [
+  "LEAD_NEW",
+  "lead_new",
+  "Nouveau lead site web"
+ ],
+ [
+  "DEVIS_ACCEPTED",
+  "devis_accepted",
+  "Devis accepté"
+ ],
+ [
+  "DEVIS_OPENED",
+  "devis_opened",
+  "Proposition ouverte par le client"
+ ],
+ [
+  "DEVIS_REPLY",
+  "devis_reply",
+  "Réponse email du client sur un devis"
+ ],
+ [
+  "DEVIS_NUDGE_DUE",
+  "devis_nudge_due",
+  "Relance de devis à faire"
+ ],
+ [
+  "HOT_LEAD_UNREAD",
+  "hot_lead_unread",
+  "Lead chaud non contacté (escalade)"
+ ],
+ [
+  "CLIENT_CONTACT_REQUEST",
+  "client_contact_request",
+  "Client souhaite être contacté"
+ ],
+ [
+  "DEVIS_SUPERIOR_CONTACT_REQUESTED",
+  "devis_superior_contact_requested",
+  "Avis du supérieur demandé sur un devis"
+ ],
+ [
+  "LEAD_CALLBACK_REQUESTED",
+  "lead_callback_requested",
+  "Rappel téléphonique demandé"
+ ],
+ [
+  "LEAD_CALLBACK_SLA_BREACH",
+  "lead_callback_sla_breach",
+  "Rappel demandé non actionné (SLA)"
+ ],
+ [
+  "LEAD_RATTRAPE",
+  "lead_rattrape",
+  "Lead Meta rattrapé par le pull (webhook muet)"
+ ],
+ [
+  "RELANCE_DUE",
+  "relance_due",
+  "Relances du jour à faire"
+ ],
+ [
+  "PREMIER_CONTACT_DEPASSE",
+  "premier_contact_depasse",
+  "Nouveau lead non touché (objectif dépassé)"
+ ],
+ [
+  "CRM_BILAN_HEBDO",
+  "crm_bilan_hebdo",
+  "Bilan hebdomadaire des relances"
+ ],
+ [
+  "CHANTIER_DUE",
+  "chantier_due",
+  "Chantier à installer"
+ ],
+ [
+  "FACTURE_OVERDUE",
+  "facture_overdue",
+  "Facture en retard"
+ ],
+ [
+  "WARRANTY_EXPIRING",
+  "warranty_expiring",
+  "Garantie bientôt expirée"
+ ],
+ [
+  "MAINTENANCE_DUE",
+  "maintenance_due",
+  "Visite de maintenance due"
+ ],
+ [
+  "STOCK_LOW",
+  "stock_low",
+  "Stock bas"
+ ],
+ [
+  "STOCK_EXPIRATION_SOON",
+  "stock_expiration_soon",
+  "Lot bientôt périmé"
+ ],
+ [
+  "SAV_TICKET_OPENED",
+  "sav_ticket_opened",
+  "Ticket SAV ouvert"
+ ],
+ [
+  "SAV_TICKET_BREACHING",
+  "sav_ticket_breaching",
+  "Ticket SAV proche de son délai"
+ ],
+ [
+  "SAV_ACTIVITE_DUE",
+  "sav_activite_due",
+  "Activité SAV à échéance"
+ ],
+ [
+  "SAV_TICKET_FOLLOWED_UPDATE",
+  "sav_ticket_followed_update",
+  "Mise à jour sur un ticket suivi"
+ ],
+ [
+  "SAV_VISITES_AUTO_GENEREES",
+  "sav_visites_auto_generees",
+  "Visites préventives générées automatiquement"
+ ],
+ [
+  "CHAT_MESSAGE",
+  "chat_message",
+  "Nouveau message"
+ ],
+ [
+  "CHAT_MENTION",
+  "chat_mention",
+  "Vous avez été mentionné"
+ ],
+ [
+  "DIGEST",
+  "digest",
+  "Récapitulatif"
+ ],
+ [
+  "ANNONCE_PUBLISHED",
+  "annonce_published",
+  "Nouvelle annonce interne"
+ ],
+ [
+  "ANNONCE_READ_REMINDER",
+  "annonce_read_reminder",
+  "Relance lecture obligatoire"
+ ],
+ [
+  "APPROVAL_REQUESTED",
+  "approval_requested",
+  "Approbation demandée"
+ ],
+ [
+  "APPROVAL_DECIDED",
+  "approval_decided",
+  "Approbation décidée"
+ ],
+ [
+  "APPROVAL_REMINDER",
+  "approval_reminder",
+  "Relance d'approbation"
+ ],
+ [
+  "APPROVAL_ESCALATED",
+  "approval_escalated",
+  "Approbation escaladée"
+ ],
+ [
+  "SUPPLIER_DOC_EXPIRING",
+  "supplier_doc_expiring",
+  "Document fournisseur bientôt expiré"
+ ],
+ [
+  "BCF_LATE",
+  "bcf_late",
+  "Bon de commande fournisseur en retard"
+ ],
+ [
+  "BCF_CANCELLED",
+  "bcf_cancelled",
+  "Bon de commande fournisseur annulé"
+ ],
+ [
+  "BCF_RELANCE_PROPOSEE",
+  "bcf_relance_proposee",
+  "Brouillon de relance BCF proposé"
+ ],
+ [
+  "PROJET_RETARD",
+  "projet_retard",
+  "Retard planning projet"
+ ],
+ [
+  "FLOTTE_BUDGET_DEPASSEMENT",
+  "flotte_budget_depassement",
+  "Dépassement budget flotte"
+ ],
+ [
+  "FLOTTE_ZONE_ALERTE",
+  "flotte_zone_alerte",
+  "Alerte géofencing véhicule"
+ ],
+ [
+  "FLOTTE_DTC_CRITIQUE",
+  "flotte_dtc_critique",
+  "Code défaut moteur critique (DTC)"
+ ],
+ [
+  "GED_SIGNATURE_EXPIRATION_PROCHE",
+  "ged_signature_expiration_proche",
+  "Demande de signature bientôt expirée"
+ ],
+ [
+  "DEVIS_EXPIRED",
+  "devis_expired",
+  "Devis expiré"
+ ],
+ [
+  "INCIDENT_CRITICAL",
+  "incident_critical",
+  "Incident QHSE critique"
+ ],
+ [
+  "POST_SOCIAL_RAPPEL",
+  "post_social_rappel",
+  "Post social à publier (rappel)"
+ ],
+ [
+  "NPS_PROMOTEUR",
+  "nps_promoteur",
+  "Client promoteur — proposer le parrainage"
+ ],
+ [
+  "FACTURE_PAYEE",
+  "facture_payee",
+  "Facture intégralement réglée"
+ ],
+ [
+  "BON_COMMANDE_CREE",
+  "bon_commande_cree",
+  "Bon de commande créé"
+ ],
+ [
+  "CONTRAT_SIGNE",
+  "contrat_signe",
+  "Contrat signé"
+ ],
+ [
+  "SAV_TICKET_RESOLU",
+  "sav_ticket_resolu",
+  "Ticket SAV résolu"
+ ],
+ [
+  "SAV_EQUIPEMENT_REMPLACE",
+  "sav_equipement_remplace",
+  "Équipement SAV remplacé"
+ ],
+ [
+  "PROJET_STATUT_CHANGE",
+  "projet_statut_change",
+  "Statut de projet modifié"
+ ],
+ [
+  "MONITORING_RAPPORT",
+  "monitoring_rapport",
+  "Rapport O&M envoyé au client"
+ ],
+ [
+  "PAIE_RIB_DIVERGENCE",
+  "paie_rib_divergence",
+  "Divergence RIB paie ↔ RH"
+ ],
+ [
+  "PAIE_RUN_PRET",
+  "paie_run_pret",
+  "Run de paie prêt (validé)"
+ ],
+ [
+  "PAIE_ECHEANCE_RAPPEL",
+  "paie_echeance_rappel",
+  "Échéance déclarative paie à déposer"
+ ],
+ [
+  "CHANTIER_ASSIGNE",
+  "chantier_assigne",
+  "Nouveau chantier assigné"
+ ],
+ [
+  "DA_DECIDEE",
+  "da_decidee",
+  "Demande d'achat décidée"
+ ],
+ [
+  "DA_SOUMISE_STALE",
+  "da_soumise_stale",
+  "Demande d'achat en attente (SLA)"
+ ],
+ [
+  "INTERVENTION_ASSIGNEE",
+  "intervention_assignee",
+  "Intervention assignée"
+ ],
+ [
+  "INTERVENTION_REPLANIFIEE",
+  "intervention_replanifiee",
+  "Intervention replanifiée"
+ ],
+ [
+  "INTERVENTION_ANNULEE",
+  "intervention_annulee",
+  "Intervention annulée"
+ ],
+ [
+  "TRANCHE_A_FACTURER",
+  "tranche_a_facturer",
+  "Tranche d'échéancier à facturer"
+ ],
+ [
+  "CHANTIER_MATERIEL_CONFIRME",
+  "chantier_materiel_confirme",
+  "Matériel du chantier confirmé"
+ ],
+ [
+  "SNOOZE_REVEIL",
+  "snooze_reveil",
+  "⏰ De retour"
+ ],
+ [
+  "SECURITY_ALERT",
+  "security_alert",
+  "Alerte de sécurité"
+ ],
+ [
+  "SECURITY_CHANGE",
+  "security_change",
+  "Changement de sécurité"
+ ],
+ [
+  "IDEA_VOTE",
+  "idea_vote",
+  "Vote reçu sur une idée"
+ ],
+ [
+  "INNOVATION_CAMPAIGN",
+  "innovation_campagne",
+  "Campagne d'innovation lancée"
+ ],
+ [
+  "FEEDBACK_DIGEST",
+  "feedback_digest",
+  "Récapitulatif feedback produit"
+ ],
+ [
+  "FEEDBACK_STARRED",
+  "feedback_starred",
+  "Feedback marqué important"
+ ],
+ [
+  "EDUCATION_REINSCRIPTION_RELANCE",
+  "education_reinscription_relance",
+  "Relance réinscription à traiter"
+ ],
+ [
+  "IDEA_RECEIVED",
+  "idea_received",
+  "Idée reçue (bienvenue)"
+ ],
+ [
+  "IDEA_RETAINED",
+  "idea_retenue",
+  "Idée retenue"
+ ],
+ [
+  "IDEA_REALIZED",
+  "idea_realisee",
+  "Idée réalisée"
+ ],
+ [
+  "IMPERSONATION_REQUESTED",
+  "impersonation_requested",
+  "Demande de session support"
+ ],
+ [
+  "PRODUCT_ANNOUNCEMENT",
+  "product_announcement",
+  "Nouveauté produit"
+ ],
+ [
+  "VEILLE_AO_NOUVEAUX_AVIS",
+  "veille_ao_nouveaux_avis",
+  "Nouveaux avis d'appel d'offres"
+ ],
+ [
+  "VEILLE_AO_ALARME_SILENCE",
+  "veille_ao_alarme_silence",
+  "Veille appels d'offres muette"
+ ],
+ [
+  "UXVIEWS_FAVORIS_OBSOLETES",
+  "uxviews_favoris_obsoletes",
+  "Favoris pointant vers des éléments supprimés"
+ ],
+ [
+  "UXVIEWS_VUE_EQUIPE_MODIFIEE",
+  "uxviews_vue_equipe_modifiee",
+  "Vue d'équipe modifiée"
+ ],
+ [
+  "TRANSPORT_ETAPE_RETARD",
+  "transport_etape_retard",
+  "Étape de transport en retard"
+ ],
+ [
+  "SCM_PREVISIONS_GENEREES",
+  "scm_previsions_generees",
+  "Prévisions de demande générées (mensuel)"
+ ],
+ [
+  "SCM_CYCLE_SOP_OUVERT",
+  "scm_cycle_sop_ouvert",
+  "Cycle S&OP ouvert automatiquement"
+ ],
+ [
+  "CAISSE_ECART_ANORMAL",
+  "caisse_ecart_anormal",
+  "Écart de caisse anormal"
+ ],
+ [
+  "SCM_ECART_PREVISION_IMPORTANT",
+  "scm_ecart_prevision_important",
+  "Écart de prévision important (MAPE)"
+ ],
+ [
+  "VISITEUR_APPAREIL_PARTAGE",
+  "visiteur_appareil_partage",
+  "Nouvelle demande depuis un appareil déjà connu"
+ ],
+ [
+  "VISITEUR_CONCURRENT_SUSPECTE",
+  "visiteur_concurrent_suspecte",
+  "Appareil suivant plusieurs prospects (concurrent suspecté)"
+ ],
+ [
+  "VISITE_TERRAIN_VALIDEE",
+  "visite_terrain_validee",
+  "Visite technique validée (feu vert)"
+ ],
+ [
+  "VISITE_TERRAIN_A_REFAIRE",
+  "visite_terrain_a_refaire",
+  "Visite technique à refaire"
+ ],
+ [
+  "CONSENTEMENT_RETIRE_TRAITE",
+  "consentement_retire_traite",
+  "Traitement d'une personne ayant retiré son consentement"
+ ],
+ [
+  "API_WEBHOOK_DESACTIVE",
+  "api_webhook_desactive",
+  "Webhook désactivé automatiquement"
+ ],
+ [
+  "API_TAUX_ERREUR_ELEVE",
+  "api_taux_erreur_eleve",
+  "Taux d'erreur élevé sur une intégration"
+ ],
+ [
+  "EXPORT_REVERSIBILITE_PRET",
+  "export_reversibilite_pret",
+  "Export de vos données prêt"
+ ],
+ [
+  "MAINTENANCE_WINDOW_ANNOUNCED",
+  "maintenance_window_announced",
+  "Fenêtre de maintenance annoncée"
+ ],
+ [
+  "USAGE_QUOTA_SEUIL_FRANCHI",
+  "usage_quota_seuil_franchi",
+  "Seuil de quota atteint"
+ ],
+ [
+  "VISITE_TERRAIN_ASSIGNEE",
+  "visite_terrain_assignee",
+  "Visite technique assignée"
+ ],
+ [
+  "VISITE_RETOUR_TERRAIN",
+  "visite_retour_terrain",
+  "Retour de visite technique"
+ ],
+ [
+  "VISITE_TERRAIN_A_VALIDER",
+  "visite_terrain_a_valider",
+  "Visite technique à valider"
+ ],
+ [
+  "FETES_MOBILES_A_SAISIR",
+  "fetes_mobiles_a_saisir",
+  "Fêtes mobiles à saisir"
+ ],
+ [
+  "PORTAIL_DEVIS_PRET",
+  "portail_devis_pret",
+  "Votre devis est prêt"
+ ],
+ [
+  "PORTAIL_FACTURE_ECHUE",
+  "portail_facture_echue",
+  "Facture échue"
+ ],
+ [
+  "PORTAIL_JALON_CHANTIER_ATTEINT",
+  "portail_jalon_chantier_atteint",
+  "Jalon de chantier atteint"
+ ],
+ [
+  "PORTAIL_TICKET_MAJ",
+  "portail_ticket_maj",
+  "Mise à jour de votre ticket"
+ ],
+ [
+  "DOSSIER_ECHEANCE_DEPASSEE",
+  "dossier_echeance_depassee",
+  "Dossier en retard (échéance dépassée)"
+ ]
+]

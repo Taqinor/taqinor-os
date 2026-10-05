@@ -25,18 +25,21 @@ import {
 
 // ── Verrous de source (contrat backend, ne changent jamais sans le savoir) ──
 describe('verrous de source — contrat backend', () => {
-  it('QUESTIONNAIRE_SECTIONS = exactement les 9 clés du contrat, dans cet ordre', () => {
+  it('QUESTIONNAIRE_SECTIONS = exactement les 12 clés du contrat, dans cet ordre', () => {
     // Ordre = crm.QuestionnaireLien.SECTIONS_CLES (recherche 25/08/2026) :
     // engagement croissant, `contact` TOUJOURS en dernier.
     expect(QUESTIONNAIRE_SECTIONS).toEqual([
       'occupation',
       'equipements',
       'energie',
+      'pompage',
       'toiture',
       'gps',
       'photo_facture',
       'photo_compteur',
       'photo_tableau',
+      'photo_pompe',
+      'photo_forage',
       'contact',
     ]);
   });
@@ -61,10 +64,13 @@ describe('verrous de source — contrat backend', () => {
     );
   });
 
-  it('isPhotoSection distingue les 3 sections photo des 6 autres', () => {
+  it('isPhotoSection distingue les 5 sections photo des autres', () => {
     expect(isPhotoSection('photo_facture')).toBe(true);
     expect(isPhotoSection('photo_compteur')).toBe(true);
     expect(isPhotoSection('photo_tableau')).toBe(true);
+    expect(isPhotoSection('photo_pompe')).toBe(true);
+    expect(isPhotoSection('photo_forage')).toBe(true);
+    expect(isPhotoSection('pompage')).toBe(false);
     expect(isPhotoSection('contact')).toBe(false);
     expect(isPhotoSection('gps')).toBe(false);
     expect(isPhotoSection('energie')).toBe(false);
@@ -211,9 +217,9 @@ describe('initialSectionIndex', () => {
 describe('ECRANS / ecransActifs', () => {
   const toutes = QUESTIONNAIRE_SECTIONS as unknown as (typeof QUESTIONNAIRE_SECTIONS)[number][];
 
-  it('les 9 sections tiennent sur 6 écrans au maximum, jamais 9', () => {
-    expect(ECRANS).toHaveLength(6);
-    expect(ecransActifs(toutes)).toHaveLength(6);
+  it('les 12 sections tiennent sur 7 écrans au maximum, jamais 12', () => {
+    expect(ECRANS).toHaveLength(7);
+    expect(ecransActifs(toutes)).toHaveLength(7);
   });
 
   it('chaque section est couverte par exactement UN écran', () => {
@@ -232,9 +238,12 @@ describe('ECRANS / ecransActifs', () => {
     }
   });
 
-  it('les trois photos tiennent sur UN écran, toiture+GPS sur un autre', () => {
+  it('les cinq photos tiennent sur UN écran, toiture+GPS sur un autre', () => {
     const photos = ECRANS.find((e) => e.id === 'photos');
-    expect(photos!.sections).toEqual(['photo_facture', 'photo_compteur', 'photo_tableau']);
+    expect(photos!.sections).toEqual([
+      'photo_facture', 'photo_compteur', 'photo_tableau', 'photo_pompe', 'photo_forage',
+    ]);
+    expect(ECRANS.find((e) => e.id === 'pompage')!.sections).toEqual(['pompage']);
     expect(ECRANS.find((e) => e.id === 'toit')!.sections).toEqual(['toiture', 'gps']);
   });
 
@@ -526,5 +535,96 @@ describe('QuestionnaireGetResponse — forme complète', () => {
     const parsed = parseQuestionnaireGet(raw) as QuestionnaireGetResponse;
     expect(parsed.entreprise).toBe('Taqinor');
     expect(parsed.sections).toEqual(['contact']);
+  });
+});
+
+// ── AGW408 — section pompage (agricole), servie par le serveur ───────────
+describe('AGW408 — pompage : corps POST', () => {
+  it('construit les réponses typées, mois triés/dédoublonnés, compteur booléen', () => {
+    const b = buildQuestionnairePostBody('pompage', {
+      source_eau: 'forage',
+      niveau_statique_m: '35.5',
+      besoin_eau_m3j: '120',
+      surface_irriguee_ha: '4',
+      culture: ' agrumes ',
+      irrigation_methode: 'goutte',
+      pompe_alim_actuelle: 'butane',
+      butane_bouteilles_jour: '2.5',
+      carburant_prix_unitaire_mad: '45',
+      depense_carburant_mad_mois: '1800',
+      mois_irrigation: [6, 5, 5, 7, 13, 0],
+      compteur_eau: 'oui',
+    });
+    expect(b.section).toBe('pompage');
+    expect(b.reponses).toEqual({
+      source_eau: 'forage',
+      niveau_statique_m: 35.5,
+      besoin_eau_m3j: 120,
+      surface_irriguee_ha: 4,
+      culture: 'agrumes',
+      irrigation_methode: 'goutte',
+      pompe_alim_actuelle: 'butane',
+      butane_bouteilles_jour: 2.5,
+      carburant_prix_unitaire_mad: 45,
+      depense_carburant_mad_mois: 1800,
+      mois_irrigation: [5, 6, 7],
+      compteur_eau: true,
+    });
+    expect(b.photo).toBeUndefined();
+  });
+
+  it('un choix hors contrat est écarté, jamais envoyé', () => {
+    const b = buildQuestionnairePostBody('pompage', { source_eau: 'lac', irrigation_methode: 'laser', pompe_alim_actuelle: 'solaire' });
+    expect(b.reponses).toEqual({});
+  });
+
+  it('pompe électrique : aucune question carburant transmise (champs masqués)', () => {
+    const b = buildQuestionnairePostBody('pompage', {
+      pompe_alim_actuelle: 'electrique',
+      butane_bouteilles_jour: '3',
+      carburant_prix_unitaire_mad: '40',
+      depense_carburant_mad_mois: '900',
+    });
+    expect(b.reponses).toEqual({ pompe_alim_actuelle: 'electrique' });
+  });
+
+  it('diesel : pas de bouteilles de butane', () => {
+    const b = buildQuestionnairePostBody('pompage', { pompe_alim_actuelle: 'diesel', butane_bouteilles_jour: '3', carburant_prix_unitaire_mad: '11' });
+    expect(b.reponses).toEqual({ pompe_alim_actuelle: 'diesel', carburant_prix_unitaire_mad: 11 });
+  });
+
+  it('compteur « non » reste un faux explicite ; non répondu = absent', () => {
+    expect(buildQuestionnairePostBody('pompage', { compteur_eau: 'non' }).reponses).toEqual({ compteur_eau: false });
+    expect(buildQuestionnairePostBody('pompage', {}).reponses).toEqual({});
+  });
+
+  it('photo_pompe / photo_forage : photo seule, aucune réponse', () => {
+    const photo = 'data:image/jpeg;base64,/9j/4AAQSkZJRg==';
+    for (const s of ['photo_pompe', 'photo_forage'] as const) {
+      const b = buildQuestionnairePostBody(s, { source_eau: 'forage' }, photo);
+      expect(b.reponses).toEqual({});
+      expect(b.photo).toBe(photo);
+    }
+  });
+
+  it('prefill_vu limité aux colonnes pompage', () => {
+    const b = buildQuestionnairePostBody('pompage', { culture: 'blé' }, null, undefined, { culture: 'agrumes', gps_lat: 1 });
+    expect(b.prefill_vu).toEqual({ culture: 'agrumes' });
+  });
+
+  it('une section pompage servie dessine son propre écran, jamais de section résidentielle en plus', () => {
+    const ecrans = ecransActifs(['pompage', 'gps', 'photo_pompe', 'photo_forage']);
+    expect(ecrans.map((e) => e.id)).toEqual(['pompage', 'toit', 'photos']);
+    expect(ecrans.flatMap((e) => e.actives)).toEqual(['pompage', 'gps', 'photo_pompe', 'photo_forage']);
+  });
+
+  it('parseQuestionnaireGet accepte l’exemple agricole du contrat', () => {
+    const r = parseQuestionnaireGet({
+      entreprise: 'Taqinor', prenom: 'Brahim',
+      sections: ['pompage', 'gps', 'photo_pompe', 'photo_forage'],
+      champs: { pompage: ['source_eau'], photo_pompe: [], photo_forage: [] },
+      prefill: { source_eau: 'forage' }, repondu: {}, interne: false,
+    });
+    expect(r?.sections).toEqual(['pompage', 'gps', 'photo_pompe', 'photo_forage']);
   });
 });

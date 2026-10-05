@@ -56,5 +56,30 @@
     "questions": "Carte complète des 9 sections telle qu'elle sera servie (les 3 états du champ stocké sont résolus ici en booléens).",
     "manquantes": "Informations encore inconnues du lead au moment du mint — c'est le DÉFAUT des questions posées. Toujours renvoyée, même quand le commercial a choisi lui-même, pour que l'écran puisse montrer l'écart.",
     "chatter": "Une note « Questionnaire envoyé (sections : …) » est ajoutée à l'historique du lead à la création ET quand les questions changent — jamais sur un re-POST identique."
-  }
+  },
+  "exemple_pro": {
+    "url": "https://taqinor.ma/questionnaire/pQ7x…/",
+    "url_interne": "https://taqinor.ma/questionnaire/Z3kb…/",
+    "token": "pQ7x…",
+    "expires_at": "2026-10-12T10:00:00+00:00",
+    "questions": {
+      "reseau": true,
+      "activite": true,
+      "site": true,
+      "societe": true,
+      "photo_factures": true,
+      "photo_poste": true,
+      "contact": true
+    },
+    "manquantes": {
+      "reseau": true,
+      "activite": true,
+      "site": false,
+      "societe": true,
+      "photo_factures": true,
+      "photo_poste": true,
+      "contact": false
+    }
+  },
+  "note_pro": "CIQ400 (Groupe CIQ, audit L3 C&I du 03/10/2026 ; D-CIQ-8, D-CIQ-11, Q21) — lead commercial/industriel : sections pro seulement ; une section résidentielle demandée ⇒ 400 nommant la section."
 }

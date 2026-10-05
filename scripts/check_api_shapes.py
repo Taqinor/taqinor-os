@@ -499,12 +499,24 @@ class ApiFunctions(contract.FrontendCalls):
         # (module frontend, nom de fonction) -> {(verbe, chemin)}
         self.functions: dict[tuple, set] = {}
 
+    @staticmethod
+    def _module_facade(module):
+        """SPL292 — un fragment `api/calepinage/<theme>.js` (hors `_base.js`)
+        est range sous la FACADE `api/calepinageApi.js` : c'est elle que les
+        ecrans importent et que les tests mockent ; sans ce rattachement, les
+        fonctions deplacees sortiraient silencieusement de la garde."""
+        parent = module.parent
+        if (parent.name == "calepinage" and parent.parent.name == "api"
+                and module.suffix == ".js" and module.name != "_base.js"):
+            return parent.parent / "calepinageApi.js"
+        return module
+
     def _collect_file(self, path, src):
         code, tokens, masked = scan_js(src)
         token_at = {start: (end, quote, raw) for start, end, quote, raw in tokens}
         default_mount = contract.FASTAPI_MOUNT if "/api/fastapi" in code else "api/django"
         consts = self._constants(code, token_at, tokens)
-        module = path.resolve()
+        module = self._module_facade(path.resolve())
         for match in re.finditer(r"([A-Za-z_$][\w$.]*)\.(%s)\s*\(" % "|".join(self.HTTP), masked):
             if not self.CLIENT_HINT.search(match.group(1)):
                 continue

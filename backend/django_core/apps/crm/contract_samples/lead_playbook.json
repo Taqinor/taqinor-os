@@ -59,5 +59,23 @@
       "cle_message": null
     }
   ],
-  "exemple_vide": []
+  "exemple_vide": [],
+  "ajout_ciq10_dossier_8221": {
+    "pourquoi": "CIQ10 (Groupe CIQ, 05/10/2026 ; audit L3 C&I du 03/10/2026 ; D-CIQ-6, convention 8 « contact B2B sur fixe : la touche WhatsApp devient un e-mail quand une adresse existe — règle de DONNÉE, aucun axe segment », convention 10 « preuve J4 OMISE pour le C&I tant qu'aucune réalisation C&I n'est saisie ») — tranche CAD125 contre CAD163.",
+    "regle": "`cle_message='dossier_8221'` seulement pour un site MT (`tension_raccordement='mt'`), un lead `regularisation_8221`, ou un client qui veut revendre (`revente_demandee`) — D-CIQ-6 ; un BT n'en reçoit aucune. Texte « raccordement et autorisations du site », jamais la loi.",
+    "exemple": {
+      "id": 802,
+      "lead": 2311,
+      "tache": 51,
+      "tache_libelle": "Préparer le dossier de raccordement et d'autorisations du site",
+      "tache_obligatoire": false,
+      "etape_stage": "QUOTE_SENT",
+      "fait": false,
+      "fait_par": null,
+      "fait_par_nom": null,
+      "fait_le": null,
+      "created_at": "2026-10-05T10:00:00Z",
+      "cle_message": "dossier_8221"
+    }
+  }
 }

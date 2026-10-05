@@ -146,6 +146,12 @@ GARDES = {
         ('Test the plan-task wiring checker itself',
          'python -m unittest scripts.tests.test_check_taches_cablage -v',
          '.'),
+        ('Check duplicata littéral >= 6 lignes (ACAL345, base décroissante)',
+         'python scripts/check_duplicats_litteraux.py',
+         '.'),
+        ('Test the literal-duplicate checker itself (ACAL345)',
+         'python -m unittest scripts.tests.test_check_duplicats_litteraux -v',
+         '.'),
         # OWN (02/10/2026) — chaque fichier a UN propriétaire (docs/ownership.yml),
         # chaque tâche reste dans le plan du sien ; multi-propriétaires → plan
         # transverse. C'est ce qui rend les sessions « work on the plan <x> »

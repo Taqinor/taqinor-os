@@ -191,8 +191,10 @@ describe('inventaire des routes (sortie construite réelle)', () => {
       const rootP = p.replace(/^\/(en|ar)(?=\/)/, '');
       expect(PRIVATE_PREFIXES.some((pre) => rootP.startsWith(pre)), `privée inattendue : ${p}`).toBe(true);
     }
-    // L'estimateur courant (pro-11) est bien une route privée.
-    expect(privatePaths).toContain('/preview/toiture-3d-pro-11/');
+    // ACAL332 — les estimateurs /preview/toiture* (dont pro-11) ne sont PLUS
+    // publiés par le build (galerie `astro dev` seulement) ; /preview/ reste.
+    expect(privatePaths).toContain('/preview/');
+    expect(privatePaths.filter((p) => p.startsWith('/preview/toiture'))).toEqual([]);
   });
 });
 

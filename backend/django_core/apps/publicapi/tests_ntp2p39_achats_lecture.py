@@ -19,7 +19,7 @@ from apps.installations.models_demande_achat import (
 from apps.installations.models_rfq import RFQ, RFQConsultation, RFQOffre
 from apps.stock.models import Fournisseur, Produit
 
-from .constants import ALL_SCOPES, SCOPE_READ_ACHATS, SCOPE_READ_LEADS
+from .portees import ALL_SCOPES, SCOPE_READ_ACHATS, SCOPE_READ_LEADS
 from .models import ApiKey
 
 URL_DEMANDES = '/api/public/v1/achats/demandes-achat/'

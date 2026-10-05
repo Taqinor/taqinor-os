@@ -8,10 +8,8 @@ from rest_framework import serializers
 
 from core.models import ApiUsagePlan
 
-from .constants import (
-    ALL_SCOPES, ALL_EVENTS, SCOPE_CHOICES, EVENT_CHOICES,
-    ALL_ENVIRONMENTS, ENV_LIVE,
-)
+from .portees import ALL_SCOPES, SCOPE_CHOICES
+from .constants import ALL_EVENTS, EVENT_CHOICES, ALL_ENVIRONMENTS, ENV_LIVE
 from .models import ApiKey, ServiceAccount, Webhook, WebhookDelivery
 from .validators import UnsafeWebhookURL, validate_webhook_target_url
 
