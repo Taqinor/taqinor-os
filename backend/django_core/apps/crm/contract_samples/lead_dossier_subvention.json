@@ -30,5 +30,6 @@
       "refuse": "Refusé"
     },
     "interne": "Jamais servi dans une charge utile client (PDF, /proposition, messages) ; aucun délai de versement n'est affiché ni calculé côté client (D-AGR-6)."
-  }
+  },
+  "pourquoi_ciq10": "CIQ10 (Groupe CIQ, 05/10/2026 ; audit L3 C&I du 03/10/2026 ; D-CIQ-6, convention 8 « contact B2B sur fixe : la touche WhatsApp devient un e-mail quand une adresse existe — règle de DONNÉE, aucun axe segment », convention 10 « preuve J4 OMISE pour le C&I tant qu'aucune réalisation C&I n'est saisie ») — `dossier_subvention` est SANS OBJET pour un lead commercial/industriel (aide FDA agricole). L'attente B2B passe par la réponse `attente_accord` + `raison_attente` (`relance_etape_v2.json`, `ajout_ciq10_raison_attente`), jamais par une colonne « période de décision » (Écartés d'AGR520)."
 }
