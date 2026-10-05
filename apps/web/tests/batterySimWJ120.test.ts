@@ -13,7 +13,6 @@ import {
   renderBatterySplitSvg,
   DYNESS_CAPACITY_KWH,
   ESSENTIAL_LOAD_W,
-  BATTERY_ONE_WAY_EFFICIENCY,
   BATTERY_DEPTH_OF_DISCHARGE,
   HOURS_PER_DAY,
   type BatterySimInput,
@@ -28,6 +27,10 @@ const consShape = Array.from({ length: HOURS_PER_DAY }, (_, h) =>
 );
 const solarShape = Array.from({ length: HOURS_PER_DAY }, (_, h) => solarProfile(h));
 
+// ACAL173 — le rendement n'a plus de constante de repli : ces tests simulent
+// une batterie dont la FICHE publie 94 % aller-retour (one-way = √0,94).
+const ONE_WAY_FICHE = Math.sqrt(0.94);
+
 function baseInput(units: number, overrides: Partial<BatterySimInput> = {}): BatterySimInput {
   return {
     consumptionShape: consShape,
@@ -36,6 +39,7 @@ function baseInput(units: number, overrides: Partial<BatterySimInput> = {}): Bat
     dailyProductionKwh: 20, // surplus disponible à stocker
     capacityKwhPerUnit: DYNESS_CAPACITY_KWH['BAT-DEY-5'], // 5 kWh
     units,
+    oneWayEfficiency: ONE_WAY_FICHE,
     ...overrides,
   };
 }
@@ -129,7 +133,7 @@ describe('WJ120 — heures de secours : linéaires en N, sur charges ESSENTIELLE
   it('valeur = capacité utile × rendement décharge ÷ charge essentielle', () => {
     const r = simulateBattery(baseInput(1));
     const usable = 1 * DYNESS_CAPACITY_KWH['BAT-DEY-5'] * BATTERY_DEPTH_OF_DISCHARGE;
-    const expected = (usable * BATTERY_ONE_WAY_EFFICIENCY) / (ESSENTIAL_LOAD_W / 1000);
+    const expected = (usable * ONE_WAY_FICHE) / (ESSENTIAL_LOAD_W / 1000);
     expect(r.backupHours).toBeCloseTo(expected, 6);
   });
 });
@@ -285,17 +289,10 @@ describe('WJ129 (finding 5, NIT) — clamp01 interne : NaN retombe sur la CONSTA
   // inatteignable des appelants réels de la page) doit produire EXACTEMENT le
   // même résultat qu'omettre le paramètre (repli sur la constante), jamais un
   // résultat identique à un rendement/DoD forcé à 100 % (`hi`).
-  it('oneWayEfficiency: NaN ⇒ identique à oneWayEfficiency omis (repli BATTERY_ONE_WAY_EFFICIENCY), jamais hi=1', () => {
-    // backupHours = usableCapacityKwh × etaOneWay ÷ charge essentielle : seul
-    // chiffre qui dépend DIRECTEMENT de etaOneWay sans dépendre aussi de dod
-    // (fromBatteryKwh dépend des deux à la fois via runDay).
-    const withNaN = simulateBattery(baseInput(2, { oneWayEfficiency: NaN }));
-    const withDefault = simulateBattery(baseInput(2, { oneWayEfficiency: undefined }));
-    const withHi = simulateBattery(baseInput(2, { oneWayEfficiency: 1 }));
-    expect(withNaN.backupHours).toBeCloseTo(withDefault.backupHours, 9);
-    expect(withNaN.fromBatteryKwh).toBeCloseTo(withDefault.fromBatteryKwh, 9);
-    expect(BATTERY_ONE_WAY_EFFICIENCY).not.toBe(1);
-    expect(withNaN.backupHours).not.toBeCloseTo(withHi.backupHours, 9);
+  it('oneWayEfficiency: NaN / absent ⇒ REFUS (ACAL173 : plus aucun rendement de repli), jamais hi=1 en silence', () => {
+    expect(() => simulateBattery(baseInput(2, { oneWayEfficiency: NaN }))).toThrow(RangeError);
+    expect(() => simulateBattery(
+      baseInput(2, { oneWayEfficiency: undefined as unknown as number }))).toThrow(RangeError);
   });
   it('depthOfDischarge: NaN ⇒ identique à depthOfDischarge omis (repli BATTERY_DEPTH_OF_DISCHARGE), jamais hi=1', () => {
     const withNaN = simulateBattery(baseInput(2, { depthOfDischarge: NaN }));
