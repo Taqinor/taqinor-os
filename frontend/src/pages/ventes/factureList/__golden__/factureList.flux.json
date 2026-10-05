@@ -1,0 +1,146 @@
+{
+ "exportComptableSync": {
+  "apiGet": [
+   [
+    "/ventes/export-comptable/",
+    {
+     "params": {
+      "start": "2026-07-01",
+      "end": "2026-07-15",
+      "fmt": "xlsx"
+     },
+     "responseType": "blob"
+    }
+   ],
+   [
+    "/ventes/export-comptable/",
+    {
+     "params": {
+      "start": "2026-07-01",
+      "end": "2026-07-15",
+      "fmt": "csv"
+     },
+     "responseType": "blob"
+    }
+   ]
+  ],
+  "journalVentes": [],
+  "exportStatus": [],
+  "auditNumerotation": 0,
+  "toast": {},
+  "sorties": [
+   [
+    "openPdfBlob",
+    "export-comptable-2026-07-01_2026-07-15.xlsx"
+   ],
+   [
+    "openPdfBlob",
+    "export-comptable-2026-07-01_2026-07-15.csv"
+   ]
+  ]
+ },
+ "journalSync": {
+  "apiGet": [],
+  "journalVentes": [
+   [
+    {
+     "month": "2026-07"
+    }
+   ]
+  ],
+  "exportStatus": [],
+  "auditNumerotation": 0,
+  "toast": {},
+  "sorties": [
+   [
+    "downloadXlsx",
+    "journal-ventes-2026-07.xlsx"
+   ]
+  ]
+ },
+ "auditNumerotation": {
+  "apiGet": [],
+  "journalVentes": [],
+  "exportStatus": [],
+  "auditNumerotation": 2,
+  "toast": {
+   "success": [
+    [
+     "Numérotation conforme : aucun trou ni doublon détecté."
+    ]
+   ],
+   "error": [
+    [
+     "Anomalies de numérotation détectées :\n\nFactures FAC-2026-07 → manquants : 0002 ; doublons : 0003\n\n(1 numéro(s) manquant(s), 1 doublon(s)). Aucune renumérotation automatique."
+    ]
+   ]
+  },
+  "sorties": []
+ },
+ "sondagePret": {
+  "apiGet": [],
+  "journalVentes": [
+   [
+    {
+     "month": "2026-07"
+    }
+   ]
+  ],
+  "exportStatus": [
+   [
+    "JOB-1"
+   ],
+   [
+    "JOB-1"
+   ],
+   [
+    "JOB-1"
+   ]
+  ],
+  "auditNumerotation": 0,
+  "toast": {
+   "info": [
+    [
+     "Export volumineux — génération en arrière-plan."
+    ]
+   ]
+  },
+  "sorties": [],
+  "clics": [
+   [
+    "https://dl.example/j.xlsx",
+    "journal.xlsx"
+   ]
+  ],
+  "minuteursRestants": 0
+ },
+ "sondageTimeout": {
+  "apiGet": [],
+  "journalVentes": [
+   [
+    {
+     "month": "2026-07"
+    }
+   ]
+  ],
+  "exportStatus": [
+   "[\"JOB-2\"]"
+  ],
+  "auditNumerotation": 0,
+  "toast": {
+   "error": [
+    [
+     "Journal comptable indisponible."
+    ]
+   ],
+   "info": [
+    [
+     "Export volumineux — génération en arrière-plan."
+    ]
+   ]
+  },
+  "sorties": [],
+  "nbSondages": 151,
+  "minuteursRestants": 0
+ }
+}
