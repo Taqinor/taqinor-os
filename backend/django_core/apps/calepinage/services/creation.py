@@ -150,12 +150,21 @@ def creer_pour_lead(lead_id, company, *, user=None, titre='',
         raise CreationRefusee(
             f"Lead introuvable (#{lead_id}).", champ='lead')
 
+    # CIQ112 — toit DÉCLARÉ sur le lead (contrat CIQ1) → mode de pose du
+    # document : chaque pan dessiné ensuite le reçoit (lu par
+    # ``traduction._politique`` quand le pan n'a pas son propre ``modePose``).
+    # Toit non déclaré ou ambigu ⇒ document vide, comme aujourd'hui.
+    from .traduction import mode_pose_declare_du_lead
+
+    mode_pose = mode_pose_declare_du_lead(lead)
     calepinage = Calepinage.objects.create(
         company=company,
         lead_id=lead.pk,
         client_id=getattr(lead, 'client_id', None),
         titre=titre or _titre_depuis(getattr(lead, 'nom', '')),
         cree_par=user,
+        **({'roof_layout': {'modePoseDeclare': mode_pose}}
+           if mode_pose else {}),
     )
     journaliser_creation(calepinage, user=user)  # CAL26
     _noter_jeu(calepinage, jeu, 0, user=user)

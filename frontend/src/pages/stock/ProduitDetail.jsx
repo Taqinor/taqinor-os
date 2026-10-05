@@ -304,6 +304,22 @@ function OngletFicheTechnique({ produit, onEdit }) {
               <Ligne label="Fréquence de la courbe (Hz)" valeur={produit.courbe_frequence_hz} />
             </>
           )}
+          {/* CIQ104 — usage C&I : rôle (libellé servi par l'API), type de
+              pose, délai d'appro et, si l'article est exclu du dimensionnement
+              C&I, le MOTIF nommé par le serveur. */}
+          {produit.etat_ci && (
+            <>
+              <Ligne label="Rôle C&I" valeur={produit.etat_ci.libelle} />
+              {produit.type_pose ? <Ligne label="Type de pose" valeur={produit.type_pose} /> : null}
+              <Ligne label="Délai d'approvisionnement (jours)" valeur={produit.delai_appro_jours} />
+              {!produit.etat_ci.eligible_ci && (
+                <Ligne label="Exclu du C&I" valeur={produit.etat_ci.motif_exclusion} />
+              )}
+              {!produit.etat_ci.prix_connu && (
+                <Ligne label="Prix C&I" valeur="prix à renseigner" />
+              )}
+            </>
+          )}
         </div>
       </div>
       {/* APX21 — la courbe constructeur, quand le produit en porte une. */}

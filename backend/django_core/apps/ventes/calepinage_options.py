@@ -661,7 +661,7 @@ def lire_trames(layout_public, libres=None):
 # rangée unique, trame illisible).
 
 
-def capacite_du_layout(layout_public, libres=None):
+def capacite_du_layout(layout_public, libres=None, contraintes=None):
     """Le nombre MAXIMAL de panneaux que la GÉOMÉTRIE RÉELLE de ce toit tient.
 
     ``None`` quand ce layout ne porte aucun calepinage exploitable — jamais un
@@ -705,6 +705,18 @@ def capacite_du_layout(layout_public, libres=None):
     trames = lire_trames(layout_public, libres)
     if not trames:
         return None
+    # CIQ137 — îlots bornés du PROJET (``contraintes_site.ilot_max_m``) : la
+    # MÊME grille que le moteur (``core.calepinage.ilots``) retire les modules
+    # qui empiètent sur les allées. Sans contrainte : chemin d'hier, inchangé.
+    from core.calepinage.ilots import lire_contraintes
+
+    if callable(contraintes):
+        # Résolues PARESSEUSEMENT : un toit sans calepinage exploitable ne
+        # coûte aucune lecture de plus.
+        contraintes = contraintes()
+    lu = lire_contraintes(contraintes)
+    if lu is not None:
+        return _capacite_avec_ilots(trames, lu)
     # Règle 4 — le MÊME verdict que ``deriver``. Les deux comptes ne coïncident
     # pas quand une zone publiée est illisible ici : la dérivation refuse alors
     # tout dessin autre que le calepinage officiel, donc la contenance ne peut
@@ -718,6 +730,32 @@ def capacite_du_layout(layout_public, libres=None):
         # mord IDENTIQUEMENT ici et dans ``_repartir``. C'est ce qui rend les
         # deux comptes égaux au panneau près.
         total += len(trame.candidats(_MAX_PANNEAUX_DESSINES))
+    return min(total, _MAX_PANNEAUX_DESSINES)
+
+
+def _capacite_avec_ilots(trames, lu):
+    """CIQ137 — posés + candidats HORS allées d'îlots, zone par zone."""
+    from core.calepinage.ilots import module_hors_allees
+
+    longueur, largeur, allee, _citation = lu
+    total = 0
+    for trame in trames:
+        anneau = [_vers_uv(e, n, trame.u, trame.s) for e, n in trame.anneau]
+        if not anneau:
+            continue
+        bornes = (min(p[0] for p in anneau), max(p[0] for p in anneau),
+                  min(p[1] for p in anneau), max(p[1] for p in anneau))
+        demi_u = (trame.pas_colonne or 0.0) / 2.0
+        demi_v = (trame.pas_rangee or 0.0) / 2.0
+        panneaux = (list(trame.panneaux_ordonnes())
+                    + list(trame.candidats(_MAX_PANNEAUX_DESSINES)))
+        for panneau in panneaux:
+            uu, vv = _vers_uv(float(panneau['cx']), float(panneau['cy']),
+                              trame.u, trame.s)
+            if module_hors_allees((uu - demi_u, uu + demi_u, vv - demi_v,
+                                   vv + demi_v), bornes, longueur, largeur,
+                                  allee):
+                total += 1
     return min(total, _MAX_PANNEAUX_DESSINES)
 
 
@@ -752,7 +790,9 @@ def capacite_toit_du_devis(devis):
     capacite = None
     if isinstance(layout, dict):
         try:
-            capacite = capacite_du_layout(layout, _modes_libres(devis))
+            capacite = capacite_du_layout(
+                layout, _modes_libres(devis),
+                lambda: _contraintes_site_du_devis(devis))
         except Exception:  # noqa: BLE001 — une géométrie illisible n'est pas
             # une contenance : on n'en publie aucune.
             logger.warning('capacite_toit indisponible', exc_info=True)
@@ -763,6 +803,21 @@ def capacite_toit_du_devis(devis):
         # mémo, jamais le résultat.
         pass
     return capacite
+
+
+def _contraintes_site_du_devis(devis):
+    """CIQ137 — les contraintes de site du calepinage lié ({} sinon), lues
+    par ``apps.calepinage.selectors`` (jamais ses modèles). Ne lève jamais."""
+    try:
+        from apps.calepinage.selectors import calepinage_du_devis
+
+        calepinage = calepinage_du_devis(getattr(devis, 'pk', None),
+                                         getattr(devis, 'company', None))
+    except Exception:  # noqa: BLE001 — pas de calepinage = pas de contrainte
+        return {}
+    if calepinage is None:
+        return {}
+    return getattr(calepinage, 'contraintes_site', None) or {}
 
 
 def _repartir(trames, cible):

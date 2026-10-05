@@ -49,6 +49,9 @@ _PROFILE_FIELD_LABELS = {
     'agricole_salissure_supp_pct': 'Supplément de salissure (%)',
     'recette_pompage_ecart_max_pct':
         'Écart de recette pompage toléré (%)',
+    'forfaits_ci': 'Forfaits des prestations C&I (sourcés)',
+    'bande_prix_kwc_ci':
+        'Contrôle interne du prix au kWc C&I (jamais imprimé)',
     'reperes_energie_agricole':
         'Repères énergie agricole (butane, gasoil — datés et sourcés)',
     'delai_visite_technique': 'Délai de visite technique (indicatif)',
