@@ -1339,6 +1339,30 @@ describe('runtime W92 (map) — sommets éditables + annuler le dernier point', 
     expect(txt('rp9-reco-kwc')).toMatch(/kWc/);
   });
 
+  it('ACAL77 — glisser un coin au-delà du coin opposé est REFUSÉ : sommet inchangé, motif affiché', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    setBill('1500');
+    const map = fakeMaps[0];
+    vi.useFakeTimers();
+    for (const [lng, lat] of squareCorners(16)) {
+      map.fire('click', { lngLat: { lng, lat }, point: { x: 0, y: 0 } });
+      vi.advanceTimersByTime(241);
+    }
+    vi.useRealTimers();
+    (document.getElementById('rp9-finish') as HTMLButtonElement).click();
+    const coins = squareCorners(16);
+    const before = vertexAt(map, 2)!;
+    map.queryHits['rp9-pts'] = [{ properties: { idx: 2 } }];
+    // Le sommet 2 (nord-est) tiré au-delà du côté ouest opposé, à mi-hauteur : nœud papillon.
+    const cible = { lng: coins[0][0] - 0.0005, lat: (coins[0][1] + coins[3][1]) / 2 };
+    map.fire('mousedown', { lngLat: { lng: before[0], lat: before[1] }, point: { x: 10, y: 10 } });
+    map.fire('mousemove', { lngLat: cible, point: { x: 40, y: 40 } });
+    map.fire('mouseup', { lngLat: cible, point: { x: 40, y: 40 } });
+    expect(vertexAt(map, 2)).toEqual(before);
+    expect(txt('rp9-status')).toMatch(/nœud papillon/);
+  });
+
   it('un coin posé peut être glissé au DOIGT (touch) → le sommet bouge', async () => {
     const init = await loadTool();
     init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });

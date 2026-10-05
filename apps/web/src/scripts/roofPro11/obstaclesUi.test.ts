@@ -9,6 +9,8 @@ import {
   gesteEnvironnement,
   debutGlisseEnvironnement,
   avancerGlisseEnvironnement,
+  deplacementSommetAdmis, // ACAL77
+  MOTIF_SOMMET_CROISE, // ACAL77
 } from './obstaclesUi';
 import { newEnvironmentObject, environmentShadeEntries } from './environment';
 import {
@@ -478,5 +480,20 @@ describe('CALX403 — une allée de circulation se trace, et retire sa surface',
     const zone = { id: 'z', nature: 'INTERDITE' as const, vertices: couloir, setbackM: 0 };
     expect(aireAlleeM2(zone)).toBeGreaterThan(11);
     expect(aireAlleeM2(zone)).toBeLessThan(12.1);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL77 — le glissé d'un sommet de contour FERMÉ est gardé contre le croisement.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL77 — glisser un sommet vers un papillon', () => {
+  const carre: LngLat[] = [[0, 0], [10, 0], [10, 10], [0, 10]];
+
+  it('glisser un sommet vers un papillon → sommets inchangés et motif affiché', () => {
+    // Le sommet 2 tiré au-delà du côté opposé (à l'ouest du côté 3→0) : nœud papillon.
+    expect(deplacementSommetAdmis(carre, 2, [-5, 5])).toBe(false);
+    // Un déplacement raisonnable reste admis.
+    expect(deplacementSommetAdmis(carre, 2, [12, 11])).toBe(true);
+    expect(MOTIF_SOMMET_CROISE).toMatch(/nœud papillon/);
   });
 });

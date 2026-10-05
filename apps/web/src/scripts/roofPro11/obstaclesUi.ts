@@ -27,7 +27,7 @@ import {
   type ObstacleType,
   type ObstacleProvenance,
 } from '../../lib/obstacles';
-import { type LngLat } from '../../lib/roof';
+import { isSimplePolygon, type LngLat } from '../../lib/roof'; // ACAL77
 import { OBSTACLE_TAP_PX, VERTEX_GRAB_PX, DEG2RAD, DEG2M } from './constants';
 import { insertionSurContour, supprimerSommet, metresParPixel } from './snap';
 import { $, esc } from './dom';
@@ -268,6 +268,17 @@ export interface ObstaclesUi {
   /** CALX403 — les repères des modules posés qui chevauchent une allée de circulation.
    *  AUCUN module n'est supprimé : ils sont comptés. */
   modulesSurAllees: () => string[];
+}
+
+/** ACAL77 — motif affiché quand un glissé de sommet ferait croiser le contour (même mot que
+ *  `snap.ts` pour la suppression : « nœud papillon »). */
+export const MOTIF_SOMMET_CROISE = 'Déplacement refusé : le contour se croiserait (nœud papillon) — rapprochez le sommet de ses voisins.';
+
+/** ACAL77 — le sommet `idx` d'un contour FERMÉ peut-il aller en `cible` sans que le contour
+ *  se croise ? PURE : la garde unique `isSimplePolygon` (lib/roof.ts) sur le candidat. */
+export function deplacementSommetAdmis(vertices: readonly LngLat[], idx: number, cible: LngLat): boolean {
+  if (idx < 0 || idx >= vertices.length) return false;
+  return isSimplePolygon(vertices.map((v, i) => (i === idx ? ([cible[0], cible[1]] as LngLat) : v)));
 }
 
 /** CALX103/CALX104/CALX403 — les tracés « à la volée » que l'atelier sait armer. */
@@ -1473,6 +1484,13 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     // Delta lng/lat (annule le parallaxe de la vue inclinée), comme le glissé d'obstacle.
     const lng = mv.vLng + (lngLat[0] - mv.startLng);
     const lat = mv.vLat + (lngLat[1] - mv.startLat);
+    // ACAL77 — un contour FERMÉ ne se croise jamais sous le doigt : le candidat est testé
+    // AVANT d'être écrit (garde unique `isSimplePolygon`, comme la fermeture du tracé) ; un
+    // sommet qui ferait un nœud papillon n'est pas déplacé et le motif est affiché.
+    if (ctx.closed && ctx.vertices.length >= 3 && !deplacementSommetAdmis(ctx.vertices, mv.idx, [lng, lat])) {
+      setStatus(MOTIF_SOMMET_CROISE);
+      return;
+    }
     mv.moved = true;
     ctx.vertices[mv.idx] = [lng, lat];
     redrawTrace(); // ligne + pastilles suivent le doigt en direct
