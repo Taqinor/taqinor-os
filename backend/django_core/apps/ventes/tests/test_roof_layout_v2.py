@@ -279,7 +279,11 @@ class NonRegressionConsommateursVentesTest(SimpleTestCase):
         la whitelist `_ZONE_KEYS` / `_safe_zone_geometry` les écarte."""
         public = self._public(self.v2)
         self.assertNotIn('environment', public)
-        self.assertNotIn('exclusionZones', public)
+        # ACAL261 (C-ACAL-116) — les zones d'exclusion SONT publiées
+        # désormais, mais réduites à leur géométrie (contrat proposal_data).
+        for exclusion in public.get('exclusionZones', []):
+            self.assertLessEqual(
+                set(exclusion), {'id', 'nature', 'vertices', 'setbackM'})
         zone = public['zones'][0]
         self.assertNotIn('edges', zone)
         self.assertNotIn('buildingId', zone)

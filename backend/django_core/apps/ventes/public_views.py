@@ -323,6 +323,138 @@ def _nombre_publiable(valeur):
     return nombre
 
 
+#: ACAL261 — longueur maximale d'un identifiant republié (``moduleId``,
+#: ``mode``, ``id`` d'une surface ou d'une exclusion).
+_MAX_TEXTE_PUBLIE = 64
+#: ACAL261 — plafonds des listes republiées (taille du payload public).
+_MAX_SOMMETS_PUBLIES = 500
+_MAX_TABLES_PUBLIEES = 2000
+_MAX_SURFACES_PUBLIEES = 50
+#: ACAL261 — énumérations fermées (``roof_layout_v2.schema.json``).
+_NATURES_EXCLUSION = ('ENVELOPPE', 'INTERDITE', 'RESERVEE', 'PREFEREE')
+_KINDS_SURFACE = ('sol', 'ombriere', 'facade')
+
+
+def _texte_publiable(valeur):
+    """Un identifiant COURT (chaîne non vide, ≤ 64), ou ``None``."""
+    if not isinstance(valeur, str):
+        return None
+    texte = valeur.strip()
+    if not texte or len(texte) > _MAX_TEXTE_PUBLIE:
+        return None
+    return texte
+
+
+def _couples_publiables(brut):
+    """Une liste de couples de nombres finis (sommets), bornée, ou ``None``."""
+    if not isinstance(brut, list):
+        return None
+    couples = []
+    for point in brut[:_MAX_SOMMETS_PUBLIES]:
+        if not isinstance(point, (list, tuple)) or len(point) != 2:
+            continue
+        a = _nombre_publiable(point[0])
+        b = _nombre_publiable(point[1])
+        if a is not None and b is not None:
+            couples.append([a, b])
+    return couples or None
+
+
+def _nombres_publiables(brut, cles):
+    """``{clé: nombre fini}`` des seules ``cles`` présentes et numériques."""
+    if not isinstance(brut, dict):
+        return {}
+    sortie = {}
+    for cle in cles:
+        valeur = _nombre_publiable(brut.get(cle))
+        if valeur is not None:
+            sortie[cle] = valeur
+    return sortie
+
+
+def _safe_modules(brut):
+    """ACAL261 — ``modules[]`` réduit à la GÉOMÉTRIE du modèle :
+    ``{id, longueurMm, largeurMm, pmaxWc}``. JAMAIS ``produitId``, libellé
+    (marque) ni prix."""
+    if not isinstance(brut, list):
+        return []
+    modules = []
+    for entree in brut[:_MAX_SURFACES_PUBLIEES]:
+        if not isinstance(entree, dict):
+            continue
+        identifiant = _texte_publiable(entree.get('id'))
+        if identifiant is None:
+            continue
+        module = {'id': identifiant}
+        module.update(_nombres_publiables(
+            entree, ('longueurMm', 'largeurMm', 'pmaxWc')))
+        modules.append(module)
+    return modules
+
+
+def _safe_exclusions(brut):
+    """ACAL261 — ``exclusionZones[]`` : ``{id, nature, vertices, setbackM}``."""
+    if not isinstance(brut, list):
+        return []
+    zones = []
+    for entree in brut[:_MAX_SURFACES_PUBLIEES]:
+        if not isinstance(entree, dict):
+            continue
+        sommets = _couples_publiables(entree.get('vertices'))
+        if sommets is None or entree.get('nature') not in _NATURES_EXCLUSION:
+            continue
+        zone = {'nature': entree['nature'], 'vertices': sommets}
+        identifiant = _texte_publiable(entree.get('id'))
+        if identifiant is not None:
+            zone['id'] = identifiant
+        zone.update(_nombres_publiables(entree, ('setbackM',)))
+        zones.append(zone)
+    return zones
+
+
+def _safe_pose_surfaces(brut):
+    """ACAL261 — ``poseSurfaces[]`` (champ au sol, ombrière, façade) :
+    ``{id, kind, vertices|contourM, tiltDeg, rowAzimuthDeg, moduleLongM,
+    moduleCourtM, moduleWc, engine{modules, rowPitchM, tables[{x0, x1, y0,
+    y1}]}}`` — géométrie seule."""
+    if not isinstance(brut, list):
+        return []
+    surfaces = []
+    for entree in brut[:_MAX_SURFACES_PUBLIEES]:
+        if not isinstance(entree, dict) or entree.get('kind') not in (
+                _KINDS_SURFACE):
+            continue
+        surface = {'kind': entree['kind']}
+        identifiant = _texte_publiable(entree.get('id'))
+        if identifiant is not None:
+            surface['id'] = identifiant
+        for cle in ('vertices', 'contourM'):
+            sommets = _couples_publiables(entree.get(cle))
+            if sommets is not None:
+                surface[cle] = sommets
+        surface.update(_nombres_publiables(
+            entree, ('tiltDeg', 'rowAzimuthDeg', 'moduleLongM',
+                     'moduleCourtM', 'moduleWc')))
+        moteur = entree.get('engine')
+        if isinstance(moteur, dict):
+            engine = _nombres_publiables(moteur, ('modules', 'rowPitchM'))
+            if 'modules' in engine:
+                engine['modules'] = int(engine['modules'])
+            tables = []
+            brutes = moteur.get('tables')
+            for table in (brutes[:_MAX_TABLES_PUBLIEES]
+                          if isinstance(brutes, list) else []):
+                bornes = _nombres_publiables(table, ('x0', 'x1', 'y0', 'y1'))
+                if len(bornes) == 4:
+                    tables.append(bornes)
+            if tables:
+                engine['tables'] = tables
+            if engine:
+                surface['engine'] = engine
+        surfaces.append(surface)
+    return surfaces
+
+
 def _safe_zone_geometry(brut) -> dict | None:
     """WJ24 — la POSE RÉELLE d'une zone, recopiée CHAMP PAR CHAMP.
 
@@ -355,6 +487,12 @@ def _safe_zone_geometry(brut) -> dict | None:
         geo['family'] = brut['family']
     if isinstance(brut.get('flush'), bool):
         geo['flush'] = brut['flush']
+    # ACAL261 — le MODULE posé sur ce pan (renvoi vers ``modules[].id``) et
+    # le mode de pose : deux identifiants courts, jamais une fiche produit.
+    for cle in ('moduleId', 'mode'):
+        texte = _texte_publiable(brut.get(cle))
+        if texte is not None:
+            geo[cle] = texte
 
     # Origine ENU : exactement deux nombres (lng, lat), sinon rien.
     origine = brut.get('origin')
@@ -377,6 +515,10 @@ def _safe_zone_geometry(brut) -> dict | None:
         pose = {'cx': cx, 'cy': cy}
         if cellule.get('face') in _FACES_CONNUES:
             pose['face'] = cellule['face']
+        # ACAL261 — l'angle de pose libre d'un module (mode « free »).
+        angle = _nombre_publiable(cellule.get('angleDeg'))
+        if angle is not None:
+            pose['angleDeg'] = angle
         panneaux.append(pose)
     if panneaux:
         geo['panels'] = panneaux
@@ -443,6 +585,25 @@ def _safe_roof_layout(devis) -> dict | None:
         safe["result"] = result
     if layout.get("scenario"):
         safe["scenario"] = layout.get("scenario")
+    # ── ACAL261 (C-ACAL-035/042/116) — la 3D publique reçoit le module de
+    # chaque pan, les surfaces de pose, les retraits et les exclusions, au
+    # format du contrat ``proposal_data.json`` (``exemple_roof_layout_riche``).
+    # GÉOMÉTRIE SEULE, recopiée champ par champ : jamais un prix, jamais un
+    # ``produitId`` ni un libellé de marque.
+    modules = _safe_modules(layout.get("modules"))
+    if modules:
+        safe["modules"] = modules
+    retraits = _nombres_publiables(
+        layout.get("setbacksM"),
+        ("lateralM", "extremityM", "parapetM", "jointM"))
+    if retraits:
+        safe["setbacksM"] = retraits
+    exclusions = _safe_exclusions(layout.get("exclusionZones"))
+    if exclusions:
+        safe["exclusionZones"] = exclusions
+    surfaces = _safe_pose_surfaces(layout.get("poseSurfaces"))
+    if surfaces:
+        safe["poseSurfaces"] = surfaces
     return safe or None
 
 
