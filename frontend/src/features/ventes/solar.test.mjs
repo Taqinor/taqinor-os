@@ -1831,7 +1831,8 @@ test('QXMT — les trois postes horaires portent les valeurs ONEE sourcées', ()
   assert.equal(TARIF_MT_ONEE.PLEINES, 1.0101)
   assert.equal(TARIF_MT_ONEE.CREUSES, 0.7398)
   assert.equal(TARIF_MT_ONEE.PRIME_PUISSANCE_DH_KVA_AN, 512.62)
-  assert.equal(TARIF_MT_ONEE.TVA_INCLUSE_PCT, 18)
+  // CIQ202 — le libellé de TVA périmé de la page n'est plus une clé.
+  assert.equal('TVA_INCLUSE_PCT' in TARIF_MT_ONEE, false)
   assert.ok(tarifMtDisponible())
   // pointe > pleines > creuses, toujours
   assert.ok(TARIF_MT_ONEE.POINTE > TARIF_MT_ONEE.PLEINES)
@@ -1841,13 +1842,18 @@ test('QXMT — les trois postes horaires portent les valeurs ONEE sourcées', ()
 test('QXMT — la mention porte la source ET la date de consultation', () => {
   assert.match(TARIF_MT_ONEE.MENTION, /Tarif Général \(MT\)/)
   assert.match(TARIF_MT_ONEE.MENTION, /one\.org\.ma/)
-  assert.match(TARIF_MT_ONEE.MENTION, /18\/08\/2026/)
+  assert.match(TARIF_MT_ONEE.MENTION, /03\/10\/2026/)
+  assert.match(TARIF_MT_ONEE.MENTION, /taux légal 2026 : 20 %/)
 })
 
-test('QXMT — les plages horaires MT restent ABSENTES (jamais inventées)', () => {
-  // La page ONEE ne les publie que dans une image : aucune heure « raisonnable »
-  // ne doit apparaître ici. Ce test tombe si quelqu'un en invente.
-  assert.equal(TARIF_MT_ONEE.PLAGES_H, null)
+test('CIQ202 — les plages horaires MT sont SOURCÉES (page ONEE, ANRE 04/26)', () => {
+  const [hiver, ete] = TARIF_MT_ONEE.PLAGES_H
+  assert.equal(hiver.saison, 'hiver')
+  assert.deepEqual(hiver.postes.find((p) => p.poste === 'pointe'),
+    { poste: 'pointe', de_h: 17, a_h: 22 })
+  assert.equal(ete.saison, 'ete')
+  assert.deepEqual(ete.postes.find((p) => p.poste === 'pointe'),
+    { poste: 'pointe', de_h: 18, a_h: 23 })
 })
 
 test('QXMT — répartition horaire normalisée à 100 %, sinon null', () => {

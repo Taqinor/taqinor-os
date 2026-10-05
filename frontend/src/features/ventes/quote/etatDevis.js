@@ -24,7 +24,9 @@ import {
 import { SCENARIO_SANS, SCENARIO_AVEC } from './sizingReducer.js'
 import { lignesServeurVersEcran, lignesEcranVersPayload } from './lignesEcran.js'
 import { deriverReouverture } from './reouverture.js'
-import { projeterEtudeMarche } from './etudeMarcheBloc.js'
+import {
+  projeterEtudeMarche, ecoDepuisSaisies, saisiesEconomiePompage,
+} from './etudeMarcheBloc.js'
 import { echeancierVersSaisie, saisieVersEcheancier } from '../echeancierEdition.js'
 
 //: Les options recommandées qu'un devis peut avoir FIGÉES (QJR524).
@@ -150,19 +152,18 @@ export function devisVersEtat(d) {
     etat.realBillKwh = String(Math.round(e.conso_annuelle / 12))
   }
 
-  // Exploitation guidée (toutes optionnelles). `fuel_spend_current` est
-  // stocké en MAD/AN : réaffiché en annuel.
+  // Exploitation guidée (toutes optionnelles). AGR212 — l'énergie et la
+  // dépense DÉCLARÉES se relisent dans `saisies_economie_pompage` (plus
+  // jamais `current_fuel` / `fuel_spend_current`).
   etat.farm = {
     region: texte(e.region),
     crop: texte(e.crop),
     surfaceHa: texte(e.surface_ha),
     irrigation: texte(e.irrigation_method),
-    fuel: texte(e.current_fuel),
-    fuelSpend: texte(e.fuel_spend_current),
-    fuelPeriod: present(e.fuel_spend_current) ? 'an' : undefined,
     hmtStatic: texte(e.hmt_static),
     hmtDrawdown: texte(e.hmt_drawdown),
   }
+  etat.saisiesEco = ecoDepuisSaisies(e.saisies_economie_pompage)
   return etat
 }
 
@@ -244,8 +245,9 @@ export function etatVersEcritures(etat, vif = {}) {
     },
     exploitation: {
       irrigation: farm.irrigation, region: farm.region, crop: farm.crop,
-      surfaceHa: farm.surfaceHa, fuel: farm.fuel, fuelSpend: farm.fuelSpend,
+      surfaceHa: farm.surfaceHa,
       hmtStatic: farm.hmtStatic, hmtDrawdown: farm.hmtDrawdown,
+      saisiesEconomie: saisiesEconomiePompage(etat.saisiesEco),
     },
   })
 
