@@ -527,6 +527,53 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
 # celui des pans du document puis celui des chaînes du noyau — aucun ensemble
 # non ordonné, aucun identifiant d'objet, aucune horloge.
 
+#: ACAL285 — la teinte des chaînes et des entrées MPPT : SOURCE UNIQUE
+#: (déplacée de ``documents/plan_cablage.py``, qui l'importe). Servie ligne
+#: par ligne dans ``electrique.affectation[]`` : l'écran, la 3D et le plan de
+#: câblage colorent tous avec CES valeurs, jamais une copie locale.
+PALETTE_CHAINES = (
+    'rgb(36, 130, 214)',   # bleu
+    'rgb(232, 125, 33)',   # orange
+    'rgb(46, 163, 89)',    # vert
+    'rgb(184, 64, 158)',   # magenta
+    'rgb(0, 153, 158)',    # sarcelle
+    'rgb(212, 61, 71)',    # rouge
+    'rgb(115, 102, 199)',  # violet
+    'rgb(153, 133, 26)',   # ocre
+)
+#: Le gris d'un module NON affecté — jamais ``null``, jamais une teinte de
+#: chaîne voisine.
+COULEUR_NON_AFFECTE = 'rgb(140, 143, 148)'
+
+
+def _colorer(lignes):
+    """ACAL285 — ``couleur_chaine`` et ``couleur_mppt`` sur chaque ligne.
+
+    Ordre de PREMIÈRE APPARITION du groupe dans la table (celui de la légende
+    du plan de câblage) ; appliqué APRÈS l'affectation manuelle. Déterministe :
+    aucun ensemble non ordonné.
+    """
+    par_chaine, par_mppt = {}, {}
+    for ligne in lignes:
+        chaine = ligne.get('chaine')
+        if chaine is None:
+            ligne['couleur_chaine'] = COULEUR_NON_AFFECTE
+        else:
+            if chaine not in par_chaine:
+                par_chaine[chaine] = PALETTE_CHAINES[
+                    len(par_chaine) % len(PALETTE_CHAINES)]
+            ligne['couleur_chaine'] = par_chaine[chaine]
+        if chaine is None or ligne.get('mppt') is None:
+            ligne['couleur_mppt'] = COULEUR_NON_AFFECTE
+        else:
+            cle = (ligne.get('onduleur'), ligne.get('mppt'))
+            if cle not in par_mppt:
+                par_mppt[cle] = PALETTE_CHAINES[
+                    len(par_mppt) % len(PALETTE_CHAINES)]
+            ligne['couleur_mppt'] = par_mppt[cle]
+    return lignes
+
+
 def affectation(conception, *, imposee=None):
     """La table module → chaîne → MPPT → onduleur, dans l'ordre du document.
 
@@ -577,7 +624,8 @@ def affectation(conception, *, imposee=None):
                 'chaine': None, 'onduleur': None, 'mppt': None,
                 'source': SOURCE_AUTO,
             })
-    return tuple(_appliquer_imposee(lignes, imposee))
+    # ACAL285 — la teinte est attribuée APRÈS l'affectation manuelle.
+    return tuple(_colorer(_appliquer_imposee(lignes, imposee)))
 
 
 def _appliquer_imposee(lignes, imposee):

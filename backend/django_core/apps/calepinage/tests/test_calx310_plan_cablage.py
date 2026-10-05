@@ -38,7 +38,8 @@ from apps.calepinage.models import Calepinage
 from apps.calepinage.services.documents import mise_en_page
 from apps.calepinage.services.documents.plan_cablage import (
     CHAMP_CHAINAGE, COULEUR_NON_AFFECTE, MOTS_DE_MONTANT, PALETTE_CHAINES,
-    PlanCablageRefuse, affectation_du_calepinage, exporter_plan_cablage_dxf,
+    PlanCablageRefuse, affectation_publiee_du_calepinage,
+    exporter_plan_cablage_dxf,
     html_du_plan_cablage, lignes_de_legende, modules_du_plan,
     plan_de_cablage, rendre_plan_cablage_pdf, rendre_plan_cablage_svg,
     svg_de_plan_cablage, verifier_legende_sans_montant,
@@ -257,14 +258,14 @@ class JointDocumentElectriqueTest(unittest.TestCase):
         self.assertEqual(modules_du_plan(anonyme, geometrie)[0]['module'],
                          'PAN-1#1')
 
-    def test_la_palette_est_celle_de_l_ecran(self):
-        source = JSX.read_text(encoding='utf-8')
-        bloc = re.search(r'AFFECTATION_PALETTE = \[(.*?)\]', source, re.S)
-        self.assertIsNotNone(bloc)
-        self.assertEqual(tuple(re.findall(r"'(rgb\([^)]*\))'",
-                                          bloc.group(1))), PALETTE_CHAINES)
-        gris = re.search(r"AFFECTATION_UNASSIGNED = '(rgb\([^)]*\))'", source)
-        self.assertEqual(gris.group(1), COULEUR_NON_AFFECTE)
+    def test_la_palette_est_la_source_unique_servie(self):
+        # ACAL285 (réécrit) — plus de lecture du source JSX : la palette est
+        # CELLE de ``services/chaines.py``, servie dans
+        # ``electrique.affectation[]`` que l'écran consomme.
+        from apps.calepinage.services import chaines
+
+        self.assertIs(PALETTE_CHAINES, chaines.PALETTE_CHAINES)
+        self.assertEqual(COULEUR_NON_AFFECTE, chaines.COULEUR_NON_AFFECTE)
 
 
 class RefusTest(unittest.TestCase):
@@ -289,7 +290,7 @@ class RefusTest(unittest.TestCase):
                 'apps.calepinage.services.electrique.resultat_calepinage',
                 return_value={'electrique': {'affectation': table}}):
             with self.assertRaises(RapportRefuse) as capture:
-                affectation_du_calepinage(NU)
+                affectation_publiee_du_calepinage(NU)
         self.assertIn('prix_achat', capture.exception.champ)
 
 

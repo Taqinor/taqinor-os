@@ -20,9 +20,9 @@ Ce que fait ce module, et ce qu'il ne fait pas
   l'automatique, CAL234) : jamais une seconde partition recalculée ici, qui
   serait une AUTRE partition que celle qui a été dimensionnée ;
 * il TEINTE chaque module par sa chaîne avec la palette de l'écran
-  (``PALETTE_CHAINES`` = ``AFFECTATION_PALETTE`` de ``AffectationChaines.jsx``,
-  même ordre de première apparition) : un module a la même couleur sur le
-  papier et à l'écran ;
+  (``PALETTE_CHAINES`` de ``services/chaines.py``, celle que
+  ``electrique.affectation[]`` sert — ACAL285 —, même ordre de première
+  apparition) : un module a la même couleur sur le papier et à l'écran ;
 * un module en affectation MANUELLE (``source: 'affectation manuelle'``) porte
   un signe distinct (×) ;
 * un module SANS affectation est dessiné en CONTOUR SEUL, jamais teinté d'une
@@ -62,7 +62,7 @@ __all__ = [
     'COULEUR_NON_AFFECTE', 'SOURCE_MANUELLE', 'MOTS_DE_MONTANT',
     'PlanCablageRefuse', 'rgb_de', 'modules_du_plan', 'plan_de_cablage',
     'lignes_de_legende', 'verifier_legende_sans_montant',
-    'svg_de_plan_cablage', 'affectation_du_calepinage',
+    'svg_de_plan_cablage', 'affectation_publiee_du_calepinage',
     'plan_du_calepinage', 'rendre_plan_cablage_svg', 'html_du_plan_cablage',
     'rendre_plan_cablage_pdf', 'exporter_plan_cablage_dxf',
 ]
@@ -74,20 +74,10 @@ CODE_DOCUMENT = 'plan_cablage'
 #: l'inventaire des documents déclare pour cette pièce.
 CHAMP_CHAINAGE = 'electrique.chainage'
 
-#: La teinte des chaînes — MIROIR EXACT de ``AFFECTATION_PALETTE`` et
-#: ``AFFECTATION_UNASSIGNED`` (``AffectationChaines.jsx``, lui-même miroir de
-#: la 3D). Un test relit la source JSX : la dérive rougit.
-PALETTE_CHAINES = (
-    'rgb(36, 130, 214)',   # bleu
-    'rgb(232, 125, 33)',   # orange
-    'rgb(46, 163, 89)',    # vert
-    'rgb(184, 64, 158)',   # magenta
-    'rgb(0, 153, 158)',    # sarcelle
-    'rgb(212, 61, 71)',    # rouge
-    'rgb(115, 102, 199)',  # violet
-    'rgb(153, 133, 26)',   # ocre
-)
-COULEUR_NON_AFFECTE = 'rgb(140, 143, 148)'
+#: La teinte des chaînes — ACAL285 : SOURCE UNIQUE ``services/chaines.py``,
+#: celle que ``electrique.affectation[]`` sert ligne par ligne (même palette,
+#: même ordre de première apparition : le PDF garde ses teintes).
+from ..chaines import COULEUR_NON_AFFECTE, PALETTE_CHAINES  # noqa: E402
 
 #: La ``source`` d'une ligne imposée par l'installateur (CAL234).
 SOURCE_MANUELLE = 'affectation manuelle'
@@ -473,7 +463,7 @@ def svg_de_plan_cablage(plan, *, titre='', sous_titre='', pied=''):
 
 # ── Depuis un Calepinage : LIRE l'affectation publiée ──────────────────────
 
-def affectation_du_calepinage(calepinage):
+def affectation_publiee_du_calepinage(calepinage):
     """La table d'affectation PUBLIÉE par ``GET resultat/`` — jamais recalculée.
 
     Elle passe le pare-feu des pièces du lot 6 (``rapport
@@ -498,7 +488,7 @@ def affectation_du_calepinage(calepinage):
 def plan_du_calepinage(calepinage, *, affectation=None):
     """Le plan de câblage d'un ``Calepinage`` (affectation LUE si absente)."""
     if affectation is None:
-        affectation = affectation_du_calepinage(calepinage)
+        affectation = affectation_publiee_du_calepinage(calepinage)
     return plan_de_cablage(getattr(calepinage, 'roof_layout', None),
                            affectation)
 
