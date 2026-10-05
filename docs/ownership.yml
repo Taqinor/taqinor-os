@@ -951,7 +951,9 @@ append_only:
   - path: "frontend/src/features/*/module.config.jsx"
     rule: "routes et nav d'un module : ajouter une entrée lazy() et une entrée de nav, jamais réordonner (le premier item CRM reste la porte Leads, APX1)"
   - path: frontend/src/api/calepinageApi.js
-    rule: "une capacité = UNE fonction ajoutée EN FIN avec « // CALX<id> » (D-CALX 13)"
+    rule: "clusters restants de la façade (document, versions, résultats, fond) : une capacité = UNE fonction ajoutée EN FIN avec « // CALX<id> » (D-CALX 13)"
+  - path: "frontend/src/api/calepinage/*.js"
+    rule: "UNE fonction ajoutée EN FIN du fragment de son thème avec « // CALX<id> » ; jamais réécrire l'ajout d'un autre (SPL293)"
   - path: frontend/src/features/calepinage/atelier/onglets.js
     rule: "un onglet ajouté EN FIN avec « // CALX<id> » (D-CALX 13)"
   - path: frontend/src/router/index.jsx
