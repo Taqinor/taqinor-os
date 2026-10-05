@@ -156,7 +156,8 @@ const capexOpex = [
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           On a business site, solar isn't a showpiece: it's a production asset that delivers
           for more than twenty years. The sizing, though, starts from your
-          load curves — not from a template.
+          bills and your activity rhythm, hour by hour — the measured curve if your
+          distributor supplies it — not from a template.
         </p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* ONE brass CTA (brass discipline) — gold is authorised here.
@@ -282,22 +283,26 @@ const capexOpex = [
           {/* W274 — chapter 03. "The two tax levers nobody cites" below stays
               unnumbered: sub-heading inside this same section. */}
           <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Law 82-21 · medium voltage</p>
-          <h2 class="display v2-section-title mt-5 text-white">Make every exported kilowatt-hour pay</h2>
+          <h2 class="display v2-section-title mt-5 text-white">The saving comes from self-consumption</h2>
+          {/* CIW402 — sources: law 82-21 art. 12 (surplus cap), ANRE decision 04/26 art. 6-7
+              (surplus tariff, MV/HV/EHV only, 01/03/2026-28/02/2027, indexed), decree 2.25.100
+              (regimes). In low voltage, resale is not open (D-CIQ-4). */}
           <p class="v2-lead mt-5 text-lune-soft">
-            Law 82-21 sets the framework for self-generation and for the surplus sent back to the
-            grid. In medium voltage, the study separates from the outset what you consume on site
-            from what you inject, on the terms of your connection agreement. The idea fits in one
-            line: that a kilowatt-hour produced on your site never leaves without something in return.
+            Law 82-21 sets the framework for self-generation: your saving comes from what you
+            consume on site. Any surplus is capped at 20 % of annual production (law 82-21
+            art. 12, ANRE decision 04/26). It is paid 18 cDH/kWh off-peak and 21 cDH/kWh at peak,
+            excluding taxes, in MV/HV/EHV only (period 01/03/2026 to 28/02/2027, indexed). In low
+            voltage, resale is not open.
           </p>
         </div>
         <div class="v2-rise">
           <h2 class="display v2-section-title mt-12 text-white">Which law 82-21 regime your site falls under</h2>
           <p class="v2-lead mt-5 text-lune-soft">
-            Power decides. Up to 5 MW in low or medium voltage, a simple
-            <strong class="text-lune">connection agreement</strong> with the grid operator is enough. Cross
-            the 5 MW threshold — medium, high or very high voltage — and you move into the
-            <strong class="text-lune">authorisation</strong> regime. In both cases, we assemble the technical
-            file and carry it through to commissioning.
+            Power decides (decree 2.25.100): a <strong class="text-lune">declaration</strong> below 11 kW;
+            a <strong class="text-lune">connection agreement</strong> from 11 kW to under 5 MW, in low or
+            medium voltage, filed with the distributor; an <strong class="text-lune">authorisation</strong> from
+            5 MW. For the connection agreement as for the authorisation, we assemble the technical file and
+            carry it through to commissioning.
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
             <a href={L('/loi-82-21')} class="inline-block border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
@@ -309,46 +314,10 @@ const capexOpex = [
           </div>
         </div>
 
-        {/* W336 — the two CFO tax levers: CGI art. 123-22° VAT + depreciation.
-            Cited law articles, never a partnership claim. WG16 (legal skim)
-            still in progress: "subject to verification" note visible. */}
-        <div class="v2-rise mt-16 border-t border-white/10 pt-12">
-          <p class="tech-label v2-kicker rule-brass text-lune">The two tax levers nobody cites</p>
-          <h2 class="display v2-section-title mt-5 text-white">Import VAT and depreciation: what the CGI says</h2>
-          <p class="v2-lead mt-5 text-lune-soft">
-            Two real, checkable law articles work in favour of a business solar installation
-            recorded as a fixed asset on your company's books. These are not terms Taqinor
-            negotiated — they are provisions of the Code Général des Impôts, open to any company
-            that meets the conditions.
-          </p>
-          <div class="mt-8 grid gap-6 sm:grid-cols-2">
-            <div class="border-l-2 border-brass-400/60 pl-6">
-              <p class="fig lum text-lg">CGI · art. 123-22°</p>
-              <h3 class="display mt-2 text-lg text-white">Import VAT exemption</h3>
-              <p class="mt-3 text-sm leading-relaxed text-lune-soft">
-                An investment good recorded as a fixed asset, imported by a VAT-registered company
-                within 36 months of starting its activity, is exempt from VAT — subject to
-                constituting the guarantees required by the tax authorities.
-              </p>
-            </div>
-            <div class="border-l-2 border-brass-400/60 pl-6">
-              <p class="fig lum text-lg">Depreciation</p>
-              <h3 class="display mt-2 text-lg text-white">20 years, straight-line, 5 % a year</h3>
-              <p class="mt-3 text-sm leading-relaxed text-lune-soft">
-                A solar installation is depreciated for accounting purposes like a standard production
-                asset: straight-line over 20 years, i.e. 5 % of its value deducted from taxable income
-                each year — the same horizon as our installations' structural warranty.
-              </p>
-            </div>
-          </div>
-          <p class="mt-8 max-w-2xl border-l-4 border-brass-400/60 pl-4 text-sm leading-relaxed text-lune-soft">
-            <strong class="text-lune">Subject to verification (legal skim in progress):</strong> the
-            most recent finance law extends, for certain companies bound by a state convention, the
-            import VAT exemption window beyond the standard 36 months — a point that does not apply
-            the same way to every company. Confirm your exact situation with your accountant before
-            any decision.
-          </p>
-        </div>
+        {/* CIW402 — the two tax cards (CGI art. 123-22° and 20-year depreciation) and the "legal
+            skim" note are REMOVED until the WRITTEN opinion of the tax adviser and the accountant
+            (manual tasks): the import exemption targets an IMPORTED good, and the depreciation
+            card cited no article. */}
       </div>
     </section>
 

@@ -153,7 +153,8 @@ const capexOpex = [
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           Sur un site professionnel, le solaire n'est pas une vitrine : c'est un équipement de
           production, qui débite plus de vingt ans. Le dimensionnement, lui, part de vos
-          courbes de charge — pas d'un gabarit.
+          factures et de votre rythme d'activité, heure par heure — la courbe mesurée si votre
+          distributeur la fournit — pas d'un gabarit.
         </p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé.
@@ -282,22 +283,26 @@ const capexOpex = [
               fiscaux…" plus bas reste SANS numéro : sous-titre à l'intérieur
               de cette même section. */}
           <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Loi 82-21 · moyenne tension</p>
-          <h2 class="display v2-section-title mt-5 text-white">Faire payer chaque kilowattheure exporté</h2>
+          <h2 class="display v2-section-title mt-5 text-white">L'économie vient de l'autoconsommation</h2>
+          {/* CIW402 — sources : loi 82-21 art. 12 (plafond du surplus), décision ANRE 04/26 art. 6-7
+              (tarif d'excédent, MT/HT/THT seulement, 01/03/2026-28/02/2027, indexé), décret 2.25.100
+              (régimes). En basse tension, la revente n'est pas ouverte (D-CIQ-4). */}
           <p class="v2-lead mt-5 text-lune-soft">
-            La loi 82-21 fixe le cadre de l'autoproduction et de l'excédent renvoyé au réseau. En
-            moyenne tension, l'étude distingue dès le départ ce que vous consommez sur place de ce
-            que vous injectez, selon les termes de votre accord de raccordement. L'idée tient en une
-            phrase : qu'un kilowattheure produit chez vous ne reparte jamais sans contrepartie.
+            La loi 82-21 fixe le cadre de l'autoproduction : votre économie vient de ce que vous
+            consommez sur place. Le surplus éventuel est plafonné à 20 % de la production annuelle
+            (loi 82-21 art. 12, ANRE décision 04/26). Il est rémunéré 18 cDH/kWh hors pointe et
+            21 cDH/kWh en pointe, hors taxes, en MT/HT/THT seulement (période du 01/03/2026 au
+            28/02/2027, indexé). En basse tension, la revente n'est pas ouverte.
           </p>
         </div>
         <div class="v2-rise">
           <h2 class="display v2-section-title mt-12 text-white">Sous quel régime loi 82-21 tombe votre site</h2>
           <p class="v2-lead mt-5 text-lune-soft">
-            La puissance tranche. Jusqu'à 5 MW en basse ou moyenne tension, un simple
-            <strong class="text-lune">accord de raccordement</strong> avec le gestionnaire de réseau suffit. Franchi
-            le seuil de 5 MW — moyenne, haute ou très haute tension — vous basculez dans le régime
-            d'<strong class="text-lune">autorisation</strong>. Dans les deux cas, nous montons le dossier technique
-            et le portons jusqu'à la mise en service.
+            La puissance tranche (décret 2.25.100) : une <strong class="text-lune">déclaration</strong> sous 11 kW ;
+            un <strong class="text-lune">accord de raccordement</strong> de 11 kW à moins de 5 MW, en basse ou
+            moyenne tension, déposé chez le distributeur ; une <strong class="text-lune">autorisation</strong> à
+            partir de 5 MW. Pour l'accord de raccordement comme pour l'autorisation, nous montons le dossier
+            technique et le portons jusqu'à la mise en service.
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
             <a href="/loi-82-21" class="inline-block border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
@@ -309,47 +314,10 @@ const capexOpex = [
           </div>
         </div>
 
-        {/* W336 — les deux leviers fiscaux CFO : art. 123-22° TVA + amortissement.
-            Articles de loi cités, jamais un partenariat. WG16 (skim juridique)
-            encore en cours : note « sous réserve de vérification » visible. */}
-        <div class="v2-rise mt-16 border-t border-white/10 pt-12">
-          <p class="tech-label v2-kicker rule-brass text-lune">Les deux leviers fiscaux que personne ne cite</p>
-          <h2 class="display v2-section-title mt-5 text-white">TVA à l'import et amortissement : ce que dit le CGI</h2>
-          <p class="v2-lead mt-5 text-lune-soft">
-            Deux articles de loi, réels et vérifiables, jouent en faveur d'une installation solaire
-            professionnelle inscrite à l'actif de votre entreprise. Ce ne sont pas des avantages
-            négociés par Taqinor — ce sont des dispositions du Code Général des Impôts, ouvertes à
-            toute entreprise qui remplit les conditions.
-          </p>
-          <div class="mt-8 grid gap-6 sm:grid-cols-2">
-            <div class="border-l-2 border-brass-400/60 pl-6">
-              <p class="fig lum text-lg">CGI · art. 123-22°</p>
-              <h3 class="display mt-2 text-lg text-white">Exonération de TVA à l'import</h3>
-              <p class="mt-3 text-sm leading-relaxed text-lune-soft">
-                Un bien d'investissement inscrit à l'actif immobilisé, importé par une entreprise
-                assujettie à la TVA dans les 36 mois suivant le début de son activité, en est exonéré
-                — sous réserve de constituer les garanties exigées par l'administration fiscale.
-              </p>
-            </div>
-            <div class="border-l-2 border-brass-400/60 pl-6">
-              <p class="fig lum text-lg">Amortissement</p>
-              <h3 class="display mt-2 text-lg text-white">20 ans, linéaire, 5 % par an</h3>
-              <p class="mt-3 text-sm leading-relaxed text-lune-soft">
-                Une installation solaire s'amortit comptablement comme un équipement de production
-                classique : linéairement sur 20 ans, soit 5 % de sa valeur chaque année déduits du
-                résultat imposable — le même horizon que la garantie de structure de nos
-                installations.
-              </p>
-            </div>
-          </div>
-          <p class="mt-8 max-w-2xl border-l-4 border-brass-400/60 pl-4 text-sm leading-relaxed text-lune-soft">
-            <strong class="text-lune">Sous réserve de vérification (skim juridique en cours) :</strong> la
-            loi de finances la plus récente prolonge, pour certaines entreprises liées par une
-            convention avec l'État, la fenêtre d'exonération de TVA à l'import au-delà des 36 mois
-            standards — un point qui ne s'applique pas à toutes les sociétés de la même façon.
-            Confirmez votre situation exacte avec votre expert-comptable avant toute décision.
-          </p>
-        </div>
+        {/* CIW402 — les deux cartes fiscales (CGI art. 123-22° et amortissement 20 ans) et la note
+            « skim juridique » sont RETIRÉES jusqu'à l'avis ÉCRIT du fiscaliste et de l'expert-comptable
+            (tâches manuelles) : l'exonération à l'import vise un bien IMPORTÉ, et l'amortissement
+            n'avait aucun article. */}
       </div>
     </section>
 
