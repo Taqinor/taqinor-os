@@ -565,6 +565,9 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
 
   /** Pose (ou repose) un fond DÉJÀ validé, avec la ressource mémorisée. */
   function poserFond(fond: DocumentUnderlay): { ok: boolean; motif?: string } {
+    // ACAL68 — le fond est porté par le document AVANT toute pose graphique : une carte pas
+    // encore prête (addSource qui lève) ne l'efface plus jamais du prochain « Enregistrer ».
+    ctxFond.underlay = fond;
     const placement = placementDuFond(fond, ressourceFond);
     if (!placement.ok) {
       // Le fond RESTE porté par le document (il est valide : c'est son affichage qui
@@ -586,10 +589,13 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
       );
       map.addLayer(specCoucheFond(placement) as never, avant as never);
     } catch {
-      /* style pas encore chargé : le prochain appel reposera le fond */
-      return { ok: false, motif: 'Fond non affiché : la carte n’est pas encore prête — réessayez dans un instant.' };
+      // ACAL68 — style pas encore chargé : le fond (déjà porté par le document) est REPOSÉ
+      // au chargement du style, s'il est toujours celui du document à ce moment-là.
+      map.once?.('load', () => {
+        if (ctxFond.underlay === fond) poserFond(fond);
+      });
+      return { ok: false, motif: 'Fond non affiché : la carte n’est pas encore prête — il sera posé à son chargement.' };
     }
-    ctxFond.underlay = fond;
     return { ok: true };
   }
 

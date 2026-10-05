@@ -1,6 +1,7 @@
 {
   "initRoofToolPro8_appels": [
     {
+      "rendementPvgis": null,
       "maptilerKey": "cle-demo",
       "reducedMotion": false,
       "hydrate": {

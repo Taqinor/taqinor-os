@@ -276,9 +276,25 @@ describe('CAL248 — accès solaire par module persisté dans le document', () =
   }
   const access = (values: Array<number | null>) => ({
     values,
-    method: 'Astronomie + lancer de rayon sur les obstructions renseignées, pondéré par le profil horaire du lieu.',
-    assumptions: { periode: 'annee-entiere' },
+    // ACAL138 — méthode OBJET (contrat ACAL2) et période annuelle.
+    method: { horizon: false, rangees: false, resolution: 'annuelle', description: 'Astronomie + lancer de rayon sur les obstructions renseignées, pondéré par le profil horaire du lieu.' },
+    assumptions: { periode: 'annee' },
     computedAt: '2026-09-20T10:00:00.000Z',
+  });
+
+  it('solarAccess : une valeur par module posé, méthode objet, deux sérialisations identiques (ACAL138)', () => {
+    const areas = [zone('z1', { renderPlan: planWith(3) })];
+    const meta = { solarAccessByZone: { z1: access([0.98, 0.6, 0.42]) } };
+    const premier = serializeLayout(makeCtx(areas), null, meta);
+    const second = serializeLayout(makeCtx(areas), null, meta);
+    expect(JSON.stringify(second)).toBe(JSON.stringify(premier));
+    expect(premier.zones[0].geometry!.solarAccess!.values).toHaveLength(premier.zones[0].geometry!.count);
+    // Une PHRASE n'est plus écrite ; sans date de calcul, rien n'est écrit (jamais une date refaite).
+    expect(serializeSolarAccess({ ...access([0.9, 0.8, 0.7]), method: 'phrase' as never }, 3)).toBeNull();
+    expect(serializeSolarAccess({ ...access([0.9, 0.8, 0.7]), computedAt: '' }, 3)).toBeNull();
+    // Un document ANCIEN (phrase) se relit, normalisé en objet sans rien inventer.
+    const ancien = deserializeSolarAccess({ solarAccess: { ...access([0.9, 0.8, 0.7]), method: 'phrase libre' } }, 3);
+    expect(ancien?.method).toEqual({ description: 'phrase libre' });
   });
 
   it('absent par défaut : un document SANS accès solaire reste identique à aujourd’hui', () => {
@@ -295,8 +311,8 @@ describe('CAL248 — accès solaire par module persisté dans le document', () =
     });
     const sa = layout.zones[0].geometry!.solarAccess!;
     expect(sa.values).toEqual([0.98, 0.6, 0.42]);
-    expect(sa.method.length).toBeGreaterThan(10);
-    expect(sa.assumptions).toEqual({ periode: 'annee-entiere' });
+    expect(sa.method).toMatchObject({ resolution: 'annuelle' });
+    expect(sa.assumptions).toEqual({ periode: 'annee' });
     expect(sa.computedAt).toBe('2026-09-20T10:00:00.000Z');
   });
 

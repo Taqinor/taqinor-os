@@ -15,7 +15,7 @@
 import { DEG2RAD, WGS84_RADIUS } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
-import { champsFormeObstacle, type AreaRecord, type CardData, type LeadPayload, type ObstacleType, type ObstacleProvenance } from './types';
+import { champsFormeObstacle, type AreaRecord, type CardData, type LeadPayload, type ObstacleType, type ObstacleProvenance, type TiltMode, type OrientMode, type AzimuthMode, type MarginMode } from './types';
 import { type LngLat } from '../../lib/roof';
 import { BILL_RANGES } from '../../lib/billRange';
 import { PANEL2_WATT } from '../../lib/estimatorBrainV2';
@@ -24,10 +24,11 @@ import { emptyCurve, type Appliance, type ApplianceBilling, type HourlyCurve } f
 import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
 import { deduceEdgeTypes, fusionnerAretesSaisies, type SerializedEdge, type EdgeDeductionZone } from './edges';
 import { type EnvironmentObject } from './environment';
-import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone } from './zones';
-import { resolveSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
+import { type ShadeObstruction } from '../../lib/shadingEngine'; // ACAL27
+import { serializeExclusionZones, deserializeExclusionZones, idPanEnDouble, type ExclusionZone } from './zones';
+import { resolveSetbacks, PERIMETER_SETBACK_M, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { sortedHorizonPoints, horizonMaxHeightDeg, type HorizonProfile, type HorizonSource } from '../../lib/horizonEngine';
-import { type CoucheElectrique, type DocumentElectrique } from './electrique3d';
+import { lireCoucheElectrique, type CoucheElectrique, type DocumentElectrique } from './electrique3d';
 import { numeroterDocument, registreAtelier } from './numerotation'; // CALX111
 
 import { emettreBatiments, type Batiment } from './batiment'; // CALX100
@@ -41,7 +42,7 @@ import {
 } from './moduleSelect';
 
 import { underlayPourDocument } from './underlay'; // CALX107
-import { emettreSurfacesPose } from './poseSurfaces'; // CALX123
+import { emettreSurfacesPose, lireSurfacesPose, type SurfacePose } from './poseSurfaces'; // CALX123 ; ACAL26 — relecture
 
 import {
   ecrireOptimisationDansDocument,
@@ -265,7 +266,8 @@ export interface SerializedSolarAccess {
   /** Un facteur (0–1) par module, MÊME ORDRE et MÊME LONGUEUR que `panels`. `null` =
    *  module non calculé — jamais 1, qui se lirait « aucun ombrage mesuré ». */
   values: Array<number | null>;
-  method: string;
+  /** ACAL138 — méthode NOMMÉE (objet {horizon, rangees, resolution, description}). */
+  method: Record<string, unknown>;
   assumptions: Record<string, unknown>;
   /** ISO 8601. */
   computedAt: string;
@@ -283,18 +285,21 @@ export function serializeSolarAccess(
   panelCount: number,
 ): SerializedSolarAccess | null {
   if (!raw || !Array.isArray(raw.values) || raw.values.length !== panelCount || panelCount <= 0) return null;
-  if (typeof raw.method !== 'string' || !raw.method.trim()) return null;
+  // ACAL138 — la méthode est un OBJET (contrat ACAL2) : une phrase libre n'est plus écrite.
+  if (!raw.method || typeof raw.method !== 'object' || Array.isArray(raw.method)) return null;
   const values = raw.values.map((v) =>
     typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : null,
   );
   if (values.every((v) => v === null)) return null; // rien de calculé : on n'écrit rien
-  const computedAt =
-    typeof raw.computedAt === 'string' && raw.computedAt ? raw.computedAt : new Date().toISOString();
+  // ACAL138 — la date est celle du CALCUL, fournie par l'appelant ; jamais refaite ici
+  // (sinon deux sérialisations de suite différaient). Absente ⇒ rien n'est écrit.
+  if (typeof raw.computedAt !== 'string' || !raw.computedAt) return null;
+  const computedAt = raw.computedAt;
   const assumptions =
     raw.assumptions && typeof raw.assumptions === 'object' && !Array.isArray(raw.assumptions)
       ? { ...raw.assumptions }
       : {};
-  return { values, method: raw.method, assumptions, computedAt };
+  return { values, method: { ...raw.method }, assumptions, computedAt };
 }
 
 /** CAL248 — relit l'accès solaire d'une géométrie de zone sérialisée. Absent, mal formé
@@ -302,6 +307,12 @@ export function serializeSolarAccess(
  *  valeur n'est reconstituée. */
 export function deserializeSolarAccess(geometry: unknown, panelCount: number): SerializedSolarAccess | null {
   const raw = (geometry as { solarAccess?: SerializedSolarAccess } | null | undefined)?.solarAccess;
+  // ACAL138 — un document ancien porte une PHRASE : tolérée en lecture (contrat ACAL2),
+  // normalisée en objet sans rien inventer de plus que sa description.
+  const methode = (raw as { method?: unknown } | null | undefined)?.method;
+  if (raw && typeof methode === 'string' && methode.trim()) {
+    return serializeSolarAccess({ ...raw, method: { description: methode } }, panelCount);
+  }
   return serializeSolarAccess(raw, panelCount);
 }
 
@@ -472,6 +483,154 @@ export function deserializeShading(json: unknown): number[][] | null {
   return serializeShading(raw as readonly (readonly number[])[] | null | undefined);
 }
 
+// ═══════════ ACAL27 — OMBRES TRACÉES (sérialisation, contrat `$defs/shadeObstruction`) ═══════════
+// Une ombre tracée (WJ19) est un PIED (`base`) et un BOUT d'ombre (`tip`) ; la hauteur en
+// est DÉDUITE et la demi-largeur supposée. Le contrat (ACAL2) décrit une obstruction par
+// `centre` + `rayonM` (ou un `contour`) et `hauteurM` : le pied est le centre, la
+// demi-largeur le rayon, et le bout voyage sous `bout` (clé additive, le contrat admet
+// des propriétés supplémentaires) — sans lui la hauteur ne se redéduirait pas. Une entrée
+// que l'atelier ne sait pas recalculer (un `contour`, un arbre posé par `centre` seul) est
+// transmise TELLE QUELLE : jamais complétée, jamais jetée.
+
+/** Genre écrit pour une ombre tracée dans l'atelier. */
+export const GENRE_OMBRE_TRACEE = 'ombre_tracee';
+
+function coupleFini(v: unknown): v is [number, number] {
+  return Array.isArray(v) && v.length >= 2 && Number.isFinite(v[0]) && Number.isFinite(v[1]);
+}
+
+/** ACAL27 — écrit `shadeObstructions[]` : les ombres tracées de la session puis les entrées
+ *  relues que l'atelier ne sait pas recalculer (verbatim). Rien ⇒ aucune clé. */
+export function serializeShadeObstructions(
+  list: readonly ShadeObstruction[] | null | undefined,
+  nonLues?: readonly Record<string, unknown>[] | null,
+): { shadeObstructions?: Array<Record<string, unknown>> } {
+  const out: Array<Record<string, unknown>> = [];
+  for (const o of list ?? []) {
+    if (!o || typeof o.id !== 'string' || !o.id || !coupleFini(o.base) || !coupleFini(o.tip)) continue;
+    out.push({
+      id: o.id,
+      kind: GENRE_OMBRE_TRACEE,
+      centre: [o.base[0], o.base[1]],
+      bout: [o.tip[0], o.tip[1]],
+      ...(Number.isFinite(o.halfWidthM) && o.halfWidthM > 0 ? { rayonM: o.halfWidthM } : {}),
+      ...(Number.isFinite(o.heightM) && o.heightM >= 0 ? { hauteurM: o.heightM } : {}),
+      source: 'ombre_tracee',
+    });
+  }
+  for (const e of nonLues ?? []) if (e && typeof e === 'object') out.push(JSON.parse(JSON.stringify(e)));
+  return out.length ? { shadeObstructions: out } : {};
+}
+
+/** ACAL27 — relit `shadeObstructions[]` : `lues` = les ombres tracées que le moteur
+ *  d'ombrage sait recalculer ; `nonLues` = le reste, recopié tel quel pour être réémis. */
+export function deserializeShadeObstructions(json: unknown): {
+  lues: ShadeObstruction[];
+  nonLues: Array<Record<string, unknown>>;
+} {
+  const brut = (json as { shadeObstructions?: unknown } | null | undefined)?.shadeObstructions;
+  const lues: ShadeObstruction[] = [];
+  const nonLues: Array<Record<string, unknown>> = [];
+  if (!Array.isArray(brut)) return { lues, nonLues };
+  for (const e of brut) {
+    if (!e || typeof e !== 'object') continue;
+    const o = e as Record<string, unknown>;
+    const id = typeof o.id === 'string' ? o.id : '';
+    if (
+      id && o.kind === GENRE_OMBRE_TRACEE && coupleFini(o.centre) && coupleFini(o.bout)
+      && typeof o.hauteurM === 'number' && Number.isFinite(o.hauteurM)
+      && typeof o.rayonM === 'number' && Number.isFinite(o.rayonM) && o.rayonM > 0
+    ) {
+      lues.push({
+        id,
+        base: [o.centre[0], o.centre[1]] as LngLat,
+        tip: [o.bout[0], o.bout[1]] as LngLat,
+        heightM: o.hauteurM,
+        halfWidthM: o.rayonM,
+      });
+    } else {
+      nonLues.push(JSON.parse(JSON.stringify(o)));
+    }
+  }
+  return { lues, nonLues };
+}
+
+// ═══════════ ACAL29 — CHOIX DE CONCEPTION ÉPINGLÉS (contrat `$defs/choixConception`) ═══════════
+// `sel`/`pinned` de l'atelier ne quittaient jamais la mémoire : rouvrir un toit plat épinglé
+// à 10° le repavait à l'inclinaison recommandée (live ATL-07 : 35°, est-ouest, 30 panneaux,
+// une version créée). Chaque axe s'écrit avec sa valeur ÉPINGLÉE, sinon 'reco' ('auto' pour
+// la pose, comme la puce de l'atelier) ; `epingles` liste les axes réellement épinglés.
+// Correspondances : azimut plein sud = 180, aligné toit = l'azimut aligné RÉEL du toit (un
+// nombre ≠ 180 se relit « aligné », l'angle est recalculé du toit) ; marge gardée = le
+// retrait de rive de design (PERIMETER_SETBACK_M), pleine rive = 0.
+
+/** Ordre fixe des axes (celui du contrat et des puces). */
+const AXES_CHOIX = ['family', 'tilt', 'orient', 'azimuth', 'margin'] as const;
+type AxeChoix = (typeof AXES_CHOIX)[number];
+
+/** ACAL29 — ce que la relecture rend : la sélection des axes épinglés, la liste des
+ *  épingles, et le bloc brut (ses clés inconnues sont retransmises telles quelles). */
+export interface ChoixConceptionLu {
+  sel: { family?: 'south' | 'eastwest'; tilt?: TiltMode; orient?: OrientMode; azimuth?: AzimuthMode; margin?: MarginMode };
+  epingles: AxeChoix[];
+  brut: Record<string, unknown>;
+}
+
+/** ACAL29 — écrit `choixConception` depuis `ctx.sel`/`ctx.pinned`. Aucun axe épinglé ⇒
+ *  aucune clé (document identique). */
+export function serializeChoixConception(ctx: Ctx): { choixConception?: Record<string, unknown> } {
+  const pinned = ctx.pinned;
+  const sel = ctx.sel;
+  if (!pinned || !sel || pinned.size === 0) return {};
+  const epingles = AXES_CHOIX.filter((a) => pinned.has(a));
+  const alignedDeg = ctx.rec?.roofAlignedAzimuthDeg;
+  const choix: Record<string, unknown> = {
+    family: pinned.has('family') ? sel.family : 'reco',
+    tilt: pinned.has('tilt') && typeof sel.tilt === 'number' ? sel.tilt : 'reco',
+    orient: pinned.has('orient') ? sel.orient : 'auto',
+    azimuth: pinned.has('azimuth')
+      ? sel.azimuth === 'aligned'
+        ? typeof alignedDeg === 'number' && Number.isFinite(alignedDeg) ? alignedDeg : 'auto'
+        : 180
+      : 'reco',
+    margin: pinned.has('margin') ? (sel.margin === 'remove' ? 0 : PERIMETER_SETBACK_M) : 'reco',
+    epingles,
+  };
+  // Clés inconnues du bloc relu (le contrat admet des propriétés additionnelles).
+  const relu = ctx.choixConceptionRelu;
+  const extras = relu
+    ? Object.fromEntries(Object.entries(relu).filter(([k]) => !(AXES_CHOIX as readonly string[]).includes(k) && k !== 'epingles'))
+    : {};
+  return { choixConception: { ...choix, ...extras } };
+}
+
+/** ACAL29 — relit `choixConception`. Absent, illisible ou sans aucune épingle ⇒ null. */
+export function lireChoixConception(json: unknown): ChoixConceptionLu | null {
+  const brut = (json as { choixConception?: unknown } | null | undefined)?.choixConception;
+  if (!brut || typeof brut !== 'object' || Array.isArray(brut)) return null;
+  const c = brut as Record<string, unknown>;
+  const epingles = Array.isArray(c.epingles)
+    ? AXES_CHOIX.filter((a) => (c.epingles as unknown[]).includes(a))
+    : [];
+  if (!epingles.length) return null;
+  const sel: ChoixConceptionLu['sel'] = {};
+  if (epingles.includes('family') && (c.family === 'south' || c.family === 'eastwest')) sel.family = c.family;
+  if (epingles.includes('tilt') && typeof c.tilt === 'number' && Number.isFinite(c.tilt)) sel.tilt = c.tilt;
+  if (epingles.includes('orient') && (c.orient === 'portrait' || c.orient === 'landscape' || c.orient === 'mixed')) {
+    sel.orient = c.orient;
+  }
+  if (epingles.includes('azimuth') && typeof c.azimuth === 'number' && Number.isFinite(c.azimuth)) {
+    sel.azimuth = c.azimuth === 180 ? 'south' : 'aligned';
+  }
+  if (epingles.includes('margin') && typeof c.margin === 'number' && Number.isFinite(c.margin)) {
+    sel.margin = c.margin === 0 ? 'remove' : 'keep';
+  }
+  // Une épingle sans valeur exploitable n'est pas reposée (jamais une valeur devinée).
+  const reposables = epingles.filter((a) => sel[a] !== undefined);
+  if (!reposables.length) return null;
+  return { sel, epingles: reposables, brut: JSON.parse(JSON.stringify(c)) };
+}
+
 // ═══════════ CAL102 — MESURES (sérialisation) ═══════════
 // Mêmes garanties que `shading12x24` : un tableau de MAUVAISE forme est REFUSÉ EN BLOC
 // (mieux vaut aucune mesure au rechargement qu'une mesure à moitié fausse) — mais ici
@@ -588,7 +747,10 @@ export function serializeConsumption(ctx: Ctx): { consumption?: SerializedConsum
   const consDailyTarget =
     typeof ctx.consDailyTarget === 'number' && Number.isFinite(ctx.consDailyTarget) ? ctx.consDailyTarget : 0;
   const consSeasonal = Boolean(ctx.consSeasonal);
-  const touche = consHandEdited || appareilsSrc.length > 0 || consDailyTarget > 0 || consSeasonal;
+  // ACAL26 — un bloc RELU du document (`ctx.consSource` posée par l'hydratation) est
+  // toujours réémis : rouvrir puis enregistrer sans geste ne l'efface jamais.
+  const relu = ctx.consSource != null;
+  const touche = consHandEdited || appareilsSrc.length > 0 || consDailyTarget > 0 || consSeasonal || relu;
   if (!touche) return {};
 
   const courbe24 =
@@ -601,7 +763,14 @@ export function serializeConsumption(ctx: Ctx): { consumption?: SerializedConsum
   const consumption: SerializedConsumption = {
     courbe24,
     methode,
-    source: { origine: 'atelier', saisi_le: new Date().toISOString() },
+    // ACAL26 — la provenance RELUE du document (`ctx.consSource`, posée par
+    // `appliquerHydratationAuCtx`) voyage telle quelle : rouvrir puis enregistrer sans
+    // geste ne réhorodate jamais la saisie. Sans provenance relue (saisie de cette
+    // session), l'atelier signe le bloc.
+    source:
+      ctx.consSource && typeof ctx.consSource.origine === 'string' && typeof ctx.consSource.saisi_le === 'string'
+        ? { origine: ctx.consSource.origine, saisi_le: ctx.consSource.saisi_le }
+        : { origine: 'atelier', saisi_le: new Date().toISOString() },
   };
 
   const summerFactor =
@@ -612,6 +781,11 @@ export function serializeConsumption(ctx: Ctx): { consumption?: SerializedConsum
     consumption.saisons = { ete: summerFactor, hiver: winterFactor };
   }
 
+  // ACAL31 — une liste d'appareils VIDE relue du document repart vide (jamais retirée).
+  const appareilsRelus = (ctx.documentRelu?.consumption as { appareils?: unknown } | undefined)?.appareils;
+  if (appareilsSrc.length === 0 && ctx.consSource != null && Array.isArray(appareilsRelus) && appareilsRelus.length === 0) {
+    consumption.appareils = [];
+  }
   if (appareilsSrc.length > 0) {
     consumption.appareils = appareilsSrc.map((a) => ({
       kind: a.kind,
@@ -654,6 +828,13 @@ export interface SerializedLayout {
   /** PV71 — matrice d'ombrage 12 mois × 24 heures (facteurs 0–1), ou null si aucune ombre
    *  n'a été tracée. Taille FIXE, donc charge utile bornée. */
   shading12x24?: number[][] | null;
+  /** ACAL27 — les OMBRES TRACÉES (contrat `$defs/shadeObstruction`) : sans elles, la
+   *  matrice `shading12x24` ne pouvait pas être recalculée à l'identique à la réouverture.
+   *  Omis ou vide = aucune ombre tracée (comportement historique, byte pour byte). */
+  shadeObstructions?: Array<Record<string, unknown>>;
+  /** ACAL29 — les CHOIX DE CONCEPTION épinglés (contrat `$defs/choixConception`). Omis tant
+   *  qu'aucun axe n'est épinglé (document d'hier, byte pour byte). */
+  choixConception?: Record<string, unknown>;
   /** CAL102 — mesures posées (distance/surface/angle), annotations du calepinage. Omis ou
    *  vide = aucune mesure (comportement historique, byte pour byte). */
   measurements?: Measurement[];
@@ -739,7 +920,24 @@ function centroidOf(vertices: LngLat[]): { lat: number; lng: number } | null {
  * écrire nulle part. `billKwh` est optionnel (passé par l'appelant — l'outil ne
  * connaît pas la conversion facture→kWh ici).
  */
+/** ACAL64 — erreur NOMMÉE d'un document que l'atelier refuse d'émettre (jamais un document
+ *  faux) : l'écran hôte affiche son message tel quel. */
+export class ErreurDocumentAtelier extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ErreurDocumentAtelier';
+  }
+}
+
 export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: SerializeMeta): SerializedLayout {
+  // ACAL64 — deux pans de même identifiant : refus nommé, jamais un document émis (le second
+  // pan écraserait le premier côté serveur, et le compte publié serait faux).
+  const doublon = idPanEnDouble(ctx.areas);
+  if (doublon) {
+    throw new ErreurDocumentAtelier(
+      `Deux pans portent l'identifiant « ${doublon} » : rien n'est enregistré — supprimez ou retracez l'un des deux.`,
+    );
+  }
   // On part des zones figées (ctx.areas) et on superpose l'état d'édition VIVANT de
   // la zone active (vertices/obstacles/roofType… vivent sur ctx, pas encore re-figés).
   const zones: SerializedZone[] = ctx.areas.map((a) => {
@@ -773,6 +971,13 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     // (a.renderPlan) ou, pour la zone active, le plan gagnant vivant (ctx.layoutPlan). Les
     // panneaux POSÉS = les `count` premiers du pavage (l'occupation personnalisée reste un
     // sur-ensemble de la lattice ; on exporte le design du gagnant). Absent si pas de plan.
+    // ACAL28 — un pan NON actif qui porte sa géométrie enregistrée (document relu, ou pose
+    // capturée en le quittant) est réémis VERBATIM : avant, seule une zone à `renderPlan` ou
+    // active sortait une géométrie, et un « Enregistrer » sans geste perdait les autres pans.
+    if (!isActive && a.geometrieEnregistree) {
+      zone.geometry = JSON.parse(JSON.stringify(a.geometrieEnregistree)) as SerializedZoneGeometry;
+      return zone;
+    }
     const rp = a.renderPlan;
     const g = rp
       ? { pack: rp.pack, grid: rp.grid, tiltDeg: rp.tiltDeg, family: rp.family, flush: rp.flush, count: rp.count }
@@ -840,6 +1045,9 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       // de modules posés) ; sinon omis, jamais complété.
       const access = serializeSolarAccess(meta?.solarAccessByZone?.[a.id], posed);
       if (access) zone.geometry.solarAccess = access;
+    } else if (a.geometrieEnregistree) {
+      // ACAL28 — pan actif pas (encore) re-pavé : sa géométrie enregistrée, jamais rien.
+      zone.geometry = JSON.parse(JSON.stringify(a.geometrieEnregistree)) as SerializedZoneGeometry;
     }
     return zone;
   });
@@ -885,8 +1093,16 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     kwcTotal += z.geometry.kwc;
   }
   let annualKwhTotal = 0;
-  for (const a of ctx.areas) if (a.result) annualKwhTotal += a.result.annualKwh;
+  // ACAL28 — un pan non recalculé dans la session garde sa production ENREGISTRÉE
+  // (`annualKwhEnregistre`, posée à la relecture), jamais 0.
+  for (const a of ctx.areas) {
+    if (a.result) annualKwhTotal += a.result.annualKwh;
+    else if (typeof a.annualKwhEnregistre === 'number' && Number.isFinite(a.annualKwhEnregistre)) {
+      annualKwhTotal += a.annualKwhEnregistre;
+    }
+  }
   const savings = typeof meta?.savingsMad === 'number' && Number.isFinite(meta.savingsMad) ? meta.savingsMad : null;
+  const relu = ctx.documentRelu ?? null; // ACAL31
 
   const layout: SerializedLayout = {
     version: 2,
@@ -897,14 +1113,27 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     activeAreaId: ctx.activeAreaId,
     // — ajouts v2 (aucun champ v1 déplacé ni modifié) —
     result: { panels: panelsTotal, kwc: kwcTotal, annualKwh: annualKwhTotal, savings },
-    scenario: meta?.scenario ?? 'reseau',
-    panelWatt: typeof meta?.panelWatt === 'number' && Number.isFinite(meta.panelWatt) ? meta.panelWatt : PANEL2_WATT,
-    battery: meta?.battery ?? null,
-    source: meta?.source ?? 'lead',
-    devisId: meta?.devisId ?? null,
+    // ACAL31 — sans valeur fournie par l'appelant, l'atelier réémet celle du document RELU
+    // (scénario, puissance panneau, batterie, origine) : jamais une valeur inventée.
+    scenario: meta?.scenario ?? (relu?.scenario as LayoutScenario | undefined) ?? 'reseau',
+    panelWatt:
+      typeof meta?.panelWatt === 'number' && Number.isFinite(meta.panelWatt)
+        ? meta.panelWatt
+        : typeof relu?.panelWatt === 'number' && Number.isFinite(relu.panelWatt)
+          ? relu.panelWatt
+          : PANEL2_WATT,
+    battery: meta && 'battery' in meta ? meta.battery ?? null : ((relu?.battery as SerializedBattery | null | undefined) ?? null),
+    source: meta?.source ?? (relu?.source === 'devis' || relu?.source === 'lead' ? relu.source : 'lead'),
+    devisId: meta && 'devisId' in meta ? meta.devisId ?? null : ((relu?.devisId as string | number | null | undefined) ?? null),
     // PV71 — les ombres tracées voyagent avec le design (sinon la production remonte
     // artificiellement au ré-import).
     shading12x24: serializeShading(ctx.shadeFactors),
+    // ACAL27 — les ombres tracées voyagent avec la matrice qu'elles produisent : relues par
+    // `appliquerHydratationAuCtx`, elles redonnent la MÊME matrice au recalcul.
+    ...serializeShadeObstructions(ctx.shadeObstructions, ctx.shadeObstructionsNonLues),
+    // ACAL29 — les choix épinglés (famille, inclinaison, pose, azimut, marge) : réappliqués
+    // AVANT le pavage à la réouverture, ils redonnent exactement la grille enregistrée.
+    ...serializeChoixConception(ctx),
     // CAL102 — les mesures posées voyagent avec le design (sinon rouvrir le dossier les
     // perd, comme n'importe quelle autre annotation de l'atelier).
     ...(ctx.measurements && ctx.measurements.length ? { measurements: serializeMeasurements(ctx.measurements) } : {}),
@@ -939,7 +1168,10 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   // CALX111 — numéros STABLES des modules : sème la mémoire depuis ce que le document porte
   // déjà, puis écrit `n`/`rangee`/`numerotation` (bascule « Numéroter » éteinte par défaut ⇒
   // document inchangé, octet pour octet). L'attribution elle-même est PURE (`numerotation.ts`).
-  numeroterDocument(layout);
+  // ACAL307 — les pans PAVÉS dans la session (pose différente de celle du document relu,
+  // ou pan sans pose relue) sont numérotés d'office ; un pan dont la pose est celle du
+  // document n'est jamais renuméroté par un simple enregistrement.
+  numeroterDocument(layout, undefined, undefined, { pansPaves: pansPavesDansLaSession(layout, ctx) });
   // CALX110 — le catalogue `modules[]` + le `moduleId` de chaque pan (contrat CALX82) :
   // le kWc de chaque pan est recalculé depuis SON module, le total du site en devient la
   // somme, et `panelWatt` racine reste servi (watt du module MAJORITAIRE). Sans catalogue
@@ -953,7 +1185,106 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   // d'export (`ecrireDansDocument`) : jamais une deuxième copie de sa logique ici — elle
   // gère seule la copie profonde et l'absence de la clé quand le document ne porte ni
   // organe ni cheminement. Sans couche fournie, `layout` repart inchangé (byte pour byte).
-  return meta?.coucheElectrique ? meta.coucheElectrique.ecrireDansDocument(layout) : layout;
+  const ecrit = meta?.coucheElectrique ? meta.coucheElectrique.ecrireDansDocument(layout) : layout;
+  // ACAL31 — ce que l'atelier n'a pas changé repart tel qu'il a été LU.
+  return reconcilierAvecDocumentRelu(ecrit, ctx);
+}
+
+/** ACAL307 — positions (et faces) d'une pose, sans les numéros : ce qui définit un pavage. */
+function empreintePose(panels: unknown): string {
+  return JSON.stringify(
+    (Array.isArray(panels) ? panels : []).map((p: { cx?: number; cy?: number; face?: string }) => [p?.cx, p?.cy, p?.face ?? null]),
+  );
+}
+
+/** ACAL307 — les pans dont la pose émise n'est PAS celle du document relu (pavés ou repavés
+ *  dans la session), ou qui n'avaient aucune pose relue. */
+function pansPavesDansLaSession(layout: SerializedLayout, ctx: Ctx): Set<string> {
+  const relu = ctx.documentRelu;
+  const zonesRelues = relu && Array.isArray(relu.zones) ? (relu.zones as Array<{ id?: string; geometry?: { panels?: unknown } }>) : [];
+  const parId = new Map(zonesRelues.map((z) => [z.id, z]));
+  const paves = new Set<string>();
+  for (const z of layout.zones) {
+    if (!z.geometry?.panels?.length) continue;
+    const rz = parId.get(z.id);
+    if (!rz?.geometry || empreintePose(rz.geometry.panels) !== empreintePose(z.geometry.panels)) paves.add(z.id);
+  }
+  return paves;
+}
+
+// ═══════════ ACAL31 — ALLER-RETOUR OCTET-IDENTIQUE ═══════════
+/** Clés RACINE que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
+const CLES_RACINE_ATELIER = new Set([
+  'version', 'pin', 'outline', 'billKwh', 'zones', 'activeAreaId', 'result', 'scenario', 'panelWatt',
+  'battery', 'source', 'devisId', 'shading12x24', 'shadeObstructions', 'choixConception', 'measurements',
+  'environment', 'exclusionZones', 'setbacksM', 'horizonProfile', 'scene', 'buildings', 'underlay',
+  'poseSurfaces', 'consumption', 'modules', 'optimisation', 'electrical',
+]);
+/** Clés de PAN que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
+const CLES_PAN_ATELIER = new Set([
+  'id', 'label', 'vertices', 'obstacles', 'roofType', 'pitchDeg', 'facingAzimuthDeg', 'facingManual',
+  'neededPanels', 'neededAuto', 'geometry', 'buildingId', 'edges',
+]);
+
+const memeJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+const copieJson = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
+/**
+ * ACAL31 — réconcilie le document émis avec le document RELU, sans rien inventer :
+ *  - clés racine et de pan que l'atelier ne possède pas (pitchSuggestion, parcelle, …) :
+ *    transmises telles quelles ;
+ *  - repère (`pin`/`outline`) : celui du document tant que le pan actif n'a pas bougé ;
+ *  - arêtes d'un pan dont ni la forme ni les arêtes saisies n'ont changé : celles du document
+ *    (ni recalculées ni ajoutées) ;
+ *  - `result` : celui du document tant qu'aucune géométrie de pan n'a changé ;
+ *  - `modules[]` relu gardé quand aucun pan n'en désigne (catalogue du document intact).
+ */
+function reconcilierAvecDocumentRelu<T extends SerializedLayout>(layout: T, ctx: Ctx): T {
+  const relu = ctx.documentRelu;
+  if (!relu || typeof relu !== 'object') return layout;
+  const sortie = layout as unknown as Record<string, unknown>;
+  for (const [cle, valeur] of Object.entries(relu)) {
+    if (!CLES_RACINE_ATELIER.has(cle) && !(cle in sortie)) sortie[cle] = copieJson(valeur);
+  }
+  const zonesRelues = Array.isArray(relu.zones) ? (relu.zones as Array<Record<string, unknown>>) : [];
+  const parId = new Map(zonesRelues.filter((z) => z && typeof z.id === 'string').map((z) => [z.id as string, z]));
+  let geometriesIntactes = zonesRelues.length === layout.zones.length;
+  for (const zone of layout.zones) {
+    const rz = parId.get(zone.id);
+    if (!rz) {
+      geometriesIntactes = false;
+      continue;
+    }
+    const z = zone as unknown as Record<string, unknown>;
+    for (const [cle, valeur] of Object.entries(rz)) {
+      if (!CLES_PAN_ATELIER.has(cle) && !(cle in z)) z[cle] = copieJson(valeur);
+    }
+    const formeIntacte = ['vertices', 'roofType', 'pitchDeg', 'facingAzimuthDeg'].every((k) => memeJson(z[k], rz[k]));
+    const area = ctx.areas.find((a) => a.id === zone.id);
+    const aretesSaisiesIntactes = memeJson(area?.edges ?? null, rz.edges ?? null);
+    if (formeIntacte && aretesSaisiesIntactes) {
+      if (Array.isArray(rz.edges)) z.edges = copieJson(rz.edges);
+      else delete z.edges;
+    }
+    // Besoin AUTO (dérivé de la facture) : même facture, même pan ⇒ le besoin relu, jamais
+    // un 0 recalculé faute de facture saisie dans cette session.
+    if (formeIntacte && z.neededAuto === true && rz.neededAuto === true && typeof rz.neededPanels === 'number'
+      && memeJson(sortie.billKwh ?? null, relu.billKwh ?? null)) {
+      z.neededPanels = rz.neededPanels;
+    }
+    if (!memeJson(z.geometry ?? null, rz.geometry ?? null)) geometriesIntactes = false;
+  }
+  // Repère : celui du document tant que le pan actif est celui relu, à la même forme.
+  const actifRelu = parId.get(ctx.activeAreaId);
+  const actif = layout.zones.find((z) => z.id === ctx.activeAreaId);
+  if (relu.activeAreaId === ctx.activeAreaId && actifRelu && actif && memeJson(actif.vertices, actifRelu.vertices)) {
+    if ('pin' in relu) sortie.pin = copieJson(relu.pin);
+    if ('outline' in relu) sortie.outline = copieJson(relu.outline);
+  }
+  if (geometriesIntactes && relu.result && typeof relu.result === 'object') sortie.result = copieJson(relu.result);
+  const modulePose = layout.zones.some((z) => typeof z.geometry?.moduleId === 'string');
+  if (!('modules' in sortie) && !modulePose && Array.isArray(relu.modules)) sortie.modules = copieJson(relu.modules);
+  return layout;
 }
 
 /**
@@ -1057,6 +1388,18 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
   // « aucun fond », et la mémoire est remise à zéro.
   semerFondDepuisDocument(json); // CALX107 câblage
   const zones = Array.isArray(json?.zones) ? json.zones : [];
+  // ACAL28 — production enregistrée attribuée à chaque pan au prorata de son kWc (le
+  // document ne porte que le total) : un pan jamais recalculé ne compte jamais pour 0.
+  const totalKwh = json?.result?.annualKwh;
+  const totalKwc = json?.result?.kwc;
+  const partEnregistree = (z: SerializedZone): number | undefined => {
+    const kwc = z.geometry?.kwc;
+    if (typeof totalKwh !== 'number' || !Number.isFinite(totalKwh) || typeof totalKwc !== 'number' || !(totalKwc > 0)) {
+      return undefined;
+    }
+    if (typeof kwc !== 'number' || !Number.isFinite(kwc)) return undefined;
+    return (totalKwh * kwc) / totalKwc;
+  };
   return zones.map((z) => ({
     id: z.id,
     label: z.label,
@@ -1100,7 +1443,23 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
     ...(typeof z.geometry?.moduleId === 'string' && z.geometry.moduleId.trim()
       ? { moduleId: z.geometry.moduleId.trim() }
       : {}),
+    // ACAL28 — la géométrie ENREGISTRÉE du pan (copie profonde) : réémise verbatim tant que
+    // le pan n'est pas actif, reposée à ses positions quand on le charge.
+    ...(z.geometry && typeof z.geometry === 'object' && Array.isArray(z.geometry.panels)
+      ? { geometrieEnregistree: JSON.parse(JSON.stringify(z.geometry)) as SerializedZoneGeometry }
+      : {}),
+    ...(partEnregistree(z) !== undefined ? { annualKwhEnregistre: partEnregistree(z) } : {}),
   }));
+}
+
+/**
+ * ACAL28 — la géométrie VIVANTE du pan actif, telle que `serializeLayout` l'écrirait (une
+ * seule source : on sérialise et on lit la zone active). Capturée par l'atelier quand on
+ * QUITTE un pan, pour que ce pan soit ensuite réémis et reposé à SES positions.
+ */
+export function geometrieZoneActive(ctx: Ctx, meta?: SerializeMeta): SerializedZoneGeometry | null {
+  const zone = serializeLayout(ctx, null, meta).zones.find((z) => z.id === ctx.activeAreaId);
+  return zone?.geometry ? (JSON.parse(JSON.stringify(zone.geometry)) as SerializedZoneGeometry) : null;
 }
 
 // ═══════════ PV19 — HYDRATATION DEPUIS UN DEVIS ═══════════
@@ -1231,8 +1590,82 @@ export function deserializeConsumptionFromLayout(json: unknown): ConsumptionHydr
   };
 }
 
+// ═══════════ ACAL26 — LES COUCHES DU DOCUMENT RELUES AU BOOT ═══════════
+// Cinq clés du document existaient en écriture SANS lecteur au boot : surfaces de pose,
+// environnement, matrice d'ombrage enregistrée, provenance de la consommation et couche
+// électrique. Rouvrir puis « Enregistrer » sans geste les effaçait (live ATL-01/04/05/06).
+// `lireCouchesDocument` les relit avec les lecteurs EXISTANTS (jamais réécrits) ; les DEUX
+// boots (devis et lead) les rendent, et `hydratation.ts::appliquerHydratationAuCtx` est la
+// SEULE fonction qui les pose dans le ctx.
+
+/** Provenance déclarative du bloc `consumption` (contrat `$defs/consumption.source`). */
+export interface SourceConsommation {
+  origine: string;
+  saisi_le: string;
+}
+
+/** ACAL26 — les couches du document que le boot relit en plus des zones. */
+export interface CouchesDocument {
+  /** `poseSurfaces[]` relues par `lireSurfacesPose` (vide sans clé). */
+  surfacesPose: SurfacePose[];
+  /** `environment[]` relu par `deserializeEnvironment` (vide sans clé). */
+  environment: EnvironmentObject[];
+  /** `shading12x24` ENREGISTRÉE (`deserializeShading`), ou null. */
+  shading12x24: number[][] | null;
+  /** ACAL27 — ombres tracées relues (`deserializeShadeObstructions`) : celles que l'atelier
+   *  sait recalculer, et les autres, transmises telles quelles. */
+  shadeObstructions: ShadeObstruction[];
+  shadeObstructionsNonLues: Array<Record<string, unknown>>;
+  /** ACAL29 — choix de conception épinglés relus, ou null (aucun choix épinglé). */
+  choixConception: ChoixConceptionLu | null;
+  /** ACAL30 — le catalogue `modules[]` du document relu (copie) : fusionné en lecture
+   *  seule au catalogue de la société pour qu'un produit archivé reste résoluble. */
+  modulesDuDocument: Array<Record<string, unknown>>;
+  /** ACAL31 — le document RELU tel quel (copie profonde), ou null : source des valeurs que
+   *  l'atelier réémet sans geste (repère, résultat, arêtes, clés qu'il ne possède pas). */
+  documentRelu: Record<string, unknown> | null;
+  /** `consumption.source` relue telle quelle, ou null (aucun bloc / provenance illisible). */
+  consSource: SourceConsommation | null;
+  /** `electrical` relu par `lireCoucheElectrique`, ou null quand le document n'en porte pas. */
+  electrical: DocumentElectrique | null;
+}
+
+/** ACAL26 — relit les cinq couches d'un document (ou `null` : tout vide). PURE. */
+export function lireCouchesDocument(json: unknown): CouchesDocument {
+  const doc = (json && typeof json === 'object' ? json : null) as Record<string, unknown> | null;
+  const brutSource = (doc?.consumption as { source?: unknown } | null | undefined)?.source as
+    | { origine?: unknown; saisi_le?: unknown }
+    | null
+    | undefined;
+  const consSource =
+    brutSource && typeof brutSource.origine === 'string' && typeof brutSource.saisi_le === 'string'
+      ? { origine: brutSource.origine, saisi_le: brutSource.saisi_le }
+      : null;
+  let electrical: DocumentElectrique | null = null;
+  if (doc && doc.electrical && typeof doc.electrical === 'object') {
+    const lu = lireCoucheElectrique(doc);
+    electrical = { equipements: lu.equipements, cheminements: lu.cheminements };
+  }
+  return {
+    surfacesPose: lireSurfacesPose(doc),
+    environment: doc && Array.isArray(doc.environment) ? deserializeEnvironment(doc) : [],
+    shading12x24: doc ? deserializeShading(doc.shading12x24 ?? null) : null,
+    ...(() => {
+      const ombres = deserializeShadeObstructions(doc);
+      return { shadeObstructions: ombres.lues, shadeObstructionsNonLues: ombres.nonLues };
+    })(),
+    choixConception: lireChoixConception(doc),
+    documentRelu: doc ? (JSON.parse(JSON.stringify(doc)) as Record<string, unknown>) : null,
+    modulesDuDocument: doc && Array.isArray(doc.modules)
+      ? (JSON.parse(JSON.stringify(doc.modules)) as Array<Record<string, unknown>>).filter((m) => m && typeof m === 'object')
+      : [],
+    consSource,
+    electrical,
+  };
+}
+
 /** Ce que l'hydratation devis rend au boot (rien n'est appliqué ici). */
-export interface DevisHydration extends ConsumptionHydration {
+export interface DevisHydration extends ConsumptionHydration, CouchesDocument {
   /** Contour lng/lat de la zone ACTIVE (vide si seul un pin est disponible). */
   vertices: LngLat[];
   /** Centre de vol lng/lat, ou null. */
@@ -1285,6 +1718,7 @@ export function hydrateFromDevis(devis: DevisPayload | null | undefined): DevisH
     devisId: null,
     cibleVendue: true,
     ...deserializeConsumptionFromLayout(null), // CALX254
+    ...lireCouchesDocument(null), // ACAL26
   };
   if (!devis) return empty;
 
@@ -1337,6 +1771,10 @@ export function hydrateFromDevis(devis: DevisPayload | null | undefined): DevisH
     // CALX254 — la consommation affinée voyage avec le design du devis (contrat CALX251),
     // comme les zones ci-dessus ; document sans `consumption` ⇒ l'état par défaut.
     ...deserializeConsumptionFromLayout(layout),
+    // ACAL26 — surfaces de pose, environnement, matrice d'ombrage, provenance de la
+    // consommation et couche électrique : relues ici, appliquées par
+    // `hydratation.ts::appliquerHydratationAuCtx` (une seule fonction, deux boots).
+    ...lireCouchesDocument(layout),
   };
 }
 
@@ -1351,12 +1789,13 @@ export function hydrateFromLead(lead: LeadPayload | null | undefined): {
   vertices: LngLat[];
   center: LngLat | null;
   contact: { name?: string; phone?: string; city?: string };
-} & ConsumptionHydration {
+} & ConsumptionHydration & CouchesDocument {
   const empty = {
     vertices: [] as LngLat[],
     center: null as LngLat | null,
     contact: {},
     ...deserializeConsumptionFromLayout(null), // CALX254
+    ...lireCouchesDocument(null), // ACAL26
   };
   if (!lead) return empty;
   // AP-F1 (fondateur 26/08/2026) — UN SEUL validateur de contour : avant ce correctif,
@@ -1386,7 +1825,14 @@ export function hydrateFromLead(lead: LeadPayload | null | undefined): {
   // `LeadPayload` ne le type pas explicitement (son index `[k: string]: unknown` le tolère
   // déjà), donc on le lit défensivement ici. Un lead d'aujourd'hui n'en porte aucun ⇒ l'état
   // par défaut, exactement le comportement historique.
-  return { vertices, center, contact, ...deserializeConsumptionFromLayout((lead as { roof_layout?: unknown }).roof_layout) };
+  const layoutLead = (lead as { roof_layout?: unknown }).roof_layout;
+  return {
+    vertices,
+    center,
+    contact,
+    ...deserializeConsumptionFromLayout(layoutLead),
+    ...lireCouchesDocument(layoutLead), // ACAL26 — mêmes couches que le boot devis
+  };
 }
 
 /** Un point du contour brut, TEL QUE rencontré en base : `[lat, lng]` (le

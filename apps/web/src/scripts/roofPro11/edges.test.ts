@@ -1,7 +1,7 @@
 // CAL57 — déduction PURE du type d'arête par segment de contour.
 // CALX93 — noue / arêtier déduits des pentes et azimuts SAISIS, sinon « inconnue ».
 import { describe, expect, it } from 'vitest';
-import { deduceEdgeDetails, deduceEdgeTypes, EDGE_COLOR_BY_TYPE, type EdgeDeductionZone } from './edges';
+import { deduceEdgeDetails, deduceEdgeTypes, EDGE_COLOR_BY_TYPE, reinitialiserDepuisTraceClient, type EdgeDeductionZone } from './edges';
 
 const DEG2RAD = Math.PI / 180;
 const DEG2M = DEG2RAD * 6378137;
@@ -197,5 +197,37 @@ describe('CALX93 — noue et arêtier déduits des pans voisins', () => {
     // Segment 1 = (-5,-5) → (5,-5) : le bas de pente du pan SUD.
     expect(details[1].type).toBe('egout');
     expect(details[0].type).toBe('inconnue');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL78 — « Recommencer depuis le tracé client » efface les arêtes corrigées à la main
+// et le rattachement au bâtiment devenu faux.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL78 — reinitialiserDepuisTraceClient', () => {
+  const ancien: [number, number][] = [[-7.6, 33.5], [-7.5998, 33.5], [-7.5998, 33.5002], [-7.6, 33.5002]];
+  const trace: [number, number][] = [[-7.61, 33.51], [-7.6098, 33.51], [-7.6098, 33.5102], [-7.61, 33.5102]];
+
+  it('reinitialiserDepuisTraceClient efface les arêtes manuelles', () => {
+    const pan = {
+      id: 'area-1', vertices: ancien, obstacles: [{ id: 'obs-1' }], buildingId: 'bat-1',
+      edges: [{ index: 1, type: 'faitage' as const, manuel: true as const, retraitM: 0.8 }],
+    };
+    const neuf = reinitialiserDepuisTraceClient(pan, trace, [pan]);
+    expect(neuf.edges).toBeUndefined();
+    expect(neuf.vertices).toEqual(trace);
+    expect(neuf.obstacles).toEqual([]);
+    // Pan seul de son bâtiment : le bâtiment, c'est lui — le rattachement reste vrai.
+    expect(neuf.buildingId).toBe('bat-1');
+    // Pur : l'ancien pan n'a pas bougé.
+    expect(pan.edges).toHaveLength(1);
+  });
+
+  it('le rattachement au bâtiment est retiré quand le tracé sort de l’emprise des autres pans du bâtiment', () => {
+    const pan = { id: 'area-1', vertices: ancien, buildingId: 'bat-1' };
+    const frere = { id: 'area-2', vertices: ancien.map(([x, y]) => [x + 0.0001, y] as [number, number]), buildingId: 'bat-1' };
+    expect(reinitialiserDepuisTraceClient(pan, trace, [pan, frere]).buildingId).toBeUndefined();
+    // Un tracé qui reste dans l'emprise du bâtiment garde son rattachement.
+    expect(reinitialiserDepuisTraceClient(pan, ancien, [pan, frere]).buildingId).toBe('bat-1');
   });
 });

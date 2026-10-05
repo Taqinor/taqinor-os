@@ -29,6 +29,7 @@ export function useAtelierBoot(ctx) {
     setBrouillonPropose,
     setBuilderApiActuel,
     setBuilderReady,
+    setCatalogueIndisponible,
     setContexte,
     setContourMessage,
     setHashBaseBrouillon,
@@ -209,6 +210,9 @@ export function useAtelierBoot(ctx) {
       if (cancelled) return
       window.__taqinorRoofBooted = true
       mod.initRoofToolPro8({
+        // ACAL80 — l'ERP ne sert pas `/api/roof-yield` (route d'apps/web) : aucune requête,
+        // repli sur la table committée — plus aucune erreur 405 à l'ouverture.
+        rendementPvgis: null,
         maptilerKey,
         mapboxToken,
         reducedMotion: !!reducedMotion,
@@ -295,6 +299,9 @@ export function useAtelierBoot(ctx) {
       // Un devis en lecture seule BOOTE quand même : on peut regarder le
       // calepinage vendu — seule l'action d'enregistrement disparaît.
       mod.initRoofToolPro8({
+        // ACAL80 — l'ERP ne sert pas `/api/roof-yield` (route d'apps/web) : aucune requête,
+        // repli sur la table committée — plus aucune erreur 405 à l'ouverture.
+        rendementPvgis: null,
         maptilerKey: carte.maptilerKey,
         mapboxToken: carte.mapboxToken || undefined,
         reducedMotion: !!reducedMotion,
@@ -351,10 +358,16 @@ export function useAtelierBoot(ctx) {
       // (droits, réseau, société sans fiche « module »), l'atelier pose le
       // module par défaut, NOMMÉ. Le contexte agrégé ne le porte pas (contrat
       // `calepinage_design_context.json`, PACT10) : c'est sa propre porte.
+      // ACAL30 — un catalogue ILLISIBLE ne bloque pas l'ouverture (on regarde la
+      // conception), mais il INTERDIT l'enregistrement : sans lui, le module de chaque
+      // pan retomberait en silence sur le module par défaut (720 Wc).
       const modulesPromise = Promise.resolve()
         .then(() => calepinageApi.calepinages.modulesDisponibles(calepinageId))
         .then((res) => res.data)
-        .catch(() => null)
+        .catch(() => {
+          setCatalogueIndisponible?.(true)
+          return null
+        })
       // CALX104/CALX403 — même porte, même discipline best-effort.
       const reglagesPromise = chargerReglagesAtelier()
 
@@ -406,6 +419,9 @@ export function useAtelierBoot(ctx) {
         // peut regarder la conception — seule l'action d'enregistrement
         // disparaît, exactement comme en mode devis.
         mod.initRoofToolPro8({
+          // ACAL80 — l'ERP ne sert pas `/api/roof-yield` (route d'apps/web) : aucune requête,
+          // repli sur la table committée — plus aucune erreur 405 à l'ouverture.
+          rendementPvgis: null,
           maptilerKey: carte.maptilerKey,
           mapboxToken: carte.mapboxToken || undefined,
           reducedMotion: !!reducedMotion,
@@ -422,11 +438,13 @@ export function useAtelierBoot(ctx) {
           reglagesAtelier,
           onApiReady: (a) => {
             builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a)
-            // CALX107 câblage — le document peut demander un CALQUE DE FOND
-            // (`underlay`) : l'atelier sait le peindre mais ne parle jamais à
-            // Django, c'est donc à l'écran d'aller chercher le fichier.
-            poserFondDuDocument(a)
           },
+          // CALX107 câblage — le document peut demander un CALQUE DE FOND
+          // (`underlay`) : l'atelier sait le peindre mais ne parle jamais à
+          // Django, c'est donc à l'écran d'aller chercher le fichier. ACAL68 :
+          // APRÈS l'hydratation (jamais depuis `onApiReady`, où `fondDuDocument()`
+          // vaut null ou le fond du document précédent en navigation SPA).
+          onHydrationTerminee: () => poserFondDuDocument(builderApi.current),
         })
         // La barre de recherche d'adresse part PRÉ-REMPLIE, exactement comme en
         // mode devis (`bootDevis` ci-dessus, PV23bis) et en mode lead (`boot()`).
