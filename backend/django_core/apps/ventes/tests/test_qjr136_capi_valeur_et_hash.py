@@ -193,7 +193,7 @@ class LeRenouvellementNHeritePasDeLAttribution(TestCase):
             })
 
     def test_le_snapshot_du_source_ne_part_pas_dans_le_renouvellement(self):
-        from apps.ventes.domain.cycle_vie import renouveler_devis
+        from apps.ventes.domain.revision import renouveler_devis
 
         nouveau = renouveler_devis(self.devis, user=None)
         self.assertNotIn('attribution', nouveau.etude_params or {})
@@ -202,7 +202,7 @@ class LeRenouvellementNHeritePasDeLAttribution(TestCase):
             (nouveau.etude_params or {}).get('scenario'), 'Sans batterie')
 
     def test_le_devis_source_garde_son_attribution(self):
-        from apps.ventes.domain.cycle_vie import renouveler_devis
+        from apps.ventes.domain.revision import renouveler_devis
 
         renouveler_devis(self.devis, user=None)
         self.devis.refresh_from_db()
@@ -212,7 +212,7 @@ class LeRenouvellementNHeritePasDeLAttribution(TestCase):
     def test_le_duplicata_non_plus(self):
         """Même clé, même raison : un duplicata ne recrédite pas le clic de
         son original."""
-        from apps.ventes.domain.creation import dupliquer_devis
+        from apps.ventes.domain.creation_clone import dupliquer_devis
 
         copie = dupliquer_devis(self.devis, user=None)
         self.assertNotIn('attribution', copie.etude_params or {})

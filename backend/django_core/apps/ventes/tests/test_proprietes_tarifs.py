@@ -29,7 +29,7 @@ from hypothesis.errors import NoSuchExample
 
 from hypothesis import find as hyp_find
 
-from apps.ventes.etude_horaire import serie_kwh_depuis_mad
+from apps.ventes.horaire.conso import serie_kwh_depuis_mad
 from apps.ventes.quote_engine import bareme
 from apps.ventes.quote_engine.pricing import (
     _FALLBACK_KWH_PRICE,

@@ -49,7 +49,7 @@ def _rafraichir(devis):
 def _instantane(devis, user):
     """QJR550 — UN instantané de configuration par geste de ligne, avec son
     auteur (``request.user``) ; remplace le signal ``post_save`` par ligne."""
-    from ..domain.cycle_vie import instantane_de_geste
+    from ..domain.historique_config import instantane_de_geste
     instantane_de_geste(devis, user=user)
 
 

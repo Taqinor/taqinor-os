@@ -58,7 +58,7 @@ from pathlib import Path
 from django.test import SimpleTestCase
 
 from apps.calepinage.services import pompage as pompage_py
-from apps.ventes.etude_horaire import serie_kwh_depuis_mad
+from apps.ventes.horaire.conso import serie_kwh_depuis_mad
 from apps.ventes.quote_engine import bareme
 from apps.ventes.quote_engine.pricing import (
     ONEE_TRANCHES,

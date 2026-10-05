@@ -52,10 +52,10 @@ from apps.ventes.etude_horaire import (
     CALIBRATION_RAFALE_SOURCE,
     RAFALE_POSITION_MESUREE,
     jours_types_annee,
-    profil_depuis_factures,
     recouvrement_pas_fins,
     simuler_batterie_pas_fins,
 )
+from apps.ventes.horaire.conso import profil_depuis_factures
 from authentication.models import Company
 
 User = get_user_model()

@@ -18,7 +18,9 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase
 
+from apps.ventes import solar_classification as sc
 from apps.ventes import solar_design as sd
+from apps.ventes import solar_finance as sf
 
 # CALX286 — ``solar_design`` ne suppose PLUS les températures de
 # dimensionnement : ces tests de PHYSIQUE passent explicitement celles
@@ -219,12 +221,12 @@ class MatchInverterTest(TestCase):
         for nom in ["Onduleur réseau Huawei 5kW", "Onduleur injection 6kW",
                     "Onduleur hybride Deye 8kW", "Batterie 5 kWh",
                     "Panneau 550W", "Câble solaire"]:
-            self.assertEqual(sd.is_reseau_inverter(nom),
+            self.assertEqual(sc.is_reseau_inverter(nom),
                              b._is_reseau_inverter(nom), nom)
-            self.assertEqual(sd.is_hybrid_inverter(nom),
+            self.assertEqual(sc.is_hybrid_inverter(nom),
                              b._is_hybrid_inverter(nom), nom)
-            self.assertEqual(sd.is_battery(nom), b._is_battery(nom), nom)
-            self.assertEqual(sd.is_panel(nom), b._is_panel(nom), nom)
+            self.assertEqual(sc.is_battery(nom), b._is_battery(nom), nom)
+            self.assertEqual(sc.is_panel(nom), b._is_panel(nom), nom)
 
 
 # ── FG249 : optimisation inclinaison/azimut (PVGIS stubbé, aucun réseau) ───────
@@ -1053,7 +1055,7 @@ class NetMeteringSavingsTest(SimpleTestCase):
         # h1 pleine: inj 3, imp 3 → 3×2 = 6
         # h2 pointe: inj 2, imp 2 → 2×4 = 8
         # h3 pleine: inj 1, imp 1 → 1×2 = 2  (cumulé pleine: 4 kWh × 2 = 8)
-        res = sd.net_metering_savings(
+        res = sf.net_metering_savings(
             injected_curve=[5, 3, 2, 1],
             import_curve=[5, 3, 2, 1],
             hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
@@ -1072,7 +1074,7 @@ class NetMeteringSavingsTest(SimpleTestCase):
     def test_compensation_capped_by_simultaneous_import(self):
         # Net-metering : on ne compense que jusqu'au soutirage de la tranche.
         # h2 pointe: inj 10, imp 2 → compensé 2 (cap), 8 en excédent (spill).
-        res = sd.net_metering_savings(
+        res = sf.net_metering_savings(
             injected_curve=[0, 0, 10, 0],
             import_curve=[0, 0, 2, 0],
             hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
@@ -1087,7 +1089,7 @@ class NetMeteringSavingsTest(SimpleTestCase):
 
     def test_spill_tariff_values_excess_when_provided(self):
         # Tarif résiduel de rachat fourni → l'excédent est valorisé à ce tarif.
-        res = sd.net_metering_savings(
+        res = sf.net_metering_savings(
             injected_curve=[0, 0, 10, 0],
             import_curve=[0, 0, 2, 0],
             hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
@@ -1098,7 +1100,7 @@ class NetMeteringSavingsTest(SimpleTestCase):
 
     def test_toggle_off_yields_zero_economy(self):
         # surplus_injecte_compense = False → rien de compensé, économie nulle.
-        res = sd.net_metering_savings(
+        res = sf.net_metering_savings(
             injected_curve=[5, 3, 2, 1],
             import_curve=[5, 3, 2, 1],
             hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
@@ -1115,7 +1117,7 @@ class NetMeteringSavingsTest(SimpleTestCase):
         # Plafond annuel < éligible total → on garde les kWh les plus chers.
         # éligible : creuse 5 (×1), pleine 4 (×2), pointe 2 (×4) = 11 kWh.
         # cap 6 kWh/an, days=1 → cap période 6 : pointe(2)+pleine(4)=6, creuse 0.
-        res = sd.net_metering_savings(
+        res = sf.net_metering_savings(
             injected_curve=[5, 3, 2, 1],
             import_curve=[5, 3, 2, 1],
             hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
@@ -1130,7 +1132,7 @@ class NetMeteringSavingsTest(SimpleTestCase):
 
     def test_annualisation_scales_daily_curve(self):
         # Journée type ×365 : l'économie annuelle = économie/jour × 365.
-        res = sd.net_metering_savings(
+        res = sf.net_metering_savings(
             injected_curve=[0, 0, 2, 0],
             import_curve=[0, 0, 2, 0],
             hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
@@ -1148,7 +1150,7 @@ class NetMeteringSavingsTest(SimpleTestCase):
         imp = [0.0] * 24
         inj[19] = 4.0  # 19 h = pointe (découpage par défaut)
         imp[19] = 4.0
-        res = sd.net_metering_savings(
+        res = sf.net_metering_savings(
             injected_curve=inj, import_curve=imp, days_per_year=1,
             tranche_tariffs=self.TARIFFS)
         self.assertEqual(res["hours"], 24)
@@ -1162,7 +1164,7 @@ class NetMeteringSavingsTest(SimpleTestCase):
 
     def test_no_import_means_nothing_compensated(self):
         # Surplus injecté mais aucun soutirage → rien à compenser (cap = 0).
-        res = sd.net_metering_savings(
+        res = sf.net_metering_savings(
             injected_curve=[5, 5, 5, 5],
             import_curve=[0, 0, 0, 0],
             hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
@@ -1174,7 +1176,7 @@ class NetMeteringSavingsTest(SimpleTestCase):
 
     def test_negative_and_unreadable_values_clamped(self):
         # Liberté de saisie : valeurs négatives/illisibles → 0, jamais d'erreur.
-        res = sd.net_metering_savings(
+        res = sf.net_metering_savings(
             injected_curve=[-3, "x", 5, None],
             import_curve=[10, 10, 10, 10],
             hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
@@ -1186,7 +1188,7 @@ class NetMeteringSavingsTest(SimpleTestCase):
     def test_empty_curves_never_raise(self):
         # Courbes vides → flux à 0, jamais d'exception. CALX274 : sans tarif
         # saisi, l'économie est OMISE (None + motif), jamais un 0 affiché.
-        res = sd.net_metering_savings(
+        res = sf.net_metering_savings(
             injected_curve=[], import_curve=[], days_per_year=1)
         self.assertEqual(res["injected_kwh"], 0.0)
         self.assertEqual(res["compensated_kwh"], 0.0)
@@ -1194,14 +1196,14 @@ class NetMeteringSavingsTest(SimpleTestCase):
         self.assertIsNone(res["annual_savings_mad"])
         self.assertIn("tou_tarifs", res["motif"])
         # Avec des tarifs fournis, des courbes vides valent bien 0.
-        res = sd.net_metering_savings(
+        res = sf.net_metering_savings(
             injected_curve=[], import_curve=[], days_per_year=1,
             hour_tranches=self.HT, tranche_tariffs=self.TARIFFS)
         self.assertEqual(res["annual_savings_mad"], 0.0)
 
     def test_zero_days_per_year_guarded(self):
         # days_per_year = 0 → ramené à 1, pas de division par zéro.
-        res = sd.net_metering_savings(
+        res = sf.net_metering_savings(
             injected_curve=[0, 0, 2, 0],
             import_curve=[0, 0, 2, 0],
             hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
@@ -1221,7 +1223,7 @@ class NetMeteringSavingsTest(SimpleTestCase):
                    for i in range(4)]   # [0, 0, 5, 0]
         imp = [max(0.0, load[i] - min(load[i], prod[i]))
                for i in range(4)]       # [1, 1, 0, 1]
-        res = sd.net_metering_savings(
+        res = sf.net_metering_savings(
             injected_curve=surplus, import_curve=imp,
             hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
             days_per_year=1)
@@ -1234,7 +1236,7 @@ class NetMeteringSavingsTest(SimpleTestCase):
 # ── FG260 : escalade tarifaire ONEE 20–25 ans + VAN/TRI (calcul pur) ──────────
 class TariffEscalationProjectionTest(SimpleTestCase):
     def test_schedule_length_and_year1_savings(self):
-        res = sd.tariff_escalation_projection(
+        res = sf.tariff_escalation_projection(
             annual_savings_year1=10000, upfront_cost=80000,
             escalation_rate=0.06, degradation_rate=0.005,
             horizon_years=25, discount_rate=0.05)
@@ -1248,7 +1250,7 @@ class TariffEscalationProjectionTest(SimpleTestCase):
 
     def test_escalated_and_degraded_savings_year2(self):
         # Année 2 : économie = base × (1.06) × (0.995).
-        res = sd.tariff_escalation_projection(
+        res = sf.tariff_escalation_projection(
             annual_savings_year1=10000, upfront_cost=0,
             escalation_rate=0.06, degradation_rate=0.005,
             horizon_years=5, discount_rate=0.05)
@@ -1262,7 +1264,7 @@ class TariffEscalationProjectionTest(SimpleTestCase):
 
     def test_cumulative_savings_monotone_increasing(self):
         # CALX286 — dégradation et actualisation passées explicitement.
-        res = sd.tariff_escalation_projection(
+        res = sf.tariff_escalation_projection(
             annual_savings_year1=5000, upfront_cost=20000,
             horizon_years=20, degradation_rate=0.005, discount_rate=0.05)
         cums = [row["cumulative_savings"] for row in res["schedule"]]
@@ -1274,7 +1276,7 @@ class TariffEscalationProjectionTest(SimpleTestCase):
 
     def test_payback_year_detected(self):
         # Économie ~10000/an, coût 30000 → payback vers l'année 3.
-        res = sd.tariff_escalation_projection(
+        res = sf.tariff_escalation_projection(
             annual_savings_year1=10000, upfront_cost=30000,
             escalation_rate=0.06, degradation_rate=0.005,
             horizon_years=25)
@@ -1287,7 +1289,7 @@ class TariffEscalationProjectionTest(SimpleTestCase):
             self.assertLess(res["schedule"][payback - 2]["net_cumulative"], 0.0)
 
     def test_payback_none_when_savings_never_cover_cost(self):
-        res = sd.tariff_escalation_projection(
+        res = sf.tariff_escalation_projection(
             annual_savings_year1=100, upfront_cost=1_000_000,
             horizon_years=20, degradation_rate=0.005)
         self.assertIsNone(res["summary"]["payback_year"])
@@ -1298,14 +1300,14 @@ class TariffEscalationProjectionTest(SimpleTestCase):
         common = dict(annual_savings_year1=10000, upfront_cost=50000,
                       escalation_rate=0.06, degradation_rate=0.005,
                       horizon_years=25)
-        low = sd.tariff_escalation_projection(discount_rate=0.03, **common)
-        high = sd.tariff_escalation_projection(discount_rate=0.12, **common)
+        low = sf.tariff_escalation_projection(discount_rate=0.03, **common)
+        high = sf.tariff_escalation_projection(discount_rate=0.12, **common)
         # Un taux d'actualisation plus élevé écrase la VAN.
         self.assertGreater(low["summary"]["npv"], high["summary"]["npv"])
 
     def test_npv_zero_at_irr(self):
         # La VAN actualisée au TRI doit être ~0 (cohérence VAN/TRI).
-        res = sd.tariff_escalation_projection(
+        res = sf.tariff_escalation_projection(
             annual_savings_year1=12000, upfront_cost=70000,
             escalation_rate=0.06, degradation_rate=0.005,
             horizon_years=25, discount_rate=0.05)
@@ -1314,39 +1316,39 @@ class TariffEscalationProjectionTest(SimpleTestCase):
         # Reconstruit le flux et vérifie NPV(irr) ≈ 0.
         cashflows = [-70000.0] + [row["annual_savings"]
                                   for row in res["schedule"]]
-        self.assertAlmostEqual(sd._npv(irr, cashflows), 0.0, delta=1.0)
+        self.assertAlmostEqual(sf._npv(irr, cashflows), 0.0, delta=1.0)
 
     def test_irr_known_simple_cashflow(self):
         # Flux classique : -100 puis +110 dans 1 an → TRI = 10 %.
-        irr = sd._irr([-100.0, 110.0])
+        irr = sf._irr([-100.0, 110.0])
         self.assertIsNotNone(irr)
         self.assertAlmostEqual(irr, 0.10, places=4)
 
     def test_irr_none_without_sign_change(self):
         # Aucun flux négatif → pas de TRI.
-        self.assertIsNone(sd._irr([100.0, 110.0, 120.0]))
+        self.assertIsNone(sf._irr([100.0, 110.0, 120.0]))
         # Aucun flux positif → pas de TRI.
-        self.assertIsNone(sd._irr([-100.0, -50.0]))
+        self.assertIsNone(sf._irr([-100.0, -50.0]))
 
     def test_irr_none_in_summary_for_all_positive(self):
         # Coût initial nul → flux tous ≥ 0 → TRI None, pas d'avertissement coût.
-        res = sd.tariff_escalation_projection(
+        res = sf.tariff_escalation_projection(
             annual_savings_year1=10000, upfront_cost=0,
             horizon_years=20)
         self.assertIsNone(res["summary"]["irr"])
 
     def test_horizon_clamped_to_bounds(self):
-        low = sd.tariff_escalation_projection(
+        low = sf.tariff_escalation_projection(
             annual_savings_year1=1000, horizon_years=0)
         self.assertEqual(low["summary"]["horizon_years"], 1)
         self.assertEqual(len(low["schedule"]), 1)
-        high = sd.tariff_escalation_projection(
+        high = sf.tariff_escalation_projection(
             annual_savings_year1=1000, horizon_years=999)
         self.assertEqual(high["summary"]["horizon_years"], 40)
         self.assertEqual(len(high["schedule"]), 40)
 
     def test_projected_bill_when_baseline_given(self):
-        res = sd.tariff_escalation_projection(
+        res = sf.tariff_escalation_projection(
             annual_savings_year1=5000, upfront_cost=0,
             escalation_rate=0.06, degradation_rate=0.0,
             horizon_years=3, baseline_bill_year1=12000)
@@ -1356,13 +1358,13 @@ class TariffEscalationProjectionTest(SimpleTestCase):
         self.assertAlmostEqual(res["schedule"][1]["projected_bill"],
                                round(12000.0 * 1.06, 2), places=2)
         # Sans baseline, le champ reste None.
-        res2 = sd.tariff_escalation_projection(
+        res2 = sf.tariff_escalation_projection(
             annual_savings_year1=5000, horizon_years=2)
         self.assertIsNone(res2["schedule"][0]["projected_bill"])
 
     def test_garbage_inputs_do_not_raise(self):
         # Liberté de saisie : valeurs illisibles → repli sûr, jamais d'exception.
-        res = sd.tariff_escalation_projection(
+        res = sf.tariff_escalation_projection(
             annual_savings_year1="abc", upfront_cost=None,
             escalation_rate="xx", degradation_rate=None,
             horizon_years="zz", discount_rate="oops")
@@ -1373,7 +1375,7 @@ class TariffEscalationProjectionTest(SimpleTestCase):
 
     def test_zero_cost_npv_equals_discounted_savings(self):
         # Sans coût initial, VAN = somme des économies actualisées.
-        res = sd.tariff_escalation_projection(
+        res = sf.tariff_escalation_projection(
             annual_savings_year1=8000, upfront_cost=0,
             escalation_rate=0.06, degradation_rate=0.005,
             horizon_years=10, discount_rate=0.05)
@@ -1383,7 +1385,7 @@ class TariffEscalationProjectionTest(SimpleTestCase):
 
     def test_extreme_discount_rate_guarded(self):
         # Taux d'actualisation ≤ -100 % : ramené à 0, pas de division par zéro.
-        res = sd.tariff_escalation_projection(
+        res = sf.tariff_escalation_projection(
             annual_savings_year1=5000, upfront_cost=10000,
             horizon_years=5, discount_rate=-2.0)
         self.assertEqual(res["summary"]["discount_rate"], 0.0)
@@ -1550,7 +1552,7 @@ class OptimizeSubscribedPowerTest(SimpleTestCase):
 class ModuleDegradationCurveTest(SimpleTestCase):
     def test_year1_factor_includes_lid(self):
         # Année 1 : le facteur reflète la chute initiale (LID) — pas 1.0.
-        res = sd.module_degradation_curve(
+        res = sf.module_degradation_curve(
             10000, annual_degradation_rate=0.005, year1_degradation=0.02,
             horizon_years=25)
         first = res["schedule"][0]
@@ -1562,10 +1564,10 @@ class ModuleDegradationCurveTest(SimpleTestCase):
 
     def test_compound_vs_linear_diverge(self):
         # Sur un long horizon, le composé reste au-dessus du linéaire (taux égal).
-        comp = sd.module_degradation_curve(
+        comp = sf.module_degradation_curve(
             10000, annual_degradation_rate=0.01, year1_degradation=0.0,
             horizon_years=25, curve="compound")
-        lin = sd.module_degradation_curve(
+        lin = sf.module_degradation_curve(
             10000, annual_degradation_rate=0.01, year1_degradation=0.0,
             horizon_years=25, curve="linear")
         self.assertEqual(comp["summary"]["curve"], "compound")
@@ -1577,7 +1579,7 @@ class ModuleDegradationCurveTest(SimpleTestCase):
         self.assertAlmostEqual(l25, 0.76, places=4)
 
     def test_monotonic_decrease(self):
-        res = sd.module_degradation_curve(
+        res = sf.module_degradation_curve(
             10000, annual_degradation_rate=0.006, year1_degradation=0.02,
             horizon_years=25)
         factors = [row["production_factor"] for row in res["schedule"]]
@@ -1586,7 +1588,7 @@ class ModuleDegradationCurveTest(SimpleTestCase):
 
     def test_warranty_floor_breach_flagged(self):
         # Dégradation agressive → le facteur tombe sous le plancher 80 % @ 25 ans.
-        res = sd.module_degradation_curve(
+        res = sf.module_degradation_curve(
             10000, annual_degradation_rate=0.02, year1_degradation=0.03,
             horizon_years=25, warranty_floors={25: 0.80})
         check25 = next(c for c in res["warranty_checks"] if c["year"] == 25)
@@ -1601,7 +1603,7 @@ class ModuleDegradationCurveTest(SimpleTestCase):
 
     def test_year25_at_or_above_floor_default(self):
         # Dégradation réaliste (0,5 %/an + 2 % LID) : ≥ 80 % à 25 ans (garantie OK).
-        res = sd.module_degradation_curve(
+        res = sf.module_degradation_curve(
             10000, annual_degradation_rate=0.005, year1_degradation=0.02,
             horizon_years=25)
         check25 = next(c for c in res["warranty_checks"] if c["year"] == 25)
@@ -1614,7 +1616,7 @@ class ModuleDegradationCurveTest(SimpleTestCase):
 
     def test_percent_floor_normalized(self):
         # Un plancher saisi en % (80 au lieu de 0.80) est normalisé en fraction.
-        res = sd.module_degradation_curve(
+        res = sf.module_degradation_curve(
             10000, annual_degradation_rate=0.005, year1_degradation=0.02,
             horizon_years=25, warranty_floors={25: 80})
         check25 = next(c for c in res["warranty_checks"] if c["year"] == 25)
@@ -1622,7 +1624,7 @@ class ModuleDegradationCurveTest(SimpleTestCase):
 
     def test_factor_floored_at_zero_extreme_degradation(self):
         # Linéaire avec taux énorme : le facteur ne devient JAMAIS négatif.
-        res = sd.module_degradation_curve(
+        res = sf.module_degradation_curve(
             10000, annual_degradation_rate=0.5, year1_degradation=0.1,
             horizon_years=10, curve="linear")
         for row in res["schedule"]:
@@ -1631,7 +1633,7 @@ class ModuleDegradationCurveTest(SimpleTestCase):
 
     def test_no_production_gives_factors_only(self):
         # Sans production year-1 : facteurs calculés, production absolue = None.
-        res = sd.module_degradation_curve(
+        res = sf.module_degradation_curve(
             None, annual_degradation_rate=0.005, horizon_years=5)
         self.assertEqual(len(res["schedule"]), 5)
         for row in res["schedule"]:
@@ -1639,13 +1641,13 @@ class ModuleDegradationCurveTest(SimpleTestCase):
         self.assertIsNone(res["summary"]["total_production_kwh"])
 
     def test_horizon_bounds_clamped(self):
-        low = sd.module_degradation_curve(10000, horizon_years=0)
+        low = sf.module_degradation_curve(10000, horizon_years=0)
         self.assertEqual(low["summary"]["horizon_years"], 1)
-        high = sd.module_degradation_curve(10000, horizon_years=999)
+        high = sf.module_degradation_curve(10000, horizon_years=999)
         self.assertEqual(high["summary"]["horizon_years"], 40)
 
     def test_degraded_inputs_never_raise(self):
-        res = sd.module_degradation_curve(
+        res = sf.module_degradation_curve(
             "abc", annual_degradation_rate="x", year1_degradation=None,
             horizon_years="oops", warranty_floors="bad", curve=42)
         self.assertIn("schedule", res)
@@ -1661,7 +1663,7 @@ class ModuleDegradationCurveTest(SimpleTestCase):
 
     def test_zero_degradation_stays_full(self):
         # Aucune dégradation ni LID : facteur constant 1.0, garantie toujours OK.
-        res = sd.module_degradation_curve(
+        res = sf.module_degradation_curve(
             10000, annual_degradation_rate=0.0, year1_degradation=0.0,
             horizon_years=25)
         for row in res["schedule"]:
@@ -1687,7 +1689,7 @@ class PpaModelTest(SimpleTestCase):
             discount_rate=0.05,
         )
         common.update(over)
-        return sd.ppa_model(**common)
+        return sf.ppa_model(**common)
 
     def test_investor_revenue_is_production_times_tariff(self):
         # Année 1 sans escalade : revenu = production(1) × tarif PPA.
@@ -1815,7 +1817,7 @@ class PpaModelTest(SimpleTestCase):
             self.assertEqual(row["client_savings"], 0.0)
 
     def test_degraded_inputs_never_raise(self):
-        res = sd.ppa_model(
+        res = sf.ppa_model(
             annual_production_kwh="abc", ppa_tariff="x", grid_tariff="y",
             ppa_escalation=None, grid_escalation="z", term_years="oops",
             capex="bad", annual_om=None, om_escalation="nope",
@@ -2285,7 +2287,7 @@ class TableUniqueDeClassificationTest(SimpleTestCase):
         from apps.ventes.domain import catalogue
         from apps.ventes.quote_engine import builder
         return {
-            'solar_design': sd.is_panel,
+            'solar_classification': sc.is_panel,
             'domain/catalogue (écran, composition)': catalogue._is_panel,
             'quote_engine/builder (PDF)': builder._is_panel,
         }
@@ -2295,7 +2297,7 @@ class TableUniqueDeClassificationTest(SimpleTestCase):
         for nom, fonction in self._lecteurs().items():
             with self.subTest(lecteur=nom):
                 self.assertIs(
-                    fonction, sd.is_panel,
+                    fonction, sc.is_panel,
                     "%s ne pointe plus la table de solar_design : une seconde "
                     "copie a été réintroduite, et c'est exactement ce qui a "
                     "produit l'incident DEV-202608-0024." % nom)
@@ -2324,16 +2326,16 @@ class TableUniqueDeClassificationTest(SimpleTestCase):
         from apps.ventes.domain import catalogue
         from apps.ventes.quote_engine import builder
         for nom, gauche, droite in (
-                ('_is_battery (catalogue)', catalogue._is_battery, sd.is_battery),
-                ('_is_battery (builder)', builder._is_battery, sd.is_battery),
+                ('_is_battery (catalogue)', catalogue._is_battery, sc.is_battery),
+                ('_is_battery (builder)', builder._is_battery, sc.is_battery),
                 ('_is_hybrid_inverter (catalogue)',
-                 catalogue._is_hybrid_inverter, sd.is_hybrid_inverter),
+                 catalogue._is_hybrid_inverter, sc.is_hybrid_inverter),
                 ('_is_hybrid_inverter (builder)',
-                 builder._is_hybrid_inverter, sd.is_hybrid_inverter),
+                 builder._is_hybrid_inverter, sc.is_hybrid_inverter),
                 ('_is_reseau_inverter (catalogue)',
-                 catalogue._is_reseau_inverter, sd.is_reseau_inverter),
+                 catalogue._is_reseau_inverter, sc.is_reseau_inverter),
                 ('_is_reseau_inverter (builder)',
-                 builder._is_reseau_inverter, sd.is_reseau_inverter)):
+                 builder._is_reseau_inverter, sc.is_reseau_inverter)):
             with self.subTest(alias=nom):
                 self.assertIs(gauche, droite,
                               "%s ne pointe plus la table de solar_design." % nom)
@@ -2341,7 +2343,7 @@ class TableUniqueDeClassificationTest(SimpleTestCase):
     def test_la_facade_services_expose_la_meme_table(self):
         """Le quatrième chemin de lecture : le ré-export de `services.py`."""
         from apps.ventes import services
-        self.assertIs(services._is_panel, sd.is_panel)
-        self.assertIs(services._is_battery, sd.is_battery)
-        self.assertIs(services._is_hybrid_inverter, sd.is_hybrid_inverter)
-        self.assertIs(services._is_reseau_inverter, sd.is_reseau_inverter)
+        self.assertIs(services._is_panel, sc.is_panel)
+        self.assertIs(services._is_battery, sc.is_battery)
+        self.assertIs(services._is_hybrid_inverter, sc.is_hybrid_inverter)
+        self.assertIs(services._is_reseau_inverter, sc.is_reseau_inverter)

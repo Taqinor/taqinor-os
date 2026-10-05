@@ -104,7 +104,7 @@ class ReviserDevisService(TestCase):
                 self.assertFalse(v1.is_active)
 
     def test_exception_apres_cloner_rien_ne_reste(self):
-        from apps.ventes.domain.cycle_vie import reviser_devis
+        from apps.ventes.domain.revision import reviser_devis
         v1 = self._devis()
         nb_avant = Devis.objects.count()
         with patch('apps.ventes.activity.log_devis_note',
