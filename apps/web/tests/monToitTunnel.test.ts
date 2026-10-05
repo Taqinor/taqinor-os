@@ -782,3 +782,37 @@ describe('AGW401 — ?mode= présélectionne la carte, étape 0 agricole', () =>
     }
   });
 });
+
+// ———————————————————————————————————————————————————————————————————————————
+// AGW400 — /pompage-solaire (FR/EN/AR) envoie au tunnel avec `?mode=agricole` ;
+// l'accueil, lui, n'impose aucun mode.
+// ———————————————————————————————————————————————————————————————————————————
+describe('AGW400 — liens pompage → tunnel avec ?mode=agricole', () => {
+  const POMPAGE: Array<[string, string]> = [
+    ['FR', '../src/pages/pompage-solaire.astro'],
+    ['EN', '../src/pages/en/pompage-solaire.astro'],
+    ['AR', '../src/pages/ar/pompage-solaire.astro'],
+  ];
+  const ACCUEIL = ['../src/pages/index.astro', '../src/pages/en/index.astro', '../src/pages/ar/index.astro'];
+
+  for (const [lang, rel] of POMPAGE) {
+    it(`${lang} — tout lien vers le tunnel porte mode=agricole`, () => {
+      const src = stripLineComments(read(rel));
+      // FR : href littéraux ; EN/AR : constante `devisHref` utilisée partout.
+      const litteraux = lang === 'FR' ? (src.match(/["']\/devis\/mon-toit[^"']*["']/g) ?? []) : [];
+      for (const l of litteraux) expect(l).toContain('mode=agricole');
+      if (lang !== 'FR') {
+        expect(src).toContain("const devisHref = L('/devis/mon-toit') + '?mode=agricole';");
+        expect(src).not.toMatch(/href=\{?["']\/devis\/mon-toit["']/);
+      } else {
+        expect(litteraux.length).toBeGreaterThanOrEqual(4);
+      }
+    });
+  }
+
+  for (const rel of ACCUEIL) {
+    it(`accueil ${rel.split('/').slice(-2).join('/')} — aucun lien du tunnel n'impose mode=agricole`, () => {
+      expect(read(rel)).not.toContain('mode=agricole');
+    });
+  }
+});

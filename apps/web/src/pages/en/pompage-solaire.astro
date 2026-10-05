@@ -42,7 +42,8 @@ import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
-const devisHref = L('/devis/mon-toit');
+// AGW400 — le tunnel lit ?mode=agricole (AGW401) : la carte Agricole arrive présélectionnée.
+const devisHref = L('/devis/mon-toit') + '?mode=agricole';
 
 // W349 — form-bypass door: no field, no worksheet to fill.
 const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText());

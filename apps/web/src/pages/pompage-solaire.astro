@@ -237,7 +237,7 @@ const jsonLd = {
         <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
           Avec ces quatre chiffres en main, le système se dessine presque tout seul. Sans eux —
           quand le débit ou la HMT manquent — on en serait réduit à supposer, et nous ne dimensionnons
-          pas une pompe sur des suppositions. <a href="/devis/mon-toit" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander un diagnostic →</a>
+          pas une pompe sur des suppositions. <a href="/devis/mon-toit?mode=agricole" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander un diagnostic →</a>
         </p>
 
         {/* W261 — Diagramme des 4 variables convergeant vers le système :
@@ -427,7 +427,7 @@ const jsonLd = {
         <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
           Le prix du carburant du jour et les heures de pompage réelles de votre pompe changent le
           calcul d’une exploitation à l’autre : c’est pourquoi le chiffre exact — et le nombre
-          d’années de retour — sort de l’étude, jamais d’une moyenne nationale. <a href="/devis/mon-toit" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander mon étude →</a>
+          d’années de retour — sort de l’étude, jamais d’une moyenne nationale. <a href="/devis/mon-toit?mode=agricole" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander mon étude →</a>
         </p>
       </div>
     </section>
@@ -470,7 +470,7 @@ const jsonLd = {
           matériel tier-1 et l’installation repart avec son dossier technique complet.
         </p>
         <RelatedLinks links={[
-          { href: '/devis/mon-toit', label: 'Demander un diagnostic' },
+          { href: '/devis/mon-toit?mode=agricole', label: 'Demander un diagnostic' },
           { href: '/professionnel', label: 'Solaire professionnel' },
           { href: '/équipement', label: 'Voir l’équipement' },
           { href: '/financement', label: 'Financement & rentabilité' },
@@ -489,7 +489,7 @@ const jsonLd = {
       <ServiceWarrantyTable includeOnduleur={false} includeBatterie={false} />
     </section>
 
-    <CtaBand title="Un projet de pompage solaire ? Commencez par l’étude gratuite." href="/devis/mon-toit" />
+    <CtaBand title="Un projet de pompage solaire ? Commencez par l’étude gratuite." href="/devis/mon-toit?mode=agricole" />
 
     <StickyCta />
   </div>
