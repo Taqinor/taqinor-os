@@ -281,13 +281,17 @@ function DevisPdfDialog({
                 <RadioGroupItem value="full" className="mt-0.5" />
                 <span>
                   {targetIsAgricole
-                    ? 'Devis premium (4 pages — étude, schéma, rentabilité, garanties)'
+                    ? 'Document agricole complet (3 pages — eau et argent, fonctionnement, équipement et signature)'
                     : 'Devis premium (3 pages — options, analyse, garanties)'}
                 </span>
               </label>
               <label className="flex items-start gap-2 text-sm">
                 <RadioGroupItem value="onepage" className="mt-0.5" />
-                <span>Devis une page (liste produits uniquement, sans graphiques)</span>
+                <span>
+                  {targetIsAgricole
+                    ? 'Version courte (1 page)'
+                    : 'Devis une page (liste produits uniquement, sans graphiques)'}
+                </span>
               </label>
             </RadioGroup>
             {/* Incident fondateur 01/09 round 2 — hint SEUL (jamais bloquant) :
@@ -1718,11 +1722,13 @@ export default function DevisList() {
   const openPdfModal = (d) => {
     setBatchPdf(false)
     setPdfTarget(d)
-    // Agricole a désormais son propre format premium (4 pages) — défaut « full ».
-    // Un devis sans onduleur classé (Composition libre) part directement sur
-    // 'onepage' — jamais le refus 400 que l'utilisateur découvrirait sinon
-    // seulement après avoir cliqué « Générer ».
-    const sansOnduleur = devisSansOnduleurClasse(d)
+    // AGR315 — l'agricole a son document complet de 3 pages (renderer
+    // agricole, AGR312) : défaut « full », jamais rabattu sur une page faute
+    // d'onduleur (un kit de pompage n'en a pas). Un autre devis sans onduleur
+    // classé (Composition libre) part directement sur 'onepage' — jamais le
+    // refus 400 que l'utilisateur découvrirait sinon après « Générer ».
+    const sansOnduleur = d?.mode_installation !== 'agricole'
+      && devisSansOnduleurClasse(d)
     setPdfMode(sansOnduleur ? 'onepage' : 'full')
     setPdfModeAutoOnepage(sansOnduleur)
     setShowMonthly(true)
