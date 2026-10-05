@@ -586,6 +586,8 @@ const NON_LU_DOCUMENTATION: Readonly<Record<string, string>> = {
   'exemple_remplace_par_brouillon.remplace_par.url': 'Fragment d’exemple (successeur encore BROUILLON) : `null`, un brouillon n’est jamais servi au client — illustratif.',
   // AGR4 (contrat d'abord PACT10, 03/10/2026)
   'notes.agricole_agr4': 'Note de contrat : pourquoi `exemple_agricole` est un FRAGMENT posé avant ses deux moitiés (AGR4, PACT10) — documentation.',
+  // ACAL18 (contrat d'abord PACT10, 05/10/2026)
+  'pourquoi_roof_layout_riche': 'Note de contrat : pourquoi `exemple_roof_layout_riche` est un FRAGMENT (géométrie seule, jamais un prix) posé avant son émetteur D08-T21/T22 (ACAL18, PACT10) — documentation.',
 };
 
 /**
@@ -595,6 +597,7 @@ const NON_LU_DOCUMENTATION: Readonly<Record<string, string>> = {
  */
 const FRAGMENTS_DOCUMENTATION: Readonly<Record<string, string>> = {
   'exemple_agricole.': 'Fragment d’exemple agricole (AGR4) : la charge utile publique d’un devis de pompage, posée seule sur main avant la page /proposition agricole (AGW300-AGW308) qui la lira.',
+  'exemple_roof_layout_riche.': 'Fragment d’exemple ACAL18 : le `roof_layout` riche (zones, modules, retraits, exclusions, surfaces de pose) que la page /proposition recevra quand `_safe_roof_layout` sera élargie (D08-T21/T22) — posé seul avant ses deux moitiés.',
 };
 const decideeParFragment = (c: string): boolean =>
   Object.keys(FRAGMENTS_DOCUMENTATION).some((prefixe) => c.startsWith(prefixe));

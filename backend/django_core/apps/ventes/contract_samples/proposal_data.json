@@ -958,5 +958,122 @@
         }
       ]
     }
+  },
+  "pourquoi_roof_layout_riche": "ACAL18 (PACT10, C-ACAL-035/042/116) — `exemple_roof_layout_riche` est un FRAGMENT (seule la clé `roof_layout` est montrée, comme `exemple_agricole`) : la forme que la page /proposition RECEVRA une fois la liste blanche `public_views._safe_roof_layout` (:1205-1265) élargie (D08-T21/T22). GÉOMÉTRIE SEULE, jamais un prix : `zones[].geometry` {azimuthDeg, tiltDeg, kwc, count, family, flush, origin, moduleId, mode, panels[{cx, cy, face, angleDeg}]} ; racine `modules` [{id, longueurMm, largeurMm, pmaxWc}] (JAMAIS produitId, libellé marque ni prix) ; racine `setbacksM` {lateralM, extremityM, parapetM, jointM} ; racine `exclusionZones` [{id, nature ENVELOPPE|INTERDITE|RESERVEE|PREFEREE, vertices, setbackM}] ; racine `poseSurfaces` [{id, kind sol|ombriere|facade, vertices|contourM, tiltDeg, rowAzimuthDeg, moduleLongM, moduleCourtM, moduleWc, engine{modules, rowPitchM, tables[{x0,x1,y0,y1}]}}]. Clés absentes TOLÉRÉES (anciens devis : `{version: 2, zones: []}` reste valide). Source : roof_layout_v2.schema.json ($defs zoneGeometry, moduleDocument, perimeterSetbacks, exclusionZone, poseSurface, posePlanMoteur, poseTable). Émetteur : `apps/ventes/public_views.py` (`_safe_roof_layout`, `_safe_zone_geometry`) ; lecteurs : `apps/web/src/lib/proposition.ts` (parseRoofLayout), `apps/web/src/scripts/roofPro11/viewerFullModel.ts`, `viewerOnly.ts`. Un test de liste noire (prix, prix_achat, marge, produitId absents) est écrit par D08-T21.",
+  "exemple_roof_layout_riche": {
+    "roof_layout": {
+      "version": 2,
+      "zones": [
+        {
+          "id": "z1",
+          "label": "Pan sud",
+          "geometry": {
+            "azimuthDeg": 180,
+            "tiltDeg": 15,
+            "kwc": 4.32,
+            "count": 8,
+            "family": "residentiel",
+            "flush": false,
+            "origin": "calepinage",
+            "moduleId": "mod-1",
+            "mode": "auto",
+            "panels": [
+              {
+                "cx": 1.2,
+                "cy": 0.9,
+                "face": "sud",
+                "angleDeg": 0
+              },
+              {
+                "cx": 2.4,
+                "cy": 0.9,
+                "face": "sud",
+                "angleDeg": 0
+              }
+            ]
+          }
+        }
+      ],
+      "modules": [
+        {
+          "id": "mod-1",
+          "longueurMm": 2278,
+          "largeurMm": 1134,
+          "pmaxWc": 540
+        }
+      ],
+      "setbacksM": {
+        "lateralM": 0.5,
+        "extremityM": 0.5,
+        "parapetM": 0.3,
+        "jointM": 0.02
+      },
+      "exclusionZones": [
+        {
+          "id": "ex1",
+          "nature": "INTERDITE",
+          "vertices": [
+            [
+              1.0,
+              1.0
+            ],
+            [
+              2.0,
+              1.0
+            ],
+            [
+              2.0,
+              2.0
+            ],
+            [
+              1.0,
+              2.0
+            ]
+          ],
+          "setbackM": 0.3
+        }
+      ],
+      "poseSurfaces": [
+        {
+          "id": "ps1",
+          "kind": "sol",
+          "vertices": [
+            [
+              0,
+              0
+            ],
+            [
+              20,
+              0
+            ],
+            [
+              20,
+              10
+            ],
+            [
+              0,
+              10
+            ]
+          ],
+          "tiltDeg": 25,
+          "rowAzimuthDeg": 180,
+          "moduleLongM": 2.278,
+          "moduleCourtM": 1.134,
+          "moduleWc": 540,
+          "engine": {
+            "modules": 24,
+            "rowPitchM": 3.1,
+            "tables": [
+              {
+                "x0": 0.5,
+                "x1": 9.5,
+                "y0": 0.5,
+                "y1": 3.6
+              }
+            ]
+          }
+        }
+      ]
+    }
   }
 }
