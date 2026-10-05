@@ -362,7 +362,8 @@ class RegistrePermissionsGoldenTests(TestCase):
             )
 
     def test_perimetre_de_sur_vrais_modeles(self):
-        from authentication.models import User
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
         role_rh = self.m.Role(nom='SPL300 rh', perimetre='rh')
         role_global = self.m.Role(nom='SPL300 global')
         self.assertEqual(self.m.perimetre_de(User(role=role_rh)), 'rh')
