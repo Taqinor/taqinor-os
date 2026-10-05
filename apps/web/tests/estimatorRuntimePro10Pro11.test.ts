@@ -2125,3 +2125,46 @@ describe('runtime ACAL71 — ajouterPanDepuisContour', () => {
     expect((api!.serializeLayout() as { zones: unknown[] }).zones).toHaveLength(2);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL78 — « Recommencer depuis le tracé client », boot RÉEL : les arêtes corrigées à la
+// main ne sont plus réappliquées par index au nouveau contour.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL78 — recommencer efface les arêtes manuelles', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('arête 1 corrigée à la main → Recommencer → Enregistrer : aucune arête manuel:true', async () => {
+    const doc = {
+      version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'area-1',
+      zones: [{
+        id: 'area-1', label: 'Toit', vertices: squareCorners(16), obstacles: [], roofType: 'flat', pitchDeg: 22,
+        facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true,
+        edges: [{ index: 1, type: 'faitage', manuel: true, retraitM: 0.8 }],
+      }],
+    };
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      hydrate: { devis: { id: 4, geometrie: { roof_layout: doc as never }, cibleVendue: false } },
+      referenceContour: squareCorners(14, -7.6201).map(([lng, lat]) => ({ lat, lng })),
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    const avant = api!.serializeLayout() as { zones: Array<{ edges?: Array<{ manuel?: boolean }> }> };
+    expect(avant.zones[0].edges?.some((e) => e.manuel)).toBe(true);
+    expect(api!.recommencerDepuisTraceClient()).toBe(true);
+    const apres = api!.serializeLayout() as { zones: Array<{ edges?: Array<{ manuel?: boolean; retraitM?: number }> }> };
+    expect((apres.zones[0].edges ?? []).some((e) => e.manuel || e.retraitM !== undefined)).toBe(false);
+  });
+});

@@ -157,6 +157,7 @@ import {
   type CleSectionAtelier,
   type HydratationAtelier,
 } from './roofPro11/hydratation'; // ACAL26 — une seule hydratation pour les deux boots
+import { reinitialiserDepuisTraceClient } from './roofPro11/edges'; // ACAL78
 import { createConsumption } from './roofPro11/consumption';
 import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
@@ -2059,14 +2060,20 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (!ring) return false;
     vertices = [...ring];
     const a = activeArea();
-    if (a) a.vertices = [...vertices];
     // Les obstacles étaient posés SUR le contour précédent : reprendre le tracé
     // client sans les effacer les laisserait à leurs coordonnées d'avant, donc
     // potentiellement hors du nouveau toit — et ils continueraient à creuser
     // des trous dans un calepinage qu'ils ne concernent plus. « Recommencer »
     // veut dire repartir du tracé client, pas en garder la moitié.
+    // ACAL78 — même chose pour les arêtes corrigées à la main (types, retraits) et le
+    // rattachement au bâtiment devenu faux : la fonction pure `reinitialiserDepuisTraceClient`
+    // rend le pan repartant du tracé, qui remplace l'ancien EN PLACE.
+    if (a) {
+      const neuf = reinitialiserDepuisTraceClient(a, ring, areas);
+      const i = areas.indexOf(a);
+      if (i >= 0) areas[i] = neuf;
+    }
     obstacles = [];
-    if (a) a.obstacles = [];
     redrawObstacles();
     redrawExclusionZones();
     landCameraOnRoof(vertices); // W120 — cadre le contour ENTIER avant la bascule 3D
