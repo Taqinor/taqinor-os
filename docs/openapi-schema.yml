@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4724, operations: 7510, components: 2157}
+counts: {paths: 4732, operations: 7520, components: 2157}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -576,9 +576,11 @@ operations:
 - get /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_retrieve
 - post /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_create
 - patch /api/django/calepinage/calepinages/{id}/photos/{photo_id}/calage/ -> django_calepinage_calepinages_photos_calage_partial_update
+- get /api/django/calepinage/calepinages/{id}/photos/{photo_id}/fichier/ -> django_calepinage_calepinages_photos_fichier_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-cablage.dxf/ -> django_calepinage_calepinages_plan_cablage.dxf_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-cablage.pdf/ -> django_calepinage_calepinages_plan_cablage.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-importe/ -> django_calepinage_calepinages_plan_importe_retrieve
+- get /api/django/calepinage/calepinages/{id}/plan-importe/fichier/ -> django_calepinage_calepinages_plan_importe_fichier_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-masse.pdf/ -> django_calepinage_calepinages_plan_masse.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-pose.pdf/ -> django_calepinage_calepinages_plan_pose.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-toiture.pdf/ -> django_calepinage_calepinages_plan_toiture.pdf_retrieve
@@ -596,9 +598,12 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/releve-visite/ -> django_calepinage_calepinages_releve_visite_create
 - get /api/django/calepinage/calepinages/{id}/releve/ -> django_calepinage_calepinages_releve_retrieve
 - post /api/django/calepinage/calepinages/{id}/releve/ -> django_calepinage_calepinages_releve_create
+- delete /api/django/calepinage/calepinages/{id}/releve/{releve_id}/ -> django_calepinage_calepinages_releve_destroy
+- patch /api/django/calepinage/calepinages/{id}/releve/{releve_id}/ -> django_calepinage_calepinages_releve_partial_update
 - post /api/django/calepinage/calepinages/{id}/restaurer-corbeille/ -> django_calepinage_calepinages_restaurer_corbeille_create
 - get /api/django/calepinage/calepinages/{id}/resultat/ -> django_calepinage_calepinages_resultat_retrieve
 - post /api/django/calepinage/calepinages/{id}/roof-image/ -> django_calepinage_calepinages_roof_image_create
+- get /api/django/calepinage/calepinages/{id}/roof-image/fichier/ -> django_calepinage_calepinages_roof_image_fichier_retrieve
 - get /api/django/calepinage/calepinages/{id}/schema-unifilaire.dxf/ -> django_calepinage_calepinages_schema_unifilaire.dxf_retrieve
 - get /api/django/calepinage/calepinages/{id}/schema-unifilaire/ -> django_calepinage_calepinages_schema_unifilaire_retrieve
 - post /api/django/calepinage/calepinages/{id}/schema-unifilaire/ -> django_calepinage_calepinages_schema_unifilaire_create
@@ -4369,9 +4374,11 @@ operations:
 - get /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_retrieve
 - post /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_create
 - patch /api/v1/calepinage/calepinages/{id}/photos/{photo_id}/calage/ -> v1_calepinage_calepinages_photos_calage_partial_update
+- get /api/v1/calepinage/calepinages/{id}/photos/{photo_id}/fichier/ -> v1_calepinage_calepinages_photos_fichier_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-cablage.dxf/ -> v1_calepinage_calepinages_plan_cablage.dxf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-cablage.pdf/ -> v1_calepinage_calepinages_plan_cablage.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-importe/ -> v1_calepinage_calepinages_plan_importe_retrieve
+- get /api/v1/calepinage/calepinages/{id}/plan-importe/fichier/ -> v1_calepinage_calepinages_plan_importe_fichier_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-masse.pdf/ -> v1_calepinage_calepinages_plan_masse.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-pose.pdf/ -> v1_calepinage_calepinages_plan_pose.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-toiture.pdf/ -> v1_calepinage_calepinages_plan_toiture.pdf_retrieve
@@ -4389,9 +4396,12 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/releve-visite/ -> v1_calepinage_calepinages_releve_visite_create
 - get /api/v1/calepinage/calepinages/{id}/releve/ -> v1_calepinage_calepinages_releve_retrieve
 - post /api/v1/calepinage/calepinages/{id}/releve/ -> v1_calepinage_calepinages_releve_create
+- delete /api/v1/calepinage/calepinages/{id}/releve/{releve_id}/ -> v1_calepinage_calepinages_releve_destroy
+- patch /api/v1/calepinage/calepinages/{id}/releve/{releve_id}/ -> v1_calepinage_calepinages_releve_partial_update
 - post /api/v1/calepinage/calepinages/{id}/restaurer-corbeille/ -> v1_calepinage_calepinages_restaurer_corbeille_create
 - get /api/v1/calepinage/calepinages/{id}/resultat/ -> v1_calepinage_calepinages_resultat_retrieve
 - post /api/v1/calepinage/calepinages/{id}/roof-image/ -> v1_calepinage_calepinages_roof_image_create
+- get /api/v1/calepinage/calepinages/{id}/roof-image/fichier/ -> v1_calepinage_calepinages_roof_image_fichier_retrieve
 - get /api/v1/calepinage/calepinages/{id}/schema-unifilaire.dxf/ -> v1_calepinage_calepinages_schema_unifilaire.dxf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/schema-unifilaire/ -> v1_calepinage_calepinages_schema_unifilaire_retrieve
 - post /api/v1/calepinage/calepinages/{id}/schema-unifilaire/ -> v1_calepinage_calepinages_schema_unifilaire_create
