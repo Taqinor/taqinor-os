@@ -243,13 +243,20 @@ retiré plus un hook ajouté.
 |---|---|
 | `cal-allees-actuelle` | allées actuelle. |
 | `cal-allees-appliquer-suggestion` | allées appliquer suggestion. |
+| `cal-allees-calepinage` | Section de l'allée technique propre à CE calepinage (document). |
 | `cal-allees-champ` | allées champ. |
+| `cal-allees-circulation` | Liste des allées de circulation du défaut société. |
+| `cal-allees-circulation-ajouter` | Bouton d'ajout d'une allée de circulation. |
+| `cal-allees-confirmer-societe` | Case de confirmation avant de modifier le défaut société. |
 | `cal-allees-enregistrer` | allées enregistrer. |
+| `cal-allees-enregistrer-calepinage` | Enregistre l'allée technique de CE calepinage. |
 | `cal-allees-message` | allées message. |
+| `cal-allees-message-calepinage` | Message de retour de l'enregistrement de l'allée du calepinage. |
 | `cal-allees-non-reglee` | allées non reglee. |
 | `cal-allees-rechercher` | allées rechercher. |
 | `cal-allees-refus` | allées refus serveur. |
 | `cal-allees-sans-plateau` | allées sans plateau. |
+| `cal-allees-societe` | Section du défaut société des allées (nommé, confirmé). |
 | `cal-allees-suggestion` | allées suggestion. |
 | `cal-panneau-allees` | panneau allées. |
 
