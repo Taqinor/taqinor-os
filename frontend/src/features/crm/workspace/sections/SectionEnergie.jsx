@@ -586,7 +586,7 @@ const MOIS_FR = [
 const QUESTIONS_POMPAGE = {
   source_eau: "« D'où vient l'eau : un puits, un forage, un bassin ou une rivière ? »",
   niveau_statique_m: "« À quelle profondeur se trouve l'eau quand la pompe est arrêtée ? »",
-  niveau_statique_source: "« Ce niveau, vous l'avez mesuré, ou on vous l'a dit ? » (posé avec le niveau ; mesure_visite = relevé par TAQINOR)",
+  niveau_statique_source: "« Ce niveau, vous l'avez mesuré, ou on vous l'a dit ? » (posé avec le niveau ; mesure_visite = relevé par notre technicien lors de la visite)",
   profondeur_forage_m: "« Quelle est la profondeur totale du forage ? »",
   debit_forage_m3h: "« Combien d'eau le forage peut-il donner par heure ? »",
   debit_forage_source: "« Ce débit vient d'un essai de pompage, du foreur, ou c'est votre estimation ? »",
