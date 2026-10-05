@@ -228,3 +228,172 @@ def calculer(dec, *, maintenant=None):
         'part_par_classe': _part_par_classe(annonceurs),
         'part_dropshipper': _part_dropshipper(annonceurs),
     }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# VEIL23 — Précision et rappel sur l'échantillon étiqueté (D-VEIL-4, D-VEIL-9)
+# ═════════════════════════════════════════════════════════════════════════════
+Z_95 = 1.959963984540054
+MIN_ETIQUETTES_TEST = 200
+MIN_ETIQUETTES_ETALONNAGE = 50
+
+
+class MesureRefusee(Exception):
+    def __init__(self, message_fr):
+        self.message_fr = message_fr
+        super().__init__(message_fr)
+
+
+def wilson(succes, total, z=Z_95):
+    """Intervalle de Wilson (95 %) d'une proportion ; ``None`` si total 0."""
+    if not total:
+        return None
+    p = succes / total
+    z2 = z * z
+    denominateur = 1 + z2 / total
+    centre = (p + z2 / (2 * total)) / denominateur
+    demi = z * ((p * (1 - p) / total + z2 / (4 * total * total)) ** 0.5) \
+        / denominateur
+    return [round(max(0.0, centre - demi), 4), round(min(1.0, centre + demi), 4)]
+
+
+def matrice_confusion(paires, classes):
+    """``{vrai: {predit: n}}`` sur toutes les classes (zéros compris)."""
+    matrice = {v: {p: 0 for p in classes} for v in classes}
+    for vrai, predit in paires:
+        matrice.setdefault(vrai, {p: 0 for p in classes})
+        matrice[vrai][predit] = matrice[vrai].get(predit, 0) + 1
+    return matrice
+
+
+def precision_rappel(paires, positif):
+    """P/R/F1 binaires de la classe ``positif`` (+ Wilson). ``None`` quand
+    non calculable (division par zéro), jamais 0."""
+    vp = sum(1 for v, p in paires if v == positif and p == positif)
+    fp = sum(1 for v, p in paires if v != positif and p == positif)
+    fn = sum(1 for v, p in paires if v == positif and p != positif)
+    precision = round(vp / (vp + fp), 4) if vp + fp else None
+    rappel = round(vp / (vp + fn), 4) if vp + fn else None
+    f1 = (round(2 * precision * rappel / (precision + rappel), 4)
+          if precision is not None and rappel is not None
+          and precision + rappel else None)
+    return {'vp': vp, 'fp': fp, 'fn': fn, 'precision': precision,
+            'rappel': rappel, 'f1': f1,
+            'ic_precision': wilson(vp, vp + fp),
+            'ic_rappel': wilson(vp, vp + fn)}
+
+
+def seuils():
+    from django.conf import settings
+    return {
+        'liste_precision': float(getattr(
+            settings, 'VEILLE_SEUIL_LISTE_PRECISION', 0.90)),
+        'liste_rappel': float(getattr(
+            settings, 'VEILLE_SEUIL_LISTE_RAPPEL', 0.90)),
+        'dropshipper_precision': float(getattr(
+            settings, 'VEILLE_SEUIL_DROPSHIPPER_PRECISION', 0.80)),
+    }
+
+
+def evaluer(paires_classe, paires_dropshipper, *, passage_second=None,
+            passage_humain=None, seuils_=None):
+    """Rapport de mesure depuis des paires ``(vrai, prédit)``."""
+    from .models import VEILLE_CLASSES
+
+    seuils_ = seuils_ or seuils()
+    classes = [c for c, _l, _b in VEILLE_CLASSES]
+    par_classe = {c: precision_rappel(paires_classe, c) for c in classes}
+    drop = precision_rappel(paires_dropshipper, 'oui')
+    liste = par_classe['vendeur']
+    liste_atteint = (liste['precision'] is not None
+                     and liste['rappel'] is not None
+                     and liste['precision'] >= seuils_['liste_precision']
+                     and liste['rappel'] >= seuils_['liste_rappel'])
+    drop_atteint = (drop['precision'] is not None
+                    and drop['precision'] >= seuils_['dropshipper_precision'])
+    return {
+        'n': len(paires_classe),
+        'matrice': matrice_confusion(paires_classe, classes),
+        'par_classe': par_classe,
+        'dropshipper': drop,
+        'passage_second_modele': passage_second,
+        'passage_humain': passage_humain,
+        'seuils': seuils_,
+        'verdict': {
+            'liste_vendeurs': 'atteint' if liste_atteint else 'non atteint',
+            'dropshipper': 'atteint' if drop_atteint else 'non atteint',
+            'dropshipper_interne': not drop_atteint,
+        },
+    }
+
+
+def _derniere(verdicts, condition):
+    for verdict in verdicts:  # triés du plus récent au plus ancien
+        if condition(verdict):
+            return verdict
+    return None
+
+
+def mesurer_decouverte(dec, *, modele_ambigu=None, maintenant=None):
+    """Mesure P/R/F1 sur le jeu ``test`` GELÉ de la découverte. Refus (FR) si
+    moins de 200 étiquettes de test, si une étiquette n'est pas humaine, ou si
+    une étiquette de test a servi à l'étalonnage."""
+    from .models import VeilleAnnonceur, VeilleVerdict
+
+    tires = list(VeilleAnnonceur.objects.filter(
+        company_id=dec.company_id, jeu_decouverte_id=dec.pk))
+    ids = [a.pk for a in tires]
+    etiquettes = VeilleVerdict.objects.filter(
+        company_id=dec.company_id, annonceur_id__in=ids,
+        est_etiquette_mesure=True)
+    non_humaines = etiquettes.exclude(decide_par='humain').count()
+    if non_humaines:
+        raise MesureRefusee(
+            f'{non_humaines} étiquette(s) de mesure non posée(s) par un '
+            'humain : mesure refusée.')
+    par_jeu = {a.pk: a.jeu for a in tires}
+    croisees = sum(1 for e in etiquettes if e.jeu != par_jeu.get(
+        e.annonceur_id))
+    if croisees:
+        raise MesureRefusee(
+            f'{croisees} étiquette(s) posée(s) dans un autre jeu que celui de '
+            "leur annonceur : le jeu de test a servi à l'étalonnage, mesure "
+            'refusée.')
+    verdicts_par_ann = {}
+    for v in (VeilleVerdict.objects.filter(
+            company_id=dec.company_id, annonceur_id__in=ids)
+            .order_by('-created_at', '-id')):
+        verdicts_par_ann.setdefault(v.annonceur_id, []).append(v)
+    test = [a for a in tires if a.jeu == 'test']
+    paires_classe, paires_drop = [], []
+    second, humain = 0, 0
+    for ann in test:
+        verdicts = verdicts_par_ann.get(ann.pk, [])
+        etiquette = _derniere(verdicts, lambda v: v.est_etiquette_mesure)
+        if etiquette is None:
+            continue
+        machine = _derniere(verdicts, lambda v: not v.est_etiquette_mesure
+                            and v.decide_par in ('regle', 'ia'))
+        predit = machine.classe if machine else 'incertain'
+        paires_classe.append((etiquette.classe, predit))
+        paires_drop.append((etiquette.dropshipper,
+                            machine.dropshipper if machine else 'incertain'))
+        if machine and modele_ambigu and machine.modele == modele_ambigu:
+            second += 1
+        if predit == 'incertain':
+            humain += 1
+    if len(paires_classe) < MIN_ETIQUETTES_TEST:
+        raise MesureRefusee(
+            f'{len(paires_classe)} étiquette(s) de test : il en faut au '
+            f'moins {MIN_ETIQUETTES_TEST} (seuils fixés avant la mesure).')
+    n = len(paires_classe)
+    rapport = evaluer(
+        paires_classe, paires_drop,
+        passage_second=(round(second / n, 4) if modele_ambigu else None),
+        passage_humain=round(humain / n, 4))
+    rapport['decouverte_id'] = dec.pk
+    rapport['etiquettes_etalonnage'] = sum(
+        1 for e in etiquettes if e.jeu == 'etalonnage')
+    rapport['rappel_decouverte'] = calculer(
+        dec, maintenant=maintenant)['rappel_concurrents_nommes']
+    return rapport
