@@ -53,6 +53,9 @@
           "plus_tard": [
             "veille_meme_touche"
           ],
+          "attente_accord": [
+            "veille_meme_touche"
+          ],
           "refuse": [
             "relances_arretees",
             "etape_decider_suite"
@@ -126,6 +129,9 @@
             "etape_decider_suite"
           ],
           "plus_tard": [
+            "veille_meme_touche"
+          ],
+          "attente_accord": [
             "veille_meme_touche"
           ],
           "question_prix": [
@@ -357,6 +363,9 @@
           "plus_tard": [
             "veille_meme_touche"
           ],
+          "attente_accord": [
+            "veille_meme_touche"
+          ],
           "refuse": [
             "relances_arretees",
             "reste_au_froid"
@@ -430,6 +439,9 @@
             "touche_suivante_a_la_date"
           ],
           "plus_tard": [
+            "veille_meme_touche"
+          ],
+          "attente_accord": [
             "veille_meme_touche"
           ],
           "refuse": [
@@ -509,6 +521,9 @@
             "touche_suivante_a_la_date"
           ],
           "plus_tard": [
+            "veille_meme_touche"
+          ],
+          "attente_accord": [
             "veille_meme_touche"
           ],
           "refuse": [
@@ -724,6 +739,9 @@
             "touche_suivante_a_la_date"
           ],
           "plus_tard": [
+            "veille_meme_touche"
+          ],
+          "attente_accord": [
             "veille_meme_touche"
           ],
           "refuse": [

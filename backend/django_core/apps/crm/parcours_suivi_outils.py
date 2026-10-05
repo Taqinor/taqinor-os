@@ -114,7 +114,9 @@ def reponse_de(type_id, modele):
 REPONSES_SPEC = frozenset({
     'ne_plus_contacter', 'plus_tard', 'question_prix', 'devis_modifie',
     'decision_famille', 'decision_proprietaire', 'perdu', 'visite_abandonnee',
-    'joint_telephone'})
+    'joint_telephone',
+    # AGR520 — « En attente d'un accord (DPA / banque) ».
+    'attente_accord'})
 #: Les gestes qu'une réponse peut ouvrir à la place d'un envoi direct.
 GESTES_PLANIFICATION = frozenset({'planification', 'planification_seule', 'replanification'})
 #: Les gestes SANS envoi propre : ils n'ont pas de clé de réponse (E14).

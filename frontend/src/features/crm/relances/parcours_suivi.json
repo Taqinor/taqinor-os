@@ -41,6 +41,10 @@
       "label": "Plus tard — pas maintenant", "reponse": "plus_tard", "date": true, "message": "rappel_plus_tard",
       "precision": "Le message « je vous rappelle [jour] à [heure] » vous est proposé juste après — complétez les crochets avant de l’envoyer."
     },
+    "attente_accord": {
+      "label": "En attente d'un accord (DPA / banque)", "reponse": "attente_accord", "date": true,
+      "precision": "La date convenue est obligatoire. L’étiquette « Attend un accord (DPA / banque) » est posée ; aucun message n’est proposé."
+    },
     "refus": { "label": "Refus", "outcome": "refuse", "motif_refus": true },
     "ne_plus_contacter": {
       "label": "Ne plus me contacter", "reponse": "ne_plus_contacter", "message": "stop_contact",
@@ -149,6 +153,11 @@
           "suite": { "type": "meme_etape", "jour": "date_choisie" }
         },
         {
+          "modele": "attente_accord",
+          "effet": "Le client attend une décision administrative ou bancaire (DPA, banque) : l’étiquette « Attend un accord (DPA / banque) » est posée et le dossier se met en veille comme pour « Plus tard » — cette même touche revient à la date convenue, rien ne part d’ici là. Au-delà d’un mois : le suivi s’arrête et un réveil est daté (son premier geste est un appel). Le dossier ne passe jamais au Froid par cette réponse.",
+          "suite": { "type": "meme_etape", "jour": "date_choisie" }
+        },
+        {
           "modele": "refus",
           "effet": "Toutes les relances s’arrêtent. Étape suivante : « Décider la suite » (perdu avec son motif, ou relance ultérieure) — possible dès maintenant. Le lead n’est pas marqué perdu tout seul.",
           "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" }
@@ -192,6 +201,7 @@
         },
         { "modele": "rappel", "effet": "La touche suivante est programmée à la date choisie ; le reste du suivi glisse d’autant. Sur la dernière touche : « Rappeler le client — rappel convenu » est posée à la date et à l’heure convenues.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "rappel_convenu", "jour": "date_choisie" } }] },
         { "modele": "plus_tard", "effet": "Veille : cette même touche revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "attente_accord", "effet": "Étiquette « Attend un accord (DPA / banque) », puis la veille de « Plus tard » : cette même touche revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "refus", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
         { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
       ]
@@ -335,6 +345,7 @@
         { "modele": "rappel", "effet": "La touche suivante est programmée à la date choisie ; le reste du suivi glisse d’autant. Sur la dernière touche du suivi : « Rappeler le client — rappel convenu » est posée à la date et à l’heure convenues.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "rappel_convenu", "jour": "date_choisie" } }] },
         { "modele": "refus", "label": "Refuse la proposition", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
         { "modele": "plus_tard", "effet": "Veille : cette même touche revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "attente_accord", "effet": "Étiquette « Attend un accord (DPA / banque) », puis la veille de « Plus tard » : cette même touche revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "question_prix", "effet": "Le suivi se met en pause : étape « Question de prix — préparer l’appel du fondateur » pour demain ; aucun message ne part tant qu’elle n’est pas traitée.", "suite": { "type": "etape", "id_etape": "question_prix", "jour": "demain" } },
         { "modele": "devis_modifie", "effet": "Étape « Préparer le devis modifié — rappeler le client » pour demain ; le suivi de l’ancien devis se tait.", "suite": { "type": "etape", "cle": "devis_modifie", "jour": "demain" } },
         { "modele": "decision_famille", "effet": "L’étiquette « Décision à plusieurs » est posée (le « dimanche famille » rejoint le plan) ; la touche suivante est programmée. Sur la dernière touche du suivi : l’étiquette est posée, puis « Décider la suite » pour demain (aucune étape devis).", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } }] },
@@ -358,6 +369,7 @@
         { "modele": "rappel", "effet": "La touche suivante est programmée à la date choisie. Sur la dernière touche du suivi : « Rappeler le client — rappel convenu » est posée à la date et à l’heure convenues.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "rappel_convenu", "jour": "date_choisie" } }] },
         { "modele": "refus", "label": "Refuse la proposition", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
         { "modele": "plus_tard", "effet": "Veille : cette même touche revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "attente_accord", "effet": "Étiquette « Attend un accord (DPA / banque) », puis la veille de « Plus tard » : cette même touche revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "question_prix", "effet": "Pause : étape « Question de prix » pour demain.", "suite": { "type": "etape", "id_etape": "question_prix", "jour": "demain" } },
         { "modele": "devis_modifie", "effet": "Étape « Préparer le devis modifié » pour demain.", "suite": { "type": "etape", "cle": "devis_modifie", "jour": "demain" } },
         { "modele": "decision_famille", "effet": "Étiquette « Décision à plusieurs » ; touche suivante programmée. Sur la dernière touche du suivi : l’étiquette, puis « Décider la suite » pour demain.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } }] },
@@ -463,6 +475,7 @@
         { "modele": "occupe", "effet": "Comme « Pas de réponse » ; note « Occupé ».", "suite": { "type": "barreau_suivant" } },
         { "modele": "rappel", "effet": "Le réveil suivant est déplacé à la date choisie. Sur le dernier réveil : le dossier sort du Froid et « Rappeler le client — rappel convenu » est posée à cette date.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "rappel_convenu", "jour": "date_choisie" } }] },
         { "modele": "plus_tard", "effet": "Veille : ce même réveil revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "attente_accord", "effet": "Étiquette « Attend un accord (DPA / banque) », puis la veille de « Plus tard » : ce même réveil revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "refus", "effet": "Les réveils s’arrêtent ; le dossier reste au Froid, sans autre relance.", "suite": { "type": "fin", "etat": "froid" } },
         { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
       ]
@@ -481,6 +494,7 @@
         { "modele": "pas_de_reponse", "effet": "Le dossier reste au Froid. Après le dernier réveil : plus aucune relance.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }] },
         { "modele": "rappel", "effet": "Le réveil suivant est déplacé à la date choisie. Sur le dernier réveil : le dossier sort du Froid et « Rappeler le client — rappel convenu » est posée à cette date.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "rappel_convenu", "jour": "date_choisie" } }] },
         { "modele": "plus_tard", "effet": "Veille : ce même réveil revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "attente_accord", "effet": "Étiquette « Attend un accord (DPA / banque) », puis la veille de « Plus tard » : ce même réveil revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "refus", "effet": "Les réveils s’arrêtent ; le dossier reste au Froid.", "suite": { "type": "fin", "etat": "froid" } },
         { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
       ]

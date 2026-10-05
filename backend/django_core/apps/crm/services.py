@@ -13061,6 +13061,13 @@ REPONSE_JOINT_TELEPHONE = 'joint_telephone'
 #: ``views.seed_tags``) ; la comparaison, elle, ignore casse et accents
 #: (``_lead_porte_tag`` avec ``_TAG_DECISION_A_PLUSIEURS``).
 TAG_DECISION_A_PLUSIEURS = 'Décision à plusieurs'
+#: AGR520 (05/10/2026) — « En attente d'un accord (DPA / banque) » : le client
+#: attend une décision ADMINISTRATIVE ou BANCAIRE (approbation préalable FDA —
+#: Guide FDA 2024 p.22-23 —, accord de crédit). Même veille que « Plus tard »,
+#: plus une étiquette ; jamais « je classe ? » ni le passage au Froid.
+REPONSE_ATTENTE_ACCORD = 'attente_accord'
+#: L'étiquette posée par cette réponse (seedée par ``views.seed_tags``).
+TAG_ATTENTE_ACCORD = 'Attend un accord (DPA / banque)'
 
 #: Les cadences de protocole (``None`` = toutes, filets et réveils compris).
 _TOUTES_CADENCES = None
@@ -13098,6 +13105,17 @@ REPONSES_TOUCHE = {
         'cadences': _CADENCES_PROTOCOLE_ET_DEUXIEME_AFFAIRE,
         'message': 'rappel_plus_tard',
         # La date convenue avec le client est OBLIGATOIRE (« Rappeler le »).
+        'date_requise': True,
+    },
+    # AGR520 — même place, mêmes cadences et même date OBLIGATOIRE que
+    # « Plus tard » ; AUCUN texte proposé (aucun accusé n'est validé pour ce
+    # cas) ; l'étiquette dit pourquoi le dossier dort.
+    REPONSE_ATTENTE_ACCORD: {
+        'libelle': "En attente d'un accord (DPA / banque)",
+        'outcome': 'rappel',
+        'note': "En attente d'un accord (DPA / banque)",
+        'cadences': _CADENCES_PROTOCOLE_ET_DEUXIEME_AFFAIRE,
+        'message': None,
         'date_requise': True,
     },
     REPONSE_QUESTION_PRIX: {
@@ -13525,6 +13543,62 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
                  'reprendre')
     corps = (f'Réponse du client sur la touche « {libelle} » : « '
              f'{spec["note"]} » — {suite}.')
+    if body:
+        corps += f' {body}'
+    if (note or '').strip():
+        corps += f' Note : {note.strip()}'
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=_CANAL_VERS_KIND.get(etape.canal, LeadActivity.Kind.NOTE),
+        body=corps, outcome=spec['outcome'])
+    if reprise is None:
+        etape.refresh_from_db()
+        return etape
+    return reprise
+
+
+# ── AGR520 — « En attente d'un accord (DPA / banque) » ─────────────────────
+
+def repondre_attente_accord(etape, user, quand, *, note='', body=''):
+    """AGR520 — le client attend une décision administrative ou bancaire
+    (approbation préalable du dossier FDA par la DPA, accord de crédit) : il
+    n'a dit ni oui ni non, et le relancer « je classe ? » (J7), « dernier
+    message » (J13) puis le mettre en pause (J14) serait faux.
+
+    1. l'étiquette « Attend un accord (DPA / banque) » est posée
+       (``poser_tag_lead``, idempotent) ;
+    2. EXACTEMENT la veille de « Plus tard » (``mettre_en_veille``) : aucun
+       barreau consommé, la même touche revient à la date convenue — au-delà
+       de ``VEILLE_BASCULE_REVEIL_JOURS``, la cadence s'arrête et un réveil
+       est daté de ce jour-là (sa première touche est un APPEL). Jamais de
+       passage au Froid par cette réponse : l'étape du dossier ne bouge pas ;
+    3. UNE ligne d'historique typée selon le canal (issue « à rappeler »).
+
+    Aucun texte n'est proposé. La date est OBLIGATOIRE (la vue la refuse en
+    400 nommant ``rappel_le`` sinon). Renvoie la touche qui portera la
+    reprise."""
+    from . import horaires
+
+    lead = etape.lead
+    spec = REPONSES_TOUCHE[REPONSE_ATTENTE_ACCORD]
+    libelle = (etape.libelle or '').strip() or etape.get_canal_display()
+    poser_tag_lead(lead, user, TAG_ATTENTE_ACCORD)
+    quand = _instant_de_veille(quand)
+    reprise = mettre_en_veille(lead, user, quand, etape=etape,
+                               journaliser=False)
+    if reprise is not None and reprise.pk == etape.pk:
+        suite = (f'dossier en veille jusqu’au {reprise.due_date:%d/%m/%Y}, '
+                 'reprise à cette même touche — aucun barreau consommé')
+    elif reprise is not None:
+        suite = (f'plus d’un mois d’attente : la cadence est arrêtée et un '
+                 f'réveil est daté du {reprise.due_date:%d/%m/%Y}')
+    else:
+        jour = quand.astimezone(horaires.CASABLANCA).date()
+        suite = (f'veille demandée jusqu’au {jour:%d/%m/%Y}, aucune touche à '
+                 'reprendre')
+    corps = (f'Réponse du client sur la touche « {libelle} » : « '
+             f'{spec["note"]} » — étiquette « {TAG_ATTENTE_ACCORD} » posée, '
+             f'{suite}.')
     if body:
         corps += f' {body}'
     if (note or '').strip():

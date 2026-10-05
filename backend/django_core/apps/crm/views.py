@@ -3154,6 +3154,9 @@ _DEFAULT_TAGS = [
     # comme les autres étiquettes de clôture ; un test garde les deux libellés
     # identiques.
     'Deuxième affaire sans réponse',
+    # AGR520 (05/10/2026) — l'étiquette posée par la réponse « En attente
+    # d'un accord (DPA / banque) » (`services.TAG_ATTENTE_ACCORD`).
+    'Attend un accord (DPA / banque)',
 ]
 
 
@@ -4091,10 +4094,12 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         réponse et dit où elle vaut."""
         from .services import (
             REPONSE_DECISION_FAMILLE, REPONSE_DECISION_PROPRIETAIRE,
-            REPONSE_DEVIS_MODIFIE, REPONSE_JOINT_TELEPHONE,
+            REPONSE_ATTENTE_ACCORD, REPONSE_DEVIS_MODIFIE,
+            REPONSE_JOINT_TELEPHONE,
             REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU, REPONSE_PLUS_TARD,
             REPONSE_QUESTION_PRIX, REPONSE_VISITE_ABANDONNEE,
             refus_motif_perte, refus_reponse_touche,
+            repondre_attente_accord,
             repondre_decision_a_plusieurs, repondre_devis_modifie,
             repondre_joint_telephone, repondre_ne_plus_contacter,
             repondre_perdu, repondre_plus_tard, repondre_question_prix,
@@ -4152,6 +4157,10 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 etape, request.user, note=note, body=body)
         elif reponse == REPONSE_PLUS_TARD:
             etape = repondre_plus_tard(
+                etape, request.user, quand, note=note, body=body)
+        elif reponse == REPONSE_ATTENTE_ACCORD:
+            # AGR520 — étiquette + la veille de « Plus tard ».
+            etape = repondre_attente_accord(
                 etape, request.user, quand, note=note, body=body)
         elif reponse == REPONSE_QUESTION_PRIX:
             etape = repondre_question_prix(
