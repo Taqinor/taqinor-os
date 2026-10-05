@@ -497,7 +497,8 @@ def _dessin_du_calepinage(calepinage):
                                    conception)))
 
 
-def resultat_et_gabarit_decides(conception, donnees, norme):
+def resultat_et_gabarit_decides(conception, donnees, norme, *,
+                                gabarit=None):
     """ACAL159 — ``(ResultatElectrique, gabarit)`` de la check-list DÉCIDÉE.
 
     Le résultat ne porte que les organes RETENUS (un organe écarté n'est
@@ -511,7 +512,8 @@ def resultat_et_gabarit_decides(conception, donnees, norme):
     checklist, _avis = checklist_decidee(conception, donnees, norme)
     resultat = resultat_electrique_complet(conception, norme=norme,
                                            checklist=checklist)
-    gabarit = dict(gabarit_de_schema(norme))
+    gabarit = dict(gabarit if gabarit is not None
+                   else gabarit_de_schema(norme))
     ajoutes = [ligne for ligne in organes_retenus(checklist)
                if ligne.get('origine') == ORIGINE_SOCIETE]
     if ajoutes:

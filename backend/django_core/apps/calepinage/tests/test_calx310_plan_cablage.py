@@ -38,7 +38,7 @@ from apps.calepinage.models import Calepinage
 from apps.calepinage.services.documents import mise_en_page
 from apps.calepinage.services.documents.plan_cablage import (
     CHAMP_CHAINAGE, COULEUR_NON_AFFECTE, MOTS_DE_MONTANT, PALETTE_CHAINES,
-    PlanCablageRefuse, affectation_publiee_du_calepinage,
+    PlanCablageRefuse, _affectation_publiee_du_calepinage,
     exporter_plan_cablage_dxf,
     html_du_plan_cablage, lignes_de_legende, modules_du_plan,
     plan_de_cablage, rendre_plan_cablage_pdf, rendre_plan_cablage_svg,
@@ -290,7 +290,7 @@ class RefusTest(unittest.TestCase):
                 'apps.calepinage.services.electrique.resultat_calepinage',
                 return_value={'electrique': {'affectation': table}}):
             with self.assertRaises(RapportRefuse) as capture:
-                affectation_publiee_du_calepinage(NU)
+                _affectation_publiee_du_calepinage(NU)
         self.assertIn('prix_achat', capture.exception.champ)
 
 

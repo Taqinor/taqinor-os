@@ -134,7 +134,6 @@ backend/django_core/apps/calepinage/services/production.py::production_du_layout
 backend/django_core/apps/calepinage/services/profils_types.py::profil_de_repli
 backend/django_core/apps/calepinage/services/profils_types.py::profil_depuis_import
 backend/django_core/apps/calepinage/services/profils_types.py::profils_de_repli
-backend/django_core/apps/calepinage/services/protections.py::organes_retenus
 backend/django_core/apps/calepinage/services/provenance_document.py::document_de_provenance
 backend/django_core/apps/calepinage/services/pvgis_serie.py::vider_le_cache
 backend/django_core/apps/calepinage/services/rapport/annexe_hypotheses.py::html_de_section

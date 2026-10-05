@@ -62,7 +62,7 @@ __all__ = [
     'COULEUR_NON_AFFECTE', 'SOURCE_MANUELLE', 'MOTS_DE_MONTANT',
     'PlanCablageRefuse', 'rgb_de', 'modules_du_plan', 'plan_de_cablage',
     'lignes_de_legende', 'verifier_legende_sans_montant',
-    'svg_de_plan_cablage', 'affectation_publiee_du_calepinage',
+    'svg_de_plan_cablage',
     'plan_du_calepinage', 'rendre_plan_cablage_svg', 'html_du_plan_cablage',
     'rendre_plan_cablage_pdf', 'exporter_plan_cablage_dxf',
 ]
@@ -463,7 +463,7 @@ def svg_de_plan_cablage(plan, *, titre='', sous_titre='', pied=''):
 
 # ── Depuis un Calepinage : LIRE l'affectation publiée ──────────────────────
 
-def affectation_publiee_du_calepinage(calepinage):
+def _affectation_publiee_du_calepinage(calepinage):
     """La table d'affectation PUBLIÉE par ``GET resultat/`` — jamais recalculée.
 
     Elle passe le pare-feu des pièces du lot 6 (``rapport
@@ -488,7 +488,7 @@ def affectation_publiee_du_calepinage(calepinage):
 def plan_du_calepinage(calepinage, *, affectation=None):
     """Le plan de câblage d'un ``Calepinage`` (affectation LUE si absente)."""
     if affectation is None:
-        affectation = affectation_publiee_du_calepinage(calepinage)
+        affectation = _affectation_publiee_du_calepinage(calepinage)
     return plan_de_cablage(getattr(calepinage, 'roof_layout', None),
                            affectation)
 
