@@ -291,7 +291,7 @@ def _valeur_saisie(valeur, cle, libelle, champ=None):
 
 # ── la feuille de calcul ────────────────────────────────────────────────────
 
-def _nombre(section, cle):
+def _valeur_societe(section, cle):
     """La valeur SAISIE de ``cle``, ou ``None`` si la société ne l'a pas."""
     entree = (section or {}).get(cle)
     if not isinstance(entree, dict):
@@ -357,7 +357,7 @@ def feuille_de_lestage(section, *, surface_module_m2=None,
         un paramètre manque valent ``None`` et disent lequel.
     """
     section = section or {}
-    valeurs = {cle: _nombre(section, cle) for cle in PARAMETRES
+    valeurs = {cle: _valeur_societe(section, cle) for cle in PARAMETRES
                if cle not in PARAMETRES_TEXTE}
     valeurs['surface_module_m2'] = (
         float(surface_module_m2) if isinstance(surface_module_m2, (int, float))
@@ -538,7 +538,7 @@ def masse_du_layout(layout, *, poids_module_kg=None,
     poids = (float(poids_module_kg)
              if isinstance(poids_module_kg, (int, float))
              and not isinstance(poids_module_kg, bool) else None)
-    structure = _nombre(section, 'masse_structure_kg_par_module')
+    structure = _valeur_societe(section, 'masse_structure_kg_par_module')
 
     manquants = []
     if poids is None:

@@ -43,6 +43,7 @@ from apps.calepinage.services import etapes
 from apps.calepinage.services.cables import longueur_ac
 from core.electrique.cables import RHO_CUIVRE_20C
 from core.electrique.types import EntreeElectrique
+from ..valeurs import nombre as _nombre
 
 LIBELLE = 'Pertes ohmiques AC'
 
@@ -221,14 +222,5 @@ def _puissance_w(valeur):
         return None
     try:
         return float(valeur) * 1000.0
-    except (TypeError, ValueError):
-        return None
-
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
     except (TypeError, ValueError):
         return None

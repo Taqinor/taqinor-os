@@ -46,6 +46,7 @@ from core.electrique.types import (
     COTE_AC, NATURE_FONCTIONNELLE, NATURE_MATERIELLE, STATUT_ALERTE,
     STATUT_BLOQUANT, STATUT_NON_VERIFIABLE, STATUT_OK, VerdictElectrique, fr,
 )
+from .valeurs import nombre as _nombre
 
 __all__ = [
     'RaccordementInvalide', 'CODE_ELEVATION', 'LIBELLES',
@@ -121,16 +122,6 @@ class RaccordementInvalide(ValueError):
 
 
 # ── lectures tolérantes (aucune valeur substituée, jamais) ────────────────
-def _nombre(valeur):
-    """Le flottant d'une saisie, ou ``None`` — jamais un repli."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None
-
-
 def _positif(valeur):
     """Un nombre STRICTEMENT positif, ou ``None`` (0 n'est pas une longueur)."""
     nombre = _nombre(valeur)

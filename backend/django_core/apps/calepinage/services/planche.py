@@ -45,6 +45,7 @@ retourné est plausible à l'œil et faux au mètre près.
 from __future__ import annotations
 
 from html import escape
+from .valeurs import nombre as _nombre
 
 __all__ = [
     'FORMAT_A3_MM', 'MARGE_MM', 'LARGEUR_BANDEAU_MM', 'PAS_D_ECHELLE_M',
@@ -135,17 +136,6 @@ class PlancheRefusee(ValueError):
 # l'assume) : certains ne portent que ``{zones: […]}``, d'autres un
 # ``_pans_geometry`` interne. On lit donc ce qu'on reconnaît et on IGNORE le
 # reste — mais on ne DEVINE jamais une valeur absente.
-
-def _nombre(valeur):
-    """``valeur`` en float, ou ``None`` — jamais un défaut inventé."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return nombre if nombre == nombre and abs(nombre) != float('inf') else None
-
 
 def _couple(point, ordre):
     """``point`` -> ``(lat, lng)`` selon l'ORDRE déclaré. Jamais deviné."""

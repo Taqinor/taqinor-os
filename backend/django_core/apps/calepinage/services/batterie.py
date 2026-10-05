@@ -77,6 +77,7 @@ from __future__ import annotations
 
 import copy
 import math
+from .valeurs import nombre as _nombre
 
 __all__ = ['CHAMP_CYCLES_FICHE', 'CHAMP_EOL_FICHE', 'CHAMP_TOU_HEURES',
            'COUPLAGES', 'FENETRES_MAX', 'GRANDEURS_BATTERIE', 'MOTIVATIONS',
@@ -110,16 +111,6 @@ class StrategieInvalide(ValueError):
         super().__init__(message)
         self.champ = champ
         self.motif = message
-
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return None if nombre != nombre else nombre
 
 
 def tranches_horaires():

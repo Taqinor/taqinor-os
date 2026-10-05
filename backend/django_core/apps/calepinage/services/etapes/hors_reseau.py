@@ -47,6 +47,7 @@ from apps.calepinage.services.etapes import autoconsommation as bloc_conso
 from apps.calepinage.services.etapes import batterie as bloc_batterie
 from apps.calepinage.services.hors_reseau import (HorsReseauInvalide,
                                                   dimensionner_hors_reseau)
+from ..valeurs import nombre as _nombre
 
 LIBELLE = 'Site hors réseau'
 
@@ -89,16 +90,6 @@ MENTION_CONSOMMATION_JOURNALIERE = (
     'courbe de charge assemblée ({total} kWh sur {jours} jour(s)), jamais '
     'saisie séparément : deux chiffres pour une même grandeur finiraient par '
     'diverger.')
-
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return None if nombre != nombre else nombre
 
 
 def _grandeur(specs, nom):

@@ -86,6 +86,7 @@ from apps.calepinage.services.batterie import (CHAMP_JUSTIFICATION_PLAFOND,
                                                simuler_batterie,
                                                simuler_groupes,
                                                vieillissement_batterie)
+from ..valeurs import nombre as _nombre
 
 LIBELLE = 'Batterie'
 
@@ -292,16 +293,6 @@ def autonomie(import_horaire, charge_horaire):
 
 
 # ── la déclaration de batterie, lue sans rien supposer ───────────────────
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return None if nombre != nombre else nombre
-
 
 def _grandeur(specs, nom):
     """Une grandeur de ``specs_batterie`` — ``(valeur, source)``."""

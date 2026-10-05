@@ -34,9 +34,6 @@ from apps.calepinage.services.export_projet import (
     FORMAT_VERSION, FORMATS_IMPORTABLES, MOTIF_FORMAT_1, ImportProjetRefuse,
     _analyser_projet, importer_projet,
 )
-from apps.calepinage.tests._m0_en_attente import (
-    export_projet_v2, import_projet_v2, refus_version_v2,
-)
 
 from .test_api_liste import URL, BaseApiCalepinage
 
@@ -47,26 +44,15 @@ def charger(nom):
     return json.loads((ECHANTILLONS / nom).read_text(encoding='utf-8'))
 
 
-#: ACAL17 a posé le format 3 (bloc ``saisies``, produits ignorés,
-#: ``ouvrir``) avant son producteur : tant qu'ACAL243 n'a pas livré, le
-#: serveur exporte et relit le format 2 — les états des deux contrats sont
-#: ramenés au format 2 avant d'être rejoués contre le service.
-CONTRAT_V3 = charger('calepinage_projet_json.json')
-CONTRAT = dict(
-    CONTRAT_V3,
-    exemple=import_projet_v2(CONTRAT_V3['exemple']),
-    exemple_apercu=import_projet_v2(CONTRAT_V3['exemple_apercu']),
-    exemple_refus_version=refus_version_v2(
-        CONTRAT_V3['exemple_refus_version']))
-EXPORT_V3 = charger('export_projet.json')
-EXPORT = dict(EXPORT_V3,
-              exemple=export_projet_v2(EXPORT_V3['exemple']),
-              exemple_vide=export_projet_v2(EXPORT_V3['exemple_vide']))
+#: Les deux contrats au format 3 (ACAL17 : bloc ``saisies``, produits
+#: ignorés, ``ouvrir``), servis tels quels depuis ACAL243.
+CONTRAT = charger('calepinage_projet_json.json')
+EXPORT = charger('export_projet.json')
 RESULTAT = charger('calepinage_resultat.json')
 
 
 def fichier(**remplacements):
-    """Le fichier d'export committé (format 2), modifiable sans effet de bord."""
+    """Le fichier d'export committé (format 3), modifiable sans effet de bord."""
     document = copy.deepcopy(EXPORT['exemple'])
     document.update(remplacements)
     return document
@@ -104,7 +90,11 @@ class ContratPartageTest(unittest.TestCase):
         self.assertIsNone(apercu['calepinage'])
         self.assertEqual(exemple['repris'], list(BLOCS_REPRIS))
         self.assertEqual([i['bloc'] for i in exemple['ignores']],
-                         [bloc for bloc, _ in BLOCS_IGNORES])
+                         [bloc for bloc, _ in BLOCS_IGNORES]
+                         + [ep.BLOC_PRODUITS_IGNORES])
+        self.assertIsNone(apercu['ouvrir'])
+        self.assertEqual(exemple['ouvrir'],
+                         '/calepinage/%d' % exemple['calepinage'])
 
     def test_les_refus_committes_sont_ceux_du_service(self):
         erreur = refus(fichier(format_version=7))
@@ -158,12 +148,13 @@ def exporte(objet=None):
 
 class ExportFormat2Test(unittest.TestCase):
     def test_le_format_2_ajoute_les_deux_blocs_en_fin(self):
-        self.assertEqual(FORMAT_VERSION, 2)
-        self.assertIn(FORMAT_VERSION, FORMATS_IMPORTABLES)
-        self.assertEqual(CLES_DOCUMENT[-2:], ('postes_pertes', 'variantes'))
+        self.assertEqual(FORMAT_VERSION, 3)
+        self.assertEqual(FORMATS_IMPORTABLES, (1, 2, 3))
+        self.assertEqual(CLES_DOCUMENT[-3:],
+                         ('postes_pertes', 'variantes', 'saisies'))
         document = exporte()
         self.assertEqual(tuple(document), CLES_DOCUMENT)
-        self.assertEqual(document['format_version'], 2)
+        self.assertEqual(document['format_version'], 3)
 
     def test_les_postes_saisis_sont_exportes_tels_quels(self):
         document = exporte()
@@ -284,7 +275,7 @@ class ValidationTest(unittest.TestCase):
         plan = _analyser_projet(fichier())
         self.assertEqual(set(plan), {'format_version', 'titre',
                                      'roof_layout', 'postes', 'variantes',
-                                     'avertissements'})
+                                     'saisies', 'avertissements'})
         self.assertNotIn('company', json.dumps(plan))
         self.assertNotIn('cree_par', json.dumps(plan))
 

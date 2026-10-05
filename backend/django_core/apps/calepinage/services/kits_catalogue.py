@@ -47,6 +47,7 @@ le kit reste utilisable, l'écran décide quoi en faire — comportement d'avant
 strictement préservé.
 """
 from __future__ import annotations
+from .valeurs import nombre as _flottant
 
 #: Clé, DANS la section ``presets``, qui porte le catalogue de kits de pose.
 CLE_KITS = 'kits'
@@ -68,16 +69,6 @@ _CHAMPS_METRES = ('pas_rangee_m', 'longueur_pente_m', 'faitage_m',
 _CHAMPS_ENTIERS = ('modules_par_kit', 'puissance_module_w')
 
 __all__ = ['CLE_KITS', 'CHAMPS_PUBLIES', 'kits_de_societe']
-
-
-def _flottant(valeur):
-    """``float`` du réglage, ou ``None`` — jamais un défaut."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None
 
 
 def _entier(valeur):

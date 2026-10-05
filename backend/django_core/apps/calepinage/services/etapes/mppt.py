@@ -53,6 +53,7 @@ from __future__ import annotations
 
 from apps.calepinage.services import etapes
 from core.electrique.types import TEMPERATURE_STC_C
+from ..valeurs import nombre as _nombre
 
 LIBELLE = 'Fenêtre MPPT'
 
@@ -240,12 +241,3 @@ def _chainage(contexte):
         return {}
     chainage = electrique.get('chainage')
     return chainage if isinstance(chainage, dict) else {}
-
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None

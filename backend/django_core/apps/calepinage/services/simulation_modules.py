@@ -83,6 +83,7 @@ import copy
 
 from apps.calepinage.services import chaine_pertes, etapes
 from apps.calepinage.services.ombrage_chaines import acces_par_module
+from .valeurs import nombre as _nombre
 
 #: La clé de réglage société qui porte le plafond (registre CALX145).
 CLE_PLAFOND = 'plafond_modules_simules'
@@ -560,14 +561,3 @@ def _nombre_borne(valeur):
     if nombre is None or not 0.0 <= nombre <= 1.0:
         return None
     return nombre
-
-
-def _nombre(valeur):
-    """Un flottant lisible, ou ``None`` — jamais une valeur de remplacement."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return None if nombre != nombre else nombre

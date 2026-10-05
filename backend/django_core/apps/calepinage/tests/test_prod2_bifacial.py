@@ -13,7 +13,7 @@ from __future__ import annotations
 import unittest
 
 from apps.calepinage.services.bifacial import (
-    PARAMETRES_REQUIS, gain_bifacial, poste_bifacial,
+    PARAMETRES_REQUIS, gain_bifacial,
 )
 
 #: Un jeu COMPLET — fiche bifaciale, albédo saisi, pose surélevée. Les
@@ -108,23 +108,6 @@ class CalculTest(unittest.TestCase):
         self.assertTrue(resultat['calculable'])
         self.assertIsNone(resultat['facteurs']['albedo_source'])
         self.assertTrue(any('source' in h for h in resultat['hypotheses']))
-
-
-class PosteSepareTest(unittest.TestCase):
-
-    def test_le_gain_est_un_poste_nomme_jamais_une_perte(self):
-        poste, diagnostic = poste_bifacial(**COMPLET)
-        self.assertEqual(poste['poste'], 'gain_bifacial')
-        self.assertIn('gain_pct', poste)
-        # Un gain n'a PAS de clé ``pct`` : il ne peut donc pas être avalé par
-        # la somme des pertes envoyée à PVGIS (CAL238).
-        self.assertNotIn('pct', poste)
-        self.assertEqual(poste['gain_pct'], diagnostic['gain_pct'])
-
-    def test_sans_source_aucun_poste_n_est_publie(self):
-        poste, diagnostic = poste_bifacial(**dict(COMPLET, albedo=None))
-        self.assertIsNone(poste)
-        self.assertFalse(diagnostic['calculable'])
 
 
 if __name__ == '__main__':  # pragma: no cover

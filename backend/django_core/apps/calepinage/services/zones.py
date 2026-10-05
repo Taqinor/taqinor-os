@@ -136,7 +136,7 @@ def _sommets(brute, champ, repere, projection):
     return propres
 
 
-def _nombre(valeur, champ, libelle, repere, *, defaut=None):
+def _nombre_de_zone(valeur, champ, libelle, repere, *, defaut=None):
     if valeur is None:
         return defaut
     if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
@@ -205,9 +205,9 @@ def zones_moteur_depuis_layout(roof_layout, *, projection=None):
             repere=repere,
             nature=nature,
             sommets=tuple(sommets),
-            hauteur_m=_nombre(brute.get('heightM'), champ, 'Hauteur', repere),
-            retrait_m=_nombre(brute.get('setbackM'), champ, 'Retrait', repere,
-                              defaut=0.0),
+            hauteur_m=_nombre_de_zone(brute.get('heightM'), champ, 'Hauteur', repere),
+            retrait_m=_nombre_de_zone(brute.get('setbackM'), champ, 'Retrait', repere,
+                                      defaut=0.0),
         )))
     return sortie
 
