@@ -56,7 +56,14 @@ import io
 
 __all__ = ['EXPORTS', 'PAS_DISPONIBLES', 'COLONNES_HORAIRE',
            'DEFAULT_COLONNES_HORAIRE', 'ExportImpossible',
+           'NON_CALCULEE', 'NON_PUBLIEE', 'LIBELLE_EMPREINTE_LAYOUT',
+           'LIBELLE_EMPREINTE_SIMULATION', 'document_exportable',
            'encoder_pour_tableur', 'export_csv', 'nom_de_fichier']
+
+NON_CALCULEE = 'non calculée'
+NON_PUBLIEE = 'non publiée'
+LIBELLE_EMPREINTE_LAYOUT = 'Empreinte du calepinage'
+LIBELLE_EMPREINTE_SIMULATION = "Empreinte d'entrée de la simulation"
 
 #: Les trois exports du module — toute autre valeur est refusée en la nommant.
 EXPORTS = ('horaire', 'mensuel', 'ombrage')
@@ -94,6 +101,77 @@ def _decimal(valeur, decimales=3):
     return f'{nombre:.{decimales}f}'.replace('.', ',')
 
 
+def _texte(valeur):
+    return '' if valeur is None else str(valeur).strip()
+
+
+def _points_de_la_serie(serie_horaire):
+    """Les points du bloc ``serie_horaire``, ou une liste VIDE.
+
+    Une ancienne simulation avait pu écrire une LISTE sous cette clé : elle
+    est acceptée telle quelle, pour qu'un résultat déjà en base continue de
+    s'exporter au lieu d'être refusé après un simple déploiement.
+    """
+    if isinstance(serie_horaire, dict):
+        points = serie_horaire.get('points')
+        return points if isinstance(points, list) else []
+    return serie_horaire if isinstance(serie_horaire, list) else []
+
+
+def document_exportable(calepinage, avec_points=True):
+    """ACAL217 — LE document d'export : une seule composition, résultat SERVI.
+
+    Production et pertes sont lues sur le résultat SERVI par ``GET resultat/``
+    (``selectors.resultat_servi``, fraîcheur CALX70 comprise) : une simulation
+    périmée ne publie plus de production (``non publiée`` dans l'en-tête) et
+    ``simulation_perimee`` / ``motif_perimee`` permettent à l'export de
+    refuser en la nommant. La série horaire n'est pas servie (D-CALX 14) : elle
+    est lue du STOCKÉ, SEULEMENT quand le verdict dit fraîche (et jamais quand
+    ``avec_points`` est faux — la provenance n'en a pas besoin).
+
+    Aucune valeur n'est fabriquée : ce que la simulation n'a pas écrit reste
+    absent, et l'exporteur refuse en le disant.
+    """
+    from .. import selectors
+
+    servi = selectors.resultat_servi(calepinage)
+    servi = servi if isinstance(servi, dict) else {}
+    stocke = getattr(calepinage, 'resultat', None)
+    stocke = stocke if isinstance(stocke, dict) else {}
+    layout = getattr(calepinage, 'roof_layout', None)
+    layout = layout if isinstance(layout, dict) else {}
+    simulation = stocke.get('simulation')
+    simulation = simulation if isinstance(simulation, dict) else {}
+    perimee = bool(servi.get('simulation_perimee'))
+    production = servi.get('production')
+    pertes = servi.get('pertes')
+    return {
+        'production': production if isinstance(production, dict) else {},
+        'pertes': pertes if isinstance(pertes, list) else [],
+        # CALX193 — ``serie_horaire`` est un BLOC (contrat CALX142), l'exporteur
+        # itère une liste de points : c'est ``points`` qu'on lui passe. Jamais
+        # simulé (ou périmé) ⇒ liste vide ⇒ refus FRANÇAIS, jamais un fichier
+        # de zéros ni la série d'un ancien toit.
+        'points': ([] if perimee or not avec_points
+                   else _points_de_la_serie(stocke.get('serie_horaire'))),
+        'shading12x24': layout.get('shading12x24'),
+        'version_moteur': getattr(calepinage, 'version_moteur', '') or None,
+        'simulation_perimee': perimee,
+        'motif_perimee': (servi.get('motif') or '') if perimee else '',
+        'empreinte_layout': getattr(calepinage, 'layout_hash', '') or '',
+        'empreinte_simulation': simulation.get('hash_entree') or '',
+    }
+
+
+def _refuser_si_perimee(document):
+    """ACAL217 — le MÊME motif que ``GET resultat/``, champ ``production``."""
+    if (document or {}).get('simulation_perimee'):
+        raise ExportImpossible(
+            document.get('motif_perimee') or 'simulation périmée : le '
+            'document a changé depuis le calcul précédent',
+            champ='production')
+
+
 def _lignes_de_provenance(document, *, colonnes_retenues=None):
     """L'en-tête de provenance — d'où vient CE fichier, en clair.
 
@@ -122,6 +200,13 @@ def _lignes_de_provenance(document, *, colonnes_retenues=None):
         ['Pertes passées à PVGIS (%)',
          _decimal(base.get('loss_passee_pct'), 3)],
         ['Détail des pertes', detail],
+        # ACAL217 — les DEUX empreintes qui permettent de rejouer le fichier :
+        # le document de pose, puis les entrées de la simulation.
+        [LIBELLE_EMPREINTE_LAYOUT,
+         _texte((document or {}).get('empreinte_layout')) or NON_CALCULEE],
+        [LIBELLE_EMPREINTE_SIMULATION,
+         _texte((document or {}).get('empreinte_simulation'))
+         or NON_CALCULEE],
     ]
     if colonnes_retenues:
         lignes.append(['Colonnes retenues', ', '.join(colonnes_retenues)])
@@ -232,6 +317,7 @@ def _valider_pas(pas):
 def _export_horaire(document, *, colonnes=None, pas='horaire'):
     _valider_pas(pas)
     noms = _colonnes_retenues(colonnes)
+    _refuser_si_perimee(document)
     points = (document or {}).get('points') or []
     if not points:
         raise ExportImpossible(
@@ -246,6 +332,7 @@ def _export_horaire(document, *, colonnes=None, pas='horaire'):
 
 
 def _export_mensuel(document):
+    _refuser_si_perimee(document)
     mensuel = (((document or {}).get('production') or {}).get('mensuel')
                or [])
     if not mensuel:

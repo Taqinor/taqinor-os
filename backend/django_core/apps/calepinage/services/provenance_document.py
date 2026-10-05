@@ -19,12 +19,10 @@ texte du calque DXF ``PROVENANCE`` et le bloc ``provenance`` de l'export JSON
 (CALX312) en sont trois MISES EN FORME, jamais trois compositions.
 
 Elle REPREND la composition du CSV — elle appelle
-``export_csv._lignes_de_provenance`` sur le même document que
-``views/export_csv.document_exportable`` (production et pertes STOCKÉES,
-version du moteur) — plutôt que d'en écrire une seconde. Elle y AJOUTE les deux
-empreintes qui permettent de rejouer le fichier : celle du document de pose
-(``layout_hash``) et celle des entrées de la simulation
-(``resultat['simulation']['hash_entree']``).
+``export_csv._lignes_de_provenance`` sur le même document que le CSV
+(``export_csv.document_exportable`` : production et pertes du résultat SERVI,
+version du moteur, et les deux empreintes qui permettent de rejouer le fichier :
+celle du document de pose et celle des entrées de la simulation — ACAL217).
 
 Une valeur ABSENTE n'est jamais une chaîne vide : une empreinte absente écrit
 « non calculée », toute autre grandeur absente « non publiée ». Aucun montant
@@ -32,41 +30,20 @@ Une valeur ABSENTE n'est jamais une chaîne vide : une empreinte absente écrit
 """
 from __future__ import annotations
 
+from .export_csv import (
+    LIBELLE_EMPREINTE_LAYOUT, LIBELLE_EMPREINTE_SIMULATION, NON_CALCULEE,
+    NON_PUBLIEE, _lignes_de_provenance, document_exportable,
+)
+
 __all__ = [
     'NON_CALCULEE', 'NON_PUBLIEE', 'TITRE_FEUILLE', 'ENTETES',
     'LIBELLE_EMPREINTE_LAYOUT', 'LIBELLE_EMPREINTE_SIMULATION',
-    'document_de_provenance', 'lignes_de_provenance', 'texte_de_ligne',
-    'lignes_json',
+    'lignes_de_provenance', 'texte_de_ligne', 'lignes_json',
 ]
-
-NON_CALCULEE = 'non calculée'
-NON_PUBLIEE = 'non publiée'
 
 #: La feuille du classeur XLSX, et ses deux colonnes.
 TITRE_FEUILLE = 'Provenance'
 ENTETES = ('Grandeur', 'Valeur')
-
-LIBELLE_EMPREINTE_LAYOUT = 'Empreinte du calepinage'
-LIBELLE_EMPREINTE_SIMULATION = "Empreinte d'entrée de la simulation"
-
-
-def _dict(valeur):
-    return valeur if isinstance(valeur, dict) else {}
-
-
-def document_de_provenance(calepinage):
-    """Le document que le CSV lit pour SA provenance — les mêmes trois clés.
-
-    Miroir de ``views/export_csv.document_exportable`` sur les seules clés que
-    la provenance consomme (``production``, ``pertes``, ``version_moteur``) :
-    un test affirme que les deux compositions coïncident ligne à ligne.
-    """
-    resultat = _dict(getattr(calepinage, 'resultat', None))
-    return {
-        'production': _dict(resultat.get('production')),
-        'pertes': resultat.get('pertes') or [],
-        'version_moteur': getattr(calepinage, 'version_moteur', '') or None,
-    }
 
 
 def _texte(valeur):
@@ -76,25 +53,18 @@ def _texte(valeur):
 def lignes_de_provenance(calepinage):
     """Les lignes ``(libellé, valeur)`` de la provenance — LA composition.
 
-    Les six premières sont celles du CSV (``export_csv``), dans son ordre ; les
-    deux dernières sont les empreintes. Aucune valeur n'est une chaîne vide.
+    ACAL217 — c'est ``export_csv._lignes_de_provenance`` sur le document
+    d'export UNIQUE (``export_csv.document_exportable``, résultat SERVI) : les
+    deux empreintes (document de pose, entrées de la simulation) y entrent
+    déjà, rien n'est rajouté ici. Aucune valeur n'est une chaîne vide.
     """
-    from .export_csv import _lignes_de_provenance
-
     lignes = []
-    for ligne in _lignes_de_provenance(document_de_provenance(calepinage)):
+    for ligne in _lignes_de_provenance(
+            document_exportable(calepinage, avec_points=False)):
         if not ligne:
             continue  # la ligne blanche qui sépare l'en-tête du tableau CSV
         libelle, valeur = ligne[0], ligne[1] if len(ligne) > 1 else ''
         lignes.append((str(libelle), _texte(valeur) or NON_PUBLIEE))
-
-    simulation = _dict(_dict(getattr(calepinage, 'resultat', None))
-                       .get('simulation'))
-    lignes.append((LIBELLE_EMPREINTE_LAYOUT,
-                   _texte(getattr(calepinage, 'layout_hash', ''))
-                   or NON_CALCULEE))
-    lignes.append((LIBELLE_EMPREINTE_SIMULATION,
-                   _texte(simulation.get('hash_entree')) or NON_CALCULEE))
     return lignes
 
 
