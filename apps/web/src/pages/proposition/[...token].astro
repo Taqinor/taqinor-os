@@ -181,6 +181,8 @@ import {
   renderBatterySplitSvg,
   DEFAULT_UNIT_CAPACITY_KWH,
   HOURS_PER_DAY,
+  readFicheBatterie,
+  batterySimParamsFromFiche,
 } from '../../lib/batterySim';
 import { renderProposalChart, resolveSeries } from '../../lib/proposalChart';
 // PV80 — logique PURE de la refonte : route catch-all (token = dernier segment)
@@ -1042,8 +1044,18 @@ const batterySolarShape = showBatterySim
   // historique, byte-identique au rendu d'avant.
   ? (avecProdSeries?.forme ?? Array.from({ length: HOURS_PER_DAY }, (_, h) => solarProfile(h)))
   : [];
+// ACAL173 (C-ACAL-063) — LA FICHE DE LA BATTERIE VENDUE, PAS UNE CONSTANTE.
+// Le simulateur reçoit le rendement aller-retour (√ → one-way) et le DoD que
+// la fiche publie (`fiche_batterie`, servi par la proposition). Fiche muette
+// sur le rendement (ou clé non servie) ⇒ AUCUNE simulation de repli pour
+// cette batterie : la page affiche l'omission NOMMÉE servie, jamais un taux
+// fondé sur l'ancien 0,96 / 0,9216.
+const ficheBatterie = ok ? readFicheBatterie(data) : null;
+const batterySimParams = batterySimParamsFromFiche(ficheBatterie);
+const batterySimOmissionMotif =
+  showBatterySim && !batterySimParams.ok ? batterySimParams.motif : null;
 // Rendu SERVEUR initial (au N de départ) : le bloc n'est jamais vide avant hydratation.
-const batteryInitial = showBatterySim
+const batteryInitial = showBatterySim && batterySimParams.ok
   ? simulateBattery({
       consumptionShape: batteryConsShape,
       productionShape: batterySolarShape,
@@ -1051,6 +1063,8 @@ const batteryInitial = showBatterySim
       dailyProductionKwh: dailyProdKwh,
       capacityKwhPerUnit: batteryUnitCapacityKwh,
       units: batterySimInitialN,
+      oneWayEfficiency: batterySimParams.oneWayEfficiency,
+      depthOfDischarge: batterySimParams.depthOfDischarge,
     })
   : null;
 // COUVBAT — LE MOIS QUE LE GRAPHE MONTRE. Le moteur sert quatre jours types
@@ -1153,6 +1167,10 @@ const batterySimConfig = showBatterySim
       dailyConsKwh,
       dailyProdKwh,
       capacityPerUnit: batteryUnitCapacityKwh,
+      // ACAL173 — rendement one-way et DoD de la FICHE (null : la simulation
+      // n'a pas lieu / repli DoD de la page) ; le script client les relit.
+      oneWayEfficiency: batterySimParams.ok ? batterySimParams.oneWayEfficiency : null,
+      depthOfDischarge: batterySimParams.ok ? (batterySimParams.depthOfDischarge ?? null) : null,
       maxUnits: BATTERY_SIM_MAX_UNITS,
       initialN: batterySimInitialN,
       offeredUnits,
@@ -3896,6 +3914,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                      Le <details> PORTE `data-prod-layer="battery"` : le calque
                      continue donc d’etre masque/affiche par le bouton
                      « Avec batterie » exactement comme avant (setLayer). */}
+            {/* ACAL173 — fiche muette sur le rendement aller-retour : pas de
+                   simulation de repli, l'omission NOMMÉE servie à la place. */}
+            {batterySimOmissionMotif && (
+              <p class="v2-body text-sm text-lune-soft" id="battery-sim-omission">{batterySimOmissionMotif}</p>
+            )}
             {showBatterySim && batteryInitial && (
               <details class="prop-fold" data-prod-layer="battery" hidden={!prodLayers.battery}>
                 <summary class="prop-fold-summary cursor-pointer list-none marker:hidden [&::-webkit-details-marker]:hidden" data-i18n
@@ -9928,6 +9951,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       dailyConsKwh: number;
       dailyProdKwh: number;
       capacityPerUnit: number;
+      // ACAL173 — servis par la fiche (voir le rendu serveur) ; null ⇒ pas
+      // de simulation (rendement) / repli DoD de la page (DoD).
+      oneWayEfficiency: number | null;
+      depthOfDischarge: number | null;
       maxUnits: number;
       initialN: number;
       offeredUnits: number;
@@ -9987,6 +10014,13 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     } catch {
       return;
     }
+    // ACAL173 — sans rendement de FICHE, aucune simulation de repli (le rendu
+    // serveur n'a d'ailleurs pas posé le bloc : l'omission nommée est affichée).
+    const etaServi = cfg.oneWayEfficiency;
+    if (typeof etaServi !== 'number' || !Number.isFinite(etaServi)) return;
+    const etaFiche: number = etaServi;
+    const dodFiche: number | undefined = typeof cfg.depthOfDischarge === 'number'
+      ? cfg.depthOfDischarge : undefined;
     const bsWin = window as unknown as {
       __propCurrentLang?: () => BsLang;
       __propRegisterBusyLabel?: (fn: (l: BsLang) => void) => void;
@@ -10187,6 +10221,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         dailyProductionKwh: cfg.dailyProdKwh,
         capacityKwhPerUnit: cfg.capacityPerUnit,
         units: n,
+        oneWayEfficiency: etaFiche,
+        depthOfDischarge: dodFiche,
       });
       // Le dessin, les trois kWh de la journée type et le taux de couverture
       // viennent TOUS de la même source — servie quand elle existe ET qu'elle
