@@ -7,8 +7,9 @@ Test-du-test : retirer une clé de ``fiche_batterie`` (ou de ``source_entree``)
 dans un exemple ⇒ ``test_cles_presentes_dans_les_exemples`` échoue ; ajouter
 une clé au servi sans l'écrire au contrat ⇒ idem.
 
-La moitié servie de ``source_entree`` (conception électrique, D05-T30) n'est
-pas livrée ici : seul son exemple est gardé.
+La moitié servie de ``source_entree`` (conception électrique) est livrée par
+ACAL165 : la clé vit désormais DANS ``exemple`` (comparé à la sortie réelle par
+``test_pv41_conception_electrique``) ; ce test en garde les valeurs admises.
 """
 import json
 from decimal import Decimal
@@ -78,7 +79,7 @@ class Contrats(SimpleTestCase):
         self.assertIsNone(complete['simulation_omise_motif'])
 
         electrique = _contrat('conception_electrique.json')
-        source = electrique['exemple_source_entree']['source_entree']
+        source = electrique['exemple']['source_entree']
         self.assertEqual(set(source), CLES_SOURCE_ENTREE)
         for valeur in source.values():
             self.assertIn(valeur, ('calepinage', 'surcharge', 'defaut'))
