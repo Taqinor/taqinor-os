@@ -1968,3 +1968,51 @@ def ensure_modele_entretien_pompage(company):
             company=company, template=modele, cle=cle, libelle=libelle,
             ordre=i)
     return modele
+
+
+# ── CIQ641 — modèle d'entretien « Site professionnel » (semé, idempotent) ───
+# Même patron qu'AGR619. Aucun intervalle, aucun seuil, aucun chiffre : la
+# fréquence de chaque prestation vient du contrat O&M (CIQ640).
+MODELE_ENTRETIEN_CI_NOM = 'Entretien site professionnel'
+MODELE_ENTRETIEN_CI_ETAPES = [
+    ('ci_panneaux_etat_nettoyage', 'État et nettoyage des panneaux'),
+    ('ci_connexions_dc_ac',
+     'Serrage et échauffement des connexions DC/AC (thermographie si prévue '
+     'au contrat)'),
+    ('ci_parafoudres', 'État des parafoudres'),
+    ('ci_onduleurs',
+     'Filtres, ventilation et journal de défauts des onduleurs'),
+    ('ci_protections_coupure',
+     'Essai des protections et du dispositif de coupure'),
+    ('ci_continuite_terre', 'Continuité de terre'),
+    ('ci_etiquetage', 'Étiquetage'),
+    ('ci_supervision_compteur',
+     'Relevé de la supervision et du compteur de production'),
+    ('ci_structure_etancheite', 'Structure, fixations et étanchéité'),
+    ('ci_photos', 'Photos'),
+]
+
+
+def ensure_modele_entretien_ci(company):
+    """CIQ641 — sème UNE SEULE FOIS le modèle de checklist d'entretien
+    « Entretien site professionnel » (idempotent, additif). Jamais recréé
+    s'il a été renommé ou désactivé : le marqueur est sa première étape (clé
+    stable), cherchée sur TOUS les modèles de la société, actifs ou non.
+    Renvoie le modèle créé, ou None s'il existait déjà."""
+    if company is None:
+        return None
+    from .models import MaintenanceChecklistItem, MaintenanceChecklistTemplate
+    marqueur = MODELE_ENTRETIEN_CI_ETAPES[0][0]
+    if (MaintenanceChecklistItem.objects.filter(
+            company=company, cle=marqueur).exists()
+            or MaintenanceChecklistTemplate.objects.filter(
+                company=company, nom=MODELE_ENTRETIEN_CI_NOM).exists()):
+        return None
+    modele = MaintenanceChecklistTemplate.objects.create(
+        company=company, nom=MODELE_ENTRETIEN_CI_NOM, actif=True,
+        protege=False)
+    for i, (cle, libelle) in enumerate(MODELE_ENTRETIEN_CI_ETAPES):
+        MaintenanceChecklistItem.objects.create(
+            company=company, template=modele, cle=cle, libelle=libelle,
+            ordre=i)
+    return modele
