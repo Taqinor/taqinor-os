@@ -103,6 +103,7 @@ SURFACE_PUBLIQUE = (
     "choisir_recommandation",
     "choisir_recommandation_avec",
     "combos_champ_stockage",
+    "comptes_panneaux_valides",
     "config_du_bloc",
     "config_vendue_du_devis",
     "contenance_toit_du_devis",
