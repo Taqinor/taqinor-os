@@ -265,19 +265,62 @@ class HtmlDeSectionOmbrageTest(unittest.TestCase):
             self.assertNotIn(mot, bas)
 
 
-# ── ORM/DB/MinIO/HTTP — écrits, NON EXÉCUTÉS localement (CI validera) ──────
+# ── ORM/DB/MinIO/HTTP — exécutés par le job backend-tests (MinIO présent) ──
 
-class CalepinageDbTest(unittest.TestCase):
-    """Marqueur : le viewset (tenant, permission, dépôt réel en
-    ``records.Attachment``, MinIO) et l'inventaire ``GET documents/`` avec
-    ``images[]`` peuplé exigent une base + MinIO — CI validera. Voir
-    ``apps.calepinage.tests.test_api_horizon.BaseApiCalepinage`` pour le
-    patron d'une future classe ``APITestCase`` complète : société A/B,
-    ``PeutVoirCalepinage`` avec/sans droit, 404 hors société, dépôt réussi
-    puis relu par ``GET documents/`` (``images[0].genre == 'ombrage'``), et
-    un format/poids/dimensions refusés (400, champ nommé).
-    """
+from apps.calepinage.models import Calepinage  # noqa: E402
 
-    @unittest.skip('ORM/MinIO/HTTP — CI validera (non exécuté localement)')
+from .test_api_liste import BaseApiCalepinage, url_detail  # noqa: E402
+
+
+def _data_uri_png():
+    return 'data:image/png;base64,' + base64.b64encode(
+        _png_valide()).decode('ascii')
+
+
+class CalepinageApiTest(BaseApiCalepinage):
+    """``POST image-document/`` : dépôt réel en ``records.Attachment``."""
+
+    def setUp(self):
+        super().setUp()
+        self.calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Villa Anfa',
+            roof_layout={'zones': []})
+        self.etranger = Calepinage.objects.create(
+            company=self.autre, lead_id=7, titre='Chez la voisine')
+
+    def _url(self, calepinage):
+        return f'{url_detail(calepinage.pk)}image-document/'
+
     def test_depot_reussi_apparait_dans_l_inventaire(self):
-        raise NotImplementedError
+        reponse = self.api.post(
+            self._url(self.calepinage),
+            {'genre': 'ombrage', 'fichier': _data_uri_png()}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertEqual(reponse.data['genre'], 'ombrage')
+        self.assertTrue(reponse.data['ok'])
+        inventaire = self.api.get(
+            f'{url_detail(self.calepinage.pk)}documents/')
+        self.assertEqual(inventaire.status_code, 200)
+        self.assertEqual(inventaire.data['images'][0]['genre'], 'ombrage')
+
+    def test_depot_autre_societe_404(self):
+        reponse = self.api.post(
+            self._url(self.etranger),
+            {'genre': 'ombrage', 'fichier': _data_uri_png()}, format='json')
+        self.assertEqual(reponse.status_code, 404)
+
+    def test_genre_inconnu_400(self):
+        reponse = self.api.post(
+            self._url(self.calepinage),
+            {'genre': 'inconnu', 'fichier': _data_uri_png()}, format='json')
+        self.assertEqual(reponse.status_code, 400)
+        self.assertIn('genre', reponse.data)
+
+    def test_format_refuse_400_champ_fichier(self):
+        illisible = 'data:image/png;base64,' + base64.b64encode(
+            b'ceci n est pas une image').decode('ascii')
+        reponse = self.api.post(
+            self._url(self.calepinage),
+            {'genre': 'ombrage', 'fichier': illisible}, format='json')
+        self.assertEqual(reponse.status_code, 400)
+        self.assertIn('fichier', reponse.data)
