@@ -2,17 +2,17 @@
 
    Les réponses viennent de l'exemple COMMITTÉ `calepinage_entree_electrique.json` ; seule la
    façade `calepinageApi` est mockée, le composant ne l'est pas. */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import userEvent from '@testing-library/user-event'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
-vi.mock('../../../api/calepinageApi', () => ({
-  default: {
-    calepinages: { entreeElectrique: vi.fn(), enregistrerEntreeElectrique: vi.fn() },
-  },
-}))
+vi.mock('../../../api/calepinageApi', () => {
+  const lecture = vi.fn()
+  const ecriture = vi.fn()
+  return { default: { calepinages: { entreeElectrique: lecture, enregistrerEntreeElectrique: ecriture } } }
+})
 
 import calepinageApi from '../../../api/calepinageApi'
 import DecisionsElectriques, { corpsDeDecisions, depuisEntree } from './DecisionsElectriques'

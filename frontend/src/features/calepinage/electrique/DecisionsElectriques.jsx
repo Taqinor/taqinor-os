@@ -152,8 +152,8 @@ export default function DecisionsElectriques({ calepinageId, lectureSeule = fals
   const [entree, setEntree] = useState(null)
   const [etat, setEtat] = useState(null)
   const [erreurLecture, setErreurLecture] = useState(null)
-  const [erreurs, setErreurs] = useState({})
   const [enregistrement, setEnregistrement] = useState(false)
+  const [erreurs, setErreurs] = useState({})
 
   const lire = useCallback(() => calepinageApi.calepinages.entreeElectrique(id)
     .then((res) => {
