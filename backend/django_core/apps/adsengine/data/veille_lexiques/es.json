@@ -1,0 +1,36 @@
+{
+  "langue": "es",
+  "version": "v1",
+  "produit": [
+    "vestido", "vestidos", "falda", "faldas", "pantalon", "pantalones",
+    "vaqueros", "camisa", "camisas", "blusa", "camiseta", "jersey",
+    "sudadera", "chaqueta", "abrigo", "abrigos", "ropa", "moda mujer",
+    "conjunto", "lenceria", "banador", "zapatos", "zapato", "zapatillas",
+    "botas", "botines", "sandalias", "tacones", "bolso", "bolsos",
+    "mochila", "cartera", "marroquineria"
+  ],
+  "hors_sujet": [
+    "funda", "fundas", "joyas", "joyeria", "collar", "pulsera", "anillo",
+    "pendientes", "reloj", "relojes", "cosmetica", "maquillaje", "perfume",
+    "crema", "champu", "decoracion", "muebles", "sofa", "tintoreria",
+    "arreglos", "curso", "cursos", "formacion"
+  ],
+  "editorial": [
+    "revista", "blog", "articulo", "podcast", "noticias", "aplicacion",
+    "descargar", "suscribete", "newsletter", "webinar", "episodio",
+    "agencia", "asociacion", "sorteo"
+  ],
+  "commerce": [
+    "envio", "entrega", "precio", "rebajas", "descuento", "compra ya",
+    "comprar", "compra", "tienda", "devoluciones gratis", "€"
+  ],
+  "urgence": [
+    "ultimo dia", "solo hoy", "ultima oportunidad", "stock limitado",
+    "termina esta noche", "ultimas horas", "quedan pocas"
+  ],
+  "nom_generique": [
+    "shop", "store", "tienda", "boutique", "moda", "fashion", "style",
+    "estilo", "tendencia", "chic", "lujo", "oficial", "official", "outlet",
+    "deals", "online", "mundo", "madrid", "best", "top", "my", "the"
+  ]
+}

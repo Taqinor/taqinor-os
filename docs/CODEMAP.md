@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 813aa4955e135857999f9660da71be23c84778cf2cba55e1a24738245fa0e32c
+Structure fingerprint: 0ae51c6c360c756b075e0279659bf53b48ba4922b2acdd69d5d0d207c3d3f519
 Plan fingerprint: 46284c39f438628eab0aebad3e7c116570ecc932a2ba1503cdb1cab115cc095f
 
 
@@ -234,7 +234,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `documents` | `documents/` | 0 | Field-execution PDFs (PV de réception, bon de livraison, attestation) — no models. |
 | `ged` | `ged/` | 43 | Document management: `Cabinet`/`Folder`/`Document`/`DocumentVersion`, ACL, retention/legal hold, signature requests, public deposits, `Coffre`. |
 | `portail` | `portail/` | 8 | Client self-service: quotes/invoices/deliveries, e-signature acceptance, online payment, site timeline. **Never financial detail beyond its own scope** (NTPRT14). GED links kept (SOLMVP16b). |
-| `adsengine` | `adsengine/` | 47 | Meta Ads engine: mirrors, propose->approve->apply, creative library, experiments, guardrails, `AssumptionNode` tree. **`installable: True`** (SOLMVP17 — the toggle now gates its API). Campaign creation is always PAUSED (rule #3). |
+| `adsengine` | `adsengine/` | 52 | Meta Ads engine: mirrors, propose->approve->apply, creative library, experiments, guardrails, `AssumptionNode` tree, PLAN_VEILLE Ad Library seller discovery (`VeilleDecouverte`/`VeilleRequete`/`VeilleAnnonceur`/`VeillePubVue`/`VeilleVerdict`, `veille/{couverture,decouvertes,annonceurs}/`). **`installable: True`** (SOLMVP17 — the toggle now gates its API). Campaign creation is always PAUSED (rule #3). |
 | `reporting` | `reporting/` | 11 | Dashboards/KPIs/insights, federated KPI hub, `Classeur`, `RapportDefinition`, `KpiAlerte`, global search (`search.py`) — the app owns no business data. |
 | `semantic` | `semantic/` | 2 | Named, governed metrics (`MetricDefinition` + versions) — BI semantic layer consumed via `core.data_explorer`. |
 | `parametres` | `parametres/` | 18 | `CompanyProfile`, business settings, WhatsApp/email templates, `TauxTVA`/`ConditionPaiement`/`UniteMesure` referentials, `Realisation`, tax-ID validators, output-language resolver. |
