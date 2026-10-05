@@ -1413,6 +1413,10 @@ VEILLE_SOCIETES_AUTORISEES = [
 META_AD_LIBRARY_FIXTURES_DIR = os.environ.get('META_AD_LIBRARY_FIXTURES_DIR', '')
 # VEIL16 — pause préventive quand X-App-Usage atteint ce pourcentage.
 VEILLE_PAUSE_USAGE_PCT = int(os.environ.get('VEILLE_PAUSE_USAGE_PCT') or 75)
+# VEIL19 — conservation des TEXTES des pubs vues (jours) ; agrégats et
+# verdicts gardés. 90 = choix de prudence (Platform Terms §3.d.i).
+VEILLE_CONSERVATION_PUBS_JOURS = int(
+    os.environ.get('VEILLE_CONSERVATION_PUBS_JOURS') or 90)
 
 # Stockage fichiers — MinIO / S3 (Phase 2 Sem. 4)
 MINIO_ENDPOINT = os.environ.get('MINIO_ENDPOINT', 'minio:9000')
