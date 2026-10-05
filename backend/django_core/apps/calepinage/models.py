@@ -1362,6 +1362,10 @@ class SystemeFixation(TenantModel):
 
     class ModePose(models.TextChoices):
         TOITURE_INCLINEE = 'toiture_inclinee', 'Toiture inclinée'
+        # CIQ112 — bac acier (le toit C&I le plus courant) : pose AFFLEURANTE
+        # même faiblement pentu. Choix ADDITIF ; vocabulaire partagé avec le
+        # catalogue (``core.product_roles.TYPES_POSE``, parité testée).
+        BAC_ACIER = 'bac_acier', 'Bac acier'
         TOIT_PLAT_LESTE = 'toit_plat_leste', 'Toit plat — lesté'
         TOIT_PLAT_FIXE = 'toit_plat_fixe', 'Toit plat — fixé'
         SOL = 'sol', 'Au sol'

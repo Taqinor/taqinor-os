@@ -468,15 +468,51 @@ def _axe_unique(pans, kit):
     return premier
 
 
-def _politique(plat, pente, latitude_deg):
+#: CIQ112 — modes de pose qui DÉCIDENT la politique, lus AVANT la géométrie.
+MODES_POSE_AFFLEURANTS = ('bac_acier', 'toiture_inclinee')
+MODES_POSE_ANTI_OMBRAGE = ('toit_plat_leste', 'toit_plat_fixe')
+
+#: CIQ112 — type de toit DÉCLARÉ sur le lead (contrat CIQ1 ``lead_pro.json``)
+#: → mode de pose. Seules les correspondances SANS ambiguïté répondent : une
+#: terrasse béton peut être lestée OU fixée, une tôle n'est pas forcément un
+#: bac acier, un fibrocimment n'impose rien — la géométrie reste juge.
+MODE_POSE_PAR_TYPE_TOITURE = {
+    'bac_acier': 'bac_acier',
+    'tuiles': 'toiture_inclinee',
+}
+MODE_POSE_PAR_TYPE_SURFACE = {
+    'ombriere': 'ombriere',
+    'terrain': 'sol',
+}
+
+
+def mode_pose_declare_du_lead(lead):
+    """Le mode de pose DÉDUIT du toit déclaré sur le lead, ou ``''``."""
+    surface = (getattr(lead, 'type_surface', '') or '').strip()
+    if surface in MODE_POSE_PAR_TYPE_SURFACE:
+        return MODE_POSE_PAR_TYPE_SURFACE[surface]
+    toiture = (getattr(lead, 'type_toiture', '') or '').strip()
+    return MODE_POSE_PAR_TYPE_TOITURE.get(toiture, '')
+
+
+def _politique(plat, pente, latitude_deg, mode_pose=None):
     """Toit PLAT → anti-ombrage ; toit en PENTE → pose affleurante.
 
     Même règle que l'adaptateur villa (``politique_villa``), à une différence
     ASSUMÉE et documentée en tête de module : la latitude du site est
     DÉCLARÉE quand le document la porte.
+
+    CIQ112 — le ``modePose`` du pan est lu EN PREMIER : bac acier ou toiture
+    inclinée ⇒ affleurante (un bac acier peu pentu n'est plus pavé en
+    rangées) ; toit plat lesté ou fixé ⇒ anti-ombrage. Absent (ou sol /
+    ombrière / autre) ⇒ la règle géométrique d'aujourd'hui, inchangée.
     """
     from core.calepinage.politique_pas import Affleurant, AntiOmbrage
 
+    if mode_pose in MODES_POSE_AFFLEURANTS:
+        return Affleurant()
+    if mode_pose in MODES_POSE_ANTI_OMBRAGE:
+        return AntiOmbrage(latitude_deg=latitude_deg)
     if plat and pente < 5.0:
         return AntiOmbrage(latitude_deg=latitude_deg)
     return Affleurant()
@@ -594,7 +630,12 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
             contour=tuple(vers_repere(p) for p in sommets),
             rives=rives, axe_rangee=axe, pente_deg=pente,
             azimut_deg=azimut))
-        politiques.append((repere_pan, _politique(plat, pente, latitude)))
+        # CIQ112 — le mode de pose du PAN, sinon celui DÉCLARÉ pour le
+        # document (toit du lead, posé à la création) ; absent ⇒ géométrie.
+        mode_pose = (pan.get('modePose')
+                     or (roof_layout or {}).get('modePoseDeclare') or None)
+        politiques.append((repere_pan, _politique(plat, pente, latitude,
+                                                  mode_pose)))
         proposition = _proposition_chassis(pente, regles_gabarit)
         if proposition is not None:
             propositions_chassis.append((repere_pan, proposition))
