@@ -51,6 +51,13 @@ ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
 SCHEMA = json.loads((ECHANTILLONS / 'roof_layout_v2.schema.json')
                     .read_text(encoding='utf-8'))
 
+#: ACAL2 a rendu l'`exemple` du schéma COMPLET (il porte désormais `optimisation` et `scene`) :
+#: le « document de départ » d'aujourd'hui est cet exemple privé des
+#: clés de CALX88 — c'est contre lui que l'additivité se prouve.
+CLES_CALX88 = ('optimisation', 'scene')
+DEPART = {cle: valeur for cle, valeur in SCHEMA['exemple'].items()
+          if cle not in CLES_CALX88}
+
 #: Les identifiants de `PRIORITES_REMPLISSAGE` (CAL83), relus sur
 #: `apps/web/src/scripts/roofPro11/optimizer.ts` — le contrat ne doit pas en
 #: inventer un septième.
@@ -80,7 +87,7 @@ EXEMPLE_SCENE = {'sunDay': 172, 'sunHour': 14.5}
 
 def document_avec_choix():
     """L'exemple du schéma, augmenté des deux fragments de CALX88."""
-    document = copy.deepcopy(SCHEMA['exemple'])
+    document = copy.deepcopy(DEPART)
     document['optimisation'] = copy.deepcopy(EXEMPLE_OPTIMISATION)
     document['scene'] = copy.deepcopy(EXEMPLE_SCENE)
     return document
@@ -106,15 +113,17 @@ class CleAdditiveTest(SimpleTestCase):
 
         Draft202012Validator.check_schema(SCHEMA)
 
-    def test_l_exemple_du_schema_ne_porte_aucun_choix(self):
-        """La preuve que le document historique n'a pas été réécrit."""
-        self.assertNotIn('optimisation', SCHEMA['exemple'])
-        self.assertNotIn('scene', SCHEMA['exemple'])
+    def test_l_exemple_complet_porte_les_choix_et_le_depart_non(self):
+        """ACAL2 : l'exemple est complet ; le départ ne porte aucun choix."""
+        for cle in CLES_CALX88:
+            self.assertIn(cle, SCHEMA['exemple'])
+            self.assertNotIn(cle, DEPART)
+        self.assertEqual(erreurs(SCHEMA['exemple']), [])
 
     def test_un_document_sans_optimisation_reste_accepte(self):
-        self.assertEqual(erreurs(SCHEMA['exemple']), [])
+        self.assertEqual(erreurs(DEPART), [])
         self.assertEqual(erreurs({}), [])
-        valider_document(copy.deepcopy(SCHEMA['exemple']))
+        valider_document(copy.deepcopy(DEPART))
 
     def test_un_document_avec_les_deux_cles_est_valide(self):
         self.assertEqual(erreurs(document_avec_choix()), [])
@@ -123,12 +132,12 @@ class CleAdditiveTest(SimpleTestCase):
         for cle, fragment in (('optimisation', EXEMPLE_OPTIMISATION),
                               ('scene', EXEMPLE_SCENE)):
             with self.subTest(cle=cle):
-                document = copy.deepcopy(SCHEMA['exemple'])
+                document = copy.deepcopy(DEPART)
                 document[cle] = copy.deepcopy(fragment)
                 self.assertEqual(erreurs(document), [])
 
     def test_aucune_sous_cle_n_est_obligatoire(self):
-        document = copy.deepcopy(SCHEMA['exemple'])
+        document = copy.deepcopy(DEPART)
         document['optimisation'] = {}
         document['scene'] = {}
         self.assertEqual(erreurs(document), [])
@@ -138,7 +147,7 @@ class CleAdditiveTest(SimpleTestCase):
         document = document_avec_choix()
         document.pop('optimisation')
         document.pop('scene')
-        self.assertEqual(document, SCHEMA['exemple'])
+        self.assertEqual(document, DEPART)
 
 
 class EnumerationsFermeesTest(SimpleTestCase):
