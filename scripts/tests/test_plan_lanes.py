@@ -619,6 +619,28 @@ class ContractPairingGateTests(unittest.TestCase):
         _, blocked = pl.apply_contract_pairing_gate(tasks)
         self.assertEqual(blocked, [])
 
+    def test_un_fichier_de_test_nomme_selectors_n_est_pas_un_producteur(self):
+        # ACAL350 : `tests/test_selectors.py` / `test_urls.py` finissent par
+        # « selectors.py » / « urls.py » mais ne produisent aucun contrat.
+        for chemin in ("backend/django_core/apps/ao/tests/test_selectors.py",
+                       "backend/django_core/apps/ao/tests/test_urls.py"):
+            back = (f"- [ ] X4 — tests AO. Files: `{chemin}`. (ROUTINE)")
+            front = ("- [ ] X5 — écran AO. "
+                     "Files: `frontend/src/features/ao/Ecran.jsx`. (ROUTINE)")
+            tasks = self._tasks(back, front)
+            _, blocked = pl.apply_contract_pairing_gate(tasks)
+            self.assertEqual(blocked, [], chemin)
+
+    def test_urls_py_et_selectors_py_restent_producteurs(self):
+        # Non-régression ACAL350 : le cas réel AOF172 reste refusé, que le
+        # producteur soit `urls.py` ou `selectors.py`.
+        for chemin in ("backend/django_core/apps/ao/urls.py",
+                       "backend/django_core/apps/ao/selectors.py"):
+            back = (f"- [ ] AOF166 — KPI AO. Files: `{chemin}`. (ARCH)")
+            tasks = self._tasks(back, self.AOF172_SANS)
+            _, blocked = pl.apply_contract_pairing_gate(tasks)
+            self.assertEqual([t["id"] for t in blocked], ["AOF172"], chemin)
+
     def test_une_tache_MIXTE_n_est_jamais_refusee_contre_elle_meme(self):
         # Les deux moitiés dans la MÊME ligne `Files:` : elle porte déjà son
         # propre contrat, il n'y a aucun parallélisme à empêcher (PACT12).

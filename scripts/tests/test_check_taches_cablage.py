@@ -378,6 +378,79 @@ class DoublonTests(BaseDepot):
 
 
 # ===========================================================================
+# FORME 5 — tache d'audit sans ses 13 clauses (METHODE §C.2, ACAL344)
+# ===========================================================================
+
+TACHE_AUDIT_COMPLETE = (
+    "**Faire X** : Constat : C-ACAL-1 (C4, S3). Given a When b Then c. "
+    "Test rouge d'abord : t::x. Test-du-test : retirer X. "
+    "Source réelle : a.py. Appelants : b.py. Jumeaux : n/a. "
+    "Listes figées : n/a. Contrat partagé : n/a. Déployable : stdlib. "
+    "Preuve en direct : n/a. Hors périmètre : rien.")
+
+
+class ClausesTests(BaseDepot):
+    def plan_audit(self, *lignes, nom="PLAN_AUDIT_TEST.md") -> list:
+        dossier = self.depot.racine / "docs" / "plans"
+        dossier.mkdir(parents=True, exist_ok=True)
+        (dossier / nom).write_text("".join(lignes), encoding="utf-8")
+        return [f"docs/plans/{nom}"]
+
+    def clauses(self, fichiers):
+        trouves, _ = ctc.analyse(fichiers, avec_doublons=False)
+        return {c.cible: list(c.detail) for c in trouves
+                if c.forme == ctc.FORME_CLAUSES}
+
+    def test_tache_audit_sans_hors_perimetre_est_refusee(self):
+        texte = TACHE_AUDIT_COMPLETE.replace("Hors périmètre : rien.", "")
+        fichiers = self.plan_audit(tache("ACAL9001", texte, "`scripts/a.py`"))
+        self.assertEqual(self.clauses(fichiers),
+                         {"ACAL9001": ["Hors périmètre"]})
+
+    def test_tache_sans_jumeaux_est_refusee(self):
+        texte = TACHE_AUDIT_COMPLETE.replace("Jumeaux : n/a.", "")
+        fichiers = self.plan_audit(tache("ACAL9002", texte, "`scripts/a.py`"))
+        self.assertEqual(self.clauses(fichiers), {"ACAL9002": ["Jumeaux"]})
+
+    def test_tache_audit_complete_passe(self):
+        fichiers = self.plan_audit(
+            tache("ACAL9003", TACHE_AUDIT_COMPLETE, "`scripts/a.py`"))
+        self.assertEqual(self.clauses(fichiers), {})
+
+    def test_libelles_insensibles_a_la_casse_et_aux_accents(self):
+        texte = (TACHE_AUDIT_COMPLETE
+                 .replace("Source réelle", "SOURCE REELLE")
+                 .replace("Listes figées", "listes figees")
+                 .replace("Hors périmètre", "HORS PERIMETRE")
+                 .replace("Déployable", "deployable")
+                 .replace("Contrat partagé", "CONTRAT PARTAGE"))
+        fichiers = self.plan_audit(tache("ACAL9004", texte, "`scripts/a.py`"))
+        self.assertEqual(self.clauses(fichiers), {})
+
+    def test_test_du_test_ne_satisfait_pas_test_rouge_d_abord(self):
+        """« Test-du-test » contient « test » : chaque libelle est cherche
+        entier, jamais comme sous-chaine d'un autre."""
+        texte = TACHE_AUDIT_COMPLETE.replace("Test rouge d'abord : t::x.", "")
+        fichiers = self.plan_audit(tache("ACAL9005", texte, "`scripts/a.py`"))
+        self.assertEqual(self.clauses(fichiers),
+                         {"ACAL9005": ["Test rouge d'abord"]})
+
+    def test_une_tache_hors_PLAN_AUDIT_n_est_pas_concernee(self):
+        fichiers = self.depot.plan(tache("PACT1", "x", "`scripts/a.py`"))
+        fichiers += self.plan_audit(tache("NT1", "x", "`scripts/a.py`"),
+                                    nom="PLAN_CRM_VENTES.md")
+        self.assertEqual(self.clauses(fichiers), {})
+
+    def test_tache_close_jamais_examinee(self):
+        fichiers = self.plan_audit("- [x] ACAL9006 — x Files: `a.py`\n")
+        self.assertEqual(self.clauses(fichiers), {})
+
+    def test_la_forme5_est_bloquante(self):
+        self.assertIn(ctc.FORME_CLAUSES, ctc.FORMES_BLOQUANTES)
+        self.assertEqual(len(ctc.CLAUSES_AUDIT), 13)
+
+
+# ===========================================================================
 # Base de reference : elle ne peut que RETRECIR
 # ===========================================================================
 
@@ -525,6 +598,14 @@ class DepotReelTests(unittest.TestCase):
             len(ecrans), 102,
             "le nombre de taches creant un ecran sans exiger son cablage a "
             "AUGMENTE depuis le passif mesure le 03/08/2026 (102)")
+        # FORME 5 (ACAL344) : passif amorce le 05/10/2026 = 181 taches SPL
+        # ouvertes sans les 13 clauses de METHODE §C.2. Meme invariant de
+        # SENS DE VARIATION : il ne peut que baisser.
+        clauses = [c for c in constats if c.forme == ctc.FORME_CLAUSES]
+        self.assertLessEqual(
+            len(clauses), 181,
+            "le nombre de taches d'audit ouvertes sans leurs 13 clauses a "
+            "AUGMENTE depuis l'amorcage du 05/10/2026 (181)")
 
     def test_les_formes_non_bloquantes_ne_sont_pas_dans_la_base(self):
         """La base ne gele que ce qui BARRE la route."""
