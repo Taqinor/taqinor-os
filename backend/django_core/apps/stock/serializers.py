@@ -576,6 +576,8 @@ class ProduitSerializer(serializers.ModelSerializer):
             'courbe_source', 'courbe_frequence_hz',
             # CIQ101 — champs C&I (contrat produit_ci.json)
             'role_ci', 'type_pose', 'delai_appro_jours',
+            # CIQ123 — paliers de prix de VENTE TTC par quantité
+            'paliers_prix_vente',
             # CIQ104 — état C&I (lecture seule) pour le filtre « à compléter »
             'etat_ci',
             # Dates & data personnalisée
@@ -790,6 +792,60 @@ class ProduitSerializer(serializers.ModelSerializer):
     def validate_type_pose(self, value):
         from core.product_roles import TYPES_POSE
         return self._refuser_hors_vocabulaire('type_pose', value, TYPES_POSE)
+
+    def validate_paliers_prix_vente(self, value):
+        """CIQ123 — ``[{seuil_min, seuil_max|null, prix_vente_ttc}]`` triés,
+        sans recouvrement ; vide = prix catalogue unique."""
+        from decimal import Decimal, InvalidOperation
+
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                '`paliers_prix_vente` doit être une liste de paliers.')
+
+        def _nombre(brut, cle, rang):
+            try:
+                n = Decimal(str(brut).replace(',', '.'))
+            except (InvalidOperation, ValueError):
+                n = None
+            if n is None or not n.is_finite() or n < 0:
+                raise serializers.ValidationError(
+                    f'Palier {rang + 1} : `{cle}` doit être un nombre '
+                    'positif.')
+            return n
+
+        propres = []
+        for rang, palier in enumerate(value):
+            if not isinstance(palier, dict) or set(palier) - {
+                    'seuil_min', 'seuil_max', 'prix_vente_ttc'}:
+                raise serializers.ValidationError(
+                    f'Palier {rang + 1} : attendu {{seuil_min, seuil_max, '
+                    'prix_vente_ttc}.')
+            seuil_min = _nombre(palier.get('seuil_min', 0), 'seuil_min', rang)
+            brut_max = palier.get('seuil_max')
+            seuil_max = (None if brut_max in (None, '')
+                         else _nombre(brut_max, 'seuil_max', rang))
+            prix = _nombre(palier.get('prix_vente_ttc'), 'prix_vente_ttc',
+                           rang)
+            if prix <= 0:
+                raise serializers.ValidationError(
+                    f'Palier {rang + 1} : `prix_vente_ttc` doit être > 0.')
+            if seuil_max is not None and seuil_max <= seuil_min:
+                raise serializers.ValidationError(
+                    f'Palier {rang + 1} : `seuil_max` doit dépasser '
+                    '`seuil_min`.')
+            propres.append((seuil_min, seuil_max, prix))
+        propres.sort(key=lambda p: p[0])
+        for (_mi, ma, _p), (mi_suivant, _ma2, _p2) in zip(propres,
+                                                          propres[1:]):
+            if ma is None or ma > mi_suivant:
+                raise serializers.ValidationError(
+                    'Les paliers se recouvrent : chaque `seuil_max` (exclu) '
+                    'doit être ≤ au `seuil_min` du palier suivant.')
+        return [{'seuil_min': float(mi), 'seuil_max':
+                 float(ma) if ma is not None else None,
+                 'prix_vente_ttc': str(p)} for mi, ma, p in propres]
 
     def validate_courbe_source(self, value):
         """Normalise la provenance en ``{document, date, page}`` (contrat

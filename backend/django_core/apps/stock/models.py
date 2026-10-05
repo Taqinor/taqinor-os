@@ -919,6 +919,14 @@ class Produit(models.Model):
         help_text="Article « sur commande » : délai d'approvisionnement "
                   "(jours). null = tenu en stock ou non saisi — jamais "
                   "supposé.")
+    # CIQ123 — prix de VENTE TTC dégressif par quantité (gros volumes C&I) :
+    # ``[{seuil_min, seuil_max (exclu, null = sans plafond), prix_vente_ttc}]``.
+    # Liste vide = ``prix_vente`` à toute quantité (comportement d'hier).
+    # Aucun palier semé : saisie du fondateur. Jamais un prix d'achat.
+    paliers_prix_vente = models.JSONField(
+        default=list, blank=True,
+        help_text='Paliers de prix de vente TTC par quantité (vide = prix '
+                  'catalogue unique).')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_mise_a_jour = models.DateTimeField(auto_now=True)
     # Champs personnalisés (T11) — valeurs indexées par CustomFieldDef.code.

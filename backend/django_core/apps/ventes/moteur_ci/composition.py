@@ -48,6 +48,7 @@ from core.electrique.cables import (
     bareme_pour, proposer_section,
 )
 from core.electrique.protections import calibre_disjoncteur, courant_emploi_ac
+from core.pricing_paliers import MODE_VOLUME, calculer_prix_paliers
 
 #: Prestations C&I réglées par société (``CompanyProfile.forfaits_ci``).
 PRESTATIONS_CI = (
@@ -125,7 +126,43 @@ def _ligne(role, article, designation, quantite, unite, *, motif=None,
     }
     if article is not None and article.get('prix_vente_ht') is not None:
         ligne['prix_unitaire_ht'] = str(article['prix_vente_ht'])
+    _appliquer_palier(ligne, article)
     return ligne
+
+
+def _appliquer_palier(ligne, article):
+    """CIQ123 — prix de VENTE TTC du palier atteint par la quantité (moteur
+    générique ``core.pricing_paliers``, mode volume), dit dans la ligne.
+    Paliers vides ⇒ ligne inchangée (prix catalogue). ``delai_appro_jours``
+    (article « sur commande ») est servi à côté."""
+    if not article:
+        return
+    if article.get('delai_appro_jours') is not None:
+        ligne['delai_appro_jours'] = article['delai_appro_jours']
+    paliers = article.get('paliers_prix_vente') or []
+    quantite = _d(ligne.get('quantite'))
+    if not paliers or quantite is None or quantite <= 0:
+        return
+    total = calculer_prix_paliers(
+        quantite, [{'seuil_min': p.get('seuil_min'),
+                    'seuil_max': p.get('seuil_max'),
+                    'prix_unitaire': p.get('prix_vente_ttc')}
+                   for p in paliers], MODE_VOLUME)
+    if total is None:
+        return
+    atteint = None
+    for p in sorted(paliers, key=lambda x: _d(x.get('seuil_min')) or 0):
+        if quantite >= (_d(p.get('seuil_min')) or 0):
+            atteint = p
+    ligne['prix_unitaire_ttc'] = str(
+        (total / quantite).quantize(Decimal('0.01')))
+    ligne['palier'] = {'seuil_min': atteint.get('seuil_min'),
+                       'seuil_max': atteint.get('seuil_max'),
+                       'mention': 'prix palier dès %s unités' % (
+                           atteint.get('seuil_min'),)} if atteint else None
+    ligne['prix_connu'] = True
+    if ligne.get('motif') == MOTIF_PRIX:
+        ligne['motif'] = None
 
 
 def _par_id(catalogue):
@@ -284,6 +321,7 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
             'prix_connu': bool(module.get('prix_connu')),
             'motif': None if module.get('prix_connu') else MOTIF_PRIX,
             'a_confirmer_visite': False})
+        _appliquer_palier(lignes[-1], module)
     else:
         alertes.append(_alerte('CI_MODULE_FICHE',
                                'module sans puissance publiée : nombre de '
