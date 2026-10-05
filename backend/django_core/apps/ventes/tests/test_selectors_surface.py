@@ -120,7 +120,9 @@ RESTENT = [
 
 #: propriétaire → module attendu ; rempli par chaque déplacement (ex.
 #: SPL143 : ``PLACE['facturation'] = 'apps.ventes.selectors_facturation'``).
-PLACE = {}
+PLACE = {
+    'facturation': 'apps.ventes.selectors_facturation',  # SPL143
+}
 
 
 def _fichiers_selectors():
