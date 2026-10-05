@@ -49,16 +49,32 @@ LIBELLE_SOURCE_PREVU = {
 
 def photos_du_calepinage(calepinage):
     """Les photos de site (CAL52), LÉGENDÉES et DATÉES, dans l'ordre de prise
-    de vue — ``[]`` pour un calepinage non enregistré ou sans photo."""
+    de vue — ``[]`` pour un calepinage non enregistré ou sans photo.
+
+    ACAL200 : ``url`` est ici une data URI lue par le SERVEUR (bucket résolu
+    par la clé de la pièce) — le moteur de PDF n'a ni session ni accès au
+    proxy, et une photo reprise d'une visite s'affichait en cadre vide.
+    Octets illisibles ⇒ ``url`` vide (« Image indisponible »), jamais un lien
+    mort.
+    """
     if not getattr(calepinage, 'pk', None):
         return []
-    from ...models import PhotoSite
-    from ..photos import photo_en_ligne
+    import base64
 
-    return [photo_en_ligne(photo) for photo in
-            PhotoSite.objects.filter(calepinage=calepinage)
-            .select_related('attachment', 'ajoutee_par')
-            .order_by('prise_le', 'id')]
+    from ...models import PhotoSite
+    from ..photos import lire_octets_piece, photo_en_ligne
+
+    photos = []
+    for photo in (PhotoSite.objects.filter(calepinage=calepinage)
+                  .select_related('attachment', 'ajoutee_par')
+                  .order_by('prise_le', 'id')):
+        ligne = photo_en_ligne(photo)
+        octets = lire_octets_piece(photo.attachment.file_key)
+        ligne['url'] = ('data:%s;base64,%s' % (
+            photo.attachment.mime or 'image/png',
+            base64.b64encode(octets).decode('ascii'))) if octets else ''
+        photos.append(ligne)
+    return photos
 
 
 def planche_svg_du_calepinage(calepinage):
