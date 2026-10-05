@@ -152,6 +152,10 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     lead_langue = serializers.SerializerMethodField()
     lead_score = serializers.SerializerMethodField()
     lead_priorite = serializers.SerializerMethodField()
+    # AGR531 (contrat `relance_etape_v2.json`, AGR500) — le segment du lead
+    # (`type_installation`, '' si non renseigné). Lecture seule : il ne sert
+    # qu'aux CONSIGNES d'écran, jamais au rythme de la cadence.
+    lead_segment = serializers.SerializerMethodField()
     devis_reference = serializers.SerializerMethodField()
     overdue = serializers.SerializerMethodField()
     # MRY30 — QUI a traité la touche, et QUAND. Le modèle les portait déjà
@@ -244,6 +248,8 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             # COCKPIT-CONTRÔLE — additifs (voir plus haut).
             'type_etape', 'est_tache', 'nb_reports', 'due_initial_at',
             'posee_le',
+            # AGR531 — additif (contrat `relance_etape_v2.json`).
+            'lead_segment',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
@@ -291,6 +297,11 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
 
     def get_lead_langue(self, obj) -> str:
         return obj.lead.langue_preferee or 'fr'
+
+    def get_lead_segment(self, obj) -> str:
+        """AGR531 — ``Lead.type_installation`` ou ``''`` (lead déjà chargé :
+        aucune requête de plus)."""
+        return getattr(obj.lead, 'type_installation', None) or ''
 
     def get_lead_contact_preference(self, obj) -> str:
         """CAD82 — ``whatsapp_only`` | ``phone_ok`` | '' (rien de posé)."""

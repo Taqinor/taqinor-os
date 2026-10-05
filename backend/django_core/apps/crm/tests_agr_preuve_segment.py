@@ -110,3 +110,55 @@ class LeadResidentielTests(_Base):
         cles = self._cles_planifiees()
         self.assertEqual(len(cles), 10)
         self.assertIn('j4_preuve', cles)
+
+
+# ── AGR531 — le sérialiseur de touche sert `lead_segment` ──────────────────
+
+
+class LeadSegmentServiTests(_Base):
+    """AGR531 (contrat `relance_etape_v2.json`, AGR500) — chaque touche sert
+    `lead_segment` = `Lead.type_installation` ('' si non renseigné), en
+    lecture seule et sans requête de plus pour la liste."""
+    slug = 'agr531-segment'
+
+    def setUp(self):
+        super().setUp()
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.acteur)}')
+        self._envoyer()
+
+    def _liste(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        with CaptureQueriesContext(connection) as ctx:
+            resp = self.api.get('/api/django/crm/relance-etapes/',
+                                {'scope': 'all', 'lead': self.lead.pk})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lignes = resp.data.get('results', resp.data)
+        self.assertTrue(lignes)
+        return lignes, len(ctx.captured_queries)
+
+    def test_lead_agricole_sert_agricole(self):
+        lignes, _n = self._liste()
+        for ligne in lignes:
+            self.assertEqual(ligne['lead_segment'], 'agricole')
+
+    def test_lead_sans_type_sert_une_chaine_vide_sans_requete_de_plus(self):
+        _lignes, avant = self._liste()
+        Lead.objects.filter(pk=self.lead.pk).update(type_installation=None)
+        lignes, apres = self._liste()
+        for ligne in lignes:
+            self.assertEqual(ligne['lead_segment'], '')
+        self.assertEqual(apres, avant)
+
+    def test_la_cle_est_dans_l_exemple_du_contrat(self):
+        import json
+        from pathlib import Path
+        contrat = json.loads(
+            (Path(__file__).resolve().parent / 'contract_samples'
+             / 'relance_etape_v2.json').read_text(encoding='utf-8'))
+        self.assertIn('lead_segment', contrat['exemple']['results'][0])
+        self.assertNotIn('ajout_lead_segment', contrat)
