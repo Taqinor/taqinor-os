@@ -18,7 +18,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.crm.models import Lead
+from apps.crm.models import Client, Lead
 from apps.stock.models import Produit
 from apps.ventes.domain.geometrie import layout_hash
 from apps.ventes.models import Devis
@@ -88,9 +88,15 @@ class FromLayoutDedup(TestCase):
 
     def test_selecteur_dedup_exclut_archive(self):
         empreinte = layout_hash(LAYOUT)
+        # ``Devis.client`` est obligatoire en base : un brouillon né du
+        # tunnel porte le client résolu depuis son lead.
+        client = Client.objects.create(
+            company=self.company, nom='ACAL88', prenom='Client',
+            telephone='+212600000088')
         devis = Devis.objects.create(
             company=self.company, reference=f'DEV-{MONTH}-8801',
-            lead=self.lead, statut='brouillon', taux_tva=Decimal('20'),
+            lead=self.lead, client=client, statut='brouillon',
+            taux_tva=Decimal('20'),
             layout_hash=empreinte, created_by=self.user)
         self.assertEqual(
             devis_brouillon_pour_layout(self.company, self.lead.pk,
