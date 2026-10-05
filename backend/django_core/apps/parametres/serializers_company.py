@@ -61,10 +61,8 @@ def _entree_sourcee(champ, entree, cles_montants):
                 f'{champ}.date doit être une date ISO (AAAA-MM-JJ).')
         date = str(date)
     if all(v is None for v in montants.values()):
-        if source or date:
-            raise serializers.ValidationError(
-                f'{champ} : une source sans aucun montant — saisissez le '
-                'montant ou videz la ligne.')
+        # Aucun montant = « prix à renseigner » : la ligne est retirée (une
+        # source seule ne chiffre rien).
         return None
     if not source:
         raise serializers.ValidationError(

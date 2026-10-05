@@ -26,6 +26,34 @@ import {
    requête vouée au refus. La LECTURE reste ouverte à tous. */
 const ROLES_VARIANTE_PCT = ['Directeur', 'Commercial responsable']
 
+/* CIQ106 — prestations C&I réglables (CIQ105, `CompanyProfile.forfaits_ci`).
+   Chaque ligne : fixe HT, par kWc HT, par panneau HT, source (obligatoire dès
+   qu'un montant est saisi), date. Vide = « prix à renseigner » : AUCUNE valeur
+   suggérée ni pré-remplie, jamais le barème résidentiel. */
+// source-choix: parametres.serializers_company.FORFAITS_CI_PRESTATIONS
+const PRESTATIONS_CI = [
+  ['etudes_ingenierie', 'Études et ingénierie'],
+  ['pose_structure', 'Pose de la structure'],
+  ['pose_modules', 'Pose des modules'],
+  ['raccordement_ac', 'Raccordement AC'],
+  ['mise_en_service', 'Mise en service'],
+  ['dossier_raccordement', 'Dossier de raccordement'],
+  ['levage_acces', 'Levage et accès'],
+  ['transport_ci', 'Transport C&I'],
+]
+const MONTANTS_FORFAIT_CI = [
+  ['fixe_ht', 'Fixe HT'],
+  ['par_kwc_ht', 'Par kWc HT'],
+  ['par_panneau_ht', 'Par panneau HT'],
+]
+const MONTANTS_BANDE_CI = [['min_ht', 'Minimum HT / kWc'], ['max_ht', 'Maximum HT / kWc']]
+
+const _rempli = (v) => v !== null && v !== undefined && String(v).trim() !== ''
+/** Un montant saisi sans source : l'erreur s'affiche sous le champ Source. */
+const sourceManquante = (entree, montants) => !!entree
+  && montants.some(([k]) => _rempli(entree[k])) && !_rempli(entree.source)
+const MSG_SOURCE = 'Source obligatoire (devis fournisseur, offre écrite…) : jamais un montant sans source.'
+
 export default function DevisSection({
   form, set, setForm, setPT, setPrefix, setNumbering, numberingPreview,
   canManageSensitive = false,
@@ -42,6 +70,22 @@ export default function DevisSection({
       ...(p.reperes_energie_agricole || {}),
       [cle]: { ...((p.reperes_energie_agricole || {})[cle] || {}), [cleChamp]: valeur },
     },
+  }))
+
+  // CIQ106 — forfaits C&I et bande interne prix/kWc (CIQ105). Seul un champ
+  // TOUCHÉ modifie le formulaire : enregistrer sans toucher n'envoie rien de neuf.
+  const forfaitsCi = form.forfaits_ci || {}
+  const bandeCi = form.bande_prix_kwc_ci || {}
+  const setForfaitCi = (cle, champ, valeur) => setForm(p => ({
+    ...p,
+    forfaits_ci: {
+      ...(p.forfaits_ci || {}),
+      [cle]: { ...((p.forfaits_ci || {})[cle] || {}), [champ]: valeur },
+    },
+  }))
+  const setBandeCi = (champ, valeur) => setForm(p => ({
+    ...p,
+    bande_prix_kwc_ci: { ...(p.bande_prix_kwc_ci || {}), [champ]: valeur },
   }))
 
   const [variantePct, setVariantePct] = useState('')
@@ -199,6 +243,87 @@ export default function DevisSection({
                 </div>
               )
             })}
+          </div>
+          {/* CIQ106 — « Prestations C&I » : une ligne par prestation (fixe,
+              par kWc, par panneau, source, date). Champ vide = « prix à
+              renseigner », aucune valeur suggérée ; saisie libre step="any". */}
+          <div className="mb-1 mt-4 text-xs font-semibold text-foreground">
+            Prestations C&amp;I
+          </div>
+          <p className="mb-2 text-[11px] text-muted-foreground">
+            Forfaits HT des prestations commerciales et industrielles. Une
+            prestation sans montant reste « prix à renseigner » sur le devis C&amp;I
+            (jamais le barème résidentiel) ; tout montant exige sa source.
+          </p>
+          <div className="flex flex-col gap-2" data-testid="prestations-ci">
+            {PRESTATIONS_CI.map(([cle, libelle]) => {
+              const f = forfaitsCi[cle] || {}
+              const sansSource = sourceManquante(f, MONTANTS_FORFAIT_CI)
+              const vide = !MONTANTS_FORFAIT_CI.some(([k]) => _rempli(f[k]))
+              return (
+                <div key={cle} data-testid={`prestation-ci-${cle}`}>
+                  <div className="mb-1 text-[11px] font-semibold text-muted-foreground">
+                    {libelle}
+                    {vide && <span className="ml-2 font-normal italic">prix à renseigner</span>}
+                  </div>
+                  <div className="pe-grid-3">
+                    {MONTANTS_FORFAIT_CI.map(([k, lbl]) => (
+                      <Field key={k} label={`${libelle} — ${lbl}`} htmlFor={`pe-ci-${cle}-${k}`}>
+                        <Input id={`pe-ci-${cle}-${k}`} type="number" step="any"
+                               value={f[k] ?? ''}
+                               onChange={e => setForfaitCi(cle, k, e.target.value)} />
+                      </Field>
+                    ))}
+                  </div>
+                  <div className="pe-grid-2">
+                    <Field label={`${libelle} — source`} htmlFor={`pe-ci-${cle}-source`}>
+                      <Input id={`pe-ci-${cle}-source`}
+                             value={f.source ?? ''}
+                             aria-invalid={sansSource}
+                             onChange={e => setForfaitCi(cle, 'source', e.target.value)} />
+                      {sansSource && (
+                        <p role="alert" className="text-[11px] text-destructive">{MSG_SOURCE}</p>
+                      )}
+                    </Field>
+                    <Field label={`${libelle} — date`} htmlFor={`pe-ci-${cle}-date`}>
+                      <Input id={`pe-ci-${cle}-date`} type="date"
+                             value={f.date ?? ''}
+                             onChange={e => setForfaitCi(cle, 'date', e.target.value)} />
+                    </Field>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {/* CIQ106 — contrôle INTERNE du prix au kWc (QXG6(b)) : jamais
+              imprimé au client, servi au vendeur seulement. */}
+          <div className="mb-1 mt-4 text-xs font-semibold text-foreground">
+            Contrôle interne du prix au kWc (C&amp;I)
+          </div>
+          <p className="mb-2 text-[11px] text-muted-foreground">
+            Jamais imprimé au client. Bande issue de trois offres réelles ;
+            vide = aucun contrôle.
+          </p>
+          <div className="pe-grid-2" data-testid="bande-prix-kwc-ci">
+            {MONTANTS_BANDE_CI.map(([k, lbl]) => (
+              <Field key={k} label={lbl} htmlFor={`pe-bande-ci-${k}`}>
+                <Input id={`pe-bande-ci-${k}`} type="number" step="any"
+                       value={bandeCi[k] ?? ''}
+                       onChange={e => setBandeCi(k, e.target.value)} />
+              </Field>
+            ))}
+            <Field label="Bande prix/kWc — source" htmlFor="pe-bande-ci-source">
+              <Input id="pe-bande-ci-source" value={bandeCi.source ?? ''}
+                     aria-invalid={sourceManquante(bandeCi, MONTANTS_BANDE_CI)}
+                     onChange={e => setBandeCi('source', e.target.value)} />
+              {sourceManquante(bandeCi, MONTANTS_BANDE_CI) && (
+                <p role="alert" className="text-[11px] text-destructive">{MSG_SOURCE}</p>
+              )}
+            </Field>
+            <Field label="Bande prix/kWc — date" htmlFor="pe-bande-ci-date">
+              <Input id="pe-bande-ci-date" type="date" value={bandeCi.date ?? ''}
+                     onChange={e => setBandeCi('date', e.target.value)} />
+            </Field>
           </div>
           {/* Q5 (fondateur, 20/08/2026) — délais commerciaux INDICATIFS.
               Ils étaient codés en dur dans les renderers PDF et rendus dans la
