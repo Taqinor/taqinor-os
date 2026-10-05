@@ -9,9 +9,9 @@
  * contrat public documenté ci-dessous.
  *
  * DISCIPLINE « ZÉRO CHIFFRE/DATE INVENTÉ » : une étape sans `date` (ou dont la
- * `date` n'est pas un ISO parsable — voir la clé `installation`, qui peut
- * porter une chaîne de STATUT chantier plutôt qu'une date) n'affiche jamais de
- * date fabriquée ; `buildTimeline` se contente alors d'omettre le champ.
+ * `date` n'est pas un ISO parsable) n'affiche jamais de date fabriquée ;
+ * `buildTimeline` se contente alors d'omettre le champ. Contrat serveur :
+ * `backend/.../ventes/contract_samples/suivi_public.json` (ADOC112).
  */
 
 /** Une étape du suivi telle que renvoyée par le backend (contrat QX34). */
@@ -25,7 +25,10 @@ export interface SuiviMilestone {
 /** Réponse complète de GET /api/django/ventes/suivi/<token>/. */
 export interface SuiviResponse {
   reference: string;
+  /** Horodatage TECHNIQUE de la réponse — JAMAIS affiché comme « mis à jour ». */
   generated_at?: string;
+  /** ADOC130 — date ISO du jalon fait le plus récent, `null` si aucun. */
+  mis_a_jour_le?: string | null;
   milestones: SuiviMilestone[];
 }
 
@@ -128,4 +131,38 @@ export function buildTimeline(data: Pick<SuiviResponse, 'milestones'>, lang: Sui
       current: isCurrent,
     };
   });
+}
+
+// ── ADOC132 — « Mis à jour le » : la vraie date de la dernière évolution ────
+
+/**
+ * Libellés « Mis à jour le JJ/MM/AAAA » (FR + AR) construits UNIQUEMENT depuis
+ * `mis_a_jour_le` — jamais depuis `generated_at` (horodatage technique de la
+ * réponse : il vaut « maintenant » à chaque lecture). `null` si la date est
+ * absente/null/non ISO : la page n'affiche alors aucune ligne « Mis à jour ».
+ */
+export function libelleMiseAJour(
+  data: Pick<SuiviResponse, 'mis_a_jour_le'> | null | undefined,
+): { fr: string; ar: string; date: string } | null {
+  const date = formatSuiviDate(data?.mis_a_jour_le ?? null);
+  if (!date) return null;
+  return { fr: `Mis à jour le ${date}`, ar: `آخر تحديث بتاريخ ${date}`, date };
+}
+
+// ── ADOC133 — état d'erreur du suivi (refus OTP vs introuvable vs panne) ────
+
+/** Détail machine du refus 403 quand le lien exige un code non vérifié. */
+export const SUIVI_OTP_DETAIL = 'otp_required';
+
+export type EtatErreurSuivi = 'otp' | 'introuvable' | 'indisponible';
+
+/**
+ * Classe une réponse non-OK de l'endpoint de suivi : 403 `otp_required` → écran
+ * de saisie du code ; 404 → lien introuvable/expiré ; tout le reste (autre 403,
+ * 5xx, 429…) → indisponible. Pure : aucune I/O.
+ */
+export function etatErreurSuivi(status: number, detail: string | null | undefined): EtatErreurSuivi {
+  if (status === 403 && (detail ?? '').trim() === SUIVI_OTP_DETAIL) return 'otp';
+  if (status === 404) return 'introuvable';
+  return 'indisponible';
 }
