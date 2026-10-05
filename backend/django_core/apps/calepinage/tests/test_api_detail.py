@@ -22,6 +22,9 @@ import pathlib
 
 from apps.calepinage.models import Calepinage, CalepinageVariante
 from apps.calepinage.services.layout import enregistrer_layout
+from apps.calepinage.tests._m0_en_attente import (
+    EN_ATTENTE_DETAIL as EN_ATTENTE, affirmer_non_servies, sans,
+)
 from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis
 
@@ -30,6 +33,8 @@ from .test_api_liste import BaseApiCalepinage, url_detail
 CONTRAT = json.loads(
     (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
      / 'calepinage_detail.json').read_text(encoding='utf-8'))
+#: L'exemple privé des clés posées par ACAL6 avant leur producteur.
+EXEMPLE_SERVI = sans(CONTRAT['exemple'], EN_ATTENTE)
 
 LAYOUT = {'schema_version': 2, 'result': {'panels': 12, 'kwc': 8.64},
           'zones': [{'id': 'z1'}]}
@@ -63,19 +68,22 @@ class DetailContratTest(BaseApiCalepinage):
         return reponse.data
 
     def test_cles_de_premier_niveau_conformes_au_contrat(self):
-        attendues = set(CONTRAT['exemple'])
-        self.assertEqual(set(self._detail(self.rempli)), attendues)
-        self.assertEqual(set(self._detail(self.neuf)), attendues)
+        attendues = set(EXEMPLE_SERVI)
+        for calepinage in (self.rempli, self.neuf):
+            detail = self._detail(calepinage)
+            affirmer_non_servies(self, detail, EN_ATTENTE)
+            self.assertEqual(set(detail), attendues)
 
     def test_sous_blocs_conformes_au_contrat(self):
         detail = self._detail(self.rempli)
+        affirmer_non_servies(self, detail, EN_ATTENTE)
         for bloc in ('versions', 'variantes', 'image', 'contexte_geographique',
                      'permissions'):
             self.assertEqual(set(detail[bloc]),
-                             set(CONTRAT['exemple'][bloc]), bloc)
+                             set(EXEMPLE_SERVI[bloc]), bloc)
         for bloc in ('lead', 'devis'):
             self.assertEqual(set(detail[bloc]),
-                             set(CONTRAT['exemple'][bloc]), bloc)
+                             set(EXEMPLE_SERVI[bloc]), bloc)
 
     def test_calepinage_neuf_rend_des_null_jamais_des_zeros(self):
         detail = self._detail(self.neuf)

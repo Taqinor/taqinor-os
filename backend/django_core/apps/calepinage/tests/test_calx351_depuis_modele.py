@@ -29,6 +29,7 @@ from unittest import mock
 from django.test import SimpleTestCase
 
 from apps.calepinage.services import creation
+from apps.calepinage.tests._m0_en_attente import EN_ATTENTE_DETAIL, sans
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT_DETAIL = json.loads(
@@ -205,7 +206,8 @@ class DepuisModeleEnBase(BaseApiCalepinage):
             'titre': 'Villa Maârif', 'preset_id': 'villa'}, format='json')
         self.assertEqual(reponse.status_code, 201, reponse.data)
         self.assertEqual(sorted(reponse.data),
-                         sorted(CONTRAT_DETAIL['exemple']))
+                         sorted(sans(CONTRAT_DETAIL['exemple'],
+                                     EN_ATTENTE_DETAIL)))
         copie = Calepinage.objects.get(pk=reponse.data['id'])
         self.assertEqual(copie.lead_id, self.lead_2.pk)
         self.assertEqual(copie.roof_layout['zones'][0]['pitchDeg'], 22)

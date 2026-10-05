@@ -47,6 +47,13 @@ def charger(nom):
 
 
 SCHEMA = charger('roof_layout_v2.schema.json')
+
+#: ACAL2 a rendu l'`exemple` du schéma COMPLET (il porte désormais `electrical`) :
+#: le « document de départ » d'aujourd'hui est cet exemple privé de la
+#: clé de CALX201 — c'est contre lui que l'additivité se prouve.
+CLES_CALX201 = ('electrical',)
+DEPART = {cle: valeur for cle, valeur in SCHEMA['exemple'].items()
+          if cle not in CLES_CALX201}
 EQUIPEMENTS = charger('electrique_equipements.json')
 
 #: Les huit organes que l'atelier sait poser — énumération FERMÉE (CALX201).
@@ -62,7 +69,7 @@ INTERDITS = ('puissance', 'calibre', 'section', 'tension', 'courant',
 
 def document_avec_equipements():
     """L'exemple du schéma, augmenté du fragment de CALX201."""
-    document = copy.deepcopy(SCHEMA['exemple'])
+    document = copy.deepcopy(DEPART)
     document.update(copy.deepcopy(EQUIPEMENTS['exemple']))
     return document
 
@@ -103,16 +110,14 @@ class CleAdditiveTest(SimpleTestCase):
     def test_le_schema_reste_bien_forme(self):
         Draft202012Validator.check_schema(SCHEMA)
 
-    def test_l_exemple_du_schema_ne_porte_pas_la_cle(self):
-        """La preuve que le document historique n'a pas été réécrit."""
-        self.assertNotIn(
-            'electrical', SCHEMA['exemple'],
-            "L'`exemple` du schéma est relu par quatre modules (import/"
-            "export CAL216, aller-retour CALX28, non-régression ventes, "
-            "étape d'ombrage proche) : CALX201 ne le touche pas.")
+    def test_l_exemple_complet_porte_la_cle_et_le_depart_non(self):
+        """ACAL2 : l'exemple est complet ; le départ ne porte pas la clé."""
+        self.assertIn('electrical', SCHEMA['exemple'])
+        self.assertNotIn('electrical', DEPART)
+        self.assertEqual(self._erreurs(SCHEMA['exemple']), [])
 
     def test_un_document_sans_la_cle_reste_valide(self):
-        self.assertEqual(self._erreurs(SCHEMA['exemple']), [])
+        self.assertEqual(self._erreurs(DEPART), [])
         self.assertEqual(self._erreurs({}), [])
         self.assertEqual(
             self._erreurs(EQUIPEMENTS['exemple_document_sans_electrical']),
@@ -128,7 +133,7 @@ class CleAdditiveTest(SimpleTestCase):
         """Définition opérationnelle d'« additif » : rien d'autre ne change."""
         document = document_avec_equipements()
         document.pop('electrical')
-        self.assertEqual(document, SCHEMA['exemple'])
+        self.assertEqual(document, DEPART)
 
 
 class EnumerationFermeeTest(SimpleTestCase):

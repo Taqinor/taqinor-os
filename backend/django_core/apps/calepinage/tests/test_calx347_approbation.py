@@ -42,6 +42,9 @@ from apps.calepinage.permissions import (
 )
 from apps.calepinage.services import approbation as service
 from apps.calepinage.services.lidar_ign import accepter_suggestion
+from apps.calepinage.tests._m0_en_attente import (
+    affirmer_non_servies, sans,
+)
 from apps.roles.models import (
     ALL_PERMISSIONS, CANONICAL_SYSTEM_ROLES, ELEVATED_PERMISSIONS,
     PERMISSION_MODULE,
@@ -49,6 +52,10 @@ from apps.roles.models import (
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT = RACINE_APP / 'contract_samples' / 'calepinage_approbation.json'
+
+#: ACAL6 (M0) a posé l'approbation liée à l'empreinte avant son producteur :
+#: ACAL114 sert ces deux clés et retire ces entrées.
+EN_ATTENTE = {'perimee': 'ACAL114', 'empreinte_approuvee': 'ACAL114'}
 
 MAINTENANT = datetime.datetime(2026, 9, 24, 9, 30,
                                tzinfo=datetime.timezone.utc)
@@ -269,13 +276,16 @@ class ContratCommitteTest(SimpleTestCase):
         with mock.patch.object(service, 'approbation_exigee',
                                return_value=False):
             etat = service.etat_approbation(faux_calepinage())
-        self.assertEqual(etat, self.contrat['exemple_vide'])
+        affirmer_non_servies(self, etat, EN_ATTENTE)
+        self.assertEqual(etat, sans(self.contrat['exemple_vide'], EN_ATTENTE))
 
     def test_les_cles_de_l_exemple(self):
         with mock.patch.object(service, 'approbation_exigee',
                                return_value=True):
             etat = service.etat_approbation(faux_calepinage())
-        self.assertEqual(sorted(etat), sorted(self.contrat['exemple']))
+        affirmer_non_servies(self, etat, EN_ATTENTE)
+        self.assertEqual(sorted(etat),
+                         sorted(sans(self.contrat['exemple'], EN_ATTENTE)))
 
     def test_le_code_de_decision_est_celui_du_contrat(self):
         self.assertEqual(self.contrat['code_permission_decider'],

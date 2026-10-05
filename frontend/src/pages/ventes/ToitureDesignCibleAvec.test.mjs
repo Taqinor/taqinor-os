@@ -8,9 +8,11 @@
 // MÊME devis (QJR25). Décision fondateur D8 du 29/08 : « Les deux »
 // mono-config = AVEC partout, cible 3D comprise.
 //
-// ToitureDesign.jsx est du JSX/ESM non exécutable par `node --test` sans
-// node_modules : ce test lit donc le SOURCE, même patron que
-// ToitureDesignLayoutIds.test.mjs / DevisGeneratorBuildDimensionnementAvec.test.mjs.
+// SPL213 : les mappeurs purs vivent désormais dans
+// `features/calepinage/atelier/contexteAtelier.js` (sans dépendance, chargeable
+// par `node --test`) : les tests 1, 2 et 4 IMPORTENT et EXÉCUTENT les vraies
+// fonctions ; seul le test 3 (garde d'enregistrerConception, JSX) lit encore
+// le SOURCE de ToitureDesign.jsx.
 //
 // Run : node --test src/pages/ventes/ToitureDesignCibleAvec.test.mjs
 import test from 'node:test'
@@ -18,26 +20,44 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import {
+  cibleActiveDuContexte,
+  contexteToDevisPayload,
+} from '../../features/calepinage/atelier/contexteAtelier.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'ToitureDesign.jsx'), 'utf8')
 
-test('QJR40 — un helper module-scope lit cible_avec en priorité sur cible', () => {
-  assert.match(
-    SRC,
-    /function cibleActiveDuContexte\(contexte\) \{\s*\n\s*return contexte\?\.cible_avec \?\? contexte\?\.cible \?\? \{\}\s*\n\}/,
-    'cibleActiveDuContexte doit préférer cible_avec, avec repli sur cible puis {}',
-  )
+test('QJR40 — cibleActiveDuContexte lit cible_avec en priorité sur cible', () => {
+  assert.deepEqual(
+    cibleActiveDuContexte({ cible: { panneaux: 12 }, cible_avec: { panneaux: 17 } }),
+    { panneaux: 17 },
+    'cible_avec doit primer sur cible')
+  assert.deepEqual(
+    cibleActiveDuContexte({ cible: { panneaux: 12 } }),
+    { panneaux: 12 },
+    'sans cible_avec, repli sur cible')
+  assert.deepEqual(cibleActiveDuContexte({}), {}, 'ni l\'une ni l\'autre : {}')
 })
 
 test('QJR40 — contexteToDevisPayload (mode devis, hydrate.devis du builder 3D) cible via cibleActiveDuContexte', () => {
-  const idx = SRC.indexOf('function contexteToDevisPayload(contexte) {')
-  assert.ok(idx > -1, 'contexteToDevisPayload introuvable')
-  const bloc = SRC.slice(idx, idx + 400)
-  assert.match(bloc, /const cible = cibleActiveDuContexte\(contexte\)/,
-    'contexteToDevisPayload doit lire cible via cibleActiveDuContexte (plus jamais contexte.cible directement)')
-  assert.doesNotMatch(bloc, /const cible = contexte\.cible/,
-    'contexteToDevisPayload ne doit plus lire contexte.cible directement (option SANS figée)')
+  const base = {
+    devis: { id: 7, reference: 'DEV-7' },
+    cible: { panneaux: 12, panel_watt: 550, scenario: 'injection_reseau' },
+  }
+  const sansAvec = contexteToDevisPayload(base)
+  const avecAvec = contexteToDevisPayload({
+    ...base,
+    cible_avec: { panneaux: 17, panel_watt: 550, scenario: 'avec_batterie' },
+  })
+  // Le payload hydrate.devis doit changer dès que cible_avec est servable :
+  // la cible 3D suit l'option AVEC (jamais l'option SANS figée).
+  assert.notDeepEqual(avecAvec, sansAvec,
+    'cible_avec doit modifier la cible hydratée (plus jamais contexte.cible seul)')
+  assert.ok(JSON.stringify(avecAvec).includes('17'),
+    'le payload doit porter le compte de panneaux AVEC (17)')
+  assert.ok(!JSON.stringify(avecAvec).includes('"scenario":"injection_reseau"'),
+    'le payload AVEC ne doit pas porter le scénario SANS')
 })
 
 test('QJR40 — la garde anti-divergence d\'enregistrerConception compare contre la MÊME cible que le boot (pas contexte.cible seul)', () => {
@@ -49,9 +69,6 @@ test('QJR40 — la garde anti-divergence d\'enregistrerConception compare contre
 })
 
 test('QJR40 — rejoué : devis « Les deux » divergents → la cible 3D cible AVEC, la MÊME option que le SLD (QJR25)', () => {
-  // Reproduit EXACTEMENT la formule verrouillée par le 1er test ci-dessus.
-  const cibleActiveDuContexte = (contexte) => contexte?.cible_avec ?? contexte?.cible ?? {}
-
   // Devis « Les deux » divergents (le cas qui révélait le bug) : l'option
   // SANS (cible) et l'option AVEC (cible_avec) ne portent PAS le même compte
   // de panneaux ni le même scénario — exactement comme un devis réel où les

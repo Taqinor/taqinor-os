@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, act } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { screen, cleanup, waitFor, act } from '@testing-library/react'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* PV20 — MODE DEVIS de l'écran de conception 3D.
@@ -14,95 +13,23 @@ import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamp
    Le mode LEAD est verrouillé par un test GOLDEN (dernier bloc) : il doit
    rester strictement inchangé — même appels, même hydratation, même bouton. */
 
-vi.mock('../../api/axios', () => ({
-  default: { get: vi.fn(), post: vi.fn() },
-}))
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisDesignContext: vi.fn(),
-    // PV75 — devis complet (etude_params.simulation.pr), lu EN PARALLÈLE du
-    // design-context pour l'étude bancable ; par défaut aucune étude rangée
-    // (payload sans `etude_params`) pour que les tests existants (écrits avant
-    // PV75) restent inchangés.
-    getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
-    syncDevisLayout: vi.fn(),
-    shareLinkDevis: vi.fn(),
-    whatsappPreviewDevis: vi.fn(),
-    reviserDevis: vi.fn(),
-  },
-}))
-// VT13 — l'écran interroge désormais la porte VT12 `crmApi.getLeadPhotoToit`
-// (photo réelle du toit issue de la visite terrain validée). Défaut : la
-// réponse « rien à montrer » du contrat (les TROIS clés à null), donc tous les
-// tests écrits avant VT13 gardent exactement leur comportement.
-// Seul `getLeadPhotoToit` est stubé : `getRoofFootprint` reste le VRAI client
-// (les tests QJ25 pilotent son comportement par le mock d'`api/axios`).
-vi.mock('../../api/crmApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getLeadPhotoToit: vi.fn(() => Promise.resolve({
-        data: { visite_id: null, url: null, texture_calage: null },
-      })),
-    },
-  }
-})
-vi.mock('../../lib/toast', () => ({ toastInfo: vi.fn() }))
-// L2 — la confirmation « le calepinage diverge du devis » passe par le
-// provider racine, absent de ce harnais : on répond OUI d'office, le flux
-// PV21 (resynchroniser puis livrer) reste le comportement testé ici.
-vi.mock('../../providers/confirm-context', () => ({
-  useConfirm: () => () => Promise.resolve(true),
-}))
-const navigateMock = vi.fn()
-vi.mock('react-router-dom', async (importOriginal) => {
-  const actual = await importOriginal()
-  return { ...actual, useNavigate: () => navigateMock }
-})
-
-// Le builder est stubé : il expose seulement l'API que la page consomme
-// (`serializeLayout` / `snapshot` / L-MAP `setReferenceContourVisible` / AP-F2
-// `recommencerDepuisTraceClient`), posée via `onApiReady` comme en vrai.
-const LAYOUT = { version: 2, zones: [{ id: 'z1' }] }
-const serializeLayout = vi.fn(() => LAYOUT)
-const snapshot = vi.fn(() => null)
-const setReferenceContourVisible = vi.fn()
-const recommencerDepuisTraceClient = vi.fn(() => true)
-const initRoofToolPro8 = vi.fn((options) => {
-  options?.onApiReady?.({ serializeLayout, snapshot, setReferenceContourVisible, recommencerDepuisTraceClient })
-})
-vi.mock('@roofbuilder', () => ({ initRoofToolPro8: (...a) => initRoofToolPro8(...a) }))
-
+import { navigateMock } from '../../test/toitureDesignHarnessNavigation'
+import {
+  initRoofToolPro8, serializeLayout, snapshot, setReferenceContourVisible,
+  recommencerDepuisTraceClient, LAYOUT, LEAD_88, rendreDevis, rendreLead as rendreEcranLead,
+  reinitialiserBoot, simulerApiLead,
+} from '../../test/toitureDesignHarness'
 import userEvent from '@testing-library/user-event'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
 import crmApi from '../../api/crmApi'
 import { toastInfo } from '../../lib/toast'
-import ToitureDesign from './ToitureDesign'
 
 const CTX = exempleContrat('ventes', 'devis_design_context')
 const CTX_RO = exempleContrat('ventes', 'devis_design_context',
   'exemple_lecture_seule')
-function rendreDevis(id) {
-  return render(
-    <MemoryRouter initialEntries={[`/ventes/devis/${id}/design`]}>
-      <Routes>
-        <Route path="/ventes/devis/:id/design"
-          element={<ToitureDesign mode="devis" />} />
-      </Routes>
-    </MemoryRouter>,
-  )
-}
-
 beforeEach(() => {
-  delete window.__taqinorRoofBooted
-  serializeLayout.mockReturnValue(LAYOUT)
-  snapshot.mockReturnValue(null)
-  initRoofToolPro8.mockImplementation((options) => {
-    options?.onApiReady?.({ serializeLayout, snapshot, setReferenceContourVisible, recommencerDepuisTraceClient })
-  })
+  reinitialiserBoot()
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -366,13 +293,7 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
       return Promise.reject(new Error(`URL inattendue ${url}`))
     })
 
-    render(
-      <MemoryRouter initialEntries={['/devis-design/88']}>
-        <Routes>
-          <Route path="/devis-design/:id" element={<ToitureDesign />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    rendreEcranLead(88)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     // L-MAP — le calque GÉO-RÉFÉRENCÉ du builder reçoit le MÊME contour brut
@@ -420,13 +341,7 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
       return Promise.reject(new Error(`URL inattendue ${url}`))
     })
 
-    render(
-      <MemoryRouter initialEntries={['/devis-design/91']}>
-        <Routes>
-          <Route path="/devis-design/:id" element={<ToitureDesign />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    rendreEcranLead(91)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(await screen.findByTestId('rp9-toit-client')).toBeInTheDocument()
@@ -459,13 +374,7 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
       return Promise.reject(new Error(`URL inattendue ${url}`))
     })
 
-    render(
-      <MemoryRouter initialEntries={['/devis-design/92']}>
-        <Routes>
-          <Route path="/devis-design/:id" element={<ToitureDesign />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    rendreEcranLead(92)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(screen.queryByTestId('rp9-toit-client')).toBeNull()
@@ -499,13 +408,7 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
       return Promise.reject(new Error(`URL inattendue ${url}`))
     })
 
-    render(
-      <MemoryRouter initialEntries={['/devis-design/88']}>
-        <Routes>
-          <Route path="/devis-design/:id" element={<ToitureDesign />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    rendreEcranLead(88)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     // Le toggle existe déjà (posé dès que le lead est chargé), le builder,
@@ -537,13 +440,7 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
       return Promise.reject(new Error(`URL inattendue ${url}`))
     })
 
-    render(
-      <MemoryRouter initialEntries={['/devis-design/90']}>
-        <Routes>
-          <Route path="/devis-design/:id" element={<ToitureDesign />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    rendreEcranLead(90)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(screen.queryByTestId('rp9-toit-client')).toBeNull()
@@ -719,26 +616,10 @@ describe('ToitureDesign — PV86 / L-SECT : plus aucun envoi depuis l’outil 3D
 
 describe('ToitureDesign — mode lead GOLDEN (inchangé par PV20)', () => {
   it('charge le lead + la config carte et hydrate `hydrate.lead`', async () => {
-    const lead = {
-      id: 88, nom: 'Alaoui', prenom: 'Youssef', ville: 'Casablanca',
-      telephone: '0600000000', roof_point: { lat: 33.5, lng: -7.6 },
-      roof_outline: [[33.5, -7.6]], bill_kwh: 7200,
-    }
-    api.get.mockImplementation((url) => {
-      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
-      if (url === '/ventes/roof-config/') {
-        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
-      }
-      return Promise.reject(new Error(`URL inattendue ${url}`))
-    })
+    const lead = LEAD_88
+    simulerApiLead(api)
 
-    render(
-      <MemoryRouter initialEntries={['/devis-design/88']}>
-        <Routes>
-          <Route path="/devis-design/:id" element={<ToitureDesign />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    rendreEcranLead(88)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(api.get).toHaveBeenCalledWith('/crm/leads/88/')
@@ -783,13 +664,7 @@ describe('ToitureDesign — mode lead : repli GPS de la fiche (correction 24/08)
       return Promise.reject(new Error(`URL inattendue ${url}`))
     })
 
-    render(
-      <MemoryRouter initialEntries={['/devis-design/89']}>
-        <Routes>
-          <Route path="/devis-design/:id" element={<ToitureDesign />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    rendreEcranLead(89)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     const options = initRoofToolPro8.mock.calls[0][0]
@@ -812,13 +687,7 @@ describe('ToitureDesign — mode lead : repli GPS de la fiche (correction 24/08)
       return Promise.reject(new Error(`URL inattendue ${url}`))
     })
 
-    render(
-      <MemoryRouter initialEntries={['/devis-design/90']}>
-        <Routes>
-          <Route path="/devis-design/:id" element={<ToitureDesign />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    rendreEcranLead(90)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     const options = initRoofToolPro8.mock.calls[0][0]
@@ -848,13 +717,7 @@ describe('ToitureDesign — mode lead : contour OSM (WIR227/QJ25)', () => {
       return Promise.reject(new Error(`URL inattendue ${url}`))
     })
 
-    render(
-      <MemoryRouter initialEntries={['/devis-design/91']}>
-        <Routes>
-          <Route path="/devis-design/:id" element={<ToitureDesign />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    rendreEcranLead(91)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(api.get).toHaveBeenCalledWith('/crm/leads/91/roof-footprint/')
@@ -892,13 +755,7 @@ describe('ToitureDesign — mode lead : contour OSM (WIR227/QJ25)', () => {
       return Promise.reject(new Error(`URL inattendue ${url}`))
     })
 
-    render(
-      <MemoryRouter initialEntries={['/devis-design/92']}>
-        <Routes>
-          <Route path="/devis-design/:id" element={<ToitureDesign />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    rendreEcranLead(92)
 
     // Le builder boote MALGRÉ l'absence de contour : tracé manuel disponible.
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
@@ -922,13 +779,7 @@ describe('ToitureDesign — mode lead : contour OSM (WIR227/QJ25)', () => {
       return Promise.reject(new Error(`URL inattendue ${url}`))
     })
 
-    render(
-      <MemoryRouter initialEntries={['/devis-design/93']}>
-        <Routes>
-          <Route path="/devis-design/:id" element={<ToitureDesign />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    rendreEcranLead(93)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(api.get).not.toHaveBeenCalledWith('/crm/leads/93/roof-footprint/')
@@ -958,13 +809,7 @@ describe('ToitureDesign — AP-F2 : note « calepinage automatique » + redo dep
       }
       return Promise.reject(new Error(`URL inattendue ${url}`))
     })
-    return render(
-      <MemoryRouter initialEntries={[`/devis-design/${id}`]}>
-        <Routes>
-          <Route path="/devis-design/:id" element={<ToitureDesign />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    return rendreEcranLead(id)
   }
 
   it('mode lead — un contour exploitable affiche la note et le bouton de reprise', async () => {
@@ -1103,13 +948,7 @@ describe('ToitureDesign — VT13 : la photo réelle du toit sous le tracé', () 
       }
       return Promise.reject(new Error(`URL inattendue ${url}`))
     })
-    return render(
-      <MemoryRouter initialEntries={['/devis-design/88']}>
-        <Routes>
-          <Route path="/devis-design/:id" element={<ToitureDesign />} />
-        </Routes>
-      </MemoryRouter>,
-    )
+    return rendreEcranLead(88)
   }
 
   it('drape la photo calée sous le contour, et la bascule la masque', async () => {

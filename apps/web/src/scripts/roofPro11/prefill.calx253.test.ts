@@ -227,8 +227,17 @@ describe('CALX253 — contrat partagé roof_layout_v2.schema.json (CALX251), lu 
     expect(defs.consumptionAppliance.properties.billing.enum).toEqual(['onTop', 'inBill']);
   });
 
-  it("l'exemple RACINE du schéma ne porte PAS `consumption` (additif — CALX84 même discipline)", () => {
-    const exemple = schema().exemple as Record<string, unknown>;
-    expect('consumption' in exemple).toBe(false);
+  it("`consumption` reste OPTIONNEL à la racine (additif — CALX84 même discipline), mais l'exemple complet (ACAL2) en porte un bloc conforme", () => {
+    const s = schema() as {
+      required?: string[];
+      exemple: Record<string, unknown>;
+      $defs: Record<string, { required: string[]; properties: Record<string, { enum?: string[] }> }>;
+    };
+    expect(s.required ?? []).not.toContain('consumption');
+    const bloc = s.exemple.consumption as Record<string, unknown>;
+    expect(bloc).toBeDefined();
+    for (const cle of s.$defs.consumption.required) expect(cle in bloc).toBe(true);
+    expect(s.$defs.consumption.properties.methode.enum).toContain(bloc.methode);
+    expect(bloc.courbe24).toHaveLength(24);
   });
 });

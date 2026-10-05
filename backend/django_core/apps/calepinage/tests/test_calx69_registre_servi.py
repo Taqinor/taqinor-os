@@ -50,6 +50,7 @@ from apps.calepinage.services.parametres_cles import (
     SECTION_SIMULATION,
     registre,
 )
+from apps.calepinage.tests._m0_en_attente import affirmer_non_servies, sans
 
 CONTRAT = json.loads(
     (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
@@ -134,9 +135,16 @@ class ContratRegistreTest(SimpleTestCase):
 
     def test_le_contrat_egale_ce_que_sert_le_selecteur(self):
         attendu = registre_des_reglages()
+        # ACAL8 (M0) a posé type / minimum / maximum de chaque entrée avant
+        # leur producteur : ACAL132 les sert et retire cette table.
+        en_attente = {f'{bloc}[].{cle}': 'ACAL132'
+                      for bloc in ('simulation', 'electrique_societe')
+                      for cle in ('type', 'minimum', 'maximum')}
+        affirmer_non_servies(self, attendu, en_attente)
         for etat in ('exemple', 'exemple_vide'):
             with self.subTest(etat=etat):
-                self.assertEqual(CONTRAT[etat]['registre'], attendu)
+                self.assertEqual(sans(CONTRAT[etat]['registre'], en_attente),
+                                 attendu)
 
     def test_les_deux_etats_du_contrat_portent_le_meme_registre(self):
         """Le registre ne dépend d'aucune valeur saisie : un état « vide »

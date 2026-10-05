@@ -49,6 +49,13 @@ def charger(nom):
 
 
 SCHEMA = charger('roof_layout_v2.schema.json')
+
+#: ACAL2 a rendu l'`exemple` du schéma COMPLET (il porte désormais `electrical`) :
+#: le « document de départ » d'aujourd'hui est cet exemple privé de la
+#: clé de CALX202 — c'est contre lui que l'additivité se prouve.
+CLES_CALX202 = ('electrical',)
+DEPART = {cle: valeur for cle, valeur in SCHEMA['exemple'].items()
+          if cle not in CLES_CALX202}
 EQUIPEMENTS = charger('electrique_equipements.json')
 CHEMINEMENTS = charger('electrique_cheminements.json')
 
@@ -63,7 +70,7 @@ def document_compose():
     C'est le document que les DEUX moitiés liront : les `de` / `vers` de
     l'exemple s'y résolvent RÉELLEMENT.
     """
-    document = copy.deepcopy(SCHEMA['exemple'])
+    document = copy.deepcopy(DEPART)
     document['electrical'] = {
         'equipements': copy.deepcopy(
             EQUIPEMENTS['exemple']['electrical']['equipements']),
@@ -144,11 +151,14 @@ class CleAdditiveTest(SimpleTestCase):
     def test_le_schema_reste_bien_forme(self):
         Draft202012Validator.check_schema(SCHEMA)
 
-    def test_l_exemple_du_schema_ne_porte_toujours_pas_la_cle(self):
-        self.assertNotIn('electrical', SCHEMA['exemple'])
+    def test_l_exemple_complet_porte_la_cle_et_le_depart_non(self):
+        """ACAL2 : l'exemple est complet ; le départ ne porte pas la clé."""
+        self.assertIn('electrical', SCHEMA['exemple'])
+        self.assertNotIn('electrical', DEPART)
+        self.assertEqual(self._erreurs(SCHEMA['exemple']), [])
 
     def test_un_document_sans_la_cle_reste_valide(self):
-        self.assertEqual(self._erreurs(SCHEMA['exemple']), [])
+        self.assertEqual(self._erreurs(DEPART), [])
         self.assertEqual(self._erreurs({}), [])
         self.assertEqual(
             self._erreurs(CHEMINEMENTS['exemple_document_sans_electrical']),
@@ -163,7 +173,7 @@ class CleAdditiveTest(SimpleTestCase):
     def test_retirer_la_cle_rend_le_document_de_depart(self):
         document = document_compose()
         document.pop('electrical')
-        self.assertEqual(document, SCHEMA['exemple'])
+        self.assertEqual(document, DEPART)
 
     def test_les_equipements_restent_lisibles_sans_cheminements(self):
         """Les deux fragments sont indépendants : CALX201 vit sans CALX202."""

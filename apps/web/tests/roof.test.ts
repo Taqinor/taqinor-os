@@ -243,18 +243,16 @@ describe('kwcFromPanelCount — puissance crête', () => {
 });
 
 describe('fallbackAnnualKwh — repli quand PVGIS est injoignable', () => {
-  it('≈ 1 488 kWh/kWc/an — 1 600 ramené aux 20 % de pertes totales (18/08)', () => {
-    // ORDRE FONDATEUR (18/08) : 20 % de pertes AU TOTAL. Le repli 1 600
-    // kWh/kWc/an était exprimé en base PVGIS 14 %, comme la table committée ;
-    // il porte donc le complément 0,8/0,86 = 0,9302325581 →
-    // 1 600 × 0,9302325581 = 1 488,3720930 kWh/kWc/an (dérivé à la main).
-    //   5 kWc  → 5 × 1 488,3720930 =  7 441,8604651 kWh/an
-    //  10 kWc  → 10 × 1 488,3720930 = 14 883,7209302 kWh/an
+  it('≈ 1 536 kWh/kWc/an — productible du devis 1 651 ramené aux 20 % de pertes (ACAL271)', () => {
+    // ACAL271 : le repli = productible du devis (1 651, productible.py:38) et non
+    // plus 1 600. Base PVGIS 14 % → complément 0,8/0,86 = 0,9302325581 :
+    // 1 651 × 0,9302325581 = 1 535,8139535 kWh/kWc/an (dérivé à la main).
+    //   5 kWc  → 5 × 1 535,8139535 =  7 679,0697674 kWh/an
+    //  10 kWc  → 10 × 1 535,8139535 = 15 358,1395349 kWh/an
     expect(fallbackAnnualKwh(0)).toBe(0);
-    expect(fallbackAnnualKwh(5)).toBeCloseTo(7441.86046511628, 6);
-    expect(fallbackAnnualKwh(10)).toBeCloseTo(14883.72093023256, 6);
-    // Et c'est bien 20 % sous le productible brut PVGIS, pas 20 % de plus.
-    expect(fallbackAnnualKwh(10)).toBeCloseTo(10 * 1600 * (0.8 / 0.86), 9);
+    expect(fallbackAnnualKwh(5)).toBeCloseTo(7679.0697674, 4);
+    expect(fallbackAnnualKwh(10)).toBeCloseTo(15358.1395349, 4);
+    expect(fallbackAnnualKwh(10)).toBeCloseTo(10 * 1651 * (0.8 / 0.86), 9);
   });
 });
 

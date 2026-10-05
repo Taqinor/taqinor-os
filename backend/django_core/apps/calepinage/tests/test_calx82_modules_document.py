@@ -82,13 +82,28 @@ EXEMPLE_MODULES = [
 INTERDITS = ('prix', 'marge', 'cout', 'achat', 'remise', 'tva')
 
 
+def _sans_catalogue(document):
+    """Le document privé de `modules` et de tout `geometry.moduleId`."""
+    document = copy.deepcopy(document)
+    document.pop('modules', None)
+    for zone in document.get('zones', []):
+        zone.get('geometry', {}).pop('moduleId', None)
+    return document
+
+
+#: ACAL2 a rendu l'`exemple` du schéma COMPLET (il porte désormais
+#: `modules`) : le « document de départ » d'aujourd'hui est cet exemple privé
+#: des clés de CALX82 — c'est contre lui que l'additivité se prouve.
+DEPART = _sans_catalogue(SCHEMA['exemple'])
+
+
 def document_un_seul_pan():
     """L'exemple du schéma + le catalogue, SANS toucher à ses pans.
 
     C'est la forme qui sert à prouver l'additivité : retirer les deux clés
     rend le document de départ, octet pour octet.
     """
-    document = copy.deepcopy(SCHEMA['exemple'])
+    document = copy.deepcopy(DEPART)
     document['modules'] = copy.deepcopy(EXEMPLE_MODULES)
     document['zones'][0]['geometry']['moduleId'] = 'mod-a'
     return document
@@ -130,13 +145,15 @@ class CleAdditiveTest(SimpleTestCase):
 
         Draft202012Validator.check_schema(SCHEMA)
 
-    def test_l_exemple_du_schema_ne_porte_pas_le_catalogue(self):
-        """La preuve que le document historique n'a pas été réécrit."""
-        self.assertNotIn('modules', SCHEMA['exemple'])
-        for zone in SCHEMA['exemple'].get('zones', []):
+    def test_l_exemple_complet_porte_le_catalogue_et_le_depart_non(self):
+        """ACAL2 : l'exemple est complet ; le départ ne porte aucun catalogue."""
+        self.assertIn('modules', SCHEMA['exemple'])
+        self.assertNotIn('modules', DEPART)
+        for zone in DEPART.get('zones', []):
             self.assertNotIn('moduleId', zone.get('geometry', {}))
 
     def test_un_document_sans_catalogue_reste_valide(self):
+        self.assertEqual(erreurs(DEPART), [])
         self.assertEqual(erreurs(SCHEMA['exemple']), [])
         self.assertEqual(erreurs({}), [])
 
@@ -156,7 +173,7 @@ class CleAdditiveTest(SimpleTestCase):
         document = document_un_seul_pan()
         document.pop('modules')
         document['zones'][0]['geometry'].pop('moduleId')
-        self.assertEqual(document, SCHEMA['exemple'])
+        self.assertEqual(document, DEPART)
 
 
 class DeuxModelesSurDeuxPansTest(SimpleTestCase):
@@ -271,4 +288,4 @@ class RefusNommeLeChampTest(SimpleTestCase):
 
     def test_un_document_sans_module_pose_passe_la_porte(self):
         """Le cas d'aujourd'hui : aucun catalogue, aucun `moduleId`."""
-        valider_document(copy.deepcopy(SCHEMA['exemple']))
+        valider_document(copy.deepcopy(DEPART))

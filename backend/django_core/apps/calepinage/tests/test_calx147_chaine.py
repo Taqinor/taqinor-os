@@ -20,6 +20,9 @@ from apps.calepinage.services import etapes
 from apps.calepinage.services.chaine_pertes import (
     CLES_ETAPE_PUBLIEE, LIBELLES, ORDRE_ETAPES, ChaineInvalide,
     appliquer_chaine)
+from apps.calepinage.tests._m0_en_attente import (
+    EN_ATTENTE_SIMULATION, affirmer_non_servies, sans,
+)
 
 ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
                 / 'contract_samples')
@@ -257,7 +260,14 @@ class ConformiteAuContratTest(unittest.TestCase):
         self.modele = CONTRAT['exemple']['cascade']
 
     def test_les_cinq_cles_du_bloc(self):
-        self.assertEqual(sorted(self.cascade), sorted(self.modele))
+        # ACAL8 (M0) a posé etapes_omises / irradiation_incidente_kwh_m2
+        # avant leurs producteurs (EN_ATTENTE_SIMULATION).
+        en_attente = {chemin.split('.', 1)[1]: tache
+                      for chemin, tache in EN_ATTENTE_SIMULATION.items()
+                      if chemin.startswith('cascade.')}
+        affirmer_non_servies(self, self.cascade, en_attente)
+        self.assertEqual(sorted(self.cascade),
+                         sorted(sans(self.modele, en_attente)))
 
     def test_les_douze_champs_de_chaque_etape(self):
         attendus = set(self.modele['etapes'][0])

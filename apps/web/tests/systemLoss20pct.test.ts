@@ -76,9 +76,9 @@ describe('Pertes système 20 % AU TOTAL — la base du fondateur', () => {
   });
 
   it('le repli hors-ligne de productionEngine suit la MÊME base', () => {
-    expect(FALLBACK_SPECIFIC_YIELD_PVGIS14).toBe(1600);
-    // 1600 × 0,9302325581 = 1488,37 kWh/kWc/an
-    expect(FALLBACK_SPECIFIC_YIELD_KWH_PER_KWC).toBeCloseTo(1488.3720930232557, 6);
+    // ACAL271 : le repli = productible du devis (1651), plus l'ancien 1600.
+    expect(FALLBACK_SPECIFIC_YIELD_PVGIS14).toBe(1651);
+    expect(FALLBACK_SPECIFIC_YIELD_KWH_PER_KWC).toBeCloseTo(1651 * PRODUCTION_NET_FACTOR, 6);
   });
 });
 

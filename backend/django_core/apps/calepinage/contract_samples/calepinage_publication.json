@@ -1,0 +1,73 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/generer-devis/",
+  "pourquoi": "ACAL3 (C-ACAL-104/105/106/009) — « GÉNÉRER LE DEVIS » depuis un calepinage : la réponse porte les avertissements de composition et les refus NOMMÉS. Consommée par frontend/src/features/calepinage/BoutonDevis.jsx (genererDevis, syncDevis) ; les moitiés back (D02-T07) et écran (D02-T20) IMPORTENT cet échantillon (PACT13), aucun mock tapé à la main. Réponses de GÉNÉRER : 201 {devis, reference, statut, layout_hash, deduplique:false, avertissements:[str], marques_manquantes:[str]} ; 200 {…, deduplique:true} quand le calepinage est déjà lié à un BROUILLON de même empreinte (double clic, client seul compris) ; 409 {detail, devis, reference, revision_possible} quand il est déjà rattaché à un devis non brouillon (aucun devis créé : utilisez « Resynchroniser le devis ») ; 422 {detail, errors:[str]} (pré-vol, inchangé) ; 422 {hors_reseau: str} (site isolé sans référence autonome / batterie) ; 422 {type_installation: str} (lead agricole : le pompage se chiffre depuis l'écran devis agricole — groupe AGR). Réponses de RESYNCHRONISER (POST …/sync-devis/) sous `sync_devis` : 200 {inchange, panneaux, kwc, scenario, batterie, lignes_modifiees, lignes_ajoutees, avertissements:[str]} (forme de domain/resynchronisation.reconcilier, INCHANGÉE) ; 409 {detail, revision_possible} (inchangé). Les codes HTTP et clés d'erreur existants ne changent pas (NE PAS FAIRE QJR5). La réponse jumelle de ventes from-layout a son propre échantillon (mêmes noms de clés avertissements / marques_manquantes). Aucun montant, aucun statut de devis écrit ici (règle #4) : le moteur /proposal ne fait que rendre. Valeurs ILLUSTRATIVES ; ce sont les clés et leurs natures qui font le contrat.",
+  "exemple": {
+    "devis": 412,
+    "reference": "DEV-202610-0042",
+    "statut": "brouillon",
+    "layout_hash": "c3d5e7f90b1d3f5a7c9e1b3d5f7a9c1e",
+    "deduplique": false,
+    "avertissements": [
+      "Aucun onduleur du catalogue ne couvre la puissance posée : ligne onduleur à compléter."
+    ],
+    "marques_manquantes": [
+      "Module : marque non renseignée sur la fiche produit."
+    ]
+  },
+  "exemple_deduplique": {
+    "devis": 412,
+    "reference": "DEV-202610-0042",
+    "statut": "brouillon",
+    "layout_hash": "c3d5e7f90b1d3f5a7c9e1b3d5f7a9c1e",
+    "deduplique": true,
+    "avertissements": [],
+    "marques_manquantes": []
+  },
+  "exemple_409_deja_rattache": {
+    "detail": "Ce calepinage est déjà rattaché au devis DEV-202610-0042 (Envoyé) : utilisez « Resynchroniser le devis ».",
+    "devis": 412,
+    "reference": "DEV-202610-0042",
+    "revision_possible": false
+  },
+  "exemple_422_prevol": {
+    "detail": "Le calepinage n'est pas prêt à être chiffré.",
+    "errors": [
+      "Aucun module n'est posé sur la toiture."
+    ]
+  },
+  "exemple_422_hors_reseau": {
+    "hors_reseau": "Site isolé : une référence autonome ou une batterie est requise pour générer le devis."
+  },
+  "exemple_422_lead_agricole": {
+    "type_installation": "Lead agricole : le pompage se chiffre depuis l'écran devis agricole."
+  },
+  "sync_devis": {
+    "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/sync-devis/",
+    "exemple": {
+      "inchange": false,
+      "panneaux": 24,
+      "kwc": 17.28,
+      "scenario": "reseau",
+      "batterie": false,
+      "lignes_modifiees": 1,
+      "lignes_ajoutees": 0,
+      "avertissements": [
+        "Devis multi-villa : l'écart de calepinage porte sur la ligne de panneaux la plus grosse, tous groupes confondus."
+      ]
+    },
+    "exemple_inchange": {
+      "inchange": true,
+      "panneaux": 24,
+      "kwc": 17.28,
+      "scenario": "reseau",
+      "batterie": false,
+      "lignes_modifiees": 0,
+      "lignes_ajoutees": 0,
+      "avertissements": []
+    },
+    "exemple_409": {
+      "detail": "Le devis lié est accepté : il ne se resynchronise plus. Utilisez « Réviser ».",
+      "revision_possible": true
+    }
+  }
+}

@@ -57,6 +57,24 @@ EXEMPLE_MODULES_NUMEROTES = [
 EXEMPLE_NUMEROTATION = {'prefixe': 'PV', 'depart': 1, 'sens': 'serpentin'}
 
 
+def _sans_numerotation(document):
+    """Le document privé de `n`, `rangee` et `numerotation` sur tous ses pans."""
+    document = copy.deepcopy(document)
+    for zone in document.get('zones', []):
+        geometrie = zone.get('geometry', {})
+        geometrie.pop('numerotation', None)
+        for module in geometrie.get('panels', []):
+            module.pop('n', None)
+            module.pop('rangee', None)
+    return document
+
+
+#: ACAL2 a rendu l'`exemple` du schéma COMPLET (il porte désormais la
+#: numérotation) : le « document de départ » d'aujourd'hui est cet exemple
+#: privé des clés de CALX83 — c'est contre lui que l'additivité se prouve.
+DEPART = _sans_numerotation(SCHEMA['exemple'])
+
+
 def document_numerote():
     """L'exemple du schéma, augmenté du fragment de CALX83.
 
@@ -64,7 +82,7 @@ def document_numerote():
     et de la même longueur : le troisième module en reçoit une aussi, sans
     quoi le document se contredirait.
     """
-    document = copy.deepcopy(SCHEMA['exemple'])
+    document = copy.deepcopy(DEPART)
     geometrie = document['zones'][0]['geometry']
     geometrie['panels'] = copy.deepcopy(EXEMPLE_MODULES_NUMEROTES)
     geometrie['numerotation'] = copy.deepcopy(EXEMPLE_NUMEROTATION)
@@ -78,7 +96,7 @@ def document_numerote_sans_module_ajoute():
     Sert à prouver l'additivité : retirer les trois clés rend le document de
     départ, sans qu'aucune autre valeur n'ait bougé.
     """
-    document = copy.deepcopy(SCHEMA['exemple'])
+    document = copy.deepcopy(DEPART)
     geometrie = document['zones'][0]['geometry']
     for place, module in enumerate(geometrie['panels']):
         module['n'] = place + 1
@@ -107,9 +125,11 @@ class CleAdditiveTest(SimpleTestCase):
 
         Draft202012Validator.check_schema(SCHEMA)
 
-    def test_l_exemple_du_schema_ne_porte_aucun_numero(self):
-        """La preuve que le document historique n'a pas été réécrit."""
-        for zone in SCHEMA['exemple'].get('zones', []):
+    def test_l_exemple_complet_porte_la_numerotation_et_le_depart_non(self):
+        """ACAL2 : l'exemple est complet ; le départ ne porte aucun numéro."""
+        self.assertIn('numerotation',
+                      SCHEMA['exemple']['zones'][0]['geometry'])
+        for zone in DEPART.get('zones', []):
             geometrie = zone.get('geometry', {})
             self.assertNotIn('numerotation', geometrie)
             for module in geometrie.get('panels', []):
@@ -117,6 +137,7 @@ class CleAdditiveTest(SimpleTestCase):
                 self.assertNotIn('rangee', module)
 
     def test_un_document_sans_numerotation_reste_valide(self):
+        self.assertEqual(erreurs(DEPART), [])
         self.assertEqual(erreurs(SCHEMA['exemple']), [])
         self.assertEqual(erreurs({}), [])
 
@@ -132,7 +153,7 @@ class CleAdditiveTest(SimpleTestCase):
         for module in geometrie['panels']:
             module.pop('n')
             module.pop('rangee')
-        self.assertEqual(document, SCHEMA['exemple'])
+        self.assertEqual(document, DEPART)
 
 
 class NumeroStableDoncTroueTest(SimpleTestCase):
@@ -246,4 +267,4 @@ class RefusNommeLeChampTest(SimpleTestCase):
 
     def test_un_document_sans_numero_passe_la_porte(self):
         """Le cas d'aujourd'hui : aucun `n`, donc aucun doublon possible."""
-        valider_document(copy.deepcopy(SCHEMA['exemple']))
+        valider_document(copy.deepcopy(DEPART))

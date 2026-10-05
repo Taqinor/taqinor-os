@@ -1,6 +1,6 @@
 {
   "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/dupliquer/",
-  "pourquoi": "CALX35 — la duplication EXISTE depuis CAL14 (services/variantes.py::dupliquer : layout + variantes recopiés vers un NOUVEAU calepinage, sans devis ni appel d'offres) et AUCUNE vue ne l'appelait. Les deux moitiés de cette porte se construisent en parallèle : ce fichier est leur seul point d'accord. La réponse dit ce que la copie EST (son identifiant, sa référence, son nom) et ce qu'elle N'A PAS repris (devis à null, variantes comptées) — pour qu'un écran n'ait jamais à le déduire.",
+  "pourquoi": "CALX35 — la duplication EXISTE depuis CAL14 (services/variantes.py::dupliquer : layout + variantes recopiés vers un NOUVEAU calepinage, sans devis ni appel d'offres) et AUCUNE vue ne l'appelait. Les deux moitiés de cette porte se construisent en parallèle : ce fichier est leur seul point d'accord. La réponse dit ce que la copie EST (son identifiant, sa référence, son nom) et ce qu'elle N'A PAS repris (devis à null, variantes comptées) — pour qu'un écran n'ait jamais à le déduire. ACAL12 (C-ACAL-013) — corps OPTIONNEL {lead, client} : la copie peut être RATTACHÉE à un autre lead / client (le lead est borné société, la copie ne reprend jamais le devis lié) ; 409 {lead: message, calepinage_existant: id} quand ce lead a déjà un calepinage ouvert (même forme que calepinage_creation_conflit.json).",
   "exemple": {
     "calepinage": 2,
     "reference": "CAL-2609-0002",
@@ -20,5 +20,13 @@
     "variantes_copiees": 0,
     "devis": null,
     "layout_hash": "abababababababababababababababababababababababababababababababab"
+  },
+  "corps_optionnel": {
+    "lead": 91,
+    "client": null
+  },
+  "exemple_conflit_409": {
+    "lead": "Ce lead a déjà un calepinage ouvert : ouvrez-le plutôt que d'en créer un second.",
+    "calepinage_existant": 77
   }
 }

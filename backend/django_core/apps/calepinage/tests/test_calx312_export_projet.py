@@ -40,6 +40,7 @@ from apps.calepinage.services.export_projet import (
     ExportProjetRefuse, document_de_projet, octets_de_projet,
 )
 from apps.calepinage.services.note_calcul import CLES_INTERDITES
+from apps.calepinage.tests._m0_en_attente import export_projet_v2
 
 from .test_api_liste import BaseApiCalepinage, url_detail
 
@@ -50,7 +51,13 @@ def charger(nom):
     return json.loads((ECHANTILLONS / nom).read_text(encoding='utf-8'))
 
 
-CONTRAT = charger('export_projet.json')
+#: ACAL17 a posé le format 3 (bloc ``saisies``) avant son producteur :
+#: tant qu'ACAL243 n'a pas livré, le serveur exporte le format 2 — les
+#: états du contrat sont ramenés au format 2 avant d'être comparés.
+CONTRAT_V3 = charger('export_projet.json')
+CONTRAT = dict(CONTRAT_V3,
+               exemple=export_projet_v2(CONTRAT_V3['exemple']),
+               exemple_vide=export_projet_v2(CONTRAT_V3['exemple_vide']))
 RESULTAT = charger('calepinage_resultat.json')
 EQUIPEMENTS = charger('calepinage_equipements.json')
 MOMENT = datetime.datetime(2026, 9, 23, 11, 30, tzinfo=datetime.timezone.utc)

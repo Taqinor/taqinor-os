@@ -1,0 +1,133 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/",
+  "pourquoi": "ACAL11 (C-ACAL-017) — LA LISTE DES CALEPINAGES : enveloppe de pagination DRF {count, next, previous, results[]} ; chaque ligne porte : id, titre, nom, statut, statut_libelle, lead {id, nom, ville, supprime} | null, client (IDENTIFIANT — clé d'écriture INCHANGÉE), client_apercu {id, nom, ville} | null (lecture seule : ce que la liste affiche), devis (identifiant), reference (CAL-AAMM-NNNN, DÉRIVÉE), image {url, genere_le, expire_le} (url = chemin RELATIF même origine /api/django/calepinage/calepinages/<id>/roof-image/fichier/, ou null — jamais une URL MinIO), modifie_le (ISO = updated_at), layout_stale (bool | null — null sans devis), layout_nb_panneaux, responsable (id), responsable_nom. `statuts_publies` = les trois statuts DÉRIVÉS (brouillon, valide, perime) avec leurs libellés, égaux à Calepinage.Statut.choices. Remplace la fixture tapée à la main LIGNE_AVEC_RATTACHEMENT de CalepinageList.err-qah-rattachement.test.jsx (supprimée par D06-T25). PACT10 : le contrat part AVANT D06-T24 (serveur) et D06-T25 (écran).",
+  "exemple": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 77,
+        "titre": "Toiture Anfa",
+        "nom": "Toiture Anfa",
+        "statut": "valide",
+        "statut_libelle": "Validé",
+        "lead": {
+          "id": 77,
+          "nom": "Toiture Anfa",
+          "ville": "Casablanca",
+          "supprime": false
+        },
+        "client": 12,
+        "client_apercu": {
+          "id": 12,
+          "nom": "M. Alaoui",
+          "ville": "Casablanca"
+        },
+        "devis": 412,
+        "reference": "CAL-2610-0077",
+        "image": {
+          "url": "/api/django/calepinage/calepinages/77/roof-image/fichier/",
+          "genere_le": "2026-10-03T09:00:00Z",
+          "expire_le": "2026-10-03T10:00:00Z"
+        },
+        "modifie_le": "2026-10-03T09:15:00Z",
+        "layout_stale": false,
+        "layout_nb_panneaux": 24,
+        "responsable": 3,
+        "responsable_nom": "demo_admin"
+      }
+    ]
+  },
+  "exemple_client_seul": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 78,
+        "titre": "Villa Bouskoura",
+        "nom": "Villa Bouskoura",
+        "statut": "brouillon",
+        "statut_libelle": "Brouillon",
+        "lead": null,
+        "client": 12,
+        "client_apercu": {
+          "id": 12,
+          "nom": "M. Alaoui",
+          "ville": "Casablanca"
+        },
+        "devis": null,
+        "reference": "CAL-2610-0078",
+        "image": {
+          "url": "/api/django/calepinage/calepinages/77/roof-image/fichier/",
+          "genere_le": "2026-10-03T09:00:00Z",
+          "expire_le": "2026-10-03T10:00:00Z"
+        },
+        "modifie_le": "2026-10-03T09:15:00Z",
+        "layout_stale": null,
+        "layout_nb_panneaux": 24,
+        "responsable": 3,
+        "responsable_nom": "demo_admin"
+      }
+    ]
+  },
+  "exemple_sans_image": {
+    "count": 1,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 79,
+        "titre": "Toiture Anfa",
+        "nom": "Toiture Anfa",
+        "statut": "valide",
+        "statut_libelle": "Validé",
+        "lead": {
+          "id": 77,
+          "nom": "Toiture Anfa",
+          "ville": "Casablanca",
+          "supprime": false
+        },
+        "client": 12,
+        "client_apercu": {
+          "id": 12,
+          "nom": "M. Alaoui",
+          "ville": "Casablanca"
+        },
+        "devis": 412,
+        "reference": "CAL-2610-0079",
+        "image": {
+          "url": null,
+          "genere_le": null,
+          "expire_le": null
+        },
+        "modifie_le": "2026-10-03T09:15:00Z",
+        "layout_stale": null,
+        "layout_nb_panneaux": null,
+        "responsable": 3,
+        "responsable_nom": "demo_admin"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "count": 0,
+    "next": null,
+    "previous": null,
+    "results": []
+  },
+  "statuts_publies": [
+    {
+      "valeur": "brouillon",
+      "libelle": "Brouillon"
+    },
+    {
+      "valeur": "valide",
+      "libelle": "Validé"
+    },
+    {
+      "valeur": "perime",
+      "libelle": "Périmé"
+    }
+  ]
+}
