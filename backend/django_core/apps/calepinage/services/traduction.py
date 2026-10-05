@@ -155,6 +155,8 @@ class Traduction:
     #: seuil ⇒ tuple vide — la traduction reste octet pour octet identique
     #: à celle d'avant CALX405 (D12).
     propositions_chassis: Tuple[Tuple[str, dict], ...] = ()
+    #: CIQ137 — la règle d'îlots du projet publiée avec sa source ('' sans).
+    regle_ilots: str = ''
     avertissements: Tuple[str, ...] = field(default=())
 
 
@@ -657,6 +659,26 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
         # retraduire ici produirait deux formulations de la même règle.
         raise TraductionRefusee(str(refus), refus.champ)
 
+    # CIQ137 — îlots bornés : les allées coupe-feu du PROJET deviennent des
+    # zones INTERDITE du moteur (pose, comptage et validation les respectent
+    # par construction). Sans ``ilot_max_m`` : aucune zone, octet-identique.
+    from core.calepinage.ilots import lire_contraintes, regle_ilots, zones_allees
+
+    regle_des_ilots = ''
+    lu = lire_contraintes(contraintes_site)
+    if lu is not None:
+        longueur_i, largeur_i, allee_i, citation = lu
+        allees = []
+        for surface in surfaces:
+            xs = [p[0] for p in surface.contour]
+            ys = [p[1] for p in surface.contour]
+            allees.extend(zones_allees(
+                surface.repere, (min(xs), max(xs), min(ys), max(ys)),
+                longueur_i, largeur_i, allee_i))
+        zones = zones + tuple(allees)
+        regle_des_ilots = regle_ilots(longueur_i, largeur_i, allee_i,
+                                      citation)
+
     obstacles = _obstacles(pans, vers_repere, degagements, contraintes_site)
     parametres_moteur = Parametres(
         kits=(kit,), rives=rives, axe_rangee=axe,
@@ -680,4 +702,5 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
         kit=kit,
         axe_rangee=axe.value,
         regle_retrait=regle_retrait,
-        propositions_chassis=tuple(propositions_chassis))
+        propositions_chassis=tuple(propositions_chassis),
+        regle_ilots=regle_des_ilots)

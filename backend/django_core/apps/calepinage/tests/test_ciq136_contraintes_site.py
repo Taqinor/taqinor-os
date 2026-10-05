@@ -64,6 +64,20 @@ class ContraintesMoteurTests(SimpleTestCase):
             self.assertEqual(avant['regle_appliquee'],
                              apres['regle_appliquee'])
 
+    def test_ciq137_ilots_fm_ajoutent_des_allees_au_document(self):
+        contraintes = normaliser_contraintes_site({'assureur': 'fm_global'})
+        doc = _document('cheminee')
+        doc['zones'][0]['vertices'] = _rectangle(-7.6, 33.5, 100.0, 20.0)
+        traduction = entree_depuis_layout(doc, contraintes_site=contraintes)
+        allees = [z for z in traduction.document['zones']
+                  if 'ALLEE' in z['repere']]
+        self.assertEqual(len(allees), 2)
+        self.assertIn('DS 1-15', traduction.regle_ilots)
+        sans = entree_depuis_layout(doc)
+        self.assertEqual(sans.regle_ilots, '')
+        self.assertFalse(any('ALLEE' in z['repere']
+                             for z in sans.document['zones']))
+
     def test_effectif_est_le_maximum(self):
         valeur, _ = degagement_effectif('cheminee', None, {
             'degagements_m': {'lanterneau': 1.8}})
