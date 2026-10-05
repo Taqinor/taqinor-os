@@ -92,12 +92,13 @@ class _Base(TestCase):
     @classmethod
     def _onduleur(cls, company, nom, kw, prix=Decimal('45833.33')):
         produit = cls._produit(company, nom, prix_vente=prix,
-                               role_devis='onduleur_reseau')
+                               role_devis='onduleur_reseau', garantie='10 ans constructeur')
         FicheTechnique.objects.create(
             company=company, produit=produit, type_fiche='onduleur',
             ond_ac_kw=Decimal(kw), ond_phases=3, ond_n_mppt=4,
             ond_mppt_v_min=Decimal('200'), ond_mppt_v_max=Decimal('1000'),
-            ond_v_max_abs=Decimal('1100'), ond_i_max_mppt_a=Decimal('30'))
+            ond_v_max_abs=Decimal('1100'), ond_i_max_mppt_a=Decimal('30'),
+            ond_rendement_euro_pct=Decimal('98.4'))
         return produit
 
     def setUp(self):
