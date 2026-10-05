@@ -26,7 +26,9 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..permissions import PeutLireOuEcrireCalepinage, PeutVoirCalepinage
+from ..permissions import (
+    PeutApprouverCalepinage, PeutLireOuEcrireCalepinage, PeutVoirCalepinage,
+)
 from ..services.electrique import (
     CLE_PUBLICATION, EntreeInvalide, TemperaturesInvalides, enregistrer_entree,
     entree_electrique_servie, entree_stockee, evaluation_electrique,
@@ -98,6 +100,15 @@ class ElectriqueActionsMixin:
             return Response(entree_electrique_servie(
                 calepinage, entree_stockee(calepinage)))
         corps = request.data if isinstance(request.data, dict) else {}
+        if corps.get('derogations') and not PeutApprouverCalepinage() \
+                .has_permission(request, self):
+            # ACAL283 / D-ACAL-9 — toute dérogation électrique exige
+            # ``calepinage_approuver`` ; refus NOMMÉ, rien n'est écrit.
+            return Response(
+                {'derogations': "Passer outre une alerte électrique exige le "
+                                "droit « calepinage_approuver » : demandez à "
+                                "un approbateur de poser la dérogation."},
+                status=status.HTTP_403_FORBIDDEN)
         try:
             enregistrer_entree(calepinage, corps, user=request.user)
             return Response(resultat_calepinage(calepinage))

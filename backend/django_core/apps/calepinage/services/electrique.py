@@ -971,7 +971,16 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
         resultat[CLE_ENTREE] = entree
         return entree
 
-    return modifier_resultat(calepinage, _poser)
+    posee = modifier_resultat(calepinage, _poser)
+    if traces:
+        # ACAL283 — chaque dérogation se lit aussi au CHATTER (reflet lisible
+        # du fil ``journal_derogations``, seul enregistrement structuré) ;
+        # l'auteur est posé par le serveur, jamais par le corps.
+        from .journal import noter
+
+        for trace in traces:
+            noter(calepinage, trace['texte'], user=user)
+    return posee
 
 
 def _designation(produit):
@@ -1733,7 +1742,20 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'simulation_perimee': perimee,
         'motif': motif,
         'avertissements': messages,
+        # ACAL283 — les deux FILS bornés, LUS tels qu'enregistrés (jamais
+        # recalculés), listes vides jamais absentes — y compris quand la
+        # simulation est périmée.
+        'derogations': _fil_enregistre(calepinage, CLE_FIL_DEROGATIONS),
+        'ecarts_longueur': _fil_enregistre(calepinage, CLE_FIL_ECARTS),
     }
+
+
+def _fil_enregistre(calepinage, cle):
+    """ACAL283 — un fil borné de ``Calepinage.resultat``, ou ``[]``."""
+    resultat = getattr(calepinage, 'resultat', None)
+    fil = resultat.get(cle) if isinstance(resultat, dict) else None
+    return [dict(entree) for entree in fil if isinstance(entree, dict)] \
+        if isinstance(fil, list) else []
 
 
 # ═══════════════════════════════════════════════════════════════════════════
