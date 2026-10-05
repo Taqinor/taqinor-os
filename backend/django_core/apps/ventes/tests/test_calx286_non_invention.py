@@ -30,6 +30,8 @@ Les quatre familles retirées : ``DEFAULT_TARIFF_ESCALATION`` /
 Run :
     python manage.py test apps.ventes.tests.test_calx286_non_invention -v2
 """
+import importlib
+import importlib.util
 import inspect
 import json
 import unittest
@@ -37,6 +39,7 @@ import unittest
 from django.test import SimpleTestCase
 
 from apps.ventes import solar_design as sd
+from apps.ventes import solar_finance as sf
 
 #: Valeurs NEUTRES des paramètres obligatoires (zéro, vide, rien).
 NEUTRES = {
@@ -73,10 +76,23 @@ PARAMETRES_DES_FAMILLES = {
 }
 
 
+#: SPL260 — ``solar_design`` est découpé en modules frères (tarifs/finance,
+#: puis classification par SPL261) : le GROUPE est énuméré, jamais le seul
+#: fichier d'origine — une fonction déplacée reste couverte d'office.
+_MODULES_DU_GROUPE = (
+    'apps.ventes.solar_design',
+    'apps.ventes.solar_finance',
+    'apps.ventes.solar_classification',
+)
+
+
 def _fonctions_publiques():
+    modules = [importlib.import_module(chemin) for chemin in _MODULES_DU_GROUPE
+               if importlib.util.find_spec(chemin) is not None]
     return sorted(
-        (nom, fn) for nom, fn in inspect.getmembers(sd, inspect.isfunction)
-        if not nom.startswith('_') and fn.__module__ == sd.__name__)
+        (nom, fn) for module in modules
+        for nom, fn in inspect.getmembers(module, inspect.isfunction)
+        if not nom.startswith('_') and fn.__module__ == module.__name__)
 
 
 def _feuilles_numeriques(objet, chemin=''):
@@ -161,7 +177,7 @@ class NonInventionTest(unittest.TestCase):
 
 class FamillesOmisesTest(unittest.TestCase):
     def test_projection_sans_degradation_ni_actualisation(self):
-        res = sd.tariff_escalation_projection(
+        res = sf.tariff_escalation_projection(
             annual_savings_year1=12000, upfront_cost=80000)
         omis = {o['cle'] for o in res['omissions']}
         self.assertEqual(omis, {'degradation_rate', 'discount_rate'})
@@ -172,7 +188,7 @@ class FamillesOmisesTest(unittest.TestCase):
         self.assertEqual(res['summary']['escalation_rate'], 0.0)
 
     def test_projection_sans_actualisation_garde_le_tri(self):
-        res = sd.tariff_escalation_projection(
+        res = sf.tariff_escalation_projection(
             annual_savings_year1=12000, upfront_cost=80000,
             degradation_rate=0.005)
         self.assertIsNone(res['summary']['npv'])
@@ -180,7 +196,7 @@ class FamillesOmisesTest(unittest.TestCase):
         self.assertIsNone(res['schedule'][0]['discounted_savings'])
 
     def test_degradation_modules_omise(self):
-        res = sd.module_degradation_curve(10000)
+        res = sf.module_degradation_curve(10000)
         self.assertIsNone(res['schedule'][0]['production_factor'])
         self.assertIsNone(res['summary']['total_production_kwh'])
         self.assertIn('annual_degradation_rate',
@@ -218,7 +234,7 @@ class FamillesOmisesTest(unittest.TestCase):
         self.assertIsNone(choix['compatible'])
 
     def test_ppa_sans_degradation_non_calcule(self):
-        res = sd.ppa_model(annual_production_kwh=20000, ppa_tariff=0.9,
+        res = sf.ppa_model(annual_production_kwh=20000, ppa_tariff=0.9,
                            grid_tariff=1.4)
         self.assertIsNone(res['investor'])
         self.assertIn('degradation_rate', res['motif'])
@@ -561,15 +577,15 @@ class AppelantsInchangesTest(SimpleTestCase):
 
     def test_etude_projection_et_degradation(self):
         # ``apps/ventes/etude.py`` passe dégradation et actualisation.
-        res = sd.tariff_escalation_projection(
+        res = sf.tariff_escalation_projection(
             annual_savings_year1=12000.0, upfront_cost=80000.0,
-            horizon_years=5, degradation_rate=sd.DEFAULT_MODULE_DEGRADATION,
-            discount_rate=sd.DEFAULT_DISCOUNT_RATE)
+            horizon_years=5, degradation_rate=sf.DEFAULT_MODULE_DEGRADATION,
+            discount_rate=sf.DEFAULT_DISCOUNT_RATE)
         for cle in ('schedule', 'summary', 'warnings'):
             self.assertEqual(res[cle], AVANT['projection'][cle], cle)
-        deg = sd.module_degradation_curve(
+        deg = sf.module_degradation_curve(
             production_year1=10000.0, horizon_years=5,
-            annual_degradation_rate=sd.DEFAULT_MODULE_DEGRADATION)
+            annual_degradation_rate=sf.DEFAULT_MODULE_DEGRADATION)
         for cle in ('schedule', 'warranty_checks', 'summary', 'warnings'):
             self.assertEqual(deg[cle], AVANT['degradation'][cle], cle)
 

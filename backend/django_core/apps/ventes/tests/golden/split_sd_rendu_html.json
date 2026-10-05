@@ -1,0 +1,18 @@
+{
+  "rendu": {
+    "commercial_qx46_autre": "136bc821655099c80df2915427ccb0a55d601f7dae44680c8042dd72f88a9fc6",
+    "commercial_qx46_boulangerie": "1212aa6c3530f575b46922a57432d7e1f915bf0833fce212540be61da1626bde",
+    "commercial_qx46_bureau": "29c00eba3fcc2dbcf98216ad5e33811162871bf9486182fe14b58b674e8a68b2",
+    "commercial_qx46_commerce": "906a4df9c8148e50c6465d6db59750d10a987fe7bf498a4ca6c8d7731ffaa343",
+    "commercial_qx46_ecole": "7498bedb22d712a6aaf49f6904a939d2c777645bd6398cfb88d0e31ceb6402cc",
+    "commercial_qx46_froid": "831ea62d2c3a176789643addf041a81c3bfb9c57c75de834cdef24f076b5c669",
+    "commercial_qx46_hammam": "82fa0fa13630309eca8cdb6a8b7948b856b5f82ae95e25a45c9c94a85e419fa8",
+    "commercial_qx46_hotel": "72629ea4cf1f492593c538cab1c9b15a734550af21dd488b88d1af713c034e22",
+    "commercial_qx46_restaurant": "ba348053d9a717d5c78cf811a08cf244dac064561010b1de60d5fc6244888520",
+    "commercial_qx46_sante": "b84ffd0fb65af628a713eadee65bf60b8eec7af5ab512420192f28dec4d31de3",
+    "industriel_qx45": "f26ed229d6c9f81396e09c4849738c62336debf5d82e53741ba08a127a992731",
+    "residentiel_deux": "c8f9a70773f0bd5bf7e4f670c9d44e3a840b5516f7f4d5ce103f17f1085b1950",
+    "residentiel_long": "4304b0ef74481cc2b8fc1cdf0d56316ad1a7dac151d891703e95d5719065f055",
+    "residentiel_sans": "470999a371167e8bec524c862325d4c63efa937a1747e3a8d4f2ef1e091aa993"
+  }
+}

@@ -6,16 +6,16 @@
 //   node --test src/pages/ventes/DevisListVX222Relance.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import { lireSourcesDevisList } from './devisList/lireSources.mjs'
 
-const HERE = dirname(fileURLToPath(import.meta.url))
-const SRC = readFileSync(join(HERE, 'DevisList.jsx'), 'utf8')
+// SPL203 — DevisList.jsx + devisList/*.{js,jsx} (le code suit ses déplacements).
+const SRC = lireSourcesDevisList()
 
 test('VX222 : un bouton « Relancer » n\'apparaît que sur un devis « envoye »', () => {
-  const btn = SRC.slice(SRC.indexOf('VX222 — « Relancer »'),
-    SRC.indexOf('VX222 — « Relancer »') + 700)
+  // SPL203 — épingle sur le commentaire du BOUTON (DevisRow), unique dans les
+  // sources concaténées (le handler porte aussi « VX222 — « Relancer » »).
+  const btn = SRC.slice(SRC.indexOf('VX222 — « Relancer » : pendant devis'),
+    SRC.indexOf('VX222 — « Relancer » : pendant devis') + 700)
   assert.match(btn, /d\.statut === 'envoye'/)
   assert.match(btn, /onClick=\{\(\) => handleRelancer\(d\)\}/)
   assert.match(btn, /Relancer/)

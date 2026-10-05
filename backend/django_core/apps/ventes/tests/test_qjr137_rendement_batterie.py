@@ -26,6 +26,7 @@ from django.test import SimpleTestCase
 from apps.ventes import courbes_journalieres as CJ
 from apps.ventes import etude_horaire as EH
 from apps.ventes.horaire import batterie_lignes as BL
+from apps.ventes.horaire import conso as HC
 from apps.ventes.quote_engine.pricing import (
     BATTERY_ROUNDTRIP,
     cashflow_assumptions,
@@ -132,7 +133,7 @@ class MoteurHoraireTests(SimpleTestCase):
     VILLE = 'Casablanca'
 
     def _conso(self, mad=2500):
-        conso, _source, _detail = EH.profil_depuis_factures(
+        conso, _source, _detail = HC.profil_depuis_factures(
             facture_hiver_mad=mad)
         return conso
 

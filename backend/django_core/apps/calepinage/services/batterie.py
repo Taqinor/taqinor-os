@@ -129,7 +129,7 @@ def tranches_horaires():
     OFFERTES à l'écran pour proposer des heures ; elles ne s'appliquent pas
     toutes seules : ``decalage`` n'agit que sur des heures SAISIES.
     """
-    from apps.ventes.solar_design import DEFAULT_HOUR_TRANCHES
+    from apps.ventes.solar_finance import DEFAULT_HOUR_TRANCHES
 
     return list(DEFAULT_HOUR_TRANCHES)
 
@@ -684,7 +684,7 @@ def _tranches_par_pas(grille, longueur, heure_de_depart, mois):
     aucun sélecteur de ``ventes`` n'expose cette résolution, et ce module
     relit déjà ce fichier de la même façon (:func:`tranches_horaires`).
     """
-    from apps.ventes.solar_design import tranches_du_mois
+    from apps.ventes.solar_finance import tranches_du_mois
 
     parmois = {}
     tranches = []

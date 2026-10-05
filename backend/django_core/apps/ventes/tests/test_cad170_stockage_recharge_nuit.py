@@ -21,7 +21,7 @@ from pathlib import Path
 from django.test import SimpleTestCase
 
 from apps.ventes import courbes_journalieres as CJ
-from apps.ventes import etude_horaire as EH
+from apps.ventes.horaire import ve_nocturne as VE
 
 #: Catalogue de tailles vendues, volontairement irrégulier.
 TAILLES = (5.0, 10.0, 15.0, 20.0)
@@ -40,24 +40,24 @@ class LaRechargeNocturneEstIdentifiee(SimpleTestCase):
     def test_la_fenetre_par_defaut_est_nocturne(self):
         couches = _couches_ve()
         self.assertEqual(couches['ve']['heures'], list(CJ.VE_HEURES))
-        self.assertGreater(EH.recharge_ve_nocturne_kwh_jour(couches), 0)
+        self.assertGreater(VE.recharge_ve_nocturne_kwh_jour(couches), 0)
 
     def test_le_creneau_NUIT_declare_est_nocturne(self):
         couches = _couches_ve(creneau='nuit')
-        self.assertEqual(EH.recharge_ve_nocturne_kwh_jour(couches),
+        self.assertEqual(VE.recharge_ve_nocturne_kwh_jour(couches),
                          couches['ve']['kwh_jour'])
 
     def test_une_recharge_de_JOUR_n_entre_PAS_dans_le_stockage(self):
         couches = _couches_ve(creneau='jour')
-        self.assertEqual(EH.recharge_ve_nocturne_kwh_jour(couches), 0.0)
+        self.assertEqual(VE.recharge_ve_nocturne_kwh_jour(couches), 0.0)
 
     def test_une_recharge_du_SOIR_non_plus(self):
         couches = _couches_ve(creneau='soir')
-        self.assertEqual(EH.recharge_ve_nocturne_kwh_jour(couches), 0.0)
+        self.assertEqual(VE.recharge_ve_nocturne_kwh_jour(couches), 0.0)
 
     def test_sans_couche_vehicule_il_n_y_a_rien_a_couvrir(self):
-        self.assertEqual(EH.recharge_ve_nocturne_kwh_jour({}), 0.0)
-        self.assertEqual(EH.recharge_ve_nocturne_kwh_jour(None), 0.0)
+        self.assertEqual(VE.recharge_ve_nocturne_kwh_jour({}), 0.0)
+        self.assertEqual(VE.recharge_ve_nocturne_kwh_jour(None), 0.0)
 
 
 class LeBesoinDeStockageAUGMENTE(SimpleTestCase):
@@ -65,7 +65,7 @@ class LeBesoinDeStockageAUGMENTE(SimpleTestCase):
         """LE test de la tâche."""
         couches = _couches_ve()
         recharge = couches['ve']['kwh_jour']
-        sortie = EH.besoin_stockage_avec_recharge_ve(8.0, couches, TAILLES)
+        sortie = VE.besoin_stockage_avec_recharge_ve(8.0, couches, TAILLES)
         self.assertEqual(sortie['besoin_base_kwh'], 8.0)
         self.assertEqual(sortie['recharge_ve_kwh'], round(recharge, 2))
         self.assertAlmostEqual(sortie['besoin_total_kwh'],
@@ -73,7 +73,7 @@ class LeBesoinDeStockageAUGMENTE(SimpleTestCase):
 
     def test_la_taille_retenue_est_la_plus_petite_qui_COUVRE(self):
         couches = _couches_ve(km=100)   # ~2,83 kWh/jour
-        sortie = EH.besoin_stockage_avec_recharge_ve(8.0, couches, TAILLES)
+        sortie = VE.besoin_stockage_avec_recharge_ve(8.0, couches, TAILLES)
         self.assertGreaterEqual(sortie['taille_retenue_kwh'],
                                 sortie['besoin_total_kwh'])
         plus_petites = [t for t in TAILLES
@@ -84,7 +84,7 @@ class LeBesoinDeStockageAUGMENTE(SimpleTestCase):
 
     def test_un_besoin_hors_catalogue_est_PLAFONNE_et_le_DIT(self):
         couches = _couches_ve(km=1000)
-        sortie = EH.besoin_stockage_avec_recharge_ve(30.0, couches, TAILLES)
+        sortie = VE.besoin_stockage_avec_recharge_ve(30.0, couches, TAILLES)
         self.assertEqual(sortie['taille_retenue_kwh'], max(TAILLES))
         self.assertTrue(sortie['plafonne'])
         self.assertIn('catalogue', sortie['motif'])
@@ -92,12 +92,12 @@ class LeBesoinDeStockageAUGMENTE(SimpleTestCase):
     def test_jamais_une_capacite_HORS_catalogue(self):
         for km in (50, 100, 300, 700, 2000):
             couches = _couches_ve(km=km)
-            sortie = EH.besoin_stockage_avec_recharge_ve(8.0, couches, TAILLES)
+            sortie = VE.besoin_stockage_avec_recharge_ve(8.0, couches, TAILLES)
             self.assertIn(sortie['taille_retenue_kwh'], TAILLES, km)
 
     def test_sans_catalogue_aucune_taille_n_est_INVENTEE(self):
         couches = _couches_ve()
-        sortie = EH.besoin_stockage_avec_recharge_ve(8.0, couches, [])
+        sortie = VE.besoin_stockage_avec_recharge_ve(8.0, couches, [])
         self.assertIsNone(sortie['taille_retenue_kwh'])
         self.assertIn('catalogue', sortie['motif'])
         # Le BESOIN, lui, reste chiffré : c'est une omission nommée, pas un trou.
@@ -106,13 +106,13 @@ class LeBesoinDeStockageAUGMENTE(SimpleTestCase):
     def test_une_recharge_de_JOUR_ne_change_pas_le_besoin(self):
         """Non-régression : seule la recharge nocturne est couverte ici."""
         couches = _couches_ve(creneau='jour')
-        sortie = EH.besoin_stockage_avec_recharge_ve(8.0, couches, TAILLES)
+        sortie = VE.besoin_stockage_avec_recharge_ve(8.0, couches, TAILLES)
         self.assertEqual(sortie['recharge_ve_kwh'], 0.0)
         self.assertEqual(sortie['besoin_total_kwh'], 8.0)
         self.assertEqual(sortie['taille_retenue_kwh'], 10.0)
 
     def test_sans_vehicule_le_besoin_est_servi_comme_avant(self):
-        sortie = EH.besoin_stockage_avec_recharge_ve(12.0, {}, TAILLES)
+        sortie = VE.besoin_stockage_avec_recharge_ve(12.0, {}, TAILLES)
         self.assertEqual(sortie['recharge_ve_kwh'], 0.0)
         self.assertEqual(sortie['taille_retenue_kwh'], 15.0)
 
@@ -158,9 +158,9 @@ class LEchelleServieAuClientRespecteLePlancherVE(SimpleTestCase):
         from apps.ventes.domain.dimensionnement_devis import (
             _cibles_au_dessus_du_plancher_ve)
         couches = _couches_ve(km=600)
-        recharge = EH.recharge_ve_nocturne_kwh_jour(couches)
+        recharge = VE.recharge_ve_nocturne_kwh_jour(couches)
         self.assertGreater(recharge, 5.0)
-        plancher = EH.plancher_batterie_recharge_ve(0.0, couches, TAILLES)
+        plancher = VE.plancher_batterie_recharge_ve(0.0, couches, TAILLES)
         sortie = _cibles_au_dessus_du_plancher_ve(list(TAILLES), couches)
         self.assertTrue(sortie)
         self.assertGreaterEqual(min(sortie) + 0.05,

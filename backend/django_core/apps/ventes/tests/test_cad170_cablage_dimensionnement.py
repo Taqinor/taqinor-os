@@ -31,7 +31,7 @@ from io import StringIO
 from django.test import SimpleTestCase, TestCase
 
 from apps.ventes import courbes_journalieres as CJ
-from apps.ventes import etude_horaire as EH
+from apps.ventes.horaire import ve_nocturne as VE
 
 TAILLES = (5.0, 10.0, 15.0, 20.0)
 
@@ -47,23 +47,23 @@ def _couches(ve=True, creneau=None, km=300):
 
 class LePlancherEstUneFonctionDEtudeHoraire(SimpleTestCase):
     def test_sans_recharge_nocturne_aucun_plancher(self):
-        self.assertIsNone(EH.plancher_batterie_recharge_ve(
+        self.assertIsNone(VE.plancher_batterie_recharge_ve(
             5.0, _couches(ve=False), TAILLES))
-        self.assertIsNone(EH.plancher_batterie_recharge_ve(
+        self.assertIsNone(VE.plancher_batterie_recharge_ve(
             5.0, _couches(creneau='jour'), TAILLES))
-        self.assertIsNone(EH.plancher_batterie_recharge_ve(5.0, None, TAILLES))
+        self.assertIsNone(VE.plancher_batterie_recharge_ve(5.0, None, TAILLES))
 
     def test_le_plancher_est_la_plus_petite_taille_couvrant_base_plus_recharge(self):
         couches = _couches(km=300)
-        recharge = EH.recharge_ve_nocturne_kwh_jour(couches)
+        recharge = VE.recharge_ve_nocturne_kwh_jour(couches)
         self.assertGreater(recharge, 0)
-        sortie = EH.plancher_batterie_recharge_ve(5.0, couches, TAILLES)
+        sortie = VE.plancher_batterie_recharge_ve(5.0, couches, TAILLES)
         attendu = min(t for t in TAILLES if t >= 5.0 + recharge)
         self.assertEqual(sortie['taille_retenue_kwh'], attendu)
         self.assertFalse(sortie['plafonne'])
 
     def test_plafonne_a_la_plus_grande_taille_vendue(self):
-        sortie = EH.plancher_batterie_recharge_ve(
+        sortie = VE.plancher_batterie_recharge_ve(
             19.0, _couches(km=600), TAILLES)
         self.assertEqual(sortie['taille_retenue_kwh'], 20.0)
         self.assertTrue(sortie['plafonne'])
@@ -71,13 +71,13 @@ class LePlancherEstUneFonctionDEtudeHoraire(SimpleTestCase):
 
     def test_la_base_se_mesure_SANS_la_couche_ve_nocturne(self):
         couches = _couches()
-        sans = EH.equipements_sans_recharge_ve_nocturne(couches)
+        sans = VE.equipements_sans_recharge_ve_nocturne(couches)
         self.assertNotIn('ve', sans)
         self.assertIn('clim', sans)
         # Une recharge de JOUR n'est pas la couche nocturne : on la garde.
         jour = _couches(creneau='jour')
-        self.assertEqual(EH.equipements_sans_recharge_ve_nocturne(jour), jour)
-        self.assertIsNone(EH.equipements_sans_recharge_ve_nocturne(None))
+        self.assertEqual(VE.equipements_sans_recharge_ve_nocturne(jour), jour)
+        self.assertIsNone(VE.equipements_sans_recharge_ve_nocturne(None))
 
 
 class LeBalayageAppliqueLePlancher(TestCase):
@@ -106,7 +106,7 @@ class LeBalayageAppliqueLePlancher(TestCase):
 
     def test_lead_ve_nocturne_le_palier_couvre_base_plus_recharge_et_se_remplit(self):
         couches = _couches(km=150)
-        recharge = EH.recharge_ve_nocturne_kwh_jour(couches)
+        recharge = VE.recharge_ve_nocturne_kwh_jour(couches)
         resultat = self._recommander(couches)
         tableau = resultat['tableau']
         self.assertTrue(tableau)

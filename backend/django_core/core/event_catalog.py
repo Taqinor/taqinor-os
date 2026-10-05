@@ -65,6 +65,10 @@ CATALOG = {
         'La conception 3D d\'un devis est finalisée (création depuis un '
         'calepinage ou resynchronisation réussie) — aucun statut ne bouge.',
         ['devis', 'user']),
+    'devis_revise': _e(
+        'Un devis est révisé : sa V+1 est créée et l\'ancienne version est '
+        'remplacée (émis après commit, best-effort) — aucun statut ne bouge.',
+        ['ancien', 'nouveau', 'user']),
     'visite_validee': _e(
         'Une visite technique terrain reçoit le feu vert du bureau '
         'd\'études — aucun statut de funnel ne bouge. ``mesures_point_eau`` '

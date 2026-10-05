@@ -997,6 +997,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
     from apps.ventes.etude_horaire import (
         balayer_stockage_horaire,
         calculer_etude_horaire,
+    )
+    from apps.ventes.horaire.ve_nocturne import (
         equipements_sans_recharge_ve_nocturne,
         plancher_batterie_recharge_ve,
         recharge_ve_nocturne_kwh_jour,
@@ -1006,9 +1008,12 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         # MÊME lecture de fiches, jamais deux implémentations parallèles.
         puissances_batterie_des_lignes,
     )
-    from apps.ventes.domain.pipeline import (
-        ContexteSonde, composer_sonde, reglages_de_composition,
-        sonder_wattage)
+    from apps.ventes.domain.etape_composer import (
+        ContexteSonde,
+        composer_sonde,
+        reglages_de_composition,
+        sonder_wattage,
+    )
 
     mensuel = productible_mensuel(ville=ville, lat=lat, lon=lon)
     if not mensuel:

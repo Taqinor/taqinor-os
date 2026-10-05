@@ -5,12 +5,10 @@
 //   node --test src/pages/ventes/DevisListRefusMotif.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import { lireSourcesDevisList } from './devisList/lireSources.mjs'
 
-const HERE = dirname(fileURLToPath(import.meta.url))
-const SRC = readFileSync(join(HERE, 'DevisList.jsx'), 'utf8')
+// SPL203 — DevisList.jsx + devisList/*.{js,jsx} (le code suit ses déplacements).
+const SRC = lireSourcesDevisList()
 
 test('QX26 : plus aucun window.prompt pour le motif de refus', () => {
   assert.doesNotMatch(SRC, /window\.prompt\('Motif du refus/)

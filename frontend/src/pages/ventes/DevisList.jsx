@@ -1,71 +1,31 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Download, Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
-  Copy, Send, X, Eye, Search, AlertTriangle, Box, ExternalLink,
-  Link2, MoreHorizontal, Printer, Bell, Share2,
-  LayoutList, LayoutGrid,
+  Plus, Check,
+  Copy, X, AlertTriangle,
 } from 'lucide-react'
 import {
   fetchDevis,
-  genererPdfDevis,
   convertirDevisEnBC,
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
-import importApi from '../../api/importApi'
 import {
-  Button, Badge, StatusPill, Card, EmptyState, Spinner,
-  // APX12 — le langage UNIQUE des KPI d'argent.
-  Stat,
+  Button, Card, EmptyState, Spinner,
   Skeleton, SkeletonTableRow,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  RadioGroup, RadioGroupItem, Checkbox, Label, Input, Segmented, toast,
+  RadioGroup, RadioGroupItem, Checkbox, Label, Input, toast,
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
   Textarea,
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
-  DropdownMenuItem, DropdownMenuLabel,
-  // APX17 — les signaux secondaires du statut passent dans un Popover.
-  Popover, PopoverTrigger, PopoverContent,
 } from '../../ui'
-import { formatMAD, formatDateTime } from '../../lib/format'
-// NTI18N12 — calendrier hégirien EN PLUS de la date grégorienne (jamais en
-// remplacement, jamais stocké), uniquement quand locale=ar ET la préférence
-// utilisateur est active.
-import { formatWithHijri, shouldShowHijri } from '../../lib/hijriDate'
-import { useI18n } from '../../i18n'
-// VX156 — le devis envoyé porte la voix Taqinor (moment « devis envoyé »).
-import { voice } from '../../lib/voice'
-// VX155 — jalon « devis envoyé » : un cran au-dessus du toast succès plat.
-import { toastMilestone } from '../../lib/toast'
 // VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) filtre la liste sur les
 // membres de cette équipe — filtre client-side, aucun endpoint nouveau.
 import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
-import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
-import { openPdfBlob } from '../../utils/pdfBlob'
-import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
-import { clientProposalUrl } from '../../features/ventes/clientProposalLink'
-// QJR624 — l'acompte personnalisé du dialogue PDF s'écrit dans l'échéancier.
-import { echeancierAvecAcompte } from '../../features/ventes/echeancierEdition'
-// Incident fondateur 01/09 (round 2) — le moteur premium REFUSE 'full' quand
-// AUCUNE ligne du devis ne porte un onduleur classifié (« Devis {ref} :
-// aucune option ne contient d'onduleur — génération du PDF à options refusée
-// (règle de sécurité). », apps/ventes/quote_engine/builder.py ligne ~1176) :
-// un devis « Composition libre » (accessoiresOnly) sans onduleur atterrissait
-// tout droit sur ce refus. Le devis liste porte déjà `d.lignes` (RoofViewer
-// les lit) — même prédicats que la garde de DevisGenerator.validate(), aucun
-// nouveau champ backend (`variantes_servables` n'existe pas côté ERP,
-// uniquement côté /proposal public).
-import { isReseauInverter, isHybridInverter, isOffgridInverter } from '../../features/ventes/solar'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
-import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
-import { useRotatingLabel } from '../../hooks/useRotatingLabel'
 import { useHasPermission, useCanValiderVente, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
-import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
 // VX248 — raccourci d'ACTION sur le devis focalisé (le deep-link ?devis=,
 // même « record focalisé » que la surbrillance de ligne existante).
 import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
@@ -75,31 +35,28 @@ import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 // mais DEPUIS <DealSignedCelebration> lui-même.
 import DealSignedCelebration from '../../ui/DealSignedCelebration'
 import { DataTable } from '../../ui/datatable'
-import RoofViewer from './RoofViewer'
-// ANALYT1 — panneau « Lecture par le client » (visites par section + friction).
-import DevisSuiviPartagePanel from './DevisSuiviPartagePanel'
-// PV43 — panneau « Conception électrique » (chaînes/conformité/schéma/surcharges).
-import ConceptionElectrique from '../../features/ventes/ConceptionElectrique'
-// PV76 — carte « Étude bancable » (P50/P90/PR/cascade/payback/VAN/TRI).
-import EtudeBancable from '../../features/ventes/EtudeBancable'
 import { StateBlock } from '../../components/StateBlock'
-import DocumentStageTrack from '../../ui/DocumentStageTrack'
-// APX13 — la piste devis→BC→facture, définie UNE fois pour les 3 écrans.
-import { DOC_STATUT_TRACK } from '../../features/ventes/documentChain'
 // APX14 — aperçu PDF INLINE (panneau latéral) : plus d'onglet à quitter.
 import PdfPreviewSheet from '../../features/ventes/PdfPreviewSheet'
 // APX15 — le VRAI board Ventes : les devis par statut DOCUMENT (règle #4).
 import DevisKanbanBoard from './DevisKanbanBoard'
 // APX17 — confirmation maison (VX19/L152), jamais une popup du système.
 import { useConfirmDialog } from '../../ui/confirm'
-// APX11 — l'en-tête UNIQUE de l'app (VX28) remplace l'idiome legacy.
-import { PageHeader } from '../../ui/PageHeader'
-// APX11 — identité Ventes : accent brass posé sur l'en-tête des écrans de flux.
-import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import {
-  peutEditerDevis, chantierEnCours, STATUT_DEVIS_LABELS, STATUT_DEVIS_FILTRES,
+  peutEditerDevis, chantierEnCours,
 } from '../../features/ventes/devisStatuts'
-import { reviserEtOuvrir } from '../../features/ventes/reviserDevis'
+// SPL203 — la ligne de la liste vit dans son propre fichier (move only).
+import DevisRow from './devisList/DevisRow.jsx'
+import { STATUT_DISPLAY, DL_ECRAN } from './devisList/devisListConstants.js'
+// SPL204 — flux PDF et son dialogue (move only).
+import { useDevisPdf } from './devisList/useDevisPdf.js'
+import DevisPdfDialog from './devisList/DevisPdfDialog.jsx'
+import { frenchError, useDevisListSynthese } from './devisList/devisListHelpers.js'
+// SPL205 — parcours d'envoi et ses dialogues (move only).
+import { useDevisEnvoi } from './devisList/useDevisEnvoi.js'
+import EnvoiDialogs from './devisList/EnvoiDialogs.jsx'
+// SPL206 — en-tête de page (titre, synthèse KPI, filtres, barre de lot).
+import DevisListChrome, { DevisPageHeader } from './devisList/DevisListChrome.jsx'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
@@ -132,21 +89,6 @@ function DevisTableSkeleton() {
   )
 }
 
-// WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
-const DL_ECRAN = 'ventes.devis'
-
-// VX132 — chargement long CONSCIENT : la génération du devis PDF premium est
-// la latence connue la plus longue de l'app (schémas, produits, chiffrage) ;
-// un spinner MUET pendant tout ce temps ne dit rien d'utile. Libellés
-// honnêtes qui tournent pendant l'attente — ne touche QUE ce bouton côté
-// client, jamais le moteur `apps/ventes/quote_engine/` (règle #4).
-const PDF_GENERATION_LABELS = [
-  'Génération du PDF…',
-  'Mise en page des schémas…',
-  'Calcul du système…',
-  'Finalisation du document…',
-]
-
 // ── ARC49 — Colonnes du frame `ui/datatable` en mode « ligne custom ».
 // L'écran rend chaque ligne via `renderRow` (<DevisRow>), donc ces définitions
 // ne servent qu'à décrire la grille au moteur (identité de colonnes) : aucun
@@ -162,1197 +104,12 @@ const DEVIS_DT_COLUMNS = [
   { id: 'actions', header: 'Actions', sortable: false, hideable: false, reorderable: false },
 ]
 
-// QJR654 — libellés et filtres de statut : la table unique (devisStatuts.js).
-const STATUT_DISPLAY = STATUT_DEVIS_LABELS
-
 // VX141 — piste `<DocumentStageTrack>` : couche STATUTS DOCUMENT (règle #4)
 // uniquement — brouillon/envoyé/accepté puis BC/facturé/chantier. Jamais les
 // stages STAGES.py du funnel CRM (règle #2) : aucune clé de stage n'est
 // importée ici, les deux couches ne se mélangent jamais.
 // APX13 — la piste est désormais partagée avec FactureList et la liste des
 // bons de commande (`features/ventes/documentChain.js`) : UNE définition.
-
-// Filtres segmentés (statut) : « Tous » + les 5 statuts visibles.
-const STATUT_FILTERS = STATUT_DEVIS_FILTRES
-
-// Extrait un message d'erreur lisible (français) d'une réponse DRF. Couvre
-// {detail}, les erreurs de champ ({statut: [...]} — ex. garde de remise T17),
-// et retombe sur un message générique sinon. Ne JAMAIS afficher de JSON brut.
-function frenchError(err, fallback) {
-  const data = err?.response?.data ?? err
-  if (typeof data === 'string') return data
-  if (data && typeof data === 'object') {
-    if (data.detail) return String(data.detail)
-    const first = Object.values(data).find(Boolean)
-    if (Array.isArray(first) && first.length) return String(first[0])
-    if (typeof first === 'string') return first
-  }
-  return fallback
-}
-
-// Nombre de jours calendaires entre aujourd'hui et une date ISO (peut être
-// négatif). null si la date est absente/invalide.
-function daysUntil(isoDate) {
-  if (!isoDate) return null
-  const target = new Date(isoDate)
-  if (Number.isNaN(target.getTime())) return null
-  const today = new Date()
-  const a = Date.UTC(target.getFullYear(), target.getMonth(), target.getDate())
-  const b = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
-  return Math.round((a - b) / 86400000)
-}
-
-// VX222 — « Relancer ce devis » : à partir de l'aperçu WhatsApp EXISTANT (même
-// modale, mêmes données), on remplace UNIQUEMENT le texte du message wa.me par
-// un RAPPEL (« petit rappel concernant votre devis ») au lieu de l'envoi
-// initial. On réutilise le numéro déjà normalisé côté serveur (base de
-// `waData.wa_url`, avant le `?text=`) + le lien public déjà émis (`waData.url`),
-// donc aucun backend ni duplication de logique de téléphone. Aperçu-puis-clic :
-// rien n'est envoyé automatiquement (règle manuel-wa.me fondateur).
-function buildRelanceMessage(waData, reference) {
-  const lien = waData?.url || ''
-  return `Bonjour, petit rappel concernant votre devis ${reference || ''}${lien ? ' : ' + lien : ''}`.trim()
-}
-function buildRelanceWaUrl(waData, reference) {
-  if (!waData?.wa_url) return null
-  const base = waData.wa_url.split('?')[0]   // https://wa.me/<numéro normalisé>
-  return `${base}?text=${encodeURIComponent(buildRelanceMessage(waData, reference))}`
-}
-
-// XSAL16 — libellés FR des sections suivies sur la proposition web (miroir de
-// `_ENGAGEMENT_SECTIONS` côté serveur, apps/ventes/public/lecture_views.py).
-// source-choix: ventes.public.lecture_views._ENGAGEMENT_SECTIONS
-const ENGAGEMENT_LABELS = {
-  hero: 'accueil', prix: 'prix', etude: 'étude', garanties: 'garanties', signature: 'signature',
-}
-
-// Résume l'engagement par section en une phrase courte (« 2 min sur le prix,
-// 30 s sur l'étude ») — null sans aucune section suivie (comportement QJ1
-// inchangé, aucun badge affiché).
-function engagementSummary(engagement) {
-  const entries = Object.entries(engagement || {}).filter(([, v]) => v?.seconds > 0)
-  if (entries.length === 0) return null
-  entries.sort((a, b) => b[1].seconds - a[1].seconds)
-  return entries.map(([section, v]) => {
-    const label = ENGAGEMENT_LABELS[section] ?? section
-    const mins = Math.round(v.seconds / 60)
-    const duree = mins >= 1 ? `${mins} min` : `${v.seconds} s`
-    return `${duree} sur ${label}`
-  }).join(' · ')
-}
-
-// ── ARC49 — Modale de génération PDF de la LISTE (formats du simulateur). ──
-// Extraite telle quelle de DevisList (« lignes divisées ») : mêmes contrôles,
-// mêmes libellés, MÊMES options envoyées à `generer-pdf`/`clean_pdf_options`
-// (règle #4 — la migration ne touche QUE le découpage du rendu, jamais le flux
-// PDF). Toute la logique de valeur reste dans `buildPdfOptions` côté parent.
-function DevisPdfDialog({
-  pdfTarget, batchPdf, selectedIds,
-  pdfMode, setPdfMode, pdfModeAutoOnepage, targetIsAgricole,
-  showMonthly, setShowMonthly,
-  targetHasEtude, includeEtude, setIncludeEtude,
-  includeCalepinage, setIncludeCalepinage,
-  devisFinal, setDevisFinal,
-  paymentMode, setPaymentMode,
-  customAcompte, setCustomAcompte,
-  onClose, onGenererLot, onGenererUn,
-}) {
-  return (
-    <ResponsiveDialog
-      open={!!pdfTarget || batchPdf}
-      onOpenChange={(o) => { if (!o) onClose() }}
-      title={batchPdf
-        ? `Générer le PDF — ${selectedIds.length} devis (format partagé)`
-        : `Générer le PDF — ${pdfTarget?.reference}`}
-      footer={(
-        <>
-          <Button variant="ghost" onClick={onClose}>Annuler</Button>
-          <Button onClick={() => (batchPdf ? onGenererLot() : onGenererUn(pdfTarget))}>
-            <FileText /> Générer
-          </Button>
-        </>
-      )}
-    >
-        <div className="flex flex-col gap-4">
-          <div className="grid gap-2">
-            <Label>Format</Label>
-            <RadioGroup value={pdfMode} onValueChange={setPdfMode} className="flex flex-col gap-2">
-              <label className="flex items-start gap-2 text-sm">
-                <RadioGroupItem value="full" className="mt-0.5" />
-                <span>
-                  {targetIsAgricole
-                    ? 'Devis premium (4 pages — étude, schéma, rentabilité, garanties)'
-                    : 'Devis premium (3 pages — options, analyse, garanties)'}
-                </span>
-              </label>
-              <label className="flex items-start gap-2 text-sm">
-                <RadioGroupItem value="onepage" className="mt-0.5" />
-                <span>Devis une page (liste produits uniquement, sans graphiques)</span>
-              </label>
-            </RadioGroup>
-            {/* Incident fondateur 01/09 round 2 — hint SEUL (jamais bloquant) :
-                le format une page a été présélectionné parce qu'aucune ligne
-                de ce devis ne classe d'onduleur (devis « Composition libre »
-                ou accessoires/main-d'œuvre). Disparaît dès que l'utilisateur
-                choisit lui-même 'full' (règle : jamais un message qui ne
-                correspond plus au choix affiché). */}
-            {pdfModeAutoOnepage && pdfMode === 'onepage' && !batchPdf && (
-              <p className="text-xs text-muted-foreground">
-                Options non détectées — format une page présélectionné (aucun onduleur sur ce devis).
-              </p>
-            )}
-          </div>
-
-          {pdfMode === 'full' && !targetIsAgricole && (
-            <label className="flex items-start gap-2 text-sm">
-              <Checkbox checked={showMonthly} onCheckedChange={v => setShowMonthly(!!v)} className="mt-0.5" />
-              <span>Économies mensuelles <span className="text-muted-foreground">(graphique mensuel page 2)</span></span>
-            </label>
-          )}
-
-          {pdfMode === 'full' && !batchPdf && !targetIsAgricole && (
-            <label className="flex items-start gap-2 text-sm aria-disabled:opacity-50" aria-disabled={!targetHasEtude}>
-              {/* T13 — case désactivée sans données d'étude (note explicative). */}
-              <Checkbox
-                checked={includeEtude && targetHasEtude}
-                disabled={!targetHasEtude}
-                onCheckedChange={v => setIncludeEtude(!!v)}
-                className="mt-0.5"
-              />
-              <span>
-                Inclure l'étude <span className="text-muted-foreground">(page autoconsommation — devis industriel)</span>
-                {!targetHasEtude && (
-                  <span className="block text-xs text-muted-foreground">
-                    Aucune donnée d'étude sur ce devis — option indisponible.
-                  </span>
-                )}
-              </span>
-            </label>
-          )}
-
-          {/* CAL184 — page « Calepinage » (planche cotée). TRI-ÉTAT : l'écran
-              n'invente aucune valeur par défaut, parce qu'il ne sait pas si ce
-              devis porte un calepinage dessinable — le serveur, lui, le sait.
-              « Automatique » lui laisse la main ; « Oui »/« Non » tranchent et
-              priment sur l'auto (whitelist `include_calepinage`, CAL183). */}
-          {pdfMode === 'full' && (
-            <div className="grid gap-2" data-testid="cal184-calepinage">
-              <Label>Calepinage</Label>
-              <RadioGroup
-                value={includeCalepinage}
-                onValueChange={setIncludeCalepinage}
-                className="flex flex-col gap-2"
-              >
-                <label className="flex items-start gap-2 text-sm">
-                  <RadioGroupItem value="auto" className="mt-0.5" />
-                  <span>
-                    Automatique
-                    <span className="text-muted-foreground"> (page ajoutée si ce devis porte un calepinage)</span>
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-sm">
-                  <RadioGroupItem value="oui" className="mt-0.5" />
-                  <span>Inclure la planche cotée</span>
-                </label>
-                <label className="flex items-start gap-2 text-sm">
-                  <RadioGroupItem value="non" className="mt-0.5" />
-                  <span>Ne pas inclure</span>
-                </label>
-              </RadioGroup>
-            </div>
-          )}
-
-          <label className="flex items-start gap-2 text-sm">
-            <Checkbox checked={devisFinal} onCheckedChange={v => setDevisFinal(!!v)} className="mt-0.5" />
-            <span>Devis Final <span className="text-muted-foreground">(ajoute modalités de paiement + RIB)</span></span>
-          </label>
-
-          {devisFinal && (
-            <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/40 p-3">
-              <RadioGroup value={paymentMode} onValueChange={setPaymentMode} className="flex flex-col gap-2">
-                <label className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem value="standard" />
-                  <span>Échéancier du devis</span>
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem value="custom" />
-                  <span>Acompte personnalisé <span className="text-muted-foreground">(enregistré dans l'échéancier du devis)</span></span>
-                </label>
-              </RadioGroup>
-              {paymentMode === 'custom' && (
-                <div className="grid gap-1.5">
-                  <Label htmlFor="pdf-acompte">Montant acompte (MAD)</Label>
-                  <Input id="pdf-acompte" type="number" min="0" step="any"
-                         value={customAcompte} onChange={e => setCustomAcompte(e.target.value)} />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-    </ResponsiveDialog>
-  )
-}
-
-// ── ARC49 — Ligne de la liste des devis (« lignes divisées »). Extraite VERBATIM
-// du corps de `filteredDevis.map(...)` : mêmes `<tr>`, mêmes `data-label`, mêmes
-// boutons d'action VISIBLES (états `loading` individuels), mêmes deux panneaux
-// dépliables (versions / design 3D), mêmes appels API. Tout l'état et les
-// handlers viennent du parent via `ctx` — aucune logique n'est déplacée ni
-// modifiée. Le tableau reste `table.data-table` (contrat de test + carte mobile).
-function DevisRow({ d, ctx }) {
-  const {
-    selectedIds, toggleSelected,
-    versionsOpenId, roofOpenId, setRoofOpenId,
-    // WIR225 - comparaison des variantes servie par le serveur.
-    variantesEtat, basculerVersions,
-    histoOpenId, toggleHistorique, histoCache, histoLoadingId,
-    // WIR274 - composeur de note manuelle sur le panneau Historique.
-    peutNoter, noteBrouillon, ecrireNote, publierNote, noteBusyId,
-    suiviOpenId, toggleSuiviPartage,
-    lectureClientCache, canSeeLectureClient,
-    conceptionOpenId, setConceptionOpenId,
-    etudeOpenId, setEtudeOpenId,
-    navigate, dispatch,
-    role, canDelete, canValiderVente, canSeePublicite, highlightId,
-    deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
-    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, factureGenId,
-    openEdit, openVarianteModal, openGammeModal, handleDelete, handleEnvoyer, handleRelancer,
-    handleContacterSuperieur,
-    openEmailModal, handleCopierLienProposition, handleCopierApercuInterne, copierLienInterne, handlePreview, openPdfModal,
-    handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
-    handleProformaPdf, handleBonCommandePdf,
-    handleChantier, handleGenererFacture,
-  } = ctx
-  // NTI18N12 — calendrier hégirien EN PLUS de la date grégorienne (jamais en
-  // remplacement, jamais stocké) : uniquement quand locale=ar ET la
-  // préférence utilisateur `calendrier_hegirien` est active.
-  const { locale } = useI18n()
-  const calendrierHegirien = useSelector((s) => s.auth.user?.calendrier_hegirien)
-  const afficherHegirien = shouldShowHijri({ locale, calendrierHegirien })
-  // Expiration calculée à la volée (T7) : un devis en attente dont la
-  // date de validité est dépassée s'affiche « Expiré » sans changer
-  // son statut stocké ni l'étape du lead.
-  const effStatut = d.is_expired ? 'expire' : d.statut
-  // VX141 — parcours DOCUMENT (règle #4) affiché par <DocumentStageTrack> à
-  // côté du StatusPill : brouillon/envoyé sont pilotés par `d.statut` ; passé
-  // l'acceptation, `d.statut` reste figé à 'accepte' (règle #4 — les statuts
-  // Devis/BC/Facture sont préservés 1:1) donc la piste avance via la présence
-  // du BC / d'une facture liée / d'un chantier, jamais via `d.statut` lui-même.
-  // refuse/expire = statuts terminaux NÉGATIFS : la piste s'arrête au dernier
-  // jalon positif (envoyé) sans jamais franchir « Accepté ».
-  const docTrackCurrent = (d.statut === 'refuse' || d.statut === 'expire' || d.is_expired)
-    ? 'envoye'
-    : d.statut === 'brouillon' ? 'brouillon'
-      : d.statut === 'envoye' ? 'envoye'
-        : chantierEnCours(d.chantier) ? 'chantier'
-          : (d.factures_liees?.length > 0) ? 'facture'
-            : d.bon_commande_etat?.exists ? 'bc'
-              : 'accepte'
-  const docTrackBlocked = d.bon_commande_etat?.mismatch ? ['bc'] : []
-
-  // APX17 — les signaux SECONDAIRES du statut, rassemblés au lieu d'être
-  // empilés dans la cellule (hauteur de ligne stable + scroll juste au-delà
-  // de ~100 devis). Aucun signal n'est perdu : ils sont tous dans le Popover
-  // « Détails », et l'anomalie de BC reste visible sur la ligne elle-même.
-  const statutDetails = [
-    d.statut === 'accepte' && d.option_acceptee ? (
-      <span className="text-success">
-        Option : {d.option_acceptee === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie'}
-      </span>
-    ) : null,
-    /* QJ22 — « Proposition signée » : un DevisSignature (loi 53-05) existe. */
-    d.est_signe ? (
-      <span className="inline-flex items-center gap-1 font-medium text-success">
-        <Check className="size-3" aria-hidden="true" />
-        Proposition signée
-        {d.signature_info?.signataire_nom ? ` — ${d.signature_info.signataire_nom}` : ''}
-        {d.signature_info?.signed_at ? ` le ${formatDateTime(d.signature_info.signed_at)}` : ''}
-      </span>
-    ) : null,
-    /* U8 — état du bon de commande lié (lecture seule, OneToOne existant). */
-    d.bon_commande_etat?.exists ? (
-      <span className="text-muted-foreground">BC : {d.bon_commande_etat.statut_display}</span>
-    ) : null,
-    d.bon_commande_etat?.mismatch ? (
-      <span className="inline-flex items-start gap-1 font-medium text-warning">
-        <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-        {d.bon_commande_etat.exists
-          ? 'Devis accepté mais BC annulé'
-          : 'Devis accepté sans bon de commande'}
-      </span>
-    ) : null,
-    /* VX215 — boucle « pris en charge » après « Contacter mon supérieur ». */
-    superieurStatus[d.id]?.requested ? (
-      <span
-        data-testid={`superieur-status-${d.id}`}
-        className={`inline-flex items-center gap-1 font-medium ${
-          superieurStatus[d.id].seen ? 'text-success' : 'text-muted-foreground'
-        }`}
-      >
-        {superieurStatus[d.id].seen ? <Check className="size-3 shrink-0" aria-hidden="true" /> : null}
-        {superieurStatus[d.id].seen
-          ? `Pris en charge${superieurStatus[d.id].seen_by?.[0] ? ' par ' + superieurStatus[d.id].seen_by[0] : ''}`
-          : 'Avis demandé — en attente'}
-      </span>
-    ) : null,
-  ].filter(Boolean)
-
-  const isGenerating = pdfGenerating[d.id]
-  // VX132 — chargement long conscient : libellés honnêtes qui tournent
-  // pendant la génération du PDF premium (jamais de fausse barre de progression).
-  const pdfLabel = useRotatingLabel(PDF_GENERATION_LABELS, { active: !!isGenerating })
-  const isDownloading = pdfDownloading[d.id]
-  // QX21 — passé 30 s, on n'abandonne plus le suivi : ce badge reste visible
-  // tant que le polling se poursuit (aucun second job n'est jamais relancé
-  // en dessous).
-  const isSlowPolling = !!pdfSlowPoll[d.id]
-  return (
-    <Fragment key={d.id}>
-    {/* QX12 — deep-link ?devis=<pk> : la ligne ciblée porte un id ancrable et
-        un surlignage temporaire (l'effet de page scrolle jusqu'à cet id). */}
-    <tr id={`devis-row-${d.id}`}
-        style={highlightId === d.id
-          ? { outline: '2px solid var(--color-primary, #2563eb)', outlineOffset: '-2px' }
-          : undefined}>
-      <td>
-        <Checkbox
-          checked={selectedIds.includes(d.id)}
-          onCheckedChange={() => toggleSelected(d.id)}
-          aria-label={`Sélectionner ${d.reference}`}
-        />
-      </td>
-      <td data-testid={`ref-cell-${d.id}`}>
-        {/* VX140 — cellule Référence à 2 niveaux : ligne 1 = référence + badges
-            de version en gras ; ligne 2 = métadonnées compactes (versions,
-            consultation, engagement) séparées par « · », muted, text-xs ;
-            chips de documents liés en dessous (rendues, pas title-only, pour
-            ne pas casser les tests U5 qui vérifient leur texte visible). */}
-        <div className="text-sm font-semibold">
-          {d.reference}
-          {d.version > 1 && (
-            <Badge tone="primary" className="ml-1.5">v{d.version}</Badge>
-          )}
-          {/* U7 — une révision remplacée (is_active=False) porte un
-              badge « Remplacé » explicite ; le lien ouvre l'historique
-              des versions (qui pointe vers la version courante). */}
-          {d.is_active === false && (
-            <Badge tone="neutral" className="ml-1.5">Remplacé</Badge>
-          )}
-        </div>
-        {/* WIR225 — `a_variantes` entre AUSSI dans la garde de la zone de
-            métadonnées : sans lui, la racine d'un groupe de variantes n'avait
-            même pas de 2e ligne, donc pas d'entrée « Voir les versions ». */}
-        {(d.superseded_by_ref
-          || d.version > 1 || d.version_parent_ref || d.a_variantes
-          || d.deja_consulte || engagementSummary(d.engagement)) && (
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-            {d.superseded_by_ref && (
-              <span className="text-warning">
-                remplacé par{' '}
-                <button
-                  type="button"
-                  className="font-medium underline hover:no-underline"
-                  onClick={() => basculerVersions(d.id)}
-                  title="Voir la version qui remplace ce devis"
-                >
-                  {d.superseded_by_ref}
-                </button>
-              </span>
-            )}
-            {d.superseded_by_ref
-              && (d.version > 1 || d.version_parent_ref || d.deja_consulte
-                || engagementSummary(d.engagement)) && <span aria-hidden="true">·</span>}
-            {/* WIR225 — `a_variantes` (serveur) décrit le côté RACINE : les
-                trois autres champs ne parlent que du côté ENFANT, si bien que
-                la racine d'un groupe perdait son entrée « Voir les versions »
-                au premier rechargement — la comparaison n'était atteignable
-                que juste après la création. */}
-            {(d.version > 1 || d.superseded_by_ref || d.version_parent_ref
-              || d.a_variantes) && (
-              <button
-                type="button"
-                className="text-primary hover:underline"
-                onClick={() => basculerVersions(d.id)}
-              >
-                {versionsOpenId === d.id ? 'Masquer les versions' : 'Voir les versions'}
-              </button>
-            )}
-            {(d.version > 1 || d.version_parent_ref)
-              && (d.deja_consulte || engagementSummary(d.engagement)) && <span aria-hidden="true">·</span>}
-            {/* QJ1 — Badge de consultation : affiché quand le lien public
-                a été ouvert au moins une fois. Nombre de vues + date. */}
-            {d.deja_consulte && (
-              <span
-                className="inline-flex items-center gap-1 font-medium text-primary"
-                title={d.derniere_consultation
-                  ? `Dernière ouverture : ${formatDateTime(d.derniere_consultation)}`
-                  : 'Document consulté'}
-              >
-                <Eye className="size-3" aria-hidden="true" />
-                Consulté ×{d.nombre_vues ?? 1}
-              </span>
-            )}
-            {d.deja_consulte && engagementSummary(d.engagement) && <span aria-hidden="true">·</span>}
-            {/* XSAL16 — résumé d'engagement par section de la proposition
-                web (« a passé 2 min sur le prix, n'a pas ouvert l'étude »).
-                Vide sans beacon (déjà serialisé, comportement QJ1 inchangé). */}
-            {engagementSummary(d.engagement) && (
-              <span title="Temps passé par section sur la proposition en ligne">
-                {engagementSummary(d.engagement)}
-              </span>
-            )}
-          </div>
-        )}
-        {/* U5 — Documents générés depuis ce devis : factures (chips
-            cliquables → liste Factures) + bon de commande (→ BC).
-            Lecture seule, données du serializer. */}
-        {(d.factures_liees?.length > 0 || d.bon_commande_etat?.exists) && (
-          <div
-            className="mt-1 flex flex-wrap gap-1"
-            title="Documents liés à ce devis"
-          >
-            {d.bon_commande_etat?.exists && (
-              <button
-                type="button"
-                onClick={() => navigate('/ventes/bons-commande')}
-                title={`Bon de commande ${d.bon_commande_etat.reference} — ${d.bon_commande_etat.statut_display}`}
-                className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-xs font-medium hover:bg-muted"
-              >
-                <FileStack className="size-3" aria-hidden="true" />
-                {d.bon_commande_etat.reference}
-              </button>
-            )}
-            {(d.factures_liees ?? []).map(f => (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => navigate('/ventes/factures')}
-                title={`Facture ${f.reference} — ${f.statut_display}`}
-                className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success hover:bg-success/20"
-              >
-                <FileText className="size-3" aria-hidden="true" />
-                {f.reference} · {f.statut_display}
-              </button>
-            ))}
-          </div>
-        )}
-        {/* VX216(a) — rend le seam devis↔chantier VISIBLE côté vendeur (avant,
-            seul InstallationDetail.jsx le détectait). Un chantier en cours a
-            sa nomenclature (bom) GELÉE : éditer ce devis maintenant crée un
-            écart que l'installateur découvrira seul sur le terrain. */}
-        {chantierEnCours(d.chantier) && (
-          <div
-            className="mt-1 inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning"
-            title="La nomenclature de ce chantier est gelée — éditer ce devis peut créer un écart devis↔chantier"
-          >
-            <AlertTriangle className="size-3" aria-hidden="true" />
-            Chantier en cours (compo gelée)
-          </div>
-        )}
-      </td>
-      <td data-label="Client">
-        {/* VX7 — calm color : le nom client est une donnée PRIMAIRE (contraste
-            plein + poids medium), il ressort du chrome désaturé environnant. */}
-        <span className="inline-flex items-center gap-1.5">
-          <span className="font-medium text-foreground">{d.client_nom ?? '—'}</span>
-        </span>
-        {d.lead && (
-          <div className="mt-1">
-            <button
-              type="button"
-              title={[
-                'Ouvrir le lead lié',
-                d.lead_type_installation
-                  ? `Type : ${d.lead_type_installation}` : null,
-                d.lead_facture_hiver != null
-                  ? `Facture hiver : ${formatMAD(d.lead_facture_hiver)}` : null,
-              ].filter(Boolean).join('\n')}
-              onClick={() => navigate(`/crm/leads?lead=${d.lead}`)}
-              className="inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning hover:bg-warning/20"
-            >
-              ↗ {d.lead_nom ?? 'Lead'}
-            </button>
-            {/* PUB53 — traçabilité retour : ce devis vient (via son lead) d'une
-                ad Meta → lien direct vers sa fiche « histoire complète »
-                (PUB44). Gaté aux rôles qui voient /publicite. */}
-            {d.lead_meta_ad_id && canSeePublicite && (
-              <a
-                href={`/publicite/ad/${encodeURIComponent(d.lead_meta_ad_id)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Ouvrir la fiche de l'annonce Meta à l'origine de ce lead"
-                className="ml-1 inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/20"
-              >
-                📣 Vient de la pub
-              </a>
-            )}
-          </div>
-        )}
-      </td>
-      {/* VX7 — calm color : les dates sont des métadonnées secondaires → mutées
-          (le contraste plein est réservé au client, au total TTC et au statut). */}
-      <td data-label="Créé le" className="text-muted-foreground">
-        {afficherHegirien
-          ? (formatWithHijri(d.date_creation) || new Date(d.date_creation).toLocaleDateString('fr-FR'))
-          : new Date(d.date_creation).toLocaleDateString('fr-FR')}
-      </td>
-      <td className="m-hide text-muted-foreground">
-        {d.date_validite
-          ? new Date(d.date_validite).toLocaleDateString('fr-FR')
-          : '—'}
-      </td>
-      <td className="ta-right tabular-nums" data-label="Total TTC">
-        {/* PVAB (fondateur 20/08) — devis à deux options : les DEUX totaux,
-            « sans / avec » batterie, jamais un montant qui n'existe dans aucun
-            document. Repli : total_affiche (option 1), puis total stocké. */}
-        {d.nb_options === 2
-         && d.comparaison_options?.sans?.ttc != null
-         && d.comparaison_options?.avec?.ttc != null
-          ? (
-            // QA-FIGURES — `data-figure` (clés : apps/ventes/quote_engine/
-            // figures.py) : parité liste / PDF / page publique / API.
-            <>
-              <span data-figure="total_ttc" data-figure-option="sans">{formatMAD(d.comparaison_options.sans.ttc)}</span>
-              {' / '}
-              <span data-figure="total_ttc" data-figure-option="avec">{formatMAD(d.comparaison_options.avec.ttc)}</span>
-            </>
-          )
-          : ((d.total_affiche ?? d.total_ttc) != null
-              ? <span data-figure="total_affiche">{formatMAD(d.total_affiche ?? d.total_ttc)}</span>
-              : '—')}
-        {d.nb_options === 2 && (
-          <Badge tone="warning" className="ml-1.5"
-                 title="Devis à deux options — sans batterie / avec batterie, remise incluse">
-            2 options
-          </Badge>
-        )}
-        {d.solde && (
-          <div className="mt-1 text-xs text-muted-foreground">
-            Facturé {d.solde.facture} / Payé {d.solde.paye} / Restant {d.solde.restant} MAD
-          </div>
-        )}
-      </td>
-      {/* APX17 — la cellule Statut empilait jusqu'à SIX blocs (pastille,
-          piste, option acceptée, proposition signée, état du BC, incohérence
-          BC, boucle « pris en charge ») : la hauteur de ligne variait du
-          simple au triple. Comme la liste tourne sur le moteur `ui/datatable`,
-          qui ESTIME une hauteur constante au-delà de ~100 lignes, cette
-          variabilité décalait aussi le scroll. La cellule est désormais
-          PLAFONNÉE à StatusPill + piste documentaire ; tout le reste vit dans
-          un Popover « Détails » — aucun CSS `<td>` artisanal, le contenu est
-          simplement borné. */}
-      <td data-label="Statut">
-        <StatusPill status={effStatut} label={STATUT_DISPLAY[effStatut] ?? STATUT_DISPLAY.brouillon} />
-        {/* VX141 — le StatusPill est un fait isolé ; la piste ci-dessous
-            visualise la CHAÎNE complète (un devis accepté sans BC actif est
-            maintenant signalé visuellement, pas seulement en texte L563+). */}
-        <DocumentStageTrack
-          className="mt-1"
-          stages={DOC_STATUT_TRACK}
-          current={docTrackCurrent}
-          blocked={docTrackBlocked}
-        />
-        {statutDetails.length > 0 && (
-          <Popover>
-            <PopoverTrigger
-              className="mt-1 inline-flex cursor-pointer items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground"
-              aria-label={`Détails du statut — ${statutDetails.length} information(s)`}
-            >
-              Détails ({statutDetails.length})
-              {/* L'anomalie ne se cache JAMAIS : elle reste signalée sur la
-                  ligne, même repliée. */}
-              {d.bon_commande_etat?.mismatch && (
-                <AlertTriangle className="size-3 text-warning" aria-hidden="true" />
-              )}
-            </PopoverTrigger>
-            <PopoverContent className="max-w-xs space-y-1.5 text-xs">
-              {statutDetails.map((node, i) => <div key={i}>{node}</div>)}
-            </PopoverContent>
-          </Popover>
-        )}
-      </td>
-      <td>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* VX20 — « soupe d'actions » réduite : 2-3 actions primaires
-              contextuelles restent des boutons directs (PDF, Envoyer/
-              Accepter/Refuser selon statut, Générer facture) ; tout le reste
-              (Éditer, Lien interne, Variante, Supprimer, Copier le lien,
-              Design 3D, Aperçu, Télécharger, BC, Chantier, Créer projet, +
-              l'ancien menu « Autres actions ») vit dans UN SEUL menu « ⋯ ».
-              Anatomie de rangée Linear/Attio — actions révélées, jamais
-              empilées. Hauteur de ligne stable, aucun bouton perdu. */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => openPdfModal(d)}
-            loading={isGenerating}
-            title="Générer le PDF (choix du format)"
-          >
-            <FileText /> {isGenerating ? pdfLabel : 'PDF'}
-          </Button>
-          {/* QX21 — passé 30 s, on n'abandonne plus le suivi : ce badge reste
-              visible tant que le polling se poursuit (aucun second job
-              n'est jamais relancé en dessous). */}
-          {isSlowPolling && (
-            <Badge tone="warning" title="Le PDF est toujours en cours de génération côté serveur — la page continue de vérifier automatiquement.">
-              PDF toujours en cours…
-            </Badge>
-          )}
-
-          {d.statut === 'brouillon' && (
-            <Button
-              size="sm"
-              variant="outline"
-              loading={statutActionId === d.id}
-              onClick={() => handleEnvoyer(d)}
-              title="Envoyer par WhatsApp (message + lien de proposition) — le devis passe « Envoyé » quand vous ouvrez WhatsApp"
-            >
-              <Send /> Envoyer
-            </Button>
-          )}
-          {/* VX222 — « Relancer » : pendant devis de la relance facture. Rouvre
-              le flux WhatsApp EXISTANT en mode rappel (aperçu-puis-clic, jamais
-              d'envoi auto) + consigne la relance au chatter. N'apparaît que sur
-              un devis « Envoyé ». */}
-          {d.statut === 'envoye' && (
-            <Button
-              size="sm"
-              variant="outline"
-              loading={statutActionId === d.id}
-              onClick={() => handleRelancer(d)}
-              title="Relancer ce devis par WhatsApp (message de rappel + note au chatter)"
-            >
-              <Bell /> Relancer
-            </Button>
-          )}
-          {d.statut === 'envoye' && canValiderVente && (
-            <Button
-              size="sm"
-              title="Marquer accepté (date + nom + option) — déclenche la création du chantier"
-              onClick={() => openAcceptModal(d)}
-            >
-              <Check /> Accepter
-            </Button>
-          )}
-          {d.statut === 'envoye' && canValiderVente && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => openRefusModal(d)}
-              className="border-destructive/40 text-destructive hover:bg-destructive/10"
-              title="Marquer ce devis comme refusé (motif obligatoire)"
-            >
-              <X /> Refuser
-            </Button>
-          )}
-
-          {/* « Générer facture » TOUJOURS visible, pour montrer que
-              c'est ici qu'un devis devient des factures. Désactivé
-              tant que le devis n'est pas « Accepté », avec un indice
-              VISIBLE (pas seulement au survol → lisible sur mobile). */}
-          {d.statut !== 'accepte' ? (
-            <div className="flex flex-col gap-0.5">
-              <Button size="sm" variant="outline" disabled>
-                Générer facture
-              </Button>
-              <span className="max-w-[190px] text-xs leading-tight text-muted-foreground">
-                Passez le devis en « Accepté » pour générer les factures.
-              </span>
-            </div>
-          ) : d.solde && d.solde.tranches_facturees >= d.solde.tranches_total ? (
-            <Button size="sm" variant="outline" disabled
-                    title="Toutes les tranches ont été facturées">
-              Échéancier complet
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              onClick={() => handleGenererFacture(d)}
-              loading={factureGenId === d.id}
-              title="Générer la prochaine tranche de facture"
-            >
-              Générer facture
-            </Button>
-          )}
-
-          {/* VX20 — menu « Plus » unique : regroupe TOUTES les actions
-              secondaires (précédemment jusqu'à 10 boutons par ligne). */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="ghost" aria-label={`Plus d'actions — ${d.reference}`}>
-                <MoreHorizontal className="size-4" aria-hidden="true" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Plus d'actions</DropdownMenuLabel>
-              <DropdownMenuItem
-                disabled={!peutEditerDevis(d)}
-                onSelect={() => openEdit(d)}
-              >
-                Éditer
-              </DropdownMenuItem>
-              {/* VX79 — « Copier le lien interne » : URL de l'ERP partageable
-                  (/ventes/devis?devis=<pk>) à envoyer à un collègue. Distinct
-                  du lien PUBLIC de proposition (règle #4) plus bas — celui-ci
-                  ouvre le devis DANS l'ERP, toujours disponible quel que soit
-                  le statut. */}
-              <DropdownMenuItem onSelect={() => copierLienInterne(d)}>
-                <Link2 className="size-3.5" aria-hidden="true" />
-                Lien interne
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={previewingId === d.id}
-                onSelect={() => handlePreview(d)}
-              >
-                <Eye className="size-3.5" aria-hidden="true" />
-                {previewingId === d.id ? 'Aperçu du PDF…' : 'Aperçu du PDF'}
-              </DropdownMenuItem>
-              {d.fichier_pdf && (
-                <DropdownMenuItem
-                  disabled={isDownloading}
-                  onSelect={() => handleTelechargerPdf(d)}
-                >
-                  <FileDown className="size-3.5" aria-hidden="true" />
-                  {isDownloading ? 'Téléchargement…' : 'Télécharger le dernier PDF'}
-                </DropdownMenuItem>
-              )}
-              {/* VX44 — partage natif du PDF (feuille de partage iOS/Android →
-                  WhatsApp/e-mail), repli téléchargement. */}
-              {d.fichier_pdf && (
-                <DropdownMenuItem
-                  disabled={isDownloading}
-                  onSelect={() => handlePartagerPdf(d)}
-                >
-                  <Share2 className="size-3.5" aria-hidden="true" />
-                  Partager le PDF
-                </DropdownMenuItem>
-              )}
-              {/* WR2/QJR531 — Copier le lien de proposition (share_link) :
-                  copier le lien CLIENT vaut envoi (D-QJR5-3). */}
-              {(d.statut === 'brouillon' || d.statut === 'envoye') && (
-                <DropdownMenuItem
-                  disabled={shareBusyId === d.id}
-                  onSelect={() => handleCopierLienProposition(d)}
-                >
-                  <Link2 className="size-3.5" aria-hidden="true" />
-                  Copier le lien de la proposition{shareBusyId === d.id ? '…' : ''}
-                </DropdownMenuItem>
-              )}
-              {/* L-INTPREV/QJ1bis — même page, jeton INTERNE : vérifier la
-                  proposition sans déclencher la notification d'ouverture
-                  ni aucune trace. Jamais à envoyer au client. */}
-              {(d.statut === 'brouillon' || d.statut === 'envoye') && (
-                <DropdownMenuItem
-                  disabled={shareBusyId === d.id}
-                  onSelect={() => handleCopierApercuInterne(d)}
-                >
-                  <Link2 className="size-3.5" aria-hidden="true" />
-                  Copier l&rsquo;aperçu interne (sans notification){shareBusyId === d.id ? '…' : ''}
-                </DropdownMenuItem>
-              )}
-              {/* QG10/QJ15 — « Variante » : ouvre une modale pour
-                  confirmer/éditer le pourcentage (défaut = config société),
-                  créer les 3 variantes puis router vers la comparaison
-                  côte-à-côte. */}
-              {d.statut === 'brouillon' && (
-                <DropdownMenuItem onSelect={() => openVarianteModal(d)}>
-                  <Copy className="size-3.5" aria-hidden="true" />
-                  Variante
-                </DropdownMenuItem>
-              )}
-              {/* GAMMES — « Créer une variante de gamme » : crée le devis
-                  FRÈRE d'une seconde gamme (composition et prix propres, à
-                  retoucher ensuite). Le libellé est libre — aucune marque
-                  codée en dur ; défauts proposés : Essentielle / Premium. */}
-              {d.statut === 'brouillon' && (
-                <DropdownMenuItem onSelect={() => openGammeModal(d)}>
-                  <Copy className="size-3.5" aria-hidden="true" />
-                  Créer une variante de gamme
-                </DropdownMenuItem>
-              )}
-              {/* PV23 — porte d'entrée du CALEPINAGE depuis la liste. Un devis
-                  encore ouvert (brouillon / envoyé) se CONÇOIT — l'écran de
-                  conception resynchronise ses lignes (PV21). Un devis figé ne
-                  se conçoit plus : il se CONSULTE, et seulement s'il porte
-                  réellement un plan (`roof_layout`, exposé par le serializer —
-                  aucun champ backend ajouté pour cette entrée). */}
-              {(effStatut === 'brouillon' || effStatut === 'envoye') && (
-                <DropdownMenuItem
-                  onSelect={() => navigate(`/ventes/devis/${d.id}/design`)}
-                  aria-label={`Concevoir la toiture 3D de ${d.reference}`}
-                >
-                  <Box className="size-3.5" aria-hidden="true" />
-                  Concevoir en 3D
-                </DropdownMenuItem>
-              )}
-              {effStatut !== 'brouillon' && effStatut !== 'envoye' && d.roof_layout && (
-                <DropdownMenuItem
-                  onSelect={() => navigate(`/ventes/devis/${d.id}/3d`)}
-                  aria-label={`Voir le design 3D de ${d.reference}`}
-                >
-                  <Box className="size-3.5" aria-hidden="true" />
-                  Voir le design 3D
-                </DropdownMenuItem>
-              )}
-              {/* QG11/QG12 — « Voir le design 3D » : ouvre le plan de toiture
-                  (roof_layout) en lecture seule dans le détail, ou dans une
-                  fenêtre séparée. N'apparaît que si un plan existe. */}
-              {d.roof_layout && (
-                <DropdownMenuItem onSelect={() => setRoofOpenId(
-                  roofOpenId === d.id ? null : d.id)}>
-                  <Box className="size-3.5" aria-hidden="true" />
-                  Design 3D
-                </DropdownMenuItem>
-              )}
-              {d.roof_layout && (
-                <DropdownMenuItem
-                  onSelect={() => window.open(`/ventes/devis/${d.id}/3d`, '_blank', 'noopener')}
-                  aria-label={`Ouvrir le design 3D de ${d.reference} dans une fenêtre`}
-                >
-                  <ExternalLink className="size-3.5" aria-hidden="true" />
-                  Design 3D — nouvelle fenêtre
-                </DropdownMenuItem>
-              )}
-              {d.statut === 'accepte' && (
-                <DropdownMenuItem
-                  disabled={convertingId === d.id}
-                  onSelect={() => handleConvertBC(d)}
-                >
-                  <ArrowRight className="size-3.5" aria-hidden="true" />
-                  Convertir en bon de commande
-                </DropdownMenuItem>
-              )}
-              {d.statut === 'accepte' && (
-                <DropdownMenuItem
-                  disabled={chantierBusy === d.id}
-                  onSelect={() => handleChantier(d)}
-                >
-                  <HardHat className="size-3.5" aria-hidden="true" />
-                  {d.chantier ? `Voir le chantier ${d.chantier.reference}` : 'Créer le chantier'}
-                </DropdownMenuItem>
-              )}
-              {/* VX97 — journal des changements (qui/quand/ancien→nouveau),
-                  section repliable ; distinct de la chaîne de versions. */}
-              <DropdownMenuItem onSelect={() => toggleHistorique(d.id)}>
-                {histoOpenId === d.id ? "Masquer l'historique" : "Historique des modifications"}
-              </DropdownMenuItem>
-              {/* WIR103/XFAC10 — proforma PDF (aucun impact comptable). */}
-              <DropdownMenuItem onSelect={() => handleProformaPdf(d)}>
-                Proforma (PDF)
-              </DropdownMenuItem>
-              {/* ZSAL8 — PDF du bon de commande lié (client `getBonCommandePdf`
-                  déjà présent dans ventesApi.js, jamais appelé). Endpoint BC
-                  distinct, ne touche pas au rendu /proposal du devis (règle #4). */}
-              {d.bon_commande_etat?.exists && (
-                <DropdownMenuItem onSelect={() => handleBonCommandePdf(d)}>
-                  Bon de commande (PDF)
-                </DropdownMenuItem>
-              )}
-              {/* ANALYT1 — lecture par le client (visites par section de la
-                  proposition web + alerte de friction). */}
-              <DropdownMenuItem onSelect={() => toggleSuiviPartage(d.id)}>
-                {suiviOpenId === d.id ? 'Masquer la lecture par le client' : 'Lecture par le client'}
-              </DropdownMenuItem>
-              {/* PV43 — étude électrique agrégée (chaînes/conformité/schéma
-                  unifilaire/surcharges DC-AC-phases), calculée depuis les
-                  lignes + le calepinage du devis. */}
-              <DropdownMenuItem onSelect={() => setConceptionOpenId(
-                conceptionOpenId === d.id ? null : d.id)}>
-                {conceptionOpenId === d.id
-                  ? 'Masquer la conception électrique' : 'Conception électrique'}
-              </DropdownMenuItem>
-              {/* PV76 — carte « Étude bancable » (P50/P90/PR/cascade des
-                  pertes/payback/VAN/TRI), lecture de `etude_params.simulation`. */}
-              <DropdownMenuItem onSelect={() => setEtudeOpenId(
-                etudeOpenId === d.id ? null : d.id)}>
-                {etudeOpenId === d.id ? "Masquer l'étude bancable" : 'Étude bancable'}
-              </DropdownMenuItem>
-              {/* QX27 — actions historiquement dans « Autres actions » :
-                  Réviser, Approuver remise, Contacter mon supérieur, Email. */}
-              {d.is_active && d.statut !== 'brouillon' && (
-                <DropdownMenuItem onSelect={() => {
-                  // QJR533 — UN seul geste (features/ventes/reviserDevis) :
-                  // avertit si chantier en cours (VX216(a)), dit le résultat,
-                  // ouvre la V2 en Édition complète.
-                  reviserEtOuvrir({
-                    devis: d, navigate, onApres: () => dispatch(fetchDevis()),
-                  })
-                }}>
-                  Réviser (nouvelle version)
-                </DropdownMenuItem>
-              )}
-              {role === 'admin' && d.statut === 'brouillon'
-                && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee && (
-                <DropdownMenuItem onSelect={() => {
-                  ventesApi.approuverRemise(d.id)
-                    .then(() => dispatch(fetchDevis())).catch(() => {})
-                }}>
-                  Approuver la remise
-                </DropdownMenuItem>
-              )}
-              {(d.statut === 'brouillon' || d.statut === 'envoye') && (
-                <DropdownMenuItem
-                  disabled={superieurBusyId === d.id}
-                  onSelect={() => handleContacterSuperieur(d)}
-                >
-                  Contacter mon supérieur
-                </DropdownMenuItem>
-              )}
-              {(d.statut === 'brouillon' || d.statut === 'envoye') && (
-                <DropdownMenuItem onSelect={() => openEmailModal(d)}>
-                  Envoyer par email
-                </DropdownMenuItem>
-              )}
-              {/* QJR639/QJR661 — seul un brouillon se supprime ; tout autre
-                  statut s'archive (409 serveur « archivez-le »). */}
-              {canDelete && d.statut === 'brouillon' && (
-                <DropdownMenuItem
-                  destructive
-                  disabled={deletingId === d.id}
-                  onSelect={(e) => { e.preventDefault(); handleDelete(d) }}
-                >
-                  Supprimer
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </td>
-    </tr>
-    {versionsOpenId === d.id && (
-      <tr>
-        <td colSpan={8} className="bg-muted/30">
-          {/* WIR225 — comparaison des variantes, servie par le SERVEUR
-              (`getVariantes`) : la chaîne reconstruite localement ignorait
-              toute variante absente de la page courante. */}
-          <div className="px-3 py-2">
-            <p className="mb-1 text-xs font-medium text-muted-foreground">
-              Comparaison des variantes
-            </p>
-            {variantesEtat.loading ? (
-              <p className="text-xs text-muted-foreground">Chargement…</p>
-            ) : variantesEtat.error ? (
-              <p className="text-xs text-muted-foreground">
-                Comparaison indisponible pour le moment.
-              </p>
-            ) : variantesEtat.rows.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Ce devis n’appartient à aucun groupe de variantes.
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-sm"
-                       aria-label={`Comparaison des variantes de ${d.reference}`}>
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th scope="col" className="px-2 py-1 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Référence</th>
-                      <th scope="col" className="px-2 py-1 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Libellé</th>
-                      <th scope="col" className="px-2 py-1 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total HT</th>
-                      <th scope="col" className="px-2 py-1 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total TTC</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {variantesEtat.rows.map(v => (
-                      <tr key={v.id}
-                          data-source={v.id === d.id ? 'true' : undefined}
-                          className="border-b border-border/60 last:border-b-0">
-                        <td className="px-2 py-1">
-                          <strong>{v.reference}</strong>
-                          {v.id === d.id && (
-                            <span className="ml-2 text-xs text-primary">(source)</span>
-                          )}
-                        </td>
-                        <td className="px-2 py-1 text-muted-foreground">
-                          {/* Aucun libellé n'est INVENTÉ : le nom de gamme s'il
-                              existe, sinon le rang de version servi par le
-                              serveur. */}
-                          {v.etude_params?.gamme?.nom || `v${v.version || 1}`}
-                        </td>
-                        <td className="px-2 py-1 text-right tabular-nums">
-                          {v.total_ht != null ? formatMAD(v.total_ht) : '—'}
-                        </td>
-                        <td className="px-2 py-1 text-right tabular-nums">
-                          {(v.total_affiche ?? v.total_ttc) != null
-                            ? formatMAD(v.total_affiche ?? v.total_ttc)
-                            : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </td>
-      </tr>
-    )}
-    {/* VX97 — Panneau « Historique » : journal des changements du devis
-        (DevisActivity). Qui / quand / ancien→nouveau. `prix_achat` jamais
-        rendu (le journal ne le porte pas). */}
-    {histoOpenId === d.id && (
-      <tr>
-        <td colSpan={8} className="bg-muted/30">
-          <div className="px-3 py-2">
-            <p className="mb-1 text-xs font-medium text-muted-foreground">
-              Historique des modifications — {d.reference}
-            </p>
-            {histoLoadingId === d.id ? (
-              <p className="text-xs text-muted-foreground">Chargement…</p>
-            ) : (histoCache[d.id]?.length ?? 0) === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Aucune modification consignée.
-              </p>
-            ) : (
-              <ul className="space-y-1 text-sm">
-                {histoCache[d.id].map(a => (
-                  <li key={a.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                    <span className="text-xs text-muted-foreground">
-                      {a.created_at ? formatDateTime(a.created_at) : '—'}
-                      {a.user_nom ? ` · ${a.user_nom}` : ''}
-                    </span>
-                    <span>
-                      {a.body
-                        ? a.body
-                        : (
-                          <>
-                            <strong>{a.field_label || a.field}</strong>
-                            {' : '}
-                            <span className="text-muted-foreground">{a.old_value || '—'}</span>
-                            {' → '}
-                            <span>{a.new_value || '—'}</span>
-                          </>
-                        )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {/* ── WIR274 — Composeur de note manuelle ──────────────────────
-                `noterDevis` n'était appelé que par l'auto-note de relance
-                WhatsApp (VX222, intacte) : personne ne pouvait écrire une
-                note à la main. Le fil est RECHARGÉ DU SERVEUR après l'envoi —
-                jamais un ajout optimiste local. */}
-            {peutNoter && (
-              <div className="mt-2 flex flex-col gap-1.5">
-                <label htmlFor={`note-devis-${d.id}`} className="sr-only">
-                  Ajouter une note — {d.reference}
-                </label>
-                <Textarea
-                  id={`note-devis-${d.id}`}
-                  rows={2}
-                  placeholder="Ajouter une note au fil du devis…"
-                  value={noteBrouillon[d.id] ?? ''}
-                  onChange={(e) => ecrireNote(d.id, e.target.value)}
-                />
-                <div className="flex justify-end">
-                  <Button
-                    type="button" size="sm"
-                    loading={noteBusyId === d.id}
-                    disabled={!(noteBrouillon[d.id] || '').trim()}
-                    onClick={() => publierNote(d.id)}
-                  >
-                    Ajouter la note
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        </td>
-      </tr>
-    )}
-    {/* ANALYT1 — Panneau « Lecture par le client » (visites par section de
-        la proposition web + alerte de friction). */}
-    {suiviOpenId === d.id && (
-      <tr>
-        <td colSpan={8} className="bg-muted/30">
-          <div className="px-3 py-2">
-            <p className="mb-1 text-xs font-medium text-muted-foreground">
-              Lecture par le client — {d.reference}
-            </p>
-            <DevisSuiviPartagePanel
-              lectureClient={canSeeLectureClient ? lectureClientCache[d.id] : undefined}
-            />
-          </div>
-        </td>
-      </tr>
-    )}
-    {/* QG11 — Panneau « Voir le design 3D » : rendu LECTURE
-        SEULE du plan de toiture stocké (roof_layout). */}
-    {roofOpenId === d.id && (
-      <tr>
-        <td colSpan={8} className="bg-muted/30">
-          <div className="px-3 py-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="text-xs font-medium text-muted-foreground">
-                Design 3D de la toiture — {d.reference}
-              </p>
-              <div className="flex items-center gap-2">
-                {/* PV23 — depuis l'aperçu, reprendre le calepinage (devis
-                    encore ouvert seulement : au-delà, le document est figé). */}
-                {(effStatut === 'brouillon' || effStatut === 'envoye') && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => navigate(`/ventes/devis/${d.id}/design`)}
-                    title="Reprendre le calepinage de cette toiture"
-                  >
-                    Concevoir en 3D
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => window.open(`/ventes/devis/${d.id}/3d`, '_blank', 'noopener')}
-                  title="Ouvrir dans une nouvelle fenêtre"
-                >
-                  <ExternalLink className="size-3.5 mr-1" aria-hidden="true" />
-                  Ouvrir dans une fenêtre
-                </Button>
-              </div>
-            </div>
-            <div className="max-w-2xl">
-              <RoofViewer
-                layout={d.roof_layout}
-                clientNom={d.client_nom}
-                leadNom={d.lead_nom}
-                lignes={d.lignes}
-              />
-            </div>
-          </div>
-        </td>
-      </tr>
-    )}
-    {/* PV43 — Panneau « Conception électrique » : chaînes par MPPT,
-        conformité, aperçu du schéma unifilaire, surcharges DC/AC/phases. */}
-    {conceptionOpenId === d.id && (
-      <tr>
-        <td colSpan={8} className="bg-muted/30">
-          <div className="px-3 py-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">
-              Conception électrique — {d.reference}
-            </p>
-            <ConceptionElectrique devisId={d.id} />
-          </div>
-        </td>
-      </tr>
-    )}
-    {/* PV76 — Carte « Étude bancable » : lecture de
-        `etude_params.simulation`, recalcul asynchrone (PV74). */}
-    {etudeOpenId === d.id && (
-      <tr>
-        <td colSpan={8} className="bg-muted/30">
-          <div className="px-3 py-3">
-            <p className="mb-2 text-xs font-medium text-muted-foreground">
-              Étude bancable — {d.reference}
-            </p>
-            <EtudeBancable devis={d} onRefresh={() => dispatch(fetchDevis())} />
-          </div>
-        </td>
-      </tr>
-    )}
-    </Fragment>
-  )
-}
 
 export default function DevisList() {
   // VX82 — titre d'onglet dédié (chrome navigateur vivant).
@@ -1388,35 +145,7 @@ export default function DevisList() {
 
   const [convertingId, setConvertingId] = useState(null)
   const [factureGenId, setFactureGenId] = useState(null) // devis id en cours de facturation
-  const [pdfGenerating, setPdfGenerating] = useState({}) // id → true
-  // QX21 — au-delà de 30 s, la génération n'est PAS abandonnée : elle reste
-  // visible comme « toujours en cours » (le job Celery continue côté serveur)
-  // et le polling se poursuit à un rythme plus espacé, sans jamais relancer un
-  // second job (un seul dispatch(genererPdfDevis) par appel de genererUnPdf).
-  const [pdfSlowPoll, setPdfSlowPoll] = useState({}) // id → true
-  // WIR217 — les minuteries de sondage PDF, et le drapeau d'annulation. Sans
-  // eux, quitter l'écran pendant une génération laissait la boucle vivante :
-  // elle continuait d'appeler l'API et de poser du state sur un composant
-  // démonté, indéfiniment. `clearTimeout` au démontage + garde en tête de
-  // boucle (une requête peut être en vol au moment du démontage).
-  const pollTimers = useRef({}) // id → handle de setTimeout
-  const pollAnnule = useRef(false)
-  useEffect(() => {
-    pollAnnule.current = false
-    const timers = pollTimers.current
-    return () => {
-      pollAnnule.current = true
-      Object.values(timers).forEach(clearTimeout)
-      pollTimers.current = {}
-    }
-  }, [])
-  const [pdfDownloading, setPdfDownloading] = useState({}) // id → true
   const [statutActionId, setStatutActionId] = useState(null) // envoi/refus en cours
-  // APX14 — le devis dont l'aperçu inline est ouvert (null = panneau fermé).
-  // `previewingId` en dérive pour que le libellé « Aperçu du PDF… » de la
-  // ligne reste exactement celui d'avant.
-  const [previewDevis, setPreviewDevis] = useState(null)
-  const previewingId = previewDevis?.id ?? null
   // APX15(b) — mode d'affichage de la liste : tableau ou board par statut
   // DOCUMENT. Parité exacte avec la bascule Liste/Kanban des factures.
   const [viewMode, setViewMode] = useState('liste')
@@ -1634,27 +363,13 @@ export default function DevisList() {
 
   // ── Sélection multiple pour génération PDF par lot ──
   const [selectedIds, setSelectedIds] = useState([]) // ids cochés
-  const [batchPdf, setBatchPdf] = useState(false) // la modale PDF vise le lot
-
-  // ── Choix du format PDF (parité simulateur) ──
-  const [pdfTarget, setPdfTarget] = useState(null) // devis ciblé par la modale
-  const [pdfMode, setPdfMode] = useState('full')
-  const [showMonthly, setShowMonthly] = useState(true)
-  const [devisFinal, setDevisFinal] = useState(false)
-  const [paymentMode, setPaymentMode] = useState('standard')
-  const [customAcompte, setCustomAcompte] = useState('')
-  const [includeEtude, setIncludeEtude] = useState(false)
-  // CAL184 — page « Calepinage » (planche cotée, CAL182). TRI-ÉTAT, et le
-  // défaut est 'auto' : l'écran n'invente AUCUNE valeur. C'est le serveur qui
-  // sait si ce devis porte un calepinage dessinable — la liste, elle, ne le
-  // sait pas (la clé `calepinage` de la fiche devis n'est calculée qu'en
-  // DÉTAIL, pour ne pas faire de la liste un N+1). Dire « oui » ou « non » ici
-  // serait donc une supposition ; 'auto' laisse décider celui qui sait.
-  const [includeCalepinage, setIncludeCalepinage] = useState('auto')
-  // Incident fondateur 01/09 round 2 — préselection gracieuse (voir import
-  // solar.js ci-dessus) : posé UNIQUEMENT quand l'ouverture de la modale a dû
-  // rabattre 'full' sur 'onepage' faute d'onduleur classifié sur les lignes.
-  const [pdfModeAutoOnepage, setPdfModeAutoOnepage] = useState(false)
+  // SPL204 — flux PDF (format, génération + sondage WIR217, aperçu, partage).
+  // ACAL345 — gardé en OBJET (`pdf`) : il est passé tel quel au sac de ligne
+  // (rowCtx) et à <DevisPdfDialog>, au lieu de recopier sa liste de retour.
+  const pdf = useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds })
+  const {
+    previewDevis, setPreviewDevis, openPdfModal, openBatchPdfModal, fetchDevisPreviewBlob,
+  } = pdf
 
   // ── Modale d'acceptation inline (nom / date / option) ──
   const [acceptTarget, setAcceptTarget] = useState(null) // devis en cours d'acceptation
@@ -1666,76 +381,6 @@ export default function DevisList() {
   // porte pas les lignes du devis — jamais un chiffre inventé).
   const [dealCelebration, setDealCelebration] = useState(null)
 
-  // QJ14 — Modale « Envoyer par email » (PDF premium + lien tokenisé → client).
-  const [emailTarget, setEmailTarget]   = useState(null)
-  const [emailAddress, setEmailAddress] = useState('')
-  const [emailBusy, setEmailBusy]       = useState(false)
-
-  const openEmailModal = (d) => {
-    setEmailTarget(d)
-    setEmailAddress(d.client_email || '')
-  }
-  const closeEmailModal = () => { setEmailTarget(null); setEmailAddress('') }
-  const submitEmail = async () => {
-    if (!emailTarget) return
-    setEmailBusy(true)
-    try {
-      const payload = emailAddress ? { to_email: emailAddress } : {}
-      await ventesApi.envoyerEmailDevis(emailTarget.id, payload)
-      closeEmailModal()
-      dispatch(fetchDevis())
-      // VX156/VX155 — moment « devis envoyé » : un jalon (toastMilestone), pas
-      // un succès plat — réf/client/montant + la voix Taqinor en description.
-      toastMilestone(`Devis ${emailTarget.reference} envoyé par email.`, {
-        description: [emailTarget.client_nom, formatMAD(emailTarget.total_affiche ?? emailTarget.total_ttc), voice.devisSent]
-          .filter(Boolean).join(' · '),
-      })
-    } catch (err) {
-      toast.error(frenchError(err, 'Envoi email impossible.'))
-    } finally {
-      setEmailBusy(false)
-    }
-  }
-
-  // T13 — la case « Inclure l'étude » n'a de sens qu'avec des données d'étude.
-  const targetHasEtude = !!(pdfTarget?.etude_params
-    && Object.keys(pdfTarget.etude_params).length > 0)
-  // T14 — le format premium « full » n'est pas pertinent pour le pompage agricole.
-  const targetIsAgricole = pdfTarget?.mode_installation === 'agricole'
-
-  // Incident fondateur 01/09 round 2 — un devis « Composition libre » (ou tout
-  // devis dont aucune ligne ne classe onduleur réseau/hybride/hors réseau)
-  // fait REFUSER pdf_mode 'full' par le moteur (règle dure builder.py,
-  // ~ligne 1176) : agricole/pompage est DÉJÀ dégradé sans erreur côté serveur
-  // (aucun onduleur n'y est jamais attendu), donc seul le cas non-agricole est
-  // concerné ici.
-  const devisSansOnduleurClasse = (d) =>
-    d?.mode_installation !== 'agricole'
-    && !(d?.lignes ?? []).some(l =>
-      isReseauInverter(l.designation) || isHybridInverter(l.designation)
-      || isOffgridInverter(l.designation))
-
-  const openPdfModal = (d) => {
-    setBatchPdf(false)
-    setPdfTarget(d)
-    // Agricole a désormais son propre format premium (4 pages) — défaut « full ».
-    // Un devis sans onduleur classé (Composition libre) part directement sur
-    // 'onepage' — jamais le refus 400 que l'utilisateur découvrirait sinon
-    // seulement après avoir cliqué « Générer ».
-    const sansOnduleur = devisSansOnduleurClasse(d)
-    setPdfMode(sansOnduleur ? 'onepage' : 'full')
-    setPdfModeAutoOnepage(sansOnduleur)
-    setShowMonthly(true)
-    setDevisFinal(false)
-    setPaymentMode('standard')
-    setCustomAcompte('')
-    // T12/T13 — étude cochée par défaut pour un devis industriel disposant de
-    // données d'étude ; sinon décochée (et désactivée plus bas si absente).
-    const hasEtude = !!(d?.etude_params && Object.keys(d.etude_params).length > 0)
-    setIncludeEtude(d?.mode_installation === 'industriel' && hasEtude)
-    setIncludeCalepinage('auto')
-  }
-
   // VX248 — « a » génère le PDF du devis FOCALISÉ (le deep-link ?devis=<pk>
   // déjà surligné/scrollé — même record que highlightId ci-dessus, jamais un
   // second concept de « devis actif »). Absent hors deep-link (liste nue) :
@@ -1746,20 +391,6 @@ export default function DevisList() {
     { a: () => openPdfModal(highlightedDevis) },
     !!highlightedDevis,
   )
-
-  // Ouvre la modale PDF pour le lot sélectionné (format partagé).
-  const openBatchPdfModal = () => {
-    setBatchPdf(true)
-    setPdfTarget(null)
-    setPdfMode('full')
-    setPdfModeAutoOnepage(false)
-    setShowMonthly(true)
-    setDevisFinal(false)
-    setPaymentMode('standard')
-    setCustomAcompte('')
-    setIncludeEtude(false)
-    setIncludeCalepinage('auto')
-  }
 
   const openAcceptModal = (d) => {
     setAcceptTarget(d)
@@ -1875,73 +506,6 @@ export default function DevisList() {
     if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [highlightId, loading, devis])
 
-  // VX79 — lien INTERNE partageable d'un devis : /ventes/devis?devis=<pk> (miroir
-  // du deep-link QX12 déjà supporté au montage). Distinct du lien PUBLIC de
-  // proposition (règle #4 — handleCopierLienProposition, intouché) : celui-ci
-  // pointe vers l'ERP, à envoyer à un collègue (« regarde CE devis »).
-  const copierLienInterne = async (d) => {
-    const url = `${window.location.origin}/ventes/devis?devis=${d.id}`
-    try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
-    toast.success('Lien interne du devis copié.')
-  }
-
-  const [shareBusyId, setShareBusyId] = useState(null)
-
-  // L-INTPREV/QJ1bis — « Copier l'aperçu interne » : la MÊME page publique
-  // que le client, servie par le jeton INTERNE (ShareLink.token_interne) —
-  // aucune notification, aucun compteur de vues, aucune note chatter, aucune
-  // avance de funnel. C'est le lien que Reda/Meryem ouvrent pour vérifier ;
-  // le lien CLIENT (WR2 ci-dessous) reste le seul à envoyer.
-  const handleCopierApercuInterne = async (d) => {
-    setShareBusyId(d.id)
-    try {
-      const res = await ventesApi.shareLinkDevis(d.id)
-      const path = res?.data?.path_interne
-      if (path) {
-        const url = clientProposalUrl(path, import.meta.env.VITE_PUBLIC_SITE_URL)
-        try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
-        toast.success('Aperçu interne copié — ne l’envoyez jamais au client (aucune notification).')
-      } else {
-        toast.error('Aperçu interne indisponible.')
-      }
-    } catch (err) {
-      toast.error(frenchError(err, 'Génération de l’aperçu interne impossible.'))
-    } finally {
-      setShareBusyId(null)
-    }
-  }
-
-  // WR2 — « Copier le lien proposition » : (re)mint le lien public tokenisé du
-  // devis (DevisViewSet.share_link) et le copie au presse-papier.
-  // QJR531 (D-QJR5-3) — copier le lien CLIENT = ENVOI, comme depuis la fiche
-  // lead (DevisTab.copierPageClient) : `envoi: true` → mark_devis_sent côté
-  // serveur (le devis passe « envoyé », le funnel avance), puis la liste est
-  // rechargée. « Copier l'aperçu interne » ci-dessus reste SANS envoi.
-  const handleCopierLienProposition = async (d) => {
-    setShareBusyId(d.id)
-    try {
-      const res = await ventesApi.shareLinkDevis(d.id, { envoi: true })
-      dispatch(fetchDevis())
-      // Le backend renvoie {token, path} (path = /proposition/<slug-client>/
-      // <token>, PV84 — slug cosmétique, jamais vérifié côté serveur) — on
-      // reconstruit l'URL publique complète (site public, cf. VITE_PUBLIC_SITE_URL).
-      // Le repli sans slug (token seul) ne sert que si le backend omettait
-      // exceptionnellement `path` : il reste une route valide côté site.
-      const path = res?.data?.path || (res?.data?.token ? `/proposition/${res.data.token}` : null)
-      if (path) {
-        const url = clientProposalUrl(path, import.meta.env.VITE_PUBLIC_SITE_URL)
-        try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
-        toast.success('Lien copié — devis marqué envoyé.')
-      } else {
-        toast.error('Lien de proposition indisponible.')
-      }
-    } catch (err) {
-      toast.error(frenchError(err, 'Génération du lien impossible.'))
-    } finally {
-      setShareBusyId(null)
-    }
-  }
-
   // Création ET édition passent par la page générateur solaire (QJR540 :
   // l'ancien modal d'édition est supprimé, ses blocs vivent dans l'Édition
   // complète).
@@ -1987,147 +551,12 @@ export default function DevisList() {
     }
   }
 
-  // QG8/QX22 — « Envoyer » = flux WhatsApp des leads (aperçu du message + lien
-  // tokenisé). La modale se peuple désormais depuis une action de PRÉVISUALISATION
-  // en LECTURE SEULE (whatsappPreviewDevis) — ouvrir-puis-fermer sans cliquer ne
-  // marque plus rien « Envoyé ». Le devis n'est marqué « Envoyé » que sur le clic
-  // réel vers wa.me (mark_devis_sent côté serveur, appelé par openWhatsApp).
-  const [waTarget, setWaTarget] = useState(null)   // devis ciblé
-  const [waData, setWaData] = useState(null)        // { wa_url, message, url }
-  const [waSending, setWaSending] = useState(false)
-  // VX222 — la même modale WhatsApp bascule en mode « relance » (message de
-  // rappel + note au chatter) au lieu de l'envoi initial. Réinitialisé à la
-  // fermeture pour qu'un « Envoyer » ultérieur reparte en mode initial.
-  const [relanceMode, setRelanceMode] = useState(false)
-  // GAMMES — ENVOI À LA CARTE : quand le devis appartient à une paire de
-  // gammes, le vendeur choisit ici d'envoyer CETTE gamme seule ou LES DEUX
-  // (défaut fondateur : les deux, comme l'axe batterie). Le mode part avec
-  // l'envoi et vit ensuite sur le devis. `null` = devis sans gamme → la modale
-  // est exactement celle d'aujourd'hui.
-  const [waGammeEnvoi, setWaGammeEnvoi] = useState('les_deux')
-  const handleEnvoyer = async (d) => {
-    setStatutActionId(d.id)
-    try {
-      const res = await ventesApi.whatsappPreviewDevis(d.id)
-      setWaTarget(d)
-      setWaData(res.data)
-      setWaGammeEnvoi(res?.data?.gamme?.envoi || 'les_deux')
-      // Aperçu seul — AUCUNE mutation de statut ici (fermer la modale sans
-      // cliquer « Ouvrir WhatsApp » laisse le devis brouillon).
-    } catch (err) {
-      toast.error(frenchError(err, 'Préparation WhatsApp impossible.'))
-    } finally {
-      setStatutActionId(null)
-    }
-  }
-  // VX222 — « Relancer » un devis envoyé : rouvre la MÊME modale d'aperçu
-  // WhatsApp (whatsappPreviewDevis, lecture seule) mais en mode relance. Aucune
-  // mutation tant que le vendeur n'a pas cliqué « Ouvrir WhatsApp ».
-  const handleRelancer = (d) => { setRelanceMode(true); handleEnvoyer(d) }
-
-  // EZ3 — le panneau de succès du générateur enchaîne DIRECTEMENT sur l'action
-  // suivante : `?envoyer=1` ouvre l'aperçu WhatsApp du devis ciblé, `?apercu=1`
-  // ouvre l'aperçu PDF inline (APX14). Ce sont les flux EXISTANTS de cet écran
-  // — aucun second chemin d'envoi ni de PDF n'est créé. Ne se déclenche
-  // qu'UNE fois (le paramètre est consommé). Placé APRÈS `handleEnvoyer` :
-  // un effet ne doit pas référencer une liaison déclarée plus bas.
-  const enchaineFait = useRef(false)
-  useEffect(() => {
-    if (enchaineFait.current || !highlightId || loading) return
-    if (!highlightedDevis) return
-    const envoyer = searchParams.get('envoyer') === '1'
-    const apercu = searchParams.get('apercu') === '1'
-    if (!envoyer && !apercu) return
-    enchaineFait.current = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- enchaînement d'un deep-link, une seule exécution gardée par enchaineFait
-    if (envoyer) handleEnvoyer(highlightedDevis)
-    else setPreviewDevis(highlightedDevis)
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      next.delete('envoyer')
-      next.delete('apercu')
-      return next
-    }, { replace: true })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- enchaînement à UNE seule exécution
-  }, [highlightId, highlightedDevis, loading])
-
-  const closeWaModal = () => {
-    setWaTarget(null); setWaData(null); setWaSending(false); setRelanceMode(false)
-  }
-  // QX22 — clic réel sur « Ouvrir WhatsApp » : ouvre wa.me PUIS marque le devis
-  // « Envoyé » côté serveur (whatsappDevis, l'action d'envoi véritable — jamais
-  // au moment de l'ouverture de la modale). Le lien s'ouvre même si le marquage
-  // échoue (le message a déjà été montré au vendeur ; on prévient de l'échec).
-  const openWhatsApp = async () => {
-    if (!waTarget) return
-    // VX222 — mode relance : le lien wa.me porte un message de RAPPEL ; sinon,
-    // le lien d'aperçu initial (QX22) inchangé.
-    if (relanceMode) {
-      const rUrl = buildRelanceWaUrl(waData, waTarget.reference)
-      if (rUrl) window.open(rUrl, '_blank', 'noopener')
-    } else if (waData?.wa_url) window.open(waData.wa_url, '_blank', 'noopener')
-    setWaSending(true)
-    try {
-      // GAMMES — le mode d'envoi choisi part AVEC l'envoi (le backend l'écrit
-      // sur les deux gammes). Omis quand le devis n'appartient à aucune paire.
-      await ventesApi.whatsappDevis(
-        waTarget.id,
-        waData?.gamme ? { gamme_envoi: waGammeEnvoi } : {},
-      )
-      // VX222 — consigne la relance au chatter du devis (DevisActivity, VX97) ;
-      // best-effort, ne bloque jamais l'ouverture WhatsApp déjà effectuée.
-      if (relanceMode) {
-        ventesApi.noterDevis(
-          waTarget.id, `Relance du devis ${waTarget.reference} envoyée par WhatsApp.`,
-        ).catch(() => {})
-      }
-      dispatch(fetchDevis())
-    } catch (err) {
-      toast.error(frenchError(err, 'Le marquage « Envoyé » a échoué — vérifiez le devis.'))
-    } finally {
-      setWaSending(false)
-      closeWaModal()
-    }
-  }
-
-  // QJ28 — « Contacter mon supérieur » : notifie le supérieur du vendeur
-  // (in-app + canaux configurés) avec un lien vers ce devis. Manuel, jamais
-  // automatique — un clic = une notification.
-  const [superieurBusyId, setSuperieurBusyId] = useState(null)
-  // VX215 — boucle de retour « pris en charge » : { [devisId]: { requested,
-  // seen, seen_by } }, sondée (VX56 useVisibilityAwarePolling) tant qu'une
-  // demande reste non vue — jamais de polling une fois « vu ».
-  const [superieurStatus, setSuperieurStatus] = useState({})
-  const refreshSuperieurStatus = async (devisId) => {
-    try {
-      const res = await ventesApi.superiorContactStatus(devisId)
-      setSuperieurStatus((prev) => ({ ...prev, [devisId]: res.data }))
-    } catch {
-      // Best-effort — un sondage manqué n'affiche simplement rien de nouveau.
-    }
-  }
-  const pendingSuperieurIds = useMemo(
-    () => Object.entries(superieurStatus)
-      .filter(([, s]) => s?.requested && !s.seen)
-      .map(([id]) => id),
-    [superieurStatus],
-  )
-  useVisibilityAwarePolling(
-    [{ fn: () => pendingSuperieurIds.forEach(refreshSuperieurStatus), intervalMs: 20000 }],
-    { enabled: pendingSuperieurIds.length > 0 },
-  )
-  const handleContacterSuperieur = async (d) => {
-    setSuperieurBusyId(d.id)
-    try {
-      await ventesApi.contacterSuperieur(d.id)
-      toast.success('Votre supérieur a été notifié.')
-      refreshSuperieurStatus(d.id)
-    } catch (err) {
-      toast.error(frenchError(err, 'Notification du supérieur impossible.'))
-    } finally {
-      setSuperieurBusyId(null)
-    }
-  }
+  // SPL205 — parcours d'envoi (email, liens, WhatsApp + relance, EZ3, supérieur).
+  // ACAL345 — gardé en OBJET (`envoi`), passé tel quel à rowCtx et <EnvoiDialogs>.
+  const envoi = useDevisEnvoi({
+    dispatch, setPreviewDevis, setStatutActionId,
+    highlightId, highlightedDevis, loading, searchParams, setSearchParams,
+  })
 
   // WR1/QX26 — Refuser un devis envoyé : passe par l'action dédiée `refuser`
   // (motif/date/chatter + événement devis_refused qui clôt le lead), plus
@@ -2204,40 +633,6 @@ export default function DevisList() {
     }
   }
 
-  // T10 — Aperçu PDF en application : récupère le blob /proposal et l'ouvre dans
-  // un nouvel onglet (mêmes params que la modale d'aperçu de la fiche lead).
-  // VX48 — l'onglet est pré-ouvert SYNCHRONE dans le geste (avant l'await),
-  // sinon Safari iOS bloque silencieusement le window.open post-await.
-  // APX14 — « Aperçu » ne QUITTE plus l'écran : il ouvre le panneau inline
-  // (PdfCanvas, déjà consommé par 4 autres écrans, jamais par celui-ci).
-  // La SOURCE reste le moteur vendorisé `/proposal` — aucun chemin PDF
-  // nouveau, aucun changement de statut (règle #4). Télécharger et Ouvrir
-  // dans un onglet restent offerts DANS le panneau, en repli.
-  const handlePreview = (d) => { setPreviewDevis(d) }
-
-  // Récupère les octets du PDF de proposition du devis en aperçu. Passée au
-  // panneau, qui ne connaît aucune URL. Le message d'erreur reste celui,
-  // français, que la liste sait déjà produire (T11 — moteur sans onduleur).
-  const fetchDevisPreviewBlob = useCallback(async () => {
-    const d = previewDevis
-    if (!d) return null
-    try {
-      const params = proposalParams(
-        'full',
-        d.mode_installation === 'industriel'
-          && !!(d.etude_params && Object.keys(d.etude_params).length > 0),
-      )
-      const res = await ventesApi.getProposalPdf(d.id, params)
-      return pdfBlob(res.data)
-    } catch (err) {
-      const msg = frenchError(err, '')
-      if (/onduleur|inverter/i.test(msg)) {
-        throw new Error('Ce devis n\'a aucun onduleur — choisissez le format une page.')
-      }
-      throw new Error(msg || 'Aperçu du PDF indisponible.')
-    }
-  }, [previewDevis])
-
   const [chantierBusy, setChantierBusy] = useState(null)
   // « Créer le chantier » sur un devis accepté : crée (ou ouvre s'il existe
   // déjà) le chantier pré-rempli, puis navigue DIRECTEMENT sur SA fiche
@@ -2291,235 +686,6 @@ export default function DevisList() {
     }
   }
 
-  // Construit les options PDF depuis l'état de la modale (partagé une page / lot).
-  const buildPdfOptions = (d) => ({
-    pdf_mode: pdfMode,
-    show_monthly: showMonthly,
-    devis_final: devisFinal,
-    // T12/T13 — étude uniquement si premium ET données d'étude présentes.
-    include_etude: pdfMode === 'full' && includeEtude
-      && !!(d?.etude_params && Object.keys(d.etude_params).length > 0),
-    // CAL184 — tri-état envoyé TEL QUEL à la whitelist `clean_pdf_options` :
-    // `null` = auto (le serveur ajoute la planche si le devis en porte une),
-    // `true`/`false` = le commercial tranche et sa valeur prime sur l'auto.
-    include_calepinage: includeCalepinage === 'auto'
-      ? null : includeCalepinage === 'oui',
-  })
-
-  // QG1 — Lance la génération d'un PDF + polling silencieux jusqu'à fichier
-  // prêt. Le PDF s'ouvre/télécharge AUTOMATIQUEMENT dès qu'il est prêt (plus
-  // besoin d'un second clic sur le bouton vert, qui reste disponible pour
-  // re-télécharger). Renvoie une promesse résolue quand la génération est
-  // acceptée (pas attendue jusqu'au fichier final), pour permettre
-  // l'enchaînement par lot.
-  const genererUnPdf = async (d, { autoOpen = true } = {}) => {
-    setPdfGenerating(prev => ({ ...prev, [d.id]: true }))
-    setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
-    try {
-      // QJR624 (D-QJR5-10) — l'« acompte personnalisé » n'est plus une option
-      // de rendu : il est ÉCRIT dans l'échéancier du devis AVANT le rendu
-      // (facture d'acompte et PDF lisent la même valeur ; sur un envoyé, la
-      // correction est tracée par le serveur). Un refus (devis figé) arrête
-      // la génération avec le message du serveur.
-      if (devisFinal && paymentMode === 'custom' && customAcompte !== '') {
-        await ventesApi.patchDevis(d.id, {
-          echeancier: echeancierAvecAcompte(
-            d.echeancier, customAcompte, d.total_ttc, d.mode_installation),
-        })
-      }
-      await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()
-      let attempts = 0
-      // WIR217 — le drapeau « lent » était lu dans `pdfSlowPoll[d.id]`, une
-      // CLÔTURE PÉRIMÉE figée à `false` à la création de la boucle : la
-      // condition restait vraie et le toast « toujours en cours » repartait
-      // TOUTES LES 10 s. Un booléen LOCAL à cette boucle le dit UNE fois.
-      let slowAnnonce = false
-      // QX21 — 15 tentatives × 2 s = 30 s au rythme rapide ; passé ce cap, le
-      // job Celery n'est PAS relancé (un seul dispatch a eu lieu ci-dessus) —
-      // on continue simplement à interroger, plus espacé (10 s), et on affiche
-      // « toujours en cours » au lieu d'abandonner silencieusement.
-      const FAST_ATTEMPTS = 15
-      const poll = async () => {
-        // WIR217 — plus AUCUN sondage après démontage de l'écran.
-        if (pollAnnule.current) return
-        const slow = attempts >= FAST_ATTEMPTS
-        attempts += 1
-        if (slow && !slowAnnonce) {
-          slowAnnonce = true
-          setPdfSlowPoll(prev => ({ ...prev, [d.id]: true }))
-          if (autoOpen) {
-            toast(`${d.reference} : le PDF est toujours en cours de génération — la page continue de vérifier automatiquement.`)
-          }
-        }
-        try {
-          // WIR217 — on lit l'ÉTAT du rendu (contrat
-          // apps/ventes/contract_samples/devis_etat_pdf.json), pas seulement
-          // `fichier_pdf` : un échec DÉFINITIF de la tâche Celery (retries
-          // épuisés) était invisible et cette boucle ne s'arrêtait jamais.
-          const res = await ventesApi.etatPdfDevis(d.id)
-          if (res.data.statut === 'echec') {
-            // État TERMINAL : on arrête le sondage et on rend l'échec
-            // ACTIONNABLE (le message du serveur nomme la cause).
-            setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
-            toast.error(
-              `${d.reference} : la génération du PDF a échoué${res.data.erreur ? ` — ${res.data.erreur}` : '.'}`,
-              { action: { label: 'Réessayer', onClick: () => genererUnPdf(d, { autoOpen }) } },
-            )
-            return
-          }
-          if (res.data.fichier_pdf) {
-            dispatch(fetchDevis())
-            setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
-            if (autoOpen) {
-              // VX48 — l'auto-open existant (QG1) reste l'expérience PAR
-              // DÉFAUT et se déclenche EN PREMIER ; on n'affiche le toast
-              // d'action « Ouvrir » (tap = geste frais, seul geste que
-              // Safari iOS honore après ce polling asynchrone) que si le
-              // téléchargement/l'ouverture automatique échoue.
-              try {
-                const pdfRes = await ventesApi.telechargerPdfDevis(d.id)
-                openPdfBlob(pdfRes.data, filenameFromResponse(pdfRes, `${d.reference}.pdf`))
-              } catch {
-                toast.error(`${d.reference} : PDF prêt — l'ouverture automatique a échoué.`, {
-                  action: {
-                    label: 'Ouvrir',
-                    onClick: async () => {
-                      try {
-                        const pdfRes = await ventesApi.telechargerPdfDevis(d.id)
-                        openPdfBlob(pdfRes.data, filenameFromResponse(pdfRes, `${d.reference}.pdf`))
-                      } catch {
-                        toast.error(`${d.reference} : PDF indisponible — utilisez le bouton de téléchargement.`)
-                      }
-                    },
-                  },
-                })
-              }
-            }
-          } else {
-            pollTimers.current[d.id] = setTimeout(poll, slow ? 10000 : 2000)
-          }
-        } catch { /* ignore poll errors — la boucle continue */ }
-      }
-      pollTimers.current[d.id] = setTimeout(poll, 2000)
-      return true
-    } catch (err) {
-      // T11 — surface claire de l'absence d'onduleur (ValueError moteur premium).
-      const msg = frenchError(err, '')
-      if (/onduleur|inverter/i.test(msg)) {
-        toast.error(`${d.reference} : ce devis n'a aucun onduleur — choisissez le format une page.`)
-      } else {
-        toast.error(`${d.reference} : ${msg || 'erreur lors de la génération PDF.'}`)
-      }
-      return false
-    } finally {
-      setPdfGenerating(prev => ({ ...prev, [d.id]: false }))
-    }
-  }
-
-  const handleGenererPdf = async (d) => {
-    setPdfTarget(null)
-    await genererUnPdf(d)
-  }
-
-  // T7 — Génération PDF par lot : même format pour tous les devis sélectionnés.
-  // QG1 — pas d'ouverture automatique par lot (N devis => N ouvertures serait
-  // intrusif) : chacun reste téléchargeable via son bouton vert une fois prêt.
-  const handleGenererPdfLot = async () => {
-    const cibles = devis.filter(d => selectedIds.includes(d.id))
-    setBatchPdf(false)
-    let ok = 0
-    for (const d of cibles) {
-      if (await genererUnPdf(d, { autoOpen: false })) ok += 1
-    }
-    if (ok > 0) toast.success(`Génération lancée pour ${ok} devis.`)
-    setSelectedIds([])
-  }
-
-  // WIR103/XFAC10 — Proforma PDF : document sans aucun impact comptable
-  // (jamais une facture, jamais une écriture). Le backend était complet et
-  // testé mais n'avait AUCUN appelant côté client. Le POST renvoie le PDF.
-  const handleProformaPdf = async (d) => {
-    try {
-      const res = await ventesApi.getProformaPdf(d.id)
-      openPdfBlob(res.data, `Proforma_${d.reference}.pdf`)
-    } catch {
-      toast.error('Proforma indisponible.')
-    }
-  }
-
-  // ZSAL8 — PDF du bon de commande lié (endpoint GET .../pdf/ backend
-  // complet, jamais appelé côté client).
-  const handleBonCommandePdf = async (d) => {
-    const bcId = d.bon_commande_etat?.id
-    if (!bcId) return
-    try {
-      const res = await ventesApi.getBonCommandePdf(bcId)
-      openPdfBlob(res.data, filenameFromResponse(res, `${d.bon_commande_etat.reference}.pdf`))
-    } catch {
-      toast.error('PDF du bon de commande indisponible.')
-    }
-  }
-
-  const handleTelechargerPdf = async (d) => {
-    setPdfDownloading(prev => ({ ...prev, [d.id]: true }))
-    try {
-      const res = await ventesApi.telechargerPdfDevis(d.id)
-      // QD2 — nom cohérent posé par le serveur (repli sur la référence).
-      openPdfBlob(res.data, filenameFromResponse(res, `${d.reference}.pdf`))
-    } catch {
-      toast.error('Fichier introuvable. Régénérez le PDF.')
-    } finally {
-      setPdfDownloading(prev => ({ ...prev, [d.id]: false }))
-    }
-  }
-
-  // VX44 — « Partager le PDF » : quand la Web Share API accepte les fichiers
-  // (iOS 15+, Android Chrome), le PDF du devis part directement dans la feuille
-  // de partage native (WhatsApp, e-mail…) ; sinon repli propre sur le
-  // téléchargement. Aucun nouveau chemin PDF — c'est le PDF existant du devis
-  // (règle #4 : le rendu /proposal n'est pas touché).
-  const handlePartagerPdf = async (d) => {
-    setPdfDownloading(prev => ({ ...prev, [d.id]: true }))
-    try {
-      const res = await ventesApi.telechargerPdfDevis(d.id)
-      const filename = filenameFromResponse(res, `${d.reference}.pdf`)
-      const file = new File([res.data], filename, { type: 'application/pdf' })
-      const shareData = { files: [file], title: `Devis ${d.reference}` }
-      if (navigator.canShare?.(shareData) && navigator.share) {
-        let partage = false
-        try {
-          await navigator.share(shareData)
-          partage = true
-        } catch (err) {
-          // L'utilisateur a annulé la feuille de partage : ne rien signaler.
-          if (err?.name !== 'AbortError') {
-            openPdfBlob(res.data, filename)
-          }
-        }
-        // QJR659 (décision fondateur 01/10) — partage RÉSOLU = envoi (comme
-        // copier le lien, D-QJR5-3) ; jamais sur AbortError ni sur le repli
-        // téléchargement. Le serveur passe la garde de remise T17 puis
-        // mark_devis_sent (idempotent, ne régresse jamais un devis avancé).
-        if (partage && d.statut === 'brouillon') {
-          try {
-            await ventesApi.partagePdfDevis(d.id)
-            dispatch(fetchDevis())
-            toast.success('PDF partagé — devis marqué envoyé.')
-          } catch (err) {
-            toast.error(frenchError(err, 'PDF partagé, mais le devis n\'a pas pu être marqué envoyé.'))
-          }
-        }
-      } else {
-        // Pas de partage natif de fichiers : repli sur le téléchargement.
-        openPdfBlob(res.data, filename)
-      }
-    } catch {
-      toast.error('Fichier introuvable. Régénérez le PDF.')
-    } finally {
-      setPdfDownloading(prev => ({ ...prev, [d.id]: false }))
-    }
-  }
-
   // Statut effectif : un devis dont la validité est dépassée s'affiche « Expiré »
   // sans changer son statut stocké (logique T7, partagée filtre/résumé/tableau).
   const effStatutOf = (d) => (d.is_expired ? 'expire' : d.statut)
@@ -2563,36 +729,8 @@ export default function DevisList() {
   // a été retirée : elle ne voyait que les devis déjà chargés dans la page, et
   // le panneau lit désormais le groupe complet servi par `getVariantes`.
 
-  // T6 — Résumé : nombre + total TTC par statut effectif (sur les devis chargés).
-  const summary = useMemo(() => {
-    const acc = {}
-    for (const key of Object.keys(STATUT_DISPLAY)) acc[key] = { count: 0, total: 0 }
-    for (const d of devis) {
-      const key = effStatutOf(d)
-      if (!acc[key]) acc[key] = { count: 0, total: 0 }
-      acc[key].count += 1
-      acc[key].total += Number(d.total_affiche ?? d.total_ttc ?? 0) || 0
-    }
-    return acc
-  }, [devis])
-
-  // T15 — Devis envoyés expirant dans ≤ 7 jours (et pas encore expirés).
-  const expiringSoon = useMemo(() => devis.filter(d => {
-    if (d.statut !== 'envoye' || d.is_expired) return false
-    const days = daysUntil(d.date_expiration)
-    return days !== null && days >= 0 && days <= 7
-  }), [devis])
-
-  // T16 — Répartition batterie sur les devis acceptés (option_acceptee).
-  const batteryInsight = useMemo(() => {
-    let avec = 0; let sans = 0
-    for (const d of devis) {
-      if (d.statut !== 'accepte') continue
-      if (d.option_acceptee === 'avec_batterie') avec += 1
-      else if (d.option_acceptee === 'sans_batterie') sans += 1
-    }
-    return { avec, sans }
-  }, [devis])
+  // SPL206 — dérivés de la synthèse (T6 / T15 / T16), déplacés avec l'en-tête.
+  const { summary, expiringSoon, batteryInsight } = useDevisListSynthese(devis, effStatutOf)
 
   const toggleSelected = (id) => setSelectedIds(prev =>
     prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -2609,27 +747,22 @@ export default function DevisList() {
   // aucune valeur n'est transformée. L'état des variantes est chargé sur
   // `versionsOpenId` (seule la ligne ouverte le rend), donc le partager est sûr.
   const rowCtx = {
-    selectedIds, toggleSelected,
+    // ACAL345 — état + handlers des flux PDF (SPL204) et d'envoi (SPL205),
+    // passés tels quels : DevisRow n'en lit que ce qu'il destructure.
+    ...pdf, ...envoi,
+    selectedIds, toggleSelected, effStatutOf, navigate, dispatch,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     // WIR225 - comparaison des variantes servie par le serveur.
     variantesEtat, basculerVersions,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     // WIR274 - composeur de note manuelle sur le panneau Historique.
     peutNoter, noteBrouillon, ecrireNote, publierNote, noteBusyId,
-    suiviOpenId, toggleSuiviPartage,
-    lectureClientCache, canSeeLectureClient,
-    conceptionOpenId, setConceptionOpenId,
-    etudeOpenId, setEtudeOpenId,
-    effStatutOf,
-    navigate, dispatch,
+    suiviOpenId, toggleSuiviPartage, lectureClientCache, canSeeLectureClient,
+    conceptionOpenId, setConceptionOpenId, etudeOpenId, setEtudeOpenId,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
-    deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
-    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, factureGenId,
-    openEdit, openVarianteModal, openGammeModal, handleDelete, handleEnvoyer, handleRelancer,
-    handleContacterSuperieur,
-    openEmailModal, handleCopierLienProposition, handleCopierApercuInterne, copierLienInterne, handlePreview, openPdfModal,
-    handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
-    handleProformaPdf, handleBonCommandePdf,
+    deletingId, statutActionId, convertingId, chantierBusy, factureGenId,
+    openEdit, openVarianteModal, openGammeModal, handleDelete,
+    openAcceptModal, openRefusModal, handleConvertBC,
     handleChantier, handleGenererFacture,
   }
 
@@ -2663,37 +796,14 @@ export default function DevisList() {
   // e2e `getByRole('heading')` sont inchangées) + icône et accent du module :
   // l'œil doit dire « je suis dans Ventes » sans lire le fil d'Ariane.
   const pageHeader = (
-    <PageHeader
-      style={VENTES_ACCENT_STYLE}
-      className="app-accent-rail"
-      icon={FileText}
-      title="Devis"
-      subtitle={
-        expiringSoon.length > 0
-          ? `${devis.length} devis · ${expiringSoon.length} à relancer (validité ≤ 7 jours)`
-          : `${devis.length} devis`
-      }
-      actions={(
-        <>
-          <Button size="sm" variant="outline" disabled={loading || !!error || xlsxBusy}
-                  onClick={() => {
-                    const pending = downloadBlobInGesture()
-                    setXlsxBusy(true)
-                    importApi.exportList('devis', devis.map(d => d.id))
-                      .then(r => pending.deliver(r.data, 'devis.xlsx'))
-                      .catch(() => {})
-                      .finally(() => setXlsxBusy(false))
-                  }}>
-            {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
-          </Button>
-          {/* VX80 — impression navigateur (feuille print.css : chrome masqué,
-              noir-sur-blanc, table complète). Distinct des PDF WeasyPrint. */}
-          <Button size="sm" variant="outline" onClick={() => window.print()}>
-            <Printer /> Imprimer
-          </Button>
-          <Button onClick={openNew}><Plus /> Nouveau devis</Button>
-        </>
-      )}
+    <DevisPageHeader
+      devis={devis}
+      expiringSoon={expiringSoon}
+      loading={loading}
+      error={error}
+      xlsxBusy={xlsxBusy}
+      setXlsxBusy={setXlsxBusy}
+      openNew={openNew}
     />
   )
 
@@ -2748,149 +858,36 @@ export default function DevisList() {
     <div className="page">
       {pageHeader}
 
-      {/* ── T6 — Résumé par statut (nombre + total TTC des devis chargés) ──
-          APX12 — les 5 cartes étaient des `<div>` nus : elles passent au
-          langage UNIQUE des KPI d'argent (`<Stat>`, chiffres `.num`
-          tabulaires), comme le cockpit trésorerie et le rail du générateur. */}
-      {devis.length > 0 && (
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          {Object.keys(STATUT_DISPLAY).map(key => (
-            <Stat
-              key={key}
-              className="p-3 sm:p-3"
-              label={(
-                // `normal-case` : le libellé de Stat est en majuscules, la
-                // pastille de statut garde sa casse d'origine (« Brouillon »).
-                <StatusPill status={key} label={STATUT_DISPLAY[key]} className="normal-case tracking-normal" />
-              )}
-              value={summary[key]?.count ?? 0}
-              hint={formatMAD(summary[key]?.total ?? 0)}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* ── T16 — Répartition batterie sur les devis acceptés ── */}
-      {(batteryInsight.avec > 0 || batteryInsight.sans > 0) && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Devis acceptés — option choisie :{' '}
-          <span className="font-medium text-success">{batteryInsight.avec} avec batterie</span>
-          {' · '}
-          <span className="font-medium text-foreground">{batteryInsight.sans} sans batterie</span>
-        </p>
-      )}
-
-      {/* ── T15 — Rappel : devis envoyés expirant dans ≤ 7 jours ── */}
-      {expiringSoon.length > 0 && (
-        <div className="mt-3 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          <div>
-            <strong>{expiringSoon.length} devis expirant bientôt</strong> (validité ≤ 7 jours) :{' '}
-            {expiringSoon.map(d => d.reference).join(', ')}.
-          </div>
-        </div>
-      )}
-
-      {/* ── T5 — Filtre statut + recherche (référence / client) ── */}
-      {devis.length > 0 && (
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Segmented
-            options={STATUT_FILTERS}
-            value={statutFilter}
-            onChange={setStatutFilter}
-            size="sm"
-          />
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input
-              type="search"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Rechercher (référence ou client)…"
-              className="pl-8 sm:w-64"
-              aria-label="Rechercher un devis"
-            />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Button type="button" variant="link" size="sm" onClick={saveCurrentDevisView}>
-              ⭐ Enregistrer cette vue
-            </Button>
-            <ViewsManagerPopover ecran={DL_ECRAN} onApply={applyDevisView} />
-          </div>
-          {/* U7 — bascule pour réafficher les révisions remplacées (masquées
-              par défaut). N'apparaît que s'il y en a au moins une. */}
-          {supersededCount > 0 && (
-            <Button type="button" variant="link" size="sm"
-                    onClick={() => setShowSuperseded(s => !s)}>
-              {showSuperseded
-                ? `Masquer les versions remplacées (${supersededCount})`
-                : `Voir les versions remplacées (${supersededCount})`}
-            </Button>
-          )}
-          {/* APX15(b) — bascule Liste/Board, parité exacte avec celle des
-              factures (ZFAC9). Le board consomme `filteredDevis`, déjà en
-              mémoire : aucune donnée nouvelle, aucun appel réseau. */}
-          <div className="ml-auto flex items-center gap-1 rounded-md border border-border p-0.5"
-               role="group" aria-label="Mode d’affichage">
-            <Button
-              type="button" size="sm"
-              variant={viewMode === 'liste' ? 'secondary' : 'ghost'}
-              aria-pressed={viewMode === 'liste'}
-              onClick={() => setViewMode('liste')}
-            >
-              <LayoutList className="size-4" aria-hidden="true" /> Liste
-            </Button>
-            <Button
-              type="button" size="sm"
-              variant={viewMode === 'board' ? 'secondary' : 'ghost'}
-              aria-pressed={viewMode === 'board'}
-              onClick={() => setViewMode('board')}
-            >
-              <LayoutGrid className="size-4" aria-hidden="true" /> Board
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* ── T7 — Barre d'action du lot sélectionné ── */}
-      {selectedIds.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 p-2 text-sm">
-          <span className="font-medium">{selectedIds.length} devis sélectionné(s)</span>
-          <Button size="sm" onClick={openBatchPdfModal}>
-            <FileText /> Générer les PDF
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setSelectedIds([])}>
-            Effacer la sélection
-          </Button>
-        </div>
-      )}
+      {/* SPL206 — en-tête de page : synthèse, filtres, barre de lot (move only). */}
+      <DevisListChrome
+        devis={devis}
+        summary={summary}
+        batteryInsight={batteryInsight}
+        expiringSoon={expiringSoon}
+        statutFilter={statutFilter}
+        setStatutFilter={setStatutFilter}
+        query={query}
+        setQuery={setQuery}
+        saveCurrentDevisView={saveCurrentDevisView}
+        applyDevisView={applyDevisView}
+        supersededCount={supersededCount}
+        showSuperseded={showSuperseded}
+        setShowSuperseded={setShowSuperseded}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        selectedIds={selectedIds}
+        setSelectedIds={setSelectedIds}
+        openBatchPdfModal={openBatchPdfModal}
+      />
 
       {/* ── ARC49 — Modale de génération PDF (extraite en composant ; flux PDF
           inchangé, règle #4). MB4 — ResponsiveDialog → tiroir bas sur mobile. ── */}
       <DevisPdfDialog
-        pdfTarget={pdfTarget}
-        batchPdf={batchPdf}
+        {...pdf}
         selectedIds={selectedIds}
-        pdfMode={pdfMode}
-        setPdfMode={setPdfMode}
-        pdfModeAutoOnepage={pdfModeAutoOnepage}
-        targetIsAgricole={targetIsAgricole}
-        showMonthly={showMonthly}
-        setShowMonthly={setShowMonthly}
-        targetHasEtude={targetHasEtude}
-        includeEtude={includeEtude}
-        setIncludeEtude={setIncludeEtude}
-        includeCalepinage={includeCalepinage}
-        setIncludeCalepinage={setIncludeCalepinage}
-        devisFinal={devisFinal}
-        setDevisFinal={setDevisFinal}
-        paymentMode={paymentMode}
-        setPaymentMode={setPaymentMode}
-        customAcompte={customAcompte}
-        setCustomAcompte={setCustomAcompte}
-        onClose={() => { setPdfTarget(null); setBatchPdf(false) }}
-        onGenererLot={handleGenererPdfLot}
-        onGenererUn={handleGenererPdf}
+        onClose={() => { pdf.setPdfTarget(null); pdf.setBatchPdf(false) }}
+        onGenererLot={pdf.handleGenererPdfLot}
+        onGenererUn={pdf.handleGenererPdf}
       />
 
       {/* ── T9 — Modale d'acceptation inline (nom / date / option) — MB4
@@ -3012,118 +1009,8 @@ export default function DevisList() {
           </div>
       </ResponsiveDialog>
 
-      {/* QJ14 — Modale « Envoyer par email » : PDF premium + lien de proposition
-          (MB4 — ResponsiveDialog → tiroir bas plein écran sur mobile) */}
-      <ResponsiveDialog
-        open={!!emailTarget}
-        onOpenChange={(o) => { if (!o) closeEmailModal() }}
-        title={`Envoyer par email — ${emailTarget?.reference ?? ''}`}
-        footer={(
-          <>
-            <Button variant="outline" onClick={closeEmailModal} disabled={emailBusy}>
-              Annuler
-            </Button>
-            <Button onClick={submitEmail} loading={emailBusy}>
-              <Send className="size-4 mr-1" aria-hidden="true" />
-              Envoyer
-            </Button>
-          </>
-        )}
-      >
-          <div className="flex flex-col gap-4">
-            <div className="grid gap-1.5">
-              <Label htmlFor="email-address">Adresse email du destinataire</Label>
-              <Input
-                id="email-address"
-                type="email"
-                placeholder="client@exemple.ma"
-                value={emailAddress}
-                onChange={e => setEmailAddress(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Laissez vide pour utiliser l'email du client enregistré.
-                Le PDF de la proposition et le lien de signature seront joints.
-              </p>
-            </div>
-          </div>
-      </ResponsiveDialog>
-
-      {/* QG8 — Aperçu du message WhatsApp avant ouverture. L'aperçu est une
-          LECTURE (whatsapp-preview) : le devis n'est marqué « Envoyé » qu'au
-          clic « Ouvrir WhatsApp » (action whatsapp). ERR-QAH-VENTES-ENVOYE-
-          FAUX-STATUT — le texte ne prétend jamais un statut non encore posé. */}
-      <Dialog open={!!waTarget} onOpenChange={(o) => { if (!o) closeWaModal() }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {relanceMode ? 'Relancer par WhatsApp' : 'Envoyer par WhatsApp'} — {waTarget?.reference}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <p className="text-sm text-muted-foreground">
-              {relanceMode
-                ? 'Vérifiez le message de rappel ci-dessous puis ouvrez WhatsApp — vous appuierez vous-même sur Envoyer.'
-                : 'Vérifiez le message ci-dessous puis ouvrez WhatsApp — vous appuierez vous-même sur Envoyer. Le devis passera « Envoyé » quand vous ouvrirez WhatsApp ; fermer cette fenêtre le laisse en brouillon.'}
-            </p>
-            <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm whitespace-pre-wrap">
-              {relanceMode
-                ? buildRelanceMessage(waData, waTarget?.reference)
-                : (waData?.message || '…')}
-            </div>
-            {/* GAMMES — ENVOI À LA CARTE (fondateur 2026-08-18). Affiché
-                uniquement quand ce devis appartient à une paire de gammes :
-                envoyer CETTE gamme seule (le lien rend le devis comme
-                aujourd'hui) ou LES DEUX (le client choisit, badge
-                « Recommandé » sur celle désignée). Défaut : les deux. */}
-            {waData?.gamme && !relanceMode && (
-              <fieldset className="rounded-lg border border-border p-3">
-                <legend className="px-1 text-sm font-medium">Gammes à envoyer</legend>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="gamme-envoi"
-                    value="les_deux"
-                    checked={waGammeEnvoi === 'les_deux'}
-                    onChange={() => setWaGammeEnvoi('les_deux')}
-                  />
-                  <span>
-                    Envoyer les deux
-                    {waData.gamme.recommandee
-                      ? ` (recommandée : ${waData.gamme.recommandee})`
-                      : ''}
-                  </span>
-                </label>
-                <label className="mt-2 flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="gamme-envoi"
-                    value="seule"
-                    checked={waGammeEnvoi === 'seule'}
-                    onChange={() => setWaGammeEnvoi('seule')}
-                  />
-                  <span>
-                    Envoyer cette gamme seule
-                    {waData.gamme.nom ? ` (${waData.gamme.nom})` : ''}
-                  </span>
-                </label>
-              </fieldset>
-            )}
-            {!waData?.wa_url && (
-              <p className="text-sm text-destructive">
-                Aucun numéro de téléphone : le message ne peut pas être ouvert
-                dans WhatsApp.
-              </p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={closeWaModal} disabled={waSending}>Fermer</Button>
-            <Button onClick={openWhatsApp} disabled={!waData?.wa_url} loading={waSending}>
-              <Send className="size-4 mr-1" aria-hidden="true" />
-              Ouvrir WhatsApp
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* SPL205 — dialogues d'envoi (email + WhatsApp), JSX déplacé. */}
+      <EnvoiDialogs {...envoi} />
 
       {/* QG10 — Modale « Variantes » : confirmer / éditer le pourcentage puis
           créer les 3 variantes et router vers la comparaison. Le champ % n'est

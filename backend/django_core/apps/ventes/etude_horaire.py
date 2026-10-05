@@ -88,13 +88,17 @@ from apps.ventes.courbes_journalieres import (
     occupation_du_devis,
     profil_suppose,
 )
-from apps.ventes.horaire.base import MOIS_ETE_FACTURE, _num, saison_du_mois
+from apps.ventes.horaire.base import _num, saison_du_mois
 from apps.ventes.horaire.batterie_lignes import (
     RENDEMENT_SOURCE_FICHE,
     RENDEMENT_SOURCE_HYPOTHESE,
     capacite_batterie_du_devis,
     puissance_batterie_du_devis,
     rendement_batterie_du_devis,
+)
+from apps.ventes.horaire.conso import (
+    coherence_kwh_declare_factures,
+    profil_depuis_factures,
 )
 from apps.ventes.quote_engine import bareme
 from apps.ventes.quote_engine.pricing import BATTERY_ROUNDTRIP, PRODUCTION_DERATE
@@ -105,101 +109,6 @@ logger = logging.getLogger(__name__)
 #: Version du bloc ``etude_params['etude_horaire']``. Incrémentée à TOUT
 #: changement de forme — jamais de mutation silencieuse d'un bloc déjà posé.
 ETUDE_HORAIRE_VERSION = 1
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# 1. CONSOMMATION — la série 12 mois en kWh, back-calculée depuis les factures
-# ════════════════════════════════════════════════════════════════════════════
-
-def serie_mad_mensuelle(facture_hiver_mad, facture_ete_mad=None,
-                        ete_differente=False):
-    """12 montants MAD/mois depuis les factures déclarées par le lead.
-
-    Le lead ne porte JAMAIS douze factures : il porte une facture d'hiver, et
-    éventuellement une facture d'été distincte (``ete_differente``). On répète
-    donc honnêtement ces deux points réels sur les douze mois — on n'invente
-    AUCUNE variation mensuelle que la donnée client ne contient pas. Même
-    convention que ``public_views._monthly_consumption`` (été = mai→octobre).
-
-    Sans facture d'hiver exploitable ⇒ ``None`` (aucune série fabriquée).
-    """
-    hiver = _num(facture_hiver_mad)
-    if hiver <= 0:
-        return None
-    ete = _num(facture_ete_mad)
-    utilise_ete = bool(ete_differente) and ete > 0
-    return [
-        (ete if (utilise_ete and m in MOIS_ETE_FACTURE) else hiver)
-        for m in range(12)
-    ]
-
-
-def serie_kwh_depuis_mad(serie_mad, *, tranches=None, charges_fixes_mad=None,
-                         tppan=True, millesime=bareme.MILLESIME_COURANT):
-    """12 montants MAD/mois → 12 consommations kWh/mois (back-calcul barème).
-
-    ORDRE FONDATEUR : « back-calculating the kwh he consumed looking at his
-    bill and tranches ». L'inversion passe par
-    :func:`~apps.ventes.quote_engine.bareme.kwh_depuis_facture_mad` — les
-    VRAIES tranches (progressif ≤ 150, sélectif au-delà avec tolérance), les
-    DEUX lignes fixes (location du compteur + entretien du branchement) et la
-    TPPAN retirées correctement. JAMAIS une division par un prix moyen.
-
-    JOURS DE RÉFÉRENCE. Le lead déclare un montant « par mois », pas une
-    période de relevé : on inverse donc sur le mois PLEIN de 30 jours
-    (:data:`bareme.TPPAN_JOURS_REFERENCE`), la base même du barème TPPAN. La
-    proratisation aux jours réels n'intervient qu'ensuite, mois par mois, dans
-    le calcul des économies.
-
-    Mémoïsé : le lead ne porte au plus que deux montants distincts, on
-    n'inverse donc qu'au plus deux fois.
-
-    Renvoie ``(kwh_mensuels, detail)``, ou ``(None, {})`` si la série d'entrée
-    est inexploitable.
-    """
-    if not serie_mad or len(serie_mad) != 12:
-        return None, {}
-
-    cache = {}
-
-    def _inverser(mad):
-        if mad not in cache:
-            cache[mad] = bareme.kwh_depuis_facture_mad(
-                mad, tranches=tranches, charges_fixes_mad=charges_fixes_mad,
-                tppan=tppan, millesime=millesime)
-        return cache[mad]
-
-    kwh = []
-    for mad in serie_mad:
-        resultat = _inverser(mad)
-        valeur = resultat['kwh_mensuel']
-        # QJR142 (e) — l'inversion rend ``None`` quand le montant sort de la
-        # plage inversable (elle rendait ≈ 1 024 000 kWh/mois sans drapeau).
-        # Un mois non inversable rend la SÉRIE inexploitable : on omet tout
-        # plutôt que de mélanger un trou et onze vrais mois.
-        if valeur is None:
-            return None, {}
-        kwh.append(valeur)
-
-    if not any(v > 0 for v in kwh):
-        return None, {}
-
-    exemple = next(iter(cache.values()))
-    detail = {
-        'methode': 'inversion_bareme_tranches',
-        'charges_fixes_mad': round(exemple['location_entretien_mad'], 2),
-        'charges_fixes_source': exemple['charges_fixes_source'],
-        'millesime': millesime,
-    }
-    # QJR141 — LA RÉSERVE VOYAGE AVEC LE CHIFFRE. Le seuil d'exonération TPPAN
-    # n'est pas départagé par les factures disponibles : ``tppan_source`` dit
-    # laquelle des deux lectures a servi et pourquoi. ``bareme`` le rendait,
-    # l'inversion le jetait — la seule chaîne portant cette réserve n'atteignait
-    # ni écran ni PDF. Clé ADDITIVE et seulement quand la TPPAN s'applique :
-    # sans TPPAN, la chaîne est vide et le bloc garde sa forme d'avant.
-    if exemple.get('tppan_source'):
-        detail['tppan_source'] = exemple['tppan_source']
-    return kwh, detail
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1802,63 +1711,6 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
 # 5. ENTRÉES APPLICATIVES — depuis un devis, ou depuis un profil brut
 # ════════════════════════════════════════════════════════════════════════════
 
-def profil_depuis_factures(*, facture_hiver_mad=None, facture_ete_mad=None,
-                           ete_differente=False, factures_mensuelles_mad=None,
-                           conso_kwh_mensuelles=None,
-                           conso_kwh_mensuelle_unique=None, tranches=None,
-                           charges_fixes_mad=None, tppan=True):
-    """Résout la série 12 mois en kWh depuis ce que le client a réellement donné.
-
-    Ordre de PRIORITÉ (le plus réel d'abord) :
-
-    1. ``conso_kwh_mensuelles`` — 12 kWh déjà mesurés (le cas idéal) ;
-    1 bis. ``conso_kwh_mensuelle_unique`` — UNE consommation mensuelle en kWh
-       déclarée sur la fiche (CAD166, décision fondateur du 21/09/2026 : « les
-       kWh saisis passent en PRIORITÉ 1 ; les montants en dirhams inversés au
-       barème ne servent que s'ils sont absents »). Elle est répétée sur les
-       douze mois — exactement l'honnêteté de la facture d'hiver répétée plus
-       bas, mais SANS l'inversion au barème, donc sans son incertitude ;
-    2. ``factures_mensuelles_mad`` — 12 factures RÉELLES saisies
-       (``etude_params['factures_mensuelles_reelles']``), back-calculées une à
-       une : c'est la seule source qui porte une VRAIE variation mensuelle ;
-    3. facture d'hiver (+ facture d'été si distincte) — les deux points réels
-       que le lead porte, répétés honnêtement sur les douze mois.
-
-    Renvoie ``(kwh_mensuels | None, source, detail)``.
-    """
-    if conso_kwh_mensuelles and len(conso_kwh_mensuelles) == 12:
-        valeurs = [max(0.0, _num(v)) for v in conso_kwh_mensuelles]
-        if any(v > 0 for v in valeurs):
-            return valeurs, 'kwh_mensuels_saisis', {'methode': 'saisie_directe'}
-
-    unique = _num(conso_kwh_mensuelle_unique)
-    if unique > 0:
-        return ([unique] * 12, 'kwh_mensuel_saisi',
-                {'methode': 'saisie_directe_mois_unique'})
-
-    if factures_mensuelles_mad and len(factures_mensuelles_mad) == 12:
-        valeurs = [_num(v) for v in factures_mensuelles_mad]
-        if all(v > 0 for v in valeurs):
-            kwh, detail = serie_kwh_depuis_mad(
-                valeurs, tranches=tranches,
-                charges_fixes_mad=charges_fixes_mad, tppan=tppan)
-            if kwh:
-                return kwh, 'factures_mensuelles_reelles', detail
-
-    serie_mad = serie_mad_mensuelle(
-        facture_hiver_mad, facture_ete_mad, ete_differente)
-    if serie_mad:
-        kwh, detail = serie_kwh_depuis_mad(
-            serie_mad, tranches=tranches,
-            charges_fixes_mad=charges_fixes_mad, tppan=tppan)
-        if kwh:
-            source = ('facture_hiver_ete' if (ete_differente
-                                              and _num(facture_ete_mad) > 0)
-                      else 'facture_hiver')
-            return kwh, source, detail
-
-    return None, 'absente', {}
-
 
 def _reglages_tarifaires(company):
     """``(tranches, charges_fixes)`` de la société — best-effort, jamais bloquant.
@@ -2007,52 +1859,6 @@ def profil_conso_du_devis(devis, *, bills=None, tranches=None,
         conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'),
         conso_kwh_mensuelle_unique=conso_mensuelle_kwh_pour_devis(devis),
         tranches=tranches, charges_fixes_mad=charges_fixes_mad)
-
-
-# ── ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — kWh déclaré vs factures ─────────
-#
-# DÉCISION FONDATEUR du 30/09/2026 : la priorité « 1 bis » (CAD166, Q14) du kWh
-# mensuel DÉCLARÉ ne vaut que s'il est vraisemblable face aux factures
-# déclarées du MÊME dossier. Si facture_barème(kWh déclaré) ÷ facture déclarée
-# sort de [0,5 ; 2], l'enregistrement du devis est REFUSÉ (jamais un chiffrage
-# silencieux : DEV-202609-0082/-0085 chiffrés sur 46/32 kWh/mois face à
-# 10 000–20 000 MAD/mois de factures).
-RATIO_KWH_FACTURE_MIN = 0.5
-RATIO_KWH_FACTURE_MAX = 2.0
-MESSAGE_KWH_INCOHERENT = ('kWh déclarés incohérents avec les factures — '
-                          'corriger la fiche du lead')
-CODE_KWH_INCOHERENT = 'kwh_incoherent_factures'
-
-
-def coherence_kwh_declare_factures(kwh_mensuel, factures_mad, *,
-                                   tranches=None, charges_fixes_mad=None):
-    """Confronte UN kWh mensuel déclaré aux factures mensuelles déclarées.
-
-    ``factures_mad`` : les montants réels du dossier (hiver, et été quand il
-    est distinct). Le kWh déclaré est TARIFÉ au barème (:func:`bareme.facture_mad`,
-    mêmes tranches / charges fixes que l'étude) puis divisé par chaque facture.
-    Il est cohérent dès qu'UNE facture déclarée tombe dans la bande (l'été et
-    l'hiver d'un même client diffèrent légitimement).
-
-    Rend ``None`` quand la confrontation est impossible (kWh ou facture
-    absents) — rien n'est alors bloqué —, sinon
-    ``{kwh_mensuel, facture_bareme_mad, ratios, coherent}``.
-    """
-    kwh = _num(kwh_mensuel)
-    factures = [f for f in (_num(v) for v in (factures_mad or ())) if f > 0]
-    if kwh <= 0 or not factures:
-        return None
-    facture_bareme = bareme.facture_mad(
-        kwh, tranches=tranches,
-        charges_fixes_mad=charges_fixes_mad)['total_mad']
-    ratios = [facture_bareme / f for f in factures]
-    return {
-        'kwh_mensuel': kwh,
-        'facture_bareme_mad': facture_bareme,
-        'ratios': ratios,
-        'coherent': any(RATIO_KWH_FACTURE_MIN <= r <= RATIO_KWH_FACTURE_MAX
-                        for r in ratios),
-    }
 
 
 def controle_kwh_declare_du_lead(lead, company=None):
@@ -2217,145 +2023,3 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
             resultat['profil_suppose'] = True
             resultat['bandeau_profil'] = BANDEAU_PROFIL_SUPPOSE
     return resultat
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# CAD170 — LA RECHARGE NOCTURNE SE COUVRE PAR LE STOCKAGE, PAS PAR UN CONSEIL
-# ════════════════════════════════════════════════════════════════════════════
-#
-# LE CAS MAJORITAIRE. La fenêtre de recharge par défaut est 21h-6h : la voiture
-# se charge quand le champ ne produit plus. L'audit du 21/09/2026 a mesuré
-# l'effet sur l'autoconsommation — NUL, même avec une batterie de 10 kWh
-# (reproduit deux fois par ses relecteurs).
-#
-# LA DÉCISION FONDATEUR (21/09/2026). On ne conseille PAS « rechargez de
-# jour » comme argument principal : on DIMENSIONNE la batterie pour couvrir la
-# recharge nocturne. Le conseil de décaler la recharge est ÉCARTÉ — le gain
-# chiffré qui le soutenait était gonflé par l'absence de borne que CAD165 (4)
-# a corrigée.
-#
-# LES DEUX BORNES, et pourquoi elles ne sont pas négociables :
-#   · l'énergie ajoutée est celle que le moteur PLACE déjà (``kwh_jour`` de la
-#     couche véhicule, dérivée des km déclarés et de la conversion ADEME) —
-#     aucune consommation de recharge n'est inventée ici ;
-#   · le besoin est ensuite servi par une TAILLE D'OFFRE RÉELLEMENT VENDUE :
-#     jamais une batterie sur mesure, jamais au-delà du catalogue. Sans
-#     catalogue, aucune taille n'est proposée — l'omission est nommée.
-
-
-def _couche_ve_nocturne(equipements):
-    """La couche véhicule quand sa recharge est ENTIÈREMENT nocturne, sinon None.
-
-    « Nocturne » n'est pas un horaire choisi ici : c'est la fenêtre
-    heures-creuses que le module de courbes documente déjà
-    (``courbes_journalieres.VE_CRENEAUX['nuit']``). Une recharge déclarée de
-    jour ou de soirée n'entre donc pas dans ce calcul."""
-    couche = (equipements or {}).get('ve') or {}
-    heures = couche.get('heures') or []
-    if not heures:
-        return None
-    try:
-        from .courbes_journalieres import VE_CRENEAUX
-        nuit = set(VE_CRENEAUX['nuit'])
-    except Exception:  # noqa: BLE001 — sans fenêtre de référence, on s'abstient
-        return None
-    return couche if set(heures) <= nuit else None
-
-
-def recharge_ve_nocturne_kwh_jour(equipements) -> float:
-    """kWh/jour de recharge NOCTURNE à couvrir, ou ``0.0``.
-
-    Pas de couche véhicule, ou recharge déclarée hors de la nuit ⇒ ``0.0`` :
-    il n'y a alors rien à ajouter au stockage."""
-    couche = _couche_ve_nocturne(equipements)
-    if couche is None:
-        return 0.0
-    return max(0.0, _num(couche.get('kwh_jour')))
-
-
-def besoin_stockage_avec_recharge_ve(besoin_kwh, equipements,
-                                     tailles_offre_kwh) -> dict:
-    """CAD170 — le besoin de stockage AUGMENTÉ de la recharge nocturne.
-
-    ``besoin_kwh``       le besoin de stockage établi par ailleurs (kWh) ;
-    ``equipements``      les couches de ``composer_equipements`` ;
-    ``tailles_offre_kwh`` les capacités RÉELLEMENT VENDUES (catalogue).
-
-    Renvoie ``{besoin_base_kwh, recharge_ve_kwh, besoin_total_kwh,
-    taille_retenue_kwh, plafonne, motif}``.
-
-    La taille retenue est la PLUS PETITE taille d'offre qui couvre le besoin
-    total ; si aucune ne le couvre, c'est la PLUS GRANDE, et ``plafonne`` vaut
-    True avec son motif — jamais une capacité hors catalogue, jamais une
-    batterie sur mesure. Sans catalogue, ``taille_retenue_kwh`` vaut ``None``
-    et le motif nomme ce qui manque (aucune taille inventée)."""
-    base = max(0.0, _num(besoin_kwh))
-    recharge = recharge_ve_nocturne_kwh_jour(equipements)
-    total = base + recharge
-    tailles = sorted({round(max(0.0, _num(t)), 3)
-                      for t in (tailles_offre_kwh or []) if _num(t) > 0})
-    sortie = {
-        'besoin_base_kwh': round(base, 2),
-        'recharge_ve_kwh': round(recharge, 2),
-        'besoin_total_kwh': round(total, 2),
-        'taille_retenue_kwh': None,
-        'plafonne': False,
-        'motif': '',
-    }
-    if not tailles:
-        sortie['motif'] = (
-            "aucune taille d'offre connue : le besoin est chiffré, la "
-            "capacité à vendre reste à choisir dans le catalogue — jamais "
-            "une batterie sur mesure.")
-        return sortie
-    couvrantes = [t for t in tailles if t >= total]
-    if couvrantes:
-        sortie['taille_retenue_kwh'] = couvrantes[0]
-        return sortie
-    sortie['taille_retenue_kwh'] = tailles[-1]
-    sortie['plafonne'] = True
-    sortie['motif'] = (
-        f"besoin de {round(total, 2)} kWh plafonné à la plus grande taille "
-        f"vendue ({tailles[-1]} kWh) : au-delà du catalogue, on ne compose "
-        "pas une batterie sur mesure.")
-    return sortie
-
-
-# ── QJR612 — LE PLANCHER RÉELLEMENT APPLIQUÉ AU CHOIX DU STOCKAGE ────────────
-#
-# DÉCISION FONDATEUR (30/09/2026, verbatim) : « add more panels so battery is
-# always charged. and btw this is a rule that exists already for batteries in
-# general in my ERP ». Le plancher ci-dessous RELÈVE la batterie retenue ; la
-# règle « batteries toujours pleines » (``se_remplit_tous_les_jours``, déjà
-# appliquée par ``dimensionnement.balayer_tailles``) fait alors monter le champ
-# jusqu'à ce que cette batterie se remplisse chaque jour — jamais une banque
-# qui dort.
-
-
-def equipements_sans_recharge_ve_nocturne(equipements):
-    """Les couches du lead SANS la couche véhicule NOCTURNE — la base du
-    plancher, pour ne jamais compter deux fois la recharge.
-
-    Une recharge de jour ou de soirée n'est pas la couche nocturne : les
-    couches sont alors rendues telles quelles. ``None`` reste ``None``."""
-    if equipements is None:
-        return None
-    if _couche_ve_nocturne(equipements) is None:
-        return equipements
-    return {cle: couche for cle, couche in equipements.items() if cle != 've'}
-
-
-def plancher_batterie_recharge_ve(besoin_base_kwh, equipements,
-                                  tailles_offre_kwh):
-    """Le PLANCHER de stockage imposé par la recharge VE nocturne, ou ``None``.
-
-    ``None`` quand aucune recharge nocturne n'est déclarée : rien ne change
-    alors, à l'octet près. Sinon, la sortie de
-    :func:`besoin_stockage_avec_recharge_ve` — ``besoin_base_kwh`` doit être le
-    besoin du même lead SANS la couche VE nocturne
-    (:func:`equipements_sans_recharge_ve_nocturne`), ``tailles_offre_kwh`` les
-    capacités RÉELLEMENT composées (jamais inventées)."""
-    if recharge_ve_nocturne_kwh_jour(equipements) <= 0:
-        return None
-    return besoin_stockage_avec_recharge_ve(
-        besoin_base_kwh, equipements, tailles_offre_kwh)
