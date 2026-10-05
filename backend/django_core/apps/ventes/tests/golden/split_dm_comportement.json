@@ -1,5 +1,20 @@
 {
-  "base": {},
+  "base": {
+    "apercu_residentiel": "5adc6891e4929cfa0f890100f3acb33dec772b8b19ef624c7c176603224bec35",
+    "auto": "d7296bfcfdf0d1d7c04d8088139909df3c0aaabb1d42961e97d8eaa1905a1b4a",
+    "capture_dedoublonnee": "9749d682cc49fcd52b064507a21769d09b2ead4087e389ffa214b0892cda7e2d",
+    "cloner": "2bb55789202414edab1adac203fa338f83dfbfe5b5de66e6326962e2cc62dda5",
+    "configuration": "2d46405fc402afc933eb340e42169303e9d30980ce5d7ecd063da7a9a189a00e",
+    "dupliquer": "2bb55789202414edab1adac203fa338f83dfbfe5b5de66e6326962e2cc62dda5",
+    "envoi": "96fee83ccd5e3f9ccc68d8b6bdd940ffcd579a980af9ab987400bf35ca4f465e",
+    "layout_alu_mppt3": "64786cacbc1d5675a398af803a1c75adbbe8dcaa294cc0109fd93b93ac532f6c",
+    "layout_deux_options": "a66f55153cab23837dacc814981a3d5b28215cf79675fde7f6b423e06d531064",
+    "layout_sans_acier": "2bb55789202414edab1adac203fa338f83dfbfe5b5de66e6326962e2cc62dda5",
+    "modele": "e69ec140cfd621dbc7718512b37e07cd01446bb1cf8cf59c88456a26127a4c1b",
+    "renouveler_brouillon": "a787847f44aebd05c07cf05f34eeb1493df00e883b709b9243993bbfb5b51b24",
+    "revision": "ef755a5eb2f8d99809eff05c2cec3ccbe354688b717c497ab82b54876c66d268",
+    "revision_v1": "98436628b0a65f7dc21c877a0dc90bc131a19ccb6624d6c67cd730e6c054e7c3"
+  },
   "pur": {
     "appariement": "ae07d816921f7a6908bf556bed9b92bbfcbb7fd57e312e4d848d31d19297cf56",
     "batterie_incompatible": "f1e32c2c4d852c1d9bfd849fd00f5f69361b2b12fff872ffc9ffea07cb319f20",
