@@ -138,6 +138,20 @@ describe("CALX109 — l'échantillon de contrat est lu tel qu'il est committé",
     }
   });
 
+  // ACAL174 — le serveur sert les favoris de la société EN TÊTE : l'atelier
+  // propose les modules DANS L'ORDRE SERVI, jamais retrié.
+  it("l'ordre servi est conservé", () => {
+    const [complet] = CONTRAT.exemple.modules as Array<{ module: ModuleDocument }>;
+    const copie = (id: number, favori: boolean) => ({
+      ...complet, favori,
+      module: { ...complet.module, id: `produit-${id}`, produitId: id },
+    });
+    const servi = { ...CONTRAT.exemple,
+      modules: [copie(2, true), copie(1, false), copie(3, false)] };
+    expect(lireModulesDisponibles(servi).choisissables.map((m) => m.id))
+      .toEqual(['produit-2', 'produit-1', 'produit-3']);
+  });
+
   it('une réponse absente ou mal formée ne jette jamais', () => {
     for (const brut of [null, undefined, 42, 'oui', {}, { modules: 'non' }]) {
       expect(lireModulesDisponibles(brut).choisissables).toEqual([]);

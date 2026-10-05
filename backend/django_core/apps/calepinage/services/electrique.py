@@ -1149,6 +1149,9 @@ def _candidats_materiel(calepinage):
                 'fiche_complete': not manquants,
                 'champs_manquants': manquants,
             })
+        # ACAL174 — les favoris EN TÊTE ; le reste garde l'ordre du
+        # catalogue (tri stable).
+        candidats[cle].sort(key=lambda ligne: not ligne['favori'])
     return candidats
 
 
