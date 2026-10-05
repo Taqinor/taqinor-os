@@ -28,8 +28,7 @@ def build(category: str = "hotel") -> dict:
              33000, 32000, 27000, 22000, 19000, 17000]
     etude = {
         "kwc": 90.0, "production_annuelle": 144000, "conso_annuelle": 190000,
-        "taux_autoconso": 78.0, "taux_couverture": 59.1,
-        "economies_annuelles": 165000, "payback": 3.4, "prix_kwc": 7200,
+        "taux_autoconso": 78.0, "taux_couverture": 59.1, "prix_kwc": 7200,
         "categorie_commerciale": category,
     }
     etude.update(_ANSWERS.get(category, {}))
@@ -48,8 +47,10 @@ def build(category: str = "hotel") -> dict:
         "watt_par_panneau": 710,
         "prod_kwh": 144000,
         "conso_annuelle_kwh": 190000,
-        "eco_s_ann": 165000,
-        "roi_s": 3.4,
+        # CIQ301 — plus aucune économie / payback fabriqué : le générateur
+        # n'envoie jamais ``economies_annuelles`` et le renderer ne reprend
+        # plus ``eco_s_ann``/``roi_s`` (C3-VA-01). L'argent C&I viendra de
+        # ``synthese_ci.argent`` (CIQ307).
         "display_total": 640000,
         "totaux_all": {"ht_brut": 533333, "remise": 0, "ht_net": 533333,
                        "tva": 106667, "ttc": 640000},

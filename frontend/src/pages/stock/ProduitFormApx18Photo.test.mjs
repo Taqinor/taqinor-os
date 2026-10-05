@@ -82,7 +82,9 @@ test('retirer une photo NON enregistrée ne déclenche pas un PATCH de suppressi
 })
 
 test('la vignette catalogue a un repli d\'icône de catégorie (jamais de trou)', () => {
-  assert.match(TABLE, /\bcategorieIcone\b[\s\S]{0,200}from '\.\.\/\.\.\/features\/stock\/catalogue'/)
+  // Le nom est cherché DANS l'accolade d'import de `features/stock/catalogue`
+  // (une fenêtre fixe de 200 caractères cassait dès que la liste s'allongeait).
+  assert.match(TABLE, /import \{[^}]*\bcategorieIcone\b[^}]*\} from '\.\.\/\.\.\/features\/stock\/catalogue'/)
   assert.match(TABLE, /produit\.image_url\s*\n?\s*\?\s*<img/)
   // L'icône de repli est résolue EN LIGNE via `createElement` : lier
   // `categorieIcone(...)` à une variable PascalCase pendant le rendu déclenche

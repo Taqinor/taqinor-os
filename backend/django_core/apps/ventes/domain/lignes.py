@@ -457,6 +457,9 @@ def cible_depuis_lignes(devis, variante='sans'):
 CHAMPS_LIGNE = (
     'produit', 'produit_id', 'designation', 'quantite', 'prix_unitaire',
     'remise', 'taux_tva', 'type_ligne', 'ordre', 'variante',
+    # AGR217 — la base légale d'une ligne exonérée (0 %) : une copie
+    # (révision, duplication, variante, gamme, renouvellement) la reprend.
+    'tva_base_legale',
     # STKCAT23 — le RÔLE de la ligne. Un appelant peut le poser explicitement ;
     # sinon ``creer_ligne`` le RÉSOUT (voir ``_role_a_la_creation``). Il figure
     # dans le jeu complet comme tout le reste : un chemin de COPIE
@@ -851,6 +854,48 @@ def _ligne_composee_emise(valeur):
     return None
 
 
+#: AGR217 — longueur maximale de ``LigneDevis.tva_base_legale``.
+TVA_BASE_LEGALE_MAX = 160
+
+
+def _taux_nul(taux):
+    """Le taux ÉMIS est-il 0 % ? ``None``/illisible ⇒ non (le taux du
+    produit ou du devis s'applique, aucun contrôle ici)."""
+    from decimal import Decimal, InvalidOperation
+    if taux is None or taux == '':
+        return False
+    try:
+        return Decimal(str(taux)) == 0
+    except (InvalidOperation, TypeError, ValueError):
+        return False
+
+
+def exiger_base_legale_tva(lignes_in):
+    """AGR217 (contrat AGR200, ``exemple_400_tva_base_legale``) — une ligne
+    PRODUIT émise à 0 % sans base légale est REFUSÉE : 400
+    ``{detail, champ: 'lignes[i].tva_base_legale'}``, AVANT toute écriture.
+
+    Seul un 0 % EXPLICITEMENT émis est contrôlé : une ligne sans
+    ``taux_tva`` (composition du moteur, appelants d'hier) n'est jamais
+    refusée. AUCUN taux n'est changé ni proposé (AGRM8)."""
+    from rest_framework.exceptions import ValidationError
+
+    for index, li in enumerate(lignes_in or ()):
+        if not isinstance(li, dict):
+            continue
+        if str(li.get('type_ligne') or 'produit') in ('section', 'note'):
+            continue
+        if not _taux_nul(li.get('taux_tva')):
+            continue
+        if str(li.get('tva_base_legale') or '').strip():
+            continue
+        raise ValidationError({
+            'detail': ('Ligne %d : une base légale est obligatoire pour un '
+                       'taux de TVA de 0 %%.' % (index + 1)),
+            'champ': 'lignes[%d].tva_base_legale' % index,
+        })
+
+
 def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
                      autoriser_vidage=False):
     """QX21be — supprime puis recrée les lignes du devis (appelé SOUS une
@@ -898,6 +943,8 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
     from apps.stock.models import Produit
     if not lignes_in and not autoriser_vidage:
         raise ValueError(MSG_REMPLACEMENT_VIDE)
+    # AGR217 — un 0 % sans base légale est refusé AVANT la suppression.
+    exiger_base_legale_tva(lignes_in)
     # ACAL90 — les classes de kit présentes AVANT le remplacement : celles
     # qui n'y sont plus après ont été retirées à la main (D-ACAL-22). Un
     # devis neuf (aucune ligne) n'en retire aucune.
@@ -987,6 +1034,9 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
             designation=(li.get('designation') or produit.nom)[:255],
             quantite=qte, prix_unitaire=pu, remise=remise,
             taux_tva=Decimal(str(taux)) if taux is not None else None,
+            # AGR217 — la base légale fait l'aller-retour (absente ⇒ '').
+            tva_base_legale=str(li.get('tva_base_legale') or '').strip()[
+                :TVA_BASE_LEGALE_MAX],
             optionnelle=bool(li.get('optionnelle', False)),
             type_ligne='produit', ordre=ordre, variante=variante,
             groupe_index=groupe_index, groupe_label=groupe_label,

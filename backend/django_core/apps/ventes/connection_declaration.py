@@ -92,11 +92,16 @@ def build_declaration_data(devis, *, chantier=None, diagram_params=None,
 
     phases = diagram_params.get('phases') or 1
     raccordement = 'MT' if phases == 3 and (kwc or 0) >= 50 else 'BT'
+    regime_code = (regime_8221 or '').strip()
+    if regime_code == 'declaration_hors_reseau':
+        # AGR603 — loi 82-21 art. 3 : installation non raccordée, aucun
+        # point de livraison ONEE → ni « BT » ni « MT ».
+        raccordement = 'hors réseau'
 
     pieces = (regulatory_docs.required_documents(regime_8221)
               if regime_8221 else [])
 
-    return {
+    data = {
         'devis_reference': getattr(devis, 'reference', '') or '',
         'client': _client_block(getattr(devis, 'client', None)),
         'site': _site_block(chantier),
@@ -117,6 +122,13 @@ def build_declaration_data(devis, *, chantier=None, diagram_params=None,
                          if regime_8221 else ''),
         'pieces': pieces,
     }
+    if regime_code:
+        # AGR603 — motif d'une liste de pièces volontairement vide (hors
+        # réseau) ; absent pour les 4 régimes historiques (sortie inchangée).
+        motif = regulatory_docs.document_pack(regime_code).get('motif_pieces')
+        if motif:
+            data['motif_pieces'] = motif
+    return data
 
 
 def render_declaration_html(data):
@@ -140,6 +152,11 @@ def render_declaration_html(data):
         for p in data.get('pieces', []))
     pieces_block = (f'<h2>Pièces à joindre</h2><ul>{pieces_html}</ul>'
                     if pieces_html else '')
+    if not pieces_html and data.get('motif_pieces'):
+        # AGR603 — hors réseau : le motif remplace la liste, jamais une pièce
+        # inventée.
+        pieces_block = (f'<h2>Pièces à joindre</h2>'
+                        f'<p>{escape(str(data["motif_pieces"]))}</p>')
 
     return f"""<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8">

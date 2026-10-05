@@ -100,6 +100,7 @@ from apps.ventes.horaire.conso import (
     coherence_kwh_declare_factures,
     profil_depuis_factures,
 )
+from apps.ventes.moteur_ci.production import production_jours_types
 from apps.ventes.quote_engine import bareme
 from apps.ventes.quote_engine.pricing import BATTERY_ROUNDTRIP, PRODUCTION_DERATE
 from apps.ventes.solar_design import hourly_self_consumption
@@ -912,28 +913,35 @@ def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
     contexte_ramadan = contexte_ramadan_du_mois(
         _jour_ref, lat=lat, lon=lon, ville=ville) or {}
 
+    # ── Production du JOUR MOYEN de chaque mois ──
+    # CIQ109 — la partie « production » vit dans la fonction PARTAGÉE
+    # ``moteur_ci.production.production_jours_types`` : le moteur C&I lit la
+    # MÊME chaîne (mêmes productibles, mêmes formes, même dérate), jamais un
+    # « GHI × 0,8 » national. PERTES SYSTÈME — ordre fondateur (18/08) : 20 %
+    # AU TOTAL. Les productibles PVGIS sont demandés à ``loss=14``
+    # (``pvgis_profils.PVGIS_LOSS_PCT``), donc 14 % sont DÉJÀ dedans : on
+    # n'applique que le COMPLÉMENT, ``PRODUCTION_DERATE`` ≈ 0,9302 — la
+    # MÊME constante que ``pricing`` et ``builder``. Sans elle, ce moteur
+    # annoncerait ~7,5 % de production (et donc d'économies) de plus que
+    # tout le reste de la chaîne, sur la même installation.
+    production_mois = production_jours_types(
+        puissance, productible_mensuel=productibles, formes_saison=formes,
+        derate=PRODUCTION_DERATE)
+
     for index in range(12):
         numero = index + 1
         saison = saison_du_mois(numero)
         jours = JOURS_PAR_MOIS[index]
-        forme_prod = formes.get(saison)
-        if forme_prod is None:
+        prod = production_mois[index]
+        if prod is None:
             avertissements.append(
                 'saison %s sans forme PVGIS — mois %d omis du calcul'
                 % (saison, numero))
             continue
 
-        # ── Production du JOUR MOYEN de ce mois ──
-        # PERTES SYSTÈME — ordre fondateur (18/08) : 20 % AU TOTAL. Les
-        # productibles PVGIS sont demandés à ``loss=14``
-        # (``pvgis_profils.PVGIS_LOSS_PCT``), donc 14 % sont DÉJÀ dedans : on
-        # n'applique que le COMPLÉMENT, ``PRODUCTION_DERATE`` ≈ 0,9302 — la
-        # MÊME constante que ``pricing`` et ``builder``. Sans elle, ce moteur
-        # annoncerait ~7,5 % de production (et donc d'économies) de plus que
-        # tout le reste de la chaîne, sur la même installation.
-        prod_mois_kwh = _num(productibles[index]) * puissance * PRODUCTION_DERATE
-        prod_jour_kwh = prod_mois_kwh / jours if jours else 0.0
-        prod_24h = [part * prod_jour_kwh for part in forme_prod]
+        prod_mois_kwh = prod['prod_mois_kwh']
+        prod_jour_kwh = prod['prod_jour_kwh']
+        prod_24h = prod['prod_24h']
 
         # ── Consommation du JOUR MOYEN de ce mois (silhouette + équipements) ──
         conso_mois_kwh = conso_mois[index]

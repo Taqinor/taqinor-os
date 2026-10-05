@@ -20,11 +20,21 @@ AFFICHE la liste des manquants, il ne la reconstitue jamais.
 """
 from __future__ import annotations
 
+import re
+
 # Natures de mesure acceptées (validation champ par champ côté API VT2).
 NOMBRE = 'nombre'
 BOOLEEN = 'booleen'
 TEXTE = 'texte'
 CHOIX = 'choix'
+#: CIQ600 — liste d'éléments (trajets de câbles, zones de toiture) : la
+#: déclaration porte ``forme`` (les champs d'UN élément).
+LISTE = 'liste'
+#: CIQ602 — entier (âge en années), objet imbriqué (étanchéité) et pièce
+#: justificative (identifiant de pièce jointe ou référence texte).
+ENTIER = 'entier'
+OBJET = 'objet'
+PIECE = 'piece'
 
 # Types de manquants exposés dans le bloc ``completude`` du contrat.
 MANQUE_PHOTO = 'photo'
@@ -387,18 +397,281 @@ CATEGORIES_POINT_EAU = [
     },
 ]
 
+#: CIQ600 (D-CIQ-5, contrat CIQ5 ``visite_terrain.json`` → ``gabarit_ci``) —
+#: la visite d'un site PROFESSIONNEL (lead commercial ou industriel) : socle
+#: commun + BT. Elle REMPLACE le gabarit résidentiel (toit_plat, local
+#: onduleur…). Les zones de toiture (CIQ602) et le supplément MT (CIQ660)
+#: s'y ajoutent. Mêmes règles dures : AUCUN seuil, AUCUN verdict.
+CATEGORIES_CI = [
+    {
+        # CIQ602 — LISTE de zones (un pan ou un bâtiment chacune), avec sa
+        # complétude par zone. Photos au niveau de la catégorie (contrat).
+        'categorie': 'toiture_ci',
+        'libelle': 'Toiture',
+        'slots': [
+            {
+                'code': 'toiture_vue_generale',
+                'libelle': 'Vue générale de la toiture',
+                'guide': ('Cadrer toute la toiture, si possible depuis un '
+                          'point haut.'),
+                'requis': True,
+                'min_photos': 2,
+            },
+            {
+                'code': 'toiture_structure_dessous',
+                'libelle': 'Structure vue du dessous',
+                'guide': 'Pannes, fermes ou portiques, vus depuis le bâtiment.',
+                'requis': True,
+                'min_photos': 1,
+            },
+            {
+                'code': 'toiture_etancheite',
+                'libelle': "Étanchéité (optionnel)",
+                'guide': "Relevés d'étanchéité, joints, points d'eau.",
+                'requis': False,
+                'min_photos': 1,
+            },
+            {
+                'code': 'toiture_lanterneaux',
+                'libelle': 'Lanterneaux et exutoires (optionnel)',
+                'guide': 'Les ouvertures en toiture et leur état.',
+                'requis': False,
+                'min_photos': 1,
+            },
+        ],
+        'mesures': [
+            {'code': 'zones_toiture',
+             'libelle': 'Zones de toiture (une par pan / bâtiment)',
+             'nature': LISTE, 'requis': True, 'id_prefixe': 'z',
+             # Surface : surface utile, OU longueur ET largeur.
+             'un_groupe_parmi': [['surface_utile_m2'],
+                                 ['longueur_m', 'largeur_m']],
+             'forme': [
+                 {'code': 'libelle', 'libelle': 'Nom de la zone',
+                  'nature': TEXTE, 'requis': True},
+                 {'code': 'batiment', 'libelle': 'Bâtiment',
+                  'nature': TEXTE, 'requis': False},
+                 {'code': 'longueur_m', 'libelle': 'Longueur (m)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'largeur_m', 'libelle': 'Largeur (m)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'surface_utile_m2',
+                  'libelle': 'Surface utile (m²)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'pente_deg', 'libelle': 'Pente (°)',
+                  'nature': NOMBRE, 'requis': True},
+                 {'code': 'orientation', 'libelle': 'Orientation du pan',
+                  'nature': CHOIX, 'requis': True,
+                  'choix': ['nord', 'nord_est', 'est', 'sud_est', 'sud',
+                            'sud_ouest', 'ouest', 'nord_ouest']},
+                 {'code': 'couverture', 'libelle': 'Type de couverture',
+                  'nature': CHOIX, 'requis': True,
+                  'choix': ['bac_acier', 'beton', 'fibrociment', 'tole',
+                            'tuile', 'autre']},
+                 {'code': 'age_ans', 'libelle': 'Âge de la couverture (ans)',
+                  'nature': ENTIER, 'requis': False},
+                 {'code': 'structure', 'libelle': 'Structure porteuse',
+                  'nature': CHOIX, 'requis': True,
+                  'choix': ['portique', 'ferme', 'dalle', 'autre']},
+                 {'code': 'portee_pannes_m',
+                  'libelle': 'Portée des pannes (m)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'entraxe_pannes_m',
+                  'libelle': 'Entraxe des pannes (m)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'epaisseur_bac_mm',
+                  'libelle': 'Épaisseur du bac (mm)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'etancheite', 'libelle': 'Étanchéité',
+                  'nature': OBJET, 'requis': False,
+                  'forme': [
+                      {'code': 'type', 'libelle': "Type d'étanchéité",
+                       'nature': TEXTE, 'requis': False},
+                      {'code': 'age_ans', 'libelle': "Âge de l'étanchéité (ans)",
+                       'nature': ENTIER, 'requis': False},
+                      {'code': 'sous_garantie',
+                       'libelle': "Étanchéité sous garantie",
+                       'nature': BOOLEEN, 'requis': False},
+                  ]},
+                 {'code': 'lanterneaux_exutoires',
+                  'libelle': 'Lanterneaux et exutoires',
+                  'nature': TEXTE, 'requis': False},
+                 {'code': 'ligne_de_vie_existante',
+                  'libelle': 'Ligne de vie existante',
+                  'nature': BOOLEEN, 'requis': False},
+                 # DÉCLARÉE seulement, avec sa pièce : l'application ne juge
+                 # jamais que la charge « suffit ».
+                 {'code': 'charge_admissible_declaree_kg_m2',
+                  'libelle': 'Charge admissible déclarée (kg/m²)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'charge_admissible_piece',
+                  'libelle': ('Pièce justifiant la charge admissible '
+                              '(bureau de contrôle ou propriétaire)'),
+                  'nature': PIECE, 'requis': False,
+                  'requis_si': 'charge_admissible_declaree_kg_m2'},
+                 {'code': 'fibrociment',
+                  'libelle': 'Amiante possible — diagnostic requis',
+                  'nature': BOOLEEN, 'requis': False},
+             ]},
+        ],
+    },
+    {
+        'categorie': 'tableau_general',
+        'libelle': 'Tableau général (TGBT)',
+        'slots': [
+            {
+                'code': 'tgbt_ouvert',
+                'libelle': 'TGBT ouvert (appareil de tête et départs)',
+                'guide': 'Capot ouvert, calibres et étiquettes lisibles.',
+                'requis': True,
+                'min_photos': 1,
+            },
+        ],
+        'mesures': [
+            {'code': 'calibre_a',
+             'libelle': "Calibre de l'appareil de tête (A)",
+             'unite': 'A', 'nature': NOMBRE, 'requis': True},
+            {'code': 'depart_disponible',
+             'libelle': 'Départ disponible pour le PV',
+             'nature': BOOLEEN, 'requis': True},
+            {'code': 'regime_neutre', 'libelle': 'Régime de neutre',
+             'nature': CHOIX, 'requis': False,
+             'choix': ['TT', 'TN', 'IT', 'inconnu']},
+            {'code': 'parafoudre_existant', 'libelle': 'Parafoudre existant',
+             'nature': BOOLEEN, 'requis': False},
+        ],
+    },
+    {
+        'categorie': 'comptage',
+        'libelle': 'Comptage',
+        'slots': [
+            {
+                'code': 'comptage_plaque',
+                'libelle': 'Plaque du compteur',
+                'guide': 'Plaque lisible : type, calibre, puissance.',
+                'requis': True,
+                'min_photos': 1,
+            },
+            {
+                'code': 'comptage_contrat',
+                'libelle': 'Contrat ou facture (optionnel)',
+                'guide': 'La page du contrat qui porte la puissance souscrite.',
+                'requis': False,
+                'min_photos': 1,
+            },
+        ],
+        'mesures': [
+            {'code': 'type_compteur', 'libelle': 'Type de compteur',
+             'nature': TEXTE, 'requis': True},
+            {'code': 'niveau_tension_constate',
+             'libelle': 'Niveau de tension constaté',
+             'nature': CHOIX, 'requis': True,
+             'choix': ['bt', 'mt', 'inconnu']},
+            {'code': 'puissance_souscrite_kva_constatee',
+             'libelle': 'Puissance souscrite constatée (plaque / contrat)',
+             'unite': 'kVA', 'nature': NOMBRE, 'requis': False},
+        ],
+    },
+    {
+        'categorie': 'cheminement',
+        'libelle': 'Cheminement des câbles',
+        'slots': [
+            {
+                'code': 'cheminement_parcours',
+                'libelle': 'Parcours toit → onduleur',
+                'guide': 'Photos du trajet prévu des câbles (optionnel).',
+                'requis': False,
+                'min_photos': 1,
+            },
+        ],
+        'mesures': [
+            # Longueurs DC et AC REQUISES : au moins un trajet porte chacune.
+            {'code': 'trajets', 'libelle': 'Trajets de câbles',
+             'nature': LISTE, 'requis': True,
+             'au_moins_un': ['longueur_dc_m', 'longueur_ac_m'],
+             'forme': [
+                 {'code': 'libelle', 'libelle': 'Trajet', 'nature': TEXTE,
+                  'requis': False},
+                 {'code': 'longueur_dc_m', 'libelle': 'Longueur DC (m)',
+                  'nature': NOMBRE, 'requis': False},
+                 {'code': 'longueur_ac_m', 'libelle': 'Longueur AC (m)',
+                  'nature': NOMBRE, 'requis': False},
+             ]},
+        ],
+    },
+    {
+        'categorie': 'acces_securite',
+        'libelle': 'Accès et sécurité',
+        'slots': [
+            {
+                'code': 'acces_toiture',
+                'libelle': 'Accès à la toiture',
+                'guide': 'Escalier, échelle, trappe : comment on monte.',
+                'requis': True,
+                'min_photos': 1,
+            },
+        ],
+        'mesures': [
+            {'code': 'escalier', 'libelle': "Escalier d'accès",
+             'nature': BOOLEEN, 'requis': False},
+            {'code': 'echelle', 'libelle': 'Échelle nécessaire',
+             'nature': BOOLEEN, 'requis': False},
+            {'code': 'nacelle', 'libelle': 'Nacelle nécessaire',
+             'nature': BOOLEEN, 'requis': False},
+            {'code': 'grue_possible', 'libelle': 'Grue possible',
+             'nature': BOOLEEN, 'requis': False},
+            {'code': 'horaires_acces', 'libelle': "Horaires d'accès au site",
+             'nature': TEXTE, 'requis': False},
+            {'code': 'zones_fragiles',
+             'libelle': 'Zones fragiles (lanterneaux, bac corrodé…)',
+             'nature': TEXTE, 'requis': False},
+        ],
+    },
+    {
+        'categorie': 'autres_autorisations',
+        'libelle': 'Autres autorisations',
+        'slots': [],
+        'mesures': [
+            {'code': 'texte',
+             'libelle': ('Autres autorisations à confirmer avec le client '
+                         '(décret 2.25.100 art. 26)'),
+             'nature': TEXTE, 'requis': False},
+        ],
+    },
+    {
+        'categorie': 'general',
+        'libelle': 'Général',
+        'slots': [
+            {
+                'code': 'general_facade',
+                'libelle': 'Façade du bâtiment',
+                'guide': "Vue d'ensemble depuis la rue.",
+                'requis': True,
+                'min_photos': 1,
+            },
+        ],
+        'mesures': [],
+    },
+]
+
 #: AGR412 — les gabarits de visite (``VisiteTerrain.gabarit``).
 GABARIT_TOITURE = 'toiture'
 GABARIT_POINT_EAU = 'point_eau'
+GABARIT_CI = 'ci'
 _PAR_GABARIT = {
     GABARIT_TOITURE: CATEGORIES,
     GABARIT_POINT_EAU: CATEGORIES_POINT_EAU,
+    GABARIT_CI: CATEGORIES_CI,
 }
 
 
-def categories(gabarit=GABARIT_TOITURE):
+def categories(gabarit=GABARIT_TOITURE, niveau=None):
     """Les catégories du ``gabarit``, dans l'ordre du wizard (toiture par
-    défaut : un gabarit inconnu retombe sur la checklist historique)."""
+    défaut : un gabarit inconnu retombe sur la checklist historique).
+
+    ``niveau`` = la mesure ``comptage.niveau_tension_constate`` : seul le
+    gabarit ``ci`` le lira (le supplément MT est branché par CIQ660) ; ``bt``,
+    ``inconnu`` ou ``None`` servent le socle commun + BT."""
     return _PAR_GABARIT.get(gabarit or GABARIT_TOITURE, CATEGORIES)
 
 
@@ -464,3 +737,148 @@ def mesure_requise(champ, valeurs):
     if dispense and bool((valeurs or {}).get(dispense)):
         return False
     return True
+
+
+#: CIQ603 — UN seul vocabulaire de type de toiture entre la visite et le lead :
+#: code de couverture de la visite → code ``Lead.TypeToiture``. Aucun code
+#: renommé, aucune donnée migrée : la table traduit à la lecture (relevé
+#: déclaré/constaté CIQ606, remontée au lead CIQ607). Un code ajouté d'un seul
+#: côté fait échouer ``test_ciq603_vocabulaire_toiture``.
+CORRESPONDANCE_TOITURE_LEAD = {
+    'tuile': 'tuiles',
+    'tole': 'tole_metal',
+    'bac_acier': 'bac_acier',
+    'beton': 'terrasse_beton',
+    'fibrociment': 'fibrociment',
+    'autre': 'autre',
+}
+
+
+def toiture_lead_depuis_visite(code):
+    """Le code ``Lead.TypeToiture`` qui correspond au code de couverture
+    ``code`` de la visite, ou ``None`` si le code est inconnu."""
+    return CORRESPONDANCE_TOITURE_LEAD.get(code)
+
+
+def toiture_visite_depuis_lead(code):
+    """Le code de couverture de la visite qui correspond au code
+    ``Lead.TypeToiture`` ``code`` (table réciproque), ou ``None``."""
+    for visite, lead in CORRESPONDANCE_TOITURE_LEAD.items():
+        if lead == code:
+            return visite
+    return None
+
+
+#: CIQ601 — clé, DANS ``mesures[categorie]``, de l'état « non relevé » :
+#: ``{clé_de_mesure: motif}``. Réservée au gabarit ``ci``.
+CLE_NON_RELEVES = '_non_releves'
+
+#: CIQ601 — motifs FERMÉS (contrat ``non_releves_motifs``) et leur libellé
+#: lisible dans le récap : « non vérifié (<libellé>) ».
+MOTIFS_NON_RELEVE = {
+    'acces_refuse': 'accès refusé',
+    'dangereux': 'dangereux',
+    'site_ferme': 'site fermé',
+    'a_faire_par_electricien': 'à faire par un électricien',
+    'non_applicable': 'non applicable',
+}
+
+_CLE_NON_RELEVE = re.compile(
+    r'^([a-z0-9_]+)(?:\[([^\]]+)\])?(?:\.([a-z0-9_]+))?$')
+
+
+def decouper_cle_non_releve(cle):
+    """``(mesure, id_element, champ)`` d'une clé « non relevé », ou ``None``.
+
+    ``calibre_a`` → ``('calibre_a', None, None)`` ;
+    ``trajets.longueur_dc_m`` → ``('trajets', None, 'longueur_dc_m')`` ;
+    ``zones_toiture[z1].pente_deg`` → ``('zones_toiture', 'z1', 'pente_deg')``.
+    """
+    trouve = _CLE_NON_RELEVE.match(cle or '')
+    return trouve.groups() if trouve else None
+
+
+def libelle_cle_non_releve(connus, cle):
+    """Le libellé lisible de la clé « non relevé » ``cle`` d'après les mesures
+    ``connus`` (``{code: déclaration}``), ou ``None`` si la clé est inconnue."""
+    morceaux = decouper_cle_non_releve(cle)
+    if morceaux is None:
+        return None
+    mesure_code, ident, champ = morceaux
+    declaration = connus.get(mesure_code)
+    if declaration is None:
+        return None
+    if ident is None and champ is None:
+        return declaration['libelle']
+    if declaration['nature'] != LISTE:
+        return None
+    sous = {s['code']: s for s in declaration['forme']}
+    if champ is None or champ not in sous:
+        return None
+    return f"{declaration['libelle']} — {sous[champ]['libelle']}"
+
+
+def etat_obsolete(cle, propres):
+    """Une valeur vient-elle d'être saisie (``propres`` = valeurs validées de
+    CET enregistrement) pour la clé « non relevé » ``cle`` ? Alors l'état est
+    effacé : la mesure a été relevée."""
+    morceaux = decouper_cle_non_releve(cle)
+    if morceaux is None:
+        return False
+    mesure_code, ident, champ = morceaux
+    if mesure_code not in propres:
+        return False
+    valeur = propres[mesure_code]
+    if champ is None:
+        return valeur not in (None, '', [])
+    for element in valeur or []:
+        if ident is not None and element.get('id') != ident:
+            continue
+        if element.get(champ) not in (None, ''):
+            return True
+    return False
+
+
+def liste_manquants(champ, elements):
+    """CIQ600 — ce qui manque dans une mesure ``LISTE`` : liste de
+    ``(code, libelle)``. Une liste vide manque en bloc quand elle est requise ;
+    sinon chaque champ requis d'un élément, puis la règle ``au_moins_un``
+    (au moins un élément porte chacun des champs cités)."""
+    elements = [el for el in (elements or []) if isinstance(el, dict)]
+    manque = []
+    if not elements:
+        if champ.get('requis'):
+            manque.append((champ['code'], champ['libelle']))
+        return manque
+    for index, element in enumerate(elements, start=1):
+        repere = element.get('id') or str(index)
+        nom = element.get('libelle') or f'élément {index}'
+        for sous in champ['forme']:
+            valeur = element.get(sous['code'])
+            vide = valeur is None or valeur == ''
+            exigee = bool(sous.get('requis'))
+            # ``requis_si`` : exigé seulement quand l'autre champ est saisi
+            # (une charge déclarée exige sa pièce).
+            lie = sous.get('requis_si')
+            if lie and element.get(lie) not in (None, ''):
+                exigee = True
+            if exigee and vide:
+                manque.append((
+                    f"{champ['code']}[{repere}].{sous['code']}",
+                    f"{champ['libelle']} — {nom} : {sous['libelle']}"))
+        groupes = champ.get('un_groupe_parmi')
+        if groupes and not any(
+                all(element.get(code) not in (None, '') for code in groupe)
+                for groupe in groupes):
+            manque.append((
+                f"{champ['code']}[{repere}].{groupes[0][0]}",
+                f"{champ['libelle']} — {nom} : surface utile (ou longueur "
+                'et largeur)'))
+    formes = {sous['code']: sous for sous in champ['forme']}
+    for code in champ.get('au_moins_un') or []:
+        if not any(el.get(code) not in (None, '') for el in elements):
+            manque.append((
+                f"{champ['code']}.{code}",
+                f"{champ['libelle']} : {formes[code]['libelle']} "
+                '(au moins un trajet)'))
+    return manque

@@ -502,6 +502,63 @@ def realisation_pour_lead(lead):
     return _repli(lignes, _puissance_du_dernier_devis(lead))
 
 
+def realisations_proches(lead, limite=5):
+    """AGR516 — les réalisations RÉELLES proches d'un lead, pour la fiche.
+
+    Forme du contrat ``crm/contract_samples/lead_references_proches.json`` :
+    ``[{id, titre, ville, distance_km, mise_en_service, url_page,
+    lien_video}]``. ACTIVES seulement, filtrées par le segment du lead
+    (AGR513, mêmes règles que ``realisation_pour_lead``), triées par distance
+    haversine croissante (mêmes villes du gazetier), les distances inconnues
+    (``None``) en dernier — puis la plus récente d'abord. ``distance_km`` est
+    un ENTIER, ``None`` quand la ville d'un des deux côtés n'a pas de
+    coordonnées (jamais une distance devinée). La ville seulement : aucun nom
+    de client, aucune adresse. Lecture PURE, scopée à ``lead.company``."""
+    company = getattr(lead, "company", None) if lead is not None else None
+    if company is None:
+        return []
+
+    from .models_realisations import Realisation
+    from .villes_maroc import coordonnees_ville
+    from .villes_resolution import _haversine_km
+
+    lignes = sorted(
+        Realisation.objects.filter(company=company, actif=True),
+        key=_cle_recence, reverse=True)
+    lignes = _lignes_du_segment(lignes, lead)
+    if not lignes:
+        return []
+
+    from apps.crm.selectors import ville_effective
+    ville_lead = _ville_canonique(ville_effective(lead))
+    origine = coordonnees_ville(ville_lead) if ville_lead else None
+
+    mesurees = []
+    for rang, realisation in enumerate(lignes):  # `lignes` : récentes d'abord
+        distance = None
+        if origine is not None:
+            coords = coordonnees_ville(realisation.ville)
+            if coords is not None:
+                distance = int(round(_haversine_km(origine, coords)))
+        mesurees.append((distance, rang, realisation))
+    mesurees.sort(key=lambda t: (t[0] is None,
+                                 t[0] if t[0] is not None else 0, t[1]))
+
+    resultat = []
+    for distance, _rang, r in mesurees[:max(0, int(limite))]:
+        mise = r.mise_en_service
+        resultat.append({
+            "id": r.pk,
+            "titre": r.titre,
+            "ville": (r.ville or "").strip(),
+            "distance_km": distance,
+            "mise_en_service": mise.strftime("%Y-%m") if mise else None,
+            "url_page": (r.url_page or "").strip(),
+            "lien_video": (r.lien_video or "").strip(),
+        })
+    return resultat
+
+
 def cgv_bullets_societe(company):
     """ERR-QJR668 — les puces CGV que la société a RENSEIGNÉES
     (``DocumentTemplates.cgv_bullets``), TELLES QUELLES (marqueurs

@@ -3,7 +3,7 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import {
   PARCOURS, typeEtape, reponsesDeLEtape, reponseComplete, estTache, estTacheSansAppel,
-  familleCanal,
+  familleCanal, gestes,
 } from './parcours'
 import RelanceEtapeRow from './RelanceEtapeRow'
 
@@ -136,5 +136,41 @@ describe('RelanceEtapeRow — l’écran propose exactement les réponses de la 
     const message = { ...toucheDuType(generique), canal: 'whatsapp' }
     expect(reponsesDeLEtape(generique, appel).map((r) => r.label)).toContain('Répondeur')
     expect(reponsesDeLEtape(generique, message).map((r) => r.label)).not.toContain('Répondeur')
+  })
+})
+
+/* AGR533 — variantes de SEGMENT de la table : seuls libellé / précision /
+   effet changent ; la clé serveur (`reponse`) et la suite restent. */
+describe('AGR533 — libellés agricoles de la table du parcours', () => {
+  const touche = exempleContrat('crm', 'relance_etape_v2').results[0]
+  const suiviAppel = PARCOURS.etapes.find((e) => e.id === 'suivi_appel')
+
+  it('agricole : « associés / coopérative », même `reponse` que decision_famille', () => {
+    const r = reponsesDeLEtape(suiviAppel, { ...touche, canal: 'appel', lead_segment: 'agricole' })
+      .find((x) => x.id === 'decision_famille')
+    expect(r.label).toBe('Décision à plusieurs — associés / coopérative')
+    expect(r.reponse).toBe('decision_famille')
+  })
+
+  it('résidentiel (ou segment absent) : le libellé actuel', () => {
+    for (const lead_segment of ['residentiel', '', undefined]) {
+      const r = reponsesDeLEtape(suiviAppel, { ...touche, canal: 'appel', lead_segment })
+        .find((x) => x.id === 'decision_famille')
+      expect(r.label).toBe('Décision à plusieurs — en famille')
+      expect(r.reponse).toBe('decision_famille')
+    }
+  })
+
+  it('une variante ne change ni la clé serveur ni la suite', () => {
+    const entree = { modele: 'decision_famille', suite: { type: 'barreau_suivant' } }
+    const r = reponseComplete(entree, 'agricole')
+    expect(r.reponse).toBe('decision_famille')
+    expect(r.suite).toEqual({ type: 'barreau_suivant' })
+  })
+
+  it('le geste « Pièce reçue » : plaque, forage, ABH pour un agricole', () => {
+    expect(gestes('agricole').find((g) => g.id === 'piece_recue').label)
+      .toBe('Pièce reçue : plaque, forage, ABH')
+    expect(gestes().find((g) => g.id === 'piece_recue').label).toBe('Pièce reçue')
   })
 })

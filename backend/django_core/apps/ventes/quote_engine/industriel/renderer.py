@@ -117,53 +117,20 @@ def _augment(data: dict) -> dict:
     masque = bool(d.get("masquer_economies"))
     d["ind_masquer_economies"] = masque
     d["ind_mt_mention"] = d.get("tarif_mt_mention") or ""
-    # QJR119 — un chiffre NON CHIFFRABLE reste ``None`` jusqu'au gabarit, qui
-    # OMET sa carte. L'ancien ``round(eco) if eco else 0`` écrasait ``None`` en
-    # ``0`` et faisait promettre « 0 MAD d'économies par an » sur un document
-    # client, exactement le zéro fabriqué que la règle fondateur interdit.
-    eco = _num(etude.get("economies_annuelles"))
-    if eco is None and not masque:
-        eco = _num(d.get("eco_s_ann"))
-    d["ind_economies"] = round(eco) if eco else None
-    pb = _num(etude.get("payback"))
-    if pb is None and not masque and not d.get("roi_s_jamais"):
-        # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — une option jamais
-        # remboursée sur 25 ans n'a pas de payback : ``None`` ⇒ carte omise.
-        pb = _num(d.get("roi_s"))
-    # ``pricing.compute_totals`` pose ``roi_opt* = 0.0`` comme SENTINELLE
-    # « pas de payback » quand l'économie est nulle : la reprendre imprimait
-    # « Payback ≈ 0,0 ans » sur la page même qui annonce « Point mort > 15 ans ».
-    d["ind_payback"] = pb if pb else None
-    # QJR145 (g) — ``ind_prix_kwc`` SUPPRIMÉ : calculé et lu par aucun gabarit
-    # industriel (le prix au kWc vit sur la page étude du moteur premium).
-
-    # ── QJR120 — LE CASHFLOW DE LA PAGE 2 EST LE CASHFLOW CANONIQUE ─────────
-    # ``finance.py`` projetait « t × économie − investissement », une droite
-    # PLATE qui ignore la dégradation panneau et la provision de remplacement
-    # onduleur — alors que le modèle canonique (``pricing.compute_cashflow_
-    # payback``) les impose, que son horizon de remplacement (année 12) tombe
-    # DANS les 15 ans affichés, et que la série est DÉJÀ servie au renderer.
-    # On sert donc la série qui décrit le PRIX RENDU (``display_total``) :
-    #   · égalité au dirham avec ``total_avec`` → branche « avec » ;
-    #   · égalité avec ``total_sans`` → branche « sans » ;
-    #   · aucune correspondance → AUCUNE série (la page omet plutôt que de
-    #     publier le cashflow d'une autre offre que celle chiffrée ici).
-    # Un dossier MT n'expose AUCUNE série : elle dérive du barème basse tension.
-    serie, branche = None, None
-    if not masque:
-        _t_avec, _t_sans = _num(d.get("total_avec")), _num(d.get("total_sans"))
-        if _t_avec is not None and abs(_t_avec - invest) < 1.0:
-            branche, serie = "avec", d.get("cashflow_avec")
-        elif _t_sans is not None and abs(_t_sans - invest) < 1.0:
-            branche, serie = "sans", d.get("cashflow_sans")
-    if not isinstance(serie, (list, tuple)) or len(serie) < 2:
-        serie, branche = None, None
-    d["ind_cashflow"] = [float(x) for x in serie] if serie else None
-    d["ind_cashflow_branche"] = branche
-    # Hypothèses DÉCLARÉES du même modèle (dégradation, provision onduleur,
-    # rendement batterie) — le bloc « Nos hypothèses » de la page les rend.
-    _hyp = d.get("cashflow_assumptions") if not masque else None
-    d["ind_cashflow_hypotheses"] = _hyp if isinstance(_hyp, dict) else None
+    # CIQ301 — AUCUN REPLI SUR LE MODÈLE RÉSIDENTIEL/BT. ``eco_s_ann``,
+    # ``roi_s``, ``cashflow_sans/avec`` et ``cashflow_assumptions`` sortent de
+    # ``calculate_savings_roi`` (barème BT résidentiel × ``AUTOCONSO_SANS``
+    # 0,60) — dont la note « le surplus injecté n'est pas rémunéré » contredit
+    # la ligne d'injection de la même page — et ``etude['payback']`` de l'étude
+    # JS. Aucun ne décrit un site industriel : tuile économies, payback,
+    # cashflow, TRI et hypothèses sont OMIS (``None`` ⇒ la page 3 bascule sur
+    # son motif d'omission, jamais un « 0 », QJR119) jusqu'à ce que
+    # ``synthese_ci.argent`` les serve (CIQ307). La page reste : 4 pages.
+    d["ind_economies"] = None
+    d["ind_payback"] = None
+    d["ind_cashflow"] = None
+    d["ind_cashflow_branche"] = None
+    d["ind_cashflow_hypotheses"] = None
 
     # Injection 82-21 (QX50) — rendue UNIQUEMENT si l'étude la porte (net des
     # frais réseau, plafonnée 20 %). Absente aujourd'hui → aucune ligne inventée.

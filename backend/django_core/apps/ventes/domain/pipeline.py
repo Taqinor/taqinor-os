@@ -592,10 +592,13 @@ def ecrire_etude_params(devis, intention, composition):
 
     cles = {'scenario': scenario}
     resultat = (intention.layout or {}).get('result') or {}
-    if resultat.get('annualKwh') is not None:
-        cles['production_annuelle'] = int(resultat['annualKwh'])
-    if resultat.get('savings') is not None:
-        cles['economies_annuelles'] = int(resultat['savings'])
+    # CIQ117 — un devis commercial/industriel ne reçoit JAMAIS production ni
+    # économies du layout (géométrie + kWc seulement) ; résidentiel/agricole
+    # inchangés.
+    from apps.ventes.domain.etude_schema import cles_etude_du_layout
+    cles.update(cles_etude_du_layout(
+        getattr(intention, 'mode_installation', None)
+        or getattr(devis, 'mode_installation', None), resultat))
     bloc = ecrire_etude(devis, proprietaire=CALEPINAGE, **cles)
     # DC11 / QJR106 — la PROVENANCE fait partie de l'étape 6 : c'est une clé
     # d'``etude_params``, écrite par le MÊME écrivain unique, dans la même

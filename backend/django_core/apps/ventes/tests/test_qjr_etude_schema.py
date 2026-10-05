@@ -84,8 +84,7 @@ class ContratRoundTripEcran(SimpleTestCase):
     #: Les entrées du marché AGRICOLE que `?edit=` relit.
     AGRICOLE = ('debit_souhaite_m3h', 'heures_pompage', 'type_pompe', 'alim',
                 'profondeur_m', 'distance_m', 'region', 'crop', 'surface_ha',
-                'current_fuel', 'fuel_spend_current', 'hmt_static',
-                'hmt_drawdown')
+                'hmt_static', 'hmt_drawdown')
     #: Les entrées du marché INDUSTRIEL / COMMERCIAL que `?edit=` relit
     #: (`tension_raccordement` est déclaré parmi les entrées générales).
     INDUSTRIEL_COMMERCIAL = ('tension_raccordement', 'repartition_mt',
@@ -130,8 +129,7 @@ class ContratRoundTripEcran(SimpleTestCase):
             'pompe_cv': 7.5, 'hmt_m': 60, 'debit_souhaite_m3h': 30,
             'heures_pompage': 7, 'type_pompe': 'immergee', 'alim': 'tri',
             'profondeur_m': 45, 'distance_m': 20, 'region': 'souss-massa',
-            'crop': 'agrumes', 'surface_ha': 5, 'current_fuel': 'butane',
-            'fuel_spend_current': 42000, 'hmt_static': 40,
+            'crop': 'agrumes', 'surface_ha': 5, 'hmt_static': 40,
             'hmt_drawdown': 15, 'irrigation_method': 'goutte',
         }), [])
 

@@ -142,6 +142,7 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             'cree_par', 'created_at', 'updated_at',
             'responsable', 'responsable_nom',  # CALX406
             'reference', 'image', 'modifie_le', 'client_apercu',  # ACAL196
+            'contraintes_site',  # CIQ136
         ]
         #: ACAL33 — ``devis`` est LU, jamais écrit par le CRUD : le seul
         #: écrivain est ``services.liens.lier_devis`` (refus nommés, journal,
@@ -154,6 +155,17 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
     # YAPIC6 — la nature est DÉCLARÉE (même patron que le jumeau côté ventes,
     # `apps/ventes/serializers.py`) : sans cela drf-spectacular ne sait pas
     # typer un SerializerMethodField et publie un contrat muet.
+    def validate_contraintes_site(self, value):
+        """CIQ136 — normalisées ; une valeur sans source → 400 FR."""
+        from .services.degagements import (
+            ContraintesSiteInvalides, normaliser_contraintes_site,
+        )
+
+        try:
+            return normaliser_contraintes_site(value)
+        except ContraintesSiteInvalides as refus:
+            raise serializers.ValidationError(refus.message)
+
     @extend_schema_field(serializers.BooleanField(allow_null=True))
     def get_layout_stale(self, calepinage):
         """``True``/``False`` d'après le DEVIS lié — ``None`` sans devis.

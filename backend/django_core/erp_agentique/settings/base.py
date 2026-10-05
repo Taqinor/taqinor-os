@@ -799,6 +799,14 @@ SPECTACULAR_SETTINGS = {
         # fr / en / ar — partagé par core.ContentTranslation et
         # parametres.TranslationOverride (jeu identique).
         'LocaleEnum': 'core.models.ContentTranslation.Locale',
+        # CIQ (vague 1, 05/10/2026) — deux jeux neufs partagés par deux champs
+        # chacun : oui / non (crm.Lead `groupe_electrogene` ET
+        # `export_ue_declare`, même Lead.OuiNon) et ac / dc
+        # (stock.FicheTechnique `cable_cote` ET `prot_cote`, même
+        # COTES_AC_DC). Sans ces entrées : « multiple names for the same
+        # choice set ». Nommage de schéma uniquement — aucun choix ne change.
+        'OuiNonEnum': 'apps.crm.models.Lead.OuiNon',
+        'CoteAcDcEnum': 'apps.stock.models.COTES_AC_DC',
         # SOLMVP-sweep (2026-09-21) — `EtatGeneralPieceEnum`
         # (immobilier.PieceEtatLieux.EtatGeneral) est retiré : apps.immobilier
         # est sorti du MVP solaire (Groupe SOLMVP, coquille).

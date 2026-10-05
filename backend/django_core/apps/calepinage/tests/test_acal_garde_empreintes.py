@@ -46,6 +46,7 @@ CLASSEMENT_RACINE = {
     'environment': IMPRIMEE,
     'shadeObstructions': IMPRIMEE,
     'horizonProfile': IMPRIMEE,
+    'modePoseDeclare': IMPRIMEE,  # CIQ112 : choisit la règle de pose
     'alleeTechnique': DOCUMENT,
     'billKwh': DOCUMENT,
     'buildings': DOCUMENT,
@@ -73,9 +74,9 @@ CLASSEMENT_RACINE = {
 CLASSEMENT_PAN = {cle: IMPRIMEE for cle in (
     'buildingId', 'cotesReleve', 'edges', 'facingAzimuthDeg',
     'facingAzimuthPrecisionDeg', 'facingAzimuthSource', 'facingManual',
-    'geometry', 'id', 'label', 'neededAuto', 'neededPanels', 'obstacles',
-    'pitchDeg', 'pitchSource', 'pitchSuggestion', 'result', 'roofType',
-    'shading12x24', 'vertices')}
+    'geometry', 'id', 'label', 'modePose', 'neededAuto', 'neededPanels',
+    'obstacles', 'pitchDeg', 'pitchSource', 'pitchSuggestion', 'result',
+    'roofType', 'shading12x24', 'vertices')}
 
 
 def _schema():

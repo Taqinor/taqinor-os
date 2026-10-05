@@ -56,6 +56,9 @@ const crmApi = {
   // user_nom, pinned }] }` — contrat committé dans
   // `apps/crm/contract_samples/lead_jalons_devis.json`.
   getLeadJalonsDevis: (id) => api.get(`/crm/leads/${id}/jalons-devis/`),
+  // AGR517 — réalisations de pompage proches d'un lead agricole (lecture
+  // seule). Contrat : `apps/crm/contract_samples/lead_references_proches.json`.
+  getLeadReferencesProches: (id) => api.get(`/crm/leads/${id}/references-proches/`),
   // WIR227/QJ25 — contour OSM du bâtiment épinglé (roof_views.lead_roof_footprint) :
   // { polygon: [{lat,lng}, ...], source: 'osm' } ou polygon vide + `message` FR
   // (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie rien — jamais une

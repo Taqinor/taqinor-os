@@ -35,6 +35,15 @@ def _visible(html):
     return re.sub(r"[\s  ]+", " ", txt)
 
 
+def _augmente(base=None):
+    """CIQ301 — le renderer C&I ne reprend PLUS aucune série BT : la page
+    finance est testée sur une série injectée dans le dict AUGMENTÉ, comme
+    la servira ``synthese_ci.argent`` (CIQ307)."""
+    d = renderer._augment(base if base is not None else sample_data.build())
+    d.update(sample_data.serie_finance())
+    return d
+
+
 def _nombre(txt):
     """'1 234' / '-1 234' -> int (toutes les espaces du document retirées)."""
     return int(re.sub(r"[^\d-]", "", txt))
@@ -56,7 +65,7 @@ class TestCashflowCanonique(SimpleTestCase):
     """(a) — la table imprime la série SERVIE, pas une droite locale."""
 
     def setUp(self):
-        self.d = renderer._augment(sample_data.build())
+        self.d = _augmente()
         self.html = render.build_html(self.d)
         self.lignes = _lignes_table(self.html)
 
@@ -101,14 +110,17 @@ class TestCashflowCanonique(SimpleTestCase):
 
 
 class TestSerieNonAppariee(SimpleTestCase):
-    """La série ne se publie que si elle décrit le PRIX rendu."""
+    """CIQ301 — le renderer ne republie plus la série BT du builder."""
 
-    def test_serie_d_une_autre_option_refusee(self):
+    def test_serie_bt_du_builder_jamais_reprise(self):
         base = sample_data.build()
-        base["total_sans"] = 999999      # ne correspond plus au display_total
+        serie = sample_data.serie_finance()
+        base["cashflow_sans"] = serie["ind_cashflow"]
+        base["cashflow_assumptions"] = serie["ind_cashflow_hypotheses"]
         d = renderer._augment(base)
         self.assertIsNone(d["ind_cashflow"])
         self.assertIsNone(d["ind_cashflow_branche"])
+        self.assertIsNone(d["ind_cashflow_hypotheses"])
 
     def test_dossier_MT_n_expose_aucune_serie(self):
         base = sample_data.build()
@@ -123,20 +135,20 @@ class TestOandM(SimpleTestCase):
 
     def test_sans_om_le_document_dit_non_deduit(self):
         txt = _visible(render.build_html(
-            renderer._augment(sample_data.build())))
+            _augmente()))
         self.assertNotIn("inclus dans les économies nettes", txt)
         self.assertIn("non déduit", txt)
 
     def test_le_kpi_ne_se_dit_plus_net(self):
         txt = _visible(render.build_html(
-            renderer._augment(sample_data.build())))
+            _augmente()))
         self.assertNotIn("Économie nette / an", txt)
         self.assertIn("Économie année 1", txt)
 
     def test_avec_om_le_montant_deduit_est_nomme(self):
         base = sample_data.build()
         base["etude"] = dict(base["etude"], om_annuel=25000)
-        txt = _visible(render.build_html(renderer._augment(base)))
+        txt = _visible(render.build_html(_augmente(base)))
         self.assertIn("O&M déduit : 25 000 MAD/an", txt)
 
 
@@ -145,7 +157,7 @@ class TestPaybackMemeFlux(SimpleTestCase):
 
     def setUp(self):
         self.html = render.build_html(
-            renderer._augment(sample_data.build()))
+            _augmente())
         self.lignes = _lignes_table(self.html)
         self.txt = _visible(self.html)
 

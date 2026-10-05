@@ -1,6 +1,7 @@
 // Onglet « Leads » de la page Paramètres (responsable/installateur par défaut,
 // parrainage, étiquettes & motifs CRM, canaux/sources). Restylé sur le système
 // de design (@/ui) ; champs, libellés et comportement identiques.
+import { useEffect, useState } from 'react'
 import { Plus, Trash2, Archive, ArchiveRestore, Lock } from 'lucide-react'
 import {
   Card, CardContent, Input, Switch, Label, Badge, IconButton, Button, Spinner,
@@ -10,6 +11,7 @@ import { proposerRamadan, datesRamadanASaisir } from '../../lib/hijriDate'
 import { SectionTitle, Field } from './peComponents'
 import EquipesCommercialesSection from './EquipesCommercialesSection'
 import MessageTemplatesCrmSection from './MessageTemplatesCrmSection'
+import parametresApi from '../../api/parametresApi'
 
 // Sentinel pour l'option « aucun » : Radix Select n'autorise pas la valeur ''.
 const NONE = '__none__'
@@ -27,13 +29,54 @@ function ListState({ loading, empty, children }) {
   return children
 }
 
+// CIQ417 — message d'erreur d'un refus 400 `{champ: [msg]}` (ou `{detail}`).
+function messageErreurChamp(err, champ) {
+  const data = err?.response?.data
+  const brut = data?.[champ] ?? data?.detail
+  if (Array.isArray(brut)) return brut.join(' ')
+  return typeof brut === 'string' && brut ? brut : 'Enregistrement impossible.'
+}
+
 export default function LeadsSection({
-  form, set, setForm, assignables,
+  form, set, setForm, assignables, profile,
   tags, newTag, setNewTag, addTag, renameTag, delTag, archiveTag, setTagColor,
   motifs, newMotif, setNewMotif, addMotif, renameMotif, delMotif, archiveMotif,
   canaux, newCanal, setNewCanal, addCanal, renameCanal, delCanal, archiveCanal,
   refLoading = {},
 }) {
+  // ── CIQ417 ── responsable des leads commerciaux et industriels ───────────
+  // Enregistré à part (PATCH de CE champ seul) : il ne voyage jamais avec le
+  // reste du profil, donc ne peut ni être écrasé ni écraser un autre réglage.
+  // Vide (« Comme les autres leads ») = null côté serveur.
+  const [respPro, setRespPro] = useState(
+    profile?.responsable_leads_pro ?? null)
+  const [respProErreur, setRespProErreur] = useState('')
+  useEffect(() => {
+    let vivant = true
+    Promise.resolve()
+      .then(() => parametresApi.getProfile?.())
+      .then(r => {
+        if (vivant && r?.data && 'responsable_leads_pro' in r.data) {
+          setRespPro(r.data.responsable_leads_pro ?? null)
+        }
+      })
+      .catch(() => {})
+    return () => { vivant = false }
+  }, [])
+  const choisirRespPro = async (val) => {
+    const valeur = val === NONE ? null : Number(val)
+    setRespProErreur('')
+    try {
+      const r = await parametresApi.updateProfile({
+        responsable_leads_pro: valeur,
+      })
+      const serveur = r?.data?.responsable_leads_pro
+      setRespPro(serveur === undefined ? valeur : serveur)
+    } catch (err) {
+      setRespProErreur(messageErreurChamp(err, 'responsable_leads_pro'))
+    }
+  }
+
   // Met à jour un champ FK du formulaire ('' = aucun) depuis le Select.
   const setFk = (name) => (val) =>
     setForm(f => ({ ...f, [name]: val === NONE ? '' : val }))
@@ -80,6 +123,34 @@ export default function LeadsSection({
               </SelectContent>
             </Select>
           </Field>
+          <p className="mb-1 mt-3.5 text-[12.5px] text-muted-foreground">
+            Responsable des leads de type commercial ou industriel. Laisser
+            « Comme les autres leads » = le responsable par défaut ci-dessus.
+          </p>
+          <Field label="Responsable des leads commerciaux et industriels" htmlFor="pe-resp-leads-pro">
+            <Select value={respPro ? String(respPro) : NONE}
+                    onValueChange={choisirRespPro}>
+              <SelectTrigger id="pe-resp-leads-pro"
+                             aria-invalid={respProErreur ? true : undefined}
+                             aria-describedby={respProErreur ? 'pe-resp-leads-pro-err' : undefined}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Comme les autres leads</SelectItem>
+                {assignables.map(u => (
+                  <SelectItem key={u.id} value={String(u.id)}>
+                    {u.username}{u.poste ? ` — ${u.poste}` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          {respProErreur && (
+            <p id="pe-resp-leads-pro-err" role="alert"
+               className="mt-1 text-xs text-destructive">
+              {respProErreur}
+            </p>
+          )}
           <p className="mb-1 mt-3.5 text-[12.5px] text-muted-foreground">
             Installateur (technicien) assigné automatiquement aux nouveaux
             chantiers quand aucun n'est choisi. Laisser vide = le créateur

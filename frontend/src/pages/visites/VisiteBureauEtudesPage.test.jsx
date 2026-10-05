@@ -21,6 +21,7 @@ vi.mock('../../api/visitesApi', () => ({
 }))
 
 import VisiteBureauEtudesPage from './VisiteBureauEtudesPage'
+import { documentContrat } from '../../test/fixtures/contractSamples'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -86,5 +87,51 @@ describe('VisiteBureauEtudesPage — VT10', () => {
     await user.click(await screen.findByText('Lead A'))
     const bloc = await screen.findByTestId('visite-qualification-resume')
     expect(bloc).toHaveTextContent('Chaud — prêt à signer · Le devis convient · Seul · Prix · Les économies · Demain matin')
+  })
+})
+
+/* AGR422 — revue d'un relevé du point d'eau (`exemple_point_eau` du contrat
+   partagé `visite_terrain.json`). */
+describe('VisiteBureauEtudesPage — AGR422 (gabarit point_eau)', () => {
+  const contrat = documentContrat('visites', 'visite_terrain')
+  const POINT_EAU = contrat.exemple_point_eau
+
+  it('liste les mesures point_eau, avec libellés, unités et choix lisibles', async () => {
+    getVisite.mockResolvedValue({ data: { ...POINT_EAU, statut: 'terminee' } })
+    const user = userEvent.setup()
+    render(<MemoryRouter><VisiteBureauEtudesPage /></MemoryRouter>)
+    await user.click(await screen.findByText('Lead A'))
+    expect(await screen.findByRole('heading', { name: 'Visite de relevé du point d’eau' })).toBeInTheDocument()
+    const dt = (libelle) => screen.getByText(libelle).nextElementSibling
+    expect(dt('Niveau statique (pompe arrêtée)')).toHaveTextContent('32 m')
+    expect(dt("Source d'eau")).toHaveTextContent('Forage')
+    expect(dt('Méthode de mesure du débit')).toHaveTextContent('Seau chronométré')
+    expect(dt('Une pompe est-elle déjà installée ?')).toHaveTextContent('Oui')
+    expect(dt("Compteur d'eau sur le forage")).toHaveTextContent('—')
+  })
+
+  it('masque le lien de calepinage toiture (atelier 3D) pour ce gabarit, même validée', async () => {
+    getVisite.mockResolvedValue({ data: { ...POINT_EAU, statut: 'validee' } })
+    const user = userEvent.setup()
+    render(<MemoryRouter><VisiteBureauEtudesPage /></MemoryRouter>)
+    await user.click(await screen.findByText('Lead A'))
+    await screen.findByRole('heading', { name: 'Visite de relevé du point d’eau' })
+    expect(screen.queryByRole('button', { name: /atelier 3d/i })).not.toBeInTheDocument()
+  })
+
+  it('une visite toiture validée garde son lien « Ouvrir l’atelier 3D »', async () => {
+    getVisite.mockResolvedValue({
+      data: {
+        id: 1, lead: 10, statut: 'validee', gabarit: 'toiture',
+        checklist: [{ categorie: 'toiture', libelle: 'Toiture', slots: [{ code: 's1', libelle: 'Vue', requis: true, etat: 'ok', photos: [] }] }],
+        mesures: { toiture: { longueur_m: 12, largeur_m: 8, pente_deg: 15, orientation: 'sud' } },
+        client_panel: { lead_nom: 'Lead A' },
+      },
+    })
+    const user = userEvent.setup()
+    render(<MemoryRouter><VisiteBureauEtudesPage /></MemoryRouter>)
+    await user.click(await screen.findByText('Lead A'))
+    expect(await screen.findByRole('button', { name: /atelier 3d/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Lead A' })).toBeInTheDocument()
   })
 })

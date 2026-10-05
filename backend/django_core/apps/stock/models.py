@@ -8,7 +8,8 @@ from core.models import TenantModel  # SCA4 — socle multi-tenant
 # app métier sœur (frontière inter-app, verrouillée par ``.importlinter``),
 # et une copie locale aurait fait un miroir de plus à tenir à la main.
 from core.product_roles import (
-    ALIMENTATIONS_POMPAGE, ROLES_DEVIS, ROLES_POMPAGE, TYPES_POMPE,
+    ALIMENTATIONS_POMPAGE, ROLES_CI, ROLES_DEVIS, ROLES_POMPAGE, TYPES_POMPE,
+    TYPES_POSE,
 )
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
@@ -897,6 +898,33 @@ class Produit(models.Model):
         null=True, blank=True,
         help_text='Fréquence (Hz) de publication de la courbe constructeur. '
                   'null = non publié — jamais supposé.')
+    # ── CIQ101 — champs C&I (contrat produit_ci.json). Vocabulaire ``ROLES_CI``
+    # DISTINCT de ``ROLES_DEVIS`` ; ``role_devis`` n'est pas touché. Vide =
+    # non déclaré / non publié, jamais une valeur par défaut métier.
+    role_ci = models.CharField(
+        max_length=32, blank=True, default='', db_index=True,
+        choices=[(r, r) for r in ROLES_CI],
+        verbose_name='Rôle C&I',
+        help_text="Rôle DÉCLARÉ dans une composition commerciale/industrielle "
+                  "(compteur_injection, structure_ci…). Vide = non déclaré.")
+    type_pose = models.CharField(
+        max_length=24, blank=True, default='',
+        choices=[(t, t) for t in TYPES_POSE],
+        help_text='Structures et prestations de pose seulement. Vide = non '
+                  'publié : la structure n\'est jamais choisie pour un toit.')
+    delai_appro_jours = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Article « sur commande » : délai d'approvisionnement "
+                  "(jours). null = tenu en stock ou non saisi — jamais "
+                  "supposé.")
+    # CIQ123 — prix de VENTE TTC dégressif par quantité (gros volumes C&I) :
+    # ``[{seuil_min, seuil_max (exclu, null = sans plafond), prix_vente_ttc}]``.
+    # Liste vide = ``prix_vente`` à toute quantité (comportement d'hier).
+    # Aucun palier semé : saisie du fondateur. Jamais un prix d'achat.
+    paliers_prix_vente = models.JSONField(
+        default=list, blank=True,
+        help_text='Paliers de prix de vente TTC par quantité (vide = prix '
+                  'catalogue unique).')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_mise_a_jour = models.DateTimeField(auto_now=True)
     # Champs personnalisés (T11) — valeurs indexées par CustomFieldDef.code.

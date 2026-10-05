@@ -4,7 +4,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { projeterEtudeMarche } from './etudeMarcheBloc.js'
+import {
+  projeterEtudeMarche, saisiesEconomiePompage, ecoDepuisSaisies, ECO_POMPAGE_VIDE,
+} from './etudeMarcheBloc.js'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
 
 // Liste ECRAN figée depuis apps/ventes/domain/etude_schema.py (SCHEMA, clés de
 // propriétaire ECRAN, :94-260). Toute clé hors de cette liste est refusée en
@@ -16,8 +21,8 @@ const ECRAN = new Set([
   'conso_annuelle', 'toiture', 'attribution',
   'pompe_cv', 'pompe_kw', 'hmt_m', 'debit_hmt_m3h', 'm3_jour', 'champ_kwc',
   'irrigation_method', 'debit_souhaite_m3h', 'heures_pompage', 'type_pompe', 'alim',
-  'profondeur_m', 'distance_m', 'region', 'crop', 'surface_ha', 'current_fuel',
-  'fuel_spend_current', 'hmt_static', 'hmt_drawdown',
+  'profondeur_m', 'distance_m', 'region', 'crop', 'surface_ha',
+  'saisies_economie_pompage', 'hmt_static', 'hmt_drawdown',
   'taux_autoconso', 'taux_couverture', 'payback', 'injection_kwh_an', 'injection_dh_an',
   'repartition_mt', 'etude_kwc_base',
   'chambres', 'occupation_pct', 'piscine', 'chambres_froides', 'horaires', 'cuisson',
@@ -82,7 +87,7 @@ test('agricole : pompe_cv est un nombre, seules des clés ECRAN sortent', () => 
     choix: CHOIX, entrees,
     pompage,
     saisiePompage: { hmt: '60', debit: '12', heures: '7', typePompe: 'immergee', alim: 'solaire', profondeur: '', distance: '30' },
-    exploitation: { irrigation: 'goutte', region: '', crop: 'olivier', surfaceHa: '4', fuel: 'gasoil', fuelSpend: '24000', hmtStatic: '', hmtDrawdown: '5' },
+    exploitation: { irrigation: 'goutte', region: '', crop: 'olivier', surfaceHa: '4', hmtStatic: '', hmtDrawdown: '5' },
   })
   assert.deepEqual(horsSchema(bloc), [])
   assert.equal(typeof bloc.pompe_cv, 'number')
@@ -90,7 +95,9 @@ test('agricole : pompe_cv est un nombre, seules des clés ECRAN sortent', () => 
   assert.equal(bloc.hmt_m, 60)
   assert.equal(bloc.profondeur_m, null)
   assert.equal(bloc.region, null)
-  assert.equal(bloc.fuel_spend_current, 24000)
+  assert.equal('current_fuel' in bloc, false)
+  assert.equal('fuel_spend_current' in bloc, false)
+  assert.equal(bloc.saisies_economie_pompage, null)
   assert.ok(!('conso_annuelle' in bloc))
 })
 
@@ -109,4 +116,48 @@ test('résidentiel : choix + entrées, objet vide ⇒ null', () => {
     projeterEtudeMarche('residentiel', { choix: { scenario: 'avec_batterie' }, entrees: () => ({}) }),
     { scenario: 'avec_batterie' },
   )
+})
+
+// ── AGR212 — saisies DÉCLARÉES de l'économie de pompage ────────────────────
+const ICI = path.dirname(fileURLToPath(import.meta.url))
+const CONTRAT_ECO = JSON.parse(readFileSync(path.resolve(ICI,
+  '../../../../../backend/django_core/apps/ventes/contract_samples/economie_pompage.json'),
+'utf8'))
+
+test('AGR212 — énergie jamais touchée ⇒ energie_actuelle absente', () => {
+  assert.equal(saisiesEconomiePompage(ECO_POMPAGE_VIDE), null)
+  const s = saisiesEconomiePompage({ ...ECO_POMPAGE_VIDE, entretien: '1500' },
+    { aujourdhui: '2026-10-05' })
+  assert.equal('energie_actuelle' in s, false)
+  assert.deepEqual(s.entretien_paye_mad_an, { valeur: 1500, saisi_le: '2026-10-05' })
+})
+
+test('AGR212 — 2 000 /mois sur 4 mois : 24 000 n’apparaît nulle part', () => {
+  const s = saisiesEconomiePompage({
+    ...ECO_POMPAGE_VIDE, energie: 'diesel', quantite: '2000', unite: 'litre',
+    periode: 'mois', prix: '1', mois: [5, 6, 7, 8], dateDeclaration: '2026-10-05',
+  })
+  const bloc = projeterEtudeMarche('agricole', {
+    choix: {}, entrees: {}, pompage: {}, exploitation: { saisiesEconomie: s } })
+  const texteBloc = JSON.stringify(bloc)
+  assert.equal(texteBloc.includes('24000'), false)
+  assert.equal(bloc.saisies_economie_pompage.consommation.quantite, 2000)
+  assert.equal(bloc.saisies_economie_pompage.consommation.periode, 'mois')
+})
+
+test('AGR212 — aller-retour exact de la forme du contrat', () => {
+  const exemple = CONTRAT_ECO.saisies_economie_pompage.exemple
+  assert.deepEqual(saisiesEconomiePompage(ecoDepuisSaisies(exemple)), exemple)
+})
+
+test('AGR212 — mois du calendrier : provenance « calendrier » puis « déclaré »', () => {
+  const base = { ...ECO_POMPAGE_VIDE, energie: 'butane', dateDeclaration: '2026-10-05' }
+  const cal = saisiesEconomiePompage(base, { moisCalendrier: [4, 5, 6] })
+  assert.deepEqual(cal.mois_irrigation.provenance,
+    { origine: 'calculee', detail: 'calendrier_culture', date: '2026-10-05' })
+  const conf = saisiesEconomiePompage({ ...base, confirme: true }, { moisCalendrier: [4, 5, 6] })
+  assert.equal(conf.mois_irrigation.provenance.origine, 'saisie')
+  const touche = saisiesEconomiePompage({ ...base, mois: [6, 4] })
+  assert.deepEqual(touche.mois_irrigation.mois, [4, 6])
+  assert.equal(touche.mois_irrigation.provenance.origine, 'saisie')
 })

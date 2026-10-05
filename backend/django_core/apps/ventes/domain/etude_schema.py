@@ -42,6 +42,10 @@ MOTEUR_SIMULATION = 'moteur_simulation'
 CALEPINAGE = 'calepinage'
 #: La création automatique depuis un lead (``services.build_devis_auto``).
 AUTO_DEVIS = 'auto_devis'
+#: CIQ117 — le moteur SERVEUR C&I (``domain/etude_ci.py``, D-CIQ-0) : seul
+#: écrivain de l'étude commerciale/industrielle v2 (``etude_ci``,
+#: ``production_figee``). Un navigateur ne les écrit JAMAIS.
+MOTEUR_CI = 'moteur_ci'
 #: L'ORDONNANCEUR lui-même (``domain/pipeline.appliquer``) — DC11/QJR106. Il ne
 #: calcule rien : la seule clé dont il est propriétaire est l'ESTAMPILLE de
 #: provenance, c'est-à-dire la trace de CE QU'IL A REPRIS du lead.
@@ -219,11 +223,26 @@ SCHEMA = {
     'region': _cle((str,), ECRAN, ENTREE),
     'crop': _cle((str,), ECRAN, ENTREE),
     'surface_ha': _cle((int, float), ECRAN, ENTREE),
-    'current_fuel': _cle((str,), ECRAN, ENTREE),
-    'fuel_spend_current': _cle((int, float), ECRAN, ENTREE,
-                               'Dépense carburant ACTUELLE, en MAD/AN.'),
+    # AGR206 (D-AGR-13, règle d'AGR122) — `current_fuel` et
+    # `fuel_spend_current` QUITTENT le schéma : plus écrites (AGR212) ni lues
+    # (lecteurs au grep du 05/10/2026 : `etudeMarcheBloc.js`, `etatDevis.js`
+    # — retirés par AGR212 ; le moteur `economie_pompage.py` ne la lit
+    # jamais). L'énergie et la dépense DÉCLARÉES vivent dans
+    # `saisies_economie_pompage` (contrat `economie_pompage.json`, AGR3) :
+    # ENTRÉE écran, recopiée par les copies et la V2 (jamais un calcul).
+    'saisies_economie_pompage': _cle(
+        (dict,), ECRAN, ENTREE,
+        "AGR206 — consommation déclarée, prix payé daté, mois d'irrigation, "
+        "facture réseau, entretien (contrat economie_pompage.json)."),
     'hmt_static': _cle((int, float), ECRAN, ENTREE),
     'hmt_drawdown': _cle((int, float), ECRAN, ENTREE),
+    # AGR217 (contrat AGR200) — l'attestation de destination AGRICOLE du
+    # matériel (art. 91-I-C-6° CGI 2026 : « utilisée dans le secteur
+    # agricole ») : {attestee, le, signataire}. Saisie, jamais calculée.
+    'attestation_usage_agricole': _cle(
+        (dict,), ECRAN, ENTREE,
+        "Attestation d'usage agricole saisie : {attestee: bool, le: date "
+        "ISO, signataire: texte}."),
 
     # ── Les DÉRIVÉES du marché industriel / commercial ───────────────────────
     'taux_autoconso': _cle((int, float), ECRAN, DERIVEE),
@@ -275,6 +294,50 @@ SCHEMA = {
     'volume_m3': _cle((int, float), ECRAN, ENTREE),
     'saisonnalite_recolte': _cle((bool,), ECRAN, ENTREE),
 
+    # ── CIQ117 (contrat CIQ2 `etude_ci_preview.json`, `cles_etude_params_ci_v2`)
+    #    — le C&I v2 sur UN moteur serveur (D-CIQ-0). ENTRÉES = ce que l'écran
+    #    saisit (propriétaire ECRAN) ; DÉRIVÉES EXCLUSIVES `moteur_ci` : un
+    #    navigateur ne les écrit jamais, une copie/V2 les recalcule (elles sont
+    #    dans ``CLES_DERIVEES_NON_COPIEES``, QJR117). Les clés ÉCRAN v1 ci-dessus
+    #    (`taux_autoconso`, `payback`…) restent déclarées jusqu'à CIQ129 : le
+    #    moteur de rendu les lit encore. `economie_ci` / `tva_recuperable` sont
+    #    déclarées par D2 (CIQ3) ; `tarif_declare` par CIQ203.
+    'mode': _cle((str,), ECRAN, ENTREE, 'CIQ117 — commercial | industriel.'),
+    'site': _cle((dict,), ECRAN, ENTREE,
+                 'CIQ117 — {ville, lat, lon} : un site par étude.'),
+    'tension': _cle((str,), ECRAN, ENTREE, 'CIQ117 — bt | mt | inconnue.'),
+    'phases': _cle((str,), ECRAN, ENTREE, 'CIQ117 — mono | tri | inconnu.'),
+    'puissance_souscrite_kva': _cle((int, float), ECRAN, ENTREE),
+    'consommation': _cle((dict,), ECRAN, ENTREE,
+                         'CIQ117 — kwh_mensuels / kwh_annuel / factures_mad '
+                         '/ registres_mt ; une tranche ouverte n\'est jamais '
+                         'un montant (D-CIQ-19).'),
+    'rythme': _cle((dict,), ECRAN, ENTREE,
+                   'CIQ117 — jours ouverts, plages, équipes, fermetures, '
+                   'talon : le profil DÉCLARÉ (D-CIQ-1).'),
+    'courbe_mesuree': _cle((dict,), ECRAN, ENTREE),
+    'toit': _cle((dict,), ECRAN, ENTREE),
+    'contraintes': _cle((dict,), ECRAN, ENTREE),
+    'options': _cle((dict,), ECRAN, ENTREE),
+    'taille_explicite_kwc': _cle((int, float), ECRAN, ENTREE,
+                                 'CIQ117 — souveraine (D-QJR5-13).'),
+    # CIQ203 — le tarif DÉCLARÉ du client (contrat CIQ11 `tarifs_ci.json`) :
+    # validé à l'écriture (`tarif_ci.reproches_tarif_declare`, 400 nommant
+    # `etude_params.tarif_declare.<champ>`). Les saisies de l'économie C&I
+    # (contrat CIQ3 `economie_ci.json`) : le schéma n'en contrôle que le type
+    # objet, leurs sous-champs sont validés par le moteur (CIQ205-CIQ209).
+    'tarif_declare': _cle((dict,), ECRAN, ENTREE,
+                          'CIQ203 — prix de la facture du client d\'abord.'),
+    'saisies_economie_ci': _cle((dict,), ECRAN, ENTREE,
+                                'CIQ203 — TVA récupérable, actualisation, '
+                                'revente, aide, offres écrites.'),
+    'etude_ci': _cle((dict,), MOTEUR_CI, DERIVEE,
+                     'CIQ117 — entrees_resolues, profil_charge, production, '
+                     'taille, bilan, alertes, hypotheses, version, empreinte.'),
+    'production_figee': _cle((dict,), MOTEUR_CI, DERIVEE,
+                             'CIQ117 — coordonnées + réponse PVGIS figées '
+                             '(reproductibilité, CIQ109).'),
+
     # ── Clé HISTORIQUE sans écrivain ─────────────────────────────────────────
     'payback_annees': _cle(
         (int, float), ORPHELINE, DERIVEE,
@@ -282,6 +345,31 @@ SCHEMA = {
         "consommateur du dépôt ne la lit. Déclarée ici pour qu'un devis "
         "ANCIEN qui la porte encore ne soit pas signalé comme invalide."),
 }
+
+
+#: CIQ117 — les marchés dont l'étude vient du moteur SERVEUR C&I : le layout
+#: n'y apporte que la géométrie et le kWc, jamais production ni économies.
+MARCHES_CI = ('commercial', 'industriel')
+
+
+def cles_etude_du_layout(mode_installation, resultat):
+    """CIQ117 — ce que la synchro d'un calepinage écrit dans l'étude.
+
+    Résidentiel et agricole : ``production_annuelle`` et
+    ``economies_annuelles`` du layout (comportement inchangé). Commercial ou
+    industriel : RIEN — la production vient de CIQ109 (calepinage retenu lu
+    par le moteur C&I) et l'économie du moteur C&I ; l'économie de l'outil de
+    toiture n'est jamais imprimée sur un devis MT (C2-VA-01, C2-VB-01).
+    """
+    if (mode_installation or '').strip().lower() in MARCHES_CI:
+        return {}
+    resultat = resultat or {}
+    cles = {}
+    if resultat.get('annualKwh') is not None:
+        cles['production_annuelle'] = int(resultat['annualKwh'])
+    if resultat.get('savings') is not None:
+        cles['economies_annuelles'] = int(resultat['savings'])
+    return cles
 
 
 def entrees_du_moteur(cles=None):
@@ -341,6 +429,9 @@ def valider(etude_params):
             continue
         if cle == 'factures_mensuelles_reelles':
             reproches.extend(_reproches_factures(valeur))
+        elif cle == 'tarif_declare':
+            from apps.ventes.tarif_ci import reproches_tarif_declare
+            reproches.extend(reproches_tarif_declare(valeur))
     return reproches
 
 

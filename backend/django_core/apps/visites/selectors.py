@@ -113,21 +113,63 @@ def _visite_mesures(visite):
 
     saisies = visite.mesures if isinstance(visite.mesures, dict) else {}
     rendu = {}
-    for cat in checklist.categories(_gabarit(visite)):
+    gabarit = _gabarit(visite)
+    for cat in checklist.categories(gabarit):
         champs = cat['mesures']
-        if not champs:
+        # CIQ600 — le contrat ``ci`` rend aussi les catégories sans mesure
+        # (``general: {}``) ; les autres gabarits restent identiques.
+        if not champs and gabarit != checklist.GABARIT_CI:
             continue
         valeurs = saisies.get(cat['categorie']) or {}
         rendu[cat['categorie']] = {
-            champ['code']: valeurs.get(champ['code'], None)
+            champ['code']: valeurs.get(
+                champ['code'],
+                [] if champ['nature'] == checklist.LISTE else None)
             for champ in champs
         }
     return rendu
 
 
-def _visite_manquants(blocs, mesures_rendues, gabarit=None):
+def zones_toiture_saisies(visite):
+    """CIQ602 — les zones de toiture SAISIES d'une visite ``ci``, telles que
+    stockées (liste de dicts) ; ``[]`` pour tout autre gabarit ou sans saisie.
+    Fonction PURE sur l'objet reçu."""
+    if _gabarit(visite) != 'ci':
+        return []
+    saisies = visite.mesures if isinstance(visite.mesures, dict) else {}
+    bloc = saisies.get('toiture_ci') or {}
+    zones = bloc.get('zones_toiture') if isinstance(bloc, dict) else None
+    return [z for z in (zones or []) if isinstance(z, dict)]
+
+
+def _non_releves_plats(visite):
+    """CIQ601 — les états « non relevé » d'une visite ``ci`` à plat :
+    ``{'<categorie>.<clé>': motif}`` (forme du contrat ``exemple_ci``). Vide
+    pour tout autre gabarit : l'état n'existe que pour un site professionnel."""
     from . import visite_checklist as checklist
 
+    if _gabarit(visite) != checklist.GABARIT_CI:
+        return {}
+    saisies = visite.mesures if isinstance(visite.mesures, dict) else {}
+    plats = {}
+    for cat in checklist.categories(checklist.GABARIT_CI):
+        bloc = saisies.get(cat['categorie']) or {}
+        etats = bloc.get(checklist.CLE_NON_RELEVES) or {}
+        if not isinstance(etats, dict):
+            continue
+        for cle, motif in etats.items():
+            if motif in checklist.MOTIFS_NON_RELEVE:
+                plats[f"{cat['categorie']}.{cle}"] = motif
+    return plats
+
+
+def _visite_manquants(blocs, mesures_rendues, gabarit=None,
+                      non_releves=None):
+    from . import visite_checklist as checklist
+
+    # CIQ601 — une mesure « non relevée » AVEC son motif est traitée : elle
+    # ne bloque pas « Terminer ».
+    non_releves = non_releves or {}
     manquants = []
     for bloc in blocs:
         for slot in bloc['slots']:
@@ -148,9 +190,24 @@ def _visite_manquants(blocs, mesures_rendues, gabarit=None):
     for cat in checklist.categories(gabarit):
         valeurs = mesures_rendues.get(cat['categorie']) or {}
         for champ in cat['mesures']:
+            if champ['nature'] == checklist.LISTE:
+                for code, libelle in checklist.liste_manquants(
+                        champ, valeurs.get(champ['code'])):
+                    if f"{cat['categorie']}.{code}" in non_releves:
+                        continue
+                    manquants.append({
+                        'type': checklist.MANQUE_MESURE,
+                        'categorie': cat['categorie'],
+                        'code': code,
+                        'libelle': libelle,
+                    })
+                continue
             if not checklist.mesure_requise(champ, valeurs):
                 continue
             valeur = valeurs.get(champ['code'])
+            if (valeur is None or valeur == '') and (
+                    f"{cat['categorie']}.{champ['code']}" in non_releves):
+                continue
             if valeur is None or valeur == '':
                 manquants.append({
                     'type': checklist.MANQUE_MESURE,
@@ -198,7 +255,7 @@ def visite_terrain_manquants(visite):
     medias = list(visite.medias.select_related('attachment').all())
     blocs = _visite_checklist(visite, medias)
     return _visite_manquants(blocs, _visite_mesures(visite),
-                             _gabarit(visite))
+                             _gabarit(visite), _non_releves_plats(visite))
 
 
 def contexte_visite_terrain(visite):
@@ -206,9 +263,11 @@ def contexte_visite_terrain(visite):
     medias = list(visite.medias.select_related('attachment').all())
     blocs = _visite_checklist(visite, medias)
     mesures_rendues = _visite_mesures(visite)
-    manquants = _visite_manquants(blocs, mesures_rendues, _gabarit(visite))
+    non_releves = _non_releves_plats(visite)
+    manquants = _visite_manquants(blocs, mesures_rendues, _gabarit(visite),
+                                  non_releves)
     commercial = visite.commercial
-    return {
+    agregat = {
         'id': visite.id,
         'lead': visite.lead_id,
         'commercial': None if commercial is None else {
@@ -226,8 +285,9 @@ def contexte_visite_terrain(visite):
         'notes': visite.notes or '',
         'modifiable': visite.modifiable,
         'raison_lecture_seule': visite.raison_lecture_seule,
-        # AGR412 — aucun toit à assembler sur un relevé du point d'eau.
-        'photo_toit': None if _gabarit(visite) == 'point_eau' else {
+        # AGR412 — aucun toit à assembler sur un relevé du point d'eau ;
+        # CIQ600 — ni sur un relevé de site professionnel (zones de toiture).
+        'photo_toit': None if _gabarit(visite) in ('point_eau', 'ci') else {
             'assemblage_etat': visite.assemblage_etat,
             'assemblage_erreur': visite.assemblage_erreur or '',
             'url': (f'/api/django/visites/visites/{visite.id}/photo-toit/'
@@ -252,6 +312,145 @@ def contexte_visite_terrain(visite):
         # affiche alors le wizard vierge, il ne devine pas des valeurs.
         'qualification': visite.qualification,
     }
+    if _gabarit(visite) == 'ci':
+        # CIQ601 — les mesures « non relevées » et leur motif (contrat
+        # ``exemple_ci._non_releves``) ; absent des autres gabarits.
+        agregat['_non_releves'] = non_releves
+        # CIQ606 — le relevé déclaré / constaté / écart (écran de revue) ;
+        # la même fonction sert ``releve_ci_pour_lead`` (visite validée).
+        agregat['releve_ci'] = releve_ci_de_visite(visite)
+    return agregat
+
+
+# ── CIQ606 — RELEVÉ C&I : DÉCLARÉ / CONSTATÉ / ÉCART ─────────────────────────
+#
+# Le lead DÉCLARE (colonnes CIQ1, lues par ``crm.selectors``), la visite
+# CONSTATE ; l'écart est montré à l'ingénieur, jamais corrigé automatiquement
+# et jamais jugé (aucun seuil : égal ou différent, point). Aucune seconde
+# saisie : le constaté vient des mesures déjà relevées par la visite.
+
+def _mesure_ci(visite, categorie, code):
+    """``(valeur, motif_non_releve)`` d'une mesure d'une visite ``ci`` :
+    la valeur SAISIE (``None`` si vide) et le motif si elle est « non
+    relevée »."""
+    saisies = visite.mesures if isinstance(visite.mesures, dict) else {}
+    bloc = saisies.get(categorie) or {}
+    valeur = bloc.get(code) if isinstance(bloc, dict) else None
+    if isinstance(valeur, str) and not valeur.strip():
+        valeur = None
+    etats = bloc.get('_non_releves') if isinstance(bloc, dict) else None
+    motif = (etats or {}).get(code) if isinstance(etats, dict) else None
+    return valeur, motif
+
+
+def _surface_zone(zone):
+    """La surface utile d'UNE zone (m²) : ``surface_utile_m2``, sinon
+    longueur × largeur ; ``None`` si aucune des deux n'est saisie."""
+    surface = zone.get('surface_utile_m2')
+    if surface not in (None, ''):
+        return float(surface)
+    longueur, largeur = zone.get('longueur_m'), zone.get('largeur_m')
+    if longueur in (None, '') or largeur in (None, ''):
+        return None
+    return float(longueur) * float(largeur)
+
+
+def _ecart_ci(declare, constate, comparables=None):
+    """``False`` égal, ``True`` différent, ``None`` non comparable (l'un des
+    deux manque, ou une valeur n'est pas dans ``comparables``)."""
+    if declare is None or constate is None:
+        return None
+    if comparables is not None and (declare not in comparables
+                                    or constate not in comparables):
+        return None
+    if isinstance(declare, (int, float)) and isinstance(constate, (int, float)):
+        return round(float(declare), 2) != round(float(constate), 2)
+    return declare != constate
+
+
+def releve_ci_de_visite(visite, declare=None):
+    """CIQ606 — le bloc ``releve_ci`` (contrat CIQ5) d'UNE visite ``ci`` :
+    ``{niveau_tension, puissance_souscrite_kva, type_toiture, surface_utile,
+    statut_occupation}`` chacun ``{declare, constate, ecart}`` + ``validee_le``.
+
+    ``declare`` est lu par ``crm.selectors`` (jamais ressaisi) sauf s'il est
+    fourni. Une mesure « non relevée » donne ``constate`` ``None`` et son
+    motif (clé ``non_releve``). Le type de toiture se compare via la table
+    CIQ603 ; plusieurs couvertures différentes ou une zone sans surface = non
+    comparable (les zones restent exposées telles que saisies). EN PLUS du
+    contrat, pour le moteur C&I (CIQ2) : ``visite_id``, ``zones_toiture``,
+    ``trajets`` et ``non_releves`` (états à plat). Lecture SEULE."""
+    from apps.crm import selectors as crm_selectors
+
+    from . import visite_checklist as checklist
+
+    if declare is None:
+        declare = crm_selectors.releve_declare_ci(visite.lead)
+    zones = zones_toiture_saisies(visite)
+    constate = {}
+    non_releve = {}
+
+    tension, motif = _mesure_ci(visite, 'comptage', 'niveau_tension_constate')
+    constate['niveau_tension'] = None if motif else tension
+    non_releve['niveau_tension'] = motif
+    puissance, motif = _mesure_ci(
+        visite, 'comptage', 'puissance_souscrite_kva_constatee')
+    constate['puissance_souscrite_kva'] = (
+        None if motif or puissance is None else float(puissance))
+    non_releve['puissance_souscrite_kva'] = motif
+
+    couvertures = {z.get('couverture') for z in zones if z.get('couverture')}
+    types = {checklist.toiture_lead_depuis_visite(c) for c in couvertures}
+    types.discard(None)
+    constate['type_toiture'] = next(iter(types)) if len(types) == 1 else None
+    surfaces = [_surface_zone(z) for z in zones]
+    constate['surface_utile'] = (
+        round(sum(surfaces), 2)
+        if zones and all(s is not None for s in surfaces) else None)
+    # Aucune mesure de la visite ne porte le statut d'occupation : il reste
+    # au lead (``ownership``) — non comparable tant qu'un constat n'existe pas.
+    constate['statut_occupation'] = None
+
+    releve = {}
+    for champ in ('niveau_tension', 'puissance_souscrite_kva', 'type_toiture',
+                  'surface_utile', 'statut_occupation'):
+        bloc = {
+            'declare': declare.get(champ),
+            'constate': constate[champ],
+            'ecart': _ecart_ci(
+                declare.get(champ), constate[champ],
+                ('bt', 'mt') if champ == 'niveau_tension' else None),
+        }
+        if non_releve.get(champ):
+            bloc['non_releve'] = non_releve[champ]
+        releve[champ] = bloc
+    releve['validee_le'] = _visite_horodatage(visite.validee_le)
+    releve['visite_id'] = visite.id
+    releve['zones_toiture'] = zones
+    saisies = visite.mesures if isinstance(visite.mesures, dict) else {}
+    trajets = (saisies.get('cheminement') or {}).get('trajets')
+    releve['trajets'] = [t for t in (trajets or []) if isinstance(t, dict)]
+    releve['non_releves'] = _non_releves_plats(visite)
+    return releve
+
+
+def releve_ci_pour_lead(lead):
+    """CIQ606 — le relevé C&I de la DERNIÈRE visite ``ci`` VALIDÉE du lead
+    (bloc de ``releve_ci_de_visite``), ou ``None`` : une visite non validée
+    n'est jamais reprise, une visite résidentielle non plus. La société est
+    celle du lead. Lecture SEULE ; jamais mockée dans ses tests."""
+    from .models import VisiteTerrain
+
+    if lead is None:
+        return None
+    visite = (VisiteTerrain.objects
+              .filter(lead=lead, company_id=lead.company_id,
+                      gabarit=VisiteTerrain.Gabarit.CI,
+                      statut=VisiteTerrain.Statut.VALIDEE)
+              .select_related('lead').order_by('-id').first())
+    if visite is None:
+        return None
+    return releve_ci_de_visite(visite)
 
 
 def mesures_point_eau_pour_lead(visite):
@@ -279,6 +478,24 @@ def mesures_point_eau_pour_lead(visite):
         if bloc:
             rendu[cat['categorie']] = bloc
     return rendu
+
+
+def visite_point_eau_validee_du_lead(lead):
+    """AGR121 — la DERNIÈRE visite « relevé du point d'eau » VALIDÉE du lead,
+    ou ``None``. Porte de lecture du moteur agricole ventes (jamais
+    ``visites.models``) ; ses mesures se lisent ensuite par
+    :func:`mesures_point_eau_pour_lead`. Société = celle du LEAD."""
+    from . import visite_checklist as checklist
+    from .models import VisiteTerrain
+
+    if lead is None or getattr(lead, 'pk', None) is None:
+        return None
+    return (VisiteTerrain.objects
+            .filter(lead=lead, company_id=lead.company_id,
+                    statut=VisiteTerrain.Statut.VALIDEE,
+                    gabarit=checklist.GABARIT_POINT_EAU)
+            .order_by('-id')
+            .first())
 
 
 def texture_toit_pour_lead(lead):
@@ -378,6 +595,51 @@ def recap_visite_terrain(visite):
             morceaux.append(f'autorisation ABH {autorisation}')
         moment = visite.date_realisee or visite.date_prevue
         entete = "Relevé du point d'eau validé"
+        if moment is not None:
+            entete += f' — réalisé le {moment.strftime("%d/%m/%Y")}'
+        if not morceaux:
+            return entete + '.'
+        return entete + ' : ' + ', '.join(morceaux) + '.'
+    if _gabarit(visite) == 'ci':
+        # CIQ600 — relevé d'un site professionnel : seules les valeurs
+        # réellement saisies, jamais une mesure résidentielle ni un défaut.
+        calibre = nombre('tableau_general', 'calibre_a')
+        if calibre:
+            morceaux.append(f"appareil de tête {calibre} A")
+        tension = valeur('comptage', 'niveau_tension_constate')
+        if tension:
+            morceaux.append(f'tension {tension}')
+        puissance = nombre('comptage', 'puissance_souscrite_kva_constatee')
+        if puissance:
+            morceaux.append(f'puissance souscrite {puissance} kVA')
+        # CIQ602 — zones de toiture saisies ; le fibrociment pose le drapeau
+        # (précaution : aucune réglementation citée).
+        zones = zones_toiture_saisies(visite)
+        if zones:
+            morceaux.append(f'{len(zones)} zone(s) de toiture')
+        fibro = [z.get('libelle') or z.get('id') or 'zone'
+                 for z in zones if z.get('fibrociment')
+                 or z.get('couverture') == 'fibrociment']
+        if fibro:
+            morceaux.append('amiante possible — diagnostic requis ('
+                            + ', '.join(str(nom) for nom in fibro) + ')')
+        # CIQ601 — une mesure « non relevée » se dit « non vérifié (motif) »,
+        # jamais avec une valeur par défaut.
+        from . import visite_checklist as checklist
+
+        connus = {
+            cat['categorie']: {m['code']: m for m in cat['mesures']}
+            for cat in checklist.categories('ci')}
+        for cle, motif in _non_releves_plats(visite).items():
+            categorie_code, _, reste = cle.partition('.')
+            libelle = checklist.libelle_cle_non_releve(
+                connus.get(categorie_code, {}), reste)
+            if libelle:
+                morceaux.append(
+                    f'{libelle} non vérifié '
+                    f'({checklist.MOTIFS_NON_RELEVE[motif]})')
+        moment = visite.date_realisee or visite.date_prevue
+        entete = 'Relevé du site professionnel validé'
         if moment is not None:
             entete += f' — réalisé le {moment.strftime("%d/%m/%Y")}'
         if not morceaux:
@@ -796,11 +1058,11 @@ def releve_pour_calepinage(lead):
       (aucune visite, ou visite pas encore validee) ;
     * LECTURE SEULE : rien n'est ecrit, ni ici ni sur le lead.
 
-    ``validee_le`` sort a ``None`` : ``VisiteTerrain`` n'horodate PAS le feu
-    vert (``services.valider_visite`` n'ecrit que ``statut``, sans meme
-    bouger ``updated_at``). Tant qu'aucun horodatage de validation n'est
-    stocke, aucune autre date (``date_realisee``, ``updated_at``) n'est
-    presentee a sa place — ce serait une date inventee.
+    ``validee_le`` (CIQ604) est l'horodatage ISO que
+    ``services.valider_visite`` pose cote serveur ; il sort a ``None`` pour une
+    visite validee AVANT cette tache (aucune reprise des anciennes) — aucune
+    autre date (``date_realisee``, ``updated_at``) n'est presentee a sa place,
+    ce serait une date inventee.
 
     Returns:
         dict — ``{visite_id, validee_le, mesures, photos, motif_absence}``.
@@ -825,10 +1087,17 @@ def releve_pour_calepinage(lead):
             return dict(vide, motif_absence=MOTIF_VISITE_NON_VALIDEE)
         return vide
     medias = visite.medias.filter(company_id=lead.company_id).order_by('id')
-    return {
+    releve = {
         'visite_id': visite.id,
-        'validee_le': None,
+        # CIQ604 — la date du feu vert, posée par ``valider_visite`` ; ``None``
+        # pour une visite validée avant la tâche (aucune date inventée).
+        'validee_le': _visite_horodatage(visite.validee_le),
         'mesures': _releve_mesures_saisies(visite.mesures),
         'photos': _releve_photos_retenues(medias),
         'motif_absence': None,
     }
+    if getattr(visite, 'gabarit', None) == 'ci':
+        # CIQ602 — site professionnel : le relevé expose la LISTE des zones
+        # (une visite résidentielle garde exactement la forme historique).
+        releve['zones_toiture'] = zones_toiture_saisies(visite)
+    return releve

@@ -53,8 +53,12 @@ class TestIndustrielContent(SimpleTestCase):
 
     def test_cfo_blocks_present(self):
         self.assertIn("Baseline énergétique", self.html)   # P1
-        self.assertIn("Cashflow cumulé", self.html)         # P2
-        self.assertIn("TRI sur", self.html)                 # P2
+        # CIQ301 — la page finance ne se remplit que d'une série SERVIE
+        # (``synthese_ci.argent``, CIQ307), jamais du repli BT du builder.
+        self.assertNotIn("Cashflow cumulé", self.html)
+        servie = render.build_html(dict(self.data, **sample_data.serie_finance()))
+        self.assertIn("Cashflow cumulé", servie)            # P2
+        self.assertIn("TRI sur", servie)                    # P2
         self.assertIn("ISO 50001", self.html)               # P3
         self.assertIn("CBAM", self.html)                    # P3
         self.assertIn("Bon pour accord", self.html)         # P3 signature

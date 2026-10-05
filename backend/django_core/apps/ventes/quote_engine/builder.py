@@ -44,8 +44,10 @@ _DEFAULT_WATT = 710
 # ── Conditions de paiement par mode d'installation (SOURCE UNIQUE) ──
 # Décision propriétaire 2026-06-12. Tous les formats PDF ET l'échéancier
 # devis → factures (acompte/tranches) lisent CE mapping ; plus aucun
-# pourcentage de paiement en dur ailleurs. Agricole = défaut résidentiel
-# (30/60/10) en attente d'un éventuel veto du fondateur.
+# pourcentage de paiement en dur ailleurs. Agricole = 30/60/10 CONSERVÉ
+# (décision du 02/10/2026, AGR219 : MESURER avant tout autre réglage, comme
+# CAD52) ; la trésorerie « après récolte » se dit par la ``date_prevue``
+# facultative d'une tranche (``utils/echeancier.py``), jamais par un autre %.
 PAYMENT_TERMS_BY_MODE = {
     "residentiel": {"acompte": 30, "materiel": 60, "solde": 10},
     "industriel": {"acompte": 50, "materiel": 40, "solde": 10},
@@ -719,17 +721,37 @@ def tva_note_des_lignes(lignes, taux_defaut) -> str:
       le tableau », avec les SEULS taux présents sur les lignes.
 
     Une ligne sans taux propre (devis historique) porte le taux du devis.
+    AGR217 — une ligne À 0 % (taux propre) ⇒ « TVA appliquée ligne par
+    ligne : 0 % / … — exonération : <base légale saisie> », une mention par
+    base distincte ; sans ligne à 0 %, texte identique à l'octet.
     Lecture pure : aucun statut écrit (règle #4).
     """
     par_taux = {}
+    bases = []
+    zero_ligne = False
     for li in lignes:
         taux = getattr(li, "taux_tva", None)
+        if taux is not None and float(taux) == 0.0:
+            zero_ligne = True
         if taux is None:
             taux = taux_defaut
         taux = float(taux)
         produit_nom = getattr(getattr(li, "produit", None), "nom", "") or ""
         par_taux.setdefault(taux, []).append(
             _is_panel(getattr(li, "designation", "") or "", produit_nom))
+        # AGR217 — la base légale SAISIE d'une ligne exonérée (une mention
+        # par base distincte, dans l'ordre des lignes).
+        base = (getattr(li, "tva_base_legale", "") or "").strip()
+        if taux == 0.0 and base and base not in bases:
+            bases.append(base)
+    if zero_ligne:
+        # AGR217 — un 0 % présent : la note le dit ligne par ligne et CITE
+        # la base légale saisie (jamais un texte proposé par défaut).
+        taux_txt = " / ".join(
+            f"{_taux_libelle(t)} %" for t in sorted(par_taux))
+        mentions = " ; ".join(f"exonération : {b}" for b in bases)
+        return (f"TVA appliquée ligne par ligne : {taux_txt}"
+                + (f" — {mentions}" if mentions else ""))
     if len(par_taux) <= 1:
         taux = next(iter(par_taux)) if par_taux else float(taux_defaut)
         return (f"TVA {_taux_libelle(taux)} % appliquée sur l'ensemble des "
@@ -741,6 +763,19 @@ def tva_note_des_lignes(lignes, taux_defaut) -> str:
     taux_txt = " / ".join(f"{_taux_libelle(t)} %" for t in sorted(par_taux))
     return (f"TVA appliquée ligne par ligne : {taux_txt} — taux indiqué "
             f"dans le tableau")
+
+
+def _attestation_usage_agricole(devis):
+    """AGR217 — ``etude_params.attestation_usage_agricole`` (contrat AGR200 :
+    ``{attestee, le, signataire}``), copie défensive, ou ``None``. Lecture
+    pure (règle #4) : le builder ne fait que rendre ce qui a été saisi."""
+    valeur = (getattr(devis, "etude_params", None) or {}).get(
+        "attestation_usage_agricole")
+    if not isinstance(valeur, dict) or not valeur:
+        return None
+    return {"attestee": bool(valeur.get("attestee")),
+            "le": valeur.get("le") or None,
+            "signataire": valeur.get("signataire") or ""}
 
 
 def _line_to_item(ligne, taux_tva: Decimal) -> dict:
@@ -1542,6 +1577,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     opts = clean_pdf_options(pdf_options)
     mode = devis.mode_installation or ""
+    # CIQ301 — commercial / industriel : leurs économies ne sortent JAMAIS du
+    # modèle résidentiel/BT (``calculate_savings_roi``) ni d'une étude JS.
+    _mode_ci = mode.strip().lower() in ("commercial", "industriel")
     # Mode agricole : le format à options n'a pas de sens (pas d'onduleur) —
     # la demande « premium » dégrade proprement vers le format une page.
     pdf_mode = opts['pdf_mode']
@@ -2002,7 +2040,30 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # option et le total d'une autre. Suit donc ``onepage_source``/
     # ``onepage_branche`` ci-dessous à l'identique — l'option AVEC quand
     # ``deux_options`` (toujours servable ici, cf. sa définition).
-    if deux_options:
+    #
+    # ── CIQ302 (convention 5) — C&I À DEUX OPTIONS : L'OFFRE RÉSEAU SEULE EST
+    # L'OFFRE PRINCIPALE ─────────────────────────────────────────────────────
+    # La couverture C&I imprimait l'économie de l'option SANS à côté de
+    # l'investissement AVEC, et la page finance choisissait sa série par
+    # égalité de prix (C3-05, C3-VA-03). Pour ``mode_installation ∈
+    # {commercial, industriel}``, le document sert ``option_servie = 'sans'``
+    # dès que l'offre réseau est servable : ``all_items``, ``totaux_all`` et
+    # ``display_total`` décrivent CETTE offre (QJR410). La règle vient du
+    # noyau (``utils.options.option_mise_en_avant``) que lit aussi
+    # ``option_effective`` : liste, Kanban, échéancier et PDF tirent le même
+    # nombre. Une option ACCEPTÉE garde la priorité (QJR401 / DR1). Le
+    # résidentiel ne bouge pas (``option_servie`` reste None).
+    from apps.ventes.utils.options import (
+        option_mise_en_avant as _option_mise_en_avant,
+    )
+    option_servie = None
+    if (deux_options and sans_ok
+            and _option_mise_en_avant(devis) == _NOYAU_SANS):
+        _acceptee_ci = getattr(devis, 'option_acceptee', '') or ''
+        option_servie = 'avec' if _acceptee_ci == _NOYAU_AVEC else 'sans'
+    if option_servie == 'sans':
+        _all_rows = sans_items
+    elif deux_options:
         _all_rows = avec_items
     elif scenario == 'Avec batterie' and avec_ok:
         _all_rows = avec_items
@@ -2021,7 +2082,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # LANE CHOIX-AVEC (fondateur, 25/08/2026) — même bascule que ``_all_rows``
     # ci-dessus, pour la MÊME raison d'intégrité (une seule vérité partagée
     # par la liste des devis et le une-page).
-    if deux_options:
+    # CIQ302 — un C&I à deux options titre l'offre réseau seule.
+    if option_servie == 'sans':
+        display_total = totaux_sans["ttc"]
+        nb_options = 2
+    elif deux_options:
         display_total = totaux_avec["ttc"]
         nb_options = 2
     elif avec_ok:
@@ -2439,9 +2504,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # suit EXACTEMENT celle de ``display_total`` (« avec » dès que le
         # document met cette option en avant), pour qu'il n'y ait qu'une
         # vérité par document.
-        _titree_avec = bool(deux_options or avec_ok)
+        # CIQ302 — un C&I qui titre l'offre réseau seule n'est pas « avec ».
+        _titree_avec = (False if option_servie == 'sans'
+                        else bool(deux_options or avec_ok))
         _ref_total = total_avec if _titree_avec else total_sans
-        if etude.get("economies_annuelles"):
+        # CIQ301 — la branche « étude saisie » (économie imposée + fractions
+        # mensuelles RÉSIDENTIELLES ``_sf``) ne s'applique PLUS au C&I : ses
+        # économies viendront du moteur C&I (``synthese_ci.argent``, CIQ307),
+        # jamais d'une clé d'étude reprise ni d'une saisonnalité résidentielle.
+        if etude.get("economies_annuelles") and not _mode_ci:
             eco = int(etude["economies_annuelles"])
             roi["eco_s_ann"] = eco
             roi["eco_a_ann"] = eco
@@ -2456,7 +2527,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             roi["eco_a_monthly"] = list(roi["eco_s_monthly"])
         # L'étude rendue reprend les valeurs canoniques (jamais deux versions)
         etude["production_annuelle"] = roi["prod_kwh"]
-        if etude.get("economies_annuelles"):
+        if etude.get("economies_annuelles") and not _mode_ci:
             etude["economies_annuelles"] = roi["eco_s_ann"]
             # QJR410 (a) — le payback était CÂBLÉ EN DUR sur le ROI « sans ».
             etude["payback"] = roi["roi_a"] if _titree_avec else roi["roi_s"]
@@ -2498,8 +2569,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     #     voyage AVEC le chiffre, comme MENTION_82_21 voyage avec l'injection.
     _tension_racc = str(etude.get("tension_raccordement") or "").strip().lower()
     _dossier_mt = _tension_racc == "mt"
+    # CIQ301 — en C&I, une économie d'étude n'est jamais reprise (ci-dessus) :
+    # un dossier MT commercial/industriel garde donc TOUJOURS son motif MT.
     masquer_economies = bool(_dossier_mt
-                             and not etude.get("economies_annuelles"))
+                             and (_mode_ci
+                                  or not etude.get("economies_annuelles")))
     tarif_mt_mention = ""
     if _dossier_mt and not masquer_economies:
         try:
@@ -2515,7 +2589,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     #   'estimation' — ancienne approximation production × autoconso × prix,
     #                  toujours étiquetée comme estimation (aucun chiffre inventé).
     savings_model = roi.get("savings_model", "estimation")
-    if etude.get("production_annuelle") and etude.get("economies_annuelles"):
+    if (etude.get("production_annuelle") and etude.get("economies_annuelles")
+            and not _mode_ci):
         savings_model = "etude"
     # QJR28 — la DÉCLARATION par colonne. Une étude saisie par un humain
     # impose UN chiffre aux deux options : les deux colonnes sont alors
@@ -2998,7 +3073,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # suivent déjà ``onepage_branche`` dynamiquement (rien d'autre à changer
     # dans ce fichier) ; le texte figé de la note elle-même est corrigé côté
     # ``generate_devis_premium.page_onepage``.
-    if deux_options:
+    # CIQ302 — MÊME bascule que ``_all_rows`` (le une-page imprime les lignes
+    # dont ``totaux_all`` est le total) : un C&I sert l'offre réseau seule.
+    if option_servie == 'sans':
+        onepage_source, onepage_branche = sans_items, 'sans'
+    elif deux_options:
         onepage_source, onepage_branche = avec_items, 'avec'
     elif scenario == 'Avec batterie' and avec_ok:
         onepage_source, onepage_branche = avec_items, 'avec'
@@ -3220,11 +3299,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # par la MÊME correspondance que la page publique (QJR622) ; le réglage
     # société n'est plus que le repli. Les pourcentages sont rendus en nombres
     # simples (int si entiers) : le dict de rendu reste sérialisable JSON.
-    payment_terms = {
-        cle: _pct_simple(val)
-        for cle, val in termes_paiement_devis(
-            devis, payment_terms_for(getattr(devis, "company", None), mode),
-            lignes).items()}
+    _termes = termes_paiement_devis(
+        devis, payment_terms_for(getattr(devis, "company", None), mode),
+        lignes, avec_dates=True)
+    # AGR219 — la date prévue par créneau (solde « après récolte »), hors
+    # des pourcentages ; posée dans ``data`` SEULEMENT si une tranche en porte.
+    _dates_prevues = _termes.pop("dates_prevues", None)
+    payment_terms = {cle: _pct_simple(val) for cle, val in _termes.items()}
 
     # D2/N60/N67/N59 — textes éditables du devis (en-têtes/CGV/validité/garanties
     # /BPA/tampon). SURCHARGES non vides seulement ; toute clé absente → le moteur
@@ -3559,6 +3640,22 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "sans_ok": bool(sans_ok),
         "avec_ok": bool(avec_ok),
         "deux_options": bool(deux_options),
+        # CIQ302 — clés ADDITIVES, ABSENTES hors C&I à deux options (règle
+        # ``additif_vs_null`` : le résidentiel reste byte-identique).
+        # ``option_servie`` : l'offre que le document TITRE ('sans' = réseau
+        # seul ; 'avec' seulement si l'option AVEC a été acceptée).
+        # ``option_batterie`` : la batterie d'un C&I n'est qu'une OPTION — son
+        # panier, ses totaux et la valeur chiffrée par le moteur C&I (contrats
+        # CIQ2/CIQ3). Aucune sortie moteur ne chiffre encore cette valeur ⇒
+        # ``None`` + motif, jamais un chiffre déduit d'hybrides 48 V empilés
+        # présentés comme batterie C&I (CIQ7).
+        **({"option_servie": option_servie} if option_servie else {}),
+        **({"option_batterie": {
+            "lignes": avec_items,
+            "totaux": totaux_avec,
+            "valeur_chiffree": None,
+            "motif": "valeur non chiffrée",
+        }} if option_servie == 'sans' else {}),
         # BAT-DIFF (17/09/2026) — l'option « avec » est servie par un onduleur
         # hybride SANS batterie chiffrée (le client l'ajoutera plus tard).
         # ``libelle_avec`` est le libellé que TOUS les renderers impriment à la
@@ -3972,6 +4069,34 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     if avertissements_internes:
         data["avertissements_internes"] = list(avertissements_internes)
 
+    # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),
+    # exposée pour le rendu (D3). Additif : la clé n'est posée QUE lorsqu'une
+    # attestation est saisie → un devis sans elle reste octet-identique.
+    _attestation = _attestation_usage_agricole(devis)
+    if _attestation is not None:
+        data["attestation_usage_agricole"] = _attestation
+
+    # ── AGR219 — dates prévues des tranches (D3). Additif : posé SEULEMENT
+    # quand une tranche en porte une → un échéancier sans date reste
+    # octet-identique. Aucune facture n'est datée par elles.
+    if _dates_prevues is not None:
+        data["payment_dates"] = _dates_prevues
+
+    # ── AGR306 — la règle FDA SAISIE par la société (AGR207), passée à
+    # ``agricole/synthese`` qui en imprime la RÈGLE (jamais un montant propre
+    # au client, D-AGR-6). Agricole seulement, et posée SEULEMENT quand elle
+    # est saisie : sinon le module retombe sur son repli daté (Guide FDA 2024)
+    # et tout autre devis reste octet-identique. Ne casse jamais un rendu.
+    if mode == "agricole":
+        try:
+            from apps.parametres.selectors import regle_fda_pompage_pour
+            _regle_fda = regle_fda_pompage_pour(
+                getattr(devis, "company", None))
+        except Exception:  # noqa: BLE001 — repli daté du module
+            _regle_fda = {}
+        if _regle_fda:
+            data["regle_fda_societe"] = _regle_fda
+
     return data
 
 
@@ -4049,6 +4174,11 @@ def echapper_textes_client(data: dict) -> dict:
                  if isinstance(it, dict) else it)
                 for it in _rows
             ]
+    # CIQ302 — le panier de l'option batterie C&I EST ``avec_items`` : il
+    # reprend la liste déjà échappée (un seul échappement, jamais deux).
+    _ob = sortie.get("option_batterie")
+    if isinstance(_ob, dict) and isinstance(sortie.get("avec_items"), list):
+        sortie["option_batterie"] = {**_ob, "lignes": sortie["avec_items"]}
     # QJR618 — les lignes de STRUCTURE (sections / notes tapées par le
     # vendeur) sont désormais imprimées par les gabarits premium : leur texte
     # est échappé ici comme une désignation.

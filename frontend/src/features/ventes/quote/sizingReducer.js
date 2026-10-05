@@ -87,7 +87,9 @@ export const ETAT_INITIAL = Object.freeze({
   // pour le vendeur, pas deux (les SIX drapeaux restent six).
   structureProduitId: '',
   tension: 'bt',
-  pompeAlim: 'tri',
+  // AGR128 — plus de « tri » par défaut : l'alimentation de la pompe est une
+  // saisie (ou vient du lead), jamais un défaut enregistré comme une mesure.
+  pompeAlim: '',
   // Les six drapeaux, COMME ÉTAT.
   touche: Object.freeze({
     mode: false, structure: false, tension: false,

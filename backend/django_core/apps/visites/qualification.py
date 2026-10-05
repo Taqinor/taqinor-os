@@ -26,7 +26,10 @@ humain qui était sur place, pas un score calculé.
 CHOIX = {
     'temperature': ('chaud', 'tiede', 'froid'),
     'devis': ('convient', 'a_modifier', 'nouveau'),
-    'decideur': ('seul', 'conjoint_famille', 'associe_direction'),
+    # CIQ605 — mêmes 4 codes, même ordre que ``Lead.Decideur`` (vocabulaire
+    # partagé ; un test de parité le garde).
+    'decideur': ('seul', 'conjoint_famille', 'associe_direction',
+                 'proprietaire_tiers'),
     'frein': ('aucun', 'prix', 'compare', 'timing', 'technique', 'confiance'),
     'declencheur': ('economies', 'coupures', 'ecologie', 'technologie'),
     'rappel': ('demain_matin', 'demain_soir', 'cette_semaine'),
@@ -52,6 +55,7 @@ LIBELLES = {
         'seul': 'Décide seul',
         'conjoint_famille': 'Décide avec conjoint/famille',
         'associe_direction': 'Décide avec associé/direction',
+        'proprietaire_tiers': 'Le propriétaire (un tiers) décide',
     },
     'frein': {
         'aucun': 'Frein : aucun',

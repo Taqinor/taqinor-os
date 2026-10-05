@@ -271,11 +271,15 @@ def visite_en_attente(lead):
 def gabarit_pour_lead(lead):
     """AGR412 (D-AGR-4) — le gabarit d'une visite d'après le TYPE du lead que
     le CRM passe (l'objet lead lui-même : aucun import de ``apps.crm``) :
-    ``point_eau`` pour un lead agricole, ``toiture`` sinon."""
+    ``point_eau`` pour un lead agricole, ``ci`` (CIQ600, D-CIQ-5) pour un lead
+    commercial ou industriel, ``toiture`` sinon."""
     from .models import VisiteTerrain
 
-    if (getattr(lead, 'type_installation', None) or '') == 'agricole':
+    type_lead = getattr(lead, 'type_installation', None) or ''
+    if type_lead == 'agricole':
         return VisiteTerrain.Gabarit.POINT_EAU
+    if type_lead in ('commercial', 'industriel'):
+        return VisiteTerrain.Gabarit.CI
     return VisiteTerrain.Gabarit.TOITURE
 
 
@@ -380,9 +384,13 @@ def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
 
     C'est la porte que le CRM appelle depuis la fiche lead (frontière M3 : il
     n'importe jamais ``apps.visites.models``). Doctrine fondateur : la visite
-    se place APRÈS l'envoi du devis, comme outil de closing — la planifier est
-    donc un GESTE COMMERCIAL, pas une opération d'administration du planning
-    terrain.
+    se place, selon le segment du lead (D-CIQ-5) : résidentiel, APRÈS l'envoi
+    du devis, comme outil de closing ; site professionnel (commercial ou
+    industriel), AVANT le devis final si le site est MT ou si tension,
+    puissance souscrite ou toit restent inconnus après l'appel. Planifier est
+    un GESTE COMMERCIAL, pas une opération d'administration du planning
+    terrain. Le gabarit de la visite (``toiture`` / ``point_eau`` / ``ci``)
+    suit le type du lead, recalculé tant que la visite est brouillon.
 
     Renvoie ``(visite, erreurs)`` — même forme que ``enregistrer_mesures`` :
     ``erreurs`` est le dict ``{champ: [messages FR]}`` servi tel quel en 400,
@@ -479,8 +487,15 @@ def valider_visite(visite, user):
     from . import selectors
     from .models import VisiteTerrain
 
+    from django.utils import timezone
+
+    # CIQ604 — date et auteur du feu vert, posés SERVEUR (jamais lus d'un
+    # corps de requête) : « vérifié par visite le … » a une date honnête.
     visite.statut = VisiteTerrain.Statut.VALIDEE
-    visite.save(update_fields=['statut'])
+    visite.validee_le = timezone.now()
+    visite.validee_par = (user if getattr(user, 'pk', None) is not None
+                          else None)
+    visite.save(update_fields=['statut', 'validee_le', 'validee_par'])
     # AGR413 — les mesures du point d'eau voyagent avec l'événement (vides
     # pour une visite toiture) : c'est le CRM qui décide de les recopier.
     visite_validee.send(
@@ -542,6 +557,12 @@ def renvoyer_visite(visite, user, *, photos=None, mesures=None, motif=''):
 
     visite.statut = VisiteTerrain.Statut.A_REFAIRE
     champs = ['statut', 'mesures'] if touchee else ['statut']
+    if visite.validee_le is not None or visite.validee_par_id is not None:
+        # CIQ604 — un feu vert retiré n'a plus de date : elle ne survit pas à
+        # la réouverture (le prochain feu vert en posera une nouvelle).
+        visite.validee_le = None
+        visite.validee_par = None
+        champs += ['validee_le', 'validee_par']
     visite.save(update_fields=champs)
     journaliser_visite(visite, user, 'a_refaire', detail=f'Motif : {motif}')
     _notifier_commercial_visite(
@@ -564,6 +585,91 @@ def renvoyer_visite(visite, user, *, photos=None, mesures=None, motif=''):
 # incrément) : rejouer deux fois la même opération donne exactement le même
 # état — c'est ce que le moteur hors-ligne exige de tout handler.
 
+def valeur_liste(declaration, brute):
+    """CIQ600 — valide une mesure ``LISTE`` (liste d'objets dont les champs
+    sont ceux de ``declaration['forme']``). Renvoie ``(elements, message)`` :
+    chaque élément porte TOUS les champs de la forme (``None`` si non saisi),
+    un champ inconnu est refusé en le nommant, et la valeur d'un champ passe
+    par ``valeur_mesure`` (nature, positivité)."""
+    if not isinstance(brute, list):
+        return None, (f"« {declaration['libelle']} » attend une liste "
+                      "d'éléments.")
+    prefixe = declaration.get('id_prefixe')
+    propres = []
+    ids = set()
+    for index, element in enumerate(brute, start=1):
+        propre, message = _valeur_objet(
+            declaration['forme'], element,
+            f"« {declaration['libelle']} » (élément {index})")
+        if message:
+            return None, message
+        if prefixe:
+            ident = str(element.get('id') or '').strip() or f'{prefixe}{index}'
+            if ident in ids:
+                return None, (f"« {declaration['libelle']} » : identifiant "
+                              f'« {ident} » en double.')
+            ids.add(ident)
+            propre = dict({'id': ident}, **propre)
+        # Une couverture fibrociment pose TOUJOURS le drapeau amiante
+        # (précaution — le technicien ne peut pas l'oublier ni l'effacer).
+        if propre.get('couverture') == 'fibrociment' and 'fibrociment' in propre:
+            propre['fibrociment'] = True
+        propres.append(propre)
+    return propres, None
+
+
+def _valeur_objet(forme, brute, contexte):
+    """Valide UN objet de ``forme`` (liste de déclarations) : renvoie
+    ``(objet complet, message)`` ; tous les champs de la forme sortent
+    (``None`` si non saisis) et un champ inconnu est refusé en le nommant."""
+    if not isinstance(brute, dict):
+        return None, f'{contexte} doit être un objet.'
+    formes = {sous['code']: sous for sous in forme}
+    propre = {}
+    for code, sous in formes.items():
+        valeur, message = valeur_mesure(sous, brute.get(code))
+        if message:
+            return None, f'{contexte} : {message}'
+        propre[code] = valeur
+    inconnus = [c for c in brute if c not in formes and c != 'id']
+    if inconnus:
+        return None, f'{contexte} : champ inconnu « {inconnus[0]} ».'
+    return propre, None
+
+
+def valeur_non_releves(connus, brute):
+    """CIQ601 — valide ``_non_releves`` = ``{clé: motif}``. Renvoie
+    ``(etats, erreurs)``. Chaque clé désigne une mesure de la catégorie
+    (``calibre_a``) ou un champ d'une liste (``trajets.longueur_dc_m``,
+    ``zones_toiture[z1].charge_admissible_declaree_kg_m2``) ; le motif est à
+    VOCABULAIRE FERMÉ. Chaque message NOMME le champ fautif."""
+    from . import visite_checklist as checklist
+
+    cle_erreur = checklist.CLE_NON_RELEVES
+    if not isinstance(brute, dict):
+        return None, {cle_erreur: ('« Non relevé » attend un objet '
+                                   '{mesure: motif}.')}
+    etats = {}
+    erreurs = {}
+    for cle, motif in brute.items():
+        libelle = checklist.libelle_cle_non_releve(connus, cle)
+        if libelle is None:
+            erreurs[f'{cle_erreur}.{cle}'] = (
+                f'Champ inconnu « {cle} » : on ne peut pas le déclarer non '
+                'relevé.')
+            continue
+        motif = (motif or '').strip() if isinstance(motif, str) else ''
+        if not motif:
+            erreurs[f'{cle_erreur}.{cle}'] = f'Motif requis pour {libelle}.'
+        elif motif not in checklist.MOTIFS_NON_RELEVE:
+            erreurs[f'{cle_erreur}.{cle}'] = (
+                f'Motif « {motif} » inconnu pour {libelle}. Choix possibles : '
+                + ', '.join(checklist.MOTIFS_NON_RELEVE) + '.')
+        else:
+            etats[cle] = motif
+    return etats, erreurs
+
+
 def valeur_mesure(declaration, brute):
     """Convertit/valide UNE valeur de mesure. Renvoie ``(valeur, message)``.
 
@@ -578,6 +684,29 @@ def valeur_mesure(declaration, brute):
     if brute is None or brute == '':
         return None, None
     nature = declaration['nature']
+    if nature == checklist.LISTE:
+        return valeur_liste(declaration, brute)
+    if nature == checklist.OBJET:
+        return _valeur_objet(declaration['forme'], brute,
+                             f"« {declaration['libelle']} »")
+    if nature == checklist.ENTIER:
+        try:
+            nombre = Decimal(str(brute))
+        except (InvalidOperation, ValueError, TypeError):
+            nombre = None
+        if nombre is None or nombre != nombre.to_integral_value():
+            return None, (f"« {declaration['libelle']} » attend un entier "
+                          f'(reçu : {brute!r}).')
+        if nombre < 0:
+            return None, (f"« {declaration['libelle']} » ne peut pas être "
+                          'négatif.')
+        return int(nombre), None
+    if nature == checklist.PIECE:
+        # Référence d'une pièce jointe (identifiant) ou texte libre.
+        if isinstance(brute, bool) or not isinstance(brute, (int, str)):
+            return None, (f"« {declaration['libelle']} » attend une pièce "
+                          'jointe (identifiant) ou une référence.')
+        return brute, None
     if nature == checklist.NOMBRE:
         try:
             nombre = Decimal(str(brute))
@@ -648,7 +777,17 @@ def enregistrer_mesures(visite, categorie, valeurs):
     connus = {champ['code']: champ for champ in declaration['mesures']}
     erreurs = {}
     propres = {}
+    non_releves = None
     for code, brute in valeurs.items():
+        if code == checklist.CLE_NON_RELEVES:
+            # CIQ601 — « non relevé + motif » : gabarit ``ci`` seulement.
+            if visite.gabarit != checklist.GABARIT_CI:
+                erreurs[code] = ('« Non relevé » n’existe que pour une '
+                                 'visite de site professionnel.')
+            else:
+                non_releves, messages = valeur_non_releves(connus, brute)
+                erreurs.update(messages)
+            continue
         champ = connus.get(code)
         if champ is None:
             erreurs[code] = (f'Champ inconnu dans la catégorie '
@@ -665,6 +804,17 @@ def enregistrer_mesures(visite, categorie, valeurs):
     stockees = visite.mesures if isinstance(visite.mesures, dict) else {}
     bloc = dict(stockees.get(categorie) or {})
     bloc.update(propres)
+    if visite.gabarit == checklist.GABARIT_CI:
+        etats = dict(bloc.get(checklist.CLE_NON_RELEVES) or {})
+        # Saisir ensuite une valeur EFFACE l'état « non relevé ».
+        for cle in list(etats):
+            if checklist.etat_obsolete(cle, propres):
+                del etats[cle]
+        etats.update(non_releves or {})
+        if etats:
+            bloc[checklist.CLE_NON_RELEVES] = etats
+        else:
+            bloc.pop(checklist.CLE_NON_RELEVES, None)
     stockees = dict(stockees)
     stockees[categorie] = bloc
     visite.mesures = stockees

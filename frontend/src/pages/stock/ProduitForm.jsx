@@ -31,7 +31,12 @@ import { classifyProduct, isPompe } from '../../features/ventes/solar.js'
 // famille RÉELLE d'un produit vient de sa catégorie TYPÉE, jamais du seul nom.
 import {
   typeOfProduit, erreursCourbePompe, ROLES_POMPAGE, TYPES_POMPE, ALIMENTATIONS,
+  // CIQ104 — usage C&I : logique pure (catalogue.js), libellés de rôle/pose
+  // servis par l'API (OPTIONS), jamais recopiés ici.
+  typeFicheCi, CHAMPS_FICHE_CI, LIBELLES_FICHE_CI, choixChampFicheCi,
+  estChampFicheCiNumerique, ficheCiDepuisServeur, patchFicheCi, choixDepuisOptions,
 } from '../../features/stock/catalogue.js'
+import api from '../../api/axios'
 import {
   // PVOND-H (fondateur 19/08/2026) — la plage de tension batterie s'édite
   // désormais sur le CHAMP DÉDIÉ de FicheTechnique (ond_bat_aucune/
@@ -489,6 +494,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     courbe_source_document: produit?.courbe_source?.document ?? '',
     courbe_source_date:     produit?.courbe_source?.date ?? '',
     courbe_source_page:     produit?.courbe_source?.page != null ? String(produit.courbe_source.page) : '',
+    // CIQ104 — usage C&I (contrat produit_ci.json) : vide = non déclaré.
+    role_ci:   produit?.role_ci   ?? '',
+    type_pose: produit?.type_pose ?? '',
+    delai_appro_jours: produit?.delai_appro_jours != null ? String(produit.delai_appro_jours) : '',
   }
   const [initialFieldsSnapshot] = useState(initialFields)
   const [fields, setFields] = useState(initialFields)
@@ -584,6 +593,28 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   // VX171), puis se recalculent en direct à chaque correction.
   const [ficheTypeServeur, setFicheTypeServeur] = useState('')
   const [courbesTentees, setCourbesTentees] = useState(false)
+  // CIQ104 — champs C&I de la fiche : l'état SERVEUR relu (`ficheCiInitial`)
+  // et la saisie (`ficheCi`) ; seul l'écart part en PATCH (rien → aucun appel).
+  const [ficheCiInitial, setFicheCiInitial] = useState(() => ficheCiDepuisServeur(null))
+  const [ficheCi, setFicheCi] = useState(() => ficheCiDepuisServeur(null))
+  const setFicheCiField = (k, v) => setFicheCi((f) => ({ ...f, [k]: v }))
+  // CIQ104 — libellés FR des rôles C&I / types de pose : servis par l'API
+  // (choix de `role_ci` / `type_pose` lus par OPTIONS) — aucun miroir JS.
+  const [choixCi, setChoixCi] = useState({ roles: [], poses: [] })
+  useEffect(() => {
+    if (typeof api?.options !== 'function') return undefined
+    let active = true
+    Promise.resolve(api.options('/stock/produits/'))
+      .then((r) => {
+        if (!active) return
+        setChoixCi({
+          roles: choixDepuisOptions(r?.data, 'role_ci'),
+          poses: choixDepuisOptions(r?.data, 'type_pose'),
+        })
+      })
+      .catch(() => {})
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     if (!isEdit || !produit?.id) return undefined
@@ -596,6 +627,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         setFicheId(f?.id ?? null)
         setFicheTypeServeur(f?.type_fiche ?? '')
         setFicheFields(champsFicheDepuisServeur(f))
+        setFicheCiInitial(ficheCiDepuisServeur(f))
+        setFicheCi(ficheCiDepuisServeur(f))
         setFicheChargee(true)
       })
       .catch(() => { if (active) setFicheChargee(true) })
@@ -640,6 +673,12 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const estPanneauFiche = ficheType === 'panneau'
   const estBatterieFiche = ficheType === 'batterie'
   const estOptimiseurFiche = ficheType === 'optimiseur'
+  // CIQ104 — le bloc de fiche C&I : celui du rôle C&I DÉCLARÉ, sinon celui de
+  // la fiche déjà typée C&I, sinon (onduleur réseau) les champs onduleur C&I.
+  const typeFicheCiCourant = typeFicheCi(fields.role_ci)
+    ?? (['limiteur', 'logger', 'protection', 'cable', 'structure'].includes(ficheTypeServeur)
+      ? ficheTypeServeur : null)
+    ?? (estOnduleurReseau ? 'onduleur' : null)
   // CALX355 — erreurs de courbe du type courant, recalculées en direct.
   const erreursCourbes = erreursCourbesPourType(typeFicheBackend(ficheType), ficheFields)
   const propsCourbe = (cle) => ({
@@ -852,6 +891,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
           date: fields.courbe_source_date || null,
           page: fields.courbe_source_page !== '' ? Number(fields.courbe_source_page) : null,
         },
+        // CIQ104 — usage C&I : vide = '' / null (non déclaré, jamais un défaut).
+        role_ci: fields.role_ci,
+        type_pose: fields.type_pose,
+        delai_appro_jours: fields.delai_appro_jours !== '' ? Number(fields.delai_appro_jours) : null,
         // WIR67 — champs personnalisés du module « produit ».
         custom_data: customData,
       }
@@ -884,6 +927,9 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
       // ET qu'il y a quelque chose à écrire (au moins un champ rempli, ou une
       // fiche existante à mettre à jour — y compris pour la vider).
       const typeFicheServeur = typeFicheBackend(ficheType)
+      // CIQ104 — id de la fiche CONNU dans ce même envoi (une fiche créée
+      // juste ci-dessous reçoit ensuite les champs C&I, jamais une seconde).
+      let ficheIdCourant = ficheId
       if (cibleId && typeFicheServeur) {
         const payloadFiche = champsFichePourType(ficheType, ficheFields)
         // PVOND-H — « quelque chose à écrire » ignore `ond_bat_aucune: false` :
@@ -908,7 +954,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
               const resFiche = await stockApi.createFicheTechnique({
                 produit: cibleId, type_fiche: typeFicheServeur, ...payloadFiche,
               })
-              setFicheId(resFiche.data?.id ?? null)
+              ficheIdCourant = resFiche.data?.id ?? null
+              setFicheId(ficheIdCourant)
             }
           } catch (errFiche) {
             // CALX355 — le refus serveur NOMME le champ fautif (libellé
@@ -917,6 +964,37 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
             toast.error(raison
               ? `Produit enregistré, mais la fiche technique a été refusée — ${raison}`
               : 'Produit enregistré, mais la fiche technique n\'a pas pu être enregistrée.')
+          }
+        }
+      }
+      // CIQ104 — champs de fiche C&I : SEULS les champs modifiés partent
+      // (enregistrer sans toucher = aucun PATCH). Même patron que ci-dessus :
+      // un refus ne perd jamais le produit déjà enregistré.
+      if (cibleId && typeFicheCiCourant) {
+        const patchCi = patchFicheCi(typeFicheCiCourant, ficheCiInitial, ficheCi)
+        // Une fiche existante d'un autre type (ou non typée) prend le type C&I,
+        // sauf l'onduleur, déjà typé par le bloc ci-dessus.
+        const retyper = typeFicheCiCourant !== 'onduleur'
+          && ficheTypeServeur !== typeFicheCiCourant
+        if (Object.keys(patchCi).length || (retyper && ficheIdCourant)) {
+          try {
+            if (ficheIdCourant) {
+              await stockApi.updateFicheTechnique(ficheIdCourant, {
+                ...(retyper ? { type_fiche: typeFicheCiCourant } : {}), ...patchCi,
+              })
+            } else {
+              const resCi = await stockApi.createFicheTechnique({
+                produit: cibleId, type_fiche: typeFicheCiCourant, ...patchCi,
+              })
+              setFicheId(resCi.data?.id ?? null)
+            }
+            setFicheCiInitial(ficheCi)
+            setFicheTypeServeur(typeFicheCiCourant === 'onduleur' ? ficheTypeServeur : typeFicheCiCourant)
+          } catch (errCi) {
+            const raison = messageRefusFiche(errCi?.response?.data)
+            toast.error(raison
+              ? `Produit enregistré, mais la fiche C&I a été refusée — ${raison}`
+              : 'Produit enregistré, mais la fiche C&I n\'a pas pu être enregistrée.')
           }
         }
       }
@@ -940,6 +1018,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         setFicheFields(ficheFieldsVides())
         setFicheTypeServeur('')
         setCourbesTentees(false)
+        setFicheCiInitial(ficheCiDepuisServeur(null))
+        setFicheCi(ficheCiDepuisServeur(null))
         nomRef.current?.focus()
       } else {
         onClose()
@@ -1371,6 +1451,101 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                          onChange={e => setField('courbe_frequence_hz', e.target.value)} />
                 </FormField>
               </>
+            )}
+          </FormSection>
+
+          {/* CIQ104 — « Usage C&I » : rôle C&I DÉCLARÉ (fin du classement par
+              le nom), type de pose d'une structure, délai d'appro, puis le
+              bloc de fiche C&I du rôle. Libellés de rôle/pose servis par
+              l'API ; saisie libre (step="any", jamais arrondie). Vide = non
+              publié : jamais une valeur par défaut. */}
+          <FormSection
+            title="Usage C&I"
+            description="Rôle dans une composition commerciale ou industrielle. Laissez vide pour tout autre article."
+          >
+            <FormField label="Rôle C&I" htmlFor="pf-role-ci" error={errors.role_ci}>
+              <Select
+                value={fields.role_ci || '__none'}
+                onValueChange={v => setField('role_ci', v === '__none' ? '' : v)}
+              >
+                <SelectTrigger id="pf-role-ci"><SelectValue placeholder="— Aucun —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Aucun —</SelectItem>
+                  {fields.role_ci && !choixCi.roles.some(([v]) => v === fields.role_ci) && (
+                    <SelectItem value={fields.role_ci}>{fields.role_ci}</SelectItem>
+                  )}
+                  {choixCi.roles.map(([valeur, libelle]) => (
+                    <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            {(fields.role_ci === 'structure_ci' || fields.role_ci === 'pose_structure'
+              || fields.type_pose) && (
+              <FormField label="Type de pose" htmlFor="pf-type-pose" error={errors.type_pose}>
+                <Select
+                  value={fields.type_pose || '__none'}
+                  onValueChange={v => setField('type_pose', v === '__none' ? '' : v)}
+                >
+                  <SelectTrigger id="pf-type-pose"><SelectValue placeholder="— Non publié —" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">— Non publié —</SelectItem>
+                    {fields.type_pose && !choixCi.poses.some(([v]) => v === fields.type_pose) && (
+                      <SelectItem value={fields.type_pose}>{fields.type_pose}</SelectItem>
+                    )}
+                    {choixCi.poses.map(([valeur, libelle]) => (
+                      <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            )}
+            <FormField label="Délai d'approvisionnement (jours)" htmlFor="pf-delai-appro"
+                       error={errors.delai_appro_jours}
+                       hint="Article « sur commande » ; vide = tenu en stock ou non saisi.">
+              <Input id="pf-delai-appro" type="number" step="any" inputMode="decimal"
+                     value={fields.delai_appro_jours}
+                     onChange={e => setField('delai_appro_jours', e.target.value)} />
+            </FormField>
+            {produit?.etat_ci && !produit.etat_ci.eligible_ci && produit.etat_ci.motif_exclusion && (
+              <p role="status" className="text-sm text-amber-700 dark:text-amber-400">
+                Exclu du dimensionnement C&amp;I : {produit.etat_ci.motif_exclusion}
+              </p>
+            )}
+            {typeFicheCiCourant && (ficheChargee || !isEdit) && (
+              (CHAMPS_FICHE_CI[typeFicheCiCourant] ?? []).map((cle) => {
+                const choix = choixChampFicheCi(cle)
+                  ?? (cle === 'struct_type_pose' ? choixCi.poses : null)
+                const id = `pf-ci-${cle}`
+                if (choix) {
+                  return (
+                    <FormField key={cle} label={LIBELLES_FICHE_CI[cle]} htmlFor={id}>
+                      <Select
+                        value={ficheCi[cle] || '__none'}
+                        onValueChange={v => setFicheCiField(cle, v === '__none' ? '' : v)}
+                      >
+                        <SelectTrigger id={id}><SelectValue placeholder="— Non publié —" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">— Non publié —</SelectItem>
+                          {choix.map(([valeur, libelle]) => (
+                            <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormField>
+                  )
+                }
+                const numerique = estChampFicheCiNumerique(cle)
+                return (
+                  <FormField key={cle} label={LIBELLES_FICHE_CI[cle]} htmlFor={id}>
+                    <Input id={id}
+                           type={numerique ? 'number' : (cle === 'struct_notice_date' ? 'date' : 'text')}
+                           {...(numerique ? { step: 'any', inputMode: 'decimal' } : {})}
+                           value={ficheCi[cle] ?? ''}
+                           onChange={e => setFicheCiField(cle, e.target.value)} />
+                  </FormField>
+                )
+              })
             )}
           </FormSection>
 

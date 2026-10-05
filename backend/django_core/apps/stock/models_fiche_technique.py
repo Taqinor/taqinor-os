@@ -3,6 +3,10 @@ les validateurs de courbe CALX60, déplacés tels quels depuis ``models.py``
 (move only). ``apps.stock.models`` les ré-exporte."""
 from decimal import Decimal
 
+from core.product_roles import (
+    CABLE_AMES, COTES_AC_DC, LIM_MODES, OND_LIMITATIONS_EXPORT,
+    OND_RELAIS_DECOUPLAGE, PROT_TYPES, TYPES_POSE,
+)
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
@@ -171,6 +175,13 @@ class FicheTechnique(models.Model):
         # fiche constructeur du modèle exact (additif).
         POMPE = 'pompe', 'Pompe'
         VARIATEUR_POMPAGE = 'variateur_pompage', 'Variateur de pompage'
+        # CIQ101 — fiches C&I (choix ADDITIFS : aucune fiche existante ne
+        # change de type).
+        LIMITEUR = 'limiteur', "Compteur / limiteur d'injection"
+        LOGGER = 'logger', 'Logger de supervision'
+        PROTECTION = 'protection', 'Protection'
+        CABLE = 'cable', 'Câble'
+        STRUCTURE = 'structure', 'Structure'
         AUTRE = 'autre', 'Autre'
 
     type_fiche = models.CharField(
@@ -751,6 +762,95 @@ class FicheTechnique(models.Model):
     var_rendement_mppt_pct = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         help_text='Variateur — rendement MPPT (%). Vide = non publié.')
+
+    # ── CIQ101 — champs C&I (contrat produit_ci.json, clé ``fiches``). Vide
+    # (chaîne vide, liste vide, null) = « non publié », JAMAIS un défaut. ──
+    # Onduleur — cinq champs ADDITIFS, hors verrou PVOND.
+    ond_limitation_export = models.CharField(
+        max_length=24, blank=True, default='',
+        choices=[(v, v) for v in OND_LIMITATIONS_EXPORT],
+        help_text="Onduleur — limitation d'export (vide = non publié).")
+    ond_compteurs_compatibles = models.JSONField(
+        default=list, blank=True,
+        help_text='Onduleur — modèles de compteur compatibles publiés.')
+    ond_relais_decouplage = models.CharField(
+        max_length=16, blank=True, default='',
+        choices=[(v, v) for v in OND_RELAIS_DECOUPLAGE],
+        help_text='Onduleur — relais de découplage (vide = non publié).')
+    ond_cos_phi_min = models.FloatField(
+        null=True, blank=True,
+        help_text='Onduleur — facteur de puissance réglable mini (valeur '
+                  'absolue).')
+    ond_cos_phi_max = models.FloatField(
+        null=True, blank=True,
+        help_text='Onduleur — facteur de puissance réglable maxi.')
+    # Limiteur / compteur d'injection.
+    lim_mode = models.CharField(
+        max_length=24, blank=True, default='',
+        choices=[(v, v) for v in LIM_MODES],
+        help_text='Limiteur — mode de raccordement (vide = non publié).')
+    lim_i_max_a = models.FloatField(
+        null=True, blank=True,
+        help_text='Limiteur — courant maxi mesuré en direct (A).')
+    lim_onduleurs_max = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Limiteur — nombre d'onduleurs pilotés (vide = non "
+                  "publié, jamais supposé).")
+    lim_marques = models.JSONField(
+        default=list, blank=True,
+        help_text="Limiteur — marques d'onduleur compatibles.")
+    lim_phases = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text='Limiteur — 1 ou 3 phases.')
+    # Logger de supervision.
+    log_onduleurs_max = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Logger — nombre d'onduleurs supervisés.")
+    log_marques = models.JSONField(
+        default=list, blank=True, help_text='Logger — marques supervisées.')
+    # Protection.
+    prot_type = models.CharField(
+        max_length=16, blank=True, default='',
+        choices=[(v, v) for v in PROT_TYPES],
+        help_text='Protection — type (vide = non publié).')
+    prot_cote = models.CharField(
+        max_length=4, blank=True, default='',
+        choices=[(v, v) for v in COTES_AC_DC],
+        help_text='Protection — côté ac ou dc.')
+    prot_calibre_a = models.FloatField(
+        null=True, blank=True, help_text='Protection — calibre (A).')
+    prot_pouvoir_coupure_ka = models.FloatField(
+        null=True, blank=True,
+        help_text='Protection — pouvoir de coupure (kA).')
+    prot_poles = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text='Protection — nombre de pôles.')
+    prot_tension_v = models.FloatField(
+        null=True, blank=True,
+        help_text='Protection — tension assignée (V).')
+    # Câble.
+    cable_cote = models.CharField(
+        max_length=4, blank=True, default='',
+        choices=[(v, v) for v in COTES_AC_DC],
+        help_text='Câble — côté ac ou dc.')
+    cable_section_mm2 = models.FloatField(
+        null=True, blank=True, help_text='Câble — section (mm²).')
+    cable_ame = models.CharField(
+        max_length=4, blank=True, default='',
+        choices=[(v, v) for v in CABLE_AMES],
+        help_text='Câble — âme cu ou al (vide = non publié).')
+    # Structure.
+    struct_type_pose = models.CharField(
+        max_length=24, blank=True, default='',
+        choices=[(t, t) for t in TYPES_POSE],
+        help_text='Structure — type de pose (vocabulaire de '
+                  'Produit.type_pose).')
+    struct_masse_kg_m2 = models.FloatField(
+        null=True, blank=True,
+        help_text='Structure — masse du système POSÉ (kg/m²), notice '
+                  'fabricant.')
+    struct_notice = models.JSONField(
+        default=dict, blank=True,
+        help_text='Provenance de la masse : {"document": "", "date": null, '
+                  '"page": null}.')
 
     # ── PDF constructeur d'origine (optionnel) ──
     #

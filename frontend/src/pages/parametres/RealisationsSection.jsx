@@ -40,7 +40,18 @@ function moisFrancais(valeur) {
 
 const BROUILLON_VIDE = {
   titre: '', ville: '', puissance_kwc: '', mois: '', url_page: '', lien_suivi: '',
+  segment: '',
 }
+
+// AGR515 — segments du contrat `realisation.json` (vide = non renseigné).
+// Rien n'est pré-coché : une réalisation sans segment reste « sans segment ».
+const SEGMENTS = [
+  ['residentiel', 'Résidentiel'],
+  ['commercial', 'Commercial'],
+  ['industriel', 'Industriel'],
+  ['agricole', 'Agricole — pompage'],
+]
+const CLASSE_SELECT = 'h-9 w-full rounded-md border border-input bg-card px-2 text-sm'
 
 export default function RealisationsSection() {
   const [rows, setRows] = useState(null)
@@ -65,6 +76,7 @@ export default function RealisationsSection() {
     }
     if (draft.puissance_kwc.trim()) payload.puissance_kwc = draft.puissance_kwc.trim()
     if (draft.mois) payload.mise_en_service = `${draft.mois}-01`
+    if (draft.segment) payload.segment = draft.segment
     try {
       await parametresApi.createRealisation(payload)
       setDraft(BROUILLON_VIDE)
@@ -77,6 +89,16 @@ export default function RealisationsSection() {
   const toggle = async (row) => {
     try { await parametresApi.updateRealisation(row.id, { actif: !row.actif }); load() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
+  }
+  // AGR515 — PATCH du seul segment ; vide = null (non renseigné).
+  const changeSegment = async (row, valeur) => {
+    try {
+      await parametresApi.updateRealisation(row.id, { segment: valeur || null })
+      load()
+    } catch (e) {
+      toast.error(e?.response?.data?.segment?.[0]
+        ?? e?.response?.data?.detail ?? 'Modification impossible.')
+    }
   }
   const remove = async (row) => {
     try { await parametresApi.deleteRealisation(row.id); load() }
@@ -121,6 +143,15 @@ export default function RealisationsSection() {
                     {row.url_page}
                   </div>
                 </div>
+                <select className={`${CLASSE_SELECT} w-44 shrink-0`}
+                  aria-label={`Segment de ${row.titre}`}
+                  value={row.segment ?? ''}
+                  onChange={e => changeSegment(row, e.target.value)}>
+                  <option value="">Sans segment</option>
+                  {SEGMENTS.map(([cle, libelle]) => (
+                    <option key={cle} value={cle}>{libelle}</option>
+                  ))}
+                </select>
                 <Switch checked={row.actif} onCheckedChange={() => toggle(row)}
                   aria-label="Active" />
                 <IconButton title="Supprimer" onClick={() => remove(row)}>
@@ -143,6 +174,17 @@ export default function RealisationsSection() {
             onChange={set('url_page')} aria-label="Lien de la page publique" />
           <Input placeholder="Lien de suivi de production (facultatif)" value={draft.lien_suivi}
             onChange={set('lien_suivi')} aria-label="Lien de suivi de production" />
+          <select className={CLASSE_SELECT} aria-label="Segment"
+            value={draft.segment} onChange={set('segment')}>
+            <option value="">Segment (facultatif)</option>
+            {SEGMENTS.map(([cle, libelle]) => (
+              <option key={cle} value={cle}>{libelle}</option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            Une réalisation agricole ne sert de preuve qu'aux leads agricoles ;
+            tant qu'aucune n'existe, la touche J4 n'est pas posée pour eux.
+          </p>
           <div className="sm:col-span-2">
             <Button onClick={create}><Plus size={16} /> Ajouter la réalisation</Button>
           </div>

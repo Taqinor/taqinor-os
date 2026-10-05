@@ -222,7 +222,10 @@ class GoldenFicheTechniqueModeleTests(TestCase):
                         FicheTechnique.TypeFiche.choices]
         self.assertEqual(
             types, ['', 'module', 'onduleur', 'batterie', 'optimiseur',
-                    'pompe', 'variateur_pompage', 'autre'])
+                    'pompe', 'variateur_pompage',
+                    # CIQ101 — choix C&I additifs.
+                    'limiteur', 'logger', 'protection', 'cable', 'structure',
+                    'autre'])
         for i, type_fiche in enumerate(types):
             produit = Produit.objects.create(
                 company=co, nom='Produit SPL110 %d' % i,

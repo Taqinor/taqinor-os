@@ -13,8 +13,8 @@ import { errorMessageFrom } from '../../../lib/toast'
 // un seul endroit qui sait le construire.
 import { buildWaUrl } from '../../ventes/clientProposalLink'
 import {
-  SECTIONS_QUESTIONNAIRE, questionsDepuisReponse, questionsPourEnvoi,
-  nbSectionsChoisies, questionnaireWhatsappText,
+  sectionsVisibles, questionsDepuisReponse, questionsPourEnvoi,
+  nbSectionsChoisies, questionnaireWhatsappText, messageRefusSection,
 } from './questionnaireLink'
 
 // LANE Q-C (fondateur 25/08/2026) — « Envoyer un questionnaire » sur la fiche
@@ -77,11 +77,14 @@ export default function QuestionnaireDialog({ lead, onClose }) {
     setSel((cur) => ({ ...cur, [key]: !!valeur }))
   }
 
+  // AGR419 — les sections proposées viennent de la réponse serveur.
+  const visibles = sectionsVisibles(data)
+
   const genererLien = () => {
     if (!leadId) return
     setBusy(true)
     setError(null)
-    crmApi.mintQuestionnaireLien(leadId, { questions: questionsPourEnvoi(sel) })
+    crmApi.mintQuestionnaireLien(leadId, { questions: questionsPourEnvoi(sel, visibles) })
       .then((res) => {
         setData(res.data)
         // La vérité affichée vient TOUJOURS de la réponse serveur (même
@@ -89,7 +92,9 @@ export default function QuestionnaireDialog({ lead, onClose }) {
         setSel(questionsDepuisReponse(res.data))
         setCopied(null)
       })
-      .catch((err) => setError(errorMessageFrom(err, 'Mise à jour du lien impossible.')))
+      .catch((err) => setError(
+        messageRefusSection(err) || errorMessageFrom(err, 'Mise à jour du lien impossible.'),
+      ))
       .finally(() => setBusy(false))
   }
 
@@ -113,7 +118,7 @@ export default function QuestionnaireDialog({ lead, onClose }) {
     if (waUrl) window.open(waUrl, '_blank', 'noopener')
   }
 
-  const nb = nbSectionsChoisies(sel)
+  const nb = nbSectionsChoisies(sel, visibles)
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
@@ -132,7 +137,7 @@ export default function QuestionnaireDialog({ lead, onClose }) {
           <>
             <div className="lw-context-devis-sections">
               <p className="gen-hint">Ce que le lead devra renseigner :</p>
-              {SECTIONS_QUESTIONNAIRE.map(({ key, label }) => (
+              {visibles.map(({ key, label }) => (
                 <label key={key} className="lw-context-devis-section">
                   <Checkbox
                     checked={!!sel[key]}
