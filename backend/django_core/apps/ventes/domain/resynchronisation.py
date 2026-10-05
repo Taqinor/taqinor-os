@@ -1159,6 +1159,57 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
     return resultat['resynchro']
 
 
+def emettre_layout_finalise(devis, user):
+    """PV79 — annonce que la conception 3D d'un devis est finalisée.
+
+    Passe par le bus ``core.events`` (M6) plutôt que par un appel direct à
+    ``crm`` : les deux apps restent découplées. Ne change AUCUN statut et
+    n'écrit rien lui-même (règle #4). Jamais bloquant : un abonné en échec ne
+    fait pas échouer la finalisation d'un calepinage déjà enregistré.
+
+    ACAL34 — déplacé ici depuis la vue (qui y délègue) pour que l'enveloppe
+    :func:`resynchroniser_conception` l'émette elle-même ; le littéral
+    ``sender`` est INCHANGÉ (aucun récepteur ne filtre dessus).
+    """
+    from core.events import layout_finalise
+    try:
+        layout_finalise.send(sender='ventes.views.devis', devis=devis,
+                             user=user)
+    except Exception:  # noqa: BLE001 — un abonné cassé ne casse pas le devis
+        logging.getLogger(__name__).exception(
+            'PV79 : abonné en échec sur layout_finalise (devis %s)', devis.pk)
+
+
+def resynchroniser_conception(devis, layout, user=None, *, emettre=True):
+    """ACAL34 (C-ACAL-109) — L'ENVELOPPE UNIQUE d'une resynchronisation de
+    conception : ``sync-layout`` (ventes) ET « Resynchroniser le devis »
+    (module calepinage) l'appellent, plus aucune suite recopiée.
+
+    1. :func:`sync_devis_from_layout` — le geste chirurgical (PV18), tracé
+       « corrigé après envoi » sur un ENVOYÉ (QJR557) ;
+    2. si quelque chose a changé (pas ``inchange``) : les QUATRE études
+       repartent de la composition COURANTE
+       (``etudes.rafraichir_etudes_du_devis`` — étude horaire, profils,
+       dimensionnement, électrique) ; sur un envoyé, ce rafraîchissement a lieu
+       DANS ce geste explicite, jamais hors geste ;
+    3. si ``emettre`` : l'annonce ``layout_finalise`` (PV79).
+
+    Rend le dict de :func:`sync_devis_from_layout`, INCHANGÉ ; ``SyncLayoutError``
+    remonte telle quelle. Aucun statut écrit (règle #4).
+    """
+    resultat = sync_devis_from_layout(devis, layout, user)
+    if isinstance(resultat, dict) and resultat.get('inchange'):
+        return resultat
+    if emettre:
+        emettre_layout_finalise(devis, user)
+    # QJR20 — ``sync_devis_from_layout`` a recalé l'instance passée sur la
+    # ligne verrouillée et écrite : les études se calculent sur la
+    # composition d'APRÈS la resynchro.
+    from apps.ventes.domain.etudes import rafraichir_etudes_du_devis
+    rafraichir_etudes_du_devis(devis)
+    return resultat
+
+
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
 # Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps.
 from apps.ventes.domain.bordereau import concevoir_electrique_du_devis  # noqa: E402,F401

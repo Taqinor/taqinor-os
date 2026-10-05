@@ -45,7 +45,7 @@ class SyncDevisTest(BaseApiCalepinage):
     def test_brouillon_resynchronise(self):
         attendu = {'inchange': False, 'lignes_ajoutees': 2,
                    'avertissements': []}
-        with mock.patch('apps.ventes.services.sync_devis_from_layout',
+        with mock.patch('apps.ventes.domain.resynchronisation.sync_devis_from_layout',
                         return_value=attendu) as sync:
             reponse = self.api.post(url_sync(self.calepinage.pk), {},
                                     format='json')
@@ -62,7 +62,7 @@ class SyncDevisTest(BaseApiCalepinage):
                                revision_possible=revision_possible)
 
     def test_devis_envoye_rend_409_revision_possible_vrai(self):
-        with mock.patch('apps.ventes.services.sync_devis_from_layout',
+        with mock.patch('apps.ventes.domain.resynchronisation.sync_devis_from_layout',
                         side_effect=self._refus_409(True)):
             reponse = self.api.post(url_sync(self.calepinage.pk), {},
                                     format='json')
@@ -71,7 +71,7 @@ class SyncDevisTest(BaseApiCalepinage):
         self.assertEqual(reponse.data['detail'], 'Devis envoyé : révisez-le.')
 
     def test_devis_accepte_rend_409_revision_possible_faux(self):
-        with mock.patch('apps.ventes.services.sync_devis_from_layout',
+        with mock.patch('apps.ventes.domain.resynchronisation.sync_devis_from_layout',
                         side_effect=self._refus_409(False)):
             reponse = self.api.post(url_sync(self.calepinage.pk), {},
                                     format='json')

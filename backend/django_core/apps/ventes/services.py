@@ -392,6 +392,7 @@ def consigner_correction_apres_envoi(devis, *, user=None, objet='',
 from apps.ventes.domain import resynchronisation as _resynchronisation  # noqa: E402
 SyncLayoutError = _resynchronisation.SyncLayoutError
 sync_devis_from_layout = _resynchronisation.sync_devis_from_layout
+resynchroniser_conception = _resynchronisation.resynchroniser_conception
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -633,6 +634,7 @@ __all__ = [
     'request_otp_lecture',
     'reserver_stock_devis_facture',
     'reset_relance_escalation',
+    'resynchroniser_conception',
     'resynchroniser_devis_pour_produit',
     'revoquer_lien_paiement',
     'save_devis_as_preset',

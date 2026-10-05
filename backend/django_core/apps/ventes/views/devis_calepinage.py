@@ -22,22 +22,12 @@ from .devis_gardes import _pourcentage_saisi  # ACAL278
 def _emettre_layout_finalise(devis, user):
     """PV79 — annonce que la conception 3D d'un devis est finalisée.
 
-    Passe par le bus ``core.events`` (M6) plutôt que par un appel direct à
-    ``crm`` : les deux apps restent découplées, et un futur abonné (chantier,
-    notifications…) se branche sans toucher ce fichier. Ne change AUCUN statut
-    et n'écrit rien lui-même (règle #4).
-
-    Jamais bloquant : un abonné en échec ne doit pas faire échouer la
-    finalisation d'un calepinage déjà enregistré. L'erreur est journalisée.
+    ACAL34 — le corps vit dans ``domain/resynchronisation`` (l'enveloppe
+    ``resynchroniser_conception`` l'émet elle-même) ; ce nom reste le point
+    d'appel des vues (même ``sender``, même try/except, jamais bloquant).
     """
-    from core.events import layout_finalise
-    try:
-        layout_finalise.send(sender='ventes.views.devis', devis=devis,
-                             user=user)
-    except Exception:  # noqa: BLE001 — un abonné cassé ne casse pas le devis
-        import logging as _logging
-        _logging.getLogger(__name__).exception(
-            'PV79 : abonné en échec sur layout_finalise (devis %s)', devis.pk)
+    from ..domain.resynchronisation import emettre_layout_finalise
+    emettre_layout_finalise(devis, user)
 
 
 class DevisCalepinageActionsMixin:
@@ -312,7 +302,7 @@ class DevisCalepinageActionsMixin:
         « Réviser ») ; refusé/expiré, 409 avec ``revision_possible: false``.
         Renvoyer le MÊME layout ne fait aucune écriture
         (``inchange: true``). Devis d'une autre société → 404 (get_queryset)."""
-        from ..services import sync_devis_from_layout, SyncLayoutError
+        from ..services import resynchroniser_conception, SyncLayoutError
 
         devis = self.get_object()  # borné société par get_queryset
         payload = request.data
@@ -325,33 +315,14 @@ class DevisCalepinageActionsMixin:
             return Response({'detail': 'Layout manquant ou invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            resultat = sync_devis_from_layout(devis, payload, request.user)
+            # ACAL34 — L'ENVELOPPE unique (resynchro + quatre études +
+            # annonce PV79), la même que « Resynchroniser le devis » du module.
+            resultat = resynchroniser_conception(devis, payload, request.user)
         except SyncLayoutError as exc:
             return Response(
                 {'detail': exc.detail,
                  'revision_possible': exc.revision_possible},
                 status=status.HTTP_409_CONFLICT)
-        # PV79 — même annonce qu'à la création : la toiture vient d'être
-        # redessinée et les lignes suivent. Un renvoi du MÊME layout
-        # (``inchange``) n'annonce rien : il ne s'est rien passé.
-        if not (isinstance(resultat, dict) and resultat.get('inchange')):
-            _emettre_layout_finalise(devis, request.user)
-            # CJ2b / L-1V — les lignes viennent d'être resynchronisées
-            # (quantités de panneaux, batterie, onduleur) : les QUATRE études
-            # doivent repartir de cette composition COURANTE — pas seulement le
-            # bloc horaire, sans quoi le schéma unifilaire de la page client
-            # décrirait la composition d'avant (best-effort, jamais bloquant —
-            # voir ``services.rafraichir_etudes_du_devis``).
-            # QJR20 — « composition COURANTE » est désormais GARANTI et non
-            # espéré : ``sync_devis_from_layout`` recale l'instance qu'on lui a
-            # passée sur la ligne qu'il a verrouillée et écrite
-            # (``_resynchroniser_instance_appelante``). Sans ce recalage,
-            # ``devis`` gardait les lignes PRÉCHARGÉES en début de requête
-            # (``prefetch_related('lignes')`` du queryset) et les quatre études
-            # se recalculaient — puis se PERSISTAIENT — sur la composition
-            # d'AVANT la resynchro.
-            from ..services import rafraichir_etudes_du_devis
-            rafraichir_etudes_du_devis(devis)
         return Response(resultat)
 
     @action(detail=True, methods=['get', 'post'],

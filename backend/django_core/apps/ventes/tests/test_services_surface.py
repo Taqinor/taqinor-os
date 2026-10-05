@@ -250,6 +250,7 @@ SURFACE_PUBLIQUE = (
     "request_otp_lecture",
     "reserver_stock_devis_facture",
     "reset_relance_escalation",
+    "resynchroniser_conception",
     "resynchroniser_devis_pour_produit",
     "reverifier_remise_apres_correction",
     "revoquer_lien_paiement",

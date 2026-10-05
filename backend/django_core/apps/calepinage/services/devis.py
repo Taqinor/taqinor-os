@@ -205,7 +205,8 @@ def resynchroniser_devis(calepinage, *, user=None):
             « Générer le devis »), ou refus 409 du serveur ventes propagé.
     """
     from apps.ventes.selectors import get_devis_by_pk
-    from apps.ventes.services import SyncLayoutError, sync_devis_from_layout
+    from apps.ventes.services import (
+        SyncLayoutError, resynchroniser_conception)
 
     layout = _exiger_layout(calepinage)
     devis_id = getattr(calepinage, 'devis_id', None)
@@ -220,7 +221,10 @@ def resynchroniser_devis(calepinage, *, user=None):
         raise DevisRefuse(f"Devis introuvable (#{devis_id}).", champ='devis')
 
     try:
-        return sync_devis_from_layout(devis, layout, user)
+        # ACAL34 — l'enveloppe ventes UNIQUE : resynchro + quatre études
+        # (étude horaire, profils… décrivent les lignes). L'annonce
+        # layout_finalise depuis le module est branchée par D02-T14.
+        return resynchroniser_conception(devis, layout, user, emettre=False)
     except SyncLayoutError as refus:
         raise DevisRefuse(
             refus.detail, champ='devis', statut=409,
