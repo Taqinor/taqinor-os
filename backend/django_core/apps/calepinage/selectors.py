@@ -78,6 +78,20 @@ def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
         q=q, inclure_archives=inclure_archives)
 
 
+def calepinage_ouvert_du_lead(company, lead_id):
+    """ACAL182 — LE calepinage OUVERT (non archivé) d'un lead, ou ``None``.
+
+    LE prédicat « ouvert » de la règle D-ACAL-12 (un seul calepinage ouvert
+    par lead), écrit UNE fois : non archivé au sens exact de
+    ``appliquer_filtres_liste`` (CAL208). Borné à ``company`` — un lead
+    d'une autre société n'a jamais de calepinage ouvert ici. Le plus récent
+    s'il en existe plusieurs (passif d'avant la règle).
+    """
+    if company is None or not lead_id:
+        return None
+    return liste_calepinages(company, lead_id=lead_id).first()
+
+
 def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
                             statut=None, depuis=None, q=None,
                             inclure_archives=False):

@@ -290,8 +290,10 @@ class ResponsableEnBase(BaseApiCalepinage):
         self.assertIsNone(self.a_personne.responsable)
 
     def test_creation_sans_responsable_admise(self):
-        reponse = self.api.post(URL, {'lead': self.lead.pk, 'titre': 'Neuf'},
-                                format='json')
+        # ACAL182 — ``self.lead`` porte déjà trois calepinages OUVERTS (un
+        # seul ouvert par lead, D-ACAL-12) : la création vise ``lead_2``.
+        reponse = self.api.post(URL, {'lead': self.lead_2.pk,
+                                      'titre': 'Neuf'}, format='json')
         self.assertEqual(reponse.status_code, 201, reponse.data)
         self.assertIsNone(Calepinage.objects.get(
             pk=reponse.data['id']).responsable)

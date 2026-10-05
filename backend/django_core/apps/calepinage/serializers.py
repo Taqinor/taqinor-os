@@ -291,7 +291,12 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         lead_id = attrs.get('lead_id', getattr(instance, 'lead_id', None))
         client = attrs.get('client', getattr(instance, 'client', None))
 
-        if lead_id and client is not None:
+        # ACAL182 — toutes les portes posent le client DU LEAD sur un
+        # calepinage né d'un lead : ce couple-là est cohérent (sinon renommer
+        # un calepinage ainsi créé serait refusé). Seul un client DIFFÉRENT
+        # de celui du lead reste refusé.
+        if lead_id and client is not None and not self._client_du_lead(
+                lead_id, client):
             raise serializers.ValidationError({
                 'client': (
                     "Un calepinage se rattache à un lead OU à un client, pas "
@@ -308,6 +313,19 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         if lead_id and 'lead_id' in attrs:
             self._exiger_lead_de_la_societe(lead_id)
         return attrs
+
+    def _client_du_lead(self, lead_id, client):
+        """``True`` quand ``client`` est le client du lead (même société)."""
+        from apps.crm.selectors import get_company_lead
+
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return False
+        lead = get_company_lead(company, lead_id)
+        return (lead is not None
+                and getattr(lead, 'client_id', None) == getattr(client, 'pk',
+                                                                None))
 
     def _exiger_lead_de_la_societe(self, lead_id):
         """Un lead d'une AUTRE société est « introuvable », jamais « interdit ».

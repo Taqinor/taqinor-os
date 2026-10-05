@@ -165,8 +165,9 @@ def depuis_modele(self, request):
     création strictement identique à la porte d'aujourd'hui.
     """
     from ..services.creation import (
-        CreationRefusee, creer_pour_client, creer_pour_lead,
+        CreationRefusee, corps_conflit, creer_pour_client,
         demarrer_depuis_modele, obtenir_ou_creer_pour_devis,
+        ouvrir_ou_creer_pour_lead,
     )
     from .calepinages import detail_calepinage
 
@@ -194,8 +195,14 @@ def depuis_modele(self, request):
                 devis_id, company, user=request.user, titre=titre,
                 preset_id=preset_id)
         elif lead_id:
-            calepinage = creer_pour_lead(lead_id, company, user=request.user,
-                                         titre=titre, preset_id=preset_id)
+            # ACAL182 — la porte UNIQUE sur un lead : un lead qui a déjà un
+            # calepinage OUVERT n'en reçoit pas un second (D-ACAL-12).
+            calepinage, cree = ouvrir_ou_creer_pour_lead(
+                lead_id, company, user=request.user, titre=titre,
+                preset_id=preset_id)
+            if not cree:
+                return Response(corps_conflit(calepinage),
+                                status=status.HTTP_409_CONFLICT)
         else:
             calepinage = creer_pour_client(client_id, company,
                                            user=request.user, titre=titre,

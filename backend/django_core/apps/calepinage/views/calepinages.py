@@ -244,10 +244,57 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         except EtiquetteRefusee as refus:
             raise DrfValidationError({refus.champ: str(refus)})
 
-    def perform_create(self, serializer):
-        """Société ET auteur posés côté serveur — jamais lus du corps."""
-        serializer.save(company=self.request.user.company,
-                        cree_par=self.request.user)
+    @extend_schema(responses={201: CalepinageSerializer,
+                              409: OpenApiTypes.OBJECT})
+    def create(self, request, *args, **kwargs):
+        """ACAL182 — la porte de l'écran Nouveau passe par ``creation.py``.
+
+        Le sérialiseur VALIDE (lead XOR client, lead/client/responsable de la
+        société) ; la création elle-même est celle des autres portes —
+        ``ouvrir_ou_creer_pour_lead`` (verrou, un seul calepinage ouvert par
+        lead, chatter, client du lead, même titre de repli) ou
+        ``creer_pour_client``. Un lead qui a déjà un calepinage OUVERT ⇒ 409
+        ``{lead, calepinage_existant}`` (contrat
+        ``calepinage_creation_conflit.json``), rien n'est créé. Société et
+        auteur toujours posés côté serveur, jamais lus du corps.
+        """
+        from ..services.creation import (
+            CreationRefusee, corps_conflit, creer_pour_client,
+            ouvrir_ou_creer_pour_lead,
+        )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        donnees = serializer.validated_data
+        company = request.user.company
+        titre = str(donnees.get('titre') or '')
+        responsable = donnees.get('responsable')
+        try:
+            if donnees.get('lead_id'):
+                calepinage, cree = ouvrir_ou_creer_pour_lead(
+                    donnees['lead_id'], company, user=request.user,
+                    titre=titre, responsable=responsable)
+                if not cree:
+                    return Response(corps_conflit(calepinage),
+                                    status=status.HTTP_409_CONFLICT)
+            else:
+                client = donnees.get('client')
+                calepinage = creer_pour_client(
+                    getattr(client, 'pk', None), company, user=request.user,
+                    titre=titre, responsable=responsable)
+        except CreationRefusee as refus:
+            return Response({refus.champ or 'detail': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # Les autres champs écrivables du formulaire (statut, devis…) gardent
+        # leur effet d'aujourd'hui, posés sur le calepinage créé.
+        restants = [champ for champ in ('statut', 'devis', 'appel_offre_id')
+                    if champ in donnees]
+        for champ in restants:
+            setattr(calepinage, champ, donnees[champ])
+        if restants:
+            calepinage.save(update_fields=restants + ['updated_at'])
+        return Response(self.get_serializer(calepinage).data,
+                        status=status.HTTP_201_CREATED)
 
     def filter_queryset(self, queryset):
         """CALX390 — la LISTE charge d'avance les lignes du devis lié.
