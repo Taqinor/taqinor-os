@@ -187,6 +187,40 @@ def _css(C, fonts, compact):
 .ag-tot-ttc td {{ border-top:2px solid {C['navy']}; font-family:{display};
   font-size:12pt; color:{C['navy']}; padding-top:4px; }}
 .ag-small {{ font-size:7.8pt; line-height:1.35; color:{C['ink']}; }}
+/* AGR311 — clôture « Bon pour accord » */
+.ag-accord {{ border:1.5px solid {C['navy']}; border-radius:11px;
+  background:#fff; padding:7px 10px; margin-top:6px; }}
+.ag-accord-hd {{ display:table; width:100%; margin-bottom:4px; }}
+.ag-accord-t {{ display:table-cell; font-family:{serif}; font-weight:700;
+  font-size:12pt; color:{C['navy']}; }}
+.ag-accord-v {{ display:table-cell; text-align:right; font-size:8pt;
+  color:{C['ink']}; vertical-align:middle; }}
+.ag-opts {{ width:100%; border-collapse:collapse; margin:2px 0 4px; }}
+.ag-opt {{ font-size:{'7.2pt' if compact else '7.8pt'}; padding:1.5px 4px 1.5px 0;
+  width:50%; vertical-align:top; }}
+.ag-case {{ display:inline-block; width:8px; height:8px;
+  border:1.2px solid {C['navy']}; border-radius:2px; margin-right:5px;
+  vertical-align:-1px; }}
+.ag-ech {{ width:100%; border-collapse:separate; border-spacing:4px 0;
+  margin:2px -4px 4px; }}
+.ag-ech td {{ background:{C['wash']}; border-radius:7px; padding:4px 7px;
+  width:33%; }}
+.ag-ech-l {{ font-size:6.8pt; color:{C['muted']}; text-transform:uppercase;
+  letter-spacing:.04em; }}
+.ag-ech-v {{ font-size:8.4pt; font-weight:700; color:{C['navy']}; }}
+.ag-sigs {{ width:100%; border-collapse:separate; border-spacing:6px 0;
+  margin:0 -6px; }}
+.ag-sig {{ border:1px solid {C['line']}; border-radius:8px; padding:5px 8px;
+  vertical-align:top; }}
+.ag-sig-w {{ font-size:6.8pt; color:{C['muted']}; text-transform:uppercase;
+  letter-spacing:.06em; }}
+.ag-sig-n {{ font-size:8.6pt; font-weight:700; color:{C['navy']};
+  margin-top:1px; }}
+.ag-sig-z {{ height:{'13mm' if compact else '17mm'}; }}
+.ag-sig-h {{ font-size:6.6pt; color:{C['muted_2']}; }}
+.ag-qr {{ width:26mm; text-align:center; vertical-align:middle;
+  font-size:6.8pt; color:{C['navy']}; font-weight:700; }}
+.ag-qr img {{ width:22mm; height:22mm; }}
 """
 
 
@@ -538,14 +572,113 @@ def page3(ctx):
             f'<div class="ag-tot"><div class="ag-tot-g">{_garanties(synthese)}'
             f'{non_inclus_html}</div><div class="ag-tot-d">{_totaux(d)}'
             f'</div></div>{_qj(20)}{_formalites(synthese, langue)}{_qj(30)}'
-            f'{ctx.get("cloture") or ""}</div>')
+            f'{cloture(ctx)}</div>')
+
+
+# ── AGR311 — clôture de la page 3 (canon v6) ────────────────────────────────
+
+#: Créneaux de l'échéancier (``PAYMENT_TERMS_BY_MODE['agricole']``, résolu
+#: par le builder dans ``payment_terms``) et leur moment.
+CRENEAUX = (
+    ("acompte", "Acompte à la commande"),
+    ("materiel", "À la réception du matériel"),
+    ("solde", "Après mise en marche"),
+)
+
+
+def _lien_signature(d):
+    """Le lien TOKENISÉ de la proposition (QRP1), sinon None : un repli
+    « /signer/<réf> » n'est pas un lien de signature, aucun QR n'est imprimé."""
+    lien = ((d.get("links") or {}).get("signer") or "").strip()
+    return lien if "/proposition/" in lien else None
+
+
+def _options_a_cocher(synthese):
+    options = [o for o in synthese.get("options_kit") or []
+               if isinstance(o, dict) and o.get("designation")]
+    if not options:
+        return ""
+    cases = []
+    for o in options:
+        prix = _mad(o.get("total_ttc"))
+        supplement = (f'<b>+ {prix} MAD TTC</b>' if prix is not None else "")
+        cases.append(f'<td class="ag-opt"><span class="ag-case"></span>'
+                     f'{o.get("designation")} {supplement}</td>')
+    lignes = "".join(
+        "<tr>" + "".join(cases[i:i + 2])
+        + ("<td></td>" if len(cases[i:i + 2]) == 1 else "") + "</tr>"
+        for i in range(0, len(cases), 2))
+    return ('<div class="ag-small"><b>Options du kit</b> (cochez celles que '
+            'vous retenez ; prix du supplément, hors total ci-dessus)</div>'
+            f'<table class="ag-opts">{lignes}</table>')
+
+
+def _echeancier(d):
+    termes = d.get("payment_terms") or {}
+    tot = _num((d.get("totaux_all") or {}).get("ttc"))
+    montants = None
+    for branche in ("sans", "avec"):
+        m = (d.get("montants_tranches") or {}).get(branche) or {}
+        if tot is not None and _num(m.get("total")) is not None \
+                and abs(_num(m.get("total")) - tot) < 0.005:
+            montants = m
+            break
+    cases = []
+    for cle, libelle in CRENEAUX:
+        pct = _num(termes.get(cle))
+        if not pct:
+            continue
+        montant = _mad((montants or {}).get(cle)) if montants else None
+        cases.append(f'<td><div class="ag-ech-l">{libelle}</div>'
+                     f'<div class="ag-ech-v">{_n(pct)} %'
+                     + (f' · {montant} MAD' if montant else "")
+                     + '</div></td>')
+    if not cases:
+        return ""
+    return f'<table class="ag-ech"><tr>{"".join(cases)}</tr></table>'
+
+
+def cloture(ctx):
+    """AGR311 — « Bon pour accord », options à cocher, date butoir ABSOLUE,
+    QR « Scannez pour signer » (lien tokenisé seulement), échéancier. AUCUNE
+    annexe de rétractation 31-08 : un achat d'exploitation n'est pas un achat
+    « non professionnel » (art. 2) — question confiée au juriste."""
+    d, synthese, C = ctx["d"], ctx["synthese"], ctx["C"]
+    brand = ctx["ident"].get("brand_name") or ""
+    client = theme.titlecase_name(d.get("client_full") or d.get("client_name"))
+    validite = (f"Offre valable jusqu'au <b>{d.get('valid_until')}</b>"
+                if d.get("valid_until") else "")
+    lien = _lien_signature(d)
+    qr_html = ""
+    if lien:
+        uri = theme.qr_data_uri(lien, front=(26, 43, 74))
+        if uri:
+            qr_html = (f'<td class="ag-qr"><img src="{uri}" alt="QR">'
+                       f'<div>Scannez pour signer</div></td>')
+    sig = (
+        '<table class="ag-sigs"><tr>'
+        f'<td class="ag-sig"><div class="ag-sig-w">Bon pour accord — le client'
+        f'</div><div class="ag-sig-n">{client or ""}</div>'
+        '<div class="ag-sig-z"></div><div class="ag-sig-h">Nom, date, mention '
+        '« Bon pour accord » et signature</div></td>'
+        f'<td class="ag-sig"><div class="ag-sig-w">Pour {brand}</div>'
+        '<div class="ag-sig-n">Cachet et signature</div>'
+        '<div class="ag-sig-z"></div><div class="ag-sig-h">Date</div></td>'
+        f'{qr_html}</tr></table>')
+    return (f'<div class="ag-accord"><div class="ag-accord-hd">'
+            f'<span class="ag-accord-t">Bon pour accord</span>'
+            f'<span class="ag-accord-v">{validite}</span></div>'
+            f'{_options_a_cocher(synthese)}{_echeancier(d)}{sig}</div>')
 
 
 # ── assemblage ──────────────────────────────────────────────────────────────
 
 def densite_compacte(d) -> bool:
-    """Page 3 resserrée quand le tableau est long (≥ 9 lignes affichées)."""
-    return (len(_items(d)) + len(d.get("lignes_structure") or [])) >= 9
+    """Page 3 resserrée quand le tableau et les options sont longs (≥ 9
+    lignes affichées, ou ≥ 12 lignes + options)."""
+    lignes = len(_items(d)) + len(d.get("lignes_structure") or [])
+    options = len((d.get("synthese") or {}).get("options_kit") or [])
+    return lignes >= 9 or lignes + options >= 12
 
 
 def build_ctx(d):
