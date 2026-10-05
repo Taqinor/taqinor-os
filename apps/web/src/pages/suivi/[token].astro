@@ -22,6 +22,7 @@ import {
   suiviEndpoint,
   buildTimeline,
   libelleMiseAJour,
+  etatErreurSuivi,
 } from '../../lib/suivi';
 import { whatsappLink } from '../../lib/proposition';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
@@ -40,6 +41,8 @@ let data: SuiviResponse | null = null;
 let errorDetail: { fr: string; ar: string } | null = null;
 let httpStatus = 200;
 let isTimeout = false;
+// ADOC133 — le lien exige un code à usage unique non vérifié (403 `otp_required`).
+let otpRequis = false;
 
 // Rate-limit du SSR : un token de suivi est un identifiant devinable (chaîne
 // opaque mais finie) — même bucket généreux que proposition-view (W316).
@@ -68,8 +71,19 @@ if (!rl.allowed) {
     if (res.ok) {
       data = (await res.json()) as SuiviResponse;
     } else {
+      // ADOC133 — le corps du refus décide de l'écran : 403 `otp_required` ⇒
+      // écran de saisie du code (jamais « Ce suivi n’est pas accessible »).
+      let detail = '';
+      try {
+        const body = (await res.json()) as { detail?: unknown };
+        detail = typeof body?.detail === 'string' ? body.detail : '';
+      } catch {
+        detail = '';
+      }
+      const etat = etatErreurSuivi(res.status, detail);
+      otpRequis = etat === 'otp';
       errorDetail =
-        res.status === 404
+        etat === 'introuvable'
           ? {
               fr: 'Ce lien de suivi est introuvable ou a expiré.',
               ar: 'رابط المتابعة هذا غير موجود أو انتهت صلاحيته.',
@@ -137,7 +151,48 @@ const ogTitle = 'Suivi de votre projet solaire | Taqinor';
   ogTitle={ogTitle}
   ogImageAlt="Taqinor — suivi de votre projet solaire"
 >
-  {!ok ? (
+  {!ok && otpRequis ? (
+    <section id="otp-lecture" class="mx-auto flex min-h-[60dvh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center" data-token={token}>
+    <!-- ADOC133 — écran de code de LECTURE (même mécanisme et mêmes endpoints que
+         /proposition : proxy same-origin /api/proposition-otp, mode `lecture`,
+         MÊME jeton ShareLink). Vérification réussie ⇒ le serveur déverrouille la
+         lecture une heure (otp_lecture_verified) : on recharge la même URL. -->
+      <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
+      <h1 class="display mt-6 text-3xl text-lune sm:text-4xl">Suivi protégé</h1>
+      <p class="v2-body mt-4 max-w-md">
+        Ce suivi est protégé par un code à usage unique. Nous l’envoyons au contact
+        enregistré sur votre devis.
+      </p>
+      <form id="otp-lecture-form" class="mt-8 w-full max-w-sm text-start" novalidate>
+        <button type="button" id="otp-lecture-demander" class="btn-pill w-full justify-center"
+          style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)">
+          Recevoir mon code
+        </button>
+        <label for="otp-lecture-code" class="tech-label mt-6 block text-lune-faint">Code reçu</label>
+        <input
+          id="otp-lecture-code"
+          name="otp_code"
+          type="text"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          maxlength="6"
+          class="mt-2 w-full rounded-xl border border-white/15 bg-nuit/60 px-4 py-3 text-lg text-lune"
+          dir="ltr"
+          placeholder="------"
+        />
+        <button type="submit" id="otp-lecture-valider" class="btn-pill mt-4 w-full justify-center">
+          Ouvrir mon suivi
+        </button>
+      </form>
+      <p id="otp-lecture-message" class="mt-4 min-h-[1.25rem] max-w-sm text-sm text-lune-soft" role="status" aria-live="polite"></p>
+      <p class="mt-6 text-sm text-lune-faint">
+        Vous ne recevez rien&nbsp;? Votre conseiller Taqinor peut vous ouvrir l’accès.
+      </p>
+      <a href={waFallbackLink} target="_blank" rel="noopener noreferrer" class="btn-pill mt-4">
+        Contacter sur WhatsApp
+      </a>
+    </section>
+  ) : !ok ? (
     <section class="mx-auto flex min-h-[60dvh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center">
     <!-- ── État « lien expiré / indisponible » (FR + AR, jamais une page blanche) ── -->
       <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
@@ -353,6 +408,66 @@ const ogTitle = 'Suivi de votre projet solaire | Taqinor';
         : 'min-h-11 px-2.5 py-2.5 text-xs font-semibold text-lune-soft transition-colors hover:text-white';
     }
   }
+
+  // ADOC133 — écran de code de lecture : n'agit que sur `#otp-lecture`. UN seul
+  // chemin réseau, le proxy same-origin `/api/proposition-otp` (même mécanisme
+  // que /proposition : `demander` sans code, `verifier` avec `code`).
+  (function otpLecture(): void {
+    const section = document.getElementById('otp-lecture');
+    if (!section) return;
+    const token = section.getAttribute('data-token') || '';
+    const form = document.getElementById('otp-lecture-form') as HTMLFormElement | null;
+    const demander = document.getElementById('otp-lecture-demander') as HTMLButtonElement | null;
+    const valider = document.getElementById('otp-lecture-valider') as HTMLButtonElement | null;
+    const champ = document.getElementById('otp-lecture-code') as HTMLInputElement | null;
+    const message = document.getElementById('otp-lecture-message');
+    const dire = (texte: string): void => {
+      if (message) message.textContent = texte;
+    };
+    async function appeler(code: string): Promise<{ ok: boolean; detail: string }> {
+      try {
+        const res = await fetch('/api/proposition-otp', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(code ? { token, mode: 'lecture', code } : { token, mode: 'lecture' }),
+        });
+        const body = (await res.json().catch(() => ({}))) as { ok?: boolean; detail?: string };
+        return { ok: res.ok && body.ok !== false, detail: typeof body.detail === 'string' ? body.detail : '' };
+      } catch {
+        return { ok: false, detail: 'Service momentanément indisponible. Veuillez réessayer.' };
+      }
+    }
+    demander?.addEventListener('click', async () => {
+      demander.disabled = true;
+      dire('Envoi du code…');
+      const r = await appeler('');
+      demander.disabled = false;
+      dire(r.ok
+        ? 'Code envoyé. Saisissez-le ci-dessous — il est valable 10 minutes.'
+        : (r.detail || 'Le code n’a pas pu être envoyé. Réessayez dans un instant.'));
+      champ?.focus();
+    });
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = (champ?.value || '').trim();
+      if (!code) {
+        dire('Saisissez le code reçu.');
+        champ?.focus();
+        return;
+      }
+      if (valider) valider.disabled = true;
+      dire('Vérification…');
+      const r = await appeler(code);
+      if (r.ok) {
+        dire('Code vérifié — ouverture de votre suivi…');
+        window.location.reload();
+        return;
+      }
+      if (valider) valider.disabled = false;
+      dire(r.detail || 'Code incorrect. Vérifiez le code reçu et réessayez.');
+      champ?.select();
+    });
+  })();
 
   document.getElementById('suivi-lang-fr')?.addEventListener('click', () => setLang('fr'));
   document.getElementById('suivi-lang-ar')?.addEventListener('click', () => setLang('ar'));
