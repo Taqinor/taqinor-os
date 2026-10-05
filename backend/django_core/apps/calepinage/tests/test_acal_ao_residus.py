@@ -28,8 +28,20 @@ class ResidusAoTest(BaseApiCalepinage):
         pk = reponse.data['id']
         self.assertIsNone(Calepinage.objects.get(pk=pk).appel_offre_id)
 
+        # ACAL179 (même vague) rend le PATCH STRICT : une clé inconnue du
+        # corps est refusée EN LA NOMMANT, jamais un 200 silencieux. Le champ
+        # retiré par ACAL326 est donc refusé au PATCH et RIEN n'est écrit —
+        # la colonne reste NULL, le titre du même corps n'est pas posé.
         reponse = self.api.patch(url_detail(pk), {'appel_offre': 424242,
                                                   'titre': 'Renommé'},
+                                 format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('appel_offre', reponse.data)
+        calepinage = Calepinage.objects.get(pk=pk)
+        self.assertIsNone(calepinage.appel_offre_id)
+        self.assertNotEqual(calepinage.titre, 'Renommé')
+
+        reponse = self.api.patch(url_detail(pk), {'titre': 'Renommé'},
                                  format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertNotIn('appel_offre', reponse.data)
