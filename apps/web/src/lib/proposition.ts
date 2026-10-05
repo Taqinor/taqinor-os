@@ -4354,7 +4354,7 @@ export interface SyntheseAgricole {
     point: { debitM3h: number; hmtM: number };
   } | null;
   /** SVG tel que servi (déjà échappé côté serveur) — inséré tel quel, jamais réécrit. */
-  schemaSvg: string | null;
+  dessinSchema: string | null;
   omissions: Array<{ bloc: string; motif: string }>;
 }
 
@@ -4467,7 +4467,7 @@ export function syntheseAgricole(
     champ: champBrut ? { kwc: nombreServi(champBrut.kwc), nbPanneaux: nombreServi(champBrut.nb_panneaux) } : null,
     besoinVsLivre: lireBesoinVsLivre(brut.besoin_vs_livre),
     pointFonctionnement: lirePointFonctionnement(brut.point_fonctionnement),
-    schemaSvg: svg !== null && svg.trimStart().startsWith('<svg') ? svg : null,
+    dessinSchema: svg !== null && svg.trimStart().startsWith('<svg') ? svg : null,
     omissions,
   };
 }
@@ -4954,6 +4954,126 @@ export const AGR_NON_INCLUS_LBL: Record<string, Lbl3> = {
   forage: { fr: 'le forage', en: 'the borehole', ar: 'الثقب' },
   genie_civil: { fr: 'le génie civil', en: 'civil works', ar: 'الهندسة المدنية' },
 };
+
+// ════════════════════════════════════════════════════════════════════════════
+// AGW308 — options du kit à cocher sur /proposition (endpoint XSAL5 existant).
+//
+// Le client ajoute une option NOMMÉE à son devis avant de signer, avec
+// confirmation. Le backend (`proposal_activate_option`, idempotent, aucun statut
+// touché, 409 si le devis est figé) n'a AUCUN endpoint de retrait : la
+// confirmation le dit. Après l'appel, la page RECHARGE les totaux servis — elle
+// ne recalcule jamais un total. En aperçu interne le bouton est inactif (R4).
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Chemin du proxy SAME-ORIGIN (jamais le backend en cross-origin). */
+export const OPTION_PROXY_PATH = '/api/proposition-option';
+
+/**
+ * URL backend de l'activation d'une option (`apps/ventes/urls.py` ›
+ * `proposal/<token>/activer-option/`, monté sous `ventes/`). Encode le token.
+ */
+export function optionEndpoint(apiBase: string, token: string): string {
+  const base = (apiBase || 'https://api.taqinor.ma').replace(/\/+$/, '');
+  return `${base}/api/django/ventes/proposal/${encodeURIComponent(token)}/activer-option/`;
+}
+
+/** `masque` = pas de bouton ; `apercu` = bouton INACTIF (aperçu interne, R4) ; `actif` = cliquable. */
+export type OptionActivationEtat = 'actif' | 'apercu' | 'masque';
+
+/**
+ * LA fonction pure qui décide l'affichage du bouton « Ajouter au devis » : une option
+ * SERVIE (identifiant de ligne entier > 0) + un devis non figé (offre vivante : ni
+ * signé, ni refusé, ni expiré, ni remplacé) ; un lien d'aperçu interne montre le
+ * bouton mais INACTIF.
+ */
+export function etatActivationOption(args: {
+  ligneId: number | null | undefined;
+  apercuInterne: boolean;
+  offreVivante: boolean;
+}): OptionActivationEtat {
+  const id = args.ligneId;
+  if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) return 'masque';
+  if (!args.offreVivante) return 'masque';
+  return args.apercuInterne ? 'apercu' : 'actif';
+}
+
+/** Corps relayé au backend : `{ ligne_id }` seulement (entier > 0), sinon `null`. */
+export function buildOptionBody(ligneId: unknown): { ligne_id: number } | null {
+  const n = typeof ligneId === 'string' && /^\d+$/.test(ligneId.trim()) ? Number(ligneId) : ligneId;
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? { ligne_id: n } : null;
+}
+
+export interface OptionResult {
+  ok: boolean;
+  status: number;
+  detail: string;
+  ligneId?: number;
+  designation?: string;
+}
+
+/** Messages amicaux (FR/EN/AR) — jamais le détail technique du backend. */
+export const OPTION_MSG = {
+  succes: { fr: 'Option ajoutée à votre devis. Les totaux sont mis à jour.', en: 'Option added to your quote. The totals are updated.', ar: 'تمت إضافة الخيار إلى عرضكم. تم تحديث المجاميع.' },
+  fige: {
+    fr: 'Cette proposition est déjà signée ou n’est plus modifiable : contactez votre conseiller.',
+    en: 'This proposal is already signed or can no longer be changed: contact your advisor.',
+    ar: 'هذا العرض موقَّع بالفعل أو لم يعد قابلاً للتعديل: تواصلوا مع مستشاركم.',
+  },
+  introuvable: {
+    fr: 'Cette option ou ce lien est introuvable : contactez votre conseiller.',
+    en: 'This option or link could not be found: contact your advisor.',
+    ar: 'تعذّر العثور على هذا الخيار أو الرابط: تواصلوا مع مستشاركم.',
+  },
+  otp: {
+    fr: 'Pour modifier votre devis, validez d’abord le code reçu.',
+    en: 'To change your quote, first validate the code you received.',
+    ar: 'لتعديل عرضكم، أدخلوا أولاً الرمز الذي توصلتم به.',
+  },
+  generique: {
+    fr: 'L’option n’a pas pu être ajoutée. Réessayez, ou contactez votre conseiller.',
+    en: 'The option could not be added. Try again, or contact your advisor.',
+    ar: 'تعذّرت إضافة الخيار. أعيدوا المحاولة أو تواصلوا مع مستشاركم.',
+  },
+  reseau: {
+    fr: 'Connexion impossible. Vérifiez votre réseau et réessayez.',
+    en: 'Connection failed. Check your network and try again.',
+    ar: 'تعذّر الاتصال. تحققوا من الشبكة وأعيدوا المحاولة.',
+  },
+} satisfies Record<string, Lbl3>;
+
+/** Message à montrer pour un statut de réponse (le backend renvoie 200 / 400 / 403 / 404 / 409). */
+export function optionMessage(status: number, payload?: unknown): Lbl3 {
+  const detail = estRecord(payload) ? payload.detail : null;
+  if (status >= 200 && status < 300) return OPTION_MSG.succes;
+  if (status === 409) return OPTION_MSG.fige;
+  if (status === 404) return OPTION_MSG.introuvable;
+  if (status === 403 && detail === 'otp_required') return OPTION_MSG.otp;
+  return OPTION_MSG.generique;
+}
+
+/** Normalise (statut, JSON amont) → une forme unique lue par la page. */
+export function normalizeOptionResponse(status: number, payload: unknown): OptionResult {
+  const body = estRecord(payload) ? payload : {};
+  const ok = status >= 200 && status < 300;
+  const id = nombreServi(body.ligne_id);
+  return {
+    ok,
+    status,
+    detail: texteServi(body.detail) ?? '',
+    ...(ok && id !== null ? { ligneId: id } : {}),
+    ...(ok && texteServi(body.designation) ? { designation: texteServi(body.designation) as string } : {}),
+  };
+}
+
+/** Texte de CONFIRMATION (trois voix) : montant TTC servi + « ne peut pas être retirée en ligne ». */
+export function confirmationOption(designation: string, totalTtcLabel: string | null): Lbl3 {
+  const plus = totalTtcLabel ? ` : + ${totalTtcLabel} TTC` : '';
+  return {
+    fr: `L’option « ${designation} » sera ajoutée à votre devis${plus} ; elle ne peut pas être retirée en ligne, contactez votre conseiller.`,
+    en: `The option “${designation}” will be added to your quote${plus} ; it cannot be removed online, contact your advisor.`,
+    ar: `سيُضاف الخيار «${designation}» إلى عرضكم${plus} ؛ لا يمكن إزالته عبر الإنترنت، تواصلوا مع مستشاركم.`,
+  };
+}
 
 /** WJ126 — Archétype de bloc commercial (contenu QUALITATIF, aucun chiffre). */
 export interface CommercialArchetype {

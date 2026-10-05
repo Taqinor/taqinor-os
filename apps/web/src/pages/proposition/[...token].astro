@@ -52,6 +52,8 @@ import {
   AGR_LBL,
   AGR_MOIS_LONG,
   syntheseAgricoleArgent,
+  etatActivationOption,
+  confirmationOption,
   libelleGarantie,
   AGR_ARGENT_LBL,
   AGR_ENERGIE_LBL,
@@ -3195,10 +3197,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
 
           {/* Schéma forage → pompe → variateur → panneaux → bassin → irrigation : le SVG
               SERVI, inséré tel quel (déjà échappé côté serveur) — jamais un second dessin. */}
-          {synth?.schemaSvg && (
+          {synth?.dessinSchema && (
             <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-schema>
               <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.titreComment.fr} data-en={AGR_LBL.titreComment.en} data-ar={AGR_LBL.titreComment.ar}>{AGR_LBL.titreComment.fr}</p>
-              <div class="mt-4 w-full overflow-x-auto" dir="ltr" set:html={synth.schemaSvg}></div>
+              <div class="mt-4 w-full overflow-x-auto" dir="ltr" set:html={synth.dessinSchema}></div>
             </div>
           )}
 
@@ -3358,18 +3360,44 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </div>
           )}
 
-          {/* Options du kit : nommées, avec leur supplément TTC — lecture seule (l'activation en ligne est AGW308). */}
+          {/* AGW308 — options du kit À COCHER : chaque option nommée porte « Ajouter au devis » (si le devis
+              n'est pas figé ; INACTIF en aperçu interne, R4) → confirmation → /api/proposition-option →
+              rechargement des totaux servis. Aucun retrait en ligne (le backend n'a pas d'endpoint). */}
           {argent && argent.optionsKit.length > 0 && (
-            <div class="cine-card mt-5 rounded-xl p-5" data-agri-options-kit>
+            <div class="cine-card mt-5 rounded-xl p-5" id="agri-options-kit" data-agri-options-kit data-token={token}>
               <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.optionsKit.fr} data-en={AGR_ARGENT_LBL.optionsKit.en} data-ar={AGR_ARGENT_LBL.optionsKit.ar}>{AGR_ARGENT_LBL.optionsKit.fr}</p>
               <ul class="mt-3 space-y-2 text-sm text-lune-soft">
-                {argent.optionsKit.map((o) => (
-                  <li class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1" data-agri-option-kit data-ligne-id={o.ligneId ?? ''}>
-                    <span class="text-lune">{o.designation}</span>
-                    {o.totalTtc !== null && <span class="fig text-lune" dir="ltr">+ {formatMAD(o.totalTtc)} TTC</span>}
-                  </li>
-                ))}
+                {argent.optionsKit.map((o) => {
+                  const etat = etatActivationOption({ ligneId: o.ligneId, apercuInterne, offreVivante: offerState === 'live' });
+                  const conf = confirmationOption(o.designation, o.totalTtc !== null ? formatMAD(o.totalTtc) : null);
+                  return (
+                    <li class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2" data-agri-option-kit data-ligne-id={o.ligneId ?? ''}>
+                      <span class="text-lune">{o.designation}</span>
+                      <span class="flex flex-wrap items-baseline gap-3">
+                        {o.totalTtc !== null && <span class="fig text-lune" dir="ltr">+ {formatMAD(o.totalTtc)} TTC</span>}
+                        {etat !== 'masque' && (
+                          <button type="button" data-option-ajouter data-ligne-id={o.ligneId ?? ''}
+                            data-confirm-fr={conf.fr} data-confirm-en={conf.en} data-confirm-ar={conf.ar}
+                            disabled={etat === 'apercu'} aria-disabled={etat === 'apercu' ? 'true' : undefined}
+                            class="border border-brass-400/60 px-3 py-1.5 text-xs font-semibold text-brass-300 transition-colors hover:bg-brass-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            data-i18n data-fr="Ajouter au devis" data-en="Add to quote" data-ar="إضافة إلى العرض">Ajouter au devis</button>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
+              <div id="agri-option-confirm" hidden role="dialog" aria-modal="true" aria-labelledby="agri-option-confirm-texte"
+                class="mt-4 border border-brass-400/50 bg-black/20 p-4">
+                <p id="agri-option-confirm-texte" class="text-sm text-lune"></p>
+                <div class="mt-3 flex flex-wrap gap-3">
+                  <button type="button" id="agri-option-confirm-ok" class="bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950 disabled:opacity-60"
+                    data-i18n data-fr="Confirmer l’ajout" data-en="Confirm" data-ar="تأكيد الإضافة">Confirmer l’ajout</button>
+                  <button type="button" id="agri-option-confirm-annuler" class="border border-white/30 px-4 py-2 text-sm text-lune-soft"
+                    data-i18n data-fr="Annuler" data-en="Cancel" data-ar="إلغاء">Annuler</button>
+                </div>
+              </div>
+              <p id="agri-option-msg" hidden role="alert" class="mt-3 text-sm text-brass-300"></p>
             </div>
           )}
           {argent && argent.nonInclus.length > 0 && (
@@ -9192,6 +9220,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     buildContactBody,
     formatMAD,
     formatNumber,
+    normalizeOptionResponse,
+    optionMessage,
+    OPTION_MSG,
+    OPTION_PROXY_PATH,
     type ContactChannel,
   } from '../../lib/proposition';
   // OPTIONS CHARGEABLES — lecture du contrat `taille_detail.json`.
@@ -10859,6 +10891,82 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       } else {
         translate = clampTranslate(translate, viewportSize(), contentSize, scale);
         apply();
+      }
+    });
+  })();
+
+  // ── AGW308 — OPTIONS DU KIT À COCHER (agricole) : « Ajouter au devis » → confirmation →
+  // POST same-origin /api/proposition-option { token, ligne_id } → rechargement de la page
+  // (les totaux sont ceux que le serveur sert : jamais recalculés ici). Aperçu interne : bouton
+  // inactif (rendu `disabled` côté serveur). Aucune option ne se retire en ligne.
+  (() => {
+    const racine = document.getElementById('agri-options-kit');
+    const panneau = document.getElementById('agri-option-confirm');
+    if (!racine || !panneau) return;
+    const texteEl = document.getElementById('agri-option-confirm-texte');
+    const okBtn = document.getElementById('agri-option-confirm-ok') as HTMLButtonElement | null;
+    const annulerBtn = document.getElementById('agri-option-confirm-annuler') as HTMLButtonElement | null;
+    const msgEl = document.getElementById('agri-option-msg');
+    const tokenOption = racine.dataset.token ?? '';
+    let enAttente: { ligneId: number; declencheur: HTMLButtonElement } | null = null;
+
+    const langue = (): 'fr' | 'en' | 'ar' => {
+      const l = (window as unknown as { __propCurrentLang?: () => string }).__propCurrentLang?.();
+      return l === 'en' || l === 'ar' ? l : 'fr';
+    };
+    const montrerMessage = (m: { fr: string; en: string; ar: string }): void => {
+      if (!msgEl) return;
+      msgEl.textContent = m[langue()];
+      msgEl.hidden = false;
+    };
+    const fermer = (): void => {
+      panneau.hidden = true;
+      enAttente?.declencheur.focus();
+      enAttente = null;
+    };
+
+    racine.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>('[data-option-ajouter]');
+      if (!btn || btn.disabled) return;
+      const ligneId = Number(btn.dataset.ligneId);
+      if (!Number.isInteger(ligneId) || ligneId <= 0) return;
+      enAttente = { ligneId, declencheur: btn };
+      const l = langue();
+      if (texteEl) texteEl.textContent = (l === 'en' ? btn.dataset.confirmEn : l === 'ar' ? btn.dataset.confirmAr : btn.dataset.confirmFr) ?? '';
+      if (msgEl) msgEl.hidden = true;
+      panneau.hidden = false;
+      okBtn?.focus();
+    });
+    annulerBtn?.addEventListener('click', fermer);
+    panneau.addEventListener('keydown', (ev) => {
+      if ((ev as KeyboardEvent).key === 'Escape') fermer();
+    });
+    okBtn?.addEventListener('click', async () => {
+      if (!enAttente || !tokenOption) return;
+      okBtn.disabled = true;
+      try {
+        const res = await fetch(OPTION_PROXY_PATH, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify({ token: tokenOption, ligne_id: enAttente.ligneId }),
+        });
+        let json: unknown = null;
+        try {
+          json = await res.json();
+        } catch {
+          json = null;
+        }
+        const r = normalizeOptionResponse(res.status, json);
+        if (r.ok) {
+          // Les totaux servis sont rechargés : la page ne recalcule jamais un total.
+          window.location.reload();
+          return;
+        }
+        montrerMessage(optionMessage(res.status, json));
+      } catch {
+        montrerMessage(OPTION_MSG.reseau);
+      } finally {
+        okBtn.disabled = false;
       }
     });
   })();

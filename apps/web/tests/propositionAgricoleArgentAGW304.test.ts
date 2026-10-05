@@ -220,10 +220,15 @@ describe('AGW304 — la page', () => {
     expect(page).toContain('{garantiesCodeesEnDurAffichees(installMode) && (');
   });
 
-  it('les options du kit sont en lecture seule (aucun bouton d’activation dans AGW304)', () => {
+  it('les options du kit sont NOMMÉES avec leur supplément TTC ; l’activation en ligne est AGW308 (gatée)', () => {
     const a = page.indexOf('data-agri-options-kit');
     const bloc = page.slice(a, page.indexOf('data-agri-non-inclus'));
-    expect(bloc).not.toMatch(/<button/);
+    expect(bloc).toContain('{o.designation}');
+    expect(bloc).toContain('formatMAD(o.totalTtc)');
+    // tout bouton d’activation passe par la fonction pure d’AGW308 (jamais inconditionnel)
+    for (const m of bloc.matchAll(/<button type="button" data-option-ajouter/g)) {
+      expect(bloc.slice(0, m.index)).toContain("{etat !== 'masque' && (");
+    }
   });
 
   it('vocabulaire interdit : jamais « gratuit », « à vie », « illimité » ni « jusqu’à 30 % »', () => {

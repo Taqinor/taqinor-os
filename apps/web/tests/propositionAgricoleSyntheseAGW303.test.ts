@@ -46,7 +46,7 @@ describe('AGW303 — syntheseAgricole : lecture défensive', () => {
     expect(s.besoinVsLivre!.hectaresIrrigables).toBeNull();
     expect(s.pointFonctionnement!.point).toEqual({ debitM3h: 30.5, hmtM: 58.7 });
     expect(s.pointFonctionnement!.courbe[0]).toEqual([0, 91]);
-    expect(s.schemaSvg!.startsWith('<svg')).toBe(true);
+    expect(s.dessinSchema!.startsWith('<svg')).toBe(true);
     expect(s.champ).toEqual({ kwc: 9.94, nbPanneaux: 14 });
     expect(s.aConfirmerParVisite).toEqual(['profondeur_forage_m']);
     expect(s.provenance.map((e) => e.cle)).toContain('niveau_statique_m');
@@ -90,9 +90,9 @@ describe('AGW303 — syntheseAgricole : lecture défensive', () => {
   });
 
   it('schema_svg : inséré seulement s’il s’agit d’un <svg> servi', () => {
-    expect(syntheseAgricole(payload({ ...SERVIE, schema_svg: '<script>alert(1)</script>' }))!.schemaSvg).toBeNull();
-    expect(syntheseAgricole(payload({ ...SERVIE, schema_svg: '' }))!.schemaSvg).toBeNull();
-    expect(syntheseAgricole(payload({ ...SERVIE, schema_svg: null }))!.schemaSvg).toBeNull();
+    expect(syntheseAgricole(payload({ ...SERVIE, schema_svg: '<script>alert(1)</script>' }))!.dessinSchema).toBeNull();
+    expect(syntheseAgricole(payload({ ...SERVIE, schema_svg: '' }))!.dessinSchema).toBeNull();
+    expect(syntheseAgricole(payload({ ...SERVIE, schema_svg: null }))!.dessinSchema).toBeNull();
   });
 
   it('pompe existante : plaque lue (kW, V, phases) ; sans plaque → null', () => {
@@ -171,7 +171,7 @@ describe('AGW303 — la page', () => {
 
   it('lit la synthèse servie, sans rien calculer', () => {
     expect(page).toContain('syntheseAgricole(data!)');
-    expect(page).toContain('set:html={synth.schemaSvg}');
+    expect(page).toContain('set:html={synth.dessinSchema}');
     expect(page).toContain('bvl.mois.map(');
     expect(page).toContain('data-agri-besoin-livre');
     expect(page).toContain('data-agri-schema');
@@ -185,7 +185,7 @@ describe('AGW303 — la page', () => {
 
   it('chaque bloc est gaté : sans synthèse, ni graphe ni schéma', () => {
     expect(page).toContain('{bvl && (');
-    expect(page).toContain('{synth?.schemaSvg && (');
+    expect(page).toContain('{synth?.dessinSchema && (');
     expect(page).toContain('{synth && (');
   });
 
