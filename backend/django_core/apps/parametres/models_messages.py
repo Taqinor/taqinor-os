@@ -788,7 +788,8 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT = {
 # `docs/crm/messages_meryem.md` (lignes `POMPAGE DARIJA : `). RELECTURE NATIVE
 # REDA À FAIRE (tâche manuelle) — sans bloquer l'envoi. Ni « فاتورة »
 # (facture), ni « السطح » (toit), ni « العائلة » (famille). Une clé absente =
-# le texte darija de base ; le B2B darija n'a aucune variante (hors AGR).
+# le texte darija de base. CIQ504 ajoute la darija B2B (entrée `industriel`,
+# partagée avec le commercial) sur le même patron.
 MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA = {
     'agricole': {
         'valeur_j1':
@@ -812,7 +813,43 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA = {
         'debrief_visite':
             "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم من بعد ما جا التقني ديالنا للفيرمة ديالكم: شنو رايكم فالزيارة ديالو، وواش بقا عندكم شي سؤال قبل ما نكملو مع بعضياتنا؟",
     },
+    # CIQ504 (05/10/2026) — darija B2B, base PARTAGÉE commercial + industriel
+    # (même dict, lu aussi par le commercial — voir l'alias plus bas). Chaque
+    # texte est traduit phrase par phrase de la variante FR B2B validée
+    # (CAD126/CIQ501) : ni « فاتورة الضو » (la facture du ménage), ni
+    # « العائلة » (famille), ni « السطح » (toit). Source : lignes
+    # `B2B DARIJA : ` de `docs/crm/messages_meryem.md`. RELECTURE NATIVE À
+    # FAIRE (tâche manuelle) — sans bloquer l'envoi. Un `corps_darija`
+    # personnalisé par la société n'est jamais remplacé (règle d'AGR511).
+    'industriel': {
+        'valeur_j1':
+            "السلام عليكم {civilite} {prenom}، حاولت نعيط ليكم ولكن ما لقيتكمش. كنوجد الدراسة ديال الطاقة الشمسية ديال {societe}. باش يكون التقدير مضبوط، خاصني الفواتير ديال الكهرباء ديال 12 الشهر اللخرين (ولا الكشوفات ديال الاستهلاك ديالكم) والعنوان ديال الموقع: من بعد نوجد ليكم الدراسة، مع الاقتصاد المقدر. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟",
+        'reveil_a1':
+            "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. كنتو توصلتو بدراسة ديال الطاقة الشمسية عندنا. إلا رجع المشروع كيهمكم، نعاود ليكم الدراسة محينة — بلاش، بلا ما تلتزمو بوالو. نتكلف بيها؟ (خاصني غير نتأكد من العنوان ديال الموقع.) جاوبو STOP وما نلحوش عليكم.",
+        'reveil_a2':
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: الفواتير ديال الكهرباء ديال 12 الشهر اللخرين (ولا الكشوفات ديال الاستهلاك ديالكم)، ونصيفط ليكم التقدير محين. جاوبو STOP وما نلحوش عليكم.",
+        'reveil_a3':
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نعاود ليكم الدراسة محينة. نوجدها ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.",
+        'rappel_plus_tard':
+            "واخا، غادي نعيط ليكم [النهار] على [الساعة]. وحتى لذاك الوقت، إلا كانو عندكم الفواتير ديال الكهرباء ديال 12 الشهر اللخرين (ولا الكشوفات ديال الاستهلاك ديالكم)، غادي يعاونوني نوجد التقدير.",
+        'dimanche_famille':
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عارفة بلي القرار كيتاخد بين أكثر من واحد. إلا غادي تهضرو عليه مع الفريق ديالكم، نقدر نصيفط ليكم ورقة الملخص (صفحة وحدة فيها الأرقام المهمة) باش تشاركوها، ولا نتلاقاو جوج ولا تلاتة ف الوقت اللي يناسبكم، كيف ما بغيتو.",
+        'visite_proposition':
+            "باش نثبتو ليكم العرض، نقدرو نجيو للموقع ديالكم لزيارة تقنية بلا فلوس: التقني كيتأكد من الاتجاه والهيكل ديال البنايات ومن التابلو ديال الضو، وكيجاوب على كل الأسئلة ديال الفريق ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — {conseiller}",
+        'visite_confirmation':
+            "السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة {date_visite} ف الموقع ديالكم. التقني غادي يشوف الهيكل ديال البنايات والتابلو ديال الضو — وجدو ليه الوصول للمحل التقني. الحضور ديال شي مسؤول مهم: هي الفرصة باش نجاوبو على جميع الأسئلة فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — {conseiller}",
+        'j4_preuve':
+            "هادي تجهيزة مهنية ركبناها ف {mois_preuve} ف {ville_preuve} : {lien_preuve}. القوة المركبة: {puissance_preuve} kWc. فيديو صغير ديال الشانطي: {lien_video_preuve}.",
+        'debrief_visite':
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم من بعد ما جا التقني ديالنا للموقع ديالكم: شنو رايكم فالزيارة ديالو، وواش بقا عندكم شي سؤال قبل ما نكملو مع بعضياتنا؟",
+        'parrainage':
+            "إلا كانت شي شركة أخرى قريبة منكم، ولا شي موقع آخر ديال المجموعة ديالكم، كتفكر ف الطاقة الشمسية، تقدرو تصيفطو ليها الرابط ديال الرعاية ديالكم؛ غادي تكون عندها نفس الدراسة بلاش.",
+    },
 }
+# CIQ504 — le commercial lit EXACTEMENT la darija B2B de l'industriel (même
+# patron que le dict FR) : une correction sur l'un vaut pour l'autre.
+MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA['commercial'] = (
+    MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA['industriel'])
 
 # Le commercial partage EXACTEMENT les textes de l'industriel : même
 # organisation, même processus d'achat. Un dict partagé plutôt que recopié —
