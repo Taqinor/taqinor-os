@@ -16,8 +16,12 @@ from apps.ventes.moteur_ci.profils import (
 ICI = os.path.dirname(os.path.abspath(__file__))
 CONTRAT = os.path.join(os.path.dirname(ICI), 'contract_samples', 'etude_ci_preview.json')
 PAQUET = os.path.dirname(os.path.abspath(profils.__file__))
-RACINES_INTERDITES = ('django', 'rest_framework', 'celery', 'apps', 'authentication', 'core')
-#: Modules hors paquet permis : eux-mêmes sans Django (vérifié ci-dessous).
+#: CIQ110/CIQ116 (re-pin) — le paquet réutilise des modules PURS hors de lui
+#: (croisement ``solar_design``, doctrine ``dimensionnement``, ``core.electrique``,
+#: constantes 82-21, plages ONEE) : la garde interdit l'import DIRECT de Django
+#: ou d'un modèle, et vérifie TRANSITIVEMENT (interpréteur neuf) qu'aucun module
+#: du paquet ne charge Django, DRF, Celery ni un ``models``.
+RACINES_INTERDITES = ('django', 'rest_framework', 'celery', 'authentication')
 IMPORTS_PURS_PERMIS = frozenset({'apps.parametres.pvgis_profils'})
 
 
@@ -156,20 +160,23 @@ class TestPurete(unittest.TestCase):
         self.assertEqual(fautifs, [])
 
     def test_imports_permis_sans_django(self):
-        racine = os.path.dirname(os.path.dirname(PAQUET))
-        for module in IMPORTS_PURS_PERMIS:
-            chemin = os.path.join(os.path.dirname(racine), *module.split('.')) + '.py'
-            with open(chemin, encoding='utf-8') as fh:
-                arbre = ast.parse(fh.read())
-            for noeud in arbre.body:
-                if isinstance(noeud, ast.Import):
-                    noms = [alias.name for alias in noeud.names]
-                elif isinstance(noeud, ast.ImportFrom):
-                    noms = [noeud.module or '']
-                else:
-                    continue
-                for nom in noms:
-                    self.assertNotIn(nom.split('.')[0], RACINES_INTERDITES, (module, nom))
+        """Interpréteur NEUF (sans réglages Django) : importer tout le paquet ne
+        charge ni Django, ni DRF, ni Celery, ni aucun ``models``."""
+        import subprocess
+        import sys
+        racine = os.path.dirname(os.path.dirname(os.path.dirname(PAQUET)))
+        script = (
+            'import importlib, pkgutil, sys\n'
+            'import apps.ventes.moteur_ci as p\n'
+            'for m in pkgutil.iter_modules(p.__path__):\n'
+            '    importlib.import_module("apps.ventes.moteur_ci." + m.name)\n'
+            'print(sorted(k for k in sys.modules if k.split(".")[0] in '
+            '("django", "rest_framework", "celery") or k.endswith(".models")))\n')
+        env = {k: v for k, v in os.environ.items() if k != 'DJANGO_SETTINGS_MODULE'}
+        sortie = subprocess.run([sys.executable, '-c', script], cwd=racine, env=env,
+                                capture_output=True, text=True, timeout=120)
+        self.assertEqual(sortie.returncode, 0, sortie.stderr[-2000:])
+        self.assertEqual(sortie.stdout.strip(), '[]')
 
     def test_garde_armee(self):
         arbre = ast.parse('from django.db import models\n')

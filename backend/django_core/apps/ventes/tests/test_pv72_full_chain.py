@@ -106,9 +106,11 @@ class TestPV72FullChain(TestCase):
             etude_params={'puissance_souscrite_kva': 80})
         result = run_bankable_study(devis, zones=[self._zone()])
         sp = result['subscribed_power']
-        self.assertIsNotNone(sp['peak_reduction_pct'])
-        self.assertIsNotNone(sp['recommended_subscribed'])
-        self.assertIsNotNone(sp['annual_saving'])
+        # CIQ121 (re-pin) — aucune économie de prime fixe attribuée au PV
+        # seul : ``annual_saving`` est null en C&I, avec sa mention ; sans
+        # étude C&I la charge est omise (aucun profil codé), donc pas de pointe.
+        self.assertIsNone(sp['annual_saving'])
+        self.assertIn('révise', sp['mention'])
 
     def test_non_ci_mode_subscribed_power_is_minimal_honest_block(self, mock_prod, mock_tmy):
         devis = self._devis(mode_installation='residentiel')

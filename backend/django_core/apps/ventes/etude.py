@@ -778,6 +778,43 @@ def _tiled_load_curve(daily_load_kwh, profile_key):
     return curve
 
 
+#: CIQ121 — motif d'omission de l'autoconsommation d'un devis C&I sans étude.
+MOTIF_SANS_ETUDE_CI = (
+    "étude C&I absente (profil de charge déclaré non calculé) : "
+    "autoconsommation omise — jamais un profil type codé")
+
+#: CIQ121 — la puissance souscrite ne baisse que si le client la RÉVISE : la
+#: prime fixe n'est jamais une économie attribuée au PV seul.
+MENTION_PUISSANCE_SOUSCRITE = (
+    "la puissance souscrite ne baisse que si le client la révise ; "
+    "non attribuable au PV seul")
+
+
+def _courbe_ci_depuis_etude(devis):
+    """CIQ121 — 288 points « 12 mois × 24 h » (énergie du mois à chaque heure)
+    déroulés depuis les ``jours_types`` de l'étude C&I du devis
+    (``etude_params.etude_ci.profil_charge``), ou ``None`` sans étude.
+
+    Σ courbe = Σ (charge × nb_jours) des jours types : même énergie annuelle."""
+    etude = ((getattr(devis, 'etude_params', None) or {}).get('etude_ci') or {})
+    jours_types = (etude.get('profil_charge') or {}).get('jours_types') or []
+    if not jours_types:
+        return None
+    curve = [0.0] * 288
+    for jt in jours_types:
+        try:
+            m = int(jt.get('mois')) - 1
+        except (TypeError, ValueError):
+            continue
+        charge = jt.get('charge_kwh') or []
+        if not 0 <= m < 12 or len(charge) != 24:
+            continue
+        n = _num(jt.get('nb_jours'), 0.0)
+        for h in range(24):
+            curve[m * 24 + h] += _num(charge[h], 0.0) * n
+    return curve
+
+
 def _hourly_flows(load_curve, production_curve):
     """Aligne charge/production heure par heure → surplus injecté / import réseau.
 
@@ -854,6 +891,7 @@ def _subscribed_power_block(devis, load_curve, production_curve):
                 'peak_reduction_pct': None,
                 'recommended_subscribed': None,
                 'annual_saving': None,
+                'mention': None,
             },
             [],
         )
@@ -885,10 +923,15 @@ def _subscribed_power_block(devis, load_curve, production_curve):
             load_curve=load_kw, production_curve=prod_kw,
             curve_unit=SUBSCRIBED_CURVE_UNIT_KW,
             current_subscribed_kva=current_subscribed_kva)
+    # CIQ121 — aucune économie de prime fixe / puissance souscrite attribuée au
+    # PV seul (convention 2 ; la prime ONEE porte sur la puissance SOUSCRITE,
+    # qui ne bouge que si le client la révise). La pointe post-PV reste une
+    # indication INTERNE.
     block = {
         'peak_reduction_pct': result['peak_reduction_pct'],
         'recommended_subscribed': result['recommended_subscribed'],
-        'annual_saving': result['annual_saving'],
+        'annual_saving': None,
+        'mention': MENTION_PUISSANCE_SOUSCRITE,
     }
     return block, result['warnings']
 
@@ -1038,8 +1081,18 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
     # la conso du lead (même résolution 288 pts que la production, voir
     # _tiled_load_curve — jamais l'auto-synthèse 24 pts interne à
     # hourly_self_consumption, qui tronquerait la production réelle).
+    sans_etude_ci = False
     if load_curve:
         load_curve_resolved = list(load_curve)
+    elif getattr(devis, 'mode_installation', None) in ('industriel', 'commercial'):
+        # CIQ121 — la charge C&I vient de l'étude C&I (profil DÉCLARÉ, jours
+        # types déroulés) ; sans étude, l'autoconsommation est OMISE, jamais
+        # le profil « commercial » codé sans source.
+        load_curve_resolved = _courbe_ci_depuis_etude(devis)
+        if load_curve_resolved is None:
+            sans_etude_ci = True
+            warnings.append(MOTIF_SANS_ETUDE_CI)
+            load_curve_resolved = []
     else:
         daily_load = _daily_load_kwh_from_devis(devis)
         if daily_load <= 0:
@@ -1049,17 +1102,23 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
         load_curve_resolved = _tiled_load_curve(
             daily_load, _load_profile_key(devis))
 
-    sc_result = hourly_self_consumption(
-        load_curve=load_curve_resolved, production_curve=production_curve)
-    self_consumption = {
-        'hours': sc_result['hours'],
-        'self_consumption_rate': sc_result['self_consumption_rate'],
-        'coverage_rate': sc_result['coverage_rate'],
-        'self_consumed_kwh': sc_result['self_consumed_kwh'],
-        'surplus_kwh': sc_result['surplus_kwh'],
-        'grid_import_kwh': sc_result['grid_import_kwh'],
-    }
-    warnings.extend(sc_result['warnings'])
+    if sans_etude_ci:
+        self_consumption = {
+            'hours': 0, 'self_consumption_rate': None, 'coverage_rate': None,
+            'self_consumed_kwh': None, 'surplus_kwh': None, 'grid_import_kwh': None,
+        }
+    else:
+        sc_result = hourly_self_consumption(
+            load_curve=load_curve_resolved, production_curve=production_curve)
+        self_consumption = {
+            'hours': sc_result['hours'],
+            'self_consumption_rate': sc_result['self_consumption_rate'],
+            'coverage_rate': sc_result['coverage_rate'],
+            'self_consumed_kwh': sc_result['self_consumed_kwh'],
+            'surplus_kwh': sc_result['surplus_kwh'],
+            'grid_import_kwh': sc_result['grid_import_kwh'],
+        }
+        warnings.extend(sc_result['warnings'])
 
     _, _, surplus_curve, import_curve = _hourly_flows(
         load_curve_resolved, production_curve)
@@ -1106,7 +1165,7 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
     # n'entre pas dans le flux : la projection porte sur l'autoconsommation
     # seule, et l'avertissement de ``net_metering_savings`` le dit.
     annual_savings_year1 = (
-        _annual_savings_year1(settings, self_consumption['self_consumed_kwh'], classe)
+        _annual_savings_year1(settings, self_consumption['self_consumed_kwh'] or 0.0, classe)
         + (net_metering['annual_savings_mad'] or 0.0))
     upfront_cost = _num(getattr(devis, 'total_ht', None), 0.0)
     # CALX279 — l'indexation est celle SAISIE par la société (avec sa

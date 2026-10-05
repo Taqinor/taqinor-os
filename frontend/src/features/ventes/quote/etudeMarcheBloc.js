@@ -160,6 +160,32 @@ const CARBURANTS = ['butane', 'diesel']
 
 const vide = (v) => v === '' || v === null || v === undefined
 
+const texteNet = (v) => (vide(v) ? '' : String(v).trim())
+
+// Virgule décimale lue comme un point (saisie FR), jamais arrondie.
+const nombreSaisi = (v) => (vide(v) ? null : nombre(String(v).replace(',', '.')))
+
+/** AGR214 — `{valeur, source}` du taux d'actualisation, ou `null`. */
+export function tauxActualisation(saisie) {
+  if (!saisie || vide(saisie.valeur)) return null
+  return { valeur: nombreSaisi(saisie.valeur), source: texteNet(saisie.source) }
+}
+
+const CHAMPS_PRET_NUMERIQUES = ['principal_mad', 'taux_annuel_pct', 'duree_mois', 'differe_mois']
+
+/** AGR214 — le prêt saisi (offre écrite), ou `null` si rien n'est rempli. */
+export function pretInterne(saisie) {
+  if (!saisie) return null
+  const rempli = [...CHAMPS_PRET_NUMERIQUES, 'type_pret', 'source']
+    .some((k) => !vide(saisie[k]))
+  if (!rempli) return null
+  const pret = {}
+  for (const k of CHAMPS_PRET_NUMERIQUES) pret[k] = nombreSaisi(saisie[k])
+  pret.type_pret = texteNet(saisie.type_pret) || null
+  pret.source = texteNet(saisie.source)
+  return pret
+}
+
 /**
  * `eco` (état d'écran) → `saisies_economie_pompage`, ou `null` si rien n'est
  * déclaré. `moisCalendrier` = mois où le besoin servi par l'aperçu (AGR2) est
@@ -211,8 +237,10 @@ export function saisiesEconomiePompage(eco, { moisCalendrier = null, aujourdhui 
   out.entretien_paye_mad_an = !vide(e.entretien)
     ? { valeur: nombre(e.entretien), saisi_le: date } : null
   out.coherence_confirmee = Boolean(e.coherenceConfirmee)
-  out.taux_actualisation = e.interne?.taux_actualisation ?? null
-  out.pret = e.interne?.pret ?? null
+  // AGR214 — saisies INTERNES (volet jamais imprimé) : texte tapé → nombres,
+  // rien de rempli ⇒ `null` ; aucun taux par défaut.
+  out.taux_actualisation = tauxActualisation(e.interne?.taux_actualisation)
+  out.pret = pretInterne(e.interne?.pret)
   const declare = e.energie || out.mois_irrigation || out.entretien_paye_mad_an
     || out.coherence_confirmee || out.taux_actualisation || out.pret
   return declare ? out : null
