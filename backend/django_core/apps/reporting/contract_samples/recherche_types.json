@@ -1,0 +1,32 @@
+{
+  "endpoint": "GET /api/django/reporting/search/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ACAL198 (C-ACAL-018) — liste PARTAGEE des cles `type` que la recherche globale (`reporting/search.py::_SEARCH_SPECS`) peut renvoyer. Le serveur sert 'calepinage' alors que le front n'avait aucune route pour ce type : le clic fermait la barre sans naviguer. Le test backend egale cette liste aux constructeurs reels de specs ; le vitest d'ACAL199 exige une ROUTE front pour chacun. Ajouter un type cote serveur sans l'ajouter ici rougit le test backend. Les groupes `custom:<code>` (objets personnalises) sont dynamiques et hors liste.",
+  "types": [
+    "lead",
+    "client",
+    "devis",
+    "facture",
+    "chantier",
+    "equipement",
+    "ticket",
+    "bon_commande",
+    "contrat",
+    "dossier",
+    "produit",
+    "campagne_pub",
+    "calepinage"
+  ],
+  "exemple": {
+    "query": "hammadi",
+    "groups": [
+      {
+        "type": "calepinage",
+        "label": "Calepinages",
+        "results": [
+          {"id": 7, "label": "Villa Hammadi", "sublabel": "Client Hammadi"}
+        ]
+      }
+    ]
+  }
+}
