@@ -60,7 +60,9 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const SCHEMA_PY = readFileSync(
   join(HERE, '../../../../backend/django_core/apps/ventes/domain/etude_schema.py'), 'utf8')
 const ECRAN = new Set(
-  [...SCHEMA_PY.matchAll(/^ {4}'([a-z0-9_]+)': _cle\(\([^)]*\),\s*ECRAN\b/gm)].map(m => m[1]))
+  // `\s*` après `_cle(` : une déclaration peut passer à la ligne
+  // (`'saisies_economie_pompage': _cle(\n        (dict,), ECRAN, …`).
+  [...SCHEMA_PY.matchAll(/^ {4}'([a-z0-9_]+)': _cle\(\s*\([^)]*\),\s*ECRAN\b/gm)].map(m => m[1]))
 
 const horsSchema = (obj) => Object.keys(obj || {}).filter(k => !ECRAN.has(k))
 
