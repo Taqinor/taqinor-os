@@ -265,8 +265,11 @@ def _html_rapport_etude():
 
     nu = SimpleNamespace(company=None, client_id=None, lead_id=None,
                          titre='Villa Anfa', resultat=None, pk=None)
+    # ACAL226 - palier PUR : l'assemblage brut (``paginer=False``) ; la
+    # pagination rend chaque section en PDF pour compter ses pages, et le
+    # palier PDF REEL ci-dessous prouve la piece servie.
     return html_du_rapport(nu, resultat=_resultat(), site=SITE,
-                           identite=IDENTITE, styles=STYLES)
+                           identite=IDENTITE, styles=STYLES, paginer=False)
 
 
 def _html_rapport_ombrage():

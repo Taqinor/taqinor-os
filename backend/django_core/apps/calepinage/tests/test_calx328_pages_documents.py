@@ -109,10 +109,12 @@ INTERVALLES = {
         "page forcé : jamais vide, jamais une dérive à des dizaines de "
         "pages pour l'exemple du contrat."),
     'rapport_etude': (
-        2, 10,
-        "dix blocs (garde + neuf sections) en flux continu — jamais un "
-        "document d'une seule page pour neuf sections, jamais au-delà de "
-        "dix pages pour l'exemple du contrat."),
+        2, 14,
+        "ACAL226 - le rapport SERVI est pagine : garde, sommaire en page 2, "
+        "puis une section par page (neuf sections), soit onze pages mesurees "
+        "pour l'exemple du contrat ; jamais un document d'une seule page, "
+        "jamais au-dela de quatorze (annexes constructeur exclues : "
+        "l'exemple n'en porte aucune)."),
     'rapport_ombrage': (
         1, 6,
         "garde, un bloc par pan (deux pans dans l'exemple), la matrice "
