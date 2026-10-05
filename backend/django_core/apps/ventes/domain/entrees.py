@@ -395,7 +395,7 @@ def entrees_depuis_lead(lead, company, *, contexte=True, jour_reference=None):
     from apps.crm.selectors import equipements_pour_lead
     from apps.ventes.courbes_journalieres import (
         composer_equipements, occupation_du_lead)
-    from apps.ventes.etude_horaire import profil_depuis_factures
+    from apps.ventes.horaire.conso import profil_depuis_factures
 
     # ERR-QAC-CONSO-KWH-SAISI-DEUX-DERIVATIONS — mêmes arguments que le chemin
     # devis (``etude_horaire.profil_conso_du_devis``) : le kWh mensuel DÉCLARÉ

@@ -48,9 +48,8 @@ def _garde_kwh_declare(devis):
     silencieux. Partagée par ``/atomic`` (sous sa transaction, rien n'est
     créé) et ``replace-lines`` (avant toute écriture)."""
     from rest_framework.exceptions import ValidationError
-    from ..etude_horaire import (
-        CODE_KWH_INCOHERENT, MESSAGE_KWH_INCOHERENT,
-        controle_kwh_declare_du_devis)
+    from ..etude_horaire import controle_kwh_declare_du_devis
+    from ..horaire.conso import CODE_KWH_INCOHERENT, MESSAGE_KWH_INCOHERENT
     controle = controle_kwh_declare_du_devis(devis)
     if controle is not None and not controle['coherent']:
         raise ValidationError({'detail': MESSAGE_KWH_INCOHERENT,

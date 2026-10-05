@@ -167,8 +167,8 @@ class DichotomieHorsPlageTests(SimpleTestCase):
             B.kwh_depuis_facture_mad(592.77)['kwh_mensuel'], 359.0, places=1)
 
     def test_la_serie_mensuelle_omet_tout_plutot_qu_un_trou(self):
-        from apps.ventes import etude_horaire as EH
-        kwh, detail = EH.serie_kwh_depuis_mad([1e9] * 12)
+        from apps.ventes.horaire import conso as HC
+        kwh, detail = HC.serie_kwh_depuis_mad([1e9] * 12)
         self.assertIsNone(kwh)
         self.assertEqual(detail, {})
 

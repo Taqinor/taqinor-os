@@ -21,9 +21,11 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.crm.models import Client, Lead
 from apps.stock.models import Produit
 from apps.ventes.etude_horaire import (
+    controle_kwh_declare_du_devis, profil_conso_du_devis,
+)
+from apps.ventes.horaire.conso import (
     CODE_KWH_INCOHERENT, MESSAGE_KWH_INCOHERENT,
-    coherence_kwh_declare_factures, controle_kwh_declare_du_devis,
-    profil_conso_du_devis,
+    coherence_kwh_declare_factures,
 )
 from apps.ventes.models import Devis
 from authentication.models import Company
