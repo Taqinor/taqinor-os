@@ -299,15 +299,13 @@ def send_document_email(document, *, to_email=None, sujet=None, corps=None,
     return log
 
 
-def send_relance_email(facture, *, niveau_nom='', message='', user=None,
-                       attach_pdf=False):
-    """Envoie un email de relance pour une facture impayée et le consigne.
-
-    Le corps reprend le message du niveau de relance configuré quand il est
-    fourni. NO-OP réseau sans clé (backend console). Renvoie l'EmailLog créé.
+def composer_relance_email(facture, *, niveau_nom='', message=''):
+    """Objet + corps RENDUS d'un email de relance — fonction PURE (aucun envoi,
+    aucune écriture). Partagée par l'envoi (``send_relance_email``) et
+    l'aperçu de la fenêtre « Relancer » (``factures/{id}/relance-apercu/``) :
+    l'aperçu montre donc EXACTEMENT ce qui part. Renvoie ``(sujet, corps)``.
     """
     client = getattr(facture, 'client', None)
-    dest = (getattr(client, 'email', '') or '').strip()
     reference = getattr(facture, 'reference', '') or ''
     sujet = f'Rappel de paiement — facture {reference}'
     if niveau_nom:
@@ -330,6 +328,22 @@ def send_relance_email(facture, *, niveau_nom='', message='', user=None,
         f"{salut}\n\n{corps_msg}\n\n"
         f"Cordialement,\n{signature}"
     )
+    return sujet, corps
+
+
+def send_relance_email(facture, *, niveau_nom='', message='', user=None,
+                       attach_pdf=False):
+    """Envoie un email de relance pour une facture impayée et le consigne.
+
+    Le corps reprend le message du niveau de relance configuré quand il est
+    fourni. NO-OP réseau sans clé (backend console). Renvoie l'EmailLog créé.
+    Objet et corps viennent de ``composer_relance_email`` (aperçu == envoi).
+    """
+    client = getattr(facture, 'client', None)
+    dest = (getattr(client, 'email', '') or '').strip()
+    reference = getattr(facture, 'reference', '') or ''
+    sujet, corps = composer_relance_email(
+        facture, niveau_nom=niveau_nom, message=message)
 
     attachment = attachment_name = None
     if attach_pdf:

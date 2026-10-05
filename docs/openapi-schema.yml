@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4764, operations: 7564, components: 2173}
+counts: {paths: 4770, operations: 7570, components: 2173}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1267,6 +1267,7 @@ operations:
 - post /api/django/facturation/factures/{id}/lien-paiement/ -> django_facturation_factures_lien_paiement_create
 - post /api/django/facturation/factures/{id}/marquer-payee/ -> django_facturation_factures_marquer_payee_create
 - get /api/django/facturation/factures/{id}/paiements/ -> django_facturation_factures_paiements_retrieve
+- get /api/django/facturation/factures/{id}/relance-apercu/ -> django_facturation_factures_relance_apercu_retrieve
 - post /api/django/facturation/factures/{id}/relancer/ -> django_facturation_factures_relancer_create
 - get /api/django/facturation/factures/{id}/relances/ -> django_facturation_factures_relances_retrieve
 - post /api/django/facturation/factures/{id}/remettre-brouillon/ -> django_facturation_factures_remettre_brouillon_create
@@ -3549,6 +3550,7 @@ operations:
 - get /api/django/ventes/devis/{id}/etat-pdf/ -> django_ventes_devis_etat_pdf_retrieve
 - get /api/django/ventes/devis/{id}/etude-params/ -> django_ventes_devis_etude_params_retrieve
 - patch /api/django/ventes/devis/{id}/etude-params/ -> django_ventes_devis_etude_params_partial_update
+- post /api/django/ventes/devis/{id}/facturer-complet/ -> django_ventes_devis_facturer_complet_create
 - post /api/django/ventes/devis/{id}/generer-facture/ -> django_ventes_devis_generer_facture_create
 - post /api/django/ventes/devis/{id}/generer-pdf/ -> django_ventes_devis_generer_pdf_create
 - get /api/django/ventes/devis/{id}/historique-configuration/ -> django_ventes_devis_historique_configuration_retrieve
@@ -3648,6 +3650,7 @@ operations:
 - post /api/django/ventes/factures/{id}/lien-paiement/ -> django_ventes_factures_lien_paiement_create
 - post /api/django/ventes/factures/{id}/marquer-payee/ -> django_ventes_factures_marquer_payee_create
 - get /api/django/ventes/factures/{id}/paiements/ -> django_ventes_factures_paiements_retrieve
+- get /api/django/ventes/factures/{id}/relance-apercu/ -> django_ventes_factures_relance_apercu_retrieve
 - post /api/django/ventes/factures/{id}/relancer/ -> django_ventes_factures_relancer_create
 - get /api/django/ventes/factures/{id}/relances/ -> django_ventes_factures_relances_retrieve
 - post /api/django/ventes/factures/{id}/remettre-brouillon/ -> django_ventes_factures_remettre_brouillon_create
@@ -5087,6 +5090,7 @@ operations:
 - post /api/v1/facturation/factures/{id}/lien-paiement/ -> v1_facturation_factures_lien_paiement_create
 - post /api/v1/facturation/factures/{id}/marquer-payee/ -> v1_facturation_factures_marquer_payee_create
 - get /api/v1/facturation/factures/{id}/paiements/ -> v1_facturation_factures_paiements_retrieve
+- get /api/v1/facturation/factures/{id}/relance-apercu/ -> v1_facturation_factures_relance_apercu_retrieve
 - post /api/v1/facturation/factures/{id}/relancer/ -> v1_facturation_factures_relancer_create
 - get /api/v1/facturation/factures/{id}/relances/ -> v1_facturation_factures_relances_retrieve
 - post /api/v1/facturation/factures/{id}/remettre-brouillon/ -> v1_facturation_factures_remettre_brouillon_create
@@ -7335,6 +7339,7 @@ operations:
 - get /api/v1/ventes/devis/{id}/etat-pdf/ -> v1_ventes_devis_etat_pdf_retrieve
 - get /api/v1/ventes/devis/{id}/etude-params/ -> v1_ventes_devis_etude_params_retrieve
 - patch /api/v1/ventes/devis/{id}/etude-params/ -> v1_ventes_devis_etude_params_partial_update
+- post /api/v1/ventes/devis/{id}/facturer-complet/ -> v1_ventes_devis_facturer_complet_create
 - post /api/v1/ventes/devis/{id}/generer-facture/ -> v1_ventes_devis_generer_facture_create
 - post /api/v1/ventes/devis/{id}/generer-pdf/ -> v1_ventes_devis_generer_pdf_create
 - get /api/v1/ventes/devis/{id}/historique-configuration/ -> v1_ventes_devis_historique_configuration_retrieve
@@ -7434,6 +7439,7 @@ operations:
 - post /api/v1/ventes/factures/{id}/lien-paiement/ -> v1_ventes_factures_lien_paiement_create
 - post /api/v1/ventes/factures/{id}/marquer-payee/ -> v1_ventes_factures_marquer_payee_create
 - get /api/v1/ventes/factures/{id}/paiements/ -> v1_ventes_factures_paiements_retrieve
+- get /api/v1/ventes/factures/{id}/relance-apercu/ -> v1_ventes_factures_relance_apercu_retrieve
 - post /api/v1/ventes/factures/{id}/relancer/ -> v1_ventes_factures_relancer_create
 - get /api/v1/ventes/factures/{id}/relances/ -> v1_ventes_factures_relances_retrieve
 - post /api/v1/ventes/factures/{id}/remettre-brouillon/ -> v1_ventes_factures_remettre_brouillon_create

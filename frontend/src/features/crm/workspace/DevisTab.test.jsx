@@ -226,14 +226,15 @@ describe('LW21 — cartes devis + actions facture/chantier', () => {
     expect(screen.getByText('DEV-2026-001')).toBeInTheDocument()
     expect(screen.getByText('Accepté')).toBeInTheDocument()
     expect(document.querySelector('.num')).toHaveTextContent('15 000')
-    expect(screen.getByRole('button', { name: /Générer la facture/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Facturer \(facture complète\)/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Facturer par tranches/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Créer le chantier/ })).toBeInTheDocument()
   })
 
   it('« Générer la facture » appelle ventesApi puis onAction(\'refresh\')', async () => {
     const user = userEvent.setup()
     const { onAction } = renderTab({ state: leadState({ devis: [devisAccepte] }) })
-    await user.click(screen.getByRole('button', { name: /Générer la facture/ }))
+    await user.click(screen.getByRole('button', { name: /Facturer par tranches/ }))
     await waitFor(() => expect(genererFacture).toHaveBeenCalledWith(1))
     await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
     expect(await screen.findByText(/FAC-1 créée/)).toBeInTheDocument()
@@ -261,7 +262,7 @@ describe('LW21 — cartes devis + actions facture/chantier', () => {
 
   it('devis brouillon : aucune action facture/chantier ni piste document', () => {
     renderTab({ state: leadState({ devis: [{ ...devisAccepte, statut: 'brouillon' }] }) })
-    expect(screen.queryByRole('button', { name: /Générer la facture/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Générer la facture|Facturer/ })).toBeNull()
     expect(screen.queryByRole('button', { name: /Créer le chantier/ })).toBeNull()
   })
 })

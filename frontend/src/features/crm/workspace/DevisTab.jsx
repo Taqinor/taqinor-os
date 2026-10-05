@@ -11,6 +11,7 @@ import {
 import DocumentStageTrack from '../../../ui/DocumentStageTrack'
 import crmApi from '../../../api/crmApi'
 import ventesApi from '../../../api/ventesApi'
+import FacturerDevisDialog from '../../ventes/FacturerDevisDialog'
 import installationsApi from '../../../api/installationsApi'
 import stockApi from '../../../api/stockApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
@@ -526,6 +527,7 @@ export default function DevisTab({
     }
   }
 
+  const [facturerTarget, setFacturerTarget] = useState(null)
   const genererFacture = (d) => {
     setBusyAction(`f-${d.id}`)
     setActionMsg(null)
@@ -996,12 +998,22 @@ export default function DevisTab({
                     current={devisTrackCurrent(d)}
                   />
                   <div className="lw-context-devis-actions">
+                    {!(d.solde?.tranches_facturees > 0) && (
+                      <Button
+                        type="button" size="sm"
+                        onClick={() => setFacturerTarget(d)}
+                      >
+                        🧾 Facturer (facture complète)
+                      </Button>
+                    )}
                     <Button
                       type="button" size="sm" variant="outline"
                       disabled={busyAction === `f-${d.id}`}
                       onClick={() => genererFacture(d)}
                     >
-                      {busyAction === `f-${d.id}` ? '…' : '🧾 Générer la facture'}
+                      {busyAction === `f-${d.id}` ? '…'
+                        : d.solde?.tranches_facturees > 0 ? '🧾 Générer la facture'
+                          : '🧾 Facturer par tranches (acompte…)'}
                     </Button>
                     {d.chantier ? (
                       // CHT21(b) — span inerte devenu cliquable : deep-link
@@ -1085,6 +1097,11 @@ export default function DevisTab({
           </div>
         </DialogContent>
       </Dialog>
+      <FacturerDevisDialog
+        devis={facturerTarget}
+        onOpenChange={(o) => { if (!o) setFacturerTarget(null) }}
+        onDone={() => onAction?.('refresh')}
+      />
     </div>
   )
 }

@@ -57,61 +57,12 @@ FACTURE_CHAMPS_FINANCIERS = frozenset([
 ])
 
 
-def arrondir_au_pas(montant, pas):
-    """ZFAC11 — arrondit ``montant`` au multiple le plus proche de ``pas``.
-
-    Pur (aucune I/O). ``pas <= 0`` (arrondi désactivé) renvoie ``montant``
-    inchangé — comportement actuel strictement préservé. Arrondi « half-up »
-    (0,025 monte à 0,05 pour un pas de 0,05). Renvoie un ``Decimal`` quantifié
-    à 2 décimales.
-    """
-    from decimal import Decimal, ROUND_HALF_UP
-    montant = Decimal(str(montant))
-    pas = Decimal(str(pas or 0))
-    if pas <= 0:
-        return montant.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-    nb_pas = (montant / pas).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-    return (nb_pas * pas).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-
-
-def proposer_arrondi_caisse(facture, mode, reste=None):
-    """ZFAC11 — propose le reste à payer ARRONDI au pas de caisse société.
-
-    Ne s'applique QU'aux règlements en espèces et seulement si la société a
-    configuré un pas (> 0). Renvoie un dict
-    ``{montant_arrondi, ecart, pas, applicable}`` où ``ecart`` = résiduel non
-    perçu (montant_du − montant_arrondi, jamais négatif) qui sera tracé comme
-    un abandon « Arrondi espèces ». Hors espèces ou pas nul → ``applicable`` est
-    ``False`` et ``montant_arrondi`` = reste à payer (aucun arrondi).
-
-    ``reste`` : résiduel de référence explicite. Indispensable au moment de
-    l'encaissement, où ``facture.montant_du`` (propriété vivante) inclut DÉJÀ
-    le paiement tout juste enregistré — la proposition doit se calculer sur le
-    reste AVANT paiement, sinon elle ne correspond jamais au montant réglé.
-    """
-    from decimal import Decimal
-    from apps.parametres.models import CompanyProfile
-    reste = facture.montant_du if reste is None else reste
-    profile = CompanyProfile.get(company=facture.company)
-    pas = getattr(profile, 'arrondi_caisse', None) or Decimal('0')
-    if mode != Paiement.Mode.ESPECES or pas <= 0 or reste <= 0:
-        return {
-            'montant_arrondi': reste, 'ecart': Decimal('0'),
-            'pas': pas, 'applicable': False,
-        }
-    montant_arrondi = arrondir_au_pas(reste, pas)
-    # On ne perçoit jamais plus que le dû : si l'arrondi monte au-dessus du
-    # reste, on redescend au pas inférieur (l'écart reste ≥ 0, jamais un
-    # trop-perçu à gérer).
-    if montant_arrondi > reste:
-        montant_arrondi = montant_arrondi - pas
-    if montant_arrondi < 0:
-        montant_arrondi = Decimal('0')
-    ecart = reste - montant_arrondi
-    return {
-        'montant_arrondi': montant_arrondi, 'ecart': ecart,
-        'pas': pas, 'applicable': ecart > 0,
-    }
+# ZFAC11 — `arrondir_au_pas` / `proposer_arrondi_caisse` vivent désormais dans
+# le service d'encaissement (`domain/encaissements.py`) ; ré-exportés ici
+# pour les appelants historiques (tests ZFAC11, action `arrondi-caisse`).
+from ..domain.encaissements import (  # noqa: E402,F401
+    arrondir_au_pas, proposer_arrondi_caisse,
+)
 
 
 from authentication.scoping import scope_queryset  # noqa: E402
@@ -200,7 +151,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         elif self.action in WRITE_ACTIONS + [
             'emettre', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
-            'relancer', 'exclure_relance', 'whatsapp', 'ubl',
+            'relancer', 'relance_apercu', 'exclure_relance', 'whatsapp', 'ubl',
             'dgi_export', 'dgi_conformite', 'dgi_transmettre',
             'bulk', 'lien_paiement', 'revoquer_lien_paiement',
             'retour_client',
@@ -788,7 +739,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         facture est intégralement réglée, elle passe automatiquement « Payée ».
         Disponible à la Commerciale (création) ; l'annulation reste admin.
         """
-        from decimal import Decimal
         facture = self.get_object()
         if facture.statut == Facture.Statut.ANNULEE:
             return Response(
@@ -797,112 +747,20 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             )
         serializer = PaiementSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        montant = serializer.validated_data.get('montant')
-        if montant is None or montant <= 0:
-            return Response(
-                {'detail': 'Le montant du paiement doit être positif.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        # ERR72 — la garde sur-paiement et l'écriture du paiement doivent être
-        # sérialisées : on verrouille la ligne facture (select_for_update) puis
-        # on lit le reste à payer, on contrôle, et on enregistre — le tout dans
-        # une seule transaction. Sans le verrou, deux paiements concurrents
-        # lisaient chacun l'ancien reste et passaient tous deux la garde.
-        with transaction.atomic():
-            locked = Facture.objects.select_for_update().get(pk=facture.pk)
-            if locked.statut == Facture.Statut.ANNULEE:
-                return Response(
-                    {'detail':
-                     'Impossible d\'encaisser sur une facture annulée.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            # Garde sur-paiement : refuser un encaissement qui dépasse le reste
-            # à payer (TTC − déjà payé − avoirs). Tolérance d'un centime pour
-            # les arrondis ; un montant égal au reste passe (solde la facture).
-            reste = locked.montant_du
-            # XFAC12 — escompte pour règlement anticipé : si la fenêtre est
-            # atteinte (date_paiement <= émission + escompte_jours) ET que le
-            # montant réglé correspond au NET après escompte (reste − escompte,
-            # tolérance 1 centime), l'escompte se calcule automatiquement et
-            # SOLDE la facture avec le règlement — jamais hors fenêtre (plein
-            # tarif reste dû, comportement actuel inchangé).
-            date_paiement = serializer.validated_data.get('date_paiement')
-            escompte_montant = Decimal('0')
-            if locked.escompte_applicable(date_paiement):
-                escompte_potentiel = locked.calcul_escompte(reste, date_paiement)
-                net_attendu = reste - escompte_potentiel
-                if abs(montant - net_attendu) <= Decimal('0.01'):
-                    escompte_montant = escompte_potentiel
-                    reste = net_attendu
-            if montant - reste > Decimal('0.01'):
-                return Response(
-                    {'detail': (
-                        f'Le paiement dépasse le reste à payer '
-                        f'({reste:.2f} MAD).'
-                    )},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            paiement = serializer.save(
-                facture=locked,
-                company=locked.company,
-                created_by=request.user,
-                escompte_montant=escompte_montant,
-            )
-            # Chatter facture : trace l'encaissement (acteur côté serveur,
-            # jamais lu du corps de la requête).
-            from .. import activity
-            activity.log_facture_paiement(locked, request.user, paiement)
-            # YLEDG1 — événement documentaire générique (pose du seam pour
-            # compta.ecriture_pour_paiement, jamais d'import de son service ici).
-            from core.events import paiement_enregistre
-            paiement_enregistre.send(
-                sender=Paiement, instance=paiement, company=locked.company)
-            # Statut auto : intégralement réglée → « Payée ».
-            # AUD102 (P2) — la bascule (garde centime-près, U10
-            # reset_relance_escalation, YDOCF4 `facture_paid` + YEVNT6
-            # `facture_payee`) vit DANS le service unique.
-            locked.refresh_from_db()
-            from ..domain.encaissements import marquer_facture_soldee
-            soldee = marquer_facture_soldee(
-                locked, montant=montant, user=request.user,
-                source='encaissement_facture')
-            if not soldee and locked.statut != Facture.Statut.ANNULEE:
-                # ZFAC11 — arrondi de caisse : un règlement EN ESPÈCES égal au
-                # reste à payer arrondi au pas société (défaut 0 = désactivé,
-                # comportement inchangé) solde la facture, l'écart d'arrondi
-                # étant tracé comme un abandon « Arrondi espèces » (jamais
-                # silencieux). Ne s'applique qu'aux espèces ; virement/chèque
-                # l'ignorent. Passe AVANT la tolérance XFAC13 (motif dédié).
-                mode = serializer.validated_data.get('mode', Paiement.Mode.VIREMENT)
-                # ``reste`` = résiduel AVANT ce paiement (capturé plus haut) —
-                # montant_du est déjà retombé après serializer.save().
-                prop = proposer_arrondi_caisse(locked, mode, reste=reste)
-                if (prop['applicable']
-                        and abs(montant - prop['montant_arrondi']) <= Decimal('0.01')
-                        and Decimal('0') < locked.montant_du <= prop['pas']):
-                    from ..services import abandonner_solde_facture
-                    abandonner_solde_facture(
-                        locked, motif=Facture.MotifAbandon.ARRONDI_CAISSE,
-                        user=request.user, auto=True,
-                    )
-                    locked.refresh_from_db()
-                else:
-                    # XFAC13 — tolérance société : un résiduel sous le seuil
-                    # (défaut 0 = désactivé, comportement inchangé) est abandonné
-                    # automatiquement à l'encaissement plutôt que de laisser la
-                    # facture « en retard » pour quelques centimes.
-                    from apps.parametres.models import CompanyProfile
-                    profile = CompanyProfile.get(company=locked.company)
-                    tolerance = getattr(
-                        profile, 'tolerance_ecart_reglement', None) or Decimal('0')
-                    if tolerance > 0 and locked.montant_du <= tolerance:
-                        from ..services import abandonner_solde_facture
-                        abandonner_solde_facture(
-                            locked, motif=Facture.MotifAbandon.ECART_REGLEMENT,
-                            user=request.user, auto=True,
-                        )
-                        locked.refresh_from_db()
-            facture = locked
+        # Le corps (verrou ERR72, garde sur-paiement, escompte XFAC12, chatter,
+        # événement, bascule « Payée » AUD102, arrondi ZFAC11, tolérance
+        # XFAC13) vit dans LE service d'encaissement, partagé avec
+        # `devis/{id}/facturer-complet/` — un seul chemin pour l'argent reçu.
+        from ..domain.encaissements import (
+            EncaissementRefuse, encaisser_sur_facture,
+        )
+        try:
+            facture, _paiement = encaisser_sur_facture(
+                facture=facture, donnees=dict(serializer.validated_data),
+                user=request.user)
+        except EncaissementRefuse as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED,
         )
@@ -1722,7 +1580,9 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         Journalise une RelanceLog + fixe la prochaine date de relance. L'envoi
         passe par l'intégration configurable : NO-OP réseau sans clé (backend
         console), envoi réel via Brevo/SMTP quand configuré."""
-        from ..recouvrement import facture_relancable
+        from ..recouvrement import (
+            ensure_default_followup_levels, facture_relancable,
+        )
         from ..serializers_facturation import RelancerFactureSerializer
 
         facture = self.get_object()
@@ -1731,6 +1591,10 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if not ok:
             return Response({'detail': motif},
                             status=status.HTTP_400_BAD_REQUEST)
+        # Fondateur 05/10/2026 — les 3 niveaux par défaut existent toujours
+        # (créés seulement si la société n'en a aucun) : le `niveau` posté
+        # (ORDRE, cf. RelancerFactureSerializer) se résout donc toujours.
+        ensure_default_followup_levels(facture.company)
 
         payload = RelancerFactureSerializer(
             data=request.data, context={'company': facture.company})
@@ -1765,6 +1629,18 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         data = FactureSerializer(facture).data
         data['email_log_id'] = email_log_id
         return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='relance-apercu',
+            permission_classes=[IsResponsableOrAdmin])
+    def relance_apercu(self, request, pk=None):
+        """Fenêtre « Relancer » (fondateur, 05/10/2026) : niveau qui part
+        maintenant (1 → 2 → 3 d'après le journal des relances) + aperçu EXACT
+        de l'email (même rendu que l'envoi). Lecture seule — hormis la
+        création, si la société n'en a aucun, des 3 niveaux par défaut.
+        Contrat : ``contract_samples/facture_relance_apercu.json``."""
+        from ..recouvrement import apercu_relance
+        facture = self.get_object()
+        return Response(apercu_relance(facture))
 
     @action(detail=True, methods=['post'], url_path='exclure-relance',
             permission_classes=[IsResponsableOrAdmin])
