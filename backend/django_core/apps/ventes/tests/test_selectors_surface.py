@@ -9,11 +9,12 @@ purs derrière une FAÇADE ré-exportante).
   sur ``apps.ventes.selectors`` et y est DÉFINI.
 * ``RESTENT`` — le noyau d'argent qui ne bouge pas (``.importlinter`` nomme
   ``apps.ventes.selectors`` dans ses arêtes ignorées).
-* ``fixtures/golden_selectors_corps.json`` — sha256 de ``ast.dump`` de chaque
-  symbole à déplacer, retrouvé PAR NOM dans ``selectors*.py`` (fonction,
-  classe ou affectation de niveau module) : un corps modifié pendant un
-  déplacement rougit, un symbole défini deux fois (jumeau) aussi.
-* ``PLACE`` (vide ici) — rempli par chaque déplacement : ``propriétaire →
+* SPL147 (fin de piste) : les empreintes AST des corps
+  (``fixtures/golden_selectors_corps.json``) ont prouvé les six déplacements
+  identiques, puis ont été retirées avec leur test ; la surface, ``PLACE`` et
+  l'identité façade/module restent, et un symbole défini deux fois dans
+  ``selectors*.py`` (jumeau) rougit toujours.
+* ``PLACE`` — rempli par chaque déplacement : ``propriétaire →
   module attendu``. Alors : pour un nom ré-exporté,
   ``getattr(selectors, n) is getattr(module, n)`` (la façade est un IMPORT,
   jamais ``nom = _mod.nom`` : ``check_api_shapes._find_function`` ne suit que
@@ -28,16 +29,12 @@ Run :
         -Modules "apps.ventes.tests.test_selectors_surface"
 """
 import ast
-import hashlib
 import importlib
-import json
 from pathlib import Path
 
 from django.test import SimpleTestCase
 
 VENTES = Path(__file__).resolve().parent.parent
-FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
-    'golden_selectors_corps.json'
 
 #: Texte des tâches SPL143-SPL147 (se repérer par NOM de symbole).
 PAR_PROPRIETAIRE = {
@@ -125,6 +122,8 @@ PLACE = {
     'calepinage': 'apps.ventes.selectors_calepinage',  # SPL144
     'cadence': 'apps.ventes.selectors_cadence',  # SPL145
     'publicite': 'apps.ventes.selectors_publicite',  # SPL146
+    'portail': 'apps.ventes.selectors_portail',  # SPL147
+    'stock': 'apps.ventes.selectors_stock',  # SPL147
 }
 
 
@@ -152,24 +151,6 @@ def _definitions():
             for nom in noms:
                 trouves.setdefault(nom, []).append((chemin.name, noeud))
     return trouves
-
-
-def _empreinte(noeud):
-    return hashlib.sha256(ast.dump(noeud).encode('utf-8')).hexdigest()
-
-
-def capturer_corps():
-    trouves = _definitions()
-    corps = {}
-    for noms in PAR_PROPRIETAIRE.values():
-        for nom in noms:
-            (_fichier, noeud), = trouves[nom]
-            corps[nom] = _empreinte(noeud)
-    return dict(sorted(corps.items()))
-
-
-def _golden():
-    return json.loads(FIXTURE.read_text(encoding='utf-8'))
 
 
 class SurfaceSelectorsVentes(SimpleTestCase):
@@ -229,19 +210,3 @@ class SurfaceSelectorsVentes(SimpleTestCase):
             with self.subTest(nom=nom):
                 self.assertTrue(hasattr(selectors, nom))
                 self.assertIn(nom, locaux)
-
-    def test_corps_couvrent_les_noms(self):
-        corps = _golden()['corps']
-        tous = {n for noms in PAR_PROPRIETAIRE.values() for n in noms}
-        self.assertEqual(set(corps), tous)
-        self.assertEqual(len(corps), 76)
-
-    def test_empreintes_des_corps_identiques(self):
-        definis = _definitions()
-        for nom, empreinte in _golden()['corps'].items():
-            with self.subTest(nom=nom):
-                occurrences = definis.get(nom, [])
-                self.assertEqual(len(occurrences), 1,
-                                 '%s : %d définition(s) dans selectors*.py'
-                                 % (nom, len(occurrences)))
-                self.assertEqual(_empreinte(occurrences[0][1]), empreinte)

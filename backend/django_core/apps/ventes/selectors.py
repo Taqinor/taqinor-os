@@ -867,19 +867,6 @@ def devis_ouverts_ratio_client(company, client_id, *, limit=200):
     return {'total': total, 'ouverts': ouverts}
 
 
-# ── NTPRT10/NTPRT11 — Lectures self-service du PORTAIL CLIENT ───────────────
-#
-# Point d'entrée cross-app UNIQUE de ``apps.portail`` sur les documents
-# ``ventes`` (jamais un import de ``apps.ventes.models`` depuis portail).
-# Lecture SEULE et volontairement PAUVRE : uniquement ce qu'un client peut voir
-# de SON dossier. Aucun champ de coût/marge n'y figure (``prix_achat``,
-# ``marge``… ne sortent JAMAIS vers un écran client — registre
-# ``core.permissions.SENSITIVE_FIELDS``), ni aucune donnée interne
-# (propriétaire, notes, portée de visibilité).
-#
-# Les fonctions exigent ``company`` ET ``client_id`` : un ``client_id`` absent
-# renvoie VIDE, jamais tous les documents de la société.
-
 def devis_modifiabilite(devis):
     """QJR516 (contrat QJR500) — le verdict de modifiabilité d'un devis pour
     un AUTRE app (la ligne devis de la fiche lead, ``crm/serializers``) :
@@ -890,198 +877,6 @@ def devis_modifiabilite(devis):
     resultat = dict(verdict(devis))
     resultat['is_active'] = bool(devis.is_active)
     return resultat
-
-
-def devis_envoyes_du_client(company_id, client_id):
-    """QJR590 — devis ACTIFS au statut « envoyé » d'un client (borné
-    société) : ceux dont le client a déjà reçu un exemplaire et qui reçoivent
-    une trace « corrigé après envoi » quand l'identité client est corrigée.
-    Un accepté garde son exemplaire signé figé (exclu)."""
-    from .models import Devis
-
-    if not company_id or not client_id:
-        return []
-    return list(Devis.objects.filter(
-        company_id=company_id, client_id=client_id, is_active=True,
-        statut=Devis.Statut.ENVOYE))
-
-
-def devis_du_client_portail(company, client_id, *, limit=200):
-    """NTPRT10 — Devis visibles par le client ``client_id`` sur son portail.
-
-    Les BROUILLONS internes sont EXCLUS : un devis non envoyé n'a jamais été
-    montré au client, l'exposer serait une fuite de travail en cours.
-    """
-    from .models import Devis
-
-    if company is None or not client_id:
-        return []
-    # QJR520 — une version remplacée n'est plus listée à côté de sa
-    # remplaçante (is_active=True).
-    qs = (Devis.objects
-          .filter(company=company, client_id=client_id, is_active=True)
-          .exclude(statut=Devis.Statut.BROUILLON)
-          .order_by('-date_creation')[:limit])
-    return [{
-        'id': d.id,
-        'reference': d.reference,
-        'statut': d.statut,
-        'statut_display': d.get_statut_display(),
-        'date_creation': d.date_creation,
-        'date_validite': d.date_validite,
-        'total_ttc': str(d.total_ttc),
-        'accepte': d.statut == Devis.Statut.ACCEPTE,
-        # QJR565 (contrat portail ``mes_devis_liste.json``) — date de la
-        # dernière correction après envoi (``etude_params.resync_apres_envoi``),
-        # null sinon — JAMAIS updated_at.
-        'mis_a_jour_le': _date_correction_apres_envoi(d),
-    } for d in qs]
-
-
-def _date_correction_apres_envoi(devis):
-    """QJR565 — ISO de ``etude_params.resync_apres_envoi.date`` ou ``None``."""
-    params = devis.etude_params if isinstance(devis.etude_params, dict) else {}
-    marqueur = params.get('resync_apres_envoi')
-    if isinstance(marqueur, dict):
-        return marqueur.get('date') or None
-    return None
-
-
-def devis_du_client_portail_obj(company, client_id, devis_id):
-    """NTPRT10 — UN devis du client (objet ORM), ou ``None``.
-
-    Le triplet (société, client, id) est exigé : un devis d'un autre client —
-    ou d'une autre société — est INTROUVABLE, jamais « trouvé puis refusé ».
-    """
-    from .models import Devis
-
-    if company is None or not client_id or not devis_id:
-        return None
-    return (Devis.objects
-            .filter(company=company, client_id=client_id, pk=devis_id)
-            .exclude(statut=Devis.Statut.BROUILLON)
-            .first())
-
-
-def factures_du_client_portail(company, client_id, *, limit=200):
-    """NTPRT11 — Factures visibles par le client ``client_id`` sur son portail.
-
-    Mêmes règles : brouillons internes exclus, aucun champ de coût.
-    ``montant_du`` est le reste à payer déjà calculé par le modèle (source
-    unique — jamais un recalcul local qui divergerait de l'écran interne),
-    SAUF pour une facture ANNULÉE (AUD137) : ``Facture.montant_du`` ignore le
-    statut par construction et rend donc le TTC entier pour une annulation
-    sans paiement — l'agrégat portail compense ici en la figeant à '0.00'.
-    ``payable`` (AUD137) est le SEUL champ que l'écran doit lire pour décider
-    d'afficher « reste dû » et le bouton « Payer » : faux pour ANNULEE et
-    PAYEE, jamais dérivé côté client depuis ``statut``.
-    """
-    from .models import Facture
-
-    if company is None or not client_id:
-        return []
-    qs = (Facture.objects
-          .filter(company=company, client_id=client_id)
-          .exclude(statut=Facture.Statut.BROUILLON)
-          # AUD159 — EXACTEMENT les relations lues par les deux propriétés
-          # sérialisées ci-dessous : `total_ttc` itère `lignes` (via
-          # `tva_par_taux`) et `montant_du` touche `paiements`,
-          # `affectations_paiement`, `avoirs`, `notes_debit` et
-          # `retenues_subies`. Le queryset n'avait AUCUN prefetch : jusqu'à
-          # ~7 requêtes par facture, sur 200 factures par page — d'une surface
-          # PUBLIQUE, donc exposée à la charge externe. La SOURCE des chiffres
-          # ne change pas : les propriétés modèles restent propriétaires.
-          .prefetch_related('lignes', 'paiements', 'avoirs', 'notes_debit',
-                            'retenues_subies',
-                            'affectations_paiement__paiement')
-          .order_by('-date_emission', '-id')[:limit])
-    return [{
-        'id': f.id,
-        'reference': f.reference,
-        'statut': f.statut,
-        'statut_display': f.get_statut_display(),
-        'date_emission': f.date_emission,
-        'date_echeance': f.date_echeance,
-        'montant_ttc': str(f.total_ttc),
-        'montant_du': ('0.00' if f.statut == Facture.Statut.ANNULEE
-                       else str(f.montant_du)),
-        'payee': f.statut == Facture.Statut.PAYEE,
-        'payable': f.statut not in (
-            Facture.Statut.ANNULEE, Facture.Statut.PAYEE),
-    } for f in qs]
-
-
-def facture_du_client_portail(company, client_id, facture_id):
-    """NTPRT11 — UNE facture du client (objet ORM), ou ``None``. Voir ci-dessus."""
-    from .models import Facture
-
-    if company is None or not client_id or not facture_id:
-        return None
-    return (Facture.objects
-            .filter(company=company, client_id=client_id, pk=facture_id)
-            .exclude(statut=Facture.Statut.BROUILLON)
-            .first())
-
-
-def facture_est_payable_portail(facture):
-    """AUD137 — une facture ANNULÉE ou déjà PAYÉE n'est plus payable au
-    portail. Utilisé par ``portail.views_client.payer`` AVANT de créer/
-    réutiliser une intention de paiement — jamais un import de
-    ``apps.facturation.models`` côté portail (frontière cross-app)."""
-    from .models import Facture
-
-    return facture is not None and facture.statut not in (
-        Facture.Statut.ANNULEE, Facture.Statut.PAYEE)
-
-
-# ── NTPRT9 — Tableau de bord CLIENT (devis en attente / factures impayées) ──
-
-def resume_portail_client(company, client_id):
-    """NTPRT9 — Cartes « Devis en attente » / « Factures impayées » du
-    tableau de bord portail CLIENT (``apps.portail.views_client``).
-
-    Même périmètre EXACTEMENT que ``devis_du_client_portail``/
-    ``factures_du_client_portail`` ci-dessus (brouillons exclus, aucun champ
-    de coût) : les compteurs matchent donc, par construction, ce que l'écran
-    interne montrerait pour ce même client — jamais un recalcul divergent.
-    ``devis_en_attente`` = devis ``ENVOYE`` (ni accepté/refusé/expiré, en
-    attente d'une décision du client). ``factures_impayees`` = factures
-    ``EMISE``/``EN_RETARD`` (ni payées, ni annulées, ni brouillon) ;
-    ``prochaine_echeance`` = la date d'échéance la plus proche parmi elles
-    (``None`` si aucune échéance renseignée). Lecture seule."""
-    from .models import Devis, Facture
-
-    vide = {
-        'devis_en_attente': 0,
-        'factures_impayees': 0,
-        'prochaine_echeance': None,
-    }
-    if company is None or not client_id:
-        return vide
-
-    devis_en_attente = Devis.objects.filter(
-        company=company, client_id=client_id,
-        statut=Devis.Statut.ENVOYE).count()
-
-    factures_impayees_qs = Facture.objects.filter(
-        company=company, client_id=client_id,
-        statut__in=(Facture.Statut.EMISE, Facture.Statut.EN_RETARD))
-    prochaine_echeance = (
-        factures_impayees_qs
-        .exclude(date_echeance__isnull=True)
-        .order_by('date_echeance')
-        .values_list('date_echeance', flat=True)
-        .first())
-
-    return {
-        'devis_en_attente': devis_en_attente,
-        'factures_impayees': factures_impayees_qs.count(),
-        # Chaîne ISO, jamais un objet date : la valeur part telle quelle dans
-        # la réponse JSON du tableau de bord portail (contrat
-        # apps/portail/contract_samples/client_tableau_de_bord.json).
-        'prochaine_echeance': (
-            prochaine_echeance.isoformat() if prochaine_echeance else None),
-    }
 
 
 def ca_par_entite(company, entite_ids):
@@ -1314,37 +1109,6 @@ def devis_en_cours(company):
         'lignes__produit__categorie').order_by('-date_creation')
 
 
-def frequence_co_achat(company, produit_id, *, limite=10):
-    """NTCPQ19 — Fréquence de CO-ACHAT d'un produit dans les devis ACCEPTÉS.
-
-    Point d'entrée cross-app en LECTURE (sans importer
-    ``apps.ventes.models``) : renvoie ``[(produit_id, nb_devis), ...]`` trié par
-    fréquence décroissante — les produits apparaissant dans les mêmes devis
-    acceptés de la SOCIÉTÉ que ``produit_id``, hors lui-même. Lecture pure,
-    jamais de prix d'achat ni de marge."""
-    from collections import Counter
-    from .models import Devis, LigneDevis
-
-    devis_ids = LigneDevis.objects.filter(
-        devis__company=company, devis__statut=Devis.Statut.ACCEPTE,
-        produit_id=produit_id).values_list('devis_id', flat=True)
-    devis_ids = set(devis_ids)
-    if not devis_ids:
-        return []
-    paires = list(LigneDevis.objects.filter(
-        devis_id__in=devis_ids).exclude(
-            produit_id=produit_id).exclude(
-                produit_id=None).values_list('devis_id', 'produit_id'))
-    compteur = Counter({pid: 0 for _, pid in paires})
-    vus = set()
-    for devis_id, pid in paires:
-        if (devis_id, pid) in vus:
-            continue  # une même paire ne compte qu'une fois par devis
-        vus.add((devis_id, pid))
-        compteur[pid] += 1
-    return compteur.most_common(limite)
-
-
 def lots_totaux(devis):
     """NTCPQ18 — Sous-total PAR LOT + total consolidé d'un devis multi-sites.
 
@@ -1546,55 +1310,6 @@ def lignes_devis_pour_automatisation(devis_id, company, *, limite=200):
     return lignes
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# PVCOMPAT (fondateur 20/08/2026) — COMPATIBILITÉ DEUX À DEUX, point d'entrée
-# cross-app.
-#
-# Le CALCUL vit dans ``apps.ventes.compatibilites`` (il tient au moteur
-# électrique et au catalogue solaire, donc au domaine Ventes) ; l'ÉCRAN, lui,
-# est la fiche produit du STOCK. Les trois fonctions ci-dessous sont la façade
-# LICITE de ce calcul : `apps.stock` (et tout autre appelant) les appelle sans
-# jamais importer `apps.ventes.compatibilites` ni, à plus forte raison, les
-# modèles de ventes — exactement la règle cross-app de CLAUDE.md.
-#
-# Import FONCTION-LOCAL : ce module est chargé très tôt (les modèles y font des
-# appels différés), et `compatibilites` tire `solar_design` + le noyau
-# `core.electrique`. Le différer garde ce fichier sans dépendance au chargement.
-# ═══════════════════════════════════════════════════════════════════════════
-def compatibilites_du_produit(produit, company):
-    """PVCOMPAT — la fiche « Compatibilités » d'un produit du stock.
-
-    Forme CONTRACTUELLE committée dans
-    ``apps/stock/contract_samples/produit_compatibilites.json`` :
-    ``{produit, fiche_incomplete, installable, bilan, familles}``. Lecture
-    seule, aucun prix (ni de vente, ni d'achat) ne traverse cette fonction.
-    """
-    from .compatibilites import compatibilites_du_produit as _impl
-    return _impl(produit, company)
-
-
-def verdict_panneau_onduleur(panneau, onduleur):
-    """PVCOMPAT — ``{statut, raisons, …}`` pour un couple panneau/onduleur.
-
-    ``statut`` ∈ ``compatible`` / ``reserve`` / ``incompatible`` / ``inconnu``,
-    avec la TAXONOMIE du noyau ``core.electrique`` (bloquant → incompatible,
-    alerte → réserve) et jamais un faux OK sur une fiche incomplète.
-    """
-    from .compatibilites import verdict_panneau_onduleur as _impl
-    return _impl(panneau, onduleur)
-
-
-def verdict_batterie_onduleur(batterie, onduleur):
-    """PVCOMPAT — ``{statut, raisons, …}`` pour un couple batterie/onduleur.
-
-    Délègue à la règle batterie UNIQUE du dépôt
-    (``services._batterie_compatible``) : l'écran et la composition ne peuvent
-    pas diverger.
-    """
-    from .compatibilites import verdict_batterie_onduleur as _impl
-    return _impl(batterie, onduleur)
-
-
 def share_link_niveau_map(devis_ids):
     """L-NIV-UI (24/08/2026) — ``niveau``/``otp_lecture`` des ``ShareLink``
     DÉJÀ EXISTANTS (jamais un mint) pour un lot de devis.
@@ -1682,108 +1397,6 @@ def share_link_lecture_map(devis_ids):
                 derniere.isoformat() if derniere else None),
         }
     return out
-
-
-def classer_produit_nom(nom):
-    """STKCAT21 — le RÔLE de composition déduit des MOTS-CLÉS d'un nom, ou
-    ``None``.
-
-    Point d'entrée cross-app SANCTIONNÉ du classifieur par mots-clés : c'est
-    par ici que ``apps.stock`` (le sérialiseur produit) lit la classification
-    ventes, sans jamais importer ``apps.ventes.domain.catalogue`` — frontière
-    inter-app, CLAUDE.md.
-
-    Enveloppe MINCE de ``domain.catalogue.classer_produit`` : même entrée, même
-    sortie, aucune règle en plus. C'est le REPLI PERMANENT de
-    ``core.product_roles.role_effectif`` (rang 3, derrière le rôle déclaré sur
-    la fiche et la famille de la catégorie) — il n'est jamais retiré. Pure
-    lecture : ne requête rien, n'écrit rien.
-    """
-    from .domain.catalogue import classer_produit
-    return classer_produit(nom)
-
-
-def devis_utilisant_produit(user, produit_id, limit=20):
-    """STKCAT25 — les devis RÉCENTS qui chiffrent ce produit, vus PAR ``user``.
-
-    Frontière cross-app : ``apps.stock`` (onglet « Utilisé dans » de la fiche
-    produit) lit les devis PAR ICI — jamais un import de ``apps.ventes.models``
-    depuis une autre app.
-
-    LA VISIBILITÉ EST CELLE DE LA LISTE ``/ventes/devis``, REJOUÉE À
-    L'IDENTIQUE — jamais une copie allégée. Le chemin suit pas à pas
-    ``DevisViewSet.get_queryset`` (``apps/ventes/views/devis.py``) et RÉUTILISE
-    ses helpers, sans en réécrire un seul :
-
-      1. ``company_qs`` (core.mixins)   — société (superuser sans société :
-         tout ; compte sans société : rien) ;
-      2. portail NTPRT10                — un compte externe ne voit QUE les
-         devis de SON client, BROUILLON exclu (AUD143) ; une portée autre que
-         « client », ou sans rattachement, ne voit RIEN (jamais tout) ;
-      3. ``scope_queryset(created_by)`` — portée interne (Feature F).
-
-    Sans ce rejeu, un commercial dont la portée masque un devis dans /ventes le
-    verrait réapparaître par la fiche produit du Stock : la même donnée par une
-    autre porte.
-
-    Renvoie une liste de dicts ``{id, reference, client_nom, statut, date,
-    total_ttc}``, du plus récent au plus ancien, bornée à ``limit``.
-    ``total_ttc`` est un prix de VENTE en TEXTE décimal (jamais un flottant) ;
-    ``date`` est la date de création en ISO. AUCUN prix d'achat, AUCUNE marge
-    n'entre dans cette charge utile. Forme contractuelle :
-    ``apps/stock/contract_samples/produit_utilise_dans.json``.
-    """
-    from apps.roles.permissions import is_portal_user, portal_scope_id
-    from core.scoping import scope_queryset
-
-    from .models import Devis
-    # QJR655 — LA règle de portée société (core.mixins), celle de
-    # TenantMixin : il n'existe pas DEUX règles société.
-    from core.mixins import company_qs
-
-    if user is None or not getattr(user, 'is_authenticated', False):
-        return []
-    if not produit_id:
-        return []
-    try:
-        limite = int(limit)
-    except (TypeError, ValueError):
-        limite = 0
-    if limite <= 0:
-        return []
-
-    qs = company_qs(Devis.objects.all(), user)
-    if is_portal_user(user):
-        scope = portal_scope_id(user)
-        if getattr(user, 'portee', None) != 'portail_client' or scope is None:
-            return []
-        qs = qs.filter(client_id=scope).exclude(statut=Devis.Statut.BROUILLON)
-    else:
-        qs = scope_queryset(qs, user, ['created_by'])
-        # NTADM3 — même périmètre d'entités que DevisViewSet (EntiteScopeMixin) ;
-        # renvoie qs inchangé pour un rôle sans périmètre.
-        from core.entite_scoping import scope_entite_queryset
-        qs = scope_entite_queryset(qs, user)
-
-    qs = (qs.filter(lignes__produit_id=produit_id)
-            .select_related('client')
-            .prefetch_related('lignes')
-            .distinct()
-            .order_by('-date_creation', '-id'))
-
-    lignes = []
-    for devis in qs[:limite]:
-        client = devis.client
-        lignes.append({
-            'id': devis.id,
-            'reference': devis.reference or '',
-            'client_nom': (getattr(client, 'nom', '') or '') if client else '',
-            'statut': devis.statut or '',
-            'date': (devis.date_creation.date().isoformat()
-                     if devis.date_creation else ''),
-            'total_ttc': str(devis.total_ttc),
-        })
-    return lignes
 
 
 # ── CAD59 (21/09/2026) — LA date de validité, celle que le PDF affiche ─────
@@ -1907,4 +1520,25 @@ from .selectors_publicite import (  # noqa: E402,F401 — ré-export (SPL146)
     devis_accepted_totals_by_lead,
     signature_velocity_by_month_and_mode,
     faits_temoignage_devis,
+)
+
+
+from .selectors_portail import (  # noqa: E402,F401 — ré-export (SPL147)
+    devis_envoyes_du_client,
+    devis_du_client_portail,
+    devis_du_client_portail_obj,
+    factures_du_client_portail,
+    facture_du_client_portail,
+    facture_est_payable_portail,
+    resume_portail_client,
+)
+
+
+from .selectors_stock import (  # noqa: E402,F401 — ré-export (SPL147)
+    frequence_co_achat,
+    compatibilites_du_produit,
+    verdict_panneau_onduleur,
+    verdict_batterie_onduleur,
+    classer_produit_nom,
+    devis_utilisant_produit,
 )
