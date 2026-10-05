@@ -86,7 +86,8 @@ def totaux_de_pose(roof_layout):
 
 
 def construire_presentation(calepinage, *, resultat=_LIRE, roof_layout=None,
-                            svg_planche=None, styles=None, provenance=None):
+                            svg_planche=None, styles=None, provenance=None,
+                            etat=None):
     """L'agrégat prêt à mettre en page.
 
     Args:
@@ -99,6 +100,9 @@ def construire_presentation(calepinage, *, resultat=_LIRE, roof_layout=None,
             nomme ce qui manque).
         roof_layout / svg_planche / styles / provenance: déjà lus par
             l'appelant (essai pur) — sinon LUS ici.
+        etat: ACAL235 - l'état de la conception (verrouillée, archivée) ; LU
+            par ``gabarit_document.etat_de_conception`` quand il n'est pas
+            fourni. Il ajoute sa mention au pied, il ne refuse jamais rien.
 
     Raises:
         RapportRefuse: le résultat porte une clé de coût (pare-feu repris de
@@ -129,8 +133,10 @@ def construire_presentation(calepinage, *, resultat=_LIRE, roof_layout=None,
 
         svg_planche = planche_svg_ou_vide(calepinage)
 
-    from .gabarit_document import styles_de_societe
+    from .gabarit_document import etat_de_conception, styles_de_societe
 
+    if etat is None:
+        etat = etat_de_conception(calepinage)
     if styles is None:
         styles = styles_de_societe(getattr(calepinage, 'company', None))
     if provenance is None:
@@ -148,6 +154,7 @@ def construire_presentation(calepinage, *, resultat=_LIRE, roof_layout=None,
         'svg_planche': svg_planche or '',
         'resultat': resultat,
         'motif_perime': motif_perime,
+        'etat': dict(etat or {}),
         'styles': dict(styles or {}),
         'provenance': dict(provenance or {}),
     }
@@ -240,7 +247,7 @@ def html_de_presentation(document):
     return document_html(
         corps, titre='Présentation compacte', styles=document['styles'],
         provenance=document['provenance'], mentions=[MENTION_PAS_UN_DEVIS],
-        langue='fr', css=CSS_PRESENTATION)
+        langue='fr', css=CSS_PRESENTATION, etat=document.get('etat'))
 
 
 def html_de_presentation_compacte(calepinage, *, langue=None, **options):

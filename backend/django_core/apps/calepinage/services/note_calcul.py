@@ -291,7 +291,7 @@ def motif_note_indisponible(calepinage):
 
 
 def construire_note_calcul(resultat, *, site=None, identite=None, styles=None,
-                           stocke=None):
+                           stocke=None, etat=None):
     """Le résultat SERVI -> la note, prête à mettre en page.
 
     ``resultat`` est le résultat servi (``resultat_servi_et_stocke``) ;
@@ -306,6 +306,10 @@ def construire_note_calcul(resultat, *, site=None, identite=None, styles=None,
     CALX295 — ``identite`` (projet, client, date de production) et ``styles``
     (la marque de la société, ``gabarit_document.styles_de_societe``) sont
     IMPRIMÉS sur la page de garde ; absents, la garde les barre.
+
+    ACAL235 — ``etat`` (``gabarit_document.etat_de_conception`` : verrouillée,
+    archivée) pose ses mentions dans la note ; une conception courante n'en
+    imprime aucune.
     """
     if not isinstance(resultat, dict) or not resultat:
         raise NoteRefusee(
@@ -325,7 +329,10 @@ def construire_note_calcul(resultat, *, site=None, identite=None, styles=None,
     pose = _lire(resultat, 'pose') or {}
     electrique = _lire(resultat, 'electrique') or {}
 
+    from .documents.gabarit_document import mentions_d_etat
+
     note = {
+        'mentions_etat': mentions_d_etat(etat),
         'identite': dict(identite or {}),
         # CALX295 — la marque de la société, pour la page de garde.
         'styles': dict(styles or {}),
@@ -576,6 +583,7 @@ def html_de_note_calcul(note, *, garde=True):
         '%(garde)s'
         '<h1>Note de calcul — calepinage</h1>'
         '<p class="note">%(mention_simulee)s</p>'
+        '%(mentions_etat)s'
         '<h2>Site et irradiance</h2><table>%(site)s</table>'
         '<h2>Pose retenue</h2><table>%(totaux)s</table>'
         '<table><tr><th>Pan</th><th>Modules</th><th>Puissance</th>'
@@ -592,6 +600,9 @@ def html_de_note_calcul(note, *, garde=True):
         '</body></html>'
     ) % {
         'garde': _garde_de_note(note) if garde else '',
+        'mentions_etat': ''.join(
+            '<p class="note">%s</p>' % escape(mention)
+            for mention in note.get('mentions_etat') or ()),
         'pied': escape(_pied_de_page(provenance), quote=True).replace('"', ''),
         'mention_simulee': escape(
             'Grandeurs LUES du résultat du moteur — aucune n\'est saisie dans '
@@ -661,7 +672,10 @@ def rendre_note_calcul(calepinage, *, company=None, site=None, identite=None,
                                           titre_document=TITRE_NOTE)
     if styles is None:
         styles = styles_de_societe(company)
+    from .documents.gabarit_document import etat_de_conception
+
     servi, stocke = resultat_servi_et_stocke(calepinage)
     note = construire_note_calcul(servi, site=site, identite=identite,
-                                  styles=styles, stocke=stocke)
+                                  styles=styles, stocke=stocke,
+                                  etat=etat_de_conception(calepinage))
     return render_pdf(html=html_de_note_calcul(note), company=company)

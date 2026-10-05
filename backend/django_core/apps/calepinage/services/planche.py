@@ -58,6 +58,7 @@ __all__ = [
     'rendre_plan_svg', 'rendre_plan_pdf', 'PlanDePoseRefuse',
     'verifier_absence_d_argent', 'lignes_de_chaines', 'rendre_plan_pose_svg',
     'rendre_plan_pose_pdf', 'planche_svg_ou_vide', 'MOTIF_SANS_PARCELLE',
+    'pied_du_calepinage',
 ]
 
 #: A3 PAYSAGE, en millimètres — le format des planches remises (même choix que
@@ -781,13 +782,42 @@ def empreinte_du_calepinage(calepinage, *, moment=None):
                              moment)
 
 
+def pied_du_calepinage(calepinage, *, moment=None):
+    """ACAL235 - le pied de planche : l'empreinte, puis les mentions d'ETAT.
+
+    L'etat de la conception (verrouillee, archivee) est LU par
+    ``gabarit_document.etat_de_conception`` - jamais recopie, jamais un second
+    texte de mention : une planche, un plan de pose, de toiture, de masse ou de
+    cablage remis ne se font plus passer pour la conception courante. Une
+    conception courante n'imprime aucune mention. Une ligne par mention.
+
+    Un calepinage sans societe (faux d'essai pur) est courant : l'etat se lit
+    en base des que ``pk`` est pose.
+    """
+    lignes = [empreinte_du_calepinage(calepinage, moment=moment)]
+    if getattr(calepinage, 'company_id', None):
+        from .documents.gabarit_document import (
+            etat_de_conception, mentions_d_etat,
+        )
+
+        lignes += mentions_d_etat(etat_de_conception(calepinage))
+    return '\n'.join(lignes)
+
+
 def _pied_svg(texte):
-    """Le pied de planche, en bas de feuille, sous la zone de dessin."""
+    """Le pied de planche, en bas de feuille, sous la zone de dessin.
+
+    La PREMIERE ligne (l'empreinte) est la plus basse ; chaque ligne suivante
+    (mentions d'etat, ACAL235) s'empile au-dessus.
+    """
     if not texte:
         return ''
-    return ('<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
-            % (_n(MARGE_MM), _n(FORMAT_A3_MM[1] - 3.5), GRIS_TEXTE,
-               escape(texte)))
+    lignes = str(texte).split('\n')
+    return ''.join(
+        '<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
+        % (_n(MARGE_MM), _n(FORMAT_A3_MM[1] - 3.5 - 3.6 * rang), GRIS_TEXTE,
+           escape(ligne))
+        for rang, ligne in enumerate(lignes))
 
 
 def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=(), pied='',
@@ -987,7 +1017,7 @@ def rendre_planche_svg(calepinage, *, moment=None, **options):
         sous_titre=options.pop('sous_titre', ''),
         bandeau=options.pop('bandeau', ()),
         pied=options.pop('pied', None)
-        or empreinte_du_calepinage(calepinage, moment=moment))
+        or pied_du_calepinage(calepinage, moment=moment))
 
 
 def planche_svg_ou_vide(calepinage):
@@ -1170,7 +1200,7 @@ def rendre_plan_svg(calepinage, *, contenu=CONTENU_IMPLANTATION, moment=None,
         sous_titre=options.pop('sous_titre', ''),
         bandeau=options.pop('bandeau', ()),
         pied=options.pop('pied', None)
-        or empreinte_du_calepinage(calepinage, moment=moment),
+        or pied_du_calepinage(calepinage, moment=moment),
         contenu=contenu)
 
 
