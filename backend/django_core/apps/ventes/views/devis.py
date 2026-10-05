@@ -20,7 +20,7 @@ from authentication.permissions import (
 # NTPRT10 — garde du chemin canonique /proposal ouverte au client PROPRIÉTAIRE
 # depuis son portail (``apps.roles`` est une app FONDATION, pas un domaine).
 from apps.roles.permissions import (
-    IsInternalWriterOrPortalClientOwner, is_portal_user, portal_scope_id,
+    is_portal_user, portal_scope_id,
 )
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 # AUD403 — brique UNIQUE du dépôt pour qu'un ``get_permissions()`` par action
@@ -42,6 +42,7 @@ from .devis_edition import DevisEditionActionsMixin  # SPL135
 from .devis_cycle import DevisCycleActionsMixin  # SPL136
 from .devis_etudes import DevisEtudesActionsMixin  # SPL137
 from .devis_envoi import DevisEnvoiActionsMixin  # SPL138
+from .devis_pdf import DevisPdfActionsMixin  # SPL139
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -80,6 +81,7 @@ class DevisViewSet(DevisEditionActionsMixin,
                    DevisCycleActionsMixin,
                    DevisEtudesActionsMixin,
                    DevisEnvoiActionsMixin,
+                   DevisPdfActionsMixin,
                    IdempotentCreateMixin, EntiteScopeMixin,
                    CompanyScopedModelViewSet):
     # YAPIC9 — pilote de core.idempotency.IdempotentCreateMixin : sans
@@ -1104,150 +1106,6 @@ class DevisViewSet(DevisEditionActionsMixin,
 
     @action(
         detail=True,
-        methods=['post'],
-        url_path='generer-pdf',
-        permission_classes=[IsResponsableOrAdmin],
-    )
-    def generer_pdf(self, request, pk=None):
-        devis = self.get_object()
-        from ..quote_engine import clean_pdf_options
-        from ..tasks import task_generate_devis_pdf
-        # Format options (simulator parity) — whitelisted server-side.
-        pdf_options = clean_pdf_options(request.data)
-        task = task_generate_devis_pdf.delay(devis.id, pdf_options)
-        # M4 — événement découplé : ventes émet, le satellite audit journalise
-        # (AuditLog.Action.PDF). ventes n'importe plus apps.audit ; le signal
-        # est synchrone (même requête), donc l'acteur/société restent identiques.
-        from core.events import document_pdf_generated
-        document_pdf_generated.send(
-            sender=Devis, instance=devis, kind='devis')
-        # WIR217 — une nouvelle demande efface l'échec consigné : sinon un
-        # « Réessayer » repartirait déjà marqué en échec.
-        from ..tasks import oublier_echec_pdf_devis
-        oublier_echec_pdf_devis(devis.id)
-        return Response(
-            {'task_id': task.id, 'detail': 'Génération PDF lancée.'},
-            status=status.HTTP_202_ACCEPTED,
-        )
-
-    @action(
-        detail=True,
-        methods=['get'],
-        url_path='etat-pdf',
-        # Même garde que la LECTURE d'un devis (cf. get_permissions) : c'est un
-        # état de rendu, pas une donnée métier de plus.
-        permission_classes=[IsAnyRole],
-    )
-    def etat_pdf(self, request, pk=None):
-        """WIR217 — état de la génération du PDF : prêt / en cours / ÉCHEC.
-
-        Le sondage du frontend ne lisait que ``fichier_pdf`` : un échec
-        DÉFINITIF de ``task_generate_devis_pdf`` (retries épuisés) était donc
-        invisible et le sondage tournait sans fin. Cet endpoint expose l'état
-        consigné par la tâche (patron EXPORT_JOB, cache scopé société).
-
-        ``erreur``/``date`` ne sont renseignés QUE sur l'état ``echec`` ; un
-        rendu déjà prêt l'emporte toujours sur un échec plus ancien.
-        """
-        from django.core.cache import cache
-        from ..tasks import pdf_job_cache_key
-
-        devis = self.get_object()  # scoping société (404 hors société)
-        job = cache.get(pdf_job_cache_key(devis.pk)) or {}
-        # Défense en profondeur : jamais l'état d'une AUTRE société, même si
-        # une clé de cache venait à collisionner.
-        if job.get('company_id') not in (None, devis.company_id):
-            job = {}
-        pret = bool(devis.fichier_pdf)
-        if pret:
-            statut = 'pret'
-        elif job.get('status') == 'error':
-            statut = 'echec'
-        else:
-            statut = 'en_cours'
-        return Response({
-            'devis': devis.pk,
-            'statut': statut,
-            'fichier_pdf': pret,
-            'erreur': job.get('error') if statut == 'echec' else None,
-            'date': job.get('at') if statut == 'echec' else None,
-        })
-
-    @action(
-        detail=True,
-        methods=['get'],
-        url_path='proposal',
-        # NTPRT10 — MÊME classe que la branche `proposal` de get_permissions
-        # ci-dessus (qui prime) : la déclaration de l'@action ne doit jamais
-        # annoncer une garde différente de la garde effective.
-        permission_classes=[IsInternalWriterOrPortalClientOwner],
-    )
-    def proposal(self, request, pk=None):
-        """Canonical client-facing quote PDF path (CLAUDE.md rule #4).
-
-        Renders the premium quote PDF for this devis (synchronously, via the
-        vendored quote engine), stores it in MinIO and streams it inline.
-        """
-        devis = self.get_object()
-        try:
-            from ..quote_engine import clean_pdf_options, generate_premium_devis_pdf
-            from ..utils.pdf import download_pdf
-            # Format via query params, e.g. ?pdf_mode=onepage&devis_final=1
-            raw = {
-                'pdf_mode': request.query_params.get('pdf_mode'),
-            }
-            if 'show_monthly' in request.query_params:
-                raw['show_monthly'] = request.query_params['show_monthly'] not in ('0', 'false')
-            if 'devis_final' in request.query_params:
-                raw['devis_final'] = request.query_params['devis_final'] in ('1', 'true')
-            # Page « Étude » (4e page premium) — dégrade proprement à 3 pages
-            # si le devis n'a pas de données d'étude (géré par le moteur).
-            if 'include_etude' in request.query_params:
-                raw['include_etude'] = request.query_params['include_etude'] in ('1', 'true')
-            # CAL183 — page « Calepinage » (planche cotée). Le défaut est AUTO
-            # (présente dès que le devis porte un calepinage dessinable) : le
-            # paramètre n'existe donc QUE pour trancher explicitement, et son
-            # absence laisse l'AUTO décider. `?include_calepinage=0` est
-            # l'opt-out ; toute autre valeur vaut « oui » — même lecture que
-            # `include_etude` juste au-dessus, jamais une seconde convention.
-            if 'include_calepinage' in request.query_params:
-                raw['include_calepinage'] = (
-                    request.query_params['include_calepinage'] in ('1', 'true'))
-            # NTI18N4 — langue de sortie du document, INDÉPENDANTE de la
-            # langue d'interface de qui génère le PDF. `?langue=` écrase la
-            # résolution auto (priorité : explicite > Client.langue_document
-            # > repli société [NTI18N34, pas encore construit] > FR). Le
-            # moteur reçoit toujours une valeur DÉJÀ résolue — jamais un
-            # second moteur, jamais de logique de langue dupliquée ici.
-            from apps.parametres.i18n_resolver import resolve_langue_sortie
-            raw['langue_sortie'] = resolve_langue_sortie(
-                langue_explicite=request.query_params.get('langue'),
-                client=devis.client, company=devis.company)
-            # ERR74 — /proposal is a safe GET: render + stream, but do NOT
-            # persist fichier_pdf on every call (persist=False). The single
-            # engine picks the residential (redesigned) or legacy renderer.
-            key = generate_premium_devis_pdf(
-                devis.id, clean_pdf_options(raw), persist=False)
-            pdf_bytes = download_pdf(key)
-        except Exception as exc:
-            return Response(
-                {'detail': f'Génération de la proposition échouée : {exc}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-        response = HttpResponse(pdf_bytes, content_type='application/pdf')
-        # QD2 — nom cohérent (société _ type _ client _ référence).
-        from ..utils.filenames import document_filename
-        filename = document_filename(
-            'Proposition', devis.reference,
-            client=devis.client if devis.client_id else None,
-            company=devis.company)
-        response['Content-Disposition'] = (
-            f'inline; filename="{filename}"'
-        )
-        return response
-
-    @action(
-        detail=True,
         methods=['get', 'post'],
         url_path='layout',
         permission_classes=[IsResponsableOrAdmin],
@@ -1344,67 +1202,6 @@ class DevisViewSet(DevisEditionActionsMixin,
             {'roof_image': key, 'url': roof_image_signed_url(key)},
             status=status.HTTP_201_CREATED,
         )
-
-    @action(
-        detail=True,
-        methods=['get'],
-        url_path='telecharger-pdf',
-        permission_classes=[IsResponsableOrAdmin],
-    )
-    def telecharger_pdf(self, request, pk=None):
-        devis = self.get_object()
-        if not devis.fichier_pdf:
-            return Response(
-                {'detail': (
-                    'PDF non disponible. '
-                    'Cliquez d\'abord sur « Générer PDF ».'
-                )},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        try:
-            from ..utils.pdf import download_pdf
-            # PVFRESH — ce bouton livrait les octets du DERNIER rendu, quelle
-            # que soit l'ancienneté de ce rendu : « Générer PDF », puis on
-            # corrige une quantité, puis « Télécharger » → le commercial
-            # repartait avec le PDF d'AVANT la correction et l'envoyait au
-            # client, pendant que la page /proposition (qui, elle, re-rend à
-            # chaque appel) montrait les chiffres à jour. C'est exactement la
-            # divergence page/PDF signalée le 18/08/2026. On compare donc
-            # l'empreinte des données à celle du fichier stocké : identiques →
-            # aucun re-rendu (le cache garde tout son intérêt), différentes →
-            # re-rendu dans LE MÊME format avant de servir.
-            #
-            # DÉGRADATION : si le rafraîchissement lui-même échoue (moteur ou
-            # stockage momentanément indisponible), on retombe sur le fichier
-            # stocké plutôt que de refuser le téléchargement — ce bouton
-            # fonctionnait avant PVFRESH, il doit continuer de fonctionner.
-            from ..quote_engine import cle_pdf_a_jour
-            try:
-                cle = cle_pdf_a_jour(devis)
-            except Exception:  # noqa: BLE001
-                import logging as _logging
-                _logging.getLogger(__name__).warning(
-                    'PVFRESH: rafraîchissement impossible pour %s — le fichier '
-                    'stocké est servi tel quel', devis.reference,
-                    exc_info=True)
-                cle = devis.fichier_pdf
-            pdf_bytes = download_pdf(cle)
-        except Exception:
-            return Response(
-                {'detail': 'Fichier introuvable. Régénérez le PDF.'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        response = HttpResponse(pdf_bytes, content_type='application/pdf')
-        # QD2 — nom cohérent (société _ type _ client _ référence).
-        from ..utils.filenames import document_filename
-        filename = document_filename(
-            'Devis', devis.reference,
-            client=devis.client if devis.client_id else None,
-            company=devis.company)
-        response['Content-Disposition'] = (
-            f'inline; filename="{filename}"'
-        )
-        return response
 
     @action(
         detail=True,
