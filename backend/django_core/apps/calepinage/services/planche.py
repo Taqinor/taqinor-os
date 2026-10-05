@@ -1010,24 +1010,26 @@ def planche_svg_ou_vide(calepinage):
 # AUCUN MONTANT : c'est une pièce de chantier. Le rendu est VÉRIFIÉ avant
 # d'être rendu (``verifier_absence_d_argent``), pas seulement écrit avec soin.
 
-#: Les mots d'argent qui n'ont rien à faire sur un plan de pose.
-MOTS_D_ARGENT_POSE = ('prix', 'prix_achat', 'montant', 'mad', 'dh ht',
-                      'coût', 'tarif', 'remise', 'facture', 'marge brute')
-
-
 class PlanDePoseRefuse(PlancheRefusee):
     """Le plan de pose refuse de sortir — il porterait un montant."""
 
 
 def verifier_absence_d_argent(document):
-    """Refuse un plan de pose qui porte un mot d'argent.
+    """Refuse un texte de plan de pose qui porte un mot d'argent.
 
     La règle est ARMÉE et pas seulement respectée : un montant glissé dans un
     libellé de produit passerait autrement sans bruit jusqu'au chantier — et
-    ``Produit.prix_achat`` ne doit paraître dans AUCUNE sortie.
+    ``Produit.prix_achat`` ne doit paraître dans AUCUN sortie.
+
+    ACAL231 — la garde est CELLE de ``services/garde_montants.py`` (une
+    liste, frontières de mot) et ne reçoit que des textes du catalogue ou du
+    moteur : ``rendre_plan_pose_svg`` lui passe le bandeau (désignations
+    d'onduleur, chaînes), jamais le titre du calepinage ni un libellé de pan
+    saisis.
     """
-    texte = (document or '').lower()
-    trouves = sorted({mot for mot in MOTS_D_ARGENT_POSE if mot in texte})
+    from .garde_montants import mots_d_argent
+
+    trouves = mots_d_argent(document)
     if trouves:
         raise PlanDePoseRefuse(
             "Plan de pose refusé : une pièce de chantier ne porte aucun "
@@ -1124,9 +1126,11 @@ def rendre_plan_pose_svg(calepinage, *, moment=None, **options):
     # jamais la colonne brute, qui ne porte pas le bloc électrique).
     chaines = lignes_de_chaines(selectors.resultat_servi(calepinage))
     bandeau += chaines or (MENTION_NON_CHAINE,)
-    return verifier_absence_d_argent(
-        rendre_plan_svg(calepinage, contenu=CONTENU_POSE, moment=moment,
-                        bandeau=bandeau, **options))
+    # ACAL231 - la garde ne porte que sur les textes du catalogue / du moteur
+    # (le bandeau), jamais sur le titre ou les libellés de pan SAISIS.
+    verifier_absence_d_argent('\n'.join(bandeau))
+    return rendre_plan_svg(calepinage, contenu=CONTENU_POSE, moment=moment,
+                           bandeau=bandeau, **options)
 
 
 def rendre_plan_pose_pdf(calepinage, *, company=None, **options):

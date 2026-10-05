@@ -35,6 +35,7 @@ filtre est silencieuse ; un refus ne l'est pas.
 """
 from __future__ import annotations
 
+from .garde_montants import MOTS_D_ARGENT, mots_d_argent
 from .rangees import rangees_du_pan
 
 __all__ = [
@@ -48,11 +49,8 @@ __all__ = [
 #: Les trois feuilles, dans l'ordre du classeur.
 FEUILLES = ('Modules', 'Chaînes', 'Nomenclature')
 
-#: Les mots qui n'ont RIEN à faire dans une sortie technique. La garde porte
-#: sur les en-têtes et sur les cellules texte — un prix glissé dans une
-#: désignation passerait sinon.
-MOTS_D_ARGENT = ('prix', 'achat', 'coût', 'cout', 'marge brute', 'montant',
-                 'mad', 'dh ht', 'tarif', 'remise', 'facture')
+# ACAL231 - ``MOTS_D_ARGENT`` (réexporté) est LA liste unique de
+# ``services/garde_montants.py`` : une seule garde, à frontières de mot.
 
 
 class ExportRefuse(ValueError):
@@ -63,20 +61,37 @@ class ExportRefuse(ValueError):
         self.champ = champ
 
 
-def verifier_absence_de_prix(entetes, lignes):
-    """Refuse une table qui charrie un mot d'argent (en-tête OU cellule)."""
+class _Designation(str):
+    """Une cellule de désignation du bordereau (ACAL231).
+
+    Le texte imprimé peut porter une spécification SAISIE (« décision
+    société — remise aux normes ») ; la garde ne lit que ``garde`` : la
+    désignation et la référence venues du catalogue ou du moteur.
+    """
+
+    garde = ''
+
+
+def verifier_absence_de_prix(entetes, lignes, *, colonnes_exclues=()):
+    """Refuse une table qui charrie un mot d'argent (en-tête OU cellule).
+
+    ACAL231 - garde UNIQUE à frontières de mot (``garde_montants``) : « Hammadi »,
+    « Madani » ou un pan « Remise » ne sont plus refusés. Elle ne porte jamais
+    sur un texte SAISI : ``colonnes_exclues`` écarte les colonnes de saisie
+    (libellé de pan, bâtiment) et une cellule ``_Designation`` ne présente à
+    la garde que ses parties catalogue/moteur.
+    """
     suspects = []
     for entete in entetes:
-        texte = str(entete).lower()
         suspects += ['en-tête « %s »' % entete
-                     for mot in MOTS_D_ARGENT if mot in texte]
+                     for _mot in mots_d_argent(entete)]
     for rang, ligne in enumerate(lignes, start=1):
-        for cellule in ligne:
-            if not isinstance(cellule, str):
+        for colonne, cellule in enumerate(ligne):
+            if colonne in colonnes_exclues or not isinstance(cellule, str):
                 continue
-            texte = cellule.lower()
+            lu = getattr(cellule, 'garde', None) or cellule
             suspects += ['ligne %d : « %s »' % (rang, cellule)
-                         for mot in MOTS_D_ARGENT if mot in texte]
+                         for _mot in mots_d_argent(lu)]
     if suspects:
         raise ExportRefuse(
             "Export refusé : une sortie technique ne porte aucun prix "
@@ -154,14 +169,20 @@ def _designation_bordereau(ligne):
     ou « décision société — <motif> » pour un organe ajouté à la main,
     ``services/protections.py::MENTION_SOCIETE``) est reprise TELLE QUELLE,
     jamais reformulée."""
-    parties = [str(ligne.get('designation') or '').strip()]
+    designation = str(ligne.get('designation') or '').strip()
+    parties = [designation]
     spec = str(ligne.get('spec') or '').strip()
     if spec:
         parties.append(spec)
     reference = ligne.get('reference')
     if reference:
         parties.append('réf. %s' % reference)
-    return ' — '.join(partie for partie in parties if partie)
+    cellule = _Designation(' — '.join(p for p in parties if p))
+    # La garde ne lit que le catalogue / le moteur : jamais la spécification
+    # (qui peut être le motif saisi d'un organe ajouté).
+    cellule.garde = ' — '.join(p for p in (
+        designation, ('réf. %s' % reference) if reference else '') if p)
+    return cellule
 
 
 def _lignes_bordereau_electrique(resultat):
@@ -221,8 +242,11 @@ def tables_du_resultat(geometrie, resultat=None):
         (FEUILLES[1],) + table_chaines(resultat),
         (FEUILLES[2],) + table_nomenclature(resultat),
     ]
-    for _titre, entetes, lignes in tables:
-        verifier_absence_de_prix(entetes, lignes)
+    for titre, entetes, lignes in tables:
+        # Colonnes Pan et Bâtiment : libellés SAISIS, hors garde (ACAL231).
+        verifier_absence_de_prix(
+            entetes, lignes,
+            colonnes_exclues=(0, 1) if titre == FEUILLES[0] else ())
     return tables
 
 
@@ -255,8 +279,11 @@ def classeur_octets(tables, *, provenance=None):
 
         feuille_provenance = (TITRE_FEUILLE, list(ENTETES),
                               [list(ligne) for ligne in provenance])
+        # Colonne « Valeur » exclue : elle porte le titre SAISI du calepinage
+        # (ACAL231) ; les libellés (colonne 0) restent gardés.
         verifier_absence_de_prix(feuille_provenance[1],
-                                 feuille_provenance[2])
+                                 feuille_provenance[2],
+                                 colonnes_exclues=(1,))
         tables = [feuille_provenance] + list(tables)
 
     titre, entetes, lignes = tables[0]

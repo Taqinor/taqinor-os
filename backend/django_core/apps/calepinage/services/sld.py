@@ -73,7 +73,7 @@ fragment, aucun filtre de texte sur le SVG rendu.
 """
 from __future__ import annotations
 
-import re
+from .garde_montants import MOTS_D_ARGENT, premier_mot_d_argent
 
 __all__ = [
     'CLE_EDITION', 'RUBRIQUES', 'LONGUEUR_TEXTE_MAX', 'MOTS_D_ARGENT',
@@ -99,14 +99,11 @@ RUBRIQUES = ('libelles', 'reperes', 'positions')
 #: « ce texte ne sera pas lu » au lieu de l'accepter en silence.
 LONGUEUR_TEXTE_MAX = 120
 
-#: Les mots d'argent refusés dans un texte édité — la MÊME liste que la garde
-#: du contrat (``tests/test_calx204_contrat_sld.py::HORS_SUJET``), source
-#: unique de cette règle. Un schéma part au bureau de contrôle et au
-#: gestionnaire de réseau : aucun montant n'y a sa place (D-CALX 5).
-MOTS_D_ARGENT = ('prix', 'marge', 'montant', 'mad', 'tva', 'remise')
-
-_MOT_D_ARGENT_RE = re.compile(
-    r'\b(?:%s)\b' % '|'.join(MOTS_D_ARGENT), re.IGNORECASE)
+#: Les mots d'argent refusés dans un texte édité — la liste UNIQUE de
+#: ``services/garde_montants.py`` (ACAL231), que la garde du contrat
+#: (``tests/test_calx204_contrat_sld.py::HORS_SUJET``) importe aussi. Un schéma
+#: part au bureau de contrôle et au gestionnaire de réseau : aucun montant n'y
+#: a sa place (D-CALX 5).
 
 
 #: Les trois gabarits de planche (CALX237). Il n'y a PAS de gabarit
@@ -284,12 +281,12 @@ def _texte_valide(valeur, *, champ):
             "Le texte de « %s » dépasse %d caractères : la boîte du schéma "
             "n'en montre que les premiers, le reste ne serait jamais lu."
             % (champ.rsplit('.', 1)[-1], LONGUEUR_TEXTE_MAX), champ=champ)
-    mot = _MOT_D_ARGENT_RE.search(texte)
+    mot = premier_mot_d_argent(texte)
     if mot is not None:
         raise SldRefuse(
             "Le texte de « %s » contient le mot « %s » : le schéma "
             "unifilaire est une pièce technique, aucun montant n'y a sa "
-            "place." % (champ.rsplit('.', 1)[-1], mot.group(0)), champ=champ)
+            "place." % (champ.rsplit('.', 1)[-1], mot), champ=champ)
     return texte
 
 
