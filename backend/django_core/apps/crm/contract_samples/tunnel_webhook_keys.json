@@ -668,5 +668,58 @@
       "champ_lead": null,
       "note": "EN ATTENTE DU CABLAGE (ACAL20, D-ACAL-27) : 70e cle, posee SEULE avant le code (PACT10). Objet facultatif = le trace multi-pans du visiteur (document roof_layout v2). Porteur ERP prevu : Lead.web_questionnaire['roof_layout'] (cle_blob), SANS colonne ni migration. Bornes : <= 64 Ko serialise, <= 12 zones, <= 64 sommets par zone, coordonnees finies ; hors bornes = cle IGNOREE, jamais une erreur pour le visiteur. Declaree `refus` tant que `_extract_web_questionnaire` ne la lit pas (la garde check_lead_webhook_parite.py rougirait sur `web_questionnaire` non lu) : PATCH-T03 la cable et la passe en `web_questionnaire` + `cle_blob: roof_layout`, PATCH-T02 l'emet cote site (nom emis `roofLayout`, nom range `roof_layout`)."
     }
+  },
+  "ajout_ciq400": {
+    "pourquoi": "CIQ400 (Groupe CIQ, audit L3 C&I du 03/10/2026 ; D-CIQ-8, D-CIQ-11, Q21) — clés pro du tunnel promues du sac `web_questionnaire` vers les colonnes du contrat `lead_pro.json` (CIQ1).",
+    "cle_nouvelle": {
+      "tensionSource": {
+        "cle_registre": "tensionSource",
+        "groupe": "G_PRO",
+        "requis": false,
+        "destination": "colonne_lead",
+        "champ_lead": "tension_source",
+        "valeurs": [
+          "touchee",
+          "defaut_visible"
+        ],
+        "note": "touchee → `site_web` ; defaut_visible → `site_defaut_visible` (la valeur pré-cochée n'a pas été modifiée : visite requise, D-CIQ-5)"
+      }
+    },
+    "promues_en_colonne": {
+      "categorieCommerciale": {
+        "champ_lead": "categorie_commerciale"
+      },
+      "reponses par catégorie (chambres, occupationPct, piscine, blanchisserie, chambresFroides, horaires, cuisson, surfaceVenteM2, effectif, clim, lits, gardeNuit, internat, four, cuissonNocturne, temperatureConsigne, volumeM3, saisonnaliteRecolte, chauffe…)": {
+        "champ_lead": "reponses_categorie"
+      },
+      "equipes": {
+        "champ_lead": "regime_equipes"
+      },
+      "surfaceType": {
+        "champ_lead": "type_surface"
+      },
+      "hasGenerator": {
+        "champ_lead": "groupe_electrogene",
+        "note": "accepté par apps/web/src/lib/lead.ts, plus émis par le tunnel depuis la coupe du 18/08 : promu s'il arrive"
+      },
+      "groupeKva": {
+        "champ_lead": "groupe_kva",
+        "note": "idem : promu s'il arrive"
+      },
+      "dieselDhMois": {
+        "champ_lead": "groupe_depense_mad_mois",
+        "note": "idem : promu s'il arrive"
+      },
+      "cosPhiConnu": {
+        "champ_lead": "cos_phi",
+        "note": "idem : promu s'il arrive ; `cos_phi_source` = site_web"
+      }
+    },
+    "restent_au_sac": {
+      "activityProfile": "simple INFORMATION (son envoyeur existe, apps/web/src/lib/tunnel/champs.ts) — D-CIQ-1 n'en fait JAMAIS une entrée de calcul",
+      "weekend": "aucun envoyeur depuis le 18/08, et un booléen ne dit pas quels jours",
+      "fermetureEstivale": "aucun envoyeur depuis le 18/08, et un booléen ne dit pas quels mois"
+    },
+    "regle": "La table `cles` reste DÉRIVÉE du registre (`notes.regeneration`) : elle prend ces destinations quand la tâche de promotion (CIQ406) et le registre web les émettent ; ce bloc en est le contrat."
   }
 }

@@ -1,0 +1,116 @@
+{
+  "endpoint": "GET /api/django/crm/clients/<int:pk>/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Contrat posé SEUL (PACT10) : `exemple` ne montre que les clés ENTREPRISE du détail client (ClientViewSet, forme non lisible statiquement) — existantes (`type_client`, `nom`, `ice`, `rc`, `if_fiscal`, `adresse`) et additives (`adresse_siege`, `contact_nom`, `contact_fonction`, `raison_sociale_a_confirmer`, `tva_recuperable`, `identite_entreprise`). Le même bloc `identite_entreprise` est servi au détail du lead (`lead_pro.json`).",
+  "pourquoi": "CIQ8 (Groupe CIQ, audit L3 des devis commercial et industriel du 03/10/2026 ; décision D-CIQ-11) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main`. Aujourd'hui `_resoudre_ou_creer_client` (apps/crm/services.py) crée `Client(nom=lead.nom, prenom, email, telephone, adresse, langue_document)` : ni `type_client` (défaut `particulier`, apps/crm/models.py `Client.TypeClient`), ni ICE/RC/IF, et ne lit jamais `lead.societe` ; `_find_existing` rapproche par e-mail puis téléphone sur tous les clients de la société ; le Client n'a ni adresse de siège ni personne « à l'attention de » ; le contrôle DGI (apps/ventes/dgi/dgi_validator.py) ne voit donc jamais un client B2B. Prod 03/10/2026 : les 7 clients des devis C&I sont `particulier`, ICE 0/7, RC 0/7. Ce fichier fige TROIS blocs : (1) `creation_depuis_lead` ; (2) `rattachement` (sans doublon, conflit d'ICE nommé) ; (3) `identite_entreprise` (D-CIQ-11 : ICE demandé au devis sans le bloquer, obligatoire à l'acceptation en ligne et à la facture). Les colonnes pro du lead lues ici sont celles de `lead_pro.json` (CIQ1). Aucune valeur d'exemple n'est un vrai ICE (`000000000000000` et `111111111111111` sont factices) ; aucun client réel.",
+  "exemple": {
+    "id": 640,
+    "type_client": "entreprise",
+    "nom": "Hôtel Exemple SARL",
+    "prenom": null,
+    "raison_sociale_a_confirmer": false,
+    "contact_nom": "Karim Exemple",
+    "contact_fonction": "Directeur",
+    "ice": "000000000000000",
+    "rc": "",
+    "if_fiscal": "",
+    "adresse": "Route d'exemple, Marrakech",
+    "adresse_siege": "",
+    "tva_recuperable": "oui",
+    "identite_entreprise": {
+      "type_client": "entreprise",
+      "complete": false,
+      "manquants": [
+        "rc",
+        "if_fiscal"
+      ],
+      "requis_pour": {
+        "devis": [],
+        "acceptation_en_ligne": [
+          "raison_sociale",
+          "ice"
+        ],
+        "facture": [
+          "ice"
+        ]
+      }
+    }
+  },
+  "exemple_nom_propre": {
+    "id": 641,
+    "type_client": "entreprise",
+    "nom": "Youssef Exemple",
+    "prenom": null,
+    "raison_sociale_a_confirmer": true,
+    "contact_nom": "Youssef Exemple",
+    "contact_fonction": "",
+    "ice": "",
+    "rc": "",
+    "if_fiscal": "",
+    "adresse": "Rue d'exemple, Agadir",
+    "adresse_siege": "",
+    "tva_recuperable": "ne_sait_pas",
+    "identite_entreprise": {
+      "type_client": "entreprise",
+      "complete": false,
+      "manquants": [
+        "raison_sociale",
+        "ice",
+        "rc",
+        "if_fiscal"
+      ],
+      "requis_pour": {
+        "devis": [],
+        "acceptation_en_ligne": [
+          "raison_sociale",
+          "ice"
+        ],
+        "facture": [
+          "ice"
+        ]
+      }
+    }
+  },
+  "exemple_conflit": {
+    "code": "conflit_identite_entreprise",
+    "champ": "ice",
+    "message": "Le client trouvé par l'e-mail (« Atelier Exemple SA ») porte l'ICE 111111111111111, différent de celui du lead (000000000000000) : vérifier l'ICE avant de créer ou de rattacher le client."
+  },
+  "creation_depuis_lead": {
+    "quand_entreprise": "Le client est de type `entreprise` quand le lead est `commercial`/`industriel` OU porte une `societe` non vide ; sinon `particulier` (inchangé).",
+    "correspondance": {
+      "nom": "← lead.societe (raison sociale). Commerçant en nom propre sans raison sociale : prénom + nom de la personne, `raison_sociale_a_confirmer: true` — jamais bloquant",
+      "prenom": "null pour une entreprise",
+      "contact_nom": "← prénom + nom du lead (la personne « à l'attention de »)",
+      "contact_fonction": "← lead.fonction_contact",
+      "ice / rc / if_fiscal / adresse_siege / tva_recuperable": "← recopiés du lead, DÉCLARÉS — jamais devinés ; vide reste vide",
+      "adresse": "l'adresse du SITE, inchangée",
+      "email / telephone / langue_document": "comme aujourd'hui"
+    },
+    "documents": "`adresse_siege` sert au document et à la facture quand elle existe ; sinon `adresse`.",
+    "societe_porteuse": "La société (company) vient TOUJOURS du lead — jamais du corps de la requête."
+  },
+  "rattachement": {
+    "ordre_recherche": [
+      "ice (même société)",
+      "email",
+      "telephone"
+    ],
+    "regle_ice": "Jamais un second client pour le même ICE dans la même société.",
+    "conflit": "Si l'e-mail ou le téléphone désigne un client dont l'ICE DIFFÈRE de celui du lead (les deux non vides) : erreur {code: 'conflit_identite_entreprise', champ: 'ice', message} — jamais une réutilisation silencieuse (`exemple_conflit`).",
+    "rattache": "Un client trouvé et compatible est réutilisé ; ses champs vides peuvent être complétés depuis le lead, jamais écrasés (l'écart passe par `synchroniser-client`, `lead_client_ecart.json` → `exemple_entreprise`)."
+  },
+  "identite_entreprise": {
+    "servie_par": [
+      "GET /api/django/crm/clients/<int:pk>/",
+      "GET /api/django/crm/leads/<int:pk>/ (contrat `lead_pro.json`)"
+    ],
+    "forme": {
+      "type_client": "particulier | entreprise",
+      "complete": "booléen — aucun manquant",
+      "manquants": "[raison_sociale | ice | rc | if_fiscal | adresse_siege]",
+      "requis_pour": "{devis: [] (rien ne bloque un devis), acceptation_en_ligne: ['raison_sociale','ice'], facture: ['ice']}"
+    },
+    "regle": "D-CIQ-11 : l'ICE est DEMANDÉ au devis sans jamais le bloquer, OBLIGATOIRE à l'acceptation en ligne (contrat CIQ9) et à la facture. Pour un `particulier`, `identite_entreprise` vaut {type_client: 'particulier', complete: true, manquants: [], requis_pour: {devis: [], acceptation_en_ligne: [], facture: []}}."
+  }
+}

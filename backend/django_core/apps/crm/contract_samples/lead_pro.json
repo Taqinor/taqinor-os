@@ -1,0 +1,840 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<int:pk>/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Patron QJR501 : `exemple` ne montre que les clés PRO additives du détail du lead (plus `id`, `type_installation`). CIQ405/CIQ409 servent ces clés ; CIQ409 remet `forme_serveur: complete`.",
+  "pourquoi": "CIQ1 (Groupe CIQ, audit L3 des devis commercial et industriel du 03/10/2026 ; décisions D-CIQ-3, D-CIQ-5, D-CIQ-7, D-CIQ-11, D-CIQ-15, D-CIQ-19) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main` avant toute moitié. Aujourd'hui un lead commercial/industriel n'a que `societe` (texte libre), une conso (`conso_mensuelle_kwh`, `bill_kwh`), `facture_hiver` et `compteur_puissance_kva` (apps/crm/models.py) ; tension, catégorie, équipes, type de surface, groupe électrogène et cos φ dorment dans le sac `web_questionnaire` (crm/webhooks.py) ou dans des consignes « à noter » sans colonne (frontend/src/features/crm/relances/appelGuidance.js) ; la règle pro « devis auto prêt » n'accepte que des kWh (crm/devis_auto.py `champs_requis`). Prod 03/10/2026 : 61 leads commerciaux, 1 industriel ; catégorie 0/61 ; 6 des 8 devis C&I portés par un lead résidentiel. Ce fichier fige CINQ blocs : (1) `colonnes_pro` — chaque colonne avec son nom, son type, ses choix fermés, son unité, son segment, son étape d'appel (D-CIQ-7) et sa question orale EN FRANÇAIS ; (2) `entrees_ci` — {entrees [{colonne, valeur, provenance {origine, detail, date} (forme AGR2), cle_etude (clé `etude_params` C&I v2 du contrat `apps/ventes/contract_samples/etude_ci_preview.json`, CIQ2 — jamais une clé v1), chemin}], manquants} ; (3) la règle pro « devis auto prêt » (posée dans `devis_auto_pret.json`, `exemple_commercial`/`exemple_industriel`) + `visite_avant_devis` (D-CIQ-5) ; (4) `incoherence_segment` / `segment_suggere`, mêmes formes qu'AGR1 (`lead_pompage.json`) ; (5) `questions_pro` — les 5 étapes du premier appel, par segment, sans aucun chiffre. Le tarif déclaré de la facture suit `apps/ventes/contract_samples/tarifs_ci.json` (CIQ11) : il y est RÉFÉRENCÉ, jamais redéfini ici. `activity_profile` du site n'est qu'une information, jamais une entrée de calcul. Toutes les valeurs d'exemple sont ILLUSTRATIVES (aucun client réel ; ICE `000000000000000` = factice) ; ce sont les clés, leurs natures et leurs règles qui font le contrat.",
+  "exemple": {
+    "id": 2207,
+    "type_installation": "commercial",
+    "societe": "Hôtel Exemple SARL",
+    "tension_raccordement": "bt",
+    "tension_source": "facture",
+    "compteur_puissance_kva": null,
+    "puissance_souscrite_source": null,
+    "raccordement": "triphase",
+    "categorie_commerciale": "hotel",
+    "reponses_categorie": {
+      "chambres": 40,
+      "occupation_pct": null,
+      "piscine": false,
+      "heures_piscine": null,
+      "blanchisserie": true,
+      "reception_24h": true
+    },
+    "secteur_industriel": "",
+    "export_ue_declare": "",
+    "regime_equipes": "continu",
+    "jours_ouverture": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "heure_debut": 0,
+    "heure_fin": 24,
+    "fermeture_mois": [],
+    "type_surface": "toiture",
+    "type_toiture": "terrasse_beton",
+    "surface_toiture_m2": "650.00",
+    "surface_source": "declare",
+    "groupe_electrogene": "non",
+    "groupe_kva": null,
+    "groupe_litres_mois": null,
+    "groupe_depense_mad_mois": null,
+    "pv_existant_kwc": null,
+    "cos_phi": null,
+    "cos_phi_source": null,
+    "releve_conso": {
+      "mois": [
+        {
+          "mois": "2026-08",
+          "kwh": "17600.00",
+          "kwh_pointe": null,
+          "kwh_pleines": null,
+          "kwh_creuses": null,
+          "puissance_atteinte_kva": null,
+          "cos_phi": null
+        }
+      ],
+      "source": "lu_sur_facture"
+    },
+    "tva_recuperable": "oui",
+    "ice": "000000000000000",
+    "rc": "",
+    "if_fiscal": "",
+    "adresse_siege": "",
+    "fonction_contact": "Directeur",
+    "contact_secondaire_fonction": "",
+    "contact_secondaire_email": "",
+    "financing_intent": "indecis",
+    "facture_tranche_declaree": null,
+    "conso_mensuelle_kwh": null,
+    "bill_kwh": null,
+    "facture_hiver": null,
+    "entrees_ci": {
+      "entrees": [
+        {
+          "colonne": "releve_conso",
+          "valeur": [
+            {
+              "mois": "2026-08",
+              "kwh": 17600
+            }
+          ],
+          "provenance": {
+            "origine": "lead",
+            "detail": "facture",
+            "date": "2026-09-10"
+          },
+          "cle_etude": "consommation",
+          "chemin": "consommation.factures_mad"
+        },
+        {
+          "colonne": "tension_raccordement",
+          "valeur": "bt",
+          "provenance": {
+            "origine": "lead",
+            "detail": "facture",
+            "date": "2026-09-10"
+          },
+          "cle_etude": "tension",
+          "chemin": "tension"
+        },
+        {
+          "colonne": "raccordement",
+          "valeur": "tri",
+          "provenance": {
+            "origine": "lead",
+            "detail": "client",
+            "date": "2026-09-10"
+          },
+          "cle_etude": "phases",
+          "chemin": "phases"
+        },
+        {
+          "colonne": "jours_ouverture",
+          "valeur": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "provenance": {
+            "origine": "lead",
+            "detail": "client",
+            "date": "2026-09-10"
+          },
+          "cle_etude": "rythme",
+          "chemin": "rythme.jours_ouverts"
+        },
+        {
+          "colonne": "regime_equipes",
+          "valeur": "continu",
+          "provenance": {
+            "origine": "lead",
+            "detail": "client",
+            "date": "2026-09-10"
+          },
+          "cle_etude": "rythme",
+          "chemin": "rythme.equipes"
+        },
+        {
+          "colonne": "categorie_commerciale",
+          "valeur": "hotel",
+          "provenance": {
+            "origine": "lead",
+            "detail": "client",
+            "date": "2026-09-10"
+          },
+          "cle_etude": "rythme",
+          "chemin": "rythme.categorie_commerciale"
+        },
+        {
+          "colonne": "surface_toiture_m2",
+          "valeur": 650,
+          "provenance": {
+            "origine": "lead",
+            "detail": "client",
+            "date": "2026-09-10"
+          },
+          "cle_etude": "toit",
+          "chemin": "toit.surface_utile_m2"
+        }
+      ],
+      "manquants": [
+        "compteur_puissance_kva"
+      ]
+    },
+    "devis_auto": {
+      "pret": true,
+      "manquants": [],
+      "manquants_detail": [],
+      "requis": [
+        [
+          "conso_mensuelle_kwh",
+          "bill_kwh",
+          "releve_conso",
+          "facture_hiver"
+        ]
+      ],
+      "source_conso": "releve_conso",
+      "visite_avant_devis": {
+        "requise": true,
+        "motifs": [
+          "puissance souscrite inconnue"
+        ]
+      }
+    },
+    "incoherence_segment": null,
+    "segment_suggere": null,
+    "identite_entreprise": {
+      "type_client": "entreprise",
+      "complete": false,
+      "manquants": [
+        "rc",
+        "if_fiscal"
+      ],
+      "requis_pour": {
+        "devis": [],
+        "acceptation_en_ligne": [
+          "raison_sociale",
+          "ice"
+        ],
+        "facture": [
+          "ice"
+        ]
+      }
+    }
+  },
+  "exemple_industriel": {
+    "id": 2311,
+    "type_installation": "industriel",
+    "societe": "Atelier Exemple SA",
+    "tension_raccordement": "mt",
+    "tension_source": "facture",
+    "compteur_puissance_kva": "250.00",
+    "puissance_souscrite_source": "facture",
+    "secteur_industriel": "agroalimentaire",
+    "export_ue_declare": "non",
+    "regime_equipes": "2x8",
+    "jours_ouverture": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "heure_debut": 6,
+    "heure_fin": 22,
+    "fermeture_mois": [
+      8
+    ],
+    "cos_phi": null,
+    "cos_phi_source": null,
+    "releve_conso": {
+      "mois": [
+        {
+          "mois": "2026-08",
+          "kwh": "40000.00",
+          "kwh_pointe": "6000.00",
+          "kwh_pleines": "26000.00",
+          "kwh_creuses": "8000.00",
+          "puissance_atteinte_kva": "210.00",
+          "cos_phi": null
+        }
+      ],
+      "source": "lu_sur_facture"
+    },
+    "devis_auto": {
+      "pret": true,
+      "manquants": [],
+      "manquants_detail": [],
+      "requis": [
+        [
+          "conso_mensuelle_kwh",
+          "bill_kwh",
+          "releve_conso",
+          "facture_hiver"
+        ]
+      ],
+      "source_conso": "releve_conso",
+      "visite_avant_devis": {
+        "requise": true,
+        "motifs": [
+          "site en moyenne tension"
+        ]
+      }
+    }
+  },
+  "exemple_incoherent": {
+    "id": 1977,
+    "type_installation": "residentiel",
+    "societe": "Café Exemple",
+    "incoherence_segment": {
+      "segment_lead": "residentiel",
+      "mode_devis": "commercial",
+      "devis": [
+        {
+          "id": 5120,
+          "reference": "DEV-2026-10-0011"
+        }
+      ],
+      "message": "Ce lead est typé « résidentiel » mais porte un devis commercial. Changer le type du lead en « commercial » ?"
+    },
+    "segment_suggere": {
+      "valeur": "commercial",
+      "raison": "le lead porte une raison sociale (« Café Exemple »)"
+    }
+  },
+  "colonnes_pro": [
+    {
+      "nom": "tension_raccordement",
+      "type": "choix",
+      "choix": [
+        "bt",
+        "mt",
+        "ne_sait_pas"
+      ],
+      "segment": "commun",
+      "etape_appel": 2,
+      "question": "« Votre site est-il raccordé en basse tension, avec un compteur ordinaire, ou en moyenne tension, avec un poste de transformation ? Si vous ne savez pas, ce n'est pas grave. »"
+    },
+    {
+      "nom": "tension_source",
+      "type": "choix",
+      "choix": [
+        "declare",
+        "site_web",
+        "site_defaut_visible",
+        "facture",
+        "mesure_visite"
+      ],
+      "segment": "commun",
+      "etape_appel": 2,
+      "question": "(posée avec la tension) « Vous le lisez sur votre facture, ou c'est de mémoire ? » — `site_defaut_visible` = valeur pré-cochée du site non modifiée par le client ; `mesure_visite` = relevé par TAQINOR"
+    },
+    {
+      "nom": "compteur_puissance_kva",
+      "type": "décimal",
+      "unite": "kVA",
+      "reutilisee": true,
+      "segment": "commun",
+      "etape_appel": 2,
+      "question": "« Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. »"
+    },
+    {
+      "nom": "puissance_souscrite_source",
+      "type": "choix",
+      "choix": [
+        "declare",
+        "facture",
+        "contrat",
+        "site_web",
+        "mesure_visite"
+      ],
+      "segment": "commun",
+      "etape_appel": 2,
+      "question": "(posée avec la puissance) « Vous l'avez trouvée sur la facture, sur le contrat, ou c'est une estimation ? »"
+    },
+    {
+      "nom": "raccordement",
+      "type": "choix",
+      "choix": [
+        "monophase",
+        "triphase",
+        "inconnu"
+      ],
+      "reutilisee": true,
+      "segment": "commercial",
+      "etape_appel": 2,
+      "question": "« Votre compteur est-il monophasé ou triphasé ? »"
+    },
+    {
+      "nom": "categorie_commerciale",
+      "type": "choix",
+      "choix": [
+        "hotel",
+        "restaurant",
+        "commerce",
+        "bureau",
+        "sante",
+        "ecole",
+        "hammam",
+        "boulangerie",
+        "froid",
+        "autre"
+      ],
+      "segment": "commercial",
+      "etape_appel": 3,
+      "question": "« Quelle est votre activité : hôtel, restaurant ou café, commerce, bureaux, santé, école, hammam, boulangerie, froid, ou autre chose ? »"
+    },
+    {
+      "nom": "reponses_categorie",
+      "type": "objet",
+      "segment": "commercial",
+      "etape_appel": 3,
+      "question": "Les questions propres à la catégorie (voir `reponses_categorie_par_categorie`), posées juste après l'activité."
+    },
+    {
+      "nom": "secteur_industriel",
+      "type": "texte",
+      "segment": "industriel",
+      "etape_appel": 3,
+      "question": "« Que fabriquez-vous ou que transformez-vous sur ce site ? »"
+    },
+    {
+      "nom": "export_ue_declare",
+      "type": "choix",
+      "choix": [
+        "oui",
+        "non",
+        ""
+      ],
+      "segment": "industriel",
+      "etape_appel": 3,
+      "question": "« Exportez-vous une partie de votre production vers l'Union européenne ? »"
+    },
+    {
+      "nom": "regime_equipes",
+      "type": "choix",
+      "choix": [
+        "1x8",
+        "2x8",
+        "3x8",
+        "continu",
+        "ne_sait_pas"
+      ],
+      "segment": "commun",
+      "etape_appel": 3,
+      "question": "« Travaillez-vous en une équipe de jour, en deux équipes, en trois équipes, ou en continu ? »"
+    },
+    {
+      "nom": "jours_ouverture",
+      "type": "liste",
+      "valeurs": "entiers 1 (lundi) à 7 (dimanche)",
+      "segment": "commun",
+      "etape_appel": 3,
+      "question": "« Quels jours de la semaine êtes-vous ouverts ou en production ? »"
+    },
+    {
+      "nom": "heure_debut",
+      "type": "entier",
+      "unite": "h (0-24)",
+      "segment": "commun",
+      "etape_appel": 3,
+      "question": "« À quelle heure commence votre journée de travail ? »"
+    },
+    {
+      "nom": "heure_fin",
+      "type": "entier",
+      "unite": "h (0-24)",
+      "segment": "commun",
+      "etape_appel": 3,
+      "question": "« Et à quelle heure se termine-t-elle ? »"
+    },
+    {
+      "nom": "fermeture_mois",
+      "type": "liste",
+      "valeurs": "entiers 1 à 12",
+      "segment": "commun",
+      "etape_appel": 3,
+      "question": "« Fermez-vous certains mois de l'année, pour des congés ou une saison creuse ? Lesquels ? »"
+    },
+    {
+      "nom": "type_surface",
+      "type": "choix",
+      "choix": [
+        "toiture",
+        "ombriere",
+        "terrain"
+      ],
+      "segment": "commun",
+      "etape_appel": 4,
+      "question": "« Où pourrait-on poser les panneaux : sur la toiture, sur une ombrière de parking, ou sur un terrain ? »"
+    },
+    {
+      "nom": "type_toiture",
+      "type": "choix",
+      "choix": [
+        "terrasse_beton",
+        "tole_metal",
+        "tuiles",
+        "bac_acier",
+        "fibrociment",
+        "autre"
+      ],
+      "reutilisee": true,
+      "segment": "commun",
+      "etape_appel": 4,
+      "question": "« Comment est faite votre toiture : terrasse béton, tôle, tuiles, bac acier, fibrociment ? »"
+    },
+    {
+      "nom": "surface_toiture_m2",
+      "type": "décimal",
+      "unite": "m²",
+      "reutilisee": true,
+      "segment": "commun",
+      "etape_appel": 4,
+      "question": "« Quelle surface est disponible pour les panneaux, à peu près, en mètres carrés ? » (= surface DISPONIBLE déclarée)"
+    },
+    {
+      "nom": "surface_source",
+      "type": "choix",
+      "choix": [
+        "declare",
+        "site_web",
+        "calepinage",
+        "mesure_visite"
+      ],
+      "segment": "commun",
+      "etape_appel": 4,
+      "question": "(posée avec la surface) « C'est une mesure, ou une estimation ? »"
+    },
+    {
+      "nom": "groupe_electrogene",
+      "type": "choix",
+      "choix": [
+        "oui",
+        "non",
+        ""
+      ],
+      "segment": "commun",
+      "etape_appel": null,
+      "question": "« Avez-vous un groupe électrogène sur le site ? »"
+    },
+    {
+      "nom": "groupe_kva",
+      "type": "décimal",
+      "unite": "kVA",
+      "segment": "commun",
+      "etape_appel": null,
+      "question": "« Quelle est sa puissance, en kVA ? »"
+    },
+    {
+      "nom": "groupe_litres_mois",
+      "type": "décimal",
+      "unite": "L/mois",
+      "segment": "commun",
+      "etape_appel": null,
+      "question": "« Combien de litres de gasoil consomme-t-il par mois ? »"
+    },
+    {
+      "nom": "groupe_depense_mad_mois",
+      "type": "décimal",
+      "unite": "MAD/mois",
+      "segment": "commun",
+      "etape_appel": null,
+      "question": "« Combien dépensez-vous en gasoil pour le groupe chaque mois ? » (déclaré seulement, jamais un prix pré-rempli — Q17)"
+    },
+    {
+      "nom": "pv_existant_kwc",
+      "type": "décimal",
+      "unite": "kWc",
+      "segment": "commun",
+      "etape_appel": null,
+      "question": "« Avez-vous déjà des panneaux solaires installés ? De quelle puissance ? »"
+    },
+    {
+      "nom": "cos_phi",
+      "type": "décimal",
+      "segment": "industriel",
+      "etape_appel": null,
+      "question": "« Votre facture indique-t-elle un cosinus phi ou une pénalité d'énergie réactive ? Quelle valeur ? » — jamais supposé (même règle que calepinage/services/etapes/ecretage.py)"
+    },
+    {
+      "nom": "cos_phi_source",
+      "type": "choix",
+      "choix": [
+        "facture",
+        "site_web",
+        "mesure_visite"
+      ],
+      "segment": "industriel",
+      "etape_appel": null,
+      "question": "(posée avec le cos φ) « Vous le lisez sur la facture ? »"
+    },
+    {
+      "nom": "releve_conso",
+      "type": "liste",
+      "forme": {
+        "mois": "AAAA-MM",
+        "kwh": "décimal",
+        "kwh_pointe": "décimal ou null (MT)",
+        "kwh_pleines": "décimal ou null (MT)",
+        "kwh_creuses": "décimal ou null (MT)",
+        "puissance_atteinte_kva": "décimal ou null (MT)",
+        "cos_phi": "décimal ou null"
+      },
+      "max_elements": 12,
+      "source": [
+        "declare",
+        "lu_sur_facture",
+        "ocr_confirme"
+      ],
+      "segment": "commun",
+      "etape_appel": 1,
+      "question": "« Pouvez-vous nous envoyer vos dernières factures d'électricité ? Jusqu'à douze mois nous aident à être précis. » — jamais exigées toutes les douze (W5-VB-07)"
+    },
+    {
+      "nom": "tva_recuperable",
+      "type": "choix",
+      "choix": [
+        "oui",
+        "non",
+        "ne_sait_pas"
+      ],
+      "segment": "commun",
+      "etape_appel": null,
+      "question": "« Votre entreprise récupère-t-elle la TVA sur ses achats ? » (D-CIQ-3)"
+    },
+    {
+      "nom": "societe",
+      "type": "texte",
+      "reutilisee": true,
+      "segment": "commun",
+      "etape_appel": null,
+      "question": "« Quelle est la raison sociale de votre entreprise ? »"
+    },
+    {
+      "nom": "ice",
+      "type": "texte",
+      "segment": "commun",
+      "etape_appel": null,
+      "question": "« Pouvez-vous nous donner l'ICE de l'entreprise ? Il figurera sur le devis et la facture. » — demandé, jamais bloquant au devis (D-CIQ-11)"
+    },
+    {
+      "nom": "rc",
+      "type": "texte",
+      "segment": "commun",
+      "etape_appel": null,
+      "question": "« Et son numéro de registre de commerce ? »"
+    },
+    {
+      "nom": "if_fiscal",
+      "type": "texte",
+      "segment": "commun",
+      "etape_appel": null,
+      "question": "« Et l'identifiant fiscal ? »"
+    },
+    {
+      "nom": "adresse_siege",
+      "type": "texte",
+      "segment": "commun",
+      "etape_appel": null,
+      "question": "« Quelle est l'adresse du siège, si elle diffère de celle du site ? »"
+    },
+    {
+      "nom": "fonction_contact",
+      "type": "texte",
+      "segment": "commun",
+      "etape_appel": 5,
+      "question": "« Quelle est votre fonction dans l'entreprise ? »"
+    },
+    {
+      "nom": "contact_secondaire_fonction",
+      "type": "texte",
+      "segment": "commun",
+      "etape_appel": 5,
+      "question": "« Qui d'autre décide avec vous ? Quelle est sa fonction ? » (CAD144 : sans automatisation)"
+    },
+    {
+      "nom": "contact_secondaire_email",
+      "type": "texte",
+      "segment": "commun",
+      "etape_appel": 5,
+      "question": "« Pouvons-nous lui envoyer le devis par e-mail ? À quelle adresse ? »"
+    },
+    {
+      "nom": "financing_intent",
+      "type": "choix",
+      "choix": [
+        "cash",
+        "credit",
+        "indecis",
+        "credit_bail"
+      ],
+      "reutilisee": true,
+      "note": "`credit_bail` = valeur INTERNE, jamais imprimée avant l'avis juridique (D-CIQ-15)",
+      "segment": "commun",
+      "etape_appel": null,
+      "question": "« Pensez-vous payer comptant, ou passer par un financement ? »"
+    },
+    {
+      "nom": "facture_tranche_declaree",
+      "type": "objet",
+      "forme": {
+        "min_mad": "décimal",
+        "max_mad": "décimal ou null (tranche ouverte)",
+        "libelle": "texte tel que répondu",
+        "source": "texte (meta | site_web | declare)"
+      },
+      "segment": "commun",
+      "etape_appel": 1,
+      "question": "« Votre facture mensuelle se situe dans quelle tranche ? » — D-CIQ-19 : une tranche ouverte n'est JAMAIS stockée comme un montant"
+    }
+  ],
+  "reponses_categorie_par_categorie": {
+    "cles": {
+      "hotel": [
+        "chambres",
+        "occupation_pct",
+        "piscine",
+        "heures_piscine",
+        "blanchisserie",
+        "reception_24h"
+      ],
+      "restaurant": [
+        "chambres_froides",
+        "horaires",
+        "cuisson",
+        "ouvert_journee_ramadan"
+      ],
+      "commerce": [
+        "surface_vente_m2",
+        "chambres_froides"
+      ],
+      "bureau": [
+        "effectif",
+        "clim"
+      ],
+      "sante": [
+        "lits",
+        "garde_nuit"
+      ],
+      "ecole": [
+        "effectif",
+        "internat",
+        "fermeture_estivale"
+      ],
+      "hammam": [
+        "surface_m2",
+        "chauffe"
+      ],
+      "boulangerie": [
+        "four",
+        "cuisson_nocturne"
+      ],
+      "froid": [
+        "temperature_consigne",
+        "volume_m3",
+        "saisonnalite_recolte"
+      ],
+      "autre": []
+    },
+    "source": "clés fermées reprises de COMMERCIAL_CATEGORY_QUESTIONS (frontend/src/features/ventes/solar.js) et des clés du tunnel (crm/webhooks.py) ; AJOUTS : `ouvert_journee_ramadan` (restaurant/café) et, pour l'hôtel, `heures_piscine`, `blanchisserie`, `reception_24h` (l'occupation déclarée = `occupation_pct`)",
+    "questions_ajoutees": {
+      "ouvert_journee_ramadan": "« Pendant le Ramadan, êtes-vous ouverts en journée ? »",
+      "heures_piscine": "« La piscine fonctionne combien d'heures par jour ? »",
+      "blanchisserie": "« Lavez-vous le linge sur place ? »",
+      "reception_24h": "« La réception est-elle ouverte 24 heures sur 24 ? »",
+      "occupation_pct": "« Quel est votre taux d'occupation moyen sur l'année, à peu près ? »"
+    }
+  },
+  "entrees_ci": {
+    "forme": {
+      "entrees": "[{colonne, valeur, provenance {origine, detail, date}, cle_etude, chemin}]",
+      "manquants": "[noms de colonnes]"
+    },
+    "cibles": {
+      "releve_conso / conso_mensuelle_kwh / bill_kwh": "consommation.kwh_mensuels (ou kwh_annuel) — provenance detail facture si `lu_sur_facture`/`ocr_confirme`, client sinon",
+      "releve_conso[].kwh_pointe|kwh_pleines|kwh_creuses|puissance_atteinte_kva": "consommation.registres_mt",
+      "facture_hiver": "consommation (MAD → kWh par le tarif déclaré) — seulement selon la règle `facture_hiver` de `regles_devis_auto`",
+      "tension_raccordement": "tension (bt|mt ; ne_sait_pas → inconnue)",
+      "raccordement": "phases (monophase → mono, triphase → tri, inconnu → inconnu)",
+      "compteur_puissance_kva": "puissance_souscrite_kva",
+      "jours_ouverture": "rythme.jours_ouverts (7 drapeaux lun→dim)",
+      "heure_debut / heure_fin": "rythme.plages",
+      "regime_equipes": "rythme.equipes",
+      "fermeture_mois": "rythme.fermetures",
+      "categorie_commerciale / reponses_categorie": "rythme.categorie_commerciale / rythme.reponses_categorie",
+      "type_surface / type_toiture / surface_toiture_m2": "toit (type_pose dérivé, surface_utile_m2)",
+      "tva_recuperable": "tva_recuperable (forme posée par `economie_ci.json`, CIQ3)"
+    },
+    "regle": "`activity_profile` (site web) n'est JAMAIS une entrée : information seulement. Une colonne vide n'émet aucune entrée et figure dans `manquants`."
+  },
+  "regles_devis_auto": {
+    "groupe_pro": [
+      [
+        "conso_mensuelle_kwh",
+        "bill_kwh",
+        "releve_conso",
+        "facture_hiver"
+      ]
+    ],
+    "facture_hiver": "En MAD : ne compte, pour un COMMERCIAL, que si `tension_raccordement` ≠ « mt » ; pour un INDUSTRIEL, que si la tension « bt » est DÉCLARÉE. Raison : une facture MT porte une prime fixe — diviser ses MAD par un prix gonflerait les kWh.",
+    "releve_conso": "Les 12 factures ne sont JAMAIS exigées (W5-VB-07) : un mois suffit à remplir le groupe.",
+    "source_conso": "colonne qui a rempli le groupe (conso_mensuelle_kwh | bill_kwh | releve_conso | facture_hiver), null si aucune",
+    "visite_avant_devis": "{requise, motifs} (D-CIQ-5) — requise si la tension vaut « mt », est vide, « ne_sait_pas » ou de source `site_defaut_visible` ; si la puissance souscrite est vide ; si le type de surface ou la surface sont vides. `pret` ne mesure que les DONNÉES : un devis indicatif reste possible, marqué « estimation sous réserve de visite »."
+  },
+  "incoherence_segment": "null ou {segment_lead, mode_devis, devis: [{id, reference}], message} — même forme qu'AGR1. Un devis C&I ne change JAMAIS automatiquement le type du lead (bandeau).",
+  "segment_suggere": "null ou {valeur: commercial|industriel, raison} — même forme qu'AGR1",
+  "identite_entreprise": "forme posée par `client_entreprise.json` (CIQ8) : {type_client, complete, manquants, requis_pour {devis, acceptation_en_ligne, facture}}",
+  "questions_pro": {
+    "etape_1": {
+      "titre": "La facture",
+      "commercial": [
+        "« Combien payez-vous d'électricité par mois, à peu près ? Ou combien de kWh, si vous l'avez sous les yeux ? »"
+      ],
+      "industriel": [
+        "« Combien de kWh consommez-vous par mois ? Ils sont sur votre facture, avec les heures de pointe, pleines et creuses. »"
+      ]
+    },
+    "etape_2": {
+      "titre": "Le raccordement",
+      "commercial": [
+        "« Votre site est-il raccordé en basse tension, avec un compteur ordinaire, ou en moyenne tension, avec un poste de transformation ? »",
+        "« Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. »"
+      ],
+      "industriel": [
+        "« Votre site a-t-il son propre poste de transformation, en moyenne tension ? »",
+        "« Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. »"
+      ]
+    },
+    "etape_3": {
+      "titre": "L'activité et le rythme",
+      "commercial": [
+        "« Quelle est votre activité ? »",
+        "« Quels jours et à quelles heures êtes-vous ouverts ? »",
+        "« Fermez-vous certains mois de l'année ? »"
+      ],
+      "industriel": [
+        "« Que fabriquez-vous sur ce site ? »",
+        "« Travaillez-vous en une, deux ou trois équipes, ou en continu ? »",
+        "« Quels jours tournez-vous, et y a-t-il des arrêts dans l'année ? »"
+      ]
+    },
+    "etape_4": {
+      "titre": "La surface",
+      "commercial": [
+        "« Où pourrait-on poser les panneaux, et quelle surface est disponible, à peu près ? »",
+        "« Comment est faite votre toiture ? »"
+      ],
+      "industriel": [
+        "« Quelle surface de toiture ou de terrain est disponible pour les panneaux ? »",
+        "« Votre toiture est-elle en bac acier, en béton, en fibrociment ? »"
+      ]
+    },
+    "etape_5": {
+      "titre": "Qui décide",
+      "commercial": [
+        "« Qui prendra la décision pour ce projet ? »"
+      ],
+      "industriel": [
+        "« Qui décide d'un tel investissement chez vous : la direction, un comité, le groupe ? »"
+      ]
+    }
+  },
+  "regles": {
+    "colonnes": "toutes nullables : vide = question pas encore posée ; jamais une valeur par défaut enregistrée comme une réponse",
+    "tranche": "D-CIQ-19 : une tranche ouverte (« plus de 4 000 DH ») va dans `facture_tranche_declaree`, JAMAIS dans `facture_hiver`",
+    "credit_bail": "valeur interne de `financing_intent`, jamais imprimée avant l'avis juridique (D-CIQ-15)",
+    "cos_phi": "jamais supposé ; un cos φ dégradé par le PV = alerte interne + question de visite, jamais un chiffre client"
+  }
+}
