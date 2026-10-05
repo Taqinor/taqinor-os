@@ -566,6 +566,10 @@ class ClientSerializer(_CompanyScopedRelationsMixin,
     # created_by est forcé côté serveur (perform_create) — jamais lu du corps.
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
     created_by_nom = serializers.SerializerMethodField()
+    # CIQ402 (contrat CIQ8 ``client_entreprise.json``, D-CIQ-11) — ce qui
+    # manque à l'identité légale d'un client entreprise et ce que chaque
+    # étape exige (rien ne bloque un devis). Pur, sans requête.
+    identite_entreprise = serializers.SerializerMethodField()
 
     # FG20 — coordonnées personnelles masquées quand le rôle n'a pas
     # ``client_pii_voir``. Source unique des champs PII partagée avec le Lead.
@@ -655,6 +659,16 @@ class ClientSerializer(_CompanyScopedRelationsMixin,
 
     def get_created_by_nom(self, obj):
         return getattr(obj.created_by, 'username', None)
+
+    @extend_schema_field(serializers.DictField())
+    def get_identite_entreprise(self, obj):
+        from .models import identite_entreprise
+        return identite_entreprise(
+            entreprise=obj.type_client == Client.TypeClient.ENTREPRISE,
+            raison_sociale=obj.nom,
+            raison_a_confirmer=obj.raison_sociale_a_confirmer,
+            ice=obj.ice, rc=obj.rc, if_fiscal=obj.if_fiscal,
+            adresse_siege=obj.adresse_siege, adresse=obj.adresse)
 
     def get_devis_count(self, obj):
         return obj.devis.count()
@@ -813,6 +827,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # dimensionnement agricole lues sur le lead, avec leur provenance :
     # RETRIEVE SEULEMENT (une requête d'historique), même porte.
     entrees_pompage = serializers.SerializerMethodField()
+    # CIQ402 (contrat CIQ8 ``client_entreprise.json``) — l'identité légale
+    # attendue d'un lead pro (manquants, requis_pour). Pur, sans requête ;
+    # RETRIEVE SEULEMENT, même porte que les autres blocs de détail.
+    identite_entreprise = serializers.SerializerMethodField()
     # MRY5 — prochaine touche de cadence, ANNOTÉE dans le queryset
     # (``LeadViewSet.get_queryset``), jamais un SerializerMethodField : la
     # liste et le kanban affichent le badge « touche due » pour 50 cartes,
@@ -1382,6 +1400,8 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             fields.pop('provenance_site', None)
             # AGR404 — `entrees_pompage` : détail seulement, même porte.
             fields.pop('entrees_pompage', None)
+            # CIQ402 — `identite_entreprise` : détail seulement, même porte.
+            fields.pop('identite_entreprise', None)
         return fields
 
     def to_representation(self, instance):
@@ -1422,6 +1442,20 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         """
         from .selectors import conception_3d_du_lead
         return conception_3d_du_lead(obj)
+
+    @extend_schema_field(serializers.DictField())
+    def get_identite_entreprise(self, obj):
+        """CIQ402 — bloc ``identite_entreprise`` (contrat CIQ8) du lead :
+        entreprise si le lead est commercial/industriel ou porte une
+        raison sociale ; la raison sociale est ``societe``."""
+        from .models import identite_entreprise
+        entreprise = (obj.type_installation in ('commercial', 'industriel')
+                      or bool((obj.societe or '').strip()))
+        return identite_entreprise(
+            entreprise=entreprise, raison_sociale=obj.societe,
+            raison_a_confirmer=False, ice=obj.ice, rc=obj.rc,
+            if_fiscal=obj.if_fiscal, adresse_siege=obj.adresse_siege,
+            adresse=obj.adresse)
 
     @extend_schema_field(serializers.DictField())
     def get_entrees_pompage(self, obj):

@@ -150,6 +150,51 @@ def normaliser_releve_conso(valeur):
     return {'mois': lignes, 'source': valeur.get('source') or 'declare'}
 
 
+#: CIQ402 (contrat CIQ8 ``client_entreprise.json``, D-CIQ-11) — ce que chaque
+#: étape EXIGE d'une entreprise : rien ne bloque un devis ; l'acceptation en
+#: ligne exige la raison sociale et l'ICE ; la facture exige l'ICE.
+IDENTITE_ENTREPRISE_REQUIS_POUR = {
+    'devis': [],
+    'acceptation_en_ligne': ['raison_sociale', 'ice'],
+    'facture': ['ice'],
+}
+
+
+def identite_entreprise(*, entreprise, raison_sociale, raison_a_confirmer,
+                        ice, rc, if_fiscal, adresse_siege, adresse):
+    """CIQ402 — le bloc ``identite_entreprise`` (contrat CIQ8), pur.
+
+    Particulier : forme « complète » sans exigence (règle du contrat). Pour
+    une entreprise, ``manquants`` suit l'ordre raison_sociale, ice, rc,
+    if_fiscal, adresse_siege — le siège ne manque que si AUCUNE adresse
+    n'existe (le document retombe sur l'adresse du site).
+    """
+    def _vide(valeur):
+        return valeur is None or not str(valeur).strip()
+
+    if not entreprise:
+        return {
+            'type_client': 'particulier', 'complete': True, 'manquants': [],
+            'requis_pour': {cle: [] for cle in
+                            IDENTITE_ENTREPRISE_REQUIS_POUR},
+        }
+    manquants = []
+    if raison_a_confirmer or _vide(raison_sociale):
+        manquants.append('raison_sociale')
+    for cle, valeur in (('ice', ice), ('rc', rc), ('if_fiscal', if_fiscal)):
+        if _vide(valeur):
+            manquants.append(cle)
+    if _vide(adresse_siege) and _vide(adresse):
+        manquants.append('adresse_siege')
+    return {
+        'type_client': 'entreprise',
+        'complete': not manquants,
+        'manquants': manquants,
+        'requis_pour': {cle: list(v) for cle, v in
+                        IDENTITE_ENTREPRISE_REQUIS_POUR.items()},
+    }
+
+
 def valider_facture_tranche_declaree(valeur):
     """CIQ401 / D-CIQ-19 — {min_mad, max_mad (null = tranche OUVERTE),
     libelle, source}. Une tranche n'est jamais un montant."""
@@ -218,6 +263,31 @@ class Client(models.Model):
     ice = models.CharField(max_length=30, blank=True, null=True)
     if_fiscal = models.CharField(max_length=30, blank=True, null=True)
     rc = models.CharField(max_length=30, blank=True, null=True)
+    # ── CIQ402 (contrat CIQ8 ``client_entreprise.json``, D-CIQ-11) — le
+    # client ENTREPRISE : siège, personne « à l'attention de », TVA
+    # récupérable. Additifs, vides par défaut : aucun ancien client modifié.
+    adresse_siege = models.TextField(
+        blank=True, null=True, verbose_name='Adresse du siège',
+        help_text="Sert au document et à la facture quand elle existe ; "
+                  "sinon l'adresse (du site).")
+    contact_nom = models.CharField(
+        max_length=255, blank=True, null=True,
+        verbose_name="À l'attention de",
+        help_text="La personne qui représente l'entreprise.")
+    contact_fonction = models.CharField(
+        max_length=120, blank=True, null=True,
+        verbose_name='Fonction du contact')
+    tva_recuperable = models.CharField(
+        max_length=12, blank=True, null=True,
+        choices=[('oui', 'Oui'), ('non', 'Non'),
+                 ('ne_sait_pas', 'Ne sait pas')],
+        verbose_name='TVA récupérable',
+        help_text='D-CIQ-3 : économies en HT si oui, en TTC sinon.')
+    raison_sociale_a_confirmer = models.BooleanField(
+        default=False, verbose_name='Raison sociale à confirmer',
+        help_text="Commerçant en nom propre créé depuis un lead sans raison "
+                  "sociale : le nom est celui de la personne — jamais "
+                  'bloquant.')
     date_creation = models.DateTimeField(auto_now_add=True)
     # Traçabilité (additif) : qui a créé le client (forcé côté serveur) et
     # date de dernière modification. created_by est nullable (clients importés /
