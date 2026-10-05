@@ -72,7 +72,14 @@ def build_om_report_data(installation, *, period='monthly', today=None):
 
     metrics = om_metrics(installation, today=today)
     soiling = soiling_assessment(installation, today=today)
-    curve = warranty_curve_overlay(installation, today=today)
+    # CIQ646 (D-CIQ-12) — aucune ligne de garantie de production dans un
+    # rapport client tant que la société n'a pas validé l'engagement
+    # (``garantie_production_autorisee``, CIQ622) : la courbe n'est même pas
+    # lue. Le suivi interne (écarts, drapeaux) reste inchangé.
+    from .selectors import _garantie_production_autorisee
+    garantie_incluse = _garantie_production_autorisee(installation)
+    curve = (warranty_curve_overlay(installation, today=today)
+             if garantie_incluse else {})
 
     open_flags = UnderperformanceFlag.objects.filter(
         installation=installation, is_open=True).count()

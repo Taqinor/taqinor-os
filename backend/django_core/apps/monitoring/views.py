@@ -429,6 +429,13 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             build_warranty_report_data, render_warranty_report_pdf,
         )
         config = self.get_object()
+        # CIQ646 (D-CIQ-12) — aucun rapport client de garantie de production
+        # tant que la société n'a pas validé l'engagement (assureur/juriste).
+        from .selectors import _garantie_production_autorisee
+        if not _garantie_production_autorisee(config.installation):
+            return Response(
+                {'detail': 'Garantie de production non validée (Paramètres).'},
+                status=status.HTTP_409_CONFLICT)
         annee = request.query_params.get('annee')
         annee = int(annee) if annee else None
         data = build_warranty_report_data(config.installation, year=annee)
