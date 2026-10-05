@@ -264,8 +264,11 @@ def _forme_piece_jointe():
     })
 
 
-@extend_schema(responses={200: _forme_piece_jointe(),
-                          201: _forme_piece_jointe()})
+_FORME_PIECE_JOINTE = _forme_piece_jointe()  # UNE instance : 200 et 201
+
+
+@extend_schema(responses={200: _FORME_PIECE_JOINTE,
+                          201: _FORME_PIECE_JOINTE})
 @action(detail=True, methods=['post'], url_path='joindre-piece',
         permission_classes=[PeutGererCalepinage])
 def joindre_piece(self, request, pk=None):
