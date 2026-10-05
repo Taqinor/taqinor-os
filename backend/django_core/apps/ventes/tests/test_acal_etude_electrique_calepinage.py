@@ -105,6 +105,9 @@ class EntreeDuDevis(TestCase):
     def _lier_calepinage(self, devis):
         return Calepinage.objects.create(
             company=self.company, devis=devis, titre='Ifrane',
+            # Contrainte calepinage_lead_ou_client : un calepinage porte
+            # toujours son lead ou son client (ici celui du devis).
+            client=devis.client,
             roof_layout={'pin': IFRANE, 'zones': []},
             # Module DÉSIGNÉ sur le calepinage (D-ACAL-10, provenance
             # explicite) : sa fiche porte le NOCT du chaud de cellule.
