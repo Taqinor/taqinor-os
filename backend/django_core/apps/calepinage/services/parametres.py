@@ -32,7 +32,79 @@ class ReglageInvalide(ValueError):
         self.section = section
 
 
-def enregistrer_parametres(company, donnees, *, remplacer=False):
+class ReglageInterdit(ReglageInvalide):
+    """ACAL302 — une clé de GOUVERNANCE changée sans le droit
+    ``calepinage_approuver`` : la vue répond 403 en nommant la clé."""
+
+
+#: ACAL302 — le message du refus, le même pour les trois clés.
+MESSAGE_GOUVERNANCE = ('Changer ce réglage exige le droit « Approuver un '
+                       'calepinage ».')
+
+
+def _cles_de_gouvernance():
+    """``(section, clé)`` des réglages qui gouvernent l'accès et le contrôle :
+    vue restreinte au responsable, approbation exigée, feu vert bureau
+    d'études (défaut gravé : ``calepinage_approuver``)."""
+    from ..selectors import CLE_VUE_RESTREINTE
+    from .approbation import CLE_EXIGEE
+    from .feu_vert import CLE_ACTIF
+    from .presets import SECTION
+
+    return ((SECTION, CLE_VUE_RESTREINTE), (SECTION, CLE_EXIGEE),
+            (SECTION, CLE_ACTIF))
+
+
+def _exiger_droit_de_gouvernance(avant, apres, user):
+    """Refuse (``ReglageInterdit``) une clé de gouvernance dont la valeur
+    STOCKÉE change sans ``calepinage_approuver``. Une valeur recopiée à
+    l'identique passe ; ``user`` absent = appel système (commande, seed)."""
+    if user is None:
+        return
+    from core.permissions import _user_has_or_legacy
+
+    from ..permissions import CAL_APPROUVER
+
+    for section, cle in _cles_de_gouvernance():
+        ancienne = (avant.get(section) or {}).get(cle)
+        nouvelle = (apres.get(section) or {}).get(cle)
+        if ancienne != nouvelle and not _user_has_or_legacy(
+                user, CAL_APPROUVER):
+            raise ReglageInterdit(MESSAGE_GOUVERNANCE, champ=cle)
+
+
+def _texte_journal(valeur):
+    import json
+
+    if valeur is None:
+        return ''
+    if isinstance(valeur, (dict, list, tuple)):
+        return json.dumps(valeur, ensure_ascii=False, sort_keys=True)
+    return str(valeur)
+
+
+def _journaliser(company, user, avant, apres):
+    """ACAL302 — UNE ligne ``SettingsAuditLog`` par clé effectivement
+    changée (section ``calepinage``, champ ``<section>.<clé>``, avant →
+    après, auteur) ; un PUT sans changement n'écrit rien."""
+    from apps.parametres.models_audit import SettingsAuditLog
+
+    for section in sorted(set(avant) | set(apres)):
+        ancienne = avant.get(section) or {}
+        nouvelle = apres.get(section) or {}
+        if ancienne == nouvelle:
+            continue
+        for cle in sorted(set(ancienne) | set(nouvelle)):
+            if ancienne.get(cle) == nouvelle.get(cle):
+                continue
+            SettingsAuditLog.log_change(
+                company, user, 'calepinage', f'{section}.{cle}',
+                f'Calepinage › {section} › {cle}',
+                _texte_journal(ancienne.get(cle)),
+                _texte_journal(nouvelle.get(cle)))
+
+
+def enregistrer_parametres(company, donnees, *, remplacer=False, user=None):
     """Pose les sections de ``donnees`` sur les réglages de ``company``.
 
     Args:
@@ -40,12 +112,17 @@ def enregistrer_parametres(company, donnees, *, remplacer=False):
         donnees: ``{section: objet}``. Les sections ABSENTES sont laissées
             telles quelles (mise à jour partielle) sauf si ``remplacer``.
         remplacer: ``True`` remet à ``{}`` les sections non fournies.
+        user: ACAL302 — l'auteur (``request.user``) : il signe le journal
+            d'audit, et changer une clé de gouvernance exige
+            ``calepinage_approuver``.
 
     Returns:
         Le dict complet des sections admises, comme le rend le sélecteur.
 
     Raises:
         ReglageInvalide: section inconnue, ou section qui n'est pas un objet.
+        ReglageInterdit: clé de gouvernance changée sans le droit — RIEN
+            n'est écrit.
     """
     from django.db import IntegrityError, transaction
 
@@ -101,13 +178,19 @@ def enregistrer_parametres(company, donnees, *, remplacer=False):
         if not remplacer:
             donnees = _fusionner_sections_a_registre(reglages, donnees)
         donnees = _normaliser(donnees)
+        avant = {section: getattr(reglages, section) or {}
+                 for section in SECTIONS_PARAMETRES}
         for section in SECTIONS_PARAMETRES:
             if section in donnees:
                 setattr(reglages, section, donnees[section])
             elif remplacer:
                 setattr(reglages, section, {})
+        apres = {section: getattr(reglages, section) or {}
+                 for section in SECTIONS_PARAMETRES}
+        _exiger_droit_de_gouvernance(avant, apres, user)
         reglages.full_clean(exclude=['company'])
         reglages.save()
+        _journaliser(company, user, avant, apres)
 
     return parametres_de_societe(company)
 

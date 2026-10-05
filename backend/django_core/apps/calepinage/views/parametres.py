@@ -34,7 +34,9 @@ from ..permissions import CAL_GERER, CAL_VOIR
 from ..selectors import (
     kits_de_pose_disponibles, parametres_de_societe, registre_des_reglages,
 )
-from ..services.parametres import ReglageInvalide, enregistrer_parametres
+from ..services.parametres import (
+    ReglageInterdit, ReglageInvalide, enregistrer_parametres,
+)
 
 __all__ = ['ParametresCalepinageView', 'SuggestionPenteIGNView']
 
@@ -121,7 +123,13 @@ class ParametresCalepinageView(APIView):
                 status=status.HTTP_400_BAD_REQUEST)
         try:
             reglages = enregistrer_parametres(
-                getattr(request.user, 'company', None), donnees)
+                getattr(request.user, 'company', None), donnees,
+                user=request.user)
+        except ReglageInterdit as refus:
+            # ACAL302 — clé de gouvernance changée sans
+            # ``calepinage_approuver`` : 403 qui NOMME la clé, rien d'écrit.
+            return Response({refus.champ: str(refus)},
+                            status=status.HTTP_403_FORBIDDEN)
         except ReglageInvalide as refus:
             # ACAL132 — une clé d'une section À REGISTRE est nommée DANS sa
             # section (``{simulation: {sigma_modele_pct: motif}}``, contrat
