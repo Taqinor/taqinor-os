@@ -140,13 +140,20 @@ class ResyncParite(TestCase):
     def test_parite_voie_module_voie_ventes_json_public(self):
         module = self._devis()
         ventes = self._devis()
-        self.assertEqual(self._sync_module(module, 16).status_code, 200)
-        self.assertEqual(self._sync_ventes(ventes, 16).status_code, 200)
+        reponses = {}
+        reponses[module.pk] = self._sync_module(module, 16)
+        reponses[ventes.pk] = self._sync_ventes(ventes, 16)
+        for reponse in reponses.values():
+            self.assertEqual(reponse.status_code, 200, reponse.data)
         publics = []
         for devis in (module, ventes):
             lien = ShareLink.for_devis(devis)
             pub = APIClient().get(f'/api/django/ventes/proposal/{lien.token}/')
-            self.assertEqual(pub.status_code, 200, pub.content)
+            # Diagnostic : la resynchro et les lignes RÉELLES du devis.
+            self.assertEqual(pub.status_code, 200, (
+                pub.content, reponses[devis.pk].data,
+                list(devis.lignes.values_list('designation', 'quantite',
+                                              'variante'))))
             publics.append(_quote(pub.data))
         q_module, q_ventes = publics
         for cle in ('eco_s_ann', 'roi_s'):
