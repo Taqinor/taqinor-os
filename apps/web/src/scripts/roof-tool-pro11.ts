@@ -196,7 +196,7 @@ import {
   rotationMolette,
   surLeFond,
 } from './roofPro11/calageFondUi'; // CALX108 câblage
-import { createScene3d, projectPlanView, panelQuadsLngLat } from './roofPro11/scene3d';
+import { buildAffectationColoring, createScene3d, projectPlanView, panelQuadsLngLat, type AffectationMode, type AffectationRow } from './roofPro11/scene3d';
 import {
   createOptimizer,
   departagerRemplissage,
@@ -4205,6 +4205,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       }
       appliquerHydratation(hydratationDeSection(cle, valeur));
       recalc();
+    },
+    // ACAL286 — la table d'affectation SERVIE (électrique.affectation[], couleurs de chaîne /
+    // MPPT) teinte les modules du pan actif ; table vide ou non servie ⇒ teinte éteinte.
+    // Aucune écriture : la teinte est dérivée du résultat serveur, jamais sérialisée.
+    setAffectationChaines: (rows: readonly AffectationRow[] | null | undefined, mode: AffectationMode = 'chaine') => {
+      const coloring = buildAffectationColoring(rows, mode);
+      ctx.affectationColoration = coloring.colorByModule.size > 0 ? coloring : null;
+      scene3d.rafraichirAffectation();
     },
     snapshot: () => scene3d.snapshot(),
     // CAL180 — export « image HD » : rendu hors écran 2×/3×, blob PNG rendu à la page.

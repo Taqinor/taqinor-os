@@ -368,4 +368,6 @@ export interface Ctx {
   underlay?: unknown;
   /** ACAL233 — la parcelle tracée (clé racine `parcelle`), ou null : réémise par `serializeLayout`. */
   parcelle?: import('./parcelle').Parcelle | null;
+  /** ACAL286 — la table d'affectation SERVIE (couleurs de chaîne / MPPT), ou null : teinte la zone active. */
+  affectationColoration?: import('./scene3d').AffectationColoring | null;
 }
