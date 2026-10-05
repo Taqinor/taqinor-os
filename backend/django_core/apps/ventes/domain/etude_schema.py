@@ -217,9 +217,17 @@ SCHEMA = {
     'region': _cle((str,), ECRAN, ENTREE),
     'crop': _cle((str,), ECRAN, ENTREE),
     'surface_ha': _cle((int, float), ECRAN, ENTREE),
-    'current_fuel': _cle((str,), ECRAN, ENTREE),
-    'fuel_spend_current': _cle((int, float), ECRAN, ENTREE,
-                               'Dépense carburant ACTUELLE, en MAD/AN.'),
+    # AGR206 (D-AGR-13, règle d'AGR122) — `current_fuel` et
+    # `fuel_spend_current` QUITTENT le schéma : plus écrites (AGR212) ni lues
+    # (lecteurs au grep du 05/10/2026 : `etudeMarcheBloc.js`, `etatDevis.js`
+    # — retirés par AGR212 ; le moteur `economie_pompage.py` ne la lit
+    # jamais). L'énergie et la dépense DÉCLARÉES vivent dans
+    # `saisies_economie_pompage` (contrat `economie_pompage.json`, AGR3) :
+    # ENTRÉE écran, recopiée par les copies et la V2 (jamais un calcul).
+    'saisies_economie_pompage': _cle(
+        (dict,), ECRAN, ENTREE,
+        "AGR206 — consommation déclarée, prix payé daté, mois d'irrigation, "
+        "facture réseau, entretien (contrat economie_pompage.json)."),
     'hmt_static': _cle((int, float), ECRAN, ENTREE),
     'hmt_drawdown': _cle((int, float), ECRAN, ENTREE),
     # AGR217 (contrat AGR200) — l'attestation de destination AGRICOLE du

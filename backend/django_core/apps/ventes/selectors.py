@@ -3951,3 +3951,28 @@ def devis_predecesseurs_revision_ids(devis):
         ordre.extend(suivants)
         frontiere = suivants
     return ordre
+
+
+# ── AGR206 — économie de pompage DÉCLARÉE, lecture publique ────────────────
+
+def economie_pompage_publique_pour_devis(devis_id, company):
+    """AGR206 — le bloc ``economie_pompage`` SANS ``vue_interne`` (D3 :
+    /proposition et PDF). ``None`` si le devis est introuvable dans la
+    société ou si une saisie est refusée (le rendu omet le bloc, jamais un
+    500). Jamais ``prix_achat`` (investissement = total TTC client)."""
+    from .economie import EconomieInvalide
+    from .economie_pompage import (
+        economie_pompage_pour_devis, economie_pompage_publique)
+    from .models import Devis
+    try:
+        bloc = economie_pompage_pour_devis(devis_id, company)
+    except (Devis.DoesNotExist, EconomieInvalide):
+        return None
+    return economie_pompage_publique(bloc)
+
+
+def economie_pompage_publiable(devis_id, company):
+    """AGR206 — vrai si l'économie de pompage du devis peut être citée à un
+    client (D5 : messages). Faux si introuvable, omise ou non publiable."""
+    bloc = economie_pompage_publique_pour_devis(devis_id, company)
+    return bool(bloc and bloc.get('publiable_client'))
