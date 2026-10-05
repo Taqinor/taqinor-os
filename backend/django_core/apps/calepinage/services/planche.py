@@ -57,7 +57,7 @@ __all__ = [
     'CONTENU_POSE', 'CONTENUS', 'echelle_nommee', 'mention_d_echelle',
     'rendre_plan_svg', 'rendre_plan_pdf', 'PlanDePoseRefuse',
     'verifier_absence_d_argent', 'lignes_de_chaines', 'rendre_plan_pose_svg',
-    'rendre_plan_pose_pdf',
+    'rendre_plan_pose_pdf', 'planche_svg_ou_vide',
 ]
 
 #: A3 PAYSAGE, en millimètres — le format des planches remises (même choix que
@@ -978,6 +978,19 @@ def rendre_planche_svg(calepinage, *, moment=None, **options):
         bandeau=options.pop('bandeau', ()),
         pied=options.pop('pied', None)
         or empreinte_du_calepinage(calepinage, moment=moment))
+
+
+def planche_svg_ou_vide(calepinage):
+    """ACAL215 — le SVG de la planche « en regard », ``''`` sans conception.
+
+    UN survivant pour les deux documents qui l'embarquent (présentation
+    compacte, as-built) : ``PlancheRefusee`` est avalée, jamais une planche
+    fabriquée ; le document reste imprimable sans elle.
+    """
+    try:
+        return rendre_planche_svg(calepinage)
+    except PlancheRefusee:
+        return ''
 
 
 # ── CAL211 — le PLAN DE POSE de l'équipe terrain ────────────────────────────

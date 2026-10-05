@@ -34,7 +34,7 @@ from ..rapport import nombre_tel_que_servi, verifier_etancheite
 
 __all__ = [
     'CODE_DOCUMENT', 'MENTION_PAS_UN_DEVIS', 'MOTIF_SANS_RESULTAT',
-    'totaux_de_pose', 'planche_svg_du_calepinage', 'construire_presentation',
+    'totaux_de_pose', 'construire_presentation',
     'html_de_presentation', 'html_de_presentation_compacte',
     'rendre_presentation_compacte',
 ]
@@ -85,26 +85,18 @@ def totaux_de_pose(roof_layout):
     }
 
 
-def planche_svg_du_calepinage(calepinage):
-    """Le SVG de la planche de pose — ``''`` sans conception (jamais une
-    planche fabriquée)."""
-    from ..planche import PlancheRefusee, rendre_planche_svg
-
-    try:
-        return rendre_planche_svg(calepinage)
-    except PlancheRefusee:
-        return ''
-
-
 def construire_presentation(calepinage, *, resultat=_LIRE, roof_layout=None,
                             svg_planche=None, styles=None, provenance=None):
     """L'agrégat prêt à mettre en page.
 
     Args:
         calepinage: le pivot (société, titre, résultat/roof_layout stockés).
-        resultat: ``_LIRE`` (défaut) pour LIRE ``calepinage.resultat`` ; un
-            ``dict`` explicite (essai pur) ; ``None``/``{}`` pour FORCER un
-            calepinage non simulé (page 2 nomme ce qui manque).
+        resultat: ``_LIRE`` (défaut) pour LIRE le résultat SERVI
+            (``selectors.resultat_servi``, lecteur tolérant, ACAL215) : une
+            simulation périmée donne le MOTIF servi, jamais un tableau
+            mensuel périmé ; un ``dict`` explicite (essai pur) ;
+            ``None``/``{}`` pour FORCER un calepinage non simulé (page 2
+            nomme ce qui manque).
         roof_layout / svg_planche / styles / provenance: déjà lus par
             l'appelant (essai pur) — sinon LUS ici.
 
@@ -112,8 +104,20 @@ def construire_presentation(calepinage, *, resultat=_LIRE, roof_layout=None,
         RapportRefuse: le résultat porte une clé de coût (pare-feu repris de
             ``note_calcul`` via ``services.rapport.verifier_etancheite``).
     """
+    motif_perime = ''
+    empreinte_servie = ''
     if resultat is _LIRE:
-        resultat = getattr(calepinage, 'resultat', None)
+        from ... import selectors
+
+        servi = selectors.resultat_servi(calepinage)
+        verifier_etancheite(servi)
+        if servi.get('simulation_perimee'):
+            motif_perime = str(servi.get('motif') or '')
+        if servi.get('simule'):
+            resultat = servi
+            empreinte_servie = servi.get('hash_entree') or ''
+        else:
+            resultat = None
     resultat = resultat if isinstance(resultat, dict) else None
     if resultat:
         verifier_etancheite(resultat)
@@ -121,7 +125,9 @@ def construire_presentation(calepinage, *, resultat=_LIRE, roof_layout=None,
     if roof_layout is None:
         roof_layout = getattr(calepinage, 'roof_layout', None)
     if svg_planche is None:
-        svg_planche = planche_svg_du_calepinage(calepinage)
+        from ..planche import planche_svg_ou_vide
+
+        svg_planche = planche_svg_ou_vide(calepinage)
 
     from .gabarit_document import styles_de_societe
 
@@ -129,7 +135,10 @@ def construire_presentation(calepinage, *, resultat=_LIRE, roof_layout=None,
         styles = styles_de_societe(getattr(calepinage, 'company', None))
     if provenance is None:
         provenance = {
-            'hash_entree': getattr(calepinage, 'layout_hash', '') or '',
+            # ACAL215 — l'empreinte de la SIMULATION servie quand il y en a
+            # une ; sinon celle du layout (page 1 seule porte la conception).
+            'hash_entree': (empreinte_servie
+                            or getattr(calepinage, 'layout_hash', '') or ''),
             'version_moteur': getattr(calepinage, 'version_moteur', '') or '',
         }
 
@@ -138,6 +147,7 @@ def construire_presentation(calepinage, *, resultat=_LIRE, roof_layout=None,
         'totaux': totaux_de_pose(roof_layout),
         'svg_planche': svg_planche or '',
         'resultat': resultat,
+        'motif_perime': motif_perime,
         'styles': dict(styles or {}),
         'provenance': dict(provenance or {}),
     }
@@ -184,11 +194,11 @@ def _table_mensuelle(mensuel):
             % lignes)
 
 
-def _page2_html(resultat):
+def _page2_html(resultat, motif_perime=''):
     if not resultat:
         return ('<section class="page-2" data-section="production">'
                 '<h2>Production</h2><p class="motif">%s</p></section>'
-                % escape(MOTIF_SANS_RESULTAT))
+                % escape(motif_perime or MOTIF_SANS_RESULTAT))
     production = resultat.get('production') or {}
     total = production.get('total') or {}
     mensuel = production.get('mensuel') or ()
@@ -225,7 +235,8 @@ def html_de_presentation(document):
     seulement)."""
     from .gabarit_document import document_html
 
-    corps = _page1_html(document) + _page2_html(document['resultat'])
+    corps = _page1_html(document) + _page2_html(
+        document['resultat'], document.get('motif_perime', ''))
     return document_html(
         corps, titre='Présentation compacte', styles=document['styles'],
         provenance=document['provenance'], mentions=[MENTION_PAS_UN_DEVIS],

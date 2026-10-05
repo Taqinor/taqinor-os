@@ -12,6 +12,7 @@ Run :
         apps.calepinage.tests.test_acal_resultat_servi_livrables -v2
 """
 import copy
+from html import escape
 
 from django.test import SimpleTestCase
 
@@ -19,10 +20,14 @@ from apps.calepinage.services.note_calcul import (
     NoteRefusee, construire_note_calcul, motif_note_indisponible,
     rendre_note_calcul, resultat_servi_et_stocke,
 )
+from apps.calepinage.services.documents.presentation_compacte import (
+    MOTIF_SANS_RESULTAT, html_de_presentation_compacte,
+)
 from apps.calepinage.views.sorties import inventaire_des_sorties
 
 from .acal_livrables_helpers import (
-    calepinage_simule_reel, modifier_la_conception, patch_materiel,
+    PivotSansBase, LAYOUT_SIMULABLE, calepinage_simule_reel,
+    modifier_la_conception, patch_materiel,
 )
 
 SITE = {'ville': 'Casablanca', 'adresse': '', 'source': 'roof_point'}
@@ -97,3 +102,36 @@ class NoteDeCalculSurCalepinageReelTest(SimpleTestCase):
                 Inventorie(self.pivot))['sorties']}
         self.assertTrue(sorties['note_calcul_pdf']['disponible'])
         self.assertIsNone(sorties['note_calcul_pdf']['motif_indisponible'])
+
+
+class PresentationCompacteSurResultatServiTest(SimpleTestCase):
+    """ACAL215 — la page 2 lit la production SERVIE, jamais la colonne brute."""
+
+    def test_presentation_n_imprime_aucune_production_quand_simulation_perimee(
+            self):
+        perime = modifier_la_conception(calepinage_simule_reel())
+        with patch_materiel():
+            servi, _stocke = resultat_servi_et_stocke(perime)
+            html = html_de_presentation_compacte(perime)
+        # On compare le TEXTE produit (jamais une valeur numérique).
+        self.assertNotIn('presentation-mensuelle', html)
+        self.assertNotIn('Production P50 (kWh)', html)
+        self.assertIn(escape(servi['motif'][:30]), html)
+
+    def test_presentation_sans_simulation_garde_le_motif_sans_resultat(self):
+        jamais = PivotSansBase(copy.deepcopy(LAYOUT_SIMULABLE))
+        with patch_materiel():
+            html = html_de_presentation_compacte(jamais)
+        self.assertNotIn('presentation-mensuelle', html)
+        # Le motif est échappé par la mise en page : on compare son début.
+        self.assertIn(MOTIF_SANS_RESULTAT[:30], html)
+
+    def test_presentation_pied_porte_l_empreinte_de_la_simulation_fraiche(
+            self):
+        pivot = calepinage_simule_reel()
+        with patch_materiel():
+            servi, _stocke = resultat_servi_et_stocke(pivot)
+            html = html_de_presentation_compacte(pivot)
+        self.assertIn('presentation-mensuelle', html)
+        self.assertTrue(servi['hash_entree'])
+        self.assertIn(servi['hash_entree'][:12], html)
