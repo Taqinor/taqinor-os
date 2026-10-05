@@ -363,3 +363,66 @@ describe('CALX111 — étiquettes de la vue plan', () => {
     expect(etiquettesPlan(null, modules, null, etat)).toEqual([]);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL307 — numérotation STABLE d'office : chaque pan PAVÉ reçoit ses numéros sans geste
+// de numérotation ; un repavage garde les `n` des modules gardés ; un document ancien
+// enregistré sans geste n'en reçoit aucun. Chemin réel : `serializeLayout`.
+// ═══════════════════════════════════════════════════════════════════════════════
+import { hydrateFromDevis, serializeLayout } from './prefill';
+import { type Ctx } from './context';
+import { type AreaRecord } from './types';
+
+describe('ACAL307 — numérotation d’office', () => {
+  const VERTS: [number, number][] = [[-7.6, 33.59], [-7.599, 33.59], [-7.599, 33.591], [-7.6, 33.591]];
+  function plan(cellules: ModulePose[]) {
+    return {
+      pack: { origin: [-7.6, 33.59] as [number, number], azimuthDeg: SUD },
+      grid: { panels: cellules, kwc: cellules.length * 0.72 },
+      tiltDeg: 10, family: 'south', flush: false, count: cellules.length,
+    } as unknown as AreaRecord['renderPlan'];
+  }
+  function ctxPave(cellules: ModulePose[], documentRelu?: Record<string, unknown>): Ctx {
+    const zone = {
+      id: 'z1', label: 'Pan', vertices: VERTS, obstacles: [], roofType: 'flat', pitchDeg: 10, facingAzimuthDeg: 180,
+      facingManual: false, neededPanels: cellules.length, neededAuto: false, result: null, renderPlan: plan(cellules),
+    } as unknown as AreaRecord;
+    return {
+      areas: [zone], activeAreaId: 'z2', vertices: [], obstacles: [], roofType: 'flat', pitchDeg: 10,
+      facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true, layoutPlan: null,
+      layoutOptimalCount: 0, ...(documentRelu ? { documentRelu } : {}),
+    } as unknown as Ctx;
+  }
+
+  it('pavage d’un pan neuf : numéros attribués sans geste', () => {
+    const doc = serializeLayout(ctxPave(QUATRE));
+    const g = doc.zones[0].geometry!;
+    expect((g.panels as ModuleNumerote[]).map((m) => m.n)).toEqual([1, 2, 3, 4]);
+    expect((g as { numerotation?: ConventionNumerotation }).numerotation).toMatchObject({ depart: 1, sens: 'ligne' });
+  });
+
+  it('repavage : n conservé pour les modules gardés', () => {
+    const premier = serializeLayout(ctxPave(QUATRE));
+    reinitialiserNumerotation();
+    // Rouvert puis repavé avec un module en moins : les trois gardés gardent LEUR numéro.
+    const relu = JSON.parse(JSON.stringify(premier));
+    // Le boot sème la mémoire depuis le document relu (`deserializeLayout`), comme ici :
+    hydrateFromDevis({ id: 1, geometrie: { roof_layout: relu }, cibleVendue: false });
+    const repave = serializeLayout(ctxPave([QUATRE[0], QUATRE[2], QUATRE[3]], relu));
+    expect((repave.zones[0].geometry!.panels as ModuleNumerote[]).map((m) => m.n)).toEqual([1, 3, 4]);
+  });
+
+  it('enregistrement sans geste d’un document ancien : aucun numéro ajouté', () => {
+    const ancien = serializeLayout(ctxPave(QUATRE, undefined));
+    reinitialiserNumerotation();
+    // Un document ANCIEN non numéroté : mêmes positions, aucun `n`.
+    const sansNumeros = JSON.parse(JSON.stringify(ancien));
+    for (const p of sansNumeros.zones[0].geometry.panels) {
+      delete p.n;
+      delete p.rangee;
+    }
+    delete sansNumeros.zones[0].geometry.numerotation;
+    const sortie = serializeLayout(ctxPave(QUATRE, sansNumeros));
+    expect((sortie.zones[0].geometry!.panels as ModuleNumerote[]).some((m) => m.n !== undefined)).toBe(false);
+  });
+});

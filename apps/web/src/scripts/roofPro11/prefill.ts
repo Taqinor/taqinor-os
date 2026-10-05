@@ -1168,7 +1168,10 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   // CALX111 — numéros STABLES des modules : sème la mémoire depuis ce que le document porte
   // déjà, puis écrit `n`/`rangee`/`numerotation` (bascule « Numéroter » éteinte par défaut ⇒
   // document inchangé, octet pour octet). L'attribution elle-même est PURE (`numerotation.ts`).
-  numeroterDocument(layout);
+  // ACAL307 — les pans PAVÉS dans la session (pose différente de celle du document relu,
+  // ou pan sans pose relue) sont numérotés d'office ; un pan dont la pose est celle du
+  // document n'est jamais renuméroté par un simple enregistrement.
+  numeroterDocument(layout, undefined, undefined, { pansPaves: pansPavesDansLaSession(layout, ctx) });
   // CALX110 — le catalogue `modules[]` + le `moduleId` de chaque pan (contrat CALX82) :
   // le kWc de chaque pan est recalculé depuis SON module, le total du site en devient la
   // somme, et `panelWatt` racine reste servi (watt du module MAJORITAIRE). Sans catalogue
@@ -1185,6 +1188,28 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   const ecrit = meta?.coucheElectrique ? meta.coucheElectrique.ecrireDansDocument(layout) : layout;
   // ACAL31 — ce que l'atelier n'a pas changé repart tel qu'il a été LU.
   return reconcilierAvecDocumentRelu(ecrit, ctx);
+}
+
+/** ACAL307 — positions (et faces) d'une pose, sans les numéros : ce qui définit un pavage. */
+function empreintePose(panels: unknown): string {
+  return JSON.stringify(
+    (Array.isArray(panels) ? panels : []).map((p: { cx?: number; cy?: number; face?: string }) => [p?.cx, p?.cy, p?.face ?? null]),
+  );
+}
+
+/** ACAL307 — les pans dont la pose émise n'est PAS celle du document relu (pavés ou repavés
+ *  dans la session), ou qui n'avaient aucune pose relue. */
+function pansPavesDansLaSession(layout: SerializedLayout, ctx: Ctx): Set<string> {
+  const relu = ctx.documentRelu;
+  const zonesRelues = relu && Array.isArray(relu.zones) ? (relu.zones as Array<{ id?: string; geometry?: { panels?: unknown } }>) : [];
+  const parId = new Map(zonesRelues.map((z) => [z.id, z]));
+  const paves = new Set<string>();
+  for (const z of layout.zones) {
+    if (!z.geometry?.panels?.length) continue;
+    const rz = parId.get(z.id);
+    if (!rz?.geometry || empreintePose(rz.geometry.panels) !== empreintePose(z.geometry.panels)) paves.add(z.id);
+  }
+  return paves;
 }
 
 // ═══════════ ACAL31 — ALLER-RETOUR OCTET-IDENTIQUE ═══════════
