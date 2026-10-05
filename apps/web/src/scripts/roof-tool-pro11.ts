@@ -137,6 +137,7 @@ import {
   exclusionZoneRing,
   empriseModuleENU, // CALX403 câblage
   type ModulePose, // CALX403 câblage
+  prochainId, // ACAL64
 } from './roofPro11/zones';
 // CALX109/CALX110 câblage — le catalogue de modules de la société (`opts.modulesDisponibles`)
 // et le module posé sur chaque pan (`AreaRecord.moduleId`) : c'est ce couple qui part dans le
@@ -397,7 +398,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // roofPro11/mesureUi.ts (même convention que `obstacles`/`vertices`).
   let measurements: Measurement[] = [];
   let selectedObsId: string | null = null;
-  let obsCounter = 0;
   // Glissé en cours pour dessiner un obstacle.
   let drawStart: { lngLat: LngLat; point: maplibregl.Point } | null = null;
   let drawing = false;
@@ -482,7 +482,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // CAL69 — zones INTERDITE/RESERVEE/PREFEREE tracées dans l'atelier (contrat CAL68).
   // Partagées via ctx : obstaclesUi les écrit, `obstructionRings` les lit.
   const exclusionZones: import('./roofPro11/zones').ExclusionZone[] = [];
-  let envCounter = 0;
   let climateBandOn = false; // WJ22 — fourchette de pertes climatiques (opt-in, défaut OFF)
   let useRecommended = true;
   let sel: { family: ConfigFamily; tilt: TiltMode; orient: OrientMode; azimuth: AzimuthMode; margin: MarginMode } = {
@@ -626,12 +625,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // ses panneaux SANS ré-optimiser. Stocké sur la zone ACTIVE à chaque renderScene ;
   // les AUTRES zones sont re-dessinées (subduées) à partir de leur plan, à leur vraie
   // position relative (offset GPS → ENU). `count` = nombre de panneaux RÉELLEMENT posés.
-  let areaCounter = 0;
-  const newAreaRecord = (): AreaRecord => {
-    const id = `area-${++areaCounter}`;
+  // ACAL64 — l'identifiant vient de LA fabrique (`zones.ts::prochainId`) : max(n)+1 sur les
+  // pans EXISTANTS, jamais un compteur de session qui repartait de zéro sur un dossier rouvert.
+  const newAreaRecord = (existants?: readonly { id: string }[]): AreaRecord => {
+    const id = prochainId('area', existants ?? areas);
     return {
       id,
-      label: areaLabel(areaCounter - 1),
+      label: areaLabel(Number(id.slice('area-'.length)) - 1),
       vertices: [],
       obstacles: [],
       roofType: 'flat',
@@ -647,7 +647,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // PV19 — origine DEVIS mémorisée à l'hydratation (jamais devinée) : elle alimente le
   // meta de sérialisation par défaut. Null tant qu'aucun devis n'a hydraté le builder.
   let devisOrigin: { devisId: string | number | null; panelWatt: number | null; scenario: import('./roofPro11/prefill').LayoutScenario | null } | null = null;
-  const areas: AreaRecord[] = [newAreaRecord()];
+  const areas: AreaRecord[] = [newAreaRecord([])]; // ACAL64 — `areas` n'existe pas encore ici
   let activeAreaId = areas[0].id;
   const activeArea = (): AreaRecord | undefined => areas.find((a) => a.id === activeAreaId);
 
@@ -695,12 +695,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     },
     set selectedObsId(v) {
       selectedObsId = v;
-    },
-    get obsCounter() {
-      return obsCounter;
-    },
-    set obsCounter(v) {
-      obsCounter = v;
     },
     get obstacleMode() {
       return obstacleMode;
@@ -938,12 +932,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     environment,
     exclusionZones,
     setbacks, // ACAL31 — référence stable, relue par `appliquerHydratationAuCtx`
-    get envCounter() {
-      return envCounter;
-    },
-    set envCounter(v) {
-      envCounter = v;
-    },
     get shadeFactors() {
       return shadeFactors;
     },
@@ -2434,7 +2422,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     consDailyTarget = 0;
     ctx.consSource = null;
     areas.length = 0;
-    areaCounter = 0;
     const fresh = newAreaRecord();
     areas.push(fresh);
     activeAreaId = fresh.id;

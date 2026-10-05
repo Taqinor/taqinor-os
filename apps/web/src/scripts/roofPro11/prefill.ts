@@ -25,7 +25,7 @@ import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
 import { deduceEdgeTypes, fusionnerAretesSaisies, type SerializedEdge, type EdgeDeductionZone } from './edges';
 import { type EnvironmentObject } from './environment';
 import { type ShadeObstruction } from '../../lib/shadingEngine'; // ACAL27
-import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone } from './zones';
+import { serializeExclusionZones, deserializeExclusionZones, idPanEnDouble, type ExclusionZone } from './zones';
 import { resolveSetbacks, PERIMETER_SETBACK_M, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { sortedHorizonPoints, horizonMaxHeightDeg, type HorizonProfile, type HorizonSource } from '../../lib/horizonEngine';
 import { lireCoucheElectrique, type CoucheElectrique, type DocumentElectrique } from './electrique3d';
@@ -910,7 +910,24 @@ function centroidOf(vertices: LngLat[]): { lat: number; lng: number } | null {
  * écrire nulle part. `billKwh` est optionnel (passé par l'appelant — l'outil ne
  * connaît pas la conversion facture→kWh ici).
  */
+/** ACAL64 — erreur NOMMÉE d'un document que l'atelier refuse d'émettre (jamais un document
+ *  faux) : l'écran hôte affiche son message tel quel. */
+export class ErreurDocumentAtelier extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ErreurDocumentAtelier';
+  }
+}
+
 export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: SerializeMeta): SerializedLayout {
+  // ACAL64 — deux pans de même identifiant : refus nommé, jamais un document émis (le second
+  // pan écraserait le premier côté serveur, et le compte publié serait faux).
+  const doublon = idPanEnDouble(ctx.areas);
+  if (doublon) {
+    throw new ErreurDocumentAtelier(
+      `Deux pans portent l'identifiant « ${doublon} » : rien n'est enregistré — supprimez ou retracez l'un des deux.`,
+    );
+  }
   // On part des zones figées (ctx.areas) et on superpose l'état d'édition VIVANT de
   // la zone active (vertices/obstacles/roofType… vivent sur ctx, pas encore re-figés).
   const zones: SerializedZone[] = ctx.areas.map((a) => {

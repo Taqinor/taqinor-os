@@ -641,9 +641,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
           ? `Conception enregistrée — version ${resultat.version}.`
           : 'Conception enregistrée.'
       )
-    } catch {
+    } catch (err) {
       setGenStatus(null)
-      setGenError('Erreur réseau pendant l’enregistrement. Vérifiez votre connexion puis réessayez.')
+      // ACAL64 — un document que l'atelier REFUSE d'émettre (pans de même identifiant) porte
+      // son propre message : on l'affiche tel quel, jamais « erreur réseau ».
+      setGenError(err?.name === 'ErreurDocumentAtelier' && err.message
+        ? err.message
+        : 'Erreur réseau pendant l’enregistrement. Vérifiez votre connexion puis réessayez.')
       setSending(false)
     }
   }

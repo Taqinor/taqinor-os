@@ -2023,3 +2023,44 @@ describe('runtime ACAL31 — l’exemple du contrat ressort identique des deux b
     expect(differences(exemple, sortie)).toEqual([]);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL64 — boot RÉEL d'un dossier à deux pans (area-1, area-2) puis « + Ajouter une zone » :
+// le nouveau pan prend area-3, jamais un second area-2 qui écraserait le contour d'origine.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL64 — ajouter un pan à un dossier rouvert', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('dossier rouvert area-1/area-2 → « + Ajouter une zone » → area-3, area-2 garde son contour', async () => {
+    const pan = (id: string, lng0: number) => ({
+      id, label: id, vertices: squareCorners(16, lng0), obstacles: [], roofType: 'flat', pitchDeg: 22,
+      facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true,
+    });
+    const doc = {
+      version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'area-1',
+      zones: [pan('area-1', -7.62), pan('area-2', -7.6195)],
+    };
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({
+      maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document),
+      hydrate: { devis: { id: 3, geometrie: { roof_layout: doc as never }, cibleVendue: false } },
+      onApiReady: (a) => { api = a; },
+    });
+    fakeMaps[0].fire('load', {});
+    (document.getElementById('rp9-add-area') as HTMLButtonElement).click();
+    const sortie = api!.serializeLayout() as { zones: Array<{ id: string; vertices: unknown }> };
+    expect(sortie.zones.map((z) => z.id)).toEqual(['area-1', 'area-2', 'area-3']);
+    expect(sortie.zones[1].vertices).toEqual(squareCorners(16, -7.6195));
+  });
+});

@@ -91,8 +91,6 @@ export interface Ctx {
   // — Obstacles : sélection + glissé-dessin + glissé-déplacement (mutable) —
   /** Identifiant de l'obstacle sélectionné, ou null. */
   selectedObsId: string | null;
-  /** Compteur d'identifiants d'obstacle (obs-N). */
-  obsCounter: number;
   /** Le mode « ajout d'obstacle » est-il actif ? */
   obstacleMode: boolean;
   /** Glissé-dessin d'un obstacle en cours (point de départ) ou null. */
@@ -259,12 +257,8 @@ export interface Ctx {
   // CAL69 — zones INTERDITE/RESERVEE/PREFEREE tracées dans l'atelier, persistées telles
   // quelles sous `exclusionZones` (contrat CAL68). Absentes = aucune zone.
   exclusionZones?: ExclusionZone[];
-  zoneCounter?: number;
   /** Nature en attente de tracé : posée par le panneau, lue par `endDraw`. */
   pendingZoneNature?: ExclusionNature | null;
-  /** CAL67 — compteur d'identifiants d'objet d'environnement (env-N). Optionnel : absent
-   *  sur un `ctx` antérieur à CAL67 → `obstaclesUi.ts` l'initialise à 0 au premier ajout. */
-  envCounter?: number;
   /** CALX84/CALX100 — les BÂTIMENTS du site tels que le DOCUMENT les décrit (hauteur,
    *  étages, hauteur d'étage, provenance, relevé d'acrotère). Jusqu'ici la hauteur CAL60
    *  vivait dans une `Map` locale de `shadingUi.ts` et n'était JAMAIS sérialisée : rouvrir

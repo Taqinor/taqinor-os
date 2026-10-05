@@ -206,6 +206,44 @@ export function dupliquerPan(source: AreaRecord, nouvelId: string, pasM: number)
   };
 }
 
+/**
+ * ACAL64 — LA fabrique d'identifiants de l'atelier : `<prefixe>-<max(n)+1>` sur TOUS les
+ * existants (pans, obstacles de tous les pans, zones d'exclusion, objets d'environnement).
+ * Remplace les compteurs de session (`areaCounter`, `obsCounter`, `zoneCounter`,
+ * `envCounter`) qui repartaient de zéro sur un dossier rouvert et recréaient `area-2`
+ * alors qu'un `area-2` existait déjà — le nouveau pan prenait le contour de l'ancien.
+ * PURE ; un identifiant d'une autre forme (`area-copie-1`, `sh-1`…) est ignoré.
+ */
+export function prochainId(prefixe: string, existants: Iterable<{ id?: string } | null | undefined>): string {
+  const tete = `${prefixe}-`;
+  let max = 0;
+  for (const e of existants) {
+    const id = typeof e?.id === 'string' ? e.id : '';
+    if (!id.startsWith(tete)) continue;
+    const reste = id.slice(tete.length);
+    if (/^\d+$/.test(reste)) max = Math.max(max, Number(reste));
+  }
+  return `${prefixe}-${max + 1}`;
+}
+
+/** ACAL64 — tous les obstacles du site : ceux du pan actif ET ceux des pans figés. */
+export function tousLesObstacles(ctx: Pick<Ctx, 'obstacles' | 'areas' | 'activeAreaId'>): Array<{ id: string }> {
+  return [
+    ...(ctx.obstacles ?? []),
+    ...(ctx.areas ?? []).filter((a) => a.id !== ctx.activeAreaId).flatMap((a) => a.obstacles ?? []),
+  ];
+}
+
+/** ACAL64 — deux pans de même identifiant dans un document : le premier doublon, ou null. */
+export function idPanEnDouble(zones: readonly { id: string }[]): string | null {
+  const vus = new Set<string>();
+  for (const z of zones) {
+    if (vus.has(z.id)) return z.id;
+    vus.add(z.id);
+  }
+  return null;
+}
+
 /** CALX98 — identifiant de zone NEUF, dans un espace de noms (`area-copie-N`) que le
  *  compteur `area-<n>` de l'entrée ne produit jamais : aucune collision possible. */
 export function idZoneCopie(existants: readonly { id: string }[]): string {
