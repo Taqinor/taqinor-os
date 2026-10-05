@@ -216,6 +216,7 @@ SURFACE_PUBLIQUE = (
     # ACAL58 — orientation POSÉE d'abord (ventes/domain/geometrie.py).
     "orientation_du_pan",
     "otp_lecture_verified",
+    "pans_du_document",
     "phase_client_pour_dimensionnement",
     "plafond_panneaux",
     "plafond_physique_du_contour",

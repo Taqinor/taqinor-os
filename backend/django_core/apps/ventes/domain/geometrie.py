@@ -168,13 +168,13 @@ def extract_roof_config(layout):
         # reconstruit perdait le wattage panneau (aucun watt déductible, donc
         # plus de choix de produit à wattage exact). L'ordre est STRICT :
         # ``result`` d'abord (comportement historique inchangé au bit près),
-        # ``geometry`` ensuite, ``neededPanels`` en tout dernier recours (le
-        # compte SOUHAITÉ, pas le compte POSÉ).
+        # ``geometry`` ensuite. ACAL59 (C-ACAL-118) — ``neededPanels`` (le
+        # compte SOUHAITÉ, jamais le compte POSÉ) n'est PLUS un repli : un pan
+        # non pavé compte 0.
         geo = a.get('geometry')
         if not isinstance(geo, dict):
             geo = {}
-        count = int(res.get('count') or geo.get('count')
-                    or a.get('neededPanels') or 0)
+        count = int(res.get('count') or geo.get('count') or 0)
         kwc = float(res.get('kwc') or geo.get('kwc') or 0.0)
         surface = float(res.get('areaM2') or geo.get('areaM2')
                         or a.get('areaM2') or 0.0)
@@ -404,7 +404,7 @@ def scenario_du_layout(layout):
 #: ``toiture`` est rendue avec le reste pour qu'un appelant qui en a besoin
 #: (``_calepinage_range``, le journal) ne rejoue pas ``extract_roof_config``.
 LectureLayout = namedtuple(
-    'LectureLayout', 'compte watt watt_declare kwc scenario toiture')
+    'LectureLayout', 'compte watt watt_declare kwc scenario toiture pans')
 
 
 def _nombre_fini(valeur):
@@ -416,43 +416,136 @@ def _nombre_fini(valeur):
     return v if math.isfinite(v) and v > 0 else None
 
 
-def compte_surfaces_de_pose(layout):
-    """ERR-QAH-CALEPINAGE-SOL-DEVIS-422 — ``(modules, kwc)`` des SURFACES DE POSE.
+#: ACAL59 — les genres de surface de pose (``roof_layout_v2``,
+#: ``poseSurfaces[].kind``). Un pan de toit est ``'toit'``.
+KINDS_SURFACE = ('sol', 'ombriere', 'facade')
 
-    Un champ au sol / une ombrière (CAL89/CAL91) vit sous ``poseSurfaces[]``,
-    son compte POSÉ sous ``engine.modules`` (recopié du moteur, jamais
-    recalculé). Le lecteur unique ne regardait que ``result`` et les pans de
-    toiture : un champ de 340 modules enregistré rendait 0 et « Générer le
-    devis » tombait en 422 « Aucun panneau détecté ».
 
-    ``kwc`` n'est rendu que s'il est MESURABLE pour TOUTES les surfaces
-    comptées (``moduleWc`` saisi, persisté par l'écran) ; sinon ``0.0`` — le
-    wattage retombe alors sur la chaîne habituelle, jamais sur une puissance
-    inventée ici.
+def _entier_pose(valeur):
+    """Un compte POSÉ lisible (entier ≥ 0), ou ``None`` s'il est absent."""
+    if valeur is None:
+        return None
+    try:
+        v = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(v) or v < 0:
+        return None
+    return int(round(v))
+
+
+def pans_du_document(layout):
+    """ACAL59 (C-ACAL-035, C-ACAL-118, D-ACAL-5) — LA primitive PURE : les
+    pans d'un document de pose, toit ET surfaces de pose (champ au sol,
+    ombrière, façade — chacune est un pan à part entière).
+
+    Rend ``[{cle, kind, libelle, modules, kwc, inclinaison_deg, azimut_deg,
+    source}]`` (+ ``avertissement`` pour un pan non pavé, + ``refus`` pour
+    une surface dont le module n'a pas de puissance). Ne lève jamais : le
+    refus est PORTÉ, et c'est la composition (pré-vol
+    :func:`validate_composition_for_layout`) qui le prononce — un document
+    déjà enregistré n'est jamais rendu illisible.
+
+    * pan de TOIT (``zones``/``areas``/``pans``) — compte POSÉ, par
+      préséance : ``len(geometry.panels)`` > ``geometry.count`` >
+      ``result.count`` du pan (la zone synthétique de l'auto-devis, qui ne
+      porte que ``result``, reste comptée). ``neededPanels`` n'est JAMAIS un
+      compte posé : un pan non pavé vaut 0 module et le DIT
+      (« pan <libellé> non pavé — non chiffré ») ;
+    * SURFACE DE POSE (``poseSurfaces``) — ``engine.modules`` (recopié du
+      moteur, jamais recalculé) ; kWc = modules × ``moduleWc`` ; azimut de
+      FACE = ``rowAzimuthDeg`` + 90 (défaut gravé du contrat). Une surface
+      pavée SANS ``moduleWc`` porte un ``refus`` NOMMANT la surface (jamais
+      une puissance de repli).
+
+    Le ``result`` RACINE n'est pas lu ici : c'est le toit seul, et
+    :func:`lire_layout` ne le lit qu'à défaut de toute géométrie de zone.
     """
-    surfaces = (layout or {}).get('poseSurfaces') if isinstance(
-        layout, dict) else None
-    if not isinstance(surfaces, list):
-        return 0, 0.0
-    modules = 0
-    kwc = 0.0
-    kwc_complet = True
-    for surface in surfaces:
+    layout = layout if isinstance(layout, dict) else {}
+    pans = []
+    watt_annonce = _nombre_fini(layout.get('panelWatt') or layout.get('watt'))
+    zones = (layout.get('zones') or layout.get('areas')
+             or layout.get('pans') or [])
+    for index, zone in enumerate(zones if isinstance(zones, list) else []):
+        if not isinstance(zone, dict):
+            continue
+        geo = zone.get('geometry')
+        geo = geo if isinstance(geo, dict) else {}
+        res = zone.get('result')
+        res = res if isinstance(res, dict) else {}
+        libelle = str(zone.get('label') or zone.get('id')
+                      or 'Pan %d' % (index + 1))
+        if isinstance(geo.get('panels'), list):
+            modules, source = len(geo['panels']), 'geometry.panels'
+        elif _entier_pose(geo.get('count')) is not None:
+            modules, source = _entier_pose(geo.get('count')), 'geometry.count'
+        elif _entier_pose(res.get('count')) is not None:
+            modules, source = _entier_pose(res.get('count')), 'result.count'
+        else:
+            modules, source = 0, 'aucune'
+        kwc = _nombre_fini(geo.get('kwc')) or _nombre_fini(res.get('kwc'))
+        if kwc is None and modules and watt_annonce:
+            kwc = modules * watt_annonce / 1000.0
+        orientation = orientation_du_pan(zone)
+        pan = {
+            'cle': str(zone.get('id') or 'zone-%d' % (index + 1)),
+            'kind': 'toit',
+            'libelle': libelle,
+            'modules': modules,
+            'kwc': round(kwc, 3) if (kwc and modules) else None,
+            'inclinaison_deg': orientation['inclinaison_deg'],
+            'azimut_deg': orientation['azimut_deg'],
+            'source': source,
+        }
+        if modules <= 0:
+            pan['kwc'] = None
+            pan['avertissement'] = 'pan %s non pavé — non chiffré' % libelle
+        pans.append(pan)
+
+    surfaces = layout.get('poseSurfaces')
+    for index, surface in enumerate(
+            surfaces if isinstance(surfaces, list) else []):
         if not isinstance(surface, dict):
             continue
         moteur = surface.get('engine')
-        n = _nombre_fini((moteur or {}).get('modules')) if isinstance(
-            moteur, dict) else None
-        if n is None:
-            continue
-        n = int(round(n))
-        modules += n
+        moteur = moteur if isinstance(moteur, dict) else {}
+        modules = _entier_pose(moteur.get('modules')) or 0
         watt = _nombre_fini(surface.get('moduleWc'))
-        if watt is None:
-            kwc_complet = False
-        else:
-            kwc += n * watt / 1000.0
-    return modules, (round(kwc, 3) if kwc_complet and modules else 0.0)
+        kind = surface.get('kind')
+        kind = kind if kind in KINDS_SURFACE else 'sol'
+        libelle = str(surface.get('label') or surface.get('id')
+                      or 'Surface %d' % (index + 1))
+        rangee = _nombre_fini(surface.get('rowAzimuthDeg'))
+        if rangee is None and surface.get('rowAzimuthDeg') == 0:
+            rangee = 0.0
+        pan = {
+            'cle': str(surface.get('id') or 'surface-%d' % (index + 1)),
+            'kind': kind,
+            'libelle': libelle,
+            'modules': modules,
+            'kwc': (round(modules * watt / 1000.0, 3)
+                    if (modules and watt) else None),
+            'inclinaison_deg': surface.get('tiltDeg'),
+            'azimut_deg': ((rangee + 90.0) % 360.0
+                           if rangee is not None else None),
+            'source': 'engine.modules',
+        }
+        if modules <= 0:
+            pan['avertissement'] = 'pan %s non pavé — non chiffré' % libelle
+        elif watt is None:
+            pan['refus'] = (
+                "Surface de pose « %s » : la puissance du module (moduleWc) "
+                "n'est pas renseignée — ses %d modules ne peuvent pas être "
+                "chiffrés. Saisissez le module de la surface puis relancez."
+                % (libelle, modules))
+        pans.append(pan)
+    return pans
+
+
+def refus_des_pans(pans):
+    """ACAL59 — les refus NOMMÉS portés par :func:`pans_du_document` (une
+    surface pavée sans puissance module), dans l'ordre du document."""
+    return [p['refus'] for p in pans or () if p.get('refus')]
 
 
 def lire_layout(layout, *, toiture=None, compte=None, kwc=None):
@@ -488,24 +581,42 @@ def lire_layout(layout, *, toiture=None, compte=None, kwc=None):
         toiture = extract_roof_config(layout) or {}
     result = dict(layout.get('result') or {})
 
-    # ERR-QAH-CALEPINAGE-SOL-DEVIS-422 — dernier repli MESURÉ : les modules
-    # que le moteur a POSÉS sur les surfaces de pose (sol / ombrière). Ne
-    # s'applique que quand ni ``result`` ni les pans n'annoncent de compte :
-    # une conception toiture garde sa lecture au bit près.
-    pose_modules, pose_kwc = 0, 0.0
+    # ── ACAL59 (C-ACAL-035, D-ACAL-5) — LA SOMME DES PANS POSÉS ────────────
+    # Un site toit + champ au sol / ombrière est chiffré sur la SOMME des
+    # modules posés (``pans_du_document``) : la surface de pose n'est plus un
+    # repli quand le toit est muet, c'est un pan. Le ``result`` racine (le
+    # toit seul, D-ACAL-5) n'est lu qu'à défaut de toute géométrie de zone —
+    # jamais additionné aux zones (aucun double compte).
+    pans = pans_du_document(layout)
+    toit = [p for p in pans if p['kind'] == 'toit']
+    surfaces = [p for p in pans if p['kind'] != 'toit']
+    zones_mesurees = any(p['source'] != 'aucune' for p in toit)
     if compte is None:
-        compte = int(result.get('panels') or result.get('count') or 0)
-        if compte <= 0 and toiture.get('nb_panneaux'):
-            compte = int(toiture['nb_panneaux'])
-        if compte <= 0:
-            pose_modules, pose_kwc = compte_surfaces_de_pose(layout)
-            compte = pose_modules
+        if zones_mesurees:
+            compte_toit = sum(p['modules'] for p in toit)
+        else:
+            compte_toit = int(result.get('panels') or result.get('count')
+                              or 0)
+        compte = compte_toit + sum(p['modules'] for p in surfaces)
     else:
         compte = int(compte or 0)
 
     if kwc is None:
-        kwc = float(result.get('kwc') or toiture.get('kwc') or pose_kwc
-                    or 0.0)
+        toit_paves = [p for p in toit if p['modules'] > 0]
+        if zones_mesurees and toit_paves and all(p['kwc']
+                                                 for p in toit_paves):
+            kwc_toit = sum(p['kwc'] for p in toit_paves)
+        else:
+            kwc_toit = float(result.get('kwc') or toiture.get('kwc') or 0.0)
+        surfaces_pavees = [p for p in surfaces if p['modules'] > 0]
+        if all(p['kwc'] for p in surfaces_pavees):
+            kwc = kwc_toit + sum(p['kwc'] for p in surfaces_pavees)
+        else:
+            # Une surface pavée sans puissance module : aucun kWc inventé —
+            # le wattage retombe sur la chaîne habituelle (la composition,
+            # elle, refuse en nommant la surface).
+            kwc = 0.0
+        kwc = round(kwc, 3) if kwc else 0.0
     else:
         kwc = float(kwc or 0.0)
 
@@ -532,6 +643,7 @@ def lire_layout(layout, *, toiture=None, compte=None, kwc=None):
         kwc=kwc,
         scenario=scenario_du_layout(layout),
         toiture=toiture,
+        pans=pans,
     )
 
 
@@ -577,6 +689,11 @@ def validate_composition_for_layout(layout, company, *, lead=None):
     lecture = lire_layout(layout)
     from apps.ventes.domain.taille import (
         AutoDevisError, phase_et_isolement_du_lead)
+    # ACAL59 (D-ACAL-5) — une surface pavée sans puissance module est
+    # REFUSÉE en la nommant (422), jamais chiffrée à une puissance de repli.
+    refus_surfaces = refus_des_pans(lecture.pans)
+    if refus_surfaces:
+        raise AutoDevisError(refus_surfaces[0], field='poseSurfaces')
     phase, hors_reseau = phase_et_isolement_du_lead(lead)
 
     # PVMRQ — pas de devis ici (pré-vol AVANT création) ⇒ pas de gamme connue :

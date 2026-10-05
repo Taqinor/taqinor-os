@@ -7,6 +7,10 @@ devis » → 422 « Aucun panneau détecté dans le layout… ». Le lecteur uni
 ``validate_composition_for_layout`` ET la création, ne lisait que ``result``
 et les pans de toiture : il rendait 0.
 
+ACAL59 — réécrit sur la sortie de ``pans_du_document`` (la primitive qui a
+absorbé ``compte_surfaces_de_pose``) : une surface de pose est un PAN, son
+compte s'ADDITIONNE à celui du toit (plus un simple repli).
+
 ``SimpleTestCase`` : la lecture est PURE (un dict entre, un tuple sort).
 
 Run :
@@ -14,7 +18,7 @@ Run :
 """
 from django.test import SimpleTestCase
 
-from apps.ventes.domain.geometrie import compte_surfaces_de_pose, lire_layout
+from apps.ventes.domain.geometrie import lire_layout, pans_du_document
 
 
 def _layout_sol(modules=340, **surface):
@@ -32,35 +36,51 @@ def _layout_sol(modules=340, **surface):
 class LireLayoutSurfacesDePoseTest(SimpleTestCase):
     def test_un_champ_au_sol_enregistre_est_compte(self):
         self.assertEqual(lire_layout(_layout_sol()).compte, 340)
+        pans = pans_du_document(_layout_sol())
+        self.assertEqual([(p['kind'], p['modules']) for p in pans],
+                         [('sol', 340)])
 
     def test_le_kwc_est_mesure_quand_la_puissance_module_est_saisie(self):
         lecture = lire_layout(_layout_sol(moduleWc=550))
         self.assertEqual(lecture.compte, 340)
         self.assertAlmostEqual(lecture.kwc, 187.0)
         self.assertEqual(lecture.watt, 550)
+        self.assertAlmostEqual(lecture.pans[0]['kwc'], 187.0)
 
     def test_sans_puissance_saisie_aucun_kwc_invente(self):
-        self.assertEqual(compte_surfaces_de_pose(_layout_sol()), (340, 0.0))
+        pan, = pans_du_document(_layout_sol())
+        self.assertEqual(pan['modules'], 340)
+        self.assertIsNone(pan['kwc'])
+        self.assertIn('Champ au sol', pan['refus'])
+        self.assertEqual(lire_layout(_layout_sol()).kwc, 0.0)
 
-    def test_un_toit_qui_annonce_son_compte_garde_sa_lecture(self):
-        layout = dict(_layout_sol(), result={'panels': 12, 'kwc': 6.6})
+    def test_le_toit_du_result_racine_s_additionne_a_la_surface(self):
+        # D-ACAL-5 : le ``result`` racine est le TOIT seul ; sans zone, il
+        # est lu, et la surface de pose est un pan de plus.
+        layout = dict(_layout_sol(moduleWc=550),
+                      result={'panels': 12, 'kwc': 6.6})
         lecture = lire_layout(layout)
-        self.assertEqual(lecture.compte, 12)
-        self.assertAlmostEqual(lecture.kwc, 6.6)
+        self.assertEqual(lecture.compte, 12 + 340)
+        self.assertAlmostEqual(lecture.kwc, 6.6 + 187.0)
 
     def test_plusieurs_surfaces_se_totalisent(self):
         layout = _layout_sol(100, moduleWc=500)
         layout['poseSurfaces'].append({
             'kind': 'ombriere', 'moduleWc': 500,
             'engine': {'modules': 40}})
-        self.assertEqual(compte_surfaces_de_pose(layout), (140, 70.0))
+        pans = pans_du_document(layout)
+        self.assertEqual(sum(p['modules'] for p in pans), 140)
+        self.assertAlmostEqual(sum(p['kwc'] for p in pans), 70.0)
+        self.assertEqual(lire_layout(layout).compte, 140)
 
     def test_surface_sans_plan_moteur_ignoree(self):
         layout = {'poseSurfaces': [{'kind': 'sol', 'engine': {'modules': None}},
                                    'pas-un-dict', {'kind': 'sol'}]}
-        self.assertEqual(compte_surfaces_de_pose(layout), (0, 0.0))
+        pans = pans_du_document(layout)
+        self.assertEqual([p['modules'] for p in pans], [0, 0])
+        self.assertTrue(all('non pavé' in p['avertissement'] for p in pans))
         self.assertEqual(lire_layout(layout).compte, 0)
 
     def test_layout_muet_reste_a_zero(self):
         self.assertEqual(lire_layout({}).compte, 0)
-        self.assertEqual(compte_surfaces_de_pose(None), (0, 0.0))
+        self.assertEqual(pans_du_document(None), [])

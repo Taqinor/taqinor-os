@@ -226,6 +226,7 @@ layout_hash = _geometrie.layout_hash
 poser_layout_hash = _geometrie.poser_layout_hash
 validate_composition_for_layout = _geometrie.validate_composition_for_layout
 battery_du_document = _geometrie.battery_du_document
+pans_du_document = _geometrie.pans_du_document
 DRAPEAU_MOTEUR_CALEPINAGE = _geometrie.DRAPEAU_MOTEUR_CALEPINAGE
 TOLERANCE_ARBITRAGE_MODULES = _geometrie.TOLERANCE_ARBITRAGE_MODULES
 TOLERANCE_ARBITRAGE_PCT = _geometrie.TOLERANCE_ARBITRAGE_PCT
@@ -610,6 +611,7 @@ __all__ = [
     'ordre_lignes_societe',
     'orientation_du_pan',
     'otp_lecture_verified',
+    'pans_du_document',
     'phase_client_pour_dimensionnement',
     'plafond_panneaux',
     'plafond_physique_du_contour',
