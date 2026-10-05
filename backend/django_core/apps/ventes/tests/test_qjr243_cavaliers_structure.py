@@ -221,6 +221,8 @@ class CavalierGRecensementAvecVerdicts(SimpleTestCase):
             return
         fichiers = sorted((VENTES / 'domain').glob('*.py'))
         fichiers += [VENTES / 'services.py', VENTES / 'selectors.py']
+        # SPL131 — les modules de découpe ``selectors_*.py`` (SPL143-SPL147).
+        fichiers += sorted(VENTES.glob('selectors_*.py'))
         for chemin in fichiers:
             source = chemin.read_text(encoding='utf-8')
             for interdit in ('from apps.cpq', 'import apps.cpq'):
