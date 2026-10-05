@@ -68,3 +68,11 @@ la chaîne web et se perd sans trace à l'arrivée.
 | `devis_auto_pret.json` | bloc `devis_auto` structuré : `manquants_detail`, `requis` (QJR509) |
 | `questionnaire_lead.json` (étendu) | `colonnes_ecrites`, `prefill_vu`, `ignorees` (QJR512) |
 | `lead_pompage.json` + `devis_auto_pret.json` (`exemple_agricole`, règle v2 depuis AGR403) | Groupe AGR (02/10/2026) : colonnes Lead pompage et leurs questions, `entrees_pompage`, `incoherence_segment`, `segment_suggere`, règle agricole « devis auto prêt » sans CV + `visite_point_eau_avant_devis` (AGR1) |
+
+## Groupe CIQ — M0 contrats posés SEULS (03/10/2026)
+
+| Fichier | Ce qu'il apparie |
+| --- | --- |
+| `lead_pro.json` + `devis_auto_pret.json` (`exemple_commercial`, `exemple_industriel`, `regle_pro_ciq1`) | Lead commercial/industriel : colonnes pro et leurs questions orales (5 étapes D-CIQ-7), `entrees_ci` vers les clés `etude_params` C&I v2, règle pro « devis auto prêt » + `visite_avant_devis` (D-CIQ-5), `incoherence_segment`, `segment_suggere`, `identite_entreprise` (CIQ1) |
+| `client_entreprise.json` + `lead_client_ecart.json` (`exemple_entreprise`) | Client « entreprise » créé ou rattaché depuis un lead pro sans doublon (ICE → e-mail → téléphone, `conflit_identite_entreprise`), bloc `identite_entreprise` {type_client, complete, manquants, requis_pour} (D-CIQ-11, CIQ8) |
+| `questionnaire_lead.json` / `questionnaire_lien_mint.json` (`exemple_pro`, `segment_pro`) + `lead_affiner_pro.json` + `tunnel_webhook_keys.json` (`ajout_ciq400`) | Questionnaire client PRO (sections reseau, activite, site, societe, photos factures / poste ; sections résidentielles refusées en 400), POST public lead-affiner → jeton du questionnaire pro (étape « Affiner » facultative, D-CIQ-8), clés pro du tunnel promues en colonnes (CIQ400) |
