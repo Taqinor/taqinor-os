@@ -23,7 +23,7 @@ from .models import (
 )
 from .devis_auto import (
     champs_manquants_detail, champs_requis, message_manquants,
-    visite_point_eau_avant_devis)
+    source_conso, visite_avant_devis, visite_point_eau_avant_devis)
 from .scoring import compute_score, score_label, score_reasons
 
 
@@ -939,6 +939,11 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # AGR403 (D-AGR-4) — {requise, motifs} pour un agricole, null
             # ailleurs : une information, jamais un blocage de `pret`.
             'visite_point_eau_avant_devis': visite_point_eau_avant_devis(obj),
+            # CIQ404 (contrat CIQ1, D-CIQ-5) — la colonne qui remplit le
+            # groupe pro et la visite AVANT le devis final : commercial et
+            # industriel seulement, null ailleurs ; jamais un blocage.
+            'source_conso': source_conso(obj),
+            'visite_avant_devis': visite_avant_devis(obj),
         }
 
     def get_next_activity(self, obj):
