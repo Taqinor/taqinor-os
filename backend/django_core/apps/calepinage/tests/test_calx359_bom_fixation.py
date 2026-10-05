@@ -37,11 +37,15 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services import fixation
 from apps.calepinage.services.export_tableur import rangees_du_pan
+from apps.calepinage.tests._m0_en_attente import sans
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT = json.loads(
     (RACINE_APP / 'contract_samples' / 'calepinage_fixation_bom.json')
     .read_text(encoding='utf-8'))
+#: ACAL1 (M0) a posé ``systeme_source`` avant son producteur : ACAL81
+#: (système persisté sur le calepinage) la sert et retire cette entrée.
+EXEMPLE_VIDE_SERVI = sans(CONTRAT['exemple_vide'], {'systeme_source': 'ACAL81'})
 PAS = 1.2
 
 
@@ -249,7 +253,7 @@ class CatalogueVideTest(SimpleTestCase):
         systeme, refus = fixation.resoudre_systeme(calepinage.company)
         self.assertIsNone(systeme)
         self.assertEqual(fixation.bom_de_fixation(calepinage, systeme, refus),
-                         CONTRAT['exemple_vide'])
+                         EXEMPLE_VIDE_SERVI)
 
     def test_aucune_feuille_de_fixation_sans_catalogue(self):
         calepinage = SimpleNamespace(company=None, roof_layout=None)
@@ -298,7 +302,7 @@ class BomFixationEnBase(BaseApiCalepinage):
     def test_catalogue_vide_sert_l_exemple_vide(self):
         reponse = self.api.get(url_bom(self.calepinage.pk))
         self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertEqual(reponse.data, CONTRAT['exemple_vide'])
+        self.assertEqual(reponse.data, EXEMPLE_VIDE_SERVI)
 
     def test_unique_systeme_actif_applique(self):
         systeme = self._systeme()

@@ -67,13 +67,20 @@ EXEMPLE_BATIMENTS = [
 ]
 
 
+#: ACAL2 a rendu l'`exemple` du schéma COMPLET (il porte désormais
+#: `buildings`) : le « document de départ » d'aujourd'hui est cet exemple
+#: privé de la clé de CALX84 — c'est contre lui que l'additivité se prouve.
+DEPART = {cle: copy.deepcopy(valeur)
+          for cle, valeur in SCHEMA['exemple'].items() if cle != 'buildings'}
+
+
 def document_avec_batiments():
     """L'exemple du schéma, augmenté du fragment de CALX84.
 
     L'exemple porte DÉJÀ `zones[0].buildingId = 'bat-1'` depuis CAL59 : le
     fragment ne fait que DÉCRIRE enfin ce bâtiment-là, sans toucher au pan.
     """
-    document = copy.deepcopy(SCHEMA['exemple'])
+    document = copy.deepcopy(DEPART)
     document['buildings'] = copy.deepcopy(EXEMPLE_BATIMENTS)
     return document
 
@@ -98,11 +105,13 @@ class CleAdditiveTest(SimpleTestCase):
 
         Draft202012Validator.check_schema(SCHEMA)
 
-    def test_l_exemple_du_schema_ne_porte_pas_les_batiments(self):
-        """La preuve que le document historique n'a pas été réécrit."""
-        self.assertNotIn('buildings', SCHEMA['exemple'])
+    def test_l_exemple_complet_porte_les_batiments_et_le_depart_non(self):
+        """ACAL2 : l'exemple est complet ; le départ ne décrit aucun bâtiment."""
+        self.assertIn('buildings', SCHEMA['exemple'])
+        self.assertNotIn('buildings', DEPART)
 
     def test_un_document_sans_batiment_reste_valide(self):
+        self.assertEqual(erreurs(DEPART), [])
         self.assertEqual(erreurs(SCHEMA['exemple']), [])
         self.assertEqual(erreurs({}), [])
 
@@ -116,7 +125,7 @@ class CleAdditiveTest(SimpleTestCase):
 
     def test_un_building_id_sans_batiment_decrit_reste_tolere(self):
         """Les documents d'aujourd'hui en portent déjà (CAL59)."""
-        document = copy.deepcopy(SCHEMA['exemple'])
+        document = copy.deepcopy(DEPART)
         document['zones'][0]['buildingId'] = 'bat-jamais-decrit'
         self.assertEqual(erreurs(document), [])
         valider_document(document)
@@ -125,7 +134,7 @@ class CleAdditiveTest(SimpleTestCase):
         """Définition opérationnelle d'« additif » : rien d'autre ne change."""
         document = document_avec_batiments()
         document.pop('buildings')
-        self.assertEqual(document, SCHEMA['exemple'])
+        self.assertEqual(document, DEPART)
 
     def test_le_batiment_deja_designe_par_l_exemple_est_enfin_decrit(self):
         """CAL59 pose `buildingId`; CALX84 lui donne enfin un objet."""

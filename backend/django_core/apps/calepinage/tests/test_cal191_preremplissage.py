@@ -23,6 +23,7 @@ from apps.calepinage.services.reglementaire import (
     MESSAGE_AUCUN_GABARIT,
     composer_dossiers,
 )
+from apps.calepinage.tests._m0_en_attente import affirmer_non_servies, sans
 
 CONTRAT = json.loads(
     (pathlib.Path(__file__).resolve().parent.parent / 'contract_samples'
@@ -196,6 +197,18 @@ class GabaritManquantTest(unittest.TestCase):
                          MESSAGE_AUCUN_GABARIT)
 
 
+#: ACAL15 (M0) a posé ces clés avant leur producteur : chaque tâche nommée
+#: les sert et retire son entrée (``packs_france`` est aussi déclarée dans
+#: ``test_cal223_contrats.CLES_POSEES_AVANT_LEUR_PRODUCTEUR``).
+EN_ATTENTE = {
+    'packs_france': 'ACAL238',
+    'dossiers[].document': 'ACAL240',
+    'dossiers[].genere_sur_conception_perimee': 'ACAL240',
+    'dossiers[].champs_a_completer[].valeur_calepinage': 'ACAL240',
+    'dossiers[].champs_a_completer[].ecart_saisie': 'ACAL240',
+}
+
+
 class ContratCAL247Test(unittest.TestCase):
     """La forme servie est celle du contrat, clé par clé."""
 
@@ -203,19 +216,22 @@ class ContratCAL247Test(unittest.TestCase):
         agregat = composer_dossiers(calepinage_id=1, pays='ma',
                                     entrees=[_entree()],
                                     infos=INFOS_LACUNAIRES)
-        self.assertEqual(sorted(agregat), sorted(CONTRAT['exemple']))
+        affirmer_non_servies(self, agregat, EN_ATTENTE)
+        self.assertEqual(sorted(agregat),
+                         sorted(sans(CONTRAT['exemple'], EN_ATTENTE)))
 
     def test_forme_de_l_etat_vide(self):
         agregat = composer_dossiers(calepinage_id=2, pays='ma', entrees=[],
                                     infos={})
-        self.assertEqual(sorted(agregat), sorted(CONTRAT['exemple_vide']))
+        self.assertEqual(sorted(agregat),
+                         sorted(sans(CONTRAT['exemple_vide'], EN_ATTENTE)))
 
     def test_forme_d_un_dossier_et_de_ses_sous_objets(self):
         agregat = composer_dossiers(calepinage_id=1, pays='ma',
                                     entrees=[_entree()],
                                     infos=INFOS_LACUNAIRES)
         servi = agregat['dossiers'][0]
-        attendu = CONTRAT['exemple']['dossiers'][0]
+        attendu = sans(CONTRAT['exemple'], EN_ATTENTE)['dossiers'][0]
         self.assertEqual(sorted(servi), sorted(attendu))
         self.assertEqual(sorted(servi['gabarit']), sorted(attendu['gabarit']))
         self.assertEqual(sorted(servi['champs_a_completer'][0]),

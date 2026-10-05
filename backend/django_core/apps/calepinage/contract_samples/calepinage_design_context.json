@@ -1,7 +1,7 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/design-context/",
-  "forme_serveur": "complete",
-  "pourquoi": "CAL231 — LE JUMEAU NEUTRE du contexte de conception. Côté ventes, l'atelier reçoit TOUT ce qu'il doit savoir en un seul appel (`apps/ventes/views/devis.py::design_context`, PV17 : `{devis, geometrie, cible, carte, modifiable, raison_lecture_seule, avertissements}`) et l'AO a son jumeau (`apps/ao/views.py::design_context`) ; en mode `calepinage`, RIEN n'existait — CAL37 aurait inventé sa forme, et c'est exactement le mode de panne que PACT10 ferme (écran « AO — Tableau de bord », 03/08/2026, zéro clé sur six concordante). Le contrat part donc AVANT l'écran, et l'endpoint le sert mot pour mot. LES SEPT CLÉS SONT TOUJOURS PRÉSENTES : un panier vide vaut `[]`, une valeur inconnue vaut `null` ou `\"\"`, jamais une clé absente — un écran qui reçoit parfois six clés et parfois sept finit par tester l'absence de clé au lieu de l'absence de données. LA CIBLE N'EST JAMAIS INVENTÉE : `cible` vaut celle du devis lié quand il y en a un (lue par `apps.ventes.selectors.contexte_conception_devis`, la MÊME que l'atelier devis — jamais un second calcul), sinon celle déduite des factures du lead (CAL147, quand elle existera), sinon `null` — et l'écran affiche « non renseignée ». JAMAIS une puissance devinée : une cible fausse fait dessiner un toit qui ne correspond à aucun devis. LA GÉOMÉTRIE VIENT DE CE QUI A ÉTÉ RÉELLEMENT POSÉ : `source` vaut `calepinage` (le calepinage porte déjà un `roof_layout`), `lead` (repli sur l'épingle/le contour du diagnostic, via `selectors.contexte_geographique`, CAL15) ou `none` ; `pin`, `outline` et `contour_client` sont nuls/vides quand la source manque, jamais un centre du Maroc inventé. LA RAISON DE LECTURE SEULE SE PROPAGE TELLE QUELLE : quand un devis est lié et que l'atelier devis le déclare non modifiable, la phrase FRANÇAISE du serveur ventes est reprise mot pour mot — ni traduite, ni adoucie, sans quoi l'écran dirait autre chose que la porte d'écriture. `carte` est de la CONFIGURATION (mêmes variables d'environnement que `apps/ventes/views/roof_config.py`, même forme `{available, maptilerKey, mapboxToken}` que les deux autres contextes) : aucune donnée société, aucune écriture. `exemple_sans_devis` = L'ÉTAT LE PLUS COURANT de la porte autonome (CAL34) : un calepinage né d'un LEAD, donc SANS devis — la géométrie vient du diagnostic (`source: \"lead\"`, l'épingle et le contour que le client a posés) et `cible` vaut `null`. Cet état-là a une conséquence que l'écran DOIT respecter : `cible: null` veut dire « aucune vente derrière ce document », et JAMAIS « cible vendue de zéro panneau » (ce que signifie un devis sans ligne panneau, incident DEV-202608-0016). L'atelier ouvre donc le pan depuis le contour du client et laisse l'optimiseur poser ce qui tient, comme pour un lead sans facture. `exemple_vide` = un calepinage SANS devis ET SANS facture ET sans aucune géométrie : toutes les clés restent là, `cible` vaut `null` et `geometrie.source` vaut `none`. Valeurs : des PLACEHOLDERS assumés (identifiants à un chiffre, libellés « d'essai ») — aucun chiffre client, aucun prix d'achat, aucune marge. L'ADRESSE DU CLIENT VOYAGE AVEC LE CONTEXTE : `calepinage.client_adresse` / `client_ville` portent, sous les MÊMES noms que `devis.client_adresse`/`client_ville` du contrat jumeau, ce que `selectors.contexte_geographique` (CAL15) a lu sur le LEAD puis, en repli, sur le CLIENT — c'est ce que l'atelier pré-remplit dans sa barre de recherche d'adresse (`#rp9-address`), exactement comme le mode devis le fait déjà. Inconnu vaut `\"\"`, jamais une clé absente, et JAMAIS une adresse composée ou devinée ici. UN `roof_layout` NE « DÉCRIT UNE GÉOMÉTRIE » QUE S'IL PORTE DES SOMMETS : le sérialiseur de l'atelier émet TOUJOURS une zone (il projette la zone par défaut), donc un premier enregistrement fait avant tout dessin écrit `{outline: [], zones: [{vertices: []}]}` — un layout qui ne dit RIEN. Le repli sur le tracé du client se décide donc sur les sommets (≥ 3 dans `outline` ou dans un pan), jamais sur la présence de la clé `zones` : sinon le tracé du client est jeté et l'atelier n'a plus aucun pan à ouvrir.",
+  "forme_serveur": "partielle",
+  "pourquoi": "CAL231 — LE JUMEAU NEUTRE du contexte de conception. Côté ventes, l'atelier reçoit TOUT ce qu'il doit savoir en un seul appel (`apps/ventes/views/devis.py::design_context`, PV17 : `{devis, geometrie, cible, carte, modifiable, raison_lecture_seule, avertissements}`) et l'AO a son jumeau (`apps/ao/views.py::design_context`) ; en mode `calepinage`, RIEN n'existait — CAL37 aurait inventé sa forme, et c'est exactement le mode de panne que PACT10 ferme (écran « AO — Tableau de bord », 03/08/2026, zéro clé sur six concordante). Le contrat part donc AVANT l'écran, et l'endpoint le sert mot pour mot. LES SEPT CLÉS SONT TOUJOURS PRÉSENTES : un panier vide vaut `[]`, une valeur inconnue vaut `null` ou `\"\"`, jamais une clé absente — un écran qui reçoit parfois six clés et parfois sept finit par tester l'absence de clé au lieu de l'absence de données. LA CIBLE N'EST JAMAIS INVENTÉE : `cible` vaut celle du devis lié quand il y en a un (lue par `apps.ventes.selectors.contexte_conception_devis`, la MÊME que l'atelier devis — jamais un second calcul), sinon celle déduite des factures du lead (CAL147, quand elle existera), sinon `null` — et l'écran affiche « non renseignée ». JAMAIS une puissance devinée : une cible fausse fait dessiner un toit qui ne correspond à aucun devis. LA GÉOMÉTRIE VIENT DE CE QUI A ÉTÉ RÉELLEMENT POSÉ : `source` vaut `calepinage` (le calepinage porte déjà un `roof_layout`), `lead` (repli sur l'épingle/le contour du diagnostic, via `selectors.contexte_geographique`, CAL15) ou `none` ; `pin`, `outline` et `contour_client` sont nuls/vides quand la source manque, jamais un centre du Maroc inventé. LA RAISON DE LECTURE SEULE SE PROPAGE TELLE QUELLE : quand un devis est lié et que l'atelier devis le déclare non modifiable, la phrase FRANÇAISE du serveur ventes est reprise mot pour mot — ni traduite, ni adoucie, sans quoi l'écran dirait autre chose que la porte d'écriture. `carte` est de la CONFIGURATION (mêmes variables d'environnement que `apps/ventes/views/roof_config.py`, même forme `{available, maptilerKey, mapboxToken}` que les deux autres contextes) : aucune donnée société, aucune écriture. `exemple_sans_devis` = L'ÉTAT LE PLUS COURANT de la porte autonome (CAL34) : un calepinage né d'un LEAD, donc SANS devis — la géométrie vient du diagnostic (`source: \"lead\"`, l'épingle et le contour que le client a posés) et `cible` vaut `null`. Cet état-là a une conséquence que l'écran DOIT respecter : `cible: null` veut dire « aucune vente derrière ce document », et JAMAIS « cible vendue de zéro panneau » (ce que signifie un devis sans ligne panneau, incident DEV-202608-0016). L'atelier ouvre donc le pan depuis le contour du client et laisse l'optimiseur poser ce qui tient, comme pour un lead sans facture. `exemple_vide` = un calepinage SANS devis ET SANS facture ET sans aucune géométrie : toutes les clés restent là, `cible` vaut `null` et `geometrie.source` vaut `none`. Valeurs : des PLACEHOLDERS assumés (identifiants à un chiffre, libellés « d'essai ») — aucun chiffre client, aucun prix d'achat, aucune marge. L'ADRESSE DU CLIENT VOYAGE AVEC LE CONTEXTE : `calepinage.client_adresse` / `client_ville` portent, sous les MÊMES noms que `devis.client_adresse`/`client_ville` du contrat jumeau, ce que `selectors.contexte_geographique` (CAL15) a lu sur le LEAD puis, en repli, sur le CLIENT — c'est ce que l'atelier pré-remplit dans sa barre de recherche d'adresse (`#rp9-address`), exactement comme le mode devis le fait déjà. Inconnu vaut `\"\"`, jamais une clé absente, et JAMAIS une adresse composée ou devinée ici. UN `roof_layout` NE « DÉCRIT UNE GÉOMÉTRIE » QUE S'IL PORTE DES SOMMETS : le sérialiseur de l'atelier émet TOUJOURS une zone (il projette la zone par défaut), donc un premier enregistrement fait avant tout dessin écrit `{outline: [], zones: [{vertices: []}]}` — un layout qui ne dit RIEN. Le repli sur le tracé du client se décide donc sur les sommets (≥ 3 dans `outline` ou dans un pan), jamais sur la présence de la clé `zones` : sinon le tracé du client est jeté et l'atelier n'a plus aucun pan à ouvrir. ACAL5 (M0 UNIQUE du fichier — fusion des parties design-context de D01-T01, D06-T02 et D08-T02) — AJOUTS, les sept clés existantes restent TOUJOURS présentes : (a) clé racine `revision_possible` (bool, toujours présente, false sans devis lié) et `calepinage.devis_lie` ({id, reference, statut, client_nom} | null) ; verdict de verrou lu par apps.ventes.selectors.devis_modifiabilite (jamais recalculé ici) ; cinq cas : sans devis (devis_lie null, revision_possible false), brouillon (modifiable true, revision_possible false), envoyé (modifiable true — corrigé sur place, revision_possible true, D-QJR5-5), accepté (modifiable false, raison_lecture_seule « … Utilisez « Réviser » … », revision_possible true), remplacé (false / false) ; (b) `geometrie.empreinte_document` = le jeton If-Match de l'écriture (empreinte « document », D-ACAL-4) ; (c) `geometrie.repere_lead` {lat, lng, source} | null, `geometrie.ecart_m` (nombre | null, mètres entre l'épingle et le GPS du lead), `geometrie.derive` {etat: 'aucune' | 'a_decider' | 'automatique', seuil_m: 100} (D-ACAL-13) ; (d) `geometrie.contour_utilisable` (bool) et `geometrie.source_repere` ('gps' | 'roof_point' | null) — un contour client inutilisable (outline = []) est DIT, jamais dessiné ; (e) `cible.source` ('devis' | 'lead' | 'factures') et `cible.refus` (texte nommé | null) ; (f) `calepinage.lead_supprime` (bool : le lead rattaché est dans la corbeille ; la clé `calepinage.lead` reste l'IDENTIFIANT, inchangée). Sous D-ACAL-1 l'écran devis lit CE contexte : pas de seconde forme (le jumeau ventes devis_design_context.json ne porte plus que le devis).",
   "exemple": {
     "calepinage": {
       "id": 1,
@@ -11,17 +11,69 @@
       "client": 1,
       "devis": 1,
       "client_adresse": "12 rue des Oliviers",
-      "client_ville": "Casablanca"
+      "client_ville": "Casablanca",
+      "devis_lie": {
+        "id": 1,
+        "reference": "DEV-202610-0001",
+        "statut": "brouillon",
+        "client_nom": "M. Alaoui"
+      },
+      "lead_supprime": false
     },
     "geometrie": {
       "source": "calepinage",
       "roof_layout": {
         "schema_version": 2,
-        "result": { "panels": 12, "kwc": 8.64 }
+        "result": {
+          "panels": 12,
+          "kwc": 8.64
+        }
       },
-      "pin": { "lat": 33.5731, "lng": -7.5898 },
-      "outline": [[33.5731, -7.5898], [33.5732, -7.5898], [33.5732, -7.5897]],
-      "contour_client": [[33.5731, -7.5898], [33.5732, -7.5898], [33.5732, -7.5897]]
+      "pin": {
+        "lat": 33.5731,
+        "lng": -7.5898
+      },
+      "outline": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "contour_client": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "empreinte_document": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6",
+      "repere_lead": {
+        "lat": 33.5731,
+        "lng": -7.5898,
+        "source": "gps"
+      },
+      "ecart_m": 12.4,
+      "derive": {
+        "etat": "aucune",
+        "seuil_m": 100
+      },
+      "contour_utilisable": true,
+      "source_repere": "gps"
     },
     "cible": {
       "panneaux": 12,
@@ -30,7 +82,8 @@
       "scenario": "reseau",
       "batterie": false,
       "avertissements": [],
-      "source": "devis"
+      "source": "devis",
+      "refus": null
     },
     "carte": {
       "available": true,
@@ -39,7 +92,8 @@
     },
     "modifiable": true,
     "raison_lecture_seule": "",
-    "avertissements": []
+    "avertissements": [],
+    "revision_possible": false
   },
   "exemple_sans_devis": {
     "calepinage": {
@@ -50,14 +104,58 @@
       "client": null,
       "devis": null,
       "client_adresse": "Lotissement Al Manar, lot 42",
-      "client_ville": "Nouaceur"
+      "client_ville": "Nouaceur",
+      "devis_lie": null,
+      "lead_supprime": false
     },
     "geometrie": {
       "source": "lead",
       "roof_layout": null,
-      "pin": { "lat": 33.5731, "lng": -7.5898 },
-      "outline": [[33.5731, -7.5898], [33.5732, -7.5898], [33.5732, -7.5897]],
-      "contour_client": [[33.5731, -7.5898], [33.5732, -7.5898], [33.5732, -7.5897]]
+      "pin": {
+        "lat": 33.5731,
+        "lng": -7.5898
+      },
+      "outline": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "contour_client": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "empreinte_document": null,
+      "repere_lead": {
+        "lat": 33.5731,
+        "lng": -7.5898,
+        "source": "gps"
+      },
+      "ecart_m": null,
+      "derive": {
+        "etat": "aucune",
+        "seuil_m": 100
+      },
+      "contour_utilisable": true,
+      "source_repere": "gps"
     },
     "cible": null,
     "carte": {
@@ -69,7 +167,8 @@
     "raison_lecture_seule": "",
     "avertissements": [
       "Aucune cible de puissance connue : renseignez-la, ou rattachez un devis."
-    ]
+    ],
+    "revision_possible": false
   },
   "exemple_vide": {
     "calepinage": {
@@ -80,14 +179,25 @@
       "client": null,
       "devis": null,
       "client_adresse": "",
-      "client_ville": ""
+      "client_ville": "",
+      "devis_lie": null,
+      "lead_supprime": false
     },
     "geometrie": {
       "source": "none",
       "roof_layout": null,
       "pin": null,
       "outline": [],
-      "contour_client": []
+      "contour_client": [],
+      "empreinte_document": null,
+      "repere_lead": null,
+      "ecart_m": null,
+      "derive": {
+        "etat": "aucune",
+        "seuil_m": 100
+      },
+      "contour_utilisable": false,
+      "source_repere": null
     },
     "cible": null,
     "carte": {
@@ -100,6 +210,626 @@
     "avertissements": [
       "Aucune géométrie de toiture connue pour ce calepinage : commencez par situer le bâtiment sur la carte.",
       "Aucune cible de puissance connue : renseignez-la, ou rattachez un devis."
-    ]
+    ],
+    "revision_possible": false
+  },
+  "forme_serveur_note": "ACAL5 — `partielle` TANT QUE les moitiés back (D02-T15, D06-T19, D08-T06) ne servent pas les clés ajoutées (revision_possible, calepinage.devis_lie, calepinage.lead_supprime, geometrie.empreinte_document / repere_lead / ecart_m / derive / contour_utilisable / source_repere, cible.source / cible.refus) ; la première moitié back remet `complete`.",
+  "exemple_contour_inutilisable": {
+    "calepinage": {
+      "id": 1,
+      "titre": "Toiture — bâtiment principal",
+      "statut": "brouillon",
+      "lead": 1,
+      "client": 1,
+      "devis": 1,
+      "client_adresse": "12 rue des Oliviers",
+      "client_ville": "Casablanca",
+      "devis_lie": {
+        "id": 1,
+        "reference": "DEV-202610-0001",
+        "statut": "brouillon",
+        "client_nom": "M. Alaoui"
+      },
+      "lead_supprime": false
+    },
+    "geometrie": {
+      "source": "calepinage",
+      "roof_layout": {
+        "schema_version": 2,
+        "result": {
+          "panels": 12,
+          "kwc": 8.64
+        }
+      },
+      "pin": {
+        "lat": 33.5731,
+        "lng": -7.5898
+      },
+      "outline": [],
+      "contour_client": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5731,
+          -7.5898
+        ]
+      ],
+      "empreinte_document": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6",
+      "repere_lead": {
+        "lat": 33.5731,
+        "lng": -7.5898,
+        "source": "gps"
+      },
+      "ecart_m": 12.4,
+      "derive": {
+        "etat": "aucune",
+        "seuil_m": 100
+      },
+      "contour_utilisable": false,
+      "source_repere": "roof_point"
+    },
+    "cible": {
+      "panneaux": 12,
+      "kwc": 8.64,
+      "panel_watt": 720,
+      "scenario": "reseau",
+      "batterie": false,
+      "avertissements": [],
+      "source": "devis",
+      "refus": null
+    },
+    "carte": {
+      "available": true,
+      "maptilerKey": "cle-d-essai",
+      "mapboxToken": null
+    },
+    "modifiable": true,
+    "raison_lecture_seule": "",
+    "avertissements": [
+      "Le contour du client est inutilisable (points confondus) : tracez le toit sur la carte."
+    ],
+    "revision_possible": false
+  },
+  "exemple_cible_lead": {
+    "calepinage": {
+      "id": 3,
+      "titre": "Toiture — maison d'essai",
+      "statut": "brouillon",
+      "lead": 3,
+      "client": null,
+      "devis": null,
+      "client_adresse": "Lotissement Al Manar, lot 42",
+      "client_ville": "Nouaceur",
+      "devis_lie": null,
+      "lead_supprime": false
+    },
+    "geometrie": {
+      "source": "lead",
+      "roof_layout": null,
+      "pin": {
+        "lat": 33.5731,
+        "lng": -7.5898
+      },
+      "outline": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "contour_client": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "empreinte_document": null,
+      "repere_lead": {
+        "lat": 33.5731,
+        "lng": -7.5898,
+        "source": "gps"
+      },
+      "ecart_m": null,
+      "derive": {
+        "etat": "aucune",
+        "seuil_m": 100
+      },
+      "contour_utilisable": true,
+      "source_repere": "gps"
+    },
+    "cible": {
+      "panneaux": 10,
+      "kwc": 7.2,
+      "panel_watt": 720,
+      "scenario": "reseau",
+      "batterie": false,
+      "avertissements": [],
+      "source": "factures",
+      "refus": null
+    },
+    "carte": {
+      "available": true,
+      "maptilerKey": "cle-d-essai",
+      "mapboxToken": null
+    },
+    "modifiable": true,
+    "raison_lecture_seule": "",
+    "avertissements": [
+      "Aucune cible de puissance connue : renseignez-la, ou rattachez un devis."
+    ],
+    "revision_possible": false
+  },
+  "exemple_cible_refus": {
+    "calepinage": {
+      "id": 3,
+      "titre": "Toiture — maison d'essai",
+      "statut": "brouillon",
+      "lead": 3,
+      "client": null,
+      "devis": null,
+      "client_adresse": "Lotissement Al Manar, lot 42",
+      "client_ville": "Nouaceur",
+      "devis_lie": null,
+      "lead_supprime": false
+    },
+    "geometrie": {
+      "source": "lead",
+      "roof_layout": null,
+      "pin": {
+        "lat": 33.5731,
+        "lng": -7.5898
+      },
+      "outline": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "contour_client": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "empreinte_document": null,
+      "repere_lead": {
+        "lat": 33.5731,
+        "lng": -7.5898,
+        "source": "gps"
+      },
+      "ecart_m": null,
+      "derive": {
+        "etat": "aucune",
+        "seuil_m": 100
+      },
+      "contour_utilisable": true,
+      "source_repere": "gps"
+    },
+    "cible": {
+      "panneaux": null,
+      "kwc": null,
+      "panel_watt": null,
+      "scenario": null,
+      "batterie": false,
+      "avertissements": [],
+      "source": "lead",
+      "refus": "Lead agricole : le pompage se chiffre depuis l'écran devis agricole."
+    },
+    "carte": {
+      "available": true,
+      "maptilerKey": "cle-d-essai",
+      "mapboxToken": null
+    },
+    "modifiable": true,
+    "raison_lecture_seule": "",
+    "avertissements": [
+      "Aucune cible de puissance connue : renseignez-la, ou rattachez un devis."
+    ],
+    "revision_possible": false
+  },
+  "exemple_derive_a_decider": {
+    "calepinage": {
+      "id": 1,
+      "titre": "Toiture — bâtiment principal",
+      "statut": "brouillon",
+      "lead": 1,
+      "client": 1,
+      "devis": 1,
+      "client_adresse": "12 rue des Oliviers",
+      "client_ville": "Casablanca",
+      "devis_lie": {
+        "id": 1,
+        "reference": "DEV-202610-0001",
+        "statut": "brouillon",
+        "client_nom": "M. Alaoui"
+      },
+      "lead_supprime": false
+    },
+    "geometrie": {
+      "source": "calepinage",
+      "roof_layout": {
+        "schema_version": 2,
+        "result": {
+          "panels": 12,
+          "kwc": 8.64
+        }
+      },
+      "pin": {
+        "lat": 33.5731,
+        "lng": -7.5898
+      },
+      "outline": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "contour_client": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "empreinte_document": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6",
+      "repere_lead": {
+        "lat": 33.5801,
+        "lng": -7.5898,
+        "source": "gps"
+      },
+      "ecart_m": 780.0,
+      "derive": {
+        "etat": "a_decider",
+        "seuil_m": 100
+      },
+      "contour_utilisable": true,
+      "source_repere": "gps"
+    },
+    "cible": {
+      "panneaux": 12,
+      "kwc": 8.64,
+      "panel_watt": 720,
+      "scenario": "reseau",
+      "batterie": false,
+      "avertissements": [],
+      "source": "devis",
+      "refus": null
+    },
+    "carte": {
+      "available": true,
+      "maptilerKey": "cle-d-essai",
+      "mapboxToken": null
+    },
+    "modifiable": true,
+    "raison_lecture_seule": "",
+    "avertissements": [],
+    "revision_possible": false
+  },
+  "exemple_envoye": {
+    "calepinage": {
+      "id": 1,
+      "titre": "Toiture — bâtiment principal",
+      "statut": "brouillon",
+      "lead": 1,
+      "client": 1,
+      "devis": 1,
+      "client_adresse": "12 rue des Oliviers",
+      "client_ville": "Casablanca",
+      "devis_lie": {
+        "id": 1,
+        "reference": "DEV-202610-0001",
+        "statut": "envoye",
+        "client_nom": "M. Alaoui"
+      },
+      "lead_supprime": false
+    },
+    "geometrie": {
+      "source": "calepinage",
+      "roof_layout": {
+        "schema_version": 2,
+        "result": {
+          "panels": 12,
+          "kwc": 8.64
+        }
+      },
+      "pin": {
+        "lat": 33.5731,
+        "lng": -7.5898
+      },
+      "outline": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "contour_client": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "empreinte_document": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6",
+      "repere_lead": {
+        "lat": 33.5731,
+        "lng": -7.5898,
+        "source": "gps"
+      },
+      "ecart_m": 12.4,
+      "derive": {
+        "etat": "aucune",
+        "seuil_m": 100
+      },
+      "contour_utilisable": true,
+      "source_repere": "gps"
+    },
+    "cible": {
+      "panneaux": 12,
+      "kwc": 8.64,
+      "panel_watt": 720,
+      "scenario": "reseau",
+      "batterie": false,
+      "avertissements": [],
+      "source": "devis",
+      "refus": null
+    },
+    "carte": {
+      "available": true,
+      "maptilerKey": "cle-d-essai",
+      "mapboxToken": null
+    },
+    "modifiable": true,
+    "raison_lecture_seule": "",
+    "avertissements": [],
+    "revision_possible": true
+  },
+  "exemple_accepte": {
+    "calepinage": {
+      "id": 1,
+      "titre": "Toiture — bâtiment principal",
+      "statut": "brouillon",
+      "lead": 1,
+      "client": 1,
+      "devis": 1,
+      "client_adresse": "12 rue des Oliviers",
+      "client_ville": "Casablanca",
+      "devis_lie": {
+        "id": 1,
+        "reference": "DEV-202610-0001",
+        "statut": "accepte",
+        "client_nom": "M. Alaoui"
+      },
+      "lead_supprime": false
+    },
+    "geometrie": {
+      "source": "calepinage",
+      "roof_layout": {
+        "schema_version": 2,
+        "result": {
+          "panels": 12,
+          "kwc": 8.64
+        }
+      },
+      "pin": {
+        "lat": 33.5731,
+        "lng": -7.5898
+      },
+      "outline": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "contour_client": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "empreinte_document": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6",
+      "repere_lead": {
+        "lat": 33.5731,
+        "lng": -7.5898,
+        "source": "gps"
+      },
+      "ecart_m": 12.4,
+      "derive": {
+        "etat": "aucune",
+        "seuil_m": 100
+      },
+      "contour_utilisable": true,
+      "source_repere": "gps"
+    },
+    "cible": {
+      "panneaux": 12,
+      "kwc": 8.64,
+      "panel_watt": 720,
+      "scenario": "reseau",
+      "batterie": false,
+      "avertissements": [],
+      "source": "devis",
+      "refus": null
+    },
+    "carte": {
+      "available": true,
+      "maptilerKey": "cle-d-essai",
+      "mapboxToken": null
+    },
+    "modifiable": false,
+    "raison_lecture_seule": "Devis accepté : sa conception est figée. Utilisez « Réviser » pour créer la version suivante.",
+    "avertissements": [],
+    "revision_possible": true
+  },
+  "exemple_remplace": {
+    "calepinage": {
+      "id": 1,
+      "titre": "Toiture — bâtiment principal",
+      "statut": "brouillon",
+      "lead": 1,
+      "client": 1,
+      "devis": 1,
+      "client_adresse": "12 rue des Oliviers",
+      "client_ville": "Casablanca",
+      "devis_lie": {
+        "id": 1,
+        "reference": "DEV-202610-0001",
+        "statut": "envoye",
+        "client_nom": "M. Alaoui"
+      },
+      "lead_supprime": false
+    },
+    "geometrie": {
+      "source": "calepinage",
+      "roof_layout": {
+        "schema_version": 2,
+        "result": {
+          "panels": 12,
+          "kwc": 8.64
+        }
+      },
+      "pin": {
+        "lat": 33.5731,
+        "lng": -7.5898
+      },
+      "outline": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "contour_client": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "empreinte_document": "3f1c9a7e5b2d4c60a81e0f9b7d3c5a12e4b6f8091a2c3d4e5f60718293a4b5c6",
+      "repere_lead": {
+        "lat": 33.5731,
+        "lng": -7.5898,
+        "source": "gps"
+      },
+      "ecart_m": 12.4,
+      "derive": {
+        "etat": "aucune",
+        "seuil_m": 100
+      },
+      "contour_utilisable": true,
+      "source_repere": "gps"
+    },
+    "cible": {
+      "panneaux": 12,
+      "kwc": 8.64,
+      "panel_watt": 720,
+      "scenario": "reseau",
+      "batterie": false,
+      "avertissements": [],
+      "source": "devis",
+      "refus": null
+    },
+    "carte": {
+      "available": true,
+      "maptilerKey": "cle-d-essai",
+      "mapboxToken": null
+    },
+    "modifiable": false,
+    "raison_lecture_seule": "Remplacé par DEV-202610-0002",
+    "avertissements": [],
+    "revision_possible": false
   }
 }

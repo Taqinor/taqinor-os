@@ -1,0 +1,11 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/",
+  "pourquoi": "ACAL12 (C-ACAL-007, C-ACAL-013, D-ACAL-12) — CONFLITS D'ENTRÉE : (1) un seul calepinage OUVERT par lead : TOUTE porte de création (POST calepinages/, depuis-lead, devis → calepinage) refuse en 409 {lead: message, calepinage_existant: id} quand le lead a déjà un calepinage ouvert (« Ouvrir l'existant ») ; (2) le changement de lead d'un calepinage LIÉ à un devis BROUILLON dont le lead diffère est refusé en 409 {lead: « … son lead doit rester celui du devis »} (défaut gravé). Le même message est servi pour un lead d'une autre société et un lead absent (aucun oracle d'existence). PACT10 : le contrat part AVANT D06-T08, T10, T12, T15.",
+  "exemple": {
+    "lead": "Ce lead a déjà un calepinage ouvert : ouvrez-le plutôt que d'en créer un second.",
+    "calepinage_existant": 77
+  },
+  "exemple_changement_lead_409": {
+    "lead": "Ce calepinage est lié au devis DEV-202610-0042 : son lead doit rester celui du devis."
+  }
+}

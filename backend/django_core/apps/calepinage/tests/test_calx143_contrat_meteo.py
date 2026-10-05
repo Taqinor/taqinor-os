@@ -28,6 +28,7 @@ from apps.calepinage.services.pertes_politique import politique_de_pertes
 from apps.calepinage.services.pvgis_serie import (
     ClientPvgis, _Cache, azimut_pvgis,
 )
+from apps.calepinage.tests._m0_en_attente import sans
 
 RACINE = pathlib.Path(__file__).resolve().parents[1]
 ECHANTILLONS = RACINE / 'contract_samples'
@@ -43,6 +44,12 @@ def charger(chemin):
 
 METEO = charger(ECHANTILLONS / 'calepinage_meteo.json')
 SIMULATION = charger(ECHANTILLONS / 'calepinage_simulation.json')
+
+#: ACAL8 (M0) a étendu le bloc météo de ``calepinage_simulation.json`` avant
+#: ses producteurs : la tâche nommée sert la clé, la reporte dans
+#: ``calepinage_meteo.json`` et retire son entrée.
+EN_ATTENTE_METEO = {'fichier': 'ACAL146',
+                    'heure.provenance_fuseau': 'ACAL129'}
 
 
 class TransportEnregistre:
@@ -78,15 +85,17 @@ class EnveloppeTest(unittest.TestCase):
 
     def test_memes_clefs_que_le_bloc_meteo_de_calx4(self):
         for etat in ('exemple', 'exemple_vide'):
+            meteo_simulation = sans(SIMULATION[etat]['meteo'],
+                                    EN_ATTENTE_METEO)
             self.assertEqual(sorted(METEO[etat]['meteo']),
-                             sorted(SIMULATION[etat]['meteo']),
+                             sorted(meteo_simulation),
                              f'{etat} : les clés du bloc ont divergé de '
                              'calepinage_simulation.json (CALX4).')
             for sous_bloc in ('point', 'horizon', 'heure',
                               'albedo_face_avant'):
                 self.assertEqual(
                     sorted(METEO[etat]['meteo'][sous_bloc]),
-                    sorted(SIMULATION[etat]['meteo'][sous_bloc]),
+                    sorted(meteo_simulation[sous_bloc]),
                     f'{etat}.{sous_bloc} : clés divergentes de CALX4.')
 
     def test_vide_ne_publie_aucun_zero(self):

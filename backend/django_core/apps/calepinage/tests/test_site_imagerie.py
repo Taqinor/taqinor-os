@@ -43,6 +43,7 @@ from apps.calepinage.services.site import (
     normaliser_section_imagerie,
     section_vide,
 )
+from apps.calepinage.tests._m0_en_attente import sans
 from apps.roles.models import DIRECTEUR_PERMISSIONS, TECHNICIEN_PERMISSIONS, Role
 from authentication.models import Company
 
@@ -54,8 +55,13 @@ CONTRAT = json.loads(
     (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
      / 'site_imagerie.json').read_text(encoding='utf-8'))
 
+#: ACAL8 (M0) a posé ``site_effectif`` dans la section avant son producteur
+#: (déclarée aussi dans ``test_cal223_contrats.CLES_POSEES_AVANT_LEUR_
+#: PRODUCTEUR``) : ACAL129 la sert et retire cette entrée.
+EN_ATTENTE = {'site_effectif': 'ACAL129'}
+
 #: La section complète du contrat, telle qu'elle sera renvoyée.
-REGLEE = CONTRAT['exemple']['imagerie']
+REGLEE = sans(CONTRAT['exemple']['imagerie'], EN_ATTENTE)
 
 
 def _refus(test, donnees, champ):

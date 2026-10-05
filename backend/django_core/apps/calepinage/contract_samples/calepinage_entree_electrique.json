@@ -1,0 +1,173 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/entree-electrique/",
+  "pourquoi": "ACAL9 (a) (C-ACAL-050/053/058) — RELECTURE DE L'ENTRÉE ÉLECTRIQUE STOCKÉE : le GET rend l'entrée telle que le POST l'a écrite, à l'identique (aucune donnée recalculée). `entree` = les clés de CHAMPS_ENTREE (services/electrique.py) SAUF `derogations` (un GESTE, jamais rangé dans l'entrée : il part dans le fil du calepinage), + `regime` (régime de neutre — jamais déduit), `transformateur` {declare, perte_a_vide_kw, perte_en_charge_kw_nominale, puissance_nominale_kw : chacun {valeur, source, reference}}, `batterie` {produit, packs, strategie, couplage, onduleur_ref, seuil_effacement_kw, heures_charge, heures_decharge, reserve_backup_kwh, motivation} | null, `hors_reseau` {actif, jours_autonomie, etat_initial_kwh, seuils} | null. `materiel` = le matériel RÉSOLU {module | onduleur | optimiseur : {produit_id, designation, provenance 'explicite' | 'devis' | null, fiche_complete, champs_manquants}} (D-ACAL-10 : par défaut les lignes du devis lié, provenance visible ; jamais un produit supposé) ; `absents` = les rôles sans matériel ; `candidats` = {modules | onduleurs | optimiseurs : [{id, libelle, marque, favori, fiche_complete, champs_manquants}]}. Refus 400 = {champ: message}. PACT10 : le contrat part AVANT les moitiés D05-T03/T04.",
+  "exemple": {
+    "calepinage": 1,
+    "entree": {
+      "module_produit": 4112,
+      "onduleur_produit": 901,
+      "optimiseur_produit": null,
+      "temperature_min_c": -5.0,
+      "temperature_max_c": 70.0,
+      "dc_m": 25.0,
+      "ac_m": 12.0,
+      "cheminement": "chemin de câble en toiture puis goulotte",
+      "phases": 3,
+      "zone_keraunique": "faible",
+      "inclure_prise_terre": true,
+      "plafond_kwc_par_onduleur": null,
+      "longueur_chaine_forcee": null,
+      "protections": {
+        "parafoudre_dc": true
+      },
+      "terre": {
+        "resistance_ohm": 20.0
+      },
+      "exigence_marche": null,
+      "affectation_manuelle": null,
+      "polystring": null,
+      "regime": "TT",
+      "transformateur": {
+        "declare": true,
+        "perte_a_vide_kw": {
+          "valeur": 0.8,
+          "source": "fiche",
+          "reference": "Fiche transformateur 630 kVA (exemple)"
+        },
+        "perte_en_charge_kw_nominale": {
+          "valeur": 6.5,
+          "source": "fiche",
+          "reference": "Fiche transformateur 630 kVA (exemple)"
+        },
+        "puissance_nominale_kw": {
+          "valeur": 630.0,
+          "source": "saisie",
+          "reference": "Plaque signalétique du poste (exemple)"
+        }
+      },
+      "batterie": {
+        "produit": 3301,
+        "packs": 2,
+        "strategie": "autoconsommation",
+        "couplage": "dc",
+        "onduleur_ref": 901,
+        "seuil_effacement_kw": null,
+        "heures_charge": [
+          10,
+          11,
+          12,
+          13
+        ],
+        "heures_decharge": [
+          18,
+          19,
+          20,
+          21
+        ],
+        "reserve_backup_kwh": 2.0,
+        "motivation": "Décalage de la production vers la soirée."
+      },
+      "hors_reseau": {
+        "actif": false,
+        "jours_autonomie": null,
+        "etat_initial_kwh": null,
+        "seuils": null
+      }
+    },
+    "materiel": {
+      "module": {
+        "produit_id": 4112,
+        "designation": "Module monocristallin 580 Wc (exemple)",
+        "provenance": "explicite",
+        "fiche_complete": true,
+        "champs_manquants": []
+      },
+      "onduleur": {
+        "produit_id": 901,
+        "designation": "Onduleur réseau 10 kW (exemple)",
+        "provenance": "devis",
+        "fiche_complete": true,
+        "champs_manquants": []
+      },
+      "optimiseur": null
+    },
+    "absents": [
+      "optimiseur"
+    ],
+    "candidats": {
+      "modules": [
+        {
+          "id": 4112,
+          "libelle": "Module monocristallin 580 Wc (exemple)",
+          "marque": "Marque A",
+          "favori": true,
+          "fiche_complete": true,
+          "champs_manquants": []
+        }
+      ],
+      "onduleurs": [
+        {
+          "id": 901,
+          "libelle": "Onduleur réseau 10 kW (exemple)",
+          "marque": "Marque B",
+          "favori": false,
+          "fiche_complete": false,
+          "champs_manquants": [
+            "vmaxDcV"
+          ]
+        }
+      ],
+      "optimiseurs": []
+    }
+  },
+  "exemple_vide": {
+    "calepinage": 2,
+    "entree": {
+      "module_produit": null,
+      "onduleur_produit": null,
+      "optimiseur_produit": null,
+      "temperature_min_c": null,
+      "temperature_max_c": null,
+      "dc_m": null,
+      "ac_m": null,
+      "cheminement": null,
+      "phases": null,
+      "zone_keraunique": null,
+      "inclure_prise_terre": null,
+      "plafond_kwc_par_onduleur": null,
+      "longueur_chaine_forcee": null,
+      "protections": null,
+      "terre": null,
+      "exigence_marche": null,
+      "affectation_manuelle": null,
+      "polystring": null,
+      "regime": null,
+      "transformateur": {
+        "declare": false,
+        "perte_a_vide_kw": null,
+        "perte_en_charge_kw_nominale": null,
+        "puissance_nominale_kw": null
+      },
+      "batterie": null,
+      "hors_reseau": null
+    },
+    "materiel": {
+      "module": null,
+      "onduleur": null,
+      "optimiseur": null
+    },
+    "absents": [
+      "module",
+      "onduleur",
+      "optimiseur"
+    ],
+    "candidats": {
+      "modules": [],
+      "onduleurs": [],
+      "optimiseurs": []
+    }
+  },
+  "exemple_refus_400": {
+    "temperature_min_c": "La température minimale (-80 °C) est hors de la plage admise : saisissez une valeur entre -60 et 60 °C."
+  }
+}

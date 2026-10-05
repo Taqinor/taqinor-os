@@ -37,6 +37,7 @@ from apps.calepinage.services.modules_stock import (
     _identifiant_module as identifiant_module,
     modules_disponibles_du_calepinage,
 )
+from apps.calepinage.tests._m0_en_attente import affirmer_non_servies, sans
 
 ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
                 / 'contract_samples')
@@ -98,7 +99,11 @@ class LExempleEstCeQueLeServiceProduitTest(SimpleTestCase):
     def test_la_reponse_complete_est_celle_de_l_exemple(self):
         servi = modules_disponibles_du_calepinage(
             _FauxCalepinage(), [_produit_complet(), _produit_incomplet()])
-        self.assertEqual(servi, CONTRAT['exemple'])
+        # ACAL9 (M0) a posé ``modules[].favori`` avant son producteur :
+        # ACAL174 le sert et retire cette entrée.
+        en_attente = {'modules[].favori': 'ACAL174'}
+        affirmer_non_servies(self, servi, en_attente)
+        self.assertEqual(servi, sans(CONTRAT['exemple'], en_attente))
 
     def test_un_catalogue_sans_fiche_module_est_celui_de_l_exemple_vide(self):
         servi = modules_disponibles_du_calepinage(_FauxCalepinage(), [])

@@ -70,7 +70,7 @@
       "type": "number"
     },
     "battery": {
-      "description": "Batterie retenue (forme minimale, tout optionnel). `null` = aucune batterie.",
+      "description": "Batterie retenue : objet NON VIDE ou `null`, jamais un booléen (un booléen historique est normalisé à la lecture). (ACAL2)",
       "oneOf": [
         {
           "$ref": "#/$defs/battery"
@@ -176,6 +176,59 @@
     "consumption": {
       "description": "CALX251 — la consommation affinée dans l'atelier « Affiner ma consommation » (W68/W95 : `ctx.consCurve`/`consAppliances`/`consSeasonal`/`consSummerFactor`/`consWinterFactor`/`consHandEdited`), telle que `serializeLayout` l'émet (CALX253, `apps/web/src/scripts/roofPro11/prefill.ts`) et que `hydrateFromLead`/`hydrateFromDevis` la relisent (CALX254). Clé RACINE OPTIONNELLE et additive : absente, comportement d'aujourd'hui — aucune consommation reconstruite, byte pour byte, exactement comme les six autres clés v2 de cette section. Elle N'EST JAMAIS émise par une session qui n'a rien touché dans le panneau « Affiner » : mieux vaut l'absence qu'une courbe plate inventée (D-CALX 7).",
       "$ref": "#/$defs/consumption"
+    },
+    "shadeObstructions": {
+      "description": "ACAL2 — ombres TRACÉES (la matrice d'ombrage 12×24 se reconstruit à la réouverture). OPTIONNEL et additif : absent ou vide = aucune ombre tracée.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/shadeObstruction"
+      }
+    },
+    "choixConception": {
+      "description": "ACAL2 — choix de conception épinglés. OPTIONNEL et additif.",
+      "$ref": "#/$defs/choixConception"
+    },
+    "alleeTechnique": {
+      "$ref": "#/$defs/alleeTechnique",
+      "description": "ACAL2 — allée technique du calepinage. OPTIONNEL et additif."
+    },
+    "parcelle": {
+      "description": "ACAL2 — parcelle cadastrale SAISIE ({vertices ≥ 3 couples} | null ; `null` = aucune parcelle saisie). Contre-exemple : 2 points = refusé.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/parcelle"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "pinSource": {
+      "description": "ACAL2 (D-ACAL-13) — d'où vient l'épingle `pin` : 'lead' (GPS du lead) | 'manuel' (déplacée à la main). Une épingle jamais déplacée à la main suit le GPS corrigé du lead.",
+      "type": "string",
+      "enum": [
+        "lead",
+        "manuel"
+      ]
+    },
+    "repereAcquitte": {
+      "description": "ACAL2 (D-ACAL-13) — le repère {lat, lng} dont la dérive GPS a été ACQUITTÉE (décision prise : on ne la re-propose plus).",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/latLng"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "jeuReglages": {
+      "$ref": "#/$defs/jeuReglages",
+      "description": "ACAL2 — jeu de réglages mémorisé. OPTIONNEL et additif."
+    },
+    "repere": {
+      "$ref": "#/$defs/repere",
+      "description": "ACAL2 — repère local (document anonymisé). Absent = géographique. SEULE propriété racine volontairement ABSENTE de l'`exemple` (celui-ci est géographique)."
     }
   },
   "$defs": {
@@ -254,7 +307,7 @@
       }
     },
     "zone": {
-      "description": "Un pan de toiture dessiné.",
+      "description": "Un pan de toiture dessiné. ACAL2 : AUCUNE clé racine penteDeg / penteSource n'existe — la pente d'un pan est `zones[].pitchDeg`, sa provenance `zones[].pitchSource` ; la suggestion du terrain `zones[].pitchSuggestion` n'est jamais recopiée dans pitchDeg.",
       "type": "object",
       "additionalProperties": true,
       "properties": {
@@ -304,7 +357,7 @@
           "type": "boolean"
         },
         "result": {
-          "description": "Résultat de zone déjà calculé à l'écran, quand il existe. Prime sur `geometry` chez `extract_roof_config`.",
+          "description": "Écrit par la zone SYNTHÉTIQUE d'auto-devis seulement ; l'aire d'un pan dessiné se calcule de ses sommets. Prime sur `geometry` chez `extract_roof_config`.",
           "type": "object",
           "additionalProperties": true,
           "properties": {
@@ -346,6 +399,36 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/edge"
+          }
+        },
+        "pitchSource": {
+          "$ref": "#/$defs/pitchSource"
+        },
+        "pitchSuggestion": {
+          "$ref": "#/$defs/suggestionPente"
+        },
+        "facingAzimuthSource": {
+          "description": "ACAL2 (D-ACAL-13/28) — PROVENANCE de l'azimut de face : 'releve' | 'visite' | 'saisie'. Absent = jamais renseignée (aucune provenance supposée).",
+          "type": "string",
+          "enum": [
+            "releve",
+            "visite",
+            "saisie"
+          ]
+        },
+        "facingAzimuthPrecisionDeg": {
+          "description": "ACAL2 — précision (°) de l'azimut de face quand il vient d'un relevé ou d'une visite.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "cotesReleve": {
+          "description": "ACAL2 (D-ACAL-28) — cotes de relevé appliquées à ce pan.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/coteReleve"
           }
         }
       }
@@ -597,12 +680,12 @@
           ]
         },
         "n": {
-          "description": "CALX83 — numéro STABLE du module, attribué À LA POSE et JAMAIS réattribué : retirer un module laisse un TROU dans la suite, il ne renumérote pas ses voisins. OPTIONNEL et additif : absent = l'affichage par index du tableau d'aujourd'hui (`nº${i + 1}`, `shadingUi.ts`), qui change dès qu'un module est retiré. C'est ce numéro que le rapport d'ombrage et le repérage de pose citent ; deux modules d'un MÊME pan ne peuvent pas le partager, et le document qui le tente est refusé en nommant le champ (`services/io_layout.py`).",
+          "description": "CALX83 — numéro STABLE du module, attribué À LA POSE et JAMAIS réattribué : retirer un module laisse un TROU dans la suite, il ne renumérote pas ses voisins. OPTIONNEL et additif : absent = l'affichage par index du tableau d'aujourd'hui (`nº${i + 1}`, `shadingUi.ts`), qui change dès qu'un module est retiré. C'est ce numéro que le rapport d'ombrage et le repérage de pose citent ; deux modules d'un MÊME pan ne peuvent pas le partager, et le document qui le tente est refusé en nommant le champ (`services/io_layout.py`). ACAL2 : numérotation attribuée D'OFFICE (à la pose du module, sans geste de l'utilisateur).",
           "type": "integer",
           "minimum": 1
         },
         "rangee": {
-          "description": "CALX83 — étiquette de la rangée qui porte ce module, SAISIE ou déduite du pavage (« A », « R3 »…). OPTIONNELLE : absente = le module n'est rattaché à aucune rangée nommée, et l'écran ne lui en invente pas une. C'est une ÉTIQUETTE, pas un rang calculé : deux modules de la même rangée physique portent la même.",
+          "description": "CALX83 — étiquette de la rangée qui porte ce module, SAISIE ou déduite du pavage (« A », « R3 »…). OPTIONNELLE : absente = le module n'est rattaché à aucune rangée nommée, et l'écran ne lui en invente pas une. C'est une ÉTIQUETTE, pas un rang calculé : deux modules de la même rangée physique portent la même. ACAL2 : attribuée d'office elle aussi.",
           "type": "string",
           "minLength": 1
         }
@@ -1044,7 +1127,8 @@
               "type": "string"
             },
             "saisi_le": {
-              "type": "string"
+              "type": "string",
+              "description": "Date de saisie, POSÉE par le geste de saisie (l'utilisateur affine sa consommation) — jamais par la sérialisation (ACAL2 : un aller-retour du document ne refait pas saisi_le)."
             }
           }
         }
@@ -1103,7 +1187,7 @@
       "additionalProperties": true,
       "properties": {
         "values": {
-          "description": "Un facteur d'accès solaire par module, DANS LE MÊME ORDRE que `panels` et de la même longueur. Une entrée `null` = module non calculé (jamais 1, qui se lirait « aucun ombrage mesuré »).",
+          "description": "Un facteur d'accès solaire par module POSÉ, DANS LE MÊME ORDRE que `geometry.panels` et de la même longueur (ACAL2). Une entrée `null` = module non calculé (jamais 1, qui se lirait « aucun ombrage mesuré »).",
           "type": "array",
           "items": {
             "type": [
@@ -1115,16 +1199,41 @@
           }
         },
         "method": {
-          "description": "Méthode de calcul, nommée — sans elle, deux jeux de valeurs issus de deux tracés différents ne sont pas comparables.",
-          "type": "string"
+          "description": "ACAL2 — Méthode de calcul NOMMÉE : {horizon, rangees, resolution:'annuelle', description}. L'ancienne chaîne libre n'est plus produite (normalisée à la lecture) ; elle reste tolérée EN LECTURE pour les documents déjà enregistrés.",
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "horizon": {
+                  "type": "boolean"
+                },
+                "rangees": {
+                  "type": "boolean"
+                },
+                "resolution": {
+                  "type": "string",
+                  "enum": [
+                    "annuelle"
+                  ]
+                },
+                "description": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "string"
+            }
+          ]
         },
         "assumptions": {
-          "description": "Hypothèses du calcul (pas de temps, horizon pris en compte, objets d'environnement inclus…). Objet libre : ce sont des hypothèses, pas un contrat de calcul.",
+          "description": "Hypothèses du calcul (pas de temps, horizon pris en compte, objets d'environnement inclus…). Objet libre : ce sont des hypothèses, pas un contrat de calcul. ACAL2 : `periode` = 'annee' (accès solaire ANNUEL).",
           "type": "object",
           "additionalProperties": true
         },
         "computedAt": {
-          "description": "Date de calcul (ISO 8601). Sans elle, on ne sait pas si ces valeurs précèdent la dernière édition du toit.",
+          "description": "Date de calcul (ISO 8601). Sans elle, on ne sait pas si ces valeurs précèdent la dernière édition du toit. ACAL2 : champ VOLATIL — HORS de toutes les empreintes (document et imprimée), jamais comparé.",
           "type": "string"
         }
       }
@@ -1245,6 +1354,13 @@
           "description": "CALX401 — largeur du passage (m), SAISIE. Requise quand `usage` vaut `circulation`. Le schéma ne livre AUCUNE largeur : ni valeur par défaut, ni minimum réglementaire, ni suggestion — une largeur de passage se lit dans le texte qui s'applique au chantier, ou elle est saisie ; elle ne descend jamais d'un contrat de données (D-CALX 7).",
           "type": "number",
           "exclusiveMinimum": 0
+        },
+        "source": {
+          "description": "ACAL2 (D-ACAL-18) — texte de la SERVITUDE ou de la NORME dont la zone découle (ex. recul réglementaire). Jamais inventé.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "allOf": [
@@ -1314,7 +1430,7 @@
       }
     },
     "poseSurface": {
-      "description": "CAL89/CAL91 — une SURFACE DE POSE qui n'est pas un pan de toiture : un champ au SOL, ou une OMBRIÈRE (carport). AUCUNE charge ni structure n'est calculée ici : une ombrière est une surface de pose, pas un ouvrage chiffré. Tout ce qui est SAISI vit à la racine (contour, pente du terrain, inclinaison des tables, orientation des rangées) ; tout ce que le MOTEUR rend vit sous `engine` et n'est jamais recalculé par un écran — en particulier le pas inter-rangées, qui vient de CAL88 (`core/calepinage/surfaces/sol.py`) et n'a AUCUNE seconde formule côté client.",
+      "description": "CAL89/CAL91 — une SURFACE DE POSE qui n'est pas un pan de toiture : un champ au SOL, ou une OMBRIÈRE (carport). AUCUNE charge ni structure n'est calculée ici : une ombrière est une surface de pose, pas un ouvrage chiffré. Tout ce qui est SAISI vit à la racine (contour, pente du terrain, inclinaison des tables, orientation des rangées) ; tout ce que le MOTEUR rend vit sous `engine` et n'est jamais recalculé par un écran — en particulier le pas inter-rangées, qui vient de CAL88 (`core/calepinage/surfaces/sol.py`) et n'a AUCUNE seconde formule côté client. ACAL2 (D-ACAL-5) — une surface de pose est un PAN À PART ENTIÈRE : simulation, électrique, livrables et 3D client la comptent comme un pan de toit. Identifiant STABLE (`id`) ; `moduleWc` est OBLIGATOIRE À LA COMPOSITION (un module sans puissance est REFUSÉ en nommant le champ, jamais une puissance de repli de 550 W ou de 720 Wc) — l'obligation porte sur la composition, PAS sur la validation d'un document déjà enregistré (aucun document existant ne devient invalide). Azimut de FACE = `rowAzimuthDeg` + 90 (défaut gravé).",
       "type": "object",
       "additionalProperties": true,
       "properties": {
@@ -1328,7 +1444,8 @@
           ]
         },
         "id": {
-          "type": "string"
+          "type": "string",
+          "description": "Identifiant STABLE de la surface de pose (ACAL2 : jamais renuméroté — c'est la clé que lisent simulation, électrique, livrables et 3D client)."
         },
         "label": {
           "type": "string"
@@ -1366,7 +1483,7 @@
           ]
         },
         "rowAzimuthDeg": {
-          "description": "Orientation des RANGÉES (degrés, 0=N, 90=E, 180=S, 270=O), SAISIE.",
+          "description": "Orientation des RANGÉES (degrés, 0=N, 90=E, 180=S, 270=O), SAISIE. ACAL2 : l'azimut de FACE du pan = rowAzimuthDeg + 90 (0=N, 90=E, 180=S, 270=O) — convention gravée, UNE seule lecture.",
           "type": [
             "number",
             "null"
@@ -1396,7 +1513,7 @@
           "minimum": 0
         },
         "moduleWc": {
-          "description": "ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — puissance crête du module (Wc), SAISIE (`kits[].puissance_module_wc`). C'est elle qui rend le kWc de la surface mesurable (modules posés × Wc) ; `null` = non renseignée, jamais une puissance supposée.",
+          "description": "ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — puissance crête du module (Wc), SAISIE (`kits[].puissance_module_wc`). C'est elle qui rend le kWc de la surface mesurable (modules posés × Wc) ; `null` = non renseignée, jamais une puissance supposée. ACAL2 : OBLIGATOIRE à la composition (absent ⇒ refus nommé du champ, jamais 550 W ni 720 Wc supposés).",
           "type": [
             "number",
             "null"
@@ -1452,6 +1569,14 @@
         },
         "engine": {
           "$ref": "#/$defs/posePlanMoteur"
+        },
+        "alleeM": {
+          "description": "ACAL2 (D-ACAL-5) — ALLÉE imposée entre les rangées (m), paramètre PAR calepinage, SAISI. `null` = la politique du moteur s'applique (rien n'est supposé ici). Jamais négatif.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
         }
       },
       "allOf": [
@@ -1873,6 +1998,335 @@
           ]
         }
       }
+    },
+    "shadeObstruction": {
+      "description": "ACAL2 — une OMBRE TRACÉE par l'utilisateur (obstacle d'ombrage dessiné sur le plan : mur, arbre, antenne…), sérialisée à la racine `shadeObstructions` pour que la matrice d'ombrage 12×24 soit rejouée à la réouverture au lieu de se perdre. Soit un `contour` [[lng, lat], …], soit un `centre` + `rayonM`.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string"
+        },
+        "contour": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/couple"
+          },
+          "minItems": 3
+        },
+        "centre": {
+          "$ref": "#/$defs/couple"
+        },
+        "rayonM": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "hauteurM": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "source": {
+          "type": "string",
+          "description": "D'où vient la hauteur / le tracé (saisie, relevé…). Jamais inventée."
+        }
+      }
+    },
+    "choixConception": {
+      "description": "ACAL2 — les CHOIX de conception épinglés dans l'atelier (famille de pose, inclinaison, orientation, azimut, marge) : chacun vaut une valeur épinglée, 'reco' (la recommandation du moteur) ou 'auto'. `epingles` liste les clés réellement épinglées par l'utilisateur. Enregistrés et RÉAPPLIQUÉS avant le pavage — un choix épinglé ne redevient jamais 'reco' au rechargement.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "family": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": [
+                "south",
+                "eastwest"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "reco",
+                "auto"
+              ]
+            }
+          ]
+        },
+        "tilt": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "enum": [
+                "reco",
+                "auto"
+              ]
+            }
+          ]
+        },
+        "orient": {
+          "type": "string",
+          "description": "Orientation épinglée (libellé de famille d'orientation), ou 'reco' | 'auto'."
+        },
+        "azimuth": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "enum": [
+                "reco",
+                "auto"
+              ]
+            }
+          ]
+        },
+        "margin": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "enum": [
+                "reco",
+                "auto"
+              ]
+            }
+          ]
+        },
+        "epingles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "pitchSource": {
+      "description": "ACAL2 — PROVENANCE de la pente du PAN, écrite par l'onglet Pente : `mode` degres | pourcentage | cotes. Chaque mode ne porte que ses propres champs ; la pente RÉSULTANTE vit dans `zones[].pitchDeg`.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "degres",
+            "pourcentage",
+            "cotes"
+          ]
+        },
+        "degres": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "pourcentage": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "porteeM": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "hauteurFaitageM": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "suggestionPente": {
+      "description": "ACAL2 (D-ACAL-19) — SUGGESTION de pente « pente du terrain » proposée par le moteur : `status` suggeree | validee | refusee. Elle n'est JAMAIS recopiée dans `pitchDeg` (la valeur ne devient la pente du pan qu'à l'acceptation, via pitchSource).",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "suggeree",
+            "validee",
+            "refusee"
+          ]
+        },
+        "valeurDeg": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "decidedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "libelle": {
+          "type": "string",
+          "description": "« pente du terrain »."
+        }
+      }
+    },
+    "coteReleve": {
+      "description": "ACAL2 (D-ACAL-28) — une COTE de relevé terrain appliquée à un côté du pan : la longueur du côté choisi est recalée (homothétie), l'azimut appliqué.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "cote",
+        "longueurM"
+      ],
+      "properties": {
+        "cote": {
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "longueurM": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "precisionM": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "releveId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "appliqueLe": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "alleeTechnique": {
+      "description": "ACAL2 — ALLÉE technique « gratuite » PAR calepinage : `largeurM` (> 0) et sa `source` (suggestion_moteur | saisie). Le DÉFAUT société reste dans ParametresCalepinage.degagements.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "largeurM",
+        "source"
+      ],
+      "properties": {
+        "largeurM": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "suggestion_moteur",
+            "saisie"
+          ]
+        }
+      }
+    },
+    "parcelle": {
+      "description": "ACAL2 — la limite CADASTRALE du terrain, SAISIE (jamais déduite du bâtiment) : au moins 3 paires [lng, lat] finies.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "vertices"
+      ],
+      "properties": {
+        "vertices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/couple"
+          },
+          "minItems": 3
+        }
+      }
+    },
+    "jeuReglages": {
+      "description": "ACAL2 (D-ACAL-20) — jeu de réglages mémorisé sur un calepinage vierge : {presetId, libelle, valeurs}.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "presetId": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "libelle": {
+          "type": "string"
+        },
+        "valeurs": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "repere": {
+      "description": "ACAL2 (D-ACAL-14) — repère des coordonnées du document : absent = GÉOGRAPHIQUE [lng, lat] ; type 'local' = coordonnées [x_m, y_m] RELATIVES à l'ancienne épingle (document anonymisé DSR). Une translation n'est jamais appliquée à la LECTURE.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "local"
+          ]
+        },
+        "unite": {
+          "type": "string",
+          "enum": [
+            "m"
+          ]
+        },
+        "motif": {
+          "type": "string"
+        }
+      }
     }
   },
   "exemple": {
@@ -1975,23 +2429,124 @@
           "panels": [
             {
               "cx": 0.0,
-              "cy": 0.0
+              "cy": 0.0,
+              "n": 1,
+              "rangee": "A"
             },
             {
               "cx": 1.2,
-              "cy": 0.0
+              "cy": 0.0,
+              "n": 2,
+              "rangee": "A"
             }
           ],
           "solarAccess": {
             "values": [
               0.98,
-              null
+              0.95
             ],
-            "method": "placeholder — la méthode réelle est nommée par CAL248",
+            "method": {
+              "horizon": true,
+              "rangees": true,
+              "resolution": "annuelle",
+              "description": "Accès solaire annuel : horizon lointain + ombrage des rangées voisines"
+            },
             "assumptions": {
-              "environnement_inclus": true
+              "environnement_inclus": true,
+              "periode": "annee"
             },
             "computedAt": "2026-09-19T11:30:00Z"
+          },
+          "numerotation": {
+            "prefixe": "PV",
+            "depart": 1,
+            "sens": "ligne"
+          }
+        },
+        "pitchSource": {
+          "mode": "degres",
+          "degres": 15.0
+        },
+        "pitchSuggestion": {
+          "status": "suggeree",
+          "valeurDeg": 14.0,
+          "source": "ign_bd_alti",
+          "decidedAt": null,
+          "libelle": "pente du terrain"
+        },
+        "facingAzimuthSource": "releve",
+        "facingAzimuthPrecisionDeg": 5.0,
+        "cotesReleve": [
+          {
+            "cote": 0,
+            "longueurM": 10.0,
+            "precisionM": 0.05,
+            "releveId": 7,
+            "appliqueLe": "2026-09-20T09:15:00Z"
+          }
+        ]
+      },
+      {
+        "id": "z2",
+        "label": "Pan Est-Ouest libre",
+        "buildingId": "bat-1",
+        "vertices": [
+          [
+            0,
+            8
+          ],
+          [
+            10,
+            8
+          ],
+          [
+            10,
+            14
+          ],
+          [
+            0,
+            14
+          ]
+        ],
+        "obstacles": [],
+        "roofType": "flat",
+        "pitchDeg": 10.0,
+        "facingAzimuthDeg": 90.0,
+        "facingManual": true,
+        "neededPanels": 8,
+        "neededAuto": false,
+        "geometry": {
+          "azimuthDeg": 90.0,
+          "tiltDeg": 10.0,
+          "family": "eastwest",
+          "flush": false,
+          "mode": "free",
+          "kwc": 5.76,
+          "count": 8,
+          "origin": [
+            -7.6,
+            33.5
+          ],
+          "panels": [
+            {
+              "cx": 0.0,
+              "cy": 0.0,
+              "face": "E",
+              "n": 1,
+              "rangee": "A"
+            },
+            {
+              "cx": 1.2,
+              "cy": 0.0,
+              "face": "W",
+              "n": 2,
+              "rangee": "A"
+            }
+          ],
+          "numerotation": {
+            "prefixe": "EO",
+            "depart": 1,
+            "sens": "serpentin"
           }
         }
       }
@@ -2032,7 +2587,8 @@
           ]
         ],
         "setbackM": 0.3,
-        "heightM": null
+        "heightM": null,
+        "source": "Recul réglementaire de 0,30 m (note de calcul société)"
       }
     ],
     "result": {
@@ -2083,6 +2639,314 @@
         }
       ],
       "hauteurMaxDeg": 12.5
+    },
+    "poseSurfaces": [
+      {
+        "kind": "sol",
+        "id": "sol-1",
+        "label": "Champ au sol",
+        "vertices": [
+          [
+            -7.601,
+            33.499
+          ],
+          [
+            -7.6005,
+            33.499
+          ],
+          [
+            -7.6005,
+            33.4995
+          ],
+          [
+            -7.601,
+            33.4995
+          ]
+        ],
+        "contourM": [
+          [
+            0,
+            0
+          ],
+          [
+            40,
+            0
+          ],
+          [
+            40,
+            20
+          ],
+          [
+            0,
+            20
+          ]
+        ],
+        "areaM2": 800.0,
+        "terrainSlopeDeg": 2.0,
+        "rowAzimuthDeg": 180.0,
+        "tiltDeg": 20.0,
+        "moduleLongM": 2.384,
+        "moduleCourtM": 1.134,
+        "moduleWc": 720.0,
+        "modulesParTable": 2,
+        "alleeM": 3.0,
+        "engine": {
+          "modules": 96,
+          "rowPitchM": 5.2,
+          "groundCoverageRatio": 0.38,
+          "versionMoteur": "moteur-1",
+          "hashEntree": null,
+          "tables": []
+        }
+      },
+      {
+        "kind": "ombriere",
+        "id": "omb-1",
+        "label": "Ombrière parking",
+        "vertices": [
+          [
+            -7.6012,
+            33.4992
+          ],
+          [
+            -7.6008,
+            33.4992
+          ],
+          [
+            -7.6008,
+            33.4995
+          ],
+          [
+            -7.6012,
+            33.4995
+          ]
+        ],
+        "contourM": [
+          [
+            0,
+            0
+          ],
+          [
+            20,
+            0
+          ],
+          [
+            20,
+            12
+          ],
+          [
+            0,
+            12
+          ]
+        ],
+        "areaM2": 240.0,
+        "tiltDeg": 8.0,
+        "rowAzimuthDeg": 180.0,
+        "flowAzimuthDeg": 270.0,
+        "clearHeightM": 4.5,
+        "moduleLongM": 2.384,
+        "moduleCourtM": 1.134,
+        "moduleWc": 720.0,
+        "modulesParTable": 4,
+        "alleeM": null,
+        "buildingId": "bat-1",
+        "appuis": {
+          "pasM": 5.0,
+          "sectionM": 0.2
+        },
+        "engine": {
+          "modules": 48,
+          "rowPitchM": null,
+          "groundCoverageRatio": null,
+          "versionMoteur": "moteur-1",
+          "hashEntree": null,
+          "tables": []
+        }
+      }
+    ],
+    "shadeObstructions": [
+      {
+        "id": "sh-1",
+        "kind": "mur",
+        "contour": [
+          [
+            -7.6003,
+            33.5001
+          ],
+          [
+            -7.6001,
+            33.5001
+          ],
+          [
+            -7.6001,
+            33.50015
+          ]
+        ],
+        "hauteurM": 3.0,
+        "source": "saisie"
+      },
+      {
+        "id": "sh-2",
+        "kind": "arbre",
+        "centre": [
+          -7.6004,
+          33.4999
+        ],
+        "rayonM": 2.0,
+        "hauteurM": 6.0,
+        "source": "saisie"
+      }
+    ],
+    "choixConception": {
+      "family": "south",
+      "tilt": "reco",
+      "orient": "auto",
+      "azimuth": 180,
+      "margin": "reco",
+      "epingles": [
+        "family",
+        "azimuth"
+      ]
+    },
+    "alleeTechnique": {
+      "largeurM": 0.8,
+      "source": "saisie"
+    },
+    "parcelle": {
+      "vertices": [
+        [
+          -7.6015,
+          33.4985
+        ],
+        [
+          -7.5995,
+          33.4985
+        ],
+        [
+          -7.5995,
+          33.5005
+        ],
+        [
+          -7.6015,
+          33.5005
+        ]
+      ]
+    },
+    "pinSource": "lead",
+    "repereAcquitte": {
+      "lat": 33.5,
+      "lng": -7.6
+    },
+    "jeuReglages": {
+      "presetId": 3,
+      "libelle": "Réglages société — toiture béton",
+      "valeurs": {
+        "pas_inter_rangees": "auto"
+      }
+    },
+    "underlay": {
+      "kind": "plan",
+      "attachmentId": 512,
+      "opacite": 0.6,
+      "calage": {
+        "ancre": [
+          [
+            -7.6,
+            33.5
+          ],
+          [
+            -7.5999,
+            33.5
+          ]
+        ],
+        "pointsImage": [
+          [
+            0,
+            0
+          ],
+          [
+            100,
+            0
+          ]
+        ],
+        "distanceReelleM": 10.0,
+        "rotationDeg": 0,
+        "source": "saisie"
+      }
+    },
+    "buildings": [
+      {
+        "id": "bat-1",
+        "label": "Bâtiment principal",
+        "hauteurM": 7.5,
+        "etages": 2,
+        "hauteurEtageM": 3.0,
+        "source": "releve"
+      }
+    ],
+    "modules": [
+      {
+        "id": "mod-1",
+        "produitId": 812,
+        "libelle": "Module 720 Wc (exemple)",
+        "longueurMm": 2384,
+        "largeurMm": 1134,
+        "epaisseurMm": 33,
+        "poidsKg": 38.5,
+        "pmaxWc": 720,
+        "source": "catalogue"
+      }
+    ],
+    "optimisation": {
+      "cible": "kwc",
+      "priorite": "aucune",
+      "seuilAccesSolaire": null
+    },
+    "scene": {
+      "sunDay": 172,
+      "sunHour": 12.0
+    },
+    "consumption": {
+      "courbe24": [
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.4,
+        0.6,
+        0.8,
+        0.9,
+        0.7,
+        0.6,
+        0.6,
+        0.7,
+        0.6,
+        0.6,
+        0.7,
+        0.9,
+        1.1,
+        1.2,
+        1.1,
+        0.9,
+        0.7,
+        0.5,
+        0.4
+      ],
+      "saisons": {
+        "ete": 1.2,
+        "hiver": 0.9
+      },
+      "appareils": [],
+      "methode": "facture",
+      "source": {
+        "origine": "facture",
+        "saisi_le": "2026-09-18T10:00:00Z"
+      }
+    },
+    "electrical": {
+      "equipements": [],
+      "cheminements": []
     }
   }
 }

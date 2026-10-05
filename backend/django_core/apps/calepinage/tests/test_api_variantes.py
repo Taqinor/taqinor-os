@@ -23,6 +23,7 @@ import pathlib
 
 from apps.calepinage.models import Calepinage, CalepinageVariante
 from apps.calepinage.services.variantes import retenir_variante
+from apps.calepinage.tests._m0_en_attente import affirmer_non_servies, sans
 
 from .test_api_liste import BaseApiCalepinage, url_detail
 
@@ -181,11 +182,17 @@ class ComparerTest(BaseVariantes):
         retenir_variante(variante)
         reponse = self.api.get(url_comparer(self.calepinage.pk))
         self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertEqual(set(reponse.data), set(CONTRAT['exemple']))
+        # ACAL7 (M0) a posé les colonnes de fraîcheur avant leurs
+        # producteurs : chaque tâche nommée sert sa clé et retire l'entrée.
+        en_attente = {'lignes[].simulation_perimee': 'ACAL111',
+                      'lignes[].source_mesures': 'ACAL112'}
+        affirmer_non_servies(self, reponse.data, en_attente)
+        exemple = sans(CONTRAT['exemple'], en_attente)
+        self.assertEqual(set(reponse.data), set(exemple))
         self.assertEqual(set(reponse.data['lignes'][0]),
-                         set(CONTRAT['exemple']['lignes'][0]))
+                         set(exemple['lignes'][0]))
         self.assertEqual(set(reponse.data['lignes'][0]['production']),
-                         set(CONTRAT['exemple']['lignes'][0]['production']))
+                         set(exemple['lignes'][0]['production']))
 
     def test_une_seule_variante_les_ecarts_valent_null(self):
         variante = CalepinageVariante.objects.create(

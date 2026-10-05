@@ -57,6 +57,9 @@ EXEMPLE_ZONES = [
         'vertices': [[6, 0], [8, 0], [8, 1.5], [6, 1.5]],
         'setbackM': 0.3,
         'heightM': None,
+        # ACAL2 (D-ACAL-18) : la zone ordinaire de l'exemple porte désormais
+        # le texte de la servitude ou de la norme qui la fonde.
+        'source': 'Recul réglementaire de 0,30 m (note de calcul société)',
     },
     {
         'id': 'zx-2',
