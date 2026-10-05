@@ -1273,7 +1273,9 @@ def plafond_physique_du_contour(contour, produit_panneau):
     dessine — celui de l'écran, au boot — qui pose le maximum tenable et lève
     son avertissement existant. Poser ici un second moteur (pente et azimut
     devinés) donnerait un nombre que l'écran contredirait : c'est exactement le
-    piège que le drapeau ``USE_MOTEUR_CALEPINAGE`` existe pour tenir fermé.
+    piège que le drapeau ``USE_MOTEUR_CALEPINAGE`` (réglage
+    ``settings.USE_MOTEUR_CALEPINAGE``, variable d'environnement, défaut OFF —
+    ACAL331) tient fermé.
 
     LES DIMENSIONS VIENNENT DE LA FICHE TECHNIQUE, PAS DU PRODUIT. Une première
     version lisait ``produit.longueur_mm``/``largeur_mm`` : ces champs

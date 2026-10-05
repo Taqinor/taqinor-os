@@ -1449,6 +1449,13 @@ ENTREPRISE_COULEUR = os.environ.get('ENTREPRISE_COULEUR', '#2563EB')
 # the legacy ventes WeasyPrint quote PDF. Only affects QUOTES, never invoices.
 USE_PREMIUM_QUOTE_ENGINE = os.environ.get('USE_PREMIUM_QUOTE_ENGINE', '1') != '0'
 
+# ACAL331 (D-ACAL-17) — bascule A/B du compte de panneaux résidentiel sur le
+# moteur partagé ``core/calepinage`` (AOF164). OFF par défaut : chaque devis
+# garde le compte historique. Ne lever qu'après le dry-run
+# ``manage.py comparer_compte_moteur_calepinage`` soumis au fondateur ; un
+# devis déjà émis n'est jamais recalculé.
+USE_MOTEUR_CALEPINAGE = os.environ.get('USE_MOTEUR_CALEPINAGE', '0') == '1'
+
 # ARC21 — DÉCISION founder-gated : Tiers comme source d'écriture de l'identité.
 # OFF par défaut → comportement byte-identique à aujourd'hui (les modèles
 # historiques restent maîtres, Tiers n'est qu'un miroir one-way ARC18/19/56).
