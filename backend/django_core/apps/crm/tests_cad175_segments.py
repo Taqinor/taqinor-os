@@ -37,7 +37,11 @@ COLONNES_AGRICOLES = (
     'pompage_heures_jour', 'distance_forage_champ_m',
     'irrigation_methode', 'mois_irrigation', 'electricite_sur_place',
 )
-COLONNES_PRO = ('conso_mensuelle_kwh', 'compteur_puissance_kva',
+#: CIQ410 — colonnes posées à TOUT lead pro (la facture se pose en kWh OU en
+#: dirhams selon le lead : voir les tests dédiés).
+COLONNES_PRO = ('tension_raccordement', 'compteur_puissance_kva',
+                'jours_ouverture', 'heure_debut', 'heure_fin',
+                'fermeture_mois', 'type_surface', 'type_toiture',
                 'surface_toiture_m2', 'decideur')
 
 #: CAD175 — garde : aucune clé d'économie dans le panneau.
@@ -178,3 +182,120 @@ class AGR407ChaqueChampAgricoleASaQuestion(SimpleTestCase):
                     besoin_eau_m3j=Decimal(str(prefill['besoin_eau_m3j'])))
         data = _panneau(lead, exemple)
         self.assertEqual(data, exemple)
+
+
+class CIQ410PanneauPro(SimpleTestCase):
+    """CIQ410 (D-CIQ-7) — les cinq étapes du premier appel pro."""
+
+    def test_garde_parametree_toute_colonne_pro_a_une_question_pro(self):
+        for colonne in panneau.CHAMPS_ORAUX_PRO:
+            for segment in ('commercial', 'industriel'):
+                with self.subTest(colonne=colonne, segment=segment):
+                    lead = Lead(nom='P', type_installation=segment,
+                                categorie_commerciale='hotel')
+                    question = panneau._question(lead, colonne, None)
+                    texte = question['question']
+                    self.assertTrue(texte.startswith(
+                        panneau.PREFIXE_QUESTION), texte)
+                    self.assertTrue(texte[len(panneau.PREFIXE_QUESTION):]
+                                    .strip(), colonne)
+                    self.assertNotIn('photo du compteur', texte.lower())
+
+    def test_les_questions_viennent_du_contrat_ciq1(self):
+        contrat_pro = json.loads(
+            (Path(__file__).resolve().parent / 'contract_samples'
+             / 'lead_pro.json').read_text(encoding='utf-8'))
+        par_colonne = {c['nom']: c['question']
+                       for c in contrat_pro['colonnes_pro']}
+        etapes = contrat_pro['questions_pro']
+        for colonne in ('raccordement', 'categorie_commerciale',
+                        'secteur_industriel', 'regime_equipes',
+                        'jours_ouverture', 'heure_debut', 'heure_fin',
+                        'fermeture_mois', 'type_surface', 'type_toiture'):
+            self.assertEqual(panneau.QUESTIONS_PRO[colonne],
+                             par_colonne[colonne], colonne)
+        for segment in ('commercial', 'industriel'):
+            self.assertEqual(
+                panneau.QUESTIONS_PRO['conso_mensuelle_kwh'][segment],
+                etapes['etape_1'][segment][0])
+            self.assertEqual(
+                panneau.QUESTIONS_PRO['tension_raccordement'][segment],
+                etapes['etape_2'][segment][0])
+            self.assertEqual(panneau.QUESTIONS_PRO['compteur_puissance_kva'],
+                             etapes['etape_2'][segment][1])
+            self.assertEqual(panneau.QUESTIONS_PRO['decideur'][segment],
+                             etapes['etape_5'][segment][0])
+
+    def test_un_lead_commercial_n_a_aucun_champ_residentiel(self):
+        lead = Lead(nom='P', type_installation='commercial')
+        champs = _champs(lead)
+        residentiels = set()
+        for section in ('occupation', 'equipements'):
+            residentiels.update(
+                panneau.questionnaire.CHAMPS_PAR_SECTION[section])
+        residentiels.update(('roof_age', 'ownership', 'type_bien',
+                             'objectif_projet', 'ete_differente'))
+        for champ in champs:
+            self.assertNotIn(champ, residentiels, champ)
+        data = _panneau(lead, CONTRAT['exemple_commercial'])
+        self.assertEqual(data['equipements'], [])
+
+    def test_facture_en_dirhams_commerce_bt_en_kwh_industriel_ou_mt(self):
+        self.assertIn('facture_hiver', _champs(Lead(
+            nom='P', type_installation='commercial')))
+        self.assertIn('conso_mensuelle_kwh', _champs(Lead(
+            nom='P', type_installation='industriel')))
+        mt = _champs(Lead(nom='P', type_installation='commercial',
+                          tension_raccordement='mt'))
+        self.assertIn('conso_mensuelle_kwh', mt)
+        self.assertNotIn('raccordement', mt)
+
+    def test_une_facture_connue_ferme_l_etape(self):
+        champs = _champs(Lead(nom='P', type_installation='industriel',
+                              facture_hiver=Decimal('9000')))
+        self.assertNotIn('conso_mensuelle_kwh', champs)
+        self.assertNotIn('facture_hiver', champs)
+
+    def test_decideur_seulement_les_choix_pro(self):
+        questions = {q['champ']: q for q in panneau.questions_a_poser(
+            Lead(nom='P', type_installation='industriel'))}
+        self.assertEqual([c['valeur'] for c in questions['decideur']['choix']],
+                         list(panneau.DECIDEUR_PRO))
+
+    def test_tension_et_categorie_remplies_on_ne_pose_que_le_reste(self):
+        lead = Lead(nom='P', type_installation='commercial',
+                    tension_raccordement='bt', categorie_commerciale='hotel')
+        champs = _champs(lead)
+        self.assertNotIn('tension_raccordement', champs)
+        self.assertNotIn('categorie_commerciale', champs)
+        prefill = panneau.prefill_du_panneau(lead)
+        self.assertEqual(prefill['tension_raccordement'], 'bt')
+        self.assertEqual(prefill['categorie_commerciale'], 'hotel')
+
+    def test_jours_et_mois_en_choix_multiple(self):
+        questions = {q['champ']: q for q in panneau.questions_a_poser(
+            Lead(nom='P', type_installation='industriel'))}
+        self.assertEqual(questions['jours_ouverture']['nature'],
+                         'choix_multiple')
+        self.assertEqual([c['valeur'] for c in
+                          questions['jours_ouverture']['choix']],
+                         list(range(1, 8)))
+        self.assertEqual([c['valeur'] for c in
+                          questions['fermeture_mois']['choix']],
+                         list(range(1, 13)))
+
+    def test_aucune_cle_d_economie(self):
+        for nom in ('exemple_commercial', 'exemple_industriel'):
+            exemple = CONTRAT[nom]
+            lead = Lead(nom='P', type_installation=exemple['segment'])
+            for cle in _cles(_panneau(lead, exemple)):
+                for fragment in FRAGMENTS_ECONOMIE:
+                    self.assertNotIn(fragment, cle.lower(), cle)
+
+    def test_les_exemples_pro_du_contrat_egalent_la_sortie_reelle(self):
+        for nom in ('exemple_commercial', 'exemple_industriel'):
+            exemple = CONTRAT[nom]
+            lead = Lead(pk=exemple['lead_id'], nom='P',
+                        type_installation=exemple['segment'],
+                        **exemple['prefill'])
+            self.assertEqual(_panneau(lead, exemple), exemple, nom)

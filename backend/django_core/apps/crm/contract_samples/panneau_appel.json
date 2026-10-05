@@ -682,6 +682,705 @@
     },
     "profil_suppose": true
   },
+  "exemple_commercial": {
+    "lead_id": 2207,
+    "segment": "commercial",
+    "segment_libelle": "Commercial",
+    "segment_suggere": null,
+    "touche": null,
+    "script": null,
+    "champs_a_poser": [
+      {
+        "champ": "facture_hiver",
+        "section": null,
+        "libelle": "facture hiver",
+        "question": "Question à l'appel : « Combien payez-vous d'électricité par mois, à peu près ? Ou combien de kWh, si vous l'avez sous les yeux ? »",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "compteur_puissance_kva",
+        "section": null,
+        "libelle": "Puissance souscrite du compteur (kVA)",
+        "question": "Question à l'appel : « Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. »",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "raccordement",
+        "section": null,
+        "libelle": "raccordement",
+        "question": "Question à l'appel : « Votre compteur est-il monophasé ou triphasé ? »",
+        "choix": [
+          {
+            "valeur": "monophase",
+            "libelle": "Monophasé"
+          },
+          {
+            "valeur": "triphase",
+            "libelle": "Triphasé"
+          },
+          {
+            "valeur": "inconnu",
+            "libelle": "Je ne sais pas"
+          },
+          {
+            "valeur": "aucun",
+            "libelle": "Non raccordé (site isolé)"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "reponses_categorie",
+        "section": null,
+        "libelle": "Réponses propres à l'activité",
+        "question": "Question à l'appel : Les questions propres à l'activité, posées juste après elle (une réponse par ligne). Nombre de chambres ; « Quel est votre taux d'occupation moyen sur l'année, à peu près ? » ; Piscine chauffée",
+        "choix": null,
+        "nature": "objet"
+      },
+      {
+        "champ": "jours_ouverture",
+        "section": null,
+        "libelle": "Jours d'ouverture",
+        "question": "Question à l'appel : « Quels jours de la semaine êtes-vous ouverts ou en production ? »",
+        "choix": [
+          {
+            "valeur": 1,
+            "libelle": "Lundi"
+          },
+          {
+            "valeur": 2,
+            "libelle": "Mardi"
+          },
+          {
+            "valeur": 3,
+            "libelle": "Mercredi"
+          },
+          {
+            "valeur": 4,
+            "libelle": "Jeudi"
+          },
+          {
+            "valeur": 5,
+            "libelle": "Vendredi"
+          },
+          {
+            "valeur": 6,
+            "libelle": "Samedi"
+          },
+          {
+            "valeur": 7,
+            "libelle": "Dimanche"
+          }
+        ],
+        "nature": "choix_multiple"
+      },
+      {
+        "champ": "heure_debut",
+        "section": null,
+        "libelle": "Heure de début de journée",
+        "question": "Question à l'appel : « À quelle heure commence votre journée de travail ? »",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "heure_fin",
+        "section": null,
+        "libelle": "Heure de fin de journée",
+        "question": "Question à l'appel : « Et à quelle heure se termine-t-elle ? »",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "fermeture_mois",
+        "section": null,
+        "libelle": "Mois de fermeture",
+        "question": "Question à l'appel : « Fermez-vous certains mois de l'année, pour des congés ou une saison creuse ? Lesquels ? »",
+        "choix": [
+          {
+            "valeur": 1,
+            "libelle": "Janvier"
+          },
+          {
+            "valeur": 2,
+            "libelle": "Février"
+          },
+          {
+            "valeur": 3,
+            "libelle": "Mars"
+          },
+          {
+            "valeur": 4,
+            "libelle": "Avril"
+          },
+          {
+            "valeur": 5,
+            "libelle": "Mai"
+          },
+          {
+            "valeur": 6,
+            "libelle": "Juin"
+          },
+          {
+            "valeur": 7,
+            "libelle": "Juillet"
+          },
+          {
+            "valeur": 8,
+            "libelle": "Août"
+          },
+          {
+            "valeur": 9,
+            "libelle": "Septembre"
+          },
+          {
+            "valeur": 10,
+            "libelle": "Octobre"
+          },
+          {
+            "valeur": 11,
+            "libelle": "Novembre"
+          },
+          {
+            "valeur": 12,
+            "libelle": "Décembre"
+          }
+        ],
+        "nature": "choix_multiple"
+      },
+      {
+        "champ": "type_surface",
+        "section": null,
+        "libelle": "Type de surface",
+        "question": "Question à l'appel : « Où pourrait-on poser les panneaux : sur la toiture, sur une ombrière de parking, ou sur un terrain ? »",
+        "choix": [
+          {
+            "valeur": "toiture",
+            "libelle": "Toiture"
+          },
+          {
+            "valeur": "ombriere",
+            "libelle": "Ombrière de parking"
+          },
+          {
+            "valeur": "terrain",
+            "libelle": "Terrain"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "type_toiture",
+        "section": null,
+        "libelle": "type toiture",
+        "question": "Question à l'appel : « Comment est faite votre toiture : terrasse béton, tôle, tuiles, bac acier, fibrociment ? »",
+        "choix": [
+          {
+            "valeur": "terrasse_beton",
+            "libelle": "Terrasse béton"
+          },
+          {
+            "valeur": "tole_metal",
+            "libelle": "Tôle/Métal"
+          },
+          {
+            "valeur": "tuiles",
+            "libelle": "Tuiles"
+          },
+          {
+            "valeur": "bac_acier",
+            "libelle": "Bac acier"
+          },
+          {
+            "valeur": "fibrociment",
+            "libelle": "Fibrociment"
+          },
+          {
+            "valeur": "autre",
+            "libelle": "Autre"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "surface_toiture_m2",
+        "section": null,
+        "libelle": "Surface disponible pour les panneaux (m²)",
+        "question": "Question à l'appel : « Quelle surface est disponible pour les panneaux, à peu près, en mètres carrés ? »",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "decideur",
+        "section": null,
+        "libelle": "Qui décide",
+        "question": "Question à l'appel : « Qui prendra la décision pour ce projet ? »",
+        "choix": [
+          {
+            "valeur": "seul",
+            "libelle": "Décide seul"
+          },
+          {
+            "valeur": "associe_direction",
+            "libelle": "Avec un associé / la direction"
+          },
+          {
+            "valeur": "proprietaire_tiers",
+            "libelle": "Le propriétaire (un tiers) décide"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "devis_concurrents",
+        "section": null,
+        "libelle": "Autres devis en cours",
+        "question": "Question à l'appel : « Avez-vous déjà reçu ou demandé un autre devis ? » (vide = pas encore posée). État de la comparaison EN COURS — le post-mortem d’une affaire perdue reste, lui, dans la fiche « concurrent ». Question ORALE uniquement.",
+        "choix": [
+          {
+            "valeur": "non",
+            "libelle": "Non, aucun autre devis"
+          },
+          {
+            "valeur": "en_attente",
+            "libelle": "En attente d’un autre devis"
+          },
+          {
+            "valeur": "recu",
+            "libelle": "A déjà reçu un autre devis"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "frein_principal",
+        "section": null,
+        "libelle": "Frein principal",
+        "question": "Question à l'appel : « Qu'est-ce qui vous retient aujourd’hui ? » (vide = pas encore posée). Même vocabulaire que la qualification de visite, pour que le terrain et le téléphone se relisent. Question ORALE.",
+        "choix": [
+          {
+            "valeur": "aucun",
+            "libelle": "Aucun frein"
+          },
+          {
+            "valeur": "prix",
+            "libelle": "Prix"
+          },
+          {
+            "valeur": "compare",
+            "libelle": "Compare d’autres devis"
+          },
+          {
+            "valeur": "timing",
+            "libelle": "Timing"
+          },
+          {
+            "valeur": "technique",
+            "libelle": "Technique"
+          },
+          {
+            "valeur": "confiance",
+            "libelle": "Confiance"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "declencheur",
+        "section": null,
+        "libelle": "Ce qui a accroché",
+        "question": "Question à l'appel : « Qu'est-ce qui vous a donné envie de vous renseigner ? » (vide = pas encore posée). Même vocabulaire que la qualification de visite. Question ORALE.",
+        "choix": [
+          {
+            "valeur": "economies",
+            "libelle": "Les économies"
+          },
+          {
+            "valeur": "coupures",
+            "libelle": "Les coupures / l’autonomie"
+          },
+          {
+            "valeur": "ecologie",
+            "libelle": "L’écologie"
+          },
+          {
+            "valeur": "technologie",
+            "libelle": "La technologie"
+          }
+        ],
+        "nature": "choix"
+      }
+    ],
+    "prefill": {
+      "tension_raccordement": "bt",
+      "categorie_commerciale": "hotel"
+    },
+    "equipements": [],
+    "fenetre_du_jour": {
+      "date": "2026-09-25",
+      "appelable": true,
+      "debut": "09:00",
+      "fin": "20:00",
+      "pause": {
+        "debut": "11:30",
+        "fin": "15:00"
+      },
+      "ramadan": false
+    },
+    "profil_suppose": true
+  },
+  "exemple_industriel": {
+    "lead_id": 2311,
+    "segment": "industriel",
+    "segment_libelle": "Industriel",
+    "segment_suggere": null,
+    "touche": null,
+    "script": null,
+    "champs_a_poser": [
+      {
+        "champ": "conso_mensuelle_kwh",
+        "section": null,
+        "libelle": "Consommation mensuelle (kWh)",
+        "question": "Question à l'appel : « Combien de kWh consommez-vous par mois ? Ils sont sur votre facture, avec les heures de pointe, pleines et creuses. »",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "compteur_puissance_kva",
+        "section": null,
+        "libelle": "Puissance souscrite du compteur (kVA)",
+        "question": "Question à l'appel : « Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. »",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "secteur_industriel",
+        "section": null,
+        "libelle": "Secteur industriel",
+        "question": "Question à l'appel : « Que fabriquez-vous ou que transformez-vous sur ce site ? »",
+        "choix": null,
+        "nature": "texte"
+      },
+      {
+        "champ": "regime_equipes",
+        "section": null,
+        "libelle": "Régime des équipes",
+        "question": "Question à l'appel : « Travaillez-vous en une équipe de jour, en deux équipes, en trois équipes, ou en continu ? »",
+        "choix": [
+          {
+            "valeur": "1x8",
+            "libelle": "Une équipe (1×8)"
+          },
+          {
+            "valeur": "2x8",
+            "libelle": "Deux équipes (2×8)"
+          },
+          {
+            "valeur": "3x8",
+            "libelle": "Trois équipes (3×8)"
+          },
+          {
+            "valeur": "continu",
+            "libelle": "En continu"
+          },
+          {
+            "valeur": "ne_sait_pas",
+            "libelle": "Ne sait pas"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "jours_ouverture",
+        "section": null,
+        "libelle": "Jours d'ouverture",
+        "question": "Question à l'appel : « Quels jours de la semaine êtes-vous ouverts ou en production ? »",
+        "choix": [
+          {
+            "valeur": 1,
+            "libelle": "Lundi"
+          },
+          {
+            "valeur": 2,
+            "libelle": "Mardi"
+          },
+          {
+            "valeur": 3,
+            "libelle": "Mercredi"
+          },
+          {
+            "valeur": 4,
+            "libelle": "Jeudi"
+          },
+          {
+            "valeur": 5,
+            "libelle": "Vendredi"
+          },
+          {
+            "valeur": 6,
+            "libelle": "Samedi"
+          },
+          {
+            "valeur": 7,
+            "libelle": "Dimanche"
+          }
+        ],
+        "nature": "choix_multiple"
+      },
+      {
+        "champ": "heure_debut",
+        "section": null,
+        "libelle": "Heure de début de journée",
+        "question": "Question à l'appel : « À quelle heure commence votre journée de travail ? »",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "heure_fin",
+        "section": null,
+        "libelle": "Heure de fin de journée",
+        "question": "Question à l'appel : « Et à quelle heure se termine-t-elle ? »",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "fermeture_mois",
+        "section": null,
+        "libelle": "Mois de fermeture",
+        "question": "Question à l'appel : « Fermez-vous certains mois de l'année, pour des congés ou une saison creuse ? Lesquels ? »",
+        "choix": [
+          {
+            "valeur": 1,
+            "libelle": "Janvier"
+          },
+          {
+            "valeur": 2,
+            "libelle": "Février"
+          },
+          {
+            "valeur": 3,
+            "libelle": "Mars"
+          },
+          {
+            "valeur": 4,
+            "libelle": "Avril"
+          },
+          {
+            "valeur": 5,
+            "libelle": "Mai"
+          },
+          {
+            "valeur": 6,
+            "libelle": "Juin"
+          },
+          {
+            "valeur": 7,
+            "libelle": "Juillet"
+          },
+          {
+            "valeur": 8,
+            "libelle": "Août"
+          },
+          {
+            "valeur": 9,
+            "libelle": "Septembre"
+          },
+          {
+            "valeur": 10,
+            "libelle": "Octobre"
+          },
+          {
+            "valeur": 11,
+            "libelle": "Novembre"
+          },
+          {
+            "valeur": 12,
+            "libelle": "Décembre"
+          }
+        ],
+        "nature": "choix_multiple"
+      },
+      {
+        "champ": "type_surface",
+        "section": null,
+        "libelle": "Type de surface",
+        "question": "Question à l'appel : « Où pourrait-on poser les panneaux : sur la toiture, sur une ombrière de parking, ou sur un terrain ? »",
+        "choix": [
+          {
+            "valeur": "toiture",
+            "libelle": "Toiture"
+          },
+          {
+            "valeur": "ombriere",
+            "libelle": "Ombrière de parking"
+          },
+          {
+            "valeur": "terrain",
+            "libelle": "Terrain"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "type_toiture",
+        "section": null,
+        "libelle": "type toiture",
+        "question": "Question à l'appel : « Comment est faite votre toiture : terrasse béton, tôle, tuiles, bac acier, fibrociment ? »",
+        "choix": [
+          {
+            "valeur": "terrasse_beton",
+            "libelle": "Terrasse béton"
+          },
+          {
+            "valeur": "tole_metal",
+            "libelle": "Tôle/Métal"
+          },
+          {
+            "valeur": "tuiles",
+            "libelle": "Tuiles"
+          },
+          {
+            "valeur": "bac_acier",
+            "libelle": "Bac acier"
+          },
+          {
+            "valeur": "fibrociment",
+            "libelle": "Fibrociment"
+          },
+          {
+            "valeur": "autre",
+            "libelle": "Autre"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "surface_toiture_m2",
+        "section": null,
+        "libelle": "Surface disponible pour les panneaux (m²)",
+        "question": "Question à l'appel : « Quelle surface est disponible pour les panneaux, à peu près, en mètres carrés ? »",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
+        "champ": "decideur",
+        "section": null,
+        "libelle": "Qui décide",
+        "question": "Question à l'appel : « Qui décide d'un tel investissement chez vous : la direction, un comité, le groupe ? »",
+        "choix": [
+          {
+            "valeur": "seul",
+            "libelle": "Décide seul"
+          },
+          {
+            "valeur": "associe_direction",
+            "libelle": "Avec un associé / la direction"
+          },
+          {
+            "valeur": "proprietaire_tiers",
+            "libelle": "Le propriétaire (un tiers) décide"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "devis_concurrents",
+        "section": null,
+        "libelle": "Autres devis en cours",
+        "question": "Question à l'appel : « Avez-vous déjà reçu ou demandé un autre devis ? » (vide = pas encore posée). État de la comparaison EN COURS — le post-mortem d’une affaire perdue reste, lui, dans la fiche « concurrent ». Question ORALE uniquement.",
+        "choix": [
+          {
+            "valeur": "non",
+            "libelle": "Non, aucun autre devis"
+          },
+          {
+            "valeur": "en_attente",
+            "libelle": "En attente d’un autre devis"
+          },
+          {
+            "valeur": "recu",
+            "libelle": "A déjà reçu un autre devis"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "frein_principal",
+        "section": null,
+        "libelle": "Frein principal",
+        "question": "Question à l'appel : « Qu'est-ce qui vous retient aujourd’hui ? » (vide = pas encore posée). Même vocabulaire que la qualification de visite, pour que le terrain et le téléphone se relisent. Question ORALE.",
+        "choix": [
+          {
+            "valeur": "aucun",
+            "libelle": "Aucun frein"
+          },
+          {
+            "valeur": "prix",
+            "libelle": "Prix"
+          },
+          {
+            "valeur": "compare",
+            "libelle": "Compare d’autres devis"
+          },
+          {
+            "valeur": "timing",
+            "libelle": "Timing"
+          },
+          {
+            "valeur": "technique",
+            "libelle": "Technique"
+          },
+          {
+            "valeur": "confiance",
+            "libelle": "Confiance"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "declencheur",
+        "section": null,
+        "libelle": "Ce qui a accroché",
+        "question": "Question à l'appel : « Qu'est-ce qui vous a donné envie de vous renseigner ? » (vide = pas encore posée). Même vocabulaire que la qualification de visite. Question ORALE.",
+        "choix": [
+          {
+            "valeur": "economies",
+            "libelle": "Les économies"
+          },
+          {
+            "valeur": "coupures",
+            "libelle": "Les coupures / l’autonomie"
+          },
+          {
+            "valeur": "ecologie",
+            "libelle": "L’écologie"
+          },
+          {
+            "valeur": "technologie",
+            "libelle": "La technologie"
+          }
+        ],
+        "nature": "choix"
+      }
+    ],
+    "prefill": {
+      "tension_raccordement": "mt"
+    },
+    "equipements": [],
+    "fenetre_du_jour": {
+      "date": "2026-09-25",
+      "appelable": true,
+      "debut": "09:00",
+      "fin": "20:00",
+      "pause": {
+        "debut": "11:30",
+        "fin": "15:00"
+      },
+      "ramadan": false
+    },
+    "profil_suppose": true
+  },
   "notes": {
     "questions": "`question` est le `help_text` du champ `crm.Lead`, servi tel quel. L'écran ne le réécrit pas : améliorer une formulation, c'est modifier le `help_text`. `section` vaut `null` pour une question ORALE — celles que le questionnaire envoyé au client ne porte pas (décideur, concurrents, frein, déclencheur ; pour le segment agricole la pompe — puissance, HMT, débit — puis les heures de pompage, l'alimentation actuelle et le carburant ; pour l'industriel et le commercial la puissance souscrite du compteur, CAD175).",
     "jamais_redemande": "Une colonne que la fiche porte déjà est ABSENTE de `champs_a_poser` et PRÉSENTE dans `prefill`. `tranche_onee` n'apparaît nulle part : elle se dérive de la facture et de la consommation, on ne la demande pas.",
@@ -696,6 +1395,7 @@
     "permissions": "Lecture seule, company-scopée comme tout `LeadViewSet` (garde fine `crm_voir`) : aucune écriture, aucun effet de bord.",
     "segment": "Clé de `crm.Lead.TypeInstallation` (`residentiel`, `commercial`, `industriel`, `agricole`), ou `null` quand le lead n'a pas de type d'installation saisi. CAD161 (décision fondateur du 21/09/2026) : le panneau guidé est livré pour le RÉSIDENTIEL d'abord — `frontend/src/features/crm/relances/appelGuidance.js` refuse les trois autres segments avec un message explicite (jamais une page vide) et traite `null` comme le résidentiel, « segment à confirmer » (même repli que `variante_segment`, CAD126). Le serveur sert TOUS les segments tels quels : la seconde livraison (agricole et industriel, CAD175) lit ce même champ, sans aucune migration de contrat. CAD175 (livrée) : `appelGuidance.js` sert désormais un jeu de questions PAR SEGMENT (résidentiel, agricole, industriel/commercial) et ne refuse plus qu'une clé de segment inconnue ; sur l'agricole et l'industriel, aucun chiffre d'économie n'est annoncé.",
     "segment_suggere": "AGR406 — `null` ou `{valeur, raison}` (même forme que `lead_pompage.json`) : segment PROBABLE lu sur la première page et sur des mots d'une liste fermée (`crm/segment_suggere.py`), servi SANS écriture ; toujours `null` quand le type du lead vaut déjà ce segment. L'écran affiche « Segment probable : … — confirmez avec le client » ; le type ne change qu'à la main (D-AGR-9).",
-    "exemple_agricole": "AGR407 — un lead AGRICOLE dont le site a déjà donné l'énergie actuelle, la source, le niveau et le besoin : `champs_a_poser` ne contient QUE le reste des cinq étapes (énergie actuelle → eau → besoin → heures/distance → irrigation/électricité), dans cet ordre, puis les questions orales communes ; aucune section résidentielle (facture, toit, occupation, équipements). `pompe_actuelle_cv` n'est plus posée : elle se relève sur la plaque, en visite. `mois_irrigation` est servi en nature `choix_multiple` (12 mois). Aucune clé d'économie (garde CAD175). Les tests serveur comparent cet exemple à la sortie RÉELLE."
+    "exemple_agricole": "AGR407 — un lead AGRICOLE dont le site a déjà donné l'énergie actuelle, la source, le niveau et le besoin : `champs_a_poser` ne contient QUE le reste des cinq étapes (énergie actuelle → eau → besoin → heures/distance → irrigation/électricité), dans cet ordre, puis les questions orales communes ; aucune section résidentielle (facture, toit, occupation, équipements). `pompe_actuelle_cv` n'est plus posée : elle se relève sur la plaque, en visite. `mois_irrigation` est servi en nature `choix_multiple` (12 mois). Aucune clé d'économie (garde CAD175). Les tests serveur comparent cet exemple à la sortie RÉELLE.",
+    "exemple_commercial_industriel": "CIQ410 (D-CIQ-7) — un lead PRO reçoit les cinq étapes du premier appel : (1) UNE question de facture (`conso_mensuelle_kwh` pour un industriel ou un site MT, `facture_hiver` sinon ; répondue dès qu'une colonne de facture est connue), (2) tension, puissance souscrite et — commercial hors MT — mono/tri, (3) catégorie + au plus 3 questions propres à l'activité (`reponses_categorie`, nature `objet`, les questions sont nommées dans le texte) pour un commercial, secteur + équipes pour un industriel, puis jours (`choix_multiple`, 1 = lundi), heures et mois de fermeture (`choix_multiple`), (4) la surface, (5) qui décide, avec les seuls choix pro. Les questions viennent du contrat CIQ1 (`lead_pro.json`), jamais des `help_text` résidentiels. Aucune section résidentielle, aucun drapeau d'équipement (`equipements: []`), aucune clé d'économie. Les tests serveur comparent ces exemples à la sortie RÉELLE."
   }
 }
