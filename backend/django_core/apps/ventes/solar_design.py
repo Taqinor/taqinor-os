@@ -4774,6 +4774,23 @@ def _safe_float(value, default=0.0):
 # ``tariff_escalation_projection`` (FG260) pour le payback/VAN/TRI cohérent.
 
 
+def _productible_de_repli_devis():
+    """ACAL270 — LE productible de repli « PVGIS indisponible / ville inconnue ».
+
+    Défaut gravé D-ACAL : « productible de repli = celui du devis partout » —
+    ``productible_for_city('')`` (DEFAULT_PRODUCTIBLE, 1651) × PRODUCTION_DERATE
+    (≈ 0,9302) ≈ 1 536 kWh/kWc, exactement ce que le moteur du devis applique.
+    Remplace l'ancien repli brut 1600.0 (jumeau supprimé). Lecture seule des
+    constantes du moteur (règle #4 : rien n'y est modifié). Import LOCAL : ce
+    module reste pur au chargement (``quote_engine.builder`` importe CE module).
+    Le seuil / la production attendue du suivi de production (monitoring) est
+    HORS périmètre (usage différent, défaut gravé).
+    """
+    from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
+    from apps.ventes.quote_engine.productible import productible_for_city
+    return productible_for_city('') * PRODUCTION_DERATE
+
+
 def _scenario_annual_production(scenario):
     """Production annuelle (kWh) d'un scénario.
 
@@ -4786,7 +4803,8 @@ def _scenario_annual_production(scenario):
     if direct is not None:
         return max(0.0, _safe_float(direct, 0.0))
     kwc = max(0.0, _safe_float(scenario.get('kwc'), 0.0))
-    productible = _safe_float(scenario.get('productible_kwh_kwc'), 1600.0)
+    productible = _safe_float(scenario.get('productible_kwh_kwc'),
+                              _productible_de_repli_devis())
     orient = scenario.get('orientation_factor')
     orient_f = _safe_float(orient, 1.0) if orient is not None else 1.0
     orient_f = max(0.0, orient_f)

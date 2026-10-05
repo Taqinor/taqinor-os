@@ -72,6 +72,37 @@ def lire_fichier_toiture(cle):
         return None
 
 
+#: ACAL299 — le SEUL préfixe que :func:`supprimer_fichier_toiture` accepte : le
+#: bucket des PDF porte aussi les devis rendus, jamais effaçables par ici.
+PREFIXE_TOITURE = 'roofs/'
+
+
+def supprimer_fichier_toiture(cle):
+    """Supprime l'objet stocké sous ``cle`` dans le magasin des rendus (ACAL299).
+
+    Le pendant en effacement de :func:`stocker_image_toiture` — pour les
+    photos de site d'un calepinage (effacement loi 09-08). Clé vide ou
+    ``None`` : no-op silencieux. Une clé qui ne commence pas par ``roofs/``
+    (ou qui remonte d'un segment par ``..``) est REFUSÉE par ``ValueError`` :
+    jamais une suppression arbitraire dans le bucket des PDF. Un objet déjà
+    absent n'est pas une erreur (la suppression S3 est idempotente).
+    """
+    if not cle:
+        return None
+    if (not isinstance(cle, str) or not cle.startswith(PREFIXE_TOITURE)
+            or '..' in cle.split('/')):
+        raise ValueError(
+            "Suppression refusée : la clé %r n'est pas un rendu de toiture "
+            "(préfixe %r attendu)." % (cle, PREFIXE_TOITURE))
+    from django.conf import settings
+
+    from ..utils.minio_client import get_minio_client
+
+    get_minio_client().delete_object(Bucket=settings.MINIO_BUCKET_PDF,
+                                     Key=cle)
+    return None
+
+
 def url_image_toiture(cle, *, expires=3600):
     """L'URL PRÉSIGNÉE (lecture seule, 1 h) d'un rendu stocké, ou ``None``.
 

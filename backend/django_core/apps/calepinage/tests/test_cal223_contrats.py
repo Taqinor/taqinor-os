@@ -426,7 +426,10 @@ def _sources_de_routes():
     textes = [(RACINE / 'urls.py').read_text(encoding='utf-8')]
     textes += [chemin.read_text(encoding='utf-8')
                for chemin in sorted(VUES.glob('*.py'))]
-    return '\n'.join(textes)
+    # ACAL229 — ``url_path=r'export\\.csv'`` (point échappé) déclare le
+    # chemin servi ``export.csv`` : la source est lue comme le routeur la sert.
+    return '\n'.join(textes).replace("url_path=r'", "url_path='").replace(
+        '\\.', '.')
 
 
 class Faux:

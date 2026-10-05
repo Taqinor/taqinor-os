@@ -212,6 +212,8 @@ SURFACE_PUBLIQUE = (
     "option_avec_servable",
     "ordonner_par_role",
     "ordre_lignes_societe",
+    # ACAL58 — orientation POSÉE d'abord (ventes/domain/geometrie.py).
+    "orientation_du_pan",
     "otp_lecture_verified",
     "phase_client_pour_dimensionnement",
     "plafond_panneaux",
@@ -256,6 +258,8 @@ SURFACE_PUBLIQUE = (
     "send_devis_followup_nudges",
     "share_link_for_bcf",
     "stocker_image_toiture",
+    # ACAL299 — effacement d'un dépôt de toiture (photos de site).
+    "supprimer_fichier_toiture",
     "sync_devis_from_layout",
     "type_image_toiture",
     "url_image_toiture",

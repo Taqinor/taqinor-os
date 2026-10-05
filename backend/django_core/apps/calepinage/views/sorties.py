@@ -174,7 +174,7 @@ class SortiesMixin:
         """CAL175 — l'INVENTAIRE des sorties disponibles de ce calepinage."""
         return Response(inventaire_des_sorties(self.get_object()))
 
-    @action(detail=True, methods=['get'], url_path='planche.pdf',
+    @action(detail=True, methods=['get'], url_path=r'planche\.pdf',
             url_name='planche-pdf', permission_classes=[PeutVoirCalepinage])
     def planche_pdf(self, request, pk=None):
         """CAL171/CAL174 — la planche de calepinage cotée, en PDF A3."""
@@ -193,7 +193,7 @@ class SortiesMixin:
             octets, mime=MIME_PDF,
             nom_fichier=nom_de_fichier(calepinage, 'pdf'))
 
-    @action(detail=True, methods=['get'], url_path='planche.svg',
+    @action(detail=True, methods=['get'], url_path=r'planche\.svg',
             url_name='planche-svg', permission_classes=[PeutVoirCalepinage])
     def planche_svg(self, request, pk=None):
         """CAL174 — le SVG SOURCE de la même planche.
@@ -239,7 +239,7 @@ class SortiesMixin:
             octets, mime=MIME_PDF,
             nom_fichier=nom_de_fichier(calepinage, '%s.pdf' % contenu))
 
-    @action(detail=True, methods=['get'], url_path='plan-pose.pdf',
+    @action(detail=True, methods=['get'], url_path=r'plan-pose\.pdf',
             url_name='plan-pose-pdf', permission_classes=[PeutVoirCalepinage])
     def plan_pose_pdf(self, request, pk=None):
         """CAL211 — le plan de pose de l'équipe terrain (aucun montant)."""
@@ -247,7 +247,7 @@ class SortiesMixin:
 
         return self._plan(CONTENU_POSE)
 
-    @action(detail=True, methods=['get'], url_path='plan-toiture.pdf',
+    @action(detail=True, methods=['get'], url_path=r'plan-toiture\.pdf',
             url_name='plan-toiture-pdf',
             permission_classes=[PeutVoirCalepinage])
     def plan_toiture_pdf(self, request, pk=None):
@@ -256,7 +256,7 @@ class SortiesMixin:
 
         return self._plan(CONTENU_TOITURE)
 
-    @action(detail=True, methods=['get'], url_path='plan-masse.pdf',
+    @action(detail=True, methods=['get'], url_path=r'plan-masse\.pdf',
             url_name='plan-masse-pdf',
             permission_classes=[PeutVoirCalepinage])
     def plan_masse_pdf(self, request, pk=None):
@@ -266,7 +266,7 @@ class SortiesMixin:
         return self._plan(CONTENU_MASSE)
 
     # ── CAL176/CAL177 — la note de calcul ──────────────────────────────────
-    @action(detail=True, methods=['get'], url_path='note-calcul.pdf',
+    @action(detail=True, methods=['get'], url_path=r'note-calcul\.pdf',
             url_name='note-calcul-pdf',
             permission_classes=[PeutVoirCalepinage])
     def note_calcul_pdf(self, request, pk=None):
@@ -286,7 +286,7 @@ class SortiesMixin:
             nom_fichier=nom_de_fichier(calepinage, 'note.pdf'))
 
     # ── CAL178/CAL179 — les exports réutilisables ──────────────────────────
-    @action(detail=True, methods=['get'], url_path='export.dxf',
+    @action(detail=True, methods=['get'], url_path=r'export\.dxf',
             url_name='export-dxf', permission_classes=[PeutVoirCalepinage])
     def export_dxf(self, request, pk=None):
         """CAL178 — le DXF, pour le bureau d'études."""
@@ -303,13 +303,13 @@ class SortiesMixin:
             octets, mime=MIME_DXF,
             nom_fichier=nom_de_fichier(calepinage, 'dxf'))
 
-    @action(detail=True, methods=['get'], url_path='export.xlsx',
+    @action(detail=True, methods=['get'], url_path=r'export\.xlsx',
             url_name='export-xlsx', permission_classes=[PeutVoirCalepinage])
     def export_xlsx(self, request, pk=None):
         """CAL179 — modules, chaînes et nomenclature. AUCUN prix."""
         return self._tableur('xlsx')
 
-    @action(detail=True, methods=['get'], url_path='export.csv',
+    @action(detail=True, methods=['get'], url_path=r'export\.csv',
             url_name='export-csv', permission_classes=[PeutVoirCalepinage])
     def export_csv(self, request, pk=None):
         """CAL179 — la même chose en CSV (``?feuille=`` pour en choisir une)."""

@@ -1,5 +1,5 @@
 // CALX121 — LA COUPE TRANSVERSALE, LOGIQUE PURE. Exécuté en CI :
-//   node --test src/features/calepinage/coupeRangees.test.mjs
+//   vitest (porté de node:test par ACAL254 — import @rooflib)
 //
 // Ce fichier prouve que le pas inter-rangées est bien MESURÉ sur les panneaux
 // déjà posés (jamais une seconde formule), que la longueur d'ombre dessinée
@@ -7,11 +7,11 @@
 // dérivée ici via la MÊME fonction `sunPosition` que la production — jamais
 // une valeur de repère tapée à la main), et que chaque géométrie manquante
 // rend un état « non calculée » explicite, jamais un dessin inventé.
-import test from 'node:test'
+import { test } from 'vitest'
 import assert from 'node:assert/strict'
 
 import { construireCoupe, pasRangeeMesure, PROFONDEUR_MODULE_M, MONTANT_AVANT_M } from './coupeRangees.js'
-import { sunPosition, JOUR_SOLSTICE_HIVER } from './horizonMath.js'
+import { sunDirection as sunPosition, WINTER_SOLSTICE_DAY as JOUR_SOLSTICE_HIVER } from '@rooflib/roofPro2'
 
 const DEG2RAD = Math.PI / 180
 

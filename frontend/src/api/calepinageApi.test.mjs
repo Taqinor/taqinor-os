@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
+import { lireSourceCalepinageApi } from './calepinage/lireSource.mjs'
 
 /* ============================================================================
    CAL33 — le contrat d'URL de `calepinageApi.js`, RELU À SA SOURCE.
@@ -25,7 +26,8 @@ import { dirname, join, resolve } from 'node:path'
    ========================================================================== */
 
 const here = dirname(fileURLToPath(import.meta.url))
-const src = readFileSync(join(here, 'calepinageApi.js'), 'utf8')
+// SPL292 — la façade + ses fragments (`api/calepinage/*.js`) recomposés.
+const src = lireSourceCalepinageApi()
 
 function racineDepot() {
   let dossier = resolve(here)

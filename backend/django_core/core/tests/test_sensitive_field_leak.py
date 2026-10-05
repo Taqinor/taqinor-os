@@ -5,13 +5,17 @@ Deux gardes :
 1. **Runtime** — rend la fiche produit (``stock.ProduitSerializer``) en tant
    que rôle bas privilège et vérifie que ``prix_achat``/``marge`` sont ABSENTS
    du payload (retirés, pas mis à null).
-2. **Statique (drift)** — scanne les ``serializers.py`` des apps et échoue si un
+2. **Statique (drift)** — scanne les ``serializers.py`` des apps ET leurs scissions
+   (``serializers_<x>.py``, ``<x>_serializers.py``, ``models_<x>.py``, dossiers
+   ``serializers/`` / ``models/`` — SPL72, même découverte que
+   ``scripts/check_fk_scoping.py``) et échoue si un
    ``ModelSerializer`` déclare un champ de ``core.permissions.SENSITIVE_FIELDS``
    dans son ``Meta.fields`` SANS aucune logique de masquage (``get_fields`` /
    ``pop``/ garde par permission) dans le même fichier — attrape une NOUVELLE
    exposition non masquée.
 """
 import ast
+import fnmatch
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
@@ -25,6 +29,23 @@ User = get_user_model()
 
 DJANGO_CORE_ROOT = Path(__file__).resolve().parents[2]
 APPS_ROOT = DJANGO_CORE_ROOT / "apps"
+
+#: SPL72 — UNE seule découverte : un fichier scindé hors de ``serializers.py`` ne
+#: doit pas SORTIR du balayage (garde affaiblie en silence).
+SWEEP_GLOBS = ("serializers*.py", "*_serializers.py", "models*.py")
+SWEEP_DIRS = ("serializers", "models")
+
+
+def fichiers_a_balayer(root=APPS_ROOT):
+    """Fichiers sérialiseurs/modèles de ``root``, triés, sans migrations."""
+    trouves = set()
+    for path in root.rglob("*.py"):
+        if "migrations" in path.parts:
+            continue
+        if (any(fnmatch.fnmatch(path.name, g) for g in SWEEP_GLOBS)
+                or path.parent.name in SWEEP_DIRS):
+            trouves.add(path)
+    return sorted(trouves)
 
 
 class SensitiveRegistryTests(TestCase):
@@ -76,14 +97,38 @@ class ProduitLeakTests(TestCase):
         self.assertIn("prix_achat", data2)
 
 
+class SweepDiscoveryTests(TestCase):
+    """SPL72 — la découverte voit les scissions (fixture exécutée, pas de regex)."""
+
+    def test_decouvre_serializers_x_x_serializers_models_x_et_dossiers(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            racine = Path(tmp)
+            (racine / "crm" / "serializers").mkdir(parents=True)
+            (racine / "crm" / "migrations").mkdir(parents=True)
+            noms = ["serializers.py", "serializers_x.py", "y_serializers.py",
+                    "models_x.py", "views.py", "serializers/a.py",
+                    "migrations/serializers_0001.py"]
+            for nom in noms:
+                (racine / "crm" / nom).write_text("", encoding="utf-8")
+            vus = {p.relative_to(racine / "crm").as_posix()
+                   for p in fichiers_a_balayer(racine)}
+        self.assertEqual(vus, {"serializers.py", "serializers_x.py",
+                               "y_serializers.py", "models_x.py",
+                               "serializers/a.py"})
+
+    def test_le_depot_reel_contient_des_scissions(self):
+        vus = {p.name for p in fichiers_a_balayer()}
+        self.assertIn("serializers.py", vus)
+        self.assertTrue(any(n.startswith("serializers_") for n in vus), vus)
+
+
 class SensitiveSerializerStaticSweepTests(TestCase):
     """Drift statique : un champ sensible listé sans masquage fait échouer."""
 
     def test_no_serializer_exposes_a_sensitive_field_without_masking(self):
         offenders = []
-        for path in sorted(APPS_ROOT.rglob("serializers.py")):
-            if "migrations" in path.parts:
-                continue
+        for path in fichiers_a_balayer():
             try:
                 source = path.read_text(encoding="utf-8")
                 tree = ast.parse(source)

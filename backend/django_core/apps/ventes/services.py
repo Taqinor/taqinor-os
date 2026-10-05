@@ -213,6 +213,8 @@ catalogue_de_la_societe = _catalogue.catalogue_de_la_societe
 from apps.ventes.domain import geometrie as _geometrie  # noqa: E402
 _azimut_boussole_vers_aspect = _geometrie._azimut_boussole_vers_aspect
 extract_roof_config = _geometrie.extract_roof_config
+# ACAL58 — l'orientation d'un pan, modules POSÉS d'abord (seule lecture).
+orientation_du_pan = _geometrie.orientation_du_pan
 layout_hash = _geometrie.layout_hash
 poser_layout_hash = _geometrie.poser_layout_hash
 validate_composition_for_layout = _geometrie.validate_composition_for_layout
@@ -434,6 +436,9 @@ url_image_toiture = _stockage_toiture.url_image_toiture
 # CALX5 — la lecture des OCTETS, pour le serveur qui relit un dépôt (série
 # météo de CALX62) : une URL présignée sert un navigateur, pas une tâche.
 lire_fichier_toiture = _stockage_toiture.lire_fichier_toiture
+# ACAL299 — l'effacement d'un dépôt (photos de site du calepinage, loi
+# 09-08) : préfixe ``roofs/`` exigé, jamais une autre clé du bucket des PDF.
+supprimer_fichier_toiture = _stockage_toiture.supprimer_fichier_toiture
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -587,6 +592,7 @@ __all__ = [
     'option_avec_servable',
     'ordonner_par_role',
     'ordre_lignes_societe',
+    'orientation_du_pan',
     'otp_lecture_verified',
     'phase_client_pour_dimensionnement',
     'plafond_panneaux',
@@ -621,6 +627,7 @@ __all__ = [
     'send_devis_followup_nudges',
     'share_link_for_bcf',
     'stocker_image_toiture',
+    'supprimer_fichier_toiture',
     'sync_devis_from_layout',
     'type_image_toiture',
     'url_image_toiture',
