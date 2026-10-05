@@ -557,6 +557,19 @@ describe('AGR418 — script d’appel agricole en cinq étapes', () => {
     }
   })
 
+  it('AGR536 — une objection agricole s’affiche (et jamais chez un résidentiel)', async () => {
+    armer({ panneau: EXEMPLE_AGRICOLE })
+    const { unmount } = render(<PanneauScriptAppel mode="fiche" leadId={EXEMPLE_AGRICOLE.lead_id} />)
+    const objection = await screen.findByTestId('objection-objection_debit_forage')
+    expect(objection).toHaveTextContent(guidance.OBJECTION_DEBIT_FORAGE.reponse)
+    expect(screen.getByTestId('objection-objection_loi_8221')).toBeInTheDocument()
+    unmount()
+    armer({ panneau: PANNEAU })
+    render(<PanneauScriptAppel mode="fiche" leadId={PANNEAU.lead_id} />)
+    await screen.findByTestId('objections-appel')
+    expect(screen.queryByTestId('objection-objection_debit_forage')).not.toBeInTheDocument()
+  })
+
   it('visite non requise : aucune proposition', async () => {
     armer({ panneau: EXEMPLE_AGRICOLE })
     crmApi.getLead = vi.fn(() => Promise.resolve({

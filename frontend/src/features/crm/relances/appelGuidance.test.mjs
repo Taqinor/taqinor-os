@@ -523,8 +523,43 @@ test('AGR418 — agricole vierge : énergie → eau → besoin → heures/distan
   assert.ok(!g.questions.some((q) => /^pompe_(cv|hmt_m|debit_m3h)$/.test(q.champ)))
   // Aucune question résidentielle ne se glisse (facture, présence, toit).
   assert.ok(!g.questions.some((q) => CINQ.includes(q.champ)))
-  // Surface et culture ont leur colonne : il ne reste à noter que la force motrice.
-  assert.deepEqual(g.aNoter, [guidance.A_NOTER_FORCE_MOTRICE])
+  // Surface et culture ont leur colonne : il ne reste à noter que la force
+  // motrice (+ le meilleur moment pour le joindre, AGR536).
+  assert.deepEqual(g.aNoter, [guidance.A_NOTER_FORCE_MOTRICE, guidance.A_NOTER_MEILLEUR_MOMENT])
+})
+
+// ── AGR536 — fiche argumentaire interne : objections agricoles ─────────────
+
+test('AGR536 — chaque objection agricole est re-dérivée du guide, mot pour mot', () => {
+  assert.equal(guidance.OBJECTIONS_AGRICOLES.length, 5)
+  for (const objection of guidance.OBJECTIONS_AGRICOLES) {
+    const source = sectionObjection(objection.cle)
+    assert.equal(objection.titre, source.titre, objection.cle)
+    assert.equal(objection.quand, source.QUAND, objection.cle)
+    assert.equal(objection.reponse, source['RÉPONSE'], objection.cle)
+    assert.equal(objection.jamais, source.JAMAIS, objection.cle)
+  }
+})
+
+test('AGR536 — aucun chiffre, aucun « % » ni crochet dans les objections agricoles', () => {
+  for (const o of guidance.OBJECTIONS_AGRICOLES) {
+    for (const texte of [o.titre, o.quand, o.reponse, o.jamais]) {
+      assert.doesNotMatch(texte, /[0-9٠-٩۰-۹%]/, texte)
+      assert.doesNotMatch(texte, /[[\]]/, texte)
+    }
+  }
+  assert.doesNotMatch(guidance.A_NOTER_MEILLEUR_MOMENT, /[0-9٠-٩۰-۹%[\]]/)
+})
+
+test('AGR536 — la famille résidentielle garde EXACTEMENT les trois objections ; l\'agricole reçoit 3 + 5', () => {
+  assert.deepEqual(guidanceAppel(exemple()).objections, OBJECTIONS)
+  const agricole = guidanceAppel(exemple('exemple_agricole')).objections
+  assert.equal(agricole.length, OBJECTIONS.length + 5)
+  assert.deepEqual(agricole.slice(0, OBJECTIONS.length), [...OBJECTIONS])
+  assert.deepEqual(agricole.slice(OBJECTIONS.length), [...guidance.OBJECTIONS_AGRICOLES])
+  assert.equal(new Set(agricole.map((o) => o.cle)).size, agricole.length)
+  const pro = guidanceAppel({ ...exemple(), segment: 'industriel', segment_libelle: 'Industriel' })
+  assert.deepEqual(pro.objections, OBJECTIONS)
 })
 
 test('AGR418 — chaque colonne des cinq étapes est servie par le contrat (exemple_agricole)', () => {

@@ -513,6 +513,36 @@ QUAND : Le client demande si une subvention ou une aide de l'État existe pour s
 RÉPONSE : Je ne vous promets rien sur une subvention ; je vous renvoie aux conditions officielles du programme concerné.
 JAMAIS : Aucun montant, aucun taux, aucune éligibilité, aucun délai.
 
+**AGR536 (05/10/2026) — fiche argumentaire interne du POMPAGE.** Cinq objections servies à la famille agricole EN PLUS
+des trois ci-dessus (`OBJECTIONS_AGRICOLES`) : les freins documentés du pompage solaire (GIZ/AGIRE 2019, W4-22) — vol,
+nuages et nuit, débit du forage, service après-vente, budget. Aucun chiffre au téléphone. ✎ À valider par Reda ;
+darija à relire (tâche manuelle) — aucune traduction n'est fabriquée ici.
+
+#### objection_vol — Le client craint le vol des panneaux
+QUAND : Le client dit que les panneaux risquent d'être volés au champ.
+RÉPONSE : On regarde ensemble, à la visite, l'emplacement des panneaux et leur fixation, pour choisir ce qui convient à votre terrain.
+JAMAIS : Ne jamais promettre une protection contre le vol qui n'est pas chiffrée dans la proposition.
+
+#### objection_nuages_nuit — Le client demande ce qui se passe la nuit ou par temps couvert
+QUAND : Le client s'inquiète de la nuit ou des nuages.
+RÉPONSE : La nuit, la pompe s'arrête : la réserve, c'est votre bassin, pas une batterie. Par temps couvert, la pompe tourne moins vite et le débit baisse.
+JAMAIS : Ne jamais promettre le même débit par temps couvert, ni un pompage de nuit.
+
+#### objection_debit_forage — Le client veut plus d'eau que son forage n'en donne
+QUAND : Le client demande plus d'eau que son forage ne peut en fournir, ou ne connaît pas le débit de son forage.
+RÉPONSE : On ne vous vend pas plus d'eau que votre forage n'en donne : le technicien mesure le niveau et le débit avant tout engagement.
+JAMAIS : Ne jamais promettre un volume d'eau avant la mesure du niveau et du débit.
+
+#### objection_sav — Le client s'inquiète du service après-vente
+QUAND : Le client demande qui intervient en cas de panne.
+RÉPONSE : Les garanties sont écrites équipement par équipement dans la proposition : vous savez exactement ce qui est couvert.
+JAMAIS : Ne jamais promettre un délai d'intervention ni une garantie qui n'est pas écrite dans la proposition.
+
+#### objection_budget — Le client annonce un budget
+QUAND : Le client fixe un budget avant de parler de son besoin en eau.
+RÉPONSE : On dimensionne sur votre besoin en eau, pas sur un budget ; si votre budget ne suffit pas, on vous le dit.
+JAMAIS : Ne jamais réduire l'installation pour entrer dans un budget sans dire au client ce qu'il perd en eau.
+
 ## Panneau d'appel — consignes d'écran (`PanneauScriptAppel.jsx`, CAD152, 24/09/2026)
 
 Ces lignes ne sont PAS des gabarits de message ni des phrases à lire au client : ce sont les consignes affichées à
@@ -537,6 +567,7 @@ NON_COMPTE_FUTURES_CHARGES : Charges futures cochées sur le site (clim, véhicu
 NON_COMPTE_TRANCHE_ONEE : Tarif / tranche ONEE : sert au dossier, pas au chiffre — l'estimation part du montant de la facture.
 NON_COMPTE_PLAQUE : Pas compté dans le chiffre tant que la puissance manque : photo de la plaque pour que ce soit compté.
 A_NOTER_FORCE_MOTRICE : À noter dans la note d’appel : le compteur de la pompe est-il en abonnement force motrice ?
+A_NOTER_MEILLEUR_MOMENT : À noter dans la note d’appel : le meilleur moment pour le joindre (jour de souk, heures au champ).
 A_NOTER_TENSION : À noter dans la note d’appel : le site est-il raccordé en basse ou en moyenne tension ?
 A_NOTER_RYTHME : À noter dans la note d’appel : le rythme d'activité (journée, jusqu'au soir, en continu) et le week-end.
 A_NOTER_GROUPE : À noter dans la note d’appel : le site a-t-il un groupe électrogène ?

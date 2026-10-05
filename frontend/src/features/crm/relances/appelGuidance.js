@@ -363,6 +363,79 @@ export const OBJECTIONS = Object.freeze([
   OBJECTION_LOI_8221, OBJECTION_GENERATEUR, OBJECTION_SUBVENTIONS,
 ])
 
+// ── AGR536 — fiche argumentaire interne : objections AGRICOLES ──────────────
+// Les freins documentés du pompage solaire (GIZ/AGIRE 2019, W4-22) : vol,
+// nuages et nuit, débit du forage, service après-vente, budget. Même
+// structure QUAND/RÉPONSE/JAMAIS, servies à la famille agricole EN PLUS des
+// trois objections communes. Aucun chiffre au téléphone. Source :
+// `docs/crm/messages_meryem.md` (`#### objection_…`), re-dérivée par le test.
+// ✎ À valider par Reda ; darija à relire (tâche manuelle).
+export const OBJECTION_VOL = Object.freeze({
+  cle: 'objection_vol',
+  titre: 'Le client craint le vol des panneaux',
+  quand: "Le client dit que les panneaux risquent d'être volés au champ.",
+  reponse: "On regarde ensemble, à la visite, l'emplacement des panneaux et "
+    + 'leur fixation, pour choisir ce qui convient à votre terrain.',
+  jamais: "Ne jamais promettre une protection contre le vol qui n'est pas "
+    + 'chiffrée dans la proposition.',
+})
+
+export const OBJECTION_NUAGES_NUIT = Object.freeze({
+  cle: 'objection_nuages_nuit',
+  titre: 'Le client demande ce qui se passe la nuit ou par temps couvert',
+  quand: "Le client s'inquiète de la nuit ou des nuages.",
+  reponse: "La nuit, la pompe s'arrête : la réserve, c'est votre bassin, pas "
+    + 'une batterie. Par temps couvert, la pompe tourne moins vite et le '
+    + 'débit baisse.',
+  jamais: 'Ne jamais promettre le même débit par temps couvert, ni un pompage '
+    + 'de nuit.',
+})
+
+export const OBJECTION_DEBIT_FORAGE = Object.freeze({
+  cle: 'objection_debit_forage',
+  titre: "Le client veut plus d'eau que son forage n'en donne",
+  quand: "Le client demande plus d'eau que son forage ne peut en fournir, ou "
+    + 'ne connaît pas le débit de son forage.',
+  reponse: "On ne vous vend pas plus d'eau que votre forage n'en donne : le "
+    + 'technicien mesure le niveau et le débit avant tout engagement.',
+  jamais: "Ne jamais promettre un volume d'eau avant la mesure du niveau et du "
+    + 'débit.',
+})
+
+export const OBJECTION_SAV = Object.freeze({
+  cle: 'objection_sav',
+  titre: "Le client s'inquiète du service après-vente",
+  quand: 'Le client demande qui intervient en cas de panne.',
+  reponse: 'Les garanties sont écrites équipement par équipement dans la '
+    + 'proposition : vous savez exactement ce qui est couvert.',
+  jamais: "Ne jamais promettre un délai d'intervention ni une garantie qui "
+    + "n'est pas écrite dans la proposition.",
+})
+
+export const OBJECTION_BUDGET = Object.freeze({
+  cle: 'objection_budget',
+  titre: 'Le client annonce un budget',
+  quand: 'Le client fixe un budget avant de parler de son besoin en eau.',
+  reponse: 'On dimensionne sur votre besoin en eau, pas sur un budget ; si '
+    + 'votre budget ne suffit pas, on vous le dit.',
+  jamais: "Ne jamais réduire l'installation pour entrer dans un budget sans "
+    + "dire au client ce qu'il perd en eau.",
+})
+
+/** AGR536 — les objections propres au pompage (famille agricole seulement). */
+export const OBJECTIONS_AGRICOLES = Object.freeze([
+  OBJECTION_VOL, OBJECTION_NUAGES_NUIT, OBJECTION_DEBIT_FORAGE, OBJECTION_SAV,
+  OBJECTION_BUDGET,
+])
+
+/** Les objections servies à une FAMILLE : les communes, plus celles du
+ *  pompage pour l'agricole. */
+export function objectionsDeLaFamille(famille) {
+  return famille === 'agricole'
+    ? Object.freeze([...OBJECTIONS, ...OBJECTIONS_AGRICOLES])
+    : OBJECTIONS
+}
+
 // ── CAD151 — ce qu'on ne dit JAMAIS au téléphone ────────────────────────────
 // Doctrine du groupe, valable sur TOUTE touche d'appel (pas seulement les
 // objections ci-dessus) : consignes internes affichées à la commerciale,
@@ -599,7 +672,9 @@ export function messageErreurServeur(entree, donnees) {
 // dans `docs/crm/messages_meryem.md` (re-dérivés par la garde CAD153).
 export const A_NOTER_FORCE_MOTRICE = 'À noter dans la note d’appel : le '
   + 'compteur de la pompe est-il en abonnement force motrice ?'
-export const A_NOTER_TENSION = 'À noter dans la note d’appel : le site est-il '
+export const A_NOTER_MEILLEUR_MOMENT = 'À noter dans la note d’appel : le '
+  + 'meilleur moment pour le joindre (jour de souk, heures au champ).'
+export const A_NOTER_TENSION ='À noter dans la note d’appel : le site est-il '
   + 'raccordé en basse ou en moyenne tension ?'
 export const A_NOTER_RYTHME = 'À noter dans la note d’appel : le rythme '
   + "d'activité (journée, jusqu'au soir, en continu) et le week-end."
@@ -619,8 +694,9 @@ export const A_NOTER_PROCESS = 'À noter dans la note d’appel : les process '
 export const A_NOTER_PAR_FAMILLE = Object.freeze({
   residentiel: Object.freeze([]),
   // AGR418 — surface et culture ont maintenant leur colonne (étape « besoin ») :
-  // il ne reste à noter que la force motrice.
-  agricole: Object.freeze([A_NOTER_FORCE_MOTRICE]),
+  // il ne reste à noter que la force motrice. AGR536 — et le meilleur moment
+  // pour joindre l'exploitant, sans aucun créneau imposé (CAD52).
+  agricole: Object.freeze([A_NOTER_FORCE_MOTRICE, A_NOTER_MEILLEUR_MOMENT]),
   pro: Object.freeze([
     A_NOTER_TENSION, A_NOTER_RYTHME, A_NOTER_GROUPE, A_NOTER_PROCESS,
   ]),
@@ -687,7 +763,7 @@ export function guidanceAppel(panneau, options = {}) {
     phase: estToucheDeRappel(touche) ? 'rappel' : 'appel_1',
     accroche: texteAccroche(vu),
     questions: questionsDeLAppel(vu),
-    objections: OBJECTIONS,
+    objections: objectionsDeLaFamille(famille),
     interdits: INTERDITS_APPEL,
     issues: ISSUES_APPEL,
     enTete,
