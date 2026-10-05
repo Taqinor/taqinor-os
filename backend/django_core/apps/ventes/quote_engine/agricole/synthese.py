@@ -40,6 +40,7 @@ CE QU'ELLE NE FAIT JAMAIS :
 """
 from __future__ import annotations
 
+from ..lecture_pure import nombre_normalise
 from .garanties import garanties_pompage_et_omissions
 from .mentions import formalites, regle_fda
 from .schema import schema_svg
@@ -121,22 +122,7 @@ CONDITION_ECONOMIES = {
 
 # ── utilitaires purs ────────────────────────────────────────────────────────
 
-def _num(v):
-    """Nombre servi tel quel (int si entier exact, sinon float), ou None.
-
-    Les dérivées v1 historiques peuvent arriver en chaîne (« 62.5 ») : on les
-    lit comme nombre, jamais on n'en invente un. Un booléen n'est pas un
-    nombre.
-    """
-    if v is None or isinstance(v, bool):
-        return None
-    try:
-        f = float(v)
-    except (TypeError, ValueError):
-        return None
-    if f != f:  # NaN
-        return None
-    return int(f) if f == int(f) else f
+_num = nombre_normalise
 
 
 def _dict(v):
