@@ -108,6 +108,7 @@ def _ligne(pan, modules_prevus, saisie):
                   else None),
         'ecarts_position': ((saisie or {}).get('ecarts_position') or ''),
         'releve_le': (saisie or {}).get('releve_le'),
+        'releve_par': (saisie or {}).get('releve_par'),
         'mention': mention,
     }
 
@@ -141,12 +142,22 @@ def ecarts_du_calepinage(calepinage):
     prevus, source = pans_prevus(calepinage)
     saisies = [
         {'pan': pose.pan, 'modules_poses': pose.modules_poses,
-         'ecarts_position': pose.ecarts_position, 'releve_le': pose.releve_le}
+         'ecarts_position': pose.ecarts_position, 'releve_le': pose.releve_le,
+         'releve_par': _auteur_publie(pose.releve_par)}
         for pose in PoseReelle.objects.filter(calepinage=calepinage)
+        .select_related('releve_par')
     ]
     lignes = comparer([{'pan': pan['pan'], 'modules': pan['modules']}
                        for pan in prevus], saisies)
     return _agreger(calepinage.pk, source, lignes)
+
+
+def _auteur_publie(user):
+    """``{id, nom_complet}`` de l'auteur du releve, ou ``None``."""
+    if user is None:
+        return None
+    nom = (user.get_full_name() or '').strip() or str(user.get_username())
+    return {'id': user.pk, 'nom_complet': nom}
 
 
 def _agreger(calepinage_id, source, lignes):
@@ -211,6 +222,11 @@ def _ligne_du_contrat(ligne):
         'ecart': ligne['ecart'],
         'ecarts_position': ligne['ecarts_position'] or '',
         'mention': ligne['mention'] or '',
+        # ACAL245 - la date SAISIE du releve de CE pan et son auteur.
+        'releve_le': (ligne['releve_le'].isoformat()
+                      if hasattr(ligne.get('releve_le'), 'isoformat')
+                      else ligne.get('releve_le')),
+        'releve_par': ligne.get('releve_par'),
     }
 
 
@@ -282,12 +298,13 @@ def _releve_le(brut):
     return releve_le
 
 
-def _valider_saisie(donnees, pans):
+def _valider_saisie(donnees, pans, deja_releves=()):
     """La saisie d'UN pan, validée contre les pans PRÉVUS — PURE.
 
     Ordre des refus : ``pan`` (inconnu du prévu), puis ``modules_poses``,
     puis ``releve_le`` — un message par champ, la forme ``refus_*`` du
-    contrat.
+    contrat. ACAL245 : ``releve_le`` n'est facultative qu'en CORRECTION d'un
+    pan deja releve (``deja_releves``) ; la premiere saisie reste refusee.
     """
     if not isinstance(donnees, dict):
         raise PoseRefusee("Le corps attendu est la saisie d'un pan : "
@@ -302,7 +319,9 @@ def _valider_saisie(donnees, pans):
         'pan': pan,
         'modules_poses': _modules_poses(donnees.get('modules_poses')),
         'ecarts_position': str(donnees.get('ecarts_position') or ''),
-        'releve_le': _releve_le(donnees.get('releve_le')),
+        'releve_le': (None if pan in deja_releves
+                      and not str(donnees.get('releve_le') or '').strip()
+                      else _releve_le(donnees.get('releve_le'))),
     }
 
 
@@ -324,7 +343,9 @@ def enregistrer_pose(calepinage, donnees, *, user=None):
     from .journal import journaliser_pose_reelle
 
     prevus, _source = pans_prevus(calepinage)
-    saisie = _valider_saisie(donnees, [pan['pan'] for pan in prevus])
+    deja = set(PoseReelle.objects.filter(calepinage=calepinage)
+               .values_list('pan', flat=True))
+    saisie = _valider_saisie(donnees, [pan['pan'] for pan in prevus], deja)
     auteur = user if getattr(user, 'pk', None) else None
     with transaction.atomic():
         pose = (PoseReelle.objects.select_for_update()
@@ -335,8 +356,11 @@ def enregistrer_pose(calepinage, donnees, *, user=None):
                               calepinage=calepinage, pan=saisie['pan'])
         pose.modules_poses = saisie['modules_poses']
         pose.ecarts_position = saisie['ecarts_position']
-        pose.releve_le = saisie['releve_le']
-        pose.releve_par = auteur
+        if saisie['releve_le'] is not None:
+            # ACAL245 - la date n'est reecrite que si elle est FOURNIE ; une
+            # correction du seul texte conserve la date ET l'auteur.
+            pose.releve_le = saisie['releve_le']
+            pose.releve_par = auteur
         try:
             pose.full_clean(exclude=['company', 'calepinage', 'releve_par'])
         except ValidationError as erreur:
