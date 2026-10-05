@@ -52,7 +52,7 @@ from rest_framework.response import Response
 from ..permissions import PeutLireOuEcrireCalepinage
 from ..services.raccordement import (  # ACAL155 : clé + lecture uniques
     CLE_SAISIE, PREFIXE_CHAMP, RaccordementInvalide, bloc_raccordement,
-    saisie_du_calepinage,
+    proposition_du_lead, saisie_du_calepinage,
 )
 
 __all__ = ['raccordement', 'CLE_SAISIE', 'champ_du_refus']
@@ -107,7 +107,10 @@ def _bloc_du_calepinage(calepinage, saisie):
     troncons = troncons_du_calepinage(calepinage).get('troncons') or []
     reglages = (parametres_societe(calepinage)
                 .get(SECTION_ELECTRIQUE_SOCIETE) or {})
-    return bloc_raccordement(conception, saisie, troncons, reglages)
+    # ACAL157 — la proposition du LEAD voyage à côté de la saisie, jamais
+    # dedans : elle ne devient saisie que par un POST explicite.
+    return bloc_raccordement(conception, saisie, troncons, reglages,
+                             proposition_lead=proposition_du_lead(calepinage))
 
 
 @action(detail=True, methods=['get', 'post'], url_path='raccordement',

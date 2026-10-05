@@ -88,7 +88,9 @@ class FormeDuDocumentTest(SimpleTestCase):
     def test_les_trois_blocs_et_rien_d_autre(self):
         bloc = bloc_raccordement(None, SAISIE, [TRONCON_AC], {})
 
-        self.assertEqual(sorted(bloc), ['calcul', 'saisie', 'verdicts'],
+        # ACAL157 — la proposition du lead est la quatrième clé racine.
+        self.assertEqual(sorted(bloc), ['calcul', 'proposition_lead',
+                                        'saisie', 'verdicts'],
                          "Le contrat CALX205 publie TROIS blocs : une clé "
                          "racine de plus, et l'écran lit un document que "
                          "l'échantillon committé ne décrit pas.")

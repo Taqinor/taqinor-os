@@ -1181,7 +1181,45 @@ def _verdict_publie(verdict):
     }
 
 
-def bloc_raccordement(conception, saisie, troncons, reglages=None):
+#: ACAL157 — la provenance d'une valeur PROPOSÉE depuis le lead.
+SOURCE_PROPOSITION_LEAD = 'lead'
+
+#: ``Lead.raccordement`` (choix crm) → nombre de phases. Toute autre valeur
+#: (« je ne sais pas », vide) ne propose RIEN : aucun régime n'est deviné.
+PHASES_DU_RACCORDEMENT_LEAD = {'monophase': 1, 'triphase': 3}
+
+
+def proposition_du_lead(calepinage):
+    """ACAL157 — ce que le LEAD sait déjà, PROPOSÉ à la saisie, ou ``None``.
+
+    ``{puissance_souscrite_kva, phases, source: 'lead'}`` lus sur le lead du
+    calepinage (``Lead.compteur_puissance_kva``, ``Lead.raccordement``) par le
+    sélecteur cross-app ``apps.crm.selectors.get_company_lead`` (borné
+    société : un lead d'une autre société est introuvable). RIEN n'est
+    écrit — ni dans le lead, ni dans ``resultat`` : la valeur ne devient une
+    saisie que par un ``POST raccordement/`` explicite. ``None`` sans lead ou
+    quand le lead ne sait rien des deux.
+    """
+    lead_id = getattr(calepinage, 'lead_id', None)
+    company = getattr(calepinage, 'company', None)
+    if not lead_id or company is None:
+        return None
+    from apps.crm.selectors import get_company_lead
+
+    lead = get_company_lead(company, lead_id)
+    if lead is None:
+        return None
+    puissance = _positif(getattr(lead, 'compteur_puissance_kva', None))
+    phases = PHASES_DU_RACCORDEMENT_LEAD.get(
+        str(getattr(lead, 'raccordement', '') or '').strip().lower())
+    if puissance is None and phases is None:
+        return None
+    return {'puissance_souscrite_kva': puissance, 'phases': phases,
+            'source': SOURCE_PROPOSITION_LEAD}
+
+
+def bloc_raccordement(conception, saisie, troncons, reglages=None, *,
+                      proposition_lead=None):
     """CALX244 — le document ``{saisie, calcul, verdicts}`` du raccordement.
 
     Args:
@@ -1195,10 +1233,16 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None):
         reglages: la section société « electrique_societe » du registre
             (``services/parametres_cles.py``), ``{clé: {valeur, source}}``.
 
+        proposition_lead: ACAL157 — la proposition de :func:`
+            proposition_du_lead`, publiée TELLE QUELLE (jamais fusionnée
+            dans la saisie).
+
     Returns:
-        ``{saisie, calcul, verdicts}`` — les CINQ verdicts sont toujours
-        présents, dans l'ordre du contrat, et un contrôle qui n'a pas eu
-        lieu vaut ``omis`` avec le motif qui nomme ce qui manque.
+        ``{saisie, calcul, verdicts, proposition_lead}`` — les CINQ verdicts
+        sont toujours présents, dans l'ordre du contrat, et un contrôle qui
+        n'a pas eu lieu vaut ``omis`` avec le motif qui nomme ce qui manque ;
+        ``proposition_lead`` est TOUJOURS présente (``null`` sans
+        proposition).
 
     Raises:
         RaccordementInvalide: saisie illisible, limite sans
@@ -1224,4 +1268,6 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None):
             'desequilibre_pct': equilibrage['desequilibre_pct'],
         },
         'verdicts': [_verdict_publie(verdict) for verdict in verdicts],
+        'proposition_lead': (dict(proposition_lead)
+                             if isinstance(proposition_lead, dict) else None),
     }

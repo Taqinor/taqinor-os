@@ -117,8 +117,10 @@ class TroisBlocsTest(SimpleTestCase):
 
     def test_les_trois_blocs_dans_chaque_etat(self):
         for etat in ETATS:
+            # ACAL157 — + ``proposition_lead`` (null sans proposition).
             self.assertEqual(sorted(RACCORDEMENT[etat]),
-                             ['calcul', 'saisie', 'verdicts'],
+                             ['calcul', 'proposition_lead', 'saisie',
+                              'verdicts'],
                              f'{etat} : les blocs de réponse ont bougé.')
 
     def test_les_neuf_champs_de_saisie(self):
