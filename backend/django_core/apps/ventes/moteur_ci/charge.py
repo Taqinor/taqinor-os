@@ -322,6 +322,126 @@ def _choisir_borne(bornes, production_jours_types):
     return min(bornes, key=lambda cle: (_autoconso(bornes[cle], production_jours_types, kwc_ref), cle))
 
 
+#: CIQ132 — postes MT et leurs clés de registre acceptées (contrat CIQ2
+#: ``registres_mt`` : ``pointe_kwh`` …, relevé du lead : ``kwh_pointe`` …).
+POSTES_MT = ('pointe', 'pleines', 'creuses')
+_CLES_REGISTRE = {p: ('%s_kwh' % p, 'kwh_%s' % p) for p in POSTES_MT}
+EQUIPES_NUIT = frozenset({'3x8', 'continu'})
+
+
+def _registre(mois_bloc, poste):
+    for cle in _CLES_REGISTRE[poste]:
+        valeur = (mois_bloc or {}).get(cle)
+        if valeur not in (None, ''):
+            try:
+                return max(0.0, float(valeur))
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def registres_lisibles(registres):
+    """Les 12 mois portent-ils chacun leurs trois postes ?"""
+    if not isinstance(registres, (list, tuple)) or len(registres) != 12:
+        return False
+    return all(_registre(m, p) is not None for m in registres for p in POSTES_MT)
+
+
+def courbe_registres_mt(rythme, registres, *, annee_reference, feries=None):
+    """CIQ132 — jours types (GMT) depuis les registres pointe / pleines /
+    creuses de la facture MT, provenance et alertes.
+
+    Pour chaque mois, l'énergie de chaque poste est répartie UNIFORMÉMENT sur
+    les heures de ce poste des jours OUVERTS, selon les plages horaires
+    OFFICIELLES (``tarifs_officiels.poste_horaire``, heures GMT — le Maroc est
+    à GMT, aucun décalage codé). Les jours FERMÉS déclarés reçoivent le talon =
+    puissance moyenne des heures creuses du mois (dérivée, publiée). Contrôle
+    sans seuil inventé : 1x8 / plages de jour seules avec creuses > pleines, ou
+    3x8 / continu avec creuses nulles ⇒ ``incoherence_equipes_registres``
+    (jamais bloquant). Puissance atteinte et kvarh passent aux alertes sans
+    toucher la courbe.
+    """
+    from apps.parametres.tarifs_officiels import poste_horaire
+
+    rythme = rythme or {}
+    alertes = []
+    provenance = {
+        'methode': 'registres_mt', 'archetype': None, 'niveau_donnees': 'declare',
+        'heures': 'GMT', 'annee_reference': annee_reference, 'repartition': 'registres_mt',
+        'talon': None, 'bornes': None, 'reponses_non_consommees': [],
+    }
+    if not registres_lisibles(registres):
+        alertes.append(_alerte('registres_incomplets', 'consommation.registres_mt',
+                               '12 mois × pointe / pleines / creuses requis.', niveau='bloquant'))
+        return None, provenance, alertes
+    calendrier, _jours, _plages = _calendrier(rythme, annee_reference, feries, alertes)
+    postes_h = {m: [poste_horaire(m, h) for h in range(HEURES)] for m in range(1, 13)}
+    courbes = {}
+    talons = []
+    for mois in range(1, 13):
+        jours = [e for e in calendrier if e[0].month == mois]
+        ouverts = [e for e in jours if e[1]]
+        fermes = [e for e in jours if not e[1]]
+        heures_poste = {p: postes_h[mois].count(p) for p in POSTES_MT}
+        energie = {p: _registre(registres[mois - 1], p) for p in POSTES_MT}
+        h_creuses_mois = heures_poste['creuses'] * len(jours)
+        talon = energie['creuses'] / h_creuses_mois if fermes and h_creuses_mois else 0.0
+        talons.append(round(talon, 6))
+        niveau = {}
+        for p in POSTES_MT:
+            reste = energie[p] - talon * heures_poste[p] * len(fermes)
+            if reste < -1e-9:
+                alertes.append(_alerte(
+                    'talon_au_dela_du_registre', 'consommation.registres_mt',
+                    'Mois %d : le talon des jours fermés dépasse le registre « %s ».' % (mois, p)))
+                reste = 0.0
+            heures = heures_poste[p] * len(ouverts)
+            niveau[p] = reste / heures if heures else 0.0
+        for jour, ouvert, _t, _p in jours:
+            courbes[jour] = ([niveau[postes_h[mois][h]] for h in range(HEURES)]
+                             if ouvert else [talon] * HEURES)
+    provenance['talon'] = {'valeur': {'kw_par_mois': talons}, 'statut': 'derive',
+                           'source': 'puissance moyenne des heures creuses du mois (registres)'}
+
+    creuses = sum(_registre(m, 'creuses') for m in registres)
+    pleines = sum(_registre(m, 'pleines') for m in registres)
+    equipes = rythme.get('equipes')
+    jour_seul = equipes == '1x8' or (not equipes and bool(rythme.get('plages')) and all(
+        float(d) >= 5 and float(f) <= 22 and float(d) < float(f)
+        for plages in (rythme.get('plages') or {}).values() for d, f in plages))
+    if (jour_seul and creuses > pleines) or (equipes in EQUIPES_NUIT and creuses == 0):
+        alertes.append(_alerte(
+            'incoherence_equipes_registres', 'rythme.equipes',
+            'Équipes déclarées et registres de la facture incohérents (creuses %.0f kWh, '
+            'pleines %.0f kWh) : à vérifier avec le client.' % (creuses, pleines),
+            interne=True))
+    for mois, bloc in enumerate(registres, start=1):
+        for cle, libelle in (('puissance_atteinte_kw', 'puissance atteinte'),
+                             ('puissance_atteinte_kva', 'puissance atteinte'),
+                             ('kvarh', 'énergie réactive')):
+            if (bloc or {}).get(cle) not in (None, ''):
+                alertes.append(_alerte(
+                    'registre_information', 'consommation.registres_mt',
+                    'Mois %d : %s déclarée (%s) — information, sans effet sur la courbe.'
+                    % (mois, libelle, bloc[cle]), niveau='info', interne=True))
+    return _jours_types_gmt(calendrier, courbes), provenance, alertes
+
+
+def _jours_types_gmt(calendrier, courbes):
+    """Comme :func:`_jours_types`, pour des courbes DÉJÀ en heures GMT."""
+    groupes = {}
+    for jour, ouvert, type_cal, _p in calendrier:
+        type_jour = type_cal if ouvert else 'ferme'
+        cle = (jour.month, type_jour)
+        cumul, n = groupes.get(cle, ([0.0] * HEURES, 0))
+        groupes[cle] = ([c + g for c, g in zip(cumul, courbes[jour])], n + 1)
+    ordre = {'ouvre': 0, 'samedi': 1, 'dimanche': 2, 'ferme': 3}
+    return [{'mois': mois, 'type_jour': type_jour, 'nb_jours': groupes[(mois, type_jour)][1],
+             'charge_kwh': [c / groupes[(mois, type_jour)][1]
+                            for c in groupes[(mois, type_jour)][0]]}
+            for (mois, type_jour) in sorted(groupes, key=lambda k: (k[0], ordre[k[1]]))]
+
+
 #: CIQ130 — catégories dont l'élément d'horaire S'AJOUTE à des heures
 #: d'ouverture déjà déclarées (cuisson de nuit, garde de nuit) ; seul, il ne
 #: décrit pas la journée.

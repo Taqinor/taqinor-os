@@ -468,6 +468,29 @@ def _consommation(res, tarif, alertes, hypotheses):
     return None, None
 
 
+def _registres_resolus(res):
+    """CIQ132 — les 12 registres MT (corps / devis, sinon relevé du lead), ou
+    ``None``. Jamais exigés (D-QJR5-14)."""
+    from apps.ventes.moteur_ci.charge import registres_lisibles
+    registres = res.valeur('registres_mt')
+    if registres_lisibles(registres):
+        return list(registres)
+    releve = res.valeur('releve_kwh')
+    if isinstance(releve, list):
+        par_mois = {}
+        for ligne in releve:
+            if not isinstance(ligne, dict):
+                continue
+            try:
+                par_mois[int(str(ligne.get('mois')).split('-')[-1])] = ligne
+            except ValueError:
+                continue
+        candidats = [par_mois.get(m) for m in range(1, 13)]
+        if registres_lisibles(candidats):
+            return candidats
+    return None
+
+
 def _garde_kwh_factures(res, tarif, alertes):
     """Décision du 30/09 : un kWh déclaré qui contredit la facture (> 2×) bloque."""
     from apps.ventes.etude_horaire import RATIO_KWH_FACTURE_MAX, RATIO_KWH_FACTURE_MIN
@@ -793,6 +816,10 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     tension = res.valeur('tension')
     tarif = tarif_ci.tarif_applicable(res.valeur('tarif_declare'), tension=tension)
     conso, _feuille = _consommation(res, tarif, alertes, hypotheses)
+    registres = _registres_resolus(res)
+    if conso is None and registres:
+        from apps.ventes.moteur_ci.charge import POSTES_MT, _registre
+        conso = [sum(_registre(m, p) for p in POSTES_MT) for m in registres]
     _garde_kwh_factures(res, tarif, alertes)
 
     site = res.valeur('site') or {}
@@ -833,11 +860,18 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     rythme = {k: res.valeur(k) for k in (
         'jours_ouverts', 'plages', 'equipes', 'debut_equipe_h', 'fermetures',
         'ramadan', 'talon', 'categorie_commerciale', 'reponses_categorie')}
-    jours_types, prov_charge, al_charge = courbe_declaree(
-        {k: v for k, v in rythme.items() if v is not None}, conso,
-        annee_reference=_aujourdhui().year - 1, archetype=categorie,
-        profil_societe=_profil_societe(company, mode, categorie),
-        production_jours_types=production['jours_types'])
+    if registres:
+        # CIQ132 — priorité : registres MT > profil déclaré > archétype.
+        from apps.ventes.moteur_ci.charge import courbe_registres_mt
+        jours_types, prov_charge, al_charge = courbe_registres_mt(
+            {k: v for k, v in rythme.items() if v is not None}, registres,
+            annee_reference=_aujourdhui().year - 1)
+    else:
+        jours_types, prov_charge, al_charge = courbe_declaree(
+            {k: v for k, v in rythme.items() if v is not None}, conso,
+            annee_reference=_aujourdhui().year - 1, archetype=categorie,
+            profil_societe=_profil_societe(company, mode, categorie),
+            production_jours_types=production['jours_types'])
     alertes.extend(al_charge)
     niveau = (prov_charge or {}).get('niveau_donnees')
     sous_reserve = _sous_reserve_visite(res, lead, niveau)
