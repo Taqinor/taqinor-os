@@ -815,3 +815,29 @@ describe('AGW400 — liens pompage → tunnel avec ?mode=agricole', () => {
     });
   }
 });
+
+// ———————————————————————————————————————————————————————————————————————————
+// AGW405 — plus de « Subvention FDA : jusqu'à 30 % » ni de « dossier accompagné
+// par nos soins » dans le tunnel ; lien vers /financement.
+// ———————————————————————————————————————————————————————————————————————————
+describe('AGW405 — bloc FDA du tunnel : aucun pourcentage, aucune promesse', () => {
+  const LIENS: Record<string, string> = { FR: '/financement', EN: '/en/financement', AR: '/ar/financement' };
+  for (const [lang, rel] of LOCALES) {
+    const src = read(rel);
+    const bloc = slice(src, '<p id="mt-fda-note"', '</p>');
+    it(`${lang} — le bloc FDA existe, sans « 30 » ni « up to 30 » ni « حتى 30 »`, () => {
+      expect(bloc).not.toBe('');
+      expect(bloc).not.toMatch(/30/);
+      expect(bloc).not.toMatch(/up to 30|حتى 30|jusqu'à 30/i);
+      expect(bloc).not.toMatch(/%|٪/);
+    });
+    it(`${lang} — plus de promesse d'accompagnement du dossier`, () => {
+      expect(src).not.toContain('dossier accompagné par nos soins');
+      expect(src).not.toContain('handle the application for you');
+      expect(src).not.toContain('نتكفّل بمواكبة الملف');
+    });
+    it(`${lang} — le lien vers la page Financement est présent`, () => {
+      expect(bloc).toContain(`href="${LIENS[lang]}"`);
+    });
+  }
+});
