@@ -76,4 +76,10 @@ class SuiviMisAJourTests(TestCase):
     def test_cles_conformes_au_contrat(self):
         contrat = json.loads(CONTRAT.read_text(encoding='utf-8'))
         self.assertEqual(contrat['forme_serveur'], 'complete')
-        self.assertEqual(set(self._get()), set(contrat['exemple']))
+        # ``detail`` est la clé des REFUS (403 otp_required / 404) : la carte
+        # complète lue par scripts/check_api_shapes.py unit toutes les
+        # réponses de la vue, l'exemple la déclare donc à null (même
+        # convention que proposal_data.json). Un 200 ne la porte jamais.
+        self.assertIsNone(contrat['exemple']['detail'])
+        self.assertEqual(set(self._get()),
+                         set(contrat['exemple']) - {'detail'})

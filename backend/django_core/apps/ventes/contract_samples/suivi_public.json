@@ -26,7 +26,8 @@
       {"key": "materiel", "label": "Matériel commandé", "done": true, "date": "2026-09-15"},
       {"key": "installation", "label": "Installation", "done": true, "date": "2026-10-02"},
       {"key": "facture", "label": "Facturé", "done": false, "date": null}
-    ]
+    ],
+    "detail": null
   },
   "exemple_aucun_jalon_fait": {
     "reference": "DEV-202608-0043",
