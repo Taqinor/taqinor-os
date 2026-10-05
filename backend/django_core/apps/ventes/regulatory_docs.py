@@ -8,7 +8,10 @@ régime sont EXACTEMENT ceux de ``apps.installations.regime`` /
   * ``declaration_bt``        — déclaration basse tension (< seuil)
   * ``accord_raccordement``   — accord de raccordement (BT/MT au-dessus du seuil)
   * ``autorisation_anre``     — autorisation ANRE (grandes puissances)
-  * ``non_concerne``          — hors champ loi 82-21 (autoconsommation isolée…)
+  * ``non_concerne``          — aucun dossier à déposer (régime non qualifié)
+  * ``declaration_hors_reseau`` — AGR603 : installation NON raccordée au réseau.
+    Loi 82-21 art. 3 (BO 7400) : l'autoconsommation isolée relève d'une
+    DÉCLARATION, quelle que soit la puissance — elle n'est PAS hors loi 82-21.
 
 Cœur PUR (fonction sans Django) : c'est de la donnée de RÉFÉRENCE réutilisée par
 le suivi de dossier (FG268+) et par tout générateur de déclaration (FG272). On
@@ -63,6 +66,17 @@ _REGIME_PIECES = {
                "Garanties financières du projet", False),
     ],
     'non_concerne': [],
+    # AGR603 — hors réseau : les pièces sont fixées par voie réglementaire
+    # (décret 2.25.100, non lu) ; jamais de pièce ONEE (aucun point de
+    # livraison), jamais une pièce inventée → liste vide + motif exposé.
+    'declaration_hors_reseau': [],
+}
+
+# AGR603 — régimes dont la liste de pièces est volontairement vide, avec le
+# motif exposé par ``document_pack`` (jamais une pièce inventée).
+_MOTIF_SANS_PIECES = {
+    'declaration_hors_reseau': (
+        "Pièces fixées par voie réglementaire (décret 2.25.100, non lu)"),
 }
 
 # Régimes connus (alignés sur Installation.Regime8221).
@@ -82,7 +96,11 @@ def required_documents(regime_8221):
         return []
     regime = regime_8221.strip()
     if regime == 'non_concerne':
-        # Hors champ 82-21 : pas de dossier réglementaire à déposer.
+        # Aucun régime qualifié : pas de dossier réglementaire à déposer.
+        return []
+    if regime in _MOTIF_SANS_PIECES:
+        # AGR603 — hors réseau : aucune pièce commune (pas de contrat ONEE),
+        # aucune pièce inventée ; le motif est exposé par ``document_pack``.
         return []
     specifics = _REGIME_PIECES.get(regime)
     if specifics is None:
@@ -108,6 +126,8 @@ def regime_label(regime_8221):
         'accord_raccordement': "Accord de raccordement",
         'autorisation_anre': "Autorisation ANRE",
         'non_concerne': "Non concerné (hors loi 82-21)",
+        'declaration_hors_reseau':
+            "Déclaration hors réseau (loi 82-21, art. 3)",
     }
     return labels.get((regime_8221 or '').strip(), regime_8221 or '—')
 
@@ -121,10 +141,34 @@ def document_pack(regime_8221):
     """
     pieces = required_documents(regime_8221)
     required_count = sum(1 for p in pieces if p.get('required'))
-    return {
-        'regime': (regime_8221 or '').strip(),
+    regime = (regime_8221 or '').strip()
+    pack = {
+        'regime': regime,
         'regime_label': regime_label(regime_8221),
         'pieces': pieces,
         'required_count': required_count,
         'total_count': len(pieces),
     }
+    motif = _MOTIF_SANS_PIECES.get(regime)
+    if motif:
+        # AGR603 — clé ajoutée SEULEMENT quand la liste est vide par motif :
+        # les 4 régimes historiques gardent une sortie octet-identique.
+        pack['motif_pieces'] = motif
+    return pack
+
+
+def regime_8221_pour_devis(mode, raccordement):
+    """AGR603 — régime 82-21 suggéré pour un devis (fonction pure).
+
+    Un devis hors réseau (cas type : AGRICOLE / pompage) relève d'une
+    déclaration (loi 82-21, art. 3, BO 7400), QUELLE QUE SOIT la puissance :
+    jamais ``accord_raccordement`` ni ``non_concerne``. L'art. 3 ne dépend pas
+    du marché : ``mode`` est accepté pour l'appelant mais ne change pas la
+    règle. Pour un devis raccordé, aucune suggestion ici (``None``) : le régime
+    par puissance relève du noyau (CIQ612), jamais d'une seconde table locale.
+    """
+    del mode  # la règle art. 3 vaut pour tout marché
+    racc = (raccordement or '').strip().lower().replace('-', '_').replace(' ', '_')
+    if racc in ('hors_reseau', 'off_grid', 'isole'):
+        return 'declaration_hors_reseau'
+    return None

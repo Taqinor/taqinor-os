@@ -73,3 +73,11 @@ class DocumentPackTest(SimpleTestCase):
         blob = repr(rd.document_pack('autorisation_anre'))
         for forbidden in ('prix', 'marge', 'achat', 'price'):
             self.assertNotIn(forbidden, blob.lower())
+
+
+class HorsReseauRegimeTest(SimpleTestCase):
+    """AGR603 — le régime hors réseau est connu, sans pièce ONEE."""
+
+    def test_hors_reseau_known_and_empty(self):
+        self.assertIn('declaration_hors_reseau', rd.KNOWN_REGIMES)
+        self.assertEqual(rd.required_documents('declaration_hors_reseau'), [])
