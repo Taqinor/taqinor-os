@@ -408,13 +408,15 @@ build_devis_from_layout = _creation_calepinage.build_devis_from_layout
 build_devis_depuis_calepinage_retenu = (
     _creation_calepinage.build_devis_depuis_calepinage_retenu)
 produits_a_renseigner = _creation_calepinage.produits_a_renseigner
-SCENARIOS_DEMANDABLES = _creation.SCENARIOS_DEMANDABLES
-composer_devis_residentiel = _creation.composer_devis_residentiel
-build_devis_auto = _creation.build_devis_auto
-auto_devis_tunnel_actif = _creation.auto_devis_tunnel_actif
-corps_note_refus_auto_devis = _creation.corps_note_refus_auto_devis
-creer_devis_automatique_depuis_lead = _creation.creer_devis_automatique_depuis_lead
-planifier_devis_automatique_pour_lead = _creation.planifier_devis_automatique_pour_lead
+# SPL267 — le devis automatique vit dans ``domain/creation_auto.py``.
+from apps.ventes.domain import creation_auto as _creation_auto  # noqa: E402
+SCENARIOS_DEMANDABLES = _creation_auto.SCENARIOS_DEMANDABLES
+composer_devis_residentiel = _creation_auto.composer_devis_residentiel
+build_devis_auto = _creation_auto.build_devis_auto
+auto_devis_tunnel_actif = _creation_auto.auto_devis_tunnel_actif
+corps_note_refus_auto_devis = _creation_auto.corps_note_refus_auto_devis
+creer_devis_automatique_depuis_lead = _creation_auto.creer_devis_automatique_depuis_lead
+planifier_devis_automatique_pour_lead = _creation_auto.planifier_devis_automatique_pour_lead
 create_devis_pour_ticket = _creation.create_devis_pour_ticket
 create_devis_upsell_from_intervention = _creation.create_devis_upsell_from_intervention
 save_devis_as_preset = _creation.save_devis_as_preset

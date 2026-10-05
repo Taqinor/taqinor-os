@@ -73,7 +73,7 @@ DEPLACEMENTS = {
     'cal': ('split_dm_cal', 'apps/ventes/domain/creation.py',
             'apps/ventes/domain/creation_calepinage.py', 'SPL266', True),
     'auto': ('split_dm_auto', 'apps/ventes/domain/creation.py',
-             'apps/ventes/domain/creation_auto.py', 'SPL267', False),
+             'apps/ventes/domain/creation_auto.py', 'SPL267', True),
     'clone': ('split_dm_clone', 'apps/ventes/domain/creation.py',
               'apps/ventes/domain/creation_clone.py', 'SPL268', False),
 }

@@ -39,7 +39,7 @@ from django.test import SimpleTestCase, TestCase
 
 from apps.crm.models import Lead
 from apps.stock.models import Produit
-from apps.ventes.domain import creation as _creation
+from apps.ventes.domain import creation_auto as _creation_auto
 from apps.ventes.domain import creation_calepinage as _creation_calepinage
 from apps.ventes.domain import etape_composer, pipeline
 
@@ -130,7 +130,7 @@ class LApercuEtLaCreationNeDiverguentPlus(_Base):
     slug = 'qjr80-non-divergence'
 
     def test_apercu_et_creation_a_l_octet(self):
-        apercu = _creation.composer_devis_residentiel(
+        apercu = _creation_auto.composer_devis_residentiel(
             company=self.company, nb_panneaux=NB_PANNEAUX,
             panel_watt=PANEL_WATT, scenario='sans',
             mppt_paires=MPPT_PAIRES, structure_type=STRUCTURE)
@@ -215,25 +215,25 @@ class LesDeuxCheminsRemplissentLaMemeIntention(_Base):
         remplissent la MÊME intention.
         """
         vues = []
-        vrai = _creation.composer
+        vrai = _creation_auto.composer
 
         def espion(intention):
             vues.append(intention)
             return vrai(intention)
 
-        _creation.composer = espion
+        _creation_auto.composer = espion
         pipeline.composer = espion
         try:
             appel()
         finally:
-            _creation.composer = vrai
+            _creation_auto.composer = vrai
             pipeline.composer = vrai
         self.assertEqual(len(vues), 1)
         return vues[0]
 
     def test_meme_intention_des_deux_cotes(self):
         intention_apercu = self._capturer(
-            lambda: _creation.composer_devis_residentiel(
+            lambda: _creation_auto.composer_devis_residentiel(
                 company=self.company, nb_panneaux=NB_PANNEAUX,
                 panel_watt=PANEL_WATT, scenario='sans',
                 mppt_paires=MPPT_PAIRES, structure_type=STRUCTURE))

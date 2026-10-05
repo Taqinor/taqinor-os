@@ -215,7 +215,7 @@ class LesCinqCheminsDisentLaMemePhrase(TestCase):
         le devis automatique compose donc « les deux » (U2). L'option « avec »
         n'est pas servable ⇒ AUCUN devis n'est créé, et la note d'abstention
         posée sur le lead porte EXACTEMENT la phrase que la 3D affiche."""
-        from apps.ventes.domain.creation import (
+        from apps.ventes.domain.creation_auto import (
             creer_devis_automatique_depuis_lead)
         from apps.ventes.models import Devis
 
@@ -266,7 +266,7 @@ class LesCinqCheminsDisentLaMemePhrase(TestCase):
             {'result': {'panels': 9, 'kwc': 6.39}, 'scenario': 'les_deux'},
             self.company))
 
-        from apps.ventes.domain.creation import (
+        from apps.ventes.domain.creation_auto import (
             creer_devis_automatique_depuis_lead)
         devis = creer_devis_automatique_depuis_lead(
             lead_id=self._lead().id, company_id=self.company.id)

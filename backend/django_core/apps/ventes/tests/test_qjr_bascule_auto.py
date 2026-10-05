@@ -39,7 +39,9 @@ from django.test import TestCase
 
 from apps.crm.models import Lead
 from apps.stock.models import Produit
-from apps.ventes.domain import creation as _creation
+# SPL267 — le devis automatique (et ses lectures ``appliquer`` /
+# ``_panneaux_dimensionnement_horaire``) vit dans ``domain/creation_auto``.
+from apps.ventes.domain import creation_auto as _creation
 from apps.ventes.domain.pipeline import ORIGINE_AUTO, ORIGINE_TUNNEL
 from apps.ventes.domain.etape_composer import (
     MSG_SANS_BATTERIE,
