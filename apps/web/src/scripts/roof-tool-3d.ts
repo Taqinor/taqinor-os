@@ -16,7 +16,7 @@
  *
  * PVGIS : appelé côté serveur uniquement (/api/roof-estimate), jamais ici.
  */
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 // CSS importée comme URL (et non en effet de bord) : Vite émet l'asset mais
 // n'injecte aucun <link>. On l'ajoute nous-mêmes à l'init → ~69 ko chargés
 // seulement à l'ouverture de l'outil, jamais au chargement de la page.

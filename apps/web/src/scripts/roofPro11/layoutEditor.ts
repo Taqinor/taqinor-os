@@ -8,7 +8,7 @@
  * panneaux change ; le rendement par panneau et le pavage restent ceux de
  * l'optimiseur (recompute par COMPTAGE via la fenêtre de production).
  */
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import {
   createLayoutState,
   occupiedCount,

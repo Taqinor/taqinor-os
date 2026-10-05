@@ -22,7 +22,7 @@
  *
  * Décisions géométriques : voir apps/web/SOLAR_3D_RATIONALE.md.
  */
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import maplibreCssUrl from 'maplibre-gl/dist/maplibre-gl.css?url';
 import * as THREE from 'three';
 import { layoutProRows, type ProLayout } from '../lib/roofPro';

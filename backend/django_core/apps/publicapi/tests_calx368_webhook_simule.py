@@ -19,9 +19,10 @@ from core import event_catalog, events
 
 from . import calepinage_event_receivers as recepteurs
 from . import delivery
+from .portees import SCOPE_READ_CALEPINAGES
 from .constants import (
     ALL_EVENTS, EVENT_CALEPINAGE_SIMULE, EVENT_CALEPINAGE_VALIDE,
-    EVENT_CHOICES, SCOPE_READ_CALEPINAGES,
+    EVENT_CHOICES,
 )
 
 #: Un résultat RÉELLEMENT simulé, à la forme du contrat

@@ -11,7 +11,8 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 from apps.crm.models import Lead
 
-from .constants import SCOPE_READ_LEADS, SCOPE_WRITE_LEADS, ENV_TEST
+from .portees import SCOPE_READ_LEADS, SCOPE_WRITE_LEADS
+from .constants import ENV_TEST
 from .models import ApiKey, SandboxTenant
 from .services import get_or_create_sandbox, reset_sandbox, DEMO_LEADS
 

@@ -12,7 +12,7 @@ from apps.publicapi.models import ServiceAccount, hash_key
 
 class ServiceAccountModelTests(TenantAPITestCase):
     def test_issue_hashes_token_and_filters_scopes(self):
-        from apps.publicapi.constants import ALL_SCOPES
+        from apps.publicapi.portees import ALL_SCOPES
         good = ALL_SCOPES[0]
         sa, raw = ServiceAccount.issue(
             company=self.company, nom='ci-bot',
