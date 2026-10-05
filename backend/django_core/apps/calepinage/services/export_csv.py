@@ -134,12 +134,14 @@ def document_exportable(calepinage, avec_points=True):
     """
     from .. import selectors
 
-    servi = selectors.resultat_servi(calepinage)
-    servi = servi if isinstance(servi, dict) else {}
     stocke = getattr(calepinage, 'resultat', None)
     stocke = stocke if isinstance(stocke, dict) else {}
     layout = getattr(calepinage, 'roof_layout', None)
     layout = layout if isinstance(layout, dict) else {}
+    # Rien n'a jamais été posé : rien n'est servi, et on ne le calcule pas
+    # (même règle que ``export_projet.document_de_projet``, CALX312).
+    servi = selectors.resultat_servi(calepinage) if layout else {}
+    servi = servi if isinstance(servi, dict) else {}
     simulation = stocke.get('simulation')
     simulation = simulation if isinstance(simulation, dict) else {}
     perimee = bool(servi.get('simulation_perimee'))

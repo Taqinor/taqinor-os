@@ -39,7 +39,7 @@ from apps.calepinage.services.export_tableur import (
 from apps.calepinage.services.planche import geometrie_de_planche
 from apps.calepinage.services.provenance_document import (
     LIBELLE_EMPREINTE_LAYOUT, LIBELLE_EMPREINTE_SIMULATION, NON_CALCULEE,
-    TITRE_FEUILLE, lignes_de_provenance,
+    NON_PUBLIEE, TITRE_FEUILLE, lignes_de_provenance,
 )
 
 from .test_cal171_planche import LAYOUT
@@ -133,7 +133,13 @@ class UneSeuleFonctionTest(unittest.TestCase):
         csv = [tuple(ligne) for ligne in
                _lignes_de_provenance(document_exportable(objet)) if ligne]
         # ACAL217 — l'en-tête du CSV porte lui-même les deux empreintes.
-        self.assertEqual(lignes_de_provenance(objet), csv)
+        # Même composition (libellés, ordre, valeurs) ; seule différence
+        # documentée de ``lignes_de_provenance`` : une cellule VIDE du CSV
+        # (ex. « Pertes passées à PVGIS » d'une simulation non servie) s'y
+        # écrit « non publiée » — jamais une chaîne vide dans un document.
+        attendues = [(libelle, str(valeur).strip() or NON_PUBLIEE)
+                     for libelle, valeur in csv]
+        self.assertEqual(lignes_de_provenance(objet), attendues)
         self.assertEqual(len(csv), 8)
 
     def test_les_empreintes_sont_celles_du_calepinage_et_de_la_simulation(
