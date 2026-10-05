@@ -88,6 +88,12 @@ class GabaritDossierViewSet(CompanyScopedModelViewSet):
     permission_classes = [PeutGererCalepinage]
     http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
     pagination_class = None
+    #: YAPIC2/YAPIC11 — tri et recherche DÉCLARÉS (liste blanche) ; l'ordre
+    #: par défaut reste celui du registre (pays, intitulé, id).
+    ordering_fields = ['pays', 'intitule', 'code', 'version', 'depose_le',
+                       'id']
+    ordering = ['pays', 'intitule', 'id']
+    search_fields = ['intitule', 'code', 'pays']
 
     def get_permissions(self):
         return [PeutGererCalepinage()]
@@ -96,7 +102,7 @@ class GabaritDossierViewSet(CompanyScopedModelViewSet):
         'CalepinageGabaritsDossiers',
         {'gabarits': serializers.ListField(child=serializers.DictField())})})
     def list(self, request, *args, **kwargs):
-        gabarits = self.get_queryset().order_by('pays', 'intitule', 'id')
+        gabarits = self.filter_queryset(self.get_queryset())
         return Response({'gabarits': [gabarit_publie(g) for g in gabarits]})
 
     @extend_schema(request=None, responses={200: _FORME_GABARIT})
