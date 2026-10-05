@@ -397,6 +397,8 @@ CHAMPS_ENTREE = (
     'derogations',          # CALX215 — alertes PASSÉES OUTRE (geste, pas réglage)
     'transformateur',       # ACAL151 — {declare, 3 grandeurs sourcées}
     'regime',               # ACAL152 — régime de neutre SAISI (TT/TN/IT)
+    'batterie',             # ACAL166 — déclaration de la batterie du site
+    'hors_reseau',          # ACAL166 — mode hors réseau (jours d'autonomie)
 )
 
 #: CALX215 — la clé par laquelle une alerte est PASSÉE OUTRE. C'est un GESTE,
@@ -736,7 +738,8 @@ NOMBRES_ENTREE = (
 PHASES_ADMISES = (1, 3)
 
 #: Les saisies qui doivent être des OBJETS (``{...}``) quand elles sont posées.
-OBJETS_ENTREE = ('protections', 'terre', 'exigence_marche')
+OBJETS_ENTREE = ('protections', 'terre', 'exigence_marche', 'batterie',
+                 'hors_reseau')
 
 
 def _fini(valeur):
@@ -799,6 +802,8 @@ def _valider_entree(calepinage, fusionnee, postee):
                 "« %s » doit être un objet {...} (reçu : %s)."
                 % (cle, type(valeur).__name__), champ=cle)
     _valider_transformateur(postee.get('transformateur'))
+    _valider_batterie(postee.get('batterie'))  # ACAL166
+    _valider_hors_reseau(postee.get('hors_reseau'))  # ACAL166
     poly = postee.get(CLE_POLYSTRING)
     if poly not in (None, '') and not isinstance(poly, (list, tuple)):
         raise EntreeInvalide(
@@ -833,6 +838,107 @@ def _valider_entree(calepinage, fusionnee, postee):
         except PolystringRefuse as refus:
             raise EntreeInvalide(str(refus), champ='%s.%s' % (
                 CLE_POLYSTRING, refus.champ or 'groupes'))
+
+
+#: ACAL166 — les clés d'une déclaration de batterie, et AUCUNE autre : ce sont
+#: celles que lit l'étape ``services/etapes/batterie.py``.
+CLES_BATTERIE = ('produit', 'packs', 'strategie', 'couplage', 'onduleur_ref',
+                 'seuil_effacement_kw', 'heures_charge', 'heures_decharge',
+                 'reserve_backup_kwh', 'motivation', 'etat_initial_kwh')
+
+#: ACAL166 — les clés d'une déclaration hors réseau (``etapes/hors_reseau.py``).
+CLES_HORS_RESEAU = ('actif', 'jours_autonomie', 'etat_initial_kwh', 'seuils')
+
+
+def _refus_champ(message, champ):
+    raise EntreeInvalide(message, champ=champ)
+
+
+def _valider_batterie(saisie):
+    """ACAL166 — la FORME de la déclaration de batterie, refusée en NOMMANT
+    le champ (``batterie.<champ>``). Aucune stratégie n'est supposée : une
+    stratégie absente reste absente, et la simulation OMET le bloc en le
+    disant. Les grandeurs de la batterie viennent de la FICHE du produit,
+    jamais de cette saisie."""
+    from .batterie import COUPLAGES, MOTIVATIONS, STRATEGIES
+
+    if saisie is None:
+        return
+    if not isinstance(saisie, dict):
+        _refus_champ("« batterie » doit être un objet {strategie, packs, "
+                     "couplage…} (reçu : %s)." % type(saisie).__name__,
+                     'batterie')
+    inconnues = sorted(set(saisie) - set(CLES_BATTERIE))
+    if inconnues:
+        _refus_champ("Champ de la batterie inconnu : « %s ». Champs admis : "
+                     "%s." % (inconnues[0], ', '.join(CLES_BATTERIE)),
+                     'batterie.%s' % inconnues[0])
+    for cle, admis in (('strategie', STRATEGIES), ('couplage', COUPLAGES),
+                       ('motivation', tuple(MOTIVATIONS))):
+        valeur = saisie.get(cle)
+        if valeur not in (None, '') and valeur not in admis:
+            _refus_champ("« %s » : « %s » n'est pas admis. Valeurs admises : "
+                         "%s." % (cle, valeur, ', '.join(admis)),
+                         'batterie.%s' % cle)
+    packs = saisie.get('packs')
+    if packs not in (None, ''):
+        nombre = _nombre(packs)
+        if (not _fini(nombre) or nombre < 1 or nombre != int(nombre)):
+            _refus_champ("« packs » : saisissez un nombre entier de packs "
+                         "supérieur ou égal à 1 (reçu : « %s »)." % packs,
+                         'batterie.packs')
+    for cle in ('seuil_effacement_kw', 'reserve_backup_kwh',
+                'etat_initial_kwh'):
+        brut = saisie.get(cle)
+        if brut in (None, ''):
+            continue
+        nombre = _nombre(brut)
+        if not _fini(nombre) or nombre < 0:
+            _refus_champ("« %s » : saisissez un nombre positif ou nul, ou "
+                         "laissez le champ vide (reçu : « %s »)."
+                         % (cle, brut), 'batterie.%s' % cle)
+    for cle in ('heures_charge', 'heures_decharge'):
+        heures = saisie.get(cle)
+        if heures in (None, ''):
+            continue
+        if (not isinstance(heures, (list, tuple))
+                or any(isinstance(h, bool) or not isinstance(h, int)
+                       or not 0 <= h <= 23 for h in heures)):
+            _refus_champ("« %s » doit être une liste d'heures entières "
+                         "comprises entre 0 et 23." % cle, 'batterie.%s' % cle)
+
+
+def _valider_hors_reseau(saisie):
+    """ACAL166 — la FORME du mode hors réseau : ``actif`` booléen, jours
+    d'autonomie strictement positifs. Refus nommé ``hors_reseau.<champ>``."""
+    if saisie is None:
+        return
+    if not isinstance(saisie, dict):
+        _refus_champ("« hors_reseau » doit être un objet {actif, "
+                     "jours_autonomie…} (reçu : %s)."
+                     % type(saisie).__name__, 'hors_reseau')
+    inconnues = sorted(set(saisie) - set(CLES_HORS_RESEAU))
+    if inconnues:
+        _refus_champ("Champ hors réseau inconnu : « %s ». Champs admis : %s."
+                     % (inconnues[0], ', '.join(CLES_HORS_RESEAU)),
+                     'hors_reseau.%s' % inconnues[0])
+    if 'actif' in saisie and not isinstance(saisie['actif'], bool):
+        _refus_champ("« actif » vaut vrai (hors réseau) ou faux (raccordé).",
+                     'hors_reseau.actif')
+    jours = saisie.get('jours_autonomie')
+    if jours not in (None, ''):
+        nombre = _nombre(jours)
+        if not _fini(nombre) or nombre <= 0:
+            _refus_champ("« jours_autonomie » : saisissez un nombre de jours "
+                         "strictement positif (reçu : « %s »)." % jours,
+                         'hors_reseau.jours_autonomie')
+    etat = saisie.get('etat_initial_kwh')
+    if etat not in (None, ''):
+        nombre = _nombre(etat)
+        if not _fini(nombre) or nombre < 0:
+            _refus_champ("« etat_initial_kwh » : saisissez un nombre positif "
+                         "ou nul (reçu : « %s »)." % etat,
+                         'hors_reseau.etat_initial_kwh')
 
 
 def _valider_transformateur(saisie):
