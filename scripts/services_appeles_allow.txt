@@ -46,7 +46,6 @@ backend/django_core/apps/calepinage/services/documents/gabarit_document.py::css_
 backend/django_core/apps/calepinage/services/documents/gabarit_document.py::entete_html
 backend/django_core/apps/calepinage/services/documents/gabarit_document.py::logo_valide
 backend/django_core/apps/calepinage/services/documents/gabarit_document.py::mentions_d_etat
-backend/django_core/apps/calepinage/services/documents/gabarit_document.py::pied_html
 backend/django_core/apps/calepinage/services/documents/gabarit_document.py::styles_vides
 backend/django_core/apps/calepinage/services/documents/libelles_document.py::mention_de_repli
 backend/django_core/apps/calepinage/services/documents/manuel_proprietaire.py::construire_manuel
@@ -71,7 +70,6 @@ backend/django_core/apps/calepinage/services/documents/versions_document.py::pro
 backend/django_core/apps/calepinage/services/electrique.py::alertes_nommees
 backend/django_core/apps/calepinage/services/electrique.py::bloc_ratio_dc_ac
 backend/django_core/apps/calepinage/services/electrique.py::bornes_ratio
-backend/django_core/apps/calepinage/services/electrique.py::entree_stockee
 backend/django_core/apps/calepinage/services/electrique.py::fournisseur_temperatures
 backend/django_core/apps/calepinage/services/electrique.py::garde_publication
 backend/django_core/apps/calepinage/services/electrique.py::journaliser_ecart_longueur

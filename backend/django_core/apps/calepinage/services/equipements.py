@@ -10,9 +10,13 @@ CAL120 avant cette tâche, PACT10/PACT11).
 
 D'OÙ VIENT L'ÉQUIPEMENT « RETENU »
 -----------------------------------
-Le document ``roof_layout`` (schéma v2) ne porte AUCUNE référence produit —
-seule la géométrie. L'équipement chiffré vit sur le DEVIS lié
-(``Calepinage.devis``) : ce module lit ses lignes PRODUIT via le sélecteur
+Le document ``roof_layout`` (schéma v2) ne cite que le MODULE posé
+(``modules[].produitId``) ; l'onduleur, la batterie et l'optimiseur chiffrés
+vivent sur le DEVIS lié (``Calepinage.devis``). Ce module est LA lecture de
+ces lignes : le résolveur du calcul électrique
+(``services/electrique.py::resoudre_materiel``, D-ACAL-10) le consomme pour
+son défaut « lignes du devis lié » au lieu de relire le devis lui-même. Il lit
+les lignes PRODUIT via le sélecteur
 cross-app ``apps.ventes.selectors.lignes_produits_calepinage`` (jamais un
 import de ``apps.ventes.models``), classe chaque ligne par la famille de sa
 fiche technique (``apps.stock.selectors.type_fiche_produit`` :

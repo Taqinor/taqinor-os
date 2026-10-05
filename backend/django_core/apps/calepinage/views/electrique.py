@@ -26,10 +26,11 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
+from ..permissions import PeutLireOuEcrireCalepinage, PeutVoirCalepinage
 from ..services.electrique import (
     CLE_PUBLICATION, EntreeInvalide, TemperaturesInvalides, enregistrer_entree,
-    evaluation_electrique, resultat_calepinage, verdict_publiable,
+    entree_electrique_servie, entree_stockee, evaluation_electrique,
+    resultat_calepinage, verdict_publiable,
 )
 
 __all__ = ['ElectriqueActionsMixin']
@@ -62,16 +63,23 @@ class ElectriqueActionsMixin:
             return Response({refus.champ or 'temperatures': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'], url_path='entree-electrique',
-            permission_classes=[PeutGererCalepinage])
+    @action(detail=True, methods=['get', 'post'], url_path='entree-electrique',
+            permission_classes=[PeutLireOuEcrireCalepinage])
     def entree_electrique(self, request, pk=None):
         """CAL125 — enregistre l'ENTRÉE du calcul électrique, puis republie.
 
+        ACAL56 — ``GET`` relit l'entrée STOCKÉE clé par clé, avec le matériel
+        RÉSOLU et sa provenance (désignation explicite, sinon lignes du devis
+        lié — D-ACAL-10), les rôles absents et les candidats du catalogue de
+        la société (contrat ``calepinage_entree_electrique.json``). Lecture
+        PURE, garde de LECTURE ; ``POST`` reste gardé en écriture.
+
         Le matériel est DÉSIGNÉ (identifiants produit, résolus par le
-        sélecteur du stock et bornés société), les longueurs et les
-        températures sont SAISIES : rien n'est deviné depuis le devis ni
-        depuis un catalogue « par défaut ». La réponse est le ``resultat``
-        recalculé — l'appelant n'a pas à enchaîner un second appel.
+        sélecteur du stock et bornés société) ou, à défaut, celui du devis
+        lié ; les longueurs et les températures sont SAISIES : rien n'est
+        tiré d'un catalogue « par défaut ». La réponse du ``POST`` est le
+        ``resultat`` recalculé — l'appelant n'a pas à enchaîner un second
+        appel.
 
         CALX215 — ``derogations`` (``[{code, motif}]``) passe outre des
         ALERTES nommées par leur code : l'AUTEUR est l'utilisateur de la
@@ -79,6 +87,9 @@ class ElectriqueActionsMixin:
         par le serveur.
         """
         calepinage = self.get_object()
+        if request.method.lower() == 'get':
+            return Response(entree_electrique_servie(
+                calepinage, entree_stockee(calepinage)))
         corps = request.data if isinstance(request.data, dict) else {}
         try:
             enregistrer_entree(calepinage, corps, user=request.user)

@@ -55,6 +55,8 @@ __all__ = [
     'CLE_CHAINE_FAIBLE', 'METHODE_CHAINE_FAIBLE', 'REFERENCE_CHAINE_FAIBLE',
     'MOTIF_CHAINE_FAIBLE_ABSENTE',
     'entree_stockee', 'enregistrer_entree', 'resoudre_materiel',
+    'entree_electrique_servie', 'CLES_ENTREE_SERVIE',  # ACAL56
+    'PROVENANCE_EXPLICITE', 'PROVENANCE_DEVIS', 'ROLES_MATERIEL',  # ACAL56
     'conception_du_calepinage', 'resultat_calepinage',
     'resultat_electrique_complet',  # ACAL55
     'verdicts_electriques', 'bornes_ratio', 'bloc_ratio_dc_ac',
@@ -306,11 +308,14 @@ def temperatures_pour_calepinage(calepinage, *, saisie=None,
 # ═══════════════════════════════════════════════════════════════════════════
 #
 # Ce que le calcul électrique demande en plus du dessin : QUEL module, QUEL
-# onduleur, quelles longueurs de liaison, quelles températures. Rien de tout
-# cela ne se DEVINE — ni depuis le devis, ni depuis un catalogue « par
-# défaut » : le matériel est DÉSIGNÉ (identifiants produit, lus par le
-# sélecteur du stock, bornés société) et les longueurs sont SAISIES. Sans
-# désignation, le résultat est publié sans verdict, en nommant ce qui manque.
+# onduleur, quelles longueurs de liaison, quelles températures. D-ACAL-10
+# (fondateur, 04/10/2026) : le matériel est d'abord celui DÉSIGNÉ sur le
+# calepinage (provenance « explicite ») ; à défaut, celui des LIGNES DU DEVIS
+# LIÉ (provenance « devis », recalculée à chaque lecture, jamais persistée) ;
+# à défaut, un refus NOMMÉ qui dit le geste. Jamais un catalogue « par
+# défaut », jamais un produit supposé : tout passe par le sélecteur du stock,
+# borné société. Les longueurs sont SAISIES. Sans matériel, le résultat est
+# publié sans verdict, en nommant ce qui manque.
 #
 # L'entrée vit dans ``Calepinage.resultat['entree_electrique']`` : aucune
 # migration pour ranger quatre identifiants et trois longueurs, et le document
@@ -693,8 +698,52 @@ def _designation(produit):
     return ('%s %s' % (marque, nom)).strip()
 
 
-def resoudre_materiel(company, entree):
-    """Les blocs de fiche technique du matériel DÉSIGNÉ, bornés société.
+#: ACAL56 — les deux PROVENANCES possibles d'un matériel résolu. Une
+#: troisième n'existe pas : l'absence de matériel est ``None``.
+PROVENANCE_EXPLICITE = 'explicite'
+PROVENANCE_DEVIS = 'devis'
+
+#: Les rôles du matériel électrique, et la famille de l'agrégat
+#: ``services/equipements.py`` (LA lecture des lignes du devis) qui les sert.
+ROLES_MATERIEL = ('module', 'onduleur', 'optimiseur')
+FAMILLE_EQUIPEMENT = {'module': 'panneau', 'onduleur': 'onduleur',
+                      'optimiseur': 'optimiseur'}
+LIBELLES_ROLES = {'module': 'module PV', 'onduleur': 'onduleur',
+                  'optimiseur': 'optimiseur'}
+
+#: Le GESTE qui lève l'absence — nommé tel que l'écran le montre.
+GESTE_DESIGNATION = "désignez-le dans l'onglet Matériel électrique"
+
+
+def _produits_du_devis(calepinage):
+    """``{rôle: id produit}`` des lignes du devis LIÉ, ou ``{}``.
+
+    LA lecture du devis reste ``services/equipements.py::
+    equipements_du_calepinage`` (sélecteur cross-app ventes, borné société,
+    variante par défaut) — aucune seconde sélection « première ligne » ici.
+    """
+    if calepinage is None or not getattr(calepinage, 'devis_id', None):
+        return {}
+    from .equipements import equipements_du_calepinage
+
+    agregat = equipements_du_calepinage(calepinage) or {}
+    produits = {}
+    for role, famille in FAMILLE_EQUIPEMENT.items():
+        bloc = agregat.get(famille)
+        if isinstance(bloc, dict) and bloc.get('produit') not in (None, ''):
+            produits[role] = bloc['produit']
+    return produits
+
+
+def resoudre_materiel(company, entree, *, calepinage=None):
+    """Les blocs de fiche technique du matériel RETENU, bornés société.
+
+    D-ACAL-10 / ACAL56 — par rôle (module, onduleur, optimiseur) : la
+    désignation EXPLICITE de l'entrée (``<rôle>_produit``) d'abord ; sinon la
+    ligne du DEVIS LIÉ à ``calepinage`` (provenance ``'devis'``, recalculée à
+    chaque lecture : changer la ligne du devis change le calcul) ; sinon le
+    rôle est ABSENT et le message nomme le geste. L'optimiseur n'est jamais
+    réclamé (il est optionnel).
 
     Lecture cross-app par SÉLECTEUR (``apps.stock.selectors``) uniquement :
     ``get_produit_scoped`` (donc jamais un produit d'une autre société) puis
@@ -702,32 +751,151 @@ def resoudre_materiel(company, entree):
     ``prix_vente`` ne sont jamais lus : ce module ne publie aucun coût.
 
     Rend ``{module: {...}, onduleur: {...}, optimiseur: {...} | None,
-    designations: {...}, absents: (…)}`` — ``absents`` nomme EN FRANÇAIS le
-    matériel non désigné ou introuvable, pour que l'écran dise quoi choisir.
+    designations: {...}, produits: {...}, provenances: {...}, absents: (…)}``
+    — ``absents`` nomme EN FRANÇAIS le matériel manquant ou introuvable.
     """
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
 
     blocs = {'module': {}, 'onduleur': {}, 'optimiseur': None}
-    designations = {'module': '', 'onduleur': '', 'optimiseur': ''}
+    designations = {role: '' for role in ROLES_MATERIEL}
+    produits = {role: None for role in ROLES_MATERIEL}
+    provenances = {role: None for role in ROLES_MATERIEL}
     absents = []
-    libelles = {'module': 'module PV', 'onduleur': 'onduleur',
-                'optimiseur': 'optimiseur'}
-    for role in ('module', 'onduleur', 'optimiseur'):
+    du_devis = None
+    for role in ROLES_MATERIEL:
         identifiant = (entree or {}).get('%s_produit' % role)
+        provenance = PROVENANCE_EXPLICITE
+        if identifiant in (None, ''):
+            if du_devis is None:
+                du_devis = _produits_du_devis(calepinage)
+            identifiant = du_devis.get(role)
+            provenance = PROVENANCE_DEVIS
         if identifiant in (None, ''):
             if role != 'optimiseur':
-                absents.append("%s non désigné" % libelles[role])
+                absents.append('%s non désigné — %s'
+                               % (LIBELLES_ROLES[role], GESTE_DESIGNATION))
             continue
         produit = (get_produit_scoped(company, identifiant)
                    if company is not None else None)
         if produit is None:
             absents.append("%s introuvable dans le catalogue de la société"
-                           % libelles[role])
+                           % LIBELLES_ROLES[role])
             continue
         blocs[role] = specs_for_produit(produit) or {}
         designations[role] = _designation(produit)
-    return {**blocs, 'designations': designations,
-            'absents': tuple(absents)}
+        produits[role] = produit.pk
+        provenances[role] = provenance
+    return {**blocs, 'designations': designations, 'produits': produits,
+            'provenances': provenances, 'absents': tuple(absents)}
+
+
+#: ACAL56 — les clés de l'entrée SERVIE par ``GET entree-electrique/``
+#: (contrat ``calepinage_entree_electrique.json``) : celles de
+#: ``CHAMPS_ENTREE`` sauf ``derogations`` (un GESTE, jamais rangé dans
+#: l'entrée), plus le régime de neutre, le transformateur, la batterie et le
+#: hors-réseau — lus tels qu'enregistrés, ``null`` quand rien n'est saisi.
+CLES_ENTREE_SUPPLEMENTAIRES = ('regime', 'transformateur', 'batterie',
+                               'hors_reseau')
+CLES_ENTREE_SERVIE = (tuple(cle for cle in CHAMPS_ENTREE
+                            if cle != CLE_DEROGATIONS)
+                      + CLES_ENTREE_SUPPLEMENTAIRES)
+
+#: Le transformateur tant que la question n'a pas été répondue : DÉCLARÉ
+#: absent, aucune grandeur — jamais une perte inventée.
+TRANSFORMATEUR_NON_DECLARE = {
+    'declare': False, 'perte_a_vide_kw': None,
+    'perte_en_charge_kw_nominale': None, 'puissance_nominale_kw': None,
+}
+
+#: Les catégories de candidats, le type de fiche du stock et la section
+#: ``favoris_materiel`` (CAL200) qui les épingle.
+CATEGORIES_CANDIDATS = (('modules', 'module'), ('onduleurs', 'onduleur'),
+                        ('optimiseurs', 'optimiseur'))
+
+
+def _champs_requis(role):
+    """Les champs de fiche SANS LESQUELS le calcul électrique est muet."""
+    from .chaines import CHAMPS_MODULE, CHAMPS_ONDULEUR
+
+    if role == 'module':
+        return tuple(cle for cle, _libelle in CHAMPS_MODULE)
+    if role == 'onduleur':
+        return tuple(cle for cle, _libelle in CHAMPS_ONDULEUR)
+    return tuple(cle for cle, _libelle in GRANDEURS_RECOUPEMENT)
+
+
+def _champs_manquants(role, specs):
+    specs = specs if isinstance(specs, dict) else {}
+    return [cle for cle in _champs_requis(role)
+            if _nombre(specs.get(cle)) is None]
+
+
+def _candidats_materiel(calepinage):
+    """Le catalogue de la société par rôle — bornés société, SANS prix."""
+    candidats = {cle: [] for cle, _type in CATEGORIES_CANDIDATS}
+    company = getattr(calepinage, 'company', None)
+    if company is None:
+        return candidats
+    from apps.stock.selectors import (
+        produits_par_type_fiche_qs, specs_for_produit,
+    )
+
+    favoris = parametres_societe(calepinage).get('favoris_materiel') or {}
+    for cle, type_fiche in CATEGORIES_CANDIDATS:
+        epingles = favoris.get(cle)
+        epingles = ({str(valeur) for valeur in epingles}
+                    if isinstance(epingles, list) else set())
+        for produit in produits_par_type_fiche_qs(company, type_fiche):
+            manquants = _champs_manquants(type_fiche,
+                                          specs_for_produit(produit))
+            candidats[cle].append({
+                'id': produit.pk,
+                'libelle': (getattr(produit, 'nom', '') or '').strip()
+                or _designation(produit),
+                'marque': (getattr(produit, 'marque', '') or '').strip(),
+                'favori': str(produit.pk) in epingles,
+                'fiche_complete': not manquants,
+                'champs_manquants': manquants,
+            })
+    return candidats
+
+
+def entree_electrique_servie(calepinage, stockee):
+    """ACAL56 — ``GET entree-electrique/`` : l'entrée STOCKÉE + le matériel.
+
+    ``stockee`` est ``entree_stockee(calepinage)`` (la vue la lit) : l'entrée
+    est rendue clé par clé TELLE QU'ÉCRITE, jamais recalculée. ``materiel``
+    est le matériel RÉSOLU (D-ACAL-10) avec sa provenance — ``'devis'`` est
+    recalculée à chaque lecture, jamais persistée. Lecture PURE : rien n'est
+    écrit. Forme du contrat ``calepinage_entree_electrique.json``.
+    """
+    stockee = dict(stockee or {})
+    entree = {cle: stockee.get(cle) for cle in CLES_ENTREE_SERVIE}
+    if not isinstance(entree['transformateur'], dict):
+        entree['transformateur'] = dict(TRANSFORMATEUR_NON_DECLARE)
+    resolu = resoudre_materiel(getattr(calepinage, 'company', None), stockee,
+                               calepinage=calepinage)
+    materiel = {}
+    for role in ROLES_MATERIEL:
+        produit_id = (resolu.get('produits') or {}).get(role)
+        if produit_id is None:
+            materiel[role] = None
+            continue
+        manquants = _champs_manquants(role, resolu.get(role))
+        materiel[role] = {
+            'produit_id': produit_id,
+            'designation': resolu['designations'].get(role, ''),
+            'provenance': resolu['provenances'].get(role),
+            'fiche_complete': not manquants,
+            'champs_manquants': manquants,
+        }
+    return {
+        'calepinage': getattr(calepinage, 'pk', None),
+        'entree': entree,
+        'materiel': materiel,
+        'absents': [role for role in ROLES_MATERIEL if materiel[role] is None],
+        'candidats': _candidats_materiel(calepinage),
+    }
 
 
 def _options_entree(entree):
@@ -771,7 +939,7 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         calepinage, 'roof_layout', None)
     if materiel is None:
         materiel = resoudre_materiel(getattr(calepinage, 'company', None),
-                                     donnees)
+                                     donnees, calepinage=calepinage)
     temperatures = temperatures_pour_calepinage(calepinage, saisie=donnees)
     conception = concevoir_par_pan(
         document, module_specs=materiel['module'],

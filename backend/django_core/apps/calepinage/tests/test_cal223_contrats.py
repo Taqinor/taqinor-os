@@ -70,7 +70,11 @@ AVEC_PRODUCTEUR_PUR = ('calepinage_equipements.json',
                        # CALX109 — le catalogue de modules de la société :
                        # producteur PUR (``services/modules_stock.py``), la
                        # vue ne fait que lui passer le QuerySet du stock.
-                       'calepinage_modules_disponibles.json')
+                       'calepinage_modules_disponibles.json',
+                       # ACAL56 — l'entrée électrique servie : producteur
+                       # PUR sur un calepinage nu
+                       # (``services/electrique.py::entree_electrique_servie``).
+                       'calepinage_entree_electrique.json')
 
 #: Les autres, avec la RAISON — aucun n'est oublié, chacun est un choix.
 SANS_PRODUCTEUR_PUR = {
@@ -511,6 +515,17 @@ class ClesServiesTest(unittest.TestCase):
         servi = modules_disponibles_du_calepinage(Faux(), [])
         self._comparer('calepinage_modules_disponibles.json', servi)
         self._comparer('calepinage_modules_disponibles.json', servi,
+                       'exemple_vide')
+
+    def test_entree_electrique(self):
+        # ACAL56 — calepinage nu : aucune société, aucun devis, aucune base.
+        from apps.calepinage.services.electrique import (
+            entree_electrique_servie,
+        )
+
+        servi = entree_electrique_servie(Faux(), {})
+        self._comparer('calepinage_entree_electrique.json', servi)
+        self._comparer('calepinage_entree_electrique.json', servi,
                        'exemple_vide')
 
     def test_site_imagerie(self):

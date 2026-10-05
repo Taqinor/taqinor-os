@@ -92,8 +92,9 @@ DETAIL_DEJA_CALCULE = (
 
 MOTIF_SANS_PAN_EQUIPE = (
     'Aucun pan de ce calepinage ne porte à la fois des modules et une '
-    "puissance crête : il n'y a rien à simuler. Posez des modules et "
-    'désignez le module PV avant de lancer la simulation.')
+    "puissance crête : il n'y a rien à simuler. Posez des modules, puis "
+    "désignez le module PV dans l'onglet Matériel électrique (ou liez un "
+    'devis qui porte une ligne module) avant de lancer la simulation.')
 
 MOTIF_SANS_POINT = (
     "Le site de ce calepinage n'a pas de point GPS : la météo se demande à "
@@ -227,7 +228,7 @@ def _site_du_calepinage(calepinage, document, imagerie):
     }
 
 
-def _declaration_batterie(calepinage, document, entree, company):
+def _declaration_batterie(calepinage, document, materiel, company):
     """La batterie DÉCLARÉE et les specs de son pack, ou ``{}``.
 
     La déclaration vit sur le document (``roof_layout.battery``) ; les
@@ -235,6 +236,11 @@ def _declaration_batterie(calepinage, document, entree, company):
     ici parce que ce module est le seul à avoir accès au stock. Aucune
     stratégie n'est supposée : sans stratégie saisie, CALX188 omet le bloc et
     le dit.
+
+    ACAL56 — l'onduleur est celui du RÉSOLVEUR (``materiel``, rendu par
+    ``services/electrique.py::resoudre_materiel`` : désignation explicite,
+    sinon ligne du devis lié) — plus jamais une lecture directe de
+    ``entree['onduleur_produit']`` qui ignorait le devis.
     """
     from .batterie import specs_batterie
     from .equipements import equipements_du_calepinage
@@ -253,7 +259,8 @@ def _declaration_batterie(calepinage, document, entree, company):
                                                          dict) else None
         if isinstance(bloc, dict) and bloc.get('produit'):
             produit_batterie = get_produit_scoped(company, bloc['produit'])
-        identifiant = (entree or {}).get('onduleur_produit')
+        identifiant = ((materiel or {}).get('produits') or {}).get(
+            'onduleur')
         if identifiant not in (None, ''):
             produit_onduleur = get_produit_scoped(company, identifiant)
 
@@ -426,8 +433,8 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         'postes_saisis': postes_du_calepinage(calepinage),
         # ── les déclarations aval ───────────────────────────────────────
         'consommation': _declaration_consommation(document),
-        'batterie': _declaration_batterie(calepinage, document, donnees,
-                                          company),
+        'batterie': _declaration_batterie(calepinage, document,
+                                          materiel_resolu, company),
         'raccordement': _section_du_document(document, 'raccordement'),
         'hors_reseau': _section_du_document(document, 'hors_reseau'),
         # CALX271 — les batteries du STOCK, pour comparer leurs capacités.
