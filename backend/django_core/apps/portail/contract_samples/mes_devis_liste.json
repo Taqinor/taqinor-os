@@ -13,7 +13,8 @@
         "date_validite": "2026-10-28",
         "total_ttc": "48500.00",
         "accepte": false,
-        "mis_a_jour_le": "2026-09-29T14:05:00+00:00"
+        "mis_a_jour_le": "2026-09-29T14:05:00+00:00",
+        "exige_identite_entreprise": true
       },
       {
         "id": 400,
@@ -24,8 +25,10 @@
         "date_validite": "2026-10-01",
         "total_ttc": "36000.00",
         "accepte": true,
-        "mis_a_jour_le": null
+        "mis_a_jour_le": null,
+        "exige_identite_entreprise": false
       }
     ]
-  }
+  },
+  "exige_identite_entreprise": "CIQ9 — booléen ADDITIF sur chaque élément : vrai quand le devis est commercial ou industriel (D-CIQ-11 : raison sociale, qualité du signataire et ICE obligatoires à l'acceptation en ligne, contrat `apps/ventes/contract_samples/acceptation_entreprise.json`), faux sinon."
 }

@@ -1,0 +1,96 @@
+{
+  "endpoint": "POST /api/django/ventes/proposal/<token>/accept/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Contrat posé SEUL (PACT10) avant les deux moitiés : `exemple` est le CORPS public envoyé par la page /proposition (champs existants + bloc ADDITIF `entreprise`) ; la réponse est décrite sous `reponse`. Même vue sous le mount `public/` (`/api/django/public/proposal/<token>/accept/`, apps/ventes/public_urls.py) — jamais de logique dupliquée.",
+  "pourquoi": "CIQ9 (Groupe CIQ, audit L3 des devis commercial et industriel du 03/10/2026 ; décision D-CIQ-11 ; constats C3-11, C7-VB-06) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main`, backend + copie jumelle `apps/web/src/contract_samples/acceptation_entreprise.json` (JSON-égales, contrôle de `scripts/check_api_shapes.py`). Aujourd'hui l'acceptation en ligne ne prend qu'un nom (apps/ventes/public_views.py `proposal_accept` : `nom`, `option`, consentement, signature, `on_behalf_of`) ; `DevisSignature` ne garde que `signataire_nom` et `on_behalf_of` ; `Devis.accepte_par_nom` est un seul champ texte ; le portail (apps/portail/views_client.py) et l'acceptation interne (apps/ventes/views/devis.py, action `accepter`) ne prennent qu'un nom. Prod 03/10/2026 : 7/7 clients C&I « particulier », ICE 0/7. Ce fichier fige : le corps public (`exemple`), les corps portail et ERP (`exemple_portail`, `exemple_erp`), les `regles`, la `reponse`, le bloc de rendu `signature_entreprise`, la remontée de l'ICE au Client (`remontee_client`, service CRM du contrat `apps/crm/contract_samples/client_entreprise.json`, CIQ8) et la clé portail `exige_identite_entreprise` (posée dans `apps/portail/contract_samples/mes_devis_liste.json`). AUCUN statut nouveau, aucune étape STAGES (règle #4 : les statuts Devis brouillon/envoye/accepte/refuse/expire restent 1:1). Valeurs ILLUSTRATIVES ; l'ICE `000000000000000` est factice.",
+  "exemple": {
+    "nom": "Karim Exemple",
+    "option": "sans",
+    "consent_esign": true,
+    "signature_data_url": "data:image/png;base64,iVBORw0KGgo...",
+    "signed_at_client": "2026-10-03T10:15:00+00:00",
+    "on_behalf_of": "",
+    "entreprise": {
+      "raison_sociale": "Hôtel Exemple SARL",
+      "signataire_qualite": "Directeur général",
+      "ice": "000000000000000"
+    }
+  },
+  "exemple_portail": {
+    "endpoint": "POST /api/django/portail/mes-devis/<int:pk>/accepter/",
+    "corps": {
+      "nom": "Karim Exemple",
+      "option": "sans",
+      "consent_esign": true,
+      "entreprise": {
+        "raison_sociale": "Hôtel Exemple SARL",
+        "signataire_qualite": "Directeur général",
+        "ice": "000000000000000"
+      }
+    }
+  },
+  "exemple_erp": {
+    "endpoint": "POST /api/django/ventes/devis/<int:pk>/accepter/",
+    "corps": {
+      "nom": "Karim Exemple",
+      "date": "2026-10-03",
+      "option": "sans",
+      "entreprise": {
+        "raison_sociale": "Hôtel Exemple SARL",
+        "signataire_qualite": "",
+        "ice": ""
+      }
+    }
+  },
+  "regles": {
+    "en_ligne": "Lien public et portail : si `mode_installation` ∈ {commercial, industriel}, les trois champs `entreprise.raison_sociale`, `entreprise.signataire_qualite`, `entreprise.ice` sont OBLIGATOIRES — 400 {detail, champ} qui NOMME le champ manquant (ex. champ: 'entreprise.ice').",
+    "erp": "Acceptation interne (ERP) : les trois champs sont FACULTATIFS (le vendeur enregistre un accord reçu hors ligne).",
+    "autres_segments": "résidentiel / agricole : le bloc `entreprise` est IGNORÉ (ni erreur, ni écriture).",
+    "ice": "Validé par le validateur EXISTANT `apps/parametres/tax_id_validators.validate_ice_ma` (15 chiffres) — jamais une seconde règle ; erreur ⇒ 400 nommant `entreprise.ice`.",
+    "statuts": "Aucun statut nouveau : l'acceptation bascule le devis en `accepte` comme aujourd'hui (règle #4).",
+    "cachet": "Le PDF signé porte une case « cachet de l'entreprise » (D-CIQ-11) — rendu seulement, aucune saisie."
+  },
+  "reponse": {
+    "forme": "réponse 200 existante {detail, reference, statut, accepte_par_nom, paiement} + `entreprise` relu (même forme que le corps) ou null hors C&I",
+    "exemple": {
+      "detail": "Proposition acceptée. Merci !",
+      "reference": "DEV-202610-0004",
+      "statut": "accepte",
+      "accepte_par_nom": "Karim Exemple",
+      "paiement": null,
+      "entreprise": {
+        "raison_sociale": "Hôtel Exemple SARL",
+        "signataire_qualite": "Directeur général",
+        "ice": "000000000000000"
+      }
+    },
+    "exemple_400": {
+      "detail": "L'ICE de l'entreprise est requis pour accepter ce devis.",
+      "champ": "entreprise.ice"
+    }
+  },
+  "signature_entreprise": {
+    "forme": "{raison_sociale, signataire_nom, signataire_qualite, ice, date} — bloc de RENDU (PDF signé, /proposition, contrat `proposal_data.json` CIQ4) ; null hors C&I ou tant que le devis n'est pas accepté",
+    "exemple": {
+      "raison_sociale": "Hôtel Exemple SARL",
+      "signataire_nom": "Karim Exemple",
+      "signataire_qualite": "Directeur général",
+      "ice": "000000000000000",
+      "date": "2026-10-03"
+    }
+  },
+  "remontee_client": {
+    "regle": "L'ICE et la raison sociale déclarés à l'acceptation remontent au Client par le service CRM du contrat `client_entreprise.json` (CIQ8) : un champ vide du Client est complété ; un ICE DIFFÉRENT déjà saisi n'est JAMAIS écrasé — drapeau de divergence posé (`divergence_ice: true`) pour le vendeur.",
+    "exemple_divergence": {
+      "client": 640,
+      "ice_client": "111111111111111",
+      "ice_declare": "000000000000000",
+      "divergence_ice": true
+    }
+  },
+  "portail": "`apps/portail/contract_samples/mes_devis_liste.json` : chaque élément gagne `exige_identite_entreprise` (booléen — vrai pour un devis commercial/industriel : l'écran d'acceptation du portail affiche les trois champs).",
+  "interdit": [
+    "prix_achat",
+    "marge"
+  ]
+}

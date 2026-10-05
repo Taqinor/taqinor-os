@@ -90,3 +90,9 @@ rougit pas tant que la route n'existe pas.
 | `proposal_data.json` (étendu) | `remplace_par`, `note_client` (QJR501) — ajoutés au contrat PAR QJR536, en même temps que le serveur qui les émet (contrat gardé `complete`) |
 | `devis_overrides.json` (étendu) | `notes.chemins_non_lus`, `notes.non_lu` (QJR507) |
 | `devis_composition.json` (étendu) | corps : `lead` remplace `ville` (QJR511) |
+
+## Groupe CIQ — M0 contrats posés SEULS (03/10/2026)
+
+| Fichier | Endpoint / ce qu'il apparie |
+| --- | --- |
+| `acceptation_entreprise.json` (+ copie jumelle `apps/web/src/contract_samples/`) | POST proposal/<token>/accept/ (+ portail, ERP) : bloc `entreprise` {raison_sociale, signataire_qualite, ice}, `signature_entreprise`, remontée de l'ICE au Client (CIQ9) |
