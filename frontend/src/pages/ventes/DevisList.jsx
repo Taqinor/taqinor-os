@@ -364,45 +364,12 @@ export default function DevisList() {
   // ── Sélection multiple pour génération PDF par lot ──
   const [selectedIds, setSelectedIds] = useState([]) // ids cochés
   // SPL204 — flux PDF (format, génération + sondage WIR217, aperçu, partage).
+  // ACAL345 — gardé en OBJET (`pdf`) : il est passé tel quel au sac de ligne
+  // (rowCtx) et à <DevisPdfDialog>, au lieu de recopier sa liste de retour.
+  const pdf = useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds })
   const {
-    pdfGenerating,
-    pdfSlowPoll,
-    pdfDownloading,
-    previewDevis,
-    setPreviewDevis,
-    previewingId,
-    batchPdf,
-    setBatchPdf,
-    pdfTarget,
-    setPdfTarget,
-    pdfMode,
-    setPdfMode,
-    showMonthly,
-    setShowMonthly,
-    devisFinal,
-    setDevisFinal,
-    paymentMode,
-    setPaymentMode,
-    customAcompte,
-    setCustomAcompte,
-    includeEtude,
-    setIncludeEtude,
-    includeCalepinage,
-    setIncludeCalepinage,
-    pdfModeAutoOnepage,
-    targetHasEtude,
-    targetIsAgricole,
-    openPdfModal,
-    openBatchPdfModal,
-    handlePreview,
-    fetchDevisPreviewBlob,
-    handleGenererPdf,
-    handleGenererPdfLot,
-    handleProformaPdf,
-    handleBonCommandePdf,
-    handleTelechargerPdf,
-    handlePartagerPdf,
-  } = useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds })
+    previewDevis, setPreviewDevis, openPdfModal, openBatchPdfModal, fetchDevisPreviewBlob,
+  } = pdf
 
   // ── Modale d'acceptation inline (nom / date / option) ──
   const [acceptTarget, setAcceptTarget] = useState(null) // devis en cours d'acceptation
@@ -585,32 +552,8 @@ export default function DevisList() {
   }
 
   // SPL205 — parcours d'envoi (email, liens, WhatsApp + relance, EZ3, supérieur).
-  const {
-    emailTarget,
-    emailAddress,
-    setEmailAddress,
-    emailBusy,
-    openEmailModal,
-    closeEmailModal,
-    submitEmail,
-    copierLienInterne,
-    shareBusyId,
-    handleCopierApercuInterne,
-    handleCopierLienProposition,
-    waTarget,
-    waData,
-    waSending,
-    relanceMode,
-    waGammeEnvoi,
-    setWaGammeEnvoi,
-    handleEnvoyer,
-    handleRelancer,
-    closeWaModal,
-    openWhatsApp,
-    superieurBusyId,
-    superieurStatus,
-    handleContacterSuperieur,
-  } = useDevisEnvoi({
+  // ACAL345 — gardé en OBJET (`envoi`), passé tel quel à rowCtx et <EnvoiDialogs>.
+  const envoi = useDevisEnvoi({
     dispatch, setPreviewDevis, setStatutActionId,
     highlightId, highlightedDevis, loading, searchParams, setSearchParams,
   })
@@ -804,27 +747,22 @@ export default function DevisList() {
   // aucune valeur n'est transformée. L'état des variantes est chargé sur
   // `versionsOpenId` (seule la ligne ouverte le rend), donc le partager est sûr.
   const rowCtx = {
-    selectedIds, toggleSelected,
+    // ACAL345 — état + handlers des flux PDF (SPL204) et d'envoi (SPL205),
+    // passés tels quels : DevisRow n'en lit que ce qu'il destructure.
+    ...pdf, ...envoi,
+    selectedIds, toggleSelected, effStatutOf, navigate, dispatch,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     // WIR225 - comparaison des variantes servie par le serveur.
     variantesEtat, basculerVersions,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     // WIR274 - composeur de note manuelle sur le panneau Historique.
     peutNoter, noteBrouillon, ecrireNote, publierNote, noteBusyId,
-    suiviOpenId, toggleSuiviPartage,
-    lectureClientCache, canSeeLectureClient,
-    conceptionOpenId, setConceptionOpenId,
-    etudeOpenId, setEtudeOpenId,
-    effStatutOf,
-    navigate, dispatch,
+    suiviOpenId, toggleSuiviPartage, lectureClientCache, canSeeLectureClient,
+    conceptionOpenId, setConceptionOpenId, etudeOpenId, setEtudeOpenId,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
-    deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
-    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, factureGenId,
-    openEdit, openVarianteModal, openGammeModal, handleDelete, handleEnvoyer, handleRelancer,
-    handleContacterSuperieur,
-    openEmailModal, handleCopierLienProposition, handleCopierApercuInterne, copierLienInterne, handlePreview, openPdfModal,
-    handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
-    handleProformaPdf, handleBonCommandePdf,
+    deletingId, statutActionId, convertingId, chantierBusy, factureGenId,
+    openEdit, openVarianteModal, openGammeModal, handleDelete,
+    openAcceptModal, openRefusModal, handleConvertBC,
     handleChantier, handleGenererFacture,
   }
 
@@ -945,29 +883,11 @@ export default function DevisList() {
       {/* ── ARC49 — Modale de génération PDF (extraite en composant ; flux PDF
           inchangé, règle #4). MB4 — ResponsiveDialog → tiroir bas sur mobile. ── */}
       <DevisPdfDialog
-        pdfTarget={pdfTarget}
-        batchPdf={batchPdf}
+        {...pdf}
         selectedIds={selectedIds}
-        pdfMode={pdfMode}
-        setPdfMode={setPdfMode}
-        pdfModeAutoOnepage={pdfModeAutoOnepage}
-        targetIsAgricole={targetIsAgricole}
-        showMonthly={showMonthly}
-        setShowMonthly={setShowMonthly}
-        targetHasEtude={targetHasEtude}
-        includeEtude={includeEtude}
-        setIncludeEtude={setIncludeEtude}
-        includeCalepinage={includeCalepinage}
-        setIncludeCalepinage={setIncludeCalepinage}
-        devisFinal={devisFinal}
-        setDevisFinal={setDevisFinal}
-        paymentMode={paymentMode}
-        setPaymentMode={setPaymentMode}
-        customAcompte={customAcompte}
-        setCustomAcompte={setCustomAcompte}
-        onClose={() => { setPdfTarget(null); setBatchPdf(false) }}
-        onGenererLot={handleGenererPdfLot}
-        onGenererUn={handleGenererPdf}
+        onClose={() => { pdf.setPdfTarget(null); pdf.setBatchPdf(false) }}
+        onGenererLot={pdf.handleGenererPdfLot}
+        onGenererUn={pdf.handleGenererPdf}
       />
 
       {/* ── T9 — Modale d'acceptation inline (nom / date / option) — MB4
@@ -1090,22 +1010,7 @@ export default function DevisList() {
       </ResponsiveDialog>
 
       {/* SPL205 — dialogues d'envoi (email + WhatsApp), JSX déplacé. */}
-      <EnvoiDialogs
-        emailTarget={emailTarget}
-        emailAddress={emailAddress}
-        setEmailAddress={setEmailAddress}
-        emailBusy={emailBusy}
-        closeEmailModal={closeEmailModal}
-        submitEmail={submitEmail}
-        waTarget={waTarget}
-        waData={waData}
-        waSending={waSending}
-        relanceMode={relanceMode}
-        waGammeEnvoi={waGammeEnvoi}
-        setWaGammeEnvoi={setWaGammeEnvoi}
-        closeWaModal={closeWaModal}
-        openWhatsApp={openWhatsApp}
-      />
+      <EnvoiDialogs {...envoi} />
 
       {/* QG10 — Modale « Variantes » : confirmer / éditer le pourcentage puis
           créer les 3 variantes et router vers la comparaison. Le champ % n'est

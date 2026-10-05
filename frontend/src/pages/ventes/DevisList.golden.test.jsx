@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, within, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { screen, within, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
 
 /* SPL191 — GOLDEN DOM de la liste des devis (aucun déplacement).
 
@@ -20,84 +17,28 @@ import { configureStore } from '@reduxjs/toolkit'
 // Horloge figée AVANT l'import de l'écran (dates relatives, « expire bientôt »…).
 vi.hoisted(() => { vi.setSystemTime(new Date('2026-08-20T10:00:00Z')) })
 
-// Mêmes mocks de module que DevisList.test.jsx:13-93 (ventesSlice, ventesApi,
-// crmApi, uxviewsApi) — la source testée (DevisList.jsx) n'est jamais mockée.
-vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    fetchDevis: vi.fn(() => ({ type: 'ventes/fetchDevis/noop' })),
-    genererPdfDevis: () => {
-      const action = { type: 'ventes/genererPdfDevis/noop' }
-      action.unwrap = () => Promise.resolve()
-      return action
-    },
-    convertirDevisEnBC: () => ({ type: 'ventes/convertirDevisEnBC/noop' }),
-  }
-})
+// Mêmes doubles de module que DevisList.test.jsx (ventesSlice, ventesApi,
+// crmApi, uxviewsApi), partagés via src/test/devisListMocks.js (ACAL345) — la
+// source testée (DevisList.jsx) n'est jamais mockée.
+vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) =>
+  (await import('../../test/devisListMocks.js')).ventesSliceMock(importOriginal))
 
-vi.mock('../../api/ventesApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      refuserDevis: vi.fn(() => Promise.resolve({ data: { statut: 'refuse' } })),
-      getDevisById: vi.fn(() => Promise.resolve({ data: { fichier_pdf: '/media/devis/DEV-PDF-AUTO.pdf' } })),
-      etatPdfDevis: vi.fn(() => Promise.resolve({
-        data: { devis: 99, statut: 'pret', fichier_pdf: true, erreur: null, date: null },
-      })),
-      getVariantes: vi.fn(() => Promise.resolve({ data: [] })),
-      historiqueDevis: vi.fn(() => Promise.resolve({ data: [] })),
-      noterDevis: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
-      accepterDevis: vi.fn(() => Promise.resolve({ data: {} })),
-      telechargerPdfDevis: vi.fn(() => Promise.resolve({
-        data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
-        headers: {},
-      })),
-      getVarianteConfig: vi.fn(() => Promise.resolve({ data: { variante_pct: '25.00' } })),
-      dupliquerVariante: vi.fn(() => Promise.resolve({ data: [] })),
-      dupliquerVarianteGamme: vi.fn(() => Promise.resolve({
-        data: { source: {}, gamme: {}, gammes: [] },
-      })),
-      shareLinkDevis: vi.fn(() => Promise.resolve({ data: { token: 'tok123', path: '/proposition/tok123' } })),
-      whatsappPreviewDevis: vi.fn(() => Promise.resolve({ data: { wa_url: 'https://wa.me/212600000000', message: 'Bonjour' } })),
-      whatsappDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
-      partagePdfDevis: vi.fn(() => Promise.resolve({ data: { devis_statut: 'envoye' } })),
-      reviserDevis: vi.fn(() => Promise.resolve({ data: {} })),
-      patchDevis: vi.fn(() => Promise.resolve({ data: {} })),
-      // Panneau « Conception électrique » : réponse vide et stable.
-      getConceptionElectrique: vi.fn(() => Promise.resolve({ data: {} })),
-      getSchemaUnifilaireDevis: vi.fn(() => Promise.resolve({ data: { params: {}, svg: null } })),
-      superiorContactStatus: vi.fn(() => Promise.resolve({ data: {} })),
-    },
-  }
-})
+vi.mock('../../api/ventesApi', async (importOriginal) =>
+  (await import('../../test/devisListMocks.js')).ventesApiMock(importOriginal, {
+    // Panneau « Conception électrique » : réponse vide et stable.
+    getConceptionElectrique: vi.fn(() => Promise.resolve({ data: {} })),
+    getSchemaUnifilaireDevis: vi.fn(() => Promise.resolve({ data: { params: {}, svg: null } })),
+    superiorContactStatus: vi.fn(() => Promise.resolve({ data: {} })),
+  }))
 
-vi.mock('../../api/crmApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getMotifsPerte: vi.fn(() => Promise.resolve({
-        data: [{ id: 5, nom: 'Trop cher' }, { id: 6, nom: 'Choisi un concurrent' }],
-      })),
-    },
-  }
-})
+vi.mock('../../api/crmApi', async (importOriginal) =>
+  (await import('../../test/devisListMocks.js')).crmApiMotifsMock(importOriginal))
 
-vi.mock('../../api/uxviewsApi', () => ({
-  default: {
-    listSavedViews: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    createSavedView: vi.fn(() => Promise.resolve({ data: { id: 1, ecran: 'ventes.devis' } })),
-    updateSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    deleteSavedView: vi.fn(() => Promise.resolve({})),
-  },
-}))
+vi.mock('../../api/uxviewsApi', async () =>
+  (await import('../../test/devisListMocks.js')).uxviewsApiMock())
 
 import DevisList from './DevisList'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { renderListeVentes } from '../../test/devisListRender.jsx'
 
 afterEach(() => { cleanup() })
 
@@ -144,23 +85,10 @@ function jeuDeDevis() {
 }
 
 function renderList(devis = jeuDeDevis()) {
-  const store = configureStore({
-    reducer: {
-      ventes: (s = { devis, loading: false, error: null }) => s,
-      auth: (s = {
-        role: 'admin', role_nom: 'Directeur', permissions: ['ventes_valider'],
-      }) => s,
-    },
+  return renderListeVentes(DevisList, {
+    devis,
+    auth: { role: 'admin', role_nom: 'Directeur', permissions: ['ventes_valider'] },
   })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter initialEntries={['/ventes/devis']}>
-        <ThemeProvider>
-          <DevisList />
-        </ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
 }
 
 // SEULE normalisation : les identifiants React useId (« _r_1_ » en React 19.2,

@@ -99,27 +99,12 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
   return { ...actual, default: espion }
 })
 
-vi.mock('../../api/crmApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getMotifsPerte: vi.fn(() => Promise.resolve({
-        data: [{ id: 5, nom: 'Trop cher' }, { id: 6, nom: 'Choisi un concurrent' }],
-      })),
-    },
-  }
-})
+// crmApi + uxviewsApi : doubles partagés (src/test/devisListMocks.js, ACAL345).
+vi.mock('../../api/crmApi', async (importOriginal) =>
+  (await import('../../test/devisListMocks.js')).crmApiMotifsMock(importOriginal))
 
-vi.mock('../../api/uxviewsApi', () => ({
-  default: {
-    listSavedViews: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    createSavedView: vi.fn(() => Promise.resolve({ data: { id: 1, ecran: 'ventes.devis' } })),
-    updateSavedView: vi.fn(() => Promise.resolve({ data: {} })),
-    deleteSavedView: vi.fn(() => Promise.resolve({})),
-  },
-}))
+vi.mock('../../api/uxviewsApi', async () =>
+  (await import('../../test/devisListMocks.js')).uxviewsApiMock())
 
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal()
