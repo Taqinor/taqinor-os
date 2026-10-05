@@ -211,6 +211,9 @@ let booted = false;
 export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   if (booted) return;
   booted = true;
+  // ACAL68 — le singleton du fond demandé repart à zéro à chaque nouveau document : un
+  // atelier ouvert sans document n'hérite jamais du fond d'un calepinage précédent.
+  semerFondDepuisDocument(null);
 
   // W112 — mode CAPTURE CLIENT (/devis/mon-toit) : carte + géocodeur + pin/tracé
   // SEULEMENT. On dévie AVANT toute construction lourde (createScene3d /
@@ -1737,6 +1740,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // hydraté un contour/pin (le vol vers le lead l'emporte).
     if (!seeded && opts.initialQuery) void geocode(opts.initialQuery, true);
     else if (!seeded) setStatus('Cherchez votre adresse, puis cliquez les coins de votre toit.');
+    // ACAL68 — « hydratation terminée » : la page hôte pose le fond du document ICI, quand
+    // `fondDuDocument()` décrit le document ouvert — jamais depuis `onApiReady` (appelé en
+    // fin d'init, avant l'hydratation, quand il vaut null ou le fond du document PRÉCÉDENT).
+    opts.onHydrationTerminee?.();
   });
 
   /** W120 — atterrissage fiable (même garde que le pin, W113) pour un CONTOUR complet

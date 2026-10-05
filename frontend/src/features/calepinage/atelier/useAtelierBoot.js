@@ -429,11 +429,13 @@ export function useAtelierBoot(ctx) {
           reglagesAtelier,
           onApiReady: (a) => {
             builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a)
-            // CALX107 câblage — le document peut demander un CALQUE DE FOND
-            // (`underlay`) : l'atelier sait le peindre mais ne parle jamais à
-            // Django, c'est donc à l'écran d'aller chercher le fichier.
-            poserFondDuDocument(a)
           },
+          // CALX107 câblage — le document peut demander un CALQUE DE FOND
+          // (`underlay`) : l'atelier sait le peindre mais ne parle jamais à
+          // Django, c'est donc à l'écran d'aller chercher le fichier. ACAL68 :
+          // APRÈS l'hydratation (jamais depuis `onApiReady`, où `fondDuDocument()`
+          // vaut null ou le fond du document précédent en navigation SPA).
+          onHydrationTerminee: () => poserFondDuDocument(builderApi.current),
         })
         // La barre de recherche d'adresse part PRÉ-REMPLIE, exactement comme en
         // mode devis (`bootDevis` ci-dessus, PV23bis) et en mode lead (`boot()`).

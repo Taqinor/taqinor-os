@@ -55,6 +55,9 @@ export interface InitOptions {
   // finalisé, capturer le PNG 3D) une fois le boot complet terminé. Invoqué
   // seulement en boot complet (jamais en capture). Absent → comportement inchangé.
   onApiReady?: (api: RoofToolApi) => void;
+  /** ACAL68 — appelé UNE fois, quand le document a été hydraté (fin du `load` de la carte) :
+   *  c'est là que la page hôte pose le fond du document (`fondDuDocument`/`poserFond`). */
+  onHydrationTerminee?: () => void;
   // PV75 — étude BANCABLE (P50/P90 + ratio de performance + cascade des pertes),
   // injectée par la page HÔTE (ToitureDesign.jsx) une fois lue depuis
   // `Devis.etude_params.simulation.pr` (contrat `contract_samples/simulation.json`,

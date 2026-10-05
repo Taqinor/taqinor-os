@@ -1,8 +1,9 @@
+// @vitest-environment jsdom
 // CAL49 — GÉOCODAGE DANS LE PAYS DU PROJET. Les deux appels MapTiler forçaient
 // `&country=ma`. Ce fichier prouve le constructeur d'URL pour `ma`, `fr` et contexte
 // absent (repli `ma` : comportement marocain byte-identique), et la mention affichée
 // à côté du champ de recherche. PURE : aucun DOM, aucune carte.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   GEOCODE_DEFAULT_COUNTRY,
   geocodeCountry,
@@ -16,7 +17,10 @@ import {
   ORDRE_RENDU_CALQUES,
   MAPLIBRE_LAYERS_PAR_CALQUE,
   opacityPropFor,
+  createMapDraw, // ACAL68
 } from './mapDraw';
+import { underlayPourDocument } from './underlay'; // ACAL68
+import { type Ctx } from './context'; // ACAL68
 import { UNDERLAY_PHOTO_LAYER_ID, UNDERLAY_PLAN_LAYER_ID } from './underlay';
 import { distanceEntreM } from './snap';
 import { geodesicAreaM2, layoutPanels, type LngLat } from '../../lib/roof';
@@ -292,5 +296,57 @@ describe('CALX107 — les deux calques de fond pilotent une couche réelle', () 
     expect(rang('imagerie')).toBeLessThan(rang('photo'));
     expect(rang('photo')).toBeLessThan(rang('plan'));
     expect(rang('plan')).toBeLessThan(rang('trace_client'));
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL68 — un fond présent n'est plus jamais effacé par « Enregistrer » parce que la carte
+// n'était pas prête : il est porté par le document AVANT la pose graphique, et reposé au
+// chargement du style.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL68 — poserFond quand la carte n’est pas prête', () => {
+  it('poserFond avec addSource qui lève : underlay conservé puis reposé au load', () => {
+    document.body.innerHTML = '<div><button type="button" id="rp9-finish"></button></div>';
+    const surLoad: Array<() => void> = [];
+    let styleChargé = false;
+    const sources = new Map<string, unknown>();
+    const map = {
+      getSource: (id: string) => sources.get(id),
+      addSource: (id: string, spec: unknown) => {
+        if (!styleChargé) throw new Error('Style is not done loading');
+        sources.set(id, spec);
+      },
+      removeSource: (id: string) => sources.delete(id),
+      getLayer: () => undefined,
+      addLayer: vi.fn(),
+      removeLayer: vi.fn(),
+      setLayoutProperty: vi.fn(),
+      setPaintProperty: vi.fn(),
+      on: vi.fn(),
+      once: (ev: string, f: () => void) => {
+        if (ev === 'load') surLoad.push(f);
+      },
+      getZoom: () => 19,
+      getCenter: () => ({ lng: -7.62, lat: 33.58 }),
+      getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }),
+    };
+    const ctx = {
+      opts: { maptilerKey: 'K', imagery: { pays: 'ma' }, reducedMotion: true },
+      vertices: [], obstacles: [], areas: [], activeAreaId: 'a1', closed: false, centroid: [-7.62, 33.58],
+    } as unknown as Ctx;
+    const draw = createMapDraw(ctx, { map: map as never, setStatus: vi.fn(), updateAreaReadout: vi.fn() });
+    const coins: [number, number][] = [[-7.63, 33.59], [-7.61, 33.59], [-7.61, 33.57], [-7.63, 33.57]];
+    const fond = { kind: 'plan' as const, attachmentId: 512, opacite: 0.6 };
+    const r = draw.setFond(fond, { url: 'https://exemple/plan.png', coinsPlan: coins });
+    expect(r.ok).toBe(false);
+    // Le document porte TOUJOURS le fond : « Enregistrer » ne l'efface pas.
+    expect(underlayPourDocument(ctx)).toEqual({ underlay: fond });
+    expect(sources.size).toBe(0);
+    // Le style se charge : le fond est reposé tout seul.
+    styleChargé = true;
+    expect(surLoad).toHaveLength(1);
+    surLoad[0]();
+    expect(sources.size).toBe(1);
+    expect(underlayPourDocument(ctx)).toEqual({ underlay: fond });
   });
 });

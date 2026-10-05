@@ -125,6 +125,8 @@ beforeEach(() => {
       motifFondRefuse,
       poserFond,
     })
+    // ACAL68 — comme le constructeur réel : l'hydratation se termine APRÈS `onApiReady`.
+    options?.onHydrationTerminee?.()
   })
   calepinageApi.calepinages.designContext.mockResolvedValue(
     reponseContrat('calepinage', 'calepinage_design_context'))
@@ -195,6 +197,34 @@ describe('CALX107 câblage — le PLAN importé atteint enfin le calque de fond'
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(calepinageApi.calepinages.planImporte).not.toHaveBeenCalled()
     expect(poserFond).not.toHaveBeenCalled()
+  })
+})
+
+describe('ACAL68 — le fond est posé après l’hydratation', () => {
+  it('le fond est posé après l’hydratation, jamais celui d’un document précédent', async () => {
+    const fondPrecedent = { kind: 'plan', attachmentId: 999 }
+    // À `onApiReady`, le singleton du constructeur décrit encore le document PRÉCÉDENT ;
+    // l'hydratation du document ouvert le remplace par SON fond.
+    initRoofToolPro8.mockImplementation((options) => {
+      fondDuDocument.mockReturnValue(fondPrecedent)
+      options?.onApiReady?.({
+        serializeLayout: vi.fn(() => ({ version: 2, zones: [] })),
+        snapshot: vi.fn(() => null),
+        fondDuDocument,
+        motifFondRefuse,
+        poserFond,
+      })
+      fondDuDocument.mockReturnValue(fondPlan())
+      options?.onHydrationTerminee?.()
+    })
+    calepinageApi.calepinages.planImporte.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_plan_importe'))
+
+    rendreCalepinage(CTX.calepinage.id)
+
+    await waitFor(() => expect(poserFond).toHaveBeenCalled())
+    expect(poserFond).toHaveBeenCalledTimes(1)
+    expect(poserFond.mock.calls[0][0]).toEqual(fondPlan())
   })
 })
 
