@@ -9,6 +9,69 @@ from rest_framework import serializers
 
 from .models import CompanyProfile
 
+#: CIQ105 — prestations C&I réglables (clés = rôles C&I de prestation,
+#: ``core.product_roles.ROLES_CI``). Aucune valeur par défaut.
+FORFAITS_CI_PRESTATIONS = (
+    'etudes_ingenierie', 'pose_structure', 'pose_modules', 'raccordement_ac',
+    'mise_en_service', 'dossier_raccordement', 'levage_acces', 'transport_ci',
+)
+
+
+def _entree_sourcee(champ, entree, cles_montants):
+    """Normalise ``{<montants>, source, date}`` ; ``None`` si tout est vide.
+
+    Un montant saisi exige une ``source`` (refus FR nommant ``champ``) ;
+    montants ≥ 0, texte décimal ; ``date`` ISO ou null."""
+    import datetime
+
+    if entree in (None, '', {}):
+        return None
+    if not isinstance(entree, dict):
+        raise serializers.ValidationError(f'{champ} doit être un objet.')
+    permises = set(cles_montants) | {'source', 'date'}
+    inconnues = set(entree) - permises
+    if inconnues:
+        raise serializers.ValidationError(
+            f"{champ} : clé(s) inconnue(s) {', '.join(sorted(inconnues))}.")
+    montants = {}
+    for cle in cles_montants:
+        brut = entree.get(cle)
+        if brut in (None, ''):
+            montants[cle] = None
+            continue
+        try:
+            nombre = Decimal(str(brut).replace(',', '.'))
+        except InvalidOperation:
+            raise serializers.ValidationError(
+                f'{champ}.{cle} doit être un nombre.')
+        if not nombre.is_finite() or nombre < 0:
+            raise serializers.ValidationError(
+                f'{champ}.{cle} doit être un nombre positif ou nul.')
+        montants[cle] = str(nombre)
+    source = (entree.get('source') or '')
+    if not isinstance(source, str):
+        raise serializers.ValidationError(f'{champ}.source doit être un texte.')
+    source = source.strip()
+    date = entree.get('date') or None
+    if date is not None:
+        try:
+            datetime.date.fromisoformat(str(date))
+        except ValueError:
+            raise serializers.ValidationError(
+                f'{champ}.date doit être une date ISO (AAAA-MM-JJ).')
+        date = str(date)
+    if all(v is None for v in montants.values()):
+        if source or date:
+            raise serializers.ValidationError(
+                f'{champ} : une source sans aucun montant — saisissez le '
+                'montant ou videz la ligne.')
+        return None
+    if not source:
+        raise serializers.ValidationError(
+            f'{champ} : la source est obligatoire (devis fournisseur, offre '
+            'écrite…) — jamais un montant sans source.')
+    return {**montants, 'source': source, 'date': date}
+
 
 class CompanyProfileSerializer(serializers.ModelSerializer):
     logo_url = serializers.SerializerMethodField()
@@ -128,6 +191,46 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
                 "L'écart de recette pompage toléré doit être compris entre "
                 "0 (exclu) et 100 %.")
         return value
+
+    # ── CIQ105 — forfaits des prestations C&I et bande interne prix/kWc. Une
+    # valeur saisie SANS source est refusée (400 FR nommant le champ) ; une
+    # prestation entièrement vide est retirée (= « prix à renseigner »).
+    def validate_forfaits_ci(self, value):
+        if value in (None, ''):
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                '`forfaits_ci` doit être un objet {prestation: {...}}.')
+        inconnues = set(value) - set(FORFAITS_CI_PRESTATIONS)
+        if inconnues:
+            raise serializers.ValidationError(
+                'Prestation C&I inconnue : '
+                f"{', '.join(sorted(inconnues))} (attendu : "
+                f"{', '.join(FORFAITS_CI_PRESTATIONS)}).")
+        propre = {}
+        for prestation in FORFAITS_CI_PRESTATIONS:
+            if prestation not in value:
+                continue
+            entree = _entree_sourcee(
+                f'forfaits_ci.{prestation}', value[prestation],
+                ('fixe_ht', 'par_kwc_ht', 'par_panneau_ht'))
+            if entree is not None:
+                propre[prestation] = entree
+        return propre
+
+    def validate_bande_prix_kwc_ci(self, value):
+        if value in (None, '', {}):
+            return None
+        entree = _entree_sourcee('bande_prix_kwc_ci', value,
+                                 ('min_ht', 'max_ht'))
+        if entree is None:
+            return None
+        mini, maxi = entree['min_ht'], entree['max_ht']
+        if mini is not None and maxi is not None and (
+                Decimal(mini) > Decimal(maxi)):
+            raise serializers.ValidationError(
+                'bande_prix_kwc_ci : le minimum dépasse le maximum.')
+        return entree
 
     # NTI18N10 — validation contre le registre IANA réel (zoneinfo, stdlib
     # depuis Python 3.9, déjà utilisé par le runtime — aucune dépendance

@@ -251,6 +251,18 @@ class CompanyProfile(models.Model):
     # norme non lu). Validé 0 < x ≤ 100 par le sérialiseur.
     recette_pompage_ecart_max_pct = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True)
+    # ── CIQ105 (Groupe CIQ, 03/10/2026) — forfaits des prestations C&I, VIDES
+    # par défaut. Forme : ``{<prestation>: {fixe_ht, par_kwc_ht,
+    # par_panneau_ht, source, date}}`` (prestations = rôles C&I de service,
+    # ``FORFAITS_CI_PRESTATIONS`` du sérialiseur). Une prestation sans valeur
+    # ou sans source = « prix à renseigner », JAMAIS le barème résidentiel
+    # (L-FORFAIT intouché). Validé par le sérialiseur (source obligatoire).
+    forfaits_ci = models.JSONField(default=dict, blank=True)
+    # Bande INTERNE de contrôle du prix au kWc C&I ``{min_ht, max_ht, source,
+    # date}`` : NULL par défaut, remplie seulement par la tâche manuelle
+    # QXG6(b) (trois offres réelles). Servie au vendeur SEULEMENT — jamais au
+    # PDF ni au client.
+    bande_prix_kwc_ci = models.JSONField(null=True, blank=True)
     # ── Commission commerciale (N99) — additif, désactivé par défaut. Mode
     # 'off' (aucune commission, comportement inchangé), 'pct_devis' (% du HT
     # des devis signés) ou 'par_kwc' (MAD par kWc installé des chantiers issus
