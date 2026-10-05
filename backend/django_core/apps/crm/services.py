@@ -4186,6 +4186,17 @@ _MERGE_FILL_FIELDS = [
     'autorisation_prelevement', 'autorisation_numero',
     'autorisation_debit_l_s', 'autorisation_volume_m3_an', 'compteur_eau',
     'projet_pompage', 'deja_beneficiaire_fda', 'pompe_hmt_source',
+    # CIQ401 — colonnes du lead pro (contrat CIQ1) : préservées à la fusion.
+    'tension_raccordement', 'tension_source', 'compteur_puissance_kva',
+    'puissance_souscrite_source', 'categorie_commerciale',
+    'reponses_categorie', 'secteur_industriel', 'export_ue_declare',
+    'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin',
+    'fermeture_mois', 'type_surface', 'surface_source', 'groupe_electrogene',
+    'groupe_kva', 'groupe_litres_mois', 'groupe_depense_mad_mois',
+    'pv_existant_kwc', 'cos_phi', 'cos_phi_source', 'releve_conso',
+    'tva_recuperable', 'ice', 'rc', 'if_fiscal', 'adresse_siege',
+    'fonction_contact', 'contact_secondaire_fonction',
+    'contact_secondaire_email', 'facture_tranche_declaree',
     # Visite technique (légère) — préservée à la fusion.
     'visite_prevue_le', 'visite_effectuee', 'visite_notes',
     # Intake site web (taqinor.ma) — attribution + diagnostic préservés.

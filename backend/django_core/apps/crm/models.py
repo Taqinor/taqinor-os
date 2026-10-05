@@ -31,6 +31,160 @@ def valider_mois_irrigation(valeur):
         raise ValidationError(message)
 
 
+def _valider_entiers_distincts(valeur, borne_max, message):
+    from django.core.exceptions import ValidationError
+    if valeur in (None, []):
+        return
+    if not isinstance(valeur, list):
+        raise ValidationError(message)
+    for x in valeur:
+        if isinstance(x, bool) or not isinstance(x, int) \
+                or not 1 <= x <= borne_max:
+            raise ValidationError(message)
+    if len(set(valeur)) != len(valeur):
+        raise ValidationError(message)
+
+
+def valider_jours_ouverture(valeur):
+    """CIQ401 — ``Lead.jours_ouverture`` : entiers 1 (lundi) à 7 (dimanche),
+    distincts. Vide = question pas encore posée."""
+    _valider_entiers_distincts(
+        valeur, 7, "« Jours d'ouverture » : une liste de jours distincts, "
+        'chacun entre 1 (lundi) et 7 (dimanche).')
+
+
+def valider_fermeture_mois(valeur):
+    """CIQ401 — ``Lead.fermeture_mois`` : entiers 1-12 distincts."""
+    _valider_entiers_distincts(
+        valeur, 12, '« Mois de fermeture » : une liste de mois distincts, '
+        'chacun entre 1 et 12.')
+
+
+def valider_cos_phi(valeur):
+    """CIQ401 — un cos φ est dans ]0 ; 1] (jamais supposé : vide sinon)."""
+    from django.core.exceptions import ValidationError
+    if valeur is None:
+        return
+    if not 0 < valeur <= 1:
+        raise ValidationError(
+            '« Cos φ » : une valeur strictement positive, au plus 1.')
+
+
+#: CIQ401 (contrat CIQ1 ``lead_pro.json``) — vocabulaire de la provenance
+#: d'un relevé mensuel de consommation.
+RELEVE_CONSO_SOURCES = ('declare', 'lu_sur_facture', 'ocr_confirme')
+#: Clés d'un mois du relevé (toutes facultatives sauf ``mois`` et ``kwh``).
+RELEVE_CONSO_CLES_MOIS = (
+    'mois', 'kwh', 'kwh_pointe', 'kwh_pleines', 'kwh_creuses',
+    'puissance_atteinte_kva', 'cos_phi')
+
+
+def valider_releve_conso(valeur):
+    """CIQ401 — ``Lead.releve_conso`` = {mois: [{mois 'AAAA-MM', kwh ≥ 0,
+    registres MT facultatifs ≥ 0, cos_phi facultatif}], source}.
+
+    Au plus 12 mois DISTINCTS (les 12 factures ne sont jamais exigées,
+    W5-VB-07 : un seul mois est une réponse valable).
+    """
+    import re
+    from decimal import Decimal, InvalidOperation
+    from django.core.exceptions import ValidationError
+    if valeur is None:
+        return
+    message = ('« Relevé de consommation » : au plus 12 mois distincts '
+               '(AAAA-MM), chacun avec des kWh positifs ou nuls.')
+    if not isinstance(valeur, dict):
+        raise ValidationError(message)
+    if set(valeur) - {'mois', 'source'}:
+        raise ValidationError(message)
+    source = valeur.get('source')
+    if source is not None and source not in RELEVE_CONSO_SOURCES:
+        raise ValidationError(message)
+    mois = valeur.get('mois')
+    if not isinstance(mois, list) or len(mois) > 12:
+        raise ValidationError(message)
+    vus = set()
+    for ligne in mois:
+        if not isinstance(ligne, dict) or set(ligne) - set(
+                RELEVE_CONSO_CLES_MOIS):
+            raise ValidationError(message)
+        cle = ligne.get('mois')
+        if not isinstance(cle, str) or not re.fullmatch(
+                r'\d{4}-(0[1-9]|1[0-2])', cle) or cle in vus:
+            raise ValidationError(message)
+        vus.add(cle)
+        for champ in RELEVE_CONSO_CLES_MOIS[1:]:
+            brut = ligne.get(champ)
+            if brut is None:
+                if champ == 'kwh':
+                    raise ValidationError(message)
+                continue
+            if isinstance(brut, bool):
+                raise ValidationError(message)
+            try:
+                nombre = Decimal(str(brut))
+            except (InvalidOperation, ValueError):
+                raise ValidationError(message)
+            if not nombre.is_finite() or nombre < 0:
+                raise ValidationError(message)
+            if champ == 'cos_phi' and not 0 < nombre <= 1:
+                raise ValidationError(message)
+
+
+def normaliser_releve_conso(valeur):
+    """Forme servie du relevé : décimaux en texte à 2 décimales (comme un
+    ``DecimalField``), ``source`` = ``declare`` si absente. Idempotente : un
+    GET renvoyé tel quel donne le même objet."""
+    from decimal import Decimal
+    if valeur is None:
+        return None
+    lignes = []
+    for ligne in valeur.get('mois') or []:
+        propre = {'mois': ligne['mois']}
+        for champ in RELEVE_CONSO_CLES_MOIS[1:]:
+            brut = ligne.get(champ)
+            propre[champ] = (None if brut is None else str(
+                Decimal(str(brut)).quantize(Decimal('0.01'))))
+        lignes.append(propre)
+    lignes.sort(key=lambda ligne: ligne['mois'])
+    return {'mois': lignes, 'source': valeur.get('source') or 'declare'}
+
+
+def valider_facture_tranche_declaree(valeur):
+    """CIQ401 / D-CIQ-19 — {min_mad, max_mad (null = tranche OUVERTE),
+    libelle, source}. Une tranche n'est jamais un montant."""
+    from decimal import Decimal, InvalidOperation
+    from django.core.exceptions import ValidationError
+    if valeur is None:
+        return
+    message = ('« Tranche de facture déclarée » : {min_mad, max_mad (vide '
+               'si la tranche est ouverte), libelle, source}.')
+    if not isinstance(valeur, dict) or set(valeur) - {
+            'min_mad', 'max_mad', 'libelle', 'source'}:
+        raise ValidationError(message)
+    bornes = []
+    for champ in ('min_mad', 'max_mad'):
+        brut = valeur.get(champ)
+        if brut is None:
+            if champ == 'min_mad':
+                raise ValidationError(message)
+            bornes.append(None)
+            continue
+        if isinstance(brut, bool):
+            raise ValidationError(message)
+        try:
+            nombre = Decimal(str(brut))
+        except (InvalidOperation, ValueError):
+            raise ValidationError(message)
+        if not nombre.is_finite() or nombre < 0:
+            raise ValidationError(message)
+        bornes.append(nombre)
+    if bornes[1] is not None and bornes[1] < bornes[0]:
+        raise ValidationError(message)
+    if valeur.get('source') not in (None, 'meta', 'site_web', 'declare'):
+        raise ValidationError(message)
+
+
 class Client(models.Model):
     company = models.ForeignKey(
         'authentication.Company',
@@ -498,6 +652,91 @@ class Lead(SoftDeleteModel):
         CASH = 'cash', 'Comptant'
         CREDIT = 'credit', 'Crédit / financement'
         INDECIS = 'indecis', 'Pas encore décidé'
+        # CIQ401 — valeur INTERNE (D-CIQ-15) : jamais imprimée avant l'avis
+        # juridique sur le crédit-bail sous 82-21.
+        CREDIT_BAIL = 'credit_bail', 'Crédit-bail (interne)'
+
+    # ── CIQ401 (contrat CIQ1 ``lead_pro.json``) — vocabulaires du lead PRO ──
+    class TensionRaccordement(models.TextChoices):
+        BT = 'bt', 'Basse tension (BT)'
+        MT = 'mt', 'Moyenne tension (MT)'
+        NE_SAIT_PAS = 'ne_sait_pas', 'Ne sait pas'
+
+    class TensionSource(models.TextChoices):
+        DECLARE = 'declare', 'Déclarée'
+        SITE_WEB = 'site_web', 'Saisie sur le site'
+        SITE_DEFAUT_VISIBLE = 'site_defaut_visible', 'Défaut visible du site'
+        FACTURE = 'facture', 'Lue sur la facture'
+        MESURE_VISITE = 'mesure_visite', 'Mesurée en visite'
+
+    class PuissanceSouscriteSource(models.TextChoices):
+        DECLARE = 'declare', 'Déclarée'
+        FACTURE = 'facture', 'Lue sur la facture'
+        CONTRAT = 'contrat', 'Lue sur le contrat'
+        SITE_WEB = 'site_web', 'Saisie sur le site'
+        MESURE_VISITE = 'mesure_visite', 'Mesurée en visite'
+
+    class CategorieCommerciale(models.TextChoices):
+        HOTEL = 'hotel', 'Hôtel / riad'
+        RESTAURANT = 'restaurant', 'Restaurant / café'
+        COMMERCE = 'commerce', 'Commerce / supermarché'
+        BUREAU = 'bureau', 'Bureaux'
+        SANTE = 'sante', 'Santé (clinique, cabinet)'
+        ECOLE = 'ecole', 'École'
+        HAMMAM = 'hammam', 'Hammam / spa / salle de sport'
+        BOULANGERIE = 'boulangerie', 'Boulangerie'
+        FROID = 'froid', 'Froid / entrepôt frigorifique'
+        AUTRE = 'autre', 'Autre'
+
+    #: Clés FERMÉES de ``reponses_categorie`` par catégorie (contrat CIQ1,
+    #: ``reponses_categorie_par_categorie.cles``).
+    REPONSES_CATEGORIE_CLES = {
+        'hotel': ('chambres', 'occupation_pct', 'piscine', 'heures_piscine',
+                  'blanchisserie', 'reception_24h'),
+        'restaurant': ('chambres_froides', 'horaires', 'cuisson',
+                       'ouvert_journee_ramadan'),
+        'commerce': ('surface_vente_m2', 'chambres_froides'),
+        'bureau': ('effectif', 'clim'),
+        'sante': ('lits', 'garde_nuit'),
+        'ecole': ('effectif', 'internat', 'fermeture_estivale'),
+        'hammam': ('surface_m2', 'chauffe'),
+        'boulangerie': ('four', 'cuisson_nocturne'),
+        'froid': ('temperature_consigne', 'volume_m3',
+                  'saisonnalite_recolte'),
+        'autre': (),
+    }
+
+    class OuiNon(models.TextChoices):
+        OUI = 'oui', 'Oui'
+        NON = 'non', 'Non'
+
+    class RegimeEquipes(models.TextChoices):
+        UNE_EQUIPE = '1x8', 'Une équipe (1×8)'
+        DEUX_EQUIPES = '2x8', 'Deux équipes (2×8)'
+        TROIS_EQUIPES = '3x8', 'Trois équipes (3×8)'
+        CONTINU = 'continu', 'En continu'
+        NE_SAIT_PAS = 'ne_sait_pas', 'Ne sait pas'
+
+    class TypeSurface(models.TextChoices):
+        TOITURE = 'toiture', 'Toiture'
+        OMBRIERE = 'ombriere', 'Ombrière de parking'
+        TERRAIN = 'terrain', 'Terrain'
+
+    class SurfaceSource(models.TextChoices):
+        DECLARE = 'declare', 'Déclarée'
+        SITE_WEB = 'site_web', 'Saisie sur le site'
+        CALEPINAGE = 'calepinage', 'Calepinage'
+        MESURE_VISITE = 'mesure_visite', 'Mesurée en visite'
+
+    class CosPhiSource(models.TextChoices):
+        FACTURE = 'facture', 'Lu sur la facture'
+        SITE_WEB = 'site_web', 'Saisi sur le site'
+        MESURE_VISITE = 'mesure_visite', 'Mesuré en visite'
+
+    class TvaRecuperable(models.TextChoices):
+        OUI = 'oui', 'Oui'
+        NON = 'non', 'Non'
+        NE_SAIT_PAS = 'ne_sait_pas', 'Ne sait pas'
 
     # Charges futures prévues (clés autorisées de `futures_charges`).
     FUTURES_CHARGES_KEYS = ('clim', 've', 'pompe')
@@ -718,7 +957,10 @@ class Lead(SoftDeleteModel):
                   "« Je vous note Monsieur ou Madame ? » — facultative : "
                   'vide, les messages disent « Bonjour [prénom] », jamais un '
                   'genre supposé.')
-    societe = models.CharField(max_length=255, blank=True, null=True)
+    societe = models.CharField(
+        max_length=255, blank=True, null=True,
+        help_text="Question à l'appel : « Quelle est la raison sociale de "
+                  'votre entreprise ? » (vide = pas encore posée).')
     email = models.EmailField(blank=True, null=True)
     # CAD146 (21/09/2026) — pas de fuseau horaire par lead : un numéro
     # étranger (diaspora) reçoit ses touches à l'heure de Casablanca. Décision
@@ -870,10 +1112,16 @@ class Lead(SoftDeleteModel):
 
     # ── Profil énergétique ──
     conso_mensuelle_kwh = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True)
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Consommation mensuelle (kWh)',
+        help_text="Question à l'appel : « Votre consommation du mois "
+                  'dernier, en kWh ? Elle est sur la facture. » (vide = pas '
+                  'encore posée).')
     tranche_onee = models.CharField(max_length=100, blank=True, null=True)
     raccordement = models.CharField(
-        max_length=12, choices=Raccordement.choices, blank=True, null=True)
+        max_length=12, choices=Raccordement.choices, blank=True, null=True,
+        help_text="Question à l'appel : « Votre compteur est-il monophasé ou "
+                  'triphasé ? » (vide = pas encore posée).')
     # Installation existante à régulariser ? (Loi 82-21)
     regularisation_8221 = models.BooleanField(default=False)
 
@@ -1203,9 +1451,15 @@ class Lead(SoftDeleteModel):
 
     # ── Toiture & site ──
     type_toiture = models.CharField(
-        max_length=20, choices=TypeToiture.choices, blank=True, null=True)
+        max_length=20, choices=TypeToiture.choices, blank=True, null=True,
+        help_text="Question à l'appel : « Comment est faite votre toiture : "
+                  'terrasse béton, tôle, tuiles, bac acier, fibrociment ? » '
+                  '(vide = pas encore posée).')
     surface_toiture_m2 = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True)
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Surface disponible pour les panneaux (m²)',
+        help_text="Question à l'appel : « Quelle surface est libre pour les "
+                  'panneaux, en m² ? » (vide = pas encore posée).')
     orientation = models.CharField(
         max_length=12, choices=Orientation.choices, blank=True, null=True)
     inclinaison_deg = models.DecimalField(
@@ -1367,7 +1621,11 @@ class Lead(SoftDeleteModel):
         verbose_name='Horizon du projet')
     financing_intent = models.CharField(
         max_length=12, choices=FinancingIntent.choices, blank=True, null=True,
-        verbose_name='Financement envisagé')
+        verbose_name='Financement envisagé',
+        help_text="Question à l'appel : « Pensez-vous payer comptant, ou "
+                  'passer par un financement ? » (vide = pas encore posée). '
+                  '« Crédit-bail » est une valeur INTERNE, jamais imprimée '
+                  "avant l'avis juridique (D-CIQ-15).")
     # Charges futures prévues — liste de clés parmi FUTURES_CHARGES_KEYS
     # (clim / véhicule électrique / pompe). NULL = non renseigné.
     futures_charges = models.JSONField(
@@ -1698,12 +1956,9 @@ class Lead(SoftDeleteModel):
     compteur_puissance_kva = models.DecimalField(
         max_digits=7, decimal_places=2, null=True, blank=True,
         verbose_name='Puissance souscrite du compteur (kVA)',
-        help_text="Question à l'appel, EN DERNIER RECOURS seulement : "
-                  '« Quelle puissance est inscrite sur votre compteur '
-                  '(kVA) ? » (vide = pas encore posée). La voie NORMALE est '
-                  'la photo du compteur, que le questionnaire demande déjà — '
-                  'on ne fait lire une plaque au téléphone que si la photo '
-                  'est impossible.')
+        help_text="Question à l'appel : « Quelle est votre puissance "
+                  'souscrite, en kVA ? Elle est écrite sur votre facture ou '
+                  'votre contrat. » (vide = pas encore posée).')
     chauffage_electrique_hiver = models.BooleanField(
         null=True, blank=True, verbose_name='Chauffage électrique en hiver',
         help_text="Question à l'appel : « Vous chauffez-vous à l'électricité "
@@ -1711,6 +1966,184 @@ class Lead(SoftDeleteModel):
                   'INFORMATIF : décision fondateur du 21/09/2026 — aucune '
                   "couche de chauffage d'hiver n'est composée, donc il "
                   'n’ajuste AUCUNE courbe.')
+
+    # ── CIQ401 (contrat CIQ1 ``lead_pro.json``) — colonnes du lead PRO ──────
+    # Toutes nullables : vide = question pas encore posée, jamais une valeur
+    # par défaut enregistrée comme une réponse. Chaque colonne posée au
+    # téléphone porte sa question (libellé neutre ; la variante par segment
+    # vit dans ``questions_pro``). Les colonnes ``*_source`` sont posées par
+    # le SERVEUR selon le chemin d'écriture (fiche/appel → ``declare`` ;
+    # webhook → ``site_web``/``site_defaut_visible`` ; visite →
+    # ``mesure_visite``), jamais saisies à la main.
+    tension_raccordement = models.CharField(
+        max_length=12, choices=TensionRaccordement.choices, null=True,
+        blank=True, verbose_name='Tension de raccordement',
+        help_text="Question à l'appel : « Votre site est-il raccordé en "
+                  'basse tension, avec un compteur ordinaire, ou en moyenne '
+                  'tension, avec un poste de transformation ? Si vous ne '
+                  "savez pas, ce n'est pas grave. » (vide = pas encore "
+                  'posée).')
+    tension_source = models.CharField(
+        max_length=20, choices=TensionSource.choices, null=True, blank=True,
+        verbose_name='Provenance de la tension')
+    puissance_souscrite_source = models.CharField(
+        max_length=14, choices=PuissanceSouscriteSource.choices, null=True,
+        blank=True, verbose_name='Provenance de la puissance souscrite')
+    categorie_commerciale = models.CharField(
+        max_length=12, choices=CategorieCommerciale.choices, null=True,
+        blank=True, verbose_name='Activité (catégorie commerciale)',
+        help_text="Question à l'appel : « Quelle est votre activité : hôtel, "
+                  'restaurant ou café, commerce, bureaux, santé, école, '
+                  'hammam, boulangerie, froid, ou autre chose ? » (vide = '
+                  'pas encore posée).')
+    reponses_categorie = models.JSONField(
+        null=True, blank=True, verbose_name="Réponses propres à l'activité",
+        help_text="Question à l'appel : « Les questions propres à votre "
+                  'activité » (chambres, couverts, chambres froides…), '
+                  "posées juste après l'activité. Clés FERMÉES par catégorie "
+                  '(``REPONSES_CATEGORIE_CLES``).')
+    secteur_industriel = models.CharField(
+        max_length=120, null=True, blank=True,
+        verbose_name='Secteur industriel',
+        help_text="Question à l'appel : « Que fabriquez-vous ou que "
+                  'transformez-vous sur ce site ? » (vide = pas encore '
+                  'posée).')
+    export_ue_declare = models.CharField(
+        max_length=3, choices=OuiNon.choices, null=True, blank=True,
+        verbose_name="Exporte vers l'Union européenne",
+        help_text="Question à l'appel : « Exportez-vous une partie de votre "
+                  "production vers l'Union européenne ? » (vide = pas encore "
+                  'posée).')
+    regime_equipes = models.CharField(
+        max_length=12, choices=RegimeEquipes.choices, null=True, blank=True,
+        verbose_name='Régime des équipes',
+        help_text="Question à l'appel : « Travaillez-vous en une équipe de "
+                  'jour, en deux équipes, en trois équipes, ou en continu ? » '
+                  '(vide = pas encore posée).')
+    jours_ouverture = models.JSONField(
+        null=True, blank=True, validators=[valider_jours_ouverture],
+        verbose_name="Jours d'ouverture",
+        help_text="Question à l'appel : « Quels jours de la semaine êtes-vous "
+                  'ouverts ou en production ? » (entiers 1 = lundi à 7 = '
+                  'dimanche ; vide = pas encore posée).')
+    heure_debut = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MaxValueValidator(24)],
+        verbose_name='Heure de début de journée',
+        help_text="Question à l'appel : « À quelle heure commence votre "
+                  'journée de travail ? » (0-24 ; vide = pas encore posée).')
+    heure_fin = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MaxValueValidator(24)],
+        verbose_name='Heure de fin de journée',
+        help_text="Question à l'appel : « Et à quelle heure se termine-t-"
+                  'elle ? » (0-24 ; vide = pas encore posée).')
+    fermeture_mois = models.JSONField(
+        null=True, blank=True, validators=[valider_fermeture_mois],
+        verbose_name='Mois de fermeture',
+        help_text="Question à l'appel : « Fermez-vous certains mois de "
+                  "l'année, pour des congés ou une saison creuse ? "
+                  'Lesquels ? » (entiers 1-12 ; vide = pas encore posée).')
+    type_surface = models.CharField(
+        max_length=10, choices=TypeSurface.choices, null=True, blank=True,
+        verbose_name='Type de surface',
+        help_text="Question à l'appel : « Où pourrait-on poser les panneaux : "
+                  'sur la toiture, sur une ombrière de parking, ou sur un '
+                  'terrain ? » (vide = pas encore posée).')
+    surface_source = models.CharField(
+        max_length=14, choices=SurfaceSource.choices, null=True, blank=True,
+        verbose_name='Provenance de la surface')
+    groupe_electrogene = models.CharField(
+        max_length=3, choices=OuiNon.choices, null=True, blank=True,
+        verbose_name='Groupe électrogène',
+        help_text="Question à l'appel : « Avez-vous un groupe électrogène "
+                  'sur le site ? » (vide = pas encore posée).')
+    groupe_kva = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Groupe électrogène — puissance (kVA)',
+        help_text="Question à l'appel : « Quelle est sa puissance, en "
+                  'kVA ? » (vide = pas encore posée).')
+    groupe_litres_mois = models.DecimalField(
+        max_digits=9, decimal_places=2, null=True, blank=True,
+        verbose_name='Groupe électrogène — gasoil (L/mois)',
+        help_text="Question à l'appel : « Combien de litres de gasoil "
+                  'consomme-t-il par mois ? » (vide = pas encore posée).')
+    groupe_depense_mad_mois = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Groupe électrogène — dépense (MAD/mois)',
+        help_text="Question à l'appel : « Combien dépensez-vous en gasoil "
+                  'pour le groupe chaque mois ? » (DÉCLARÉ seulement, jamais '
+                  'un prix pré-rempli — Q17 ; vide = pas encore posée).')
+    pv_existant_kwc = models.DecimalField(
+        max_digits=9, decimal_places=2, null=True, blank=True,
+        verbose_name='Photovoltaïque existant (kWc)',
+        help_text="Question à l'appel : « Avez-vous déjà des panneaux "
+                  'solaires installés ? De quelle puissance ? » (vide = pas '
+                  'encore posée).')
+    cos_phi = models.DecimalField(
+        max_digits=4, decimal_places=3, null=True, blank=True,
+        validators=[valider_cos_phi], verbose_name='Cos φ',
+        help_text="Question à l'appel : « Votre facture indique-t-elle un "
+                  "cosinus phi ou une pénalité d'énergie réactive ? Quelle "
+                  'valeur ? » (jamais supposé ; vide = pas encore posée).')
+    cos_phi_source = models.CharField(
+        max_length=14, choices=CosPhiSource.choices, null=True, blank=True,
+        verbose_name='Provenance du cos φ')
+    releve_conso = models.JSONField(
+        null=True, blank=True, validators=[valider_releve_conso],
+        verbose_name='Relevé mensuel de consommation',
+        help_text="Question à l'appel : « Pouvez-vous nous envoyer vos "
+                  "dernières factures d'électricité ? Jusqu'à douze mois nous "
+                  'aident à être précis. » (au plus 12 mois, jamais exigés '
+                  'tous les douze ; vide = pas encore posée).')
+    tva_recuperable = models.CharField(
+        max_length=12, choices=TvaRecuperable.choices, null=True,
+        blank=True, verbose_name='TVA récupérable',
+        help_text="Question à l'appel : « Votre entreprise récupère-t-elle "
+                  'la TVA sur ses achats ? » (D-CIQ-3 ; vide = pas encore '
+                  'posée).')
+    ice = models.CharField(
+        max_length=30, null=True, blank=True, verbose_name='ICE',
+        help_text="Question à l'appel : « Pouvez-vous nous donner l'ICE de "
+                  "l'entreprise ? Il figurera sur le devis et la facture. » "
+                  '(texte libre ; demandé, jamais bloquant au devis — '
+                  'D-CIQ-11).')
+    rc = models.CharField(
+        max_length=30, null=True, blank=True,
+        verbose_name='Registre de commerce (RC)',
+        help_text="Question à l'appel : « Et son numéro de registre de "
+                  'commerce ? » (vide = pas encore posée).')
+    if_fiscal = models.CharField(
+        max_length=30, null=True, blank=True,
+        verbose_name='Identifiant fiscal (IF)',
+        help_text="Question à l'appel : « Et l'identifiant fiscal ? » (vide "
+                  '= pas encore posée).')
+    adresse_siege = models.TextField(
+        null=True, blank=True, verbose_name='Adresse du siège',
+        help_text="Question à l'appel : « Quelle est l'adresse du siège, si "
+                  'elle diffère de celle du site ? » (vide = pas encore '
+                  'posée).')
+    fonction_contact = models.CharField(
+        max_length=120, null=True, blank=True,
+        verbose_name='Fonction du contact',
+        help_text="Question à l'appel : « Quelle est votre fonction dans "
+                  "l'entreprise ? » (vide = pas encore posée).")
+    contact_secondaire_fonction = models.CharField(
+        max_length=120, null=True, blank=True,
+        verbose_name='Contact secondaire (fonction)',
+        help_text="Question à l'appel : « Qui d'autre décide avec vous ? "
+                  'Quelle est sa fonction ? » (CAD144 : sans automatisation '
+                  '; vide = pas encore posée).')
+    contact_secondaire_email = models.EmailField(
+        null=True, blank=True, verbose_name='Contact secondaire (e-mail)',
+        help_text="Question à l'appel : « Pouvons-nous lui envoyer le devis "
+                  'par e-mail ? À quelle adresse ? » (jamais utilisé par la '
+                  'cadence ; vide = pas encore posée).')
+    facture_tranche_declaree = models.JSONField(
+        null=True, blank=True, validators=[valider_facture_tranche_declaree],
+        verbose_name='Tranche de facture déclarée',
+        help_text="Question à l'appel : « Votre facture mensuelle se situe "
+                  'dans quelle tranche ? » — D-CIQ-19 : une tranche OUVERTE '
+                  "(« plus de 4 000 DH ») n'est JAMAIS stockée comme un "
+                  'montant.')
 
     def save(self, *args, **kwargs):
         # QW10 — maintient les colonnes de dédup normalisées à chaque save,

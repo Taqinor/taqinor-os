@@ -164,6 +164,40 @@ TRACKED_FIELDS = {
     # AGR522 — dossier de subvention FDA (interne).
     'dossier_subvention': 'Dossier de subvention (FDA)',
     'dossier_subvention_le': 'Date de l’état du dossier de subvention',
+    # CIQ401 — colonnes du lead pro (contrat CIQ1) : une réponse changée sans
+    # trace, c'est une étude C&I qui bouge sans explication. Libellés =
+    # ``verbose_name`` du modèle.
+    'tension_raccordement': 'Tension de raccordement',
+    'tension_source': 'Provenance de la tension',
+    'puissance_souscrite_source': 'Provenance de la puissance souscrite',
+    'categorie_commerciale': 'Activité (catégorie commerciale)',
+    'reponses_categorie': "Réponses propres à l'activité",
+    'secteur_industriel': 'Secteur industriel',
+    'export_ue_declare': "Exporte vers l'Union européenne",
+    'regime_equipes': 'Régime des équipes',
+    'jours_ouverture': "Jours d'ouverture",
+    'heure_debut': 'Heure de début de journée',
+    'heure_fin': 'Heure de fin de journée',
+    'fermeture_mois': 'Mois de fermeture',
+    'type_surface': 'Type de surface',
+    'surface_source': 'Provenance de la surface',
+    'groupe_electrogene': 'Groupe électrogène',
+    'groupe_kva': 'Groupe électrogène — puissance (kVA)',
+    'groupe_litres_mois': 'Groupe électrogène — gasoil (L/mois)',
+    'groupe_depense_mad_mois': 'Groupe électrogène — dépense (MAD/mois)',
+    'pv_existant_kwc': 'Photovoltaïque existant (kWc)',
+    'cos_phi': 'Cos φ',
+    'cos_phi_source': 'Provenance du cos φ',
+    'releve_conso': 'Relevé mensuel de consommation',
+    'tva_recuperable': 'TVA récupérable',
+    'ice': 'ICE',
+    'rc': 'Registre de commerce (RC)',
+    'if_fiscal': 'Identifiant fiscal (IF)',
+    'adresse_siege': 'Adresse du siège',
+    'fonction_contact': 'Fonction du contact',
+    'contact_secondaire_fonction': 'Contact secondaire (fonction)',
+    'contact_secondaire_email': 'Contact secondaire (e-mail)',
+    'facture_tranche_declaree': 'Tranche de facture déclarée',
 }
 
 #: AGR401 — CLÉ D'HISTORIQUE DOCUMENTÉE : des lignes de chatter écrites avant
@@ -205,6 +239,11 @@ _CHOICE_FIELDS = {
     'pompe_actuelle_type', 'electricite_sur_place',
     'autorisation_prelevement', 'projet_pompage', 'pompe_hmt_source',
     'dossier_subvention',
+    # CIQ401 — vocabulaires fermés du lead pro.
+    'tension_raccordement', 'tension_source', 'puissance_souscrite_source',
+    'categorie_commerciale', 'export_ue_declare', 'regime_equipes',
+    'type_surface', 'surface_source', 'groupe_electrogene', 'cos_phi_source',
+    'tva_recuperable',
 }
 
 _BOOL_LABELS = {True: 'Oui', False: 'Non'}

@@ -1308,6 +1308,14 @@ _RAISON_POMPAGE_AGR = (
     "déclarer dans `LEAD_PROVENANCE_FIELDS`."
 )
 
+_RAISON_PRO_CIQ = (
+    "colonne du lead pro (CIQ401, contrat CIQ1) : le devis C&I ne la "
+    "RECOPIE pas encore dans `etude_params` — elle est lue par "
+    "`entrees_ci` (CIQ405) au moment où le moteur serveur C&I (D-CIQ-0) "
+    "compose l'étude ; à déclarer dans `LEAD_PROVENANCE_FIELDS` le jour où "
+    "le devis en garde une copie."
+)
+
 LEAD_PROVENANCE_EXCLUSIONS = dict(
     [(champ, _RAISON_PROFIL_APPEL) for champ in (
         'equip_piscine', 'equip_piscine_pompe_kw', 'equip_piscine_heures_jour',
@@ -1352,6 +1360,12 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
         'autorisation_debit_l_s', 'autorisation_volume_m3_an',
         'compteur_eau', 'projet_pompage', 'deja_beneficiaire_fda',
         'pompe_hmt_source',
+    )]
+    # CIQ401 — colonnes du lead pro (contrat CIQ1 ``lead_pro.json``) qui
+    # portent un marqueur énergie : nommées une à une, avec leur raison.
+    + [(champ, _RAISON_PRO_CIQ) for champ in (
+        'tension_raccordement', 'releve_conso', 'facture_tranche_declaree',
+        'pv_existant_kwc',
     )]
     + [
         ('occupation_jour', _RAISON_LU_EN_DIRECT),

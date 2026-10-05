@@ -1196,7 +1196,65 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
                     'lead', company, attrs.get('custom_data'))
         self._poser_provenances_pompage(attrs)
         self._valider_dossier_subvention(attrs)
+        self._valider_colonnes_pro(attrs)
+        self._poser_provenances_pro(attrs)
         return attrs
+
+    # CIQ401 (contrat CIQ1 ``lead_pro.json``) — DRF n'appelle pas
+    # ``Model.clean`` : les règles croisées des colonnes pro vivent ici (les
+    # règles par champ sont les ``validators`` du modèle).
+    def _valider_colonnes_pro(self, attrs):
+        instance = self.instance
+
+        def _valeur(champ):
+            if champ in attrs:
+                return attrs[champ]
+            return getattr(instance, champ, None)
+
+        if 'heure_debut' in attrs or 'heure_fin' in attrs:
+            debut, fin = _valeur('heure_debut'), _valeur('heure_fin')
+            if debut is not None and fin is not None and debut >= fin:
+                champ = 'heure_fin' if 'heure_fin' in attrs else 'heure_debut'
+                raise serializers.ValidationError({champ: [
+                    "« Heure de fin » : elle doit être après l'heure de "
+                    'début.']})
+        if attrs.get('reponses_categorie') is not None:
+            reponses = attrs['reponses_categorie']
+            categorie = _valeur('categorie_commerciale')
+            cles = Lead.REPONSES_CATEGORIE_CLES
+            permises = (set(cles.get(categorie, ())) if categorie
+                        else {c for liste in cles.values() for c in liste})
+            if not isinstance(reponses, dict) or set(reponses) - permises:
+                raise serializers.ValidationError({'reponses_categorie': [
+                    "« Réponses propres à l'activité » : seules les questions "
+                    "de la catégorie déclarée sont acceptées."]})
+        if attrs.get('releve_conso') is not None:
+            from .models import normaliser_releve_conso
+            attrs['releve_conso'] = normaliser_releve_conso(
+                attrs['releve_conso'])
+
+    # CIQ401 — une valeur pro SAISIE dans l'ERP (fiche ou appel) porte sa
+    # provenance, posée ici et jamais par le corps (colonnes ``*_source`` en
+    # lecture seule). Le cos φ n'a pas ``declare`` dans son vocabulaire : il
+    # se lit sur la facture. La source ne change que si la valeur change ;
+    # une valeur vidée vide sa source.
+    _PROVENANCES_PRO_SAISIE = (
+        ('tension_raccordement', 'tension_source', 'declare'),
+        ('compteur_puissance_kva', 'puissance_souscrite_source', 'declare'),
+        ('surface_toiture_m2', 'surface_source', 'declare'),
+        ('cos_phi', 'cos_phi_source', 'facture'),
+    )
+
+    def _poser_provenances_pro(self, attrs):
+        instance = self.instance
+        for valeur, source, origine in self._PROVENANCES_PRO_SAISIE:
+            if valeur not in attrs:
+                continue
+            if instance is not None and getattr(instance, valeur) == attrs[
+                    valeur]:
+                continue
+            attrs[source] = (origine if attrs[valeur] not in (None, '')
+                             else None)
 
     #: AGR522 (contrat ``lead_dossier_subvention.json``, ``exemple_400``).
     MESSAGE_DATE_SUBVENTION = (
@@ -1281,6 +1339,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             'niveau_statique_source', 'debit_forage_source',
             'besoin_eau_source', 'pompe_hmt_source',
             'carburant_prix_declare_le',
+            # CIQ401 — provenances des colonnes pro : posées par le serveur
+            # selon le chemin d'écriture (fiche, webhook, visite).
+            'tension_source', 'puissance_souscrite_source', 'surface_source',
+            'cos_phi_source',
         ]
 
     # FG20 — coordonnées personnelles masquées sans ``client_pii_voir``.
