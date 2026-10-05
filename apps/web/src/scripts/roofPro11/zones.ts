@@ -245,6 +245,30 @@ export function idPanEnDouble(zones: readonly { id: string }[]): string | null {
   return null;
 }
 
+/** Pan NEUF aux valeurs par défaut (toit plat 22°, plein sud), identifiant issu de LA fabrique
+ *  `prochainId` : l'unique définition, partagée par le builder (`roof-tool-pro11.ts`) et
+ *  `nouveauPanDepuisContour` (jamais deux copies du littéral). */
+export function panVierge(
+  existants: readonly { id: string }[],
+  vertices: AreaRecord['vertices'] = [],
+): AreaRecord {
+  const id = prochainId('area', existants);
+  return {
+    id,
+    label: areaLabel(Number(id.slice('area-'.length)) - 1),
+    vertices,
+    obstacles: [],
+    roofType: 'flat',
+    pitchDeg: 22,
+    facingAzimuthDeg: 180,
+    facingManual: false,
+    neededPanels: 0,
+    neededAuto: true,
+    result: null,
+    renderPlan: null,
+  };
+}
+
 /**
  * ACAL71 — un contour GÉORÉFÉRENCÉ ([[lng, lat], …], plan importé calé, relevé…) devient
  * un NOUVEAU pan de l'atelier, identifiant tiré de `prochainId` (jamais un doublon). Mêmes
@@ -273,24 +297,7 @@ export function nouveauPanDepuisContour(
   if (!isSimplePolygon(ring)) {
     return { ok: false, motif: 'Ce contour se croise : corrigez-le avant d’en faire un pan (aucun pan créé).' };
   }
-  const id = prochainId('area', existants);
-  return {
-    ok: true,
-    pan: {
-      id,
-      label: areaLabel(Number(id.slice('area-'.length)) - 1),
-      vertices: ring,
-      obstacles: [],
-      roofType: 'flat',
-      pitchDeg: 22,
-      facingAzimuthDeg: 180,
-      facingManual: false,
-      neededPanels: 0,
-      neededAuto: true,
-      result: null,
-      renderPlan: null,
-    },
-  };
+  return { ok: true, pan: panVierge(existants, ring) };
 }
 
 /** CALX98 — identifiant de zone NEUF, dans un espace de noms (`area-copie-N`) que le

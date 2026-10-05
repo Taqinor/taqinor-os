@@ -86,7 +86,6 @@ import {
 import { isSimplePolygon, roofAreaLabel, zoomToFitRing, type LngLat } from '../lib/roof';
 import { inferZoneFacingAmong } from '../lib/roofAdjacency';
 import { type Obstacle } from '../lib/obstacles';
-import { areaLabel } from '../lib/roofAreas';
 import { buildSatelliteStyle, imageryAttribution, resolveImageryProvider } from '../lib/roofConfig';
 import { type RoofTypeSelect } from '../lib/roofTypeSelect';
 import { type ScaledProduction, type PerKwcProduction, type SpecificDateProfile } from '../lib/productionEngine';
@@ -137,8 +136,8 @@ import {
   exclusionZoneRing,
   empriseModuleENU, // CALX403 câblage
   type ModulePose, // CALX403 câblage
-  prochainId, // ACAL64
   nouveauPanDepuisContour, // ACAL71
+  panVierge,
 } from './roofPro11/zones';
 // CALX109/CALX110 câblage — le catalogue de modules de la société (`opts.modulesDisponibles`)
 // et le module posé sur chaque pan (`AreaRecord.moduleId`) : c'est ce couple qui part dans le
@@ -635,23 +634,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // position relative (offset GPS → ENU). `count` = nombre de panneaux RÉELLEMENT posés.
   // ACAL64 — l'identifiant vient de LA fabrique (`zones.ts::prochainId`) : max(n)+1 sur les
   // pans EXISTANTS, jamais un compteur de session qui repartait de zéro sur un dossier rouvert.
-  const newAreaRecord = (existants?: readonly { id: string }[]): AreaRecord => {
-    const id = prochainId('area', existants ?? areas);
-    return {
-      id,
-      label: areaLabel(Number(id.slice('area-'.length)) - 1),
-      vertices: [],
-      obstacles: [],
-      roofType: 'flat',
-      pitchDeg: 22,
-      facingAzimuthDeg: 180,
-      facingManual: false,
-      neededPanels: 0,
-      neededAuto: true,
-      result: null,
-      renderPlan: null,
-    };
-  };
+  const newAreaRecord = (existants?: readonly { id: string }[]): AreaRecord =>
+    panVierge(existants ?? areas);
   // PV19 — origine DEVIS mémorisée à l'hydratation (jamais devinée) : elle alimente le
   // meta de sérialisation par défaut. Null tant qu'aucun devis n'a hydraté le builder.
   let devisOrigin: { devisId: string | number | null; panelWatt: number | null; scenario: import('./roofPro11/prefill').LayoutScenario | null } | null = null;
