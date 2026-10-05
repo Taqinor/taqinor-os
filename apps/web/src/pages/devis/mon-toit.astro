@@ -1643,6 +1643,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
               class="mt-3 inline-flex items-center gap-2 bg-ok-600 px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
               <span data-i18n data-fr="Ouvrir WhatsApp maintenant" data-ar="افتح واتساب الآن">Ouvrir WhatsApp maintenant</span>
             </a>
+            <button type="button" id="mt-affiner" hidden
+              class="mt-3 ml-2 inline-flex items-center gap-2 border border-white/30 px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90">
+              <span data-i18n data-fr="Affiner ma demande (2 minutes, facultatif)" data-ar="أدقّقوا طلبي (دقيقتان، اختياري)">Affiner ma demande (2 minutes, facultatif)</span>
+            </button>
           </div>
 
           <!-- WJ5 — chemin HONNÊTE sous le seuil 1 000 MAD (jamais un faux « enregistré ») -->
@@ -4714,6 +4718,38 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     })();
   }
 
+  // ——— CIW405 (D-CIQ-8) : étape « Affiner », FACULTATIVE, APRÈS la porte de contact ———
+  // Réservée aux profils commercial / industriel. Le bouton est dans le bloc de
+  // succès qualifié ; le clic appelle le proxy same-origin /api/lead-affiner
+  // avec l'idempotencyKey DÉJÀ envoyée (jamais une seconde soumission), puis
+  // ouvre /questionnaire/<jeton>. Échec ou 404 : le bouton se retire sans
+  // message alarmant. Rien n'est demandé AVANT la porte de contact.
+  function setupAffiner(idempotencyKey: string) {
+    const btn = $('mt-affiner') as HTMLButtonElement | null;
+    if (!btn || !idempotencyKey) return;
+    if (mode !== 'commercial' && mode !== 'industriel') return;
+    btn.hidden = false;
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/lead-affiner', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ key: idempotencyKey }),
+          signal: AbortSignal.timeout(6000),
+        });
+        const data = (await res.json().catch(() => null)) as { ok?: boolean; url?: string } | null;
+        if (data?.ok && typeof data.url === 'string' && data.url.startsWith('/questionnaire/')) {
+          window.location.href = data.url;
+          return;
+        }
+      } catch {
+        // silencieux : repli ci-dessous.
+      }
+      btn.hidden = true; // échec / 404 : le bouton se retire, sans alarme.
+    });
+  }
+
   // ——— soumission → /api/capture-lead (contrat INCHANGÉ) ———
   const form = $('mt-form') as HTMLFormElement | null;
   const errEl = $('mt-error');
@@ -4831,6 +4867,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
           // pollServerClientRef ci-dessus) : remplace le code + le lien
           // WhatsApp affichés dès qu'elle arrive, silencieuse sinon.
           pollServerClientRef(getOrCreateDedupTokens().idempotencyKey);
+          setupAffiner(getOrCreateDedupTokens().idempotencyKey); // CIW405
           // WJ3/WJ51 — sur mobile, on propose WhatsApp tout de suite quand la
           // préférence de contact est « Uniquement sur WhatsApp » (option cochée par défaut).
           const wantsWa = ($('mt-contact-phone') as HTMLInputElement | null)?.checked !== true;

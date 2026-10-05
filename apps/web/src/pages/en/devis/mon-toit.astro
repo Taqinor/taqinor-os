@@ -1467,6 +1467,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               class="mt-3 inline-flex items-center gap-2 bg-ok-600 px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
               <span>Open WhatsApp now</span>
             </a>
+            <button type="button" id="mt-affiner" hidden
+              class="mt-3 ml-2 inline-flex items-center gap-2 border border-white/30 px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90">
+              <span>Refine my request (2 minutes, optional)</span>
+            </button>
           </div>
 
           <!-- WJ5 — HONEST path below the qualifying threshold (never a fake "recorded") -->
@@ -4506,6 +4510,38 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     })();
   }
 
+  // ——— CIW405 (D-CIQ-8) : étape « Affiner », FACULTATIVE, APRÈS la porte de contact ———
+  // Réservée aux profils commercial / industriel. Le bouton est dans le bloc de
+  // succès qualifié ; le clic appelle le proxy same-origin /api/lead-affiner
+  // avec l'idempotencyKey DÉJÀ envoyée (jamais une seconde soumission), puis
+  // ouvre /questionnaire/<jeton>. Échec ou 404 : le bouton se retire sans
+  // message alarmant. Rien n'est demandé AVANT la porte de contact.
+  function setupAffiner(idempotencyKey: string) {
+    const btn = $('mt-affiner') as HTMLButtonElement | null;
+    if (!btn || !idempotencyKey) return;
+    if (mode !== 'commercial' && mode !== 'industriel') return;
+    btn.hidden = false;
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/lead-affiner', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ key: idempotencyKey }),
+          signal: AbortSignal.timeout(6000),
+        });
+        const data = (await res.json().catch(() => null)) as { ok?: boolean; url?: string } | null;
+        if (data?.ok && typeof data.url === 'string' && data.url.startsWith('/questionnaire/')) {
+          window.location.href = data.url;
+          return;
+        }
+      } catch {
+        // silencieux : repli ci-dessous.
+      }
+      btn.hidden = true; // échec / 404 : le bouton se retire, sans alarme.
+    });
+  }
+
   // ——— submission -> /api/capture-lead (contract UNCHANGED) ———
   const form = $('mt-form') as HTMLFormElement | null;
   const errEl = $('mt-error');
@@ -4606,6 +4642,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           // pollServerClientRef above): swaps the displayed code + WhatsApp
           // link the moment it arrives, silent otherwise.
           pollServerClientRef(getOrCreateDedupTokens().idempotencyKey);
+          setupAffiner(getOrCreateDedupTokens().idempotencyKey); // CIW405
           // WJ3/WJ51 — on mobile, offer WhatsApp right away when the contact
           // preference is "WhatsApp only" (the option checked by default).
           const wantsWa = ($('mt-contact-phone') as HTMLInputElement | null)?.checked !== true;
