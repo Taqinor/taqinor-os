@@ -20,7 +20,7 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 
-from .constants import SCOPE_READ_CALEPINAGES, SCOPE_READ_LEADS
+from .portees import SCOPE_READ_CALEPINAGES, SCOPE_READ_LEADS
 from .models import ApiKey
 
 # Un résultat de moteur RÉALISTE : les deux grandeurs publiables (`kwc`,

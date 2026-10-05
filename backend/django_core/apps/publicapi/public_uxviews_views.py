@@ -26,7 +26,7 @@ from rest_framework.exceptions import ValidationError
 
 from apps.uxviews.models import FavoriUtilisateur, SavedView
 
-from .constants import SCOPE_READ_FAVORIS, SCOPE_READ_VUES
+from .portees import SCOPE_READ_FAVORIS, SCOPE_READ_VUES
 from .public_serializers import PublicFavoriSerializer, PublicSavedViewSerializer
 from .public_views import PublicReadOnlyViewSet
 

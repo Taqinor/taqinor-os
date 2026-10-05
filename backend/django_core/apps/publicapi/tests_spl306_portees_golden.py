@@ -15,7 +15,7 @@ from django.test import TestCase
 
 from authentication.models import Company
 
-EMPLACEMENT = 'apps.publicapi.constants'
+EMPLACEMENT = 'apps.publicapi.portees'
 
 NOMS_BLOC_HORS_PORTEES = (
     'SCOPE_CHOICES', 'ALL_SCOPES',

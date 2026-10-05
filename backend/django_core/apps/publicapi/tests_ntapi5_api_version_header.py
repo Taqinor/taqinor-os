@@ -11,7 +11,7 @@ from django.test import TestCase
 
 from authentication.models import Company
 
-from .constants import SCOPE_READ_LEADS
+from .portees import SCOPE_READ_LEADS
 from .models import ApiKey
 from .public_response import API_VERSION_HEADER
 

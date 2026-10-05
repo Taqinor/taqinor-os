@@ -18,7 +18,7 @@ from authentication.models import Company
 from core.models import BackupRun
 from core.sla import SlaSnapshot
 
-from .constants import SCOPE_READ_FIABILITE, SCOPE_READ_LEADS
+from .portees import SCOPE_READ_FIABILITE, SCOPE_READ_LEADS
 from .models import ApiKey
 
 URL_SAUVEGARDES = '/api/public/v1/fiabilite/sauvegardes/'
@@ -145,5 +145,5 @@ class FiabilitePubliqueTests(TestCase):
             self.assertIn(api.get(url).status_code, (401, 403), url)
 
     def test_scope_declare_au_catalogue(self):
-        from .constants import ALL_SCOPES
+        from .portees import ALL_SCOPES
         self.assertIn(SCOPE_READ_FIABILITE, ALL_SCOPES)

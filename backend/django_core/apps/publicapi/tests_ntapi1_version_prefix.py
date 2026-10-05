@@ -16,9 +16,10 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 
+from .portees import SCOPE_READ_LEADS
 from .constants import (
     PUBLIC_API_BASE, PUBLIC_API_DEFAULT_VERSION, PUBLIC_API_LEGACY_BASE,
-    PUBLIC_API_LEGACY_SUNSET, PUBLIC_API_VERSIONS, SCOPE_READ_LEADS,
+    PUBLIC_API_LEGACY_SUNSET, PUBLIC_API_VERSIONS,
 )
 from .models import ApiKey
 from .versioning import (

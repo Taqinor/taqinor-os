@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 from apps.uxviews.models import FavoriUtilisateur, SavedView
 
-from .constants import SCOPE_READ_FAVORIS, SCOPE_READ_LEADS, SCOPE_READ_VUES
+from .portees import SCOPE_READ_FAVORIS, SCOPE_READ_LEADS, SCOPE_READ_VUES
 from .models import ApiKey
 
 User = get_user_model()

@@ -13,7 +13,7 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 
-from .constants import SCOPE_READ_LEADS
+from .portees import SCOPE_READ_LEADS
 from .error_catalog import catalogue, codes_documentes, codes_emis
 from .models import ApiKey
 

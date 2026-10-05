@@ -18,7 +18,7 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 
 from . import oauth
-from .constants import SCOPE_READ_DEVIS, SCOPE_READ_LEADS
+from .portees import SCOPE_READ_DEVIS, SCOPE_READ_LEADS
 from .models import ApiKey, OAuthClient
 
 
