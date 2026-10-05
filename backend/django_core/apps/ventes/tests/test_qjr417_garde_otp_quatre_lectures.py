@@ -20,7 +20,6 @@ parcours client normal passe la garde exactement comme aujourd'hui.
 """
 import ast
 from decimal import Decimal
-from pathlib import Path
 from unittest import mock
 
 from django.core.cache import cache
@@ -31,7 +30,9 @@ from authentication.models import Company
 
 from apps.crm.models import Client
 from apps.ventes import public_views
+from apps.ventes.public import lecture_views
 from apps.ventes.models import Devis, ShareLink
+from apps.ventes.tests.split_golden import fichiers_du_groupe
 
 
 class _BaseLienProtege(TestCase):
@@ -74,7 +75,7 @@ class PublicDocumentGardeTests(_BaseLienProtege):
         marquée « ouverte »."""
         with mock.patch.object(
                 public_views, '_stamp_view_si_public') as stamp, \
-                mock.patch.object(public_views, '_notify_first_open') as notif:
+                mock.patch.object(lecture_views, '_notify_first_open') as notif:
             reponse = self.anon.get(self._url())
         self.assertEqual(reponse.status_code, 403)
         self.assertEqual(reponse.data['detail'], 'otp_required')
@@ -151,10 +152,16 @@ class LesQuatreLecturesTests(TestCase):
                  'suivi_public')
 
     @staticmethod
-    def _fonctions():
-        source = Path(public_views.__file__).read_text(encoding='utf-8')
-        arbre = ast.parse(source)
-        return {noeud.name: noeud for noeud in ast.walk(arbre)
+    def _arbres():
+        # SPL241 — ``public_views.py`` est découpé en ``public/*.py`` : la
+        # garde lit le GROUPE (jamais vide), pas un fichier qui se vide.
+        return [ast.parse(chemin.read_text(encoding='utf-8'))
+                for chemin in fichiers_du_groupe('public_views.py', 'public/*.py')]
+
+    @classmethod
+    def _fonctions(cls):
+        return {noeud.name: noeud
+                for arbre in cls._arbres() for noeud in ast.walk(arbre)
                 if isinstance(noeud, ast.FunctionDef)}
 
     def test_les_quatre_appellent_la_meme_garde(self):
@@ -171,16 +178,15 @@ class LesQuatreLecturesTests(TestCase):
 
         Aucune fonction de garde n'est DÉFINIE ici, et chaque usage vient de
         l'import ``from .services import otp_lecture_verified``."""
-        source = Path(public_views.__file__).read_text(encoding='utf-8')
-        arbre = ast.parse(source)
+        noeuds = [n for arbre in self._arbres() for n in ast.walk(arbre)]
         definitions = [
-            noeud.name for noeud in ast.walk(arbre)
+            noeud.name for noeud in noeuds
             if isinstance(noeud, ast.FunctionDef)
             and 'lecture_verified' in noeud.name
         ]
         self.assertEqual(definitions, [])
         origines = {
-            noeud.module for noeud in ast.walk(arbre)
+            noeud.module for noeud in noeuds
             if isinstance(noeud, ast.ImportFrom)
             and any(a.name == 'otp_lecture_verified' for a in noeud.names)
         }

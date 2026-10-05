@@ -96,6 +96,8 @@ class JamaisSurUneSortieClient(SimpleTestCase):
         cibles = [
             racine / 'backend' / 'django_core' / 'apps' / 'ventes' / 'quote_engine',
             racine / 'backend' / 'django_core' / 'apps' / 'ventes' / 'public_views.py',
+            # SPL245-SPL253 (#796) — public_views découpé dans ``public/``.
+            racine / 'backend' / 'django_core' / 'apps' / 'ventes' / 'public',
             racine / 'apps' / 'web',
         ]
         for cible in cibles:

@@ -45,11 +45,45 @@ export const VOICE_NOTE_INVITE =
  * standard, cohérent avec le reste du site). Les autres locales ne changent
  * pas de comportement (repli FR identique à avant).
  */
-export function zeroFormWhatsappText(locale?: Locale): string {
+export type ZeroFormVariant = 'facture' | 'pompage';
+
+/**
+ * AGW402 — variante `'pompage'` : un agriculteur au butane n'a pas de facture
+ * d'électricité à photographier. Le message demande sa POSITION et la photo de
+ * la plaque de sa pompe (ou de son forage). Ni prix, ni promesse d'aide.
+ * Darija écrite maintenant, relue par Reda ensuite (D-AGR-11). Une locale 'en'
+ * existe aussi pour la variante `'facture'` : l'anglais n'est plus servi en
+ * français (le FR reste identique à l'octet).
+ */
+export function zeroFormWhatsappText(locale?: Locale, variant: ZeroFormVariant = 'facture'): string {
+  if (variant === 'pompage') {
+    if (locale === 'ar') {
+      return (
+        'مرحباً، أرغب في الضخ الشمسي لاستغلالي الفلاحي. أرسل لكم موقعي وصورة للوحة مضختي (أو لبئري). ' +
+        'هادي موقعي وصورة ديال البلاكة د المضخة (ولا د البير) — عافاك عاونوني.'
+      );
+    }
+    if (locale === 'en') {
+      return (
+        'Hello, I would like solar pumping for my farm. ' +
+        'I am sending you my location and a photo of my pump’s nameplate (or of my borehole).'
+      );
+    }
+    return (
+      'Bonjour, je souhaite un pompage solaire pour mon exploitation. ' +
+      'Je vous envoie ma position et une photo de la plaque de ma pompe (ou de mon forage).'
+    );
+  }
   if (locale === 'ar') {
     return (
       'مرحبا، هادي صورة فاتورة الكهرباء ديالي (ولا نصيفط ليكم صوت مباشرة من بعد). ' +
       'عافاك تكلفو بكلشي.'
+    );
+  }
+  if (locale === 'en') {
+    return (
+      'Hello, here is a photo of my electricity bill (or I will send you a voice note right after). ' +
+      'Thank you for taking care of everything.'
     );
   }
   return (

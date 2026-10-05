@@ -40,10 +40,11 @@ import { whatsappLink, zeroFormWhatsappText } from '../../lib/whatsapp';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
-const devisHref = L('/devis/mon-toit');
+// AGW400 — le tunnel lit ?mode=agricole (AGW401) : la carte Agricole arrive présélectionnée.
+const devisHref = L('/devis/mon-toit') + '?mode=agricole';
 
 // W349 — باب بدون نموذج: لا حقل، لا فيشة للتعبئة. سطر دارجة مُضاف داخل الدالة.
-const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText('ar'));
+const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText('ar', 'pompage'));
 
 // W348 — فيشة تحديد مقاس قابلة للطباعة (HMT/الصبيب/الساعات/المحصول)، تُملأ
 // ميدانياً ثم تُرسل صورتها عبر واتساب: تُعيد استعمال المتغيرات الأربعة
@@ -138,8 +139,8 @@ const jsonLd = {
             الفاتورة (أو العداد) كافية للبدء. */}
         <div class="cine-in cine-in-3 mt-8 border-2 border-brass-400/60 bg-white/5 p-5 sm:p-6">
           <p class="text-base font-bold text-white sm:text-lg">
-            ماعندكش الوقت باش تقرا هاد الصفحة؟ صيفط صورة الفاتورة ديالك عبر واتساب — احنا نتكلفو
-            بكلشي.
+            صيفط عبر واتساب صورة ديال البلاكة د المضخة ولا د راس البير، وورقة د البوطان ولا د
+            الگازوال إلا كانت عندك.
           </p>
           <a
             href={zeroFormWaHref}
@@ -342,12 +343,14 @@ const jsonLd = {
         <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
           <div class="v2-rise">
             {/* eyebrow مُخفَّض إلى lune — W274 الفصل 02 */}
-            <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>امتياز ضريبي مؤكَّد</p>
+            <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>امتياز ضريبي</p>
             <h2 class="display v2-section-title mt-5 text-white">الضخ الفلاحي مُعفى من الضريبة على القيمة المضافة</h2>
             <p class="v2-lead mt-5 text-lune-soft">
-              بالمغرب، أنظمة ضخ الماء بالطاقة الشمسية مُعفاة من الضريبة على القيمة المضافة — ويغطّي
-              الإعفاء المجموع: المضخّة كما الألواح التي تغذّيها. لاستغلالية فلاحية، هذا قدر لا يُضاف إلى
-              فاتورة المعدات، ويقرّب لحظة استرداد النظام لكلفته من ݣازوال لم يُحرَق.
+              {/* AGW305 — المدونة العامة للضرائب 2026، المادة 91: فقط مضخّات الماء الشمسية ذات الاستعمال
+                  الفلاحي مُعفاة؛ الألواح الكهروضوئية بنسبة 10 % (المادة 99-ب). لا وعد بنسبة على الألواح أو
+                  المبدّل أو المجموعة. */}
+              بيع مضخّات الماء الشمسية ذات الاستعمال الفلاحي مُعفى من الضريبة على القيمة المضافة (المادة 91 من
+              المدونة العامة للضرائب). أما معاملة باقي مكوّنات المجموعة فتظهر سطراً سطراً في عرض السعر.
             </p>
           </div>
           <div class="v2-rise cine-card p-7" style="--v2-i:1">
@@ -390,7 +393,7 @@ const jsonLd = {
           <div class="v2-rise border-t-2 border-brass-400 bg-blanc p-6">
             <h3 class="display text-lg text-azur-700">الضخ الشمسي</h3>
             <p class="mt-3 text-sm leading-relaxed text-encre-soft">
-              استثمار واحد، مُعفى من الضريبة، ثم كلفة تشغيل قريبة من الصفر: نقطة التقاطع مع الڭازوال أو
+              استثمار واحد، ثم كلفة تشغيل قريبة من الصفر: نقطة التقاطع مع الڭازوال أو
               البوطان تتوقّف على استهلاكك الفعلي — وهذا بالضبط ما تحسبه الدراسة، رقماً برقم، لقطعتك.
             </p>
           </div>

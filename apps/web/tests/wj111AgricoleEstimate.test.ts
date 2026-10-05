@@ -78,3 +78,34 @@ describe.each([
     expect(body).toContain('estimateFromBill(');
   });
 });
+
+// ———————————————————————————————————————————————————————————————————————————
+// AGW404 — plus de bande « économie carburant » : ni à l'écran, ni dans
+// `estimateShown` (CRM), ni dans le message WhatsApp ; la carte montre la
+// dépense DÉCLARÉE telle quelle ; le résidentiel est inchangé.
+// ———————————————————————————————————————————————————————————————————————————
+describe.each([
+  ['FR', FR, 'MAD/mois', 'Dépense carburant déclarée'],
+  ['EN', EN, 'MAD/month', 'Declared fuel spend'],
+  ['AR', AR, 'درهم/شهر', 'نفقة الوقود المصرَّح بها'],
+])('AGW404 — %s : économie carburant supprimée', (_label, src, unit, cardLabel) => {
+  const code = src.replace(/^[ \t]*\/\/.*$/gm, '');
+  it('aucune référence à fuelSaving* ni FUEL_SAVING dans la page', () => {
+    expect(code).not.toMatch(/fuelSaving|FUEL_SAVING/);
+  });
+  it('la branche agricole ne pose aucun ecoMadYear* ni lastSavingsLabel non vide', () => {
+    const debut = code.indexOf('function renderAgricoleEstimate(');
+    expect(debut).toBeGreaterThan(-1);
+    const fin = code.indexOf('announceEstimate(', debut);
+    const corps = code.slice(debut, fin);
+    expect(corps).not.toContain('ecoMadYear');
+    expect(corps).not.toMatch(/lastSavingsLabel = (?!'';)/);
+    expect(corps).toContain("lastSavingsLabel = '';");
+  });
+  it('la carte montre la dépense DÉCLARÉE (sans × 12 ni pourcentage), masquée si vide', () => {
+    expect(code).toContain("const depenseDeclaree = num('mt-fuel-spend');");
+    expect(code).toContain(`${unit}\``);
+    expect(code).not.toMatch(/depenseDeclaree[^;]*\*\s*12/);
+    expect(src).toContain(`<p class="mt-doc-kpi-label">${cardLabel}</p>`);
+  });
+});

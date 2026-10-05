@@ -28,7 +28,7 @@ import {
   OCCUPANCY_LABELS,
   OCCUPANCY_SHAPES,
   RAMADAN_RANGES,
-  RAMADAN_TZ_OFFSET_HOURS,
+  decalageMarocH,
   SEASON_IDS,
   formatHourLabel,
   occupancyFromFlag,
@@ -390,12 +390,12 @@ describe('CJ1 — Ramadan : la fenêtre est CALCULÉE, plus jamais codée en dur
     expect(win.inRamadan).toBe(true);
     expect(win.hijri).toBe(1447);
     expect(Math.abs(win.iftarHour - (18 + 39 / 60))).toBeLessThan(0.25);
-    expect(RAMADAN_TZ_OFFSET_HOURS).toBe(0);
+    expect(decalageMarocH(new Date('2026-03-06T12:00:00Z'))).toBe(0);
   });
 
   it('l’imsak est le lever MOINS 80 min (approximation du fajr, assumée et testée)', () => {
     const day = new Date('2026-03-06T12:00:00Z');
-    const sun = sunTimes(day, DEFAULT_LAT, DEFAULT_LON, RAMADAN_TZ_OFFSET_HOURS)!;
+    const sun = sunTimes(day, DEFAULT_LAT, DEFAULT_LON, decalageMarocH(day))!;
     const win = ramadanWindow(day, DEFAULT_LAT, DEFAULT_LON)!;
     expect(win.imsakHour).toBeCloseTo((sun.sunriseMin - FAJR_BEFORE_SUNRISE_MIN) / 60, 9);
     expect(win.iftarHour).toBeCloseTo(sun.sunsetMin / 60, 9);

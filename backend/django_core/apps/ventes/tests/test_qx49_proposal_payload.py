@@ -20,7 +20,7 @@ from django.test import Client as DjangoClient, SimpleTestCase, TestCase
 from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis, ShareLink
-from apps.ventes.public_views import _mode_kpis
+from apps.ventes.public.payload_economie import _mode_kpis
 
 User = get_user_model()
 
@@ -71,8 +71,8 @@ class TestModeKpisPure(SimpleTestCase):
 
     def test_mode_kpis_n_importe_plus_agronomy(self):
         import inspect
-        from apps.ventes import public_views
-        self.assertNotIn('agronomy', inspect.getsource(public_views._mode_kpis))
+        from apps.ventes.public import payload_economie
+        self.assertNotIn('agronomy', inspect.getsource(payload_economie._mode_kpis))
 
     def test_industriel_kpis(self):
         data = {'mode_installation': 'industriel',

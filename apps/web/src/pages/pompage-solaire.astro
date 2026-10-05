@@ -46,7 +46,7 @@ import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../lib/whatsapp';
 
 // W349 — porte sans formulaire : aucun champ, aucune fiche à remplir.
-const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText());
+const zeroFormWaHref = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText('fr', 'pompage'));
 
 // W348 — fiche de dimensionnement imprimable (HMT/débit/heures/culture), à
 // remplir sur place puis renvoyer en photo sur WhatsApp : reprend UNIQUEMENT
@@ -149,8 +149,8 @@ const jsonLd = {
             suffit pour démarrer l'échange. */}
         <div class="cine-in cine-in-3 mt-8 border-2 border-brass-400/60 bg-white/5 p-5 sm:p-6">
           <p class="text-base font-bold text-white sm:text-lg">
-            Pas le temps de lire cette page ? Envoyez une photo de votre facture sur WhatsApp —
-            on s’occupe de tout.
+            Envoyez sur WhatsApp une photo de la plaque de votre pompe ou de la tête du forage, et
+            un reçu de butane ou de gasoil si vous l’avez.
           </p>
           <a
             href={zeroFormWaHref}
@@ -237,7 +237,7 @@ const jsonLd = {
         <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
           Avec ces quatre chiffres en main, le système se dessine presque tout seul. Sans eux —
           quand le débit ou la HMT manquent — on en serait réduit à supposer, et nous ne dimensionnons
-          pas une pompe sur des suppositions. <a href="/devis/mon-toit" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander un diagnostic →</a>
+          pas une pompe sur des suppositions. <a href="/devis/mon-toit?mode=agricole" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander un diagnostic →</a>
         </p>
 
         {/* W261 — Diagramme des 4 variables convergeant vers le système :
@@ -363,13 +363,14 @@ const jsonLd = {
         <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
           <div class="v2-rise">
             {/* Eyebrow rétrogradé en lune (discipline laiton #2) — W274 chapitre 02 */}
-            <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>Avantage fiscal vérifié</p>
+            <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>Avantage fiscal</p>
             <h2 class="display v2-section-title mt-5 text-white">Le pompage agricole exonéré de TVA</h2>
             <p class="v2-lead mt-5 text-lune-soft">
-              Au Maroc, les systèmes de pompage de l’eau à l’énergie solaire sont exonérés de TVA —
-              et l’exonération couvre l’ensemble : la pompe comme les panneaux qui l’alimentent.
-              Pour une exploitation, c’est autant qui ne s’ajoute pas à la facture d’équipement, et
-              cela rapproche d’autant le moment où le système s’est payé en gasoil non brûlé.
+              {/* AGW305 — CGI 2026 art. 91-I-C-6° : seules les pompes à eau solaires à usage
+                  agricole sont exonérées (LF 80-18, art. 7) ; panneaux PV à 10 % (art. 99-B-1°).
+                  Aucune promesse de taux sur les panneaux, le variateur ou le kit. */}
+              La vente de pompes à eau solaires à usage agricole est exonérée de TVA (art. 91 du CGI).
+              Le traitement des autres éléments du kit figure ligne par ligne sur votre devis.
             </p>
           </div>
           <div class="v2-rise cine-card p-7" style="--v2-i:1">
@@ -416,7 +417,7 @@ const jsonLd = {
           <div class="v2-rise border-t-2 border-brass-400 bg-blanc p-6">
             <h3 class="display text-lg text-azur-700">Pompage solaire</h3>
             <p class="mt-3 text-sm leading-relaxed text-encre-soft">
-              Investissement unique, exonéré de TVA, puis un coût de fonctionnement proche de zéro :
+              Investissement unique, puis un coût de fonctionnement proche de zéro :
               le point de croisement avec le gasoil ou le butane dépend de votre consommation
               réelle — c’est justement ce que l’étude calcule, chiffre par chiffre, pour votre
               parcelle.
@@ -426,7 +427,7 @@ const jsonLd = {
         <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
           Le prix du carburant du jour et les heures de pompage réelles de votre pompe changent le
           calcul d’une exploitation à l’autre : c’est pourquoi le chiffre exact — et le nombre
-          d’années de retour — sort de l’étude, jamais d’une moyenne nationale. <a href="/devis/mon-toit" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander mon étude →</a>
+          d’années de retour — sort de l’étude, jamais d’une moyenne nationale. <a href="/devis/mon-toit?mode=agricole" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Demander mon étude →</a>
         </p>
       </div>
     </section>
@@ -469,7 +470,7 @@ const jsonLd = {
           matériel tier-1 et l’installation repart avec son dossier technique complet.
         </p>
         <RelatedLinks links={[
-          { href: '/devis/mon-toit', label: 'Demander un diagnostic' },
+          { href: '/devis/mon-toit?mode=agricole', label: 'Demander un diagnostic' },
           { href: '/professionnel', label: 'Solaire professionnel' },
           { href: '/équipement', label: 'Voir l’équipement' },
           { href: '/financement', label: 'Financement & rentabilité' },
@@ -488,7 +489,7 @@ const jsonLd = {
       <ServiceWarrantyTable includeOnduleur={false} includeBatterie={false} />
     </section>
 
-    <CtaBand title="Un projet de pompage solaire ? Commencez par l’étude gratuite." href="/devis/mon-toit" />
+    <CtaBand title="Un projet de pompage solaire ? Commencez par l’étude gratuite." href="/devis/mon-toit?mode=agricole" />
 
     <StickyCta />
   </div>

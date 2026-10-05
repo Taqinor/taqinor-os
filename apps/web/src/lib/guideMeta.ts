@@ -16,7 +16,7 @@ export const GUIDE_VERIFIED_DATES: Record<string, Date> = {
   'electricite-pendant-les-coupures': new Date('2026-07-03'),
   'entretien-et-duree-de-vie-des-panneaux': new Date('2026-07-03'),
   'faut-il-des-batteries': new Date('2026-07-03'),
-  'loi-82-21-expliquee': new Date('2026-07-03'),
+  'loi-82-21-expliquee': new Date('2026-10-05'),
   'mon-toit-peut-il-supporter-des-panneaux': new Date('2026-07-03'),
   'monocristallin-ou-polycristallin': new Date('2026-07-03'),
   'on-grid-off-grid-ou-hybride': new Date('2026-07-03'),

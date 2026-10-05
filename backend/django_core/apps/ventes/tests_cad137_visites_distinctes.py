@@ -29,7 +29,8 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm.models import Client
-from apps.ventes import public_views, scheduled
+from apps.ventes import scheduled
+from apps.ventes.public import lecture_views
 from apps.ventes.models import Devis, ShareLink
 
 #: Mardi 15 septembre 2026, 10 h UTC.
@@ -56,7 +57,7 @@ class CompteurDeVisitesTests(TestCase):
         """Un GET public du lien, à l'instant donné."""
         with frozen(instant):
             lien.refresh_from_db()
-            public_views._stamp_view(lien)
+            lecture_views._stamp_view(lien)
         lien.refresh_from_db()
         return lien
 
@@ -87,11 +88,11 @@ class CompteurDeVisitesTests(TestCase):
         """
         lien = self._lien()
         self._vue(lien, MAINTENANT)
-        juste_avant = MAINTENANT + public_views.REOUVERTURE_FENETRE \
+        juste_avant = MAINTENANT + lecture_views.REOUVERTURE_FENETRE \
             - datetime.timedelta(seconds=1)
         self._vue(lien, juste_avant)
         self.assertEqual(lien.view_count, 1)
-        self._vue(lien, juste_avant + public_views.REOUVERTURE_FENETRE)
+        self._vue(lien, juste_avant + lecture_views.REOUVERTURE_FENETRE)
         self.assertEqual(lien.view_count, 2)
 
     def test_la_derniere_vue_est_ecrite_a_chaque_get(self):

@@ -425,7 +425,7 @@ class TestAccrocheProposition(TestCase):
             HTTP_USER_AGENT='Mozilla/5.0 (Android)')
 
     def test_ouverture_publique_trace_la_visite(self):
-        from apps.ventes.public_views import _stamp_view_si_public
+        from apps.ventes.public.lecture_views import _stamp_view_si_public
 
         _stamp_view_si_public(self.link, False, self._requete())
         visite = VisiteExterne.objects.get()
@@ -439,7 +439,7 @@ class TestAccrocheProposition(TestCase):
         self.assertEqual(visite.token_suffixe, self.link.token[-6:])
 
     def test_apercu_par_le_jeton_interne_ne_trace_rien(self):
-        from apps.ventes.public_views import _stamp_view_si_public
+        from apps.ventes.public.lecture_views import _stamp_view_si_public
 
         _stamp_view_si_public(self.link, True, self._requete())
         self.assertEqual(VisiteExterne.objects.count(), 0)
@@ -447,7 +447,7 @@ class TestAccrocheProposition(TestCase):
     def test_sans_requete_le_comportement_dorigine_est_inchange(self):
         """Un appelant qui ne passe pas ``request`` (chemin historique) ne
         crée aucune trace — l'ajout est strictement additif."""
-        from apps.ventes.public_views import _stamp_view_si_public
+        from apps.ventes.public.lecture_views import _stamp_view_si_public
 
         _stamp_view_si_public(self.link, False)
         self.assertEqual(VisiteExterne.objects.count(), 0)

@@ -44,7 +44,7 @@ from apps.crm.models import Client, Lead, LeadActivity
 from apps.notifications.models import Notification
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis, ShareLink
-from apps.ventes.public_views import _resolve_share_link_by_token
+from apps.ventes.public.noyau import _resolve_share_link_by_token
 from authentication.models import Company
 
 User = get_user_model()

@@ -36,7 +36,8 @@ from django.test import RequestFactory, SimpleTestCase, override_settings
 
 from apps.crm import public_views as crm_public
 from apps.crm import visites
-from apps.ventes import public_views as ventes_public
+from apps.ventes.public import noyau as ventes_public
+from apps.ventes.tests.split_golden import fichiers_du_groupe
 from core.throttling import ip_de_requete
 
 
@@ -220,10 +221,16 @@ class UneSeuleLectureDIpTests(SimpleTestCase):
         correctif), jamais une lecture."""
         # …/backend/django_core/apps/crm/<ce fichier> → django_core
         racine = Path(__file__).resolve().parents[2]
+        # SPL241 — ``ventes/public_views.py`` est découpé en ``public/*.py`` :
+        # la surface ventes est le GROUPE (jamais vide), pas un fichier vidé.
+        surfaces = [racine / c for c in self._SURFACES
+                    if c != 'apps/ventes/public_views.py']
+        surfaces += fichiers_du_groupe('public_views.py', 'public/*.py')
         fautifs = []
-        for chemin in self._SURFACES:
+        for fichier in surfaces:
+            chemin = Path(fichier).relative_to(racine).as_posix()
             arbre = ast.parse(
-                (racine / chemin).read_text(encoding='utf-8'))
+                Path(fichier).read_text(encoding='utf-8'))
             for noeud in ast.walk(arbre):
                 if not (isinstance(noeud, ast.Call)
                         and isinstance(noeud.func, ast.Attribute)

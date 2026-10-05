@@ -9,10 +9,10 @@ recalculer : ``apps.ventes.public_views._tranche_tarifaire_publique`` et
 """
 from django.test import SimpleTestCase
 
-from apps.ventes.public_views import (
+from apps.ventes.public.payload_horaire import _tranche_tarifaire_publique
+from apps.ventes.public.payload_batterie import (
     _balayage_stockage_publique,
     _batterie_regime_publique,
-    _tranche_tarifaire_publique,
 )
 
 
@@ -300,7 +300,7 @@ class SansClesInternesTests(SimpleTestCase):
     """
 
     def test_les_cles_soulignees_sont_retirees_a_toute_profondeur(self):
-        from apps.ventes.public_views import _sans_cles_internes
+        from apps.ventes.public.noyau import _sans_cles_internes
         propre = _sans_cles_internes({
             'ref': 'DEV-1',
             '_company_id': 1176,
@@ -317,13 +317,13 @@ class SansClesInternesTests(SimpleTestCase):
         """Le retrait se fait à la PUBLICATION : ``data`` reste intact pour les
         classifications de ``public_views`` qui lisent encore
         ``_produit_nom`` en amont."""
-        from apps.ventes.public_views import _sans_cles_internes
+        from apps.ventes.public.noyau import _sans_cles_internes
         source = {'_company_id': 7, 'items': [{'_produit_nom': 'X'}]}
         _sans_cles_internes(source)
         self.assertEqual(source, {'_company_id': 7,
                                   'items': [{'_produit_nom': 'X'}]})
 
     def test_les_scalaires_et_les_listes_traversent_inchanges(self):
-        from apps.ventes.public_views import _sans_cles_internes
+        from apps.ventes.public.noyau import _sans_cles_internes
         self.assertEqual(_sans_cles_internes([1, 'a', None]), [1, 'a', None])
         self.assertEqual(_sans_cles_internes(3.5), 3.5)

@@ -448,3 +448,21 @@ describe('QJR664 — graphe « Une journée type » : parité FR / EN / AR', () 
     }
   });
 });
+
+// ———————————————————————————————————————————————————————————————————————————
+// CIW408 — un payload COMMERCIAL ne porte ni tension ni activité, dans les 3
+// langues ; le payload INDUSTRIEL est inchangé.
+// ———————————————————————————————————————————————————————————————————————————
+describe('CIW408 — tension et activité : jamais émises en mode commercial (3 locales)', () => {
+  for (const [locale, src] of SOURCES) {
+    it(`${locale} — commercial : ni tensionRaccordement ni activityProfile ; industriel : les deux`, () => {
+      const dom = { ...contextePage(), ...lireChampsDomTunnel(domPourSource(src)) } as EtatTunnel;
+      const comm = construireCorps({ ...dom, mode: 'commercial', tension: 'bt', activite: 'day' }, { messages: ERREURS[locale] }).body;
+      expect(comm).not.toHaveProperty('tensionRaccordement');
+      expect(comm).not.toHaveProperty('activityProfile');
+      const indus = construireCorps({ ...dom, mode: 'industriel', tension: 'bt', activite: 'day' }, { messages: ERREURS[locale] }).body;
+      expect(indus.tensionRaccordement).toBe('bt');
+      expect(indus.activityProfile).toBe('day');
+    });
+  }
+});

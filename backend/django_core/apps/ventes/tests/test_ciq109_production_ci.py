@@ -121,7 +121,7 @@ class TestPariteResidentiel(unittest.TestCase):
 
     def test_meme_annuelle_que_production_annuelle_pour_kwc(self):
         try:
-            from apps.ventes.etude_horaire import production_annuelle_pour_kwc
+            from apps.ventes.horaire.public import production_annuelle_pour_kwc
         except ImportError as exc:      # hors image Django : dépendances absentes
             self.skipTest(f'etude_horaire non importable ici : {exc}')
         for ville in ('Casablanca', 'Agadir', 'Marrakech'):

@@ -28,7 +28,7 @@ class Qx41ThrottleScopesTests(TestCase):
         self.assertIn('public_livechat', rates)
 
     def test_sharelink_throttle_reads_settings(self):
-        from apps.ventes.public_views import PublicLinkRateThrottle
+        from apps.ventes.public.noyau import PublicLinkRateThrottle
         with override_settings(REST_FRAMEWORK={
                 **settings.REST_FRAMEWORK,
                 'DEFAULT_THROTTLE_RATES': {
