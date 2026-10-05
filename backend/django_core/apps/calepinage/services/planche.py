@@ -57,7 +57,7 @@ __all__ = [
     'CONTENU_POSE', 'CONTENUS', 'echelle_nommee', 'mention_d_echelle',
     'rendre_plan_svg', 'rendre_plan_pdf', 'PlanDePoseRefuse',
     'verifier_absence_d_argent', 'lignes_de_chaines', 'rendre_plan_pose_svg',
-    'rendre_plan_pose_pdf', 'planche_svg_ou_vide',
+    'rendre_plan_pose_pdf', 'planche_svg_ou_vide', 'MOTIF_SANS_PARCELLE',
 ]
 
 #: A3 PAYSAGE, en millimètres — le format des planches remises (même choix que
@@ -100,10 +100,20 @@ CONTENU_POSE = 'pose'
 CONTENUS = (CONTENU_IMPLANTATION, CONTENU_TOITURE, CONTENU_MASSE,
             CONTENU_POSE)
 
-#: Les clés sous lesquelles une PARCELLE SAISIE peut voyager dans le document
-#: de conception. Extension additive et optionnelle : absente, le plan de masse
-#: est REFUSÉ — jamais dessiné avec une limite devinée.
-CLES_PARCELLE = ('parcelle', 'parcel', 'parcelleCadastrale')
+#: La clé de la PARCELLE SAISIE dans le document de conception (schéma v2,
+#: ``roof_layout_v2.schema.json`` : ``parcelle: {vertices: [[lng, lat] >= 3]}``).
+#: ACAL232 : UNE seule clé — les alias ``parcel`` et ``parcelleCadastrale``
+#: n'avaient aucun écrivain. Absente, le plan de masse est REFUSÉ — jamais
+#: dessiné avec une limite devinée.
+CLES_PARCELLE = ('parcelle',)
+
+#: Le motif d'un plan de masse sans parcelle — UNE constante, partagée avec
+#: l'inventaire des sorties (``views/sorties.py::SANS_PARCELLE``) : il renvoie
+#: à l'endroit où la tracer.
+MOTIF_SANS_PARCELLE = (
+    "Aucune parcelle saisie : tracez la parcelle dans l'atelier 3D (bouton "
+    "Parcelle) puis enregistrez la conception. Le plan de masse ne dessine "
+    "jamais une limite de parcelle qui n'a pas été fournie.")
 
 
 class PlancheRefusee(ValueError):
@@ -298,9 +308,9 @@ def geometrie_de_planche(roof_layout):
 def _parcelle_du_layout(roof_layout, local):
     """La parcelle SAISIE, projetée en mètres — ``[]`` si elle n'existe pas.
 
-    Aucune des trois graphies admises n'est obligatoire, et aucune n'est
-    déduite : sans parcelle saisie, le plan de masse est refusé (CAL194), il
-    n'est pas dessiné avec une limite plausible.
+    La parcelle n'est jamais obligatoire ni déduite : sans parcelle saisie,
+    le plan de masse est refusé (CAL194), il n'est pas dessiné avec une
+    limite plausible.
     """
     for cle in CLES_PARCELLE:
         brut = (roof_layout or {}).get(cle)
@@ -1152,12 +1162,7 @@ def rendre_plan_svg(calepinage, *, contenu=CONTENU_IMPLANTATION, moment=None,
     """
     geometrie = geometrie_de_planche(getattr(calepinage, 'roof_layout', None))
     if contenu == CONTENU_MASSE and not geometrie.get('parcelle'):
-        raise PlancheRefusee(
-            "Plan de masse impossible : aucune parcelle n'a été saisie sur "
-            "cette conception. Le plan de masse ne dessine jamais une limite "
-            "de parcelle qui n'a pas été fournie — renseignez le contour de "
-            "la parcelle, puis redemandez le plan.",
-            champ='parcelle')
+        raise PlancheRefusee(MOTIF_SANS_PARCELLE, champ='parcelle')
     titre = options.pop('titre', None) or '%s — %s' % (
         TITRE_DE_CONTENU.get(contenu, 'Plan'), calepinage)
     return svg_de_planche(

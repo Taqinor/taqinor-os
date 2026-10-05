@@ -59,8 +59,8 @@ SANS_RESULTAT = ("Aucune conception enregistrée : la note de calcul ne se rend 
                  "pas à partir de grandeurs absentes.")
 SANS_GEOMETRIE = ("Aucune conception enregistrée : la géométrie exportée "
                   "serait vide.")
-SANS_PARCELLE = ("Aucune parcelle saisie : le plan de masse ne dessine jamais "
-                 "une limite de parcelle qui n'a pas été fournie.")
+from ..services.planche import (  # noqa: E402 - ACAL232 : UNE constante
+    MOTIF_SANS_PARCELLE as SANS_PARCELLE)
 SANS_IMAGE = "Aucun rendu 3D enregistré pour ce calepinage."
 SANS_PIECE = ("Aucune pièce disponible : un dossier technique ne se remet pas "
               "amputé en silence.")
