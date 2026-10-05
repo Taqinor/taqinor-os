@@ -31,11 +31,16 @@ import logging
 
 from django.dispatch import receiver
 
-from core.events import devis_sent, layout_finalise, lead_created
+from core.events import (
+    devis_sent, layout_finalise, lead_created, lead_trace_toit_recu,
+)
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['miroir_layout_du_devis', 'reverrouiller_au_devis_sent', 'reprise_du_trace_public']
+__all__ = [
+    'miroir_layout_du_devis', 'reverrouiller_au_devis_sent',
+    'reprise_du_trace_public', 'reprise_du_trace_au_renvoi',
+]
 
 
 @receiver(layout_finalise, dispatch_uid='calepinage_miroir_layout_finalise')
@@ -145,3 +150,20 @@ def reprise_du_trace_public(sender, lead=None, company=None, **kwargs):
         logger.exception(
             'CAL110 : reprise du tracé public en échec pour le lead %s',
             lead_id)
+
+
+@receiver(lead_trace_toit_recu, dispatch_uid='calepinage_reprise_trace_renvoi')
+def reprise_du_trace_au_renvoi(sender, lead=None, company=None, **kwargs):
+    """ACAL189 (C-ACAL-006) — le tracé arrive au RENVOI du webhook (< 60 s).
+
+    Le lead a été créé SANS contour (``lead_created`` n'avait rien à
+    reprendre) ; le second POST du site lui en apporte un. ``crm`` émet
+    ``lead_trace_toit_recu`` et ce module reprend le tracé par la MÊME porte
+    que la création (``reprise_du_trace_public`` → ``reprendre_trace_public``
+    → ``ouvrir_ou_creer_pour_lead``, ACAL182) : idempotent — un lead qui a
+    déjà un calepinage ouvert n'en reçoit jamais un second.
+
+    BEST-EFFORT, TOUJOURS (délégué) : une reprise en échec ne fait jamais
+    échouer le webhook.
+    """
+    reprise_du_trace_public(sender, lead=lead, company=company, **kwargs)

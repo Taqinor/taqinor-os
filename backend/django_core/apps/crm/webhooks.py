@@ -289,6 +289,31 @@ def _noter_trace_toit(lead):
             '(lead #%s) : %s', getattr(lead, 'pk', None), _exc)
 
 
+def _emettre_trace_toit_recu(lead):
+    """ACAL189 (C-ACAL-006) — le tracé arrive au RENVOI (< 60 s) : on le dit.
+
+    ``lead_created`` a été émis à la création, quand le lead n'avait encore
+    AUCUN contour : la reprise du tracé public (module Calepinage) n'avait
+    donc rien à reprendre. Quand le renvoi apporte un contour exploitable
+    (≥ 3 sommets), on émet ``core.events.lead_trace_toit_recu`` — l'app
+    consommatrice s'y abonne (patron M6) : ``crm`` n'importe jamais
+    ``apps.calepinage``. L'appelant ne nous appelle que si le lead n'avait
+    PAS de contour avant le renvoi : un lead déjà tracé n'émet jamais rien.
+
+    Best-effort, comme toutes les écritures annexes de ce webhook : un
+    abonné en échec ne remet jamais le lead en cause."""
+    if not _a_un_contour(getattr(lead, 'roof_outline', None)):
+        return
+    try:
+        from core.events import lead_trace_toit_recu
+        lead_trace_toit_recu.send(
+            sender=Lead, lead=lead, company=lead.company)
+    except Exception as _exc:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'website_lead_webhook: émission lead_trace_toit_recu échouée '
+            '(lead #%s) : %s', getattr(lead, 'pk', None), _exc)
+
+
 # QK1 — Mode marché du site → Lead.type_installation (tolérant FR/EN).
 # Le site émet mode ∈ {residentiel, professionnel, agricole} (lead.ts
 # LEAD_MODES) : 'professionnel' était ABSENT de cette table → chaque lead
@@ -2116,6 +2141,7 @@ def _map_and_link_lead(raw, data, company):
         activity.log_changes(avant, lead, None)
         if not avait_contour:
             _noter_trace_toit(lead)
+            _emettre_trace_toit_recu(lead)
         # QX14 — TOUS les autres chemins de création/mise à jour de lead
         # persistent le score via recompute_lead_score (views.py 561/574,
         # services.py 1088/1366/1429/2782) SAUF ce webhook — le score
