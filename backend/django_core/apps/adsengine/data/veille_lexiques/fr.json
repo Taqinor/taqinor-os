@@ -1,0 +1,45 @@
+{
+  "langue": "fr",
+  "version": "v1",
+  "produit": [
+    "robe", "robes", "jupe", "jupes", "pantalon", "pantalons", "jean", "jeans",
+    "chemise", "chemises", "chemisier", "t-shirt", "t-shirts", "tee-shirt",
+    "pull", "pulls", "sweat", "veste", "vestes", "manteau", "manteaux",
+    "blouson", "short", "shorts", "legging", "combinaison", "lingerie",
+    "maillot de bain", "vetement", "vetements", "tenue", "tenues",
+    "pret-a-porter", "chaussure", "chaussures", "basket", "baskets",
+    "sneaker", "sneakers", "botte", "bottes", "bottine", "bottines",
+    "sandale", "sandales", "escarpin", "escarpins", "mocassin", "mocassins",
+    "sac", "sacs", "sac a main", "sacs a main", "sacoche", "pochette",
+    "cabas", "sac a dos", "maroquinerie"
+  ],
+  "hors_sujet": [
+    "coque", "coques", "bijou", "bijoux", "collier", "colliers", "bracelet",
+    "bracelets", "bague", "bagues", "boucles d'oreilles", "montre", "montres",
+    "cosmetique", "cosmetiques", "maquillage", "parfum", "parfums", "creme",
+    "serum", "shampoing", "decoration", "meuble", "meubles", "canape",
+    "literie", "luminaire", "pressing", "retouche", "retouches", "cours",
+    "formation", "coaching"
+  ],
+  "editorial": [
+    "magazine", "blog", "article", "podcast", "actualite", "actualites",
+    "appli", "application", "telecharger", "abonnez-vous", "newsletter",
+    "webinaire", "emission", "episode", "agence", "association", "concours",
+    "tutoriel"
+  ],
+  "commerce": [
+    "livraison", "livree", "prix", "promo", "promotion", "soldes",
+    "commander", "commandez", "acheter", "achetez", "boutique", "eshop",
+    "e-shop", "panier", "retours gratuits", "€"
+  ],
+  "urgence": [
+    "dernier jour", "derniers jours", "aujourd'hui seulement",
+    "derniere chance", "stock limite", "plus que", "fin ce soir",
+    "dernieres heures", "offre expire"
+  ],
+  "nom_generique": [
+    "shop", "store", "boutique", "mode", "fashion", "style", "tendance",
+    "chic", "luxe", "officiel", "official", "outlet", "deals", "online",
+    "world", "paris", "trend", "trendy", "best", "top", "my", "the"
+  ]
+}

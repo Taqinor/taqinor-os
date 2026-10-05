@@ -1,6 +1,7 @@
 """Sérialiseurs du moteur publicitaire Meta Ads (Groupe ENG)."""
 import datetime
 from decimal import Decimal
+from typing import Any, Dict, List, Optional  # PLAN_VEILLE (ajout)
 
 from django.utils import timezone
 from rest_framework import serializers
@@ -18,6 +19,7 @@ from .models import (
     InstagramCommentMirror, InstagramMediaMirror, MetaConnection,
     PacingState, ReconciliationSnapshot, RulePolicy,
 )
+from .models import VeilleAnnonceur, VeilleDecouverte  # PLAN_VEILLE (ajout)
 
 
 def _extract_token_expiry(credentials):
@@ -1087,3 +1089,168 @@ class FieldTestResultSerializer(serializers.ModelSerializer):
                 "La valeur mesurée est obligatoire : une porte de préflight ne "
                 "se ferme jamais sur une mesure vide.")
         return str(value).strip()
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PLAN_VEILLE — VEIL17 : sérialiseurs de la découverte de vendeurs (LECTURE
+# SEULE ; les écritures passent par veille_decouverte / les actions de vue).
+# Formes = contrats ``contract_samples/veille_decouverte.json`` et
+# ``veille_annonceur.json``. Aucun champ ne porte de jeton, de curseur ni
+# d'URL de snapshot.
+# ═════════════════════════════════════════════════════════════════════════════
+LIEN_BIBLIOTHEQUE = 'https://www.facebook.com/ads/library/?id={}'
+
+
+def lien_bibliotheque(ad_archive_id):
+    """Lien CONSTRUIT vers la bibliothèque publique (jamais lu par le serveur,
+    ouvert par un clic humain). ``None`` sans pub exemple."""
+    ad_id = ''.join(c for c in str(ad_archive_id or '') if c.isdigit())
+    return LIEN_BIBLIOTHEQUE.format(ad_id) if ad_id else None
+
+
+def _nom_utilisateur(user):
+    if user is None:
+        return None
+    nom = (user.get_full_name() or '').strip() if hasattr(
+        user, 'get_full_name') else ''
+    return nom or getattr(user, 'username', None)
+
+
+def _iso(dt):
+    return dt.isoformat().replace('+00:00', 'Z') if dt else None
+
+
+def classes_disponibles():
+    from .models import VEILLE_CLASSES
+    return [{'cle': cle, 'libelle_fr': libelle, 'est_bruit': bruit}
+            for cle, libelle, bruit in VEILLE_CLASSES]
+
+
+class VeilleDecouverteSerializer(serializers.ModelSerializer):
+    """VEIL17 — une découverte et son journal (contrat VEIL2)."""
+
+    annonceurs_distincts = serializers.SerializerMethodField()
+    cree_par = serializers.SerializerMethodField()
+    cree_le = serializers.SerializerMethodField()
+    reprise_a = serializers.SerializerMethodField()
+    termine_le = serializers.SerializerMethodField()
+    requetes = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VeilleDecouverte
+        fields = [
+            'id', 'statut', 'mots_cles', 'search_type', 'ad_active_status',
+            'plafond_appels', 'plafond_pages_par_requete',
+            'appels_consommes', 'pubs_recues', 'pages_lues',
+            'annonceurs_distincts', 'reprise_a', 'erreurs',
+            'dernier_usage_app', 'cree_par', 'cree_le', 'termine_le',
+            'requetes',
+        ]
+        read_only_fields = fields
+
+    def get_annonceurs_distincts(self, obj) -> int:
+        return obj.annonceurs_distincts
+
+    def get_cree_par(self, obj) -> Optional[str]:
+        return _nom_utilisateur(obj.cree_par)
+
+    def get_cree_le(self, obj) -> Optional[str]:
+        return _iso(obj.created_at)
+
+    def get_reprise_a(self, obj) -> Optional[str]:
+        return _iso(obj.reprise_a)
+
+    def get_termine_le(self, obj) -> Optional[str]:
+        return _iso(obj.termine_le)
+
+    def get_requetes(self, obj) -> List[Dict[str, Any]]:
+        return [{
+            'mot_cle': r.mot_cle, 'pays': r.pays, 'statut': r.statut,
+            'pages_lues': r.pages_lues, 'appels': r.appels, 'pubs': r.pubs,
+            'nouveaux_annonceurs': r.nouveaux_annonceurs,
+        } for r in obj.requetes.all().order_by('ordre', 'id')]
+
+
+class VeilleAnnonceurSerializer(serializers.ModelSerializer):
+    """VEIL17 — l'annonceur découvert et son verdict motivé (contrat VEIL3).
+
+    ``context['aveugle']`` (mode de mesure) : ni classe machine, ni verdict, ni
+    motif IA, ni étiquette de mesure ne sont servis (valeurs ``null``)."""
+
+    lien_bibliotheque = serializers.SerializerMethodField()
+    classe = serializers.SerializerMethodField()
+    classes_disponibles = serializers.SerializerMethodField()
+    doublon_de = serializers.SerializerMethodField()
+    verdict = serializers.SerializerMethodField()
+    dropshipper = serializers.SerializerMethodField()
+    etiquette_mesure = serializers.SerializerMethodField()
+    historique = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VeilleAnnonceur
+        fields = [
+            'id', 'page_id', 'page_name', 'pays_vus', 'mots_cles',
+            'nb_pubs_vues', 'extraits', 'domaines', 'lien_bibliotheque',
+            'classe', 'classes_disponibles', 'doublon_de', 'verdict',
+            'dropshipper', 'jeu', 'etiquette_mesure', 'historique',
+        ]
+        read_only_fields = fields
+
+    def _aveugle(self):
+        return bool(self.context.get('aveugle'))
+
+    def get_lien_bibliotheque(self, obj) -> Optional[str]:
+        return lien_bibliotheque(obj.ad_archive_id_exemple)
+
+    def get_classe(self, obj) -> Optional[str]:
+        return None if self._aveugle() else obj.classe
+
+    def get_classes_disponibles(self, obj) -> List[Dict[str, Any]]:
+        return classes_disponibles()
+
+    def get_doublon_de(self, obj) -> Optional[int]:
+        return None if self._aveugle() else obj.doublon_de_id
+
+    def get_verdict(self, obj) -> Optional[Dict[str, Any]]:
+        v = obj.verdict_courant
+        if self._aveugle() or v is None:
+            return None
+        return {
+            'classe': v.classe, 'motif_fr': v.motif_fr,
+            'preuves': list(v.preuves or []), 'decide_par': v.decide_par,
+            'modele': v.modele or None,
+            'version_consigne': v.version_consigne or None,
+            'auteur': _nom_utilisateur(v.auteur), 'le': _iso(v.created_at),
+        }
+
+    def get_dropshipper(self, obj) -> Optional[Dict[str, Any]]:
+        if self._aveugle():
+            return None
+        return {
+            'probable': obj.dropshipper_probable,
+            'indices': list(obj.dropshipper_indices or []),
+            'decide_par': obj.dropshipper_decide_par or None,
+        }
+
+    def get_etiquette_mesure(self, obj) -> Optional[Dict[str, Any]]:
+        if self._aveugle():
+            return None
+        etiquette = (obj.verdicts.filter(est_etiquette_mesure=True)
+                     .order_by('-created_at', '-id').first())
+        if etiquette is None:
+            return None
+        return {'classe': etiquette.classe,
+                'dropshipper': etiquette.dropshipper,
+                'auteur': _nom_utilisateur(etiquette.auteur),
+                'le': _iso(etiquette.created_at)}
+
+    def get_historique(self, obj) -> List[Dict[str, Any]]:
+        if self._aveugle():
+            return []
+        qs = (obj.verdicts.filter(est_etiquette_mesure=False)
+              .order_by('-created_at', '-id'))
+        if obj.verdict_courant_id:
+            qs = qs.exclude(pk=obj.verdict_courant_id)
+        return [{'classe': v.classe, 'motif_fr': v.motif_fr,
+                 'decide_par': v.decide_par, 'le': _iso(v.created_at)}
+                for v in qs]

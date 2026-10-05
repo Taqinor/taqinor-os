@@ -1202,6 +1202,9 @@ CELERY_TASK_ROUTES = {
     'adsengine.check_attribution_quality': {'queue': 'scheduled'},
     # PUB94 — snapshot hebdo d'observabilité de L'Arbre (branches mortes).
     'adsengine.flag_dead_branches_weekly': {'queue': 'scheduled'},
+    # PLAN_VEILLE (VEIL16) — étape de découverte À LA DEMANDE (jamais au beat) :
+    # une page d'une requête par tâche, relancée par countdown.
+    'adsengine.veille_etape': {'queue': 'default'},
     # NTADM10/11/16/35/36/38 — jobs adminops planifiés (sandbox clone/purge/
     # rappel, health score, purge packages/usage).
     'adminops.cloner_sandbox': {'queue': 'scheduled'},
@@ -1395,6 +1398,45 @@ META_LEAD_ADS_APP_SECRET = os.environ.get('META_LEAD_ADS_APP_SECRET', '')
 # Tenant cible des leads Meta Lead Ads (id de Company) ; à défaut, la
 # première Company (même repli que WEBSITE_LEADS_COMPANY_ID).
 META_LEAD_ADS_COMPANY_ID = os.environ.get('META_LEAD_ADS_COMPANY_ID') or None
+
+# ── PLAN_VEILLE — VEIL12 : accès Meta Ad Library (pilote de veille) ─────────
+# SÉPARÉ de TOUT ce qui sert aux campagnes TAQINOR (MetaConnection,
+# META_SYSTEM_USER_TOKEN, META_LEAD_ADS_*) : lu UNIQUEMENT ici, depuis
+# l'environnement, par apps/adsengine/veille_acces.py. Interrupteur faux par
+# défaut ; jeton vide = « non configuré » et ZÉRO requête réseau.
+META_AD_LIBRARY_ENABLED = os.environ.get(
+    'META_AD_LIBRARY_ENABLED', '').strip().lower() in ('1', 'true', 'yes', 'on')
+META_AD_LIBRARY_ACCESS_TOKEN = os.environ.get('META_AD_LIBRARY_ACCESS_TOKEN', '')
+META_AD_LIBRARY_APP_ID = os.environ.get('META_AD_LIBRARY_APP_ID', '')
+META_AD_LIBRARY_APP_SECRET = os.environ.get('META_AD_LIBRARY_APP_SECRET', '')
+# D-VEIL-12 — identifiants des sociétés autorisées à lancer une découverte sous
+# ce jeton (liste séparée par des virgules). Défaut VIDE = personne.
+VEILLE_SOCIETES_AUTORISEES = [
+    int(_v) for _v in os.environ.get('VEILLE_SOCIETES_AUTORISEES', '').split(',')
+    if _v.strip().isdigit()
+]
+# VEIL13 — transport de REJEU du client ads_archive : posé ET interrupteur
+# faux → lecture de `<mot_cle>_<pays>_<page>.json` dans ce dossier, AUCUNE
+# connexion (démonstrations sans jeton, e2e VEIL46).
+META_AD_LIBRARY_FIXTURES_DIR = os.environ.get('META_AD_LIBRARY_FIXTURES_DIR', '')
+# VEIL16 — pause préventive quand X-App-Usage atteint ce pourcentage.
+VEILLE_PAUSE_USAGE_PCT = int(os.environ.get('VEILLE_PAUSE_USAGE_PCT') or 75)
+# VEIL19 — conservation des TEXTES des pubs vues (jours) ; agrégats et
+# verdicts gardés. 90 = choix de prudence (Platform Terms §3.d.i).
+VEILLE_CONSERVATION_PUBS_JOURS = int(
+    os.environ.get('VEILLE_CONSERVATION_PUBS_JOURS') or 90)
+# VEIL22 — tri IA DANS l'ERP (mise en service) : ÉTEINT sans clé. Clé séparée
+# de CLAUDE_API_KEY (service FastAPI) ; modèles en réglages, jamais en dur.
+# Dépendance PAYANTE (API Anthropic), inactive tant que la clé est vide.
+VEILLE_IA_CLE_API = os.environ.get('VEILLE_IA_CLE_API', '')
+VEILLE_IA_MODELE_TRI = os.environ.get('VEILLE_IA_MODELE_TRI', '')
+VEILLE_IA_MODELE_AMBIGU = os.environ.get('VEILLE_IA_MODELE_AMBIGU', '')
+VEILLE_IA_SEUIL_AMBIGU = float(os.environ.get('VEILLE_IA_SEUIL_AMBIGU') or 0.7)
+VEILLE_IA_DELAI_S = float(os.environ.get('VEILLE_IA_DELAI_S') or 60)
+# VEIL23 — seuils fixés AVANT la mesure (D-VEIL-9, 03/10/2026).
+VEILLE_SEUIL_LISTE_PRECISION = 0.90
+VEILLE_SEUIL_LISTE_RAPPEL = 0.90
+VEILLE_SEUIL_DROPSHIPPER_PRECISION = 0.80
 
 # Stockage fichiers — MinIO / S3 (Phase 2 Sem. 4)
 MINIO_ENDPOINT = os.environ.get('MINIO_ENDPOINT', 'minio:9000')

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4736, operations: 7520, components: 2180}
+counts: {paths: 4760, operations: 7548, components: 2189}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -426,6 +426,20 @@ operations:
 - get /api/django/adsengine/tests-terrain/ -> django_adsengine_tests_terrain_retrieve
 - post /api/django/adsengine/tests-terrain/{ft}/resultat/ -> django_adsengine_tests_terrain_resultat_create
 - post /api/django/adsengine/tests-terrain/{ft}/structures/ -> django_adsengine_tests_terrain_structures_create
+- get /api/django/adsengine/veille/annonceurs/ -> django_adsengine_veille_annonceurs_list
+- post /api/django/adsengine/veille/annonceurs/ -> django_adsengine_veille_annonceurs_create
+- get /api/django/adsengine/veille/annonceurs/export-csv/ -> django_adsengine_veille_annonceurs_export_csv_retrieve
+- get /api/django/adsengine/veille/annonceurs/{id}/ -> django_adsengine_veille_annonceurs_retrieve
+- post /api/django/adsengine/veille/annonceurs/{id}/etiquette/ -> django_adsengine_veille_annonceurs_etiquette_create
+- post /api/django/adsengine/veille/annonceurs/{id}/verdict/ -> django_adsengine_veille_annonceurs_verdict_create
+- get /api/django/adsengine/veille/couverture/ -> django_adsengine_veille_couverture_retrieve
+- get /api/django/adsengine/veille/decouvertes/ -> django_adsengine_veille_decouvertes_list
+- post /api/django/adsengine/veille/decouvertes/ -> django_adsengine_veille_decouvertes_create
+- get /api/django/adsengine/veille/decouvertes/{id}/ -> django_adsengine_veille_decouvertes_retrieve
+- post /api/django/adsengine/veille/decouvertes/{id}/annuler/ -> django_adsengine_veille_decouvertes_annuler_create
+- post /api/django/adsengine/veille/decouvertes/{id}/echantillon/ -> django_adsengine_veille_decouvertes_echantillon_create
+- get /api/django/adsengine/veille/decouvertes/{id}/mesures/ -> django_adsengine_veille_decouvertes_mesures_retrieve
+- post /api/django/adsengine/veille/decouvertes/{id}/reprendre/ -> django_adsengine_veille_decouvertes_reprendre_create
 - get /api/django/adsengine/wiring-health/ -> django_adsengine_wiring_health_retrieve
 - get /api/django/agent/actions/ -> django_agent_actions_retrieve
 - post /api/django/agent/actions/automation-draft/ -> django_agent_actions_automation_draft_create
@@ -4224,6 +4238,20 @@ operations:
 - get /api/v1/adsengine/tests-terrain/ -> v1_adsengine_tests_terrain_retrieve
 - post /api/v1/adsengine/tests-terrain/{ft}/resultat/ -> v1_adsengine_tests_terrain_resultat_create
 - post /api/v1/adsengine/tests-terrain/{ft}/structures/ -> v1_adsengine_tests_terrain_structures_create
+- get /api/v1/adsengine/veille/annonceurs/ -> v1_adsengine_veille_annonceurs_list
+- post /api/v1/adsengine/veille/annonceurs/ -> v1_adsengine_veille_annonceurs_create
+- get /api/v1/adsengine/veille/annonceurs/export-csv/ -> v1_adsengine_veille_annonceurs_export_csv_retrieve
+- get /api/v1/adsengine/veille/annonceurs/{id}/ -> v1_adsengine_veille_annonceurs_retrieve
+- post /api/v1/adsengine/veille/annonceurs/{id}/etiquette/ -> v1_adsengine_veille_annonceurs_etiquette_create
+- post /api/v1/adsengine/veille/annonceurs/{id}/verdict/ -> v1_adsengine_veille_annonceurs_verdict_create
+- get /api/v1/adsengine/veille/couverture/ -> v1_adsengine_veille_couverture_retrieve
+- get /api/v1/adsengine/veille/decouvertes/ -> v1_adsengine_veille_decouvertes_list
+- post /api/v1/adsengine/veille/decouvertes/ -> v1_adsengine_veille_decouvertes_create
+- get /api/v1/adsengine/veille/decouvertes/{id}/ -> v1_adsengine_veille_decouvertes_retrieve
+- post /api/v1/adsengine/veille/decouvertes/{id}/annuler/ -> v1_adsengine_veille_decouvertes_annuler_create
+- post /api/v1/adsengine/veille/decouvertes/{id}/echantillon/ -> v1_adsengine_veille_decouvertes_echantillon_create
+- get /api/v1/adsengine/veille/decouvertes/{id}/mesures/ -> v1_adsengine_veille_decouvertes_mesures_retrieve
+- post /api/v1/adsengine/veille/decouvertes/{id}/reprendre/ -> v1_adsengine_veille_decouvertes_reprendre_create
 - get /api/v1/adsengine/wiring-health/ -> v1_adsengine_wiring_health_retrieve
 - get /api/v1/agent/actions/ -> v1_agent_actions_retrieve
 - post /api/v1/agent/actions/automation-draft/ -> v1_agent_actions_automation_draft_create
@@ -7558,6 +7586,7 @@ components:
 - ActivityRequest
 - ActivityType
 - ActivityTypeRequest
+- AdActiveStatusEnum
 - AdCampaignMirror
 - AdsengineAutonomyActivation
 - AdsengineAutonomyCockpit
@@ -7567,6 +7596,7 @@ components:
 - AdsengineFieldTestList
 - AdsengineFieldTestResult
 - AdsengineFieldTestStructures
+- AdsengineVeilleCouverture
 - AgentActionConfirmee
 - AlarmeOnduleur
 - AlarmeOnduleurRequest
@@ -8183,6 +8213,7 @@ components:
 - IrrigationMethodeEnum
 - JalonChantierPortail
 - JalonChantierPortailRequest
+- JeuEnum
 - JournalAcces
 - KbArticle
 - KbArticleRequest
@@ -8768,6 +8799,8 @@ components:
 - PaginatedUserList
 - PaginatedVaguePickingList
 - PaginatedValidationOcrDocumentList
+- PaginatedVeilleAnnonceurList
+- PaginatedVeilleDecouverteList
 - PaginatedVisiteExterneList
 - PaginatedVisiteTerrainList
 - PaginatedVueGedEnregistreeList
@@ -9441,6 +9474,7 @@ components:
 - ScheduledExport
 - ScheduledExportModeEnum
 - ScheduledExportRequest
+- SearchTypeEnum
 - SegmentEnum
 - SensEnum
 - SequenceApprobateursEnum
@@ -9681,6 +9715,9 @@ components:
 - ValidationOcrDocument
 - ValidationOcrDocumentRequest
 - VarianteEnum
+- VeilleAnnonceur
+- VeilleDecouverte
+- VeilleDecouverteStatutEnum
 - VerdictEnum
 - VerifierCertificatReponse
 - VisibiliteEnum
