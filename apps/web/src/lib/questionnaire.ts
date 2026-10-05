@@ -31,6 +31,11 @@
  * `crm.QuestionnaireLien.SECTIONS_CLES` (le serveur reste la source de
  * vérité : la page affiche `data.sections` dans l'ordre reçu).
  *
+ * AGW408 — trois sections AGRICOLES servies par le serveur (AGR411) :
+ * `pompage`, `photo_pompe`, `photo_forage`. La page ne dessine QUE ce que le
+ * serveur sert : un lead résidentiel n'en voit jamais, un lead agricole ne voit
+ * jamais piscine/clim/toit (le filtre de segment est côté serveur).
+ *
  * ORDRE (recherche 25/08/2026) — engagement croissant, sensible en dernier :
  * occupation/équipements (une tape) → énergie (un chiffre lu sur la facture)
  * → toiture/GPS (estimer une surface, accorder une permission) → les trois
@@ -41,11 +46,14 @@ export const QUESTIONNAIRE_SECTIONS = [
   'occupation',
   'equipements',
   'energie',
+  'pompage',
   'toiture',
   'gps',
   'photo_facture',
   'photo_compteur',
   'photo_tableau',
+  'photo_pompe',
+  'photo_forage',
   'contact',
 ] as const;
 export type QuestionnaireSectionId = (typeof QUESTIONNAIRE_SECTIONS)[number];
@@ -55,7 +63,13 @@ export function isQuestionnaireSectionId(v: unknown): v is QuestionnaireSectionI
 }
 
 export function isPhotoSection(section: QuestionnaireSectionId): boolean {
-  return section === 'photo_facture' || section === 'photo_compteur' || section === 'photo_tableau';
+  return (
+    section === 'photo_facture' ||
+    section === 'photo_compteur' ||
+    section === 'photo_tableau' ||
+    section === 'photo_pompe' ||
+    section === 'photo_forage'
+  );
 }
 
 /** Libellés fr/en/ar + pictogramme — affichage seul, jamais lu par la logique. */
@@ -73,6 +87,9 @@ export const SECTION_META: Record<QuestionnaireSectionId, SectionMeta> = {
   toiture: { icon: '🏠', title: { fr: 'Toiture', en: 'Roof', ar: 'السطح' } },
   occupation: { icon: '🕒', title: { fr: 'Occupation du logement', en: 'Home occupancy', ar: 'شغل المنزل' } },
   equipements: { icon: '🧰', title: { fr: 'Équipements', en: 'Appliances', ar: 'التجهيزات' } },
+  pompage: { icon: '💧', title: { fr: 'Pompage et irrigation', en: 'Pumping and irrigation', ar: 'الضخ والسقي' } },
+  photo_pompe: { icon: '⚙️', title: { fr: 'Photo de la plaque de la pompe', en: 'Photo of the pump nameplate', ar: 'صورة لوحة بيانات المضخة' } },
+  photo_forage: { icon: '🕳️', title: { fr: 'Photo de la tête du forage', en: 'Photo of the borehole head', ar: 'صورة رأس البئر' } },
 };
 
 // ── Contrat GET ──────────────────────────────────────────────────────────
@@ -235,13 +252,18 @@ export const ECRANS: readonly EcranDef[] = [
     title: { fr: 'Votre électricité', en: 'Your electricity', ar: 'كهرباؤكم' },
   },
   {
+    id: 'pompage',
+    sections: ['pompage'],
+    title: { fr: 'Votre eau et votre irrigation', en: 'Your water and irrigation', ar: 'مياهكم وسقيكم' },
+  },
+  {
     id: 'toit',
     sections: ['toiture', 'gps'],
     title: { fr: 'Votre toit', en: 'Your roof', ar: 'سطحكم' },
   },
   {
     id: 'photos',
-    sections: ['photo_facture', 'photo_compteur', 'photo_tableau'],
+    sections: ['photo_facture', 'photo_compteur', 'photo_tableau', 'photo_pompe', 'photo_forage'],
     title: { fr: 'Vos photos', en: 'Your photos', ar: 'صوركم' },
   },
   {
@@ -314,6 +336,21 @@ export type OwnershipId = (typeof OWNERSHIP_VALUES)[number];
 export const OCCUPATION_JOUR_VALUES = ['present', 'absent', 'partiel'] as const;
 export type OccupationJourId = (typeof OCCUPATION_JOUR_VALUES)[number];
 
+// AGW408 — vocabulaires du pompage : MOT POUR MOT les clés de crm.Lead
+// (SourceEau, IrrigationMethode, PompeAlimActuelle — apps/crm/models.py), donc
+// des choix FERMÉS identiques au contrat. « Je ne sais pas » = champ absent.
+export const SOURCE_EAU_VALUES = ['puits', 'forage', 'bassin', 'riviere'] as const;
+export type SourceEauId = (typeof SOURCE_EAU_VALUES)[number];
+
+export const IRRIGATION_METHODE_VALUES = ['goutte', 'aspersion', 'gravitaire'] as const;
+export type IrrigationMethodeId = (typeof IRRIGATION_METHODE_VALUES)[number];
+
+export const POMPE_ALIM_VALUES = ['aucune', 'diesel', 'butane', 'electrique'] as const;
+export type PompeAlimId = (typeof POMPE_ALIM_VALUES)[number];
+
+/** Alimentations qui brûlent un carburant payé : butane (bouteilles) et diesel (litres). */
+export const POMPE_ALIM_AVEC_CARBURANT: readonly PompeAlimId[] = ['butane', 'diesel'];
+
 export type EquipementKey =
   | 'equip_piscine'
   | 'equip_voiture_electrique'
@@ -361,6 +398,23 @@ export function cleanBoundedInt(v: unknown, max: number): number | null {
 
 export function cleanEnum<T extends string>(v: unknown, allowed: readonly T[]): T | null {
   return typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as T) : null;
+}
+
+/**
+ * AGW408 — mois d'irrigation : liste d'entiers 1-12 DISTINCTS, triée (contrat
+ * `Lead.mois_irrigation`, `valider_mois_irrigation`). Accepte un tableau ou une
+ * chaîne « 3,4,5 » (la page garde l'état des 12 boutons dans un champ caché).
+ * Rien de valide ⇒ `null` (question non répondue, jamais une liste inventée).
+ */
+export function cleanMoisIrrigation(v: unknown): number[] | null {
+  const brut = Array.isArray(v) ? v : typeof v === 'string' ? v.split(',') : [];
+  const mois = new Set<number>();
+  for (const x of brut) {
+    if (typeof x === 'string' && x.trim() === '') continue;
+    const n = Number(x);
+    if (Number.isInteger(n) && n >= 1 && n <= 12) mois.add(n);
+  }
+  return mois.size > 0 ? [...mois].sort((a, b) => a - b) : null;
 }
 
 /** 'oui'/'non' → booléen explicite, sinon `undefined` (question pas encore répondue). */
@@ -437,8 +491,38 @@ export function buildSectionReponses(
     case 'photo_facture':
     case 'photo_compteur':
     case 'photo_tableau':
+    case 'photo_pompe':
+    case 'photo_forage':
       // Rien dans `reponses` — la photo voyage dans le champ `photo` du corps POST.
       break;
+    case 'pompage': {
+      // AGW408 — « Je ne sais pas » ⇒ la clé reste ABSENTE (jamais un 0 ni un défaut inventé).
+      const source = cleanEnum(raw.source_eau, SOURCE_EAU_VALUES);
+      if (source) out.source_eau = source;
+      const niveau = cleanPositiveNumber(raw.niveau_statique_m, 1_000);
+      if (niveau != null) out.niveau_statique_m = niveau;
+      const besoin = cleanPositiveNumber(raw.besoin_eau_m3j, 100_000);
+      if (besoin != null) out.besoin_eau_m3j = besoin;
+      const surface = cleanPositiveNumber(raw.surface_irriguee_ha, 100_000);
+      if (surface != null) out.surface_irriguee_ha = surface;
+      const culture = cleanStr(raw.culture, 120);
+      if (culture) out.culture = culture;
+      const methode = cleanEnum(raw.irrigation_methode, IRRIGATION_METHODE_VALUES);
+      if (methode) out.irrigation_methode = methode;
+      const alim = cleanEnum(raw.pompe_alim_actuelle, POMPE_ALIM_VALUES);
+      if (alim) out.pompe_alim_actuelle = alim;
+      const butane = cleanPositiveNumber(raw.butane_bouteilles_jour, 9_999);
+      if (butane != null) out.butane_bouteilles_jour = butane;
+      const prix = cleanPositiveNumber(raw.carburant_prix_unitaire_mad, 100_000);
+      if (prix != null) out.carburant_prix_unitaire_mad = prix;
+      const depense = cleanPositiveNumber(raw.depense_carburant_mad_mois, 99_999_999);
+      if (depense != null) out.depense_carburant_mad_mois = depense;
+      const mois = cleanMoisIrrigation(raw.mois_irrigation);
+      if (mois) out.mois_irrigation = mois;
+      const compteur = cleanOuiNon(raw.compteur_eau);
+      if (compteur !== undefined) out.compteur_eau = compteur;
+      break;
+    }
     case 'toiture': {
       const type = cleanEnum(raw.type_toiture, TYPE_TOITURE_VALUES);
       if (type) out.type_toiture = type;
@@ -506,6 +590,11 @@ const SECTION_COLONNES_ECRITES: Partial<Record<QuestionnaireSectionId, readonly 
   equipements: [
     'equip_piscine', 'equip_piscine_pompe_kw', 'equip_voiture_electrique', 'equip_ve_km_semaine',
     'equip_clim', 'equip_clim_pieces', 'equip_chauffe_eau_electrique',
+  ],
+  pompage: [
+    'source_eau', 'niveau_statique_m', 'besoin_eau_m3j', 'surface_irriguee_ha', 'culture',
+    'irrigation_methode', 'pompe_alim_actuelle', 'butane_bouteilles_jour',
+    'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois', 'mois_irrigation', 'compteur_eau',
   ],
 };
 
