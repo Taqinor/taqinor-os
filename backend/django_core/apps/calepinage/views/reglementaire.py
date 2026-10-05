@@ -44,7 +44,7 @@ from rest_framework.response import Response
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from ..services.reglementaire import (
     ChampsDossierInvalides, DossierRefuse, construire_pack_dossier,
-    dossiers_du_calepinage, enregistrer_champs,
+    dossiers_du_calepinage, enregistrer_champs, packs_france,
 )
 from .calepinages import CalepinageViewSet
 
@@ -72,8 +72,19 @@ _FORME_DOSSIERS = _forme()
 @action(detail=True, methods=['get'], url_path='dossiers-reglementaires',
         permission_classes=[PeutVoirCalepinage])
 def dossiers_reglementaires(self, request, pk=None):
-    """CAL191 — les dossiers réglementaires du calepinage (contrat CAL247)."""
-    return Response(dossiers_du_calepinage(self.get_object()))
+    """CAL191 — les dossiers réglementaires du calepinage (contrat CAL247).
+
+    ACAL309 — pour une société française (``pays == 'fr'``) la réponse porte
+    en plus ``packs_france`` : DP, Enedis et Consuel avec leur avancement, un
+    genre sans gabarit étant servi ``gabarit_depose: false`` et le message qui
+    dit quoi déposer. Hors France, la clé est ABSENTE.
+    """
+    calepinage = self.get_object()
+    agregat = dossiers_du_calepinage(calepinage)
+    if agregat.get('pays') == 'fr':
+        agregat = dict(agregat, packs_france=packs_france(
+            calepinage, agregat)['packs'])
+    return Response(agregat)
 
 
 # ── CALX40 — OUVRIR LA GÉNÉRATION D'UN DOSSIER ────────────────────────────

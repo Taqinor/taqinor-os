@@ -76,16 +76,20 @@ class SourcesTest(unittest.TestCase):
         self.assertEqual(specs['avertissements'], [])
 
     def test_une_fiche_muette_NOMME_son_hypothese(self):
+        """ACAL306 — la DoD garde son hypothèse NOMMÉE ; le rendement
+        aller-retour n'a PLUS de repli : vide, avec le motif qui nomme la
+        fiche à compléter."""
         sans = dict(FICHE_COMPLETE)
         sans.pop('bat_dod_pct')
         sans.pop('bat_rendement_ar_pct')
         specs = specs_batterie(batterie(**sans))
-        for nom in ('dod_pct', 'rendement_ar_pct'):
-            with self.subTest(grandeur=nom):
-                self.assertEqual(specs['grandeurs'][nom]['source'],
-                                 'hypothese')
-                self.assertIn('Hypothèse',
-                              specs['grandeurs'][nom]['mention'])
+        self.assertEqual(specs['grandeurs']['dod_pct']['source'], 'hypothese')
+        self.assertIn('Hypothèse', specs['grandeurs']['dod_pct']['mention'])
+        rendement = specs['grandeurs']['rendement_ar_pct']
+        self.assertIsNone(rendement['valeur'])
+        self.assertIsNone(rendement['source'])
+        self.assertIn('Rendement aller-retour absent de la fiche',
+                      rendement['mention'])
         self.assertEqual(len(specs['avertissements']), 2)
 
     def test_les_cycles_absents_restent_VIDES_sans_hypothese(self):

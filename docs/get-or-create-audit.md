@@ -55,8 +55,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/automation/views.py:514` | get_or_create | IncomingWebhookTrigger.objects | rule |
 | `backend/django_core/apps/calepinage/services/modeles.py:55` | get_or_create | Tag.objects | company, nom |
 | `backend/django_core/apps/calepinage/services/modeles.py:88` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
-| `backend/django_core/apps/calepinage/views/calepinages.py:133` | get_or_create | IdempotencyRecord.objects | company, endpoint, key |
-| `backend/django_core/apps/calepinage/views/reglementaire.py:136` | get_or_create | DossierReglementaire.objects | calepinage, company, gabarit |
+| `backend/django_core/apps/calepinage/views/calepinages.py:136` | get_or_create | IdempotencyRecord.objects | company, endpoint, key |
+| `backend/django_core/apps/calepinage/views/reglementaire.py:147` | get_or_create | DossierReglementaire.objects | calepinage, company, gabarit |
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/mesure_cadence.py:320` | get_or_create | GesteRelanceAppareil.objects | company, famille_appareil, geste, jour |
 | `backend/django_core/apps/crm/services.py:217` | get_or_create | LeadPlaybookProgress.objects | lead, tache |

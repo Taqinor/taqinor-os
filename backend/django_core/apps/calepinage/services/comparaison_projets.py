@@ -234,30 +234,30 @@ def _ligne_de_comparaison(calepinage):
     return ligne
 
 
-def comparer_calepinages(company, ids):
-    """Le comparatif de 1 à ``BORNE_PROJETS`` calepinages de ``company``.
+def comparer_calepinages(user, ids):
+    """Le comparatif de 1 à ``BORNE_PROJETS`` calepinages VISIBLES de ``user``.
 
     Args:
-        company: la société de l'APPELANT — jamais lue d'un corps de requête.
-            ``None`` ⇒ tous les identifiants sont refusés.
+        user: l'APPELANT (``request.user``) — ACAL295 : les calepinages sont
+            lus par ``selectors.calepinages_visibles`` (sa société, la vue
+            restreinte au responsable, archives comprises). Sans société ⇒
+            tous les identifiants sont refusés.
         ids: les identifiants demandés (liste, ou chaîne « 1,2,3 »).
 
     Returns:
         ``{colonnes, lignes, refus}`` — ``lignes`` dans l'ordre des ``ids``,
-        ``refus`` pour chaque identifiant ignoré (autre société ou inexistant,
-        même motif).
+        ``refus`` pour chaque identifiant ignoré (autre société, hors vue ou
+        inexistant : MÊME motif, aucun oracle d'existence).
 
     Raises:
         ComparaisonRefusee: voir ``_lire_ids`` (le champ nommé est ``ids``).
     """
-    demandes = _lire_ids(ids)
-    trouves = {}
-    if company is not None:
-        from ..models import Calepinage
+    from ..selectors import calepinages_visibles
 
-        trouves = {calepinage.pk: calepinage
-                   for calepinage in Calepinage.objects.filter(
-                       company=company, pk__in=demandes)}
+    demandes = _lire_ids(ids)
+    trouves = {calepinage.pk: calepinage
+               for calepinage in calepinages_visibles(
+                   user, inclure_archives=True).filter(pk__in=demandes)}
     return {
         'colonnes': _colonnes(),
         'lignes': [_ligne_de_comparaison(trouves[pk])

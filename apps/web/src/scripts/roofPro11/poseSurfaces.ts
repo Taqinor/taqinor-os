@@ -112,6 +112,14 @@ export interface SurfacePose {
   appuis?: AppuisOmbriere;
   /** CAL89 — le plan rendu par le moteur, recopié tel quel. */
   engine?: PlanMoteurPose;
+  /** ACAL2 / D-ACAL-5 — le MODULE posé sur la surface (cotes en m, puissance en Wc) et le
+   *  nombre de modules par table : SAISIS ou repris du catalogue, jamais devinés ici. */
+  moduleLongM?: number | null;
+  moduleCourtM?: number | null;
+  moduleWc?: number | null;
+  modulesParTable?: number | null;
+  /** ACAL2 — largeur d'allée entre tables (m), ou null = non renseignée. */
+  alleeM?: number | null;
 }
 
 // ═══════════════ REFUS : TOUJOURS LE CHAMP FAUTIF, JAMAIS UN MESSAGE MUET ═══════════════
@@ -324,6 +332,9 @@ export function creerChampSol(saisie: SaisieChampSol): VerdictSurface {
 
 /** Copie DÉFENSIVE d'une surface (le document ne doit jamais partager une référence
  *  avec l'état vivant de l'atelier). Les clés absentes le restent. */
+/** ACAL26 — les clés de module / d'allée d'une surface (contrat `$defs/poseSurface`, ACAL2). */
+const CLES_MODULE_SURFACE = ['moduleLongM', 'moduleCourtM', 'moduleWc', 'modulesParTable', 'alleeM'] as const;
+
 function copierSurface(s: SurfacePose): SurfacePose {
   const out: Record<string, unknown> = { kind: s.kind, id: s.id };
   if (typeof s.label === 'string' && s.label.length) out.label = s.label;
@@ -333,6 +344,10 @@ function copierSurface(s: SurfacePose): SurfacePose {
   if (s.terrainSlopeDeg !== undefined) out.terrainSlopeDeg = s.terrainSlopeDeg;
   if (s.rowAzimuthDeg !== undefined) out.rowAzimuthDeg = s.rowAzimuthDeg;
   if (s.tiltDeg !== undefined) out.tiltDeg = s.tiltDeg;
+  // ACAL26 — les clés de module et d'allée du contrat (ACAL2, D-ACAL-5) voyagent avec la
+  // surface : la copie les jetait, et rouvrir puis enregistrer un champ au sol perdait
+  // son module (donc sa puissance) en silence.
+  for (const cle of CLES_MODULE_SURFACE) if (s[cle] !== undefined) out[cle] = s[cle];
   if (s.clearHeightM !== undefined) out.clearHeightM = s.clearHeightM;
   if (s.flowAzimuthDeg !== undefined) out.flowAzimuthDeg = s.flowAzimuthDeg;
   if (typeof s.buildingId === 'string' && s.buildingId.length) out.buildingId = s.buildingId;

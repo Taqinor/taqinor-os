@@ -84,11 +84,12 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
         validate_composition_for_layout,
     )
 
-    from .liens import lier_devis
-
     layout = _exiger_layout(calepinage)
     company = calepinage.company
     lead, client = _lead_et_client(calepinage)
+    # ACAL277 — les montants sont VALIDÉS avant toute écriture (y compris le
+    # rattachement d'un brouillon existant) : un refus n'écrit rien.
+    montants = _montants(taux_tva, remise_globale, Decimal)
 
     # Pré-vol de composition : le catalogue peut-il servir ce toit ? Le refus
     # est celui du serveur ventes, mot pour mot (422).
@@ -98,20 +99,56 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
                           donnees={'detail': erreurs[0], 'errors': erreurs})
 
     empreinte = calepinage.layout_hash or layout_hash(layout)
+    lie = _devis_lie_actif(calepinage)
+    if lie is not None:
+        # ACAL33 — un calepinage lié à un devis ACTIF n'est jamais re-pointé :
+        # le même brouillon à la même empreinte est rendu (dédup), tout autre
+        # cas est un 409 NOMMÉ avant toute création (jamais un devis orphelin
+        # ni un 500). ACAL89 affine ce refus.
+        if (lie.statut == 'brouillon'
+                and (lie.layout_hash or '') == (empreinte or '')):
+            return lie, False
+        raise DevisRefuse(
+            f"Ce calepinage est déjà lié au devis "
+            f"{lie.reference or f'#{lie.pk}'} : utilisez « Resynchroniser "
+            "le devis ».", champ='devis', statut=409)
     if lead is not None:
         deja = devis_brouillon_pour_layout(company, lead.pk, empreinte)
         if deja is not None:
-            lier_devis(calepinage, deja.pk, user=user)
+            _lier(calepinage, deja, user=user)
             return deja, False
 
     devis = build_devis_from_layout(
         layout=layout, user=user, company=company, lead=lead, client=client,
-        **_montants(taux_tva, remise_globale, Decimal))
+        **montants)
     # Le devis porte la MÊME empreinte que le calepinage : c'est ce qui rend
     # la dédup possible au clic suivant, et le badge « à jour » honnête.
     poser_layout_hash(devis, empreinte)
-    lier_devis(calepinage, devis.pk, user=user)
+    _lier(calepinage, devis, user=user)
     return devis, True
+
+
+def _devis_lie_actif(calepinage):
+    """ACAL33 — le devis lié s'il est ACTIF (même société), sinon ``None``."""
+    from apps.ventes.selectors import get_devis_by_pk
+
+    if not calepinage.devis_id:
+        return None
+    lie = get_devis_by_pk(calepinage.devis_id)
+    if (lie is None or lie.company_id != calepinage.company_id
+            or not getattr(lie, 'is_active', True)):
+        return None
+    return lie
+
+
+def _lier(calepinage, devis, *, user=None):
+    """``lier_devis`` dont le refus devient un 409 NOMMÉ (jamais un 500)."""
+    from .liens import LiaisonRefusee, lier_devis
+
+    try:
+        lier_devis(calepinage, devis.pk, user=user)
+    except LiaisonRefusee as refus:
+        raise DevisRefuse(str(refus), champ='devis', statut=409) from None
 
 
 def _montants(taux_tva, remise_globale, Decimal):
@@ -121,16 +158,20 @@ def _montants(taux_tva, remise_globale, Decimal):
     que l'appelant ne dit pas, le service ventes le décide comme il le décide
     pour tous ses autres appelants.
     """
+    from .valeurs import nombre_fini
+
     montants = {}
-    for cle, brut in (('taux_tva', taux_tva),
-                      ('remise_globale', remise_globale)):
+    for cle, libelle, brut in (('taux_tva', 'Taux de TVA', taux_tva),
+                               ('remise_globale', 'Remise globale',
+                                remise_globale)):
         if brut in (None, ''):
             continue
-        try:
-            montants[cle] = Decimal(str(brut))
-        except Exception as erreur:  # noqa: BLE001 — refus NOMMÉ, jamais un 500
-            raise DevisRefuse(f"Valeur invalide pour « {cle} » : {brut!r}.",
-                              champ=cle) from erreur
+        # ACAL277 — un pourcentage FINI dans [0, 100], deux décimales au
+        # plus : « NaN », « 123456 », « 150 » ou « -5 » sont refusés en
+        # nommant le champ, jamais un 500 ni un devis aberrant.
+        nombre_fini(brut, cle, libelle=libelle, mini=0, maxi=100,
+                    decimales=2, erreur=DevisRefuse)
+        montants[cle] = Decimal(str(brut))
     return montants
 
 

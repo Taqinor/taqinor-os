@@ -39,7 +39,7 @@ from uuid import uuid4
 MAX_OCTETS = 15 * 1024 * 1024
 
 __all__ = ['PhotoRefusee', 'ajouter_photo_site', 'calage_photo_site',
-           'photo_en_ligne', 'MAX_OCTETS']
+           'photo_en_ligne', 'lire_octets_piece', 'MAX_OCTETS']
 
 
 class PhotoRefusee(ValueError):
@@ -219,22 +219,44 @@ def calage_photo_site(photo, calage):
     return photo
 
 
+#: Les pièces jointes générales (``records.store_attachment``) vivent dans le
+#: bucket des téléversements ; tout le reste (rendus de toiture, photos du
+#: module, plans) dans le bucket PDF, sous ``roofs/…``.
+PREFIXE_TELEVERSEMENTS = 'attachments/'
+
+
+def lire_octets_piece(file_key):
+    """ACAL200 — les OCTETS d'une pièce, lus dans LE BON bucket, ou ``None``.
+
+    Une photo DÉPOSÉE dans le module a une clé ``roofs/…`` (bucket PDF) ; une
+    photo REPRISE d'une visite réutilise l'``Attachment`` de la visite, clé
+    ``attachments/…`` (bucket des téléversements). Lire l'une dans le bucket de
+    l'autre rendait une image vide : le bucket se résout donc ICI, une seule
+    fois, par le préfixe de la clé. Absence ou magasin muet ⇒ ``None``.
+    """
+    if not file_key:
+        return None
+    if str(file_key).startswith(PREFIXE_TELEVERSEMENTS):
+        from apps.records.storage import fetch_attachment
+
+        octets, erreur = fetch_attachment(file_key)
+        return None if erreur else octets
+    from apps.ventes import services as ventes_services
+
+    return ventes_services.lire_fichier_toiture(file_key)
+
+
 def photo_en_ligne(photo):
     """La photo telle que l'écran l'affiche — clés TOUJOURS présentes.
 
-    ``url`` est PRÉ-SIGNÉE (même chemin que ``roof-image``) et vaut ``''``
-    quand le stockage ne répond pas : une URL absente est une URL absente,
-    jamais un lien mort présenté comme valide. ``calage`` vaut ``null`` tant
-    que CAL53 n'a pas posé de calage — jamais un objet vide qui laisserait
-    croire à un calage neutre.
+    ``url`` est un chemin RELATIF même origine servi par Django (ACAL200 :
+    jamais l'hôte interne de MinIO) ; ``calage`` vaut ``null`` tant que CAL53
+    n'a pas posé de calage — jamais un objet vide qui laisserait croire à un
+    calage neutre.
     """
-    from apps.ventes import services as ventes_services
+    from .presentation import url_fichier_photo
 
     piece = photo.attachment
-    try:
-        url = ventes_services.url_image_toiture(piece.file_key) or ''
-    except Exception:       # pragma: no cover - dépend du stockage
-        url = ''
     return {
         'id': photo.pk,
         'genre': photo.genre,
@@ -245,7 +267,7 @@ def photo_en_ligne(photo):
         'filename': piece.filename,
         'mime': piece.mime or '',
         'size': piece.size,
-        'url': url,
+        'url': url_fichier_photo(photo.calepinage_id, photo.pk),
         'ajoutee_par': getattr(photo.ajoutee_par, 'username', '') or '',
         'created_at': photo.created_at.isoformat() if photo.created_at
         else None,

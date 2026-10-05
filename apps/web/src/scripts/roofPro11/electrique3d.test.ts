@@ -20,9 +20,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import process from 'node:process';
+import { join } from 'node:path';
 import * as THREE from 'three';
 import {
   ID_CALQUE_ELECTRIQUE,
@@ -38,17 +36,14 @@ import {
   type EquipementElectrique,
   type TypeEquipement,
 } from './electrique3d';
+import { serialiserDocumentAtelier, appliquerHydratationAuCtx, type EtatSerialisationAtelier } from './hydratation'; // ACAL26
+import { hydrateFromDevis, type SerializedLayout } from './prefill'; // ACAL26
+import { uniformSetbacks } from '../../lib/roofPro2'; // ACAL26
+import { type Ctx } from './context'; // ACAL26
+import { racineDepot } from './harnaisAtelier';
 
 // ───────────────────────────────────────────── l'échantillon de contrat committé
 
-function racineDepot(): string {
-  let dossier = resolve(process.cwd());
-  for (let i = 0; i < 6; i += 1) {
-    if (existsSync(join(dossier, 'backend', 'django_core'))) return dossier;
-    dossier = dirname(dossier);
-  }
-  throw new Error(`Racine du dépôt introuvable depuis ${process.cwd()}`);
-}
 
 function contrat(nom: string): Record<string, unknown> {
   const chemin = join(
@@ -64,6 +59,30 @@ function contrat(nom: string): Record<string, unknown> {
 const ECHANTILLON = contrat('electrique_equipements');
 const DOC_HUIT = (ECHANTILLON.exemple as { electrical: DocumentElectrique }).electrical;
 const DOC_VIDE = (ECHANTILLON.exemple_vide as { electrical: DocumentElectrique }).electrical;
+
+/** ACAL26 — un ctx d'atelier minimal (une zone, aucun panneau) : assez pour appeler le
+ *  VRAI sérialiseur câblé du constructeur (`serialiserDocumentAtelier`). */
+function ctxAtelier(electrical?: DocumentElectrique | null): Ctx & { electrical?: DocumentElectrique | null } {
+  const zone = {
+    id: 'z1', label: 'Pan', vertices: [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001]] as [number, number][],
+    obstacles: [], roofType: 'flat' as const, pitchDeg: 10, facingAzimuthDeg: 180, facingManual: false,
+    neededPanels: 0, neededAuto: true, result: null, renderPlan: null,
+  };
+  return {
+    areas: [zone], activeAreaId: 'z1', vertices: zone.vertices, obstacles: [], roofType: 'flat', pitchDeg: 10,
+    facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true, layoutPlan: null,
+    layoutOptimalCount: 0, shadeObstructions: [], environment: [], shadeFactors: null, sunDay: Number.NaN,
+    sunHour: Number.NaN, sceneOrigin: [-7.6, 33.5], ...(electrical !== undefined ? { electrical } : {}),
+  } as unknown as Ctx & { electrical?: DocumentElectrique | null };
+}
+
+/** ACAL26 — l'état que le wrapper `onApiReady.serializeLayout` passe au sérialiseur câblé. */
+function etatConstructeur(
+  couche: ReturnType<typeof creerCoucheElectrique>,
+  devisOrigin: EtatSerialisationAtelier['devisOrigin'],
+): EtatSerialisationAtelier {
+  return { devisOrigin, solarAccess: null, setbacks: uniformSetbacks(), horizonProfile: null, modules: null, coucheElectrique: couche };
+}
 
 /** L'origine ENU de la scène : le repère du site de l'échantillon. */
 const ORIGINE: [number, number] = [-7.6, 33.5];
@@ -259,10 +278,11 @@ function formeDe(entree: Record<string, unknown>): Record<string, string> {
 }
 
 describe('CALX220 — la pose écrit le document, et sa forme est celle du contrat', () => {
-  it('poser écrit une entrée dans `electrical.equipements[]`, et `serializeLayout` la porte', () => {
-    const ctx: { electrical?: DocumentElectrique | null; sceneOrigin: [number, number] } = {
-      sceneOrigin: ORIGINE,
-    };
+  it('poser écrit une entrée dans `electrical.equipements[]`, et le sérialiseur CÂBLÉ du constructeur la porte (ACAL26)', () => {
+    // ACAL26 — réécrit : l'ancien test appelait `couche.ecrireDansDocument` directement et
+    // passait donc à côté du wrapper `onApiReady.serializeLayout`, qui ne transmettait PAS
+    // la couche (leçon D). On pose via la vraie couche puis on sérialise par la VRAIE meta.
+    const ctx = ctxAtelier();
     const couche = creerCoucheElectrique(ctx);
     expect(couche.documentElectrique()).toBeNull();
     couche.armerPose('onduleur');
@@ -272,11 +292,12 @@ describe('CALX220 — la pose écrit le document, et sa forme est celle du contr
     expect(doc?.equipements).toHaveLength(1);
     expect(doc?.equipements?.[0].lng).toBe(-7.6002);
     expect(couche.groupe.children).toHaveLength(1);
-    // Le CROCHET d'export : un document sérialisé repart avec sa couche.
-    const document3d = couche.ecrireDansDocument({ version: 2, zones: [] });
-    expect((document3d as { electrical?: DocumentElectrique }).electrical?.equipements).toHaveLength(1);
-    // ... et ne partage AUCUNE référence avec l'état vivant.
-    expect((document3d as { electrical?: DocumentElectrique }).electrical).not.toBe(doc);
+    for (const devisOrigin of [null, { devisId: 7, panelWatt: null, scenario: null }]) {
+      const document3d = serialiserDocumentAtelier(ctx, null, etatConstructeur(couche, devisOrigin));
+      expect(document3d.electrical?.equipements, devisOrigin ? 'branche devis' : 'branche lead').toHaveLength(1);
+      // ... et ne partage AUCUNE référence avec l'état vivant.
+      expect(document3d.electrical).not.toBe(doc);
+    }
   });
 
   it('rien n’est écrit tant qu’aucun organe n’est posé : le document reste intact', () => {
@@ -582,10 +603,10 @@ describe('CALX221 — le calque électrique', () => {
     const couche = creerCoucheElectrique({ electrical: DOC_HUIT, sceneOrigin: ORIGINE });
     expect(couche.idCalque).toBe(ID_CALQUE_ELECTRIQUE);
     expect(couche.groupe.name).toBe(ID_CALQUE_ELECTRIQUE);
-    // Le source ne déclare l'identifiant qu'une fois : le panneau de calques de
-    // l'ERP relit CE littéral (test jumeau côté frontend).
-    const source = readFileSync(fileURLToPath(new URL('./electrique3d.ts', import.meta.url)), 'utf8');
-    expect(source.split("ID_CALQUE_ELECTRIQUE = '").length - 1).toBe(1);
+    // ACAL342 — RÉÉCRIT sans lecture du source : le calque proposé par la couche (celui que
+    // l'ERP pilote) EST l'identifiant exporté, et lui seul.
+    expect(couche.setLayerState(ID_CALQUE_ELECTRIQUE, { visible: true })).toBe(true);
+    expect(couche.setLayerState(`${ID_CALQUE_ELECTRIQUE}-autre`, { visible: true })).toBe(false);
   });
 
   it('`setLayerState` masque le groupe et rend `true`', () => {
@@ -633,20 +654,43 @@ describe('CALX221 — le calque électrique', () => {
   });
 });
 
-describe('CALX220 — l’attache dans le constructeur', () => {
-  const source = readFileSync(
-    fileURLToPath(new URL('../roof-tool-pro11.ts', import.meta.url)),
-    'utf8',
-  );
+describe('CALX220 / ACAL26 — l’attache dans le constructeur passe par le sérialiseur câblé', () => {
+  // ACAL26 — réécrit : l'ancien bloc lisait roof-tool-pro11.ts par readFileSync et
+  // cherchait des chaînes dans le SOURCE ; il restait vert alors que le wrapper perdait la
+  // couche électrique. Ce bloc rejoue le comportement : document → boot → sérialiseur.
+  it('document semé → hydrateFromDevis → appliquerHydratationAuCtx → sérialiseur câblé : `electrical` identique', () => {
+    const documentSeme = {
+      version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'z1',
+      zones: [{
+        id: 'z1', label: 'Pan', vertices: [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001]], obstacles: [],
+        roofType: 'flat', pitchDeg: 10, facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true,
+      }],
+      electrical: DOC_HUIT,
+    } as unknown as SerializedLayout;
+    const h = hydrateFromDevis({ id: 7, geometrie: { roof_layout: documentSeme }, cibleVendue: false });
+    const ctx = ctxAtelier();
+    appliquerHydratationAuCtx(ctx, h);
+    const couche = creerCoucheElectrique(ctx);
+    // Le calque relu est proposé dès l'ouverture (la liste « Équipements électriques »).
+    expect(couche.calqueDisponible()).toBe(true);
+    const sortie = serialiserDocumentAtelier(ctx, null, etatConstructeur(couche, { devisId: 7, panelWatt: null, scenario: null }));
+    // Le document relu passe par l'UNIQUE lecteur (`lireCoucheElectrique`) : ce qui en
+    // sort est ce qui repart, sans perte ni ajout.
+    const lu = lireCoucheElectrique({ electrical: DOC_HUIT });
+    expect(lu.equipements.length).toBeGreaterThan(0);
+    expect(sortie.electrical).toEqual({ equipements: lu.equipements, cheminements: lu.cheminements });
+  });
 
-  it('UNE seule construction de la couche, UNE ligne d’attache dans `onApiReady` — et son groupe est RENDU', () => {
-    const bloc = source.slice(source.indexOf('opts.onApiReady?.({'));
-    expect(bloc).toContain('electrique: coucheElectrique');
-    // Une seule occurrence dans tout le fichier, hors l'import du module.
-    const appels = source.split('creerCoucheElectrique(ctx)').length - 1;
-    expect(appels).toBe(1);
-    // CALX219 câblage — le groupe existait mais n'était attaché à AUCUNE scène : il est
-    // désormais donné à `scene3d`, qui le ré-attache après chaque `renderScene`.
-    expect(source).toContain('scene3d.setCoucheElectrique(coucheElectrique.groupe)');
+  it('les DEUX branches de la meta (devis et lead) portent la couche ; sans couche, aucune clé', () => {
+    const ctx = ctxAtelier(DOC_VIDE);
+    const couche = creerCoucheElectrique(ctx);
+    couche.armerPose('onduleur');
+    couche.poser([-7.6002, 33.5001]);
+    const lead = serialiserDocumentAtelier(ctx, null, etatConstructeur(couche, null));
+    const devis = serialiserDocumentAtelier(ctx, null, etatConstructeur(couche, { devisId: 7, panelWatt: null, scenario: null }));
+    expect(lead.electrical?.equipements).toHaveLength(1);
+    expect(devis.electrical?.equipements).toHaveLength(1);
+    const sansCouche = serialiserDocumentAtelier(ctx, null, { ...etatConstructeur(couche, null), coucheElectrique: null });
+    expect('electrical' in sansCouche).toBe(false);
   });
 });

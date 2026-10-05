@@ -26,9 +26,8 @@ DEUX SURFACES, POUR DEUX RAISONS
   constructeur exige la base (quel produit porte quel ``pdf_key``) : ces
   fonctions prennent le CALEPINAGE directement, exactement comme
   ``services/pack_technique.construire_pack`` le fait pour le dossier
-  technique. Elles ne sont PAS encore appelées par ``rendre_rapport`` — ce
-  câblage est un crochet de phase 2 (voir la docstring de
-  ``services/rapport/__init__.py``, « Crochets posés pour la phase 2 »).
+  technique. ACAL226 : ``rendre_rapport`` (``services/rapport/__init__.py``)
+  les appelle — le rapport servi est suivi des fiches PDF constructeur.
 
 AUCUNE FUSION MAISON
 =====================
@@ -280,6 +279,11 @@ def html_de_section(contexte):
     equipements = resultat.get('equipements')
     if equipements:
         blocs.append(html_annexe_equipements(equipements, langue))
+
+    # ACAL226 - une fiche retenue SANS PDF constructeur n'ajoute aucune page
+    # a l'annexe : elle est DITE ici, jamais passee sous silence.
+    for fiche in contexte.get('fiches_sans_pdf') or ():
+        blocs.append('<p class="note">%s</p>' % escape(fiche))
 
     return ''.join(b for b in blocs if b)
 

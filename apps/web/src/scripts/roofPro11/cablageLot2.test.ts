@@ -11,6 +11,7 @@ import { deserializeLayout, serializeLayout } from './prefill';
 import { etiquette, registreAtelier, reinitialiserNumerotation } from './numerotation';
 import { createLayoutEditor, type LayoutEditorDeps } from './layoutEditor';
 import { type Ctx } from './context';
+import { panDeTest, ctxDeBase } from './harnaisAtelier';
 import { type AreaRecord, type LayoutPlan } from './types';
 import { type LngLat } from '../../lib/roof';
 
@@ -28,39 +29,14 @@ function ptM(x: number, y: number): LngLat {
 const CARRE: LngLat[] = [ptM(-5, -5), ptM(5, -5), ptM(5, 5), ptM(-5, 5)];
 
 function zone(id: string, vertices: LngLat[]): AreaRecord {
-  return {
-    id,
-    label: `Zone ${id}`,
-    vertices,
-    obstacles: [],
-    roofType: 'flat',
-    pitchDeg: 22,
-    facingAzimuthDeg: 180,
-    facingManual: false,
-    neededPanels: 10,
-    neededAuto: true,
-    result: null,
-    renderPlan: null,
-  };
+  return panDeTest(id, { vertices, roofType: 'flat', neededPanels: 10 });
 }
 
 function makeCtx(areas: AreaRecord[], activeId = areas[0].id): Ctx {
-  const active = areas.find((a) => a.id === activeId)!;
   return {
-    areas,
-    activeAreaId: activeId,
+    ...ctxDeBase(areas, activeId),
     activeArea: () => areas.find((a) => a.id === activeId),
-    vertices: active.vertices,
-    obstacles: active.obstacles,
     closed: true,
-    roofType: active.roofType,
-    pitchDeg: active.pitchDeg,
-    facingAzimuthDeg: active.facingAzimuthDeg,
-    facingManual: active.facingManual ?? false,
-    neededPanels: active.neededPanels,
-    neededAuto: active.neededAuto,
-    layoutPlan: null,
-    layoutOptimalCount: 0,
     dom: {},
   } as unknown as Ctx;
 }

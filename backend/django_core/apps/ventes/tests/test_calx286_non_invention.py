@@ -598,9 +598,15 @@ class AppelantsInchangesTest(SimpleTestCase):
 
     def test_calepinage_hypotheses_de_reference_batterie(self):
         from apps.calepinage.services import batterie
+        # ACAL306 retire VOLONTAIREMENT le rendement aller-retour des
+        # hypothèses de référence (défaut gravé : aucune valeur de repli,
+        # omission nommée, fiche obligatoire) ; le reste est inchangé.
         attendu = {cle: tuple(v) for cle, v in
-                   AVANT['hypotheses_batterie'].items()}
-        self.assertEqual(batterie._hypotheses_de_reference(), attendu)
+                   AVANT['hypotheses_batterie'].items()
+                   if cle != 'rendement_ar_pct'}
+        servi = batterie._hypotheses_de_reference()
+        self.assertNotIn('rendement_ar_pct', servi)
+        self.assertEqual(servi, attendu)
 
     def test_moteur_de_devis_cashflow(self):
         from apps.ventes.quote_engine import pricing

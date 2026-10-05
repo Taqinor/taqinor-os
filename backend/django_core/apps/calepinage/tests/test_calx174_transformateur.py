@@ -44,22 +44,28 @@ def contexte_de(declaration):
 
 
 class AucunTransformateurTest(unittest.TestCase):
-    """Sans transformateur, l'étape se tait — et ne réclame RIEN."""
+    """ACAL151 — question NON répondue : l'étape le DIT (« non déclaré »).
 
-    def test_le_motif_est_neutre(self):
+    Réécrit (règle (h) du groupe ACAL) : l'ancienne version affirmait le
+    défaut — un oubli présenté comme « aucun transformateur ».
+    """
+
+    def test_le_motif_dit_non_declare(self):
         _, etape = transformateur.appliquer(SERIE, contexte_de(None))
         self.assertEqual(etape['motif_omission'],
-                         transformateur.MOTIF_ABSENT)
+                         transformateur.MOTIF_NON_DECLARE)
+        self.assertNotEqual(transformateur.MOTIF_NON_DECLARE,
+                            transformateur.MOTIF_ABSENT)
 
-    def test_aucun_champ_n_est_reclame_a_l_utilisateur(self):
+    def test_le_motif_nomme_le_geste(self):
         _, etape = transformateur.appliquer(SERIE, contexte_de(None))
-        self.assertNotIn('Champ manquant', etape['motif_omission'])
-        self.assertNotIn('saisi', etape['motif_omission'])
+        self.assertIn('non déclaré', etape['motif_omission'])
+        self.assertIn('pas de transformateur', etape['motif_omission'])
 
-    def test_un_contexte_vide_se_tait_de_la_meme_facon(self):
+    def test_un_contexte_vide_dit_non_declare_de_la_meme_facon(self):
         rendue, etape = transformateur.appliquer(SERIE, {})
         self.assertEqual(etape['motif_omission'],
-                         transformateur.MOTIF_ABSENT)
+                         transformateur.MOTIF_NON_DECLARE)
         self.assertIs(rendue, SERIE)
 
     def test_un_declare_false_explicite_vaut_pas_de_transformateur(self):
@@ -67,6 +73,12 @@ class AucunTransformateurTest(unittest.TestCase):
             SERIE, contexte_de({'declare': False}))
         self.assertEqual(etape['motif_omission'],
                          transformateur.MOTIF_ABSENT)
+
+    def test_pas_de_transformateur_ne_reclame_rien(self):
+        _, etape = transformateur.appliquer(
+            SERIE, contexte_de({'declare': False}))
+        self.assertNotIn('Champ manquant', etape['motif_omission'])
+        self.assertNotIn('saisi', etape['motif_omission'])
 
 
 class DeclareSansPertesTest(unittest.TestCase):
@@ -165,7 +177,7 @@ class DansLaChaineTest(unittest.TestCase):
         etape = next(e for e in cascade['etapes']
                      if e['etape'] == 'transformateur')
         self.assertEqual(etape['motif_omission'],
-                         transformateur.MOTIF_ABSENT)
+                         transformateur.MOTIF_NON_DECLARE)
         self.assertIsNone(etape['perte_pct'])
 
 

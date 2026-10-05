@@ -1,6 +1,7 @@
 {
   "initRoofToolPro8_appels": [
     {
+      "rendementPvgis": null,
       "maptilerKey": "cle-d-essai",
       "reducedMotion": false,
       "hydrate": {
@@ -58,7 +59,8 @@
       ],
       "modulesDisponibles": null,
       "reglagesAtelier": null,
-      "onApiReady": "[fn]"
+      "onApiReady": "[fn]",
+      "onHydrationTerminee": "[fn]"
     }
   ],
   "api_builder_appels": [

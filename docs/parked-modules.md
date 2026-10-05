@@ -459,3 +459,53 @@ que `scripts/parquer_app.py --verifier`, importée telle quelle). Commentaires e
 ne comptent jamais ; `'apps.<label>'` dans `INSTALLED_APPS` (sans point final) est le contrat
 de coquille, jamais une violation. 10 tests dans
 `scripts/tests/test_check_parked_apps.py`.
+
+## 7. Retour d'AO — ce qui revient dans `apps/calepinage` (ACAL326, D-ACAL-16)
+
+Le pont calepinage ↔ appel d'offres est retiré du module actif (AO parqué,
+SOLMVP15 ; CALX44 → SKIP). **La colonne `Calepinage.appel_offre_id` et son index
+`cal_cal_co_ao_idx` sont GARDÉS** (aucune migration, aucune perte : les lignes
+existantes gardent leur valeur ; `publicapi` continue d'exposer `appel_offre_id`,
+contrat externe, en lecture seule). Le code parqué `backend/parked/ao/views.py`
+appelle encore `selectors_calepinage.calepinage_de_l_affaire` (l. 306 et 706) :
+au retour d'AO, remettre VERBATIM les trois morceaux ci-dessous, puis rebrancher
+CALX44 (`docs/PLAN2.md`).
+
+1. `apps/calepinage/selectors.py` :
+
+```python
+def calepinage_de_l_affaire(appel_offre_id, company):
+    """CAL10 — le calepinage rattaché à cette affaire d'AO, ou ``None``."""
+    from .models import Calepinage
+
+    if company is None or not appel_offre_id:
+        return None
+    return (Calepinage.objects
+            .filter(company=company, appel_offre_id=appel_offre_id)
+            .order_by('-created_at', '-id')
+            .first())
+```
+
+2. `apps/calepinage/services/journal.py` (et son nom dans `__all__`) :
+
+```python
+def journaliser_lien_appel_offre(calepinage, *, ancien=None, nouveau=None,
+                                 user=None):
+    """Rattachement (ou changement) de l'affaire d'appel d'offres."""
+    return _ecrire(calepinage, 'MODIFICATION', user=user,
+                   field='appel_offre', field_label="Appel d'offres",
+                   old_value='' if ancien is None else str(ancien),
+                   new_value='' if nouveau is None else str(nouveau))
+```
+
+3. `apps/calepinage/serializers.py`, `CalepinageSerializer` — le champ, et
+   `'appel_offre'` dans `Meta.fields` (après `'devis'`) :
+
+```python
+    appel_offre = serializers.IntegerField(source='appel_offre_id',
+                                           required=False, allow_null=True)
+```
+
+Les 5 tests retirés de `apps/calepinage/tests/test_selectors.py` (isolation
+société, affaire d'une autre société, aucune écriture, affaire trouvée, affaire
+inconnue) reviennent avec le sélecteur (git : commit ACAL326).

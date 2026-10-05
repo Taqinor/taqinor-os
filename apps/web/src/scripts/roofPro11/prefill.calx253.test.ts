@@ -23,78 +23,21 @@
    ========================================================================== */
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import process from 'node:process';
+import { join } from 'node:path';
 import {
   serializeLayout,
   serializeConsumption,
   type SerializedConsumption,
 } from './prefill';
 import { type Ctx } from './context';
+import { panDeTest, ctxAvecConsommation, appareilDeTest, racineDepot } from './harnaisAtelier';
 import { type AreaRecord } from './types';
-import { type Appliance } from '../../lib/applianceConsumption';
 
-const VERTS: [number, number][] = [
-  [-7.6, 33.59],
-  [-7.599, 33.59],
-  [-7.599, 33.591],
-  [-7.6, 33.591],
-];
+const zone = panDeTest;
 
-function zone(id: string, opts: Partial<AreaRecord> = {}): AreaRecord {
-  return {
-    id,
-    label: `Zone ${id}`,
-    vertices: VERTS.map(([lng, lat]) => [lng, lat] as [number, number]),
-    obstacles: [],
-    roofType: 'pitched',
-    pitchDeg: 22,
-    facingAzimuthDeg: 180,
-    facingManual: false,
-    neededPanels: 12,
-    neededAuto: true,
-    result: null,
-    renderPlan: null,
-    ...opts,
-  };
-}
+const makeCtx = ctxAvecConsommation;
 
-/** Un `Ctx` minimal + l'état de consommation VIERGE d'aujourd'hui (les mêmes
- *  valeurs que `roof-tool-pro11.ts` pose avant toute édition — panneau
- *  « Affiner » jamais ouvert). Les tests qui « touchent » le panneau
- *  surchargent explicitement les champs `cons*` en second argument. */
-function makeCtx(areas: AreaRecord[], consOverrides: Partial<Ctx> = {}, activeId = areas[0].id): Ctx {
-  const active = areas.find((a) => a.id === activeId)!;
-  return {
-    areas,
-    activeAreaId: activeId,
-    vertices: active.vertices,
-    obstacles: active.obstacles,
-    roofType: active.roofType,
-    pitchDeg: active.pitchDeg,
-    facingAzimuthDeg: active.facingAzimuthDeg,
-    facingManual: active.facingManual ?? false,
-    neededPanels: active.neededPanels,
-    neededAuto: active.neededAuto,
-    layoutPlan: null,
-    layoutOptimalCount: 0,
-    // — W68/W95, l'état VIERGE (panneau jamais ouvert) —
-    consMode: false,
-    consCurve: new Array(24).fill(0),
-    consHandEdited: false,
-    consAppliances: [],
-    consDailyTarget: 0,
-    consApplCounter: 0,
-    consSeasonal: false,
-    consSummerFactor: 1.3,
-    consWinterFactor: 0.9,
-    ...consOverrides,
-  } as unknown as Ctx;
-}
-
-function appliance(kind: string, dailyKwh: number): Appliance {
-  return { kind, label: kind, dailyKwh, startHour: 8, endHour: 20, billing: 'onTop' };
-}
+const appliance = appareilDeTest;
 
 describe('CALX253 — serializeConsumption : un Ctx vierge ne publie rien', () => {
   it('aucune clé cons* touchée ⇒ pas de bloc `consumption`', () => {
@@ -192,14 +135,6 @@ describe('CALX253 — W95, la modulation saisonnière est publiée seulement si 
 });
 
 describe('CALX253 — contrat partagé roof_layout_v2.schema.json (CALX251), lu — pas un mock', () => {
-  function racineDepot(): string {
-    let dossier = resolve(process.cwd());
-    for (let i = 0; i < 6; i += 1) {
-      if (existsSync(join(dossier, 'backend', 'django_core'))) return dossier;
-      dossier = dirname(dossier);
-    }
-    throw new Error(`Racine du dépôt introuvable depuis ${process.cwd()}`);
-  }
 
   function schema(): Record<string, unknown> {
     const chemin = join(

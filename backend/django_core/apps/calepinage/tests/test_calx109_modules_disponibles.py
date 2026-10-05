@@ -28,6 +28,7 @@ import copy
 import json
 import pathlib
 from decimal import Decimal
+from unittest import mock
 
 from django.test import SimpleTestCase
 
@@ -37,7 +38,6 @@ from apps.calepinage.services.modules_stock import (
     _identifiant_module as identifiant_module,
     modules_disponibles_du_calepinage,
 )
-from apps.calepinage.tests._m0_en_attente import affirmer_non_servies, sans
 
 ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
                 / 'contract_samples')
@@ -97,13 +97,18 @@ class LExempleEstCeQueLeServiceProduitTest(SimpleTestCase):
     """L'échantillon committé n'est pas une description : c'est la sortie."""
 
     def test_la_reponse_complete_est_celle_de_l_exemple(self):
-        servi = modules_disponibles_du_calepinage(
-            _FauxCalepinage(), [_produit_complet(), _produit_incomplet()])
-        # ACAL9 (M0) a posé ``modules[].favori`` avant son producteur :
-        # ACAL174 le sert et retire cette entrée.
-        en_attente = {'modules[].favori': 'ACAL174'}
-        affirmer_non_servies(self, servi, en_attente)
-        self.assertEqual(servi, sans(CONTRAT['exemple'], en_attente))
+        # ACAL174 sert ``modules[].favori`` (posé par ACAL9, M0) : la
+        # réponse EST l'exemple, sans table d'attente. L'exemple épingle le
+        # module 4112 : la société de ce calepinage l'a dans ses favoris
+        # (``ParametresCalepinage.favoris_materiel``, lu par le sélecteur).
+        calepinage = _FauxCalepinage()
+        calepinage.company = object()
+        with mock.patch(
+                'apps.calepinage.selectors.parametres_de_societe',
+                return_value={'favoris_materiel': {'modules': [4112]}}):
+            servi = modules_disponibles_du_calepinage(
+                calepinage, [_produit_incomplet(), _produit_complet()])
+        self.assertEqual(servi, CONTRAT['exemple'])
 
     def test_un_catalogue_sans_fiche_module_est_celui_de_l_exemple_vide(self):
         servi = modules_disponibles_du_calepinage(_FauxCalepinage(), [])

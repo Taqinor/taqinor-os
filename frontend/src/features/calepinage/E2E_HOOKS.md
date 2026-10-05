@@ -287,6 +287,9 @@ retiré plus un hook ajouté.
 | `cal-calage-champ` | calage champ. |
 | `cal-calage-champ-calque` | calage champ calque. |
 | `cal-calage-convertir` | calage convertir. |
+| `cal-calage-convertir-motif` | calage : motif de refus de la conversion. |
+| `cal-calage-entite` | calage : une entité détectée (ligne de la liste). |
+| `cal-calage-entites` | calage : liste des entités détectées. |
 | `cal-calage-distance-plan` | calage distance plan. |
 | `cal-calage-echelle` | calage échelle. |
 | `cal-calage-enregistrer` | calage enregistrer. |
@@ -446,6 +449,11 @@ retiré plus un hook ajouté.
 | `cal-releve-chaine--cote--retirer` | relevé chaîne côte à côte retirer. |
 | `cal-releve-chaine--retirer` | relevé chaîne retirer. |
 | `cal-releve-champ-notes` | relevé champ notes. |
+| `cal-releve-historique` | relevé : historique des relevés (liste, ligne par relevé). |
+| `cal-releve-nouveau` | relevé : démarrer un nouveau relevé. |
+| `cal-releve-photo` | relevé : une photo rattachée (ligne). |
+| `cal-releve-photos` | relevé : photos rattachées au relevé. |
+| `cal-releve-supprimer` | relevé : supprimer le relevé. |
 | `cal-releve-envoyer` | relevé envoyer. |
 | `cal-releve-erreur-chaine` | relevé message d'erreur chaîne. |
 | `cal-releve-erreur-precision_azimut_deg` | relevé message d'erreur precision_azimut_deg. |
@@ -495,6 +503,10 @@ retiré plus un hook ajouté.
 | Hook | Sémantique |
 |---|---|
 | `cal-pose-bandeau` | pose réelle — bandeau de refus qui nomme le pan et le champ. |
+| `cal-pose-brouillon` | pose réelle : brouillon de pose par pan. |
+| `cal-pose-brouillon-note` | pose réelle : note du brouillon. |
+| `cal-pose-auteur` | pose réelle : auteur de la pose du pan. |
+| `cal-pose-date` | pose réelle : date de la pose du pan. |
 | `cal-pose-champ-releve_le` | pose réelle — champ date du relevé (saisie). |
 | `cal-pose-chargement` | pose réelle — lecture en cours. |
 | `cal-pose-creer-version` | pose réelle — bouton « Créer une version depuis les écarts ». |
@@ -650,6 +662,7 @@ retiré plus un hook ajouté.
 | `cal-mode-comparer` | bascule du mode comparer. |
 | `cal-ouvrir-comparaison` | ouvrir la comparaison. |
 | `cal-nouveau-jeux-vide` | création : aucun jeu de réglages (CALX352). |
+| `cal-nouveau-client-repere` | création : client repéré (rappel). |
 | `cal-nouveau-modele-apercu` | création : aperçu du modèle choisi. |
 | `cal-nouveau-modeles-vide` | création : aucun modèle. |
 | `cal-comparaison` | écran comparaison de projets (CALX342). |
@@ -687,6 +700,8 @@ retiré plus un hook ajouté.
 | `cal-projet-fichier` | champ fichier projet. |
 | `cal-projet-erreur` | erreur de lecture/import du projet. |
 | `cal-projet-apercu` | aperçu avant import. |
+| `cal-projet-apercu-clone` | aperçu : cloner le projet à l’import. |
+| `cal-projet-ouvrir` | projet : ouvrir le projet importé. |
 | `cal-projet-apercu-modules` | aperçu : modules. |
 | `cal-projet-apercu-postes` | aperçu : postes de pertes. |
 | `cal-projet-apercu-variantes` | aperçu : variantes. |

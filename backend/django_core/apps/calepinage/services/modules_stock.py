@@ -152,6 +152,25 @@ def _entree_module(produit):
     }
 
 
+def _favoris_modules(calepinage):
+    """ACAL174 — les identifiants « modules » épinglés par la société.
+
+    Lus à CHAQUE appel dans ``ParametresCalepinage.favoris_materiel``
+    (CAL200, sélecteur ``parametres_de_societe``), jamais écrits. Sans société
+    (calcul hors base) : aucun favori.
+    """
+    company = getattr(calepinage, 'company', None)
+    if company is None:
+        return []
+    from ..selectors import parametres_de_societe
+
+    favoris = (parametres_de_societe(company).get('favoris_materiel')
+               or {}).get('modules')
+    if not isinstance(favoris, list):
+        return []
+    return [str(identifiant) for identifiant in favoris]
+
+
 def modules_disponibles_du_calepinage(calepinage, produits):
     """CALX109 — le contrat ``calepinage_modules_disponibles.json`` COMPLET.
 
@@ -166,6 +185,18 @@ def modules_disponibles_du_calepinage(calepinage, produits):
     invente aucun et ne retombe sur aucun module par défaut en silence.
     """
     entrees = [_entree_module(produit) for produit in (produits or [])]
+    # ACAL174 — les favoris de la société EN TÊTE (dans l'ordre épinglé),
+    # drapeau ``favori`` sur chaque entrée ; un favori archivé ou introuvable
+    # n'est simplement pas dans ``produits`` (sélecteur borné société,
+    # archivés exclus) : il est omis. Le reste garde l'ordre du catalogue.
+    favoris = _favoris_modules(calepinage)
+    rang = {identifiant: position
+            for position, identifiant in enumerate(favoris)}
+    for entree in entrees:
+        entree['favori'] = str(entree['module']['produitId']) in rang
+    entrees.sort(key=lambda entree: (
+        0 if entree['favori'] else 1,
+        rang.get(str(entree['module']['produitId']), 0)))
     selectionnables = [entree for entree in entrees if entree['selectionnable']]
     if selectionnables:
         motif = None

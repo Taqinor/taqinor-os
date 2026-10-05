@@ -46,7 +46,6 @@ backend/django_core/apps/calepinage/services/documents/gabarit_document.py::css_
 backend/django_core/apps/calepinage/services/documents/gabarit_document.py::entete_html
 backend/django_core/apps/calepinage/services/documents/gabarit_document.py::logo_valide
 backend/django_core/apps/calepinage/services/documents/gabarit_document.py::mentions_d_etat
-backend/django_core/apps/calepinage/services/documents/gabarit_document.py::pied_html
 backend/django_core/apps/calepinage/services/documents/gabarit_document.py::styles_vides
 backend/django_core/apps/calepinage/services/documents/libelles_document.py::mention_de_repli
 backend/django_core/apps/calepinage/services/documents/manuel_proprietaire.py::construire_manuel
@@ -71,7 +70,6 @@ backend/django_core/apps/calepinage/services/documents/versions_document.py::pro
 backend/django_core/apps/calepinage/services/electrique.py::alertes_nommees
 backend/django_core/apps/calepinage/services/electrique.py::bloc_ratio_dc_ac
 backend/django_core/apps/calepinage/services/electrique.py::bornes_ratio
-backend/django_core/apps/calepinage/services/electrique.py::entree_stockee
 backend/django_core/apps/calepinage/services/electrique.py::fournisseur_temperatures
 backend/django_core/apps/calepinage/services/electrique.py::garde_publication
 backend/django_core/apps/calepinage/services/electrique.py::journaliser_ecart_longueur
@@ -103,7 +101,6 @@ backend/django_core/apps/calepinage/services/hors_reseau.py::banque_pour_autonom
 backend/django_core/apps/calepinage/services/hors_reseau.py::simuler_hors_reseau
 backend/django_core/apps/calepinage/services/images_document.py::image_recente
 backend/django_core/apps/calepinage/services/images_document.py::octets_et_mime
-backend/django_core/apps/calepinage/services/journal.py::journaliser_lien_appel_offre
 backend/django_core/apps/calepinage/services/kits.py::construire_kit_de_pose
 backend/django_core/apps/calepinage/services/lestage.py::feuille_de_lestage
 backend/django_core/apps/calepinage/services/lestage.py::masse_du_layout
@@ -136,7 +133,6 @@ backend/django_core/apps/calepinage/services/production.py::production_du_layout
 backend/django_core/apps/calepinage/services/profils_types.py::profil_de_repli
 backend/django_core/apps/calepinage/services/profils_types.py::profil_depuis_import
 backend/django_core/apps/calepinage/services/profils_types.py::profils_de_repli
-backend/django_core/apps/calepinage/services/protections.py::organes_retenus
 backend/django_core/apps/calepinage/services/provenance_document.py::document_de_provenance
 backend/django_core/apps/calepinage/services/pvgis_serie.py::vider_le_cache
 backend/django_core/apps/calepinage/services/rapport/annexe_hypotheses.py::html_de_section

@@ -7,6 +7,7 @@ import { areteAuPoint, createEdgesUi, EDGE_PICK_TOL_M, type EdgeMapLike } from '
 import { EDGE_COLOR_BY_TYPE, EDGE_TYPE_LABELS, fusionnerAretesSaisies, type SerializedEdge } from './edges';
 import { serializeLayout } from './prefill';
 import { type Ctx } from './context';
+import { panDeTest, ctxDeBase } from './harnaisAtelier';
 import { type AreaRecord } from './types';
 import { type LngLat } from '../../lib/roof';
 
@@ -49,39 +50,13 @@ const TRIANGLE_EST: [number, number][] = [
 const DIAGONALE_SUD = 2;
 
 function zone(id: string, vertices: LngLat[], opts: Partial<AreaRecord> = {}): AreaRecord {
-  return {
-    id,
-    label: `Zone ${id}`,
-    vertices,
-    obstacles: [],
-    roofType: 'pitched',
-    pitchDeg: 30,
-    facingAzimuthDeg: 180,
-    facingManual: false,
-    neededPanels: 10,
-    neededAuto: true,
-    result: null,
-    renderPlan: null,
-    ...opts,
-  };
+  return panDeTest(id, { vertices, pitchDeg: 30, neededPanels: 10, ...opts });
 }
 
 function makeCtx(areas: AreaRecord[], activeId = areas[0].id): Ctx {
-  const active = areas.find((a) => a.id === activeId)!;
   return {
-    areas,
-    activeAreaId: activeId,
+    ...ctxDeBase(areas, activeId),
     activeArea: () => areas.find((a) => a.id === activeId),
-    vertices: active.vertices,
-    obstacles: active.obstacles,
-    roofType: active.roofType,
-    pitchDeg: active.pitchDeg,
-    facingAzimuthDeg: active.facingAzimuthDeg,
-    facingManual: active.facingManual ?? false,
-    neededPanels: active.neededPanels,
-    neededAuto: active.neededAuto,
-    layoutPlan: null,
-    layoutOptimalCount: 0,
     dom: {},
   } as unknown as Ctx;
 }

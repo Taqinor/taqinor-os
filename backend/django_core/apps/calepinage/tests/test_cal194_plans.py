@@ -52,12 +52,12 @@ class ParcelleTest(SimpleTestCase):
         self.assertGreater(largeur, 20.0)
         self.assertLess(largeur, 100.0)
 
-    def test_les_trois_graphies_de_parcelle_sont_admises(self):
-        for cle in ('parcelle', 'parcel', 'parcelleCadastrale'):
-            layout = copy.deepcopy(LAYOUT)
-            layout[cle] = PARCELLE
-            self.assertEqual(len(geometrie_de_planche(layout)['parcelle']), 4,
-                             'graphie « %s » non lue' % cle)
+    def test_la_parcelle_n_a_qu_une_cle_de_schema(self):
+        # ACAL232 - les alias ``parcel`` et ``parcelleCadastrale`` (zero
+        # ecrivain) ne sont plus lus ; ``test_acal_parcelle.py`` le prouve.
+        layout = copy.deepcopy(LAYOUT)
+        layout['parcelle'] = PARCELLE
+        self.assertEqual(len(geometrie_de_planche(layout)['parcelle']), 4)
 
 
 class PlanDeMasseTest(SimpleTestCase):

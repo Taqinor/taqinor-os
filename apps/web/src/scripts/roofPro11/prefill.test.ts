@@ -21,51 +21,13 @@ import { type HorizonProfile } from '../../lib/horizonEngine';
 import { type Measurement } from './mesureUi';
 import { type EnvironmentObject } from './environment';
 import { type Ctx } from './context';
+import { panDeTest, ctxMinimal } from './harnaisAtelier';
 import { type AreaRecord } from './types';
 import { creerCoucheElectrique } from './electrique3d';
 
-const VERTS: [number, number][] = [
-  [-7.6, 33.59],
-  [-7.599, 33.59],
-  [-7.599, 33.591],
-  [-7.6, 33.591],
-];
+const zone = panDeTest;
 
-function zone(id: string, opts: Partial<AreaRecord> = {}): AreaRecord {
-  return {
-    id,
-    label: `Zone ${id}`,
-    vertices: VERTS.map(([lng, lat]) => [lng, lat] as [number, number]),
-    obstacles: [],
-    roofType: 'pitched',
-    pitchDeg: 22,
-    facingAzimuthDeg: 180,
-    facingManual: false,
-    neededPanels: 12,
-    neededAuto: true,
-    result: null,
-    renderPlan: null,
-    ...opts,
-  };
-}
-
-function makeCtx(areas: AreaRecord[], activeId = areas[0].id): Ctx {
-  const active = areas.find((a) => a.id === activeId)!;
-  return {
-    areas,
-    activeAreaId: activeId,
-    vertices: active.vertices,
-    obstacles: active.obstacles,
-    roofType: active.roofType,
-    pitchDeg: active.pitchDeg,
-    facingAzimuthDeg: active.facingAzimuthDeg,
-    facingManual: active.facingManual ?? false,
-    neededPanels: active.neededPanels,
-    neededAuto: active.neededAuto,
-    layoutPlan: null,
-    layoutOptimalCount: 0,
-  } as unknown as Ctx;
-}
+const makeCtx = ctxMinimal;
 
 describe('CAL102 — serializeMeasurements', () => {
   it('conserve les mesures géométriquement valides, intactes', () => {
@@ -276,9 +238,25 @@ describe('CAL248 — accès solaire par module persisté dans le document', () =
   }
   const access = (values: Array<number | null>) => ({
     values,
-    method: 'Astronomie + lancer de rayon sur les obstructions renseignées, pondéré par le profil horaire du lieu.',
-    assumptions: { periode: 'annee-entiere' },
+    // ACAL138 — méthode OBJET (contrat ACAL2) et période annuelle.
+    method: { horizon: false, rangees: false, resolution: 'annuelle', description: 'Astronomie + lancer de rayon sur les obstructions renseignées, pondéré par le profil horaire du lieu.' },
+    assumptions: { periode: 'annee' },
     computedAt: '2026-09-20T10:00:00.000Z',
+  });
+
+  it('solarAccess : une valeur par module posé, méthode objet, deux sérialisations identiques (ACAL138)', () => {
+    const areas = [zone('z1', { renderPlan: planWith(3) })];
+    const meta = { solarAccessByZone: { z1: access([0.98, 0.6, 0.42]) } };
+    const premier = serializeLayout(makeCtx(areas), null, meta);
+    const second = serializeLayout(makeCtx(areas), null, meta);
+    expect(JSON.stringify(second)).toBe(JSON.stringify(premier));
+    expect(premier.zones[0].geometry!.solarAccess!.values).toHaveLength(premier.zones[0].geometry!.count);
+    // Une PHRASE n'est plus écrite ; sans date de calcul, rien n'est écrit (jamais une date refaite).
+    expect(serializeSolarAccess({ ...access([0.9, 0.8, 0.7]), method: 'phrase' as never }, 3)).toBeNull();
+    expect(serializeSolarAccess({ ...access([0.9, 0.8, 0.7]), computedAt: '' }, 3)).toBeNull();
+    // Un document ANCIEN (phrase) se relit, normalisé en objet sans rien inventer.
+    const ancien = deserializeSolarAccess({ solarAccess: { ...access([0.9, 0.8, 0.7]), method: 'phrase libre' } }, 3);
+    expect(ancien?.method).toEqual({ description: 'phrase libre' });
   });
 
   it('absent par défaut : un document SANS accès solaire reste identique à aujourd’hui', () => {
@@ -295,8 +273,8 @@ describe('CAL248 — accès solaire par module persisté dans le document', () =
     });
     const sa = layout.zones[0].geometry!.solarAccess!;
     expect(sa.values).toEqual([0.98, 0.6, 0.42]);
-    expect(sa.method.length).toBeGreaterThan(10);
-    expect(sa.assumptions).toEqual({ periode: 'annee-entiere' });
+    expect(sa.method).toMatchObject({ resolution: 'annuelle' });
+    expect(sa.assumptions).toEqual({ periode: 'annee' });
     expect(sa.computedAt).toBe('2026-09-20T10:00:00.000Z');
   });
 

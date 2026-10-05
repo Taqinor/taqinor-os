@@ -32,7 +32,6 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
-from ..selectors import calepinage_detail
 from ..serializers import CalepinageSerializer
 from ..services.modeles import ModeleInvalide, calepinages_modeles
 from ..services.modeles import creer_depuis_modele as service_creer
@@ -116,7 +115,7 @@ def creer_depuis_modele(self, request):
     """
     corps = _corps(request)
     company = getattr(request.user, 'company', None)
-    modele = calepinage_detail(_identifiant(corps.get('modele')), company)
+    modele = _modele_de_la_societe(company, corps.get('modele'))
     if modele is None:
         return Response({'modele': 'Modèle introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
@@ -131,6 +130,17 @@ def creer_depuis_modele(self, request):
                         status=status.HTTP_400_BAD_REQUEST)
     return Response(CalepinageSerializer(copie).data,
                     status=status.HTTP_201_CREATED)
+
+
+def _modele_de_la_societe(company, brut):
+    """ACAL295 — le modèle est résolu dans la BIBLIOTHÈQUE de la société
+    (calepinages MARQUÉS modèle, partagés par tous) : un calepinage non
+    marqué — visible ou non de l'appelant — est « Modèle introuvable. »,
+    jamais copié (aucun oracle par la porte des modèles)."""
+    identifiant = _identifiant(brut)
+    if not identifiant:
+        return None
+    return calepinages_modeles(company).filter(pk=identifiant).first()
 
 
 # ── CALX351 — DÉMARRER DEPUIS UN MODÈLE ET/OU UN JEU DE RÉGLAGES ───────────
@@ -165,8 +175,9 @@ def depuis_modele(self, request):
     création strictement identique à la porte d'aujourd'hui.
     """
     from ..services.creation import (
-        CreationRefusee, creer_pour_client, creer_pour_lead,
+        CreationRefusee, corps_conflit, creer_pour_client,
         demarrer_depuis_modele, obtenir_ou_creer_pour_devis,
+        ouvrir_ou_creer_pour_lead,
     )
     from .calepinages import detail_calepinage
 
@@ -181,7 +192,7 @@ def depuis_modele(self, request):
     cree = True
     try:
         if brut_modele not in (None, ''):
-            modele = calepinage_detail(_identifiant(brut_modele), company)
+            modele = _modele_de_la_societe(company, brut_modele)
             if modele is None:
                 return Response({'modele_id': 'Modèle introuvable.'},
                                 status=status.HTTP_404_NOT_FOUND)
@@ -193,9 +204,22 @@ def depuis_modele(self, request):
             calepinage, cree = obtenir_ou_creer_pour_devis(
                 devis_id, company, user=request.user, titre=titre,
                 preset_id=preset_id)
+            if not cree:
+                # ACAL295 — l'existant hors de la vue de l'appelant : 409
+                # sans identifiant ni nom ; visible : servi comme avant.
+                conflit = corps_conflit(calepinage, request.user)
+                if 'detail' in conflit:
+                    return Response(conflit,
+                                    status=status.HTTP_409_CONFLICT)
         elif lead_id:
-            calepinage = creer_pour_lead(lead_id, company, user=request.user,
-                                         titre=titre, preset_id=preset_id)
+            # ACAL182 — la porte UNIQUE sur un lead : un lead qui a déjà un
+            # calepinage OUVERT n'en reçoit pas un second (D-ACAL-12).
+            calepinage, cree = ouvrir_ou_creer_pour_lead(
+                lead_id, company, user=request.user, titre=titre,
+                preset_id=preset_id)
+            if not cree:
+                return Response(corps_conflit(calepinage, request.user),
+                                status=status.HTTP_409_CONFLICT)
         else:
             calepinage = creer_pour_client(client_id, company,
                                            user=request.user, titre=titre,

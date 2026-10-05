@@ -21,8 +21,23 @@ CE QUE CE MODULE NE FAIT JAMAIS
   que RENDRE) ;
 * il ne lit JAMAIS la société d'un corps de requête : ``company`` et l'auteur
   sont posés par l'appelant côté serveur.
+
+ACAL182 — UNE PORTE DE CRÉATION SUR UN LEAD (D-ACAL-12)
+--------------------------------------------------------
+Toute porte qui crée un calepinage pour un LEAD (``POST calepinages/``,
+``depuis-lead``, ``depuis-modele`` sans modèle, la reprise du tracé public)
+passe par ``ouvrir_ou_creer_pour_lead`` : sous un verrou consultatif
+PostgreSQL (``_verrou_creation``, pris AVANT la relecture), elle rend le
+calepinage OUVERT du lead s'il existe (``selectors.calepinage_ouvert_du_lead``)
+et n'en crée un — chatter CREATION, client du lead, même titre de repli —
+que sinon. UN calepinage ouvert par lead : deux clics simultanés n'en créent
+jamais deux. ``obtenir_ou_creer_pour_devis`` prend le MÊME verrou (le lead
+du devis).
 """
 from __future__ import annotations
+
+import contextlib
+import hashlib
 
 from .journal import journaliser_creation
 
@@ -33,6 +48,97 @@ class CreationRefusee(ValueError):
     def __init__(self, message, *, champ=''):
         super().__init__(message)
         self.champ = champ
+
+
+def _message_deja_ouvert(existant):
+    """ACAL182 — le refus « un seul calepinage ouvert par lead » (D-ACAL-12),
+    qui NOMME l'existant pour qu'on l'ouvre (contrat
+    ``calepinage_creation_conflit.json``)."""
+    titre = (getattr(existant, 'titre', '') or '').strip()
+    etiquette = f'« {titre} », #{existant.pk}' if titre else f'#{existant.pk}'
+    return (f'Ce lead a déjà un calepinage ouvert ({etiquette}) : '
+            'ouvrez-le, ou créez une variante.')
+
+
+#: ACAL295 — le 409 quand l'existant est HORS de la vue de l'appelant (vue
+#: restreinte au responsable) : ni identifiant, ni référence, ni nom.
+MESSAGE_HORS_VUE = ('Ce lead a déjà un calepinage ouvert confié à un autre '
+                    'responsable : demandez-lui de vous le confier.')
+
+
+def _visible(calepinage, user):
+    from ..selectors import calepinages_visibles
+
+    return calepinages_visibles(user, inclure_archives=True).filter(
+        pk=calepinage.pk).exists()
+
+
+def corps_conflit(existant, user=None):
+    """Le corps 409 publié par les portes qui refusent un second ouvert.
+
+    ACAL295 — ``user`` donné et l'existant hors de SA vue
+    (``selectors.calepinages_visibles``) ⇒ ``{detail}`` SANS identifiant,
+    référence ni nom : l'unicité reste tenue (D-ACAL-12), rien ne fuit.
+    """
+    if user is not None and not _visible(existant, user):
+        return {'detail': MESSAGE_HORS_VUE}
+    return {'lead': _message_deja_ouvert(existant),
+            'calepinage_existant': existant.pk}
+
+
+@contextlib.contextmanager
+def _verrou_creation(company_id, lead_id):
+    """ACAL182 — sérialise les créations visant le MÊME (société, lead).
+
+    Verrou consultatif PostgreSQL porté par la transaction
+    (``pg_advisory_xact_lock``, patron de ``apps.crm.services`` CRX24) : il ne
+    bloque aucune ligne et se libère seul à la fin de la transaction, même en
+    cas d'erreur. À prendre DANS ``transaction.atomic()`` et AVANT la
+    relecture de l'existant. Sans lead, ou sur un moteur sans verrou
+    consultatif, no-op.
+    """
+    from django.db import connection
+
+    if not company_id or not lead_id or connection.vendor != 'postgresql':
+        yield False
+        return
+    empreinte = hashlib.blake2b(
+        f'calepinage.creation:{company_id}:{lead_id}'.encode('utf-8'),
+        digest_size=8).digest()
+    cle = int.from_bytes(empreinte, 'big', signed=True)
+    with connection.cursor() as curseur:
+        curseur.execute('SELECT pg_advisory_xact_lock(%s)', [cle])
+    yield True
+
+
+def ouvrir_ou_creer_pour_lead(lead_id, company, *, user=None, titre='',
+                              preset_id=None, responsable=None):
+    """ACAL182 — LE calepinage ouvert de ce lead, ou un neuf (D-ACAL-12).
+
+    Returns:
+        ``(calepinage, cree)`` — ``cree`` vaut ``False`` quand le lead avait
+        déjà un calepinage OUVERT (non archivé) : rien n'est créé, rien n'est
+        modifié, et c'est à la porte de décider (``depuis-lead`` l'ouvre,
+        les autres répondent 409 avec ``corps_conflit``).
+
+    Raises:
+        CreationRefusee: lead absent ou d'une autre société (même message),
+            jeu de réglages inconnu, responsable d'une autre société.
+    """
+    from django.db import transaction
+
+    from ..selectors import calepinage_ouvert_du_lead
+
+    _exiger_societe(company)
+    with transaction.atomic():
+        with _verrou_creation(company.pk, lead_id):
+            existant = calepinage_ouvert_du_lead(company, lead_id)
+            if existant is not None:
+                return existant, False
+            calepinage = creer_pour_lead(
+                lead_id, company, user=user, titre=titre,
+                preset_id=preset_id, responsable=responsable)
+    return calepinage, True
 
 
 def _exiger_societe(company):
@@ -60,7 +166,7 @@ def obtenir_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
             (rien n'est créé, et l'appelant n'apprend rien de son existence) ;
             jeu de réglages inconnu (``preset_id``).
     """
-    from django.db import transaction
+    from django.db import IntegrityError, transaction
 
     from apps.ventes.selectors import get_devis_by_pk
 
@@ -93,23 +199,34 @@ def obtenir_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
 
             empreinte = layout_hash(roof_layout) or ''
 
-    with transaction.atomic():
-        # Re-lecture DANS la transaction : deux clics simultanés sur
-        # « Concevoir la toiture » ne doivent pas produire deux calepinages.
+    with transaction.atomic(), _verrou_creation(
+            company.pk, getattr(devis, 'lead_id', None)):
+        # Re-lecture DANS la transaction, SOUS le verrou du lead (ACAL182) :
+        # deux clics simultanés sur « Concevoir la toiture » ne doivent pas
+        # produire deux calepinages.
         existant = calepinage_du_devis(devis_id, company)
         if existant is not None:
             return existant, False
-        calepinage = Calepinage.objects.create(
-            company=company,
-            devis=devis,
-            client_id=getattr(devis, 'client_id', None),
-            lead_id=getattr(devis, 'lead_id', None),
-            titre=titre or _titre_du_devis(devis),
-            roof_layout=roof_layout,
-            layout_hash=empreinte,
-            roof_image=getattr(devis, 'roof_image', None) or '',
-            cree_par=user,
-        )
+        try:
+            with transaction.atomic():
+                calepinage = Calepinage.objects.create(
+                    company=company,
+                    devis=devis,
+                    client_id=getattr(devis, 'client_id', None),
+                    lead_id=getattr(devis, 'lead_id', None),
+                    titre=titre or _titre_du_devis(devis),
+                    roof_layout=roof_layout,
+                    layout_hash=empreinte,
+                    roof_image=getattr(devis, 'roof_image', None) or '',
+                    cree_par=user,
+                )
+        except IntegrityError:
+            # ACAL33 — course perdue : la contrainte ``calepinage_un_par_devis``
+            # a gardé le calepinage du clic gagnant ; on le rend tel quel.
+            existant = calepinage_du_devis(devis_id, company)
+            if existant is None:
+                raise
+            return existant, False
     # CAL26 — la première ligne du chatter, par la primitive `records`.
     journaliser_creation(calepinage, user=user)
     _noter_jeu(calepinage, jeu, regles, user=user)
@@ -123,12 +240,16 @@ def _titre_du_devis(devis):
 
 
 def creer_pour_lead(lead_id, company, *, user=None, titre='',
-                    preset_id=None):
+                    preset_id=None, responsable=None):
     """Crée un calepinage sur un LEAD (porte autonome du module).
 
     CALX351 — ``preset_id`` : voir ``obtenir_ou_creer_pour_devis``. Un
     calepinage neuf n'a encore aucun pan : le jeu est VALIDÉ et son choix
     noté au chatter, rien n'est inventé dans un document vide.
+
+    ACAL182 — les portes de l'écran passent par ``ouvrir_ou_creer_pour_lead``
+    (verrou + un seul ouvert par lead) ; ``responsable`` (optionnel) doit
+    être un compte de la MÊME société.
 
     Raises:
         CreationRefusee: lead absent ou d'une autre société — rien n'est
@@ -149,6 +270,7 @@ def creer_pour_lead(lead_id, company, *, user=None, titre='',
     if lead is None:
         raise CreationRefusee(
             f"Lead introuvable (#{lead_id}).", champ='lead')
+    _exiger_responsable(company, responsable)
 
     # CIQ112 — toit DÉCLARÉ sur le lead (contrat CIQ1) → mode de pose du
     # document : chaque pan dessiné ensuite le reçoit (lu par
@@ -163,6 +285,7 @@ def creer_pour_lead(lead_id, company, *, user=None, titre='',
         client_id=getattr(lead, 'client_id', None),
         titre=titre or _titre_depuis(getattr(lead, 'nom', '')),
         cree_par=user,
+        responsable=responsable,
         **({'roof_layout': {'modePoseDeclare': mode_pose}}
            if mode_pose else {}),
     )
@@ -172,7 +295,7 @@ def creer_pour_lead(lead_id, company, *, user=None, titre='',
 
 
 def creer_pour_client(client_id, company, *, user=None, titre='',
-                      preset_id=None):
+                      preset_id=None, responsable=None):
     """Crée un calepinage sur un CLIENT (porte autonome du module).
 
     CALX351 — ``preset_id`` : voir ``creer_pour_lead``.
@@ -196,16 +319,29 @@ def creer_pour_client(client_id, company, *, user=None, titre='',
     if client is None:
         raise CreationRefusee(
             f"Client introuvable (#{client_id}).", champ='client')
+    _exiger_responsable(company, responsable)
 
     calepinage = Calepinage.objects.create(
         company=company,
         client_id=client.pk,
         titre=titre or _titre_depuis(getattr(client, 'nom', '')),
         cree_par=user,
+        responsable=responsable,
     )
     journaliser_creation(calepinage, user=user)  # CAL26
     _noter_jeu(calepinage, jeu, 0, user=user)
     return calepinage
+
+
+def _exiger_responsable(company, responsable):
+    """ACAL182 — un responsable choisi à la création est de la MÊME société
+    (refus nommé ``responsable``, sans jamais nommer le compte étranger)."""
+    if responsable is None:
+        return
+    if getattr(responsable, 'company_id', None) != company.pk:
+        raise CreationRefusee(
+            'Responsable introuvable dans votre société.',
+            champ='responsable')
 
 
 def _titre_depuis(nom):
@@ -322,6 +458,8 @@ def demarrer_depuis_modele(modele, company, *, user=None, lead_id=None,
         services.modeles.ModeleInvalide: modèle non marqué, rattachement
             absent ou étranger (champ nommé par le service).
     """
+    from django.db import transaction
+
     from apps.ventes.selectors import get_devis_by_pk
 
     from .modeles import creer_depuis_modele
@@ -334,15 +472,32 @@ def demarrer_depuis_modele(modele, company, *, user=None, lead_id=None,
         if devis is None or devis.company_id != company.pk:
             raise CreationRefusee(f"Devis introuvable (#{devis_id}).",
                                   champ='devis_id')
+        # ACAL33 — un devis déjà rattaché est refusé AVANT toute copie : la
+        # base n'admet qu'un calepinage par devis, et le refus nomme le
+        # calepinage qui le tient.
+        from ..selectors import calepinage_du_devis
+        from .liens import _message_deja_lie
+
+        deja = calepinage_du_devis(devis.pk, company)
+        if deja is not None:
+            raise CreationRefusee(_message_deja_lie(devis, deja),
+                                  champ='devis_id')
         lead_id = getattr(devis, 'lead_id', None) or lead_id
         client_id = getattr(devis, 'client_id', None) or client_id
 
-    copie = creer_depuis_modele(modele, user=user, lead_id=lead_id,
-                                client_id=client_id, titre=titre)
+    with transaction.atomic():
+        copie = creer_depuis_modele(modele, user=user, lead_id=lead_id,
+                                    client_id=client_id, titre=titre)
+        if devis is not None:
+            # ACAL33 — le SEUL écrivain de ``Calepinage.devis`` ; un refus
+            # (course perdue) annule la copie entière.
+            from .liens import LiaisonRefusee, lier_devis
+
+            try:
+                lier_devis(copie, devis.pk, user=user)
+            except LiaisonRefusee as refus:
+                raise CreationRefusee(str(refus), champ='devis_id') from None
     champs = []
-    if devis is not None:
-        copie.devis = devis
-        champs.append('devis')
     regles = 0
     if jeu is not None:
         document, regles = _layout_regle(copie.roof_layout, jeu)
