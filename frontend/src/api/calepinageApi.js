@@ -539,6 +539,11 @@ const calepinageApi = {
     versionsDiff: (id, versionId, contreId) =>
       api.get(`${pivot(id)}versions/${versionId}/diff/`,
         { params: contreId ? { contre: contreId } : {} }),
+
+    // ACAL149 — la RELECTURE de l'entrée électrique enregistrée + le matériel
+    // résolu et les candidats (contrat `calepinage_entree_electrique.json`).
+    // Le POST reste `enregistrerEntreeElectrique` (au-dessus).
+    entreeElectrique: (id) => api.get(`${pivot(id)}entree-electrique/`),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

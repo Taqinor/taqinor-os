@@ -124,6 +124,16 @@
       "verbe": "post"
     }
   ],
+  "calepinages.corrigerReleve": [
+    {
+      "config": null,
+      "data": {
+        "k": 1
+      },
+      "url": "/calepinage/calepinages/7/releve/3/",
+      "verbe": "patch"
+    }
+  ],
   "calepinages.create": [
     {
       "config": null,
@@ -355,6 +365,14 @@
       "data": 3,
       "url": "/calepinage/calepinages/7/releve/",
       "verbe": "post"
+    }
+  ],
+  "calepinages.entreeElectrique": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/entree-electrique/",
+      "verbe": "get"
     }
   ],
   "calepinages.envoyerImage": [
@@ -747,6 +765,14 @@
       "data": null,
       "url": "/calepinage/calepinages/7/sorties/",
       "verbe": "get"
+    }
+  ],
+  "calepinages.supprimerReleve": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/releve/3/",
+      "verbe": "delete"
     }
   ],
   "calepinages.syncDevis": [

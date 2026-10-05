@@ -89,6 +89,8 @@ export const ONGLETS = [
   { cle: 'projet', libelle: 'Projet', groupe: 'Dossiers', ordre: 270, composant: lazy(() => import('./Projet')) }, // CALX371
 
   { cle: 'diff-versions', libelle: 'Comparer les versions', groupe: 'Dossiers', ordre: 185, composant: lazy(() => import('./DiffVersions')) }, // CALX346
+
+  { cle: 'materiel-electrique', libelle: 'Matériel électrique', groupe: 'Système', ordre: 215, composant: lazy(() => import('../electrique/MaterielElectrique')) }, // ACAL149
 ]
 
 /**
