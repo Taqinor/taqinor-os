@@ -1,40 +1,105 @@
-"""Constantes du décret 82-21 (injection du surplus d'autoproduction) — UN SEUL
-module sourcé, que le fondateur peut vérifier ligne à ligne (QXG6).
+"""Constantes 82-21 (loi n° 82-21 ; décret n° 2.25.100 ; décision ANRE n° 04/26)
+— UN SEUL module sourcé, que le fondateur peut vérifier ligne à ligne (QXG6,
+D-CIQ-4, CIQ201).
 
-Décret 2-25-100 (loi 82-21), BO du 9 mars 2026, en vigueur le 9 juin 2026 :
-il rend l'injection MT/HT du surplus RÉELLE. Toutes les valeurs de la SECTION
-82-21 (celles qui suivent immédiatement) sont ESTIMÉES d'après la recherche
-2026-07-16 et portent le flag « à vérifier fondateur » — elles pilotent une
-ligne OFF PAR DÉFAUT, activée devis par devis, et ne s'affichent JAMAIS sans la
-mention réglementaire ``MENTION_82_21``. (La section QXMT plus bas obéit à la
-même règle mais ses valeurs, elles, sont SOURCÉES : voir ``MENTION_MT``.)
+Loi n° 82-21 relative à l'autoproduction d'énergie électrique (BO 7400) ;
+décret n° 2.25.100 (BO 7489 du 09/03/2026, en vigueur le 09/06/2026) ;
+décision ANRE n° 04/26 (tarif de l'excédent, 01/03/2026 → 28/02/2027).
 
-Miroir strict de frontend/src/features/ventes/constants82_21 (dans solar.js) —
-tout changement ici DOIT être répliqué là-bas (test de parité).
+Le RÉGIME (déclaration / accord / autorisation) n'est PAS calculé ici : les
+seuils et ``regime_8221_suggere`` sont des RÉ-EXPORTS du noyau
+``core.reglementaire.regime_8221`` (CIQ612, seule source).
 
 QXMT (18/08/2026) : ce module porte AUSSI le barème MOYENNE TENSION ONEE
 (``TARIF_MT_ONEE``) utilisé par l'étude industrielle/commerciale quand le
-dossier est raccordé en MT — mêmes règles de sourçage, même miroir solar.js.
+dossier est raccordé en MT.
 """
 from __future__ import annotations
 
-# ── Tarif ANRE de rachat (mars 2026 → févr. 2027), DH/kWh ─────────────────────
-# Recherche 2026-07-16 : 0,21 en pointe / 0,18 hors pointe. À VÉRIFIER FONDATEUR.
-ANRE_TARIF_POINTE = 0.21        # DH/kWh — à vérifier fondateur
-ANRE_TARIF_HORS_POINTE = 0.18   # DH/kWh — à vérifier fondateur
+import datetime as _dt
 
-# ── Frais d'accès réseau à DÉDUIRE du tarif (centimes/kWh) ────────────────────
-# Recherche 2026-07-16 : ≈ 6,07 + 6,38 c/kWh. À VÉRIFIER FONDATEUR.
-FRAIS_RESEAU_C_KWH_1 = 6.07     # c/kWh — à vérifier fondateur
-FRAIS_RESEAU_C_KWH_2 = 6.38     # c/kWh — à vérifier fondateur
-FRAIS_RESEAU_DH_KWH = (FRAIS_RESEAU_C_KWH_1 + FRAIS_RESEAU_C_KWH_2) / 100.0  # 0,1245 DH/kWh
+# Régime 82-21 : RÉ-EXPORTS du noyau (identité, jamais une copie — CIQ612).
+from core.reglementaire.regime_8221 import (  # noqa: F401  (ré-exports)
+    SEUIL_AUTORISATION_KW,
+    SEUIL_DECLARATION_KW,
+    regime_8221_suggere,
+)
 
-# ── Plafond d'injection = part MAX de la production injectable ─────────────────
-# Recherche 2026-07-16 : 20 % de la production — DÉCRET EN RÉVISION. À vérifier.
-PLAFOND_INJECTION_PCT = 20      # % de la production — en révision (à vérifier)
+# ── Tarif de l'excédent injecté (décision ANRE n° 04/26), DH/kWh HT ─────────
+# Source : décision ANRE n° 04/26, art. 6-7 — prix hors impôts, taxes et TSS,
+# applicables à l'excédent injecté en MT/HT/THT SEULEMENT (aucune revente BT).
+# Art. 10 : le tarif est ARRÊTÉ à la signature de la convention, puis révisé
+# sur le tarif général moyen hors taxes.
+ANRE_TARIF_HORS_POINTE = 0.18   # DH/kWh HT — décision ANRE 04/26, art. 6-7
+ANRE_TARIF_POINTE = 0.21        # DH/kWh HT — décision ANRE 04/26, art. 6-7
+ANRE_TARIF_SOURCE = (
+    "décision ANRE n° 04/26, art. 6-7 (hors impôts, taxes, TSS), "
+    "MT/HT/THT seulement")
+# Période de validité (décision ANRE n° 04/26, art. 4).
+ANRE_PERIODE = (_dt.date(2026, 3, 1), _dt.date(2027, 2, 28))
 
-# ── Mention réglementaire OBLIGATOIRE affichée avec TOUTE ligne d'injection ────
-MENTION_82_21 = "Tarif ANRE 03/2026-02/2027, plafond en révision"
+# ── Plafond légal d'injection : part MAX de la production annuelle ─────────
+# Source : loi 82-21 art. 12 (BO 7400) ; décision ANRE n° 04/26 art. 7.
+PLAFOND_INJECTION_PCT = 20
+PLAFOND_INJECTION_SOURCE = "loi 82-21 art. 12 (BO 7400) ; ANRE 04/26 art. 7"
+
+# ── Tarifs d'accès / services système : DOCUMENTAIRES, jamais soustraits ────
+# La décision ANRE 02/25 (BO 7400, art. 8) exonère de TURD/TURT
+# l'autoproducteur consommant sur le MÊME site : aucun net n'est calculé.
+# TSS : une éventuelle TSS sur l'énergie injectée n'est pas déduite —
+# modalités MT non arrêtées (ANRE 02/25 §4).
+TSS_C_KWH = 6.81    # c/kWh — décision ANRE 02/26 ; documentaire, jamais soustrait
+# Transit HORS site — jamais appliqués sur site (documentaires, datés).
+TURD_C_KWH = 6.07   # c/kWh — décision ANRE 03/26, depuis le 01/03/2026
+TURT_C_KWH = 6.85   # c/kWh — décision ANRE 02/26, au 01/03/2026
+
+# ── Mentions UNIQUES (aucune autre copie côté Python) ─────────────────────
+MENTION_82_21 = (
+    "Tarif d'excédent ANRE (décision 04/26) : 18 cDH/kWh hors pointe, "
+    "21 cDH/kWh pointe, HT hors TSS ; plafond légal 20 % de la production "
+    "annuelle (loi 82-21, art. 12) ; tarif arrêté à la signature de la "
+    "convention puis indexé sur le tarif général moyen"
+)
+MENTION_ART13 = (
+    "Contribution aux services système et de distribution prévue par l'art. 13 "
+    "de la loi 82-21 : non encore fixée par l'ANRE, non incluse"
+)
+MENTION_BT = (
+    "Revente du surplus non ouverte en basse tension à ce jour — ANRE "
+    "décision 04/26 ; installation dimensionnée pour l'autoconsommation"
+)
+
+
+def tarif_excedent_en_vigueur(date_signature_prevue=None):
+    """Tarif d'excédent applicable à une convention signée à cette date.
+
+    Retour : ``(tarif, motif)``. ``tarif`` = ``{'hors_pointe', 'pointe',
+    'source', 'periode'}`` tant que la date tombe dans ``ANRE_PERIODE`` (ou est
+    inconnue : décision en vigueur), ``motif`` None. Après le 28/02/2027 sans
+    nouvelle décision saisie (ou avant le 01/03/2026) : ``(None, motif)`` —
+    JAMAIS extrapolé.
+    """
+    debut, fin = ANRE_PERIODE
+    d = date_signature_prevue
+    if isinstance(d, str):
+        try:
+            d = _dt.date.fromisoformat(d[:10])
+        except ValueError:
+            d = None
+    if isinstance(d, _dt.datetime):
+        d = d.date()
+    if d is not None and d > fin:
+        return None, (
+            "Tarif d'excédent après le 28/02/2027 non publié : aucune "
+            "décision ANRE postérieure à la 04/26 n'est saisie")
+    if d is not None and d < debut:
+        return None, "Date antérieure à la décision ANRE 04/26 (01/03/2026)"
+    return {
+        'hors_pointe': ANRE_TARIF_HORS_POINTE,
+        'pointe': ANRE_TARIF_POINTE,
+        'source': ANRE_TARIF_SOURCE,
+        'periode': (debut.isoformat(), fin.isoformat()),
+    }, None
 
 
 # ══ QXMT — Tarifs MOYENNE TENSION ONEE (raccordement MT, dossiers > 50 kW) ═══
@@ -58,15 +123,14 @@ MENTION_82_21 = "Tarif ANRE 03/2026-02/2027, plafond en révision"
 # NON RETENU volontairement : la page ONEE « Grands Comptes » sans tag de
 # tension (494,09 DH/kVA ; 1,3645 / 0,9736 / 0,7131) est citée ailleurs comme
 # « MT » mais ne porte aucun libellé de tension et vit dans l'arborescence
-# THT/HT — ambiguë, donc écartée. Le TURD ANRE (5,92 c/kWh, décision
-# n°02-25-TURD, BO n°7400 du 01/05/2025) est un tarif d'ACCÈS au réseau payé
-# entre opérateurs, PAS un tarif de vente au client final : jamais mélangé ici.
+# THT/HT — ambiguë, donc écartée. Le TURD ANRE (6,07 c/kWh depuis le
+# 01/03/2026, décision ANRE 03/26 — ``TURD_C_KWH``) est un tarif d'ACCÈS au
+# réseau, transit HORS site, PAS un tarif de vente au client final : jamais
+# mélangé ici.
 #
 # NB nomenclature : « C1 / C2 » n'existe PAS comme option tarifaire MT chez
 # l'ONEE (vérifié 18/08/2026 — la MT n'a qu'un « Tarif Général (MT) » ; les
 # options nommées TLU/MU/CU/TCU et « Super Pointe » sont réservées à la HT/THT).
-# Les seuls C1/C2 de ce module sont FRAIS_RESEAU_C_KWH_1/2, deux composantes de
-# frais d'accès du décret 82-21 — aucun rapport avec une classe tarifaire.
 TARIF_MT_ONEE = {
     # Redevance de consommation par poste horaire, DH/kWh TVA (18 %) comprise.
     # ONEE « Tarif Général (MT) », one.org.ma, consulté le 18/08/2026.
@@ -152,22 +216,14 @@ def tarif_mt_moyen(repartition):
     return moyen if moyen > 0 else None
 
 
-def net_tarif_dh_kwh(pointe: bool = False) -> float:
-    """Tarif NET (rachat ANRE − frais d'accès réseau), DH/kWh, jamais négatif.
-
-    L'injection solaire est DIURNE (heures pleines/creuses, pas la pointe) → on
-    valorise par défaut au tarif HORS POINTE net, choix prudent et honnête
-    (jamais promettre la pointe sans stockage).
-    """
-    base = ANRE_TARIF_POINTE if pointe else ANRE_TARIF_HORS_POINTE
-    return max(0.0, base - FRAIS_RESEAU_DH_KWH)
-
-
 def injection_annuelle(production_kwh, autoconsomme_kwh, pointe: bool = False):
-    """Surplus injectable (kWh) plafonné à 20 % de la prod + sa valeur NETTE (DH).
+    """Surplus injectable (kWh) plafonné à 20 % de la prod + sa valeur BRUTE HT (DH).
 
     surplus = max(0, production − autoconsommé), borné à ``PLAFOND_INJECTION_PCT``
-    de la production ; valeur = surplus × tarif net. Retourne (kwh, dh), tous deux
+    (loi 82-21 art. 12) ; valeur = surplus × tarif ANRE 04/26 BRUT HT (hors
+    pointe par défaut : l'injection solaire est diurne). AUCUNE déduction
+    TURD/TURT/TSS (ANRE 02/25 art. 8). MT/HT/THT seulement — en BT l'appelant
+    ne valorise aucune revente (``MENTION_BT``). Retourne (kwh, dh), tous deux
     ≥ 0 et arrondis. Défensif : jamais d'exception.
     """
     try:
@@ -178,5 +234,6 @@ def injection_annuelle(production_kwh, autoconsomme_kwh, pointe: bool = False):
     surplus = max(0.0, prod - auto)
     plafond = prod * PLAFOND_INJECTION_PCT / 100.0
     kwh = min(surplus, plafond)
-    dh = kwh * net_tarif_dh_kwh(pointe)
+    tarif = ANRE_TARIF_POINTE if pointe else ANRE_TARIF_HORS_POINTE
+    dh = kwh * tarif
     return round(kwh), round(dh)
