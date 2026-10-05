@@ -33,7 +33,7 @@ LAYOUT_PLANCHE_SIMULABLE = dict(copy.deepcopy(_LAYOUT_PLANCHE),
 __all__ = ['LAYOUT_SIMULABLE', 'LAYOUT_PLANCHE_SIMULABLE', 'MATERIEL',
            'PivotSansBase', 'exiger_bibliotheques_pdf',
            'calepinage_simule_reel', 'modifier_la_conception',
-           'patch_materiel']
+           'patch_materiel', 'patch_servi_frais']
 
 
 class PivotSansBase:
@@ -61,6 +61,24 @@ def patch_materiel():
     return mock.patch(
         'apps.calepinage.services.electrique.resoudre_materiel',
         return_value=MATERIEL)
+
+
+def _servi_frais(calepinage):
+    """Le servi d'un résultat STOCKÉ tenu pour frais (essais de formes)."""
+    stocke = getattr(calepinage, 'resultat', None)
+    stocke = stocke if isinstance(stocke, dict) else {}
+    return {'simulation_perimee': False, 'motif': '',
+            'production': stocke.get('production'),
+            'pertes': stocke.get('pertes') or []}
+
+
+def patch_servi_frais():
+    """ACAL217 — les essais de FORME de l'export CSV (refus nommés, colonnes,
+    en-tête) n'ont pas de base : le verdict de fraîcheur est tenu pour frais
+    et le servi relu du stocké. La fraîcheur elle-même est prouvée en HTTP sur
+    la chaîne réelle (``test_acal_export_csv_fraicheur``)."""
+    return mock.patch('apps.calepinage.selectors.resultat_servi',
+                      side_effect=_servi_frais)
 
 
 def calepinage_simule_reel(layout=None):

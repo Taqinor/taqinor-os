@@ -7,7 +7,7 @@ Ce qui est prouvé ici :
   ``PROVENANCE`` et le bloc ``provenance`` de l'export JSON (CALX312) — un
   test SONDE la fonction et retrouve sa sonde dans les trois sorties, un autre
   compare les trois sorties ligne à ligne ;
-* elle REPREND la composition du CSV de simulation (``export_csv``) : ses six
+* elle REPREND la composition du CSV de simulation (``export_csv``) : ses huit
   premières lignes coïncident avec l'en-tête de provenance du CSV ;
 * une empreinte absente écrit « non calculée », jamais une chaîne vide ;
 * la feuille ``Provenance`` est EN TÊTE du classeur ; le calque
@@ -125,14 +125,16 @@ class UneSeuleFonctionTest(unittest.TestCase):
         self.assertEqual(lignes_du_json(objet), attendues)
 
     def test_la_composition_reprend_celle_du_csv(self):
-        from apps.calepinage.services.export_csv import _lignes_de_provenance
-        from apps.calepinage.views.export_csv import document_exportable
+        from apps.calepinage.services.export_csv import (
+            _lignes_de_provenance, document_exportable,
+        )
 
         objet = calepinage()
         csv = [tuple(ligne) for ligne in
                _lignes_de_provenance(document_exportable(objet)) if ligne]
-        self.assertEqual(lignes_de_provenance(objet)[:len(csv)], csv)
-        self.assertEqual(len(csv), 6)
+        # ACAL217 — l'en-tête du CSV porte lui-même les deux empreintes.
+        self.assertEqual(lignes_de_provenance(objet), csv)
+        self.assertEqual(len(csv), 8)
 
     def test_les_empreintes_sont_celles_du_calepinage_et_de_la_simulation(
             self):

@@ -38,10 +38,12 @@ import pathlib
 
 from django.test import SimpleTestCase
 
-from apps.calepinage.services.export_csv import EXPORTS
-from apps.calepinage.views.export_csv import (
-    document_exportable, export_csv_simulation,
+from apps.calepinage.services.export_csv import (
+    EXPORTS, document_exportable,
 )
+from apps.calepinage.views.export_csv import export_csv_simulation
+
+from .acal_livrables_helpers import patch_servi_frais
 
 ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
                 / 'contract_samples')
@@ -88,8 +90,10 @@ class _Requete:
 
 
 def _appeler(calepinage, **parametres):
-    return export_csv_simulation(_Vue(calepinage), _Requete(**parametres),
-                                 pk=calepinage.pk)
+    with patch_servi_frais():
+        return export_csv_simulation(_Vue(calepinage),
+                                     _Requete(**parametres),
+                                     pk=calepinage.pk)
 
 
 def _resultat_simule():
@@ -137,7 +141,8 @@ class SerieServieTest(SimpleTestCase):
 
     def test_le_bloc_calx193_est_lu_par_sa_cle_points(self):
         """Le BLOC (CALX142/CALX193), pas une liste nue, est bien déplié."""
-        document = document_exportable(self.calepinage)
+        with patch_servi_frais():
+            document = document_exportable(self.calepinage)
         self.assertEqual(
             document['points'],
             CONTRAT['exemple']['serie_horaire']['points'])

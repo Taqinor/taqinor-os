@@ -11,11 +11,13 @@ ligne d'import additive dans ``urls.py`` — qui doit s'exécuter AVANT
 
 CE QUE LA VUE LIT, ET CE QU'ELLE REFUSE
 ---------------------------------------
-Elle ne calcule RIEN : elle relit le résultat DÉJÀ enregistré sur le
-calepinage (``Calepinage.resultat``) et la matrice d'ombrage du document de
-toiture (``roof_layout.shading12x24``, PV71). Si la série horaire n'y est pas
-— cas de tout calepinage non simulé aujourd'hui — l'export est REFUSÉ avec son
-motif en français et le champ nommé, jamais remplacé par un fichier de zéros.
+Elle ne calcule RIEN : elle relit le résultat SERVI (``GET resultat/``,
+fraîcheur comprise — ACAL217, ``services/export_csv.document_exportable``) et
+la matrice d'ombrage du document de toiture (``roof_layout.shading12x24``,
+PV71). Si la série horaire n'y est pas — calepinage non simulé — l'export est
+REFUSÉ avec son motif en français et le champ nommé, jamais remplacé par un
+fichier de zéros ; une simulation PÉRIMÉE (toit modifié depuis) est refusée en
+400 sous ``production``, avec le motif servi.
 
 La société est bornée par ``get_queryset`` du viewset (404 pour un calepinage
 d'une autre société), comme toute autre sous-ressource.
@@ -53,53 +55,15 @@ from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
 from ..services.export_csv import (
-    EXPORTS, ExportImpossible, encoder_pour_tableur, nom_de_fichier,
+    EXPORTS, ExportImpossible, document_exportable, encoder_pour_tableur,
+    nom_de_fichier,
 )
 # Renommé à l'import : le service ``export_csv`` et l'action HTTP vivent dans
 # le même espace de noms, ils ne peuvent pas porter le même nom ici.
 from ..services.export_csv import export_csv as construire_csv
 from .calepinages import CalepinageViewSet
 
-__all__ = ['document_exportable', 'export_csv_simulation']
-
-
-def _points_de_la_serie(serie_horaire):
-    """Les points du bloc ``serie_horaire``, ou une liste VIDE.
-
-    Une ancienne simulation avait pu écrire une LISTE sous cette clé : elle
-    est acceptée telle quelle, pour qu'un résultat déjà en base continue de
-    s'exporter au lieu d'être refusé après un simple déploiement.
-    """
-    if isinstance(serie_horaire, dict):
-        points = serie_horaire.get('points')
-        return points if isinstance(points, list) else []
-    return serie_horaire if isinstance(serie_horaire, list) else []
-
-
-def document_exportable(calepinage):
-    """Le document d'export d'un calepinage, tel qu'il est ENREGISTRÉ.
-
-    Aucune valeur n'est fabriquée : ce que la simulation n'a pas écrit reste
-    absent, et l'exporteur refusera en le disant.
-    """
-    resultat = calepinage.resultat if isinstance(
-        calepinage.resultat, dict) else {}
-    layout = calepinage.roof_layout if isinstance(
-        calepinage.roof_layout, dict) else {}
-    production = resultat.get('production')
-    return {
-        'production': production if isinstance(production, dict) else {},
-        'pertes': resultat.get('pertes') or [],
-        # CALX193 — ``serie_horaire`` est un BLOC (contrat CALX142 :
-        # ``pas_minutes``, ``tronquee``, ``colonnes``, ``points``), écrit par
-        # ``services/chaine_pertes.py`` et par lui seul. L'exporteur, lui,
-        # ITÈRE une liste de points : c'est donc ``points`` qu'on lui passe.
-        # Jamais simulé ⇒ liste vide ⇒ refus FRANÇAIS de l'exporteur, jamais
-        # un fichier de zéros.
-        'points': _points_de_la_serie(resultat.get('serie_horaire')),
-        'shading12x24': layout.get('shading12x24'),
-        'version_moteur': calepinage.version_moteur or None,
-    }
+__all__ = ['export_csv_simulation']
 
 
 @extend_schema(
