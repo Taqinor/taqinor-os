@@ -2064,3 +2064,40 @@ describe('runtime ACAL64 — ajouter un pan à un dossier rouvert', () => {
     expect(sortie.zones[1].vertices).toEqual(squareCorners(16, -7.6195));
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// ACAL71 — builderApi.ajouterPanDepuisContour, boot RÉEL : le pan ajouté voyage dans le
+// document ; un contour croisé est refusé sans rien créer.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime ACAL71 — ajouterPanDepuisContour', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('un carré devient area-2 et voyage dans serializeLayout ; un papillon est refusé', async () => {
+    const init = await loadTool();
+    let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document), onApiReady: (a) => { api = a; } });
+    fakeMaps[0].fire('load', {});
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    const nouveau = squareCorners(12, -7.6195);
+    const r = api!.ajouterPanDepuisContour(nouveau);
+    expect(r).toEqual({ ok: true, id: 'area-2' });
+    const doc = api!.serializeLayout() as { zones: Array<{ id: string; vertices: unknown }> };
+    expect(doc.zones.map((z) => z.id)).toEqual(['area-1', 'area-2']);
+    expect(doc.zones[1].vertices).toEqual(nouveau);
+    const papillon = [nouveau[0], nouveau[2], nouveau[1], nouveau[3]];
+    const refus = api!.ajouterPanDepuisContour(papillon);
+    expect(refus.ok).toBe(false);
+    expect((api!.serializeLayout() as { zones: unknown[] }).zones).toHaveLength(2);
+  });
+});

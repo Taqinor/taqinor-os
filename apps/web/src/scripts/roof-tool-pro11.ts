@@ -138,6 +138,7 @@ import {
   empriseModuleENU, // CALX403 câblage
   type ModulePose, // CALX403 câblage
   prochainId, // ACAL64
+  nouveauPanDepuisContour, // ACAL71
 } from './roofPro11/zones';
 // CALX109/CALX110 câblage — le catalogue de modules de la société (`opts.modulesDisponibles`)
 // et le module posé sur chaque pan (`AreaRecord.moduleId`) : c'est ce couple qui part dans le
@@ -4098,6 +4099,25 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
         },
         meta,
       ),
+    // ACAL71 — un contour géoréférencé (plan importé calé…) devient un NOUVEAU pan : même
+    // validateur et même refus de croisement que le tracé ; le pan actif est figé d'abord,
+    // puis le nouveau est chargé et fermé par la voie du tracé (`loadArea` → `recalc`).
+    ajouterPanDepuisContour: (contourLngLat: unknown) => {
+      const verdict = nouveauPanDepuisContour(contourLngLat, areas);
+      if (!verdict.ok) {
+        setStatus(verdict.motif);
+        return verdict;
+      }
+      if (closed && vertices.length >= 3) capturerGeometrieActive();
+      snapshotActiveAreaGeometry();
+      snapshotActiveAreaResult();
+      areas.push(verdict.pan);
+      activeAreaId = verdict.pan.id;
+      loadArea(verdict.pan);
+      renderAreasPanel();
+      setStatus(`${verdict.pan.label} ajouté depuis le contour — enregistrez pour le conserver.`);
+      return { ok: true as const, id: verdict.pan.id };
+    },
     // ACAL26 — un onglet du Rail applique UNE section du document par la même fonction que
     // le boot (horizonProfile, poseSurfaces, underlay, environment).
     appliquerSection: (cle: CleSectionAtelier, valeur: unknown) => {

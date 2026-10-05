@@ -12,7 +12,8 @@ import { fmt, fmtMad, esc } from './dom';
 import { type Ctx } from './context';
 import { type AreaRecord } from './types';
 import { type RoofShapePan, type RoofShapePreset } from './scene3d';
-import { geodesicAreaM2, pointInPolygon, type LngLat } from '../../lib/roof';
+import { geodesicAreaM2, isSimplePolygon, pointInPolygon, type LngLat } from '../../lib/roof';
+import { referenceContourRing } from './prefill'; // ACAL71 — le validateur de contour UNIQUE
 import { type Obstacle } from '../../lib/obstacles';
 import {
   centroideAnneau,
@@ -242,6 +243,54 @@ export function idPanEnDouble(zones: readonly { id: string }[]): string | null {
     vus.add(z.id);
   }
   return null;
+}
+
+/**
+ * ACAL71 — un contour GÉORÉFÉRENCÉ ([[lng, lat], …], plan importé calé, relevé…) devient
+ * un NOUVEAU pan de l'atelier, identifiant tiré de `prochainId` (jamais un doublon). Mêmes
+ * gardes que le tracé à la main : le validateur de contour UNIQUE (`referenceContourRing`,
+ * bornes lat/lng, ≥ 3 sommets) puis le refus d'un contour qui se croise
+ * (`isSimplePolygon`, comme `close()` de l'atelier). Refus ⇒ motif NOMMÉ, aucun pan. PURE.
+ */
+export function nouveauPanDepuisContour(
+  contourLngLat: unknown,
+  existants: readonly { id: string }[],
+): { ok: true; pan: AreaRecord } | { ok: false; motif: string } {
+  const points = Array.isArray(contourLngLat)
+    ? (contourLngLat as unknown[]).map((p) =>
+        Array.isArray(p) && p.length >= 2 ? { lng: Number(p[0]), lat: Number(p[1]) } : null)
+    : [];
+  if (points.some((p) => p === null)) {
+    return { ok: false, motif: 'Contour illisible : chaque sommet doit être un couple [longitude, latitude].' };
+  }
+  const ring = referenceContourRing(points as Array<{ lat: number; lng: number }>);
+  if (!ring || ring.length !== points.length) {
+    return {
+      ok: false,
+      motif: 'Contour hors amplitude GPS ou de moins de 3 sommets valides : aucun pan n’est créé.',
+    };
+  }
+  if (!isSimplePolygon(ring)) {
+    return { ok: false, motif: 'Ce contour se croise : corrigez-le avant d’en faire un pan (aucun pan créé).' };
+  }
+  const id = prochainId('area', existants);
+  return {
+    ok: true,
+    pan: {
+      id,
+      label: areaLabel(Number(id.slice('area-'.length)) - 1),
+      vertices: ring,
+      obstacles: [],
+      roofType: 'flat',
+      pitchDeg: 22,
+      facingAzimuthDeg: 180,
+      facingManual: false,
+      neededPanels: 0,
+      neededAuto: true,
+      result: null,
+      renderPlan: null,
+    },
+  };
 }
 
 /** CALX98 — identifiant de zone NEUF, dans un espace de noms (`area-copie-N`) que le

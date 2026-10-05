@@ -140,6 +140,10 @@ export interface RoofToolApi {
    *  `underlay`, `environment`) par la MÊME fonction d'hydratation que le boot
    *  (`hydratation.ts::appliquerHydratationAuCtx`) — pour les onglets du Rail. */
   appliquerSection: (cle: import('./hydratation').CleSectionAtelier, valeur: unknown) => void;
+  /** ACAL71 — un contour géoréférencé [[lng, lat], …] devient un NOUVEAU pan de l'atelier
+   *  (identifiant `prochainId`), refusé — motif nommé, aucun pan — s'il se croise ou sort
+   *  de l'amplitude GPS. */
+  ajouterPanDepuisContour: (contourLngLat: unknown) => { ok: true; id: string } | { ok: false; motif: string };
   /** Instantané PNG (data URL) de la 3D rendue, ou null. */
   snapshot: () => string | null;
   /** L-MAP — bascule d'affichage du calque de référence géo-référencé

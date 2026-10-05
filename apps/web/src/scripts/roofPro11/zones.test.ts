@@ -25,6 +25,7 @@ import {
   idZoneCopie,
   prochainId, // ACAL64
   tousLesObstacles, // ACAL64
+  nouveauPanDepuisContour, // ACAL71
   type ExclusionZone,
 } from './zones';
 import { hydrateFromDevis, serializeLayout, type SerializedLayout } from './prefill'; // ACAL64
@@ -455,5 +456,36 @@ describe('ACAL64 — prochainId sur un dossier rouvert', () => {
   it('les identifiants d’une autre forme sont ignorés (area-copie-1, sh-1)', () => {
     expect(prochainId('area', [{ id: 'area-copie-4' }, { id: 'area-2' }])).toBe('area-3');
     expect(prochainId('obs', [])).toBe('obs-1');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL71 — un contour géoréférencé devient un nouveau pan ; refusé s'il se croise.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL71 — nouveauPanDepuisContour', () => {
+  const carre: [number, number][] = [[-7.6, 33.5], [-7.5998, 33.5], [-7.5998, 33.5002], [-7.6, 33.5002]];
+
+  it('nouveauPanDepuisContour : carré → pan fermé ; papillon → refus nommé', () => {
+    const ok = nouveauPanDepuisContour(carre, [{ id: 'area-1' }, { id: 'area-2' }]);
+    expect(ok.ok).toBe(true);
+    if (!ok.ok) return;
+    expect(ok.pan.id).toBe('area-3');
+    expect(ok.pan.vertices).toEqual(carre);
+    expect(ok.pan.vertices.length).toBeGreaterThanOrEqual(3);
+
+    // Nœud papillon : deux sommets permutés, le contour se croise.
+    const papillon: [number, number][] = [carre[0], carre[2], carre[1], carre[3]];
+    const refus = nouveauPanDepuisContour(papillon, [{ id: 'area-1' }]);
+    expect(refus.ok).toBe(false);
+    if (refus.ok) return;
+    expect(refus.motif).toMatch(/se croise/);
+  });
+
+  it('hors amplitude GPS ou moins de trois sommets : refus nommé, aucun pan', () => {
+    const hors = nouveauPanDepuisContour([[-7.6, 33.5], [-7.5, 95], [-7.4, 33.6]], []);
+    expect(hors.ok).toBe(false);
+    if (!hors.ok) expect(hors.motif).toMatch(/amplitude GPS/);
+    expect(nouveauPanDepuisContour([[-7.6, 33.5], [-7.5, 33.5]], []).ok).toBe(false);
+    expect(nouveauPanDepuisContour('pas un contour', []).ok).toBe(false);
   });
 });
