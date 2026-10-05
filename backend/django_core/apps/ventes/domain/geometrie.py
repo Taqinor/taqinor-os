@@ -78,6 +78,57 @@ def _aspect_vers_azimut_boussole(aspect):
     return (a + 180.0) % 360.0
 
 
+def orientation_du_pan(zone):
+    """ACAL58 — l'orientation d'un pan : celle des modules POSÉS d'abord.
+
+    Un toit plat (``pitchDeg: 0``) porte des tables inclinées : la pente du
+    TOIT n'est pas celle des MODULES. Le bloc ``geometry`` de la zone (WJ24 :
+    ``tiltDeg``/``azimuthDeg``, azimut BOUSSOLE) décrit ce qui est réellement
+    posé ; il prime donc, champ par champ, sur ``pitchDeg``/``pitch`` et
+    ``facingAzimuthDeg``/``aspect``. Sans ``geometry`` (ou sans ses angles),
+    la lecture du TOIT reste celle d'avant, au bit près.
+
+    EXCEPTION ASSUMÉE : une pose est-ouest (``geometry.family == 'eastwest'``)
+    porte DEUX faces ; son orientation n'est pas tranchée ici (C-ACAL-081) et
+    garde la lecture du toit.
+
+    Renvoie ``{inclinaison_deg, azimut_deg (boussole, 180 = Sud),
+    aspect_pvgis (0 = Sud), source_orientation ('pose' | 'toit')}`` — jamais
+    d'exception ; une valeur illisible reste ``None``.
+    """
+    zone = zone if isinstance(zone, dict) else {}
+    geo = zone.get('geometry')
+    if not isinstance(geo, dict) or geo.get('family') == 'eastwest':
+        geo = {}
+
+    # Lecture du TOIT (historique, F3 : azimut publié en BOUSSOLE).
+    brut = zone.get('facingAzimuthDeg')
+    if brut is not None:
+        azimut_boussole = brut
+        aspect_pvgis = _azimut_boussole_vers_aspect(brut)
+    else:
+        aspect_pvgis = zone.get('aspect')
+        azimut_boussole = _aspect_vers_azimut_boussole(aspect_pvgis)
+    pitch = zone.get('pitchDeg')
+    if pitch is None:
+        pitch = zone.get('pitch')
+
+    source = 'toit'
+    if geo.get('tiltDeg') is not None:
+        pitch = geo.get('tiltDeg')
+        source = 'pose'
+    if geo.get('azimuthDeg') is not None:
+        azimut_boussole = geo.get('azimuthDeg')
+        aspect_pvgis = _azimut_boussole_vers_aspect(azimut_boussole)
+        source = 'pose'
+    return {
+        'inclinaison_deg': pitch,
+        'azimut_deg': azimut_boussole,
+        'aspect_pvgis': aspect_pvgis,
+        'source_orientation': source,
+    }
+
+
 def extract_roof_config(layout):
     """FG248 — extrait la config TOITURE d'un layout 3D (roofPro11) en un dict
     plat, JSON-sérialisable, indépendant de la version de l'outil.
@@ -154,16 +205,13 @@ def extract_roof_config(layout):
         # repère PUBLIÉ est désormais la BOUSSOLE, toujours : la branche
         # ``facingAzimuthDeg`` garde sa valeur brute (aucun consommateur ne
         # change de repère), la branche ``aspect`` est convertie.
-        brut = a.get('facingAzimuthDeg')
-        if brut is not None:
-            azimut_boussole = brut
-            aspect_pvgis = _azimut_boussole_vers_aspect(brut)
-        else:
-            aspect_pvgis = a.get('aspect')
-            azimut_boussole = _aspect_vers_azimut_boussole(aspect_pvgis)
-        pitch = a.get('pitchDeg')
-        if pitch is None:
-            pitch = a.get('pitch')
+        #
+        # ACAL58 — l'orientation POSÉE d'abord : voir :func:`orientation_du_pan`
+        # (seule lecture de l'orientation côté ventes).
+        orientation = orientation_du_pan(a)
+        azimut_boussole = orientation['azimut_deg']
+        aspect_pvgis = orientation['aspect_pvgis']
+        pitch = orientation['inclinaison_deg']
         pan = {
             'label': a.get('label') or '',
             'roof_type': a.get('roofType') or '',
@@ -176,6 +224,9 @@ def extract_roof_config(layout):
             'azimut_deg': azimut_boussole,
             'inclinaison_deg': pitch,
             'orientation': _aspect_to_orientation(aspect_pvgis),
+            # ACAL58 — 'pose' (tables posées, geometry) ou 'toit' (pente et
+            # face du toit). Clé interne additive de ``_pans_geometry``.
+            'source_orientation': orientation['source_orientation'],
         }
         pans.append(pan)
         total_surface += surface

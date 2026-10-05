@@ -1041,11 +1041,16 @@ def _pan_principal(layout_public):
             if isinstance(pan, dict)]
     if pans:
         return max(pans, key=lambda p: _fini(p.get('kwc')) or 0.0)
+    # ACAL58 — la MÊME lecture que ``extract_roof_config`` : l'orientation
+    # des modules POSÉS (``geometry``) d'abord, la pente du toit à défaut.
+    from .domain.geometrie import orientation_du_pan
+
     for zone in (layout_public or {}).get('zones') or []:
         if not isinstance(zone, dict):
             continue
-        return {'azimut_deg': zone.get('facingAzimuthDeg'),
-                'inclinaison_deg': zone.get('pitchDeg'),
+        orientation = orientation_du_pan(zone)
+        return {'azimut_deg': orientation['azimut_deg'],
+                'inclinaison_deg': orientation['inclinaison_deg'],
                 'roof_type': zone.get('roofType')}
     return None
 

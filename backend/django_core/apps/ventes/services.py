@@ -213,6 +213,8 @@ catalogue_de_la_societe = _catalogue.catalogue_de_la_societe
 from apps.ventes.domain import geometrie as _geometrie  # noqa: E402
 _azimut_boussole_vers_aspect = _geometrie._azimut_boussole_vers_aspect
 extract_roof_config = _geometrie.extract_roof_config
+# ACAL58 — l'orientation d'un pan, modules POSÉS d'abord (seule lecture).
+orientation_du_pan = _geometrie.orientation_du_pan
 layout_hash = _geometrie.layout_hash
 poser_layout_hash = _geometrie.poser_layout_hash
 validate_composition_for_layout = _geometrie.validate_composition_for_layout
@@ -590,6 +592,7 @@ __all__ = [
     'option_avec_servable',
     'ordonner_par_role',
     'ordre_lignes_societe',
+    'orientation_du_pan',
     'otp_lecture_verified',
     'phase_client_pour_dimensionnement',
     'plafond_panneaux',

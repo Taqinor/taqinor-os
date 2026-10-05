@@ -212,6 +212,8 @@ SURFACE_PUBLIQUE = (
     "option_avec_servable",
     "ordonner_par_role",
     "ordre_lignes_societe",
+    # ACAL58 — orientation POSÉE d'abord (ventes/domain/geometrie.py).
+    "orientation_du_pan",
     "otp_lecture_verified",
     "phase_client_pour_dimensionnement",
     "plafond_panneaux",
