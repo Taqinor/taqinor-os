@@ -169,6 +169,32 @@ LIBELLES = {
         'en': 'PV array',
         'ar': 'الحقل الشمسي',
     },
+    # ── Une-page agricole lu dans ``synthese_agricole`` (AGR313) ────────────
+    'besoin_livre_mois_serre': {
+        'fr': 'Mois le plus serr&#233; : besoin / livr&#233;',
+        'en': 'Tightest month: need / delivered',
+        'ar': 'الشهر الأصعب: الحاجة / الماء المضخوخ',
+    },
+    'bon_pour_accord': {
+        'fr': 'Bon pour accord',
+        'en': 'Agreed and accepted',
+        'ar': 'موافق عليه',
+    },
+    'bpa_nom': {
+        'fr': 'Nom',
+        'en': 'Name',
+        'ar': 'الاسم',
+    },
+    'bpa_date': {
+        'fr': 'Date',
+        'en': 'Date',
+        'ar': 'التاريخ',
+    },
+    'bpa_signature': {
+        'fr': 'signature du client',
+        'en': "client's signature",
+        'ar': 'توقيع الزبون',
+    },
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',

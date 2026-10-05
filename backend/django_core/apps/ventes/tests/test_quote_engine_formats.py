@@ -1811,6 +1811,13 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # 33566842913. Toute
         # modification du rendu agricole la fait dériver : si le changement
         # est VOULU, coller la nouvelle valeur imprimée par le message d'échec.
+        # AGR313 (2026-10-05) — CHANGEMENT VOULU, À RÉ-ÉPINGLER DEPUIS LE RUN
+        # CI : les cartes pompage du une-page lisent ``synthese_agricole``
+        # (la carte « Débit estimé » des anciens devis ``debit_m3j`` disparaît
+        # — D-AGR-13) et un « Bon pour accord » compact est ajouté. Mesuré
+        # localement (sqlite, sans WeasyPrint — environnement NON canonique,
+        # donc jamais épinglé à la main) : le HTML d'avant ne dépendait pas de
+        # la demande full/onepage (AGR312) et AGR313 le change.
         EMPREINTE_EPINGLEE = (
             '965980be35121a6952cd39a478f6a4c3f04d5144a820fc53ea33b436418dbaa8')
 
