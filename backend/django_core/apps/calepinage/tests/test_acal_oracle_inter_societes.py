@@ -34,10 +34,26 @@ ABSENT = 999999
 
 
 def _normalise(donnees, pk):
-    """La réponse rendue comparable : l'id cité remplacé par « N »."""
+    """La réponse rendue comparable : l'id cité remplacé par « N ».
+
+    L'enveloppe additive ``error`` (YAPIC3, ``core.exceptions``) porte un
+    ``request_id`` tiré au hasard à CHAQUE requête : il est retiré avant la
+    comparaison (le reste de l'enveloppe — code, message, champs — reste
+    comparé octet pour octet).
+    """
+    donnees = dict(donnees)
+    enveloppe = donnees.get('error')
+    if isinstance(enveloppe, dict):
+        donnees['error'] = {k: v for k, v in enveloppe.items()
+                            if k != 'request_id'}
     return {cle: [str(m).replace(str(pk), 'N') for m in
                   (valeurs if isinstance(valeurs, list) else [valeurs])]
-            for cle, valeurs in dict(donnees).items()}
+            for cle, valeurs in donnees.items()}
+
+
+def _champs(donnees):
+    """Les clés de champ du 400, hors l'enveloppe additive ``error``."""
+    return [cle for cle in donnees if cle != 'error']
 
 
 class OracleInterSocietesTest(TestCase):
@@ -92,7 +108,7 @@ class OracleInterSocietesTest(TestCase):
         r = self._paire(lambda pk: self.api.post(URL, {
             'titre': 'Nouveau', 'lead': self.lead.pk, 'devis': pk},
             format='json'), self.devis_voisin.pk)
-        self.assertEqual(list(r.data), ['devis'])
+        self.assertEqual(_champs(r.data), ['devis'])
         self.assertEqual(r.data['devis'][0].code, 'does_not_exist')
         self.assertNotIn('appartient', str(r.data['devis'][0]))
 
@@ -100,7 +116,7 @@ class OracleInterSocietesTest(TestCase):
         r = self._paire(lambda pk: self.api.post(URL, {
             'titre': 'Nouveau', 'client': pk}, format='json'),
             self.client_voisin.pk)
-        self.assertEqual(list(r.data), ['client'])
+        self.assertEqual(_champs(r.data), ['client'])
         self.assertEqual(r.data['client'][0].code, 'does_not_exist')
 
     def test_responsable_etranger_et_absent_meme_reponse_au_patch(self):
@@ -108,7 +124,7 @@ class OracleInterSocietesTest(TestCase):
         r = self._paire(lambda pk: self.api.patch(
             f'{URL}{self.calepinage.pk}/', {'responsable': pk},
             format='json'), self.user_voisin.pk)
-        self.assertEqual(list(r.data), ['responsable'])
+        self.assertEqual(_champs(r.data), ['responsable'])
         self.assertEqual(r.data['responsable'][0].code, 'does_not_exist')
         self.assertEqual(self._instantane(), avant)
 
@@ -123,7 +139,7 @@ class OracleInterSocietesTest(TestCase):
                       'optimiseur_produit'):
             with self.subTest(champ=champ):
                 r = self._paire(self._entree(champ), self.produit_voisin.pk)
-                self.assertEqual(list(r.data), [champ])
+                self.assertEqual(_champs(r.data), [champ])
                 self.assertEqual(
                     _normalise(r.data, self.produit_voisin.pk)[champ],
                     ['Produit introuvable dans votre catalogue (#N).'])
