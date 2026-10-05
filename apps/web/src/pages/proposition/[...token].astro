@@ -76,6 +76,7 @@ import {
   economiesMensuelles,
   economiesInterdisentBatterie,
   environmentalImpact,
+  chiffresEconomiePhare,
   whatsappLink,
   whatsappLinkForIntent,
   whatsappShareLink,
@@ -570,13 +571,12 @@ const puissance = q?.puissance_kwc ?? null;
 const nbPanneaux = q?.nb_panneaux ?? null;
 const wattPanneau = q?.watt_par_panneau ?? null;
 const prodKwh = q?.prod_kwh ?? null;
-const ecoSans = q?.eco_s_ann ?? null;
-const ecoAvec = q?.eco_a_ann ?? null;
-const paybackSans = formatPayback(q?.roi_s);
-const paybackAvec = formatPayback(q?.roi_a);
-// Économie / payback « phares » : ceux de l'option recommandée.
-const ecoHero = reco === 'avec_batterie' ? (ecoAvec ?? ecoSans) : (ecoSans ?? ecoAvec);
-const paybackHero = reco === 'avec_batterie' ? (paybackAvec ?? paybackSans) : (paybackSans ?? paybackAvec);
+// AGW300 — SEULE définition de ces chiffres : `chiffresEconomiePhare` rend tout à
+// `null` en mode agricole, si bien que les quatre endroits qui les lisent
+// (héros, repli méthode, bandeau « Économie estimée / an », carte « Rentabilisé
+// en ») s'éteignent d'un coup, sans garde `isAgricole` à chacun.
+const { ecoSans, ecoAvec, paybackSans, paybackAvec, ecoHero, paybackHero } =
+  chiffresEconomiePhare(ok ? data : null, reco);
 
 // ── L-DEUXOPT (lane « deux optimiseurs », 25/08/2026) — DEUX DIMENSIONNEMENTS
 // DIFFÉRENTS (ex. 22 panneaux sans batterie / 26 avec), quand le backend
@@ -1548,7 +1548,9 @@ const ecoRetourAns = (variante: 'sans' | 'avec') =>
 // `environmentalImpact` ne calcule plus de champ `trees`, et
 // `CO2_KG_PER_TREE_YEAR` n'est plus exporté. (Le retrait côté moteur PDF est
 // porté par sa propre lane ; cette lane n'a touché que le web.)
-const enviro = ok ? environmentalImpact(prodKwh) : null;
+// AGW300 — `null` en agricole : le facteur réseau (0,81 kg CO₂/kWh) ne s'applique
+// pas à une pompe qui remplace du butane ou du gasoil.
+const enviro = ok && !isAgricole ? environmentalImpact(prodKwh) : null;
 
 // ── PV80 — AUCUN CRÉDIT, AUCUNE MENSUALITÉ, AUCUNE BANQUE SUR CETTE PAGE ────
 // Trois blocs « argent emprunté » y vivaient (comparatif éco-prêt WJ10, bloc

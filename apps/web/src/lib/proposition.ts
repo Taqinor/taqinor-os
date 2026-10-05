@@ -3961,6 +3961,51 @@ export function resolveInstallMode(
 }
 
 /**
+ * AGW300 — chiffres « phares » d'économie et de retour (sans / avec batterie /
+ * héros), lus sur les clés RÉSIDENTIELLES `quote.eco_s_ann|eco_a_ann|roi_s|roi_a`.
+ * Fonction PURE, SEULE source de ces chiffres pour la page : en mode agricole
+ * (`resolveInstallMode(p) === 'agricole'`) TOUT est `null` — une pompe n'a ni
+ * « Économie / an » ni « Rentabilisé en » résidentiels, même si un payload
+ * ancien porte encore ces clés (le serveur ne les sert plus, AGR300 : cette garde
+ * la double). L'argent agricole reviendra par `synthese_agricole.economies`
+ * (AGW304), jamais par ces clés. `reco` = l'option recommandée (héros).
+ */
+export interface ChiffresEconomiePhare {
+  ecoSans: number | null;
+  ecoAvec: number | null;
+  paybackSans: string | null;
+  paybackAvec: string | null;
+  ecoHero: number | null;
+  paybackHero: string | null;
+}
+
+export function chiffresEconomiePhare(
+  p: Pick<ProposalResponse, 'mode_installation' | 'quote'> | null | undefined,
+  reco: 'sans_batterie' | 'avec_batterie' | null = null,
+): ChiffresEconomiePhare {
+  const vide: ChiffresEconomiePhare = {
+    ecoSans: null, ecoAvec: null, paybackSans: null, paybackAvec: null, ecoHero: null, paybackHero: null,
+  };
+  if (!p) return vide;
+  if (resolveInstallMode(p) === 'agricole') return vide;
+  const q = p.quote as
+    | { eco_s_ann?: number | null; eco_a_ann?: number | null; roi_s?: number | string | null; roi_a?: number | string | null }
+    | undefined;
+  const ecoSans = q?.eco_s_ann ?? null;
+  const ecoAvec = q?.eco_a_ann ?? null;
+  const paybackSans = formatPayback(q?.roi_s);
+  const paybackAvec = formatPayback(q?.roi_a);
+  return {
+    ecoSans,
+    ecoAvec,
+    paybackSans,
+    paybackAvec,
+    ecoHero: reco === 'avec_batterie' ? (ecoAvec ?? ecoSans) : (ecoSans ?? ecoAvec),
+    paybackHero: reco === 'avec_batterie' ? (paybackAvec ?? paybackSans) : (paybackSans ?? paybackAvec),
+  };
+}
+
+/**
  * WJ126 — Extrait les KPI pompage TYPÉS. Renvoie `null` hors mode agricole
  * (zéro fuite inter-mode). En mode agricole mais `mode_kpis` absent/partiel :
  * renvoie l'objet avec chaque champ à `null` (+ `fda_eligible: false`) — la page
