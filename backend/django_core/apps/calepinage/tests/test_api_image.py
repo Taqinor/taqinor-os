@@ -67,7 +67,10 @@ class ActionRoofImageTest(BaseApiCalepinage):
         self.assertTrue(re.fullmatch(
             rf'roofs/{self.company.pk}/calepinage-{self.calepinage.pk}\.png',
             cle), cle)
-        self.assertIn(cle, reponse.data['url'])
+        self.assertEqual(
+            reponse.data['url'],
+            f'/api/django/calepinage/calepinages/{self.calepinage.pk}'
+            '/roof-image/fichier/')
         self.calepinage.refresh_from_db()
         self.assertEqual(self.calepinage.roof_image, cle)
 

@@ -641,10 +641,30 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                                               content_type=mime)
         calepinage.roof_image = cle
         calepinage.save(update_fields=['roof_image', 'updated_at'])
+        from ..services.presentation import url_fichier_roof_image
+
         return Response(
             {'roof_image': cle,
-             'url': ventes_services.url_image_toiture(cle)},
+             'url': url_fichier_roof_image(calepinage.pk)},
             status=status.HTTP_201_CREATED)
+
+    @extend_schema(responses={(200, 'image/*'): OpenApiTypes.BINARY})
+    @action(detail=True, methods=['get'], url_path='roof-image/fichier',
+            permission_classes=[PeutVoirCalepinage])
+    def roof_image_fichier(self, request, pk=None):
+        """ACAL200 — les OCTETS de l'aperçu de toiture, par Django.
+
+        Même origine, jamais l'hôte interne de MinIO ; la clé est celle que
+        porte le calepinage (société résolue par ``get_queryset``), absente ⇒
+        404.
+        """
+        from ..services.photos import lire_octets_piece
+        from .photos import fichier_introuvable, reponse_fichier
+
+        calepinage = self.get_object()  # borné société par get_queryset
+        reponse = reponse_fichier(
+            lire_octets_piece(_texte(calepinage.roof_image)))
+        return reponse if reponse is not None else fichier_introuvable()
 
 
 def _corps_de_layout(donnees):
@@ -1146,44 +1166,25 @@ def _compteur_variantes(calepinage):
 def _image(calepinage):
     """``{url, genere_le, expire_le}`` du rendu stocké, ou trois ``null``.
 
-    L'URL est PRÉSIGNÉE (lecture seule, 1 h) et fabriquée par le stockage
-    ventes — jamais un second chemin de stockage (CAL19). Tant que la
-    fonction mince de ``apps.ventes.services`` n'est pas là, l'URL vaut
-    ``None`` : on ne fabrique jamais une URL qui ne mène nulle part.
+    ACAL200 : l'URL est un chemin RELATIF même origine servi par Django
+    (``roof-image/fichier/``) — jamais une URL pré-signée vers l'hôte interne
+    de MinIO. ``expire_le`` est conservé tel que le contrat le promet
+    (génération + une heure : la fenêtre pendant laquelle l'aperçu est
+    garanti frais). Sans rendu enregistré, trois ``null``.
     """
     from django.utils import timezone
 
+    from ..services.presentation import url_fichier_roof_image
+
     cle = _texte(getattr(calepinage, 'roof_image', ''))
-    url = url_image_toiture(cle) if cle else None
-    if url is None:
+    if not cle:
         return {'url': None, 'genere_le': None, 'expire_le': None}
     maintenant = timezone.now()
     return {
-        'url': url,
+        'url': url_fichier_roof_image(calepinage.pk),
         'genere_le': _horodatage(maintenant),
         'expire_le': _horodatage(maintenant + DUREE_URL_IMAGE),
     }
-
-
-def url_image_toiture(cle):
-    """L'URL présignée d'un rendu, par le stockage VENTES (jamais un second).
-
-    Import FONCTION-LOCAL et résolution par ``getattr`` : la fonction mince
-    côté ventes est posée par CAL19 ; avant elle, on rend ``None`` plutôt
-    qu'une URL inventée. ``apps.calepinage`` n'importe ni une vue ni un modèle
-    ventes (contrat import-linter).
-    """
-    if not cle:
-        return None
-    from apps.ventes import services as ventes_services
-
-    fabrique = getattr(ventes_services, 'url_image_toiture', None)
-    if fabrique is None:
-        return None
-    try:
-        return fabrique(cle)
-    except Exception:  # noqa: BLE001 — un stockage muet n'efface pas la fiche
-        return None
 
 
 def _permissions(calepinage, request):
