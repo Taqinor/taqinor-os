@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 import { extraireCles } from './calepinageApi.usage.test.mjs'
+import { lireSourceCalepinageApi } from './calepinage/lireSource.mjs'
 
 /* ============================================================================
    SPL291 — GOLDEN de `calepinageApi.js`, capturé AVANT tout déplacement.
@@ -167,7 +168,7 @@ test('SPL291 — le golden couvre toutes les clés de feuille + le CRUD partagé
 })
 
 test('SPL291 — extraireCles(calepinageApi.js) rend exactement les 94 clés capturées', () => {
-  const cles = extraireCles(readFileSync(API_PATH, 'utf8'))
+  const cles = extraireCles(lireSourceCalepinageApi())
   assert.equal(cles.length, NOMBRE_CLES_EXTRAITES)
   const runtime = new Set(Object.keys(golden))
   for (const { namespace, cle } of cles) {
@@ -189,7 +190,7 @@ test('SPL291 — test-du-test : une URL mutée ou une clé retirée rougit', () 
   assert.deepEqual(comparerAuGolden(golden, avecCleNeuve), [], 'une clé neuve ne rougit pas')
 
   // Nombre de clés muté dans une copie du source ⇒ extraireCles s'écarte de 92.
-  const src = readFileSync(API_PATH, 'utf8')
+  const src = lireSourceCalepinageApi()
   const mute = src.replace(/^ {4}modeles: \(\) =>[^\n]*\n/m, '')
   assert.notEqual(mute, src)
   assert.equal(extraireCles(mute).length, NOMBRE_CLES_EXTRAITES - 1)

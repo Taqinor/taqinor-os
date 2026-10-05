@@ -49,10 +49,11 @@ CLE_DEJA_CALCULE = 'deja_calcule'
 def publication_des_pertes(calepinage):
     """Le bloc publié : les postes, leur somme, et le catalogue de référence.
 
-    ``total_pct`` est la somme RÉELLEMENT additionnée — la même que celle qui
-    partira dans la requête PVGIS (CAL238). Aucun poste n'est complété : une
-    liste vide reste vide, et ``simulable`` dit pourquoi aucune production ne
-    peut être demandée.
+    ``total_pct`` est la somme RÉELLEMENT additionnée des postes saisis —
+    aucune perte n'est passée à PVGIS (ACAL329 : la chaîne de pertes applique
+    chaque poste à l'irradiance nue). Aucun poste n'est complété : une liste
+    vide reste vide, et ``simulable`` dit pourquoi aucune production ne peut
+    être demandée.
     """
     postes = postes_du_calepinage(calepinage)
     total = sum(poste['pct'] for poste in postes)
@@ -65,9 +66,9 @@ def publication_des_pertes(calepinage):
         'simulable': bool(postes),
         'motif_non_simulable': (
             '' if postes else
-            "Aucun poste de perte n'est renseigné : le module passe TOUJOURS "
-            'à PVGIS la somme explicite de ses postes et ne suppose jamais '
-            'une perte par défaut.'),
+            "Aucun poste de perte n'est renseigné : la chaîne de pertes du "
+            'module applique chaque poste SAISI à l’irradiance nue et ne '
+            'suppose jamais une perte par défaut.'),
         'catalogue': [dict(entree) for entree in CATALOGUE],
     }
 

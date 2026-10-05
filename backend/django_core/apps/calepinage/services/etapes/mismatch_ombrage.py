@@ -77,6 +77,7 @@ from __future__ import annotations
 from apps.calepinage.services import etapes
 from apps.calepinage.services.ombrage_chaines import (
     MOTIF_SANS_ACCES, ombrage_des_chaines)
+from ..valeurs import nombre as _nombre
 
 #: Le nom du poste — celui de ``chaine_pertes.ORDRE_ETAPES``.
 POSTE = 'mismatch_ombrage'
@@ -439,14 +440,3 @@ def _optimiseur_du_document(contexte):
         return bool(electrique.get('optimiseur_produit')
                     or electrique.get('optimiseur'))
     return False
-
-
-def _nombre(valeur):
-    """Un flottant lisible, ou ``None`` — jamais une valeur de remplacement."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return None if nombre != nombre else nombre

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
-import { construireCoupe, MONTANT_AVANT_M } from '../coupeRangees'
+import { construireCoupe } from '../coupeRangees'
 import { formatNumber } from '../../../lib/format'
 
 /* ============================================================================
@@ -48,7 +48,7 @@ function yPx(hauteurM) {
 }
 
 function CoupeSvg({ coupe }) {
-  const baseM = coupe.flush ? 0 : MONTANT_AVANT_M
+  const baseM = coupe.flush ? 0 : coupe.montantAvantM
   const sommetM = coupe.flush ? coupe.riseM : coupe.hauteurHorsToutM
   const rangee1 = { xAvant: 0, xArriere: coupe.depthFootprintM }
   const rangee2 = { xAvant: coupe.rowPitchM, xArriere: coupe.rowPitchM + coupe.depthFootprintM }
@@ -167,7 +167,7 @@ export default function OngletCoupeRangees({ calepinageId: idPropose } = {}) {
   const zone = zones.find((z) => z.id === layout?.activeAreaId) ?? zones[0] ?? null
   const latitudeDeg = typeof layout?.pin?.lat === 'number' ? layout.pin.lat : null
 
-  const coupe = zone ? construireCoupe({ zone, latitudeDeg }) : null
+  const coupe = zone ? construireCoupe({ zone, latitudeDeg, modules: layout?.modules }) : null
 
   if (chargement) {
     return (
@@ -182,7 +182,7 @@ export default function OngletCoupeRangees({ calepinageId: idPropose } = {}) {
       <p className="tech-label rule-brass text-brass-300">Coupe</p>
       <p className="mt-1 text-sm text-lune-faint">
         Coupe transversale de deux rangées consécutives du pan actif : inclinaison, pas,
-        hauteur hors-tout, rayon solaire de conception (midi, solstice d’hiver) et longueur
+        hauteur hors-tout, rayon solaire de conception (soleil de 10 h, solstice d’hiver) et longueur
         d’ombre — toutes valeurs lues de la géométrie déjà posée, aucune recalculée.
       </p>
 
@@ -221,7 +221,7 @@ export default function OngletCoupeRangees({ calepinageId: idPropose } = {}) {
               </dd>
             </div>
             <div data-testid="cal-coupe-rayon-solaire-valeur">
-              <dt className="tech-label">Rayon solaire (midi, solstice d’hiver)</dt>
+              <dt className="tech-label">{`Rayon solaire (soleil de ${coupe.heureConceptionH} h, solstice d’hiver)`}</dt>
               <dd className="fig text-white">{`${formatNumber(coupe.rayonSolaireDeg, { decimals: 1 })}°`}</dd>
             </div>
             <div data-testid="cal-coupe-longueur-ombre">

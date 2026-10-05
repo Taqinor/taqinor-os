@@ -10,10 +10,18 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 
-import { construireCoupe, pasRangeeMesure, PROFONDEUR_MODULE_M, MONTANT_AVANT_M } from './coupeRangees.js'
-import { sunDirection as sunPosition, WINTER_SOLSTICE_DAY as JOUR_SOLSTICE_HIVER } from '@rooflib/roofPro2'
+import { construireCoupe, pasRangeeMesure } from './coupeRangees.js'
+import { FRONT_STRUT_M as MONTANT_AVANT_M } from '@rooflib/roofPro2'
+import { rowPitchM, sunPositionWinterSolstice, DESIGN_SOLAR_HOUR } from '@rooflib/estimatorBrainV2'
 
 const DEG2RAD = Math.PI / 180
+
+/** Un module du catalogue `modules[]` du document (cotes de la fiche produit). */
+const MODULES = [{
+  id: 'm1', produitId: 1, libelle: 'Module d’essai 550 Wc', longueurMm: 2279, largeurMm: 1134,
+  epaisseurMm: 30, poidsKg: 28, pmaxWc: 550, source: 'fiche produit',
+}]
+const PROFONDEUR_MODULE_M = 1.134
 
 /** Trois panneaux d'une même rangée (même projection), à `cy` fixe. */
 function rangee(cy, xs = [-1, 0, 1]) {
@@ -74,33 +82,37 @@ test('CALX121 — construireCoupe : latitude du site inconnue ⇒ non calculée'
   assert.match(r.motif, /Latitude/)
 })
 
-test('CALX121 — construireCoupe : la longueur d’ombre dessinée suit celle du builder (même astronomie)', () => {
+test('CALX121 — construireCoupe : l’ombre dessinée retombe sur le pas du moteur V2 (même astronomie)', () => {
   const tiltDeg = 13
   const latitudeDeg = 33.5
   const tiltRad = tiltDeg * DEG2RAD
   const riseM = PROFONDEUR_MODULE_M * Math.sin(tiltRad)
   const depthFootprintM = PROFONDEUR_MODULE_M * Math.cos(tiltRad)
-  const elevDeg = sunPosition(latitudeDeg, JOUR_SOLSTICE_HIVER, 12).elevationDeg
-  const shadowLenAttendue = riseM / Math.tan(elevDeg * DEG2RAD)
-  const pitch = depthFootprintM + shadowLenAttendue
+  const elevDeg = sunPositionWinterSolstice(latitudeDeg, DESIGN_SOLAR_HOUR).elevationDeg
+  // Le pas du moteur V2 = empreinte + ombre + marge ; la marge est lue SUR le
+  // moteur (pas à plat), jamais retapée.
+  const pitch = rowPitchM(PROFONDEUR_MODULE_M, tiltDeg, latitudeDeg)
+  const marge = rowPitchM(PROFONDEUR_MODULE_M, 0, latitudeDeg) - PROFONDEUR_MODULE_M
 
   const panels = [...rangee(0), ...rangee(-pitch)]
   const r = construireCoupe({
-    zone: { geometry: { tiltDeg, flush: false, azimuthDeg: 180, panels } },
+    zone: { geometry: { moduleId: 'm1', tiltDeg, flush: false, azimuthDeg: 180, panels } },
     latitudeDeg,
+    modules: MODULES,
   })
 
   assert.equal(r.disponible, true)
   // `pasRangeeMesure` arrondit au millimètre (bruit flottant du placement) :
   // la tolérance suit cette résolution, jamais l'exactitude bit à bit.
   assert.ok(Math.abs(r.rowPitchM - pitch) < 2e-3)
+  assert.ok(Math.abs(r.profondeurModuleM - PROFONDEUR_MODULE_M) < 1e-9)
   assert.ok(Math.abs(r.depthFootprintM - depthFootprintM) < 1e-9)
+  assert.ok(Math.abs(r.riseM - riseM) < 1e-9)
   assert.ok(Math.abs(r.hauteurHorsToutM - (MONTANT_AVANT_M + riseM)) < 1e-9)
   assert.ok(Math.abs(r.rayonSolaireDeg - elevDeg) < 1e-9)
-  // La longueur d'ombre RENVOYÉE, dérivée de la géométrie posée (tiltDeg +
-  // latitude), retombe sur celle qui a produit le pas mesuré : rien n'a été
-  // recalculé « à côté » de ce que le pas raconte déjà.
-  assert.ok(Math.abs(r.longueurOmbreM - shadowLenAttendue) < 2e-3)
+  assert.equal(r.heureConceptionH, DESIGN_SOLAR_HOUR)
+  // L'ombre dessinée + l'empreinte + la marge du moteur redonnent SON pas.
+  assert.ok(Math.abs(r.longueurOmbreM + depthFootprintM + marge - pitch) < 1e-9)
 })
 
 test('CALX121 — construireCoupe : pose affleurante ⇒ rangées jointives, aucune hauteur hors-tout ni ombre', () => {
@@ -110,8 +122,9 @@ test('CALX121 — construireCoupe : pose affleurante ⇒ rangées jointives, auc
   const panels = [...rangee(0), ...rangee(-depthFootprintM)]
 
   const r = construireCoupe({
-    zone: { geometry: { tiltDeg, flush: true, azimuthDeg: 180, panels } },
+    zone: { geometry: { moduleId: 'm1', tiltDeg, flush: true, azimuthDeg: 180, panels } },
     latitudeDeg: 33.5,
+    modules: MODULES,
   })
 
   assert.equal(r.disponible, true)

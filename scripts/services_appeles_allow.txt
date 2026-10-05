@@ -17,16 +17,12 @@
 backend/django_core/apps/calepinage/services/asbuilt.py::comparer
 backend/django_core/apps/calepinage/services/asbuilt.py::pans_prevus
 backend/django_core/apps/calepinage/services/batterie.py::tranches_horaires
-backend/django_core/apps/calepinage/services/bifacial.py::poste_bifacial
 backend/django_core/apps/calepinage/services/cables.py::longueur_dc
 backend/django_core/apps/calepinage/services/chaines.py::chaines_max_par_mppt
 backend/django_core/apps/calepinage/services/chaines.py::groupes_electriques
 backend/django_core/apps/calepinage/services/chaines.py::pans_poses
 backend/django_core/apps/calepinage/services/chaines.py::specs_onduleur
 backend/django_core/apps/calepinage/services/charges.py::courbe_climatisation
-backend/django_core/apps/calepinage/services/commentaires.py::commentaires_du_calepinage
-backend/django_core/apps/calepinage/services/commentaires.py::deposer_commentaire
-backend/django_core/apps/calepinage/services/commentaires.py::responsable_du_calepinage
 backend/django_core/apps/calepinage/services/consommation.py::apercu_courbe_csv
 backend/django_core/apps/calepinage/services/consommation.py::appliquer_ramadan
 backend/django_core/apps/calepinage/services/consommation.py::courbe_appareils
@@ -115,7 +111,6 @@ backend/django_core/apps/calepinage/services/note_calcul.py::html_de_note_calcul
 backend/django_core/apps/calepinage/services/p50p90.py::variabilite_interannuelle
 backend/django_core/apps/calepinage/services/pack_technique.py::rendre_pieces
 backend/django_core/apps/calepinage/services/pertes.py::moyenne_mensuelle
-backend/django_core/apps/calepinage/services/pertes.py::politique_du_calepinage
 backend/django_core/apps/calepinage/services/planche.py::dimensions_module
 backend/django_core/apps/calepinage/services/planche.py::echelle_de_dessin
 backend/django_core/apps/calepinage/services/planche.py::echelle_nommee
@@ -129,12 +124,10 @@ backend/django_core/apps/calepinage/services/planche.py::texte_d_orientation
 backend/django_core/apps/calepinage/services/planche.py::verifier_absence_d_argent
 backend/django_core/apps/calepinage/services/presets.py::enregistrer_jeu
 backend/django_core/apps/calepinage/services/presets.py::retirer_jeu
-backend/django_core/apps/calepinage/services/production.py::production_du_layout
 backend/django_core/apps/calepinage/services/profils_types.py::profil_de_repli
 backend/django_core/apps/calepinage/services/profils_types.py::profil_depuis_import
 backend/django_core/apps/calepinage/services/profils_types.py::profils_de_repli
 backend/django_core/apps/calepinage/services/provenance_document.py::document_de_provenance
-backend/django_core/apps/calepinage/services/pvgis_serie.py::vider_le_cache
 backend/django_core/apps/calepinage/services/rapport/annexe_hypotheses.py::html_de_section
 backend/django_core/apps/calepinage/services/rapport/electrique.py::html_de_section
 backend/django_core/apps/calepinage/services/rapport/electrique.py::html_table_verdicts
@@ -165,7 +158,6 @@ backend/django_core/apps/calepinage/services/reprise_public.py::document_public_
 backend/django_core/apps/calepinage/services/reprise_public.py::latlng_vers_lnglat
 backend/django_core/apps/calepinage/services/site.py::altitude_pvgis
 backend/django_core/apps/calepinage/services/site.py::fournisseur_actif
-backend/django_core/apps/calepinage/services/thermique.py::poste_thermique
 backend/django_core/apps/calepinage/services/traduction.py::entree_depuis_layout
 backend/django_core/apps/calepinage/services/versions.py::borne_de_purge
 backend/django_core/apps/calepinage/services/versions.py::purger_versions

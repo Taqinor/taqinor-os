@@ -46,6 +46,7 @@ les deux cas puisque c'est l'onduleur qui plafonne.
 from __future__ import annotations
 
 from apps.calepinage.services import etapes
+from ..valeurs import nombre as _nombre
 
 LIBELLE = 'Écrêtage'
 
@@ -235,14 +236,5 @@ def _puissance_kw(valeur, facteur_kw):
         return None
     try:
         return float(valeur) * facteur_kw
-    except (TypeError, ValueError):
-        return None
-
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
     except (TypeError, ValueError):
         return None

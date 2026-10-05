@@ -57,6 +57,7 @@ from __future__ import annotations
 
 from apps.calepinage.services import etapes
 from core.electrique.cables import RHO_CUIVRE_20C
+from ..valeurs import nombre as _nombre
 
 LIBELLE = 'Pertes ohmiques DC'
 
@@ -348,12 +349,3 @@ def _puissance_stc(chainage):
     if not modules or not unitaire:
         return None
     return modules * unitaire
-
-
-def _nombre(valeur):
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None

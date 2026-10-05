@@ -30,11 +30,11 @@ CE QUE CE MODULE POSE
    rince en novembre : douze valeurs, et la valeur annuelle du poste est la
    MOYENNE de ces douze mois — calculée ici, jamais saisie à côté (deux
    chiffres pour une même perte, c'est la contradiction qu'on vient de fermer).
-4. **La somme est LA valeur ``loss`` envoyée à PVGIS** (CAL238,
-   ``pertes_politique.politique_de_pertes``) : il n'y a qu'une addition dans
-   tout le module, et elle est publiée poste par poste.
-5. **AUCUN DÉFAUT.** Pas de poste ⇒ pas de politique ⇒ pas d'appel PVGIS ⇒ pas
-   de production publiée.
+4. **Aucune perte n'est passée à PVGIS** (ACAL329 : le modèle « PVGIS
+   applique les pertes » est abandonné, ``politique_du_calepinage`` supprimée) :
+   la chaîne de pertes (``services/chaine_pertes.py``) applique chaque poste
+   à l'irradiance NUE, et le publie poste par poste.
+5. **AUCUN DÉFAUT.** Pas de poste ⇒ aucune perte supposée.
 
 Ce module ne calcule AUCUNE perte physique : il les range, les valide, les
 persiste et les additionne. Le poste thermique CALCULÉ vient de CAL140
@@ -42,14 +42,12 @@ persiste et les additionne. Le poste thermique CALCULÉ vient de CAL140
 """
 from __future__ import annotations
 
-from .pertes_politique import (
-    SOURCES_ADMISES, PertesInvalides, politique_de_pertes,
-)
+from .pertes_politique import SOURCES_ADMISES, PertesInvalides
 
 __all__ = [
     'CATALOGUE', 'CATALOGUE_PAR_POSTE', 'MOIS_LIBELLES', 'SOURCES_ADMISES',
     'PertesInvalides', 'enregistrer_pertes', 'moyenne_mensuelle',
-    'politique_du_calepinage', 'postes_du_calepinage', 'valider_postes',
+    'postes_du_calepinage', 'valider_postes',
 ]
 
 #: Le catalogue de RÉFÉRENCE — des noms et des libellés, AUCUNE valeur.
@@ -242,16 +240,3 @@ def enregistrer_pertes(calepinage, postes):
     calepinage.pertes = normalises
     calepinage.save(update_fields=['pertes', 'updated_at'])
     return normalises
-
-
-def politique_du_calepinage(calepinage):
-    """La ``PolitiquePertes`` (CAL238) construite sur les postes PERSISTÉS.
-
-    C'est le SEUL chemin par lequel une simulation du module obtient sa valeur
-    ``loss`` : il n'y a donc qu'une addition, et elle est publiée.
-
-    Raises:
-        PertesInvalides: aucun poste renseigné (le refus nomme le champ
-            ``pertes``) — jamais une perte de repli.
-    """
-    return politique_de_pertes(postes_du_calepinage(calepinage))

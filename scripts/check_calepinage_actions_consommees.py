@@ -111,18 +111,19 @@ def inventaire_actions_declarees() -> list:
         fichier_relatif = chemin.relative_to(ROOT).as_posix() if chemin.is_relative_to(ROOT) \
             else chemin.as_posix()
 
-        candidats = _fonctions(tree.body)
+        candidats = [(None, f) for f in _fonctions(tree.body)]
         for node in tree.body:
             if isinstance(node, ast.ClassDef):
-                candidats.extend(_fonctions(node.body))
+                candidats.extend((node.name, f) for f in _fonctions(node.body))
 
-        for fonction in candidats:
+        for classe, fonction in candidats:
             for detail, url_path, known in contract._actions_du_decorateur(fonction):
                 trouvees.append({
                     "fichier": fichier_relatif,
                     "ligne": fonction.lineno,
                     "module": module,
                     "fonction": fonction.name,
+                    "classe": classe,
                     "url_path": url_path,
                     "detail": detail,
                     "known": known,
@@ -144,6 +145,12 @@ def routes_par_action(backend: "contract.BackendRoutes") -> dict:
     for route, (owner, ref) in backend.views.items():
         if not (isinstance(ref, tuple) and len(ref) == 3 and ref[0] == "action"):
             continue
+        # ACAL293 — une methode qui SURCHARGE une action heritee (ex.
+        # ``chatter_noter`` du mixin records, reecrite sur CalepinageViewSet)
+        # est attribuee par BackendRoutes au module du mixin : on indexe donc
+        # aussi chaque action par (classe du ViewSet, fonction), cle que
+        # `analyse` consulte pour une methode declaree dans une classe.
+        out.setdefault(("classe", ref[1], ref[2]), []).append(route)
         if owner != VIEWS_MODULE_PREFIX and not owner.startswith(VIEWS_MODULE_PREFIX + "."):
             continue
         out.setdefault((owner, ref[2]), []).append(route)
@@ -235,6 +242,20 @@ ENTETE_BASE = """\
 _LIGNE_BASE = re.compile(r"^(?P<cle>\S+:\d+)\s+(?P<url_path>\S+)\s*(?:#.*)?$")
 
 
+def cle_dette(fichier: str, url_path: str) -> str:
+    """Cle de comparaison d'une dette : ``fichier`` + ``url_path`` normalise
+    (antislashes d'echappement retires). JAMAIS le numero de ligne : une
+    insertion de code au-dessus d'une action deja en dette la decalait et la
+    faisait passer pour NEUVE (vague D ACAL, 05/10/2026 : 5 faux rouges dans
+    ``views/documents.py``). La ligne reste ecrite dans la base, a titre de
+    repere humain seulement."""
+    return f"{fichier}::{url_path.replace(chr(92), '')}"
+
+
+def _cle_constat(c: dict) -> str:
+    return cle_dette(c["fichier"], c["url_path"])
+
+
 def charger_base(path: Path | None = None) -> dict:
     path = path or BASELINE_PATH
     if not path.is_file():
@@ -246,7 +267,8 @@ def charger_base(path: Path | None = None) -> dict:
             continue
         m = _LIGNE_BASE.match(ligne)
         if m:
-            base[m.group("cle")] = m.group("url_path")
+            fichier = m.group("cle").rsplit(":", 1)[0]
+            base[cle_dette(fichier, m.group("url_path"))] = m.group("cle")
     return base
 
 
@@ -278,7 +300,9 @@ def analyse() -> tuple:
 
     constats = []
     for item in declarees:
-        routee = bool(routes.get((item["module"], item["fonction"])))
+        routee = bool(routes.get((item["module"], item["fonction"]))) or bool(
+            item.get("classe")
+            and routes.get(("classe", item["classe"], item["fonction"])))
         if routee and action_consommee(item["url_path"], texte):
             continue
         constats.append(item)
@@ -320,7 +344,7 @@ def main(argv=None) -> int:
               "fonctionner — dans les deux cas la garde a cesse de garder.")
         return 1
 
-    cles_constats = {f"{c['fichier']}:{c['ligne']}" for c in constats}
+    cles_constats = {_cle_constat(c) for c in constats}
     base = charger_base()
 
     if args.write_baseline:
@@ -340,7 +364,7 @@ def main(argv=None) -> int:
               f"{len(set(base) - cles_constats)} retiree(s)).")
         return 0
 
-    nouveaux = [c for c in constats if f"{c['fichier']}:{c['ligne']}" not in base]
+    nouveaux = [c for c in constats if _cle_constat(c) not in base]
     corriges = set(base) - cles_constats
 
     if nouveaux:

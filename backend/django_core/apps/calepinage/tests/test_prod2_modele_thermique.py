@@ -19,7 +19,7 @@ import unittest
 
 from apps.calepinage.services.thermique import (
     MODELE_FAIMAN, MODELE_NOCT, TEMPERATURE_STC_C, perte_thermique,
-    poste_thermique, temperature_cellule,
+    temperature_cellule,
 )
 
 FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures_pvgis'
@@ -151,31 +151,6 @@ class FicheIncompleteTest(unittest.TestCase):
         resultat = perte_thermique(FICHE_FAIMAN, [])
         self.assertFalse(resultat['calculable'])
         self.assertIn('aucune heure ensoleillée', resultat['motif'])
-
-
-class PosteThermiqueTest(unittest.TestCase):
-
-    def setUp(self):
-        self.points = points_tmy()
-
-    def test_fiche_complete_donne_un_poste_source_fiche(self):
-        poste, diagnostic = poste_thermique(FICHE_FAIMAN, self.points,
-                                            forfait_pct=8.0)
-        self.assertEqual(poste['source'], 'fiche')
-        self.assertEqual(poste['pct'], diagnostic['pct'])
-        self.assertNotEqual(poste['pct'], 8.0)
-
-    def test_fiche_muette_conserve_le_forfait_en_l_annoncant(self):
-        poste, diagnostic = poste_thermique({}, self.points, forfait_pct=8.0)
-        self.assertEqual(poste['pct'], 8.0)
-        self.assertEqual(poste['source'], 'hypothese')
-        self.assertIn('forfait', poste['libelle'].lower())
-        self.assertIn('hypothèse', poste['reference'])
-        self.assertFalse(diagnostic['calculable'])
-
-    def test_sans_forfait_aucun_poste_n_est_fabrique(self):
-        poste, _ = poste_thermique({}, self.points)
-        self.assertIsNone(poste)
 
 
 if __name__ == '__main__':  # pragma: no cover

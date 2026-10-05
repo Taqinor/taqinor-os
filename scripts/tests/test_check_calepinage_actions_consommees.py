@@ -225,6 +225,54 @@ CalepinageViewSet.rapport_orphelin = rapport_orphelin
         code = cac.main([])
         self.assertEqual(code, 0)
 
+    def test_dette_decalee_par_une_insertion_reste_couverte(self):
+        # Vague D ACAL (05/10/2026) : du code insere AU-DESSUS d'une action
+        # deja en dette decale sa ligne ; la dette ne doit pas passer pour
+        # NEUVE (la cle de comparaison est fichier + url_path, pas la ligne).
+        chemin = self.depot.vue("sorties.py", """
+from rest_framework.decorators import action
+from . import CalepinageViewSet
+
+@action(detail=False, url_path='rapport-orphelin')
+def rapport_orphelin(self, request):
+    pass
+
+CalepinageViewSet.rapport_orphelin = rapport_orphelin
+""")
+        ligne = self.par_fonction("rapport_orphelin")[0]["ligne"]
+        cle = f"{chemin.relative_to(self.depot.racine).as_posix()}:{ligne - 2}"
+        write(self.depot.baseline,
+              cac.ENTETE_BASE + f"{cle}  rapport-orphelin  # dette historique de test\n")
+        self.assertEqual(cac.main([]), 0)
+
+    def test_surcharge_d_une_action_heritee_est_routee(self):
+        # ACAL293 : CalepinageViewSet SURCHARGE ``chatter_noter`` d'un mixin
+        # d'une autre app ; BackendRoutes attribue la route au module du
+        # mixin. Appelee par le client, la surcharge ne doit pas rougir.
+        write(self.depot.django / "apps" / "records" / "__init__.py", "")
+        write(self.depot.django / "apps" / "records" / "views.py", """
+from rest_framework.decorators import action
+
+class ChatterMixin:
+    @action(detail=True, methods=['post'], url_path='chatter/noter')
+    def chatter_noter(self, request, pk=None):
+        pass
+""")
+        self.depot.vue("calepinages.py", """
+from rest_framework import viewsets
+from rest_framework.decorators import action
+from apps.records.views import ChatterMixin
+
+class CalepinageViewSet(ChatterMixin, viewsets.ModelViewSet):
+    @action(detail=True, methods=['post'], url_path='chatter/noter')
+    def chatter_noter(self, request, pk=None):
+        return super().chatter_noter(request, pk=pk)
+""")
+        self.depot.frontend("api/calepinage/sorties.js", """
+export const f = (id, body) => api.post(`${pivot(id)}chatter/noter/`, { body })
+""")
+        self.assertEqual(self.par_fonction("chatter_noter"), [])
+
     def test_url_path_par_defaut_garde_le_souligne(self):
         # Piege DRF (meme regle que check_api_contract) : sans url_path
         # explicite, le chemin par defaut est le NOM DE LA METHODE TEL QUEL.

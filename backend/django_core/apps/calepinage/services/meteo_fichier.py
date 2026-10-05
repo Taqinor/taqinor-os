@@ -231,7 +231,7 @@ def _verifier_irradiance(titres):
         champ=COLONNE_IRRADIANCE_PLAN)
 
 
-def _nombre(valeur, *, colonne, ligne, obligatoire=False):
+def _cellule_numerique(valeur, *, colonne, ligne, obligatoire=False):
     """Un nombre, décimale « . » ou « , » — ou ``None`` / un refus nommé."""
     texte = str(valeur or '').strip().strip('"')
     if not texte:
@@ -410,7 +410,7 @@ def lire_serie_meteo(fichier, *, fournisseur='', nom_fichier='',
             # la chaîne (CALX59) sache sur quoi elle travaille.
             'annee': moment.year, 'mois': moment.month, 'jour': moment.day,
             'heure': moment.hour,
-            COLONNE_IRRADIANCE_PLAN: _nombre(
+            COLONNE_IRRADIANCE_PLAN: _cellule_numerique(
                 lue.get(COLONNE_IRRADIANCE_PLAN),
                 colonne=COLONNE_IRRADIANCE_PLAN, ligne=rang,
                 obligatoire=True),
@@ -419,8 +419,8 @@ def lire_serie_meteo(fichier, *, fournisseur='', nom_fichier='',
             'h_sun_deg': None,
         }
         for colonne in COLONNES_FACULTATIVES:
-            point[colonne] = (_nombre(lue.get(colonne), colonne=colonne,
-                                      ligne=rang)
+            point[colonne] = (_cellule_numerique(lue.get(colonne), colonne=colonne,
+                                                 ligne=rang)
                               if colonne in titres else None)
         points.append(point)
 

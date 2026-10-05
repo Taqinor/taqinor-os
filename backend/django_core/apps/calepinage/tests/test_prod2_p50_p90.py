@@ -13,20 +13,11 @@ enregistrée).
 """
 from __future__ import annotations
 
-import json
-import pathlib
 import unittest
 
 from apps.calepinage.services.p50p90 import (
     ORIGINE_ABSENTE, ORIGINE_MESUREE, bankable, variabilite_interannuelle,
 )
-from apps.calepinage.services.pertes_politique import politique_de_pertes
-from apps.calepinage.services.production import production_du_layout
-from apps.calepinage.services.pvgis_serie import _Cache, ClientPvgis
-
-FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures_pvgis'
-
-POSTES_ESSAI = [{'poste': 'onduleur', 'pct': 2.5, 'source': 'fiche'}]
 
 
 class SigmaTest(unittest.TestCase):
@@ -107,66 +98,6 @@ class BankableTest(unittest.TestCase):
                 self.assertIsNone(resultat['p50_kwh'])
                 self.assertIsNone(resultat['p90_kwh'])
                 self.assertIsNone(resultat['annual_variability'])
-
-
-class SansDevisTest(unittest.TestCase):
-    """CAL142 — le calepinage PUBLIE ses quantiles sans aucun devis."""
-
-    def setUp(self):
-        self.charge = json.loads(
-            (FIXTURES / 'seriescalc_casablanca_sud.json')
-            .read_text(encoding='utf-8'))
-
-    def transport(self, url, timeout_s):
-        return 200, json.dumps(self.charge)
-
-    def calculer(self):
-        client = ClientPvgis(self.transport, cache=_Cache(),
-                             dormir=lambda _s: None)
-        return production_du_layout(
-            {'zones': [{'id': 'z1', 'label': 'PAN-SUD',
-                        'geometry': {'count': 12, 'kwc': 8.64,
-                                     'azimuthDeg': 180.0, 'tiltDeg': 15.0}}]},
-            lat=33.5731, lon=-7.5898,
-            politique=politique_de_pertes(POSTES_ESSAI), client=client,
-            annee_debut=2020, annee_fin=2020)
-
-    def test_le_total_porte_p50_et_refuse_les_quantiles_sans_sigma(self):
-        # La fenêtre de cette fixture ne porte qu'UNE année : depuis CALX184,
-        # P50 reste servi et les quantiles sont refusés, jamais forfaitisés.
-        resultat = self.calculer()
-        total = resultat['production']['total']
-        self.assertIsNotNone(total['p50_kwh'])
-        self.assertIsNone(total['p75_kwh'])
-        self.assertIsNone(total['p90_kwh'])
-        self.assertIsNone(total['annual_variability'])
-        self.assertEqual(total['annual_variability_source'],
-                         ORIGINE_ABSENTE)
-
-    def test_aucun_pan_ne_recoit_de_quantile_sans_sigma(self):
-        ligne = self.calculer()['production']['par_pan'][0]
-        self.assertIsNotNone(ligne['p50_kwh'])
-        self.assertIsNone(ligne['p75_kwh'])
-        self.assertIsNone(ligne['p90_kwh'])
-
-    def test_l_origine_de_sigma_est_dite_dans_les_avertissements(self):
-        avis = self.calculer()['avertissements']
-        self.assertTrue(any('σ' in a for a in avis))
-
-    def test_un_pan_vide_ne_recoit_aucun_quantile_invente(self):
-        client = ClientPvgis(self.transport, cache=_Cache(),
-                             dormir=lambda _s: None)
-        resultat = production_du_layout(
-            {'zones': [{'id': 'z1', 'label': 'PAN-NU',
-                        'geometry': {'count': 0, 'kwc': 0.0,
-                                     'azimuthDeg': 180.0, 'tiltDeg': 15.0}}]},
-            lat=33.5731, lon=-7.5898,
-            politique=politique_de_pertes(POSTES_ESSAI), client=client,
-            annee_debut=2020, annee_fin=2020)
-        total = resultat['production']['total']
-        self.assertIsNone(total['p50_kwh'])
-        self.assertIsNone(total['p90_kwh'])
-        self.assertIsNone(resultat['production']['par_pan'][0]['p90_kwh'])
 
 
 if __name__ == '__main__':  # pragma: no cover

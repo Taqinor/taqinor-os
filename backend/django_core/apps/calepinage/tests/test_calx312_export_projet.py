@@ -6,8 +6,8 @@ Ce qui est prouvé ici :
   ``contract_samples/export_projet.json`` (toutes ses clés, blocs imbriqués), sur
   ``exemple`` (calepinage simulé) ET sur ``exemple_vide`` (jamais posé) —
   l'exemple est AFFIRMÉ, pas recopié ;
-* ``format_version`` est l'ENTIER 2 (CALX370 : ``postes_pertes`` et
-  ``variantes`` rejoignent le fichier) ; ``produit_le`` l'instant de
+* ``format_version`` est l'ENTIER 3 (CALX370 : ``postes_pertes`` et
+  ``variantes`` ; ACAL243 : ``saisies``) ; ``produit_le`` l'instant de
   production, en UTC ;
 * un calepinage NON SIMULÉ exporte ``resultat: null`` (jamais ``{}``),
   ``pertes: []`` et les grandeurs de simulation à ``null`` AVEC leur motif en
@@ -40,7 +40,6 @@ from apps.calepinage.services.export_projet import (
     ExportProjetRefuse, document_de_projet, octets_de_projet,
 )
 from apps.calepinage.services.note_calcul import CLES_INTERDITES
-from apps.calepinage.tests._m0_en_attente import export_projet_v2
 
 from .test_api_liste import BaseApiCalepinage, url_detail
 
@@ -51,13 +50,8 @@ def charger(nom):
     return json.loads((ECHANTILLONS / nom).read_text(encoding='utf-8'))
 
 
-#: ACAL17 a posé le format 3 (bloc ``saisies``) avant son producteur :
-#: tant qu'ACAL243 n'a pas livré, le serveur exporte le format 2 — les
-#: états du contrat sont ramenés au format 2 avant d'être comparés.
-CONTRAT_V3 = charger('export_projet.json')
-CONTRAT = dict(CONTRAT_V3,
-               exemple=export_projet_v2(CONTRAT_V3['exemple']),
-               exemple_vide=export_projet_v2(CONTRAT_V3['exemple_vide']))
+#: Le contrat au format 3 (ACAL17), servi tel quel depuis ACAL243.
+CONTRAT = charger('export_projet.json')
 RESULTAT = charger('calepinage_resultat.json')
 EQUIPEMENTS = charger('calepinage_equipements.json')
 MOMENT = datetime.datetime(2026, 9, 23, 11, 30, tzinfo=datetime.timezone.utc)
@@ -130,9 +124,9 @@ class FormeDuContratTest(unittest.TestCase):
         exemple.pop('produit_le')
         self.assertEqual(document, exemple)
 
-    def test_format_version_est_l_entier_2(self):
+    def test_format_version_est_l_entier_3(self):
         for document in (exporte(), vide()):
-            self.assertEqual(document['format_version'], 2)
+            self.assertEqual(document['format_version'], 3)
             self.assertIs(type(document['format_version']), int)
         self.assertEqual(FORMAT_VERSION, CONTRAT['exemple']['format_version'])
 

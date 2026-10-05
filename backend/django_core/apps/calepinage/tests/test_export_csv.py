@@ -167,10 +167,15 @@ class DocumentExportableTest(unittest.TestCase):
 
     def vue(self):
         try:
-            from apps.calepinage.views.export_csv import document_exportable
+            from apps.calepinage.services.export_csv import document_exportable
+            from .acal_livrables_helpers import patch_servi_frais
         except Exception as erreur:  # pragma: no cover - hors harnais Django
             self.skipTest(f'Réglages Django indisponibles : {erreur}')
-        return document_exportable
+
+        def composer(calepinage):
+            with patch_servi_frais():
+                return document_exportable(calepinage)
+        return composer
 
     def test_le_bloc_calx142_est_lu_par_sa_cle_points(self):
         document_exportable = self.vue()
