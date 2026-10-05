@@ -51,6 +51,14 @@ import {
   phraseProvenance,
   AGR_LBL,
   AGR_MOIS_LONG,
+  syntheseAgricoleArgent,
+  libelleGarantie,
+  AGR_ARGENT_LBL,
+  AGR_ENERGIE_LBL,
+  AGR_NON_INCLUS_LBL,
+  AGR_COMPOSANT_LBL,
+  remplirLbl,
+  type SyntheseAgricoleArgent,
   type SyntheseAgricole,
   type Lbl3,
   commercialArchetype,
@@ -205,6 +213,7 @@ import {
   groupEquipment,
   equipmentDelta,
   equipmentPresence,
+  garantiesCodeesEnDurAffichees,
   EQUIPMENT_GROUP_LABELS,
 } from '../../lib/propositionPage';
 // WJ131 — appariement PUR « ligne de devis → fiche technique /produits/<slug> »
@@ -598,6 +607,31 @@ const aConfirmerLbl: Lbl3 = {
   en: (synth?.aConfirmerParVisite ?? []).map((c) => libelleEntree(c).en).join(', '),
   ar: (synth?.aConfirmerParVisite ?? []).map((c) => libelleEntree(c).ar).join('، '),
 };
+// AGW304 — l'ARGENT déclaré, l'énergie actuelle, la règle FDA, les garanties par composant, les
+// options du kit et les formalités : LUS dans `synthese_agricole`, rien n'est calculé ici.
+const argent: SyntheseAgricoleArgent | null = ok ? syntheseAgricoleArgent(data!) : null;
+const energieLbl: Lbl3 | null = argent?.energieActuelle
+  ? (AGR_ENERGIE_LBL[argent.energieActuelle.valeur] ?? null)
+  : null;
+const energiePhrase: Lbl3 | null = argent?.energieActuelle ? phraseProvenance(argent.energieActuelle.provenance) : null;
+// Notes du bloc argent : provenance de la conso et du prix payé (date de DÉCLARATION servie),
+// indexation 0 % (D-AGR-5), aide FDA non comptée, condition — les mots du devis.
+const argentNotes: Lbl3 = (() => {
+  const phrase = phraseProvenance({ cle: 'conso', origine: 'saisie', detail: null, date: argent?.economies?.declareLe ?? null });
+  const conso = remplirLbl(AGR_ARGENT_LBL.consoPrixPaye, { phrase: '\u0000' });
+  const voix = (k: 'fr' | 'en' | 'ar') =>
+    [conso[k].replace('\u0000', phrase[k]), AGR_ARGENT_LBL.indexation[k], AGR_ARGENT_LBL.fdaNonComptee[k], AGR_ARGENT_LBL.condition[k]].join(' ');
+  return { fr: voix('fr'), en: voix('en'), ar: voix('ar') };
+})();
+const nonInclusLbl: Lbl3 = (() => {
+  const noms = (argent?.nonInclus ?? []).map((c) => AGR_NON_INCLUS_LBL[c] ?? { fr: c, en: c, ar: c });
+  const j = (k: 'fr' | 'en' | 'ar') => noms.map((n) => n[k]).join(k === 'ar' ? '، ' : ', ');
+  return {
+    fr: `${AGR_ARGENT_LBL.nonInclus.fr} : ${j('fr')}.`,
+    en: `${AGR_ARGENT_LBL.nonInclus.en}: ${j('en')}.`,
+    ar: `${AGR_ARGENT_LBL.nonInclus.ar}: ${j('ar')}.`,
+  };
+})();
 // Archétype de bloc commercial (miroir backend) — seulement en mode commercial.
 const comArchetype = ok && isCommercial ? commercialArchetype(data?.categorie_commerciale) : null;
 
@@ -2752,6 +2786,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             lu sur les lignes des deux options). Un devis de POMPAGE promettait
             sinon une garantie onduleur pour un matériel absent du devis. La
             garantie de POSE, elle, est l'engagement de Taqinor : toujours vraie. */}
+        {garantiesCodeesEnDurAffichees(installMode) && (
         <div class="cine-card mt-5 rounded-xl p-5">
           {/* ── QUICK WIN (fondateur, 26/08/2026) — DEUX GARANTIES PANNEAU, PAS
                  UNE. « 30 ans de performance panneaux » se lisait comme LA
@@ -2822,6 +2857,20 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             {equipPresence.panneaux ? "Deux garanties : le panneau, et la puissance qu’il délivre. Elles portent sur le matériel — transférables avec le bien, valables quel que soit l’installateur." : "Les garanties portent sur le matériel — transférables avec le bien, valables quel que soit l’installateur."}
           </p>
         </div>
+        )}
+        {/* AGW304 — AGRICOLE : les garanties par composant SERVIES (pompe, variateur, panneaux), jamais complétées
+            par une constante ; la garantie de pose n'apparaît que si la synthèse la sert. */}
+        {isAgricole && argent && argent.garanties.length > 0 && (
+          <div class="cine-card mt-5 rounded-xl p-5" data-agri-garanties>
+            <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.garanties.fr} data-en={AGR_ARGENT_LBL.garanties.en} data-ar={AGR_ARGENT_LBL.garanties.ar}>{AGR_ARGENT_LBL.garanties.fr}</p>
+            <ul class="mt-3 space-y-1.5 text-sm text-lune-soft">
+              {argent.garanties.map((g) => {
+                const { lbl } = libelleGarantie(g);
+                return <li data-garantie-composant={g.composant} data-i18n data-fr={lbl.fr} data-en={lbl.en} data-ar={lbl.ar}>{lbl.fr}</li>;
+              })}
+            </ul>
+          </div>
+        )}
 
 
           {/* ── PREVIEW v2 · LE DÉLAI ET LE RESPONSABLE ──────────────────────
@@ -3222,6 +3271,121 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   data-en={`${AGR_LBL.aConfirmerVisite.en} ${aConfirmerLbl.en}.`}
                   data-ar={`${AGR_LBL.aConfirmerVisite.ar} ${aConfirmerLbl.ar}.`}><strong class="text-lune">{AGR_LBL.aConfirmerVisite.fr}</strong> {aConfirmerLbl.fr}.</p>
               )}
+            </div>
+          )}
+
+
+          {/* ── AGW304 — L'ARGENT DÉCLARÉ, L'ÉNERGIE ACTUELLE, LA RÈGLE FDA, LES OPTIONS DU KIT ET LES
+              FORMALITÉS, tels que SERVIS par `synthese_agricole` (la MÊME fonction que le PDF).
+              Aucun calcul ici ; chaque bloc est OMIS quand le serveur ne le sert pas. Jamais un
+              montant d'aide propre au client, jamais « jusqu'à 30 % », jamais « gratuit ». ──── */}
+          {argent?.economies && (
+            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-argent>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.titreArgent.fr} data-en={AGR_ARGENT_LBL.titreArgent.en} data-ar={AGR_ARGENT_LBL.titreArgent.ar}>{AGR_ARGENT_LBL.titreArgent.fr}</p>
+              <dl class="mt-3 divide-y divide-white/10 text-sm">
+                {argent.economies.depenseActuelleMadAn !== null && (
+                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="depense-actuelle">
+                    <dt class="text-lune-soft" data-i18n
+                      data-fr={`${AGR_ARGENT_LBL.depenseActuelle.fr}${energieLbl ? ` — ${energieLbl.fr}` : ''}`}
+                      data-en={`${AGR_ARGENT_LBL.depenseActuelle.en}${energieLbl ? ` — ${energieLbl.en}` : ''}`}
+                      data-ar={`${AGR_ARGENT_LBL.depenseActuelle.ar}${energieLbl ? ` — ${energieLbl.ar}` : ''}`}>{AGR_ARGENT_LBL.depenseActuelle.fr}{energieLbl ? ` — ${energieLbl.fr}` : ''}</dt>
+                    <dd class="fig text-lune" dir="ltr">{formatMAD(argent.economies.depenseActuelleMadAn)}</dd>
+                  </div>
+                )}
+                {argent.economies.chargesSolairesMadAn !== null && (
+                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="charges-solaires">
+                    <dt class="text-lune-soft" data-i18n data-fr={AGR_ARGENT_LBL.chargesSolaires.fr} data-en={AGR_ARGENT_LBL.chargesSolaires.en} data-ar={AGR_ARGENT_LBL.chargesSolaires.ar}>{AGR_ARGENT_LBL.chargesSolaires.fr}</dt>
+                    <dd class="fig text-lune" dir="ltr">{formatMAD(argent.economies.chargesSolairesMadAn)}</dd>
+                  </div>
+                )}
+                {argent.economies.economieNetteAn1 !== null && (
+                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="economie-nette-an1">
+                    <dt class="text-lune-soft" data-i18n data-fr={AGR_ARGENT_LBL.economieNetteAn1.fr} data-en={AGR_ARGENT_LBL.economieNetteAn1.en} data-ar={AGR_ARGENT_LBL.economieNetteAn1.ar}>{AGR_ARGENT_LBL.economieNetteAn1.fr}</dt>
+                    <dd class="fig lum" dir="ltr">{formatMAD(argent.economies.economieNetteAn1)}</dd>
+                  </div>
+                )}
+                {argent.economies.retourAns !== null && (
+                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="retour-sans-aide">
+                    <dt class="text-lune-soft" data-i18n data-fr={AGR_ARGENT_LBL.retourSansAide.fr} data-en={AGR_ARGENT_LBL.retourSansAide.en} data-ar={AGR_ARGENT_LBL.retourSansAide.ar}>{AGR_ARGENT_LBL.retourSansAide.fr}</dt>
+                    <dd class="fig text-lune" dir="ltr" data-i18n
+                      data-fr={`${formatNumber(argent.economies.retourAns, 1)} ans`} data-en={`${formatNumber(argent.economies.retourAns, 1)} years`} data-ar={`${formatNumber(argent.economies.retourAns, 1)} سنوات`}>{formatNumber(argent.economies.retourAns, 1)} ans</dd>
+                  </div>
+                )}
+                {argent.economies.coutM3 && (
+                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="cout-m3">
+                    <dt class="text-lune-soft" data-i18n data-fr={AGR_ARGENT_LBL.coutM3.fr} data-en={AGR_ARGENT_LBL.coutM3.en} data-ar={AGR_ARGENT_LBL.coutM3.ar}>{AGR_ARGENT_LBL.coutM3.fr}</dt>
+                    <dd class="fig text-lune" dir="ltr">{formatNumber(argent.economies.coutM3.actuel, 2)} / {formatNumber(argent.economies.coutM3.solaire, 2)} MAD</dd>
+                  </div>
+                )}
+                {argent.economies.remplacements.map((r) => {
+                  const comp = AGR_COMPOSANT_LBL[r.composant] ?? { fr: r.composant, en: r.composant, ar: r.composant };
+                  const lbl = {
+                    fr: AGR_ARGENT_LBL.remplacement.fr.replace('{composant}', comp.fr).replace('{annee}', String(r.annee)),
+                    en: AGR_ARGENT_LBL.remplacement.en.replace('{composant}', comp.en).replace('{annee}', String(r.annee)),
+                    ar: AGR_ARGENT_LBL.remplacement.ar.replace('{composant}', comp.ar).replace('{annee}', String(r.annee)),
+                  };
+                  return (
+                    <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="remplacement">
+                      <dt class="text-lune-soft" data-i18n data-fr={lbl.fr} data-en={lbl.en} data-ar={lbl.ar}>{lbl.fr}</dt>
+                      <dd class="fig text-lune" dir="ltr">{formatMAD(r.montantTtc)} TTC</dd>
+                    </div>
+                  );
+                })}
+              </dl>
+              <p class="mt-3 text-xs text-lune-faint" data-agri-argent-notes data-i18n
+                data-fr={argentNotes.fr} data-en={argentNotes.en} data-ar={argentNotes.ar}>{argentNotes.fr}</p>
+            </div>
+          )}
+
+          {/* Énergie actuelle — seulement si DÉCLARÉE (jamais le défaut de l'écran). */}
+          {argent?.energieActuelle && energieLbl && (
+            <div class="cine-card mt-5 rounded-xl p-5" data-agri-energie>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.energieActuelle.fr} data-en={AGR_ARGENT_LBL.energieActuelle.en} data-ar={AGR_ARGENT_LBL.energieActuelle.ar}>{AGR_ARGENT_LBL.energieActuelle.fr}</p>
+              <p class="mt-2 text-sm text-lune-soft">
+                <strong class="text-lune" data-i18n data-fr={energieLbl.fr} data-en={energieLbl.en} data-ar={energieLbl.ar}>{energieLbl.fr}</strong> —
+                <span data-i18n data-fr={energiePhrase!.fr} data-en={energiePhrase!.en} data-ar={energiePhrase!.ar}>{energiePhrase!.fr}</span>
+              </p>
+            </div>
+          )}
+
+          {/* La RÈGLE de l'aide FDA (D-AGR-6) : conditions, plafonds, accord AVANT travaux,
+              versement après réalisation, source — JAMAIS un montant propre au client. */}
+          {argent?.aideFda?.textes && (
+            <div class="cine-card mt-5 rounded-xl p-5" data-agri-fda>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.aideTitre.fr} data-en={AGR_ARGENT_LBL.aideTitre.en} data-ar={AGR_ARGENT_LBL.aideTitre.ar}>{AGR_ARGENT_LBL.aideTitre.fr}</p>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft" data-i18n
+                data-fr={argent.aideFda.textes.fr} data-en={argent.aideFda.textes.en} data-ar={argent.aideFda.textes.ar}>{argent.aideFda.textes.fr}</p>
+            </div>
+          )}
+
+          {/* Options du kit : nommées, avec leur supplément TTC — lecture seule (l'activation en ligne est AGW308). */}
+          {argent && argent.optionsKit.length > 0 && (
+            <div class="cine-card mt-5 rounded-xl p-5" data-agri-options-kit>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.optionsKit.fr} data-en={AGR_ARGENT_LBL.optionsKit.en} data-ar={AGR_ARGENT_LBL.optionsKit.ar}>{AGR_ARGENT_LBL.optionsKit.fr}</p>
+              <ul class="mt-3 space-y-2 text-sm text-lune-soft">
+                {argent.optionsKit.map((o) => (
+                  <li class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1" data-agri-option-kit data-ligne-id={o.ligneId ?? ''}>
+                    <span class="text-lune">{o.designation}</span>
+                    {o.totalTtc !== null && <span class="fig text-lune" dir="ltr">+ {formatMAD(o.totalTtc)} TTC</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {argent && argent.nonInclus.length > 0 && (
+            <p class="mt-3 text-sm text-lune-soft" data-agri-non-inclus data-i18n
+              data-fr={nonInclusLbl.fr} data-en={nonInclusLbl.en} data-ar={nonInclusLbl.ar}>{nonInclusLbl.fr}</p>
+          )}
+
+          {/* Formalités du client (loi 82-21 art. 3 hors réseau, loi 36-15 eau), telles que servies. */}
+          {argent && argent.formalites.length > 0 && (
+            <div class="cine-card mt-5 rounded-xl p-5" data-agri-formalites>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.formalites.fr} data-en={AGR_ARGENT_LBL.formalites.en} data-ar={AGR_ARGENT_LBL.formalites.ar}>{AGR_ARGENT_LBL.formalites.fr}</p>
+              <ul class="mt-3 space-y-2 text-sm text-lune-soft">
+                {argent.formalites.map((f) => (
+                  <li data-formalite={f.cle ?? ''} data-i18n data-fr={f.textes.fr} data-en={f.textes.en} data-ar={f.textes.ar}>{f.textes.fr}</li>
+                ))}
+              </ul>
             </div>
           )}
 

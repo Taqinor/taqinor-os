@@ -4637,6 +4637,324 @@ export function courbeGeometrie(pf: SyntheseAgricole['pointFonctionnement']): Co
   };
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// AGW304 — Jumeau web du document agricole (2/2) : argent déclaré, énergie
+// actuelle, règle de l'aide FDA, garanties par composant, options du kit et
+// formalités — LUS dans `synthese_agricole`, rendus tels que servis.
+//
+// DISCIPLINE (D-AGR-5, D-AGR-6, D-AGR-8) : aucun calcul ici. L'argent est le
+// bloc PUBLIC `economie_pompage` (AGR3) recopié par le serveur, OMIS quand il
+// n'est pas publiable ; l'aide FDA est la RÈGLE (plafonds + conditions + source),
+// jamais un montant propre au client ni un délai ; les garanties sont celles des
+// fiches produits, jamais complétées par une constante.
+// ════════════════════════════════════════════════════════════════════════════
+
+export interface SyntheseRemplacement {
+  composant: string;
+  annee: number;
+  montantTtc: number;
+}
+
+export interface SyntheseEconomiesAgricole {
+  /** `carburant` | … (nature du cas servi). */
+  cas: string | null;
+  /** Dépense actuelle déclarée, par an (MAD). */
+  depenseActuelleMadAn: number | null;
+  /** Entretien payé déclaré, par an (MAD). */
+  entretienMadAn: number | null;
+  /** Charges du solaire par an (barème société). */
+  chargesSolairesMadAn: number | null;
+  /** Économie nette de l'année 1 (flux an 1 servi). */
+  economieNetteAn1: number | null;
+  horizonAns: number | null;
+  /** Retour SANS aide (années), tel que servi. */
+  retourAns: number | null;
+  /** Coût du m³ avant / avec le solaire (MAD). */
+  coutM3: { actuel: number; solaire: number } | null;
+  /** Remplacements COMPTÉS (année + montant TTC servis) ; les autres sont omis. */
+  remplacements: SyntheseRemplacement[];
+  /** Date de déclaration la plus récente des entrées (ISO), ou `null`. */
+  declareLe: string | null;
+  /** Les entrées déclarées {cle, valeur, unite} — recopiées telles quelles. */
+  entreesDeclarees: Array<{ cle: string; valeur: unknown; unite: string | null }>;
+}
+
+export interface SyntheseAideFda {
+  conditions: string[];
+  /** Les QUATRE plafonds de la règle — AUCUN autre nombre n'est lu. */
+  plafonds: { tauxPct: number | null; parHa: number | null; parKwc: number | null; parProjet: number | null };
+  edition: string | null;
+  source: string | null;
+  releveLe: string | null;
+  /** La règle en toutes lettres, par langue, telle que servie. */
+  textes: Lbl3 | null;
+}
+
+export interface SyntheseGarantie {
+  composant: string;
+  mois: number | null;
+  libelle: string | null;
+}
+
+export interface SyntheseOptionKit {
+  ligneId: number | null;
+  designation: string;
+  totalTtc: number | null;
+}
+
+export interface SyntheseFormalite {
+  cle: string | null;
+  textes: Lbl3;
+  source: string | null;
+}
+
+export interface SyntheseAgricoleArgent {
+  economies: SyntheseEconomiesAgricole | null;
+  /** Énergie actuelle DÉCLARÉE (butane / diesel / électrique / aucune), avec provenance. */
+  energieActuelle: { valeur: string; provenance: SyntheseProvenance } | null;
+  aideFda: SyntheseAideFda | null;
+  garanties: SyntheseGarantie[];
+  optionsKit: SyntheseOptionKit[];
+  nonInclus: string[];
+  formalites: SyntheseFormalite[];
+}
+
+function lireEconomies(v: unknown): SyntheseEconomiesAgricole | null {
+  if (!estRecord(v)) return null;
+  // Le serveur n'envoie que le bloc publiable ; la garde est doublée ici : un bloc
+  // non calculé / non publiable n'atteint JAMAIS l'écran.
+  if (v.statut !== 'calcule' || v.publiable_client !== true) return null;
+  const dep = estRecord(v.depense_actuelle) ? v.depense_actuelle : {};
+  const charges = estRecord(v.charges_solaires) ? v.charges_solaires : {};
+  const eco = estRecord(v.economie) ? v.economie : {};
+  const flux = Array.isArray(eco.flux) ? eco.flux : [];
+  const an1 = flux.find((f) => estRecord(f) && f.annee === 1);
+  const m3 = estRecord(v.mad_par_m3) ? v.mad_par_m3 : null;
+  const actuel = m3 ? nombreServi(m3.actuel) : null;
+  const solaire = m3 ? nombreServi(m3.solaire) : null;
+  const remplacements: SyntheseRemplacement[] = [];
+  if (Array.isArray(v.remplacements)) {
+    for (const r of v.remplacements) {
+      if (!estRecord(r)) continue;
+      const annee = nombreServi(r.annee);
+      const montant = nombreServi(r.montant_ttc_mad);
+      const composant = texteServi(r.composant);
+      if (composant && annee !== null && annee > 0 && montant !== null) {
+        remplacements.push({ composant, annee, montantTtc: montant });
+      }
+    }
+  }
+  const entrees: SyntheseEconomiesAgricole['entreesDeclarees'] = [];
+  const dates: string[] = [];
+  if (Array.isArray(v.entrees_declarees)) {
+    for (const e of v.entrees_declarees) {
+      if (!estRecord(e) || !texteServi(e.cle)) continue;
+      entrees.push({ cle: e.cle as string, valeur: e.valeur ?? null, unite: texteServi(e.unite) });
+      const d = texteServi(e.saisi_le);
+      if (d && dateJjMmAaaa(d)) dates.push(d.slice(0, 10));
+    }
+  }
+  return {
+    cas: texteServi(v.cas),
+    depenseActuelleMadAn: nombreServi(dep.annuelle_mad),
+    entretienMadAn: nombreServi(dep.entretien_mad_an),
+    chargesSolairesMadAn: nombreServi(charges.total_mad_an),
+    economieNetteAn1: estRecord(an1) ? nombreServi(an1.flux_mad) : null,
+    horizonAns: nombreServi(eco.horizon_ans),
+    retourAns: nombreServi(eco.retour_ans),
+    coutM3: actuel !== null && solaire !== null ? { actuel, solaire } : null,
+    remplacements,
+    declareLe: dates.length > 0 ? dates.sort()[dates.length - 1] : null,
+    entreesDeclarees: entrees,
+  };
+}
+
+function lireEnergieActuelle(v: unknown): SyntheseAgricoleArgent['energieActuelle'] {
+  if (!estRecord(v)) return null;
+  const valeur = texteServi(v.valeur);
+  const prov = lireProvenance({ energie_actuelle: v.provenance })[0];
+  // Sans provenance, ce n'est pas une déclaration (jamais le défaut de l'écran).
+  return valeur && prov ? { valeur, provenance: prov } : null;
+}
+
+function lireTextesTroisVoix(v: unknown): Lbl3 | null {
+  if (!estRecord(v)) return null;
+  const fr = texteServi(v.fr);
+  if (!fr) return null;
+  return { fr, en: texteServi(v.en) ?? fr, ar: texteServi(v.ar) ?? fr };
+}
+
+function lireAideFda(v: unknown): SyntheseAideFda | null {
+  if (!estRecord(v)) return null;
+  const pl = estRecord(v.plafonds) ? v.plafonds : {};
+  return {
+    conditions: Array.isArray(v.conditions) ? v.conditions.filter((c): c is string => typeof c === 'string') : [],
+    plafonds: {
+      tauxPct: nombreServi(pl.taux_pct),
+      parHa: nombreServi(pl.plafond_mad_par_ha),
+      parKwc: nombreServi(pl.plafond_mad_par_kwc),
+      parProjet: nombreServi(pl.plafond_mad_par_projet),
+    },
+    edition: texteServi(v.edition),
+    source: texteServi(v.source),
+    releveLe: texteServi(v.releve_le),
+    textes: lireTextesTroisVoix(v.textes),
+  };
+}
+
+function lireGaranties(v: unknown): SyntheseGarantie[] {
+  if (!Array.isArray(v)) return [];
+  const out: SyntheseGarantie[] = [];
+  for (const g of v) {
+    if (!estRecord(g) || !texteServi(g.composant)) continue;
+    const mois = nombreServi(g.mois);
+    out.push({
+      composant: g.composant as string,
+      mois: mois !== null && Number.isInteger(mois) && mois > 0 ? mois : null,
+      libelle: texteServi(g.libelle),
+    });
+  }
+  return out;
+}
+
+function lireOptionsKit(v: unknown): SyntheseOptionKit[] {
+  if (!Array.isArray(v)) return [];
+  const out: SyntheseOptionKit[] = [];
+  for (const o of v) {
+    if (!estRecord(o)) continue;
+    const designation = texteServi(o.designation);
+    if (!designation) continue;
+    const id = nombreServi(o.ligne_id);
+    out.push({ ligneId: id !== null && Number.isInteger(id) ? id : null, designation, totalTtc: nombreServi(o.total_ttc) });
+  }
+  return out;
+}
+
+function lireFormalites(v: unknown): SyntheseFormalite[] {
+  if (!Array.isArray(v)) return [];
+  const out: SyntheseFormalite[] = [];
+  for (const f of v) {
+    if (!estRecord(f)) continue;
+    const textes = lireTextesTroisVoix(f.textes);
+    if (!textes) continue;
+    out.push({ cle: texteServi(f.cle), textes, source: texteServi(f.source) });
+  }
+  return out;
+}
+
+/**
+ * AGW304 — extracteur PUR des blocs « argent » de `synthese_agricole`. `null` hors
+ * mode agricole ou sans synthèse. Bloc absent → `null` / liste vide (jamais un 0,
+ * jamais une constante qui complète : une garantie sans durée servie reste sans durée).
+ */
+export function syntheseAgricoleArgent(
+  p: Pick<ProposalResponse, 'mode_installation' | 'quote'> | null | undefined,
+): SyntheseAgricoleArgent | null {
+  if (!p || resolveInstallMode(p) !== 'agricole') return null;
+  const brut = (p as { synthese_agricole?: unknown }).synthese_agricole;
+  if (!estRecord(brut) || Object.keys(brut).length === 0) return null;
+  return {
+    economies: lireEconomies(brut.economies),
+    energieActuelle: lireEnergieActuelle(brut.energie_actuelle),
+    aideFda: lireAideFda(brut.aide_fda),
+    garanties: lireGaranties(brut.garanties),
+    optionsKit: lireOptionsKit(brut.options_kit),
+    nonInclus: Array.isArray(brut.non_inclus) ? brut.non_inclus.filter((x): x is string => typeof x === 'string') : [],
+    formalites: lireFormalites(brut.formalites),
+  };
+}
+
+/** Durée d'une garantie (mois servis) en mots : 24 → « 2 ans », 18 → « 18 mois ». */
+export function dureeGarantie(mois: number): Lbl3 {
+  if (mois % 12 === 0) {
+    const ans = String(mois / 12);
+    return ans === '1'
+      ? { fr: '1 an', en: '1 year', ar: '1 سنة' }
+      : { fr: `${ans} ans`, en: `${ans} years`, ar: `${ans} سنوات` };
+  }
+  return { fr: `${mois} mois`, en: `${mois} months`, ar: `${mois} أشهر` };
+}
+
+/** Libellé d'une garantie par composant ; `null` si la durée n'est pas servie (le libellé servi est alors repris). */
+export function libelleGarantie(g: SyntheseGarantie): { lbl: Lbl3; avecDuree: boolean } {
+  const gabarits: Record<string, Lbl3> = {
+    pompe: { fr: 'Garantie constructeur de la pompe : {duree}', en: 'Pump manufacturer warranty: {duree}', ar: 'ضمان الصانع للمضخة: {duree}' },
+    variateur: { fr: 'Garantie constructeur du variateur : {duree}', en: 'Drive manufacturer warranty: {duree}', ar: 'ضمان الصانع للمغير: {duree}' },
+    panneaux: { fr: 'Garantie produit des panneaux : {duree}', en: 'Panel product warranty: {duree}', ar: 'ضمان منتوج الألواح: {duree}' },
+    performance_panneaux: { fr: 'Garantie de production des panneaux : {duree}', en: 'Panel output warranty: {duree}', ar: 'ضمان إنتاج الألواح: {duree}' },
+  };
+  const gab = gabarits[g.composant];
+  if (gab && g.mois !== null) return { lbl: fillDuree(gab, dureeGarantie(g.mois)), avecDuree: true };
+  const fr = g.libelle ?? g.composant;
+  return { lbl: { fr, en: fr, ar: fr }, avecDuree: false };
+}
+
+function fillDuree(gab: Lbl3, d: Lbl3): Lbl3 {
+  return { fr: gab.fr.replace('{duree}', d.fr), en: gab.en.replace('{duree}', d.en), ar: gab.ar.replace('{duree}', d.ar) };
+}
+
+/** Libellés structurels de la section « argent » (mots du catalogue du devis, `agr_*`). */
+export const AGR_ARGENT_LBL = {
+  titreArgent: { fr: 'Votre argent', en: 'Your money', ar: 'أموالكم' },
+  depenseActuelle: { fr: 'Votre dépense actuelle par an', en: 'Your current spending per year', ar: 'مصاريفكم الحالية في السنة' },
+  chargesSolaires: { fr: 'Charges du solaire par an (barème)', en: 'Solar running costs per year (price list)', ar: 'تكاليف الطاقة الشمسية في السنة (حسب التسعيرة)' },
+  economieNetteAn1: { fr: 'Économie nette, année 1', en: 'Net saving, year 1', ar: 'التوفير الصافي، السنة الأولى' },
+  retourSansAide: { fr: 'Retour sur investissement, sans aide', en: 'Payback, without subsidy', ar: 'استرجاع الاستثمار، بدون دعم' },
+  coutM3: { fr: 'Coût du m³ : avant / avec le solaire', en: 'Cost per m³: before / with solar', ar: 'تكلفة المتر المكعب: قبل / مع الطاقة الشمسية' },
+  remplacement: {
+    fr: 'Remplacement {composant}, année {annee} (compté)',
+    en: 'Replacement of the {composant}, year {annee} (included)',
+    ar: 'استبدال {composant}، السنة {annee} (محتسب)',
+  },
+  composantPompe: { fr: 'pompe', en: 'pump', ar: 'المضخة' },
+  composantVariateur: { fr: 'variateur', en: 'drive', ar: 'المغير' },
+  consoPrixPaye: {
+    fr: 'Consommation et prix payé : {phrase}.',
+    en: 'Consumption and price paid: {phrase}.',
+    ar: 'الاستهلاك والثمن المؤدى: {phrase}.',
+  },
+  indexation: { fr: 'Indexation du carburant : 0 %.', en: 'Fuel price indexation: 0%.', ar: 'مراجعة ثمن الوقود: 0 %.' },
+  fdaNonComptee: {
+    fr: "L'aide FDA éventuelle n'est pas comptée.",
+    en: 'Any FDA subsidy is not counted.',
+    ar: 'الدعم المحتمل من صندوق التنمية الفلاحية غير محتسب.',
+  },
+  condition: {
+    fr: 'Si le solaire remplace tout votre pompage actuel, à volume pompé égal.',
+    en: 'If solar replaces all of your current pumping, for the same volume pumped.',
+    ar: 'إذا عوّضت الطاقة الشمسية كل ضخّكم الحالي، بنفس حجم الماء المضخوخ.',
+  },
+  nAns: { fr: '{n} ans', en: '{n} years', ar: '{n} سنوات' },
+  energieActuelle: { fr: 'Énergie actuelle', en: 'Current energy', ar: 'الطاقة الحالية' },
+  aideTitre: { fr: "Aide de l'État (FDA) : la règle", en: 'State aid (FDA): the rule', ar: 'دعم الدولة (صندوق التنمية الفلاحية): القاعدة' },
+  garanties: { fr: 'Garanties', en: 'Warranties', ar: 'الضمانات' },
+  optionsKit: {
+    fr: 'Options du kit (prix du supplément, hors total ci-dessus)',
+    en: 'Kit options (price of the extra, not in the total above)',
+    ar: 'خيارات العدة (ثمن الإضافة، خارج المجموع أعلاه)',
+  },
+  nonInclus: { fr: 'Non inclus', en: 'Not included', ar: 'غير مشمول' },
+  formalites: { fr: 'Formalités', en: 'Formalities', ar: 'الإجراءات' },
+} satisfies Record<string, Lbl3>;
+
+/** Composants remplaçables / garantis (clés machine du moteur) → libellé. */
+export const AGR_COMPOSANT_LBL: Record<string, Lbl3> = {
+  pompe: { fr: 'pompe', en: 'pump', ar: 'المضخة' },
+  variateur: { fr: 'variateur', en: 'drive', ar: 'المغير' },
+};
+
+export const AGR_ENERGIE_LBL: Record<string, Lbl3> = {
+  butane: { fr: 'butane (bouteilles)', en: 'butane (bottles)', ar: 'البوتان (قنينات)' },
+  diesel: { fr: 'gasoil (groupe électrogène)', en: 'diesel (generator)', ar: 'الغازوال (مولد كهربائي)' },
+  electrique: { fr: 'réseau électrique (facture)', en: 'grid electricity (bill)', ar: 'الشبكة الكهربائية (فاتورة)' },
+  aucune: { fr: 'aucune (nouveau forage)', en: 'none (new borehole)', ar: 'لا شيء (ثقب جديد)' },
+};
+
+export const AGR_NON_INCLUS_LBL: Record<string, Lbl3> = {
+  forage: { fr: 'le forage', en: 'the borehole', ar: 'الثقب' },
+  genie_civil: { fr: 'le génie civil', en: 'civil works', ar: 'الهندسة المدنية' },
+};
+
 /** WJ126 — Archétype de bloc commercial (contenu QUALITATIF, aucun chiffre). */
 export interface CommercialArchetype {
   key: string;
