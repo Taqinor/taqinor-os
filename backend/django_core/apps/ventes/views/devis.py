@@ -40,6 +40,11 @@ from core.entite_scoping import EntiteScopeMixin  # NTADM2
 from core.idempotency import IdempotentCreateMixin  # YAPIC9
 from ..utils.references import create_with_reference
 from ..utils.company_settings import create_numbered
+# SPL134 — les 3 gardes partagées vivent dans leur module (les mixins
+# d'actions ``views/devis_*.py`` les lisent sans importer ce fichier).
+from .devis_gardes import (
+    _refus_modifiabilite, _reponse_non_modifiable, _refus_verrou,
+)
 # QJR73 — L'ÉCRIVAIN UNIQUE DES LIGNES N'EST PLUS UNE MÉTHODE DE CE VIEWSET.
 # `_replace_lines_atomic` vivait ici, donc hors d'atteinte de tout autre
 # appelant, alors que les tests le décrivent comme « le SEUL chemin d'écriture »
@@ -118,32 +123,6 @@ def _emettre_layout_finalise(devis, user):
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
-
-
-def _refus_modifiabilite(devis, geste):
-    """QJR516 — la garde d'édition UNIQUE des vues : ``True`` si le geste
-    est REFUSÉ sur ce devis (prédicat ``domain/modifiabilite``). L'appelant
-    répond alors ``_reponse_non_modifiable`` (409). Lit le statut, ne
-    l'écrit jamais (règle #4)."""
-    from ..domain.modifiabilite import est_modifiable
-    return not est_modifiable(devis, geste)
-
-
-def _reponse_non_modifiable(devis, geste, message_statut=None):
-    """QJR516 — la réponse 409 ``{detail, statut, revision_possible}`` d'un
-    geste refusé. ``message_statut`` (avec ``%s`` = statut affiché) conserve
-    le texte historique d'une garde existante pour un devis ACTIF ; un devis
-    remplacé ou archivé reçoit la raison du prédicat."""
-    from ..domain.modifiabilite import verdict
-    v = verdict(devis, geste)
-    if message_statut and devis.is_active:
-        detail = message_statut % devis.get_statut_display()
-    else:
-        detail = v['raison_non_modifiable']
-    return Response(
-        {'detail': detail, 'statut': devis.statut,
-         'revision_possible': v['revision_possible']},
-        status=status.HTTP_409_CONFLICT)
 
 
 class _RemiseEnvoiRefusee(APIException):
@@ -258,16 +237,6 @@ class _DevisModifie(APIException):
     optimiste, contrat ``devis_verrou_edition.json``)."""
     status_code = status.HTTP_409_CONFLICT
     default_code = 'devis_modifie'
-
-
-def _refus_verrou(devis, request):
-    """QJR545 — ``Response`` 409 si ``expected_updated_at`` est fourni et
-    diffère du jeton en base ; ``None`` sinon (champ absent ⇒ inchangé)."""
-    from ..domain.verrou_devis import verifier_jeton
-    charge = verifier_jeton(devis, request.data)
-    if charge is None:
-        return None
-    return Response(charge, status=status.HTTP_409_CONFLICT)
 
 
 def _jeton(devis):

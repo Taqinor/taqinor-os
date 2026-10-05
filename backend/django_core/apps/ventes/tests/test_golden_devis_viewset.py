@@ -88,7 +88,9 @@ GROUPES = {
 
 #: groupe → fichier de ``views/`` où il DOIT vivre ; rempli par chaque
 #: déplacement (ex. SPL134 : ``PLACE['gardes'] = 'devis_gardes.py'``).
-PLACE = {}
+PLACE = {
+    'gardes': 'devis_gardes.py',  # SPL134
+}
 
 DEFAUT = 'devis.py'
 
