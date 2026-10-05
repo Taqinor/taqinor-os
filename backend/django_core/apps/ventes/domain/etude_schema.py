@@ -307,6 +307,16 @@ SCHEMA = {
     'options': _cle((dict,), ECRAN, ENTREE),
     'taille_explicite_kwc': _cle((int, float), ECRAN, ENTREE,
                                  'CIQ117 — souveraine (D-QJR5-13).'),
+    # CIQ203 — le tarif DÉCLARÉ du client (contrat CIQ11 `tarifs_ci.json`) :
+    # validé à l'écriture (`tarif_ci.reproches_tarif_declare`, 400 nommant
+    # `etude_params.tarif_declare.<champ>`). Les saisies de l'économie C&I
+    # (contrat CIQ3 `economie_ci.json`) : le schéma n'en contrôle que le type
+    # objet, leurs sous-champs sont validés par le moteur (CIQ205-CIQ209).
+    'tarif_declare': _cle((dict,), ECRAN, ENTREE,
+                          'CIQ203 — prix de la facture du client d\'abord.'),
+    'saisies_economie_ci': _cle((dict,), ECRAN, ENTREE,
+                                'CIQ203 — TVA récupérable, actualisation, '
+                                'revente, aide, offres écrites.'),
     'etude_ci': _cle((dict,), MOTEUR_CI, DERIVEE,
                      'CIQ117 — entrees_resolues, profil_charge, production, '
                      'taille, bilan, alertes, hypotheses, version, empreinte.'),
@@ -405,6 +415,9 @@ def valider(etude_params):
             continue
         if cle == 'factures_mensuelles_reelles':
             reproches.extend(_reproches_factures(valeur))
+        elif cle == 'tarif_declare':
+            from apps.ventes.tarif_ci import reproches_tarif_declare
+            reproches.extend(reproches_tarif_declare(valeur))
     return reproches
 
 
