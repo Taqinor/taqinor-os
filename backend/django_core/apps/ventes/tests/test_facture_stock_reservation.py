@@ -12,8 +12,9 @@ Couvre :
     par devis) ;
   * un devis dont le BC est déjà LIVRÉ (stock déjà consommé) n'est PAS re-
     décompté lors de la facturation directe ;
-  * la garde de stock insuffisant refuse (400) et n'écrit rien (transaction
-    annulée — ni facture ni mouvement).
+  * un stock ERP insuffisant ne BLOQUE PAS la facture (fondateur 05/10/2026 :
+    le matériel est souvent déjà posé) : sortie posée, stock sous zéro, note
+    « stock à recompter » sur le devis.
 
 Run :
     python manage.py test apps.ventes.tests.test_facture_stock_reservation -v 2
@@ -139,20 +140,20 @@ class U9StockReservationTests(TestCase):
         self.assertEqual(self._sorties(self.panneau).count(), 1)
         self.assertEqual(self._sorties(self.onduleur).count(), 1)
 
-    def test_insufficient_stock_blocks_invoice_and_writes_nothing(self):
-        # Onduleur demandé : 5 alors que stock = 3 → 400, rien écrit.
+    def test_insufficient_stock_never_blocks_invoice(self):
+        # Onduleur demandé : 5 alors que stock ERP = 3 → la facture part quand
+        # même (réglage société par défaut OFF), stock ERP à -2, note posée.
         devis = self._devis(f'DEV-{MONTH}-9104', panneaux=2, onduleurs=5)
         r = self._gen(devis)
-        self.assertEqual(r.status_code, 400, r.data)
-        self.assertIn('Stock insuffisant', r.data['detail'])
-        self.panneau.refresh_from_db()
+        self.assertEqual(r.status_code, 201, r.data)
         self.onduleur.refresh_from_db()
-        # Transaction annulée : ni mouvement, ni facture.
-        self.assertEqual(self.panneau.quantite_stock, 100)
-        self.assertEqual(self.onduleur.quantite_stock, 3)
-        self.assertEqual(self._sorties(self.panneau).count(), 0)
-        self.assertEqual(self._sorties(self.onduleur).count(), 0)
-        self.assertEqual(devis.factures.count(), 0)
+        self.assertEqual(self.onduleur.quantite_stock, -2)
+        self.assertEqual(self._sorties(self.onduleur).count(), 1)
+        self.assertEqual(devis.factures.count(), 1)
+        notes = list(devis.activites.filter(kind='note')
+                     .values_list('body', flat=True))
+        self.assertTrue(any('stock à recompter' in n and 'Onduleur' in n
+                            for n in notes), notes)
 
     def test_aud228_stock_insuffisant_autorise_si_reglage_societe_actif(self):
         """AUD228 — `AchatsParametres.stock_negatif_autorise` était ignoré
