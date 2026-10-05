@@ -333,7 +333,7 @@
       ],
       "segment": "commun",
       "etape_appel": 2,
-      "question": "(posée avec la tension) « Vous le lisez sur votre facture, ou c'est de mémoire ? » — `site_defaut_visible` = valeur pré-cochée du site non modifiée par le client ; `mesure_visite` = relevé par TAQINOR"
+      "question": "(posée avec la tension) « Vous le lisez sur votre facture, ou c'est de mémoire ? » — `site_defaut_visible` = valeur pré-cochée du site non modifiée par le client ; `mesure_visite` = relevé par notre technicien lors de la visite"
     },
     {
       "nom": "compteur_puissance_kva",
