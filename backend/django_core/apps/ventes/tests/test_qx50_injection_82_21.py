@@ -31,9 +31,9 @@ def _parse_solarjs_tarif_mt():
     """Extrait les valeurs de ``export const TARIF_MT_ONEE = { ... }``.
 
     Les commentaires (``//``) sont retirés AVANT de lire les clés : le bloc en
-    porte plusieurs qui contiennent des nombres (dates, plages horaires, valeurs
-    explicitement écartées) — les confondre avec des tarifs serait exactement
-    l'erreur que ce test doit empêcher.
+    porte plusieurs qui contiennent des nombres (dates, valeurs écartées) — les
+    confondre avec des tarifs serait exactement l'erreur que ce test doit
+    empêcher. ``PLAGES_H`` est relu comme la suite (saison, poste, de_h, a_h).
     """
     with open(SOLAR_JS, encoding='utf-8') as fh:
         src = fh.read()
@@ -42,12 +42,25 @@ def _parse_solarjs_tarif_mt():
         return None
     body = '\n'.join(line.split('//')[0] for line in m.group(1).splitlines())
     out = {}
-    for key in ('POINTE', 'PLEINES', 'CREUSES',
-                'PRIME_PUISSANCE_DH_KVA_AN', 'TVA_INCLUSE_PCT', 'PLAGES_H'):
+    for key in ('POINTE', 'PLEINES', 'CREUSES', 'PRIME_PUISSANCE_DH_KVA_AN',
+                'TVA_INCLUSE_PCT'):
         hit = re.search(rf'\b{key}\s*:\s*(null|-?\d+(?:\.\d+)?)', body)
         if hit:
             out[key] = None if hit.group(1) == 'null' else float(hit.group(1))
+    plages = []
+    for bloc in re.finditer(r"saison:\s*'(\w+)'(.*?)\]\s*\}", body, re.DOTALL):
+        for poste in re.finditer(
+                r"poste:\s*'(\w+)',\s*de_h:\s*(\d+),\s*a_h:\s*(\d+)",
+                bloc.group(2)):
+            plages.append((bloc.group(1), poste.group(1),
+                           int(poste.group(2)), int(poste.group(3))))
+    out['PLAGES_H'] = plages
     return out
+
+
+def _plages_py(saisons):
+    return [(b['saison'], p['poste'], p['de_h'], p['a_h'])
+            for b in saisons for p in b['postes']]
 
 
 class TestModuleSansNet(SimpleTestCase):
@@ -160,16 +173,24 @@ class TestTarifMtSource(SimpleTestCase):
         self.assertAlmostEqual(
             c.TARIF_MT_ONEE['PRIME_PUISSANCE_DH_KVA_AN'], 512.62, places=2)
 
-    def test_plages_horaires_absentes_jamais_inventees(self):
-        # La page MT ne publie les plages que dans une image : elles restent
-        # ABSENTES. Un jour où quelqu'un y mettrait des heures « raisonnables »
-        # sans source, ce test tombe.
-        self.assertIsNone(c.TARIF_MT_ONEE['PLAGES_H'])
+    def test_tva_libelle_page_n_est_plus_une_cle(self):
+        # CIQ202 : le libellé « TVA 18 % » de la page est périmé (taux légal
+        # 2026 : 20 %) ; il n'est plus une clé du barème.
+        self.assertNotIn('TVA_INCLUSE_PCT', c.TARIF_MT_ONEE)
+        self.assertIn('taux légal 2026 : 20 %', c.MENTION_MT)
+
+    def test_plages_horaires_sourcees(self):
+        # CIQ202 : les plages sont PUBLIÉES (schéma one.org.ma/images/horr.jpg,
+        # page bi-horaire, décision ANRE 04/26 art. 7) — plus jamais ``None``.
+        plages = _plages_py(c.TARIF_MT_ONEE['PLAGES_H'])
+        self.assertIn(('hiver', 'pointe', 17, 22), plages)
+        self.assertIn(('ete', 'pointe', 18, 23), plages)
+        self.assertEqual(c.poste_horaire(12, 18), 'pointe')
 
     def test_mention_porte_la_source_et_la_date(self):
         self.assertIn('Tarif Général (MT)', c.MENTION_MT)
         self.assertIn('one.org.ma', c.MENTION_MT)
-        self.assertIn('18/08/2026', c.MENTION_MT)
+        self.assertIn('03/10/2026', c.MENTION_MT)
 
     def test_bareme_disponible(self):
         self.assertTrue(c.tarif_mt_disponible())
@@ -205,3 +226,34 @@ class TestTarifMtMoyen(SimpleTestCase):
         # moyen par défaut, pas de retour silencieux au tarif BT.
         self.assertIsNone(c.tarif_mt_moyen(None))
         self.assertIsNone(c.tarif_mt_moyen({}))
+
+
+class TestTarifMtPariteParametresJs(SimpleTestCase):
+    """CIQ202 — UNE source : parametres/tarifs_officiels ↔ constants_82_21 ↔
+    miroir solar.js (jusqu'à sa suppression par CIQ228)."""
+
+    def test_constants_lit_la_fondation(self):
+        from apps.parametres import tarifs_officiels as t
+        self.assertEqual(c.TARIF_MT_ONEE['POINTE'], t.MT_GENERAL['pointe']['valeur'])
+        self.assertEqual(c.TARIF_MT_ONEE['PLEINES'], t.MT_GENERAL['pleines']['valeur'])
+        self.assertEqual(c.TARIF_MT_ONEE['CREUSES'], t.MT_GENERAL['creuses']['valeur'])
+        self.assertEqual(c.TARIF_MT_ONEE['PRIME_PUISSANCE_DH_KVA_AN'],
+                         t.MT_GENERAL['prime_fixe_kva_an']['valeur'])
+        self.assertIs(c.TARIF_MT_ONEE['PLAGES_H'], t.POSTES_MT)
+
+    def test_parity_with_solar_js(self):
+        js = _parse_solarjs_tarif_mt()
+        self.assertIsNotNone(js, 'TARIF_MT_ONEE introuvable dans solar.js')
+        for key in ('POINTE', 'PLEINES', 'CREUSES', 'PRIME_PUISSANCE_DH_KVA_AN'):
+            self.assertIn(key, js, f'{key} absent du miroir solar.js')
+            self.assertAlmostEqual(float(c.TARIF_MT_ONEE[key]), js[key], places=4)
+        self.assertNotIn('TVA_INCLUSE_PCT', js)
+        self.assertEqual(js['PLAGES_H'], _plages_py(c.TARIF_MT_ONEE['PLAGES_H']))
+
+    def test_mention_identique(self):
+        with open(SOLAR_JS, encoding='utf-8') as fh:
+            src = fh.read()
+        for fragment in ('Tarif Général (MT)', 'one.org.ma', '03/10/2026',
+                         'taux légal'):
+            self.assertIn(fragment, src)
+            self.assertIn(fragment, c.MENTION_MT)

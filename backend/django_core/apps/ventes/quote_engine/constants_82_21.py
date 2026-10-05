@@ -18,6 +18,9 @@ from __future__ import annotations
 
 import datetime as _dt
 
+# Grille ONEE officielle : module PUR de fondation (CIQ202, une seule source).
+from apps.parametres import tarifs_officiels as _officiels
+
 # Régime 82-21 : RÉ-EXPORTS du noyau (identité, jamais une copie — CIQ612).
 from core.reglementaire.regime_8221 import (  # noqa: F401  (ré-exports)
     SEUIL_AUTORISATION_KW,
@@ -102,61 +105,50 @@ def tarif_excedent_en_vigueur(date_signature_prevue=None):
     }, None
 
 
-# ══ QXMT — Tarifs MOYENNE TENSION ONEE (raccordement MT, dossiers > 50 kW) ═══
-# Miroir STRICT de ``TARIF_MT_ONEE`` dans frontend/src/features/ventes/solar.js
-# (test de parité plus bas dans tests/test_qx50_injection_82_21.py).
+# ══ QXMT — Tarifs MOYENNE TENSION ONEE (raccordement MT) ═══════════════════
+# CIQ202 : UNE seule source — ``apps/parametres/tarifs_officiels.py`` (module
+# PUR de fondation, chaque valeur avec {source_url, page_audience, releve_le,
+# inchange_depuis}). Ce dict LIT ce module : aucune valeur recopiée ici.
+# Miroir JS : ``TARIF_MT_ONEE`` de frontend/src/features/ventes/solar.js
+# (parité testée dans tests/test_qx50_injection_82_21.py ; le miroir disparaît
+# avec CIQ228).
 #
-# RÈGLE FONDATEUR — ZÉRO CHIFFRE INVENTÉ (PLAN2 QXG6). Une valeur n'apparaît
-# ici QUE si une source OFFICIELLE ou de premier rang la publie, source et date
-# citées sur la ligne. Toute valeur non sourcée reste ``None`` : l'étude OMET le
-# calcul correspondant plutôt que d'afficher un chiffre douteux. Jamais de
-# placeholder chiffré, jamais de reprise d'une estimation « ordre de grandeur »
-# (le site porte un blend indicatif 1,15 DH/kWh dans apps/web/src/lib/
-# estimatorPro.ts — explicitement une hypothèse, donc inutilisable ici).
-#
-# SOURCE des trois prix + de la prime (relevée ET vérifiée le 18/08/2026) :
-#   ONEE — Branche Électricité, page officielle « Tarif Général (MT) »
-#   https://www.one.org.ma/fr/pages/interne.asp?esp=1&id1=14&id2=114&t2=1
-#   La page précise : « Les tarifs sont exprimés en dirhams TVA comprise
-#   (TVA est de 18 %) ». Elle n'affiche NI date d'entrée en vigueur NI numéro
-#   d'arrêté — d'où la mention de consultation portée par MENTION_MT.
-# NON RETENU volontairement : la page ONEE « Grands Comptes » sans tag de
-# tension (494,09 DH/kVA ; 1,3645 / 0,9736 / 0,7131) est citée ailleurs comme
-# « MT » mais ne porte aucun libellé de tension et vit dans l'arborescence
-# THT/HT — ambiguë, donc écartée. Le TURD ANRE (6,07 c/kWh depuis le
+# RÈGLE FONDATEUR — ZÉRO CHIFFRE INVENTÉ (PLAN2 QXG6, D-CIQ-4). Les prix sont
+# TTC TELS QUE PUBLIÉS : la page ONEE garde un libellé « TVA 18 % » périmé
+# (taux légal de l'électricité 2026 : 20 %, ``TVA_PAR_MILLESIME`` de
+# bareme.py) — aucun TTC n'est re-multiplié ; le HT se dérive (÷ 1,20) dans
+# ``ventes/tarif_ci.py`` et porte « estimation ».
+# NON RETENU : la grille « Grands Comptes » (494,09 DH/kVA ; 1,3645 / 0,9736 /
+# 0,7131) — branche THT/HT, pas une grille MT. Le TURD (6,07 c/kWh depuis le
 # 01/03/2026, décision ANRE 03/26 — ``TURD_C_KWH``) est un tarif d'ACCÈS au
-# réseau, transit HORS site, PAS un tarif de vente au client final : jamais
-# mélangé ici.
+# réseau, transit HORS site, jamais un tarif de vente.
 #
 # NB nomenclature : « C1 / C2 » n'existe PAS comme option tarifaire MT chez
-# l'ONEE (vérifié 18/08/2026 — la MT n'a qu'un « Tarif Général (MT) » ; les
-# options nommées TLU/MU/CU/TCU et « Super Pointe » sont réservées à la HT/THT).
+# l'ONEE — la MT n'a qu'un « Tarif Général (MT) » ; les options TLU/MU/CU/TCU
+# et « Super Pointe » sont réservées à la HT/THT.
 TARIF_MT_ONEE = {
-    # Redevance de consommation par poste horaire, DH/kWh TVA (18 %) comprise.
-    # ONEE « Tarif Général (MT) », one.org.ma, consulté le 18/08/2026.
-    "POINTE": 1.4157,
-    "PLEINES": 1.0101,
-    "CREUSES": 0.7398,
-    # Prime fixe / redevance de puissance, DH par kVA souscrit et par an.
-    # Même source, même date. DÉLIBÉRÉMENT NON déduite des économies : le
-    # solaire ne réduit pas la puissance souscrite.
-    "PRIME_PUISSANCE_DH_KVA_AN": 512.62,
-    "TVA_INCLUSE_PCT": 18,
-    # Durées officielles des plages horaires (heures/jour). La page MT ne les
-    # publie QUE dans un diagramme image (non extractible) — plages MT à
-    # fournir par le fondateur (source officielle introuvable au 18/08/2026).
-    # ``None`` = AUCUNE répartition par défaut n'est inventée. (Les seules
-    # plages publiées en clair sur one.org.ma appartiennent au tarif Optionnel
-    # « Super Pointe » THT/HT, explicitement PAS à la MT.)
-    "PLAGES_H": None,
+    # Redevance de consommation par poste horaire, DH/kWh TTC publié.
+    "POINTE": _officiels.MT_GENERAL['pointe']['valeur'],
+    "PLEINES": _officiels.MT_GENERAL['pleines']['valeur'],
+    "CREUSES": _officiels.MT_GENERAL['creuses']['valeur'],
+    # Prime fixe, DH par kVA souscrit et par an. DÉLIBÉRÉMENT NON déduite des
+    # économies : le solaire ne réduit pas la puissance souscrite.
+    "PRIME_PUISSANCE_DH_KVA_AN":
+        _officiels.MT_GENERAL['prime_fixe_kva_an']['valeur'],
+    # Plages horaires PUBLIÉES (heure GMT, intervalles [de_h, a_h)) : schéma
+    # one.org.ma/images/horr.jpg, page bi-horaire ; décision ANRE 04/26 art. 7.
+    "PLAGES_H": _officiels.POSTES_MT,
 }
 
 # Mention affichée avec TOUT chiffre issu du barème MT (jamais un chiffre nu).
 MENTION_MT = (
-    "Barème ONEE « Tarif Général (MT) », TVA 18 % comprise — "
-    "one.org.ma, consulté le 18/08/2026 (la page ne publie pas de date "
-    "d'entrée en vigueur)"
+    "Barème ONEE « Tarif Général (MT) », prix TTC tels que publiés sur "
+    "one.org.ma (relevé le 03/10/2026 ; la page indique TVA 18 %, taux légal "
+    "2026 : 20 %)"
 )
+
+#: Fonction de référence des postes (ré-export de la fondation).
+poste_horaire = _officiels.poste_horaire
 
 
 def tarif_mt_disponible() -> bool:
@@ -170,8 +162,9 @@ def tarif_mt_disponible() -> bool:
 def normaliser_repartition_mt(repartition):
     """Répartition horaire client (%) → parts normalisées à 100 %, ou ``None``.
 
-    ``None`` quand rien d'exploitable n'est fourni : les plages MT officielles
-    n'étant pas publiées, AUCUNE répartition par défaut n'est inventée. Les
+    ``None`` quand rien d'exploitable n'est fourni : les plages MT publiées
+    sont des HEURES, pas la répartition de la consommation du client — AUCUNE
+    répartition de consommation par défaut n'est inventée. Les
     valeurs non numériques ou négatives comptent pour 0. Défensif : jamais
     d'exception.
     """
