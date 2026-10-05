@@ -17,8 +17,8 @@ statut changé.
 from __future__ import annotations
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
@@ -30,6 +30,29 @@ from ..economie_pompage import (
 from .devis import DevisViewSet
 
 __all__ = ['economie_pompage', 'economie_pompage_preview']
+
+#: Forme documentée du bloc (PACT7 — jamais un « object » vide) : les clés du
+#: contrat contract_samples/economie_pompage.json (``exemple``).
+EconomiePompageResponse = inline_serializer('EconomiePompageResponse', {
+    'statut': serializers.JSONField(allow_null=True),
+    'publiable_client': serializers.JSONField(allow_null=True),
+    'motifs_non_publiable': serializers.JSONField(allow_null=True),
+    'cas': serializers.JSONField(allow_null=True),
+    'entrees_declarees': serializers.JSONField(allow_null=True),
+    'depense_actuelle': serializers.JSONField(allow_null=True),
+    'charges_solaires': serializers.JSONField(allow_null=True),
+    'remplacements': serializers.JSONField(allow_null=True),
+    'economie': serializers.JSONField(allow_null=True),
+    'couverture': serializers.JSONField(allow_null=True),
+    'mad_par_m3': serializers.JSONField(allow_null=True),
+    'sensibilite_carburant': serializers.JSONField(allow_null=True),
+    'seuil_rentabilite_carburant': serializers.JSONField(allow_null=True),
+    'financement': serializers.JSONField(allow_null=True),
+    'coherence': serializers.JSONField(allow_null=True),
+    'reperes_affiches': serializers.JSONField(allow_null=True),
+    'omissions': serializers.JSONField(allow_null=True),
+    'vue_interne': serializers.JSONField(allow_null=True),
+})
 
 
 def _refus(refus):
@@ -82,7 +105,8 @@ def _lignes_ecran(company, lignes):
 
 @extend_schema(
     summary="Aperçu de l'économie de pompage (AGR206, aucune écriture)",
-    request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT},
+    request=OpenApiTypes.OBJECT,
+    responses={200: EconomiePompageResponse},
 )
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
