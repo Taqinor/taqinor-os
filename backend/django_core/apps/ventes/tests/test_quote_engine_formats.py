@@ -1466,8 +1466,12 @@ class TestPdfFormats4(TestPdfFormats):
         # sur ce jeu de lignes : option « avec » = 68 994 HT → 82 792,80 TTC,
         # ÷ 7,7 kWc = 10 752,31 → 10 752 (l'ancienne attente, 51 232,80 ÷ 7,7
         # = 6 653,6 → 6 654, décrivait l'option NON titrée).
-        self.assertEqual(data['display_total'], data['totaux_avec']['ttc'],
-                         "le document titre l'option « avec » : c'est son "
+        # CIQ302 — un INDUSTRIEL à deux options titre l'offre RÉSEAU seule
+        # (la batterie n'est qu'une option) : c'est son total qui est mis en
+        # avant en page 1, et le prix par kWc se dérive de CE total.
+        self.assertEqual(data['option_servie'], 'sans')
+        self.assertEqual(data['display_total'], data['totaux_sans']['ttc'],
+                         "le document titre l'offre réseau : c'est son "
                          'total qui est mis en avant en page 1')
         # Les deux options partagent le MÊME champ PV (une seule ligne de
         # panneaux, commune) : le kWc de référence ne prête donc à aucune

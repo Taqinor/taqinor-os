@@ -340,6 +340,12 @@ def option_effective(devis) -> str:
     client lisait un prix et l'ERP en facturait un autre. La correspondance
     libellé → option est déclarée UNE fois (:data:`SCENARIOS_MONO`) et le
     moteur PDF l'importe : les deux moitiés ne peuvent plus diverger.
+
+    CIQ302 (03/10/2026) — UN C&I MET EN AVANT L'OFFRE RÉSEAU. Pour un devis
+    commercial / industriel à deux options non accepté sans scénario mono,
+    l'option effective est SANS (:func:`option_mise_en_avant`), la même que le
+    moteur sert dans ``all_items``/``display_total`` — jumeau du geste, dans
+    le même commit. L'option acceptée et le scénario mono gardent la priorité.
     """
     acceptee = getattr(devis, 'option_acceptee', '') or ''
     if acceptee:
@@ -347,7 +353,31 @@ def option_effective(devis) -> str:
     if not has_two_options(devis):
         return ''
     return (option_du_scenario_mono(scenario_declare(devis))
-            or AVEC_BATTERIE)
+            or option_mise_en_avant(devis))
+
+
+#: CIQ302 — marchés dont l'offre principale d'un devis à deux options est
+#: l'offre RÉSEAU seule (la batterie n'y est qu'une option).
+MODES_OFFRE_RESEAU_PRINCIPALE = ('commercial', 'industriel')
+
+
+def est_mode_ci(devis) -> bool:
+    """CIQ302 — devis commercial ou industriel (``mode_installation``)."""
+    mode = (getattr(devis, 'mode_installation', '') or '').strip().lower()
+    return mode in MODES_OFFRE_RESEAU_PRINCIPALE
+
+
+def option_mise_en_avant(devis) -> str:
+    """L'option que titre un devis à deux options NON accepté, sans scénario
+    mono déclaré — LA règle partagée par le moteur PDF (``builder``
+    ``option_servie``/``display_total``) et le noyau monnaie.
+
+    Résidentiel : l'option AVEC (LANE CHOIX-AVEC, 25/08/2026).
+    CIQ302 (convention 5, D-CIQ) : commercial / industriel → l'offre RÉSEAU
+    seule (SANS) ; la batterie est une option. Le moteur ne sert cette règle
+    que si l'offre réseau est servable — toujours vrai d'un devis à deux
+    options (``deux_options`` implique ``sans_ok``)."""
+    return SANS_BATTERIE if est_mode_ci(devis) else AVEC_BATTERIE
 
 
 def option_lines(devis, option=None):
@@ -672,8 +702,14 @@ def totaux_affichage_repli(devis) -> dict:
         return {'total': float(sans['ttc']), 'nb_options': 1}
     if mono == AVEC_BATTERIE:
         return {'total': float(avec['ttc']), 'nb_options': 1}
+    # CIQ302 — un C&I met en avant l'offre réseau seule (même règle que le
+    # moteur, :func:`option_mise_en_avant`).
+    if option_mise_en_avant(devis) == SANS_BATTERIE and sans.get('ttc'):
+        _avant = sans['ttc']
+    else:
+        _avant = avec['ttc'] if avec.get('ttc') else sans['ttc']
     return {
-        'total': float(avec['ttc'] if avec.get('ttc') else sans['ttc']),
+        'total': float(_avant),
         'nb_options': 2,
         'comparaison_repli': {'sans': sans, 'avec': avec},
     }

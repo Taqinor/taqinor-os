@@ -2016,7 +2016,30 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # option et le total d'une autre. Suit donc ``onepage_source``/
     # ``onepage_branche`` ci-dessous à l'identique — l'option AVEC quand
     # ``deux_options`` (toujours servable ici, cf. sa définition).
-    if deux_options:
+    #
+    # ── CIQ302 (convention 5) — C&I À DEUX OPTIONS : L'OFFRE RÉSEAU SEULE EST
+    # L'OFFRE PRINCIPALE ─────────────────────────────────────────────────────
+    # La couverture C&I imprimait l'économie de l'option SANS à côté de
+    # l'investissement AVEC, et la page finance choisissait sa série par
+    # égalité de prix (C3-05, C3-VA-03). Pour ``mode_installation ∈
+    # {commercial, industriel}``, le document sert ``option_servie = 'sans'``
+    # dès que l'offre réseau est servable : ``all_items``, ``totaux_all`` et
+    # ``display_total`` décrivent CETTE offre (QJR410). La règle vient du
+    # noyau (``utils.options.option_mise_en_avant``) que lit aussi
+    # ``option_effective`` : liste, Kanban, échéancier et PDF tirent le même
+    # nombre. Une option ACCEPTÉE garde la priorité (QJR401 / DR1). Le
+    # résidentiel ne bouge pas (``option_servie`` reste None).
+    from apps.ventes.utils.options import (
+        option_mise_en_avant as _option_mise_en_avant,
+    )
+    option_servie = None
+    if (deux_options and sans_ok
+            and _option_mise_en_avant(devis) == _NOYAU_SANS):
+        _acceptee_ci = getattr(devis, 'option_acceptee', '') or ''
+        option_servie = 'avec' if _acceptee_ci == _NOYAU_AVEC else 'sans'
+    if option_servie == 'sans':
+        _all_rows = sans_items
+    elif deux_options:
         _all_rows = avec_items
     elif scenario == 'Avec batterie' and avec_ok:
         _all_rows = avec_items
@@ -2035,7 +2058,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # LANE CHOIX-AVEC (fondateur, 25/08/2026) — même bascule que ``_all_rows``
     # ci-dessus, pour la MÊME raison d'intégrité (une seule vérité partagée
     # par la liste des devis et le une-page).
-    if deux_options:
+    # CIQ302 — un C&I à deux options titre l'offre réseau seule.
+    if option_servie == 'sans':
+        display_total = totaux_sans["ttc"]
+        nb_options = 2
+    elif deux_options:
         display_total = totaux_avec["ttc"]
         nb_options = 2
     elif avec_ok:
@@ -2444,7 +2471,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # suit EXACTEMENT celle de ``display_total`` (« avec » dès que le
         # document met cette option en avant), pour qu'il n'y ait qu'une
         # vérité par document.
-        _titree_avec = bool(deux_options or avec_ok)
+        # CIQ302 — un C&I qui titre l'offre réseau seule n'est pas « avec ».
+        _titree_avec = (False if option_servie == 'sans'
+                        else bool(deux_options or avec_ok))
         _ref_total = total_avec if _titree_avec else total_sans
         # CIQ301 — la branche « étude saisie » (économie imposée + fractions
         # mensuelles RÉSIDENTIELLES ``_sf``) ne s'applique PLUS au C&I : ses
@@ -3011,7 +3040,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # suivent déjà ``onepage_branche`` dynamiquement (rien d'autre à changer
     # dans ce fichier) ; le texte figé de la note elle-même est corrigé côté
     # ``generate_devis_premium.page_onepage``.
-    if deux_options:
+    # CIQ302 — MÊME bascule que ``_all_rows`` (le une-page imprime les lignes
+    # dont ``totaux_all`` est le total) : un C&I sert l'offre réseau seule.
+    if option_servie == 'sans':
+        onepage_source, onepage_branche = sans_items, 'sans'
+    elif deux_options:
         onepage_source, onepage_branche = avec_items, 'avec'
     elif scenario == 'Avec batterie' and avec_ok:
         onepage_source, onepage_branche = avec_items, 'avec'
@@ -3574,6 +3607,22 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "sans_ok": bool(sans_ok),
         "avec_ok": bool(avec_ok),
         "deux_options": bool(deux_options),
+        # CIQ302 — clés ADDITIVES, ABSENTES hors C&I à deux options (règle
+        # ``additif_vs_null`` : le résidentiel reste byte-identique).
+        # ``option_servie`` : l'offre que le document TITRE ('sans' = réseau
+        # seul ; 'avec' seulement si l'option AVEC a été acceptée).
+        # ``option_batterie`` : la batterie d'un C&I n'est qu'une OPTION — son
+        # panier, ses totaux et la valeur chiffrée par le moteur C&I (contrats
+        # CIQ2/CIQ3). Aucune sortie moteur ne chiffre encore cette valeur ⇒
+        # ``None`` + motif, jamais un chiffre déduit d'hybrides 48 V empilés
+        # présentés comme batterie C&I (CIQ7).
+        **({"option_servie": option_servie} if option_servie else {}),
+        **({"option_batterie": {
+            "lignes": avec_items,
+            "totaux": totaux_avec,
+            "valeur_chiffree": None,
+            "motif": "valeur non chiffrée",
+        }} if option_servie == 'sans' else {}),
         # BAT-DIFF (17/09/2026) — l'option « avec » est servie par un onduleur
         # hybride SANS batterie chiffrée (le client l'ajoutera plus tard).
         # ``libelle_avec`` est le libellé que TOUS les renderers impriment à la
@@ -4079,6 +4128,11 @@ def echapper_textes_client(data: dict) -> dict:
                  if isinstance(it, dict) else it)
                 for it in _rows
             ]
+    # CIQ302 — le panier de l'option batterie C&I EST ``avec_items`` : il
+    # reprend la liste déjà échappée (un seul échappement, jamais deux).
+    _ob = sortie.get("option_batterie")
+    if isinstance(_ob, dict) and isinstance(sortie.get("avec_items"), list):
+        sortie["option_batterie"] = {**_ob, "lignes": sortie["avec_items"]}
     # QJR618 — les lignes de STRUCTURE (sections / notes tapées par le
     # vendeur) sont désormais imprimées par les gabarits premium : leur texte
     # est échappé ici comme une désignation.
