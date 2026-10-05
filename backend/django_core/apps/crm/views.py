@@ -2798,18 +2798,22 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         LECTURE PURE : le serveur REND, il n'ENVOIE pas (décision D5).
         """
         from .serializers import pii_masquee_pour
-        from .services import CLES_MESSAGE_VISITE, message_visite_pour_lead
+        from .services import cles_message_visite_du_lead, message_visite_pour_lead
 
         cle = (request.query_params.get('cle') or '').strip()
+        lead = self.get_object()
         # CAD111 — les liens wa.me sont construits ICI (E.164) ; un rôle sans
         # `client_pii_voir` ne reçoit aucun numéro (liens nuls, `phone` vide).
+        # AGR526 — `dossier_fda` / `dossier_8221` seulement pour le lead dont
+        # le playbook de segment les confirme.
         rendu = message_visite_pour_lead(
-            self.get_object(), cle, user=request.user,
+            lead, cle, user=request.user,
             masquer_numero=pii_masquee_pour(request.user))
         if rendu is None:
             return Response(
                 {'cle': ['Message de visite inconnu « ' + cle + ' ». Clés '
-                         'connues : ' + ', '.join(CLES_MESSAGE_VISITE) + '.']},
+                         'connues : '
+                         + ', '.join(cles_message_visite_du_lead(lead)) + '.']},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(rendu)
 
@@ -2832,15 +2836,16 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         rattache l'ouverture à la touche, que son panneau « Fait » reconnaît.
         Refus 400 nommant le champ (``cle``, ``langue``, ``etape``)."""
         from .services import (
-            CLES_MESSAGE_VISITE, LANGUES_MESSAGE_VISITE,
-            journaliser_message_visite_ouvert,
+            LANGUES_MESSAGE_VISITE, cle_message_visite_autorisee,
+            cles_message_visite_du_lead, journaliser_message_visite_ouvert,
         )
         lead = self.get_object()
         cle = (request.data.get('cle') or '').strip()
-        if cle not in CLES_MESSAGE_VISITE:
+        # AGR526 — mêmes clés que la lecture `message-visite` pour CE lead.
+        if not cle_message_visite_autorisee(lead, cle):
             raise DRFValidationError({'erreurs': {'cle': (
                 f'« Message de visite » inconnu : « {cle} ». Clés connues : '
-                + ', '.join(CLES_MESSAGE_VISITE) + '.')}})
+                + ', '.join(cles_message_visite_du_lead(lead)) + '.')}})
         langue = (request.data.get('langue') or 'fr').strip()
         if langue not in LANGUES_MESSAGE_VISITE:
             raise DRFValidationError({'erreurs': {'langue': (
@@ -5298,8 +5303,11 @@ def lead_playbook_view(request, lead_id):
         return Response({'detail': 'Lead introuvable.'}, status=status.HTTP_404_NOT_FOUND)
 
     if request.method == 'GET':
+        # AGR526 — `tache__etape__playbook` : la clé de texte (`cle_message`)
+        # se lit sur le NOM du playbook, sans requête par ligne.
         progress = lead.playbook_progress.select_related(
-            'tache', 'tache__etape', 'fait_par').all()
+            'tache', 'tache__etape', 'tache__etape__playbook', 'lead',
+            'fait_par').all()
         return Response(LeadPlaybookProgressSerializer(progress, many=True).data)
 
     tache_id = request.data.get('tache')

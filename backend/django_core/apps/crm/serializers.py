@@ -2238,15 +2238,32 @@ class LeadPlaybookProgressSerializer(serializers.ModelSerializer):
     etape_stage = serializers.CharField(source='tache.etape.stage', read_only=True)
     fait_par_nom = serializers.CharField(
         source='fait_par.username', read_only=True, default=None)
+    # AGR526 (contrat `lead_playbook.json`, AGR507) — la clé du TEXTE que la
+    # tâche propose (`dossier_fda` / `dossier_8221`), ou null.
+    cle_message = serializers.SerializerMethodField()
 
     class Meta:
         model = LeadPlaybookProgress
         fields = [
             'id', 'lead', 'tache', 'tache_libelle', 'tache_obligatoire',
             'etape_stage', 'fait', 'fait_par', 'fait_par_nom', 'fait_le',
-            'created_at',
+            'created_at', 'cle_message',
         ]
         read_only_fields = ['fait_par', 'fait_le', 'created_at']
+
+    def get_cle_message(self, obj):
+        """AGR526 — la ``cle_message`` de l'entrée ``PLAYBOOKS_SEGMENT_CAD125``
+        dont le ``nom`` est celui du playbook de la tâche, SEULEMENT si
+        ``cle_message_segment(lead)`` la confirme ; ``None`` sinon."""
+        from .services import PLAYBOOKS_SEGMENT_CAD125, cle_message_segment
+        playbook = getattr(getattr(obj.tache, 'etape', None), 'playbook', None)
+        nom = getattr(playbook, 'nom', None)
+        entree = next((e for e in PLAYBOOKS_SEGMENT_CAD125 if e['nom'] == nom),
+                      None)
+        if entree is None:
+            return None
+        cle = entree['cle_message']
+        return cle if cle_message_segment(obj.lead) == cle else None
 
 
 # ── LB48 — Vues enregistrées par compte ────────────────────────────────────

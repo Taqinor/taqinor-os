@@ -3045,6 +3045,31 @@ CLES_MESSAGE_VISITE = (
     'visite_proposition', 'visite_confirmation', 'visite_releve_point_eau',
 )
 
+#: AGR526 — les textes des DOSSIERS institutionnels (playbooks de segment
+#: CAD125) que le même rendu sert — mais SEULEMENT au lead pour qui
+#: ``cle_message_segment`` renvoie cette clé (jamais un FDA à un exploitant
+#: au gasoil, jamais un 82-21 à un résidentiel).
+CLES_MESSAGE_DOSSIER = ('dossier_fda', 'dossier_8221')
+
+
+def cle_message_visite_autorisee(lead, cle):
+    """AGR526 — ``cle`` est-elle un texte que ``message-visite`` rend pour CE
+    lead ? Une clé de visite toujours ; une clé de dossier seulement quand le
+    playbook de segment du lead la confirme (``cle_message_segment``)."""
+    if cle in CLES_MESSAGE_VISITE:
+        return True
+    return cle in CLES_MESSAGE_DOSSIER and cle_message_segment(lead) == cle
+
+
+def cles_message_visite_du_lead(lead):
+    """AGR526 — les clés que ``message-visite`` accepte pour CE lead (le
+    refus 400 les NOMME)."""
+    cles = list(CLES_MESSAGE_VISITE)
+    dossier = cle_message_segment(lead)
+    if dossier in CLES_MESSAGE_DOSSIER:
+        cles.append(dossier)
+    return cles
+
 
 def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
     """VISITE-CADENCE — le message de visite d'un LEAD, rendu côté serveur.
@@ -3075,7 +3100,9 @@ def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
     from apps.parametres.models_messages import MessageTemplate
     from apps.ventes.utils.whatsapp import build_wa_url, render_message_template
 
-    if cle not in CLES_MESSAGE_VISITE:
+    # AGR526 — une clé de DOSSIER n'est rendue qu'au lead dont le playbook de
+    # segment la confirme ; sinon ``None`` (la vue en fait un 400 sur ``cle``).
+    if not cle_message_visite_autorisee(lead, cle):
         return None
 
     date_visite = _date_visite_francais(
@@ -3134,6 +3161,9 @@ def journaliser_message_visite_ouvert(lead, user, *, cle, langue, etape=None):
         'visite_proposition': 'proposer la visite',
         # AGR414 — la visite de relevé du point d'eau (agricole).
         'visite_releve_point_eau': 'proposer le relevé du point d’eau',
+        # AGR526 — les textes de dossier des playbooks de segment.
+        'dossier_fda': 'demander où en est le dossier de subvention FDA',
+        'dossier_8221': 'demander où en est le dossier du site',
     }.get(cle, 'confirmer la visite')
     langue_txt = 'darija' if langue == 'darija' else 'français'
     if etape is not None:
