@@ -1,0 +1,1285 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<int:pk>/economie-ci/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Contrat posé SEUL (PACT10) avant l'action `economie-ci` du DevisViewSet (CIQ210, patron `ventes_economie.json`) ; CIQ210 remet `forme_serveur: complete`. `exemple` = la réponse de la LECTURE INTERNE (avec `alertes_internes` et `vue_interne`) ; la charge utile client est `economie_ci_publique(bloc)`, le même objet SANS ces deux clés.",
+  "pourquoi": "CIQ3 (Groupe CIQ, audit L3 des devis commercial et industriel du 03/10/2026 ; décisions D-CIQ-3, D-CIQ-4, D-CIQ-10, D-CIQ-12, D-CIQ-15, D-CIQ-16, D-CIQ-17) — CONTRAT D'ABORD (PACT10), posé SEUL sur `main`. Aujourd'hui TROIS modèles d'économie incompatibles chiffrent un même devis C&I : le balayage JS (`computeROI`, part de jour × production × 1,75), l'étude d'écran (`computeEtudeIndustrielle`, solar.js : min(production, conso × part de jour) × 1,75 ou × `tarifMtMoyen`) et le PDF (`calculate_savings_roi` à 60 % « résidentiel marocain typique », quote_engine/pricing.py, appelé par builder.py) ; le seul bloc économie sous contrat est résidentiel (`ventes_economie.json`, CALX280) et apps/ventes/economie.py n'est branché à aucun document C&I. Ce fichier fige : (1) l'ENTRÉE `etude_params.saisies_economie_ci` (propriétaire ÉCRAN, `saisies_economie_ci`) ; (2) la SORTIE `economie_ci` (`regles_sortie`) — `tarif` à la forme de `tarifs_ci.json` (CIQ11), `flux_ht`/`flux_ttc` À LA FORME EXACTE de `ventes_economie.json` (horizon 25 ans) ; (3) `vue_interne` {comparaison_cse, sr500, apres_impot}. RÈGLE ÉCRITE : « `vue_interne` et `alertes_internes` n'entrent JAMAIS dans une charge utile client » — `economie_ci_publique(bloc)` les retire (PDF /proposal, /proposition, messages). Garde de vocabulaire : aucune clé `prix`, `cout`, `marge`, `prix_achat`, `remise`, `coefficient` nue ni aucune clé de `CLES_INTERDITES` (apps/calepinage/services/note_calcul.py) — d'où `amortissement_coefficient` (nom déjà employé par `flux_apres_impot`, apps/ventes/economie.py). `exemple` reprend le bilan de l'`exemple` d'`etude_ci_preview.json` (CIQ2) avec une TVA récupérable NON déclarée (base « deux ») et le tarif `exemple_bt_repli` de `tarifs_ci.json`. TOUS LES NOMBRES DES EXEMPLES SONT ILLUSTRATIFS (aucun client réel, investissement et remplacements illustratifs — QXG6 (b) reste au fondateur) ; seuls les tarifs de rachat 0,21/0,18 DH HT et le plafond de 20 % sont ceux déjà codés dans quote_engine/constants_82_21.py et confirmés par D-CIQ-4. Ce sont les clés, leurs natures et leurs règles d'omission qui font le contrat.",
+  "endpoints": {
+    "lecture": "GET /api/django/ventes/devis/<int:pk>/economie-ci/ — action du DevisViewSet, IsAnyRole, 404 hors société ; calculée à la lecture, jamais stockée ; rend le bloc AVEC `vue_interne` (écran interne)",
+    "apercu": "POST /api/django/ventes/economie-ci/preview/ — aucune écriture ; même forme"
+  },
+  "corps_preview": "Objet JSON à trois clés : `sortie_etude_ci` (la réponse de POST /api/django/ventes/etude-ci/preview/, contrat `etude_ci_preview.json`) ; `saisies` (forme `saisies_economie_ci` ci-dessous) ; `lignes` = [{produit, quantite, taux_tva, totaux {ht, ttc}}] — l'investissement est RECALCULÉ côté serveur depuis `produit` et les valeurs transmises (total client HT/TTC, jamais le prix d'achat).",
+  "exemple": {
+    "statut": "calcule",
+    "motifs_omission": [],
+    "base": "deux",
+    "motif_base": "TVA récupérable non déclarée : économies affichées en HT et en TTC (D-CIQ-3)",
+    "tarif": {
+      "origine": "grille_officielle",
+      "contrat": "bt_patente",
+      "tarifs_par_poste": [
+        {
+          "poste": "tranche_1",
+          "tarif_kwh_ht": 1.2622,
+          "tarif_kwh_ttc": 1.5146,
+          "base_publiee": "ttc",
+          "derive_ht_estimation": true,
+          "source": "grille ONEE BT patenté 0-150 kWh — capture Wayback one.org.ma 20250216142859 (libellé de page « TVA 18 % »)",
+          "releve_le": "2026-10-03"
+        },
+        {
+          "poste": "tranche_2",
+          "tarif_kwh_ht": 1.4242,
+          "tarif_kwh_ttc": 1.709,
+          "base_publiee": "ttc",
+          "derive_ht_estimation": true,
+          "source": "grille ONEE BT patenté > 150 kWh — capture Wayback one.org.ma 20250216142859 (libellé de page « TVA 18 % »)",
+          "releve_le": "2026-10-03"
+        }
+      ],
+      "prime_fixe_annuelle_mad": null,
+      "tva_energie_pct": 20,
+      "tva_millesime": 2026,
+      "mention": "Grille ONEE, repli : prix TTC tels que publiés sur one.org.ma (la page indique TVA 18 %, taux légal 2026 : 20 %) ; HT dérivé = TTC ÷ 1,20, estimation jusqu'à lecture d'une facture du client."
+    },
+    "economie_annee1": {
+      "par_poste": [
+        {
+          "poste": "tranche_2",
+          "kwh_evites": 69466,
+          "tarif_kwh": 1.4242,
+          "mad": 98933.48,
+          "tarif_kwh_ttc": 1.709,
+          "mad_ttc": 118717.39
+        }
+      ],
+      "total_mad": 98933.48,
+      "total_mad_ttc": 118717.39,
+      "part_facture_energie_pct": 46.7
+    },
+    "facture_avant": {
+      "energie_par_poste": [
+        {
+          "poste": "tranche_1+tranche_2",
+          "mad_ht": 212056.62,
+          "mad_ttc": 254461.98
+        }
+      ],
+      "prime_fixe_mad": null
+    },
+    "facture_apres": {
+      "energie_par_poste": [
+        {
+          "poste": "tranche_1+tranche_2",
+          "mad_ht": 113121.72,
+          "mad_ttc": 135742.88
+        }
+      ],
+      "prime_fixe_mad": null
+    },
+    "revente": {
+      "statut": "absente_bt",
+      "kwh_an": null,
+      "plafond_kwh": null,
+      "tarifs": [],
+      "valeur_mad_an": null,
+      "mentions": [
+        "Site en basse tension : aucune revente de surplus (hypothèse neutre, décision ANRE 04/26).",
+        "Loi 82-21 art. 13 : contribution d'accès au réseau prévue, non fixée, non incluse."
+      ],
+      "hypotheses": [
+        {
+          "cle": "surplus_non_valorise_kwh",
+          "valeur": 25959,
+          "statut": "source",
+          "source": "etude_ci.bilan"
+        }
+      ]
+    },
+    "flux_ht": {
+      "horizon_ans": 25,
+      "flux": [
+        {
+          "annee": 0,
+          "economie_mad": 0.0,
+          "flux_mad": -247500.0,
+          "cumul_mad": -247500.0,
+          "flux_actualise_mad": -247500.0
+        },
+        {
+          "annee": 1,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": -148566.52,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 2,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": -49633.05,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 3,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 49300.43,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 4,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 148233.91,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 5,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 247167.39,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 6,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 346100.86,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 7,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 445034.34,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 8,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 543967.82,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 9,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 642901.29,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 10,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 741834.77,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 11,
+          "economie_mad": 98933.48,
+          "flux_mad": 53100.15,
+          "cumul_mad": 794934.92,
+          "flux_actualise_mad": 53100.15
+        },
+        {
+          "annee": 12,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 893868.4,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 13,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 992801.87,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 14,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 1091735.35,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 15,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 1190668.83,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 16,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 1289602.31,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 17,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 1388535.78,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 18,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 1487469.26,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 19,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 1586402.74,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 20,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 1685336.21,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 21,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 1784269.69,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 22,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 1883203.17,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 23,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 1982136.65,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 24,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 2081070.12,
+          "flux_actualise_mad": 98933.48
+        },
+        {
+          "annee": 25,
+          "economie_mad": 98933.48,
+          "flux_mad": 98933.48,
+          "cumul_mad": 2180003.6,
+          "flux_actualise_mad": 98933.48
+        }
+      ],
+      "van_mad": null,
+      "tri_pct": 39.7788,
+      "lcoe_mad_kwh": 0.123,
+      "retour_ans": 3,
+      "retour_actualise_ans": null,
+      "hypotheses": [
+        {
+          "cle": "investissement_mad",
+          "valeur": 247500.0,
+          "source": "devis — total HT des lignes (illustratif)",
+          "saisie_le": null
+        },
+        {
+          "cle": "economie_annee1_mad",
+          "valeur": 98933.48,
+          "source": "economie_ci.economie_annee1 (valorisation horaire au tarif du poste)",
+          "saisie_le": null
+        },
+        {
+          "cle": "production_annee1_kwh",
+          "valeur": 95425,
+          "source": "etude_ci.bilan (moteur C&I)",
+          "saisie_le": null
+        },
+        {
+          "cle": "horizon_ans",
+          "valeur": 25,
+          "source": "D-CIQ-10 : 25 ans",
+          "saisie_le": null
+        },
+        {
+          "cle": "taux_actualisation_pct",
+          "valeur": null,
+          "source": "non déclaré par le client",
+          "saisie_le": null
+        },
+        {
+          "cle": "indexation_pct",
+          "valeur": 0.0,
+          "source": "réglage société — Paramètres › Tarification & ROI",
+          "saisie_le": "2026-09-23"
+        },
+        {
+          "cle": "degradation_pct",
+          "valeur": 0.0,
+          "source": "réglage société — Paramètres › Tarification & ROI",
+          "saisie_le": "2026-09-23"
+        }
+      ],
+      "omissions": [
+        {
+          "cle": "van_mad",
+          "motif": "aucun taux d'actualisation déclaré par le client — VAN omise (D-CIQ-10)"
+        },
+        {
+          "cle": "charges_annuelles_mad",
+          "motif": "contrat O&M non souscrit — aucune charge annuelle portée au flux"
+        }
+      ]
+    },
+    "flux_ttc": {
+      "horizon_ans": 25,
+      "flux": [
+        {
+          "annee": 0,
+          "economie_mad": 0.0,
+          "flux_mad": -297000.0,
+          "cumul_mad": -297000.0,
+          "flux_actualise_mad": -297000.0
+        },
+        {
+          "annee": 1,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": -178282.61,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 2,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": -59565.21,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 3,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 59152.18,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 4,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 177869.58,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 5,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 296586.97,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 6,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 415304.36,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 7,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 534021.76,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 8,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 652739.15,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 9,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 771456.55,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 10,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 890173.94,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 11,
+          "economie_mad": 118717.39,
+          "flux_mad": 63717.39,
+          "cumul_mad": 953891.33,
+          "flux_actualise_mad": 63717.39
+        },
+        {
+          "annee": 12,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 1072608.73,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 13,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 1191326.12,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 14,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 1310043.52,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 15,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 1428760.91,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 16,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 1547478.3,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 17,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 1666195.7,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 18,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 1784913.09,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 19,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 1903630.49,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 20,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 2022347.88,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 21,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 2141065.27,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 22,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 2259782.67,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 23,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 2378500.06,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 24,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 2497217.46,
+          "flux_actualise_mad": 118717.39
+        },
+        {
+          "annee": 25,
+          "economie_mad": 118717.39,
+          "flux_mad": 118717.39,
+          "cumul_mad": 2615934.85,
+          "flux_actualise_mad": 118717.39
+        }
+      ],
+      "van_mad": null,
+      "tri_pct": 39.7778,
+      "lcoe_mad_kwh": 0.1476,
+      "retour_ans": 3,
+      "retour_actualise_ans": null,
+      "hypotheses": [
+        {
+          "cle": "investissement_mad",
+          "valeur": 297000.0,
+          "source": "devis — total TTC client (illustratif)",
+          "saisie_le": null
+        },
+        {
+          "cle": "economie_annee1_mad",
+          "valeur": 118717.39,
+          "source": "economie_ci.economie_annee1 (valorisation horaire au tarif du poste)",
+          "saisie_le": null
+        },
+        {
+          "cle": "production_annee1_kwh",
+          "valeur": 95425,
+          "source": "etude_ci.bilan (moteur C&I)",
+          "saisie_le": null
+        },
+        {
+          "cle": "horizon_ans",
+          "valeur": 25,
+          "source": "D-CIQ-10 : 25 ans",
+          "saisie_le": null
+        },
+        {
+          "cle": "taux_actualisation_pct",
+          "valeur": null,
+          "source": "non déclaré par le client",
+          "saisie_le": null
+        },
+        {
+          "cle": "indexation_pct",
+          "valeur": 0.0,
+          "source": "réglage société — Paramètres › Tarification & ROI",
+          "saisie_le": "2026-09-23"
+        },
+        {
+          "cle": "degradation_pct",
+          "valeur": 0.0,
+          "source": "réglage société — Paramètres › Tarification & ROI",
+          "saisie_le": "2026-09-23"
+        }
+      ],
+      "omissions": [
+        {
+          "cle": "van_mad",
+          "motif": "aucun taux d'actualisation déclaré par le client — VAN omise (D-CIQ-10)"
+        },
+        {
+          "cle": "charges_annuelles_mad",
+          "motif": "contrat O&M non souscrit — aucune charge annuelle portée au flux"
+        }
+      ]
+    },
+    "jalons": [
+      {
+        "annee": 5,
+        "cumul_mad": 247167.39
+      },
+      {
+        "annee": 10,
+        "cumul_mad": 741834.77
+      },
+      {
+        "annee": 15,
+        "cumul_mad": 1190668.83
+      },
+      {
+        "annee": 20,
+        "cumul_mad": 1685336.21
+      },
+      {
+        "annee": 25,
+        "cumul_mad": 2180003.6
+      }
+    ],
+    "jalons_ttc": [
+      {
+        "annee": 5,
+        "cumul_mad": 296586.97
+      },
+      {
+        "annee": 10,
+        "cumul_mad": 890173.94
+      },
+      {
+        "annee": 15,
+        "cumul_mad": 1428760.91
+      },
+      {
+        "annee": 20,
+        "cumul_mad": 2022347.88
+      },
+      {
+        "annee": 25,
+        "cumul_mad": 2615934.85
+      }
+    ],
+    "indicateurs": {
+      "tri_pct": 39.7788,
+      "tri_horizon_ans": 25,
+      "retour_ans": 3,
+      "van_mad": null,
+      "van_motif": "aucun taux d'actualisation déclaré par le client (D-CIQ-10)",
+      "lcoe_mad_kwh": 0.123,
+      "lcoe_actualise": false,
+      "tarif_kwh_evite_moyen": 1.4242
+    },
+    "remplacements": [
+      {
+        "composant": "onduleur",
+        "annee": 11,
+        "montant_ttc_mad": 55000.0,
+        "montant_ht_mad": 45833.33,
+        "source": "TTC réel de la ligne onduleur du devis (illustratif : prix de vente seed `OND-R-HUA-50T`)",
+        "motif": "fin de la garantie constructeur (10 ans, fiche produit)"
+      }
+    ],
+    "om": {
+      "statut": "tarif_a_renseigner",
+      "montant_mad_an": null,
+      "source": "option O&M nommée (D-CIQ-12) — prix saisi par Reda, aucun défaut"
+    },
+    "sensibilites": [],
+    "hypotheses": [
+      {
+        "cle": "valorisation",
+        "valeur": "tarif du poste horaire couvert, heure par heure",
+        "statut": "source",
+        "source": "conventions Groupe CIQ"
+      },
+      {
+        "cle": "tarif",
+        "valeur": "grille ONEE BT patenté, repli",
+        "statut": "estimation",
+        "source": "tarifs_ci.json — HT dérivé ÷ 1,20"
+      }
+    ],
+    "omissions": [
+      {
+        "cle": "van_mad",
+        "motif": "aucun taux d'actualisation déclaré par le client"
+      },
+      {
+        "cle": "financement",
+        "motif": "aucune offre écrite de prêteur saisie (D-CIQ-15)"
+      }
+    ],
+    "alertes_internes": [
+      {
+        "code": "tarif_repli",
+        "message": "Tarif valorisé sur la grille officielle (repli) : lire une facture du client pour un chiffre déclaré.",
+        "interne": true
+      }
+    ],
+    "vue_interne": {
+      "comparaison_cse": null,
+      "sr500": {
+        "statut": "non_evalue",
+        "motif": "aucun parcours d'aide déclaré"
+      },
+      "apres_impot": null
+    }
+  },
+  "exemple_industriel_mt": {
+    "statut": "calcule",
+    "motifs_omission": [],
+    "base": "ht",
+    "motif_base": "TVA récupérable déclarée « oui » : économies en HT (D-CIQ-3)",
+    "tarif": {
+      "origine": "declare_facture",
+      "contrat": "mt_general",
+      "tarifs_par_poste": [
+        {
+          "poste": "pointe",
+          "tarif_kwh_ht": 1.18,
+          "tarif_kwh_ttc": 1.416,
+          "base_publiee": "ht",
+          "derive_ht_estimation": false,
+          "source": "facture du client du 31/08/2026",
+          "releve_le": "2026-09-15"
+        },
+        {
+          "poste": "pleines",
+          "tarif_kwh_ht": 0.84,
+          "tarif_kwh_ttc": 1.008,
+          "base_publiee": "ht",
+          "derive_ht_estimation": false,
+          "source": "facture du client du 31/08/2026",
+          "releve_le": "2026-09-15"
+        },
+        {
+          "poste": "creuses",
+          "tarif_kwh_ht": 0.62,
+          "tarif_kwh_ttc": 0.744,
+          "base_publiee": "ht",
+          "derive_ht_estimation": false,
+          "source": "facture du client du 31/08/2026",
+          "releve_le": "2026-09-15"
+        }
+      ],
+      "prime_fixe_annuelle_mad": 106795.0,
+      "tva_energie_pct": 20,
+      "tva_millesime": 2026,
+      "mention": "Tarifs relevés sur la facture d'électricité du client du 31/08/2026 (HT tels qu'imprimés ; TTC = HT × 1,20, TVA électricité 2026)."
+    },
+    "economie_annee1": {
+      "par_poste": [
+        {
+          "poste": "pointe",
+          "kwh_evites": 20000,
+          "tarif_kwh": 1.18,
+          "mad": 23600.0
+        },
+        {
+          "poste": "pleines",
+          "kwh_evites": 230000,
+          "tarif_kwh": 0.84,
+          "mad": 193200.0
+        },
+        {
+          "poste": "creuses",
+          "kwh_evites": 30000,
+          "tarif_kwh": 0.62,
+          "mad": 18600.0
+        }
+      ],
+      "total_mad": 235400.0,
+      "part_facture_energie_pct": 58.3
+    },
+    "facture_avant": {
+      "energie_par_poste": [
+        {
+          "poste": "pointe",
+          "kwh": 60000,
+          "mad_ht": 70800.0
+        },
+        {
+          "poste": "pleines",
+          "kwh": 330000,
+          "mad_ht": 277200.0
+        },
+        {
+          "poste": "creuses",
+          "kwh": 90000,
+          "mad_ht": 55800.0
+        }
+      ],
+      "prime_fixe_mad": 106795.0
+    },
+    "facture_apres": {
+      "energie_par_poste": [
+        {
+          "poste": "pointe",
+          "kwh": 40000,
+          "mad_ht": 47200.0
+        },
+        {
+          "poste": "pleines",
+          "kwh": 100000,
+          "mad_ht": 84000.0
+        },
+        {
+          "poste": "creuses",
+          "kwh": 60000,
+          "mad_ht": 37200.0
+        }
+      ],
+      "prime_fixe_mad": 106795.0
+    },
+    "revente": {
+      "statut": "calculee",
+      "kwh_an": 60000,
+      "plafond_kwh": 68000,
+      "tarifs": [
+        {
+          "poste": "pointe",
+          "kwh": 5000,
+          "tarif_kwh_ht": 0.21
+        },
+        {
+          "poste": "hors_pointe",
+          "kwh": 55000,
+          "tarif_kwh_ht": 0.18
+        }
+      ],
+      "valeur_mad_an": 10950.0,
+      "mentions": [
+        "Excédent racheté 0,21 / 0,18 DH HT le kWh (pointe / hors pointe), tarif ANRE 03/2026-02/2027, MT seulement, sans déduction des frais réseau (D-CIQ-4).",
+        "Plafond d'injection : 20 % de la production (loi 82-21 art. 12, décision ANRE 04/26).",
+        "Loi 82-21 art. 13 : contribution d'accès au réseau prévue, non fixée, non incluse."
+      ],
+      "hypotheses": [
+        {
+          "cle": "revente_demandee",
+          "valeur": true,
+          "statut": "declare",
+          "source": "saisies_economie_ci.revente_demandee"
+        }
+      ]
+    },
+    "flux_ht": {
+      "horizon_ans": 25,
+      "flux": [
+        {
+          "annee": 0,
+          "economie_mad": 0.0,
+          "flux_mad": -900000.0,
+          "cumul_mad": -900000.0,
+          "flux_actualise_mad": -900000.0
+        },
+        {
+          "annee": 1,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": -653650.0,
+          "flux_actualise_mad": 228101.85
+        },
+        {
+          "annee": 2,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": -407300.0,
+          "flux_actualise_mad": 211205.42
+        },
+        {
+          "annee": 3,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": -160950.0,
+          "flux_actualise_mad": 195560.57
+        },
+        {
+          "annee": 4,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 85400.0,
+          "flux_actualise_mad": 181074.6
+        },
+        {
+          "annee": 5,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 331750.0,
+          "flux_actualise_mad": 167661.67
+        },
+        {
+          "annee": 6,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 578100.0,
+          "flux_actualise_mad": 155242.29
+        },
+        {
+          "annee": 7,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 824450.0,
+          "flux_actualise_mad": 143742.86
+        },
+        {
+          "annee": 8,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 1070800.0,
+          "flux_actualise_mad": 133095.24
+        },
+        {
+          "annee": 9,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 1317150.0,
+          "flux_actualise_mad": 123236.33
+        },
+        {
+          "annee": 10,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 1563500.0,
+          "flux_actualise_mad": 114107.72
+        },
+        {
+          "annee": 11,
+          "economie_mad": 246350.0,
+          "flux_mad": 108850.01,
+          "cumul_mad": 1672350.01,
+          "flux_actualise_mad": 46683.9
+        },
+        {
+          "annee": 12,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 1918700.01,
+          "flux_actualise_mad": 97828.97
+        },
+        {
+          "annee": 13,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 2165050.01,
+          "flux_actualise_mad": 90582.38
+        },
+        {
+          "annee": 14,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 2411400.01,
+          "flux_actualise_mad": 83872.58
+        },
+        {
+          "annee": 15,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 2657750.01,
+          "flux_actualise_mad": 77659.79
+        },
+        {
+          "annee": 16,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 2904100.01,
+          "flux_actualise_mad": 71907.22
+        },
+        {
+          "annee": 17,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 3150450.01,
+          "flux_actualise_mad": 66580.76
+        },
+        {
+          "annee": 18,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 3396800.01,
+          "flux_actualise_mad": 61648.85
+        },
+        {
+          "annee": 19,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 3643150.01,
+          "flux_actualise_mad": 57082.27
+        },
+        {
+          "annee": 20,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 3889500.01,
+          "flux_actualise_mad": 52853.95
+        },
+        {
+          "annee": 21,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 4135850.01,
+          "flux_actualise_mad": 48938.84
+        },
+        {
+          "annee": 22,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 4382200.01,
+          "flux_actualise_mad": 45313.74
+        },
+        {
+          "annee": 23,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 4628550.01,
+          "flux_actualise_mad": 41957.17
+        },
+        {
+          "annee": 24,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 4874900.01,
+          "flux_actualise_mad": 38849.23
+        },
+        {
+          "annee": 25,
+          "economie_mad": 246350.0,
+          "flux_mad": 246350.0,
+          "cumul_mad": 5121250.01,
+          "flux_actualise_mad": 35971.51
+        }
+      ],
+      "van_mad": 1670759.73,
+      "tri_pct": 27.0053,
+      "lcoe_mad_kwh": 0.1221,
+      "retour_ans": 4,
+      "retour_actualise_ans": 5,
+      "hypotheses": [
+        {
+          "cle": "investissement_mad",
+          "valeur": 900000.0,
+          "source": "devis — total HT des lignes (illustratif)",
+          "saisie_le": null
+        },
+        {
+          "cle": "economie_annee1_mad",
+          "valeur": 246350.0,
+          "source": "economie_ci.economie_annee1 (valorisation horaire au tarif du poste)",
+          "saisie_le": null
+        },
+        {
+          "cle": "production_annee1_kwh",
+          "valeur": 340000,
+          "source": "etude_ci.bilan (moteur C&I)",
+          "saisie_le": null
+        },
+        {
+          "cle": "horizon_ans",
+          "valeur": 25,
+          "source": "D-CIQ-10 : 25 ans",
+          "saisie_le": null
+        },
+        {
+          "cle": "taux_actualisation_pct",
+          "valeur": 8.0,
+          "source": "déclaré par le client (taux_actualisation_client)",
+          "saisie_le": "2026-09-20"
+        },
+        {
+          "cle": "indexation_pct",
+          "valeur": 0.0,
+          "source": "réglage société — Paramètres › Tarification & ROI",
+          "saisie_le": "2026-09-23"
+        },
+        {
+          "cle": "degradation_pct",
+          "valeur": 0.0,
+          "source": "réglage société — Paramètres › Tarification & ROI",
+          "saisie_le": "2026-09-23"
+        }
+      ],
+      "omissions": [
+        {
+          "cle": "charges_annuelles_mad",
+          "motif": "contrat O&M non souscrit — aucune charge annuelle portée au flux"
+        }
+      ]
+    },
+    "jalons": [
+      {
+        "annee": 5,
+        "cumul_mad": 331750.0
+      },
+      {
+        "annee": 10,
+        "cumul_mad": 1563500.0
+      },
+      {
+        "annee": 15,
+        "cumul_mad": 2657750.01
+      },
+      {
+        "annee": 20,
+        "cumul_mad": 3889500.01
+      },
+      {
+        "annee": 25,
+        "cumul_mad": 5121250.01
+      }
+    ],
+    "indicateurs": {
+      "tri_pct": 27.0053,
+      "tri_horizon_ans": 25,
+      "retour_ans": 4,
+      "van_mad": 1670759.73,
+      "van_motif": null,
+      "lcoe_mad_kwh": 0.1221,
+      "lcoe_actualise": false,
+      "tarif_kwh_evite_moyen": 0.8407
+    },
+    "remplacements": [
+      {
+        "composant": "onduleur",
+        "annee": 11,
+        "montant_ttc_mad": 165000.0,
+        "montant_ht_mad": 137500.0,
+        "source": "TTC réel des lignes onduleur du devis (illustratif)",
+        "motif": "fin de la garantie constructeur (fiche produit)"
+      }
+    ],
+    "om": {
+      "statut": "propose",
+      "montant_mad_an": null,
+      "source": "option O&M nommée — prix à saisir par Reda"
+    },
+    "sensibilites": [],
+    "financement": {
+      "libelle_client": "Offre de crédit de Prêteur Exemple du 15/09/2026 (réf. OFF-EXEMPLE-01)",
+      "echeance_mad": 12000.0,
+      "economie_mensuelle_moyenne_mad": 20529.17,
+      "ecart_mensuel_mad": 8529.17,
+      "duree_mois": 84,
+      "source": "offre écrite saisie par le vendeur"
+    },
+    "hypotheses": [
+      {
+        "cle": "valorisation",
+        "valeur": "tarif du poste horaire couvert, heure par heure",
+        "statut": "source",
+        "source": "conventions Groupe CIQ"
+      },
+      {
+        "cle": "tarif",
+        "valeur": "facture du client du 31/08/2026",
+        "statut": "declare",
+        "source": "tarifs_ci.json — exemple MT"
+      }
+    ],
+    "omissions": [],
+    "alertes_internes": [
+      {
+        "code": "cos_phi_degrade",
+        "message": "Le PV réduit l'actif sans réduire le réactif : cos φ à surveiller (relayé depuis etude_ci.alertes, CIQ134).",
+        "interne": true
+      }
+    ],
+    "vue_interne": {
+      "comparaison_cse": null,
+      "sr500": {
+        "statut": "non_evalue",
+        "motif": "candidature SR500 manuelle d'abord (D-CIQ-17) — indicateur interne seulement, jamais un montant"
+      },
+      "apres_impot": null
+    }
+  },
+  "exemple_omis": {
+    "statut": "omis",
+    "motifs_omission": [
+      "contrat d'électricité non déclaré et aucune facture lue : aucun tarif — économies non chiffrées (aucun prix plat supposé)"
+    ],
+    "base": null,
+    "motif_base": null,
+    "tarif": {
+      "origine": "omis",
+      "contrat": null,
+      "tarifs_par_poste": [],
+      "prime_fixe_annuelle_mad": null,
+      "tva_energie_pct": null,
+      "tva_millesime": null,
+      "mention": "Tarif non déclaré et contrat d'électricité inconnu : économies non chiffrées (aucun prix plat supposé)."
+    },
+    "economie_annee1": null,
+    "facture_avant": null,
+    "facture_apres": null,
+    "revente": null,
+    "flux_ht": null,
+    "flux_ttc": null,
+    "jalons": [],
+    "indicateurs": null,
+    "remplacements": [],
+    "om": null,
+    "sensibilites": [],
+    "hypotheses": [],
+    "omissions": [],
+    "alertes_internes": [],
+    "vue_interne": {
+      "comparaison_cse": null,
+      "sr500": null,
+      "apres_impot": null
+    }
+  },
+  "saisies_economie_ci": {
+    "proprietaire": "ecran",
+    "nature": "ENTRÉE de `etude_params.saisies_economie_ci`, recopiée par les copies et la V2",
+    "regles": {
+      "tva_recuperable": "{valeur oui|non|inconnu, provenance lead|declare_client, saisi_le} — lue d'abord sur le lead (`lead_pro.json`, CIQ1)",
+      "taux_actualisation_client": "{valeur_pct, source, saisi_le} — DÉCLARÉ par le client (D-CIQ-10) ; absent ⇒ VAN omise ; refusé sans source",
+      "revente_demandee": "booléen — MT/HT seulement ; ignoré (et dit) en BT",
+      "parcours_aide": "aucun | sr500 | autre — jamais cumulé avec la revente (D-CIQ-17)",
+      "offre_financement": "{nature credit|credit_bail, preteur, reference_offre, date_offre, montant_finance_mad, apport_mad, duree_mois, echeance_mad, base_echeance ht|ttc, frais_mad, taux_annuel_pct (SEULEMENT s'il est écrit sur l'offre), valeur_residuelle_mad, source « offre écrite »} ou null — jamais un taux par défaut ; `credit_bail` jamais imprimé avant l'avis juridique (D-CIQ-15)",
+      "offre_cse_concurrente": "{tarif_kwh_ht, duree_ans, indexation_pct_an (seulement si écrite), source} ou null — vue interne seulement (D-CIQ-16)",
+      "fiscalite_client": "{taux_is_pct, amortissement_mode, duree_ans, amortissement_coefficient, source « déclaré par le client »} ou null — vue interne seulement"
+    },
+    "exemple": {
+      "tva_recuperable": {
+        "valeur": "inconnu",
+        "provenance": "lead",
+        "saisi_le": "2026-09-15"
+      },
+      "taux_actualisation_client": null,
+      "revente_demandee": false,
+      "parcours_aide": "aucun",
+      "offre_financement": null,
+      "offre_cse_concurrente": null,
+      "fiscalite_client": null
+    },
+    "exemple_industriel_mt": {
+      "tva_recuperable": {
+        "valeur": "oui",
+        "provenance": "declare_client",
+        "saisi_le": "2026-09-15"
+      },
+      "taux_actualisation_client": {
+        "valeur_pct": 8.0,
+        "source": "déclaré par le DAF du client (illustratif)",
+        "saisi_le": "2026-09-20"
+      },
+      "revente_demandee": true,
+      "parcours_aide": "aucun",
+      "offre_financement": {
+        "nature": "credit",
+        "preteur": "Prêteur Exemple",
+        "reference_offre": "OFF-EXEMPLE-01",
+        "date_offre": "2026-09-15",
+        "montant_finance_mad": 720000.0,
+        "apport_mad": 180000.0,
+        "duree_mois": 84,
+        "echeance_mad": 12000.0,
+        "base_echeance": "ht",
+        "frais_mad": null,
+        "taux_annuel_pct": null,
+        "valeur_residuelle_mad": null,
+        "source": "offre écrite"
+      },
+      "offre_cse_concurrente": null,
+      "fiscalite_client": null
+    }
+  },
+  "regles_sortie": {
+    "statut": "calcule | omis ; `motifs_omission` [textes] non vide si omis",
+    "base": "ht (TVA récupérable « oui ») | ttc (« non ») | deux (« inconnu ») + `motif_base` (D-CIQ-3) ; la saisie du générateur reste 100 % TTC, la chaîne HT → TVA → TTC est gardée",
+    "tarif": "forme `tarif` du contrat `tarifs_ci.json` (CIQ11)",
+    "economie_annee1": "{par_poste [{poste, kwh_evites, tarif_kwh, mad (+ tarif_kwh_ttc, mad_ttc si base deux)}], total_mad (+ total_mad_ttc), part_facture_energie_pct} — valorisation au tarif du POSTE HORAIRE couvert, depuis la matrice `etude_ci.bilan.horaire`",
+    "facture_avant / facture_apres": "{energie_par_poste [...], prime_fixe_mad} — prime fixe IDENTIQUE des deux côtés (aucune économie de prime attribuée au PV seul)",
+    "revente": "{statut absente_bt|calculee|omise, kwh_an, plafond_kwh, tarifs [{poste, kwh, tarif_kwh_ht}], valeur_mad_an, mentions [], hypotheses []} — BT : `absente_bt`, aucune ligne de revente ; MT : seulement si `revente_demandee`",
+    "flux_ht / flux_ttc": "forme EXACTE de `ventes_economie.json` {horizon_ans (25), flux [{annee, economie_mad, flux_mad, cumul_mad, flux_actualise_mad}], van_mad, tri_pct, lcoe_mad_kwh, retour_ans, retour_actualise_ans, hypotheses, omissions} ; présents selon `base`",
+    "jalons": "[{annee 5|10|15|20|25, cumul_mad}] (D-CIQ-10) ; `jalons_ttc` si base deux",
+    "indicateurs": "{tri_pct, tri_horizon_ans, retour_ans, van_mad (null + `van_motif` sans taux du client), lcoe_mad_kwh, lcoe_actualise, tarif_kwh_evite_moyen}",
+    "remplacements": "[{composant, annee, montant_ttc_mad, montant_ht_mad, source, motif}]",
+    "om": "{statut souscrit|propose|absent|tarif_a_renseigner, montant_mad_an, source} (D-CIQ-12)",
+    "sensibilites": "[{cle, variation_pct, source, retour_ans, tri_pct}] — seulement des valeurs saisies par Reda dans Paramètres ; aucune par défaut (liste vide)",
+    "financement": "présent SEULEMENT si une offre écrite est saisie : {libelle_client, echeance_mad, economie_mensuelle_moyenne_mad, ecart_mensuel_mad, duree_mois, source} — jamais de taux inventé ni de prêteur sans son offre (D-CIQ-15)",
+    "hypotheses / omissions": "listes ; chaque valeur absente est NOMMÉE dans `omissions`",
+    "alertes_internes": "[{code, message, interne: true}] — dont l'alerte cos φ relayée depuis `etude_ci.alertes` (CIQ134) ; jamais dans une charge utile client",
+    "vue_interne": "{comparaison_cse (null sans `offre_cse_concurrente`), sr500 {statut, motif} (indicateur interne, jamais un montant — D-CIQ-17), apres_impot (null sans `fiscalite_client`)} — lecture interne seulement"
+  },
+  "interdit": [
+    "prix_achat",
+    "marge",
+    "prix",
+    "cout",
+    "remise",
+    "coefficient"
+  ]
+}
