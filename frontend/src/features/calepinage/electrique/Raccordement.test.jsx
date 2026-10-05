@@ -262,6 +262,59 @@ describe('Raccordement — plafond d’injection (ACAL156)', () => {
   })
 })
 
+describe('Raccordement — valeurs du lead (ACAL158)', () => {
+  const PROPOSITION = CONTRAT.exemple.proposition_lead
+  const vide = () => ({ ...CONTRAT.exemple_vide, proposition_lead: PROPOSITION })
+
+  it('reprendre remplit sans enregistrer', async () => {
+    servir(vide())
+
+    rendre()
+    await screen.findByTestId('acal158-proposition')
+    expect(screen.getByTestId('acal158-source')).toHaveTextContent(PROPOSITION.source)
+    await userEvent.click(screen.getByTestId('acal158-reprendre'))
+
+    expect(document.getElementById('calx244-champ-puissance_souscrite_kva'))
+      .toHaveValue(PROPOSITION.puissance_souscrite_kva)
+    expect(document.getElementById('calx244-champ-phases')).toHaveValue(PROPOSITION.phases)
+    // Rien n'est enregistré avant « Enregistrer ».
+    expect(calepinageApi.calepinages.enregistrerRaccordement).not.toHaveBeenCalled()
+  })
+
+  it('saisie existante non écrasée : la proposition est lisible, sans bouton', async () => {
+    servir({ ...CONTRAT.exemple, proposition_lead: { ...PROPOSITION, puissance_souscrite_kva: 99 } })
+
+    rendre()
+    await screen.findByTestId('acal158-proposition')
+    expect(screen.queryByTestId('acal158-reprendre')).toBeNull()
+    expect(document.getElementById('calx244-champ-puissance_souscrite_kva'))
+      .toHaveValue(CONTRAT.exemple.saisie.puissance_souscrite_kva)
+  })
+
+  it('proposition nulle = pas de bouton', async () => {
+    servir({ ...CONTRAT.exemple_vide, proposition_lead: null })
+
+    rendre()
+    await screen.findByTestId('calx244-formulaire')
+    expect(screen.queryByTestId('acal158-proposition')).toBeNull()
+    expect(screen.queryByTestId('acal158-reprendre')).toBeNull()
+  })
+
+  it('après « Reprendre » puis « Enregistrer », le corps posté porte les valeurs du lead', async () => {
+    servir(vide())
+    calepinageApi.calepinages.enregistrerRaccordement.mockResolvedValue({ data: CONTRAT.exemple })
+
+    rendre()
+    await userEvent.click(await screen.findByTestId('acal158-reprendre'))
+    await userEvent.click(screen.getByTestId('calx244-enregistrer'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerRaccordement).toHaveBeenCalledTimes(1))
+    const [, corps] = calepinageApi.calepinages.enregistrerRaccordement.mock.calls[0]
+    expect(corps.puissance_souscrite_kva).toBe(PROPOSITION.puissance_souscrite_kva)
+    expect(corps.phases).toBe(PROPOSITION.phases)
+  })
+})
+
 describe('Fonctions pures (CALX244)', () => {
   it('erreursParChamp retire le préfixe que le serveur pose', () => {
     expect(erreursParChamp(CONTRAT.refus_limite_sans_source))
