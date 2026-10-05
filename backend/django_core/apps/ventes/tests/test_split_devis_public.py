@@ -67,7 +67,7 @@ DEPLACEMENTS = {
     'paiement': ('split_pv_paiement', 'apps/ventes/public/paiement_views.py',
                  'SPL252', True),
     'signature': ('split_pv_signature',
-                  'apps/ventes/public/signature_views.py', 'SPL253', False),
+                  'apps/ventes/public/signature_views.py', 'SPL253', True),
 }
 
 #: Les 16 endpoints publics de ventes (``public_urls.py``), par NOM de vue.

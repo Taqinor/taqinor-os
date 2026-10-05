@@ -1,17 +1,20 @@
 from django.urls import path
 from .public_views import (
     public_document, public_bcf_document,
-    proposal_data, proposal_pdf, proposal_accept,
+    proposal_data, proposal_pdf,
     proposal_taille_detail,  # OPTIONS CHARGEABLES (29/08/2026)
-    proposal_contact_request, proposal_request_otp,
-    proposal_request_otp_lecture, proposal_verify_otp_lecture,  # L-NIV
-    proposal_activate_option,  # XSAL5
     suivi_public,  # QX34
 )
 from .public.lecture_views import proposal_engagement  # XSAL16, SPL246
 from .public.paiement_views import (  # SPL252
     pay_page, pay_webhook,
     proposal_virement_declare,  # QX33be
+)
+from .public.signature_views import (  # SPL253
+    proposal_accept,
+    proposal_contact_request, proposal_request_otp,
+    proposal_request_otp_lecture, proposal_verify_otp_lecture,  # L-NIV
+    proposal_activate_option,  # XSAL5
 )
 
 urlpatterns = [
