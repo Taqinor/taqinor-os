@@ -91,13 +91,17 @@ def _saisie_enregistree(calepinage):
 
 
 def _persister(calepinage, saisie):
-    """Écrit la saisie NORMALISÉE, sans toucher au reste de ``resultat``."""
-    resultat = getattr(calepinage, 'resultat', None)
-    resultat = dict(resultat) if isinstance(resultat, dict) else {}
-    resultat[CLE_SAISIE] = saisie
-    calepinage.resultat = resultat
-    if getattr(calepinage, 'pk', None):
-        calepinage.save(update_fields=['resultat', 'updated_at'])
+    """Écrit la saisie NORMALISÉE, sans toucher au reste de ``resultat``.
+
+    ACAL57 — par l'écrivain unique : relecture sous verrou au moment
+    d'écrire, jamais l'instantané lu au début de la requête.
+    """
+    from ..services.resultat import modifier_resultat
+
+    def _poser(resultat):
+        resultat[CLE_SAISIE] = saisie
+
+    modifier_resultat(calepinage, _poser)
     return saisie
 
 

@@ -670,23 +670,32 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
     if 'cheminement' in donnees:
         _valider_cheminement(calepinage, donnees.get('cheminement'))
 
+    from .resultat import modifier_resultat
+
     saisies = donnees.get(CLE_DEROGATIONS)
     reglages = {cle: valeur for cle, valeur in donnees.items()
                 if cle != CLE_DEROGATIONS}
-    resultat = getattr(calepinage, 'resultat', None)
-    resultat = dict(resultat) if isinstance(resultat, dict) else {}
-    entree = dict(resultat.get(CLE_ENTREE) or {})
-    entree.update(reglages)
+    traces = None
     if CLE_DEROGATIONS in donnees:
+        # Le refus arrive AVANT toute écriture : rien n'est posé tant que
+        # toutes les dérogations ne tiennent pas.
+        entree = dict(entree_stockee(calepinage))
+        entree.update(reglages)
         conception, _materiel, _donnees, _doc = conception_du_calepinage(
             calepinage, entree=entree)
-        _ajouter_au_fil(resultat, CLE_FIL_DEROGATIONS, _traces_de_derogation(
-            conception, saisies, user=user))
-    resultat[CLE_ENTREE] = entree
-    calepinage.resultat = resultat
-    if getattr(calepinage, 'pk', None):
-        calepinage.save(update_fields=['resultat', 'updated_at'])
-    return entree
+        traces = _traces_de_derogation(conception, saisies, user=user)
+
+    def _poser(resultat):
+        # ACAL57 — fusion sur l'entrée RELUE sous verrou, jamais sur la
+        # copie lue au début de la requête.
+        entree = dict(resultat.get(CLE_ENTREE) or {})
+        entree.update(reglages)
+        if traces is not None:
+            _ajouter_au_fil(resultat, CLE_FIL_DEROGATIONS, traces)
+        resultat[CLE_ENTREE] = entree
+        return entree
+
+    return modifier_resultat(calepinage, _poser)
 
 
 def _designation(produit):
@@ -1868,17 +1877,18 @@ def rejouer_apres_layout(calepinage, *, user=None):
             'CAL128 : verdict électrique en échec (calepinage %s)',
             getattr(calepinage, 'pk', None))
         return None
-    resultat = getattr(calepinage, 'resultat', None)
-    resultat = dict(resultat) if isinstance(resultat, dict) else {}
-    resultat['verdict_electrique'] = evaluation
-    calepinage.resultat = resultat
-    if getattr(calepinage, 'pk', None):
-        # AUCUN statut n'est écrit ici — c'est l'invariant du module (le
-        # chemin de layout n'écrit jamais de statut). Le blocage vit dans
-        # ``garde_publication``, que le geste de publication appelle : un
-        # brouillon qui reste brouillon, jamais une rétrogradation surprise
-        # déclenchée par un simple enregistrement de dessin.
-        calepinage.save(update_fields=['resultat', 'updated_at'])
+    from .resultat import modifier_resultat
+
+    def _poser(resultat):
+        resultat['verdict_electrique'] = evaluation
+
+    # ACAL57 — l'écrivain unique, relecture sous verrou. AUCUN statut n'est
+    # écrit ici — c'est l'invariant du module (le chemin de layout n'écrit
+    # jamais de statut). Le blocage vit dans ``garde_publication``, que le
+    # geste de publication appelle : un brouillon qui reste brouillon, jamais
+    # une rétrogradation surprise déclenchée par un simple enregistrement de
+    # dessin.
+    modifier_resultat(calepinage, _poser)
 
     # CAL170 — un écart moteur↔fiche au-delà de la tolérance est JOURNALISÉ
     # (jamais un remplacement silencieux), et son historique est conservé.
@@ -2063,23 +2073,30 @@ def journaliser_ecart_longueur(calepinage, reconciliation):
         reconciliation.get('longueur'), reconciliation.get('longueur_dossier'),
         reconciliation.get('ecart'), getattr(calepinage, 'pk', None))
 
-    resultat = getattr(calepinage, 'resultat', None)
-    resultat = dict(resultat) if isinstance(resultat, dict) else {}
-    fil = _ajouter_au_fil(resultat, CLE_FIL_ECARTS, [{
+    from .resultat import modifier_resultat
+
+    entrees = [{
         'longueur': reconciliation.get('longueur'),
         'longueur_dossier': reconciliation.get('longueur_dossier'),
         'ecart': reconciliation.get('ecart'),
         'par_pan': reconciliation.get('par_pan') or {},
-    }])
-    calepinage.resultat = resultat
-    if getattr(calepinage, 'pk', None):
-        try:
-            calepinage.save(update_fields=['resultat', 'updated_at'])
-        except Exception:  # noqa: BLE001 — un journal ne casse jamais un geste
-            logging.getLogger(__name__).exception(
-                'CAL170 : journal d écart non enregistré (calepinage %s)',
-                getattr(calepinage, 'pk', None))
-    return fil
+    }]
+    try:
+        # ACAL57 — l'écrivain unique : le fil est prolongé sur le resultat
+        # RELU sous verrou, jamais sur l'instantané du début du geste.
+        return modifier_resultat(
+            calepinage,
+            lambda resultat: _ajouter_au_fil(resultat, CLE_FIL_ECARTS,
+                                             entrees))
+    except Exception:  # noqa: BLE001 — un journal ne casse jamais un geste
+        logging.getLogger(__name__).exception(
+            'CAL170 : journal d écart non enregistré (calepinage %s)',
+            getattr(calepinage, 'pk', None))
+        resultat = getattr(calepinage, 'resultat', None)
+        resultat = dict(resultat) if isinstance(resultat, dict) else {}
+        fil = _ajouter_au_fil(resultat, CLE_FIL_ECARTS, entrees)
+        calepinage.resultat = resultat
+        return fil
 
 
 def parametres_societe(calepinage):

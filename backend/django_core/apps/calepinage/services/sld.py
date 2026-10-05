@@ -411,13 +411,15 @@ def enregistrer_edition_sld(calepinage, corps, *, dessin=None):
     """
     if dessin is None:
         dessin = _dessin_du_calepinage(calepinage)
+    from .resultat import modifier_resultat
+
     edition = _valider_edition(corps, dessin)
-    resultat = getattr(calepinage, 'resultat', None)
-    resultat = dict(resultat) if isinstance(resultat, dict) else {}
-    resultat[CLE_EDITION] = edition
-    calepinage.resultat = resultat
-    if getattr(calepinage, 'pk', None):
-        calepinage.save(update_fields=['resultat', 'updated_at'])
+
+    def _poser(resultat):
+        # ACAL57 — l'écrivain unique, relecture sous verrou.
+        resultat[CLE_EDITION] = edition
+
+    modifier_resultat(calepinage, _poser)
     return edition
 
 

@@ -652,23 +652,6 @@ def _simulation_enregistree(calepinage):
     return dict(entete) if isinstance(entete, dict) else {}
 
 
-def _fusionner(calepinage, blocs):
-    """Pose ``blocs`` dans ``Calepinage.resultat`` PAR FUSION DE CLÉS.
-
-    Patron de ``services/electrique.py::enregistrer_entree`` : les clés que la
-    simulation ne produit pas (``entree_electrique``, ``pertes`` saisies,
-    ``horizon``…) sont conservées à l'octet près. Seule la colonne ``resultat``
-    est écrite — AUCUN statut (règle #4).
-    """
-    resultat = getattr(calepinage, 'resultat', None)
-    resultat = dict(resultat) if isinstance(resultat, dict) else {}
-    resultat.update(blocs)
-    calepinage.resultat = resultat
-    if getattr(calepinage, 'pk', None):
-        calepinage.save(update_fields=['resultat', 'updated_at'])
-    return resultat
-
-
 def _ajouter_avertissement(blocs, texte):
     """Un avertissement FRANÇAIS de plus, sans doublon ni chaîne vide."""
     if not texte:
@@ -1020,7 +1003,14 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         'duree_s': round(time.monotonic() - depart, 3),
     }
     if enregistrer:
-        _fusionner(calepinage, blocs)
+        # ACAL57 — l'écrivain unique : les blocs de la simulation sont posés
+        # PAR FUSION DE CLÉS sur le resultat RELU sous verrou au moment
+        # d'écrire. Une saisie faite PENDANT le calcul (``entree_electrique``,
+        # ``sld_edition``…) n'est donc jamais effacée par l'instantané lu au
+        # début. Seule la colonne ``resultat`` est écrite — AUCUN statut.
+        from .resultat import modifier_resultat
+
+        modifier_resultat(calepinage, lambda resultat: resultat.update(blocs))
         _annoncer_simulation(calepinage)
     return {
         'deja_calcule': False,
