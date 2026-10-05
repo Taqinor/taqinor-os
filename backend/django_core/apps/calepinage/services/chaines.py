@@ -113,6 +113,11 @@ class PanPose:
     source_orientation: Optional[str] = None
 
 
+#: ACAL162 — le motif publié quand le champ est 100 % micro-onduleurs : il
+#: n'y a AUCUN onduleur de chaîne, donc aucun verdict de chaîne à prononcer.
+MOTIF_MICRO_SEUL = "aucun onduleur de chaîne : régime micro-onduleurs"
+
+
 @dataclass(frozen=True)
 class Conception:
     """Le chaînage d'un calepinage — ou le SILENCE nommé qui en tient lieu."""
@@ -132,6 +137,11 @@ class Conception:
     coefficients_non_sources: Tuple[str, ...] = ()
     temperatures: object = None
     entree: object = None
+    #: ACAL162 — vrai quand le champ est câblé en micro-onduleurs SEULS
+    #: (aucun onduleur de chaîne désigné) : ``resultat`` vaut ``None`` (rien
+    #: n'est chaîné) mais ``entree`` existe (module, pans, phases) pour les
+    #: branches AC — l'UNIQUE indicateur de ce régime.
+    micro_seul: bool = False
     _drapeaux: Tuple[str, ...] = field(default=(), repr=False)
 
     @property
@@ -331,11 +341,87 @@ def chaines_max_par_mppt(specs):
     return None
 
 
+# ───────────────────────────────────────────────────────── la batterie
+def batterie_du_calepinage(calepinage, donnees, materiel=None, company=None):
+    """ACAL166/ACAL168 — LA résolution de la batterie d'un calepinage.
+
+    UNE fonction pour deux lecteurs : la simulation (``simulation._declaration_
+    batterie``) et le dessin du schéma (``entree_electrique``) lisent la MÊME
+    déclaration, jamais deux copies qui divergeraient.
+
+    La déclaration est celle de l'ENTRÉE électrique enregistrée
+    (``donnees['batterie']``). Le PRODUIT et les PACKS prennent, à défaut de
+    saisie, la ligne batterie du devis lié (``equipements_du_calepinage``) ;
+    leur provenance voyage (``explicite`` | ``devis`` | ``defaut``). Les
+    grandeurs viennent de la FICHE du produit : rien n'est supposé.
+
+    Returns:
+        ``None`` quand aucun produit batterie n'est résolu (ni saisi, ni sur le
+        devis) ; sinon ``{produit, produit_onduleur, packs, provenance, saisie,
+        specs, designation, declaree}`` — ``declaree`` : vrai quand l'entrée
+        porte une déclaration de batterie (et pas seulement une ligne de devis).
+    """
+    from apps.stock.selectors import get_produit_scoped
+
+    from .batterie import specs_batterie
+    from .equipements import equipements_du_calepinage
+
+    company = company or getattr(calepinage, 'company', None)
+    if company is None:
+        return None
+    saisie = (donnees or {}).get('batterie') if isinstance(
+        donnees, dict) else None
+    saisie = dict(saisie) if isinstance(saisie, dict) else {}
+
+    equipements = equipements_du_calepinage(calepinage)
+    bloc = equipements.get('batterie') if isinstance(equipements,
+                                                     dict) else None
+    produit_devis = None
+    packs_devis = None
+    if isinstance(bloc, dict) and bloc.get('produit'):
+        produit_devis = bloc['produit']
+        quantite = _nombre(bloc.get('quantite'))
+        if quantite is not None and quantite >= 1:
+            packs_devis = int(round(quantite))
+    identifiant = saisie.get('produit')
+    if identifiant in (None, ''):
+        identifiant = produit_devis
+    if identifiant in (None, ''):
+        return None
+    produit = get_produit_scoped(company, identifiant)
+    if produit is None:
+        return None
+    produit_onduleur = None
+    onduleur_id = ((materiel or {}).get('produits') or {}).get('onduleur')
+    if onduleur_id not in (None, ''):
+        produit_onduleur = get_produit_scoped(company, onduleur_id)
+
+    provenance = {
+        'produit': ('explicite' if saisie.get('produit') not in (None, '')
+                    else 'devis'),
+        'packs': ('explicite' if saisie.get('packs') not in (None, '')
+                  else ('devis' if packs_devis else 'defaut')),
+    }
+    packs = int(_nombre(saisie.get('packs')) or packs_devis or 1) or 1
+    return {
+        'produit': produit, 'produit_onduleur': produit_onduleur,
+        'packs': packs, 'provenance': provenance, 'saisie': saisie,
+        'specs': specs_batterie(produit, produit_onduleur=produit_onduleur,
+                                nb_packs=packs),
+        'designation': ('%s %s' % (
+            (getattr(produit, 'marque', '') or '').strip(),
+            (getattr(produit, 'nom', '') or '').strip())).strip(),
+        'declaree': bool(saisie),
+    }
+
+
 # ─────────────────────────────────────────────────────────── la conception
 def entree_electrique(layout, module, onduleur, temperatures, *,
                       dc_m=0.0, ac_m=0.0, phases=None, longueur_forcee=None,
                       zone_keraunique=False, inclure_prise_terre=False,
-                      plafond_kwc_par_onduleur=None):
+                      plafond_kwc_par_onduleur=None, regime=None,
+                      batterie=False, batterie_designation='',
+                      batterie_kwh=None, batterie_v_nominal=None):
     """L'``EntreeElectrique`` du noyau, construite depuis le CALEPINAGE.
 
     Les températures viennent de CAL123 (``services.electrique``) : elles sont
@@ -358,6 +444,16 @@ def entree_electrique(layout, module, onduleur, temperatures, *,
         zone_keraunique=bool(zone_keraunique),
         inclure_prise_terre=bool(inclure_prise_terre),
         plafond_kwc_par_onduleur=plafond_kwc_par_onduleur,
+        # ACAL152 — le régime SAISI, ou ``None`` (« non précisé ») : jamais
+        # le « TT » par défaut du noyau.
+        regime=regime or None,
+        # ACAL168 — le parc de stockage DÉCLARÉ : le schéma dessine le bloc
+        # « Batterie » et nomme son matériel. Le booléen est la seule chose
+        # qui pilote les règles ; l'identité, elle, est descriptive.
+        batterie=bool(batterie),
+        batterie_designation=str(batterie_designation or ''),
+        batterie_kwh=float(batterie_kwh or 0.0),
+        batterie_v_nominal=float(batterie_v_nominal or 0.0),
     )
 
 
@@ -430,7 +526,7 @@ def _avertissement_coefficients_non_sources(module):
 
 def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
                       module_designation='', onduleur_designation='',
-                      **options):
+                      optimiseur_specs=None, **options):
     """CAL124 — le chaînage COMPLET d'un document de conception.
 
     Args:
@@ -449,6 +545,23 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
     module, manque_module = specs_module(module_specs, module_designation)
     onduleur, manque_onduleur = specs_onduleur(onduleur_specs,
                                                onduleur_designation)
+    # ACAL162 — AUCUN onduleur de chaîne désigné (fiche vide, pas une fiche
+    # incomplète) mais un MICRO-onduleur en emplacement optimiseur : le champ
+    # est câblé en branches AC. Aucun onduleur fictif n'est construit.
+    from .micro_onduleurs import est_micro_onduleur
+
+    if (not manque_module and not onduleur_specs
+            and est_micro_onduleur(optimiseur_specs)):
+        if not pans:
+            return Conception(
+                pans=(), temperatures=temperatures,
+                alertes=("aucun module posé : il n'y a rien à chaîner",))
+        return Conception(
+            pans=pans, resultat=None, micro_seul=True,
+            entree=entree_electrique(layout, module, None, temperatures,
+                                     **options),
+            alertes=(MOTIF_MICRO_SEUL,), temperatures=temperatures,
+            coefficients_non_sources=tuple(module.coefficients_non_sources))
     manquantes = tuple(['module : %s' % m for m in manque_module]
                        + ['onduleur : %s' % m for m in manque_onduleur])
     if manquantes:
@@ -496,6 +609,53 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
 # REPRODUCTIBILITÉ : à entrée identique, affectation identique. L'ordre est
 # celui des pans du document puis celui des chaînes du noyau — aucun ensemble
 # non ordonné, aucun identifiant d'objet, aucune horloge.
+
+#: ACAL285 — la teinte des chaînes et des entrées MPPT : SOURCE UNIQUE
+#: (déplacée de ``documents/plan_cablage.py``, qui l'importe). Servie ligne
+#: par ligne dans ``electrique.affectation[]`` : l'écran, la 3D et le plan de
+#: câblage colorent tous avec CES valeurs, jamais une copie locale.
+PALETTE_CHAINES = (
+    'rgb(36, 130, 214)',   # bleu
+    'rgb(232, 125, 33)',   # orange
+    'rgb(46, 163, 89)',    # vert
+    'rgb(184, 64, 158)',   # magenta
+    'rgb(0, 153, 158)',    # sarcelle
+    'rgb(212, 61, 71)',    # rouge
+    'rgb(115, 102, 199)',  # violet
+    'rgb(153, 133, 26)',   # ocre
+)
+#: Le gris d'un module NON affecté — jamais ``null``, jamais une teinte de
+#: chaîne voisine.
+COULEUR_NON_AFFECTE = 'rgb(140, 143, 148)'
+
+
+def _colorer(lignes):
+    """ACAL285 — ``couleur_chaine`` et ``couleur_mppt`` sur chaque ligne.
+
+    Ordre de PREMIÈRE APPARITION du groupe dans la table (celui de la légende
+    du plan de câblage) ; appliqué APRÈS l'affectation manuelle. Déterministe :
+    aucun ensemble non ordonné.
+    """
+    par_chaine, par_mppt = {}, {}
+    for ligne in lignes:
+        chaine = ligne.get('chaine')
+        if chaine is None:
+            ligne['couleur_chaine'] = COULEUR_NON_AFFECTE
+        else:
+            if chaine not in par_chaine:
+                par_chaine[chaine] = PALETTE_CHAINES[
+                    len(par_chaine) % len(PALETTE_CHAINES)]
+            ligne['couleur_chaine'] = par_chaine[chaine]
+        if chaine is None or ligne.get('mppt') is None:
+            ligne['couleur_mppt'] = COULEUR_NON_AFFECTE
+        else:
+            cle = (ligne.get('onduleur'), ligne.get('mppt'))
+            if cle not in par_mppt:
+                par_mppt[cle] = PALETTE_CHAINES[
+                    len(par_mppt) % len(PALETTE_CHAINES)]
+            ligne['couleur_mppt'] = par_mppt[cle]
+    return lignes
+
 
 def affectation(conception, *, imposee=None):
     """La table module → chaîne → MPPT → onduleur, dans l'ordre du document.
@@ -547,7 +707,8 @@ def affectation(conception, *, imposee=None):
                 'chaine': None, 'onduleur': None, 'mppt': None,
                 'source': SOURCE_AUTO,
             })
-    return tuple(_appliquer_imposee(lignes, imposee))
+    # ACAL285 — la teinte est attribuée APRÈS l'affectation manuelle.
+    return tuple(_colorer(_appliquer_imposee(lignes, imposee)))
 
 
 def _appliquer_imposee(lignes, imposee):

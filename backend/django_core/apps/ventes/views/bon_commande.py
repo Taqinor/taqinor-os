@@ -16,15 +16,17 @@ from ..models import (  # noqa: F401
 from ..serializers import (  # noqa: F401
     DevisSerializer,
     DevisWriteSerializer,
-    BonCommandeSerializer,
     LigneDevisSerializer,
+    DevisActivitySerializer,
+)
+from ..serializers_facturation import (  # noqa: F401
+    BonCommandeSerializer,
     FactureSerializer,
     FactureWriteSerializer,
     LigneFactureSerializer,
     PaiementSerializer,
     AvoirSerializer,
     RelanceLogSerializer,
-    DevisActivitySerializer,
 )
 from authentication.permissions import (  # noqa: F401
     IsAnyRole,
@@ -73,7 +75,7 @@ def _notifier_chantier_materiel_confirme(bc):
         if responsable is None:
             return
         from apps.notifications.services import notify
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         notify(
             responsable, EventType.CHANTIER_MATERIEL_CONFIRME,
             f'Matériel confirmé — chantier {installation.reference}',
@@ -491,16 +493,15 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         company = bc.company
 
         def _create_facture(ref):
-            # AUD113 — le taux de TÊTE est le REPLI des lignes sans taux, et
-            # les deux chaînes de repli pointent vers des objets DIFFÉRENTS :
-            # `LigneDevis.taux_tva_effectif` retombe sur `devis.taux_tva`,
-            # `LigneFacture.taux_tva_effectif` sur `facture.taux_tva`. Sans
-            # ce transport, un devis à 10 % dont les lignes portent un taux
-            # NULL était facturé au défaut 20 % — le client surfacturé de dix
-            # points de TVA. Même geste que `remise_globale` (QX1) ci-dessous.
-            entete = {}
-            if bc.devis_id and bc.devis.taux_tva is not None:
-                entete['taux_tva'] = bc.devis.taux_tva
+            # AUD113 — le taux de TÊTE suit le devis (repli des lignes sans
+            # taux) : `entete_facture_depuis_devis`. QX1/ERR16/ARRONDI-100/
+            # ×N villas — le panier du devis est recopié par LE geste partagé
+            # avec `devis/{id}/facturer-complet/` (`copier_devis_sur_facture`).
+            from ..domain.facturation_ops import (
+                copier_devis_sur_facture, entete_facture_depuis_devis,
+            )
+            entete = (entete_facture_depuis_devis(bc.devis)
+                      if bc.devis_id else {})
             facture = Facture.objects.create(
                 reference=ref,
                 bon_commande=bc,
@@ -516,50 +517,7 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 **entete,
             )
             if bc.devis:
-                # ERR16 — n'inclure QUE les lignes de l'option retenue à
-                # l'acceptation (« Sans batterie » / « Avec batterie »), comme
-                # l'échéancier. Sans vraie deuxième option (option unique,
-                # pompage, liste libre), option_lines renvoie TOUTES les lignes
-                # → comportement historique strictement inchangé.
-                #
-                # QX1 — la remise GLOBALE du devis était PERDUE ici (la facture
-                # copiait les lignes brutes → sur-facturation). On la PERSISTE
-                # désormais sur ``Facture.remise_globale`` ; ``Facture.total_*``
-                # la lit via la même chaîne canonique que le devis/l'échéancier
-                # (centime-exact, cohérent de bout en bout).
-                from decimal import Decimal
-                from ..utils.options import option_lines
-                g = Decimal(str(bc.devis.remise_globale or 0))
-                if g:
-                    facture.remise_globale = g
-                    facture.save(update_fields=['remise_globale'])
-                # ERR-QAC-MULTIVILLA-TOTAL-XN — un devis « ×N villas
-                # identiques » porte les lignes d'UNE villa et se facture au
-                # total ×N (décision fondateur 30/09/2026) : la facture de BC
-                # reprend donc chaque quantité ×N. N=1 → inchangé.
-                from ..selectors import nombre_proprietes
-                n_prop = nombre_proprietes(bc.devis)
-                # ARRONDI-100 — la facture reprend le palier du devis signé
-                # (jamais plus que lui). ×N villas : le palier s'applique par
-                # villa (``arrondi_unites``), comme le devis — un palier posé
-                # sur la base ×N décalerait la TVA d'un centime, donc d'un
-                # palier entier.
-                from ..domain.argent import PAS_ARRONDI_DEVIS
-                facture.arrondi_pas = int(PAS_ARRONDI_DEVIS)
-                facture.arrondi_unites = n_prop
-                facture.save(update_fields=['arrondi_pas', 'arrondi_unites'])
-                for ligne in option_lines(bc.devis):
-                    LigneFacture.objects.create(
-                        facture=facture,
-                        produit=ligne.produit,
-                        designation=ligne.designation,
-                        quantite=ligne.quantite * n_prop,
-                        prix_unitaire=ligne.prix_unitaire,
-                        remise=ligne.remise,
-                        # Reporte le taux TVA de la ligne de devis (10/20),
-                        # pour que la facture reproduise fidèlement la TVA.
-                        taux_tva=ligne.taux_tva,
-                    )
+                copier_devis_sur_facture(facture, bc.devis)
             return facture
 
         # create_with_reference runs _create_facture inside a transaction, so

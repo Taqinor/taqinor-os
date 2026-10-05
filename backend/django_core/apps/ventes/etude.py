@@ -74,17 +74,19 @@ from apps.ventes.quote_engine.pricing import (
     SYSTEM_LOSS_TOTAL,
 )
 from apps.ventes.solar_design import (
-    DEFAULT_DISCOUNT_RATE,
     DEFAULT_LOSS_FACTORS,
-    DEFAULT_MODULE_DEGRADATION,
     SUBSCRIBED_CURVE_UNIT_KW,
     TYPICAL_LOAD_PROFILE_COMMERCIAL,
     TYPICAL_LOAD_PROFILE_RESIDENTIAL,
     hourly_self_consumption,
-    module_degradation_curve,
-    net_metering_savings,
     optimize_subscribed_power,
     simulate_bankable_yield,
+)
+from apps.ventes.solar_finance import (
+    DEFAULT_DISCOUNT_RATE,
+    DEFAULT_MODULE_DEGRADATION,
+    module_degradation_curve,
+    net_metering_savings,
     tariff_escalation_projection,
 )
 

@@ -100,6 +100,10 @@ const ventesApi = {
   regenererOverride: (id, chemin) =>
     api.delete(`/ventes/devis/${id}/overrides/`, { params: { chemin } }),
   deleteDevis: (id) => api.delete(`/ventes/devis/${id}/`),
+  // « Facturer » un devis accepté : facture complète + paiements déjà reçus en
+  // UN appel atomique. Contrat : apps/ventes/contract_samples/devis_facturer_complet.json.
+  facturerComplet: (devisId, { paiements = [] } = {}) =>
+    api.post(`/ventes/devis/${devisId}/facturer-complet/`, { paiements }),
   genererPdfDevis: (id, options = {}) => api.post(`/ventes/devis/${id}/generer-pdf/`, options),
   // WIR217 — état du rendu PDF : `pret` | `en_cours` | `echec` (+ `erreur`).
   // Le sondage lisait `fichier_pdf` SEUL : un échec définitif de la tâche
@@ -484,6 +488,9 @@ const ventesApi = {
 
   // Recouvrement (vue/consigne/impression — jamais d'envoi)
   getRelances: () => api.get('/ventes/relances/'),
+  // Aperçu de la fenêtre « Relancer » : niveau suivant + objet/message exacts.
+  // Contrat : apps/ventes/contract_samples/facture_relance_apercu.json.
+  getRelanceApercu: (factureId) => api.get(`/ventes/factures/${factureId}/relance-apercu/`),
   relancerFacture: (id, data) => api.post(`/ventes/factures/${id}/relancer/`, data),
   exclureRelance: (id, exclu) => api.post(`/ventes/factures/${id}/exclure-relance/`, { exclu }),
   getRelancesFacture: (id) => api.get(`/ventes/factures/${id}/relances/`),

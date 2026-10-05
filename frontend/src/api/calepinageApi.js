@@ -239,6 +239,10 @@ const calepinageApi = {
     // le relevé créé PLUS l'historique à jour (contrat `calepinage_releve.json`).
     releve: (id) => api.get(`${pivot(id)}releve/`),
     enregistrerReleve: (id, corps) => api.post(`${pivot(id)}releve/`, corps),
+    // ACAL204/205 — corriger (PATCH, le MÊME relevé) ou retirer (DELETE) un
+    // relevé de saisie ; GET releve/ rend aussi `releve_courant_id`.
+    corrigerReleve: (id, releveId, corps) => api.patch(`${pivot(id)}releve/${releveId}/`, corps),
+    supprimerReleve: (id, releveId) => api.delete(`${pivot(id)}releve/${releveId}/`),
 
     // CALX31 — le chatter GÉNÉRIQUE de la plateforme (`records`), hérité par
     // `CalepinageViewSet` via `ChatterViewSetMixin` (views/calepinages.py) :
@@ -535,6 +539,26 @@ const calepinageApi = {
     versionsDiff: (id, versionId, contreId) =>
       api.get(`${pivot(id)}versions/${versionId}/diff/`,
         { params: contreId ? { contre: contreId } : {} }),
+
+    // ACAL82 — persiste le système de fixation CHOISI (ACAL81, contrat
+    // `calepinage_fixation_bom.json` › `fixation_post`) : `{systeme_id|null}`
+    // → `{systeme, systeme_source}` ; `null` retire le choix.
+    appliquerFixation: (id, corps) => api.post(`${pivot(id)}fixation/`, corps), // ACAL
+
+    // ACAL238 — joindre (multipart `{dossier, piece, fichier}`) ou retirer
+    // (`{dossier, piece, retirer: true}`) une pièce d'un dossier réglementaire
+    // (contrat `dossiers_reglementaires.json` › `joindre_piece`).
+    joindrePiece: (id, corps) => api.post(`${pivot(id)}joindre-piece/`, corps), // ACAL
+
+    // ACAL149 — la RELECTURE de l'entrée électrique enregistrée + le matériel
+    // résolu et les candidats (contrat `calepinage_entree_electrique.json`).
+    // Le POST reste `enregistrerEntreeElectrique` (au-dessus).
+    entreeElectrique: (id) => api.get(`${pivot(id)}entree-electrique/`),
+
+    // ACAL161 — l'ÉDITION du schéma unifilaire (libellés et repères par clef de bloc ;
+    // `null` efface une rubrique). Le serveur fusionne clé par clé (ACAL160) et renvoie le
+    // MÊME document que le GET `schemaUnifilaire`, édition appliquée.
+    enregistrerEditionSld: (id, edition) => api.post(`${pivot(id)}schema-unifilaire/`, edition),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

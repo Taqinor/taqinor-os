@@ -376,6 +376,45 @@ function Dossier({ dossier, calepinageId, onGenere, onEnregistre }) {
   )
 }
 
+/* ACAL309 - une carte par pack France (DP, Enedis, Consuel) : avancement en %,
+   pieces fournies / attendues ; « gabarit a deposer » (jamais masque) avec le
+   lien vers Reglages quand le gabarit manque. Tout vient du serveur. */
+function PackFrance({ pack }) {
+  const dossiers = Array.isArray(pack.dossiers) ? pack.dossiers : []
+  return (
+    <Card className="flex flex-col gap-2 p-3" data-testid={`acal309-pack-${pack.genre}`}>
+      <p className="text-sm font-medium">{pack.libelle}</p>
+      {!pack.gabarit_depose && (
+        <>
+          <p className="text-xs text-muted-foreground" data-testid={`acal309-message-${pack.genre}`}>
+            {pack.message}
+          </p>
+          <a
+            href="/calepinage/reglages"
+            className="text-xs underline"
+            data-testid={`acal309-depot-${pack.genre}`}
+          >
+            Déposer le gabarit
+          </a>
+        </>
+      )}
+      {dossiers.map((dossier) => {
+        const av = dossier.avancement || {}
+        return (
+          <p
+            key={dossier.id ?? `g-${dossier.gabarit_id}`}
+            className="text-xs text-muted-foreground"
+            data-testid={`acal309-avancement-${pack.genre}`}
+          >
+            {`${av.pieces_fournies ?? 0} / ${av.pieces_total ?? 0} pièces fournies`}
+            {av.pourcentage == null ? '' : ` · ${av.pourcentage} %`}
+          </p>
+        )
+      })}
+    </Card>
+  )
+}
+
 export default function DossiersReglementaires({ calepinageId }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
@@ -410,6 +449,7 @@ export default function DossiersReglementaires({ calepinageId }) {
   }
 
   const dossiers = donnees?.dossiers || []
+  const packs = Array.isArray(donnees?.packs_france) ? donnees.packs_france : []
 
   return (
     <>
@@ -431,6 +471,15 @@ export default function DossiersReglementaires({ calepinageId }) {
           </p>
         )
         : null}
+
+      {packs.length > 0 && (
+        <section className="flex flex-col gap-2" data-testid="acal309-packs-france">
+          <h3 className="text-sm font-semibold">Packs France</h3>
+          {packs.map((pack) => (
+            <PackFrance key={pack.genre} pack={pack} />
+          ))}
+        </section>
+      )}
 
       {dossiers.map((dossier) => (
         <Dossier

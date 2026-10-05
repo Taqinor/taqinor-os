@@ -130,13 +130,17 @@ def _dessin_et_tableau(calepinage):
     from .sld import (
         SldRefuse, branches_onduleur_de_la_conception,
         cartouche_du_calepinage, edition_sld, gabarit_de_schema,
-        rendu_du_schema,
+        rendu_du_schema, resultat_et_gabarit_decides,
     )
 
-    conception, _materiel, _donnees, _document = conception_du_calepinage(
+    conception, _materiel, donnees, _document = conception_du_calepinage(
         calepinage)
     empechements = (list(getattr(conception, 'manquantes', ()) or ())
                     + list(bloquants_nommes(conception) or ()))
+    if getattr(conception, 'micro_seul', False):
+        from .sld import MOTIF_SCHEMA_MICRO_SEUL
+
+        empechements.append(MOTIF_SCHEMA_MICRO_SEUL)
     if empechements:
         premier = empechements[0]
         champ = premier.split(' : ', 1)[0] if ' : ' in premier else 'schema'
@@ -146,9 +150,12 @@ def _dessin_et_tableau(calepinage):
             "caractéristique devinée est un défaut invisible." % premier,
             champ=champ)
 
-    gabarit = gabarit_de_schema(norme_applicable(
-        parametres_societe(calepinage)))
-    resultat = getattr(conception, 'resultat', None)
+    norme = norme_applicable(parametres_societe(calepinage))
+    # ACAL55 — le DXF transpose un ``ResultatElectrique`` COMPLET (le tableau
+    # lit ``bom``, le dessin ``protections``), jamais le ``ResultatChaines`` ;
+    # ACAL159 — réduit à la check-list DÉCIDÉE, comme le SVG.
+    resultat, gabarit = resultat_et_gabarit_decides(
+        conception, donnees, norme, gabarit=gabarit_de_schema(norme))
     dessin = rendu_du_schema(
         getattr(conception, 'entree', None), resultat,
         edition=edition_sld(calepinage), gabarit=gabarit,

@@ -525,7 +525,7 @@ def _courbe_mesuree_resolue(courbe, annee_reference):
 
 def _garde_kwh_factures(res, tarif, alertes):
     """Décision du 30/09 : un kWh déclaré qui contredit la facture (> 2×) bloque."""
-    from apps.ventes.etude_horaire import RATIO_KWH_FACTURE_MAX, RATIO_KWH_FACTURE_MIN
+    from apps.ventes.horaire.conso import RATIO_KWH_FACTURE_MAX, RATIO_KWH_FACTURE_MIN
     kwh = _num(res.valeur('kwh_mensuel_declare'))
     facture = _num(res.valeur('_facture_hiver_lead'))
     if not kwh or not facture:

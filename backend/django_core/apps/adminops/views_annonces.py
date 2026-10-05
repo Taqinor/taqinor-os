@@ -59,7 +59,7 @@ def diffuser_annonce(annonce):
     envoyees = 0
     for user in destinataires_annonce(annonce):
         try:
-            from apps.notifications.models import EventType
+            from apps.notifications.types_evenements import EventType
             from apps.notifications.services import notify
             notify(user, EventType.PRODUCT_ANNOUNCEMENT, annonce.titre,
                    body=annonce.corps, link=lien,

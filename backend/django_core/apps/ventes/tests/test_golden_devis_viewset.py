@@ -12,12 +12,12 @@ code du 04/10/2026, avant tout déplacement) :
 * ``noms_publics`` — ``sorted(n for n in dir(DevisViewSet)
   if not n.startswith('__'))`` : un mixin oublié dans les bases ou un nom
   renommé en route rougit ;
-* ``corps`` — sha256 de ``ast.dump`` de CHAQUE symbole que SPL134-SPL142
-  déplacent (``GROUPES``), retrouvé PAR NOM dans ``views/devis*.py`` (classe
-  ``DevisViewSet``, toute classe ``Devis*ActionsMixin`` ou niveau module) :
-  l'empreinte ne dépend pas de l'emplacement, un corps modifié rougit.
+* (``corps`` — sha256 de ``ast.dump`` de chaque symbole déplacé : section
+  ÉPHÉMÈRE, prouvée identique à chaque déplacement SPL134-SPL142 puis
+  retirée par SPL142, dernière tâche de la piste, pour ne pas verrouiller
+  les éditions futures de ces corps.)
 
-``PLACE`` (vide ici) est rempli par chaque déplacement : ``groupe → fichier
+``PLACE`` est rempli par chaque déplacement : ``groupe → fichier
 de views/`` attendu. Tant qu'un groupe déclaré dans ``PLACE`` vit encore dans
 ``views/devis.py``, le test d'emplacement est ROUGE ; un symbole présent deux
 fois (jumeau) l'est aussi. Le gel action × rôle vit déjà dans
@@ -31,19 +31,22 @@ Run :
         -Modules "apps.ventes.tests.test_golden_devis_viewset"
 """
 import ast
-import hashlib
 import inspect
 import json
 import re
+from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 VUES = Path(__file__).resolve().parent.parent / 'views'
 FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
     'golden_devis_viewset.json'
 
-NB_ROUTES = 55
+#: 54 + ``facturer-complet`` (05/10/2026, ajout de route) + la route de la
+#: vague 1 (fusion du 05/10).
+NB_ROUTES = 56
 MIXIN = re.compile(r'^Devis\w*ActionsMixin$')
 
 #: Les symboles que chaque tâche de la piste déplace (texte des tâches
@@ -89,7 +92,17 @@ GROUPES = {
 
 #: groupe → fichier de ``views/`` où il DOIT vivre ; rempli par chaque
 #: déplacement (ex. SPL134 : ``PLACE['gardes'] = 'devis_gardes.py'``).
-PLACE = {}
+PLACE = {
+    'gardes': 'devis_gardes.py',  # SPL134
+    'edition': 'devis_edition.py',  # SPL135
+    'cycle': 'devis_cycle.py',  # SPL136
+    'etudes': 'devis_etudes.py',  # SPL137
+    'envoi': 'devis_envoi.py',  # SPL138
+    'pdf': 'devis_pdf.py',  # SPL139
+    'calepinage': 'devis_calepinage.py',  # SPL140
+    'facturation': 'devis_facturation.py',  # SPL141
+    'cadence': 'devis_cadence.py',  # SPL142
+}
 
 DEFAUT = 'devis.py'
 
@@ -119,10 +132,6 @@ def _symboles():
     return trouves
 
 
-def _empreinte(noeud):
-    return hashlib.sha256(ast.dump(noeud).encode('utf-8')).hexdigest()
-
-
 def capturer_routes():
     from apps.ventes.views.devis import DevisViewSet
     routes = [{
@@ -146,16 +155,6 @@ def capturer_noms_publics():
                   if not n.startswith('__') and n not in POSES_PAR_AS_VIEW)
 
 
-def capturer_corps():
-    trouves = _symboles()
-    corps = {}
-    for noms in GROUPES.values():
-        for nom in noms:
-            (_fichier, noeud), = trouves[nom]
-            corps[nom] = _empreinte(noeud)
-    return dict(sorted(corps.items()))
-
-
 def _golden():
     return json.loads(FIXTURE.read_text(encoding='utf-8'))
 
@@ -169,23 +168,6 @@ class GoldenDevisViewSet(SimpleTestCase):
 
     def test_noms_publics_identiques(self):
         self.assertEqual(capturer_noms_publics(), _golden()['noms_publics'])
-
-    def test_corps_non_vides_et_couvrent_les_groupes(self):
-        corps = _golden()['corps']
-        attendus = {n for noms in GROUPES.values() for n in noms}
-        self.assertGreaterEqual(len(corps), 60)
-        self.assertEqual(set(corps), attendus)
-
-    def test_empreintes_des_corps_identiques(self):
-        trouves = _symboles()
-        golden = _golden()['corps']
-        for nom, empreinte in golden.items():
-            with self.subTest(symbole=nom):
-                occurrences = trouves.get(nom, [])
-                self.assertEqual(len(occurrences), 1,
-                                 '%s : %d définition(s) dans views/devis*.py'
-                                 % (nom, len(occurrences)))
-                self.assertEqual(_empreinte(occurrences[0][1]), empreinte)
 
     def test_chaque_groupe_vit_a_sa_place(self):
         from apps.ventes.views.devis import DevisViewSet
@@ -211,3 +193,79 @@ class GoldenDevisViewSet(SimpleTestCase):
                         continue
                     self.assertEqual(Path(inspect.getsourcefile(fn)).name,
                                      attendu)
+
+    def test_perform_update_vient_du_mixin_d_edition(self):
+        """SPL135 — la surcharge de ``perform_update`` est conservée dans le
+        MRO : elle vient de ``DevisEditionActionsMixin``, placé AVANT
+        ``CompanyScopedModelViewSet`` dans les bases."""
+        from apps.ventes.views.devis import DevisViewSet
+        self.assertEqual(DevisViewSet.perform_update.__qualname__,
+                         'DevisEditionActionsMixin.perform_update')
+
+
+#: SPL139 — octets que le moteur « rend » pendant la capture : le rendu réel
+#: (WeasyPrint + MinIO) n'est ni déterministe ni disponible hors pile ; ce
+#: qui est figé ici est la VUE ``/proposal`` (routage, garde, paramètres
+#: transmis au moteur, en-têtes, octets streamés tels quels). Le symbole
+#: déplacé (``proposal``) n'est JAMAIS mocké : seuls le moteur et le
+#: téléchargement MinIO le sont, à leur chemin de définition (les imports
+#: restent function-locaux dans le corps).
+_OCTETS_CAPTURE = b'%PDF-1.4 golden SPL139 /proposal'
+
+
+class GoldenProposalReponse(TestCase):
+    """SPL139 — capture GET ``/api/django/ventes/devis/<id>/proposal/``,
+    identique avant et après le déplacement vers ``views/devis_pdf.py``
+    (règle #4 : rendu seul, aucun statut écrit)."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+        from authentication.models import Company
+        self.company = Company.objects.get_or_create(
+            slug='spl139-golden', defaults={'nom': 'SPL139 Golden'})[0]
+        self.user = get_user_model().objects.create_user(
+            username='spl139-resp', password='motdepasse-test-1234',
+            company=self.company, role_legacy='responsable')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Golden', prenom='SPL139',
+            email='spl139@example.invalid')
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-SPL139-1',
+            client=self.client_obj, statut=Devis.Statut.ENVOYE,
+            taux_tva=Decimal('20'))
+        self.api = APIClient()
+        self.api.force_authenticate(user=self.user)
+
+    @patch('apps.ventes.utils.pdf.download_pdf',
+           return_value=_OCTETS_CAPTURE)
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+           return_value='devis/spl139/DEV-SPL139-1.pdf')
+    def test_proposal_reponse_identique(self, m_gen, m_dl):
+        from apps.ventes.utils.filenames import document_filename
+        statut_avant = self.devis.statut
+        resp = self.api.get(
+            '/api/django/ventes/devis/%d/proposal/'
+            '?pdf_mode=onepage&devis_final=1' % self.devis.id)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.assertEqual(resp.content, _OCTETS_CAPTURE)
+        nom = document_filename(
+            'Proposition', self.devis.reference, client=self.client_obj,
+            company=self.company)
+        self.assertEqual(resp['Content-Disposition'],
+                         'inline; filename="%s"' % nom)
+        # Le moteur reçoit le devis, les options nettoyées, persist=False
+        # (ERR74 : un GET ne persiste jamais fichier_pdf).
+        self.assertEqual(m_gen.call_count, 1)
+        args, kwargs = m_gen.call_args
+        self.assertEqual(args[0], self.devis.id)
+        self.assertEqual(kwargs, {'persist': False})
+        self.assertEqual(args[1].get('pdf_mode'), 'onepage')
+        self.assertIs(args[1].get('devis_final'), True)
+        m_dl.assert_called_once_with('devis/spl139/DEV-SPL139-1.pdf')
+        # Règle #4 : le rendu n'écrit aucun statut.
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, statut_avant)

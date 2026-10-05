@@ -4,8 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import process from 'node:process';
+import { join } from 'node:path';
 import {
   HAUTEUR_DESSIN_M,
   ID_BATIMENT_SANS_ID,
@@ -30,6 +29,7 @@ import {
   type BatimentOsmServeur,
 } from './batiment';
 import { serializeLayout } from './prefill';
+import { panDeTest, ctxDeBase, racineDepot } from './harnaisAtelier';
 import { CLEARANCE_BY_TYPE } from './types';
 import { FLOORS, FLOOR_HEIGHT_M } from './constants';
 import { type Obstacle } from '../../lib/obstacles';
@@ -42,14 +42,6 @@ import { type LngLat } from '../../lib/roof';
 // (CALX106, `contract_samples/calepinage_empreinte_osm.json`) — le fichier que la moitié
 // serveur affirme et que l'atelier lit (même patron que `electrique3d.test.ts`).
 
-function racineDepot(): string {
-  let dossier = resolve(process.cwd());
-  for (let i = 0; i < 6; i += 1) {
-    if (existsSync(join(dossier, 'backend', 'django_core'))) return dossier;
-    dossier = dirname(dossier);
-  }
-  throw new Error(`Racine du dépôt introuvable depuis ${process.cwd()}`);
-}
 
 function contratEmpreinteOsm(): Record<string, { batiment: BatimentOsmServeur; message?: string }> {
   const chemin = join(
@@ -86,49 +78,13 @@ const EXEMPLE_BATIMENTS: Batiment[] = [
   },
 ];
 
-const VERTS: LngLat[] = [
-  [-7.6, 33.59],
-  [-7.599, 33.59],
-  [-7.599, 33.591],
-  [-7.6, 33.591],
-];
-
 function zone(id: string, opts: Partial<AreaRecord> = {}): AreaRecord {
-  return {
-    id,
-    label: `Zone ${id}`,
-    vertices: VERTS.map(([lng, lat]) => [lng, lat] as LngLat),
-    obstacles: [],
-    roofType: 'flat',
-    pitchDeg: 0,
-    facingAzimuthDeg: 180,
-    facingManual: false,
-    neededPanels: 12,
-    neededAuto: true,
-    result: null,
-    renderPlan: null,
-    ...opts,
-  };
+  return panDeTest(id, { roofType: 'flat', pitchDeg: 0, ...opts });
 }
 
 function makeCtx(areas: AreaRecord[], batiments?: Batiment[]): Ctx {
   const active = areas[0];
-  return {
-    areas,
-    activeAreaId: active.id,
-    activeArea: () => active,
-    vertices: active.vertices,
-    obstacles: active.obstacles,
-    roofType: active.roofType,
-    pitchDeg: active.pitchDeg,
-    facingAzimuthDeg: active.facingAzimuthDeg,
-    facingManual: false,
-    neededPanels: active.neededPanels,
-    neededAuto: active.neededAuto,
-    layoutPlan: null,
-    layoutOptimalCount: 0,
-    batiments,
-  } as unknown as Ctx;
+  return { ...ctxDeBase(areas), activeArea: () => active, batiments } as unknown as Ctx;
 }
 
 /** Anneau ENU rectangulaire centré en (0, 0), largeur (E-O) × profondeur (N-S), en mètres. */

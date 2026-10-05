@@ -23,7 +23,7 @@ partie et imprime la liste complète ; les voici avec le fichier concerné :
    Le 2ᵉ segment d'URL doit être la clé de module (point 6 sinon).
 3. **`.importlinter`** : ajouter/étendre un contrat si le module doit rester
    découplé (string-FK only) ou est une couche fondation.
-4. **`apps/roles/models.py` — `ALL_PERMISSIONS`** : ajouter les codes
+4. **`apps/roles/permissions_registre.py` — `ALL_PERMISSIONS`** : ajouter les codes
    (`<label>_voir`, `<label>_gerer`, …) si le module gate lecture/écriture.
 5. **Manifeste module** (`apps/<label>/apps.py` → `module_manifest`, ODX2) :
    ajuster `key`/`label`/`categorie`/`depends`/`installable`.

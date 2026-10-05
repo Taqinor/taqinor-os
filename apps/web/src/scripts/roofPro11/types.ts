@@ -13,7 +13,7 @@ import {
   type ObstacleType,
   type ObstacleProvenance,
 } from '../../lib/obstacles';
-import { type SerializeMeta, type DevisPayload, type RawContourPoint } from './prefill';
+import { type SerializeMeta, type DevisPayload, type RawContourPoint, type SerializedZoneGeometry } from './prefill';
 import { type AreaResult } from '../../lib/roofAreas';
 import { geodesicAreaM2, geodesicPerimeterM, isSimplePolygon, type LngLat } from '../../lib/roof';
 import { type ProductionSource, type SpecificDateProfile } from '../../lib/productionEngine';
@@ -55,6 +55,9 @@ export interface InitOptions {
   // finalisé, capturer le PNG 3D) une fois le boot complet terminé. Invoqué
   // seulement en boot complet (jamais en capture). Absent → comportement inchangé.
   onApiReady?: (api: RoofToolApi) => void;
+  /** ACAL68 — appelé UNE fois, quand le document a été hydraté (fin du `load` de la carte) :
+   *  c'est là que la page hôte pose le fond du document (`fondDuDocument`/`poserFond`). */
+  onHydrationTerminee?: () => void;
   // PV75 — étude BANCABLE (P50/P90 + ratio de performance + cascade des pertes),
   // injectée par la page HÔTE (ToitureDesign.jsx) une fois lue depuis
   // `Devis.etude_params.simulation.pr` (contrat `contract_samples/simulation.json`,
@@ -94,6 +97,10 @@ export interface InitOptions {
   // panneau près. Le type reste volontairement OPAQUE ici : la forme fait foi dans
   // le contrat, et `moduleSelect.ts` est le seul à la lire.
   modulesDisponibles?: unknown;
+  /** ACAL80 — point de rendement PVGIS (URL) ; `null` = aucune requête (l'ERP n'a pas la
+   *  route `/api/roof-yield` d'apps/web : repli sur la table committée). Absent = le défaut
+   *  `/api/roof-yield` des pages publiques. */
+  rendementPvgis?: string | null;
 
   // CALX104/CALX403 — les deux sections des réglages société que l'ATELIER consomme
   // (`zones_types` pour les gabarits d'obstacle, `degagements` pour la largeur d'allée
@@ -133,6 +140,21 @@ export interface RoofToolApi {
    *  PV13 — `meta` (optionnel) porte scénario / puissance panneau / batterie / origine
    *  devis-lead : la page les CONNAÎT, l'outil ne les devine jamais. */
   serializeLayout: (billKwh?: number | null, meta?: SerializeMeta) => unknown;
+  /** ACAL26 — applique UNE section du document (`horizonProfile`, `poseSurfaces`,
+   *  `underlay`, `environment`, `alleeTechnique` — ACAL258) par la MÊME fonction d'hydratation que le boot
+   *  (`hydratation.ts::appliquerHydratationAuCtx`) — pour les onglets du Rail. */
+  appliquerSection: (cle: import('./hydratation').CleSectionAtelier, valeur: unknown) => void;
+  /** ACAL286 — la table d'affectation SERVIE (`electrique.affectation[]`, avec `couleur_chaine` /
+   *  `couleur_mppt`) teinte les modules du pan actif par chaîne ou par entrée MPPT ; table vide ou
+   *  non servie ⇒ teinte éteinte. Aucune écriture : la teinte est dérivée du résultat serveur. */
+  setAffectationChaines: (
+    rows: readonly import('./scene3d').AffectationRow[] | null | undefined,
+    mode?: import('./scene3d').AffectationMode,
+  ) => void;
+  /** ACAL71 — un contour géoréférencé [[lng, lat], …] devient un NOUVEAU pan de l'atelier
+   *  (identifiant `prochainId`), refusé — motif nommé, aucun pan — s'il se croise ou sort
+   *  de l'amplitude GPS. */
+  ajouterPanDepuisContour: (contourLngLat: unknown) => { ok: true; id: string } | { ok: false; motif: string };
   /** Instantané PNG (data URL) de la 3D rendue, ou null. */
   snapshot: () => string | null;
   /** L-MAP — bascule d'affichage du calque de référence géo-référencé
@@ -164,12 +186,6 @@ export interface RoofToolApi {
    *  même contour, mêmes modules, donc même compte et mêmes cotes. `null` tant
    *  qu'aucun contour fermé n'existe — jamais un plan inventé. */
   planView: (widthPx: number, heightPx: number) => unknown | null;
-  /** CAL93 — fixe (ou efface, `null`) le profil d'horizon lointain et recalcule SON
-   *  dérate propre (jamais mélangé à l'ombrage proche). */
-  setHorizonProfile: (profile: import('../../lib/horizonEngine').HorizonProfile | null) => void;
-  /** CAL93 — état courant du dérate d'horizon (`hasProfile`, `maskedHours` sur 12×24,
-   *  `annualFactor` — 1 = aucun effet). */
-  horizonStatus: () => { hasProfile: boolean; maskedHours: number; annualFactor: number };
   /** CALX3 — le document d'entrée du moteur de calepinage (`{schema_version, repere,
    *  contour, surfaces, kits, parametres, obstacles, zones, engagements}`), composé
    *  depuis la scène VIVANTE à chaque appel. `null` tant qu'aucun pan ne porte un
@@ -641,6 +657,15 @@ export interface AreaRecord {
    *  (`moduleSelect.MODULE_PAR_DEFAUT_ATELIER`), NOMMÉ à l'écran — document et pavage
    *  strictement identiques à ceux d'aujourd'hui, octet pour octet. */
   moduleId?: string;
+  /** ACAL28 — la géométrie ENREGISTRÉE de ce pan (`zones[].geometry` du document relu, ou
+   *  la pose vivante capturée quand on quitte le pan). Copie profonde. Un pan qui n'est pas
+   *  actif est réémis VERBATIM depuis elle (jamais re-pavé ni perdu) ; un pan chargé est
+   *  reposé à ses positions par `layoutEditor.hydrateLayout`. Absente = pan jamais posé. */
+  geometrieEnregistree?: SerializedZoneGeometry;
+  /** ACAL28 — production annuelle (kWh) ENREGISTRÉE attribuée à ce pan tant qu'il n'est pas
+   *  recalculé dans la session : part du `result.annualKwh` du document au prorata de son
+   *  kWc enregistré (le document ne porte pas de production par pan). Jamais 0 par défaut. */
+  annualKwhEnregistre?: number;
 }
 
 // ═══════════ W50 — fenêtre « Production estimée » ═══════════
@@ -834,6 +859,63 @@ export function lireGabaritsObstacle(section: unknown): {
       continue;
     }
     gabarits.push({ ...commun, longueurM, largeurM });
+  }
+  return { gabarits, refuses };
+}
+
+/**
+ * ACAL291 — un gabarit de ZONE réglementaire de la société (section `zones_types`, genre
+ * `bande` | `polygone`) : une zone qui retire de la surface au nom d'une SOURCE écrite. La
+ * géométrie reste celle que l'utilisateur trace ; le gabarit apporte libellé, nature, retrait,
+ * hauteur et source.
+ */
+export interface GabaritZone {
+  cle: string;
+  libelle: string;
+  nature: 'INTERDITE' | 'RESERVEE' | 'PREFEREE';
+  /** Retrait (m) du gabarit (`retrait_m`), 0 quand la société n'en a pas saisi. */
+  retraitM: number;
+  hauteurM?: number;
+  /** Source textuelle OBLIGATOIRE — elle voyage avec la zone posée. */
+  source: string;
+}
+
+/**
+ * ACAL291 — lit les gabarits de ZONE de la section `zones_types`. Un gabarit d'obstacle (forme,
+ * type d'obstacle, cotes ou rayon saisis, ou sans `genre`) est IGNORÉ — il relève de
+ * `lireGabaritsObstacle`. Un gabarit de zone sans source, ou d'une nature qui ne se trace pas
+ * (ENVELOPPE est le contour du toit), n'est pas proposé : il rejoint `refuses` avec son motif.
+ */
+export function lireGabaritsZone(section: unknown): { gabarits: GabaritZone[]; refuses: GabaritRefuse[] } {
+  const gabarits: GabaritZone[] = [];
+  const refuses: GabaritRefuse[] = [];
+  if (!section || typeof section !== 'object' || Array.isArray(section)) return { gabarits, refuses };
+  for (const [cle, brut] of Object.entries(section as Record<string, unknown>)) {
+    if (!brut || typeof brut !== 'object' || Array.isArray(brut)) continue;
+    const e = brut as Record<string, unknown>;
+    const genre = texteReglage(e.genre);
+    if (genre !== 'bande' && genre !== 'polygone') continue;
+    if (texteReglage(e.forme) || texteReglage(e.type) || e.longueur_m != null || e.rayon_m != null) continue;
+    const libelle = texteReglage(e.libelle) ?? cle;
+    const source = texteReglage(e.source);
+    if (!source) {
+      refuses.push({ cle, libelle, motif: `« ${libelle} » n’est pas proposé : sa source (source) n’est pas saisie.` });
+      continue;
+    }
+    const nature = texteReglage(e.nature);
+    if (nature !== 'INTERDITE' && nature !== 'RESERVEE' && nature !== 'PREFEREE') {
+      refuses.push({ cle, libelle, motif: `« ${libelle} » n’est pas proposé : sa nature (${nature ?? 'non saisie'}) ne se trace pas comme une zone.` });
+      continue;
+    }
+    const hauteurM = nombreReglage(e.hauteur_m);
+    gabarits.push({
+      cle,
+      libelle,
+      nature,
+      retraitM: typeof e.retrait_m === 'number' && Number.isFinite(e.retrait_m) && e.retrait_m > 0 ? e.retrait_m : 0,
+      ...(hauteurM != null ? { hauteurM } : {}),
+      source,
+    });
   }
   return { gabarits, refuses };
 }

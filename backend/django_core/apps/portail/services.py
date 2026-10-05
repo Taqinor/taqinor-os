@@ -280,10 +280,10 @@ def provisionner_compte_portail_client(company, client_id):
     from django.utils.crypto import get_random_string
 
     from apps.crm.selectors import get_company_client
-    from apps.roles.models import (
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import (
         PORTAIL_CLIENT_PERMISSIONS,
         ROLE_PORTAIL_CLIENT,
-        Role,
     )
     from authentication.models import CustomUser
 
@@ -369,10 +369,10 @@ def provisionner_compte_partenaire(company, partenaire_id):
     from django.utils.crypto import get_random_string
 
     from apps.crm.selectors import partenaire_pour_certification
-    from apps.roles.models import (
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import (
         PORTAIL_PARTENAIRE_PERMISSIONS,
         ROLE_PORTAIL_PARTENAIRE,
-        Role,
     )
     from authentication.models import CustomUser
 
@@ -657,10 +657,10 @@ def accepter_invitation_portail(token, mot_de_passe):
     from django.db import transaction
     from django.utils import timezone
 
-    from apps.roles.models import (
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import (
         PORTAIL_CLIENT_PERMISSIONS,
         ROLE_PORTAIL_CLIENT,
-        Role,
     )
     from authentication.models import CustomUser
 

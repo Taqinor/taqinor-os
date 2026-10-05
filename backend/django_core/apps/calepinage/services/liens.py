@@ -10,6 +10,18 @@ LES DEUX REFUS QUI COMPTENT
   l'utilisateur ne peut rien faire du refus.
 * **L'autre société.** Un devis d'une autre société est INTROUVABLE : on ne
   confirme jamais l'existence de la donnée d'autrui.
+* **Le re-pointage d'un devis ACTIF (ACAL33).** Un calepinage déjà lié à un
+  devis ACTIF (``is_active``) n'est jamais re-pointé vers un autre devis : le
+  refus nomme les DEUX références. Un ancien devis INACTIF (remplacé par une
+  révision) ou disparu se re-pointe — c'est le prérequis de la re-liaison V2
+  (D-ACAL-3). Il n'existe AUCUN geste « détacher » : le message ne le propose
+  donc jamais.
+
+ACAL33 — CE MODULE EST LE SEUL ÉCRIVAIN DE ``Calepinage.devis``
+---------------------------------------------------------------
+Le CRUD ne l'écrit plus (champ en lecture seule du sérialiseur), la création
+depuis un modèle passe par ``lier_devis``, et la base garantit « un calepinage
+par devis et par société » (``UniqueConstraint calepinage_un_par_devis``).
 
 SOLMVP15 — ``lier_appel_offre`` vivait ici. C'était un PONT, et seulement un
 pont : rattacher un calepinage à une affaire d'appel d'offres, en validant
@@ -53,7 +65,7 @@ def lier_devis(calepinage, devis_id, *, user=None):
         LiaisonRefusee: devis introuvable/d'une autre société, ou déjà lié à
             un AUTRE calepinage (le message le nomme).
     """
-    from django.db import transaction
+    from django.db import IntegrityError, transaction
 
     from apps.ventes.selectors import get_devis_by_pk
 
@@ -73,15 +85,14 @@ def lier_devis(calepinage, devis_id, *, user=None):
     if devis is None or devis.company_id != company.pk:
         raise LiaisonRefusee(
             f"Devis introuvable (#{devis_id}).", champ='devis')
+    if ancien_devis:
+        _refuser_repointage_d_un_actif(ancien_devis, devis, company)
 
     with transaction.atomic():
         deja = calepinage_du_devis(devis_id, company)
         if deja is not None and deja.pk != calepinage.pk:
-            raise LiaisonRefusee(
-                f"Le devis {devis.reference or f'#{devis_id}'} est déjà "
-                f"rattaché au calepinage {_etiquette(deja)} : détachez-le "
-                "d'abord, ou rattachez ce devis à un autre calepinage.",
-                champ='devis')
+            raise LiaisonRefusee(_message_deja_lie(devis, deja),
+                                 champ='devis')
         calepinage.devis_id = devis.pk
         champs = ['devis']
         if not calepinage.client_id and getattr(devis, 'client_id', None):
@@ -90,11 +101,55 @@ def lier_devis(calepinage, devis_id, *, user=None):
         if not calepinage.lead_id and getattr(devis, 'lead_id', None):
             calepinage.lead_id = devis.lead_id
             champs.append('lead_id')
-        calepinage.save(update_fields=champs + ['updated_at'])
+        try:
+            with transaction.atomic():
+                calepinage.save(update_fields=champs + ['updated_at'])
+        except IntegrityError:
+            # Course perdue contre un autre rattachement du MÊME devis : la
+            # contrainte ``calepinage_un_par_devis`` a tranché ; le refus
+            # nomme le gagnant, relu en base.
+            gagnant = calepinage_du_devis(devis_id, company)
+            raise LiaisonRefusee(_message_deja_lie(devis, gagnant),
+                                 champ='devis') from None
     # CAL26 — ancien → nouveau, par la primitive `records`.
     journaliser_lien_devis(calepinage, ancien=ancien_devis,
                            nouveau=devis.pk, user=user)
     return calepinage
+
+
+def _reference(devis, devis_id=None):
+    """La référence lisible d'un devis (``DEV-…``), sinon son numéro."""
+    reference = (getattr(devis, 'reference', '') or '').strip()
+    return reference or f'#{devis_id or getattr(devis, "pk", "?")}'
+
+
+def _message_deja_lie(devis, deja):
+    """ACAL33 — le devis est déjà pris : on NOMME le calepinage qui le tient.
+
+    Aucun « détachez-le d'abord » : ce geste n'existe pas (CYC-G2-02).
+    """
+    tenant = _etiquette(deja) if deja is not None else 'existant'
+    return (f"Le devis {_reference(devis)} est déjà rattaché au calepinage "
+            f"{tenant}.")
+
+
+def _refuser_repointage_d_un_actif(ancien_devis_id, nouveau, company):
+    """ACAL33 — un calepinage lié à un devis ACTIF n'est jamais re-pointé.
+
+    L'ancien devis INACTIF (remplacé par une révision, ``is_active`` faux) ou
+    introuvable se re-pointe : c'est la re-liaison V2 (D-ACAL-3).
+    """
+    from apps.ventes.selectors import get_devis_by_pk
+
+    ancien = get_devis_by_pk(ancien_devis_id)
+    if ancien is None or ancien.company_id != company.pk:
+        return
+    if not getattr(ancien, 'is_active', True):
+        return
+    raise LiaisonRefusee(
+        f"Ce calepinage est rattaché au devis {_reference(ancien)}, toujours "
+        f"actif : il ne peut pas être re-pointé vers le devis "
+        f"{_reference(nouveau)}.", champ='devis')
 
 
 def _exiger_calepinage(calepinage):

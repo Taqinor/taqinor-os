@@ -150,7 +150,8 @@ class Qx13NudgeNotificationTests(TestCase):
 
     def test_due_nudge_creates_notification_with_working_link(self):
         from apps.ventes.services import send_devis_followup_nudges
-        from apps.notifications.models import Notification, EventType
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
         send_devis_followup_nudges()
         notif = Notification.objects.filter(
             recipient=self.seller,

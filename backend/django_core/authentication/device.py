@@ -65,7 +65,7 @@ def _alert_new_device(user, session):
     except Exception:
         pass
     try:
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         from apps.notifications.services import notify
         notify(user, EventType.SECURITY_ALERT,
                'Nouvelle connexion depuis un appareil inconnu',

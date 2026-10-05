@@ -26,7 +26,7 @@ from types import SimpleNamespace
 from django.test import TestCase
 
 from apps.parametres import tariff
-from apps.ventes import solar_design as sd
+from apps.ventes import solar_finance as sd
 
 #: Découpage 24 h d'EXEMPLE (saisie de test, jamais un défaut du code).
 HEURES = (['creuse'] * 7 + ['pleine'] * 11 + ['pointe'] * 4

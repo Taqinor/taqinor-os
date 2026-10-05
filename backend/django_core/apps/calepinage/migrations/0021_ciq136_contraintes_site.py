@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('calepinage', '0017_ciq112_mode_pose_bac_acier'),
+        ('calepinage', '0020_ciq112_mode_pose_bac_acier'),
     ]
 
     operations = [

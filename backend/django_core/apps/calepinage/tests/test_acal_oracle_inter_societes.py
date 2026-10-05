@@ -22,7 +22,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.calepinage.models import Calepinage
 from apps.crm.models import Client, Lead
-from apps.roles.models import DIRECTEUR_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
 from apps.stock.models import Produit
 from apps.ventes.models import Devis
 from authentication.models import Company
@@ -105,12 +106,27 @@ class OracleInterSocietesTest(TestCase):
 
     # ── sérialiseur : devis / client / responsable ─────────────────────
     def test_devis_etranger_et_absent_meme_reponse(self):
-        r = self._paire(lambda pk: self.api.post(URL, {
-            'titre': 'Nouveau', 'lead': self.lead.pk, 'devis': pk},
-            format='json'), self.devis_voisin.pk)
-        self.assertEqual(_champs(r.data), ['devis'])
-        self.assertEqual(r.data['devis'][0].code, 'does_not_exist')
-        self.assertNotIn('appartient', str(r.data['devis'][0]))
+        # Réconciliation vague B : ACAL33 fait de ``lier_devis`` le SEUL
+        # écrivain de ``Calepinage.devis`` — le champ est en LECTURE SEULE au
+        # CRUD. Un devis d'une autre société et un devis absent reçoivent donc
+        # la MÊME réponse : la création réussit, rien n'est lié, aucun 400
+        # ne trahit l'existence du devis voisin. ACAL182 (un seul calepinage
+        # ouvert par lead) : chaque envoi vise un lead encore libre.
+        reponses = []
+        for pk in (self.devis_voisin.pk, ABSENT):
+            libre = Lead.objects.create(company=self.societe,
+                                        nom=f'Lead libre {pk}')
+            reponse = self.api.post(URL, {
+                'titre': 'Nouveau', 'lead': libre.pk, 'devis': pk},
+                format='json')
+            self.assertEqual(reponse.status_code, 201, reponse.data)
+            self.assertIsNone(reponse.data['devis'])
+            self.assertIsNone(
+                Calepinage.objects.get(pk=reponse.data['id']).devis_id)
+            reponses.append(sorted(reponse.data))
+        self.assertEqual(reponses[0], reponses[1])
+        self.assertFalse(Calepinage.objects.filter(
+            devis_id=self.devis_voisin.pk).exists())
 
     def test_client_etranger_et_absent_meme_reponse(self):
         r = self._paire(lambda pk: self.api.post(URL, {

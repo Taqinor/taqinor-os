@@ -186,6 +186,17 @@ describe('W113 — hydrateFromLead', () => {
       consSeasonal: false,
       consSummerFactor: null,
       consWinterFactor: null,
+      // ACAL26 — les cinq couches relues du document : vides sans `roof_layout`.
+      surfacesPose: [],
+      environment: [],
+      shading12x24: null,
+      shadeObstructions: [],
+      shadeObstructionsNonLues: [],
+      choixConception: null,
+      modulesDuDocument: [],
+      documentRelu: null,
+      consSource: null,
+      electrical: null,
     };
     expect(hydrateFromLead(null)).toEqual({ vertices: [], center: null, contact: {}, ...consommationVierge });
     expect(hydrateFromLead({})).toEqual({ vertices: [], center: null, contact: {}, ...consommationVierge });

@@ -10,6 +10,8 @@ toujours celle passée en argument, jamais lue d'un corps de requête.
 """
 from __future__ import annotations
 
+import re
+
 #: CAL45 — les sections de réglages, dans l'ordre du contrat publié
 #: (``contract_samples/parametres_calepinage.json``). Source unique de la FORME
 #: rendue : l'endpoint, l'écran et les tests lisent la même liste.
@@ -75,12 +77,118 @@ def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
     return appliquer_filtres_liste(
         Calepinage.objects.filter(company=company),
         lead_id=lead_id, client_id=client_id, statut=statut, depuis=depuis,
-        q=q, inclure_archives=inclure_archives)
+        q=q, inclure_archives=inclure_archives, company=company)
+
+
+#: CALX406 / ACAL295 — la clé de ``presets`` qui restreint la vue au
+#: responsable (ou au créateur) d'un calepinage.
+CLE_VUE_RESTREINTE = 'vue_restreinte_au_responsable'
+
+
+def vue_restreinte_au_responsable(company):
+    """CALX406 — le réglage société, lu SANS deviner : ``True`` et rien d'autre.
+
+    Une valeur absente, ``False``, ``"oui"`` ou ``1`` laisse la vue
+    inchangée : on ne restreint jamais la vue d'une société qui n'a pas
+    explicitement choisi de le faire.
+    """
+    if company is None:
+        return False
+    presets = parametres_de_societe(company).get('presets') or {}
+    return presets.get(CLE_VUE_RESTREINTE) is True
+
+
+def restreindre_aux_siens(lignes, user):
+    """ACAL295 — ``lignes`` réduites aux calepinages DE ``user`` si la société
+    l'a voulu (``responsable`` OU ``cree_par``).
+
+    Le porteur de ``calepinage_approuver`` voit TOUT (un relecteur doit
+    pouvoir relire) : sa garde est vérifiée D'ABORD — elle ne coûte aucune
+    requête —, le réglage n'est lu que pour ceux qu'il peut restreindre.
+    """
+    from django.db.models import Q
+
+    from core.permissions import _user_has_or_legacy
+
+    from .permissions import CAL_APPROUVER
+
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return lignes
+    if _user_has_or_legacy(user, CAL_APPROUVER):
+        return lignes
+    if not vue_restreinte_au_responsable(getattr(user, 'company', None)):
+        return lignes
+    return lignes.filter(Q(responsable=user) | Q(cree_par=user))
+
+
+def calepinages_visibles(user, *, inclure_archives=False, base=None,
+                         **filtres):
+    """ACAL295 — LE prédicat d'accès : les calepinages que ``user`` peut lire
+    ou écrire par ``company + pk``.
+
+    = calepinages de ``user.company`` (``base`` : un queryset déjà borné
+    société, ex. celui du viewset avec ses ``select_related``) + les filtres
+    de liste (``appliquer_filtres_liste``, archives exclues par défaut) + la
+    restriction au responsable (``restreindre_aux_siens``). Toute route qui
+    résout un calepinage par identifiant part d'ICI : un calepinage hors vue
+    est INTROUVABLE (même réponse qu'un identifiant absent), jamais
+    « interdit ».
+    """
+    from .models import Calepinage
+
+    company = getattr(user, 'company', None)
+    if base is None:
+        if company is None:
+            return Calepinage.objects.none()
+        base = Calepinage.objects.filter(company=company)
+    elif company is not None:
+        base = base.filter(company=company)
+    lignes = appliquer_filtres_liste(base, inclure_archives=inclure_archives,
+                                     company=company, **filtres)
+    return restreindre_aux_siens(lignes, user)
+
+
+def calepinage_ouvert_du_lead(company, lead_id):
+    """ACAL182 — LE calepinage OUVERT (non archivé) d'un lead, ou ``None``.
+
+    LE prédicat « ouvert » de la règle D-ACAL-12 (un seul calepinage ouvert
+    par lead), écrit UNE fois : non archivé au sens exact de
+    ``appliquer_filtres_liste`` (CAL208). Borné à ``company`` — un lead
+    d'une autre société n'a jamais de calepinage ouvert ici. Le plus récent
+    s'il en existe plusieurs (passif d'avant la règle).
+    """
+    if company is None or not lead_id:
+        return None
+    return liste_calepinages(company, lead_id=lead_id).first()
+
+
+#: ACAL196 — « CAL-AAMM-NNNN » : le numéro à la fin est l'identifiant.
+_REFERENCE_AFFICHEE = re.compile(r'^CAL-(?:\d{4}-)?(\d{1,18})$',
+                                 re.IGNORECASE)
+
+
+def _condition_recherche(terme, company):
+    """ACAL196 — la condition « q » : titre OU référence OU lead OU client."""
+    from django.db.models import Q
+
+    condition = (Q(titre__icontains=terme)
+                 | Q(client__nom__icontains=terme))
+    reference = _REFERENCE_AFFICHEE.match(terme)
+    if reference:
+        condition |= Q(pk=int(reference.group(1)))
+    if company is not None:
+        from apps.crm.selectors import rechercher_leads_minimal
+
+        ids = [lead['id'] for lead in
+               rechercher_leads_minimal(company, terme, limit=50)]
+        if ids:
+            condition |= Q(lead_id__in=ids)
+    return condition
 
 
 def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
                             statut=None, depuis=None, q=None,
-                            inclure_archives=False):
+                            inclure_archives=False, company=None):
     """CAL16 — LES filtres de la liste, écrits UNE fois.
 
     Le viewset (``views/calepinages.py``) et ce sélecteur servent la même
@@ -94,6 +202,11 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     (corbeille, ``apps.trash.selectors.ids_dans_corbeille`` — jamais un
     import direct de ``ElementSupprime``, frontière inter-apps).
 
+    ACAL196 — ``q`` cherche le TITRE, la RÉFÉRENCE affichée (CAL-AAMM-NNNN,
+    décodée en identifiant), le nom du LEAD rattaché (50 leads au plus, par
+    ``crm.selectors.rechercher_leads_minimal``, borné à ``company``) et le
+    nom du CLIENT rattaché.
+
     L'ordre est celui du plus récent au plus ancien, dans les deux chemins.
     """
     if lead_id:
@@ -106,7 +219,7 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
         lignes = lignes.filter(created_at__gte=depuis)
     terme = (q or '').strip()
     if terme:
-        lignes = lignes.filter(titre__icontains=terme)
+        lignes = lignes.filter(_condition_recherche(terme, company))
     if not inclure_archives:
         from apps.trash.selectors import ids_dans_corbeille
 
@@ -396,16 +509,9 @@ def nomenclature_variante_retenue(calepinage_id, company):
     }
 
 
-def calepinage_de_l_affaire(appel_offre_id, company):
-    """CAL10 — le calepinage rattaché à cette affaire d'AO, ou ``None``."""
-    from .models import Calepinage
-
-    if company is None or not appel_offre_id:
-        return None
-    return (Calepinage.objects
-            .filter(company=company, appel_offre_id=appel_offre_id)
-            .order_by('-created_at', '-id')
-            .first())
+# ACAL326 (D-ACAL-16) — ``calepinage_de_l_affaire`` (pont AO, appelé
+# seulement par le code PARQUÉ backend/parked/ao/views.py) est retiré ; sa
+# recette de retour est consignée dans docs/parked-modules.md.
 
 
 #: CAL15 — les clés du contexte géographique. TOUJOURS toutes présentes.
@@ -634,13 +740,29 @@ def registre_des_reglages():
 
     Lecture PURE : aucune valeur, aucun défaut, aucun accès base — la
     déclaration seule, sans dépendre de ``company``.
+
+    ACAL132 — chaque ligne publie AUSSI le ``type`` de sa valeur (et
+    ``minimum`` / ``maximum`` / ``valeurs`` quand ils existent), lu dans
+    ``parametres_cles.TYPES_CLES`` : l'écran saisit dans le type que le PUT
+    validera, sans le redéclarer.
     """
-    from .services.parametres_cles import REGISTRES
+    from .services.parametres_cles import REGISTRES, type_de_cle
+
+    def _ligne(section, cle, libelle, unite, reference):
+        ligne = {'cle': cle, 'libelle': libelle, 'unite': unite,
+                 'reference': reference}
+        typage = type_de_cle(section, cle)
+        ligne['type'] = typage.get('type')
+        for borne in ('minimum', 'maximum'):
+            if typage.get(borne) is not None:
+                ligne[borne] = typage[borne]
+        if typage.get('valeurs'):
+            ligne['valeurs'] = list(typage['valeurs'])
+        return ligne
 
     return {
         section: [
-            {'cle': cle, 'libelle': libelle, 'unite': unite,
-             'reference': reference}
+            _ligne(section, cle, libelle, unite, reference)
             for cle, libelle, unite, reference in declarations
         ]
         for section, declarations in REGISTRES.items()

@@ -73,7 +73,7 @@ EXEMPLES = ('exemple', 'exemple_standard', 'exemple_sections_masquees')
 #: écrit dans `notes.structure_de_la_reponse`. Si ces deux nombres bougent,
 #: le contrat ET cette constante changent ensemble — jamais l'un sans l'autre.
 NB_CLES_BASE = 48
-NB_CLES_ADDITIVES = 21
+NB_CLES_ADDITIVES = 22  # AGR308 : + `synthese_agricole` ; ACAL173 : + `fiche_batterie`
 
 #: Les clés que l'échantillon déclare pour les réponses d'ERREUR, jamais pour
 #: la charge utile 200 (contrat, bloc `notes.cle_detail`). QJR228 (31/08/2026)
@@ -296,7 +296,7 @@ def sample_layout():
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestContratLisible(TestCase):
-    def test_le_contrat_declare_48_cles_de_base_et_21_additives(self):
+    def test_le_contrat_declare_48_cles_de_base_et_22_additives(self):
         base, additives, _natures = charger_contrat()
         self.assertEqual(
             len(base), NB_CLES_BASE,

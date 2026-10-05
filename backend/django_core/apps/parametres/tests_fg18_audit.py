@@ -11,7 +11,11 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.parametres.models import SettingsAuditLog
-from apps.roles.models import Role, ADMIN_PERMISSIONS, COMMERCIAL_PERMISSIONS
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    ADMIN_PERMISSIONS,
+    COMMERCIAL_PERMISSIONS,
+)
 
 User = get_user_model()
 

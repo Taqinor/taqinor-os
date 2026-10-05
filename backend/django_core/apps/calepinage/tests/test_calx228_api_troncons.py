@@ -339,7 +339,8 @@ class TronconsApiTest(TestCase):
 
         from apps.calepinage.models import Calepinage
         from apps.crm.models import Lead
-        from apps.roles.models import DIRECTEUR_PERMISSIONS, Role
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
         from authentication.models import Company
 
         # Même patron que ``test_api_liste`` : deux sociétés, un porteur des

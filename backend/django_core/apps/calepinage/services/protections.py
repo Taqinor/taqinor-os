@@ -198,6 +198,41 @@ def checklist_protections(conception, *, decisions=None, norme=None):
     }
 
 
+def resultat_protections_retenues(resultat_protections, checklist):
+    """ACAL159 — le ``ResultatProtections`` du noyau RÉDUIT à la check-list.
+
+    LA source unique de ce que le bordereau (``core.electrique.nomenclature``)
+    chiffre et de ce que le schéma dessine : un organe ÉCARTÉ disparaît, un
+    organe AJOUTÉ par la société s'ajoute (marqué « décision société », jamais
+    normatif). Lue par :func:`organes_retenus` — aucune seconde décision.
+
+    Une check-list SANS organe (norme absente, aucune chaîne) laisse le
+    résultat du noyau inchangé : il n'y a alors rien à décider.
+    """
+    import dataclasses
+
+    from core.electrique.types import Protection
+
+    if resultat_protections is None or not isinstance(checklist, dict) \
+            or not checklist.get('organes'):
+        return resultat_protections
+    retenus = organes_retenus(checklist)
+    reperes = {ligne['repere'] for ligne in retenus
+               if ligne.get('origine') != ORIGINE_SOCIETE}
+    gardees = tuple(protection
+                    for protection in resultat_protections.protections
+                    if protection.repere in reperes)
+    ajouts = tuple(
+        Protection(repere=ligne['repere'], designation=ligne['designation'],
+                   calibre=ligne.get('calibre') or '',
+                   quantite=int(ligne.get('quantite') or 1),
+                   regle_source=ligne['regle_source'],
+                   cote=ligne.get('cote') or 'commun')
+        for ligne in retenus if ligne.get('origine') == ORIGINE_SOCIETE)
+    return dataclasses.replace(resultat_protections,
+                               protections=gardees + ajouts)
+
+
 def organes_retenus(checklist):
     """LA source unique du bordereau et du schéma unifilaire.
 

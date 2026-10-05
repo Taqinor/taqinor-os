@@ -75,7 +75,7 @@ import {
 import BuilderDom from '../../features/calepinage/atelier/BuilderDom.jsx'
 import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
 import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues.js'
-import { useAtelierBoot } from '../../features/calepinage/atelier/useAtelierBoot.js'
+import { useAtelierBoot, pousserAffectationAtelier } from '../../features/calepinage/atelier/useAtelierBoot.js'
 import '../../styles/roofbuilder.css'
 
 export default function ToitureDesign({ mode = 'lead' }) {
@@ -151,6 +151,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
 
   // — État de la génération du devis —
   const [sending, setSending] = useState(false)
+  // ACAL30 — le catalogue des modules n'a pas pu être lu : l'enregistrement est REFUSÉ
+  // (jamais un retour silencieux au module par défaut 720 Wc).
+  const [catalogueIndisponible, setCatalogueIndisponible] = useState(false)
   const [genError, setGenError] = useState(null)
   const [genStatus, setGenStatus] = useState(null)
   // L-SECT — ne porte plus que { reference } : le lien, le menu WhatsApp, le
@@ -252,6 +255,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
     setBrouillonPropose,
     setBuilderApiActuel,
     setBuilderReady,
+    setCatalogueIndisponible,
     setContexte,
     setContourMessage,
     setHashBaseBrouillon,
@@ -558,6 +562,10 @@ export default function ToitureDesign({ mode = 'lead' }) {
       setGenError('Outil non prêt — ajustez la conception puis réessayez.')
       return
     }
+    if (catalogueIndisponible) {
+      setGenError('Catalogue des modules indisponible : rien n’est enregistré, rechargez la page.')
+      return
+    }
     setSending(true)
     setGenStatus('Enregistrement du calepinage…')
     try {
@@ -588,6 +596,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
           ? champ : httpMessage(code ?? 0, data))
         return
       }
+
+      // ACAL286 — l'affectation servie a pu changer avec ce document : la teinte est relue.
+      pousserAffectationAtelier(apiTool, calepinageId)
 
       // Même conception → ZÉRO écriture serveur, et on le DIT : aucune
       // version n'a été créée, rien ne doit prétendre le contraire.
@@ -633,9 +644,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
           ? `Conception enregistrée — version ${resultat.version}.`
           : 'Conception enregistrée.'
       )
-    } catch {
+    } catch (err) {
       setGenStatus(null)
-      setGenError('Erreur réseau pendant l’enregistrement. Vérifiez votre connexion puis réessayez.')
+      // ACAL64 — un document que l'atelier REFUSE d'émettre (pans de même identifiant) porte
+      // son propre message : on l'affiche tel quel, jamais « erreur réseau ».
+      setGenError(err?.name === 'ErreurDocumentAtelier' && err.message
+        ? err.message
+        : 'Erreur réseau pendant l’enregistrement. Vérifiez votre connexion puis réessayez.')
       setSending(false)
     }
   }

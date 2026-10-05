@@ -6,17 +6,16 @@ aucun symbole. Il fige, par modèle :
 
 * `deconstruct()` de chaque champ concret local (chemin, args, kwargs) ;
 * `db_table`, `app_label`, `ordering`, noms des index et des contraintes,
-  `unique_together` ;
-* le sha256 de `ast.dump` de la classe (corps non touché par un déplacement).
+  `unique_together`.
 
 Régénération (rare, volontaire) : `GOLDEN_CAPTURE=1` réécrit le fixture.
-`PLACE` : module attendu après SPL149 (`apps.ventes.models_facturation`).
-Tant que SPL149 n'a pas eu lieu, `PLACE` est vide et `test_place` est SAUTÉ
-(le garder rouge casserait la CI du merge qui porte seulement la capture) ;
-SPL149 renseigne `PLACE` et la garde devient active.
+SPL149 (fin de piste) : les 17 modèles vivent dans
+`apps.ventes.models_facturation` (ré-exportés en fin de `models.py`) ;
+empreintes AST vérifiées identiques (17/17) au déplacement puis retirées du
+fixture. `PLACE` est actif : module attendu + aucun jumeau (aucune
+définition restée dans `models.py`).
 """
 import ast
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -32,9 +31,9 @@ MODELES = [
     'TentativeDebitMandat', 'LivraisonBC', 'LigneLivraisonBC',
 ]
 
-# Module attendu par modèle APRÈS SPL149 ; {} = aucun déplacement effectué.
-PLACE = {}
 MODULE_CIBLE = 'apps.ventes.models_facturation'
+# Module attendu par modèle APRÈS SPL149.
+PLACE = {nom: MODULE_CIBLE for nom in MODELES}
 
 FIXTURE = Path(__file__).parent / 'fixtures' / 'golden_models_facturation.json'
 MODELS_PY = Path(__file__).resolve().parents[1] / 'models.py'
@@ -58,17 +57,7 @@ def _norm(valeur):
     return repr(valeur)
 
 
-def _empreintes_ast():
-    arbre = ast.parse(MODELS_PY.read_text(encoding='utf-8'))
-    return {
-        n.name: hashlib.sha256(ast.dump(n).encode('utf-8')).hexdigest()
-        for n in arbre.body
-        if isinstance(n, ast.ClassDef) and n.name in MODELES
-    }
-
-
 def _capturer():
-    empreintes = _empreintes_ast()
     modeles = {}
     for nom in MODELES:
         m = django_apps.get_model('ventes', nom)
@@ -84,7 +73,6 @@ def _capturer():
                 [f.name, _norm(f.deconstruct()[1:])]
                 for f in meta.local_concrete_fields
             ],
-            'ast_sha256': empreintes.get(nom),
         }
     return {'modeles': modeles}
 
@@ -101,8 +89,6 @@ class GoldenModelsFacturationTests(SimpleTestCase):
         self.assertEqual(len(self.capture['modeles']), 17)
         for nom, d in self.capture['modeles'].items():
             self.assertTrue(d['fields'], nom)
-            self.assertTrue(d['ast_sha256'],
-                            f'{nom} : classe introuvable dans models.py')
             self.assertEqual(d['app_label'], 'ventes', nom)
 
     def test_golden(self):
@@ -126,9 +112,15 @@ class GoldenModelsFacturationTests(SimpleTestCase):
         self.assertEqual(DELAI_RETRACTATION_DOMICILE_JOURS, 7)
         self.assertTrue(issubclass(AcompteAvantDelaiLegal, Exception))
 
+    def test_aucun_jumeau_dans_models_py(self):
+        # Ré-export autorisé (import), définition interdite : aucune classe
+        # des 17 ne doit plus être DÉFINIE dans models.py.
+        arbre = ast.parse(MODELS_PY.read_text(encoding='utf-8'))
+        restes = [n.name for n in arbre.body
+                  if isinstance(n, ast.ClassDef) and n.name in MODELES]
+        self.assertEqual(restes, [])
+
     def test_place(self):
-        if not PLACE:
-            self.skipTest('SPL149 pas encore fait : PLACE vide')
         reel = {nom: django_apps.get_model('ventes', nom).__module__
                 for nom in MODELES}
         self.assertEqual(reel, {nom: PLACE.get(nom, MODULE_CIBLE)

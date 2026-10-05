@@ -59,7 +59,8 @@ class Vx210ClockReveilTests(TestCase):
         self.assertIsNone(act.snoozed_at)
         self.assertEqual(act.snooze_trigger_event, '')
 
-        from apps.notifications.models import EventType, Notification
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
         notif = Notification.objects.filter(
             recipient=self.user, event_type=EventType.SNOOZE_REVEIL).first()
         self.assertIsNotNone(notif)

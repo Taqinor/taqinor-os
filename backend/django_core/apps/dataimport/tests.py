@@ -15,7 +15,8 @@ User = get_user_model()
 
 class ImportBase(TestCase):
     def setUp(self):
-        from apps.roles.models import Role, DIRECTEUR_PERMISSIONS
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
         self.company = Company.objects.get_or_create(
             slug='imp-co', defaults={'nom': 'Imp Co'})[0]
         self.user = User.objects.create_user(

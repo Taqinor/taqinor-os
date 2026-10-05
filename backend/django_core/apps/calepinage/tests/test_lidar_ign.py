@@ -46,7 +46,8 @@ from apps.calepinage.services.lidar_ign import (
     suggerer_pentes,
 )
 from apps.calepinage.services.parametres import enregistrer_parametres
-from apps.roles.models import DIRECTEUR_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
 from authentication.models import Company
 
 User = get_user_model()

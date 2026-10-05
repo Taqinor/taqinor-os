@@ -11,16 +11,17 @@ liste — jamais depuis le dossier du client, là où le commercial travaille.
 
 CE QUE CETTE PORTE FAIT, ET CE QU'ELLE NE FAIT PAS
 ----------------------------------------------------
-* elle appelle ``services/creation.py::creer_pour_lead`` (CAL11), le chemin
-  de création qui existe — aucun second chemin n'est écrit ;
+* elle appelle ``services/creation.py::ouvrir_ou_creer_pour_lead`` (ACAL182)
+  — la porte UNIQUE de création sur un lead, sous verrou — aucun second
+  chemin n'est écrit ;
 * elle est **IDEMPOTENTE** : un lead qui a déjà un calepinage OUVERT reçoit
   CELUI-LÀ, jamais un second. « Ouvert » = non archivé, au sens exact de
   ``selectors.appliquer_filtres_liste`` (CAL208, ``inclure_archives=False``) :
   un calepinage mis à la corbeille ne bloque donc pas une nouvelle
   conception, et il n'est pas non plus ressuscité en silence ;
-* la relecture se fait DANS la transaction, comme
-  ``obtenir_ou_creer_pour_devis`` : deux clics simultanés sur le même lead
-  ne produisent pas deux calepinages ;
+* la relecture se fait DANS la transaction, sous le verrou consultatif du
+  lead (``creation._verrou_creation``) : deux clics simultanés sur le même
+  lead ne produisent pas deux calepinages ;
 * elle ne touche RIEN du geste existant « Concevoir la toiture (3D) », qui
   garde exactement sa sémantique (décision D2 du groupe CAL) ;
 * le CRM n'est lu que par ``apps.crm.selectors`` — au travers du service de
@@ -36,7 +37,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage
-from ..services.creation import CreationRefusee, creer_pour_lead
+from ..services.creation import (
+    CreationRefusee, corps_conflit, ouvrir_ou_creer_pour_lead,
+)
 
 __all__ = ['depuis_lead']
 
@@ -51,23 +54,8 @@ def _identifiant(brut):
         return None
 
 
-def _calepinage_ouvert(lead_id, company):
-    """Le calepinage OUVERT le plus récent de ce lead, ou ``None``.
-
-    Lecture bornée société par construction : ``company`` vient de
-    l'appelant, jamais d'un corps de requête.
-    """
-    from ..models import Calepinage
-    from ..selectors import appliquer_filtres_liste
-
-    if company is None or not lead_id:
-        return None
-    return appliquer_filtres_liste(
-        Calepinage.objects.filter(company=company), lead_id=lead_id).first()
-
-
 def _reponse(calepinage, *, cree):
-    from .calepinages import _reference
+    from ..services.presentation import reference_calepinage as _reference
 
     return {
         'calepinage': calepinage.pk,
@@ -82,8 +70,6 @@ def _reponse(calepinage, *, cree):
         permission_classes=[PeutGererCalepinage])
 def depuis_lead(self, request):
     """CALX47 — le calepinage de ce lead : le MÊME à chaque appel."""
-    from django.db import transaction
-
     corps = request.data if isinstance(request.data, dict) else {}
     company = getattr(request.user, 'company', None)
     lead_id = _identifiant(corps.get('lead'))
@@ -93,23 +79,24 @@ def depuis_lead(self, request):
                      'vous concevez la toiture.'},
             status=status.HTTP_400_BAD_REQUEST)
 
-    existant = _calepinage_ouvert(lead_id, company)
-    if existant is not None:
-        return Response(_reponse(existant, cree=False))
-
     try:
-        with transaction.atomic():
-            # Relecture DANS la transaction : deux clics simultanés sur
-            # « Ouvrir dans le module Calepinage » ne créent pas deux objets.
-            existant = _calepinage_ouvert(lead_id, company)
-            if existant is not None:
-                return Response(_reponse(existant, cree=False))
-            calepinage = creer_pour_lead(lead_id, company, user=request.user,
-                                         titre=str(corps.get('titre') or ''))
+        # ACAL182 — la porte UNIQUE : verrou du lead, relecture de l'ouvert,
+        # création seulement s'il n'y en a pas (chatter, client du lead).
+        calepinage, cree = ouvrir_ou_creer_pour_lead(
+            lead_id, company, user=request.user,
+            titre=str(corps.get('titre') or ''))
     except CreationRefusee as refus:
         return Response({refus.champ or 'detail': str(refus)},
                         status=status.HTTP_400_BAD_REQUEST)
 
+    if not cree:
+        # ACAL295 — l'unicité est lue SANS restriction (D-ACAL-12), mais un
+        # existant hors de la vue de l'appelant n'est jamais servi : 409 sans
+        # identifiant, référence ni nom (IdentityRail lit ``detail``).
+        conflit = corps_conflit(calepinage, request.user)
+        if 'detail' in conflit:
+            return Response(conflit, status=status.HTTP_409_CONFLICT)
+        return Response(_reponse(calepinage, cree=False))
     return Response(_reponse(calepinage, cree=True),
                     status=status.HTTP_201_CREATED)
 

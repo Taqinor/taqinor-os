@@ -127,7 +127,8 @@ def mentions_non_lues(user, company):
     ``link`` sans importer ``notifications.models``. Scopé société : jamais une
     mention d'une autre société. Renvoie un queryset (éventuellement vide).
     """
-    from .models import EventType, Notification
+    from .models import Notification
+    from .types_evenements import EventType
     qs = Notification.objects.filter(
         recipient=user, read=False,
         event_type=EventType.CHAT_MENTION,
@@ -200,7 +201,8 @@ def superior_contact_status(company, link):
     notifications, pas la lecture)."""
     if company is None or not link:
         return {'requested': False}
-    from .models import EventType, Notification
+    from .models import Notification
+    from .types_evenements import EventType
     notifs = list(
         Notification.objects.filter(
             company=company,

@@ -18,8 +18,9 @@ from django.test import TestCase
 
 from apps.crm.models import Apporteur, DealEnregistre, Lead
 from apps.facturation.models import Avoir, Facture
-from apps.ventes.domain.cycle_vie import (
-    accept_devis, rattacher_aval_financier_revision, reviser_devis)
+from apps.ventes.domain.cycle_vie import accept_devis
+from apps.ventes.domain.revision import (
+    rattacher_aval_financier_revision, reviser_devis)
 from apps.ventes.models import BonCommande, Devis, LigneDevis
 from apps.ventes.tests._quote_engine_common import (
     make_client, make_company, make_devis, make_user,

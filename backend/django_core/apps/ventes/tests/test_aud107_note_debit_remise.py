@@ -49,7 +49,8 @@ def _valeurs_totaux(html):
 
 class TestNoteDebitRemiseGlobale(TestCase):
     def setUp(self):
-        from apps.roles.models import ALL_PERMISSIONS, Role
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
 
         self.company = Company.objects.create(
             nom='AUD107 Co', slug=f'aud107-{_nxt()}')

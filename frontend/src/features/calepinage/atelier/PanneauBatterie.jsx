@@ -1,10 +1,14 @@
+/* eslint-disable react-refresh/only-export-components --
+   `STRATEGIES`, `depuisEntree` et `corpsDeclaration` sont des constantes et des fonctions PURES que le
+   test confronte directement (même dérogation que `Raccordement.jsx`). */
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AlertTriangle } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatNumber, formatPercent } from '../../../lib/format'
-import { Button, Card, Spinner, Stat } from '../../../ui'
+import { Button, Card, Input, Label, Spinner, Stat } from '../../../ui'
+import { nombreOuNull, refusParChamp, texteOuNull } from '../electrique/entreeElectrique'
 
 /* ============================================================================
    CALX14 — LE PANNEAU « BATTERIE », ET CE QUE LA CHAÎNE CALCULE DEVIENT ENFIN
@@ -38,15 +42,15 @@ import { Button, Card, Spinner, Stat } from '../../../ui'
      3. Le bloc porte un `total` (et, pour `hors_reseau`, des grandeurs non
         nulles) : la simulation a produit un résultat, affiché tel quel.
 
-   PAS DE STRATÉGIE PAR DÉFAUT (décision fondateur, D-CALX 7) : la stratégie
-   vit sur le DOCUMENT (`roof_layout.battery.strategie`, résolue par
-   `services/simulation.py::_declaration_batterie`) — AUCUNE porte HTTP ne
-   permet aujourd'hui de l'écrire séparément (elle voyage avec la conception
-   complète, `POST …/layout/`, hors du périmètre de ce panneau). Le geste
-   RÉELLEMENT actionnable depuis ici est donc de RELANCER la simulation
-   (`POST simuler/`, `forcer: true`) — utile après qu'une stratégie a été
-   déclarée ailleurs dans l'atelier — jamais un sélecteur qui prétendrait
-   changer une stratégie sans le pouvoir vraiment (zéro affordance inventée).
+   PAS DE STRATÉGIE PAR DÉFAUT (décision fondateur, D-CALX 7) : la stratégie, les
+   packs, le couplage, les seuils et le mode hors réseau se DÉCLARENT dans
+   l'entrée électrique du calepinage (ACAL167 : `POST entree-electrique/`
+   {batterie, hors_reseau}, relue par `GET entree-electrique/`), lue ensuite
+   par la simulation. Rien n'est supposé : un champ laissé vide reste « non
+   saisi », le serveur refuse une forme invalide EN NOMMANT le champ, et le
+   produit comme les packs prennent par défaut la ligne batterie du devis lié.
+   Le geste suivant est de RELANCER la simulation (`POST simuler/`,
+   `forcer: true`) — jamais un chiffre calculé côté écran.
    ========================================================================== */
 
 const MOIS = [
@@ -59,6 +63,8 @@ const STRATEGIE_LABELS = {
   peak_shaving: 'Effacement de pointe',
   backup: 'Secours (backup)',
   decalage: 'Décalage horaire',
+  plafond_injection: 'Plafond d’injection',
+  heures_tarif: 'Heures du tarif',
 }
 
 const libelleStrategie = (s) => (s ? (STRATEGIE_LABELS[s] || s) : null)
@@ -127,7 +133,7 @@ const JOB_EN_ATTENTE = new Set(['PENDING', 'STARTED', 'RETRY'])
  * ici plutôt qu'importé : ce panneau reste dans SON fichier, D-CALX 13).
  * AUCUN calcul n'est refait côté navigateur.
  */
-function BoutonRelancerSimulation({ calepinageId, onTermine }) {
+function BoutonRelancerSimulation({ calepinageId, onTermine, declenchement = 0 }) {
   const [enCours, setEnCours] = useState(false)
   const [job, setJob] = useState(null)
   const [refus, setRefus] = useState(null)
@@ -186,6 +192,17 @@ function BoutonRelancerSimulation({ calepinageId, onTermine }) {
       })
   }
 
+  // ACAL167 — « Enregistrer et relancer » : le parent incrémente `declenchement`, le bouton
+  // lance alors LA MÊME relance (une seule logique de suivi du travail de fond).
+  const dernierDeclenchement = useRef(declenchement)
+  useEffect(() => {
+    if (declenchement !== dernierDeclenchement.current) {
+      dernierDeclenchement.current = declenchement
+      relancer()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `relancer` est recréée à chaque rendu ; seul le compteur déclenche
+  }, [declenchement])
+
   return (
     <div className="flex flex-col gap-2" data-testid="calx14-relancer">
       <Button
@@ -212,6 +229,173 @@ function BoutonRelancerSimulation({ calepinageId, onTermine }) {
         </p>
       )}
     </div>
+  )
+}
+
+/* ============================================================================
+   ACAL167 — DÉCLARER LA BATTERIE ET LE MODE HORS RÉSEAU.
+   Les champs se pré-remplissent de l'entrée STOCKÉE (`GET entree-electrique/`) ; le corps
+   posté ne porte que `batterie` et `hors_reseau` (la fusion par clé du serveur laisse le
+   reste intact). Un champ vidé vaut `null`, jamais 0 ; une clé jamais saisie et absente du
+   stock n'est pas inventée.
+   ========================================================================== */
+
+export const STRATEGIES = [
+  'autoconso', 'peak_shaving', 'backup', 'decalage', 'plafond_injection', 'heures_tarif',
+]
+
+const CHAMPS_BATTERIE = [
+  { cle: 'packs', libelle: 'Nombre de packs', genre: 'nombre' },
+  { cle: 'seuil_effacement_kw', libelle: 'Seuil d’effacement (kW)', genre: 'nombre' },
+  { cle: 'reserve_backup_kwh', libelle: 'Réserve de secours (kWh)', genre: 'nombre' },
+  { cle: 'heures_charge', libelle: 'Heures de charge (0-23, séparées par des virgules)', genre: 'heures' },
+  { cle: 'heures_decharge', libelle: 'Heures de décharge (0-23, séparées par des virgules)', genre: 'heures' },
+]
+
+const enTexte = (v) => (v === null || v === undefined ? '' : Array.isArray(v) ? v.join(', ') : String(v))
+const estObjet = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+
+/** L'entrée stockée → l'état du formulaire (chaînes) ; rien n'est inventé. */
+export function depuisEntree(entree) {
+  const b = estObjet(entree?.batterie) ? entree.batterie : {}
+  const h = estObjet(entree?.hors_reseau) ? entree.hors_reseau : {}
+  const etat = { strategie: enTexte(b.strategie), couplage: enTexte(b.couplage), actif: h.actif === true, jours: enTexte(h.jours_autonomie) }
+  for (const { cle } of CHAMPS_BATTERIE) etat[cle] = enTexte(b[cle])
+  return etat
+}
+
+const lireHeures = (texte) => String(texte).split(/[,;]/).map((t) => t.trim()).filter(Boolean).map(Number)
+
+/** Le corps POSTÉ : `{batterie?, hors_reseau?}`, fusionné sur l'existant (clés inconnues conservées). */
+export function corpsDeclaration(etat, entree) {
+  const stockeB = estObjet(entree?.batterie) ? entree.batterie : null
+  const batterie = { ...(stockeB ?? {}) }
+  const pose = (cle, valeur) => {
+    if (valeur !== null || cle in batterie) batterie[cle] = valeur
+  }
+  pose('strategie', texteOuNull(etat.strategie))
+  pose('couplage', texteOuNull(etat.couplage))
+  for (const { cle, genre } of CHAMPS_BATTERIE) {
+    pose(cle, genre === 'heures'
+      ? (String(etat[cle]).trim() === '' ? null : lireHeures(etat[cle]))
+      : nombreOuNull(etat[cle]))
+  }
+  const stockeH = estObjet(entree?.hors_reseau) ? entree.hors_reseau : null
+  const horsReseau = { ...(stockeH ?? {}) }
+  const jours = nombreOuNull(etat.jours)
+  if (etat.actif || stockeH) horsReseau.actif = Boolean(etat.actif)
+  if (jours !== null || 'jours_autonomie' in horsReseau) horsReseau.jours_autonomie = jours
+  const corps = {}
+  if (stockeB || Object.keys(batterie).length) corps.batterie = batterie
+  if (stockeH || Object.keys(horsReseau).length) corps.hors_reseau = horsReseau
+  return corps
+}
+
+function DeclarationBatterie({ id, onRelancer }) {
+  const [entree, setEntree] = useState(null)
+  const [etat, setEtat] = useState(null)
+  const [erreurs, setErreurs] = useState({})
+  const [message, setMessage] = useState(null)
+  const [enCours, setEnCours] = useState(false)
+
+  const lire = () => Promise.resolve(calepinageApi.calepinages.entreeElectrique(id))
+    .then((res) => {
+      const lue = res?.data?.entree ?? {}
+      setEntree(lue)
+      setEtat(depuisEntree(lue))
+    })
+    .catch(() => { setEntree({}); setEtat(depuisEntree({})) })
+
+  useEffect(() => { lire() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps -- lecture au montage / changement de calepinage
+
+  if (!etat) return null
+  const poser = (cle, valeur) => setEtat((s) => ({ ...s, [cle]: valeur }))
+
+  const enregistrer = (relancer) => (evenement) => {
+    evenement.preventDefault()
+    setEnCours(true)
+    setErreurs({})
+    setMessage(null)
+    calepinageApi.calepinages.enregistrerEntreeElectrique(id, corpsDeclaration(etat, entree))
+      .then(() => lire())
+      .then(() => {
+        setMessage('Déclaration enregistrée.')
+        if (relancer) onRelancer?.()
+      })
+      .catch((err) => {
+        const parChamp = refusParChamp(err?.response?.data)
+        setErreurs(Object.keys(parChamp).length ? parChamp : { declaration: 'Déclaration non enregistrée : le serveur n’a pas accepté la saisie.' })
+      })
+      .finally(() => setEnCours(false))
+  }
+
+  const erreur = (cle) => erreurs[`batterie.${cle}`]
+  const champ = (cle, libelle, valeur, onChange, type = 'text', refus = erreur(cle)) => (
+    <div key={cle} className="flex flex-col gap-1">
+      <Label htmlFor={`acal167-${cle}`}>{libelle}</Label>
+      <Input
+        id={`acal167-${cle}`}
+        type={type}
+        step={type === 'number' ? 'any' : undefined}
+        invalid={Boolean(refus)}
+        value={valeur}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {refus ? <p className="text-xs text-destructive" data-testid={`acal167-erreur-${cle}`}>{refus}</p> : null}
+    </div>
+  )
+  const liste = (cle, libelle, valeur, options, refus) => (
+    <div key={cle} className="flex flex-col gap-1">
+      <Label htmlFor={`acal167-${cle}`}>{libelle}</Label>
+      <select
+        id={`acal167-${cle}`}
+        value={valeur}
+        onChange={(e) => poser(cle, e.target.value)}
+        aria-invalid={refus ? 'true' : undefined}
+        className="w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+      >
+        <option value="">— non choisi —</option>
+        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+      {refus ? <p className="text-xs text-destructive" data-testid={`acal167-erreur-${cle}`}>{refus}</p> : null}
+    </div>
+  )
+
+  return (
+    <form
+      className="flex flex-col gap-3 border-b border-border/60 pb-4"
+      onSubmit={enregistrer(false)}
+      data-testid="acal167-declaration"
+    >
+      <h3 className="text-sm font-semibold">Déclarer la batterie</h3>
+      <p className="text-xs text-muted-foreground">
+        Aucune stratégie n’est choisie à votre place : sans elle, le bloc batterie est omis et le dit.
+        Le produit et le nombre de packs reprennent la ligne batterie du devis lié.
+      </p>
+      {erreurs.declaration
+        ? <p role="alert" className="text-sm text-destructive" data-testid="acal167-bandeau">{erreurs.declaration}</p>
+        : null}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {liste('strategie', 'Stratégie', etat.strategie, STRATEGIES.map((v) => [v, libelleStrategie(v)]), erreur('strategie'))}
+        {liste('couplage', 'Couplage', etat.couplage, [['ac', 'AC'], ['dc', 'DC']], erreur('couplage'))}
+        {CHAMPS_BATTERIE.map((c) => champ(c.cle, c.libelle, etat[c.cle], (v) => poser(c.cle, v), c.genre === 'nombre' ? 'number' : 'text'))}
+      </div>
+      <fieldset className="flex flex-col gap-2" data-testid="acal167-hors-reseau">
+        <legend className="text-sm font-semibold">Mode hors réseau</legend>
+        <label className="flex items-center gap-2 text-sm" htmlFor="acal167-actif">
+          <input id="acal167-actif" type="checkbox" checked={etat.actif} onChange={(e) => poser('actif', e.target.checked)} />
+          Le site est hors réseau
+        </label>
+        {champ('jours', 'Jours d’autonomie', etat.jours, (v) => poser('jours', v), 'number', erreurs['hors_reseau.jours_autonomie'])}
+      </fieldset>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" size="sm" disabled={enCours} data-testid="acal167-enregistrer">Enregistrer</Button>
+        <Button type="button" size="sm" variant="outline" disabled={enCours} onClick={enregistrer(true)} data-testid="acal167-enregistrer-relancer">
+          Enregistrer et relancer la simulation
+        </Button>
+      </div>
+      {message ? <p className="text-xs text-muted-foreground" role="status" data-testid="acal167-message">{message}</p> : null}
+    </form>
   )
 }
 
@@ -505,6 +689,9 @@ export default function PanneauBatterie({ calepinageId }) {
     { select: (r) => r.data, errorMessage: 'Batterie indisponible.' },
   )
 
+  // ACAL167 — « Enregistrer et relancer » : le compteur déclenche la relance du bouton partagé.
+  const [relance, setRelance] = useState(0)
+
   if (loading) return <Spinner />
   if (error) {
     return <p className="text-sm text-destructive" data-testid="calx14-erreur">{error}</p>
@@ -518,9 +705,8 @@ export default function PanneauBatterie({ calepinageId }) {
       {perime
         ? <BandeauPerime motif={data?.motif} />
         : (!data?.simule && <BandeauNonSimule avertissements={data?.avertissements} />)}
-      {!data?.simule && (
-        <BoutonRelancerSimulation calepinageId={id} onTermine={refetch} />
-      )}
+      <DeclarationBatterie id={id} onRelancer={() => setRelance((n) => n + 1)} />
+      <BoutonRelancerSimulation calepinageId={id} onTermine={refetch} declenchement={relance} />
       {!perime && data?.simule && (
         <>
           <BlocBatterie batterie={data?.batterie} />

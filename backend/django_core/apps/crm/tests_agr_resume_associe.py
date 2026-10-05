@@ -26,7 +26,7 @@ from apps.parametres.models_messages import (
     MESSAGE_TEMPLATE_DEFAULTS, MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
 )
 from apps.roles.models import Role
-from apps.ventes.domain.cycle_vie import mark_devis_sent
+from apps.ventes.domain.envoi import mark_devis_sent
 from apps.ventes.models import Devis
 
 User = get_user_model()

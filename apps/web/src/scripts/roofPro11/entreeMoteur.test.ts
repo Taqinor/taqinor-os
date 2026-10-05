@@ -341,7 +341,9 @@ describe('CALX3 — l’API du constructeur', () => {
   );
   const bloc = source.slice(source.indexOf('opts.onApiReady?.({'));
 
-  it('les neuf clés déjà exposées sont toujours là', () => {
+  // ACAL342 — RÉÉCRIT : `setHorizonProfile` / `horizonStatus` ne sont plus exposés (aucun
+  // appelant ERP) ; l'onglet Horizon passe par `appliquerSection` (ACAL26).
+  it('les clés déjà exposées sont toujours là', () => {
     expect(bloc.length).toBeGreaterThan(0);
     for (const cle of [
       'serializeLayout',
@@ -351,8 +353,7 @@ describe('CALX3 — l’API du constructeur', () => {
       'setLayerState',
       'setReferenceContourVisible',
       'recommencerDepuisTraceClient',
-      'setHorizonProfile',
-      'horizonStatus',
+      'appliquerSection',
     ]) {
       expect(bloc).toContain(`${cle}:`);
     }

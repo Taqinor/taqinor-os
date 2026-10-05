@@ -21,7 +21,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm.models import Client, Lead, LeadActivity
 from apps.crm.serializers import incoherence_segment
-from apps.ventes.domain.cycle_vie import accept_devis, mark_devis_sent
+from apps.ventes.domain.cycle_vie import accept_devis
+from apps.ventes.domain.envoi import mark_devis_sent
 from apps.ventes.models import Devis
 from apps.ventes.selectors import devis_par_mode_pour_lead
 

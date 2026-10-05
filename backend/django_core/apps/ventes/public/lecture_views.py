@@ -352,7 +352,7 @@ def _notifier_variante_consultee(link):
     auteur = getattr(devis_base, 'created_by', None)
     if auteur is None:
         return
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
     from apps.notifications.services import notify
     notify(
         auteur, EventType.DEVIS_OPENED,

@@ -67,7 +67,7 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
                   'date_creation']
         read_only_fields = ['derniere_visite', 'derniere_facturation', 'date_creation']
 
-    def get_origine(self, obj):
+    def get_origine(self, obj) -> dict:
         return {'devis_id': obj.origine_devis_id,
                 'ligne_om': obj.origine_ligne_om_id}
 

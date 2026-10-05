@@ -523,6 +523,17 @@ devis_sent = django.dispatch.Signal()
 # évite que ventes importe crm directement.
 layout_finalise = django.dispatch.Signal()
 
+# ACAL91 (C-ACAL-115) — Émis quand « Réviser » a créé la V+1 d'un devis
+# (``apps.ventes.domain.revision.reviser_devis``), APRÈS le commit de la
+# transaction (``transaction.on_commit``), en best-effort (``send_robust`` :
+# un abonné en échec ne casse jamais la révision). Arguments : ancien (la
+# version remplacée), nouveau (la V+1), user. Ce n'est PAS un changement de
+# statut : aucun statut de devis n'est écrit (règle #4) — seuls ``is_active`` /
+# ``superseded_by`` de l'ancienne version ont bougé, par le service. Abonné
+# prévu : le calepinage, qui re-lie sa conception à la V+1 (D-ACAL-3, ACAL92) ;
+# d'ici là, réservé dans ``core.event_coverage.ALLOWED_UNCONSUMED``.
+devis_revise = django.dispatch.Signal()
+
 # VTA5 — Émis quand une visite technique terrain reçoit le FEU VERT du bureau
 # d'études (``apps.visites.services.valider_visite``). Arguments : visite
 # (visites.VisiteTerrain), lead_id (ENTIER, jamais l'instance — référence

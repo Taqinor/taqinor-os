@@ -93,15 +93,12 @@ class DepuisLeadIdempotentTest(TestCase):
                                         nom='Lead Casablanca')
 
     def _porte(self, lead_id, company):
-        """Le corps de l'action, isolé de HTTP (aucune requête à monter)."""
-        from apps.calepinage.views.depuis_lead import _calepinage_ouvert
+        """La porte UNIQUE de l'action (ACAL182), isolée de HTTP."""
+        from apps.calepinage.services.creation import (
+            ouvrir_ou_creer_pour_lead,
+        )
 
-        from apps.calepinage.services.creation import creer_pour_lead
-
-        existant = _calepinage_ouvert(lead_id, company)
-        if existant is not None:
-            return existant, False
-        return creer_pour_lead(lead_id, company), True
+        return ouvrir_ou_creer_pour_lead(lead_id, company)
 
     def test_deux_appels_successifs_rendent_le_MEME_identifiant(self):
         premier, cree_1 = self._porte(self.lead.pk, self.company)
@@ -137,10 +134,11 @@ class DepuisLeadIdempotentTest(TestCase):
         self.assertEqual(refus.exception.champ, 'company')
 
     def test_le_calepinage_ouvert_est_borne_societe(self):
-        from apps.calepinage.views.depuis_lead import _calepinage_ouvert
+        # ACAL182 — le prédicat « ouvert » unique vit dans selectors.py.
+        from apps.calepinage.selectors import calepinage_ouvert_du_lead
 
         premier, _ = self._porte(self.lead.pk, self.company)
         self.assertIsNotNone(premier)
         # La MÊME clé de lead, lue depuis une AUTRE société : rien.
         self.assertIsNone(
-            _calepinage_ouvert(self.lead.pk, self.autre_company))
+            calepinage_ouvert_du_lead(self.autre_company, self.lead.pk))

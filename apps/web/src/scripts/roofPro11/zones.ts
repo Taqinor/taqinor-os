@@ -10,9 +10,10 @@ import { aggregateAreas, areaLabel, type AreaResult } from '../../lib/roofAreas'
 import { annualSavingsMad } from '../../lib/estimatorBrainV2';
 import { fmt, fmtMad, esc } from './dom';
 import { type Ctx } from './context';
-import { type AreaRecord } from './types';
+import { type AreaRecord, type GabaritZone } from './types';
 import { type RoofShapePan, type RoofShapePreset } from './scene3d';
-import { geodesicAreaM2, pointInPolygon, type LngLat } from '../../lib/roof';
+import { geodesicAreaM2, isSimplePolygon, pointInPolygon, type LngLat } from '../../lib/roof';
+import { referenceContourRing } from './prefill'; // ACAL71 — le validateur de contour UNIQUE
 import { type Obstacle } from '../../lib/obstacles';
 import {
   centroideAnneau,
@@ -204,6 +205,99 @@ export function dupliquerPan(source: AreaRecord, nouvelId: string, pasM: number)
       ...(source.edges ? { edges: source.edges.map((e) => ({ ...e })) } : {}),
     },
   };
+}
+
+/**
+ * ACAL64 — LA fabrique d'identifiants de l'atelier : `<prefixe>-<max(n)+1>` sur TOUS les
+ * existants (pans, obstacles de tous les pans, zones d'exclusion, objets d'environnement).
+ * Remplace les compteurs de session (`areaCounter`, `obsCounter`, `zoneCounter`,
+ * `envCounter`) qui repartaient de zéro sur un dossier rouvert et recréaient `area-2`
+ * alors qu'un `area-2` existait déjà — le nouveau pan prenait le contour de l'ancien.
+ * PURE ; un identifiant d'une autre forme (`area-copie-1`, `sh-1`…) est ignoré.
+ */
+export function prochainId(prefixe: string, existants: Iterable<{ id?: string } | null | undefined>): string {
+  const tete = `${prefixe}-`;
+  let max = 0;
+  for (const e of existants) {
+    const id = typeof e?.id === 'string' ? e.id : '';
+    if (!id.startsWith(tete)) continue;
+    const reste = id.slice(tete.length);
+    if (/^\d+$/.test(reste)) max = Math.max(max, Number(reste));
+  }
+  return `${prefixe}-${max + 1}`;
+}
+
+/** ACAL64 — tous les obstacles du site : ceux du pan actif ET ceux des pans figés. */
+export function tousLesObstacles(ctx: Pick<Ctx, 'obstacles' | 'areas' | 'activeAreaId'>): Array<{ id: string }> {
+  return [
+    ...(ctx.obstacles ?? []),
+    ...(ctx.areas ?? []).filter((a) => a.id !== ctx.activeAreaId).flatMap((a) => a.obstacles ?? []),
+  ];
+}
+
+/** ACAL64 — deux pans de même identifiant dans un document : le premier doublon, ou null. */
+export function idPanEnDouble(zones: readonly { id: string }[]): string | null {
+  const vus = new Set<string>();
+  for (const z of zones) {
+    if (vus.has(z.id)) return z.id;
+    vus.add(z.id);
+  }
+  return null;
+}
+
+/** Pan NEUF aux valeurs par défaut (toit plat 22°, plein sud), identifiant issu de LA fabrique
+ *  `prochainId` : l'unique définition, partagée par le builder (`roof-tool-pro11.ts`) et
+ *  `nouveauPanDepuisContour` (jamais deux copies du littéral). */
+export function panVierge(
+  existants: readonly { id: string }[],
+  vertices: AreaRecord['vertices'] = [],
+): AreaRecord {
+  const id = prochainId('area', existants);
+  return {
+    id,
+    label: areaLabel(Number(id.slice('area-'.length)) - 1),
+    vertices,
+    obstacles: [],
+    roofType: 'flat',
+    pitchDeg: 22,
+    facingAzimuthDeg: 180,
+    facingManual: false,
+    neededPanels: 0,
+    neededAuto: true,
+    result: null,
+    renderPlan: null,
+  };
+}
+
+/**
+ * ACAL71 — un contour GÉORÉFÉRENCÉ ([[lng, lat], …], plan importé calé, relevé…) devient
+ * un NOUVEAU pan de l'atelier, identifiant tiré de `prochainId` (jamais un doublon). Mêmes
+ * gardes que le tracé à la main : le validateur de contour UNIQUE (`referenceContourRing`,
+ * bornes lat/lng, ≥ 3 sommets) puis le refus d'un contour qui se croise
+ * (`isSimplePolygon`, comme `close()` de l'atelier). Refus ⇒ motif NOMMÉ, aucun pan. PURE.
+ */
+export function nouveauPanDepuisContour(
+  contourLngLat: unknown,
+  existants: readonly { id: string }[],
+): { ok: true; pan: AreaRecord } | { ok: false; motif: string } {
+  const points = Array.isArray(contourLngLat)
+    ? (contourLngLat as unknown[]).map((p) =>
+        Array.isArray(p) && p.length >= 2 ? { lng: Number(p[0]), lat: Number(p[1]) } : null)
+    : [];
+  if (points.some((p) => p === null)) {
+    return { ok: false, motif: 'Contour illisible : chaque sommet doit être un couple [longitude, latitude].' };
+  }
+  const ring = referenceContourRing(points as Array<{ lat: number; lng: number }>);
+  if (!ring || ring.length !== points.length) {
+    return {
+      ok: false,
+      motif: 'Contour hors amplitude GPS ou de moins de 3 sommets valides : aucun pan n’est créé.',
+    };
+  }
+  if (!isSimplePolygon(ring)) {
+    return { ok: false, motif: 'Ce contour se croise : corrigez-le avant d’en faire un pan (aucun pan créé).' };
+  }
+  return { ok: true, pan: panVierge(existants, ring) };
 }
 
 /** CALX98 — identifiant de zone NEUF, dans un espace de noms (`area-copie-N`) que le
@@ -917,6 +1011,9 @@ export interface ExclusionZone {
   axe?: LngLat[];
   /** CALX401 — largeur SAISIE (m) du passage. Aucune largeur n'est livrée par le dépôt. */
   largeurM?: number;
+  /** ACAL31 — provenance déclarative de la zone (contrat `exclusionZones[].source`), relue
+   *  et réécrite telle quelle — jamais inventée. Absente = non renseignée. */
+  source?: string;
 }
 
 /** Retrait PLANCHER/PLAFOND (m) — mêmes ordres de grandeur que les obstacles. */
@@ -933,12 +1030,29 @@ function clampNum(v: number, lo: number, hi: number): number {
 
 /** Zone rectangulaire née d'un glissé (deux coins), retrait 0 et hauteur non renseignée :
  *  RIEN n'est inventé tant que l'utilisateur n'a pas saisi. */
-export function exclusionZoneFromDrag(id: string, nature: ExclusionNature, a: LngLat, b: LngLat): ExclusionZone {
-  return {
+export function exclusionZoneFromDrag(
+  id: string,
+  nature: ExclusionNature,
+  a: LngLat,
+  b: LngLat,
+  gabarit?: GabaritZone | null,
+): ExclusionZone {
+  const zone: ExclusionZone = {
     id,
     nature,
     vertices: [a, [b[0], a[1]], b, [a[0], b[1]]],
     setbackM: 0,
+  };
+  // ACAL291 — posée depuis un gabarit réglementaire de la société : libellé, nature, retrait,
+  // hauteur et SOURCE sont ceux du gabarit (aucun n'est complété ici) ; la géométrie reste le glissé.
+  if (!gabarit) return zone;
+  return {
+    ...zone,
+    nature: gabarit.nature,
+    label: gabarit.libelle,
+    setbackM: gabarit.retraitM,
+    ...(gabarit.hauteurM != null ? { heightM: gabarit.hauteurM } : {}),
+    source: gabarit.source,
   };
 }
 
@@ -1031,6 +1145,7 @@ export function serializeExclusionZones(
       // tout : les trois clés sont indissociables (le contrat exige `axe` + `largeurM`
       // dès que `usage` vaut `circulation`), donc on n'en émet jamais une partie.
       ...champsAlleeCirculation(z),
+      ...(typeof z.source === 'string' && z.source ? { source: z.source } : {}), // ACAL31
     });
   }
   return out;
@@ -1047,6 +1162,7 @@ export interface ZoneSerialisee {
   usage?: UsageZone;
   axe?: LngLat[];
   largeurM?: number;
+  source?: string; // ACAL31
 }
 
 /** Relecture d'un document : tolérante aux formes bancales, ne fabrique jamais de zone. */
@@ -1071,6 +1187,7 @@ export function deserializeExclusionZones(json: unknown): ExclusionZone[] {
     // SAISIE). Une allée amputée de son axe ou de sa largeur n'est plus une allée : elle
     // se relit alors comme la zone d'exclusion ordinaire qu'elle reste, jamais complétée.
     zone = { ...zone, ...champsAlleeCirculation(raw) };
+    if (typeof z.source === 'string' && z.source) zone.source = z.source; // ACAL31 — relue telle quelle
     out.push(zone);
   }
   return out;

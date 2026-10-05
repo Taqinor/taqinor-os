@@ -70,7 +70,11 @@ AVEC_PRODUCTEUR_PUR = ('calepinage_equipements.json',
                        # CALX109 — le catalogue de modules de la société :
                        # producteur PUR (``services/modules_stock.py``), la
                        # vue ne fait que lui passer le QuerySet du stock.
-                       'calepinage_modules_disponibles.json')
+                       'calepinage_modules_disponibles.json',
+                       # ACAL56 — l'entrée électrique servie : producteur
+                       # PUR sur un calepinage nu
+                       # (``services/electrique.py::entree_electrique_servie``).
+                       'calepinage_entree_electrique.json')
 
 #: Les autres, avec la RAISON — aucun n'est oublié, chacun est un choix.
 SANS_PRODUCTEUR_PUR = {
@@ -337,9 +341,6 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_pertes.json':
         'pertes et dérogations du calepinage (ACAL8) : lues sur le '
         'calepinage et les réglages société en base',
-    'calepinage_entree_electrique.json':
-        "entrée électrique stockée + matériel résolu (ACAL9) : lit le devis "
-        'lié et le stock en base',
     'calepinage_publication_electrique.json':
         'refus de publication électrique 422 + dérogation (ACAL9) : lit le '
         'verdict du calepinage en base',
@@ -397,8 +398,6 @@ POSES_AVANT_LEUR_ROUTE = {
     # ACAL1 (M0) — POST layout/section/ (écriture par section + If-Match) :
     # la porte arrive avec ACAL22.
     'calepinage_layout_section.json': 'ACAL22',
-    # ACAL15 (M0) — GET gabarits-dossiers/ : la porte arrive avec ACAL238.
-    'gabarits_dossier_reglementaire.json': 'ACAL238',
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne
@@ -408,7 +407,6 @@ POSES_AVANT_LEUR_ROUTE = {
 #: attente » est réellement servie).
 CLES_POSEES_AVANT_LEUR_PRODUCTEUR = {
     'dossiers_reglementaires.json': {'packs_france': 'ACAL238'},
-    'calepinage_raccordement.json': {'proposition_lead': 'ACAL157'},
     'site_imagerie.json': {'site_effectif': 'ACAL129'},
 }
 
@@ -534,6 +532,23 @@ class ClesServiesTest(unittest.TestCase):
         self._comparer('calepinage_equipements.json',
                        equipements_du_calepinage(Faux()), 'exemple_vide')
 
+    def test_gabarit_publie(self):
+        # ACAL238 — la porte gabarits-dossiers/ publie chaque gabarit par
+        # ``gabarit_publie`` (couple vue <-> échantillon) : mêmes clés que
+        # ``detail.exemple``, et que chaque élément de ``exemple.gabarits``.
+        from apps.calepinage.models import GabaritDossierReglementaire
+        from apps.calepinage.services.reglementaire import gabarit_publie
+
+        servi = set(gabarit_publie(GabaritDossierReglementaire(
+            pays='ma', code='raccordement_bt', intitule='Dossier')))
+        echantillon = _charger('gabarits_dossier_reglementaire.json')
+        self.assertEqual(sorted(servi),
+                         sorted(echantillon['detail']['exemple']))
+        self.assertEqual(sorted(servi),
+                         sorted(echantillon['exemple']['gabarits'][0]))
+        self.assertEqual(sorted(servi),
+                         sorted(echantillon['exemple_post_201']['gabarit']))
+
     def test_dossiers_reglementaires(self):
         servi = composer_dossiers(calepinage_id=1, pays='ma', entrees=[],
                                   infos={})
@@ -573,6 +588,17 @@ class ClesServiesTest(unittest.TestCase):
         servi = modules_disponibles_du_calepinage(Faux(), [])
         self._comparer('calepinage_modules_disponibles.json', servi)
         self._comparer('calepinage_modules_disponibles.json', servi,
+                       'exemple_vide')
+
+    def test_entree_electrique(self):
+        # ACAL56 — calepinage nu : aucune société, aucun devis, aucune base.
+        from apps.calepinage.services.electrique import (
+            entree_electrique_servie,
+        )
+
+        servi = entree_electrique_servie(Faux(), {})
+        self._comparer('calepinage_entree_electrique.json', servi)
+        self._comparer('calepinage_entree_electrique.json', servi,
                        'exemple_vide')
 
     def test_site_imagerie(self):

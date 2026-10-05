@@ -242,7 +242,7 @@ def send_daily_digest(company, *, now=None):
     n'est plus TOUJOURS le dashboard générique : il pointe vers l'item le
     plus actionnable du jour — des alertes actives priment (sécurité budget),
     sinon la meilleure ad de la veille, sinon le dashboard par défaut."""
-    from apps.notifications.models import EventType
+    from apps.notifications.types_evenements import EventType
     from apps.notifications.services import notify
 
     data = build_digest_data(company, now=now)

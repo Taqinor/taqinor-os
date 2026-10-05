@@ -548,10 +548,11 @@ class CreerDevisAutomatiqueDepuisLeadTest(TestCase):
         lead = self._lead(roof_outline=CONTOUR_LATLNG)
         # QJR76 — CIBLE SUIVIE, PAS UN CHANGEMENT DE COMPORTEMENT :
         # `creer_devis_automatique_depuis_lead` appelle `build_devis_auto` depuis
-        # les globales de `domain/creation`, où les deux corps vivent désormais.
+        # les globales de `domain/creation_auto` (SPL267), où les deux corps
+        # vivent désormais.
         # Un patch sur la façade `services` n'y serait plus vu (le ré-export est
         # une affectation, donc un cliché).
-        with patch('apps.ventes.domain.creation.build_devis_auto',
+        with patch('apps.ventes.domain.creation_auto.build_devis_auto',
                    side_effect=RuntimeError('catalogue indisponible')):
             with self.assertRaises(RuntimeError):
                 self._creer(lead)

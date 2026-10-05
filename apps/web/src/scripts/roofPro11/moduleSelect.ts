@@ -86,6 +86,35 @@ export interface AffectationModules {
   catalogue: readonly ModuleDocument[];
   /** id de pan -> `id` de module. Un pan absent pose le module par défaut de l'atelier. */
   parPan: Readonly<Record<string, string | undefined>>;
+  /** ACAL30 — les `id` des modules repris EN LECTURE SEULE du document (`modules[]`) parce
+   *  que le catalogue de la société ne les sert plus (produit archivé) : signalés
+   *  « produit archivé », jamais proposés au choix. Absent = aucun. */
+  archives?: readonly string[];
+}
+
+/** ACAL30 — libellé affiché d'un module repris du document hors catalogue. */
+export const MENTION_PRODUIT_ARCHIVE = 'produit archivé';
+
+/**
+ * ACAL30 — le catalogue EFFECTIF : celui de la société, complété en LECTURE SEULE par les
+ * entrées `modules[]` du document qu'il ne contient plus (produit archivé, catalogue
+ * illisible). Sans elles, un pan qui désignait ce produit retombait en silence sur le
+ * module par défaut 720 Wc (porte ATL-10 : moduleId null, panelWatt 720, kWc 2,16).
+ * PURE ; l'ordre du catalogue de la société prime, les entrées reprises viennent après.
+ */
+export function catalogueAvecModulesDuDocument(
+  catalogue: readonly ModuleDocument[],
+  modulesDuDocument: readonly unknown[] | null | undefined,
+): { catalogue: ModuleDocument[]; archives: string[] } {
+  const out = [...catalogue];
+  const archives: string[] = [];
+  for (const brut of modulesDuDocument ?? []) {
+    const module = lireModule(brut);
+    if (!module || out.some((m) => m.id === module.id)) continue;
+    out.push(module);
+    archives.push(module.id);
+  }
+  return { catalogue: out, archives };
 }
 
 /** L'identifiant réservé au module par défaut de l'atelier — jamais celui d'une fiche. */
@@ -265,11 +294,17 @@ export function resoudreModuleDuPan(
 export function affectationDesPans(
   catalogue: readonly ModuleDocument[],
   pans: readonly { id: string; moduleId?: string }[],
+  modulesDuDocument?: readonly unknown[] | null,
 ): AffectationModules {
   const parPan: Record<string, string | undefined> = {};
   for (const pan of pans) {
     const id = typeof pan?.moduleId === 'string' ? pan.moduleId.trim() : '';
     if (id) parPan[pan.id] = id;
+  }
+  // ACAL30 — les modules du document absents du catalogue (archivés) restent résolubles.
+  if (modulesDuDocument && modulesDuDocument.length) {
+    const fusion = catalogueAvecModulesDuDocument(catalogue, modulesDuDocument);
+    return { catalogue: fusion.catalogue, parPan, ...(fusion.archives.length ? { archives: fusion.archives } : {}) };
   }
   return { catalogue, parPan };
 }

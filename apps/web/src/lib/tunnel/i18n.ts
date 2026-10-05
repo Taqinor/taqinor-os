@@ -109,6 +109,7 @@ const FR: LibellesTunnel = {
   gpsLat: 'Latitude',
   gpsLng: 'Longitude',
   contourToit: 'Contour de toiture',
+  roofLayout: 'Pans de toiture',
 };
 
 const EN: LibellesTunnel = {
@@ -181,6 +182,7 @@ const EN: LibellesTunnel = {
   gpsLat: 'Latitude',
   gpsLng: 'Longitude',
   contourToit: 'Roof outline',
+  roofLayout: 'Roof sections',
 };
 
 const AR: LibellesTunnel = {
@@ -253,6 +255,7 @@ const AR: LibellesTunnel = {
   gpsLat: 'خط العرض',
   gpsLng: 'خط الطول',
   contourToit: 'محيط السطح',
+  roofLayout: 'أجزاء السطح',
 };
 
 /**

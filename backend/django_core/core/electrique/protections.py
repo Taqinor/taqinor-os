@@ -51,6 +51,7 @@ __all__ = [
     "SEUIL_CHAINES_PARALLELES_FUSIBLE", "FACTEUR_FUSIBLE_MIN",
     "FACTEUR_FUSIBLE_MAX", "FACTEUR_FUSIBLE_PLANCHER",
     "LONGUEUR_DC_SANS_PARAFOUDRE_M", "SENSIBILITE_DDR_MA",
+    "MOTIF_REGIME_NON_PRECISE",
     "ResultatProtections", "ResultatBranchesAc", "calibre_fusible_chaine",
     "calibre_disjoncteur", "courant_emploi_ac", "concevoir_protections",
     "courant_de_branche_ac", "calibrer_branches_ac",
@@ -89,6 +90,12 @@ FACTEUR_FUSIBLE_PLANCHER = 1.25
 #: Longueur de liaison DC au-delà de laquelle le parafoudre est exigé
 #: (UTE C 15-712-1 — critère de longueur critique de la boucle DC).
 LONGUEUR_DC_SANS_PARAFOUDRE_M = 10.0
+
+#: ACAL152 — l'omission nommée quand le régime de neutre n'est PAS précisé :
+#: aucun différentiel n'est posé sur une supposition « TT ».
+MOTIF_REGIME_NON_PRECISE = (
+    "régime de neutre non précisé : protection différentielle non décidée — "
+    "saisissez TT, TN ou IT")
 
 #: Sensibilité du différentiel de tête en régime TT (NF C 15-100 §531.2).
 SENSIBILITE_DDR_MA = 300
@@ -398,9 +405,14 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
         ))
 
     # ── 6. DDR type A 300 mA — régime TT ─────────────────────────────────────
-    regime = (entree.regime or REGIME_TT).upper()
+    # ACAL152 — aucun « TT » supposé : un régime non précisé ne pose AUCUN
+    # différentiel et le DIT (l'organe dépend du régime, le régime ne se
+    # devine pas).
+    regime = str(entree.regime or "").strip().upper()
     if ib_ac > 0:
-        if regime == REGIME_TT:
+        if not regime:
+            alertes.append(MOTIF_REGIME_NON_PRECISE)
+        elif regime == REGIME_TT:
             protections.append(Protection(
                 repere="DDR1",
                 cote=COTE_AC,

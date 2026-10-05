@@ -68,7 +68,7 @@ def _statut_sieges(company):
 def _alerter_administrateurs(company, utilises, max_sieges):
     try:
         from authentication.models import CustomUser
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         from apps.notifications.services import notify_many
         admins = list(CustomUser.admins_actifs_qs(company))
         notify_many(

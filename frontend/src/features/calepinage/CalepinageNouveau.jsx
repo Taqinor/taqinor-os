@@ -28,8 +28,10 @@ import {
        s'en écarte pas, et on n'invente JAMAIS un centre du Maroc quand aucune
        source n'existe : l'écran affiche « non renseigné ».
      * Un CLIENT n'a PAS de `roof_point` : `crm.Client` ne porte pas ce champ.
-       Son point de départ est le GÉOCODAGE de son adresse (CAL49), qui se joue
-       côté serveur — et quand l'adresse manque, rien n'est deviné ici non plus.
+       ACAL336 — il n'existe AUCUN géocodage serveur : son adresse préremplit
+       seulement la recherche de l'atelier (`#rp9-address`), et c'est
+       l'utilisateur qui place le bâtiment sur la carte. Quand l'adresse
+       manque, rien n'est promis ni deviné ici.
    Le contexte définitif du calepinage est celui que le serveur rend
    (`design-context`, CAL15/CAL231) ; ce bloc n'est qu'un APERÇU de la source de
    départ, ce qu'il dit explicitement.
@@ -365,15 +367,13 @@ export default function CalepinageNouveau() {
                 <MapPin size={15} aria-hidden="true" />
                 Point de départ
               </div>
-              <p className="text-xs text-muted-foreground">
-                Un client ne porte pas d’épingle de toiture : son point de départ vient du
-                géocodage de son adresse, côté serveur. Sans adresse, rien n’est deviné.
-              </p>
+              {clientChoisi?.adresse ? (
+                <p className="text-xs text-muted-foreground" data-testid="cal-nouveau-client-repere">
+                  Un client ne porte pas d’épingle de toiture : son adresse préremplit la
+                  recherche de l’atelier, placez le bâtiment sur la carte
+                </p>
+              ) : null}
               <LigneContexte libelle="Adresse" valeur={clientChoisi?.adresse} />
-              <LigneContexte
-                libelle="Source du repère"
-                valeur={clientChoisi?.adresse ? 'Géocodage de l’adresse du client' : null}
-              />
             </div>
           </TabsContent>
         </Tabs>

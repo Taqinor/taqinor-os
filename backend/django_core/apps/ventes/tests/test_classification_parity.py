@@ -248,10 +248,10 @@ class TestStkcat22TablePanneauPartagee(SimpleTestCase):
     )
 
     def test_la_table_partagee_est_bien_la_source_du_moteur(self):
-        from apps.ventes import solar_design
+        from apps.ventes import solar_classification
         from core.product_roles import PANNEAU_MARQUES, PANNEAU_MODULE_QUALIFIERS
-        self.assertIs(solar_design._PANEL_BRANDS, PANNEAU_MARQUES)
-        self.assertIs(solar_design._PANEL_MODULE_QUALIFIERS,
+        self.assertIs(solar_classification._PANEL_BRANDS, PANNEAU_MARQUES)
+        self.assertIs(solar_classification._PANEL_MODULE_QUALIFIERS,
                       PANNEAU_MODULE_QUALIFIERS)
 
     def test_le_seeder_reconnait_ce_que_le_moteur_reconnait(self):

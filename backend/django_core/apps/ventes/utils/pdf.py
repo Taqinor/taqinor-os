@@ -300,6 +300,9 @@ def generate_facture_pdf(facture_id):
     context['langue_document'] = langue
     context['L'] = lambda cle: libelle(cle, langue)
     context['arabic_font_face_css'] = arabic_font_face_css() if langue == 'ar' else ''
+    # Fondateur 05/10/2026 — bloc « Déjà payé / Reste à payer » après le
+    # Total TTC. None (aucun règlement) → rien d'imprimé, PDF inchangé.
+    context['reglements'] = reglements_facture_pdf(facture)
 
     html = _render_html('facture.html', context)
     pdf_bytes = _html_to_pdf(html)
@@ -357,6 +360,75 @@ def generate_facture_pdf(facture_id):
     return key
 
 
+def reglements_facture_pdf(facture):
+    """Bloc « Déjà payé » du PDF facture client (fondateur, 05/10/2026).
+
+    Une ligne par règlement qui RÉDUIT le reste à payer, exactement les termes
+    de ``Facture.montant_du`` : paiements directs non rejetés (+ leur escompte
+    XFAC12), avances ventilées (XFAC1) dont le paiement source n'est pas
+    rejeté, avoirs actifs et retenues à la source subies (XFAC4). « Reste à
+    payer » = ``facture.montant_du`` (la propriété canonique, jamais recalculée
+    ici). Aucun règlement → ``None`` (le gabarit n'imprime rien : PDF
+    strictement inchangé).
+
+    Renvoie ``{lignes: [{date, mode, reference, montant}], total_deja_paye,
+    reste_a_payer, soldee}`` — montants en ``Decimal``, date en jj/mm/aaaa.
+    """
+    from decimal import Decimal
+
+    from apps.ventes.models import Paiement
+
+    def _date(d):
+        return d.strftime('%d/%m/%Y') if d else ''
+
+    lignes = []
+    for p in sorted(facture.paiements.all(),
+                    key=lambda p: (p.date_paiement, p.id)):
+        if p.statut == Paiement.Statut.REJETE:
+            continue
+        lignes.append({
+            'date': _date(p.date_paiement), 'mode': p.get_mode_display(),
+            'reference': p.reference or '',
+            'montant': Decimal(str(p.montant))})
+        if p.escompte_montant:
+            lignes.append({
+                'date': _date(p.date_paiement),
+                'mode': 'Escompte pour règlement anticipé', 'reference': '',
+                'montant': Decimal(str(p.escompte_montant))})
+    for a in sorted(facture.affectations_paiement.select_related('paiement'),
+                    key=lambda a: a.id):
+        source = a.paiement
+        if source is None or source.statut == Paiement.Statut.REJETE:
+            continue
+        lignes.append({
+            'date': _date(source.date_paiement),
+            'mode': f'{source.get_mode_display()} (avance)',
+            'reference': source.reference or '',
+            'montant': Decimal(str(a.montant))})
+    for av in sorted(facture.avoirs.all(), key=lambda av: av.id):
+        if av.statut == 'annulee':
+            continue
+        lignes.append({
+            'date': _date(av.date_emission), 'mode': 'Avoir',
+            'reference': av.reference or '',
+            'montant': Decimal(str(av.total_ttc))})
+    for r in sorted(facture.retenues_subies.all(), key=lambda r: r.id):
+        lignes.append({
+            'date': _date(getattr(r, 'attestation_date', None)),
+            'mode': f'Retenue à la source ({r.get_type_retenue_display()})',
+            'reference': '', 'montant': Decimal(str(r.montant))})
+    if not lignes:
+        return None
+    total = sum((li['montant'] for li in lignes), Decimal('0'))
+    reste = Decimal(str(facture.montant_du))
+    return {
+        'lignes': lignes,
+        'total_deja_paye': total,
+        'reste_a_payer': reste,
+        'soldee': reste <= 0,
+    }
+
+
 def _facture_render_data(facture) -> dict:
     """Données qui déterminent le RENDU du PDF facture — miroir, réduit au
     moteur LÉGATAIRE de la facture (règle #4), de ce que ``build_quote_data``
@@ -407,6 +479,25 @@ def _facture_render_data(facture) -> dict:
             }
             for li in lignes
         ],
+        # Fondateur 05/10/2026 — le PDF imprime désormais les règlements et le
+        # reste à payer : un nouvel encaissement doit donc re-rendre le PDF
+        # (sinon le fichier servi afficherait un « Reste à payer » périmé).
+        'reglements': _reglements_empreinte(facture),
+    }
+
+
+def _reglements_empreinte(facture):
+    """Forme sérialisable (textes) du bloc « Déjà payé » pour l'empreinte."""
+    bloc = reglements_facture_pdf(facture)
+    if bloc is None:
+        return None
+    return {
+        'lignes': [
+            {'date': li['date'], 'mode': li['mode'],
+             'reference': li['reference'], 'montant': str(li['montant'])}
+            for li in bloc['lignes']],
+        'total_deja_paye': str(bloc['total_deja_paye']),
+        'reste_a_payer': str(bloc['reste_a_payer']),
     }
 
 

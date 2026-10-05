@@ -581,7 +581,7 @@ def _notifier_chantier_assigne(inst, technicien):
     try:
         from django.db import transaction
         from apps.notifications.services import notify
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         client_nom = getattr(getattr(inst, 'client', None), 'nom', '') or ''
         titre = f"Nouveau chantier assigné — {inst.reference}"
         corps = (f"Le chantier « {inst.reference} »"
@@ -2290,7 +2290,7 @@ def alerter_penurie_assemblage(ordre):
     besoin. Best-effort : ne lève jamais."""
     try:
         from apps.notifications.services import notify_many, resolve_recipients
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
         return
     manquants = [d for d in disponibilite_par_ligne(ordre)
@@ -2902,7 +2902,7 @@ def _notifier_intervention_assignee(interv, user):
     try:
         from django.db import transaction
         from apps.notifications.services import notify
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
         return
     if not interv.technicien_id:
@@ -2942,7 +2942,7 @@ def _notifier_reassignation(interv, user):
     try:
         from django.db import transaction
         from apps.notifications.services import notify
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
         return
     if not interv.technicien_id:
@@ -3709,7 +3709,7 @@ def _notifier_intervention_annulee(interv, user):
     et les membres d'équipe d'une intervention annulée."""
     try:
         from apps.notifications.services import notify
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
         return
     destinataires = set()
@@ -3782,7 +3782,7 @@ def notifier_jalon_a_facturer(jalon, user=None):
         return False
     try:
         from apps.notifications.services import notify_many, resolve_recipients
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         libelle_tranche = dict(jalon.TRANCHE_CHOICES).get(
             jalon.tranche_echeancier, jalon.tranche_echeancier)
         # CHT9 — sa propre clé (TRANCHE_A_FACTURER), plus l'emprunt de
@@ -4685,7 +4685,7 @@ def _notifier_prochaine_etape_approbation_achat(demande):
         etape = prochaine_etape_approbation_achat(demande)
         if etape is None or etape.niveau <= 1:
             return
-        from apps.notifications.models import EventType
+        from apps.notifications.types_evenements import EventType
         from apps.notifications.services import (
             notify_many, resolve_recipients, resolve_recipients_reason,
         )

@@ -23,7 +23,8 @@ from authentication.models import Company
 from apps.crm.models import Client, Lead
 from apps.crm.segment_suggere import segment_suggere
 from apps.crm.serializers import incoherence_segment
-from apps.ventes.domain.cycle_vie import accept_devis, mark_devis_sent
+from apps.ventes.domain.cycle_vie import accept_devis
+from apps.ventes.domain.envoi import mark_devis_sent
 from apps.ventes.models import Devis
 
 User = get_user_model()

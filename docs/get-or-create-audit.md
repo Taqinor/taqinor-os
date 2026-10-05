@@ -55,8 +55,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/automation/views.py:514` | get_or_create | IncomingWebhookTrigger.objects | rule |
 | `backend/django_core/apps/calepinage/services/modeles.py:55` | get_or_create | Tag.objects | company, nom |
 | `backend/django_core/apps/calepinage/services/modeles.py:88` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
-| `backend/django_core/apps/calepinage/views/calepinages.py:133` | get_or_create | IdempotencyRecord.objects | company, endpoint, key |
-| `backend/django_core/apps/calepinage/views/reglementaire.py:136` | get_or_create | DossierReglementaire.objects | calepinage, company, gabarit |
+| `backend/django_core/apps/calepinage/views/calepinages.py:134` | get_or_create | IdempotencyRecord.objects | company, endpoint, key |
+| `backend/django_core/apps/calepinage/views/reglementaire.py:148` | get_or_create | DossierReglementaire.objects | calepinage, company, gabarit |
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/mesure_cadence.py:320` | get_or_create | GesteRelanceAppareil.objects | company, famille_appareil, geste, jour |
 | `backend/django_core/apps/crm/services.py:217` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
@@ -122,14 +122,14 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/notifications/management/commands/seed_holidays_sn.py:73` | get_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/notifications/management/commands/seed_ma_holidays.py:63` | get_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/notifications/management/commands/seed_ma_holidays.py:75` | get_or_create | Holiday.objects | company, date, nom |
-| `backend/django_core/apps/notifications/selectors.py:252` | update_or_create | Holiday.objects | company, date, pays |
-| `backend/django_core/apps/notifications/services.py:1046` | get_or_create | AnnonceLecture.objects | annonce, utilisateur |
-| `backend/django_core/apps/notifications/services.py:1134` | get_or_create | AnnonceRelance.objects | annonce, utilisateur |
-| `backend/django_core/apps/notifications/services.py:1184` | get_or_create | ApprovalReminderState.objects | content_type, object_id |
-| `backend/django_core/apps/notifications/services.py:1335` | update_or_create | SnoozedItem.objects | object_id, source, user |
-| `backend/django_core/apps/notifications/views.py:146` | get_or_create | NotificationPreference.objects | event_type, user |
-| `backend/django_core/apps/notifications/views.py:230` | get_or_create | WorkingHoursConfig.objects | company |
-| `backend/django_core/apps/notifications/views.py:538` | update_or_create | PushSubscription.objects | endpoint |
+| `backend/django_core/apps/notifications/selectors.py:254` | update_or_create | Holiday.objects | company, date, pays |
+| `backend/django_core/apps/notifications/services.py:1049` | get_or_create | AnnonceLecture.objects | annonce, utilisateur |
+| `backend/django_core/apps/notifications/services.py:1137` | get_or_create | AnnonceRelance.objects | annonce, utilisateur |
+| `backend/django_core/apps/notifications/services.py:1187` | get_or_create | ApprovalReminderState.objects | content_type, object_id |
+| `backend/django_core/apps/notifications/services.py:1338` | update_or_create | SnoozedItem.objects | object_id, source, user |
+| `backend/django_core/apps/notifications/views.py:153` | get_or_create | NotificationPreference.objects | event_type, user |
+| `backend/django_core/apps/notifications/views.py:237` | get_or_create | WorkingHoursConfig.objects | company |
+| `backend/django_core/apps/notifications/views.py:545` | update_or_create | PushSubscription.objects | endpoint |
 | `backend/django_core/apps/outillage/views.py:32` | get_or_create | KitOutillage.objects | company, nom |
 | `backend/django_core/apps/parametres/fetes_mobiles.py:97` | update_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/parametres/models_company.py:1095` | get_or_create | cls.objects | company |
@@ -171,8 +171,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/statuspage/tasks.py:155` | update_or_create | ComponentStatus.objects | company, nom, region |
 | `backend/django_core/apps/statuspage/views.py:349` | get_or_create | StatusSubscriber.objects | email |
 | `backend/django_core/apps/stock/management/commands/backfill_unites_mesure.py:52` | get_or_create | UniteMesure.objects | code, company |
-| `backend/django_core/apps/stock/management/commands/seed_catalogue.py:1819` | get_or_create | Categorie.objects | company, nom |
-| `backend/django_core/apps/stock/management/commands/seed_catalogue.py:2259` | get_or_create | Categorie.objects | company, nom |
+| `backend/django_core/apps/stock/management/commands/seed_catalogue.py:1835` | get_or_create | Categorie.objects | company, nom |
+| `backend/django_core/apps/stock/management/commands/seed_catalogue.py:2275` | get_or_create | Categorie.objects | company, nom |
 | `backend/django_core/apps/stock/models.py:535` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/stock/models_negoce_params.py:64` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/stock/services.py:201` | get_or_create | EmplacementStock.objects | company, nom |
@@ -197,7 +197,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/uxviews/models.py:174` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/uxviews/views.py:98` | update_or_create | EcranRecent.objects | company, ecran, owner |
 | `backend/django_core/apps/uxviews/views.py:585` | get_or_create | FavoriUtilisateur.objects | company, content_type, object_id, owner |
-| `backend/django_core/apps/ventes/domain/facturation_ops.py:745` | get_or_create | Produit.objects | company, sku |
+| `backend/django_core/apps/ventes/domain/facturation_ops.py:991` | get_or_create | Produit.objects | company, sku |
 | `backend/django_core/apps/ventes/domain/gammes.py:264` | get_or_create | ParametresGammes.objects | company |
 | `backend/django_core/apps/ventes/views/liste_prix.py:90` | update_or_create | LignePrixListe.objects | liste, produit |
 | `backend/django_core/apps/ventes/views/remise_encaissement.py:127` | get_or_create | LigneRemiseEncaissement.objects | paiement, remise |

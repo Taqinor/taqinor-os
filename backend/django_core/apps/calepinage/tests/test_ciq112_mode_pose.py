@@ -89,7 +89,7 @@ class VocabulaireTests(SimpleTestCase):
 
     def test_migration_choix_reversible(self):
         module = import_module(
-            'apps.calepinage.migrations.0017_ciq112_mode_pose_bac_acier')
+            'apps.calepinage.migrations.0020_ciq112_mode_pose_bac_acier')
         ops = module.Migration.operations
         self.assertEqual(len(ops), 1)
         self.assertIsInstance(ops[0], migrations.AlterField)

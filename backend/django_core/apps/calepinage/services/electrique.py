@@ -47,6 +47,7 @@ from core.electrique.types import TEMP_CHAUD_DEFAUT_C, TEMP_FROID_DEFAUT_C
 
 __all__ = [
     'SOURCE_SAISIE', 'SOURCE_TMY', 'MENTION_NON_SOURCEE',
+    'SOURCE_TMY_NOCT',  # ACAL164
     'TemperaturesSite', 'TemperaturesInvalides',
     'enregistrer_fournisseur_temperatures', 'fournisseur_temperatures',
     'temperatures_site', 'temperatures_pour_calepinage',
@@ -55,7 +56,10 @@ __all__ = [
     'CLE_CHAINE_FAIBLE', 'METHODE_CHAINE_FAIBLE', 'REFERENCE_CHAINE_FAIBLE',
     'MOTIF_CHAINE_FAIBLE_ABSENTE',
     'entree_stockee', 'enregistrer_entree', 'resoudre_materiel',
+    'entree_electrique_servie', 'CLES_ENTREE_SERVIE',  # ACAL56
+    'PROVENANCE_EXPLICITE', 'PROVENANCE_DEVIS', 'ROLES_MATERIEL',  # ACAL56
     'conception_du_calepinage', 'resultat_calepinage',
+    'resultat_electrique_complet',  # ACAL55
     'verdicts_electriques', 'bornes_ratio', 'bloc_ratio_dc_ac',
     'ecretage_depuis_serie', 'SOURCE_BORNE_MARCHE', 'SOURCE_BORNE_SOCIETE',
     'SOURCE_BORNE_NOYAU',
@@ -84,6 +88,18 @@ __all__ = [
 #: troisième n'existe pas : l'absence de source est ``None``, pas un libellé.
 SOURCE_SAISIE = 'saisie'
 SOURCE_TMY = 'tmy'
+#: ACAL164 — le chaud est une température de CELLULE, tirée de la T2m
+#: maximale du TMY par la formule NOCT de la fiche module.
+SOURCE_TMY_NOCT = 'TMY + NOCT fiche'
+
+#: ACAL164 — les conditions NOCT (IEC 61215 : 800 W/m², 20 °C ambiant) et
+#: l'éclairement de dimensionnement (STC, 1 000 W/m²). Formule :
+#: T_cellule = T_ambiante + (NOCT − 20) × G / 800.
+NOCT_AMBIANTE_C = 20.0
+NOCT_ECLAIREMENT_W_M2 = 800.0
+ECLAIREMENT_DIMENSIONNEMENT_W_M2 = 1000.0
+REFERENCE_NOCT = ('IEC 61215 — définition NOCT (800 W/m², 20 °C ambiant, '
+                  '1 m/s) : T_cellule = T_ambiante + (NOCT − 20) × G / 800')
 
 #: La phrase qui accompagne OBLIGATOIREMENT un verdict rendu sans source.
 MENTION_NON_SOURCEE = 'températures de référence, non sourcées'
@@ -237,7 +253,28 @@ def _depuis_fournisseur(pin, fournisseur):
     return (froid, chaud, ', '.join(morceaux))
 
 
-def temperatures_site(*, pin=None, saisie=None, fournisseur=None):
+def _temperature_cellule(ambiante_c, module_specs):
+    """``(chaud_cellule_c, detail)`` par la formule NOCT, ou ``None``.
+
+    ACAL164 — la T2m maximale du TMY est une température AMBIANTE ; le noyau
+    attend une température de CELLULE maximale (``temp_chaud_c``). Sans
+    ``noct_c`` publié par la fiche, rien n'est dérivé (``None``).
+    """
+    noct = _nombre((module_specs or {}).get('noct_c'))
+    if noct is None:
+        return None
+    chaud = (ambiante_c + (noct - NOCT_AMBIANTE_C)
+             * ECLAIREMENT_DIMENSIONNEMENT_W_M2 / NOCT_ECLAIREMENT_W_M2)
+    return (round(chaud, 2),
+            "cellule %.2f °C = T2m max %.2f °C + (NOCT %.1f − %.0f) × "
+            "%.0f / %.0f (%s)" % (
+                chaud, ambiante_c, noct, NOCT_AMBIANTE_C,
+                ECLAIREMENT_DIMENSIONNEMENT_W_M2, NOCT_ECLAIREMENT_W_M2,
+                REFERENCE_NOCT))
+
+
+def temperatures_site(*, pin=None, saisie=None, fournisseur=None,
+                      module_specs=None):
     """Les températures de dimensionnement du site ET leur source (CAL123).
 
     Args:
@@ -268,9 +305,22 @@ def temperatures_site(*, pin=None, saisie=None, fournisseur=None):
         fournisseur = _FOURNISSEUR
     tmy = _depuis_fournisseur(pin, fournisseur)
     if tmy is not None:
-        froid, chaud, detail = tmy
-        return TemperaturesSite(froid_c=froid, chaud_c=chaud,
-                                source=SOURCE_TMY, detail=detail)
+        froid, ambiante, detail = tmy
+        # ACAL164 — le CHAUD est une température de CELLULE : la T2m
+        # ambiante n'est jamais posée telle quelle dans ``chaud_c``.
+        cellule = _temperature_cellule(ambiante, module_specs)
+        if cellule is not None:
+            chaud, formule = cellule
+            return TemperaturesSite(
+                froid_c=froid, chaud_c=chaud, source=SOURCE_TMY_NOCT,
+                detail='%s ; %s' % (detail, formule))
+        return TemperaturesSite(
+            froid_c=froid, chaud_c=TEMP_CHAUD_DEFAUT_C, source=SOURCE_TMY,
+            mention=MENTION_NON_SOURCEE,
+            detail="%s ; chaud : repli du noyau électrique (%.1f °C de "
+                   "cellule) — la fiche module ne publie pas « noct_c », la "
+                   "T2m ambiante (%.2f °C) n'est pas une température de "
+                   "cellule" % (detail, TEMP_CHAUD_DEFAUT_C, ambiante))
 
     return TemperaturesSite(
         froid_c=TEMP_FROID_DEFAUT_C, chaud_c=TEMP_CHAUD_DEFAUT_C,
@@ -281,7 +331,7 @@ def temperatures_site(*, pin=None, saisie=None, fournisseur=None):
 
 
 def temperatures_pour_calepinage(calepinage, *, saisie=None,
-                                 fournisseur=None):
+                                 fournisseur=None, module_specs=None):
     """``temperatures_site`` avec l'épingle DU calepinage (lecture bornée).
 
     L'épingle est lue par ``selectors.contexte_geographique`` — la MÊME
@@ -297,7 +347,8 @@ def temperatures_pour_calepinage(calepinage, *, saisie=None,
             pin = layout['pin']
         if pin is None:
             pin = contexte_geographique(calepinage).get('pin')
-    return temperatures_site(pin=pin, saisie=saisie, fournisseur=fournisseur)
+    return temperatures_site(pin=pin, saisie=saisie, fournisseur=fournisseur,
+                             module_specs=module_specs)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -305,11 +356,14 @@ def temperatures_pour_calepinage(calepinage, *, saisie=None,
 # ═══════════════════════════════════════════════════════════════════════════
 #
 # Ce que le calcul électrique demande en plus du dessin : QUEL module, QUEL
-# onduleur, quelles longueurs de liaison, quelles températures. Rien de tout
-# cela ne se DEVINE — ni depuis le devis, ni depuis un catalogue « par
-# défaut » : le matériel est DÉSIGNÉ (identifiants produit, lus par le
-# sélecteur du stock, bornés société) et les longueurs sont SAISIES. Sans
-# désignation, le résultat est publié sans verdict, en nommant ce qui manque.
+# onduleur, quelles longueurs de liaison, quelles températures. D-ACAL-10
+# (fondateur, 04/10/2026) : le matériel est d'abord celui DÉSIGNÉ sur le
+# calepinage (provenance « explicite ») ; à défaut, celui des LIGNES DU DEVIS
+# LIÉ (provenance « devis », recalculée à chaque lecture, jamais persistée) ;
+# à défaut, un refus NOMMÉ qui dit le geste. Jamais un catalogue « par
+# défaut », jamais un produit supposé : tout passe par le sélecteur du stock,
+# borné société. Les longueurs sont SAISIES. Sans matériel, le résultat est
+# publié sans verdict, en nommant ce qui manque.
 #
 # L'entrée vit dans ``Calepinage.resultat['entree_electrique']`` : aucune
 # migration pour ranger quatre identifiants et trois longueurs, et le document
@@ -341,6 +395,10 @@ CHAMPS_ENTREE = (
     'affectation_manuelle',  # CAL234 — affectation IMPOSÉE module par module
     'polystring',           # CALX206 — pans mis en parallèle sur une entrée
     'derogations',          # CALX215 — alertes PASSÉES OUTRE (geste, pas réglage)
+    'transformateur',       # ACAL151 — {declare, 3 grandeurs sourcées}
+    'regime',               # ACAL152 — régime de neutre SAISI (TT/TN/IT)
+    'batterie',             # ACAL166 — déclaration de la batterie du site
+    'hors_reseau',          # ACAL166 — mode hors réseau (jours d'autonomie)
 )
 
 #: CALX215 — la clé par laquelle une alerte est PASSÉE OUTRE. C'est un GESTE,
@@ -665,6 +723,331 @@ def _valider_produits_designes(calepinage, donnees):
                 champ=cle)
 
 
+#: ACAL150 — les longueurs et bornes numériques de l'entrée : ``(clé,
+#: libellé, strictement positive, entière)``. Une valeur non finie (NaN,
+#: infini) ou négative est REFUSÉE en nommant le champ.
+NOMBRES_ENTREE = (
+    ('dc_m', 'Longueur de liaison DC (m)', False, False),
+    ('ac_m', 'Longueur de liaison AC (m)', False, False),
+    ('plafond_kwc_par_onduleur', 'Plafond de kWc par onduleur', True, False),
+    ('longueur_chaine_forcee', 'Longueur de chaîne imposée (modules)', True,
+     True),
+)
+
+#: Les phases ADMISES — monophasé ou triphasé, rien d'autre.
+PHASES_ADMISES = (1, 3)
+
+#: Les saisies qui doivent être des OBJETS (``{...}``) quand elles sont posées.
+OBJETS_ENTREE = ('protections', 'terre', 'exigence_marche', 'batterie',
+                 'hors_reseau')
+
+
+def _fini(valeur):
+    import math
+
+    return valeur is not None and math.isfinite(valeur)
+
+
+def _valider_entree(calepinage, fusionnee, postee):
+    """ACAL150 — refuse une entrée incohérente AVANT tout enregistrement.
+
+    ``fusionnee`` est l'entrée stockée + la saisie postée ; ``postee`` la
+    saisie seule. Les températures se jugent par PAIRE sur l'entrée fusionnée
+    (``_saisie``, LA règle de cohérence) ; le reste n'est jugé que sur ce qui
+    est POSTÉ, pour qu'une saisie ancienne ne bloque pas une écriture sans
+    rapport. Les décisions (protections, terre, polystring) passent par
+    LEURS validateurs, ceux du calcul — aucune règle n'est recopiée ici.
+
+    Raises:
+        TemperaturesInvalides / EntreeInvalide: le champ fautif est NOMMÉ.
+    """
+    for cle in ('temperature_min_c', 'temperature_max_c'):
+        brut = postee.get(cle)
+        if brut not in (None, '') and not _fini(_nombre(brut)):
+            raise TemperaturesInvalides(
+                "Température illisible (« %s ») : saisissez un nombre en "
+                "°C, ou laissez le champ vide." % brut, champ=cle)
+    _saisie(fusionnee)
+
+    if postee.get('regime') not in (None, ''):
+        from core.electrique.types import REGIMES_CONNUS
+
+        if str(postee.get('regime')).strip().upper() not in REGIMES_CONNUS:
+            raise EntreeInvalide(
+                "Régime de neutre « %s » inconnu : saisissez TT, TN ou IT."
+                % postee.get('regime'), champ='regime')
+    if postee.get('phases') not in (None, ''):
+        phases = _nombre(postee.get('phases'))
+        if phases not in tuple(float(p) for p in PHASES_ADMISES):
+            raise EntreeInvalide(
+                "Nombre de phases « %s » refusé : 1 (monophasé) ou 3 "
+                "(triphasé)." % postee.get('phases'), champ='phases')
+    for cle, libelle, strict, entiere in NOMBRES_ENTREE:
+        brut = postee.get(cle)
+        if brut in (None, ''):
+            continue
+        valeur = _nombre(brut)
+        if (not _fini(valeur) or valeur < 0 or (strict and valeur <= 0)
+                or (entiere and valeur != int(valeur))):
+            raise EntreeInvalide(
+                "%s illisible ou hors plage (« %s ») : saisissez un nombre "
+                "%s%s, ou laissez le champ vide."
+                % (libelle, brut, 'strictement positif' if strict
+                   else 'positif ou nul', ' entier' if entiere else ''),
+                champ=cle)
+    for cle in OBJETS_ENTREE:
+        valeur = postee.get(cle)
+        if valeur is not None and not isinstance(valeur, dict):
+            raise EntreeInvalide(
+                "« %s » doit être un objet {...} (reçu : %s)."
+                % (cle, type(valeur).__name__), champ=cle)
+    _valider_transformateur(postee.get('transformateur'))
+    _valider_batterie(postee.get('batterie'))  # ACAL166
+    _valider_hors_reseau(postee.get('hors_reseau'))  # ACAL166
+    poly = postee.get(CLE_POLYSTRING)
+    if poly not in (None, '') and not isinstance(poly, (list, tuple)):
+        raise EntreeInvalide(
+            "« polystring » doit être une liste de groupes {mppt, pans} "
+            "(reçu : %s)." % type(poly).__name__, champ=CLE_POLYSTRING)
+
+    if not any(postee.get(cle) for cle in ('protections', 'terre',
+                                           CLE_POLYSTRING)):
+        return
+    from .norme import norme_applicable
+    from .polystring import PolystringRefuse, _saisie_normalisee
+    from .protections import DecisionInvalide, checklist_protections
+    from .terre import TerreInvalide, checklist_terre
+
+    conception, _materiel, _donnees, _doc = conception_du_calepinage(
+        calepinage, entree=fusionnee)
+    norme = norme_applicable(parametres_societe(calepinage))
+    try:
+        if postee.get('protections'):
+            checklist_protections(conception,
+                                  decisions=postee.get('protections'),
+                                  norme=norme)
+        if postee.get('terre'):
+            checklist_terre(conception, decisions=postee.get('terre'),
+                            norme=norme,
+                            company=getattr(calepinage, 'company', None))
+    except (DecisionInvalide, TerreInvalide) as refus:
+        raise EntreeInvalide(str(refus), champ=refus.champ or 'protections')
+    if poly and conception.chaines:
+        try:
+            _saisie_normalisee(conception, poly)
+        except PolystringRefuse as refus:
+            raise EntreeInvalide(str(refus), champ='%s.%s' % (
+                CLE_POLYSTRING, refus.champ or 'groupes'))
+
+
+#: ACAL166 — les clés d'une déclaration de batterie, et AUCUNE autre : ce sont
+#: celles que lit l'étape ``services/etapes/batterie.py``.
+CLES_BATTERIE = ('produit', 'packs', 'strategie', 'couplage', 'onduleur_ref',
+                 'seuil_effacement_kw', 'heures_charge', 'heures_decharge',
+                 'reserve_backup_kwh', 'motivation', 'etat_initial_kwh')
+
+#: ACAL166 — les clés d'une déclaration hors réseau (``etapes/hors_reseau.py``).
+CLES_HORS_RESEAU = ('actif', 'jours_autonomie', 'etat_initial_kwh', 'seuils')
+
+
+def _refus_champ(message, champ):
+    raise EntreeInvalide(message, champ=champ)
+
+
+def _valider_batterie(saisie):
+    """ACAL166 — la FORME de la déclaration de batterie, refusée en NOMMANT
+    le champ (``batterie.<champ>``). Aucune stratégie n'est supposée : une
+    stratégie absente reste absente, et la simulation OMET le bloc en le
+    disant. Les grandeurs de la batterie viennent de la FICHE du produit,
+    jamais de cette saisie."""
+    from .batterie import COUPLAGES, MOTIVATIONS, STRATEGIES
+
+    if saisie is None:
+        return
+    if not isinstance(saisie, dict):
+        _refus_champ("« batterie » doit être un objet {strategie, packs, "
+                     "couplage…} (reçu : %s)." % type(saisie).__name__,
+                     'batterie')
+    inconnues = sorted(set(saisie) - set(CLES_BATTERIE))
+    if inconnues:
+        _refus_champ("Champ de la batterie inconnu : « %s ». Champs admis : "
+                     "%s." % (inconnues[0], ', '.join(CLES_BATTERIE)),
+                     'batterie.%s' % inconnues[0])
+    for cle, admis in (('strategie', STRATEGIES), ('couplage', COUPLAGES),
+                       ('motivation', tuple(MOTIVATIONS))):
+        valeur = saisie.get(cle)
+        if valeur not in (None, '') and valeur not in admis:
+            _refus_champ("« %s » : « %s » n'est pas admis. Valeurs admises : "
+                         "%s." % (cle, valeur, ', '.join(admis)),
+                         'batterie.%s' % cle)
+    packs = saisie.get('packs')
+    if packs not in (None, ''):
+        nombre = _nombre(packs)
+        if (not _fini(nombre) or nombre < 1 or nombre != int(nombre)):
+            _refus_champ("« packs » : saisissez un nombre entier de packs "
+                         "supérieur ou égal à 1 (reçu : « %s »)." % packs,
+                         'batterie.packs')
+    for cle in ('seuil_effacement_kw', 'reserve_backup_kwh',
+                'etat_initial_kwh'):
+        brut = saisie.get(cle)
+        if brut in (None, ''):
+            continue
+        nombre = _nombre(brut)
+        if not _fini(nombre) or nombre < 0:
+            _refus_champ("« %s » : saisissez un nombre positif ou nul, ou "
+                         "laissez le champ vide (reçu : « %s »)."
+                         % (cle, brut), 'batterie.%s' % cle)
+    for cle in ('heures_charge', 'heures_decharge'):
+        heures = saisie.get(cle)
+        if heures in (None, ''):
+            continue
+        if (not isinstance(heures, (list, tuple))
+                or any(isinstance(h, bool) or not isinstance(h, int)
+                       or not 0 <= h <= 23 for h in heures)):
+            _refus_champ("« %s » doit être une liste d'heures entières "
+                         "comprises entre 0 et 23." % cle, 'batterie.%s' % cle)
+
+
+def _valider_hors_reseau(saisie):
+    """ACAL166 — la FORME du mode hors réseau : ``actif`` booléen, jours
+    d'autonomie strictement positifs. Refus nommé ``hors_reseau.<champ>``."""
+    if saisie is None:
+        return
+    if not isinstance(saisie, dict):
+        _refus_champ("« hors_reseau » doit être un objet {actif, "
+                     "jours_autonomie…} (reçu : %s)."
+                     % type(saisie).__name__, 'hors_reseau')
+    inconnues = sorted(set(saisie) - set(CLES_HORS_RESEAU))
+    if inconnues:
+        _refus_champ("Champ hors réseau inconnu : « %s ». Champs admis : %s."
+                     % (inconnues[0], ', '.join(CLES_HORS_RESEAU)),
+                     'hors_reseau.%s' % inconnues[0])
+    if 'actif' in saisie and not isinstance(saisie['actif'], bool):
+        _refus_champ("« actif » vaut vrai (hors réseau) ou faux (raccordé).",
+                     'hors_reseau.actif')
+    jours = saisie.get('jours_autonomie')
+    if jours not in (None, ''):
+        nombre = _nombre(jours)
+        if not _fini(nombre) or nombre <= 0:
+            _refus_champ("« jours_autonomie » : saisissez un nombre de jours "
+                         "strictement positif (reçu : « %s »)." % jours,
+                         'hors_reseau.jours_autonomie')
+    etat = saisie.get('etat_initial_kwh')
+    if etat not in (None, ''):
+        nombre = _nombre(etat)
+        if not _fini(nombre) or nombre < 0:
+            _refus_champ("« etat_initial_kwh » : saisissez un nombre positif "
+                         "ou nul (reçu : « %s »)." % etat,
+                         'hors_reseau.etat_initial_kwh')
+
+
+def _valider_transformateur(saisie):
+    """ACAL151 — la FORME du transformateur : ``{declare, 3 grandeurs}``.
+
+    Chaque grandeur est ``{valeur, source, reference}`` : une valeur sans
+    source n'est pas une saisie (D-CALX 7) et le refus NOMME le champ. La
+    lecture de l'étape (``services/etapes/transformateur.py``) reste LA
+    règle de calcul ; ici, on refuse seulement ce qu'elle ignorerait en
+    silence.
+    """
+    from .etapes.transformateur import (
+        CHAMP_A_VIDE, CHAMP_EN_CHARGE, CHAMP_NOMINAL, CLE_TRANSFORMATEUR,
+    )
+
+    if saisie is None:
+        return
+    if not isinstance(saisie, dict):
+        raise EntreeInvalide(
+            "« transformateur » doit être un objet {declare, %s, %s, %s} "
+            "(reçu : %s)." % (CHAMP_A_VIDE, CHAMP_EN_CHARGE, CHAMP_NOMINAL,
+                              type(saisie).__name__),
+            champ=CLE_TRANSFORMATEUR)
+    grandeurs = (CHAMP_A_VIDE, CHAMP_EN_CHARGE, CHAMP_NOMINAL)
+    inconnues = sorted(set(saisie) - {'declare', *grandeurs})
+    if inconnues:
+        raise EntreeInvalide(
+            "Champ du transformateur inconnu : « %s »." % inconnues[0],
+            champ='%s.%s' % (CLE_TRANSFORMATEUR, inconnues[0]))
+    if not isinstance(saisie.get('declare'), bool):
+        raise EntreeInvalide(
+            "Répondez à la question « transformateur » : declare vaut vrai "
+            "(un transformateur est déclaré) ou faux (pas de transformateur).",
+            champ='%s.declare' % CLE_TRANSFORMATEUR)
+    for champ in grandeurs:
+        brut = saisie.get(champ)
+        if brut is None:
+            continue
+        chemin = '%s.%s' % (CLE_TRANSFORMATEUR, champ)
+        if not isinstance(brut, dict):
+            raise EntreeInvalide(
+                "« %s » doit être un objet {valeur, source, reference}."
+                % champ, champ=chemin)
+        valeur = _nombre(brut.get('valeur'))
+        if not _fini(valeur) or valeur < 0:
+            raise EntreeInvalide(
+                "« %s » : valeur illisible ou négative (« %s »)."
+                % (champ, brut.get('valeur')), champ='%s.valeur' % chemin)
+        if not str(brut.get('source') or '').strip():
+            raise EntreeInvalide(
+                "« %s » est saisi sans sa source : une valeur sans source "
+                "n'est pas une saisie (fiche, plaque, procès-verbal…)."
+                % champ, champ='%s.source' % chemin)
+
+
+def _regime_non_precise(donnees):
+    """ACAL152 — vrai tant qu'aucun régime de neutre n'est SAISI."""
+    return not str((donnees or {}).get('regime') or '').strip()
+
+
+def _checklist_protections_tolerante(conception, decisions, norme):
+    """ACAL150 — la check-list LUE sans jamais lever : ``(checklist, avis)``.
+
+    Une décision stockée devenue PÉRIMÉE (organe écarté qui n'existe plus
+    dans le plan) n'est ni effacée ni appliquée : elle reste stockée (elle
+    revient avec l'organe) et devient l'avertissement nommé « décision
+    périmée : organe X ». Une décision illisible est signalée de même.
+    """
+    from .protections import DecisionInvalide, checklist_protections
+
+    if decisions is not None and not isinstance(decisions, dict):
+        return (checklist_protections(conception, decisions=None,
+                                      norme=norme),
+                ['décision illisible : « protections » enregistrées sous une '
+                 'forme inattendue — ignorées'])
+    try:
+        return checklist_protections(conception, decisions=decisions,
+                                     norme=norme), []
+    except DecisionInvalide:
+        pass
+    base = checklist_protections(conception, decisions=None, norme=norme)
+    connus = {ligne['repere'] for ligne in base['organes']}
+    ecartes = [ecart for ecart in (decisions or {}).get('ecartes') or ()
+               if isinstance(ecart, dict)]
+    avis = ['décision périmée : organe %s' % ecart.get('repere')
+            for ecart in ecartes if ecart.get('repere') not in connus]
+    gardees = dict(decisions or {}, ecartes=[
+        ecart for ecart in ecartes if ecart.get('repere') in connus])
+    try:
+        return checklist_protections(conception, decisions=gardees,
+                                     norme=norme), avis
+    except DecisionInvalide as refus:
+        return base, avis + ['décision illisible : %s' % refus]
+
+
+def _checklist_terre_tolerante(conception, decisions, norme, company):
+    """ACAL150 — la check-list de terre LUE sans jamais lever."""
+    from .terre import TerreInvalide, checklist_terre
+
+    try:
+        return checklist_terre(conception, decisions=decisions, norme=norme,
+                               company=company), []
+    except TerreInvalide as refus:
+        return (checklist_terre(conception, decisions=None, norme=norme,
+                                company=company),
+                ['décision de terre périmée ou illisible : %s (champ « %s »)'
+                 % (refus, refus.champ or 'terre')])
+
+
 def enregistrer_entree(calepinage, donnees, *, user=None):
     """Pose l'entrée électrique sur le calepinage (mise à jour PARTIELLE).
 
@@ -697,23 +1080,46 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
         _valider_cheminement(calepinage, donnees.get('cheminement'))
     _valider_produits_designes(calepinage, donnees)
 
+    from .resultat import modifier_resultat
+
     saisies = donnees.get(CLE_DEROGATIONS)
     reglages = {cle: valeur for cle, valeur in donnees.items()
                 if cle != CLE_DEROGATIONS}
-    resultat = getattr(calepinage, 'resultat', None)
-    resultat = dict(resultat) if isinstance(resultat, dict) else {}
-    entree = dict(resultat.get(CLE_ENTREE) or {})
-    entree.update(reglages)
+    # ACAL150 — TOUTE la saisie est validée AVANT la moindre écriture : un
+    # refus laisse ``resultat['entree_electrique']`` intact.
+    fusionnee = dict(entree_stockee(calepinage))
+    fusionnee.update(reglages)
+    _valider_entree(calepinage, fusionnee, reglages)
+    traces = None
     if CLE_DEROGATIONS in donnees:
+        # Le refus arrive AVANT toute écriture : rien n'est posé tant que
+        # toutes les dérogations ne tiennent pas.
+        entree = dict(entree_stockee(calepinage))
+        entree.update(reglages)
         conception, _materiel, _donnees, _doc = conception_du_calepinage(
             calepinage, entree=entree)
-        _ajouter_au_fil(resultat, CLE_FIL_DEROGATIONS, _traces_de_derogation(
-            conception, saisies, user=user))
-    resultat[CLE_ENTREE] = entree
-    calepinage.resultat = resultat
-    if getattr(calepinage, 'pk', None):
-        calepinage.save(update_fields=['resultat', 'updated_at'])
-    return entree
+        traces = _traces_de_derogation(conception, saisies, user=user)
+
+    def _poser(resultat):
+        # ACAL57 — fusion sur l'entrée RELUE sous verrou, jamais sur la
+        # copie lue au début de la requête.
+        entree = dict(resultat.get(CLE_ENTREE) or {})
+        entree.update(reglages)
+        if traces is not None:
+            _ajouter_au_fil(resultat, CLE_FIL_DEROGATIONS, traces)
+        resultat[CLE_ENTREE] = entree
+        return entree
+
+    posee = modifier_resultat(calepinage, _poser)
+    if traces:
+        # ACAL283 — chaque dérogation se lit aussi au CHATTER (reflet lisible
+        # du fil ``journal_derogations``, seul enregistrement structuré) ;
+        # l'auteur est posé par le serveur, jamais par le corps.
+        from .journal import noter
+
+        for trace in traces:
+            noter(calepinage, trace['texte'], user=user)
+    return posee
 
 
 def _designation(produit):
@@ -725,8 +1131,52 @@ def _designation(produit):
     return ('%s %s' % (marque, nom)).strip()
 
 
-def resoudre_materiel(company, entree):
-    """Les blocs de fiche technique du matériel DÉSIGNÉ, bornés société.
+#: ACAL56 — les deux PROVENANCES possibles d'un matériel résolu. Une
+#: troisième n'existe pas : l'absence de matériel est ``None``.
+PROVENANCE_EXPLICITE = 'explicite'
+PROVENANCE_DEVIS = 'devis'
+
+#: Les rôles du matériel électrique, et la famille de l'agrégat
+#: ``services/equipements.py`` (LA lecture des lignes du devis) qui les sert.
+ROLES_MATERIEL = ('module', 'onduleur', 'optimiseur')
+FAMILLE_EQUIPEMENT = {'module': 'panneau', 'onduleur': 'onduleur',
+                      'optimiseur': 'optimiseur'}
+LIBELLES_ROLES = {'module': 'module PV', 'onduleur': 'onduleur',
+                  'optimiseur': 'optimiseur'}
+
+#: Le GESTE qui lève l'absence — nommé tel que l'écran le montre.
+GESTE_DESIGNATION = "désignez-le dans l'onglet Matériel électrique"
+
+
+def _produits_du_devis(calepinage):
+    """``{rôle: id produit}`` des lignes du devis LIÉ, ou ``{}``.
+
+    LA lecture du devis reste ``services/equipements.py::
+    equipements_du_calepinage`` (sélecteur cross-app ventes, borné société,
+    variante par défaut) — aucune seconde sélection « première ligne » ici.
+    """
+    if calepinage is None or not getattr(calepinage, 'devis_id', None):
+        return {}
+    from .equipements import equipements_du_calepinage
+
+    agregat = equipements_du_calepinage(calepinage) or {}
+    produits = {}
+    for role, famille in FAMILLE_EQUIPEMENT.items():
+        bloc = agregat.get(famille)
+        if isinstance(bloc, dict) and bloc.get('produit') not in (None, ''):
+            produits[role] = bloc['produit']
+    return produits
+
+
+def resoudre_materiel(company, entree, *, calepinage=None):
+    """Les blocs de fiche technique du matériel RETENU, bornés société.
+
+    D-ACAL-10 / ACAL56 — par rôle (module, onduleur, optimiseur) : la
+    désignation EXPLICITE de l'entrée (``<rôle>_produit``) d'abord ; sinon la
+    ligne du DEVIS LIÉ à ``calepinage`` (provenance ``'devis'``, recalculée à
+    chaque lecture : changer la ligne du devis change le calcul) ; sinon le
+    rôle est ABSENT et le message nomme le geste. L'optimiseur n'est jamais
+    réclamé (il est optionnel).
 
     Lecture cross-app par SÉLECTEUR (``apps.stock.selectors``) uniquement :
     ``get_produit_scoped`` (donc jamais un produit d'une autre société) puis
@@ -734,32 +1184,185 @@ def resoudre_materiel(company, entree):
     ``prix_vente`` ne sont jamais lus : ce module ne publie aucun coût.
 
     Rend ``{module: {...}, onduleur: {...}, optimiseur: {...} | None,
-    designations: {...}, absents: (…)}`` — ``absents`` nomme EN FRANÇAIS le
-    matériel non désigné ou introuvable, pour que l'écran dise quoi choisir.
+    designations: {...}, produits: {...}, provenances: {...}, absents: (…)}``
+    — ``absents`` nomme EN FRANÇAIS le matériel manquant ou introuvable.
     """
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
 
     blocs = {'module': {}, 'onduleur': {}, 'optimiseur': None}
-    designations = {'module': '', 'onduleur': '', 'optimiseur': ''}
+    designations = {role: '' for role in ROLES_MATERIEL}
+    produits = {role: None for role in ROLES_MATERIEL}
+    provenances = {role: None for role in ROLES_MATERIEL}
     absents = []
-    libelles = {'module': 'module PV', 'onduleur': 'onduleur',
-                'optimiseur': 'optimiseur'}
-    for role in ('module', 'onduleur', 'optimiseur'):
+    du_devis = None
+    for role in ROLES_MATERIEL:
         identifiant = (entree or {}).get('%s_produit' % role)
+        provenance = PROVENANCE_EXPLICITE
+        if identifiant in (None, ''):
+            if du_devis is None:
+                du_devis = _produits_du_devis(calepinage)
+            identifiant = du_devis.get(role)
+            provenance = PROVENANCE_DEVIS
         if identifiant in (None, ''):
             if role != 'optimiseur':
-                absents.append("%s non désigné" % libelles[role])
+                absents.append('%s non désigné — %s'
+                               % (LIBELLES_ROLES[role], GESTE_DESIGNATION))
             continue
         produit = (get_produit_scoped(company, identifiant)
                    if company is not None else None)
         if produit is None:
             absents.append("%s introuvable dans le catalogue de la société"
-                           % libelles[role])
+                           % LIBELLES_ROLES[role])
             continue
         blocs[role] = specs_for_produit(produit) or {}
         designations[role] = _designation(produit)
-    return {**blocs, 'designations': designations,
-            'absents': tuple(absents)}
+        produits[role] = produit.pk
+        provenances[role] = provenance
+    from .micro_onduleurs import est_micro_onduleur
+
+    if not blocs['onduleur'] and est_micro_onduleur(blocs['optimiseur']):
+        # ACAL162 — régime micro-onduleurs SEUL : l'onduleur de chaîne n'est
+        # pas « manquant », il n'existe pas.
+        absents = [texte for texte in absents
+                   if not texte.startswith(LIBELLES_ROLES['onduleur'] + ' ')]
+    return {**blocs, 'designations': designations, 'produits': produits,
+            'provenances': provenances, 'absents': tuple(absents)}
+
+
+#: ACAL56 — les clés de l'entrée SERVIE par ``GET entree-electrique/``
+#: (contrat ``calepinage_entree_electrique.json``) : celles de
+#: ``CHAMPS_ENTREE`` sauf ``derogations`` (un GESTE, jamais rangé dans
+#: l'entrée), plus le régime de neutre, le transformateur, la batterie et le
+#: hors-réseau — lus tels qu'enregistrés, ``null`` quand rien n'est saisi.
+CLES_ENTREE_SUPPLEMENTAIRES = ('regime', 'transformateur', 'batterie',
+                               'hors_reseau')
+CLES_ENTREE_SERVIE = tuple(dict.fromkeys(
+    tuple(cle for cle in CHAMPS_ENTREE if cle != CLE_DEROGATIONS)
+    + CLES_ENTREE_SUPPLEMENTAIRES))
+
+#: Le transformateur tant que la question n'a pas été répondue : DÉCLARÉ
+#: absent, aucune grandeur — jamais une perte inventée.
+TRANSFORMATEUR_NON_DECLARE = {
+    'declare': False, 'perte_a_vide_kw': None,
+    'perte_en_charge_kw_nominale': None, 'puissance_nominale_kw': None,
+}
+
+#: Les catégories de candidats, le type de fiche du stock et la section
+#: ``favoris_materiel`` (CAL200) qui les épingle.
+CATEGORIES_CANDIDATS = (('modules', 'module'), ('onduleurs', 'onduleur'),
+                        ('optimiseurs', 'optimiseur'))
+
+
+def _champs_requis(role):
+    """Les champs de fiche SANS LESQUELS le calcul électrique est muet."""
+    from .chaines import CHAMPS_MODULE, CHAMPS_ONDULEUR
+
+    if role == 'module':
+        return tuple(cle for cle, _libelle in CHAMPS_MODULE)
+    if role == 'onduleur':
+        return tuple(cle for cle, _libelle in CHAMPS_ONDULEUR)
+    return tuple(cle for cle, _libelle in GRANDEURS_RECOUPEMENT)
+
+
+def _champs_manquants(role, specs):
+    specs = specs if isinstance(specs, dict) else {}
+    return [cle for cle in _champs_requis(role)
+            if _nombre(specs.get(cle)) is None]
+
+
+def _candidats_materiel(calepinage):
+    """Le catalogue de la société par rôle — bornés société, SANS prix."""
+    candidats = {cle: [] for cle, _type in CATEGORIES_CANDIDATS}
+    company = getattr(calepinage, 'company', None)
+    if company is None:
+        return candidats
+    from apps.stock.selectors import (
+        produits_par_type_fiche_qs, specs_for_produit,
+    )
+
+    favoris = parametres_societe(calepinage).get('favoris_materiel') or {}
+    for cle, type_fiche in CATEGORIES_CANDIDATS:
+        epingles = favoris.get(cle)
+        epingles = ({str(valeur) for valeur in epingles}
+                    if isinstance(epingles, list) else set())
+        for produit in produits_par_type_fiche_qs(company, type_fiche):
+            manquants = _champs_manquants(type_fiche,
+                                          specs_for_produit(produit))
+            candidats[cle].append({
+                'id': produit.pk,
+                'libelle': (getattr(produit, 'nom', '') or '').strip()
+                or _designation(produit),
+                'marque': (getattr(produit, 'marque', '') or '').strip(),
+                'favori': str(produit.pk) in epingles,
+                'fiche_complete': not manquants,
+                'champs_manquants': manquants,
+            })
+        # ACAL174 — les favoris EN TÊTE ; le reste garde l'ordre du
+        # catalogue (tri stable).
+        candidats[cle].sort(key=lambda ligne: not ligne['favori'])
+    return candidats
+
+
+def entree_electrique_servie(calepinage, stockee):
+    """ACAL56 — ``GET entree-electrique/`` : l'entrée STOCKÉE + le matériel.
+
+    ``stockee`` est ``entree_stockee(calepinage)`` (la vue la lit) : l'entrée
+    est rendue clé par clé TELLE QU'ÉCRITE, jamais recalculée. ``materiel``
+    est le matériel RÉSOLU (D-ACAL-10) avec sa provenance — ``'devis'`` est
+    recalculée à chaque lecture, jamais persistée. Lecture PURE : rien n'est
+    écrit. Forme du contrat ``calepinage_entree_electrique.json``.
+    """
+    stockee = dict(stockee or {})
+    entree = {cle: stockee.get(cle) for cle in CLES_ENTREE_SERVIE}
+    if not isinstance(entree['transformateur'], dict):
+        entree['transformateur'] = dict(TRANSFORMATEUR_NON_DECLARE)
+    resolu = resoudre_materiel(getattr(calepinage, 'company', None), stockee,
+                               calepinage=calepinage)
+    materiel = {}
+    for role in ROLES_MATERIEL:
+        produit_id = (resolu.get('produits') or {}).get(role)
+        if produit_id is None:
+            materiel[role] = None
+            continue
+        manquants = _champs_manquants(role, resolu.get(role))
+        materiel[role] = {
+            'produit_id': produit_id,
+            'designation': resolu['designations'].get(role, ''),
+            'provenance': resolu['provenances'].get(role),
+            'fiche_complete': not manquants,
+            'champs_manquants': manquants,
+        }
+    return {
+        'calepinage': getattr(calepinage, 'pk', None),
+        'entree': entree,
+        'materiel': materiel,
+        'absents': [role for role in ROLES_MATERIEL if materiel[role] is None],
+        'candidats': _candidats_materiel(calepinage),
+    }
+
+
+def _options_batterie(calepinage, donnees, materiel):
+    """ACAL168 — le parc de stockage DÉCLARÉ, pour le dessin du schéma.
+
+    Seule une batterie DÉCLARÉE dans l'entrée (``donnees['batterie']``) et
+    résolue sur sa fiche est dessinée : un calepinage sans déclaration garde
+    son schéma tel qu'il était, octet pour octet. La résolution est celle de
+    ``chaines.batterie_du_calepinage`` — la MÊME que la simulation lit.
+    """
+    declaree = (donnees or {}).get('batterie') if isinstance(
+        donnees, dict) else None
+    if not isinstance(declaree, dict) or not declaree:
+        return {}
+    from .chaines import batterie_du_calepinage
+
+    batterie = batterie_du_calepinage(calepinage, donnees, materiel)
+    if batterie is None:
+        return {}
+    return {
+        'batterie': True,
+        'batterie_designation': batterie['designation'],
+        'batterie_kwh': batterie['specs'].get('capacite_utile_kwh'),
+    }
 
 
 def _options_entree(entree):
@@ -778,6 +1381,10 @@ def _options_entree(entree):
     for cle in ('zone_keraunique', 'inclure_prise_terre'):
         if (entree or {}).get(cle) is not None:
             options[cle] = bool(entree[cle])
+    # ACAL152 — le régime de neutre SAISI ; absent, il reste « non précisé ».
+    regime = str((entree or {}).get('regime') or '').strip().upper()
+    if regime:
+        options['regime'] = regime
     return options
 
 
@@ -803,15 +1410,107 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         calepinage, 'roof_layout', None)
     if materiel is None:
         materiel = resoudre_materiel(getattr(calepinage, 'company', None),
-                                     donnees)
-    temperatures = temperatures_pour_calepinage(calepinage, saisie=donnees)
+                                     donnees, calepinage=calepinage)
+    # ACAL164 — la fiche module (``noct_c``) fait du chaud TMY une
+    # température de CELLULE.
+    temperatures = temperatures_pour_calepinage(
+        calepinage, saisie=donnees, module_specs=materiel.get('module'))
     conception = concevoir_par_pan(
         document, module_specs=materiel['module'],
         onduleur_specs=materiel['onduleur'], temperatures=temperatures,
         module_designation=materiel['designations']['module'],
         onduleur_designation=materiel['designations']['onduleur'],
-        **_options_entree(donnees))
+        # ACAL162 — un micro-onduleur seul suffit à câbler le champ.
+        optimiseur_specs=materiel.get('optimiseur'),
+        **_options_entree(donnees), **_options_batterie(
+            calepinage, donnees, materiel))
     return (conception, materiel, donnees, document)
+
+
+def resultat_electrique_complet(conception, *, norme=None, noyau=None,
+                                checklist=None):
+    """ACAL55 — le ``ResultatElectrique`` COMPLET d'une conception, ou ``None``.
+
+    La ``Conception`` de CAL124 porte un ``ResultatChaines`` (chaînes seules,
+    ``core.electrique.chaines``) ; le dessin du schéma unifilaire, son export
+    DXF et le coffret AC du bordereau lisent, eux, la forme du noyau complet
+    (``protections``, ``cables``, ``bom``). Leur présenter le ``ResultatChaines``
+    levait ``AttributeError: 'ResultatChaines' object has no attribute
+    'protections'`` (``core/electrique/schema.py``) dès qu'une conception
+    devenait calculable. Cette fonction est l'UNIQUE adaptateur : chaque
+    appelant (schéma GET/POST, DXF, bordereau) passe par elle.
+
+    Source réelle : ``core.electrique.concevoir`` — le seul constructeur de
+    ``ResultatElectrique``, déjà employé par ``apps/ventes/electrical_service``.
+    Le calcul est déterministe : deux appels rendent le même objet.
+
+    Args:
+        norme: le verdict ``services/norme.py::norme_applicable``. Une norme
+            NON applicable retire les organes de protection (``protections=()``) :
+            le dessin reste la topologie du gabarit standard (CALX237), sans
+            aucun calibre décidé sous une référence que personne n'a choisie.
+        noyau: le ``{entree, protections, cables}`` de ``cables_du_calepinage``
+            — fourni, l'entrée (longueurs mesurées) et les organes retenus sont
+            CEUX-LÀ, pas un second dimensionnement qui en divergerait.
+
+    Rend ``None`` quand la conception ne permet rien (fiche muette, rien posé).
+    """
+    import dataclasses
+
+    from core.electrique import concevoir
+
+    if conception is None or getattr(conception, 'resultat', None) is None:
+        return None
+    entree = ((noyau or {}).get('entree')
+              or getattr(conception, 'entree', None))
+    if entree is None:
+        return None
+    resultat = concevoir(entree)
+    if noyau and noyau.get('protections') is not None:
+        resultat = dataclasses.replace(
+            resultat, protections=tuple(noyau['protections'].protections))
+    if isinstance(norme, dict) and not norme.get('applicable', False):
+        resultat = dataclasses.replace(resultat, protections=())
+    elif checklist is not None:
+        # ACAL159 — la check-list DÉCIDÉE (écarts, ajouts) : la même que
+        # le bordereau, jamais la liste brute du noyau. Le tableau (``bom``)
+        # et les câbles sont refaits sur CES organes, par le noyau.
+        from core.electrique.cables import dimensionner_cables
+        from core.electrique.chaines import concevoir_chaines
+        from core.electrique.nomenclature import nomenclature
+        from core.electrique.protections import ResultatProtections
+
+        from .protections import resultat_protections_retenues
+
+        source = ResultatProtections(protections=resultat.protections)
+        if noyau and noyau.get('protections') is not None:
+            source = noyau['protections']
+        decidees = resultat_protections_retenues(source, checklist)
+        chaines = concevoir_chaines(entree)
+        cables = dimensionner_cables(entree, chaines, decidees)
+        resultat = dataclasses.replace(
+            resultat, protections=tuple(decidees.protections),
+            cables=tuple(cables.cables),
+            bom=tuple(nomenclature(entree, chaines, decidees,
+                                   cables).lignes))
+    return resultat
+
+
+def checklist_decidee(conception, donnees, norme):
+    """ACAL159 — la check-list de protections DÉCIDÉE, lue sans jamais
+    lever : ``(checklist, avertissements)`` (décision périmée nommée)."""
+    return _checklist_protections_tolerante(
+        conception, (donnees or {}).get('protections'), norme)
+
+
+def _avec_resultat(conception, resultat):
+    """La MÊME conception, portant ``resultat`` (ACAL55) — jamais modifiée."""
+    import dataclasses
+    import types
+
+    if dataclasses.is_dataclass(conception):
+        return dataclasses.replace(conception, resultat=resultat)
+    return types.SimpleNamespace(**{**vars(conception), 'resultat': resultat})
 
 
 def _date_de_calcul(simulation):
@@ -1025,10 +1724,10 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
 
     # CAL132 — la check-list de protections, éditable, chaque ligne gardant
     # sa source. C'est ELLE que la nomenclature et le schéma lisent.
-    from .protections import checklist_protections
-
-    protections = checklist_protections(
-        conception, decisions=donnees.get('protections'), norme=norme)
+    # ACAL150 — lecture TOLÉRANTE : une décision périmée devient un
+    # avertissement nommé, jamais un 500.
+    protections, avis_decisions = _checklist_protections_tolerante(
+        conception, donnees.get('protections'), norme)
 
     # CALX224-228 — le CHEMINEMENT mesuré, tronçon par tronçon. Calculé UNE
     # fois ici : le bordereau en tire son métré (CALX227) et le résultat le
@@ -1051,14 +1750,13 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         equipements=_equipements_electriques(document),
         branches=((micro['bloc'] or {}).get('branches') or ()
                   if micro['bloc'] is not None else ()),
-        troncons=troncons['troncons'])
+        troncons=troncons['troncons'],
+        checklist=protections)
 
     # CAL134 — la check-list de terre et sa justification exigée.
-    from .terre import checklist_terre
-
-    terre = checklist_terre(conception, decisions=donnees.get('terre'),
-                            norme=norme,
-                            company=getattr(calepinage, 'company', None))
+    terre, avis_terre = _checklist_terre_tolerante(
+        conception, donnees.get('terre'), norme,
+        getattr(calepinage, 'company', None))
 
     # CAL170 — quelle longueur de chaîne a été retenue, et d'où elle vient.
     reconciliation = longueur_chaine_retenue(conception)
@@ -1078,7 +1776,13 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     messages.extend(cables['omissions'])
     messages.extend(bordereau['alertes'])
     messages.extend(protections['omissions'])
+    if _regime_non_precise(donnees) and protections['organes']:
+        from core.electrique.protections import MOTIF_REGIME_NON_PRECISE
+
+        messages.append(MOTIF_REGIME_NON_PRECISE)
+    messages.extend(avis_decisions)
     messages.extend(terre['omissions'])
+    messages.extend(avis_terre)
     if reconciliation['origine'] == ORIGINE_LONGUEUR_DOSSIER:
         messages.append(reconciliation['detail'])
     elif reconciliation['hors_tolerance']:
@@ -1202,7 +1906,20 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'simulation_perimee': perimee,
         'motif': motif,
         'avertissements': messages,
+        # ACAL283 — les deux FILS bornés, LUS tels qu'enregistrés (jamais
+        # recalculés), listes vides jamais absentes — y compris quand la
+        # simulation est périmée.
+        'derogations': _fil_enregistre(calepinage, CLE_FIL_DEROGATIONS),
+        'ecarts_longueur': _fil_enregistre(calepinage, CLE_FIL_ECARTS),
     }
+
+
+def _fil_enregistre(calepinage, cle):
+    """ACAL283 — un fil borné de ``Calepinage.resultat``, ou ``[]``."""
+    resultat = getattr(calepinage, 'resultat', None)
+    fil = resultat.get(cle) if isinstance(resultat, dict) else None
+    return [dict(entree) for entree in fil if isinstance(entree, dict)] \
+        if isinstance(fil, list) else []
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1332,10 +2049,22 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         calepinage, entree=entree, layout=layout, materiel=materiel)
     manquantes = tuple(conception.manquantes) + tuple(
         materiel_resolu['absents'])
+    # ACAL169 — ``publiable`` n'a qu'UNE définition : celle de
+    # ``verdict_publiable``, l'agrégateur. Une évaluation À CHAUD (dessin ou
+    # entrée en cours) ne se prononce pas sur ce qui est enregistré : elle
+    # garde « aucun bloquant » comme lecture provisoire.
+    a_chaud = (entree is not None or layout is not None
+               or materiel is not None)
+
+    def _publiable(bloquants_vus):
+        if a_chaud:
+            return not bloquants_vus
+        return verdict_publiable(calepinage)['publiable']
+
     if manquantes:
         return {
             'verdict': 'indetermine',
-            'publiable': False,
+            'publiable': False if a_chaud else _publiable(()),
             'bloquants': [],
             'alertes': [],
             'manquantes': list(manquantes),
@@ -1379,7 +2108,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     return {
         'verdict': 'bloquant' if bloquants else (
             'alerte' if alertes else 'conforme'),
-        'publiable': not bloquants,
+        'publiable': _publiable(bloquants),
         'bloquants': list(bloquants),
         'alertes': alertes,
         'manquantes': [],
@@ -1398,21 +2127,24 @@ def garde_publication(calepinage):
     autrement (on ne peut pas certifier ce qu'on n'a pas pu vérifier).
     """
     evaluation = evaluation_electrique(calepinage)
-    if evaluation['publiable']:
+    # ACAL169 — la garde lit les BLOQUANTS de l'évaluation, pas le
+    # ``publiable`` (désormais celui de l'agrégateur, plus sévère) : elle
+    # refuse EXACTEMENT ce qu'elle refusait (porte devis : D05-T26).
+    if evaluation['verdict'] != 'indetermine' and not evaluation['bloquants']:
         # CAL134 — la terre est l'autre condition de publication : sans prise
         # de terre vendue, la continuité de la terre EXISTANTE doit avoir été
         # justifiée (NF C 15-100 §542). Le refus est levé tel quel : il nomme
         # son champ.
-        from .terre import checklist_terre, garde_terre
+        from .terre import garde_terre
 
         conception, _materiel, donnees, _document = conception_du_calepinage(
             calepinage)
         from .norme import norme_applicable
 
-        garde_terre(checklist_terre(
-            conception, decisions=donnees.get('terre'),
-            norme=norme_applicable(parametres_societe(calepinage)),
-            company=getattr(calepinage, 'company', None)))
+        garde_terre(_checklist_terre_tolerante(
+            conception, donnees.get('terre'),
+            norme_applicable(parametres_societe(calepinage)),
+            getattr(calepinage, 'company', None))[0])
         return evaluation
     if evaluation['verdict'] == 'indetermine':
         raise PublicationBloquee(
@@ -1456,6 +2188,10 @@ def garde_publication(calepinage):
 #: Le statut d'une omission ASSUMÉE — le calcul ne s'est pas fait, on DIT
 #: pourquoi, et ça ne bloque pas la publication.
 STATUT_MOTIF_OMIS = 'omis'
+
+#: ACAL152 — le motif de publication quand le régime de neutre n'est pas
+#: saisi : la protection différentielle ne peut pas être décidée.
+CODE_REGIME_NON_PRECISE = 'REGIME_NEUTRE_NON_PRECISE'
 
 #: Le statut d'une entrée qui a JUGÉ sans provenance : elle, elle bloque.
 STATUT_MOTIF_SANS_SOURCE = 'sans_source'
@@ -1520,7 +2256,8 @@ def _motifs_du_raccordement(conception, saisie, reglages):
 
     motifs = []
     try:
-        bloc = verdicts_raccordement(conception, saisie)
+        # ACAL175 — les réglages société portent le repli cos φ sourcé.
+        bloc = verdicts_raccordement(conception, saisie, reglages)
     except RaccordementInvalide as refus:
         return [_motif_publication(
             'RACCORDEMENT_REFUSE', STATUT_MOTIF_SANS_SOURCE, str(refus),
@@ -1610,6 +2347,71 @@ def _motifs_des_troncons(troncons):
     return motifs
 
 
+#: ACAL169 — les codes publiés par l'agrégateur pour les quatre sources que
+#: seule l'évaluation voyait, et pour le matériel indéterminé.
+CODE_FICHE_INCOMPLETE = 'FICHE_INCOMPLETE'
+CODE_AFFECTATION = 'AFFECTATION_REFUSEE'
+CODE_POLYSTRING = 'POLYSTRING'
+CODE_MICRO_ONDULEURS = 'MICRO_ONDULEURS'
+
+
+def _motifs_de_l_affectation(conception, donnees, materiel):
+    """ACAL169 — les refus de l'affectation IMPOSÉE, en motifs bloquants."""
+    from core.electrique.types import STATUT_BLOQUANT
+
+    from .chaines import (
+        AffectationInvalide, normaliser_affectation_imposee,
+        verdict_affectation,
+    )
+
+    try:
+        imposee = normaliser_affectation_imposee(
+            (donnees or {}).get('affectation_manuelle'))
+    except AffectationInvalide as refus:
+        return [_motif_publication(CODE_AFFECTATION, STATUT_BLOQUANT,
+                                   str(refus), 'affectation manuelle')]
+    return [_motif_publication(CODE_AFFECTATION, STATUT_BLOQUANT, texte,
+                               'affectation manuelle — règle de chaîne')
+            for texte in verdict_affectation(
+                conception, imposee,
+                specs_onduleur=(materiel or {}).get('onduleur'))]
+
+
+def _motifs_du_polystring(calepinage, conception, donnees):
+    """ACAL169 — les bloquants polystring (CALX206/207), en motifs."""
+    from core.electrique.types import STATUT_BLOQUANT
+
+    poly = _polystring_du_calepinage(
+        conception, saisie=(donnees or {}).get(CLE_POLYSTRING),
+        reglages=_reglages_electrique_societe(calepinage))
+    return [_motif_publication(CODE_POLYSTRING, STATUT_BLOQUANT, texte,
+                               'saisie polystring — fiche onduleur')
+            for texte in poly['bloquants']]
+
+
+def _motifs_des_micro_onduleurs(conception, materiel):
+    """ACAL169 — une branche AC non bornable ne se certifie pas.
+
+    Les motifs de la BORNE de branche (aucun plafond d'unités, aucun courant
+    publiés) refusent la publication (``sans_source``) ; les omissions de
+    l'équipement (longueur de branche…) restent des omissions assumées.
+    """
+    micro = _micro_onduleurs_du_calepinage(
+        conception, (materiel or {}).get('optimiseur'),
+        ((materiel or {}).get('designations') or {}).get('optimiseur', ''))
+    if micro['bloc'] is None:
+        return []
+    motifs_borne = list(micro['bloc'].get('motifs') or ())
+    motifs = [_motif_publication(CODE_MICRO_ONDULEURS,
+                                 STATUT_MOTIF_SANS_SOURCE, texte)
+              for texte in motifs_borne]
+    motifs.extend(_motif_publication(CODE_MICRO_ONDULEURS, STATUT_MOTIF_OMIS,
+                                     texte)
+                  for texte in micro['omissions']
+                  if texte not in motifs_borne)
+    return motifs
+
+
 def verdict_publiable(calepinage):
     """CALX248 — ``{publiable, motifs}`` : TOUT ce qui empêche de publier.
 
@@ -1627,27 +2429,46 @@ def verdict_publiable(calepinage):
     from core.electrique.types import STATUT_BLOQUANT
 
     from .norme import norme_applicable
-    from .terre import checklist_terre
     from .troncons import troncons_du_calepinage
 
-    conception, _materiel, donnees, document = conception_du_calepinage(
+    conception, materiel, donnees, document = conception_du_calepinage(
         calepinage)
     norme = norme_applicable(parametres_societe(calepinage))
     reglages = _reglages_electrique_societe(calepinage)
 
     motifs = list(_motifs_de_la_conception(conception))
     motifs.extend(_motifs_de_la_norme(norme))
+    # ACAL155 — LA saisie de raccordement (celle de l'écran), jamais une clé
+    # ``raccordement`` de l'entrée électrique qu'aucun écrivain ne pose.
+    from .raccordement import saisie_du_calepinage
+
     motifs.extend(_motifs_du_raccordement(
-        conception, donnees.get('raccordement'), reglages))
-    motifs.extend(_motifs_de_la_terre(checklist_terre(
-        conception, decisions=donnees.get('terre'), norme=norme,
-        company=getattr(calepinage, 'company', None))))
+        conception, saisie_du_calepinage(calepinage), reglages))
+    if _regime_non_precise(donnees) and not getattr(
+            conception, 'manquantes', ()) and conception.chaines:
+        from core.electrique.protections import MOTIF_REGIME_NON_PRECISE
+
+        motifs.append(_motif_publication(
+            CODE_REGIME_NON_PRECISE, STATUT_MOTIF_OMIS,
+            MOTIF_REGIME_NON_PRECISE, 'NF C 15-100 §411 — régime de neutre'))
+    motifs.extend(_motifs_de_la_terre(_checklist_terre_tolerante(
+        conception, donnees.get('terre'), norme,
+        getattr(calepinage, 'company', None))[0]))
     motifs.extend(_motifs_des_troncons(troncons_du_calepinage(calepinage)))
-    # Le matériel NON DÉSIGNÉ n'est pas une omission assumée : on ne certifie
-    # pas ce qu'on n'a pas pu vérifier (même règle que ``garde_publication``).
+    # ACAL169 — L'AGRÉGATEUR UNIQUE : affectation imposée, polystring et
+    # micro-onduleurs entrent ICI (jusqu'ici seule l'évaluation les voyait,
+    # et l'écran affichait « Publiable » sur une chaîne de 20 modules pour
+    # une borne de 12).
+    motifs.extend(_motifs_de_l_affectation(conception, donnees, materiel))
+    motifs.extend(_motifs_du_polystring(calepinage, conception, donnees))
+    motifs.extend(_motifs_des_micro_onduleurs(conception, materiel))
+    # ACAL169 — le matériel NON DÉSIGNÉ est INDÉTERMINÉ (D-ACAL-9 : un
+    # « indéterminé » ne bloque pas la génération) : publié, jamais bloquant.
+    from core.electrique.types import STATUT_NON_VERIFIABLE
+
     for manquante in getattr(conception, 'manquantes', ()) or ():
         motifs.append(_motif_publication(
-            'FICHE_INCOMPLETE', STATUT_BLOQUANT, manquante,
+            CODE_FICHE_INCOMPLETE, STATUT_NON_VERIFIABLE, manquante,
             'fiche technique du matériel retenu'))
 
     refusants = (STATUT_BLOQUANT, STATUT_MOTIF_SANS_SOURCE)
@@ -1676,17 +2497,18 @@ def rejouer_apres_layout(calepinage, *, user=None):
             'CAL128 : verdict électrique en échec (calepinage %s)',
             getattr(calepinage, 'pk', None))
         return None
-    resultat = getattr(calepinage, 'resultat', None)
-    resultat = dict(resultat) if isinstance(resultat, dict) else {}
-    resultat['verdict_electrique'] = evaluation
-    calepinage.resultat = resultat
-    if getattr(calepinage, 'pk', None):
-        # AUCUN statut n'est écrit ici — c'est l'invariant du module (le
-        # chemin de layout n'écrit jamais de statut). Le blocage vit dans
-        # ``garde_publication``, que le geste de publication appelle : un
-        # brouillon qui reste brouillon, jamais une rétrogradation surprise
-        # déclenchée par un simple enregistrement de dessin.
-        calepinage.save(update_fields=['resultat', 'updated_at'])
+    from .resultat import modifier_resultat
+
+    def _poser(resultat):
+        resultat['verdict_electrique'] = evaluation
+
+    # ACAL57 — l'écrivain unique, relecture sous verrou. AUCUN statut n'est
+    # écrit ici — c'est l'invariant du module (le chemin de layout n'écrit
+    # jamais de statut). Le blocage vit dans ``garde_publication``, que le
+    # geste de publication appelle : un brouillon qui reste brouillon, jamais
+    # une rétrogradation surprise déclenchée par un simple enregistrement de
+    # dessin.
+    modifier_resultat(calepinage, _poser)
 
     # CAL170 — un écart moteur↔fiche au-delà de la tolérance est JOURNALISÉ
     # (jamais un remplacement silencieux), et son historique est conservé.
@@ -1871,23 +2693,30 @@ def journaliser_ecart_longueur(calepinage, reconciliation):
         reconciliation.get('longueur'), reconciliation.get('longueur_dossier'),
         reconciliation.get('ecart'), getattr(calepinage, 'pk', None))
 
-    resultat = getattr(calepinage, 'resultat', None)
-    resultat = dict(resultat) if isinstance(resultat, dict) else {}
-    fil = _ajouter_au_fil(resultat, CLE_FIL_ECARTS, [{
+    from .resultat import modifier_resultat
+
+    entrees = [{
         'longueur': reconciliation.get('longueur'),
         'longueur_dossier': reconciliation.get('longueur_dossier'),
         'ecart': reconciliation.get('ecart'),
         'par_pan': reconciliation.get('par_pan') or {},
-    }])
-    calepinage.resultat = resultat
-    if getattr(calepinage, 'pk', None):
-        try:
-            calepinage.save(update_fields=['resultat', 'updated_at'])
-        except Exception:  # noqa: BLE001 — un journal ne casse jamais un geste
-            logging.getLogger(__name__).exception(
-                'CAL170 : journal d écart non enregistré (calepinage %s)',
-                getattr(calepinage, 'pk', None))
-    return fil
+    }]
+    try:
+        # ACAL57 — l'écrivain unique : le fil est prolongé sur le resultat
+        # RELU sous verrou, jamais sur l'instantané du début du geste.
+        return modifier_resultat(
+            calepinage,
+            lambda resultat: _ajouter_au_fil(resultat, CLE_FIL_ECARTS,
+                                             entrees))
+    except Exception:  # noqa: BLE001 — un journal ne casse jamais un geste
+        logging.getLogger(__name__).exception(
+            'CAL170 : journal d écart non enregistré (calepinage %s)',
+            getattr(calepinage, 'pk', None))
+        resultat = getattr(calepinage, 'resultat', None)
+        resultat = dict(resultat) if isinstance(resultat, dict) else {}
+        fil = _ajouter_au_fil(resultat, CLE_FIL_ECARTS, entrees)
+        calepinage.resultat = resultat
+        return fil
 
 
 def parametres_societe(calepinage):
@@ -2005,8 +2834,12 @@ def _micro_onduleurs_du_calepinage(conception, specs, designation=''):
         branches_du_champ, equipement_ac, est_micro_onduleur,
     )
 
-    if conception.fiche_incomplete or conception.resultat is None \
-            or not est_micro_onduleur(specs):
+    # ACAL162 — le régime micro SEUL (``micro_seul``, aucun onduleur de
+    # chaîne) a ses branches comme le régime mixte : seul indicateur, aligné
+    # sur ``services/troncons.py``.
+    if conception.fiche_incomplete or not est_micro_onduleur(specs) or (
+            conception.resultat is None
+            and not getattr(conception, 'micro_seul', False)):
         return {'bloc': None, 'protections': [], 'omissions': []}
     bloc = branches_du_champ(conception, specs, designation=designation)
     if not bloc['applique']:
@@ -2313,7 +3146,8 @@ def _ligne_bordereau(ligne):
 
 
 def _bordereau_du_calepinage(calepinage, conception, noyau, *,
-                             equipements=(), branches=(), troncons=()):
+                             equipements=(), branches=(), troncons=(),
+                             checklist=None):
     """CALX246/230/232/247/227 — ``{lignes, alertes}``, ou l'omission motivée.
 
     ``noyau`` est le ``{entree, protections, cables}`` que
@@ -2326,15 +3160,19 @@ def _bordereau_du_calepinage(calepinage, conception, noyau, *,
     côté/section) remplace les deux lignes de câblage forfaitaires : c'est ce
     que le magasinier coupe. Aucun tronçon tracé ⇒ sortie d'aujourd'hui.
     """
-    import types as _types
-
     from core.electrique.nomenclature import nomenclature
 
     from .coffrets import coffret_ac, coffrets_dc
+    from .protections import resultat_protections_retenues
     from .troncons import metre_de_cable
 
     if not noyau:
         return {'lignes': [], 'alertes': []}
+    # ACAL159 — le bordereau chiffre la check-list DÉCIDÉE (``checklist``) :
+    # un organe écarté n'y figure plus, un organe société y figure — jamais
+    # la liste brute de ``concevoir_protections``.
+    noyau = dict(noyau, protections=resultat_protections_retenues(
+        noyau['protections'], checklist))
 
     company = getattr(calepinage, 'company', None)
     reglages = _reglages_electrique_societe(calepinage)
@@ -2347,12 +3185,11 @@ def _bordereau_du_calepinage(calepinage, conception, noyau, *,
                                     capacites=capacites)
 
     # ``coffret_ac`` lit ``conception.resultat.protections`` (forme du
-    # ``ResultatElectrique`` du noyau) ; la conception du calepinage porte,
-    # elle, un ``ResultatChaines``. On lui présente donc les organes que
-    # ``concevoir_protections`` vient de retenir — les MÊMES objets, pas une
-    # seconde liste.
-    porteur = _types.SimpleNamespace(resultat=_types.SimpleNamespace(
-        protections=noyau['protections'].protections))
+    # ``ResultatElectrique`` du noyau). ACAL55 — l'adaptateur UNIQUE
+    # ``resultat_electrique_complet`` la fournit, bâti sur les organes que
+    # ``concevoir_protections`` vient de retenir (les MÊMES objets).
+    porteur = _avec_resultat(conception, resultat_electrique_complet(
+        conception, noyau=noyau))
     resultat_coffret_ac = coffret_ac(porteur, branches)
 
     valeur_structure, source_structure = _valeur_reglee(reglages,
@@ -2541,6 +3378,18 @@ def _champ_de_fiche(specs, cle):
     return getattr(specs, cle, None)
 
 
+#: ACAL162 — les cinq verdicts de CHAÎNE du contrat CAL244 (code, libellé).
+VERDICTS_DE_CHAINE = (
+    ('voc_cold_under_vmax',
+     "Voc à froid sous la tension maximale admissible de l'onduleur"),
+    ('vmp_cold_under_mppt_max', 'Vmp à froid dans le haut de la plage MPPT'),
+    ('vmp_hot_over_mppt_min', 'Vmp à chaud au-dessus du bas de la plage MPPT'),
+    ('courant_par_entree_mppt',
+     'Courant par entrée MPPT sous le courant admissible'),
+    ('ratio_dc_ac', 'Ratio DC/AC dans la fourchette retenue par la société'),
+)
+
+
 def verdicts_electriques(conception, optimiseur_specs=None,
                          optimiseur_designation='', *, reglages=None):
     """Les verdicts du contrat CAL244, dérivés des chiffres de FICHE.
@@ -2558,8 +3407,16 @@ def verdicts_electriques(conception, optimiseur_specs=None,
     Isc publié dépassé) ; ce qui dégrade la production alerte (écrêtage sur
     l'Imp, MPPT hors plage en été, ratio DC/AC).
     """
-    from .chaines import evaluer_onduleurs
+    from .chaines import MOTIF_MICRO_SEUL, evaluer_onduleurs
 
+    if getattr(conception, 'micro_seul', False):
+        # ACAL162 — aucun verdict de CHAÎNE n'est prononcé : chacun des cinq
+        # est OMIS en disant pourquoi (jamais un vert, jamais un rouge).
+        return tuple({
+            'code': code, 'libelle': libelle, 'conforme': None,
+            'bloquant': False, 'source': None, 'detail': MOTIF_MICRO_SEUL,
+            **_bloc_temperature(conception.temperatures),
+        } for code, libelle in VERDICTS_DE_CHAINE)
     if conception.resultat is None or not conception.chaines:
         return ()
     onduleur = conception.entree.onduleur

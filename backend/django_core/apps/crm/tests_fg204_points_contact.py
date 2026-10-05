@@ -37,8 +37,10 @@ def make_company(slug, nom=None):
 def make_user(company, username, role='responsable'):
     """Vrai rôle système (admin/responsable) ou rôle limité (utilisateur) pour
     tester la garde d'écriture."""
-    from apps.roles.models import (
-        Role, ADMIN_PERMISSIONS, RESPONSABLE_PERMISSIONS,
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import (
+        ADMIN_PERMISSIONS,
+        RESPONSABLE_PERMISSIONS,
     )
     _defs = {
         'admin': ('Administrateur', ADMIN_PERMISSIONS),

@@ -142,10 +142,13 @@ generer_facture_intervention = _facturation_ops.generer_facture_intervention
 # RÉ-EXPORTS — QJR70 : cycle de vie du devis → ``domain/cycle_vie.py``
 # ═══════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import cycle_vie as _cycle_vie  # noqa: E402
-poser_validite_devis = _cycle_vie.poser_validite_devis
+# SPL264 — le geste d'envoi (clauses, validité, mark_devis_sent) vit dans
+# ``domain/envoi.py``.
+from apps.ventes.domain import envoi as _envoi  # noqa: E402
+poser_validite_devis = _envoi.poser_validite_devis
 # CAD57 — validité d'un dossier financé à crédit (réglage société).
-jours_validite_societe = _cycle_vie.jours_validite_societe
-date_validite_credit = _cycle_vie.date_validite_credit
+jours_validite_societe = _envoi.jours_validite_societe
+date_validite_credit = _envoi.date_validite_credit
 AcceptError = _cycle_vie.AcceptError
 activate_optional_line = _cycle_vie.activate_optional_line
 OTP_CACHE_TTL = _cycle_vie.OTP_CACHE_TTL
@@ -165,12 +168,16 @@ share_link_for_bcf = _cycle_vie.share_link_for_bcf
 INSTALLATION_SHARE_UTM_CAMPAIGN = _cycle_vie.INSTALLATION_SHARE_UTM_CAMPAIGN
 installation_share_link = _cycle_vie.installation_share_link
 bcf_share_url = _cycle_vie.bcf_share_url
-contexte_clauses_devis = _cycle_vie.contexte_clauses_devis
-configuration_devis_contenu = _cycle_vie.configuration_devis_contenu
-capturer_configuration_devis = _cycle_vie.capturer_configuration_devis
-diff_configurations_devis = _cycle_vie.diff_configurations_devis
-renouveler_devis = _cycle_vie.renouveler_devis
-mark_devis_sent = _cycle_vie.mark_devis_sent
+contexte_clauses_devis = _envoi.contexte_clauses_devis
+# SPL262 — l'historique de configuration vit dans ``domain/historique_config.py``.
+from apps.ventes.domain import historique_config as _historique_config  # noqa: E402
+configuration_devis_contenu = _historique_config.configuration_devis_contenu
+capturer_configuration_devis = _historique_config.capturer_configuration_devis
+diff_configurations_devis = _historique_config.diff_configurations_devis
+# SPL263 — renouvellement / révision dans ``domain/revision.py``.
+from apps.ventes.domain import revision as _revision  # noqa: E402
+renouveler_devis = _revision.renouveler_devis
+mark_devis_sent = _envoi.mark_devis_sent
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -392,23 +399,29 @@ sync_devis_from_layout = _resynchronisation.sync_devis_from_layout
 # ═════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import creation as _creation  # noqa: E402
 create_draft_devis_from_ocr = _creation.create_draft_devis_from_ocr
-dupliquer_devis = _creation.dupliquer_devis
-build_devis_from_layout = _creation.build_devis_from_layout
+# SPL268 — clonage, duplication et modèles dans ``domain/creation_clone.py``.
+from apps.ventes.domain import creation_clone as _creation_clone  # noqa: E402
+dupliquer_devis = _creation_clone.dupliquer_devis
+# SPL266 — le pont calepinage → devis vit dans ``domain/creation_calepinage.py``.
+from apps.ventes.domain import creation_calepinage as _creation_calepinage  # noqa: E402
+build_devis_from_layout = _creation_calepinage.build_devis_from_layout
 # CAL185 — chiffrer la VARIANTE RETENUE d'un calepinage, par LE chemin
 # de création de lignes (jamais un second).
 build_devis_depuis_calepinage_retenu = (
-    _creation.build_devis_depuis_calepinage_retenu)
-produits_a_renseigner = _creation.produits_a_renseigner
-SCENARIOS_DEMANDABLES = _creation.SCENARIOS_DEMANDABLES
-composer_devis_residentiel = _creation.composer_devis_residentiel
-build_devis_auto = _creation.build_devis_auto
-auto_devis_tunnel_actif = _creation.auto_devis_tunnel_actif
-corps_note_refus_auto_devis = _creation.corps_note_refus_auto_devis
-creer_devis_automatique_depuis_lead = _creation.creer_devis_automatique_depuis_lead
-planifier_devis_automatique_pour_lead = _creation.planifier_devis_automatique_pour_lead
+    _creation_calepinage.build_devis_depuis_calepinage_retenu)
+produits_a_renseigner = _creation_calepinage.produits_a_renseigner
+# SPL267 — le devis automatique vit dans ``domain/creation_auto.py``.
+from apps.ventes.domain import creation_auto as _creation_auto  # noqa: E402
+SCENARIOS_DEMANDABLES = _creation_auto.SCENARIOS_DEMANDABLES
+composer_devis_residentiel = _creation_auto.composer_devis_residentiel
+build_devis_auto = _creation_auto.build_devis_auto
+auto_devis_tunnel_actif = _creation_auto.auto_devis_tunnel_actif
+corps_note_refus_auto_devis = _creation_auto.corps_note_refus_auto_devis
+creer_devis_automatique_depuis_lead = _creation_auto.creer_devis_automatique_depuis_lead
+planifier_devis_automatique_pour_lead = _creation_auto.planifier_devis_automatique_pour_lead
 create_devis_pour_ticket = _creation.create_devis_pour_ticket
 create_devis_upsell_from_intervention = _creation.create_devis_upsell_from_intervention
-save_devis_as_preset = _creation.save_devis_as_preset
+save_devis_as_preset = _creation_clone.save_devis_as_preset
 
 # ═════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — NTMIG10/11 : création Devis/Facture depuis une MIGRATION

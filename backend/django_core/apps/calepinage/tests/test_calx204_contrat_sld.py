@@ -33,6 +33,7 @@ import pathlib
 
 from django.test import SimpleTestCase
 
+from apps.calepinage.services.garde_montants import MOTS_D_ARGENT
 from apps.calepinage.views.schema import CLES_SCHEMA
 
 ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
@@ -59,8 +60,9 @@ CHAMPS_BLOC = {'clef', 'repere', 'titre', 'sous_titre', 'x', 'y',
                'verrouille'}
 
 #: Un schéma est un document TECHNIQUE : aucun montant n'y a sa place
-#: (`core/electrique/schema.py::rendre_schema`, D-CALX 5).
-HORS_SUJET = ('prix', 'marge', 'montant', 'mad', 'tva', 'remise')
+#: (`core/electrique/schema.py::rendre_schema`, D-CALX 5). ACAL231 : la liste
+#: est la liste UNIQUE de ``services/garde_montants.py`` (plus de miroir).
+HORS_SUJET = MOTS_D_ARGENT
 
 
 class EnveloppeTest(SimpleTestCase):

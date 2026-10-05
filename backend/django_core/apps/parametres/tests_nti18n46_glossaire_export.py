@@ -26,7 +26,11 @@ from apps.parametres.glossaire_export import (
 )
 from apps.parametres.models_documents import DocumentTemplates
 from apps.parametres.models_units import UniteMesure
-from apps.roles.models import ALL_PERMISSIONS, DIRECTEUR_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    ALL_PERMISSIONS,
+    DIRECTEUR_PERMISSIONS,
+)
 from authentication.models import Company
 from core.i18n_content import set_translation
 

@@ -13,7 +13,8 @@ from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.roles.models import Role, CANONICAL_SYSTEM_ROLES
+from apps.roles.models import Role
+from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
 from apps.ventes.moteur_ci.composition import composer_ci
 from authentication.models import Company
 

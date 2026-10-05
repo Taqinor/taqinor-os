@@ -13,7 +13,7 @@ from django.test import TestCase
 from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.models import Avoir, Facture, LigneAvoir
-from apps.ventes.serializers import LigneAvoirSerializer
+from apps.ventes.serializers_facturation import LigneAvoirSerializer
 from apps.ventes.tests.test_quote_engine import make_company, make_user
 
 

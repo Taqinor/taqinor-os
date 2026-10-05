@@ -74,7 +74,8 @@ class ActionRaccordementTest(BaseApiCalepinage):
 
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertEqual(sorted(reponse.data),
-                         ['calcul', 'saisie', 'verdicts'])
+                         ['calcul', 'proposition_lead', 'saisie',
+                          'verdicts'])
 
     def test_get_rend_toujours_les_cinq_verdicts(self):
         reponse = self.api.get(url_raccordement(self.calepinage.pk))

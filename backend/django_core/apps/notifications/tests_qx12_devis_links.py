@@ -13,7 +13,8 @@ from django.utils import timezone
 from authentication.models import Company
 from apps.crm.models import Client
 from apps.ventes.models import Devis
-from apps.notifications.models import Notification, EventType
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')

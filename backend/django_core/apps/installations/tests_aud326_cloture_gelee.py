@@ -54,7 +54,8 @@ def make_directeur(company):
     """Directeur : rôle système « Directeur » (porte `journal_activite_voir`,
     le signal le plus discriminant du palier — même règle que
     `views.stage_config.IsDirecteur`)."""
-    from apps.roles.models import Role, DIRECTEUR_PERMISSIONS
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
     role = Role.objects.create(
         company=company, nom='Directeur', est_systeme=True,
         permissions=list(DIRECTEUR_PERMISSIONS))

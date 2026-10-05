@@ -41,7 +41,8 @@ from apps.calepinage.services.photos import (
 )
 from apps.crm.models import Lead
 from apps.records.models import Attachment
-from apps.roles.models import DIRECTEUR_PERMISSIONS, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
 from authentication.models import Company
 
 User = get_user_model()
@@ -218,7 +219,10 @@ class LectureTest(BasePhoto):
         self.assertEqual(sorted(ligne), sorted([
             'id', 'genre', 'prise_le', 'legende', 'calage', 'file_key',
             'filename', 'mime', 'size', 'url', 'ajoutee_par', 'created_at']))
-        self.assertEqual(ligne['url'], 'https://minio/presigne')
+        self.assertEqual(
+            ligne['url'],
+            f'/api/django/calepinage/calepinages/{self.calepinage.pk}'
+            f"/photos/{ligne['id']}/fichier/")
         self.assertEqual(ligne['prise_le'], HIER.isoformat())
         self.assertEqual(ligne['legende'], 'Vol du matin')
         self.assertIsNone(ligne['calage'])

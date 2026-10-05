@@ -264,6 +264,252 @@ def reserver_stock_devis_facture(*, devis, user, company):
     )
 
 
+def entete_facture_depuis_devis(devis):
+    """AUD113 — champs d'EN-TÊTE qu'une facture reprend de son devis à la
+    création (``Facture.objects.create(**entete)``).
+
+    Le taux de TÊTE est le REPLI des lignes sans taux, et les deux chaînes de
+    repli pointent vers des objets DIFFÉRENTS : ``LigneDevis.taux_tva_effectif``
+    retombe sur ``devis.taux_tva``, ``LigneFacture.taux_tva_effectif`` sur
+    ``facture.taux_tva``. Sans ce transport, un devis à 10 % dont les lignes
+    portent un taux NULL était facturé au défaut 20 %."""
+    entete = {}
+    if devis is not None and devis.taux_tva is not None:
+        entete['taux_tva'] = devis.taux_tva
+    return entete
+
+
+def copier_devis_sur_facture(facture, devis):
+    """Recopie sur ``facture`` (déjà créée) le PANIER du devis : remise globale,
+    palier d'arrondi et lignes de l'option retenue — LE geste partagé par la
+    facture de bon de commande (``bon_commande.creer_facture``) et la facture
+    complète d'un devis accepté (``facturer_devis_complet``).
+
+    Extrait tel quel de ``views/bon_commande.creer_facture`` :
+
+    * ERR16 — n'inclure QUE les lignes de l'option retenue à l'acceptation
+      (« Sans batterie » / « Avec batterie »), comme l'échéancier. Sans vraie
+      deuxième option, ``option_lines`` renvoie TOUTES les lignes ;
+    * QX1 — la remise GLOBALE du devis est PERSISTÉE sur
+      ``Facture.remise_globale`` (``Facture.total_*`` la lit via la même chaîne
+      canonique que le devis) ;
+    * ERR-QAC-MULTIVILLA-TOTAL-XN — un devis « ×N villas identiques » se
+      facture au total ×N : chaque quantité est reprise ×N (N=1 inchangé) ;
+    * ARRONDI-100 — la facture reprend le palier du devis signé (jamais plus
+      que lui), appliqué par villa (``arrondi_unites``).
+    """
+    from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS
+    from apps.ventes.models import LigneFacture
+    from apps.ventes.selectors import nombre_proprietes
+    from apps.ventes.utils.options import option_lines
+
+    g = Decimal(str(devis.remise_globale or 0))
+    if g:
+        facture.remise_globale = g
+        facture.save(update_fields=['remise_globale'])
+    n_prop = nombre_proprietes(devis)
+    facture.arrondi_pas = int(PAS_ARRONDI_DEVIS)
+    facture.arrondi_unites = n_prop
+    facture.save(update_fields=['arrondi_pas', 'arrondi_unites'])
+    for ligne in option_lines(devis):
+        LigneFacture.objects.create(
+            facture=facture,
+            produit=ligne.produit,
+            designation=ligne.designation,
+            quantite=ligne.quantite * n_prop,
+            prix_unitaire=ligne.prix_unitaire,
+            remise=ligne.remise,
+            # Reporte le taux TVA de la ligne de devis (10/20), pour que la
+            # facture reproduise fidèlement la TVA.
+            taux_tva=ligne.taux_tva,
+        )
+    return facture
+
+
+class FacturationRefusee(Exception):
+    """Refus métier de « Facturer » un devis (message FR, prêt pour un 400)."""
+
+    def __init__(self, motif):
+        super().__init__(motif)
+        self.motif = motif
+
+
+#: Nombre maximal de paiements déjà reçus saisis en une fois (« Facturer »).
+MAX_PAIEMENTS_SAISIS = 5
+
+
+def valider_paiements_saisis(paiements, *, aujourdhui=None):
+    """Valide la liste des paiements DÉJÀ reçus saisie au moment de facturer.
+
+    0 à ``MAX_PAIEMENTS_SAISIS`` entrées ``{montant, date_paiement,
+    mode_paiement, reference?}`` : montant décimal > 0 (2 décimales au plus),
+    date ISO jamais dans le futur, mode parmi ``Paiement.Mode``. Renvoie la
+    liste normalisée ``[{montant: Decimal, date_paiement: date, mode: str,
+    reference: str}]`` ; lève ``FacturationRefusee`` (message FR) sinon.
+    """
+    import datetime
+    from decimal import InvalidOperation
+
+    from django.utils import timezone
+
+    from core.money import quantize_mad
+
+    from apps.ventes.models import Paiement
+
+    if paiements is None:
+        return []
+    if not isinstance(paiements, (list, tuple)):
+        raise FacturationRefusee(
+            'Les paiements doivent être une liste (0 à '
+            f'{MAX_PAIEMENTS_SAISIS} lignes).')
+    if len(paiements) > MAX_PAIEMENTS_SAISIS:
+        raise FacturationRefusee(
+            f'Au plus {MAX_PAIEMENTS_SAISIS} paiements peuvent être saisis '
+            'en une fois.')
+    aujourdhui = aujourdhui or timezone.localdate()
+    modes = {valeur: libelle for valeur, libelle in Paiement.Mode.choices}
+    normalises = []
+    for numero, brut in enumerate(paiements, start=1):
+        if not isinstance(brut, dict):
+            raise FacturationRefusee(f'Paiement n°{numero} : ligne illisible.')
+        try:
+            montant = Decimal(str(brut.get('montant', '')).strip()
+                              .replace(',', '.'))
+        except (InvalidOperation, ValueError):
+            raise FacturationRefusee(
+                f'Paiement n°{numero} : montant invalide.')
+        if not montant.is_finite() or montant <= 0:
+            raise FacturationRefusee(
+                f'Paiement n°{numero} : le montant doit être positif.')
+        if montant != quantize_mad(montant):
+            raise FacturationRefusee(
+                f'Paiement n°{numero} : le montant a plus de deux décimales.')
+        brut_date = brut.get('date_paiement')
+        try:
+            date_paiement = datetime.date.fromisoformat(str(brut_date or ''))
+        except ValueError:
+            raise FacturationRefusee(
+                f'Paiement n°{numero} : date de paiement invalide '
+                '(format attendu AAAA-MM-JJ).')
+        if date_paiement > aujourdhui:
+            raise FacturationRefusee(
+                f'Paiement n°{numero} : la date de paiement ne peut pas être '
+                'dans le futur.')
+        mode = str(brut.get('mode_paiement') or '').strip()
+        if mode not in modes:
+            raise FacturationRefusee(
+                f'Paiement n°{numero} : mode de paiement inconnu '
+                f'(attendu : {", ".join(modes)}).')
+        reference = str(brut.get('reference') or '').strip()
+        if len(reference) > 120:
+            raise FacturationRefusee(
+                f'Paiement n°{numero} : référence trop longue (120 caractères '
+                'au plus).')
+        normalises.append({
+            'montant': quantize_mad(montant),
+            'date_paiement': date_paiement,
+            'mode': mode,
+            'reference': reference,
+        })
+    return normalises
+
+
+def facturer_devis_complet(*, devis, user, company, paiements=None):
+    """« Facturer » un devis ACCEPTÉ en UN geste atomique (fondateur, 05/10).
+
+    Cas réel : un client a signé et déjà payé ~90 % en 1 à 3 versements, et il
+    n'existait aucun chemin simple pour émettre SA facture. Ce service :
+
+      1. refuse un devis non accepté, ou déjà facturé (échéancier OU bon de
+         commande — LE prédicat partagé ``factures_du_devis``, AUD112), en
+         nommant les références existantes ;
+      2. valide les paiements déjà reçus (``valider_paiements_saisis``) ;
+      3. dans UNE transaction : réserve le stock comme la facturation directe
+         (U9, garde anti-double-comptage incluse), crée la facture COMPLÈTE
+         (100 %, lignes du devis recopiées par ``copier_devis_sur_facture`` —
+         le même geste que la facture de BC), la rattache au bon de commande
+         du devis s'il en a un sans facture, l'ÉMET par le service unique
+         ``emettre_facture`` (numéro définitif déjà posé par
+         ``create_numbered``), refuse une somme de paiements > total TTC, puis
+         consigne chaque paiement par ``encaisser_sur_facture`` — le MÊME code
+         que ``factures/{id}/enregistrer-paiement/``.
+
+    Tout refus annule TOUT (aucune facture, aucun numéro consommé, aucun
+    paiement). Lève ``FacturationRefusee``, ``EncaissementRefuse``,
+    ``EmissionRefusee``, ``StockInsuffisantError`` ou ``CreditHoldError``.
+    Renvoie ``(facture, [paiements créés])``.
+    """
+    from django.db import transaction
+
+    from apps.ventes.domain.encaissements import encaisser_sur_facture
+    from apps.ventes.models import BonCommande, Facture
+    from apps.ventes.selectors import factures_du_devis
+    from apps.ventes.utils.company_settings import create_numbered
+
+    if devis.statut != devis.Statut.ACCEPTE:
+        raise FacturationRefusee(
+            'Seul un devis accepté peut être facturé : ce devis est au statut '
+            f'« {devis.get_statut_display()} ».')
+    existantes = list(factures_du_devis(devis).order_by('id')
+                      .values_list('reference', flat=True))
+    if existantes:
+        refs = ', '.join(existantes)
+        pluriel = 'les factures' if len(existantes) > 1 else 'la facture'
+        raise FacturationRefusee(
+            f'Ce devis a déjà {pluriel} {refs} : ouvrez-la dans Ventes → '
+            'Factures pour y encaisser les paiements.')
+    saisis = valider_paiements_saisis(paiements)
+
+    # Le bon de commande du devis est rattaché s'il n'a encore AUCUNE facture
+    # (``Facture.bon_commande`` est un OneToOne : même une facture annulée
+    # occupe la place) et n'est pas annulé.
+    bc = BonCommande.objects.filter(devis=devis).first()
+    if bc is not None and (
+            bc.statut == BonCommande.Statut.ANNULE
+            or Facture.objects.filter(bon_commande=bc).exists()):
+        bc = None
+
+    with transaction.atomic():
+        reserver_stock_devis_facture(devis=devis, user=user, company=company)
+
+        def _create(ref):
+            facture = Facture.objects.create(
+                reference=ref,
+                devis=devis,
+                bon_commande=bc,
+                client=devis.client,
+                statut=Facture.Statut.BROUILLON,
+                type_facture=Facture.TypeFacture.COMPLETE,
+                created_by=user,
+                company=company,
+                **entete_facture_depuis_devis(devis),
+            )
+            return copier_devis_sur_facture(facture, devis)
+
+        facture = create_numbered(Facture, company, 'facture', _create)
+        emettre_facture(facture, user=user, source='facturer_devis_complet')
+        facture.refresh_from_db()
+
+        total_ttc = Decimal(str(facture.total_ttc))
+        somme = sum((p['montant'] for p in saisis), Decimal('0'))
+        if somme - total_ttc > Decimal('0.01'):
+            raise FacturationRefusee(
+                f'Les paiements saisis ({somme:.2f} MAD) dépassent le total '
+                f'TTC de la facture ({total_ttc:.2f} MAD).')
+
+        crees = []
+        for donnees in saisis:
+            facture, paiement = encaisser_sur_facture(
+                facture=facture, donnees=donnees, user=user)
+            crees.append(paiement)
+        facture.refresh_from_db()
+    logger.info(
+        'facturer_devis_complet: facture %s émise depuis devis %s avec %d '
+        'paiement(s) (company=%s)', facture.reference, devis.reference,
+        len(crees), getattr(company, 'id', '?'))
+    return facture, crees
+
+
 def creer_facture_contrat(*, contrat, user, company):
     """FG40 — Crée une Facture de maintenance récurrente depuis un ContratMaintenance.
 

@@ -23,9 +23,14 @@ import {
   dupliquerPan,
   motifPasDuplication,
   idZoneCopie,
+  prochainId, // ACAL64
+  tousLesObstacles, // ACAL64
+  nouveauPanDepuisContour, // ACAL71
   type ExclusionZone,
 } from './zones';
-import { type AreaRecord } from './types';
+import { hydrateFromDevis, serializeLayout, type SerializedLayout } from './prefill'; // ACAL64
+import { type Ctx } from './context'; // ACAL64
+import { lireGabaritsZone, lireGabaritsObstacle, type AreaRecord } from './types';
 import { type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
 
@@ -389,5 +394,140 @@ describe('CALX98 — idZoneCopie : jamais de collision avec le compteur de l’e
 
   it('tient sur une liste vide ou absente', () => {
     expect(idZoneCopie([])).toBe('area-copie-1');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL64 — UNE fabrique d'identifiants : un dossier rouvert (area-1, area-2, obs-1, obs-2,
+// zone-1) ne produit jamais un identifiant en double en ajoutant un pan, un obstacle, une
+// zone ou un objet d'environnement.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL64 — prochainId sur un dossier rouvert', () => {
+  const carre = (x: number): LngLat[] => [[x, 0], [x + 0.0001, 0], [x + 0.0001, 0.0001], [x, 0.0001]];
+  function documentRouvert(): SerializedLayout {
+    const pan = (id: string, x: number, obstacles: unknown[]) => ({
+      id, label: id, vertices: carre(x), obstacles, roofType: 'flat', pitchDeg: 10, facingAzimuthDeg: 180,
+      facingManual: false, neededPanels: 0, neededAuto: true,
+    });
+    const obs = (id: string) => ({ id, centerLng: 0, centerLat: 0, lengthM: 1, widthM: 1 });
+    return {
+      version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'area-1',
+      zones: [pan('area-1', 0, [obs('obs-1')]), pan('area-2', 1, [obs('obs-2')])],
+      exclusionZones: [{ id: 'zone-1', nature: 'INTERDITE', vertices: carre(2), setbackM: 0, heightM: null }],
+      environment: [{ id: 'env-4', kind: 'arbre', centerLng: 0, centerLat: 0 }],
+    } as unknown as SerializedLayout;
+  }
+
+  it('hydrater area-1/area-2, obs-1/obs-2, zone-1 puis ajouter pan, obstacle, zone → ids distincts, serializeLayout émet deux contours distincts', () => {
+    const h = hydrateFromDevis({ id: 1, geometrie: { roof_layout: documentRouvert() }, cibleVendue: false });
+    const areas = h.zones!;
+    const actif = areas[0];
+    const ctx = {
+      areas, activeAreaId: actif.id, vertices: actif.vertices, obstacles: actif.obstacles, roofType: 'flat',
+      pitchDeg: 10, facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true,
+      layoutPlan: null, layoutOptimalCount: 0,
+      exclusionZones: deserializeExclusionZones(documentRouvert().exclusionZones),
+      environment: [{ id: 'env-4' }],
+    } as unknown as Ctx;
+    // Les identifiants NEUFS, tels que l'atelier les fabrique désormais.
+    expect(prochainId('area', ctx.areas)).toBe('area-3');
+    expect(prochainId('obs', tousLesObstacles(ctx))).toBe('obs-3');
+    expect(prochainId('zone', ctx.exclusionZones ?? [])).toBe('zone-2');
+    expect(prochainId('env', ctx.environment ?? [])).toBe('env-5');
+    // Le nouveau pan rejoint le document SANS écraser area-2 : trois contours distincts.
+    areas.push({ ...areas[1], id: prochainId('area', areas), label: 'Zone 3', vertices: carre(5), obstacles: [] });
+    const doc = serializeLayout(ctx);
+    expect(doc.zones.map((z) => z.id)).toEqual(['area-1', 'area-2', 'area-3']);
+    expect(doc.zones[1].vertices).toEqual(carre(1));
+    expect(doc.zones[2].vertices).toEqual(carre(5));
+  });
+
+  it('un compteur de session repartant de zéro (le défaut d’avant) recréerait area-2 : serializeLayout le REFUSE en le nommant', () => {
+    const h = hydrateFromDevis({ id: 1, geometrie: { roof_layout: documentRouvert() }, cibleVendue: false });
+    const areas = h.zones!;
+    areas.push({ ...areas[1], vertices: carre(5) }); // « area-2 » en double
+    const ctx = {
+      areas, activeAreaId: areas[0].id, vertices: areas[0].vertices, obstacles: [], roofType: 'flat', pitchDeg: 10,
+      facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true, layoutPlan: null, layoutOptimalCount: 0,
+    } as unknown as Ctx;
+    expect(() => serializeLayout(ctx)).toThrow(/Deux pans portent l'identifiant « area-2 »/);
+  });
+
+  it('les identifiants d’une autre forme sont ignorés (area-copie-1, sh-1)', () => {
+    expect(prochainId('area', [{ id: 'area-copie-4' }, { id: 'area-2' }])).toBe('area-3');
+    expect(prochainId('obs', [])).toBe('obs-1');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL71 — un contour géoréférencé devient un nouveau pan ; refusé s'il se croise.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL71 — nouveauPanDepuisContour', () => {
+  const carre: [number, number][] = [[-7.6, 33.5], [-7.5998, 33.5], [-7.5998, 33.5002], [-7.6, 33.5002]];
+
+  it('nouveauPanDepuisContour : carré → pan fermé ; papillon → refus nommé', () => {
+    const ok = nouveauPanDepuisContour(carre, [{ id: 'area-1' }, { id: 'area-2' }]);
+    expect(ok.ok).toBe(true);
+    if (!ok.ok) return;
+    expect(ok.pan.id).toBe('area-3');
+    expect(ok.pan.vertices).toEqual(carre);
+    expect(ok.pan.vertices.length).toBeGreaterThanOrEqual(3);
+
+    // Nœud papillon : deux sommets permutés, le contour se croise.
+    const papillon: [number, number][] = [carre[0], carre[2], carre[1], carre[3]];
+    const refus = nouveauPanDepuisContour(papillon, [{ id: 'area-1' }]);
+    expect(refus.ok).toBe(false);
+    if (refus.ok) return;
+    expect(refus.motif).toMatch(/se croise/);
+  });
+
+  it('hors amplitude GPS ou moins de trois sommets : refus nommé, aucun pan', () => {
+    const hors = nouveauPanDepuisContour([[-7.6, 33.5], [-7.5, 95], [-7.4, 33.6]], []);
+    expect(hors.ok).toBe(false);
+    if (!hors.ok) expect(hors.motif).toMatch(/amplitude GPS/);
+    expect(nouveauPanDepuisContour([[-7.6, 33.5], [-7.5, 33.5]], []).ok).toBe(false);
+    expect(nouveauPanDepuisContour('pas un contour', []).ok).toBe(false);
+  });
+});
+
+describe('ACAL291 — une zone posée depuis un gabarit réglementaire porte sa source', () => {
+  const SECTION = {
+    coupe_feu: {
+      libelle: 'Bande coupe-feu', nature: 'INTERDITE', genre: 'bande', largeur_m: 1, cote: 'nord',
+      retrait_m: 0.5, hauteur_m: 0.2, source: 'Note de service SDIS n°7',
+    },
+    sans_source: { libelle: 'Servitude', nature: 'RESERVEE', genre: 'polygone', sommets: [[0, 0], [1, 0], [1, 1]] },
+    cheminee: { libelle: 'Cheminée', nature: 'INTERDITE', forme: 'rectangle', longueur_m: 1, largeur_m: 1, source: 'catalogue' },
+    souche: { libelle: 'Souche ronde', nature: 'INTERDITE', genre: 'polygone', forme: 'cercle', rayon_m: 0.4, source: 'catalogue' },
+  };
+
+  it('zone posée depuis un gabarit porte sa source et la ressort au même octet après serialize → deserialize → serialize', () => {
+    const { gabarits } = lireGabaritsZone(SECTION);
+    const g = gabarits.find((x) => x.cle === 'coupe_feu')!;
+    const zone = exclusionZoneFromDrag('zone-1', g.nature, A, B, g);
+    expect(zone).toMatchObject({
+      label: 'Bande coupe-feu', nature: 'INTERDITE', setbackM: 0.5, heightM: 0.2, source: 'Note de service SDIS n°7',
+    });
+    const un = serializeExclusionZones([zone]);
+    expect(un[0].source).toBe('Note de service SDIS n°7');
+    const deux = serializeExclusionZones(deserializeExclusionZones(un));
+    expect(JSON.stringify(deux)).toBe(JSON.stringify(un));
+  });
+
+  it('une zone dessinée sans gabarit n’a pas de source', () => {
+    const zone = exclusionZoneFromDrag('zone-2', 'INTERDITE', A, B);
+    expect('source' in zone).toBe(false);
+    expect('source' in serializeExclusionZones([zone])[0]).toBe(false);
+  });
+
+  it('lireGabaritsZone ignore les gabarits d’obstacle et refuse un gabarit sans source', () => {
+    const { gabarits, refuses } = lireGabaritsZone(SECTION);
+    expect(gabarits.map((g) => g.cle)).toEqual(['coupe_feu']);
+    expect(refuses.map((r) => r.cle)).toEqual(['sans_source']);
+    expect(refuses[0].motif).toContain('source');
+    // Le jumeau obstacle reste inchangé : il lit toujours la cheminée.
+    expect(lireGabaritsObstacle(SECTION).gabarits.some((g) => g.cle === 'cheminee')).toBe(true);
+    // Section absente / bancale : l'état vide, jamais une zone inventée.
+    expect(lireGabaritsZone(undefined)).toEqual({ gabarits: [], refuses: [] });
   });
 });

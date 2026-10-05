@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import struct
 
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
@@ -204,7 +205,8 @@ def plan_importe(self, request, pk=None):
     alors POURQUOI : une taille supposée poserait le fond sur une étendue
     fausse.
     """
-    from apps.ventes import services as ventes_services
+    from ..services.photos import lire_octets_piece
+    from ..services.presentation import url_fichier_plan
 
     calepinage = self.get_object()  # borné société par get_queryset
 
@@ -222,12 +224,11 @@ def plan_importe(self, request, pk=None):
     if piece is None:
         return _absent('attachmentId', PIECE_INTROUVABLE)
 
-    try:
-        url = ventes_services.url_image_toiture(piece.file_key) or ''
-    except Exception:       # pragma: no cover - dépend du stockage
-        url = ''
+    # ACAL200 : un chemin relatif même origine, servi par Django — jamais
+    # une URL pré-signée vers l'hôte interne de MinIO.
+    url = url_fichier_plan(calepinage.pk)
 
-    contenu = ventes_services.lire_fichier_toiture(piece.file_key)
+    contenu = lire_octets_piece(piece.file_key)
     if not contenu:
         largeur, hauteur, motif = None, None, MOTIF_FICHIER_ABSENT
     else:
@@ -247,8 +248,37 @@ def plan_importe(self, request, pk=None):
     })
 
 
+@extend_schema(responses={(200, 'image/*'): OpenApiTypes.BINARY})
+@action(detail=True, methods=['get'], url_path='plan-importe/fichier',
+        url_name='plan-importe-fichier',
+        permission_classes=[PeutVoirCalepinage])
+def plan_importe_fichier(self, request, pk=None):
+    """ACAL200 — les OCTETS du plan de fond, par Django (même origine).
+
+    La pièce est celle que désigne ``underlay.attachmentId`` du document ET
+    qui est rattachée à CE calepinage ; sinon 404 (même réponse qu'un fichier
+    absent : pas d'oracle d'existence).
+    """
+    from ..services.photos import lire_octets_piece
+    from .photos import fichier_introuvable, reponse_fichier
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    document = calepinage.roof_layout
+    fond = document.get('underlay') if isinstance(document, dict) else None
+    attachment_id = fond.get('attachmentId') if (
+        isinstance(fond, dict) and fond.get('kind') == 'plan') else None
+    if isinstance(attachment_id, bool) or not isinstance(attachment_id, int):
+        return fichier_introuvable()
+    piece = _piece_du_calepinage(calepinage, attachment_id)
+    if piece is None:
+        return fichier_introuvable()
+    reponse = reponse_fichier(lire_octets_piece(piece.file_key), piece.mime)
+    return reponse if reponse is not None else fichier_introuvable()
+
+
 from .calepinages import CalepinageViewSet  # noqa: E402 — après les défs
 
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7 / bug de classe #105).
 CalepinageViewSet.plan_importe = plan_importe
+CalepinageViewSet.plan_importe_fichier = plan_importe_fichier

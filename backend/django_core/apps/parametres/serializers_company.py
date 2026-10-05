@@ -101,7 +101,7 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
         company = getattr(obj, 'company', None)
         return bool(getattr(company, 'benchmarking_opt_in', False))
 
-    def get_seuils_sources(self, obj):
+    def get_seuils_sources(self, obj) -> dict:
         from core.reglementaire import regime_8221 as r8221
         return {
             'declaration': {

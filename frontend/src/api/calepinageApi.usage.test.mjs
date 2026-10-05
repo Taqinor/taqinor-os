@@ -152,7 +152,7 @@ export const EXCEPTIONS_SANS_APPELANT = {
   // appelle désormais toutes les deux — exceptions périmées.
   'calepinages.composerPackTechnique': "23/09/2026 — la porte HTTP existe (CALX24) mais aucun écran ne compose encore le dossier technique depuis l'atelier",
   'calepinages.variantes': "23/09/2026 — la liste des variantes se lit via le comparatif comparer() ; l'endpoint brut n'a plus de consommateur direct",
-  'calepinages.releve': "23/09/2026 — le relevé se lit désormais via l'historique servi par enregistrerReleve()/PanneauReleve.jsx ; la lecture seule releve() n'a plus d'appelant direct",
+  'calepinages.joindrePiece': "05/10/2026 — la porte joindre-piece/ existe (ACAL238) ; l'écran Dossiers réglementaires qui l'appelle arrive avec ACAL242 (bloquée en amont) — retirer cette entrée à ACAL242",
 }
 
 /* ============================================================================

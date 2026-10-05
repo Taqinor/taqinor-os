@@ -23,7 +23,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.crm.models import Client, Lead
 from apps.installations.models import Intervention
 from apps.installations.services import create_installation_from_devis
-from apps.notifications.models import EventType, Notification
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.ventes.models import Devis
 
 User = get_user_model()

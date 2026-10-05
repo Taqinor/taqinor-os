@@ -17,7 +17,8 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.roles.models import CANONICAL_SYSTEM_ROLES, Role
+from apps.roles.models import Role
+from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
 from core import rbac_matrix
 
 User = get_user_model()

@@ -3804,3 +3804,19 @@ from .selectors_fournisseur import (  # noqa: E402,F401
     otif_fournisseur,
     point_de_commande_avec_delai_reel,
 )
+
+
+# ACAL56 — sélecteur MINCE par type de fiche (lecture cross-app du calepinage :
+# candidats module / onduleur / optimiseur du calcul électrique). Même règle que
+# ``produits_modules_qs`` : la société de l'appelant, produits archivés exclus,
+# ordre stable. Aucun prix n'est lu ici.
+def produits_par_type_fiche_qs(company, type_fiche):
+    """Les produits ACTIFS de ``company`` dont la fiche est ``type_fiche``."""
+    from .models import Produit
+
+    return (Produit.objects
+            .filter(company=company,
+                    fiche_technique__type_fiche=type_fiche,
+                    is_archived=False)
+            .select_related('fiche_technique')
+            .order_by('nom', 'id'))

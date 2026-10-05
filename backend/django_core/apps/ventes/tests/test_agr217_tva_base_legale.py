@@ -174,7 +174,7 @@ class CopieTests(_Base):
         self.assertIn('tva_base_legale', CHAMPS_CLONES)
 
     def test_dupliquer_et_cloner_conservent_la_base(self):
-        from apps.ventes.domain.creation import cloner_devis
+        from apps.ventes.domain.creation_clone import cloner_devis
         from apps.ventes.domain.lignes import cloner_lignes, creer_ligne
 
         creer_ligne(self.devis, produit=self.produit, designation='Pompe',

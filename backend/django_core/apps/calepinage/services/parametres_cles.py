@@ -159,3 +159,81 @@ def registre(section):
     """
     return {cle: (libelle, unite, reference)
             for cle, libelle, unite, reference in REGISTRES.get(section, ())}
+
+
+# ── ACAL132 — LE TYPE DE CHAQUE CLÉ (surface APPEND-ONLY, ajout en fin) ─────
+#
+# Le registre ci-dessus dit quelles clés EXISTENT ; cette table dit de QUEL
+# TYPE est la valeur de chacune, pour que ``services/parametres.py`` refuse à
+# l'ÉCRITURE une valeur illisible en nommant la clé (une virgule décimale
+# « 2,5 » est normalisée en 2.5) au lieu de laisser l'étape qui la lit
+# basculer en silence sur un repli (``etapes/iam.py`` : b0 illisible ⇒
+# Fresnel). Toujours AUCUNE valeur ni défaut : un type et, quand la grandeur
+# en a par définition, ses bornes (un pourcentage est dans [0, 100], un cos φ
+# dans [0, 1]) — jamais un seuil métier inventé.
+#
+# Les types, publiés tels quels par ``selectors.registre_des_reglages`` :
+#   * ``nombre``            — un réel fini (« 2,5 » admis) ;
+#   * ``pourcentage``       — un réel fini dans [0, 100] ;
+#   * ``entier``            — un entier (≥ ``minimum`` quand il est déclaré) ;
+#   * ``enum``              — un mot parmi ``valeurs`` (casse et espaces tolérés) ;
+#   * ``table_mensuelle``   — un nombre (les douze mois), douze valeurs, ou un
+#     objet keyé 1…12 ; chaque valeur est un nombre fini (bornes comprises) ;
+#   * ``intervalle_annees`` — deux années « 2015-2024 » ou [2015, 2024],
+#     rangées [début, fin] ;
+#   * ``booleen``           — oui / non (vrai, faux, 1, 0, « aucune », « non »…),
+#     rangé en booléen ;
+#   * ``table``             — une table structurée (objet ou liste non vide),
+#     validée ligne par ligne par l'étape qui la lit.
+TYPES_CLES = {
+    SECTION_SIMULATION: {
+        'fenetre_annees': {'type': 'intervalle_annees'},  # ACAL132
+        'mode_meteo': {'type': 'enum', 'valeurs': ('tmy', 'pluriannuel')},  # ACAL132
+        'modele_iam': {'type': 'enum', 'valeurs': ('fresnel', 'ashrae', 'martin_ruiz')},  # ACAL132
+        'b0_iam': {'type': 'nombre'},  # ACAL132
+        'sigma_modele_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132
+        'sigma_biais_meteo_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132
+        'sigma_meteo_saisi_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132
+        'tolerance_validation_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132
+        'resolution_minutes': {'type': 'entier', 'minimum': 1},  # ACAL132
+        'albedo_mensuel': {'type': 'table_mensuelle', 'minimum': 0, 'maximum': 1},  # ACAL132
+        'annees_exploitation': {'type': 'entier', 'minimum': 1},  # ACAL132
+        'regle_qualite_module': {'type': 'enum', 'valeurs': ('quart_pvsyst', 'borne_basse', 'moyenne', 'aucune')},  # ACAL132
+        'lid_par_techno': {'type': 'table'},  # ACAL132
+        'mismatch_fabricant_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132
+        'modele_degradation': {'type': 'enum', 'valeurs': ('lineaire', 'exponentiel')},  # ACAL132
+        'thermique_par_pose': {'type': 'table'},  # ACAL132
+        'attenuation_horizon': {'type': 'booleen'},  # ACAL132
+        'salissure_mensuelle_pct': {'type': 'table_mensuelle', 'minimum': 0, 'maximum': 100},  # ACAL132
+        'indisponibilite_fenetres': {'type': 'table'},  # ACAL132
+        'auxiliaires_w_constants': {'type': 'nombre', 'minimum': 0},  # ACAL132
+        'auxiliaires_w_par_kw': {'type': 'nombre', 'minimum': 0},  # ACAL132
+        'auxiliaires_w_nuit': {'type': 'nombre', 'minimum': 0},  # ACAL132
+        'bifacial_hauteur_pose_m': {'type': 'nombre', 'minimum': 0},  # ACAL132
+        'bifacial_taux_occupation': {'type': 'nombre', 'minimum': 0, 'maximum': 1},  # ACAL132
+        'bifacial_pas_rangee_m': {'type': 'nombre', 'minimum': 0},  # ACAL132
+        'bifacial_mismatch_arriere_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132
+        'seuil_derivation_acces': {'type': 'nombre', 'minimum': 0},  # ACAL132
+        'plafond_modules_simules': {'type': 'entier', 'minimum': 1},  # ACAL132
+    },
+    SECTION_ELECTRIQUE_SOCIETE: {
+        'tolerance_polystring_acceptable_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132
+        'tolerance_polystring_bloquante_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132
+        'seuil_desequilibre_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132
+        'borne_usuelle_dc_ac': {'type': 'nombre', 'minimum': 0},  # ACAL132
+        'seuil_alerte_dc_ac': {'type': 'nombre', 'minimum': 0},  # ACAL132
+        'correspondances_nomenclature': {'type': 'table'},  # ACAL132
+        'regle_bom_structure': {'type': 'table'},  # ACAL132
+        'cos_phi_par_defaut': {'type': 'nombre', 'minimum': 0, 'maximum': 1},  # ACAL132
+        'seuil_bas_dc_ac': {'type': 'nombre', 'minimum': 0},  # ACAL132
+    },
+}
+
+
+def type_de_cle(section, cle):
+    """ACAL132 — ``{'type', 'minimum'?, 'maximum'?, 'valeurs'?}`` de ``cle``.
+
+    Lecture PURE. Une clé du registre sans type déclaré est une faute de
+    l'ajout (la garde ``tests/test_acal_reglages_types.py`` l'interdit).
+    """
+    return dict(TYPES_CLES.get(section, {}).get(cle) or {})

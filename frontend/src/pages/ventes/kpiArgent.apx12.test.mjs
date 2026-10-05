@@ -6,18 +6,21 @@
 // tabulaires. Les trois passent par `ui/Stat.jsx`.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { fichiersPagesVentes } from './fichiersPagesVentes.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const read = (f) => readFileSync(path.join(__dirname, f), 'utf8')
 
-const SURFACES = ['DevisList.jsx', 'FactureList.jsx', 'DevisGenerator.jsx']
+// SPL206 — le bandeau de DevisList vit dans devisList/DevisListChrome.jsx.
+const SURFACES = ['devisList/DevisListChrome.jsx', 'FactureList.jsx', 'DevisGenerator.jsx']
 
 test('plus aucun glyphe de tendance en TEXTE dans pages/ventes/ (VX129)', () => {
   const offenders = []
-  for (const f of readdirSync(__dirname)) {
+  // SPL206/SPL211 — devisList/ et factureList/ (fichiers extraits) sont balayés aussi.
+  for (const f of fichiersPagesVentes()) {
     if (!f.endsWith('.jsx')) continue
     if (/[▲▼]/.test(read(f))) offenders.push(f)
   }
@@ -42,7 +45,8 @@ test('le total héros du rail du générateur est bien un Stat (donc .num tabula
 })
 
 test('le bandeau 5 statuts de DevisList n’est plus fait de div nus', () => {
-  const src = read('DevisList.jsx')
+  // SPL206 — le bandeau vit dans devisList/DevisListChrome.jsx (move only).
+  const src = read('devisList/DevisListChrome.jsx')
   assert.doesNotMatch(src, /<div key=\{key\} className="rounded-lg border border-border bg-card p-3">/)
   assert.match(src, /<Stat[\s\S]{0,200}?key=\{key\}/)
 })

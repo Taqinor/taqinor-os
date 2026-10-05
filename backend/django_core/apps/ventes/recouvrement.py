@@ -19,8 +19,9 @@ from .models import (
     Facture, FollowupLevel, Paiement, ParametrageRelanceClient,
     PromessePaiement,
 )
-from .serializers import (
-    FollowupLevelSerializer, ParametrageRelanceClientSerializer,
+from .serializers_facturation import (
+    FollowupLevelSerializer,
+    ParametrageRelanceClientSerializer,
     PromessePaiementSerializer,
 )
 
@@ -136,6 +137,110 @@ def facture_relancable(facture):
     return True, ''
 
 
+# ── Niveaux de relance par défaut — LA source unique (fondateur, 05/10/2026) ──
+# Les 3 niveaux canoniques de la migration ``ventes/0010_seed_followup_levels``
+# (ordre 1-3, J+7 / J+15 / J+30, canal email par défaut). ``seed-defaults``
+# semait jusqu'ici un SECOND jeu divergent (Rappel / Relance / Mise en demeure,
+# ordre 0-2) : il lit désormais celui-ci. Une migration ne doit pas importer le
+# code de l'app (état figé) : 0010 garde sa copie, identique à celle-ci.
+NIVEAUX_RELANCE_DEFAUT = (
+    (1, 'Rappel courtois', 7,
+     "Bonjour, sauf erreur de notre part, la facture ci-dessus reste en "
+     "attente de règlement. Merci de votre retour."),
+    (2, 'Relance', 15,
+     "Malgré notre précédent rappel, votre facture demeure impayée. "
+     "Merci de procéder au règlement dans les meilleurs délais."),
+    (3, 'Relance ferme', 30,
+     "Votre facture est en retard de paiement important. À défaut de "
+     "règlement, nous serons contraints d'envisager des mesures de "
+     "recouvrement."),
+)
+
+
+def ensure_default_followup_levels(company):
+    """Garantit qu'une société a ses niveaux de relance : crée les 3 niveaux
+    canoniques (``NIVEAUX_RELANCE_DEFAUT``) SEULEMENT si elle n'en a AUCUN.
+
+    Idempotent ; ne touche JAMAIS des niveaux existants (même un seul niveau
+    personnalisé suffit à ne rien créer). ``company`` None → no-op (jamais de
+    niveaux orphelins). Renvoie le nombre de niveaux créés (0 ou 3)."""
+    if company is None:
+        return 0
+    from django.db import transaction
+    with transaction.atomic():
+        if FollowupLevel.objects.filter(company=company).exists():
+            return 0
+        for ordre, nom, delai, message in NIVEAUX_RELANCE_DEFAUT:
+            FollowupLevel.objects.create(
+                company=company, ordre=ordre, nom=nom,
+                delai_jours=delai, message=message)
+    return len(NIVEAUX_RELANCE_DEFAUT)
+
+
+def _niveau_dict(niveau):
+    return {'id': niveau.id, 'ordre': niveau.ordre, 'nom': niveau.nom,
+            'delai_jours': niveau.delai_jours}
+
+
+def apercu_relance(facture):
+    """Fenêtre « Relancer » : QUEL niveau part maintenant + l'aperçu EXACT de
+    l'email (contrat ``contract_samples/facture_relance_apercu.json``).
+
+    * niveaux = ceux de la société (créés par défaut s'il n'y en a aucun) ;
+    * niveau_suivant = le niveau qui suit le plus haut déjà consigné dans le
+      journal (``RelanceLog.niveau`` = ORDRE) — le premier s'il n'y en a
+      aucun ; tous partis → le dernier, ``deja_tous_envoyes`` = true ;
+    * sujet/message = rendus par ``email_service.composer_relance_email``, la
+      MÊME fonction que l'envoi (``send_relance_email``) : aperçu == envoi ;
+    * jours_retard = jours depuis l'échéance (0 sans échéance ou non échue).
+    """
+    from .email_service import composer_relance_email
+    from .models import RelanceLog
+
+    ensure_default_followup_levels(facture.company)
+    niveaux = list(FollowupLevel.objects.filter(
+        company=facture.company).order_by('ordre', 'delai_jours', 'id'))
+    ordres_envoyes = [o for o in RelanceLog.objects.filter(
+        facture=facture).values_list('niveau', flat=True) if o is not None]
+    plus_haut = max(ordres_envoyes) if ordres_envoyes else None
+    suivant = None
+    deja_tous = False
+    if niveaux:
+        if plus_haut is None:
+            suivant = niveaux[0]
+        else:
+            suivant = next((n for n in niveaux if n.ordre > plus_haut), None)
+            if suivant is None:
+                suivant = niveaux[-1]
+                deja_tous = True
+    # Même valeur que la variable `{jours_retard}` du message (propriété
+    # canonique : 0 sans échéance, non échue, ou soldée).
+    jours = int(getattr(facture, 'jours_retard', 0) or 0)
+    client = getattr(facture, 'client', None)
+    email = ((getattr(client, 'email', '') or '').strip()
+             if client is not None else '')
+    sujet, message = composer_relance_email(
+        facture,
+        niveau_nom=suivant.nom if suivant is not None else '',
+        message=suivant.message if suivant is not None else '')
+    return {
+        'facture_id': facture.id,
+        'facture_reference': facture.reference,
+        'montant_du': _s(facture.montant_du),
+        'jours_retard': jours,
+        'niveaux': [_niveau_dict(n) for n in niveaux],
+        'niveau_suivant': (_niveau_dict(suivant)
+                           if suivant is not None else None),
+        'deja_tous_envoyes': deja_tous,
+        'relances_envoyees': RelanceLog.objects.filter(
+            facture=facture).count(),
+        'email_client': email,
+        'peut_envoyer_email': bool(email),
+        'sujet': sujet,
+        'message': message,
+    }
+
+
 def _scope(qs, user):
     if user.company_id:
         return qs.filter(company=user.company)
@@ -190,6 +295,11 @@ class FollowupLevelViewSet(viewsets.ModelViewSet):
         return [IsAdminRole()]
 
     def get_queryset(self):
+        # Fondateur 05/10/2026 — les 3 niveaux par défaut existent TOUJOURS :
+        # une société qui n'en a aucun les reçoit à la première LISTE.
+        if getattr(self, 'action', None) == 'list' \
+                and self.request.user.company_id:
+            ensure_default_followup_levels(self.request.user.company)
         return _scope(FollowupLevel.objects.all(), self.request.user)
 
     def perform_create(self, serializer):
@@ -200,26 +310,18 @@ class FollowupLevelViewSet(viewsets.ModelViewSet):
     def seed_defaults(self, request):
         """Crée les niveaux de relance par défaut (J+7 / J+15 / J+30) quand la
         société n'en a aucun (L768). Idempotent : ne fait rien si des niveaux
-        existent déjà. Réservé à l'admin (mêmes permissions que l'écriture)."""
+        existent déjà. Réservé à l'admin (mêmes permissions que l'écriture).
+
+        05/10/2026 — sème LE jeu canonique ``NIVEAUX_RELANCE_DEFAUT`` (Rappel
+        courtois / Relance / Relance ferme, ordre 1-3, celui de la migration
+        0010) via ``ensure_default_followup_levels`` ; l'ancien second jeu
+        (Rappel / Relance / Mise en demeure, ordre 0-2) est retiré."""
         company = request.user.company if request.user.company_id else None
         if FollowupLevel.objects.filter(company=company).exists():
             return Response(
                 {'detail': 'Des niveaux de relance existent déjà.'},
                 status=status.HTTP_409_CONFLICT)
-        defaults = [
-            (0, 'Rappel', 7,
-             'Rappel amiable : la facture {reference} est échue. '
-             'Merci de procéder au règlement.'),
-            (1, 'Relance', 15,
-             'Relance : la facture {reference} reste impayée à ce jour.'),
-            (2, 'Mise en demeure', 30,
-             'Mise en demeure : la facture {reference} est en retard de '
-             'paiement. Un règlement immédiat est attendu.'),
-        ]
-        for ordre, nom, delai, message in defaults:
-            FollowupLevel.objects.create(
-                company=company, ordre=ordre, nom=nom,
-                delai_jours=delai, message=message)
+        ensure_default_followup_levels(company)
         levels = FollowupLevel.objects.filter(company=company).order_by(
             'delai_jours')
         return Response(

@@ -6,7 +6,7 @@ Ce qui est prouvé ici :
   jonctions entre voisins, extrémités (2 par segment continu), longueur des
   rangées (étendue + pas RELEVÉ) — un trou coupe la rangée, un pan tourné
   groupe ses rangées selon son azimut (plein sud : exactement le groupement
-  de ``export_tableur.rangees_du_pan``), un pan sans voisin ne publie pas de
+  de ``rangees.rangees_du_pan``), un pan sans voisin ne publie pas de
   longueur et le NOMME ;
 * le cœur PUR ``_lignes_de_fixation`` rend EXACTEMENT les lignes de
   l'exemple committé (contrat CALX335) ; une règle non saisie ou un
@@ -36,16 +36,14 @@ from types import SimpleNamespace
 from django.test import SimpleTestCase
 
 from apps.calepinage.services import fixation
-from apps.calepinage.services.export_tableur import rangees_du_pan
-from apps.calepinage.tests._m0_en_attente import sans
+from apps.calepinage.services.rangees import rangees_du_pan
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 CONTRAT = json.loads(
     (RACINE_APP / 'contract_samples' / 'calepinage_fixation_bom.json')
     .read_text(encoding='utf-8'))
-#: ACAL1 (M0) a posé ``systeme_source`` avant son producteur : ACAL81
-#: (système persisté sur le calepinage) la sert et retire cette entrée.
-EXEMPLE_VIDE_SERVI = sans(CONTRAT['exemple_vide'], {'systeme_source': 'ACAL81'})
+#: ACAL81 sert ``systeme_source`` (posé par le contrat M0 ACAL1).
+EXEMPLE_VIDE_SERVI = CONTRAT['exemple_vide']
 PAS = 1.2
 
 
@@ -311,7 +309,10 @@ class BomFixationEnBase(BaseApiCalepinage):
         self.assertEqual(reponse.data['systeme']['id'], systeme.pk)
         self.assertEqual([ligne['quantite'] for ligne in reponse.data['lignes']],
                          [24.0, 16])
-        self.assertEqual(sorted(reponse.data), ['lignes', 'refus', 'systeme'])
+        # ACAL81 — la réponse porte aussi ``systeme_source`` (contrat).
+        self.assertEqual(sorted(reponse.data),
+                         ['lignes', 'refus', 'systeme', 'systeme_source'])
+        self.assertEqual(reponse.data['systeme_source'], 'parametre')
 
     def test_plusieurs_systemes_sans_choix_refus_nomme(self):
         self._systeme(code='a')

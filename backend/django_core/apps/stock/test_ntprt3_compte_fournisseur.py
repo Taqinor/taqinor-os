@@ -27,7 +27,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.achats.models import (
     BonCommandeFournisseur, LigneBonCommandeFournisseur,
 )
-from apps.roles.models import ROLE_PORTAIL_FOURNISSEUR
+from apps.roles.permissions_registre import ROLE_PORTAIL_FOURNISSEUR
 from apps.stock.models import CompteFournisseurPortail, Fournisseur, Produit
 from apps.stock.selectors import (
     bcf_portail_fournisseur, compte_fournisseur_portail_actif,

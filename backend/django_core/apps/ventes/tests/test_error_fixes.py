@@ -17,7 +17,11 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Client, Lead
-from apps.roles.models import Role, ALL_PERMISSIONS, RESPONSABLE_PERMISSIONS
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    ALL_PERMISSIONS,
+    RESPONSABLE_PERMISSIONS,
+)
 from apps.stock.models import Produit
 from apps.ventes.models import (
     Avoir, BonCommande, Devis, LigneDevis, Facture, LigneFacture,

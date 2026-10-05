@@ -9,9 +9,14 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { DOC_STATUT_TRACK, factureTrack, bonCommandeTrack } from './documentChain.js'
+import { lireSourcesDevisList } from '../../pages/ventes/devisList/lireSources.mjs'
+import { lireSourcesFactureList } from '../../pages/ventes/factureList/lireSources.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const page = (f) => readFileSync(path.join(__dirname, '..', '..', 'pages', 'ventes', f), 'utf8')
+// SPL211 — la liste des factures vit en FactureList.jsx + factureList/*.
+const page = (f) => (f === 'FactureList.jsx'
+  ? lireSourcesFactureList()
+  : readFileSync(path.join(__dirname, '..', '..', 'pages', 'ventes', f), 'utf8'))
 
 test('la piste est la chaîne DOCUMENT, jamais le funnel STAGES.py (règles #2/#4)', () => {
   assert.deepEqual(
@@ -63,13 +68,14 @@ test('l’amont est cliquable et pointe sur le paramètre que DevisList lit vrai
     assert.doesNotMatch(src, /\/ventes\/devis\?ref=/, `${file} : lien mort ?ref= encore présent`)
   }
   // DevisList lit bien ce paramètre.
-  assert.match(page('DevisList.jsx'), /searchParams\.get\('devis'\)/)
+  assert.match(lireSourcesDevisList(), /searchParams\.get\('devis'\)/)
 })
 
 test('la définition de la chaîne n’existe qu’UNE fois', () => {
   // DevisList consommait sa propre copie du tableau : il importe désormais
   // la source partagée.
-  const src = page('DevisList.jsx')
-  assert.match(src, /import \{ DOC_STATUT_TRACK \} from '\.\.\/\.\.\/features\/ventes\/documentChain'/)
+  // SPL203 — la ligne (DevisRow) vit dans devisList/ : un niveau de plus.
+  const src = lireSourcesDevisList()
+  assert.match(src, /import \{ DOC_STATUT_TRACK \} from '(\.\.\/)+features\/ventes\/documentChain(\.js)?'/)
   assert.doesNotMatch(src, /const DOC_STATUT_TRACK = \[/)
 })

@@ -426,7 +426,10 @@ class UserSerializer(serializers.ModelSerializer):
         # Administrateur, tout compte existant) → aucune vérification, matrice
         # d'accès strictement inchangée. ``PermissionDenied`` (403, et non 400)
         # : c'est un refus d'autorisation, pas une donnée invalide.
-        from apps.roles.models import perimetre_de, permissions_hors_perimetre
+        from apps.roles.permissions_registre import (
+            perimetre_de,
+            permissions_hors_perimetre,
+        )
         hors = permissions_hors_perimetre(
             perimetre_de(actor), value.permissions or [])
         if hors:

@@ -429,6 +429,27 @@ const SAISIE_ETEINTE: SaisieNumerotation = {
 
 let saisie: SaisieNumerotation = { ...SAISIE_ETEINTE };
 
+/**
+ * ACAL307 — la convention appliquée D'OFFICE à un pan pavé dans la session (D-ACAL,
+ * « numérotation stable d'office ») : premier numéro 1, sens « ligne ». La saisie de
+ * l'utilisateur et la convention déjà inscrite dans le document l'emportent toujours.
+ */
+export const CONVENTION_PAR_DEFAUT: Readonly<ConventionNumerotation> = { depart: 1, sens: 'ligne' };
+
+/** ACAL307 — les pans où la numérotation d'office a été DÉSACTIVÉE (choix par pan). */
+const pansSansNumerotation = new Set<string>();
+
+/** ACAL307 — active (défaut) ou désactive la numérotation d'office d'UN pan. */
+export function definirNumerotationPan(panId: string, active: boolean): void {
+  if (active) pansSansNumerotation.delete(panId);
+  else pansSansNumerotation.add(panId);
+}
+
+/** ACAL307 — la numérotation d'office est-elle active sur ce pan ? */
+export function numerotationPanActive(panId: string): boolean {
+  return !pansSansNumerotation.has(panId);
+}
+
 export function saisieCourante(): SaisieNumerotation {
   return { ...saisie };
 }
@@ -441,6 +462,7 @@ export function definirSaisie(partielle: Partial<SaisieNumerotation>): SaisieNum
 /** Remet la bascule à l'état de départ (éteinte) — utilisé par les tests. */
 export function reinitialiserNumerotation(): void {
   saisie = { ...SAISIE_ETEINTE };
+  pansSansNumerotation.clear(); // ACAL307
   registreAtelier.oublier();
 }
 
@@ -482,9 +504,46 @@ export function numeroterDocument(
   document: unknown,
   etat: SaisieNumerotation = saisie,
   registre: RegistreNumerotation = registreAtelier,
+  options: { pansPaves?: ReadonlySet<string> } = {},
 ): RefusNumerotation | null {
   registre.absorberDocument(document);
-  if (!etat.actif) return null;
+  if (!etat.actif) {
+    // ACAL31 — bascule éteinte : LECTURE SEULE. Les numéros déjà absorbés (document rouvert)
+    // sont réécrits sur les mêmes emplacements — aucune attribution neuve, aucun numéro
+    // perdu parce que le pan actif a été re-pavé.
+    reecrireNumerosAbsorbes(document, registre);
+    // ACAL307 — NUMÉROTATION D'OFFICE : un pan PAVÉ dans la session (geste de pavage ou de
+    // repavage, désigné par l'appelant) reçoit ses numéros sans geste de numérotation, avec
+    // la convention par défaut ; un module gardé garde son `n`. Un document rouvert et
+    // enregistré sans geste n'est jamais numéroté ici (aucun pan pavé).
+    const pansPaves = options.pansPaves;
+    if (pansPaves && pansPaves.size) {
+      const zones = (document as DocumentNumerotable | null)?.zones;
+      if (Array.isArray(zones)) {
+        for (const zone of zones) {
+          const panId = zone?.id;
+          const geometrie = zone?.geometry;
+          if (!panId || !pansPaves.has(panId) || !numerotationPanActive(panId)) continue;
+          if (!geometrie || !Array.isArray(geometrie.panels) || !geometrie.panels.length) continue;
+          const saisieDefaut: SaisieNumerotation = {
+            ...etat,
+            depart: etat.depart ?? CONVENTION_PAR_DEFAUT.depart ?? 1,
+            sens: etat.sens ?? CONVENTION_PAR_DEFAUT.sens ?? 'ligne',
+          };
+          const resultat = registre.appliquer(
+            panId,
+            geometrie.panels,
+            conventionDuPan(registre.convention(panId), saisieDefaut),
+            geometrie.azimuthDeg ?? 0,
+          );
+          if (resultat.refus) continue;
+          geometrie.panels = resultat.modules;
+          if (resultat.numerotation) geometrie.numerotation = resultat.numerotation;
+        }
+      }
+    }
+    return null;
+  }
   const zones = (document as DocumentNumerotable | null)?.zones;
   if (!Array.isArray(zones)) return null;
   let refus: RefusNumerotation | null = null;
@@ -506,6 +565,32 @@ export function numeroterDocument(
     if (resultat.numerotation) geometrie.numerotation = resultat.numerotation;
   }
   return refus;
+}
+
+/** ACAL31 — réécrit `n`/`rangee`/`numerotation` absorbés sur les emplacements identiques. */
+function reecrireNumerosAbsorbes(document: unknown, registre: RegistreNumerotation): void {
+  const zones = (document as DocumentNumerotable | null)?.zones;
+  if (!Array.isArray(zones)) return;
+  for (const zone of zones) {
+    const panId = zone?.id;
+    const geometrie = zone?.geometry;
+    if (!panId || !geometrie || !Array.isArray(geometrie.panels)) continue;
+    const absorbes = registre.modules(panId);
+    if (absorbes.length) {
+      const parPlace = new Map(absorbes.map((m) => [cleEmplacement(m.cx, m.cy), m]));
+      geometrie.panels = geometrie.panels.map((p) => {
+        const m = parPlace.get(cleEmplacement(p.cx, p.cy));
+        if (!m) return p;
+        return {
+          ...p,
+          ...(typeof m.n === 'number' && p.n === undefined ? { n: m.n } : {}),
+          ...(typeof m.rangee === 'string' && p.rangee === undefined ? { rangee: m.rangee } : {}),
+        };
+      });
+    }
+    const convention = registre.convention(panId);
+    if (convention && !geometrie.numerotation) geometrie.numerotation = { ...convention };
+  }
 }
 
 // ════════════════════════════ Étiquettes 3D et plan (décision PURE) ════════════════════════════

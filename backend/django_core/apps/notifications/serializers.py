@@ -1,10 +1,17 @@
 from rest_framework import serializers
 
 from .models import (
-    Annonce, AnnonceLecture, EventType, Holiday, MessageAccueil, Notification,
-    NotificationPreference, NotificationRoutingRule, WhatsAppTemplate,
+    Annonce,
+    AnnonceLecture,
+    Holiday,
+    MessageAccueil,
+    Notification,
+    NotificationPreference,
+    NotificationRoutingRule,
+    WhatsAppTemplate,
     WorkingHoursConfig,
 )
+from .types_evenements import EventType
 
 
 class NotificationSerializer(serializers.ModelSerializer):

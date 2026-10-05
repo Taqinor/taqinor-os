@@ -56,7 +56,7 @@ class Command(BaseCommand):
 
     def _notify_directeur(self, company, dormants):
         try:
-            from apps.notifications.models import EventType
+            from apps.notifications.types_evenements import EventType
             from apps.notifications.services import notify, resolve_recipients
             noms = ', '.join(u.username for u in dormants[:20])
             for recipient in resolve_recipients(

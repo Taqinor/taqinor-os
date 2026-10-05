@@ -342,9 +342,11 @@ export default function AtelierPanneaux({
       {/* CAL70 — les allées de maintenance et le plateau gratuit du moteur.
           Même appel de `entreeMoteur()` que ci-dessus, même raison. */}
       <PanneauAllees
-        entree={builderApi?.entreeMoteur?.() ?? null} lectureSeule={enLectureSeule}
-        calepinageId={detail ? calepinageId : null}
-        contraintesSite={detail?.contraintes_site ?? null}
+        entree={builderApi?.entreeMoteur?.() ?? null}
+        lectureSeule={enLectureSeule}
+        calepinageId={calepinageId}
+        builderApi={builderApi}
+        contraintesSite={detail ? (detail.contraintes_site ?? null) : undefined}
         onContraintesEnregistrees={relire}
       />
 

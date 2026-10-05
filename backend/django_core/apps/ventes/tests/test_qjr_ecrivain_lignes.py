@@ -203,7 +203,7 @@ class LesCopiesPortentLeJeuDeChampsComplet(_BaseSites):
     def test_dupliquer_devis_clone_vraiment_a_l_identique(self):
         """NTUX13 dit « lignes clonées à l'identique » : ça n'était pas vrai —
         variante, optionnelle et les marqueurs D12 tombaient."""
-        from apps.ventes.domain.creation import dupliquer_devis
+        from apps.ventes.domain.creation_clone import dupliquer_devis
 
         copie = dupliquer_devis(self.devis, user=self.user)
         clonee = copie.lignes.get()
@@ -220,7 +220,7 @@ class LesCopiesPortentLeJeuDeChampsComplet(_BaseSites):
         """D12 — un renouvellement re-tarife au catalogue courant, SAUF une
         ligne dont le prix a été tapé : elle est négociée, pas périmée."""
         from apps.ventes.models import Devis
-        from apps.ventes.domain.cycle_vie import renouveler_devis
+        from apps.ventes.domain.revision import renouveler_devis
 
         self.devis.statut = Devis.Statut.ACCEPTE
         self.devis.save(update_fields=['statut'])
@@ -234,7 +234,7 @@ class LesCopiesPortentLeJeuDeChampsComplet(_BaseSites):
     def test_renouveler_devis_retarife_une_ligne_NON_manuelle(self):
         """Le témoin négatif : sans marqueur, NTCPQ13 re-tarife comme avant."""
         from apps.ventes.models import Devis
-        from apps.ventes.domain.cycle_vie import renouveler_devis
+        from apps.ventes.domain.revision import renouveler_devis
 
         self.ligne.prix_manuel = False
         self.ligne.save(update_fields=['prix_manuel'])

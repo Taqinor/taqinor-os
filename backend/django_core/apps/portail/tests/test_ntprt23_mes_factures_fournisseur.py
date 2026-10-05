@@ -23,12 +23,12 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.achats.models import FactureFournisseur
-from apps.roles.models import (
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
     PORTAIL_CLIENT_PERMISSIONS,
     PORTAIL_FOURNISSEUR_PERMISSIONS,
     ROLE_PORTAIL_CLIENT,
     ROLE_PORTAIL_FOURNISSEUR,
-    Role,
 )
 from apps.stock.models import Fournisseur
 from authentication.models import Company, CustomUser
