@@ -1332,6 +1332,70 @@ def regle_fda_depuis_reglages(reglages):
     return dict(regle)
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# CIQ211 — SENSIBILITÉS C&I ET MENTION « CRÉDIT-BAIL », SAISIES (D-CIQ-15)
+# ═════════════════════════════════════════════════════════════════════════════
+#: Paramètres qu'un scénario de sensibilité peut faire varier.
+SENSIBILITE_CI_CLES = ('indexation_tarif', 'degradation', 'tarif_kwh',
+                       'production')
+#: Clés admises d'un scénario saisi.
+SENSIBILITE_CI_CHAMPS = ('cle', 'variation_pct', 'source')
+#: Au plus 4 scénarios, comme ``apps.ventes.economie.SCENARIOS_MAX``.
+SENSIBILITES_CI_MAX = 4
+
+
+def erreurs_sensibilites_ci(scenarios):
+    """Refus de ``sensibilites_ci``, ``{champ: message}`` (vide = valide).
+
+    Un scénario sans source est refusé en NOMMANT ``sensibilites_ci[i].source``
+    (``i`` à partir de 0) ; aucune sensibilité n'est jamais supposée.
+    """
+    champ = 'sensibilites_ci'
+    if _vide(scenarios):
+        return {}
+    if not isinstance(scenarios, list):
+        return {champ: f"{champ} : une liste [{{cle, variation_pct, "
+                       "source}] est attendue."}
+    if len(scenarios) > SENSIBILITES_CI_MAX:
+        return {champ: f"{champ} : au plus {SENSIBILITES_CI_MAX} scénarios."}
+    for i, ligne in enumerate(scenarios):
+        if not isinstance(ligne, dict):
+            return {champ: f"{champ}[{i}] : un objet {{cle, variation_pct, "
+                           "source}} est attendu."}
+        inconnues = sorted(set(ligne) - set(SENSIBILITE_CI_CHAMPS))
+        if inconnues:
+            return {champ: f"{champ}[{i}] : clé inconnue "
+                           f"{', '.join(inconnues)}."}
+        if ligne.get('cle') not in SENSIBILITE_CI_CLES:
+            return {champ: f"{champ}[{i}].cle doit valoir "
+                           f"{' | '.join(SENSIBILITE_CI_CLES)}."}
+        try:
+            variation = Decimal(
+                str(ligne.get('variation_pct')).strip().replace(',', '.'))
+        except (InvalidOperation, TypeError, ValueError):
+            variation = None
+        if (variation is None or not variation.is_finite()
+                or variation <= Decimal('-100')):
+            return {champ: f"{champ}[{i}].variation_pct : une variation en % "
+                           "(> −100) est attendue."}
+        if _vide(ligne.get('source')):
+            return {champ: f"{champ}[{i}].source : la source du scénario est "
+                           "obligatoire (étude, historique publié, garantie "
+                           "fabricant)."}
+    return {}
+
+
+def erreurs_mention_credit_bail(autorisee, source):
+    """Autoriser la mention « crédit-bail » exige la référence de l'avis
+    juridique (D-CIQ-15), ``{champ: message}``."""
+    if autorisee and _vide(source):
+        return {'mention_credit_bail_source': (
+            "mention_credit_bail_source : la référence de l'avis juridique "
+            "est obligatoire pour autoriser la mention « crédit-bail » "
+            "(loi 82-21 art. 2).")}
+    return {}
+
+
 def erreurs_reglages_tarif(reglages):
     """Point d'entrée UNIQUE des refus des réglages tarifaires, ``{champ: msg}``.
 
@@ -1369,4 +1433,10 @@ def erreurs_reglages_tarif(reglages):
         getattr(reglages, 'charges_pompage_solaire', None)))
     erreurs.update(erreurs_regle_fda(
         getattr(reglages, 'regle_fda_pompage', None)))
+    # CIQ211 — sensibilités C&I saisies et mention « crédit-bail ».
+    erreurs.update(erreurs_sensibilites_ci(
+        getattr(reglages, 'sensibilites_ci', None)))
+    erreurs.update(erreurs_mention_credit_bail(
+        getattr(reglages, 'mention_credit_bail_autorisee', False),
+        getattr(reglages, 'mention_credit_bail_source', None)))
     return erreurs
