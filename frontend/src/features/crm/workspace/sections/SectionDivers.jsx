@@ -56,11 +56,6 @@ const PROJECT_TIMELINE = {
   immediat: 'Dès que possible', '3_mois': 'Moins de 3 mois', '6_mois': '3 à 6 mois',
   plus_tard: 'Plus tard / je me renseigne',
 }
-// source-choix: crm.Lead.facility_type
-const FACILITY_TYPE = {
-  bureau: 'Bureau', entrepot: 'Entrepôt', usine: 'Usine', commerce: 'Commerce',
-  agricole: 'Agricole', autre: 'Autre',
-}
 
 const optionsDe = (labels) => [
   <option key="" value="">—</option>,
@@ -83,7 +78,6 @@ const LIBELLES_QUALIFICATION = {
   ownership: "Statut d'occupation",
   financing_intent: 'Financement envisagé',
   project_timeline: 'Horizon du projet',
-  facility_type: 'Type de site (pro)',
   roof_age: 'Âge de la toiture (ans)',
 }
 
@@ -129,11 +123,8 @@ function QualificationSite({ state, setField, errors }) {
         />
       </div>
       <div className="form-row">
-        <ChampSite
-          state={state} champ="facility_type" label="Type de site (pro)" htmlFor="lf-facility-type"
-          error={errors.facility_type}
-          renderControl={select('facility_type', 'lf-facility-type', FACILITY_TYPE)}
-        />
+        {/* CIQ418 — « Type de site (pro) » (`facility_type`) est MASQUÉ : la
+            fiche d'un pro a sa section « Professionnel ». La colonne reste. */}
         <ChampSite
           state={state} champ="roof_age" label="Âge de la toiture (ans)" htmlFor="lf-roof-age"
           error={errors.roof_age}
@@ -237,8 +228,6 @@ const STRUCTURED_LABELS = {
   project_timeline: 'Horizon du projet',
   financing_intent: 'Financement envisagé',
   futures_charges: 'Charges futures',
-  facility_type: "Type d'établissement",
-  site_count: 'Nombre de sites',
   visit_window_part: 'Créneau de visite souhaité',
   visit_window_week: 'Semaine de visite souhaitée',
   client_ref: 'Référence client (site)',
@@ -322,8 +311,13 @@ const ESTIMATE_LABELS_AGRICOLE = {
   ecoMadYearHigh: `${ESTIMATE_LABELS.ecoMadYearHigh} — ${MENTION_ECO_NON_SOURCEE}`,
 }
 
+// CIQ418 — deux colonnes MORTES masquées du récapitulatif (les colonnes
+// restent) : la fiche d'un pro a sa section « Professionnel ».
+const STRUCTURED_MASQUES = new Set(['facility_type', 'site_count'])
+
 function itemsFromStructured(server) {
   return WEB_QUESTIONNAIRE_STRUCTURED_FIELDS
+    .filter((k) => !STRUCTURED_MASQUES.has(k))
     .map((k) => (estValeurWebRenseignee(server[k])
       ? { term: STRUCTURED_LABELS[k] || humaniser(k), description: formatStructured(k, server[k]) }
       : null))

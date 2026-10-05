@@ -93,6 +93,16 @@ export const TRACKED_KEYS = [
   'project_timeline', 'facility_type', 'roof_age',
   // AGR524 — état du dossier d'aide FDA (interne, jamais montré au client).
   'dossier_subvention', 'dossier_subvention_le',
+  // CIQ418 — les colonnes pro du contrat `lead_pro.json` (CIQ1) saisies par la
+  // section « Professionnel » (les colonnes réutilisées sont déjà plus haut).
+  'tension_raccordement', 'tension_source', 'compteur_puissance_kva',
+  'puissance_souscrite_source', 'categorie_commerciale', 'reponses_categorie',
+  'secteur_industriel', 'export_ue_declare', 'regime_equipes', 'jours_ouverture',
+  'heure_debut', 'heure_fin', 'fermeture_mois', 'type_surface', 'surface_source',
+  'groupe_electrogene', 'groupe_kva', 'groupe_litres_mois', 'groupe_depense_mad_mois',
+  'pv_existant_kwc', 'cos_phi', 'cos_phi_source', 'releve_conso', 'tva_recuperable',
+  'ice', 'rc', 'if_fiscal', 'adresse_siege', 'fonction_contact',
+  'contact_secondaire_fonction', 'contact_secondaire_email', 'facture_tranche_declaree',
 ]
 
 // ── canonEq — égalité CANONIQUE (le cœur du « fini le phantom dirty ») ───────
@@ -251,9 +261,21 @@ export const SECTION_FIELDS = {
   visite: ['visite_prevue_le', 'visite_effectuee', 'visite_notes'],
   // CAD150 — la qualification captée par le site (CHAMPS_SITE hors énergie)
   // est éditable ici, avec sa provenance.
+  // CIQ418 — `facility_type` (« Type de site (pro) ») est MASQUÉ de la fiche
+  // (colonne morte) : la colonne reste, aucun champ ne la porte plus.
   divers: ['note', 'custom_data', 'ownership', 'financing_intent',
-    'project_timeline', 'facility_type', 'roof_age',
+    'project_timeline', 'roof_age',
     'dossier_subvention', 'dossier_subvention_le'],
+  // CIQ418 — « Professionnel » (lead commercial / industriel), contrat
+  // `lead_pro.json`.
+  pro: ['tension_raccordement', 'tension_source', 'compteur_puissance_kva',
+    'puissance_souscrite_source', 'categorie_commerciale', 'reponses_categorie',
+    'secteur_industriel', 'export_ue_declare', 'regime_equipes', 'jours_ouverture',
+    'heure_debut', 'heure_fin', 'fermeture_mois', 'type_surface', 'surface_source',
+    'groupe_electrogene', 'groupe_kva', 'groupe_litres_mois', 'groupe_depense_mad_mois',
+    'pv_existant_kwc', 'cos_phi', 'cos_phi_source', 'releve_conso', 'tva_recuperable',
+    'ice', 'rc', 'if_fiscal', 'adresse_siege', 'fonction_contact',
+    'contact_secondaire_fonction', 'contact_secondaire_email', 'facture_tranche_declaree'],
 }
 
 // La section de TRAVAIL : on n'y touche jamais automatiquement. C'est là qu'on
