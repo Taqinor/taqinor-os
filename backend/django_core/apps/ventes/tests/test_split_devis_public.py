@@ -65,7 +65,7 @@ DEPLACEMENTS = {
     'conditions': ('split_pv_conditions',
                    'apps/ventes/public/payload_conditions.py', 'SPL251', True),
     'paiement': ('split_pv_paiement', 'apps/ventes/public/paiement_views.py',
-                 'SPL252', False),
+                 'SPL252', True),
     'signature': ('split_pv_signature',
                   'apps/ventes/public/signature_views.py', 'SPL253', False),
 }
