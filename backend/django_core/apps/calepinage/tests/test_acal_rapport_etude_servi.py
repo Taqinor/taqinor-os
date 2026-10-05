@@ -15,6 +15,7 @@ Run :
     python manage.py test apps.calepinage.tests.test_acal_rapport_etude_servi
 """
 import unittest
+from html import escape
 from unittest import mock
 
 from django.test import tag
@@ -190,7 +191,9 @@ class SchemaJointAuRapportTest(BaseConceptionReelle):
         debut = html.index('data-section="electrique"')
         section = html[debut:html.index('</section>', debut)]
         self.assertIn('data-motif="schema_unifilaire"', section)
-        self.assertIn(MOTIF_SCHEMA_INDISPONIBLE[:-1], section)
+        # Le HTML échappe l'apostrophe du motif (``html.escape``) : on le
+        # cherche tel que la section l'émet.
+        self.assertIn(escape(MOTIF_SCHEMA_INDISPONIBLE[:-1]), section)
         self.assertIn(MOTIF_SCHEMA_INDISPONIBLE[:-1],
                       _sans_espaces(' '.join(_texte(octets))))
 

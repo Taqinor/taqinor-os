@@ -35,7 +35,10 @@ from apps.ventes.models import Devis
 from .acal_livrables_helpers import exiger_bibliotheques_pdf
 from .test_acal_sld_conception_reelle import BaseConceptionReelle
 
-LIBELLE_EDITE = 'Champ PV toiture sud ACAL163'
+#: ≤ 22 caractères : le titre d'un bloc du schéma est tronqué au-delà
+#: (``core.electrique.schema._CARACTERES_TITRE``, PV39) — le libellé édité
+#: doit s'y lire EN ENTIER.
+LIBELLE_EDITE = 'PV toiture sud ACAL163'
 
 
 def _textes_pdf(octets):

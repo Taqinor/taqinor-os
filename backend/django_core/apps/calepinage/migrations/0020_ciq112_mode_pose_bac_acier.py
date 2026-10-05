@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('calepinage', '0016_calx406_responsable'),
+        ('calepinage', '0019_acal81_systeme_fixation_choisi'),
     ]
 
     operations = [

@@ -122,7 +122,7 @@ class AllerRetourTests(_Base):
                          {'acompte': 30, 'materiel': 60, 'solde': 10})
 
     def test_dupliquer_conserve_la_date(self):
-        from apps.ventes.domain.creation import cloner_devis
+        from apps.ventes.domain.creation_clone import cloner_devis
         self.devis.echeancier = ECHEANCIER
         self.devis.save(update_fields=['echeancier'])
         copie = cloner_devis(self.devis, user=self.user)

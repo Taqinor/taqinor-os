@@ -106,7 +106,7 @@ class NormalisationTests(SimpleTestCase):
 
     def test_migration_reversible(self):
         module = import_module(
-            'apps.calepinage.migrations.0018_ciq136_contraintes_site')
+            'apps.calepinage.migrations.0021_ciq136_contraintes_site')
         ops = module.Migration.operations
         self.assertEqual(len(ops), 1)
         self.assertIsInstance(ops[0], migrations.AddField)
