@@ -32,6 +32,12 @@ function rangee(cy) {
   return [-1, 0, 1].map((cx) => ({ cx, cy }))
 }
 
+/** Le catalogue `modules[]` du document : le module posé sur le pan `z1`. */
+const MODULES = [{
+  id: 'm1', produitId: 1, libelle: 'Module d’essai 550 Wc', longueurMm: 2279, largeurMm: 1134,
+  epaisseurMm: 30, poidsKg: 28, pmaxWc: 550, source: 'fiche produit',
+}]
+
 beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup() })
 
@@ -42,9 +48,11 @@ describe('CALX121 — géométrie complète : la coupe est dessinée', () => {
         roof_layout: {
           activeAreaId: 'z1',
           pin: { lat: 33.5, lng: -7.6 },
+          modules: MODULES,
           zones: [{
             id: 'z1',
             geometry: {
+              moduleId: 'm1',
               tiltDeg: 13,
               flush: false,
               azimuthDeg: 180,
@@ -73,9 +81,11 @@ describe('CALX121 — géométrie complète : la coupe est dessinée', () => {
         roof_layout: {
           activeAreaId: 'z1',
           pin: { lat: 33.5, lng: -7.6 },
+          modules: MODULES,
           zones: [{
             id: 'z1',
             geometry: {
+              moduleId: 'm1',
               tiltDeg: 13,
               flush: false,
               azimuthDeg: 180,

@@ -141,10 +141,11 @@ describe('CAL86 — affichage du pas inter-rangées et nom de la famille de pose
   });
 
   it('l’hypothèse affichée est l’élévation de design du LIEU (aucune valeur figée)', () => {
+    // ACAL255 — soleil de DIMENSIONNEMENT (10 h solaire), plus l'élévation de midi.
     const d = describeRowPitch({ rowPitchM: 2, latitudeDeg: 33.5 });
-    expect(d.designElevDeg).toBe(designSunElevationDeg(33.5));
+    expect(d.designElevDeg).toBe(sunDirection(33.5, WINTER_SOLSTICE_DAY, 10).elevationDeg);
     const nord = describeRowPitch({ rowPitchM: 2, latitudeDeg: 45 });
-    expect(nord.designElevDeg).toBe(designSunElevationDeg(45));
+    expect(nord.designElevDeg).toBe(sunDirection(45, WINTER_SOLSTICE_DAY, 10).elevationDeg);
     expect(nord.designElevDeg).not.toBe(d.designElevDeg);
   });
 
