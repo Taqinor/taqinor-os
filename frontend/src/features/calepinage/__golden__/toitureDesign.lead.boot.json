@@ -1,0 +1,37 @@
+{
+  "initRoofToolPro8_appels": [
+    {
+      "maptilerKey": "k-lead",
+      "reducedMotion": false,
+      "hydrate": {
+        "lead": {
+          "roof_point": {
+            "lat": 33.5,
+            "lng": -7.6
+          },
+          "roof_outline": [
+            [
+              33.5,
+              -7.6
+            ]
+          ],
+          "bill_kwh": 7200,
+          "fullName": "Alaoui Youssef",
+          "phone": "0600000000",
+          "city": "Casablanca"
+        }
+      },
+      "reglagesAtelier": null,
+      "referenceContour": null,
+      "onApiReady": "[fn]"
+    }
+  ],
+  "api_builder_appels": [
+    {
+      "appel": "setReferenceContourVisible",
+      "args": [
+        true
+      ]
+    }
+  ]
+}
