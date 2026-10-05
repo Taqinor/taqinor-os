@@ -102,7 +102,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             deux_options=False, journal=None, phase=None,
                             dimensionnement_avec=None,
                             mppt_paires=1, structure_type=None,
-                            structure_produit_id=None):
+                            structure_produit_id=None, hors_reseau=None):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
 
     ``mppt_paires`` / ``structure_type`` (QJR80) — les DEUX paramètres de
@@ -140,7 +140,14 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     ``phase`` (PVCOMPAT, optionnel) — le RACCORDEMENT déclaré par le client
     (``'monophase'``/``'triphase'``), transmis tel quel à
     ``composition_residentielle`` : un abonnement monophasé n'accepte pas un
-    onduleur triphasé. ``None`` ⇒ aucun filtre, comportement inchangé.
+    onduleur triphasé. ``None`` ⇒ ACAL32 : déduit du LEAD
+    (``taille.phase_et_isolement_du_lead``) ; sans lead, aucun filtre.
+
+    ``hors_reseau`` (ACAL32, C-ACAL-105) — le site est ISOLÉ. ``None`` ⇒
+    déduit du lead (``raccordement='aucun'``), comme le devis automatique :
+    onduleur AUTONOME + batterie en option unique, et un catalogue incapable
+    de les servir lève ``AutoDevisError(field='hors_reseau')`` (→ 422 nommé)
+    AVANT toute écriture — jamais un onduleur réseau, jamais un 500.
 
     ``layout`` is the serialized roofPro11 output (see Devis.roof_layout):
     a ``result`` block ``{panels, kwc, annualKwh, savings}`` plus an optional
@@ -192,6 +199,18 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     structure_produit_id, structure_type = _structure_demandee(
         lead, structure_produit_id, structure_type)
     from apps.ventes.models import Devis
+    from apps.ventes.utils.options import deux_options_composables
+
+    # ── ACAL32 (C-ACAL-105) — LA PHASE ET LE SITE ISOLÉ DU LEAD ────────────
+    # Déduits UNE fois ici (le module calepinage ET from-layout passent par
+    # ce point) quand l'appelant ne les fournit pas : un lead triphasé ne
+    # reçoit plus un onduleur monophasé, un site isolé jamais un onduleur
+    # réseau.
+    phase_lead, isole_lead = phase_et_isolement_du_lead(lead)
+    if phase is None:
+        phase = phase_lead
+    hors_reseau = isole_lead if hors_reseau is None else bool(hors_reseau)
+    deux_options = deux_options_composables(deux_options, hors_reseau)
 
     if client is None:
         if lead is None:
@@ -244,6 +263,19 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # automatique (cf. ``_calepinage_range``).
     stored_layout, etude_initiale = _calepinage_range(layout, toiture, kwc)
 
+    # ACAL32 — un site ISOLÉ n'a qu'une composition : autonome + batterie,
+    # mono-option. Le catalogue qui ne la sert pas est un REFUS NOMMÉ
+    # (``hors_reseau``), prononcé AVANT toute écriture — comme le devis
+    # automatique (``creation_auto``).
+    scenario = (COMPOSITION_LES_DEUX if deux_options else lecture.scenario)
+    if hors_reseau:
+        scenario = COMPOSITION_AVEC
+        refus_isole = verifier(IntentionComposition(
+            company=company, nb_panneaux=nb_panneaux, kwc=kwc_composition,
+            scenario=COMPOSITION_AVEC, phase=phase, hors_reseau=True))
+        if refus_isole and refus_isole[0] != MSG_AUCUN_PANNEAU:
+            raise AutoDevisError(refus_isole[0], field='hors_reseau')
+
     # ── QJR95 — LE PIPELINE, DANS SON ORDRE UNIQUE ─────────────────────────
     # La cible est SOUVERAINE : elle vient du toit que le commercial a dessiné,
     # et l'étape 2 ne redimensionne donc rien. Le scénario du layout est dit
@@ -273,7 +305,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         # composait alors une option SANS un devis que le pré-vol venait de
         # vérifier sur DEUX. ``deux_options`` reste souverain quand
         # l'appelant le demande explicitement.
-        scenario=(COMPOSITION_LES_DEUX if deux_options else lecture.scenario),
+        scenario=scenario,
         layout=stored_layout,
         etude_initiale=etude_initiale or None,
         taux_tva=taux_tva,
@@ -284,6 +316,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         structure_produit_id=structure_produit_id,
         mppt_paires=mppt_paires,
         phase=phase,
+        hors_reseau=hors_reseau,
     ))
     devis = resultat['devis']
     line_specs = resultat['composition']
@@ -429,7 +462,17 @@ from apps.ventes.domain.pipeline import (  # noqa: E402
     IntentionDevis,
     appliquer,
 )
-from apps.ventes.domain.etape_composer import COMPOSITION_LES_DEUX  # noqa: E402
+from apps.ventes.domain.etape_composer import (  # noqa: E402
+    COMPOSITION_AVEC,
+    COMPOSITION_LES_DEUX,
+    MSG_AUCUN_PANNEAU,
+    IntentionComposition,
+    verifier,
+)
+from apps.ventes.domain.taille import (  # noqa: E402
+    AutoDevisError,
+    phase_et_isolement_du_lead,
+)
 # ``_structure_demandee`` reste dans ``creation`` (aussi lu par le devis
 # automatique) ; ``creation`` ne lit ce module que pour le devis automatique.
 from apps.ventes.domain.creation import _structure_demandee  # noqa: E402

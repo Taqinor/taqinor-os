@@ -513,7 +513,7 @@ def lire_layout(layout, *, toiture=None, compte=None, kwc=None):
     )
 
 
-def validate_composition_for_layout(layout, company):
+def validate_composition_for_layout(layout, company, *, lead=None):
     """QJ17 — pre-flight composition check before building a devis.
 
     Returns ``None`` when the composition is valid.  Returns a list of French
@@ -538,6 +538,12 @@ def validate_composition_for_layout(layout, company):
       catalogue (priced); if either is missing, warn the agent.
     - A réseau scenario requires a réseau/injection inverter (priced).
     - A price-less required product blocks the composition (never auto-quote it).
+
+    ACAL32 (C-ACAL-105) — ``lead`` : le pré-vol compose avec la MÊME phase et
+    le MÊME site isolé que la création (``taille.phase_et_isolement_du_lead``).
+    Un site isolé que le catalogue ne sait pas servir (onduleur autonome /
+    batterie) lève ``AutoDevisError(field='hors_reseau')`` — un refus NOMMÉ
+    (422 ``{hors_reseau: …}``), pas une erreur de composition anonyme.
     """
     if not isinstance(layout, dict):
         return ['Layout invalide — impossible de valider la composition.']
@@ -547,6 +553,9 @@ def validate_composition_for_layout(layout, company):
     # qu'il précède — sans quoi il pouvait refuser (« aucun panneau ») un
     # layout que la création aurait accepté, ou l'inverse.
     lecture = lire_layout(layout)
+    from apps.ventes.domain.taille import (
+        AutoDevisError, phase_et_isolement_du_lead)
+    phase, hors_reseau = phase_et_isolement_du_lead(lead)
 
     # PVMRQ — pas de devis ici (pré-vol AVANT création) ⇒ pas de gamme connue :
     # ``marque_preferee`` retombe explicitement sur le slot Essentielle.
@@ -554,11 +563,19 @@ def validate_composition_for_layout(layout, company):
     # « aucun panneau détecté », pas « aucune puissance » — un layout à 0
     # panneau doit être refusé même s'il porte encore un kWc d'une version
     # antérieure du tracé. C'est le comportement d'hier, mot pour mot.
-    return verifier(IntentionComposition(
+    erreurs = verifier(IntentionComposition(
         company=company,
         nb_panneaux=lecture.compte,
-        scenario=lecture.scenario,
+        scenario=(COMPOSITION_AVEC if hors_reseau else lecture.scenario),
+        phase=phase,
+        hors_reseau=hors_reseau,
     ))
+    # « Aucun panneau » reste l'erreur de composition qu'elle a toujours été
+    # (rien à servir, isolé ou non) ; seul le manque de catalogue autonome
+    # est le refus NOMMÉ du site isolé.
+    if hors_reseau and erreurs and erreurs[0] != MSG_AUCUN_PANNEAU:
+        raise AutoDevisError(erreurs[0], field='hors_reseau')
+    return erreurs
 
 
 # ── AOF164 — bascule du calcul résidentiel sur le MOTEUR PARTAGÉ ────────────
@@ -1154,6 +1171,7 @@ from apps.ventes.domain.etape_composer import (  # noqa: E402,F401
     COMPOSITION_AVEC,
     COMPOSITION_LES_DEUX,
     COMPOSITION_SANS,
+    MSG_AUCUN_PANNEAU,
     IntentionComposition,
     verifier,
 )

@@ -59,12 +59,29 @@ class AutoDevisError(Exception):
         self.field = field
 
 
+def phase_et_isolement_du_lead(lead):
+    """ACAL32 (C-ACAL-105) — LE raccordement du lead, lu UNE fois :
+    ``(phase, hors_reseau)``.
+
+    * ``phase`` — ``'monophase'``/``'triphase'``/``None`` (PVCOMPAT,
+      ``compatibilites.normaliser_phase``) ;
+    * ``hors_reseau`` — le site est ISOLÉ (``raccordement='aucun'``,
+      ``compatibilites.est_site_isole``).
+
+    Sans lead : ``(None, False)`` — aucun filtre, comportement inchangé. Seul
+    point de déduction : création depuis un layout (module ET from-layout),
+    pré-vol, devis automatique et contexte de sonde le lisent ici."""
+    from apps.ventes.compatibilites import est_site_isole, normaliser_phase
+    raccordement = getattr(lead, 'raccordement', None)
+    return normaliser_phase(raccordement), bool(est_site_isole(raccordement))
+
+
 def phase_client_pour_dimensionnement(lead):
     """Raccordement normalisé du lead (mono/tri/None) — PVCOMPAT, une seule
     lecture. Isolé pour être appelable AVANT le dimensionnement, alors que
-    ``build_devis_auto`` ne résout la phase qu'au moment de composer."""
-    from apps.ventes.compatibilites import normaliser_phase
-    return normaliser_phase(getattr(lead, 'raccordement', None))
+    ``build_devis_auto`` ne résout la phase qu'au moment de composer.
+    ACAL32 — délègue à :func:`phase_et_isolement_du_lead`."""
+    return phase_et_isolement_du_lead(lead)[0]
 
 
 #: Motifs d'ABSTENTION du moteur horaire — la donnée exacte qui manque, pour

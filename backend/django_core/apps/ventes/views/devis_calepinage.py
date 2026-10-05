@@ -66,7 +66,9 @@ class DevisCalepinageActionsMixin:
         on failure (instead of a PDF error at render time).
         """
         from decimal import Decimal
-        from ..services import build_devis_from_layout, layout_hash, validate_composition_for_layout
+        from ..services import (
+            AutoDevisError, build_devis_from_layout, layout_hash,
+            validate_composition_for_layout)
         from ..models import ShareLink
 
         company = request.user.company
@@ -157,7 +159,15 @@ class DevisCalepinageActionsMixin:
         structure_type = request.data.get('structure_type') or None
 
         # QJ17 — pre-flight composition check: validate catalogue before building.
-        composition_errors = validate_composition_for_layout(layout, company)
+        # ACAL32 — le pré-vol compose avec la phase et le site isolé du LEAD
+        # (déduits par le pré-vol lui-même) ; un site isolé que le catalogue
+        # ne sert pas est un 422 NOMMÉ {hors_reseau: …}.
+        try:
+            composition_errors = validate_composition_for_layout(
+                layout, company, lead=lead_obj)
+        except AutoDevisError as refus:
+            return Response({refus.field or 'detail': refus.message},
+                            status=status.HTTP_422_UNPROCESSABLE_ENTITY)
         if composition_errors:
             return Response(
                 {'detail': composition_errors[0], 'errors': composition_errors},
@@ -195,29 +205,32 @@ class DevisCalepinageActionsMixin:
                 },
                 status=status.HTTP_200_OK)
 
-        # L-TRI (fondateur 24/08/2026 : « cette erreur ne doit pas se
-        # répéter ») — le chemin 3D ne transmettait PAS la phase du lead :
-        # un client triphasé pouvait encore recevoir un onduleur mono par
-        # ICI alors que l'auto-devis (services.py, PVCOMPAT) la passait déjà.
-        from apps.ventes.compatibilites import normaliser_phase
+        # L-TRI / ACAL32 — la phase ET le site isolé du lead sont déduits UNE
+        # fois par ``build_devis_from_layout`` (même point pour le module
+        # calepinage) : la déduction inline d'ici est SUPPRIMÉE.
         _composition = dict(
             taux_tva=taux_tva, remise_globale=remise,
             structure_produit_id=structure_produit_id,
-            structure_type=(str(structure_type) if structure_type else None),
-            phase=normaliser_phase(getattr(lead_obj, 'raccordement', None)))
+            structure_type=(str(structure_type) if structure_type else None))
         # CAL185 — le rapport « à renseigner » n'existe que sur l'entrée
         # calepinage ; l'entrée historique est byte-identique.
         rapport = None
-        if nomenclature is not None:
-            from ..services import build_devis_depuis_calepinage_retenu
-            devis, rapport = build_devis_depuis_calepinage_retenu(
-                calepinage_id=calepinage_id, user=request.user,
-                company=company, lead=lead_obj, client=client_obj,
-                **_composition)
-        else:
-            devis = build_devis_from_layout(
-                layout=layout, user=request.user, company=company,
-                lead=lead_obj, client=client_obj, **_composition)
+        try:
+            if nomenclature is not None:
+                from ..services import build_devis_depuis_calepinage_retenu
+                devis, rapport = build_devis_depuis_calepinage_retenu(
+                    calepinage_id=calepinage_id, user=request.user,
+                    company=company, lead=lead_obj, client=client_obj,
+                    **_composition)
+            else:
+                devis = build_devis_from_layout(
+                    layout=layout, user=request.user, company=company,
+                    lead=lead_obj, client=client_obj, **_composition)
+        except AutoDevisError as refus:
+            # ACAL32 — un refus de composition (site isolé non servable…) est
+            # un 422 NOMMÉ, jamais un 500 ; rien n'a été écrit.
+            return Response({refus.field or 'detail': refus.message},
+                            status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
         # QJ17 — persist the layout hash on the newly-created devis so future
         # duplicate requests are caught in O(1).

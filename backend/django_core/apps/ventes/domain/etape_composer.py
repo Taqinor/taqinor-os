@@ -321,13 +321,16 @@ def contexte_sonde_du_devis(devis, *, reglages=None):
     """Le ``ContexteSonde`` d'un devis : gamme, structure, phase, MPPT, TVA,
     hors-réseau et ville du barème — lus UNE fois, sur le devis et son lead."""
     from apps.crm.selectors import lead_du_devis
-    from apps.ventes.compatibilites import est_site_isole, normaliser_phase
     from apps.ventes.domain.composition import structure_produit_id_du_devis
     from apps.ventes.domain.gammes import gamme_nom
+    from apps.ventes.domain.taille import phase_et_isolement_du_lead
     lead = lead_du_devis(devis)
-    raccordement = getattr(lead, 'raccordement', None)
+    # ACAL32 — phase et site isolé du lead lus par LE survivant
+    # (``taille.phase_et_isolement_du_lead``) ; la détection par lignes
+    # autonomes déjà posées reste propre au devis existant.
+    phase, isole = phase_et_isolement_du_lead(lead)
     gamme = gamme_nom(devis) or None
-    hors_reseau = est_site_isole(raccordement) or any(
+    hors_reseau = isole or any(
         _is_offgrid_inverter(ligne.designation or '')
         and float(ligne.quantite or 0) > 0
         for ligne in devis.lignes.all())
@@ -337,7 +340,7 @@ def contexte_sonde_du_devis(devis, *, reglages=None):
         reglages=reglages or reglages_de_composition(devis.company, gamme),
         gamme_nom_devis=gamme,
         structure_produit_id=structure_produit_id_du_devis(devis),
-        phase=normaliser_phase(raccordement),
+        phase=phase,
         mppt_paires=_mppt_paires_du_devis(devis),
         taux_tva=Decimal(str(taux)) if taux is not None else Decimal('20'),
         hors_reseau=bool(hors_reseau),
