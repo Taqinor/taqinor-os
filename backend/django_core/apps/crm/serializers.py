@@ -831,6 +831,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # attendue d'un lead pro (manquants, requis_pour). Pur, sans requête ;
     # RETRIEVE SEULEMENT, même porte que les autres blocs de détail.
     identite_entreprise = serializers.SerializerMethodField()
+    # CIQ405 (contrat CIQ1 ``lead_pro.json``) — les entrées du moteur C&I
+    # lues sur le lead, avec leur provenance : RETRIEVE SEULEMENT (une
+    # requête d'historique), même porte ; ``null`` hors commercial/industriel.
+    entrees_ci = serializers.SerializerMethodField()
     # MRY5 — prochaine touche de cadence, ANNOTÉE dans le queryset
     # (``LeadViewSet.get_queryset``), jamais un SerializerMethodField : la
     # liste et le kanban affichent le badge « touche due » pour 50 cartes,
@@ -1407,6 +1411,8 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             fields.pop('entrees_pompage', None)
             # CIQ402 — `identite_entreprise` : détail seulement, même porte.
             fields.pop('identite_entreprise', None)
+            # CIQ405 — `entrees_ci` : détail seulement, même porte.
+            fields.pop('entrees_ci', None)
         return fields
 
     def to_representation(self, instance):
@@ -1447,6 +1453,13 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         """
         from .selectors import conception_3d_du_lead
         return conception_3d_du_lead(obj)
+
+    @extend_schema_field(serializers.DictField())
+    def get_entrees_ci(self, obj):
+        """CIQ405 — ``{entrees, manquants, informations}`` (contrat CIQ1) :
+        la SEULE lecture lead → entrées du moteur C&I."""
+        from .selectors import entrees_ci_du_lead
+        return entrees_ci_du_lead(obj)
 
     @extend_schema_field(serializers.DictField())
     def get_identite_entreprise(self, obj):

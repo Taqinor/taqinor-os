@@ -1722,6 +1722,255 @@ def entrees_pompage_pour_lead_id(lead_id, company):
     return entrees_pompage_du_lead(lead) if lead is not None else None
 
 
+# ── CIQ405 — `entrees_ci` : UNE lecture lead → entrées du moteur C&I ─────────
+#
+# Contrat CIQ1 ``lead_pro.json`` (bloc ``entrees_ci``) : chaque entrée =
+# {colonne, valeur, provenance {origine, detail, date} (forme AGR2), cle_etude
+# (clé `etude_params` C&I v2, contrat CIQ2), chemin} ; une colonne vide
+# n'émet AUCUNE entrée et figure dans ``manquants``. Aucun défaut nulle part :
+# la tension a trois états (bt | mt | inconnue), jamais « bt » supposé.
+# ``activity_profile`` du site n'est qu'une INFORMATION, jamais une entrée.
+
+#: Provenance d'une colonne qui porte sa ``*_source`` → ``detail`` (AGR2 :
+#: client | site_web | facture | mesure_visite | derive).
+_CI_DETAIL_SOURCE = {
+    'declare': 'client', 'site_web': 'site_web',
+    'site_defaut_visible': 'site_web', 'facture': 'facture',
+    'contrat': 'facture', 'mesure_visite': 'mesure_visite',
+    'calepinage': 'derive', 'lu_sur_facture': 'facture',
+    'ocr_confirme': 'facture',
+}
+_CI_COLONNE_SOURCE = {
+    'tension_raccordement': 'tension_source',
+    'compteur_puissance_kva': 'puissance_souscrite_source',
+    'surface_toiture_m2': 'surface_source',
+    'cos_phi': 'cos_phi_source',
+}
+#: Colonnes servies pour INFORMATION (Q17 : déclarées, jamais un calcul).
+_CI_INFORMATIONS = (
+    'groupe_electrogene', 'groupe_kva', 'groupe_litres_mois',
+    'groupe_depense_mad_mois', 'pv_existant_kwc', 'cos_phi',
+    'export_ue_declare',
+)
+_CI_PHASES = {'monophase': 'mono', 'triphase': 'tri', 'inconnu': 'inconnu'}
+_CI_REGISTRES_MT = ('kwh_pointe', 'kwh_pleines', 'kwh_creuses',
+                    'puissance_atteinte_kva', 'cos_phi')
+
+
+def _ci_nombre(brut):
+    from decimal import Decimal, InvalidOperation
+    if brut is None:
+        return None
+    try:
+        return _entree_valeur(Decimal(str(brut)))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def entrees_ci_du_lead(lead):
+    """CIQ405 — ``{entrees, manquants, informations}`` d'un lead commercial
+    ou industriel (``None`` ailleurs). Lecture SEULE ; UNE requête au plus
+    (l'historique des colonnes renseignées, pour dater et dire qui a saisi).
+    C'est la SEULE source lue par le moteur serveur C&I (D-CIQ-0) et par
+    l'écran."""
+    from .devis_auto import _facture_mad_compte, _releve_rempli
+    from .models import Lead, LeadActivity
+
+    if lead is None:
+        return None
+    segment = getattr(lead, 'type_installation', None)
+    if segment not in ('commercial', 'industriel'):
+        return None
+    commercial = segment == 'commercial'
+
+    colonnes_lues = (
+        'releve_conso', 'conso_mensuelle_kwh', 'bill_kwh', 'facture_hiver',
+        'tension_raccordement', 'raccordement', 'compteur_puissance_kva',
+        'jours_ouverture', 'heure_debut', 'heure_fin', 'regime_equipes',
+        'fermeture_mois', 'categorie_commerciale', 'reponses_categorie',
+        'secteur_industriel', 'type_surface', 'type_toiture',
+        'surface_toiture_m2', 'tva_recuperable') + _CI_INFORMATIONS
+    renseignees = [c for c in colonnes_lues
+                   if not _entree_vide(getattr(lead, c, None))]
+    derniere = {}
+    if renseignees and getattr(lead, 'pk', None):
+        for ligne in (LeadActivity.objects
+                      .filter(lead_id=lead.pk, company_id=lead.company_id,
+                              kind=LeadActivity.Kind.MODIFICATION,
+                              field__in=renseignees)
+                      .order_by('created_at', 'pk')
+                      .values('field', 'user_id', 'created_at')):
+            derniere[ligne['field']] = ligne
+    du_site = getattr(lead, 'source', None) == Lead.Source.SITE_WEB
+    creation = getattr(lead, 'date_creation', None)
+
+    def _provenance(colonne, detail=None):
+        ligne = derniere.get(colonne)
+        moment = ligne['created_at'] if ligne else creation
+        if detail is None:
+            champ_source = _CI_COLONNE_SOURCE.get(colonne)
+            source = getattr(lead, champ_source, None) if champ_source else None
+            if source in _CI_DETAIL_SOURCE:
+                detail = _CI_DETAIL_SOURCE[source]
+            elif ligne and ligne['user_id'] is not None:
+                detail = 'client'
+            else:
+                detail = 'site_web' if du_site else 'client'
+        return {'origine': 'lead', 'detail': detail,
+                'date': moment.date().isoformat() if moment else None}
+
+    entrees, manquants = [], []
+
+    def _entree(colonne, valeur, cle_etude, chemin, detail=None, **extra):
+        entree = {'colonne': colonne, 'valeur': valeur,
+                  'provenance': _provenance(colonne, detail),
+                  'cle_etude': cle_etude, 'chemin': chemin}
+        entree.update(extra)
+        entrees.append(entree)
+
+    # 1. Consommation : le relevé prime, puis le kWh mensuel, puis la
+    # facture en MAD (convertie par le moteur, jamais ici).
+    if _releve_rempli(lead):
+        releve = lead.releve_conso
+        mois = []
+        for ligne in releve.get('mois') or []:
+            if _ci_nombre(ligne.get('kwh')) is None:
+                continue
+            m = {'mois': ligne.get('mois'), 'kwh': _ci_nombre(ligne['kwh'])}
+            for registre in _CI_REGISTRES_MT:
+                if ligne.get(registre) not in (None, ''):
+                    m[registre] = _ci_nombre(ligne[registre])
+            mois.append(m)
+        _entree('releve_conso', mois, 'consommation',
+                'consommation.factures_mad',
+                detail=_CI_DETAIL_SOURCE.get(releve.get('source'), 'client'))
+    elif not _entree_vide(lead.conso_mensuelle_kwh):
+        _entree('conso_mensuelle_kwh', _entree_valeur(lead.conso_mensuelle_kwh),
+                'consommation', 'consommation.kwh_mensuels')
+    elif not _entree_vide(lead.bill_kwh):
+        _entree('bill_kwh', _entree_valeur(lead.bill_kwh), 'consommation',
+                'consommation.kwh_mensuels')
+    elif not _entree_vide(lead.facture_hiver) and _facture_mad_compte(lead):
+        _entree('facture_hiver', _entree_valeur(lead.facture_hiver),
+                'consommation', 'consommation.facture_mad',
+                source_conso='facture_mad')
+    else:
+        manquants.append('conso_mensuelle_kwh')
+
+    # 2. Tension : trois états, jamais « bt » par défaut.
+    tension = lead.tension_raccordement
+    if _entree_vide(tension):
+        manquants.append('tension_raccordement')
+    else:
+        inconnue = (tension == 'ne_sait_pas'
+                    or lead.tension_source == 'site_defaut_visible')
+        _entree('tension_raccordement', 'inconnue' if inconnue else tension,
+                'tension', 'tension')
+        if inconnue:
+            manquants.append('tension_raccordement')
+
+    # 3. Phases (BT) et puissance souscrite.
+    if not _entree_vide(lead.raccordement) and lead.raccordement in _CI_PHASES:
+        _entree('raccordement', _CI_PHASES[lead.raccordement], 'phases',
+                'phases')
+    elif commercial:
+        manquants.append('raccordement')
+    if _entree_vide(lead.compteur_puissance_kva):
+        manquants.append('compteur_puissance_kva')
+    else:
+        _entree('compteur_puissance_kva',
+                _entree_valeur(lead.compteur_puissance_kva),
+                'puissance_souscrite_kva', 'puissance_souscrite_kva')
+
+    # 4. Rythme DÉCLARÉ, passé tel quel.
+    if not lead.jours_ouverture:
+        manquants.append('jours_ouverture')
+    else:
+        jours = set(lead.jours_ouverture or [])
+        _entree('jours_ouverture', [j in jours for j in range(1, 8)],
+                'rythme', 'rythme.jours_ouverts')
+    if lead.heure_debut is None or lead.heure_fin is None:
+        manquants.extend(c for c in ('heure_debut', 'heure_fin')
+                         if getattr(lead, c) is None)
+    else:
+        _entree('heure_debut', {'ouvre': [[lead.heure_debut, lead.heure_fin]]},
+                'rythme', 'rythme.plages')
+    if _entree_vide(lead.regime_equipes):
+        manquants.append('regime_equipes')
+    else:
+        _entree('regime_equipes', lead.regime_equipes, 'rythme',
+                'rythme.equipes')
+    if lead.fermeture_mois is None:
+        manquants.append('fermeture_mois')
+    else:
+        _entree('fermeture_mois', list(lead.fermeture_mois), 'rythme',
+                'rythme.fermetures')
+    if commercial:
+        if _entree_vide(lead.categorie_commerciale):
+            manquants.append('categorie_commerciale')
+        else:
+            _entree('categorie_commerciale', lead.categorie_commerciale,
+                    'rythme', 'rythme.categorie_commerciale')
+        if lead.reponses_categorie:
+            _entree('reponses_categorie', dict(lead.reponses_categorie),
+                    'rythme', 'rythme.reponses_categorie')
+    else:
+        if _entree_vide(lead.secteur_industriel):
+            manquants.append('secteur_industriel')
+        else:
+            _entree('secteur_industriel', lead.secteur_industriel, 'rythme',
+                    'rythme.secteur_industriel')
+
+    # 5. Toit / surface, avec leur source (le plafond est calculé par D1).
+    for colonne, chemin in (('type_surface', 'toit.type_surface'),
+                            ('type_toiture', 'toit.type_toiture'),
+                            ('surface_toiture_m2', 'toit.surface_utile_m2')):
+        valeur = getattr(lead, colonne)
+        if _entree_vide(valeur):
+            manquants.append(colonne)
+        else:
+            _entree(colonne, _entree_valeur(valeur), 'toit', chemin)
+
+    # 6. TVA récupérable (forme posée par `economie_ci.json`, CIQ3).
+    if _entree_vide(lead.tva_recuperable):
+        manquants.append('tva_recuperable')
+    else:
+        _entree('tva_recuperable', lead.tva_recuperable, 'tva_recuperable',
+                'tva_recuperable')
+
+    # Informations : jamais une entrée de calcul.
+    informations = []
+    for colonne in _CI_INFORMATIONS:
+        if colonne == 'cos_phi' and commercial:
+            continue
+        valeur = getattr(lead, colonne, None)
+        if _entree_vide(valeur):
+            continue
+        informations.append({'colonne': colonne,
+                             'valeur': _entree_valeur(valeur),
+                             'provenance': _provenance(colonne)})
+    profil = (lead.web_questionnaire or {}).get('activity_profile') \
+        if isinstance(lead.web_questionnaire, dict) else None
+    if profil:
+        informations.append({
+            'colonne': 'activity_profile', 'valeur': profil,
+            'provenance': {'origine': 'lead', 'detail': 'site_web',
+                           'date': (creation.date().isoformat()
+                                    if creation else None)}})
+    return {'entrees': entrees, 'manquants': manquants,
+            'informations': informations}
+
+
+def entrees_ci_pour_lead_id(lead_id, company):
+    """CIQ405 — même lecture, par id, FILTRÉE par société (point d'entrée
+    cross-app du moteur C&I : jamais un lead d'une autre société)."""
+    from .models import Lead
+    if not lead_id or company is None:
+        return None
+    lead = Lead.objects.filter(pk=lead_id, company=company).first()
+    return entrees_ci_du_lead(lead) if lead is not None else None
+
+
 # DC13 — localisation chantier : lead d'abord, sinon repli sur le client ──────
 
 # YLEAD14 — Recyclage des leads non travaillés (SLA speed-to-lead) ───────────
