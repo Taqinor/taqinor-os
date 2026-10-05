@@ -48,6 +48,7 @@ import {
   noteJoursOuvres,
   numeroJour, phraseAnnulees, phraseExceptions, phrasePeriode, phrasePremierContact, phraseReportee,
   phraseResultats, pl, seuil,
+  SEGMENTS_CONTROLE, SEGMENT_TOUS, libelleSegment,
 } from './controleSuiviTexte'
 
 const PERIODES = [
@@ -137,10 +138,10 @@ function LienLead({ leadId, nom, navigate }) {
 
 // ── En-tête : période + commercial ─────────────────────────────────────────
 function Selecteurs({
-  jours, onJours, ownerId, onOwner, commerciaux, erreurs,
+  jours, onJours, ownerId, onOwner, commerciaux, erreurs, segment, onSegment,
 }) {
   const autres = Object.entries(erreurs || {})
-    .filter(([champ]) => champ !== 'jours' && champ !== 'owner')
+    .filter(([champ]) => champ !== 'jours' && champ !== 'owner' && champ !== 'segment')
     .map(([, message]) => message)
   return (
     <div className="flex flex-wrap items-start gap-x-3 gap-y-2" data-testid="controle-selecteurs">
@@ -178,6 +179,27 @@ function Selecteurs({
           )}
         </div>
       )}
+      {/* AGR543 — le segment (type du lead) : même page pour tous les rôles. */}
+      <div className="flex flex-col gap-1">
+        <Select
+          value={segment ?? SEGMENT_TOUS}
+          onValueChange={(v) => onSegment(v === SEGMENT_TOUS ? null : v)}
+        >
+          <SelectTrigger className="w-44" aria-label="Segment">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SEGMENTS_CONTROLE.map((s) => (
+              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {erreurs?.segment && (
+          <p role="alert" className="text-xs text-destructive" data-testid="controle-erreur-segment">
+            {erreurs.segment}
+          </p>
+        )}
+      </div>
       {autres.length > 0 && (
         <p role="alert" className="basis-full text-xs text-destructive" data-testid="controle-erreur-autre">
           {autres.join(' ')}
@@ -768,6 +790,12 @@ function SqueletteDetail() {
   )
 }
 
+/** AGR543 — l'écho `segment` d'une réponse (contrat controle_suivi.json), ou `null`. */
+function donneesSegment(donnees) {
+  const valeur = donnees?.segment
+  return typeof valeur === 'string' && valeur ? valeur : null
+}
+
 /** `rafraichir` : un compteur que la page incrémente quand la file voisine vient d'écrire
  *  (une étape traitée, reportée, une cadence arrêtée…) — le bloc relit alors le serveur,
  *  sans changer ni la période ni le commercial choisis. */
@@ -777,6 +805,8 @@ export default function ControleSuiviPanel({ rafraichir = 0 } = {}) {
   // `null` = toute l'équipe ; sinon l'identifiant du commercial servi par le
   // serveur (jamais un nom écrit dans le code).
   const [ownerId, setOwnerId] = useState(null)
+  // AGR543 — `null` = tous les segments (aucun paramètre envoyé).
+  const [segment, setSegment] = useState(null)
   const [tentative, setTentative] = useState(0)
   const [commerciaux, setCommerciaux] = useState([])
   const [resultat, setResultat] = useState({
@@ -789,11 +819,12 @@ export default function ControleSuiviPanel({ rafraichir = 0 } = {}) {
   // Une requête = une CLÉ (période, commercial, tentative) : « en chargement »
   // se DÉDUIT de l'écart entre la clé demandée et celle du dernier résultat,
   // sans setState synchrone dans l'effet.
-  const cle = `${jours}|${ownerId ?? ''}|${tentative}|${rafraichir}`
+  const cle = `${jours}|${ownerId ?? ''}|${segment ?? ''}|${tentative}|${rafraichir}`
   useEffect(() => {
     let active = true
     const params = { jours }
     if (ownerId !== null) params.owner = ownerId
+    if (segment !== null) params.segment = segment
     Promise.resolve()
       .then(() => crmApi.getControleSuivi(params))
       .then((r) => {
@@ -818,13 +849,17 @@ export default function ControleSuiviPanel({ rafraichir = 0 } = {}) {
         if (nomme) setDetailOuvert(true)
       })
     return () => { active = false }
-  }, [cle, jours, ownerId])
+  }, [cle, jours, ownerId, segment])
 
   const chargement = resultat.cle !== cle
   const { donnees, erreurs, panne } = resultat
 
   const changerPeriode = (v) => { setJours(v) }
   const changerCommercial = (v) => { setOwnerId(v) }
+  const changerSegment = (v) => { setSegment(v) }
+  // AGR543 — le titre dit le segment SERVI (écho du serveur), jamais le choix
+  // local seul : un refus ou une réponse en retard ne ment pas sur le filtre.
+  const segmentServi = donneesSegment(resultat.donnees)
   const basculerDetail = () => {
     const suivant = !detailOuvert
     setDetailOuvert(suivant)
@@ -851,6 +886,11 @@ export default function ControleSuiviPanel({ rafraichir = 0 } = {}) {
           {commercialActif && (
             <Badge tone="outline" data-testid="controle-commercial-actif">
               Commercial : {commercialActif}
+            </Badge>
+          )}
+          {segmentServi && (
+            <Badge tone="outline" data-testid="controle-segment-actif">
+              Segment : {libelleSegment(segmentServi)}
             </Badge>
           )}
         </div>
@@ -895,6 +935,7 @@ export default function ControleSuiviPanel({ rafraichir = 0 } = {}) {
             <Selecteurs
               jours={jours} onJours={changerPeriode}
               ownerId={ownerId} onOwner={changerCommercial}
+              segment={segment} onSegment={changerSegment}
               commerciaux={commerciaux} erreurs={chargement ? null : erreurs}
             />
             {donnees ? (

@@ -18,6 +18,7 @@ Ce module n'est PAS un module de test (aucune méthode ``test_*``, nom hors du m
 ``test*.py``) : ``tests_cockpit_scenario.py`` l'importe. L'oracle suppose un LECTEUR QUI VOIT
 TOUTE LA SOCIÉTÉ (il le vérifie) : la portée de visibilité a ses propres tests.
 """
+import copy
 import datetime
 import statistics
 
@@ -133,7 +134,24 @@ class Oracle:
 
     # ── La lecture attendue ──
 
-    def attendu(self, *, jours=14, owner=None):
+    def attendu(self, *, jours=14, owner=None, segment=None):
+        """AGR542 — ``segment`` : le MÊME filtre que le serveur, écrit ici sur les
+        LIGNES de la base (contrat, ``ajout_segment`` → ``notes.segment``) : seuls les
+        leads dont ``type_installation`` vaut ``segment`` (``non_renseigne`` = vide ou
+        nul) et leurs étapes sont lus ; toutes les règles restent celles d'au-dessus."""
+        if segment:
+            vue = copy.copy(self)
+            vue.leads = {
+                pk: lead for pk, lead in self.leads.items()
+                if ((lead.type_installation or '') == ''
+                    if segment == 'non_renseigne'
+                    else lead.type_installation == segment)}
+            vue.proprio = {pk: lead.owner_id for pk, lead in vue.leads.items()}
+            vue.etapes = [e for e in self.etapes if e.lead_id in vue.leads]
+            return {**vue._attendu(jours=jours, owner=owner), 'segment': segment}
+        return {**self._attendu(jours=jours, owner=owner), 'segment': None}
+
+    def _attendu(self, *, jours=14, owner=None):
         today = self.today
         debut = today - datetime.timedelta(days=jours - 1)
         debut_precedent = debut - datetime.timedelta(days=jours)
@@ -401,7 +419,7 @@ def ecarts(attendu, servi):
         if a != s:
             trouves.append(f'{nom} : attendu {a!r} — servi {s!r}')
 
-    for cle in ('periode_jours', 'owner', 'seuils'):
+    for cle in ('periode_jours', 'owner', 'segment', 'seuils'):
         verifier(cle, attendu[cle], servi.get(cle))
     for cle, valeur in attendu['verdict'].items():
         verifier(f'verdict.{cle}', valeur, servi['verdict'].get(cle))

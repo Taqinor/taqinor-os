@@ -1177,6 +1177,52 @@ describe('ControleSuiviPanel — sélecteurs', () => {
     await waitFor(() => expect(crmApi.getControleSuivi).toHaveBeenLastCalledWith({ jours: 14 }))
   })
 
+  it('AGR543 — « Segment » : choisir « Agricole » envoie segment=agricole ; « Tous » le retire', async () => {
+    const user = userEvent.setup()
+    monter()
+    await attendreVerdict()
+    expect(crmApi.getControleSuivi).toHaveBeenLastCalledWith({ jours: 14 })
+    expect(CONTROLE.segment).toBeNull()
+    expect(screen.queryByTestId('controle-segment-actif')).not.toBeInTheDocument()
+    crmApi.getControleSuivi.mockResolvedValue(variante({ segment: 'agricole' }))
+    await user.click(screen.getByRole('combobox', { name: 'Segment' }))
+    await user.click(await screen.findByRole('option', { name: 'Agricole' }))
+    await waitFor(() => expect(crmApi.getControleSuivi).toHaveBeenLastCalledWith(
+      { jours: 14, segment: 'agricole' }))
+    // L'écho du serveur s'affiche dans le titre.
+    expect(await screen.findByTestId('controle-segment-actif'))
+      .toHaveTextContent('Segment : Agricole')
+    crmApi.getControleSuivi.mockResolvedValue(reponseContrat('crm', 'controle_suivi'))
+    await user.click(screen.getByRole('combobox', { name: 'Segment' }))
+    await user.click(await screen.findByRole('option', { name: 'Tous' }))
+    await waitFor(() => expect(crmApi.getControleSuivi).toHaveBeenLastCalledWith({ jours: 14 }))
+    await waitFor(() => expect(screen.queryByTestId('controle-segment-actif')).not.toBeInTheDocument())
+  })
+
+  it('AGR543 — les six choix du sélecteur, même page pour tous les rôles', async () => {
+    const user = userEvent.setup()
+    estResponsable.mockReturnValue(false)
+    monter()
+    await attendreVerdict()
+    await user.click(screen.getByRole('combobox', { name: 'Segment' }))
+    const options = (await screen.findAllByRole('option')).map((o) => o.textContent)
+    expect(options).toEqual(
+      ['Tous', 'Résidentiel', 'Commercial', 'Industriel', 'Agricole', 'Non renseigné'])
+  })
+
+  it('AGR543 — 400 sur « segment » : le message s\'affiche sous le sélecteur Segment', async () => {
+    const user = userEvent.setup()
+    const message = 'Segment inconnu : « fellah ». Valeurs admises : residentiel, commercial, industriel, agricole, non_renseigne.'
+    monter()
+    await attendreVerdict()
+    crmApi.getControleSuivi.mockRejectedValueOnce({
+      response: { status: 400, data: { erreurs: { segment: message } } },
+    })
+    await user.click(screen.getByRole('combobox', { name: 'Segment' }))
+    await user.click(await screen.findByRole('option', { name: 'Industriel' }))
+    expect(await screen.findByTestId('controle-erreur-segment')).toHaveTextContent(message)
+  })
+
   it('400 sur « jours » : le message du serveur s\'affiche sous le sélecteur de période', async () => {
     const message = '« jours » doit valoir 7, 14 ou 30.'
     monter()

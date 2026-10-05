@@ -13279,7 +13279,10 @@ REPONSES_TOUCHE = {
 
 #: Les textes de RÉPONSE qu'une touche peut proposer à l'envoi — le seul
 #: vocabulaire accepté par ``?cle=`` sur ``relance-etapes/<id>/message/``.
-CLES_MESSAGE_REPONSE = ('stop_contact', 'rappel_plus_tard')
+#: CIQ503 — ``attente_accord_accuse`` : l'accusé quand la décision attend un
+#: accord (comité, direction, banque), crochets à compléter (CAD69).
+CLES_MESSAGE_REPONSE = ('stop_contact', 'rappel_plus_tard',
+                        'attente_accord_accuse')
 
 
 def reponse_touche(cle):

@@ -294,6 +294,25 @@ export function libelleJour(jour) {
   return `${jourLong(j.date)}${qualif} : ${morceaux.length > 0 ? morceaux.join(', ') : 'rien de dû'}`
 }
 
+// ── AGR543 — le sélecteur « Segment » ──────────────────────────────────────
+// Valeurs = celles que le serveur admet (`?segment=`, contrat
+// controle_suivi.json `notes.segment`) ; `tous` = aucun paramètre envoyé.
+export const SEGMENT_TOUS = 'tous'
+export const SEGMENTS_CONTROLE = [
+  { value: SEGMENT_TOUS, label: 'Tous' },
+  { value: 'residentiel', label: 'Résidentiel' },
+  { value: 'commercial', label: 'Commercial' },
+  { value: 'industriel', label: 'Industriel' },
+  { value: 'agricole', label: 'Agricole' },
+  { value: 'non_renseigne', label: 'Non renseigné' },
+]
+
+/** Le libellé d'un segment servi (écho du serveur) ; la clé telle quelle sinon. */
+export function libelleSegment(cle) {
+  if (!cle) return ''
+  return SEGMENTS_CONTROLE.find((s) => s.value === cle)?.label ?? cle
+}
+
 // ── Table du parcours ──────────────────────────────────────────────────────
 const TYPES = new Map(PARCOURS.etapes.map((t) => [t.id, t]))
 
