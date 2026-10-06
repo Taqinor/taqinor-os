@@ -46,7 +46,9 @@ export default function useDocumentCalepinage(calepinageId, { actif = true } = {
   useEffect(() => {
     if (!actif || !calepinageId) return undefined
     let annule = false
-    Promise.resolve(calepinageApi.calepinages.layout(calepinageId))
+    // `then` : un échec SYNCHRONE de l'appel est aussi une lecture en échec.
+    Promise.resolve()
+      .then(() => calepinageApi.calepinages.layout(calepinageId))
       .then((res) => {
         if (annule) return
         const donnees = res?.data
