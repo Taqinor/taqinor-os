@@ -27,11 +27,20 @@ import {
   champDemande,
   ecransActifs,
   initialEcranIndex,
+  CATEGORIE_COMMERCIALE_VALUES,
   IRRIGATION_METHODE_VALUES,
+  JOURS_OUVERTURE_VALUES,
   isPhotoSection,
   MOIS_IRRIGATION_VALUES,
   parseQuestionnaireGet,
   POMPE_ALIM_VALUES,
+  RELEVE_CONSO_MAX_MOIS,
+  REGIME_EQUIPES_VALUES,
+  REPONSES_CATEGORIE_QUESTIONS,
+  TENSION_VALUES,
+  TVA_RECUPERABLE_VALUES,
+  TYPE_SURFACE_VALUES,
+  TYPE_TOITURE_PRO_VALUES,
   questionnaireEndpoint,
   SECTION_META,
   SOURCE_EAU_VALUES,
@@ -200,6 +209,130 @@ const butaneMasque = carburantMasque || alimPrefill === 'diesel';
 /** Le lead porte-t-il déjà sa position ? (les DEUX coordonnées, jamais une
  *  seule) — sert à dire au client qu'on ne la lui redemande pas. */
 const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '';
+
+// ── CIW406 — sections PRO (réseau, activité, site, société) ──────────────
+// Libellés FR/EN/AR. FR = la question orale du contrat `lead_pro.json` ; la
+// darija sera relue par Reda ensuite (modèle D-AGR-11). AUCUNE question
+// résidentielle ici (ni maison, ni foyer, ni équipements domestiques) et rien
+// de Q21 (budget, délai, décideur, concurrents) : jamais demandés par écrit.
+type L3 = { fr: string; en: string; ar: string };
+const L = (fr: string, en: string, ar: string): L3 => ({ fr, en, ar });
+const PRO_INPUT_CLS = POMPAGE_INPUT_CLS;
+const PRO_TOGGLE_CLS = 'min-h-[44px] border p-3 text-center text-sm font-semibold text-encre transition-colors';
+const TENSION_LABELS: Record<string, L3> = {
+  bt: L('Basse tension (BT) — compteur ordinaire', 'Low voltage (LV) — standard meter', 'ضغط منخفض (BT) — عداد عادي'),
+  mt: L('Moyenne tension (MT) — poste de transformation', 'Medium voltage (MV) — transformer substation', 'ضغط متوسط (MT) — محطة تحويل'),
+  ne_sait_pas: L('Je ne sais pas', "I don't know", 'لا أعرف'),
+};
+const SURFACE_LABELS: Record<string, L3> = {
+  toiture: L('Sur la toiture', 'On the roof', 'فوق السطح'),
+  ombriere: L('Sur une ombrière de parking', 'On a parking canopy', 'فوق مظلة موقف السيارات'),
+  terrain: L('Sur un terrain', 'On open ground', 'على أرض مفتوحة'),
+};
+const TOITURE_PRO_LABELS: Record<string, L3> = {
+  terrasse_beton: L('Terrasse béton', 'Concrete flat roof', 'سطح إسمنتي مسطح'),
+  tole_metal: L('Tôle métallique', 'Metal sheet', 'صفائح معدنية'),
+  tuiles: L('Tuiles', 'Tiles', 'قرميد'),
+  bac_acier: L('Bac acier', 'Steel decking', 'ألواح فولاذية'),
+  fibrociment: L('Fibrociment', 'Fibre cement', 'الألياف الإسمنتية'),
+  autre: L('Autre', 'Other', 'أخرى'),
+};
+const EQUIPES_LABELS: Record<string, L3> = {
+  '1x8': L('Une équipe de jour', 'One day shift', 'فريق واحد نهاراً'),
+  '2x8': L('Deux équipes', 'Two shifts', 'فريقان'),
+  '3x8': L('Trois équipes', 'Three shifts', 'ثلاثة فرق'),
+  continu: L('En continu', 'Continuous', 'بشكل متواصل'),
+  ne_sait_pas: L('Je ne sais pas', "I don't know", 'لا أعرف'),
+};
+const TVA_LABELS: Record<string, L3> = {
+  oui: L('Oui', 'Yes', 'نعم'),
+  non: L('Non', 'No', 'لا'),
+  ne_sait_pas: L('Je ne sais pas', "I don't know", 'لا أعرف'),
+};
+const CATEGORIE_LABELS: Record<string, L3> = {
+  hotel: L('Hôtel / riad', 'Hotel / riad', 'فندق / رياض'),
+  restaurant: L('Restaurant / café', 'Restaurant / café', 'مطعم / مقهى'),
+  commerce: L('Commerce / supermarché', 'Shop / supermarket', 'متجر / سوق ممتاز'),
+  bureau: L('Bureaux / siège', 'Offices / head office', 'مكاتب / مقر'),
+  sante: L('Santé (clinique, cabinet)', 'Health (clinic, practice)', 'صحة (مصحة، عيادة)'),
+  ecole: L('École', 'School', 'مدرسة'),
+  hammam: L('Hammam / spa / salle de sport', 'Hammam / spa / gym', 'حمام / سبا / قاعة رياضة'),
+  boulangerie: L('Boulangerie', 'Bakery', 'مخبزة'),
+  froid: L('Froid / entrepôt frigorifique', 'Cold storage', 'تبريد / مستودع مبرد'),
+  autre: L('Autre activité', 'Other activity', 'نشاط آخر'),
+};
+const JOUR_LABELS: Record<number, L3> = {
+  1: L('Lun', 'Mon', 'الاثنين'), 2: L('Mar', 'Tue', 'الثلاثاء'), 3: L('Mer', 'Wed', 'الأربعاء'),
+  4: L('Jeu', 'Thu', 'الخميس'), 5: L('Ven', 'Fri', 'الجمعة'), 6: L('Sam', 'Sat', 'السبت'),
+  7: L('Dim', 'Sun', 'الأحد'),
+};
+// Questions propres à la catégorie : libellé par `categorie.cle` puis par `cle`.
+const CAT_Q_LABELS: Record<string, L3> = {
+  chambres: L("Combien de chambres avez-vous ?", 'How many rooms do you have?', 'كم عدد الغرف لديكم؟'),
+  occupation_pct: L("Quel est votre taux d'occupation moyen sur l'année, à peu près ? (%)", 'What is your average yearly occupancy rate, roughly? (%)', 'ما هي نسبة الإشغال المتوسطة خلال السنة تقريباً؟ (%)'),
+  piscine: L("Votre établissement a-t-il une piscine ?", 'Does your establishment have a swimming pool?', 'هل يتوفر مؤسستكم على مسبح؟'),
+  heures_piscine: L("La piscine fonctionne combien d'heures par jour ? (h)", 'How many hours a day does the pool run? (h)', 'كم ساعة في اليوم يشتغل المسبح؟ (س)'),
+  blanchisserie: L('Lavez-vous le linge sur place ?', 'Do you wash the linen on site?', 'هل تغسلون الأغطية في عين المكان؟'),
+  reception_24h: L('La réception est-elle ouverte 24 heures sur 24 ?', 'Is the reception open 24 hours a day?', 'هل الاستقبال مفتوح 24 ساعة على 24؟'),
+  chambres_froides: L('Combien de chambres froides avez-vous ?', 'How many cold rooms do you have?', 'كم عدد الغرف الباردة لديكم؟'),
+  'commerce.chambres_froides': L('Combien de meubles ou chambres froids avez-vous ?', 'How many refrigerated units or cold rooms do you have?', 'كم عدد واجهات أو غرف التبريد لديكم؟'),
+  horaires: L('Quels sont vos horaires de service ?', 'What are your service hours?', 'ما هي ساعات الخدمة لديكم؟'),
+  cuisson: L('Cuisinez-vous à l’électricité ou au gaz ?', 'Do you cook with electricity or gas?', 'هل تطبخون بالكهرباء أم بالغاز؟'),
+  ouvert_journee_ramadan: L('Pendant le Ramadan, êtes-vous ouverts en journée ?', 'During Ramadan, are you open during the day?', 'خلال رمضان، هل أنتم مفتوحون نهاراً؟'),
+  surface_vente_m2: L('Quelle est votre surface de vente ? (m²)', 'What is your sales floor area? (m²)', 'ما هي مساحة البيع لديكم؟ (م²)'),
+  effectif: L("Combien de personnes travaillent sur le site ?", 'How many people work on the site?', 'كم عدد الأشخاص الذين يشتغلون في الموقع؟'),
+  'ecole.effectif': L("Combien d'élèves accueillez-vous ?", 'How many pupils do you host?', 'كم عدد التلاميذ لديكم؟'),
+  clim: L('Avez-vous une climatisation centralisée ?', 'Do you have central air conditioning?', 'هل لديكم تكييف مركزي؟'),
+  lits: L('Combien de lits avez-vous ?', 'How many beds do you have?', 'كم عدد الأسرّة لديكم؟'),
+  garde_nuit: L('Assurez-vous une garde de nuit ?', 'Do you run a night shift?', 'هل تؤمنون حراسة ليلية؟'),
+  internat: L('Avez-vous un internat ?', 'Do you have a boarding house?', 'هل لديكم داخلية؟'),
+  fermeture_estivale: L("Fermez-vous l'été ?", 'Do you close in summer?', 'هل تغلقون خلال الصيف؟'),
+  surface_m2: L('Quelle est la surface de votre établissement ? (m²)', 'What is the area of your premises? (m²)', 'ما هي مساحة مؤسستكم؟ (م²)'),
+  chauffe: L("L'eau est chauffée à l'électricité ou au gaz ?", 'Is the water heated by electricity or gas?', 'هل يُسخَّن الماء بالكهرباء أم بالغاز؟'),
+  four: L('Votre four est électrique ou à gaz ?', 'Is your oven electric or gas?', 'هل فرنكم كهربائي أم يشتغل بالغاز؟'),
+  cuisson_nocturne: L('Cuisez-vous la nuit ?', 'Do you bake at night?', 'هل تخبزون ليلاً؟'),
+  temperature_consigne: L('Quelle est votre température de consigne ? (°C)', 'What is your set-point temperature? (°C)', 'ما هي درجة الحرارة المضبوطة؟ (°م)'),
+  volume_m3: L('Quel volume réfrigéré avez-vous ? (m³)', 'What refrigerated volume do you have? (m³)', 'ما هو حجم التبريد لديكم؟ (م³)'),
+  saisonnalite_recolte: L('Avez-vous un pic saisonnier lié à la récolte ?', 'Do you have a seasonal peak tied to harvest?', 'هل لديكم ذروة موسمية مرتبطة بالحصاد؟'),
+};
+const CAT_OPTION_LABELS: Record<string, L3> = {
+  midi: L('Midi', 'Lunch', 'الغداء'),
+  soir: L('Soir', 'Evening', 'المساء'),
+  continu: L('Continu', 'Continuous', 'متواصل'),
+  electrique: L('Électrique', 'Electric', 'كهربائي'),
+  gaz: L('Gaz', 'Gas', 'غاز'),
+};
+const catLabel = (cat: string, key: string): L3 => CAT_Q_LABELS[`${cat}.${key}`] ?? CAT_Q_LABELS[key];
+// Les réponses déjà connues reviennent pré-remplies (on ne redemande jamais).
+const categoriePrefill = prefillStr('categorie_commerciale');
+const reponsesCategoriePrefill: Record<string, unknown> =
+  prefill.reponses_categorie && typeof prefill.reponses_categorie === 'object' && !Array.isArray(prefill.reponses_categorie)
+    ? (prefill.reponses_categorie as Record<string, unknown>)
+    : {};
+const entiersPrefill = (key: string): number[] =>
+  Array.isArray(prefill[key])
+    ? (prefill[key] as unknown[]).map(Number).filter((n) => Number.isInteger(n))
+    : [];
+const joursPrefill = entiersPrefill('jours_ouverture');
+const fermeturePrefill = entiersPrefill('fermeture_mois');
+const tensionPrefill = prefillStr('tension_raccordement');
+const groupePrefill = prefillStr('groupe_electrogene');
+// Relevé de consommation déjà connu : { mois: [{ mois, kwh, kwh_pointe… }] }.
+const relevePrefill: Array<Record<string, unknown>> =
+  prefill.releve_conso && typeof prefill.releve_conso === 'object' && Array.isArray((prefill.releve_conso as { mois?: unknown }).mois)
+    ? ((prefill.releve_conso as { mois: Array<Record<string, unknown>> }).mois).slice(0, RELEVE_CONSO_MAX_MOIS)
+    : [];
+const releveVal = (i: number, key: string): string => {
+  const v = relevePrefill[i]?.[key];
+  return typeof v === 'string' || typeof v === 'number' ? String(v) : '';
+};
+const releveRows = Array.from({ length: RELEVE_CONSO_MAX_MOIS }, (_, i) => i);
+// Un industriel (cos φ ou secteur servis par le serveur) : sa consommation en
+// kWh du dernier mois passe EN PREMIER, avant la tension.
+const estIndustriel =
+  (champs.reseau ?? []).includes('cos_phi') ||
+  (champs.activite ?? []).includes('secteur_industriel') ||
+  prefillStr('secteur_industriel') !== '';
 ---
 
 <Layout
@@ -432,6 +565,444 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
                         </>
                       )}
 
+                      {id === 'reseau' && (
+                        <>
+                          {/* CIW406 — kWh du dernier mois : un INDUSTRIEL le voit EN PREMIER
+                              (order-first), avant la tension. Jamais de chiffre inventé. */}
+                          {demande('reseau', 'conso_mensuelle_kwh') && (
+                            <div class:list={[estIndustriel ? 'order-first' : '']}>
+                              <label for="q-conso-kwh-reseau" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="How many kWh did you use last month? It is on your bill." data-ar="كم كيلوواط ساعة استهلكتم الشهر الماضي؟ الرقم مكتوب في فاتورتكم.">
+                                Combien de kWh avez-vous consommés le mois dernier ? Le chiffre est sur votre facture.
+                              </label>
+                              <input id="q-conso-kwh-reseau" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('conso_mensuelle_kwh')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('reseau', 'tension_raccordement') && (
+                            <div>
+                              <label for="q-tension" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Is your site connected to low voltage (standard meter) or medium voltage (transformer substation)? If you don't know, that's fine."
+                                data-ar="هل موقعكم مربوط بالضغط المنخفض (عداد عادي) أم بالضغط المتوسط (محطة تحويل)؟ إن لم تعرفوا فلا بأس.">
+                                Votre site est-il raccordé en basse tension, avec un compteur ordinaire, ou en moyenne tension, avec un poste de transformation ? Si vous ne savez pas, ce n'est pas grave.
+                              </label>
+                              <select id="q-tension" class={PRO_INPUT_CLS}>
+                                <option value="" selected={tensionPrefill === ''}>—</option>
+                                {TENSION_VALUES.map((v) => (
+                                  <option value={v} selected={tensionPrefill === v} data-fr={TENSION_LABELS[v].fr} data-en={TENSION_LABELS[v].en} data-ar={TENSION_LABELS[v].ar}>{TENSION_LABELS[v].fr}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {demande('reseau', 'compteur_puissance_kva') && (
+                            <div>
+                              <label for="q-kva" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="What is your subscribed power, in kVA? It is written on your bill or contract (optional)."
+                                data-ar="ما هي القدرة المشترك بها بالكيلوفولت أمبير (kVA)؟ مكتوبة في فاتورتكم أو عقدكم (اختياري).">
+                                Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat (facultatif).
+                              </label>
+                              <input id="q-kva" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('compteur_puissance_kva')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('reseau', 'releve_conso') && (
+                            <fieldset class="border-0 p-0">
+                              <legend class="mb-1 text-sm font-semibold" data-i18n
+                                data-en="Your latest electricity bills (optional — up to 12 months help us be precise; one is enough)"
+                                data-ar="آخر فواتير الكهرباء (اختياري — حتى 12 شهراً تساعدنا على الدقة؛ وواحدة تكفي)">
+                                Vos dernières factures d'électricité (facultatif — jusqu'à douze mois nous aident à être précis ; une seule suffit)
+                              </legend>
+                              <div id="q-releve-rows" class="flex flex-col gap-3">
+                                {releveRows.map((i) => (
+                                  <div class:list={['q-releve-row grid grid-cols-2 gap-2 border border-azur-900/10 p-3', i >= Math.max(1, relevePrefill.length) ? 'hidden' : '']}>
+                                    <div>
+                                      <label for={`q-releve-mois-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Month" data-ar="الشهر">Mois</label>
+                                      <input id={`q-releve-mois-${i}`} data-r="mois" type="month" placeholder="AAAA-MM" value={releveVal(i, 'mois')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-2 text-base outline-none focus:border-azur-600" />
+                                    </div>
+                                    <div>
+                                      <label for={`q-releve-kwh-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="kWh" data-ar="كيلوواط ساعة">kWh</label>
+                                      <input id={`q-releve-kwh-${i}`} data-r="kwh" type="number" min="0" step="any" inputmode="decimal" value={releveVal(i, 'kwh')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-2 text-base outline-none focus:border-azur-600" />
+                                    </div>
+                                    {/* Registres pointe / pleines / creuses : MOYENNE TENSION seulement. */}
+                                    <div class:list={['q-releve-mt col-span-2 grid grid-cols-3 gap-2', tensionPrefill === 'mt' ? '' : 'hidden']}>
+                                      <div>
+                                        <label for={`q-releve-pointe-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Peak (kWh)" data-ar="الذروة (ك.و.س)">Pointe (kWh)</label>
+                                        <input id={`q-releve-pointe-${i}`} data-r="kwh_pointe" type="number" min="0" step="any" inputmode="decimal" value={releveVal(i, 'kwh_pointe')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-2 py-2 text-base outline-none focus:border-azur-600" />
+                                      </div>
+                                      <div>
+                                        <label for={`q-releve-pleines-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Standard (kWh)" data-ar="العادية (ك.و.س)">Pleines (kWh)</label>
+                                        <input id={`q-releve-pleines-${i}`} data-r="kwh_pleines" type="number" min="0" step="any" inputmode="decimal" value={releveVal(i, 'kwh_pleines')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-2 py-2 text-base outline-none focus:border-azur-600" />
+                                      </div>
+                                      <div>
+                                        <label for={`q-releve-creuses-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Off-peak (kWh)" data-ar="الدنيا (ك.و.س)">Creuses (kWh)</label>
+                                        <input id={`q-releve-creuses-${i}`} data-r="kwh_creuses" type="number" min="0" step="any" inputmode="decimal" value={releveVal(i, 'kwh_creuses')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-2 py-2 text-base outline-none focus:border-azur-600" />
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              <button type="button" id="q-releve-add" class:list={['mt-2 border border-azur-600 px-4 py-2 text-sm font-semibold text-azur-700', relevePrefill.length >= RELEVE_CONSO_MAX_MOIS ? 'hidden' : '']}
+                                data-i18n data-en="+ Add a month" data-ar="+ إضافة شهر">
+                                + Ajouter un mois
+                              </button>
+                            </fieldset>
+                          )}
+                          {demande('reseau', 'cos_phi') && (
+                            <div>
+                              <label for="q-cos-phi" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Does your bill show a power factor (cos φ) or a reactive-energy penalty? What value? (optional)"
+                                data-ar="هل تُظهر فاتورتكم معامل القدرة (cos φ) أو غرامة الطاقة غير الفعالة؟ ما قيمته؟ (اختياري)">
+                                Votre facture indique-t-elle un cosinus phi ou une pénalité d'énergie réactive ? Quelle valeur ? (facultatif)
+                              </label>
+                              <input id="q-cos-phi" type="number" min="0" max="1" step="any" inputmode="decimal" value={prefillStr('cos_phi')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {id === 'activite' && (
+                        <>
+                          {demande('activite', 'categorie_commerciale') && (
+                            <div>
+                              <label for="q-categorie" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="What is your activity?" data-ar="ما هو نشاطكم؟">
+                                Quelle est votre activité ?
+                              </label>
+                              <select id="q-categorie" class={PRO_INPUT_CLS}>
+                                <option value="" selected={categoriePrefill === ''}>—</option>
+                                {CATEGORIE_COMMERCIALE_VALUES.map((c) => (
+                                  <option value={c} selected={categoriePrefill === c} data-fr={CATEGORIE_LABELS[c].fr} data-en={CATEGORIE_LABELS[c].en} data-ar={CATEGORIE_LABELS[c].ar}>{CATEGORIE_LABELS[c].fr}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {/* Questions PROPRES à la catégorie déclarée (clés fermées du contrat) :
+                              un seul bloc visible, celui de la catégorie choisie. */}
+                          {demande('activite', 'reponses_categorie') && CATEGORIE_COMMERCIALE_VALUES.map((cat) => (
+                            REPONSES_CATEGORIE_QUESTIONS[cat].length > 0 && (
+                              <div class:list={['q-cat-block flex flex-col gap-4', categoriePrefill === cat ? '' : 'hidden']} data-cat={cat}>
+                                {REPONSES_CATEGORIE_QUESTIONS[cat].map((q) => {
+                                  const lab = catLabel(cat, q.key);
+                                  const pre = categoriePrefill === cat ? reponsesCategoriePrefill[q.key] : undefined;
+                                  const preStr = typeof pre === 'string' || typeof pre === 'number' ? String(pre) : '';
+                                  const preBool = pre === true ? 'oui' : pre === false ? 'non' : '';
+                                  const cid = `q-cat-${cat}-${q.key}`;
+                                  return (
+                                    <div>
+                                      {q.type === 'number' && (
+                                        <>
+                                          <label for={cid} class="mb-1 block text-sm font-semibold" data-i18n data-en={lab.en} data-ar={lab.ar}>{lab.fr}</label>
+                                          <input id={cid} data-cat-key={q.key} type="number" step="any" inputmode="decimal" value={preStr} class={PRO_INPUT_CLS} />
+                                        </>
+                                      )}
+                                      {q.type === 'select' && (
+                                        <>
+                                          <label for={cid} class="mb-1 block text-sm font-semibold" data-i18n data-en={lab.en} data-ar={lab.ar}>{lab.fr}</label>
+                                          <select id={cid} data-cat-key={q.key} class={PRO_INPUT_CLS}>
+                                            <option value="" selected={preStr === ''}>—</option>
+                                            {(q.options ?? []).map((o) => (
+                                              <option value={o} selected={preStr === o} data-fr={CAT_OPTION_LABELS[o].fr} data-en={CAT_OPTION_LABELS[o].en} data-ar={CAT_OPTION_LABELS[o].ar}>{CAT_OPTION_LABELS[o].fr}</option>
+                                            ))}
+                                          </select>
+                                        </>
+                                      )}
+                                      {q.type === 'bool' && (
+                                        <fieldset class="border-0 p-0">
+                                          <legend class="mb-1 text-sm font-semibold" data-i18n data-en={lab.en} data-ar={lab.ar}>{lab.fr}</legend>
+                                          <div class="flex gap-4">
+                                            <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                              <input type="radio" name={cid} data-cat-key={q.key} value="oui" checked={preBool === 'oui'} class="h-5 w-5 accent-azur-600" />
+                                              <span data-i18n data-en="Yes" data-ar="نعم">Oui</span>
+                                            </label>
+                                            <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                              <input type="radio" name={cid} data-cat-key={q.key} value="non" checked={preBool === 'non'} class="h-5 w-5 accent-azur-600" />
+                                              <span data-i18n data-en="No" data-ar="لا">Non</span>
+                                            </label>
+                                          </div>
+                                        </fieldset>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )
+                          ))}
+                          {demande('activite', 'secteur_industriel') && (
+                            <div>
+                              <label for="q-secteur" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="What do you make or process on this site?" data-ar="ماذا تصنعون أو تحوّلون في هذا الموقع؟">
+                                Que fabriquez-vous ou que transformez-vous sur ce site ?
+                              </label>
+                              <input id="q-secteur" type="text" maxlength="120" value={prefillStr('secteur_industriel')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('activite', 'export_ue_declare') && (
+                            <fieldset class="border-0 p-0">
+                              <legend class="mb-1 text-sm font-semibold" data-i18n
+                                data-en="Do you export part of your production to the European Union?"
+                                data-ar="هل تصدّرون جزءاً من إنتاجكم إلى الاتحاد الأوروبي؟">
+                                Exportez-vous une partie de votre production vers l'Union européenne ?
+                              </legend>
+                              <div class="flex gap-4">
+                                <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                  <input type="radio" name="q-export-ue" id="q-export-ue-oui" value="oui" checked={prefillStr('export_ue_declare') === 'oui'} class="h-5 w-5 accent-azur-600" />
+                                  <span data-i18n data-en="Yes" data-ar="نعم">Oui</span>
+                                </label>
+                                <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                  <input type="radio" name="q-export-ue" id="q-export-ue-non" value="non" checked={prefillStr('export_ue_declare') === 'non'} class="h-5 w-5 accent-azur-600" />
+                                  <span data-i18n data-en="No" data-ar="لا">Non</span>
+                                </label>
+                              </div>
+                            </fieldset>
+                          )}
+                          {demande('activite', 'regime_equipes') && (
+                            <div>
+                              <label for="q-equipes" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Do you work in one day shift, two shifts, three shifts, or continuously?"
+                                data-ar="هل تشتغلون بفريق نهاري واحد، أم فريقين، أم ثلاثة فرق، أم بشكل متواصل؟">
+                                Travaillez-vous en une équipe de jour, en deux équipes, en trois équipes, ou en continu ?
+                              </label>
+                              <select id="q-equipes" class={PRO_INPUT_CLS}>
+                                <option value="" selected={prefillStr('regime_equipes') === ''}>—</option>
+                                {REGIME_EQUIPES_VALUES.map((v) => (
+                                  <option value={v} selected={prefillStr('regime_equipes') === v} data-fr={EQUIPES_LABELS[v].fr} data-en={EQUIPES_LABELS[v].en} data-ar={EQUIPES_LABELS[v].ar}>{EQUIPES_LABELS[v].fr}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {demande('activite', 'jours_ouverture') && (
+                            <fieldset class="border-0 p-0">
+                              <legend class="mb-1 text-sm font-semibold" data-i18n
+                                data-en="Which days of the week are you open or in production?"
+                                data-ar="في أي أيام الأسبوع أنتم مفتوحون أو في حالة إنتاج؟">
+                                Quels jours de la semaine êtes-vous ouverts ou en production ?
+                              </legend>
+                              <div id="q-jours-ouverture" class="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                                {JOURS_OUVERTURE_VALUES.map((j) => (
+                                  <button type="button" data-group="jours" data-section="activite" data-val={j} aria-pressed={joursPrefill.includes(j)}
+                                    class:list={['q-toggle-btn', PRO_TOGGLE_CLS, joursPrefill.includes(j) ? 'border-brass-400 bg-brass-50' : 'border-azur-900/15']}>
+                                    <span data-i18n data-en={JOUR_LABELS[j].en} data-ar={JOUR_LABELS[j].ar}>{JOUR_LABELS[j].fr}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </fieldset>
+                          )}
+                          {(demande('activite', 'heure_debut') || demande('activite', 'heure_fin')) && (
+                            <div class="grid grid-cols-2 gap-3">
+                              {demande('activite', 'heure_debut') && (
+                                <div>
+                                  <label for="q-heure-debut" class="mb-1 block text-sm font-semibold" data-i18n data-en="Day starts at (hour, 0-24)" data-ar="يبدأ اليوم على الساعة (0-24)">À quelle heure commence votre journée de travail ? (0-24)</label>
+                                  <input id="q-heure-debut" type="number" min="0" max="24" step="1" inputmode="numeric" value={prefillStr('heure_debut')} class={PRO_INPUT_CLS} />
+                                </div>
+                              )}
+                              {demande('activite', 'heure_fin') && (
+                                <div>
+                                  <label for="q-heure-fin" class="mb-1 block text-sm font-semibold" data-i18n data-en="Day ends at (hour, 0-24)" data-ar="ينتهي اليوم على الساعة (0-24)">Et à quelle heure se termine-t-elle ? (0-24)</label>
+                                  <input id="q-heure-fin" type="number" min="0" max="24" step="1" inputmode="numeric" value={prefillStr('heure_fin')} class={PRO_INPUT_CLS} />
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {demande('activite', 'fermeture_mois') && (
+                            <fieldset class="border-0 p-0">
+                              <legend class="mb-1 text-sm font-semibold" data-i18n
+                                data-en="Do you close in certain months (holidays, low season)? Which ones?"
+                                data-ar="هل تغلقون في بعض أشهر السنة (عطل، موسم هادئ)؟ أي أشهر؟">
+                                Fermez-vous certains mois de l'année, pour des congés ou une saison creuse ? Lesquels ?
+                              </legend>
+                              <div id="q-fermeture-mois" class="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                                {MOIS_IRRIGATION_VALUES.map((m) => (
+                                  <button type="button" data-group="fermeture" data-section="activite" data-val={m} aria-pressed={fermeturePrefill.includes(m)}
+                                    class:list={['q-toggle-btn', PRO_TOGGLE_CLS, fermeturePrefill.includes(m) ? 'border-brass-400 bg-brass-50' : 'border-azur-900/15']}>
+                                    <span data-i18n data-en={MOIS_LABELS[m].en} data-ar={MOIS_LABELS[m].ar}>{MOIS_LABELS[m].fr}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </fieldset>
+                          )}
+                          {demande('activite', 'groupe_electrogene') && (
+                            <fieldset class="border-0 p-0">
+                              <legend class="mb-1 text-sm font-semibold" data-i18n data-en="Do you have a generator on site?" data-ar="هل لديكم مولد كهربائي في الموقع؟">
+                                Avez-vous un groupe électrogène sur le site ?
+                              </legend>
+                              <div class="flex gap-4">
+                                <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                  <input type="radio" name="q-groupe-electrogene" id="q-groupe-oui" value="oui" checked={groupePrefill === 'oui'} class="h-5 w-5 accent-azur-600" />
+                                  <span data-i18n data-en="Yes" data-ar="نعم">Oui</span>
+                                </label>
+                                <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                  <input type="radio" name="q-groupe-electrogene" id="q-groupe-non" value="non" checked={groupePrefill === 'non'} class="h-5 w-5 accent-azur-600" />
+                                  <span data-i18n data-en="No" data-ar="لا">Non</span>
+                                </label>
+                              </div>
+                            </fieldset>
+                          )}
+                          <div id="q-groupe-detail" class:list={['flex flex-col gap-4', groupePrefill === 'oui' ? '' : 'hidden']}>
+                            {demande('activite', 'groupe_kva') && (
+                              <div>
+                                <label for="q-groupe-kva" class="mb-1 block text-sm font-semibold" data-i18n data-en="What is its power, in kVA?" data-ar="ما هي قدرته بالكيلوفولت أمبير (kVA)؟">Quelle est sa puissance, en kVA ?</label>
+                                <input id="q-groupe-kva" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('groupe_kva')} class={PRO_INPUT_CLS} />
+                              </div>
+                            )}
+                            {demande('activite', 'groupe_litres_mois') && (
+                              <div>
+                                <label for="q-groupe-litres" class="mb-1 block text-sm font-semibold" data-i18n data-en="How many litres of diesel does it use per month? (optional)" data-ar="كم لتراً من الغازوال يستهلك شهرياً؟ (اختياري)">Combien de litres de gasoil consomme-t-il par mois ? (facultatif)</label>
+                                <input id="q-groupe-litres" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('groupe_litres_mois')} class={PRO_INPUT_CLS} />
+                              </div>
+                            )}
+                            {demande('activite', 'groupe_depense_mad_mois') && (
+                              <div>
+                                <label for="q-groupe-depense" class="mb-1 block text-sm font-semibold" data-i18n data-en="How much do you spend on diesel for it each month? (MAD, optional)" data-ar="كم تنفقون على الغازوال للمولد شهرياً؟ (درهم، اختياري)">Combien dépensez-vous en gasoil pour le groupe chaque mois ? (MAD, facultatif)</label>
+                                <input id="q-groupe-depense" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('groupe_depense_mad_mois')} class={PRO_INPUT_CLS} />
+                              </div>
+                            )}
+                          </div>
+                          {demande('activite', 'pv_existant_kwc') && (
+                            <div>
+                              <label for="q-pv-existant" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Do you already have solar panels installed? What power (kWp)? (optional)"
+                                data-ar="هل لديكم ألواح شمسية مركّبة؟ بأي قدرة (كيلوواط ذروة)؟ (اختياري)">
+                                Avez-vous déjà des panneaux solaires installés ? De quelle puissance (kWc) ? (facultatif)
+                              </label>
+                              <input id="q-pv-existant" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('pv_existant_kwc')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {id === 'site' && (
+                        <>
+                          {demande('site', 'type_surface') && (
+                            <div>
+                              <label for="q-site-type-surface" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Where could the panels go: on the roof, on a parking canopy, or on open ground?"
+                                data-ar="أين يمكن وضع الألواح: فوق السطح، فوق مظلة موقف السيارات، أم على أرض مفتوحة؟">
+                                Où pourrait-on poser les panneaux : sur la toiture, sur une ombrière de parking, ou sur un terrain ?
+                              </label>
+                              <select id="q-site-type-surface" class={PRO_INPUT_CLS}>
+                                <option value="" selected={prefillStr('type_surface') === ''}>—</option>
+                                {TYPE_SURFACE_VALUES.map((v) => (
+                                  <option value={v} selected={prefillStr('type_surface') === v} data-fr={SURFACE_LABELS[v].fr} data-en={SURFACE_LABELS[v].en} data-ar={SURFACE_LABELS[v].ar}>{SURFACE_LABELS[v].fr}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {demande('site', 'type_toiture') && (
+                            <div>
+                              <label for="q-site-type-toiture" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="What is your roof made of?" data-ar="مم يتكوّن سطحكم؟">
+                                Comment est faite votre toiture ?
+                              </label>
+                              <select id="q-site-type-toiture" class={PRO_INPUT_CLS}>
+                                <option value="" selected={prefillStr('type_toiture') === ''}>—</option>
+                                {TYPE_TOITURE_PRO_VALUES.map((v) => (
+                                  <option value={v} selected={prefillStr('type_toiture') === v} data-fr={TOITURE_PRO_LABELS[v].fr} data-en={TOITURE_PRO_LABELS[v].en} data-ar={TOITURE_PRO_LABELS[v].ar}>{TOITURE_PRO_LABELS[v].fr}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {demande('site', 'surface_toiture_m2') && (
+                            <div>
+                              <label for="q-site-surface" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Roughly how much surface is available for the panels? (m²)"
+                                data-ar="كم تقريباً من المساحة متاحة للألواح؟ (م²)">
+                                Quelle surface est disponible pour les panneaux, à peu près ? (m²)
+                              </label>
+                              <input id="q-site-surface" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('surface_toiture_m2')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {id === 'societe' && (
+                        <>
+                          {demande('societe', 'societe') && (
+                            <div>
+                              <label for="q-societe" class="mb-1 block text-sm font-semibold" data-i18n data-en="Company name" data-ar="الاسم التجاري للشركة">Raison sociale</label>
+                              <input id="q-societe" type="text" maxlength="255" autocomplete="organization" value={prefillStr('societe')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('societe', 'ice') && (
+                            <div>
+                              <label for="q-ice" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Company ICE (it will appear on the quote and invoice)" data-ar="رقم ICE للشركة (سيظهر في عرض الثمن والفاتورة)">
+                                ICE de l'entreprise (il figurera sur le devis et la facture)
+                              </label>
+                              <input id="q-ice" type="text" maxlength="30" inputmode="numeric" value={prefillStr('ice')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('societe', 'rc') && (
+                            <div>
+                              <label for="q-rc" class="mb-1 block text-sm font-semibold" data-i18n data-en="Trade register (RC) number" data-ar="رقم السجل التجاري (RC)">Numéro de registre de commerce (RC)</label>
+                              <input id="q-rc" type="text" maxlength="30" value={prefillStr('rc')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('societe', 'if_fiscal') && (
+                            <div>
+                              <label for="q-if-fiscal" class="mb-1 block text-sm font-semibold" data-i18n data-en="Tax ID (IF)" data-ar="المعرّف الضريبي (IF)">Identifiant fiscal (IF)</label>
+                              <input id="q-if-fiscal" type="text" maxlength="30" value={prefillStr('if_fiscal')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('societe', 'adresse_siege') && (
+                            <div>
+                              <label for="q-adresse-siege" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Head-office address, if different from the site" data-ar="عنوان المقر الاجتماعي، إن اختلف عن عنوان الموقع">
+                                Adresse du siège, si elle diffère de celle du site
+                              </label>
+                              <input id="q-adresse-siege" type="text" maxlength="500" value={prefillStr('adresse_siege')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('societe', 'fonction_contact') && (
+                            <div>
+                              <label for="q-fonction" class="mb-1 block text-sm font-semibold" data-i18n data-en="Your role in the company" data-ar="وظيفتكم في الشركة">Votre fonction dans l'entreprise</label>
+                              <input id="q-fonction" type="text" maxlength="120" value={prefillStr('fonction_contact')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {(demande('societe', 'contact_secondaire_nom') || demande('societe', 'contact_secondaire_telephone') || demande('societe', 'contact_secondaire_email') || demande('societe', 'contact_secondaire_fonction')) && (
+                            <p class="text-sm text-encre-soft" data-i18n
+                              data-en="Anyone else we should include in the discussion? (optional)" data-ar="هل هناك شخص آخر نُدرجه في النقاش؟ (اختياري)">
+                              Une autre personne à inclure dans les échanges ? (facultatif)
+                            </p>
+                          )}
+                          {demande('societe', 'contact_secondaire_nom') && (
+                            <div>
+                              <label for="q-cs-nom" class="mb-1 block text-sm font-semibold" data-i18n data-en="Their name" data-ar="اسمه">Son nom</label>
+                              <input id="q-cs-nom" type="text" maxlength="255" value={prefillStr('contact_secondaire_nom')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('societe', 'contact_secondaire_telephone') && (
+                            <div>
+                              <label for="q-cs-tel" class="mb-1 block text-sm font-semibold" data-i18n data-en="Their phone" data-ar="هاتفه">Son téléphone</label>
+                              <input id="q-cs-tel" type="tel" inputmode="tel" maxlength="50" value={prefillStr('contact_secondaire_telephone')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('societe', 'contact_secondaire_email') && (
+                            <div>
+                              <label for="q-cs-email" class="mb-1 block text-sm font-semibold" data-i18n data-en="Their e-mail (may we send them the quote?)" data-ar="بريده الإلكتروني (هل يمكننا إرسال عرض الثمن إليه؟)">Son e-mail (pouvons-nous lui envoyer le devis ?)</label>
+                              <input id="q-cs-email" type="email" inputmode="email" value={prefillStr('contact_secondaire_email')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('societe', 'contact_secondaire_fonction') && (
+                            <div>
+                              <label for="q-cs-fonction" class="mb-1 block text-sm font-semibold" data-i18n data-en="Their role" data-ar="وظيفته">Sa fonction</label>
+                              <input id="q-cs-fonction" type="text" maxlength="120" value={prefillStr('contact_secondaire_fonction')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('societe', 'tva_recuperable') && (
+                            <div>
+                              <label for="q-tva" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Does your company recover VAT on its purchases?" data-ar="هل تسترجع شركتكم الضريبة على القيمة المضافة على مشترياتها؟">
+                                Votre entreprise récupère-t-elle la TVA sur ses achats ?
+                              </label>
+                              <select id="q-tva" class={PRO_INPUT_CLS}>
+                                <option value="" selected={prefillStr('tva_recuperable') === ''}>—</option>
+                                {TVA_RECUPERABLE_VALUES.map((v) => (
+                                  <option value={v} selected={prefillStr('tva_recuperable') === v} data-fr={TVA_LABELS[v].fr} data-en={TVA_LABELS[v].en} data-ar={TVA_LABELS[v].ar}>{TVA_LABELS[v].fr}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </>
+                      )}
+
                       {isPhotoSection(id) && (
                         <>
                           <p class="text-sm text-encre-soft" data-i18n
@@ -440,6 +1011,8 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
                               : id === 'photo_compteur' ? 'Take a photo of your electricity meter.'
                               : id === 'photo_pompe' ? 'Take a photo of your pump nameplate (the plate with the power and model).'
                               : id === 'photo_forage' ? 'Take a photo of your borehole (wellhead).'
+                              : id === 'photo_factures' ? 'Send a clear photo of your electricity bills (up to twelve months help us be precise; one is enough).'
+                              : id === 'photo_poste' ? 'Take a photo of the meter or delivery substation.'
                               : 'Take a photo of your electrical panel, open.'
                             }
                             data-ar={
@@ -447,12 +1020,16 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
                               : id === 'photo_compteur' ? 'التقطوا صورة لعداد الكهرباء.'
                               : id === 'photo_pompe' ? 'التقطوا صورة للوحة المعلومات على مضختكم (القدرة والطراز).'
                               : id === 'photo_forage' ? 'التقطوا صورة لبئركم (رأس البئر).'
+                              : id === 'photo_factures' ? 'أرسلوا صورة واضحة لفواتير الكهرباء (حتى اثني عشر شهراً تساعدنا على الدقة؛ وواحدة تكفي).'
+                              : id === 'photo_poste' ? 'التقطوا صورة للعداد أو لمحطة التسليم.'
                               : 'التقطوا صورة للوحة الكهربائية مفتوحة.'
                             }>
                             {id === 'photo_facture' && 'Prenez une photo bien lisible de votre facture d’électricité.'}
                             {id === 'photo_compteur' && 'Prenez une photo de votre compteur électrique.'}
                             {id === 'photo_pompe' && 'Prenez une photo de la plaque de votre pompe (puissance et modèle).'}
                             {id === 'photo_forage' && 'Prenez une photo de votre forage (tête de puits).'}
+                            {id === 'photo_factures' && 'Envoyez une photo bien lisible de vos factures d’électricité (jusqu’à douze mois nous aident à être précis ; une seule suffit).'}
+                            {id === 'photo_poste' && 'Prenez une photo du compteur ou du poste de livraison.'}
                             {id === 'photo_tableau' && 'Prenez une photo de votre tableau électrique, ouvert.'}
                           </p>
                           <p class="text-xs text-encre-faint" data-i18n
@@ -899,6 +1476,10 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
         en.hidden = lang !== 'en';
         ar.hidden = lang !== 'ar';
       });
+      // CIW406 — les <option> ne portent que du texte : libellé posé selon la langue.
+      document.querySelectorAll<HTMLOptionElement>('option[data-fr]').forEach((o) => {
+        o.textContent = (lang === 'en' ? o.dataset.en : lang === 'ar' ? o.dataset.ar : o.dataset.fr) || o.dataset.fr || '';
+      });
       document.documentElement.lang = lang;
       document.documentElement.dir = isAr ? 'rtl' : 'ltr';
       const root = document.querySelector('section');
@@ -1042,6 +1623,61 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
       $('q-butane-wrap')?.classList.toggle('hidden', sansCarburant || alim === 'diesel');
     });
 
+    // ── CIW406 (sections pro) : MT → registres, boutons jours/mois, groupe, catégorie ──
+    function syncTension() {
+      const mt = fieldVal('q-tension') === 'mt';
+      document.querySelectorAll<HTMLElement>('.q-releve-mt').forEach((el) => el.classList.toggle('hidden', !mt));
+    }
+    $('q-tension')?.addEventListener('change', syncTension);
+    $('q-releve-add')?.addEventListener('click', () => {
+      if (init.interne) return;
+      document.querySelector<HTMLElement>('.q-releve-row.hidden')?.classList.remove('hidden');
+      if (!document.querySelector('.q-releve-row.hidden')) $('q-releve-add')?.classList.add('hidden');
+      touched.add('reseau');
+    });
+    document.querySelectorAll<HTMLButtonElement>('.q-toggle-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (init.interne) return;
+        const on = btn.getAttribute('aria-pressed') !== 'true';
+        btn.setAttribute('aria-pressed', String(on));
+        btn.classList.toggle('border-brass-400', on);
+        btn.classList.toggle('bg-brass-50', on);
+        btn.classList.toggle('border-azur-900/15', !on);
+        touched.add((btn.dataset.section || 'activite') as QuestionnaireSectionId);
+      });
+    });
+    $('q-categorie')?.addEventListener('change', () => {
+      const cat = fieldVal('q-categorie');
+      document.querySelectorAll<HTMLElement>('.q-cat-block').forEach((el) => el.classList.toggle('hidden', el.dataset.cat !== cat));
+    });
+    document.querySelectorAll<HTMLInputElement>('input[name="q-groupe-electrogene"]').forEach((radio) => {
+      radio.addEventListener('change', () => {
+        $('q-groupe-detail')?.classList.toggle('hidden', radio.value !== 'oui');
+      });
+    });
+    const pressedValues = (group: string): number[] =>
+      Array.from(document.querySelectorAll<HTMLButtonElement>(`.q-toggle-btn[data-group="${group}"][aria-pressed="true"]`))
+        .map((b) => Number(b.dataset.val));
+    const releveLignes = (): Array<Record<string, unknown>> =>
+      Array.from(document.querySelectorAll<HTMLElement>('.q-releve-row:not(.hidden)')).map((row) => {
+        const ligne: Record<string, unknown> = {};
+        row.querySelectorAll<HTMLInputElement>('[data-r]').forEach((inp) => {
+          ligne[inp.dataset.r as string] = inp.value;
+        });
+        return ligne;
+      });
+    const reponsesCategorieDom = (categorie: string): Record<string, unknown> => {
+      const out: Record<string, unknown> = {};
+      if (!categorie) return out;
+      document
+        .querySelectorAll<HTMLInputElement | HTMLSelectElement>(`.q-cat-block[data-cat="${categorie}"] [data-cat-key]`)
+        .forEach((el) => {
+          if (el instanceof HTMLInputElement && el.type === 'radio' && !el.checked) return;
+          if (el.value !== '') out[el.dataset.catKey as string] = el.value;
+        });
+      return out;
+    };
+
     // ── GPS : partage immédiat + aperçu + POST section (pas d'attente du Continuer) ──
     $('q-gps-btn')?.addEventListener('click', () => {
       if (init.interne) return;
@@ -1114,7 +1750,7 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
       });
     }
 
-    (['photo_facture', 'photo_compteur', 'photo_tableau', 'photo_pompe', 'photo_forage'] as const).forEach((section) => {
+    (['photo_facture', 'photo_compteur', 'photo_tableau', 'photo_pompe', 'photo_forage', 'photo_factures', 'photo_poste'] as const).forEach((section) => {
       const input = $(`q-${section}-input`) as HTMLInputElement | null;
       const preview = $(`q-${section}-preview`) as HTMLImageElement | null;
       const errEl = $(`q-${section}-err`);
@@ -1167,12 +1803,8 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
             facture_ete: numOrUndef('q-facture-ete'),
             raccordement: fieldVal('q-raccordement') || undefined,
           };
-        case 'photo_facture':
-        case 'photo_compteur':
-        case 'photo_tableau':
-        case 'photo_pompe':
-        case 'photo_forage':
-          return {};
+        // Les sections photo (isPhotoSection) n'ont aucun champ : elles tombent
+        // dans `default` → {} ; la photo voyage dans le champ `photo` du POST.
         case 'pompage':
           return {
             source_eau: fieldVal('q-source-eau') || undefined,
@@ -1188,6 +1820,51 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
             mois_irrigation: Array.from(document.querySelectorAll<HTMLButtonElement>('.q-mois-btn[aria-pressed="true"]'))
               .map((b) => Number(b.dataset.mois)),
             compteur_eau: radioValue('q-compteur-eau'),
+          };
+        case 'reseau':
+          return {
+            tension_raccordement: fieldVal('q-tension') || undefined,
+            compteur_puissance_kva: numOrUndef('q-kva'),
+            conso_mensuelle_kwh: numOrUndef('q-conso-kwh-reseau'),
+            releve_conso: releveLignes(),
+            cos_phi: numOrUndef('q-cos-phi'),
+          };
+        case 'activite':
+          return {
+            categorie_commerciale: fieldVal('q-categorie') || undefined,
+            reponses_categorie: reponsesCategorieDom(fieldVal('q-categorie')),
+            secteur_industriel: fieldVal('q-secteur') || undefined,
+            export_ue_declare: radioValue('q-export-ue'),
+            regime_equipes: fieldVal('q-equipes') || undefined,
+            jours_ouverture: pressedValues('jours'),
+            heure_debut: numOrUndef('q-heure-debut'),
+            heure_fin: numOrUndef('q-heure-fin'),
+            fermeture_mois: pressedValues('fermeture'),
+            groupe_electrogene: radioValue('q-groupe-electrogene'),
+            groupe_kva: numOrUndef('q-groupe-kva'),
+            groupe_litres_mois: numOrUndef('q-groupe-litres'),
+            groupe_depense_mad_mois: numOrUndef('q-groupe-depense'),
+            pv_existant_kwc: numOrUndef('q-pv-existant'),
+          };
+        case 'site':
+          return {
+            type_surface: fieldVal('q-site-type-surface') || undefined,
+            type_toiture: fieldVal('q-site-type-toiture') || undefined,
+            surface_toiture_m2: numOrUndef('q-site-surface'),
+          };
+        case 'societe':
+          return {
+            societe: fieldVal('q-societe') || undefined,
+            ice: fieldVal('q-ice') || undefined,
+            rc: fieldVal('q-rc') || undefined,
+            if_fiscal: fieldVal('q-if-fiscal') || undefined,
+            adresse_siege: fieldVal('q-adresse-siege') || undefined,
+            fonction_contact: fieldVal('q-fonction') || undefined,
+            contact_secondaire_nom: fieldVal('q-cs-nom') || undefined,
+            contact_secondaire_telephone: fieldVal('q-cs-tel') || undefined,
+            contact_secondaire_email: fieldVal('q-cs-email') || undefined,
+            contact_secondaire_fonction: fieldVal('q-cs-fonction') || undefined,
+            tva_recuperable: fieldVal('q-tva') || undefined,
           };
         case 'toiture':
           return {

@@ -1467,6 +1467,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               class="mt-3 inline-flex items-center gap-2 bg-ok-600 px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
               <span>Open WhatsApp now</span>
             </a>
+            <button type="button" id="mt-affiner" hidden
+              class="mt-3 ml-2 inline-flex items-center gap-2 border border-white/30 px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90">
+              <span>Refine my request (2 minutes, optional)</span>
+            </button>
           </div>
 
           <!-- WJ5 — HONEST path below the qualifying threshold (never a fake "recorded") -->
@@ -1478,6 +1482,17 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               for free energy-efficiency advice, write to us on WhatsApp.
             </p>
             <a id="mt-belowthreshold-wa" href="#" target="_blank" rel="noopener"
+              class="mt-3 inline-flex items-center gap-2 bg-ok-600 px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
+              <span>Chat on WhatsApp</span>
+            </a>
+          </div>
+
+          <!-- CIW409 — commercial / industriel sous le seuil : JAMAIS « pas rentable à votre échelle »
+               (seuil calibré villa, tarif deviné, aucun calcul de retour). Message NEUTRE ; le seuil,
+               `qualified`, l'étiquette CRM et le pixel restent INCHANGÉS (convention 17). -->
+          <div id="mt-belowthreshold-pro" hidden class="border border-ok-600/40 bg-ok-600/10 p-4 text-sm text-white">
+            <p class="font-semibold">Thank you — an advisor is reviewing your request and will call you back.</p>
+            <a id="mt-belowthreshold-pro-wa" href="#" target="_blank" rel="noopener"
               class="mt-3 inline-flex items-center gap-2 bg-ok-600 px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90">
               <span>Chat on WhatsApp</span>
             </a>
@@ -2055,6 +2070,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // No weight is invented here.
   import { OCCUPANCY_IDS, OCCUPANCY_SHAPES, type OccupancyId } from '../../../lib/dayProfiles';
   import { renderJourType } from '../../../scripts/tunnel/jourType';
+  import { brancherAffiner } from '../../../scripts/tunnel/affiner';
   // QX/Lane C — TYPE only (erased at build: Three.js/viewerOnly NEVER joins
   // the initial bundle — WJ18; the real module stays a lazy import()).
   import type { RoofImageSpec } from '../../../scripts/roofPro11/viewerOnly';
@@ -2342,7 +2358,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       const snapshot: WizardSnapshot = {
         step, revealed, mode,
         visitWindowPart, visitWindowWeek,
-        sel: { proUnit, tension, activity, surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode, occupationJour },
+        sel: { proUnit, tension, activity, tensionTouched: tensionTouched ? '1' : '', activityTouched: activityTouched ? '1' : '', surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode, occupationJour },
         capturePin, captureOutline, capturePans, captureLayout,
         fields, checks,
         idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId,
@@ -2981,6 +2997,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   let proUnit = savedSel.proUnit || 'mad';
   let tension = savedSel.tension || 'bt';
   let activity = savedSel.activity || 'day';
+  // CIW410 — le visiteur a-t-il CLIQUÉ la tension / l'activité ? Les défauts visibles
+  // (BT, « Journée » — WJ123) restent, mais ne partent comme déclarés que touchés.
+  let tensionTouched = savedSel.tensionTouched === '1';
+  let activityTouched = savedSel.activityTouched === '1';
   let surfaceType = savedSel.surfaceType || '';
   let waterSource = savedSel.waterSource || '';
   let waterUnit = savedSel.waterUnit || 'm3h';
@@ -3101,8 +3121,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // at medium voltage) is removed from the funnel — like the "backup
   // generator" cards (founder cut 18/08).
   wireCardGroup('.mt-pro-unit', () => proUnit, (v) => { proUnit = v || 'mad'; }, { recompute: true });
-  wireCardGroup('.mt-tension', () => tension, (v) => { tension = v || 'bt'; }, { recompute: true });
-  wireCardGroup('.mt-activity', () => activity, (v) => { activity = v || 'day'; }, { recompute: true });
+  wireCardGroup('.mt-tension', () => tension, (v) => { tension = v || 'bt'; tensionTouched = true; }, { recompute: true });
+  wireCardGroup('.mt-activity', () => activity, (v) => { activity = v || 'day'; activityTouched = true; }, { recompute: true });
   wireCardGroup('.mt-surface-type', () => surfaceType, (v) => { surfaceType = v; }, { allowUnset: true, recompute: true });
   // WJ122 — COMMERCIAL: category cards + bill unit toggle. Picking a category
   // recomputes the estimate (archetype day-share → hotel ≠ office at equal
@@ -4383,6 +4403,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       tarifProMadKwh: lastProTarifMadKwh,
       tension,
       activite: activity,
+      tensionTouchee: tensionTouched,
+      activiteTouchee: activityTouched,
       categorieCommerciale: commercialCategory,
       // WJ123 — INDUSTRIAL mode: shifts honestly cap self-consumption in
       // estimatePro.
@@ -4506,6 +4528,19 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     })();
   }
 
+  // ——— CIW405 (D-CIQ-8) : étape « Affiner », FACULTATIVE, APRÈS la porte de contact ———
+  // Réservée aux profils commercial / industriel. Le bouton est dans le bloc de
+  // succès qualifié ; le clic appelle le proxy same-origin /api/lead-affiner
+  // avec l'idempotencyKey DÉJÀ envoyée (jamais une seconde soumission), puis
+  // ouvre /questionnaire/<jeton>. Échec ou 404 : le bouton se retire sans
+  // message alarmant. Rien n'est demandé AVANT la porte de contact.
+  // Logique partagée (fetch du proxy, ouverture du questionnaire, retrait sur échec) :
+  // scripts/tunnel/affiner.ts. Ici, seul le garde de profil.
+  function setupAffiner(idempotencyKey: string) {
+    if (mode !== 'commercial' && mode !== 'industriel') return;
+    brancherAffiner($('mt-affiner') as HTMLButtonElement | null, idempotencyKey);
+  }
+
   // ——— submission -> /api/capture-lead (contract UNCHANGED) ———
   const form = $('mt-form') as HTMLFormElement | null;
   const errEl = $('mt-error');
@@ -4606,6 +4641,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           // pollServerClientRef above): swaps the displayed code + WhatsApp
           // link the moment it arrives, silent otherwise.
           pollServerClientRef(getOrCreateDedupTokens().idempotencyKey);
+          setupAffiner(getOrCreateDedupTokens().idempotencyKey); // CIW405
           // WJ3/WJ51 — on mobile, offer WhatsApp right away when the contact
           // preference is "WhatsApp only" (the option checked by default).
           const wantsWa = ($('mt-contact-phone') as HTMLInputElement | null)?.checked !== true;
@@ -4614,9 +4650,18 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           }
         } else {
           // below the threshold: NO fake "recorded" — an adapted message + WhatsApp.
-          if (belowEl) belowEl.hidden = false;
-          const belowWa = $('mt-belowthreshold-wa') as HTMLAnchorElement | null;
-          if (belowWa) belowWa.href = waUrl;
+          if (mode === 'commercial' || mode === 'industriel') {
+            // CIW409 — jamais le texte « pas rentable à votre échelle » pour un pro :
+            // message neutre (le seuil / `qualified` / l'étiquette restent inchangés).
+            const neutreEl = $('mt-belowthreshold-pro');
+            if (neutreEl) neutreEl.hidden = false;
+            const neutreWa = $('mt-belowthreshold-pro-wa') as HTMLAnchorElement | null;
+            if (neutreWa) neutreWa.href = waUrl;
+          } else {
+            if (belowEl) belowEl.hidden = false;
+            const belowWa = $('mt-belowthreshold-wa') as HTMLAnchorElement | null;
+            if (belowWa) belowWa.href = waUrl;
+          }
         }
         // disable the fields after submission (except the WhatsApp links).
         Array.from(form.elements).forEach((el) => ((el as HTMLInputElement).disabled = true));

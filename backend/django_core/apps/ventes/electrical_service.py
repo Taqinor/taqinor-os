@@ -63,6 +63,17 @@ DC_M_MINIMUM = 10.0
 DC_M_PAR_DEFAUT = 30.0
 AC_M_DEFAUT = 15.0
 
+#: ACAL165 (C-ACAL-061) — PROVENANCE de chaque grandeur de site de l'étude
+#: (clé ``source_entree`` du contrat) : la surcharge explicite du devis
+#: (POST ``conception-electrique``) d'abord, puis le calepinage LIÉ (mêmes
+#: températures que son onglet Verdict, longueurs et régime SAISIS), et les
+#: forfaits du noyau seulement sans l'un ni l'autre.
+SOURCE_CALEPINAGE = "calepinage"
+SOURCE_SURCHARGE = "surcharge"
+SOURCE_DEFAUT = "defaut"
+SOURCE_ENTREE_DEFAUT = {"temperatures": SOURCE_DEFAUT,
+                        "longueurs": SOURCE_DEFAUT, "regime": SOURCE_DEFAUT}
+
 #: Clés d'override acceptées — toute autre clé est IGNORÉE (jamais une erreur :
 #: un écran qui envoie un champ de trop ne doit pas casser une étude).
 OVERRIDES_CONNUS = (
@@ -657,8 +668,47 @@ def motifs_non_conformite_du_devis(devis):
             for bloquant in (conformite.get("bloquants") or [])]
 
 
+def _site_du_calepinage(devis):
+    """ACAL165 — les grandeurs de site du calepinage LIÉ au devis, ou ``None``.
+
+    Lecture cross-app par ``apps.calepinage.selectors`` (fonction-locale,
+    jamais ses modèles). Un devis non enregistré (aucune clé) n'a pas de
+    calepinage lié. Ne lève jamais : une lecture ratée vaut « pas de
+    calepinage » (les forfaits s'appliquent, comme avant).
+    """
+    devis_id = getattr(devis, "pk", None)
+    company = getattr(devis, "company", None) if devis_id else None
+    if not devis_id or company is None:
+        return None
+    try:
+        from apps.calepinage.selectors import entree_electrique_du_devis
+        return entree_electrique_du_devis(devis_id, company)
+    except Exception:  # noqa: BLE001 — cf. docstring
+        logger.warning(
+            "ACAL165 : calepinage du devis %s illisible — forfaits appliqués",
+            getattr(devis, "reference", "?"), exc_info=True)
+        return None
+
+
 def construire_entree(devis, overrides=None):
     """``EntreeElectrique`` complète d'un devis (+ les overrides appliqués).
+
+    ACAL165 — voir :func:`construire_entree_et_source` (même entrée, avec la
+    provenance des grandeurs de site).
+    """
+    return construire_entree_et_source(devis, overrides)[0]
+
+
+def construire_entree_et_source(devis, overrides=None, *,
+                                avec_calepinage=True):
+    """``(EntreeElectrique, source_entree, lie)`` d'un devis.
+
+    ACAL165 (C-ACAL-061) — températures, longueurs et régime : la SURCHARGE
+    explicite du devis gagne ; sinon le calepinage LIÉ (températures de son
+    Verdict, longueurs et régime SAISIS) ; sinon les forfaits (−5/70 °C,
+    30/15 m, TT). ``lie`` dit si un calepinage est rattaché ;
+    ``avec_calepinage=False`` rend l'entrée d'AVANT ACAL165 (forfaits seuls),
+    celle qui sert à reconnaître une étude rangée qu'on ne recalcule pas.
 
     La longueur DC par défaut est un FORFAIT (30 m par paire descendante,
     F2 — décision fondateur 19/08/2026) : elle ne dépend plus du nombre de
@@ -681,6 +731,9 @@ def construire_entree(devis, overrides=None):
 
     reglages = {clef: valeur for clef, valeur in (overrides or {}).items()
                 if clef in OVERRIDES_CONNUS}
+    site = _site_du_calepinage(devis) if avec_calepinage else None
+    site = site or {}
+    temperatures_site = site.get("temperatures") or {}
 
     variante = _option_choisie(devis)[1]
     module = spec_module_du_devis(devis)
@@ -689,7 +742,16 @@ def construire_entree(devis, overrides=None):
 
     phases = _entier(reglages.get("phases"), phases_fiche)
     phases = 3 if phases == 3 else 1
-    regime = str(reglages.get("regime") or REGIME_TT).upper()
+    regime_site = str(site.get("regime") or "").upper()
+    if reglages.get("regime"):
+        regime = str(reglages.get("regime")).upper()
+        source_regime = SOURCE_SURCHARGE
+    elif regime_site in REGIMES_CONNUS:
+        regime = regime_site
+        source_regime = SOURCE_CALEPINAGE
+    else:
+        regime = REGIME_TT
+        source_regime = SOURCE_DEFAUT
     if regime not in REGIMES_CONNUS:
         regime = REGIME_TT
 
@@ -702,12 +764,32 @@ def construire_entree(devis, overrides=None):
     (batterie_presente, batterie_designation, batterie_kwh,
      batterie_v) = _batterie_du_devis(devis)
 
+    # ACAL165 — températures : surcharge, sinon le Verdict du calepinage.
+    froid_defaut = _flottant(temperatures_site.get("froid_c"),
+                             TEMP_FROID_DEFAUT_C)
+    chaud_defaut = _flottant(temperatures_site.get("chaud_c"),
+                             TEMP_CHAUD_DEFAUT_C)
+    if "temp_froid_c" in reglages or "temp_chaud_c" in reglages:
+        source_temperatures = SOURCE_SURCHARGE
+    elif temperatures_site:
+        source_temperatures = SOURCE_CALEPINAGE
+    else:
+        source_temperatures = SOURCE_DEFAUT
+    # ACAL165 — longueurs : surcharge, sinon la SAISIE du calepinage.
+    ac_defaut = site.get("ac_m") or AC_M_DEFAUT
+    if "dc_m" in reglages or "ac_m" in reglages:
+        source_longueurs = SOURCE_SURCHARGE
+    elif site.get("dc_m") or site.get("ac_m"):
+        source_longueurs = SOURCE_CALEPINAGE
+    else:
+        source_longueurs = SOURCE_DEFAUT
+
     entree = EntreeElectrique(
         module=module,
         onduleur=onduleur,
         groupes=groupes,
         dc_m=0.0,
-        ac_m=_flottant(reglages.get("ac_m"), AC_M_DEFAUT),
+        ac_m=_flottant(reglages.get("ac_m"), ac_defaut),
         phases=phases,
         regime=regime,
         batterie=(bool(reglages["batterie"]) if "batterie" in reglages
@@ -716,9 +798,9 @@ def construire_entree(devis, overrides=None):
         batterie_kwh=batterie_kwh,
         batterie_v_nominal=batterie_v,
         temp_froid_c=_flottant(reglages.get("temp_froid_c"),
-                               TEMP_FROID_DEFAUT_C),
+                               froid_defaut),
         temp_chaud_c=_flottant(reglages.get("temp_chaud_c"),
-                               TEMP_CHAUD_DEFAUT_C),
+                               chaud_defaut),
         plafond_kwc_par_onduleur=plafond,
         longueur_chaine_forcee=longueur_forcee,
         zone_keraunique=bool(reglages.get("zone_keraunique")),
@@ -728,13 +810,15 @@ def construire_entree(devis, overrides=None):
     if "dc_m" in reglages:
         dc_m = _flottant(reglages.get("dc_m"), DC_M_MINIMUM)
     else:
-        dc_m = DC_M_PAR_DEFAUT
-    return dataclasses.replace(entree, dc_m=dc_m)
+        dc_m = site.get("dc_m") or DC_M_PAR_DEFAUT
+    source = {"temperatures": source_temperatures,
+              "longueurs": source_longueurs, "regime": source_regime}
+    return dataclasses.replace(entree, dc_m=dc_m), source, bool(site)
 
 
 # ── Empreinte des ENTRÉES (idempotence QJ17) ─────────────────────────────────
 
-def empreinte_entree(devis, entree):
+def empreinte_entree(devis, entree, source=None):
     """SHA-256 des entrées du calcul — même empreinte ⇒ aucune réécriture.
 
     Ce qui entre : l'empreinte du calepinage (``layout_hash``), les deux fiches
@@ -767,6 +851,11 @@ def empreinte_entree(devis, entree):
         "zone_keraunique": entree.zone_keraunique,
         "inclure_prise_terre": entree.inclure_prise_terre,
     }
+    if source is not None:
+        # ACAL165 — devis LIÉ à un calepinage : la provenance entre dans
+        # l'empreinte. Un devis sans calepinage garde son empreinte d'avant,
+        # octet pour octet (``source`` n'est alors jamais passée).
+        charge["source_entree"] = dict(source)
     brut = json.dumps(charge, sort_keys=True, separators=(",", ":"),
                       default=str)
     return hashlib.sha256(brut.encode("utf-8")).hexdigest()
@@ -790,7 +879,7 @@ def _chaine_conforme(chaine, onduleur):
         and chaine.vmp_chaud_v >= plancher)
 
 
-def projeter_contrat(entree, resultat):
+def projeter_contrat(entree, resultat, source_entree=None):
     """``ResultatElectrique`` → le dict du contrat, clé pour clé.
 
     Toutes les clés sont TOUJOURS présentes (liste vide plutôt qu'absente) :
@@ -896,6 +985,8 @@ def projeter_contrat(entree, resultat):
         },
         "version_moteur": resultat.version_moteur or "",
         "schema_version": int(resultat.schema_version or 0),
+        # ACAL165 — d'où vient chaque grandeur de site de l'étude.
+        "source_entree": dict(source_entree or SOURCE_ENTREE_DEFAUT),
     }
 
 
@@ -1211,13 +1302,26 @@ def build_electrical_design(devis, *, overrides=None):
     from core.electrique import concevoir
     from core.electrique.types import Conformite, ResultatElectrique
 
-    entree = construire_entree(devis, overrides)
-    empreinte = empreinte_entree(devis, entree)
+    entree, source, lie = construire_entree_et_source(devis, overrides)
+    empreinte = empreinte_entree(devis, entree, source if lie else None)
 
     stockee = conception_electrique_stockee(devis)
-    if stockee is not None \
-            and getattr(devis, "electrical_design_hash", None) == empreinte:
+    hash_range = getattr(devis, "electrical_design_hash", None)
+    if stockee is not None and hash_range == empreinte:
         return stockee
+    # ACAL165 — AUCUNE étude d'un devis déjà ENVOYÉ n'est recalculée par la
+    # seule arrivée de la source calepinage : si l'étude rangée correspond
+    # aux entrées d'AVANT (forfaits, mêmes lignes), elle est rendue telle
+    # quelle. La nouvelle source ne joue qu'au prochain calcul VOLONTAIRE
+    # (surcharges POSTées, ou un geste qui change les lignes — « corrigé
+    # après envoi »). Le PDF /proposal d'un envoyé ne change donc pas seul.
+    if (stockee is not None and lie and overrides is None
+            and getattr(devis, "statut", "brouillon") not in ("", "brouillon")
+            and hash_range):
+        avant = construire_entree_et_source(
+            devis, None, avec_calepinage=False)[0]
+        if empreinte_entree(devis, avant) == hash_range:
+            return stockee
 
     # PVFCH (fondateur 20/08/2026) — FICHE INCOMPLÈTE : on rend le contrat
     # COMPLET EN FORME (toutes les clés, listes vides) mais VIDE DE NOMBRES, et
@@ -1238,9 +1342,11 @@ def build_electrical_design(devis, *, overrides=None):
             conformite=Conformite(conforme=False, bloquants=tuple(motifs)),
             note=("Étude non calculée : une pièce technique ne se dessine pas "
                   "avec des valeurs supposées. Complétez la fiche technique "
-                  "du matériel, puis relancez le calcul.",)))
+                  "du matériel, puis relancez le calcul.",)),
+            source_entree=source)
 
-    design = projeter_contrat(entree, concevoir(entree))
+    design = projeter_contrat(entree, concevoir(entree),
+                              source_entree=source)
     devis.electrical_design = design
     devis.electrical_design_hash = empreinte
     if devis.pk:

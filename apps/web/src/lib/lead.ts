@@ -201,6 +201,11 @@ export type SiteCountId = (typeof SITE_COUNTS)[number];
 export const TENSION_RACCORDEMENTS = ['bt', 'mt'] as const;
 export type TensionRaccordementId = (typeof TENSION_RACCORDEMENTS)[number];
 
+// CIW410 — provenance de la tension (contrat CIQ400 `tensionSource`) : `touchee` = le visiteur a
+// cliqué BT ou MT ; `defaut_visible` = la valeur pré-cochée n'a pas été modifiée.
+export const TENSION_SOURCES = ['touchee', 'defaut_visible'] as const;
+export type TensionSourceId = (typeof TENSION_SOURCES)[number];
+
 export const ACTIVITY_PROFILES = ['day', 'day_evening', 'continuous'] as const;
 export type ActivityProfileId = (typeof ACTIVITY_PROFILES)[number];
 
@@ -455,6 +460,7 @@ export interface ValidatedLead {
   //   bloquants ; absents ⇒ contrat de fil inchangé octet pour octet).
   // Professionnel :
   tensionRaccordement?: TensionRaccordementId;
+  tensionSource?: TensionSourceId;
   puissanceKva?: number;
   activityProfile?: ActivityProfileId;
   surfaceType?: SurfaceTypeId;
@@ -784,6 +790,9 @@ function validateOptionalFields(b: Record<string, unknown>): Partial<ValidatedLe
   // Professionnel :
   const tensionRaccordement = cleanEnum(b.tensionRaccordement, TENSION_RACCORDEMENTS);
   if (tensionRaccordement) opt.tensionRaccordement = tensionRaccordement;
+
+  const tensionSource = cleanEnum(b.tensionSource, TENSION_SOURCES);
+  if (tensionSource) opt.tensionSource = tensionSource;
 
   const puissanceKva = cleanPositiveNumber(b.puissanceKva, 10_000);
   if (puissanceKva != null) opt.puissanceKva = puissanceKva;

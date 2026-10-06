@@ -60,10 +60,10 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/mesure_cadence.py:320` | get_or_create | GesteRelanceAppareil.objects | company, famille_appareil, geste, jour |
 | `backend/django_core/apps/crm/services.py:217` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/services.py:12073` | get_or_create | Playbook.objects | company, nom |
-| `backend/django_core/apps/crm/services.py:12080` | get_or_create | PlaybookEtape.objects | playbook, stage |
-| `backend/django_core/apps/crm/services.py:12082` | get_or_create | PlaybookTache.objects | etape, libelle |
-| `backend/django_core/apps/crm/services.py:12135` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
+| `backend/django_core/apps/crm/services.py:12086` | get_or_create | Playbook.objects | company, nom |
+| `backend/django_core/apps/crm/services.py:12093` | get_or_create | PlaybookEtape.objects | playbook, stage |
+| `backend/django_core/apps/crm/services.py:12095` | get_or_create | PlaybookTache.objects | etape, libelle |
+| `backend/django_core/apps/crm/services.py:12148` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
 | `backend/django_core/apps/crm/views.py:3283` | get_or_create | LeadTag.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:3297` | get_or_create | MotifPerte.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:3309` | get_or_create | MotifPerte.objects | company, nom |

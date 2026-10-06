@@ -82,3 +82,10 @@ class VentesConfig(AppConfig):
         # app qui s'enregistre. Idempotent (le registre est un dict par nom).
         from . import dsr_provider
         dsr_provider.register()
+        # ADOC131 (D-ADOC-4) — à la réception du chantier, le lien public de
+        # suivi reçoit son échéance réception + 90 jours (bus M6, idempotent).
+        from core.events import chantier_receptionne
+        from .domain.suivi import on_chantier_receptionne
+        chantier_receptionne.connect(
+            on_chantier_receptionne,
+            dispatch_uid='ventes_suivi_echeance_on_chantier_receptionne')

@@ -32,6 +32,7 @@ import StickyCta from '../../components/StickyCta.astro';
 import Faq from '../../components/Faq.astro';
 import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
+import CarteAideEtat from '../../components/CarteAideEtat.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { serviceFaqItems } from '../../lib/serviceFaq';
@@ -405,29 +406,23 @@ const jsonLd = {
       </div>
     </section>
 
-    {/* W261 — بطاقة تمويل/دعم، مُغلَقة WG11: FDA 30% + Saquii لا تُنشر كحقيقة
-        مؤكَّدة إلى أن يتم التحقق من الشروط لدى المصادر الأساسية (مديرية
-        الفلاحة الإقليمية/المكتب الجهوي/القرض الفلاحي) — انظر docs/WEB_PLAN.md
-        WG11. تُعرض هنا كخيط للتحقق، أبداً كعرض أو شراكة تاكينور. */}
-    <section class="section px-4">
-      <div class="mx-auto max-w-6xl">
-        <div class="v2-rise cine-card border-2 border-dashed border-white/25 p-7">
-          {/* W274 الفصل 03 */}
-          <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>خيط تمويل — للتحقق</p>
-          <h2 class="display mt-3 text-xl text-white">دعم فلاحي (FDA) وتمويل (Saquii)</h2>
-          <p class="mt-4 max-w-2xl text-sm leading-relaxed text-lune-soft">
-            تُقدّم الدولة المغربية تاريخياً دعماً من صندوق التنمية الفلاحية للضخ الشمسي، ويُقدّم القرض
-            الفلاحي للمغرب آليات تمويل مخصَّصة للطاقة الشمسية الفلاحية. النسب والسقوف والشروط الحالية
-            تتطوّر وتتوقّف على مديرية الفلاحة الإقليمية لديك — لا نَنشر أي نسبة أو مبلغ قبل التحقق منه
-            لدى الجهة المعنية.
-          </p>
-          <p class="mt-4 text-sm font-semibold text-lune-faint">
-            للتحقق مع مديرية الفلاحة الإقليمية لديك قبل أي التزام — تاكينور ليست مُقرِضاً ولا جهة
-            داعمة ولا تضمن أي أهلية.
-          </p>
-        </div>
-      </div>
-    </section>
+    {/* W261 / AGW307 — D-AGR-6 lève WG11 pour la RÈGLE sourcée de l'aide FDA (Guide FDA 2024) : conditions, plafonds, accord AVANT travaux, versement après réalisation, jamais un montant propre au client. Le paragraphe Saquii reste non vérifié. */}
+    <CarteAideEtat>
+      {/* W274 الفصل 03 */}
+      <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>دعم الدولة — القاعدة الموثّقة</p>
+      <h2 class="display mt-3 text-xl text-white">دعم فلاحي (FDA) وتمويل (Saquii)</h2>
+      <p class="mt-4 max-w-2xl text-sm leading-relaxed text-lune-soft" data-fda-regle>
+        دعم الدولة (صندوق التنمية الفلاحية) للضخ بالطاقة الشمسية: 30 % من الاستثمار، في حدود 3 000 درهم للهكتار و3 000 درهم للكيلوواط ذروة و30 000 درهم للمشروع. الشروط: تعويض مضخة تعمل بالبوطان، الري الموضعي، عداد الماء. يجب الحصول على الموافقة المسبقة قبل الأشغال؛ لا يُخصم الدعم من الثمن ويُصرف بعد الإنجاز؛ مشروع واحد لكل استغلالية. قرار المديرية الإقليمية للفلاحة / المكتب الجهوي للاستثمار الفلاحي، غير مضمون؛ تاكينور ليست جهة مانحة للدعم.
+      </p>
+      <p class="mt-2 max-w-2xl text-xs text-lune-faint" data-fda-source>المصدر: Guide FDA 2024، ص 20-23 — اطُّلع عليه في 2 أكتوبر 2026.</p>
+      <p class="mt-4 max-w-2xl text-sm leading-relaxed text-lune-soft" data-saquii>
+        يُقدّم القرض الفلاحي للمغرب آليات تمويل مخصَّصة للطاقة الشمسية الفلاحية (Saquii). النسب والسقوف والشروط الحالية تتطوّر وتتوقّف على ملفك — لا نَنشر أي نسبة أو مبلغ قبل التحقق منه لدى الجهة المعنية.
+      </p>
+      <p class="mt-4 text-sm font-semibold text-lune-faint">
+        للتحقق مع مديرية الفلاحة الإقليمية لديك قبل أي التزام — تاكينور ليست مُقرِضاً ولا جهة
+        داعمة ولا تضمن أي أهلية.
+      </p>
+    </CarteAideEtat>
 
     <!-- كتلة روابط / القطاع المهني -->
     <section class="section border-t border-white/10 px-4">

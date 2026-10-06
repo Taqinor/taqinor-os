@@ -1,0 +1,15 @@
+---
+/**
+ * CarteAideEtat.astro — cadre de la carte « Aide de l'État » des pages Pompage solaire
+ * (FR/EN/AR, W261 / AGW307). Une seule copie du cadre (ACAL345) ; chaque page garde
+ * son texte localisé dans le slot (la règle FDA sourcée, jamais un montant client).
+ */
+---
+
+<section class="section px-4">
+  <div class="mx-auto max-w-6xl">
+    <div class="v2-rise cine-card border-2 border-dashed border-white/25 p-7">
+      <slot />
+    </div>
+  </div>
+</section>

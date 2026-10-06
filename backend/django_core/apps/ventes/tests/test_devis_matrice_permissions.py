@@ -72,6 +72,8 @@ FIGEE = {
     'pdf_partage': RESP,
     # Fondateur 05/10/2026 : « Facturer » un devis accepté (écriture).
     'facturer_complet': RESP,
+    # ADOC131 (D-ADOC-4) : « Révoquer le lien client » (écriture).
+    'revoquer_lien_public': RESP,
 }
 
 #: Table de vérité des trois gardes « à palier » (inchangées par QJR649).

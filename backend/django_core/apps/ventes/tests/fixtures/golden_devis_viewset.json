@@ -404,6 +404,15 @@
       ]
     },
     {
+      "nom": "revoquer_lien_public",
+      "url_path": "revoquer-lien-public",
+      "url_name": "revoquer-lien-public",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
       "nom": "roof_image",
       "url_path": "roof-image",
       "url_name": "roof-image",
@@ -632,6 +641,7 @@
     "retrieve",
     "reverse_action",
     "reviser",
+    "revoquer_lien_public",
     "roof_image",
     "save_preset",
     "schema",

@@ -460,9 +460,34 @@ describe('CIW408 — tension et activité : jamais émises en mode commercial (3
       const comm = construireCorps({ ...dom, mode: 'commercial', tension: 'bt', activite: 'day' }, { messages: ERREURS[locale] }).body;
       expect(comm).not.toHaveProperty('tensionRaccordement');
       expect(comm).not.toHaveProperty('activityProfile');
-      const indus = construireCorps({ ...dom, mode: 'industriel', tension: 'bt', activite: 'day' }, { messages: ERREURS[locale] }).body;
+      const indus = construireCorps({ ...dom, mode: 'industriel', tension: 'bt', activite: 'day', tensionTouchee: true, activiteTouchee: true }, { messages: ERREURS[locale] }).body;
       expect(indus.tensionRaccordement).toBe('bt');
       expect(indus.activityProfile).toBe('day');
+    });
+  }
+});
+
+// CIW410 — parité des 3 locales : sans clic, `tensionSource` vaut « defaut_visible » et
+// `activityProfile` n'est pas émis ; la page suit le clic via `tensionTouched` /
+// `activityTouched` (persistés dans l'instantané de session) et les passe au registre.
+describe('CIW410 — tension / activité touchées : parité des 3 locales', () => {
+  for (const [locale, src] of SOURCES) {
+    it(`${locale} — sans clic : defaut_visible, pas d'activityProfile ; clic : touchee`, () => {
+      const dom = { ...contextePage(), ...lireChampsDomTunnel(domPourSource(src)) } as EtatTunnel;
+      const sans = construireCorps({ ...dom, mode: 'industriel', tension: 'bt', activite: 'day', tensionTouchee: false, activiteTouchee: false }, { messages: ERREURS[locale] }).body;
+      expect(sans.tensionSource).toBe('defaut_visible');
+      expect(sans).not.toHaveProperty('activityProfile');
+      const clic = construireCorps({ ...dom, mode: 'industriel', tension: 'mt', tensionTouchee: true }, { messages: ERREURS[locale] }).body;
+      expect(clic.tensionSource).toBe('touchee');
+    });
+    it(`${locale} — la page marque le clic (setter du groupe de cartes) et le transmet à l'état`, () => {
+      expect(src).toContain("tension = v || 'bt'; tensionTouched = true;");
+      expect(src).toContain("activity = v || 'day'; activityTouched = true;");
+      expect(src).toContain('tensionTouchee: tensionTouched,');
+      expect(src).toContain('activiteTouchee: activityTouched,');
+      // persisté dans l'instantané : une reprise de session ne perd pas le clic
+      expect(src).toContain("tensionTouched: tensionTouched ? '1' : ''");
+      expect(src).toContain("tensionTouched = savedSel.tensionTouched === '1'");
     });
   }
 });

@@ -175,6 +175,11 @@ _CLES_PK = {'devis', 'company', 'client', 'produit', 'lead', 'facture',
             'created_by', 'share_link', 'variante_de', 'remplace_par'}
 
 
+#: Champs de ``ShareLink`` ajoutés APRÈS la capture du golden (ADOC131) ;
+#: leur valeur après ouverture est vérifiée à part (toujours ``None``).
+_CHAMPS_POSTERIEURS_AU_GOLDEN = ('suivi_prolonge_le', 'revoque_le')
+
+
 def _figer(obj):
     """Fige ce qui varie d'un run à l'autre (dates ISO, clés primaires)."""
     if isinstance(obj, dict):
@@ -194,6 +199,11 @@ def _reponse(resp):
     except (ValueError, TypeError):
         corps = resp.content.decode('utf-8', 'replace')
     return {'status': resp.status_code, 'corps': _figer(corps)}
+
+
+#: Instant auquel le golden de comportement a été capturé (c62516d95, 05/10).
+#: Une recapture (``SPLIT_GOLDEN_CAPTURE=1``) se fait sous ce même gel.
+JOUR_DE_CAPTURE = '2026-10-05T17:00:00Z'
 
 
 class ComportementPublicTests(TestCase):
@@ -221,9 +231,16 @@ class ComportementPublicTests(TestCase):
         lien = self._lien(devis)
         res['data_standard'] = _reponse(self._data(lien))
         lien.refresh_from_db()
+        # ADOC131 — ``suivi_prolonge_le`` / ``revoque_le`` sont postérieurs au
+        # golden (capturé avant découpe) : l'ouverture ne doit JAMAIS les
+        # poser (seules l'acceptation et la révocation le font) — vérifié ici,
+        # puis exclus du digest qui reste celui des champs d'avant.
+        self.assertIsNone(lien.suivi_prolonge_le)
+        self.assertIsNone(lien.revoque_le)
         res['ouverture_lien'] = _figer(json.loads(json.dumps(
             {k: v for k, v in model_to_dict(lien).items()
-             if not lien._meta.get_field(k).is_relation}, default=str)))
+             if not lien._meta.get_field(k).is_relation
+             and k not in _CHAMPS_POSTERIEURS_AU_GOLDEN}, default=str)))
         res['data_standard_reouverture'] = _reponse(self._data(lien))
         res['data_confiance'] = _reponse(self._data(
             self._lien(devis, 'confiance')))
@@ -262,7 +279,15 @@ class ComportementPublicTests(TestCase):
         return res
 
     def test_digests_identiques(self):
-        digests = {nom: sg.digest(val) for nom, val in self._scenarios().items()}
+        # Horloge figée au jour de la capture du golden : le payload public
+        # porte des dates JJ/MM/AAAA (``date``, ``valid_until``, « Validité de
+        # l'offre : jusqu'au … ») que ``_figer`` (ISO seulement) ne neutralise
+        # pas — sans ce gel, le digest change chaque jour (CI rouge le
+        # lendemain de la capture, 06/10/2026, code inchangé).
+        from freezegun import freeze_time
+        with freeze_time(JOUR_DE_CAPTURE):
+            scenarios = self._scenarios()
+        digests = {nom: sg.digest(val) for nom, val in scenarios.items()}
         if os.environ.get('SPLIT_GOLDEN_CAPTURE') == '1':
             golden = sg.charger_golden('split_pv_comportement')
             golden['comportement'] = digests

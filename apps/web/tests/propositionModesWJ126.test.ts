@@ -10,7 +10,7 @@
 //  - chaque extracteur de KPI ne renvoie rien hors de son mode (zéro fuite
 //    inter-mode) et met chaque champ manquant à `null` (omission honnête, jamais
 //    un 0 fabriqué) ;
-//  - le mini-cashflow / la livraison d'eau se dégradent en `null` quand la
+//  - le mini-cashflow se dégrade en `null` quand la
 //    donnée source manque.
 import { describe, expect, it } from 'vitest';
 import {
@@ -19,7 +19,6 @@ import {
   autoconsoKpis,
   hasInjection,
   autoconsoCashflow,
-  agricoleMonthlyDelivery,
   commercialArchetype,
   MONTHS_SHORT,
   type ProposalResponse,
@@ -182,33 +181,8 @@ describe('WJ126 — agricoleKpis (pompage)', () => {
   });
 });
 
-describe('WJ126 — agricoleMonthlyDelivery (livraison d\'eau mensuelle)', () => {
-  it('répartit la capacité annuelle (m3_jour×365) selon l\'ensoleillement', () => {
-    const series = agricoleMonthlyDelivery(AGRICOLE, agricoleKpis(AGRICOLE))!;
-    expect(series).toHaveLength(12);
-    expect(series[0].monthIndex).toBe(0);
-    // Somme ≈ m3_jour × 365 (aux arrondis près).
-    const total = series.reduce((a, m) => a + m.m3, 0);
-    expect(total).toBeGreaterThan(112 * 365 * 0.98);
-    expect(total).toBeLessThan(112 * 365 * 1.02);
-    // La livraison suit la production : juillet (index 6, pic) > décembre (11).
-    expect(series[6].m3).toBeGreaterThan(series[11].m3);
-  });
-
-  it('null si m3_jour manque', () => {
-    const p = makeProposal({ mode_installation: 'agricole', mode_kpis: { champ_kwc: 9 }, monthly_production: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] });
-    expect(agricoleMonthlyDelivery(p, agricoleKpis(p))).toBeNull();
-  });
-
-  it('null si la production mensuelle manque (bloc omis, jamais fabriqué)', () => {
-    const p = makeProposal({ mode_installation: 'agricole', mode_kpis: { m3_jour: 100 } });
-    expect(agricoleMonthlyDelivery(p, agricoleKpis(p))).toBeNull();
-  });
-
-  it('null hors agricole (kpis null)', () => {
-    expect(agricoleMonthlyDelivery(INDUSTRIEL, agricoleKpis(INDUSTRIEL))).toBeNull();
-  });
-});
+// AGW303 — `agricoleMonthlyDelivery` (livraison d'eau dérivée dans le navigateur) est supprimée :
+// la page lit `synthese_agricole` (propositionAgricoleSyntheseAGW303.test.ts).
 
 // ── INDUSTRIEL / COMMERCIAL : tuiles autoconso + injection + cashflow ─────────
 
@@ -322,7 +296,6 @@ describe('WJ126 — zéro fuite inter-mode (le contrat central de la vitrine)', 
   it('page INDUSTRIELLE : aucun bloc pompage ne se calcule', () => {
     expect(resolveInstallMode(INDUSTRIEL)).toBe('industriel');
     expect(agricoleKpis(INDUSTRIEL)).toBeNull();
-    expect(agricoleMonthlyDelivery(INDUSTRIEL, agricoleKpis(INDUSTRIEL))).toBeNull();
     expect(autoconsoKpis(INDUSTRIEL)).not.toBeNull();
   });
 

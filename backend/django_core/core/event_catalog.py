@@ -55,6 +55,11 @@ CATALOG = {
         'Un lead CRM est CRÉÉ, quelle que soit la porte d\'entrée (saisie, '
         'webhook site, import).',
         ['lead', 'company']),
+    'lead_trace_toit_recu': _e(
+        "Le tracé de toit d'un lead public arrive APRÈS sa création (renvoi "
+        'du webhook site < 60 s qui apporte un contour exploitable à un lead '
+        "qui n'en avait pas) — aucun statut ne bouge.",
+        ['lead', 'company']),
     'devis_accepted': _e(
         'Un devis passe à « accepté ».',
         ['devis', 'user', 'ancien_statut']),
