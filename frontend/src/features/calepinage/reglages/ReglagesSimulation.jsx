@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Badge, Button, Card, Spinner } from '../../../ui'
+import ReglagesSite from './ReglagesSite'
 
 /* ============================================================================
    CALX69 / ACAL133 — LES RÉGLAGES DE SIMULATION ET D'ÉLECTRIQUE, AVEC
@@ -298,6 +299,8 @@ export default function ReglagesSimulation() {
   })
   // Le registre ACTIF : UNIQUEMENT celui servi par le GET (ACAL133).
   const [registres, setRegistres] = useState(null)
+  // ACAL130 — la section « imagerie » servie, pour « Site & imagerie ».
+  const [imagerie, setImagerie] = useState(null)
   const [chargement, setChargement] = useState(true)
   const [erreurChargement, setErreurChargement] = useState(null)
   const [erreurs, setErreurs] = useState({})
@@ -322,6 +325,7 @@ export default function ReglagesSimulation() {
           return
         }
         setRegistres({ simulation, electrique_societe: electrique })
+        setImagerie(data.imagerie && typeof data.imagerie === 'object' ? data.imagerie : null)
         setLignesParSection({
           simulation: lignesDepuis(simulation, data.simulation),
           electrique_societe: lignesDepuis(electrique, data.electrique_societe),
@@ -463,6 +467,8 @@ export default function ReglagesSimulation() {
           ))}
         </p>
       )}
+
+      <ReglagesSite imagerie={imagerie} />
 
       {Object.keys(registres).map((section) => (
         <Card key={section} className="mt-5 p-4" data-testid={`calx69-section-${section}`}>
