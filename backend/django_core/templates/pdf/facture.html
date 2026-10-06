@@ -146,7 +146,9 @@
     </div>
     <div class="meta-item">
       <strong>{{ _L('tva') }}</strong>
-      <span>{{ facture.taux_tva }}%</span>
+      {# CIQ215 — plusieurs taux : aucun « taux mélangé » (il n'existe pas
+         dans la loi), la ventilation est imprimée dans les totaux. #}
+      {% if facture.tva_par_taux|length > 1 %}<span>voir ventilation</span>{% else %}<span>{{ facture.taux_tva }}%</span>{% endif %}
     </div>
     <div class="meta-item">
       <strong>{{ _L('statut') }}</strong>
@@ -233,6 +235,13 @@
     {# TVA ventilée par taux (10 %/20 %). Mono-taux (factures historiques) →
        une seule ligne, identique à avant. #}
     {% for b in totaux.tva_par_taux %}
+    {# CIQ215 — tranche à taux mixtes : base HT puis TVA de chaque taux. #}
+    {% if facture.ventilation_tva %}
+    <div class="totaux-row">
+      <span>Base HT ({{ b.taux }}%)</span>
+      <span>{{ "%.2f"|format(b.base_ht) }} MAD</span>
+    </div>
+    {% endif %}
     <div class="totaux-row">
       <span>{{ _L('tva') }} ({{ b.taux }}%)</span>
       <span>{{ "%.2f"|format(b.montant) }} MAD</span>

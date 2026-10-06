@@ -158,6 +158,14 @@ class Facture(TotauxDocumentMixin, models.Model):
         verbose_name='Retenue de garantie (MAD)')
     retenue_liberee_le = models.DateField(
         null=True, blank=True, verbose_name='Retenue libérée le')
+    # ── CIQ215 — TVA ventilée par taux d'une facture de TRANCHE : liste
+    # ``[{taux, base_ht, montant}]`` (chaînes décimales) posée à la création de
+    # la tranche, au prorata des bases par taux de l'option retenue. Lue par
+    # ``tva_par_taux`` d'un document figé à la place du panier unique « taux
+    # mélangé » (qui n'existe pas dans la loi). Vide (mono-taux, factures
+    # historiques, factures à lignes) = comportement d'hier, octet-identique.
+    ventilation_tva = models.JSONField(
+        null=True, blank=True, verbose_name='Ventilation TVA par taux')
     # ── ARC24 — référentiel des conditions de paiement (additif, optionnel) ──
     # FK nullable (string-FK — jamais d'import de apps.parametres.models ici)
     # vers parametres.ConditionPaiement : SOURCE du libellé par défaut. Le

@@ -33,7 +33,7 @@ sans déclaration et ≤ 100, la valeur reste un pourcentage, mot pour mot.
 """
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
 
 from apps.ventes.models import Facture
 
@@ -616,6 +616,71 @@ def blended_tva_pct(devis) -> Decimal:
     return _q(Decimal(str(opt['tva'])) / ht * 100)
 
 
+def _repartir_au_centime(total, poids):
+    """CIQ215 — répartit ``total`` (MAD) entre les clés de ``poids`` au
+    prorata, méthode du plus fort reste au centime : la somme des parts vaut
+    EXACTEMENT ``total``. Poids nuls ⇒ tout sur la dernière clé."""
+    cles = list(poids)
+    centimes = int((Decimal(str(total)) * 100).to_integral_value())
+    somme = sum((Decimal(str(poids[c])) for c in cles), Decimal('0'))
+    if somme == 0:
+        parts = {c: 0 for c in cles}
+        parts[cles[-1]] = centimes
+    else:
+        exactes = {c: Decimal(centimes) * Decimal(str(poids[c])) / somme
+                   for c in cles}
+        parts = {c: int(exactes[c].to_integral_value(rounding=ROUND_FLOOR))
+                 for c in cles}
+        reste = centimes - sum(parts.values())
+        ordre = sorted(cles, key=lambda c: (exactes[c] - parts[c], -cles.index(c)),
+                       reverse=True)
+        for c in ordre[:reste]:
+            parts[c] += 1
+    return {c: Decimal(parts[c]) / 100 for c in cles}
+
+
+def ventilation_tva_tranche(devis, tranche, existantes=None):
+    """CIQ215 — ventilation ``[{taux, base_ht, montant}]`` (chaînes) d'une
+    tranche, ou None quand l'option retenue n'a qu'un taux (facture d'hier,
+    octet-identique).
+
+    Bases et TVA de la tranche réparties au prorata des bases (resp. des TVA)
+    par taux de l'option retenue (``option_totaux``), au centime par le plus
+    fort reste. La DERNIÈRE tranche prend le reste de CHAQUE taux, pour que
+    la somme des factures égale la ventilation du devis au centime. Aucun
+    taux ne change (convention 12)."""
+    from apps.ventes.utils.options import option_totaux
+    paniers = option_totaux(devis).get('tva_par_taux') or []
+    if len(paniers) < 2:
+        return None
+    taux = [Decimal(str(b['taux'])) for b in paniers]
+    bases_devis = {t: Decimal(str(b['base_ht'])) for t, b in zip(taux, paniers)}
+    tva_devis = {t: Decimal(str(b['montant'])) for t, b in zip(taux, paniers)}
+    ht, tva = Decimal(str(tranche['ht'])), Decimal(str(tranche['tva']))
+    bases = tvas = None
+    if tranche.get('is_last'):
+        precedentes = list(existantes if existantes is not None
+                           else factures_actives(devis))
+        if all(f.ventilation_tva for f in precedentes):
+            deja_b = {t: Decimal('0') for t in taux}
+            deja_t = {t: Decimal('0') for t in taux}
+            for f in precedentes:
+                for b in f.ventilation_tva:
+                    t = Decimal(str(b['taux']))
+                    if t in deja_b:
+                        deja_b[t] += Decimal(str(b['base_ht']))
+                        deja_t[t] += Decimal(str(b['montant']))
+            bases = {t: _q(bases_devis[t] - deja_b[t]) for t in taux}
+            tvas = {t: _q(tva_devis[t] - deja_t[t]) for t in taux}
+            if sum(bases.values()) != ht or sum(tvas.values()) != tva:
+                bases = tvas = None
+    if bases is None:
+        bases = _repartir_au_centime(ht, bases_devis)
+        tvas = _repartir_au_centime(tva, tva_devis)
+    return [{'taux': str(t), 'base_ht': str(_q(bases[t])),
+             'montant': str(_q(tvas[t]))} for t in taux]
+
+
 def _tranche_type(key, is_last=False):
     """Type Facture d'une tranche : depuis TRANCHE_TYPE ou INTERMEDIAIRE par défaut.
 
@@ -788,6 +853,8 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
     # TTC de la tranche, au centime, retenue sur le RÈGLEMENT — ni le HT ni
     # la TVA ne baissent (phrase AUD180). Sans retenue : facture d'hier.
     retenue = retenue_de_tranche(devis, tr['ttc'])
+    # CIQ215 — TVA ventilée par taux (devis à taux mixtes) ; None sinon.
+    ventilation = ventilation_tva_tranche(devis, tr)
 
     def _create(ref):
         extra = {} if echeance is None else {'date_echeance': echeance}
@@ -807,6 +874,7 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
             montant_tva=tr['tva'],
             montant_ttc=tr['ttc'],
             taux_tva=blended_tva_pct(devis),
+            ventilation_tva=ventilation,
             created_by=user,
             company=company,
         )

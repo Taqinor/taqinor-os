@@ -327,6 +327,9 @@ class FactureWriteSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'created_by', 'date_emission', 'company',
             'dgi_statut', 'dgi_reference', 'dgi_motif_rejet',
+            # CIQ215 — ventilation posée par le serveur à la création d'une
+            # tranche, jamais depuis le corps.
+            'ventilation_tva',
         ]
 
 
