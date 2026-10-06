@@ -126,6 +126,10 @@ def build(ctx):
     # « Bon pour accord » éditables, lus par la même voie que le legacy.
     bpa_titre, bpa_mention = ci_blocs.textes_bpa(d)
     conditions_html = ci_blocs.bloc_conditions(d, "i3", navy, ink)
+    # CIQ320 — « Bon pour accord — pour la société » : raison sociale,
+    # signataire, ICE, date, cadres Signature et Cachet ; valeurs de
+    # ``signature_entreprise`` sur la copie signée.
+    acceptation_html = ci_blocs.bloc_acceptation(d, "i3", ink, line)
     # CIQ314 — seulement les services que le devis porte.
     services_html = ci_blocs.bloc_services(
         d.get("ind_synthese") or {}, "i3", navy, ink)
@@ -220,9 +224,7 @@ def build(ctx):
 
   <div class="i3-sign">
     <div class="i3-sign-c">
-      <div class="i3-sign-h">{bpa_titre} — Client</div>
-      <div class="i3-sign-box"></div>
-      {sign_client}
+      {acceptation_html}{sign_client if (accepte_nom and date_accept) else ''}
     </div>
     <div class="i3-sign-gap"></div>
     <div class="i3-sign-c">

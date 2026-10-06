@@ -95,7 +95,7 @@ class ConditionsCi(TestCase):
             with self.subTest(mode=mode):
                 devis = self._devis(mode, f'DEV-CIQ311-{i * 10 + 200:04d}')
                 _d, html = self._rendu(devis, mode)
-                self.assertIn('Accord de la société — Client', html)
+                self.assertIn('Accord de la société — pour la société', html)
                 self.assertIn('Cachet, signature et mention manuscrite',
                               html)
 
@@ -107,7 +107,7 @@ class ConditionsCi(TestCase):
             with self.subTest(mode=mode):
                 devis = self._devis(mode, f'DEV-CIQ311-{i * 10 + 300:04d}')
                 d, html = self._rendu(devis, mode)
-                self.assertIn(f"{DEFAULT_DOC_TEXTS['bpa_titre']} — Client",
+                self.assertIn(f"{DEFAULT_DOC_TEXTS['bpa_titre']} — pour la société",
                               html)
                 self.assertIn(DEFAULT_DOC_TEXTS['bpa_mention'], html)
                 self.assertIn('Conditions générales du devis', html)

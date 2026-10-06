@@ -108,6 +108,55 @@ def bloc_services(synthese, prefixe, couleur_titre, couleur_texte):
             f'color:{couleur_titre};">Services</div>{items}</div>')
 
 
+# ── CIQ320 — « Bon pour accord — pour la société » + cachet ────────────────
+
+LIBELLES_ACCEPTATION = (("raison_sociale", "Raison sociale"),
+                        ("signataire", "Nom et qualité du signataire"),
+                        ("ice", "ICE"), ("date", "Date"))
+
+
+def bloc_acceptation(d, prefixe, couleur_texte="#1F2937",
+                     couleur_ligne="#E5E7EB"):
+    """Contenu de la case client « Bon pour accord — pour la société »
+    (D-CIQ-11) : titre et mention éditables (``doc_texts``, CIQ311).
+
+    * devis non signé → lignes à remplir « Raison sociale », « Nom et qualité
+      du signataire », « ICE », « Date », un cadre « Signature » et un cadre
+      « Cachet de la société » ;
+    * devis signé en ligne → les valeurs de ``signature_entreprise``
+      (CIQ319, déjà échappées par le builder) et la date ; le cadre
+      « Cachet » reste VIDE pour le tampon physique."""
+    titre, mention = textes_bpa(d)
+    sig = d.get("signature_entreprise")
+    sig = sig if isinstance(sig, dict) else {}
+    valeurs = {
+        "raison_sociale": _txt(sig.get("raison_sociale")),
+        "signataire": ", ".join(v for v in (_txt(sig.get("signataire_nom")),
+                                            _txt(sig.get("signataire_qualite")))
+                                if v),
+        "ice": _txt(sig.get("ice")),
+        "date": _txt(sig.get("date")),
+    }
+    lignes = "".join(
+        f'<div style="margin-top:3px;">{libelle}&#160;: '
+        + (f'<b>{valeurs[cle]}</b>' if valeurs[cle]
+           else f'<span style="display:inline-block;width:45mm;'
+                f'border-bottom:1px dotted {couleur_ligne};">&#160;</span>')
+        + '</div>'
+        for cle, libelle in LIBELLES_ACCEPTATION)
+    cadre = (f'display:table-cell;width:50%;height:16mm;vertical-align:top;'
+             f'border:1px dashed {couleur_ligne};border-radius:6px;'
+             f'padding:3px 6px;font-size:6.5pt;')
+    cadres = (f'<div style="display:table;width:100%;border-spacing:4px 0;'
+              f'margin-top:5px;"><div style="{cadre}">Signature</div>'
+              f'<div style="{cadre}">Cachet de la société</div></div>')
+    return (f'<div class="{prefixe}-sign-h">{titre} — pour la société</div>'
+            f'<div class="{prefixe}-acc" style="font-size:7pt;'
+            f'color:{couleur_texte};line-height:1.3;">{lignes}{cadres}'
+            f'<div style="margin-top:3px;font-style:italic;">{mention}'
+            f'</div></div>')
+
+
 # ── CIQ318 — bloc « Offre de financement » ──────────────────────────────────
 
 TITRE_FINANCEMENT = "Offre de financement"
