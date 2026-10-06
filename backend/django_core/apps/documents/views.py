@@ -10,23 +10,39 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-from authentication.permissions import IsAnyRole
+from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from apps.installations.models import Installation
 from core.selectors import get_company_object
 
 from . import builders
 
+# ADOC69 — champs propriétaires de la portée d'un chantier : la MÊME liste que
+# le viewset chantier (installations/views/installation.py, get_queryset). Un
+# document de chantier ne sort jamais vers un rôle qui ne voit pas la fiche.
+CHANTIER_OWNER_FIELDS = ['technicien_responsable', 'created_by']
+
+
+def _scope_chantier(qs, user):
+    """ADOC69 — portée de rôle (``records_scope_*``) d'un chantier."""
+    from authentication.scoping import scope_queryset
+    return scope_queryset(qs, user, CHANTIER_OWNER_FIELDS)
+
 
 def _get_chantier_or_404(request, pk):
-    """Récupère un chantier scopé à la société de l'utilisateur, sinon 404.
+    """Récupère un chantier scopé à la société ET à la portée du rôle de
+    l'utilisateur, sinon 404.
 
     YRBAC11 — délègue au helper canonique ``core.selectors.get_company_object``
     (même comportement : 404 indistinct d'un id inexistant), sur un queryset
-    pré-optimisé (select_related/prefetch_related préservés)."""
+    pré-optimisé (select_related/prefetch_related préservés).
+
+    ADOC69 — ``extra_scope`` applique la portée de la fiche chantier : un rôle
+    restreint qui n'est ni technicien ni créateur reçoit 404, comme
+    ``GET /api/django/installations/chantiers/<id>/``."""
     qs = Installation.objects.select_related(
         'client', 'devis', 'company', 'technicien_responsable',
     ).prefetch_related('devis__lignes__produit')
-    return get_company_object(qs, pk, request.user)
+    return get_company_object(qs, pk, request.user, extra_scope=_scope_chantier)
 
 
 def _pdf_response(pdf_bytes, filename):
@@ -67,7 +83,12 @@ class DossierRemiseView(_BaseDocumentView):
 
 
 class AttestationView(_BaseDocumentView):
-    """N24 — Attestation (type via ?type=installation|fin_travaux)."""
+    """N24 — Attestation (type via ?type=installation|fin_travaux).
+
+    ADOC69 — l'attestation porte la signature de la société : réservée aux
+    responsables et admins (``IsResponsableOrAdmin``), un compte portail reste
+    refusé (``IsAnyRole``)."""
+    permission_classes = [IsAnyRole, IsResponsableOrAdmin]
 
     def get(self, request, pk):
         chantier = _get_chantier_or_404(request, pk)
