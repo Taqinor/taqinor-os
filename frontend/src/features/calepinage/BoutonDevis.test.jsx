@@ -224,3 +224,71 @@ describe('BoutonDevis — retour du serveur (ACAL95)', () => {
     expect(screen.queryByTestId('cal-devis-avertissements')).toBeNull()
   })
 })
+
+/* ACAL94 — Générer / Resynchroniser enregistrent d'abord l'ÉCRAN (une seule
+   fonction d'enregistrement, prop `enregistrerAvant`) ; un échec n'envoie rien
+   et ne recharge rien ; Réviser avertit des retouches non enregistrées sans
+   jamais refuser. */
+describe('BoutonDevis — enregistrer avant le geste (ACAL94)', () => {
+  it('Resynchroniser enregistre l’écran avant sync-devis', async () => {
+    const ordre = []
+    const enregistrerAvant = vi.fn(async () => { ordre.push('enregistrer'); return true })
+    calepinageApi.calepinages.syncDevis.mockImplementation(async () => {
+      ordre.push('sync-devis')
+      return { data: { inchange: false, lignes_ajoutees: 0, avertissements: [] } }
+    })
+    const onRecharger = vi.fn(async () => { ordre.push('recharger') })
+
+    rendre({ enregistrerAvant, onRecharger })
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+
+    await waitFor(() => expect(onRecharger).toHaveBeenCalledTimes(1))
+    expect(ordre).toEqual(['enregistrer', 'sync-devis', 'recharger'])
+  })
+
+  it('échec d’enregistrement : ni sync-devis ni rechargement', async () => {
+    const enregistrerAvant = vi.fn(async () => false)
+    const onRecharger = vi.fn()
+
+    rendre({ enregistrerAvant, onRecharger })
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+
+    expect(await screen.findByTestId('cal-devis-refus'))
+      .toHaveTextContent('n’a pas pu être enregistrée')
+    expect(enregistrerAvant).toHaveBeenCalledTimes(1)
+    expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
+    expect(onRecharger).not.toHaveBeenCalled()
+  })
+
+  it('Générer enregistre aussi d’abord, et n’appelle rien sur échec', async () => {
+    const enregistrerAvant = vi.fn(async () => false)
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE, enregistrerAvant })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    await screen.findByTestId('cal-devis-refus')
+    expect(calepinageApi.calepinages.genererDevis).not.toHaveBeenCalled()
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
+  it('Réviser sur accepté : avertit sans refuser', async () => {
+    calepinageApi.calepinages.syncDevis.mockRejectedValue({
+      response: {
+        status: 409,
+        data: { detail: 'Le devis lié est accepté : utilisez « Réviser ».', revision_possible: true },
+      },
+    })
+    let resoudre
+    ventesApi.reviserDevis.mockImplementation(() => new Promise((r) => { resoudre = r }))
+    const aDesRetouches = vi.fn(() => true)
+
+    rendre({ enregistrerAvant: vi.fn(async () => true), aDesRetouches })
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+    await userEvent.click(await screen.findByTestId('cal-devis-reviser'))
+
+    expect(await screen.findByTestId('cal-devis-retouches'))
+      .toHaveTextContent('Retouches non enregistrées')
+    // Jamais un refus : la révision part quand même.
+    await waitFor(() => expect(ventesApi.reviserDevis).toHaveBeenCalledWith(DETAIL.devis.id))
+    resoudre({ data: { id: 78 } })
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/ventes/devis/78/design'))
+  })
+})

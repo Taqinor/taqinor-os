@@ -200,7 +200,8 @@ function BandeauVerrou({ calepinageId, onDeverrouille }) {
 
 export default function AtelierPanneaux({
   calepinageId, contexte, builderApi, lectureSeule = false,
-  onRecharger, documentVivant = null, children,
+  onRecharger, documentVivant = null, enregistrerAvant = null, aDesRetouches = null,
+  children,
 }) {
   const cible = contexte?.cible ?? null
   const calepinage = contexte?.calepinage ?? null
@@ -371,6 +372,8 @@ export default function AtelierPanneaux({
           lectureSeule={enLectureSeule}
           onRecharger={onRecharger}
           onRelire={relire}
+          enregistrerAvant={enregistrerAvant}
+          aDesRetouches={aDesRetouches}
         />
         {/* SOLMVP15 — le bouton « Reprendre le contour de l'affaire » (CAL242)
             était posé ici. Son endpoint est parti avec l'app d'appels d'offres,

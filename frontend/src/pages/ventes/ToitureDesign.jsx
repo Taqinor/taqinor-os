@@ -673,8 +673,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // conception a changé, et répond `{inchange: true}` sinon. AUCUN statut
   // n'est écrit ici (règle #4) ; le devis, lui, se génère par son propre
   // bouton (CAL38), jamais en effet de bord d'un enregistrement.
+  // ACAL94 — rend `true` quand la conception de l'écran est rangée (écrite ou
+  // « inchangée »), `false` sinon : « Générer / Resynchroniser » l'appellent
+  // AVANT leur geste serveur (prop `enregistrerAvant`), UNE seule fonction.
   const enregistrerCalepinage = async () => {
-    if (sending) return
+    if (sending) return false
     setGenError(null)
     setApercuMessage(null) // ACAL87
     setConflit(null)
@@ -683,11 +686,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
     const apiTool = builderApi.current
     if (!apiTool) {
       setGenError('Outil non prêt — ajustez la conception puis réessayez.')
-      return
+      return false
     }
     if (catalogueIndisponible) {
       setGenError('Catalogue des modules indisponible : rien n’est enregistré, rechargez la page.')
-      return
+      return false
     }
     setSending(true)
     setGenStatus('Enregistrement du calepinage…')
@@ -712,7 +715,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
             detail: typeof data.detail === 'string' && data.detail.trim()
               ? data.detail : 'La conception a été modifiée ailleurs.',
           })
-          return
+          return false
         }
         if (code === 409) {
           // Un calepinage dont le devis est parti chez le client : le motif
@@ -725,14 +728,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
               || 'Ce calepinage ne peut plus être modifié.',
             revision_possible: false,
           })
-          return
+          return false
         }
         // Le 400 de CAL18 NOMME son champ (`roof_layout`) : on affiche le
         // message du serveur tel quel plutôt qu'un « non enregistré » générique.
         const champ = data && typeof data === 'object' ? data.roof_layout : null
         setGenError(typeof champ === 'string' && champ.trim()
           ? champ : httpMessage(code ?? 0, data))
-        return
+        return false
       }
 
       // ACAL23 — le jeton de la PROCHAINE écriture est celui que le serveur vient de rendre.
@@ -756,7 +759,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         setStatus('Conception inchangée — le calepinage n’a pas bougé.')
         marquerSceneEnregistree(layout) // ACAL85
         await rafraichirContexte() // ACAL83
-        return
+        return true
       }
 
       // L'aperçu de toiture, même patron que les autres modes (best-effort,
@@ -781,6 +784,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
       )
       marquerSceneEnregistree(layout) // ACAL85
       await rafraichirContexte() // ACAL83
+      return true
     } catch (err) {
       setGenStatus(null)
       // ACAL64 — un document que l'atelier REFUSE d'émettre (pans de même identifiant) porte
@@ -789,6 +793,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         ? err.message
         : 'Erreur réseau pendant l’enregistrement. Vérifiez votre connexion puis réessayez.')
       setSending(false)
+      return false
     }
   }
 
@@ -1438,6 +1443,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
             lectureSeule={lectureSeule}
             onRecharger={rechargerAtelier}
             documentVivant={documentVivant}
+            // ACAL94 — Générer / Resynchroniser rangent d'abord l'écran (une
+            // seule fonction d'enregistrement), et Réviser sait s'il reste
+            // des retouches non enregistrées.
+            enregistrerAvant={enregistrerCalepinage}
+            aDesRetouches={() => sceneHydratee && sceneEstModifiee()}
           />
         )}
 
