@@ -9,18 +9,15 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import RelanceEtapeRow from './RelanceEtapeRow'
 
-vi.mock('../../../lib/toast', () => ({ toastInfo: vi.fn(), toastSuccess: vi.fn(), toastError: vi.fn() }))
-
-vi.mock('../../../api/crmApi', () => ({
-  default: {
-    getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })),
-    getRelanceEtapeMessage: vi.fn(),
-    whatsappRelanceEtape: vi.fn(),
-    enregistrerPieceRecue: vi.fn(),
-  },
+const API = vi.hoisted(() => ({
+  getRelanceEtapeMessage: vi.fn(),
+  whatsappRelanceEtape: vi.fn(),
+  getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })),
 }))
+vi.mock('../../../api/crmApi', () => ({ default: API }))
+vi.mock('../../../lib/toast', () => ({ toastInfo: vi.fn() }))
 
-import crmApi from '../../../api/crmApi'
+const crmApi = API
 
 const TOUCHE_EMAIL = exempleContrat('crm', 'relance_etape_v2', 'exemple_fixe_email').results[0]
 const TOUCHE_WHATSAPP = exempleContrat('crm', 'relance_etape_v2').results
@@ -30,16 +27,12 @@ const RENDU_SANS_ADRESSE = exempleContrat('crm', 'relance_etape_message', 'exemp
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-function noop() {}
-
-function ligne(etape) {
-  return render(
-    <RelanceEtapeRow
-      etape={etape} onFait={noop} onSauter={noop} onReporter={noop}
-      onOuvrirMessage={noop}
-    />,
-  )
+// Gestes inertes : ces tests ne vérifient QUE le panneau du texte.
+const GESTES_INERTES = {
+  onFait: () => {}, onSauter: () => {}, onReporter: () => {}, onOuvrirMessage: () => {},
 }
+
+const ligne = (etape) => render(<RelanceEtapeRow etape={etape} {...GESTES_INERTES} />)
 
 async function ouvrirTexte(rendu) {
   crmApi.getRelanceEtapeMessage.mockResolvedValue({ data: rendu })
