@@ -138,7 +138,12 @@ def render_pdf_bytes(data: dict) -> bytes:
     """Render the premium commercial proposal to PDF bytes, or raise Unsupported."""
     from weasyprint import HTML
     from . import render as commercial_render
+    from ..commercial.equip import pdf_adaptatif
     d = _augment(data)
-    html = commercial_render.build_html(d)
     base = str(Path(commercial_render.__file__).resolve().parent)
-    return HTML(string=html, base_url=f"file://{base}/").write_pdf()
+    # CIQ317 — densité adaptative de la page équipements, mesurée sur le
+    # rendu réel ; trop longue même au dernier palier ⇒ repli NOMMÉ.
+    pdf = pdf_adaptatif(d, commercial_render.build_html, f"file://{base}/")
+    if pdf is None:
+        raise Unsupported("nomenclature trop longue")
+    return pdf

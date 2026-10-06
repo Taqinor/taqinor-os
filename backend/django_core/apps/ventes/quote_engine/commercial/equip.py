@@ -24,6 +24,81 @@ def _num(v, default=0.0):
         return default
 
 
+# ── CIQ317 — densité adaptative de la page équipements ─────────────────────
+#: Paliers ``(police pt, padding vertical px, interligne)`` du tableau, des
+#: totaux et des blocs sous le tableau. Palier 0 = le rendu d'hier, octet pour
+#: octet. Le renderer choisit le premier palier qui TIENT, mesuré sur le rendu
+#: réel (``deborde``) ; si le dernier déborde encore, il refuse le devis
+#: (``Unsupported('nomenclature trop longue')``) et le dispatch prend le repli
+#: NOMMÉ (QJR235) — jamais une ligne, un total ou une option perdue.
+PALIERS_DENSITE = (None, (7.5, 4, 1.25), (6.8, 2.5, 1.15), (6.0, 1.2, 1.05))
+#: Bande de pied fixe des pages premium (``theme`` › ``.foot``, 13 mm).
+PIED_MM = 13.0
+_PX_PAR_MM = 96 / 25.4
+
+
+def css_densite(palier):
+    """Surcharge CSS du palier ``palier`` (``''`` au palier 0)."""
+    if not palier or palier >= len(PALIERS_DENSITE):
+        return ""
+    pt, pad, lh = PALIERS_DENSITE[palier]
+    return (
+        "<style>.c2-tot{display:block;}.c2-tot-sp{display:none;}"
+        ".c2-tot-box{display:block;width:45%;margin-left:55%;}"
+        f".c2-sec{{font-size:{pt + 5:g}pt;}}"
+        f".c2-tbl{{margin-top:4px;font-size:{pt:g}pt;line-height:{lh:g};}}"
+        f".c2-tbl th,.c2-tbl td{{padding:{pad:g}px 6px;}}"
+        f".c2-mq{{font-size:{max(pt - 1.5, 5):g}pt;"
+        + ("display:inline;margin-left:4px;" if palier >= 2 else "") + "}"
+        f".c2-tot{{margin-top:{pad:g}px;}}"
+        f".c2-tot-tbl{{font-size:{pt:g}pt;}}"
+        f".c2-tot-tbl td{{padding:{max(pad - 1, 1):g}px 8px;}}"
+        f".c2-tot-ttc td{{font-size:{pt + 3:g}pt;padding-top:{pad:g}px;}}"
+        f".c2-note,.c2-inj{{margin-top:{pad:g}px;font-size:{pt:g}pt;}}"
+        f".c2b{{margin-top:{pad + 2:g}px;padding:{pad + 2:g}px 10px;}}"
+        f".c2b-li{{font-size:{pt:g}pt;margin-top:1px;line-height:{lh:g};}}"
+        "</style>")
+
+
+def _boites_texte(boite, dans_pied=False):
+    element = getattr(boite, "element", None)
+    classes = ""
+    if element is not None and hasattr(element, "get"):
+        classes = element.get("class") or ""
+    pied = dans_pied or "foot" in classes.split()
+    if type(boite).__name__ == "TextBox" and not pied:
+        yield boite
+    for enfant in getattr(boite, "children", None) or []:
+        yield from _boites_texte(enfant, pied)
+
+
+def deborde(page):
+    """Vrai quand un TEXTE de la page (hors pied) descend sous le haut de la
+    bande de pied : la page fixe en ``overflow:hidden`` le couperait en
+    silence. ``page`` : une page de ``HTML(...).render().pages``."""
+    limite = page.height - PIED_MM * _PX_PAR_MM
+    for boite in _boites_texte(page._page_box):
+        if boite.position_y + boite.margin_height() > limite + 0.5:
+            return True
+    return False
+
+
+def pdf_adaptatif(d, build_html, base_url, index_page=1):
+    """Les octets PDF au PREMIER palier de densité qui tient, ou ``None``
+    quand même le dernier déborde (le renderer lève alors ``Unsupported``)."""
+    from weasyprint import HTML
+    for palier in range(len(PALIERS_DENSITE)):
+        donnees = d if palier == 0 else dict(d, _palier_equip=palier)
+        html = build_html(donnees)
+        doc = HTML(string=html, base_url=base_url).render()
+        # Une page qui déborde peut aussi POUSSER une page de plus : le
+        # document ne tient que s'il a exactement ses pages et rien de coupé.
+        attendu = html.count('<div class="page">')
+        if len(doc.pages) == attendu and not deborde(doc.pages[index_page]):
+            return doc.write_pdf()
+    return None
+
+
 def build(ctx):
     d = ctx["d"]
     C = ctx["C"]
@@ -212,7 +287,7 @@ def build(ctx):
     from ..clauses_cgv import bloc_clauses_html
     clauses_html = bloc_clauses_html(
         d.get("clauses_cgv"), couleur_titre=navy, couleur_texte=ink)
-    html = f"""{css}
+    html = f"""{css}{css_densite(d.get("_palier_equip"))}
 <div class="c2-root">
   <div class="c2-kicker">Votre installation</div>
   <div class="c2-sec">Équipements &amp; investissement</div>
