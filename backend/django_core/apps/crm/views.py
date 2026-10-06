@@ -3237,6 +3237,19 @@ _DEFAULT_MOTIFS_PERTE = [
     # n'était appris. Pertes commerciales réelles, jamais « junk ».
     ('Subvention non obtenue', False),
     ('Eau insuffisante / forage', False),
+    # CIQ514 (06/10/2026) — pertes d'une affaire PRO (commerce, industrie) : la
+    # banque a refusé, la direction a reporté, le bailleur des murs a dit non,
+    # le budget passe à l'exercice suivant… Jusqu'ici tout finissait en
+    # « Reporté » ou « Autre » et rien n'était appris. Pertes commerciales
+    # réelles, jamais « junk » ; ajoutées SANS migration par
+    # `completer_motifs_perte`. Libellés ✎ à valider par Reda.
+    ('Financement refusé (banque / organisme)', False),
+    ('Décision interne reportée', False),
+    ('Refus du bailleur des murs', False),
+    ("Budget reporté à l'exercice suivant", False),
+    ('Contrainte de raccordement au réseau', False),
+    ('Toiture ou structure inadaptée (visite)', False),
+    ('Consultation : autre prestataire retenu', False),
 ]
 
 # MRY2 — étiquettes standard. `Lead.tags` reste un TEXTE LIBRE : cette liste
