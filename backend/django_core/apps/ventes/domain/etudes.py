@@ -532,7 +532,15 @@ def rafraichir_etudes_du_devis(devis, *, force=False):
         # CIQ119 — commercial / industriel : l'étude suit les LIGNES facturées
         # (taille donnée, aucun redimensionnement) ; no-op sur tout autre marché.
         'etude_ci': _rafraichir_etude_ci(devis, force=force),
+        # AGR123 — agricole : l'étude pompage suit la pompe FACTURÉE (kW
+        # plaque, courbe, variateur, panneaux des lignes) ; no-op ailleurs.
+        'etude_pompage': _rafraichir_etude_pompage(devis, force=force),
     }
+
+
+def _rafraichir_etude_pompage(devis, *, force=False):
+    from apps.ventes.domain.pompage import rafraichir_etude_pompage_devis
+    return rafraichir_etude_pompage_devis(devis, force=force)
 
 
 def _rafraichir_etude_ci(devis, *, force=False):
@@ -568,10 +576,11 @@ def _rafraichir_etude_ci(devis, *, force=False):
 #
 # Les autres clés DÉRIVÉES du schéma restent délibérément :
 #   · ``puissance_kwc`` décrit la composition, qui est clonée à l'identique ;
-#   · les dérivées POMPAGE (``debit_hmt_m3h``, ``m3_jour``, ``champ_kwc``) et
-#     les taux industriels (``taux_autoconso``, ``taux_couverture``,
+#   · les taux industriels (``taux_autoconso``, ``taux_couverture``,
 #     ``injection_*``) décrivent le SITE du client et n'ont AUCUN rafraîchisseur
-#     serveur : les purger supprimerait l'étude sans la remplacer. Seule celle
+#     serveur : les purger supprimerait l'étude sans la remplacer. (AGR122 :
+#     les dérivées POMPAGE, elles, ont désormais leur moteur serveur — elles
+#     sont purgées et RECALCULÉES, voir la fin du tuple.) Seule celle
 #     qui dépend du PRIX — ``payback`` — part avec les cinq autres, parce que
 #     c'est précisément le prix que le renouvellement change.
 #
@@ -579,6 +588,10 @@ def _rafraichir_etude_ci(devis, *, force=False):
 # recalcule depuis les lignes (``calculate_savings_roi``) ou OMET la carte
 # (``_card_if``, ``ind_masquer_economies``). C'est la règle « zéro chiffre
 # inventé » appliquée à la copie : mieux vaut recalculer, ou taire.
+
+from apps.ventes.domain.etude_schema import (  # noqa: E402
+    DERIVEE as _DERIVEE, MOTEUR_POMPAGE as _MOTEUR_POMPAGE,
+    SCHEMA as _SCHEMA_ETUDE)
 
 #: QJR117 — les clés DÉRIVÉES qu'une COPIE de devis ne reprend jamais.
 #: Chacune est déclarée ``DERIVEE`` dans ``domain/etude_schema.SCHEMA`` (un
@@ -601,7 +614,14 @@ CLES_DERIVEES_NON_COPIEES = (
     # RECALCULE sur sa propre composition, jamais héritées du source.
     'etude_ci',
     'production_figee',
-)
+) + tuple(
+    # AGR122 — TOUTES les dérivées du moteur pompage (v2 + les sept clés v1
+    # lues par le rendu) : une copie/V2 les RECALCULE (AGR123) sur ses
+    # propres lignes, jamais héritées du source. Lues dans le SCHÉMA (un seul
+    # endroit qui dit qui écrit quoi), jamais une seconde liste à la main.
+    cle for cle, regle in _SCHEMA_ETUDE.items()
+    if regle['proprietaire'] == _MOTEUR_POMPAGE
+    and regle['nature'] == _DERIVEE)
 
 #: QJR136 / ES13 — L'ATTRIBUTION PUBLICITAIRE NE SE RECOPIE PAS NON PLUS.
 #: ``etude_params['attribution']`` est le snapshot first-touch (fbclid/UTM) que
