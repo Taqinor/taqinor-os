@@ -11,6 +11,7 @@
 // n'est arrondi ; aucun jour n'est coché d'office (le week-end n'est jamais
 // supposé) ; fonctions PURES, sans React ni réseau (node --test).
 import { normaliserCorpsCi, construireCorpsCi } from '../etudeCiPreviewPur.js'
+import { ttcFromHt, tauxTvaOf } from '../solar.js'
 
 export const JOURS_SEMAINE = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
@@ -217,6 +218,33 @@ export function profilDepuisEtude(e) {
   p.revente = etude.contraintes?.revente_choisie === true
   p.tailleExplicite = texte(etude.taille_explicite_kwc)
   return p
+}
+
+// ── CIQ126 — Auto-remplir C&I : les lignes de la COMPOSITION serveur ──
+// `composition` = la réponse de l'aperçu (`composition.lignes`, contrat
+// `etude_ci_preview.json`) ; `produits` = le catalogue de l'écran (prix de
+// vente HT + TVA du produit). Le serveur dit QUOI et COMBIEN : quantités et
+// produits tels quels ; l'écran ne fait que poser le prix catalogue du produit
+// (TTC, l'écran est 100 % TTC). Un article « prix à renseigner »
+// (`produit: null` ou `prix_connu: false`) devient une ligne SANS produit,
+// nommée — jamais chiffrée à 0 comme un article gratuit, jamais enregistrée.
+export function lignesDepuisCompositionCi(composition, produits) {
+  const lignes = composition && Array.isArray(composition.lignes) ? composition.lignes : []
+  const rows = []
+  for (const it of lignes) {
+    const quantite = Number(it?.quantite)
+    if (!Number.isFinite(quantite) || quantite <= 0) continue
+    const p = (it.produit == null || it.prix_connu === false) ? null
+      : (produits || []).find((x) => String(x.id) === String(it.produit)) || null
+    rows.push({
+      produit: p ? String(p.id) : '',
+      designation: p ? p.nom : `${it.designation || 'Article C&I'} — prix à renseigner`,
+      quantite,
+      prix_unit_ttc: p ? ttcFromHt(p.prix_vente, tauxTvaOf(p)) : 0,
+      taux_tva: p ? tauxTvaOf(p) : 20,
+    })
+  }
+  return rows
 }
 
 /** Le devis porte-t-il des entrées C&I v2 ? */

@@ -174,5 +174,31 @@ describe('CIQ125 — profil déclaré C&I et résultat serveur en direct', () =>
     expect(bloc.consommation.kwh_mensuels).toEqual(KWH)
     expect(bloc).not.toHaveProperty('etude_ci')
     expect(bloc).not.toHaveProperty('production_figee')
+    // CIQ126 — plus aucune clé de l'étude locale v1.
+    for (const k of ['taux_autoconso', 'taux_couverture', 'payback', 'part_diurne_pct',
+      'etude_kwc_base', 'injection_kwh_an', 'injection_dh_an', 'tension_raccordement', 'repartition_mt']) {
+      expect(bloc).not.toHaveProperty(k)
+    }
+  })
+
+  it('CIQ126 — Auto-remplir en industriel ⇒ un seul appel etude-ci/preview, lignes de la composition serveur', async () => {
+    const compo = exempleContrat('ventes', 'etude_ci_preview').composition
+    const ligneConnue = compo.lignes.find((l) => l.prix_connu && l.produit != null)
+    const PRODUIT_MOTEUR = { id: ligneConnue.produit, nom: ligneConnue.designation, prix_vente: 50000, tva: 20, is_archived: false }
+    stockApi.getProduits.mockResolvedValue({ data: [PANNEAU, ONDULEUR, PRODUIT_MOTEUR] })
+    const { container } = rendre()
+    await waitFor(() => expect(container.querySelector('#gen-ci-kwh-0')).not.toBeNull())
+    KWH.forEach((v, i) => {
+      fireEvent.change(container.querySelector(`#gen-ci-kwh-${i}`), { target: { value: String(v) } })
+    })
+    // l'aperçu en direct a répondu
+    await screen.findByTestId('ci-taille-retenue', {}, { timeout: 3000 })
+    const avant = ventesApi.etudeCiPreview.mock.calls.length
+    fireEvent.click(screen.getByTestId('btn-auto-remplir'))
+    expect(await screen.findByDisplayValue(ligneConnue.designation)).toBeInTheDocument()
+    expect(ventesApi.etudeCiPreview.mock.calls.length - avant).toBe(1)
+    // un article « prix à renseigner » est nommé, jamais chiffré
+    const aRenseigner = compo.lignes.find((l) => l.prix_connu === false)
+    expect(await screen.findByDisplayValue(`${aRenseigner.designation} — prix à renseigner`)).toBeInTheDocument()
   })
 })

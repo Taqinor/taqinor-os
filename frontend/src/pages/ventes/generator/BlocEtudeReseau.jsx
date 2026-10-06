@@ -12,11 +12,38 @@
 // le serveur (`entrees_resolues`) avec sa provenance. Saisie 100 % libre :
 // chaque `<input type="number">` porte `step="any"` et `min="0"`, rien n'est
 // arrondi ni rejeté (le `noValidate` reste sur le formulaire porteur).
-import { Input, Label, Button } from '../../../ui'
+import { Zap } from 'lucide-react'
+import { Card, CardContent, Input, Label, Button } from '../../../ui'
 import { formatNumber } from '../../../lib/format'
-import { MONTHS_FR, TARIF_MT_ONEE, tarifMtDisponible } from '../../../features/ventes/solar'
+import { MONTHS_FR } from '../../../features/ventes/solar'
 import { libelleProvenance } from '../../../features/ventes/etudeCiPreview'
 import { JOURS_SEMAINE, TYPES_JOUR } from '../../../features/ventes/quote/profilCi'
+import { GenCardHeader } from './CarteMetrique'
+import CarteResultatCi from './CarteResultatCi'
+
+/**
+ * CIQ125 — LA carte C&I commune aux panneaux industriel et commercial : le
+ * profil déclaré (UNE seule saisie de consommation — les factures hiver/été
+ * et la facture réelle résidentielles n'y sont pas montées) puis le résultat
+ * du moteur serveur tel quel. `children` = contenu propre au panneau
+ * (catégorie commerciale).
+ */
+export function CarteProfilCi({ profilCi, setChampCi, apercuCi, errors, children }) {
+  return (
+    <Card>
+      <GenCardHeader icon={Zap} title="Profil de consommation du site" />
+      <CardContent className="pt-4">
+        <BlocEtudeReseau
+          profil={profilCi} setChamp={setChampCi}
+          resolues={apercuCi?.donnees?.entrees_resolues || null}
+          erreurConso={errors?.conso}
+        />
+        {children}
+        <CarteResultatCi {...(apercuCi || {})} />
+      </CardContent>
+    </Card>
+  )
+}
 
 export const MENTION_REVENTE_BT = 'Revente du surplus non ouverte en basse tension — ANRE décision 04/26.'
 
@@ -67,7 +94,6 @@ function Nombre({ id, label, value, onChange, placeholder, testid }) {
 
 export default function BlocEtudeReseau({
   profil, setChamp, resolues = null, erreurConso,
-  repartitionMt, setPartMt, tarifMtApplique,
 }) {
   const p = profil || {}
   const estMt = p.tension === 'mt'
@@ -288,47 +314,6 @@ export default function BlocEtudeReseau({
         </div>
       </fieldset>
 
-      {/* QXMT — répartition horaire du site MT (donnée de profil). Aucune
-          valeur par défaut : rien n'est inventé à la place du vendeur. */}
-      {estMt && repartitionMt && (
-        <div data-testid="gen-mt-block">
-          <div className="grid gap-4 sm:grid-cols-3">
-            {[
-              ['pointe', 'Heures de pointe (%)', TARIF_MT_ONEE.POINTE],
-              ['pleines', 'Heures pleines (%)', TARIF_MT_ONEE.PLEINES],
-              ['creuses', 'Heures creuses (%)', TARIF_MT_ONEE.CREUSES],
-            ].map(([key, label, prix]) => (
-              <div className="grid gap-1.5" key={key}>
-                <Label htmlFor={`gen-mt-${key}`}>{label}</Label>
-                <Input id={`gen-mt-${key}`} type="number" min="0" step="any"
-                       data-testid={`gen-mt-${key}`} placeholder="ex: 20"
-                       value={repartitionMt[key]}
-                       onChange={e => setPartMt(key, e.target.value)} />
-                <p className="text-xs text-muted-foreground">
-                  {prix != null
-                    ? `${formatNumber(prix, { decimals: 4 })} DH/kWh`
-                    : 'tarif à fournir par le fondateur'}
-                </p>
-              </div>
-            ))}
-          </div>
-          {tarifMtApplique != null ? (
-            <p className="mt-2 text-xs text-muted-foreground" data-testid="gen-mt-tarif">
-              Tarif MT moyen retenu ≈{' '}
-              <strong>{formatNumber(tarifMtApplique, { decimals: 4 })} DH/kWh</strong>
-              {' · '}{TARIF_MT_ONEE.MENTION}
-            </p>
-          ) : (
-            <p className="mt-2 text-xs text-warning" data-testid="gen-mt-manquant">
-              {tarifMtDisponible()
-                ? 'Répartition horaire non renseignée : les économies et le '
-                  + 'payback sont volontairement omis de l\'étude.'
-                : 'Barème MT ONEE indisponible en source officielle : les '
-                  + 'économies et le payback sont omis de l\'étude.'}
-            </p>
-          )}
-        </div>
-      )}
     </div>
   )
 }

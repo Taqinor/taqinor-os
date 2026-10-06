@@ -190,7 +190,7 @@ test('devis auto : le message de la garde est CELUI du bandeau de DevisGenerator
   // lead. Les deux fichiers portent le même gabarit, à la lettre.
   const auto = lire('./autoQuote.js')
   const gen = lire('../../pages/ventes/DevisGenerator.jsx')
-  const gabarit = 'Marque épinglée introuvable au stock : ${metaMarquesManquantes'
+  const gabarit = 'Marque épinglée introuvable au stock : ${marquesManquantes'
   assert.ok(gen.includes(gabarit), 'gabarit du bandeau introuvable dans DevisGenerator')
   assert.ok(auto.includes('Marque épinglée introuvable au stock : ${marquesAbsentes'))
   const suite = 'Ajoutez le produit ou changez la marque dans Paramètres → Gammes.'

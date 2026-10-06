@@ -31,20 +31,8 @@ export default function CarteFacturesElectriques({
   distributeur, setDistributeur, realBillMode, setRealBillMode,
   realBillMad, setRealBillMad, realBillKwh, setRealBillKwh,
   onRealBillPaste, consoAnnuelleReelle,
-  children, marcheCi = false,
+  children,
 }) {
-  // CIQ125 — en commercial / industriel, UNE seule saisie de consommation :
-  // celle du profil déclaré (`BlocEtudeReseau`, passé en `children`). Les
-  // factures hiver/été et la facture réelle résidentielles n'y sont plus
-  // montées (elles ne dimensionnaient pas le C&I et doublonnaient la saisie).
-  if (marcheCi) {
-    return (
-      <Card>
-        <GenCardHeader icon={Zap} title="Profil de consommation du site" />
-        <CardContent className="pt-4">{children}</CardContent>
-      </Card>
-    )
-  }
   return (
     <Card>
       <GenCardHeader icon={Zap} title="Factures Électriques" />

@@ -190,27 +190,11 @@ export function devisVersEtat(d) {
     etat.multiMode = 'villas'
   }
 
-  // QX50 / QXMT / QJR528 — étude réseau.
-  if (e.injection_82_21 || e.injection_dh_an != null) etat.injectionEnabled = true
-  if (e.tension_raccordement === 'mt') etat.tension = 'mt'
-  if (mode === 'industriel' && e.part_diurne_pct != null
-      && Number.isFinite(Number(e.part_diurne_pct))) {
-    etat.partDiurne = String(Number(e.part_diurne_pct))
-  }
-  if (e.repartition_mt && typeof e.repartition_mt === 'object') {
-    const r = e.repartition_mt
-    etat.repartitionMt = {
-      pointe: r.pointe != null ? String(r.pointe) : '',
-      pleines: r.pleines != null ? String(r.pleines) : '',
-      creuses: r.creuses != null ? String(r.creuses) : '',
-    }
-  }
   // CIQ125 — C&I : le profil déclaré se relit de ses ENTRÉES v2 (jamais
   // des dérivées `etude_ci`), la ville du site avec lui.
   if (mode === 'industriel' || mode === 'commercial') {
     etat.profilCi = profilDepuisEtude(e)
     etat.villeCi = e.site?.ville || null
-    if (e.tension === 'mt') etat.tension = 'mt'
   }
   // QX44 — étude commerciale : catégorie + réponses.
   if (e.categorie_commerciale) {
@@ -301,7 +285,7 @@ export function entreesDeEtat(etat) {
  * @param {object} etat  état d'écran (celui de `devisVersEtat`, ou celui que
  *   l'écran assemble au moment d'enregistrer)
  * @param {object} [vif] valeurs CALCULÉES à l'écran que l'état ne porte pas :
- *   `etude` (étude I/C du moment), `pompage` (dimensionnement retenu),
+ *   `pompage` (dimensionnement retenu),
  *   `entrees` (entrées réelles de la session), `recommended` (option
  *   effective). Absentes → dérivées de l'état seul.
  * @returns {{lignes: Array, entete: object, etude: object|null}}
@@ -320,12 +304,8 @@ export function etatVersEcritures(etat, vif = {}) {
 
   const farm = etat.farm || {}
   const etude = projeterEtudeMarche(etat.mode, {
-    etude: vif.etude,
     choix: choixDeEtat(etat, { recommended: vif.recommended }),
     entrees: vif.entrees ?? entreesDeEtat(etat),
-    partDiurne: etat.partDiurne,
-    tensionRaccordement: etat.tension,
-    repartitionMt: etat.repartitionMt,
     categorie: etat.categorieCommerciale,
     reponses: etat.commercialAnswers || {},
     pompageEntrees: etat.mode === 'agricole' ? entreesPompageEcran(etat) : undefined,

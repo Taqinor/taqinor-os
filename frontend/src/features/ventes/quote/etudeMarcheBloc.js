@@ -3,7 +3,7 @@
 // Déplacement PUR du corps de `blocEtudeMarche` (DevisGenerator.jsx) : une
 // seule fonction, sans état React, qui ne laisse sortir QUE des clés ECRAN
 // déclarées par `apps/ventes/domain/etude_schema.py` (le schéma refuse en 400
-// toute autre clé de tête). Les objets BRUTS de `computeEtudeIndustrielle`
+// toute autre clé de tête). Les objets BRUTS de l'ancienne étude C&I locale
 // (solar.js) et de `buildEtudePompage` (autoQuote.js) portent des clés hors
 // schéma (kwc, prix_kwc, economies_annuelles…) : ils ne doivent jamais partir
 // tels quels — ils passent par ici. Le générateur ET le devis automatique
@@ -11,11 +11,8 @@
 //
 // Entrées :
 //   mode               'industriel' | 'commercial' | 'agricole' | autre (résidentiel)
-//   etude              l'étude I/C calculée par l'écran (industriel / commercial)
 //   choix              les CHOIX de l'écran (scenario, recommended_option, nombre_proprietes)
 //   entrees            fonction (consoDejaConnue) => entrées réelles, ou objet déjà calculé
-//   partDiurne         part diurne du curseur industriel (%)
-//   tensionRaccordement, repartitionMt   raccordement et répartition horaire TELLE QUE SAISIE
 //   categorie, reponses                  catégorie commerciale + réponses du questionnaire
 //   ciEntrees          CIQ125 — les ENTRÉES C&I v2 déjà mises à la forme du contrat
 //                        (`entreesCiV2` de profilCi.js).
@@ -39,56 +36,22 @@ const resoudreEntrees = (entrees, consoDejaConnue) => (
   typeof entrees === 'function' ? entrees(consoDejaConnue) : (entrees || {})
 )
 
-// QXMT — la répartition horaire TELLE QUE SAISIE, ou `null` (règle Z2 : un
-// site repassé en BT n'a plus de répartition MT, on la RETIRE au lieu de
-// laisser traîner celle d'hier). Rien de rempli ⇒ `null` aussi : l'étude MT
-// omet alors économies et payback plutôt que d'inventer un barème.
-export const repartitionMtSaisie = (tensionRaccordement, repartitionMt) => {
-  if (tensionRaccordement !== 'mt') return null
-  const parts = {}
-  for (const creneau of ['pointe', 'pleines', 'creuses']) {
-    const n = parseFloat((repartitionMt || {})[creneau])
-    if (Number.isFinite(n)) parts[creneau] = n
-  }
-  return Object.keys(parts).length ? parts : null
-}
-
 export function projeterEtudeMarche(mode, {
-  etude, choix = {}, entrees, partDiurne,
-  tensionRaccordement, repartitionMt,
+  choix = {}, entrees,
   categorie, reponses = {},
   pompageEntrees, exploitation = {}, ciEntrees,
 } = {}) {
   if (mode === 'industriel' || mode === 'commercial') {
-    const e = etude || {}
+    // CIQ126 — le navigateur n'envoie QUE les ENTRÉES C&I v2 (contrat
+    // `etude_ci_preview.json`, `cles_etude_params_ci_v2.entrees`) : les
+    // dérivées (`etude_ci`, `production_figee`) sont écrites par le serveur
+    // (propriétaire `moteur_ci`). Plus aucune clé ÉCRAN v1 (`a_retirer_v1` :
+    // taux_autoconso, taux_couverture, payback, part_diurne_pct,
+    // etude_kwc_base, injection_kwh_an, injection_dh_an), ni le raccordement
+    // et la répartition MT v1 (tension_raccordement, repartition_mt).
     const bloc = {
       ...choix,
-      // CIQ125 — les ENTRÉES C&I v2 (contrat `etude_ci_preview.json`,
-      // `cles_etude_params_ci_v2.entrees`) : le profil déclaré tel que tapé.
-      // Les DÉRIVÉES (`etude_ci`, `production_figee`) sont écrites par le
-      // serveur (propriétaire `moteur_ci`), jamais par le navigateur.
       ...(ciEntrees || {}),
-      ...resoudreEntrees(entrees, nombre(e.conso_annuelle)),
-      taux_autoconso: nombre(e.taux_autoconso),
-      taux_couverture: nombre(e.taux_couverture),
-      payback: nombre(e.payback),
-      injection_kwh_an: nombre(e.injection_kwh_an),
-      injection_dh_an: nombre(e.injection_dh_an),
-      // QJR579 (contrat QJR510) — le kWc pour lequel CES dérivées ont été
-      // calculées : base de la garde de fraîcheur (QJR625). Nul sans étude.
-      etude_kwc_base: nombre(e.kwc),
-      // QJR528 — la part diurne du curseur INDUSTRIEL (entrée de l'étude) :
-      // relue par `?edit=`, sinon la réouverture remettait le défaut et
-      // réécrivait taux / payback. Commercial : dérivée de la catégorie
-      // (`commercialDayShare`), rien à écrire.
-      part_diurne_pct: mode === 'industriel' ? nombre(partDiurne) : undefined,
-      // QXMT — raccordement du site + répartition horaire : le mappeur
-      // `?edit=` les relit, donc elles doivent être PERSISTÉES, sinon un
-      // devis MT rouvert repartait silencieusement au barème BT. On stocke
-      // ce que le vendeur a TAPÉ (l'entrée), pas la répartition normalisée
-      // par l'étude : c'est la forme que le formulaire réinjecte.
-      tension_raccordement: tensionRaccordement || null,
-      repartition_mt: repartitionMtSaisie(tensionRaccordement, repartitionMt),
     }
     if (mode === 'commercial') {
       // QX44 — la catégorie ET ses réponses (clés snake_case à plat, comme

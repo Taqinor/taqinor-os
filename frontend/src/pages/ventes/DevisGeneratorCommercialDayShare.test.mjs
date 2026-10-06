@@ -1,37 +1,41 @@
-// QJR575 — un devis commercial né du « Devis automatique » (part diurne 80 %,
-// aucune catégorie) rouvert dans l'Édition complète puis enregistré SANS
-// retouche ne doit plus réécrire taux_autoconso / économies / payback : la
-// catégorie par défaut de l'écran n'est plus « hôtel » (55 %) mais la
-// sentinelle « Non précisée » (80 %, persistée null). Et le balayage C&I de
-// l'écran passe par LES MÊMES paramètres que celui du devis automatique
-// (`parametresBalayageCI`, autoQuote.js) — jamais le défaut d'écran 'onee'.
-//
-// DevisGenerator.jsx / autoQuote.js ne sont pas importables sous `node --test` :
-// ce fichier exécute les chiffres (solar.js, projeterEtudeMarche) ; le balayage
-// parametresBalayageCI est exécuté par autoQuote.balayageCI.test.jsx (vitest).
+// CIQ126 (remplace QJR575) — un devis commercial rouvert dans l'Édition
+// complète puis enregistré SANS retouche renvoie EXACTEMENT ses entrées : plus
+// aucune part diurne de catégorie (`commercialDayShare`), plus aucune clé de
+// l'étude locale (taux_autoconso, payback, part_diurne_pct). La sentinelle
+// « Non précisée » se persiste `null` et n'est jamais envoyée au moteur.
+// Exécuté : la projection partagée + l'aller-retour du module pur etatDevis.
 // Run : node --test src/pages/ventes/DevisGeneratorCommercialDayShare.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import {
-  commercialDayShare, computeEtudeIndustrielle, DAY_USAGE_DEFAULTS,
-} from '../../features/ventes/solar.js'
 import { projeterEtudeMarche } from '../../features/ventes/quote/etudeMarcheBloc.js'
+import { devisVersEtat, etatVersEcritures } from '../../features/ventes/quote/etatDevis.js'
+import { entreesCiV2, profilCiVide, poserProfilCi } from '../../features/ventes/quote/profilCi.js'
 
+const profil = poserProfilCi(poserProfilCi(profilCiVide(), 'saisieConso', 'annuel'), 'kwhAnnuel', '96000')
 
-test('la sentinelle « Non précisée » (clé inconnue) vaut la part diurne du devis automatique (80 %)', () => {
-  assert.equal(commercialDayShare('non_precisee'), DAY_USAGE_DEFAULTS.Commerciale)
+test('sans catégorie : aucune part diurne ni dérivée locale, catégorie persistée null', () => {
+  const bloc = projeterEtudeMarche('commercial', {
+    choix: {}, entrees: {}, categorie: null,
+    ciEntrees: entreesCiV2(profil, { mode: 'commercial', categorie: null }),
+  })
+  for (const k of ['taux_autoconso', 'taux_couverture', 'payback', 'part_diurne_pct']) {
+    assert.equal(k in bloc, false, k)
+  }
+  assert.equal(bloc.categorie_commerciale, null)
+  assert.equal(bloc.rythme.categorie_commerciale, null)
+  assert.equal(bloc.consommation.kwh_annuel, 96000)
 })
 
-test('rouvrir sans categorie_commerciale puis enregistrer : taux_autoconso et économies inchangés', () => {
-  // L'étude que le devis automatique a persistée (part diurne 80 %)…
-  const base = { kwp: 50, consoMensuelleKwh: 8000, totalTtc: 400000, kwhPrice: 1.2, efficiency: 0.8 }
-  const auto = computeEtudeIndustrielle({ ...base, dayUsagePct: DAY_USAGE_DEFAULTS.Commerciale })
-  // …et celle que l'écran rouvert recalcule avec SA catégorie par défaut.
-  const ecran = computeEtudeIndustrielle({ ...base, dayUsagePct: commercialDayShare('non_precisee') })
-  const bloc = projeterEtudeMarche('commercial', { etude: ecran, choix: {}, entrees: {}, categorie: null })
-  assert.equal(bloc.taux_autoconso, auto.taux_autoconso)
-  assert.equal(ecran.economies_annuelles, auto.economies_annuelles)
-  assert.equal(bloc.payback, auto.payback)
-  assert.equal(bloc.categorie_commerciale, null)
+test('rouvrir sans categorie_commerciale puis enregistrer : étude identique', () => {
+  const ecr1 = etatVersEcritures({
+    mode: 'commercial', lignes: [], tauxTva: '20.00', discountPct: '0', echeancier: null,
+    categorieCommerciale: null, commercialAnswers: {}, profilCi: profil,
+  }, { entrees: {} })
+  const devis = {
+    id: 7, mode_installation: 'commercial', taux_tva: '20.00', remise_globale: '0',
+    lignes: [], etude_params: ecr1.etude,
+  }
+  const ecr2 = etatVersEcritures(devisVersEtat(devis), { entrees: {} })
+  assert.deepEqual(ecr2.etude, ecr1.etude)
 })

@@ -72,21 +72,11 @@ test('LigneTable : le bouton « Enregistrer cet ordre » appelle handleSaveOrdre
   assert.match(DG, /savingOrdreLignes=\{savingOrdreLignes\}/)
 })
 
-test('DevisGenerator : la composition locale (auto-remplir manuel) transmet ordreLignes de gammesConfig', () => {
-  // U3COMPOSE (26/08/2026) — l'ancien corps de `handleAutoFill` vit désormais
-  // dans `composeLocalement()` : c'est lui qui compose l'agricole,
-  // l'industriel, le commercial ET le repli résidentiel quand le dry-run
-  // serveur est injoignable. La préférence société doit y être transmise
-  // EXACTEMENT comme avant — sur le chemin résidentiel nominal, c'est le
-  // serveur qui lit `ordre_lignes_societe` (jamais accepté du corps de la
-  // requête), verrouillé côté Django.
-  const idx = DG.indexOf('const composeLocalement = () => {')
-  assert.ok(idx > -1, 'composeLocalement introuvable')
-  // Fenêtre bornée à la PREMIÈRE composition (l'appel `composeAvec` suivant
-  // est au-delà) : une option perdue ici casse le test.
-  const bloc = DG.slice(idx, idx + 1200)
-  assert.match(bloc, /marques:\s*marquesActives,/)
-  assert.match(bloc, /ordreLignes:\s*gammesConfig\?\.ordre_lignes,/)
+test('CIQ126 — DevisGenerator : plus aucune composition locale (l’ordre société est lu côté serveur)', () => {
+  // `composeLocalement()` est supprimé : le résidentiel compose au dry-run
+  // serveur (qui lit `ordre_lignes_societe`), le C&I au moteur C&I serveur,
+  // l'agricole au kit serveur — l'écran ne compose plus rien lui-même.
+  assert.equal(DG.includes('const composeLocalement = () => {'), false)
 })
 
 test('DevisGenerator : le dry-run serveur n\'envoie JAMAIS l\'ordre des lignes dans le corps (lu société-side)', () => {

@@ -81,7 +81,7 @@ beforeEach(() => {
     data: {
       id: 575, reference: 'DEV-202609-0575', statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true, client: 9,
       mode_installation: 'commercial', taux_tva: '20.00', remise_globale: '0',
-      etude_params: { scenario: 'Sans batterie', conso_annuelle: 60000, consommation: { kwh_annuel: 60000 } },
+      etude_params: { scenario: 'Sans batterie', conso_annuelle: 60000 },
       lignes: [
         { id: 1, produit: PANNEAU.id, designation: PANNEAU.nom, quantite: '20',
           prix_unitaire: '1000.00', taux_tva: '10.00', ordre: 0,
@@ -99,6 +99,11 @@ beforeEach(() => {
 
 describe('QJR575 — catégorie commerciale « Non précisée » persistée null', () => {
   it('?edit= commercial sans catégorie → enregistrement avec categorie_commerciale null', async () => {
+    // CIQ125 — un devis C&I sans consommation ne s'enregistre pas : le devis
+    // rouvert porte sa consommation déclarée (entrée v2).
+    const rouvert575 = (await ventesApi.getDevisById()).data
+    ventesApi.getDevisById.mockResolvedValue({ data: { ...rouvert575,
+      etude_params: { ...rouvert575.etude_params, consommation: { kwh_annuel: 48000 } } } })
     render(
       <Provider store={makeStore()}>
         <MemoryRouter initialEntries={['/ventes/devis/nouveau?edit=575']}>

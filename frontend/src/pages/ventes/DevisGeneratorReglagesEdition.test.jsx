@@ -15,9 +15,6 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 import authReducer from '../../features/auth/store/authSlice'
 import ventesReducer from '../../features/ventes/store/ventesSlice'
-import {
-  computeEtudeIndustrielle, DAY_USAGE_DEFAULTS, EFFICIENCY,
-} from '../../features/ventes/solar'
 
 vi.mock('../../api/crmApi', () => ({
   default: {
@@ -90,7 +87,7 @@ beforeEach(() => {
       id: 510, reference: 'DEV-202609-0510', statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true, client: 9,
       mode_installation: 'industriel', taux_tva: '20.00', remise_globale: '0',
       prix_cible_kwc: '8500.00',
-      etude_params: { scenario: 'Sans batterie', conso_annuelle: 60000, consommation: { kwh_annuel: 60000 } },
+      etude_params: { scenario: 'Sans batterie', conso_annuelle: 60000 },
       lignes: [
         { id: 1, produit: PANNEAU.id, designation: PANNEAU.nom, quantite: '20',
           prix_unitaire: '1000.00', taux_tva: '10.00', ordre: 0,
@@ -108,6 +105,10 @@ beforeEach(() => {
 
 describe('QJR527 — Édition complète : réglages société chargés, prix cible du devis relu', () => {
   it('renvoie prix_cible_kwc du devis et re-persiste l\'étude au tarif SOCIÉTÉ', async () => {
+    // CIQ125 — consommation déclarée (entrée v2) du devis 510 rouvert.
+    const d510 = (await ventesApi.getDevisById()).data
+    d510.etude_params = { ...d510.etude_params, consommation: { kwh_annuel: 60000 } }
+    ventesApi.getDevisById.mockResolvedValue({ data: d510 })
     render(
       <Provider store={makeStore()}>
         <MemoryRouter initialEntries={['/ventes/devis/nouveau?edit=510']}>
@@ -130,13 +131,12 @@ describe('QJR527 — Édition complète : réglages société chargés, prix cib
     const payload = ventesApi.replaceLignesDevis.mock.calls.at(-1)[2].entete
     expect(payload.prix_cible_kwc).toBe('8500')
 
-    // L'étude est re-persistée au tarif kWh de la société (1,5), pas au 1,75 du code.
-    const attendu = computeEtudeIndustrielle({
-      kwp: 20 * 550 / 1000, consoMensuelleKwh: 5000,
-      dayUsagePct: DAY_USAGE_DEFAULTS.Industrielle, totalTtc: 20 * 1100 + 12000,
-      kwhPrice: 1.5, efficiency: EFFICIENCY,
-    })
+    // CIQ126 — l'étude C&I n'est plus calculée par l'écran (ni au tarif de la
+    // société ni au 1,75 du code) : seules les ENTRÉES partent, le serveur
+    // écrit les dérivées (propriétaire `moteur_ci`).
     const etude = ventesApi.patchEtudeParams.mock.calls.at(-1)[1]
-    expect(etude.payback).toBe(attendu.payback)
+    expect(etude).not.toHaveProperty('payback')
+    expect(etude).not.toHaveProperty('taux_autoconso')
+    expect(etude.consommation.kwh_annuel).toBe(60000)
   })
 })
