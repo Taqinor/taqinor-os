@@ -194,15 +194,15 @@ def azimut_pvgis(azimut_de_face_deg):
         raise EntreeInvalide(
             "L'azimut du pan est inconnu : sans orientation, la production "
             'ne peut pas être demandée à PVGIS.', champ='facingAzimuthDeg')
-    try:
-        face = float(azimut_de_face_deg)
-    except (TypeError, ValueError):
+    # ACAL281 — la conversion UNIQUE (core.calepinage.geo) ; ce module ne
+    # garde que le REFUS nommé d'un azimut absent ou illisible.
+    from core.calepinage.geo import boussole_vers_aspect
+
+    aspect = boussole_vers_aspect(azimut_de_face_deg)
+    if aspect is None:
         raise EntreeInvalide(
             f"L'azimut du pan est illisible (reçu : {azimut_de_face_deg!r}).",
             champ='facingAzimuthDeg')
-    aspect = (face - 180.0) % 360.0
-    if aspect > 180.0:
-        aspect -= 360.0
     return aspect
 
 

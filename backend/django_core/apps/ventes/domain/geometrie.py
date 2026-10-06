@@ -52,15 +52,15 @@ def _aspect_to_orientation(aspect):
 def _azimut_boussole_vers_aspect(azimut):
     """Azimut BOUSSOLE du builder (180 = Sud) → azimut PVGIS (0 = Sud).
 
-    MÊME formule que le builder lui-même (``roofPro11/prodWindow.ts`` :
-    ``aspect: res.facingAzimuthDeg - 180``), normalisée dans [-180, 180] pour
-    que ±180 reste bien le Nord. Valeur illisible → ``None`` (le libellé est
-    alors omis, jamais deviné)."""
-    try:
-        a = float(azimut)
-    except (TypeError, ValueError):
-        return None
-    return (a - 180.0 + 180.0) % 360.0 - 180.0
+    MÊME convention que le builder lui-même (``roofPro11/prodWindow.ts`` :
+    ``aspect: res.facingAzimuthDeg - 180``), dans ]−180, 180] : le Nord vaut
+    +180 (ACAL281). Valeur illisible → ``None`` (le libellé est alors omis,
+    jamais deviné). ACAL281 : délègue à ``core.calepinage.geo`` (source
+    unique de la conversion).
+    """
+    from core.calepinage.geo import boussole_vers_aspect
+
+    return boussole_vers_aspect(azimut)
 
 
 def _aspect_vers_azimut_boussole(aspect):
@@ -69,13 +69,11 @@ def _aspect_vers_azimut_boussole(aspect):
     Réciproque de :func:`_azimut_boussole_vers_aspect`. Elle existe pour que
     ``_pans_geometry['azimut_deg']`` n'ait qu'UN SEUL repère quelle que soit la
     clé source du layout (F3) — voir :func:`extract_roof_config`. Valeur
-    illisible → ``None``.
+    illisible → ``None``. ACAL281 : délègue à ``core.calepinage.geo``.
     """
-    try:
-        a = float(aspect)
-    except (TypeError, ValueError):
-        return None
-    return (a + 180.0) % 360.0
+    from core.calepinage.geo import aspect_vers_boussole
+
+    return aspect_vers_boussole(aspect)
 
 
 def orientation_du_pan(zone):
@@ -176,8 +174,8 @@ def extract_roof_config(layout):
             geo = {}
         count = int(res.get('count') or geo.get('count') or 0)
         kwc = float(res.get('kwc') or geo.get('kwc') or 0.0)
-        surface = float(res.get('areaM2') or geo.get('areaM2')
-                        or a.get('areaM2') or 0.0)
+        # ACAL276 — un pan dessiné sans ``result`` a l'aire de ses sommets.
+        surface = float(aire_du_pan(a) or 0.0)
         # ── DEUX CONVENTIONS D'ANGLE, ET ELLES SONT OPPOSÉES ────────────────
         # ``facingAzimuthDeg`` est l'AZIMUT BOUSSOLE du builder (180 = Sud) —
         # c'est ce que ``newAreaRecord()`` pose par défaut et ce que le solveur
@@ -1001,7 +999,8 @@ def _panneau_pour_calepinage(layout, *, company=None, devis=None):
     return produit, company
 
 
-def compte_moteur_du_layout(layout, *, company=None, devis=None):
+def compte_moteur_du_layout(layout, *, company=None, devis=None,
+                            traduire=None):
     """Compte de modules rendu par le MOTEUR pour ce layout, ou ``None``.
 
     Somme les pans : chacun passe par
@@ -1031,21 +1030,60 @@ def compte_moteur_du_layout(layout, *, company=None, devis=None):
     produit_panneau, societe_panneau = _panneau_pour_calepinage(
         layout, company=company, devis=devis)
 
+    # ACAL256 — drapeau levé ET société connue : l'entrée de chaque pan est
+    # TRADUITE (services/traduction.py) avec les réglages de dégagement de la
+    # société (retrait de rive, allée, dégagement par type) et l'allée propre
+    # au document. Drapeau baissé : aucune lecture de réglages, l'appel villa
+    # d'hier à l'identique.
+    # ``traduire`` force le mode (True/False) — seul le dry-run ACAL256 s'en
+    # sert pour comparer les deux comptes ; ``None`` = le drapeau décide.
+    if traduire is None:
+        traduire = moteur_calepinage_actif()
+    # Sans AUCUN réglage de dégagement (société muette, document sans allée
+    # propre), l'entrée villa d'hier reste celle qui compte :
+    # ``RETRAIT_VILLA_M`` n'est plus que ce repli sans réglage.
+    parametres_traduction = None
+    if company is not None and traduire:
+        from apps.calepinage.selectors import parametres_de_societe
+
+        sections = parametres_de_societe(company)
+        allee_doc = (layout or {}).get('alleeTechnique')
+        if (sections.get('degagements')
+                or (isinstance(allee_doc, dict)
+                    and allee_doc.get('largeurM'))):
+            parametres_traduction = sections
+
     modules = 0
     detail = []
     for pan in pans:
         zone = _zone_villa_depuis_pan(pan)
         if zone is None:
             continue
-        try:
-            sortie = calepinage_villa(zone, ordre='lnglat',
-                                      produit_panneau=produit_panneau,
-                                      company=societe_panneau)
-        except Exception:
-            logger.warning(
-                'AOF164: le moteur a refusé le pan %s — compte historique '
-                'conservé pour ce pan', zone.get('id'), exc_info=True)
-            continue
+        sortie = None
+        if parametres_traduction is not None:
+            try:
+                sortie = calepinage_villa(
+                    zone, ordre='lnglat', produit_panneau=produit_panneau,
+                    company=societe_panneau,
+                    entree_traduite={'layout': layout, 'pan': pan,
+                                     'parametres': parametres_traduction})
+            except Exception:
+                logger.warning(
+                    'ACAL256: entrée traduite refusée pour le pan %s — '
+                    'entrée villa conservée pour ce pan', zone.get('id'),
+                    exc_info=True)
+                sortie = None
+        if sortie is None:
+            try:
+                sortie = calepinage_villa(zone, ordre='lnglat',
+                                          produit_panneau=produit_panneau,
+                                          company=societe_panneau)
+            except Exception:
+                logger.warning(
+                    'AOF164: le moteur a refusé le pan %s — compte '
+                    'historique conservé pour ce pan', zone.get('id'),
+                    exc_info=True)
+                continue
         resultat = sortie['resultat']
         modules += int(resultat.modules)
         detail.append({
@@ -1056,6 +1094,13 @@ def compte_moteur_du_layout(layout, *, company=None, devis=None):
             'methode': sortie['preuve']['methode'],
             'compte_optimal': sortie['preuve']['compte_optimal'],
         })
+        traduction = sortie.get('traduction')
+        if traduction is not None:
+            # ACAL256 — la provenance des règles appliquées voyage avec le pan
+            # (clés ajoutées SEULEMENT en entrée traduite : drapeau baissé,
+            # le détail reste celui d'hier au bit près).
+            detail[-1]['regle_retrait'] = traduction.regle_retrait
+            detail[-1]['regle_allee'] = traduction.regle_allee
     if not detail:
         return None
     return {'modules': modules, 'pans': tuple(detail),
@@ -1234,25 +1279,50 @@ def contour_client_lnglat(lead):
 def aire_contour_m2(contour):
     """L'aire (m²) d'un contour ``[[lng, lat], …]``, ou ``None``.
 
-    Reprojection ENU par ``calepinage_options.anneau_enu`` (la formule DÉJÀ
-    partagée avec l'écran), puis lacet de souliers. Aucune approximation
-    maison : c'est la surface du polygone que le client a réellement tracé.
+    ACAL281 — délègue à ``core.calepinage.geo.aire_contour_m2`` : MÊME
+    projection (sphère R = 6 378 137 m) que ``calepinage_options.anneau_enu``
+    et que l'écran, puis lacet de souliers. Aucune approximation maison :
+    c'est la surface du polygone que le client a réellement tracé.
     """
-    if len(contour or []) < 3:
-        return None
-    from ..calepinage_options import anneau_enu
+    from core.calepinage.geo import aire_contour_m2 as _aire
 
-    origine = contour[0]
-    anneau = anneau_enu(contour, origine)
-    if len(anneau) < 3:
+    return _aire(contour)
+
+
+def _aire_portee(valeur):
+    """Une aire PORTÉE par le document (> 0, nombre fini), ou ``None``."""
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
         return None
-    aire2 = 0.0
-    for i in range(len(anneau)):
-        ax, ay = anneau[i]
-        bx, by = anneau[(i + 1) % len(anneau)]
-        aire2 += ax * by - bx * ay
-    aire = abs(aire2) / 2.0
-    return aire if aire > 0 else None
+    valeur = float(valeur)
+    if not math.isfinite(valeur) or valeur <= 0:
+        return None
+    return valeur
+
+
+def aire_du_pan(zone):
+    """ACAL276 — l'aire (m²) d'un pan, ou ``None``.
+
+    ``result.areaM2`` d'abord (zone synthétique d'auto-devis, pan pavé par le
+    builder), puis les replis DÉJÀ lus par ``extract_roof_config`` (bloc
+    ``geometry`` WJ24, ``areaM2`` à la racine de la zone) ; à défaut, l'aire
+    PROJETÉE du contour dessiné (``vertices`` ``[[lng, lat], …]`` ou
+    ``{lat, lng}``) par :func:`aire_contour_m2` — même projection que l'écran.
+    Un pan dessiné mais jamais pavé n'a donc plus une surface de 0.
+    """
+    if not isinstance(zone, dict):
+        return None
+    for bloc in (zone.get('result'), zone.get('geometry'), zone):
+        if isinstance(bloc, dict):
+            aire = _aire_portee(bloc.get('areaM2'))
+            if aire is not None:
+                return aire
+    sommets = []
+    for point in zone.get('vertices') or []:
+        if isinstance(point, dict):
+            point = [point.get('lng'), point.get('lat')]
+        if isinstance(point, (list, tuple)) and len(point) >= 2:
+            sommets.append([point[0], point[1]])
+    return aire_contour_m2(sommets)
 
 
 def plafond_physique_du_contour(contour, produit_panneau):
