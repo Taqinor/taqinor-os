@@ -187,3 +187,4 @@ backend/django_core/apps/ventes/quote_engine/builder.py::repartition_paiement::0
 backend/django_core/apps/ventes/quote_engine/builder.py::repartition_paiement::a7ad3de2928f | QJR623 — répartition AFFICHÉE des tranches de paiement au centime (ROUND_HALF_UP du Decimal par défaut du contexte), jamais persistée
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::f4b512886cc4 | QJR616 — total d'option ×N villas affiché par le PDF (moteur en float), jamais persisté
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page_onepage::1a21ab458ac6 | QJR616 — prix TTC d'option affiché par le one-page (moteur en float), jamais persisté
+backend/django_core/apps/ventes/selectors.py::promesse_production_devis::c78ef06fb352 | CIQ627 — ratio de performance modélisé (sans unité, 3 décimales), jamais un montant
