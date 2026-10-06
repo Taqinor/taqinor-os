@@ -346,13 +346,17 @@ function StageIcon({ satisfait, courante, bloquant }) {
 
 // Une étape — carte compacte avec son état de gate + raisons de blocage.
 function StageRow({ etape, isLast }) {
-  const { libelle, courante, satisfait, bloquant, raisons, statut_legacy: statutLegacy } = etape
+  const {
+    libelle, courante, satisfait, bloquant, raisons, statut_legacy: statutLegacy,
+    avertissements, sans_objet: sansObjet,
+  } = etape
   return (
     <li
       data-testid="ch6-stage"
       data-cle={etape.cle}
       data-courante={courante ? 'true' : 'false'}
-      className={`relative flex gap-3 pb-4 ${isLast ? '' : 'border-l border-border ml-2.5 pl-4'}`}
+      data-sans-objet={sansObjet ? 'true' : 'false'}
+      className={`relative flex gap-3 pb-4 ${isLast ? '' : 'border-l border-border ml-2.5 pl-4'} ${sansObjet ? 'opacity-60' : ''}`}
     >
       <span className="absolute -left-[10.5px] top-0 flex size-5 items-center justify-center rounded-full bg-background">
         <StageIcon satisfait={satisfait} courante={courante} bloquant={bloquant} />
@@ -363,13 +367,21 @@ function StageRow({ etape, isLast }) {
             {libelle}
           </span>
           {courante && <Badge tone="info">Étape en cours</Badge>}
-          {bloquant && <Badge tone="outline">Gate bloquant</Badge>}
-          {!bloquant && <Badge tone="neutral">Consultative</Badge>}
+          {sansObjet && <Badge tone="neutral">Sans objet (hors réseau)</Badge>}
+          {!sansObjet && bloquant && <Badge tone="outline">Gate bloquant</Badge>}
+          {!sansObjet && !bloquant && <Badge tone="neutral">Consultative</Badge>}
           {statutLegacy && (
             <span className="text-[11px] text-muted-foreground">({statutLegacy})</span>
           )}
         </div>
-        {!satisfait && raisons?.length > 0 && (
+        {/* AGR604 — avertissements CONSULTATIFS : style info, jamais un blocage
+            (le serveur ne les compte pas dans `raisons`). */}
+        {avertissements?.length > 0 && (
+          <ul className="flex flex-col gap-0.5 text-xs text-info" data-testid="ch6-avertissements">
+            {avertissements.map((a) => <li key={a}>ℹ {a}</li>)}
+          </ul>
+        )}
+        {!sansObjet && !satisfait && raisons?.length > 0 && (
           <ul className="flex flex-col gap-0.5 text-xs text-destructive">
             {raisons.map((r) => <li key={r}>• {r}</li>)}
           </ul>

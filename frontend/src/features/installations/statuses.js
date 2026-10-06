@@ -278,11 +278,19 @@ export function statusOrder(key) {
   return i === -1 ? INSTALLATION_STATUSES.length : i
 }
 
+// source-choix: installations.Installation.regime_8221
 export const REGIME_8221_LABELS = {
   non_concerne: 'Non concerné',
   declaration_bt: 'Déclaration (< 11 kW, BT)',
   accord_raccordement: 'Accord de raccordement',
   autorisation_anre: 'Autorisation ANRE (> 1 MW)',
+  declaration_hors_reseau: 'Déclaration hors réseau (loi 82-21, art. 3)',
+}
+
+// source-choix: installations.Installation.raccordement_reseau
+export const RACCORDEMENT_RESEAU_LABELS = {
+  hors_reseau: 'Hors réseau',
+  raccorde: 'Raccordé au réseau',
 }
 
 // Statut du dossier réglementaire loi 82-21 (miroir de
