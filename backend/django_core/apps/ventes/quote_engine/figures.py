@@ -82,6 +82,7 @@ _KWH = Decimal("1")
 _KWC = Decimal("0.01")
 _ANS = Decimal("0.05")
 _UNITE_FINE = Decimal("0.1")
+_LCOE = Decimal("0.0001")
 
 
 @dataclass(frozen=True)
@@ -133,6 +134,15 @@ FIGURE_KEYS: dict[str, Cle] = {
         "Part de la consommation assurée par le solaire (donut)", "%",
         _POINT),
     "autoconsommation_pct": Cle("Taux d'autoconsommation", "%", _POINT),
+    # ── Rentabilité C&I (CIQ342) — lue sur ``synthese_ci.argent`` ───────────
+    "tri_pct": Cle("TRI du flux servi (base principale, horizon dit)", "%",
+                   _UNITE_FINE),
+    "cumul_net_25_ans_mad": Cle(
+        "Cumul net du flux servi à 25 ans (base principale)", "MAD",
+        _ARGENT),
+    # CIQ343 — coût du kWh solaire servi par ``economie_ci`` (industriel).
+    "lcoe_mad_kwh": Cle("Coût du kWh solaire (LCOE, base principale)",
+                        "MAD/kWh", _LCOE),
     # ── Pompage ─────────────────────────────────────────────────────────────
     "pompe_hmt_m": Cle("Hauteur manométrique totale", "m", _UNITE_FINE),
     "pompe_debit_m3h": Cle("Débit de la pompe à la HMT", "m³/h", _UNITE_FINE),
@@ -564,6 +574,16 @@ def figures_depuis_proposition(payload: dict) -> dict[str, list[Mesure]]:
         c.mettre("couverture_pct", chiffres["taux_couverture_pct"])
         c.mettre("economie_annuelle", chiffres["economie_annuelle_mad"])
         c.mettre("payback_ans", chiffres["payback_ans"])
+        # CIQ342 — TRI et cumul à 25 ans du flux servi (base principale).
+        argent = synthese.get("argent") or {}
+        if isinstance(argent, dict):
+            indicateurs = argent.get("indicateurs") or {}
+            c.mettre("tri_pct", indicateurs.get("tri_pct"))
+            # CIQ343 — industriel seulement (retiré du commercial).
+            c.mettre("lcoe_mad_kwh", indicateurs.get("lcoe_mad_kwh"))
+            c.mettre("cumul_net_25_ans_mad", next(
+                (j.get("cumul_mad") for j in argent.get("jalons") or []
+                 if isinstance(j, dict) and j.get("annee") == 25), None))
     elif mode in MODES_CI:
         c.mettre("autoconsommation_pct", kpis.get("taux_autoconso"))
         c.mettre("couverture_pct", kpis.get("taux_couverture"))

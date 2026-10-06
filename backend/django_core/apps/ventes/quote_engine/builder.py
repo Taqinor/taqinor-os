@@ -3455,10 +3455,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "agricole": "Agricole",
     }.get(mode, "Résidentielle")
 
-    # Modes industriel ET commercial (QX43) : l'étude fait partie du document
-    # (page dédiée incluse d'office quand des données d'étude existent).
-    include_etude = opts['include_etude'] or (
-        mode in ("industriel", "commercial") and bool(etude))
+    # CIQ332 (D-CIQ-9) / CIQ340 (D-CIQ-10) — l'étude n'est plus forcée pour
+    # le C&I : elle est INTÉGRÉE aux pages premium (commercial 3, industriel
+    # 4) ; la forcer ici ne servait que le legacy « avec étude ».
+    include_etude = opts['include_etude']
 
     # ── PV77 — étude bancable (PV69/PV74) portée jusqu'au moteur de rendu ─────
     # ``Devis.etude_params['simulation']`` (P50/P90, ratio de performance et son

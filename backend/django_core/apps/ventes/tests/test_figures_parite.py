@@ -418,6 +418,10 @@ def _corpus():
         'legacy_onepage_pompage': html_onepage(etude=dict(AGRICOLE_ETUDE)),
         'industriel_full': i_render.build_html(
             i_renderer._augment(i_sample.build())),
+        # CIQ342 — la page finance avec l'argent SERVI (contrat
+        # ``economie_ci.json``) : TRI et cumul à 25 ans marqués.
+        'industriel_argent': i_render.build_html(i_renderer._augment(
+            dict(i_sample.build(), economie_ci=i_sample.economie_ci()))),
         'commercial_full': c_render.build_html(
             c_renderer._augment(c_sample.build())),
     }
