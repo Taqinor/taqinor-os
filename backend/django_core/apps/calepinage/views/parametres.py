@@ -217,6 +217,36 @@ class ParametresCalepinageView(APIView):
         return Response(reglages)
 
 
+#: ACAL134 — la forme DÉCLARÉE du geste « tout recalculer ».
+FORME_RECALCUL = inline_serializer('CalepinageRecalculSimulations', dict(
+    soumis=serializers.IntegerField(),
+    jobs=serializers.ListField(child=serializers.DictField()),
+    reste=serializers.IntegerField(),
+))
+
+
+class RecalculerSimulationsView(APIView):
+    """ACAL134 — ``POST /calepinage/parametres/recalculer-simulations/``.
+
+    Après un changement de réglage société, relance en tâche de fond chaque
+    simulation PÉRIMÉE de la société de l'appelant (et d'elle seule), sans
+    forcer : une simulation fraîche se court-circuite. Même droit que le PUT
+    des réglages (``calepinage_gerer``).
+    """
+
+    permission_classes = [ScopedPermission]
+    read_permission = CAL_VOIR
+    write_permission = CAL_GERER
+
+    @extend_schema(request=None, responses={202: FORME_RECALCUL})
+    def post(self, request, *args, **kwargs):
+        from ..services.simulation import recalculer_simulations_societe
+
+        rendu = recalculer_simulations_societe(
+            getattr(request.user, 'company', None), request.user)
+        return Response(rendu, status=status.HTTP_202_ACCEPTED)
+
+
 #: YAPIC6 — une APIView doit DÉCLARER sa forme (drf-spectacular ne la devine
 #: pas) : c'est la réponse réelle de ``get``/``post`` ci-dessous, ni plus ni moins.
 FORME_SUGGESTION_PENTE = inline_serializer('CalepinageSuggestionPenteReponse', dict(

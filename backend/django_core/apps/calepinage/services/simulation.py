@@ -73,7 +73,8 @@ __all__ = [
     'MOTIF_SANS_POINT',
     'SOURCE_ENTREE_CHAINE', 'SimulationRefusee', 'VERSION_SIMULATION',
     'construire_contexte', 'empreinte_simulation', 'fichier_meteo_depose',
-    'simuler_calepinage', 'verifier_simulable',
+    'recalculer_simulations_societe', 'simuler_calepinage',
+    'verifier_simulable',
 ]
 
 logger = logging.getLogger(__name__)
@@ -707,6 +708,52 @@ def fichier_meteo_depose(calepinage):
 # ═══════════════════════════════════════════════════════════════════════════
 # LA MÉTÉO — PVGIS, ou le fichier DÉPOSÉ par la société (CALX62)
 # ═══════════════════════════════════════════════════════════════════════════
+
+#: ACAL134 — le nombre MAXIMAL de simulations relancées par un appel du geste
+#: « tout recalculer » (plan ACAL134, C-ACAL-068) : au-delà, la réponse dit
+#: combien RESTENT, et un nouvel appel reprend.
+PLAFOND_RECALCUL_PAR_APPEL = 200
+
+
+def recalculer_simulations_societe(company, user, *,
+                                   plafond=PLAFOND_RECALCUL_PAR_APPEL):
+    """ACAL134 — relance EN TÂCHE DE FOND chaque simulation de la société.
+
+    Après un changement de réglage société, toutes les simulations sont
+    périmées (l'empreinte de simulation porte les réglages, D-ACAL-8). Ce
+    geste soumet, pour chaque calepinage NON archivé de ``company`` dont le
+    résultat porte une simulation, le MÊME travail que ``POST simuler/``
+    (kind ``calepinage``, nature ``simulation``), SANS forcer : une
+    simulation encore fraîche se court-circuite d'elle-même.
+
+    Returns:
+        ``{soumis, jobs: [{calepinage, job_id}], reste}`` — au plus
+        ``plafond`` travaux par appel ; ``reste`` compte ceux à relancer par
+        un nouvel appel.
+    """
+    from core.jobs import submit
+
+    from ..selectors import liste_calepinages
+    from ..tasks import (
+        KIND_CALEPINAGE, NATURE_SIMULATION,
+        simuler_calepinage as tache_de_simulation,
+    )
+
+    candidats = []
+    for calepinage in liste_calepinages(company).only('pk', 'resultat'):
+        entete = ((calepinage.resultat or {}).get(CLE_SIMULATION)
+                  if isinstance(calepinage.resultat, dict) else None)
+        if isinstance(entete, dict) and entete.get('hash_entree'):
+            candidats.append(calepinage.pk)
+    jobs = []
+    for calepinage_id in candidats[:plafond]:
+        job = submit(KIND_CALEPINAGE, tache_de_simulation, company=company,
+                     user=user, calepinage_id=calepinage_id,
+                     nature=NATURE_SIMULATION, forcer=False)
+        jobs.append({'calepinage': calepinage_id, 'job_id': job.pk})
+    return {'soumis': len(jobs), 'jobs': jobs,
+            'reste': max(0, len(candidats) - len(jobs))}
+
 
 def _serie_meteo_deposee(calepinage):
     """La série du DERNIER fichier météo déposé sur ce calepinage, ou ``None``.
