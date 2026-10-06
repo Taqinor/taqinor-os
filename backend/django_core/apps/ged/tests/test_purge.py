@@ -93,8 +93,10 @@ class PurgeServiceTests(PurgeBase):
         doc = self._doc(self.co_a, self.folder_a, 'archive en corbeille')
         services.add_version(
             doc, file_key='k/archive.pdf', company=self.co_a, filename='a.pdf')
-        self._en_corbeille_depuis(doc, 40)
+        # ADOC22 — un document en corbeille ne s'archive plus : on archive
+        # d'abord, puis on simule une mise en corbeille ancienne.
         services.archiver_legalement(doc, user=self.admin_a, motif='preuve')
+        self._en_corbeille_depuis(doc, 40)
         res = services.purger_corbeille_echue(self.co_a, apply=True)
         self.assertEqual(res['proteges'], 1)
         self.assertEqual(res['purges'], 0)

@@ -107,7 +107,12 @@ class VersionsVisibiliteTests(TestCase):
     def test_export_annote_coffre_404(self):
         with mock.patch('apps.ged.services._fetch_version_bytes',
                         return_value=(PDF, None)):
-            resp = auth(self.emp2).get(
+            # L'export est réservé aux responsables : un responsable SANS
+            # accès au coffre d'emp1 doit recevoir 404 (pas le fichier).
+            resp_user = User.objects.create_user(
+                username='adoc3-resp', password='x', company=self.co,
+                role_legacy='responsable')
+            resp = auth(resp_user).get(
                 f'{BASE}annotations/export-annote/?version={self.version.pk}')
         self.assertEqual(resp.status_code, 404)
 
