@@ -48,8 +48,8 @@ import time
 
 from .chaine_pertes import (
     CLE_CHARGE, CLE_CLIENT_PVGIS, CLE_FOURNISSEUR_METEO, CLE_SORTIES_PAR_PAN,
-    MOTIF_TMY_HORIZONTAL, MeteoIndecise, appliquer_chaine,
-    completude_de_la_chaine, decision_meteo,
+    ETAPES_ONDULEUR, MOTIF_TMY_HORIZONTAL, MeteoIndecise, appliquer_chaine,
+    bloc_serie_horaire, completude_de_la_chaine, decision_meteo,
 )
 from .etapes.autoconsommation import bloc_autoconsommation
 from .etapes.batterie import bloc_batterie
@@ -1015,10 +1015,15 @@ def _agregation_electrique(blocs, par_module, contexte, rattachement):
     agregation = agregation_production(
         par_module, contexte.get('affectation') or (),
         # AUCUNE cascade PAR CHAÎNE n'existe dans la simulation d'aujourd'hui
-        # : ``appliquer_chaine`` en rend UNE, celle du plan de référence.
-        # L'attribuer à chaque chaîne inventerait une perte (D-CALX 7), donc
-        # les deux clés s'omettent avec le motif que CALX183 publie déjà.
-        cascades=None)
+        # : l'attribuer à chaque chaîne inventerait une perte (D-CALX 7),
+        # donc les deux clés de la maille chaîne s'omettent avec leur motif.
+        cascades=None,
+        # ACAL142 — la phase ONDULEUR, elle, existe (ACAL53) : son écrêtage
+        # est publié par onduleur.
+        cascade_onduleur=[etape for etape in
+                          ((blocs.get('cascade') or {}).get('etapes') or ())
+                          if isinstance(etape, dict)
+                          and etape.get('etape') in ETAPES_ONDULEUR])
     motif = (rattachement or {}).get('motif') or agregation['motif'] or ''
     if motif:
         for cle in CLES_AGREGATION:
@@ -1226,6 +1231,11 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         serie_site, contexte, charge=charge)
     serie_site, blocs['hors_reseau'] = bloc_hors_reseau(serie_site, contexte,
                                                         charge=charge)
+    # ACAL142 — la série PERSISTÉE est celle d'APRÈS batterie,
+    # autoconsommation et hors réseau : elle porte charge_kwh,
+    # batterie_soc_pct, reseau_import_kwh et reseau_export_kwh (l'export CSV
+    # les promet « pour refaire le calcul »), sous la MÊME borne de volume.
+    blocs['serie_horaire'] = bloc_serie_horaire(serie_site)
 
     # 5. INCERTITUDE, PERFORMANCE, ÉCART PVGIS, PROJECTION.
     total = blocs['production'].get('total') or {}

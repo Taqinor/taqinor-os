@@ -404,6 +404,8 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'statuts_des_postes',
            # ACAL128 — le PR sur l'irradiation incidente.
            'irradiation_kwh_m2',
+           # ACAL142 — la série persistée après les blocs aval.
+           'bloc_serie_horaire',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -901,6 +903,13 @@ MOTIF_SERIE_AGREGEE = (
     'Elle est publiée AGRÉGÉE AU JOUR (moyenne de chaque colonne sur les '
     'points du jour, donc la même énergie) plutôt que coupée au milieu de '
     "l'année : le détail horaire se recalcule, il ne se devine pas.")
+
+
+def bloc_serie_horaire(serie):
+    """ACAL142 — le bloc ``resultat['serie_horaire']`` d'une série (borne de
+    volume comprise) : la simulation le pose APRÈS batterie /
+    autoconsommation / hors réseau."""
+    return _bloc_serie_horaire(serie)
 
 
 def _bloc_serie_horaire(serie):
