@@ -282,7 +282,8 @@ def _connu():
 class CorpusCalculsLisibleTest(SimpleTestCase):
     def test_corpus_et_attendu_alignes(self):
         corpus, attendu = _charger(CORPUS_PATH), _charger(EXPECTED_PATH)
-        self.assertGreaterEqual(len(corpus['entries']), 800)
+        # AGR132 — les axes pompage du corpus sont retirés avec le moteur JS pompage
+        self.assertGreaterEqual(len(corpus['entries']), 700)
         self.assertEqual([e['id'] for e in corpus['entries']],
                          [e['id'] for e in attendu['entries']])
 
