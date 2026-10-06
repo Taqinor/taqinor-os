@@ -949,13 +949,21 @@ def valider_revalorisation(revalorisation):
     (statut VALIDEE + date_validation) — devient la nouvelle couche de
     départ du coût moyen (`average_cost_with_source`). Une revalorisation
     déjà validée lève ValueError (jamais re-validée, jamais modifiée)."""
+    from django.db import transaction
     from django.utils import timezone
     from .models import RevalorisationStock
-    if revalorisation.statut == RevalorisationStock.Statut.VALIDEE:
-        raise ValueError('Cette revalorisation est déjà validée.')
-    revalorisation.statut = RevalorisationStock.Statut.VALIDEE
-    revalorisation.date_validation = timezone.now()
-    revalorisation.save(update_fields=['statut', 'date_validation'])
+    # ASTK48 — le statut est relu SOUS verrou dans la transaction : une
+    # instance périmée (double clic, deux onglets) ne re-valide jamais.
+    with transaction.atomic():
+        verrou = (RevalorisationStock.objects.select_for_update()
+                  .get(pk=revalorisation.pk))
+        if verrou.statut == RevalorisationStock.Statut.VALIDEE:
+            raise ValueError('Cette revalorisation est déjà validée.')
+        verrou.statut = RevalorisationStock.Statut.VALIDEE
+        verrou.date_validation = timezone.now()
+        verrou.save(update_fields=['statut', 'date_validation'])
+    revalorisation.statut = verrou.statut
+    revalorisation.date_validation = verrou.date_validation
     return revalorisation
 
 
@@ -3287,15 +3295,19 @@ def valider_inventaire_session(session, user):
     from django.db import transaction
     from .models import InventaireSession
 
-    if session.statut == InventaireSession.Statut.VALIDE:
-        raise ValueError("Cette session d'inventaire est déjà validée.")
-    if session.statut == InventaireSession.Statut.ANNULE:
-        raise ValueError("Cette session d'inventaire est annulée.")
-
     ajustes, inchanges = 0, 0
 
     with transaction.atomic():
-        for ligne in session.lignes.select_related('produit').all():
+        # ASTK48 — session relue SOUS verrou et statut re-contrôlé dans la
+        # transaction : deux validations (instances périmées, double clic)
+        # n'appliquent l'écart qu'une fois (patron AUD217).
+        verrou = (InventaireSession.objects.select_for_update()
+                  .get(pk=session.pk))
+        if verrou.statut == InventaireSession.Statut.VALIDE:
+            raise ValueError("Cette session d'inventaire est déjà validée.")
+        if verrou.statut == InventaireSession.Statut.ANNULE:
+            raise ValueError("Cette session d'inventaire est annulée.")
+        for ligne in verrou.lignes.select_related('produit').all():
             ecart = ligne.quantite_comptee - ligne.quantite_theorique
             if ecart == 0:
                 inchanges += 1
@@ -3315,8 +3327,9 @@ def valider_inventaire_session(session, user):
                 user=user)
             ajustes += 1
 
-        session.statut = InventaireSession.Statut.VALIDE
-        session.save(update_fields=['statut'])
+        verrou.statut = InventaireSession.Statut.VALIDE
+        verrou.save(update_fields=['statut'])
+    session.statut = verrou.statut
 
     return {'ajustes': ajustes, 'inchanges': inchanges}
 
