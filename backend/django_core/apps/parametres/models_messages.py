@@ -212,8 +212,12 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # fenêtre de dépôt cités au round 2 sont INTROUVABLES sur leur source et
     # ne doivent jamais réapparaître ici ; « trois régimes » 82-21 n'est pas
     # sourcé non plus. On pose LA question, le client apporte les chiffres.
+    # CIQ517 (D-CIQ-6, Q9/CAD163) — `dossier_8221` parle du RACCORDEMENT et
+    # des AUTORISATIONS du site : jamais « loi », jamais « 82-21 », aucun
+    # chiffre ni délai. Il n'est ouvert qu'à un site MT, une régularisation
+    # ou un client qui veut revendre (playbook CAD125 conditionné).
     'dossier_8221':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Une question sur votre projet : où en est votre dossier d'autoproduction (loi 82-21) ? Selon l'étape où vous en êtes, on adapte l'étude et le calendrier de raccordement — et si le dossier n'est pas encore lancé, je vous explique les étapes en cinq minutes.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Une question sur votre projet : où en êtes-vous côté raccordement et autorisations du site ? Selon l'étape où vous en êtes, on adapte l'étude et le calendrier de raccordement — et si rien n'est encore lancé, je vous explique les étapes.",
     'dossier_fda':
         "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Une question sur votre projet de pompage : avez-vous déposé un dossier de subvention agricole (FDA), ou comptez-vous le faire ? Si vous visez cette aide, l'accord doit être obtenu avant les travaux. Cela change le calendrier et les pièces à préparer — dites-moi où vous en êtes et je cale l'étude dessus.",
     # AGR414 (Groupe AGR, 03/10/2026 ; D-AGR-4, D-AGR-11) — la visite de
@@ -332,7 +336,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     # PAS ENCORE relues par un locuteur natif (CADM1, à faire avant tout
     # envoi réel, comme les deux clés visite et les 11 de CAD62).
     'dossier_8221':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عندي سؤال على المشروع ديالكم: فين وصل الملف ديالكم ديال الإنتاج الذاتي (قانون 82-21)؟ حسب المرحلة اللي وصلتو ليها، كنلائمو الدراسة والروزنامة ديال الربط — وإلا الملف مازال ما تلانسا، كنشرح ليكم المراحل ف خمس دقايق.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عندي سؤال على المشروع ديالكم: فين وصلتو من جهة الربط والتراخيص ديال الموقع؟ حسب المرحلة اللي وصلتو ليها، كنلائمو الدراسة والروزنامة ديال الربط — وإلا مازال ما تلانسا والو، كنشرح ليكم المراحل.",
     'dossier_fda':
         "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عندي سؤال على المشروع ديال الضخ ديالكم: واش دخّلتو ملف الدعم الفلاحي (FDA)، ولا ناويين تدخّلوه؟ إلا كنتو باغيين هاد الدعم، خاص الموافقة تكون قبل الأشغال. هادشي كيبدل الروزنامة والوثائق اللي خاصكم توجدو — قولوا ليا فين وصلتو ونوجد الدراسة على هاد الأساس.",
     'identite_reference':
@@ -857,6 +861,20 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA['commercial'] = (
 MESSAGE_TEMPLATE_VARIANTES_SEGMENT['commercial'] = (
     MESSAGE_TEMPLATE_VARIANTES_SEGMENT['industriel'])
 
+# ── CIQ520 (06/10/2026) — base B2B PARTAGÉE + SURCHARGES COMMERCIALES ────
+#
+# Le commercial EST, par défaut, l'objet industriel (base B2B ci-dessus). Un
+# patron de commerce qui décide seul, des murs loués, une saisonnalité :
+# autant de cas où le commercial pourra recevoir un texte à LUI sans changer
+# celui de l'industriel. Ces deux dicts sont VIDES aujourd'hui — remplis par
+# Reda APRÈS les premières mesures (CIQ518), jamais par hypothèse (aucune
+# supposition sur l'hôtellerie ou la location n'est écrite dans un texte).
+# Une clé présente ici remplace la base B2B pour le SEUL commercial ; absente,
+# la base B2B s'applique. Le guide réserve la ligne ``COMMERCIAL : `` (et
+# ``COMMERCIAL DARIJA : ``) sous chaque clé surchargée (convention 9).
+MESSAGE_TEMPLATE_SURCHARGES_COMMERCIAL = {}
+MESSAGE_TEMPLATE_SURCHARGES_COMMERCIAL_DARIJA = {}
+
 #: Les clés qui MENTENT au résidentiel près — celles qui ont une variante.
 #: Sert au test paramétré et à l'écran qui voudra signaler « texte adapté ».
 CLES_VARIANTES_SEGMENT = frozenset(
@@ -880,10 +898,15 @@ def variante_segment(cle, type_installation, langue='fr'):
     langue = (langue or 'fr').strip()
     if langue == 'fr':
         table = MESSAGE_TEMPLATE_VARIANTES_SEGMENT
+        surcharges = MESSAGE_TEMPLATE_SURCHARGES_COMMERCIAL
     elif langue == 'darija':
         table = MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA
+        surcharges = MESSAGE_TEMPLATE_SURCHARGES_COMMERCIAL_DARIJA
     else:
         return None
+    # CIQ520 — la surcharge commerciale d'abord, sinon la base B2B.
+    if segment == 'commercial' and cle in surcharges:
+        return surcharges[cle]
     return table.get(segment, {}).get(cle)
 
 

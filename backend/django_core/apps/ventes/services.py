@@ -149,6 +149,8 @@ poser_validite_devis = _envoi.poser_validite_devis
 # CAD57 — validité d'un dossier financé à crédit (réglage société).
 jours_validite_societe = _envoi.jours_validite_societe
 date_validite_credit = _envoi.date_validite_credit
+# CIQ510 — prolonger (jamais raccourcir) la validité d'un devis envoyé.
+prolonger_validite_devis = _envoi.prolonger_validite_devis
 AcceptError = _cycle_vie.AcceptError
 activate_optional_line = _cycle_vie.activate_optional_line
 OTP_CACHE_TTL = _cycle_vie.OTP_CACHE_TTL
@@ -658,6 +660,7 @@ __all__ = [
     'poser_validite_devis',
     'jours_validite_societe',
     'date_validite_credit',
+    'prolonger_validite_devis',
     'verifier_empreinte_signature',
     'verifier_sale_warnings',
     'zone_toit_depuis_contour',

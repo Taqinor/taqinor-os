@@ -245,3 +245,73 @@ class TestQJ5BeatTask(TestCase):
         from apps.ventes.scheduled import expire_stale_devis as task_fn
         result = task_fn()
         self.assertIn('expired', result)
+
+
+class TestCIQ523AttenteNonParquee(TestCase):
+    """CIQ523 — un lead qui attend une décision déclarée (étiquette « En
+    attente d'un accord » ou relance datée à venir) n'est jamais parqué au
+    Froid par l'expiration de son devis ; le devis passe bien à ``expire``."""
+
+    def setUp(self):
+        from apps.crm import stages
+        self.stages = stages
+        self.co = _make_company('ciq523-co')
+        self.cli = _make_client(self.co)
+        self.lead = _make_lead(self.co, stages.FOLLOW_UP)
+        self.devis = _make_devis(self.co, self.cli, 'envoye',
+                                 date.today() - timedelta(days=1))
+        self.devis.lead = self.lead
+        self.devis.save(update_fields=['lead'])
+        # Aucune activité depuis 40 jours.
+        LeadActivity.objects.filter(lead=self.lead).delete()
+
+    def _etiqueter(self, tag):
+        # Écriture directe : ``poser_tag_lead`` journaliserait une activité
+        # récente, qui suffirait déjà à empêcher le Froid (faux vert).
+        Lead.objects.filter(pk=self.lead.pk).update(tags=tag)
+
+    def _note_journal(self):
+        from apps.ventes.domain.recouvrement import NOTE_EXPIRATION_EN_ATTENTE
+        return LeadActivity.objects.filter(
+            lead=self.lead, body=NOTE_EXPIRATION_EN_ATTENTE).count()
+
+    def test_a_etiquete_direction_reste_follow_up_et_journal(self):
+        self._etiqueter('Attend la direction / le comité')
+        result = expire_stale_devis()
+        self.lead.refresh_from_db()
+        self.devis.refresh_from_db()
+        self.assertEqual(self.lead.stage, self.stages.FOLLOW_UP)
+        self.assertEqual(result['funnel_cold'], 0)
+        self.assertEqual(self._note_journal(), 1)
+        self.assertEqual(self.devis.statut, 'expire')
+
+    def test_b_sans_etiquette_ni_veille_cold_comme_aujourd_hui(self):
+        expire_stale_devis()
+        self.lead.refresh_from_db()
+        self.devis.refresh_from_db()
+        self.assertEqual(self.lead.stage, self.stages.COLD)
+        self.assertEqual(self._note_journal(), 0)
+        self.assertEqual(self.devis.statut, 'expire')
+
+    def test_c_veille_datee_a_j10_reste_follow_up(self):
+        from apps.crm.models import RelanceEtape
+        jour = date.today() + timedelta(days=10)
+        RelanceEtape.objects.bulk_create([RelanceEtape(
+            company=self.co, lead=self.lead, cadence='generique', ordre=1,
+            canal=RelanceEtape.Canal.APPEL, libelle='Rappel convenu',
+            due_date=jour)])
+        LeadActivity.objects.filter(lead=self.lead).delete()
+        expire_stale_devis()
+        self.lead.refresh_from_db()
+        self.devis.refresh_from_db()
+        self.assertEqual(self.lead.stage, self.stages.FOLLOW_UP)
+        self.assertEqual(self.devis.statut, 'expire')
+
+    def test_e_lead_d_une_autre_societe_jamais_lu(self):
+        from apps.crm.selectors import lead_en_attente_ou_veille
+        self._etiqueter('Attend la direction / le comité')
+        autre = _make_company('ciq523-autre')
+        self.assertTrue(lead_en_attente_ou_veille(
+            self.lead.pk, date.today(), company=self.co))
+        self.assertFalse(lead_en_attente_ou_veille(
+            self.lead.pk, date.today(), company=autre))

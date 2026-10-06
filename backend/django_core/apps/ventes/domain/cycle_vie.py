@@ -1581,6 +1581,24 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             # enregistrés AVEC la signature (aucun statut nouveau, règle #4).
             entreprise=entreprise,
         )
+        # CIQ319 (complément) — l'ICE / la raison sociale déclarés remontent
+        # au Client qui n'en a pas (service CRM du contrat CIQ8) ; un ICE
+        # différent déjà présent n'est jamais écrasé (``divergence_ice``).
+        # Point de sauvegarde : jamais une acceptation cassée pour ça.
+        if isinstance(entreprise, dict) and devis.client_id:
+            try:
+                with transaction.atomic():
+                    from apps.crm.services import (
+                        completer_client_depuis_acceptation,
+                    )
+                    completer_client_depuis_acceptation(
+                        devis.client_id, devis.company,
+                        raison_sociale=entreprise.get('raison_sociale'),
+                        ice=entreprise.get('ice'))
+            except Exception:  # noqa: BLE001 — best-effort, journalisé
+                logger.exception(
+                    'CIQ319 : identité entreprise non remontée au client '
+                    '(devis %s)', getattr(devis, 'reference', '?'))
         # QJ9 — Attribution first-touch : copie UTM/fbclid du lead vers
         # etude_params du devis pour que l'attribution reste lossless même si
         # le lead est fusionné.

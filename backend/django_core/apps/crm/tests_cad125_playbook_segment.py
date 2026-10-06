@@ -96,9 +96,11 @@ class LeBonSegmentTests(SimpleTestCase):
         self.assertEqual(set(entree['segments']), {'agricole'})
 
     def test_la_cle_du_lead_suit_son_segment(self):
+        # CIQ517 — `dossier_8221` exige en plus un site MT, une
+        # régularisation ou une revente (voir Ciq517Tests).
         for segment, attendue in (
-                ('industriel', 'dossier_8221'),
-                ('commercial', 'dossier_8221'),
+                ('industriel', None),
+                ('commercial', None),
                 ('residentiel', None),
                 ('', None),
                 (None, None)):
@@ -146,7 +148,9 @@ class LePlaybookPoseLaTacheTests(TestCase):
             Playbook.objects.filter(company=self.company).count(), 2)
 
     def test_un_industriel_reçoit_le_playbook_82_21_et_lui_seul(self):
-        noms = self._noms_recommandes(self._lead('industriel'))
+        # CIQ517 — un industriel en MT.
+        noms = self._noms_recommandes(
+            self._lead('industriel', tension_raccordement='mt'))
         self.assertEqual(noms, {PLAYBOOKS_SEGMENT_CAD125[0]['nom']})
 
     def test_un_agricole_reçoit_le_playbook_FDA_et_lui_seul(self):
@@ -263,3 +267,123 @@ class LePlaybookPoseLaTacheTests(TestCase):
             slug=f'{self.slug}-voisine', nom='voisine')
         self.assertEqual(
             Playbook.objects.filter(company=voisine).count(), 0)
+
+
+# ── CIQ517 (D-CIQ-6) — 82-21 seulement pour un site MT, une régularisation
+# ou une revente ; un texte « raccordement et autorisations du site » ──────
+
+class Ciq517Tests(TestCase):
+    slug = 'ciq517'
+
+    def setUp(self):
+        self.company = Company.objects.create(slug=self.slug, nom=self.slug)
+        self.acteur = User.objects.create_user(
+            username=f'{self.slug}-u', password='x',
+            role_legacy='responsable', company=self.company)
+        seed_playbooks_segment(self.company)
+        self.nom_8221 = PLAYBOOKS_SEGMENT_CAD125[0]['nom']
+
+    def _lead(self, segment, **extra):
+        return Lead.objects.create(
+            company=self.company, nom=f'Lead {segment}', owner=self.acteur,
+            stage=stages.CONTACTED, type_installation=segment, **extra)
+
+    def _taches(self, lead):
+        from apps.crm.services import generer_playbook_progress
+        return generer_playbook_progress(lead, stages.CONTACTED)
+
+    def test_a_commercial_bt_sans_regularisation_ni_revente(self):
+        lead = self._lead('commercial', tension_raccordement='bt')
+        self.assertEqual(self._taches(lead), [])
+        self.assertIsNone(cle_message_segment(lead))
+
+    def test_b_industriel_mt_tache_et_cle(self):
+        lead = self._lead('industriel', tension_raccordement='mt')
+        self.assertEqual(len(self._taches(lead)), 1)
+        self.assertEqual(cle_message_segment(lead), 'dossier_8221')
+
+    def test_c_commercial_bt_qui_veut_revendre(self):
+        lead = self._lead('commercial', tension_raccordement='bt',
+                          objectif_projet='injection_8221')
+        self.assertEqual(len(self._taches(lead)), 1)
+        self.assertEqual(cle_message_segment(lead), 'dossier_8221')
+
+    def test_regularisation_8221(self):
+        lead = self._lead('commercial', regularisation_8221=True)
+        self.assertEqual(cle_message_segment(lead), 'dossier_8221')
+
+    def test_deja_contacte_passe_en_mt_la_tache_apparait(self):
+        from apps.crm.models import LeadPlaybookProgress
+        from apps.crm.services import rattraper_playbooks_8221
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        lead = self._lead('industriel', tension_raccordement='bt')
+        self._taches(lead)
+        self.assertFalse(
+            LeadPlaybookProgress.objects.filter(lead=lead).exists())
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.acteur)}')
+        resp = api.patch(f'/api/django/crm/leads/{lead.id}/',
+                         {'tension_raccordement': 'mt'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            LeadPlaybookProgress.objects.filter(lead=lead).count(), 1)
+        lead.refresh_from_db()
+        self.assertEqual(rattraper_playbooks_8221(lead), [])
+        self.assertEqual(
+            LeadPlaybookProgress.objects.filter(lead=lead).count(), 1)
+
+    def test_d_migration_rejouee_et_playbook_personnalise_intact(self):
+        import importlib
+        from django.apps import apps as django_apps
+        migration = importlib.import_module(
+            'apps.crm.migrations.0127_ciq517_playbook_8221_condition')
+        from apps.crm.models import PlaybookEtape, PlaybookTache
+        ancienne = Company.objects.create(slug='ciq517-anc', nom='anc')
+        pb = Playbook.objects.create(
+            company=ancienne, nom=self.nom_8221,
+            condition=migration.ANCIENNE_CONDITION_8221)
+        etape = PlaybookEtape.objects.create(
+            playbook=pb, stage=stages.CONTACTED, ordre=0)
+        tache = PlaybookTache.objects.create(
+            etape=etape, libelle=migration.ANCIENNE_TACHE, ordre=0)
+        perso = Company.objects.create(slug='ciq517-perso', nom='perso')
+        condition_perso = {'field': 'canal', 'operator': 'eq',
+                           'value': 'reference'}
+        pb_perso = Playbook.objects.create(
+            company=perso, nom=self.nom_8221, condition=condition_perso)
+        migration.restreindre(django_apps, None)
+        etat = sorted(Playbook.objects.values_list(
+            'company_id', 'nom', 'condition'), key=repr)
+        migration.restreindre(django_apps, None)
+        self.assertEqual(sorted(Playbook.objects.values_list(
+            'company_id', 'nom', 'condition'), key=repr), etat)
+        pb.refresh_from_db()
+        pb_perso.refresh_from_db()
+        tache.refresh_from_db()
+        self.assertEqual(pb.condition, migration.NOUVELLE_CONDITION_8221)
+        self.assertEqual(tache.libelle, migration.NOUVELLE_TACHE)
+        self.assertEqual(pb_perso.condition, condition_perso)
+        # La condition semée par le code égale celle de la migration.
+        self.assertEqual(
+            Playbook.objects.get(company=self.company,
+                                 nom=self.nom_8221).condition,
+            migration.NOUVELLE_CONDITION_8221)
+        self.assertEqual(PLAYBOOKS_SEGMENT_CAD125[0]['tache'],
+                         migration.NOUVELLE_TACHE)
+
+    def test_e_texte_fr_et_darija_sans_loi_ni_8221_ni_chiffre(self):
+        from apps.parametres.models_messages import (
+            MESSAGE_TEMPLATE_DEFAULTS_DARIJA,
+        )
+        for texte in (MESSAGE_TEMPLATE_DEFAULTS['dossier_8221'],
+                      MESSAGE_TEMPLATE_DEFAULTS_DARIJA['dossier_8221']):
+            with self.subTest(texte=texte[:30]):
+                self.assertNotIn('82-21', texte)
+                self.assertNotIn('loi', texte.lower())
+                self.assertNotIn('قانون', texte)
+                self.assertEqual(re.findall(r'\d', texte), [])
+        self.assertIn('raccordement et autorisations du site',
+                      MESSAGE_TEMPLATE_DEFAULTS['dossier_8221'])
+        self.assertNotIn('82-21', PLAYBOOKS_SEGMENT_CAD125[0]['tache'])
