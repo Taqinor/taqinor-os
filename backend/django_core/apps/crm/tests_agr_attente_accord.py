@@ -68,6 +68,10 @@ class _Base(TestCase):
 
     def _attente(self, **corps):
         corps.setdefault('rappel_heure', '11:00')
+        # CIQ508 — la raison d'attente est obligatoire : ces tests d'AGR520
+        # l'envoient (réécriture, pas affaiblissement) ; `administration`
+        # pose l'étiquette d'AGR520, inchangée.
+        corps.setdefault('raison_attente', 'administration')
         return self.api.post(
             f'/api/django/crm/relance-etapes/{self.etape.pk}/fait/',
             {'reponse': 'attente_accord', **corps}, format='json')
@@ -124,7 +128,9 @@ class AttenteAccordTests(_Base):
         self._attente(rappel_le=J10.isoformat(), note='Dossier FDA déposé')
         ligne = LeadActivity.objects.filter(
             lead=self.lead, outcome='rappel').get()
-        self.assertIn("En attente d'un accord (DPA / banque)", ligne.body)
+        # CIQ508 — « En attente d'un accord — <raison> — rappel le JJ/MM ».
+        self.assertIn("En attente d'un accord — L'administration (DPA, "
+                      f"dossier FDA) — rappel le {J10:%d/%m}", ligne.body)
         self.assertIn(TAG_ATTENTE_ACCORD, ligne.body)
         self.assertIn('Dossier FDA déposé', ligne.body)
 

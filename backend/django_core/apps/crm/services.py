@@ -13210,6 +13210,39 @@ REPONSE_ATTENTE_ACCORD = 'attente_accord'
 #: L'étiquette posée par cette réponse (seedée par ``views.seed_tags``).
 TAG_ATTENTE_ACCORD = 'Attend un accord (DPA / banque)'
 
+#: CIQ508 (D-CIQ, 06/10/2026) — la RAISON de l'attente, liste FERMÉE du contrat
+#: CIQ10 (``relance_etape_v2.json``, ``ajout_ciq10_raison_attente``) :
+#: ``(valeur, libellé affiché, étiquette posée)``. ``administration`` pose
+#: l'étiquette d'AGR520, inchangée ; les autres, une étiquette par RAISON
+#: (seedée par ``views.seed_tags``). Aucune étape de ``STAGES.py`` : l'attente
+#: ne change jamais l'étape du dossier.
+RAISONS_ATTENTE = (
+    ('direction', 'La direction / le comité',
+     'Attend la direction / le comité'),
+    ('financement', "La banque / l'organisme de financement",
+     "Attend la banque / l'organisme de financement"),
+    ('bailleur_murs', 'Le bailleur des murs', 'Attend le bailleur des murs'),
+    ('budget_exercice', "Le budget de l'exercice suivant",
+     "Budget de l'exercice suivant"),
+    ('consultation', 'Une consultation en cours', 'Consultation en cours'),
+    ('administration', "L'administration (DPA, dossier FDA)",
+     TAG_ATTENTE_ACCORD),
+)
+RAISONS_ATTENTE_VALEURS = tuple(r[0] for r in RAISONS_ATTENTE)
+ETIQUETTES_RAISON_ATTENTE = tuple(r[2] for r in RAISONS_ATTENTE)
+_RAISON_ATTENTE = {r[0]: r for r in RAISONS_ATTENTE}
+
+
+def refus_raison_attente(raison):
+    """CIQ508 — pourquoi ``raison`` n'est pas une raison d'attente valide, ou
+    ``None``. Le message NOMME le champ et LISTE les valeurs (règle fondateur
+    du 08/09/2026 : jamais un refus générique)."""
+    if (raison or '').strip() in _RAISON_ATTENTE:
+        return None
+    return ("« Raison de l'attente » (raison_attente) : valeur requise "
+            'parmi : ' + ', '.join(RAISONS_ATTENTE_VALEURS) + '.')
+
+
 #: Les cadences de protocole (``None`` = toutes, filets et réveils compris).
 _TOUTES_CADENCES = None
 #: Les trois cadences NOMMÉES du protocole (MRY4) — pas les étapes de filet
@@ -13258,6 +13291,9 @@ REPONSES_TOUCHE = {
         'cadences': _CADENCES_PROTOCOLE_ET_DEUXIEME_AFFAIRE,
         'message': None,
         'date_requise': True,
+        # CIQ508 — la RAISON de l'attente est obligatoire (liste fermée
+        # `RAISONS_ATTENTE`) : sans elle, rien n'est mesurable.
+        'raison_requise': True,
     },
     REPONSE_QUESTION_PRIX: {
         'libelle': 'Question de prix — veut négocier',
@@ -13703,14 +13739,22 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
 
 # ── AGR520 — « En attente d'un accord (DPA / banque) » ─────────────────────
 
-def repondre_attente_accord(etape, user, quand, *, note='', body=''):
+def repondre_attente_accord(etape, user, quand, *, raison=None, note='',
+                            body=''):
     """AGR520 — le client attend une décision administrative ou bancaire
     (approbation préalable du dossier FDA par la DPA, accord de crédit) : il
     n'a dit ni oui ni non, et le relancer « je classe ? » (J7), « dernier
     message » (J13) puis le mettre en pause (J14) serait faux.
 
-    1. l'étiquette « Attend un accord (DPA / banque) » est posée
-       (``poser_tag_lead``, idempotent) ;
+    CIQ508 — la réponse est étendue au B2B (comité, banque, bailleur des
+    murs, exercice budgétaire, consultation) par une RAISON typée
+    (``RAISONS_ATTENTE``, validée par la vue) : l'étiquette posée est celle de
+    la raison (``administration`` pose celle d'AGR520), l'historique la dit,
+    et au-delà d'un mois la première touche du réveil daté porte en note
+    « Rappel convenu — <raison> ».
+
+    1. l'étiquette de la RAISON (``TAG_ATTENTE_ACCORD`` pour
+       ``administration``) est posée (``poser_tag_lead``, idempotent) ;
     2. EXACTEMENT la veille de « Plus tard » (``mettre_en_veille``) : aucun
        barreau consommé, la même touche revient à la date convenue — au-delà
        de ``VEILLE_BASCULE_REVEIL_JOURS``, la cadence s'arrête et un réveil
@@ -13726,23 +13770,36 @@ def repondre_attente_accord(etape, user, quand, *, note='', body=''):
     lead = etape.lead
     spec = REPONSES_TOUCHE[REPONSE_ATTENTE_ACCORD]
     libelle = (etape.libelle or '').strip() or etape.get_canal_display()
-    poser_tag_lead(lead, user, TAG_ATTENTE_ACCORD)
+    # CIQ508 — sans raison (appel interne), le comportement d'AGR520 :
+    # « administration ».
+    _valeur, raison_libelle, etiquette = _RAISON_ATTENTE[
+        (raison or '').strip() or 'administration']
+    # Changer de raison remplace l'étiquette de la précédente : le dossier
+    # n'attend qu'une chose à la fois.
+    for autre in ETIQUETTES_RAISON_ATTENTE:
+        if autre != etiquette and _lead_porte_tag(lead, autre):
+            retirer_tag_lead(lead, user, autre)
+    poser_tag_lead(lead, user, etiquette)
     quand = _instant_de_veille(quand)
     reprise = mettre_en_veille(lead, user, quand, etape=etape,
                                journaliser=False)
+    jour = quand.astimezone(horaires.CASABLANCA).date()
     if reprise is not None and reprise.pk == etape.pk:
         suite = (f'dossier en veille jusqu’au {reprise.due_date:%d/%m/%Y}, '
                  'reprise à cette même touche — aucun barreau consommé')
     elif reprise is not None:
         suite = (f'plus d’un mois d’attente : la cadence est arrêtée et un '
                  f'réveil est daté du {reprise.due_date:%d/%m/%Y}')
+        # CIQ508 — la première touche du réveil daté dit POURQUOI on rappelle
+        # (le script `reveil_a1` ne parle plus de « nouveau », CIQ501).
+        reprise.note = f'Rappel convenu — {raison_libelle}'
+        reprise.save(update_fields=['note'])
     else:
-        jour = quand.astimezone(horaires.CASABLANCA).date()
         suite = (f'veille demandée jusqu’au {jour:%d/%m/%Y}, aucune touche à '
                  'reprendre')
     corps = (f'Réponse du client sur la touche « {libelle} » : « '
-             f'{spec["note"]} » — étiquette « {TAG_ATTENTE_ACCORD} » posée, '
-             f'{suite}.')
+             f"En attente d'un accord — {raison_libelle} — rappel le "
+             f'{jour:%d/%m} » — étiquette « {etiquette} » posée, {suite}.')
     if body:
         corps += f' {body}'
     if (note or '').strip():
@@ -13894,6 +13951,19 @@ def repondre_devis_modifie(etape, user, *, note='', body=''):
 
 # ── CAD-A ── CAD9 — « Décision à plusieurs (famille / propriétaire) » ───────
 
+#: CIQ508 — les segments dont la décision « à plusieurs » se lit en B2B, et
+#: les notes neutres correspondantes (jamais « en famille » pour une usine).
+NOTES_DECISION_B2B_SEGMENTS = ('commercial', 'industriel')
+NOTES_DECISION_B2B = {
+    REPONSE_DECISION_FAMILLE: (
+        'Décision à plusieurs — direction / associés (un délai : la décision '
+        'se prend ensemble)'),
+    REPONSE_DECISION_PROPRIETAIRE: (
+        'Décision à plusieurs — le bailleur des murs décide (un '
+        'interlocuteur à changer)'),
+}
+
+
 def repondre_decision_a_plusieurs(etape, user, cle, *, note='', body=''):
     """CAD9 — le client dit qu'il ne décide pas SEUL, sur une touche du
     suivi de proposition.
@@ -13918,6 +13988,11 @@ def repondre_decision_a_plusieurs(etape, user, cle, *, note='', body=''):
     qu'après un client joint sur cette touche, E22)."""
     lead = etape.lead
     spec = REPONSES_TOUCHE[cle]
+    # CIQ508 — sur un lead commercial ou industriel, la note est NEUTRE
+    # (« en famille » n'a pas de sens pour une entreprise) ; résidentiel,
+    # agricole et segment vide : la note de REPONSES_TOUCHE, inchangée.
+    if (getattr(lead, 'type_installation', '') or '') in NOTES_DECISION_B2B_SEGMENTS:
+        spec = {**spec, 'note': NOTES_DECISION_B2B[cle]}
     if not _lead_porte_tag(lead, _TAG_DECISION_A_PLUSIEURS):
         poser_tag_lead(lead, user, TAG_DECISION_A_PLUSIEURS)
     derniere = est_derniere_touche_du_suivi(etape)
