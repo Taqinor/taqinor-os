@@ -41,13 +41,23 @@ const GOOGLE_TAG_CONNECT =
   'https://pagead2.googlesyndication.com https://www.google.com https://www.google.co.ma https://ad.doubleclick.net';
 const GOOGLE_TAG_FRAME = 'https://www.googletagmanager.com';
 
+/**
+ * Pixel Meta (components/MetaPixel.astro, WB33) : fbevents.js est servi par
+ * connect.facebook.net et les événements partent vers www.facebook.com/tr.
+ * Ces hôtes n'avaient jamais été ajoutés à la CSP : le navigateur bloquait le
+ * script du pixel sur toutes les pages (constaté le 06/10/2026).
+ */
+const META_PIXEL_SCRIPT = 'https://connect.facebook.net';
+const META_PIXEL_IMG = 'https://www.facebook.com';
+const META_PIXEL_CONNECT = 'https://connect.facebook.net https://www.facebook.com';
+
 const CSP_DIRECTIVES = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' ${GOOGLE_TAG_SCRIPT}`,
+  `script-src 'self' 'unsafe-inline' ${GOOGLE_TAG_SCRIPT} ${META_PIXEL_SCRIPT}`,
   "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data: blob: https://api.maptiler.com https://api.mapbox.com ${GOOGLE_TAG_IMG}`,
+  `img-src 'self' data: blob: https://api.maptiler.com https://api.mapbox.com ${GOOGLE_TAG_IMG} ${META_PIXEL_IMG}`,
   "font-src 'self' data:",
-  `connect-src 'self' https://api.taqinor.ma https://api.maptiler.com https://api.mapbox.com ${GOOGLE_TAG_CONNECT}`,
+  `connect-src 'self' https://api.taqinor.ma https://api.maptiler.com https://api.mapbox.com ${GOOGLE_TAG_CONNECT} ${META_PIXEL_CONNECT}`,
   // frame-src explicite : 'self' conserve le repli default-src d'avant.
   `frame-src 'self' ${GOOGLE_TAG_FRAME}`,
   // WJCSP (21/08/2026) — MapLibre rend les sources GeoJSON (repère maison,
