@@ -4142,7 +4142,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   }
 
   // WJ116 — reprise fbclid + UTM depuis sessionStorage (capture first-touch du Layout).
-  const TRACK_KEYS = ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
+  const TRACK_KEYS = ['fbclid', 'gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
   function readTrackingParams(): Record<string, string> {
     const out: Record<string, string> = {};
     for (const k of TRACK_KEYS) {
@@ -4420,6 +4420,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           // que le relais CAPI serveur : Meta déduplique les deux signaux.
           (window as unknown as { tqPixelTrack?: (e: string, p?: object, id?: string) => void })
             .tqPixelTrack?.('Lead', {}, getOrCreateDedupTokens().eventId);
+          // Google Ads / GA4 — même eventId (transaction_id) ; no-op sans
+          // PUBLIC_GOOGLE_TAG_ID ou si refusé (tqGoogleTrack se gate seul).
+          (window as unknown as { tqGoogleTrack?: (id?: string) => void })
+            .tqGoogleTrack?.(getOrCreateDedupTokens().eventId);
           if (okEl) okEl.hidden = false;
           const refEl = $('mt-client-ref');
           if (refEl) refEl.textContent = getOrCreateClientRef();

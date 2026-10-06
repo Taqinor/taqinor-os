@@ -628,6 +628,30 @@
       "champ_lead": "utm_term",
       "note": "lu dans `utm.<cle>` d'abord, puis a plat ; tronque a 300"
     },
+    "gclid": {
+      "cle_registre": "gclid",
+      "groupe": "G_TRACKING",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "gclid",
+      "note": "identifiant de clic Google Ads, tronque a 255 ; classe aussi `canal` = google_ads (`_canal_site_web`)"
+    },
+    "gbraid": {
+      "cle_registre": "gbraid",
+      "groupe": "G_TRACKING",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "canal",
+      "note": "identifiant de clic Google Ads (iOS) NON stocke : sert seulement a classer `canal` = google_ads"
+    },
+    "wbraid": {
+      "cle_registre": "wbraid",
+      "groupe": "G_TRACKING",
+      "requis": false,
+      "destination": "colonne_lead",
+      "champ_lead": "canal",
+      "note": "identifiant de clic Google Ads (web vers app iOS) NON stocke : sert seulement a classer `canal` = google_ads"
+    },
     "roofPoint": {
       "cle_registre": "repereToit",
       "groupe": "G_CARTE",

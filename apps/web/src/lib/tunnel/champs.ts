@@ -67,7 +67,7 @@ export function estModeIndustriel(mode: string): boolean {
   return (MODES_INDUSTRIEL as readonly string[]).includes(mode);
 }
 
-/** Les 6 paramètres de tracking repris de `sessionStorage` (capture first-touch). */
+/** Les 9 paramètres de tracking repris de `sessionStorage` (capture first-touch). */
 export const CLES_TRACKING = [
   'fbclid',
   'utm_source',
@@ -75,6 +75,9 @@ export const CLES_TRACKING = [
   'utm_campaign',
   'utm_content',
   'utm_term',
+  'gclid',
+  'gbraid',
+  'wbraid',
 ] as const;
 export type CleTracking = (typeof CLES_TRACKING)[number];
 
@@ -975,7 +978,7 @@ const G_ANTISPAM = {
  * fbclid + UTM repris de `sessionStorage` (capture first-touch du Layout) :
  * seules les clés PRÉSENTES sont jointes — un visiteur sans paramètre de
  * tracking envoie un corps identique à avant (convention « absent plutôt que
- * vide »). Les six sont écrites une à une, jamais générées : le contrat réseau
+ * vide »). Les neuf sont écrites une à une, jamais générées : le contrat réseau
  * doit rester lisible à l'œil dans ce fichier.
  */
 const G_TRACKING = {
@@ -1024,6 +1027,31 @@ const G_TRACKING = {
     domId: null,
     modes: MODES_TOUS,
     lire: (e) => e.tracking.utm_term,
+    nettoyer: chaineOuOmise,
+    requis: false,
+  },
+  // Identifiants de clic Google Ads — même traitement que fbclid.
+  gclid: {
+    webhookKey: 'gclid',
+    domId: null,
+    modes: MODES_TOUS,
+    lire: (e) => e.tracking.gclid,
+    nettoyer: chaineOuOmise,
+    requis: false,
+  },
+  gbraid: {
+    webhookKey: 'gbraid',
+    domId: null,
+    modes: MODES_TOUS,
+    lire: (e) => e.tracking.gbraid,
+    nettoyer: chaineOuOmise,
+    requis: false,
+  },
+  wbraid: {
+    webhookKey: 'wbraid',
+    domId: null,
+    modes: MODES_TOUS,
+    lire: (e) => e.tracking.wbraid,
     nettoyer: chaineOuOmise,
     requis: false,
   },

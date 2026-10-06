@@ -1,0 +1,73 @@
+---
+/**
+ * Google tag (gtag.js) — Google Ads + GA4, le pendant Google de MetaPixel.astro.
+ *
+ * CHARGEMENT — uniquement si PUBLIC_GOOGLE_TAG_ID porte au moins un ID valide
+ * (`AW-…` et/ou `G-…`, séparés par des virgules ; lib/googleTag.ts). Sans ID,
+ * le composant ne rend RIEN et `window.tqGoogleTrack` reste indéfini — les
+ * appelants se gardent donc toujours (`window.tqGoogleTrack && …`).
+ *
+ * CONSENTEMENT — mêmes règles que le pixel Meta (QJW14 / WB33) :
+ *  - « Refuser » EXPLICITE (`tq_consent` = 'denied') ⇒ gtag.js ne se charge
+ *    pas ; si le refus arrive APRÈS le chargement (bandeau WB31 sur la même
+ *    page), mode consentement Google passé à « denied » sur les 4 signaux.
+ *  - Pas encore répondu ou 'granted' ⇒ le tag tourne.
+ *
+ * CONVERSION — `window.tqGoogleTrack(eventId)` est appelé par les pages du
+ * tunnel AU MÊME ENDROIT que `tqPixelTrack('Lead', …)` (lead qualifié) avec le
+ * MÊME eventId (WJ92), passé en `transaction_id` pour que Google dédoublonne :
+ *  (a) conversion Google Ads si PUBLIC_GOOGLE_ADS_LEAD_SEND_TO est posé ;
+ *  (b) événement GA4 `generate_lead`.
+ */
+import { parseGoogleTagIds, parseLeadSendTo } from '../lib/googleTag';
+
+const tagIds = parseGoogleTagIds(import.meta.env.PUBLIC_GOOGLE_TAG_ID as string | undefined);
+const leadSendTo = parseLeadSendTo(import.meta.env.PUBLIC_GOOGLE_ADS_LEAD_SEND_TO as string | undefined);
+---
+
+{tagIds.length > 0 && (
+  <script is:inline define:vars={{ tqGoogleTagIds: tagIds, tqGoogleLeadSendTo: leadSendTo }}>
+    (function () {
+      var denied = false;
+      try {
+        denied = localStorage.getItem('tq_consent') === 'denied';
+      } catch (e) {}
+      if (denied) return;
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(tqGoogleTagIds[0]);
+      document.head.appendChild(s);
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function () {
+        window.dataLayer.push(arguments);
+      };
+      window.gtag('js', new Date());
+      for (var i = 0; i < tqGoogleTagIds.length; i++) window.gtag('config', tqGoogleTagIds[i]);
+      /* Refus APRÈS chargement : mode consentement Google « denied ». */
+      window.addEventListener('tq:consent-change', function (e) {
+        if (e && e.detail && e.detail.value === 'denied') {
+          try {
+            window.gtag('consent', 'update', {
+              ad_storage: 'denied',
+              analytics_storage: 'denied',
+              ad_user_data: 'denied',
+              ad_personalization: 'denied',
+            });
+          } catch (err) {}
+        }
+      });
+      /* Pont pour les pages (tunnel /devis/mon-toit) : no-op si refusé. */
+      window.tqGoogleTrack = function (eventId) {
+        try {
+          if (typeof window.gtag !== 'function') return;
+          if (localStorage.getItem('tq_consent') === 'denied') return;
+          var extra = eventId ? { transaction_id: String(eventId) } : {};
+          if (tqGoogleLeadSendTo) {
+            window.gtag('event', 'conversion', Object.assign({ send_to: tqGoogleLeadSendTo }, extra));
+          }
+          window.gtag('event', 'generate_lead', extra);
+        } catch (err) {}
+      };
+    })();
+  </script>
+)}

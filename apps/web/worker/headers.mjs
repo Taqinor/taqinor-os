@@ -25,13 +25,31 @@
  * et copié tel quel dans dist/server/ au build (voir astro.config.mjs).
  */
 
+/**
+ * Google tag (gtag.js — Google Ads + GA4, components/GoogleTag.astro) : hôtes
+ * documentés par Google (developers.google.com/tag-platform/security/guides/csp,
+ * sections Google tag, GA4 et Google Ads). Sans eux la CSP bloquerait gtag.js et
+ * les pings de conversion. `www.google.co.ma` = le `www.google.<TLD>` du Maroc.
+ */
+const GOOGLE_TAG_SCRIPT = 'https://www.googletagmanager.com https://www.googleadservices.com https://www.google.com';
+const GOOGLE_TAG_IMG =
+  'https://www.googletagmanager.com https://*.google-analytics.com https://www.googleadservices.com ' +
+  'https://*.g.doubleclick.net https://pagead2.googlesyndication.com https://www.google.com https://www.google.co.ma';
+const GOOGLE_TAG_CONNECT =
+  'https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com ' +
+  'https://*.analytics.google.com https://www.googleadservices.com https://*.g.doubleclick.net ' +
+  'https://pagead2.googlesyndication.com https://www.google.com https://www.google.co.ma https://ad.doubleclick.net';
+const GOOGLE_TAG_FRAME = 'https://www.googletagmanager.com';
+
 const CSP_DIRECTIVES = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  `script-src 'self' 'unsafe-inline' ${GOOGLE_TAG_SCRIPT}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://api.maptiler.com https://api.mapbox.com",
+  `img-src 'self' data: blob: https://api.maptiler.com https://api.mapbox.com ${GOOGLE_TAG_IMG}`,
   "font-src 'self' data:",
-  "connect-src 'self' https://api.taqinor.ma https://api.maptiler.com https://api.mapbox.com",
+  `connect-src 'self' https://api.taqinor.ma https://api.maptiler.com https://api.mapbox.com ${GOOGLE_TAG_CONNECT}`,
+  // frame-src explicite : 'self' conserve le repli default-src d'avant.
+  `frame-src 'self' ${GOOGLE_TAG_FRAME}`,
   // WJCSP (21/08/2026) — MapLibre rend les sources GeoJSON (repère maison,
   // contour du toit dessiné : rp9-pin/rp9-line/rp9-pts) dans un WEB WORKER
   // qu'il crée depuis un blob:. Sans worker-src, la directive de repli est
