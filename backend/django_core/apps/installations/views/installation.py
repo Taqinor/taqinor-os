@@ -199,6 +199,8 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'recette_pompage',
             # CH4 — pack de remise client (lecture ; POST auto-gardé).
             'pack_remise',
+            # CIQ628 — réserves du chantier (lecture ; POST auto-gardé).
+            'reserves',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -216,6 +218,8 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'creer_interventions_standard',
             # ZSTK11 — réservation stock explicite (mode manuel).
             'reserver_stock',
+            # CIQ628 — levée d'une réserve du chantier.
+            'lever_reserve',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -1198,6 +1202,69 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         if record is None:
             return Response({'installation': inst.id, 'record': None})
         return Response(CommissioningRecordSerializer(record).data)
+
+    # ── CIQ628 — réserves de réception au niveau du chantier ────────────────
+    @action(detail=True, methods=['get', 'post'], url_path='reserves',
+            permission_classes=[IsAnyRole])
+    def reserves(self, request, pk=None):
+        """CIQ628 — GET : réserves du chantier (format du contrat
+        ``recette_ci.json``). POST (Responsable/Admin) : ajoute une réserve
+        {description, origine, bloquante, date_echeance, responsable} ;
+        ``company`` vient du chantier, jamais du corps."""
+        from ..services import (
+            creer_reserve_chantier, reserve_contrat, reserves_contrat,
+        )
+        inst = self.get_object()
+        if request.method == 'GET':
+            return Response(reserves_contrat(inst))
+        if not request.user.is_responsable:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        data = request.data
+        description = (data.get('description') or '').strip()
+        if not description:
+            return Response({'description': 'Description obligatoire.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        origine = data.get('origine') or Reserve.Origine.RECETTE
+        if origine not in Reserve.Origine.values:
+            return Response({'origine': 'Origine inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        echeance = None
+        if data.get('date_echeance'):
+            from django.utils.dateparse import parse_date
+            try:
+                echeance = parse_date(str(data.get('date_echeance')))
+            except ValueError:
+                echeance = None
+            if echeance is None:
+                return Response(
+                    {'date_echeance': 'Date invalide (AAAA-MM-JJ).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        bloquante = data.get('bloquante') in (True, 'true', '1', 1, 'on')
+        reserve = creer_reserve_chantier(
+            inst, request.user, description=description, origine=origine,
+            bloquante=bloquante, date_echeance=echeance,
+            responsable=(data.get('responsable') or '').strip()[:120])
+        return Response(reserve_contrat(reserve),
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'reserves/(?P<rid>\d+)/lever',
+            permission_classes=[IsResponsableOrAdmin])
+    def lever_reserve(self, request, pk=None, rid=None):
+        """CIQ628 — lève une réserve du chantier (scopée société et
+        chantier : une réserve d'ailleurs → 404)."""
+        from django.db.models import Q
+        from ..services import lever_reserve_chantier, reserve_contrat
+        inst = self.get_object()
+        reserve = Reserve.objects.filter(
+            Q(installation=inst) | Q(intervention__installation=inst),
+            company=inst.company, pk=rid).first()
+        if reserve is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        lever_reserve_chantier(
+            reserve, request.user,
+            resolution=(request.data.get('resolution') or '').strip())
+        return Response(reserve_contrat(reserve))
 
     # ── CH4 — pack de remise client (handover) ──────────────────────────────
     @action(detail=True, methods=['get', 'post'], url_path='pack-remise',

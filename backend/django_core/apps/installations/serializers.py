@@ -752,9 +752,13 @@ class ReserveSerializer(serializers.ModelSerializer):
         fields = ['id', 'intervention', 'description', 'photo', 'photo_url',
                   'memo', 'assignee', 'assignee_nom', 'statut', 'statut_display',
                   'resolution', 'resolue_le', 'suivi_intervention', 'ticket',
-                  'devis_repare_id', 'date_creation']
+                  'devis_repare_id', 'date_creation',
+                  # CIQ628 — réserve de chantier (origine, bloquante, …).
+                  'installation', 'origine', 'bloquante', 'date_echeance',
+                  'responsable', 'levee_par']
         read_only_fields = ['intervention', 'suivi_intervention', 'ticket',
-                            'devis_repare_id', 'resolue_le', 'date_creation']
+                            'devis_repare_id', 'resolue_le', 'date_creation',
+                            'installation', 'levee_par']
 
     def get_assignee_nom(self, obj):
         return getattr(obj.assignee, 'username', None)

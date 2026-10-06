@@ -1116,7 +1116,9 @@ def reserve_resume(reserve):
     coupler les apps. ``chantier_id`` est l'id du chantier (Installation) de
     l'intervention, ``None`` s'il n'y en a pas."""
     intervention = getattr(reserve, 'intervention', None)
-    chantier_id = getattr(intervention, 'installation_id', None)
+    # CIQ628 — une réserve peut être posée directement sur le chantier.
+    chantier_id = (getattr(intervention, 'installation_id', None)
+                   or getattr(reserve, 'installation_id', None))
     return {
         'id': reserve.id,
         'description': reserve.description or '',

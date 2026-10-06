@@ -1728,6 +1728,11 @@ def _gate_avertissements(installation, stage):
         statut, _refuse, _resume = etat_dossier_8221(installation)
         if statut != Installation.DossierStatut.COMPTEUR_POSE:
             avertissements.append(AVERTISSEMENT_COMPTEUR_DISTRIBUTEUR)
+    # CIQ628 — les réserves non bloquantes ouvertes sont listées.
+    if getattr(stage, 'exige_pack', False):
+        avertissement = avertissement_reserves_ouvertes(installation)
+        if avertissement:
+            avertissements.append(avertissement)
     return avertissements
 
 
@@ -1896,9 +1901,139 @@ def _gate_check_pack(installation, stage=None):
     resume = assemble_handover_pieces(installation)
     manquantes = [p['libelle'] for p in resume['pieces']
                   if p.get('obligatoire') and not p.get('present')]
+    raisons = []
     if manquantes:
-        return ("Pack de remise incomplet : " + ", ".join(manquantes) + ".")
-    return None
+        raisons.append(
+            "Pack de remise incomplet : " + ", ".join(manquantes) + ".")
+    # CIQ628 — une réserve BLOQUANTE ouverte refuse aussi la remise.
+    raison_reserves = raison_reserves_bloquantes(installation)
+    if raison_reserves:
+        raisons.append(raison_reserves)
+    return " ".join(raisons) or None
+
+
+# ── CIQ628 — réserves de réception au niveau du chantier ───────────────────
+def reserves_chantier_qs(installation):
+    """CIQ628 — les réserves du chantier : celles posées sur le chantier
+    (recette, réception) ET celles de ses interventions."""
+    from django.db.models import Q
+    from .models import Reserve
+    return (Reserve.objects
+            .filter(Q(installation=installation)
+                    | Q(intervention__installation=installation))
+            .order_by('statut', 'date_echeance', 'id'))
+
+
+def reserves_ouvertes(installation, *, bloquantes=None):
+    """CIQ628 — réserves OUVERTES du chantier (``bloquantes`` True/False
+    filtre, None = toutes)."""
+    from .models import Reserve
+    qs = reserves_chantier_qs(installation).filter(
+        statut=Reserve.Statut.OUVERTE)
+    if bloquantes is not None:
+        qs = qs.filter(bloquante=bloquantes)
+    return list(qs)
+
+
+def _descriptions_reserves(reserves):
+    return " ; ".join(r.description or f'réserve {r.id}' for r in reserves)
+
+
+def raison_reserves_bloquantes(installation):
+    """CIQ628 — raison FR qui refuse la remise tant qu'une réserve
+    BLOQUANTE est ouverte (descriptions citées), sinon ``None``."""
+    bloquantes = reserves_ouvertes(installation, bloquantes=True)
+    if not bloquantes:
+        return None
+    return ("Réserve(s) bloquante(s) non levée(s) : "
+            + _descriptions_reserves(bloquantes) + ".")
+
+
+def avertissement_reserves_ouvertes(installation):
+    """CIQ628 — les réserves NON bloquantes ouvertes sont LISTÉES (jamais
+    un blocage)."""
+    autres = reserves_ouvertes(installation, bloquantes=False)
+    if not autres:
+        return None
+    return "Réserve(s) ouverte(s) : " + _descriptions_reserves(autres) + "."
+
+
+def reserve_contrat(reserve):
+    """CIQ628 — une réserve au format du contrat ``recette_ci.json``
+    (bloc ``reserves``)."""
+    return {
+        'id': reserve.id,
+        'description': reserve.description or '',
+        'origine': reserve.origine,
+        'bloquante': reserve.bloquante,
+        'date_echeance': (reserve.date_echeance.isoformat()
+                          if reserve.date_echeance else None),
+        'responsable': reserve.responsable or '',
+        'statut': reserve.statut,
+        'levee_le': (reserve.resolue_le.isoformat()
+                     if reserve.resolue_le else None),
+    }
+
+
+def reserves_contrat(installation):
+    """CIQ628 — bloc ``reserves`` du contrat pour un chantier."""
+    return [reserve_contrat(r) for r in reserves_chantier_qs(installation)]
+
+
+def creer_reserve_chantier(installation, user, *, description, origine,
+                           bloquante=False, date_echeance=None,
+                           responsable=''):
+    """CIQ628 — crée une réserve posée sur le chantier ; ``company`` vient
+    du chantier (jamais du corps). Journalisée au chatter."""
+    from . import activity
+    from .models import Reserve
+    reserve = Reserve.objects.create(
+        company=installation.company, installation=installation,
+        description=description, origine=origine, bloquante=bool(bloquante),
+        date_echeance=date_echeance, responsable=responsable or '',
+        created_by=user)
+    activity.log_note(
+        installation, user,
+        f"Réserve ajoutée ({reserve.get_origine_display()}"
+        + (", bloquante" if reserve.bloquante else "")
+        + f") : {description}")
+    return reserve
+
+
+def lever_reserve_chantier(reserve, user, *, resolution=''):
+    """CIQ628 — lève une réserve (statut résolue, date, auteur)."""
+    from django.utils import timezone
+
+    from . import activity
+    from .models import Reserve
+    reserve.statut = Reserve.Statut.RESOLUE
+    reserve.resolue_le = timezone.now()
+    reserve.levee_par = user if getattr(user, 'pk', None) else None
+    if resolution:
+        reserve.resolution = resolution
+    reserve.save(update_fields=['statut', 'resolue_le', 'levee_par',
+                                'resolution', 'date_modification'])
+    chantier = reserve.installation or getattr(
+        reserve.intervention, 'installation', None)
+    if chantier is not None:
+        activity.log_note(chantier, user,
+                          f"Réserve levée : {reserve.description}")
+    return reserve
+
+
+#: CIQ628 — refus FR d'un « conforme avec réserves » sans réserve de recette.
+RAISON_RESERVES_SANS_LISTE = (
+    "« Conforme avec réserves » exige au moins une réserve de recette "
+    "ouverte : ajoutez-la dans la liste des réserves du chantier.")
+
+
+def recette_a_reserve_ouverte(installation):
+    """CIQ628 — vrai si le chantier porte au moins une réserve d'origine
+    ``recette`` ouverte."""
+    from .models import Reserve
+    return reserves_chantier_qs(installation).filter(
+        origine=Reserve.Origine.RECETTE,
+        statut=Reserve.Statut.OUVERTE).exists()
 
 
 _GATE_CHECKS = [
@@ -3871,16 +4006,22 @@ def _gardes_ci(installation, nouveau_statut, user=None,
         return []
     canon_old = Installation.canonical_statut(installation.statut)
     canon_new = Installation.canonical_statut(nouveau_statut)
-    if canon_new not in _STATUTS_TRAVAUX or canon_old in _STATUTS_TRAVAUX:
-        return []
     raisons = []
-    if not autorisation_travaux_8221(installation):
-        raisons.append(RAISON_CI_SANS_CONVENTION)
-    # CIQ623 — mêmes documents de sécurité avant « En cours » pour un site
-    # pro, même sans gates amorcés.
-    raison_hse = _gate_check_hse(installation)
-    if raison_hse:
-        raisons.append(raison_hse)
+    # CIQ628 — remise d'un site pro refusée tant qu'une réserve BLOQUANTE
+    # est ouverte, même sans étapes amorcées.
+    if (canon_new == Installation.Statut.RECEPTIONNE
+            and canon_old != Installation.Statut.RECEPTIONNE):
+        raison_reserves = raison_reserves_bloquantes(installation)
+        if raison_reserves:
+            raisons.append(raison_reserves)
+    if canon_new in _STATUTS_TRAVAUX and canon_old not in _STATUTS_TRAVAUX:
+        if not autorisation_travaux_8221(installation):
+            raisons.append(RAISON_CI_SANS_CONVENTION)
+        # CIQ623 — mêmes documents de sécurité avant « En cours » pour un
+        # site pro, même sans gates amorcés.
+        raison_hse = _gate_check_hse(installation)
+        if raison_hse:
+            raisons.append(raison_hse)
     if raisons and (motif_derogation or '').strip() and est_directeur(user):
         return []
     return raisons
