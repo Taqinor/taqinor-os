@@ -157,6 +157,9 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'retour_client',
             'facturer_penalites', 'consolider', 'abandonner_solde',
             'remettre_brouillon', 'encaissement_groupe',
+            # CIQ214 — libérer la retenue de garantie (date de réception
+            # définitive) : édition courante du responsable, pas un geste admin.
+            'liberer_retenue',
         ]:
             return [IsResponsableOrAdmin()]
         # AUD103 — SUPPRIMER une facture n'est PAS « annuler » : c'est le seul
