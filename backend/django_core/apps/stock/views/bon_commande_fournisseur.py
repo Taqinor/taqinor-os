@@ -283,6 +283,18 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     'réellement versés : suppression refusée.'
                 ),
             })
+        # ASTK84 — un BCF sorti du brouillon, portant une quantité reçue ou
+        # une facture fournisseur liée garde son historique (coût moyen des
+        # réceptions, lien facture↔BCF) : on l'annule, on ne le supprime pas.
+        if (instance.statut != BonCommandeFournisseur.Statut.BROUILLON
+                or instance.lignes.filter(quantite_recue__gt=0).exists()
+                or instance.factures_fournisseur.exists()):
+            raise ValidationError({
+                'detail': (
+                    'Bon de commande reçu ou facturé : suppression refusée '
+                    '(annulez-le).'
+                ),
+            })
         instance.delete()
 
     def create(self, request, *args, **kwargs):
