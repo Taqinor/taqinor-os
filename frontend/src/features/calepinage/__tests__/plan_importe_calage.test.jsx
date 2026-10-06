@@ -15,12 +15,14 @@ import { MemoryRouter } from 'react-router-dom'
 const layout = vi.fn()
 const enregistrerLayout = vi.fn()
 const importerPlan = vi.fn()
+const envoyerFondPlan = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       layout: (...a) => layout(...a),
       enregistrerLayoutCalepinage: (...a) => enregistrerLayout(...a),
       importerPlan: (...a) => importerPlan(...a),
+      envoyerFondPlan: (...a) => envoyerFondPlan(...a),
     },
   },
 }))
@@ -88,6 +90,7 @@ describe('ACAL70 — « Poser comme pan du toit » (le serveur géoréférence, 
   const builderApi = () => ({ ajouterPanDepuisContour: vi.fn(() => ({ ok: true, id: 'pan-3' })) })
 
   beforeEach(() => {
+    layout.mockResolvedValue({ data: { roof_layout: {}, empreinte_document: 'E0' } })
     importerPlan
       .mockResolvedValueOnce(reponse('exemple_sans_calque'))
       .mockResolvedValueOnce(reponse('exemple'))
@@ -113,7 +116,6 @@ describe('ACAL70 — « Poser comme pan du toit » (le serveur géoréférence, 
       expect(Math.abs(lat - 33.5)).toBeLessThan(0.01)
     }
     expect(enregistrerLayout).not.toHaveBeenCalled()
-    expect(layout).not.toHaveBeenCalled()
     expect(await screen.findByTestId('cal-calage-message')).toHaveTextContent('Pan posé dans l’atelier')
   })
 
@@ -195,6 +197,95 @@ describe('ACAL70 — « Poser comme pan du toit » (le serveur géoréférence, 
     importerPlan.mockReset()
     rendre()
     expect(await screen.findByTestId('cal-calage-sans-plan')).toBeInTheDocument()
+  })
+})
+
+describe('ACAL73 — une image de plan se pose comme fond de l’atelier', () => {
+  const IMAGE = () => new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'plan.png', { type: 'image/png' })
+  const contratFond = () => exempleContrat('calepinage', 'calepinage_plan_importe', 'fond_plan').exemple
+
+  beforeEach(() => {
+    layout.mockResolvedValue({ data: { roof_layout: {}, empreinte_document: 'E0' } })
+    envoyerFondPlan.mockResolvedValue({ data: { ...contratFond(), roof_layout: {} } })
+  })
+
+  const deposerImage = async (utilisateur) => {
+    await screen.findByTestId('cal-calage-sans-plan')
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    await utilisateur.upload(screen.getByLabelText('Image de plan (PNG ou JPEG)'), IMAGE())
+  }
+
+  it('image déposée → POST fond-plan/ puis appliquerSection underlay', async () => {
+    const utilisateur = userEvent.setup()
+    const documentVivant = { empreinte: 'EATELIER', appliquerSection: vi.fn() }
+    rendre({ documentVivant })
+    await deposerImage(utilisateur)
+
+    await utilisateur.click(screen.getByRole('button', { name: 'Poser comme fond de l’atelier' }))
+
+    await waitFor(() => expect(envoyerFondPlan).toHaveBeenCalledTimes(1))
+    const [id, corps] = envoyerFondPlan.mock.calls[0]
+    expect(id).toBe(7)
+    expect(corps).toBeInstanceOf(FormData)
+    expect(corps.get('fichier')).toBeTruthy()
+    // Le jeton de l'atelier vivant prime sur celui de la lecture de l'onglet.
+    expect(corps.get('base_empreinte')).toBe('EATELIER')
+    await waitFor(() => expect(documentVivant.appliquerSection).toHaveBeenCalledTimes(1))
+    expect(documentVivant.appliquerSection).toHaveBeenCalledWith(
+      'underlay', contratFond().underlay, contratFond().empreinte_document)
+    expect(await screen.findByText(/Image posée comme fond de l’atelier/)).toBeInTheDocument()
+    expect(enregistrerLayout).not.toHaveBeenCalled()
+  })
+
+  it('sans atelier vivant, le jeton est celui de la lecture du document', async () => {
+    const utilisateur = userEvent.setup()
+    rendre()
+    await deposerImage(utilisateur)
+    await utilisateur.click(screen.getByRole('button', { name: 'Poser comme fond de l’atelier' }))
+    await waitFor(() => expect(envoyerFondPlan).toHaveBeenCalledTimes(1))
+    expect(envoyerFondPlan.mock.calls[0][1].get('base_empreinte')).toBe('E0')
+  })
+
+  it('sans image choisie : refus sous le geste, aucun appel', async () => {
+    const utilisateur = userEvent.setup()
+    rendre()
+    await screen.findByTestId('cal-calage-sans-plan')
+    await utilisateur.click(screen.getByRole('button', { name: 'Poser comme fond de l’atelier' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Choisissez une image de plan')
+    expect(envoyerFondPlan).not.toHaveBeenCalled()
+  })
+
+  it('échec → le message du serveur est affiché, rien n’est poussé dans l’atelier', async () => {
+    const utilisateur = userEvent.setup()
+    const documentVivant = { empreinte: 'E0', appliquerSection: vi.fn() }
+    const refus = exempleContrat('calepinage', 'calepinage_plan_importe', 'fond_plan').refus_400
+    envoyerFondPlan.mockRejectedValue({ response: { status: 400, data: refus } })
+    rendre({ documentVivant })
+    await deposerImage(utilisateur)
+    await utilisateur.click(screen.getByRole('button', { name: 'Poser comme fond de l’atelier' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(refus.fichier)
+    expect(documentVivant.appliquerSection).not.toHaveBeenCalled()
+  })
+
+  it('jeton périmé (409) : le dit et relit le document', async () => {
+    const utilisateur = userEvent.setup()
+    envoyerFondPlan.mockRejectedValue({ response: { status: 409, data: { code: 'document_modifie' } } })
+    rendre()
+    await deposerImage(utilisateur)
+    await utilisateur.click(screen.getByRole('button', { name: 'Poser comme fond de l’atelier' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('changé ailleurs')
+    await waitFor(() => expect(layout).toHaveBeenCalledTimes(2))
+  })
+
+  it('document illisible : rien n’est envoyé', async () => {
+    const utilisateur = userEvent.setup()
+    layout.mockRejectedValue(new Error('500'))
+    rendre()
+    await screen.findByTestId('cal-calage-sans-plan')
+    await utilisateur.upload(screen.getByLabelText('Image de plan (PNG ou JPEG)'), IMAGE())
+    await utilisateur.click(screen.getByRole('button', { name: 'Poser comme fond de l’atelier' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Conception illisible')
+    expect(envoyerFondPlan).not.toHaveBeenCalled()
   })
 })
 

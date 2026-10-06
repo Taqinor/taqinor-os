@@ -421,6 +421,14 @@
       "verbe": "get"
     }
   ],
+  "calepinages.envoyerFondPlan": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/fond-plan/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.envoyerImage": [
     {
       "config": null,

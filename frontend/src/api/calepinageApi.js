@@ -292,6 +292,11 @@ const calepinageApi = {
     // suggestion est persistée dans le pan (« pente du terrain »), jamais recopiée dans
     // la pente du pan (D-ACAL-19). 409 `document_modifie` si le jeton est périmé.
     decisionSuggestionPente: (id, corps) => api.post(`${pivot(id)}suggestions-pente/`, corps), // ACAL
+    // ACAL73 — le téléversement d'une IMAGE de plan (PNG/JPEG) comme fond du document
+    // (ACAL72) : `corps` est un FormData (`fichier`, `base_empreinte`) — axios pose sa
+    // frontière multipart. Le serveur écrit `underlay` par section et rend `{underlay,
+    // empreinte_document}` ; 409 `document_modifie` si le jeton est périmé.
+    envoyerFondPlan: (id, corps) => api.post(`${pivot(id)}fond-plan/`, corps), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

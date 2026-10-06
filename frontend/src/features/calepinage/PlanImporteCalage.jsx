@@ -8,6 +8,7 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
+import useDocumentCalepinage, { MESSAGE_ILLISIBLE } from './useDocumentCalepinage'
 import RetourAtelier from './atelier/RetourAtelier'
 
 /* ============================================================================
@@ -109,7 +110,7 @@ function ChampNombre({ cle, label, valeur, erreur, onChange }) {
 }
 
 export default function PlanImporteCalage({
-  calepinageId: idPropose, builderApi = null,
+  calepinageId: idPropose, builderApi = null, documentVivant = null,
 }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
@@ -117,6 +118,12 @@ export default function PlanImporteCalage({
   const [saisie, setSaisie] = useState({
     rotationDeg: '', indexA: '0', indexB: '1', distanceReelleM: '',
   })
+  // ACAL73 — le document (jeton d'écriture) ne sert QU'au fond « image de plan » :
+  // l'UNIQUE lecture (hook), jamais un document vide sur lequel on écrirait.
+  const doc = useDocumentCalepinage(calepinageId)
+  const [imageFond, setImageFond] = useState(null)
+  const [refusFond, setRefusFond] = useState(null)
+  const [messageFond, setMessageFond] = useState(null)
   const [message, setMessage] = useState(null)
   const [refus, setRefus] = useState(null)
   // CALX39 — le plan déposé, l'analyse rendue par le serveur, le calque choisi
@@ -240,6 +247,74 @@ export default function PlanImporteCalage({
       })
   }
 
+  /* ACAL73 — « Poser comme fond de l'atelier » : une IMAGE de plan (PNG/JPEG) est
+     rangée par le serveur (`fond-plan/`, ACAL72) qui écrit `underlay` par section ;
+     la réponse est poussée dans l'atelier vivant, qui l'affiche et la cale par
+     l'outil deux points existant. Un DXF/PDF ne passe pas ici : il passe par
+     l'analyse et « Poser comme pan du toit ». */
+  const poserCommeFond = async () => {
+    setMessageFond(null)
+    if (!imageFond) {
+      setRefusFond('Choisissez une image de plan (PNG ou JPEG) avant de la poser en fond.')
+      return
+    }
+    const base = documentVivant?.empreinte || doc.empreinte
+    if (doc.etat !== 'ok' || !base) {
+      setRefusFond(MESSAGE_ILLISIBLE)
+      return
+    }
+    setRefusFond(null)
+    const corps = new FormData()
+    corps.append('fichier', imageFond)
+    corps.append('base_empreinte', base)
+    try {
+      const res = await calepinageApi.calepinages.envoyerFondPlan(calepinageId, corps)
+      const fond = res?.data?.underlay ?? null
+      const empreinte = res?.data?.empreinte_document ?? null
+      doc.appliquerSection('underlay', fond, empreinte)
+      documentVivant?.appliquerSection?.('underlay', fond, empreinte)
+      setMessageFond('Image posée comme fond de l’atelier : calez-la avec l’outil deux points, '
+        + 'puis enregistrez le calepinage.')
+    } catch (e) {
+      if (e?.response?.status === 409) {
+        setRefusFond('La conception a changé ailleurs : elle est relue, recommencez.')
+        doc.recharger()
+        return
+      }
+      const donnees = e?.response?.data ?? {}
+      const champ = Object.keys(donnees)[0]
+      setRefusFond(String((champ && donnees[champ]) || 'L’image n’a pas pu être posée en fond.'))
+    }
+  }
+
+  const blocFond = (
+    <div className="mt-4" role="group" aria-label="Image de plan en fond de l’atelier">
+      <p className="tech-label text-lune-faint">
+        Poser une image de plan (PNG ou JPEG) en fond de l’atelier
+      </p>
+      <input
+        type="file"
+        accept="image/png,image/jpeg"
+        aria-label="Image de plan (PNG ou JPEG)"
+        onChange={(e) => {
+          setImageFond(e.target.files?.[0] ?? null)
+          setRefusFond(null)
+        }}
+        className="mt-1 block w-full text-sm text-lune-soft"
+      />
+      <button type="button" onClick={poserCommeFond}
+        className="mt-2 rounded border border-white/15 px-3 py-1 text-sm text-white">
+        Poser comme fond de l’atelier
+      </button>
+      {refusFond && (
+        <span role="alert" className="mt-1 block text-xs text-red-300">{refusFond}</span>
+      )}
+      {messageFond && (
+        <p className="mt-2 text-sm text-lune-soft" role="status">{messageFond}</p>
+      )}
+    </div>
+  )
+
   const entitesDuCalque = (analyse?.calques ?? [])
     .find((calque) => calque.nom === calqueChoisi)?.entites_detail ?? []
 
@@ -352,6 +427,7 @@ export default function PlanImporteCalage({
             l’analyse et propose le contour du calque choisi, sans rien enregistrer.
           </p>
           {blocDepot}
+          {blocFond}
         </div>
       </>
     )
@@ -366,6 +442,7 @@ export default function PlanImporteCalage({
         </p>
 
       {blocDepot}
+      {blocFond}
 
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <ChampNombre cle="rotationDeg" label="Rotation (°)"
