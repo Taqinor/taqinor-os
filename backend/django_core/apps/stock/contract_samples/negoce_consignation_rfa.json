@@ -317,7 +317,7 @@
     },
     "portails_tiers": {
       "endpoint": "GET /api/django/stock/portails-tiers/?tiers_nom=<texte>",
-      "pourquoi": "NTWMS20 — jetons du portail 3PL (`PortailTiersTokenViewSet`, views/wms.py:1043 ; PortailTiersTokenSerializer serializers_wms.py:247). Administration RÉSERVÉE à l'ADMIN (lecture comprise). Liste paginée. Le `token` est GÉNÉRÉ côté serveur (jamais accepté du client) ; révocation = PATCH {revoked:true}. POST {tiers_nom, expires_at?} (201 = même objet). ATTENTION (constat ASTK164) : `lien_public` est servi sous `/api/django/stock/public/tiers/<token>/solde/` alors que la route réellement montée est `/api/django/public/stock/tiers/<token>/solde/` — l'écran ASTK221-ASTK223 doit construire le lien depuis le jeton, pas depuis `lien_public`, tant que ce chemin n'est pas corrigé.",
+      "pourquoi": "NTWMS20 — jetons du portail 3PL (`PortailTiersTokenViewSet`, views/wms.py:1043 ; PortailTiersTokenSerializer serializers_wms.py:247). Administration RÉSERVÉE à l'ADMIN (lecture comprise). Liste paginée. Le `token` est GÉNÉRÉ côté serveur (jamais accepté du client) ; révocation = PATCH {revoked:true}. POST {tiers_nom, expires_at?} (201 = même objet). `lien_public` pointe sur la route publique unique `/api/django/public/stock/tiers/<token>/solde/` (ASTK233 a retiré le doublon `/api/django/stock/public/…`).",
       "exemple": {
         "count": 1,
         "next": null,
@@ -327,7 +327,7 @@
             "id": 2,
             "tiers_nom": "Client Alpha",
             "token": "tk_9f2c…",
-            "lien_public": "/api/django/stock/public/tiers/tk_9f2c…/solde/",
+            "lien_public": "/api/django/public/stock/tiers/tk_9f2c…/solde/",
             "expires_at": "2027-01-01T00:00:00Z",
             "revoked": false,
             "est_valide": true,
@@ -346,7 +346,7 @@
         "id": 2,
         "tiers_nom": "Client Alpha",
         "token": "tk_9f2c…",
-        "lien_public": "/api/django/stock/public/tiers/tk_9f2c…/solde/",
+        "lien_public": "/api/django/public/stock/tiers/tk_9f2c…/solde/",
         "expires_at": "2027-01-01T00:00:00Z",
         "revoked": false,
         "est_valide": true,
