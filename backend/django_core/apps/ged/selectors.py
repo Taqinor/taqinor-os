@@ -631,6 +631,56 @@ def acl_governs_target(target):
     return acl_entries_for_target(target).exists()
 
 
+ACL_MESSAGES = {
+    'lecture': "Droit de lecture requis sur cette cible.",
+    'ecriture': "Droit d'écriture requis sur cette cible.",
+    'gestion': "Droit de gestion requis sur cette cible.",
+}
+
+
+def assert_acl_niveau(target, user, niveau):
+    """ADOC5 — LA garde des écritures GED : lève `PermissionError` si
+    `user` n'a pas au moins `niveau` ('lecture'/'ecriture'/'gestion') sur
+    `target` (document ou dossier) selon l'ACL GED19 effective.
+
+    Une cible NON gouvernée par une ACL garde le comportement existant
+    (aucun refus : les paliers de rôle de la vue tranchent). Une cible
+    gouvernée sans aucun droit pour l'utilisateur est refusée. L'admin a
+    toujours « gestion ». Renvoie le niveau effectif (ou ``None``)."""
+    effectif = acl_effective(target, user)
+    if effectif is None:
+        if acl_governs_target(target):
+            raise PermissionError(ACL_MESSAGES[niveau])
+        return None
+    if ACL_RANK.get(effectif, 0) < ACL_RANK[niveau]:
+        raise PermissionError(ACL_MESSAGES[niveau])
+    return effectif
+
+
+def folder_lisible(folder, user):
+    """ADOC5 — True si `user` peut LIRE ce dossier (ACL GED19 : un dossier
+    gouverné sans droit effectif pour lui est invisible)."""
+    if getattr(user, 'is_admin_role', False) or user.is_superuser:
+        return True
+    if acl_effective(folder, user) is not None:
+        return True
+    return not acl_governs_target(folder)
+
+
+def folders_visibles(qs, user):
+    """ADOC5 — Restreint un QuerySet de dossiers à ceux que `user` peut lire
+    (même règle SOFT que `documents_visible_to_user` : sans aucune ACL dans
+    la société, rien n'est filtré)."""
+    if getattr(user, 'is_admin_role', False) or user.is_superuser:
+        return qs
+    if not AclGed.objects.filter(company_id=user.company_id).exists():
+        return qs
+    refuses = [f.pk for f in qs if not folder_lisible(f, user)]
+    if refuses:
+        qs = qs.exclude(pk__in=refuses)
+    return qs
+
+
 def acls_for_document(document):
     """GED19 — Entrées ACL posées DIRECTEMENT sur un document (QuerySet)."""
     return AclGed.objects.filter(company=document.company, document=document)

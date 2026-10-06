@@ -5027,10 +5027,14 @@ def operation_lot(documents, *, operation, params, user):
     `(resultats, erreurs)`, listes parallèles indexées par document.pk."""
     from .models import ArchivageLegalError, DocumentTag, Folder, LegalHoldError
 
+    from . import selectors as _selectors
+
     resultats = []
     erreurs = []
     for document in documents:
         try:
+            # ADOC5 — chaque document du lot exige l'écriture ACL (GED19).
+            _selectors.assert_acl_niveau(document, user, 'ecriture')
             if operation == 'tagger':
                 tag = DocumentTag.objects.filter(
                     company=user.company, pk=params.get('tag')).first()

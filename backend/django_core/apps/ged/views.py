@@ -226,7 +226,8 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(parent__isnull=True)
         elif parent:
             qs = qs.filter(parent_id=parent)
-        return qs
+        # ADOC5 — l'arbre ne montre que les dossiers lisibles (ACL GED19).
+        return selectors.folders_visibles(qs, self.request.user)
 
     def perform_create(self, serializer):
         # company posée côté serveur (jamais du corps).
@@ -402,6 +403,24 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action in GOUVERNANCE_ACTIONS:
             return [HasPermissionOrLegacy(GED_GOUVERNANCE)()]
         return [HasPermissionOrLegacy(GED_GERER)()]
+
+    # ADOC5 — actions détaillées qui ÉCRIVENT le document : elles exigent le
+    # niveau ACL « écriture » (GED19) en plus du palier de rôle.
+    ACTIONS_ECRITURE_ACL = frozenset({
+        'update', 'partial_update', 'destroy', 'assigner', 'deplacer',
+        'mettre_en_corbeille', 'tagger', 'detagger', 'classer', 'restaurer',
+        'cycle_vie', 'check_out', 'check_in', 'office_sauvegarder',
+        'scinder', 'caviarder', 'ocr_piece',
+    })
+
+    def check_object_permissions(self, request, obj):
+        super().check_object_permissions(request, obj)
+        if self.action in self.ACTIONS_ECRITURE_ACL:
+            from rest_framework.exceptions import PermissionDenied
+            try:
+                selectors.assert_acl_niveau(obj, request.user, 'ecriture')
+            except PermissionError as exc:
+                raise PermissionDenied(str(exc))
 
     def get_queryset(self):
         # GED8 — base : documents visibles selon l'ACL coffre-fort.
@@ -582,9 +601,15 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         folder = (Folder.objects.filter(company=company)
                   .filter(pk=folder_id).first())
-        if folder is None:
+        if folder is None or not selectors.folder_lisible(folder, request.user):
             return Response({'folder': 'Dossier inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
+        # ADOC5 — déposer dans un dossier exige l'écriture ACL sur lui.
+        try:
+            selectors.assert_acl_niveau(folder, request.user, 'ecriture')
+        except PermissionError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         # 2) fichier : obligatoire, validé + stocké par records.storage.
         file = request.FILES.get('file')
         if not file:
@@ -1080,10 +1105,17 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         new_folder = (Folder.objects
                       .filter(company=request.user.company)
                       .filter(pk=raw_folder).first())
-        if new_folder is None:
+        if new_folder is None or not selectors.folder_lisible(
+                new_folder, request.user):
             return Response(
                 {'folder': 'Dossier inconnu.'},
                 status=status.HTTP_404_NOT_FOUND)
+        # ADOC5 — le dossier d'arrivée exige aussi l'écriture ACL.
+        try:
+            selectors.assert_acl_niveau(new_folder, request.user, 'ecriture')
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         try:
             services.move_document(document, new_folder)
         except ValueError as exc:
@@ -1901,6 +1933,15 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
             services.assert_not_locked_by_other(document, self.request.user)
         except PermissionError as exc:
             from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(str(exc))
+        # ADOC5 — document visible ET écriture ACL requise.
+        from rest_framework.exceptions import NotFound, PermissionDenied
+        if not selectors.documents_visible_to_user(
+                self.request.user).filter(pk=document.pk).exists():
+            raise NotFound('Document inconnu.')
+        try:
+            selectors.assert_acl_niveau(document, self.request.user, 'ecriture')
+        except PermissionError as exc:
             raise PermissionDenied(str(exc))
         v = serializer.validated_data
         instance = services.add_version(
@@ -3513,9 +3554,47 @@ class AclGedViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(niveau=niveau)
         return qs
 
+    def _assert_gestion_cible(self, folder, document):
+        """ADOC5 — poser/modifier/retirer une ACL exige de VOIR la cible
+        (404 sinon, comme un id absent) et, si elle est déjà gouvernée, le
+        niveau « gestion » sur elle (403) : plus d'auto-octroi."""
+        from rest_framework.exceptions import NotFound, PermissionDenied
+        user = self.request.user
+        if document is not None:
+            visible = selectors.documents_visible_to_user(user).filter(
+                pk=document.pk).exists()
+            cible = document
+        elif folder is not None:
+            visible = selectors.folder_lisible(folder, user)
+            cible = folder
+        else:
+            return
+        if not visible:
+            raise NotFound('Cible inconnue.')
+        try:
+            selectors.assert_acl_niveau(cible, user, 'gestion')
+        except PermissionError as exc:
+            raise PermissionDenied(str(exc))
+
     def perform_create(self, serializer):
+        data = serializer.validated_data
+        self._assert_gestion_cible(data.get('folder'), data.get('document'))
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        self._assert_gestion_cible(instance.folder, instance.document)
+        data = serializer.validated_data
+        if 'folder' in data or 'document' in data:
+            self._assert_gestion_cible(
+                data.get('folder', instance.folder),
+                data.get('document', instance.document))
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._assert_gestion_cible(instance.folder, instance.document)
+        instance.delete()
 
 
 class RegleAclMetadonneeViewSet(TenantMixin, viewsets.ModelViewSet):
