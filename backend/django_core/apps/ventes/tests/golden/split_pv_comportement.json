@@ -1,11 +1,11 @@
 {
   "comportement": {
-    "data_confiance": "5ad6451e924b58d78b56916151ea1cbec58d2c610523cbdc994b028576af4a9b",
-    "data_confiance_calepinage": "eda4bf2175b969440343c22ca7f67c7f35fb67e62692b652c671192785f693e2",
+    "data_confiance": "5a993636d7bc1c8a8514479cf6ef51cf099a276ccc82ac90fbe27dd646545b80",
+    "data_confiance_calepinage": "b5bfd9157c013919ebee0cc81987cfd564e09b03bed4d07f0d18c14142e9bd0d",
     "data_jeton_inconnu": "535407466c8611fc30780ef7bd85b57d4d98f0369ce86283cc215bfc94a1944c",
-    "data_standard": "5776f54ff0b25f86cd6294f55558b0ad585bff56cff50520a2cb8448903ba2fd",
-    "data_standard_kit": "d3f6f581cb8214128cea83c73dd936862fba755179c56cc8b5ce910694b14451",
-    "data_standard_reouverture": "5776f54ff0b25f86cd6294f55558b0ad585bff56cff50520a2cb8448903ba2fd",
+    "data_standard": "a17fddd684bce0a4d3f99c0983faf1b9e184be25e9099d565d062a57445b1dc6",
+    "data_standard_kit": "a32ce89d351dac7cd471c703a3bf087ff76f2005270a32a14117e662e44e4f00",
+    "data_standard_reouverture": "a17fddd684bce0a4d3f99c0983faf1b9e184be25e9099d565d062a57445b1dc6",
     "engagement_cumul": "1bd01496b5e9a53fc5c9c357dab74e521499c2967bfd4b9259c805b3d55a3d41",
     "engagement_section_inconnue": "5cb6693d2e2e09ec5e9d5e8ea999c738b8ec349d80e2ffdf7b1bda6f2c20d539",
     "engagement_valide": "5cb6693d2e2e09ec5e9d5e8ea999c738b8ec349d80e2ffdf7b1bda6f2c20d539",
