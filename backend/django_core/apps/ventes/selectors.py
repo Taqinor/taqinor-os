@@ -1591,6 +1591,10 @@ def promesse_pompage_devis(devis_id, company):
     }
 
 
+from .selectors_reglementaire import (  # noqa: E402,F401 — ré-export (CIQ617)
+    dossier_8221_resume,
+    resume_dossier_8221,
+)
 from .selectors_facturation import (  # noqa: E402,F401 — ré-export (SPL143)
     compter_factures,
     factures_echues,

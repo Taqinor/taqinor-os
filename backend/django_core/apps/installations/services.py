@@ -1496,14 +1496,16 @@ def compute_chantier_readiness(installation):
 
     # ── Dossier réglementaire loi 82-21 ──────────────────────────────────────
     regime = installation.regime_8221
-    dossier_statut = installation.dossier_statut
+    # CIQ617 — état UNIQUE : le dossier réglementaire s'il existe, sinon la
+    # saisie chantier ; un dossier refusé n'est jamais « en règle ».
+    dossier_statut, dossier_refuse, _resume = etat_dossier_8221(installation)
     NON_CONCERNE = Installation.Regime8221.NON_CONCERNE
     dossier_requis = regime != NON_CONCERNE
     # « Approuvé » ou « Compteur posé » = dossier en règle pour démarrer.
-    dossier_ok = (not dossier_requis) or dossier_statut in (
-        Installation.DossierStatut.APPROUVE,
-        Installation.DossierStatut.COMPTEUR_POSE,
-    )
+    dossier_ok = (not dossier_requis) or (
+        not dossier_refuse and dossier_statut in _STATUTS_CHANTIER_APPROUVES)
+    statut_label = (RAISON_DOSSIER_REFUSE if dossier_refuse
+                    else Installation.DossierStatut(dossier_statut).label)
     if not dossier_requis:
         checks.append({
             'cle': 'dossier',
@@ -1516,7 +1518,7 @@ def compute_chantier_readiness(installation):
             'cle': 'dossier',
             'libelle': 'Dossier réglementaire (loi 82-21)',
             'statut': 'ok',
-            'detail': installation.get_dossier_statut_display(),
+            'detail': statut_label,
         })
     else:
         checks.append({
@@ -1524,7 +1526,7 @@ def compute_chantier_readiness(installation):
             'libelle': 'Dossier réglementaire (loi 82-21)',
             'statut': 'bloquant',
             'detail': ('Dossier requis non approuvé '
-                       f'({installation.get_dossier_statut_display()}).'),
+                       f'({statut_label}).'),
         })
 
     # ── Planning ──────────────────────────────────────────────────────────────
@@ -1719,9 +1721,117 @@ def _gate_avertissements(installation, stage):
 #: CIQ613 — motif du gate dossier pour un régime 82-21 encore inconnu.
 RAISON_REGIME_A_QUALIFIER = "Régime 82-21 à qualifier."
 
+# ── CIQ617 — UN SEUL état du dossier 82-21 : le dossier réglementaire ──────
+# (``ventes.RegulatoryDossier``, 7 statuts) est la source ; le chantier n'en
+# garde qu'un MIROIR (5 statuts), écrit par ``refleter_dossier_8221`` à chaque
+# changement du dossier. Table de correspondance ÉCRITE ; un dossier REFUSÉ
+# ne se reflète JAMAIS en « approuvé » (le gate cite « Dossier refusé »).
+STATUT_DOSSIER_VERS_CHANTIER = {
+    'en_constitution': 'a_deposer',
+    'depose': 'depose',
+    'en_instruction': 'depose',
+    'complement_demande': 'depose',
+    'approuve': 'approuve',
+    'comptage_pose': 'compteur_pose',
+    'refuse': 'a_deposer',
+}
+RAISON_DOSSIER_REFUSE = "Dossier refusé."
+MESSAGE_STATUT_GERE_PAR_DOSSIER = (
+    "Le statut se gère dans le dossier réglementaire.")
+#: Champs du chantier en LECTURE SEULE tant qu'un dossier existe.
+CHAMPS_MIROIR_8221 = (
+    'regime_8221', 'dossier_statut', 'dossier_reference',
+    'dossier_operateur', 'dossier_date_depot', 'dossier_date_approbation')
+_STATUTS_DOSSIER_APPROUVES = ('approuve', 'comptage_pose')
+_STATUTS_CHANTIER_APPROUVES = (
+    Installation.DossierStatut.APPROUVE, Installation.DossierStatut.COMPTEUR_POSE)
+
+
+def resume_dossier_8221(installation):
+    """CIQ617 — état 82-21 du chantier : le ``resume`` du dossier
+    réglementaire de son devis (``ventes.selectors.dossier_8221_resume``),
+    sinon la saisie chantier (``source: 'saisie_chantier'``)."""
+    if installation.devis_id and installation.company_id:
+        from apps.ventes.selectors import dossier_8221_resume
+        resume = dossier_8221_resume(installation.company,
+                                     installation.devis_id)
+        if resume is not None:
+            return resume
+    return {
+        'source': 'saisie_chantier',
+        'statut': installation.dossier_statut,
+        'reference': installation.dossier_reference,
+        'operateur': installation.dossier_operateur,
+        'date_depot': (installation.dossier_date_depot.isoformat()
+                       if installation.dossier_date_depot else None),
+        'date_decision': (installation.dossier_date_approbation.isoformat()
+                          if installation.dossier_date_approbation else None),
+    }
+
+
+def etat_dossier_8221(installation):
+    """CIQ617 — (statut chantier effectif, refusé ?, résumé) lus du dossier
+    quand il existe, sinon de la saisie chantier (comportement historique)."""
+    resume = resume_dossier_8221(installation)
+    if resume.get('source') != 'dossier':
+        return installation.dossier_statut, False, resume
+    statut = STATUT_DOSSIER_VERS_CHANTIER.get(
+        resume.get('statut'), Installation.DossierStatut.A_DEPOSER)
+    return statut, resume.get('statut') == 'refuse', resume
+
+
+def _date_iso(valeur):
+    from datetime import date
+    if not valeur:
+        return None
+    try:
+        return date.fromisoformat(str(valeur)[:10])
+    except ValueError:
+        return None
+
+
+def refleter_dossier_8221(chantier_id, resume, company=None):
+    """CIQ617 — écrit le MIROIR du dossier 82-21 sur le chantier
+    (régime, statut via ``STATUT_DOSSIER_VERS_CHANTIER``, référence,
+    opérateur, dates). Appel de SERVICE depuis ``ventes`` (jamais un import
+    de modèle). ``company`` borne l'écriture : un chantier d'une autre
+    société n'est jamais touché. Renvoie le chantier mis à jour, ou None."""
+    if not chantier_id or not resume:
+        return None
+    qs = Installation.objects.filter(pk=chantier_id)
+    if company is not None:
+        qs = qs.filter(company=company)
+    inst = qs.first()
+    if inst is None:
+        return None
+    statut_dossier = resume.get('statut')
+    valeurs = {
+        'dossier_statut': STATUT_DOSSIER_VERS_CHANTIER.get(
+            statut_dossier, Installation.DossierStatut.A_DEPOSER),
+        'dossier_reference': resume.get('reference'),
+        'dossier_operateur': resume.get('operateur'),
+        'dossier_date_depot': _date_iso(resume.get('date_depot')),
+        'dossier_date_approbation': (
+            _date_iso(resume.get('date_decision'))
+            if statut_dossier in _STATUTS_DOSSIER_APPROUVES else None),
+    }
+    regime = resume.get('regime')
+    if regime in set(Installation.Regime8221.values):
+        valeurs['regime_8221'] = regime
+    changes = [champ for champ, val in valeurs.items()
+               if getattr(inst, champ) != val]
+    if changes:
+        for champ in changes:
+            setattr(inst, champ, valeurs[champ])
+        inst.save(update_fields=changes + ['date_modification'])
+    return inst
+
 
 def _gate_check_dossier(installation, stage=None):
-    """Dossier réglementaire loi 82-21 approuvé quand il est requis."""
+    """Dossier réglementaire loi 82-21 approuvé quand il est requis.
+
+    CIQ617 — lit l'état UNIQUE (``etat_dossier_8221``) : le dossier
+    réglementaire s'il existe, sinon la saisie chantier."""
     if installation.regime_8221 == Installation.Regime8221.NON_CONCERNE:
         return None
     if installation.regime_8221 == Installation.Regime8221.A_QUALIFIER:
@@ -1730,12 +1840,13 @@ def _gate_check_dossier(installation, stage=None):
     if (installation.regime_8221
             == Installation.Regime8221.DECLARATION_HORS_RESEAU):
         return None  # AGR625 — consultatif : voir `_gate_avertissements`.
-    if installation.dossier_statut in (
-            Installation.DossierStatut.APPROUVE,
-            Installation.DossierStatut.COMPTEUR_POSE):
+    statut, refuse, _resume = etat_dossier_8221(installation)
+    if refuse:
+        return RAISON_DOSSIER_REFUSE
+    if statut in _STATUTS_CHANTIER_APPROUVES:
         return None
     return ("Dossier loi 82-21 requis non approuvé "
-            f"({installation.get_dossier_statut_display()}).")
+            f"({Installation.DossierStatut(statut).label}).")
 
 
 def _gate_check_pack(installation, stage=None):
@@ -2218,15 +2329,18 @@ def assemble_handover_pieces(installation):
                         == Installation.Regime8221.DECLARATION_HORS_RESEAU)
     dossier_requis = (installation.regime_8221
                       != Installation.Regime8221.NON_CONCERNE)
-    dossier_present = bool(installation.dossier_reference) or (
-        installation.dossier_statut in (
-            Installation.DossierStatut.APPROUVE,
-            Installation.DossierStatut.COMPTEUR_POSE))
+    # CIQ617 — état UNIQUE (dossier réglementaire s'il existe) ; un dossier
+    # refusé n'est jamais une pièce présente.
+    statut_8221, refuse_8221, resume_8221 = etat_dossier_8221(installation)
+    reference_8221 = resume_8221.get('reference')
+    dossier_present = not refuse_8221 and (
+        bool(reference_8221)
+        or statut_8221 in _STATUTS_CHANTIER_APPROUVES)
     if hors_reseau_art3:
         pieces.append({
             'type': 'dossier_8221',
             'libelle': 'Dossier réglementaire loi 82-21',
-            'reference': (installation.dossier_reference
+            'reference': (reference_8221
                           or REFERENCE_DECLARATION_HORS_RESEAU),
             'present': dossier_present,
             'obligatoire': False,
@@ -2235,8 +2349,9 @@ def assemble_handover_pieces(installation):
         pieces.append({
             'type': 'dossier_8221',
             'libelle': 'Dossier réglementaire loi 82-21',
-            'reference': installation.dossier_reference or (
-                installation.get_dossier_statut_display()
+            'reference': reference_8221 or (
+                (RAISON_DOSSIER_REFUSE if refuse_8221
+                 else Installation.DossierStatut(statut_8221).label)
                 if dossier_requis else 'Non concerné'),
             'present': (not dossier_requis) or dossier_present,
             'obligatoire': dossier_requis,

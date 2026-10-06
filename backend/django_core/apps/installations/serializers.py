@@ -486,6 +486,10 @@ class InstallationSerializer(serializers.ModelSerializer):
     # sélecteur cross-app (jamais un champ : règle fondateur « le chantier ne
     # garde que son cœur », CAL209).
     calepinage = serializers.SerializerMethodField()
+    # CIQ617 — état UNIQUE du dossier 82-21 : le ``resume`` du dossier
+    # réglementaire (contrat ``dossier_8221.json``), sinon la saisie chantier
+    # (``source: 'saisie_chantier'``). Lecture seule.
+    dossier_8221_resume = serializers.SerializerMethodField()
 
     class Meta:
         model = Installation
@@ -522,7 +526,28 @@ class InstallationSerializer(serializers.ModelSerializer):
             }
             if errors:
                 raise serializers.ValidationError(errors)
+        # CIQ617 — tant qu'un dossier réglementaire existe, le régime et le
+        # statut 82-21 du chantier sont un MIROIR en lecture seule : ils se
+        # gèrent dans le dossier (``/ventes/dossiers-reglementaires``).
+        if self.instance is not None:
+            from .services import (
+                CHAMPS_MIROIR_8221, MESSAGE_STATUT_GERE_PAR_DOSSIER,
+                resume_dossier_8221)
+            modifies = [
+                champ for champ in CHAMPS_MIROIR_8221
+                if champ in attrs
+                and attrs[champ] != getattr(self.instance, champ)]
+            if modifies and resume_dossier_8221(
+                    self.instance).get('source') == 'dossier':
+                raise serializers.ValidationError({
+                    champ: MESSAGE_STATUT_GERE_PAR_DOSSIER
+                    for champ in modifies})
         return attrs
+
+    @extend_schema_field(serializers.DictField())
+    def get_dossier_8221_resume(self, obj):
+        from .services import resume_dossier_8221
+        return resume_dossier_8221(obj)
 
     def get_statut_ordre(self, obj):
         order = list(Installation.STATUT_ORDER)
