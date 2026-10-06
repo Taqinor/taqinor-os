@@ -4,6 +4,7 @@ from django.db import IntegrityError, models, transaction
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
 from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
 )
@@ -1764,7 +1765,10 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
 
 # ── FG63 — Session d'inventaire ───────────────────────────────────────────────
 
-class LigneInventaireSerializer(serializers.ModelSerializer):
+class LigneInventaireSerializer(SameCompanyFKSerializerMixin,
+                                serializers.ModelSerializer):
+    # ASTK1 — un id de produit d'une autre société = id absent (400).
+    same_company_fields = ('produit',)
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     ecart = serializers.IntegerField(read_only=True)
 
@@ -2178,10 +2182,18 @@ class InventaireAnnuelSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class RevalorisationStockSerializer(serializers.ModelSerializer):
+class RevalorisationStockSerializer(SameCompanyFKSerializerMixin,
+                                    serializers.ModelSerializer):
     """XSTK14 — revalorisation manuelle du stock (document tracé). Créée en
     BROUILLON via `produit`/`nouveau_cout`/`motif` ; verrouillée après
-    validation (`valider/`)."""
+    validation (`valider/`).
+
+    ASTK1 — `produit` est borné à la société de la requête et, une fois le
+    document créé (par `services.creer_revalorisation`, qui a figé le
+    snapshot ancien coût/quantité/delta), `produit` et `nouveau_cout` ne se
+    modifient plus : seul le motif reste éditable sur un brouillon."""
+    same_company_fields = ('produit',)
+    CHAMPS_FIGES_APRES_CREATION = ('produit', 'nouveau_cout')
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
 
     class Meta:
@@ -2196,6 +2208,19 @@ class RevalorisationStockSerializer(serializers.ModelSerializer):
             'delta_valeur', 'statut', 'auteur', 'date_creation',
             'date_validation',
         ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if self.instance is not None:
+            erreurs = {
+                champ: ['Champ en lecture seule après la création.']
+                for champ in self.CHAMPS_FIGES_APRES_CREATION
+                if champ in attrs
+                and attrs[champ] != getattr(self.instance, champ)
+            }
+            if erreurs:
+                raise serializers.ValidationError(erreurs)
+        return attrs
 
 
 class ConditionnementProduitSerializer(serializers.ModelSerializer):

@@ -503,12 +503,16 @@ def average_cost_with_source(produit):
     antérieures sont supplantées par la revalorisation (comportement
     historique inchangé quand aucune revalorisation n'existe)."""
     from .models import LigneBonCommandeFournisseur, RevalorisationStock
+    # ASTK1 — seuls les documents de la SOCIÉTÉ du produit comptent : une
+    # revalorisation ou une ligne BCF d'une autre société pointant (à tort)
+    # ce produit ne déplace jamais son coût.
     revalo = (RevalorisationStock.objects
-              .filter(produit=produit,
+              .filter(produit=produit, company_id=produit.company_id,
                       statut=RevalorisationStock.Statut.VALIDEE)
               .order_by('-date_validation', '-id').first())
     lignes_qs = LigneBonCommandeFournisseur.objects.filter(
-        produit=produit, quantite_recue__gt=0)
+        produit=produit, bon_commande__company_id=produit.company_id,
+        quantite_recue__gt=0)
     if revalo is not None and revalo.date_validation is not None:
         # AUD210 — postériorité mesurée sur l'ENTRÉE EN STOCK réelle.
         lignes_qs = _annoter_date_entree_stock(lignes_qs).filter(
@@ -3281,7 +3285,13 @@ def valider_inventaire_session(session, user):
             produit = ligne.produit
             # Verrou anti-concurrence
             from .models import Produit
-            produit = Produit.objects.select_for_update().get(pk=produit.pk)
+            # ASTK1 — relu DANS la société de la session : une ligne pointant
+            # le produit d'une autre société n'en déplace jamais le stock.
+            produit = Produit.objects.select_for_update().filter(
+                pk=produit.pk, company=session.company).first()
+            if produit is None:
+                raise ValueError(
+                    f'Produit introuvable (ligne {ligne.pk}).')
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant + ecart
 
