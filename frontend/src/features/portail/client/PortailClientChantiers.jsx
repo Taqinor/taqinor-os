@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { HardHat } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
 import {
-  Badge, Button, Card, EmptyState, Spinner,
+  Badge, Button, Card, EmptyState, Input, Label, Spinner,
 } from '../../../ui'
 import { formatDate } from '../../../lib/format'
 
@@ -145,6 +145,154 @@ function Galerie({ photos }) {
   )
 }
 
+// AGR618 — « Relevés de ma pompe » : liste + formulaire. Le serveur calcule la
+// moyenne par jour ; l'estimation du devis n'est comparée QUE si elle est
+// fournie (jamais un chiffre inventé). Aucun prix.
+const LABEL_TYPE_RELEVE = { heures: 'Heures de pompage', m3: 'm³ (compteur d’eau)' }
+const UNITE_RELEVE = { heures: 'h', m3: 'm³' }
+
+// Les 400 portail ne portent qu'un `detail` FR : on le range sous le champ
+// que le message désigne (type d'abord : il cite aussi l'équipement).
+function champDeLErreur(detail) {
+  if (/type de relev/i.test(detail)) return 'type'
+  if (/date/i.test(detail)) return 'date'
+  if (/équipement/i.test(detail)) return 'equipement'
+  return 'valeur'
+}
+
+function RelevesPompe({ chantierId, donnees, onEnregistre }) {
+  const equipements = donnees?.equipements ?? []
+  const releves = donnees?.releves ?? []
+  const estime = donnees?.m3_jour_estime_devis ?? null
+  const [equipement, setEquipement] = useState(equipements[0]?.id ?? '')
+  const admis = equipements.find((e) => String(e.id) === String(equipement))
+    ?.types_admis ?? []
+  const [type, setType] = useState(admis[0] ?? '')
+  const [valeur, setValeur] = useState('')
+  const [date, setDate] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [erreurs, setErreurs] = useState({})
+
+  if (equipements.length === 0) return null
+
+  const choisirEquipement = (id) => {
+    setEquipement(id)
+    const types = equipements.find((e) => String(e.id) === String(id))
+      ?.types_admis ?? []
+    if (!types.includes(type)) setType(types[0] ?? '')
+  }
+
+  const enregistrer = async () => {
+    setBusy(true)
+    setErreurs({})
+    try {
+      await portailApi.chantiers.ajouterReleve(chantierId, {
+        equipement: Number(equipement),
+        type: typeEffectif,
+        valeur,
+        date: date || undefined,
+      })
+      setValeur('')
+      await onEnregistre()
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+        || 'Le relevé n’a pas pu être enregistré.'
+      setErreurs({ [champDeLErreur(detail)]: detail })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const libelleEquipement = (id) => equipements
+    .find((e) => e.id === id)?.libelle ?? ''
+  const typeEffectif = admis.includes(type) ? type : (admis[0] ?? '')
+  // Moyenne du relevé m³ le plus récent qui en porte une, comparée au m³/jour
+  // du devis SEULEMENT quand ce dernier est fourni.
+  const dernierM3 = releves.find((r) => r.type === 'm3'
+    && r.moyenne_jour_depuis_precedent != null)
+
+  const erreur = (cle) => (erreurs[cle]
+    ? <p className="form-error text-xs" role="alert" data-testid={`releve-erreur-${cle}`}>{erreurs[cle]}</p>
+    : null)
+
+  return (
+    <section className="flex flex-col gap-3 rounded-lg border border-border p-3"
+             data-testid="releves-pompe">
+      <h3 className="text-sm font-semibold">Relevés de ma pompe</h3>
+
+      {releves.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Aucun relevé pour le moment.</p>
+      ) : (
+        <ul className="flex flex-col gap-1" data-testid="releves-liste">
+          {releves.map((r) => (
+            <li key={`${r.equipement}-${r.type}-${r.date}-${r.valeur}`} className="text-sm">
+              <span className="font-medium">{libelleEquipement(r.equipement)}</span>
+              {' — '}
+              {r.valeur} {UNITE_RELEVE[r.type] ?? r.type}
+              {' le '}{formatDate(r.date)}
+              {r.moyenne_jour_depuis_precedent != null && (
+                <span className="text-muted-foreground">
+                  {' '}(≈ {r.moyenne_jour_depuis_precedent} {UNITE_RELEVE[r.type] ?? r.type}/jour depuis le relevé précédent)
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {estime != null && dernierM3 && (
+        <p className="text-sm" data-testid="releves-comparaison">
+          Moyenne relevée : ≈ {dernierM3.moyenne_jour_depuis_precedent} m³/jour
+          {' — '}m³/jour estimé au devis : {estime}
+        </p>
+      )}
+
+      <form noValidate className="grid gap-3 sm:grid-cols-2"
+            onSubmit={(e) => e.preventDefault()}>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`rel-eq-${chantierId}`}>Équipement</Label>
+          <select id={`rel-eq-${chantierId}`} className="form-control"
+                  value={equipement}
+                  onChange={(e) => choisirEquipement(e.target.value)}>
+            {equipements.map((e) => (
+              <option key={e.id} value={e.id}>{e.libelle}</option>
+            ))}
+          </select>
+          {erreur('equipement')}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`rel-type-${chantierId}`}>Type de relevé</Label>
+          <select id={`rel-type-${chantierId}`} className="form-control"
+                  value={typeEffectif}
+                  onChange={(e) => setType(e.target.value)}>
+            {admis.map((t) => (
+              <option key={t} value={t}>{LABEL_TYPE_RELEVE[t] ?? t}</option>
+            ))}
+          </select>
+          {erreur('type')}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`rel-val-${chantierId}`}>Index du compteur</Label>
+          <Input id={`rel-val-${chantierId}`} type="number" step="any"
+                 value={valeur} onChange={(e) => setValeur(e.target.value)} />
+          {erreur('valeur')}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`rel-date-${chantierId}`}>Date du relevé</Label>
+          <Input id={`rel-date-${chantierId}`} type="date" value={date}
+                 onChange={(e) => setDate(e.target.value)} />
+          {erreur('date')}
+        </div>
+        <div className="sm:col-span-2">
+          <Button type="button" size="sm" loading={busy} onClick={enregistrer}>
+            Enregistrer le relevé
+          </Button>
+        </div>
+      </form>
+    </section>
+  )
+}
+
 export default function PortailClientChantiers() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
@@ -165,11 +313,17 @@ export default function PortailClientChantiers() {
     Promise.all([
       portailApi.chantiers.detail(id),
       portailApi.chantiers.photos(id),
+      // AGR618 — les relevés sont un plus : un échec ne casse pas le suivi.
+      Promise.resolve()
+        .then(() => portailApi.chantiers.releves(id))
+        .then((r) => r.data)
+        .catch(() => null),
     ])
-      .then(([detail, photos]) => setSuivis((etat) => ({
+      .then(([detail, photos, releves]) => setSuivis((etat) => ({
         ...etat,
         [id]: {
           etat: 'ok',
+          releves,
           jalons: detail.data?.jalons ?? [],
           recette: detail.data?.recette_pompage ?? null,
           photos: photos.data?.results ?? [],
@@ -177,6 +331,13 @@ export default function PortailClientChantiers() {
       })))
       .catch(() => setSuivis((etat) => (
         { ...etat, [id]: { etat: 'erreur' } })))
+  }
+
+  const rechargerReleves = async (id) => {
+    const r = await portailApi.chantiers.releves(id)
+    setSuivis((etat) => ({
+      ...etat, [id]: { ...etat[id], releves: r.data },
+    }))
   }
 
   useEffect(() => {
@@ -256,6 +417,11 @@ export default function PortailClientChantiers() {
                 <div className="flex flex-col gap-4">
                   <Timeline jalons={suivis[c.id].jalons} />
                   <EssaiMiseEnService essai={suivis[c.id].recette} />
+                  <RelevesPompe
+                    chantierId={c.id}
+                    donnees={suivis[c.id].releves}
+                    onEnregistre={() => rechargerReleves(c.id)}
+                  />
                   <Galerie photos={suivis[c.id].photos} />
                 </div>
               )}

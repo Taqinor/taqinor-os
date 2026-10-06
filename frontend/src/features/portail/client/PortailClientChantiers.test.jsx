@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
@@ -17,7 +17,7 @@ import { exempleContrat } from '../../../test/fixtures/contractSamples'
    ========================================================================== */
 
 vi.mock('../../../api/portailApi', () => ({
-  default: { chantiers: { liste: vi.fn(), detail: vi.fn(), photos: vi.fn() } },
+  default: { chantiers: { liste: vi.fn(), detail: vi.fn(), photos: vi.fn(), releves: vi.fn(), ajouterReleve: vi.fn() } },
 }))
 
 import portailApi from '../../../api/portailApi'
@@ -26,6 +26,11 @@ import PortailClientChantiers from './PortailClientChantiers.jsx'
 const LISTE = exempleContrat('portail', 'mes_chantiers_liste')
 const DETAIL = exempleContrat('portail', 'mes_chantiers_detail')
 const PHOTOS = exempleContrat('portail', 'mes_chantiers_photos')
+const RELEVES = exempleContrat('portail', 'mes_releves_pompage')
+const RELEVES_VIDE = exempleContrat('portail', 'mes_releves_pompage', 'exemple_vide')
+const RELEVE_201 = exempleContrat('portail', 'mes_releves_pompage', 'exemple_201')
+const CORPS_POST = exempleContrat('portail', 'mes_releves_pompage', 'corps_post')
+const RECUL = exempleContrat('portail', 'mes_releves_pompage', 'exemple_400_recul')
 const CHANTIER = LISTE.results[0]
 
 function renderPage() {
@@ -151,5 +156,92 @@ describe('PortailClientChantiers — AGR614 essai de mise en service', () => {
     await ouvrirSuivi(DETAIL)
     expect(screen.getByTestId('essai-mise-en-service').textContent)
       .not.toMatch(/MAD|DH|prix|€|\$/i)
+  })
+})
+
+describe('PortailClientChantiers — AGR618 relevés de ma pompe', () => {
+  async function ouvrirSuivi(releves) {
+    portailApi.chantiers.liste.mockResolvedValue({ data: LISTE })
+    portailApi.chantiers.detail.mockResolvedValue({ data: DETAIL })
+    portailApi.chantiers.photos.mockResolvedValue({ data: { results: [] } })
+    portailApi.chantiers.releves.mockResolvedValue({ data: releves })
+    const user = userEvent.setup()
+    const rendu = renderPage()
+    await screen.findByText(CHANTIER.reference)
+    await user.click(screen.getAllByRole('button', { name: /Voir le suivi/i })[0])
+    await screen.findByTestId('releves-pompe')
+    return { user, rendu }
+  }
+
+  it('liste les relevés du contrat et la moyenne par jour (rien au premier relevé)', async () => {
+    await ouvrirSuivi(RELEVES)
+    const items = within(screen.getByTestId('releves-liste')).getAllByRole('listitem')
+    expect(items).toHaveLength(RELEVES.releves.length)
+    expect(items[0]).toHaveTextContent('1838.00 m³')
+    expect(items[0]).toHaveTextContent('≈ 19.6 m³/jour')
+    // Premier relevé du type : moyenne null → aucune estimation affichée.
+    expect(items[2]).not.toHaveTextContent('≈')
+  })
+
+  it('compare à l’estimation du devis seulement quand elle est fournie', async () => {
+    const { rendu } = await ouvrirSuivi(RELEVES)
+    expect(screen.getByTestId('releves-comparaison'))
+      .toHaveTextContent(`m³/jour estimé au devis : ${RELEVES.m3_jour_estime_devis}`)
+    rendu.unmount()
+    cleanup()
+    await ouvrirSuivi({ ...RELEVES, m3_jour_estime_devis: null })
+    expect(screen.queryByTestId('releves-comparaison')).toBeNull()
+    expect(within(screen.getByTestId('releves-pompe')).queryByText(/estimé au devis/)).toBeNull()
+  })
+
+  it('aucun relevé : note explicite, formulaire disponible', async () => {
+    await ouvrirSuivi(RELEVES_VIDE)
+    expect(screen.getByText('Aucun relevé pour le moment.')).toBeInTheDocument()
+    expect(screen.queryByTestId('releves-comparaison')).toBeNull()
+  })
+
+  it('formulaire noValidate, index en step="any"', async () => {
+    await ouvrirSuivi(RELEVES)
+    const form = screen.getByTestId('releves-pompe').querySelector('form')
+    expect(form).toHaveAttribute('novalidate')
+    expect(screen.getByLabelText('Index du compteur')).toHaveAttribute('step', 'any')
+  })
+
+  it('envoie le POST avec les valeurs tapées puis recharge la même liste', async () => {
+    const { user } = await ouvrirSuivi(RELEVES)
+    portailApi.chantiers.ajouterReleve.mockResolvedValue({ data: RELEVE_201 })
+    portailApi.chantiers.releves.mockResolvedValue({
+      data: { ...RELEVES, releves: [RELEVE_201, ...RELEVES.releves] },
+    })
+
+    fireEvent.change(screen.getByLabelText('Index du compteur'),
+      { target: { value: CORPS_POST.valeur } })
+    fireEvent.change(screen.getByLabelText('Date du relevé'),
+      { target: { value: CORPS_POST.date } })
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le relevé' }))
+
+    await waitFor(() => expect(portailApi.chantiers.ajouterReleve)
+      .toHaveBeenCalledWith(CHANTIER.id, CORPS_POST))
+    await waitFor(() => expect(
+      within(screen.getByTestId('releves-liste')).getAllByRole('listitem'),
+    ).toHaveLength(RELEVES.releves.length + 1))
+    expect(screen.getByTestId('releves-liste')).toHaveTextContent('2391.00 m³')
+    expect(screen.getByTestId('releves-liste')).toHaveTextContent('≈ 18.4 m³/jour')
+    // Rouvrir : la même liste est resservie.
+    cleanup()
+    await ouvrirSuivi({ ...RELEVES, releves: [RELEVE_201, ...RELEVES.releves] })
+    expect(within(screen.getByTestId('releves-liste')).getAllByRole('listitem'))
+      .toHaveLength(RELEVES.releves.length + 1)
+  })
+
+  it('le 400 « le compteur ne peut pas reculer » s’affiche sous le champ index', async () => {
+    const { user } = await ouvrirSuivi(RELEVES)
+    portailApi.chantiers.ajouterReleve.mockRejectedValue({
+      response: { status: 400, data: RECUL },
+    })
+    fireEvent.change(screen.getByLabelText('Index du compteur'), { target: { value: '12' } })
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le relevé' }))
+    const erreur = await screen.findByTestId('releve-erreur-valeur')
+    expect(erreur).toHaveTextContent('le compteur ne peut pas reculer')
   })
 })
