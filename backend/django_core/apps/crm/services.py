@@ -3402,11 +3402,26 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     # pas à un pompage au bord d'un forage, « en famille » pas à une
     # entreprise. Par exception SEULEMENT, et jamais sur un texte que la
     # société a personnalisé.
-    corps = _corps_pour_segment(corps, cle_rendue, lead, langue_texte)
+    # CIQ506 — une touche de canal E-MAIL (sans texte de réponse demandé) se
+    # rend dans sa FORME e-mail (`forme_email`, CIQ502 : objet + corps,
+    # français, neutre de segment) ; sans forme pour sa clé — ou dans une
+    # autre langue que le français —, le texte de la clé tient lieu de corps
+    # (comme `relance_email_j10`), sans objet.
+    est_email = (etape.canal == RelanceEtape.Canal.EMAIL and not cle)
+    forme = None
+    if est_email and langue_texte == 'fr':
+        from apps.parametres.models_messages import forme_email
+        forme = forme_email(template_cle)
+    if forme:
+        corps = forme['corps']
+    else:
+        corps = _corps_pour_segment(corps, cle_rendue, lead, langue_texte)
+    objet_gabarit = forme['objet'] if forme else ''
 
     civilite, prenom = _civilite_et_prenom(lead, langue_texte)
     # CAD65 — civilité inconnue : salutation neutre, jamais omise.
     corps = _placer_civilite(corps, civilite)
+    objet_gabarit = _placer_civilite(objet_gabarit, civilite)
     contexte = {
         'civilite': civilite,
         'nom': (lead.nom or '').strip(),
@@ -3495,13 +3510,23 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
             str(valeur).strip() for valeur in preuve.values())
 
     manquants = [cle for cle in _PLACEHOLDERS_RENDUS
-                 if '{' + cle + '}' in (corps or '')
+                 if ('{' + cle + '}' in (corps or '')
+                     or '{' + cle + '}' in objet_gabarit)
                  and not str(contexte.get(cle, '')).strip()]
     corps = _omettre_phrases_incompletes(corps, manquants)
     message = render_message_template(corps, contexte)
+    # CIQ506 — l'objet : même contexte, même omission MRY13 (un objet dont le
+    # placeholder n'a pas de valeur est OMIS, jamais un blanc ni un défaut).
+    objet = render_message_template(
+        _omettre_phrases_incompletes(objet_gabarit, manquants),
+        contexte).strip() if objet_gabarit else ''
 
     phone = lead.whatsapp or lead.telephone or ''
-    if template_cle in _TEMPLATES_VOCAUX:
+    if est_email:
+        # Une touche e-mail n'ouvre pas WhatsApp : `wa_url` vaut `null`, et le
+        # lien `mailto:` est construit par le serveur. Rien n'est envoyé (D5).
+        wa_url = None
+    elif template_cle in _TEMPLATES_VOCAUX:
         # Le texte est le SCRIPT du vocal : on ouvre la conversation, on ne
         # pré-remplit rien — coller un script à dire serait absurde.
         wa_url = build_wa_url(phone, '')
@@ -3528,7 +3553,35 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
         # CAD79 — `True` : le texte est le SCRIPT d'une note vocale à DIRE
         # (`wa_url` sans `?text=`), jamais un message écrit à envoyer.
         'vocal': template_cle in _TEMPLATES_VOCAUX,
+        # CIQ506 — l'objet de l'e-mail (chaîne VIDE hors canal e-mail) et le
+        # lien `mailto:` (RFC 6068) ; `null` hors e-mail, sans adresse, ou
+        # pour un rôle sans `client_pii_voir` (même masquage que `lead_email`).
+        'objet': objet if est_email else '',
+        'mailto_url': (_mailto_url(lead, objet, message, user)
+                       if est_email else None),
     }
+
+
+def _mailto_url(lead, objet, corps, user):
+    """CIQ506 — ``mailto:<adresse>?subject=…&body=…`` (RFC 6068, espaces en
+    ``%20``, sauts de ligne en CRLF), ou ``None`` : fiche sans adresse, ou
+    rôle sans ``client_pii_voir`` (la file des relances ne doit pas rendre
+    l'adresse que la fiche lui masque)."""
+    from urllib.parse import quote
+
+    from .serializers import pii_masquee_pour
+
+    adresse = (getattr(lead, 'email', '') or '').strip()
+    if not adresse or pii_masquee_pour(user):
+        return None
+    parametres = []
+    if objet:
+        parametres.append('subject=' + quote(objet, safe=''))
+    if corps:
+        crlf = corps.replace('\r\n', '\n').replace('\n', '\r\n')
+        parametres.append('body=' + quote(crlf, safe=''))
+    url = 'mailto:' + quote(adresse, safe='@+')
+    return url + ('?' + '&'.join(parametres) if parametres else '')
 
 
 #: CAD70 — le refus du POST `whatsapp/` quand la preuve manque (le champ est

@@ -274,3 +274,113 @@ class PreferenceEtAbsenceTests(_Base):
     def test_aucun_numero_aucune_conversion(self):
         lead = self._lead(telephone='', whatsapp='', email=EMAIL)
         self.assertIsNone(cadence_temps.conversion_numero(lead, 'j1_pdf'))
+
+
+# ── CIQ506 — rendu e-mail d'une touche : objet et lien mailto ─────────────
+
+class RenduEmailTests(_Base):
+    """Une touche de canal ``email`` rend sa FORME e-mail ; ``objet`` et
+    ``mailto_url`` sont construits par le serveur ; ``wa_url`` vaut null."""
+
+    slug = 'ciq506'
+
+    def setUp(self):
+        super().setUp()
+        from apps.crm.models import Client
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', email='c506@example.com')
+
+    def _devis(self, date_validite=datetime.date(2026, 10, 15)):
+        from decimal import Decimal
+
+        from apps.ventes.models import Devis
+        return Devis.objects.create(
+            company=self.company, reference='DEV-CIQ506-0001',
+            client=self.client_obj, statut='envoye',
+            taux_tva=Decimal('20.00'), date_envoi=DEPART,
+            date_validite=date_validite)
+
+    def _etape(self, lead, canal, cle='j9_validite', devis=None):
+        due = DEPART + datetime.timedelta(days=9)
+        return RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='apres_devis', ordre=7,
+            due_at=due, due_date=due.date(), canal=canal,
+            libelle='Validité de la proposition', template_cle=cle,
+            devis=devis)
+
+    def test_a_objet_et_corps_de_la_forme_email_et_mailto_decodable(self):
+        from urllib.parse import parse_qs, unquote, urlsplit
+
+        from apps.parametres.models_messages import forme_email
+        lead = self._lead(telephone=FIXE, email=EMAIL)
+        rendu = services.message_pour_etape(
+            self._etape(lead, 'email', devis=self._devis()),
+            user=self.acteur)
+        forme = forme_email('j9_validite')
+        self.assertTrue(rendu['objet'].startswith('Validité de votre proposition'))
+        self.assertIn('DEV-CIQ506-0001', rendu['objet'])
+        # {date_validite} = la date du PDF (garde CAD59).
+        self.assertIn('15/10/2026', rendu['message'])
+        self.assertIn("Elle est valable jusqu'au", rendu['message'])
+        self.assertIn(forme['corps'].split('{')[0].strip()[:8],
+                      rendu['message'])
+        self.assertIsNone(rendu['wa_url'])
+        self.assertFalse(rendu['vocal'])
+        url = urlsplit(rendu['mailto_url'])
+        self.assertEqual(url.scheme, 'mailto')
+        self.assertEqual(unquote(url.path), EMAIL)
+        params = parse_qs(url.query, keep_blank_values=True)
+        self.assertEqual(params['subject'], [rendu['objet']])
+        self.assertEqual(params['body'],
+                         [rendu['message'].replace('\n', '\r\n')])
+        self.assertEqual(rendu['placeholders_manquants'], [])
+
+    def test_b_role_sans_pii_ou_sans_adresse_mailto_null(self):
+        from apps.roles.models import Role
+        lead = self._lead(telephone=FIXE, email=EMAIL)
+        etape = self._etape(lead, 'email', devis=self._devis())
+        role = Role.objects.create(
+            company=self.company, nom='CIQ506 sans PII',
+            permissions=['crm_voir'])
+        sans_pii = User.objects.create_user(
+            username='ciq506-sanspii', password='x', role=role,
+            company=self.company)
+        rendu = services.message_pour_etape(etape, user=sans_pii)
+        self.assertIsNone(rendu['mailto_url'])
+        rendu_ok = services.message_pour_etape(etape, user=self.acteur)
+        self.assertIsNotNone(rendu_ok['mailto_url'])
+        sans_adresse = self._lead('Karim', telephone=FIXE, email='')
+        rendu_vide = services.message_pour_etape(
+            self._etape(sans_adresse, 'email', devis=self._devis()),
+            user=self.acteur)
+        self.assertIsNone(rendu_vide['mailto_url'])
+        # Le texte reste rendu : seule l'adresse manque.
+        self.assertTrue(rendu_vide['message'])
+
+    def test_c_une_touche_whatsapp_garde_sa_reponse_actuelle(self):
+        lead = self._lead(telephone=MOBILE, email=EMAIL)
+        rendu = services.message_pour_etape(
+            self._etape(lead, 'whatsapp', devis=self._devis()),
+            user=self.acteur)
+        self.assertEqual(rendu['objet'], '')
+        self.assertIsNone(rendu['mailto_url'])
+        self.assertTrue(rendu['wa_url'].startswith('https://wa.me/'))
+
+    def test_une_cle_sans_forme_email_rend_le_texte_de_la_cle_sans_objet(self):
+        lead = self._lead(telephone=FIXE, email=EMAIL)
+        rendu = services.message_pour_etape(
+            self._etape(lead, 'email', cle='relance_email_j10'),
+            user=self.acteur)
+        self.assertEqual(rendu['objet'], '')
+        self.assertIsNone(rendu['wa_url'])
+        self.assertTrue(rendu['mailto_url'].startswith('mailto:'))
+        self.assertNotIn('subject=', rendu['mailto_url'])
+
+    def test_un_objet_dont_le_placeholder_manque_est_omis(self):
+        lead = self._lead(telephone=FIXE, email=EMAIL)
+        # Touche sans devis : `{reference}` n'a pas de valeur réelle.
+        rendu = services.message_pour_etape(
+            self._etape(lead, 'email', cle='j6_garanties'),
+            user=self.acteur)
+        self.assertEqual(rendu['objet'], '')
+        self.assertIn('reference', rendu['placeholders_manquants'])
