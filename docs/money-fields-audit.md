@@ -105,10 +105,10 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/ventes/models.py:596` | LigneDevis.remise | 5 | 2 |
 | `backend/django_core/apps/ventes/models.py:617` | LigneDevis.taux_tva | 5 | 2 |
 | `backend/django_core/apps/ventes/models.py:924` | AvenantDevis.taux_remise_global | 6 | 2 |
-| `backend/django_core/apps/ventes/models.py:1712` | DevisPreset.taux_tva | 5 | 2 |
-| `backend/django_core/apps/ventes/models.py:1716` | DevisPreset.remise_globale | 5 | 2 |
-| `backend/django_core/apps/ventes/models.py:2031` | LignePrixListe.prix_unitaire | 10 | 2 |
-| `backend/django_core/apps/ventes/models.py:2135` | PalierRemiseVolume.remise_pct | 5 | 2 |
+| `backend/django_core/apps/ventes/models.py:1725` | DevisPreset.taux_tva | 5 | 2 |
+| `backend/django_core/apps/ventes/models.py:1729` | DevisPreset.remise_globale | 5 | 2 |
+| `backend/django_core/apps/ventes/models.py:2044` | LignePrixListe.prix_unitaire | 10 | 2 |
+| `backend/django_core/apps/ventes/models.py:2148` | PalierRemiseVolume.remise_pct | 5 | 2 |
 | `backend/django_core/apps/ventes/models_facturation.py:113` | FactureSource.sous_total_ht | 12 | 2 |
 | `backend/django_core/apps/ventes/models_facturation.py:411` | AffectationPaiement.montant | 12 | 2 |
 | `backend/django_core/apps/ventes/models_facturation.py:451` | NoteDebit.taux_tva | 5 | 2 |

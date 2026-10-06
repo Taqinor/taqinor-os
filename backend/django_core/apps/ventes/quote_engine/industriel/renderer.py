@@ -166,7 +166,9 @@ def render_pdf_bytes(data: dict) -> bytes:
     base = str(Path(industriel_render.__file__).resolve().parent)
     # CIQ317 — densité adaptative de la page équipements, mesurée sur le
     # rendu réel ; trop longue même au dernier palier ⇒ repli NOMMÉ.
-    pdf = pdf_adaptatif(d, industriel_render.build_html, f"file://{base}/")
+    pdf = pdf_adaptatif(
+        d, industriel_render.build_html,
+        lambda html: HTML(string=html, base_url=f"file://{base}/").render())
     if pdf is None:
         raise Unsupported("nomenclature trop longue")
     return pdf

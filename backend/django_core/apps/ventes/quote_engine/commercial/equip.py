@@ -83,14 +83,15 @@ def deborde(page):
     return False
 
 
-def pdf_adaptatif(d, build_html, base_url, index_page=1):
+def pdf_adaptatif(d, build_html, rendre, index_page=1):
     """Les octets PDF au PREMIER palier de densité qui tient, ou ``None``
-    quand même le dernier déborde (le renderer lève alors ``Unsupported``)."""
-    from weasyprint import HTML
+    quand même le dernier déborde (le renderer lève alors ``Unsupported``).
+    ``rendre(html)`` : le document WeasyPrint rendu par le RENDERER — aucun
+    import WeasyPrint ici (ARC11)."""
     for palier in range(len(PALIERS_DENSITE)):
         donnees = d if palier == 0 else dict(d, _palier_equip=palier)
         html = build_html(donnees)
-        doc = HTML(string=html, base_url=base_url).render()
+        doc = rendre(html)
         # Une page qui déborde peut aussi POUSSER une page de plus : le
         # document ne tient que s'il a exactement ses pages et rien de coupé.
         attendu = html.count('<div class="page">')
