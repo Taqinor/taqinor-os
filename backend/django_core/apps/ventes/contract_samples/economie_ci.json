@@ -1268,7 +1268,7 @@
     "indicateurs": "{tri_pct, tri_horizon_ans, retour_ans, van_mad (null + `van_motif` sans taux du client), lcoe_mad_kwh, lcoe_actualise, tarif_kwh_evite_moyen}",
     "remplacements": "[{composant, annee, montant_ttc_mad, montant_ht_mad, source, motif}]",
     "om": "{statut souscrit|propose|absent|tarif_a_renseigner, montant_mad_an, source} (D-CIQ-12)",
-    "sensibilites": "[{cle, variation_pct, source, retour_ans, tri_pct}] — seulement des valeurs saisies par Reda dans Paramètres ; aucune par défaut (liste vide)",
+    "sensibilites": "[{cle, variation_pct, source, economie_annee1_mad, retour_ans, tri_pct, ecart_retour_ans, ecart_tri_pct (+ motif si non chiffré)}] — seulement des valeurs saisies par Reda dans Paramètres (TariffSettings.sensibilites_ci, CIQ211) ; aucune par défaut (liste vide + omission `sensibilites` « aucun scénario saisi ») ; INDUSTRIEL seulement (commercial : liste vide) ; chaque scénario relance flux_de_tresorerie en ne changeant qu'UNE grandeur (indexation_tarif / degradation = la valeur %/an saisie ; tarif_kwh = prix des postes × (1+v) ; production = cellules horaires × (1+v), autoconsommé recalculé min(production, charge)) — CIQ231",
     "financement": "présent SEULEMENT si une offre écrite est saisie : {libelle_client, echeance_mad, economie_mensuelle_moyenne_mad, ecart_mensuel_mad, duree_mois, source} — jamais de taux inventé ni de prêteur sans son offre (D-CIQ-15)",
     "hypotheses / omissions": "listes ; chaque valeur absente est NOMMÉE dans `omissions`",
     "alertes_internes": "[{code, message, interne: true}] — dont l'alerte cos φ relayée depuis `etude_ci.alertes` (CIQ134) ; jamais dans une charge utile client",
