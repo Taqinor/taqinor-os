@@ -1,0 +1,26 @@
+{
+  "endpoint": "GET /api/django/portail/client/ma-consommation/?chantier=<id>",
+  "pourquoi": "ADOC111 (M0) — « Ma consommation » : série de production (kWh) + drapeaux de sous-performance OUVERTS des systèmes du client, vue-fonction `ma_consommation_client` (views_client.py:220-262) qui assemble `monitoring.selectors.production_kwh_series_client_portail` (window_days, points, provider_configure) + `alertes_ouvertes`. LECTURE SEULE. `points` = une entrée par jour AYANT un relevé, triée par date ; `energy_kwh` = Decimal quantifié 0,01 (rendu texte par DRF). Sans provider (NoOpProvider) : `points` vide et `provider_configure` faux — jamais une erreur. `?chantier=` borne SEULEMENT `alertes_ouvertes` (la série reste l'agrégat client) ; un chantier étranger est ignoré. Écran consommateur : ADOC140.",
+  "forme_serveur": "complete",
+  "exemple": {
+    "window_days": 90,
+    "points": [
+      {
+        "date": "2026-10-01",
+        "energy_kwh": "42.50"
+      },
+      {
+        "date": "2026-10-02",
+        "energy_kwh": "39.80"
+      }
+    ],
+    "provider_configure": true,
+    "alertes_ouvertes": 1
+  },
+  "exemple_sans_provider": {
+    "window_days": 90,
+    "points": [],
+    "provider_configure": false,
+    "alertes_ouvertes": 0
+  }
+}
