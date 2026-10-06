@@ -478,7 +478,14 @@ def acl_entries_for_target(target):
         cond = cond | Q(folder_id__in=chain)
     if not cond:
         return AclGed.objects.none()
-    return AclGed.objects.filter(cond, company=company)
+    # ADOC16 — un partage PORTAIL (client NTPRT13, rôle portail NTPRT31) ne
+    # gouverne pas la visibilité INTERNE : il ne cache jamais un document aux
+    # employés. Le portail lit ces entrées par ses sélecteurs dédiés.
+    from apps.roles.permissions_registre import CANONICAL_PORTAIL_ROLES
+    noms_portail = [nom for nom, _perms in CANONICAL_PORTAIL_ROLES]
+    return (AclGed.objects.filter(cond, company=company)
+            .filter(client__isnull=True)
+            .exclude(role__nom__in=noms_portail))
 
 
 def _principal_matches(entry, user):
