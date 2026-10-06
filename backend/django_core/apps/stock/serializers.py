@@ -1245,6 +1245,29 @@ class PrixFournisseurSerializer(serializers.ModelSerializer):
         # company posé côté serveur.
 
 
+def _peut_voir_montants_achat(user):
+    """ASTK10/11 (D-ASTK-2) — seul garde des prix et montants d'ACHAT servis
+    en lecture : ``user.can_view_buy_prices`` (permission ``prix_achat_voir``,
+    repli historique pour les comptes légacy sans rôle fin). Aucun ``user``
+    (usage service/interne, PDF fournisseur) ⇒ comportement historique."""
+    if user is None:
+        return True
+    return bool(getattr(user, 'can_view_buy_prices', True))
+
+
+def _user_du_contexte(serializer):
+    request = serializer.context.get('request')
+    return getattr(request, 'user', None)
+
+
+#: ASTK10 — clés de prix d'achat d'une ligne de BCF, retirées sans
+#: ``prix_achat_voir``.
+CHAMPS_PRIX_ACHAT_LIGNE_BCF = (
+    'prix_achat_unitaire', 'prix_achat_unitaire_devise', 'frais_annexes',
+    'total_achat',
+)
+
+
 class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
     # XPUR16 — SerializerMethodField (pas ``source='produit.nom'``) : une
     # ligne libre/service n'a pas de produit, `produit` peut être None.
@@ -1253,6 +1276,9 @@ class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
     quantite_restante = serializers.IntegerField(read_only=True)
     total_achat = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
+    # ASTK67 — `id` accepté en écriture : une ligne transmise avec son `id`
+    # est MISE À JOUR sur place (upsert), sans id elle est créée.
+    id = serializers.IntegerField(required=False)
 
     class Meta:
         model = LigneBonCommandeFournisseur
@@ -1271,6 +1297,15 @@ class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
         # quantite_recue n'est jamais posée librement : elle évolue uniquement
         # via l'action de réception (perform_create n'accepte que le reste).
         read_only_fields = ['quantite_recue', 'sans_stock']
+
+    def get_fields(self):
+        # ASTK10 (D-ASTK-2) — prix d'achat retirés sans `prix_achat_voir`
+        # (patron PrixFournisseurSerializer, AUD213).
+        fields = super().get_fields()
+        if not _peut_voir_montants_achat(_user_du_contexte(self)):
+            for nom in CHAMPS_PRIX_ACHAT_LIGNE_BCF:
+                fields.pop(nom, None)
+        return fields
 
     def get_produit_nom(self, obj):
         return obj.produit.nom if obj.produit_id else None
@@ -1351,7 +1386,21 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             'revision',
             # ZPUR11 — posé uniquement par l'action `annuler`.
             'motif_annulation',
+            # ASTK22 — le statut n'avance QUE par les gestes (envoyer /
+            # envoyer-email / whatsapp sous garde d'approbation, réception,
+            # annuler, rouvrir) — jamais en écriture libre.
+            'statut',
         ]
+
+    def get_fields(self):
+        # ASTK10 (D-ASTK-2) — total d'achat et acomptes versés (montants
+        # d'achat) retirés sans `prix_achat_voir` ; les lignes masquent
+        # leurs propres prix (LigneBonCommandeFournisseurSerializer).
+        fields = super().get_fields()
+        if not _peut_voir_montants_achat(_user_du_contexte(self)):
+            fields.pop('total_achat', None)
+            fields.pop('acomptes', None)
+        return fields
 
     def get_acomptes(self, obj):
         return AcompteFournisseurSerializer(
@@ -1437,31 +1486,70 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
                 validated_data['date_livraison_prevue'] = derived
         bon = BonCommandeFournisseur.objects.create(**validated_data)
         for ligne in lignes_data:
+            ligne.pop('id', None)  # ASTK67 — id ignoré à la création
             apply_devise_ligne_bcf(ligne, devise, taux)
             LigneBonCommandeFournisseur.objects.create(
                 bon_commande=bon, **ligne)
         return bon
 
     def update(self, instance, validated_data):
-        from .services import apply_devise_ligne_bcf
         # Les écritures sur les lignes ne sont permises qu'en BROUILLON :
         # une fois envoyé/reçu, le contenu commandé est figé.
         lignes_data = validated_data.pop('lignes', None)
-        for attr, val in validated_data.items():
-            setattr(instance, attr, val)
-        instance.save()
         if lignes_data is not None:
             if instance.statut != BonCommandeFournisseur.Statut.BROUILLON:
                 raise serializers.ValidationError(
                     'Les lignes ne sont modifiables qu\'en brouillon.')
             self._validate_company_produits(lignes_data)
-            instance.lignes.all().delete()
-            for ligne in lignes_data:
-                apply_devise_ligne_bcf(
-                    ligne, instance.devise, instance.taux_change)
-                LigneBonCommandeFournisseur.objects.create(
-                    bon_commande=instance, **ligne)
+        # ASTK67 — en-tête et lignes dans UNE transaction : si les lignes
+        # échouent (ligne protégée → 409, validation → 400), l'en-tête n'est
+        # jamais écrit.
+        with transaction.atomic():
+            for attr, val in validated_data.items():
+                setattr(instance, attr, val)
+            instance.save()
+            if lignes_data is not None:
+                self._upsert_lignes(instance, lignes_data)
         return instance
+
+    #: ASTK67 — champs d'une ligne existante mis à jour quand ils sont
+    #: transmis ; un champ NON transmis garde sa valeur en base.
+    CHAMPS_LIGNE_MODIFIABLES = (
+        'produit', 'designation', 'quantite', 'prix_achat_unitaire',
+        'prix_achat_unitaire_devise', 'frais_annexes',
+    )
+
+    def _upsert_lignes(self, instance, lignes_data):
+        """ASTK67 — lignes d'un BCF brouillon mises à jour PAR IDENTIFIANT :
+        une ligne transmise avec son `id` est modifiée sur place (champs non
+        transmis conservés : frais_annexes, prix_achat_unitaire_devise…) ;
+        sans `id` (ou id étranger à ce BCF) elle est créée ; une ligne
+        existante absente du payload est supprimée (ProtectedError → 409)."""
+        from .services import apply_devise_ligne_bcf
+        existantes = {ligne.id: ligne for ligne in instance.lignes.all()}
+        gardees = set()
+        for data in lignes_data:
+            ligne_id = data.pop('id', None)
+            ligne = existantes.get(ligne_id)
+            if ligne is None or ligne_id in gardees:
+                apply_devise_ligne_bcf(
+                    data, instance.devise, instance.taux_change)
+                LigneBonCommandeFournisseur.objects.create(
+                    bon_commande=instance, **data)
+                continue
+            gardees.add(ligne_id)
+            fusion = {
+                champ: data.get(champ, getattr(ligne, champ))
+                for champ in self.CHAMPS_LIGNE_MODIFIABLES
+            }
+            apply_devise_ligne_bcf(
+                fusion, instance.devise, instance.taux_change)
+            for champ in self.CHAMPS_LIGNE_MODIFIABLES:
+                setattr(ligne, champ, fusion[champ])
+            ligne.save()
+        for ligne_id, ligne in existantes.items():
+            if ligne_id not in gardees:
+                ligne.delete()
 
 
 # ── G5 — Réception fournisseur (goods-in) ────────────────────────────────────
@@ -1546,6 +1634,11 @@ class ReceptionFournisseurSerializer(serializers.ModelSerializer):
         if value.statut == BonCommandeFournisseur.Statut.ANNULE:
             raise serializers.ValidationError(
                 'Ce bon de commande est annulé.')
+        # ASTK22 — une réception ne se crée que sur un BCF envoyé.
+        from .services import bcf_refuse_reception
+        motif = bcf_refuse_reception(value)
+        if motif:
+            raise serializers.ValidationError(motif)
         return value
 
     def create(self, validated_data):
@@ -1577,6 +1670,19 @@ class ReceptionFournisseurSerializer(serializers.ModelSerializer):
 
 # ── G5 — Facture fournisseur / comptes à payer (AP) ──────────────────────────
 
+#: ASTK11 — montants d'achat d'une ligne de facture fournisseur.
+CHAMPS_MONTANTS_LIGNE_FACTURE_FOURNISSEUR = (
+    'prix_unitaire_ht', 'total_ht', 'total_tva',
+)
+#: ASTK11 — montants d'achat d'une facture fournisseur (en-tête, règlements,
+#: échéances, imputations), retirés sans `prix_achat_voir`.
+CHAMPS_MONTANTS_FACTURE_FOURNISSEUR = (
+    'montant_ht', 'montant_tva', 'montant_ttc', 'montant_ttc_devise',
+    'total_paye', 'solde_du', 'total_acomptes_imputes',
+    'total_avoirs_imputes', 'sous_totaux_par_taux', 'paiements', 'echeances',
+)
+
+
 class LigneFactureFournisseurSerializer(serializers.ModelSerializer):
     # produit est optionnel (ligne libre/service, XPUR16) — default=None
     # évite une AttributeError DRF quand produit est vide.
@@ -1595,6 +1701,15 @@ class LigneFactureFournisseurSerializer(serializers.ModelSerializer):
             'id', 'produit', 'produit_nom', 'designation', 'quantite',
             'prix_unitaire_ht', 'total_ht', 'taux_tva', 'total_tva',
         ]
+
+    def get_fields(self):
+        # ASTK11 (D-ASTK-2) — prix et totaux d'achat retirés sans
+        # `prix_achat_voir`.
+        fields = super().get_fields()
+        if not _peut_voir_montants_achat(_user_du_contexte(self)):
+            for nom in CHAMPS_MONTANTS_LIGNE_FACTURE_FOURNISSEUR:
+                fields.pop(nom, None)
+        return fields
 
 
 class PaiementFournisseurSerializer(serializers.ModelSerializer):
@@ -1748,6 +1863,21 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             'numero_clearance_dgi', 'statut_conformite_dgi',
         ]
 
+    def get_fields(self):
+        # ASTK11 (D-ASTK-2) — montants d'achat servis UNIQUEMENT avec
+        # `prix_achat_voir` ; les règlements imbriqués suivent EN PLUS le
+        # palier AUD419 de PaiementFournisseurViewSet (responsable/admin) —
+        # ferme le contournement « paiements-fournisseur 403 mais
+        # factures-fournisseur 200 avec date_paiement ».
+        fields = super().get_fields()
+        user = _user_du_contexte(self)
+        if not _peut_voir_montants_achat(user):
+            for nom in CHAMPS_MONTANTS_FACTURE_FOURNISSEUR:
+                fields.pop(nom, None)
+        elif user is not None and not getattr(user, 'is_responsable', True):
+            fields.pop('paiements', None)
+        return fields
+
     def get_sous_totaux_par_taux(self, obj):
         from .selectors import sous_totaux_tva_facture_fournisseur
         return sous_totaux_tva_facture_fournisseur(obj)
@@ -1811,7 +1941,57 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             LigneFactureFournisseur.objects.create(facture=facture, **ligne)
         return facture
 
+    #: ASTK26 — champs verrouillés dès qu'un paiement, un acompte ou un avoir
+    #: est imputé sur la facture.
+    CHAMPS_VERROUILLES_SI_IMPUTEE = (
+        'montant_ht', 'montant_tva', 'montant_ttc', 'montant_ttc_devise',
+        'devise', 'taux_change', 'fournisseur',
+    )
+    _MSG_FACTURE_REGLEE = 'Facture réglée : montants verrouillés.'
+
+    @staticmethod
+    def _a_une_imputation(instance):
+        return (instance.paiements.exists()
+                or instance.acomptes_imputes.exists()
+                or instance.avoirs_imputes.exists())
+
+    def _verifier_verrou_imputation(self, instance, validated_data):
+        """ASTK26 — une facture qui porte un paiement, un acompte ou un avoir
+        imputé ne voit plus changer ses montants, son fournisseur, sa devise,
+        son lien BCF ni ses lignes (sinon solde_du/statut divergent du réglé)."""
+        if not self._a_une_imputation(instance):
+            return
+        changes = [
+            champ for champ in self.CHAMPS_VERROUILLES_SI_IMPUTEE
+            if champ in validated_data
+            and validated_data[champ] != getattr(instance, champ)
+        ]
+        # Le lien BCF d'une facture réglée ne se pose ni ne se retire (le
+        # retirer servait à contourner la garde DC16 ci-dessous).
+        if 'bon_commande' in validated_data:
+            changes.append('bon_commande')
+        if 'lignes' in validated_data:
+            changes.append('lignes')
+        if changes:
+            raise serializers.ValidationError({
+                'detail': self._MSG_FACTURE_REGLEE,
+                'champs': changes,
+            })
+
     def update(self, instance, validated_data):
+        self._verifier_verrou_imputation(instance, validated_data)
+        # ASTK26 — un PATCH du montant en devise / du taux ré-applique la
+        # contre-valeur MAD, comme à la création (XPUR3).
+        if {'montant_ttc_devise', 'devise', 'taux_change'} & set(
+                validated_data):
+            from .services import apply_devise_facture
+            mad = apply_devise_facture(
+                validated_data.get(
+                    'montant_ttc_devise', instance.montant_ttc_devise),
+                validated_data.get('devise', instance.devise),
+                validated_data.get('taux_change', instance.taux_change))
+            if mad is not None:
+                validated_data['montant_ttc'] = mad
         # DC16 — sur une FF déjà liée à un BCF (typiquement issue de FG56), les
         # montants restent ceux dérivés de la réception : on rejette toute
         # tentative de les écraser à la main.
@@ -1829,6 +2009,10 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             for ligne in lignes_data:
                 LigneFactureFournisseur.objects.create(
                     facture=instance, **ligne)
+        # ASTK26 — statut de règlement recalculé à toute édition permise
+        # (le TTC a pu changer : solde_du et statut restent cohérents).
+        from .services import recompute_facture_fournisseur_statut
+        recompute_facture_fournisseur_statut(instance)
         return instance
 
 

@@ -57,7 +57,7 @@ def make_company(slug, nom):
 def make_interne(company, username):
     role = Role.objects.create(
         company=company, nom=f'r-{username}',
-        permissions=['stock_voir', 'stock_modifier'])
+        permissions=['stock_voir', 'stock_modifier', 'prix_achat_voir'])
     return CustomUser.objects.create_user(
         username=username, password='motdepasse-test-1234',
         company=company, role=role, role_legacy='responsable')

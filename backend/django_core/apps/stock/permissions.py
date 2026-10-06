@@ -40,3 +40,21 @@ class PeutValiderDossierFournisseur(BasePermission):
         if getattr(user, 'portee', 'interne') != 'interne':
             return False
         return _user_has_or_legacy(user, PERM_VALIDER_DOSSIER_FOURNISSEUR)
+
+
+class PeutVoirPrixAchat(BasePermission):
+    """ASTK10 (D-ASTK-2) — lectures dont l'objet même est un prix ou un
+    montant d'ACHAT (PDF interne du BCF, historique des prix, achats hors
+    contrat, comptes à payer…) : réservées à ``prix_achat_voir``
+    (``user.can_view_buy_prices`` — repli historique pour les comptes légacy
+    sans rôle fin, exactement comme le masquage des serializers)."""
+
+    message = "Permission « prix_achat_voir » requise (prix et montants d'achat)."
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        if not (user and user.is_authenticated):
+            return False
+        if getattr(user, 'portee', 'interne') != 'interne':
+            return False
+        return bool(getattr(user, 'can_view_buy_prices', False))

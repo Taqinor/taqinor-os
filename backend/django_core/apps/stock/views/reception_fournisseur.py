@@ -304,8 +304,16 @@ class ReceptionFournisseurViewSet(ControleReceptionActionsMixin,
         """Confirme la réception : incrémente le stock (ENTREE) pour chaque
         ligne reçue et avance le statut du BCF. Idempotent : une réception déjà
         confirmée ne re-crée jamais de mouvement."""
-        from ..services import confirm_reception_fournisseur
+        from ..services import (
+            bcf_refuse_reception, confirm_reception_fournisseur,
+        )
         reception = self.get_object()
+        # ASTK22 — jamais de réception confirmée sur un BCF brouillon (la
+        # confirmation le faisait passer « envoyé » sans approbation).
+        motif = bcf_refuse_reception(reception.bon_commande)
+        if motif:
+            return Response({'detail': motif},
+                            status=status.HTTP_400_BAD_REQUEST)
         try:
             confirm_reception_fournisseur(reception, request.user)
         except ValueError as exc:
