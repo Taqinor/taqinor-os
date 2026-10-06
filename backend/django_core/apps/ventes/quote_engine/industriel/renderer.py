@@ -13,6 +13,8 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
+from ..ci.synthese import chiffres_cles, synthese_ci
+
 
 class Unsupported(Exception):
     """The devis/options are outside the industriel renderer's scope."""
@@ -100,15 +102,25 @@ def _augment(data: dict) -> dict:
     d.setdefault("validity_days", None)
     d.setdefault("valid_until", None)
 
-    # KPIs de l'étude (None quand non calculés → la page dégrade proprement).
-    # QJR625 — la puissance et la production DES LIGNES d'abord (le builder y
-    # a déjà réaligné une étude fraîche) ; les clés d'étude ne sont plus qu'un
-    # repli — une étude calculée pour un autre kWc ne passe plus devant.
-    d["ind_kwc"] = _num(d.get("puissance_kwc")) or _num(etude.get("kwc"))
-    d["ind_prod"] = _num(d.get("prod_kwh")) or _num(etude.get("production_annuelle"))
+    # CIQ307 — UNE SOURCE : ``synthese_ci(data)``, la fonction que sert aussi
+    # /proposition (CIQ306). Plus de production « par ville » (``prod_kwh``)
+    # imprimée à côté de taux d'un autre modèle (C3-04) : la production est
+    # celle du moteur C&I, ou elle est omise ; plus aucun taux d'étude JS.
+    synthese = synthese_ci(d) or {}
+    chiffres = chiffres_cles(synthese)
+    d["ind_synthese"] = synthese
+    # QJR625 — la puissance DES LIGNES (``systeme.kwc`` en est la lecture).
+    d["ind_kwc"] = chiffres["kwc"] or _num(d.get("puissance_kwc"))         or _num(etude.get("kwc"))
+    d["ind_prod"] = chiffres["production_kwh_an"]
     d["ind_conso"] = _num(etude.get("conso_annuelle")) or _num(d.get("conso_annuelle_kwh"))
-    d["ind_autoconso"] = _num(etude.get("taux_autoconso"))
-    d["ind_couverture"] = _num(etude.get("taux_couverture"))
+    d["ind_autoconso"] = chiffres["taux_autoconso_pct"]
+    d["ind_couverture"] = chiffres["taux_couverture_pct"]
+    d["ind_methode"] = chiffres["libelle_methode"]
+    d["ind_sous_reserve"] = chiffres["sous_reserve"]
+    d["ind_a_confirmer"] = chiffres["a_confirmer"]
+    d["ind_note_pointe"] = chiffres["note_pointe"]
+    d["ind_motif_argent"] = chiffres["motif_argent"]
+    d["ind_argent_mt"] = chiffres["argent_mt"]
     # QXMT — DOSSIER MT SANS ÉCONOMIES D'ÉTUDE : aucun repli sur le chiffre BT.
     # ``eco_s_ann``/``roi_s`` sortent de ``calculate_savings_roi``, au barème
     # BASSE TENSION de l'ONEE. Les reprendre sur un dossier raccordé en MT
@@ -126,14 +138,18 @@ def _augment(data: dict) -> dict:
     # cashflow, TRI et hypothèses sont OMIS (``None`` ⇒ la page 3 bascule sur
     # son motif d'omission, jamais un « 0 », QJR119) jusqu'à ce que
     # ``synthese_ci.argent`` les serve (CIQ307). La page reste : 4 pages.
-    d["ind_economies"] = None
-    d["ind_payback"] = None
+    # CIQ307 — tuile économies (base dite) et payback du flux : lus sur
+    # ``synthese_ci.argent`` ; la page finance garde son motif d'omission
+    # tant qu'aucune série n'est servie (``ind_cashflow``).
+    d["ind_economies"] = chiffres["economie_annuelle_mad"]
+    d["ind_economie_base"] = chiffres["base_economie"]
+    d["ind_payback"] = chiffres["payback_ans"]
     d["ind_cashflow"] = None
     d["ind_cashflow_branche"] = None
     d["ind_cashflow_hypotheses"] = None
 
-    # Injection 82-21 (QX50) — rendue UNIQUEMENT si l'étude la porte (net des
-    # frais réseau, plafonnée 20 %). Absente aujourd'hui → aucune ligne inventée.
+    # Injection 82-21 (QX50) — rendue UNIQUEMENT si l'étude la porte, avec la
+    # mention ``MENTION_82_21`` (CIQ305). Absente → aucune ligne inventée.
     d["ind_injection_dh"] = _num(etude.get("injection_dh_an"))
     d["ind_injection_kwh"] = _num(etude.get("injection_kwh_an"))
     # O&M annuel : rendu seulement si fourni (sinon note « inclus »).

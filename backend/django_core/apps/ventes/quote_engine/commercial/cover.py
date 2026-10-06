@@ -10,6 +10,8 @@ from . import categories
 from ..figures import ancre
 # QJR651 — kwc_str et la cellule KPI : harnais premium commun.
 from .. import premium_base
+# CIQ307 — bandeau, méthode, tuiles d'argent : lus sur ``synthese_ci``.
+from ..ci import couverture as ci_couverture
 
 
 def build(ctx):
@@ -67,7 +69,6 @@ def build(ctx):
     accroche = meta["accroche"]
 
     kwc = premium_base.kwc_str(d.get("com_kwc"))
-    economies = d.get("com_economies")
     autoconso = d.get("com_autoconso")
     couverture = d.get("com_couverture")
     invest = d.get("_invest_ttc") or 0
@@ -88,20 +89,18 @@ def build(ctx):
     # remplie d'un « 0 » ni d'un chiffre calculé au barème BASSE TENSION.
     # QJR119 — l'omission couvre aussi « valeur non chiffrable » : le garde ne
     # testait que le cas MT et laissait imprimer « 0 MAD — Économies / an ».
-    if not d.get("com_masquer_economies") and economies is not None:
-        cellules.append(kpi(fmt(economies), "&nbsp;MAD", "Économies / an",
-                            "economie_annuelle"))
+    # CIQ307 — tuiles d'argent lues sur ``synthese_ci.argent`` : « estimées »,
+    # base HT/TTC dite, payback du flux ; absentes ⇒ omises.
+    cellules.extend(ci_couverture.tuiles_argent(d, "com", kpi, fmt))
     kpis = '<td class="c1c-kgap"></td>'.join(cellules)
+    bandeau = ci_couverture.bandeau_reserve(d, "com", "c1c")
+    methode_line = ci_couverture.ligne_methode(d, "com", "c1c")
+    note_pointe = ci_couverture.note_pointe(d, "com")
 
     # QXMT — la SOURCE du barème voyage avec le chiffre, ou l'explication de
     # son absence. Vide hors dossier MT.
     if d.get("com_masquer_economies"):
-        mt_line = ('<div class="c1c-mtsrc">Dossier raccordé en MOYENNE '
-                   'TENSION : les économies et le retour sur investissement ne '
-                   'sont pas chiffrés au barème basse tension. Communiquez '
-                   'votre répartition horaire (pointe / heures pleines / '
-                   'heures creuses) et nous les calculons sur le barème MT.'
-                   '</div>')
+        mt_line = ci_couverture.ligne_non_chiffre(d, "com", "c1c")
     elif d.get("com_mt_mention"):
         mt_line = f'<div class="c1c-mtsrc">{d["com_mt_mention"]}</div>'
     else:
@@ -145,6 +144,7 @@ def build(ctx):
 .c1c-kl{{font-size:7pt;color:{muted};margin-top:3px;letter-spacing:.3px;}}
 /* QXMT — ligne SOURCE sous le bloc économies (petite, jamais un chiffre nu). */
 .c1c-mtsrc{{margin-top:6px;font-size:6.8pt;color:{muted};line-height:1.35;}}
+{ci_couverture.css_bandeau("c1c", gold, ink, muted)}
 .c1c-note{{margin-top:12px;border:1px solid {green_bg};border-left:4px solid {green};
   border-radius:12px;background:linear-gradient(100deg,{green_bg},#fff 72%);
   padding:10px 14px;font-size:8.5pt;color:{ink};line-height:1.45;}}
@@ -188,12 +188,13 @@ def build(ctx):
   </div>
 
   <div class="c1c-wrap">
+    {bandeau}
     <div class="c1c-kpirow">{kpis}</div>
+    {methode_line}
     {mt_line}
     <div class="c1c-note">
       L'installation vise l'<b>autoconsommation</b> : la valeur porte d'abord sur
-      la consommation de <b>journée</b> de votre établissement. La <b>pointe</b>
-      (soir/nuit) n'est sécurisée qu'avec un <b>stockage</b> — non promise sans batterie.
+      la consommation de <b>journée</b> de votre établissement. {note_pointe}
     </div>
     <div class="c1c-inv">
       <div class="c1c-inv-l">Investissement (TTC, clé en main)</div>

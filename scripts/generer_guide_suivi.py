@@ -32,6 +32,8 @@ Usage :
     python scripts/generer_guide_suivi.py --html-seulement   # machine sans Edge
     python scripts/generer_guide_suivi.py --forcer           # réimprime le PDF
     python scripts/generer_guide_suivi.py --visite           # + guide de la visite
+    python scripts/generer_guide_suivi.py devis_pompage      # AGR136 : guide « Devis pompage »
+    python scripts/generer_guide_suivi.py tout               # les deux guides
     python scripts/generer_guide_suivi.py --edge "C:\\...\\msedge.exe"
 
 ``--visite`` réimprime aussi le guide de la visite technique : sa source HTML est
@@ -105,6 +107,8 @@ def chemins(racine: Path = RACINE) -> SimpleNamespace:
         visite_html=visite_html,
         visite_pdf_docs=docs / 'Guide_visite_suivi_commercial.pdf',
         visite_pdf_fixture=visite_html.with_suffix('.pdf'),
+        pompage_html=docs / 'source' / 'devis_pompage.html',
+        pompage_pdf=docs / FICHIER_POMPAGE,
     )
 
 
@@ -1062,18 +1066,23 @@ def ecrire_texte_si_change(chemin: Path, contenu: str) -> bool:
     return True
 
 
-def maj_manifeste(chemin: Path, version: str) -> bool:
-    """Crée ou met à jour l'entrée de CE guide dans le manifeste de publication."""
+def maj_manifeste(chemin: Path, version: str, *, fichier: str = None, titre: str = None,
+                  description: str = None) -> bool:
+    """Crée ou met à jour l'entrée d'un guide dans le manifeste de publication
+    (par défaut : le guide du suivi commercial)."""
+    fichier = fichier or FICHIER_PDF
+    titre = titre or TITRE_GED
+    description = description or DESCRIPTION_GED
     try:
         donnees = json.loads(chemin.read_text(encoding='utf-8'))
     except (OSError, ValueError) as exc:
         erreur(f'Manifeste illisible ({chemin}) : {exc}')
     if not isinstance(donnees, list):
         erreur(f'Manifeste invalide (liste attendue) : {chemin}')
-    entree = {'fichier': FICHIER_PDF, 'titre': TITRE_GED, 'version': str(version),
-              'description': DESCRIPTION_GED, 'cabinet': CABINET_GED, 'dossier': DOSSIER_GED}
+    entree = {'fichier': fichier, 'titre': titre, 'version': str(version),
+              'description': description, 'cabinet': CABINET_GED, 'dossier': DOSSIER_GED}
     for i, existante in enumerate(donnees):
-        if isinstance(existante, dict) and existante.get('fichier') == FICHIER_PDF:
+        if isinstance(existante, dict) and existante.get('fichier') == fichier:
             donnees[i] = entree
             break
     else:
@@ -1141,11 +1150,225 @@ def imprimer_pdf(edge: Path, source_html: Path, destinations: list) -> int:
                 time.sleep(0.5)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 6. AGR136 — GUIDE « DEVIS POMPAGE EN 10 GESTES » (cible `devis_pompage`)
+# ══════════════════════════════════════════════════════════════════════════════
+# Source unique : CE bloc. Le HTML (`docs/meryem/source/devis_pompage.html`) en
+# est la sortie, le PDF l'impression d'Edge, l'entrée du manifeste (GED
+# Documentation → Guides) vient des constantes ci-dessous. Aucun chiffre
+# d'exemple : les libellés sont ceux de l'écran du générateur (PanneauAgricole),
+# jamais une valeur inventée ; les chiffres d'un devis réel se lisent à l'écran.
+
+FICHIER_POMPAGE = 'Devis_pompage.pdf'
+TITRE_POMPAGE = 'Guide — Le devis de pompage solaire en 10 gestes'
+VERSION_POMPAGE = '1.0'
+DESCRIPTION_POMPAGE = (
+    'Les dix gestes pour chiffrer un pompage solaire dans le générateur de devis : '
+    'cas de pompe, besoin en eau, point d’eau, hauteur, résultat du serveur, '
+    'taille et options, économie déclarée, enregistrement et document client.')
+DATE_POMPAGE = '06/10/2026'
+
+# (titre du geste, [phrases], écran concerné)
+GESTES_POMPAGE = (
+    ('Ouvrir le générateur en marché Agricole',
+     ['Menu Ventes → Devis → Nouveau devis, puis le marché « Agricole (pompage) ». '
+      'Choisis le lead ou le client : un devis agricole ne change jamais le type du lead.'],
+     'Générateur de devis'),
+    ('Dire le cas de pompe',
+     ['« Pompe neuve » : le serveur choisit la pompe dans le catalogue. '
+      '« Pompe existante conservée » : tu relèves la plaque (puissance en kW ou en CV, '
+      'tension, phases, courant) et le devis ne chiffre que le variateur, les panneaux '
+      'et la structure.',
+      'Aucune puissance n’est supposée : une plaque en CV seul est signalée, la conversion '
+      'en kW ne sert qu’à l’affichage.'],
+     'Bloc « Cas de pompe »'),
+    ('Choisir le type de pompe et l’alimentation',
+     ['Immergée ou surface ; mono 220 V ou tri 380 V. Le serveur n’invente pas de gamme '
+      'qui n’existe pas : si la gamme monophasée du catalogue ne suffit pas, il le dit '
+      'dans les alertes.'],
+     'Type de pompe, Alimentation'),
+    ('Exprimer le besoin en eau',
+     ['Trois façons, jamais mélangées : « Volume déclaré » (le client dit combien de m³ par '
+      'jour, avec son mois de pointe), « Pompe actuelle » (débit et heures de la pompe en '
+      'place) ou « Cultures » (cultures, surfaces, région).',
+      'Le volume déclaré passe d’abord ; le besoin agronomique est étiqueté comme tel et '
+      'n’est jamais le maximum des deux.'],
+     'Bloc « Besoin en eau »'),
+    ('Relever le point d’eau',
+     ['Débit d’exploitation du forage avec son origine et sa date, niveau statique, '
+      'niveau dynamique (ou rabattement), diamètre de tubage, profondeur de calage, '
+      'réservoir. Chaque valeur est gardée avec sa source (saisie, fiche du lead, mesure '
+      'de visite).',
+      'Si le niveau d’eau ou le débit du forage est inconnu, l’écran demande le '
+      'relevé du point d’eau avant le devis : planifie la visite de relevé.'],
+     'Bloc « Point d’eau »'),
+    ('Donner la hauteur (HMT)',
+     ['Soit la HMT saisie, soit la HMT détaillée (dénivelé, matériau, diamètre et longueur '
+      'de la conduite, pertes singulières, pression de service). Quand une composante manque, '
+      'le serveur retombe sur la HMT saisie et le dit.',
+      'Une HMT saisie à côté d’une HMT calculée est une surcharge : l’écran l’indique.'],
+     'HMT saisie, « Détailler la HMT »'),
+    ('Lire le résultat du serveur',
+     ['Aucun calcul ne se fait dans le navigateur : l’écran affiche la réponse du serveur '
+      '(pompe retenue, champ photovoltaïque, production et couverture mois par mois, '
+      'autonomie du réservoir, hypothèses). Toutes les alertes du serveur sont affichées, '
+      'aucune n’est filtrée, et aucune ne bloque l’enregistrement.'],
+     'Résultat du pompage'),
+    ('Choisir la taille et cocher les options',
+     ['Trois tailles sont proposées (inférieure, recommandée, supérieure) ; une taille omise '
+      'est expliquée. Le kit comprend d’office la pompe (si neuve), le variateur, les panneaux '
+      'et la structure ; le reste est en options nommées (protections, sonde de niveau, '
+      'compteur d’eau, câble de descente, etc.). Forage et génie civil sont « non inclus ».',
+      '« Auto-remplir depuis le stock » pose les lignes du kit de la taille choisie, telles '
+      'que le serveur les a composées.'],
+     'Tailles, Options du kit, Auto-remplir'),
+    ('Déclarer l’économie et l’attestation',
+     ['Énergie actuelle, consommation, prix payé daté, mois d’irrigation, facture réseau, '
+      'entretien payé : ce sont des chiffres DÉCLARÉS par le client, jamais devinés. Rien de '
+      'déclaré, pas de bloc d’économie dans le document. L’attestation d’usage '
+      'agricole du matériel se coche, se date et se signe sur l’écran.'],
+     'Économie déclarée, Attestation'),
+    ('Enregistrer, rouvrir, remettre le document',
+     ['L’écran n’enregistre que ce que tu as saisi ; les chiffres calculés sont posés '
+      'par le serveur. Rouvrir un devis puis l’enregistrer sans rien toucher ne change rien. '
+      'Le document client agricole de trois pages se génère depuis la liste des devis '
+      '(bouton « PDF »).'],
+     'Enregistrer, liste des devis'),
+)
+
+# Quand aucune pompe à courbe n'est chiffrable (QXG3, prix OSP à saisir).
+SANS_POMPE_CHIFFRABLE = (
+    'L’écran affiche l’alerte « Aucune pompe chiffrable ne couvre ce besoin » et un '
+    'bandeau : seules des pompes sans prix renseigné conviennent.',
+    'La production et la couverture ne sont pas calculées : aucun m³/jour n’est '
+    'imprimé pour une pompe sans courbe.',
+    'Auto-remplir pose quand même le reste du kit ; la ligne de pompe reste « prix à '
+    'renseigner », sans produit, jamais chiffrée à zéro.',
+    'Pour sortir de cette situation : renseigner le prix de la pompe dans Stock, '
+    'puis revenir au devis.',
+)
+
+REGLE_PRIX_A_RENSEIGNER = (
+    'Un article dont le prix n’est pas saisi est affiché « prix à renseigner ». Il '
+    'n’est jamais compté comme gratuit et ne part pas au client avec un prix inventé. '
+    'Les prix estimés des petites pompes sont à confirmer par le fondateur.',
+)
+
+JAMAIS_PROMIS = (
+    'Aucune subvention n’est promise : ni montant, ni taux, ni éligibilité, ni délai '
+    '(décision Q22). Le document imprime la règle de l’aide FDA (conditions, plafonds, '
+    'accord avant travaux, versement après), jamais un montant propre au client, et plus '
+    'aucun « jusqu’à 30 % » (D-AGR-6).',
+    'Aucune économie n’est promise au-delà de ce que le client a déclaré.',
+    'Le forage et le génie civil ne sont jamais inclus.',
+    'TAQINOR ne promet pas de déposer le dossier de subvention à la place du client.',
+)
+
+CSS_POMPAGE = """
+.geste { margin: 0 0 4mm; break-inside: avoid; page-break-inside: avoid; }
+.geste-titre { display: block; background: #f0f6f3; border-left: 3pt solid #0b3d2e; padding: 2mm 4mm; margin: 0 0 1.5mm; font-size: 11.5pt; font-weight: 700; color: #0b3d2e; }
+.geste-numero { display: inline-block; min-width: 7mm; }
+.geste .ecran-nom { font-size: 8.5pt; color: #666; margin: 0 0 1mm; }
+"""
+
+
+def _empreinte_courte(document: str) -> str:
+    return hashlib.sha256(normaliser_lf(document).encode('utf-8')).hexdigest()[:8]
+
+
+def produire_html_pompage():
+    """Le HTML du guide « Devis pompage en 10 gestes » — fonction PURE (aucune
+    lecture du dépôt). Le ``<title>`` porte l'empreinte courte de la source : elle
+    se retrouve dans les métadonnées du PDF imprimé, ce qui permet à la garde de
+    vérifier que le PDF est celui de CETTE source."""
+    def corps():
+        gestes = []
+        for rang, (titre, phrases, ecran) in enumerate(GESTES_POMPAGE, start=1):
+            gestes.append(
+                '<div class="geste">'
+                f'<span class="geste-titre"><span class="geste-numero">{rang}.</span> {esc(titre)}</span>'
+                f'<p class="ecran-nom">Où : {esc_ecran(ecran)}</p>'
+                + ''.join(f'<p>{esc_ecran(p)}</p>' for p in phrases) + '</div>')
+        return '\n'.join([
+            '<header>',
+            f'<h1>{esc(TITRE_POMPAGE.split(" — ", 1)[1])}</h1>',
+            '<p class="sous-titre">Guide interne équipe commerciale · TAQINOR</p>',
+            f'<p class="version">Version {esc(VERSION_POMPAGE)} · {DATE_POMPAGE}</p>',
+            '<p class="lede">Du premier écran au document client : ce que tu saisis, ce que le '
+            'serveur calcule, et ce que le devis ne promet jamais.</p>',
+            '</header>',
+            '<h2>1. Les dix gestes</h2>',
+            '\n'.join(gestes),
+            '<h2 class="nouvelle-page">2. Quand aucune pompe à courbe n’est chiffrable</h2>',
+            '<div class="encadre"><ul>'
+            + ''.join(f'<li>{esc_ecran(p)}</li>' for p in SANS_POMPE_CHIFFRABLE) + '</ul></div>',
+            '<h2>3. La règle « prix à renseigner »</h2>',
+            '<div class="encadre"><ul>'
+            + ''.join(f'<li>{esc_ecran(p)}</li>' for p in REGLE_PRIX_A_RENSEIGNER) + '</ul></div>',
+            '<h2>4. Ce qui n’est jamais promis</h2>',
+            '<div class="encadre"><ul>'
+            + ''.join(f'<li>{esc_ecran(p)}</li>' for p in JAMAIS_PROMIS) + '</ul></div>',
+            '<h2>5. Où trouver quoi</h2>',
+            '<table><tr><th style="width:42%">Quoi</th><th>Où</th></tr>'
+            f'<tr><td>Ce guide</td><td>{esc_ecran("Documents (GED) → cabinet « Documentation » → dossier « Guides »")}</td></tr>'
+            f'<tr><td>Le document client agricole</td><td>{esc_ecran("Liste des devis → bouton « PDF »")}</td></tr>'
+            f'<tr><td>Le prix d’une pompe</td><td>{esc_ecran("Stock → fiche du produit")}</td></tr>'
+            f'<tr><td>Le suivi du lead agricole</td><td>{esc_ecran("Fiche du lead → section « Suivi commercial »")}</td></tr>'
+            '</table>',
+            f'<p class="pied">Version {esc(VERSION_POMPAGE)} — {DATE_POMPAGE} — généré par '
+            '`scripts/generer_guide_suivi.py devis_pompage` ; les libellés sont ceux de l’écran.</p>',
+        ])
+
+    modele = '\n'.join([
+        '<!DOCTYPE html>', '<html lang="fr">', '<head>', '<meta charset="utf-8">',
+        '<title>@@TITRE@@</title>',
+        '<meta name="generator" content="scripts/generer_guide_suivi.py devis_pompage">',
+        f'<meta name="guide-version" content="{VERSION_POMPAGE}">',
+        '<!-- Fichier GÉNÉRÉ : ne pas modifier à la main. Relancer '
+        '`python scripts/generer_guide_suivi.py devis_pompage`. -->',
+        '<style>' + CSS + CSS_POMPAGE + '</style>', '</head>', '<body>', corps(), '</body>', '</html>',
+    ]) + '\n'
+    sceau = _empreinte_courte(modele.replace('@@TITRE@@', TITRE_POMPAGE))
+    titre = f'{TITRE_POMPAGE} (v{VERSION_POMPAGE} src {sceau})'
+    return modele.replace('@@TITRE@@', html.escape(typo(titre), quote=False)), sceau
+
+
+def marque_pdf_pompage(sceau: str) -> str:
+    """Le fragment ASCII qui doit figurer dans les métadonnées (``/Title``) du PDF."""
+    return f'src {sceau}'
+
+
+def produire_guide_pompage(c, args) -> int:
+    """AGR136 — HTML + manifeste + PDF du guide « Devis pompage »."""
+    edge = None if args.html_seulement else trouver_edge(args.edge)
+    document, sceau = produire_html_pompage()
+    html_change = ecrire_texte_si_change(c.pompage_html, document)
+    print(('HTML écrit' if html_change else 'HTML déjà à jour')
+          + f' : {c.pompage_html.relative_to(RACINE)} (source {sceau})')
+    if maj_manifeste(c.manifeste, VERSION_POMPAGE, fichier=FICHIER_POMPAGE,
+                     titre=TITRE_POMPAGE, description=DESCRIPTION_POMPAGE):
+        print(f'Manifeste mis à jour : {c.manifeste.relative_to(RACINE)}')
+    else:
+        print('Manifeste déjà à jour.')
+    if args.html_seulement:
+        print('Option --html-seulement : le PDF n\u2019a PAS été régénéré.')
+        return 0
+    if args.forcer or html_change or not c.pompage_pdf.is_file():
+        taille = imprimer_pdf(edge, c.pompage_html, [c.pompage_pdf])
+        print(f'PDF imprimé : {c.pompage_pdf.relative_to(RACINE)} ({taille} octets)')
+    else:
+        print('PDF déjà à jour (HTML inchangé) : rien à imprimer (--forcer pour le réimprimer).')
+    return 0
+
+
 def main(argv=None) -> int:
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     analyseur = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
+    analyseur.add_argument('cible', nargs='?', default='suivi',
+                           choices=('suivi', 'devis_pompage', 'tout'),
+                           help='le guide à produire (défaut : suivi)')
     analyseur.add_argument('--html-seulement', action='store_true',
                            help='n\u2019écrit que le HTML et le manifeste (machine sans Edge)')
     analyseur.add_argument('--forcer', action='store_true',
@@ -1158,6 +1381,8 @@ def main(argv=None) -> int:
         erreur('--visite a besoin d\u2019Edge : incompatible avec --html-seulement.')
 
     c = chemins()
+    if args.cible == 'devis_pompage':
+        return produire_guide_pompage(c, args)
     # Edge d'abord : sans lui (et sans --html-seulement) on s'arrête avant de
     # toucher au moindre fichier, plutôt que de laisser un état à moitié fait.
     edge = None if args.html_seulement else trouver_edge(args.edge)
@@ -1186,6 +1411,8 @@ def main(argv=None) -> int:
         taille = imprimer_pdf(edge, c.visite_html, [c.visite_pdf_docs, c.visite_pdf_fixture])
         print(f'Guide de la visite imprimé ({taille} octets) : {c.visite_pdf_docs.relative_to(RACINE)} '
               f'et {c.visite_pdf_fixture.relative_to(RACINE)}')
+    if args.cible == 'tout':
+        return produire_guide_pompage(c, args)
     return 0
 
 

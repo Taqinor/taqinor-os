@@ -64,6 +64,12 @@ class Devis(models.Model):
     penalites_retard_livraison = models.JSONField(
         null=True, blank=True, default=None)
     caution = models.JSONField(null=True, blank=True, default=None)
+    # CIQ216 — numéro de commande du CLIENT (services achats : une facture
+    # n'est réglée que si elle le cite). Facultatif, vide par défaut ; hérité
+    # par la facture du BC et chaque facture de tranche.
+    reference_commande_client = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Référence de commande du client')
     statut = models.CharField(
         max_length=20,
         choices=Statut.choices,
