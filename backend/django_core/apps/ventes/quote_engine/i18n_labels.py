@@ -990,6 +990,42 @@ LIBELLES = {
               'engine (actuarial method); indicative figures.',
         'ar': 'معدل العائد ومدة الاسترداد مقروءان من التدفق الذي يقدمه المحرك '
               'التجاري والصناعي (طريقة اكتوارية)؛ أرقام إرشادية.'},
+    'ci_ind_indicateurs': {
+        'fr': 'Indicateurs pour votre direction financière',
+        'en': 'Indicators for your finance department',
+        'ar': 'مؤشرات لإدارتكم المالية'},
+    'ci_ind_lcoe': {'fr': 'Coût du kWh solaire (LCOE, {base})',
+                    'en': 'Cost of the solar kWh (LCOE, {base})',
+                    'ar': 'تكلفة الكيلوواط ساعة الشمسي (LCOE، {base})'},
+    'ci_ind_tarif_client': {
+        'fr': 'prix moyen de votre kWh évité : {tarif} MAD/kWh',
+        'en': 'average price of your avoided kWh: {tarif} MAD/kWh',
+        'ar': 'متوسط ثمن الكيلوواط ساعة الذي تتجنبونه: {tarif} درهم/kWh'},
+    'ci_ind_van_omise': {'fr': 'VAN non calculée', 'en': 'NPV not calculated',
+                         'ar': 'القيمة الحالية الصافية غير محسوبة'},
+    'ci_ind_sens_indexation_tarif': {'fr': 'Indexation du tarif',
+                                     'en': 'Tariff indexation',
+                                     'ar': 'فهرسة التعريفة'},
+    'ci_ind_sens_degradation': {'fr': 'Dégradation', 'en': 'Degradation',
+                                'ar': 'التدهور'},
+    'ci_ind_sens_tarif_kwh': {'fr': 'Prix du kWh', 'en': 'kWh price',
+                              'ar': 'ثمن الكيلوواط ساعة'},
+    'ci_ind_sens_production': {'fr': 'Production', 'en': 'Production',
+                               'ar': 'الإنتاج'},
+    'ci_ind_sens_retour': {'fr': 'retour {n} ans', 'en': 'payback {n} years',
+                           'ar': 'مدة الاسترداد {n} سنة'},
+    'ci_ind_sens_tri': {'fr': 'TRI {t} %', 'en': 'IRR {t} %',
+                        'ar': 'معدل العائد {t} %'},
+    'ci_ind_sens_base': {
+        'fr': "Sensibilités saisies par la société ; base : 0 % "
+              "d'indexation du tarif.",
+        'en': 'Sensitivities entered by the company; base: 0 % tariff '
+              'indexation.',
+        'ar': 'حساسيات أدخلتها الشركة؛ الأساس: 0 % فهرسة للتعريفة.'},
+    'ci_ind_p90': {
+        'fr': 'Production à 90 % de probabilité (P90) : {kwh} kWh/an',
+        'en': 'Production at 90 % probability (P90): {kwh} kWh/yr',
+        'ar': 'الإنتاج باحتمال 90 % (P90): {kwh} kWh/سنة'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',

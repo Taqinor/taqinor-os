@@ -12,6 +12,11 @@ cashflow » (le moteur ne l'additionne jamais au flux), O&M déduite
 SEULEMENT si l'option est chiffrée, hypothèses du moteur, pied de page sur la
 base servie (CIQ315). Plus AUCUNE arithmétique privée : ni solveur de TRI,
 ni troncature à 15 ans, ni flux reconstruit. Sans série servie, le motif.
+
+CIQ343 (D-CIQ-10, D-CIQ-15) — sous le tableau, un bloc compact pour la
+direction financière : LCOE face au prix du kWh du client, VAN seulement
+sur le taux DÉCLARÉ, sensibilités saisies par la société, P90 du bloc
+bancable (PDF seulement), offre de financement (CIQ318).
 Rendu seul — aucun statut touché (règle #4).
 """
 from ..ci import blocs as ci_blocs
@@ -70,7 +75,7 @@ def _courbe(flux, couleurs):
     echelle = max(abs(c) for _a, c in points) or 1.0
     haut, bas = "", ""
     for annee, cumul in points:
-        h = round(abs(cumul) / echelle * 22.0, 1)
+        h = round(abs(cumul) / echelle * 18.0, 1)
         if cumul >= 0:
             haut += (f'<td class="i2-cb"><div class="i2-bp" '
                      f'style="height:{h}mm"></div></td>')
@@ -173,6 +178,100 @@ def _ligne_revente(argent, fmt, L, langue):
             + f'{mention}</div>')
 
 
+def _decimal_txt(valeur):
+    """« 0,1221 » — un nombre servi, sans arrondi propre."""
+    return f"{valeur:g}".replace(".", ",")
+
+
+def _p90_bancable(d):
+    """La P90 du bloc bancable du devis (``etude['bankable']``, PV77 —
+    la dispersion du moteur, aucune nouvelle), ou None. Permise sur le PDF,
+    jamais dans la charge utile publique (``_sans_internes_bancables``)."""
+    bank = (d.get("etude") or {}).get("bankable")
+    pr = bank.get("pr") if isinstance(bank, dict) else None
+    return _num((pr or {}).get("p90_kwh")) if isinstance(pr, dict) else None
+
+
+def _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L, couleurs):
+    """CIQ343 (D-CIQ-10, D-CIQ-15) — le bloc compact « Indicateurs » sous le
+    tableau, lu dans ``synthese_ci['argent']`` : coût du kWh solaire face au
+    prix du kWh du client (tous deux servis, avec leur base), VAN SEULEMENT
+    sur le taux déclaré par le client (sinon omise avec son motif),
+    sensibilités SAISIES par la société (aucune par défaut ; base = 0 %
+    d'indexation), P90 du bloc bancable, puis l'offre de financement
+    (CIQ318). Aucun nombre calculé ici."""
+    navy, ink = couleurs
+    indicateurs = argent.get("indicateurs") or {}
+    lignes = []
+    lcoe = _num(indicateurs.get("lcoe_mad_kwh"))
+    if lcoe is not None:
+        lcoe_txt = _decimal_txt(lcoe)
+        ligne = (L("ci_ind_lcoe", "Coût du kWh solaire (LCOE, {base})",
+                   base=base_txt)
+                 + f"&#160;: <b>{lcoe_txt}&#160;MAD/kWh</b>"
+                 + ancre("lcoe_mad_kwh", lcoe_txt))
+        tarif = _num(indicateurs.get("tarif_kwh_evite_moyen"))
+        if tarif is not None:
+            ligne += (" — " + L("ci_ind_tarif_client",
+                               "prix moyen de votre kWh évité : {tarif} "
+                               "MAD/kWh", tarif=_decimal_txt(tarif)))
+        lignes.append(ligne)
+    van = _num(indicateurs.get("van_mad"))
+    from .cover import _taux_declare
+    taux = _taux_declare(argent)
+    if van is not None and taux is not None:
+        lignes.append(L("ci_ind_van", "VAN au taux déclaré de {taux} %",
+                        taux=_decimal_txt(taux))
+                      + f"&#160;: <b>{fmt_mad(van)}&#160;MAD</b>")
+    else:
+        motif = ci_blocs._txt(indicateurs.get("van_motif"))
+        lignes.append(L("ci_ind_van_omise", "VAN non calculée")
+                      + (f"&#160;: {motif}" if motif else ""))
+    scenarios = [s for s in argent.get("sensibilites") or []
+                 if isinstance(s, dict)]
+    catalogue = _cles_catalogue()
+    for s in scenarios:
+        variation = _num(s.get("variation_pct"))
+        cle_sens = f"ci_ind_sens_{s.get('cle')}"
+        nom = (L(cle_sens, catalogue[cle_sens]["fr"]) if cle_sens in catalogue
+               else ci_blocs._txt(s.get("cle")))
+        tete = (f"{nom} {variation:+g}&#160;%".replace(".", ",")
+                if variation is not None else nom)
+        if s.get("motif") and s.get("retour_ans") is None:
+            lignes.append(f"{tete}&#160;: {ci_blocs._txt(s['motif'])}")
+            continue
+        morceaux = []
+        if _num(s.get("retour_ans")) is not None:
+            morceaux.append(L("ci_ind_sens_retour", "retour {n} ans",
+                              n=ci_couverture.ans(_num(s["retour_ans"]))))
+        if _num(s.get("tri_pct")) is not None:
+            morceaux.append(L("ci_ind_sens_tri", "TRI {t} %",
+                              t=f"{_num(s['tri_pct']):.1f}".replace(".", ",")))
+        lignes.append(f"{tete}&#160;: " + ", ".join(morceaux))
+    if scenarios:
+        lignes.append(L("ci_ind_sens_base",
+                        "Sensibilités saisies par la société ; base : 0 % "
+                        "d'indexation du tarif."))
+    p90 = _p90_bancable(d)
+    if p90 is not None:
+        lignes.append(L("ci_ind_p90",
+                        "Production à 90 % de probabilité (P90) : {kwh} kWh/an",
+                        kwh=fmt(p90)))
+    financement = ci_blocs.bloc_financement(
+        d.get("ind_synthese") or {}, "i2", navy, ink, doc=d)
+    if not lignes and not financement:
+        return ""
+    items = "".join(f'<div class="i2-cfo-i">{li}</div>' for li in lignes)
+    return (f'<div class="i2-cfo"><div class="i2-hyp-t">'
+            f'{L("ci_ind_indicateurs", "Indicateurs pour votre direction financière")}'
+            f'</div>{items}{financement}</div>')
+
+
+def _cles_catalogue():
+    from .. import i18n_labels
+    return i18n_labels.LIBELLES
+
+
 def _pied_investissement(d, argent, fmt_mad, L):
     """CIQ315 — l'investissement du pied de page sur la base SERVIE."""
     base = argent.get("base") if isinstance(argent, dict) else None
@@ -259,11 +358,11 @@ def build(ctx):
 .i2-pos{{color:{green};}}
 .i2-neg{{color:{muted_2};}}
 .i2-courbe{{width:100%;border-collapse:collapse;margin-top:8px;table-layout:fixed;}}
-.i2-cb{{height:22mm;vertical-align:bottom;padding:0 1px;}}
-.i2-ct{{height:12mm;vertical-align:top;padding:0 1px;}}
+.i2-cb{{height:18mm;vertical-align:bottom;padding:0 1px;}}
+.i2-ct{{height:7mm;vertical-align:top;padding:0 1px;}}
 .i2-axe td{{border-top:1px solid {muted_2};}}
 .i2-bp{{background:{green};border-radius:2px 2px 0 0;}}
-.i2-bn{{background:{muted_2};border-radius:0 0 2px 2px;max-height:12mm;}}
+.i2-bn{{background:{muted_2};border-radius:0 0 2px 2px;max-height:7mm;}}
 .i2-ca{{font-size:6pt;color:{muted};text-align:center;}}
 .i2-foot{{margin-top:9px;font-size:7.5pt;color:{muted};line-height:1.4;}}
 .i2-foot b{{color:{navy};}}
@@ -272,6 +371,10 @@ def build(ctx):
 .i2-mt-t{{font-family:{f_serif};font-weight:700;font-size:12pt;color:{navy};}}
 .i2-mt-b{{margin-top:6px;font-size:8.5pt;color:{ink};line-height:1.45;}}
 .i2-mt-b b{{color:{navy};}}
+.i2-cfo{{margin-top:8px;border:1px solid {line};border-left:4px solid {navy};
+  border-radius:10px;padding:7px 12px;}}
+.i2-cfo-i{{font-size:7.5pt;color:{ink};line-height:1.35;margin-top:2px;}}
+.i2-cfo .i2-fin{{margin-top:5px !important;font-size:7.5pt !important;}}
 .i2-hyp{{margin-top:8px;border:1px solid {line_soft};border-radius:10px;
   background:{wash};padding:8px 12px;}}
 .i2-hyp-t{{font-size:8pt;font-weight:700;color:{navy};}}
@@ -376,6 +479,8 @@ def build(ctx):
             if rangees else "")
         courbe = _courbe(lignes_flux, None)
         lignes_hyp = _hypotheses(argent, flux, fmt, fmt_mad, L)
+        cfo_html = _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L,
+                             (navy, ink))
         hypotheses_html = (
             f'<div class="i2-hyp"><div class="i2-hyp-t">'
             f'{L("ci_ind_hypotheses", "Hypothèses du moteur")}</div>'
@@ -391,6 +496,7 @@ def build(ctx):
   <div class="i2-cfhead">{L("ci_ind_cumul_titre", "Cumul net de l'investissement ({base})", base=base_txt)}</div>
   {courbe}
   {table}
+  {cfo_html}
   {hypotheses_html}
   <div class="i2-foot">
     {(om_txt + '. ') if om_txt else ''}{pied}.

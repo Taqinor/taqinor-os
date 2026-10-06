@@ -82,6 +82,7 @@ _KWH = Decimal("1")
 _KWC = Decimal("0.01")
 _ANS = Decimal("0.05")
 _UNITE_FINE = Decimal("0.1")
+_LCOE = Decimal("0.0001")
 
 
 @dataclass(frozen=True)
@@ -139,6 +140,9 @@ FIGURE_KEYS: dict[str, Cle] = {
     "cumul_net_25_ans_mad": Cle(
         "Cumul net du flux servi à 25 ans (base principale)", "MAD",
         _ARGENT),
+    # CIQ343 — coût du kWh solaire servi par ``economie_ci`` (industriel).
+    "lcoe_mad_kwh": Cle("Coût du kWh solaire (LCOE, base principale)",
+                        "MAD/kWh", _LCOE),
     # ── Pompage ─────────────────────────────────────────────────────────────
     "pompe_hmt_m": Cle("Hauteur manométrique totale", "m", _UNITE_FINE),
     "pompe_debit_m3h": Cle("Débit de la pompe à la HMT", "m³/h", _UNITE_FINE),
@@ -573,8 +577,10 @@ def figures_depuis_proposition(payload: dict) -> dict[str, list[Mesure]]:
         # CIQ342 — TRI et cumul à 25 ans du flux servi (base principale).
         argent = synthese.get("argent") or {}
         if isinstance(argent, dict):
-            c.mettre("tri_pct", (argent.get("indicateurs") or {}).get(
-                "tri_pct"))
+            indicateurs = argent.get("indicateurs") or {}
+            c.mettre("tri_pct", indicateurs.get("tri_pct"))
+            # CIQ343 — industriel seulement (retiré du commercial).
+            c.mettre("lcoe_mad_kwh", indicateurs.get("lcoe_mad_kwh"))
             c.mettre("cumul_net_25_ans_mad", next(
                 (j.get("cumul_mad") for j in argent.get("jalons") or []
                  if isinstance(j, dict) and j.get("annee") == 25), None))
