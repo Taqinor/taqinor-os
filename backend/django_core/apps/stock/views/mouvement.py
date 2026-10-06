@@ -52,6 +52,11 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
         'produit', 'created_by'
     ).all()
     serializer_class = MouvementStockSerializer
+    # ASTK28 — registre APPEND-ONLY par l'API comme par l'admin (AUD215) :
+    # un mouvement posé ne se modifie ni ne se supprime (PUT/PATCH/DELETE →
+    # 405) ; une erreur se corrige par un mouvement inverse. Même patron que
+    # MouvementRebutViewSet (views/wms.py).
+    http_method_names = ['get', 'post', 'head', 'options']
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['produit__nom', 'reference', 'note']
     ordering_fields = ['date', 'type_mouvement', 'quantite']
