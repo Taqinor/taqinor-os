@@ -583,6 +583,11 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             ligne = lignes.get(ligne_id)
+            # ASTK2 — une ligne (héritée) pointant le produit d'une autre
+            # société est traitée comme absente : jamais son stock touché.
+            if ligne is not None and ligne.produit_id is not None and (
+                    ligne.produit.company_id != bc.company_id):
+                ligne = None
             if ligne is None:
                 return Response(
                     {'detail': f'Ligne {ligne_id} introuvable sur ce BCF.'},
@@ -630,7 +635,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 # des réceptions concurrentes du même produit ne perdent pas
                 # d'incrément (au lieu d'un simple refresh_from_db sans verrou).
                 produit = (Produit.objects.select_for_update()
-                           .get(pk=ligne.produit_id))
+                           .get(pk=ligne.produit_id, company=bc.company))
                 qte_avant = produit.quantite_stock
                 qte_apres = qte_avant + qte
                 record_stock_movement(

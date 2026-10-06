@@ -1068,7 +1068,10 @@ class TransfertStockSerializer(serializers.ModelSerializer):
         ]
 
 
-class LigneRetourFournisseurSerializer(serializers.ModelSerializer):
+class LigneRetourFournisseurSerializer(SameCompanyFKSerializerMixin,
+                                       serializers.ModelSerializer):
+    # ASTK2 — produit d'une autre société = id absent (400).
+    same_company_fields = ('produit',)
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     produit_sku = serializers.CharField(source='produit.sku', read_only=True)
 
@@ -1083,7 +1086,12 @@ class LigneRetourFournisseurSerializer(serializers.ModelSerializer):
         return value
 
 
-class RetourFournisseurSerializer(serializers.ModelSerializer):
+class RetourFournisseurSerializer(SameCompanyFKSerializerMixin,
+                                  serializers.ModelSerializer):
+    # ASTK2 — fournisseur et BCF d'origine bornés à la société, en création
+    # ET en modification (remplace l'ancien `_validate_company`, création
+    # seule et message propre = oracle d'existence).
+    same_company_fields = ('fournisseur', 'bon_commande')
     lignes = LigneRetourFournisseurSerializer(many=True)
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
@@ -1110,22 +1118,8 @@ class RetourFournisseurSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Au moins une ligne est requise.')
         return value
 
-    def _validate_company(self, fournisseur, lignes_data):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is None:
-            return
-        if fournisseur is not None and fournisseur.company_id != company.id:
-            raise serializers.ValidationError(
-                {'fournisseur': 'Fournisseur hors de votre entreprise.'})
-        for ligne in lignes_data:
-            if ligne['produit'].company_id != company.id:
-                raise serializers.ValidationError(
-                    {'lignes': 'Produit hors de votre entreprise.'})
-
     def create(self, validated_data):
         lignes_data = validated_data.pop('lignes')
-        self._validate_company(validated_data.get('fournisseur'), lignes_data)
         retour = RetourFournisseur.objects.create(**validated_data)
         for ligne in lignes_data:
             LigneRetourFournisseur.objects.create(retour=retour, **ligne)
@@ -2238,8 +2232,11 @@ class ConditionnementProduitSerializer(serializers.ModelSerializer):
         ]
 
 
-class ModeleBonCommandeFournisseurLigneSerializer(serializers.ModelSerializer):
+class ModeleBonCommandeFournisseurLigneSerializer(
+        SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """ZPUR3 — ligne d'un modèle de BCF : produit + quantité par défaut."""
+    # ASTK2 — produit d'une autre société = id absent (400).
+    same_company_fields = ('produit',)
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     produit_sku = serializers.CharField(source='produit.sku', read_only=True)
 
@@ -2248,8 +2245,11 @@ class ModeleBonCommandeFournisseurLigneSerializer(serializers.ModelSerializer):
         fields = ['id', 'produit', 'produit_nom', 'produit_sku', 'quantite']
 
 
-class ModeleBonCommandeFournisseurSerializer(serializers.ModelSerializer):
+class ModeleBonCommandeFournisseurSerializer(
+        SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """ZPUR3 — modèle de BCF réutilisable (purchase template)."""
+    # ASTK2 — fournisseur d'une autre société = id absent (400).
+    same_company_fields = ('fournisseur',)
     lignes = ModeleBonCommandeFournisseurLigneSerializer(many=True, required=False)
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
