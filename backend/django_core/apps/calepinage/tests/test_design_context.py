@@ -39,7 +39,6 @@ EN_ATTENTE = {
     'calepinage.lead_supprime': 'ACAL178',
     'geometrie.contour_utilisable': 'ACAL250',
     'geometrie.source_repere': 'ACAL250',
-    'cible.refus': 'ACAL194',
 }
 EXEMPLE_SERVI = sans(CONTRAT['exemple'], EN_ATTENTE)
 
