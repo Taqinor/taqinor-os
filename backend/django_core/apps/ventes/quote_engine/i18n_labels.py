@@ -1026,6 +1026,32 @@ LIBELLES = {
         'fr': 'Production à 90 % de probabilité (P90) : {kwh} kWh/an',
         'en': 'Production at 90 % probability (P90): {kwh} kWh/yr',
         'ar': 'الإنتاج باحتمال 90 % (P90): {kwh} kWh/سنة'},
+    # ── Page 4 industrielle (CIQ344, CIQ345) ───────────────────────────────
+    'ci_ind_deploiement': {'fr': 'Déploiement &amp; conditions',
+                           'en': 'Deployment &amp; terms',
+                           'ar': 'التنفيذ والشروط'},
+    'ci_ind_valeur_entreprise': {'fr': "Valeur pour l'entreprise",
+                                 'en': 'Value for the company',
+                                 'ar': 'القيمة بالنسبة للمقاولة'},
+    'ci_ind_iso_titre': {'fr': "ISO 50001 — management de l'énergie",
+                         'en': 'ISO 50001 — energy management',
+                         'ar': 'إيزو 50001 — تدبير الطاقة'},
+    'ci_ind_iso_texte': {
+        'fr': 'Les données de production et de consommation peuvent '
+              'alimenter votre <b>revue énergétique</b> — sans promesse de '
+              'conformité à la norme.',
+        'en': 'Production and consumption data can feed your <b>energy '
+              'review</b> — with no promise of compliance with the standard.',
+        'ar': 'يمكن لمعطيات الإنتاج والاستهلاك أن تغذي <b>مراجعتكم '
+              'الطاقية</b> — دون وعد بالمطابقة للمعيار.'},
+    'ci_ind_cbam_titre': {
+        'fr': 'CBAM — ajustement carbone aux frontières (UE)',
+        'en': 'CBAM — carbon border adjustment (EU)',
+        'ar': 'CBAM — تعديل الكربون على الحدود (الاتحاد الأوروبي)'},
+    'ci_ind_bilan_carbone_titre': {
+        'fr': 'Bilan carbone de votre électricité',
+        'en': 'Carbon footprint of your electricity',
+        'ar': 'البصمة الكربونية لكهربائكم'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',

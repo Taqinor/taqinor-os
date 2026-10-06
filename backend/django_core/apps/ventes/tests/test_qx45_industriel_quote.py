@@ -69,8 +69,11 @@ class TestIndustrielContent(SimpleTestCase):
         servie = render.build_html(renderer._augment(base))
         self.assertIn("Cumul net de l'investissement", servie)   # P3
         self.assertIn("TRI sur 25 ans", servie)                  # P3
-        self.assertIn("ISO 50001", self.html)               # P3
-        self.assertIn("CBAM", self.html)                    # P3
+        self.assertIn("ISO 50001", self.html)               # P4
+        # CIQ344 — CBAM seulement pour un exportateur UE déclaré de ciment
+        # ou d'engrais : la fixture n'en déclare pas.
+        self.assertNotIn("CBAM", self.html)                 # P4
+        self.assertIn("Bilan carbone de votre électricité", self.html)
         self.assertIn("Bon pour accord", self.html)         # P3 signature
 
     def test_autoconso_honesty_no_peak_promise(self):

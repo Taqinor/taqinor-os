@@ -1,16 +1,27 @@
 # flake8: noqa
-"""quote_engine industriel — PAGE 3 (tranches phasées + normes + garanties + signature).
+"""quote_engine industriel — PAGE 4 (échéancier en N jalons + décarbonation
++ garanties + conditions + signature).
 
 ``build(ctx) -> str`` returns the INNER HTML of one A4 page (no wrapper/footer).
 CSS tables only. Classes prefixed ``i3-``.
+
+CIQ344 — les tranches suivent ``synthese_ci['echeancier']`` (N jalons ; défaut
+industriel 30/40/20/10 : commande, livraison, mise en service, réception
+définitive — D-CIQ-13), montants au centime dont la somme égale le total.
+Le bloc décarbonation lit ``synthese_ci['decarbonation']`` : la phrase CBAM
+n'apparaît que pour un exportateur UE DÉCLARÉ de ciment ou d'engrais
+(Règlement (UE) 2023/956, annexe II), sinon la phrase générique ; jamais
+« traçabilité », jamais un tonnage de CO₂. ISO 50001 : une phrase
+qualitative, sans promesse de conformité. Rendu seul (règle #4).
 """
 
 
 # CIQ310 — bande légale du vendeur (RC, ICE, capital) : UNE fonction
 # partagée avec le résidentiel.
 from ..premium_base import bande_legale
-# CIQ311 — blocs C&I communs (conditions, Bon pour accord).
+# CIQ311 — blocs C&I communs (conditions, Bon pour accord, échéancier).
 from ..ci import blocs as ci_blocs
+from ..ci.mentions import TEXTES_DECARBONATION, texte
 
 
 def build(ctx):
@@ -21,6 +32,12 @@ def build(ctx):
     theme = ctx["theme"]
     ident = ctx.get("ident") or {}
     brand = ident.get("brand_name") or "TAQINOR"
+
+    # CIQ345 — libellés STRUCTURELS dans la langue du document.
+    def L(cle, fr, **valeurs):
+        return ci_blocs.libelle(d, cle, fr, **valeurs)
+
+    langue = ci_blocs.langue(d)
 
     navy = C["navy"]
     gold = C["gold"]
@@ -38,109 +55,64 @@ def build(ctx):
     f_serif = fonts["serif"]
     f_sans = fonts["sans"]
 
-    invest = d.get("_invest_ttc") or 0
-    # ── QJR146 (f) — AUCUN BARÈME DE PAIEMENT RECONSTRUIT ICI ───────────────
-    # Le repli ``{"acompte": 50, "materiel": 40, "solde": 10}`` refabriquait
-    # localement un échéancier dont la source canonique est le RÉGLAGE SOCIÉTÉ
-    # (``utils/company_settings.payment_terms_for``, servi par le builder dans
-    # ``payment_terms``) : une société ayant réglé un autre découpage voyait
-    # cette page en annoncer un autre au client, avec des MONTANTS calculés
-    # dessus. Sans barème servi, le bloc des tranches est OMIS — on n'imprime
-    # pas des conditions de paiement que personne n'a décidées.
-    pt = d.get("payment_terms") or {}
-    # ERR-QJR614-CI-INVESTISSEMENT-DIRHAM-VS-CENTIME — pourcentages NON
-    # tronqués (l'ancien ``int(pct)`` faisait d'un 33,5 % un 33 %) et montants
-    # au CENTIME via ``utils.echeancier.montants_tranches`` (la dernière
-    # tranche reçoit le reliquat) : acompte + matériel + solde == Total TTC.
-    from decimal import Decimal, InvalidOperation
-    _pcts = {}
-    for _cle in ("acompte", "materiel", "solde"):
-        try:
-            _pcts[_cle] = Decimal(str(pt[_cle]))
-        except (KeyError, TypeError, ValueError, InvalidOperation):
-            _pcts = {}
-            break
-    fmt_mad = ctx.get("fmt_mad") or fmt
-    _montants = {}
-    if _pcts:
-        from apps.ventes.utils.echeancier import montants_tranches
-        _montants = montants_tranches(
-            invest, [(k, _pcts[k]) for k in ("acompte", "materiel", "solde")])
+    synthese = d.get("ind_synthese") or {}
 
-    def _pct_txt(pct):
-        # 50 → « 50 », 33.5 → « 33,5 » : jamais une troncature.
-        txt = format(pct.normalize(), "f")
-        return txt.replace(".", ",")
+    # ── CIQ344 — ÉCHÉANCIER EN N JALONS (``synthese_ci['echeancier']``) ─────
+    # QJR146 (f) — aucun barème reconstruit ici : sans jalon servi, le bloc
+    # est OMIS (jamais des conditions de paiement que personne n'a décidées).
+    tranches_html = ci_blocs.bloc_echeancier(
+        synthese, "i3", navy, ink, line, doc=d)
 
-    def tranche(label, cle, sub):
-        return (
-            f'<td class="i3-tr"><div class="i3-tr-pct">{_pct_txt(_pcts[cle])}%</div>'
-            f'<div class="i3-tr-lab">{label}</div>'
-            f'<div class="i3-tr-amt">{fmt_mad(_montants[cle])} MAD</div>'
-            f'<div class="i3-tr-sub">{sub}</div></td>')
-
-    tranches = (
-        tranche("Acompte", "acompte", "à la commande — lancement des études & appro")
-        + '<td class="i3-tgap"></td>'
-        + tranche("Matériel", "materiel", "à la livraison des équipements sur site")
-        + '<td class="i3-tgap"></td>'
-        + tranche("Solde", "solde", "à la mise en service & réception")
-    ) if _pcts else ""
-    # QJR146 (f) — le titre suit le bloc : pas de section « Tranches de
-    # paiement phasées » vide au-dessus d'un trou.
-    tranches_html = (
-        '<div class="i3-sec">Tranches de paiement phasées</div>'
-        f'<div class="i3-trrow">{tranches}</div>') if tranches else ""
+    # ── CIQ344 — DÉCARBONATION (``synthese_ci['decarbonation']``) ──────────
+    decarbonation = synthese.get("decarbonation")
+    decarbonation = decarbonation if isinstance(decarbonation, dict) else {}
+    cbam = bool(decarbonation.get("cbam"))
+    textes_decarbo = decarbonation.get("textes") or TEXTES_DECARBONATION
+    titre_decarbo = (
+        L("ci_ind_cbam_titre", "CBAM — ajustement carbone aux frontières (UE)")
+        if cbam else L("ci_ind_bilan_carbone_titre",
+                       "Bilan carbone de votre électricité"))
 
     # QJR118 — les DURÉES de garantie se dérivent de la composition réelle du
-    # devis (source unique ``residential.theme.warranties_for``), exactement
-    # comme le paquet résidentiel. Les trois cellules codées en dur disaient
-    # « 25 ans Performance » (la source dit 30 ans à 87,4 %), « 5-10 ans
-    # Onduleurs » (10 ans) et surtout « 10 ans Installation », soit CINQ FOIS
-    # l'engagement de pose réel (2 ans) — deux chiffres contradictoires dans
-    # le même document, ce que le commentaire QRES5 de la source interdit.
-    # Aucune durée traçable ⇒ la bande entière s'OMET (jamais un chiffre
-    # inventé, jamais un zéro d'apparence factuelle).
+    # devis (source unique ``residential.theme.warranties_for``) ; aucune
+    # durée traçable ⇒ la bande entière s'OMET.
     _warranties = [w for w in (theme.warranties_for(d) or [])
                    if w and str(w[0]).strip()]
     if _warranties:
         _cells = "".join(
             f'<div class="i3-warr-c">'
-            f'<div class="i3-warr-v">{theme._esc(str(n))} {theme._esc(str(u))}</div>'
-            f'<div class="i3-warr-l">{theme._esc(str(label))}</div></div>'
+            f'<div class="i3-warr-v">{theme._esc(str(n))} {ci_blocs.textes_garantie(d, u, label)[0]}</div>'
+            f'<div class="i3-warr-l">{ci_blocs.textes_garantie(d, u, label)[1]}</div></div>'
             for n, u, label, _sub in _warranties)
         warranties_html = f"""
   <div class="i3-warr">
-    <div class="i3-blk-t">Garanties</div>
-    <div class="i3-warr-row" style="margin-top:8px;">
+    <div class="i3-blk-t">{L("ci_garanties", "Garanties")}</div>
+    <div class="i3-warr-row" style="margin-top:6px;">
       {_cells}
     </div>
-    <div class="i3-warr-l" style="margin-top:6px;">{ci_blocs.LEGENDE_GARANTIES}</div>
+    <div class="i3-warr-l" style="margin-top:5px;">{ci_blocs.legende_garanties(d)}</div>
   </div>
 """
     else:
         warranties_html = ""
 
-    # Signature — tampon d'acceptation posé à l'acceptation (sinon champ vierge).
     # CIQ311 — « Conditions » (CGV gelées à l'envoi, note TVA) et textes
     # « Bon pour accord » éditables, lus par la même voie que le legacy.
     bpa_titre, bpa_mention = ci_blocs.textes_bpa(d)
     conditions_html = ci_blocs.bloc_conditions(d, "i3", navy, ink)
-    # CIQ320 — « Bon pour accord — pour la société » : raison sociale,
-    # signataire, ICE, date, cadres Signature et Cachet ; valeurs de
-    # ``signature_entreprise`` sur la copie signée.
+    # CIQ320 — « Bon pour accord — pour la société ».
     acceptation_html = ci_blocs.bloc_acceptation(d, "i3", ink, line)
-    # CIQ314 — seulement les services que le devis porte.
-    services_html = ci_blocs.bloc_services(
-        d.get("ind_synthese") or {}, "i3", navy, ink)
+    # CIQ314 — seulement les services que le devis porte (jamais une
+    # « supervision temps réel » sans ligne derrière).
+    services_html = ci_blocs.bloc_services(synthese, "i3", navy, ink, doc=d)
     accepte_nom = (d.get("accepte_par_nom") or "").strip()
     date_accept = (d.get("date_acceptation") or "").strip()
     if accepte_nom and date_accept:
-        # QJR154 — UNE SEULE VÉRITÉ : ``builder.echapper_textes_client`` échappe
-        # désormais ``accepte_par_nom`` (le seul texte du document écrit par une
-        # personne NON authentifiée) pour les quatre renderers « maison ».
-        # Ré-échapper ici sortait « &amp;amp; » sur un nom porteur d'un « & ».
-        sign_client = f'<div class="i3-sign-name">{accepte_nom}</div><div class="i3-sign-date">Le {date_accept}</div>'
+        # QJR154 — ``builder.echapper_textes_client`` échappe déjà
+        # ``accepte_par_nom`` : jamais ré-échappé ici.
+        sign_client = (f'<div class="i3-sign-name">{accepte_nom}</div>'
+                       f'<div class="i3-sign-date">'
+                       f'{L("ci_le_date", "Le {date}", date=date_accept)}</div>')
     else:
         sign_client = f'<div class="i3-sign-blank">{bpa_mention}</div>'
 
@@ -152,34 +124,25 @@ def build(ctx):
 .i3-kicker{{font-size:7.5pt;letter-spacing:2.4px;text-transform:uppercase;
   color:{muted_2};font-weight:700;}}
 .i3-sec{{font-family:{f_serif};font-weight:700;font-size:16pt;color:{navy};margin-top:2px;}}
-.i3-trrow{{display:table;width:100%;margin-top:9px;border-spacing:0;}}
-.i3-tr{{display:table-cell;vertical-align:top;border:1px solid {line};
-  border-top:4px solid {gold};border-radius:12px;padding:12px 14px;background:{wash};}}
-.i3-tgap{{display:table-cell;width:11px;}}
-.i3-tr-pct{{font-family:{f_display};font-size:22pt;color:{navy};line-height:1;}}
-.i3-tr-lab{{font-size:9pt;font-weight:700;color:{navy};margin-top:4px;}}
-.i3-tr-amt{{font-size:10pt;color:{gold};font-weight:700;margin-top:2px;}}
-.i3-tr-sub{{font-size:7pt;color:{muted};margin-top:4px;line-height:1.3;}}
-
-.i3-h2{{font-family:{f_serif};font-weight:700;font-size:13pt;color:{navy};margin-top:15px;}}
-.i3-two{{display:table;width:100%;margin-top:8px;border-spacing:0;}}
-.i3-col{{display:table-cell;vertical-align:top;width:50%;padding-right:10px;}}
-.i3-col:last-child{{padding-right:0;padding-left:10px;}}
-.i3-blk{{border:1px solid {line};border-radius:12px;padding:11px 14px;background:#fff;height:100%;}}
+.i3-h2{{font-family:{f_serif};font-weight:700;font-size:12pt;color:{navy};margin-top:12px;}}
+.i3-two{{width:100%;margin-top:6px;border-collapse:separate;border-spacing:0;}}
+.i3-col{{vertical-align:top;width:48.5%;}}
+.i3-cgap{{width:3%;}}
+.i3-blk{{border:1px solid {line};border-radius:12px;padding:9px 12px;background:#fff;}}
 .i3-blk-t{{font-size:8.5pt;font-weight:700;color:{navy};}}
-.i3-li{{font-size:8pt;color:{ink};line-height:1.4;margin-top:5px;padding-left:12px;position:relative;}}
+.i3-li{{font-size:7.8pt;color:{ink};line-height:1.4;margin-top:4px;padding-left:12px;position:relative;}}
 .i3-li:before{{content:'';position:absolute;left:0;top:5px;width:6px;height:6px;
   border-radius:50%;background:{green};}}
 .i3-li b{{color:{navy};}}
 
-.i3-warr{{margin-top:14px;border:1px solid {line};border-radius:12px;background:{wash};
-  padding:11px 14px;}}
+.i3-warr{{margin-top:12px;border:1px solid {line};border-radius:12px;background:{wash};
+  padding:9px 14px;}}
 .i3-warr-row{{display:table;width:100%;border-spacing:0;}}
 .i3-warr-c{{display:table-cell;vertical-align:top;text-align:center;padding:0 6px;}}
-.i3-warr-v{{font-family:{f_display};font-size:16pt;color:{green};line-height:1;}}
+.i3-warr-v{{font-family:{f_display};font-size:15pt;color:{green};line-height:1;}}
 .i3-warr-l{{font-size:7pt;color:{muted};margin-top:3px;}}
 
-.i3-sign{{margin-top:16px;display:table;width:100%;border-spacing:0;}}
+.i3-sign{{margin-top:14px;display:table;width:100%;border-spacing:0;}}
 .i3-sign-c{{display:table-cell;vertical-align:top;width:50%;border:1px solid {line};
   border-radius:12px;padding:12px 14px;}}
 .i3-sign-gap{{display:table-cell;width:12px;}}
@@ -202,21 +165,21 @@ def build(ctx):
 
     html = f"""{css}
 <div class="i3-root">
-  <div class="i3-kicker">Déploiement &amp; conditions</div>
+  <div class="i3-kicker">{L("ci_ind_deploiement", "Déploiement &amp; conditions")}</div>
   {tranches_html}
 
-  <div class="i3-h2">Conformité &amp; valeur pour l'entreprise</div>
-  <div class="i3-two">
-    <div class="i3-col"><div class="i3-blk">
-      <div class="i3-blk-t">ISO 50001 — management de l'énergie</div>
-      <div class="i3-li">Données de production/consommation exploitables pour la <b>revue énergétique</b> et les indicateurs de performance (IPE).</div>
-    </div></div>
-    <div class="i3-col"><div class="i3-blk">
-      <div class="i3-blk-t">CBAM — ajustement carbone aux frontières (UE)</div>
-      <div class="i3-li">Pour les <b>exportateurs</b> vers l'UE : l'électricité solaire autoconsommée réduit l'<b>intensité carbone</b> déclarée des produits.</div>
-      <div class="i3-li">Traçabilité de l'énergie renouvelable à l'appui du reporting CBAM.</div>
-    </div></div>
-  </div>
+  <div class="i3-h2">{L("ci_ind_valeur_entreprise", "Valeur pour l'entreprise")}</div>
+  <table class="i3-two"><tr>
+    <td class="i3-col"><div class="i3-blk">
+      <div class="i3-blk-t">{L("ci_ind_iso_titre", "ISO 50001 — management de l'énergie")}</div>
+      <div class="i3-li">{L("ci_ind_iso_texte", "Les données de production et de consommation peuvent alimenter votre <b>revue énergétique</b> — sans promesse de conformité à la norme.")}</div>
+    </div></td>
+    <td class="i3-cgap"></td>
+    <td class="i3-col"><div class="i3-blk">
+      <div class="i3-blk-t">{titre_decarbo}</div>
+      <div class="i3-li">{texte(textes_decarbo, langue)}</div>
+    </div></td>
+  </tr></table>
 
   {warranties_html}{services_html}{clauses_html}
 
@@ -228,7 +191,7 @@ def build(ctx):
     </div>
     <div class="i3-sign-gap"></div>
     <div class="i3-sign-c">
-      <div class="i3-sign-h">Pour {brand}</div>
+      <div class="i3-sign-h">{L("ci_pour", "Pour {marque}", marque=brand)}</div>
       <div class="i3-sign-box"></div>
       <div class="i3-sign-co"><b>{brand}</b> &nbsp;·&nbsp; {ident.get('email','')} &nbsp;·&nbsp; {ident.get('phone','')}</div>
     </div>

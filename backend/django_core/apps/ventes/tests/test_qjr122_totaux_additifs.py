@@ -320,8 +320,16 @@ class TestInvestissementCIUneSeuleChaine(SimpleTestCase):
         self.assertEqual(set(foot), {f"1{NNBSP}200,85"})
 
     def test_industriel_tranches_somment_au_centime(self):
-        html = self._industriel()
-        tranches = re.findall(r'class="i3-tr-amt">([^<]*) MAD</div>', html)
+        # CIQ344 — les tranches sont l'échéancier de ``synthese_ci`` (montants
+        # du total de l'offre servie, ``total_sans`` ici), au centime.
+        from apps.ventes.quote_engine.industriel import (
+            render, renderer, sample_data)
+        data = sample_data.build()
+        data["totaux_all"] = dict(_TOT_1200_85)
+        data["display_total"] = data["total_sans"] = 1200.85
+        html = render.build_html(renderer._augment(data))
+        tranches = re.findall(
+            r'class="i3-ech-m"[^>]*>([^<]*)&#160;MAD TTC</div>', html)
         self.assertEqual(len(tranches), 3, tranches)
         self.assertEqual(sum(_dec(t) for t in tranches), Decimal("1200.85"))
         self.assertEqual(tranches[0], "600,43")

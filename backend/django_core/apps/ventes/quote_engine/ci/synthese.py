@@ -519,6 +519,11 @@ def synthese_ci(data):
     if segment == "commercial":
         from .categories import categorie_ci
         synthese["categorie"] = categorie_ci(data, synthese)
+    # CIQ344 — décarbonation (industriel) : CBAM seulement pour un
+    # exportateur UE DÉCLARÉ de ciment ou d'engrais, sinon la phrase générique.
+    if segment == "industriel":
+        from .mentions import decarbonation_ci
+        synthese["decarbonation"] = decarbonation_ci(data)
     # CIQ314 — services : seulement ce que le devis porte (D-CIQ-12).
     synthese["services"] = _services(data)
     synthese["echeancier"] = _echeancier(data, option)
