@@ -62,6 +62,14 @@ class DocumentTemplates(models.Model):
     # Liste de puces ; chaque élément peut porter {acompte}/{materiel}/{solde}/
     # {tva_note} substitués par le moteur. NULL/[] → puces historiques.
     cgv_bullets = models.JSONField(null=True, blank=True)
+    # CIQ218 — conditions générales C&I PAR MODE :
+    # ``{commercial: {titre, bullets[]}, industriel: {titre, bullets[]}}``.
+    # VIDE par défaut : aucun texte inventé — rédaction et relecture par un
+    # juriste (manuel). Marqueurs admis ``{echeancier}``, ``{retenue}``,
+    # ``{tva_note}``. Gelées à l'envoi (``figer_clauses_devis``), servies au
+    # moteur (``cgv_ci``) — jamais générées par lui. Hors ``DEVIS_TEXT_KEYS`` :
+    # le PDF résidentiel reste octet-identique.
+    cgv_par_mode = models.JSONField(default=dict, blank=True)
 
     # ── N67 — garanties (titre, détail, libellé de performance) ──
     garantie_titre = models.CharField(max_length=160, blank=True, default='')

@@ -104,7 +104,7 @@ def figer_clauses_devis(devis):
     que le client a reçu) : un texte édité après l'envoi ne les change pas.
     Sans source, rien n'est écrit ni effacé. Rend ``True`` quand le snapshot a
     été (ré)écrit. Ne touche jamais au statut (règle #4)."""
-    from apps.parametres.selectors import cgv_bullets_societe
+    from apps.parametres.selectors import cgv_mode_societe
 
     existant = list(devis.clauses_appliquees or [])
 
@@ -114,9 +114,14 @@ def figer_clauses_devis(devis):
     cgv = [c for c in existant if _est_cgv(c)]
     particulieres = [c for c in existant if not _est_cgv(c)]
     if not cgv:
-        puces = cgv_bullets_societe(devis.company)
-        if puces:
-            cgv = [{'type': TYPE_CGV_GELEES, 'bullets': puces}]
+        # CIQ218 — un devis C&I gèle la variante de SON mode (sinon l'autre
+        # variante C&I) ; sans variante, les puces société comme hier.
+        source = cgv_mode_societe(devis.company, devis.mode_installation)
+        if source:
+            entree = {'type': TYPE_CGV_GELEES, 'bullets': source['bullets']}
+            if source.get('mode'):
+                entree.update(mode=source['mode'], titre=source['titre'])
+            cgv = [entree]
     cpq = clauses_applicables_devis(devis)
     if cpq is not None:
         particulieres = cpq
