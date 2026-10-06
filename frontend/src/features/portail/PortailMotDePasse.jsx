@@ -1,12 +1,12 @@
 import { useState } from 'react'
+import PortailValiderMotDePasse from './PortailValiderMotDePasse'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
-import { KeyRound } from 'lucide-react'
 import api from '../../api/axios'
 import { fetchMe } from '../auth/store/authSlice'
 import { portalHomePath } from './portalScope'
 import {
-  Button, Card, Form, FormField, Input, toast,
+  Card, Form, FormField, Input, toast,
 } from '../../ui'
 
 /* ============================================================================
@@ -93,12 +93,7 @@ export default function PortailMotDePasse() {
             <Input type="password" aria-label="Confirmez le nouveau mot de passe" value={confirmation} autoComplete="new-password"
                    onChange={(e) => setConfirmation(e.target.value)} required />
           </FormField>
-          {erreur ? (
-            <p className="text-sm text-destructive" role="alert">{erreur}</p>
-          ) : null}
-          <Button type="submit" disabled={busy}>
-            <KeyRound /> Valider mon mot de passe
-          </Button>
+          <PortailValiderMotDePasse erreur={erreur} busy={busy}>Valider mon mot de passe</PortailValiderMotDePasse>
         </Form>
       </Card>
     </div>

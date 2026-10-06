@@ -1,6 +1,6 @@
 import { useState } from 'react'
+import PortailValiderMotDePasse from './PortailValiderMotDePasse'
 import { Link, useSearchParams } from 'react-router-dom'
-import { KeyRound } from 'lucide-react'
 import portailApi from '../../api/portailApi'
 import { Button, Card, Form, FormField, Input } from '../../ui'
 
@@ -92,12 +92,7 @@ export default function PortailInvitationAccepter() {
                      autoComplete="new-password"
                      onChange={(e) => setConfirmation(e.target.value)} required />
             </FormField>
-            {erreur ? (
-              <p className="text-sm text-destructive" role="alert">{erreur}</p>
-            ) : null}
-            <Button type="submit" disabled={busy}>
-              <KeyRound /> Créer mon compte
-            </Button>
+            <PortailValiderMotDePasse erreur={erreur} busy={busy}>Créer mon compte</PortailValiderMotDePasse>
           </Form>
         </Card>
       )}

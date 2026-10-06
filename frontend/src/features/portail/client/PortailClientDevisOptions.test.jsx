@@ -73,7 +73,12 @@ describe('PortailClientDevis — ADOC114 choix de l’option', () => {
   })
 
   it('un devis mono-option garde le dialogue actuel (aucun choix)', async () => {
-    portailApi.devis.liste.mockResolvedValue(reponseContrat('portail', 'mes_devis_liste'))
+    // Devis envoyé mono-option : la ligne à accepter du contrat, avec les
+    // valeurs mono-option de la seconde ligne du même contrat (false / null).
+    const r = reponseContrat('portail', 'mes_devis_liste')
+    const mono = r.data.results[1]
+    r.data.results = [{ ...r.data.results[0], deux_options: mono.deux_options, options: mono.options }]
+    portailApi.devis.liste.mockResolvedValue(r)
     renderPage()
     await screen.findByText('DEV-202609-0012')
     fireEvent.click(screen.getByRole('button', { name: 'Accepter' }))

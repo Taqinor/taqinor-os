@@ -314,10 +314,14 @@
     detail:texte, domaine:inconnu, results:inconnu
 - frontend/src/api/parametresApi.js :: saveTranslationOverrides -> /api/django/parametres/traductions/bulk
     detail:texte, overrides:inconnu
-- frontend/src/api/portailApi.js :: accepter -> /api/django/portail/mes-devis/<>/accepter
-    detail:inconnu, reference:inconnu, statut:inconnu
 - frontend/src/api/portailApi.js :: confirmer -> /api/django/portail/mes-bons-commande/<>/confirmer
     date_confirmee:texte, date_confirmee_fournisseur:inconnu, detail:texte, id:inconnu, numero_confirmation_fournisseur:texte, reference:inconnu
+- frontend/src/api/portailApi.js :: consommation -> /api/django/portail/client/ma-consommation
+    alertes_ouvertes:nombre, points:inconnu, provider_configure:inconnu, window_days:inconnu
+- frontend/src/api/portailApi.js :: demander -> /api/django/portail/mes-contrats-maintenance/<>/demander
+    detail:texte, type_demande:texte
+- frontend/src/api/portailApi.js :: fil -> /api/django/portail/mes-demandes-sav/<>/fil
+    detail:texte, results:inconnu
 - frontend/src/api/portailApi.js :: get -> /api/django/portail/ma-preference
     langue:inconnu, langues_disponibles:inconnu
 - frontend/src/api/portailApi.js :: lienAcces -> /api/django/portail/comptes-portail/<>/lien-acces
@@ -328,6 +332,8 @@
     detail:texte, results:inconnu
 - frontend/src/api/portailApi.js :: provisionnerAcces -> /api/django/portail/comptes-portail/<>/provisionner-acces
     actif:inconnu, cree:inconnu, detail:texte, email:inconnu, username:inconnu, utilisateur_id:inconnu
+- frontend/src/api/portailApi.js :: recherche -> /api/django/portail/client/recherche
+    groups:inconnu, query:inconnu
 - frontend/src/api/portailApi.js :: regenererJeton -> /api/django/portail/comptes-portail/<>/regenerer-jeton
     detail:texte, token_apercu:inconnu
 - frontend/src/api/portailApi.js :: set -> /api/django/portail/ma-preference
@@ -891,7 +897,7 @@
 - frontend/src/api/gedApi.js :: getRoutagesDocumentaires -> /api/django/ged/routages-documentaires  [RoutageDocumentaireSerializer]
     champs: actif, cabinet_cible, cabinet_cible_nom, created_at, created_by, dossier_cible, id, source, tags_defaut, updated_at
 - frontend/src/api/gedApi.js :: getSignatairesDemande -> /api/django/ged/signataires-demande  [SignataireDemandeSerializer]
-    champs: created_at, date_action, demande, derniere_relance_le, email, id, motif_refus, nb_relances, nom, notifie_le, ordre, role, role_auth_extra, role_couleur, role_signataire, role_signataire_nom, statut, telephone, updated_at
+    champs: adresse_ip, consentement_explicite, created_at, date_action, demande, derniere_relance_le, email, hash_contenu, id, lien_signature, motif_refus, nb_relances, nom, notifie_le, ordre, role, role_auth_extra, role_couleur, role_signataire, role_signataire_nom, signature_texte, signature_tracee, statut, telephone, updated_at, user_agent
 - frontend/src/api/gedApi.js :: getTagAssignments -> /api/django/ged/tag-assignments  [DocumentTagAssignmentSerializer]
     champs: created_at, created_by, document, document_nom, id, tag, tag_nom
 - frontend/src/api/gedApi.js :: getTags -> /api/django/ged/tags  [DocumentTagSerializer]

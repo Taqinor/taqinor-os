@@ -700,8 +700,9 @@ function GenererModeleDialog({ modele, onClose, onDone }) {
 // les destinataires ORDONNÉS (ordre/rôle) → creer-multi ; (2) une fois la
 // demande créée, poser les champs de signature positionnés (page/x/y) via le
 // CRUD champs-signature. L'étape 2 est facultative (fermer suffit).
-// ADOC76 — rôle FERMÉ d'un destinataire (miroir de ROLE_DESTINATAIRE_CHOICES
-// côté serveur) : plus de saisie libre, qui créait une demande en attente à vie.
+// ADOC76 — rôle FERMÉ d'un destinataire : plus de saisie libre, qui créait
+// une demande en attente à vie.
+// source-choix: ged.SignataireDemande.role
 const ROLE_DESTINATAIRE_OPTIONS = [
   { value: 'signataire', label: 'Signataire' },
   { value: 'copie', label: 'Copie' },
