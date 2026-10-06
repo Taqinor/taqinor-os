@@ -38,7 +38,9 @@ import {
 import {
   saisiesEconomiePompage, lignesDepuisKit,
   TARIF_SAISIE_VIDE, tarifDeclareDepuisSaisie, erreursTarifDeclare,
+  ECO_CI_VIDE, saisiesEconomieCi,
 } from '../../features/ventes/quote/etudeMarcheBloc'
+import { useApercuEconomieCi } from '../../features/ventes/quote/hooks/useApercuEconomieCi'
 import {
   POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie, libelleProvenance,
 } from '../../features/ventes/etudePompagePreviewPur'
@@ -110,7 +112,7 @@ import {
   // rendent. CIQ126 — l'étude C&I locale (et son avertissement MT) est
   // supprimée : le moteur serveur C&I est la seule source.
   CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
-  formatMoney, estimerMois, computeROI, ttcFromHt,
+  formatMoney, estimerMois, computeROI, ttcFromHt, htFromTtc,
   tauxTvaOf, tauxTvaOuDefaut, controlerFacturesSaisies,
   paybackMoteurHoraire, inverterCostFromLines, appartientAuPanierSans,
   appartientAuPanierAvec,
@@ -818,6 +820,9 @@ export default function DevisGenerator({
   // CIQ222 — le tarif de SA facture (contrat `tarifs_ci.json`), tel que tapé.
   const [tarifSaisie, setTarifSaisie] = useState(TARIF_SAISIE_VIDE)
   const setTarifChamp = (champ, valeur) => setTarifSaisie((t) => ({ ...t, [champ]: valeur }))
+  // CIQ223 — les saisies de l'économie C&I (contrat `economie_ci.json`).
+  const [ecoCi, setEcoCi] = useState(ECO_CI_VIDE)
+  const setEcoChamp = (champ, valeur) => setEcoCi((e) => ({ ...e, [champ]: valeur }))
   // QX44 — étude commerciale par catégorie (mode commercial). categorie +
   // réponses par catégorie (clés snake_case), stockées dans etude_params.
   const [categorieCommerciale, setCategorieCommerciale] = useState(CATEGORIE_NON_PRECISEE)
@@ -2101,6 +2106,8 @@ export default function DevisGenerator({
       pose(etat.profilCi, setProfilCi)
       // CIQ222 — le tarif déclaré se relit tel que saisi.
       setTarifSaisie(etat.tarifSaisie || TARIF_SAISIE_VIDE)
+      // CIQ223 — les saisies de l'économie C&I se relisent telles que saisies.
+      setEcoCi(etat.ecoCi || ECO_CI_VIDE)
       pose(etat.distributeur, setDistributeur)
       pose(etat.distributeurChoisi, setDistributeurChoisi)
       pose(etat.monthly, setMonthly)
@@ -3350,6 +3357,7 @@ export default function DevisGenerator({
     echeancier: echeancierSaisie, echeancierAEnvoyer: echeancierAEnvoyer.current,
     lignes: lines, multiMode, nombreProprietes, scenario, recommendedChoice,
     profilCi, ctxCi: ctxProfilCi, tarifSaisie, aujourdhui: aujourdhuiIso,
+    ecoCi: { ...ecoCi, revente_demandee: profilCi.tension === 'mt' && Boolean(profilCi.revente) },
     // QJR575 — la sentinelle « Non précisée » se persiste null.
     categorieCommerciale: categorieCommerciale === CATEGORIE_NON_PRECISEE ? null : categorieCommerciale,
     commercialAnswers,
@@ -3734,6 +3742,25 @@ export default function DevisGenerator({
     if (ok) window.location.reload()
   }
 
+  // CIQ223 — l'économie C&I SERVIE (`POST /ventes/economie-ci/preview/`) :
+  // la sortie de l'aperçu C&I, les saisies, et les lignes du devis (le serveur
+  // recalcule l'investissement). Aucun chiffre d'économie calculé ici.
+  const ecoCiEffectif = { ...ecoCi, revente_demandee: profilCi.tension === 'mt' && Boolean(profilCi.revente) }
+  const corpsEcoCi = marcheCi && apercuCi.donnees ? {
+    sortie_etude_ci: apercuCi.donnees,
+    saisies: saisiesEconomieCi(ecoCiEffectif, { aujourdhui: aujourdhuiIso }) || {},
+    lignes: usableLines().map((l) => {
+      const q = parseFloat(l.quantite) || 0
+      const tva = parseFloat(l.taux_tva ?? 20)
+      const ttc = (parseFloat(l.prix_unit_ttc) || 0) * q
+      return {
+        produit: Number(l.produit), quantite: q, taux_tva: tva,
+        totaux: { ht: htFromTtc(parseFloat(l.prix_unit_ttc) || 0, tva) * q, ttc },
+      }
+    }),
+  } : null
+  const apercuEcoCi = useApercuEconomieCi(corpsEcoCi)
+
   // EZ3 — PANNEAU DE SUCCÈS : la création ne se termine plus par un renvoi sur
   // la liste nue. Le devis fraîchement créé s'annonce (numéro + total) et
   // propose l'action SUIVANTE évidente. « Envoyer par WhatsApp » ouvre la liste
@@ -3795,6 +3822,7 @@ export default function DevisGenerator({
   // CIQ125 — le profil déclaré C&I + la réponse du moteur serveur.
   const socleEtudeReseau = {
     profilCi, setChampCi, apercuCi, tarifSaisie, setTarifChamp,
+    apercuEcoCi, ecoCi, setEcoChamp,
   }
 
   return (
@@ -4862,7 +4890,13 @@ export default function DevisGenerator({
                 )}
               </div>
             )}
-            {!roi ? (
+            {/* CIQ223 — en C&I, aucune simulation JS : les économies sont celles
+                du moteur serveur (carte « Économies »). */}
+            {marcheCi ? (
+              <p className="text-center text-sm text-muted-foreground" data-testid="apercu-ci-serveur">
+                Économies C&amp;I : voir la carte « Économies » (moteur serveur).
+              </p>
+            ) : !roi ? (
               <p className="text-center text-sm text-muted-foreground">
                 Renseignez le nombre de panneaux et les factures, puis la simulation
                 s'actualise automatiquement.

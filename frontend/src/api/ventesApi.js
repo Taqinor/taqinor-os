@@ -298,6 +298,10 @@ const ventesApi = {
   // industriel, aucune écriture. Forme : `contract_samples/etude_ci_preview.json`.
   etudeCiPreview: (body, config = {}) =>
     api.post('/ventes/etude-ci/preview/', body, config),
+  // CIQ223 — aperçu de l'économie C&I (CIQ205-CIQ210), aucune écriture.
+  // Corps {sortie_etude_ci, saisies, lignes} ; forme : `contract_samples/economie_ci.json`.
+  economieCiPreview: (body, config = {}) =>
+    api.post('/ventes/economie-ci/preview/', body, config),
   // AGR213 — aperçu de l'économie DÉCLARÉE de pompage (AGR206), aucune
   // écriture. Forme : `contract_samples/economie_pompage.json`.
   economiePompagePreview: (body, config = {}) =>

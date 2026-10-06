@@ -39,7 +39,7 @@ const resoudreEntrees = (entrees, consoDejaConnue) => (
 export function projeterEtudeMarche(mode, {
   choix = {}, entrees,
   categorie, reponses = {},
-  pompageEntrees, exploitation = {}, ciEntrees, tarifDeclare,
+  pompageEntrees, exploitation = {}, ciEntrees, tarifDeclare, saisiesEcoCi,
 } = {}) {
   if (mode === 'industriel' || mode === 'commercial') {
     // CIQ126 — le navigateur n'envoie QUE les ENTRÉES C&I v2 (contrat
@@ -56,6 +56,8 @@ export function projeterEtudeMarche(mode, {
     // CIQ222 — le tarif DÉCLARÉ de la facture (contrat `tarifs_ci.json`) ;
     // `null` = rien de saisi, la clé est retirée (grille ONEE en repli).
     if (tarifDeclare !== undefined) bloc.tarif_declare = tarifDeclare
+    // CIQ223 — les saisies de l'économie C&I (contrat `economie_ci.json`).
+    if (saisiesEcoCi !== undefined) bloc.saisies_economie_ci = saisiesEcoCi
     if (mode === 'commercial') {
       // QX44 — la catégorie ET ses réponses (clés snake_case à plat, comme
       // le mappeur `?edit=` les relit : `e[q.key]`). Coercition de type
@@ -391,4 +393,54 @@ export function erreursTarifDeclare(detail) {
     }
   }
   return out
+}
+
+// ── CIQ223/CIQ224 — les saisies de l'économie C&I (contrat `economie_ci.json`,
+// `saisies_economie_ci`) : état d'écran (forme du contrat, nombres en texte tels
+// que tapés) → `etude_params.saisies_economie_ci`. Aucun défaut : ni taux, ni
+// parcours d'aide, ni TVA supposés ; rien de saisi ⇒ `null` (clé retirée).
+export const ECO_CI_VIDE = Object.freeze({
+  tva_recuperable: null,
+  taux_actualisation_client: null,
+  revente_demandee: false,
+  parcours_aide: null,
+  offre_financement: null,
+  offre_cse_concurrente: null,
+  fiscalite_client: null,
+})
+
+const NOMBRES_ECO_CI = new Set([
+  'valeur_pct', 'montant_finance_mad', 'apport_mad', 'duree_mois', 'echeance_mad',
+  'frais_mad', 'taux_annuel_pct', 'valeur_residuelle_mad', 'tarif_kwh_ht', 'duree_ans',
+  'indexation_pct_an', 'taux_is_pct', 'amortissement_coefficient',
+])
+
+// Un sous-objet saisi → forme du contrat ; entièrement vide ⇒ `null`.
+function objetEcoCi(o) {
+  if (!o || typeof o !== 'object') return null
+  const out = {}
+  let rempli = false
+  for (const [k, v] of Object.entries(o)) {
+    if (NOMBRES_ECO_CI.has(k)) out[k] = nombreSaisi(v)
+    else if (typeof v === 'boolean') out[k] = v
+    else out[k] = texteNet(v) || null
+    if (out[k] !== null && out[k] !== false && k !== 'saisi_le') rempli = true
+  }
+  return rempli ? out : null
+}
+
+export function saisiesEconomieCi(eco, { aujourdhui = '' } = {}) {
+  const e = { ...ECO_CI_VIDE, ...(eco || {}) }
+  const dater = (o) => (o ? { ...o, saisi_le: o.saisi_le || aujourdhui || null } : null)
+  const out = {
+    tva_recuperable: dater(objetEcoCi(e.tva_recuperable)),
+    taux_actualisation_client: dater(objetEcoCi(e.taux_actualisation_client)),
+    revente_demandee: Boolean(e.revente_demandee),
+    parcours_aide: texteNet(e.parcours_aide) || null,
+    offre_financement: objetEcoCi(e.offre_financement),
+    offre_cse_concurrente: objetEcoCi(e.offre_cse_concurrente),
+    fiscalite_client: objetEcoCi(e.fiscalite_client),
+  }
+  const declare = Object.entries(out).some(([, v]) => v !== null && v !== false)
+  return declare ? out : null
 }

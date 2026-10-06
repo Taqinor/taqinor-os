@@ -97,3 +97,24 @@ export function saisieDepuisTarifDeclare(td) {
     saisiLe: t.saisi_le || '',
   }
 }
+
+// ── CIQ223 — `etude_params.saisies_economie_ci` stocké → état d'écran ──
+// Les nombres reviennent en texte (l'écran les tient tels que tapés) ; les
+// dates de saisie et les sources reviennent telles quelles.
+const enTexte = (o) => (o && typeof o === 'object'
+  ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k,
+    typeof v === 'number' ? String(v) : (v === null || v === undefined ? '' : v)]))
+  : null)
+
+export function ecoCiDepuisSaisies(s) {
+  const e = s && typeof s === 'object' ? s : {}
+  return {
+    tva_recuperable: enTexte(e.tva_recuperable),
+    taux_actualisation_client: enTexte(e.taux_actualisation_client),
+    revente_demandee: e.revente_demandee === true,
+    parcours_aide: e.parcours_aide || null,
+    offre_financement: enTexte(e.offre_financement),
+    offre_cse_concurrente: enTexte(e.offre_cse_concurrente),
+    fiscalite_client: enTexte(e.fiscalite_client),
+  }
+}

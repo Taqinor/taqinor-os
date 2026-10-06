@@ -31,6 +31,8 @@ import {
 } from '../../../features/ventes/solar'
 // CIQ125 — la carte C&I partagée (profil déclaré + résultat du moteur serveur).
 import { CarteProfilCi } from './BlocEtudeReseau'
+// CIQ223 — la carte « Économies » servie par le serveur (`economie_ci`).
+import CarteEconomieCi from './CarteEconomieCi'
 
 // QJR241 — clé de marché de ce panneau (ex-`cle` de quote/marches/
 // commercial.js, module supprimé faute de consommateur de production).
@@ -116,6 +118,7 @@ export default function PanneauCommercial({
   const { apercuCi } = carte
   if (marche !== CLE) return null
   return (
+    <>
     <CarteProfilCi {...carte}>
       {/* QX44 — étude commerciale par catégorie */}
       <div className="mt-3.5">
@@ -171,5 +174,7 @@ export default function PanneauCommercial({
         <ArchetypeEtSansEffet profil={apercuCi?.donnees?.profil_charge} />
       </div>
     </CarteProfilCi>
+    <CarteEconomieCi apercu={carte.apercuEcoCi} eco={carte.ecoCi} setEcoChamp={carte.setEcoChamp} />
+    </>
   )
 }

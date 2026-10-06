@@ -18,11 +18,18 @@
 // `<input type="number">` garde `step="any"` (règle fondateur : aucun champ
 // ne snappe jamais) et le `noValidate` est resté sur le formulaire porteur.
 import { CarteProfilCi } from './BlocEtudeReseau'
+// CIQ223 — la carte « Économies » servie par le serveur (`economie_ci`).
+import CarteEconomieCi from './CarteEconomieCi'
 
 const CLE = 'industriel'
 
 // `carte` = les props de la carte C&I (profil, aperçu, tarif, erreurs).
 export default function PanneauIndustriel({ marche, ...carte }) {
   if (marche !== CLE) return null
-  return <CarteProfilCi {...carte} />
+  return (
+    <>
+      <CarteProfilCi {...carte} />
+      <CarteEconomieCi apercu={carte.apercuEcoCi} eco={carte.ecoCi} setEcoChamp={carte.setEcoChamp} />
+    </>
+  )
 }
