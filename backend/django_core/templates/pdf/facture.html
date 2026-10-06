@@ -125,7 +125,18 @@
     </div>
     <div class="partie-block">
       <div class="partie-label">{{ _L('facture_a') }}</div>
+      {# CIQ217 — client ENTREPRISE : raison sociale (``client.nom``), ICE, IF
+         et RC, chacun omis s'il est vide (jamais un tiret). #}
+      {% if facture.client.type_client == 'entreprise' %}
+      <div class="partie-nom">{{ facture.client.nom }}</div>
+      <div class="partie-detail">
+        {% if facture.client.ice %}ICE : {{ facture.client.ice }}<br />{% endif %}
+        {% if facture.client.if_fiscal %}IF : {{ facture.client.if_fiscal }}<br />{% endif %}
+        {% if facture.client.rc %}RC : {{ facture.client.rc }}<br />{% endif %}
+      </div>
+      {% else %}
       <div class="partie-nom">{{ facture.client.nom }} {{ facture.client.prenom or '' }}</div>
+      {% endif %}
       <div class="partie-detail">
         {% if facture.client.email %}{{ facture.client.email }}<br />{% endif %}
         {% if facture.client.telephone %}{{ facture.client.telephone }}<br />{% endif %}

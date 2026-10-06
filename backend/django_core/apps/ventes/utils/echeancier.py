@@ -883,14 +883,22 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
         )
 
     from django.db import transaction
-    from apps.ventes.domain.facturation_ops import emettre_facture
+    from apps.ventes.domain.facturation_ops import (
+        EmissionRefusee, emettre_facture,
+    )
     from apps.ventes.utils.company_settings import numbering_config
     cfg = numbering_config(company, 'facture')
-    with transaction.atomic():
-        facture = create_with_reference(
-            Facture, cfg['prefix'], company, _create,
-            padding=cfg['padding'], period=cfg['period'])
-        emettre_facture(facture, user=user, source='echeancier_tranche')
+    try:
+        with transaction.atomic():
+            facture = create_with_reference(
+                Facture, cfg['prefix'], company, _create,
+                padding=cfg['padding'], period=cfg['period'])
+            emettre_facture(facture, user=user, source='echeancier_tranche')
+    except EmissionRefusee as exc:
+        # CIQ217 — un refus d'émission (p. ex. client entreprise sans ICE)
+        # annule la tranche entière : rien n'est écrit, et l'appelant le
+        # rend en 400 français comme ses autres refus (ValueError).
+        raise ValueError(exc.motif) from exc
     return facture
 
 
