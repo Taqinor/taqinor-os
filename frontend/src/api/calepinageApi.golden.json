@@ -680,6 +680,14 @@
       "verbe": "get"
     }
   ],
+  "calepinages.meteoFichier": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/meteo-fichier/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.modeles": [
     {
       "config": null,

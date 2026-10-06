@@ -47,11 +47,13 @@ const CONTRAT_METEO = JSON.parse(readFileSync(join(
 
 const exportCsv = vi.fn()
 const deposerMeteoFichier = vi.fn()
+const meteoFichier = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       exportCsv: (...a) => exportCsv(...a),
       deposerMeteoFichier: (...a) => deposerMeteoFichier(...a),
+      meteoFichier: (...a) => meteoFichier(...a),
     },
   },
 }))
@@ -81,7 +83,11 @@ const MOTIF_SANS_SERIE = (
   + 'place.'
 )
 
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => {
+  vi.clearAllMocks()
+  // Par défaut : aucun fichier retenu, la simulation lit PVGIS.
+  meteoFichier.mockResolvedValue({ data: null })
+})
 afterEach(() => { cleanup() })
 
 const rendre = (props = {}) => render(
@@ -265,5 +271,48 @@ describe('CALX6 — le contrat committé, lu à sa source', () => {
     const vide = CONTRAT.exemple_vide.serie_horaire
     expect(vide.points).toEqual([])
     expect(vide.pas_minutes).toBeNull()
+  })
+})
+
+/* ACAL147 — la source météo RETENUE est affichée, jamais un dépôt muet. La
+   réponse de `GET meteo-fichier/` reprend les valeurs du contrat
+   `calepinage_meteo_fichier.json` (nom, fournisseur, empreinte du dépôt). */
+describe('ACAL147 — la source météo retenue', () => {
+  const depot = CONTRAT_METEO.exemple
+  const retenu = {
+    piece_jointe: depot.piece_jointe,
+    nom: depot.meteo.fichier.nom,
+    fournisseur: depot.meteo.fournisseur,
+    sha256: depot.meteo.fichier.empreinte_sha256,
+    depose_le: '2026-09-21T09:00:00+00:00',
+    depose_par: 'Sami Alaoui',
+  }
+
+  it('fichier retenu affiché avec son fournisseur', async () => {
+    meteoFichier.mockResolvedValue({ data: retenu })
+    rendre()
+
+    const source = await screen.findByTestId('acal147-source-meteo')
+    await waitFor(() => expect(source).toHaveTextContent('Source météo : fichier meteo-2021-plan.csv'))
+    expect(source).toHaveTextContent(`fournisseur ${depot.meteo.fournisseur}`)
+    expect(source).toHaveTextContent('déposé le 21/09/2026 par Sami Alaoui')
+    expect(source).toHaveTextContent('remplace PVGIS')
+    expect(meteoFichier).toHaveBeenCalledWith(5)
+  })
+
+  it('sans fichier : « Source météo : PVGIS »', async () => {
+    rendre()
+
+    await waitFor(() => expect(screen.getByTestId('acal147-source-meteo'))
+      .toHaveTextContent('Source météo : PVGIS'))
+  })
+
+  it('lecture impossible : aucune source fabriquée', async () => {
+    meteoFichier.mockRejectedValue(new Error('boom'))
+    rendre()
+
+    await waitFor(() => expect(screen.getByTestId('acal147-source-meteo'))
+      .toHaveTextContent('indisponible'))
+    expect(screen.getByTestId('acal147-source-meteo')).not.toHaveTextContent('PVGIS')
   })
 })

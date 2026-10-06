@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Download, Upload } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
+import { formatDate } from '../../../lib/format'
 import { Button, Card, Input, Label } from '../../../ui'
 import { downloadBlob } from '../../../utils/downloadBlob'
 
@@ -110,6 +111,18 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
   // Par export : `{ etat: 'encours' | 'refus' | 'ok', champ, motif, fichier }`.
   const [sorties, setSorties] = useState({})
 
+  // ACAL147 — le fichier météo RETENU par la simulation : `undefined` tant
+  // qu'on lit, `null` = PVGIS, sinon l'objet servi par `GET meteo-fichier/`,
+  // `false` si la lecture a échoué (on ne fabrique alors aucune source).
+  const [retenu, setRetenu] = useState(undefined)
+
+  const lireRetenu = useCallback(() => Promise.resolve(
+    calepinageApi.calepinages.meteoFichier(calepinageId))
+    .then((res) => setRetenu(res?.data ?? null))
+    .catch(() => setRetenu(false)), [calepinageId])
+
+  useEffect(() => { lireRetenu() }, [lireRetenu])
+
   const telecharger = useCallback((quoi) => {
     setSorties((precedent) => ({ ...precedent, [quoi]: { etat: 'encours' } }))
     return Promise.resolve(calepinageApi.calepinages.exportCsv(calepinageId, quoi))
@@ -187,12 +200,36 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
         })}
       </div>
 
-      <DepotMeteo calepinageId={calepinageId} />
+      <SourceMeteo retenu={retenu} />
+      <DepotMeteo calepinageId={calepinageId} onDepose={lireRetenu} />
     </div>
   )
 }
 
-function DepotMeteo({ calepinageId }) {
+/** ACAL147 — « Source météo : … » : le fichier retenu avec son nom, son
+    fournisseur, sa date et son auteur (tels que servis), ou PVGIS. */
+function SourceMeteo({ retenu }) {
+  let contenu
+  if (retenu === undefined) contenu = 'Source météo : lecture en cours…'
+  else if (retenu === false) contenu = 'Source météo : indisponible (lecture impossible).'
+  else if (retenu === null) contenu = 'Source météo : PVGIS'
+  else {
+    const details = [
+      retenu.fournisseur ? `fournisseur ${retenu.fournisseur}` : null,
+      retenu.depose_le
+        ? `déposé le ${formatDate(retenu.depose_le)}${retenu.depose_par ? ` par ${retenu.depose_par}` : ''}`
+        : null,
+    ].filter(Boolean).join(', ')
+    contenu = `Source météo : fichier ${retenu.nom || 'sans nom'}${details ? ` (${details})` : ''} — remplace PVGIS`
+  }
+  return (
+    <p className="mt-3 text-sm text-white" data-testid="acal147-source-meteo">
+      {contenu}
+    </p>
+  )
+}
+
+function DepotMeteo({ calepinageId, onDepose }) {
   const [fichier, setFichier] = useState(null)
   const [fournisseur, setFournisseur] = useState('')
   const [envoi, setEnvoi] = useState(false)
@@ -209,7 +246,10 @@ function DepotMeteo({ calepinageId }) {
     corps.append('fournisseur', fournisseur)
     return Promise.resolve(
       calepinageApi.calepinages.deposerMeteoFichier(calepinageId, corps))
-      .then((res) => setDepose(res?.data || {}))
+      .then((res) => {
+        setDepose(res?.data || {})
+        onDepose?.()
+      })
       .catch(async (erreur) => {
         setRefus(await lireRefus(erreur) || {
           champ: 'fichier', motif: REFUS_SANS_MOTIF, ligne: null,

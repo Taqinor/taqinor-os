@@ -23,6 +23,11 @@ export const simulation = {
     deposerMeteoFichier: (id, corps) =>
       api.post(`${pivot(id)}meteo-fichier/`, corps),
 
+    // ACAL147 — le fichier météo RETENU par la simulation (`views/meteo_fichier.py`,
+    // GET, ACAL146) : `{piece_jointe, nom, fournisseur, sha256, depose_le,
+    // depose_par}`, ou `null` quand la simulation lit PVGIS. Lecture pure.
+    meteoFichier: (id) => api.get(`${pivot(id)}meteo-fichier/`),
+
     // CALX5 — LANCER la simulation (`views/simulation.py`, contrat
     // `contract_samples/calepinage_simulation.json`). Deux réponses, jamais
     // une troisième : 202 `{job_id, kind, nature}` — le travail est parti en
