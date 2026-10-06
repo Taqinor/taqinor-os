@@ -7,6 +7,7 @@ import {
   toucheNbPanneauxPourComposition,
   SCENARIO_LES_DEUX, SCENARIO_SANS, SCENARIO_AVEC,
 } from './sizingReducer.js'
+import { exempleContrat } from '../../../test/fixtures/contractSamples.js'
 
 const red = (etat, ...actions) => actions.reduce(sizingReducer, etat)
 
@@ -188,7 +189,9 @@ const LEAD = {
   type_installation: 'industriel',
   batterie_souhaitee: 'avec',
   structure_pref: 'aluminium',
-  web_questionnaire: { tension_raccordement: 'MT' },
+  // CIQ426 — la tension se lit dans la colonne promue (CIQ401), plus dans le sac.
+  tension_raccordement: 'mt',
+  tension_source: 'declare',
   facture_hiver: '3000',
 }
 
@@ -450,4 +453,49 @@ test('STKCAT10 — LEAD_APPLIQUE n’écrase JAMAIS une structure déjà choisie
   })
   assert.equal(s.structureProduitId, '12')
   assert.equal(s.structure, 'acier')   // le repli du lead non plus
+})
+
+// ── CIQ426 — tension : la colonne promue, jamais le sac ni un défaut du site ──
+// Fixtures tirées du contrat partagé lead_pro.json (check_api_shapes).
+const LEAD_PRO = exempleContrat('crm', 'lead_pro', 'exemple_industriel')
+
+test('CIQ426 : colonne « mt », source déclarée → tension « mt »', () => {
+  const lead = { ...LEAD_PRO, tension_raccordement: 'mt', tension_source: 'declare' }
+  const s = sizingReducer(ETAT_INITIAL, { type: 'LEAD_APPLIQUE', lead, sizingLocal: null })
+  assert.equal(s.tension, 'mt')
+})
+
+test('CIQ426 : colonne lue même source « facture » (contrat lead_pro)', () => {
+  const s = sizingReducer(ETAT_INITIAL, { type: 'LEAD_APPLIQUE', lead: LEAD_PRO, sizingLocal: null })
+  assert.equal(s.tension, LEAD_PRO.tension_raccordement)
+})
+
+test('CIQ426 : colonne « mt » préselectionnée par le site (site_defaut_visible) → tension intacte', () => {
+  const lead = { ...LEAD_PRO, tension_raccordement: 'mt', tension_source: 'site_defaut_visible' }
+  const s = sizingReducer(ETAT_INITIAL, { type: 'LEAD_APPLIQUE', lead, sizingLocal: null })
+  assert.equal(s.tension, ETAT_INITIAL.tension)
+})
+
+test('CIQ426 : sac {tension_raccordement:"mt"} sans colonne → tension intacte', () => {
+  const lead = {
+    ...LEAD_PRO, tension_raccordement: null, tension_source: null,
+    web_questionnaire: { tension_raccordement: 'mt' },
+  }
+  const s = sizingReducer(ETAT_INITIAL, { type: 'LEAD_APPLIQUE', lead, sizingLocal: null })
+  assert.equal(s.tension, ETAT_INITIAL.tension)
+})
+
+test('CIQ426 : « ne_sait_pas » ou vide → tension intacte', () => {
+  for (const t of ['ne_sait_pas', '', null]) {
+    const lead = { ...LEAD_PRO, tension_raccordement: t, tension_source: 'declare' }
+    const s = sizingReducer(ETAT_INITIAL, { type: 'LEAD_APPLIQUE', lead, sizingLocal: null })
+    assert.equal(s.tension, ETAT_INITIAL.tension)
+  }
+})
+
+test('CIQ426 : un geste du vendeur (touche.tension) n’est jamais écrasé', () => {
+  const touche = red(ETAT_INITIAL, { type: 'SAISI', champ: 'tension', valeur: 'bt' })
+  const lead = { ...LEAD_PRO, tension_raccordement: 'mt', tension_source: 'declare' }
+  const s = sizingReducer(touche, { type: 'LEAD_APPLIQUE', lead, sizingLocal: null })
+  assert.equal(s.tension, 'bt')
 })
