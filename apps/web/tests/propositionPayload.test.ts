@@ -561,6 +561,9 @@ const NON_LU: Readonly<Record<string, string>> = {
   'options_proposees[]': 'Options commerciales proposées en plus (extension de garantie…) : rendues par le frontmatter dans leur propre bloc.',
   'lignes_structure[]': 'Titres de structure du devis (sections, ordre) : rendus par le frontmatter pour ordonner l’affichage des lignes.',
   'variants[]': 'Les variantes de ce devis (v2, v3…) : rendues par le frontmatter dans le sélecteur de variantes, pas par le lecteur typé.',
+  // CIQ306 (06/10/2026) — la moitié serveur sert `synthese_ci` (nul hors C&I) ;
+  // la page /proposition C&I qui la lira est la tâche web CIW301 (WEB_PLAN).
+  'synthese_ci': 'Synthèse C&I servie par le serveur (CIQ306), nulle hors commercial/industriel : la page /proposition C&I qui la lira est CIW301 (docs/WEB_PLAN.md), pas encore construite.',
 };
 
 /** La prose du contrat : jamais servie à un navigateur, mais elle se décide aussi. */

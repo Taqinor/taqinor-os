@@ -93,8 +93,12 @@ class TestIndustrielInjectionWhenPresent(SimpleTestCase):
         html = render.build_html(renderer._augment(base))
         self.assertIn("surplus injecté", html)
         self.assertIn("82-21", html)
-        self.assertIn("plafond 20 %", html)
-        self.assertIn("ANRE 03/2026", html)
+        # CIQ305 — la mention est ``MENTION_82_21`` (D-CIQ-4), lue, jamais
+        # recopiée : plus de « net des frais réseau » ni « plafond en révision ».
+        self.assertIn("plafond légal 20 %", html)
+        self.assertIn("décision 04/26", html)
+        self.assertNotIn("net des frais réseau", html)
+        self.assertNotIn("plafond en révision", html)
 
 
 class TestIndustrielUnsupported(SimpleTestCase):

@@ -58,6 +58,9 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
           : 'creating')
   const [discount, setDiscount] = useState('0')
   const [errorMsg, setErrorMsg] = useState(null)
+  // AGR126 — alertes renvoyées par le serveur avec le devis automatique
+  // (agricole : étude pompage, articles « prix à renseigner » omis).
+  const [alertes, setAlertes] = useState([])
   const [devisId, setDevisId] = useState(existingDevisId || null)
   const [devisRef, setDevisRef] = useState('')
   // QJR534 — le devis CHARGÉ (droits `modifiable` / `revision_possible` lus du
@@ -136,9 +139,11 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
           marquesRef.current = null
         }
       }
+      setAlertes([])
       const id = await createAutoQuote({
         lead, produits: produitsRef.current, discountStr, dispatch, targetKwc,
         marques: marquesRef.current || undefined,
+        onAlertes: setAlertes,
       })
       setDevisId(id)
       onDevisChanged?.()
@@ -299,6 +304,18 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
 
           {phase === 'preview' && (
             <div className="ldp-preview">
+              {/* AGR126 — ce que le devis automatique serveur signale (jamais
+                  un chiffre inventé : le message du serveur, tel quel). */}
+              {alertes.length > 0 && (
+                <div className="form-error-box" role="status" data-testid="ldp-alertes-auto">
+                  <strong>Alertes du devis automatique :</strong>
+                  <ul>
+                    {alertes.map((a, i) => (
+                      <li key={`${a.code || 'alerte'}-${i}`}>{a.message || a.code}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {/* QJR589 — dérive lead → devis : reprendre / garder, sur place
                   (envoyé : le client verra la version corrigée) ; figé →
                   « Réviser ». Le détail est déjà lu (getDevisById). */}

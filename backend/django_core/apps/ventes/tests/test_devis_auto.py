@@ -396,12 +396,14 @@ class AutoEndpointTest(TestCase):
             Devis.objects.filter(company=self.company).count(), 0)
 
     def test_non_residential_422(self):
+        # AGR124 — un lead agricole sans donnée hydraulique : 422 nommant le
+        # premier champ manquant (AGR403), plus « type_installation ».
         lead = Lead.objects.create(
             company=self.company, nom='Agri', facture_hiver=Decimal('1800'),
             type_installation='agricole')
         resp = self.api.post(AUTO_URL, {'lead': lead.id}, format='json')
         self.assertEqual(resp.status_code, 422, resp.data)
-        self.assertEqual(resp.data.get('field'), 'type_installation')
+        self.assertEqual(resp.data.get('field'), 'pompe_hmt_m')
 
     def test_requires_auth(self):
         lead = Lead.objects.create(

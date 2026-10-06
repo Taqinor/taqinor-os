@@ -16,7 +16,6 @@ import ventesApi from '../../api/ventesApi'
 import {
   estimerMois, htFromTtc, ttcFromHt, optionTotalsTTC,
   autoFillLines, computeEtudeIndustrielle, panneauxPourKwc,
-  autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
   KWH_PRICE, EFFICIENCY, DAY_USAGE_DEFAULTS,
   // Règle fondateur du 18/08 — dimensionnement AUTOMATIQUE (sans cible) par
   // PALIERS de 5 kWc, retenus au payback le plus court. QJR602 : une taille
@@ -162,6 +161,35 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
   champ_kwc: sel.dims.champKwc,
 })
 
+// AGR126 — l'agricole part au serveur (AGR124) : un seul appel
+// `POST /ventes/devis/auto/`, jamais `createDevisAtomic`. Le 422 du serveur
+// (relevé du point d'eau D-AGR-4, donnée manquante, aucune pompe chiffrable)
+// remonte TEL QUEL dans `err.detail` ; ses `alertes` vont à `onAlertes`.
+async function creerDevisAgricoleServeur({ lead, discountStr, onAlertes }) {
+  let creation
+  try {
+    creation = await ventesApi.creerDevisAuto({
+      lead: lead.id,
+      remise_globale: discountStr || '0',
+    })
+  } catch (err) {
+    const data = err?.response?.data || {}
+    throw {
+      detail: data.detail
+        || 'Le devis automatique agricole a échoué — vérifiez la fiche du lead et réessayez.',
+      ...(data.field ? { field: data.field } : {}),
+    }
+  }
+  const id = creation?.data?.id
+  if (!id) {
+    throw { detail: 'Devis créé sans identifiant — ouvrez-le depuis la liste des devis.' }
+  }
+  if (typeof onAlertes === 'function') {
+    onAlertes(Array.isArray(creation.data.alertes) ? creation.data.alertes : [])
+  }
+  return id
+}
+
 /**
  * Crée un devis auto-dimensionné depuis un lead. Retourne l'id du devis créé.
  * Lève { detail } si le lead n'a pas les données requises (mêmes règles que la
@@ -171,8 +199,10 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
  * @param {object[]} produits     Catalogue stock
  * @param {string}   discountStr  Remise globale en %
  * @param {function} dispatch     (ignoré depuis QJR543 — création atomique via ventesApi)
- * @param {number}   pumpHours    Heures de pompage/jour (réglage entreprise
- *                                agricole_pump_hours) ; défaut historique sinon
+ * @param {function} onAlertes    AGR126 — rappel facultatif recevant les
+ *                                `alertes` du devis créé par le serveur
+ *                                (agricole : étude pompage, articles « prix à
+ *                                renseigner » omis) ; [] quand il n'y en a pas.
  * @param {function} onEtude      Rappel facultatif recevant les chiffres clés de
  *                                l'étude industrielle (autoconso/éco/payback)
  *                                AVANT enregistrement — pour les afficher
@@ -193,7 +223,7 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
  *                                historique).
  */
 export async function createAutoQuote({ lead, produits, discountStr,
-                                        quoteLogic, pumpHours, onEtude,
+                                        quoteLogic, onEtude, onAlertes,
                                         targetKwc, marques, ordreLignes }) {
   // Logique de devis éditable (Paramètres → Avancé) ; sans valeur = défauts.
   const kwhPrice = (Number(quoteLogic?.kwhPrice) > 0) ? Number(quoteLogic.kwhPrice) : KWH_PRICE
@@ -202,46 +232,16 @@ export async function createAutoQuote({ lead, produits, discountStr,
   // supprimée (fondateur 29/08/2026) : le réglage qui l'alimentait
   // (`panneaux_par_900mad`) a lui-même été retiré du modèle et de l'écran
   // Paramètres → Avancé — plus aucun consommateur.
-  // Heures de pompage effectives : réglage entreprise (agricole_pump_hours) si
-  // fourni, sinon le défaut marché historique — comme le générateur manuel.
-  const heuresPompage = (Number(pumpHours) > 0) ? Number(pumpHours) : HEURES_POMPAGE_DEFAUT
   const mode = LEAD_TYPE_TO_MODE[lead.type_installation] || 'residentiel'
   const extra = {}
   let rows
   if (mode === 'agricole') {
-    const opts = {
-      cv: lead.pompe_cv != null ? String(lead.pompe_cv) : '',
-      alim: 'tri', typePompe: 'immergee', distance: '20',
-      // QX19 — respecte la préférence de structure du lead (défaut acier).
-      structureType: structFromLead(lead),
-      // STKCAT10 — …et le PRODUIT épinglé prime dessus quand il existe.
-      structureProduitId: structProduitFromLead(lead),
-      hmt: lead.pompe_hmt_m != null ? String(lead.pompe_hmt_m) : '',
-      debit: lead.pompe_debit_m3h != null ? String(lead.pompe_debit_m3h) : '',
-      heures: String(heuresPompage),
-    }
-    rows = autoFillPompage(produits, opts)
-    if (!rows.some(r => r.produit && parseFloat(r.quantite) > 0)) {
-      throw {
-        detail: 'Devis auto impossible : renseignez sur le lead la puissance '
-          + 'pompe (CV) ou la HMT et le débit souhaité, puis réessayez.',
-      }
-    }
-    extra.mode_installation = 'agricole'
-    // QJR543 — l'objet BRUT de `buildEtudePompage` porte des clés hors
-    // schéma (pompe_nom) : il passe par LA projection du générateur (QJR542),
-    // qui ne laisse sortir que des clés ECRAN typées.
-    extra.etude_params = projeterEtudeMarche('agricole', {
-      choix: {},
-      entrees: {},
-      pompage: buildEtudePompage(
-        pompageSelection(produits, opts), { ...opts, profondeur: '' }),
-      saisiePompage: {
-        hmt: opts.hmt, debit: opts.debit, heures: opts.heures,
-        typePompe: opts.typePompe, alim: opts.alim,
-        profondeur: '', distance: opts.distance,
-      },
-    })
+    // AGR126 — l'agricole suit le MÊME chemin que le résidentiel : le serveur
+    // étudie le pompage (D-AGR-1, `pompage.etudier_pompage`), compose le kit
+    // minimum et crée le brouillon (POST /ventes/devis/auto/, AGR124). Plus
+    // aucune composition JS ici, ni alimentation / type de pompe / distance
+    // supposés : un 422 rend le message du serveur tel quel (champ nommé).
+    return creerDevisAgricoleServeur({ lead, discountStr, onAlertes })
   } else {
     const hiver = parseFloat(lead.facture_hiver) || 0
     // QX19 — priorité à la taille souhaitée par le lead (kWc) quand elle est

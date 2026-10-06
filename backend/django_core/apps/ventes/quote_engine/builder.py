@@ -1427,6 +1427,71 @@ def _ville_du_devis(devis, etude):
         return "", ""
 
 
+#: CIQ218 — modes C&I dont le document reçoit ses conditions générales.
+MODES_CGV_CI = ("commercial", "industriel")
+
+
+def _marqueurs_cgv_ci(devis, tva_note):
+    """CIQ218 — valeurs des marqueurs ``{echeancier}`` (les N jalons de
+    l'échéancier, CIQ212), ``{retenue}`` (retenue de garantie DEMANDÉE par
+    le client, CIQ214 ; vide sinon) et ``{tva_note}``. Aucun chiffre inventé :
+    tout est relu sur le devis."""
+    from apps.ventes.utils.echeancier import (
+        UNITE_MONTANT, tranches_normalisees,
+    )
+    jalons = []
+    try:
+        tranches = tranches_normalisees(devis)
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur un texte
+        tranches = []
+    for t in tranches:
+        try:
+            valeur = format(Decimal(str(t.get("valeur"))).normalize(), "f")
+        except (ArithmeticError, ValueError, TypeError):
+            valeur = str(t.get("valeur"))
+        unite = "MAD TTC" if t.get("unite") == UNITE_MONTANT else "%"
+        jalons.append(f"{t.get('libelle') or t.get('key')} : {valeur} {unite}")
+    retenue = ""
+    rg = getattr(devis, "retenue_garantie", None)
+    if isinstance(rg, dict) and rg.get("taux_pct") not in (None, ""):
+        retenue = (f"retenue de garantie de {rg['taux_pct']} %, libérée à la "
+                   "réception définitive")
+    return {"echeancier": " ; ".join(jalons), "retenue": retenue,
+            "tva_note": tva_note or ""}
+
+
+def cgv_ci_du_devis(devis, tva_note=""):
+    """CIQ218 — les conditions générales C&I d'un devis commercial ou
+    industriel, marqueurs substitués, ou ``None``.
+
+    Source : la variante GELÉE à l'envoi (entrée ``cgv_gelees`` portant un
+    ``mode``, ``domain/envoi.figer_clauses_devis``) ; un brouillon jamais
+    envoyé lit la variante vive de la société (``parametres.selectors.
+    cgv_variante_ci``). Les puces société au ton résidentiel ne sont JAMAIS
+    servies ici. Le moteur ne fait que RENDRE ce texte (règle #4)."""
+    mode = (getattr(devis, "mode_installation", None) or "").strip().lower()
+    if mode not in MODES_CGV_CI:
+        return None
+    gelees = [c for c in (getattr(devis, "clauses_appliquees", None) or [])
+              if isinstance(c, dict) and c.get("type") == "cgv_gelees"]
+    if gelees:
+        source = gelees[0] if gelees[0].get("mode") else None
+    else:
+        from apps.parametres.selectors import cgv_variante_ci
+        source = cgv_variante_ci(getattr(devis, "company", None), mode)
+    if not source or not isinstance(source.get("bullets"), list):
+        return None
+    valeurs = _marqueurs_cgv_ci(devis, tva_note)
+    puces = []
+    for b in source["bullets"]:
+        texte = str(b)
+        for cle, val in valeurs.items():
+            texte = texte.replace("{" + cle + "}", val)
+        if texte.strip():
+            puces.append(texte)
+    return puces or None
+
+
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from .pricing import calculate_savings_roi
@@ -4182,6 +4247,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             for c in _clauses
         ]
 
+    # ── CIQ218 — conditions générales C&I PAR MODE (texte de la société relu
+    # par un juriste, gelé à l'envoi). Additif : clé posée seulement quand un
+    # texte existe → tout autre devis reste octet-identique.
+    _cgv_ci = cgv_ci_du_devis(devis, data.get("tva_note"))
+    if _cgv_ci:
+        data["cgv_ci"] = _cgv_ci
+
     # ── PV86 — Avertissements INTERNES sur l'état des données du devis ───────
     # Additif : la clé n'est posée QUE lorsqu'il y a quelque chose à signaler →
     # un devis sain reste octet-identique. JAMAIS rendu au client : aucun
@@ -4423,6 +4495,9 @@ def echapper_textes_client(data: dict) -> dict:
              if isinstance(c, dict) else c)
             for c in _clauses
         ]
+    # CIQ218 — conditions générales C&I : texte saisi par la société.
+    if isinstance(sortie.get("cgv_ci"), list):
+        sortie["cgv_ci"] = [_e(v) for v in sortie["cgv_ci"]]
     # Les puces d'option sont BÂTIES ici depuis des désignations de lignes :
     # elles n'étaient échappées par aucun des deux moteurs.
     for _cle in ("sans_bullets", "avec_bullets"):

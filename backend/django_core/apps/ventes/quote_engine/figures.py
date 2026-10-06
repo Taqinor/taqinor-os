@@ -72,6 +72,9 @@ ATTR_VALEUR = "data-figure-value"
 
 #: Les options qu'un devis peut porter (``totaux_sans`` / ``totaux_avec``).
 OPTIONS = ("sans", "avec")
+#: CIQ307 — marchés dont les chiffres d'énergie et d'argent sont ceux de
+#: ``synthese_ci``.
+MODES_CI = ("industriel", "commercial")
 
 _ARGENT = Decimal("0.01")
 _POINT = Decimal("1")
@@ -500,11 +503,18 @@ def figures_depuis_proposition(payload: dict) -> dict[str, list[Mesure]]:
                  if ot.get("display_total") is not None
                  else quote.get("display_total"))
 
+    mode = (payload.get("mode_installation") or quote.get(
+        "mode_installation") or "").strip().lower()
+    # CIQ307 — en C&I, production, taux, économie et payback viennent de
+    # ``synthese_ci`` (la MÊME fonction que le PDF), jamais de ``prod_kwh``
+    # (production « par ville ») ni de ``mode_kpis`` seul.
+    synthese = (payload.get("synthese_ci")
+                if mode in MODES_CI else None)
     kwc_div = _divergent(quote, "puissance_kwc")
     if not kwc_div:
         c.mettre("puissance_kwc", quote.get("puissance_kwc"))
     prod_div = _divergent(quote, "prod_kwh")
-    if not prod_div:
+    if not prod_div and mode not in MODES_CI:
         c.mettre("production_annuelle_kwh", quote.get("prod_kwh"))
     for opt in affichees:
         if kwc_div:
@@ -546,9 +556,15 @@ def figures_depuis_proposition(payload: dict) -> dict[str, list[Mesure]]:
                  zero_ok=True)
 
     kpis = payload.get("mode_kpis") or {}
-    mode = (payload.get("mode_installation") or quote.get(
-        "mode_installation") or "").strip().lower()
-    if mode in ("industriel", "commercial"):
+    if mode in MODES_CI and isinstance(synthese, dict):
+        from .ci.synthese import chiffres_cles
+        chiffres = chiffres_cles(synthese)
+        c.mettre("production_annuelle_kwh", chiffres["production_kwh_an"])
+        c.mettre("autoconsommation_pct", chiffres["taux_autoconso_pct"])
+        c.mettre("couverture_pct", chiffres["taux_couverture_pct"])
+        c.mettre("economie_annuelle", chiffres["economie_annuelle_mad"])
+        c.mettre("payback_ans", chiffres["payback_ans"])
+    elif mode in MODES_CI:
         c.mettre("autoconsommation_pct", kpis.get("taux_autoconso"))
         c.mettre("couverture_pct", kpis.get("taux_couverture"))
         c.mettre("economie_annuelle", kpis.get("economies_annuelles"))
@@ -577,6 +593,11 @@ def figures_depuis_devis_api(detail: dict) -> dict[str, list[Mesure]]:
         c.mettre("total_ht", bloc.get("ht_net"), opt)
         c.mettre("remise", bloc.get("remise"), opt)
     roi = comp.get("roi") or {}
+    if str(detail.get("mode_installation") or "").strip().lower() in MODES_CI:
+        # CIQ307 — en C&I, le bloc ``roi`` est le modèle résidentiel/BT
+        # (production par ville, ``eco_s_ann``) que ni le PDF ni /proposition
+        # n'impriment plus : il n'est pas une surface de ces chiffres.
+        return c.figures
     c.mettre("production_annuelle_kwh", roi.get("prod_kwh"))
     c.mettre("economie_annuelle", roi.get("eco_s_ann"), "sans")
     c.mettre("economie_annuelle", roi.get("eco_a_ann"), "avec")

@@ -245,10 +245,14 @@ class TestEtudePerimeeQjr625(TestCase):
         return data, _visible(html)
 
     def test_etude_fraiche_imprimee(self):
-        """Témoin : à 100,11 kWc, l'étude décrit les lignes — elle passe."""
+        """Témoin : à 100,11 kWc, l'étude décrit les lignes — elle passe dans
+        les données. CIQ307 : le PDF industriel ne lit plus que `synthese_ci`
+        (moteur C&I) ; un taux d'étude d'écran n'est donc jamais imprimé, même
+        frais (aucune étude moteur sur ce devis → « à confirmer »)."""
         data, txt = self._rendu()
         self.assertEqual(data['etude'].get('taux_autoconso'), 62)
-        self.assertIn('62 %', txt)
+        self.assertNotIn('62 %', txt)
+        self.assertIn('étude du moteur C&I à faire', txt)
         self.assertNotIn("étude industrielle périmée — relancer l'étude",
                          data.get('avertissements_internes') or [])
 
