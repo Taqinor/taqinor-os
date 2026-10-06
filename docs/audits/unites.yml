@@ -369,28 +369,35 @@ unites:
     declencheur: stock
     titre: "Catalogue, prix, stock, achats fournisseurs"
     possede:
-      - "backend/django_core/apps/stock/**"
+      - "backend/django_core/apps/stock/** (résiduel ; fiche technique = D3, docs/ownership.yml)"
       - "backend/django_core/apps/achats/**"
+      - "backend/django_core/apps/ventes/selectors_stock.py"
+      - "backend/django_core/core/{product_roles,stock_reorder}.py"
+      - "backend/django_core/templates/pdf/{analyse_achats,bon_assemblage,bon_commande_fournisseur,bon_enlevement_location,bon_restitution_location,facture_fournisseur}.html"
       - "frontend/src/pages/stock/**"
       - "frontend/src/features/stock/**"
-      - "frontend/src/api/stockApi.js"
+      - "frontend/src/api/stockApi*"
+      - "frontend/src/components/{CatalogueAchatPicker,OnboardingFournisseurWizard,Produit,ScoreRisqueFournisseurBadge}*"
+      - "frontend/src/pages/parametres/{AchatsParametresPage,ClotureAchatsWizardPage,GammesMarquesPage,KitsSection,NomenclaturesCodeBarresSection,ReglesApprobationAchatSection,StockSection}*"
     perimetre_lu:
       - "ventes.utils (noyau partagé de fait, propriétaire J1b)"
+      - "ventes/domain/catalogue_events.py (abonné PVSYNC à produit_modifie, propriétaire J1b)"
+      - "consommation de stock par installations (réservations, sorties, GR/IR, propriétaire J2)"
     coutures:
       - "contrats : backend/django_core/apps/stock/contract_samples/"
       - "événements : reception_fournisseur_confirmee et facture_fournisseur_creee → installations ; produit_modifie → ventes"
       - "émis sans abonné : paiement_fournisseur_enregistre, mouvement_stock_enregistre"
-    P: 3
+    P: 4
     I: 4
-    score: 12
+    score: 16
     niveau: L2
-    statut: à auditer
+    statut: audité
     groupe: ASTK
     plan: docs/plans/PLAN_AUDIT_STOCK.md
-    plans_alimentes: []
+    plans_alimentes: [docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_ANALYSE.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_DOCUMENTS.md]
     pr: null
-    date: null
-    notes: "Règle « prix négocié intouchable » ; Produit.prix_achat jamais client ; seed_catalogue additif."
+    date: 2026-10-06
+    notes: "Audit L2 du 06/10/2026 (dossier docs/audits/2026-10-06-stock.md) : 55 constats (9 S1), 185 tâches ASTK, décisions D-ASTK-1..4 (D-ASTK-1 remplace la décision du 18/08 : seuls les devis BROUILLON suivent le catalogue). P re-scoré 3 → 4 : 106 défauts reproduits malgré les audits AUD2 (02/09) et STKCAT (16/09). possede aligné sur docs/ownership.yml (qui prime) ; crm/stock_selectors.py et core/events/stock.py y sont déclarés mais n'existent pas. Produit.prix_achat jamais client (tient) ; seed_catalogue additif sur prix/quantités (tient), mais il ré-écrit les fiches (question ASTK172)."
 
   - id: J6
     rang: 12
