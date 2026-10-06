@@ -391,6 +391,10 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'ETAPES_PAN', 'ETAPES_ONDULEUR', 'ETAPES_SITE', 'PHASES',
            'ETAPES_OMBRAGE', 'CLE_CASCADES_PAR_PAN', 'cascade_de_la_somme',
            'publier_resultat_de_chaine',
+           # ACAL54 — l'année moyenne de la fenêtre météo.
+           'PORTEE_ANNEE_MOYENNE', 'CLE_ANNEES_FENETRE',
+           'RENDEMENT_SPECIFIQUE_PLAUSIBLE_KWH_KWC',
+           'MOTIF_RENDEMENT_INVRAISEMBLABLE', 'annees_de_la_fenetre',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -1069,6 +1073,22 @@ DECIMALES_KWH = 1
 #: (jamais réparties au prorata : une répartition supposée n'est pas mesurée).
 CLE_SORTIES_PAR_PAN = 'sorties_par_pan'
 
+#: ACAL54 — la PORTÉE des énergies publiées : l'ANNÉE MOYENNE de la fenêtre
+#: météo (jamais la somme de ses N années), et la clé du contexte qui porte
+#: N pour les blocs aval (batterie, autoconsommation, hors réseau).
+PORTEE_ANNEE_MOYENNE = 'annee_moyenne'
+CLE_ANNEES_FENETRE = 'annees_fenetre'
+
+#: ACAL54 — le GARDE-FOU de vraisemblance du rendement spécifique (kWh/kWc
+#: et par an), borne du plan ACAL54 (C-ACAL-079, audit D3 du 04/10/2026) :
+#: hors de cette plage, un AVERTISSEMENT nommé est publié — la valeur n'est
+#: jamais bornée ni corrigée.
+RENDEMENT_SPECIFIQUE_PLAUSIBLE_KWH_KWC = (600.0, 2400.0)
+MOTIF_RENDEMENT_INVRAISEMBLABLE = (
+    'Rendement spécifique de {valeur} kWh/kWc par an hors de la plage '
+    'vraisemblable [{bas} ; {haut}] : vérifiez la fenêtre météo, la '
+    'puissance posée et la série reçue. La valeur est publiée telle quelle.')
+
 MOTIF_PAN_SANS_SERIE = (
     'Aucune série de sortie de chaîne par pan : les colonnes par pan restent '
     'vides. La chaîne ne répartit pas un total entre plusieurs pans — une '
@@ -1103,6 +1123,7 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
     total_kwc = 0.0
     lignes = []
     bruts_par_pan = []
+    a_remplir = []
     avertissements = []
 
     for plan in plans:
@@ -1125,8 +1146,7 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
         if irradiation is not None and kwc:
             irradiation_ponderee = _ajouter(irradiation_ponderee,
                                             irradiation * kwc)
-        _remplir_ligne(ligne, kwh, annuel_pan, kwc, irradiation,
-                       contexte.get('reglages_simulation'))
+        a_remplir.append((ligne, kwh, annuel_pan, kwc, irradiation))
         lignes.append(ligne)
 
     if not series:
@@ -1144,7 +1164,31 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
         # se dire « mesuré ».
         annuel = {}
 
+    # ACAL54 — L'ANNÉE MOYENNE. Une fenêtre de N années observées publie la
+    # MOYENNE de leurs totaux (jamais leur somme : 10 ans de PVGIS donnaient
+    # un « P50 annuel » dix fois trop grand). Une année type (TMY) est UNE
+    # année : N = 1. Chaque seau (mois, pan, total, irradiation) est divisé
+    # par le même N : la somme des mois égale toujours le total, et le PR
+    # (rapport de deux sommes) ne bouge pas.
+    annees_fenetre = len(annuel) if annuel else 1
+    contexte[CLE_ANNEES_FENETRE] = annees_fenetre
+    total_kwh = _moyenne(total_kwh, annees_fenetre)
+    irradiation_ponderee = _moyenne(irradiation_ponderee, annees_fenetre)
+    mensuel = {mois: _moyenne(valeur, annees_fenetre)
+               for mois, valeur in mensuel.items()}
+    bruts_par_pan = [_moyenne(valeur, annees_fenetre)
+                     for valeur in bruts_par_pan]
+    for ligne, kwh, annuel_pan, kwc, irradiation in a_remplir:
+        _remplir_ligne(ligne, _moyenne(kwh, annees_fenetre), annuel_pan, kwc,
+                       _moyenne(irradiation, annees_fenetre),
+                       contexte.get('reglages_simulation'))
+
     quantiles = _quantiles(total_kwh, annuel, total_kwc, contexte)
+    rendement = _rendement(total_kwh, total_kwc)
+    bas, haut = RENDEMENT_SPECIFIQUE_PLAUSIBLE_KWH_KWC
+    if rendement is not None and not bas <= rendement <= haut:
+        avertissements.append(MOTIF_RENDEMENT_INVRAISEMBLABLE.format(
+            valeur=rendement, bas=int(bas), haut=int(haut)))
     for avertissement in avertissements:
         _ajouter_avertissement(resultat, avertissement)
 
@@ -1157,11 +1201,15 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
         'p75_kwh': quantiles['p75_kwh'],
         'p90_kwh': quantiles['p90_kwh'],
         'performance_ratio': _ratio(total_kwh, irradiation_ponderee),
-        'specific_yield_kwh_kwc': _rendement(total_kwh, total_kwc),
+        'specific_yield_kwh_kwc': rendement,
         'annual_variability': quantiles['annual_variability'],
         'annual_variability_source': quantiles['sigma_source'],
         'annual_variability_annees': quantiles['sigma_annees'],
         'total_loss_pct': cascade['total_pct'],
+        # ACAL54 — ce que les énergies DÉCRIVENT : l'année moyenne de la
+        # fenêtre, et combien d'années elle moyenne.
+        'portee': PORTEE_ANNEE_MOYENNE,
+        'annees_fenetre': annees_fenetre,
     }
     mois_publies = _repartir([mensuel[mois] for mois in range(1, 13)],
                              production['total']['p50_kwh'])
@@ -1173,15 +1221,29 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
             bruts_par_pan, production['total']['p50_kwh'])):
         ligne['p50_kwh'] = publie
     production['par_pan'] = lignes
-    annees = sorted(annuel)
-    valeurs_annees = _repartir([annuel[annee] for annee in annees],
-                               production['total']['p50_kwh'])
+    # ACAL54 — les totaux OBSERVÉS de chaque année de la fenêtre, tels quels
+    # (arrondis au dixième) : ils ne sont plus forcés à sommer au P50 — leur
+    # MOYENNE est le P50.
     production['annees'] = [
-        {'annee': annee, 'kwh': valeurs_annees[rang],
-         'source': 'chaine_pertes'}
-        for rang, annee in enumerate(annees)
+        {'annee': annee, 'kwh': _arrondi_kwh(annuel[annee]),
+         'source': 'chaine_pertes', 'observe': True}
+        for annee in sorted(annuel)
     ]
     return production
+
+
+def _moyenne(valeur, annees):
+    """``valeur`` ramenée à l'année moyenne d'une fenêtre de ``annees`` ans."""
+    if valeur is None:
+        return None
+    return valeur / annees if annees and annees > 1 else valeur
+
+
+def annees_de_la_fenetre(contexte):
+    """ACAL54 — le N de la fenêtre (≥ 1) posé par la publication de la
+    production : les blocs aval y ramènent leurs énergies à l'année moyenne."""
+    valeur = _flottant((contexte or {}).get(CLE_ANNEES_FENETRE))
+    return int(valeur) if valeur and valeur >= 1 else 1
 
 
 def _repartir(valeurs, total):

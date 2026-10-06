@@ -83,7 +83,12 @@ logger = logging.getLogger(__name__)
 #:
 #: * ``sim-1`` (ACAL48, 06/10/2026) — empreinte de simulation unique : document
 #:   (hors volatils) + entrées hors ``roof_layout`` + cette version.
-VERSION_SIMULATION = 'sim-1'
+#: * ``sim-2`` (ACAL54, 06/10/2026) — P50, mensuel, par pan, batterie,
+#:   autoconsommation, hors réseau, incertitude, projection et écart PVcalc
+#:   publiés sur l'ANNÉE MOYENNE de la fenêtre météo (plus la somme de ses N
+#:   années) ; ``production.annees[]`` = totaux observés. Toute simulation
+#:   ``sim-1`` est périmée.
+VERSION_SIMULATION = 'sim-2'
 
 #: ACAL48 — les saisies de l'entrée électrique enregistrée qui ENTRENT dans
 #: la simulation (câbles, affectation, polystring, optimiseur, températures

@@ -69,7 +69,7 @@ import datetime
 
 from apps.calepinage.services import etapes as _etapes
 from apps.calepinage.services.chaine_pertes import (
-    DECIMALES_KWH, appliquer_chaine,
+    DECIMALES_KWH, annees_de_la_fenetre, appliquer_chaine,
 )
 from .valeurs import nombre as _flottant
 
@@ -214,7 +214,13 @@ def ecart_vs_pvcalc(serie, contexte, reponse_pvgis, *, kwc=None,
 
     if sortie is None or cascade is None:
         sortie, cascade = appliquer_chaine(serie, contexte)
+    # ACAL54 — les DEUX côtés sont ramenés à l'année moyenne de la fenêtre :
+    # notre chaîne divise sa somme par N, PVGIS est moyenné par année
+    # observée dans sa propre réponse (``_mensuel_horaire``).
+    annees = annees_de_la_fenetre(contexte)
     total_local = _etapes.energie_kwh(sortie)
+    if total_local is not None:
+        total_local = total_local / annees
     if total_local is None:
         return _publier(resultat, _bloc_vide(MOTIF_CHAINE_SANS_ENERGIE))
 
@@ -240,7 +246,7 @@ def ecart_vs_pvcalc(serie, contexte, reponse_pvgis, *, kwc=None,
         'motif': motif,
         'tolerance_source': (tolerance or {}).get('source'),
         'pertes_totales': pertes,
-        'mensuel': _mensuel(sortie, mesure_pvgis['mensuel_kwh']),
+        'mensuel': _mensuel(sortie, mesure_pvgis['mensuel_kwh'], annees),
     }
     return _publier(resultat, bloc)
 
@@ -311,6 +317,7 @@ def _mensuel_horaire(sorties):
     if not isinstance(lignes, list) or not lignes:
         return None
     mensuel = {}
+    annees = set()
     for ligne in lignes:
         if not isinstance(ligne, dict):
             continue
@@ -319,7 +326,13 @@ def _mensuel_horaire(sorties):
         if moment is None or puissance is None:
             continue
         mois = moment[1]
+        annees.add(moment[0])
         mensuel[mois] = mensuel.get(mois, 0.0) + puissance / 1000.0
+    # ACAL54 — une fenêtre de N années : chaque mois est la MOYENNE de ses N
+    # occurrences (PVcalc publie déjà ses ``E_m`` en mois moyen).
+    if len(annees) > 1:
+        mensuel = {mois: valeur / len(annees)
+                   for mois, valeur in mensuel.items()}
     return mensuel or None
 
 
@@ -337,8 +350,11 @@ def _horodatage_pvgis(valeur):
 
 # ── les deux totaux, et ce qui les sépare ───────────────────────────────
 
-def _mensuel(sortie, mensuel_pvgis):
+def _mensuel(sortie, mensuel_pvgis, annees=1):
     """Les douze lignes d'écart mensuel — ``None`` quand un mois manque.
+
+    ACAL54 — ``annees`` : le N de la fenêtre ; le côté local est ramené au
+    mois moyen comme le côté PVGIS.
 
     Un mois que l'un des deux chemins ne couvre pas reste à ``null`` : un
     écart de −100 % se lirait « ce mois-là notre chaîne ne produit rien ».
@@ -357,7 +373,8 @@ def _mensuel(sortie, mensuel_pvgis):
             valeur = _flottant(point.get(colonne))
             if mois is None or valeur is None:
                 continue
-            local[mois] = local.get(mois, 0.0) + valeur * facteur * heures
+            local[mois] = (local.get(mois, 0.0)
+                           + valeur * facteur * heures / (annees or 1))
 
     lignes = []
     for mois in range(1, 13):

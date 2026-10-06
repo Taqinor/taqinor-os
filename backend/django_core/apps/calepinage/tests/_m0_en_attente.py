@@ -97,16 +97,12 @@ EN_ATTENTE_SIMULATION = {
     'production.total.p90_kwh_motif': 'ACAL49',
     'production.total.p95_kwh_motif': 'ACAL49',
     'production.total.p95_kwh': 'ACAL49',
-    'production.total.portee': 'ACAL54',
-    'production.total.annees_fenetre': 'ACAL54',
-    'production.annees[].observe': 'ACAL54',
 }
 
 #: Clés propres à ``calepinage_resultat.json`` posées par ACAL8 (M0), en plus
 #: des blocs de simulation ci-dessus.
 EN_ATTENTE_RESULTAT = {
     **EN_ATTENTE_SIMULATION,
-    'production.annees': 'ACAL54',
     'ecart_devis': 'ACAL104',
     'pose.pans[].cle': 'ACAL265',
     'pose.pans[].module_id': 'ACAL264',

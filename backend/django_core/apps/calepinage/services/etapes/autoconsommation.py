@@ -246,11 +246,27 @@ def bloc_autoconsommation(serie, contexte=None, *, charge=None):
         champ = (f'{CLE_RACCORDEMENT}.{refus.champ}' if refus.champ else '')
         return serie, _omission(refus.motif, champ=champ)
 
-    return _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie)
+    from apps.calepinage.services.chaine_pertes import annees_de_la_fenetre
+
+    return _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
+                    annees=annees_de_la_fenetre(contexte))
 
 
-def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie):
-    """La série enrichie et le bloc, tirés du MÊME bilan horaire."""
+def _par_an(valeur, annees):
+    """ACAL54 — une énergie de la fenêtre, ramenée à l'année moyenne."""
+    if valeur is None or isinstance(valeur, bool):
+        return valeur
+    return round(float(valeur) / annees, 3) if annees > 1 else valeur
+
+
+def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
+             annees=1):
+    """La série enrichie et le bloc, tirés du MÊME bilan horaire.
+
+    ACAL54 — ``annees`` : le N de la fenêtre météo ; les énergies du bloc
+    sont ramenées à l'ANNÉE MOYENNE (les taux, rapports de deux énergies,
+    ne bougent pas ; la série horaire reste celle de la fenêtre).
+    """
     bloc_plafond = bilan['plafond']
     if bloc_plafond:
         exports = list(bloc_plafond['surplus_apres_ecretage'])
@@ -276,11 +292,12 @@ def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie):
             'applique': True,
             'plafond_kw': bloc_plafond['plafond_kw'],
             'justification': bloc_plafond['justification'],
-            'energie_ecretee_kwh': ecretee,
+            'energie_ecretee_kwh': _par_an(ecretee, annees),
             'heures_ecretees': bloc_plafond['heures_ecretees'],
             'motif': bloc_plafond['motif'],
         }
-        etape = _etape_du_plafond(bloc_plafond)
+        etape = _etape_du_plafond(dict(
+            bloc_plafond, energie_ecretee_kwh=_par_an(ecretee, annees)))
 
     return suite, {
         'taux_autoconsommation': bilan['taux_autoconsommation'],
@@ -288,13 +305,13 @@ def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie):
         'taux_autonomie': part['taux_autonomie'],
         'heures_sans_import': part['heures_sans_import'],
         'energie': {
-            'consommation_kwh': bilan['consommation_kwh'],
-            'production_kwh': bilan['production_kwh'],
-            'production_brute_kwh': round(brute, 3),
-            'autoconsomme_kwh': bilan['autoconsomme_kwh'],
-            'surplus_kwh': bilan['surplus_kwh'],
-            'export_reseau_kwh': round(sum(exports), 3),
-            'import_reseau_kwh': round(sum(imports), 3),
+            'consommation_kwh': _par_an(bilan['consommation_kwh'], annees),
+            'production_kwh': _par_an(bilan['production_kwh'], annees),
+            'production_brute_kwh': _par_an(round(brute, 3), annees),
+            'autoconsomme_kwh': _par_an(bilan['autoconsomme_kwh'], annees),
+            'surplus_kwh': _par_an(bilan['surplus_kwh'], annees),
+            'export_reseau_kwh': _par_an(round(sum(exports), 3), annees),
+            'import_reseau_kwh': _par_an(round(sum(imports), 3), annees),
             'apres_batterie': apres_batterie,
         },
         'plafond': publie_plafond,

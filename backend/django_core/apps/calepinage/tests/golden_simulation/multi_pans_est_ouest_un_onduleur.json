@@ -8,27 +8,27 @@
  "attendu": {
   "total": {
    "kwc": 11.36,
-   "p50_kwh": 195.1,
-   "p75_kwh": 190.9,
-   "p90_kwh": 187.2,
+   "p50_kwh": 97.5,
+   "p75_kwh": 95.5,
+   "p90_kwh": 93.6,
    "performance_ratio": 0.556,
-   "specific_yield_kwh_kwc": 17.2,
+   "specific_yield_kwh_kwc": 8.6,
    "total_loss_pct": 44.4
   },
   "par_pan": [
    {
     "pan": "PAN-1",
     "kwc": 7.1,
-    "p50_kwh": 113.8,
-    "p75_kwh": 111.3,
-    "p90_kwh": 109.1
+    "p50_kwh": 56.9,
+    "p75_kwh": 55.7,
+    "p90_kwh": 54.6
    },
    {
     "pan": "PAN-2",
     "kwc": 4.26,
-    "p50_kwh": 81.3,
-    "p75_kwh": 79.6,
-    "p90_kwh": 78.0
+    "p50_kwh": 40.6,
+    "p75_kwh": 39.8,
+    "p90_kwh": 39.0
    }
   ],
   "cascade": [

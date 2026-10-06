@@ -397,7 +397,11 @@ class ChaineReelleTest(SimpleTestCase):
         self.assertIn('projection', production)
         self.assertIsInstance(production['projection'], list)
         for ligne in production['annees']:
-            self.assertEqual(sorted(ligne), ['annee', 'kwh', 'source'])
+            # ACAL54 — chaque année porte ``observe: true`` : un total
+            # OBSERVÉ, jamais forcé à sommer au P50.
+            self.assertEqual(sorted(ligne),
+                             ['annee', 'kwh', 'observe', 'source'])
+            self.assertIs(ligne['observe'], True)
 
     def test_l_incertitude_refuse_les_quantiles_sans_sigma_source(self):
         # Aucune composante saisie : σ ne peut pas être publié, et les
