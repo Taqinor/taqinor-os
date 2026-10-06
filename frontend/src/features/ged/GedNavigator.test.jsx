@@ -13,6 +13,8 @@ vi.mock('../../api/gedApi', () => ({
     getDossiers: vi.fn(),
     createDossier: vi.fn(),
     renameDossier: vi.fn(),
+    // ADOC26 — alias e-mail du dossier.
+    updateDossier: vi.fn(),
     moveDossier: vi.fn(),
     getDocuments: vi.fn(),
     uploadDocument: vi.fn(),
@@ -481,6 +483,32 @@ describe('GedNavigator — écriture (U14)', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Valider' }))
 
     await waitFor(() => expect(gedApi.renameDossier).toHaveBeenCalledWith(5, 'Archives'))
+  })
+
+  it("le dialogue dossier saisit et relit l'alias e-mail", async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Compta', cabinet: 1, parent: null, path: '/5/', alias_email: '' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([]))
+    gedApi.updateDossier.mockResolvedValue(ok({
+      id: 5, nom: 'Compta', cabinet: 1, parent: null, path: '/5/', alias_email: 'compta',
+    }))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Compta'))
+    await userEvent.click(await screen.findByRole('button', { name: /Renommer/i }))
+    let dialog = await screen.findByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('Alias e-mail du dossier'), 'compta')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Valider' }))
+    await waitFor(() => expect(gedApi.updateDossier).toHaveBeenCalledWith(5, {
+      nom: 'Compta', alias_email: 'compta',
+    }))
+
+    // Réouverture : l'alias est relu depuis la réponse du serveur.
+    await userEvent.click(await screen.findByRole('button', { name: /Renommer/i }))
+    dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText('Alias e-mail du dossier')).toHaveValue('compta')
   })
 
   it('ERR-QAH-GED-RENAME-STALE-HEADER — le panneau de droite reflète le nouveau nom SANS re-clic', async () => {

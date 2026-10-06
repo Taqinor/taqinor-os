@@ -1757,12 +1757,15 @@ function FolderDialog({ state, onClose, cabinetId, folders, onChanged }) {
   const [nom, setNom] = useState('')
   const [parentId, setParentId] = useState('') // '' = racine ; sinon id (string)
   const [busy, setBusy] = useState(false)
+  // ADOC26 — alias e-mail du dossier (ingestion « ged+<alias>@… »).
+  const [alias, setAlias] = useState('')
 
   useEffect(() => {
     if (!state) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le formulaire à l'ouverture du dialogue
     setBusy(false)
     setNom(mode === 'rename' ? (target?.nom ?? '') : '')
+    setAlias(mode === 'rename' ? (target?.alias_email ?? '') : '')
     setParentId(
       mode === 'move'
         ? (target?.parent != null ? String(target.parent) : '')
@@ -1799,10 +1802,14 @@ function FolderDialog({ state, onClose, cabinetId, folders, onChanged }) {
       if (mode === 'create') {
         const body = { cabinet: cabinetId, nom: nom.trim() }
         if (parentId) body.parent = Number(parentId)
+        if (alias.trim()) body.alias_email = alias.trim()
         await gedApi.createDossier(body)
         toast.success('Dossier créé.')
       } else if (mode === 'rename') {
-        const r = await gedApi.renameDossier(target.id, nom.trim())
+        const aliasChange = alias.trim() !== (target?.alias_email ?? '')
+        const r = aliasChange
+          ? await gedApi.updateDossier(target.id, { nom: nom.trim(), alias_email: alias.trim() })
+          : await gedApi.renameDossier(target.id, nom.trim())
         toast.success('Dossier renommé.')
         onClose()
         // ERR-QAH-GED-RENAME-STALE-HEADER — transmet le dossier PATCHé pour
@@ -1833,6 +1840,15 @@ function FolderDialog({ state, onClose, cabinetId, folders, onChanged }) {
           {(mode === 'create' || mode === 'rename') && (
             <Input aria-label="Nom du dossier" placeholder="Ex. Contrats"
               value={nom} onChange={(e) => setNom(e.target.value)} autoFocus />
+          )}
+          {(mode === 'create' || mode === 'rename') && (
+            <label className="grid gap-1 text-sm">
+              <span className="text-muted-foreground">
+                Alias e-mail (optionnel) — un e-mail à « ged+alias@… » est classé ici
+              </span>
+              <Input aria-label="Alias e-mail du dossier" placeholder="Ex. compta"
+                value={alias} onChange={(e) => setAlias(e.target.value)} />
+            </label>
           )}
           {(mode === 'create' || mode === 'move') && (
             <label className="grid gap-1 text-sm">

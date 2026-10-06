@@ -191,11 +191,33 @@ class FolderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Folder
         # `company` posée côté serveur ; `path` matérialisé côté serveur.
+        # ADOC26 — `alias_email` (XGED9) se saisit et se relit : un e-mail
+        # adressé à « ged+<alias>@… » est classé dans ce dossier.
         fields = [
             'id', 'cabinet', 'cabinet_nom', 'parent', 'parent_nom',
-            'nom', 'path', 'created_at', 'updated_at',
+            'nom', 'alias_email', 'path', 'created_at', 'updated_at',
         ]
         read_only_fields = ['path', 'created_at', 'updated_at']
+
+    def validate_alias_email(self, value):
+        """ADOC26 — alias normalisé (minuscules), unique par société."""
+        import re
+        alias = (value or '').strip().lower()
+        if not alias:
+            return ''
+        if not re.fullmatch(r'[a-z0-9][a-z0-9._-]*', alias):
+            raise serializers.ValidationError(
+                "Alias invalide : lettres, chiffres, point, tiret ou "
+                "souligné uniquement.")
+        request = self.context.get('request')
+        if request is not None:
+            qs = Folder.objects.filter(
+                company_id=request.user.company_id, alias_email=alias)
+            if self.instance is not None and isinstance(self.instance, Folder):
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError("Alias déjà utilisé.")
+        return alias
 
     def get_fields(self):
         """ADOC21 — à la MISE À JOUR, `parent` et `cabinet` sont en lecture

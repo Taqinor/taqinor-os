@@ -19,6 +19,8 @@ const gedApi = {
   createDossier: (data) => api.post('/ged/dossiers/', data),
   // Renomme un dossier (PATCH partiel — seul `nom` change).
   renameDossier: (id, nom) => api.patch(`/ged/dossiers/${id}/`, { nom }),
+  // ADOC26 — mise à jour d'un dossier (nom + alias e-mail XGED9).
+  updateDossier: (id, data) => api.patch(`/ged/dossiers/${id}/`, data),
   // Déplace un dossier sous un nouveau parent (null = remise à la racine).
   // Le backend recalcule le chemin matérialisé du sous-arbre + refuse les cycles.
   moveDossier: (id, parent) =>
