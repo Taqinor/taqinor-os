@@ -72,7 +72,10 @@ from .sorties import SortiesMixin
 from ..services.devis import (
     DevisRefuse, generer_devis, resynchroniser_devis,
 )
-from ..services.layout import LayoutRefuse, enregistrer_layout
+from ..services.layout import (
+    DocumentModifie, LayoutRefuse, empreinte_document, enregistrer_layout,
+    enregistrer_section,
+)
 # ACAL196 — référence et aperçu : UNE définition, lue aussi par la liste.
 from ..services.presentation import image_apercu, reference_calepinage
 from ..services.variantes import (
@@ -374,8 +377,13 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         """
         calepinage = self.get_object()  # borné société par get_queryset
         if request.method.lower() == 'get':
-            return Response({'roof_layout': calepinage.roof_layout,
-                             'layout_hash': calepinage.layout_hash or None})
+            return Response({
+                'roof_layout': calepinage.roof_layout,
+                'layout_hash': calepinage.layout_hash or None,
+                # ACAL22 — le jeton If-Match de la prochaine écriture.
+                'empreinte_document': (
+                    empreinte_document(calepinage.roof_layout) or None),
+            })
 
         payload = _corps_de_layout(request.data)
         if payload is None:
@@ -383,19 +391,51 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                 {'roof_layout': "Conception manquante ou invalide : le corps "
                                 "attendu est le document de conception."},
                 status=status.HTTP_400_BAD_REQUEST)
+        # ACAL22 — If-Match FACULTATIF à ce stade (obligation en M3,
+        # D01-T37) : fourni, il est comparé sous verrou de ligne à
+        # l'empreinte « document » stockée (jamais layout_hash).
+        base = _jeton_if_match(request)
         try:
             resultat = enregistrer_layout(calepinage, payload,
-                                          user=request.user)
+                                          user=request.user,
+                                          base_empreinte=base)
+        except DocumentModifie as conflit:
+            return Response(conflit.corps(), status=status.HTTP_409_CONFLICT)
         except LayoutRefuse as refus:
             return Response({refus.champ or 'roof_layout': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
-        version = resultat['version']
-        return Response({
-            'roof_layout': calepinage.roof_layout,
-            'layout_hash': resultat['layout_hash'] or None,
-            'inchange': resultat['inchange'],
-            'version': version.pk if version is not None else None,
-        })
+        return Response(_reponse_ecriture(calepinage, resultat))
+
+    @action(detail=True, methods=['post'], url_path='layout/section',
+            permission_classes=[PeutLireOuEcrireCalepinage])
+    def layout_section(self, request, pk=None):
+        """ACAL22 (C-ACAL-044) — écrit UNE section du document.
+
+        Corps (contrat ``calepinage_layout_section.json``) : soit
+        ``{cle ∈ {horizonProfile, poseSurfaces, underlay}, valeur,
+        base_empreinte}``, soit ``{cle: 'zones', zone_id, champs,
+        base_empreinte}``. Jeton périmé ⇒ 409 ``{detail, code:
+        'document_modifie', empreinte_courante}`` et rien n'est écrit ; clé
+        hors liste blanche ⇒ 400 ``{cle}``. L'écriture passe par
+        ``services.layout.enregistrer_section`` → ``enregistrer_layout``
+        (seul écrivain, verrou CAL207 inchangé). Borné société par
+        ``get_queryset`` (404 pour un id étranger).
+        """
+        calepinage = self.get_object()
+        corps = request.data if isinstance(request.data, dict) else {}
+        cle = corps.get('cle')
+        valeur = corps.get('champs') if cle == 'zones' else corps.get('valeur')
+        try:
+            resultat = enregistrer_section(
+                calepinage, cle, valeur,
+                base_empreinte=corps.get('base_empreinte'),
+                zone_id=corps.get('zone_id'), user=request.user)
+        except DocumentModifie as conflit:
+            return Response(conflit.corps(), status=status.HTTP_409_CONFLICT)
+        except LayoutRefuse as refus:
+            return Response({refus.champ or 'roof_layout': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(_reponse_ecriture(calepinage, resultat))
 
     # ── Le pont vers le devis : appeler, jamais refaire ────────────────────
     @action(detail=True, methods=['post'], url_path='generer-devis',
@@ -698,6 +738,31 @@ def _corps_de_layout(donnees):
     return donnees
 
 
+def _jeton_if_match(request):
+    """ACAL22 — l'empreinte portée par l'en-tête ``If-Match``, ou ``None``.
+
+    Les guillemets d'une ETag (``"abc"``) et le préfixe faible ``W/`` sont
+    tolérés ; un en-tête absent ou vide vaut ``None`` (pas de comparaison).
+    """
+    brut = (request.headers.get('If-Match') or '').strip()
+    if brut.startswith('W/'):
+        brut = brut[2:]
+    brut = brut.strip().strip('"').strip()
+    return brut or None
+
+
+def _reponse_ecriture(calepinage, resultat):
+    """La réponse 200 d'une écriture du document (complète ou par section)."""
+    version = resultat['version']
+    return {
+        'roof_layout': calepinage.roof_layout,
+        'layout_hash': resultat['layout_hash'] or None,
+        'inchange': resultat['inchange'],
+        'version': version.pk if version is not None else None,
+        'empreinte_document': resultat.get('empreinte_document') or None,
+    }
+
+
 def _refus_devis(refus):
     """Le corps d'un refus du pont devis — la charge VENTES telle quelle.
 
@@ -878,6 +943,9 @@ def _geometrie(calepinage, contexte_devis, geo=None):
             'pin': pin,
             'outline': outline,
             'contour_client': contour_client,
+            # ACAL22 — le jeton If-Match de l'écriture (empreinte
+            # « document » du document STOCKÉ, D-ACAL-4).
+            'empreinte_document': empreinte_document(layout) or None,
         }
     if geo['pin'] is not None or geo['outline']:
         return {
@@ -886,9 +954,11 @@ def _geometrie(calepinage, contexte_devis, geo=None):
             'pin': geo['pin'],
             'outline': geo['outline'] or [],
             'contour_client': contour_client,
+            'empreinte_document': empreinte_document(layout) or None,
         }
     return {'source': 'none', 'roof_layout': None, 'pin': None,
-            'outline': [], 'contour_client': contour_client}
+            'outline': [], 'contour_client': contour_client,
+            'empreinte_document': empreinte_document(layout) or None}
 
 
 def _cible(calepinage, contexte_devis):
