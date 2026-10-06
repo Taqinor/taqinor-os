@@ -324,6 +324,9 @@ function StatutBadge({ etape }) {
 // bouton « E-mail » ouvrait le texte sans destinataire ni lien `mailto:`.
 // Chaîne vide masquée (`client_pii_voir`) ou fiche sans adresse : même
 // distinction que le téléphone (CAD82), affichée en clair plutôt qu'omise.
+// CIQ507 — la proposition est JOINTE à la main : rien n'est envoyé d'ici.
+const JOINDRE_PDF = 'Joignez le PDF de la proposition avant d’envoyer.'
+
 function TexteDeTouche({ etape, titre, ouvert, onBasculer, destinataire }) {
   const [etat, setEtat] = useState({ chargement: false, rendu: null, erreur: false })
 
@@ -344,9 +347,13 @@ function TexteDeTouche({ etape, titre, ouvert, onBasculer, destinataire }) {
     return () => { active = false }
   }, [ouvert, etape.id])
 
+  // CIQ507 — « Copier » copie l'objet ET le corps d'un e-mail (l'objet n'existe
+  // que sur une touche e-mail : `objet` vide hors e-mail).
   const copier = async () => {
-    const texte = etat.rendu?.message
-    if (!texte) return
+    const corps = etat.rendu?.message
+    if (!corps) return
+    const objet = etat.rendu?.objet
+    const texte = objet ? `Objet : ${objet}\n\n${corps}` : corps
     try {
       await navigator.clipboard.writeText(texte)
       toastInfo('Texte copié.')
@@ -383,6 +390,12 @@ function TexteDeTouche({ etape, titre, ouvert, onBasculer, destinataire }) {
           {etat.erreur && (
             <p className="text-xs text-muted-foreground">Texte indisponible pour le moment.</p>
           )}
+          {/* CIQ507 — l'OBJET de l'e-mail, construit par le serveur (CIQ506). */}
+          {rendu?.objet && (
+            <p className="text-xs text-foreground" data-testid="texte-touche-objet">
+              Objet : <span className="font-medium">{rendu.objet}</span>
+            </p>
+          )}
           {rendu && (
             <>
               <p
@@ -392,7 +405,23 @@ function TexteDeTouche({ etape, titre, ouvert, onBasculer, destinataire }) {
               >
                 {rendu.message || '—'}
               </p>
-              <div className="flex justify-end">
+              {/* CIQ507 — touche e-mail : rappel de joindre le PDF, puis « Ouvrir
+                  dans la messagerie » (`mailto_url` servi ; absent quand il vaut
+                  `null` : fiche sans adresse ou rôle sans `client_pii_voir`).
+                  Un lien, jamais un POST : rien n'est envoyé d'ici, la touche
+                  reste à faire jusqu'à « Fait ». */}
+              <p className="text-xs text-muted-foreground" data-testid="texte-touche-pdf">
+                {JOINDRE_PDF}
+              </p>
+              <div className="flex flex-wrap justify-end gap-1.5">
+                {rendu.mailto_url && (
+                  <a
+                    href={rendu.mailto_url} data-testid="ouvrir-messagerie"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
+                  >
+                    <Mail className="size-3.5" aria-hidden="true" /> Ouvrir dans la messagerie
+                  </a>
+                )}
                 <Button type="button" size="sm" variant="outline" onClick={copier} disabled={!rendu.message}>
                   <Copy className="size-3.5" /> Copier
                 </Button>
@@ -880,6 +909,14 @@ export default function RelanceEtapeRow({
               {etape.libelle}
               {etape.lead_owner_nom ? ` · ${etape.lead_owner_nom}` : ''}
             </span>
+            {/* CIQ507 — pourquoi le canal n'est pas celui du libellé (« numéro
+                fixe : touche envoyée par e-mail… »), servi par le serveur
+                (`canal_adapte`, CIQ505) — jamais un comportement caché. */}
+            {etape.canal_adapte && (
+              <span className="block text-xs font-normal text-muted-foreground" data-testid="canal-adapte">
+                {etape.canal_adapte}
+              </span>
+            )}
           </button>
           <ScoreBadge lead={{ score: etape.lead_score }} />
         </div>
