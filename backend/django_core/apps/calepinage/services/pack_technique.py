@@ -79,6 +79,9 @@ SPEC_PIECES = (
     ('note_calcul', 'Note de calcul', True),
     ('plan_toiture', 'Plan de toiture', False),
     ('plan_masse', 'Plan de masse', False),
+    # ACAL237 — le plan de pose TERRAIN (repères de rangée, sens de pose,
+    # chaînes) : facultatif, signalé — jamais substitué — s'il est refusé.
+    ('plan_pose', 'Plan de pose terrain', False),
     ('rapport_etude', "Rapport d'étude", False),
     ('plan_cablage', 'Plan de câblage', False),
     ('rapport_ombrage', "Rapport d'ombrage", False),
@@ -122,7 +125,8 @@ def _rendus(calepinage, company):
     """
     from .note_calcul import rendre_note_calcul
     from .planche import (
-        CONTENU_MASSE, CONTENU_TOITURE, rendre_plan_pdf, rendre_planche_pdf,
+        CONTENU_MASSE, CONTENU_TOITURE, rendre_plan_pdf, rendre_plan_pose_pdf,
+        rendre_planche_pdf,
     )
 
     # CALX309 — le plan de toiture et le plan de masse EXISTENT déjà
@@ -154,6 +158,9 @@ def _rendus(calepinage, company):
             calepinage, contenu=CONTENU_TOITURE, company=company),
         'plan_masse': lambda: rendre_plan_pdf(
             calepinage, contenu=CONTENU_MASSE, company=company),
+        # ACAL237 — le plan de pose TERRAIN, celui que sert plan-pose.pdf.
+        'plan_pose': lambda: rendre_plan_pose_pdf(calepinage,
+                                                  company=company),
         'rapport_etude': lambda: rendre_rapport(calepinage, company=company),
         'plan_cablage': lambda: rendre_plan_cablage_pdf(
             calepinage, company=company),
@@ -452,7 +459,7 @@ def _rendus_dossier_fin_chantier(calepinage, company):
     from .documents.document_asbuilt import rendre_document_asbuilt
     from .documents.manuel_proprietaire import rendre_manuel
     from .documents.plan_cablage import rendre_plan_cablage_pdf
-    from .planche import rendre_planche_pdf
+    from .planche import rendre_plan_pose_pdf
     from .rapport import construire_rapport, html_de_rapport
 
     def _nomenclature():
@@ -463,7 +470,11 @@ def _rendus_dossier_fin_chantier(calepinage, company):
         return render_pdf(html=html_de_rapport(rapport), company=company)
 
     return {
-        'plan_pose': lambda: rendre_planche_pdf(calepinage, company=company),
+        # ACAL237 — le plan de pose TERRAIN (repères R1…, sens de pose,
+        # chaînes et onduleur), jamais la planche cotée substituée : un plan
+        # de pose refusé sort en signalement (pièce facultative).
+        'plan_pose': lambda: rendre_plan_pose_pdf(calepinage,
+                                                  company=company),
         'document_asbuilt': lambda: rendre_document_asbuilt(
             calepinage, company=company),
         'plan_cablage': lambda: rendre_plan_cablage_pdf(
