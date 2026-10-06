@@ -159,6 +159,16 @@ class EcheancierTrancheSerializer(serializers.Serializer):
     # ``normaliser_tranche``, seule source de la règle ET du message FR
     # nommant ``echeancier[i].date_prevue``.
     date_prevue = serializers.JSONField(required=False, allow_null=True)
+    # CIQ212 / CIQ213 (contrat ``devis_replace_lines_entete.json``) — jalon,
+    # délai de règlement DÉCLARÉ, semaines indicatives et payeur, FACULTATIFS.
+    # JSONField : la valeur brute atteint ``normaliser_tranche``, seule source
+    # de la règle ET du message FR nommant ``echeancier[i].<champ>``.
+    jalon = serializers.JSONField(required=False, allow_null=True)
+    delai_reglement_jours = serializers.JSONField(
+        required=False, allow_null=True)
+    semaines_indicatives = serializers.JSONField(
+        required=False, allow_null=True)
+    payeur = serializers.JSONField(required=False, allow_null=True)
 
     def validate(self, attrs):
         from .utils.echeancier import EcheancierInvalide, normaliser_tranche

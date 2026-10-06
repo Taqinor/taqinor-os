@@ -107,12 +107,13 @@ class TestEcheancierGeneration(TestCase):
         self.assertEqual(Decimal(r.data['total_tva']), Decimal('600.00'))
         self.assertEqual(r.data['statut'], 'emise')  # postée
 
-    def test_industriel_acompte_is_50pct(self):
+    def test_industriel_acompte_is_30pct(self):
+        # CIQ212 — D-CIQ-13 : industriel 30/40/20/10 (commande d'abord).
         devis = make_accepted_devis(self.company, self.client_obj, 'industriel')
         r = self._gen(devis)
         self.assertEqual(r.status_code, 201, r.data)
-        self.assertEqual(Decimal(r.data['pourcentage']), Decimal('50.00'))
-        self.assertEqual(Decimal(r.data['total_ttc']), Decimal('8500.00'))
+        self.assertEqual(Decimal(r.data['pourcentage']), Decimal('30.00'))
+        self.assertEqual(Decimal(r.data['total_ttc']), Decimal('5100.00'))
 
     def test_three_tranches_sum_exactly_to_devis_total(self):
         devis = make_accepted_devis(self.company, self.client_obj, 'residentiel')

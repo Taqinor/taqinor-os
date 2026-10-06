@@ -50,10 +50,22 @@ _DEFAULT_WATT = 710
 # facultative d'une tranche (``utils/echeancier.py``), jamais par un autre %.
 PAYMENT_TERMS_BY_MODE = {
     "residentiel": {"acompte": 30, "materiel": 60, "solde": 10},
-    "industriel": {"acompte": 50, "materiel": 40, "solde": 10},
-    # QX43 — commercial : mêmes conditions que l'industriel (50/40/10), en
-    # attente d'un éventuel veto du fondateur.
-    "commercial": {"acompte": 50, "materiel": 40, "solde": 10},
+    # CIQ212 — décision fondateur D-CIQ-13 du 03/10/2026 : échéancier C&I à N
+    # JALONS (remplace la valeur industrielle 50/40/10 du 12/06/2026 et le
+    # 50/40/10 commercial provisoire de QX43). Défauts SOCIÉTÉ éditables
+    # (Paramètres → Devis, ``CompanyProfile.payment_terms[mode]`` en liste de
+    # jalons) ; la réception définitive est un SOLDE.
+    "industriel": [
+        {"jalon": "commande", "pct": 30},
+        {"jalon": "livraison_materiel", "pct": 40},
+        {"jalon": "mise_en_service", "pct": 20},
+        {"jalon": "reception_definitive", "pct": 10},
+    ],
+    "commercial": [
+        {"jalon": "commande", "pct": 40},
+        {"jalon": "livraison_materiel", "pct": 50},
+        {"jalon": "mise_en_service", "pct": 10},
+    ],
     "agricole": {"acompte": 30, "materiel": 60, "solde": 10},
 }
 
@@ -4133,6 +4145,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # devis reste octet-identique. Le rendu des pages relève de D3 (CIQ4).
     if _mode_ci:
         data["economie_ci"] = _economie_ci
+        # CIQ212 — les N jalons de paiement (D-CIQ-13), source unique que D3
+        # imprimera ; ``payment_terms`` reste le rabattu à trois créneaux des
+        # marqueurs CGV {acompte}/{materiel}/{solde}.
+        try:
+            from apps.ventes.utils.echeancier import jalons_paiement_devis
+            data["jalons_paiement"] = [
+                dict(j, pct=_pct_simple(j["pct"]),
+                     montant_ttc=float(j["montant_ttc"]))
+                for j in jalons_paiement_devis(devis, lignes)]
+        except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+            logger.exception("jalons_paiement: échec (devis %s)",
+                             getattr(devis, "reference", "?"))
 
     # ── AGR306 — la règle FDA SAISIE par la société (AGR207), passée à
     # ``agricole/synthese`` qui en imprime la RÈGLE (jamais un montant propre
