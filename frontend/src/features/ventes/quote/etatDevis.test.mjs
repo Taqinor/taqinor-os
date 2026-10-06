@@ -43,6 +43,31 @@ const base = (id, mode, etude, lignes, extra = {}) => ({
   prix_cible_kwc: null, echeancier: [], etude_params: etude, lignes, ...extra,
 })
 
+// CIQ126 — les ENTRÉES C&I v2 complètes (forme normalisée du corps).
+const entreesCi = (mode, { tension, puissance_souscrite_kva = null, consommation, rythme = {}, contraintes = {} }) => ({
+  mode,
+  site: { ville: 'Casablanca', lat: null, lon: null },
+  tension, phases: 'tri', puissance_souscrite_kva, consommation,
+  rythme: {
+    jours_ouverts: [true, true, true, true, true, true, false],
+    plages: { ouvre: [[7, 19]] }, equipes: null, debut_equipe_h: null,
+    fermetures: [{ du: '2026-08-01', au: '2026-08-15', motif: 'congés' }],
+    ramadan: null, talon: { kw: 8, part_pct: null, inconnu: false },
+    categorie_commerciale: null, reponses_categorie: null, ...rythme,
+  },
+  courbe_mesuree: null,
+  toit: {
+    type_pose: 'bac_acier', surface_utile_m2: 800, surface_type: 'declaree', pente_deg: null,
+    azimut_deg: null, couverture: 'tôle', charge_admissible_kg_m2: null, charge_admissible_source: null,
+  },
+  contraintes: {
+    revente_choisie: false, nb_points_raccordement: null, longueur_dc_m: null,
+    longueur_ac_m: null, besoin_cellule_mt: null, ...contraintes,
+  },
+  options: { batterie_souhaitee: null, om: null },
+  taille_explicite_kwc: null,
+})
+
 const FIXTURES = {
   'résidentiel « Les deux », reco « Sans batterie »': base(1, 'residentiel', {
     scenario: 'Les deux (Sans + Avec)',
@@ -58,14 +83,16 @@ const FIXTURES = {
     { id: 5, ordre: 5, type_ligne: 'note', designation: 'Accès toiture par l’échelle', produit: null },
   ], { prix_cible_kwc: '6500.00', echeancier: ECHEANCIER }),
 
+  // CIQ126 — C&I : les ENTRÉES v2 seules (contrat `etude_ci_preview.json`,
+  // `cles_etude_params_ci_v2.entrees`) ; plus aucune clé écran v1.
   'industriel MT': base(2, 'industriel', {
     scenario: 'Sans batterie',
     recommended_option: 'Sans batterie',
-    conso_annuelle: 120000,
-    distributeur: 'srm_casablanca',
-    part_diurne_pct: 65,
-    tension_raccordement: 'mt',
-    repartition_mt: { pointe: 20, pleines: 50, creuses: 30 },
+    ...entreesCi('industriel', {
+      tension: 'mt', puissance_souscrite_kva: 250,
+      consommation: { kwh_mensuels: null, kwh_annuel: 120000, factures_mad: [], registres_mt: null },
+      contraintes: { revente_choisie: true },
+    }),
   }, [
     ligne(1, 21, 'Panneau Jinko 580W', '60.00', '1000.00', '10.00'),
     ligne(2, 22, 'Onduleur réseau Huawei 30kW Triphasé', '1.00', '45000.00', '20.00', { quantite_manuelle: true }),
@@ -73,12 +100,16 @@ const FIXTURES = {
 
   'commercial hôtel': base(3, 'commercial', {
     scenario: 'Sans batterie',
-    conso_annuelle: 90000,
-    distributeur: 'onee',
     categorie_commerciale: 'hotel',
     chambres: 40,
     occupation_pct: 70,
     piscine: true,
+    ...entreesCi('commercial', {
+      tension: 'bt',
+      consommation: { kwh_mensuels: [7000, 7100, 7200, 7300, 7400, 7500, 7600, 7700, 7800, 7900, 8000, 8100],
+        kwh_annuel: null, factures_mad: [], registres_mt: null },
+      rythme: { categorie_commerciale: 'hotel', reponses_categorie: { chambres: 40, occupation_pct: 70, piscine: true } },
+    }),
   }, [
     ligne(1, 31, 'Panneau Jinko 580W', '40.00', '1000.00', '10.00', { remise: '5.00' }),
     ligne(2, 32, 'Onduleur réseau Huawei 20kW Triphasé', '1.00', '30000.00', '20.00'),
@@ -197,6 +228,23 @@ test('l’option recommandée stockée revient telle quelle (jamais « Auto »)'
 test('la clé legacy recommended_choice est relue en repli', () => {
   const devis = base(9, 'residentiel', { recommended_choice: 'Avec batterie' }, [])
   assert.equal(devisVersEtat(devis).recommendedChoice, 'Avec batterie')
+})
+
+test('CIQ126 — un devis C&I v1 rouvert : aucune clé v1 relue ni réécrite', () => {
+  const devis = base(11, 'industriel', {
+    scenario: 'Sans batterie', part_diurne_pct: 65, injection_dh_an: 1200,
+    tension_raccordement: 'mt', repartition_mt: { pointe: 20, pleines: 50, creuses: 30 },
+    taux_autoconso: 80, payback: 4.2, etude_kwc_base: 30,
+  }, [])
+  const etat = devisVersEtat(devis)
+  for (const k of ['partDiurne', 'injectionEnabled', 'repartitionMt', 'tension']) {
+    assert.equal(etat[k], undefined, k)
+  }
+  const { etude } = etatVersEcritures(etat)
+  for (const k of ['part_diurne_pct', 'injection_dh_an', 'tension_raccordement', 'repartition_mt',
+    'taux_autoconso', 'payback', 'etude_kwc_base', 'injection_kwh_an', 'taux_couverture']) {
+    assert.equal(k in etude, false, k)
+  }
 })
 
 test('devisVersEtat marque `compose` les lignes produit relues sans verrou ni option', () => {

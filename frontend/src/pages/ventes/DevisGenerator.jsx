@@ -2,7 +2,6 @@ import {
   Fragment, useCallback, useDeferredValue, useEffect, useMemo, useReducer,
   useRef, useState,
 } from 'react'
-import { useDispatch } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
@@ -25,11 +24,7 @@ import {
 // round-trips non gardés) ne sont plus utilisés ici.
 import {
   createAutoQuote, LEAD_TYPE_TO_MODE,
-  // QJR575 — les paramètres du balayage C&I, construits UNE fois (partagés
-  // avec le « Devis automatique »).
-  parametresBalayageCI,
   // QJR665 — conso de l'étude C&I = celle du balayage (barème national).
-  consoMensuelleEtudeCI,
   // QJR308 — même formule que DevisTab.jsx / LeadDevisPanel.jsx : l'avis du
   // palier de 5 kWc, mais affiché ICI au moment RÉEL où `runAutoQuote` déclenche
   // le snap (les deux autres points ne l'affichent qu'avant de naviguer vers
@@ -40,10 +35,16 @@ import {
   useEtudePompagePreview, construireCorpsPompage, manquantsPompage,
   useEconomiePompagePreview,
 } from '../../features/ventes/etudePompagePreview'
-import { saisiesEconomiePompage, lignesDepuisKit } from '../../features/ventes/quote/etudeMarcheBloc'
 import {
-  POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie,
+  saisiesEconomiePompage, lignesDepuisKit,
+  TARIF_SAISIE_VIDE, tarifDeclareDepuisSaisie, erreursTarifDeclare,
+  ECO_CI_VIDE, saisiesEconomieCi,
+} from '../../features/ventes/quote/etudeMarcheBloc'
+import { useApercuEconomieCi } from '../../features/ventes/quote/hooks/useApercuEconomieCi'
+import {
+  POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie, libelleProvenance,
 } from '../../features/ventes/etudePompagePreviewPur'
+import { entreesPompageDuLead } from '../../features/ventes/quote/entreesPompageLead'
 import {
   ECO_POMPAGE_VIDE, ecoDepuisSaisies, ATTESTATION_VIDE,
 } from '../../features/ventes/quote/etudeMarcheBloc'
@@ -106,12 +107,12 @@ import { useDirtyGuard } from '../../ui/useDirtyGuard'
 import { useDraftAutosave } from '../../ui/useDraftAutosave'
 import { usePasteClean, parsePastedAmount } from '../../hooks/usePasteClean'
 import {
-  // QJR101 — `MONTHS_FR` (grille des 12 mois), `TARIF_MT_ONEE` (barème MT) et
+  // QJR101 — `MONTHS_FR` (grille des 12 mois), le barème MT et
   // `COMMERCIAL_CATEGORIES` sont partis avec les panneaux de marché qui les
-  // rendent ; `tarifMtDisponible` et `commercialDayShare` restent ici, appelés
-  // par l'avertissement de vente et par l'étude commerciale.
+  // rendent. CIQ126 — l'étude C&I locale (et son avertissement MT) est
+  // supprimée : le moteur serveur C&I est la seule source.
   CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
-  formatMoney, estimerMois, computeROI, ttcFromHt,
+  formatMoney, estimerMois, computeROI, ttcFromHt, htFromTtc,
   tauxTvaOf, tauxTvaOuDefaut, controlerFacturesSaisies,
   paybackMoteurHoraire, inverterCostFromLines, appartientAuPanierSans,
   appartientAuPanierAvec,
@@ -119,13 +120,11 @@ import {
   kwcFactureDesLignes, kwcPourPanneaux,
   // QJR570 (D-QJR5-4) — recomposer FUSIONNE (jamais un remplacement intégral).
   appliquerRecomposition, lignesManuellesEnConflitPossible,
-  optionTotalsTTC, autoFillLines, defaultProductLines,
-  computeEtudeIndustrielle,
+  optionTotalsTTC, defaultProductLines,
   HEURES_POMPAGE_DEFAUT,
-  isBattery, isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe,
+  isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe,
   prixParKwc, discountForTarget,
   computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
-  panneauxPourKwc,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
   // QJR66 — `buildEtudeParamsChoice` n'est PLUS importé ici : l'écran n'écrit
   // plus `scenario` / `recommended_option` / `distributeur` / `conso_annuelle`
@@ -134,11 +133,7 @@ import {
   // sur ce chemin d'enregistrement.
   kwhFromBill, multiPropertyPreviewTTC,
   productibleForCity,
-  COMMERCIAL_CATEGORY_QUESTIONS, commercialDayShare,
-  tarifMtDisponible, tarifMtMoyen,
-  // Règle fondateur du 18/08 — dimensionnement par PALIERS de 5 kWc, retenus
-  // au payback le plus court (jamais un panneau/900 MAD nu).
-  estimerKwcDepuisFacture, optimalKwcByPayback,
+  COMMERCIAL_CATEGORY_QUESTIONS,
   // FINDING 25/08 — consommation réelle dérivée des factures par le barème :
   // sans elle le modèle d'économie ne sature pas et l'ascension marginale
   // sur-vend jusqu'au plafond du balayage.
@@ -146,9 +141,6 @@ import {
   // PVMRQ — libellé FR d'un rôle ROLES_AUTO_COMPOSITION, pour le bandeau
   // « marque épinglée introuvable ».
   roleLabel,
-  // L-2OPT (fondateur 24/08) — deux optimiseurs indépendants (sans/avec
-  // batterie) fusionnés en lignes taguées `variante`.
-  fusionnerVariantes,
   // PVORD (fondateur 19/08/2026) — ordre par défaut des lignes de devis :
   // dérive la séquence de rôles depuis l'écran (bouton « Enregistrer cet
   // ordre »), appliquée par autoFillLines via ordreLignes.
@@ -200,6 +192,12 @@ import {
 } from '../../features/ventes/quote/lignesEcran'
 // QJR658 — devis ⇄ état d'écran : un module pur.
 import { devisVersEtat, etatVersEcritures } from '../../features/ventes/quote/etatDevis'
+// CIQ125 — profil déclaré C&I (corps de l'aperçu serveur + entrées v2).
+import { useEtudeCiPreview } from '../../features/ventes/etudeCiPreview'
+import {
+  profilCiVide, poserProfilCi, corpsCiDepuisProfil, profilCiAncre,
+  lignesDepuisCompositionCi,
+} from '../../features/ventes/quote/profilCi'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
@@ -207,6 +205,7 @@ import { devisVersEtat, etatVersEcritures } from '../../features/ventes/quote/et
 import CarteMetrique, { GenCardHeader } from './generator/CarteMetrique'
 // QJR624 — l'échéancier éditable de l'Édition complète (D-QJR5-10).
 import CarteEcheancier from './generator/CarteEcheancier'
+import { CONDITIONS_VIDES, erreursConditions } from '../../features/ventes/echeancierEdition'
 import LigneTable from './generator/LigneTable'
 import RailArgent from './generator/RailArgent'
 // QJR101 — les quatre panneaux de marché. Chacun ne monte que les champs de
@@ -257,8 +256,6 @@ const villeEffectiveLead = (lead) => (lead?.ville_effective ?? lead?.ville) || '
 // à la réouverture.
 const INST_TYPE_PAR_MODE = {
   residentiel: 'Résidentielle',
-  industriel: 'Industrielle',
-  commercial: 'Commerciale',
   agricole: 'Agricole',
 }
 const partDiurneParDefaut = (mode) =>
@@ -277,22 +274,6 @@ const partDiurneParDefaut = (mode) =>
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
-
-// L-2OPT (fondateur 24/08) — déduplique une liste par clé, garde la PREMIÈRE
-// occurrence : même patron que `marquesManquantes`/`onduleursIncomplets`
-// (solar.js), utilisé quand les DEUX compositions (sans/avec) de
-// `handleAutoFill` signalent le même trou catalogue.
-const dedupeParCle = (items, keyFn) => {
-  const seen = new Set()
-  const out = []
-  for (const it of items) {
-    const k = keyFn(it)
-    if (seen.has(k)) continue
-    seen.add(k)
-    out.push(it)
-  }
-  return out
-}
 
 // VX93 — défaut intelligent : dernier taux TVA saisi sur une ligne ajoutée à la
 // main (localStorage). Repli sur le taux standard (20 %) si absent. Toujours
@@ -445,7 +426,6 @@ export default function DevisGenerator({
   onDone = null,
   onCancel = null,
 } = {}) {
-  const dispatch = useDispatch()
   const navigate = useNavigate()
   // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
   const { confirm } = useConfirmDialog()
@@ -704,6 +684,14 @@ export default function DevisGenerator({
   // touché : un devis qui suit la société n'en reçoit pas un figé en silence.
   const [echeancierSaisie, setEcheancierSaisieBrut] = useState(null)
   const echeancierAEnvoyer = useRef(false)
+  // CIQ225 — jalons EFFECTIFS de la société (`payment_terms_effectifs`) : le défaut
+  // de « Personnaliser l'échéancier » vient d'eux, plus d'une constante JS.
+  const [termesEffectifs, setTermesEffectifs] = useState(null)
+  // CIQ226 — conditions contractuelles DÉCLARÉES (retenue, pénalités,
+  // caution, organisme financeur, référence de commande) : rien de pré-rempli.
+  const [conditions, setConditions] = useState(CONDITIONS_VIDES)
+  const conditionsServies = useRef([])
+  const setCondition = (champ, valeur) => setConditions((c) => ({ ...c, [champ]: valeur }))
   const setEcheancierSaisie = useCallback((valeur) => {
     echeancierAEnvoyer.current = true
     setEcheancierSaisieBrut(valeur)
@@ -760,10 +748,6 @@ export default function DevisGenerator({
     compositionSeq: recalcDimTick,
   } = sizing
   const [dayUsage, setDayUsage] = useState(DAY_USAGE_DEFAULTS['Résidentielle'])
-  // Cache du dernier calcul (optimalKwcByPayback chiffre CHAQUE palier avec
-  // le catalogue réel — pas gratuit) : évite de le rejouer à chaque frappe
-  // de `syncBillEstimator` quand rien de pertinent n'a changé depuis.
-  const sizingCacheRef = useRef({ key: '', result: null })
 
   // ── Lignes (prix TTC, comme le simulateur) & remise ──
   const [lines, setLines] = useState([])
@@ -798,21 +782,11 @@ export default function DevisGenerator({
   // avec le lead COURANT et rend la liste des champs qui ont bougé DEPUIS
   // (`lead_valeurs_modifiees` du GET devis). Liste vide ⇒ rien à dire.
   const [leadValeursModifiees, setLeadValeursModifiees] = useState([])
-  // PVMRQ — réglages « Gammes & marques » de la société (chargés UNE fois,
-  // best-effort : une société sans réglage ou un rôle non responsable/admin
-  // — l'endpoint est `IsResponsableOrAdmin` — retombe sur `{}` silencieusement,
-  // donc sur le comportement historique SANS préférence de marque).
-  const [gammesConfig, setGammesConfig] = useState(null)
   // PVORD (fondateur 19/08/2026) — bouton « Enregistrer cet ordre comme
   // ordre par défaut » (voir handleSaveOrdreLignes) : état de chargement
   // dédié, séparé de `saving` (l'enregistrement du DEVIS) — les deux actions
   // sont indépendantes et ne doivent pas se griser l'une l'autre.
   const [savingOrdreLignes, setSavingOrdreLignes] = useState(false)
-  // Gamme du devis rouvert (`etude_params.gamme.nom`, QJ29/services.gamme_nom) —
-  // round-trip minimal : le générateur ne construit PAS de choix de gamme,
-  // il lit seulement celle déjà posée par un devis existant pour résoudre la
-  // bonne carte de marques (slot Essentielle par défaut, voir marquesActives).
-  const [gammeNomDevis, setGammeNomDevis] = useState('')
   const [previewCollapsed, setPreviewCollapsed] = useState(false)
   const [tauxTva, setTauxTva] = useState('20.00')
   const [discountPct, setDiscountPct] = useState('0')
@@ -845,38 +819,22 @@ export default function DevisGenerator({
     setMultiAccordionOpen(modeInstallation !== 'agricole')
   }, [modeInstallation])
   const [consoMensuelle, setConsoMensuelle] = useState('')
+  // CIQ125 — LE profil déclaré C&I (commercial ET industriel) : la SEULE
+  // saisie de consommation de ces marchés, tapée telle quelle (texte), mise à
+  // la forme du contrat `etude_ci_preview.json` par `quote/profilCi.js`.
+  const [profilCi, setProfilCi] = useState(profilCiVide)
+  // CIQ222 — le tarif de SA facture (contrat `tarifs_ci.json`), tel que tapé.
+  const [tarifSaisie, setTarifSaisie] = useState(TARIF_SAISIE_VIDE)
+  const setTarifChamp = (champ, valeur) => setTarifSaisie((t) => ({ ...t, [champ]: valeur }))
+  // CIQ223 — les saisies de l'économie C&I (contrat `economie_ci.json`).
+  const [ecoCi, setEcoCi] = useState(ECO_CI_VIDE)
+  const setEcoChamp = (champ, valeur) => setEcoCi((e) => ({ ...e, [champ]: valeur }))
   // QX44 — étude commerciale par catégorie (mode commercial). categorie +
   // réponses par catégorie (clés snake_case), stockées dans etude_params.
   const [categorieCommerciale, setCategorieCommerciale] = useState(CATEGORIE_NON_PRECISEE)
   const [commercialAnswers, setCommercialAnswers] = useState({})
   const setCommercialAnswer = (key, val) =>
     setCommercialAnswers(prev => ({ ...prev, [key]: val }))
-  // QX50 — injection du surplus (loi 82-21). OFF par défaut, activable par devis
-  // (industriel/commercial) ; la ligne ne s'affiche jamais sans sa mention.
-  const [injectionEnabled, setInjectionEnabled] = useState(false)
-  // QXMT — tension de raccordement du site (industriel/commercial). 'bt' par
-  // défaut : tant qu'on n'a pas déclaré 'mt', l'étude est EXACTEMENT celle
-  // d'avant. Le questionnaire du tunnel web pose déjà la question
-  // (lead.web_questionnaire.tension_raccordement) — on la reprend s'il l'a.
-  // (`tensionRaccordement` vient du reducer, voir plus haut.)
-  // Répartition horaire de la consommation MT (%, saisie libre). VIDE par
-  // défaut : les plages horaires MT officielles ne sont pas publiées, donc
-  // aucune répartition n'est inventée — sans elle, l'étude MT omet les
-  // économies plutôt que d'afficher un chiffre douteux.
-  const [repartitionMt, setRepartitionMt] = useState({
-    pointe: '', pleines: '', creuses: '',
-  })
-  const setPartMt = (key, val) => setRepartitionMt(p => ({ ...p, [key]: val }))
-  // QXMT — un dossier raccordé en MOYENNE TENSION n'est pas facturé au barème
-  // BT : l'étude passe alors au barème ONEE « Tarif Général (MT) », pondéré par
-  // la répartition horaire du site. `estMt` ne vaut true QUE si l'utilisateur
-  // (ou le questionnaire web) l'a déclaré — sinon tout le calcul reste celui
-  // d'avant, à l'identique. Dérivé ICI, avant `validate()` et l'étude, pour
-  // qu'aucun consommateur ne le lise avant sa déclaration.
-  const estMt = tensionRaccordement === 'mt'
-    && (modeInstallation === 'industriel' || modeInstallation === 'commercial')
-  const tarifMtApplique = estMt ? tarifMtMoyen(repartitionMt) : null
-  const etudeTension = { tensionRaccordement, repartitionMt }
   const [prixCible, setPrixCible] = useState('')
   // ── Logique de devis éditable (D5 ; Paramètres → Avancé). Défauts = constantes
   // historiques du simulateur, donc le devis est identique tant que rien n'est
@@ -932,8 +890,18 @@ export default function DevisGenerator({
   // écrit dans `saisies_economie_pompage` — plus jamais « butane » par
   // défaut, plus jamais × 12.
   const [ecoPompage, setEcoPompage] = useState(ECO_POMPAGE_VIDE)
+  // AGR420 — une énergie retouchée à la main perd sa provenance « lead ».
   const majEco = useCallback(
-    (cle, valeur) => setEcoPompage((e) => ({ ...e, [cle]: valeur })), [])
+    (cle, valeur) => setEcoPompage((e) => ({
+      ...e, [cle]: valeur, ...(cle === 'energie' ? { energieProvenance: null } : {}),
+    })), [])
+  // AGR420 — valeurs posées par un lead (garde « touché » : une saisie du
+  // vendeur n'est jamais écrasée) et leur provenance affichée.
+  const posesLead = useRef({})
+  const [provenancesLead, setProvenancesLead] = useState([])
+  // Valeurs COURANTES (la relecture du lead est asynchrone : une fermeture
+  // périmée ne verrait pas ce que le vendeur vient de taper).
+  const courantPompage = useRef({})
   // AGR218 — attestation d'usage agricole (case + date + signataire).
   const [attestationAgricole, setAttestationAgricole] = useState(ATTESTATION_VIDE)
   const majAttestation = useCallback(
@@ -949,6 +917,13 @@ export default function DevisGenerator({
     (chemin, valeur) => setPompageSaisie((s) => poserSaisie(s, chemin, valeur)),
     [],
   )
+  useEffect(() => {
+    courantPompage.current = {
+      pompeHmt, pompeDebit, farmHmtStatic, pompeProfondeur, pompeDistance,
+      pompeCv, pompeType, farmRegion, farmCrop, farmSurfaceHa, farmIrrigation,
+      eco: ecoPompage,
+    }
+  })
 
   // ── VX62 — Brouillon auto + garde de sortie ──
   // Le formulaire (2 300+ lignes, ~20 min de saisie) n'avait NI brouillon NI
@@ -967,8 +942,8 @@ export default function DevisGenerator({
     realBillSaisi, distributeurChoisi,
     nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
-    categorieCommerciale, commercialAnswers, injectionEnabled,
-    tensionRaccordement, repartitionMt,
+    categorieCommerciale, commercialAnswers,
+    tensionRaccordement, profilCi,
     prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
@@ -981,8 +956,8 @@ export default function DevisGenerator({
     realBillSaisi, distributeurChoisi,
     nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
-    categorieCommerciale, commercialAnswers, injectionEnabled,
-    tensionRaccordement, repartitionMt,
+    categorieCommerciale, commercialAnswers,
+    tensionRaccordement, profilCi,
     prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
@@ -1100,11 +1075,10 @@ export default function DevisGenerator({
     if (d.consoMensuelle != null) setConsoMensuelle(d.consoMensuelle)
     if (d.categorieCommerciale != null) setCategorieCommerciale(d.categorieCommerciale)
     if (d.commercialAnswers && typeof d.commercialAnswers === 'object') setCommercialAnswers(d.commercialAnswers)
-    if (d.injectionEnabled != null) setInjectionEnabled(d.injectionEnabled)
     if (d.tensionRaccordement != null) {
       dispatchSizing({ type: 'SAISI', champ: 'tension', valeur: d.tensionRaccordement })
     }
-    if (d.repartitionMt && typeof d.repartitionMt === 'object') setRepartitionMt(d.repartitionMt)
+    if (d.profilCi && typeof d.profilCi === 'object') setProfilCi({ ...profilCiVide(), ...d.profilCi })
     if (d.prixCible != null) setPrixCible(d.prixCible)
     if (d.remiseMax != null) setRemiseMax(d.remiseMax)
     if (d.accessoiresOnly != null) setAccessoiresOnly(d.accessoiresOnly)
@@ -1345,6 +1319,47 @@ export default function DevisGenerator({
     ? [leadDuDevis, ...leads] : leads
   const selectedLead = leadsListe.find(l => String(l.id) === String(leadId))
 
+  // AGR421 / CIQ423 (D-AGR-9) — devis agricole, commercial ou industriel sur un
+  // lead d'un autre type : le bandeau PROPOSE, le commercial change le type à la
+  // main (jamais à l'enregistrement ni à l'envoi). C&I : seul l'écart que le
+  // serveur signale (`incoherence_segment`) ou un lead d'une autre famille.
+  const [typeLeadMisAJour, setTypeLeadMisAJour] = useState({})
+  const incoherenceSegment = selectedLead?.incoherence_segment || null
+  const typeLeadEffectif = selectedLead
+    ? (typeLeadMisAJour[selectedLead.id]
+      ?? incoherenceSegment?.segment_lead
+      ?? selectedLead.type_installation ?? '')
+    : ''
+  const marcheSegment = ['agricole', 'commercial', 'industriel'].includes(modeInstallation)
+    ? modeInstallation : ''
+  const bandeauSegment = Boolean(selectedLead) && Boolean(marcheSegment)
+    && typeLeadEffectif !== marcheSegment
+    && (marcheSegment === 'agricole'
+      || Boolean(incoherenceSegment)
+      || (typeLeadEffectif !== '' && !['commercial', 'industriel'].includes(typeLeadEffectif)))
+  // CIQ423 (D-CIQ-11) — rappel NON bloquant : l'ICE d'un client entreprise.
+  const clientDuDevis = clients.find(c => String(c.id) === String(clientId))
+  const identiteEntreprise = clientDuDevis?.identite_entreprise
+    ?? selectedLead?.identite_entreprise ?? null
+  const rappelIce = ['commercial', 'industriel'].includes(modeInstallation)
+    && Array.isArray(identiteEntreprise?.manquants)
+    && identiteEntreprise.manquants.some(m => m === 'ice' || m === 'raison_sociale')
+  const changerTypeLead = async () => {
+    if (!selectedLead) return
+    const ok = await confirm({
+      title: 'Changer le type du lead ?',
+      description: `Le lead passera en « ${marcheSegment} » : le script d'appel, le score et le suivi le traiteront comme un lead ${marcheSegment}.`,
+      confirmLabel: `Passer en ${marcheSegment}`,
+    })
+    if (!ok) return
+    try {
+      await crmApi.updateLead(selectedLead.id, { type_installation: marcheSegment })
+      setTypeLeadMisAJour(m => ({ ...m, [selectedLead.id]: marcheSegment }))
+    } catch {
+      toast.error('Le type du lead n’a pas pu être modifié.')
+    }
+  }
+
   const roi = useMemo(() => {
     if (dKwp <= 0 || !dMonthly.some(v => v > 0)) return null
     return computeROI({
@@ -1401,6 +1416,7 @@ export default function DevisGenerator({
 
   // QJR586 — la ville de CALCUL du lead sélectionné (servie par le serveur).
   const villeCalculLead = villeEffectiveLead(selectedLead)
+
 
   // Source des chiffres « avec batterie » du miroir local : `roiAvec` quand
   // les deux optimiseurs divergent, sinon `roi` (identique par construction).
@@ -1672,7 +1688,7 @@ export default function DevisGenerator({
   const onModeChangeUi = async (m) => {
     if (m === modeInstallation) return
     const hasWork = lines.some(l => l.produit && parseFloat(l.quantite) > 0)
-      || !!etudeIndustrielle || pompageAutoFilled
+      || !!apercuCi.donnees || pompageAutoFilled
     if (hasWork) {
       const ok = await confirm({
         title: 'Changer de marché ?',
@@ -1716,128 +1732,31 @@ export default function DevisGenerator({
     return `${selectedLead.nom} ${selectedLead.prenom || ''} (sera créé automatiquement depuis le lead)`.trim()
   }, [selectedLead, clients])
 
-  // ── PVMRQ — réglages « Gammes & marques » (Paramètres → Gammes & marques) ──
-  // Chargés UNE fois, en CRÉATION comme en ÉDITION (une marque épinglée
-  // s'applique à chaque auto-remplissage, pas seulement au premier chargement
-  // d'un devis neuf). Best-effort : la LECTURE est ouverte à tout utilisateur
-  // authentifié de la société (`IsAuthenticated` — l'épinglage doit s'appliquer
-  // aux devis de TOUS les commerciaux ; seule l'ÉCRITURE reste
-  // Admin/Responsable, cf. `views/parametres_gammes.py`). Un échec réseau
-  // retombe silencieusement sur `{}` (aucune préférence, comportement
-  // historique), jamais un blocage de l'écran. Déclaré AVANT
-  // `computeAutoSizing` ci-dessous : `marquesActives` entre dans sa clé de
-  // cache/dépendances, donc doit déjà être initialisé à ce point du rendu.
-  const gammesLoaded = useRef(false)
-  useEffect(() => {
-    if (gammesLoaded.current) return
-    gammesLoaded.current = true
-    ventesApi.getParametresGammes()
-      .then(({ data }) => setGammesConfig(data || {}))
-      .catch(() => setGammesConfig({}))
-  }, [])
-
-  // Carte de marques ACTIVE pour ce devis : la gamme du devis rouvert
-  // (`gammeNomDevis`, résolue contre les libellés `nom_essentielle`/
-  // `nom_premium` du réglage — MIROIR du backend `services.marque_preferee`)
-  // si elle correspond au libellé Premium, sinon le slot Essentielle par
-  // défaut (comportement pour un devis neuf/sans gamme, ou tant que le
-  // réglage n'est pas encore chargé). Les clés internes de `marques` sont
-  // TOUJOURS les slots fixes 'Essentielle'/'Premium', jamais le libellé
-  // renommé (voir ParametresGammes, apps/ventes/models.py).
-  const marquesActives = useMemo(() => {
-    const marques = gammesConfig?.marques
-    if (!marques || typeof marques !== 'object') return {}
-    const nomActuel = (gammeNomDevis || '').trim().toLowerCase()
-    const nomPremium = (gammesConfig?.nom_premium || '').trim().toLowerCase()
-    const slot = (nomActuel && nomActuel === nomPremium) ? 'Premium' : 'Essentielle'
-    return marques[slot] || {}
-  }, [gammesConfig, gammeNomDevis])
-
-  // Règle fondateur du 18/08 — dimensionnement par PALIERS de 5 kWc au
-  // payback le plus court, partagé par les trois pré-remplissages (lead,
-  // profil site, saisie manuelle des factures). Retourne null quand la
-  // facture d'hiver est sous le seuil de 900 MAD (aucun palier chiffrable —
-  // les appelants attendent alors le moteur horaire SERVEUR, U3-900 :
-  // attenteSizingServeur).
-  // Mémoïsé via `sizingCacheRef` : `syncBillEstimator` tourne à chaque frappe
-  // sur le champ facture, or chaque palier est chiffré avec le catalogue
-  // réel (autoFillLines + ROI) — pas gratuit à rejouer si rien n'a changé.
-  // `villeLead` : la ville du lead EN COURS d'application (`applyLead`) — à cet
-  // instant `selectedLead` décrit encore le rendu précédent (leadId pas encore
-  // posé) et le balayage partait au productible par défaut (CI #752).
-  const computeAutoSizing = useCallback((hiverVal, eteVal, villeLead) => {
-    const hiver = parseFloat(hiverVal) || 0
-    const besoinKwc = estimerKwcDepuisFacture(hiver)
-    if (besoinKwc <= 0) return null
-    const eteVale = parseFloat(eteVal) || 0
-    const eteEff = eteVale > 0 ? eteVale : hiver
-    // QJR575 — distributeur DÉCLARÉ : celui que le vendeur a choisi, sinon
-    // celui du lead, jamais le défaut d'écran 'onee' (sinon l'écran passait
-    // au modèle « factures » quand le devis automatique restait en
-    // « estimation » : deux kWc selon le bouton). Il entre dans la clé.
-    const distributeurDeclare = distributeurChoisi ? distributeur : selectedLead?.distributeur
-    const categorieBalayage = categorieCommerciale === CATEGORIE_NON_PRECISEE
-      ? null : categorieCommerciale
-    // ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT — même productible que l'aperçu
-    // (`roi`) et que le PDF : sans lui, `computeROI` retombait sur GHI × 0,8
-    // (≈ 1 256 kWh/kWc contre ≈ 1 536 au document). Il entre dans la clé.
-    const productibleBalayage = productibleForCity(
-      (villeLead ?? villeCalculLead) || '', quoteLogic.productible)
-    // PVMRQ — la marque épinglée entre dans la clé de cache : un changement de
-    // réglage (ou de gamme du devis) doit rejouer le balayage des paliers.
-    // STKCAT10 — le PRODUIT de structure entre dans la clé au même titre que
-    // le bouton acier/alu : changer de structure change le prix de chaque
-    // palier, donc le palier retenu.
-    const key = [hiver, eteEff, besoinKwc, modeInstallation, categorieBalayage ?? '', panelW,
-      structureType, structureProduitId ?? '',
-      discountPct, produits.length, JSON.stringify(marquesActives),
-      distributeurDeclare ?? '', consoAnnuelleReelle ?? '', productibleBalayage].join('|')
-    if (sizingCacheRef.current.key === key) return sizingCacheRef.current.result
-    // FINDING 25/08 — la CONSOMMATION RÉELLE du client entre dans le balayage.
-    // Sans elle, `computeROI` ne plafonne rien : l'économie reste linéaire en
-    // kWc, chaque pas marginal se « rembourse » et l'ascension ne s'arrête
-    // qu'au plafond (mesuré : besoin 100 kWc → 100 kWc, 522 341 MAD). Dérivée
-    // des factures du client par le barème du distributeur — jamais un chiffre
-    // posé (`consoAnnuelleDepuisFactures`, la dérivation déjà utilisée par
-    // autoQuote.js pour `etude_params.conso_annuelle`).
-    // Une consommation RÉELLE saisie par le vendeur (champ facture/kWh réel,
-    // QF4) prime sur la dérivation : c'est celle que l'aperçu `roi` utilise
-    // déjà, et le dimensionnement doit dimensionner le MÊME client que
-    // l'aperçu. Sinon, dérivation depuis les factures du balayage.
-    // QJR575 — MÊME construction que le « Devis automatique ».
-    const balayage = parametresBalayageCI({
-      factures: estimerMois(hiver, eteEff), mode: modeInstallation,
-      categorie: categorieBalayage, distributeurDeclare, consoAnnuelleReelle,
-    })
-    const opt = optimalKwcByPayback({
-      produits, factures: balayage.factures, dayUsagePct: balayage.dayUsagePct,
-      panelW, structureType, structureProduitId, discountPct,
-      kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
-      besoinKwc, marques: marquesActives,
-      consoAnnuelleKwh: balayage.consoAnnuelleKwh, utility: balayage.utility,
-      productible: productibleBalayage,
-    })
-    // QJR102 — LE SECOND BALAYAGE (celui de l'axe stockage, exposé jadis sous
-    // la clé imbriquée du même nom) EST SUPPRIMÉ : il était RÉSIDENTIEL-ONLY
-    // et le résidentiel ne passe plus jamais par ce balayage depuis U3-MOTEUR.
-    // Preuve d'injoignabilité (greps joints au commit) : cette clé n'avait
-    // qu'UN lecteur, la branche locale de `deuxValeursDim`, dans une fonction
-    // qui rend `{sans:null, avec:null}` hors résidentiel — et EN résidentiel le
-    // reducer met TOUJOURS `sizingInfo` à `null` (sizingReducer.js:253/278 pour
-    // les pré-remplissages, :358 pour le recalcul). Les trois appelants
-    // restants (`applyLead`, `applySiteProfile`, `syncBillEstimator`) sont tous
-    // gardés par `!== 'residentiel'`. Le balayage ci-dessus, lui, reste le seul
-    // dimensionneur des marchés sans moteur serveur.
-    // `optimalKwcByPayback` GARDE son paramètre d'axe stockage (décision
-    // fondateur D11 : il reste le moteur de 3 marchés sur 4, et
-    // solar.deuxOptimiseurs.test.mjs le couvre en propre).
-    let result = null
-    if (opt.nbPanneaux > 0) result = { besoinKwc, ...opt }
-    sizingCacheRef.current = { key, result }
-    return result
-  }, [modeInstallation, panelW, structureType, structureProduitId, discountPct,
-    produits, quoteLogic, marquesActives, distributeur, distributeurChoisi,
-    categorieCommerciale, consoAnnuelleReelle, villeCalculLead, selectedLead?.distributeur])
+  // ── CIQ125 — profil déclaré C&I → aperçu du moteur serveur, en direct ──
+  // Le corps part tel que tapé (aucun calcul, aucun défaut) ; le lead et le
+  // devis voyagent pour que le serveur résolve ce qui n'est pas saisi
+  // (`entrees_resolues`, priorité corps > devis > lead). AUCUN appel hors C&I.
+  const marcheCi = modeInstallation === 'commercial' || modeInstallation === 'industriel'
+  const ctxProfilCi = {
+    mode: modeInstallation,
+    lead: leadId ? Number(leadId) : null,
+    devis: editId ? Number(editId) : null,
+    ville: villeCalculLead || null,
+    categorie: modeInstallation === 'commercial' && categorieCommerciale !== CATEGORIE_NON_PRECISEE
+      ? categorieCommerciale : null,
+    reponses: modeInstallation === 'commercial' ? commercialAnswers : null,
+    // CIQ222 — le tarif déclaré part au moteur (`corps.tarif`), jamais une grille.
+    tarif: tarifDeclareDepuisSaisie(tarifSaisie, { aujourdhui: new Date().toISOString().slice(0, 10) }),
+  }
+  const corpsCi = marcheCi ? corpsCiDepuisProfil(profilCi, ctxProfilCi) : null
+  const apercuCi = useEtudeCiPreview(corpsCi)
+  const resoluesCi = apercuCi.donnees?.entrees_resolues || {}
+  // Consommation connue : saisie dans le profil (ou taille explicite), ou
+  // reprise de la fiche lead par le serveur (valeur résolue non vide).
+  const consoCiConnue = profilCiAncre(profilCi)
+    || [resoluesCi.kwh_mensuels?.valeur, resoluesCi.kwh_annuel?.valeur]
+      .some((v) => (Array.isArray(v) ? v.some((x) => Number(x) > 0) : Number(v) > 0))
+  const setChampCi = (chemin, valeur) => setProfilCi((p) => poserProfilCi(p, chemin, valeur))
 
   // L-2OPT — kWc de la branche AVEC batterie POUR LA COMPOSITION EN COURS :
   // le moteur horaire serveur (recommandation_avec, source de vérité) prime
@@ -1893,6 +1812,40 @@ export default function DevisGenerator({
   const deuxValeursDim = selecteurDeuxValeursDim(
     modeInstallation, etudeHoraireDonnees)
 
+  // AGR420 — recopie `lead.entrees_pompage` dans les états agricoles. Une
+  // entrée absente laisse l'état VIDE ; un état déjà saisi par le vendeur
+  // (autre que la valeur posée par un lead) n'est jamais écrasé.
+  const appliquerEntreesPompage = (lead) => {
+    const res = entreesPompageDuLead(lead)
+    if (!res) return
+    const poseurs = {
+      pompeHmt: setPompeHmt, pompeDebit: setPompeDebit,
+      farmHmtStatic: setFarmHmtStatic, pompeProfondeur: setPompeProfondeur,
+      pompeDistance: setPompeDistance, pompeCv: setPompeCv, pompeType: setPompeType,
+      farmRegion: setFarmRegion, farmCrop: setFarmCrop,
+      farmSurfaceHa: setFarmSurfaceHa, farmIrrigation: setFarmIrrigation,
+    }
+    const actuel = courantPompage.current
+    const libre = (cle, courant) => courant === '' || courant == null
+      || courant === posesLead.current[cle]
+    for (const [cle, valeur] of Object.entries(res.ecran)) {
+      const poser = poseurs[cle]
+      if (poser && libre(cle, actuel[cle])) { poser(valeur); posesLead.current[cle] = valeur }
+    }
+    const eco = {}
+    for (const [cle, valeur] of Object.entries(res.eco)) {
+      if (cle === 'moisProvenance' || cle === 'energieProvenance') continue
+      if (libre(`eco.${cle}`, actuel.eco?.[cle])) {
+        eco[cle] = valeur
+        posesLead.current[`eco.${cle}`] = valeur
+      }
+    }
+    if ('energie' in eco) eco.energieProvenance = res.eco.energieProvenance
+    if ('mois' in eco) eco.moisProvenance = res.eco.moisProvenance
+    if (Object.keys(eco).length) setEcoPompage((e) => ({ ...e, ...eco }))
+    setProvenancesLead(res.provenances)
+  }
+
   const applyLead = (id) => {
     setLeadId(id)
     if (!id) return
@@ -1914,32 +1867,27 @@ export default function DevisGenerator({
       ? LEAD_TYPE_TO_MODE[lead.type_installation] : null
     // Mode RÉELLEMENT visé par ce pré-remplissage (miroir EXACT du calcul que
     // fait le reducer) : il décide du type d'installation et du dimensionneur.
-    const modeCible = modeLead || modeInstallation
     if (modeLead && modeLead !== modeInstallation) {
       appliquerPartDiurneDuMarche(modeLead)
     }
-    // Lead agricole : recopie pompe CV / HMT / débit (l'alimentation, elle,
-    // suit le raccordement DANS la transition ci-dessous).
+    // Lead agricole : les ENTRÉES de pompage déclarées ou mesurées
+    // (`entrees_pompage`, AGR404) — l'alimentation, elle, suit le
+    // raccordement DANS la transition ci-dessous. Rien n'est inventé.
     if (LEAD_TYPE_TO_MODE[lead.type_installation] === 'agricole') {
-      if (lead.pompe_cv != null && lead.pompe_cv !== '') setPompeCv(String(lead.pompe_cv))
-      if (lead.pompe_hmt_m != null && lead.pompe_hmt_m !== '') setPompeHmt(String(lead.pompe_hmt_m))
-      if (lead.pompe_debit_m3h != null && lead.pompe_debit_m3h !== '') setPompeDebit(String(lead.pompe_debit_m3h))
+      // La liste des leads ne porte pas `entrees_pompage` (détail seulement) :
+      // on relit le lead ; une panne reste silencieuse (états laissés vides).
+      Promise.resolve().then(() => crmApi.getLead(lead.id))
+        .then((rep) => appliquerEntreesPompage(rep?.data))
+        .catch(() => { /* lead illisible : aucune entrée reprise */ })
     }
     if (lead.conso_mensuelle_kwh) setConsoMensuelle(String(lead.conso_mensuelle_kwh))
     const hiver = parseFloat(lead.facture_hiver) || 0
     // bascule OFF → la valeur unique vaut hiver ET été
     const ete = (lead.ete_differente && lead.facture_ete)
       ? parseFloat(lead.facture_ete) : hiver
-    // La taille souhaitée du lead est PRIORITAIRE sur la facture : on ne
-    // chiffre le balayage local que si elle ne fournit rien (même garde que le
-    // reducer, pour ne pas payer `optimalKwcByPayback` pour rien). Résidentiel :
-    // AUCUN balayage local — U3-MOTEUR, le moteur horaire serveur dimensionne.
-    const tailleKwc = parseFloat(lead.taille_souhaitee_kwc) || 0
-    const fromTaille = (!sizing.touche.nbPanneaux && tailleKwc > 0)
-      ? panneauxPourKwc(tailleKwc, panelW)
-      : 0
-    const sizingLocal = (hiver > 0 && fromTaille <= 0 && modeCible !== 'residentiel')
-      ? computeAutoSizing(hiver, ete, villeEffectiveLead(lead)) : null
+    // CIQ126 — plus aucun balayage local : le résidentiel attend le moteur
+    // horaire, le C&I le moteur C&I serveur, l'agricole son kit serveur.
+    const sizingLocal = null
     // STKCAT10 — la liste des structures RÉELLEMENT sélectionnables voyage
     // avec l'action : le reducer valide contre ELLE l'id épinglé sur le lead
     // (`lead.structure_produit`, STKCAT9) et n'applique jamais un produit
@@ -1980,23 +1928,21 @@ export default function DevisGenerator({
     const modeLead = !sizing.touche.mode
         && p.type_installation && LEAD_TYPE_TO_MODE[p.type_installation]
       ? LEAD_TYPE_TO_MODE[p.type_installation] : null
-    const modeCible = modeLead || modeInstallation
     if (modeLead && modeLead !== modeInstallation) {
       appliquerPartDiurneDuMarche(modeLead)
     }
     if (LEAD_TYPE_TO_MODE[p.type_installation] === 'agricole') {
-      if (p.pompe_cv != null && p.pompe_cv !== '') setPompeCv(String(p.pompe_cv))
+      // AGR420 — la pompe du profil est la pompe ACTUELLE (information).
+      if (p.pompe_actuelle_cv != null && p.pompe_actuelle_cv !== '') setPompeCv(String(p.pompe_actuelle_cv))
       if (p.pompe_hmt_m != null && p.pompe_hmt_m !== '') setPompeHmt(String(p.pompe_hmt_m))
       if (p.pompe_debit_m3h != null && p.pompe_debit_m3h !== '') setPompeDebit(String(p.pompe_debit_m3h))
     }
     if (p.conso_mensuelle_kwh) setConsoMensuelle(String(p.conso_mensuelle_kwh))
     const hiver = parseFloat(p.facture_hiver) || 0
     const ete = (p.ete_differente && p.facture_ete) ? parseFloat(p.facture_ete) : hiver
-    // Règle fondateur du 18/08 — même chaîne palier/payback que applyLead (voir
-    // computeAutoSizing) ; le résidentiel, lui, attend le moteur horaire
-    // SERVEUR (U3-900 — plus de repli `estimerPanneaux`).
-    const sizingLocal = (hiver > 0 && !sizing.touche.nbPanneaux && modeCible !== 'residentiel')
-      ? computeAutoSizing(hiver, ete) : null
+    // CIQ126 — plus aucun balayage local (voir applyLead) : le résidentiel
+    // attend le moteur horaire SERVEUR (U3-900), le C&I le moteur C&I serveur.
+    const sizingLocal = null
     dispatchSizing({ type: 'PROFIL_SITE_APPLIQUE', profil: p, sizingLocal })
     if (hiver > 0) {
       setFHiver(String(p.facture_hiver))
@@ -2041,26 +1987,11 @@ export default function DevisGenerator({
     // QJR602 suivi (D-QJR5-13) — une taille explicite est respectée telle
     // quelle : plus d'arrondi au palier de 5 kWc, donc plus d'avis de palier.
     try {
-      // Calcul partagé avec le panneau devis inline (autoQuote.js) — jamais
-      // dupliqué : un seul endroit dimensionne le devis auto. On transmet les
-      // heures de pompage du réglage entreprise (pompeHeures) et un rappel qui
-      // affiche les chiffres d'étude industrielle avant la fin.
-      const devisId = await createAutoQuote({
-        lead, produits, discountStr, dispatch, quoteLogic,
-        pumpHours: parseFloat(pompeHeures) || HEURES_POMPAGE_DEFAUT,
-        onEtude: (et) => setWarnings(prev => ({
-          ...prev,
-          autoEtude: `Étude auto : autoconsommation ${et.taux_autoconso} %`
-            + ` · économies ${fmtNum(et.economies_annuelles)} MAD/an`
-            + (et.payback != null ? ` · retour ${et.payback} ans` : ''),
-        })),
-        // PVMRQ — marques préférées (gamme active) : même contrainte que
-        // l'auto-remplissage manuel (handleAutoFill).
-        marques: marquesActives,
-        // PVORD — ordre par défaut de la société, même contrainte que
-        // l'auto-remplissage manuel (handleAutoFill) ci-dessous.
-        ordreLignes: gammesConfig?.ordre_lignes,
-      })
+      // Chemin partagé avec le panneau devis inline (autoQuote.js). CIQ127 —
+      // les quatre marchés sont créés par le SERVEUR, qui lit lui-même le
+      // catalogue, les marques épinglées (PVMRQ) et l'ordre des lignes de la
+      // société (PVORD) : rien de cela ne part d'ici.
+      const devisId = await createAutoQuote({ lead, discountStr })
       finish(devisId)
     } catch (err) {
       const msg = typeof err?.detail === 'string'
@@ -2145,6 +2076,9 @@ export default function DevisGenerator({
       // QJR624 — l'échéancier DU DEVIS.
       echeancierAEnvoyer.current = etat.echeancierAEnvoyer
       setEcheancierSaisieBrut(etat.echeancier)
+      // CIQ226 — les conditions contractuelles du devis, telles que saisies.
+      pose(etat.conditions, setConditions)
+      conditionsServies.current = etat.conditionsServies || []
       setPrixCible(etat.prixCible)
       setLines(withKeys(etat.lignes))
       linesInitialized.current = true
@@ -2164,15 +2098,12 @@ export default function DevisGenerator({
       setHorsReseau(etat.reouverture.horsReseau)
       setHorsReseauTouched(true)
       setAccessoiresOnly(etat.reouverture.accessoiresOnly)
-      pose(etat.gammeNom, setGammeNomDevis)
       pose(etat.recommendedChoice, setRecommendedChoice)
       pose(etat.multiMode, setMultiMode)
       pose(etat.nombreProprietes, setNombreProprietes)
       pose(etat.villaGroups, setVillaGroups)
-      pose(etat.injectionEnabled, setInjectionEnabled)
       if (etat.tension === 'mt') dispatchSizing({ type: 'SAISI', champ: 'tension', valeur: 'mt' })
       pose(etat.partDiurne, setDayUsage)
-      pose(etat.repartitionMt, setRepartitionMt)
       pose(etat.categorieCommerciale, setCategorieCommerciale)
       pose(etat.commercialAnswers, setCommercialAnswers)
       pose(etat.pompe.cv, setPompeCv)
@@ -2180,6 +2111,12 @@ export default function DevisGenerator({
       pose(etat.pompe.debit, setPompeDebit)
       if (etat.pompageSaisie) setPompageSaisie(etat.pompageSaisie)
       pose(etat.consoMensuelle, setConsoMensuelle)
+      // CIQ125 — le profil déclaré C&I se relit de ses ENTRÉES v2.
+      pose(etat.profilCi, setProfilCi)
+      // CIQ222 — le tarif déclaré se relit tel que saisi.
+      setTarifSaisie(etat.tarifSaisie || TARIF_SAISIE_VIDE)
+      // CIQ223 — les saisies de l'économie C&I se relisent telles que saisies.
+      setEcoCi(etat.ecoCi || ECO_CI_VIDE)
       pose(etat.distributeur, setDistributeur)
       pose(etat.distributeurChoisi, setDistributeurChoisi)
       pose(etat.monthly, setMonthly)
@@ -2244,6 +2181,7 @@ export default function DevisGenerator({
       // AGR208/AGR212 — repères énergie datés et sourcés (simple indication à
       // côté du champ prix, jamais recopiés dedans).
       setReperesEnergie(data?.reperes_energie_agricole || {})
+      setTermesEffectifs(data?.payment_terms_effectifs || null)
       const heures = parseFloat(data?.agricole_pump_hours)
       if (!editId && Number.isFinite(heures) && heures > 0) {
         setPompeHeures(String(heures))
@@ -2329,8 +2267,8 @@ export default function DevisGenerator({
     // c'est SA recommandation qui remplit le nombre de panneaux ; aucun palier
     // chiffré à l'écran ne s'y substitue, donc aucun balayage local à résoudre.
     if (!sizing.touche.nbPanneaux) {
-      const sizingLocal = modeInstallation === 'residentiel'
-        ? null : computeAutoSizing(hiver, ete)
+      // CIQ126 — plus aucun balayage local (voir applyLead).
+      const sizingLocal = null
       dispatchSizing({
         type: 'PROFIL_SITE_APPLIQUE',
         profil: { type_installation: modeInstallation, facture_hiver: hiver },
@@ -2577,8 +2515,9 @@ export default function DevisGenerator({
     const derived = deriveRoleOrderFromLines(lines)
     setSavingOrdreLignes(true)
     try {
-      const { data } = await ventesApi.updateParametresGammes({ ordre_lignes: derived })
-      setGammesConfig(prev => ({ ...(prev || {}), ordre_lignes: data?.ordre_lignes ?? derived }))
+      // CIQ127 — l'ordre enregistré est lu par le SERVEUR à chaque composition
+      // (dry-run résidentiel, moteur C&I, devis automatique) : rien à garder ici.
+      await ventesApi.updateParametresGammes({ ordre_lignes: derived })
       toast.success('Ordre des lignes enregistré comme ordre par défaut pour les prochains devis.')
     } catch (err) {
       const detail = err?.response?.data?.detail
@@ -2772,155 +2711,6 @@ export default function DevisGenerator({
       ? { saisies: saisiesEcoApercu, sortie_etude_pompage: apercuPompage.donnees, lignes: [] }
       : null)
   const coherenceAvertit = (economiePompage?.coherence || []).length > 0
-
-  // U3COMPOSE (26/08/2026) — composition LOCALE (JavaScript), CONSERVÉE : le
-  // chemin agricole (déjà séparé, ci-dessous) reste local car aucun dry-run
-  // serveur n'existe pour l'agricole/l'industriel/le commercial (à faire dans
-  // un chantier séparé, voir rapport) ; ET le REPLI résidentiel si l'appel
-  // réseau échoue — l'écran ne doit JAMAIS se retrouver sans Auto-remplir.
-  // Extrait tel quel de l'ancien corps de `handleAutoFill` : comportement
-  // byte-identique à avant U3COMPOSE, pour ces trois marchés comme pour le repli.
-  const composeLocalement = () => {
-    if (kwp <= 0) {
-      setErrors(e => ({ ...e, autofill: 'Entrez le nombre de panneaux' }))
-      return
-    }
-    let generated = autoFillLines(produits, {
-      kwp,
-      panelW: parseFloat(panelW) || 710,
-      structureType,
-      // STKCAT10 — le produit choisi au catalogue prime sur le bouton
-      // acier/alu et fait émettre UNE ligne structure à son nom.
-      structureProduitId,
-      // PVMRQ — marques préférées (Paramètres → Gammes & marques, gamme
-      // active de ce devis) : une marque épinglée gagne toujours, jamais de
-      // repli silencieux sur une autre marque (voir marquesManquantes ci-dessous).
-      marques: marquesActives,
-      // PVORD — ordre par défaut de la société (Paramètres → Gammes &
-      // marques, ou le bouton « Enregistrer cet ordre » de ce devis) ;
-      // absent/vide = ordre canonique du simulateur (comportement historique).
-      ordreLignes: gammesConfig?.ordre_lignes,
-      // OFFGRID — site isolé : UNE seule option (panneaux + onduleur hors
-      // réseau + batterie), jamais le double panier sans/avec ci-dessous.
-      // `undefined` quand `horsReseau` est faux : appel BYTE-IDENTIQUE à
-      // l'historique (aucun paramètre `offgrid` n'existait avant ce chantier).
-      offgrid: horsReseau || undefined,
-    })
-    // OFFGRID — l'auto-remplissage hors réseau a échoué (aucun onduleur/
-    // batterie priced au catalogue) : `autoFillLines` renvoie un tableau VIDE
-    // avec son motif FRANÇAIS exact, jamais un repli silencieux sur l'hybride.
-    if (horsReseau && generated.offgridErreur) {
-      setErrors(e => ({ ...e, autofill: generated.offgridErreur }))
-      return
-    }
-    // L-2OPT (fondateur 24/08) — deux optimiseurs indépendants : en
-    // résidentiel, un scénario qui sert RÉELLEMENT l'option AVEC (« Les
-    // deux » ou « Avec batterie » seule) compose CETTE branche à SON PROPRE
-    // optimum (kwc_avec, potentiellement différent du kwc_sans ci-dessus).
-    // Fusion générique (fusionnerVariantes, solar.js) : deux tailles égales
-    // (le cas le plus courant, et le repli quand aucune source n'a d'avis)
-    // retombent sur la composition unique ci-dessus, BYTE-IDENTIQUE à
-    // l'historique — aucune ligne variantée, repli de sécurité épinglé par
-    // test. OFFGRID — jamais cette branche : une composition hors réseau ne
-    // connaît qu'UNE option, déjà posée ci-dessus.
-    if (!horsReseau && modeInstallation === 'residentiel'
-        && (scenario === SCENARIO_LES_DEUX || scenario === SCENARIO_AVEC)) {
-      const kwpAvec = resolveKwcAvec()
-      if (Math.abs(kwpAvec - kwp) > 1e-9) {
-        const composeAvec = () => autoFillLines(produits, {
-          kwp: kwpAvec,
-          panelW: parseFloat(panelW) || 710,
-          structureType,
-          structureProduitId,
-          marques: marquesActives,
-          ordreLignes: gammesConfig?.ordre_lignes,
-        })
-        if (scenario === SCENARIO_AVEC) {
-          // mono avec : compose l'optimum AVEC seul, aucune fusion.
-          generated = composeAvec()
-        } else {
-          const lignesSans = generated
-          const lignesAvec = composeAvec()
-          generated = fusionnerVariantes(lignesSans, lignesAvec)
-          generated.actualPanelW = lignesSans.actualPanelW
-          generated.kwcReel = lignesSans.kwcReel
-          generated.onduleursIncomplets = dedupeParCle(
-            [...(lignesSans.onduleursIncomplets ?? []), ...(lignesAvec.onduleursIncomplets ?? [])],
-            (o) => o.id)
-          generated.marquesManquantes = dedupeParCle(
-            [...(lignesSans.marquesManquantes ?? []), ...(lignesAvec.marquesManquantes ?? [])],
-            (m) => `${m.role}|${m.marque}`)
-        }
-      }
-    }
-    // Les MÉTADONNÉES du tableau (wattage réel, kWc réel, onduleurs grisés)
-    // sont relevées ICI, avant tout `.map()` : un `.map()` rend un tableau NEUF
-    // et les perdrait en route (les modes industriel/commercial ci-dessous en
-    // font un).
-    const metaPanelW = generated.actualPanelW
-    const metaKwcReel = generated.kwcReel
-    const metaOnduleursIncomplets = generated.onduleursIncomplets ?? []
-    const metaMarquesManquantes = generated.marquesManquantes ?? []
-    // Modes industriel ET commercial (QX44) : sans batterie par défaut
-    // (autoconsommation réseau, pas de stockage). OFFGRID — jamais cette
-    // garde : un système hors réseau porte TOUJOURS sa batterie, quel que
-    // soit le marché du devis.
-    if (!horsReseau && (modeInstallation === 'industriel' || modeInstallation === 'commercial')) {
-      generated = generated.map(r =>
-        (isBattery(r.designation) || isHybridInverter(r.designation))
-          ? { ...r, quantite: 0 } : r)
-    }
-    if (!generated.length) {
-      setErrors(e => ({ ...e, autofill: 'Aucun produit solaire reconnu dans le stock.' }))
-      return
-    }
-    // Dire EXACTEMENT ce qui manque — jamais de ligne « — Produit — » à
-    // 0 MAD laissée sans explication.
-    const manquants = generated
-      .filter(r => !r.produit && parseFloat(r.quantite) > 0)
-      .map(r => r.designation || 'ligne sans produit')
-    // QX19 — divergence de wattage : le catalogue a substitué un panneau d'une
-    // AUTRE puissance que celle saisie (ex. 550 W pour 710 W). Le kWc affiché
-    // (issu du wattage saisi) ne correspond alors plus aux lignes réelles. On
-    // le signale visiblement plutôt que d'expédier un système mal étiqueté.
-    const askedW = parseFloat(panelW) || 710
-    const realW = metaPanelW
-    let mismatch = null
-    if (realW && Math.abs(realW - askedW) > 1) {
-      const kwcReel = metaKwcReel
-      mismatch = `Attention : le stock ne propose pas de panneau ${askedW} W ; `
-        + `un panneau ${realW} W a été retenu. La puissance réelle du système est `
-        + `${kwcReel} kWc (et non ${kwp} kWc). Ajustez le nombre de panneaux ou le `
-        + 'wattage pour la cible voulue.'
-    }
-    // PVMRQ — une marque épinglée sans AUCUN candidat en stock : même patron
-    // visuel que le message « Aucun produit du stock ne correspond à… »
-    // ci-dessus, mais un message DISTINCT (la cause n'est pas « rôle non
-    // reconnu », c'est « cette marque précise n'est pas au catalogue ») —
-    // jamais un repli silencieux sur une autre marque.
-    const marquesMsg = metaMarquesManquantes.length
-      ? `Marque épinglée introuvable au stock : ${metaMarquesManquantes
-          .map(m => `${m.marque} (${roleLabel(m.role)})`).join(', ')}. `
-        + 'Ajoutez le produit ou changez la marque dans Paramètres → Gammes.'
-      : null
-    setErrors(e => ({
-      ...e,
-      autofill: manquants.length
-        ? `Aucun produit du stock ne correspond à : ${[...new Set(manquants)].join(', ')}. `
-          + 'Complétez le catalogue ou choisissez ces produits à la main dans les lignes.'
-        : null,
-      autofillKwc: mismatch,
-      marquesManquantes: marquesMsg,
-    }))
-    // PVOND — onduleurs ÉCARTÉS de l'auto-composition faute de contrat complet
-    // (même patron que « prix à renseigner ») : on les nomme avec leur motif
-    // plutôt que de les laisser disparaître sans explication.
-    setOnduleursIncomplets(metaOnduleursIncomplets)
-    recomposerLignes(generated)
-    // Rend les lignes composées à l'appelant (`composeLocalement`, qui dit
-    // seulement si une composition a été posée).
-    return generated
-  }
 
   // U3COMPOSE — l'optimum AXE BATTERIE envoyé au dry-run serveur : même
   // précédence que `resolveKwcAvec` ci-dessus (le moteur horaire serveur
@@ -3120,10 +2910,49 @@ export default function DevisGenerator({
       }
       return
     }
-    // Marchés indus/commercial (aucun dry-run serveur pour eux, QJR113 GATED
-    // D10) : `composeLocalement()` reste LEUR composeur. Un succès efface une
-    // erreur de composition résidentielle antérieure (QJR577).
-    if (composeLocalement()) setCompositionErreur(null)
+    // CIQ126 — commercial ET industriel : UN appel au moteur serveur C&I
+    // (`etude-ci/preview`), puis les lignes de SA composition telles quelles
+    // (quantités et produits ; « prix à renseigner » nommé). Aucune
+    // composition JavaScript, aucun dimensionnement local.
+    if (!marcheCi) return
+    const corps = corpsCiDepuisProfil(profilCi, ctxProfilCi)
+    if (!corps) {
+      setErrors(e => ({ ...e, autofill: 'Renseignez la consommation du site (ou une taille '
+        + 'explicite) : le moteur C&I en a besoin pour composer le devis.' }))
+      return
+    }
+    setAutoFillLoading(true)
+    try {
+      const { data } = await ventesApi.etudeCiPreview(corps)
+      const generated = lignesDepuisCompositionCi(data?.composition, produits)
+      if (!generated.length) {
+        setErrors(e => ({ ...e, autofill: 'Le moteur C&I n\'a retenu aucune taille : '
+          + 'voir la raison d\'arrêt sous le profil.' }))
+        return
+      }
+      const aRenseigner = data?.composition?.prix_a_renseigner || []
+      setErrors(e => ({
+        ...e,
+        autofill: aRenseigner.length
+          ? `Prix à renseigner : ${aRenseigner.join(', ')} — devis incomplet.` : null,
+        autofillKwc: null,
+        marquesManquantes: null,
+      }))
+      setCompositionErreur(null)
+      const nb = data?.taille?.nb_panneaux
+      if (Number.isFinite(Number(nb)) && Number(nb) > 0) {
+        dispatchSizing({ type: 'REOUVERTURE', devis: { panneaux: Number(nb) } })
+      }
+      recomposerLignes(generated)
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      setCompositionErreur(typeof detail === 'string' && detail
+        ? detail
+        : 'Le moteur C&I n\'a pas pu composer ce devis (réseau ou serveur '
+          + 'indisponible) — les lignes n\'ont pas changé.')
+    } finally {
+      setAutoFillLoading(false)
+    }
   }
 
   // CJ2b — bouton « Appliquer cette taille » d'une ligne du tableau de
@@ -3220,16 +3049,21 @@ export default function DevisGenerator({
         kwcOptimal: source.kwc != null ? Number(source.kwc) : null,
       }
     } else {
-      const sizing = computeAutoSizing(fHiver, fEte)
-      if (!sizing) {
+      // CIQ126 — C&I : la taille retenue par le moteur serveur (aperçu en
+      // direct du profil déclaré) ; sans elle, rien n'est inventé.
+      const t = apercuCi.donnees?.taille
+      if (!marcheCi || !(Number(t?.nb_panneaux) > 0)) {
         setErrors(e => ({
           ...e,
-          recalcDim: 'Renseignez une facture hiver exploitable (au moins '
-            + '~900 MAD/mois) pour recalculer le dimensionnement.',
+          recalcDim: 'Le moteur C&I n\'a pas encore retenu de taille : complétez le '
+            + 'profil de consommation du site, puis réessayez.',
         }))
         return
       }
-      retenu = sizing
+      retenu = {
+        nbPanneaux: Number(t.nb_panneaux),
+        kwcOptimal: t.retenue_kwc != null ? Number(t.retenue_kwc) : null,
+      }
     }
     setErrors(e => ({ ...e, recalcDim: null }))
     // Une seule transition : la taille retenue est posée, `sizingInfo` reste
@@ -3270,10 +3104,16 @@ export default function DevisGenerator({
     const e = {}
     // QJR580 — en édition, le devis a déjà son client (lecture seule).
     if (!editId && !clientId && !leadId) e.client = 'Sélectionnez un lead ou un client'
-    // L'étude industrielle exige la consommation réelle du client
-    if (modeInstallation === 'industriel' && !(consoKwhDerivee > 0)) {
-      e.conso = 'Mode industriel : renseignez la consommation mensuelle (kWh) '
-        + 'ou les factures électriques — l\'étude en dépend.'
+    // CIQ226 — pénalités = taux ET plafond ; retenue = son taux (sous le champ).
+    if (editId && Object.keys(erreursConditions(conditions)).length) {
+      e.conditions = 'Conditions du client incomplètes : voir sous les champs.'
+    }
+    // CIQ125 — commercial ET industriel : sans consommation (saisie, ou
+    // reprise de la fiche lead par le serveur) ni taille explicite,
+    // l'enregistrement est refusé SOUS le champ.
+    if (marcheCi && !consoCiConnue) {
+      e.conso = 'Renseignez la consommation du site (12 mois, total annuel ou '
+        + 'factures) ou une taille explicite — l\'étude en dépend.'
     }
     // ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES (décision fondateur 30/09/2026) —
     // le kWh mensuel DÉCLARÉ sur la fiche du lead (celui que le serveur chiffre
@@ -3361,17 +3201,6 @@ export default function DevisGenerator({
     // Avertissement NON bloquant : le lead choisi est perdu et/ou archivé.
     // On le signale avant l'enregistrement sans jamais l'empêcher.
     const w = {}
-    // QXMT — raccordement MT sans tarif exploitable : l'étude part SANS
-    // économies ni payback (volontairement omis). C'est un AVERTISSEMENT, pas
-    // une erreur : rien n'est rejeté, rien n'est corrigé à la place du vendeur.
-    if (estMt && tarifMtApplique == null) {
-      w.tensionMt = tarifMtDisponible()
-        ? 'Raccordement MT sans répartition horaire : le devis sera enregistré '
-          + 'avec une étude SANS économies ni payback (aucun chiffre n\'est '
-          + 'supposé). Renseignez pointe / pleines / creuses pour les obtenir.'
-        : 'Raccordement MT : le barème MT ONEE n\'est pas disponible en source '
-          + 'officielle — l\'étude sera enregistrée sans économies ni payback.'
-    }
     if (selectedLead && (selectedLead.perdu || selectedLead.is_archived)) {
       const flags = [
         selectedLead.perdu ? 'perdu' : null,
@@ -3539,8 +3368,10 @@ export default function DevisGenerator({
   const etatEcran = () => ({
     mode: modeInstallation, dateValidite, tauxTva, discountPct, note, prixCible,
     echeancier: echeancierSaisie, echeancierAEnvoyer: echeancierAEnvoyer.current,
+    conditions, conditionsServies: conditionsServies.current,
     lignes: lines, multiMode, nombreProprietes, scenario, recommendedChoice,
-    partDiurne: dayUsage, tension: tensionRaccordement, repartitionMt,
+    profilCi, ctxCi: ctxProfilCi, tarifSaisie, aujourdhui: aujourdhuiIso,
+    ecoCi: { ...ecoCi, revente_demandee: profilCi.tension === 'mt' && Boolean(profilCi.revente) },
     // QJR575 — la sentinelle « Non précisée » se persiste null.
     categorieCommerciale: categorieCommerciale === CATEGORIE_NON_PRECISEE ? null : categorieCommerciale,
     commercialAnswers,
@@ -3558,7 +3389,7 @@ export default function DevisGenerator({
     saisiesEco: ecoAvecCalendrier,
   })
   const blocEtudeMarche = () => etatVersEcritures(etatEcran(), {
-    etude: modeInstallation === 'industriel' ? etudeIndustrielle : etudeCommerciale,
+    etude: null,
     recommended,
     entrees: entreesReellesEcran,
   }).etude
@@ -3659,6 +3490,9 @@ export default function DevisGenerator({
           // croire à un échec d'enregistrement (ni pousser à un second POST
           // qui créerait un doublon). On le DIT, en français, et on continue.
           const detail = errEtude?.response?.data?.detail
+          // CIQ222 — un 400 qui nomme un champ du tarif déclaré s'affiche SOUS ce champ.
+          const erreursTarif = erreursTarifDeclare(detail)
+          if (Object.keys(erreursTarif).length) setErrors((e) => ({ ...e, tarifDeclare: erreursTarif }))
           toast.error(typeof detail === 'string'
             ? `Devis enregistré, étude non attachée : ${detail}`
             : "Devis enregistré, mais l'étude n'a pas pu être attachée.")
@@ -3886,39 +3720,9 @@ export default function DevisGenerator({
   // dérivation des factures quand le champ d'étude est vide : sinon validate()
   // bloquait un devis industriel où seule elle était remplie. La souveraineté
   // COUV-HOR (realBillSaisi, entreesReellesEcran) reste intacte.
-  const consoKwhDerivee = (parseFloat(consoMensuelle) || 0)
-    || (realBillSaisi && consoAnnuelleReelle > 0 ? Math.round(consoAnnuelleReelle / 12) : 0)
-    || (facturesSaisies ? consoMensuelleEtudeCI({
-      factures: monthly, mode: modeInstallation,
-      distributeurDeclare: distributeurChoisi ? distributeur : selectedLead?.distributeur,
-    }) : 0)
-
-  // QJR568 — les deux études C&I (persistées) au kWc FACTURÉ des lignes.
-  const etudeIndustrielle = (modeInstallation === 'industriel' && kwpLignes > 0
-      && consoKwhDerivee > 0)
-    ? computeEtudeIndustrielle({
-        kwp: kwpLignes, consoMensuelleKwh: consoKwhDerivee,
-        dayUsagePct: dayUsage, totalTtc: kpiTotal,
-        kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
-        injectionEnabled, ...etudeTension,
-      })
-    : null
-
-  // QX44 — étude COMMERCIALE : même moteur d'autoconsommation que l'industriel,
-  // mais le day-share vient de l'ARCHÉTYPE de la catégorie (hôtel 55 ≠ bureau 80)
-  // → à facture égale, une étude hôtel diffère d'une étude bureau.
-  const etudeCommerciale = (modeInstallation === 'commercial' && kwpLignes > 0
-      && consoKwhDerivee > 0)
-    ? computeEtudeIndustrielle({
-        kwp: kwpLignes, consoMensuelleKwh: consoKwhDerivee,
-        dayUsagePct: commercialDayShare(categorieCommerciale), totalTtc: kpiTotal,
-        kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
-        injectionEnabled, ...etudeTension,
-      })
-    : null
-  // Étude « industriel/commercial » unifiée pour l'aperçu écran + la persistance.
-  const etudeCI = etudeIndustrielle || etudeCommerciale
-
+  // CIQ125 (transition, retirée avec l'étude locale par CIQ126) : en C&I la
+  // seule saisie est le profil déclaré — sa moyenne mensuelle nourrit encore
+  // l'étude locale jusqu'à sa suppression.
   // Disponibilité de l'option « avec batterie » (règle : jamais sans onduleur)
   const avecDispo = avecBatterieAvailability(lines, produits, kwp)
   const showAvecWarning = showAvec && lines.length > 0 && !avecDispo.available
@@ -3951,6 +3755,25 @@ export default function DevisGenerator({
     })
     if (ok) window.location.reload()
   }
+
+  // CIQ223 — l'économie C&I SERVIE (`POST /ventes/economie-ci/preview/`) :
+  // la sortie de l'aperçu C&I, les saisies, et les lignes du devis (le serveur
+  // recalcule l'investissement). Aucun chiffre d'économie calculé ici.
+  const ecoCiEffectif = { ...ecoCi, revente_demandee: profilCi.tension === 'mt' && Boolean(profilCi.revente) }
+  const corpsEcoCi = marcheCi && apercuCi.donnees ? {
+    sortie_etude_ci: apercuCi.donnees,
+    saisies: saisiesEconomieCi(ecoCiEffectif, { aujourdhui: aujourdhuiIso }) || {},
+    lignes: usableLines().map((l) => {
+      const q = parseFloat(l.quantite) || 0
+      const tva = parseFloat(l.taux_tva ?? 20)
+      const ttc = (parseFloat(l.prix_unit_ttc) || 0) * q
+      return {
+        produit: Number(l.produit), quantite: q, taux_tva: tva,
+        totaux: { ht: htFromTtc(parseFloat(l.prix_unit_ttc) || 0, tva) * q, ttc },
+      }
+    }),
+  } : null
+  const apercuEcoCi = useApercuEconomieCi(corpsEcoCi)
 
   // EZ3 — PANNEAU DE SUCCÈS : la création ne se termine plus par un renvoi sur
   // la liste nue. Le devis fraîchement créé s'annonce (numéro + total) et
@@ -4010,10 +3833,10 @@ export default function DevisGenerator({
     onRealBillPaste, consoAnnuelleReelle,
   }
   // QJR101 — les entrées d'étude que l'industriel et le commercial partagent.
+  // CIQ125 — le profil déclaré C&I + la réponse du moteur serveur.
   const socleEtudeReseau = {
-    consoMensuelle, setConsoMensuelle, injectionEnabled, setInjectionEnabled,
-    tensionRaccordement, dispatchSizing, estMt, repartitionMt, setPartMt,
-    tarifMtApplique,
+    profilCi, setChampCi, apercuCi, tarifSaisie, setTarifChamp,
+    apercuEcoCi, ecoCi, setEcoChamp,
   }
 
   return (
@@ -4265,7 +4088,7 @@ export default function DevisGenerator({
                   option unique, le sélecteur Sans/Avec/Les deux est désactivé
                   (jamais retiré du DOM — l'id `gen-scenario` reste stable pour
                   les tests/lecteurs d'écran) et sans effet sur la composition
-                  tant qu'il l'est (voir composeLocalement/handleAutoFill). */}
+                  tant qu'il l'est (voir handleAutoFill). */}
               <Select value={scenario} onValueChange={onScenarioChange} disabled={horsReseau}>
                 <SelectTrigger id="gen-scenario"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -4474,6 +4297,38 @@ export default function DevisGenerator({
           commercialAnswers={commercialAnswers}
           setCommercialAnswer={setCommercialAnswer}
         />
+        {bandeauSegment && (
+          <div role="status" data-testid="bandeau-segment-lead"
+               className="flex flex-wrap items-center gap-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+            <span>
+              Ce lead est typé « {typeLeadEffectif || 'non renseigné'} » : le script
+              d’appel, le score et le suivi le traitent comme{' '}
+              {typeLeadEffectif || 'un lead sans type'}. Changer le type
+              {marcheSegment === 'agricole' ? ' en Agricole' : ''} ?
+            </span>
+            <Button type="button" variant="outline" size="sm"
+                    onClick={changerTypeLead}>
+              Passer en {marcheSegment}
+            </Button>
+          </div>
+        )}
+        {rappelIce && (
+          <p role="status" data-testid="rappel-ice-manquant"
+             className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+            ICE à demander au client — il sera obligatoire à l’acceptation en ligne
+            et à la facture.
+          </p>
+        )}
+        {modeInstallation === 'agricole' && provenancesLead.length > 0 && (
+          <ul className="grid gap-0.5 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
+              data-testid="provenance-lead-pompage" aria-label="Valeurs reprises de la fiche lead">
+            {provenancesLead.map((p) => (
+              <li key={p.colonne}>
+                {p.libelle} : {p.valeur} — {libelleProvenance(p.provenance)}
+              </li>
+            ))}
+          </ul>
+        )}
         <PanneauAgricole
           marche={modeInstallation}
           pompeCv={pompeCv} setPompeCv={setPompeCv}
@@ -4571,7 +4426,7 @@ export default function DevisGenerator({
             {/* Règle fondateur du 18/08 — justifie la taille retenue par le
                 dimensionnement facture → paliers : palier de 5 kWc, besoin lu
                 sur la facture d'hiver, payback le plus court parmi les
-                paliers testés (`optimalKwcByPayback`, voir `sizingInfo.paliers`). */}
+                paliers testés (`sizingInfo.paliers`). */}
             {sizingInfo?.kwcOptimal > 0 && (() => {
               // PVMRQ — REPLI : une marque épinglée introuvable au stock ampute
               // CHAQUE palier (lignes placeholder à 0 MAD) ; leur payback serait
@@ -4654,10 +4509,9 @@ export default function DevisGenerator({
                 {sizingServeurMessage}
               </div>
             )}
-            {/* QJR641 — curseur masqué en commercial (sans effet : la part
-                diurne vient de la catégorie, `commercialDayShare`) et en
-                agricole. */}
-            {(modeInstallation === 'residentiel' || modeInstallation === 'industriel') && (
+            {/* QJR641 / CIQ126 — curseur du RÉSIDENTIEL seulement : en C&I le
+                profil de charge est celui déclaré au moteur serveur. */}
+            {modeInstallation === 'residentiel' && (
               <div className="gen-slider-row" data-testid="curseur-part-diurne">
                 <span className="gen-slider-label">Consommation diurne (%)</span>
                 <input type="range" min="10" max="100" step="5" value={dayUsage}
@@ -4688,7 +4542,9 @@ export default function DevisGenerator({
               <Button type="button" variant="outline"
                       data-testid="btn-recalculer-dimensionnement"
                       loading={autoFillLoading}
-                      disabled={!(parseFloat(fHiver) > 0) || modeInstallation === 'agricole'}
+                      disabled={modeInstallation === 'agricole' || (marcheCi
+                        ? !(Number(apercuCi.donnees?.taille?.nb_panneaux) > 0)
+                        : !(parseFloat(fHiver) > 0))}
                       onClick={recalculerDimensionnement}>
                 <RefreshCw /> Recalculer le dimensionnement
               </Button>
@@ -5048,71 +4904,13 @@ export default function DevisGenerator({
                 )}
               </div>
             )}
-            {etudeCI && (
-              <div className="gen-metrics-grid" style={{ marginBottom: '0.75rem' }}>
-                {/* QJR213/DV3 (30/08/2026) — ces QUATRE cartes SEULEMENT sont
-                    nourries par `computeEtudeIndustrielle` (le miroir local
-                    `features/ventes/solar.js`), pas par le moteur serveur :
-                    étiquetage SEULEMENT (mot du fondateur D10) — ne JAMAIS
-                    serveriser l'étude indus/commercial dans cette tâche. Les
-                    9 autres cartes de cet écran sont hors périmètre DV3.
-                    QJR426 — la prop `valeur`, signée via `apercu` : valeur.js
-                    docstring NOMME `computeEtudeIndustrielle` comme exemple canonique
-                    d'aperçu local, la puce `PUCE_APERCU` (« estimation
-                    d'exemple ») consolide donc le libellé ad hoc
-                    « estimation locale » posé ici avant QJR86/CarteMetrique
-                    — même MOTIF (chiffre local, pas une mesure), la valeur
-                    et le libellé restent inchangés à l'octet. */}
-                <CarteMetrique label="Taux d'autoconsommation"
-                               valeur={apercu(`${etudeCI.taux_autoconso} %`)}
-                               unit="part de la production consommée" accent />
-                {etudeCI.taux_couverture != null && (
-                  <CarteMetrique label="Taux de couverture"
-                                 valeur={apercu(`${etudeCI.taux_couverture} %`)}
-                                 unit="part de la conso couverte" accent />
-                )}
-                {/* QXMT — en MT sans tarif exploitable, `economies_annuelles`
-                    vaut null : la carte est OMISE (jamais un « 0 » trompeur),
-                    le motif est affiché juste en dessous. */}
-                {etudeCI.economies_annuelles != null && (
-                  <CarteMetrique label="Économies annuelles (étude)"
-                                 valeur={apercu(fmtNum(etudeCI.economies_annuelles))}
-                                 unit={etudeCI.tension_raccordement === 'mt'
-                                   ? 'MAD / an · barème MT' : 'MAD / an'} />
-                )}
-                {etudeCI.payback != null && (
-                  <CarteMetrique label="Payback (étude)"
-                                 valeur={apercu(`${etudeCI.payback} ans`)}
-                                 unit="retour sur invest." />
-                )}
-              </div>
-            )}
-            {/* QJR34 — l'étude industriel/commercial EXIGE une consommation
-                réelle (saisie directe ou factures réelles) : sans elle,
-                consoKwhDerivee reste à 0 et etudeCI/etudeIndustrielle/
-                etudeCommerciale court-circuitent déjà vers null (jamais un
-                repli forfaitaire) — cet avis rend la raison visible au
-                vendeur au lieu de laisser le panneau simplement vide. */}
-            {(modeInstallation === 'industriel' || modeInstallation === 'commercial')
-              && !etudeCI && (
-              <p className="mb-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning"
-                 data-testid="etude-ci-indisponible">
-                Étude indisponible : saisissez la consommation ou les factures réelles.
+            {/* CIQ223 — en C&I, aucune simulation JS : les économies sont celles
+                du moteur serveur (carte « Économies »). */}
+            {marcheCi ? (
+              <p className="text-center text-sm text-muted-foreground" data-testid="apercu-ci-serveur">
+                Économies C&amp;I : voir la carte « Économies » (moteur serveur).
               </p>
-            )}
-            {etudeCI?.etude_mt_motif && (
-              <p className="mb-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning"
-                 data-testid="etude-mt-motif">
-                {etudeCI.etude_mt_motif}
-              </p>
-            )}
-            {etudeCI?.tarif_mt_dh_kwh != null && (
-              <p className="mb-3 text-xs text-muted-foreground" data-testid="etude-mt-source">
-                Énergie valorisée à {formatNumber(etudeCI.tarif_mt_dh_kwh, { decimals: 4 })} DH/kWh
-                {' — '}{etudeCI.tarif_mt_mention}
-              </p>
-            )}
-            {!roi ? (
+            ) : !roi ? (
               <p className="text-center text-sm text-muted-foreground">
                 Renseignez le nombre de panneaux et les factures, puis la simulation
                 s'actualise automatiquement.
@@ -5520,7 +5318,12 @@ export default function DevisGenerator({
         {/* ── QJR624 — Échéancier (Édition complète seulement) ── */}
         {editDevis && (
           <CarteEcheancier saisie={echeancierSaisie} setSaisie={setEcheancierSaisie}
-                           mode={modeInstallation} />
+                           mode={modeInstallation} effectifs={termesEffectifs}
+                           conditions={conditions} setCondition={setCondition}
+                           erreursConditions={erreursConditions(conditions)} clients={clients} />
+        )}
+        {errors.conditions && (
+          <p role="alert" className="text-xs text-destructive" data-testid="erreur-conditions">{errors.conditions}</p>
         )}
 
         {/* ── QJR627 (D-QJR5-6) — Notes = texte CLIENT, imprimé (PDF + proposition) ── */}

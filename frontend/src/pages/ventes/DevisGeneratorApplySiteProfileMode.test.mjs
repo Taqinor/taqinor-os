@@ -32,50 +32,30 @@ const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
 // point EXACT du bug QJR38 : la résolution LOCALE du mode visé, qui décide du
 // dimensionneur (balayage local ou moteur serveur) et du type d'installation.
 // Les épingles suivent donc le code là où il vit ; aucune n'est relâchée.
-test('QJR38 — applySiteProfile calcule modeCible localement (mode fraîchement résolu, jamais modeInstallation du rendu précédent)', () => {
-  const idx = DG.indexOf('const applySiteProfile = (p) => {')
-  assert.ok(idx > -1, 'applySiteProfile introuvable')
-  const bloc = DG.slice(idx, idx + 1400)
-  // Le mode du profil n'est retenu QUE si le vendeur n'a pas déjà choisi le
-  // sien (`touche.mode`, ex-`modeTouched`).
-  assert.match(bloc,
-    /const modeLead = !sizing\.touche\.mode\s*\n\s*&& p\.type_installation && LEAD_TYPE_TO_MODE\[p\.type_installation\]\s*\n\s*\? LEAD_TYPE_TO_MODE\[p\.type_installation\] : null/)
-  // Le mode RÉELLEMENT visé est calculé en variable locale — jamais relu
-  // depuis modeInstallation seul.
-  assert.match(bloc, /const modeCible = modeLead \|\| modeInstallation/)
+// CIQ126 — le dimensionneur LOCAL (balayage C&I `computeAutoSizing`) est
+// SUPPRIMÉ : plus aucun pré-remplissage (lead, profil site, frappe facture) ne
+// choisit de dimensionneur à l'écran. Le bug QJR38 (brancher sur le mode du
+// rendu précédent) ne peut donc plus revenir : il n'y a plus de branche.
+const blocDe = (debut, fin) => {
+  const i = DG.indexOf(debut)
+  assert.ok(i > -1, `${debut} introuvable`)
+  return DG.slice(i, DG.indexOf(fin, i))
+}
+
+test('CIQ126 — applySiteProfile ne choisit plus aucun dimensionneur local (sizingLocal nul)', () => {
+  const bloc = blocDe('const applySiteProfile = (p) => {', '  // ── Factures')
+  assert.match(bloc, /const sizingLocal = null\n/)
+  assert.match(bloc, /dispatchSizing\(\{ type: 'PROFIL_SITE_APPLIQUE', profil: p, sizingLocal \}\)/)
+  assert.doesNotMatch(bloc, /computeAutoSizing/)
 })
 
-test('QJR38 — la résolution du dimensionneur d\'applySiteProfile branche sur modeCible, plus jamais sur modeInstallation directement', () => {
-  const idx = DG.indexOf('const applySiteProfile = (p) => {')
-  assert.ok(idx > -1)
-  const endIdx = DG.indexOf('const applyClient = (v) => {')
-  assert.ok(endIdx > idx, 'fin de applySiteProfile introuvable (avant applyClient)')
-  const bloc = DG.slice(idx, endIdx)
-  // Le balayage LOCAL n'est résolu que pour un marché NON résidentiel — le
-  // résidentiel attend le moteur horaire serveur (transition du reducer).
-  assert.match(bloc,
-    /const sizingLocal = \(hiver > 0 && !sizing\.touche\.nbPanneaux && modeCible !== 'residentiel'\)\s*\n\s*\? computeAutoSizing\(hiver, ete\) : null/,
-    'le choix du dimensionneur doit brancher sur modeCible')
-  assert.match(bloc, /dispatchSizing\(\{ type: 'PROFIL_SITE_APPLIQUE', profil: p, sizingLocal \}\)/,
-    'le pré-remplissage doit passer par la transition unique du reducer')
-  // Plus aucune lecture nue de `modeInstallation === 'residentiel'` dans TOUT
-  // le corps de la fonction (l'ancien bug) — la seule comparaison au mode
-  // porte sur modeCible.
-  assert.doesNotMatch(bloc, /modeInstallation === 'residentiel'/,
-    'applySiteProfile ne doit plus jamais comparer modeInstallation directement')
-})
-
-test('QJR38 — le patron reproduit exactement celui, déjà correct, d\'applyLead (modeCible = modeLead || modeInstallation)', () => {
-  // applyLead sert de référence : ce test échouerait si applyLead lui-même
-  // régressait, ce qui prouve que les deux fonctions restent alignées.
-  const idxLead = DG.indexOf('const applyLead = (id) => {')
-  assert.ok(idxLead > -1)
-  // Fenêtre élargie (1800→3000) : QJR99 a ajouté le commentaire de bascule en
-  // tête de fonction ; le contenu vérifié, lui, est inchangé.
-  const blocLead = DG.slice(idxLead, idxLead + 3000)
-  assert.match(blocLead, /const modeCible = modeLead \|\| modeInstallation/)
-  assert.match(blocLead, /modeCible !== 'residentiel'/,
-    'applyLead doit lui aussi choisir son dimensionneur sur modeCible')
+test('CIQ126 — applyLead et la frappe facture non plus ; computeAutoSizing n’existe plus', () => {
+  const blocLead = blocDe('const applyLead = ', 'const applySiteProfile = (p) => {')
+  assert.match(blocLead, /const sizingLocal = null\n/)
+  assert.doesNotMatch(DG, /computeAutoSizing\(|const computeAutoSizing/)
+  for (const nom of [['optimalKwc', 'ByPayback'], ['parametres', 'BalayageCI']].map((p) => p.join(''))) {
+    assert.equal(DG.includes(`${nom}(`), false, nom)
+  }
 })
 
 test('QJR38 — rejoué : un profil industriel/commercial résout modeCible sur ce mode, jamais résidentiel, quand le vendeur n\'a pas déjà choisi de mode', () => {

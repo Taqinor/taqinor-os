@@ -7,16 +7,6 @@
 export const UNITE_PCT = 'pct'
 export const UNITE_MONTANT = 'montant'
 
-// Défauts documentés de `utils/echeancier.py` (PAYMENT_TERMS_BY_MODE) — servent
-// seulement de point de départ quand le commercial personnalise un devis qui
-// n'a pas encore d'échéancier propre (le serveur garde sinon celui de la société).
-const DEFAUTS = {
-  residentiel: [30, 60, 10],
-  agricole: [30, 60, 10],
-  industriel: [50, 40, 10],
-  commercial: [50, 40, 10],
-}
-
 const LIBELLES = [
   ['Acompte', 'acompte'],
   ['Livraison du matériel', 'materiel'],
@@ -36,13 +26,38 @@ function arrondi2(n) {
   return Math.round(n * 100) / 100
 }
 
-/** Échéancier par défaut (saisie) pour un mode d'installation. */
-export function saisieParDefaut(mode) {
-  const pcts = DEFAUTS[mode] || DEFAUTS.residentiel
-  return LIBELLES.map(([libelle, type], i) => ({
+// CIQ225 — jalons proposables (mêmes clés que `company_settings.LIBELLES_JALONS`).
+export const JALONS_PROPOSES = [
+  ['commande', 'Commande'],
+  ['livraison_materiel', 'Livraison du matériel'],
+  ['mise_en_service', 'Mise en service'],
+  ['reception_definitive', 'Réception définitive'],
+]
+const JALONS_HISTORIQUES = new Set(LIBELLES.map(([, type]) => type))
+
+/** Une ligne de saisie vierge (tous les champs facultatifs vides). */
+export function trancheVierge(libelle, type, valeur = '') {
+  return {
+    libelle, type, unite: UNITE_PCT, valeur: String(valeur), date_prevue: '',
+    delai_reglement_jours: '', semaines_indicatives: '',
+    ...(type && !JALONS_HISTORIQUES.has(type) ? { jalon: type } : {}),
+  }
+}
+
+/** Échéancier par défaut (saisie) d'un mode : les JALONS et pourcentages
+ *  EFFECTIFS servis par le profil société (`payment_terms_effectifs`,
+ *  `{mode: [{jalon, libelle, pct}]}`) — aucun pourcentage n'est écrit ici.
+ *  Sans profil chargé, les libellés historiques s'affichent à valeur vide. */
+export function saisieParDefaut(mode, effectifs) {
+  const jalons = effectifs?.[mode] || effectifs?.residentiel
+  const lignes = Array.isArray(jalons) && jalons.length
+    ? jalons.map(j => [j.libelle || j.jalon, j.jalon, j.pct])
+    : LIBELLES.map(([libelle, type]) => [libelle, type, ''])
+  return lignes.map(([libelle, type, pct]) => ({
+    ...trancheVierge(libelle, type, pct ?? ''),
     // AGR220 — en agricole, le solde se règle après la récolte (modifiable).
-    libelle: mode === 'agricole' && type === 'solde' ? LIBELLE_SOLDE_AGRICOLE : libelle,
-    type, unite: UNITE_PCT, valeur: String(pcts[i]), date_prevue: '',
+    ...(mode === 'agricole' && type === 'solde'
+      ? { libelle: LIBELLE_SOLDE_AGRICOLE } : {}),
   }))
 }
 
@@ -64,6 +79,11 @@ export function echeancierVersSaisie(echeancier) {
       valeur: String(t?.pct_or_montant ?? ''),
       // AGR220 — date facultative (AAAA-MM-JJ) relue telle que le serveur la sert.
       date_prevue: typeof t?.date_prevue === 'string' ? t.date_prevue : '',
+      // CIQ225 — jalon, délai de règlement et semaines indicatives (facultatifs).
+      delai_reglement_jours: t?.delai_reglement_jours ?? '',
+      semaines_indicatives: t?.semaines_indicatives ?? '',
+      ...(t?.jalon ? { jalon: t.jalon } : {}),
+      ...(t?.payeur ? { payeur: t.payeur } : {}),
     }
   })
 }
@@ -83,6 +103,13 @@ export function saisieVersEcheancier(saisie) {
     // enregistrer sans toucher redonne l'échéancier serveur à l'identique).
     const d = String(t.date_prevue ?? '').trim()
     if (d) tranche.date_prevue = d
+    // CIQ225 — champs facultatifs : clé absente tant qu'ils sont vides.
+    if (t.jalon) tranche.jalon = t.jalon
+    if (t.payeur) tranche.payeur = t.payeur
+    for (const cle of ['delai_reglement_jours', 'semaines_indicatives']) {
+      const brut = String(t[cle] ?? '').trim()
+      if (brut !== '') tranche[cle] = nombre(brut)
+    }
     return tranche
   })
 }
@@ -97,8 +124,8 @@ export function sommePourcentages(saisie) {
  *  première tranche devient `montant` MAD ; sur un échéancier à trois
  *  tranches en %, le matériel absorbe l'écart (le solde garde son %), comme
  *  l'ancien mode « personnalisé » du rendu. */
-export function echeancierAvecAcompte(echeancier, montant, totalTtc, mode) {
-  const base = echeancierVersSaisie(echeancier) || saisieParDefaut(mode)
+export function echeancierAvecAcompte(echeancier, montant, totalTtc, mode, effectifs) {
+  const base = echeancierVersSaisie(echeancier) || saisieParDefaut(mode, effectifs)
   const acompte = Math.max(0, nombre(montant))
   const saisie = base.map(t => ({ ...t }))
   saisie[0] = { ...saisie[0], unite: UNITE_MONTANT, valeur: String(acompte) }
@@ -111,4 +138,92 @@ export function echeancierAvecAcompte(echeancier, montant, totalTtc, mode) {
                   valeur: String(Math.max(0, arrondi2(100 - pctSolde - pctAcompte))) }
   }
   return saisieVersEcheancier(saisie)
+}
+
+// ── CIQ226 — conditions contractuelles déclarées (contrat
+// `devis_replace_lines_entete.json`, `regles_ciq200`) : retenue de garantie,
+// pénalités de retard, caution, organisme financeur, référence de commande.
+// TOUT est facultatif et RIEN n'est pré-rempli (D-CIQ-14) : état d'écran en
+// texte tel que tapé ⇄ clés de l'en-tête.
+export const CONDITIONS_VIDES = Object.freeze({
+  retenue: false, retenueTaux: '',
+  penaliteTaux: '', penalitePlafond: '',
+  cautionNature: '', cautionMontant: '', cautionPlafond: '',
+  tiersPayeur: '', referenceCommande: '',
+})
+
+const vide = (v) => v === null || v === undefined || String(v).trim() === ''
+const nombreOuNull = (v) => (vide(v) ? null : nombre(v))
+const texte = (v) => (v === null || v === undefined ? '' : String(v))
+
+/** Le devis servi → l'état d'écran des conditions. */
+export function conditionsDepuisDevis(devis) {
+  const d = devis || {}
+  const r = d.retenue_garantie
+  const p = d.penalites_retard_livraison
+  const c = d.caution
+  return {
+    retenue: Boolean(r), retenueTaux: texte(r?.taux_pct),
+    penaliteTaux: texte(p?.taux_pct_par_semaine), penalitePlafond: texte(p?.plafond_pct),
+    cautionNature: texte(c?.nature), cautionMontant: texte(c?.montant_ou_pct),
+    cautionPlafond: texte(c?.plafond),
+    tiersPayeur: texte(d.tiers_payeur), referenceCommande: texte(d.reference_commande_client),
+  }
+}
+
+/** L'état d'écran → les clés de l'en-tête (`null` = absente, jamais un défaut). */
+export function conditionsVersEntete(cond) {
+  const c = { ...CONDITIONS_VIDES, ...(cond || {}) }
+  const penalites = vide(c.penaliteTaux) && vide(c.penalitePlafond) ? null : {
+    taux_pct_par_semaine: nombreOuNull(c.penaliteTaux),
+    plafond_pct: nombreOuNull(c.penalitePlafond),
+  }
+  return {
+    retenue_garantie: c.retenue
+      ? { taux_pct: nombreOuNull(c.retenueTaux), liberation: 'reception_definitive' } : null,
+    penalites_retard_livraison: penalites,
+    caution: vide(c.cautionNature) && vide(c.cautionMontant) && vide(c.cautionPlafond) ? null : {
+      nature: texte(c.cautionNature).trim(),
+      montant_ou_pct: nombreOuNull(c.cautionMontant),
+      plafond: nombreOuNull(c.cautionPlafond),
+    },
+    tiers_payeur: vide(c.tiersPayeur) ? null : Number(c.tiersPayeur),
+    reference_commande_client: texte(c.referenceCommande).trim(),
+  }
+}
+
+/**
+ * Les erreurs de saisie des conditions, nommées par champ (sous le champ) :
+ * pénalités = taux ET plafond, ou rien. Aucun nombre n'est corrigé.
+ */
+export function erreursConditions(cond) {
+  const c = { ...CONDITIONS_VIDES, ...(cond || {}) }
+  const out = {}
+  if (!vide(c.penaliteTaux) && vide(c.penalitePlafond)) {
+    out.penalitePlafond = 'Pénalités de retard : le plafond est obligatoire avec le taux par semaine.'
+  }
+  if (vide(c.penaliteTaux) && !vide(c.penalitePlafond)) {
+    out.penaliteTaux = 'Pénalités de retard : le taux par semaine est obligatoire avec le plafond.'
+  }
+  if (c.retenue && vide(c.retenueTaux)) {
+    out.retenueTaux = 'Retenue de garantie : saisissez le taux demandé par le client.'
+  }
+  return out
+}
+
+export const LIBELLE_TRANCHE_FINANCEUR = "Règlement par l'organisme financeur à la réception signée"
+
+/**
+ * « Échéancier organisme financeur » : l'acompte du CLIENT (saisi, en %) à la
+ * commande, le reste payé par l'organisme financeur à la réception signée.
+ * Le reste est la seule valeur dérivée : 100 − acompte saisi.
+ */
+export function echeancierFinanceur(acomptePct) {
+  const acompte = nombre(acomptePct)
+  return [
+    { ...trancheVierge('Acompte client à la commande', 'acompte', String(acompte)),
+      jalon: 'commande', payeur: 'client' },
+    { ...trancheVierge(LIBELLE_TRANCHE_FINANCEUR, 'solde', String(arrondi2(100 - acompte))),
+      jalon: 'reception_financeur', payeur: 'tiers' },
+  ]
 }

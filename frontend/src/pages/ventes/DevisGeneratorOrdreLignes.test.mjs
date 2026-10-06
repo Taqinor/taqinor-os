@@ -72,21 +72,11 @@ test('LigneTable : le bouton « Enregistrer cet ordre » appelle handleSaveOrdre
   assert.match(DG, /savingOrdreLignes=\{savingOrdreLignes\}/)
 })
 
-test('DevisGenerator : la composition locale (auto-remplir manuel) transmet ordreLignes de gammesConfig', () => {
-  // U3COMPOSE (26/08/2026) — l'ancien corps de `handleAutoFill` vit désormais
-  // dans `composeLocalement()` : c'est lui qui compose l'agricole,
-  // l'industriel, le commercial ET le repli résidentiel quand le dry-run
-  // serveur est injoignable. La préférence société doit y être transmise
-  // EXACTEMENT comme avant — sur le chemin résidentiel nominal, c'est le
-  // serveur qui lit `ordre_lignes_societe` (jamais accepté du corps de la
-  // requête), verrouillé côté Django.
-  const idx = DG.indexOf('const composeLocalement = () => {')
-  assert.ok(idx > -1, 'composeLocalement introuvable')
-  // Fenêtre bornée à la PREMIÈRE composition (l'appel `composeAvec` suivant
-  // est au-delà) : une option perdue ici casse le test.
-  const bloc = DG.slice(idx, idx + 1200)
-  assert.match(bloc, /marques:\s*marquesActives,/)
-  assert.match(bloc, /ordreLignes:\s*gammesConfig\?\.ordre_lignes,/)
+test('CIQ126 — DevisGenerator : plus aucune composition locale (l’ordre société est lu côté serveur)', () => {
+  // `composeLocalement()` est supprimé : le résidentiel compose au dry-run
+  // serveur (qui lit `ordre_lignes_societe`), le C&I au moteur C&I serveur,
+  // l'agricole au kit serveur — l'écran ne compose plus rien lui-même.
+  assert.equal(DG.includes('const composeLocalement = () => {'), false)
 })
 
 test('DevisGenerator : le dry-run serveur n\'envoie JAMAIS l\'ordre des lignes dans le corps (lu société-side)', () => {
@@ -100,31 +90,13 @@ test('DevisGenerator : le dry-run serveur n\'envoie JAMAIS l\'ordre des lignes d
     'l\'ordre des lignes est un réglage société lu par le serveur — jamais accepté du corps')
 })
 
-test('DevisGenerator : runAutoQuote (devis auto) transmet ordreLignes à createAutoQuote', () => {
+test('CIQ127 — runAutoQuote et createAutoQuote ne transmettent plus l’ordre : le serveur le lit', () => {
   const idx = DG.indexOf('const runAutoQuote = async')
   assert.ok(idx > -1, 'runAutoQuote introuvable')
-  // QJR308 a allongé le prologue de `runAutoQuote` (avis palier 5 kWc) :
-  // la fenêtre est bornée à l'appel réseau suivant, pas à un compte de
-  // caractères qui dérive à chaque ligne ajoutée en amont.
-  const finAppel = DG.indexOf('createAutoQuote({', idx)
-  assert.ok(finAppel > -1, 'appel createAutoQuote introuvable dans runAutoQuote')
-  const bloc = DG.slice(idx, finAppel + 1600)
-  assert.match(bloc, /marques:\s*marquesActives,/)
-  assert.match(bloc, /ordreLignes:\s*gammesConfig\?\.ordre_lignes,/)
-})
-
-test('autoQuote.js : createAutoQuote accepte ordreLignes et le transmet à autoFillLines', () => {
-  assert.match(AQ, /targetKwc,\s*marques,\s*ordreLignes\s*\}\)\s*\{/)
-  const idx = AQ.indexOf('rows = autoFillLines(produits, {')
-  assert.ok(idx > -1, 'appel autoFillLines introuvable dans autoQuote.js')
-  // STKCAT10 — fenêtre élargie 400 → 700 : l'appel a gagné une option
-  // (`structureProduitId`) et sa justification, et une fenêtre épinglée au
-  // caractère près se périme à chaque ligne ajoutée EN AMONT des deux clés
-  // cherchées (elles, inchangées). C'est la fenêtre qui s'adapte, jamais la
-  // garde qui se desserre : les deux `assert.match` sont identiques.
-  const bloc = AQ.slice(idx, idx + 700)
-  assert.match(bloc, /marques,/)
-  assert.match(bloc, /ordreLignes,/)
+  const appel = DG.indexOf('createAutoQuote({', idx)
+  assert.match(DG.slice(appel, appel + 60), /createAutoQuote\(\{ lead, discountStr \}\)/)
+  // Le devis auto ne compose plus rien à l'écran (aucun autoFillLines).
+  assert.doesNotMatch(AQ, /autoFillLines\(|ordreLignes,\s*\}\)\s*\{/)
 })
 
 // ── LA MOITIÉ EXÉCUTABLE (QJR109) ──────────────────────────────────────────

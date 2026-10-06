@@ -27,8 +27,8 @@ import {
   ONEE_TRANCHES, FALLBACK_KWH_PRICE,
   monthlyBillFromKwh, kwhFromBill, consoAnnuelleDepuisFactures,
   kwhDepuisFactureMad, factureMad, tppanMad, twoBillsSavings, computeROI, computeCashflowPayback,
-  computeEtudeIndustrielle, productibleForCity, PRODUCTIBLE_NET_FACTOR,
-  panneauxPourKwc, estimerKwcDepuisFacture, optimalKwcByPayback,
+  productibleForCity, PRODUCTIBLE_NET_FACTOR,
+  panneauxPourKwc,
   totauxCanoniquesTtc, ttcFromHt, htFromTtc,
   debitAtHmt, selectPompeByCurve, pompageSelection, autoFillPompage,
   champFromKw, isBattery, isAnyInverter, isHybridInverter, isReseauInverter,
@@ -469,43 +469,6 @@ test('payback : plus d\'économie ⇒ payback jamais plus long', () => {
   })
 })
 
-test('étude industrielle : couverture et autoconsommation dans [0,100] %, aucune sortie non finie', () => {
-  verifier('', 'computeEtudeIndustrielle', {
-    seed: 405, runs: RUNS,
-    gen: (g) => ({
-      kwp: g.logFloat(3, 2000), conso: g.pick([0, g.logFloat(200, 500000)]),
-      day: g.pick([10, 40, 80, 100]),
-    }),
-    verifie: ({ kwp, conso, day }) => {
-      // Prix RÉALISTE au kWc (5 000 – 14 000 MAD/kWc) : un total sans rapport
-      // avec la puissance ferait un payback arrondi à 0,0 sans que ce soit un bug.
-      const total = Math.round(kwp * (5000 + (kwp * 7919) % 9000))
-      const r = computeEtudeIndustrielle({ kwp, consoMensuelleKwh: conso, dayUsagePct: day, totalTtc: total })
-      const nf = premierNonFini(r)
-      if (nf) return `non fini ${nf}`
-      if (r.taux_autoconso < 0 || r.taux_autoconso > 100.05) return `autoconso ${r.taux_autoconso}`
-      if (r.taux_couverture !== null && (r.taux_couverture < 0 || r.taux_couverture > 100.05)) return `couverture ${r.taux_couverture}`
-      if (r.payback !== null && !(r.payback > 0)) return `payback ${r.payback}`
-      return null
-    },
-  })
-})
-
-test('étude industrielle : plus de kWc ⇒ production et énergie autoconsommée jamais plus basses', () => {
-  verifier('', 'étude industrielle monotone', {
-    seed: 406, runs: RUNS,
-    gen: (g) => ({ kwp: g.logFloat(3, 900), d: g.float(0, 300), conso: g.logFloat(500, 300000), day: g.pick([30, 60, 80, 100]) }),
-    verifie: ({ kwp, d, conso, day }) => {
-      const p = { consoMensuelleKwh: conso, dayUsagePct: day, totalTtc: 1e6 }
-      const a = computeEtudeIndustrielle({ kwp, ...p })
-      const b = computeEtudeIndustrielle({ kwp: kwp + d, ...p })
-      if (b.production_annuelle < a.production_annuelle) return 'production ↓'
-      if (b.economies_annuelles + 1 < a.economies_annuelles) return `économies ↓ ${a.economies_annuelles} → ${b.economies_annuelles}`
-      return null
-    },
-  })
-})
-
 // ══ 5. DIMENSIONNEMENT ═══════════════════════════════════════════════════════
 
 test('panneaux : plus de kWc demandés ⇒ jamais moins de panneaux, et N × W ≥ kWc demandé', () => {
@@ -518,19 +481,6 @@ test('panneaux : plus de kWc demandés ⇒ jamais moins de panneaux, et N × W �
       if (b < a) return `panneaux(${kwc + d})=${b} < panneaux(${kwc})=${a}`
       if (a < 1) return 'moins d\'un panneau pour un kWc > 0'
       return a * w / 1000 + 1e-6 >= kwc ? null : `${a} × ${w} W < ${kwc} kWc demandés`
-    },
-  })
-})
-
-test('besoin lu sur la facture d\'hiver : monotone, multiple du palier de 5 kWc', () => {
-  verifier('', 'estimerKwcDepuisFacture', {
-    seed: 502, runs: RUNS,
-    gen: (g) => ({ f: g.logFloat(1, 60000), d: g.float(0, 20000) }),
-    verifie: ({ f, d }) => {
-      const a = estimerKwcDepuisFacture(f)
-      const b = estimerKwcDepuisFacture(f + d)
-      if (a % 5 !== 0 || b % 5 !== 0) return 'hors palier de 5 kWc'
-      return b >= a ? null : `besoin(${f + d})=${b} < besoin(${f})=${a}`
     },
   })
 })
@@ -557,32 +507,6 @@ const CATALOGUE_RESIDENTIEL = [
   P('Tableau De Protection AC/DC', 2000), P('Installation', 4800),
   P('Transport', 1000), P('Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 5000),
 ]
-
-test('taille recommandée : factures ↑ (toutes les autres entrées égales) ⇒ kWc recommandé jamais plus bas', () => {
-  verifier('', 'optimalKwcByPayback monotone en consommation', {
-    seed: 503, runs: 60,
-    gen: (g) => ({
-      base: Math.round(g.logFloat(400, 4000)), coef: g.float(1, 2.5),
-      ete: g.float(1, 1.8), utility: g.pick(NOMME), day: g.pick([40, 60, 80]),
-    }),
-    verifie: ({ base, coef, ete, utility, day }) => {
-      const facturesDe = (k) => Array.from({ length: 12 }, (_, i) => Math.round(
-        base * k * (i >= 5 && i <= 8 ? ete : 1)))
-      const recommande = (k) => {
-        const f = facturesDe(k)
-        const besoinKwc = estimerKwcDepuisFacture(Math.max(...f.slice(0, 5), f[9], f[10], f[11]))
-        const conso = consoAnnuelleDepuisFactures(f, utility)
-        return optimalKwcByPayback({
-          produits: CATALOGUE_RESIDENTIEL, factures: f, dayUsagePct: day, panelW: 710,
-          structureType: 'acier', besoinKwc, consoAnnuelleKwh: conso, utility,
-        }).kwcOptimal
-      }
-      const a = recommande(1)
-      const b = recommande(coef)
-      return b >= a ? null : `kWc recommandé ↓ : ${a} kWc → ${b} kWc quand les factures ×${coef}`
-    },
-  })
-})
 
 // ══ 6. TOTAUX (chaîne monétaire) ═════════════════════════════════════════════
 

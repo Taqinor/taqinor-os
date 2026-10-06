@@ -23,6 +23,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import authReducer from '../../features/auth/store/authSlice'
 import ventesReducer from '../../features/ventes/store/ventesSlice'
 import { estimerMois, DEFAULT_MONTHLY_BILLS } from '../../features/ventes/solar'
+import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 vi.mock('../../api/crmApi', () => ({
   default: {
@@ -262,5 +263,198 @@ describe('ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — kWh déclaré contredit par 
     await screen.findAllByText(/Khalid Réouvert/)
     await enregistrerEtLireEtude()
     expect(ventesApi.replaceLignesDevis).toHaveBeenCalled()
+  })
+})
+
+// ── AGR420 — pré-remplissage du pompage depuis `entrees_pompage` du lead ──
+// Le lead de l'exemple du contrat partagé `crm/lead_pompage.json` (jamais une
+// charge utile inventée) ; la liste `leads` ne porte pas le bloc, l'écran
+// relit le détail (`getLead`).
+const LEAD_POMPAGE = exempleContrat('crm', 'lead_pompage')
+
+function renderLead(id) {
+  return render(
+    <Provider store={makeStore()}>
+      <MemoryRouter initialEntries={[`/ventes/devis/nouveau?lead=${id}`]}>
+        <Routes>
+          <Route path="/ventes/devis/nouveau" element={<DevisGenerator />} />
+          <Route path="*" element={<div>APRES-ENREGISTREMENT</div>} />
+        </Routes>
+      </MemoryRouter>
+    </Provider>,
+  )
+}
+
+const dansListe = (lead) => ({
+  id: lead.id, nom: 'Hassan', prenom: 'Agri', societe: '',
+  type_installation: lead.type_installation,
+})
+
+describe('AGR420 — le pompage se pré-remplit des seules entrées du lead', () => {
+  it('reprend HMT, niveau, distance, énergie et prix déclarés, avec leur provenance', async () => {
+    crmApi.getLeads.mockResolvedValue({ data: [dansListe(LEAD_POMPAGE)] })
+    crmApi.getLead.mockResolvedValue({ data: LEAD_POMPAGE })
+    renderLead(LEAD_POMPAGE.id)
+    await waitFor(() => expect(document.getElementById('gen-hmt')?.value).toBe('60'))
+    expect(document.getElementById('gen-distance').value).toBe('25')
+    expect(document.getElementById('gen-farm-static').value).toBe('32')
+    expect(document.getElementById('gen-farm-fuel').value).toBe('butane')
+    expect(document.getElementById('gen-eco-quantite').value).toBe('4')
+    expect(document.getElementById('gen-eco-prix').value).toBe('50')
+    const liste = screen.getByTestId('provenance-lead-pompage')
+    expect(liste).toHaveTextContent('HMT (m) : 60')
+    expect(liste).toHaveTextContent('formulaire du site')
+    // Les heures de pompage SOLAIRE ne viennent jamais du lead.
+    expect(document.getElementById('gen-heures').value).toBe('7')
+  })
+
+  it('un lead sans entrée laisse tout VIDE : ni butane, ni 20 m, ni région', async () => {
+    const vide = {
+      ...LEAD_POMPAGE, entrees_pompage: { entrees: [], manquants: [] },
+    }
+    crmApi.getLeads.mockResolvedValue({ data: [dansListe(vide)] })
+    crmApi.getLead.mockResolvedValue({ data: vide })
+    renderLead(vide.id)
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(vide.id))
+    await waitFor(() => expect(document.getElementById('gen-hmt')).not.toBeNull())
+    expect(document.getElementById('gen-hmt').value).toBe('')
+    expect(document.getElementById('gen-distance').value).toBe('')
+    expect(document.getElementById('gen-farm-fuel').value).toBe('')
+    expect(screen.queryByTestId('provenance-lead-pompage')).toBeNull()
+  })
+
+  it('un champ déjà saisi par le vendeur n\'est pas écrasé par le lead', async () => {
+    let livrer
+    crmApi.getLeads.mockResolvedValue({ data: [dansListe(LEAD_POMPAGE)] })
+    crmApi.getLead.mockReturnValue(new Promise((resolu) => { livrer = resolu }))
+    renderLead(LEAD_POMPAGE.id)
+    const hmt = await waitFor(() => {
+      const el = document.getElementById('gen-hmt')
+      expect(el).not.toBeNull()
+      return el
+    })
+    await userEvent.type(hmt, '75')
+    livrer({ data: LEAD_POMPAGE })
+    await waitFor(() => expect(document.getElementById('gen-distance').value).toBe('25'))
+    expect(document.getElementById('gen-hmt').value).toBe('75')
+  })
+})
+
+// ── AGR421 (D-AGR-9) — bandeau « devis agricole sur un lead non agricole » ──
+const LEAD_INCOHERENT = exempleContrat('crm', 'lead_pompage', 'exemple_incoherent')
+
+function devisAgricoleSurLead(lead) {
+  const rouvert = devisRouvert({ lead: lead.id })
+  return { data: { ...rouvert.data, mode_installation: 'agricole' } }
+}
+
+describe('AGR421 — le type du lead ne change qu\'à la main', () => {
+  beforeEach(() => {
+    crmApi.updateLead = vi.fn(() => Promise.resolve({ data: {} }))
+    crmApi.getLead.mockResolvedValue({ data: { ...LEAD, ...LEAD_INCOHERENT } })
+    ventesApi.getDevisById.mockResolvedValue(devisAgricoleSurLead(LEAD_INCOHERENT))
+  })
+
+  it('bandeau visible pour un lead typé résidentiel, sans aucun PATCH à l\'enregistrement', async () => {
+    renderEdition()
+    const bandeau = await screen.findByTestId('bandeau-segment-lead')
+    expect(bandeau).toHaveTextContent('Ce lead est typé « residentiel »')
+    await cliquerEnregistrer()
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+  })
+
+  it('clic + confirmation : PATCH {type_installation:\'agricole\'} seul, puis plus de bandeau', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderEdition()
+    await userEvent.click(await screen.findByRole('button', { name: 'Passer en agricole' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledTimes(1))
+    expect(crmApi.updateLead).toHaveBeenCalledWith(LEAD_INCOHERENT.id, { type_installation: 'agricole' })
+    await waitFor(() => expect(screen.queryByTestId('bandeau-segment-lead')).toBeNull())
+    confirmSpy.mockRestore()
+  })
+
+  it('confirmation refusée : aucun PATCH', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderEdition()
+    await userEvent.click(await screen.findByRole('button', { name: 'Passer en agricole' }))
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it('lead agricole : aucun bandeau', async () => {
+    const agricole = { ...LEAD_POMPAGE, id: LEAD.id }
+    crmApi.getLead.mockResolvedValue({ data: { ...LEAD, ...agricole } })
+    ventesApi.getDevisById.mockResolvedValue(devisAgricoleSurLead(agricole))
+    renderEdition()
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalled())
+    await screen.findAllByText(/Khalid Réouvert/)
+    expect(screen.queryByTestId('bandeau-segment-lead')).toBeNull()
+  })
+})
+
+// ── CIQ423 (D-CIQ-11) — devis C&I : bandeau de type et rappel « ICE manquant » ──
+// Fixtures des contrats partagés `crm/lead_pro.json` et `crm/client_entreprise.json`.
+const LEAD_PRO_INCOHERENT = exempleContrat('crm', 'lead_pro', 'exemple_incoherent')
+const LEAD_PRO_COHERENT = exempleContrat('crm', 'lead_pro')
+const CLIENT_SANS_ICE = exempleContrat('crm', 'client_entreprise', 'exemple_nom_propre')
+
+function devisCommercialSurLead(lead) {
+  const rouvert = devisRouvert({ lead: lead.id })
+  // CIQ125 — consommation déclarée (entrée v2) : sinon l'enregistrement C&I est refusé.
+  return {
+    data: {
+      ...rouvert.data, mode_installation: 'commercial',
+      etude_params: { ...rouvert.data.etude_params, consommation: { kwh_annuel: 60000 } },
+    },
+  }
+}
+
+describe('CIQ423 — bandeau de type du lead et rappel ICE en mode commercial', () => {
+  beforeEach(() => {
+    crmApi.updateLead = vi.fn(() => Promise.resolve({ data: {} }))
+    crmApi.getLead.mockResolvedValue({ data: { ...LEAD, ...LEAD_PRO_INCOHERENT } })
+    ventesApi.getDevisById.mockResolvedValue(devisCommercialSurLead(LEAD_PRO_INCOHERENT))
+  })
+
+  it('lead typé résidentiel : bandeau visible, enregistrer sans clic n\'émet aucun PATCH du lead', async () => {
+    renderEdition()
+    expect(await screen.findByTestId('bandeau-segment-lead'))
+      .toHaveTextContent('Ce lead est typé « residentiel »')
+    await cliquerEnregistrer()
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+  })
+
+  it('clic + confirmation : PATCH {type_installation} seul', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderEdition()
+    await userEvent.click(await screen.findByRole('button', { name: 'Passer en commercial' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledTimes(1))
+    expect(crmApi.updateLead).toHaveBeenCalledWith(
+      LEAD_PRO_INCOHERENT.id, { type_installation: 'commercial' })
+    confirmSpy.mockRestore()
+  })
+
+  it('lead commercial cohérent : aucun bandeau', async () => {
+    crmApi.getLead.mockResolvedValue({ data: { ...LEAD, ...LEAD_PRO_COHERENT } })
+    ventesApi.getDevisById.mockResolvedValue(devisCommercialSurLead(LEAD_PRO_COHERENT))
+    renderEdition()
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalled())
+    await screen.findAllByText(/Khalid Réouvert/)
+    expect(screen.queryByTestId('bandeau-segment-lead')).toBeNull()
+  })
+
+  it('ICE manquant : rappel visible, l\'enregistrement reste possible', async () => {
+    crmApi.getLead.mockResolvedValue({ data: {
+      ...LEAD, ...LEAD_PRO_COHERENT, identite_entreprise: CLIENT_SANS_ICE.identite_entreprise,
+    } })
+    ventesApi.getDevisById.mockResolvedValue(devisCommercialSurLead(LEAD_PRO_COHERENT))
+    renderEdition()
+    expect(await screen.findByTestId('rappel-ice-manquant'))
+      .toHaveTextContent('ICE à demander au client')
+    await cliquerEnregistrer()
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
   })
 })

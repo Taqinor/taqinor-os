@@ -143,18 +143,18 @@ test('createAutoQuote : les trois clés du contrat PACT10 sont écrites dans ce 
   const src = lire('./autoQuote.js')
   const debut = src.indexOf("if (mode === 'residentiel') {")
   assert.ok(debut > 0, 'branche résidentielle introuvable')
-  const bloc = src.slice(debut, debut + 1800)
+  const bloc = src.slice(debut, src.indexOf('return id', debut))
   assert.match(bloc, /etudeExtra\.factures_mensuelles_reelles = facturesReelles/)
   assert.match(bloc, /etudeExtra\.conso_annuelle = consoAnnuelleReelle/)
   assert.match(bloc, /etudeExtra\.distributeur = distributeurLead/)
 })
 
-test('createAutoQuote : le bloc résidentiel vit AVANT la branche industriel/commercial', () => {
+test('CIQ127 — createAutoQuote : le bloc résidentiel vit AVANT l’appel serveur des autres marchés', () => {
   const src = lire('./autoQuote.js')
   const residentiel = src.indexOf("if (mode === 'residentiel') {")
-  const industriel = src.indexOf("mode === 'industriel' || mode === 'commercial'")
-  assert.ok(residentiel > 0 && industriel > residentiel,
-    'ordre attendu : branche résidentielle (serveur) → branche industriel/commercial')
+  const autres = src.indexOf('return creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marche: mode })')
+  assert.ok(residentiel > 0 && autres > residentiel,
+    'ordre attendu : branche résidentielle (serveur) → agricole / C&I (serveur)')
 })
 
 // ── U3 — LE TEST DE NON-DIVERGENCE, côté écran ──────────────────────────────
@@ -165,8 +165,8 @@ test('U3 — le résidentiel délègue la composition au serveur, sans jamais co
   const src = lire('./autoQuote.js')
   const debut = src.indexOf("if (mode === 'residentiel') {")
   assert.ok(debut > 0, 'branche résidentielle introuvable')
-  // La branche s'arrête à son `return id` : au-delà commence le code
-  // industriel/commercial, qui lui compose encore à l'écran (hors périmètre).
+  // La branche s'arrête à son `return id` : au-delà, les autres marchés
+  // partent eux aussi au serveur (CIQ127).
   const bloc = src.slice(debut, src.indexOf('return id', debut))
   assert.doesNotMatch(bloc, /autoFillLines/,
     'le résidentiel ne doit plus composer de lignes à l\'écran')

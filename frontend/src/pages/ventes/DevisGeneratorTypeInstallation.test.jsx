@@ -1,6 +1,6 @@
 // QJR641 — le sélecteur « Type d'installation » disparaît : le Marché est la
 // seule source, et le défaut de la part diurne en dérive. Le curseur est
-// masqué en commercial (sans effet : `commercialDayShare`) et en agricole.
+// masqué en commercial et en agricole.
 // Écran RÉEL rendu (jamais une lecture du source).
 // Run : npx vitest run src/pages/ventes/DevisGeneratorTypeInstallation.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -122,21 +122,22 @@ describe('QJR641 — plus de « Type d’installation » : le Marché pilote la 
     expect(curseur().querySelector('input[type="range"]')).toHaveValue('60')
   })
 
-  it('marché Industriel → défaut 80 % ; Commercial et Agricole → curseur masqué', async () => {
+  it('CIQ126 — Industriel, Commercial et Agricole : curseur masqué (profil déclaré au moteur C&I)', async () => {
     const user = userEvent.setup()
     rendre('/ventes/devis/nouveau')
     await user.click(await screen.findByRole('radio', { name: /Industriel/ }))
-    await waitFor(() => expect(curseur().querySelector('input[type="range"]')).toHaveValue('80'))
+    await waitFor(() => expect(curseur()).toBeNull())
     await user.click(screen.getByRole('radio', { name: /Commercial/ }))
     await waitFor(() => expect(curseur()).toBeNull())
     await user.click(screen.getByRole('radio', { name: /Agricole/ }))
     await waitFor(() => expect(curseur()).toBeNull())
   })
 
-  it('réouverture industrielle : la part persistée (65 %) prime sur le défaut du marché', async () => {
+  it('CIQ126 — réouverture industrielle : part_diurne_pct n’est plus relue, aucun curseur', async () => {
     rendre('/ventes/devis/nouveau?edit=528')
     await waitFor(() =>
       expect(screen.getByRole('radio', { name: /Industriel/ })).toHaveAttribute('aria-checked', 'true'))
-    await waitFor(() => expect(curseur().querySelector('input[type="range"]')).toHaveValue('65'))
+    await screen.findByTestId('ci-profil')
+    expect(curseur()).toBeNull()
   })
 })

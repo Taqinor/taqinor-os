@@ -104,6 +104,7 @@ import ventesApi from '../../api/ventesApi'
 import { fetchDevis } from '../../features/ventes/store/ventesSlice'
 import crmApi from '../../api/crmApi'
 import uxviewsApi from '../../api/uxviewsApi'
+import parametresApi from '../../api/parametresApi'
 import { toast } from '../../ui'
 // ARC49 — DevisList rend désormais son tableau via le moteur `ui/datatable`, qui
 // lit la densité via useDensity() et EXIGE donc un <ThemeProvider> dans l'arbre
@@ -1255,6 +1256,15 @@ describe("DevisList — QJR532 : « Éditer » d'un envoyé (liste + Kanban)", (
 // rendu, pour que facture d'acompte et PDF lisent la même valeur.
 describe('DevisList — QJR624 : acompte personnalisé → échéancier du devis', () => {
   it('acompte 20000 → PATCH {echeancier} avant le rendu', async () => {
+    // CIQ225 — sans échéancier propre, le point de départ est l'échéancier
+    // EFFECTIF de la société (`payment_terms_effectifs`), servi par le profil.
+    vi.spyOn(parametresApi, 'getProfile').mockResolvedValue({ data: { payment_terms_effectifs: {
+      residentiel: [
+        { jalon: 'acompte', libelle: 'Acompte', pct: 30 },
+        { jalon: 'materiel', libelle: 'Livraison du matériel', pct: 60 },
+        { jalon: 'solde', libelle: 'Solde', pct: 10 },
+      ],
+    } } })
     renderList({
       loading: false,
       devis: [{

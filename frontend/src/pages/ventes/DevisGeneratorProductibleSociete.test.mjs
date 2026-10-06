@@ -51,9 +51,8 @@ test('QJR39 — quoteLogic.productible alimente déjà productibleForCity (ROI +
   // QJR586 — la ville lue est `ville_effective` (ville_reference or ville),
   // repli sur `ville` pour un lead servi sans le champ.
   const occurrences = DG.match(/productibleForCity\(\s*\n\s*\(selectedLead\?\.ville_effective \?\? selectedLead\?\.ville\) \|\| '', quoteLogic\.productible\)/g) || []
-  // ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT — le 3ᵉ site (balayage
-  // `optimalKwcByPayback`) lit la ville du lead APPLIQUÉ : il est EXÉCUTÉ par
-  // DevisGeneratorBalayageProductible.test.jsx, plus compté ici.
+  // ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT — le 3ᵉ site (balayage C&I écran) a
+  // été supprimé par CIQ126 : le C&I est dimensionné par le moteur serveur.
   assert.equal(occurrences.length, 2,
     'productibleForCity(ville, quoteLogic.productible) doit rester appelé aux 2 sites (roi + roiAvec)')
 })

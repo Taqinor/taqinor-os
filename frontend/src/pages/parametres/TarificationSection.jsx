@@ -59,6 +59,9 @@ export default function TarificationSection() {
   // AGR210 — pompage agricole (barème des charges + règle FDA datée, calcul
   // INTERNE). null = non servis : jamais renvoyés, rien n'est écrasé.
   const [pompage, setPompage] = useState(null)
+  // CIQ227 — études commerciales et industrielles (scénarios de sensibilité
+  // sourcés + autorisation « crédit-bail »). null = non servis : jamais renvoyés.
+  const [ci, setCi] = useState(null)
 
   useEffect(() => {
     parametresApi.getTariffSettings()
@@ -88,6 +91,7 @@ export default function TarificationSection() {
         setVersion(d.version || 1)
         setLot5(lot5DepuisServeur(d))
         setPompage(pompageDepuisServeur(d))
+        setCi(ciDepuisServeur(d))
       })
       .catch(() => {
         setForm(FALLBACK_FORM)
@@ -163,6 +167,24 @@ export default function TarificationSection() {
     setPompage(p => ({ ...p, fda: regleFdaGuide2024(new Date()) }))
     oublierErreur('regle_fda_pompage')
   }
+  // CIQ227 — scénarios de sensibilité C&I et mention « crédit-bail ».
+  const setScenario = (i, cle, valeur) => {
+    setCi(c => ({
+      ...c, scenarios: c.scenarios.map((x, j) => (j === i ? { ...x, [cle]: valeur } : x)),
+    }))
+    oublierErreur('sensibilites_ci')
+  }
+  const addScenario = () => setCi(c => (c.scenarios.length >= SENSIBILITES_CI_MAX ? c : {
+    ...c, scenarios: [...c.scenarios, { cle: SENSIBILITES_CI_CLES[0][0], variation_pct: '', source: '' }],
+  }))
+  const removeScenario = (i) => {
+    setCi(c => ({ ...c, scenarios: c.scenarios.filter((_, j) => j !== i) }))
+    oublierErreur('sensibilites_ci')
+  }
+  const setCreditBail = (cle, valeur) => {
+    setCi(c => ({ ...c, [cle]: valeur }))
+    oublierErreur('mention_credit_bail_source')
+  }
   const allerAuChamp = (champ) => {
     const cible = document.getElementById(`tarif-${champ}`)
     cible?.scrollIntoView?.({ block: 'center' })
@@ -176,6 +198,7 @@ export default function TarificationSection() {
     const refus = {
       ...(lot5 ? erreursAvantEnvoi(lot5) : {}),
       ...(pompage ? erreursPompageAvantEnvoi(pompage) : {}),
+      ...(ci ? erreursCiAvantEnvoi(ci) : {}),
     }
     if (Object.keys(refus).length) {
       setErreurs(refus)
@@ -195,6 +218,7 @@ export default function TarificationSection() {
         ...form,
         ...(lot5 ? payloadLot5(lot5) : {}),
         ...(pompage ? payloadPompage(pompage) : {}),
+        ...(ci ? payloadCi(ci) : {}),
         tolerance_kwh: Number(form.tolerance_kwh) || 0,
         selective_threshold_kwh: Number(form.selective_threshold_kwh) || 150,
         inclinaison_defaut_deg: Number(form.inclinaison_defaut_deg) || 0,
@@ -205,6 +229,7 @@ export default function TarificationSection() {
       setVersion(res.data?.version || version)
       if (lot5 && res.data) setLot5(lot5DepuisServeur(res.data))
       if (pompage && res.data) setPompage(pompageDepuisServeur(res.data))
+      if (ci && res.data) setCi(ciDepuisServeur(res.data))
       setErreurs({})
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
@@ -397,6 +422,12 @@ export default function TarificationSection() {
           setFda={setFda} preremplirFda={preremplirFda} />
       )}
 
+      {ci && (
+        <ReglagesCi ci={ci} erreurs={erreurs} setScenario={setScenario}
+          addScenario={addScenario} removeScenario={removeScenario}
+          setCreditBail={setCreditBail} />
+      )}
+
       {Object.keys(erreurs).length > 0 && (
         <div role="alert" data-testid="tarif-erreurs"
           className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-[12.5px] text-destructive">
@@ -548,6 +579,9 @@ const LIBELLES_CHAMPS = {
   // AGR210 — pompage agricole (calcul interne).
   charges_pompage_solaire: 'Charges solaires de pompage',
   regle_fda_pompage: 'Règle FDA pompage',
+  // CIQ227 — études commerciales et industrielles.
+  sensibilites_ci: 'Scénarios de sensibilité C&I',
+  mention_credit_bail_source: 'Avis juridique (crédit-bail)',
 }
 
 const HEURES = Array.from({ length: 24 }, (_, h) => h)
@@ -1177,6 +1211,130 @@ function ReglagesPompage({
             aria-describedby={erreurs.regle_fda_pompage ? 'tarif-regle_fda_pompage-erreur' : undefined}
             onChange={e => setFda('source', e.target.value)} />
           <ErreurChamp champ="regle_fda_pompage" erreurs={erreurs} />
+        </label>
+      </CardContent>
+    </Card>
+  )
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CIQ227 (Groupe CIQ, 03/10/2026) — études commerciales et industrielles
+// ═══════════════════════════════════════════════════════════════════════════
+// `TariffSettings.sensibilites_ci` = [{cle, variation_pct, source}] (au plus 4,
+// VIDE par défaut : aucune sensibilité n'existe tant qu'elle n'est pas saisie)
+// et `mention_credit_bail_autorisee` + `mention_credit_bail_source` (CIQ211 ;
+// la référence de l'avis juridique est obligatoire pour autoriser le mot
+// « crédit-bail » au client, D-CIQ-15).
+
+const SENSIBILITES_CI_MAX = 4
+// source-choix: parametres.tariff.SENSIBILITE_CI_CLES
+const SENSIBILITES_CI_CLES = [
+  ['indexation_tarif', 'Indexation du tarif'],
+  ['degradation', 'Dégradation'],
+  ['tarif_kwh', 'Tarif du kWh'],
+  ['production', 'Production'],
+]
+
+/** État d'édition servi par le serveur — `null` si les clés sont absentes. */
+function ciDepuisServeur(d) {
+  if (!('sensibilites_ci' in d) && !('mention_credit_bail_autorisee' in d)) return null
+  return {
+    scenarios: Array.isArray(d.sensibilites_ci)
+      ? d.sensibilites_ci.map(x => ({
+        cle: texte(x?.cle), variation_pct: texte(x?.variation_pct), source: texte(x?.source),
+      }))
+      : [],
+    autorisee: Boolean(d.mention_credit_bail_autorisee),
+    avis: texte(d.mention_credit_bail_source),
+  }
+}
+
+/** Les trois champs envoyés ; une ligne entièrement vide est retirée. */
+function payloadCi(c) {
+  return {
+    sensibilites_ci: c.scenarios
+      .filter(x => rempli(x.variation_pct) || rempli(x.source))
+      .map(x => ({
+        cle: x.cle, variation_pct: nombreJson(x.variation_pct), source: x.source.trim(),
+      })),
+    mention_credit_bail_autorisee: c.autorisee,
+    mention_credit_bail_source: c.avis.trim(),
+  }
+}
+
+/** Refus AVANT envoi : un scénario sans source, ou l'autorisation sans avis. */
+function erreursCiAvantEnvoi(c) {
+  const refus = {}
+  const sansSource = c.scenarios.findIndex(x =>
+    (rempli(x.variation_pct) || rempli(x.source)) && !rempli(x.source))
+  if (sansSource >= 0) {
+    refus.sensibilites_ci = `sensibilites_ci[${sansSource}].source : la source du `
+      + 'scénario est obligatoire (étude, historique publié, garantie fabricant).'
+  }
+  if (c.autorisee && !rempli(c.avis)) {
+    refus.mention_credit_bail_source = 'mention_credit_bail_source : la référence de '
+      + 'l’avis juridique est obligatoire pour autoriser la mention « crédit-bail ».'
+  }
+  return refus
+}
+
+function ReglagesCi({ ci, erreurs, setScenario, addScenario, removeScenario, setCreditBail }) {
+  return (
+    <Card>
+      <CardContent className="space-y-3 pt-4 sm:pt-5" data-testid="tarif-ci">
+        <SectionTitle label="Études commerciales et industrielles"
+          icon={<><path d="M3 21h18" /><path d="M5 21V7l7-4 7 4v14" /><path d="M9 21v-6h6v6" /></>} />
+        <p className="text-[12.5px] font-medium text-foreground">
+          Scénarios de sensibilité (au plus {SENSIBILITES_CI_MAX})
+        </p>
+        {ci.scenarios.length === 0 && (
+          <p className="text-[12px] text-muted-foreground" data-testid="tarif-ci-vide">
+            Aucun scénario : le document n’affiche aucune sensibilité.
+          </p>
+        )}
+        <div id="tarif-sensibilites_ci" tabIndex={-1} className="flex flex-col gap-2">
+          {ci.scenarios.map((x, i) => (
+            <div key={i} className="grid items-center gap-2 sm:grid-cols-[1.2fr_8rem_1.5fr_auto]">
+              <select aria-label={`Paramètre du scénario ${i + 1}`} className={selectCls}
+                value={x.cle} onChange={e => setScenario(i, 'cle', e.target.value)}>
+                {SENSIBILITES_CI_CLES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+              <Input type="number" step="any" aria-label={`Variation du scénario ${i + 1} (%)`}
+                value={x.variation_pct}
+                onChange={e => setScenario(i, 'variation_pct', e.target.value)} />
+              <Input sanitize="off" aria-label={`Source du scénario ${i + 1}`}
+                value={x.source} onChange={e => setScenario(i, 'source', e.target.value)} />
+              <IconButton size="sm" variant="ghost" label={`Supprimer le scénario ${i + 1}`}
+                onClick={() => removeScenario(i)}>
+                <Trash2 className="size-3.5" aria-hidden="true" />
+              </IconButton>
+            </div>
+          ))}
+        </div>
+        <ErreurChamp champ="sensibilites_ci" erreurs={erreurs} />
+        <Button type="button" size="sm" variant="outline" onClick={addScenario}
+          disabled={ci.scenarios.length >= SENSIBILITES_CI_MAX}>
+          <Plus className="size-4" aria-hidden="true" /> Ajouter un scénario
+        </Button>
+
+        <p className="pt-2 text-[12.5px] font-medium text-foreground">Crédit-bail</p>
+        <label className="flex items-center gap-2 text-sm text-foreground">
+          <Switch id="tarif-mention_credit_bail_autorisee" checked={ci.autorisee}
+            aria-label="Nommer le crédit-bail au client"
+            onCheckedChange={v => setCreditBail('autorisee', Boolean(v))} />
+          Nommer le crédit-bail au client
+        </label>
+        <label className="block" htmlFor="tarif-mention_credit_bail_source">
+          <span className="mb-1 block text-[12.5px] font-medium text-foreground">
+            Avis juridique (référence)
+          </span>
+          <Input id="tarif-mention_credit_bail_source" sanitize="off" value={ci.avis}
+            invalid={Boolean(erreurs.mention_credit_bail_source)}
+            aria-describedby={erreurs.mention_credit_bail_source
+              ? 'tarif-mention_credit_bail_source-erreur' : undefined}
+            onChange={e => setCreditBail('avis', e.target.value)} />
+          <ErreurChamp champ="mention_credit_bail_source" erreurs={erreurs} />
         </label>
       </CardContent>
     </Card>

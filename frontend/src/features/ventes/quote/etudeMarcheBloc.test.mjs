@@ -35,44 +35,40 @@ const ECRAN = new Set([
 
 const horsSchema = (obj) => Object.keys(obj).filter(k => obj[k] !== undefined && !ECRAN.has(k))
 
-// Étude BRUTE (forme computeEtudeIndustrielle) : kwc / prix_kwc /
-// economies_annuelles n'ont rien à faire dans etude_params via l'écran.
-const ETUDE_BRUTE = {
-  kwc: 120, prix_kwc: 7000, economies_annuelles: 210000, production_annuelle: 190000,
-  conso_annuelle: '250000', taux_autoconso: '82.5', taux_couverture: 61,
-  payback: '4.2', injection_kwh_an: 12000, injection_dh_an: 'x',
-}
 const CHOIX = { scenario: 'sans_batterie', recommended_option: 'sans_batterie', nombre_proprietes: null }
 const entrees = (conso) => (conso != null ? { conso_annuelle: conso, distributeur: 'onee' } : {})
 
-test('industriel : aucune clé hors ECRAN, étude brute filtrée, état fixe identique', () => {
+// CIQ126 — les ENTRÉES C&I v2 (forme `entreesCiV2`, contrat etude_ci_preview).
+const ENTREES_CI = {
+  mode: 'industriel', site: { ville: null, lat: null, lon: null }, tension: 'mt',
+  phases: 'tri', puissance_souscrite_kva: 250, consommation: { kwh_mensuels: null,
+    kwh_annuel: 250000, factures_mad: [], registres_mt: null },
+  rythme: null, courbe_mesuree: null, toit: null, contraintes: null, options: null,
+  taille_explicite_kwc: null,
+}
+const CLES_V1_RETIREES = [
+  'taux_autoconso', 'taux_couverture', 'payback', 'part_diurne_pct', 'etude_kwc_base',
+  'injection_kwh_an', 'injection_dh_an', 'tension_raccordement', 'repartition_mt',
+  'conso_annuelle', 'distributeur',
+]
+
+test('CIQ126 — industriel : seules les ENTRÉES v2 partent, aucune clé écran v1', () => {
   const bloc = projeterEtudeMarche('industriel', {
-    etude: ETUDE_BRUTE, choix: CHOIX, entrees, partDiurne: '65',
-    tensionRaccordement: 'mt', repartitionMt: { pointe: '20', pleines: '50', creuses: '' },
+    choix: CHOIX, entrees, ciEntrees: ENTREES_CI,
   })
-  assert.deepEqual(horsSchema(bloc), [])
-  for (const k of ['kwc', 'prix_kwc', 'economies_annuelles', 'production_annuelle']) {
-    assert.ok(!(k in bloc), `${k} ne doit pas sortir`)
-  }
-  assert.deepEqual(bloc, {
-    scenario: 'sans_batterie', recommended_option: 'sans_batterie', nombre_proprietes: null,
-    conso_annuelle: 250000, distributeur: 'onee',
-    taux_autoconso: 82.5, taux_couverture: 61, payback: 4.2,
-    injection_kwh_an: 12000, injection_dh_an: null, etude_kwc_base: 120,
-    part_diurne_pct: 65,
-    tension_raccordement: 'mt', repartition_mt: { pointe: 20, pleines: 50 },
-  })
+  assert.deepEqual(bloc, { ...CHOIX, ...ENTREES_CI })
+  for (const k of CLES_V1_RETIREES) assert.ok(!(k in bloc), `${k} ne doit plus sortir`)
 })
 
-test('commercial : catégorie + réponses typées, pas de part diurne, BT ⇒ repartition null', () => {
+test('commercial : catégorie + réponses typées, entrées v2, aucune clé v1', () => {
   const bloc = projeterEtudeMarche('commercial', {
-    etude: ETUDE_BRUTE, choix: CHOIX, entrees, partDiurne: '65',
-    tensionRaccordement: 'bt', repartitionMt: { pointe: '20' },
+    choix: CHOIX, entrees, ciEntrees: { ...ENTREES_CI, mode: 'commercial' },
     categorie: 'hotel', reponses: { chambres: '40', piscine: 1, occupation_pct: '' },
   })
-  assert.deepEqual(horsSchema(bloc), [])
-  assert.equal(bloc.part_diurne_pct, undefined)
-  assert.equal(bloc.repartition_mt, null)
+  assert.deepEqual(horsSchema(Object.fromEntries(Object.entries(bloc)
+    .filter(([k]) => !(k in ENTREES_CI)))), [])
+  for (const k of CLES_V1_RETIREES) assert.ok(!(k in bloc), `${k} ne doit plus sortir`)
+  assert.equal(bloc.mode, 'commercial')
   assert.equal(bloc.categorie_commerciale, 'hotel')
   assert.equal(bloc.chambres, 40)
   assert.equal(bloc.piscine, true)

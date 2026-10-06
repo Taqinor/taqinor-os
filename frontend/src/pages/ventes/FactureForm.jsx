@@ -83,7 +83,34 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
     remise_globale:  String(facture?.remise_globale  ?? '0'),
     statut_teledeclaration: facture?.statut_teledeclaration ?? 'non_soumise',
     note:            facture?.note             ?? '',
+    // CIQ226 — référence de commande du client (héritée du devis, éditable).
+    reference_commande_client: facture?.reference_commande_client ?? '',
   })
+  // CIQ226 — retenue de garantie : l'état SERVI (montant retenu, exigible,
+  // date de libération), rafraîchi par « Libérer la retenue ».
+  const [retenue, setRetenue] = useState({
+    retenue_garantie_mad: facture?.retenue_garantie_mad ?? null,
+    retenue_liberee_le: facture?.retenue_liberee_le ?? null,
+    montant_exigible: facture?.montant_exigible ?? null,
+  })
+  const [dateLiberation, setDateLiberation] = useState('')
+  const [liberation, setLiberation] = useState({ enCours: false, erreur: null })
+  const libererRetenue = async () => {
+    setLiberation({ enCours: true, erreur: null })
+    try {
+      const { data } = await ventesApi.libererRetenueFacture(facture.id, dateLiberation)
+      setRetenue({
+        retenue_garantie_mad: data.retenue_garantie_mad ?? null,
+        retenue_liberee_le: data.retenue_liberee_le ?? null,
+        montant_exigible: data.montant_exigible ?? null,
+      })
+      setLiberation({ enCours: false, erreur: null })
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      setLiberation({ enCours: false,
+                      erreur: typeof detail === 'string' ? detail : 'La retenue n’a pas pu être libérée.' })
+    }
+  }
 
   const [lines, setLines] = useState(
     facture?.lignes?.length
@@ -260,6 +287,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
         remise_globale: fields.remise_globale,
         statut_teledeclaration: fields.statut_teledeclaration,
         note:           fields.note || null,
+        reference_commande_client: (fields.reference_commande_client || '').trim(),
       }
 
       // VX117 — une facture déjà créée (id serveur ou id exposé par un
@@ -669,6 +697,37 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                       onChange={e => setField('conditions_paiement', e.target.value)}
                       placeholder="Ex. Virement à 30 jours, RIB…" />
           </div>
+
+          {/* ── CIQ226 — référence de commande du client ── */}
+          <div className="grid gap-1.5">
+            <Label htmlFor="fc-ref-commande">Référence de commande du client</Label>
+            <Input id="fc-ref-commande" maxLength={60} value={fields.reference_commande_client}
+                   onChange={e => setField('reference_commande_client', e.target.value)} />
+          </div>
+
+          {/* ── CIQ226 — retenue de garantie : montant retenu, exigible, libération ── */}
+          {isEdit && retenue.retenue_garantie_mad != null && (
+            <div className="grid gap-1.5 rounded-lg border border-border p-3 text-sm" data-testid="fc-retenue">
+              <p>Retenue de garantie : <strong>{formatMAD(retenue.retenue_garantie_mad)}</strong>
+                {retenue.retenue_liberee_le ? ` — libérée le ${retenue.retenue_liberee_le}` : ' — non libérée'}</p>
+              <p data-testid="fc-montant-exigible">Montant exigible : <strong>{formatMAD(retenue.montant_exigible)}</strong></p>
+              {!retenue.retenue_liberee_le && (
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="grid gap-1">
+                    <Label htmlFor="fc-date-liberation">Date de réception définitive</Label>
+                    <Input id="fc-date-liberation" type="date" value={dateLiberation}
+                           onChange={e => setDateLiberation(e.target.value)} />
+                  </div>
+                  <Button type="button" variant="outline" loading={liberation.enCours}
+                          disabled={!dateLiberation} onClick={libererRetenue}
+                          data-testid="fc-liberer-retenue">
+                    Libérer la retenue
+                  </Button>
+                </div>
+              )}
+              {liberation.erreur && <p className="text-xs text-destructive">{liberation.erreur}</p>}
+            </div>
+          )}
 
           {/* ── Note ── */}
           <div className="grid gap-1.5">

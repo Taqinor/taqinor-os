@@ -29,10 +29,10 @@ describe('QX52 — LEAD_TYPE_TO_MODE (4 modes cohérents)', () => {
   })
 })
 
-describe('QX52 — day-share commercial distinct', () => {
-  it('DAY_USAGE_DEFAULTS a une entrée Commerciale propre', () => {
-    expect(DAY_USAGE_DEFAULTS.Commerciale).toBeDefined()
-    // Commerciale a sa propre valeur (jamais celle d’un autre mode par accident)
-    expect(typeof DAY_USAGE_DEFAULTS.Commerciale).toBe('number')
+describe('CIQ128 — plus de part diurne C&I d’écran', () => {
+  it('DAY_USAGE_DEFAULTS ne porte plus d’entrée commerciale ni industrielle', () => {
+    expect(DAY_USAGE_DEFAULTS).not.toHaveProperty('Commerciale')
+    expect(DAY_USAGE_DEFAULTS).not.toHaveProperty('Industrielle')
+    expect(typeof DAY_USAGE_DEFAULTS['Résidentielle']).toBe('number')
   })
 })

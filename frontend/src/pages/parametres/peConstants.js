@@ -10,6 +10,56 @@ export const DEFAULT_PAYMENT_TERMS = {
   agricole: { acompte: 30, materiel: 60, solde: 10 },
   industriel: { acompte: 50, materiel: 40, solde: 10 },
 }
+// CIQ225 — échéancier société à N jalons (`CompanyProfile.payment_terms[mode]`
+// = liste `[{jalon, pct}]`, ou l'ancienne forme `{acompte, materiel, solde}`
+// toujours lue). Clés = `company_settings.LIBELLES_JALONS`.
+// (clés de `company_settings.LIBELLES_JALONS`, validées par le serveur)
+export const JALONS_SOCIETE = [
+  ['acompte', 'Acompte'],
+  ['materiel', 'Livraison du matériel'],
+  ['solde', 'Solde'],
+  ['commande', 'Commande'],
+  ['livraison_materiel', 'Livraison du matériel (C&I)'],
+  ['mise_en_service', 'Mise en service'],
+  ['reception_definitive', 'Réception définitive'],
+]
+const JALONS_ANCIENNE_FORME = ['acompte', 'materiel', 'solde']
+
+/** Jalons éditables d'un mode : liste `[{jalon, pct}]` (pct en texte saisi). */
+export function jalonsDuMode(termes) {
+  if (Array.isArray(termes)) {
+    return termes.map(j => ({ ...j, pct: String(j?.pct ?? '') }))
+  }
+  if (termes && typeof termes === 'object') {
+    return JALONS_ANCIENNE_FORME.map(k => ({ jalon: k, pct: String(termes[k] ?? '') }))
+  }
+  return []
+}
+
+/** Somme des pourcentages saisis d'un mode (arrondie au centième). */
+export function sommeJalons(termes) {
+  const total = jalonsDuMode(termes)
+    .reduce((s, j) => s + (parseFloat(String(j.pct).replace(',', '.')) || 0), 0)
+  return Math.round(total * 100) / 100
+}
+
+/** Charge utile d'un mode : liste → `[{jalon, pct:nombre}]` ; ancienne forme
+ *  intacte (trois nombres) tant que le mode n'est pas passé en liste. */
+export function payloadTermes(termes) {
+  if (Array.isArray(termes)) {
+    return termes.map(j => ({
+      jalon: j.jalon,
+      ...(j.libelle ? { libelle: j.libelle } : {}),
+      pct: Number(String(j.pct).replace(',', '.')) || 0,
+    }))
+  }
+  return {
+    acompte: Number(termes?.acompte) || 0,
+    materiel: Number(termes?.materiel) || 0,
+    solde: Number(termes?.solde) || 0,
+  }
+}
+
 export const DEFAULT_PREFIXES = { devis: 'DEV', facture: 'FAC', avoir: 'AVO', bon_commande: 'BC' }
 // Numérotation par type (D3) : largeur de remplissage + période de
 // réinitialisation. Défauts = comportement historique (4 chiffres, mensuel).

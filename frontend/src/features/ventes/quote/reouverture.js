@@ -73,3 +73,48 @@ export function deriverReouverture(lignes, { mode } = {}) {
     accessoiresOnly,
   }
 }
+
+// ── CIQ222 — `etude_params.tarif_declare` stocké → état d'écran (`?edit=`) ──
+// Inverse exact de `tarifDeclareDepuisSaisie` (etudeMarcheBloc.js) : la date
+// de saisie revient telle quelle, aucun nombre n'est reformaté.
+const texteTarif = (v) => (v === null || v === undefined ? '' : String(v))
+
+export function saisieDepuisTarifDeclare(td) {
+  const t = td && typeof td === 'object' ? td : null
+  if (!t) return null
+  const mt = t.mt || {}
+  return {
+    contrat: t.contrat || '',
+    baseTarifs: t.base_tarifs || '',
+    optionBiHoraire: t.option_bi_horaire === true,
+    pointe: texteTarif(mt.tarif_pointe),
+    pleines: texteTarif(mt.tarif_pleines),
+    creuses: texteTarif(mt.tarif_creuses),
+    primeFixe: texteTarif(mt.prime_fixe_kva_an),
+    puissance: texteTarif(mt.puissance_souscrite_kva),
+    dateFacture: t.date_facture || '',
+    provenance: t.provenance || '',
+    saisiLe: t.saisi_le || '',
+  }
+}
+
+// ── CIQ223 — `etude_params.saisies_economie_ci` stocké → état d'écran ──
+// Les nombres reviennent en texte (l'écran les tient tels que tapés) ; les
+// dates de saisie et les sources reviennent telles quelles.
+const enTexte = (o) => (o && typeof o === 'object'
+  ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k,
+    typeof v === 'number' ? String(v) : (v === null || v === undefined ? '' : v)]))
+  : null)
+
+export function ecoCiDepuisSaisies(s) {
+  const e = s && typeof s === 'object' ? s : {}
+  return {
+    tva_recuperable: enTexte(e.tva_recuperable),
+    taux_actualisation_client: enTexte(e.taux_actualisation_client),
+    revente_demandee: e.revente_demandee === true,
+    parcours_aide: e.parcours_aide || null,
+    offre_financement: enTexte(e.offre_financement),
+    offre_cse_concurrente: enTexte(e.offre_cse_concurrente),
+    fiscalite_client: enTexte(e.fiscalite_client),
+  }
+}

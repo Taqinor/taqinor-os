@@ -2,8 +2,8 @@
 // ---------------------------------------------------------------------------
 // Quatre panneaux sortent de `DevisGenerator.jsx` : chacun ne monte que les
 // champs de SON marché. Le commercial ajoute au socle industriel la
-// CATÉGORIE (hôtel, bureau…) et ses questions par archétype, qui pilotent le
-// taux de charge diurne de son étude ; il n'a pas de pompage.
+// CATÉGORIE (hôtel, bureau…) et ses questions par archétype (CIQ125/CIQ131 :
+// elles partent au moteur serveur C&I) ; il n'a pas de pompage.
 //
 // QJR241 — le panneau se retire lui-même hors de son marché via `CLE`
 // (constante locale ; l'ex-module de stratégie `quote/marches/commercial.js`,
@@ -13,16 +13,13 @@
 // toute autre valeur, `modeDepuisTypeInstallation`), donc exactement un
 // panneau rend, à la place exacte qu'occupait la carte d'origine.
 //
-// QJR244 — la carte « Factures Électriques » (factures hiver/été + grille des
-// 12 mois + bloc facture réelle du client) est désormais PARTAGÉE
-// (`CarteFacturesElectriques`, commune aux trois panneaux de marché réseau) :
-// ce panneau lui passe son contenu propre (conso/injection/raccordement/MT +
-// catégorie commerciale) en `children`, rendu à L'INTÉRIEUR de la MÊME
-// `CardContent` — le rendu reste inchangé à l'octet.
+// CIQ125/CIQ126 — UNE seule saisie de consommation : la carte C&I partagée
+// (`CarteProfilCi` : profil déclaré + résultat du moteur serveur) ; ce panneau
+// y ajoute sa catégorie commerciale en `children`. Les factures hiver/été et
+// la facture réelle résidentielles ne sont plus montées ici.
 //
 // AUCUNE LOGIQUE ICI : l'état et les gestes arrivent en props, tout le calcul
-// reste dans l'écran porteur. Le balisage sort à l'octet — mêmes `id`, mêmes
-// `placeholder`, mêmes classes, même ordre DOM. Chaque `<input type="number">`
+// reste dans l'écran porteur (et au serveur). Chaque `<input type="number">`
 // garde `step="any"` (règle fondateur : aucun champ ne snappe jamais) et le
 // `noValidate` est resté sur le formulaire porteur.
 import {
@@ -30,61 +27,99 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../../ui'
 import {
-  COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS, commercialDayShare,
+  COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS,
 } from '../../../features/ventes/solar'
-import CarteFacturesElectriques from './CarteFacturesElectriques'
-// QJR637 — conso / injection / raccordement BT-MT / bloc MT : module partagé.
-import BlocEtudeReseau from './BlocEtudeReseau'
+// CIQ125 — la carte C&I partagée (profil déclaré + résultat du moteur serveur).
+import { CarteProfilCi } from './BlocEtudeReseau'
+// CIQ223 — la carte « Économies » servie par le serveur (`economie_ci`).
+import CarteEconomieCi from './CarteEconomieCi'
 
 // QJR241 — clé de marché de ce panneau (ex-`cle` de quote/marches/
 // commercial.js, module supprimé faute de consommateur de production).
 const CLE = 'commercial'
 
 // QJR575 — catégorie « Non précisée » : la valeur par défaut de l'écran (Radix
-// refuse value=''), part diurne 80 % — la MÊME que le « Devis automatique »,
-// qui ne connaît aucune catégorie — et persistée `null` (jamais « hôtel » par
-// défaut : rouvrir puis enregistrer réécrivait taux / économies / payback).
+// refuse value=''), persistée `null` (jamais « hôtel » par défaut) : le moteur
+// serveur C&I ne reçoit alors aucune catégorie.
 export const CATEGORIE_NON_PRECISEE = 'non_precisee'
+
+// CIQ131 — les HEURES qu'une réponse demande (le moteur serveur les lit dans
+// `rythme.reponses_categorie`, `moteur_ci/categories.py`) : saisies à côté
+// de la réponse, jamais supposées. `[[début, fin]]` en heures civiles.
+const HEURES_PAR_REPONSE = {
+  horaires: { cle: 'heures', libelle: "Heures d'ouverture" },
+  cuisson_nocturne: { cle: 'heures_cuisson', libelle: 'Heures de cuisson' },
+  garde_nuit: { cle: 'heures_garde', libelle: 'Heures de garde' },
+}
+
+function HeuresDeLaReponse({ cle, reponses, setReponse }) {
+  if (cle === 'fermeture_estivale') {
+    if (!reponses.fermeture_estivale) return null
+    return (
+      <div className="flex gap-2" data-testid="ci-fermeture-estivale">
+        <Input type="date" aria-label="Fermeture estivale du" value={reponses.fermeture_du ?? ''}
+               onChange={e => setReponse('fermeture_du', e.target.value)} />
+        <Input type="date" aria-label="Fermeture estivale au" value={reponses.fermeture_au ?? ''}
+               onChange={e => setReponse('fermeture_au', e.target.value)} />
+      </div>
+    )
+  }
+  const h = HEURES_PAR_REPONSE[cle]
+  if (!h || !reponses[cle]) return null
+  const plage = (Array.isArray(reponses[h.cle]) && reponses[h.cle][0]) || ['', '']
+  const poser = (i, v) => {
+    const suivante = [...plage]
+    suivante[i] = v
+    setReponse(h.cle, [suivante])
+  }
+  return (
+    <div className="flex items-center gap-2 text-xs" data-testid={`ci-${h.cle}`}>
+      <span>{h.libelle}</span>
+      <Input type="number" min="0" step="any" aria-label={`${h.libelle} début`}
+             value={plage[0] ?? ''} onChange={e => poser(0, e.target.value)} />
+      <Input type="number" min="0" step="any" aria-label={`${h.libelle} fin`}
+             value={plage[1] ?? ''} onChange={e => poser(1, e.target.value)} />
+    </div>
+  )
+}
+
+// CIQ131 — l'archétype retenu par le moteur (avec sa source, « estimation »
+// quand aucun horaire n'est déclaré) et les réponses SANS effet sur le calcul.
+function ArchetypeEtSansEffet({ profil }) {
+  if (!profil) return null
+  const a = profil.archetype
+  const sansEffet = profil.reponses_non_consommees || []
+  return (
+    <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+      {a && (
+        <p data-testid="ci-archetype">
+          Archétype retenu : <strong>{a.cle}</strong>
+          {a.source ? ` — source : ${a.source}` : ''}
+          {profil.methode === 'archetype' ? ' (estimation : aucun horaire déclaré)' : ''}
+        </p>
+      )}
+      {sansEffet.length > 0 && (
+        <p data-testid="ci-sans-effet">
+          Sans effet sur le calcul : {sansEffet.join(', ')}.
+        </p>
+      )}
+    </div>
+  )
+}
 
 export default function PanneauCommercial({
   marche,
-  // ── Factures mensuelles ──
-  fHiver, setFHiver, fEte, setFEte, syncBillEstimator,
-  onHiverPaste, onEtePaste, handleEstimerMois, errors, monthly, setMonth,
-  // ── Facture réelle du client (QF4) ──
-  distributeur, setDistributeur, realBillMode, setRealBillMode,
-  realBillMad, setRealBillMad, realBillKwh, setRealBillKwh,
-  onRealBillPaste, consoAnnuelleReelle,
-  // ── Étude d'autoconsommation + raccordement (QX50 / QXMT) ──
-  consoMensuelle, setConsoMensuelle, injectionEnabled, setInjectionEnabled,
-  tensionRaccordement, dispatchSizing, estMt, repartitionMt, setPartMt,
-  tarifMtApplique,
   // ── Catégorie commerciale et ses questions (QX44) ──
   categorieCommerciale, setCategorieCommerciale,
   commercialAnswers, setCommercialAnswer,
+  // ── CIQ125/CIQ222 — la carte C&I (profil, aperçu serveur, tarif, erreurs) ──
+  ...carte
 }) {
+  const { apercuCi } = carte
   if (marche !== CLE) return null
   return (
-    <CarteFacturesElectriques
-      fHiver={fHiver} setFHiver={setFHiver} fEte={fEte} setFEte={setFEte}
-      syncBillEstimator={syncBillEstimator}
-      onHiverPaste={onHiverPaste} onEtePaste={onEtePaste}
-      handleEstimerMois={handleEstimerMois} errors={errors}
-      monthly={monthly} setMonth={setMonth}
-      distributeur={distributeur} setDistributeur={setDistributeur}
-      realBillMode={realBillMode} setRealBillMode={setRealBillMode}
-      realBillMad={realBillMad} setRealBillMad={setRealBillMad}
-      realBillKwh={realBillKwh} setRealBillKwh={setRealBillKwh}
-      onRealBillPaste={onRealBillPaste} consoAnnuelleReelle={consoAnnuelleReelle}
-    >
-      <BlocEtudeReseau
-        consoMensuelle={consoMensuelle} setConsoMensuelle={setConsoMensuelle}
-        injectionEnabled={injectionEnabled} setInjectionEnabled={setInjectionEnabled}
-        tensionRaccordement={tensionRaccordement} dispatchSizing={dispatchSizing}
-        estMt={estMt} repartitionMt={repartitionMt} setPartMt={setPartMt}
-        tarifMtApplique={tarifMtApplique} erreurConso={errors?.conso}
-      />
-
+    <>
+    <CarteProfilCi {...carte}>
       {/* QX44 — étude commerciale par catégorie */}
       <div className="mt-3.5">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -99,10 +134,6 @@ export default function PanneauCommercial({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">
-              Profil de charge diurne ≈ {commercialDayShare(categorieCommerciale)} %
-              (ajuste l'autoconsommation de l'étude).
-            </p>
           </div>
         </div>
         {(COMMERCIAL_CATEGORY_QUESTIONS[categorieCommerciale] || []).length > 0 && (
@@ -134,11 +165,16 @@ export default function PanneauCommercial({
                     Oui
                   </label>
                 )}
+                <HeuresDeLaReponse cle={q.key} reponses={commercialAnswers}
+                                   setReponse={setCommercialAnswer} />
               </div>
             ))}
           </div>
         )}
+        <ArchetypeEtSansEffet profil={apercuCi?.donnees?.profil_charge} />
       </div>
-    </CarteFacturesElectriques>
+    </CarteProfilCi>
+    <CarteEconomieCi apercu={carte.apercuEcoCi} eco={carte.ecoCi} setEcoChamp={carte.setEcoChamp} />
+    </>
   )
 }

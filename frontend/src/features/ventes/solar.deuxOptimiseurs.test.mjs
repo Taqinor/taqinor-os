@@ -1,9 +1,8 @@
 // L-2OPT (fondateur 24/08/2026) — « deux optimiseurs indépendants ». Un devis
 // résidentiel « Les deux (Sans + Avec) » ne dimensionne plus les deux options
 // sur le MÊME kWc : l'écran compose SANS (optimum payback sans batterie,
-// comportement historique) et AVEC (optimum payback AVEC batterie —
-// `optimalKwcByPayback({ avecBatterie: true })`, jamais utilisé jusqu'ici)
-// séparément, puis fusionne ligne à ligne (`fusionnerVariantes`) :
+// comportement historique) et AVEC (optimum AVEC batterie, servi par le
+// moteur horaire serveur) séparément, puis fusionne ligne à ligne (`fusionnerVariantes`) :
 //   • ligne identique (produit, désignation, PU, taux TVA, quantité)
 //     → UNE ligne commune `variante: ''` ;
 //   • quantité (ou produit) divergente → DEUX lignes `variante: 'sans'` /
@@ -17,7 +16,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   fusionnerVariantes, optionTotalsTTC, batteryKwhFromLines, computeROI,
-  INVERTER_REPLACE_YEAR, optimalKwcByPayback, comptePanneauxOption,
+  INVERTER_REPLACE_YEAR, comptePanneauxOption,
   batteryCapaciteInconnue, totauxCanoniquesTtc,
 } from './solar.js'
 import { PAS_ARRONDI_DEVIS } from './remise.js'
@@ -273,50 +272,6 @@ test('L-2OPT — computeROI : une ligne onduleur réseau taguée \'avec\' ne dou
   assert.equal(
     withMerged.cashflow_sans[INVERTER_REPLACE_YEAR - 1],
     withSansSeul.cashflow_sans[INVERTER_REPLACE_YEAR - 1])
-})
-
-// ── optimalKwcByPayback(avecBatterie: true) — le second optimiseur existe
-// déjà (verrouillé par solar.dimensionnement.test.mjs pour `avecBatterie:
-// false`) ; ce test confirme seulement qu'il peut retenir un palier
-// DIFFÉRENT de l'optimum sans batterie sur un catalogue synthétique où le
-// payback AVEC est minimisé par une taille plus grande. ───────────────────
-
-test('L-2OPT — optimalKwcByPayback(avecBatterie: true) peut retenir un palier différent de avecBatterie: false', () => {
-  const ht = (ttc) => (ttc / 1.2).toFixed(2)
-  let _id = 0
-  const P = (nom, ttc) => ({ id: ++_id, nom, prix_vente: ht(ttc) })
-  const PRODUITS = [
-    P('Onduleur réseau Huawei 5kW Monophasé', 14000),
-    P('Onduleur réseau Huawei 10kW Monophasé', 18000),
-    P('Onduleur hybride Deye 5kW Monophasé', 17000),
-    P('Onduleur hybride Deye 10kW Monophasé', 28000),
-    P('Panneau Canadien Solar 710W', 1400),
-    P('Batterie Dyness 5 kWh', 17000),
-    P('Structures acier', 500),
-    P('Socles', 80),
-    P('Accessoires', 2000),
-    P('Tableau De Protection AC/DC', 2000),
-    P('Installation', 4800),
-    P('Transport', 1000),
-    P('Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 5000),
-  ]
-  const FACTURES = Array(12).fill(2600)
-  const commun = {
-    produits: PRODUITS, factures: FACTURES, dayUsagePct: 60,
-    panelW: 710, structureType: 'acier', besoinKwc: 10,
-  }
-  const sans = optimalKwcByPayback(commun)
-  const avec = optimalKwcByPayback({ ...commun, avecBatterie: true })
-  // Les deux restent des paliers valides du même balayage — la fonction ne
-  // lève jamais, l'un OU l'autre peut légitimement coïncider ou diverger
-  // selon le catalogue ; ce test verrouille juste qu'un objectif AVEC
-  // batterie est bien pris en compte séparément (paybacks distincts par
-  // palier, jamais le même tableau que « sans »).
-  assert.ok(sans.kwcOptimal > 0)
-  assert.ok(avec.kwcOptimal > 0)
-  const paliersDivergent = sans.paliers.some((p, i) =>
-    p.payback !== avec.paliers[i]?.payback)
-  assert.ok(paliersDivergent, 'le payback AVEC batterie devrait différer du payback SANS par palier')
 })
 
 // ── comptePanneauxOption ──────────────────────────────────────────────────

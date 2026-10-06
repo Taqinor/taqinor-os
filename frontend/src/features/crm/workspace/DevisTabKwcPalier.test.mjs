@@ -27,7 +27,7 @@ test('QJR602 — plus aucun avis de palier dans DevisTab.jsx', () => {
   assert.doesNotMatch(SRC, /noticePalierKwc/,
     'le devis auto n\'arrondit plus : aucun avis de palier à annoncer')
   assert.doesNotMatch(SRC, /lw-devis-kwc-palier/)
-  assert.doesNotMatch(SRC, /arrondirAuPasKwc/)
+  assert.doesNotMatch(SRC, new RegExp(['arrondir', 'AuPasKwc'].join('')))
 })
 
 test('QJR41 — le champ EZ5 « ne rejette ni n\'arrondit jamais une saisie » reste intact', () => {

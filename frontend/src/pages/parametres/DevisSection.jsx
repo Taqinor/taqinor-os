@@ -11,7 +11,8 @@ import {
 import ventesApi from '../../api/ventesApi'
 import { SectionTitle, Field } from './peComponents'
 import {
-  MODE_LABELS, DOC_TYPES, REGLAGES_POMPAGE, REPERES_ENERGIE, joursDepuisReleve,
+  JALONS_SOCIETE, jalonsDuMode, sommeJalons,
+  DOC_TYPES, REGLAGES_POMPAGE, REPERES_ENERGIE, joursDepuisReleve,
 } from './peConstants'
 
 /* WIR225/QG9 — Le « % de variation par défaut » des variantes de devis vivait
@@ -48,6 +49,17 @@ const MONTANTS_FORFAIT_CI = [
 ]
 const MONTANTS_BANDE_CI = [['min_ht', 'Minimum HT / kWc'], ['max_ht', 'Maximum HT / kWc']]
 
+// CIQ225 — un échéancier à N jalons par marché (le serveur valide : jalons
+// connus, somme = 100 %, refus affiché sous la liste).
+const MODES_ECHEANCIER = [
+  ['residentiel', 'Résidentiel'], ['agricole', 'Agricole'],
+  ['industriel', 'Industriel'], ['commercial', 'Commercial'],
+]
+const messageServeur = (erreur, champ) => {
+  const m = erreur && typeof erreur === 'object' ? erreur[champ] : null
+  return Array.isArray(m) ? m.join(' ') : (typeof m === 'string' ? m : '')
+}
+
 const _rempli = (v) => v !== null && v !== undefined && String(v).trim() !== ''
 /** Un montant saisi sans source : l'erreur s'affiche sous le champ Source. */
 const sourceManquante = (entree, montants) => !!entree
@@ -55,8 +67,8 @@ const sourceManquante = (entree, montants) => !!entree
 const MSG_SOURCE = 'Source obligatoire (devis fournisseur, offre écrite…) : jamais un montant sans source.'
 
 export default function DevisSection({
-  form, set, setForm, setPT, setPrefix, setNumbering, numberingPreview,
-  canManageSensitive = false,
+  form, set, setForm, setPrefix, setNumbering, numberingPreview,
+  canManageSensitive = false, profileError = null,
 }) {
   const roleNom = useSelector(s => s.auth?.role_nom) || ''
   const peutReglerVariante = canManageSensitive
@@ -88,6 +100,32 @@ export default function DevisSection({
     bande_prix_kwc_ci: { ...(p.bande_prix_kwc_ci || {}), [champ]: valeur },
   }))
 
+  // CIQ225 — édition de la LISTE de jalons d'un marché (ajout, retrait, ordre).
+  const jalonsDe = (mode) => jalonsDuMode(form.payment_terms?.[mode])
+  const setJalons = (mode, fn) => setForm(p => ({
+    ...p,
+    payment_terms: { ...(p.payment_terms || {}),
+                     [mode]: fn(jalonsDuMode(p.payment_terms?.[mode])) },
+  }))
+  const majJalon = (mode, i, champ, valeur) => setJalons(mode, liste => liste.map(
+    (j, k) => {
+      if (k !== i) return j
+      if (champ !== 'jalon') return { ...j, [champ]: valeur }
+      const { libelle: _ancien, ...reste } = j
+      return { ...reste, jalon: valeur }
+    }))
+  const retirerJalon = (mode, i) => setJalons(mode, liste => liste.filter((_, k) => k !== i))
+  const ajouterJalon = (mode) => setJalons(mode, liste => [
+    ...liste, { jalon: 'mise_en_service', pct: '' }])
+  const deplacerJalon = (mode, i, sens) => setJalons(mode, (liste) => {
+    const k = i + sens
+    if (k < 0 || k >= liste.length) return liste
+    const copie = [...liste]
+    ;[copie[i], copie[k]] = [copie[k], copie[i]]
+    return copie
+  })
+
+  const erreurEcheancier = messageServeur(profileError, 'payment_terms')
   const [variantePct, setVariantePct] = useState('')
   const [variantePctSaving, setVariantePctSaving] = useState(false)
 
@@ -129,24 +167,68 @@ export default function DevisSection({
         <CardContent className="pt-4 sm:pt-5">
           <SectionTitle label="Devis" icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></>}/>
           <p className="mb-3.5 text-[11.5px] text-muted-foreground">
-            Conditions de paiement par marché (acompte / matériel / solde, en %).
-            Les factures d'acompte suivent ces valeurs.
+            Conditions de paiement par marché : une liste de jalons (commande,
+            livraison du matériel, mise en service, réception définitive…) dont
+            les pourcentages totalisent 100 %. Les factures d'acompte suivent
+            ces valeurs.
           </p>
-          {Object.keys(MODE_LABELS).map(mode => (
-            <div key={mode} className="mb-2.5">
-              <div className="mb-1 text-xs font-semibold text-foreground">{MODE_LABELS[mode]}</div>
-              <div className="pe-grid-3">
-                {['acompte', 'materiel', 'solde'].map(k => (
-                  <div key={k} className="flex flex-col gap-1">
-                    <Label className="text-[10.5px] font-normal capitalize text-muted-foreground">{k} %</Label>
-                    <Input type="number" step="any"
-                           value={form.payment_terms?.[mode]?.[k] ?? ''}
-                           onChange={e => setPT(mode, k, e.target.value)} />
+          {MODES_ECHEANCIER.map(([mode, libelleMode]) => {
+            const jalons = jalonsDe(mode)
+            const somme = sommeJalons(jalons)
+            return (
+              <div key={mode} className="mb-3 grid gap-1.5" data-testid={`echeancier-${mode}`}>
+                <div className="text-xs font-semibold text-foreground">{libelleMode}</div>
+                {jalons.map((j, i) => (
+                  <div key={i} className="flex flex-wrap items-end gap-2">
+                    <div className="flex flex-col gap-1">
+                      <Label className="text-[10.5px] font-normal text-muted-foreground">Jalon</Label>
+                      <select aria-label={`Jalon ${i + 1} — ${libelleMode}`}
+                              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                              value={j.jalon}
+                              onChange={e => majJalon(mode, i, 'jalon', e.target.value)}>
+                        {JALONS_SOCIETE.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label className="text-[10.5px] font-normal text-muted-foreground">%</Label>
+                      <Input type="number" step="any"
+                             aria-label={`Pourcentage ${i + 1} — ${libelleMode}`}
+                             value={j.pct}
+                             onChange={e => majJalon(mode, i, 'pct', e.target.value)} />
+                    </div>
+                    <Button type="button" variant="ghost" size="sm"
+                            aria-label={`Monter le jalon ${i + 1} — ${libelleMode}`}
+                            disabled={i === 0} onClick={() => deplacerJalon(mode, i, -1)}>↑</Button>
+                    <Button type="button" variant="ghost" size="sm"
+                            aria-label={`Descendre le jalon ${i + 1} — ${libelleMode}`}
+                            disabled={i === jalons.length - 1}
+                            onClick={() => deplacerJalon(mode, i, 1)}>↓</Button>
+                    <Button type="button" variant="ghost" size="sm"
+                            aria-label={`Retirer le jalon ${i + 1} — ${libelleMode}`}
+                            disabled={jalons.length <= 1}
+                            onClick={() => retirerJalon(mode, i)}>×</Button>
                   </div>
                 ))}
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button type="button" variant="outline" size="sm"
+                          onClick={() => ajouterJalon(mode)}>
+                    Ajouter un jalon
+                  </Button>
+                  <span className="text-xs text-muted-foreground"
+                        data-testid={`echeancier-${mode}-somme`}>Total : {somme} %</span>
+                </div>
+                {jalons.length > 0 && somme !== 100 && (
+                  <p role="alert" className="text-xs text-destructive">
+                    Les jalons de « {libelleMode} » doivent totaliser 100 % (total {somme} %).
+                  </p>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
+          {erreurEcheancier && (
+            <p role="alert" data-testid="echeancier-erreur-serveur"
+               className="mb-2 text-xs text-destructive">{erreurEcheancier}</p>
+          )}
           {/* WIR225/QG9 — % de variation par défaut des variantes de devis. */}
           <div className="pe-grid-2 mt-2.5">
             <Field label="% de variation par défaut des variantes"

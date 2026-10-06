@@ -17,6 +17,9 @@ vi.mock('../../../api/ventesApi', () => ({
     // Aperçu jamais résolu : seul l'état des boutons est sous test.
     getProposalPdf: vi.fn(() => new Promise(() => {})),
     reviserDevis: vi.fn(),
+    // CIQ127 — le devis automatique C&I part au serveur.
+    creerDevisAuto: vi.fn(),
+    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 vi.mock('../../../api/stockApi', () => ({
@@ -77,5 +80,39 @@ describe('QJR534 — LeadDevisPanel : Édition complète ou Réviser selon le se
     })
     rendre({ existingDevisId: 413, mode: 'edit' })
     expect((await screen.findByTestId('generateur-monte')).textContent).toBe('editId=413')
+  })
+})
+
+// CIQ127 — « Devis automatique » d'un lead commercial / industriel : UN appel
+// `POST /ventes/devis/auto/` ; les alertes du moteur sont listées, les
+// INTERNES marquées « vendeur seulement » ; un 422 affiche le message serveur.
+describe('CIQ127 — LeadDevisPanel : devis automatique C&I par le serveur', () => {
+  const LEAD_INDUS = { id: 91, nom: 'Usine', type_installation: 'industriel' }
+  const rendreAuto = () => render(
+    <Provider store={configureStore({ reducer: { r: (s = {}) => s } })}>
+      <MemoryRouter>
+        <LeadDevisPanel lead={LEAD_INDUS} mode="auto" onClose={vi.fn()} />
+      </MemoryRouter>
+    </Provider>,
+  )
+
+  it('lead industriel : un seul appel serveur, alertes listées, internes marquées', async () => {
+    const alertes = exempleContrat('ventes', 'etude_ci_preview').alertes
+    ventesApi.creerDevisAuto.mockResolvedValueOnce({ data: { id: 615, alertes } })
+    ventesApi.getDevisById.mockResolvedValue({ data: { id: 615, reference: 'DEV-615' } })
+    rendreAuto()
+    const bloc = await screen.findByTestId('ldp-alertes-auto')
+    expect(ventesApi.creerDevisAuto).toHaveBeenCalledTimes(1)
+    expect(ventesApi.creerDevisAuto.mock.calls[0][0]).toMatchObject({ lead: 91 })
+    for (const a of alertes) expect(bloc).toHaveTextContent(a.message)
+    expect(screen.getAllByTestId('ldp-alerte-interne'))
+      .toHaveLength(alertes.filter((a) => a.interne === true).length)
+  })
+
+  it('422 du serveur : le message est affiché tel quel', async () => {
+    const detail = 'Consommation du site absente : renseignez les kWh mensuels du lead.'
+    ventesApi.creerDevisAuto.mockRejectedValueOnce({ response: { status: 422, data: { detail, field: 'consommation' } } })
+    rendreAuto()
+    expect(await screen.findByText(detail)).toBeInTheDocument()
   })
 })
