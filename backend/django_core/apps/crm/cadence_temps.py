@@ -338,54 +338,137 @@ def numero_joignable(lead):
     return ''
 
 
+def _chiffres(brut):
+    """Les chiffres d'un numéro, normalisés marocain quand c'est possible —
+    de quoi comparer deux graphies du MÊME numéro."""
+    import re
+
+    from apps.ventes.utils.phone import normalize_ma_phone
+
+    return normalize_ma_phone(brut) or re.sub(r'\D', '', str(brut or ''))
+
+
+def whatsapp_declare(lead):
+    """CIQ505 — un numéro saisi dans ``whatsapp``, exploitable et DIFFÉRENT
+    du téléphone, vaut DÉCLARATION : le client (ou la commerciale) a dit
+    « c'est mon WhatsApp », l'heuristique du fixe ne la contredit pas.
+
+    Même lecture que QJR584 (``LeadViewSet.perform_update``) : un WhatsApp
+    qui n'est que la COPIE du téléphone n'est pas une déclaration."""
+    from apps.ventes.utils.whatsapp import build_wa_url
+
+    brut = (getattr(lead, 'whatsapp', '') or '').strip()
+    if not brut or build_wa_url(brut, '') is None:
+        return False
+    telephone = (getattr(lead, 'telephone', '') or '').strip()
+    if not telephone:
+        return True
+    return _chiffres(brut) != _chiffres(telephone)
+
+
 def whatsapp_improbable(lead):
     """CAD34 — ``(improbable, motif)`` pour le numéro de CETTE fiche.
 
     Deux cas, deux phrases : aucun numéro exploitable du tout, ou un FIXE
     marocain (WhatsApp Business l'accepte, un particulier presque jamais).
     Dans les deux cas on ne bloque RIEN : on démarre par un appel et l'écran
-    dit pourquoi."""
+    dit pourquoi.
+
+    CIQ505 — un ``whatsapp`` DÉCLARÉ (distinct du téléphone) n'est jamais
+    jugé improbable : l'heuristique du fixe ne vaut que pour le repli sur le
+    téléphone, ou pour un ``whatsapp`` simple copie du téléphone."""
     from apps.ventes.utils.phone import normalize_ma_phone
 
     brut = numero_joignable(lead)
     if not brut:
         return True, MOTIF_SANS_NUMERO
+    if whatsapp_declare(lead):
+        return False, ''
     normalise = normalize_ma_phone(brut)
     if normalise and normalise.startswith(PREFIXE_FIXE_MA):
         return True, MOTIF_FIXE
     return False, ''
 
 
-def adapter_canal_au_numero(gabarit, lead):
+# ── CIQ505 — convention 8 : un fixe reçoit un E-MAIL, sinon un APPEL ────────
+
+#: Valeur de `crm.RelanceEtape.Canal.EMAIL`.
+CANAL_EMAIL = 'email'
+
+#: Les deux causes servies par ``canal_adapte`` (contrat CIQ10,
+#: ``relance_etape_v2.json``) — des phrases d'écran, jamais un comportement
+#: caché.
+CAUSE_FIXE_EMAIL = ('Numéro fixe : touche envoyée par e-mail '
+                    '(texte prêt, PDF à joindre).')
+CAUSE_FIXE_APPEL = ('Numéro fixe sans e-mail : appel — le texte du message '
+                    'sert de fil de conversation.')
+
+
+def _langue_francaise(lead, langue):
+    """La langue de relance du lead est-elle le français ? ``langue`` donnée
+    (déjà résolue par l'appelant) sinon résolue ici, paresseusement."""
+    if langue is None:
+        from .services import langue_relance_du_lead
+        langue = langue_relance_du_lead(lead)
+    return (langue or 'fr') == 'fr'
+
+
+def conversion_numero(lead, template_cle, *, langue=None):
+    """CIQ505 — la FONCTION PURE de la conversion d'une touche WhatsApp sur
+    un numéro fixe : ``(canal, cause)``, ou ``None`` quand rien ne change.
+
+    Le moteur (``adapter_canal_au_numero``) et l'écran (``canal_adapte``)
+    lisent CETTE fonction — jamais deux règles parallèles.
+
+    (1) Fixe + ``Lead.email`` + langue de relance française + une FORME
+    e-mail pour la clé du gabarit (``forme_email``, CIQ502) ⇒ ``email``.
+    (2) Sinon ⇒ ``appel`` : la clé est CONSERVÉE, son texte sert de fil de
+    conversation. La préférence « WhatsApp uniquement » gagne toujours, et
+    sans aucun numéro on ne convertit rien (la garde de cadence refuse)."""
+    if _prefere_whatsapp(lead):
+        return None
+    if not numero_joignable(lead):
+        return None
+    improbable, _motif = whatsapp_improbable(lead)
+    if not improbable:
+        return None
+    if (template_cle and (getattr(lead, 'email', '') or '').strip()):
+        from apps.parametres.models_messages import forme_email
+        if forme_email(template_cle) and _langue_francaise(lead, langue):
+            return CANAL_EMAIL, CAUSE_FIXE_EMAIL
+    return CANAL_APPEL, CAUSE_FIXE_APPEL
+
+
+def adapter_canal_au_numero(gabarit, lead, *, langue=None):
     """CAD34 — symétrique EXACT de CAD32 : sans WhatsApp joignable, un
-    barreau de message naît en APPEL.
+    barreau de message naît en APPEL ou, CIQ505 (convention 8, 03/10/2026),
+    en E-MAIL quand une adresse existe.
 
     La touche 1 du protocole est un WhatsApp : sur un lead arrivé par
     téléphone, la garde disait « cadence à lancer à la main » et rien ne
     proposait une composition « appel d'abord ». Le nombre de touches, les
-    libellés et les jours restent ceux du protocole — seul le canal change,
-    et la clé de gabarit part avec lui (un appel n'a pas de texte à envoyer,
-    comme les barreaux d'appel qui n'en ont déjà aucun).
+    libellés et les jours restent ceux du protocole — seul le canal change.
+    CIQ505 : la clé de gabarit est CONSERVÉE (le texte d'un appel sert de fil
+    de conversation ; celui d'un e-mail est sa forme e-mail) — la règle est
+    ``conversion_numero``, partagée avec l'écran.
 
-    L'E-MAIL n'est jamais converti : il ne dépend d'aucun numéro.
+    L'E-MAIL d'origine n'est jamais converti : il ne dépend d'aucun numéro.
 
     La PRÉFÉRENCE du client gagne toujours : sur un lead
     « WhatsApp uniquement », on ne rebascule rien en appel — un numéro
     WhatsApp manquant est alors un problème de FICHE, que l'écran doit
     nommer, pas quelque chose que le moteur contourne en silence.
     """
-    if _prefere_whatsapp(lead):
-        return gabarit
     canal = getattr(gabarit, 'canal', None)
     if canal != CANAL_WHATSAPP:
         return gabarit
-    if not numero_joignable(lead):
-        # AUCUN numéro : rien n'est joignable, ni message ni appel. La garde
-        # `_garde_cadence_contact` refuse déjà la cadence en nommant les
-        # champs à remplir ; convertir des touches en appels ne rendrait pas
-        # la fiche plus joignable et déplacerait des heures pour rien.
+    # AUCUN numéro : rien n'est joignable, ni message ni appel. La garde
+    # `_garde_cadence_contact` refuse déjà la cadence en nommant les
+    # champs à remplir ; convertir des touches ne rendrait pas la fiche plus
+    # joignable et déplacerait des heures pour rien (`conversion_numero`
+    # rend alors ``None``, comme pour la préférence « WhatsApp uniquement »).
+    cle = getattr(gabarit, 'template_cle', '') or ''
+    conversion = conversion_numero(lead, cle, langue=langue)
+    if conversion is None:
         return gabarit
-    improbable, _motif = whatsapp_improbable(lead)
-    if not improbable:
-        return gabarit
-    return GabaritAdapte(gabarit, CANAL_APPEL)
+    return GabaritAdapte(gabarit, conversion[0], template_cle=cle)

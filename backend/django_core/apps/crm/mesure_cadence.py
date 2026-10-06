@@ -355,6 +355,8 @@ def gestes_par_appareil(company, *, jours=JOURS_MESURE_DEFAUT):
 #: puis ``non_renseigne``, toujours toutes, même à zéro.
 SEGMENTS_MESURE = ('residentiel', 'commercial', 'industriel', 'agricole')
 SEGMENT_NON_RENSEIGNE = 'non_renseigne'
+#: CIQ518 — les segments PRO (valeurs de ``crm.Lead.TypeInstallation``).
+SEGMENTS_PRO_MESURE = ('commercial', 'industriel')
 
 
 def _segment_de(type_installation):
@@ -374,6 +376,25 @@ def _jours_entre(debut, fin):
     return (fin - debut).total_seconds() / 86400.0
 
 
+#: CIQ518 — les CRÉNEAUX de la journée (heure locale de clôture, Casablanca)
+#: sous lesquels ``par_segment`` compte les touches jointes : des COMPTES,
+#: jamais un pourcentage (61 leads commerciaux, 1 industriel au 03/10/2026 :
+#: un taux ne dirait rien). Bornes : matin < 12 h, midi 12 h-14 h, après-midi
+#: 14 h-18 h, soir dès 18 h.
+CRENEAUX_MESURE = ('matin', 'midi', 'apres_midi', 'soir')
+
+
+def creneau_de_heure(heure):
+    """CIQ518 — le créneau (``CRENEAUX_MESURE``) d'une heure locale 0-23."""
+    if heure < 12:
+        return 'matin'
+    if heure < 14:
+        return 'midi'
+    if heure < 18:
+        return 'apres_midi'
+    return 'soir'
+
+
 def par_segment(company, *, jours=JOURS_MESURE_DEFAUT):
     """AGR540 — les mesures de cadence DÉCOUPÉES par segment (contrat
     ``mesure_cadence.json``, bloc ``par_segment``), en LECTURE SEULE.
@@ -391,10 +412,13 @@ def par_segment(company, *, jours=JOURS_MESURE_DEFAUT):
         devis_envoyes_par_lead, leads_avec_devis_de_mode,
     )
 
-    from . import horaires, stages
+    from apps.parametres.models_relance import CadenceRelanceEtape
+
+    from . import cadence_temps, horaires, stages
     from .models import Lead, LeadActivity, RelanceEtape
     # AGR520 — l'étiquette « En attente d'un accord » : source unique.
-    from .services import TAG_ATTENTE_ACCORD, _lead_porte_tag
+    from .services import (
+        RAISONS_ATTENTE, TAG_ATTENTE_ACCORD, _lead_porte_tag)
     from .suite_touche import q_barreau
 
     depuis = timezone.now() - datetime.timedelta(days=int(jours))
@@ -404,6 +428,10 @@ def par_segment(company, *, jours=JOURS_MESURE_DEFAUT):
         '_delais_devis': [], '_delais_signature': [], 'signatures': 0,
         '_froids': 0, '_closes': 0, '_joints': 0, '_par_mois': {},
         'en_attente_accord': 0, 'dossiers_subvention': {}, 'incoherents': 0,
+        # CIQ518 — ce que le C&I ajoute (comptes seulement, aucun seuil).
+        'attente_accord_par_raison': {r[0]: 0 for r in RAISONS_ATTENTE},
+        'touches_converties': {'email': 0, 'appel': 0},
+        '_creneaux': {c: 0 for c in CRENEAUX_MESURE},
     } for s in ordre}
 
     leads = list(
@@ -412,7 +440,11 @@ def par_segment(company, *, jours=JOURS_MESURE_DEFAUT):
                 date_creation__gte=depuis)
         .exclude(source=Lead.Source.ODOO_IMPORT_TEST)
         .only('id', 'type_installation', 'stage', 'tags',
-              'dossier_subvention', 'date_creation'))
+              'dossier_subvention', 'date_creation',
+              # CIQ518 — de quoi rejouer la règle de conversion du fixe
+              # (`cadence_temps.conversion_numero`, CIQ505).
+              'telephone', 'whatsapp', 'email', 'contact_preference',
+              'langue_preferee', 'client', 'company'))
     segment_du_lead = {}
     cree_le = {}
     for lead in leads:
@@ -425,6 +457,10 @@ def par_segment(company, *, jours=JOURS_MESURE_DEFAUT):
             bloc['_froids'] += 1
         if _lead_porte_tag(lead, TAG_ATTENTE_ACCORD):
             bloc['en_attente_accord'] += 1
+        # CIQ518 — la RAISON de l'attente : l'étiquette posée par CIQ508.
+        for valeur, _libelle, etiquette in RAISONS_ATTENTE:
+            if _lead_porte_tag(lead, etiquette):
+                bloc['attente_accord_par_raison'][valeur] += 1
         if lead.dossier_subvention:
             etats = bloc['dossiers_subvention']
             etats[lead.dossier_subvention] = etats.get(
@@ -446,6 +482,14 @@ def par_segment(company, *, jours=JOURS_MESURE_DEFAUT):
     for lead_id in leads_avec_devis_de_mode(company, non_agricoles,
                                             'agricole'):
         sortie[segment_du_lead[lead_id]]['incoherents'] += 1
+    # CIQ518 — `incoherents` s'élargit au C&I (drapeau CIQ409 du contrat
+    # `lead_pro.json`) : un devis commercial/industriel porté par un lead qui
+    # n'est NI commercial NI industriel, compté sous le segment du DEVIS.
+    non_pro = [i for i in ids
+               if segment_du_lead[i] not in SEGMENTS_PRO_MESURE]
+    for mode in SEGMENTS_PRO_MESURE:
+        for _lead_id in leads_avec_devis_de_mode(company, non_pro, mode):
+            sortie[mode]['incoherents'] += 1
 
     # Signatures : le passage d'étape vers SIGNED (chatter, STAGES.py fait
     # foi), sur les leads de la population.
@@ -477,11 +521,42 @@ def par_segment(company, *, jours=JOURS_MESURE_DEFAUT):
                        statut__in=STATUTS_CLOS_HUMAIN, lead_id__in=ids)
                .filter(q_barreau()))
     issues = _issues_par_touche(touches, company)
-    for ligne in touches.values('id', 'lead_id'):
+    for ligne in touches.values('id', 'lead_id', 'traite_le'):
         bloc = sortie[segment_du_lead[ligne['lead_id']]]
         bloc['_closes'] += 1
         if issues.get(ligne['id'], '') in ISSUES_JOINT:
             bloc['_joints'] += 1
+            # CIQ518 — les joints par CRÉNEAU (compte, jamais un %).
+            if ligne['traite_le'] is not None:
+                heure = ligne['traite_le'].astimezone(
+                    horaires.CASABLANCA).hour
+                bloc['_creneaux'][creneau_de_heure(heure)] += 1
+
+    # CIQ518 — les touches CONVERTIES sur numéro fixe (convention 8) : la
+    # MÊME fonction pure que le moteur et l'écran. Une touche née WhatsApp au
+    # protocole de la société, aujourd'hui e-mail ou appel avec sa clé, est
+    # comptée UNE fois.
+    protocole = {
+        (cadence, rang): canal for cadence, rang, canal in
+        CadenceRelanceEtape.objects.filter(company=company, actif=True)
+        .values_list('cadence', 'ordre', 'canal')}
+    leads_par_id = {lead.pk: lead for lead in leads}
+    converties = (RelanceEtape.objects
+                  .filter(company=company, lead_id__in=ids,
+                          canal__in=(cadence_temps.CANAL_EMAIL,
+                                     cadence_temps.CANAL_APPEL))
+                  .exclude(template_cle='')
+                  .values('lead_id', 'cadence', 'ordre', 'canal',
+                          'template_cle'))
+    for touche in converties:
+        if protocole.get((touche['cadence'], touche['ordre'])) \
+                != cadence_temps.CANAL_WHATSAPP:
+            continue
+        conversion = cadence_temps.conversion_numero(
+            leads_par_id[touche['lead_id']], touche['template_cle'])
+        if conversion is not None and conversion[0] == touche['canal']:
+            sortie[segment_du_lead[touche['lead_id']]][
+                'touches_converties'][touche['canal']] += 1
 
     resultat = []
     for segment in ordre:
@@ -504,6 +579,15 @@ def par_segment(company, *, jours=JOURS_MESURE_DEFAUT):
             'dossiers_subvention': dict(sorted(
                 bloc['dossiers_subvention'].items())),
             'incoherents': bloc['incoherents'],
+            'attente_accord_par_raison': dict(
+                bloc['attente_accord_par_raison']),
+            'touches_converties': dict(bloc['touches_converties']),
+            # `null` quand AUCUNE touche n'a été tentée (dénominateur nul),
+            # jamais des zéros qui se liraient comme un échec.
+            'joints_par_creneau': (dict(bloc['_creneaux'])
+                                   if bloc['_closes'] else None),
+            'delais_signature_jours': sorted(
+                round(d, 1) for d in bloc['_delais_signature']),
         })
     return resultat
 

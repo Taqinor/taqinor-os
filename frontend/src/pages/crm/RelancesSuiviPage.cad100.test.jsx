@@ -155,3 +155,52 @@ describe('RelancesSuiviPage — CAD178 (gestes clés par famille d\'appareil)', 
     expect(within(panneau).getAllByText('—').length).toBeGreaterThan(0)
   })
 })
+
+describe('RelancesSuiviPage — CIQ519 (colonnes C&I du tableau « Par segment »)', () => {
+  const ligne = (segment) => MESURE.par_segment.find((l) => l.segment === segment)
+
+  it('rend les quatre colonnes servies par le contrat, telles quelles', async () => {
+    mount()
+    const tableau = await screen.findByTestId('mesure-par-segment')
+    for (const titre of [
+      'Attentes par raison', 'Touches converties (e-mail / appel)',
+      'Joints par créneau', 'Délais devis → signature (jours)',
+    ]) {
+      expect(within(tableau).getByText(titre)).toBeInTheDocument()
+    }
+    const commercial = within(tableau).getByTestId('mesure-segment-commercial')
+    const servi = ligne('commercial')
+    // Attentes par raison : libellés de la table du parcours, comptes du serveur.
+    expect(within(commercial).getByTestId('mesure-attentes-par-raison'))
+      .toHaveTextContent(`La direction / le comité : ${servi.attente_accord_par_raison.direction}`)
+    expect(within(commercial).getByTestId('mesure-attentes-par-raison'))
+      .toHaveTextContent(`La banque / l'organisme de financement : ${servi.attente_accord_par_raison.financement}`)
+    expect(within(commercial).getByTestId('mesure-touches-converties')).toHaveTextContent(
+      `e-mail : ${servi.touches_converties.email} · appel : ${servi.touches_converties.appel}`)
+    expect(within(commercial).getByTestId('mesure-joints-par-creneau')).toHaveTextContent(
+      `Matin : ${servi.joints_par_creneau.matin}`)
+    // La liste des délais, telle quelle.
+    expect(within(commercial).getByTestId('mesure-delais-signature'))
+      .toHaveTextContent(servi.delais_signature_jours.join(' · '))
+  })
+
+  it('`null` s’affiche « — » : jamais un 0 ni un % fabriqué', async () => {
+    mount()
+    const tableau = await screen.findByTestId('mesure-par-segment')
+    const industriel = within(tableau).getByTestId('mesure-segment-industriel')
+    expect(ligne('industriel').joints_par_creneau).toBeNull()
+    expect(within(industriel).getByTestId('mesure-joints-par-creneau')).toHaveTextContent('—')
+    expect(within(industriel).getByTestId('mesure-delais-signature')).toHaveTextContent('—')
+    expect(within(industriel).getByTestId('mesure-attentes-par-raison')).toHaveTextContent('—')
+  })
+
+  it('contrat vide : les nouvelles colonnes restent en lecture seule et sans pourcentage', async () => {
+    crmApi.getMesureCadence.mockResolvedValue(reponseContrat('crm', 'mesure_cadence', 'exemple_vide'))
+    mount()
+    const tableau = await screen.findByTestId('mesure-par-segment')
+    const commercial = within(tableau).getByTestId('mesure-segment-commercial')
+    expect(within(commercial).getByTestId('mesure-joints-par-creneau')).toHaveTextContent('—')
+    expect(within(commercial).getByTestId('mesure-delais-signature')).toHaveTextContent('—')
+    expect(tableau.querySelectorAll('input, select, button')).toHaveLength(0)
+  })
+})

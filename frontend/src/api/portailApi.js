@@ -78,6 +78,12 @@ const portailApi = {
     // octets (route scopée au client connecté) — jamais reconstruit ici.
     photos: (id, phase) => api.get(`/portail/mes-chantiers/${id}/photos/`,
       { params: phase ? { phase } : {} }),
+    // AGR618 — « Relevés de ma pompe » (contrat `mes_releves_pompage.json`) :
+    // le client connecté saisit heures de pompage / index du compteur d'eau.
+    // Le chantier, la société et le client viennent du COMPTE, jamais du corps.
+    releves: (id) => api.get(`/portail/mes-chantiers/${id}/releves/`),
+    ajouterReleve: (id, payload) =>
+      api.post(`/portail/mes-chantiers/${id}/releves/`, payload),
   },
   // NTPRT20/NTPRT27 — portails FOURNISSEUR et PARTENAIRE. Même principe que
   // ci-dessus : aucun identifiant d'entité n'est envoyé, le serveur borne au

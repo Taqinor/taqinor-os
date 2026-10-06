@@ -568,15 +568,33 @@ NON_COMPTE_TRANCHE_ONEE : Tarif / tranche ONEE : sert au dossier, pas au chiffre
 NON_COMPTE_PLAQUE : Pas compté dans le chiffre tant que la puissance manque : photo de la plaque pour que ce soit compté.
 A_NOTER_FORCE_MOTRICE : À noter dans la note d’appel : le compteur de la pompe est-il en abonnement force motrice ?
 A_NOTER_MEILLEUR_MOMENT : À noter dans la note d’appel : le meilleur moment pour le joindre (jour de souk, heures au champ).
-A_NOTER_TENSION : À noter dans la note d’appel : le site est-il raccordé en basse ou en moyenne tension ?
-A_NOTER_RYTHME : À noter dans la note d’appel : le rythme d'activité (journée, jusqu'au soir, en continu) et le week-end.
-A_NOTER_GROUPE : À noter dans la note d’appel : le site a-t-il un groupe électrogène ?
 A_NOTER_PROCESS : À noter dans la note d’appel : les process critiques, qui ne doivent jamais s’arrêter.
 AUCUNE_ESTIMATION_SEGMENT : Aucun chiffre d'économie au téléphone pour ce segment : le calcul ne sait pas encore le traiter.
 CARBURANT_DECLARE_SEUL : L'économie de carburant se calcule uniquement sur ce que le client déclare (litres ou dirhams par mois) — jamais sur un prix de gasoil supposé.
 SEGMENT_PROBABLE_CONSIGNE : confirmez avec le client.
 VISITE_POINT_EAU_TITRE : Planifier la visite — relevé du point d’eau
 VISITE_POINT_EAU_CONSIGNE : Le niveau d’eau ou le débit du forage reste inconnu : proposez la visite gratuite de relevé du point d’eau avant le devis.
+VISITE_PRO_TITRE : Proposer la visite technique avant le devis
+VISITE_PRO_CONSIGNE : Des informations du site manquent pour chiffrer juste : proposez la visite technique gratuite avant le devis.
+
+CIQ420 (06/10/2026) — l'appel PRO (industriel et commercial) est réécrit en cinq étapes, dans l'ordre du serveur
+(CIQ410, D-CIQ-7) : la facture (en dirhams ou en kWh, selon ce que le client connaît), le raccordement (tension avec
+« je ne sais pas », puissance souscrite sur la facture ou le contrat, phase pour un commercial), l'activité et le
+rythme (catégorie et ses questions, ou secteur et équipes ; jours en sept boutons, heures, mois de fermeture en douze
+boutons), la surface, puis qui décide (jamais « avec le conjoint / la famille » pour une entreprise). Les consignes
+« à noter » pro se réduisent aux process critiques (`A_NOTER_PROCESS`) ; douze factures, ICE, groupe électrogène,
+PV existant et TVA récupérable partent au questionnaire (bouton « Envoyer le questionnaire »). Délai et mode de
+financement restent des questions orales du rappel. En fin d'appel, si le serveur dit que la visite est requise
+avant le devis (`devis_auto.visite_avant_devis`), le panneau la propose avec ses motifs. Aucun chiffre d'économie, la
+loi 82-21 n'est jamais abordée spontanément. ✎ Formulations à valider par le fondateur.
+
+CIQ427 (06/10/2026) — trois questions PRO ajoutées au serveur (`apps/crm/panneau_appel.py`, `QUESTIONS_PRO`), sans
+sixième étape. Étape 5 « qui décide », sur une fiche pro que la cadence ne joint que par un FIXE : si le décideur est
+vide ou seul, « Sur quel mobile ou WhatsApp puis-je vous joindre directement ? » (colonne `whatsapp`) ; s'il décide
+avec la direction ou un tiers, « Qui décide avec vous, et à quel numéro ? » (colonnes `contact_secondaire_nom` et
+`contact_secondaire_telephone`, jamais lues par la cadence). Mode de financement, au RAPPEL seulement (jamais à
+l'appel 1, jamais dans le questionnaire écrit) : « Vous pensez régler comment : comptant, par un crédit, ou ce n'est
+pas encore décidé ? » — la question ne dit jamais « crédit-bail » et ne promet aucun accord. ✎ À valider par Reda.
 
 AGR418 (05/10/2026) — l'appel AGRICOLE est réécrit en cinq étapes, dans l'ordre du serveur (AGR407) : l'énergie
 actuelle (puis, selon la réponse, bouteilles par jour et prix payé, litres par mois et prix payé, ou dépense par

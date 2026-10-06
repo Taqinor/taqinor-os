@@ -775,9 +775,9 @@
     ],
     "regle": "`raison_attente` OBLIGATOIRE quand `reponse='attente_accord'` ; absente ou hors liste ⇒ 400 qui nomme `raison_attente` et liste les valeurs ; ignorée pour toute autre réponse.",
     "exemple_400": {
-      "raison_attente": [
-        "Valeur requise parmi : direction, financement, bailleur_murs, budget_exercice, consultation, administration."
-      ]
+      "erreurs": {
+        "raison_attente": "« Raison de l'attente » (raison_attente) : valeur requise parmi : direction, financement, bailleur_murs, budget_exercice, consultation, administration."
+      }
     }
   }
 }

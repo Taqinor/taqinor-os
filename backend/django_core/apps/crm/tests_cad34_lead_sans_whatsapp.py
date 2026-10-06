@@ -107,9 +107,11 @@ class UnFixeDemarreParUnAppelTests(_Base):
             self.assertEqual(fixe[ordre][1].date(), quand.date(), ordre)
             self.assertEqual(fixe[ordre][0].libelle, gabarit.libelle, ordre)
 
-    def test_un_barreau_converti_nemporte_aucun_texte(self):
-        """Un appel n'a pas de message à envoyer — comme les barreaux
-        d'appel qui n'ont déjà aucun gabarit."""
+    def test_un_barreau_converti_garde_sa_cle_de_texte(self):
+        """CIQ505 (décision du 03/10/2026, convention 8) — RÉÉCRIT : un appel
+        né d'un WhatsApp GARDE la clé de son texte, qui sert de fil de
+        conversation (avant : clé retirée, un standard ne recevait plus
+        aucun texte)."""
         mobile = {g.ordre: g for g, _e in self._plan(
             self._lead('Karim', telephone=MOBILE))}
         fixe = {g.ordre: g for g, _e in self._plan(
@@ -117,7 +119,9 @@ class UnFixeDemarreParUnAppelTests(_Base):
         convertis = [o for o, g in mobile.items() if g.canal == 'whatsapp']
         self.assertTrue(convertis)
         for ordre in convertis:
-            self.assertEqual(fixe[ordre].template_cle, '', ordre)
+            self.assertEqual(fixe[ordre].template_cle,
+                             mobile[ordre].template_cle, ordre)
+            self.assertTrue(fixe[ordre].template_cle, ordre)
 
     def test_le_motif_dit_que_le_WhatsApp_est_improbable(self):
         lead = self._lead(telephone=FIXE)

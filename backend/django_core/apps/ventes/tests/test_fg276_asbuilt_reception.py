@@ -18,8 +18,7 @@ from apps.ventes.models import (
     Devis, AsBuiltPack, AttestationConformite, TestPerformanceReception,
     AttestationRE)
 from apps.ventes.commissioning import (
-    compute_reception_pr, compute_co2_evite, DEFAULT_GRID_CO2_KG_PER_KWH,
-    DEFAULT_PR_ACCEPTANCE)
+    compute_reception_pr, compute_co2_evite, DEFAULT_GRID_CO2_KG_PER_KWH)
 from apps.crm.models import Client
 from authentication.models import Company
 
@@ -52,15 +51,15 @@ class ComputeReceptionPrTest(SimpleTestCase):
         # pr_attendu 0.80, énergie réalisée 90% de l'attendu → pr ≈ 0.72.
         pr_m, ecart, verdict = compute_reception_pr(
             energie_mesuree_kwh=900, energie_attendue_kwh=1000,
-            pr_attendu='0.80')
+            pr_attendu='0.80', pr_seuil_societe=0.75)
         self.assertAlmostEqual(pr_m, 0.72, places=4)
         self.assertAlmostEqual(ecart, -10.0, places=2)
-        # 0.72 < seuil par défaut 0.75 → refusé.
+        # 0.72 < seuil société saisi 0.75 → refusé.
         self.assertEqual(verdict, 'refuse')
 
     def test_explicit_pr_above_threshold_accepted(self):
         pr_m, ecart, verdict = compute_reception_pr(
-            pr_mesure='0.82', pr_attendu='0.80')
+            pr_mesure='0.82', pr_attendu='0.80', pr_seuil_societe=0.75)
         self.assertAlmostEqual(pr_m, 0.82, places=4)
         self.assertAlmostEqual(ecart, 2.5, places=2)
         self.assertEqual(verdict, 'accepte')
@@ -70,8 +69,19 @@ class ComputeReceptionPrTest(SimpleTestCase):
             pr_mesure='0.73', pr_attendu='0.80', pr_seuil_acceptation='0.70')
         self.assertEqual(verdict, 'accepte')
 
-    def test_default_threshold_constant(self):
-        self.assertEqual(DEFAULT_PR_ACCEPTANCE, 0.75)
+    def test_sans_aucun_seuil_jamais_refuse(self):
+        """CIQ654 — le 0,75 inventé a disparu : sans seuil saisi, un PR bas
+        reste « en attente », jamais « refusé »."""
+        pr_m, _, verdict = compute_reception_pr(
+            pr_mesure='0.72', pr_attendu='0.80')
+        self.assertAlmostEqual(pr_m, 0.72, places=4)
+        self.assertEqual(verdict, 'en_attente')
+
+    def test_le_seuil_du_test_prime_sur_celui_de_la_societe(self):
+        _, _, verdict = compute_reception_pr(
+            pr_mesure='0.73', pr_attendu='0.80', pr_seuil_acceptation='0.70',
+            pr_seuil_societe=0.80)
+        self.assertEqual(verdict, 'accepte')
 
     def test_no_data_is_en_attente(self):
         pr_m, ecart, verdict = compute_reception_pr()
@@ -169,6 +179,12 @@ class TestPerformanceReceptionApiTest(TestCase):
         self.api = APIClient()
         self.api.force_authenticate(self.user)
         self.url = '/api/django/ventes/tests-pr-reception/'
+        # CIQ654 — plus de seuil PR par défaut : la société SAISIT son seuil
+        # interne (CIQ622, en %) ; 75 % reproduit l'ancien cadre de ces tests.
+        from apps.parametres.models import CompanyProfile
+        profil, _ = CompanyProfile.objects.get_or_create(company=self.company)
+        CompanyProfile.objects.filter(pk=profil.pk).update(
+            recette_pr_seuil_interne=75)
 
     def test_verdict_and_ecart_derived_server_side(self):
         # Le corps tente d'imposer verdict=accepte ; serveur recalcule refuse.

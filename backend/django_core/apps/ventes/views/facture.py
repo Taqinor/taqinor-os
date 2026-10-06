@@ -157,6 +157,9 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'retour_client',
             'facturer_penalites', 'consolider', 'abandonner_solde',
             'remettre_brouillon', 'encaissement_groupe',
+            # CIQ214 — libérer la retenue de garantie (date de réception
+            # définitive) : édition courante du responsable, pas un geste admin.
+            'liberer_retenue',
         ]:
             return [IsResponsableOrAdmin()]
         # AUD103 — SUPPRIMER une facture n'est PAS « annuler » : c'est le seul
@@ -809,6 +812,42 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(
             {**FactureSerializer(locked).data, 'montant_abandonne': montant},
         )
+
+    @action(detail=True, methods=['post'], url_path='liberer-retenue',
+            permission_classes=[IsResponsableOrAdmin])
+    def liberer_retenue(self, request, pk=None):
+        """CIQ214 — libère la retenue de garantie CLIENT d'une facture de
+        tranche (D-CIQ-14), à la date SAISIE (``date`` AAAA-MM-JJ, la
+        réception définitive du chantier) : ``montant_exigible`` remonte alors
+        à ``montant_du``. Aucune écriture comptable, aucun statut changé hors
+        de la date ; idempotent sur une retenue déjà libérée (400). La
+        réception définitive servie par le contrat CIQ6 la pré-remplira côté
+        écran dès que l'app chantier l'expose (lecture via selectors)."""
+        import datetime as _dt
+        facture = self.get_object()
+        if facture.retenue_garantie_mad is None:
+            return Response(
+                {'detail': 'Aucune retenue de garantie sur cette facture.',
+                 'champ': 'retenue_garantie_mad'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if facture.retenue_liberee_le:
+            return Response(
+                {'detail': 'La retenue de garantie est déjà libérée '
+                           f'(le {facture.retenue_liberee_le:%d/%m/%Y}).',
+                 'champ': 'retenue_liberee_le'},
+                status=status.HTTP_400_BAD_REQUEST)
+        brut = (request.data or {}).get('date')
+        try:
+            date = _dt.date.fromisoformat(str(brut or '').strip())
+        except ValueError:
+            return Response(
+                {'detail': 'Date de libération (réception définitive) '
+                           'obligatoire, au format AAAA-MM-JJ.',
+                 'champ': 'date'},
+                status=status.HTTP_400_BAD_REQUEST)
+        facture.retenue_liberee_le = date
+        facture.save(update_fields=['retenue_liberee_le'])
+        return Response(FactureSerializer(facture).data)
 
     @action(detail=True, methods=['post'], url_path='generer-pdf',
             permission_classes=[IsResponsableOrAdmin])

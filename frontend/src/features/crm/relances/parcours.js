@@ -52,12 +52,14 @@ export function typeEtape(etape) {
 }
 
 /** AGR533 — les SEULES clés qu'une variante de segment peut remplacer :
- *  ce qui se LIT, jamais ce qui s'envoie (`reponse`, `outcome`) ni la suite. */
-export const CLES_VARIANTE_SEGMENT = ['label', 'precision', 'effet']
+ *  ce qui se LIT, jamais ce qui s'envoie (`reponse`, `outcome`) ni la suite.
+ *  CIQ509 : `message` aussi — le texte d'accusé PROPOSÉ après la réponse
+ *  (comme `rappel_plus_tard`), jamais envoyé seul. */
+export const CLES_VARIANTE_SEGMENT = ['label', 'precision', 'effet', 'message']
 
 /** AGR533 — applique `variantes_segment[segment]` (une réponse ou un geste) :
- *  seuls `label` / `precision` / `effet` changent ; la clé serveur et la
- *  suite restent celles de la table. Sans variante : l'objet tel quel. */
+ *  seuls `label` / `precision` / `effet` / `message` changent ; la clé serveur
+ *  et la suite restent celles de la table. Sans variante : l'objet tel quel. */
 export function appliquerVarianteSegment(objet, segment) {
   const variante = segment ? objet?.variantes_segment?.[segment] : null
   if (!variante) return objet

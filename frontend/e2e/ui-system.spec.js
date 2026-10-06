@@ -42,7 +42,7 @@ test('UI system: /ui renders primitives, theme, density, dialog, toast', async (
 
   // Toast : déclencher un toast de succès
   await page.getByRole('button', { name: 'Toast succès' }).click()
-  await expect(page.getByText('Enregistré')).toBeVisible()
+  await expect(page.getByText('Enregistré', { exact: true })).toBeVisible()
 
   // Santé : aucune erreur console / page
   expect(errors, `erreurs console: ${errors.join(' | ')}`).toEqual([])

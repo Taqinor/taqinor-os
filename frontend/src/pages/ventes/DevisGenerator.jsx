@@ -44,7 +44,9 @@ import { saisiesEconomiePompage } from '../../features/ventes/quote/etudeMarcheB
 import {
   POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie,
 } from '../../features/ventes/etudePompagePreviewPur'
-import { ECO_POMPAGE_VIDE, ecoDepuisSaisies } from '../../features/ventes/quote/etudeMarcheBloc'
+import {
+  ECO_POMPAGE_VIDE, ecoDepuisSaisies, ATTESTATION_VIDE,
+} from '../../features/ventes/quote/etudeMarcheBloc'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
@@ -193,7 +195,9 @@ import { deuxValeursDim as selecteurDeuxValeursDim }
 // reste le seul déballeur (`unwrap`), cet écran ne fait que signer.
 import { moteur, apercu } from '../../features/ventes/quote/valeur'
 // QJR523 — UN seul couple de mappeurs lignes serveur ⇄ écran.
-import { lignesServeurVersEcran } from '../../features/ventes/quote/lignesEcran'
+import {
+  lignesServeurVersEcran, erreursBaseLegaleServeur,
+} from '../../features/ventes/quote/lignesEcran'
 // QJR658 — devis ⇄ état d'écran : un module pur.
 import { devisVersEtat, etatVersEcritures } from '../../features/ventes/quote/etatDevis'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
@@ -930,6 +934,10 @@ export default function DevisGenerator({
   const [ecoPompage, setEcoPompage] = useState(ECO_POMPAGE_VIDE)
   const majEco = useCallback(
     (cle, valeur) => setEcoPompage((e) => ({ ...e, [cle]: valeur })), [])
+  // AGR218 — attestation d'usage agricole (case + date + signataire).
+  const [attestationAgricole, setAttestationAgricole] = useState(ATTESTATION_VIDE)
+  const majAttestation = useCallback(
+    (cle, valeur) => setAttestationAgricole((a) => ({ ...a, [cle]: valeur })), [])
   const [reperesEnergie, setReperesEnergie] = useState({})
   const [farmHmtStatic, setFarmHmtStatic] = useState('')
   const [farmHmtDrawdown, setFarmHmtDrawdown] = useState('')
@@ -964,7 +972,7 @@ export default function DevisGenerator({
     prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
-    farmIrrigation, ecoPompage, farmHmtStatic,
+    farmIrrigation, ecoPompage, attestationAgricole, farmHmtStatic,
     farmHmtDrawdown, pompageSaisie,
 
   }), [
@@ -978,7 +986,7 @@ export default function DevisGenerator({
     prixCible, remiseMax, accessoiresOnly, horsReseau, horsReseauTouched,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
-    farmIrrigation, ecoPompage, farmHmtStatic,
+    farmIrrigation, ecoPompage, attestationAgricole, farmHmtStatic,
     farmHmtDrawdown, pompageSaisie,
   ])
   // « Dirty » = l'utilisateur a réellement saisi quelque chose de significatif
@@ -1117,6 +1125,9 @@ export default function DevisGenerator({
     if (d.farmSurfaceHa != null) setFarmSurfaceHa(d.farmSurfaceHa)
     if (d.farmIrrigation != null) setFarmIrrigation(d.farmIrrigation)
     if (d.ecoPompage && typeof d.ecoPompage === 'object') setEcoPompage(d.ecoPompage)
+    if (d.attestationAgricole && typeof d.attestationAgricole === 'object') {
+      setAttestationAgricole(d.attestationAgricole)
+    }
     if (d.farmHmtStatic != null) setFarmHmtStatic(d.farmHmtStatic)
     if (d.farmHmtDrawdown != null) setFarmHmtDrawdown(d.farmHmtDrawdown)
     if (d.pompageSaisie && typeof d.pompageSaisie === 'object') setPompageSaisie(d.pompageSaisie)
@@ -2181,6 +2192,8 @@ export default function DevisGenerator({
       pose(etat.farm.irrigation, setFarmIrrigation)
       // AGR212 — l'économie déclarée se relit telle qu'enregistrée.
       setEcoPompage(etat.saisiesEco || ecoDepuisSaisies(null))
+      // AGR218 — l'attestation d'usage agricole se relit telle que saisie.
+      setAttestationAgricole(etat.farm.attestation || ATTESTATION_VIDE)
       pose(etat.farm.hmtStatic, setFarmHmtStatic)
       pose(etat.farm.hmtDrawdown, setFarmHmtDrawdown)
       pose(etat.pompe.profondeur, setPompeProfondeur)
@@ -3545,6 +3558,7 @@ export default function DevisGenerator({
       irrigation: farmIrrigation, region: farmRegion, crop: farmCrop,
       surfaceHa: farmSurfaceHa,
       hmtStatic: farmHmtStatic, hmtDrawdown: farmHmtDrawdown,
+      attestation: attestationAgricole,
     },
     saisiesEco: ecoAvecCalendrier,
   })
@@ -3717,6 +3731,13 @@ export default function DevisGenerator({
         // ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — refus serveur : sous le champ.
         msg = typeof raw.detail === 'string' ? raw.detail : MESSAGE_KWH_INCOHERENT
         setErrors(prev => ({ ...prev, conso: msg }))
+      } else if (Object.keys(erreursBaseLegaleServeur(raw, lines)).length) {
+        // AGR218 — refus « base légale obligatoire à 0 % » : le message du
+        // serveur s'affiche SOUS le champ de la ligne visée.
+        const parLigne = erreursBaseLegaleServeur(raw, lines)
+        setLines(ls => ls.map(l => (parLigne[l._key]
+          ? { ...l, _erreurBaseLegale: parLigne[l._key] } : l)))
+        msg = raw.detail
       } else if (typeof raw?.detail === 'string') {
         msg = raw.detail
       } else {
@@ -4480,6 +4501,7 @@ export default function DevisGenerator({
           farmRegion={farmRegion} setFarmRegion={setFarmRegion}
           farmIrrigation={farmIrrigation} setFarmIrrigation={setFarmIrrigation}
           ecoPompage={ecoPompage} majEco={majEco}
+          attestation={attestationAgricole} majAttestation={majAttestation}
           reperesEnergie={reperesEnergie} moisCalendrier={moisCalendrier}
           coherenceAvertit={coherenceAvertit}
           farmHmtStatic={farmHmtStatic} setFarmHmtStatic={setFarmHmtStatic}

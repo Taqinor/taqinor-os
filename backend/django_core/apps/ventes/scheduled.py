@@ -89,7 +89,9 @@ def check_overdue_factures():
         statut=Facture.Statut.EMISE).select_related('client').prefetch_related(
         'lignes', 'paiements', 'avoirs')
     for facture in candidates:
-        if facture.montant_du <= 0:
+        # CIQ214 — en retard seulement si l'EXIGIBLE reste dû (une retenue de
+        # garantie non libérée n'est pas un retard).
+        if facture.montant_exigible <= 0:
             continue
         echeance = _echeance_effective(facture, today)
         if echeance >= today:
@@ -135,7 +137,7 @@ def _check_promesses_expirees(today):
         'facture__retenues_subies', 'facture__affectations_paiement')
     for promesse in en_cours:
         facture = promesse.facture
-        if facture.montant_du <= 0:
+        if facture.montant_exigible <= 0:  # CIQ214 — exigible réglé
             promesse.statut = PromessePaiement.Statut.TENUE
             promesse.save(update_fields=['statut'])
             continue
@@ -440,7 +442,7 @@ def pre_echeance_reminders():
 
     profiles_cache = {}
     for facture in candidates:
-        if facture.montant_du <= 0:
+        if facture.montant_exigible <= 0:  # CIQ214 — exigible seulement
             continue
         company_id = facture.company_id
         if company_id not in profiles_cache:

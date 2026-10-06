@@ -553,7 +553,7 @@ def _om(om, cle_base):
 
 
 def _un_flux(investissement, economie, *, production, taux, onduleur, charge,
-             om_bloc, cle_base):
+             om_bloc, cle_base, collecteur=None):
     from apps.ventes import economie as eco_mod
     pricing = _pricing()
     deg_pct = pricing.PANEL_DEGRADATION * 100.0
@@ -582,7 +582,7 @@ def _un_flux(investissement, economie, *, production, taux, onduleur, charge,
                   'source': 'etude_ci.bilan (moteur C&I)'}
     charge_brute = None if charge is None else {
         'valeur': charge, 'source': om_bloc['source']}
-    bloc = eco_mod.flux_de_tresorerie(
+    entrees = dict(
         investissement_mad=investissement,
         economie_annee1_mad=economie,
         production_annee1_kwh=production,
@@ -593,6 +593,11 @@ def _un_flux(investissement, economie, *, production, taux, onduleur, charge,
         degradation_pct={'valeur': deg_pct, 'source': DEGRADATION_CI_SOURCE},
         charges_annuelles_mad=charge_brute,
         remplacements=remplacements)
+    if collecteur is not None:
+        # CIQ231 — les entrées EXACTES du flux de base, relancées par
+        # :func:`sensibilites_ci` en ne changeant qu'UNE grandeur.
+        collecteur[cle_base] = entrees
+    bloc = eco_mod.flux_de_tresorerie(**entrees)
     omissions = [o for o in bloc['omissions']
                  if o['cle'] not in ('remplacements', 'charges_annuelles_mad')]
     if montant_onduleur is None:
@@ -646,7 +651,8 @@ def _jalons(bloc):
 
 
 def flux_ci(base_eco, *, production_annee1_kwh=None, kwh_evites_an=None,
-            onduleur=None, om=None, taux_actualisation_client=None):
+            onduleur=None, om=None, taux_actualisation_client=None,
+            collecteur=None):
     """Le flux 25 ans d'un devis C&I et ses indicateurs (forme
     ``economie_ci.json`` : ``flux_ht`` / ``flux_ttc``, ``jalons``,
     ``indicateurs``, ``remplacements``, ``om``).
@@ -656,6 +662,8 @@ def flux_ci(base_eco, *, production_annee1_kwh=None, kwh_evites_an=None,
     aucune ligne : omission nommée). ``om`` : voir :func:`_om`.
     ``taux_actualisation_client`` : saisie brute (validée par
     :func:`lire_taux_client`). La revente n'entre jamais ici.
+    ``collecteur`` (CIQ231) : dict facultatif qui reçoit, par base
+    (``ht``/``ttc``), les entrées exactes passées à ``flux_de_tresorerie``.
     """
     taux = lire_taux_client(taux_actualisation_client)
     sortie = {'base': base_eco['base'], 'motif_base': base_eco['motif_base'],
@@ -670,7 +678,8 @@ def flux_ci(base_eco, *, production_annee1_kwh=None, kwh_evites_an=None,
             base_eco[f'investissement_{cle_base}_mad'],
             base_eco[f'economie_annee1_{cle_base}_mad'],
             production=production_annee1_kwh, taux=taux, onduleur=onduleur,
-            charge=charge, om_bloc=om_bloc, cle_base=cle_base)
+            charge=charge, om_bloc=om_bloc, cle_base=cle_base,
+            collecteur=collecteur)
         sortie[cle] = bloc
         if cle == principal:
             sortie['om'] = om_bloc
@@ -954,3 +963,807 @@ def financement_ci(offre, base_eco, *, mode_installation,
         'duree_mois': duree,
         'source': SOURCE_FINANCEMENT,
     }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CIQ209 — moteur ``economie_ci`` (6/6) : vue INTERNE face à une offre CSE/PPA
+# concurrente, depuis le tarif ÉCRIT du prospect (D-CIQ-16), et
+# :func:`economie_ci_publique`, la SEULE forme servie à un chemin client.
+# ═════════════════════════════════════════════════════════════════════════════
+# Aucune offre de tiers-investisseur de TAQINOR (D-CIQ-16 : le client reste
+# l'autoproducteur, loi 13-09 parquée) ; aucun nom de concurrent stocké ni
+# servi. Le paiement de l'offre = tarif HT ÉCRIT × kWh solaires livrés — la
+# MÊME production et la MÊME dégradation que le flux d'achat ; l'indexation
+# n'existe QUE si elle est écrite sur l'offre (sinon tarif constant, hypothèse
+# nommée). Au-delà de la durée de l'offre rien n'est supposé.
+
+#: Clés INTERNES jamais servies à un chemin client (PDF, /proposition, lien
+#: public, messages) — retirées RÉCURSIVEMENT par :func:`economie_ci_publique`.
+CLES_INTERNES = ('vue_interne', 'alertes_internes', 'comparaison_cse',
+                 'apres_impot', 'sr500')
+MENTION_CSE_INDEXATION_ABSENTE = (
+    "tarif de l'offre constant : aucune indexation écrite sur l'offre "
+    "(hypothèse)")
+MOTIF_CSE_SANS_FLUX_HT = (
+    "flux d'achat HT non construit : l'offre (tarif HT) n'est comparée qu'à "
+    "des économies HT — comparaison non évaluée")
+MOTIF_CSE_SANS_PRODUCTION = (
+    "production annuelle inconnue : kWh livrés par l'offre non calculables — "
+    "comparaison non évaluée")
+
+
+def _nombre_cse(offre, cle, *, requis=False, entier=False, strict=False):
+    champ = f'offre_cse_concurrente.{cle}'
+    brut = offre.get(cle)
+    if brut is None or brut == '':
+        if requis:
+            raise SaisieEconomieCiInvalide(
+                f"{champ} : à saisir depuis l'offre écrite du prospect.",
+                champ=champ)
+        return None
+    try:
+        valeur = float(brut)
+    except (TypeError, ValueError):
+        valeur = None
+    invalide = (valeur is None or valeur != valeur
+                or (strict and valeur <= -100)
+                or (not strict and valeur < 0)
+                or (entier and (valeur != int(valeur) or valeur < 1)))
+    if invalide:
+        raise SaisieEconomieCiInvalide(
+            f"{champ} : valeur « {brut} » refusée.", champ=champ)
+    return int(valeur) if entier else valeur
+
+
+def lire_offre_cse(offre):
+    """``saisies_economie_ci.offre_cse_concurrente`` validée, ou None.
+
+    ``{tarif_kwh_ht, duree_ans, indexation_pct_an (SEULEMENT si écrite),
+    source}`` — tout autre champ (nom du concurrent…) est IGNORÉ, jamais
+    recopié. Refus nommés ``offre_cse_concurrente.<champ>``.
+    """
+    if offre in (None, '', {}):
+        return None
+    if not isinstance(offre, dict):
+        raise SaisieEconomieCiInvalide(
+            "offre_cse_concurrente : un objet est attendu.",
+            champ='offre_cse_concurrente')
+    source = str(offre.get('source') or '').strip()
+    if not source:
+        raise SaisieEconomieCiInvalide(
+            "offre_cse_concurrente.source : la comparaison se construit "
+            "seulement depuis le tarif ÉCRIT de l'offre du prospect.",
+            champ='offre_cse_concurrente.source')
+    return {
+        'tarif_kwh_ht': _nombre_cse(offre, 'tarif_kwh_ht', requis=True),
+        'duree_ans': _nombre_cse(offre, 'duree_ans', requis=True,
+                                 entier=True),
+        'indexation_pct_an': _nombre_cse(offre, 'indexation_pct_an',
+                                         strict=True),
+        'source': source,
+    }
+
+
+def _hypothese_flux(flux, cle):
+    for h in (flux or {}).get('hypotheses') or []:
+        if isinstance(h, dict) and h.get('cle') == cle:
+            return h.get('valeur')
+    return None
+
+
+def comparaison_cse(flux, offre_cse, production):
+    """La comparaison INTERNE achat ↔ offre CSE/PPA (``vue_interne.
+    comparaison_cse`` du contrat ``economie_ci.json``), ou None sans offre.
+
+    ``flux`` : le flux d'achat HT (bloc ``flux_ht`` de :func:`flux_ci`) ;
+    ``offre_cse`` : saisie brute (validée par :func:`lire_offre_cse`) ;
+    ``production`` : production de l'année 1 (kWh) — la même que le flux.
+
+    Par année t ≤ min(durée de l'offre, horizon du flux) : kWh livrés =
+    production × (1 − dégradation du flux)^(t−1) ; paiement de l'offre =
+    tarif × (1 + indexation écrite)^(t−1) × kWh ; gain net de l'offre =
+    économie du flux − paiement ; croisement = première année où le cumul
+    de l'achat atteint le cumul net de l'offre.
+    """
+    offre = lire_offre_cse(offre_cse)
+    if offre is None:
+        return None
+    hypotheses = [{'cle': 'tarif_kwh_ht', 'valeur': offre['tarif_kwh_ht'],
+                   'statut': 'declare', 'source': offre['source']},
+                  {'cle': 'duree_ans', 'valeur': offre['duree_ans'],
+                   'statut': 'declare', 'source': offre['source']}]
+    if offre['indexation_pct_an'] is None:
+        idx = 0.0
+        hypotheses.append({'cle': 'indexation_pct_an', 'valeur': 0.0,
+                           'statut': 'hypothese',
+                           'source': MENTION_CSE_INDEXATION_ABSENTE})
+    else:
+        idx = offre['indexation_pct_an']
+        hypotheses.append({'cle': 'indexation_pct_an', 'valeur': idx,
+                           'statut': 'declare', 'source': offre['source']})
+    sortie = {'statut': 'omise', 'motif': None, 'annees': [],
+              'cumul_offre_mad': None, 'cumul_achat_mad': None,
+              'annee_croisement': None, 'hypotheses': hypotheses}
+    lignes = (flux or {}).get('flux') or []
+    if not lignes:
+        sortie['motif'] = MOTIF_CSE_SANS_FLUX_HT
+        return sortie
+    prod = _montant(production)
+    if not prod:
+        sortie['motif'] = MOTIF_CSE_SANS_PRODUCTION
+        return sortie
+    deg = _f(_hypothese_flux(flux, 'degradation_pct')) / 100.0
+    hypotheses.append({'cle': 'production_annee1_kwh', 'valeur': prod,
+                       'statut': 'source',
+                       'source': "même production que le flux d'achat"})
+    par_annee = {f['annee']: f for f in lignes}
+    horizon = min(offre['duree_ans'], max(par_annee))
+    annees, cumul_offre, cumul_net = [], 0.0, 0.0
+    croisement = None
+    for t in range(1, horizon + 1):
+        ligne = par_annee.get(t)
+        if ligne is None:
+            break
+        kwh = prod * (1.0 - deg) ** (t - 1)
+        paiement = offre['tarif_kwh_ht'] * (1.0 + idx / 100.0) ** (t - 1) * kwh
+        cumul_offre += paiement
+        cumul_net += (ligne.get('economie_mad') or 0.0) - paiement
+        cumul_achat = ligne.get('cumul_mad')
+        if croisement is None and cumul_achat is not None \
+                and cumul_achat >= cumul_net:
+            croisement = t
+        annees.append({'annee': t, 'kwh_livres': int(round(kwh)),
+                       'paiement_offre_mad': round(paiement, 2),
+                       'cumul_offre_mad': round(cumul_offre, 2),
+                       'cumul_offre_net_mad': round(cumul_net, 2),
+                       'cumul_achat_mad': cumul_achat})
+    sortie.update({
+        'statut': 'calculee',
+        'annees': annees,
+        'cumul_offre_mad': round(cumul_offre, 2),
+        'cumul_achat_mad': annees[-1]['cumul_achat_mad'] if annees else None,
+        'annee_croisement': croisement,
+    })
+    return sortie
+
+
+def _sans_internes(objet):
+    if isinstance(objet, dict):
+        return {k: _sans_internes(v) for k, v in objet.items()
+                if k not in CLES_INTERNES}
+    if isinstance(objet, list):
+        return [_sans_internes(v) for v in objet]
+    return objet
+
+
+def economie_ci_publique(bloc):
+    """Le bloc ``economie_ci`` SANS rien d'interne — la SEULE fonction qu'un
+    chemin client appelle (PDF /proposal, /proposition, lien public).
+
+    Retire récursivement ``vue_interne``, ``alertes_internes`` et les clés
+    internes qu'elles portent (:data:`CLES_INTERNES`) ; ne modifie jamais
+    ``bloc`` (copie).
+    """
+    if not isinstance(bloc, dict):
+        return bloc
+    return _sans_internes(bloc)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CIQ210 — ASSEMBLAGE du bloc ``economie_ci`` (contrat ``economie_ci.json``) et
+# lecture d'un devis : UNE fonction sert l'aperçu, la lecture interne, le PDF
+# et /proposition (celles-ci par :func:`economie_ci_publique`).
+# ═════════════════════════════════════════════════════════════════════════════
+# Entrées : l'aperçu C&I (contrat CIQ2 ``etude_ci_preview.json`` — la forme
+# stockée ``etude_params.etude_ci`` en est le sous-ensemble ``entrees_resolues``
+# / ``profil_charge`` / ``bilan`` / ``alertes``), ``tarif_declare``,
+# ``saisies_economie_ci``, l'investissement de l'option retenue (totaux CLIENT
+# HT/TTC, jamais ``prix_achat``) et les lignes (onduleur, O&M). Aucun prix plat,
+# aucun taux d'autoconsommation forfaitaire, aucune économie de calepinage.
+
+MOTIF_ETUDE_CI_ABSENTE = (
+    "étude C&I du devis absente (aucun panneau au devis ou étude non "
+    "calculée) — économies non chiffrées")
+MOTIF_FINANCEMENT_ABSENT = "aucune offre écrite de prêteur saisie (D-CIQ-15)"
+ALERTE_TARIF_REPLI = (
+    "Tarif valorisé sur la grille officielle (repli) : lire une facture du "
+    "client pour un chiffre déclaré.")
+#: Alertes de l'étude C&I RELAYÉES (jamais recalculées) dans
+#: ``alertes_internes`` — l'alerte cos φ de CIQ134.
+CODES_ALERTES_RELAYEES = ('cos_phi_apres_pv',)
+PARCOURS_AIDE = ('aucun', 'sr500', 'autre')
+MOTIF_SR500_AUCUN = "aucun parcours d'aide déclaré"
+MOTIF_SR500 = ("candidature SR500 manuelle d'abord (D-CIQ-17) — indicateur "
+               "interne seulement, jamais un montant")
+MOTIF_AIDE_AUTRE = ("parcours d'aide « autre » déclaré — non évalué, jamais "
+                    "un montant")
+HYPOTHESE_VALORISATION = {
+    'cle': 'valorisation',
+    'valeur': 'tarif du poste horaire couvert, heure par heure',
+    'statut': 'source', 'source': 'conventions Groupe CIQ'}
+#: Ordre des clés du contrat (``exemple``).
+CLES_BLOC = ('statut', 'motifs_omission', 'base', 'motif_base', 'tarif',
+             'economie_annee1', 'facture_avant', 'facture_apres', 'revente',
+             'flux_ht', 'flux_ttc', 'jalons', 'jalons_ttc', 'indicateurs',
+             'remplacements', 'om', 'sensibilites', 'financement',
+             'hypotheses', 'omissions', 'alertes_internes', 'vue_interne')
+
+
+def _resolue(apercu, feuille):
+    entree = (apercu.get('entrees_resolues') or {}).get(feuille)
+    return entree.get('valeur') if isinstance(entree, dict) else entree
+
+
+def _sr500(saisies):
+    parcours = str(saisies.get('parcours_aide') or 'aucun').strip().lower()
+    if parcours not in PARCOURS_AIDE:
+        raise SaisieEconomieCiInvalide(
+            f"saisies_economie_ci.parcours_aide : choisir parmi "
+            f"{', '.join(PARCOURS_AIDE)}.",
+            champ='saisies_economie_ci.parcours_aide')
+    motif = {'aucun': MOTIF_SR500_AUCUN, 'sr500': MOTIF_SR500,
+             'autre': MOTIF_AIDE_AUTRE}[parcours]
+    return {'statut': 'non_evalue', 'motif': motif}
+
+
+def _hypothese_tarif(tarif):
+    origine = tarif.get('origine')
+    premier = (tarif.get('tarifs_par_poste') or [{}])[0]
+    if origine == tarif_ci.ORIGINE_GRILLE:
+        libelle = tarif_ci._LIBELLES_CONTRAT.get(tarif.get('contrat'),
+                                                 tarif.get('contrat'))
+        return {'cle': 'tarif', 'valeur': f'grille ONEE {libelle}, repli',
+                'statut': 'estimation', 'source': tarif_ci.MENTION_GRILLE}
+    return {'cle': 'tarif', 'valeur': premier.get('source'),
+            'statut': 'declare', 'source': tarif.get('mention')}
+
+
+def _alertes_internes(apercu, tarif):
+    alertes = []
+    if tarif.get('origine') == tarif_ci.ORIGINE_GRILLE:
+        alertes.append({'code': 'tarif_repli', 'message': ALERTE_TARIF_REPLI,
+                        'interne': True})
+    for alerte in apercu.get('alertes') or []:
+        if isinstance(alerte, dict) and \
+                alerte.get('code') in CODES_ALERTES_RELAYEES:
+            alertes.append({'code': alerte.get('code'),
+                            'message': alerte.get('message'),
+                            'interne': True})
+    return alertes
+
+
+def _somme_lignes(lignes, cle_filtre):
+    ht = ttc = 0.0
+    trouve = False
+    sources = []
+    for ligne in lignes:
+        if not cle_filtre(ligne):
+            continue
+        h, t = _montant(ligne.get('ht')), _montant(ligne.get('ttc'))
+        if h is None or t is None:
+            continue
+        trouve = True
+        ht += h
+        ttc += t
+        if ligne.get('designation'):
+            sources.append(str(ligne['designation']))
+    if not trouve:
+        return None
+    return {'ht': round(ht, 2), 'ttc': round(ttc, 2), 'sources': sources}
+
+
+def onduleur_et_om(lignes):
+    """``(onduleur, om)`` lus sur les lignes de l'option retenue.
+
+    ``lignes`` : ``[{designation, ht, ttc, optionnelle, onduleur (bool),
+    role_ci}]`` — totaux CLIENT. Onduleur = lignes onduleur COMPTÉES (montant
+    réel, décision Q1) ; O&M = lignes du rôle ``om_ci`` : activée si au moins
+    une n'est pas optionnelle (D-CIQ-12). None quand aucune ligne.
+    """
+    lignes = [li for li in (lignes or []) if isinstance(li, dict)]
+    ond = _somme_lignes(
+        lignes, lambda li: li.get('onduleur') and not li.get('optionnelle'))
+    onduleur = None
+    if ond is not None:
+        onduleur = {'ht': ond['ht'], 'ttc': ond['ttc'],
+                    'source': 'ligne onduleur du devis'
+                    + (f" ({', '.join(ond['sources'])})"
+                       if ond['sources'] else '')}
+    om_lignes = [li for li in lignes if li.get('role_ci') == 'om_ci']
+    om = None
+    if om_lignes:
+        activee = any(not li.get('optionnelle') for li in om_lignes)
+        retenues = [li for li in om_lignes
+                    if not li.get('optionnelle')] if activee else om_lignes
+        somme = _somme_lignes(retenues, lambda li: True)
+        om = {'activee': activee,
+              'ht': None if somme is None else somme['ht'],
+              'ttc': None if somme is None else somme['ttc'],
+              'source': 'ligne O&M souscrite du devis'}
+    return onduleur, om
+
+
+def _bloc_omis(motif, tarif, *, alertes, vue_interne):
+    bloc = dict.fromkeys(CLES_BLOC)
+    bloc.update({
+        'statut': STATUT_OMIS, 'motifs_omission': [motif], 'tarif': tarif,
+        'jalons': [], 'remplacements': [], 'sensibilites': [],
+        'hypotheses': [], 'omissions': [], 'alertes_internes': alertes,
+        'vue_interne': vue_interne,
+    })
+    del bloc['jalons_ttc']
+    del bloc['financement']
+    return bloc
+
+
+def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
+                          investissement=None, lignes=None,
+                          mode_installation=None, reglages=None):
+    """Le bloc ``economie_ci`` INTERNE (avec ``vue_interne`` et
+    ``alertes_internes``) — forme ``exemple`` du contrat ``economie_ci.json``.
+
+    ``apercu_ci`` : sortie de l'aperçu C&I (ou ``etude_params.etude_ci``) ;
+    ``tarif_declare`` : ``etude_params.tarif_declare`` (sinon celui résolu par
+    l'aperçu) ; ``saisies`` : ``saisies_economie_ci`` ; ``investissement`` :
+    ``{ht, ttc}`` CLIENT de l'option retenue ; ``lignes`` : voir
+    :func:`onduleur_et_om` ; ``reglages`` : ``{mention_credit_bail_autorisee}``
+    (``TariffSettings``, CIQ211). Refus nommés par
+    :class:`SaisieEconomieCiInvalide`. Aucune écriture.
+    """
+    apercu = apercu_ci if isinstance(apercu_ci, dict) else {}
+    saisies = saisies if isinstance(saisies, dict) else {}
+    reglages = reglages if isinstance(reglages, dict) else {}
+    if not isinstance(tarif_declare, dict):
+        tarif_declare = _resolue(apercu, 'tarif_declare')
+        if not isinstance(tarif_declare, dict):
+            tarif_declare = None
+    tension = _resolue(apercu, 'tension')
+    tension = tension.strip().lower() if isinstance(tension, str) else None
+    tarif = tarif_ci.tarif_applicable(tarif_declare, tension=tension)
+    vue_interne = {'comparaison_cse': None, 'sr500': _sr500(saisies),
+                   'apres_impot': None}
+    alertes = _alertes_internes(apercu, tarif)
+    if not apercu.get('bilan'):
+        motif = (MOTIF_TARIF_OMIS if tarif.get('origine') ==
+                 tarif_ci.ORIGINE_OMIS else MOTIF_ETUDE_CI_ABSENTE)
+        return _bloc_omis(motif, tarif, alertes=alertes,
+                          vue_interne=vue_interne)
+    valo = valoriser(apercu, tarif, tarif_declare=tarif_declare)
+    if valo['statut'] == STATUT_OMIS:
+        return _bloc_omis(valo['motifs_omission'][0], tarif, alertes=alertes,
+                          vue_interne=vue_interne)
+
+    tva = resoudre_tva_recuperable(_resolue(apercu, 'tva_recuperable'),
+                                   saisies.get('tva_recuperable'))
+    base = base_economique(tva, investissement=investissement,
+                           economie_annee1=valo['economie_annee1'])
+    production = _montant((apercu.get('bilan') or {}).get('production_kwh'))
+    kwh_evites = sum(_f(p.get('kwh_evites'))
+                     for p in valo['economie_annee1']['par_poste'])
+    onduleur, om = onduleur_et_om(lignes)
+    collecteur = {}
+    flux = flux_ci(base, production_annee1_kwh=production,
+                   kwh_evites_an=kwh_evites, onduleur=onduleur, om=om,
+                   taux_actualisation_client=saisies.get(
+                       'taux_actualisation_client'),
+                   collecteur=collecteur)
+    revente = valo['revente']
+    tension_revente = tension or (
+        'mt' if tarif.get('contrat') == 'mt_general' else None)
+    if tension_revente:
+        revente = revente_ci(
+            apercu, tension=tension_revente,
+            revente_demandee=bool(saisies.get('revente_demandee')),
+            production_annuelle_kwh=production)
+    financement = financement_ci(
+        saisies.get('offre_financement'), base,
+        mode_installation=mode_installation,
+        mention_credit_bail_autorisee=bool(
+            reglages.get('mention_credit_bail_autorisee')))
+    vue_interne['comparaison_cse'] = comparaison_cse(
+        flux['flux_ht'], saisies.get('offre_cse_concurrente'), production)
+    omissions = []
+    if flux['indicateurs'] and flux['indicateurs'].get('van_motif'):
+        omissions.append({'cle': 'van_mad',
+                          'motif': flux['indicateurs']['van_motif']})
+    if financement is None:
+        omissions.append({'cle': 'financement',
+                          'motif': MOTIF_FINANCEMENT_ABSENT})
+    sensibilites = []
+    if str(mode_installation or '').strip().lower() == 'industriel':
+        # CIQ231 — industriel SEULEMENT, sur le flux de la base principale.
+        cle_base = 'ttc' if flux['base'] == BASE_TTC else 'ht'
+        sensibilites, omis = sensibilites_ci(
+            collecteur.get(cle_base), apercu, tarif, reglages,
+            tarif_declare=tarif_declare, cle_base=cle_base)
+        if omis is not None:
+            omissions.append(omis)
+        # CIQ233 — vue INTERNE après impôt (industriel, saisie du client).
+        apres, motif_apres = apres_impot_ci(
+            saisies.get('fiscalite_client'), base, collecteur)
+        vue_interne['apres_impot'] = apres
+        if motif_apres is not None:
+            vue_interne['apres_impot_motif'] = motif_apres
+    hypotheses = [dict(HYPOTHESE_VALORISATION), _hypothese_tarif(tarif)]
+    hypotheses.extend(valo.get('hypotheses') or [])
+    bloc = {
+        'statut': STATUT_CALCULE,
+        'motifs_omission': [],
+        'base': flux['base'],
+        'motif_base': flux['motif_base'],
+        'tarif': tarif,
+        'economie_annee1': valo['economie_annee1'],
+        'facture_avant': valo['facture_avant'],
+        'facture_apres': valo['facture_apres'],
+        'revente': revente,
+        'flux_ht': flux['flux_ht'],
+        'flux_ttc': flux['flux_ttc'],
+        'jalons': flux['jalons'],
+        'jalons_ttc': flux.get('jalons_ttc'),
+        'indicateurs': flux['indicateurs'],
+        'remplacements': flux['remplacements'],
+        'om': flux['om'],
+        'sensibilites': sensibilites,
+        'financement': financement,
+        'hypotheses': hypotheses,
+        'omissions': omissions,
+        'alertes_internes': alertes,
+        'vue_interne': vue_interne,
+    }
+    if 'jalons_ttc' not in flux:
+        del bloc['jalons_ttc']
+    if financement is None:
+        del bloc['financement']
+    return bloc
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CIQ231 — sensibilités INDUSTRIELLES sur les SEULES valeurs saisies par Reda
+# (``TariffSettings.sensibilites_ci``, CIQ211 ; D-CIQ-10, convention 16).
+# ═════════════════════════════════════════════════════════════════════════════
+# Chaque scénario relance DIRECTEMENT ``economie.flux_de_tresorerie`` (sans le
+# modifier ni passer par ``comparer_scenarios``, qui exige une indexation
+# identique d'un scénario à l'autre) avec les entrées EXACTES du flux de base,
+# en ne changeant qu'UNE grandeur :
+#   indexation_tarif ⇒ ``indexation_pct`` = variation (%/an ; base 0, QX39) ;
+#   degradation      ⇒ ``degradation_pct`` = variation (%/an) ;
+#   tarif_kwh        ⇒ prix de chaque poste × (1 + v), puis :func:`valoriser` ;
+#   production       ⇒ production de chaque cellule horaire × (1 + v),
+#                      autoconsommé = min(production, charge déclarée) cellule
+#                      par cellule, puis :func:`valoriser` (jamais une économie
+#                      mise à l'échelle linéairement).
+# Aucun scénario par défaut, aucun P90 inventé.
+
+SENSIBILITE_CLES = ('indexation_tarif', 'degradation', 'tarif_kwh',
+                    'production')
+SENSIBILITES_MAX = 4
+MOTIF_SANS_SENSIBILITE = (
+    "aucun scénario saisi (Paramètres — sensibilités C&I) : aucune "
+    "sensibilité supposée")
+MOTIF_SENSIBILITE_SANS_CHARGE = (
+    "charge horaire déclarée absente : production non recalculable heure "
+    "par heure — scénario non chiffré")
+
+
+def _tarif_mis_a_l_echelle(tarif, facteur):
+    sortie = dict(tarif)
+    sortie['tarifs_par_poste'] = [
+        dict(p, tarif_kwh_ht=round(_f(p.get('tarif_kwh_ht')) * facteur, 4),
+             tarif_kwh_ttc=round(_f(p.get('tarif_kwh_ttc')) * facteur, 4))
+        for p in tarif.get('tarifs_par_poste') or []]
+    return sortie
+
+
+def _apercu_production(apercu, facteur):
+    """L'aperçu dont CHAQUE cellule horaire produit × ``facteur`` ;
+    autoconsommé = min(production, charge), surplus = le reste. None quand la
+    charge d'un jour type manque (rien n'est deviné)."""
+    charges = _charges_par_jour_type(apercu)
+    bilan = dict(apercu.get('bilan') or {})
+    horaire = []
+    for bloc in bilan.get('horaire') or []:
+        if not isinstance(bloc, dict):
+            continue
+        charge = charges.get((bloc.get('mois'), bloc.get('type_jour')))
+        if charge is None:
+            return None
+        auto = bloc.get('autoconso_kwh') or []
+        surplus = bloc.get('surplus_kwh') or []
+        a2, s2 = [], []
+        for h in range(24):
+            prod = ((_f(auto[h]) if h < len(auto) else 0.0)
+                    + (_f(surplus[h]) if h < len(surplus) else 0.0)) * facteur
+            c = _f(charge[h]) if h < len(charge) else 0.0
+            a2.append(min(prod, c))
+            s2.append(prod - min(prod, c))
+        horaire.append(dict(bloc, autoconso_kwh=a2, surplus_kwh=s2))
+    bilan['horaire'] = horaire
+    if bilan.get('production_kwh') is not None:
+        bilan['production_kwh'] = _f(bilan['production_kwh']) * facteur
+    return dict(apercu, bilan=bilan)
+
+
+def _economie_valorisee(apercu, tarif, tarif_declare, cle_base):
+    valo = valoriser(apercu, tarif, tarif_declare=tarif_declare)
+    eco1 = valo.get('economie_annee1') or {}
+    return eco1.get('total_mad_ttc' if cle_base == 'ttc' else 'total_mad')
+
+
+def _indicateur(bloc, cle):
+    return None if not bloc else bloc.get(cle)
+
+
+def _ecart(valeur, reference):
+    if valeur is None or reference is None:
+        return None
+    return round(valeur - reference, 4)
+
+
+def sensibilites_ci(flux_entrees, apercu_ci, tarif, reglages, *,
+                    tarif_declare=None, cle_base='ht'):
+    """``(sensibilites, omission|None)`` — la liste du contrat
+    ``economie_ci.json`` [{cle, variation_pct, source, economie_annee1_mad,
+    retour_ans, tri_pct, ecart_retour_ans, ecart_tri_pct}] et, sans scénario, l'omission nommée.
+
+    ``flux_entrees`` : les entrées EXACTES du flux de base (collectées par
+    :func:`flux_ci`) ; ``reglages`` : ``{sensibilites_ci: [...]}`` (CIQ211).
+    """
+    from apps.ventes import economie as eco_mod
+    scenarios = (reglages or {}).get('sensibilites_ci') or []
+    scenarios = [s for s in scenarios if isinstance(s, dict)
+                 and s.get('cle') in SENSIBILITE_CLES
+                 and str(s.get('source') or '').strip()][:SENSIBILITES_MAX]
+    if not scenarios or not isinstance(flux_entrees, dict):
+        return [], {'cle': 'sensibilites', 'motif': MOTIF_SANS_SENSIBILITE}
+    apercu = apercu_ci if isinstance(apercu_ci, dict) else {}
+    base = eco_mod.flux_de_tresorerie(**flux_entrees)
+    sorties = []
+    for sc in scenarios:
+        cle = sc['cle']
+        v = float(str(sc.get('variation_pct')).replace(',', '.'))
+        source = str(sc['source']).strip()
+        libelle = f'sensibilité saisie par la société — {source}'
+        entrees = dict(flux_entrees)
+        motif = None
+        if cle == 'indexation_tarif':
+            entrees['indexation_pct'] = {'valeur': v, 'source': libelle}
+        elif cle == 'degradation':
+            entrees['degradation_pct'] = {'valeur': v, 'source': libelle}
+        elif cle == 'tarif_kwh':
+            eco = _economie_valorisee(
+                apercu, _tarif_mis_a_l_echelle(tarif, 1.0 + v / 100.0),
+                tarif_declare, cle_base)
+            entrees['economie_annee1_mad'] = {'valeur': eco, 'source': libelle}
+        else:
+            modifie = _apercu_production(apercu, 1.0 + v / 100.0)
+            if modifie is None:
+                motif = MOTIF_SENSIBILITE_SANS_CHARGE
+            else:
+                eco = _economie_valorisee(modifie, tarif, tarif_declare,
+                                          cle_base)
+                entrees['economie_annee1_mad'] = {'valeur': eco,
+                                                  'source': libelle}
+                prod = (entrees.get('production_annee1_kwh') or {})
+                if isinstance(prod, dict) and prod.get('valeur') is not None:
+                    entrees['production_annee1_kwh'] = dict(
+                        prod, valeur=_f(prod['valeur']) * (1.0 + v / 100.0))
+        bloc = None
+        if motif is None:
+            try:
+                bloc = eco_mod.flux_de_tresorerie(**entrees)
+            except eco_mod.EconomieInvalide as refus:
+                motif = f'scénario refusé : {refus}'
+        eco1 = (entrees.get('economie_annee1_mad') or {})
+        ligne = {'cle': cle, 'variation_pct': v, 'source': source,
+                 'economie_annee1_mad': (
+                     _montant(eco1.get('valeur'))
+                     if isinstance(eco1, dict) else _montant(eco1)),
+                 'retour_ans': _indicateur(bloc, 'retour_ans'),
+                 'tri_pct': _indicateur(bloc, 'tri_pct'),
+                 'ecart_retour_ans': _ecart(_indicateur(bloc, 'retour_ans'),
+                                            base.get('retour_ans')),
+                 'ecart_tri_pct': _ecart(_indicateur(bloc, 'tri_pct'),
+                                         base.get('tri_pct'))}
+        if motif is not None:
+            ligne['motif'] = motif
+        sorties.append(ligne)
+    return sorties, None
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CIQ233 — vue INTERNE après impôt d'un industriel, seulement sur le taux d'IS
+# et l'amortissement DÉCLARÉS par le client (jamais les réglages fiscaux de la
+# société vendeuse) ; base amortissable HT quand la TVA est récupérable.
+# ═════════════════════════════════════════════════════════════════════════════
+
+MODES_AMORTISSEMENT_CI = ('lineaire', 'degressif')
+MOTIF_APRES_IMPOT_OMIS = (
+    "fiscalité du client non déclarée (taux d'IS et amortissement) : vue "
+    "après impôt omise — jamais les réglages fiscaux de la société")
+
+
+def _nombre_fiscal(fiscalite, cle, *, requis=True):
+    champ = f'fiscalite_client.{cle}'
+    brut = fiscalite.get(cle)
+    if brut is None or brut == '':
+        if requis:
+            raise SaisieEconomieCiInvalide(
+                f"{champ} : à saisir (déclaré par le client ou son "
+                "comptable).", champ=champ)
+        return None
+    try:
+        return float(str(brut).replace(',', '.'))
+    except (TypeError, ValueError):
+        raise SaisieEconomieCiInvalide(
+            f"{champ} : valeur « {brut} » refusée.", champ=champ) from None
+
+
+def lire_fiscalite_client(fiscalite):
+    """``saisies_economie_ci.fiscalite_client`` validée, ou None.
+
+    ``{taux_is_pct, amortissement_mode lineaire|degressif, duree_ans,
+    amortissement_coefficient (dégressif), source}`` — refus nommés
+    ``fiscalite_client.<champ>``.
+    """
+    if fiscalite in (None, '', {}):
+        return None
+    if not isinstance(fiscalite, dict):
+        raise SaisieEconomieCiInvalide(
+            "fiscalite_client : un objet est attendu.",
+            champ='fiscalite_client')
+    source = str(fiscalite.get('source') or '').strip()
+    if not source:
+        raise SaisieEconomieCiInvalide(
+            "fiscalite_client.source : déclaré par le client ou son "
+            "comptable — source obligatoire.", champ='fiscalite_client.source')
+    mode = str(fiscalite.get('amortissement_mode') or '').strip().lower()
+    if mode not in MODES_AMORTISSEMENT_CI:
+        raise SaisieEconomieCiInvalide(
+            "fiscalite_client.amortissement_mode : lineaire ou degressif.",
+            champ='fiscalite_client.amortissement_mode')
+    return {
+        'taux_is_pct': _nombre_fiscal(fiscalite, 'taux_is_pct'),
+        'amortissement_mode': mode,
+        'duree_ans': _nombre_fiscal(fiscalite, 'duree_ans'),
+        'amortissement_coefficient': _nombre_fiscal(
+            fiscalite, 'amortissement_coefficient',
+            requis=mode == 'degressif'),
+        'source': source,
+    }
+
+
+def apres_impot_ci(fiscalite, base_eco, collecteur):
+    """``(bloc apres_impot | None, motif | None)`` — ``vue_interne.
+    apres_impot`` du contrat ``economie_ci.json``.
+
+    ``flux_apres_impot`` (economie.py, inchangé) reçoit les entrées EXACTES
+    du flux de base et ``base_amortissable_mad`` = total HT quand la TVA est
+    récupérable (``oui``), TTC sinon (D-CIQ-3) — le flux suit la même base.
+    """
+    from apps.ventes import economie as eco_mod
+    lu = lire_fiscalite_client(fiscalite)
+    if lu is None:
+        return None, MOTIF_APRES_IMPOT_OMIS
+    cle_base = 'ht' if base_eco.get('tva_recuperable') == TVA_OUI else 'ttc'
+    entrees = (collecteur or {}).get(cle_base)
+    if entrees is None:
+        return None, MOTIF_APRES_IMPOT_OMIS
+    source = f"déclaré par le client — {lu['source']}"
+    base = base_eco.get(f'investissement_{cle_base}_mad')
+    libelle = ('HT (TVA récupérable)' if cle_base == 'ht'
+               else 'TTC (TVA non récupérable ou non déclarée)')
+
+    def saisie(valeur):
+        return None if valeur is None else {'valeur': valeur,
+                                            'source': source}
+    try:
+        res = eco_mod.flux_apres_impot(
+            taux_imposition_pct=saisie(lu['taux_is_pct']),
+            amortissement_mode=saisie(lu['amortissement_mode']),
+            amortissement_duree_ans=saisie(
+                None if lu['duree_ans'] is None else int(lu['duree_ans'])),
+            amortissement_coefficient=saisie(
+                lu['amortissement_coefficient']
+                if lu['amortissement_mode'] == 'degressif' else None),
+            base_amortissable_mad=None if base is None else {
+                'valeur': base,
+                'source': f"devis — total {libelle} de l'option retenue"},
+            **entrees)
+    except eco_mod.EconomieInvalide as refus:
+        raise SaisieEconomieCiInvalide(
+            f"fiscalite_client : {refus}",
+            champ=f'fiscalite_client.{refus.champ}') from refus
+    bloc = res['apres_impot']
+    bloc['base'] = cle_base
+    return bloc, None
+
+
+# ── Lecture d'un devis (aucune écriture) ─────────────────────────────────────
+
+def _est_onduleur(produit):
+    if produit is None:
+        return False
+    roles = ' '.join(str(getattr(produit, r, '') or '')
+                     for r in ('role_devis', 'role_ci'))
+    if 'onduleur' in roles:
+        return True
+    categorie = getattr(produit, 'categorie', None)
+    return getattr(categorie, 'type_equipement', None) == 'onduleur'
+
+
+def lignes_pour_economie_ci(devis):
+    """Les lignes de l'option RETENUE à la forme de :func:`onduleur_et_om` —
+    totaux CLIENT (remise de ligne ET remise globale), jamais ``prix_achat``.
+    Les O&M optionnelles restent lues (« proposé, non souscrit »)."""
+    from apps.ventes.utils.options import (
+        filter_lines_for_option, has_two_options, lignes_avec_produit,
+        option_effective)
+    lignes = lignes_avec_produit(devis)
+    if has_two_options(devis):
+        option = option_effective(devis)
+        if option:
+            lignes = filter_lines_for_option(lignes, option)
+    remise_globale = _f(getattr(devis, 'remise_globale', 0))
+    facteur = 1.0 - remise_globale / 100.0
+    sorties = []
+    for ligne in lignes:
+        if getattr(ligne, 'type_ligne', 'produit') not in (None, '', 'produit'):
+            continue
+        produit = getattr(ligne, 'produit', None)
+        tva = ligne.taux_tva if ligne.taux_tva is not None else devis.taux_tva
+        ht = (_f(ligne.quantite) * _f(ligne.prix_unitaire)
+              * (1.0 - _f(ligne.remise) / 100.0)) * facteur
+        sorties.append({
+            'designation': ligne.designation,
+            'ht': round(ht, 2),
+            'ttc': round(ht * (1.0 + _f(tva) / 100.0), 2),
+            'optionnelle': bool(getattr(ligne, 'optionnelle', False)),
+            'onduleur': _est_onduleur(produit),
+            'role_ci': (getattr(produit, 'role_ci', '') or None)
+            if produit is not None else None,
+        })
+    return sorties
+
+
+def reglages_economie_ci(company):
+    """``{mention_credit_bail_autorisee}`` du ``TariffSettings`` (CIQ211),
+    lu sans jamais le créer ; vide sans réglage."""
+    if company is None:
+        return {}
+    from apps.parametres.models_tariff import TariffSettings
+    reglage = TariffSettings.objects.filter(company=company).first()
+    if reglage is None:
+        return {}
+    return {
+        'mention_credit_bail_autorisee': bool(
+            getattr(reglage, 'mention_credit_bail_autorisee', False)),
+        'sensibilites_ci': list(getattr(reglage, 'sensibilites_ci', None)
+                                or []),
+    }
+
+
+def economie_ci_pour_devis(devis, company):
+    """Le bloc ``economie_ci`` INTERNE d'un devis commercial / industriel
+    (calculé à la lecture, jamais stocké ; aucune écriture, règle #4).
+
+    Lit ``etude_params.etude_ci`` (aperçu C&I stocké par le rafraîchisseur
+    CIQ119), ``tarif_declare``, ``saisies_economie_ci``, les totaux de
+    l'option retenue (``utils.options.option_totaux``) et ses lignes.
+    """
+    from apps.ventes.utils.options import option_totaux
+    params = getattr(devis, 'etude_params', None)
+    params = params if isinstance(params, dict) else {}
+    apercu = params.get('etude_ci')
+    tarif_declare = params.get('tarif_declare')
+    if not isinstance(tarif_declare, dict):
+        tarif_declare = params.get('tarif') if isinstance(
+            params.get('tarif'), dict) else None
+    totaux = option_totaux(devis)
+    return assembler_economie_ci(
+        apercu if isinstance(apercu, dict) else {},
+        saisies=params.get('saisies_economie_ci'),
+        tarif_declare=tarif_declare,
+        investissement={'ht': totaux.get('ht'), 'ttc': totaux.get('ttc')},
+        lignes=lignes_pour_economie_ci(devis),
+        mode_installation=getattr(devis, 'mode_installation', None),
+        reglages=reglages_economie_ci(company))

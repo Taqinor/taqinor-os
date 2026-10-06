@@ -74,6 +74,8 @@ FEUILLES = (
     ('tva_recuperable', 'tva_recuperable'),
     ('batterie_souhaitee', 'options.batterie_souhaitee'), ('om', 'options.om'),
     ('taille_explicite_kwc', 'taille_explicite_kwc'),
+    # CIQ134 — cos φ déclaré (feuille PRIVÉE : alerte interne seulement).
+    ('_cos_phi', 'cos_phi'),
 )
 
 #: Chemin du lecteur lead (contrat CIQ1) → feuille de l'étude.
@@ -255,6 +257,13 @@ def _couche_lead(res, lead):
             res.poser('type_pose', POSE_DU_TOIT_LEAD.get(valeur), prov)
         if feuille == 'surface_utile_m2':
             res.poser('surface_type', 'declaree', prov)
+    # CIQ134 — cos φ DÉCLARÉ (information du lead, avec sa provenance) :
+    # feuille PRIVÉE (``_``) — il ne sert qu'à l'alerte interne de
+    # ``moteur_ci.reactif``, jamais aux entrées résolues ni au client.
+    for info in lecture.get('informations') or ():
+        if isinstance(info, dict) and info.get('colonne') == 'cos_phi':
+            res.poser('_cos_phi', _num(info.get('valeur')),
+                      info.get('provenance') or _provenance('lead', 'client'))
     mode = getattr(lead, 'type_installation', None)
     date = _date_iso(getattr(lead, 'date_creation', None))
     prov = _provenance('lead', 'client', date)
@@ -775,6 +784,28 @@ def _completer_prix(composition, prix_par_id):
     return composition
 
 
+def _alertes_reactif(res, tension, bilan, registres):
+    """CIQ134 — alerte INTERNE de facteur de puissance après PV (MT), par
+    ``moteur_ci.reactif`` (la seule formule) : kWh et autoconsommé du bilan
+    mensuel, kvarh / cos φ des registres MT déclarés, sinon cos φ déclaré
+    avec sa provenance. Rien de déclaré ⇒ la note seule ; BT ⇒ rien."""
+    from apps.ventes.moteur_ci.reactif import evaluer_reactif
+    par_mois = sorted((m for m in (bilan or {}).get('par_mois') or ()
+                       if isinstance(m, dict)), key=lambda m: m.get('mois') or 0)
+    regs = list(registres or ())
+    regs += [None] * (len(par_mois) - len(regs))
+    return evaluer_reactif(
+        tension=tension,
+        kwh_mensuels=[m.get('consommation_kwh') for m in par_mois],
+        autoconso_mensuels=[m.get('autoconso_kwh') for m in par_mois],
+        kvarh_mensuels=[(r or {}).get('kvarh') if isinstance(r, dict) else None
+                        for r in regs],
+        cos_phi_mensuels=[(r or {}).get('cos_phi') if isinstance(r, dict) else None
+                          for r in regs],
+        cos_phi_declare=res.valeur('_cos_phi'),
+        provenance_cos_phi=res.provenance('_cos_phi'))['alertes']
+
+
 def _apercu_valorisation(bilan, jours_types, tension):
     return {'bilan': bilan, 'profil_charge': {'jours_types': jours_types},
             'entrees_resolues': {'tension': {'valeur': tension}}}
@@ -991,6 +1022,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         economie = economie_ci.valoriser(
             _apercu_valorisation(bilan, jours_types, tension), tarif, tarif_declare=td)
         regime = _regime(evaluation['kwc'], evaluation['puissance_ac'], tension)
+        alertes.extend(_alertes_reactif(res, tension, bilan, registres))
     elif resultat.get('prix_manquants'):
         composition = {'lignes': [], 'onduleurs': {'combinaison': [], 'ratio_dc_ac': {
             'valeur': None, 'bornes': None, 'source': None}, 'chaines': None},

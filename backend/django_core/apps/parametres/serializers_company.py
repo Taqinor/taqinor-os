@@ -5,9 +5,42 @@ Domaine « Société & identité / Devis & logique métier ». Extrait de l'anci
 comportement (mêmes URLs présignées, mêmes contrôles de société)."""
 from decimal import Decimal, InvalidOperation
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import CompanyProfile
+
+
+def _valider_jalons(mode, jalons):
+    """CIQ212 — un échéancier société en LISTE de jalons ``[{jalon, pct}]``
+    (D-CIQ-13) : jalons connus, chaque pct dans [0, 100], somme = 100."""
+    from apps.ventes.utils.company_settings import JALONS_CONNUS
+    if not jalons:
+        raise serializers.ValidationError(
+            f"L'échéancier du mode « {mode} » ne peut pas être vide.")
+    total = Decimal('0')
+    for i, jalon in enumerate(jalons):
+        if not isinstance(jalon, dict) or jalon.get('jalon') not in JALONS_CONNUS:
+            raise serializers.ValidationError(
+                f"« {mode}[{i}].jalon » doit valoir "
+                f"{' | '.join(JALONS_CONNUS)}.")
+        try:
+            pct = Decimal(str(jalon.get('pct')))
+            if not pct.is_finite():
+                raise InvalidOperation
+        except (TypeError, ValueError, ArithmeticError):
+            raise serializers.ValidationError(
+                f'« {mode}[{i}].pct » doit être un pourcentage numérique.')
+        if pct < 0 or pct > 100:
+            raise serializers.ValidationError(
+                f'« {mode}[{i}].pct » doit être compris entre 0 et 100 %.')
+        total += pct
+    if total != 100:
+        raise serializers.ValidationError(
+            f"L'échéancier du mode « {mode} » doit totaliser 100 % "
+            f'(total {total}).')
+
 
 #: CIQ105 — prestations C&I réglables (clés = rôles C&I de prestation,
 #: ``core.product_roles.ROLES_CI``). Aucune valeur par défaut.
@@ -90,6 +123,8 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     # exposés à côté des surcharges société ``seuil_regime_*`` (NULL = seuil
     # sourcé). Lecture seule : la société ne saisit qu'une surcharge.
     seuils_sources = serializers.SerializerMethodField()
+    # CIQ212 — échéancier RÉSOLU par mode (lecture seule).
+    payment_terms_effectifs = serializers.SerializerMethodField()
     # CIQ622 — délais déclarés sans le MinValueValidator du modèle : le refus
     # (≤ 0) est rendu par ``validate_<champ>`` avec un message français.
     delai_intervention_suivi_heures = serializers.IntegerField(
@@ -113,6 +148,14 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
                 'source': r8221.SEUIL_AUTORISATION_SOURCE,
             },
         }
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_payment_terms_effectifs(self, obj):
+        """CIQ212 — pour chaque mode, la liste de jalons RÉSOLUE (réglage
+        société, sinon défaut ``PAYMENT_TERMS_BY_MODE``), lue par l'écran au
+        lieu de recopier les défauts en dur."""
+        from apps.ventes.utils.company_settings import payment_terms_effectifs
+        return payment_terms_effectifs(getattr(obj, 'company', None))
 
     class Meta:
         model = CompanyProfile
@@ -425,6 +468,10 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
                 "L'échéancier doit être un objet {mode: {acompte, materiel, "
                 'solde}}.')
         for mode, terms in value.items():
+            if isinstance(terms, list):
+                # CIQ212 — LISTE de jalons [{jalon, pct}] (D-CIQ-13).
+                _valider_jalons(mode, terms)
+                continue
             if not isinstance(terms, dict):
                 raise serializers.ValidationError(
                     f"L'échéancier du mode « {mode} » doit être un objet.")

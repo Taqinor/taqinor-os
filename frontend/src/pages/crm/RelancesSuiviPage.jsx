@@ -10,6 +10,7 @@ import {
   Button, Input,
 } from '../../ui'
 import RelanceEtapeRow from '../../features/crm/relances/RelanceEtapeRow'
+import { PARCOURS } from '../../features/crm/relances/parcours'
 import ToucheMessageDialog from './ToucheMessageDialog'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { toastError } from '../../lib/toast'
@@ -292,6 +293,31 @@ function valeur(v, suffixe = '') {
   return v == null ? TIRET : `${v}${suffixe}`
 }
 
+// CIQ519 — les colonnes que le C&I ajoute (CIQ518) : des COMPTES servis par
+// le serveur, rendus tels quels (aucun calcul, aucune couleur). Les libellés
+// des raisons sont ceux de la table du parcours (`raisons` de la réponse
+// « En attente d'un accord »), jamais une liste retapée ici.
+const LIBELLES_RAISON = Object.fromEntries(
+  (PARCOURS.modeles?.attente_accord?.raisons ?? []).map((r) => [r.valeur, r.libelle]))
+const LIBELLES_CRENEAU = {
+  matin: 'Matin', midi: 'Midi', apres_midi: 'Après-midi', soir: 'Soir',
+}
+const LIBELLES_CANAL_CONVERTI = { email: 'e-mail', appel: 'appel' }
+
+/** « Libellé : n · Libellé : n » d'un objet de comptes servi ; `null` → « — ». */
+function comptes(objet, libelles, { sansZero = false } = {}) {
+  if (objet == null || typeof objet !== 'object') return TIRET
+  const morceaux = Object.entries(objet)
+    .filter(([, n]) => !(sansZero && !n))
+    .map(([cle, n]) => `${libelles[cle] ?? cle} : ${n}`)
+  return morceaux.length ? morceaux.join(' · ') : TIRET
+}
+
+/** La liste servie des délais (jours), telle quelle ; `null` ou vide → « — ». */
+function listeJours(liste) {
+  return Array.isArray(liste) && liste.length ? liste.join(' · ') : TIRET
+}
+
 /** AGR541 — le tableau « Par segment » (AGR540), en LECTURE SEULE : une
  *  ligne par segment, les valeurs du serveur telles quelles, aucun calcul,
  *  aucune couleur de jugement. */
@@ -315,7 +341,11 @@ function MesureParSegment({ lignes }) {
                 <th className="py-1 pr-2 text-right">Taux de joint</th>
                 <th className="py-1 pr-2 text-right">En attente d’un accord</th>
                 <th className="py-1 pr-2">Dossiers de subvention</th>
-                <th className="py-1 text-right" title={AIDE_INCOHERENTS}>Incohérents</th>
+                <th className="py-1 pr-2 text-right" title={AIDE_INCOHERENTS}>Incohérents</th>
+                <th className="py-1 pr-2">Attentes par raison</th>
+                <th className="py-1 pr-2">Touches converties (e-mail / appel)</th>
+                <th className="py-1 pr-2">Joints par créneau</th>
+                <th className="py-1">Délais devis → signature (jours)</th>
               </tr>
             </thead>
             <tbody>
@@ -349,7 +379,19 @@ function MesureParSegment({ lignes }) {
                       {dossiers.length === 0 ? TIRET
                         : dossiers.map(([etat, n]) => `${etat} : ${n}`).join(' · ')}
                     </td>
-                    <td className="py-1 text-right tabular-nums">{valeur(l.incoherents)}</td>
+                    <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.incoherents)}</td>
+                    <td className="py-1 pr-2" data-testid="mesure-attentes-par-raison">
+                      {comptes(l.attente_accord_par_raison, LIBELLES_RAISON, { sansZero: true })}
+                    </td>
+                    <td className="py-1 pr-2" data-testid="mesure-touches-converties">
+                      {comptes(l.touches_converties, LIBELLES_CANAL_CONVERTI)}
+                    </td>
+                    <td className="py-1 pr-2" data-testid="mesure-joints-par-creneau">
+                      {comptes(l.joints_par_creneau, LIBELLES_CRENEAU)}
+                    </td>
+                    <td className="py-1" data-testid="mesure-delais-signature">
+                      {listeJours(l.delais_signature_jours)}
+                    </td>
                   </tr>
                 )
               })}

@@ -241,6 +241,8 @@ class FactureSerializer(serializers.ModelSerializer):
     # facture payée ou annulée (plus de « Dû » ni d'« Encaisser » sur une ligne
     # soldée), sinon ``Facture.montant_du``. Même règle que ``kpis_factures``.
     montant_du = serializers.SerializerMethodField()
+    # CIQ214 — reste EXIGIBLE (retenue de garantie non libérée exclue).
+    montant_exigible = serializers.SerializerMethodField()
     avoirs_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     avoirs = serializers.SerializerMethodField()
     client_nom = serializers.CharField(source='client.nom', read_only=True)
@@ -283,7 +285,9 @@ class FactureSerializer(serializers.ModelSerializer):
         read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_emission',
                             'updated_at', 'updated_by',  # VX98 — server-side only
                             # ARRONDI-100 — hérités du devis côté serveur.
-                            'arrondi_pas', 'arrondi_unites']
+                            'arrondi_pas', 'arrondi_unites',
+                            # CIQ214 — posés par la tranche / ``liberer-retenue``.
+                            'retenue_garantie_mad', 'retenue_liberee_le']
 
     @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
     def get_montant_du(self, obj):
@@ -291,6 +295,15 @@ class FactureSerializer(serializers.ModelSerializer):
         if obj.statut in (Facture.Statut.PAYEE, Facture.Statut.ANNULEE):
             return '0.00'
         return str(Decimal(obj.montant_du).quantize(Decimal('0.01')))
+
+    @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
+    def get_montant_exigible(self, obj):
+        """CIQ214 — ``montant_du`` moins la retenue de garantie non
+        libérée : ce que les relances réclament."""
+        from decimal import Decimal
+        if obj.statut in (Facture.Statut.PAYEE, Facture.Statut.ANNULEE):
+            return '0.00'
+        return str(Decimal(obj.montant_exigible).quantize(Decimal('0.01')))
 
     def get_is_overdue(self, obj):
         # S'appuie sur jours_retard du modèle (échéance dépassée + reste dû,
