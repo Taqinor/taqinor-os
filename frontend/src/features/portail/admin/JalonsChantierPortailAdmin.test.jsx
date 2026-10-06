@@ -12,7 +12,7 @@ vi.mock('../../../api/portailApi', () => ({
   default: {
     admin: {
       jalonsChantier: {
-        liste: vi.fn(), patch: vi.fn(), supprimer: vi.fn(),
+        liste: vi.fn(), corriger: vi.fn(), supprimer: vi.fn(),
         marquerAtteint: vi.fn(), marquerNonAtteint: vi.fn(),
       },
     },
@@ -66,7 +66,7 @@ describe('ADOC129 — corriger un jalon (plus de création manuelle)', () => {
     portailApi.admin.jalonsChantier.liste.mockResolvedValue({
       data: enveloppe([{ id: 7, chantier_id: 21, libelle: 'Pose', ordre: 5, atteint: true, date_jalon: '2026-10-01', cle_phase: 'pose' }]),
     })
-    portailApi.admin.jalonsChantier.patch.mockResolvedValue({ data: {} })
+    portailApi.admin.jalonsChantier.corriger.mockResolvedValue({ data: {} })
     renderPage(<JalonsChantierPortailAdmin />)
     fireEvent.click((await screen.findAllByRole('button', { name: /Corriger/ }))[0])
     fireEvent.change(screen.getAllByLabelText('Libellé du jalon Pose')[0],
@@ -74,7 +74,7 @@ describe('ADOC129 — corriger un jalon (plus de création manuelle)', () => {
     fireEvent.change(screen.getAllByLabelText('Date du jalon Pose')[0],
       { target: { value: '2026-10-02' } })
     fireEvent.click(screen.getAllByRole('button', { name: /Enregistrer/ })[0])
-    await waitFor(() => expect(portailApi.admin.jalonsChantier.patch).toHaveBeenCalledWith(7, {
+    await waitFor(() => expect(portailApi.admin.jalonsChantier.corriger).toHaveBeenCalledWith(7, {
       libelle: 'Pose des panneaux', date_jalon: '2026-10-02', atteint: true,
     }))
     // Rechargement après la correction (persistance relue au serveur).

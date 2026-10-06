@@ -67,7 +67,7 @@ export default function JalonsChantierPortailAdmin() {
   const enregistrer = async (row) => {
     if (!edit?.libelle?.trim()) return
     const ok = await agir(
-      row, () => portailApi.admin.jalonsChantier.patch(row.id, {
+      row, () => portailApi.admin.jalonsChantier.corriger(row.id, {
         libelle: edit.libelle.trim(),
         date_jalon: edit.date_jalon || null,
         atteint: !!edit.atteint,

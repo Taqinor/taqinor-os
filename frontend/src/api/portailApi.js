@@ -151,7 +151,7 @@ const portailApi = {
       liste: (params) => api.get('/portail/jalons-chantier-portail/', { params }),
       // ADOC129 — plus de création manuelle (POST 405 côté serveur) : on
       // corrige un jalon synchronisé (tracé), on ne supprime qu'un hérité.
-      patch: (id, payload) => api.patch(`/portail/jalons-chantier-portail/${id}/`, payload),
+      corriger: (id, payload) => api.patch(`/portail/jalons-chantier-portail/${id}/`, payload),
       supprimer: (id) => api.delete(`/portail/jalons-chantier-portail/${id}/`),
       marquerAtteint: (id) =>
         api.post(`/portail/jalons-chantier-portail/${id}/marquer_atteint/`, {}),
