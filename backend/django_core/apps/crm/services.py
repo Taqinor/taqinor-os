@@ -13849,6 +13849,57 @@ def prolonger_validite_attente_accord(lead, user=None):
     return prolonges
 
 
+#: CIQ512 — le libellé COURT de l'étape datée (≤ 150 car.) ; le texte complet
+#: va dans la note.
+LIBELLE_VALIDITE_A_RENOUVELER = 'Validité à renouveler — {reference}'
+
+
+def texte_validite_a_renouveler(reference, validite, decision):
+    """CIQ512 — le texte de l'étape « validité à renouveler »."""
+    return (f'La proposition {reference} expire le {validite:%d/%m}, avant '
+            f'la décision attendue le {decision:%d/%m} : prévenez le client '
+            '; après expiration, « Renouveler » crée une nouvelle version '
+            'que vous re-tarifez')
+
+
+def poser_etape_validite_a_renouveler(lead, decision):
+    """CIQ512 — la décision attendue (``decision``, une date) tombe APRÈS la
+    validité effective du dernier devis ENVOYÉ du lead (après prolongation
+    CIQ510) : une étape MANUELLE est posée au jour de la validité, hors
+    gabarit (le mécanisme de l'étape datée d'AGR522 — jamais une touche de
+    cadence, CAD124).
+
+    Aucun statut de devis, aucune étape de lead ne change (règle #4,
+    STAGES.py) : la bascule nocturne QJ5 reste seule à passer le devis en
+    ``expire``. Idempotente (retrouvée par son libellé). Rend l'étape, ou
+    ``None`` quand la décision tient dans la validité."""
+    if lead is None or decision is None:
+        return None
+    try:
+        from apps.ventes.selectors import (
+            date_validite_effective, dernier_devis_envoye_par_lead,
+        )
+        devis = dernier_devis_envoye_par_lead(
+            lead.company, [lead.pk]).get(lead.pk)
+        validite = date_validite_effective(devis)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('CIQ512 : validité illisible (lead #%s)',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+        return None
+    if devis is None or validite is None or decision <= validite:
+        return None
+    from . import horaires
+    libelle = LIBELLE_VALIDITE_A_RENOUVELER.format(reference=devis.reference)
+    deja = lead.relance_etapes.filter(cle='', libelle=libelle).first()
+    if deja is not None:
+        return deja
+    vise = datetime.datetime.combine(
+        validite, datetime.time(9, 0), tzinfo=horaires.CASABLANCA)
+    return _poser_etape_de_filet(
+        lead, libelle=libelle, canal=RelanceEtape.Canal.APPEL, vise=vise,
+        note=texte_validite_a_renouveler(devis.reference, validite, decision))
+
+
 # ── AGR520 — « En attente d'un accord (DPA / banque) » ─────────────────────
 
 def repondre_attente_accord(etape, user, quand, *, raison=None, note='',
@@ -13923,6 +13974,9 @@ def repondre_attente_accord(etape, user, quand, *, raison=None, note='',
     # CIQ510 — l'attente déclarée APRÈS l'envoi allonge la validité du
     # devis ENVOYÉ du lead (réglage société), jamais ne la raccourcit.
     prolonger_validite_attente_accord(lead, user)
+    # CIQ512 — une décision attendue APRÈS la validité (même prolongée) :
+    # une étape MANUELLE datée au jour de la validité, jamais un statut.
+    poser_etape_validite_a_renouveler(lead, jour)
     if reprise is None:
         etape.refresh_from_db()
         return etape

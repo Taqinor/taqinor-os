@@ -300,3 +300,67 @@ class TableDuParcoursTests(SimpleTestCase):
         self.assertEqual(refus_variantes_segment(
             {'variantes_segment': {'commercial': {
                 'message': 'attente_accord_accuse'}}}), [])
+
+
+class ValiditeARenouvelerTests(_Base):
+    """CIQ512 — une décision attendue APRÈS la validité (même prolongée par
+    CIQ510) pose UNE étape manuelle datée au jour de la validité ; aucun
+    statut de devis ni étape de lead ne change (la bascule QJ5 reste seule)."""
+
+    slug = 'ciq512-validite'
+
+    def setUp(self):
+        super().setUp()
+        from decimal import Decimal
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+        profil = CompanyProfile.objects.get(company=self.company)
+        profil.quote_validity_days = 30
+        profil.save(update_fields=['quote_validity_days'])
+        client = Client.objects.create(
+            company=self.company, nom='Usine', email='ciq512@example.test')
+        self.validite = (MERCREDI + datetime.timedelta(days=30)).date()
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-CIQ512-0010',
+            client=client, lead=self.lead, statut='envoye',
+            taux_tva=Decimal('20'), date_envoi=MERCREDI,
+            date_validite=self.validite)
+        self.libelle = 'Validité à renouveler — DEV-CIQ512-0010'
+
+    def test_a_attente_j60_validite_j30_une_etape_datee_j30(self):
+        resp = self._attente(rappel_le=J60.isoformat(),
+                             raison_attente='direction')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        etapes = self.lead.relance_etapes.filter(libelle=self.libelle)
+        self.assertEqual(etapes.count(), 1)
+        etape = etapes.get()
+        self.assertEqual(etape.due_date, self.validite)
+        self.assertEqual(etape.cadence, 'generique')
+        self.assertEqual(etape.cle, '')
+        self.assertEqual(
+            etape.note,
+            f'La proposition DEV-CIQ512-0010 expire le '
+            f'{self.validite:%d/%m}, avant la décision attendue le '
+            f'{J60:%d/%m} : prévenez le client ; après expiration, '
+            '« Renouveler » crée une nouvelle version que vous re-tarifez')
+
+    def test_b_attente_j10_aucune_etape(self):
+        self._attente(rappel_le=J10.isoformat(), raison_attente='direction')
+        self.assertFalse(
+            self.lead.relance_etapes.filter(libelle=self.libelle).exists())
+
+    def test_c_rejouer_une_seule_etape(self):
+        from apps.crm.services import poser_etape_validite_a_renouveler
+        self._attente(rappel_le=J60.isoformat(), raison_attente='direction')
+        poser_etape_validite_a_renouveler(self.lead, J60)
+        poser_etape_validite_a_renouveler(self.lead, J60)
+        self.assertEqual(
+            self.lead.relance_etapes.filter(libelle=self.libelle).count(), 1)
+
+    def test_d_le_devis_reste_envoye_et_l_etape_du_lead_ne_bouge_pas(self):
+        self._attente(rappel_le=J60.isoformat(), raison_attente='direction')
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, 'envoye')
+        self.assertEqual(self.devis.date_validite, self.validite)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.CONTACTED)
