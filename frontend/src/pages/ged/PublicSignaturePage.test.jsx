@@ -21,7 +21,9 @@ vi.mock('../../api/gedApi', () => ({
     refuserSignataire: vi.fn(),
     envoyerCodeSignataire: vi.fn(),
     validerCodeSignataire: vi.fn(),
-    getVersions: vi.fn(() => Promise.resolve({ data: [] })),
+    // ADOC67 — comportement ANONYME réel : la liste des versions est
+    // authentifiée (401) ; la page ne doit plus s'en servir.
+    getVersions: vi.fn(() => Promise.reject({ response: { status: 401 } })),
     apercuVersionUrl: (id) => `/api/django/ged/versions/${id}/apercu/`,
   },
 }))
@@ -115,5 +117,59 @@ describe('XGED2 PublicSignaturePage (signataire d’un circuit)', () => {
     expect(gedApi.getSignatairePublique).toHaveBeenCalledWith('sig-1')
     // Le bouton de signature est présent (OTP non requis).
     expect(screen.getByRole('button', { name: /Signer le document/i })).toBeInTheDocument()
+  })
+})
+
+describe('ADOC64 PublicSignaturePage — code exigé dès le chargement', () => {
+  it('le bloc code s’affiche au chargement quand otp_requis', async () => {
+    // Payload de forme réelle (`_signataire_publique_payload`).
+    gedApi.getSignatairePublique.mockResolvedValue({
+      data: {
+        document_nom: 'Bail.pdf', document_id: 12, nom: 'Sofia',
+        role: 'signataire', ordre: 1, statut: 'notifie',
+        demande_statut: 'en_attente', auth_extra: 'sms',
+        otp_requis: true, otp_degrade: false,
+      },
+    })
+    renderAt('/ged/signataire/sig-otp', <PublicSignaturePage mode="signataire" />)
+    expect(await screen.findByRole('button', { name: 'Recevoir un code' })).toBeInTheDocument()
+    // Le formulaire de signature n'est pas proposé tant que le code n'est pas validé.
+    expect(screen.queryByRole('button', { name: /Signer le document/i })).not.toBeInTheDocument()
+  })
+
+  it('passerelle absente : relit la cérémonie et propose la signature', async () => {
+    const base = {
+      document_nom: 'Bail.pdf', document_id: 12, nom: 'Sofia', role: 'signataire',
+      ordre: 1, statut: 'notifie', demande_statut: 'en_attente', auth_extra: 'sms',
+    }
+    gedApi.getSignatairePublique
+      .mockResolvedValueOnce({ data: { ...base, otp_requis: true, otp_degrade: false } })
+      .mockResolvedValueOnce({ data: { ...base, otp_requis: false, otp_degrade: true } })
+    gedApi.envoyerCodeSignataire.mockResolvedValue({ data: {
+      envoye: false, mode: 'aucune', degrade: true,
+      detail: 'Passerelle SMS indisponible : authentification dégradée, signature sans OTP.',
+    } })
+    renderAt('/ged/signataire/sig-deg', <PublicSignaturePage mode="signataire" />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Recevoir un code' }))
+    expect(await screen.findByRole('button', { name: /Signer le document/i })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Code reçu')).not.toBeInTheDocument()
+  })
+})
+
+describe('ADOC67 PublicSignaturePage — aperçu par le jeton', () => {
+  it('rend l’aperçu depuis apercu_url sans appeler /ged/versions/', async () => {
+    gedApi.getSignaturePublique.mockResolvedValue({
+      data: {
+        document_nom: 'NDA.pdf', document_id: 7, signataire_nom: 'Amine',
+        statut: 'en_attente', champs: [],
+        apercu_url: '/api/django/ged/signature/tok-ap/document/',
+        apercu_mime: 'application/pdf',
+      },
+    })
+    renderAt('/ged/signature/tok-ap', <PublicSignaturePage mode="signature" />)
+    const iframe = await screen.findByTitle('Aperçu du document')
+    expect(iframe).toHaveAttribute('src', '/api/django/ged/signature/tok-ap/document/')
+    expect(gedApi.getVersions).not.toHaveBeenCalled()
+    expect(screen.queryByText(/L’aperçu du document n’est pas disponible/)).not.toBeInTheDocument()
   })
 })

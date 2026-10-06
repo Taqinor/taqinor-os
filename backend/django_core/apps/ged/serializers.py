@@ -660,6 +660,10 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
         source='created_by.username', read_only=True, default=None)
 
     signataires = serializers.SerializerMethodField()
+    # ADOC63 — lien ABSOLU de la cérémonie (« Copier le lien de signature »).
+    # Mono : jeton de la demande ; circuit multi : None (chaque destinataire a
+    # SON lien, exposé sur `signataires[].lien_signature`).
+    lien_signature = serializers.SerializerMethodField()
 
     class Meta:
         model = DemandeSignatureDocument
@@ -671,7 +675,7 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
             # XGED1 — lien public + preuves de cérémonie : TOUS en lecture
             # seule via l'API (posés côté serveur uniquement, jamais mutés par
             # une requête authentifiée après coup).
-            'token', 'expires_at', 'consentement_explicite',
+            'token', 'lien_signature', 'expires_at', 'consentement_explicite',
             'adresse_ip', 'user_agent', 'hash_contenu',
             'signature_texte', 'signature_tracee',
             'motif_refus', 'refuse_le',
@@ -682,6 +686,8 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
             # (posée/réarmée par le sweep/`prolonger`, jamais mutée par un
             # PATCH direct).
             'emetteur_notifie_expiration_le',
+            # ADOC68 — PDF signé figé (posé une seule fois à la complétion).
+            'version_signee',
             'created_by', 'created_by_nom', 'created_at', 'updated_at',
         ]
         read_only_fields = [
@@ -693,12 +699,19 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
             'motif_refus', 'refuse_le',
             'annule_le', 'annule_par',
             'emetteur_notifie_expiration_le',
+            'version_signee',
             'created_by', 'created_at', 'updated_at',
         ]
 
     def get_signataires(self, obj):
         return SignataireDemandeSerializer(
-            obj.signataires.all(), many=True).data
+            obj.signataires.all(), many=True, context=self.context).data
+
+    def get_lien_signature(self, obj):
+        if obj.signataires.exists():
+            return None
+        return services.url_publique_signature(
+            obj.token, 'demande', request=self.context.get('request')) or None
 
 
 class ChampSignatureSerializer(serializers.ModelSerializer):
@@ -914,6 +927,8 @@ class SignataireDemandeSerializer(serializers.ModelSerializer):
         source='role_signataire.couleur', read_only=True, default=None)
     role_auth_extra = serializers.CharField(
         source='role_signataire.auth_extra', read_only=True, default=None)
+    # ADOC63 — lien ABSOLU de la cérémonie de CE destinataire.
+    lien_signature = serializers.SerializerMethodField()
 
     class Meta:
         model = SignataireDemande
@@ -921,10 +936,18 @@ class SignataireDemandeSerializer(serializers.ModelSerializer):
             'id', 'demande', 'nom', 'email', 'telephone', 'ordre', 'role',
             'role_signataire', 'role_signataire_nom', 'role_couleur',
             'role_auth_extra', 'statut', 'notifie_le', 'derniere_relance_le',
-            'nb_relances', 'date_action', 'motif_refus', 'created_at',
-            'updated_at',
+            'nb_relances', 'date_action', 'motif_refus', 'lien_signature',
+            # ADOC65 — preuves de SA signature (lecture seule).
+            'consentement_explicite', 'adresse_ip', 'user_agent',
+            'signature_texte', 'signature_tracee', 'hash_contenu',
+            'created_at', 'updated_at',
         ]
         read_only_fields = fields
+
+    def get_lien_signature(self, obj):
+        return services.url_publique_signature(
+            obj.token, 'signataire',
+            request=self.context.get('request')) or None
 
 
 class ModeleDocumentSerializer(serializers.ModelSerializer):
@@ -1323,3 +1346,44 @@ class PlanificationDocumentSerializer(serializers.ModelSerializer):
             'created_by', 'created_at',
         ]
         read_only_fields = ['notifiee', 'created_by', 'created_at']
+
+
+# ── ADOC76 — validation du corps de creer-multi (400 nommé, jamais 500) ─────
+
+def _codes(model, champ):
+    return [code for code, _ in model._meta.get_field(champ).choices]
+
+
+class DestinataireMultiSerializer(serializers.Serializer):
+    """ADOC76 — Un destinataire du circuit : rôle FERMÉ (signataire / copie /
+    approbateur), ordre ≥ 1."""
+    nom = serializers.CharField(max_length=255)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    telephone = serializers.CharField(
+        required=False, allow_blank=True, max_length=32)
+    role = serializers.ChoiceField(
+        choices=_codes(SignataireDemande, 'role'), default='signataire')
+    ordre = serializers.IntegerField(min_value=1, required=False)
+    role_signataire = serializers.IntegerField(
+        required=False, allow_null=True)
+
+
+class CreerMultiSignatairesSerializer(serializers.Serializer):
+    """ADOC76 — Corps de `demandes-signature/creer-multi/` : routage parmi
+    ses choix, `expires_at` date ISO valide, au moins UN destinataire de rôle
+    « signataire » (sans quoi la demande resterait en attente à vie)."""
+    document = serializers.IntegerField()
+    destinataires = DestinataireMultiSerializer(many=True, allow_empty=False)
+    routage = serializers.ChoiceField(
+        choices=_codes(DemandeSignatureDocument, 'routage'),
+        required=False, allow_null=True)
+    expires_at = serializers.DateTimeField(required=False, allow_null=True)
+    relance_cadence_jours = serializers.IntegerField(
+        min_value=0, required=False, allow_null=True)
+
+    def validate_destinataires(self, value):
+        if not any(d.get('role', 'signataire') == 'signataire' for d in value):
+            raise serializers.ValidationError(
+                "Le circuit doit compter au moins un destinataire de rôle "
+                "« signataire ».")
+        return value

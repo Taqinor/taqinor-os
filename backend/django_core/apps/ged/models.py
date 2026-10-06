@@ -1751,6 +1751,17 @@ class DemandeSignatureDocument(models.Model):
     empreinte_certificat = models.CharField(
         max_length=64, blank=True, default='', db_index=True,
         verbose_name='empreinte du certificat (SHA-256)')
+    # ADOC68 — PDF signé FIGÉ (aplati + scellé) produit UNE fois à la
+    # complétion par `services.figer_pdf_signe` : c'est lui que `pdf-signe`
+    # sert, octet-identique, même si le document reçoit ensuite une nouvelle
+    # version. Posé une seule fois, jamais lu d'un corps de requête.
+    # RESTRICT (et non PROTECT) : la version figée ne se supprime jamais seule,
+    # mais la purge du document entier (qui emporte aussi la demande par
+    # CASCADE) reste possible.
+    version_signee = models.ForeignKey(
+        'DocumentVersion', on_delete=models.RESTRICT, null=True, blank=True,
+        related_name='demandes_signature_figees',
+        verbose_name='version signée figée')
     # Signature tapée (nom) ET/OU tracée (pattern FG69 `signature_client` —
     # data-URL/vecteur base64 d'un tracé). Au moins l'un des deux est requis
     # pour signer (garde côté service). Jamais lues du corps après signature.
@@ -2003,6 +2014,30 @@ class SignataireDemande(models.Model):
         default=False, verbose_name='authentification extra validée')
     otp_valide_le = models.DateTimeField(
         null=True, blank=True, verbose_name='authentification extra validée le')
+    # ADOC64 — dégradation EXPLICITE (passerelle SMS/email absente ou en
+    # échec) posée par `envoyer_code_otp_signataire` et journalisée : SEULE
+    # elle laisse signer sans code un destinataire dont l'authentification
+    # extra est requise — jamais un simple « aucun code émis ».
+    otp_degrade = models.BooleanField(
+        default=False, verbose_name='authentification extra dégradée')
+    # ADOC65 — preuves IMMUABLES de la signature de CE destinataire, posées
+    # CÔTÉ SERVEUR par la routine de preuve partagée avec le mono
+    # (`services._poser_preuves_signature`, pattern QJ10) — jamais lues du
+    # corps au-delà de ce que la vue publique fournit explicitement.
+    consentement_explicite = models.BooleanField(
+        default=False, verbose_name="consentement explicite à signer")
+    adresse_ip = models.GenericIPAddressField(
+        null=True, blank=True, verbose_name='adresse IP du signataire')
+    user_agent = models.CharField(
+        max_length=512, blank=True, default='', verbose_name='user-agent')
+    signature_texte = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='signature tapée')
+    signature_tracee = models.TextField(
+        blank=True, default='',
+        verbose_name='signature tracée (vecteur/data-URL)')
+    hash_contenu = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='hash du contenu signé (SHA-256)')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -2042,18 +2077,16 @@ class SignataireDemande(models.Model):
 
     @property
     def otp_requis_et_non_valide(self):
-        """ZGED2 — True si une authentification extra est requise pour CE
-        destinataire ET qu'un code a effectivement été émis
-        (`otp_code_hash` posé par `envoyer_code_otp_signataire`), mais pas
-        encore validé (bloque la signature).
+        """ZGED2 / ADOC64 — True si une authentification extra est requise
+        pour CE destinataire et qu'aucun code n'a encore été VALIDÉ (bloque
+        la signature), dès le chargement de la cérémonie — qu'un code ait été
+        émis ou non.
 
-        Si la passerelle SMS/email est absente/non configurée,
-        `envoyer_code_otp_signataire` dégrade proprement et NE POSE JAMAIS
-        `otp_code_hash` — dans ce cas la signature ne doit PAS être bloquée
-        (comportement XGED1 inchangé, no-op)."""
+        Seule exception : la dégradation EXPLICITE `otp_degrade` (passerelle
+        absente, posée et journalisée par `envoyer_code_otp_signataire`)."""
         return self.auth_extra_effective != ROLE_AUTH_EXTRA_AUCUNE \
-            and bool(self.otp_code_hash) \
-            and not self.otp_valide
+            and not self.otp_valide \
+            and not self.otp_degrade
 
     def __str__(self):
         return f'{self.nom} (#{self.ordre}) → {self.demande_id} ({self.statut})'

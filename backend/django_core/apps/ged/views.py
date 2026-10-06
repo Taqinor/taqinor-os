@@ -1102,6 +1102,13 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'version': 'Version inconnue ou inaccessible.'},
                 status=status.HTTP_404_NOT_FOUND)
+        # ADOC68 — jumeau de l'ajout de version : refusé (409) pendant une
+        # demande de signature en attente.
+        try:
+            services.assert_aucune_signature_en_attente(document)
+        except services.SignatureEnCoursError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         try:
             new_version = services.restore_version(
                 document, source_version, uploaded_by=request.user)
@@ -1643,6 +1650,13 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 return Response(
                     {'cible': 'Document cible inconnu.'},
                     status=status.HTTP_404_NOT_FOUND)
+            # ADOC68 — fusionner VERS une cible lui ajoute une version :
+            # refusé (409) pendant une demande de signature en attente.
+            try:
+                services.assert_aucune_signature_en_attente(cible)
+            except services.SignatureEnCoursError as exc:
+                return Response(
+                    {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         try:
             resultat = services.fusionner_pdf(
                 documents_ordonnes, cible=cible,
@@ -1833,11 +1847,18 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         # : les deux gels (GED23 write-once, GED24 legal hold) restent 403,
         # jamais 500, même si ici `instance.delete()` est un effacement RÉEL
         # de la version (pas de corbeille pour les versions).
+        from django.db.models import ProtectedError, RestrictedError
         from rest_framework.exceptions import PermissionDenied
         try:
             instance.delete()
         except (ArchivageLegalError, LegalHoldError) as exc:
             raise PermissionDenied(str(exc))
+        except (ProtectedError, RestrictedError):
+            # ADOC68 — la version figée d'une demande signée ne se supprime
+            # jamais seule (409, jamais un 500).
+            raise _conflit(
+                "Cette version est le PDF signé figé d'une demande de "
+                "signature : elle ne peut pas être supprimée.")
 
     def perform_create(self, serializer):
         # Numéro de version auto-incrémenté + company/uploaded_by côté serveur.
@@ -1862,6 +1883,12 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         except PermissionError as exc:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(str(exc))
+        # ADOC68 — aucune nouvelle version pendant qu'une demande de signature
+        # est en attente sur le document (409).
+        try:
+            services.assert_aucune_signature_en_attente(document)
+        except services.SignatureEnCoursError as exc:
+            raise _conflit(str(exc))
         v = serializer.validated_data
         instance = services.add_version(
             document,
@@ -1927,7 +1954,7 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
             document, utilisateur=request.user,
             type_acces=(ACCES_APERCU if disposition == 'inline'
                         else ACCES_TELECHARGEMENT),
-            adresse_ip=services._adresse_ip_requete(request))
+            adresse_ip=_ip_client(request))
 
         resp = HttpResponse(data, content_type=mime)
         resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
@@ -2678,7 +2705,10 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 signataire_nom=nom,
                 signataire_email=email,
                 company=request.user.company,
-                created_by=request.user)
+                created_by=request.user,
+                # ADOC63 — notifie le signataire avec le lien ABSOLU (base
+                # publique, repli sur l'origine de la requête).
+                request=request)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -2748,7 +2778,9 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
             return Response(
                 {'detail': "Cette demande n'est pas encore signée."},
                 status=status.HTTP_409_CONFLICT)
-        pdf_bytes, _aplati = services.rendre_pdf_signe_avec_champs(demande)
+        # ADOC68 — sert le PDF signé FIGÉ (octet-identique à chaque appel,
+        # même après une nouvelle version du document) ; jamais re-rendu.
+        pdf_bytes = services.lire_pdf_signe(demande)
         if pdf_bytes is None:
             return Response(
                 {'detail': "Contenu du document introuvable."},
@@ -2779,6 +2811,14 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
             return Response(
                 {'destinataires': 'Au moins un destinataire est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # ADOC76 — corps validé par un serializer : rôle parmi les trois
+        # choix, ordre ≥ 1, expires_at parsé, au moins un « signataire » —
+        # 400 nommé, jamais 500 ni demande en attente à vie.
+        from .serializers import CreerMultiSignatairesSerializer
+        entree = CreerMultiSignatairesSerializer(data=request.data)
+        if not entree.is_valid():
+            return Response(entree.errors, status=status.HTTP_400_BAD_REQUEST)
+        valide = entree.validated_data
         document = (Document.objects.filter(company=request.user.company)
                     .filter(pk=document_id).first())
         if document is None:
@@ -2787,12 +2827,13 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
                 status=status.HTTP_404_NOT_FOUND)
         try:
             demande = services.creer_demande_multi_signataires(
-                document, destinataires=destinataires,
+                document,
+                destinataires=[dict(d) for d in valide['destinataires']],
                 company=request.user.company,
-                routage=request.data.get('routage'),
-                expires_at=request.data.get('expires_at'),
-                relance_cadence_jours=request.data.get('relance_cadence_jours'),
-                created_by=request.user)
+                routage=valide.get('routage'),
+                expires_at=valide.get('expires_at'),
+                relance_cadence_jours=valide.get('relance_cadence_jours'),
+                created_by=request.user, request=request)
         except (PermissionError, ValueError) as exc:
             code = (status.HTTP_403_FORBIDDEN
                     if isinstance(exc, PermissionError)
@@ -2919,6 +2960,29 @@ class ChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
         if modele:
             qs = qs.filter(modele_id=modele)
         return qs
+
+    # ADOC68 — les champs d'une demande ne s'éditent (création, modification,
+    # suppression) que tant qu'elle est `en_attente` : 409 sinon.
+    def _garde_demande(self, demande):
+        try:
+            services.assert_champs_signature_modifiables(demande)
+        except services.SignatureEnCoursError as exc:
+            raise _conflit(str(exc))
+
+    def perform_create(self, serializer):
+        self._garde_demande(serializer.validated_data.get('demande'))
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        self._garde_demande(serializer.instance.demande)
+        nouvelle = serializer.validated_data.get('demande')
+        if nouvelle is not None:
+            self._garde_demande(nouvelle)
+        super().perform_update(serializer)
+
+    def perform_destroy(self, instance):
+        self._garde_demande(instance.demande)
+        instance.delete()
 
 
 class TypeChampSignatureViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -3819,6 +3883,14 @@ class PublicPartageRateThrottle(SimpleRateThrottle):
         }
 
 
+def _conflit(detail):
+    """ADOC68 — exception DRF 409 nommée (pas de classe Conflict native)."""
+    from rest_framework.exceptions import APIException
+    exc = APIException(detail)
+    exc.status_code = status.HTTP_409_CONFLICT
+    return exc
+
+
 def _ged_noindex(response):
     """Marque une réponse publique comme non-indexable par les moteurs."""
     response['X-Robots-Tag'] = 'noindex, nofollow, noarchive'
@@ -3910,7 +3982,7 @@ def public_partage(request, token):
     from .models import ACCES_PUBLIC
     services.journaliser_acces(
         partage.document, utilisateur=None, type_acces=ACCES_PUBLIC,
-        adresse_ip=services._adresse_ip_requete(request))
+        adresse_ip=_ip_client(request))
 
     resp = HttpResponse(data, content_type=mime)
     resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
@@ -4038,12 +4110,21 @@ def _signature_verrouillee_reponse():
         status=status.HTTP_429_TOO_MANY_REQUESTS))
 
 
+def _ip_client(request):
+    """ADOC66 — IP de preuve, de détection et de journal GED : TOUJOURS la
+    primitive canonique `core.throttling.ip_de_requete` (dernier saut de
+    confiance, `NUM_PROXIES`) — jamais `REMOTE_ADDR`, qui vaut le conteneur
+    nginx derrière le proxy. IP illisible → None (jamais '')."""
+    from core.throttling import ip_de_requete
+    return ip_de_requete(request) or None
+
+
 def _signature_echec(request, token, reponse, *, document=None):
     """NTDOC9 — Trace la tentative échouée (compteur + `JournalAcces`) puis
     renvoie telle quelle la réponse d'erreur métier de l'appelant."""
     services.enregistrer_echec_signature_publique(
         token, document=document,
-        adresse_ip=services._adresse_ip_requete(request))
+        adresse_ip=_ip_client(request))
     return reponse
 
 
@@ -4054,6 +4135,7 @@ def _signature_publique_payload(demande):
     positionnés (XGED3) — liste vide pour une demande sans champ (mono-champ
     rétrocompatible XGED1)."""
     document = demande.document
+    version = services.version_a_signer(demande)
     return {
         'document_nom': document.nom,
         'document_id': document.id,
@@ -4061,6 +4143,9 @@ def _signature_publique_payload(demande):
         'statut': demande.statut,
         'expires_at': demande.expires_at,
         'champs': ChampSignatureSerializer(demande.champs.all(), many=True).data,
+        # ADOC67 — aperçu du document PAR LE JETON (lisible sans login).
+        'apercu_url': f'/api/django/ged/signature/{demande.token}/document/',
+        'apercu_mime': getattr(version, 'mime', '') or '',
     }
 
 
@@ -4110,7 +4195,7 @@ def public_signature(request, token):
              'statut': demande.statut},
             status=status.HTTP_410_GONE))
 
-    ip = services._adresse_ip_requete(request)
+    ip = _ip_client(request)
     # NTDOC9 — motif « une IP, plusieurs sociétés » : évalué sur un jeton
     # RÉSOLU (donc une société réelle), best-effort, n'altère jamais la réponse.
     services.surveiller_reutilisation_suspecte(ip, demande.company)
@@ -4237,16 +4322,27 @@ def _signataire_publique_payload(signataire):
     que l'écran public sache s'il doit demander un code avant de débloquer la
     signature."""
     demande = signataire.demande
+    version = services.version_a_signer(demande)
     return {
         'document_nom': demande.document.nom,
         'document_id': demande.document_id,
+        # ADOC67 — aperçu du document PAR LE JETON du destinataire.
+        'apercu_url': f'/api/django/ged/signataire/{signataire.token}/document/',
+        'apercu_mime': getattr(version, 'mime', '') or '',
         'nom': signataire.nom,
         'role': signataire.role,
         'ordre': signataire.ordre,
         'statut': signataire.statut,
         'demande_statut': demande.statut,
         'auth_extra': signataire.auth_extra_effective,
+        # ADOC64 — vrai dès le chargement quand un code est exigé ; seule la
+        # dégradation explicite (passerelle absente) le lève sans code.
         'otp_requis': signataire.otp_requis_et_non_valide,
+        'otp_degrade': signataire.otp_degrade,
+        # ADOC65 — champs positionnés qui visent CE destinataire (mêmes
+        # requis que le mono, exigés à la signature).
+        'champs': ChampSignatureSerializer(
+            services.champs_du_signataire(signataire), many=True).data,
     }
 
 
@@ -4292,10 +4388,19 @@ def public_signataire(request, token):
             {'detail': "Vous avez déjà traité cette demande.",
              'statut': signataire.statut},
             status=status.HTTP_410_GONE))
+    # ADOC76 — une demande qui n'est plus en attente (refusée par un autre
+    # destinataire, signée, close) ferme la cérémonie de TOUS ses
+    # destinataires : 410, rien n'est enregistré.
+    from .models import SIGNATURE_EN_ATTENTE
+    if demande.statut != SIGNATURE_EN_ATTENTE:
+        return _ged_noindex(Response(
+            {'detail': "Cette demande de signature est close.",
+             'demande_statut': demande.statut},
+            status=status.HTTP_410_GONE))
 
     # NTDOC9 — motif « une IP, plusieurs sociétés », best-effort.
     services.surveiller_reutilisation_suspecte(
-        services._adresse_ip_requete(request), demande.document.company)
+        _ip_client(request), demande.document.company)
 
     if request.method == 'GET':
         return _ged_noindex(
@@ -4305,6 +4410,13 @@ def public_signataire(request, token):
     if signataire.statut != SIGNATAIRE_NOTIFIE:
         return _signature_echec(request, token, _ged_noindex(Response(
             {'detail': "Ce n'est pas encore votre tour de signer."},
+            status=status.HTTP_403_FORBIDDEN)), document=demande.document)
+    # ADOC76 — seuls les destinataires de rôle « signataire » signent ou
+    # refusent (`is_actionnable`) ; une copie ou un approbateur consulte.
+    if not signataire.is_actionnable:
+        return _signature_echec(request, token, _ged_noindex(Response(
+            {'detail': "Vous êtes destinataire de ce document sans être "
+                       "signataire : vous pouvez le consulter, pas le signer."},
             status=status.HTTP_403_FORBIDDEN)), document=demande.document)
 
     action_demandee = (request.data.get('action') or '').strip().lower()
@@ -4348,8 +4460,9 @@ def public_signataire(request, token):
                 consentement=bool(request.data.get('consentement')),
                 signature_texte=request.data.get('signature_texte', ''),
                 signature_tracee=request.data.get('signature_tracee', ''),
-                adresse_ip=services._adresse_ip_requete(request),
-                user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:512])
+                adresse_ip=_ip_client(request),
+                user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:512],
+                valeurs_champs=request.data.get('valeurs_champs'))
         except ValueError as exc:
             return _signature_echec(request, token, _ged_noindex(Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)),
@@ -4363,3 +4476,85 @@ def public_signataire(request, token):
         {'detail': "Action inconnue : 'signer', 'refuser', 'envoyer-code' ou "
                    "'valider-code' attendu."},
         status=status.HTTP_400_BAD_REQUEST)), document=demande.document)
+
+
+# ── ADOC67 — Aperçu du document à signer PAR LE JETON (public, sans login) ──
+
+_SIGNATURE_DOC_INTROUVABLE = "Ce lien de signature est introuvable."
+
+
+def _servir_document_a_signer(request, demande):
+    """ADOC67 — Sert les octets de la version à signer d'une demande déjà
+    RÉSOLUE par son jeton (jamais par un id lu de la requête), avec
+    X-Robots-Tag noindex ; la consultation est tracée au `JournalAcces`."""
+    from .models import ACCES_PUBLIC
+    version = services.version_a_signer(demande)
+    if version is None:
+        return _ged_noindex(Response(
+            {'detail': _SIGNATURE_DOC_INTROUVABLE},
+            status=status.HTTP_404_NOT_FOUND))
+    data, err = fetch_attachment(version.file_key)
+    if err or data is None:
+        return _ged_noindex(Response(
+            {'detail': _SIGNATURE_DOC_INTROUVABLE},
+            status=status.HTTP_404_NOT_FOUND))
+    services.journaliser_acces(
+        demande.document, utilisateur=None, type_acces=ACCES_PUBLIC,
+        adresse_ip=_ip_client(request), source_ref='public_signature')
+    mime = version.mime or 'application/octet-stream'
+    safe_name = (version.filename or demande.document.nom or 'document') \
+        .replace('"', '')
+    disposition = 'inline' if mime in _INLINE_MIMES else 'attachment'
+    resp = HttpResponse(data, content_type=mime)
+    resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
+    resp['X-Content-Type-Options'] = 'nosniff'
+    return _ged_noindex(resp)
+
+
+def _demande_lisible_par_jeton(demande):
+    """ADOC67 — Une demande annulée ou expirée ne sert plus son document
+    (même 404 que la page) ; en attente ou déjà traitée, elle le sert."""
+    from .models import SIGNATURE_ANNULE
+    return demande is not None and demande.statut != SIGNATURE_ANNULE \
+        and not demande.is_expired
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicSignatureRateThrottle, PublicSignatureTokenThrottle])
+def public_signature_document(request, token):
+    """ADOC67 — `GET /api/django/ged/signature/<token>/document/` : octets de
+    la version à signer d'une demande mono, servis PAR LE JETON (AllowAny,
+    mêmes throttles et même verrou NTDOC9 que la cérémonie, noindex). Jeton
+    inconnu, expiré ou annulé → 404 avec le message de la page."""
+    if services.signature_publique_verrouillee(token):
+        return _signature_verrouillee_reponse()
+    from .models import DemandeSignatureDocument
+    demande = (DemandeSignatureDocument.objects
+               .select_related('document', 'document__company')
+               .filter(token=token).first())
+    if not _demande_lisible_par_jeton(demande):
+        return _ged_noindex(Response(
+            {'detail': _SIGNATURE_DOC_INTROUVABLE},
+            status=status.HTTP_404_NOT_FOUND))
+    return _servir_document_a_signer(request, demande)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicSignataireRateThrottle, PublicSignataireTokenThrottle])
+def public_signataire_document(request, token):
+    """ADOC67 — `GET /api/django/ged/signataire/<token>/document/` : même
+    aperçu, par le jeton PROPRE d'un destinataire du circuit multi."""
+    if services.signature_publique_verrouillee(token):
+        return _signature_verrouillee_reponse()
+    signataire = (SignataireDemande.objects
+                  .select_related('demande', 'demande__document',
+                                  'demande__document__company')
+                  .filter(token=token).first())
+    demande = signataire.demande if signataire is not None else None
+    if not _demande_lisible_par_jeton(demande):
+        return _ged_noindex(Response(
+            {'detail': _SIGNATURE_DOC_INTROUVABLE},
+            status=status.HTTP_404_NOT_FOUND))
+    return _servir_document_a_signer(request, demande)

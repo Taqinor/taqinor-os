@@ -588,18 +588,49 @@ function DemanderSignatureDialog({ documents, preselect, onClose, onDone }) {
   const [nom, setNom] = useState('')
   const [email, setEmail] = useState('')
   const [saving, setSaving] = useState(false)
+  // ADOC63 — lien ABSOLU de la cérémonie renvoyé par le serveur
+  // (`lien_signature`) : l'émetteur peut le copier après création.
+  const [lien, setLien] = useState('')
 
   const submit = async () => {
     if (!documentId) { toast.error('Sélectionnez un document.'); return }
     if (!nom.trim() || !email.trim()) { toast.error('Nom et email du signataire requis.'); return }
     setSaving(true)
     try {
-      await gedApi.createDemandeSignature({
+      const res = await gedApi.createDemandeSignature({
         document: documentId, signataire_nom: nom.trim(), signataire_email: email.trim(),
       })
       toast.success('Demande de signature créée.')
-      onDone()
+      if (res?.data?.lien_signature) setLien(res.data.lien_signature)
+      else onDone()
     } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+  }
+
+  const copier = async () => {
+    try {
+      await navigator.clipboard.writeText(lien)
+      toast.success('Lien de signature copié.')
+    } catch {
+      toast.error('Copie impossible : sélectionnez le lien et copiez-le.')
+    }
+  }
+
+  if (lien) {
+    return (
+      <Dialog open onOpenChange={(o) => !o && onDone()}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Demande de signature créée</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Le signataire a reçu ce lien par email. Vous pouvez aussi le lui transmettre.
+          </p>
+          <Input readOnly value={lien} aria-label="Lien de signature" />
+          <DialogFooter>
+            <Button variant="outline" onClick={copier}>Copier le lien de signature</Button>
+            <Button onClick={onDone}>Terminer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
   }
 
   return (
@@ -669,6 +700,14 @@ function GenererModeleDialog({ modele, onClose, onDone }) {
 // les destinataires ORDONNÉS (ordre/rôle) → creer-multi ; (2) une fois la
 // demande créée, poser les champs de signature positionnés (page/x/y) via le
 // CRUD champs-signature. L'étape 2 est facultative (fermer suffit).
+// ADOC76 — rôle FERMÉ d'un destinataire (miroir de ROLE_DESTINATAIRE_CHOICES
+// côté serveur) : plus de saisie libre, qui créait une demande en attente à vie.
+const ROLE_DESTINATAIRE_OPTIONS = [
+  { value: 'signataire', label: 'Signataire' },
+  { value: 'copie', label: 'Copie' },
+  { value: 'approbateur', label: 'Approbateur' },
+]
+
 const TYPE_CHAMP_OPTIONS = [
   { value: 'signature', label: 'Signature' },
   { value: 'initiales', label: 'Initiales' },
@@ -682,7 +721,7 @@ function MultiSignataireDialog({ documents, roles, onClose, onDone }) {
   const [documentId, setDocumentId] = useState('')
   const [routage, setRoutage] = useState('sequentiel')
   const [destinataires, setDestinataires] = useState([
-    { nom: '', email: '', role: '', role_signataire: '' },
+    { nom: '', email: '', role: 'signataire', role_signataire: '' },
   ])
   const [saving, setSaving] = useState(false)
   const [demande, setDemande] = useState(null)
@@ -690,7 +729,7 @@ function MultiSignataireDialog({ documents, roles, onClose, onDone }) {
   const majDest = (i, patch) =>
     setDestinataires((list) => list.map((d, idx) => (idx === i ? { ...d, ...patch } : d)))
   const ajouterDest = () =>
-    setDestinataires((list) => [...list, { nom: '', email: '', role: '', role_signataire: '' }])
+    setDestinataires((list) => [...list, { nom: '', email: '', role: 'signataire', role_signataire: '' }])
   const retirerDest = (i) =>
     setDestinataires((list) => (list.length > 1 ? list.filter((_, idx) => idx !== i) : list))
 
@@ -706,7 +745,7 @@ function MultiSignataireDialog({ documents, roles, onClose, onDone }) {
         destinataires: valides.map((d, i) => ({
           nom: d.nom.trim(),
           email: d.email.trim() || undefined,
-          role: d.role.trim() || undefined,
+          role: d.role || 'signataire',
           role_signataire: d.role_signataire || undefined,
           ordre: i + 1,
         })),
@@ -762,23 +801,31 @@ function MultiSignataireDialog({ documents, roles, onClose, onDone }) {
                     placeholder="Email" type="email" value={d.email} className="min-w-[140px] flex-1"
                     onChange={(e) => majDest(i, { email: e.target.value })}
                   />
-                  {roles.length > 0 ? (
+                  <Select
+                    value={d.role}
+                    onValueChange={(v) => majDest(i, { role: v })}
+                  >
+                    <SelectTrigger className="w-[130px]" aria-label={`Rôle du destinataire ${i + 1}`}>
+                      <SelectValue placeholder="Rôle" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ROLE_DESTINATAIRE_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {roles.length > 0 && (
                     <Select
                       value={d.role_signataire}
                       onValueChange={(v) => majDest(i, { role_signataire: v })}
                     >
-                      <SelectTrigger className="w-[130px]"><SelectValue placeholder="Rôle" /></SelectTrigger>
+                      <SelectTrigger className="w-[130px]"><SelectValue placeholder="Rôle réutilisable" /></SelectTrigger>
                       <SelectContent>
                         {roles.map((rr) => (
                           <SelectItem key={rr.id} value={String(rr.id)}>{rr.nom}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                  ) : (
-                    <Input
-                      placeholder="Rôle" value={d.role} className="w-[120px]"
-                      onChange={(e) => majDest(i, { role: e.target.value })}
-                    />
                   )}
                   <Button
                     variant="ghost" size="icon" type="button"

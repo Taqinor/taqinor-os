@@ -370,15 +370,18 @@ def publier_documents(company, *, dry_run=False, force=False, stdout=None):
             checksum = services.compute_checksum(contenu)
 
             dossier = _dossier_de(destination)
+            # ADOC61 — un document en corbeille n'est jamais la cible : un
+            # nouveau document visible est créé.
             document = (Document.objects.filter(
-                company=company, folder=dossier, nom=titre).first()
+                company=company, folder=dossier, nom=titre,
+                supprime_le__isnull=True).order_by('id').first()
                 if dossier else None)
-            derniere = document.versions.first() if document else None
 
             if dry_run:
                 if document is None:
                     _log(f'[dry-run] {titre} : nouveau document + version 1.')
-                elif force or derniere is None or derniere.checksum != checksum:
+                elif force or not services.derniere_version_identique(
+                        document, checksum):
                     _log(f'[dry-run] {titre} : nouvelle version.')
                 else:
                     _log(f'[dry-run] {titre} : déjà à jour, rien à faire.')
@@ -389,22 +392,26 @@ def publier_documents(company, *, dry_run=False, force=False, stdout=None):
                     company=company, folder=dossier, nom=titre,
                     description=description)
                 counters['documents_crees'] += 1
-                derniere = None
 
-            if derniere is not None and derniere.checksum == checksum \
-                    and not force:
+            def _stocker(_fichier=fichier, _contenu=contenu):
+                upload = SimpleUploadedFile(
+                    _fichier, _contenu, content_type='application/pdf')
+                meta, err = store_attachment(upload, company=company)
+                if err:
+                    raise ValueError(err)
+                return meta
+
+            # ADOC61 — comparaison au checksum de la version EN VIGUEUR et
+            # création de la version déléguées au helper unique.
+            version, cree = services.versionner_si_modifie(
+                document, contenu, stocker=_stocker, forcer=force)
+            if version is None:
+                raise ValueError(
+                    'document archivé légalement ou sous legal hold : '
+                    'nouvelle version refusée.')
+            if not cree:
                 counters['inchanges'] += 1
                 continue
-
-            upload = SimpleUploadedFile(
-                fichier, contenu, content_type='application/pdf')
-            meta, err = store_attachment(upload, company=company)
-            if err:
-                raise ValueError(err)
-            services.add_version(
-                document, file_key=meta['file_key'], company=company,
-                filename=meta['filename'], size=meta['size'],
-                mime=meta['mime'], checksum=checksum)
             counters['nouvelles_versions'] += 1
             _log(f'{titre} : nouvelle version publiée (v{version_label}).')
 
