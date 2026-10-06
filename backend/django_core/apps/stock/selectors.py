@@ -2429,25 +2429,27 @@ def _facteur(code, libelle, penalite, plafond, detail):
 
 
 def _ponctualite_fournisseur(company, fournisseur_id):
-    """Taux de retard : BCF dont la date confirmée dépasse la date prévue."""
-    from django.db.models import F
+    """ASTK186 — ponctualité lue dans ``otd_stats`` (UNE seule définition,
+    partagée avec la fiche 360 et le portail) : réception confirmée vs date
+    confirmée sinon prévue. Pénalité = taux de retard × ``PLAFOND_OTD``."""
+    from .models import Fournisseur
+    from .services import otd_stats
 
-    from .models import BonCommandeFournisseur
-
-    qs = BonCommandeFournisseur.objects.filter(
-        company=company, fournisseur_id=fournisseur_id,
-        date_livraison_prevue__isnull=False,
-        date_confirmee_fournisseur__isnull=False)
-    total = qs.count()
-    if not total:
-        return 0, {'bcf_dates': 0, 'retards': 0, 'taux_retard_pct': 0}
-    retards = qs.filter(
-        date_confirmee_fournisseur__gt=F('date_livraison_prevue')
-    ).count()
-    taux = retards / total
+    fournisseur = Fournisseur.objects.filter(
+        company=company, pk=fournisseur_id).first()
+    stats = otd_stats(company, fournisseur)
+    mesures = stats.get('otd_nb_mesures') or 0
+    pct = stats.get('otd_a_lheure_pct')
+    if not mesures or pct is None:
+        return 0, {
+            'bcf_dates': 0, 'retards': 0, 'taux_retard_pct': 0,
+            'otd_ecart_moyen_jours': None, 'otd_a_lheure_pct': None}
+    taux = max(0.0, min(1.0, (100 - pct) / 100))
     return round(taux * PLAFOND_OTD), {
-        'bcf_dates': total, 'retards': retards,
+        'bcf_dates': mesures, 'retards': round(taux * mesures),
         'taux_retard_pct': round(taux * 100),
+        'otd_ecart_moyen_jours': stats['otd_ecart_moyen_jours'],
+        'otd_a_lheure_pct': pct,
     }
 
 

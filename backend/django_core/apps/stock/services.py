@@ -4690,11 +4690,14 @@ def otd_stats(company, fournisseur):
             continue
         ecarts.append((premiere_reception - ref_date).days)
     if not ecarts:
-        return {'otd_ecart_moyen_jours': None, 'otd_a_lheure_pct': None}
+        return {'otd_ecart_moyen_jours': None, 'otd_a_lheure_pct': None,
+                'otd_nb_mesures': 0}
     a_lheure = sum(1 for e in ecarts if e <= 0)
     return {
         'otd_ecart_moyen_jours': round(sum(ecarts) / len(ecarts), 1),
         'otd_a_lheure_pct': round(a_lheure / len(ecarts) * 100, 1),
+        # ASTK186 — clé additive : effectif mesuré (lu par le score de risque).
+        'otd_nb_mesures': len(ecarts),
     }
 
 
