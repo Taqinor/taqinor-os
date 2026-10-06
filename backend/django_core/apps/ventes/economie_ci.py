@@ -1378,6 +1378,12 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
             tarif_declare=tarif_declare, cle_base=cle_base)
         if omis is not None:
             omissions.append(omis)
+        # CIQ233 — vue INTERNE après impôt (industriel, saisie du client).
+        apres, motif_apres = apres_impot_ci(
+            saisies.get('fiscalite_client'), base, collecteur)
+        vue_interne['apres_impot'] = apres
+        if motif_apres is not None:
+            vue_interne['apres_impot_motif'] = motif_apres
     hypotheses = [dict(HYPOTHESE_VALORISATION), _hypothese_tarif(tarif)]
     hypotheses.extend(valo.get('hypotheses') or [])
     bloc = {
@@ -1562,6 +1568,114 @@ def sensibilites_ci(flux_entrees, apercu_ci, tarif, reglages, *,
             ligne['motif'] = motif
         sorties.append(ligne)
     return sorties, None
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CIQ233 — vue INTERNE après impôt d'un industriel, seulement sur le taux d'IS
+# et l'amortissement DÉCLARÉS par le client (jamais les réglages fiscaux de la
+# société vendeuse) ; base amortissable HT quand la TVA est récupérable.
+# ═════════════════════════════════════════════════════════════════════════════
+
+MODES_AMORTISSEMENT_CI = ('lineaire', 'degressif')
+MOTIF_APRES_IMPOT_OMIS = (
+    "fiscalité du client non déclarée (taux d'IS et amortissement) : vue "
+    "après impôt omise — jamais les réglages fiscaux de la société")
+
+
+def _nombre_fiscal(fiscalite, cle, *, requis=True):
+    champ = f'fiscalite_client.{cle}'
+    brut = fiscalite.get(cle)
+    if brut is None or brut == '':
+        if requis:
+            raise SaisieEconomieCiInvalide(
+                f"{champ} : à saisir (déclaré par le client ou son "
+                "comptable).", champ=champ)
+        return None
+    try:
+        return float(str(brut).replace(',', '.'))
+    except (TypeError, ValueError):
+        raise SaisieEconomieCiInvalide(
+            f"{champ} : valeur « {brut} » refusée.", champ=champ) from None
+
+
+def lire_fiscalite_client(fiscalite):
+    """``saisies_economie_ci.fiscalite_client`` validée, ou None.
+
+    ``{taux_is_pct, amortissement_mode lineaire|degressif, duree_ans,
+    amortissement_coefficient (dégressif), source}`` — refus nommés
+    ``fiscalite_client.<champ>``.
+    """
+    if fiscalite in (None, '', {}):
+        return None
+    if not isinstance(fiscalite, dict):
+        raise SaisieEconomieCiInvalide(
+            "fiscalite_client : un objet est attendu.",
+            champ='fiscalite_client')
+    source = str(fiscalite.get('source') or '').strip()
+    if not source:
+        raise SaisieEconomieCiInvalide(
+            "fiscalite_client.source : déclaré par le client ou son "
+            "comptable — source obligatoire.", champ='fiscalite_client.source')
+    mode = str(fiscalite.get('amortissement_mode') or '').strip().lower()
+    if mode not in MODES_AMORTISSEMENT_CI:
+        raise SaisieEconomieCiInvalide(
+            "fiscalite_client.amortissement_mode : lineaire ou degressif.",
+            champ='fiscalite_client.amortissement_mode')
+    return {
+        'taux_is_pct': _nombre_fiscal(fiscalite, 'taux_is_pct'),
+        'amortissement_mode': mode,
+        'duree_ans': _nombre_fiscal(fiscalite, 'duree_ans'),
+        'amortissement_coefficient': _nombre_fiscal(
+            fiscalite, 'amortissement_coefficient',
+            requis=mode == 'degressif'),
+        'source': source,
+    }
+
+
+def apres_impot_ci(fiscalite, base_eco, collecteur):
+    """``(bloc apres_impot | None, motif | None)`` — ``vue_interne.
+    apres_impot`` du contrat ``economie_ci.json``.
+
+    ``flux_apres_impot`` (economie.py, inchangé) reçoit les entrées EXACTES
+    du flux de base et ``base_amortissable_mad`` = total HT quand la TVA est
+    récupérable (``oui``), TTC sinon (D-CIQ-3) — le flux suit la même base.
+    """
+    from apps.ventes import economie as eco_mod
+    lu = lire_fiscalite_client(fiscalite)
+    if lu is None:
+        return None, MOTIF_APRES_IMPOT_OMIS
+    cle_base = 'ht' if base_eco.get('tva_recuperable') == TVA_OUI else 'ttc'
+    entrees = (collecteur or {}).get(cle_base)
+    if entrees is None:
+        return None, MOTIF_APRES_IMPOT_OMIS
+    source = f"déclaré par le client — {lu['source']}"
+    base = base_eco.get(f'investissement_{cle_base}_mad')
+    libelle = ('HT (TVA récupérable)' if cle_base == 'ht'
+               else 'TTC (TVA non récupérable ou non déclarée)')
+
+    def saisie(valeur):
+        return None if valeur is None else {'valeur': valeur,
+                                            'source': source}
+    try:
+        res = eco_mod.flux_apres_impot(
+            taux_imposition_pct=saisie(lu['taux_is_pct']),
+            amortissement_mode=saisie(lu['amortissement_mode']),
+            amortissement_duree_ans=saisie(
+                None if lu['duree_ans'] is None else int(lu['duree_ans'])),
+            amortissement_coefficient=saisie(
+                lu['amortissement_coefficient']
+                if lu['amortissement_mode'] == 'degressif' else None),
+            base_amortissable_mad=None if base is None else {
+                'valeur': base,
+                'source': f"devis — total {libelle} de l'option retenue"},
+            **entrees)
+    except eco_mod.EconomieInvalide as refus:
+        raise SaisieEconomieCiInvalide(
+            f"fiscalite_client : {refus}",
+            champ=f'fiscalite_client.{refus.champ}') from refus
+    bloc = res['apres_impot']
+    bloc['base'] = cle_base
+    return bloc, None
 
 
 # ── Lecture d'un devis (aucune écriture) ─────────────────────────────────────
