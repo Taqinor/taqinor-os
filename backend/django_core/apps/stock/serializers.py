@@ -173,7 +173,10 @@ class FournisseurSerializer(CompanyScopedRelationsMixin,
         return value
 
 
-class MouvementStockSerializer(serializers.ModelSerializer):
+class MouvementStockSerializer(CompanyScopedRelationsMixin,
+                               serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True
@@ -217,7 +220,10 @@ def controle_courbe_pompe_lisible(value):
     return None
 
 
-class ProduitSerializer(serializers.ModelSerializer):
+class ProduitSerializer(CompanyScopedRelationsMixin,
+                        serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     categorie = CategorieSerializer(read_only=True)
     categorie_id = serializers.PrimaryKeyRelatedField(
         queryset=Categorie.objects.none(),
@@ -1041,7 +1047,10 @@ class EmplacementStockSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class TransfertStockSerializer(serializers.ModelSerializer):
+class TransfertStockSerializer(CompanyScopedRelationsMixin,
+                               serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     source_nom = serializers.CharField(source='source.nom', read_only=True)
     destination_nom = serializers.CharField(
@@ -1770,7 +1779,10 @@ class InventaireSessionSerializer(serializers.ModelSerializer):
 
 # ── FG66 / DC36 — Kit / nomenclature (BOM) ────────────────────────────────────
 
-class KitComposantSerializer(serializers.ModelSerializer):
+class KitComposantSerializer(CompanyScopedRelationsMixin,
+                             serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default=None)
     produit_sku = serializers.CharField(
@@ -1806,7 +1818,10 @@ class KitComposantSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class KitProduitSerializer(serializers.ModelSerializer):
+class KitProduitSerializer(CompanyScopedRelationsMixin,
+                           serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     composants = KitComposantSerializer(many=True)
     nb_composants = serializers.SerializerMethodField()
     # ZMFG9 — disponibilité multi-niveaux (kits assemblables + goulots),
@@ -1849,21 +1864,6 @@ class KitProduitSerializer(serializers.ModelSerializer):
             ],
         }
 
-    def _validate_company(self, composants_data):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is None:
-            return
-        for c in composants_data:
-            if c.get('produit') is not None \
-                    and c['produit'].company_id != company.id:
-                raise serializers.ValidationError(
-                    {'composants': 'Produit hors de votre entreprise.'})
-            if c.get('composant_kit') is not None \
-                    and c['composant_kit'].company_id != company.id:
-                raise serializers.ValidationError(
-                    {'composants': 'Sous-kit hors de votre entreprise.'})
-
     def _validate_no_direct_self_reference(self, kit_id, composants_data):
         # XMFG17 — un kit ne peut pas se déclarer lui-même comme sous-kit
         # (garde immédiate ; les cycles indirects plus profonds sont
@@ -1888,7 +1888,6 @@ class KitProduitSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         composants_data = validated_data.pop('composants', [])
-        self._validate_company(composants_data)
         kit = KitProduit.objects.create(**validated_data)
         self._validate_no_direct_self_reference(kit.id, composants_data)
         for c in composants_data:
@@ -1899,7 +1898,6 @@ class KitProduitSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         composants_data = validated_data.pop('composants', None)
         if composants_data is not None:
-            self._validate_company(composants_data)
             self._validate_no_direct_self_reference(
                 instance.id, composants_data)
         for attr, val in validated_data.items():
@@ -1985,7 +1983,10 @@ class AchatsParametresSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation', 'date_modification']
 
 
-class ToleranceRapprochementCategorieSerializer(serializers.ModelSerializer):
+class ToleranceRapprochementCategorieSerializer(CompanyScopedRelationsMixin,
+                                                serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     """NTP2P9 — grille éditable Paramètres → Achats (override par catégorie
     des tolérances 3 voies XPUR10)."""
     categorie_nom = serializers.CharField(
@@ -2161,7 +2162,10 @@ class RevalorisationStockSerializer(SameCompanyFKSerializerMixin,
         return attrs
 
 
-class ConditionnementProduitSerializer(serializers.ModelSerializer):
+class ConditionnementProduitSerializer(CompanyScopedRelationsMixin,
+                                       serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     """XSTK15 — conditionnement d'achat d'un produit (Touret/Carton…),
     convertit vers `Produit.unite_stock` via `facteur`."""
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
@@ -2226,7 +2230,10 @@ class ModeleBonCommandeFournisseurSerializer(
         return instance
 
 
-class RegleCodeBarresSerializer(serializers.ModelSerializer):
+class RegleCodeBarresSerializer(CompanyScopedRelationsMixin,
+                                serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     """ZSTK12 — règle d'une nomenclature de code-barres."""
 
     class Meta:
@@ -2236,7 +2243,10 @@ class RegleCodeBarresSerializer(serializers.ModelSerializer):
         ]
 
 
-class NomenclatureCodeBarresSerializer(serializers.ModelSerializer):
+class NomenclatureCodeBarresSerializer(CompanyScopedRelationsMixin,
+                                       serializers.ModelSerializer):
+    # ASTK5 — toute FK écrite vers un objet d'une autre société est
+    # refusée comme un id absent (« objet inexistant » de DRF).
     """ZSTK12 — nomenclature de code-barres (Default/GS1) + ses règles."""
     regles = RegleCodeBarresSerializer(many=True, read_only=True)
 

@@ -129,12 +129,11 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
         return Response(rows)
 
     def perform_create(self, serializer):
-        from rest_framework.exceptions import PermissionDenied, ValidationError
+        from rest_framework.exceptions import ValidationError
+        # ASTK5 — le produit d'une autre société est refusé dès la résolution
+        # du champ (sérialiseur borné société : « objet inexistant »).
         produit = serializer.validated_data['produit']
         user = self.request.user
-        # Reject cross-tenant produit references before touching stock.
-        if user.company_id and produit.company_id != user.company_id:
-            raise PermissionDenied("Produit hors de votre entreprise.")
         qte = serializer.validated_data['quantite']
         type_mv = serializer.validated_data['type_mouvement']
         # ERR10 — la quantité d'une ENTREE/SORTIE doit être strictement
