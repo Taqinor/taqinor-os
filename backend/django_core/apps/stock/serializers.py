@@ -2099,9 +2099,11 @@ class AvoirFournisseurSerializer(CompanyScopedRelationsMixin,
         ]
         # company + reference + montant_impute + statut posés côté serveur
         # (l'imputation avance le statut, jamais une écriture libre).
+        # ASTK24 — `statut` n'est plus inscriptible : un avoir naît en
+        # brouillon et n'avance que par `valider/` et `imputer/`.
         read_only_fields = [
             'reference', 'created_by', 'date_creation', 'date_mise_a_jour',
-            'montant_impute',
+            'montant_impute', 'statut',
         ]
 
 
