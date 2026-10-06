@@ -1715,6 +1715,14 @@ def _gate_avertissements(installation, stage):
             and installation.regime_8221
             == Installation.Regime8221.DECLARATION_HORS_RESEAU):
         avertissements.append(AVERTISSEMENT_DECLARATION_HORS_RESEAU)
+    # CIQ621 — mise en service d'un site pro : le compteur intelligent est
+    # posé par le distributeur (loi 82-21 art. 18-19) ; avertissement tant
+    # que le comptage n'est pas posé, jamais un blocage.
+    if (getattr(stage, 'cle', None) == 'mise_en_service'
+            and est_chantier_ci_raccorde(installation)):
+        statut, _refuse, _resume = etat_dossier_8221(installation)
+        if statut != Installation.DossierStatut.COMPTEUR_POSE:
+            avertissements.append(AVERTISSEMENT_COMPTEUR_DISTRIBUTEUR)
     return avertissements
 
 
@@ -3652,15 +3660,86 @@ def _apply_reception_handover(inst, canon_old, canon_new, user):
     return resume
 
 
+# ── CIQ621 — site pro : pas de pose avant l'accord et la convention ────────
+# Loi 82-21 art. 4-6 : l'accord ou la déclaration AVANT d'entamer la
+# réalisation (amendes art. 28-29) ; décret 2.25.100 art. 8, 13-14 : les
+# travaux démarrent après la convention. Garde TOUJOURS armée pour un chantier
+# C&I raccordé, même sans étapes configurées (AUD313 : rien n'est amorcé).
+RAISON_CI_SANS_CONVENTION = (
+    "Travaux refusés : convention de raccordement non signée ou décision "
+    "d'autorisation non reçue (loi 82-21 art. 4-6 ; décret 2.25.100 art. 8, "
+    "13-14). Dérogation possible par un Directeur, avec motif.")
+AVERTISSEMENT_COMPTEUR_DISTRIBUTEUR = (
+    "Compteur intelligent posé par le distributeur (loi 82-21 art. 18-19) : "
+    "comptage pas encore posé.")
+_STATUTS_TRAVAUX = (
+    Installation.Statut.EN_COURS, Installation.Statut.INSTALLE,
+    Installation.Statut.RECEPTIONNE, Installation.Statut.CLOTURE)
+
+
+def est_chantier_ci_raccorde(installation):
+    """CIQ621 — chantier C&I raccordé au réseau, sous un régime qualifié
+    autre que « non concerné » (les gardes C&I s'y appliquent)."""
+    return (installation.type_installation
+            == Installation.TypeInstallation.INDUSTRIEL
+            and installation.regime_8221
+            != Installation.Regime8221.NON_CONCERNE
+            and not est_hors_reseau(installation))
+
+
+def autorisation_travaux_8221(installation):
+    """CIQ621 — la convention est-elle signée (accord ou déclaration), ou la
+    décision d'autorisation reçue ? Lu dans le ``resume`` unique (CIQ617)."""
+    _statut, refuse, resume = etat_dossier_8221(installation)
+    if refuse or resume.get('source') != 'dossier':
+        return False
+    if resume.get('convention_signee_le'):
+        return True
+    return (installation.regime_8221
+            == Installation.Regime8221.AUTORISATION_ANRE
+            and resume.get('statut') in _STATUTS_DOSSIER_APPROUVES
+            and bool(resume.get('date_decision')))
+
+
+def _gardes_ci(installation, nouveau_statut, user=None,
+               motif_derogation=None):
+    """CIQ621 — raisons FR qui refusent l'entrée en travaux (« En cours » ou
+    au-delà) d'un chantier C&I raccordé sans convention ni autorisation.
+    Résidentiel et agricole : jamais concernés. Dérogation Directeur avec
+    motif (même patron que la dérogation d'acompte YSERV1)."""
+    if not est_chantier_ci_raccorde(installation):
+        return []
+    canon_old = Installation.canonical_statut(installation.statut)
+    canon_new = Installation.canonical_statut(nouveau_statut)
+    if canon_new not in _STATUTS_TRAVAUX or canon_old in _STATUTS_TRAVAUX:
+        return []
+    if autorisation_travaux_8221(installation):
+        return []
+    if (motif_derogation or '').strip() and est_directeur(user):
+        return []
+    return [RAISON_CI_SANS_CONVENTION]
+
+
+def _derogation_ci_utilisee(installation, nouveau_statut, user,
+                            motif_derogation):
+    """CIQ621 — vrai quand la transition n'est autorisée QUE par la
+    dérogation Directeur (à journaliser)."""
+    return bool((motif_derogation or '').strip()) and bool(
+        _gardes_ci(installation, nouveau_statut, user, None))
+
+
 def _raisons_transition(installation, nouveau_statut, user,
-                        motif_override_acompte, motif_reouverture):
+                        motif_override_acompte, motif_reouverture,
+                        motif_derogation_8221=None):
     """AUD316 — la chaîne de gardes COMPLÈTE, en un seul endroit.
 
-    Ordre : gates CH2 (qui portent aussi le point d'arrêt DUERP QHSE22), puis
-    le verrou de clôture AUD326, puis le gate d'acompte YSERV1 — ce dernier
-    armé sur TOUTE arrivée à PLANIFIE, quel que soit le chemin (il n'était
-    testé que par le PATCH)."""
+    Ordre : gates CH2 (étapes configurées), puis le verrou de clôture AUD326,
+    puis le gate d'acompte YSERV1 — ce dernier armé sur TOUTE arrivée à
+    PLANIFIE, quel que soit le chemin (il n'était testé que par le PATCH) —
+    puis CIQ621 : site pro sans convention, même sans étapes amorcées."""
     raisons = list(verifier_transition_statut(installation, nouveau_statut))
+    raisons.extend(_gardes_ci(installation, nouveau_statut, user,
+                              motif_derogation_8221))
     raison_cloture = verifier_reouverture_cloture(
         installation, nouveau_statut, user, motif_reouverture)
     if raison_cloture:
@@ -3679,7 +3758,8 @@ def _raisons_transition(installation, nouveau_statut, user,
 def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
                             motif_override_acompte=None,
                             motif_reouverture=None, verifier_gates=True,
-                            champs_supplementaires=None, etat_avant=None):
+                            champs_supplementaires=None, etat_avant=None,
+                            motif_derogation_8221=None):
     """AUD316 — LE point d'écriture de `Installation.statut`.
 
     Applique, dans un ORDRE FIXE (celui du PATCH, le seul complet) :
@@ -3713,9 +3793,12 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
     if verifier_gates:
         raisons = _raisons_transition(
             old, nouveau_statut, user, motif_override_acompte,
-            motif_reouverture)
+            motif_reouverture, motif_derogation_8221)
         if raisons:
             raise TransitionRefusee(raisons)
+    # CIQ621 — la dérogation Directeur est journalisée au chatter.
+    derogation_8221 = _derogation_ci_utilisee(
+        old, nouveau_statut, user, motif_derogation_8221)
 
     canon_old = Installation.canonical_statut(ancien_statut)
     fields = []
@@ -3784,6 +3867,11 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
         activity.log_note(
             installation, user,
             f'Planifié sans acompte — motif : {motif_override_acompte.strip()}')
+    if derogation_8221:
+        activity.log_note(
+            installation, user,
+            'Travaux démarrés sans convention 82-21 (dérogation Directeur) '
+            f'— motif : {motif_derogation_8221.strip()}')
     return {'ancien': ancien_statut, 'nouveau': installation.statut,
             'effets': effets}
 

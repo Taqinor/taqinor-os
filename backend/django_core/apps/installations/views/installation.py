@@ -291,6 +291,9 @@ class InstallationViewSet(CompanyScopedModelViewSet):
                           or '').strip()
         motif_reouverture = (self.request.data.get('motif_reouverture')
                              or '').strip()
+        # CIQ621 — dérogation Directeur (motif) aux travaux sans convention.
+        motif_derogation_8221 = (
+            self.request.data.get('motif_derogation_8221') or '').strip()
         with transaction.atomic():
             super().perform_update(serializer)
             inst = serializer.instance
@@ -319,6 +322,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
                     inst, nouveau_statut, self.request.user,
                     motif_override_acompte=motif_override,
                     motif_reouverture=motif_reouverture,
+                    motif_derogation_8221=motif_derogation_8221,
                     # Instantané d'AVANT la sauvegarde des autres champs : le
                     # diff du chatter doit les voir, et les gates doivent
                     # s'évaluer sur l'état d'avant (comportement historique).
@@ -1288,7 +1292,9 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         try:
             changer_statut_chantier(
                 inst, statut_cible, request.user, etape=cible,
-                motif_override_acompte=motif_override)
+                motif_override_acompte=motif_override,
+                motif_derogation_8221=(
+                    request.data.get('motif_derogation_8221') or '').strip())
         except TransitionRefusee as exc:
             return Response(
                 {'detail': 'Étape bloquée par un gate.',
