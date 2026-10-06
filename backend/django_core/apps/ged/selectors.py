@@ -313,13 +313,18 @@ def documents_partages_client_portail(company, client_id):
     récent d'abord). ``company``/``client_id`` absents → queryset vide."""
     if company is None or not client_id:
         return Document.objects.none()
+    from .models import LIFECYCLE_OBSOLETE
     doc_ids = (AclGed.objects
                .filter(company=company, client_id=client_id,
                        document__isnull=False)
                .values_list('document_id', flat=True))
+    # ADOC128 — un document déclaré « obsolète » n'est plus diffusé au client
+    # (liste, détail, téléchargement, export, recherche) ; « archivé » reste
+    # visible (son propre document).
     return (Document.objects
             .filter(company=company, id__in=doc_ids,
                     supprime_le__isnull=True)
+            .exclude(statut=LIFECYCLE_OBSOLETE)
             .order_by('-created_at', '-id'))
 
 
@@ -352,13 +357,17 @@ def ressources_partenaire_portail(company):
 
     if company is None:
         return Document.objects.none()
+    from .models import LIFECYCLE_ARCHIVE, LIFECYCLE_OBSOLETE
     doc_ids = (AclGed.objects
                .filter(company=company, document__isnull=False,
                        role__nom=ROLE_PORTAIL_PARTENAIRE)
                .values_list('document_id', flat=True))
+    # ADOC128 — une ressource « obsolète » ou « archivée » n'est plus diffusée
+    # aux partenaires (ni listée, ni détaillée, ni téléchargeable).
     return (Document.objects
             .filter(company=company, id__in=doc_ids,
                     supprime_le__isnull=True)
+            .exclude(statut__in=[LIFECYCLE_OBSOLETE, LIFECYCLE_ARCHIVE])
             .order_by('-created_at', '-id'))
 
 
