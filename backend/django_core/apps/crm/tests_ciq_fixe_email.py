@@ -289,13 +289,18 @@ class RenduEmailTests(_Base):
         from apps.crm.models import Client
         self.client_obj = Client.objects.create(
             company=self.company, nom='Client', email='c506@example.com')
+        self._n_devis = 0
 
     def _devis(self, date_validite=datetime.date(2026, 10, 15)):
         from decimal import Decimal
 
         from apps.ventes.models import Devis
+        # Référence unique par appel (contrainte company+reference) : le
+        # premier devis d'un test reste DEV-CIQ506-0001.
+        self._n_devis += 1
         return Devis.objects.create(
-            company=self.company, reference='DEV-CIQ506-0001',
+            company=self.company,
+            reference=f'DEV-CIQ506-{self._n_devis:04d}',
             client=self.client_obj, statut='envoye',
             taux_tva=Decimal('20.00'), date_envoi=DEPART,
             date_validite=date_validite)
