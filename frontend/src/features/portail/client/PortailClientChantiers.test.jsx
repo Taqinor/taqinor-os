@@ -116,3 +116,40 @@ describe('PortailClientChantiers — NTPRT14', () => {
     expect(sources.some((s) => s.includes('records/attachments'))).toBe(false)
   })
 })
+
+describe('PortailClientChantiers — AGR614 essai de mise en service', () => {
+  async function ouvrirSuivi(detail) {
+    portailApi.chantiers.liste.mockResolvedValue({ data: LISTE })
+    portailApi.chantiers.detail.mockResolvedValue({ data: detail })
+    portailApi.chantiers.photos.mockResolvedValue({ data: { results: [] } })
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText(CHANTIER.reference)
+    await user.click(screen.getAllByRole('button', { name: /Voir le suivi/i })[0])
+    await screen.findByText(/Aucune photo pour ce chantier/i)
+  }
+
+  it('rend le bloc avec les valeurs de l’exemple du contrat', async () => {
+    await ouvrirSuivi(DETAIL)
+    const essai = screen.getByTestId('essai-mise-en-service')
+    const r = DETAIL.recette_pompage
+    expect(essai).toHaveTextContent('Essai de mise en service')
+    expect(essai).toHaveTextContent(`${r.hmt_mesuree_m} m`)
+    expect(essai).toHaveTextContent(`${r.debit_mesure_m3h} m³/h`)
+    expect(essai).toHaveTextContent(`${r.debit_promis_m3h} m³/h`)
+    expect(essai).toHaveTextContent(`${r.ecart_debit_pct} %`)
+    expect(essai).toHaveTextContent('Conforme')
+  })
+
+  it('absent quand recette_pompage est null', async () => {
+    await ouvrirSuivi({ ...DETAIL, recette_pompage: null })
+    expect(screen.queryByTestId('essai-mise-en-service')).toBeNull()
+    expect(screen.queryByText('Essai de mise en service')).toBeNull()
+  })
+
+  it('aucun prix rendu dans le bloc', async () => {
+    await ouvrirSuivi(DETAIL)
+    expect(screen.getByTestId('essai-mise-en-service').textContent)
+      .not.toMatch(/MAD|DH|prix|€|\$/i)
+  })
+})

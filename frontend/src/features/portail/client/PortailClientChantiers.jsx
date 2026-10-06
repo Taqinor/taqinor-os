@@ -29,6 +29,16 @@ const TON_STATUT = {
   cloture: 'neutral',
 }
 
+// AGR614 — libellés FR du résultat de l'essai. Pas de traduction arabe
+// disponible pour ce bloc : repli français documenté, comme le reste de
+// l'onglet « Chantiers » (aucune clé i18n n'existe pour ces écrans).
+const LABEL_RESULTAT_ESSAI = {
+  en_cours: 'En cours',
+  conforme: 'Conforme',
+  reserves: 'Conforme avec réserves',
+  non_conforme: 'Non conforme',
+}
+
 const LABEL_PHASE = { avant: 'Avant', pendant: 'Pendant', apres: 'Après' }
 const ORDRE_PHASE = ['avant', 'pendant', 'apres']
 
@@ -62,6 +72,37 @@ function Timeline({ jalons }) {
         </li>
       ))}
     </ol>
+  )
+}
+
+// AGR614 — « Essai de mise en service » : rendu depuis `recette_pompage`
+// (liste blanche client servie par le contrat `mes_chantiers_detail.json`).
+// Jamais d'instrument, de prix ni de technicien ; rien quand c'est null.
+function EssaiMiseEnService({ essai }) {
+  if (!essai) return null
+  const valeur = (v, unite) => (v == null ? '—' : `${v} ${unite}`)
+  return (
+    <section className="flex flex-col gap-1 rounded-lg border border-border p-3"
+             data-testid="essai-mise-en-service">
+      <h3 className="text-sm font-semibold">Essai de mise en service</h3>
+      <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
+        <dt className="text-muted-foreground">Date de l’essai</dt>
+        <dd>{essai.date_essai ? formatDate(essai.date_essai) : '—'}</dd>
+        <dt className="text-muted-foreground">HMT mesurée</dt>
+        <dd>{valeur(essai.hmt_mesuree_m, 'm')}</dd>
+        <dt className="text-muted-foreground">Débit mesuré</dt>
+        <dd>{valeur(essai.debit_mesure_m3h, 'm³/h')}</dd>
+        <dt className="text-muted-foreground">Débit estimé au devis</dt>
+        <dd>{valeur(essai.debit_promis_m3h, 'm³/h')}</dd>
+        <dt className="text-muted-foreground">Écart</dt>
+        <dd>{valeur(essai.ecart_debit_pct, '%')}</dd>
+        <dt className="text-muted-foreground">Résultat</dt>
+        <dd>{LABEL_RESULTAT_ESSAI[essai.resultat] ?? essai.resultat ?? '—'}</dd>
+      </dl>
+      {essai.commentaire_ecart && (
+        <p className="text-sm text-muted-foreground">{essai.commentaire_ecart}</p>
+      )}
+    </section>
   )
 }
 
@@ -130,6 +171,7 @@ export default function PortailClientChantiers() {
         [id]: {
           etat: 'ok',
           jalons: detail.data?.jalons ?? [],
+          recette: detail.data?.recette_pompage ?? null,
           photos: photos.data?.results ?? [],
         },
       })))
@@ -213,6 +255,7 @@ export default function PortailClientChantiers() {
               {suivis[c.id]?.etat === 'ok' && (
                 <div className="flex flex-col gap-4">
                   <Timeline jalons={suivis[c.id].jalons} />
+                  <EssaiMiseEnService essai={suivis[c.id].recette} />
                   <Galerie photos={suivis[c.id].photos} />
                 </div>
               )}
