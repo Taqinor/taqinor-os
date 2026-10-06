@@ -170,6 +170,50 @@ class RechercheProduitSansAccents(filters.SearchFilter):
         return qs.filter(reduce(operator.and_, conditions))
 
 
+def _references_vivantes(produit, exclure=(), avec_protegees=True):
+    """ASTK81 — relations inverses VIVANTES d'un produit (C-ASTK-017).
+
+    Parcourt les relations inverses avec le collecteur Django
+    (``NestedObjects``, celui de l'admin) — jamais une liste de modèles écrite
+    à la main — et compte, par modèle, ce qu'une suppression détacherait
+    (``SET_NULL``), supprimerait en cascade (``CASCADE``) ou refuserait
+    (``PROTECT``, si ``avec_protegees``). Les modèles de ``exclure`` (classes)
+    et le produit lui-même ne comptent pas. Retourne ``{(verbose_name,
+    verbose_name_plural): nombre}``, vide si le produit n'est référencé par
+    rien. Jumeau unique de ``destroy`` et ``force_delete``.
+    """
+    from django.contrib.admin.utils import NestedObjects
+    from django.db import router
+    collector = NestedObjects(using=router.db_for_write(Produit))
+    collector.collect([produit])
+    comptes = {}
+
+    def _ajoute(modele, nombre):
+        if modele is Produit or modele in exclure or not nombre:
+            return
+        cle = (str(modele._meta.verbose_name),
+               str(modele._meta.verbose_name_plural))
+        comptes[cle] = comptes.get(cle, 0) + nombre
+
+    for modele, objets in collector.model_objs.items():
+        _ajoute(modele, len(objets))
+    for (_champ, _valeur), objets in collector.field_updates.items():
+        for modele in {o.__class__ for o in objets}:
+            _ajoute(modele, sum(1 for o in objets if o.__class__ is modele))
+    if avec_protegees:
+        for modele in {o.__class__ for o in collector.protected}:
+            _ajoute(modele, sum(
+                1 for o in collector.protected if o.__class__ is modele))
+    return comptes
+
+
+def _texte_references(comptes):
+    """« 1 réservation de chantier, 2 lignes de bon de commande… »."""
+    return ', '.join(
+        f'{n} {singulier if n == 1 else pluriel}'
+        for (singulier, pluriel), n in sorted(comptes.items()))
+
+
 class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                      CompanyScopedModelViewSet):
     # YOPSB13 — le FournisseurSerializer imbriqué (ProduitSerializer.fournisseur)
@@ -364,23 +408,30 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     def destroy(self, request, *args, **kwargs):
         produit = self.get_object()
-        try:
-            return super().destroy(request, *args, **kwargs)
-        except ProtectedError:
-            nb = produit.mouvements.count()
-            produit.is_archived = True
-            produit.save(update_fields=['is_archived'])
-            return Response(
-                {
-                    'archived': True,
-                    'detail': (
-                        f'Ce produit a été archivé car il possède {nb} '
-                        f'mouvement(s) de stock. L\'historique est conservé.'
-                    ),
-                    'nb_mouvements': nb,
-                },
-                status=status.HTTP_200_OK,
-            )
+        # ASTK81 — un produit référencé par une relation vivante (réservation
+        # chantier, ligne BCF, conditionnement…) est ARCHIVÉ, jamais supprimé :
+        # plus de donnée détachée (SET_NULL) ni effacée en cascade.
+        comptes = _references_vivantes(produit)
+        if not comptes:
+            try:
+                return super().destroy(request, *args, **kwargs)
+            except ProtectedError:
+                comptes = _references_vivantes(produit)
+        nb = produit.mouvements.count()
+        produit.is_archived = True
+        produit.save(update_fields=['is_archived'])
+        raison = _texte_references(comptes) or f'{nb} mouvement(s) de stock'
+        return Response(
+            {
+                'archived': True,
+                'detail': (
+                    f'Ce produit a été archivé : il est référencé par '
+                    f'{raison}. L\'historique est conservé.'
+                ),
+                'nb_mouvements': nb,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])
@@ -1559,6 +1610,25 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+        # ASTK81 — mêmes références vivantes que destroy (helper commun) : on
+        # archive au lieu de détacher/cascader. Les mouvements restent
+        # supprimés avec le produit (comportement historique) ; les PROTECT
+        # gardent leur refus 409 plus bas.
+        comptes = _references_vivantes(
+            produit, exclure=(MouvementStock,), avec_protegees=False)
+        if comptes:
+            return Response(
+                {
+                    'archived': True,
+                    'detail': (
+                        'Ce produit a été archivé : il est référencé par '
+                        f'{_texte_references(comptes)}. '
+                        'L\'historique est conservé.'
+                    ),
+                    'nb_mouvements': produit.mouvements.count(),
+                },
+                status=status.HTTP_200_OK,
             )
         nb = produit.mouvements.count()
         try:
