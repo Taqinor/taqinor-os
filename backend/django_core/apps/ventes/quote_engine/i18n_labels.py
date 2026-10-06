@@ -800,6 +800,90 @@ LIBELLES = {
     'ci_pour': {'fr': 'Pour {marque}', 'en': 'For {marque}',
                 'ar': 'عن {marque}'},
     'ci_le_date': {'fr': 'Le {date}', 'en': 'On {date}', 'ar': 'بتاريخ {date}'},
+    'ci_mad_mois': {'fr': 'MAD/mois', 'en': 'MAD/month', 'ar': 'درهم/شهر'},
+    # ── Document industriel (CIQ341, CIQ345) — préfixe ``ci_ind_`` ─────────
+    'ci_ind_kicker': {
+        'fr': 'Proposition — Autoconsommation solaire industrielle',
+        'en': 'Proposal — Industrial solar self-consumption',
+        'ar': 'عرض — الاستهلاك الذاتي للطاقة الشمسية الصناعية'},
+    'ci_ind_titre': {'fr': "Réduire votre coût de l'énergie",
+                     'en': 'Reduce your energy cost',
+                     'ar': 'خفض تكلفة الطاقة لديكم'},
+    'ci_ind_sous_titre': {
+        'fr': 'Analyse de rentabilité (CFO) — baseline, cashflow et payback.',
+        'en': 'Profitability analysis (CFO) — baseline, cash flow and '
+              'payback.',
+        'ar': 'تحليل المردودية (المدير المالي) — الاستهلاك المرجعي والتدفق '
+              'النقدي ومدة الاسترداد.'},
+    'ci_ind_tag': {'fr': 'Industrielle', 'en': 'Industrial',
+                   'ar': 'صناعية'},
+    'ci_ind_synthese': {'fr': 'Synthèse', 'en': 'Summary', 'ar': 'الخلاصة'},
+    'ci_ind_investissement': {'fr': 'Investissement', 'en': 'Investment',
+                              'ar': 'الاستثمار'},
+    'ci_ind_economie_an1': {'fr': "Économie de l'année 1",
+                            'en': 'Year-1 saving',
+                            'ar': 'وفر السنة الأولى'},
+    'ci_ind_tri_sur': {'fr': 'TRI sur {n} ans', 'en': 'IRR over {n} years',
+                       'ar': 'معدل العائد الداخلي على {n} سنة'},
+    'ci_ind_van': {'fr': 'VAN au taux déclaré de {taux} %',
+                   'en': 'NPV at the declared rate of {taux} %',
+                   'ar': 'القيمة الحالية الصافية بالمعدل المصرح به {taux} %'},
+    'ci_ind_financement': {'fr': 'Financement', 'en': 'Financing',
+                           'ar': 'التمويل'},
+    'ci_ind_rentabilite': {'fr': 'Rentabilité', 'en': 'Profitability',
+                           'ar': 'المردودية'},
+    'ci_ind_statut': {'fr': "Statut de l'étude", 'en': 'Study status',
+                      'ar': 'وضعية الدراسة'},
+    'ci_ind_offre_ferme': {'fr': 'offre ferme', 'en': 'firm offer',
+                           'ar': 'عرض نهائي'},
+    'ci_ind_baseline': {'fr': 'Baseline énergétique',
+                        'en': 'Energy baseline',
+                        'ar': 'الاستهلاك الطاقي المرجعي'},
+    'ci_ind_baseline_factures': {'fr': '12 factures', 'en': '12 bills',
+                                 'ar': '12 فاتورة'},
+    'ci_ind_baseline_interpoles': {
+        'fr': '{n} factures, mois interpolés — estimation',
+        'en': '{n} bills, interpolated months — estimate',
+        'ar': '{n} فواتير، أشهر مستكملة بالاستيفاء — تقدير'},
+    'ci_ind_baseline_interpoles_sans_n': {
+        'fr': 'mois interpolés — estimation',
+        'en': 'interpolated months — estimate',
+        'ar': 'أشهر مستكملة بالاستيفاء — تقدير'},
+    'ci_ind_baseline_kwh': {'fr': 'kWh déclarés', 'en': 'declared kWh',
+                            'ar': 'كيلوواط ساعة مصرح بها'},
+    'ci_ind_facture_actuelle': {'fr': 'Facture électrique actuelle',
+                                'en': 'Current electricity bill',
+                                'ar': 'فاتورة الكهرباء الحالية'},
+    'ci_ind_facture_estimee': {'fr': 'Facture électrique estimée',
+                               'en': 'Estimated electricity bill',
+                               'ar': 'فاتورة الكهرباء المقدرة'},
+    'ci_ind_facture_non_communiquee': {
+        'fr': 'Facture électrique actuelle non communiquée — transmettez 12 '
+              'mois de factures et la baseline se chiffre.',
+        'en': 'Current electricity bill not provided — send 12 months of '
+              'bills and the baseline is calculated.',
+        'ar': 'فاتورة الكهرباء الحالية غير مقدمة — أرسلوا فواتير 12 شهرا '
+              'ليُحسب الاستهلاك المرجعي.'},
+    'ci_ind_conso': {'fr': 'Consommation ≈ {kwh} kWh/an',
+                     'en': 'Consumption ≈ {kwh} kWh/yr',
+                     'ar': 'الاستهلاك ≈ {kwh} kWh/سنة'},
+    'ci_ind_conso_a_confirmer': {
+        'fr': 'Consommation à confirmer (facture 12 mois)',
+        'en': 'Consumption to be confirmed (12-month bill)',
+        'ar': 'الاستهلاك في انتظار التأكيد (فواتير 12 شهرا)'},
+    'ci_ind_production_estimee': {
+        'fr': 'Production estimée ≈ {kwh} kWh/an',
+        'en': 'Estimated production ≈ {kwh} kWh/yr',
+        'ar': 'الإنتاج المقدر ≈ {kwh} kWh/سنة'},
+    'ci_ind_note_autoconso': {
+        'fr': "L'installation vise l'<b>autoconsommation</b> : la valeur "
+              "porte d'abord sur les <b>heures pleines</b> (production en "
+              "journée).",
+        'en': 'The installation targets <b>self-consumption</b>: its value '
+              'lies first in the <b>peak-rate hours</b> (daytime '
+              'production).',
+        'ar': 'تستهدف المنشأة <b>الاستهلاك الذاتي</b>: تكمن قيمتها أولا في '
+              '<b>الساعات العادية</b> (الإنتاج خلال النهار).'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',

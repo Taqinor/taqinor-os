@@ -266,7 +266,7 @@ def build(ctx):
 .i2-foot{{margin-top:10px;font-size:7.5pt;color:{muted};line-height:1.4;}}
 .i2-foot b{{color:{navy};}}
 /* QXMT — corps de remplacement quand la rentabilité n'est pas chiffrable au
-   barème du dossier (raccordement MT sans répartition horaire). */
+   barème du dossier (raccordement MT sans factures MT). */
 .i2-mt{{margin-top:13px;border:1px solid {line};border-left:4px solid {gold};
   border-radius:12px;background:{wash};padding:13px 16px;}}
 .i2-mt-t{{font-family:{f_serif};font-weight:700;font-size:12pt;color:{navy};}}
@@ -301,9 +301,10 @@ def build(ctx):
       le barème basse tension. Nous préférons ne rien afficher plutôt que
       d'afficher un chiffre qui n'est pas le vôtre.
       <br><br>
-      <b>Ce qu'il nous manque :</b> votre répartition horaire de consommation
-      (ou 12 mois de factures MT). Avec elle, nous chiffrons économies, point
-      mort, TRI et payback sur VOTRE barème, et cette page se remplit.
+      <b>Ce qu'il nous manque :</b> vos 12 dernières factures MT (prix des
+      trois postes, prime fixe, puissance souscrite). Avec elles, nous
+      chiffrons économies, point mort, TRI et payback sur VOTRE barème, et
+      cette page se remplit.
     </div>
   </div>
   <div class="i2-foot">
