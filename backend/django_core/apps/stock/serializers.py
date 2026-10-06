@@ -1206,6 +1206,9 @@ class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
     quantite_restante = serializers.IntegerField(read_only=True)
     total_achat = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
+    # ASTK67 — `id` accepté en écriture : une ligne transmise avec son `id`
+    # est MISE À JOUR sur place (upsert), sans id elle est créée.
+    id = serializers.IntegerField(required=False)
 
     class Meta:
         model = LigneBonCommandeFournisseur
@@ -1413,31 +1416,70 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
                 validated_data['date_livraison_prevue'] = derived
         bon = BonCommandeFournisseur.objects.create(**validated_data)
         for ligne in lignes_data:
+            ligne.pop('id', None)  # ASTK67 — id ignoré à la création
             apply_devise_ligne_bcf(ligne, devise, taux)
             LigneBonCommandeFournisseur.objects.create(
                 bon_commande=bon, **ligne)
         return bon
 
     def update(self, instance, validated_data):
-        from .services import apply_devise_ligne_bcf
         # Les écritures sur les lignes ne sont permises qu'en BROUILLON :
         # une fois envoyé/reçu, le contenu commandé est figé.
         lignes_data = validated_data.pop('lignes', None)
-        for attr, val in validated_data.items():
-            setattr(instance, attr, val)
-        instance.save()
         if lignes_data is not None:
             if instance.statut != BonCommandeFournisseur.Statut.BROUILLON:
                 raise serializers.ValidationError(
                     'Les lignes ne sont modifiables qu\'en brouillon.')
             self._validate_company_produits(lignes_data)
-            instance.lignes.all().delete()
-            for ligne in lignes_data:
-                apply_devise_ligne_bcf(
-                    ligne, instance.devise, instance.taux_change)
-                LigneBonCommandeFournisseur.objects.create(
-                    bon_commande=instance, **ligne)
+        # ASTK67 — en-tête et lignes dans UNE transaction : si les lignes
+        # échouent (ligne protégée → 409, validation → 400), l'en-tête n'est
+        # jamais écrit.
+        with transaction.atomic():
+            for attr, val in validated_data.items():
+                setattr(instance, attr, val)
+            instance.save()
+            if lignes_data is not None:
+                self._upsert_lignes(instance, lignes_data)
         return instance
+
+    #: ASTK67 — champs d'une ligne existante mis à jour quand ils sont
+    #: transmis ; un champ NON transmis garde sa valeur en base.
+    CHAMPS_LIGNE_MODIFIABLES = (
+        'produit', 'designation', 'quantite', 'prix_achat_unitaire',
+        'prix_achat_unitaire_devise', 'frais_annexes',
+    )
+
+    def _upsert_lignes(self, instance, lignes_data):
+        """ASTK67 — lignes d'un BCF brouillon mises à jour PAR IDENTIFIANT :
+        une ligne transmise avec son `id` est modifiée sur place (champs non
+        transmis conservés : frais_annexes, prix_achat_unitaire_devise…) ;
+        sans `id` (ou id étranger à ce BCF) elle est créée ; une ligne
+        existante absente du payload est supprimée (ProtectedError → 409)."""
+        from .services import apply_devise_ligne_bcf
+        existantes = {ligne.id: ligne for ligne in instance.lignes.all()}
+        gardees = set()
+        for data in lignes_data:
+            ligne_id = data.pop('id', None)
+            ligne = existantes.get(ligne_id)
+            if ligne is None or ligne_id in gardees:
+                apply_devise_ligne_bcf(
+                    data, instance.devise, instance.taux_change)
+                LigneBonCommandeFournisseur.objects.create(
+                    bon_commande=instance, **data)
+                continue
+            gardees.add(ligne_id)
+            fusion = {
+                champ: data.get(champ, getattr(ligne, champ))
+                for champ in self.CHAMPS_LIGNE_MODIFIABLES
+            }
+            apply_devise_ligne_bcf(
+                fusion, instance.devise, instance.taux_change)
+            for champ in self.CHAMPS_LIGNE_MODIFIABLES:
+                setattr(ligne, champ, fusion[champ])
+            ligne.save()
+        for ligne_id, ligne in existantes.items():
+            if ligne_id not in gardees:
+                ligne.delete()
 
 
 # ── G5 — Réception fournisseur (goods-in) ────────────────────────────────────
