@@ -17,6 +17,7 @@ import {
   DialogFooter, Input, Textarea, Label,
 } from '../../ui'
 import ChantierTimeline from './ChantierTimeline'
+import RecettePompageDialog from './RecettePompageDialog'
 
 /* ── WIR202/CH3 — fiche de recette IEC 62446-1 : formulaire de SAISIE ───────
    Le bouton « Ouvrir la fiche de recette » créait un enregistrement VIDE
@@ -84,6 +85,9 @@ const SECTIONS = [
     ],
   },
 ]
+
+// AGR613 — la fiche pompage n'a pas de `resultat_display` : libellé local.
+const RESULTAT_LIBELLES = Object.fromEntries(RESULTATS.map((o) => [o.value, o.label]))
 
 const IV_CHAMPS = [
   ['string_label', 'String', 'text'],
@@ -407,13 +411,17 @@ export default function ChantierGateTimeline({ installationId, installation, onA
   const [pack, setPack] = useState(null)
   const [packBusy, setPackBusy] = useState(false)
 
+  // AGR613 — chantier agricole : recette POMPAGE (IEC 62253) à la place de la
+  // fiche IEC 62446-1 du PV raccordé.
+  const agricole = installation?.type_installation === 'agricole'
+
   const load = () => {
     setLoading(true)
     installationsApi.getEtapesChantier(installationId)
       .then((r) => { setData(r.data); setError(null) })
       .catch(() => setError('Étapes indisponibles.'))
       .finally(() => setLoading(false))
-    installationsApi.getRecette(installationId)
+    ;(agricole ? installationsApi.getRecettePompage : installationsApi.getRecette)(installationId)
       .then((r) => setRecette(r.data)).catch(() => {})
     installationsApi.getPackRemise(installationId)
       .then((r) => setPack(r.data)).catch(() => {})
@@ -463,6 +471,10 @@ export default function ChantierGateTimeline({ installationId, installation, onA
       ? recette.record
       : (recette.id ? recette : null))
     : null
+
+  const libelleRecette = agricole
+    ? 'Recette de pompage (IEC 62253)'
+    : 'Recette de mise en service (IEC 62446-1)'
 
   const genererPack = async () => {
     setPackBusy(true)
@@ -589,10 +601,14 @@ export default function ChantierGateTimeline({ installationId, installation, onA
       {/* ── CH3 — recette de mise en service (IEC 62446-1), gate mis en avant ── */}
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3" data-testid="ch6-recette">
         <ClipboardCheck className="size-4 text-muted-foreground" aria-hidden="true" />
-        <span className="text-sm font-semibold">Recette de mise en service (IEC 62446-1)</span>
+        <span className="text-sm font-semibold">{libelleRecette}</span>
         {recetteRecord ? (
-          <Badge tone={recetteRecord.passe ? 'success' : 'outline'}>
-            {recetteRecord.resultat_display ?? recetteRecord.resultat}
+          <Badge tone={(recetteRecord.passe
+            ?? ['conforme', 'reserves'].includes(recetteRecord.resultat))
+            ? 'success' : 'outline'}>
+            {recetteRecord.resultat_display
+              ?? RESULTAT_LIBELLES[recetteRecord.resultat]
+              ?? recetteRecord.resultat}
           </Badge>
         ) : (
           <Badge tone="neutral">Aucune fiche</Badge>
@@ -610,7 +626,19 @@ export default function ChantierGateTimeline({ installationId, installation, onA
         </Button>
       </div>
 
-      {recetteOuverte && (
+      {recetteOuverte && agricole && (
+        <RecettePompageDialog
+          installationId={installationId}
+          record={recetteRecord}
+          onClose={() => setRecetteOuverte(false)}
+          onSaved={(enveloppe) => {
+            setRecette(enveloppe)
+            load()
+            onAdvanced?.()
+          }}
+        />
+      )}
+      {recetteOuverte && !agricole && (
         <RecetteDialog
           installationId={installationId}
           record={recetteRecord}
