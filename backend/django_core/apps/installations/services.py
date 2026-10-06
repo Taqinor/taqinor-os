@@ -3944,6 +3944,39 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
 # calendrier et « Ma tournée » — qui la retire des vues. Ce choix est ré-affirmé
 # par `tests_parite_cascade.py`.
 
+def verifier_securite_avant_demarrage(intervention, nouveau_statut):
+    """CIQ624 — réglage société ``securite_obligatoire_avant_demarrage``
+    (CIQ622, défaut faux = comportement actuel) : refuse le démarrage
+    (« sur site ») et la fin (« terminée »/« validée ») tant que le sign-off
+    sécurité n'est pas signé. Renvoie la raison FR qui liste les points non
+    cochés, ou None."""
+    from .models_intervention import Intervention as _Intervention
+    if nouveau_statut not in (_Intervention.Statut.SUR_SITE,
+                              _Intervention.Statut.TERMINEE,
+                              _Intervention.Statut.VALIDEE):
+        return None
+    company = intervention.company
+    if company is None:
+        return None
+    try:
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company)
+    except Exception:  # pragma: no cover - défensif
+        return None
+    if not getattr(profil, 'securite_obligatoire_avant_demarrage', False):
+        return None
+    from .field_capture import ensure_safety_signoff
+    signoff = ensure_safety_signoff(intervention)
+    if signoff.signe:
+        return None
+    non_coches = [it.libelle for it in signoff.items.all() if not it.coche]
+    detail = (' Points non cochés : ' + ' ; '.join(non_coches) + '.'
+              if non_coches else '')
+    return ("Consignes de sécurité non signées : démarrage et fin "
+            "d'intervention refusés (réglage société « sécurité signée "
+            "avant démarrage »)." + detail)
+
+
 def changer_statut_intervention(intervention, nouveau_statut, user):
     """AUD317 — LE point d'écriture de `Intervention.statut`.
 
@@ -3966,6 +3999,10 @@ def changer_statut_intervention(intervention, nouveau_statut, user):
         intervention, nouveau_statut)
     if raison:
         raise TransitionRefusee([raison] if isinstance(raison, str) else raison)
+    raison_securite = verifier_securite_avant_demarrage(
+        intervention, nouveau_statut)
+    if raison_securite:
+        raise TransitionRefusee([raison_securite])
 
     old = _Intervention.objects.get(pk=intervention.pk)
     intervention.statut = nouveau_statut
