@@ -261,7 +261,7 @@ class PortailTiersTokenSerializer(serializers.ModelSerializer):
         read_only_fields = ['token', 'last_used_at', 'created_at']
 
     def get_lien_public(self, obj) -> str:
-        return f'/api/django/stock/public/tiers/{obj.token}/solde/'
+        return f'/api/django/public/stock/tiers/{obj.token}/solde/'
 
     def validate_tiers_nom(self, value):
         if not (value or '').strip():

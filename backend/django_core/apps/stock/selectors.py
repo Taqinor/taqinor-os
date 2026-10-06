@@ -2405,7 +2405,7 @@ def fournisseur_peut_recevoir_bcf(company, fournisseur_id):
 #   ponctualité (OTD)    -45   taux de retard sur les BCF datés
 #   documents légaux     -30   10 par pièce EXPIRÉE, 5 par pièce MANQUANTE
 #   retours              -15   taux de retours fournisseur / BCF
-#   litiges              -15   5 par réclamation ouverte
+#   incidents qualité    -30   10 par incident CRITIQUE non résolu (ASTK187)
 #   blocage              -25   statut de blocage du fournisseur
 #
 # Le barème est volontairement additif et borné : un fournisseur avec 3
@@ -2416,6 +2416,8 @@ PLAFOND_OTD = 45
 PLAFOND_DOCUMENTS = 30
 PLAFOND_RETOURS = 15
 PLAFOND_BLOCAGE = 25
+PLAFOND_INCIDENTS_QUALITE = 30
+PENALITE_PAR_INCIDENT_CRITIQUE = 10
 
 SEUIL_RISQUE_ELEVE = 50
 SEUIL_RISQUE_MODERE = 75
@@ -2429,25 +2431,27 @@ def _facteur(code, libelle, penalite, plafond, detail):
 
 
 def _ponctualite_fournisseur(company, fournisseur_id):
-    """Taux de retard : BCF dont la date confirmée dépasse la date prévue."""
-    from django.db.models import F
+    """ASTK186 — ponctualité lue dans ``otd_stats`` (UNE seule définition,
+    partagée avec la fiche 360 et le portail) : réception confirmée vs date
+    confirmée sinon prévue. Pénalité = taux de retard × ``PLAFOND_OTD``."""
+    from .models import Fournisseur
+    from .services import otd_stats
 
-    from .models import BonCommandeFournisseur
-
-    qs = BonCommandeFournisseur.objects.filter(
-        company=company, fournisseur_id=fournisseur_id,
-        date_livraison_prevue__isnull=False,
-        date_confirmee_fournisseur__isnull=False)
-    total = qs.count()
-    if not total:
-        return 0, {'bcf_dates': 0, 'retards': 0, 'taux_retard_pct': 0}
-    retards = qs.filter(
-        date_confirmee_fournisseur__gt=F('date_livraison_prevue')
-    ).count()
-    taux = retards / total
+    fournisseur = Fournisseur.objects.filter(
+        company=company, pk=fournisseur_id).first()
+    stats = otd_stats(company, fournisseur)
+    mesures = stats.get('otd_nb_mesures') or 0
+    pct = stats.get('otd_a_lheure_pct')
+    if not mesures or pct is None:
+        return 0, {
+            'bcf_dates': 0, 'retards': 0, 'taux_retard_pct': 0,
+            'otd_ecart_moyen_jours': None, 'otd_a_lheure_pct': None}
+    taux = max(0.0, min(1.0, (100 - pct) / 100))
     return round(taux * PLAFOND_OTD), {
-        'bcf_dates': total, 'retards': retards,
+        'bcf_dates': mesures, 'retards': round(taux * mesures),
         'taux_retard_pct': round(taux * 100),
+        'otd_ecart_moyen_jours': stats['otd_ecart_moyen_jours'],
+        'otd_a_lheure_pct': pct,
     }
 
 
@@ -2496,6 +2500,23 @@ def _retours_fournisseur(company, fournisseur_id):
     }
 
 
+def incidents_critiques_ouverts(company, fournisseur_id):
+    """ASTK187 — nombre d'incidents qualité CRITIQUES non résolus (compteur
+    partagé : score de risque ET scorecard ``supplier_performance``)."""
+    from .models import IncidentQualiteFournisseur
+
+    return IncidentQualiteFournisseur.objects.filter(
+        company=company, fournisseur_id=fournisseur_id, resolu=False,
+        gravite=IncidentQualiteFournisseur.Gravite.CRITIQUE).count()
+
+
+def _incidents_qualite_fournisseur(company, fournisseur_id):
+    nb = incidents_critiques_ouverts(company, fournisseur_id)
+    return min(PLAFOND_INCIDENTS_QUALITE,
+               PENALITE_PAR_INCIDENT_CRITIQUE * nb), {
+        'incidents_critiques_ouverts': nb}
+
+
 def _blocage_fournisseur(fournisseur):
     from .models import Fournisseur
 
@@ -2525,6 +2546,7 @@ def score_risque_fournisseur(company, fournisseur_id):
     p_otd, d_otd = _ponctualite_fournisseur(company, fournisseur.pk)
     p_doc, d_doc = _documents_fournisseur(company, fournisseur.pk)
     p_ret, d_ret = _retours_fournisseur(company, fournisseur.pk)
+    p_inc, d_inc = _incidents_qualite_fournisseur(company, fournisseur.pk)
     p_blo, d_blo = _blocage_fournisseur(fournisseur)
 
     facteurs = [
@@ -2534,6 +2556,8 @@ def score_risque_fournisseur(company, fournisseur_id):
                  p_doc, PLAFOND_DOCUMENTS, d_doc),
         _facteur('retours', 'Retours fournisseur',
                  p_ret, PLAFOND_RETOURS, d_ret),
+        _facteur('incidents_qualite', 'Incidents qualité critiques ouverts',
+                 p_inc, PLAFOND_INCIDENTS_QUALITE, d_inc),
         _facteur('blocage', 'Statut de blocage',
                  p_blo, PLAFOND_BLOCAGE, d_blo),
     ]
