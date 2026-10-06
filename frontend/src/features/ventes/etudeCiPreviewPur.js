@@ -38,6 +38,14 @@ const objetOuNull = (v) => (v && typeof v === 'object' && !Array.isArray(v)
 /** Réponse de catégorie : booléen, nombre tapé, sinon texte tel quel. */
 const reponse = (v) => {
   if (typeof v === 'boolean') return v
+  // CIQ131 — heures données par le client à côté d'une réponse (cuisson
+  // nocturne, service du soir, garde de nuit) : `[[debut_h, fin_h], …]`,
+  // nombres lus tels quels ; une plage incomplète n'est pas envoyée.
+  if (Array.isArray(v)) {
+    const plages = v.filter(Array.isArray).map((p) => p.map(nombreOuNull))
+      .filter((p) => p.length === 2 && p.every((x) => x !== null))
+    return plages.length ? plages : null
+  }
   const n = nombreOuNull(v)
   return n !== null ? n : texteOuNull(v)
 }

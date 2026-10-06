@@ -203,6 +203,15 @@ export function devisVersEtat(d) {
     for (const q of COMMERCIAL_CATEGORY_QUESTIONS[etat.categorieCommerciale] || []) {
       if (e[q.key] !== undefined && e[q.key] !== null) reponses[q.key] = e[q.key]
     }
+    // CIQ131 — les réponses ENVOYÉES au moteur (entrée v2
+    // `rythme.reponses_categorie`), heures données comprises (cuisson,
+    // service, garde, dates de fermeture), se relisent telles quelles.
+    const v2 = e.rythme?.reponses_categorie
+    if (v2 && typeof v2 === 'object') {
+      for (const [cle, valeur] of Object.entries(v2)) {
+        if (valeur !== null && valeur !== undefined) reponses[cle] = valeur
+      }
+    }
     etat.commercialAnswers = reponses
   }
 
