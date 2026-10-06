@@ -75,6 +75,13 @@ const installationsApi = {
   ajouterReleveIv: (recetteId, data) =>
     api.post(`/installations/recettes-commissioning/${recetteId}/ajouter-iv/`, data),
 
+  // CIQ636 — réserves du CHANTIER (recette / réception, contrat
+  // `recette_ci.json` bloc `reserves`) : liste, ajout, levée.
+  getReservesChantier: (id) => api.get(`/installations/chantiers/${id}/reserves/`),
+  ajouterReserveChantier: (id, payload) =>
+    api.post(`/installations/chantiers/${id}/reserves/`, payload),
+  leverReserveChantier: (id, reserveId, payload = {}) =>
+    api.post(`/installations/chantiers/${id}/reserves/${reserveId}/lever/`, payload),
   // AGR613 — recette POMPAGE d'un chantier agricole (contrat
   // `recette_pompage.json`) : `{installation, record}`. `recetteId` = id de la
   // FICHE ; le PATCH renvoie l'enveloppe (comparaison au devis recalculée
