@@ -1175,6 +1175,29 @@ class PrixFournisseurSerializer(serializers.ModelSerializer):
         # company posé côté serveur.
 
 
+def _peut_voir_montants_achat(user):
+    """ASTK10/11 (D-ASTK-2) — seul garde des prix et montants d'ACHAT servis
+    en lecture : ``user.can_view_buy_prices`` (permission ``prix_achat_voir``,
+    repli historique pour les comptes légacy sans rôle fin). Aucun ``user``
+    (usage service/interne, PDF fournisseur) ⇒ comportement historique."""
+    if user is None:
+        return True
+    return bool(getattr(user, 'can_view_buy_prices', True))
+
+
+def _user_du_contexte(serializer):
+    request = serializer.context.get('request')
+    return getattr(request, 'user', None)
+
+
+#: ASTK10 — clés de prix d'achat d'une ligne de BCF, retirées sans
+#: ``prix_achat_voir``.
+CHAMPS_PRIX_ACHAT_LIGNE_BCF = (
+    'prix_achat_unitaire', 'prix_achat_unitaire_devise', 'frais_annexes',
+    'total_achat',
+)
+
+
 class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
     # XPUR16 — SerializerMethodField (pas ``source='produit.nom'``) : une
     # ligne libre/service n'a pas de produit, `produit` peut être None.
@@ -1201,6 +1224,15 @@ class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
         # quantite_recue n'est jamais posée librement : elle évolue uniquement
         # via l'action de réception (perform_create n'accepte que le reste).
         read_only_fields = ['quantite_recue', 'sans_stock']
+
+    def get_fields(self):
+        # ASTK10 (D-ASTK-2) — prix d'achat retirés sans `prix_achat_voir`
+        # (patron PrixFournisseurSerializer, AUD213).
+        fields = super().get_fields()
+        if not _peut_voir_montants_achat(_user_du_contexte(self)):
+            for nom in CHAMPS_PRIX_ACHAT_LIGNE_BCF:
+                fields.pop(nom, None)
+        return fields
 
     def get_produit_nom(self, obj):
         return obj.produit.nom if obj.produit_id else None
@@ -1282,6 +1314,16 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             # ZPUR11 — posé uniquement par l'action `annuler`.
             'motif_annulation',
         ]
+
+    def get_fields(self):
+        # ASTK10 (D-ASTK-2) — total d'achat et acomptes versés (montants
+        # d'achat) retirés sans `prix_achat_voir` ; les lignes masquent
+        # leurs propres prix (LigneBonCommandeFournisseurSerializer).
+        fields = super().get_fields()
+        if not _peut_voir_montants_achat(_user_du_contexte(self)):
+            fields.pop('total_achat', None)
+            fields.pop('acomptes', None)
+        return fields
 
     def get_acomptes(self, obj):
         return AcompteFournisseurSerializer(

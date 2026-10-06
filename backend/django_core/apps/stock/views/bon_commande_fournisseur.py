@@ -64,7 +64,15 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         # données que `retrieve` expose déjà à tout rôle authentifié. Le
         # laisser en IsResponsableOrAdmin faisait échouer (403) le bouton
         # « PDF (interne) » pour les rôles normaux qui voient pourtant le BCF.
-        if self.action in READ_ACTIONS + ['generer_pdf', 'lignes_import']:
+        # ASTK10 (D-ASTK-2) — le PDF interne, l'historique des prix et le
+        # rapport hors contrat SONT des prix d'achat : `prix_achat_voir`
+        # requis (repli légacy can_view_buy_prices). Le PDF envoyé AU
+        # FOURNISSEUR (envoyer-email / whatsapp) n'est pas concerné.
+        if self.action in ('generer_pdf', 'historique_prix',
+                           'achats_hors_contrat'):
+            from ..permissions import PeutVoirPrixAchat
+            return [IsAnyRole(), PeutVoirPrixAchat()]
+        if self.action in READ_ACTIONS + ['lignes_import']:
             return [IsAnyRole()]
         elif self.action in ('whatsapp', 'envoyer_email'):
             # QS3 — envois fournisseur : permission fine stock_modifier (repli
@@ -527,8 +535,14 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         fournisseur créés la même semaine (LECTURE SEULE, ne fusionne rien —
         l'acheteur confirme via l'action existante `fusionner`, ZPUR6)."""
         from ..selectors import suggestions_consolidation_bcf
-        return Response(
-            suggestions_consolidation_bcf(request.user.company))
+        suggestions = suggestions_consolidation_bcf(request.user.company)
+        # ASTK10 (D-ASTK-2) — montant d'achat de chaque BCF retiré sans
+        # `prix_achat_voir` (la suggestion de fusion reste utilisable).
+        if not getattr(request.user, 'can_view_buy_prices', True):
+            for groupe in suggestions:
+                for bon in groupe.get('bons_commande') or []:
+                    bon.pop('montant', None)
+        return Response(suggestions)
 
     @action(detail=False, methods=['get'], url_path='en-retard')
     def en_retard(self, request):
