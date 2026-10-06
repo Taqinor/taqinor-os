@@ -2062,10 +2062,42 @@ def mouvement_type_rebut():
 # (jamais l'inverse) : le service reste ici (comme `apply_inventory_count`,
 # FG63, le comptage one-shot) — la diff EST le mouvement.
 
+def appliquer_ecart_inventaire(*, company, produit_id, ecart, reference,
+                               note, user):
+    """ASTK38 — UNIQUE application d'un écart d'inventaire au stock LIVE.
+
+    Sert les deux chemins de comptage : la session d'inventaire
+    (``valider_inventaire_session``, AUD206) et le comptage cyclique YSTCK1
+    (``appliquer_ecarts_comptage``). L'écart constaté (compté − théorique) est
+    appliqué en DELTA à la quantité verrouillée : un mouvement légitime
+    survenu après le snapshot du théorique (réception, sortie) est CONSERVÉ —
+    l'ancien comptage cyclique posait le niveau compté et effaçait ces
+    mouvements (sonde MVT-7). Le mouvement AJUSTEMENT est cohérent avec
+    lui-même : |après − avant| == quantite. À appeler dans la transaction de
+    l'appelant. Renvoie le mouvement, ou None si écart nul / produit absent
+    (ou d'une autre société)."""
+    from .models import MouvementStock, Produit
+
+    if not ecart:
+        return None
+    produit = Produit.objects.select_for_update().filter(
+        id=produit_id, company=company).first()
+    if produit is None:
+        return None
+    avant = produit.quantite_stock
+    apres = avant + ecart
+    return record_stock_movement(
+        company=company, produit=produit,
+        type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
+        quantite=abs(ecart), quantite_avant=avant, quantite_apres=apres,
+        reference=reference, note=note, created_by=user)
+
+
 def appliquer_ecarts_comptage(*, company, lignes, user, reference):
     """YSTCK1 — poste UN `MouvementStock` AJUSTEMENT par ligne dont
     `quantite_comptee != quantite_theorique` (attribut ``ecart`` non nul, non
-    None), cale `Produit.quantite_stock` sur le compté.
+    None) et applique cet ÉCART en delta au stock live (ASTK38 — jamais le
+    niveau compté : les mouvements survenus depuis le snapshot sont gardés).
 
     ``lignes`` : itérable de ``ComptageLigne`` (ou tout objet portant
     ``produit_id``/``quantite_theorique``/``quantite_comptee``/``ecart``).
@@ -2081,7 +2113,6 @@ def appliquer_ecarts_comptage(*, company, lignes, user, reference):
     (``installations.views.comptage.terminer`` le fait, sous
     ``select_for_update()`` + ``transaction.atomic()``)."""
     from django.db import transaction
-    from .models import MouvementStock, Produit
 
     count = 0
     with transaction.atomic():
@@ -2093,12 +2124,10 @@ def appliquer_ecarts_comptage(*, company, lignes, user, reference):
             ecart = ligne.quantite_comptee - (ligne.quantite_theorique or 0)
             if ecart == 0:
                 continue
-            produit = Produit.objects.select_for_update().filter(
-                id=ligne.produit_id, company=company).first()
-            if produit is None:
-                continue
-            avant = produit.quantite_stock
-            apres = ligne.quantite_comptee
+            # ASTK38 — l'écart est appliqué en DELTA au stock live (comme
+            # AUD206) par le helper unique `appliquer_ecart_inventaire` ;
+            # l'ancien `apres = ligne.quantite_comptee` effaçait les
+            # mouvements survenus depuis le snapshot du théorique (MVT-7).
             # AUD320 — LA RÉFÉRENCE DU MOUVEMENT EST CELLE DU DOCUMENT SOURCE,
             # TELLE QUELLE. `f'CYC-{reference}'` re-préfixait une référence de
             # session qui porte DÉJÀ son préfixe (`create_with_reference(...,
@@ -2111,14 +2140,13 @@ def appliquer_ecarts_comptage(*, company, lignes, user, reference):
             # convention de la maison. Les lignes historiques doublement
             # préfixées restent lisibles (aucune migration : le champ est un
             # libellé de traçabilité, jamais une clé).
-            record_stock_movement(
-                company=company, produit=produit,
-                type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
-                quantite=abs(ecart), quantite_avant=avant,
-                quantite_apres=apres, reference=reference,
+            mouvement = appliquer_ecart_inventaire(
+                company=company, produit_id=ligne.produit_id, ecart=ecart,
+                reference=reference,
                 note=f'Comptage cyclique {reference} — écart {ecart}',
-                created_by=user)
-            count += 1
+                user=user)
+            if mouvement is not None:
+                count += 1
     return count
 
 
@@ -3257,7 +3285,7 @@ def valider_inventaire_session(session, user):
     chaque ligne en écart. Idempotent : une session déjà validée lève ValueError.
     Retourne {ajustes, inchanges}."""
     from django.db import transaction
-    from .models import MouvementStock, InventaireSession
+    from .models import InventaireSession
 
     if session.statut == InventaireSession.Statut.VALIDE:
         raise ValueError("Cette session d'inventaire est déjà validée.")
@@ -3278,23 +3306,13 @@ def valider_inventaire_session(session, user):
             # tôt par `generer_comptages_tournants`) et cette validation, des
             # mouvements légitimes ont pu passer. On applique donc l'écart
             # constaté à la quantité LIVE verrouillée, ce qui les préserve.
-            produit = ligne.produit
-            # Verrou anti-concurrence
-            from .models import Produit
-            produit = Produit.objects.select_for_update().get(pk=produit.pk)
-            qte_avant = produit.quantite_stock
-            qte_apres = qte_avant + ecart
-
-            record_stock_movement(
-                company=session.company,
-                produit=produit,
-                type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
-                quantite=abs(ecart),
-                quantite_avant=qte_avant,
-                quantite_apres=qte_apres,
-                reference=session.reference,
+            # ASTK38 — même helper que le comptage cyclique (verrou produit
+            # + delta sur le stock live).
+            appliquer_ecart_inventaire(
+                company=session.company, produit_id=ligne.produit_id,
+                ecart=ecart, reference=session.reference,
                 note=f'Inventaire {session.reference} — écart {ecart:+d}',
-                created_by=user)
+                user=user)
             ajustes += 1
 
         session.statut = InventaireSession.Statut.VALIDE
