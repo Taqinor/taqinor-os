@@ -33,7 +33,7 @@ import { resolveLandingFromAuth } from '../lib/apps/landing'
 // NTPRT8/20/27 — portée d'un compte PORTAIL externe (source unique, pure).
 import {
   PORTEE_CLIENT, PORTEE_FOURNISSEUR, PORTEE_PARTENAIRE,
-  peutEntrerDansPortail, portalHomePath,
+  peutEntrerDansPortail, portalHomePath, cheminMotDePassePortail,
 } from '../features/portail/portalScope'
 
 // ── Pages lazy ────────────────────────────────────────────────────────────────
@@ -98,6 +98,8 @@ const PortailClientLivraisons = lazy(() => import('../features/portail/client/Po
 // NTPRT14 — « Mes chantiers » : timeline (jalons portail) + galerie photos.
 const PortailClientChantiers = lazy(() => import('../features/portail/client/PortailClientChantiers'))
 // AUD139 — changement OBLIGATOIRE du mot de passe temporaire (portail client).
+// ADOC119 — écran COMMUN aux trois portées (fichier client = ré-export).
+const PortailMotDePasse = lazy(() => import('../features/portail/PortailMotDePasse'))
 const PortailClientMotDePasse = lazy(() => import('../features/portail/client/PortailClientMotDePasse'))
 // ADOC117 — page PUBLIQUE d'acceptation d'une invitation (hors layout).
 const PortailInvitationAccepter = lazy(() => import('../features/portail/PortailInvitationAccepter'))
@@ -195,14 +197,9 @@ const authLoader = async ({ request }) => {
 // Un interne y est renvoyé sur /dashboard ; un compte portail d'une AUTRE
 // portée (fournisseur sur l'espace client) est renvoyé sur SON portail —
 // jamais toléré « parce qu'il est portail ».
-// AUD139 — écran de rotation FORCÉE du mot de passe temporaire, par portée.
-// Seul le portail CLIENT en a un aujourd'hui : une portée sans écran déclaré
-// n'est jamais redirigée (mieux vaut l'ancien comportement qu'une boucle vers
-// une route inexistante) — ajouter l'entrée ici en même temps que l'écran.
-const CHEMIN_MOT_DE_PASSE_PORTAIL = {
-  [PORTEE_CLIENT]: '/portail/client/mot-de-passe',
-}
-
+// AUD139/ADOC119 — écran de rotation FORCÉE du mot de passe temporaire, par
+// portée : chemin lu de `cheminMotDePassePortail` (portalScope.js, source
+// unique), les trois routes sont déclarées plus bas.
 const portalLoader = (portee) => async ({ request }) => {
   const user = await ensurePortalScope()
   if (!user) return buildLoginRedirect(request)
@@ -212,7 +209,7 @@ const portalLoader = (portee) => async ({ request }) => {
   // AUD139 — le serveur refuse toute route portail (403
   // `mot_de_passe_a_changer`) tant que le mot de passe temporaire n'est pas
   // remplacé : on amène le client au formulaire au lieu d'un écran mort.
-  const versMotDePasse = CHEMIN_MOT_DE_PASSE_PORTAIL[portee]
+  const versMotDePasse = cheminMotDePassePortail(portee)
   if (versMotDePasse && user.must_change_password
       && new URL(request.url).pathname !== versMotDePasse) {
     return redirect(versMotDePasse)
@@ -472,6 +469,18 @@ const router = createBrowserRouter([
     path: '/portail/partenaire/commissions',
     loader: portalLoader(PORTEE_PARTENAIRE),
     element: <WithPortal shell={PortalPartenaireLayout}><PortailPartenaireCommissions /></WithPortal>,
+  },
+  // ADOC119 — mot de passe TEMPORAIRE des portails fournisseur et partenaire
+  // (même écran commun, même garde de portée que leur accueil).
+  {
+    path: '/portail/fournisseur/mot-de-passe',
+    loader: portalLoader(PORTEE_FOURNISSEUR),
+    element: <WithPortal shell={PortalFournisseurLayout}><PortailMotDePasse /></WithPortal>,
+  },
+  {
+    path: '/portail/partenaire/mot-de-passe',
+    loader: portalLoader(PORTEE_PARTENAIRE),
+    element: <WithPortal shell={PortalPartenaireLayout}><PortailMotDePasse /></WithPortal>,
   },
   // ADOC117 — lien de l'e-mail d'invitation : route PUBLIQUE hors layout, sans
   // `portalLoader` ni coquille ERP (l'invité n'a pas encore de session).
