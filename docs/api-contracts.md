@@ -319,7 +319,7 @@
 - frontend/src/api/parametresApi.js :: saveTranslationOverrides -> /api/django/parametres/traductions/bulk
     detail:texte, overrides:inconnu
 - frontend/src/api/portailApi.js :: accepter -> /api/django/portail/mes-devis/<>/accepter
-    detail:inconnu, reference:inconnu, statut:inconnu
+    champ:inconnu, detail:inconnu, reference:inconnu, statut:inconnu
 - frontend/src/api/portailApi.js :: confirmer -> /api/django/portail/mes-bons-commande/<>/confirmer
     date_confirmee:texte, date_confirmee_fournisseur:inconnu, detail:texte, id:inconnu, numero_confirmation_fournisseur:texte, reference:inconnu
 - frontend/src/api/portailApi.js :: get -> /api/django/portail/ma-preference

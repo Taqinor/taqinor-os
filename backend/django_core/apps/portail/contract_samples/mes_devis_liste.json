@@ -13,32 +13,6 @@
         "date_validite": "2026-10-28",
         "total_ttc": "48500.00",
         "accepte": false,
-        "mis_a_jour_le": "2026-09-29T14:05:00+00:00"
-      },
-      {
-        "id": 400,
-        "reference": "DEV-202609-0003",
-        "statut": "accepte",
-        "statut_display": "Accepté",
-        "date_creation": "2026-09-01T08:00:00+00:00",
-        "date_validite": "2026-10-01",
-        "total_ttc": "36000.00",
-        "accepte": true,
-        "mis_a_jour_le": null
-      }
-    ]
-  },
-  "exemple_ciq9": {
-    "results": [
-      {
-        "id": 413,
-        "reference": "DEV-202609-0012",
-        "statut": "envoye",
-        "statut_display": "Envoyé",
-        "date_creation": "2026-09-28T10:12:00+00:00",
-        "date_validite": "2026-10-28",
-        "total_ttc": "48500.00",
-        "accepte": false,
         "mis_a_jour_le": "2026-09-29T14:05:00+00:00",
         "exige_identite_entreprise": true
       },
@@ -56,7 +30,7 @@
       }
     ]
   },
-  "exige_identite_entreprise": "CIQ9 — booléen ADDITIF sur chaque élément : vrai quand le devis est commercial ou industriel (D-CIQ-11 : raison sociale, qualité du signataire et ICE obligatoires à l'acceptation en ligne, contrat `apps/ventes/contract_samples/acceptation_entreprise.json`), faux sinon. Tant que CIQ9 ne le sert pas, la clé vit dans `exemple_ciq9` (PAS dans `exemple`, que test_portail_devis_mis_a_jour compare clé à clé au sélecteur actuel) ; CIQ9 la verse dans `exemple` en même temps que le sélecteur qui l'émet.",
+  "exige_identite_entreprise": "CIQ9/CIQ321 — booléen ADDITIF sur chaque élément, SERVI par `devis_du_client_portail` (prédicat `apps.ventes.domain.cycle_vie.exige_identite_entreprise`, le même que la page publique) : vrai quand le devis est commercial ou industriel (D-CIQ-11 : raison sociale, qualité du signataire et ICE obligatoires à l'acceptation en ligne, contrat `apps/ventes/contract_samples/acceptation_entreprise.json`), faux sinon. L'écran du portail affiche alors les trois champs.",
   "exemple_deux_options": {
     "results": [
       {
@@ -103,7 +77,8 @@
     "corps": {
       "nom": "str, requis",
       "consent_esign": "bool, requis (consentement explicite, QX9)",
-      "option": "'sans_batterie'|'avec_batterie', REQUIS quand `deux_options` est vrai, facultatif sinon (ADOC110)"
+      "option": "'sans_batterie'|'avec_batterie', REQUIS quand `deux_options` est vrai, facultatif sinon (ADOC110)",
+      "entreprise": "{raison_sociale, signataire_qualite, ice} — REQUIS (les trois, non vides) quand `exige_identite_entreprise` est vrai (CIQ321, même règle et même lecteur que la page publique : `lire_entreprise_acceptation`, ICE validé par `validate_ice_ma`) ; IGNORÉ sinon. Forme : `exemple_portail.corps.entreprise` de `apps/ventes/contract_samples/acceptation_entreprise.json`."
     },
     "exemple_corps_deux_options": {
       "nom": "Karim Alaoui",
@@ -121,7 +96,11 @@
       },
       "403": "accès portail en lecture seule",
       "404": "devis introuvable (autre client/société)",
-      "409": "conflit d'acceptation (AcceptError.conflict)"
+      "409": "conflit d'acceptation (AcceptError.conflict)",
+      "400_entreprise": {
+        "detail": "L'ICE de l'entreprise est requis pour accepter ce devis.",
+        "champ": "entreprise.ice"
+      }
     },
     "source": "MesDevisPortailViewSet.accepter (portail/views_client.py) → accept_devis (ventes/domain/cycle_vie.py:1388-1391) ; le corps lit déjà `option` aujourd'hui, le message 400 vient d'AcceptError (le préfixe « Ce devis comporte deux options — précisez » est stable)."
   }
