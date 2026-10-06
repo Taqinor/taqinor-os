@@ -2624,27 +2624,10 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
 
 // ══ Multi-marchés (2026-06) ═══════════════════════════════════════════════════
 
-// ── QX50 — Injection 82-21 (miroir de quote_engine/constants_82_21.py) ────────
-// Décret 82-21 (2-25-100, BO 09/03/2026, en vigueur 09/06/2026). TOUTES ces
-// valeurs sont ESTIMÉES (recherche 2026-07-16) et à VÉRIFIER FONDATEUR (QXG6) :
-// elles pilotent une ligne OFF par défaut, activée devis par devis, et ne
-// s'affichent JAMAIS sans la mention réglementaire INJECTION_82_21.MENTION.
-export const INJECTION_82_21 = {
-  TARIF_POINTE: 0.21,        // DH/kWh — à vérifier fondateur
-  TARIF_HORS_POINTE: 0.18,   // DH/kWh — à vérifier fondateur
-  FRAIS_RESEAU_C1: 6.07,     // c/kWh — à vérifier fondateur
-  FRAIS_RESEAU_C2: 6.38,     // c/kWh — à vérifier fondateur
-  PLAFOND_PCT: 20,           // % de la production — décret en révision (à vérifier)
-  MENTION: 'Tarif ANRE 03/2026-02/2027, plafond en révision',
-}
-INJECTION_82_21.FRAIS_RESEAU_DH = (INJECTION_82_21.FRAIS_RESEAU_C1 + INJECTION_82_21.FRAIS_RESEAU_C2) / 100
-
-// Tarif NET (rachat − frais réseau), DH/kWh, jamais négatif. Injection diurne →
-// tarif HORS POINTE net par défaut (prudent, jamais la pointe sans stockage).
-export function netTarif8221(pointe = false) {
-  const base = pointe ? INJECTION_82_21.TARIF_POINTE : INJECTION_82_21.TARIF_HORS_POINTE
-  return Math.max(0, base - INJECTION_82_21.FRAIS_RESEAU_DH)
-}
+// CIQ228 — la valorisation C&I écran (rachat 82-21 net, injection) est
+// SUPPRIMÉE : la revente MT et ses mentions viennent UNIQUEMENT du serveur
+// (`economie_ci.revente`). `KWH_PRICE` reste : le RÉSIDENTIEL le lit encore
+// (repli de `computeROI` et défaut `quoteLogic.kwhPrice` du générateur).
 
 // ══ QXMT — Tarifs MOYENNE TENSION ONEE (raccordement MT) ═══════════════════
 // Miroir de quote_engine/constants_82_21.py `TARIF_MT_ONEE`, qui LIT la seule

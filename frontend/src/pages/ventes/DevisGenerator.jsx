@@ -107,7 +107,7 @@ import { useDirtyGuard } from '../../ui/useDirtyGuard'
 import { useDraftAutosave } from '../../ui/useDraftAutosave'
 import { usePasteClean, parsePastedAmount } from '../../hooks/usePasteClean'
 import {
-  // QJR101 — `MONTHS_FR` (grille des 12 mois), `TARIF_MT_ONEE` (barème MT) et
+  // QJR101 — `MONTHS_FR` (grille des 12 mois), le barème MT et
   // `COMMERCIAL_CATEGORIES` sont partis avec les panneaux de marché qui les
   // rendent. CIQ126 — l'étude C&I locale (et son avertissement MT) est
   // supprimée : le moteur serveur C&I est la seule source.
