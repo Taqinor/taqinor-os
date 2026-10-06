@@ -7,6 +7,7 @@ versions de document sont numérotées + déduppées via `services`.
 """
 from django.db import models
 from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import filters, mixins, serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import (
@@ -4519,6 +4520,7 @@ def _demande_lisible_par_jeton(demande):
         and not demande.is_expired
 
 
+@extend_schema(responses={(200, 'application/octet-stream'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSignatureRateThrottle, PublicSignatureTokenThrottle])
@@ -4540,6 +4542,7 @@ def public_signature_document(request, token):
     return _servir_document_a_signer(request, demande)
 
 
+@extend_schema(responses={(200, 'application/octet-stream'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSignataireRateThrottle, PublicSignataireTokenThrottle])

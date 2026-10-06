@@ -2801,7 +2801,14 @@ def url_publique_signature(jeton, mode='demande', *, request=None):
         try:
             return request.build_absolute_uri(chemin)
         except Exception:  # pragma: no cover - requête sans hôte exploitable.
-            return ''
+            pass
+    # Hors requête (signature séquentielle, relances Celery) : l'origine HTTPS
+    # de l'ERP déclarée dans CSRF_TRUSTED_ORIGINS (toujours posée en prod),
+    # pour ne pas perdre l'e-mail quand PUBLIC_BASE_URL n'est pas configuré.
+    for origine in getattr(settings, 'CSRF_TRUSTED_ORIGINS', None) or []:
+        origine = (origine or '').strip().rstrip('/')
+        if origine.startswith('https://') and '*' not in origine:
+            return f'{origine}{chemin}'
     return ''
 
 
@@ -3076,7 +3083,14 @@ def figer_pdf_signe(demande):
             pdf_bytes, _scelle = sceller_pdf(pdf_bytes, company=demande.company)
         source = selectors_latest_version(demande.document)
         checksum = compute_checksum(pdf_bytes)
-        if source is not None and (source.checksum or '') == checksum:
+        source_checksum = (source.checksum or '') if source is not None else ''
+        if source is not None and not source_checksum:
+            # Version déposée sans empreinte (upload d'écran) : la calculer sur
+            # ses octets plutôt qu'empiler un doublon « -signe » identique.
+            octets_source, _err = _fetch_version_bytes(source)
+            if octets_source:
+                source_checksum = compute_checksum(octets_source)
+        if source is not None and source_checksum == checksum:
             version = source
         else:
             key, meta = _store_bytes(pdf_bytes, mime='application/pdf')

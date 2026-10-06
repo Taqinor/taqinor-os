@@ -707,7 +707,7 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
         return SignataireDemandeSerializer(
             obj.signataires.all(), many=True, context=self.context).data
 
-    def get_lien_signature(self, obj):
+    def get_lien_signature(self, obj) -> str | None:
         if obj.signataires.exists():
             return None
         return services.url_publique_signature(
@@ -944,7 +944,7 @@ class SignataireDemandeSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_lien_signature(self, obj):
+    def get_lien_signature(self, obj) -> str | None:
         return services.url_publique_signature(
             obj.token, 'signataire',
             request=self.context.get('request')) or None
