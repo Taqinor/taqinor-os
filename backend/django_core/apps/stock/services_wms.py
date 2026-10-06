@@ -787,7 +787,14 @@ def generer_etiquette_expedition(*, expedition, user=None):
     AUD224 — c'est LE point de confirmation d'expédition : la marchandise
     quitte le quai, donc le stock canonique est décrémenté ici
     (``decrementer_stock_expedition``, idempotent lui aussi).
+
+    ASTK52 — la pose de l'étiquette et le décrément forment UNE transaction :
+    une panne du décrément annule l'étiquetage (rien n'est à moitié fait). Et
+    une expédition déjà étiquetée (état hérité d'avant cette garde) REJOUE le
+    décrément au lieu de sortir tôt : il est idempotent par
+    ``reference_sortie_expedition``, donc jamais compté deux fois.
     """
+    from django.db import transaction
     from django.utils import timezone
 
     from .models_wms import ExpeditionTransporteur
@@ -796,21 +803,24 @@ def generer_etiquette_expedition(*, expedition, user=None):
     if expedition.statut == ExpeditionTransporteur.Statut.ANNULE:
         raise ValueError('Cette expédition est annulée.')
     if expedition.etiquette_pdf_key and expedition.numero_suivi:
+        decrementer_stock_expedition(expedition=expedition, user=user)
         return expedition
 
     provider = provider_pour_societe(
         expedition.company, expedition.transporteur_provider)
     numero_suivi, pdf_bytes = provider.creer_expedition(
         expedition.unite_logistique)
-    expedition.numero_suivi = numero_suivi or ''
-    if pdf_bytes:
-        expedition.etiquette_pdf_key = _stocker_etiquette(
-            expedition.company, expedition, pdf_bytes)
-    expedition.statut = ExpeditionTransporteur.Statut.ETIQUETTE
-    expedition.date_expedition = timezone.now()
-    expedition.save(update_fields=[
-        'numero_suivi', 'etiquette_pdf_key', 'statut', 'date_expedition'])
-    decrementer_stock_expedition(expedition=expedition, user=user)
+    cle = (_stocker_etiquette(expedition.company, expedition, pdf_bytes)
+           if pdf_bytes else expedition.etiquette_pdf_key)
+    with transaction.atomic():
+        expedition.numero_suivi = numero_suivi or ''
+        expedition.etiquette_pdf_key = cle
+        expedition.statut = ExpeditionTransporteur.Statut.ETIQUETTE
+        expedition.date_expedition = timezone.now()
+        expedition.save(update_fields=[
+            'numero_suivi', 'etiquette_pdf_key', 'statut',
+            'date_expedition'])
+        decrementer_stock_expedition(expedition=expedition, user=user)
     return expedition
 
 
