@@ -622,12 +622,10 @@ export default function PanneauAgricole({
         {/* ── Votre exploitation (données GUIDÉES, toutes optionnelles) ── */}
         {/* Encouragées : le besoin en eau FAO-56 qu'elles permettent d'estimer
             alimente bien le dimensionnement pompage du PDF (cartes HMT /
-            Débit / Eau-par-jour du one-page). QJR428 (02/09/2026) — la
-            donnée carburant (current_fuel / fuel_spend_current) reste
-            conservée pour l'étude, mais aucune promesse de chiffre dans le
-            PDF : le renderer agricole premium qui publiait un comparatif
-            solaire-vs-carburant a été supprimé par QJR236, et le one-page
-            qui sert aujourd'hui ce marché ne le lit pas (preuve exécutée :
+            Débit / Eau-par-jour du one-page). AGR316 — l'économie, elle,
+            ne sort QUE des dépenses DÉCLARÉES (bloc AGR3, D-AGR-5) : le
+            document 3 pages l'imprime, le une-page jamais (texte visible
+            ci-dessous, preuve exécutée :
             apps/ventes/tests/test_qjr428_promesse_carburant_agricole.py).
             Aucune donnée n'est obligatoire — chacune a un défaut. */}
         <div className="mt-4 rounded-lg border border-success/30 bg-success/5 p-3 sm:p-4">
@@ -714,6 +712,10 @@ export default function PanneauAgricole({
         <EconomieDeclaree eco={ecoPompage} majEco={majEco}
                           reperes={reperesEnergie} moisCalendrier={moisCalendrier}
                           coherenceAvertit={coherenceAvertit} />
+        {/* AGR316 — ce que le document imprime VRAIMENT de l'économie. */}
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="texte-economies-pdf">
+          {'Les dépenses que le client DÉCLARE (datées) alimentent le bloc économies du document 3 pages ; sans déclaration, le bloc est omis. Le une-page n’imprime aucune économie.'}
+        </p>
 
         {/* ── AGR213 — l'économie DÉCLARÉE en direct, servie par le serveur ── */}
         <CarteEconomiePompage eco={ecoPompage} moisCalendrier={moisCalendrier}
