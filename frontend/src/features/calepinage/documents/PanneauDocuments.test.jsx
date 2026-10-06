@@ -27,6 +27,9 @@ vi.mock('../../../api/calepinageApi', () => ({
       importerConception: vi.fn(),
       deposerImageDocument: vi.fn(), // CALX302
       remettreDocument: vi.fn(), // ACAL223
+      sorties: vi.fn(), // ACAL228
+      telechargerSortie: vi.fn(), // ACAL228
+      composerPackTechnique: vi.fn(), // ACAL228
       declencherDocument: vi.fn(), // ACAL223
       apercuDocument: vi.fn(), // ACAL223
     },
@@ -611,5 +614,87 @@ describe('PanneauDocuments — section Images (ACAL225)', () => {
     await utilisateur.click(await screen.findByTestId('cal-doc-bouton-joindre-ombrage'))
 
     await waitFor(() => expect(calepinageApi.calepinages.documents).toHaveBeenCalledTimes(2))
+  })
+})
+
+describe('PanneauDocuments — section Plans et exports (ACAL228)', () => {
+  const sortieDe = (code) =>
+    exempleContrat(APP, 'calepinage_sorties', 'exemple').sorties.find((x) => x.code === code)
+
+  const servirSorties = () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.sorties.mockResolvedValue(
+      reponseContrat(APP, 'calepinage_sorties', 'exemple'))
+  }
+
+  it('affiche une carte par code de sorties/ avec son bouton', async () => {
+    servirSorties()
+    rendre()
+    for (const code of ['planche_pdf', 'plan_pose_pdf', 'note_calcul_pdf', 'dxf', 'tableur_csv', 'pack_technique']) {
+      expect(await screen.findByTestId(`cal-doc-bouton-${code}`)).toBeInTheDocument()
+    }
+    // sortie indisponible : motif servi, bouton inactif
+    expect(screen.getByTestId('cal-doc-bouton-plan_masse_pdf')).toBeDisabled()
+    expect(screen.getByTestId('cal-doc-sorties-motif-plan_masse_pdf'))
+      .toHaveTextContent(sortieDe('plan_masse_pdf').motif_indisponible)
+  })
+
+  it('telecharge l’endpoint servi tel quel', async () => {
+    servirSorties()
+    calepinageApi.calepinages.telechargerSortie.mockResolvedValue({ data: new Blob(['x']), headers: {} })
+    const utilisateur = userEvent.setup()
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-note_calcul_pdf'))
+    await waitFor(() => expect(calepinageApi.calepinages.telechargerSortie)
+      .toHaveBeenCalledWith(sortieDe('note_calcul_pdf').endpoint))
+    expect(downloadBlob).toHaveBeenCalled()
+  })
+
+  it('pack technique appelle composerPackTechnique et affiche les signalements', async () => {
+    servirSorties()
+    calepinageApi.calepinages.composerPackTechnique.mockResolvedValue({
+      data: {
+        document: 4, nom: 'Dossier technique',
+        pieces: [{ code: 'planche', libelle: 'Planche', pages: 1 }],
+        pages_attendues: 1, signalements: ['Recette IEC 62446-1 produite par le chantier.'],
+      },
+    })
+    const utilisateur = userEvent.setup()
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-pack_technique'))
+    expect(await screen.findByTestId('cal-doc-post-signalements'))
+      .toHaveTextContent('Recette IEC 62446-1')
+    expect(calepinageApi.calepinages.composerPackTechnique).toHaveBeenCalledWith(1)
+  })
+
+  it('un bouton Remettre est propose pour les PDF du registre seulement', async () => {
+    servirSorties()
+    calepinageApi.calepinages.remettreDocument.mockResolvedValue({ data: {} })
+    const utilisateur = userEvent.setup()
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-remettre-planche_pdf'))
+    await waitFor(() => expect(calepinageApi.calepinages.remettreDocument)
+      .toHaveBeenCalledWith(1, { code: 'planche_pdf' }))
+    expect(screen.queryByTestId('cal-doc-remettre-dxf')).toBeNull()
+  })
+
+  it('planche_png rasterise planche.svg', async () => {
+    servirSorties()
+    const png = new Blob(['png'], { type: 'image/png' })
+    class FauxImage { set src(_v) { this.width = 3; this.height = 2; queueMicrotask(() => this.onload?.()) } }
+    globalThis.Image = FauxImage
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:svg')
+    globalThis.URL.revokeObjectURL = vi.fn()
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => ({ drawImage: vi.fn() }))
+    HTMLCanvasElement.prototype.toBlob = vi.fn((cb) => cb(png))
+    calepinageApi.calepinages.telechargerSortie.mockResolvedValue({
+      data: new Blob(['<svg xmlns="http://www.w3.org/2000/svg"/>'], { type: 'image/svg+xml' }),
+    })
+    const utilisateur = userEvent.setup()
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-planche_png'))
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledWith(png, 'planche-calepinage-1.png'))
+    expect(calepinageApi.calepinages.telechargerSortie)
+      .toHaveBeenCalledWith(sortieDe('planche_png').endpoint)
   })
 })

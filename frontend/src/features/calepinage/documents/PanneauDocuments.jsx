@@ -6,7 +6,7 @@ import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
 import { formatDateTime } from '../../../lib/format'
 import { Button, Card, Spinner } from '../../../ui'
 import { PARAM_ONGLET, ONGLETS } from '../atelier/onglets'
-import { deposerCarteDeChaleur } from './deposerImage'
+import { deposerCarteDeChaleur, svgTexteEnPng } from './deposerImage'
 
 /* ============================================================================
    CALX320 — LE PANNEAU « DOCUMENTS » BASCULE SUR L'INVENTAIRE `documents/`.
@@ -482,6 +482,83 @@ function SectionImages({
   )
 }
 
+/** ACAL228 — les cinq PDF du registre de remise (`REGISTRE_REMISE`,
+    `views/remise_document.py`) proposent « Remettre » ; les autres sorties
+    se téléchargent seulement. */
+const SORTIES_REMETTABLES = new Set([
+  'planche_pdf', 'plan_pose_pdf', 'plan_toiture_pdf', 'plan_masse_pdf', 'note_calcul_pdf',
+])
+
+/** ACAL228 — la seconde section « Plans et exports » : l'inventaire
+    `sorties/` (CALX19), DISTINCT de `documents/` (D-ACAL-20). Chaque entrée
+    servie est affichée telle quelle (libellé, format, motif) ; l'`endpoint`
+    vient de l'entrée, jamais reconstruit. */
+function SectionSorties({
+  sorties, enCours, enRemise, erreurs, resultatPack, onTelecharger, onRemettre,
+}) {
+  if (!sorties?.length) return null
+  return (
+    <div className="rounded-md border border-border/60 p-3" data-testid="cal-doc-sorties">
+      <p className="text-sm font-medium text-foreground">Plans et exports</p>
+      <div className="mt-2 space-y-2">
+        {sorties.map((sortie) => {
+          const pack = sortie.code === 'pack_technique'
+          const rendu3d = sortie.code === 'image_3d'
+          return (
+            <div
+              key={sortie.code}
+              className="rounded border border-border/40 p-2"
+              data-testid={`cal-doc-sorties-carte-${sortie.code}`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm text-foreground">{sortie.libelle}</p>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">{sortie.format}</p>
+                </div>
+                {!rendu3d && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!sortie.disponible}
+                      loading={enCours === sortie.code}
+                      onClick={() => onTelecharger(sortie)}
+                      data-testid={`cal-doc-bouton-${sortie.code}`}
+                    >
+                      {pack ? 'Composer le dossier technique' : 'Télécharger'}
+                    </Button>
+                    {sortie.disponible && SORTIES_REMETTABLES.has(sortie.code) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        loading={enRemise === sortie.code}
+                        onClick={() => onRemettre(sortie)}
+                        data-testid={`cal-doc-remettre-${sortie.code}`}
+                      >
+                        Remettre
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+              {!sortie.disponible && sortie.motif_indisponible && (
+                <p
+                  className="mt-1 text-xs text-muted-foreground"
+                  data-testid={`cal-doc-sorties-motif-${sortie.code}`}
+                >
+                  {sortie.motif_indisponible}
+                </p>
+              )}
+              {pack && <ResultatPost resultat={resultatPack} />}
+              <ErreursSortie erreurs={erreurs[sortie.code]} />
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function PanneauDocuments({ calepinageId, builderApi = null, onRecharger = null }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
@@ -490,6 +567,17 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
     () => calepinageApi.calepinages.documents(id), id,
     { select: (r) => r.data, errorMessage: 'Inventaire des documents indisponible.' },
   )
+
+  // ACAL228 — l'inventaire `sorties/` (distinct de `documents/`). Une erreur
+  // de ce second inventaire n'abat jamais le panneau : la section manque.
+  const { data: inventaireSorties } = useResource(
+    () => calepinageApi.calepinages.sorties(id), id,
+    { select: (r) => r?.data ?? null },
+  )
+  const [enCoursSortie, setEnCoursSortie] = useState(null)
+  const [enRemiseSortie, setEnRemiseSortie] = useState(null)
+  const [erreursSorties, setErreursSorties] = useState({})
+  const [resultatPack, setResultatPack] = useState(null)
 
   // `code` en téléchargement -> vrai. `code` -> `[{champ,message}]` en refus.
   const [enCours, setEnCours] = useState(null)
@@ -602,6 +690,49 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
       setErreurs((precedent) => ({ ...precedent, [code]: details }))
     } finally {
       setEnRemise(null)
+    }
+  }
+
+  // ACAL228 — une sortie de `sorties/` : l'endpoint servi tel quel ; la
+  // planche PNG rastérise `planche.svg` ICI (aucun rasteriseur serveur,
+  // D-CAL10) ; le dossier technique est un POST qui range en GED.
+  async function telechargerSortie(sortie) {
+    const code = sortie.code
+    setErreursSorties((precedent) => ({ ...precedent, [code]: null }))
+    setEnCoursSortie(code)
+    try {
+      if (code === 'pack_technique') {
+        const reponse = await calepinageApi.calepinages.composerPackTechnique(id)
+        setResultatPack(reponse.data)
+      } else if (code === 'planche_png') {
+        const reponse = await calepinageApi.calepinages.telechargerSortie(sortie.endpoint)
+        const png = await svgTexteEnPng(await reponse.data.text())
+        downloadBlob(png, `planche-calepinage-${id}.png`)
+      } else {
+        const reponse = await calepinageApi.calepinages.telechargerSortie(sortie.endpoint)
+        downloadBlob(reponse.data, filenameFromResponse(reponse, code))
+      }
+    } catch (erreur) {
+      const details = erreur?.response ? await erreurDeTelechargement(erreur)
+        : [{ champ: '', message: erreur?.message || 'Opération impossible sur ce navigateur.' }]
+      setErreursSorties((precedent) => ({ ...precedent, [code]: details }))
+    } finally {
+      setEnCoursSortie(null)
+    }
+  }
+
+  async function remettreSortie(sortie) {
+    const code = sortie.code
+    setErreursSorties((precedent) => ({ ...precedent, [code]: null }))
+    setEnRemiseSortie(code)
+    try {
+      await calepinageApi.calepinages.remettreDocument(id, { code })
+      await refetch()
+    } catch (erreur) {
+      const details = await erreurDeTelechargement(erreur)
+      setErreursSorties((precedent) => ({ ...precedent, [code]: details }))
+    } finally {
+      setEnRemiseSortie(null)
     }
   }
 
@@ -718,6 +849,16 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
           resultatPost={resultatsPost[entree.code]}
         />
       ))}
+      {/* ACAL228 — la section « Plans et exports » : l'inventaire `sorties/`. */}
+      <SectionSorties
+        sorties={inventaireSorties?.sorties}
+        enCours={enCoursSortie}
+        enRemise={enRemiseSortie}
+        erreurs={erreursSorties}
+        resultatPack={resultatPack}
+        onTelecharger={telechargerSortie}
+        onRemettre={remettreSortie}
+      />
       {/* CALX28 — HORS inventaire (aucun document ne le déclare) : toujours
           visible, jamais gouverné par `disponible`. */}
       <SectionConception
