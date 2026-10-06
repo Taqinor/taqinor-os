@@ -118,8 +118,11 @@ def accepter_invitation_portail_public(request):
             {'detail': 'Le token et le mot de passe sont requis.'},
             status=status.HTTP_400_BAD_REQUEST)
 
+    from authentication.password_policy import validate_new_password
+
     try:
-        user = services.accepter_invitation_portail(token, mot_de_passe)
+        user = services.accepter_invitation_portail(
+            token, mot_de_passe, valider_mot_de_passe=validate_new_password)
     except services.MotDePasseInvitationRefuse as exc:
         # ADOC122 — refus NOMMÉ de la politique de mot de passe : rien n'est
         # créé, l'invitation reste en attente (l'invité réessaie).

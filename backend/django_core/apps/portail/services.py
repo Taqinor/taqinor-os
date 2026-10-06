@@ -709,13 +709,18 @@ class MotDePasseInvitationRefuse(Exception):
         self.messages = list(messages)
 
 
-def accepter_invitation_portail(token, mot_de_passe):
+def accepter_invitation_portail(token, mot_de_passe, valider_mot_de_passe=None):
     """NTPRT6 — L'invité pose son mot de passe et devient un VRAI compte.
 
-    ADOC122 — le mot de passe passe par ``validate_new_password`` (la même
-    politique que les autres entrées de mot de passe neuf) AVANT toute
-    création : refusé ⇒ ``MotDePasseInvitationRefuse`` levée, aucun compte
-    créé, invitation toujours en attente.
+    ADOC122 — ``valider_mot_de_passe(mot_de_passe, company, user)`` (la vue
+    publique passe ``authentication.password_policy.validate_new_password``,
+    la même politique que les autres entrées de mot de passe neuf) est
+    appelé AVANT toute création, avec la société de l'invitation et un
+    utilisateur PROVISOIRE : une liste d'erreurs non vide ⇒
+    ``MotDePasseInvitationRefuse`` levée, aucun compte créé, invitation
+    toujours en attente. Injecté (et non importé ici) : ``password_policy``
+    importe ``apps.audit``, et ce module est importé par des tests ventes —
+    contrat import-linter « ventes n'importe pas audit ».
 
     Refuse (renvoie ``None``) un token inconnu, déjà accepté, révoqué, ou
     expiré — une invitation expirée reste visible (trace), mais n'ouvre plus
@@ -746,14 +751,14 @@ def accepter_invitation_portail(token, mot_de_passe):
 
     # ADOC122 — validation AVANT création, avec la société de l'invitation et
     # un utilisateur PROVISOIRE (non sauvegardé) pour la règle de similarité.
-    from authentication.password_policy import validate_new_password
-    provisoire = CustomUser(
-        username=invitation.email or f'invite-{invitation.id}',
-        email=invitation.email)
-    erreurs = validate_new_password(
-        mot_de_passe, invitation.company, user=provisoire)
-    if erreurs:
-        raise MotDePasseInvitationRefuse(erreurs)
+    if valider_mot_de_passe is not None:
+        provisoire = CustomUser(
+            username=invitation.email or f'invite-{invitation.id}',
+            email=invitation.email)
+        erreurs = valider_mot_de_passe(
+            mot_de_passe, invitation.company, user=provisoire)
+        if erreurs:
+            raise MotDePasseInvitationRefuse(erreurs)
 
     with transaction.atomic():
         compte = invitation.compte_portail_client
