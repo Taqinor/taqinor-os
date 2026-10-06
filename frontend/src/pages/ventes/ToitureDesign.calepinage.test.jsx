@@ -156,6 +156,13 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel
       .mockResolvedValueOnce({ data: { inchange: true, version: null, empreinte_document: jetonApres } })
       .mockResolvedValueOnce({ data: { inchange: true, version: null, empreinte_document: jetonApres } })
+    // ACAL83 — après l'écriture, design-context est relu : il sert le MÊME
+    // jeton que la réponse 2xx (empreinte du document désormais stocké).
+    calepinageApi.calepinages.designContext
+      .mockResolvedValueOnce(reponseContrat('calepinage', 'calepinage_design_context'))
+      .mockResolvedValue({
+        data: { ...CTX, geometrie: { ...CTX.geometrie, empreinte_document: jetonApres } },
+      })
     expect(CTX.geometrie.empreinte_document).toBeTruthy()
 
     rendreCalepinage(CTX.calepinage.id)
@@ -207,6 +214,44 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     expect(await screen.findByTestId('cal-conflit-lecture-seule'))
       .toHaveTextContent('Ce calepinage est verrouillé')
     expect(screen.queryByTestId('cal-document-modifie')).toBeNull()
+  })
+
+  /* ACAL83 — design-context est RELU après chaque enregistrement réussi :
+     la note « calepinage automatique — à vérifier » s'éteint sans F5. */
+  it('après enregistrement, la bannière calepinage automatique disparaît', async () => {
+    const auto = {
+      ...CTX,
+      geometrie: {
+        ...CTX.geometrie,
+        roof_layout: { ...CTX.geometrie.roof_layout, _origine_calepinage: 'contour_client' },
+      },
+    }
+    expect(CTX.geometrie.roof_layout?._origine_calepinage).toBeUndefined()
+    // Ce que le serveur sert APRÈS l'enregistrement : la conception du
+    // commercial (des pans), sans l'estampille du semis automatique.
+    const apres = {
+      ...CTX,
+      geometrie: {
+        ...CTX.geometrie,
+        roof_layout: {
+          ...CTX.geometrie.roof_layout,
+          zones: [{ id: 'z1', vertices: [[0, 0], [10, 0], [10, 6], [0, 6]] }],
+        },
+      },
+    }
+    calepinageApi.calepinages.designContext
+      .mockResolvedValueOnce({ data: auto })
+      .mockResolvedValue({ data: apres })
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: false, version: 4 } })
+
+    rendreCalepinage(CTX.calepinage.id)
+    expect(await screen.findByTestId('rp9-calepinage-auto-note')).toBeTruthy()
+
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    await waitFor(() => expect(calepinageApi.calepinages.designContext).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByTestId('rp9-calepinage-auto-note')).toBeNull())
   })
 
   it('cible absente : « non renseignée », jamais une puissance inventée', async () => {

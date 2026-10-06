@@ -364,6 +364,31 @@ export default function ToitureDesign({ mode = 'lead' }) {
     builderApi.current?.setReferenceContourVisible?.(toitClientVisible)
   }, [toitClientVisible, builderReady])
 
+  // ACAL83 — UNE fonction relit design-context après chaque enregistrement
+  // réussi : `contexte` (geometrie, avertissements, modifiable, cible) n'était
+  // posé qu'au boot, si bien que la note « calepinage automatique — à
+  // vérifier » et son bouton Recommencer survivaient à l'enregistrement
+  // jusqu'au F5. Mode lead : aucun contexte agrégé, rien à relire. Échec =
+  // best-effort, l'écran garde le contexte précédent (jamais d'état inventé).
+  const rafraichirContexte = async () => {
+    try {
+      let res = null
+      if (estCalepinage && calepinageId) {
+        res = await calepinageApi.calepinages.designContext(calepinageId)
+      } else if (estDevis && devisId) {
+        res = await ventesApi.getDevisDesignContext(devisId)
+      } else {
+        return
+      }
+      if (res?.data) {
+        setContexte(res.data)
+        // Le jeton relu au serveur fait foi (ACAL23) : plus besoin de celui
+        // rendu par la dernière écriture.
+        setEmpreinteEcrite(null)
+      }
+    } catch { /* best-effort : le contexte précédent reste affiché */ }
+  }
+
   // ── UN SEUL BOUTON : devis + snapshot + livraison ──────────────────────────
   const generer = async () => {
     if (sending) return
@@ -434,6 +459,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
       setGenStatus(null)
       setSending(false)
       setStatus(`Devis ${devis.reference} créé — à envoyer depuis la fiche lead.`)
+      await rafraichirContexte() // ACAL83 — no-op en mode lead (aucun contexte agrégé)
     } catch {
       setGenStatus(null)
       setGenError('Erreur réseau pendant la génération. Vérifiez votre connexion puis réessayez.')
@@ -519,6 +545,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         setGenStatus(null)
         setSending(false)
         setStatus('Calepinage inchangé — le devis n’a pas bougé.')
+        await rafraichirContexte() // ACAL83
         return
       }
 
@@ -550,6 +577,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         + `${resultat.lignes_modifiees} ligne(s) de devis mise(s) à jour`
         + (ajoutees > 0 ? `, ${ajoutees} ligne(s) de kit ajoutée(s).` : '.')
       )
+      await rafraichirContexte() // ACAL83
     } catch {
       setGenStatus(null)
       setGenError('Erreur réseau pendant l’enregistrement. Vérifiez votre connexion puis réessayez.')
@@ -644,6 +672,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         setGenStatus(null)
         setSending(false)
         setStatus('Conception inchangée — le calepinage n’a pas bougé.')
+        await rafraichirContexte() // ACAL83
         return
       }
 
@@ -675,6 +704,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
           ? `Conception enregistrée — version ${resultat.version}.`
           : 'Conception enregistrée.'
       )
+      await rafraichirContexte() // ACAL83
     } catch (err) {
       setGenStatus(null)
       // ACAL64 — un document que l'atelier REFUSE d'émettre (pans de même identifiant) porte
