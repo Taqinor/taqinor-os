@@ -128,6 +128,10 @@ def remettre_document(self, request, pk=None):
         enregistrer_version_document,
     )
 
+    # L'OBJET D'ABORD (borné société par get_queryset) : le calepinage d'une
+    # autre société est INTROUVABLE (404) avant toute lecture du corps —
+    # jamais un 400 sur le code qui confirmerait qu'il existe.
+    calepinage = self.get_object()
     code = str(request.data.get('code') or '').strip()
     if code not in REGISTRE_REMISE:
         return Response(
@@ -135,7 +139,6 @@ def remettre_document(self, request, pk=None):
              % (code, ', '.join(REGISTRE_REMISE))},
             status=status.HTTP_400_BAD_REQUEST)
     langue = request.data.get('langue') or None
-    calepinage = self.get_object()  # borné société par get_queryset
     # Le RENDU d'abord : une pièce refusée par son GET l'est ici à
     # l'identique (même statut, même corps), avant toute lecture d'empreinte.
     octets, refus = rendre_document(self, request, code, langue)
