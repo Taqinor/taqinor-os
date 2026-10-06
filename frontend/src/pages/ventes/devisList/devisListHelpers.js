@@ -85,3 +85,17 @@ export function useDevisListSynthese(devis, effStatutOf) {
   }, [devis])
   return { summary, expiringSoon, batteryInsight }
 }
+
+/** CIQ325 — le libellé du format complet annonce le VRAI nombre de pages. */
+export function libelleFormatComplet({ targetIsAgricole, targetMode }) {
+  if (targetIsAgricole) {
+    return 'Document agricole complet (3 pages — eau et argent, fonctionnement, équipement et signature)'
+  }
+  if (targetMode === 'commercial') {
+    return 'Document commercial (3 pages — votre installation, l\'investissement et son retour, conditions et signature)'
+  }
+  if (targetMode === 'industriel') {
+    return 'Document industriel (4 pages — synthèse, équipements, rentabilité, conditions et signature)'
+  }
+  return 'Devis premium (3 pages — options, analyse, garanties)'
+}
