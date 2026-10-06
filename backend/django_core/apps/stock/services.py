@@ -1481,22 +1481,28 @@ def verrouiller_facture_fournisseur_et_verifier_solde(facture, montant):
 
 
 def recompute_facture_fournisseur_statut(facture):
-    """Recalcule le statut de règlement d'une facture fournisseur depuis ses
-    paiements et le persiste. À payer si rien réglé, payée si le solde ≤ 0,
-    sinon partiellement payée."""
+    """Recalcule le statut de règlement d'une facture fournisseur et le
+    persiste. ASTK102 — PROJECTION de ``solde_du`` (TTC − paiements −
+    acomptes imputés − avoirs imputés), jamais des seuls paiements : solde =
+    TTC (rien réglé) ⇒ à payer ; solde nul ⇒ payée ; entre les deux ⇒
+    partiellement payée. Appelé après chaque paiement ET chaque imputation
+    d'acompte ou d'avoir. Relit la facture en base (aucun cache de
+    préchargement périmé)."""
     from decimal import Decimal
     from .models import FactureFournisseur
-    paye = facture.total_paye
-    ttc = facture.montant_ttc or Decimal('0')
-    if paye <= Decimal('0'):
+    fraiche = FactureFournisseur.objects.get(pk=facture.pk)
+    ttc = fraiche.montant_ttc or Decimal('0')
+    solde = fraiche.solde_du
+    if solde >= ttc:
         statut = FactureFournisseur.Statut.A_PAYER
-    elif paye >= ttc:
+    elif solde <= Decimal('0'):
         statut = FactureFournisseur.Statut.PAYEE
     else:
         statut = FactureFournisseur.Statut.PARTIELLEMENT_PAYEE
-    if facture.statut != statut:
-        facture.statut = statut
-        facture.save(update_fields=['statut'])
+    if fraiche.statut != statut:
+        fraiche.statut = statut
+        fraiche.save(update_fields=['statut'])
+    facture.statut = statut
     return statut
 
 
@@ -2714,18 +2720,158 @@ def generer_bcf_reappro(company, user, fournisseur_id):
 
 # ── FG55 — PDF facture fournisseur ────────────────────────────────────────────
 
-def generate_facture_fournisseur_pdf(facture):
-    """Génère le PDF d'une facture fournisseur (INTERNE). Utilise WeasyPrint."""
-    from apps.ventes.utils.pdf import _company_context, _render_html, _html_to_pdf
+def _fmt_montant_pdf(montant):
+    """ASTK104 — montant au format français du PDF : « 12 000,00 »."""
+    from decimal import Decimal
+    valeur = Decimal(str(montant or 0)).quantize(Decimal('0.01'))
+    entier, _, decimales = f'{abs(valeur):,.2f}'.partition('.')
+    texte = entier.replace(',', ' ') + ',' + decimales
+    return ('-' + texte) if valeur < 0 else texte
+
+
+def render_facture_fournisseur_html(facture):
+    """FG55/ASTK104 — HTML du PDF facture fournisseur (INTERNE). La chaîne
+    de règlement est COMPLÈTE et boucle au centime : Total TTC − paiements −
+    acomptes imputés − avoirs imputés = solde dû ; le bloc est toujours
+    rendu (une facture sans règlement montre solde = TTC)."""
+    from apps.ventes.utils.pdf import _company_context, _render_html
+    from .models import FactureFournisseur
+    facture = FactureFournisseur.objects.get(pk=facture.pk)
     context = _company_context(company=facture.company)
+    total_paye = facture.total_paye
+    total_acomptes = facture.total_acomptes_imputes
+    total_avoirs = facture.total_avoirs_imputes
+    solde_du = facture.solde_du
     context['facture'] = facture
     context['fournisseur'] = facture.fournisseur
     context['lignes'] = list(facture.lignes.select_related('produit').all())
     context['paiements'] = list(facture.paiements.all())
-    context['solde_du'] = facture.solde_du
-    context['total_paye'] = facture.total_paye
-    html = _render_html('facture_fournisseur.html', context)
-    return _html_to_pdf(html)
+    context['solde_du'] = solde_du
+    context['total_paye'] = total_paye
+    context['total_acomptes_imputes'] = total_acomptes
+    context['total_avoirs_imputes'] = total_avoirs
+    context['montants_fmt'] = {
+        'ht': _fmt_montant_pdf(facture.montant_ht),
+        'tva': _fmt_montant_pdf(facture.montant_tva),
+        'ttc': _fmt_montant_pdf(facture.montant_ttc),
+        'paiements': _fmt_montant_pdf(total_paye),
+        'acomptes': _fmt_montant_pdf(total_acomptes),
+        'avoirs': _fmt_montant_pdf(total_avoirs),
+        'solde': _fmt_montant_pdf(solde_du),
+    }
+    return _render_html('facture_fournisseur.html', context)
+
+
+def generate_facture_fournisseur_pdf(facture):
+    """Génère le PDF d'une facture fournisseur (INTERNE). Utilise WeasyPrint."""
+    from apps.ventes.utils.pdf import _html_to_pdf
+    return _html_to_pdf(render_facture_fournisseur_html(facture))
+
+
+def _emettre_facture_creee(facture, user):
+    """ASTK99 — émet `facture_fournisseur_creee` pour une facture qui
+    ACQUIERT un bon de commande (PATCH ``bon_commande`` None → X, création
+    OCR/UBL déjà liée) : les abonnés (installations lettre les provisions
+    GR/IR du BCF) la traitent comme une facture née d'une réception.
+    Contrat unifié core/events.py (instance, company, user). NON avalé :
+    l'appelant l'exécute dans SA transaction (un abonné qui échoue annule le
+    lien, jamais une facture liée sans lettrage). No-op sans BCF."""
+    if facture is None or facture.bon_commande_id is None:
+        return False
+    from core.events import facture_fournisseur_creee
+    from .models import FactureFournisseur
+    facture_fournisseur_creee.send(
+        sender=FactureFournisseur, instance=facture,
+        company=facture.company, user=user)
+    return True
+
+
+def _politique_ligne(ligne):
+    """ASTK108 — politique de facturation d'achat (ZPUR1) d'une ligne de
+    BCF ou de réception : celle du produit de la ligne de COMMANDE (à défaut
+    du produit de la ligne), « sur réception » pour une ligne libre/service.
+    Prédicat PARTAGÉ par FG56 (``facturer_reception``) et ZPUR1
+    (``facturer_bcf_sur_commande``) : une ligne « sur commande » n'est
+    facturée QUE par ZPUR1, jamais une seconde fois à la réception."""
+    from .models import Produit
+    ligne_commande = getattr(ligne, 'ligne_commande', None)
+    produit = None
+    if ligne_commande is not None and ligne_commande.produit_id is not None:
+        produit = ligne_commande.produit
+    elif getattr(ligne, 'produit_id', None) is not None:
+        produit = ligne.produit
+    if produit is None or not produit.politique_facturation_achat:
+        return Produit.PolitiqueFacturationAchat.SUR_RECEPTION
+    return produit.politique_facturation_achat
+
+
+def _construire_facture_fournisseur(company, user, bon_commande, lignes, *,
+                                    note):
+    """ASTK109 — constructeur UNIQUE des factures fournisseur nées d'un BCF
+    (FG56 ``facturer_reception`` et ZPUR1 ``facturer_bcf_sur_commande``).
+
+    ``lignes`` = [(designation, quantite, prix_unitaire_ht, produit|None)].
+    Calcule HT/TVA/TTC (XPUR17 : TVA par ligne au taux du produit, défaut
+    20 %), crée la facture (numérotation FF) AVEC ``date_facture`` = date du
+    jour (jamais None : l'écriture comptable auto 61xx/3455 → 4411 crashait
+    NOT NULL sans), évalue le rapprochement 3 voies (ASTK107), impute les
+    acomptes ouverts du BCF (ASTK106) et émet ``facture_fournisseur_creee``
+    une fois (YPROC3, best-effort : installations lettre ses GR/IR)."""
+    from django.utils import timezone
+    from apps.ventes.utils.references import create_with_reference
+    from .models import FactureFournisseur, LigneFactureFournisseur
+
+    taux_tva_defaut = Decimal('20')
+    montant_ht = Decimal('0')
+    montant_tva = Decimal('0')
+    lignes_data = []
+    for designation, quantite, pu, produit in lignes:
+        pu = pu or Decimal('0')
+        total = Decimal(str(quantite)) * pu
+        montant_ht += total
+        taux_ligne = (produit.tva
+                      if produit is not None and produit.tva is not None
+                      else taux_tva_defaut)
+        montant_tva += (total * taux_ligne / Decimal('100')).quantize(
+            Decimal('0.01'))
+        lignes_data.append((designation, quantite, pu, taux_ligne))
+    montant_ttc = montant_ht + montant_tva
+    created = {}
+
+    def _save(ref):
+        ff = FactureFournisseur.objects.create(
+            company=company, reference=ref,
+            fournisseur=bon_commande.fournisseur,
+            bon_commande=bon_commande,
+            montant_ht=montant_ht, montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            statut=FactureFournisseur.Statut.A_PAYER,
+            date_facture=timezone.now().date(),
+            note=note, created_by=user)
+        for designation, qte, pu, taux_ligne in lignes_data:
+            LigneFactureFournisseur.objects.create(
+                facture=ff, designation=designation,
+                quantite=qte, prix_unitaire_ht=pu, taux_tva=taux_ligne)
+        created['ff'] = ff
+        return ff
+
+    create_with_reference(FactureFournisseur, 'FF', company, _save)
+    facture = created['ff']
+    # ASTK107 — rapprochement 3 voies à la création.
+    evaluer_rapprochement_3_voies(facture)
+    # XPUR8/ASTK106 — imputation des acomptes ouverts du BCF (plafonnée au
+    # solde, idempotente, no-op sans acompte).
+    imputer_acomptes_bcf(bon_commande)
+    # YPROC3 — événement de création (best-effort, ne casse jamais la
+    # facturation). stock n'importe jamais installations.
+    try:
+        from core.events import facture_fournisseur_creee
+        facture_fournisseur_creee.send(
+            sender=FactureFournisseur, instance=facture,
+            company=company, user=user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+    return FactureFournisseur.objects.get(pk=facture.pk)
 
 
 # ── FG56 — Facturer une réception ────────────────────────────────────────────
@@ -2738,8 +2884,7 @@ def facturer_reception(company, user, reception):
     Lance ValueError si déjà facturée ou si la réception n'est pas confirmée.
     """
     from decimal import Decimal
-    from apps.ventes.utils.references import create_with_reference
-    from .models import FactureFournisseur, LigneFactureFournisseur
+    from .models import FactureFournisseur
 
     if reception.statut != 'confirme':
         raise ValueError("Seule une réception confirmée peut être facturée.")
@@ -2753,14 +2898,24 @@ def facturer_reception(company, user, reception):
         raise ValueError(
             f"Cette réception ({reception.reference}) est déjà facturée.")
 
-    taux_tva_defaut = Decimal('20')
-    montant_ht = Decimal('0')
-    montant_tva = Decimal('0')
-    lignes_data = []
-    for ligne in reception.lignes.select_related('produit', 'ligne_commande').all():
+    from .models import Produit
+    lignes_reception = [
+        ligne for ligne in reception.lignes.select_related(
+            'produit', 'ligne_commande', 'ligne_commande__produit').all()
+        # ASTK108 — une ligne « sur commande » est déjà facturée au BCF
+        # (ZPUR1) : jamais refacturée à la réception.
+        if _politique_ligne(ligne)
+        != Produit.PolitiqueFacturationAchat.SUR_COMMANDE
+    ]
+    if not lignes_reception:
+        raise ValueError(
+            'Rien à facturer à la réception : toutes les lignes de '
+            f'{reception.reference} sont « sur commande » (facturées sur le '
+            'bon de commande).')
+
+    lignes = []
+    for ligne in lignes_reception:
         pu = ligne.ligne_commande.prix_achat_unitaire if ligne.ligne_commande else Decimal('0')
-        total = Decimal(str(ligne.quantite)) * pu
-        montant_ht += total
         # XPUR16 — une ligne libre/service reprend sa désignation d'origine
         # (BCF) plutôt que le nom d'un produit catalogue absent.
         if ligne.produit:
@@ -2769,57 +2924,12 @@ def facturer_reception(company, user, reception):
             designation = ligne.ligne_commande.designation
         else:
             designation = 'Produit'
-        # XPUR17 — TVA par ligne : reprend le taux du produit (`Produit.tva`)
-        # quand connu, sinon le défaut 20 % (comportement historique de
-        # cette fonction, qui appliquait déjà 20 % globalement).
-        taux_ligne = (ligne.produit.tva
-                      if ligne.produit and ligne.produit.tva is not None
-                      else taux_tva_defaut)
-        tva_ligne = (total * taux_ligne / Decimal('100')).quantize(
-            Decimal('0.01'))
-        montant_tva += tva_ligne
-        lignes_data.append((designation, ligne.quantite, pu, taux_ligne))
+        lignes.append((designation, ligne.quantite, pu, ligne.produit))
 
-    montant_ttc = montant_ht + montant_tva
-
-    created = {}
-
-    def _save(ref):
-        from django.utils import timezone
-        ff = FactureFournisseur.objects.create(
-            company=company, reference=ref,
-            fournisseur=reception.bon_commande.fournisseur,
-            bon_commande=reception.bon_commande,
-            montant_ht=montant_ht, montant_tva=montant_tva,
-            montant_ttc=montant_ttc,
-            statut=FactureFournisseur.Statut.A_PAYER,
-            # Sans date, l'écriture comptable auto (61xx/3455 -> 4411) crashait
-            # NOT NULL en silence (bug préexistant attrapé par le test P2P).
-            date_facture=timezone.now().date(),
-            note=f'Facture réception {reception.reference}',
-            created_by=user)
-        for designation, qte, pu, taux_ligne in lignes_data:
-            LigneFactureFournisseur.objects.create(
-                facture=ff, designation=designation,
-                quantite=qte, prix_unitaire_ht=pu, taux_tva=taux_ligne)
-        created['ff'] = ff
-        return ff
-
-    create_with_reference(FactureFournisseur, 'FF', company, _save)
-    # XPUR8 — impute automatiquement les acomptes non consommés du BCF sur
-    # cette première facture (idempotent, no-op si aucun acompte).
-    imputer_acomptes_bcf(reception.bon_commande)
-    # YPROC3 — émet l'événement de création de facture fournisseur (best-effort,
-    # ne casse jamais la facturation) : installations peut lettrer sa provision
-    # GR/IR ouverte pour ce bon de commande. stock n'importe jamais installations.
-    try:
-        from core.events import facture_fournisseur_creee
-        facture_fournisseur_creee.send(
-            sender=FactureFournisseur, instance=created['ff'],
-            company=company, user=user)
-    except Exception:  # pragma: no cover - défensif, best-effort
-        pass
-    return created['ff']
+    # ASTK109 — constructeur UNIQUE (date, rapprochement, acomptes, événement).
+    return _construire_facture_fournisseur(
+        company, user, reception.bon_commande, lignes,
+        note=f'Facture réception {reception.reference}')
 
 
 # ── ZPUR1 — Politique de facturation d'achat (Odoo « Bill Control ») ────────
@@ -2840,13 +2950,12 @@ def facturer_bcf_sur_commande(company, user, bon_commande):
     ce BCF est déjà entièrement facturé par ce chemin (idempotence : jamais
     deux factures pour la même quantité `sur_commande`)."""
     from decimal import Decimal
-    from apps.ventes.utils.references import create_with_reference
-    from .models import FactureFournisseur, LigneFactureFournisseur, Produit
+    from .models import FactureFournisseur, Produit
 
     lignes_eligibles = [
         ligne for ligne in bon_commande.lignes.select_related('produit').all()
         if ligne.produit_id is not None
-        and ligne.produit.politique_facturation_achat
+        and _politique_ligne(ligne)
         == Produit.PolitiqueFacturationAchat.SUR_COMMANDE
     ]
     if not lignes_eligibles:
@@ -2862,53 +2971,17 @@ def facturer_bcf_sur_commande(company, user, bon_commande):
             f'Ce bon de commande ({bon_commande.reference}) est déjà '
             'facturé sur commande.')
 
-    taux_tva_defaut = Decimal('20')
-    montant_ht = Decimal('0')
-    montant_tva = Decimal('0')
-    lignes_data = []
-    for ligne in lignes_eligibles:
-        pu = ligne.prix_achat_unitaire or Decimal('0')
-        total = Decimal(str(ligne.quantite)) * pu
-        montant_ht += total
-        designation = (
-            ligne.produit.nom if ligne.produit_id else
-            (ligne.designation or 'Produit'))
-        taux_ligne = (ligne.produit.tva
-                      if ligne.produit_id and ligne.produit.tva is not None
-                      else taux_tva_defaut)
-        tva_ligne = (total * taux_ligne / Decimal('100')).quantize(
-            Decimal('0.01'))
-        montant_tva += tva_ligne
-        lignes_data.append((designation, ligne.quantite, pu, taux_ligne))
-
-    montant_ttc = montant_ht + montant_tva
-    created = {}
-
-    def _save(ref):
-        ff = FactureFournisseur.objects.create(
-            company=company, reference=ref,
-            fournisseur=bon_commande.fournisseur,
-            bon_commande=bon_commande,
-            montant_ht=montant_ht, montant_tva=montant_tva,
-            montant_ttc=montant_ttc,
-            statut=FactureFournisseur.Statut.A_PAYER,
-            note=marqueur, created_by=user)
-        for designation, qte, pu, taux_ligne in lignes_data:
-            LigneFactureFournisseur.objects.create(
-                facture=ff, designation=designation,
-                quantite=qte, prix_unitaire_ht=pu, taux_tva=taux_ligne)
-        created['ff'] = ff
-        return ff
-
-    create_with_reference(FactureFournisseur, 'FF', company, _save)
-    try:
-        from core.events import facture_fournisseur_creee
-        facture_fournisseur_creee.send(
-            sender=FactureFournisseur, instance=created['ff'],
-            company=company, user=user)
-    except Exception:  # pragma: no cover - défensif, best-effort
-        pass
-    return created['ff']
+    lignes = [
+        (ligne.produit.nom if ligne.produit_id else
+         (ligne.designation or 'Produit'),
+         ligne.quantite, ligne.prix_achat_unitaire or Decimal('0'),
+         ligne.produit if ligne.produit_id else None)
+        for ligne in lignes_eligibles
+    ]
+    # ASTK109 — même constructeur que FG56 : date_facture posée, acomptes du
+    # BCF imputés, événement émis (le copier-coller sans date est supprimé).
+    return _construire_facture_fournisseur(
+        company, user, bon_commande, lignes, note=marqueur)
 
 
 # ── ZPUR4 — Duplication d'un bon de commande fournisseur ────────────────────
@@ -4240,12 +4313,23 @@ def taux_ras_tva(facture):
 
 
 def compute_ras_tva(company, facture, montant_paiement):
-    """XPUR2 — calcule (taux, montant_ras) pour un paiement de
-    ``montant_paiement`` sur ``facture``, proportionnellement à la part de
-    TVA couverte par ce règlement. No-op (0, 0) si la société n'a pas activé
-    la RAS-TVA (``AchatsParametres.ras_tva_actif`` OFF par défaut) ou si la
-    facture ne porte aucune TVA."""
-    from .models import AchatsParametres
+    """XPUR2/ASTK175 — calcule (taux, montant_ras) pour un paiement de
+    ``montant_paiement`` sur ``facture``. No-op (0, 0) si la société n'a pas
+    activé la RAS-TVA (``AchatsParametres.ras_tva_actif`` OFF par défaut) ou
+    si la facture ne porte aucune TVA.
+
+    ASTK175 — règle (a) tranchée par le fondateur le 07/10/2026 (ASTK171,
+    « Toute la TVA ») : la retenue due porte sur la TVA de la facture
+    ENTIÈRE (TVA × taux), ventilée sur ses règlements. Un acompte ou un avoir
+    imputé règle une part de la facture SANS porter de retenue propre (aucun
+    champ RAS sur l'acompte) : sa part de retenue est portée par les
+    paiements. Chaque paiement retient la retenue CUMULÉE due au prorata de la
+    part du TTC réglée APRÈS lui (paiements + acomptes + avoirs), moins les
+    retenues déjà portées par les paiements antérieurs ; le paiement qui
+    SOLDE la facture porte exactement le reste, de sorte que Σ RAS des
+    paiements = TVA × taux au centime (exemple : TTC 1 200 / TVA 200 / 100 %,
+    acompte 360 imputé puis paiement 840 ⇒ 200,00)."""
+    from .models import AchatsParametres, FactureFournisseur
     parametres = AchatsParametres.for_company(company)
     if not parametres.ras_tva_actif:
         return Decimal('0'), Decimal('0')
@@ -4256,11 +4340,31 @@ def compute_ras_tva(company, facture, montant_paiement):
     taux = taux_ras_tva(facture)
     if taux <= 0:
         return Decimal('0'), Decimal('0')
-    # TVA proportionnelle à la part du TTC réglée par CE paiement.
     montant_paiement = Decimal(montant_paiement or 0)
-    part_tva = (montant_tva * montant_paiement / montant_ttc).quantize(
+    if montant_paiement <= 0:
+        return taux, Decimal('0')
+    ras_totale = (montant_tva * taux / Decimal('100')).quantize(
         Decimal('0.01'))
-    montant_ras = (part_tva * taux / Decimal('100')).quantize(Decimal('0.01'))
+    if facture.pk is None:
+        # Facture non persistée (calcul isolé) : prorata direct.
+        solde_avant = montant_ttc
+        deja_retenu = Decimal('0')
+    else:
+        fraiche = FactureFournisseur.objects.get(pk=facture.pk)
+        solde_avant = fraiche.solde_du
+        deja_retenu = sum(
+            (p.montant_ras_tva or Decimal('0')
+             for p in fraiche.paiements.all()), Decimal('0'))
+    if montant_paiement >= solde_avant:
+        # Dernier règlement : il porte le solde de retenue au centime.
+        due_cumulee = ras_totale
+    else:
+        regle_apres = min(
+            montant_ttc - solde_avant + montant_paiement, montant_ttc)
+        due_cumulee = (ras_totale * regle_apres / montant_ttc).quantize(
+            Decimal('0.01'))
+    montant_ras = max(due_cumulee - deja_retenu, Decimal('0'))
+    montant_ras = min(montant_ras, montant_paiement)
     return taux, montant_ras
 
 
@@ -4766,25 +4870,65 @@ def otd_stats(company, fournisseur):
 # ── XPUR8 — Acomptes / avances fournisseur sur BCF ──────────────────────────
 
 def imputer_acomptes_bcf(bon_commande):
-    """XPUR8 — impute les acomptes NON CONSOMMÉS du BCF sur sa PREMIÈRE
-    ``FactureFournisseur`` (par date de création). Idempotent : un acompte
-    déjà imputé (``facture_imputee`` déjà posé) n'est jamais réimputé,
-    même si la fonction est rappelée. No-op si le BCF n'a pas encore de
-    facture. Renvoie la liste des acomptes imputés lors de CET appel."""
-    from .models import AcompteFournisseur
-    facture = (bon_commande.factures_fournisseur
-               .order_by('date_creation').first())
-    if facture is None:
-        return []
-    acomptes = AcompteFournisseur.objects.filter(
-        bon_commande=bon_commande, facture_imputee__isnull=True)
-    imputed = []
-    for acompte in acomptes:
-        acompte.facture_imputee = facture
-        acompte.montant_consomme = acompte.montant
-        acompte.save(update_fields=['facture_imputee', 'montant_consomme'])
-        imputed.append(acompte)
-    return imputed
+    """XPUR8/ASTK106 — impute les acomptes OUVERTS du BCF (reliquat > 0) sur
+    ses factures à SOLDE > 0, la plus ancienne d'abord, chaque imputation
+    PLAFONNÉE au solde de la facture cible (``ImputationAcompteFournisseur``,
+    comme pour les avoirs). Le reliquat d'un acompte plus gros que la
+    facture reste OUVERT (listé par ``acomptes_fournisseur_ouverts``) et
+    s'impute sur la facture suivante du BCF ; un acompte saisi après une
+    facture déjà soldée va sur la première facture NON soldée, jamais sur
+    une facture payée. Idempotent : un acompte entièrement consommé ou une
+    facture soldée ne bougent plus. ``montant_consomme`` = Σ imputations de
+    l'acompte ; ``facture_imputee`` (compatibilité de lecture) = la première
+    facture qui l'a reçu. No-op si le BCF n'a pas de facture. Renvoie la
+    liste des imputations créées lors de CET appel."""
+    from django.db import transaction
+    from .models import (
+        AcompteFournisseur, FactureFournisseur, ImputationAcompteFournisseur,
+    )
+    creees = []
+    touchees = {}
+    with transaction.atomic():
+        factures = list(
+            FactureFournisseur.objects.select_for_update()
+            .filter(bon_commande=bon_commande)
+            .order_by('date_creation', 'id'))
+        if not factures:
+            return []
+        acomptes = list(
+            AcompteFournisseur.objects.select_for_update()
+            .filter(bon_commande=bon_commande)
+            .order_by('date_versement', 'date_creation', 'id'))
+        for acompte in acomptes:
+            reste = acompte.montant_non_consomme
+            for facture in factures:
+                if reste <= 0:
+                    break
+                solde = FactureFournisseur.objects.get(pk=facture.pk).solde_du
+                if solde <= 0:
+                    continue
+                montant = min(reste, solde)
+                creees.append(ImputationAcompteFournisseur.objects.create(
+                    company=acompte.company or facture.company,
+                    acompte=acompte, facture=facture, montant=montant))
+                reste -= montant
+                acompte.montant_consomme = (
+                    (acompte.montant_consomme or Decimal('0')) + montant)
+                if acompte.facture_imputee_id is None:
+                    acompte.facture_imputee = facture
+                acompte.save(
+                    update_fields=['facture_imputee', 'montant_consomme'])
+                touchees[facture.pk] = facture
+        for facture in touchees.values():
+            # ASTK102 — le statut suit le solde (acompte imputé = règlement).
+            recompute_facture_fournisseur_statut(facture)
+    return creees
+
+
+def acompte_fournisseur_est_impute(acompte):
+    """ASTK106 — vrai si l'acompte porte au moins une imputation (son
+    ``montant`` n'est alors plus modifiable)."""
+    return acompte.imputations.exists()
 
 
 # ── XPUR9 — Avoir fournisseur (note de crédit AP) ───────────────────────────
@@ -4883,6 +5027,8 @@ def imputer_avoir_fournisseur(avoir, facture, montant=None, *, user=None):
                     if avoir.montant_disponible <= 0
                     else AvoirFournisseur.Statut.VALIDE)
     avoir.save(update_fields=['montant_impute', 'statut'])
+    # ASTK102 — le statut de la facture suit son solde (avoir = règlement).
+    recompute_facture_fournisseur_statut(facture)
     return imputation
 
 
@@ -4927,16 +5073,106 @@ def evaluer_tolerance_ecart(company, bon_commande_id):
     return override.tolerance_prix_pct
 
 
+def _montant_attendu_bcf_ht(bon_commande_id):
+    """ASTK107 — HT ATTENDU d'un BCF pour le rapprochement 3 voies :
+    somme (quantité reçue sur réceptions CONFIRMÉES × PU du BCF) pour les
+    lignes « sur réception », somme (quantité commandée × PU) pour les lignes
+    « sur commande » (ZPUR1, facturées avant réception)."""
+    from .models import (
+        LigneBonCommandeFournisseur, LigneReceptionFournisseur, Produit,
+        ReceptionFournisseur,
+    )
+    recu = {}
+    for ligne_id, qte in (LigneReceptionFournisseur.objects
+                          .filter(reception__bon_commande_id=bon_commande_id,
+                                  reception__statut=ReceptionFournisseur
+                                  .Statut.CONFIRME,
+                                  ligne_commande__isnull=False)
+                          .values_list('ligne_commande_id', 'quantite')):
+        recu[ligne_id] = recu.get(ligne_id, Decimal('0')) + Decimal(
+            str(qte or 0))
+    attendu = Decimal('0')
+    for ligne in (LigneBonCommandeFournisseur.objects
+                  .filter(bon_commande_id=bon_commande_id)
+                  .select_related('produit')):
+        pu = ligne.prix_achat_unitaire or Decimal('0')
+        if (ligne.produit_id is not None
+                and ligne.produit.politique_facturation_achat
+                == Produit.PolitiqueFacturationAchat.SUR_COMMANDE):
+            quantite = Decimal(str(ligne.quantite or 0))
+        else:
+            quantite = recu.get(ligne.id, Decimal('0'))
+        attendu += quantite * pu
+    return attendu.quantize(Decimal('0.01'))
+
+
+def evaluer_rapprochement_3_voies(facture):
+    """ASTK107 — évaluateur UNIQUE du rapprochement 3 voies côté stock,
+    appelé à la création par réception (``facturer_reception``), au lien BCF
+    par PATCH (``perform_update``) et à la création OCR/UBL liée.
+
+    Compare le HT CUMULÉ facturé sur le BCF (toutes ses factures) au HT
+    attendu (``_montant_attendu_bcf_ht`` : reçu × PU du BCF). Une
+    SUR-facturation au-delà de la tolérance applicable
+    (``evaluer_tolerance_ecart`` : catégorie commune sinon défaut société ;
+    l'écart absolu société s'il est configuré) pose
+    ``statut_controle = exception`` + ``motif_ecart`` : le paiement est alors
+    refusé par ``check_facture_exception_gate``. Une facture dans la
+    tolérance reste 'normale'. Une exception RÉSOLUE (acte explicite du
+    responsable) n'est jamais re-basculée ; une facture déjà en exception
+    n'est pas réécrite. Lecture 100 % stock/achats (aucun module compta).
+    Renvoie le statut de contrôle résultant (None sans BCF)."""
+    from django.db.models import Sum
+    from .models import AchatsParametres, FactureFournisseur
+    if facture is None or facture.bon_commande_id is None:
+        return None
+    if facture.statut_controle != FactureFournisseur.StatutControle.NORMALE:
+        return facture.statut_controle
+    company = facture.company
+    facture_ht = (FactureFournisseur.objects
+                  .filter(company=company,
+                          bon_commande_id=facture.bon_commande_id)
+                  .aggregate(t=Sum('montant_ht'))['t'] or Decimal('0'))
+    attendu = _montant_attendu_bcf_ht(facture.bon_commande_id)
+    ecart = (facture_ht - attendu).quantize(Decimal('0.01'))
+    if ecart <= Decimal('0'):
+        return facture.statut_controle
+    tolerance_pct = evaluer_tolerance_ecart(company, facture.bon_commande_id)
+    tolerance_abs = (AchatsParametres.for_company(company)
+                     .tolerance_prix_absolu_mad or Decimal('0'))
+    seuil = max((attendu * tolerance_pct / Decimal('100')).quantize(
+        Decimal('0.01')), tolerance_abs)
+    if ecart <= seuil:
+        return facture.statut_controle
+    if attendu > 0:
+        pct = (ecart / attendu * Decimal('100')).quantize(Decimal('0.01'))
+        pct_txt = f'+{_fmt_montant_pdf(pct)} %'
+    else:
+        pct_txt = 'rien de reçu au prix du BCF'
+    facture.statut_controle = FactureFournisseur.StatutControle.EXCEPTION
+    facture.motif_ecart = (
+        'Rapprochement 3 voies hors tolérance : facturé '
+        f'{_fmt_montant_pdf(facture_ht)} HT pour '
+        f'{_fmt_montant_pdf(attendu)} HT reçus au prix du BCF '
+        f'(écart +{_fmt_montant_pdf(ecart)} HT, {pct_txt} ; tolérance '
+        f'{_fmt_montant_pdf(tolerance_pct)} %).')
+    FactureFournisseur.objects.filter(pk=facture.pk).update(
+        statut_controle=facture.statut_controle,
+        motif_ecart=facture.motif_ecart)
+    return facture.statut_controle
+
+
 def check_facture_exception_gate(company, facture):
     """XPUR10 — lève ValueError si la facture est en EXCEPTION non résolue —
     bloque la CRÉATION d'un PaiementFournisseur. No-op si la facture reste
     'normale' ou a déjà été résolue (statut 'resolue' n'est jamais re-basculé
     en exception ici — la résolution est un acte explicite du responsable).
 
-    SOLMVP12 (20/09/2026) — l'ÉVALUATION automatique de l'écart de
-    rapprochement 3 voies (lecture du module compta, détaché de stock) a été
-    retirée : seule la résolution manuelle (``resoudre_exception_facture``)
-    fait évoluer ``statut_controle`` désormais."""
+    SOLMVP12 (20/09/2026) avait retiré l'évaluation automatique (lecture du
+    module compta, détaché de stock). ASTK107 la REBRANCHE côté stock :
+    ``evaluer_rapprochement_3_voies`` pose l'exception à la création par
+    réception, au lien BCF par PATCH et à la création OCR/UBL liée ; la
+    résolution reste manuelle (``resoudre_exception_facture``)."""
     from .models import FactureFournisseur
     if facture.statut_controle == FactureFournisseur.StatutControle.EXCEPTION:
         raise ValueError(
@@ -5192,6 +5428,11 @@ def creer_facture_fournisseur_depuis_ocr(
 
     from apps.ventes.utils.references import create_with_reference
     facture = create_with_reference(FactureFournisseur, 'FF', company, _save)
+    # ASTK99/ASTK107 — une facture OCR déjà liée à un BCF est rapprochée et
+    # émet à la création (no-op aujourd'hui : le lien se pose ensuite par
+    # PATCH, qui fait alors les deux).
+    evaluer_rapprochement_3_voies(facture)
+    _emettre_facture_creee(facture, user)
 
     if doublons and confirmer_malgre_doublon:
         log_doublon_override(
@@ -7022,7 +7263,12 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
         return facture
 
     from apps.ventes.utils.references import create_with_reference
-    return create_with_reference(FactureFournisseur, 'FF', company, _save)
+    facture = create_with_reference(FactureFournisseur, 'FF', company, _save)
+    # ASTK99/ASTK107 — même rapprochement + émission « au lien » qu'OCR/
+    # PATCH (no-op sans BCF).
+    evaluer_rapprochement_3_voies(facture)
+    _emettre_facture_creee(facture, user)
+    return facture
 
 
 # ── XSTK15 — Unités de mesure & conditionnements (touret/carton…) ───────────

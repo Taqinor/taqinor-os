@@ -806,7 +806,9 @@ def acomptes_fournisseur_ouverts(company):
     """XPUR8 — acomptes fournisseur PARTIELLEMENT/NON consommés de la
     société (montant_non_consomme > 0), pour la vue trésorerie/cash-flow
     existante (compta). Renvoie une liste de dicts triés par date de
-    versement. LECTURE SEULE, INTERNE."""
+    versement. LECTURE SEULE, INTERNE. ASTK106 — ``montant_consomme`` est
+    la somme des imputations plafonnées (``ImputationAcompteFournisseur``),
+    le reliquat d'un acompte plus gros que sa facture reste donc listé."""
     from decimal import Decimal
     from .models import AcompteFournisseur
     qs = (AcompteFournisseur.objects.filter(company=company)
@@ -1434,11 +1436,17 @@ def resume_portail_fournisseur(company, fournisseur_id):
     bcf = (BonCommandeFournisseur.objects
            .filter(company=company, fournisseur=fournisseur)
            .exclude(statut=BonCommandeFournisseur.Statut.ANNULE))
-    factures = FactureFournisseur.objects.filter(
-        company=company, fournisseur=fournisseur).exclude(
-        statut=FactureFournisseur.Statut.PAYEE)
-    montant = sum((f.montant_ttc or Decimal('0') for f in factures),
-                  Decimal('0'))
+    # ASTK103 — reste à payer = Σ `solde_du` (TTC − paiements − acomptes −
+    # avoirs imputés) des factures à solde > 0 : la même règle que la liste
+    # « Mes factures » du portail, jamais Σ TTC (une facture réglée 9 000
+    # sur 10 000 compte 1 000 ; une facture soldée par acompte, 0).
+    soldes = [
+        f.solde_du for f in FactureFournisseur.objects.filter(
+            company=company, fournisseur=fournisseur).prefetch_related(
+            'paiements', 'imputations_acompte', 'avoirs_imputes')
+    ]
+    soldes = [s for s in soldes if s > Decimal('0')]
+    montant = sum(soldes, Decimal('0')).quantize(Decimal('0.01'))
 
     return {
         'fournisseur_nom': fournisseur.nom,
@@ -1459,7 +1467,7 @@ def resume_portail_fournisseur(company, fournisseur_id):
                                 .filter(company=company,
                                         bon_commande__fournisseur=fournisseur)
                                 .count()),
-        'factures_a_payer': factures.count(),
+        'factures_a_payer': len(soldes),
         'montant_a_payer': str(montant),
     }
 
@@ -1620,8 +1628,9 @@ def annonces_livraison_bon_commande(bon_commande):
 #: NTPRT23 — les trois états de RÈGLEMENT que le portail fournisseur affiche.
 #: Ce sont des LIBELLÉS dérivés, jamais un second champ en base : le statut qui
 #: fait foi reste ``FactureFournisseur.statut`` (recalculé par
-#: ``services.recompute_facture_fournisseur_statut`` depuis les paiements
-#: réels). Un quatrième état stocké ailleurs finirait par le contredire.
+#: ``services.recompute_facture_fournisseur_statut`` comme projection du solde
+#: dû — paiements, acomptes et avoirs imputés, ASTK102). Un quatrième état
+#: stocké ailleurs finirait par le contredire.
 REGLEMENT_A_PAYER = 'a_payer'
 REGLEMENT_PAYEE = 'payee'
 REGLEMENT_EN_RETARD = 'en_retard'
@@ -1641,10 +1650,9 @@ def statut_reglement_facture_fournisseur(facture_ligne, a_la_date=None):
     portail tokenisé XPUR22 sert DÉJÀ) : on ne relit pas la base, on ne
     recalcule aucun montant, on QUALIFIE. Les règles, dans cet ordre :
 
-    * ``statut`` interne ``payee`` (ou solde dû nul) ⇒ **payée**. Le solde est
-      la seconde condition parce qu'un acompte ou un avoir peut solder une
-      facture dont le statut n'a pas encore été recalculé ; afficher « à payer »
-      sur une facture soldée serait une erreur visible par le fournisseur ;
+    * ``statut`` interne ``payee`` (ou solde dû nul) ⇒ **payée** — depuis
+      ASTK102 le statut EST la projection du solde (recalculé à chaque
+      paiement et imputation d'acompte/avoir), les deux conditions coïncident ;
     * échéance dépassée et solde restant ⇒ **en retard** ;
     * sinon ⇒ **à payer** (y compris ``partiellement_payee`` : il reste dû).
 
