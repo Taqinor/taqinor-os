@@ -809,6 +809,73 @@ def restore_version(document, source_version, *, uploaded_by=None):
     )
 
 
+def derniere_version_identique(document, checksum):
+    """ADOC61 — True si la version EN VIGUEUR (numéro le plus élevé) du
+    document porte exactement ce checksum. Comparaison au DERNIER rendu, jamais
+    à la première version (une séquence A, B, A crée bien trois versions)."""
+    if not checksum or document is None or document.pk is None:
+        return False
+    derniere = (DocumentVersion.objects.filter(document=document)
+                .order_by('-version', '-id').first())
+    return derniere is not None and derniere.checksum == checksum
+
+
+def versionner_si_modifie(document, contenu, *, filename='', mime='',
+                          uploaded_by=None, stocker=None, forcer=False):
+    """ADOC61 — D-ADOC-2 : un document régénéré au contenu DIFFÉRENT devient
+    une NOUVELLE VERSION du même Document GED ; un rendu identique ne crée rien.
+
+    `contenu` : octets du nouveau rendu (le checksum SHA-256 est calculé ici et
+    posé sur la version, dès la version 1). `stocker` (optionnel) : callable
+    sans argument renvoyant un dict `{file_key, filename, size, mime}` — sinon
+    les octets sont stockés via `_store_bytes` (mêmes conventions que
+    `records.storage`). Le stockage n'a lieu QUE si une version est créée.
+
+    Gardes (jamais d'exception, l'appelant reste best-effort) :
+      - un document en corbeille n'est jamais versionné ;
+      - un document archivé légalement (WORM) ou sous legal hold actif n'est
+        pas versionné : refus journalisé.
+
+    Renvoie `(version, cree)` : `(nouvelle_version, True)` si créée,
+    `(version_en_vigueur, False)` si identique, `(None, False)` si refusé."""
+    if isinstance(contenu, str):
+        contenu = contenu.encode('utf-8')
+    contenu = contenu or b''
+    if document.supprime_le is not None:
+        logger.warning(
+            'ADOC61 — document %s en corbeille : jamais versionné.',
+            document.pk)
+        return None, False
+    checksum = compute_checksum(contenu)
+    if not forcer and derniere_version_identique(document, checksum):
+        derniere = (DocumentVersion.objects.filter(document=document)
+                    .order_by('-version', '-id').first())
+        return derniere, False
+    if _document_archive_legalement(document) \
+            or _document_sous_legal_hold(document):
+        logger.warning(
+            'ADOC61 — document %s archivé légalement ou sous legal hold : '
+            'nouvelle version refusée.', document.pk)
+        return None, False
+    if stocker is not None:
+        meta = stocker() or {}
+    else:
+        file_key, meta = _store_bytes(contenu, mime=mime or 'application/pdf')
+        meta = dict(meta, file_key=file_key)
+    version = add_version(
+        document, file_key=meta.get('file_key', ''),
+        company=document.company,
+        filename=filename or meta.get('filename', ''),
+        size=meta.get('size') or len(contenu),
+        mime=mime or meta.get('mime', ''),
+        checksum=checksum, uploaded_by=uploaded_by)
+    return version, True
+
+
+# Alias interne : `deposit_document` porte un paramètre homonyme.
+_versionner_document = versionner_si_modifie
+
+
 def find_duplicate(company, checksum):
     """Première version d'une société portant ce checksum, ou None (dedup)."""
     if not checksum:
@@ -922,7 +989,8 @@ def _store_bytes(data, *, mime='application/pdf'):
 def deposit_document(*, company, nom, source_type, source_id,
                      file_key='', filename='', size=0, mime='', checksum='',
                      contenu_bytes=None, description='', cabinet_nom='Contrats',
-                     folder_nom='Contrats', created_by=None):
+                     folder_nom='Contrats', created_by=None,
+                     versionner_si_modifie=False):
     """Enregistre un fichier/des octets EXISTANTS comme document GED (cross-app).
 
     Point d'entrée d'ÉCRITURE pour qu'une AUTRE app (ex. `contrats`) dépose un
@@ -953,12 +1021,35 @@ def deposit_document(*, company, nom, source_type, source_id,
 
     Renvoie `(document, created)` : le `Document` GED et un booléen indiquant
     s'il vient d'être créé (False = déjà présent, dépôt idempotent).
+
+    ADOC61 — `versionner_si_modifie=True` (opt-in, défaut inchangé pour les
+    appelants existants) : un re-dépôt dont les octets DIFFÈRENT de la version
+    en vigueur ajoute une nouvelle version au même document (D-ADOC-2) via
+    `versionner_si_modifie` ; un document en corbeille n'est alors jamais la
+    cible (un nouveau document visible est créé).
     """
     # Idempotence : déjà déposé pour cet objet source ? On renvoie l'existant.
-    existant = find_document_by_source(
-        company, source_type=source_type, source_id=source_id)
-    if existant is not None:
-        return existant, False
+    if versionner_si_modifie:
+        existant = None
+        if source_type is not None and source_id is not None:
+            existant = (Document.objects
+                        .filter(company=company, supprime_le__isnull=True,
+                                custom_data__contains={
+                                    SOURCE_TYPE_KEY: source_type,
+                                    SOURCE_ID_KEY: source_id,
+                                })
+                        .order_by('id').first())
+        if existant is not None:
+            if contenu_bytes is not None:
+                _versionner_document(
+                    existant, contenu_bytes, filename=filename, mime=mime,
+                    uploaded_by=created_by)
+            return existant, False
+    else:
+        existant = find_document_by_source(
+            company, source_type=source_type, source_id=source_id)
+        if existant is not None:
+            return existant, False
 
     # Si l'appelant fournit des octets bruts (sans clé), on les stocke via le
     # MÊME stockage objet que `records.storage` (bucket erp-uploads, clé
@@ -5872,7 +5963,13 @@ def router_document_module(source, *, company, file, filename='',
     admin n'a rien configuré). IDEMPOTENT par `source`+`reference` : si un
     document du dossier résolu porte déjà cette référence (posée dans
     `custom_data['routage_reference']`), le document existant est renvoyé sans
-    créer de doublon ni ajouter de version.
+    créer de doublon.
+
+    ADOC61 / D-ADOC-2 — un rendu au contenu DIFFÉRENT de la version en vigueur
+    devient une NOUVELLE VERSION du même document (`versionner_si_modifie`) ;
+    un rendu identique ne crée rien ; un document en corbeille n'est jamais la
+    cible (un nouveau document visible est créé) ; un document archivé
+    légalement ou sous legal hold n'est pas versionné (refus journalisé).
 
     Appelé UNIQUEMENT depuis `apps/ged/receivers.py` (abonné à l'événement
     `core.events.document_produit`) — jamais appelé directement par l'app
@@ -5886,19 +5983,35 @@ def router_document_module(source, *, company, file, filename='',
     contexte = contexte or {}
     folder = _resoudre_dossier_cible(routage, contexte)
 
-    if reference:
-        existant = Document.objects.filter(
-            company=company, folder=folder,
-            custom_data__routage_reference=reference,
-        ).first()
-        if existant is not None:
-            return existant
-
     from apps.records.storage import store_attachment
 
-    meta, err = store_attachment(file)
-    if err:
-        raise ValueError(err)
+    try:
+        file.seek(0)
+    except Exception:  # pragma: no cover - flux non repositionnable.
+        pass
+    contenu = file.read() or b''
+    if isinstance(contenu, str):
+        contenu = contenu.encode('utf-8')
+    file.seek(0)
+
+    def _stocker():
+        meta_, err_ = store_attachment(file)
+        if err_:
+            raise ValueError(err_)
+        return meta_
+
+    if reference:
+        existant = Document.objects.filter(
+            company=company, folder=folder, supprime_le__isnull=True,
+            custom_data__routage_reference=reference,
+        ).order_by('id').first()
+        if existant is not None:
+            versionner_si_modifie(
+                existant, contenu, filename=filename, uploaded_by=uploaded_by,
+                stocker=_stocker)
+            return existant
+
+    meta = _stocker()
 
     document = Document.objects.create(
         company=company, folder=folder,
@@ -5909,7 +6022,8 @@ def router_document_module(source, *, company, file, filename='',
     add_version(
         document, file_key=meta['file_key'], company=company,
         filename=meta.get('filename', ''), size=meta.get('size', 0),
-        mime=meta.get('mime', ''), uploaded_by=uploaded_by)
+        mime=meta.get('mime', ''), checksum=compute_checksum(contenu),
+        uploaded_by=uploaded_by)
     update_search_vector(document)
 
     for tag in routage.tags_defaut.all():
