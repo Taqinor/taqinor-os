@@ -136,3 +136,22 @@ def dossier_8221_resume(company, devis_id):
     resume = resume_dossier_8221(dossier)
     resume['regime'] = dossier.regime_8221
     return resume
+
+
+def injection_limitee_devis(company, devis_id):
+    """CIQ663 — la sortie du moteur C&I (contrat CIQ2,
+    ``etude_params['etude_ci']['taille']``) indique-t-elle une injection
+    LIMITÉE (taille plafonnée par l'injection : ``raison_arret`` =
+    ``plafond_injection``) ? Lecture seule, scopée société ; ``False`` sans
+    devis ni étude (jamais une valeur devinée)."""
+    if not devis_id or company is None:
+        return False
+    from .models import Devis
+    devis = (Devis.objects.filter(pk=devis_id, company=company)
+             .only('etude_params').first())
+    if devis is None:
+        return False
+    etude = (devis.etude_params or {}).get('etude_ci') or {}
+    taille = etude.get('taille') if isinstance(etude, dict) else None
+    return (isinstance(taille, dict)
+            and taille.get('raison_arret') == 'plafond_injection')

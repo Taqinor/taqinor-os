@@ -6282,6 +6282,27 @@ ESSAIS_RECETTE = (
 )
 
 
+def essais_mt_exiges(installation):
+    """CIQ663 — la limitation d'injection et le découplage sont-ils EXIGÉS à
+    la recette ? Seulement pour un chantier ``mt`` ET quand le ``resume`` du
+    dossier 82-21 porte ``etude.reglages_imposes`` (décret 2.25.100 art. 27 :
+    l'étude du distributeur fixe des critères de réglage de l'exploitation),
+    ou quand la sortie du moteur C&I indique une injection limitée
+    (contrat CIQ2). Aucun réglage, aucun seuil écrits par le code."""
+    if installation is None or installation.niveau_tension != 'mt':
+        return False
+    resume = resume_dossier_8221(installation)
+    if (resume.get('etude') or {}).get('reglages_imposes'):
+        return True
+    if installation.devis_id and installation.company_id:
+        from apps.ventes.selectors_reglementaire import (
+            injection_limitee_devis,
+        )
+        return injection_limitee_devis(
+            installation.company, installation.devis_id)
+    return False
+
+
 def essais_recette(record, modifications=None):
     """CIQ625 — la liste des essais de la fiche APRÈS ``modifications``
     (champs reçus d'un PATCH, ``None`` = l'état stocké) + un essai faux par
@@ -6291,9 +6312,19 @@ def essais_recette(record, modifications=None):
               for champ in ESSAIS_RECETTE]
     # CIQ626 — un essai C&I (limitation d'injection, découplage) déclaré non
     # conforme est un essai faux ; « sans objet » ne compte pas.
+    # CIQ663 — en MT, quand l'étude du distributeur impose des réglages ou
+    # que le devis limite l'injection, ces deux essais sont EXIGÉS : non
+    # saisis (« sans objet » ou « à faire »), ils laissent le résultat « en
+    # cours » ; « conforme » = vrai, « non conforme » = faux.
+    exiges = essais_mt_exiges(getattr(record, 'installation', None)
+                              if getattr(record, 'installation_id', None)
+                              else None)
     for champ in ('limitation_injection_etat', 'decouplage_etat'):
-        if modifications.get(champ, getattr(record, champ, None)) == 'non_ok':
+        etat = modifications.get(champ, getattr(record, champ, None))
+        if etat == 'non_ok':
             essais.append(False)
+        elif exiges:
+            essais.append(True if etat == 'ok' else None)
     if getattr(record, 'pk', None) is not None and \
             record.iv_readings.filter(defaut_detecte=True).exists():
         essais.append(False)
