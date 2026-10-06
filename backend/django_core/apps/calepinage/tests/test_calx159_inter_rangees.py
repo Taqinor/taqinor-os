@@ -315,7 +315,10 @@ class EtapeOmise(unittest.TestCase):
         """D-CALX 16 : l'ordonnanceur écarte l'étape, pas le module."""
         motif = self._omission(
             serie(),
-            contexte(ombrage={'solar_access': {'method': {'rangees': True}}}),
+            # ACAL137 — l'accès solaire du pan, dans sa géométrie.
+            contexte(ombrage={'layout': {'zones': [{'label': 'PAN-1', 'geometry': {
+                'solarAccess': {'values': [0.9],
+                                'method': {'horizon': False, 'rangees': True}}}}]}}),
             par_le_module=False)
         self.assertIn('rangées entre elles', motif)
 

@@ -81,9 +81,13 @@ def serie_de(fixture, *, composantes):
 
 
 def contexte_de(values, *, methode=None, **extra):
-    acces = {'values': values, 'method': dict(METHODE if methode is None
-                                              else methode)}
-    contexte = {'ombrage': {'solarAccess': acces}}
+    """ACAL137 — l'accès solaire là où l'atelier l'écrit : dans la géométrie
+    du pan (``zones[].geometry.solarAccess``), jamais à la racine."""
+    acces = {'values': values, 'method': (dict(METHODE) if methode is None
+                                          else methode)}
+    layout = {'version': 2, 'zones': [
+        {'id': 'z1', 'label': 'PAN-1', 'geometry': {'solarAccess': acces}}]}
+    contexte = {'ombrage': {'layout': layout}}
     contexte['ombrage'].update(extra)
     return contexte
 
@@ -159,10 +163,10 @@ class MethodeDeclareeTest(SimpleTestCase):
         self.assertIn('solarAccess.method.rangees', motif)
 
     def test_une_methode_en_texte_ne_declare_rien(self):
-        contexte = {'ombrage': {'solarAccess': {'values': [0.9],
-                                                'method': 'placeholder'}}}
-        motif = self._omise(contexte)
-        self.assertIn('solarAccess.method.horizon', motif)
+        # ACAL137 — l'ancienne chaîne libre est refusée avec SON motif.
+        motif = self._omise(contexte_de([0.9], methode='placeholder'))
+        self.assertIn('solarAccess.method', motif)
+        self.assertIn('texte libre', motif)
 
     def test_une_methode_qui_inclut_l_horizon_est_refusee(self):
         motif = self._omise(contexte_de(
@@ -223,34 +227,36 @@ class LectureDuDocumentTest(SimpleTestCase):
         'version': 2,
         'zones': [
             {'label': 'PAN-SUD',
-             'geometry': {'solarAccess': {'values': [1.0, 0.5]}}},
+             'geometry': {'solarAccess': {'values': [1.0, 0.5],
+                                          'method': dict(METHODE)}}},
             {'label': 'PAN-NORD',
-             'geometry': {'solarAccess': {'values': [0.2, None]}}},
+             'geometry': {'solarAccess': {'values': [0.2, None],
+                                          'method': dict(METHODE)}}},
         ],
     }
 
     def test_le_document_de_toiture_est_lu_par_le_service(self):
-        contexte = {'ombrage': {'solarAccess': {'method': dict(METHODE)},
-                                'layout': self.LAYOUT}}
+        contexte = {'ombrage': {'layout': self.LAYOUT}}
         _rendue, etape = acces_module.appliquer(SERIE, contexte)
         self.assertEqual(etape['motif_omission'], '')
         self.assertEqual(etape['entree']['modules_lus'], 4)
         self.assertEqual(etape['entree']['modules_calcules'], 3)
 
     def test_le_pan_nomme_restreint_la_moyenne_a_ses_modules(self):
-        contexte = {'ombrage': {'solarAccess': {'method': dict(METHODE)},
-                                'layout': self.LAYOUT},
+        contexte = {'ombrage': {'layout': self.LAYOUT},
                     'plan': {'cle': 'PAN-SUD'}}
         _rendue, etape = acces_module.appliquer(SERIE, contexte)
         self.assertEqual(etape['entree']['modules_lus'], 2)
         self.assertEqual(etape['entree']['facteur_moyen'], 0.75)
 
-    def test_une_table_par_pan_du_contexte_est_lue(self):
+    def test_une_cle_racine_du_contexte_n_est_plus_lue(self):
+        # ACAL137 — ``ombrage.solarAccess`` n'existe pas dans le document :
+        # seule la géométrie du pan fait foi.
         contexte = {'ombrage': {'solarAccess': {
-            'method': dict(METHODE),
+            'method': dict(METHODE), 'values': [0.6, 0.4],
             'par_pan': {'PAN-SUD': [0.6, 0.4]}}}}
         _rendue, etape = acces_module.appliquer(SERIE, contexte)
-        self.assertEqual(etape['entree']['facteur_moyen'], 0.5)
+        self.assertIn(MOTIF_SANS_ACCES, etape['motif_omission'])
 
 
 class DansLaChaineTest(SimpleTestCase):

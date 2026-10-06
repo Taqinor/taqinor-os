@@ -91,8 +91,8 @@ def _contexte(pans, affectation=None):
         'site': {'lat': 33.5, 'lon': -7.6},
         'meteo': {'service': 'seriescalc',
                   'base_rayonnement': 'PVGIS-SARAH3'},
+        # ACAL137 — l'accès (valeurs + méthode) vit dans la géométrie du pan.
         'ombrage': {
-            'solar_access': {'method': dict(METHODE)},
             'layout': {'zones': [_zone(cle, acces) for cle, acces in pans]},
         },
         'obtenir_serie': _serie,

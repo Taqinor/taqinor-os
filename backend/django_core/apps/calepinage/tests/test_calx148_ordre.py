@@ -108,11 +108,20 @@ class GardeCatalogueTest(unittest.TestCase):
                               f'« {nom} » n’est pas une étape de la chaîne.')
 
 
+def _avec_acces(methode):
+    """ACAL137 — un contexte dont le pan porte un accès solaire par module
+    DANS SA GÉOMÉTRIE (``zones[].geometry.solarAccess``), où l'atelier
+    l'écrit."""
+    layout = {'zones': [{'label': 'PAN-1', 'geometry': {
+        'solarAccess': {'values': [0.9, 0.8], 'method': methode}}}]}
+    return {'ombrage': {'layout': layout}}
+
+
 class ExclusiviteTest(unittest.TestCase):
     """Trois lectures d'un même ombrage : une seule s'applique."""
 
     def test_un_document_avec_solar_access_omet_l_ombrage_proche(self):
-        etape = cascade({'ombrage': {'solar_access': {'par_module': []}}})
+        etape = cascade(_avec_acces({'horizon': False, 'rangees': False}))
         etape = etape['ombrage_proche']
         self.assertIn('module par module', etape['motif_omission'].lower())
         self.assertIsNone(etape['perte_pct'])
@@ -130,11 +139,10 @@ class ExclusiviteTest(unittest.TestCase):
         # Sans la déclaration « rangees », l'EXCLUSIVITÉ ne joue pas :
         # l'étape suit son propre sort (depuis CALX159, elle omet faute de
         # géométrie de rangées dans ce contexte d'essai).
-        sans = cascade({'ombrage': {'solar_access': {'method': {}}}})
+        sans = cascade(_avec_acces({'horizon': False}))
         self.assertNotIn('rangées entre elles',
                          sans['inter_rangees']['motif_omission'])
-        avec = cascade(
-            {'ombrage': {'solar_access': {'method': {'rangees': True}}}})
+        avec = cascade(_avec_acces({'horizon': False, 'rangees': True}))
         self.assertIn('rangées entre elles',
                       avec['inter_rangees']['motif_omission'])
 

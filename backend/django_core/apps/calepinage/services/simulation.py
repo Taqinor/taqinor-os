@@ -229,13 +229,13 @@ def _plans_du_contexte(pose, document):
 def _ombrage_du_document(document):
     """Les lectures d'ombrage du constructeur, telles que le document les porte.
 
-    Rien n'est normalisé ici : ``services/ombrage_chaines.py`` et les étapes
-    savent lire les deux orthographes (``solar_access`` / ``solarAccess``).
+    ACAL137 — l'accès solaire par module vit dans la géométrie de chaque pan
+    (``zones[].geometry.solarAccess``) : il est lu là, par
+    ``etapes.acces_module.acces_du_pan``, depuis ``layout`` — aucune clé
+    racine ``solar_access``/``solarAccess`` (inexistante) n'est publiée.
     """
     document = document if isinstance(document, dict) else {}
     return {
-        'solar_access': document.get('solar_access'),
-        'solarAccess': document.get('solarAccess'),
         'shading12x24': document.get('shading12x24'),
         'layout': document,
     }

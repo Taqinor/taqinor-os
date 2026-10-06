@@ -82,6 +82,7 @@ from __future__ import annotations
 import copy
 
 from apps.calepinage.services import chaine_pertes, etapes
+from apps.calepinage.services.etapes.acces_module import CLE_ACCES_REDUIT
 from apps.calepinage.services.ombrage_chaines import acces_par_module
 from .valeurs import nombre as _nombre
 
@@ -309,9 +310,7 @@ def _acces_par_pan(contexte):
     """``{repère du pan: [accès ou None, …]}`` lu dans le document."""
     ombrage = contexte.get('ombrage')
     ombrage = ombrage if isinstance(ombrage, dict) else {}
-    acces = ombrage.get('solar_access') or ombrage.get('solarAccess') or {}
-    if isinstance(acces, dict) and isinstance(acces.get('par_pan'), dict):
-        return acces['par_pan']
+    # ACAL137 — le document seul (``zones[].geometry.solarAccess``).
     layout = ombrage.get('layout') or contexte.get('layout')
     return acces_par_module(layout) if isinstance(layout, dict) else {}
 
@@ -353,16 +352,10 @@ def _contexte_du_module(contexte, plan, acces, meteo):
     copie['plan'] = plan
     copie['plans'] = [plan]
     copie[chaine_pertes.CLE_METEO_PARTAGEE] = meteo
-    ombrage = contexte.get('ombrage')
-    ombrage = dict(ombrage) if isinstance(ombrage, dict) else {}
-    lecture = ombrage.get('solar_access') or ombrage.get('solarAccess')
-    if isinstance(lecture, dict):
-        reduite = dict(lecture)
-        reduite['values'] = [acces]
-        reduite.pop('par_pan', None)
-        ombrage.pop('solarAccess', None)
-        ombrage['solar_access'] = reduite
-        copie['ombrage'] = ombrage
+    # ACAL137 — l'accès du SEUL module simulé, posé sous une clé INTERNE que
+    # le lecteur de l'étape (``acces_module.acces_du_pan``) applique sur le
+    # bloc du pan (méthode et hypothèses gardées) ; le document reste intact.
+    copie[CLE_ACCES_REDUIT] = [acces]
     return copie
 
 
