@@ -24,20 +24,27 @@ produire un chiffre. Le test ci-dessous le CONFIRME par exécution (rendu
 réel du one-page agricole, WeasyPrint) plutôt que par lecture de code seule.
 
 RÉSULTAT (verdict de ce module, règle permanente de la tâche : le résultat
-décide la suite) : le comparatif carburant N'ATTEINT PAS le document — la
-promesse était donc FAUSSE. Le second test épingle le texte HONNÊTE que
-`PanneauAgricole.jsx` porte désormais (« données conservées pour l'étude,
-aucune promesse de chiffre dans le PDF »), en lisant le SOURCE frontend
-depuis ce test backend — le même patron cross-stack que
-`test_qjr204_replace_lines_vide.py`/`test_qx48_agronomy_v2.py`, qui documentent
-déjà des invariants partagés entre les deux côtés.
+décide la suite) : le comparatif carburant N'ATTEINT PAS le une-page.
 
-Aucun comportement backend n'est modifié par cette tâche (règle permanente 1) :
-ce module ne fait que PROUVER l'état existant, puis épingler le texte écran.
+AGR316 (02→06/10/2026) — depuis AGR307 + AGR312, le document agricole de 3
+pages (``quote_engine/agricole``) imprime le bloc ``economies`` DÉCLARÉ
+(D-AGR-5, contrat partagé ``economie_pompage.json``) si et seulement si le
+bloc public ``economie_pompage`` existe. Le texte « aucune promesse de
+chiffre dans le PDF » devenait donc faux : l'écran dit désormais « Les
+dépenses que le client DÉCLARE (datées) alimentent le bloc économies du
+document 3 pages ; sans déclaration, le bloc est omis. Le une-page n'imprime
+aucune économie. » Ce module PROUVE les deux moitiés par rendu réel (une-page
+sans comparatif ; 3 pages avec / sans bloc), puis épingle ce texte en lisant
+le SOURCE frontend depuis ce test backend — le même patron cross-stack que
+`test_qjr204_replace_lines_vide.py`/`test_qx48_agronomy_v2.py`.
+
+Aucun comportement backend n'est modifié (règle permanente 1) : ce module ne
+fait que PROUVER l'état existant, puis épingler le texte écran.
 """
+import json
 from pathlib import Path
 
-from django.test import TestCase, tag
+from django.test import SimpleTestCase, TestCase, tag
 
 from apps.ventes.tests._quote_engine_common import (
     make_client, make_company, make_devis, make_user,
@@ -144,6 +151,27 @@ class TestQjr428ComparatifCarburantAbsentDuOnepage(TestCase):
         self.assertNotIn('42\N{NO-BREAK SPACE}000', html)
         self.assertNotIn('42 000', html)
 
+    def test_le_une_page_n_imprime_aucune_economie_meme_avec_le_bloc(self):
+        """AGR316 — le bloc public ``economie_pompage`` (AGR3) présent dans
+        la charge utile n'atteint PAS le une-page : aucune ligne du bloc
+        « Votre argent » du 3 pages n'y figure."""
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        data = build_quote_data(self.devis, {'pdf_mode': 'onepage'})
+        data['_economie_pompage'] = _bloc_economie_pompage_public()
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_agr316_onepage.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        self.assertEqual(len(HTML(string=cap['html']).render().pages), 1)
+        for libelle in LIBELLES_BLOC_ECONOMIES:
+            self.assertNotIn(libelle, cap['html'])
+
     def test_le_meme_verdict_tient_quand_current_fuel_vient_de_l_option_pdf(self):
         """Second chemin AUTREFOIS possible pour `current_fuel` (l'option PDF
         forcée) : AGR303 l'a retirée — `clean_pdf_options` l'ignore, et
@@ -157,6 +185,66 @@ class TestQjr428ComparatifCarburantAbsentDuOnepage(TestCase):
                              f"le mot {mot!r} apparaît alors que current_fuel "
                              "vient de l'option PDF forcée — même verdict "
                              "attendu que par etude_params.")
+
+
+_CONTRATS = Path(__file__).resolve().parents[1] / 'contract_samples'
+
+#: Libellés (sans accent ni entité HTML) que seul le bloc « Votre argent »
+#: du document 3 pages imprime (``agricole/pages._argent``, i18n FR).
+LIBELLES_BLOC_ECONOMIES = ('Votre argent', 'Charges du solaire par an')
+
+
+def _bloc_economie_pompage_public():
+    """Le bloc PUBLIC ``economie_pompage`` (AGR3) : l'``exemple`` du contrat
+    partagé, sans ``vue_interne`` (jamais imprimée) — jamais redéfini ici."""
+    bloc = json.loads((_CONTRATS / 'economie_pompage.json').read_text(
+        encoding='utf-8'))['exemple']
+    bloc.pop('vue_interne', None)
+    return bloc
+
+
+@tag('pdf')
+class TestAgr316TroisPagesEconomiesDeclarees(SimpleTestCase):
+    """AGR316 — rendu RÉEL du document agricole de 3 pages : le bloc
+    économies est imprimé SI ET SEULEMENT SI ``economie_pompage`` existe."""
+
+    def setUp(self):
+        from apps.ventes.tests.test_agr310_renderer_agricole import fitz
+        if fitz is None:  # pragma: no cover
+            self.skipTest('PyMuPDF absent')
+
+    def _texte_pdf(self, data):
+        from apps.ventes.quote_engine.agricole import renderer
+        from apps.ventes.tests.test_agr310_renderer_agricole import fitz
+        doc = fitz.open(stream=renderer.render_pdf_bytes(data),
+                        filetype='pdf')
+        try:
+            return len(doc), ' '.join(' '.join(page.get_text().split())
+                                      for page in doc)
+        finally:
+            doc.close()
+
+    def test_avec_economie_pompage_le_bloc_est_imprime(self):
+        from apps.ventes.tests.test_agr310_renderer_agricole import (
+            data_complete,
+        )
+        data = data_complete()
+        self.assertTrue(data.get('_economie_pompage'))
+        pages, texte = self._texte_pdf(data)
+        self.assertEqual(pages, 3)
+        for libelle in LIBELLES_BLOC_ECONOMIES:
+            self.assertIn(libelle, texte)
+
+    def test_sans_economie_pompage_le_bloc_est_omis(self):
+        from apps.ventes.tests.test_agr310_renderer_agricole import (
+            data_complete,
+        )
+        data = data_complete()
+        data.pop('_economie_pompage')
+        pages, texte = self._texte_pdf(data)
+        self.assertEqual(pages, 3)
+        for libelle in LIBELLES_BLOC_ECONOMIES:
+            self.assertNotIn(libelle, texte)
 
 
 class TestQjr428TextePanneauAgricoleHonnete(TestCase):
@@ -186,17 +274,21 @@ class TestQjr428TextePanneauAgricoleHonnete(TestCase):
         # ce que lit un humain.
         return ' '.join(source.split())
 
-    def test_le_texte_ne_promet_plus_un_chiffre_carburant_que_le_pdf_ne_rend_pas(self):
+    def test_le_texte_dit_ce_que_les_documents_impriment_vraiment(self):
         source = self._lire_panneau_agricole()
         # L'ANCIENNE promesse fausse (« économies vs carburant » comme
-        # chiffre du PDF) a disparu — c'est elle que
-        # `test_le_one_page_agricole_ne_publie_AUCUN_comparatif_carburant`
-        # a réfutée.
+        # chiffre du PDF) reste absente, et la phrase devenue fausse depuis
+        # AGR307/AGR312 (« aucune promesse de chiffre dans le PDF ») aussi.
         self.assertNotIn('économies vs carburant', source)
-        # Le texte honnête dit ce que le test ci-dessus a montré : la donnée
-        # est conservée, mais aucun chiffre carburant n'est promis au PDF.
-        self.assertIn('aucune promesse de chiffre dans le PDF', source)
-        self.assertIn("conservée pour l'étude", source)
+        self.assertNotIn('aucune promesse de chiffre dans le PDF', source)
+        # AGR316 — le texte exact : les dépenses DÉCLARÉES alimentent le bloc
+        # économies du 3 pages (prouvé par
+        # `TestAgr316TroisPagesEconomiesDeclarees`), le une-page n'en imprime
+        # aucune (prouvé par la première classe).
+        self.assertIn(
+            'Les dépenses que le client DÉCLARE (datées) alimentent le bloc '
+            'économies du document 3 pages ; sans déclaration, le bloc est '
+            'omis. Le une-page n\u2019imprime aucune économie.', source)
         # Le besoin en eau FAO-56, LUI, atteint bel et bien le one-page
         # (cartes « HMT »/« Débit »/« Eau / jour », prouvées par
         # `test_pompage_curve_figures_water_per_day_one_page` dans

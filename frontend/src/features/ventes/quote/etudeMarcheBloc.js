@@ -24,6 +24,8 @@
 //                        DÉCLARÉES partent dans `saisies_economie_pompage`
 //                        (contrat economie_pompage.json) ; plus jamais
 //                        `current_fuel` / `fuel_spend_current`, plus jamais × 12.
+//                        AGR218 : `attestation` {attestee, le, signataire} →
+//                        `attestation_usage_agricole`.
 import { COMMERCIAL_CATEGORY_QUESTIONS } from '../solar.js'
 
 const nombre = (v) => {
@@ -133,6 +135,9 @@ export function projeterEtudeMarche(mode, {
       saisies_economie_pompage: x.saisiesEconomie || null,
       hmt_static: nombre(x.hmtStatic),
       hmt_drawdown: nombre(x.hmtDrawdown),
+      // AGR218 (contrat AGR200) — l'attestation d'usage agricole SAISIE ;
+      // `null` = rien de coché ni saisi : la clé est RETIRÉE (Z2).
+      attestation_usage_agricole: attestationUsageAgricole(x.attestation),
     }
   }
   // Résidentiel : le serveur est propriétaire de son ÉTUDE — mais pas des
@@ -273,5 +278,30 @@ export function ecoDepuisSaisies(saisies) {
     entretien: texte(s.entretien_paye_mad_an?.valeur),
     coherenceConfirmee: Boolean(s.coherence_confirmee),
     interne: { taux_actualisation: s.taux_actualisation ?? null, pret: s.pret ?? null },
+  }
+}
+
+// ── AGR218 — attestation d'usage exclusivement agricole (contrat AGR200) ──
+// État d'écran {attestee, le, signataire} ⇄ `etude_params.attestation_usage_
+// agricole`. Saisie, jamais supposée : rien de coché ni saisi ⇒ `null`.
+export const ATTESTATION_VIDE = Object.freeze({ attestee: false, le: '', signataire: '' })
+
+/** État d'écran → forme stockée `{attestee, le, signataire}`, ou `null`. */
+export function attestationUsageAgricole(saisie) {
+  if (!saisie || typeof saisie !== 'object') return null
+  const attestee = Boolean(saisie.attestee)
+  const le = texteNet(saisie.le) || null
+  const signataire = texteNet(saisie.signataire)
+  if (!attestee && !le && !signataire) return null
+  return { attestee, le, signataire }
+}
+
+/** Inverse : la forme stockée → état d'écran (`?edit=`). */
+export function attestationDepuisEtude(valeur) {
+  if (!valeur || typeof valeur !== 'object') return { ...ATTESTATION_VIDE }
+  return {
+    attestee: Boolean(valeur.attestee),
+    le: valeur.le || '',
+    signataire: valeur.signataire || '',
   }
 }

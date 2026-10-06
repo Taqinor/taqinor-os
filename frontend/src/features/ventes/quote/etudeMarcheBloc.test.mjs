@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 
 import {
   projeterEtudeMarche, saisiesEconomiePompage, ecoDepuisSaisies, ECO_POMPAGE_VIDE,
+  attestationUsageAgricole, attestationDepuisEtude,
 } from './etudeMarcheBloc.js'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -22,7 +23,7 @@ const ECRAN = new Set([
   'pompe_cv', 'pompe_kw', 'hmt_m', 'debit_hmt_m3h', 'm3_jour', 'champ_kwc',
   'irrigation_method', 'debit_souhaite_m3h', 'heures_pompage', 'type_pompe', 'alim',
   'profondeur_m', 'distance_m', 'region', 'crop', 'surface_ha',
-  'saisies_economie_pompage', 'hmt_static', 'hmt_drawdown',
+  'saisies_economie_pompage', 'hmt_static', 'hmt_drawdown', 'attestation_usage_agricole',
   'taux_autoconso', 'taux_couverture', 'payback', 'injection_kwh_an', 'injection_dh_an',
   'repartition_mt', 'etude_kwc_base',
   'chambres', 'occupation_pct', 'piscine', 'chambres_froides', 'horaires', 'cuisson',
@@ -160,4 +161,27 @@ test('AGR212 — mois du calendrier : provenance « calendrier » puis « décla
   const touche = saisiesEconomiePompage({ ...base, mois: [6, 4] })
   assert.deepEqual(touche.mois_irrigation.mois, [4, 6])
   assert.equal(touche.mois_irrigation.provenance.origine, 'saisie')
+})
+
+// ── AGR218 — attestation d'usage agricole (contrat AGR200) ─────────────────
+const CONTRAT_LIGNES = JSON.parse(readFileSync(path.resolve(ICI,
+  '../../../../../backend/django_core/apps/ventes/contract_samples/devis_replace_lines_entete.json'),
+'utf8'))
+
+test('AGR218 — attestation : aller-retour exact de la forme du contrat', () => {
+  const exemple = CONTRAT_LIGNES.corps_agricole.etude_params.attestation_usage_agricole
+  assert.deepEqual(attestationUsageAgricole(attestationDepuisEtude(exemple)), exemple)
+})
+
+test('AGR218 — rien de coché ni saisi ⇒ null (clé retirée, jamais d’attestation supposée)', () => {
+  assert.equal(attestationUsageAgricole(attestationDepuisEtude(null)), null)
+  assert.equal(attestationUsageAgricole(undefined), null)
+})
+
+test('AGR218 — l’attestation part dans etude_params agricole, clé ECRAN', () => {
+  const attestation = { attestee: true, le: '2026-10-02', signataire: 'M. Exploitant' }
+  const bloc = projeterEtudeMarche('agricole', {
+    choix: {}, entrees: {}, pompage: {}, exploitation: { attestation } })
+  assert.deepEqual(bloc.attestation_usage_agricole, attestation)
+  assert.deepEqual(horsSchema(bloc), [])
 })
