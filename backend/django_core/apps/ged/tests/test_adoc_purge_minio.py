@@ -64,14 +64,17 @@ class PurgeMinioTests(TestCase):
 
     def test_echec_stockage_laisse_le_document(self):
         doc = self._doc('D', 'attachments/k.pdf')
+        # delete() remet `doc.pk` à None en mémoire même si la transaction
+        # est annulée : on garde l'id pour relire la base.
+        doc_id = doc.pk
         services.mettre_en_corbeille(doc, self.admin)
         with mock.patch('apps.records.storage.delete_attachment',
                         side_effect=RuntimeError('minio indisponible')):
             with self.assertRaises(RuntimeError):
                 services.purger_definitivement(doc)
-        self.assertTrue(Document.objects.filter(pk=doc.pk).exists())
-        self.assertEqual(DocumentVersion.objects.filter(document=doc).count(),
-                         1)
+        self.assertTrue(Document.objects.filter(pk=doc_id).exists())
+        self.assertEqual(
+            DocumentVersion.objects.filter(document_id=doc_id).count(), 1)
 
     def test_disposition_supprime_binaire(self):
         PolitiqueRetention.objects.create(
