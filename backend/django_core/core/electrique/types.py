@@ -28,8 +28,7 @@ from typing import Mapping, Optional, Tuple
 
 __all__ = [
     "fr", "fr_v", "fr_a",
-    "SpecModule", "SpecOnduleur", "GroupePan", "EntreeElectrique",
-    "TransformateurMt", "EtageMt",
+    "SpecModule", "SpecOnduleur", "GroupePan", "EntreeElectrique", "TransformateurMt", "EtageMt",
     "Chaine", "Protection", "Cable", "LigneNomenclature", "Ratio",
     "Conformite", "ResultatElectrique",
     "TEMPERATURE_STC_C", "TEMP_FROID_DEFAUT_C", "TEMP_CHAUD_DEFAUT_C",

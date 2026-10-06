@@ -35,9 +35,7 @@ __all__ = [
     "Bloc", "blocs_du_schema", "lignes_tableau", "rendre_schema",
     # CALX233-235 (crochet de phase 2) — l'API PUBLIQUE du dessin, pour que
     # les services applicatifs cessent d'importer les privés de ce module.
-    "GeometrieSchema", "GEOMETRIE", "places_du_schema", "bloc_svg",
-    # CIQ664 — l'étage MOYENNE TENSION (site livré en MT).
-    "MENTION_A_CONFIRMER", "MENTION_DECOUPLAGE", "blocs_etage_mt",
+    "GeometrieSchema", "GEOMETRIE", "places_du_schema", "bloc_svg", "MENTION_A_CONFIRMER", "MENTION_DECOUPLAGE", "blocs_etage_mt",
 ]
 
 #: Formats de planche, en pixels CSS à 96 ppp (A4 paysage 297 × 210 mm,
