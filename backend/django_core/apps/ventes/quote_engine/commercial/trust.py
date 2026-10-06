@@ -9,6 +9,8 @@ CSS tables only. Classes prefixed ``c3-``.
 # CIQ310 — bande légale du vendeur (RC, ICE, capital) : UNE fonction
 # partagée avec le résidentiel.
 from ..premium_base import bande_legale
+# CIQ311 — blocs C&I communs (conditions, Bon pour accord).
+from ..ci import blocs as ci_blocs
 
 
 def build(ctx):
@@ -75,6 +77,10 @@ def build(ctx):
     else:
         warranties_html = ""
 
+    # CIQ311 — « Conditions » (CGV gelées à l'envoi, note TVA) et textes
+    # « Bon pour accord » éditables, lus par la même voie que le legacy.
+    bpa_titre, bpa_mention = ci_blocs.textes_bpa(d)
+    conditions_html = ci_blocs.bloc_conditions(d, "c3", navy, ink)
     accepte_nom = (d.get("accepte_par_nom") or "").strip()
     date_accept = (d.get("date_acceptation") or "").strip()
     if accepte_nom and date_accept:
@@ -84,7 +90,7 @@ def build(ctx):
         sign_client = (f'<div class="c3-sign-name">{accepte_nom}</div>'
                        f'<div class="c3-sign-date">Le {date_accept}</div>')
     else:
-        sign_client = '<div class="c3-sign-blank">Nom, date &amp; « Bon pour accord »</div>'
+        sign_client = f'<div class="c3-sign-blank">{bpa_mention}</div>'
 
     css = f"""
 <style>
@@ -139,9 +145,11 @@ def build(ctx):
     temps réel</b> de votre production et un engagement de <b>performance</b> dans la durée.
   </div>
 
+  {conditions_html}
+
   <div class="c3-sign">
     <div class="c3-sign-c">
-      <div class="c3-sign-h">Bon pour accord — Client</div>
+      <div class="c3-sign-h">{bpa_titre} — Client</div>
       <div class="c3-sign-box"></div>
       {sign_client}
     </div>
