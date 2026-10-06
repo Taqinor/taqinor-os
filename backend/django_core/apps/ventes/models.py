@@ -55,6 +55,15 @@ class Devis(models.Model):
         related_name='devis_finances',
         verbose_name='Tiers payeur (organisme financeur)',
     )
+    # CIQ214 — conditions contractuelles C&I SEULEMENT à la demande du client
+    # (D-CIQ-14), vides par défaut, écrites par l'entête de replace-lines :
+    # ``retenue_garantie`` {taux_pct, liberation: reception_definitive} ;
+    # ``penalites_retard_livraison`` {taux_pct_par_semaine, plafond_pct} (les
+    # DEUX ou refus 400) ; ``caution`` {nature, montant_ou_pct, plafond}.
+    retenue_garantie = models.JSONField(null=True, blank=True, default=None)
+    penalites_retard_livraison = models.JSONField(
+        null=True, blank=True, default=None)
+    caution = models.JSONField(null=True, blank=True, default=None)
     statut = models.CharField(
         max_length=20,
         choices=Statut.choices,

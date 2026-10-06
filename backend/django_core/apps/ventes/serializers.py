@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from .models import (
@@ -226,6 +228,76 @@ class TiersPayeurValidationMixin:
             raise serializers.ValidationError(
                 "Tiers payeur : client introuvable dans votre société.")
         return value
+
+    # ── CIQ214 — retenue, pénalités, caution : SEULEMENT à la demande du
+    # client (D-CIQ-14), jamais de valeur par défaut ; formes normalisées
+    # (enregistrer → rouvrir → enregistrer sans toucher = entête identique).
+
+    @staticmethod
+    def _pct_ci(champ, brut, *, strict=True):
+        try:
+            if isinstance(brut, bool) or brut in (None, ''):
+                raise ValueError(brut)
+            valeur = Decimal(str(brut).replace(',', '.'))
+            if not valeur.is_finite():
+                raise ValueError(brut)
+        except (TypeError, ValueError, ArithmeticError):
+            raise serializers.ValidationError(
+                f"« {champ} » : un pourcentage numérique est attendu.")
+        if valeur < 0 or valeur > 100 or (strict and valeur == 0):
+            raise serializers.ValidationError(
+                f"« {champ} » doit être compris entre 0 et 100 %.")
+        return float(valeur)
+
+    def validate_retenue_garantie(self, value):
+        if value in (None, {}, ''):
+            return None
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "Retenue de garantie : un objet {taux_pct, liberation} est "
+                "attendu.")
+        liberation = value.get('liberation') or 'reception_definitive'
+        if liberation != 'reception_definitive':
+            raise serializers.ValidationError(
+                "« retenue_garantie.liberation » : seule la réception "
+                "définitive libère la retenue (reception_definitive).")
+        return {'taux_pct': self._pct_ci('retenue_garantie.taux_pct',
+                                         value.get('taux_pct')),
+                'liberation': liberation}
+
+    def validate_penalites_retard_livraison(self, value):
+        if value in (None, {}, ''):
+            return None
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "Pénalités de retard : un objet {taux_pct_par_semaine, "
+                "plafond_pct} est attendu.")
+        for cle, libelle in (('taux_pct_par_semaine', 'le taux par semaine'),
+                             ('plafond_pct', 'le plafond')):
+            if value.get(cle) in (None, ''):
+                raise serializers.ValidationError(
+                    f"Pénalités de retard : {libelle} "
+                    f"(penalites_retard_livraison.{cle}) est obligatoire — "
+                    "taux et plafond vont ensemble.")
+        return {
+            'taux_pct_par_semaine': self._pct_ci(
+                'penalites_retard_livraison.taux_pct_par_semaine',
+                value.get('taux_pct_par_semaine')),
+            'plafond_pct': self._pct_ci(
+                'penalites_retard_livraison.plafond_pct',
+                value.get('plafond_pct')),
+        }
+
+    def validate_caution(self, value):
+        if value in (None, {}, ''):
+            return None
+        if not isinstance(value, dict) or not str(
+                value.get('nature') or '').strip():
+            raise serializers.ValidationError(
+                "Caution : la nature (caution.nature) est obligatoire.")
+        return {'nature': str(value['nature']).strip(),
+                'montant_ou_pct': value.get('montant_ou_pct'),
+                'plafond': value.get('plafond')}
 
 
 class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
@@ -808,6 +880,8 @@ class DevisWriteSerializer(TiersPayeurValidationMixin,
             # CIQ213 — payeur tiers (client de la même société, validé par
             # ``TiersPayeurValidationMixin``).
             'tiers_payeur',
+            # CIQ214 — conditions C&I à la demande du client (D-CIQ-14).
+            'retenue_garantie', 'penalites_retard_livraison', 'caution',
         ]
         # company is force-assigned in perform_create — never accept it from the body.
         # SCA47 — prix_par_kwc est dérivé/gelé côté serveur (write-once), jamais

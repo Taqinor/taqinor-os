@@ -557,6 +557,30 @@ def modele_financeur(devis, acompte_client_pct):
     return tranches
 
 
+def retenue_de_tranche(devis, ttc_tranche):
+    """CIQ214 — ``{taux, montant, phrase}`` de la retenue de garantie d'une
+    tranche, ou None (aucune retenue demandée). Montant = taux × TTC de la
+    tranche au centime ; la phrase (AUD180) dit qu'elle est retenue sur le
+    règlement, sans effet sur la base taxable."""
+    retenue = getattr(devis, 'retenue_garantie', None)
+    if not isinstance(retenue, dict) or retenue.get('taux_pct') in (None, ''):
+        return None
+    try:
+        taux = Decimal(str(retenue['taux_pct']))
+    except (TypeError, ValueError, ArithmeticError):
+        return None
+    if not taux.is_finite() or taux <= 0:
+        return None
+    montant = _q(Decimal(str(ttc_tranche)) * taux / 100)
+    return {
+        'taux': taux,
+        'montant': montant,
+        'phrase': (f'Retenue de garantie de {taux.normalize():f} % '
+                   f'({montant} MAD) retenue sur le règlement, libérée à la '
+                   'réception définitive — sans effet sur la base taxable.'),
+    }
+
+
 def schedule_for_devis(devis):
     """Vue historique ``[(clé, pct_or_montant)]`` de ``tranches_normalisees``.
 
@@ -760,8 +784,16 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
         echeance = timezone.localdate() + timedelta(
             days=int(tr['delai_reglement_jours']))
 
+    # CIQ214 — retenue de garantie DEMANDÉE par le client (D-CIQ-14) : taux ×
+    # TTC de la tranche, au centime, retenue sur le RÈGLEMENT — ni le HT ni
+    # la TVA ne baissent (phrase AUD180). Sans retenue : facture d'hier.
+    retenue = retenue_de_tranche(devis, tr['ttc'])
+
     def _create(ref):
         extra = {} if echeance is None else {'date_echeance': echeance}
+        if retenue is not None:
+            extra['retenue_garantie_mad'] = retenue['montant']
+            extra['conditions_paiement'] = retenue['phrase']
         return Facture.objects.create(
             **extra,
             reference=ref,
