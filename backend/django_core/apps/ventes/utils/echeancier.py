@@ -517,6 +517,46 @@ def termes_paiement_devis(devis, termes_defaut, lignes=None, *,
     return slots
 
 
+#: CIQ213 — libellé de la tranche réglée par l'organisme financeur (jamais
+#: « crédit-bail » : le mot n'est imprimé qu'après l'avis juridique, CIQ211).
+LIBELLE_FINANCEUR = TRANCHE_LABELS['reception_financeur']
+
+
+def modele_financeur(devis, acompte_client_pct):
+    """CIQ213 — l'échéancier « règlement par l'organisme financeur à la
+    réception signée » : une tranche CLIENT (acompte DÉCLARÉ, 0 possible —
+    alors absente) puis la tranche ``payeur: tiers``, jalon
+    ``reception_financeur``, qui porte le reste. Forme ``Devis.echeancier``
+    (validée par :func:`valider_echeancier`) ; rien n'est écrit ici.
+
+    Lève ``EcheancierInvalide`` (FR) sur un acompte hors [0, 100].
+    """
+    del devis  # forme indépendante du devis (le tiers est sur le devis)
+    try:
+        acompte = Decimal(str(acompte_client_pct))
+        if not acompte.is_finite():
+            raise ValueError(acompte_client_pct)
+    except (TypeError, ValueError, ArithmeticError):
+        raise EcheancierInvalide(
+            "Acompte client : un pourcentage entre 0 et 100 est attendu.")
+    if acompte < 0 or acompte > 100:
+        raise EcheancierInvalide(
+            "Acompte client : un pourcentage entre 0 et 100 est attendu.")
+    valeur = int(acompte) if acompte == int(acompte) else float(acompte)
+    reste = 100 - acompte
+    reste = int(reste) if reste == int(reste) else float(reste)
+    tranches = []
+    if acompte > 0:
+        tranches.append({'libelle': TRANCHE_LABELS['commande'],
+                         'type': 'acompte', 'pct_or_montant': valeur,
+                         'jalon': 'commande', 'payeur': 'client'})
+    if reste > 0:
+        tranches.append({'libelle': LIBELLE_FINANCEUR, 'type': 'solde',
+                         'pct_or_montant': reste,
+                         'jalon': 'reception_financeur', 'payeur': 'tiers'})
+    return tranches
+
+
 def schedule_for_devis(devis):
     """Vue historique ``[(clé, pct_or_montant)]`` de ``tranches_normalisees``.
 
@@ -655,6 +695,9 @@ def next_tranche(devis, lignes=None, option=None):
     # CIQ212 — délai de règlement DÉCLARÉ sur le jalon (clé absente sinon).
     if tranche.get('delai_reglement_jours') is not None:
         sortie['delai_reglement_jours'] = tranche['delai_reglement_jours']
+    # CIQ213 — tranche réglée par un TIERS (organisme financeur).
+    if tranche.get('payeur') == 'tiers':
+        sortie['payeur'] = 'tiers'
     return sortie
 
 
@@ -692,6 +735,17 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
     if tr is None:
         raise ValueError("Toutes les tranches de l'échéancier sont déjà facturées.")
 
+    # CIQ213 — une tranche ``payeur: tiers`` est facturée à l'organisme
+    # financeur du devis (``Facture.client`` = financeur) ; ``Facture.devis``
+    # garde le lien au client final. Sans tiers posé : refus en français.
+    destinataire = devis.client
+    if tr.get('payeur') == 'tiers':
+        destinataire = getattr(devis, 'tiers_payeur', None)
+        if destinataire is None:
+            raise ValueError(
+                "Cette tranche est réglée par un organisme financeur : "
+                "renseignez le tiers payeur du devis avant de la facturer.")
+
     pct_label = int(tr['pourcentage']) if tr['pourcentage'] == int(tr['pourcentage']) \
         else tr['pourcentage']
     libelle = f"{tr['label']} {pct_label} % — devis {devis.reference}"
@@ -712,7 +766,7 @@ def creer_facture_tranche(devis, user, company, create_with_reference):
             **extra,
             reference=ref,
             devis=devis,
-            client=devis.client,
+            client=destinataire,
             statut=Facture.Statut.BROUILLON,
             type_facture=tr['type'],
             pourcentage=tr['pourcentage'],

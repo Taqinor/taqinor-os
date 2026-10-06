@@ -211,7 +211,25 @@ class EcheancierValidationMixin:
         return value
 
 
-class DevisSerializer(EcheancierValidationMixin, serializers.ModelSerializer):
+class TiersPayeurValidationMixin:
+    """CIQ213 — ``tiers_payeur`` (organisme financeur) : un client de la
+    MÊME société que le devis, sinon 400 nommant ``tiers_payeur``."""
+
+    def validate_tiers_payeur(self, value):
+        if value is None:
+            return value
+        company = getattr(self.instance, 'company', None)
+        if company is None:
+            request = self.context.get('request')
+            company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None or value.company_id != company.id:
+            raise serializers.ValidationError(
+                "Tiers payeur : client introuvable dans votre société.")
+        return value
+
+
+class DevisSerializer(TiersPayeurValidationMixin, EcheancierValidationMixin,
+                      serializers.ModelSerializer):
     lignes = LigneDevisSerializer(many=True, read_only=True)
     total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     total_tva = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
@@ -701,7 +719,8 @@ class DevisSerializer(EcheancierValidationMixin, serializers.ModelSerializer):
                             'updated_at', 'updated_by']  # VX98 — server-side only
 
 
-class DevisWriteSerializer(EcheancierValidationMixin,
+class DevisWriteSerializer(TiersPayeurValidationMixin,
+                           EcheancierValidationMixin,
                            serializers.ModelSerializer):
     """Création/modification sans lignes imbriquées.
 
@@ -786,6 +805,9 @@ class DevisWriteSerializer(EcheancierValidationMixin,
             'company', 'client', 'lead', 'created_by', 'remise_approuvee_par',
             'version_parent', 'superseded_by', 'updated_by', 'variante_de',
             'devis_origine', 'entite',
+            # CIQ213 — payeur tiers (client de la même société, validé par
+            # ``TiersPayeurValidationMixin``).
+            'tiers_payeur',
         ]
         # company is force-assigned in perform_create — never accept it from the body.
         # SCA47 — prix_par_kwc est dérivé/gelé côté serveur (write-once), jamais

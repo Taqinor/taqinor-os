@@ -43,6 +43,18 @@ class Devis(models.Model):
         blank=True,
         related_name='devis',
     )
+    # CIQ213 — payeur TIERS (organisme financeur, réglant à la réception
+    # signée) : un client de la MÊME société (refus 400 nommant
+    # ``tiers_payeur`` sinon). Les tranches ``payeur: tiers`` de l'échéancier
+    # lui sont facturées ; le lien au client final reste ``Facture.devis``.
+    tiers_payeur = models.ForeignKey(
+        'crm.Client',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='devis_finances',
+        verbose_name='Tiers payeur (organisme financeur)',
+    )
     statut = models.CharField(
         max_length=20,
         choices=Statut.choices,
