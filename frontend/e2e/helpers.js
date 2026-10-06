@@ -330,3 +330,92 @@ export function routesParModule(options) {
 // affiché quand une page plante au rendu (`.map is not a function`, « objects
 // are not valid as a React child »…). Sa présence EST le défaut.
 export const TITRE_ECRAN_ERREUR = 'Une erreur est survenue'
+
+// ── Parcours de lead pro / agricole (AGR423, CIQ424, CIQ521) ────────────────
+// Briques PARTAGÉES des specs « aller-retour en direct » : aucune ne simule le
+// réseau, toutes parlent à la vraie pile locale (`seed_demo`).
+export const API_DJANGO = '/api/django'
+
+/** Corps JSON d'une réponse API, ou un échec qui NOMME l'appel et le statut. */
+export async function lireJson(res, quoi) {
+  expect(res.ok(), `${quoi} → HTTP ${res.status()} ${await res.text()}`).toBeTruthy()
+  return res.json()
+}
+
+/** Liste d'une réponse DRF paginée ou non. */
+export const listeDe = (corps) => (Array.isArray(corps) ? corps : (corps?.results || []))
+
+let _chiffresSeq = 0
+const chiffres = (n) => { _chiffresSeq += 1; return String(Date.now() + _chiffresSeq).slice(-n) }
+/** Mobile marocain E.164 UNIQUE (la cadence ne démarre pas sur un doublon). */
+export const telephoneMobileUnique = () => `+2126${chiffres(8)}`
+/** Fixe marocain E.164 UNIQUE (05 2x xx xx xx). */
+export const telephoneFixeUnique = () => `+21252${chiffres(7)}`
+
+/** `AAAA-MM-JJ` dans `n` jours. */
+export function isoDansJours(n) {
+  const d = new Date()
+  d.setDate(d.getDate() + n)
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const j = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${j}`
+}
+
+// Secret du récepteur de leads du site (`WEBSITE_LEAD_WEBHOOK_SECRET`, fermé
+// tant qu'il est vide). La pile e2e doit le poser ET exporter le même
+// `E2E_WEBHOOK_SECRET` à Playwright ; sans cela le récepteur répond 401 et les
+// specs qui en dépendent se SAUTENT en le disant (jamais un faux vert).
+export const SECRET_WEBHOOK_E2E = process.env.E2E_WEBHOOK_SECRET || 'e2e-webhook-secret'
+
+/** Poste un payload du site sur le vrai webhook. Renvoie `{ status, corps }`. */
+export async function posterWebhookSite(request, payload) {
+  const res = await request.post(`${API_DJANGO}/crm/webhooks/website-leads/`, {
+    data: { idempotencyKey: globalThis.crypto.randomUUID(), consent: true, ...payload },
+    headers: { 'X-Webhook-Secret': SECRET_WEBHOOK_E2E },
+  })
+  let corps = null
+  try { corps = await res.json() } catch { /* corps non JSON */ }
+  return { status: res.status(), corps }
+}
+
+/** Texte brut d'un PDF (pdfjs-dist, déjà une dépendance du frontend). */
+export async function textePdf(octets) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const doc = await pdfjs.getDocument({
+    data: new Uint8Array(octets), useSystemFonts: true, disableFontFace: true,
+  }).promise
+  let texte = ''
+  for (let i = 1; i <= doc.numPages; i += 1) {
+    const page = await doc.getPage(i)
+    const contenu = await page.getTextContent()
+    texte += `${contenu.items.map((it) => it.str).join(' ')}\n`
+  }
+  return texte
+}
+
+// Mois de consommation d'un site commercial (kWh), profil saisonnier plausible.
+export const KWH_COMMERCIAL = [9800, 9200, 10100, 10800, 12500, 14800, 17200, 17600, 14900, 12100, 10200, 9900]
+
+/** Crée un devis COMMERCIAL par le vrai générateur, depuis un lead : profil
+ *  déclaré (12 mois) → Auto-remplir (aperçu serveur) → « Créer le devis ».
+ *  Le client est résolu côté serveur depuis le lead. Renvoie l'id du devis. */
+export async function creerDevisCommercialDepuisLead(page, leadId) {
+  await page.goto(`/ventes/devis/nouveau?lead=${leadId}`)
+  await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
+    .toBeVisible({ timeout: 30_000 })
+  await page.getByRole('radio', { name: /Commercial/ }).click()
+  await expect(page.getByTestId('ci-profil')).toBeVisible()
+  for (let i = 0; i < 12; i += 1) await page.locator(`#gen-ci-kwh-${i}`).fill(String(KWH_COMMERCIAL[i]))
+  await expect(page.getByTestId('ci-taille-retenue')).toBeVisible({ timeout: 45_000 })
+  const auto = page.waitForResponse((r) => r.request().method() === 'POST'
+    && /\/ventes\/etude-ci\/preview\/$/.test(new URL(r.url()).pathname))
+  await page.getByTestId('btn-auto-remplir').click()
+  await auto
+  const creation = page.waitForResponse((r) => r.request().method() === 'POST'
+    && /\/ventes\/devis\/atomic\/$/.test(new URL(r.url()).pathname) && r.status() < 300)
+  await page.locator('#gen-form').getByRole('button', { name: /Créer le devis/ }).click()
+  const cree = await (await creation).json()
+  const id = cree.id ?? cree.devis?.id
+  expect(id, 'identifiant du devis créé').toBeTruthy()
+  return id
+}
