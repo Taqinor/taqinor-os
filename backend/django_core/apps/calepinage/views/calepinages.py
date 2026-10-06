@@ -78,6 +78,11 @@ from ..services.layout import (
 )
 # ACAL196 — référence et aperçu : UNE définition, lue aussi par la liste.
 from ..services.presentation import image_apercu, reference_calepinage
+# ACAL191 — dérive du GPS du lead : mesure (lecture) et deux gestes versionnés.
+from ..services import repere as service_repere
+from ..services.repere import (
+    RepereRefuse, avertissement_derive, etat_derive, repere_du_lead,
+)
 from ..services.variantes import (
     VarianteRefusee, creer_variante, modifier_variante, retenir_variante,
     supprimer_variante,
@@ -653,6 +658,35 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         """
         return Response(contexte_conception(self.get_object(), request))
 
+    def _geste_repere(self, request, geste):
+        """ACAL191 — exécute un geste de repère et rend la réponse d'écriture."""
+        calepinage = self.get_object()  # borné société par get_queryset
+        try:
+            resultat = geste(calepinage, user=request.user,
+                             base_empreinte=_jeton_if_match(request))
+        except DocumentModifie as conflit:
+            return Response(conflit.corps(), status=status.HTTP_409_CONFLICT)
+        except (RepereRefuse, LayoutRefuse) as refus:
+            return Response({refus.champ or 'detail': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(_reponse_ecriture(calepinage, resultat))
+
+    @action(detail=True, methods=['post'], url_path='recentrer-sur-lead',
+            permission_classes=[PeutGererCalepinage])
+    def recentrer_sur_lead(self, request, pk=None):
+        """ACAL191 (D-ACAL-13) — translate TOUTE la géométrie sur le GPS du
+        lead (projection locale, jamais Δlat/Δlng bruts) et dépose une
+        version « Recentré sur le GPS du lead ». Verrou respecté (409)."""
+        return self._geste_repere(request,
+                                  service_repere.recentrer_sur_lead)
+
+    @action(detail=True, methods=['post'], url_path='garder-repere',
+            permission_classes=[PeutGererCalepinage])
+    def garder_repere(self, request, pk=None):
+        """ACAL191 (D-ACAL-13) — acquitte la dérive (``repereAcquitte`` = le
+        repère du lead) : plus de bannière tant que le lead ne bouge pas."""
+        return self._geste_repere(request, service_repere.garder_repere)
+
     # SOLMVP15 — l'action ``importer-contour-ao`` (CAL240) vivait ICI : elle
     # reprenait dans ce calepinage le contour d'une toiture d'appel d'offres, en
     # symétrie du sens inverse posé côté AO (CAL241). C'était un PONT, et rien
@@ -809,6 +843,11 @@ def contexte_conception(calepinage, request=None):
     # Lu UNE seule fois et partagé : la géométrie ET l'adresse en sortent.
     geo = cal_selectors.contexte_geographique(calepinage)
     geometrie = _geometrie(calepinage, contexte_devis, geo)
+    # ACAL191 — la dérive du GPS du lead (LECTURE PURE : rien n'est
+    # translaté ici ; seuls les gestes recentrer / garder écrivent).
+    geometrie.update(etat_derive(
+        getattr(calepinage, 'roof_layout', None), repere_du_lead(geo),
+        devis_statut=(_devis_lie_resume(contexte_devis) or {}).get('statut')))
     cible = _cible(calepinage, contexte_devis)
     return {
         # ACAL36 — « Réviser » est-il possible sur le devis lié ? LU sur ventes
@@ -1042,6 +1081,9 @@ def _raison_lecture_seule(contexte_devis):
 def _avertissements(geometrie, cible, contexte_devis):
     """Ce qui manque, DIT en français — jamais tu."""
     messages = list((contexte_devis or {}).get('avertissements') or [])
+    derive = avertissement_derive(geometrie)  # ACAL191
+    if derive:
+        messages.append(derive)
     if geometrie['source'] == 'none':
         messages.append(
             'Aucune géométrie de toiture connue pour ce calepinage : '

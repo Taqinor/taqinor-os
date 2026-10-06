@@ -37,9 +37,6 @@ CONTRAT = json.loads(
 #: vide, ``forme_serveur`` redevient ``complete``.
 EN_ATTENTE = {
     'calepinage.lead_supprime': 'ACAL178',
-    'geometrie.repere_lead': 'ACAL191',
-    'geometrie.ecart_m': 'ACAL191',
-    'geometrie.derive': 'ACAL191',
     'geometrie.contour_utilisable': 'ACAL250',
     'geometrie.source_repere': 'ACAL250',
     'cible.refus': 'ACAL194',
