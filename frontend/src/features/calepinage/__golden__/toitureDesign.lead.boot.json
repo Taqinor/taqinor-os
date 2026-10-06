@@ -24,7 +24,8 @@
       },
       "reglagesAtelier": null,
       "referenceContour": null,
-      "onApiReady": "[fn]"
+      "onApiReady": "[fn]",
+      "onHydrationTerminee": "[fn]"
     }
   ],
   "api_builder_appels": [

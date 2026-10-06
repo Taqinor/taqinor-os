@@ -27,7 +27,7 @@
  * (login form + token + cross-domain) est remplacée par celle-ci. La source du
  * builder n'est PAS modifiée : on l'importe seulement via l'alias `@roofbuilder`.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import api from '../../api/axios'
@@ -61,6 +61,7 @@ import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis (voir enregistrerConception ci-dessous).
 import { useConfirmDialog } from '../../ui/confirm'
+import { useDirtyGuard, confirmLeaveIfDirty } from '../../ui/useDirtyGuard'
 // L-MAP (fondateur 26/08/2026) — le contour dessiné par le client, VISIBLE sur
 // la carte du calepinage 3D (voir ToitClientOverlay.jsx pour le pourquoi).
 import { contourExploitable } from '../../features/crm/workspace/traceToit'
@@ -237,6 +238,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const [hashBaseBrouillon, setHashBaseBrouillon] = useState(null)
   const [brouillonPropose, setBrouillonPropose] = useState(null)
   const gestionnaireBrouillonRef = useRef(null)
+  // ACAL85 — la scène est HYDRATÉE (`onHydrationTerminee`, posé par le boot dans
+  // les trois modes). `onApiReady` arrive avant l'hydratation : toute référence
+  // « non modifiée » (garde de sortie, amorce du brouillon) se prend APRÈS.
+  const [sceneHydratee, setSceneHydratee] = useState(false)
+  // ACAL85 — empreinte de la scène au boot (après hydratation) puis à chaque
+  // enregistrement réussi ; `sceneModifiee` arme `useDirtyGuard`.
+  const hashSceneReferenceRef = useRef(null)
+  const [sceneModifiee, setSceneModifiee] = useState(false)
   // WIR227/QJ25 — contour OSM du bâtiment épinglé (mode lead uniquement) :
   // message serveur (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie
   // rien, jamais rédigé ici. Le tracé manuel reste toujours disponible.
@@ -274,9 +283,40 @@ export default function ToitureDesign({ mode = 'lead' }) {
     setHashBaseBrouillon,
     setLead,
     setLoadError,
+    setSceneHydratee,
     setStatus,
     utilisateurCourantId,
   })
+
+  // ── ACAL85 — GARDE DE SORTIE (les trois modes) ─────────────────────────────
+  // `dirty` = hacherLayout(serializeLayout()) ≠ l'empreinte prise au boot (scène
+  // hydratée) ou au dernier enregistrement réussi. La scène vit dans le
+  // constructeur 3D, hors de React : un sondage léger la compare, et
+  // `useDirtyGuard` (la garde commune, déjà adoptée par DevisGenerator) arme
+  // `beforeunload` ; « Fermer » confirme par `confirmLeaveIfDirty`.
+  const hacherScene = useCallback(() => {
+    try {
+      const layout = builderApi.current?.serializeLayout?.()
+      return layout == null ? null : hacherLayout(layout)
+    } catch {
+      return null
+    }
+  }, [])
+  const sceneEstModifiee = useCallback(() => {
+    const courant = hacherScene()
+    if (courant === null) return false
+    if (hashSceneReferenceRef.current === null) {
+      hashSceneReferenceRef.current = courant
+      return false
+    }
+    return courant !== hashSceneReferenceRef.current
+  }, [hacherScene])
+  const marquerSceneEnregistree = (layout) => {
+    try {
+      hashSceneReferenceRef.current = layout == null ? hacherScene() : hacherLayout(layout)
+    } catch { /* référence inchangée */ }
+    setSceneModifiee(false)
+  }
 
   // CALX68 — décision du bandeau de reprise : « Reprendre » substitue le
   // layout du brouillon AVANT le boot du constructeur (le seul moment où
@@ -319,7 +359,8 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // LA MÊME fonction que « Enregistrer le calepinage » (CAL37) — donc un
   // brouillon repris est strictement au format d'un enregistrement normal.
   useEffect(() => {
-    if (!estCalepinage || !builderReady || !hashBaseBrouillon || lectureSeuleContexte) return undefined
+    if (!estCalepinage || !builderReady || !sceneHydratee || !hashBaseBrouillon
+      || lectureSeuleContexte) return undefined
     const gestionnaire = creerGestionnaireBrouillon({
       storage: stockageBrouillonLocal(),
       calepinageId,
@@ -334,8 +375,18 @@ export default function ToitureDesign({ mode = 'lead' }) {
       gestionnaire.arreter()
       if (gestionnaireBrouillonRef.current === gestionnaire) gestionnaireBrouillonRef.current = null
     }
-  }, [estCalepinage, builderReady, calepinageId, utilisateurCourantId,
+  }, [estCalepinage, builderReady, sceneHydratee, calepinageId, utilisateurCourantId,
     hashBaseBrouillon, intervalleBrouillonSecondes, lectureSeuleContexte])
+
+  // ACAL85 — la référence se prend sur la scène HYDRATÉE, puis un sondage
+  // (1,5 s) tient `sceneModifiee` à jour. Rien en lecture seule (rien à perdre).
+  useEffect(() => {
+    if (!builderReady || !sceneHydratee || lectureSeuleContexte) return undefined
+    if (hashSceneReferenceRef.current === null) hashSceneReferenceRef.current = hacherScene()
+    const id = window.setInterval(() => setSceneModifiee(sceneEstModifiee()), 1500)
+    return () => window.clearInterval(id)
+  }, [builderReady, sceneHydratee, lectureSeuleContexte, hacherScene, sceneEstModifiee])
+  useDirtyGuard(sceneModifiee && !lectureSeuleContexte)
 
   // VT13 — la photo réelle du toit se demande sur le LEAD, jamais sur la
   // visite : mode lead (l'id de l'URL) ou mode devis QUAND le devis porte un
@@ -475,6 +526,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
       setGenStatus(null)
       setSending(false)
       setStatus(`Devis ${devis.reference} créé — à envoyer depuis la fiche lead.`)
+      marquerSceneEnregistree(layout) // ACAL85
       await rafraichirContexte() // ACAL83 — no-op en mode lead (aucun contexte agrégé)
     } catch {
       setGenStatus(null)
@@ -561,6 +613,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         setGenStatus(null)
         setSending(false)
         setStatus('Calepinage inchangé — le devis n’a pas bougé.')
+        marquerSceneEnregistree(layout) // ACAL85
         await rafraichirContexte() // ACAL83
         return
       }
@@ -593,6 +646,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         + `${resultat.lignes_modifiees} ligne(s) de devis mise(s) à jour`
         + (ajoutees > 0 ? `, ${ajoutees} ligne(s) de kit ajoutée(s).` : '.')
       )
+      marquerSceneEnregistree(layout) // ACAL85
       await rafraichirContexte() // ACAL83
     } catch {
       setGenStatus(null)
@@ -688,6 +742,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         setGenStatus(null)
         setSending(false)
         setStatus('Conception inchangée — le calepinage n’a pas bougé.')
+        marquerSceneEnregistree(layout) // ACAL85
         await rafraichirContexte() // ACAL83
         return
       }
@@ -721,6 +776,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
           ? `Conception enregistrée — version ${resultat.version}.`
           : 'Conception enregistrée.'
       )
+      marquerSceneEnregistree(layout) // ACAL85
       await rafraichirContexte() // ACAL83
     } catch (err) {
       setGenStatus(null)
@@ -766,7 +822,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // une cible en dur qui pourrait diverger d'un appelant à l'autre. Le tracé
   // en cours n'est jamais perdu silencieusement : rien n'est envoyé ici, on
   // quitte seulement la vue (comme un retour navigateur).
-  const fermer = () => navigate(-1)
+  // ACAL85 — une conception NON enregistrée n'est plus perdue en silence :
+  // « Fermer » confirme d'abord (calcul frais au clic, pas seulement le sondage).
+  const fermer = () => {
+    const modifiee = sceneHydratee && !lectureSeuleContexte && sceneEstModifiee()
+    if (!confirmLeaveIfDirty(modifiee,
+      'La conception porte des modifications non enregistrées — fermer quand même ?')) return
+    navigate(-1)
+  }
 
   // ACAL23 — L'UNIQUE rechargement de l'atelier (relayé par le Rail à chaque
   // onglet, et porté par la bannière « modifiée ailleurs »). Le constructeur
@@ -775,11 +838,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // modifications non enregistrées (sérialisation ≠ base serveur), on
   // CONFIRME d'abord — sinon rechargement direct.
   const rechargerAtelier = () => {
-    let modifiee = false
-    try {
-      const courant = builderApi.current?.serializeLayout?.()
-      modifiee = !!courant && !!hashBaseBrouillon && hacherLayout(courant) !== hashBaseBrouillon
-    } catch { modifiee = false }
+    // ACAL85 — MÊME mesure que la garde de sortie (référence = scène hydratée
+    // ou dernier enregistrement), jamais l'empreinte serveur du brouillon.
+    const modifiee = sceneHydratee && sceneEstModifiee()
     if (modifiee && !window.confirm(
       'La scène porte des modifications non enregistrées : elles seront perdues. Recharger quand même ?',
     )) return

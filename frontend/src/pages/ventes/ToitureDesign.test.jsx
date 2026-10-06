@@ -17,7 +17,7 @@ import { navigateMock } from '../../test/toitureDesignHarnessNavigation'
 import {
   initRoofToolPro8, serializeLayout, snapshot, setReferenceContourVisible,
   recommencerDepuisTraceClient, LAYOUT, LEAD_88, rendreDevis, rendreLead as rendreEcranLead,
-  reinitialiserBoot, simulerApiLead,
+  reinitialiserBoot, simulerApiLead, apiBuilder,
 } from '../../test/toitureDesignHarness'
 import userEvent from '@testing-library/user-event'
 import api from '../../api/axios'
@@ -122,6 +122,92 @@ describe('ToitureDesign — mode devis (PV20)', () => {
     // écran (lead, liste des devis, générateur…) l'a amené — jamais une
     // cible en dur.
     expect(navigateMock).toHaveBeenCalledWith(-1)
+  })
+
+  /* ACAL85 — une conception NON enregistrée ne se perd plus en silence :
+     `useDirtyGuard` arme `beforeunload` et « Fermer » confirme d'abord. */
+  describe('ACAL85 — garde de sortie de l’atelier', () => {
+    const bootHydrate = () => initRoofToolPro8.mockImplementation((options) => {
+      options?.onApiReady?.(apiBuilder())
+      // Comme le constructeur réel : l'hydratation se termine APRÈS `onApiReady`.
+      options?.onHydrationTerminee?.()
+    })
+    const beforeunloadArme = () => {
+      const evenement = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(evenement)
+      return evenement.defaultPrevented
+    }
+
+    it('mode devis, serializeLayout change → Fermer demande confirmation, beforeunload armé', async () => {
+      ventesApi.getDevisDesignContext.mockResolvedValue(
+        reponseContrat('ventes', 'devis_design_context'))
+      bootHydrate()
+      const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      try {
+        rendreDevis(CTX.devis.id)
+        const fermer = await screen.findByRole('button', { name: 'Fermer la conception 3D' })
+        // La référence est prise sur la scène HYDRATÉE.
+        await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
+        expect(beforeunloadArme()).toBe(false)
+
+        // On retire 3 panneaux : la sérialisation change.
+        serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 9 } })
+        await waitFor(() => expect(beforeunloadArme()).toBe(true), { timeout: 5000 })
+
+        await userEvent.click(fermer)
+        expect(confirmer).toHaveBeenCalledTimes(1)
+        expect(navigateMock).not.toHaveBeenCalledWith(-1)
+
+        confirmer.mockReturnValue(true)
+        await userEvent.click(fermer)
+        expect(navigateMock).toHaveBeenCalledWith(-1)
+      } finally {
+        confirmer.mockRestore()
+      }
+    })
+
+    it('scène inchangée → Fermer sans confirmation, beforeunload désarmé', async () => {
+      ventesApi.getDevisDesignContext.mockResolvedValue(
+        reponseContrat('ventes', 'devis_design_context'))
+      bootHydrate()
+      const confirmer = vi.spyOn(window, 'confirm')
+      try {
+        rendreDevis(CTX.devis.id)
+        const fermer = await screen.findByRole('button', { name: 'Fermer la conception 3D' })
+        await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
+        await userEvent.click(fermer)
+        expect(confirmer).not.toHaveBeenCalled()
+        expect(navigateMock).toHaveBeenCalledWith(-1)
+        expect(beforeunloadArme()).toBe(false)
+      } finally {
+        confirmer.mockRestore()
+      }
+    })
+
+    it('après un enregistrement réussi, plus aucune alerte', async () => {
+      ventesApi.getDevisDesignContext.mockResolvedValue(
+        reponseContrat('ventes', 'devis_design_context'))
+      ventesApi.syncDevisLayout.mockResolvedValue({ data: { inchange: true, avertissements: [] } })
+      bootHydrate()
+      const confirmer = vi.spyOn(window, 'confirm')
+      try {
+        rendreDevis(CTX.devis.id)
+        const fermer = await screen.findByRole('button', { name: 'Fermer la conception 3D' })
+        await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
+        const modifie = { ...LAYOUT, result: { panels: CTX.cible.panneaux } }
+        serializeLayout.mockReturnValue(modifie)
+        await waitFor(() => expect(beforeunloadArme()).toBe(true), { timeout: 5000 })
+
+        await userEvent.click(await screen.findByRole('button', { name: /Enregistrer/ }))
+        await waitFor(() => expect(ventesApi.syncDevisLayout).toHaveBeenCalled())
+        await waitFor(() => expect(beforeunloadArme()).toBe(false))
+        await userEvent.click(fermer)
+        expect(confirmer).not.toHaveBeenCalled()
+        expect(navigateMock).toHaveBeenCalledWith(-1)
+      } finally {
+        confirmer.mockRestore()
+      }
+    })
   })
 
   it('lecture seule : le MOTIF vient du serveur et le CTA renvoie vers la 3D', async () => {

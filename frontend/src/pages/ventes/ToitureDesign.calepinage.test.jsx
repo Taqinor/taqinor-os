@@ -27,7 +27,7 @@ vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }
 import '../../test/toitureDesignHarnessCalepinage'
 import {
   initRoofToolPro8, rendreCalepinage, rendreDevis, reinitialiserBoot, reinitialiserBootMinimal,
-  LAYOUT, snapshot,
+  LAYOUT, snapshot, apiBuilder,
 } from '../../test/toitureDesignHarness'
 import ventesApi from '../../api/ventesApi'
 import calepinageApi from '../../api/calepinageApi'
@@ -278,6 +278,12 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     try {
       calepinageApi.calepinages.designContext.mockResolvedValue(
         reponseContrat('calepinage', 'calepinage_design_context'))
+      // ACAL85 — comme le constructeur réel : l'hydratation se termine APRÈS
+      // `onApiReady`, et le brouillon ne démarre qu'une fois la scène hydratée.
+      initRoofToolPro8.mockImplementation((options) => {
+        options?.onApiReady?.(apiBuilder())
+        options?.onHydrationTerminee?.()
+      })
       rendreCalepinage(CTX.calepinage.id)
       await waitFor(() => expect(espion.mock.calls.some(([, ms]) => ms === 4000)).toBe(true))
     } finally {

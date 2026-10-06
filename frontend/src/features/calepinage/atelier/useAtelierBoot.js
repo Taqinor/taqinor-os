@@ -40,6 +40,10 @@ export function useAtelierBoot(ctx) {
   const { setBrouillonPropose, setBuilderApiActuel, setBuilderReady, setContexte } = ctx
   const { setCatalogueIndisponible } = ctx
   const { setContourMessage, setHashBaseBrouillon, setLead, setLoadError, setStatus } = ctx
+  // ACAL85 — « la scène est hydratée » : posé par `onHydrationTerminee` dans les TROIS
+  // modes. `onApiReady` arrive AVANT l'hydratation (roof-tool-pro11) : une référence
+  // prise là compterait l'hydratation elle-même comme une modification.
+  const { setSceneHydratee } = ctx
   useEffect(() => {
     let cancelled = false
     // Sans identifiant, l'état initial affiche déjà l'erreur — rien à booter.
@@ -236,6 +240,8 @@ export function useAtelierBoot(ctx) {
           // l'atelier garde sa convention d'extrusion, affichée comme telle).
           if (batimentOsm) a.setBatimentOsmPropose?.(batimentOsm)
         },
+        // ACAL85 — la référence « non modifiée » se prend APRÈS l'hydratation.
+        onHydrationTerminee: () => { setSceneHydratee?.(true) },
       })
       // Pré-remplit l'adresse depuis la ville du lead (champ de recherche).
       const addrEl = document.getElementById('rp9-address')
@@ -323,6 +329,8 @@ export function useAtelierBoot(ctx) {
         // proposé et aucune cote de repli.
         reglagesAtelier: reglagesAtelierDuContexte(ctx),
         onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
+        // ACAL85 — la référence « non modifiée » se prend APRÈS l'hydratation.
+        onHydrationTerminee: () => { setSceneHydratee?.(true) },
       })
       // PV23bis — pré-remplit la barre de recherche d'adresse depuis
       // adresse+ville du devis, comme le mode lead le fait déjà ci-dessus
@@ -447,6 +455,8 @@ export function useAtelierBoot(ctx) {
           // APRÈS l'hydratation (jamais depuis `onApiReady`, où `fondDuDocument()`
           // vaut null ou le fond du document précédent en navigation SPA).
           onHydrationTerminee: () => {
+            // ACAL85 — brouillon et garde de sortie partent de la scène HYDRATÉE.
+            setSceneHydratee?.(true)
             poserFondDuDocument(builderApi.current)
             // ACAL286 — la teinte par chaîne vient de la table servie (best-effort).
             pousserAffectationAtelier(builderApi.current, calepinageId)
