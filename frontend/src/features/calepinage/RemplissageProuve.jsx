@@ -3,9 +3,9 @@
    afficher) : le test jumeau l'exerce sans monter l'écran, parce que c'est ELLE
    qui garantit qu'on n'écrit jamais « prouvé » sur une heuristique. Même
    dérogation que `module.config.jsx` du même module. */
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import calepinageApi from '../../api/calepinageApi'
-import { issueDuJob } from './production/suiviSimulation'
+import useSuiviJob from './production/useSuiviJob'
 
 /* ============================================================================
    CAL79 — LE REMPLISSAGE, ET L'HONNÊTETÉ SUR SON RÉGIME DE PREUVE.
@@ -74,40 +74,20 @@ export default function RemplissageProuve({
   entree = null, onAppliquer = null, lectureSeule = false, intervalleMs = 2000,
 }) {
   const [resultat, setResultat] = useState(null)
-  const [job, setJob] = useState(null)
-  const [enCours, setEnCours] = useState(false)
   const [refus, setRefus] = useState(null)
-  const minuterie = useRef(null)
-
-  // Un suivi de travail de fond ne doit jamais survivre au démontage.
-  useEffect(() => () => {
-    if (minuterie.current) clearTimeout(minuterie.current)
-  }, [])
-
-  const suivre = (jobId) => {
-    Promise.resolve(calepinageApi.moteur.resultat(jobId))
-      .then((res) => {
-        const suivi = res?.data ?? null
-        setJob(suivi)
-        // ACAL125 — statuts RÉELS du job partagé (queued/running/done/failed),
-        // le même vocabulaire que le bouton de calcul de la simulation.
-        const issue = issueDuJob(suivi)
-        if (issue.etat === 'attente') {
-          minuterie.current = setTimeout(() => suivre(jobId), intervalleMs)
-          return
-        }
-        setEnCours(false)
-        if (issue.etat === 'refus') {
-          setRefus(issue.refus.motif)
-        } else if (suivi?.resultat) {
-          setResultat(suivi.resultat)
-        }
-      })
-      .catch(() => {
-        setEnCours(false)
-        setRefus('Le suivi du calcul de fond a été interrompu.')
-      })
-  }
+  // ACAL345 — le suivi du job de fond est l'UNIQUE copie partagée avec le
+  // bouton de simulation (`useSuiviJob`) ; seule l'issue est propre à l'écran.
+  const { enCours, job, lancer } = useSuiviJob({
+    intervalleMs,
+    surIssue: (issue, suivi) => {
+      if (issue.etat === 'refus') {
+        setRefus(issue.refus.motif)
+      } else if (suivi?.resultat) {
+        setResultat(suivi.resultat)
+      }
+    },
+    surInterruption: () => setRefus('Le suivi du calcul de fond a été interrompu.'),
+  })
 
   const remplir = () => {
     if (!entree) {
@@ -116,25 +96,11 @@ export default function RemplissageProuve({
     }
     setRefus(null)
     setResultat(null)
-    setJob(null)
-    setEnCours(true)
-    Promise.resolve(calepinageApi.moteur.calculer(entree))
-      .then((res) => {
-        const donnees = res?.data ?? null
-        // 202 au-delà du budget synchrone : le moteur rend un job, pas un plan.
-        if (donnees?.job_id) {
-          setJob(donnees)
-          suivre(donnees.job_id)
-          return
-        }
-        setEnCours(false)
-        setResultat(donnees)
-      })
-      .catch((e) => {
-        setEnCours(false)
-        setRefus(e?.response?.data?.detail
-          || 'Le moteur n’a pas pu calculer ce remplissage.')
-      })
+    lancer(calepinageApi.moteur.calculer(entree), {
+      surSynchrone: (donnees) => setResultat(donnees),
+      surErreur: (e) => setRefus(e?.response?.data?.detail
+        || 'Le moteur n’a pas pu calculer ce remplissage.'),
+    })
   }
 
   const regime = regimeDePreuve(resultat)

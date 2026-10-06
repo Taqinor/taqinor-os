@@ -9,10 +9,11 @@ import { Button, Card, Spinner, Stat } from '../../../ui'
 import { PARAM_ONGLET } from '../atelier/onglets'
 import RetourAtelier from '../atelier/RetourAtelier'
 import {
-  LIBELLE_BOUTON, etatCalcul, issueDuJob, refusDepuisErreur, refusRenvoieAuxReglages,
+  LIBELLE_BOUTON, etatCalcul, refusDepuisErreur, refusRenvoieAuxReglages,
 } from './suiviSimulation'
 import { BandeauBorneHaute, ReglagesUtilises, estIncomplet } from './BandeauProvenanceProduction'
 import TapisHoraire from './TapisHoraire'
+import useSuiviJob from './useSuiviJob'
 
 /* ============================================================================
    CAL236 — LE PANNEAU « PRODUCTION » DU MODULE.
@@ -115,67 +116,38 @@ export function BoutonCalculer({
   declenchement = 0,
 }) {
   const peutGerer = useHasPermission('calepinage_gerer')
-  const [enCours, setEnCours] = useState(false)
-  const [job, setJob] = useState(null)
   const [refus, setRefus] = useState(null)
-  const minuterie = useRef(null)
-
-  // Un suivi de travail de fond ne doit jamais survivre au démontage.
-  useEffect(() => () => {
-    if (minuterie.current) clearTimeout(minuterie.current)
-  }, [])
+  // ACAL345 — le suivi du job de fond est l'UNIQUE copie partagée avec le
+  // remplissage automatique (`useSuiviJob`).
+  const suiviJob = useSuiviJob({
+    intervalleMs,
+    surIssue: (issue) => {
+      if (issue.etat === 'succes') {
+        // Le résultat est RELU du serveur (aucun calcul ni recopie ici).
+        onTermine?.()
+      } else {
+        setRefus(issue.refus)
+      }
+    },
+    surInterruption: () => setRefus({ champ: '', motif: 'Le suivi du calcul de fond a été interrompu.' }),
+  })
+  const { enCours, job } = suiviJob
 
   const etat = etatCalcul(data)
-
-  const suivre = (jobId) => {
-    Promise.resolve(calepinageApi.moteur.resultat(jobId))
-      .then((res) => {
-        const suivi = res?.data ?? null
-        setJob(suivi)
-        const issue = issueDuJob(suivi)
-        if (issue.etat === 'attente') {
-          minuterie.current = setTimeout(() => suivre(jobId), intervalleMs)
-          return
-        }
-        setEnCours(false)
-        if (issue.etat === 'succes') {
-          // Le résultat est RELU du serveur (aucun calcul ni recopie ici).
-          onTermine?.()
-        } else {
-          setRefus(issue.refus)
-        }
-      })
-      .catch(() => {
-        setEnCours(false)
-        setRefus({ champ: '', motif: 'Le suivi du calcul de fond a été interrompu.' })
-      })
-  }
 
   const lancer = (forcerDemande = false) => {
     if (!calepinageId) return
     setRefus(null)
-    setEnCours(true)
     const forcer = forcerDemande || etat === 'frais'
     const appel = forcer
       ? calepinageApi.calepinages.simuler(calepinageId, { forcer: true })
       : calepinageApi.calepinages.simuler(calepinageId)
-    Promise.resolve(appel)
-      .then((res) => {
-        const donnees = res?.data ?? null
-        if (donnees?.job_id) {
-          setJob(donnees)
-          suivre(donnees.job_id)
-          return
-        }
-        // 200 « déjà calculé » (hash inchangé) : rien à recalculer, mais
-        // l'écran se rafraîchit quand même.
-        setEnCours(false)
-        onTermine?.()
-      })
-      .catch((e) => {
-        setEnCours(false)
-        setRefus(refusDepuisErreur(e))
-      })
+    suiviJob.lancer(appel, {
+      // 200 « déjà calculé » (hash inchangé) : rien à recalculer, mais
+      // l'écran se rafraîchit quand même.
+      surSynchrone: () => onTermine?.(),
+      surErreur: (e) => setRefus(refusDepuisErreur(e)),
+    })
   }
 
   // ACAL167 — « Enregistrer et relancer » : le parent incrémente `declenchement`,
