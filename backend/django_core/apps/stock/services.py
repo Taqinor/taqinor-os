@@ -3100,6 +3100,36 @@ def facturer_bcf_sur_commande(company, user, bon_commande):
 # BROUILLON neuf (nouvelle référence, quantités reçues à zéro, statut
 # réinitialisé) — la source n'est jamais modifiée.
 
+# ASTK66 — LISTE DÉCLARATIVE des champs d'en-tête qu'un BCF dérivé (copie
+# ZPUR4, fusion ZPUR6) porte depuis sa/ses source(s). Les RATTACHEMENTS
+# (chantier d'origine/de livraison, destination, devise, taux) doivent être
+# identiques entre sources fusionnées ; les autres sont repris tels quels
+# (acheteur : le plus récent renseigné ; date prévue : la plus proche).
+CHAMPS_RATTACHEMENT_BCF = (
+    ('chantier_origine_id', 'chantier'),
+    ('chantier_livraison_id', 'chantier de livraison'),
+    ('emplacement_destination_id', 'destination'),
+    ('devise', 'devise'),
+    ('taux_change', 'taux de change'),
+)
+CHAMPS_PORTES_BCF = tuple(c for c, _ in CHAMPS_RATTACHEMENT_BCF) + (
+    'acheteur_id', 'date_livraison_prevue',
+)
+
+
+def _champs_portes_bcf(sources):
+    """ASTK66 — valeurs d'en-tête portées par un BCF dérivé de ``sources``
+    (triées de la plus ancienne à la plus récente)."""
+    derniere = sources[-1]
+    valeurs = {c: getattr(derniere, c) for c, _ in CHAMPS_RATTACHEMENT_BCF}
+    acheteurs = [bc.acheteur_id for bc in sources if bc.acheteur_id]
+    valeurs['acheteur_id'] = acheteurs[-1] if acheteurs else None
+    dates = [bc.date_livraison_prevue for bc in sources
+             if bc.date_livraison_prevue]
+    valeurs['date_livraison_prevue'] = min(dates) if dates else None
+    return valeurs
+
+
 def dupliquer_bcf(company, user, bon_commande):
     """ZPUR4 — crée un nouveau BCF BROUILLON copiant fournisseur + lignes
     (produit, quantité, prix d'achat) du BCF source. Référence neuve via
@@ -3114,20 +3144,22 @@ def dupliquer_bcf(company, user, bon_commande):
     created = {}
 
     def _save(ref):
+        # ASTK66 — même liste déclarative que la fusion (rattachements,
+        # devise, acheteur, date prévue) : la copie ne perd plus son chantier.
         clone = BonCommandeFournisseur.objects.create(
             company=company, reference=ref,
             fournisseur=bon_commande.fournisseur,
             statut=BonCommandeFournisseur.Statut.BROUILLON,
             date_commande=timezone.now().date(),
-            devise=bon_commande.devise, taux_change=bon_commande.taux_change,
             note=f'Dupliqué depuis {bon_commande.reference}',
-            created_by=user)
+            created_by=user, **_champs_portes_bcf([bon_commande]))
         for ligne in lignes_source:
             LigneBonCommandeFournisseur.objects.create(
                 bon_commande=clone, produit=ligne.produit,
                 designation=ligne.designation, sans_stock=ligne.sans_stock,
                 quantite=ligne.quantite,
                 prix_achat_unitaire=ligne.prix_achat_unitaire,
+                prix_achat_unitaire_devise=ligne.prix_achat_unitaire_devise,
                 # ZPUR4 — quantité reçue TOUJOURS à zéro sur le clone (jamais
                 # copiée : un clone brouillon n'a par construction rien reçu).
                 quantite_recue=0,
@@ -3175,6 +3207,14 @@ def fusionner_bcf(company, user, bon_commande_ids):
         raise ValueError(
             'Seuls des bons de commande en BROUILLON peuvent être fusionnés '
             f'({non_brouillon[0].reference} ne l\'est pas).')
+    # ASTK66 — des BCF rattachés à des chantiers / destinations / devises
+    # différents ne se fusionnent pas : la cible perdrait le rattachement
+    # (réservation chantier à la réception, contre-valeur MAD).
+    for champ, libelle in CHAMPS_RATTACHEMENT_BCF:
+        valeurs = {getattr(bc, champ) for bc in bcs}
+        if len(valeurs) > 1:
+            raise ValueError(
+                f'Fusion impossible : rattachements différents ({libelle}).')
 
     # Cumule les quantités par produit ; garde le prix du BCF le plus RÉCENT
     # (date_creation) portant ce produit. Une ligne sans produit (libre/
@@ -3194,11 +3234,19 @@ def fusionner_bcf(company, user, bon_commande_ids):
                     'produit': ligne.produit,
                     'quantite': ligne.quantite,
                     'prix_achat_unitaire': ligne.prix_achat_unitaire,
+                    # ASTK66 — PU devise et frais annexes portés.
+                    'prix_achat_unitaire_devise': (
+                        ligne.prix_achat_unitaire_devise),
+                    'frais_annexes': ligne.frais_annexes or Decimal('0'),
                 }
             else:
                 existante['quantite'] += ligne.quantite
                 # bcs_par_date est croissant : le dernier vu = le plus récent.
                 existante['prix_achat_unitaire'] = ligne.prix_achat_unitaire
+                existante['prix_achat_unitaire_devise'] = (
+                    ligne.prix_achat_unitaire_devise)
+                existante['frais_annexes'] += (
+                    ligne.frais_annexes or Decimal('0'))
 
     fournisseur = bcs[0].fournisseur
     created = {}
@@ -3208,18 +3256,23 @@ def fusionner_bcf(company, user, bon_commande_ids):
         cible = BonCommandeFournisseur.objects.create(
             company=company, reference=ref, fournisseur=fournisseur,
             statut=BonCommandeFournisseur.Statut.BROUILLON,
-            note=f'Fusion de {references_sources}', created_by=user)
+            note=f'Fusion de {references_sources}', created_by=user,
+            **_champs_portes_bcf(bcs_par_date))
         for data in lignes_par_produit.values():
             LigneBonCommandeFournisseur.objects.create(
                 bon_commande=cible, produit=data['produit'],
                 quantite=data['quantite'],
-                prix_achat_unitaire=data['prix_achat_unitaire'])
+                prix_achat_unitaire=data['prix_achat_unitaire'],
+                prix_achat_unitaire_devise=data['prix_achat_unitaire_devise'],
+                frais_annexes=data['frais_annexes'])
         for ligne in lignes_libres:
             LigneBonCommandeFournisseur.objects.create(
                 bon_commande=cible, produit=None,
                 designation=ligne.designation, sans_stock=True,
                 quantite=ligne.quantite,
-                prix_achat_unitaire=ligne.prix_achat_unitaire)
+                prix_achat_unitaire=ligne.prix_achat_unitaire,
+                prix_achat_unitaire_devise=ligne.prix_achat_unitaire_devise,
+                frais_annexes=ligne.frais_annexes or Decimal('0'))
         created['bon'] = cible
         return cible
 
