@@ -34,6 +34,7 @@ from ..services.pertes import CATALOGUE, PertesInvalides, postes_du_calepinage
 from ..services.pertes import enregistrer_pertes as persister_pertes
 from ..services.simulation import (
     DETAIL_DEJA_CALCULE, SimulationRefusee, construire_contexte,
+    fichier_meteo_depose, verifier_simulable,
 )
 from ..services.simulation import CLE_SIMULATION as CLE_ENTETE_SIMULATION
 from .calepinages import CalepinageViewSet
@@ -156,7 +157,8 @@ def simuler(self, request, pk=None):
     * **200** — ``forcer`` absent et empreinte inchangée : aucun recalcul, la
       date du calcul existant est rendue ;
     * **400** — refus NOMMANT le réglage ou le champ fautif (règle fondateur :
-      jamais un « non enregistré » générique).
+      jamais un « non enregistré » générique) : mode météo, pan équipé,
+      épingle du site, températures saisies (ACAL126).
     """
     from core.jobs import submit
 
@@ -169,10 +171,15 @@ def simuler(self, request, pk=None):
     corps = request.data if isinstance(request.data, dict) else {}
     forcer = bool(corps.get('forcer'))
 
-    # L'EMPREINTE D'ABORD : relancer une tâche de fond pour apprendre que rien
-    # n'a bougé coûterait un worker et une minute pour rien.
+    # ACAL126 — LES REFUS NOMMÉS D'ABORD, par les MÊMES fonctions que la
+    # simulation (mode météo, pan équipé, épingle, températures saisies) :
+    # 400 immédiat plutôt qu'une tâche de fond vouée à l'échec. Puis
+    # L'EMPREINTE : relancer une tâche pour apprendre que rien n'a bougé
+    # coûterait un worker et une minute pour rien.
     try:
-        _contexte, meta = construire_contexte(calepinage)
+        contexte, meta = construire_contexte(calepinage)
+        verifier_simulable(contexte, meta,
+                           fichier_depose=fichier_meteo_depose(calepinage))
     except SimulationRefusee as refus:
         return Response({refus.champ or 'simulation': [refus.motif]},
                         status=status.HTTP_400_BAD_REQUEST)

@@ -55,7 +55,9 @@ from .etapes.autoconsommation import bloc_autoconsommation
 from .etapes.batterie import bloc_batterie
 from .etapes.hors_reseau import bloc_hors_reseau
 from .etapes.vieillissement import tableau_pluriannuel
-from .incertitude import bloc_incertitude, masquer_depassements
+from .incertitude import (
+    IncertitudeInvalide, bloc_incertitude, masquer_depassements,
+)
 from .performance import bloc_performance
 from .pvgis_serie import (
     BASE_PAR_DEFAUT, ClientPvgis, EntreeInvalide, PvgisIndisponible,
@@ -70,8 +72,8 @@ __all__ = [
     'MOTIF_ECRETAGE_SANS_AFFECTATION', 'MOTIF_SANS_PAN_EQUIPE',
     'MOTIF_SANS_POINT',
     'SOURCE_ENTREE_CHAINE', 'SimulationRefusee', 'VERSION_SIMULATION',
-    'construire_contexte', 'empreinte_simulation',
-    'simuler_calepinage',
+    'construire_contexte', 'empreinte_simulation', 'fichier_meteo_depose',
+    'simuler_calepinage', 'verifier_simulable',
 ]
 
 logger = logging.getLogger(__name__)
@@ -527,8 +529,17 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
     from .pertes import postes_du_calepinage
     from .raccordement import saisie_du_calepinage
 
-    conception, materiel_resolu, donnees, document = conception_du_calepinage(
-        calepinage, entree=entree, layout=layout, materiel=materiel)
+    from .electrique import TemperaturesInvalides
+
+    try:
+        conception, materiel_resolu, donnees, document = (
+            conception_du_calepinage(calepinage, entree=entree,
+                                     layout=layout, materiel=materiel))
+    except TemperaturesInvalides as refus:
+        # ACAL126 — une seule température saisie : 400 NOMMÉ, jamais 500.
+        raise SimulationRefusee(str(refus),
+                                champ=getattr(refus, 'champ', '')
+                                or 'temperatures') from refus
     company = getattr(calepinage, 'company', None)
     if reglages is None:
         reglages = parametres_societe(calepinage)
@@ -627,6 +638,62 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         'affectation': rattachement,
     }
     return contexte, meta
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ACAL126 — LES REFUS NOMMÉS, UNE SEULE SOURCE POUR LA VUE ET POUR LA TÂCHE
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: Les exceptions d'ENTRÉE qu'une simulation peut rencontrer après la
+#: pré-vérification (réseau PVGIS, horizon ou paramètre d'appel illisible,
+#: σ saisi illisible) : toutes deviennent une :class:`SimulationRefusee`
+#: qui NOMME son champ.
+REFUS_D_ENTREE = (PvgisIndisponible, EntreeInvalide, IncertitudeInvalide)
+
+
+def _refus_nomme(refus):
+    """Une exception d'entrée, convertie en refus NOMMÉ (champ + motif)."""
+    champ = getattr(refus, 'champ', '') or 'meteo'
+    motif = getattr(refus, 'motif', '') or str(refus)
+    return SimulationRefusee(motif, champ=champ)
+
+
+def verifier_simulable(contexte, meta, *, fichier_depose=False):
+    """ACAL126 — les refus AVANT tout calcul, nommés : mode météo saisi,
+    au moins un pan équipé, épingle du site (sauf fichier météo déposé),
+    pas d'année type sans fichier.
+
+    Appelée par :func:`simuler_calepinage` ET par la vue ``simuler/`` (400
+    immédiat au lieu d'une tâche de fond vouée à l'échec) : une seule
+    source, jamais une copie. Rend la décision météo.
+
+    Raises:
+        SimulationRefusee: le champ fautif est nommé.
+    """
+    try:
+        decision = decision_meteo(contexte)
+    except MeteoIndecise as refus:
+        raise SimulationRefusee(refus.motif, champ=refus.champ) from refus
+    if not meta.get('plans_equipes'):
+        raise SimulationRefusee(MOTIF_SANS_PAN_EQUIPE, champ='plans')
+    if not fichier_depose:
+        site = contexte.get('site') or {}
+        if site.get('lat') is None or site.get('lon') is None:
+            raise SimulationRefusee(MOTIF_SANS_POINT, champ='site.pin')
+        if decision['mode'] == 'tmy':
+            # Le service ``tmy`` de PVGIS ne publie que l'irradiance GLOBALE
+            # HORIZONTALE : la chaîne travaille sur le PLAN des modules et ne
+            # transpose pas. Le refus NOMME la colonne, comme la chaîne le
+            # ferait elle-même.
+            raise SimulationRefusee(MOTIF_TMY_HORIZONTAL,
+                                    champ='parametres.simulation.mode_meteo')
+    return decision
+
+
+def fichier_meteo_depose(calepinage):
+    """ACAL126 — un fichier météo est-il déposé sur ce calepinage ? (la vue
+    pré-vérifie sans relire le fichier lui-même)."""
+    return _piece_meteo_deposee(calepinage) is not None
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -992,28 +1059,13 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
             'detail': DETAIL_DEJA_CALCULE,
         }
 
-    # 1. LE MODE MÉTÉO, AVANT LE MOINDRE APPEL RÉSEAU (CALX153).
-    try:
-        decision = decision_meteo(contexte)
-    except MeteoIndecise as refus:
-        raise SimulationRefusee(refus.motif, champ=refus.champ) from refus
-
-    plans_equipes = meta['plans_equipes']
-    if not plans_equipes:
-        raise SimulationRefusee(MOTIF_SANS_PAN_EQUIPE, champ='plans')
-
+    # 1. LE MODE MÉTÉO, AVANT LE MOINDRE APPEL RÉSEAU (CALX153) — et les
+    # autres refus nommés, par LA fonction que la vue appelle aussi (ACAL126).
     fichier = _serie_meteo_deposee(calepinage)
+    decision = verifier_simulable(contexte, meta,
+                                  fichier_depose=fichier is not None)
+    plans_equipes = meta['plans_equipes']
     site = contexte['site']
-    if fichier is None:
-        if site.get('lat') is None or site.get('lon') is None:
-            raise SimulationRefusee(MOTIF_SANS_POINT, champ='site.pin')
-        if decision['mode'] == 'tmy':
-            # Le service ``tmy`` de PVGIS ne publie que l'irradiance GLOBALE
-            # HORIZONTALE : la chaîne travaille sur le PLAN des modules et ne
-            # transpose pas. Le refus NOMME la colonne, comme la chaîne le
-            # ferait elle-même.
-            raise SimulationRefusee(MOTIF_TMY_HORIZONTAL,
-                                    champ='parametres.simulation.mode_meteo')
 
     compteur = {'appels': 0}
     client = client if client is not None else ClientPvgis()
@@ -1035,31 +1087,31 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     # se ré-indexer et appliquer IAM, horizon, inter-rangées et accès module.
     try:
         serie_reference = fournisseur(reference)
-    except (PvgisIndisponible, EntreeInvalide) as refus:
-        raise SimulationRefusee(str(refus),
-                                champ=getattr(refus, 'champ', 'meteo') or
-                                'meteo') from refus
+    except REFUS_D_ENTREE as refus:
+        raise _refus_nomme(refus) from refus
     contexte['meteo'] = dict(provenance['provenance'] or {})
     contexte['plan'] = reference
 
     ecrit = {}
     sorties = {}
-    if len(plans_equipes) > 1:
-        # 2. PLUSIEURS PANS (ACAL53) : phase PAN pan par pan, phase ONDULEUR
-        # sur la SOMME DC des pans rattachés, phase SITE sur le site.
-        try:
+    try:
+        if len(plans_equipes) > 1:
+            # 2. PLUSIEURS PANS (ACAL53) : phase PAN pan par pan, phase
+            # ONDULEUR sur la SOMME DC des pans rattachés, phase SITE.
             sortie, cascade, sorties = _chaine_par_phases(
                 contexte, plans_equipes, site, fournisseur, ecrit)
-        except (PvgisIndisponible, EntreeInvalide) as refus:
-            raise SimulationRefusee(str(refus),
-                                    champ=getattr(refus, 'champ', 'meteo')
-                                    or 'meteo') from refus
-        if fichier is not None:
-            _ajouter_avertissement(blocs, MOTIF_FICHIER_PLUSIEURS_PANS.format(
-                pans=len(plans_equipes)))
-    else:
-        # 2. UN SEUL PAN : la chaîne entière d'affilée (inchangé).
-        sortie, cascade = appliquer_chaine(serie_reference, contexte, ecrit)
+            if fichier is not None:
+                _ajouter_avertissement(
+                    blocs, MOTIF_FICHIER_PLUSIEURS_PANS.format(
+                        pans=len(plans_equipes)))
+        else:
+            # 2. UN SEUL PAN : la chaîne entière d'affilée (inchangé).
+            sortie, cascade = appliquer_chaine(serie_reference, contexte,
+                                               ecrit)
+    except REFUS_D_ENTREE as refus:
+        # ACAL126 — un horizon illisible, PVGIS indisponible pour un pan, un
+        # σ saisi illisible : un refus NOMMÉ, jamais une exception brute.
+        raise _refus_nomme(refus) from refus
     blocs['cascade'] = cascade
     blocs['meteo'] = ecrit['meteo']
     blocs['production'] = ecrit['production']
@@ -1125,9 +1177,13 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     annuels = {ligne['annee']: ligne['kwh']
                for ligne in (blocs['production'].get('annees') or [])
                if isinstance(ligne, dict) and ligne.get('kwh') is not None}
-    blocs['incertitude'] = bloc_incertitude(
-        total.get('p50_kwh'), totaux_par_annee=annuels,
-        reglages=contexte['reglages_simulation'])
+    try:
+        blocs['incertitude'] = bloc_incertitude(
+            total.get('p50_kwh'), totaux_par_annee=annuels,
+            reglages=contexte['reglages_simulation'])
+    except IncertitudeInvalide as refus:
+        # ACAL126 — un σ saisi illisible (« 2,5 ») : refus NOMMÉ.
+        raise _refus_nomme(refus) from refus
     # ACAL49 — P75, P90 et P95 masqués ENSEMBLE tant que le socle manque :
     # la complétude est celle que la chaîne a publiée, jamais recalculée.
     masquer_depassements(blocs['incertitude'],
