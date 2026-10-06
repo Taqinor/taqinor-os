@@ -62,9 +62,15 @@ class CalepinageConfig(AppConfig):
         # entièrement porté par la corbeille elle-même.
         from apps.trash.registry import enregistrer_restaurateur
 
-        from .services.archivage import CLE_MODELE, restaurateur_calepinage
+        from .services.archivage import (
+            CLE_MODELE, CLE_PIECE_JOINTE, restaurateur_calepinage,
+            restaurateur_piece_jointe,
+        )
 
         enregistrer_restaurateur(CLE_MODELE, restaurateur_calepinage)
+        # ACAL148 — un fichier météo retiré ou remplacé part à la corbeille
+        # comme PIÈCE JOINTE : même mécanique, restaurateur dédié.
+        enregistrer_restaurateur(CLE_PIECE_JOINTE, restaurateur_piece_jointe)
 
         # CALX61 — branche le fournisseur de températures TMY que
         # ``services/electrique.py`` attend depuis CAL123. Sans lui,

@@ -413,13 +413,21 @@ def lire_piece_meteo(calepinage):
     from django.contrib.contenttypes.models import ContentType
 
     from apps.records.models import Attachment
+    from apps.trash.selectors import ids_dans_corbeille
 
+    # ACAL148 — une pièce mise à la CORBEILLE (fichier retiré ou remplacé)
+    # n'est plus RETENUE : l'état vit dans la corbeille (patron CAL208), la
+    # ligne ``Attachment`` n'est jamais supprimée.
+    company = getattr(calepinage, 'company', None)
+    en_corbeille = list(ids_dans_corbeille('records.attachment',
+                                           company=company))
     return (Attachment.objects
-            .filter(company=getattr(calepinage, 'company', None),
+            .filter(company=company,
                     content_type=ContentType.objects.get_for_model(
                         type(calepinage)),
                     object_id=calepinage.pk,
                     file_key__startswith='meteo/')
+            .exclude(pk__in=en_corbeille)
             .order_by('-id')
             .first())
 

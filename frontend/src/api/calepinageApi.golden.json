@@ -680,6 +680,14 @@
       "verbe": "get"
     }
   ],
+  "calepinages.meteoFichier": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/meteo-fichier/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.modeles": [
     {
       "config": null,
@@ -843,6 +851,14 @@
       },
       "data": null,
       "url": "/calepinage/calepinages/7/etiquettes/",
+      "verbe": "delete"
+    }
+  ],
+  "calepinages.retirerFichierMeteo": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/meteo-fichier/",
       "verbe": "delete"
     }
   ],
@@ -1026,6 +1042,14 @@
       "data": null,
       "url": "/calepinage/parametres/profils-types/",
       "verbe": "get"
+    }
+  ],
+  "parametres.recalculerSimulations": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/parametres/recalculer-simulations/",
+      "verbe": "post"
     }
   ],
   "parametres.suggererPentesIGN": [

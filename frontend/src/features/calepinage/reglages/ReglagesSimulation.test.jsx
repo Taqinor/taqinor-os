@@ -1,30 +1,33 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
-   CALX69 — LES RÉGLAGES DE SIMULATION ET D'ÉLECTRIQUE, ENFIN SAISISSABLES.
+   CALX69 / ACAL133 — LES RÉGLAGES DE SIMULATION ET D'ÉLECTRIQUE, SAISISSABLES,
+   TYPÉS PAR LE REGISTRE SERVI.
    ----------------------------------------------------------------------------
    Ce que ce test tient :
-     * une ligne par clé du registre (`REGISTRE_SIMULATION`,
-       `REGISTRE_ELECTRIQUE_SOCIETE`), avec son libellé, son unité, son champ
-       « valeur », son sélecteur « source » et son champ « référence » ;
-     * les valeurs SERVIES (contrat committé) remplissent les champs, mais le
-       REPÈRE doctrinal du registre (les valeurs citées des concurrents) reste
-       une simple aide sous la ligne — jamais recopié dans « valeur » ;
+     * les lignes viennent EXCLUSIVEMENT du `registre` servi par le GET
+       (contrat `parametres_calepinage.json`) : aucune copie locale, aucun
+       repli — sans registre servi, un état d'erreur explicite ;
+     * le type de chaque clé commande son champ (enum, booléen, bornes) ;
+     * UN SEUL PUT `{simulation, electrique_societe}` ; un aller-retour sans
+       geste renvoie les sections telles que servies ;
      * une clé entamée sans source est REFUSÉE avant tout envoi réseau, le
        champ fautif pointé et le bandeau le nomme (règle fondateur 08/09) ;
-     * le refus 400 du serveur (qui nomme la clé) atterrit SOUS la même clé ;
-     * une clé jamais entamée est OMISE de l'envoi — aucune valeur par défaut
-       n'est écrite.
+     * le refus 400 du serveur (nommé DANS sa section) atterrit SOUS la clé ;
+     * une clé jamais entamée est OMISE de l'envoi — aucune valeur par défaut ;
+     * « Tout recalculer » appelle l'endpoint et dit « N simulations relancées ».
    ========================================================================== */
 
 const REGLAGES = exempleContrat('calepinage', 'parametres_calepinage')
 const REGLAGES_VIDES = exempleContrat('calepinage', 'parametres_calepinage', 'exemple_vide')
+const REGISTRE = REGLAGES.registre
 
 const mocks = vi.hoisted(() => ({
   getParametres: vi.fn(),
   putParametres: vi.fn(),
+  recalculer: vi.fn(),
   hasPermission: vi.fn(),
 }))
 
@@ -33,6 +36,7 @@ vi.mock('../../../api/calepinageApi', () => ({
     parametres: {
       get: (...a) => mocks.getParametres(...a),
       update: (...a) => mocks.putParametres(...a),
+      recalculerSimulations: (...a) => mocks.recalculer(...a),
     },
   },
 }))
@@ -41,13 +45,12 @@ vi.mock('../../../hooks/useHasPermission', () => ({
   useHasPermission: (code) => mocks.hasPermission(code),
 }))
 
-const {
-  default: ReglagesSimulation, REGISTRE_SIMULATION, REGISTRE_ELECTRIQUE_SOCIETE,
-} = await import('./ReglagesSimulation')
+const module_ = await import('./ReglagesSimulation')
+const ReglagesSimulation = module_.default
 
 const rendre = () => render(<ReglagesSimulation />)
 
-const champValeur = (cle) => screen.getByTestId(`calx69-valeur-${cle}`).querySelector('input')
+const champValeur = (cle) => screen.getByTestId(`calx69-valeur-${cle}`).querySelector('input, select')
 const champSource = (cle) => screen.getByTestId(`calx69-source-${cle}`).querySelector('select')
 const champReference = (cle) => screen.getByTestId(`calx69-reference-${cle}`).querySelector('input')
 
@@ -57,51 +60,44 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup() })
 
-describe('CALX69 — une ligne par clé du registre, dans les deux sections', () => {
-  it('monte une ligne par clé de `simulation` et `electrique_societe`', async () => {
-    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+describe('ACAL133 — les lignes viennent EXCLUSIVEMENT du registre servi', () => {
+  it('lignes = registre servi, aucune copie locale', async () => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage')
+    // Une clé que le registre SERVI porte et qu'aucune table locale ne
+    // connaît, et une clé du registre d'avant retirée du servi.
+    servi.data.registre.simulation.push({
+      cle: 'cle_servie_seulement', libelle: 'Clé servie seulement', unite: '', reference: 'servie',
+      type: 'nombre',
+    })
+    servi.data.registre.simulation = servi.data.registre.simulation
+      .filter((ligne) => ligne.cle !== 'attenuation_horizon')
+    mocks.getParametres.mockResolvedValue(servi)
     rendre()
 
-    for (const [cle] of REGISTRE_SIMULATION) {
-      expect(await screen.findByTestId(`calx69-ligne-${cle}`)).toBeInTheDocument()
-      expect(champValeur(cle)).toBeInTheDocument()
-      expect(champSource(cle)).toBeInTheDocument()
-      expect(champReference(cle)).toBeInTheDocument()
+    for (const section of ['simulation', 'electrique_societe']) {
+      for (const { cle } of servi.data.registre[section]) {
+        expect(await screen.findByTestId(`calx69-ligne-${cle}`)).toBeInTheDocument()
+      }
     }
-    for (const [cle] of REGISTRE_ELECTRIQUE_SOCIETE) {
-      expect(screen.getByTestId(`calx69-ligne-${cle}`)).toBeInTheDocument()
-    }
+    expect(screen.getByTestId('calx69-ligne-cle_servie_seulement')).toBeInTheDocument()
+    expect(screen.queryByTestId('calx69-ligne-attenuation_horizon')).toBeNull()
+    // La copie locale n'existe plus.
+    expect(module_.REGISTRE_SIMULATION).toBeUndefined()
+    expect(module_.REGISTRE_ELECTRIQUE_SOCIETE).toBeUndefined()
   })
 
-  it('remplit les champs depuis le contrat committé, jamais depuis le repère doctrinal', async () => {
-    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+  it('registre absent de la réponse : état d’erreur explicite, aucune ligne de repli', async () => {
+    const sansRegistre = reponseContrat('calepinage', 'parametres_calepinage')
+    delete sansRegistre.data.registre
+    mocks.getParametres.mockResolvedValue(sansRegistre)
     rendre()
-    await screen.findByTestId('calx69-ligne-mode_meteo')
 
-    // Valeurs SERVIES par le contrat (`exemple.simulation.mode_meteo`).
-    expect(champValeur('mode_meteo').value).toBe(REGLAGES.simulation.mode_meteo.valeur)
-    expect(champSource('mode_meteo').value).toBe(REGLAGES.simulation.mode_meteo.source)
-    expect(champReference('mode_meteo').value).toBe(REGLAGES.simulation.mode_meteo.reference)
-    expect(champValeur('cos_phi_par_defaut').value).toBe(
-      String(REGLAGES.electrique_societe.cos_phi_par_defaut.valeur),
-    )
-
-    // Une clé JAMAIS saisie (ex. `fenetre_annees`, absente du contrat) reste
-    // VIDE — son repère doctrinal (aide) ne se retrouve PAS dans « valeur ».
-    expect(champValeur('fenetre_annees').value).toBe('')
-    const aide = screen.getByTestId('calx69-aide-fenetre_annees')
-    expect(aide).toHaveTextContent('PVGIS')
-    expect(champValeur('fenetre_annees').value).not.toContain('PVGIS')
+    expect(await screen.findByTestId('calx69-erreur-chargement'))
+      .toHaveTextContent('Registre des réglages indisponible')
+    expect(screen.queryByTestId('calx69-ligne-mode_meteo')).toBeNull()
   })
-})
 
-describe('CALX145/69 — le registre SERVI par le GET est utilisé, jamais celui redéclaré en local', () => {
-  it('affiche le libellé et la référence servis par `registre`, pas ceux de la table locale', async () => {
-    // Un registre servi DÉLIBÉRÉMENT différent de `REGISTRE_SIMULATION` (le
-    // repli local codé dans l'écran) : si l'écran lisait encore sa table
-    // locale, il afficherait « Mode météo (année type ou fenêtre
-    // pluriannuelle) » — la preuve que la clé `registre` du GET est bien la
-    // source utilisée.
+  it('affiche le libellé et la référence servis', async () => {
     const contratServi = reponseContrat('calepinage', 'parametres_calepinage')
     const ligneModeMeteo = contratServi.data.registre.simulation
       .find((ligne) => ligne.cle === 'mode_meteo')
@@ -117,20 +113,138 @@ describe('CALX145/69 — le registre SERVI par le GET est utilisé, jamais celui
     )
   })
 
-  it('retombe sur la table locale quand la clé `registre` est absente de la réponse (client ancien)', async () => {
-    const sansRegistre = reponseContrat('calepinage', 'parametres_calepinage')
-    delete sansRegistre.data.registre
-    mocks.getParametres.mockResolvedValue(sansRegistre)
+  it('remplit les champs depuis le contrat committé, jamais depuis le repère doctrinal', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
     rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
 
-    // Toutes les lignes du repli local se montent quand même — aucun écran
-    // vide faute de `registre`.
-    for (const [cle] of REGISTRE_SIMULATION) {
-      expect(await screen.findByTestId(`calx69-ligne-${cle}`)).toBeInTheDocument()
-    }
     expect(champValeur('mode_meteo').value).toBe(REGLAGES.simulation.mode_meteo.valeur)
-    const aide = screen.getByTestId('calx69-aide-mode_meteo')
-    expect(aide).toHaveTextContent('HelioScope')
+    expect(champSource('mode_meteo').value).toBe(REGLAGES.simulation.mode_meteo.source)
+    expect(champReference('mode_meteo').value).toBe(REGLAGES.simulation.mode_meteo.reference)
+    expect(champValeur('cos_phi_par_defaut').value).toBe(
+      String(REGLAGES.electrique_societe.cos_phi_par_defaut.valeur),
+    )
+    expect(champValeur('fenetre_annees').value).toBe('')
+    expect(screen.getByTestId('calx69-aide-fenetre_annees')).toHaveTextContent('PVGIS')
+    expect(champValeur('fenetre_annees').value).not.toContain('PVGIS')
+  })
+
+  it('champs typés : liste fermée pour un enum, oui/non pour un booléen, bornes du registre', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    const enumServi = REGISTRE.simulation.find((r) => r.cle === 'mode_meteo')
+    const select = champValeur('mode_meteo')
+    expect(select.tagName).toBe('SELECT')
+    const options = Array.from(select.querySelectorAll('option')).map((o) => o.value).filter(Boolean)
+    expect(options).toEqual(enumServi.valeurs)
+
+    expect(champValeur('attenuation_horizon').tagName).toBe('SELECT')
+    expect(screen.getByTestId('acal133-type-sigma_modele_pct'))
+      .toHaveTextContent('Pourcentage entre 0 et 100')
+    // Aucune borne HTML : ce que l'on tape n'est jamais « sauté ».
+    expect(champValeur('sigma_modele_pct')).not.toHaveAttribute('min')
+    expect(champValeur('sigma_modele_pct')).not.toHaveAttribute('max')
+  })
+
+  it('dit qu’un poste saisi sur un calepinage prime sur le réglage société', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    rendre()
+    expect(await screen.findByTestId('acal133-priorite'))
+      .toHaveTextContent('prime sur ce réglage')
+  })
+})
+
+describe('ACAL133 — un seul PUT pour les deux sections', () => {
+  it('un seul PUT {simulation, electrique_societe}', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide'))
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    fireEvent.change(champValeur('mode_meteo'), { target: { value: 'pluriannuel' } })
+    fireEvent.change(champSource('mode_meteo'), { target: { value: 'societe' } })
+    fireEvent.change(champValeur('cos_phi_par_defaut'), { target: { value: '1' } })
+    fireEvent.change(champSource('cos_phi_par_defaut'), { target: { value: 'societe' } })
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    expect(mocks.putParametres.mock.calls[0][0]).toEqual({
+      simulation: { mode_meteo: { valeur: 'pluriannuel', source: 'societe', reference: '' } },
+      electrique_societe: { cos_phi_par_defaut: { valeur: 1, source: 'societe', reference: '' } },
+    })
+  })
+
+  it('une section vide n’invente rien : un seul PUT de deux sections vides', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide'))
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES_VIDES })
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    expect(mocks.putParametres).toHaveBeenCalledWith({ simulation: {}, electrique_societe: {} })
+    expect(screen.queryByTestId('calx69-bandeau')).not.toBeInTheDocument()
+  })
+
+  it('aller-retour sans geste : les sections renvoyées sont celles servies, à l’octet', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    expect(mocks.putParametres.mock.calls[0][0]).toEqual({
+      simulation: REGLAGES.simulation,
+      electrique_societe: REGLAGES.electrique_societe,
+    })
+
+    // Deuxième enregistrement, toujours sans toucher : identique.
+    await screen.findByTestId('calx69-message')
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(2))
+    expect(mocks.putParametres.mock.calls[1][0]).toEqual(mocks.putParametres.mock.calls[0][0])
+  })
+
+  it('un texte qui ressemble à un nombre n’en devient pas un sans geste', async () => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage')
+    servi.data.simulation = {
+      mode_meteo: { valeur: '60', source: 'texte', reference: 'valeur texte' },
+    }
+    mocks.getParametres.mockResolvedValue(servi)
+    mocks.putParametres.mockResolvedValue({ data: servi.data })
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    expect(mocks.putParametres.mock.calls[0][0].simulation.mode_meteo.valeur).toBe('60')
+  })
+})
+
+describe('ACAL133 — Tout recalculer', () => {
+  it('Tout recalculer appelle l’endpoint et affiche « N simulations relancées »', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    mocks.recalculer.mockResolvedValue({ data: { soumis: 3, jobs: [], reste: 0 } })
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    fireEvent.click(screen.getByTestId('acal133-tout-recalculer'))
+
+    expect(await screen.findByTestId('calx69-message')).toHaveTextContent('3 simulations relancées')
+    expect(mocks.recalculer).toHaveBeenCalledTimes(1)
+  })
+
+  it('sans le droit de gérer : le bouton n’est pas proposé', async () => {
+    mocks.hasPermission.mockReturnValue(false)
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    expect(screen.queryByTestId('acal133-tout-recalculer')).toBeNull()
   })
 })
 
@@ -141,14 +255,10 @@ describe('CALX69 — une clé entamée sans source est refusée AVANT tout envoi
     await screen.findByTestId('calx69-ligne-fenetre_annees')
 
     fireEvent.change(champValeur('fenetre_annees'), { target: { value: '10' } })
-    // Aucune source choisie.
     fireEvent.click(screen.getByTestId('calx69-enregistrer'))
 
     const erreur = await screen.findByTestId('calx69-erreur-fenetre_annees')
     expect(erreur).toHaveTextContent('source')
-    // Le libellé vient désormais du `registre` SERVI (contrat committé,
-    // apostrophe simple) : la sous-chaîne évite de figer un style
-    // d'apostrophe qui n'est plus celui de la table locale transcrite.
     expect(screen.getByTestId('calx69-bandeau')).toHaveTextContent('années météo')
     expect(screen.getByTestId('calx69-bandeau').querySelector('a[href="#calx69-fenetre_annees"]'))
       .toBeTruthy()
@@ -172,42 +282,23 @@ describe('CALX69 — le refus 400 du serveur atterrit SOUS la bonne clé', () =>
     expect(await screen.findByTestId('calx69-erreur-mode_meteo')).toHaveTextContent('inconnue')
     expect(mocks.putParametres).toHaveBeenCalledTimes(1)
   })
-})
 
-describe('CALX69 — aucune clé non saisie n’est envoyée, aucune valeur par défaut', () => {
-  it('enregistre une section vide sans rien inventer quand rien n’est tapé', async () => {
+  it('400 nommé affiché sur la ligne (contrat `exemple_refus_type`, nommé DANS sa section)', async () => {
+    const refus = exempleContrat('calepinage', 'parametres_calepinage', 'exemple_refus_type')
     mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide'))
-    mocks.putParametres.mockResolvedValue({ data: REGLAGES_VIDES })
+    mocks.putParametres.mockRejectedValueOnce({ response: { data: refus } })
     rendre()
-    await screen.findByTestId('calx69-ligne-mode_meteo')
+    await screen.findByTestId('calx69-ligne-sigma_modele_pct')
 
+    // « 2,5 » est envoyé TEL QUEL : le serveur normalise et refuse en nommant.
+    fireEvent.change(champValeur('sigma_modele_pct'), { target: { value: '2,5' } })
+    fireEvent.change(champSource('sigma_modele_pct'), { target: { value: 'saisie' } })
     fireEvent.click(screen.getByTestId('calx69-enregistrer'))
 
-    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(2))
-    expect(mocks.putParametres).toHaveBeenNthCalledWith(1, { simulation: {} })
-    expect(mocks.putParametres).toHaveBeenNthCalledWith(2, { electrique_societe: {} })
-    expect(screen.queryByTestId('calx69-bandeau')).not.toBeInTheDocument()
-  })
-
-  it('envoie les deux sections dans l’ordre `simulation` puis `electrique_societe` quand une clé de chaque est saisie', async () => {
-    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide'))
-    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
-    rendre()
-    await screen.findByTestId('calx69-ligne-mode_meteo')
-
-    fireEvent.change(champValeur('mode_meteo'), { target: { value: 'pluriannuel' } })
-    fireEvent.change(champSource('mode_meteo'), { target: { value: 'societe' } })
-    fireEvent.change(champValeur('cos_phi_par_defaut'), { target: { value: '1' } })
-    fireEvent.change(champSource('cos_phi_par_defaut'), { target: { value: 'societe' } })
-    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
-
-    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(2))
-    expect(mocks.putParametres.mock.calls[0][0]).toEqual({
-      simulation: { mode_meteo: { valeur: 'pluriannuel', source: 'societe', reference: '' } },
-    })
-    expect(mocks.putParametres.mock.calls[1][0]).toEqual({
-      electrique_societe: { cos_phi_par_defaut: { valeur: 1, source: 'societe', reference: '' } },
-    })
+    const ligne = await screen.findByTestId('calx69-ligne-sigma_modele_pct')
+    expect(within(ligne).getByTestId('calx69-erreur-sigma_modele_pct'))
+      .toHaveTextContent(refus.simulation.sigma_modele_pct)
+    expect(mocks.putParametres.mock.calls[0][0].simulation.sigma_modele_pct.valeur).toBe('2,5')
   })
 })
 
@@ -240,22 +331,6 @@ describe('ACAL132 — le PUT fusionne : une clé stockée puis vidée part à `n
     const envoi = mocks.putParametres.mock.calls[0][0].simulation
     expect(envoi.mode_meteo).toBeNull()
     expect(envoi.resolution_minutes).toEqual(REGLAGES.simulation.resolution_minutes)
-    // Une clé jamais saisie n'est toujours PAS envoyée.
     expect('fenetre_annees' in envoi).toBe(false)
-  })
-
-  it('le refus nommé DANS sa section (contrat `exemple_refus_type`) atterrit sous la clé', async () => {
-    const refus = exempleContrat('calepinage', 'parametres_calepinage', 'exemple_refus_type')
-    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide'))
-    mocks.putParametres.mockRejectedValueOnce({ response: { data: refus } })
-    rendre()
-    await screen.findByTestId('calx69-ligne-sigma_modele_pct')
-
-    fireEvent.change(champValeur('sigma_modele_pct'), { target: { value: 'abc' } })
-    fireEvent.change(champSource('sigma_modele_pct'), { target: { value: 'saisie' } })
-    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
-
-    expect(await screen.findByTestId('calx69-erreur-sigma_modele_pct'))
-      .toHaveTextContent(refus.simulation.sigma_modele_pct)
   })
 })

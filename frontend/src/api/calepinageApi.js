@@ -331,6 +331,13 @@ const calepinageApi = {
     get: () => api.get('/calepinage/parametres/'),
     update: (corps) => api.put('/calepinage/parametres/', corps),
 
+    // ACAL133 — « Tout recalculer » après un changement de réglage société :
+    // relance en tâche de fond chaque simulation périmée de la société
+    // (`views/parametres.py::RecalculerSimulationsView`, ACAL134). Rend 202
+    // `{soumis, jobs: [{calepinage, job_id}], reste}` — au plus un plafond de
+    // travaux par appel, `reste` compte ceux à relancer par un nouvel appel.
+    recalculerSimulations: () => api.post('/calepinage/parametres/recalculer-simulations/'),
+
     // CALX29 — suggestion de pente par LiDAR IGN (France seule,
     // `services/lidar_ign.py`). GET est une LECTURE LOCALE : elle dit si le
     // service est offert à la société de l'appelant SANS émettre de requête
