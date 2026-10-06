@@ -26,8 +26,9 @@ ZÉRO CHIFFRE INVENTÉ : une donnée absente fait tomber le bloc concerné à
 aucun niveau (garde récursive :func:`_sans_cles_interdites`).
 
 Appelants de :func:`etudier_pompage` (``git grep -n etudier_pompage``) :
-``apps/ventes/etude_pompage_view.py`` (aperçu, AGR121). AGR123 et AGR124 s'y
-brancheront.
+``apps/ventes/etude_pompage_view.py`` (aperçu, AGR121) et
+:func:`rafraichir_etude_pompage_devis` (AGR123, cinquième étude de
+``etudes.rafraichir_etudes_du_devis``). AGR124 s'y branchera.
 """
 from __future__ import annotations
 
@@ -701,13 +702,20 @@ def _reglage(reglages, cle):
     return entree[0] if entree else None
 
 
-def etudier_pompage(company, entrees, *, devis=None, lead=None):
+def etudier_pompage(company, entrees, *, devis=None, lead=None,
+                    facture=None):
     """AGR121 — l'étude de pompage complète, forme EXACTE du contrat
     ``etude_pompage_preview.json`` (``exemple``). Aucune écriture.
 
     ``company`` : TOUJOURS celle de l'appelant (``request.user``) ;
     ``entrees`` : le corps (forme ``corps`` du contrat) ; ``devis`` / ``lead``
     déjà scopés société par l'appelant (``lead`` retombe sur ``devis.lead``).
+
+    AGR123 — ``facture`` (:func:`facture_du_devis`) : le système RÉELLEMENT
+    facturé (pompe, variateur, panneaux des LIGNES). Fourni, la pompe, la
+    puissance, le variateur, le champ et la production décrivent CE système
+    (évalué, jamais redimensionné) au lieu de la proposition du catalogue ;
+    les tailles et le kit restent la proposition du moteur.
     """
     from core.pompage.hydraulique import debit_a_hmt
     from core.pompage.hypotheses import valeur
@@ -892,6 +900,16 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None):
                    "du réglage société (`agricole_pump_hours`), étiquetée "
                    "« repli » ; coordonnées non figées.")
 
+    if facture is not None:
+        pompe, puissance, variateur, champ_complet, alertes_facture = (
+            _systeme_facture(
+                facture, mode_pompe=mode_pompe, hmt_m=hmt_m, serie=serie,
+                plaque_kw=plaque_kw,
+                debit_declare=_num(res.valeur('besoin.debit_actuel_m3h')),
+                commun=commun, pompe_actuelle=pompe,
+                puissance_actuelle=puissance, variateur_actuel=variateur))
+        alertes_moteur.extend(alertes_facture)
+
     production = _forme_production((champ_complet or {}).get('production'))
     passe2 = _conception(
         res, besoin, reglages, profils=profils, hmt_m=hmt_m,
@@ -964,3 +982,268 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None):
         'methode': methode,
     }
     return _sans_cles_interdites(_json(sortie))
+
+
+# ── 5. AGR123 — LE RAFRAÎCHISSEUR : l'étude suit la pompe FACTURÉE ───────────
+
+def _systeme_facture(facture, *, mode_pompe, hmt_m, serie, plaque_kw,
+                     debit_declare, commun, pompe_actuelle,
+                     puissance_actuelle, variateur_actuel):
+    """``(pompe, puissance, variateur, champ, alertes)`` du système FACTURÉ.
+
+    ÉVALUE le système des lignes (pompe → kW plaque et courbe ; variateur ;
+    nombre de panneaux × Pmax) — il ne le redimensionne JAMAIS. Pompe neuve
+    absente des lignes ⇒ pompe, puissance et production OMISES (jamais
+    périmées). Pompe existante (D-AGR-7) : la plaque reste la pompe, seuls le
+    variateur et le champ viennent des lignes.
+    """
+    from core.pompage.champ import (
+        _chaines_pour, _chaines_vides, _fiche, spec_module,
+    )
+    from core.pompage.hydraulique import debit_a_hmt
+    from core.pompage.hypotheses import valeur
+    from core.pompage.selection import _sortie_pompe, kw_pompe
+    from core.pompage.volumes import production_mensuelle
+
+    alertes = []
+    produit_pompe = facture.get('pompe')
+    courbe, declare = None, None
+    if mode_pompe == 'existante':
+        pompe, puissance, p_kw = pompe_actuelle, puissance_actuelle, plaque_kw
+        declare = debit_declare
+    elif produit_pompe:
+        p_kw, _src = kw_pompe(produit_pompe)
+        brute = produit_pompe.get('courbe_pompe') or {}
+        if brute.get('debits_m3h') and brute.get('hmt_m'):
+            courbe = brute
+        debit = (debit_a_hmt(courbe, hmt_m)
+                 if courbe is not None and hmt_m is not None else None)
+        pompe = _sortie_pompe(produit_pompe, kw=p_kw, debit_hmt=debit,
+                              hmt=hmt_m)
+        cv = p_kw / valeur('cv_vers_kw') if p_kw else None
+        puissance = {'kw': round(p_kw, 2) if p_kw else None,
+                     'cv': round(cv, 1) if cv else None}
+    else:
+        alertes.append(_alerte(
+            'pompe_non_facturee', 'pompe',
+            "Aucune ligne pompe au devis : puissance, débit et production "
+            "de la pompe omis."))
+        return (_sortie_pompe(None, kw=None, debit_hmt=None, hmt=hmt_m),
+                {'kw': None, 'cv': None},
+                _forme_variateur(None, 'aucune pompe facturée'), None,
+                alertes)
+
+    produit_variateur = facture.get('variateur')
+    if produit_variateur:
+        variateur = _forme_variateur(produit_variateur, None)
+    elif mode_pompe == 'existante':
+        variateur = variateur_actuel
+    else:
+        variateur = _forme_variateur(None, 'aucun variateur facturé')
+
+    module = spec_module(facture.get('panneau'))
+    nb = facture.get('nb_panneaux') or 0
+    if module is None or nb <= 0:
+        alertes.append(_alerte(
+            'champ_non_facture', 'champ',
+            "Aucun panneau à fiche électrique complète au devis : champ et "
+            "production omis."))
+        return pompe, puissance, variateur, None, alertes
+
+    kwc = nb * module.pmax_wc / 1000.0
+    mppt = _num(_fiche(produit_variateur or {}).get('var_rendement_mppt_pct'))
+    production = production_mensuelle(
+        kwc=kwc, profils_horaires=commun.get('profils_horaires'),
+        courbe_pompe=courbe, hmt_m=hmt_m, p_plaque_kw=p_kw,
+        rendement_mppt=mppt / 100.0 if mppt else None,
+        salissure_pct=commun.get('salissure_pct'),
+        debit_declare_m3h=declare,
+        agricole_pump_hours=commun.get('agricole_pump_hours'),
+        besoin_m3_jour_mois=serie, coordonnees=commun.get('coordonnees'))
+    chaines = _chaines_vides('aucun variateur facturé')
+    if produit_variateur:
+        nb_cable, chaines, alertes_chaines, _suivant = _chaines_pour(
+            produit_variateur, module, nb, commun.get('temperatures'))
+        alertes.extend(alertes_chaines)
+        if nb_cable != nb:
+            chaines = _chaines_vides(
+                'le nombre de panneaux facturé ne forme pas de chaîne '
+                'admissible sur ce variateur')
+    champ = {'kwc': round(kwc, 2), 'nb_panneaux': nb,
+             'ratio': round(kwc / p_kw, 2) if p_kw else None,
+             'chaines': chaines,
+             'production': (production if production.get('m3_jour_mois')
+                            is not None else None)}
+    return pompe, puissance, variateur, champ, alertes
+
+
+#: Les ENTRÉES v2 lues par le rafraîchisseur (contrat AGR2, AGR122).
+CLES_ENTREES_V2 = tuple(cle for cle, _corps in CLES_DEVIS)
+
+#: Les sept clés v1 que le rendu lit encore (dérivées de la pompe RETENUE).
+CLES_V1_RENDU = ('pompe_cv', 'pompe_kw', 'hmt_m', 'debit_hmt_m3h', 'm3_jour',
+                 'champ_kwc', 'heures_pompage')
+
+#: Version de la forme des dérivées : la changer périme toutes les empreintes.
+VERSION_DERIVEES = 1
+
+
+def facture_du_devis(devis, catalogue):
+    """AGR123 — le système RÉELLEMENT facturé, lu sur les LIGNES du devis.
+
+    ``{pompe, variateur, panneau, nb_panneaux, lignes}`` : la première ligne
+    pompe et la première ligne variateur (forme catalogue AGR103, rôle de
+    ``stock.selectors.produits_pompage``), le panneau des lignes panneau (et
+    leur quantité totale). Les lignes OPTIONNELLES (add-ons non activés) ne
+    sont pas facturées : elles sont ignorées. ``lignes`` = l'empreinte
+    ``[[produit, quantité], …]`` de ce qui a été lu.
+    """
+    from .catalogue import classer_produit
+
+    par_id = {p.get('id'): p for p in catalogue.get('pompage') or ()}
+    pompe = variateur = panneau = None
+    nb, lignes = 0, []
+    lignes_devis = devis.lignes.select_related('produit').order_by('ordre',
+                                                                   'id')
+    for ligne in lignes_devis:
+        produit = getattr(ligne, 'produit', None)
+        if produit is None or getattr(ligne, 'optionnelle', False):
+            continue
+        lignes.append([produit.id, str(ligne.quantite)])
+        element = par_id.get(produit.id)
+        role = (element or {}).get('role_pompage')
+        if role == 'pompe':
+            pompe = pompe or element
+        elif role == 'variateur_pompage':
+            variateur = variateur or element
+        elif (getattr(produit, 'role_devis', None)
+              or classer_produit(produit.nom)) == 'panneau':
+            nb += int(_num(ligne.quantite) or 0)
+            if panneau is None:
+                panneau = _dict_catalogue(produit, **_specs_module(produit))
+    return {'pompe': pompe, 'variateur': variateur, 'panneau': panneau,
+            'nb_panneaux': nb, 'lignes': lignes}
+
+
+def _empreinte(etude, facture, lead_id):
+    import hashlib
+    import json
+
+    charge = {
+        'version': VERSION_DERIVEES,
+        'entrees': {cle: etude.get(cle) for cle in CLES_ENTREES_V2},
+        'saisies': (etude.get('saisies_economie_pompage') or {}).get(
+            'mois_irrigation'),
+        'pvgis_fige': etude.get('pvgis_fige'),
+        'lignes': facture.get('lignes'),
+        'lead': lead_id,
+    }
+    texte = json.dumps(charge, sort_keys=True, default=str,
+                       ensure_ascii=True)
+    return hashlib.sha256(texte.encode('utf-8')).hexdigest()
+
+
+def _au_mois_critique(serie, mois):
+    if not serie or not mois or not 1 <= mois <= len(serie):
+        return None
+    return serie[mois - 1]
+
+
+def derivees_de_l_etude(sortie, *, pvgis_fige=None):
+    """AGR122/AGR123 — l'étude (forme du contrat) → les clés DÉRIVÉES
+    ``moteur_pompage`` d'``etude_params``. ``None`` = clé RETIRÉE (Z2)."""
+    production = sortie.get('production')
+    conception = sortie.get('conception') or {}
+    mois = conception.get('mois_critique')
+    champ = sortie.get('champ') or {}
+    hmt = sortie.get('hmt') or {}
+    pompe = sortie.get('pompe') or {}
+    puissance = sortie.get('puissance_retenue') or {}
+    figees = (production or {}).get('coordonnees_figees')
+    if pvgis_fige and figees and (pvgis_fige.get('lat'), pvgis_fige.get(
+            'lon')) == (figees.get('lat'), figees.get('lon')):
+        figees = pvgis_fige
+    provenance = {cle: (v or {}).get('provenance')
+                  for cle, v in (sortie.get('entrees_resolues') or {}).items()}
+    return {
+        'besoin_mensuel': sortie.get('besoin'),
+        'production': production,
+        'couverture_pct_mois': sortie.get('couverture_pct_mois'),
+        'controle_conception': sortie.get('controle_conception'),
+        'conception': conception or None,
+        'champ': champ if champ.get('kwc') is not None else None,
+        'hmt_composantes': hmt.get('composantes'),
+        'ha_irrigables': sortie.get('ha_irrigables'),
+        'autonomie_reservoir_jours': sortie.get('autonomie_reservoir_jours'),
+        'kit': sortie.get('kit'),
+        'alertes_pompage': sortie.get('alertes') or None,
+        'hypotheses_pompage': sortie.get('hypotheses') or None,
+        'pvgis_fige': figees or None,
+        'provenance_pompage': {'entrees': provenance},
+        'pompe_cv': puissance.get('cv'),
+        'pompe_kw': puissance.get('kw'),
+        'hmt_m': hmt.get('valeur_m'),
+        'debit_hmt_m3h': pompe.get('debit_a_hmt_m3h'),
+        'm3_jour': _au_mois_critique(
+            (production or {}).get('m3_jour_mois'), mois),
+        'champ_kwc': champ.get('kwc'),
+        'heures_pompage': _au_mois_critique(
+            (production or {}).get('heures_equivalentes_mois'), mois),
+    }
+
+
+def rafraichir_etude_pompage_devis(devis, *, force=False):
+    """AGR123 — l'étude pompage d'un devis AGRICOLE suit ses LIGNES.
+
+    Cinquième étude de ``etudes.rafraichir_etudes_du_devis`` (donc appelée à
+    chaque écriture de ligne, par ``atomic``/``replace-lines``/
+    ``LigneDevisViewSet``, et — forcée — par les chemins de copie et la V2,
+    qui purgent les dérivées via ``CLES_DERIVEES_NON_COPIEES``).
+
+    Relit les LIGNES (:func:`facture_du_devis`), les ENTRÉES v2 stockées et
+    ``pvgis_fige``, appelle :func:`etudier_pompage` et ne réécrit QUE les
+    dérivées ``moteur_pompage`` (``etude_schema.ecrire`` :
+    ``update_fields=['etude_params']``, aucun statut, aucune ligne, aucun
+    total — règle #4). Empreinte : mêmes entrées ⇒ AUCUNE écriture (ni même un
+    calcul). Ligne pompe supprimée ⇒ dérivées de la pompe OMISES.
+
+    No-op (``None``) sur tout marché non agricole. Ne lève JAMAIS : un
+    rafraîchissement raté n'empêche pas l'enregistrement d'une ligne.
+    """
+    if (getattr(devis, 'mode_installation', None) or '').strip().lower() \
+            != 'agricole':
+        return None
+    try:
+        from .etude_schema import MOTEUR_POMPAGE, ecrire
+
+        etude = dict(devis.etude_params or {})
+        company = devis.company
+        lead = getattr(devis, 'lead', None)
+        catalogue = lire_catalogue(company)
+        facture = facture_du_devis(devis, catalogue)
+        empreinte = _empreinte(etude, facture, getattr(lead, 'id', None))
+        stockee = (etude.get('provenance_pompage') or {}).get('_empreinte')
+        if not force and stockee == empreinte:
+            return None
+
+        corps = {}
+        fige = etude.get('pvgis_fige') or {}
+        localisation = etude.get('localisation') or {}
+        if (fige.get('lat') is not None and fige.get('lon') is not None
+                and (localisation.get('lat') is None
+                     or localisation.get('lon') is None)):
+            corps['localisation'] = dict(localisation, lat=fige['lat'],
+                                         lon=fige['lon'])
+        sortie = etudier_pompage(company, corps, devis=devis, lead=lead,
+                                 facture=facture)
+        derivees = derivees_de_l_etude(sortie, pvgis_fige=fige or None)
+        derivees['provenance_pompage']['_empreinte'] = empreinte
+        a_ecrire = {cle: valeur for cle, valeur in derivees.items()
+                    if etude.get(cle) != valeur}
+        if a_ecrire:
+            ecrire(devis, proprietaire=MOTEUR_POMPAGE, **a_ecrire)
+        return derivees
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('rafraichir_etude_pompage_devis indisponible sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return None
