@@ -1728,6 +1728,11 @@ def _gate_avertissements(installation, stage):
         statut, _refuse, _resume = etat_dossier_8221(installation)
         if statut != Installation.DossierStatut.COMPTEUR_POSE:
             avertissements.append(AVERTISSEMENT_COMPTEUR_DISTRIBUTEUR)
+    # CIQ628 — les réserves non bloquantes ouvertes sont listées.
+    if getattr(stage, 'exige_pack', False):
+        avertissement = avertissement_reserves_ouvertes(installation)
+        if avertissement:
+            avertissements.append(avertissement)
     return avertissements
 
 
@@ -1896,9 +1901,214 @@ def _gate_check_pack(installation, stage=None):
     resume = assemble_handover_pieces(installation)
     manquantes = [p['libelle'] for p in resume['pieces']
                   if p.get('obligatoire') and not p.get('present')]
+    raisons = []
     if manquantes:
-        return ("Pack de remise incomplet : " + ", ".join(manquantes) + ".")
+        raisons.append(
+            "Pack de remise incomplet : " + ", ".join(manquantes) + ".")
+    # CIQ628 — une réserve BLOQUANTE ouverte refuse aussi la remise.
+    raison_reserves = raison_reserves_bloquantes(installation)
+    if raison_reserves:
+        raisons.append(raison_reserves)
+    return " ".join(raisons) or None
+
+
+# ── CIQ628 — réserves de réception au niveau du chantier ───────────────────
+def reserves_chantier_qs(installation):
+    """CIQ628 — les réserves du chantier : celles posées sur le chantier
+    (recette, réception) ET celles de ses interventions."""
+    from django.db.models import Q
+    from .models import Reserve
+    return (Reserve.objects
+            .filter(Q(installation=installation)
+                    | Q(intervention__installation=installation))
+            .order_by('statut', 'date_echeance', 'id'))
+
+
+def reserves_ouvertes(installation, *, bloquantes=None):
+    """CIQ628 — réserves OUVERTES du chantier (``bloquantes`` True/False
+    filtre, None = toutes)."""
+    from .models import Reserve
+    qs = reserves_chantier_qs(installation).filter(
+        statut=Reserve.Statut.OUVERTE)
+    if bloquantes is not None:
+        qs = qs.filter(bloquante=bloquantes)
+    return list(qs)
+
+
+def _descriptions_reserves(reserves):
+    return " ; ".join(r.description or f'réserve {r.id}' for r in reserves)
+
+
+def raison_reserves_bloquantes(installation):
+    """CIQ628 — raison FR qui refuse la remise tant qu'une réserve
+    BLOQUANTE est ouverte (descriptions citées), sinon ``None``."""
+    bloquantes = reserves_ouvertes(installation, bloquantes=True)
+    if not bloquantes:
+        return None
+    return ("Réserve(s) bloquante(s) non levée(s) : "
+            + _descriptions_reserves(bloquantes) + ".")
+
+
+def avertissement_reserves_ouvertes(installation):
+    """CIQ628 — les réserves NON bloquantes ouvertes sont LISTÉES (jamais
+    un blocage)."""
+    autres = reserves_ouvertes(installation, bloquantes=False)
+    if not autres:
+        return None
+    return "Réserve(s) ouverte(s) : " + _descriptions_reserves(autres) + "."
+
+
+def reserve_contrat(reserve):
+    """CIQ628 — une réserve au format du contrat ``recette_ci.json``
+    (bloc ``reserves``)."""
+    return {
+        'id': reserve.id,
+        'description': reserve.description or '',
+        'origine': reserve.origine,
+        'bloquante': reserve.bloquante,
+        'date_echeance': (reserve.date_echeance.isoformat()
+                          if reserve.date_echeance else None),
+        'responsable': reserve.responsable or '',
+        'statut': reserve.statut,
+        'levee_le': (reserve.resolue_le.isoformat()
+                     if reserve.resolue_le else None),
+    }
+
+
+def reserves_contrat(installation):
+    """CIQ628 — bloc ``reserves`` du contrat pour un chantier."""
+    return [reserve_contrat(r) for r in reserves_chantier_qs(installation)]
+
+
+def creer_reserve_chantier(installation, user, *, description, origine,
+                           bloquante=False, date_echeance=None,
+                           responsable=''):
+    """CIQ628 — crée une réserve posée sur le chantier ; ``company`` vient
+    du chantier (jamais du corps). Journalisée au chatter."""
+    from . import activity
+    from .models import Reserve
+    reserve = Reserve.objects.create(
+        company=installation.company, installation=installation,
+        description=description, origine=origine, bloquante=bool(bloquante),
+        date_echeance=date_echeance, responsable=responsable or '',
+        created_by=user)
+    activity.log_note(
+        installation, user,
+        f"Réserve ajoutée ({reserve.get_origine_display()}"
+        + (", bloquante" if reserve.bloquante else "")
+        + f") : {description}")
+    return reserve
+
+
+def lever_reserve_chantier(reserve, user, *, resolution=''):
+    """CIQ628 — lève une réserve (statut résolue, date, auteur)."""
+    from django.utils import timezone
+
+    from . import activity
+    from .models import Reserve
+    reserve.statut = Reserve.Statut.RESOLUE
+    reserve.resolue_le = timezone.now()
+    reserve.levee_par = user if getattr(user, 'pk', None) else None
+    if resolution:
+        reserve.resolution = resolution
+    reserve.save(update_fields=['statut', 'resolue_le', 'levee_par',
+                                'resolution', 'date_modification'])
+    chantier = reserve.installation or getattr(
+        reserve.intervention, 'installation', None)
+    if chantier is not None:
+        activity.log_note(chantier, user,
+                          f"Réserve levée : {reserve.description}")
+    return reserve
+
+
+# ── CIQ629 — réception provisoire puis définitive ──────────────────────────
+RAISON_DEFINITIVE_SANS_PROVISOIRE = (
+    "Réception définitive impossible : la réception provisoire n'est pas "
+    "prononcée.")
+
+
+class ReceptionDefinitiveRefusee(Exception):
+    """CIQ629 — la réception définitive est refusée (raison FR)."""
+
+
+def date_definitive_prevue(installation):
+    """CIQ629 — provisoire + ``delai_reception_definitive_mois`` (réglage
+    société CIQ622, sans défaut) ; ``None`` si l'un des deux manque."""
+    if installation.date_reception is None:
+        return None
+    from dateutil.relativedelta import relativedelta
+    from apps.parametres.models import CompanyProfile
+    if installation.company_id is None:
+        return None
+    profil = CompanyProfile.get(installation.company)
+    delai = profil.delai_reception_definitive_mois
+    if not delai:
+        return None
+    return installation.date_reception + relativedelta(months=delai)
+
+
+def raison_refus_reception_definitive(installation):
+    """CIQ629 — raison FR qui refuse la définitive (pas de provisoire, ou
+    réserves ouvertes listées), sinon ``None``."""
+    if installation.date_reception is None:
+        return RAISON_DEFINITIVE_SANS_PROVISOIRE
+    ouvertes = reserves_ouvertes(installation)
+    if ouvertes:
+        return ("Réception définitive impossible : réserve(s) non "
+                "levée(s) : " + _descriptions_reserves(ouvertes) + ".")
     return None
+
+
+def reception_contrat(installation):
+    """CIQ629 — bloc ``reception`` du contrat ``recette_ci.json``."""
+    def _iso(d):
+        return d.isoformat() if d else None
+    return {
+        'date_reception_provisoire': _iso(installation.date_reception),
+        'date_reception_definitive': _iso(
+            installation.date_reception_definitive),
+        'date_definitive_prevue': _iso(date_definitive_prevue(installation)),
+        'definitive_possible': (
+            installation.date_reception_definitive is None
+            and raison_refus_reception_definitive(installation) is None),
+    }
+
+
+def prononcer_reception_definitive(installation, user, *, date=None):
+    """CIQ629 — pose ``date_reception_definitive`` (journalisée) ; lève
+    :class:`ReceptionDefinitiveRefusee` avant la provisoire ou tant qu'une
+    réserve est ouverte. Aucune écriture financière ici (la partie D2 lit
+    le bloc ``reception``)."""
+    from django.utils import timezone
+
+    from . import activity
+    raison = raison_refus_reception_definitive(installation)
+    if raison:
+        raise ReceptionDefinitiveRefusee(raison)
+    if installation.date_reception_definitive is not None:
+        return installation
+    installation.date_reception_definitive = date or timezone.localdate()
+    installation.save(update_fields=['date_reception_definitive'])
+    activity.log_note(
+        installation, user,
+        "Réception définitive prononcée le "
+        f"{installation.date_reception_definitive:%d/%m/%Y}.")
+    return installation
+
+
+#: CIQ628 — refus FR d'un « conforme avec réserves » sans réserve de recette.
+RAISON_RESERVES_SANS_LISTE = (
+    "« Conforme avec réserves » exige au moins une réserve de recette "
+    "ouverte : ajoutez-la dans la liste des réserves du chantier.")
+
+
+def recette_a_reserve_ouverte(installation):
+    """CIQ628 — vrai si le chantier porte au moins une réserve d'origine
+    ``recette`` ouverte."""
+    from .models import Reserve
+    return reserves_chantier_qs(installation).filter(
+        origine=Reserve.Origine.RECETTE,
+        statut=Reserve.Statut.OUVERTE).exists()
 
 
 _GATE_CHECKS = [
@@ -3861,26 +4071,101 @@ def autorisation_travaux_8221(installation):
             and bool(resume.get('date_decision')))
 
 
+#: CIQ630 — « Réceptionné » d'un site pro sans fiche de recette passée
+#: (contrôle qualité interne, sans prémisse juridique).
+RAISON_CI_SANS_RECETTE = (
+    "Réception refusée : la fiche de recette du site professionnel n'est pas "
+    "passée (conforme ou conforme avec réserves). Dérogation possible par un "
+    "Directeur, avec motif.")
+#: CIQ630 — « En cours » d'un chantier MT sans visite technique C&I validée
+#: (D-CIQ-5).
+RAISON_MT_SANS_VISITE = (
+    "Montage refusé : aucune visite technique C&I validée pour ce site "
+    "moyenne tension (poste, TGBT, toiture et niveau non vérifiés). "
+    "Dérogation possible par un Directeur, avec motif.")
+AVERTISSEMENT_SANS_VISITE_CI = (
+    "Montage sans visite technique C&I validée : TGBT, toiture et niveau "
+    "non vérifiés sur place.")
+
+
+def est_chantier_industriel(installation):
+    """CIQ630 — chantier de site professionnel (C&I)."""
+    return (installation.type_installation
+            == Installation.TypeInstallation.INDUSTRIEL)
+
+
+def recette_ci_passee(installation):
+    """CIQ630 — la fiche de recette du chantier est-elle PASSÉE ?"""
+    from .models import CommissioningRecord
+    record = CommissioningRecord.objects.filter(
+        installation=installation).first()
+    return bool(record and record.passe)
+
+
+def visite_ci_validee(installation):
+    """CIQ630 — relevé de la dernière visite ``ci`` VALIDÉE du lead du
+    chantier (``visites.selectors.releve_ci_pour_lead``, CIQ606), ou
+    ``None``."""
+    lead = getattr(installation, 'lead', None)
+    if lead is None:
+        return None
+    from apps.visites.selectors import releve_ci_pour_lead
+    return releve_ci_pour_lead(lead)
+
+
+def _entree(installation, nouveau_statut, statuts):
+    canon_old = Installation.canonical_statut(installation.statut)
+    canon_new = Installation.canonical_statut(nouveau_statut)
+    return canon_new in statuts and canon_old not in statuts
+
+
+def avertissements_ci(installation, nouveau_statut):
+    """CIQ630 — avertissements CONSULTATIFS d'un passage de site pro : un
+    chantier BT ou de tension inconnue entre en travaux sans visite C&I
+    validée (jamais un blocage)."""
+    if not est_chantier_industriel(installation):
+        return []
+    if (_entree(installation, nouveau_statut, _STATUTS_TRAVAUX)
+            and installation.niveau_tension != 'mt'
+            and visite_ci_validee(installation) is None):
+        return [AVERTISSEMENT_SANS_VISITE_CI]
+    return []
+
+
 def _gardes_ci(installation, nouveau_statut, user=None,
                motif_derogation=None):
     """CIQ621 — raisons FR qui refusent l'entrée en travaux (« En cours » ou
     au-delà) d'un chantier C&I raccordé sans convention ni autorisation.
-    Résidentiel et agricole : jamais concernés. Dérogation Directeur avec
-    motif (même patron que la dérogation d'acompte YSERV1)."""
-    if not est_chantier_ci_raccorde(installation):
+    CIQ628 — remise refusée tant qu'une réserve BLOQUANTE est ouverte.
+    CIQ630 — pour TOUT chantier industriel, même sans étapes amorcées :
+    « Réceptionné » exige une fiche de recette PASSÉE ; « En cours » exige
+    une visite C&I validée pour un chantier MT (BT/inconnu : avertissement,
+    voir :func:`avertissements_ci`). Résidentiel et agricole : jamais
+    concernés. Dérogation Directeur avec motif (même patron que la
+    dérogation d'acompte YSERV1)."""
+    if not est_chantier_industriel(installation):
         return []
-    canon_old = Installation.canonical_statut(installation.statut)
-    canon_new = Installation.canonical_statut(nouveau_statut)
-    if canon_new not in _STATUTS_TRAVAUX or canon_old in _STATUTS_TRAVAUX:
-        return []
+    raccorde = est_chantier_ci_raccorde(installation)
     raisons = []
-    if not autorisation_travaux_8221(installation):
-        raisons.append(RAISON_CI_SANS_CONVENTION)
-    # CIQ623 — mêmes documents de sécurité avant « En cours » pour un site
-    # pro, même sans gates amorcés.
-    raison_hse = _gate_check_hse(installation)
-    if raison_hse:
-        raisons.append(raison_hse)
+    if _entree(installation, nouveau_statut,
+               (Installation.Statut.RECEPTIONNE,)):
+        raison_reserves = raison_reserves_bloquantes(installation)
+        if raison_reserves:
+            raisons.append(raison_reserves)
+        if not recette_ci_passee(installation):
+            raisons.append(RAISON_CI_SANS_RECETTE)
+    if _entree(installation, nouveau_statut, _STATUTS_TRAVAUX):
+        if raccorde:
+            if not autorisation_travaux_8221(installation):
+                raisons.append(RAISON_CI_SANS_CONVENTION)
+            # CIQ623 — mêmes documents de sécurité avant « En cours » pour
+            # un site pro raccordé, même sans gates amorcés.
+            raison_hse = _gate_check_hse(installation)
+            if raison_hse:
+                raisons.append(raison_hse)
+        if (installation.niveau_tension == 'mt'
+                and visite_ci_validee(installation) is None):
+            raisons.append(RAISON_MT_SANS_VISITE)
     if raisons and (motif_derogation or '').strip() and est_directeur(user):
         return []
     return raisons
@@ -4034,10 +4319,17 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
             installation, user,
             f'Planifié sans acompte — motif : {motif_override_acompte.strip()}')
     if derogation_8221:
+        # CIQ621/CIQ630 — la dérogation cite les gardes qu'elle franchit.
+        franchies = _gardes_ci(old, nouveau_statut, user, None)
         activity.log_note(
             installation, user,
-            'Travaux démarrés sans convention 82-21 (dérogation Directeur) '
-            f'— motif : {motif_derogation_8221.strip()}')
+            'Passage autorisé par dérogation Directeur (site pro : '
+            + ' '.join(franchies)
+            + f') — motif : {motif_derogation_8221.strip()}')
+    # CIQ630 — avertissements consultatifs (BT sans visite C&I validée).
+    effets['avertissements'] = avertissements_ci(old, nouveau_statut)
+    for avertissement in effets['avertissements']:
+        activity.log_note(installation, user, avertissement)
     return {'ancien': ancien_statut, 'nouveau': installation.statut,
             'effets': effets}
 

@@ -503,10 +503,17 @@ class InstallationSerializer(serializers.ModelSerializer):
             # re-signature et journalisée) : un PATCH générique ne peut plus
             # l'écraser ni la vider.
             'signature_client', 'signataire_nom', 'signe_le',
+            # CIQ631 — signataire nommé et co-signature : action
+            # `signer-client` uniquement.
+            'signataire_fonction', 'signataire_societe', 'cosignataire_nom',
+            'cosignataire_fonction', 'cosignataire_organisme',
             # AUD326 — le verrou de clôture est posé/levé côté serveur (à
             # l'entrée en CLOTURE, et à une réouverture Directeur motivée) :
             # jamais lu du corps, sinon la garde se désarme d'un PATCH.
             'cloture_verrouillee',
+            # CIQ629 — la réception définitive ne se prononce QUE par
+            # l'action `reception-definitive` (réserves toutes levées).
+            'date_reception_definitive',
         ]
 
     def validate(self, attrs):
@@ -752,9 +759,13 @@ class ReserveSerializer(serializers.ModelSerializer):
         fields = ['id', 'intervention', 'description', 'photo', 'photo_url',
                   'memo', 'assignee', 'assignee_nom', 'statut', 'statut_display',
                   'resolution', 'resolue_le', 'suivi_intervention', 'ticket',
-                  'devis_repare_id', 'date_creation']
+                  'devis_repare_id', 'date_creation',
+                  # CIQ628 — réserve de chantier (origine, bloquante, …).
+                  'installation', 'origine', 'bloquante', 'date_echeance',
+                  'responsable', 'levee_par']
         read_only_fields = ['intervention', 'suivi_intervention', 'ticket',
-                            'devis_repare_id', 'resolue_le', 'date_creation']
+                            'devis_repare_id', 'resolue_le', 'date_creation',
+                            'installation', 'levee_par']
 
     def get_assignee_nom(self, obj):
         return getattr(obj.assignee, 'username', None)

@@ -382,11 +382,34 @@ class Reserve(models.Model):
         OUVERTE = 'ouverte', 'Ouverte'
         RESOLUE = 'resolue', 'Résolue'
 
+    class Origine(models.TextChoices):
+        # CIQ628 — d'où vient la réserve (contrat ``recette_ci.json``).
+        INTERVENTION = 'intervention', 'Intervention'
+        RECETTE = 'recette', 'Recette'
+        RECEPTION = 'reception', 'Réception'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='reserves')
+    # CIQ628 — une réserve appartient à une intervention OU directement au
+    # chantier (recette, réception) ; au moins l'une des deux (contrainte).
     intervention = models.ForeignKey(
-        Intervention, on_delete=models.CASCADE, related_name='reserves')
+        Intervention, on_delete=models.CASCADE, related_name='reserves',
+        null=True, blank=True)
+    installation = models.ForeignKey(
+        Installation, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='reserves_chantier')
+    origine = models.CharField(
+        max_length=12, choices=Origine.choices,
+        default=Origine.INTERVENTION)
+    # CIQ628 — une réserve BLOQUANTE ouverte refuse la remise au client.
+    bloquante = models.BooleanField(default=False)
+    date_echeance = models.DateField(null=True, blank=True)
+    # Responsable de la levée (texte saisi : sous-traitant, client, équipe).
+    responsable = models.CharField(max_length=120, blank=True, default='')
+    levee_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
     description = models.TextField(blank=True, default='')
     photo = models.ForeignKey(
         'records.Attachment', on_delete=models.SET_NULL,
@@ -423,8 +446,16 @@ class Reserve(models.Model):
         verbose_name = 'Réserve'
         verbose_name_plural = 'Réserves'
         ordering = ['statut', '-date_creation']
+        constraints = [
+            models.CheckConstraint(
+                condition=(models.Q(intervention__isnull=False)
+                           | models.Q(installation__isnull=False)),
+                name='reserve_intervention_ou_chantier'),
+        ]
 
     def __str__(self):
+        if self.intervention_id is None:
+            return f'Réserve · chantier {self.installation_id} ({self.statut})'
         return f'Réserve · intervention {self.intervention_id} ({self.statut})'
 
 
