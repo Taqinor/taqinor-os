@@ -79,11 +79,11 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/ged/management/commands/seed_types_champ_signature.py:30` | get_or_create | TypeChampSignature.objects | code, company |
 | `backend/django_core/apps/ged/services.py:333` | update_or_create | ValidationOcrDocument.objects | document |
 | `backend/django_core/apps/ged/services.py:681` | get_or_create | DocumentTagAssignment.objects | document, tag |
-| `backend/django_core/apps/ged/services.py:854` | get_or_create | Cabinet.objects | company, nom |
-| `backend/django_core/apps/ged/services.py:3947` | get_or_create | DocumentLien.objects | company, content_type, document, object_id |
-| `backend/django_core/apps/ged/services.py:4625` | get_or_create | DocumentTag.objects | company, slug |
-| `backend/django_core/apps/ged/services.py:5857` | get_or_create | Folder.objects | cabinet, company, nom, parent |
-| `backend/django_core/apps/ged/views.py:1997` | get_or_create | DocumentLien.objects | content_type, document, object_id |
+| `backend/django_core/apps/ged/services.py:929` | get_or_create | Cabinet.objects | company, nom |
+| `backend/django_core/apps/ged/services.py:4324` | get_or_create | DocumentLien.objects | company, content_type, document, object_id |
+| `backend/django_core/apps/ged/services.py:4992` | get_or_create | DocumentTag.objects | company, slug |
+| `backend/django_core/apps/ged/services.py:6224` | get_or_create | Folder.objects | cabinet, company, nom, parent |
+| `backend/django_core/apps/ged/views.py:2024` | get_or_create | DocumentLien.objects | content_type, document, object_id |
 | `backend/django_core/apps/installations/field_capture.py:79` | get_or_create | MaterielConsommation.objects | intervention |
 | `backend/django_core/apps/installations/field_capture.py:334` | get_or_create | SafetyChecklistSlot.objects | cle, company |
 | `backend/django_core/apps/installations/field_capture.py:344` | get_or_create | SafetySignoff.objects | intervention |
@@ -150,13 +150,13 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/parametres/views_messages.py:148` | get_or_create | MessageTemplate.objects | cle, company |
 | `backend/django_core/apps/parametres/views_statuses.py:138` | get_or_create | StatutConfig.objects | cle, company, domaine |
 | `backend/django_core/apps/parametres/views_translations.py:137` | get_or_create | TranslationOverride.objects | company, key, locale |
-| `backend/django_core/apps/portail/services.py:301` | get_or_create | ComptePortailClient.objects | client, company |
-| `backend/django_core/apps/portail/services.py:318` | get_or_create | Role.objects | company, nom |
-| `backend/django_core/apps/portail/services.py:394` | get_or_create | Role.objects | company, nom |
-| `backend/django_core/apps/portail/services.py:557` | update_or_create | JalonChantierPortail.objects | chantier_id, cle_phase, company |
-| `backend/django_core/apps/portail/services.py:680` | get_or_create | Role.objects | company, nom |
-| `backend/django_core/apps/portail/views_client.py:575` | get_or_create | AcceptationDevisPortail.objects | company, devis |
-| `backend/django_core/apps/portail/views_client.py:678` | get_or_create | PaiementFacturePortail.objects | company, facture, statut |
+| `backend/django_core/apps/portail/services.py:334` | get_or_create | ComptePortailClient.objects | client, company |
+| `backend/django_core/apps/portail/services.py:357` | get_or_create | Role.objects | company, nom |
+| `backend/django_core/apps/portail/services.py:441` | get_or_create | Role.objects | company, nom |
+| `backend/django_core/apps/portail/services.py:617` | update_or_create | JalonChantierPortail.objects | chantier_id, cle_phase, company |
+| `backend/django_core/apps/portail/services.py:784` | get_or_create | Role.objects | company, nom |
+| `backend/django_core/apps/portail/views_client.py:628` | get_or_create | AcceptationDevisPortail.objects | company, devis |
+| `backend/django_core/apps/portail/views_client.py:731` | get_or_create | PaiementFacturePortail.objects | company, facture, statut |
 | `backend/django_core/apps/portail/views_externes.py:495` | update_or_create | PreferencePortail.objects | utilisateur |
 | `backend/django_core/apps/publicapi/idempotency.py:64` | get_or_create | IdempotencyRecord.objects | api_key, endpoint, idempotency_key |
 | `backend/django_core/apps/records/services.py:104` | get_or_create | Follower.objects | company, content_type, object_id, sous_type, user |
