@@ -1066,6 +1066,23 @@ def apply_retour_fournisseur(retour, user):
 # existantes (`est_entierement_recu`). IDEMPOTENTE : une réception déjà confirmée
 # ne re-crée jamais de mouvement. Mêmes règles que l'action `recevoir` du BCF.
 
+MSG_BCF_NON_ENVOYE_RECEPTION = (
+    "BCF non envoyé : un bon de commande en brouillon ne peut pas être "
+    "réceptionné (envoyez-le d'abord au fournisseur).")
+
+
+def bcf_refuse_reception(bon_commande):
+    """ASTK22 — motif de refus (str) si une réception ne peut pas être créée
+    ou confirmée sur ce BCF parce qu'il est encore en BROUILLON ; None sinon.
+    Un BCF n'atteint ENVOYE ou RECU que par ses gestes (envoyer / e-mail /
+    WhatsApp, sous la garde d'approbation) — jamais par une réception."""
+    from .models import BonCommandeFournisseur
+    if (bon_commande is not None and bon_commande.statut
+            == BonCommandeFournisseur.Statut.BROUILLON):
+        return MSG_BCF_NON_ENVOYE_RECEPTION
+    return None
+
+
 def confirm_reception_fournisseur(reception, user):
     """Confirme une réception fournisseur : crée un MouvementStock ENTREE par
     ligne reçue, incrémente le stock + `quantite_recue` du BCF, puis avance le

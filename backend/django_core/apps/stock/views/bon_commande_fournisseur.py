@@ -93,6 +93,31 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             return [IsAdminRole()]
         return [IsAdminRole()]
 
+    @staticmethod
+    def _refus_approbation(bc):
+        """YPROC4/ASTK22 — garde d'approbation par palier (FG312) commune à
+        TOUS les gestes qui envoient un BCF brouillon au fournisseur
+        (`envoyer`, `envoyer-email`, `whatsapp`). Renvoie une Response 400
+        (même message partout) ou None. Sans seuil configuré, le sélecteur
+        renvoie True : comportement strictement inchangé. Import paresseux
+        (précédent : stock.services.reserved_quantity)."""
+        if bc.statut != BonCommandeFournisseur.Statut.BROUILLON:
+            return None
+        from apps.installations.selectors import (
+            bcf_approbation_valide, palier_manquant_bcf_detail,
+        )
+        if bcf_approbation_valide(bc.company, bc.id, bc.total_achat):
+            return None
+        palier = palier_manquant_bcf_detail(bc.company, bc.total_achat)
+        return Response(
+            {'detail': (
+                "Ce BCF dépasse le seuil d'approbation : une "
+                f"approbation au palier « {palier} » est requise avant "
+                'envoi (le montant a peut-être augmenté depuis une '
+                'approbation existante).')},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     def _mark_bcf_envoye(self, bc):
         """QS3 — Marque un BCF « envoyé » de façon idempotente et SANS régression.
 
@@ -122,6 +147,11 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         from apps.ventes.services import bcf_share_url
 
         bc = self.get_object()
+        # ASTK22 — même garde d'approbation que `envoyer` : aucune commande
+        # non approuvée ne part chez le fournisseur.
+        refus = self._refus_approbation(bc)
+        if refus is not None:
+            return refus
         phone = bc.fournisseur.telephone if bc.fournisseur_id else ''
         if not normalize_phone_e164(phone):
             return Response(
@@ -164,6 +194,11 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         from ..utils.pdf_fournisseur import generate_bcf_pdf
 
         bc = self.get_object()
+        # ASTK22 — même garde d'approbation que `envoyer` (aucun EmailLog,
+        # aucun PDF envoyé tant que l'approbation manque).
+        refus = self._refus_approbation(bc)
+        if refus is not None:
+            return refus
         to_email = ((request.data.get('to_email') or '').strip()
                     or (bc.fournisseur.email if bc.fournisseur_id else '')
                     or '')
@@ -380,19 +415,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         # inchangé (le sélecteur renvoie True). Import paresseux (précédent
         # existant : stock.services.reserved_quantity importe déjà
         # apps.installations.selectors en lazy).
-        from apps.installations.selectors import (
-            bcf_approbation_valide, palier_manquant_bcf_detail,
-        )
-        if not bcf_approbation_valide(bc.company, bc.id, bc.total_achat):
-            palier = palier_manquant_bcf_detail(bc.company, bc.total_achat)
-            return Response(
-                {'detail': (
-                    "Ce BCF dépasse le seuil d'approbation : une "
-                    f"approbation au palier « {palier} » est requise avant "
-                    'envoi (le montant a peut-être augmenté depuis une '
-                    'approbation existante).')},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        refus = self._refus_approbation(bc)
+        if refus is not None:
+            return refus
         bc.statut = BonCommandeFournisseur.Statut.ENVOYE
         bc.save(update_fields=['statut'])
         return Response(self.get_serializer(bc).data)

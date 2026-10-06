@@ -1313,6 +1313,10 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             'revision',
             # ZPUR11 — posé uniquement par l'action `annuler`.
             'motif_annulation',
+            # ASTK22 — le statut n'avance QUE par les gestes (envoyer /
+            # envoyer-email / whatsapp sous garde d'approbation, réception,
+            # annuler, rouvrir) — jamais en écriture libre.
+            'statut',
         ]
 
     def get_fields(self):
@@ -1518,6 +1522,11 @@ class ReceptionFournisseurSerializer(serializers.ModelSerializer):
         if value.statut == BonCommandeFournisseur.Statut.ANNULE:
             raise serializers.ValidationError(
                 'Ce bon de commande est annulé.')
+        # ASTK22 — une réception ne se crée que sur un BCF envoyé.
+        from .services import bcf_refuse_reception
+        motif = bcf_refuse_reception(value)
+        if motif:
+            raise serializers.ValidationError(motif)
         return value
 
     def create(self, validated_data):
