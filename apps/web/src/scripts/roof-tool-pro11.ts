@@ -4214,6 +4214,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       ctx.affectationColoration = coloring.colorByModule.size > 0 ? coloring : null;
       scene3d.rafraichirAffectation();
     },
+    // ACAL87 — PROMESSE : l'aperçu est lu après un rendu réel ; null si l'image est vide.
     snapshot: () => scene3d.snapshot(),
     // CAL180 — export « image HD » : rendu hors écran 2×/3×, blob PNG rendu à la page.
     renderImageHd: (scale) => scene3d.renderOffscreen(scale),

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 /* ============================================================================
    CALX36 — HISTORIQUE DES VERSIONS ET RESTAURATION.
@@ -13,16 +13,30 @@ import { MemoryRouter } from 'react-router-dom'
 
 const versionsMock = vi.fn()
 const restaurerVersion = vi.fn()
-vi.mock('../../../api/calepinageApi', () => ({
-  default: {
-    calepinages: {
-      versions: (...a) => versionsMock(...a),
-      restaurerVersion: (...a) => restaurerVersion(...a),
+/* ACAL23 — doublure à la FRONTIÈRE RÉSEAU : `versions` et `restaurerVersion`
+   sont pilotés par le test ; tout autre appel (l'atelier monté autour, dans le
+   test d'intégration) rend une promesse résolue — même proxy permissif que
+   `Rail.test.jsx`. */
+vi.mock('../../../api/calepinageApi', () => {
+  const reponse = () => Promise.resolve({ data: {} })
+  const surcharges = {
+    versions: (...a) => versionsMock(...a),
+    restaurerVersion: (...a) => restaurerVersion(...a),
+  }
+  const doublure = () => new Proxy(function appel() { return reponse() }, {
+    get: (_cible, prop) => {
+      if (typeof prop === 'symbol' || prop === 'then') return undefined
+      return surcharges[prop] ?? doublure()
     },
-  },
-}))
+    apply: () => reponse(),
+  })
+  return { default: doublure() }
+})
+vi.mock('../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
+vi.mock('../../../hooks/useHasPermission', () => ({ useHasPermission: () => false }))
 
 const { default: PanneauVersions } = await import('./PanneauVersions')
+const { default: AtelierPanneaux } = await import('../AtelierPanneaux')
 
 const V_COURANTE = {
   id: 3, libelle: 'Version 3', layout_hash: 'abc', cree_le: '2026-09-21T09:00:00Z',
@@ -102,5 +116,73 @@ describe('CALX36 — historique vide', () => {
     versionsMock.mockResolvedValue({ data: [] })
     rendre()
     expect(await screen.findByText('Aucune version pour l’instant')).toBeInTheDocument()
+  })
+})
+
+/* ACAL23 — APRÈS une restauration, la scène 3D relit le document restauré :
+   le Rail relaie `onRecharger` (l'unique rechargement de l'atelier, qui relit
+   design-context et `GET layout/`) jusqu'au panneau. Sans ce relais, « Enregistrer
+   le calepinage » republiait la copie d'avant et annulait la restauration. */
+describe('ACAL23 — restauration et rechargement de la scène', () => {
+  const rendreAtelier = (onRecharger) => render(
+    <MemoryRouter initialEntries={['/calepinage/5?onglet=versions']}>
+      <Routes>
+        <Route
+          path="/calepinage/:id"
+          element={(
+            <AtelierPanneaux
+              calepinageId={5}
+              contexte={{ cible: null, calepinage: null }}
+              onRecharger={onRecharger}
+            />
+          )}
+        />
+      </Routes>
+    </MemoryRouter>,
+  )
+
+  it('restauration confirmée → GET layout/ relu et scène ré-hydratée (onRecharger relayé par le Rail)', async () => {
+    versionsMock.mockResolvedValue({ data: [V_COURANTE, V_ANCIENNE] })
+    restaurerVersion.mockResolvedValue({ data: { restauree: 2, version: 4 } })
+    const onRecharger = vi.fn()
+    rendreAtelier(onRecharger)
+
+    fireEvent.click(await screen.findByTestId('cal-versions-restaurer-2'))
+    expect(onRecharger).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByTestId('cal-versions-confirmer-2'))
+
+    await waitFor(() => expect(restaurerVersion).toHaveBeenCalledWith(5, 2))
+    await waitFor(() => expect(onRecharger).toHaveBeenCalledTimes(1))
+  })
+
+  it('409 verrou → message du serveur affiché, et aucun rechargement', async () => {
+    versionsMock.mockResolvedValue({ data: [V_COURANTE, V_ANCIENNE] })
+    restaurerVersion.mockRejectedValue({
+      response: {
+        status: 409,
+        data: { roof_layout: ['Ce calepinage est verrouillé : son devis lié a été envoyé.'] },
+      },
+    })
+    const onRecharger = vi.fn()
+    rendreAtelier(onRecharger)
+
+    fireEvent.click(await screen.findByTestId('cal-versions-restaurer-2'))
+    fireEvent.click(await screen.findByTestId('cal-versions-confirmer-2'))
+
+    expect(await screen.findByTestId('cal-versions-erreur'))
+      .toHaveTextContent('Ce calepinage est verrouillé : son devis lié a été envoyé.')
+    expect(onRecharger).not.toHaveBeenCalled()
+  })
+
+  it('refus {detail} → le détail du serveur, jamais le texte générique', async () => {
+    versionsMock.mockResolvedValue({ data: [V_COURANTE, V_ANCIENNE] })
+    restaurerVersion.mockRejectedValue({
+      response: { status: 409, data: { detail: 'Version détachée de ce calepinage.' } },
+    })
+    rendre()
+    fireEvent.click(await screen.findByTestId('cal-versions-restaurer-2'))
+    fireEvent.click(await screen.findByTestId('cal-versions-confirmer-2'))
+    expect(await screen.findByTestId('cal-versions-erreur'))
+      .toHaveTextContent('Version détachée de ce calepinage.')
   })
 })

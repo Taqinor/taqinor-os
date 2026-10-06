@@ -351,6 +351,20 @@
       "verbe": "post"
     }
   ],
+  "calepinages.enregistrerLayoutCalepinageConditionnel": [
+    {
+      "config": {
+        "headers": {
+          "If-Match": {
+            "k": 1
+          }
+        }
+      },
+      "data": 3,
+      "url": "/calepinage/calepinages/7/layout/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.enregistrerPertes": [
     {
       "config": null,
@@ -380,6 +394,14 @@
       "config": null,
       "data": 3,
       "url": "/calepinage/calepinages/7/releve/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.enregistrerSectionLayout": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/layout/section/",
       "verbe": "post"
     }
   ],
@@ -693,6 +715,14 @@
       "data": null,
       "url": "/calepinage/calepinages/7/releve-visite/",
       "verbe": "get"
+    }
+  ],
+  "calepinages.remettreDocument": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/remettre-document/",
+      "verbe": "post"
     }
   ],
   "calepinages.remove": [

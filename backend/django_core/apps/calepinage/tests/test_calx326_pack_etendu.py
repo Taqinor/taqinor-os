@@ -82,10 +82,11 @@ class SpecPiecesEtenduesTest(SimpleTestCase):
         for code in PIECES_D_AVANT:
             self.assertIn(code, codes)
 
-    def test_sept_pieces_au_total_aucune_perdue_aucune_dupliquee(self):
+    def test_huit_pieces_au_total_aucune_perdue_aucune_dupliquee(self):
+        # ACAL237 — + le plan de pose terrain (facultatif).
         codes = [code for code, _l, _o in SPEC_PIECES]
-        self.assertEqual(len(codes), 7)
-        self.assertEqual(len(set(codes)), 7)
+        self.assertEqual(len(codes), 8)
+        self.assertEqual(len(set(codes)), 8)
 
 
 class RendusDeclareLesSeptPiecesTest(SimpleTestCase):
@@ -118,6 +119,8 @@ class DossierEtenduSimuleOuPasTest(SimpleTestCase):
             'note_calcul': lambda: pdf_de(2),
             'plan_toiture': lambda: pdf_de(1),
             'plan_masse': lambda: pdf_de(1),
+            # ACAL237 — le plan de pose terrain, rendu à sa place.
+            'plan_pose': lambda: pdf_de(1),
         }
 
     def test_calepinage_simule_les_trois_pieces_neuves_entrent(self):
@@ -131,12 +134,12 @@ class DossierEtenduSimuleOuPasTest(SimpleTestCase):
         self.assertEqual(
             [code for code, _l, _o, _p in pieces],
             ['planche', 'note_calcul', 'plan_toiture', 'plan_masse',
-             'rapport_etude', 'plan_cablage', 'rapport_ombrage'])
+             'plan_pose', 'rapport_etude', 'plan_cablage', 'rapport_ombrage'])
         # `pages` (posé par `rendre_pieces` via `compter_pages`, ARC11) doit
         # correspondre au VRAI comptage des octets rendus.
         for _code, _libelle, octets, pages in pieces:
             self.assertEqual(pack_technique.compter_pages(octets), pages)
-        self.assertEqual(sum(pages for _c, _l, _o, pages in pieces), 11)
+        self.assertEqual(sum(pages for _c, _l, _o, pages in pieces), 12)
         self.assertEqual(signalements, [])
 
     def test_calepinage_non_simule_produit_le_dossier_d_avant_la_tache(self):
@@ -148,8 +151,8 @@ class DossierEtenduSimuleOuPasTest(SimpleTestCase):
                                              company='societe-essai',
                                              rendus=self.rendus_avant)
         self.assertEqual([code for code, _l, _o, _p in pieces],
-                         list(PIECES_D_AVANT))
-        self.assertEqual(sum(pages for _c, _l, _o, pages in pieces), 5)
+                         list(PIECES_D_AVANT) + ['plan_pose'])
+        self.assertEqual(sum(pages for _c, _l, _o, pages in pieces), 6)
         libelles_neufs = [libelle for code, libelle, _o in SPEC_PIECES
                           if code in PIECES_NEUVES]
         self.assertEqual(len(signalements), 3)

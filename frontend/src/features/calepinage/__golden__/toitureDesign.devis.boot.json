@@ -50,7 +50,8 @@
           "source": "valeur atelier actuelle, non sourcée"
         }
       },
-      "onApiReady": "[fn]"
+      "onApiReady": "[fn]",
+      "onHydrationTerminee": "[fn]"
     }
   ],
   "api_builder_appels": [

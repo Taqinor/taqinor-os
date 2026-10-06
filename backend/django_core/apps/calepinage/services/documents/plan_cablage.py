@@ -441,23 +441,35 @@ def svg_de_plan_cablage(plan, *, titre='', sous_titre='', pied=''):
     ``toiture``, qui ne dessine PAS les modules : c'est cette couche qui les
     dessine, teintés par chaîne, avec la MÊME transformation.
     """
-    from ..planche import CONTENU_TOITURE, _transformation, svg_de_planche
+    from ..planche import (
+        CONTENU_TOITURE, DEBUT_FEUILLE, FIN_FEUILLE, _transformation,
+        svg_de_planche,
+    )
 
     verifier_legende_sans_montant(lignes_de_legende(plan))
     geometrie = plan['geometrie']
     base = svg_de_planche(geometrie, titre=titre, sous_titre=sous_titre,
                           pied=pied, contenu=CONTENU_TOITURE)
-    vers_feuille, _echelle = _transformation(geometrie['etendue'])
     couche = ['<g class="cablage">']
-    for module in plan['modules']:
-        couche.append(_forme_de_module(module, vers_feuille,
-                                       geometrie.get('module_m')))
-    for module in plan['modules']:
-        if module['manuel']:
-            couche.append(_marque_manuelle(module, vers_feuille))
+    # ACAL260 — sans toit dessiné (champ au sol seul), aucun module de toit à
+    # teinter : la légende des chaînes reste, sur la première feuille.
+    if geometrie.get('etendue'):
+        vers_feuille, _echelle = _transformation(geometrie['etendue'])
+        for module in plan['modules']:
+            couche.append(_forme_de_module(module, vers_feuille,
+                                           geometrie.get('module_m')))
+        for module in plan['modules']:
+            if module['manuel']:
+                couche.append(_marque_manuelle(module, vers_feuille))
     couche.append('</g>')
     couche.append(_legende_svg(plan))
-    fin = base.rindex('</svg>')
+    # ACAL260 — un SVG empilé (toit + surfaces de pose) reçoit la couche dans
+    # SA PREMIÈRE feuille (celle du toit), dont elle partage le repère.
+    fin = -1
+    if DEBUT_FEUILLE in base:
+        fin = base.find('</svg>\n' + FIN_FEUILLE)
+    if fin == -1:
+        fin = base.rindex('</svg>')
     return base[:fin] + '\n'.join(couche) + '\n' + base[fin:]
 
 

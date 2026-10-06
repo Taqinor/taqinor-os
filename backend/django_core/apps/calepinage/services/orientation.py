@@ -45,6 +45,8 @@ Module de SERVICE (réseau INJECTÉ par le client) : aucune base, aucun prix.
 """
 from __future__ import annotations
 
+from core.calepinage.geo import aspect_vers_boussole
+
 from apps.calepinage.services.ombrage_chaines import acces_par_module
 from apps.calepinage.services.pvgis_serie import (
     BASE_PAR_DEFAUT, EntreeInvalide, PvgisIndisponible)
@@ -188,7 +190,9 @@ def plan_optimal(lat, lon, *, client, base=BASE_PAR_DEFAUT):
         'irradiation_kwh_m2': round(irradiation, 2),
         'inclinaison_deg': inclinaison,
         'azimut_pvgis_deg': azimut_pvgis,
-        'azimut_deg': _azimut_de_face(azimut_pvgis),
+        # ACAL281 — la conversion UNIQUE (core.calepinage.geo) ; l'arrondi
+        # au dixième n'a lieu qu'ici, au point de publication.
+        'azimut_deg': _arrondi_publie(aspect_vers_boussole(azimut_pvgis)),
         'source': SOURCE_PVGIS,
         'depuis_cache': bool(depuis_cache),
         'motif_omission': '',
@@ -359,17 +363,8 @@ def _optimal_omis(motif):
     }
 
 
-def _azimut_de_face(azimut_pvgis_deg):
-    """PVGIS (0 = Sud, −90 = Est) → azimut de FACE (180 = Sud, 90 = Est).
-
-    L'inverse exact de ``pvgis_serie.azimut_pvgis`` : le document de toiture
-    et les écrans ne lisent que l'azimut de face, publier l'autre convention
-    à côté de ``azimut_deg`` ferait lire un écart qui n'existe pas.
-    """
-    aspect = _nombre(azimut_pvgis_deg)
-    if aspect is None:
-        return None
-    return round((aspect + 180.0) % 360.0, 1)
+def _arrondi_publie(valeur):
+    return None if valeur is None else round(valeur, 1)
 
 
 def _sous_bloc(charge, cle):

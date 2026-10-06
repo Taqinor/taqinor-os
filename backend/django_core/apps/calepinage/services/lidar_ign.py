@@ -267,13 +267,14 @@ def _ajuster_plan(mesures):
     système est dégénéré (points alignés ou confondus) : un plan indéterminé
     ne produit AUCUNE suggestion.
     """
+    from core.calepinage.geo import projeteur_local
+
     lon0 = sum(m[0] for m in mesures) / len(mesures)
     lat0 = sum(m[1] for m in mesures) / len(mesures)
-    echelle_x = 111320.0 * math.cos(math.radians(lat0))
-    echelle_y = 110540.0
+    # ACAL281 — la projection UNIQUE (core.calepinage.geo, sphère).
+    projeter = projeteur_local((lon0, lat0))
 
-    points = [((lon - lon0) * echelle_x, (lat - lat0) * echelle_y, z)
-              for lon, lat, z in mesures]
+    points = [projeter((lon, lat)) + (z,) for lon, lat, z in mesures]
 
     sxx = sum(x * x for x, _, _ in points)
     sxy = sum(x * y for x, y, _ in points)

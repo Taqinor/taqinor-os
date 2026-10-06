@@ -100,8 +100,8 @@ def _plan_descendant_vers(direction, pente_m_par_m=0.2):
     """
     import math
 
-    ex = 111320.0 * math.cos(math.radians(LAT))
-    ey = 110540.0
+    ex = (math.pi / 180.0 * 6378137.0) * math.cos(math.radians(LAT))
+    ey = (math.pi / 180.0 * 6378137.0)
     vers = {
         'sud': (0.0, +pente_m_par_m),      # z croît vers le nord
         'nord': (0.0, -pente_m_par_m),

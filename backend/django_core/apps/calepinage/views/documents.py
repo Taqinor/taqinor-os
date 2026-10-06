@@ -69,23 +69,8 @@ def rapport_etude_pdf(self, request, pk=None):
     except RapportRefuse as refus:
         return Response({refus.champ or 'resultat': str(refus)},
                         status=status.HTTP_400_BAD_REQUEST)
-    # CALX322 — chaque téléchargement RÉUSSI devient une version retrouvable
-    # (``services/documents/versions_document.py``) ; BEST-EFFORT, comme le
-    # journal (``services/journal.py``) : un incident de versionnement ne
-    # doit jamais faire échouer la remise du document lui-même.
-    from ..services.documents.versions_document import (
-        enregistrer_version_document,
-    )
-    try:
-        enregistrer_version_document(
-            calepinage, code='rapport_etude', octets=octets, langue=langue,
-            user=getattr(request, 'user', None))
-    except Exception:  # noqa: BLE001 — un versionnement perdu ne casse rien
-        import logging
-
-        logging.getLogger(__name__).exception(
-            'CALX322 : version de rapport_etude perdue (calepinage %s)',
-            calepinage.pk)
+    # ACAL222 — une LECTURE n'écrit plus de version : la remise est un geste
+    # explicite (``POST remettre-document``, ``views/remise_document.py``).
     return reponse_de_fichier(
         octets, mime=MIME_PDF,
         nom_fichier=nom_de_fichier(calepinage, 'rapport-etude.pdf'))
@@ -168,6 +153,10 @@ DOCUMENTS_SCHEMA = inline_serializer('CalepinageDocuments', {
                     'nom_complet': drf_serializers.CharField(),
                 }, allow_null=True),
             'attachment': drf_serializers.IntegerField(),
+            # ACAL222 — l'empreinte des entrées (16 hex, null sur un ancien
+            # nom) et la péremption contre les entrées d'aujourd'hui.
+            'empreinte': drf_serializers.CharField(allow_null=True),
+            'perimee': drf_serializers.BooleanField(),
         }, many=True),
     }, many=True),
     # CALX302 — les images déposées par le navigateur, la plus récente
@@ -176,6 +165,9 @@ DOCUMENTS_SCHEMA = inline_serializer('CalepinageDocuments', {
         'genre': drf_serializers.CharField(),
         'attachment': drf_serializers.IntegerField(),
         'depose_le': drf_serializers.DateTimeField(),
+        # ACAL224 — liée à la conception qui l'a produite.
+        'empreinte': drf_serializers.CharField(allow_null=True),
+        'perimee': drf_serializers.BooleanField(),
     }, many=True),
 })
 
@@ -382,8 +374,10 @@ def export_projet_json(self, request, pk=None):
     except ExportProjetRefuse as refus:
         return Response({refus.champ or 'resultat': str(refus)},
                         status=status.HTTP_400_BAD_REQUEST)
+    from .sorties import en_tete_de_telechargement
+
     reponse = Response(document)
-    reponse['Content-Disposition'] = 'attachment; filename="%s"' % (
+    reponse['Content-Disposition'] = en_tete_de_telechargement(
         nom_de_fichier(calepinage, 'export-projet.json'))
     return reponse
 
@@ -399,17 +393,19 @@ IMAGE_DOCUMENT_SCHEMA = inline_serializer('CalepinageImageDocumentDepot', {
     'genre': drf_serializers.CharField(),
     'attachment': drf_serializers.IntegerField(),
     'depose_le': drf_serializers.DateTimeField(),
+    'empreinte': drf_serializers.CharField(allow_null=True),  # ACAL224
+    'perimee': drf_serializers.BooleanField(),
 })
 
 
 @extend_schema(request=OpenApiTypes.OBJECT,
                responses={201: IMAGE_DOCUMENT_SCHEMA})
 @action(detail=True, methods=['post'], url_path='image-document',
-        url_name='image-document', permission_classes=[PeutVoirCalepinage])
+        url_name='image-document', permission_classes=[PeutGererCalepinage])
 def image_document(self, request, pk=None):
     """CALX302 — dépose une image PRODUITE PAR LE NAVIGATEUR (carte de
-    chaleur d'ombrage, diagramme de pertes, rendu 3D) — genre parmi une
-    énumération FERMÉE (``ombrage``, ``sankey``, ``plan3d``), stockée en
+    chaleur d'ombrage) — genre parmi une énumération FERMÉE (ACAL224 :
+    ``ombrage`` seul ; réservé à ``calepinage_gerer``), stockée en
     ``records.Attachment`` (MinIO, jamais un binaire au dépôt). Corps
     ``{genre, fichier}`` — ``fichier`` accepte un fichier multipart OU une
     data-URL base64 produite par le navigateur.
@@ -440,6 +436,10 @@ def image_document(self, request, pk=None):
         'genre': depot['genre'],
         'attachment': depot['attachment'].pk,
         'depose_le': depot['attachment'].created_at,
+        # ACAL224 — l'empreinte de la conception pour laquelle elle est
+        # déposée : fraîche par construction au moment du dépôt.
+        'empreinte': depot['empreinte'],
+        'perimee': not depot['empreinte'],
     }, status=status.HTTP_201_CREATED)
 
 
@@ -657,3 +657,9 @@ def dossier_fin_chantier(self, request, pk=None):
 
 
 CalepinageViewSet.dossier_fin_chantier = dossier_fin_chantier
+
+
+# ACAL222 — la REMISE explicite (``POST remettre-document``) : rattachée au
+# viewset par l'import de son module, ici en fin de fichier (donc avant
+# ``router.register``, via ``views/rattachements.py``).
+from . import remise_document as _remise_document_action  # noqa: E402,F401

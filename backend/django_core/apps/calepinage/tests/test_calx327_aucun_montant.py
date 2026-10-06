@@ -398,9 +398,10 @@ RENDEURS_HTML_PURS = {
 #: page HTML unique — chacun avec un motif VÉRIFIÉ, jamais un silence.
 EXEMPTIONS_DOCUMENTEES = {
     'pack_technique': (
-        "fusion d'OCTETS de 7 pièces déjà TOUTES couvertes ci-dessus "
+        "fusion d'OCTETS de 8 pièces déjà TOUTES couvertes ci-dessus "
         "(pack_technique.SPEC_PIECES : planche, note_calcul, plan_toiture, "
-        "plan_masse, rapport_etude, plan_cablage, rapport_ombrage) — "
+        "plan_masse, plan_pose, rapport_etude, plan_cablage, "
+        "rapport_ombrage) — "
         "fusionner_pdf (XGED10) recopie des octets, il n'introduit aucun "
         "texte neuf ; vérifier chaque pièce couvre donc le dossier fusionné."
     ),

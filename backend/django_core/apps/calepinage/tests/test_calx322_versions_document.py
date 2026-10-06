@@ -126,7 +126,7 @@ _OCTETS_PDF = b'%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj<<>>endobj\n%%EOF'
 
 
 class VersionnementEnBaseTest(BaseApiCalepinage):
-    """Deux téléchargements du rapport d'étude → versions 1 puis 2 (CI)."""
+    """ACAL222 — la remise EXPLICITE versionne (CI) ; un GET n'écrit rien."""
 
     def setUp(self):
         super().setUp()
@@ -139,46 +139,77 @@ class VersionnementEnBaseTest(BaseApiCalepinage):
             roof_layout=copy.deepcopy(LAYOUT),
             resultat=copy.deepcopy(RESULTAT))
 
+    def _servi(self):
+        return mock.patch(
+            'apps.calepinage.services.electrique.resultat_calepinage',
+            return_value=copy.deepcopy(RESULTAT))
+
     def _telecharger(self):
-        with mock.patch(
-                'apps.calepinage.services.electrique.resultat_calepinage',
-                return_value=copy.deepcopy(RESULTAT)):
+        with self._servi():
             return self.api.get(
                 f'{url_detail(self.calepinage.pk)}rapport-etude.pdf/')
 
-    def test_deux_telechargements_produisent_les_versions_1_puis_2(self):
-        self.assertEqual(self._telecharger().status_code, 200)
-        self.assertEqual(self._telecharger().status_code, 200)
-        versions = versions_du_document(self.calepinage, 'rapport_etude')
-        self.assertEqual([v['numero'] for v in versions], [2, 1])
+    def _remettre(self):
+        with self._servi():
+            return self.api.post(
+                f'{url_detail(self.calepinage.pk)}remettre-document/',
+                {'code': 'rapport_etude', 'langue': 'fr'}, format='json')
 
-    def test_une_version_porte_l_empreinte_du_document(self):
+    def _modifier_le_titre(self):
+        self.calepinage.titre = 'Villa Anfa (modifiée)'
+        self.calepinage.save(update_fields=['titre'])
+
+    def test_un_telechargement_n_ecrit_aucune_version(self):
         self.assertEqual(self._telecharger().status_code, 200)
+        self.assertEqual(self._telecharger().status_code, 200)
+        self.assertEqual(
+            versions_du_document(self.calepinage, 'rapport_etude'), [])
+
+    def test_deux_remises_apres_modification_produisent_1_puis_2(self):
+        self.assertEqual(self._remettre().status_code, 201)
+        self._modifier_le_titre()
+        self.assertEqual(self._remettre().status_code, 201)
+        with self._servi():
+            versions = versions_du_document(self.calepinage, 'rapport_etude')
+        self.assertEqual([v['numero'] for v in versions], [2, 1])
+        self.assertEqual([v['perimee'] for v in versions], [False, True])
+
+    def test_une_version_porte_l_empreinte_des_entrees(self):
+        reponse = self._remettre()
+        self.assertEqual(reponse.status_code, 201)
         piece = Attachment.objects.get(
             content_type=ContentType.objects.get_for_model(Calepinage),
             object_id=self.calepinage.pk)
-        self.assertTrue(piece.filename.startswith('rapport_etude__v001__'))
+        self.assertEqual(piece.filename,
+                         'rapport_etude__v001__fr__%s.pdf'
+                         % reponse.data['empreinte'])
 
     def test_taille_stockee_non_nulle(self):
-        self.assertEqual(self._telecharger().status_code, 200)
+        self.assertEqual(self._remettre().status_code, 201)
         piece = Attachment.objects.get(
             content_type=ContentType.objects.get_for_model(Calepinage),
             object_id=self.calepinage.pk)
         self.assertGreater(piece.size, 0)
 
     def test_une_autre_societe_ne_voit_aucune_version(self):
-        self.assertEqual(self._telecharger().status_code, 200)
+        self.assertEqual(self._remettre().status_code, 201)
         self.assertEqual(
             versions_du_document(self.etranger, 'rapport_etude'), [])
 
+    def test_une_autre_societe_ne_peut_pas_remettre(self):
+        with self._servi():
+            reponse = self.api_autre.post(
+                f'{url_detail(self.calepinage.pk)}remettre-document/',
+                {'code': 'rapport_etude'}, format='json')
+        self.assertEqual(reponse.status_code, 404)
+
     def test_l_inventaire_documents_publie_la_version(self):
-        self.assertEqual(self._telecharger().status_code, 200)
-        with mock.patch(
-                'apps.calepinage.services.electrique.resultat_calepinage',
-                return_value=copy.deepcopy(RESULTAT)):
+        self.assertEqual(self._remettre().status_code, 201)
+        with self._servi():
             reponse = self.api.get(
                 f'{url_detail(self.calepinage.pk)}documents/')
         rapport = next(d for d in reponse.data['documents']
                        if d['code'] == 'rapport_etude')
         self.assertEqual(len(rapport['versions']), 1)
         self.assertEqual(rapport['versions'][0]['numero'], 1)
+        self.assertFalse(rapport['versions'][0]['perimee'])

@@ -180,6 +180,22 @@ def _controles_croises(document):
     """
     _refuser_module_inconnu(document)
     _refuser_numero_de_module_double(document)
+    _refuser_contour_croise(document)
+
+
+def _refuser_contour_croise(document):
+    """ACAL76 — un document IMPORTÉ ne peut porter aucun contour croisé.
+
+    Pans, obstacles polygonaux et zones d'exclusion : le test est celui du
+    noyau (``core.calepinage.geometrie.est_polygone_simple``), via le
+    collecteur unique ``services.layout.contours_croises`` — jamais recodé.
+    """
+    from .layout import contours_croises, message_contour_croise
+
+    croises = contours_croises(document)
+    if croises:
+        chemin = croises[0][0]
+        raise ImportLayoutRefuse(message_contour_croise(chemin), champ=chemin)
 
 
 def valider_document(document):

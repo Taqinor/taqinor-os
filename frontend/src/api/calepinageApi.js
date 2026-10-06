@@ -273,6 +273,20 @@ const calepinageApi = {
     // `null` efface une rubrique). Le serveur fusionne clé par clé (ACAL160) et renvoie le
     // MÊME document que le GET `schemaUnifilaire`, édition appliquée.
     enregistrerEditionSld: (id, edition) => api.post(`${pivot(id)}schema-unifilaire/`, edition),
+
+    // ACAL222 — la REMISE explicite d'un document (`{code, langue}`) : 201
+    // nouvelle version, 200 `deja_remise` (même empreinte des entrées), 400
+    // sous le champ nommé (contrat `calepinage_documents.json` › `remise`).
+    remettreDocument: (id, corps) => api.post(`${pivot(id)}remettre-document/`, corps), // ACAL
+    // ACAL23 — contrat calepinage_layout_section.json (ACAL1/ACAL22). L'écriture COMPLÈTE
+    // porte l'empreinte « document » lue au boot (ou rendue par la dernière écriture) dans
+    // l'en-tête If-Match : un document modifié ailleurs répond 409 `document_modifie`, rien
+    // n'est écrasé. Sans empreinte connue, aucun en-tête (toléré jusqu'en M3, D01-T37).
+    enregistrerLayoutCalepinageConditionnel: (id, corps, empreinte) => api.post( // ACAL
+      `${pivot(id)}layout/`, corps,
+      empreinte ? { headers: { 'If-Match': empreinte } } : undefined),
+    // ACAL23 — l'écriture d'UNE section (`{cle, valeur | zone_id + champs, base_empreinte}`).
+    enregistrerSectionLayout: (id, corps) => api.post(`${pivot(id)}layout/section/`, corps), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
@@ -319,7 +333,6 @@ const calepinageApi = {
 }
 
 export default calepinageApi
-// ACAL1 — contrat calepinage_layout_section.json (M0)
 // ACAL3 — contrat calepinage_publication.json (M0)
 // ACAL9 — contrat calepinage_entree_electrique.json (M0)
 // ACAL9 — contrat calepinage_publication_electrique.json (M0)

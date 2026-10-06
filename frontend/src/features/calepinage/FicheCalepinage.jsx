@@ -562,7 +562,12 @@ export default function FicheCalepinage({ detail }) {
         <Champ cle="layout_stale" label="Conception à jour">
           {detail.layout_stale == null
             ? '—'
-            : (detail.layout_stale ? 'Non — le devis a changé' : 'Oui')}
+            // ACAL47 — le serveur compare désormais la conception IMPRIMÉE du
+            // calepinage au devis : la cause dite est la divergence, et le
+            // geste qui la résout est nommé.
+            : (detail.layout_stale
+              ? 'Non — la conception et le devis divergent : Resynchroniser'
+              : 'Oui')}
         </Champ>
         <Champ cle="layout_nb_panneaux" label="Panneaux posés">
           {detail.layout_nb_panneaux == null

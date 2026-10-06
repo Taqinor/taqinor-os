@@ -879,7 +879,7 @@ def favoris_materiel_de_societe(company):
 
 def calepinage_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
                      company=None, retrait_m=None, pas_recherche_m=0.01,
-                     famille=None):
+                     famille=None, entree_traduite=None):
     """Calepine une toiture villa (``AreaRecord``) — LECTURE PURE.
 
     ``ordre`` reste un argument EXPLICITE jusqu'ici : aucun appelant ne doit
@@ -892,7 +892,21 @@ def calepinage_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
 
     ``famille`` (PV66) — ``SUD`` ou ``EST_OUEST`` : la forme de table, pas le
     panneau. Absente, le calcul est celui d'avant PV66, à l'identique.
+
+    ``entree_traduite`` (ACAL256) — ``{'layout', 'pan', 'parametres'}`` :
+    mode « entrée traduite ». L'entrée du moteur est alors construite par
+    ``services.traduction.entree_depuis_layout`` à partir du PAN BRUT du
+    document et des réglages société (retrait de rive, allée, dégagement par
+    type) ; ``area`` n'est plus lu. Absent : l'appel d'hier, à l'identique.
     """
+    if entree_traduite is not None:
+        from .villa_service import calepiner_pan_traduit
+
+        return calepiner_pan_traduit(
+            entree_traduite.get('layout'), entree_traduite.get('pan'),
+            produit_panneau=produit_panneau,
+            parametres=entree_traduite.get('parametres'))
+
     from .villa_service import calepiner_villa
 
     return calepiner_villa(area, ordre=ordre, kit=kit,

@@ -37,8 +37,8 @@ const here = dirname(fileURLToPath(import.meta.url))
 const GOLDEN_PATH = join(here, 'calepinageApi.golden.json')
 const API_PATH = join(here, 'calepinageApi.js')
 
-// Valeur CAPTURÉE le 04/10/2026 (79 `calepinages` + 3 `moteur` + 6 `parametres`, puis +2 en vague B, +4 en vague C ACAL).
-const NOMBRE_CLES_EXTRAITES = 94
+// Valeur CAPTURÉE le 04/10/2026 (79 `calepinages` + 3 `moteur` + 6 `parametres`, puis +2 en vague B, +4 en vague C ACAL, +1 ACAL222 remettreDocument, +2 ACAL23 enregistrerLayoutCalepinageConditionnel/enregistrerSectionLayout).
+const NOMBRE_CLES_EXTRAITES = 97
 
 /* ── L'axios factice ENREGISTREUR (module autonome, servi en data: URL) ──── */
 const AXIOS_ENREGISTREUR = `
@@ -167,7 +167,7 @@ test('SPL291 — le golden couvre toutes les clés de feuille + le CRUD partagé
   for (const id of cles) assert.ok(golden[id].length >= 1, `${id} n'a émis aucun appel HTTP`)
 })
 
-test('SPL291 — extraireCles(calepinageApi.js) rend exactement les 94 clés capturées', () => {
+test('SPL291 — extraireCles(calepinageApi.js) rend exactement les NOMBRE_CLES_EXTRAITES clés capturées', () => {
   const cles = extraireCles(lireSourceCalepinageApi())
   assert.equal(cles.length, NOMBRE_CLES_EXTRAITES)
   const runtime = new Set(Object.keys(golden))

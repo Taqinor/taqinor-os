@@ -332,6 +332,8 @@ def _table_blocs(blocs, langue_libelle):
 
 
 def _table_matrice(matrice):
+    """ACAL224 — L'UNIQUE table de la matrice 12×24, pour les DEUX rapports
+    (rapport d'ombrage autonome et section ombrage du rapport d'étude)."""
     from .rapport import nombre_tel_que_servi
 
     entete = '<th>Mois</th>' + ''.join(
@@ -339,12 +341,68 @@ def _table_matrice(matrice):
     lignes = []
     for rang, mois in enumerate(matrice, start=1):
         cellules = ''.join(
-            '<td>%s</td>' % (nombre_tel_que_servi(round(v, 2))
-                             if isinstance(v, (int, float)) else '—')
+            '<td class="valeur">%s</td>' % (
+                nombre_tel_que_servi(round(v, 2))
+                if isinstance(v, (int, float)) else '—')
             for v in mois)
         lignes.append('<tr><td>%s</td>%s</tr>' % (rang, cellules))
-    return ('<table class="generique"><tr>%s</tr>%s</table>'
+    return ('<table class="ombrage-matrice generique"><tr>%s</tr>%s</table>'
             % (entete, ''.join(lignes)))
+
+
+#: ACAL224 — les trois états de la carte de chaleur imprimée.
+MOTIF_CARTE_ABSENTE = ('Aucune carte de chaleur déposée : ouvrez l’atelier '
+                       'et joignez l’image depuis le panneau Documents.')
+MOTIF_CARTE_PERIMEE = ('Carte de chaleur à rejoindre (conception modifiée '
+                       'depuis le {date})')
+LEGENDE_CARTE = 'Carte de chaleur déposée le {date} pour cette conception'
+
+
+def _date_de_depot(moment):
+    if moment is None:
+        return 'date non enregistrée'
+    from django.utils import timezone
+
+    if timezone.is_aware(moment):
+        moment = timezone.localtime(moment)
+    return moment.strftime('%d/%m/%Y')
+
+
+def html_carte_de_chaleur(calepinage):
+    """ACAL224 — la carte de chaleur à imprimer, pour les DEUX rapports.
+
+    Embarquée seulement si elle a été déposée pour la conception COURANTE
+    (``images_document.derniere_image_encodee`` contrôle l'empreinte) ; une
+    carte d'une autre conception n'est JAMAIS imprimée à côté de la matrice
+    d'aujourd'hui : un motif DATÉ la remplace. Ne lève jamais : une relecture
+    impossible rend le motif d'absence.
+    """
+    from .images_document import (
+        derniere_image_encodee, image_est_fraiche, image_recente,
+    )
+
+    try:
+        piece = image_recente(calepinage, genre='ombrage')
+        if piece is None:
+            return '<p class="note">%s</p>' % escape(MOTIF_CARTE_ABSENTE)
+        date = _date_de_depot(getattr(piece, 'created_at', None))
+        if not image_est_fraiche(piece, calepinage):
+            return '<p class="note">%s</p>' % escape(
+                MOTIF_CARTE_PERIMEE.format(date=date))
+        data_uri = derniere_image_encodee(calepinage, genre='ombrage')
+    except Exception:  # noqa: BLE001 — image omise, jamais rapport cassé
+        import logging
+
+        logging.getLogger(__name__).warning(
+            'ACAL224 : carte de chaleur illisible (calepinage %s)',
+            getattr(calepinage, 'pk', None))
+        return '<p class="note">%s</p>' % escape(MOTIF_CARTE_ABSENTE)
+    if not data_uri:
+        return '<p class="note">%s</p>' % escape(MOTIF_CARTE_ABSENTE)
+    return ('<img class="ombrage-image" style="max-width:100%%" src="%s" '
+            'alt="Carte de chaleur d’ombrage"><p class="note">%s</p>'
+            % (escape(data_uri, quote=True),
+               escape(LEGENDE_CARTE.format(date=date))))
 
 
 def _table_moyennes_mensuelles(moyennes):
@@ -403,20 +461,8 @@ def html_du_rapport_ombrage(calepinage, **options):
     corps.append('<section><h2>Profil d’horizon</h2>%s</section>'
                  % _table_horizon(rapport['horizon']))
 
-    from .images_document import derniere_image_encodee
-
-    try:
-        data_uri = derniere_image_encodee(calepinage, genre='ombrage')
-    except Exception:  # noqa: BLE001 — image omise, jamais rapport cassé
-        data_uri = None
-    if data_uri:
-        corps.append(
-            '<section><h2>Carte de chaleur</h2><img style="max-width:100%%" '
-            'src="%s" alt="Carte de chaleur d’ombrage"></section>'
-            % escape(data_uri, quote=True))
-    else:
-        corps.append('<section><h2>Carte de chaleur</h2><p class="note">'
-                     'Aucune carte de chaleur déposée.</p></section>')
+    corps.append('<section><h2>Carte de chaleur</h2>%s</section>'
+                 % html_carte_de_chaleur(calepinage))
 
     if rapport.get('avertissements'):
         corps.append('<section><h2>Avertissements</h2><ul>%s</ul></section>'

@@ -27,14 +27,14 @@
    Aucun champ ne s'appelle « coords », « points » ou « xy » : un nom neutre est
    exactement ce qui a produit l'inversion qu'on corrige ici.
 
-   PROJECTION : plan tangent local (ENU) sur l'ellipsoïde WGS84, avec les rayons
-   de courbure exacts à la latitude de l'origine. Sur l'emprise d'une toiture
-   (quelques centaines de mètres) l'erreur de planéité est très inférieure au
-   millimètre, et l'aller-retour est l'inverse algébrique exact. */
+   PROJECTION (ACAL281) : plan tangent local (ENU) sur la SPHÈRE de rayon
+   R = 6 378 137 m — LA convention de l'atelier, d'apps/web (roof.ts) et du
+   serveur (core/calepinage/geo.py) : x = Δlng·R·cos(lat0), y = Δlat·R (en
+   radians). Choix de cohérence (une seule aire du même tracé partout), pas de
+   précision ; l'aller-retour reste l'inverse algébrique exact. */
 
-const A_WGS84 = 6378137.0
-const F_WGS84 = 1 / 298.257223563
-const E2 = F_WGS84 * (2 - F_WGS84)
+/** Rayon de la sphère (m) — MÊME constante que core/calepinage/geo.py. */
+export const RAYON_TERRE_M = 6378137.0
 const RAD = Math.PI / 180
 
 export const ORDRE_LNGLAT = 'lnglat'
@@ -103,15 +103,9 @@ export function creerRepere({ origine_lnglat, azimut_deg = 0, ordre } = {}) {
   const [lng0, lat0] = versLngLat(origine_lnglat, ordre ?? ORDRE_LNGLAT)
   const a = Number(azimut_deg)
   if (!Number.isFinite(a)) throw new TypeError('`azimut_deg` doit être un nombre.')
-  const sin2 = Math.sin(lat0 * RAD) ** 2
-  const denom = 1 - E2 * sin2
   return {
     origine_lnglat: [lng0, lat0],
     azimut_deg: a,
-    // Rayon de courbure de la première verticale (est-ouest).
-    _N: A_WGS84 / Math.sqrt(denom),
-    // Rayon de courbure méridien (nord-sud).
-    _M: (A_WGS84 * (1 - E2)) / (denom * Math.sqrt(denom)),
     _cosLat0: Math.cos(lat0 * RAD),
   }
 }
@@ -123,8 +117,8 @@ export function creerRepere({ origine_lnglat, azimut_deg = 0, ordre } = {}) {
 export function lngLatVersMetres(repere, point, ordre) {
   const [lng, lat] = versLngLat(point, ordre)
   const [lng0, lat0] = repere.origine_lnglat
-  const est = (lng - lng0) * RAD * repere._N * repere._cosLat0
-  const nord = (lat - lat0) * RAD * repere._M
+  const est = (lng - lng0) * RAD * RAYON_TERRE_M * repere._cosLat0
+  const nord = (lat - lat0) * RAD * RAYON_TERRE_M
   const a = repere.azimut_deg * RAD
   const cos = Math.cos(a)
   const sin = Math.sin(a)
@@ -140,8 +134,8 @@ export function metresVersLngLat(repere, { x, y }) {
   const est = Number(x) * cos + Number(y) * sin
   const nord = -Number(x) * sin + Number(y) * cos
   const [lng0, lat0] = repere.origine_lnglat
-  const lat = lat0 + nord / repere._M / RAD
-  const lng = lng0 + est / (repere._N * repere._cosLat0) / RAD
+  const lat = lat0 + nord / RAYON_TERRE_M / RAD
+  const lng = lng0 + est / (RAYON_TERRE_M * repere._cosLat0) / RAD
   return [lng, lat]
 }
 

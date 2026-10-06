@@ -45,8 +45,6 @@ strictement inchangée — comportement d'aujourd'hui.
 """
 from __future__ import annotations
 
-import math
-
 #: La clé du document d'atelier (v2) et celle du contrat MOTEUR.
 CLE_LAYOUT = 'exclusionZones'
 CLE_MOTEUR = 'zones'
@@ -76,35 +74,26 @@ def natures_admises():
 def projeteur_local(origine):
     """``(lon, lat) -> (x_m, y_m)`` autour de ``origine`` ``(lon, lat)``.
 
-    Approximation locale plane, suffisante à l'échelle d'un toit, et
-    IDENTIQUE à celle de CAL237 pour que les deux services ne fabriquent pas
-    deux repères différents du même site.
+    ACAL281 — la projection UNIQUE de ``core.calepinage.geo`` (sphère
+    R = 6 378 137 m, convention de l'atelier et du devis) : l'ancienne copie
+    « 111 320 / 110 540 » de ce module est supprimée, troncons.py,
+    traduction.py et import_plan.py la lisent ici sans changement d'appel.
     """
-    lon0, lat0 = float(origine[0]), float(origine[1])
-    echelle_x = 111320.0 * math.cos(math.radians(lat0))
+    from core.calepinage.geo import projeteur_local as _projeteur
 
-    def projeter(point):
-        return ((float(point[0]) - lon0) * echelle_x,
-                (float(point[1]) - lat0) * 110540.0)
-
-    return projeter
+    return _projeteur(origine)
 
 
 def deprojeteur_local(origine):
     """ACAL69 — l'INVERSE de ``projeteur_local`` : ``(x, y) m -> (lon, lat)``.
 
-    Même ``origine`` ``(lon, lat)``, mêmes constantes (111320 · cos(lat0) pour
-    x, 110540 pour y) : un point projeté puis déprojeté revient où il était.
-    UN seul repère local dans le module — jamais une seconde formule recopiée.
+    Même ``origine`` ``(lon, lat)``, même sphère (ACAL281,
+    ``core.calepinage.geo``) : un point projeté puis déprojeté revient où il
+    était. UN seul repère local — jamais une seconde formule recopiée.
     """
-    lon0, lat0 = float(origine[0]), float(origine[1])
-    echelle_x = 111320.0 * math.cos(math.radians(lat0))
+    from core.calepinage.geo import deprojeteur_local as _deprojeteur
 
-    def deprojeter(point):
-        return (lon0 + float(point[0]) / echelle_x,
-                lat0 + float(point[1]) / 110540.0)
-
-    return deprojeter
+    return _deprojeteur(origine)
 
 
 def _sommets(brute, champ, repere, projection):

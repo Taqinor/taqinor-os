@@ -23,7 +23,7 @@ from core.calepinage.zones import aire_polygone
 __all__ = [
     "aire_polygone", "boite_englobante", "normaliser_contour",
     "intervalles_a_y", "intersection_intervalles", "bandes_couvertes",
-    "point_dans_polygone", "rectangles_se_croisent",
+    "point_dans_polygone", "rectangles_se_croisent", "est_polygone_simple",
 ]
 
 
@@ -151,3 +151,79 @@ def rectangles_se_croisent(a, b, tolerance=0.0):
     """``a`` et ``b`` = ``(x0, x1, y0, y1)`` — recouvrement STRICT."""
     return not (a[1] <= b[0] + tolerance or b[1] <= a[0] + tolerance
                 or a[3] <= b[2] + tolerance or b[3] <= a[2] + tolerance)
+
+
+def _orientation(a, b, c):
+    """Signe du produit vectoriel (b - a) × (c - a) : -1, 0 ou 1."""
+    valeur = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    if valeur > 0:
+        return 1
+    if valeur < 0:
+        return -1
+    return 0
+
+
+def _sur_segment(a, b, c):
+    """``c`` (colinéaire à ``ab``) tombe-t-il dans la boîte du segment ?"""
+    return (min(a[0], b[0]) <= c[0] <= max(a[0], b[0])
+            and min(a[1], b[1]) <= c[1] <= max(a[1], b[1]))
+
+
+def _segments_se_touchent(p1, p2, p3, p4):
+    """Les segments fermés ``p1p2`` et ``p3p4`` ont-ils un point commun ?"""
+    o1 = _orientation(p1, p2, p3)
+    o2 = _orientation(p1, p2, p4)
+    o3 = _orientation(p3, p4, p1)
+    o4 = _orientation(p3, p4, p2)
+    if o1 != o2 and o3 != o4 and 0 not in (o1, o2, o3, o4):
+        return True
+    return ((o1 == 0 and _sur_segment(p1, p2, p3))
+            or (o2 == 0 and _sur_segment(p1, p2, p4))
+            or (o3 == 0 and _sur_segment(p3, p4, p1))
+            or (o4 == 0 and _sur_segment(p3, p4, p2)))
+
+
+def est_polygone_simple(contour):
+    """ACAL76 — le contour est-il un polygone SIMPLE (aucun côté ne se croise) ?
+
+    L'invariant du module (« le contour d'une surface est un polygone
+    simple », en tête de fichier) n'était jamais vérifié : un « nœud
+    papillon » ``[[0,0],[10,6],[10,0],[0,6]]`` a une aire signée nulle et
+    fausse aire, pavage et kWc. Fonction PURE, sans tolérance inventée :
+
+    * deux côtés NON adjacents qui se touchent (croisement ou contact) ⇒
+      ``False`` ;
+    * deux côtés adjacents qui reviennent l'un sur l'autre (pointe
+      colinéaire repliée) ⇒ ``False`` ;
+    * un point de fermeture dupliqué est ignoré ; moins de 4 sommets
+      distincts ne peuvent pas se croiser ⇒ ``True`` (le minimum de sommets
+      est une autre règle, portée par le schéma ou par
+      :func:`normaliser_contour`).
+    """
+    pts = [(float(p[0]), float(p[1])) for p in contour]
+    if len(pts) >= 2 and pts[0] == pts[-1]:
+        pts = pts[:-1]
+    n = len(pts)
+    if n < 3:
+        return True
+    cotes = [(pts[i], pts[(i + 1) % n]) for i in range(n)]
+    for i in range(n):
+        a, b = cotes[i]
+        for j in range(i + 1, n):
+            c, d = cotes[j]
+            adjacents = j == i + 1 or (i == 0 and j == n - 1)
+            if adjacents:
+                # Sommet partagé : seul un repli colinéaire est un défaut.
+                if j == i + 1:
+                    commun, autre_i, autre_j = b, a, d
+                else:
+                    commun, autre_i, autre_j = a, b, c
+                if (_orientation(autre_i, commun, autre_j) == 0
+                        and ((autre_i[0] - commun[0]) * (autre_j[0] - commun[0])
+                             + (autre_i[1] - commun[1])
+                             * (autre_j[1] - commun[1])) > 0):
+                    return False
+                continue
+            if _segments_se_touchent(a, b, c, d):
+                return False
+    return True

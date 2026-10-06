@@ -13,8 +13,11 @@ import unittest
 
 from apps.calepinage.services.export_csv import (
     ENCODAGE_TABLEUR, EXPORTS, ExportImpossible, encoder_pour_tableur,
-    export_csv, nom_de_fichier,
+    export_csv,
 )
+# ACAL234 — le jumeau ``export_csv.nom_de_fichier`` est supprimé : le CSV est
+# nommé par LE constructeur du module (``quoi`` remplace le titre).
+from apps.calepinage.services.planche import nom_de_fichier
 
 #: Un document d'essai : deux heures de série, deux mois d'agrégat. Les
 #: valeurs sont des repères d'ESSAI assumés — ce test vérifie la MISE EN
@@ -143,7 +146,11 @@ class RefusMotiveTest(unittest.TestCase):
             self.assertIn(connu, capture.exception.motif)
 
     def test_nom_de_fichier_sans_donnee_client(self):
-        self.assertEqual(nom_de_fichier(7, 'horaire'),
+        class Pivot:
+            pk = 7
+            titre = 'Villa de M. Client'
+
+        self.assertEqual(nom_de_fichier(Pivot(), 'csv', quoi='horaire'),
                          'calepinage-7-horaire.csv')
 
 
