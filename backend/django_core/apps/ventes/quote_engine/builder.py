@@ -4306,6 +4306,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # CIQ314 — O&M et suivi de production : seulement ce que le devis
         # porte (lignes du rôle ``om_ci``, CIQ7) et le délai d'intervention
         # SAISI par la société (CIQ622, aucun défaut). Absent ⇒ clé absente.
+        # CIQ319 — l'identité d'entreprise enregistrée AVEC la signature en
+        # ligne (lecture seule) : la copie signée la porte. Absente sinon.
+        from apps.ventes.domain.cycle_vie import (
+            signature_entreprise as _signature_entreprise,
+        )
+        _sig_ent = _signature_entreprise(devis)
+        if _sig_ent:
+            data["signature_entreprise"] = _sig_ent
         _om, _delai = services_ci_du_devis(devis)
         if _om:
             data["om_ci_lignes"] = _om
@@ -4586,10 +4594,13 @@ def echapper_textes_client(data: dict) -> dict:
             for c in _clauses
         ]
     # CIQ309 — identité de l'entreprise cliente : texte saisi (fiche client).
-    if isinstance(sortie.get("entreprise_client"), dict):
-        sortie["entreprise_client"] = {
-            cle: (_e(val) if isinstance(val, str) else val)
-            for cle, val in sortie["entreprise_client"].items()}
+    # CIQ319 — identité déclarée à la signature : texte saisi sur le LIEN
+    # PUBLIC (personne non authentifiée), échappé une seule fois ici.
+    for _cle in ("entreprise_client", "signature_entreprise"):
+        if isinstance(sortie.get(_cle), dict):
+            sortie[_cle] = {
+                cle: (_e(val) if isinstance(val, str) else val)
+                for cle, val in sortie[_cle].items()}
     # CIQ314 — désignation des lignes O&M : texte saisi.
     if isinstance(sortie.get("om_ci_lignes"), list):
         sortie["om_ci_lignes"] = [

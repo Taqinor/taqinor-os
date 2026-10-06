@@ -1467,6 +1467,19 @@ class DevisSignature(models.Model):
     on_behalf_of = models.CharField(
         max_length=150, blank=True, default='',
         verbose_name='Signe au nom de (facultatif)')
+    # ── CIQ319 — identité de l'ENTREPRISE signataire (D-CIQ-11, contrat
+    # ``acceptation_entreprise.json`` CIQ9). ADDITIFS et immuables comme le
+    # reste de l'enregistrement : vides hors C&I et sur toute signature
+    # antérieure (comportement inchangé). Aucun statut nouveau (règle #4).
+    raison_sociale = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Raison sociale de l\'entreprise signataire')
+    signataire_qualite = models.CharField(
+        max_length=150, blank=True, default='',
+        verbose_name='Qualité du signataire')
+    ice_declare = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='ICE déclaré à l\'acceptation')
 
     class Meta:
         verbose_name = 'Signature électronique'

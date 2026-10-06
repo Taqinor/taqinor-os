@@ -316,6 +316,20 @@ def proposal_accept(request, token):
     if refus is not None:
         return refus
     on_behalf_of = on_behalf_of[:150]
+    # CIQ319 (D-CIQ-11) — devis commercial / industriel : raison sociale,
+    # qualité du signataire et ICE OBLIGATOIRES en ligne (400 qui nomme le
+    # champ) ; ignorés pour tout autre segment.
+    from ..domain.cycle_vie import (
+        EntrepriseInvalide, lire_entreprise_acceptation,
+        signature_entreprise,
+    )
+    try:
+        entreprise = lire_entreprise_acceptation(
+            devis, request.data.get('entreprise'), obligatoire=True)
+    except EntrepriseInvalide as exc:
+        return _noindex(Response(
+            {'detail': exc.detail, 'champ': exc.champ},
+            status=status.HTTP_400_BAD_REQUEST))
     # QJ11 — code OTP si le toggle est actif (service gère la validation).
     otp_code, refus = _texte_du_corps(request, 'otp_code')
     if refus is not None:
@@ -347,6 +361,7 @@ def proposal_accept(request, token):
             signature_image=signature_image,
             signed_at_client=signed_at_client,
             on_behalf_of=on_behalf_of,
+            entreprise=entreprise,
         )
     except AcceptError as exc:
         return _noindex(Response(
@@ -363,7 +378,18 @@ def proposal_accept(request, token):
         'statut': devis.statut,
         'accepte_par_nom': devis.accepte_par_nom,
         'paiement': _deposit_success_payload(devis, token),
+        # CIQ319 — l'identité d'entreprise RELUE sur la signature enregistrée
+        # (la première fait foi), même forme que le corps ; null hors C&I.
+        'entreprise': _entreprise_relue(signature_entreprise(devis)),
     }))
+
+
+def _entreprise_relue(bloc):
+    if not bloc:
+        return None
+    return {'raison_sociale': bloc.get('raison_sociale') or '',
+            'signataire_qualite': bloc.get('signataire_qualite') or '',
+            'ice': bloc.get('ice') or ''}
 
 
 @api_view(['POST'])
