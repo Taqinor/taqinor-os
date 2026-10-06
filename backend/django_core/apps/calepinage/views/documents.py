@@ -69,23 +69,8 @@ def rapport_etude_pdf(self, request, pk=None):
     except RapportRefuse as refus:
         return Response({refus.champ or 'resultat': str(refus)},
                         status=status.HTTP_400_BAD_REQUEST)
-    # CALX322 — chaque téléchargement RÉUSSI devient une version retrouvable
-    # (``services/documents/versions_document.py``) ; BEST-EFFORT, comme le
-    # journal (``services/journal.py``) : un incident de versionnement ne
-    # doit jamais faire échouer la remise du document lui-même.
-    from ..services.documents.versions_document import (
-        enregistrer_version_document,
-    )
-    try:
-        enregistrer_version_document(
-            calepinage, code='rapport_etude', octets=octets, langue=langue,
-            user=getattr(request, 'user', None))
-    except Exception:  # noqa: BLE001 — un versionnement perdu ne casse rien
-        import logging
-
-        logging.getLogger(__name__).exception(
-            'CALX322 : version de rapport_etude perdue (calepinage %s)',
-            calepinage.pk)
+    # ACAL222 — une LECTURE n'écrit plus de version : la remise est un geste
+    # explicite (``POST remettre-document``, ``views/remise_document.py``).
     return reponse_de_fichier(
         octets, mime=MIME_PDF,
         nom_fichier=nom_de_fichier(calepinage, 'rapport-etude.pdf'))
@@ -168,6 +153,10 @@ DOCUMENTS_SCHEMA = inline_serializer('CalepinageDocuments', {
                     'nom_complet': drf_serializers.CharField(),
                 }, allow_null=True),
             'attachment': drf_serializers.IntegerField(),
+            # ACAL222 — l'empreinte des entrées (16 hex, null sur un ancien
+            # nom) et la péremption contre les entrées d'aujourd'hui.
+            'empreinte': drf_serializers.CharField(allow_null=True),
+            'perimee': drf_serializers.BooleanField(),
         }, many=True),
     }, many=True),
     # CALX302 — les images déposées par le navigateur, la plus récente
@@ -657,3 +646,9 @@ def dossier_fin_chantier(self, request, pk=None):
 
 
 CalepinageViewSet.dossier_fin_chantier = dossier_fin_chantier
+
+
+# ACAL222 — la REMISE explicite (``POST remettre-document``) : rattachée au
+# viewset par l'import de son module, ici en fin de fichier (donc avant
+# ``router.register``, via ``views/rattachements.py``).
+from . import remise_document as _remise_document_action  # noqa: E402,F401

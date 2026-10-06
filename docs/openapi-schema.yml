@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4790, operations: 7590, components: 2200}
+counts: {paths: 4792, operations: 7592, components: 2201}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -619,6 +619,7 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/releve/ -> django_calepinage_calepinages_releve_create
 - delete /api/django/calepinage/calepinages/{id}/releve/{releve_id}/ -> django_calepinage_calepinages_releve_destroy
 - patch /api/django/calepinage/calepinages/{id}/releve/{releve_id}/ -> django_calepinage_calepinages_releve_partial_update
+- post /api/django/calepinage/calepinages/{id}/remettre-document/ -> django_calepinage_calepinages_remettre_document_create
 - post /api/django/calepinage/calepinages/{id}/restaurer-corbeille/ -> django_calepinage_calepinages_restaurer_corbeille_create
 - get /api/django/calepinage/calepinages/{id}/resultat/ -> django_calepinage_calepinages_resultat_retrieve
 - post /api/django/calepinage/calepinages/{id}/roof-image/ -> django_calepinage_calepinages_roof_image_create
@@ -4452,6 +4453,7 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/releve/ -> v1_calepinage_calepinages_releve_create
 - delete /api/v1/calepinage/calepinages/{id}/releve/{releve_id}/ -> v1_calepinage_calepinages_releve_destroy
 - patch /api/v1/calepinage/calepinages/{id}/releve/{releve_id}/ -> v1_calepinage_calepinages_releve_partial_update
+- post /api/v1/calepinage/calepinages/{id}/remettre-document/ -> v1_calepinage_calepinages_remettre_document_create
 - post /api/v1/calepinage/calepinages/{id}/restaurer-corbeille/ -> v1_calepinage_calepinages_restaurer_corbeille_create
 - get /api/v1/calepinage/calepinages/{id}/resultat/ -> v1_calepinage_calepinages_resultat_retrieve
 - post /api/v1/calepinage/calepinages/{id}/roof-image/ -> v1_calepinage_calepinages_roof_image_create
@@ -7809,6 +7811,7 @@ components:
 - CalepinageParametresRequeteRequest
 - CalepinagePlanImporte
 - CalepinageRegistreReponse
+- CalepinageRemiseDocument
 - CalepinageRequest
 - CalepinageSimulationAccuse
 - CalepinageStatutEnum

@@ -273,6 +273,11 @@ const calepinageApi = {
     // `null` efface une rubrique). Le serveur fusionne clé par clé (ACAL160) et renvoie le
     // MÊME document que le GET `schemaUnifilaire`, édition appliquée.
     enregistrerEditionSld: (id, edition) => api.post(`${pivot(id)}schema-unifilaire/`, edition),
+
+    // ACAL222 — la REMISE explicite d'un document (`{code, langue}`) : 201
+    // nouvelle version, 200 `deja_remise` (même empreinte des entrées), 400
+    // sous le champ nommé (contrat `calepinage_documents.json` › `remise`).
+    remettreDocument: (id, corps) => api.post(`${pivot(id)}remettre-document/`, corps), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

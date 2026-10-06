@@ -40,7 +40,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-__all__ = ['CHAMPS_VOLATILS', 'entrees_du_livrable', 'empreinte_des_entrees']
+__all__ = ['CHAMPS_VOLATILS', 'empreinte_des_entrees']
 
 #: Les clés ignorées PARTOUT dans la simulation servie et les saisies : des
 #: horodatages de calcul / de saisie, jamais une donnée imprimée.
@@ -152,7 +152,7 @@ def _marque(company):
     return styles_de_societe(company)
 
 
-def entrees_du_livrable(calepinage, langue='fr', sections=None):
+def _entrees_du_livrable(calepinage, langue='fr', sections=None):
     """Le dictionnaire CANONIQUE des entrées d'un livrable (avant hachage).
 
     Exposé pour les diagnostics et les tests ; :func:`empreinte_des_entrees`
@@ -183,7 +183,7 @@ def empreinte_des_entrees(calepinage, langue='fr', sections=None):
     photo, langue, sections, titre / client / adresse, marque de la société).
     Lecture PURE : aucune écriture.
     """
-    canonique = json.dumps(entrees_du_livrable(calepinage, langue, sections),
+    canonique = json.dumps(_entrees_du_livrable(calepinage, langue, sections),
                            sort_keys=True, separators=(',', ':'),
                            ensure_ascii=False, default=str)
     return hashlib.sha256(canonique.encode('utf-8')).hexdigest()
