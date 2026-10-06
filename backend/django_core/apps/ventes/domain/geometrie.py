@@ -999,7 +999,8 @@ def _panneau_pour_calepinage(layout, *, company=None, devis=None):
     return produit, company
 
 
-def compte_moteur_du_layout(layout, *, company=None, devis=None):
+def compte_moteur_du_layout(layout, *, company=None, devis=None,
+                            traduire=None):
     """Compte de modules rendu par le MOTEUR pour ce layout, ou ``None``.
 
     Somme les pans : chacun passe par
@@ -1029,21 +1030,60 @@ def compte_moteur_du_layout(layout, *, company=None, devis=None):
     produit_panneau, societe_panneau = _panneau_pour_calepinage(
         layout, company=company, devis=devis)
 
+    # ACAL256 — drapeau levé ET société connue : l'entrée de chaque pan est
+    # TRADUITE (services/traduction.py) avec les réglages de dégagement de la
+    # société (retrait de rive, allée, dégagement par type) et l'allée propre
+    # au document. Drapeau baissé : aucune lecture de réglages, l'appel villa
+    # d'hier à l'identique.
+    # ``traduire`` force le mode (True/False) — seul le dry-run ACAL256 s'en
+    # sert pour comparer les deux comptes ; ``None`` = le drapeau décide.
+    if traduire is None:
+        traduire = moteur_calepinage_actif()
+    # Sans AUCUN réglage de dégagement (société muette, document sans allée
+    # propre), l'entrée villa d'hier reste celle qui compte :
+    # ``RETRAIT_VILLA_M`` n'est plus que ce repli sans réglage.
+    parametres_traduction = None
+    if company is not None and traduire:
+        from apps.calepinage.selectors import parametres_de_societe
+
+        sections = parametres_de_societe(company)
+        allee_doc = (layout or {}).get('alleeTechnique')
+        if (sections.get('degagements')
+                or (isinstance(allee_doc, dict)
+                    and allee_doc.get('largeurM'))):
+            parametres_traduction = sections
+
     modules = 0
     detail = []
     for pan in pans:
         zone = _zone_villa_depuis_pan(pan)
         if zone is None:
             continue
-        try:
-            sortie = calepinage_villa(zone, ordre='lnglat',
-                                      produit_panneau=produit_panneau,
-                                      company=societe_panneau)
-        except Exception:
-            logger.warning(
-                'AOF164: le moteur a refusé le pan %s — compte historique '
-                'conservé pour ce pan', zone.get('id'), exc_info=True)
-            continue
+        sortie = None
+        if parametres_traduction is not None:
+            try:
+                sortie = calepinage_villa(
+                    zone, ordre='lnglat', produit_panneau=produit_panneau,
+                    company=societe_panneau,
+                    entree_traduite={'layout': layout, 'pan': pan,
+                                     'parametres': parametres_traduction})
+            except Exception:
+                logger.warning(
+                    'ACAL256: entrée traduite refusée pour le pan %s — '
+                    'entrée villa conservée pour ce pan', zone.get('id'),
+                    exc_info=True)
+                sortie = None
+        if sortie is None:
+            try:
+                sortie = calepinage_villa(zone, ordre='lnglat',
+                                          produit_panneau=produit_panneau,
+                                          company=societe_panneau)
+            except Exception:
+                logger.warning(
+                    'AOF164: le moteur a refusé le pan %s — compte '
+                    'historique conservé pour ce pan', zone.get('id'),
+                    exc_info=True)
+                continue
         resultat = sortie['resultat']
         modules += int(resultat.modules)
         detail.append({
@@ -1054,6 +1094,13 @@ def compte_moteur_du_layout(layout, *, company=None, devis=None):
             'methode': sortie['preuve']['methode'],
             'compte_optimal': sortie['preuve']['compte_optimal'],
         })
+        traduction = sortie.get('traduction')
+        if traduction is not None:
+            # ACAL256 — la provenance des règles appliquées voyage avec le pan
+            # (clés ajoutées SEULEMENT en entrée traduite : drapeau baissé,
+            # le détail reste celui d'hier au bit près).
+            detail[-1]['regle_retrait'] = traduction.regle_retrait
+            detail[-1]['regle_allee'] = traduction.regle_allee
     if not detail:
         return None
     return {'modules': modules, 'pans': tuple(detail),

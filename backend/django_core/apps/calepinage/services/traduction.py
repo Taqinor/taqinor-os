@@ -149,6 +149,9 @@ class Traduction:
     #: CAL71 — la phrase de règle du RETRAIT de rive appliqué. Celle de chaque
     #: obstacle voyage sur l'obstacle lui-même (``regle_appliquee``).
     regle_retrait: str = ''
+    #: ACAL256 — la phrase de règle de l'ALLÉE technique appliquée (document,
+    #: société, ou défaut du moteur).
+    regle_allee: str = ''
     #: CALX405 — la proposition de CHÂSSIS INCLINÉ par pan, PUBLIÉE mais
     #: jamais appliquée d'office : ``((repère du pan, {'inclinaison_deg':
     #: …, 'raison': "…"}), …)``. Un pan sans proposition n'apparaît pas.
@@ -521,6 +524,15 @@ def _politique(plat, pente, latitude_deg, mode_pose=None):
     return Affleurant()
 
 
+def _allee_du_document(roof_layout):
+    """ACAL256 — ``alleeTechnique.largeurM`` du document (> 0), ou ``None``."""
+    bloc = (roof_layout or {}).get('alleeTechnique')
+    if not isinstance(bloc, dict):
+        return None
+    largeur = _nombre(bloc.get('largeurM'))
+    return largeur if largeur is not None and largeur > 0 else None
+
+
 def _proposition_chassis(pente_deg, regles_gabarit):
     """La proposition de CHÂSSIS INCLINÉ pour un pan, ou ``None``.
 
@@ -619,8 +631,19 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
             "Retrait de rive : %.2f m (valeur transmise par l'appelant)"
             % (force,))
     allee = _nombre(allee_m) if allee_m is not None else None
+    regle_allee = ''
+    if allee is not None:
+        regle_allee = ("Allée technique : %.2f m (valeur transmise par "
+                       "l'appelant)" % (allee,))
     if allee is None:
-        allee, _regle_allee = allee_technique(degagements)
+        # ACAL256 — l'allée PROPRE au calepinage (racine ``alleeTechnique``
+        # du document, D08-T04) d'abord, sinon celle de la société.
+        allee = _allee_du_document(roof_layout)
+        if allee is not None:
+            regle_allee = ('Allée technique : %.2f m (saisie sur ce '
+                           'calepinage)' % (allee,))
+    if allee is None:
+        allee, regle_allee = allee_technique(degagements)
     rives = Rives(laterale_m=retrait, extremite_m=retrait)
 
     surfaces = []
@@ -696,5 +719,6 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
         kit=kit,
         axe_rangee=axe.value,
         regle_retrait=regle_retrait,
+        regle_allee=regle_allee,
         propositions_chassis=tuple(propositions_chassis),
         regle_ilots=regle_des_ilots)
