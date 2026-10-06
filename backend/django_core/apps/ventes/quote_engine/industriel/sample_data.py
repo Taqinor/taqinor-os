@@ -9,35 +9,23 @@ without a database.
 from __future__ import annotations
 
 
-#: Prix TTC de la ligne onduleur de la fixture (2 × 62 000 HT à 20 %) — c'est
-#: ce montant que ``pricing`` provisionne pour le remplacement de l'année 12.
-_ONDULEUR_TTC = 2 * 62000.0 * 1.20
+def economie_ci(exemple="exemple_industriel_mt"):
+    """Le bloc PUBLIC ``economie_ci`` d'un exemple du contrat partagé
+    (``contract_samples/economie_ci.json``) — pour tester la page finance.
 
+    CIQ342 — la page finance ne lit plus qu'``synthese_ci['argent']`` (le
+    bloc du moteur C&I) : un test qui a besoin d'une rentabilité pose ce
+    bloc sur ``data['economie_ci']`` AVANT ``renderer._augment``, exactement
+    comme le builder. ``economie_ci_publique`` retire la vue interne."""
+    import copy
+    import json
+    from pathlib import Path
 
-def serie_finance(invest=1750000, economie_an1=420000):
-    """Série + hypothèses CANONIQUES pour tester la PAGE FINANCE seule.
-
-    CIQ301 — ``build()`` ne porte plus aucune économie (le renderer n'en
-    reprend aucune) ; un test de ``finance.py`` qui a besoin d'une série
-    l'injecte dans le dict AUGMENTÉ (``ind_cashflow``…), comme la servira
-    ``synthese_ci.argent`` (CIQ307). MÊME fonction que le builder."""
-    return {"ind_cashflow": [float(x) for x in
-                             _cashflow(invest, economie_an1)["cumulative"]],
-            "ind_cashflow_branche": "sans",
-            "ind_cashflow_hypotheses": _hypotheses()}
-
-
-def _cashflow(invest, economie_an1):
-    """Série canonique — MÊME fonction que le builder, jamais une saisie."""
-    from ..pricing import compute_cashflow_payback
-    return compute_cashflow_payback(invest, economie_an1,
-                                    inverter_replace_cost=_ONDULEUR_TTC)
-
-
-def _hypotheses():
-    """Hypothèses DÉCLARÉES du même modèle (dégradation, provision…)."""
-    from ..pricing import cashflow_assumptions
-    return cashflow_assumptions(inverter_replace_cost=_ONDULEUR_TTC)
+    from apps.ventes.economie_ci import economie_ci_publique
+    chemin = (Path(__file__).resolve().parents[2] / "contract_samples"
+              / "economie_ci.json")
+    contrat = json.loads(chemin.read_text(encoding="utf-8"))
+    return economie_ci_publique(copy.deepcopy(contrat[exemple]))
 
 
 def build() -> dict:
@@ -78,7 +66,7 @@ def build() -> dict:
         },
         # CIQ301 — plus de ``eco_s_ann``/``roi_s``/``cashflow_*`` fabriqués
         # (C3-VA-01) : le renderer C&I ne les reprend plus. Voir
-        # ``serie_finance()`` pour tester la page finance seule.
+        # ``economie_ci()`` pour tester la page finance (CIQ342).
         "total_sans": 1750000,
         "entreprise": {},
         "site_url": "taqinor.ma",

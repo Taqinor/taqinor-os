@@ -141,12 +141,9 @@ def _augment(data: dict) -> dict:
     d["ind_cashflow_branche"] = None
     d["ind_cashflow_hypotheses"] = None
 
-    # Injection 82-21 (QX50) — rendue UNIQUEMENT si l'étude la porte, avec la
-    # mention ``MENTION_82_21`` (CIQ305). Absente → aucune ligne inventée.
-    d["ind_injection_dh"] = _num(etude.get("injection_dh_an"))
-    d["ind_injection_kwh"] = _num(etude.get("injection_kwh_an"))
-    # O&M annuel : rendu seulement si fourni (sinon note « inclus »).
-    d["ind_om_annuel"] = _num(etude.get("om_annuel"))
+    # CIQ342 — la page finance lit la revente et l'O&M sur
+    # ``synthese_ci['argent']`` (revente « hors cashflow », O&M déduite
+    # seulement si chiffrée) : plus aucune clé d'étude écran reprise ici.
 
     # site + liens (repli résidentiel/théme).
     d["site_url"] = d.get("site_url") or "taqinor.ma"

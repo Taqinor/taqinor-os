@@ -15,8 +15,7 @@ from unittest.mock import patch
 from django.test import SimpleTestCase, TestCase, tag
 
 from apps.ventes.quote_engine.industriel import (
-    render, renderer, sample_data)
-from apps.ventes.quote_engine.industriel.finance import irr_flat
+    finance, render, renderer, sample_data)
 
 
 class _Devis:
@@ -64,9 +63,12 @@ class TestIndustrielContent(SimpleTestCase):
         # CIQ301 — la page finance ne se remplit que d'une série SERVIE
         # (``synthese_ci.argent``, CIQ307), jamais du repli BT du builder.
         self.assertNotIn("Cashflow cumulé", self.html)
-        servie = render.build_html(dict(self.data, **sample_data.serie_finance()))
-        self.assertIn("Cashflow cumulé", servie)            # P2
-        self.assertIn("TRI sur", servie)                    # P2
+        # CIQ342 — la page finance lit ``synthese_ci['argent']`` (moteur C&I).
+        base = sample_data.build()
+        base["economie_ci"] = sample_data.economie_ci()
+        servie = render.build_html(renderer._augment(base))
+        self.assertIn("Cumul net de l'investissement", servie)   # P3
+        self.assertIn("TRI sur 25 ans", servie)                  # P3
         self.assertIn("ISO 50001", self.html)               # P3
         self.assertIn("CBAM", self.html)                    # P3
         self.assertIn("Bon pour accord", self.html)         # P3 signature
@@ -124,18 +126,26 @@ class TestIndustrielUnsupported(SimpleTestCase):
             renderer._augment(base)
 
 
-class TestIrrFlat(SimpleTestCase):
+class TestTriServi(SimpleTestCase):
+    """CIQ342 — plus de solveur privé (``irr_flat``/``irr_series``
+    supprimés) : le TRI imprimé est celui que sert le moteur C&I
+    (``synthese_ci.argent.indicateurs``), sur son horizon."""
+
     def test_positive_irr(self):
-        # 1,75 M investis, 420 k/an sur 15 ans → TRI ~22-24 %
-        tri = irr_flat(1_750_000, 420_000, 15)
-        self.assertIsNotNone(tri)
-        self.assertGreater(tri, 15)
-        self.assertLess(tri, 30)
+        base = sample_data.build()
+        base["economie_ci"] = sample_data.economie_ci()
+        html = render.build_html(renderer._augment(base))
+        tri = base["economie_ci"]["indicateurs"]["tri_pct"]
+        self.assertIn(f"{tri:.1f}".replace(".", ","), html)
+        self.assertIn("TRI sur 25 ans", html)
+        self.assertFalse(hasattr(finance, "irr_flat"))
+        self.assertFalse(hasattr(finance, "irr_series"))
 
     def test_degenerate_returns_none(self):
-        self.assertIsNone(irr_flat(0, 420_000))
-        self.assertIsNone(irr_flat(1_750_000, 0))
-        self.assertIsNone(irr_flat(1_750_000, 420_000, 0))
+        """Sans argent servi : aucun TRI imprimé, le motif à sa place."""
+        html = render.build_html(renderer._augment(sample_data.build()))
+        self.assertNotIn("TRI sur", html)
+        self.assertIn("Rentabilité non chiffrée sur ce dossier", html)
 
 
 @tag("weasyprint")

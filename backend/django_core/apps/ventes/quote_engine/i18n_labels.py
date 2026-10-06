@@ -884,6 +884,112 @@ LIBELLES = {
               'production).',
         'ar': 'تستهدف المنشأة <b>الاستهلاك الذاتي</b>: تكمن قيمتها أولا في '
               '<b>الساعات العادية</b> (الإنتاج خلال النهار).'},
+    # ── Page finance industrielle (CIQ342, CIQ343) ─────────────────────────
+    'ci_ind_analyse_financiere': {'fr': 'Analyse financière',
+                                  'en': 'Financial analysis',
+                                  'ar': 'التحليل المالي'},
+    'ci_ind_rentabilite_sur': {'fr': 'Rentabilité sur {n} ans',
+                               'en': 'Profitability over {n} years',
+                               'ar': 'المردودية على مدى {n} سنة'},
+    'ci_ind_lead': {
+        'fr': 'Projection du moteur C&amp;I sur {n} ans : flux, retour et TRI '
+              'tirés de la même série ; hypothèses détaillées ci-dessous.',
+        'en': 'C&amp;I engine projection over {n} years: cash flow, payback '
+              'and IRR drawn from the same series; assumptions detailed '
+              'below.',
+        'ar': 'إسقاط المحرك التجاري والصناعي على مدى {n} سنة: التدفق ومدة '
+              'الاسترداد ومعدل العائد الداخلي مستخرجة من نفس السلسلة؛ '
+              'الافتراضات مفصلة أدناه.'},
+    'ci_ind_lead_non_chiffre': {
+        'fr': "Aucune rentabilité n'est publiée tant qu'elle n'est pas "
+              "calculée sur vos données.",
+        'en': 'No profitability is published until it is calculated on your '
+              'data.',
+        'ar': 'لا تُنشر أي مردودية ما لم تُحسب على أساس معطياتكم.'},
+    'ci_ind_non_chiffre_titre': {
+        'fr': 'Rentabilité non chiffrée sur ce dossier',
+        'en': 'Profitability not calculated for this file',
+        'ar': 'المردودية غير محسوبة في هذا الملف'},
+    'ci_ind_motif_mt': {
+        'fr': 'Votre installation est raccordée en <b>MOYENNE TENSION</b> : '
+              'ses économies se chiffrent sur le barème MT par poste '
+              "horaire, pas sur le barème basse tension. Nous préférons ne "
+              "rien afficher plutôt qu'un chiffre qui n'est pas le vôtre.",
+        'en': 'Your installation is connected at <b>MEDIUM VOLTAGE</b>: its '
+              'savings are calculated on the MV tariff by time band, not on '
+              'the low-voltage tariff. We prefer to show nothing rather than '
+              'a figure that is not yours.',
+        'ar': 'منشأتكم مربوطة <b>بالجهد المتوسط</b>: تُحسب وفوراتها بتعريفة '
+              'الجهد المتوسط حسب الفترات الزمنية، لا بتعريفة الجهد المنخفض. '
+              'نفضل ألا نعرض شيئا بدل رقم لا يخصكم.'},
+    'ci_ind_motif_bt': {
+        'fr': "Les <b>économies annuelles</b> de cette installation n'ont pas "
+              "encore été calculées sur vos données. Nous préférons ne rien "
+              "afficher plutôt qu'un cashflow, un point mort ou un TRI qui ne "
+              "reposeraient sur aucune mesure.",
+        'en': 'The <b>annual savings</b> of this installation have not yet '
+              'been calculated on your data. We prefer to show nothing rather '
+              'than a cash flow, a break-even point or an IRR resting on no '
+              'measurement.',
+        'ar': 'لم تُحسب بعد <b>الوفورات السنوية</b> لهذه المنشأة على أساس '
+              'معطياتكم. نفضل ألا نعرض شيئا بدل تدفق نقدي أو نقطة تعادل أو '
+              'معدل عائد لا يستند إلى أي قياس.'},
+    'ci_ind_retour_flux': {'fr': 'Retour (même flux)',
+                           'en': 'Payback (same cash flow)',
+                           'ar': 'مدة الاسترداد (نفس التدفق)'},
+    'ci_ind_cumul_titre': {'fr': "Cumul net de l'investissement ({base})",
+                           'en': 'Net cumulative of the investment ({base})',
+                           'ar': 'الرصيد الصافي التراكمي للاستثمار ({base})'},
+    'ci_ind_jalon': {'fr': 'Jalon', 'en': 'Milestone', 'ar': 'المرحلة'},
+    'ci_ind_cumul_net': {'fr': 'Cumul net', 'en': 'Net cumulative',
+                         'ar': 'الرصيد الصافي'},
+    'ci_ind_annee': {'fr': 'Année {n}', 'en': 'Year {n}', 'ar': 'السنة {n}'},
+    'ci_ind_hypotheses': {'fr': 'Hypothèses du moteur',
+                          'en': 'Engine assumptions',
+                          'ar': 'افتراضات المحرك'},
+    'ci_ind_h_investissement': {'fr': 'Investissement', 'en': 'Investment',
+                                'ar': 'الاستثمار'},
+    'ci_ind_h_economie': {'fr': "Économie de l'année 1",
+                          'en': 'Year-1 saving', 'ar': 'وفر السنة الأولى'},
+    'ci_ind_h_production': {'fr': "Production de l'année 1",
+                            'en': 'Year-1 production',
+                            'ar': 'إنتاج السنة الأولى'},
+    'ci_ind_h_horizon': {'fr': 'Horizon', 'en': 'Horizon', 'ar': 'الأفق'},
+    'ci_ind_h_taux': {'fr': "Taux d'actualisation", 'en': 'Discount rate',
+                      'ar': 'معدل الخصم'},
+    'ci_ind_h_indexation': {'fr': 'Indexation du tarif',
+                            'en': 'Tariff indexation',
+                            'ar': 'فهرسة التعريفة'},
+    'ci_ind_h_degradation': {'fr': 'Dégradation des panneaux',
+                             'en': 'Panel degradation',
+                             'ar': 'تدهور الألواح'},
+    'ci_ind_n_ans': {'fr': '{n} ans', 'en': '{n} years', 'ar': '{n} سنة'},
+    'ci_ind_remplacement': {
+        'fr': 'Remplacement {composant} en année {annee}',
+        'en': 'Replacement of the {composant} in year {annee}',
+        'ar': 'استبدال {composant} في السنة {annee}'},
+    'ci_ind_om_deduite': {'fr': 'O&amp;M déduite du flux : {montant} MAD/an',
+                          'en': 'O&amp;M deducted from the cash flow: '
+                                '{montant} MAD/yr',
+                          'ar': 'الصيانة مخصومة من التدفق: {montant} درهم/سنة'},
+    'ci_ind_om_non_deduite': {
+        'fr': 'O&amp;M proposée, non déduite de ces montants',
+        'en': 'O&amp;M proposed, not deducted from these amounts',
+        'ar': 'الصيانة مقترحة، غير مخصومة من هذه المبالغ'},
+    'ci_ind_revente_hors_cashflow': {
+        'fr': 'revente du surplus, hors cashflow (non comptée dans le retour '
+              'ni le TRI).',
+        'en': 'sale of the surplus, outside the cash flow (not counted in '
+              'the payback or the IRR).',
+        'ar': 'بيع الفائض، خارج التدفق النقدي (غير محتسب في مدة الاسترداد '
+              'ولا في معدل العائد).'},
+    'ci_ind_methode_tri': {
+        'fr': 'TRI et retour lus sur le flux servi par le moteur C&amp;I '
+              '(méthode actuarielle) ; chiffres indicatifs.',
+        'en': 'IRR and payback read on the cash flow served by the C&amp;I '
+              'engine (actuarial method); indicative figures.',
+        'ar': 'معدل العائد ومدة الاسترداد مقروءان من التدفق الذي يقدمه المحرك '
+              'التجاري والصناعي (طريقة اكتوارية)؛ أرقام إرشادية.'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',
