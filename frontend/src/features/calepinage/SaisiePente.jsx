@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
+import useDocumentCalepinage from './useDocumentCalepinage'
 import RetourAtelier from './atelier/RetourAtelier'
 
 /* ============================================================================
@@ -136,7 +137,14 @@ export default function SaisiePente({
   const [saisie, setSaisie] = useState({
     degres: '', pourcentage: '', porteeM: '', hauteurFaitageM: '',
   })
-  const [layout, setLayout] = useState(null)
+  // ACAL24 — l'UNIQUE lecture du document (hook) : un échec donne `erreur`, jamais
+  // un document vide. Les ÉCRITURES de cet écran restent pour l'instant l'écriture
+  // complète (migrées par section avec l'onglet Pente, ACAL66) : on ne les
+  // émet donc QUE depuis un document lu avec succès. `ecrit` garde le dernier
+  // document que cet écran a enregistré.
+  const doc = useDocumentCalepinage(calepinageId, { actif: persister })
+  const [ecrit, setEcrit] = useState(null)
+  const layout = ecrit ?? doc.document
   const [message, setMessage] = useState(null)
 
   /* CALX29 — Suggestion de pente LiDAR IGN, FRANCE SEULEMENT.
@@ -149,22 +157,17 @@ export default function SaisiePente({
   const [messageSuggestions, setMessageSuggestions] = useState(null)
   const [decalage, setDecalage] = useState({ x: '', y: '', z: '' })
 
-  // RELECTURE : la pente déjà enregistrée dans le document de conception.
-  useEffect(() => {
-    if (!calepinageId || !persister) return undefined
-    let annule = false
-    Promise.resolve(calepinageApi.calepinages.layout(calepinageId))
-      .then((res) => {
-        if (annule) return
-        const document = res?.data?.roof_layout ?? null
-        setLayout(document)
-        if (document?.penteDeg === null || document?.penteDeg === undefined) return
-        setMode(document.penteSource ?? 'degres')
-        setSaisie((s) => ({ ...s, degres: String(document.penteDeg) }))
-      })
-      .catch(() => { if (!annule) setLayout(null) })
-    return () => { annule = true }
-  }, [calepinageId, persister])
+  // RELECTURE : la pente déjà enregistrée dans le document de conception (une
+  // fois par lecture serveur).
+  const [lectureHydratee, setLectureHydratee] = useState(null)
+  if (persister && doc.etat === 'ok' && lectureHydratee !== doc.generation) {
+    setLectureHydratee(doc.generation)
+    const lu = doc.document
+    if (lu?.penteDeg !== null && lu?.penteDeg !== undefined) {
+      setMode(lu.penteSource ?? 'degres')
+      setSaisie((s) => ({ ...s, degres: String(lu.penteDeg) }))
+    }
+  }
 
   // CALX29 — la lecture locale qui décide si le bouton existe. Société hors
   // France ⇒ `disponible: false` ⇒ pas de bouton, pas d'appel de suggestion.
@@ -177,6 +180,7 @@ export default function SaisiePente({
   }, [])
 
   const suggererDepuisIGN = () => {
+    if (doc.etat !== 'ok') return
     setChargementSuggestions(true)
     setMessageSuggestions(null)
     Promise.resolve(calepinageApi.parametres?.suggererPentesIGN?.(layout ?? {}))
@@ -201,6 +205,7 @@ export default function SaisiePente({
   }
 
   const accepterSuggestion = (suggestion) => {
+    if (doc.etat !== 'ok') return
     const horodatage = new Date().toISOString()
     const zones = (layout?.zones ?? []).map((zone) => {
       if (String(zone?.id ?? '') !== suggestion.zoneId) return zone
@@ -216,7 +221,7 @@ export default function SaisiePente({
     const document = { ...(layout ?? {}), zones }
     Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, document))
       .then(() => {
-        setLayout(document)
+        setEcrit(document)
         setSuggestions((s) => s.filter((x) => x.zoneId !== suggestion.zoneId))
         setMessageSuggestions(`Pente du pan acceptée (${suggestion.source}).`)
       })
@@ -239,6 +244,10 @@ export default function SaisiePente({
   const retenue = penteRetenue(mode, saisie)
 
   const enregistrer = () => {
+    if (doc.etat !== 'ok') {
+      setMessage('Conception illisible : rien n’est enregistré.')
+      return
+    }
     if (!retenue) {
       setMessage('Aucune pente n’est encore mesurée : rien n’est enregistré, '
         + 'et surtout pas un 0° qui se lirait « toiture plate ».')
@@ -252,7 +261,7 @@ export default function SaisiePente({
     }
     Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, document))
       .then(() => {
-        setLayout(document)
+        setEcrit(document)
         setMessage('Pente enregistrée dans la conception.')
       })
       .catch(() => setMessage('La pente n’a pas pu être enregistrée.'))

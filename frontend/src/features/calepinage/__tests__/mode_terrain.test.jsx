@@ -35,12 +35,14 @@ function racineDepot() {
 
 const layout = vi.fn()
 const enregistrerLayoutCalepinage = vi.fn()
+const enregistrerSectionLayout = vi.fn()
 const pose = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       layout: (...a) => layout(...a),
       enregistrerLayoutCalepinage: (...a) => enregistrerLayoutCalepinage(...a),
+      enregistrerSectionLayout: (...a) => enregistrerSectionLayout(...a),
     },
     moteur: { pose: (...a) => pose(...a) },
   },
@@ -147,8 +149,9 @@ const SAISIE = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  layout.mockResolvedValue({ data: { roof_layout: { zones: [{ id: 'PAN-A' }] } } })
+  layout.mockResolvedValue({ data: { roof_layout: { zones: [{ id: 'PAN-A' }] }, empreinte_document: 'E0' } })
   enregistrerLayoutCalepinage.mockResolvedValue({ data: {} })
+  enregistrerSectionLayout.mockResolvedValue({ data: { empreinte_document: 'E1' } })
   pose.mockResolvedValue({ data: REPONSE })
 })
 afterEach(() => { cleanup() })
@@ -281,7 +284,7 @@ describe('CAL89 — l’écran calcule, enregistre et recharge', () => {
     expect(screen.getByTestId('cal-terrain-taux').textContent).toContain('%')
   })
 
-  it('l’enregistrement AJOUTE `poseSurfaces` sans toucher `zones` (mode toiture intact)', async () => {
+  it('l’enregistrement écrit SEULEMENT `poseSurfaces` par section (la toiture n’est pas envoyée)', async () => {
     monter()
     await waitFor(() => expect(layout).toHaveBeenCalled())
     for (const [cle, valeur] of Object.entries(SAISIE)) {
@@ -291,11 +294,46 @@ describe('CAL89 — l’écran calcule, enregistre et recharge', () => {
     fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
     await waitFor(() => expect(pose).toHaveBeenCalled())
     fireEvent.click(screen.getByTestId('cal-terrain-enregistrer'))
-    await waitFor(() => expect(enregistrerLayoutCalepinage).toHaveBeenCalled())
-    const doc = enregistrerLayoutCalepinage.mock.calls[0][1]
-    expect(doc.zones).toEqual([{ id: 'PAN-A' }]) // la toiture est intacte
-    expect(doc.poseSurfaces).toHaveLength(1)
-    expect(doc.poseSurfaces[0].kind).toBe('sol')
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalled())
+    const [id, corps] = enregistrerSectionLayout.mock.calls[0]
+    expect(id).toBe(7)
+    expect(Object.keys(corps).sort()).toEqual(['base_empreinte', 'cle', 'valeur'])
+    expect(corps.cle).toBe('poseSurfaces')
+    expect(corps.base_empreinte).toBe('E0')
+    expect(corps.valeur).toHaveLength(1)
+    expect(corps.valeur[0].kind).toBe('sol')
+    expect(enregistrerLayoutCalepinage).not.toHaveBeenCalled() // aucun document entier
+  })
+
+  it('lecture en échec → Enregistrer désactivé, message affiché, aucun POST', async () => {
+    layout.mockRejectedValue(new Error('500'))
+    monter()
+    expect(await screen.findByRole('alert'))
+      .toHaveTextContent('Conception illisible : rien n’est enregistré')
+    const bouton = screen.getByTestId('cal-terrain-enregistrer')
+    expect(bouton).toBeDisabled()
+    fireEvent.click(bouton)
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+    expect(enregistrerLayoutCalepinage).not.toHaveBeenCalled()
+  })
+
+  it('pousse la section écrite dans l’atelier vivant', async () => {
+    const documentVivant = { empreinte: 'EATELIER', appliquerSection: vi.fn() }
+    monter({ documentVivant })
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    for (const [cle, valeur] of Object.entries(SAISIE)) {
+      const champ = screen.queryByTestId(`cal-terrain-${cle}`)
+      if (champ) fireEvent.change(champ, { target: { value: valeur } })
+    }
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('cal-terrain-enregistrer'))
+    await waitFor(() => expect(documentVivant.appliquerSection).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout.mock.calls[0][1].base_empreinte).toBe('EATELIER')
+    const [cle, valeur, empreinte] = documentVivant.appliquerSection.mock.calls[0]
+    expect(cle).toBe('poseSurfaces')
+    expect(valeur[0].kind).toBe('sol')
+    expect(empreinte).toBe('E1')
   })
 
   it('RECHARGE un champ déjà enregistré : saisie et plan reviennent', async () => {

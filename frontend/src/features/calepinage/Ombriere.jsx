@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import RetourAtelier from './atelier/RetourAtelier'
 import calepinageApi from '../../api/calepinageApi'
+import useDocumentCalepinage, { ecrireSection, MESSAGE_ILLISIBLE } from './useDocumentCalepinage'
 import {
   nombre, pasMesure, tauxOccupation, contourTerrain, demandeMoteur, planVue2D,
   motifChampVide, motifRefus,
@@ -219,12 +220,14 @@ function auDixieme(v) {
   return v === null || v === undefined ? '—' : Math.round(v * 10) / 10
 }
 
-export default function Ombriere({ calepinageId: idPropose = null, persister = true }) {
+export default function Ombriere({ calepinageId: idPropose = null, persister = true, documentVivant = null }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
 
   const [saisie, setSaisie] = useState(SAISIE_VIDE)
-  const [layout, setLayout] = useState(null)
+  // ACAL24 — l'UNIQUE lecture du document (hook) : un échec donne `erreur`, jamais
+  // un document vide ; l'écriture ne porte que la clé `poseSurfaces`.
+  const doc = useDocumentCalepinage(calepinageId, { actif: persister })
   const [reponse, setReponse] = useState(null)
   const [enCours, setEnCours] = useState(false)
   const [message, setMessage] = useState(null)
@@ -251,40 +254,34 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
     return () => { annule = true }
   }, [])
 
-  // RELECTURE — une ombrière déjà enregistrée revient telle quelle.
-  useEffect(() => {
-    if (!calepinageId || !persister) return undefined
-    let annule = false
-    Promise.resolve(calepinageApi.calepinages.layout(calepinageId))
-      .then((res) => {
-        if (annule) return
-        const doc = res?.data?.roof_layout ?? null
-        setLayout(doc)
-        const omb = (doc?.poseSurfaces ?? []).find((s) => s?.kind === 'ombriere')
-        if (!omb) return
-        const contour = omb.contourM ?? []
-        const texte = (v) => (v === null || v === undefined ? '' : String(v))
-        setSaisie((s) => ({
-          ...s,
-          repere: omb.id ?? s.repere,
-          label: omb.label ?? s.label,
-          buildingId: omb.buildingId ?? s.buildingId,
-          largeurM: contour.length === 4 ? String(contour[1][0]) : s.largeurM,
-          profondeurM: contour.length === 4 ? String(contour[2][1]) : s.profondeurM,
-          clearHeightM: texte(omb.clearHeightM) || s.clearHeightM,
-          tiltDeg: texte(omb.tiltDeg) || s.tiltDeg,
-          flowAzimuthDeg: texte(omb.flowAzimuthDeg) || s.flowAzimuthDeg,
-        }))
-        setReponse({
-          plans: [{ modules: omb.engine?.modules ?? null, tables: omb.engine?.tables ?? [] }],
-          version_moteur: omb.engine?.versionMoteur ?? null,
-          hash_entree: omb.engine?.hashEntree ?? null,
-          _pasRecharge: omb.engine?.rowPitchM ?? null,
-        })
+  // RELECTURE — une ombrière déjà enregistrée revient telle quelle (une fois par
+  // lecture serveur, jamais à une application locale d'une section écrite).
+  const [lectureHydratee, setLectureHydratee] = useState(null)
+  if (persister && doc.etat === 'ok' && lectureHydratee !== doc.generation) {
+    setLectureHydratee(doc.generation)
+    const omb = (doc.document?.poseSurfaces ?? []).find((s) => s?.kind === 'ombriere')
+    if (omb) {
+      const contour = omb.contourM ?? []
+      const texte = (v) => (v === null || v === undefined ? '' : String(v))
+      setSaisie((s) => ({
+        ...s,
+        repere: omb.id ?? s.repere,
+        label: omb.label ?? s.label,
+        buildingId: omb.buildingId ?? s.buildingId,
+        largeurM: contour.length === 4 ? String(contour[1][0]) : s.largeurM,
+        profondeurM: contour.length === 4 ? String(contour[2][1]) : s.profondeurM,
+        clearHeightM: texte(omb.clearHeightM) || s.clearHeightM,
+        tiltDeg: texte(omb.tiltDeg) || s.tiltDeg,
+        flowAzimuthDeg: texte(omb.flowAzimuthDeg) || s.flowAzimuthDeg,
+      }))
+      setReponse({
+        plans: [{ modules: omb.engine?.modules ?? null, tables: omb.engine?.tables ?? [] }],
+        version_moteur: omb.engine?.versionMoteur ?? null,
+        hash_entree: omb.engine?.hashEntree ?? null,
+        _pasRecharge: omb.engine?.rowPitchM ?? null,
       })
-      .catch(() => { if (!annule) setLayout(null) })
-    return () => { annule = true }
-  }, [calepinageId, persister])
+    }
+  }
 
   const majChamp = (cle, brut) => setSaisie((s) => ({ ...s, [cle]: brut }))
 
@@ -313,21 +310,28 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
       })
   }
 
-  const enregistrer = () => {
+  const enregistrer = async () => {
+    if (doc.etat !== 'ok') return
     if (!reponse) {
       setMessage('Aucun plan du moteur : il n’y a rien à enregistrer.')
       return
     }
     const surface = documentOmbriere(saisie, reponse)
-    const autres = (layout?.poseSurfaces ?? [])
+    const autres = (doc.document?.poseSurfaces ?? [])
       .filter((s) => !(s?.kind === 'ombriere' && (s?.id ?? '') === surface.id))
-    const doc = { ...(layout ?? {}), poseSurfaces: [...autres, surface] }
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, doc))
-      .then(() => {
-        setLayout(doc)
-        setMessage('Ombrière enregistrée dans la conception.')
-      })
-      .catch(() => setMessage('L’ombrière n’a pas pu être enregistrée.'))
+    const valeur = [...autres, surface]
+    const res = await ecrireSection({
+      calepinageId, cle: 'poseSurfaces', valeur, empreinte: doc.empreinte, documentVivant,
+    })
+    if (res.ok) {
+      doc.appliquerSection('poseSurfaces', valeur, res.empreinte)
+      setMessage('Ombrière enregistrée dans la conception.')
+    } else if (res.conflit) {
+      setMessage('La conception a changé ailleurs : elle est relue, enregistrez de nouveau.')
+      doc.recharger()
+    } else {
+      setMessage(res.motif || 'L’ombrière n’a pas pu être enregistrée.')
+    }
   }
 
   const plan = (reponse?.plans ?? [])[0] ?? null
@@ -370,15 +374,15 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
   // enregistrées — sinon le total mentirait jusqu'au prochain enregistrement.
   const layoutAffiche = plan
     ? {
-      ...(layout ?? {}),
+      ...(doc.document ?? {}),
       poseSurfaces: [
-        ...((layout?.poseSurfaces ?? []).filter(
+        ...((doc.document?.poseSurfaces ?? []).filter(
           (s) => !(s?.kind === 'ombriere' && (s?.id ?? '') === (saisie.repere || 'OMBRIERE')),
         )),
         documentOmbriere(saisie, reponse),
       ],
     }
-    : layout
+    : doc.document
   const totaux = totauxParBatiment(layoutAffiche)
 
   return (
@@ -432,6 +436,7 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
             <button
               type="button"
               onClick={enregistrer}
+              disabled={doc.etat !== 'ok'}
               data-testid="cal-ombriere-enregistrer"
               className="rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white"
             >
@@ -439,6 +444,11 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
             </button>
           )}
         </div>
+
+        {persister && doc.etat === 'erreur' && (
+          <p className="mt-3 text-sm text-red-300" role="alert"
+           >{MESSAGE_ILLISIBLE}</p>
+        )}
 
         {message && (
           <p className="mt-3 text-sm text-lune-soft" role="status"

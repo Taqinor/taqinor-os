@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import RetourAtelier from './atelier/RetourAtelier'
 import calepinageApi from '../../api/calepinageApi'
+import useDocumentCalepinage, { ecrireSection, MESSAGE_ILLISIBLE } from './useDocumentCalepinage'
 import { formatCote, milieu } from './plan2d'
 import { formatNumber } from '../../lib/format'
 
@@ -409,12 +410,14 @@ function auDixieme(v) {
   return v === null || v === undefined ? '—' : Math.round(v * 10) / 10
 }
 
-export default function ModeTerrain({ calepinageId: idPropose = null, persister = true }) {
+export default function ModeTerrain({ calepinageId: idPropose = null, persister = true, documentVivant = null }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl
 
   const [saisie, setSaisie] = useState(SAISIE_VIDE)
-  const [layout, setLayout] = useState(null)
+  // ACAL24 — l'UNIQUE lecture du document (hook) : un échec donne `erreur`, jamais
+  // un document vide ; l'écriture ne porte que la clé `poseSurfaces`.
+  const doc = useDocumentCalepinage(calepinageId, { actif: persister })
   const [reponse, setReponse] = useState(null)
   const [enCours, setEnCours] = useState(false)
   const [message, setMessage] = useState(null)
@@ -439,47 +442,41 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
     return () => { annule = true }
   }, [])
 
-  // RELECTURE — un champ au sol déjà enregistré revient tel quel.
-  useEffect(() => {
-    if (!calepinageId || !persister) return undefined
-    let annule = false
-    Promise.resolve(calepinageApi.calepinages.layout(calepinageId))
-      .then((res) => {
-        if (annule) return
-        const doc = res?.data?.roof_layout ?? null
-        setLayout(doc)
-        const sol = (doc?.poseSurfaces ?? []).find((s) => s?.kind === 'sol')
-        if (!sol) return
-        const contour = sol.contourM ?? []
-        setSaisie((s) => ({
-          ...s,
-          repere: sol.id ?? s.repere,
-          label: sol.label ?? s.label,
-          largeurM: contour.length === 4 ? String(contour[1][0]) : s.largeurM,
-          profondeurM: contour.length === 4 ? String(contour[2][1]) : s.profondeurM,
-          penteTerrainDeg: sol.terrainSlopeDeg === null || sol.terrainSlopeDeg === undefined
-            ? s.penteTerrainDeg : String(sol.terrainSlopeDeg),
-          rowAzimuthDeg: sol.rowAzimuthDeg === null || sol.rowAzimuthDeg === undefined
-            ? s.rowAzimuthDeg : String(sol.rowAzimuthDeg),
-          tiltDeg: sol.tiltDeg === null || sol.tiltDeg === undefined
-            ? s.tiltDeg : String(sol.tiltDeg),
-          // ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — la saisie module revient.
-          moduleLongM: relu(sol.moduleLongM, s.moduleLongM),
-          moduleCourtM: relu(sol.moduleCourtM, s.moduleCourtM),
-          puissanceWc: relu(sol.moduleWc, s.puissanceWc),
-          modulesParTable: relu(sol.modulesParTable, s.modulesParTable),
-        }))
-        // Le plan RECHARGÉ est celui du moteur : on le réaffiche sans le refaire.
-        setReponse({
-          plans: [{ modules: sol.engine?.modules ?? null, tables: sol.engine?.tables ?? [] }],
-          version_moteur: sol.engine?.versionMoteur ?? null,
-          hash_entree: sol.engine?.hashEntree ?? null,
-          _pasRecharge: sol.engine?.rowPitchM ?? null,
-        })
+  // RELECTURE — un champ au sol déjà enregistré revient tel quel (une fois par
+  // lecture serveur, jamais à une application locale d'une section écrite).
+  const [lectureHydratee, setLectureHydratee] = useState(null)
+  if (persister && doc.etat === 'ok' && lectureHydratee !== doc.generation) {
+    setLectureHydratee(doc.generation)
+    const sol = (doc.document?.poseSurfaces ?? []).find((s) => s?.kind === 'sol')
+    if (sol) {
+      const contour = sol.contourM ?? []
+      setSaisie((s) => ({
+        ...s,
+        repere: sol.id ?? s.repere,
+        label: sol.label ?? s.label,
+        largeurM: contour.length === 4 ? String(contour[1][0]) : s.largeurM,
+        profondeurM: contour.length === 4 ? String(contour[2][1]) : s.profondeurM,
+        penteTerrainDeg: sol.terrainSlopeDeg === null || sol.terrainSlopeDeg === undefined
+          ? s.penteTerrainDeg : String(sol.terrainSlopeDeg),
+        rowAzimuthDeg: sol.rowAzimuthDeg === null || sol.rowAzimuthDeg === undefined
+          ? s.rowAzimuthDeg : String(sol.rowAzimuthDeg),
+        tiltDeg: sol.tiltDeg === null || sol.tiltDeg === undefined
+          ? s.tiltDeg : String(sol.tiltDeg),
+        // ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — la saisie module revient.
+        moduleLongM: relu(sol.moduleLongM, s.moduleLongM),
+        moduleCourtM: relu(sol.moduleCourtM, s.moduleCourtM),
+        puissanceWc: relu(sol.moduleWc, s.puissanceWc),
+        modulesParTable: relu(sol.modulesParTable, s.modulesParTable),
+      }))
+      // Le plan RECHARGÉ est celui du moteur : on le réaffiche sans le refaire.
+      setReponse({
+        plans: [{ modules: sol.engine?.modules ?? null, tables: sol.engine?.tables ?? [] }],
+        version_moteur: sol.engine?.versionMoteur ?? null,
+        hash_entree: sol.engine?.hashEntree ?? null,
+        _pasRecharge: sol.engine?.rowPitchM ?? null,
       })
-      .catch(() => { if (!annule) setLayout(null) })
-    return () => { annule = true }
-  }, [calepinageId, persister])
+    }
+  }
 
   const majChamp = (cle, brut) => setSaisie((s) => ({ ...s, [cle]: brut }))
 
@@ -506,20 +503,27 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
       })
   }
 
-  const enregistrer = () => {
+  const enregistrer = async () => {
+    if (doc.etat !== 'ok') return
     if (!reponse) {
       setMessage('Aucun plan du moteur : il n’y a rien à enregistrer.')
       return
     }
     const surface = documentTerrain(saisie, reponse)
-    const autres = (layout?.poseSurfaces ?? []).filter((s) => s?.kind !== 'sol')
-    const doc = { ...(layout ?? {}), poseSurfaces: [...autres, surface] }
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, doc))
-      .then(() => {
-        setLayout(doc)
-        setMessage('Champ au sol enregistré dans la conception.')
-      })
-      .catch(() => setMessage('Le champ au sol n’a pas pu être enregistré.'))
+    const autres = (doc.document?.poseSurfaces ?? []).filter((s) => s?.kind !== 'sol')
+    const valeur = [...autres, surface]
+    const res = await ecrireSection({
+      calepinageId, cle: 'poseSurfaces', valeur, empreinte: doc.empreinte, documentVivant,
+    })
+    if (res.ok) {
+      doc.appliquerSection('poseSurfaces', valeur, res.empreinte)
+      setMessage('Champ au sol enregistré dans la conception.')
+    } else if (res.conflit) {
+      setMessage('La conception a changé ailleurs : elle est relue, enregistrez de nouveau.')
+      doc.recharger()
+    } else {
+      setMessage(res.motif || 'Le champ au sol n’a pas pu être enregistré.')
+    }
   }
 
   const plan = (reponse?.plans ?? [])[0] ?? null
@@ -589,6 +593,7 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
             <button
               type="button"
               onClick={enregistrer}
+              disabled={doc.etat !== 'ok'}
               data-testid="cal-terrain-enregistrer"
               className="rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white"
             >
@@ -596,6 +601,11 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
             </button>
           )}
         </div>
+
+        {persister && doc.etat === 'erreur' && (
+          <p className="mt-3 text-sm text-red-300" role="alert"
+           >{MESSAGE_ILLISIBLE}</p>
+        )}
 
         {message && (
           <p className="mt-3 text-sm text-lune-soft" role="status"
