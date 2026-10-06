@@ -2722,6 +2722,25 @@ def _emettre_facture_creee(facture, user):
     return True
 
 
+def _politique_ligne(ligne):
+    """ASTK108 — politique de facturation d'achat (ZPUR1) d'une ligne de
+    BCF ou de réception : celle du produit de la ligne de COMMANDE (à défaut
+    du produit de la ligne), « sur réception » pour une ligne libre/service.
+    Prédicat PARTAGÉ par FG56 (``facturer_reception``) et ZPUR1
+    (``facturer_bcf_sur_commande``) : une ligne « sur commande » n'est
+    facturée QUE par ZPUR1, jamais une seconde fois à la réception."""
+    from .models import Produit
+    ligne_commande = getattr(ligne, 'ligne_commande', None)
+    produit = None
+    if ligne_commande is not None and ligne_commande.produit_id is not None:
+        produit = ligne_commande.produit
+    elif getattr(ligne, 'produit_id', None) is not None:
+        produit = ligne.produit
+    if produit is None or not produit.politique_facturation_achat:
+        return Produit.PolitiqueFacturationAchat.SUR_RECEPTION
+    return produit.politique_facturation_achat
+
+
 # ── FG56 — Facturer une réception ────────────────────────────────────────────
 
 def facturer_reception(company, user, reception):
@@ -2747,11 +2766,26 @@ def facturer_reception(company, user, reception):
         raise ValueError(
             f"Cette réception ({reception.reference}) est déjà facturée.")
 
+    from .models import Produit
+    lignes_reception = [
+        ligne for ligne in reception.lignes.select_related(
+            'produit', 'ligne_commande', 'ligne_commande__produit').all()
+        # ASTK108 — une ligne « sur commande » est déjà facturée au BCF
+        # (ZPUR1) : jamais refacturée à la réception.
+        if _politique_ligne(ligne)
+        != Produit.PolitiqueFacturationAchat.SUR_COMMANDE
+    ]
+    if not lignes_reception:
+        raise ValueError(
+            'Rien à facturer à la réception : toutes les lignes de '
+            f'{reception.reference} sont « sur commande » (facturées sur le '
+            'bon de commande).')
+
     taux_tva_defaut = Decimal('20')
     montant_ht = Decimal('0')
     montant_tva = Decimal('0')
     lignes_data = []
-    for ligne in reception.lignes.select_related('produit', 'ligne_commande').all():
+    for ligne in lignes_reception:
         pu = ligne.ligne_commande.prix_achat_unitaire if ligne.ligne_commande else Decimal('0')
         total = Decimal(str(ligne.quantite)) * pu
         montant_ht += total
@@ -2842,7 +2876,7 @@ def facturer_bcf_sur_commande(company, user, bon_commande):
     lignes_eligibles = [
         ligne for ligne in bon_commande.lignes.select_related('produit').all()
         if ligne.produit_id is not None
-        and ligne.produit.politique_facturation_achat
+        and _politique_ligne(ligne)
         == Produit.PolitiqueFacturationAchat.SUR_COMMANDE
     ]
     if not lignes_eligibles:
