@@ -21,6 +21,7 @@ Run :
 """
 import copy
 import threading
+import uuid
 
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
@@ -66,6 +67,10 @@ CHEMIN_GET = {
 
 
 def _societe(suffixe):
+    # Suffixe UNIQUE par exécution : une purge de TransactionTestCase
+    # interrompue (base --keepdb partagée) ne laisse jamais une société ou un
+    # utilisateur de même slug qui ferait tomber le setUp suivant en doublon.
+    suffixe = '%s-%s' % (suffixe, uuid.uuid4().hex[:8])
     societe = Company.objects.create(nom='ACAL222 %s' % suffixe,
                                      slug='acal222-%s' % suffixe)
     role = Role.objects.create(company=societe, nom='Directeur',

@@ -21,6 +21,7 @@ import copy
 import json
 import threading
 import time
+import uuid
 from pathlib import Path
 
 from django.db import connection, transaction
@@ -249,7 +250,7 @@ class CourseDeuxConnexionsTest(TransactionTestCase):
 
     def setUp(self):
         self.company = Company.objects.create(nom='Course Co',
-                                              slug='course-co-acal22')
+                                              slug=f'course-co-acal22-{uuid.uuid4().hex[:8]}')
         self.client_a = Client.objects.create(company=self.company,
                                               nom='Client Course')
         self.calepinage = Calepinage.objects.create(
