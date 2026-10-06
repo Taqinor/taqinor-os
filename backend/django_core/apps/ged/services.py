@@ -358,10 +358,26 @@ def valider_extraction_ocr(validation, *, champs_corriges, user):
     applique `champs_corriges` à `document.custom_data` (additif, jamais
     d'écrasement d'une clé non listée) puis solde la validation."""
     document = validation.document
-    data = dict(document.custom_data or {})
-    data.update(champs_corriges or {})
-    Document.objects.filter(pk=document.pk).update(custom_data=data)
+    # ADOC9 — jamais sur un document archivé légalement (write-once).
+    assert_not_archive_legalement(document)
+    corrections = {
+        k: v for k, v in (champs_corriges or {}).items()
+        if k not in (SOURCE_TYPE_KEY, SOURCE_ID_KEY)}
+    existant = dict(document.custom_data or {})
+    data = dict(existant)
+    data.update(corrections)
+    # ADOC9 — les champs DÉFINIS (customfields) sont validés/typés ; les clés
+    # système (source_type, source_id) gardent leur valeur d'origine.
+    from apps.customfields.serializers import validate_custom_data
+    systeme = {k: existant[k] for k in (SOURCE_TYPE_KEY, SOURCE_ID_KEY)
+               if k in existant}
+    hors_systeme = {k: v for k, v in data.items() if k not in systeme}
+    data.update(validate_custom_data('document', document.company,
+                                     hors_systeme))
+    data.update(systeme)
+    # Écriture par Document.save (gardes d'archivage), jamais un update().
     document.custom_data = data
+    document.save(update_fields=['custom_data', 'updated_at'])
     from django.utils import timezone as _tz
     validation.valide = True
     validation.champs_extraits = champs_corriges or validation.champs_extraits
@@ -678,9 +694,30 @@ def assign_tag(document, tag, *, created_by=None):
     from .models import DocumentTag, DocumentTagAssignment  # noqa: F401
     if tag.company_id != document.company_id:
         raise ValueError("Le tag doit appartenir à la même société.")
-    return DocumentTagAssignment.objects.get_or_create(
+    assignment, created = DocumentTagAssignment.objects.get_or_create(
         document=document, tag=tag,
         defaults={'company': document.company, 'created_by': created_by})
+    if created:
+        # ADOC19 — chatter : tag posé.
+        journaliser_modifications(
+            document, {f'tag {tag.nom}': 'absent'},
+            {f'tag {tag.nom}': 'posé'}, created_by)
+    return assignment, created
+
+
+def retirer_tag(document, tag_id, *, user=None):
+    """ADOC19 — Retire un tag d'un document et le journalise (old→new).
+    Renvoie le nombre d'affectations supprimées (0 = no-op silencieux)."""
+    from .models import DocumentTagAssignment
+    assignments = list(DocumentTagAssignment.objects.filter(
+        company=document.company, document=document,
+        tag_id=tag_id).select_related('tag'))
+    for assignment in assignments:
+        nom = assignment.tag.nom
+        assignment.delete()
+        journaliser_modifications(
+            document, {f'tag {nom}': 'posé'}, {f'tag {nom}': 'retiré'}, user)
+    return len(assignments)
 
 
 def move_folder(folder, new_parent):
@@ -715,7 +752,7 @@ def move_folder(folder, new_parent):
     return folder
 
 
-def move_document(document, new_folder):
+def move_document(document, new_folder, *, user=None):
     """Déplace un document dans un autre dossier (même société).
 
     Le dossier cible DOIT appartenir à la même société que le document — sinon
@@ -732,13 +769,17 @@ def move_document(document, new_folder):
             "Document archivé à valeur probante (write-once) : il ne peut plus "
             "être déplacé.")
     if document.folder_id != new_folder.id:
+        ancien = document.folder.nom if document.folder_id else None
         document.folder = new_folder
         document.save(update_fields=['folder', 'updated_at'])
+        # ADOC19 — chatter old→new du déplacement.
+        journaliser_modifications(
+            document, {'dossier': ancien}, {'dossier': new_folder.nom}, user)
     return document
 
 
 def add_version(document, *, file_key, company, filename='', size=0, mime='',
-                checksum='', uploaded_by=None, restored_from=None):
+                checksum='', uploaded_by=None, restored_from=None, user=None):
     """Ajoute une nouvelle version à un document (numéro auto-incrémenté).
 
     Le numéro de version est calculé côté serveur (dernière + 1) et la société
@@ -749,8 +790,20 @@ def add_version(document, *, file_key, company, filename='', size=0, mime='',
     GED15 — `restored_from` : si cette version est le résultat d'une restauration,
     on passe ici la version source pour traçabilité (posé côté serveur dans
     `restore_version`, jamais lu du corps de requête).
+
+    ADOC17 — `user` (optionnel) : l'auteur INTERACTIF de l'écriture. Transmis,
+    le check-out GED16 est respecté (lu en base, sous verrou de ligne) :
+    `PermissionError` si le document est extrait par un autre utilisateur.
+    C'est l'unique garde de verrou des chemins versions/restaurer/fusionner/
+    office.
     """
+    # ADOC23 — LA garde de quota de stockage, sur toutes les routes (taille
+    # réelle des octets ajoutés) : `QuotaDepasseError` (→ 403 côté vues).
+    assert_quota_disponible(company, octets_supplementaires=size or 0)
     with transaction.atomic():
+        if user is not None:
+            courant = Document.objects.select_for_update().get(pk=document.pk)
+            assert_not_locked_by_other(courant, user)
         last = (DocumentVersion.objects
                 .select_for_update()
                 .filter(document=document)
@@ -773,6 +826,17 @@ def add_version(document, *, file_key, company, filename='', size=0, mime='',
     journaliser_evenement(
         document, type_evenement='nouvelle_version',
         message=f'Version {next_version} ajoutée.', utilisateur=uploaded_by)
+    # ADOC14 — une nouvelle version d'un document APPROUVÉ n'est pas
+    # approuvée : il repasse en revue (approbation à refaire).
+    from .models import LIFECYCLE_APPROUVE, LIFECYCLE_REVUE
+    if (next_version > 1 and Document.objects.filter(
+            pk=document.pk, statut=LIFECYCLE_APPROUVE).exists()):
+        Document.objects.filter(pk=document.pk).update(statut=LIFECYCLE_REVUE)
+        document.statut = LIFECYCLE_REVUE
+        journaliser_evenement(
+            document, type_evenement='changement_statut',
+            message='Nouvelle version — approbation à refaire.',
+            utilisateur=uploaded_by)
     return version
 
 
@@ -806,12 +870,102 @@ def restore_version(document, source_version, *, uploaded_by=None):
         checksum=source_version.checksum,
         uploaded_by=uploaded_by,
         restored_from=source_version,
+        # ADOC17 — la restauration respecte le check-out d'autrui.
+        user=uploaded_by,
     )
 
 
-def find_duplicate(company, checksum):
-    """Première version d'une société portant ce checksum, ou None (dedup)."""
+def derniere_version_identique(document, checksum):
+    """ADOC61 — True si la version EN VIGUEUR (numéro le plus élevé) du
+    document porte exactement ce checksum. Comparaison au DERNIER rendu, jamais
+    à la première version (une séquence A, B, A crée bien trois versions)."""
+    if not checksum or document is None or document.pk is None:
+        return False
+    derniere = (DocumentVersion.objects.filter(document=document)
+                .order_by('-version', '-id').first())
+    return derniere is not None and derniere.checksum == checksum
+
+
+def versionner_si_modifie(document, contenu, *, filename='', mime='',
+                          uploaded_by=None, stocker=None, forcer=False):
+    """ADOC61 — D-ADOC-2 : un document régénéré au contenu DIFFÉRENT devient
+    une NOUVELLE VERSION du même Document GED ; un rendu identique ne crée rien.
+
+    `contenu` : octets du nouveau rendu (le checksum SHA-256 est calculé ici et
+    posé sur la version, dès la version 1). `stocker` (optionnel) : callable
+    sans argument renvoyant un dict `{file_key, filename, size, mime}` — sinon
+    les octets sont stockés via `_store_bytes` (mêmes conventions que
+    `records.storage`). Le stockage n'a lieu QUE si une version est créée.
+
+    Gardes (jamais d'exception, l'appelant reste best-effort) :
+      - un document en corbeille n'est jamais versionné ;
+      - un document archivé légalement (WORM) ou sous legal hold actif n'est
+        pas versionné : refus journalisé.
+
+    Renvoie `(version, cree)` : `(nouvelle_version, True)` si créée,
+    `(version_en_vigueur, False)` si identique, `(None, False)` si refusé."""
+    if isinstance(contenu, str):
+        contenu = contenu.encode('utf-8')
+    contenu = contenu or b''
+    if document.supprime_le is not None:
+        logger.warning(
+            'ADOC61 — document %s en corbeille : jamais versionné.',
+            document.pk)
+        return None, False
+    checksum = compute_checksum(contenu)
+    if not forcer and derniere_version_identique(document, checksum):
+        derniere = (DocumentVersion.objects.filter(document=document)
+                    .order_by('-version', '-id').first())
+        return derniere, False
+    if _document_archive_legalement(document) \
+            or _document_sous_legal_hold(document):
+        logger.warning(
+            'ADOC61 — document %s archivé légalement ou sous legal hold : '
+            'nouvelle version refusée.', document.pk)
+        return None, False
+    try:
+        # ADOC68 — jamais de nouvelle version sous une signature en attente.
+        assert_aucune_signature_en_attente(document)
+    except SignatureEnCoursError:
+        logger.warning(
+            'ADOC68 — document %s : signature en attente, nouvelle version '
+            'refusée.', document.pk)
+        return None, False
+    if stocker is not None:
+        meta = stocker() or {}
+    else:
+        file_key, meta = _store_bytes(contenu, mime=mime or 'application/pdf')
+        meta = dict(meta, file_key=file_key)
+    version = add_version(
+        document, file_key=meta.get('file_key', ''),
+        company=document.company,
+        filename=filename or meta.get('filename', ''),
+        size=meta.get('size') or len(contenu),
+        mime=mime or meta.get('mime', ''),
+        checksum=checksum, uploaded_by=uploaded_by)
+    return version, True
+
+
+# Alias interne : `deposit_document` porte un paramètre homonyme.
+_versionner_document = versionner_si_modifie
+
+
+def find_duplicate(company, checksum, *, document=None):
+    """Première version d'une société portant ce checksum, ou None (dedup).
+
+    ADOC10 — avec `document`, la déduplication est BORNÉE à ce document : seule
+    sa DERNIÈRE version est un doublon (re-déposer le fichier courant) ; un
+    retour au contenu d'une version plus ancienne, ou un fichier identique à
+    celui d'un AUTRE document, crée bien une nouvelle version."""
     if not checksum:
+        return None
+    if document is not None:
+        derniere = (DocumentVersion.objects
+                    .filter(company=company, document=document)
+                    .order_by('-version', '-id')
+                    .first())
+        if derniere is not None and derniere.checksum == checksum:
+            return derniere
         return None
     return (DocumentVersion.objects
             .filter(company=company, checksum=checksum)
@@ -820,7 +974,7 @@ def find_duplicate(company, checksum):
 
 
 def create_document(*, company, folder, nom, description='', created_by=None,
-                    custom_data=None):
+                    custom_data=None, coffre=None):
     """Crée un document dans un dossier (société cohérente avec le dossier).
 
     `custom_data` (optionnel) permet de poser des métadonnées typées dès la
@@ -829,10 +983,18 @@ def create_document(*, company, folder, nom, description='', created_by=None,
     """
     if folder.company_id != getattr(company, 'id', company):
         raise ValueError("Le dossier doit appartenir à la même société.")
-    return Document.objects.create(
+    # ADOC4 — `coffre` (optionnel) : un document DÉRIVÉ hérite de la
+    # confidentialité de sa source.
+    document = Document.objects.create(
         company=company, folder=folder, nom=nom,
         description=description, created_by=created_by,
-        custom_data=custom_data if custom_data is not None else dict())
+        custom_data=custom_data if custom_data is not None else dict(),
+        coffre=coffre)
+    # ADOC24 — tout document créé ici (dépôts d'autres apps compris :
+    # signature, routage, modèles, calepinage, portail, guides) est indexé
+    # en plein-texte dès sa création : une recherche le trouve.
+    update_search_vector(document)
+    return document
 
 
 # ── Dépôt cross-app : enregistrer un fichier/des octets existants en GED ─────
@@ -904,25 +1066,32 @@ def _store_bytes(data, *, mime='application/pdf'):
 
     from django.conf import settings
 
+    from apps.records.storage import _detect
     from apps.ventes.utils.minio_client import (
         ensure_uploads_bucket, get_minio_client,
     )
 
-    ext = 'pdf' if 'pdf' in (mime or '') else 'bin'
+    # ADOC8 — le mime est déterminé côté serveur par les OCTETS (table de
+    # `records.storage`), jamais par le nom ou le type déclaré : un octet non
+    # reconnu reste `application/octet-stream` (servi en pièce jointe).
+    detecte, ext = _detect(bytes(data[:12]))
+    mime = detecte or 'application/octet-stream'
+    ext = ext or 'bin'
     key = f'attachments/{uuid.uuid4().hex}.{ext}'
     client = get_minio_client()
     ensure_uploads_bucket()
     client.upload_fileobj(
         io.BytesIO(data), settings.MINIO_BUCKET_UPLOADS, key,
-        ExtraArgs={'ContentType': mime or 'application/octet-stream'})
+        ExtraArgs={'ContentType': mime})
     return key, {'filename': f'{key.rsplit("/", 1)[-1]}',
-                 'size': len(data), 'mime': mime or ''}
+                 'size': len(data), 'mime': mime}
 
 
 def deposit_document(*, company, nom, source_type, source_id,
                      file_key='', filename='', size=0, mime='', checksum='',
                      contenu_bytes=None, description='', cabinet_nom='Contrats',
-                     folder_nom='Contrats', created_by=None):
+                     folder_nom='Contrats', created_by=None,
+                     versionner_si_modifie=False):
     """Enregistre un fichier/des octets EXISTANTS comme document GED (cross-app).
 
     Point d'entrée d'ÉCRITURE pour qu'une AUTRE app (ex. `contrats`) dépose un
@@ -953,12 +1122,35 @@ def deposit_document(*, company, nom, source_type, source_id,
 
     Renvoie `(document, created)` : le `Document` GED et un booléen indiquant
     s'il vient d'être créé (False = déjà présent, dépôt idempotent).
+
+    ADOC61 — `versionner_si_modifie=True` (opt-in, défaut inchangé pour les
+    appelants existants) : un re-dépôt dont les octets DIFFÈRENT de la version
+    en vigueur ajoute une nouvelle version au même document (D-ADOC-2) via
+    `versionner_si_modifie` ; un document en corbeille n'est alors jamais la
+    cible (un nouveau document visible est créé).
     """
     # Idempotence : déjà déposé pour cet objet source ? On renvoie l'existant.
-    existant = find_document_by_source(
-        company, source_type=source_type, source_id=source_id)
-    if existant is not None:
-        return existant, False
+    if versionner_si_modifie:
+        existant = None
+        if source_type is not None and source_id is not None:
+            existant = (Document.objects
+                        .filter(company=company, supprime_le__isnull=True,
+                                custom_data__contains={
+                                    SOURCE_TYPE_KEY: source_type,
+                                    SOURCE_ID_KEY: source_id,
+                                })
+                        .order_by('id').first())
+        if existant is not None:
+            if contenu_bytes is not None:
+                _versionner_document(
+                    existant, contenu_bytes, filename=filename, mime=mime,
+                    uploaded_by=created_by)
+            return existant, False
+    else:
+        existant = find_document_by_source(
+            company, source_type=source_type, source_id=source_id)
+        if existant is not None:
+            return existant, False
 
     # Si l'appelant fournit des octets bruts (sans clé), on les stocke via le
     # MÊME stockage objet que `records.storage` (bucket erp-uploads, clé
@@ -970,7 +1162,8 @@ def deposit_document(*, company, nom, source_type, source_id,
             contenu_bytes, mime=mime or 'application/pdf')
         filename = filename or store_meta.get('filename', '')
         size = size or store_meta.get('size', 0)
-        mime = mime or store_meta.get('mime', '')
+        # ADOC8 — mime détecté par les octets, jamais celui de l'appelant.
+        mime = store_meta.get('mime', '')
         checksum = checksum or compute_checksum(contenu_bytes)
 
     cabinet = ensure_cabinet(company, cabinet_nom)
@@ -985,6 +1178,7 @@ def deposit_document(*, company, nom, source_type, source_id,
         document, file_key=file_key or '', company=company,
         filename=filename or '', size=size or 0, mime=mime or '',
         checksum=checksum or '', uploaded_by=created_by)
+    apres_depot(document, created_by)  # ADOC25
     return document, True
 
 
@@ -1048,6 +1242,7 @@ def deposer_lot_scans(*, company, folder, fichiers, created_by=None):
             description=f.get('description', ''),
             created_by=created_by,
             contenu_bytes=f.get('contenu_bytes'))
+        apres_depot(document, created_by)  # ADOC25
         documents.append(document)
     return documents
 
@@ -1140,6 +1335,7 @@ def deposer_photos_assemblees(*, company, folder, images_bytes, nom='',
     update_search_vector(document)
     index_embedding(document)
     index_document_chunks(document)
+    apres_depot(document, created_by)  # ADOC25
     return document
 
 
@@ -1260,6 +1456,8 @@ def importer_en_masse(*, company, folder, lignes, zip_bytes=None,
             file_key, store_meta = _store_bytes(
                 contenu_bytes, mime=mime or 'application/octet-stream')
             size = store_meta.get('size', 0)
+            # ADOC8 — mime détecté par les octets (jamais l'extension).
+            mime = store_meta.get('mime', '')
             checksum = compute_checksum(contenu_bytes)
         add_version(
             document, file_key=file_key, company=company,
@@ -1268,6 +1466,7 @@ def importer_en_masse(*, company, folder, lignes, zip_bytes=None,
         update_search_vector(document)
         index_embedding(document)
         index_document_chunks(document)
+        apres_depot(document, created_by)  # ADOC25
         documents.append(document)
     return {'documents': documents, 'erreurs': erreurs,
             'crees': len(documents)}
@@ -1430,7 +1629,8 @@ def deverrouiller_avertissement(document, user):
     return doc
 
 
-def change_lifecycle_status(document, target_status, *, user):
+def change_lifecycle_status(document, target_status, *, user,
+                            via_approbation=False):
     """GED17 — Fait avancer un document dans son cycle de vie (statut LOCAL).
 
     Garde la machine à états `LIFECYCLE_TRANSITIONS` : seule une transition
@@ -1470,6 +1670,14 @@ def change_lifecycle_status(document, target_status, *, user):
                 f"Le document est déjà au statut « {doc.statut} »."
             )
         autorisees = LIFECYCLE_TRANSITIONS.get(doc.statut, set())
+        # ADOC14 — « revue → approuvé » est la DÉCISION d'une demande
+        # d'approbation (approve_demande), jamais un geste cycle-vie direct.
+        from .models import LIFECYCLE_APPROUVE as _APPROUVE
+        from .models import LIFECYCLE_REVUE as _REVUE
+        if (target_status == _APPROUVE and doc.statut == _REVUE
+                and not via_approbation):
+            raise ValueError(
+                "L'approbation passe par une demande d'approbation.")
         if target_status not in autorisees:
             attendus = ', '.join(sorted(autorisees)) or 'aucun'
             raise ValueError(
@@ -1528,6 +1736,9 @@ def request_review(document, *, user, approbateur=None, commentaire=''):
             approbateur=approbateur,
             statut=APPROBATION_EN_ATTENTE,
             commentaire=commentaire or '',
+            # ADOC14 — la version relue (dernière version à la demande).
+            version=(DocumentVersion.objects.filter(document=doc)
+                     .order_by('-version', '-id').first()),
         )
         # Met le document « en revue » s'il est encore brouillon (transition
         # GED17 réutilisée — on ne duplique pas la machine à états).
@@ -1559,6 +1770,7 @@ def _decide_demande(demande, *, user, statut_cible, commentaire=''):
         if dem.statut != APPROBATION_EN_ATTENTE:
             raise ValueError(
                 f"La demande est déjà « {dem.statut} » — décision impossible.")
+        _assert_peut_decider(dem, user)
         dem.statut = statut_cible
         dem.approbateur = user
         dem.decision_le = timezone.now()
@@ -1572,6 +1784,20 @@ def _decide_demande(demande, *, user, statut_cible, commentaire=''):
     demande.decision_le = dem.decision_le
     demande.commentaire = dem.commentaire
     return dem
+
+
+def _assert_peut_decider(demande, user):
+    """ADOC14 — seul l'approbateur DÉSIGNÉ de l'étape courante (ou un admin)
+    tranche une demande ; JAMAIS le demandeur, admin compris. Sans
+    approbateur désigné, tout décideur autorisé par la vue (hors demandeur)."""
+    if demande.demandeur_id is not None and demande.demandeur_id == user.pk:
+        raise PermissionError(
+            "Le demandeur ne peut pas approuver sa propre demande.")
+    est_admin = getattr(user, 'is_admin_role', False) or user.is_superuser
+    if (demande.approbateur_id is not None
+            and demande.approbateur_id != user.pk and not est_admin):
+        raise PermissionError(
+            "Ce n'est pas votre étape d'approbation.")
 
 
 def approve_demande(demande, *, user, commentaire=''):
@@ -1592,7 +1818,8 @@ def approve_demande(demande, *, user, commentaire=''):
         commentaire=commentaire)
     document = dem.document
     if document.statut == LIFECYCLE_REVUE:
-        change_lifecycle_status(document, LIFECYCLE_APPROUVE, user=user)
+        change_lifecycle_status(document, LIFECYCLE_APPROUVE, user=user,
+                                via_approbation=True)
     return dem
 
 
@@ -1696,6 +1923,9 @@ def resolve_partage_public(token, *, password=None):
     # Jeton inconnu OU partage révoqué → 404 indistinct (pas de fuite).
     if partage is None or not partage.actif:
         return PARTAGE_INTROUVABLE, None
+    # ADOC6 — un document mis en corbeille n'est plus servi (404 indistinct).
+    if partage.document.supprime_le is not None:
+        return PARTAGE_INTROUVABLE, None
     # Expiré ou quota épuisé → 410 Gone.
     if partage.is_expired or partage.quota_exhausted:
         return PARTAGE_EXPIRE, partage
@@ -1762,16 +1992,27 @@ def _watermark_pdf(file_bytes, text):
     try:
         doc = fitz.open(stream=file_bytes, filetype='pdf')
         try:
+            # ADOC142 — `insert_textbox(rotate=45)` levait TOUJOURS
+            # « rotate must be multiple of 90 » (PyMuPDF n'accepte que des
+            # quarts de tour) : le repli silencieux renvoyait l'ORIGINAL, et
+            # AUCUN PDF n'était jamais filigrané (aperçu, partage, portail).
+            # La diagonale passe par une matrice de rotation (`morph`) autour
+            # du centre de la page. La police standard « helv » n'a pas le
+            # tiret cadratin : il est rendu en tiret simple.
+            texte = text.replace('—', '-')
+            taille = 28
             for page in doc:
                 rect = page.rect
-                # Filigrane diagonal centré, gris translucide, répété en bas.
-                page.insert_textbox(
-                    rect,
-                    text,
-                    fontsize=28,
+                centre = fitz.Point(rect.width / 2, rect.height / 2)
+                largeur = fitz.get_text_length(
+                    texte, fontname='helv', fontsize=taille)
+                page.insert_text(
+                    fitz.Point(centre.x - largeur / 2, centre.y),
+                    texte,
+                    fontsize=taille,
+                    fontname='helv',
                     color=(0.5, 0.5, 0.5),
-                    rotate=45,
-                    align=fitz.TEXT_ALIGN_CENTER,
+                    morph=(centre, fitz.Matrix(-45)),
                     overlay=True,
                 )
             out = doc.tobytes()
@@ -1970,6 +2211,10 @@ def archiver_legalement(document, *, user, motif='', retain_until=None):
 
     if document.company_id != getattr(user, 'company_id', None):
         raise PermissionError("Document inaccessible.")
+    # ADOC22 — un document en corbeille ne s'archive pas (400 nommé).
+    if document.supprime_le is not None:
+        raise ValueError(
+            "Un document en corbeille ne peut pas être archivé légalement.")
     # Write-once : un document n'est archivé légalement qu'une seule fois.
     if ArchivageLegal.objects.filter(document=document).exists():
         raise ValueError("Ce document est déjà archivé légalement.")
@@ -2187,10 +2432,13 @@ def mettre_en_corbeille(document, user):
     document.supprime_le = timezone.now()
     document.supprime_par = user
     document.save(update_fields=['supprime_le', 'supprime_par', 'updated_at'])
+    # ADOC19 — chatter old→new.
+    journaliser_modifications(
+        document, {'corbeille': 'non'}, {'corbeille': 'oui'}, user)
     return document
 
 
-def restaurer_de_corbeille(document):
+def restaurer_de_corbeille(document, user=None):
     """GED26 — Restaure un document DEPUIS la corbeille (efface le soft-delete).
 
     Vide `supprime_le`/`supprime_par` : le document réapparaît dans les listes
@@ -2203,6 +2451,9 @@ def restaurer_de_corbeille(document):
     document.supprime_le = None
     document.supprime_par = None
     document.save(update_fields=['supprime_le', 'supprime_par', 'updated_at'])
+    # ADOC19 — chatter old→new.
+    journaliser_modifications(
+        document, {'corbeille': 'oui'}, {'corbeille': 'non'}, user)
     return document
 
 
@@ -2223,7 +2474,33 @@ def purger_definitivement(document):
             "définitive.")
     # Les gardes légales (GED23/GED24) sont posées dans `Document.delete()` —
     # filet ultime ; on les laisse lever telles quelles (traduites en 403).
-    document.delete()
+    # ADOC29 — le binaire part avec le document (clés non partagées) ; un
+    # échec du stockage annule la suppression (rien de détruit à moitié).
+    cles = _cles_binaires_exclusives(document)
+    with transaction.atomic():
+        document.delete()
+        _supprimer_binaires(cles)
+
+
+def _cles_binaires_exclusives(document):
+    """ADOC29 — clés de stockage des versions de `document` qu'AUCUNE autre
+    version (d'un autre document) ne référence : seules celles-ci peuvent
+    être effacées du stockage objet."""
+    cles = set(DocumentVersion.objects.filter(document=document)
+               .exclude(file_key='').values_list('file_key', flat=True))
+    partagees = set(DocumentVersion.objects.filter(file_key__in=cles)
+                    .exclude(document=document)
+                    .values_list('file_key', flat=True))
+    return sorted(cles - partagees)
+
+
+def _supprimer_binaires(cles):
+    """ADOC29 — efface du stockage objet les clés données (via
+    `records.storage.delete_attachment`, jamais réimplémenté). Une exception
+    remonte à l'appelant (qui annule alors sa transaction)."""
+    from apps.records import storage
+    for cle in cles:
+        storage.delete_attachment(cle)
 
 
 # ── GED25 — Purge automatique de la corbeille (DRY-RUN par défaut) ────────────
@@ -2563,23 +2840,65 @@ def generer_document(modele, contexte, *, company, created_by=None,
     if modele.company_id is not None \
             and modele.company_id != getattr(company, 'id', company):
         raise ValueError("Le modèle doit appartenir à la même société.")
+    import hashlib
+    import json
+
+    # ADOC13 — l'ancre d'idempotence est (modèle, EMPREINTE DU CONTEXTE) :
+    # deux contextes différents (ALPHA / BRAVO) donnent deux documents ; le
+    # même contexte après correction du modèle ajoute une NOUVELLE VERSION au
+    # même document (D-ADOC-2, historique gardé) ; sans changement du modèle,
+    # le document existant est rendu tel quel.
+    def _empreinte(valeur):
+        brut = json.dumps(valeur, sort_keys=True, default=str,
+                          ensure_ascii=False)
+        return hashlib.sha256(brut.encode('utf-8')).hexdigest()
+
+    empreinte_contexte = _empreinte(contexte or {})
+    empreinte_modele = _empreinte(
+        {'corps_html': modele.corps_html, 'sections': modele.sections})
+    existant = (Document.objects
+                .filter(company=company, custom_data__contains={
+                    SOURCE_TYPE_KEY: 'ged.modeledocument',
+                    SOURCE_ID_KEY: modele.pk,
+                    'contexte_empreinte': empreinte_contexte})
+                .order_by('id').first())
+    if existant is not None and (existant.custom_data or {}).get(
+            'modele_empreinte') == empreinte_modele:
+        return existant, False
     pdf_bytes = rendre_modele(modele, contexte)
+    if existant is not None:
+        key, meta = _store_bytes(pdf_bytes, mime='application/pdf')
+        add_version(
+            existant, file_key=key, company=existant.company,
+            filename=meta.get('filename', ''), size=len(pdf_bytes),
+            mime=meta.get('mime', ''),
+            checksum=compute_checksum(pdf_bytes), uploaded_by=created_by)
+        donnees = dict(existant.custom_data or {})
+        donnees['modele_empreinte'] = empreinte_modele
+        existant.custom_data = donnees
+        existant.save(update_fields=['custom_data', 'updated_at'])
+        update_search_vector(existant)
+        return existant, False
     # GED28 : où classer ? Règle du modèle (cible templatée) sinon défauts appelant.
     cabinet_resolu, folder_resolu = resoudre_classement(
         modele, contexte,
         cabinet_defaut=cabinet_nom, folder_defaut=folder_nom)
-    return deposit_document(
-        company=company,
-        nom=nom or modele.nom,
-        source_type='ged.modeledocument',
-        source_id=modele.pk,
-        contenu_bytes=pdf_bytes,
-        mime='application/pdf',
-        description=modele.description or '',
-        cabinet_nom=cabinet_resolu,
-        folder_nom=folder_resolu,
-        created_by=created_by,
-    )
+    cabinet = ensure_cabinet(company, cabinet_resolu)
+    folder = ensure_root_folder(company, cabinet=cabinet, nom=folder_resolu)
+    document = create_document(
+        company=company, folder=folder, nom=nom or modele.nom,
+        description=modele.description or '', created_by=created_by,
+        custom_data={
+            SOURCE_TYPE_KEY: 'ged.modeledocument', SOURCE_ID_KEY: modele.pk,
+            'contexte_empreinte': empreinte_contexte,
+            'modele_empreinte': empreinte_modele})
+    key, meta = _store_bytes(pdf_bytes, mime='application/pdf')
+    add_version(
+        document, file_key=key, company=company,
+        filename=meta.get('filename', ''), size=len(pdf_bytes),
+        mime=meta.get('mime', ''), checksum=compute_checksum(pdf_bytes),
+        uploaded_by=created_by)
+    return document, True
 
 
 # ── GED29 — Filage (classement) des PDF après-vente (SAV) générés ──────────
@@ -2681,8 +3000,84 @@ def esign_provider_name():
         or SIGNATURE_PROVIDER_AUCUN
 
 
+def url_publique_signature(jeton, mode='demande', *, request=None):
+    """ADOC63 — URL ABSOLUE de la cérémonie publique de signature, sur
+    l'origine de l'ERP (UNE seule fabrique pour tous les envois).
+
+    `mode` : 'demande' → `/ged/signature/<jeton>/` (mono, jeton de la demande) ;
+    'signataire' → `/ged/signataire/<jeton>/` (circuit multi, jeton PROPRE au
+    destinataire). Base : `settings.PUBLIC_BASE_URL` (origine de l'ERP, déjà lue
+    par les liens publics ventes) ; repli `request.build_absolute_uri`.
+    JAMAIS `PUBLIC_SITE_URL` (site Astro, où ces routes n'existent pas).
+    Renvoie '' si aucune base n'est connue (l'appelant n'envoie alors aucun
+    lien relatif)."""
+    from django.conf import settings
+    segment = 'signataire' if mode == 'signataire' else 'signature'
+    chemin = f'/ged/{segment}/{jeton}/'
+    base = (getattr(settings, 'PUBLIC_BASE_URL', '') or '').strip().rstrip('/')
+    if base:
+        return f'{base}{chemin}'
+    if request is not None:
+        try:
+            return request.build_absolute_uri(chemin)
+        except Exception:  # pragma: no cover - requête sans hôte exploitable.
+            pass
+    # Hors requête (signature séquentielle, relances Celery) : l'origine HTTPS
+    # de l'ERP déclarée dans CSRF_TRUSTED_ORIGINS (toujours posée en prod),
+    # pour ne pas perdre l'e-mail quand PUBLIC_BASE_URL n'est pas configuré.
+    for origine in getattr(settings, 'CSRF_TRUSTED_ORIGINS', None) or []:
+        origine = (origine or '').strip().rstrip('/')
+        if origine.startswith('https://') and '*' not in origine:
+            return f'{origine}{chemin}'
+    return ''
+
+
+def _envoyer_lien_signature(email, nom, demande, lien, *, relance=False,
+                            pour_signer=True):
+    """ADOC63 — Envoie (best-effort) le lien ABSOLU de cérémonie à un
+    destinataire. Sans lien absolu (aucune base connue), AUCUN mail ne part
+    (avertissement journalisé) — jamais un lien relatif. Renvoie True si
+    envoyé."""
+    if not email:
+        return False
+    if not lien:
+        logger.warning(
+            'ADOC63 — demande de signature %s : aucune base publique '
+            '(PUBLIC_BASE_URL) ni requête, lien non envoyé à %s.',
+            demande.pk, email)
+        return False
+    try:
+        from django.conf import settings
+        from django.core.mail import send_mail
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
+        sujet = (
+            f'Relance — document à signer : {demande.document.nom}'
+            if relance else f'Document à signer : {demande.document.nom}')
+        corps = (
+            f'Bonjour {nom},\n\n'
+            f'Un document « {demande.document.nom} » requiert votre '
+            f'{"signature" if pour_signer else "attention"}.\n'
+            f'Lien : {lien}\n\n'
+            f"Cordialement,\nL'équipe {_nom_societe(demande.company)}".rstrip()
+        )
+        send_mail(sujet, corps, from_email, [email], fail_silently=False)
+        return True
+    except Exception as exc:  # noqa: BLE001 - best-effort, jamais bloquant.
+        logger.warning('ADOC63: envoi du lien de signature échoué : %s', exc)
+        return False
+
+
+def notifier_demande_signature(demande, *, request=None, relance=False):
+    """ADOC63 — Notifie le signataire d'une demande MONO (jeton de la
+    demande) avec son lien absolu de cérémonie."""
+    return _envoyer_lien_signature(
+        demande.signataire_email, demande.signataire_nom, demande,
+        url_publique_signature(demande.token, 'demande', request=request),
+        relance=relance)
+
+
 def demander_signature(document, *, signataire_nom, signataire_email,
-                       company, created_by=None):
+                       company, created_by=None, notifier=True, request=None):
     """GED30 — Demande une signature électronique sur un document (STUB no-op).
 
     WIR138 — POINT DE BASCULE VERS LE SOCLE CANONIQUE. ``core.esign`` est le
@@ -2707,6 +3102,11 @@ def demander_signature(document, *, signataire_nom, signataire_email,
     founder), c'est ICI que l'appel fournisseur serait fait (squelette isolé
     ci-dessous, jamais exécuté tant qu'aucun provider concret n'est importé) et
     `provider`/`provider_ref` seraient renseignés.
+
+    ADOC63 — `notifier=True` (défaut) envoie au signataire le lien ABSOLU de
+    sa cérémonie (`url_publique_signature`) pour TOUS les appelants (création,
+    opération par lot, règle de dossier, envoi en masse) ; le circuit multi
+    passe `notifier=False` (il notifie chaque destinataire avec SON jeton).
 
     Renvoie la `DemandeSignatureDocument` créée.
     """
@@ -2736,7 +3136,7 @@ def demander_signature(document, *, signataire_nom, signataire_email,
                 signataire_email=signataire_email,
             ) or ''
 
-    return DemandeSignatureDocument.objects.create(
+    demande = DemandeSignatureDocument.objects.create(
         company=document.company,
         document=document,
         signataire_nom=(signataire_nom or '').strip(),
@@ -2746,6 +3146,9 @@ def demander_signature(document, *, signataire_nom, signataire_email,
         provider_ref=provider_ref,
         created_by=created_by,
     )
+    if notifier:
+        notifier_demande_signature(demande, request=request)
+    return demande
 
 
 def marquer_signe(demande, *, provider_ref=None, date_signature=None):
@@ -2784,6 +3187,9 @@ def marquer_signe(demande, *, provider_ref=None, date_signature=None):
     # total (try/except large) — un souci de rendu/stockage ne doit JAMAIS
     # empêcher la signature elle-même d'être enregistrée.
     if not etait_deja_signe:
+        # ADOC68 — PDF signé figé UNE fois, avant le certificat (dont
+        # l'empreinte reprend le hash du PDF figé) et le classement.
+        figer_pdf_signe(demande)
         try:
             classer_signature_completee(demande)
         except Exception:  # pragma: no cover - défensif, jamais bloquant.
@@ -2839,6 +3245,107 @@ def resolve_signature_publique(token):
     return SIGNATURE_PUBLIQUE_OK, demande
 
 
+def version_a_signer(demande):
+    """ADOC67 — Version du document que le signataire LIT avant de consentir
+    (et que l'aperçu public par jeton sert) : la version en vigueur du
+    document de la demande ; ADOC68 — après signature, la version signée
+    FIGÉE (`version_signee`) une fois posée."""
+    if getattr(demande, 'version_signee_id', None):
+        return demande.version_signee
+    return selectors_latest_version(demande.document)
+
+
+class SignatureEnCoursError(Exception):
+    """ADOC68 — Écriture refusée parce qu'une demande de signature est en
+    cours (`en_attente`) : traduite en 409 par les vues."""
+
+
+def assert_aucune_signature_en_attente(document):
+    """ADOC68 — Refuse l'ajout d'une version à un document dont une demande
+    de signature est `en_attente` : le signataire signerait un contenu qui
+    change sous ses yeux. Après signature, une nouvelle version reste
+    permise (le PDF signé est figé à part)."""
+    from .models import DemandeSignatureDocument, SIGNATURE_EN_ATTENTE
+    if document is None or document.pk is None:
+        return
+    if DemandeSignatureDocument.objects.filter(
+            document_id=document.pk, statut=SIGNATURE_EN_ATTENTE).exists():
+        raise SignatureEnCoursError(
+            "Une demande de signature est en cours sur ce document : "
+            "aucune nouvelle version tant qu'elle n'est pas close.")
+
+
+def assert_champs_signature_modifiables(demande):
+    """ADOC68 — Les champs d'une demande ne s'éditent que tant qu'elle est
+    `en_attente` (sinon 409) : une valeur signée ne se falsifie jamais."""
+    from .models import SIGNATURE_EN_ATTENTE
+    if demande is not None and demande.statut != SIGNATURE_EN_ATTENTE:
+        raise SignatureEnCoursError(
+            "Cette demande n'est plus en attente : ses champs de signature "
+            "ne sont plus modifiables.")
+
+
+def figer_pdf_signe(demande):
+    """ADOC68 — Produit UNE fois le PDF signé (champs aplatis + scellé) et le
+    stocke comme version FIGÉE du document, référencée par la demande
+    (`version_signee`) ; `hash_contenu` devient le SHA-256 de ce PDF figé.
+    Idempotent (une demande déjà figée est renvoyée telle quelle).
+    Best-effort : un souci de rendu/stockage n'empêche jamais la signature
+    d'être enregistrée (renvoie None)."""
+    from .models import DemandeSignatureDocument
+    if demande.version_signee_id:
+        return demande.version_signee
+    try:
+        pdf_bytes, _aplati = rendre_pdf_signe_avec_champs(demande)
+        if pdf_bytes is None:
+            return None
+        if pdf_bytes[:4] == b'%PDF':
+            pdf_bytes, _scelle = sceller_pdf(pdf_bytes, company=demande.company)
+        source = selectors_latest_version(demande.document)
+        checksum = compute_checksum(pdf_bytes)
+        source_checksum = (source.checksum or '') if source is not None else ''
+        if source is not None and not source_checksum:
+            # Version déposée sans empreinte (upload d'écran) : la calculer sur
+            # ses octets plutôt qu'empiler un doublon « -signe » identique.
+            octets_source, _err = _fetch_version_bytes(source)
+            if octets_source:
+                source_checksum = compute_checksum(octets_source)
+        if source is not None and source_checksum == checksum:
+            version = source
+        else:
+            key, meta = _store_bytes(pdf_bytes, mime='application/pdf')
+            version = add_version(
+                demande.document, file_key=key, company=demande.document.company,
+                filename=f'{(demande.document.nom or "document")[:200]}-signe.pdf',
+                size=len(pdf_bytes), mime='application/pdf', checksum=checksum)
+        DemandeSignatureDocument.objects.filter(
+            pk=demande.pk, version_signee__isnull=True).update(
+                version_signee=version, hash_contenu=checksum)
+        demande.version_signee = version
+        demande.hash_contenu = checksum
+        return version
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        logger.warning(
+            'ADOC68 — gel du PDF signé impossible pour la demande %s',
+            demande.pk, exc_info=True)
+        return None
+
+
+def lire_pdf_signe(demande):
+    """ADOC68 — Octets du PDF signé FIGÉ (`version_signee`), toujours les
+    mêmes ; repli sur le rendu à la demande uniquement pour une demande
+    signée avant ADOC68 (aucune version figée). Renvoie None si introuvable."""
+    if demande.version_signee_id:
+        try:
+            from apps.records.storage import fetch_attachment
+            data, err = fetch_attachment(demande.version_signee.file_key)
+            return None if err else data
+        except Exception:  # pragma: no cover - défensif.
+            return None
+    pdf_bytes, _aplati = rendre_pdf_signe_avec_champs(demande)
+    return pdf_bytes
+
+
 def _hash_version_contenu(version):
     """XGED1 — SHA-256 hex du CONTENU de la version courante (preuve QJ10).
 
@@ -2855,6 +3362,90 @@ def _hash_version_contenu(version):
         return hashlib.sha256(data).hexdigest()
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
         return ''
+
+
+def _poser_preuves_signature(cible, *, consentement, signature_texte='',
+                             signature_tracee='', adresse_ip=None,
+                             user_agent='', document=None):
+    """ADOC65 — Routine de preuve UNIQUE de la signature (pattern QJ10),
+    commune au mono (`DemandeSignatureDocument`) et au circuit multi
+    (`SignataireDemande`) : consentement explicite exigé, au moins une forme
+    de signature (nom tapé ou tracé), IP, user-agent et hash SHA-256 de la
+    version signée, posés CÔTÉ SERVEUR sur `cible`.
+
+    Lève `ValueError` si le consentement ou la signature manquent. N'écrit
+    pas en base : renvoie la liste des champs à sauvegarder."""
+    if not consentement:
+        raise ValueError(
+            "Le consentement explicite à contracter électroniquement est requis.")
+    signature_texte = (signature_texte or '').strip()
+    signature_tracee = (signature_tracee or '').strip()
+    if not signature_texte and not signature_tracee:
+        raise ValueError(
+            "Une signature (nom tapé ou tracé) est requise.")
+    version = selectors_latest_version(document) if document is not None \
+        else None
+    cible.consentement_explicite = True
+    cible.signature_texte = signature_texte[:255]
+    cible.signature_tracee = signature_tracee
+    cible.adresse_ip = adresse_ip or None
+    cible.user_agent = (user_agent or '')[:512]
+    cible.hash_contenu = _hash_version_contenu(version)
+    return [
+        'consentement_explicite', 'signature_texte', 'signature_tracee',
+        'adresse_ip', 'user_agent', 'hash_contenu', 'updated_at',
+    ]
+
+
+def _normaliser_valeurs_champs(valeurs_champs):
+    """ADOC65 — Normalise les valeurs de champs reçues (JSON, chaîne
+    sérialisée multipart, ou valeur mal formée → {})."""
+    if isinstance(valeurs_champs, str):
+        import json as _json
+        try:
+            valeurs_champs = _json.loads(valeurs_champs) if valeurs_champs else {}
+        except (TypeError, ValueError):
+            valeurs_champs = {}
+    if not isinstance(valeurs_champs, dict):
+        valeurs_champs = {}
+    return valeurs_champs
+
+
+def _verifier_champs_requis(champs, valeurs_champs):
+    """ADOC65 — Contrôle des champs REQUIS (hors signature/initiales), commun
+    au mono et au multi. Lève `ValueError` si l'un manque."""
+    from .models import CHAMP_TYPE_INITIALES, CHAMP_TYPE_SIGNATURE
+    requis_a_remplir = [
+        c for c in champs
+        if c.requis and c.type_champ not in (
+            CHAMP_TYPE_SIGNATURE, CHAMP_TYPE_INITIALES)]
+    fournis = {int(k) for k, v in valeurs_champs.items()
+               if str(k).lstrip('-').isdigit() and str(v).strip() != ''}
+    manquants = [c for c in requis_a_remplir if c.id not in fournis]
+    if manquants:
+        raise ValueError(
+            "Certains champs requis du document ne sont pas remplis.")
+
+
+def champs_du_signataire(signataire):
+    """ADOC65 — Champs positionnés qui visent CE destinataire : `role` du
+    champ égal (sans casse) à son nom, à son rôle ou au nom de son rôle
+    réutilisable. Un champ sans rôle vise le destinataire quand il est le
+    SEUL signataire du circuit."""
+    from .models import ROLE_SIGNATAIRE
+    demande = signataire.demande
+    cles = {(signataire.nom or '').strip().lower(),
+            (signataire.role or '').strip().lower()}
+    if signataire.role_signataire_id:
+        cles.add((signataire.role_signataire.nom or '').strip().lower())
+    cles.discard('')
+    seul = demande.signataires.filter(role=ROLE_SIGNATAIRE).count() <= 1
+    resultat = []
+    for champ in demande.champs.all():
+        role = (champ.role or '').strip().lower()
+        if (role and role in cles) or (not role and seul):
+            resultat.append(champ)
+    return resultat
 
 
 def signer_demande_publique(demande, *, consentement, signature_texte='',
@@ -2875,26 +3466,11 @@ def signer_demande_publique(demande, *, consentement, signature_texte='',
     """
     from django.utils import timezone
 
-    if not consentement:
-        raise ValueError(
-            "Le consentement explicite à contracter électroniquement est requis.")
-    signature_texte = (signature_texte or '').strip()
-    signature_tracee = (signature_tracee or '').strip()
-    if not signature_texte and not signature_tracee:
-        raise ValueError(
-            "Une signature (nom tapé ou tracé) est requise.")
-
-    version = selectors_latest_version(demande.document)
-    demande.consentement_explicite = True
-    demande.signature_texte = signature_texte
-    demande.signature_tracee = signature_tracee
-    demande.adresse_ip = adresse_ip or None
-    demande.user_agent = (user_agent or '')[:512]
-    demande.hash_contenu = _hash_version_contenu(version)
-    demande.save(update_fields=[
-        'consentement_explicite', 'signature_texte', 'signature_tracee',
-        'adresse_ip', 'user_agent', 'hash_contenu', 'updated_at',
-    ])
+    champs = _poser_preuves_signature(
+        demande, consentement=consentement, signature_texte=signature_texte,
+        signature_tracee=signature_tracee, adresse_ip=adresse_ip,
+        user_agent=user_agent, document=demande.document)
+    demande.save(update_fields=champs)
     return marquer_signe(demande, date_signature=timezone.now())
 
 
@@ -2936,42 +3512,25 @@ def selectors_latest_version(document):
 
 # ── XGED2 — Circuit multi-signataires (séquentiel/parallèle) ────────────────
 
-def _send_signataire_email(signataire, demande, *, relance=False):
+def _send_signataire_email(signataire, demande, *, relance=False,
+                           request=None):
     """XGED2 — Envoie (best-effort) le lien de signature à un destinataire.
 
-    Réutilise `django.core.mail.send_mail` (pattern `ventes._send_otp_email`) —
-    backend console en local, jamais bloquant : toute erreur d'envoi est
-    journalisée mais ne casse jamais le flux de notification/relance."""
-    if not signataire.email:
-        return False
-    try:
-        from django.conf import settings
-        from django.core.mail import send_mail
-        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
-        sujet = (
-            f'Relance — document à signer : {demande.document.nom}'
-            if relance else f'Document à signer : {demande.document.nom}')
-        corps = (
-            f'Bonjour {signataire.nom},\n\n'
-            f'Un document « {demande.document.nom} » requiert votre '
-            f'{"attention" if signataire.role != "signataire" else "signature"}.\n'
-            f'Lien : /ged/signature/{signataire.token}/\n\n'
-            f"Cordialement,\nL'équipe {_nom_societe(demande.company)}".rstrip()
-        )
-        send_mail(sujet, corps, from_email, [signataire.email], fail_silently=False)
-        return True
-    except Exception as exc:  # noqa: BLE001 - best-effort, jamais bloquant.
-        import logging
-        logging.getLogger(__name__).warning(
-            'XGED2: envoi email signataire échoué : %s', exc)
-        return False
+    ADOC63 — le lien est l'URL ABSOLUE de SA cérémonie
+    (`/ged/signataire/<jeton du signataire>/`, `url_publique_signature`) —
+    jamais le jeton de la demande globale, jamais un chemin relatif. Backend
+    console en local, jamais bloquant."""
+    return _envoyer_lien_signature(
+        signataire.email, signataire.nom, demande,
+        url_publique_signature(signataire.token, 'signataire', request=request),
+        relance=relance, pour_signer=signataire.role == 'signataire')
 
 
 @transaction.atomic
 def creer_demande_multi_signataires(document, *, destinataires, company,
                                     routage=None, expires_at=None,
                                     relance_cadence_jours=None,
-                                    created_by=None):
+                                    created_by=None, request=None):
     """XGED2 — Crée une demande de signature à PLUSIEURS destinataires.
 
     `destinataires` : liste ordonnée de dicts
@@ -3002,13 +3561,30 @@ def creer_demande_multi_signataires(document, *, destinataires, company,
 
     if not destinataires:
         raise ValueError("Au moins un destinataire est requis.")
+    # ADOC76 — rôle FERMÉ et au moins un « signataire » (sinon la demande
+    # resterait en attente à vie), pour TOUS les appelants du service.
+    from .models import ROLE_DESTINATAIRE_CHOICES
+    roles_valides = {code for code, _ in ROLE_DESTINATAIRE_CHOICES}
+    for dest in destinataires:
+        if dest.get('role', ROLE_SIGNATAIRE) not in roles_valides:
+            raise ValueError(
+                f"Rôle de destinataire inconnu : {dest.get('role')!r} "
+                "(signataire, copie ou approbateur).")
+    if not any(dest.get('role', ROLE_SIGNATAIRE) == ROLE_SIGNATAIRE
+               for dest in destinataires):
+        raise ValueError(
+            "Le circuit doit compter au moins un destinataire de rôle "
+            "« signataire ».")
     premier = destinataires[0]
     demande = demander_signature(
         document,
         signataire_nom=premier.get('nom', ''),
         signataire_email=premier.get('email', ''),
         company=company,
-        created_by=created_by)
+        created_by=created_by,
+        # ADOC63 — jamais le lien de la demande globale : chaque destinataire
+        # reçoit SON lien (`notifier_prochains_signataires`).
+        notifier=False)
     demande.routage = routage or ROUTAGE_SEQUENTIEL
     demande.expires_at = expires_at
     demande.relance_cadence_jours = relance_cadence_jours
@@ -3031,11 +3607,11 @@ def creer_demande_multi_signataires(document, *, destinataires, company,
             role=dest.get('role', ROLE_SIGNATAIRE),
             role_signataire=role_signataire,
         )
-    notifier_prochains_signataires(demande)
+    notifier_prochains_signataires(demande, request=request)
     return demande
 
 
-def notifier_prochains_signataires(demande):
+def notifier_prochains_signataires(demande, *, request=None):
     """XGED2 — Notifie les destinataires dont c'est le tour (routage-aware).
 
     Parallèle : notifie tous les `SignataireDemande` encore `en_attente`.
@@ -3072,7 +3648,7 @@ def notifier_prochains_signataires(demande):
         signataire.statut = SIGNATAIRE_NOTIFIE
         signataire.notifie_le = now
         signataire.save(update_fields=['statut', 'notifie_le', 'updated_at'])
-        _send_signataire_email(signataire, demande)
+        _send_signataire_email(signataire, demande, request=request)
         notifies.append(signataire)
     return notifies
 
@@ -3091,6 +3667,20 @@ def _generer_code_otp():
 
 def _hash_otp(code):
     return hashlib.sha256(code.encode('utf-8')).hexdigest()
+
+
+def _degrader_otp(signataire, detail):
+    """ADOC64 — Pose la dégradation EXPLICITE de l'authentification extra
+    (passerelle absente / envoi impossible) et la journalise. Seul état qui
+    laisse signer sans code un destinataire dont l'OTP est requis."""
+    if not signataire.otp_degrade:
+        signataire.otp_degrade = True
+        signataire.save(update_fields=['otp_degrade', 'updated_at'])
+    logger.warning(
+        'ADOC64 — authentification extra dégradée pour le destinataire %s '
+        '(demande %s) : %s', signataire.pk, signataire.demande_id, detail)
+    return {'envoye': False, 'mode': 'aucune', 'degrade': True,
+            'detail': detail}
 
 
 def envoyer_code_otp_signataire(signataire, *, telephone_override='',
@@ -3130,27 +3720,29 @@ def envoyer_code_otp_signataire(signataire, *, telephone_override='',
         company = signataire.demande.company
         telephone = telephone_override or signataire.telephone
         if not telephone:
-            return {'envoye': False, 'mode': 'aucune',
-                    'detail': "Aucun téléphone renseigné : authentification "
-                              "SMS dégradée (signature sans OTP)."}
+            return _degrader_otp(
+                signataire, "Aucun téléphone renseigné : authentification "
+                            "SMS dégradée (signature sans OTP).")
         code = _generer_code_otp()
         resultat = send_sms(
             company, telephone,
             f'{_nom_societe(company)} — votre code de signature : {code}')
         if not resultat.sent:
-            # Passerelle absente/non configurée → dégrade proprement en
-            # « aucune » (jamais bloquant, jamais un faux OTP requis).
-            return {'envoye': False, 'mode': 'aucune',
-                    'detail': f'Passerelle SMS indisponible ({resultat.detail}) '
-                              ': authentification dégradée, signature sans OTP.'}
+            # ADOC64 — passerelle absente/non configurée → dégradation
+            # EXPLICITE posée et journalisée (seule voie sans code).
+            return _degrader_otp(
+                signataire,
+                f'Passerelle SMS indisponible ({resultat.detail}) '
+                ': authentification dégradée, signature sans OTP.')
         signataire.otp_code_hash = _hash_otp(code)
         signataire.otp_expires_at = (
             timezone.now() + datetime.timedelta(minutes=OTP_EXPIRATION_MINUTES))
         signataire.otp_essais = 0
         signataire.otp_valide = False
+        signataire.otp_degrade = False
         signataire.save(update_fields=[
             'otp_code_hash', 'otp_expires_at', 'otp_essais', 'otp_valide',
-            'updated_at'])
+            'otp_degrade', 'updated_at'])
         return {'envoye': True, 'mode': 'sms', 'detail': 'Code SMS envoyé.'}
 
     if mode == 'email_otp':
@@ -3158,9 +3750,9 @@ def envoyer_code_otp_signataire(signataire, *, telephone_override='',
         from django.core.mail import send_mail
         email = email_override or signataire.email
         if not email:
-            return {'envoye': False, 'mode': 'aucune',
-                    'detail': "Aucun email renseigné : authentification "
-                              "dégradée, signature sans OTP."}
+            return _degrader_otp(
+                signataire, "Aucun email renseigné : authentification "
+                            "dégradée, signature sans OTP.")
         code = _generer_code_otp()
         from_email = getattr(
             settings, 'DEFAULT_FROM_EMAIL', 'no-reply@taqinor.ma')
@@ -3170,21 +3762,21 @@ def envoyer_code_otp_signataire(signataire, *, telephone_override='',
                 'signature', f'Votre code : {code}',
                 from_email, [email], fail_silently=False)
         except Exception as exc:  # noqa: BLE001 — dégrade, jamais bloquant.
-            return {'envoye': False, 'mode': 'aucune',
-                    'detail': f"Envoi email échoué ({exc}) : authentification "
-                              "dégradée, signature sans OTP."}
+            return _degrader_otp(
+                signataire, f"Envoi email échoué ({exc}) : authentification "
+                            "dégradée, signature sans OTP.")
         signataire.otp_code_hash = _hash_otp(code)
         signataire.otp_expires_at = (
             timezone.now() + datetime.timedelta(minutes=OTP_EXPIRATION_MINUTES))
         signataire.otp_essais = 0
         signataire.otp_valide = False
+        signataire.otp_degrade = False
         signataire.save(update_fields=[
             'otp_code_hash', 'otp_expires_at', 'otp_essais', 'otp_valide',
-            'updated_at'])
+            'otp_degrade', 'updated_at'])
         return {'envoye': True, 'mode': 'email_otp', 'detail': 'Code email envoyé.'}
 
-    return {'envoye': False, 'mode': 'aucune',
-            'detail': f'Mode inconnu : {mode!r} — dégradé.'}
+    return _degrader_otp(signataire, f'Mode inconnu : {mode!r} — dégradé.')
 
 
 def valider_code_otp_signataire(signataire, code):
@@ -3214,7 +3806,8 @@ def valider_code_otp_signataire(signataire, code):
 
 
 def signer_signataire(signataire, *, consentement, signature_texte='',
-                      signature_tracee='', adresse_ip=None, user_agent=''):
+                      signature_tracee='', adresse_ip=None, user_agent='',
+                      valeurs_champs=None):
     """XGED2 — Signe le rang d'UN signataire et fait progresser le circuit
     (notifie le rang suivant en séquentiel).
 
@@ -3235,17 +3828,26 @@ def signer_signataire(signataire, *, consentement, signature_texte='',
         raise ValueError(
             "Authentification supplémentaire requise avant de signer : "
             "saisissez le code reçu.")
-    if not consentement:
-        raise ValueError(
-            "Le consentement explicite à contracter électroniquement est requis.")
-    signature_texte = (signature_texte or '').strip()
-    signature_tracee = (signature_tracee or '').strip()
-    if not signature_texte and not signature_tracee:
-        raise ValueError("Une signature (nom tapé ou tracé) est requise.")
+    # ADOC65 — MÊME routine que le mono : champs requis de SON rôle, puis
+    # preuves (consentement, forme, IP, UA, hash de la version signée)
+    # stockées sur CE destinataire.
+    valeurs_champs = _normaliser_valeurs_champs(valeurs_champs)
+    champs_vises = champs_du_signataire(signataire)
+    _verifier_champs_requis(champs_vises, valeurs_champs)
+    champs_preuve = _poser_preuves_signature(
+        signataire, consentement=consentement,
+        signature_texte=signature_texte, signature_tracee=signature_tracee,
+        adresse_ip=adresse_ip, user_agent=user_agent,
+        document=signataire.demande.document)
+    if valeurs_champs and champs_vises:
+        ids = {c.id for c in champs_vises}
+        enregistrer_valeurs_champs(signataire.demande, {
+            k: v for k, v in valeurs_champs.items()
+            if str(k).lstrip('-').isdigit() and int(k) in ids})
 
     signataire.statut = SIGNATAIRE_SIGNE
     signataire.date_action = timezone.now()
-    signataire.save(update_fields=['statut', 'date_action', 'updated_at'])
+    signataire.save(update_fields=['statut', 'date_action'] + champs_preuve)
     notifier_prochains_signataires(signataire.demande)
     _maj_statut_global(signataire.demande)
     return signataire
@@ -3291,6 +3893,15 @@ def _maj_statut_global(demande):
     if not requis:
         return demande
     if all(s.statut == SIGNATAIRE_SIGNE for s in requis):
+        # ADOC65 — preuves de la demande à la complétion : consentement et
+        # hash de la version signée (routine commune `_hash_version_contenu`)
+        # ; les preuves individuelles restent sur chaque destinataire.
+        if not demande.hash_contenu or not demande.consentement_explicite:
+            demande.consentement_explicite = True
+            demande.hash_contenu = demande.hash_contenu or _hash_version_contenu(
+                selectors_latest_version(demande.document))
+            demande.save(update_fields=[
+                'consentement_explicite', 'hash_contenu', 'updated_at'])
         return marquer_signe(demande)
     return demande
 
@@ -3565,31 +4176,9 @@ def signer_demande_publique_avec_champs(demande, *, consentement,
     Enregistre les valeurs (`enregistrer_valeurs_champs`) puis délègue la
     signature elle-même à `signer_demande_publique` (preuves QJ10 inchangées).
     Renvoie la `DemandeSignatureDocument` signée."""
-    from .models import CHAMP_TYPE_INITIALES, CHAMP_TYPE_SIGNATURE
-
-    champs = list(demande.champs.all())
-    requis_a_remplir = [
-        c for c in champs
-        if c.requis and c.type_champ not in (
-            CHAMP_TYPE_SIGNATURE, CHAMP_TYPE_INITIALES)]
-    if isinstance(valeurs_champs, str):
-        # Clients multipart/form (pas JSON) envoient un dict sérialisé en
-        # chaîne : on le décode plutôt que de planter sur `.keys()`.
-        import json as _json
-        try:
-            valeurs_champs = _json.loads(valeurs_champs) if valeurs_champs else {}
-        except (TypeError, ValueError):
-            valeurs_champs = {}
-    # Tout ce qui n'est pas un mapping (int/list/None d'un client mal formé) est
-    # traité comme « aucun champ fourni » plutôt que de planter sur `.keys()`.
-    if not isinstance(valeurs_champs, dict):
-        valeurs_champs = {}
-    fournis = {int(k) for k in valeurs_champs.keys()
-               if str(k).lstrip('-').isdigit()}
-    manquants = [c for c in requis_a_remplir if c.id not in fournis]
-    if manquants:
-        raise ValueError(
-            "Certains champs requis du document ne sont pas remplis.")
+    # ADOC65 — normalisation + contrôle des requis PARTAGÉS avec le multi.
+    valeurs_champs = _normaliser_valeurs_champs(valeurs_champs)
+    _verifier_champs_requis(list(demande.champs.all()), valeurs_champs)
 
     if valeurs_champs:
         enregistrer_valeurs_champs(demande, valeurs_champs)
@@ -3606,7 +4195,7 @@ def rendre_pdf_signe_avec_champs(demande):
     n'est pas récupérable, renvoie `(None, False)` sans lever.
 
     Renvoie `(pdf_bytes_ou_None, aplati)`."""
-    version = selectors_latest_version(demande.document)
+    version = version_a_signer(demande)
     if version is None:
         return None, False
     try:
@@ -3783,15 +4372,34 @@ def _certificat_html(demande):
     l'endpoint public de vérification."""
     document = demande.document
     signataires = list(demande.signataires.all())
+
+    # ADOC65 — UNE ligne de preuve par signataire (IP, user-agent, méthode,
+    # hash de la version signée) ; le mono garde sa ligne unique.
+    def _ligne(nom, email, role, statut, cible):
+        methode = ('Tracée' if cible.signature_tracee else
+                   ('Nom tapé' if cible.signature_texte else '—'))
+        return (
+            f"<tr><td>{nom}</td><td>{email or '—'}</td><td>{role}</td>"
+            f"<td>{statut}</td><td>{cible.adresse_ip or '—'}</td>"
+            f"<td>{cible.user_agent or '—'}</td><td>{methode}</td>"
+            f"<td class='mono'>{cible.hash_contenu or '—'}</td></tr>")
     lignes_signataires = ''.join(
-        f"<tr><td>{s.nom}</td><td>{s.email or '—'}</td>"
-        f"<td>{s.get_role_display()}</td><td>{s.get_statut_display()}</td></tr>"
+        _ligne(s.nom, s.email, s.get_role_display(), s.get_statut_display(), s)
         for s in signataires
-    ) or (
-        f"<tr><td>{demande.signataire_nom}</td>"
-        f"<td>{demande.signataire_email}</td><td>Signataire</td>"
-        f"<td>{demande.get_statut_display()}</td></tr>"
-    )
+    ) or _ligne(demande.signataire_nom, demande.signataire_email,
+                'Signataire', demande.get_statut_display(), demande)
+    if signataires:
+        preuves_globales = (
+            "<p><strong>Preuves :</strong> une ligne par signataire "
+            "ci-dessous (IP, user-agent, méthode, hash signé).</p>")
+    else:
+        preuves_globales = (
+            f"<p><strong>Adresse IP :</strong> "
+            f"{demande.adresse_ip or 'Non transmise'}</p>"
+            f"<p><strong>User-Agent :</strong> "
+            f"{demande.user_agent or 'Non transmis'}</p>"
+            f"<p><strong>Méthode :</strong> "
+            f"{'Tracée' if demande.signature_tracee else 'Nom tapé'}</p>")
     evenements_html = ''.join(
         f"<li>{libelle} — {quand:%Y-%m-%d %H:%M}</li>"
         for libelle, quand in _evenements_cerentonie(demande)
@@ -3839,14 +4447,13 @@ def _certificat_html(demande):
         "<h1>Certificat de complétion de signature électronique</h1>"
         f"<p><strong>Document :</strong> {document.nom}</p>"
         f"<p><strong>Statut final :</strong> {demande.get_statut_display()}</p>"
-        f"<p><strong>Adresse IP :</strong> {demande.adresse_ip or 'Non transmise'}</p>"
-        f"<p><strong>User-Agent :</strong> {demande.user_agent or 'Non transmis'}</p>"
+        f"{preuves_globales}"
         f"<p><strong>Géolocalisation :</strong> {geoloc}</p>"
-        f"<p><strong>Méthode :</strong> "
-        f"{'Tracée' if demande.signature_tracee else 'Nom tapé'}</p>"
         "<h2>Signataires</h2>"
         f"<table><tr><th>Nom</th><th>Email</th><th>Rôle</th>"
-        f"<th>Statut</th></tr>{lignes_signataires}</table>"
+        f"<th>Statut</th><th>Adresse IP</th><th>User-Agent</th>"
+        f"<th>Méthode</th><th>Hash signé</th></tr>"
+        f"{lignes_signataires}</table>"
         "<h2>Séquence des événements</h2>"
         f"<ul>{evenements_html}</ul>"
         f"{pied_integrite}"
@@ -3890,7 +4497,10 @@ def classer_signature_completee(demande, *, created_by=None):
 
     # 1) Le document signé lui-même : dépose la VERSION COURANTE (déjà
     #    signée/aplatie si XGED3 a produit un PDF final) dans « Signés ».
-    version = selectors_latest_version(document_source)
+    # ADOC68 — la version classée est la version FIGÉE (aplatie + scellée
+    # une seule fois par `figer_pdf_signe`), plus jamais la version brute.
+    version = (demande.version_signee if demande.version_signee_id
+               else selectors_latest_version(document_source))
     contenu = None
     if version is not None:
         try:
@@ -3901,8 +4511,9 @@ def classer_signature_completee(demande, *, created_by=None):
             contenu = None
 
     # XGED5 — Scellement cryptographique best-effort AVANT dépôt (no-op sans
-    # pyHanko — contenu byte-identique dans ce cas, flux XGED4 intact).
-    if contenu is not None and (contenu[:4] == b'%PDF'):
+    # pyHanko) — uniquement pour une demande sans version figée (déjà scellée).
+    if not demande.version_signee_id and contenu is not None \
+            and (contenu[:4] == b'%PDF'):
         contenu, _scelle = sceller_pdf(contenu, company=company)
 
     document_signe, created_doc = deposit_document(
@@ -4278,16 +4889,6 @@ def journaliser_acces(document, *, utilisateur=None, type_acces=None,
         return None
 
 
-def _adresse_ip_requete(request):
-    """GED35 — Adresse IP best-effort d'une requête (ou None).
-
-    Lit `REMOTE_ADDR` (jamais d'en-tête X-Forwarded-For non fiable). Renvoie
-    None si indisponible — l'audit reste possible sans IP."""
-    if request is None:
-        return None
-    return (getattr(request, 'META', {}) or {}).get('REMOTE_ADDR') or None
-
-
 # ── GED36 — Quotas de stockage par société ──────────────────────────────────
 
 def usage_stockage_octets(company):
@@ -4388,6 +4989,10 @@ def resolve_depot_public(token):
         'folder', 'company').first()
     if depot is None or not depot.actif:
         return DEPOT_INTROUVABLE, None
+    # ADOC1 — un lien dont le dossier est d'une AUTRE société (ligne
+    # incohérente héritée) ne range jamais un fichier chez autrui.
+    if depot.folder.company_id != depot.company_id:
+        return DEPOT_INTROUVABLE, None
     if depot.is_expired or depot.quota_fichiers_exhausted or depot.quota_octets_exhausted:
         return DEPOT_EXPIRE, None
     return DEPOT_OK, depot
@@ -4407,7 +5012,7 @@ def deposer_via_lien_public(depot, *, file_key, filename='', size=0, mime='',
     from .models import DepotPublic
     with _tx.atomic():
         d = DepotPublic.objects.select_for_update().get(pk=depot.pk)
-        if not d.is_accessible:
+        if not d.is_accessible or d.folder.company_id != d.company_id:
             raise ValueError("Ce lien de dépôt n'accepte plus de fichiers.")
         nom = (filename or 'Document déposé').strip()
         document = Document.objects.create(
@@ -4424,16 +5029,28 @@ def deposer_via_lien_public(depot, *, file_key, filename='', size=0, mime='',
         d.octets_deposes += max(0, int(size or 0))
         d.save(update_fields=['depots_effectues', 'octets_deposes', 'updated_at'])
     update_search_vector(document)
-    # XGED8 — un dépôt sur ce dossier peut solder une demande de document
-    # correspondante (matching best-effort, jamais bloquant).
-    try:
-        matcher_depot_demandes(document)
-    except Exception:  # pragma: no cover - défensif, ne bloque jamais le dépôt.
-        pass
+    # XGED8/XGED19/ADOC25 — post-dépôt commun (demandes de pièces + règles).
+    apres_depot(document)
     return document
 
 
 # ── XGED8 — Checklist de pièces requises + demandes de documents ────
+
+def apres_depot(document, user=None):
+    """ADOC25 — LE post-dépôt commun à TOUTES les routes de dépôt (écran,
+    scan-lot, photos, import en masse, dépôt public, e-mail, routage,
+    deposit_document) : solde la demande de pièce correspondante (XGED8) puis
+    applique les règles du dossier (XGED19). Best-effort : jamais bloquant
+    pour le dépôt lui-même."""
+    try:
+        matcher_depot_demandes(document)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        pass
+    try:
+        appliquer_regles_dossier(document, user=user)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant.
+        pass
+
 
 def matcher_depot_demandes(document):
     """XGED8 — Solde automatiquement une `DemandeDocument` en attente sur le
@@ -4441,11 +5058,28 @@ def matcher_depot_demandes(document):
     dossier ; le premier « en_attente » du dossier est soldé — un
     rapprochement plus fin par libellé reste possible côté appelant)."""
     from .models import DEMANDE_DOC_EN_ATTENTE, DEMANDE_DOC_SOLDEE, DemandeDocument
-    demande = (DemandeDocument.objects
-               .filter(company=document.company, folder=document.folder,
-                       statut=DEMANDE_DOC_EN_ATTENTE)
-               .order_by('created_at', 'id')
-               .first())
+    en_attente = list(
+        DemandeDocument.objects
+        .filter(company=document.company, folder=document.folder,
+                statut=DEMANDE_DOC_EN_ATTENTE)
+        .select_related('exigence')
+        .order_by('created_at', 'id'))
+    # ADOC12 — le dépôt solde la demande de SA PROPRE pièce : celle dont le
+    # libellé (ou celui de son exigence) figure dans le nom du document. À
+    # défaut, seule une demande UNIQUE en attente est soldée (jamais la plus
+    # ancienne d'une autre pièce).
+    nom = (document.nom or '').casefold()
+    demande = None
+    for candidate in en_attente:
+        libelles = [candidate.libelle or '']
+        if candidate.exigence_id:
+            libelles.append(candidate.exigence.libelle or '')
+        if any(lib.strip() and lib.strip().casefold() in nom
+               for lib in libelles):
+            demande = candidate
+            break
+    if demande is None and len(en_attente) == 1:
+        demande = en_attente[0]
     if demande is None:
         return None
     demande.statut = DEMANDE_DOC_SOLDEE
@@ -4477,7 +5111,9 @@ def relancer_demande_document(demande, *, now=None):
     from .models import DEMANDE_DOC_EN_ATTENTE
     if demande.statut != DEMANDE_DOC_EN_ATTENTE:
         return demande
-    if demande.utilisateur_id:
+    # ADOC1 — jamais de notification vers un utilisateur d'une autre société.
+    if (demande.utilisateur_id
+            and demande.utilisateur.company_id == demande.company_id):
         try:
             from apps.notifications.types_evenements import EventType as ET
             from apps.notifications.services import notify
@@ -4511,7 +5147,10 @@ def checklist_dossier(folder):
     """XGED8 — État requis/présent/manquant d'un dossier : combine les
     `ExigenceDossier` applicables (dossier précis OU génériques du cabinet) et
     les `DemandeDocument` en cours. Renvoie une liste de dicts."""
-    from .models import DEMANDE_DOC_EN_ATTENTE, DemandeDocument, ExigenceDossier
+    from .models import (
+        DEMANDE_DOC_EN_ATTENTE, DEMANDE_DOC_SOLDEE, DemandeDocument,
+        ExigenceDossier,
+    )
     exigences = (ExigenceDossier.objects
                  .filter(company=folder.company)
                  .filter(models.Q(folder=folder)
@@ -4522,12 +5161,22 @@ def checklist_dossier(folder):
             company=folder.company, folder=folder,
             statut=DEMANDE_DOC_EN_ATTENTE, exigence__isnull=False)
     }
+    # ADOC12 — « présente » SEULEMENT si un document (vivant) du dossier est
+    # rattaché à l'exigence via une demande soldée ; sinon « manquante »
+    # (une exigence sans demande ni document n'est jamais « présente »).
+    fournies = set(
+        DemandeDocument.objects.filter(
+            company=folder.company, folder=folder,
+            statut=DEMANDE_DOC_SOLDEE, exigence__isnull=False,
+            document__isnull=False, document__folder=folder,
+            document__supprime_le__isnull=True)
+        .values_list('exigence_id', flat=True))
     resultat = []
     for exigence in exigences:
         demande = demandes_par_exigence.get(exigence.pk)
         resultat.append({
             'exigence': exigence,
-            'statut': 'manquant' if demande else 'present',
+            'statut': 'present' if exigence.pk in fournies else 'manquant',
             'demande': demande,
         })
     return resultat
@@ -4674,6 +5323,7 @@ def importer_message_email(raw_bytes, *, company):
         update_search_vector(document)
         _appliquer_tag_expediteur(
             document, company=company, from_email=from_email, alias=alias)
+        apres_depot(document)  # ADOC25
         created.append(document)
     return created
 
@@ -4728,7 +5378,7 @@ def _pdf_lib_indisponible_message():
             "sur ce serveur).")
 
 
-def scinder_pdf(version, points_de_coupe):
+def scinder_pdf(version, points_de_coupe, *, created_by=None):
     """XGED10 — Scinde un PDF en segments (chaque segment devient un nouveau
     `Document`, métadonnées héritées). `points_de_coupe` est une liste
     d'entiers (numéros de PAGE 1-based OÙ COMMENCE chaque nouveau segment,
@@ -4748,6 +5398,7 @@ def scinder_pdf(version, points_de_coupe):
     data, err = _fetch_version_bytes(version)
     if err:
         raise ValueError(err)
+    _exiger_pdf(data)  # ADOC22
     src = fitz.open(stream=data, filetype='pdf')
     try:
         n_pages = src.page_count
@@ -4774,16 +5425,18 @@ def scinder_pdf(version, points_de_coupe):
             seg_bytes = seg.tobytes()
             seg.close()
             nom = f'{document.nom} ({debut}-{fin - 1})'
+            # ADOC4 — le segment hérite du COFFRE de la source (un segment
+            # d'un document confidentiel reste confidentiel).
             new_doc = create_document(
                 company=document.company, folder=document.folder, nom=nom,
                 description=document.description,
-                custom_data=dict(document.custom_data or {}))
+                custom_data=dict(document.custom_data or {}),
+                coffre=document.coffre, created_by=created_by)
             key, _meta = _store_bytes(seg_bytes, mime='application/pdf')
             add_version(
                 new_doc, file_key=key, company=document.company,
                 filename=f'{nom}.pdf', size=len(seg_bytes),
-                mime='application/pdf')
-            update_search_vector(new_doc)
+                mime='application/pdf', uploaded_by=created_by)
             created.append(new_doc)
         return created
     finally:
@@ -4805,6 +5458,9 @@ def fusionner_pdf(documents_ordonnes, *, cible=None, company=None,
         import fitz  # PyMuPDF
     except Exception:
         raise ValueError(_pdf_lib_indisponible_message())
+    # ADOC4 — on ne mélange jamais des confidentialités différentes.
+    if len({doc.coffre_id for doc in documents_ordonnes}) > 1:
+        raise ValueError("Les documents viennent de coffres différents.")
     out = fitz.open()
     try:
         for doc in documents_ordonnes:
@@ -4814,6 +5470,7 @@ def fusionner_pdf(documents_ordonnes, *, cible=None, company=None,
             data, err = _fetch_version_bytes(version)
             if err:
                 raise ValueError(err)
+            _exiger_pdf(data)  # ADOC22
             seg = fitz.open(stream=data, filetype='pdf')
             out.insert_pdf(seg)
             seg.close()
@@ -4827,21 +5484,29 @@ def fusionner_pdf(documents_ordonnes, *, cible=None, company=None,
     if cible is not None:
         assert_not_archive_legalement(cible)
         assert_not_legal_hold(cible)
+        # ADOC17 — la fusion vers une cible respecte son check-out.
         add_version(
             cible, file_key=key, company=company,
             filename=f'{cible.nom}.pdf', size=len(out_bytes),
-            mime='application/pdf', uploaded_by=created_by)
+            mime='application/pdf', uploaded_by=created_by, user=created_by)
         update_search_vector(cible)
         return cible
     nom = nom or f'{premier.nom} (fusionné)'
+    # ADOC4 — le document fusionné hérite du coffre (commun) des sources.
     nouveau = create_document(
         company=company, folder=premier.folder, nom=nom,
-        created_by=created_by)
+        created_by=created_by, coffre=premier.coffre)
     add_version(
         nouveau, file_key=key, company=company, filename=f'{nom}.pdf',
         size=len(out_bytes), mime='application/pdf', uploaded_by=created_by)
-    update_search_vector(nouveau)
     return nouveau
+
+
+def _exiger_pdf(data):
+    """ADOC22 — les opérations PDF (scinder, fusionner, caviarder, export
+    annoté) refusent un fichier non PDF par un 400 nommé, jamais une 500."""
+    if not (data or b'').lstrip()[:5] == b'%PDF-':
+        raise ValueError("Opération réservée aux PDF.")
 
 
 def _fetch_version_bytes(version):
@@ -4970,6 +5635,7 @@ def deposer_lot_scans_separe(*, company, folder, images, created_by=None,
             size=len(pdf_bytes), mime='application/pdf',
             uploaded_by=created_by)
         update_search_vector(document)
+        apres_depot(document, created_by)  # ADOC25
         created.append(document)
     return created
 
@@ -5021,10 +5687,14 @@ def operation_lot(documents, *, operation, params, user):
     `(resultats, erreurs)`, listes parallèles indexées par document.pk."""
     from .models import ArchivageLegalError, DocumentTag, Folder, LegalHoldError
 
+    from . import selectors as _selectors
+
     resultats = []
     erreurs = []
     for document in documents:
         try:
+            # ADOC5 — chaque document du lot exige l'écriture ACL (GED19).
+            _selectors.assert_acl_niveau(document, user, 'ecriture')
             if operation == 'tagger':
                 tag = DocumentTag.objects.filter(
                     company=user.company, pk=params.get('tag')).first()
@@ -5033,16 +5703,15 @@ def operation_lot(documents, *, operation, params, user):
                 assign_tag(document, tag, created_by=user)
                 resultats.append({'document': document.pk, 'ok': True})
             elif operation == 'detaguer':
-                from .models import DocumentTagAssignment
-                DocumentTagAssignment.objects.filter(
-                    document=document, tag_id=params.get('tag')).delete()
+                # ADOC19 — retrait journalisé (old→new).
+                retirer_tag(document, params.get('tag'), user=user)
                 resultats.append({'document': document.pk, 'ok': True})
             elif operation == 'deplacer':
                 folder = Folder.objects.filter(
                     company=user.company, pk=params.get('folder')).first()
                 if folder is None:
                     raise ValueError('Dossier cible inconnu.')
-                move_document(document, folder)
+                move_document(document, folder, user=user)
                 resultats.append({'document': document.pk, 'ok': True})
             elif operation == 'corbeille':
                 mettre_en_corbeille(document, user)
@@ -5087,6 +5756,28 @@ def journaliser_evenement(document, *, type_evenement, message='', utilisateur=N
         return None
 
 
+def _valeur_chatter(valeur):
+    if valeur in (None, ''):
+        return '—'
+    return str(valeur)
+
+
+def journaliser_modifications(document, avant, apres, user):
+    """ADOC19 — Journalise dans le chatter GED chaque champ qui CHANGE, en
+    old→new (« nom : Contrat A → Contrat B »). `avant`/`apres` : dicts
+    {libellé lisible: valeur}. Une entrée par champ modifié ; best-effort,
+    jamais bloquant (même contrat que `journaliser_evenement`)."""
+    for libelle, nouvelle in (apres or {}).items():
+        ancienne = (avant or {}).get(libelle)
+        if ancienne == nouvelle:
+            continue
+        journaliser_evenement(
+            document, type_evenement='modification',
+            message=(f'{libelle} : {_valeur_chatter(ancienne)} → '
+                     f'{_valeur_chatter(nouvelle)}')[:500],
+            utilisateur=user)
+
+
 def planifier_document(document, *, libelle, echeance, assigne_a=None,
                        created_by=None):
     """XGED15 — Planifie une activité sur un document (« relancer le J+7 »)."""
@@ -5107,7 +5798,8 @@ def notifier_planifications_echues(company, *, today=None):
         company=company, faite=False, notifiee=False, echeance__lte=today)
     notifiees = []
     for planif in qs:
-        if planif.assigne_a_id:
+        if (planif.assigne_a_id
+                and planif.assigne_a.company_id == planif.company_id):
             try:
                 from apps.notifications.types_evenements import EventType as ET
                 from apps.notifications.services import notify
@@ -5161,9 +5853,12 @@ def exporter_pdf_annote(version):
     data, err = _fetch_version_bytes(version)
     if err:
         raise ValueError(err)
+    _exiger_pdf(data)  # ADOC22
     doc = fitz.open(stream=data, filetype='pdf')
     try:
-        for annot in version.annotations.all():
+        # ADOC1 — seules les annotations de la société de la version.
+        for annot in version.annotations.filter(
+                company_id=version.company_id):
             if annot.page >= doc.page_count:
                 continue
             page = doc[annot.page]
@@ -5373,6 +6068,8 @@ def avancer_chaine_approbation_ged(demande, *, user, commentaire=''):
     from django.contrib.auth import get_user_model
     from django.utils import timezone as _tz
 
+    from .models import APPROBATION_EN_ATTENTE, DemandeApprobation
+
     try:
         chaine = demande.chaine_approbation
     except Exception:
@@ -5380,6 +6077,29 @@ def avancer_chaine_approbation_ged(demande, *, user, commentaire=''):
     if chaine is None:
         return approve_demande(demande, user=user, commentaire=commentaire)
 
+    # ADOC14 — sous verrou de ligne : seul l'approbateur de l'étape COURANTE
+    # (ou un admin) avance la chaîne, jamais le demandeur ; deux décisions
+    # concurrentes ne valident pas deux fois la même étape.
+    if demande.company_id != user.company_id:
+        raise PermissionError("Demande inaccessible.")
+    with transaction.atomic():
+        demande = (DemandeApprobation.objects.select_for_update()
+                   .get(pk=demande.pk))
+        if demande.statut != APPROBATION_EN_ATTENTE:
+            raise ValueError(
+                f"La demande est déjà « {demande.statut} » — décision "
+                f"impossible.")
+        _assert_peut_decider(demande, user)
+        chaine = type(chaine).objects.select_for_update().get(pk=chaine.pk)
+        return _avancer_chaine_verrouillee(
+            demande, chaine, user=user, commentaire=commentaire,
+            get_user_model=get_user_model, _tz=_tz)
+
+
+def _avancer_chaine_verrouillee(demande, chaine, *, user, commentaire,
+                                get_user_model, _tz):
+    """ADOC14 — corps de `avancer_chaine_approbation_ged`, appelé sous
+    verrou de ligne (demande + chaîne)."""
     etapes = list(chaine.etapes or [])
     idx = chaine.etape_courante
     if idx < len(etapes):
@@ -5422,6 +6142,16 @@ def creer_demande_disposition(
     valides = list(
         Document.objects.filter(company=company, pk__in=document_ids or [])
         .values_list('pk', flat=True))
+    # ADOC7 — une DESTRUCTION ne porte que sur des documents ÉCHUS au regard
+    # de leur politique de rétention (jamais un document vivant non échu).
+    if action == 'detruire' and valides:
+        from .selectors import documents_echus
+        echus = {doc.pk for doc, _pol, _j in documents_echus(company)}
+        non_echus = (Document.objects.filter(pk__in=valides)
+                     .exclude(pk__in=echus).order_by('pk'))
+        premier = non_echus.first()
+        if premier is not None:
+            raise ValueError(f"Document non échu : {premier.nom}")
     exclus_hold = _pks_sous_legal_hold(valides)
     retenus = [pk for pk in valides if pk not in exclus_hold]
     if not retenus:
@@ -5459,6 +6189,10 @@ def approuver_demande_disposition(demande, *, user, commentaire=''):
 
     if demande.company_id != getattr(user, 'company_id', None):
         raise PermissionError("Demande de disposition inaccessible.")
+    # ADOC7 — quatre yeux : le demandeur ne peut pas approuver sa demande.
+    if demande.demandeur_id is not None and demande.demandeur_id == user.pk:
+        raise PermissionError(
+            "Le demandeur ne peut pas approuver sa propre demande.")
     if not demande.is_pending:
         raise DemandeDispositionError(
             "Cette demande de disposition a déjà été décidée.")
@@ -5524,6 +6258,7 @@ def executer_demande_disposition(demande, *, user):
             "Seule une demande APPROUVÉE peut être exécutée.")
 
     certificats = []
+    ignores = 0
     with transaction.atomic():
         for doc_id in (demande.documents or []):
             document = Document.objects.filter(
@@ -5532,6 +6267,11 @@ def executer_demande_disposition(demande, *, user):
                 continue  # déjà supprimé/introuvable — silencieux.
             if _document_sous_legal_hold(document):
                 continue  # protégé entre-temps — exclusion silencieuse.
+            # ADOC22 — archivé légalement entre-temps : ni détruit ni
+            # ré-archivé ; compté « ignoré », la demande ne reste plus bloquée.
+            if _document_archive_legalement(document):
+                ignores += 1
+                continue
             if demande.action == DISPOSITION_ACTION_ARCHIVER:
                 archiver_legalement(document, user=user)
                 continue
@@ -5555,7 +6295,11 @@ def executer_demande_disposition(demande, *, user):
                 politique = None
             nom_doc = document.nom
             doc_pk = document.pk
+            # ADOC29 — binaire effacé (clés non partagées) AVANT le
+            # certificat ; un échec du stockage annule toute l'exécution.
+            cles = _cles_binaires_exclusives(document)
             document.delete()
+            _supprimer_binaires(cles)
             certificats.append(CertificatDestruction.objects.create(
                 company=demande.company, demande=demande,
                 document_id_origine=doc_pk, document_nom=nom_doc,
@@ -5564,7 +6308,15 @@ def executer_demande_disposition(demande, *, user):
             ))
         demande.statut = DISPOSITION_EXECUTEE
         demande.executee_le = timezone.now()
-        demande.save(update_fields=['statut', 'executee_le', 'updated_at'])
+        champs = ['statut', 'executee_le', 'updated_at']
+        if ignores:
+            note = (f'{ignores} document(s) ignoré(s) : archivé(s) '
+                    f'légalement.')
+            demande.commentaire = (
+                f'{demande.commentaire}\n{note}'.strip()
+                if demande.commentaire else note)
+            champs.append('commentaire')
+        demande.save(update_fields=champs)
     return certificats
 
 
@@ -5601,25 +6353,50 @@ def caviarder_document(version, zones, *, created_by=None):
         raise ValueError(err)
     if not zones:
         raise ValueError("Au moins une zone à caviarder est requise.")
+    _exiger_pdf(data)  # ADOC22
     doc = fitz.open(stream=data, filetype='pdf')
     try:
+        # ADOC11 — chaque zone est validée AVANT toute rédaction : une zone
+        # hors page ou vide est refusée (jamais ignorée en silence — une
+        # copie « (caviardée) » qui ne masque rien fuirait le texte).
+        a_rediger = []
         for zone in zones:
-            page_no = int(zone.get('page', 0))
+            try:
+                page_no = int(zone.get('page', 0))
+                bornes = [float(zone.get(k, 0)) for k in ('x0', 'y0', 'x1', 'y1')]
+            except (TypeError, ValueError, AttributeError):
+                raise ValueError("Zone invalide.")
             if page_no < 0 or page_no >= doc.page_count:
-                continue
+                raise ValueError(
+                    f"Zone hors page (page {page_no} / {doc.page_count} pages).")
+            zx0, zy0, zx1, zy1 = [min(100.0, max(0.0, v)) for v in bornes]
+            zx0, zx1 = min(zx0, zx1), max(zx0, zx1)
+            zy0, zy1 = min(zy0, zy1), max(zy0, zy1)
+            if zx1 - zx0 <= 0 or zy1 - zy0 <= 0:
+                raise ValueError("Zone vide.")
+            a_rediger.append((page_no, zx0, zy0, zx1, zy1))
+        for page_no, zx0, zy0, zx1, zy1 in a_rediger:
             page = doc[page_no]
             rect = page.rect
-            x0 = rect.x0 + (float(zone.get('x0', 0)) / 100.0) * rect.width
-            y0 = rect.y0 + (float(zone.get('y0', 0)) / 100.0) * rect.height
-            x1 = rect.x0 + (float(zone.get('x1', 0)) / 100.0) * rect.width
-            y1 = rect.y0 + (float(zone.get('y1', 0)) / 100.0) * rect.height
+            x0 = rect.x0 + (zx0 / 100.0) * rect.width
+            y0 = rect.y0 + (zy0 / 100.0) * rect.height
+            x1 = rect.x0 + (zx1 / 100.0) * rect.width
+            y1 = rect.y0 + (zy1 / 100.0) * rect.height
             page.add_redact_annot(
                 fitz.Rect(x0, y0, x1, y1), fill=(0, 0, 0))
         for page in doc:
             # Applique et APLATIT les rédactions : supprime réellement le
             # texte/l'image sous la zone (pas seulement un rectangle visuel).
             page.apply_redactions()
-        out_bytes = doc.tobytes()
+        # ADOC11 — la copie transmise à un tiers ne garde pas les
+        # métadonnées d'origine (auteur, titre, XMP…).
+        doc.set_metadata({})
+        try:
+            doc.del_xml_metadata()
+        except Exception:  # pragma: no cover - selon la version PyMuPDF.
+            pass
+        # garbage=4 : les objets orphelins (texte retiré) quittent le fichier.
+        out_bytes = doc.tobytes(garbage=4, deflate=True)
     finally:
         doc.close()
 
@@ -5634,7 +6411,6 @@ def caviarder_document(version, zones, *, created_by=None):
         new_doc, file_key=key, company=document.company,
         filename=f'{nom}.pdf', size=len(out_bytes),
         mime='application/pdf', uploaded_by=created_by)
-    update_search_vector(new_doc)
     return new_doc
 
 
@@ -5817,13 +6593,16 @@ def sauvegarder_depuis_editeur_office(document, *, contenu_bytes, user,
             "cette fonctionnalité est désactivée.")
     assert_not_archive_legalement(document)
     assert_not_legal_hold(document)
+    # ADOC17 — garde de check-out portée par add_version(user=...) ; vérifiée
+    # aussi AVANT le stockage pour ne jamais téléverser un objet orphelin.
     assert_not_locked_by_other(document, user)
     key, meta = _store_bytes(contenu_bytes, mime=mime or 'application/octet-stream')
+    # ADOC8 — mime détecté par les octets, jamais le type déclaré.
     version = add_version(
         document, file_key=key, company=document.company,
         filename=filename or meta.get('filename', ''),
-        size=len(contenu_bytes), mime=mime or meta.get('mime', ''),
-        uploaded_by=user)
+        size=len(contenu_bytes), mime=meta.get('mime', ''),
+        uploaded_by=user, user=user)
     update_search_vector(document)
     return version
 
@@ -5872,7 +6651,13 @@ def router_document_module(source, *, company, file, filename='',
     admin n'a rien configuré). IDEMPOTENT par `source`+`reference` : si un
     document du dossier résolu porte déjà cette référence (posée dans
     `custom_data['routage_reference']`), le document existant est renvoyé sans
-    créer de doublon ni ajouter de version.
+    créer de doublon.
+
+    ADOC61 / D-ADOC-2 — un rendu au contenu DIFFÉRENT de la version en vigueur
+    devient une NOUVELLE VERSION du même document (`versionner_si_modifie`) ;
+    un rendu identique ne crée rien ; un document en corbeille n'est jamais la
+    cible (un nouveau document visible est créé) ; un document archivé
+    légalement ou sous legal hold n'est pas versionné (refus journalisé).
 
     Appelé UNIQUEMENT depuis `apps/ged/receivers.py` (abonné à l'événement
     `core.events.document_produit`) — jamais appelé directement par l'app
@@ -5886,19 +6671,35 @@ def router_document_module(source, *, company, file, filename='',
     contexte = contexte or {}
     folder = _resoudre_dossier_cible(routage, contexte)
 
-    if reference:
-        existant = Document.objects.filter(
-            company=company, folder=folder,
-            custom_data__routage_reference=reference,
-        ).first()
-        if existant is not None:
-            return existant
-
     from apps.records.storage import store_attachment
 
-    meta, err = store_attachment(file)
-    if err:
-        raise ValueError(err)
+    try:
+        file.seek(0)
+    except Exception:  # pragma: no cover - flux non repositionnable.
+        pass
+    contenu = file.read() or b''
+    if isinstance(contenu, str):
+        contenu = contenu.encode('utf-8')
+    file.seek(0)
+
+    def _stocker():
+        meta_, err_ = store_attachment(file)
+        if err_:
+            raise ValueError(err_)
+        return meta_
+
+    if reference:
+        existant = Document.objects.filter(
+            company=company, folder=folder, supprime_le__isnull=True,
+            custom_data__routage_reference=reference,
+        ).order_by('id').first()
+        if existant is not None:
+            versionner_si_modifie(
+                existant, contenu, filename=filename, uploaded_by=uploaded_by,
+                stocker=_stocker)
+            return existant
+
+    meta = _stocker()
 
     document = Document.objects.create(
         company=company, folder=folder,
@@ -5909,11 +6710,13 @@ def router_document_module(source, *, company, file, filename='',
     add_version(
         document, file_key=meta['file_key'], company=company,
         filename=meta.get('filename', ''), size=meta.get('size', 0),
-        mime=meta.get('mime', ''), uploaded_by=uploaded_by)
+        mime=meta.get('mime', ''), checksum=compute_checksum(contenu),
+        uploaded_by=uploaded_by)
     update_search_vector(document)
 
     for tag in routage.tags_defaut.all():
         assign_tag(document, tag, created_by=uploaded_by)
+    apres_depot(document, uploaded_by)  # ADOC25
 
     return document
 

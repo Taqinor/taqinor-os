@@ -81,5 +81,12 @@ class QuotaServiceTests(TestCase):
     @override_settings(GED_QUOTA_DEFAUT_OCTETS=500)
     def test_defaut_settings_applique_sans_entree(self):
         self.assertEqual(services.quota_octets(self.co_a), 500)
-        self._version(self.doc_a, self.co_a, 600)
+        # ADOC23 — add_version refuse désormais un dépôt hors quota : l'état
+        # « déjà au-delà » est posé directement (version héritée).
+        from apps.ged.models import DocumentVersion
+        DocumentVersion.objects.create(
+            company=self.co_a, document=self.doc_a, version=1,
+            file_key='k/heritee.bin', filename='f.bin', size=600)
         self.assertTrue(services.quota_depasse(self.co_a))
+        with self.assertRaises(QuotaDepasseError):
+            self._version(self.doc_a, self.co_a, 1)

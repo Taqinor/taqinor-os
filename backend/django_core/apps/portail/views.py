@@ -15,7 +15,7 @@ rapport au CRUD de base.
 
 import logging
 
-from rest_framework import filters, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, ValidationError
 from rest_framework.response import Response
@@ -63,6 +63,10 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
     serializer_class = ComptePortailClientSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation']
+    #: ADOC115 — DELETE → 405 : supprimer le compte emportait en CASCADE les
+    #: invitations de l'équipe, et un ex-membre sans invitation devenait
+    #: « admin » (``est_admin_portail_client``). On révoque, on ne supprime pas.
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
 
     def perform_create(self, serializer):
         # DC32 — le client est lié PAR FK ; on vérifie qu'il est bien dans la
@@ -138,8 +142,12 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
         email au client (cf. ``services.provisionner_compte_portail_client``).
         """
         compte = self.get_object()
-        user, cree = services.provisionner_compte_portail_client(
-            request.user.company, compte.client_id)
+        try:
+            user, cree = services.provisionner_compte_portail_client(
+                request.user.company, compte.client_id)
+        except services.ProvisionnementSansEmail as exc:
+            # ADOC123 — refus NOMMÉ : aucun compte créé, aucun e-mail.
+            return Response({'detail': str(exc)}, status=400)
         if user is None:
             return Response(
                 {'detail': 'Client inconnu pour cette société.'}, status=400)
@@ -292,10 +300,18 @@ class PaiementFacturePortailViewSet(_PortailBaseViewSet):
 
     @action(detail=True, methods=['post'])
     def rapprocher(self, request, pk=None):
+        from apps.ventes.services import AcompteAvantDelaiLegal
+
         paiement = self.get_object()
         reference = request.data.get('reference') or None
-        services.rapprocher_paiement_facture(
-            paiement, reference=reference, user=request.user)
+        try:
+            paiement = services.rapprocher_paiement_facture(
+                paiement, reference=reference, user=request.user)
+        except AcompteAvantDelaiLegal as exc:
+            # ADOC143 — refus loi 31-08 NOMMÉ (le message dit la date) : le
+            # paiement reste INITIÉ, re-rapprochable après le délai.
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(paiement).data)
 
 
@@ -320,11 +336,48 @@ class DocumentClientPortailViewSet(_PortailBaseViewSet):
 class JalonChantierPortailViewSet(_PortailBaseViewSet):
     """Jalons d'avancement de chantier exposés au client (FG232). La société est
     posée côté serveur ; ``marquer_atteint`` avance un jalon (côté interne). Le
-    client lit la timeline en lecture-seule côté portail."""
+    client lit la timeline en lecture-seule côté portail.
+
+    ADOC129 (D-ADOC-3) — la timeline client a UNE source : les jalons
+    synchronisés du chantier (``services.upsert_jalon_chantier``, CHT11). Plus
+    aucune création manuelle (POST → 405 : une saisie manuelle doublait la
+    phase synchronisée) ; la correction (PATCH libellé/date/atteint,
+    ``marquer_non_atteint``) est tracée ancien→nouveau au Journal (modèle
+    suivi par ``apps.audit``) ; la suppression est réservée aux jalons HÉRITÉS
+    sans clé de phase (409 pour un jalon issu du chantier).
+    """
     queryset = JalonChantierPortail.objects.all()
     serializer_class = JalonChantierPortailSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['ordre', 'date_jalon', 'chantier_id']
+    http_method_names = ['get', 'patch', 'delete', 'post', 'head', 'options']
+
+    def create(self, request, *args, **kwargs):
+        raise MethodNotAllowed(
+            request.method,
+            detail=("Les jalons portail viennent du chantier (synchronisés) : "
+                    "ils ne se créent pas à la main. Corrigez le jalon "
+                    "existant."))
+
+    def destroy(self, request, *args, **kwargs):
+        jalon = self.get_object()
+        if jalon.cle_phase:
+            return Response(
+                {'detail': 'jalon issu du chantier : corrigez-le'},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
+
+    # Garde explicite PAR action (même garde que la classe) : une @action
+    # neuve ne doit pas monter la dette du scanner YRBAC4.
+    @action(detail=True, methods=['post'],
+            permission_classes=[IsResponsableOrAdmin])
+    def marquer_non_atteint(self, request, pk=None):
+        """ADOC129 — correction tracée d'un jalon marqué atteint à tort."""
+        jalon = self.get_object()
+        if jalon.atteint:
+            jalon.atteint = False
+            jalon.save(update_fields=['atteint'])
+        return Response(self.get_serializer(jalon).data)
 
     @action(detail=True, methods=['post'])
     def marquer_atteint(self, request, pk=None):
@@ -348,13 +401,63 @@ class DemandeTicketPortailViewSet(_PortailBaseViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation']
 
+    #: ADOC118 — refus UNIQUE (octet-identique) pour tout ticket qui n'est pas
+    #: un ticket de CE client dans CETTE société : un id d'une autre société
+    #: ne doit pas se distinguer d'un id inexistant (aucune énumération).
+    TICKET_INCONNU = 'Ticket inconnu pour ce client.'
+
+    def _resoudre_ticket(self, demande, brut):
+        """ADOC118 — résolution commune à ``prendre_en_charge`` et
+        ``lier-ticket`` : le ticket doit exister dans la société de la demande
+        (``apps.sav.selectors.ticket_scoped``, lecture cross-app) ET appartenir
+        au même client. Renvoie le ticket, ou ``None`` (→ 400 nommé)."""
+        from apps.sav.selectors import ticket_scoped
+
+        try:
+            ticket_id = int(str(brut).strip())
+        except (TypeError, ValueError):
+            return None
+        if ticket_id <= 0 or not demande.client_id:
+            return None
+        ticket = ticket_scoped(demande.company, ticket_id)
+        if ticket is None or ticket.client_id != demande.client_id:
+            return None
+        return ticket
+
+    def _refus_ticket(self):
+        return Response({'detail': self.TICKET_INCONNU},
+                        status=status.HTTP_400_BAD_REQUEST)
+
     @action(detail=True, methods=['post'])
     def prendre_en_charge(self, request, pk=None):
         demande = self.get_object()
-        ticket_id = request.data.get('ticket_id')
+        brut = request.data.get('ticket_id')
+        ticket = None
+        if brut not in (None, ''):
+            ticket = self._resoudre_ticket(demande, brut)
+            if ticket is None:
+                return self._refus_ticket()
         if demande.statut == DemandeTicketPortail.Statut.SOUMISE:
             demande.statut = DemandeTicketPortail.Statut.PRISE_EN_CHARGE
-            if ticket_id:
-                demande.ticket_id = ticket_id
+            if ticket is not None:
+                demande.ticket_id = ticket.id
             demande.save(update_fields=['statut', 'ticket_id'])
+        return Response(self.get_serializer(demande).data)
+
+    @action(detail=True, methods=['post'], url_path='lier-ticket',
+            permission_classes=[IsResponsableOrAdmin])
+    def lier_ticket(self, request, pk=None):
+        """ADOC118 — corrige le ticket SAV lié tant que la demande n'est ni
+        résolue ni refusée (409 sinon) ; même borne que la prise en charge."""
+        demande = self.get_object()
+        if demande.statut in (DemandeTicketPortail.Statut.RESOLUE,
+                              DemandeTicketPortail.Statut.REFUSEE):
+            return Response(
+                {'detail': "Demande close : le ticket lié n'est plus modifiable."},
+                status=status.HTTP_409_CONFLICT)
+        ticket = self._resoudre_ticket(demande, request.data.get('ticket_id'))
+        if ticket is None:
+            return self._refus_ticket()
+        demande.ticket_id = ticket.id
+        demande.save(update_fields=['ticket_id'])
         return Response(self.get_serializer(demande).data)

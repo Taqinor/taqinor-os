@@ -14,7 +14,7 @@ import {
 } from '../../../ui'
 import { formatDateTime } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
-import { errMessage } from './shared.js'
+import { errMessage, toutesLesPages } from './shared.js'
 
 function unpage(data) {
   if (Array.isArray(data)) return data
@@ -31,7 +31,8 @@ export default function CorbeillePage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await gedApi.getCorbeille()
+      // ADOC31 — toutes les pages, jamais la seule première.
+      const res = await toutesLesPages(gedApi.getCorbeille)
       setDocs(unpage(res.data))
     } catch (err) {
       setError(errMessage(err, 'Impossible de charger la corbeille.'))

@@ -121,11 +121,13 @@ class FkCrossTenantPortailTests(TestCase):
         self.assertEqual(res.status_code, 400, res.content)
 
     def test_jalon_chantier_dun_autre_tenant_refuse(self):
-        """ROUGE avant AUD142 : 201."""
+        """ROUGE avant AUD142 : 201. ADOC129 — la création manuelle est
+        désormais fermée pour TOUS (405) : a fortiori sur un chantier d'un
+        autre tenant, aucune ligne n'est créée."""
         res = self.api.post('/api/django/portail/jalons-chantier-portail/', {
             'chantier_id': self.chantier_b.id, 'libelle': 'Installation',
         }, format='json')
-        self.assertEqual(res.status_code, 400, res.content)
+        self.assertEqual(res.status_code, 405, res.content)
         self.assertFalse(JalonChantierPortail.objects.filter(
             chantier_id=self.chantier_b.id).exists())
 
@@ -182,6 +184,8 @@ class FkCrossTenantPortailTests(TestCase):
         self.assertIn('facture_id', ser.errors)
 
     # ── Les cinq serializers, en un seul balayage ───────────────────────────
+    # (ADOC129 : le cinquième, JalonChantierPortailSerializer, n'a plus de FK
+    # écrivable — couvert par test_jalon_chantier_id_en_lecture_seule.)
 
     def test_les_cinq_serializers_refusent_lid_dun_autre_tenant(self):
         cas = (
@@ -192,9 +196,6 @@ class FkCrossTenantPortailTests(TestCase):
              'facture_id'),
             (DocumentClientPortailSerializer,
              {'client_id': self.client_b.id}, 'client_id'),
-            (JalonChantierPortailSerializer,
-             {'chantier_id': self.chantier_b.id, 'libelle': 'X'},
-             'chantier_id'),
             (DemandeTicketPortailSerializer,
              {'client_id': self.client_b.id, 'sujet': 'X'}, 'client_id'),
         )
@@ -203,6 +204,20 @@ class FkCrossTenantPortailTests(TestCase):
                 ser = classe(data=donnees, context=contexte(self.user_a))
                 self.assertFalse(ser.is_valid())
                 self.assertIn(champ, ser.errors)
+
+    def test_jalon_chantier_id_en_lecture_seule(self):
+        """ADOC129 — le jalon portail ne se crée plus à la main (POST 405) et
+        son chantier ne se corrige pas : ``chantier_id`` est en LECTURE
+        SEULE. Un id d'un autre tenant est donc IGNORÉ (jamais écrit), au lieu
+        d'être validé — la garde AUD142 n'a plus de champ écrivable à
+        protéger sur ce serializer."""
+        ser = JalonChantierPortailSerializer(
+            data={'chantier_id': self.chantier_b.id, 'libelle': 'X'},
+            context=contexte(self.user_a))
+        self.assertTrue(ser.fields['chantier_id'].read_only)
+        self.assertTrue(ser.is_valid(), ser.errors)
+        self.assertNotIn('chantier_id', ser.validated_data)
+        self.assertNotIn('chantier', ser.validated_data)
 
     def test_un_id_inexistant_est_refuse_comme_un_id_dun_autre_tenant(self):
         """Aucun oracle : « d'une autre société » et « inexistant » se

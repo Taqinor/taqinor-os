@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4800, operations: 7602, components: 2203}
+counts: {paths: 4812, operations: 7606, components: 2202}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1415,6 +1415,7 @@ operations:
 - get /api/django/ged/documents/{id}/journal-acces/ -> django_ged_documents_journal_acces_retrieve
 - post /api/django/ged/documents/{id}/lever-legal-hold/ -> django_ged_documents_lever_legal_hold_create
 - post /api/django/ged/documents/{id}/mettre-en-corbeille/ -> django_ged_documents_mettre_en_corbeille_create
+- post /api/django/ged/documents/{id}/nouvelle-version/ -> django_ged_documents_nouvelle_version_create
 - post /api/django/ged/documents/{id}/ocr-piece/ -> django_ged_documents_ocr_piece_create
 - post /api/django/ged/documents/{id}/office-ouvrir/ -> django_ged_documents_office_ouvrir_create
 - post /api/django/ged/documents/{id}/office-sauvegarder/ -> django_ged_documents_office_sauvegarder_create
@@ -1531,10 +1532,12 @@ operations:
 - put /api/django/ged/routages-documentaires/{id}/ -> django_ged_routages_documentaires_update
 - get /api/django/ged/signataire/{token}/ -> django_ged_signataire_retrieve
 - post /api/django/ged/signataire/{token}/ -> django_ged_signataire_create
+- get /api/django/ged/signataire/{token}/document/ -> django_ged_signataire_document_retrieve
 - get /api/django/ged/signataires-demande/ -> django_ged_signataires_demande_list
 - get /api/django/ged/signataires-demande/{id}/ -> django_ged_signataires_demande_retrieve
 - get /api/django/ged/signature/{token}/ -> django_ged_signature_retrieve
 - post /api/django/ged/signature/{token}/ -> django_ged_signature_create
+- get /api/django/ged/signature/{token}/document/ -> django_ged_signature_document_retrieve
 - get /api/django/ged/tag-assignments/ -> django_ged_tag_assignments_list
 - post /api/django/ged/tag-assignments/ -> django_ged_tag_assignments_create
 - delete /api/django/ged/tag-assignments/{id}/ -> django_ged_tag_assignments_destroy
@@ -1568,9 +1571,8 @@ operations:
 - post /api/django/ged/versions/ -> django_ged_versions_create
 - delete /api/django/ged/versions/{id}/ -> django_ged_versions_destroy
 - get /api/django/ged/versions/{id}/ -> django_ged_versions_retrieve
-- patch /api/django/ged/versions/{id}/ -> django_ged_versions_partial_update
-- put /api/django/ged/versions/{id}/ -> django_ged_versions_update
 - get /api/django/ged/versions/{id}/apercu/ -> django_ged_versions_apercu_retrieve
+- get /api/django/ged/versions/{id}/pages/ -> django_ged_versions_pages_retrieve
 - get /api/django/ged/vues/ -> django_ged_vues_list
 - post /api/django/ged/vues/ -> django_ged_vues_create
 - delete /api/django/ged/vues/{id}/ -> django_ged_vues_destroy
@@ -2456,7 +2458,6 @@ operations:
 - get /api/django/portail/client/tableau-de-bord/ -> django_portail_client_tableau_de_bord_retrieve
 - get /api/django/portail/comptes-portail/ -> django_portail_comptes_portail_list
 - post /api/django/portail/comptes-portail/ -> django_portail_comptes_portail_create
-- delete /api/django/portail/comptes-portail/{id}/ -> django_portail_comptes_portail_destroy
 - get /api/django/portail/comptes-portail/{id}/ -> django_portail_comptes_portail_retrieve
 - patch /api/django/portail/comptes-portail/{id}/ -> django_portail_comptes_portail_partial_update
 - put /api/django/portail/comptes-portail/{id}/ -> django_portail_comptes_portail_update
@@ -2469,6 +2470,7 @@ operations:
 - get /api/django/portail/demandes-ticket-portail/{id}/ -> django_portail_demandes_ticket_portail_retrieve
 - patch /api/django/portail/demandes-ticket-portail/{id}/ -> django_portail_demandes_ticket_portail_partial_update
 - put /api/django/portail/demandes-ticket-portail/{id}/ -> django_portail_demandes_ticket_portail_update
+- post /api/django/portail/demandes-ticket-portail/{id}/lier-ticket/ -> django_portail_demandes_ticket_portail_lier_ticket_create
 - post /api/django/portail/demandes-ticket-portail/{id}/prendre_en_charge/ -> django_portail_demandes_ticket_portail_prendre_en_charge_create
 - get /api/django/portail/documents-client-portail/ -> django_portail_documents_client_portail_list
 - post /api/django/portail/documents-client-portail/ -> django_portail_documents_client_portail_create
@@ -2484,8 +2486,8 @@ operations:
 - delete /api/django/portail/jalons-chantier-portail/{id}/ -> django_portail_jalons_chantier_portail_destroy
 - get /api/django/portail/jalons-chantier-portail/{id}/ -> django_portail_jalons_chantier_portail_retrieve
 - patch /api/django/portail/jalons-chantier-portail/{id}/ -> django_portail_jalons_chantier_portail_partial_update
-- put /api/django/portail/jalons-chantier-portail/{id}/ -> django_portail_jalons_chantier_portail_update
 - post /api/django/portail/jalons-chantier-portail/{id}/marquer_atteint/ -> django_portail_jalons_chantier_portail_marquer_atteint_create
+- post /api/django/portail/jalons-chantier-portail/{id}/marquer_non_atteint/ -> django_portail_jalons_chantier_portail_marquer_non_atteint_create
 - get /api/django/portail/ma-performance/ -> django_portail_ma_performance_retrieve
 - get /api/django/portail/ma-preference/ -> django_portail_ma_preference_retrieve
 - put /api/django/portail/ma-preference/ -> django_portail_ma_preference_update
@@ -5254,6 +5256,7 @@ operations:
 - get /api/v1/ged/documents/{id}/journal-acces/ -> v1_ged_documents_journal_acces_retrieve
 - post /api/v1/ged/documents/{id}/lever-legal-hold/ -> v1_ged_documents_lever_legal_hold_create
 - post /api/v1/ged/documents/{id}/mettre-en-corbeille/ -> v1_ged_documents_mettre_en_corbeille_create
+- post /api/v1/ged/documents/{id}/nouvelle-version/ -> v1_ged_documents_nouvelle_version_create
 - post /api/v1/ged/documents/{id}/ocr-piece/ -> v1_ged_documents_ocr_piece_create
 - post /api/v1/ged/documents/{id}/office-ouvrir/ -> v1_ged_documents_office_ouvrir_create
 - post /api/v1/ged/documents/{id}/office-sauvegarder/ -> v1_ged_documents_office_sauvegarder_create
@@ -5370,10 +5373,12 @@ operations:
 - put /api/v1/ged/routages-documentaires/{id}/ -> v1_ged_routages_documentaires_update
 - get /api/v1/ged/signataire/{token}/ -> v1_ged_signataire_retrieve
 - post /api/v1/ged/signataire/{token}/ -> v1_ged_signataire_create
+- get /api/v1/ged/signataire/{token}/document/ -> v1_ged_signataire_document_retrieve
 - get /api/v1/ged/signataires-demande/ -> v1_ged_signataires_demande_list
 - get /api/v1/ged/signataires-demande/{id}/ -> v1_ged_signataires_demande_retrieve
 - get /api/v1/ged/signature/{token}/ -> v1_ged_signature_retrieve
 - post /api/v1/ged/signature/{token}/ -> v1_ged_signature_create
+- get /api/v1/ged/signature/{token}/document/ -> v1_ged_signature_document_retrieve
 - get /api/v1/ged/tag-assignments/ -> v1_ged_tag_assignments_list
 - post /api/v1/ged/tag-assignments/ -> v1_ged_tag_assignments_create
 - delete /api/v1/ged/tag-assignments/{id}/ -> v1_ged_tag_assignments_destroy
@@ -5407,9 +5412,8 @@ operations:
 - post /api/v1/ged/versions/ -> v1_ged_versions_create
 - delete /api/v1/ged/versions/{id}/ -> v1_ged_versions_destroy
 - get /api/v1/ged/versions/{id}/ -> v1_ged_versions_retrieve
-- patch /api/v1/ged/versions/{id}/ -> v1_ged_versions_partial_update
-- put /api/v1/ged/versions/{id}/ -> v1_ged_versions_update
 - get /api/v1/ged/versions/{id}/apercu/ -> v1_ged_versions_apercu_retrieve
+- get /api/v1/ged/versions/{id}/pages/ -> v1_ged_versions_pages_retrieve
 - get /api/v1/ged/vues/ -> v1_ged_vues_list
 - post /api/v1/ged/vues/ -> v1_ged_vues_create
 - delete /api/v1/ged/vues/{id}/ -> v1_ged_vues_destroy
@@ -6295,7 +6299,6 @@ operations:
 - get /api/v1/portail/client/tableau-de-bord/ -> v1_portail_client_tableau_de_bord_retrieve
 - get /api/v1/portail/comptes-portail/ -> v1_portail_comptes_portail_list
 - post /api/v1/portail/comptes-portail/ -> v1_portail_comptes_portail_create
-- delete /api/v1/portail/comptes-portail/{id}/ -> v1_portail_comptes_portail_destroy
 - get /api/v1/portail/comptes-portail/{id}/ -> v1_portail_comptes_portail_retrieve
 - patch /api/v1/portail/comptes-portail/{id}/ -> v1_portail_comptes_portail_partial_update
 - put /api/v1/portail/comptes-portail/{id}/ -> v1_portail_comptes_portail_update
@@ -6308,6 +6311,7 @@ operations:
 - get /api/v1/portail/demandes-ticket-portail/{id}/ -> v1_portail_demandes_ticket_portail_retrieve
 - patch /api/v1/portail/demandes-ticket-portail/{id}/ -> v1_portail_demandes_ticket_portail_partial_update
 - put /api/v1/portail/demandes-ticket-portail/{id}/ -> v1_portail_demandes_ticket_portail_update
+- post /api/v1/portail/demandes-ticket-portail/{id}/lier-ticket/ -> v1_portail_demandes_ticket_portail_lier_ticket_create
 - post /api/v1/portail/demandes-ticket-portail/{id}/prendre_en_charge/ -> v1_portail_demandes_ticket_portail_prendre_en_charge_create
 - get /api/v1/portail/documents-client-portail/ -> v1_portail_documents_client_portail_list
 - post /api/v1/portail/documents-client-portail/ -> v1_portail_documents_client_portail_create
@@ -6323,8 +6327,8 @@ operations:
 - delete /api/v1/portail/jalons-chantier-portail/{id}/ -> v1_portail_jalons_chantier_portail_destroy
 - get /api/v1/portail/jalons-chantier-portail/{id}/ -> v1_portail_jalons_chantier_portail_retrieve
 - patch /api/v1/portail/jalons-chantier-portail/{id}/ -> v1_portail_jalons_chantier_portail_partial_update
-- put /api/v1/portail/jalons-chantier-portail/{id}/ -> v1_portail_jalons_chantier_portail_update
 - post /api/v1/portail/jalons-chantier-portail/{id}/marquer_atteint/ -> v1_portail_jalons_chantier_portail_marquer_atteint_create
+- post /api/v1/portail/jalons-chantier-portail/{id}/marquer_non_atteint/ -> v1_portail_jalons_chantier_portail_marquer_non_atteint_create
 - get /api/v1/portail/ma-performance/ -> v1_portail_ma_performance_retrieve
 - get /api/v1/portail/ma-preference/ -> v1_portail_ma_preference_retrieve
 - put /api/v1/portail/ma-preference/ -> v1_portail_ma_preference_update
@@ -9009,7 +9013,6 @@ components:
 - PatchedDocumentRequest
 - PatchedDocumentTagAssignmentRequest
 - PatchedDocumentTagRequest
-- PatchedDocumentVersionRequest
 - PatchedDossierChecklistItemRequest
 - PatchedDossierExchangeRequest
 - PatchedDossierImportRequest

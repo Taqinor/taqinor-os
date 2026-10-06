@@ -75,3 +75,16 @@ export function isPortalPath(pathname) {
 export function peutEntrerDansPortail(user, portee) {
   return porteeDe(user) === portee && portee !== PORTEE_INTERNE
 }
+
+/**
+ * ADOC119 — chemin de l'écran de changement du mot de passe TEMPORAIRE de la
+ * portée `portee` (`/portail/<client|fournisseur|partenaire>/mot-de-passe`), ou
+ * `null` pour une portée sans portail. Source UNIQUE : `portalLoader` y redirige
+ * un compte `must_change_password`, le routeur y déclare les trois routes.
+ */
+export function cheminMotDePassePortail(portee) {
+  const home = Object.prototype.hasOwnProperty.call(PORTAL_HOME, portee)
+    ? PORTAL_HOME[portee]
+    : null
+  return home ? `${home}/mot-de-passe` : null
+}

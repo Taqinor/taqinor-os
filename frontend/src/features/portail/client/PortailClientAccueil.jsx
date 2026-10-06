@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useSelector } from 'react-redux'
-import { FileText, HardHat, Receipt } from 'lucide-react'
+import { FileText, HardHat, LifeBuoy, Receipt } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
 import { Card, EmptyState, Spinner } from '../../../ui'
 import { formatDate } from '../../../lib/format'
@@ -37,6 +37,13 @@ const SECTIONS = [
     icone: HardHat,
     titre: 'Mes chantiers',
     texte: 'Suivre l’avancement et les photos de votre installation.',
+  },
+  // ADOC136 — la carte « Tickets SAV ouverts » mène enfin quelque part.
+  {
+    to: '/portail/client/sav',
+    icone: LifeBuoy,
+    titre: 'Mes demandes SAV',
+    texte: 'Ouvrir une demande et suivre son traitement.',
   },
 ]
 

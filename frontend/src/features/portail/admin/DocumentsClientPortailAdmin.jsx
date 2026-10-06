@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import { formatDateTime } from '../../../lib/format'
 import { Check, FileText } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
+import { chargerToutesLesPages } from './chargerToutesLesPages'
 import { Button, Card, EmptyState, Skeleton, StatusPill, DataTable, toast } from '../../../ui'
 
 const formatDateHeure = (iso) => formatDateTime(iso)
@@ -23,10 +24,11 @@ export default function DocumentsClientPortailAdmin() {
   const [loadError, setLoadError] = useState(false)
   const [busyId, setBusyId] = useState(null)
 
-  const fetchDocumentsClient = () => portailApi.admin.documentsClient.liste()
-    .then((r) => setRows(r.data?.results ?? r.data ?? []))
-    .catch(() => setLoadError(true))
-    .finally(() => setLoading(false))
+  // ADOC32 — toutes les pages de l'enveloppe DRF, jamais la seule page 1.
+  const fetchDocumentsClient = () => chargerToutesLesPages(
+    (page) => portailApi.admin.documentsClient.liste({ page }),
+    { setRows, setLoadError, setLoading },
+  )
 
   const load = () => {
     setLoading(true)

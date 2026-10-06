@@ -93,8 +93,13 @@ class PurgeServiceTests(PurgeBase):
         doc = self._doc(self.co_a, self.folder_a, 'archive en corbeille')
         services.add_version(
             doc, file_key='k/archive.pdf', company=self.co_a, filename='a.pdf')
-        self._en_corbeille_depuis(doc, 40)
+        # ADOC22 — un document en corbeille ne s'archive plus : on archive
+        # d'abord, puis on simule (hors save(), write-once) une mise en
+        # corbeille ancienne — état hérité d'avant la garde.
         services.archiver_legalement(doc, user=self.admin_a, motif='preuve')
+        Document.objects.filter(pk=doc.pk).update(
+            supprime_le=timezone.now() - datetime.timedelta(days=40),
+            supprime_par=self.admin_a)
         res = services.purger_corbeille_echue(self.co_a, apply=True)
         self.assertEqual(res['proteges'], 1)
         self.assertEqual(res['purges'], 0)

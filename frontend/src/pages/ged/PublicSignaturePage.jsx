@@ -7,15 +7,16 @@
  *                             (jeton PROPRE au destinataire).
  *
  * Déroulé : consulter le document → consentir (loi 53-05) → signer OU refuser.
- * L'aperçu du document se fait via le proxy même-origine GED14
- * (versions/<id>/apercu/). Sans jeton valide : message honnête (jamais de faux
+ * ADOC67 — l'aperçu du document est servi PAR LE JETON (`apercu_url` du
+ * payload : /api/django/ged/signature|signataire/<token>/document/, AllowAny) —
+ * jamais par /ged/versions/ (authentifié, 401 en anonyme). Sans jeton valide : message honnête (jamais de faux
  * succès, jamais de fuite d'une autre société). Le mode « signataire » gère en
  * plus le code d'authentification extra (OTP) exigé avant la signature (ZGED2).
  *
  * Ne touche NI contrats.SignatureContrat NI /proposal (règle #4) : c'est la
  * signature GED, un système documentaire distinct.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import gedApi from '../../api/gedApi'
 import { Button } from '../../ui'
@@ -90,8 +91,16 @@ export default function PublicSignaturePage({ mode = 'signature' }) {
   const envoyerCode = async () => {
     setError(null)
     try {
-      await gedApi.envoyerCodeSignataire(token)
-      setCodeEnvoye(true)
+      const res = await gedApi.envoyerCodeSignataire(token)
+      if (res?.data?.envoye) {
+        setCodeEnvoye(true)
+      } else {
+        // ADOC64 — passerelle absente : le serveur a posé une dégradation
+        // EXPLICITE (`otp_degrade`) ; on relit l'état réel de la cérémonie
+        // (otp_requis redevenu faux) plutôt que d'afficher un faux champ code.
+        if (res?.data?.detail) setError(res.data.detail)
+        await consulter()
+      }
     } catch (err) {
       setError(errMessage(err, 'Impossible d’envoyer le code — réessayez.'))
     }
@@ -169,7 +178,7 @@ export default function PublicSignaturePage({ mode = 'signature' }) {
   }
 
   const docNom = demande?.document_nom
-  const docId = demande?.document_id
+  const apercuUrl = demande?.apercu_url
   const signataireNom = demande?.signataire_nom || demande?.nom
 
   return (
@@ -204,9 +213,7 @@ export default function PublicSignaturePage({ mode = 'signature' }) {
             </p>
           )}
 
-          {docId && (
-            <DocumentApercu documentId={docId} />
-          )}
+          <DocumentApercu url={apercuUrl} mime={demande?.apercu_mime} />
 
           {error && <p role="alert" className="page-error">{error}</p>}
 
@@ -341,55 +348,31 @@ function libelleChamp(type) {
 }
 
 /**
- * GED14 — Aperçu inline du document via le proxy même-origine. On récupère la
- * dernière version du document puis on l'affiche dans un <iframe> (PDF/texte)
- * ou <img> selon le mime. Dégrade proprement en lien de consultation si
- * l'aperçu échoue (jamais un écran cassé).
+ * ADOC67 — Aperçu inline du document à signer, servi PAR LE JETON public
+ * (URL fournie par le serveur dans le payload). <iframe> (PDF/texte) ou <img>
+ * selon le mime ; sans URL, message honnête (jamais un écran cassé).
  */
-function DocumentApercu({ documentId }) {
-  const [version, setVersion] = useState(null)
-  const [failed, setFailed] = useState(false)
-  const done = useRef(false)
-
-  useEffect(() => {
-    if (done.current) return
-    done.current = true
-    gedApi.getVersions({ document: documentId })
-      .then((res) => {
-        const list = Array.isArray(res.data) ? res.data : (res.data?.results ?? [])
-        // La version courante = la plus récente (numéro le plus élevé).
-        const courante = [...list].sort(
-          (a, b) => (b.numero || 0) - (a.numero || 0))[0]
-        if (courante) setVersion(courante)
-        else setFailed(true)
-      })
-      .catch(() => setFailed(true))
-  }, [documentId])
-
-  if (failed) {
+function DocumentApercu({ url, mime }) {
+  if (!url) {
     return (
       <p className="text-sm text-muted-foreground" style={{ marginTop: 8 }}>
         L’aperçu du document n’est pas disponible ; vous pouvez tout de même signer ci-dessous.
       </p>
     )
   }
-  if (!version) {
-    return <p className="text-sm text-muted-foreground" style={{ marginTop: 8 }}>Chargement de l’aperçu…</p>
-  }
-  const src = gedApi.apercuVersionUrl(version.id)
-  const isImage = String(version.mime || '').startsWith('image/')
+  const isImage = String(mime || '').startsWith('image/')
   return (
     <div style={{ marginTop: 12, marginBottom: 12 }}>
       {isImage ? (
         <img
-          src={src}
-          alt={`Aperçu de ${version.filename || 'document'}`}
+          src={url}
+          alt="Aperçu du document à signer"
           style={{ maxWidth: '100%', border: '1px solid var(--border, #ddd)', borderRadius: 6 }}
         />
       ) : (
         <iframe
           title="Aperçu du document"
-          src={src}
+          src={url}
           style={{ width: '100%', height: 420, border: '1px solid var(--border, #ddd)', borderRadius: 6 }}
         />
       )}

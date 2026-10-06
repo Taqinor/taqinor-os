@@ -50,7 +50,7 @@
   </div>
 
   <p class="made-at">
-    Fait pour servir et valoir ce que de droit, le {{ now.strftime('%d/%m/%Y') }}.
+    Fait pour servir et valoir ce que de droit, le {{ (date_emission or now).strftime('%d/%m/%Y') }}.
   </p>
 
   <div class="signature-section">
