@@ -1,0 +1,32 @@
+{
+  "endpoint": "POST /api/django/public/portail/invitations/accepter/",
+  "pourquoi": "ADOC111 (M0, C-ADOC-051) — l'invité pose son mot de passe via le lien reçu par e-mail : `accepter_invitation_portail_public` (portail/public_views.py:114, AllowAny + throttle). Corps : `token` et `mot_de_passe` SEULS (ni e-mail ni rôle lus du corps). Une seule réponse générique pour un jeton inconnu/expiré/déjà utilisé/révoqué (jamais de quoi les distinguer). NOUVEAU (ADOC122) : un mot de passe refusé par les validateurs Django renvoie 400 {mot_de_passe:[messages]} — distinct du 400 {detail} du jeton. Écran consommateur : ADOC117 (/portail/invitation/accepter).",
+  "forme_serveur": "partielle",
+  "partielle_jusqua": "ADOC122 — le 400 {mot_de_passe:[…]} n'existe pas encore côté serveur (aujourd'hui aucune validation de force) ; les réponses 200 et 400 {detail} sont déjà servies.",
+  "cles_nouvelles": [
+    "mot_de_passe (dans la réponse 400)"
+  ],
+  "corps": {
+    "token": "str, requis",
+    "mot_de_passe": "str, requis"
+  },
+  "exemple_corps": {
+    "token": "tok_9f2c…",
+    "mot_de_passe": "Un-mot-de-passe-solide-2026"
+  },
+  "exemple": {
+    "detail": "Compte créé — vous pouvez maintenant vous connecter."
+  },
+  "exemple_mot_de_passe_refuse": {
+    "mot_de_passe": [
+      "Ce mot de passe est trop courant.",
+      "Ce mot de passe est trop court. Il doit contenir au minimum 8 caractères."
+    ]
+  },
+  "exemple_jeton_invalide": {
+    "detail": "Invitation introuvable, déjà utilisée, révoquée ou expirée."
+  },
+  "exemple_champs_manquants": {
+    "detail": "Le token et le mot de passe sont requis."
+  }
+}

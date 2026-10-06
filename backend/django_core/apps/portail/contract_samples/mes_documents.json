@@ -1,0 +1,67 @@
+{
+  "endpoint": "GET /api/django/portail/mes-documents/",
+  "pourquoi": "ADOC111 (M0, C-ADOC-049) — « Mes documents » : documents GED partagés EXPLICITEMENT avec le client (AclGed client=…), servis par MesDocumentsPortailViewSet (views_client.py:1360). Un élément = les clés actuelles de `_ligne` (id, nom, reference, taille, mime, date_creation) + DEUX clés NOUVELLES (D-ADOC-2 : le portail montre la VERSION EN VIGUEUR et sa date) : `version_numero` = `DocumentVersion.version` et `version_date` = `DocumentVersion.created_at` (ISO) de `ged.selectors.latest_version` ; null/null si le document n'a aucune version. `taille`/`mime` restent ceux de cette même version. Jamais de métadonnée interne (custom_data, ACL, verrous). Écrans consommateurs : ADOC138/ADOC134.",
+  "forme_serveur": "partielle",
+  "partielle_jusqua": "ADOC134 — `version_numero` et `version_date` ne sont PAS encore émis par `MesDocumentsPortailViewSet._ligne` ; ADOC134 les ajoute avec test_ligne_conforme_contrat.",
+  "cles_nouvelles": [
+    "version_numero",
+    "version_date"
+  ],
+  "exemple": {
+    "results": [
+      {
+        "id": 77,
+        "nom": "Facture ONEE septembre",
+        "reference": "DOC-2026-0077",
+        "taille": 183204,
+        "mime": "application/pdf",
+        "date_creation": "2026-09-30T09:00:00+00:00",
+        "version_numero": 2,
+        "version_date": "2026-10-01T11:20:00+00:00"
+      }
+    ]
+  },
+  "exemple_sans_version": {
+    "results": [
+      {
+        "id": 78,
+        "nom": "Plan de toiture",
+        "reference": "",
+        "taille": null,
+        "mime": null,
+        "date_creation": "2026-09-30T09:05:00+00:00",
+        "version_numero": null,
+        "version_date": null
+      }
+    ]
+  },
+  "exemple_vide": {
+    "results": []
+  },
+  "telechargement": {
+    "endpoint": "GET /api/django/portail/mes-documents/{id}/telecharger/",
+    "reponse": "binaire (Content-Type = mime de la version courante, Content-Disposition: attachment; X-Content-Type-Options: nosniff) ; 404 {detail} si introuvable / sans fichier"
+  },
+  "depot": {
+    "endpoint": "POST /api/django/portail/mes-documents/",
+    "corps": "multipart/form-data : `fichier` (fichier), `type_document` ('facture_onee'|'plan'|'autre'), `libelle` (facultatif) — client_id/company forcés côté serveur",
+    "reponses": {
+      "201": {
+        "id": 9,
+        "client_id": 4,
+        "lead_id": null,
+        "type_document": "facture_onee",
+        "libelle": "Facture septembre",
+        "fichier_present": true,
+        "lien_ged": "/api/django/ged/versions/310/apercu/",
+        "document_ged": 77,
+        "traite": false,
+        "date_depot": "2026-10-03T09:00:00Z"
+      },
+      "403": {
+        "detail": "Votre accès est en lecture seule : vous ne pouvez pas déposer de document."
+      }
+    },
+    "source": "DocumentClientPortailSerializer (portail/serializers.py:171) — champs id, client_id, lead_id, type_document, libelle, fichier_present, lien_ged, document_ged, traite, date_depot (`fichier` est en écriture seule)."
+  }
+}
