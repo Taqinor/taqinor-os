@@ -19,13 +19,36 @@ from ..serializers_commissioning import (
     TestPerformanceReceptionSerializer, AttestationRESerializer)
 from ..commissioning import (
     compute_commissioning_result, evaluate_iv_curve, compute_reception_pr,
-    compute_co2_evite)
+    compute_co2_evite, motif_seuil)
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
 def _company_or_none(user):
     return getattr(user, 'company', None)
+
+
+def _seuils_recette_societe(company):
+    """CIQ654 — ``(tolérance I-V %, seuil PR en fraction)`` SAISIS par la
+    société (CIQ622, ``CompanyProfile`` — app de fondation), ``None`` quand
+    non saisis : aucun défaut, aucun repli inventé. Le seuil PR est saisi en
+    % (0-100) et ramené en fraction (le PR est sans unité, 0-1)."""
+    from apps.parametres.models import CompanyProfile
+    ligne = (CompanyProfile.objects.filter(company=company)
+             .values('recette_ecart_pmax_pct', 'recette_pr_seuil_interne')
+             .first() or {}) if company is not None else {}
+    pmax = ligne.get('recette_ecart_pmax_pct')
+    pr = ligne.get('recette_pr_seuil_interne')
+    return (float(pmax) if pmax is not None else None,
+            float(pr) / 100.0 if pr is not None else None)
+
+
+def _avec_motif(response, motif):
+    """CIQ654 — la réponse d'écriture DIT « seuil non saisi en Paramètres »
+    quand aucun seuil n'a jugé la mesure (clé additive ``motif_seuil``)."""
+    if isinstance(getattr(response, 'data', None), dict):
+        response.data['motif_seuil'] = motif
+    return response
 
 
 def _refresh_recette_result(recette):
@@ -150,20 +173,34 @@ class IVCurveCaptureViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-de
             raise ValidationError({'recette': 'Recette inconnue.'})
         return recette.company
 
-    def _derive(self, serializer):
+    def _derive(self, serializer, company):
+        # CIQ654 — tolérance SAISIE par la société (CIQ622), jamais 8 %.
+        tolerance, _seuil_pr = _seuils_recette_societe(company)
+        self._motif_seuil = motif_seuil(tolerance)
         ecart, defaut = evaluate_iv_curve(
             pmax_mesure_w=serializer.validated_data.get(
                 'pmax_mesure_w',
                 getattr(serializer.instance, 'pmax_mesure_w', None)),
             pmax_attendu_w=serializer.validated_data.get(
                 'pmax_attendu_w',
-                getattr(serializer.instance, 'pmax_attendu_w', None)))
+                getattr(serializer.instance, 'pmax_attendu_w', None)),
+            tolerance_pct=tolerance)
         return ecart, defaut
+
+    def create(self, request, *args, **kwargs):
+        self._motif_seuil = None
+        return _avec_motif(super().create(request, *args, **kwargs),
+                           self._motif_seuil)
+
+    def update(self, request, *args, **kwargs):
+        self._motif_seuil = None
+        return _avec_motif(super().update(request, *args, **kwargs),
+                           self._motif_seuil)
 
     def perform_create(self, serializer):
         recette = serializer.validated_data.get('recette')
         company = self._resolve_company(recette)
-        ecart, defaut = self._derive(serializer)
+        ecart, defaut = self._derive(serializer, company)
         serializer.save(company=company, ecart_pmax_pct=ecart,
                         defaut_detecte=defaut)
         _refresh_recette_result(recette)
@@ -172,7 +209,7 @@ class IVCurveCaptureViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-de
         recette = serializer.validated_data.get(
             'recette', serializer.instance.recette)
         company = self._resolve_company(recette)
-        ecart, defaut = self._derive(serializer)
+        ecart, defaut = self._derive(serializer, company)
         serializer.save(company=company, ecart_pmax_pct=ecart,
                         defaut_detecte=defaut)
         _refresh_recette_result(recette)
@@ -323,30 +360,47 @@ class TestPerformanceReceptionViewSet(CompanyScopedModelViewSet):  # ARC5 (voir 
         return _resolve_company_from_links(
             self.request.user, chantier, recette)
 
-    def _derive(self, serializer):
+    def _derive(self, serializer, company):
         v = serializer.validated_data
         inst = serializer.instance
 
         def _get(field):
             return v.get(field, getattr(inst, field, None))
 
+        # CIQ654 — seuil du TEST, sinon seuil interne SOCIÉTÉ (CIQ622) ; sans
+        # aucun seuil : « en attente », jamais « refusé » (plus de 0,75).
+        _tolerance, seuil_societe = _seuils_recette_societe(company)
+        seuil_test = _get('pr_seuil_acceptation')
+        self._motif_seuil = motif_seuil(
+            seuil_test if seuil_test is not None else seuil_societe)
         return compute_reception_pr(
             energie_mesuree_kwh=_get('energie_mesuree_kwh'),
             energie_attendue_kwh=_get('energie_attendue_kwh'),
             pr_mesure=_get('pr_mesure'),
             pr_attendu=_get('pr_attendu'),
-            pr_seuil_acceptation=_get('pr_seuil_acceptation'))
+            pr_seuil_acceptation=seuil_test,
+            pr_seuil_societe=seuil_societe)
+
+    def create(self, request, *args, **kwargs):
+        self._motif_seuil = None
+        return _avec_motif(super().create(request, *args, **kwargs),
+                           self._motif_seuil)
+
+    def update(self, request, *args, **kwargs):
+        self._motif_seuil = None
+        return _avec_motif(super().update(request, *args, **kwargs),
+                           self._motif_seuil)
 
     def perform_create(self, serializer):
         company = self._company(serializer.validated_data)
-        pr_m, ecart, verdict = self._derive(serializer)
+        pr_m, ecart, verdict = self._derive(serializer, company)
         serializer.save(company=company, created_by=self.request.user,
                         pr_mesure=pr_m, ecart_pct=ecart, verdict=verdict)
 
     def perform_update(self, serializer):
         company = self._company(
             serializer.validated_data, serializer.instance)
-        pr_m, ecart, verdict = self._derive(serializer)
+        pr_m, ecart, verdict = self._derive(serializer, company)
         serializer.save(company=company, pr_mesure=pr_m,
                         ecart_pct=ecart, verdict=verdict)
 
