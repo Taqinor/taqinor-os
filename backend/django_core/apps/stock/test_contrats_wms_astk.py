@@ -19,6 +19,7 @@ from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -439,3 +440,195 @@ class ContratWmsPickingTests(WmsBase):
         rep = self.api.post(f'{url}generer/')
         self.assertEqual(rep.status_code, 201, rep.content)
         self.assertMemesCles(rep.json(), generer['exemple'], 'générer')
+
+
+def texte(valeur):
+    """Message d'erreur DRF : une chaîne, ou une liste d'une chaîne."""
+    if isinstance(valeur, (list, tuple)):
+        valeur = valeur[0]
+    return str(valeur)
+
+
+class ContratWmsQuaisTests(WmsBase):
+    """ASTK162 — wms_quais.json."""
+
+    def setUp(self):
+        from apps.stock.models import Fournisseur, PortailFournisseurToken
+        from apps.stock.models_wms import Quai
+
+        super().setUp()
+        self.quai = Quai.objects.create(
+            company=self.company, nom='Quai R1',
+            type_quai=Quai.TypeQuai.RECEPTION, emplacement=self.emplacement)
+        self.fournisseur = Fournisseur.objects.create(
+            company=self.company, nom='Fournisseur ASTK')
+        self.jeton = PortailFournisseurToken.objects.create(
+            company=self.company, fournisseur=self.fournisseur)
+        self.anonyme = APIClient()
+        self.demain = timezone.localdate() + datetime.timedelta(days=1)
+
+    def _rdv(self, heure=9):
+        from apps.stock.models_wms import RendezVousTransporteur
+
+        debut = timezone.make_aware(datetime.datetime.combine(
+            self.demain, datetime.time(hour=heure)))
+        return RendezVousTransporteur.objects.create(
+            company=self.company, quai=self.quai, date_heure_debut=debut,
+            date_heure_fin=debut + datetime.timedelta(hours=1))
+
+    def _public(self, suffixe, token=None):
+        return ('/api/django/public/stock/portail-fournisseur/'
+                f'{token or self.jeton.token}/{suffixe}')
+
+    def test_quais(self):
+        contrat = route('wms_quais', 'quais')
+        rep = self.api.get('/api/django/stock/quais/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, contrat['exemple'], 'liste')
+        self.assertTrue(corps['results'])
+        self.assertMemesCles(corps['results'][0], contrat['exemple_element'],
+                             'quai')
+
+    def test_quais_planning(self):
+        contrat = route('wms_quais', 'quais_planning')
+        self._rdv()
+        url = '/api/django/stock/quais/planning/'
+        rep = self.api.get(url, {'date': self.demain.isoformat()})
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, contrat['exemple'], 'planning')
+        modele = contrat['exemple']['quais'][0]
+        self.assertTrue(corps['quais'])
+        self.assertMemesCles(corps['quais'][0], modele, 'quai')
+        self.assertTrue(corps['quais'][0]['rendez_vous'])
+        self.assertMemesCles(corps['quais'][0]['rendez_vous'][0],
+                             modele['rendez_vous'][0], 'rendez-vous')
+        rep = self.api.get(url)
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
+
+    def test_rendez_vous_transporteur(self):
+        contrat = route('wms_quais', 'rendez_vous_transporteur')
+        rdv = self._rdv()
+        rep = self.api.get('/api/django/stock/rendez-vous-transporteur/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, contrat['exemple'], 'liste')
+        self.assertMemesCles(corps['results'][0], contrat['exemple_element'],
+                             'rendez-vous')
+        # Les clés NOUVELLES (ASTK192) sont un sur-ensemble déclaré : elles
+        # ne figurent pas encore dans la réponse réelle.
+        nouvelles = set(contrat['exemple_nouveau_astk192']) - set(
+            contrat['exemple_element'])
+        self.assertEqual(nouvelles, set(contrat['cles_nouvelles_astk192']))
+
+        rep = self.api.post('/api/django/stock/rendez-vous-transporteur/', {
+            'quai': self.quai.id,
+            'date_heure_debut': rdv.date_heure_debut.isoformat(),
+            'date_heure_fin': rdv.date_heure_fin.isoformat()}, format='json')
+        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertEqual(
+            texte(rep.json()['detail']),
+            contrat['exemple_erreur_400_chevauchement']['detail'])
+
+    def _palette_scellee(self):
+        from apps.stock.services_wms import (
+            ajouter_ligne_unite_logistique, creer_unite_logistique,
+            sceller_unite_logistique,
+        )
+
+        unite = creer_unite_logistique(
+            company=self.company, type_unite='palette',
+            poids_kg=Decimal('420.5'), dimensions='120 × 80 × 145')
+        ajouter_ligne_unite_logistique(
+            company=self.company, unite=unite, produit=self.produit,
+            quantite=12)
+        return unite, lambda: sceller_unite_logistique(
+            unite=unite, user=self.admin)
+
+    def test_asn_export_et_import(self):
+        unite, sceller = self._palette_scellee()
+        base = '/api/django/stock/unites-logistiques/'
+        export = route('wms_quais', 'unite_export_asn')
+        rep = self.api.get(f'{base}{unite.id}/export-asn/')
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), export['exemple_erreur_400'])
+
+        sceller()
+        rep = self.api.get(f'{base}{unite.id}/export-asn/')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        bordereau = rep.json()
+        self.assertMemesCles(bordereau, export['exemple'], 'ASN')
+        for cle in ('unite', 'totaux'):
+            self.assertMemesCles(bordereau[cle], export['exemple'][cle], cle)
+        self.assertMemesCles(bordereau['lignes'][0],
+                             export['exemple']['lignes'][0], 'ligne ASN')
+
+        contrat = route('wms_quais', 'unites_import_asn')
+        rep = self.api.post(f'{base}import-asn/', bordereau, format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, contrat['exemple'], 'import ASN')
+        self.assertMemesCles(corps['lignes'][0],
+                             contrat['exemple']['lignes'][0], 'ligne import')
+        rep = self.api.post(f'{base}import-asn/', {'version': 'x'},
+                            format='json')
+        self.assertMemesCles(rep.json(), contrat['exemple_invalide'],
+                             'import invalide')
+        self.assertFalse(rep.json()['valide'])
+
+    def test_public_quai_checkin(self):
+        contrat = route('wms_quais', 'public_quai_checkin')
+        rdv = self._rdv()
+        url = '/api/django/public/stock/quai-checkin/'
+        rep = self.anonyme.post(url, {
+            'societe': self.company.slug, 'code': rdv.code_checkin},
+            format='json')
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertMemesCles(rep.json(), contrat['exemple'], 'check-in')
+        self.assertMemesCles(contrat['exemple_corps'],
+                             {'societe': 0, 'code': 0})
+        rep = self.anonyme.post(url, {
+            'societe': self.company.slug, 'code': 'INCONNU9'}, format='json')
+        self.assertEqual(rep.status_code, 404)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_404'])
+
+    def test_public_creneaux_et_reservation(self):
+        contrat = route('wms_quais', 'public_creneaux_disponibles')
+        rep = self.anonyme.get(self._public('creneaux-disponibles/'), {
+            'date_debut': self.demain.isoformat(), 'periode': 1})
+        self.assertEqual(rep.status_code, 200, rep.content)
+        corps = rep.json()
+        self.assertMemesCles(corps, contrat['exemple'], 'créneaux')
+        self.assertTrue(corps['creneaux'])
+        self.assertMemesCles(corps['creneaux'][0],
+                             contrat['exemple']['creneaux'][0], 'créneau')
+        rep = self.anonyme.get(self._public('creneaux-disponibles/'),
+                               {'date_debut': 'pas-une-date'})
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
+        rep = self.anonyme.get(
+            self._public('creneaux-disponibles/', token='jeton-invalide'))
+        self.assertEqual(rep.status_code, 404)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_404'])
+
+        reservation = route('wms_quais', 'public_reserver_creneau')
+        corps_post = {'quai': self.quai.id,
+                      'debut': corps['creneaux'][0]['debut']}
+        rep = self.anonyme.post(self._public('reserver-creneau/'),
+                                corps_post, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertMemesCles(rep.json(), reservation['exemple'], 'réservation')
+        rep = self.anonyme.post(self._public('reserver-creneau/'),
+                                corps_post, format='json')
+        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.json(), reservation['exemple_erreur_400'])
+        rep = self.anonyme.post(
+            self._public('reserver-creneau/', token='jeton-invalide'),
+            corps_post, format='json')
+        self.assertEqual(rep.status_code, 404)
+        self.assertEqual(rep.json(), reservation['exemple_erreur_404'])
+        for cle in ('nouveau_hors_grille_astk191',
+                    'nouveau_quota_atteint_astk192'):
+            self.assertIn('NOUVEAU', reservation[cle]['nouveau'])
