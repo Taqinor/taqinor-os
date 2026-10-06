@@ -636,14 +636,34 @@ function DemanderSignatureDialog({ documents, preselect, onClose, onDone }) {
   )
 }
 
+// ADOC13 — jetons {{ champ }} du modèle (corps + sections), dans l'ordre.
+function jetonsDuModele(modele) {
+  const textes = [modele?.corps_html || '']
+  for (const section of (Array.isArray(modele?.sections) ? modele.sections : [])) {
+    textes.push(section?.titre || '', section?.corps_html || '')
+  }
+  const vus = []
+  for (const texte of textes) {
+    for (const m of String(texte).matchAll(/\{\{\s*(\w+)\s*\}\}/g)) {
+      if (!vus.includes(m[1])) vus.push(m[1])
+    }
+  }
+  return vus
+}
+
 function GenererModeleDialog({ modele, onClose, onDone }) {
   const [saving, setSaving] = useState(false)
+  // ADOC13 — un champ par jeton ; état local au dialogue (vide à chaque
+  // ouverture, jamais un état fantôme d'une génération précédente).
+  const jetons = useMemo(() => jetonsDuModele(modele), [modele])
+  const [valeurs, setValeurs] = useState({})
 
   const generer = async () => {
     setSaving(true)
     try {
-      const res = await gedApi.genererModele(modele.id, {})
-      toast.success(res.data?.created ? 'Document généré et classé.' : 'Document déjà généré.')
+      const contexte = Object.fromEntries(jetons.map((j) => [j, valeurs[j] ?? '']))
+      const res = await gedApi.genererModele(modele.id, contexte)
+      toast.success(res.data?.created ? 'Document généré et classé.' : 'Document mis à jour (nouvelle version si le modèle a changé).')
       onDone()
     } catch (err) { toast.error(errMessage(err, 'Génération indisponible (moteur PDF).')) } finally { setSaving(false) }
   }
@@ -655,6 +675,17 @@ function GenererModeleDialog({ modele, onClose, onDone }) {
         <p className="text-sm text-muted-foreground">
           Le modèle est fusionné et le PDF est déposé dans la GED (classement automatique).
         </p>
+        {jetons.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {jetons.map((j) => (
+              <div key={j}>
+                <Label htmlFor={`gen-${j}`}>{j}</Label>
+                <Input id={`gen-${j}`} value={valeurs[j] ?? ''}
+                  onChange={(e) => setValeurs((v) => ({ ...v, [j]: e.target.value }))} />
+              </div>
+            ))}
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Annuler</Button>
           <Button onClick={generer} disabled={saving}>{saving ? 'Génération…' : 'Générer'}</Button>

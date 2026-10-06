@@ -2657,23 +2657,66 @@ def generer_document(modele, contexte, *, company, created_by=None,
     if modele.company_id is not None \
             and modele.company_id != getattr(company, 'id', company):
         raise ValueError("Le modèle doit appartenir à la même société.")
+    import hashlib
+    import json
+
+    # ADOC13 — l'ancre d'idempotence est (modèle, EMPREINTE DU CONTEXTE) :
+    # deux contextes différents (ALPHA / BRAVO) donnent deux documents ; le
+    # même contexte après correction du modèle ajoute une NOUVELLE VERSION au
+    # même document (D-ADOC-2, historique gardé) ; sans changement du modèle,
+    # le document existant est rendu tel quel.
+    def _empreinte(valeur):
+        brut = json.dumps(valeur, sort_keys=True, default=str,
+                          ensure_ascii=False)
+        return hashlib.sha256(brut.encode('utf-8')).hexdigest()
+
+    empreinte_contexte = _empreinte(contexte or {})
+    empreinte_modele = _empreinte(
+        {'corps_html': modele.corps_html, 'sections': modele.sections})
+    existant = (Document.objects
+                .filter(company=company, custom_data__contains={
+                    SOURCE_TYPE_KEY: 'ged.modeledocument',
+                    SOURCE_ID_KEY: modele.pk,
+                    'contexte_empreinte': empreinte_contexte})
+                .order_by('id').first())
+    if existant is not None and (existant.custom_data or {}).get(
+            'modele_empreinte') == empreinte_modele:
+        return existant, False
     pdf_bytes = rendre_modele(modele, contexte)
+    if existant is not None:
+        key, meta = _store_bytes(pdf_bytes, mime='application/pdf')
+        add_version(
+            existant, file_key=key, company=existant.company,
+            filename=meta.get('filename', ''), size=len(pdf_bytes),
+            mime=meta.get('mime', ''),
+            checksum=compute_checksum(pdf_bytes), uploaded_by=created_by)
+        donnees = dict(existant.custom_data or {})
+        donnees['modele_empreinte'] = empreinte_modele
+        existant.custom_data = donnees
+        existant.save(update_fields=['custom_data', 'updated_at'])
+        update_search_vector(existant)
+        return existant, False
     # GED28 : où classer ? Règle du modèle (cible templatée) sinon défauts appelant.
     cabinet_resolu, folder_resolu = resoudre_classement(
         modele, contexte,
         cabinet_defaut=cabinet_nom, folder_defaut=folder_nom)
-    return deposit_document(
-        company=company,
-        nom=nom or modele.nom,
-        source_type='ged.modeledocument',
-        source_id=modele.pk,
-        contenu_bytes=pdf_bytes,
-        mime='application/pdf',
-        description=modele.description or '',
-        cabinet_nom=cabinet_resolu,
-        folder_nom=folder_resolu,
-        created_by=created_by,
-    )
+    cabinet = ensure_cabinet(company, cabinet_resolu)
+    folder = ensure_root_folder(company, cabinet=cabinet, nom=folder_resolu)
+    document = create_document(
+        company=company, folder=folder, nom=nom or modele.nom,
+        description=modele.description or '', created_by=created_by,
+        custom_data={
+            SOURCE_TYPE_KEY: 'ged.modeledocument', SOURCE_ID_KEY: modele.pk,
+            'contexte_empreinte': empreinte_contexte,
+            'modele_empreinte': empreinte_modele})
+    key, meta = _store_bytes(pdf_bytes, mime='application/pdf')
+    add_version(
+        document, file_key=key, company=company,
+        filename=meta.get('filename', ''), size=len(pdf_bytes),
+        mime=meta.get('mime', ''), checksum=compute_checksum(pdf_bytes),
+        uploaded_by=created_by)
+    update_search_vector(document)
+    return document, True
 
 
 # ── GED29 — Filage (classement) des PDF après-vente (SAV) générés ──────────
