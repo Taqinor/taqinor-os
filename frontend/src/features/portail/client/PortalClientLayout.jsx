@@ -30,6 +30,8 @@ const NAV_CLIENT = [
   { to: '/portail/client/chantiers', label: 'Chantiers' },
   // ADOC135 — documents partagés (version en vigueur) + dépôt de justificatifs.
   { to: '/portail/client/documents', label: 'Documents' },
+  // ADOC136 — demandes SAV + fil client du ticket lié.
+  { to: '/portail/client/sav', label: 'SAV' },
 ]
 
 export default function PortalClientLayout({ children }) {

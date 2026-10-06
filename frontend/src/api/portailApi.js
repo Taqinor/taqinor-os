@@ -83,6 +83,8 @@ const portailApi = {
     liste: () => api.get('/portail/mes-demandes-sav/'),
     detail: (id) => api.get(`/portail/mes-demandes-sav/${id}/`),
     creer: (payload) => api.post('/portail/mes-demandes-sav/', payload),
+    // ADOC136 — fil client-visible du ticket lié (contrat mes_tickets_fil.json).
+    fil: (id) => api.get(`/portail/mes-demandes-sav/${id}/fil/`),
   },
   // NTPRT14 — « Mes chantiers » : timeline (jalons portail CHT10/CHT11,
   // lecture seule) + galerie photos avant/pendant/après, jamais de donnée
