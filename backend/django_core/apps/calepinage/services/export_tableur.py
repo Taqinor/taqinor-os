@@ -242,12 +242,52 @@ def tables_du_resultat(geometrie, resultat=None):
         (FEUILLES[1],) + table_chaines(resultat),
         (FEUILLES[2],) + table_nomenclature(resultat),
     ]
+    # ACAL260 — la feuille DÉDIÉE des surfaces de pose, seulement quand le
+    # document en porte : sans elles, le classeur d'aujourd'hui.
+    surfaces = _table_surfaces_de_pose(geometrie)
+    if surfaces is not None:
+        tables.append((FEUILLE_SURFACES,) + surfaces)
     for titre, entetes, lignes in tables:
-        # Colonnes Pan et Bâtiment : libellés SAISIS, hors garde (ACAL231).
-        verifier_absence_de_prix(
-            entetes, lignes,
-            colonnes_exclues=(0, 1) if titre == FEUILLES[0] else ())
+        # Colonnes Pan et Bâtiment : libellés SAISIS, hors garde (ACAL231) ;
+        # même règle pour le libellé SAISI d'une surface de pose.
+        if titre == FEUILLES[0]:
+            exclues = (0, 1)
+        elif titre == FEUILLE_SURFACES:
+            exclues = (0,)
+        else:
+            exclues = ()
+        verifier_absence_de_prix(entetes, lignes, colonnes_exclues=exclues)
     return tables
+
+
+#: ACAL260 — le titre de la feuille des surfaces de pose.
+FEUILLE_SURFACES = 'Surfaces de pose'
+
+
+def _table_surfaces_de_pose(geometrie):
+    """ACAL260 — une ligne par surface de pose (champ au sol, ombrière…) :
+    genre, modules et tables RECOPIÉS du moteur, encombrement mesuré dans le
+    repère LOCAL du moteur (m). ``None`` sans surface de pose."""
+    from .planche import LIBELLE_GENRE_SURFACE
+
+    surfaces = (geometrie or {}).get('surfaces_de_pose') or ()
+    if not surfaces:
+        return None
+    entetes = ['Surface', 'Genre', 'Modules (moteur)', 'Tables',
+               'Encombrement X (m)', 'Encombrement Y (m)', 'Repère']
+    lignes = []
+    for surface in surfaces:
+        x0, y0, x1, y1 = surface['etendue']
+        lignes.append([
+            surface['libelle'],
+            LIBELLE_GENRE_SURFACE.get(surface['kind'], surface['kind']),
+            surface['modules'],
+            len(surface['tables']),
+            round(x1 - x0, 3),
+            round(y1 - y0, 3),
+            'local (non géoréférencé)',
+        ])
+    return entetes, lignes
 
 
 # ── Les sorties, par l'utilitaire PARTAGÉ ───────────────────────────────────
