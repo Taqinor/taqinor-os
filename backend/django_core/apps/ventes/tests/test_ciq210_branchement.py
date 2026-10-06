@@ -331,6 +331,12 @@ class BuilderEconomieCiTest(_BaseDevis):
             devis=devis, produit=self.panneau, designation='Panneau 710W',
             quantite=Decimal('10'), prix_unitaire=Decimal('1272.73'),
             remise=Decimal('0'))
+        # Le builder refuse un PDF sans onduleur (règle de sécurité) : le
+        # devis résidentiel porte donc son onduleur, comme tout devis réel.
+        LigneDevis.objects.create(
+            devis=devis, produit=self.ond, designation='Onduleur 50 kW',
+            quantite=Decimal('1'), prix_unitaire=Decimal('40000'),
+            remise=Decimal('0'))
         self.assertNotIn('economie_ci', self._data(devis))
 
 
@@ -343,10 +349,13 @@ class VuesEconomieCiTest(_BaseDevis):
         self.assertEqual(rep.json()['statut'], 'calcule')
 
     def test_devis_d_une_autre_societe_404(self):
+        from apps.crm.models import Client
         from apps.ventes.models import Devis
+        client_autre = Client.objects.create(company=self.autre,
+                                             nom='Client autre CIQ210')
         etranger = Devis.objects.create(
             company=self.autre, reference='DEV-CIQ210-0080',
-            statut='brouillon', taux_tva=Decimal('20'),
+            client=client_autre, statut='brouillon', taux_tva=Decimal('20'),
             mode_installation='industriel', etude_params={})
         rep = self.api.get(
             f'/api/django/ventes/devis/{etranger.pk}/economie-ci/')
