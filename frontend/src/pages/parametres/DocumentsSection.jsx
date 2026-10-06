@@ -272,21 +272,6 @@ export default function DocumentsSection() {
         </CardContent>
       </Card>
 
-      {/* CIQ313 — CGV commerciales et industrielles (même écran) */}
-      {cgvPro && (
-        <Card>
-          <CardContent className="space-y-4 pt-4 sm:pt-5" data-testid="cgv-pro">
-            <SectionTitle label="Conditions générales commerciales et industrielles"
-              icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></>} />
-            {MODES_CGV_PRO.map(([mode, libelle]) => (
-              <EditeurCgvPro key={mode} mode={mode} libelle={libelle}
-                variante={cgvPro[mode]}
-                onChange={v => setCgvPro(c => ({ ...c, [mode]: v }))} />
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
       {/* Garanties */}
       <Card>
         <CardContent className="space-y-3 pt-4 sm:pt-5">
@@ -319,6 +304,21 @@ export default function DocumentsSection() {
           </p>
         </CardContent>
       </Card>
+
+      {/* CIQ313 — CGV commerciales et industrielles (même écran) */}
+      {cgvPro && (
+        <Card>
+          <CardContent className="space-y-4 pt-4 sm:pt-5" data-testid="cgv-pro">
+            <SectionTitle label="Conditions générales commerciales et industrielles"
+              icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></>} />
+            {MODES_CGV_PRO.map(([mode, libelle]) => (
+              <EditeurCgvPro key={mode} mode={mode} libelle={libelle}
+                variante={cgvPro[mode]}
+                onChange={v => setCgvPro(c => ({ ...c, [mode]: v }))} />
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Button type="button" size="sm" onClick={save} loading={saving}
         disabled={saving} variant={saved ? 'success' : 'default'}>
