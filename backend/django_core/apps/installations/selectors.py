@@ -22,6 +22,16 @@ def installation_for_devis(devis, company=None):
     return qs.first()
 
 
+def niveau_tension_chantier(installation):
+    """CIQ615 — niveau de tension d'un chantier (CIQ610) et sa provenance :
+    ``{'niveau': 'bt'|'mt'|None, 'source': 'mesure_visite'|'declare'|None}``.
+    Lecture seule ; ``installation`` None → tout None."""
+    return {
+        'niveau': getattr(installation, 'niveau_tension', None),
+        'source': getattr(installation, 'niveau_tension_source', None),
+    }
+
+
 def calepinage_retenu_du_chantier(installation):
     """CAL209/CAL245 — le bloc « calepinage retenu » d'UN chantier, ou None.
 

@@ -76,5 +76,9 @@ class DeclarationHorsReseauTest(SimpleTestCase):
             _Devis(), diagram_params={'n_panneaux': 10,
                                       'puissance_panneau_wc': 500},
             regime_8221='declaration_bt')
-        self.assertEqual(data['raccordement'], 'BT')
+        # CIQ615 — sans niveau mesuré ni déclaré : champ vide (jamais déduit
+        # des phases), pièce « niveau à relever » listée.
+        self.assertEqual(data['raccordement'], '')
+        self.assertIn('niveau_tension_a_relever',
+                      {p['code'] for p in data['pieces']})
         self.assertNotIn('motif_pieces', data)
