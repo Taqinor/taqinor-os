@@ -13,6 +13,23 @@ vi.mock('../../../api/portailApi', () => ({
 import portailApi from '../../../api/portailApi'
 import DocumentsClientPortailAdmin from './DocumentsClientPortailAdmin'
 
+// ADOC32 — l'API sert l'enveloppe DRF réelle {count, next, results} (jamais un
+// tableau nu) ; `pagine` simule une liste de `total` lignes servie par pages de 50.
+const enveloppe = (results) => ({ count: results.length, next: null, previous: null, results })
+const pagine = (total, ligne, taille = 50) => (params) => {
+  const page = params?.page ?? 1
+  const debut = (page - 1) * taille
+  const fin = Math.min(total, debut + taille)
+  return Promise.resolve({
+    data: {
+      count: total,
+      next: fin < total ? `/api/django/portail/x/?page=${page + 1}` : null,
+      previous: page > 1 ? `/api/django/portail/x/?page=${page - 1}` : null,
+      results: Array.from({ length: Math.max(0, fin - debut) }, (_, i) => ligne(debut + i + 1)),
+    },
+  })
+}
+
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 function renderPage(ui) {
@@ -25,12 +42,12 @@ describe('DocumentsClientPortailAdmin — PACT99', () => {
   // téléchargement GED authentifié.
   it('affiche la liste avec type, libellé et statut de traitement', async () => {
     portailApi.admin.documentsClient.liste.mockResolvedValue({
-      data: [{
+      data: enveloppe([{
         id: 1, client_id: 12, lead_id: null, type_document: 'facture_onee',
         libelle: 'Facture ONEE juillet', fichier_present: true,
         lien_ged: '/api/django/ged/versions/77/apercu/', document_ged: 55,
         traite: false, date_depot: '2026-08-01T08:00:00Z',
-      }],
+      }]),
     })
     const { container } = renderPage(<DocumentsClientPortailAdmin />)
     await waitFor(() => expect(
@@ -44,11 +61,11 @@ describe('DocumentsClientPortailAdmin — PACT99', () => {
 
   it("ne rend aucun lien quand la GED n'a pas (encore) le document", async () => {
     portailApi.admin.documentsClient.liste.mockResolvedValue({
-      data: [{
+      data: enveloppe([{
         id: 2, client_id: 12, lead_id: null, type_document: 'plan',
         libelle: 'Plan sans GED', fichier_present: true, lien_ged: null,
         document_ged: null, traite: false, date_depot: '2026-08-01T08:00:00Z',
-      }],
+      }]),
     })
     const { container } = renderPage(<DocumentsClientPortailAdmin />)
     await waitFor(() => expect(
@@ -58,18 +75,18 @@ describe('DocumentsClientPortailAdmin — PACT99', () => {
   })
 
   it('affiche un état vide quand aucun document', async () => {
-    portailApi.admin.documentsClient.liste.mockResolvedValue({ data: [] })
+    portailApi.admin.documentsClient.liste.mockResolvedValue({ data: enveloppe([]) })
     renderPage(<DocumentsClientPortailAdmin />)
     expect((await screen.findAllByText('Aucun document')).length).toBeGreaterThan(0)
   })
 
   it('marque un document traité sans dupliquer le fichier déjà déposé', async () => {
     portailApi.admin.documentsClient.liste.mockResolvedValue({
-      data: [{
+      data: enveloppe([{
         id: 3, client_id: 9, lead_id: null, type_document: 'plan',
         libelle: 'Plan toiture', fichier: '', document_ged: null,
         traite: false, date_depot: '2026-08-01T08:00:00Z',
-      }],
+      }]),
     })
     portailApi.admin.documentsClient.marquerTraite.mockResolvedValue({ data: {} })
     renderPage(<DocumentsClientPortailAdmin />)
@@ -82,14 +99,23 @@ describe('DocumentsClientPortailAdmin — PACT99', () => {
 
   it("n'affiche aucune action pour un document déjà traité", async () => {
     portailApi.admin.documentsClient.liste.mockResolvedValue({
-      data: [{
+      data: enveloppe([{
         id: 5, client_id: 2, lead_id: null, type_document: 'autre',
         libelle: 'Justificatif', fichier: '', document_ged: null,
         traite: true, date_depot: '2026-08-01T08:00:00Z',
-      }],
+      }]),
     })
     renderPage(<DocumentsClientPortailAdmin />)
     await waitFor(() => expect(screen.getAllByText('Justificatif').length).toBeGreaterThan(0))
     expect(screen.queryByRole('button', { name: /Marquer traité/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('ADOC32 — toutes les pages (documents client)', () => {
+  it('60 lignes sur deux pages', async () => {
+    portailApi.admin.documentsClient.liste.mockImplementation(pagine(60, (n) => ({ id: n, client_id: 12, lead_id: null, type_document: 'facture_onee', libelle: `Document ${n}`, fichier_present: false, lien_ged: null, document_ged: null, traite: false, date_depot: '2026-08-01T08:00:00Z' })))
+    renderPage(<DocumentsClientPortailAdmin />)
+    expect((await screen.findAllByText('1–25 sur 60')).length).toBeGreaterThan(0)
+    expect(portailApi.admin.documentsClient.liste).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }))
   })
 })

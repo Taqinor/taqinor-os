@@ -27,6 +27,23 @@ import portailApi from '../../../api/portailApi'
 import crmApi from '../../../api/crmApi'
 import ComptesPortailAdmin from './ComptesPortailAdmin'
 
+// ADOC32 — l'API sert l'enveloppe DRF réelle {count, next, results} (jamais un
+// tableau nu) ; `pagine` simule une liste de `total` lignes servie par pages de 50.
+const enveloppe = (results) => ({ count: results.length, next: null, previous: null, results })
+const pagine = (total, ligne, taille = 50) => (params) => {
+  const page = params?.page ?? 1
+  const debut = (page - 1) * taille
+  const fin = Math.min(total, debut + taille)
+  return Promise.resolve({
+    data: {
+      count: total,
+      next: fin < total ? `/api/django/portail/x/?page=${page + 1}` : null,
+      previous: page > 1 ? `/api/django/portail/x/?page=${page - 1}` : null,
+      results: Array.from({ length: Math.max(0, fin - debut) }, (_, i) => ligne(debut + i + 1)),
+    },
+  })
+}
+
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 // DataTable lit la densité via useDensity → <ThemeProvider> et persiste ses
@@ -43,11 +60,11 @@ describe('ComptesPortailAdmin — PACT96', () => {
   // hostile) pour prouver que l'écran ne le rend JAMAIS, même s'il lui arrive.
   it('affiche la liste des comptes avec email, aperçu du jeton et statut actif', async () => {
     portailApi.admin.comptes.liste.mockResolvedValue({
-      data: [{
+      data: enveloppe([{
         id: 1, client: 12, email: 'client@exemple.ma',
         token_acces: 'tok-abc123', token_apercu: '••••c123',
         actif: true, derniere_connexion: null, date_creation: '2026-08-01T10:00:00Z',
-      }],
+      }]),
     })
     renderPage(<ComptesPortailAdmin />)
     await waitFor(() => expect(
@@ -62,13 +79,13 @@ describe('ComptesPortailAdmin — PACT96', () => {
   })
 
   it('affiche un état vide quand aucun compte', async () => {
-    portailApi.admin.comptes.liste.mockResolvedValue({ data: [] })
+    portailApi.admin.comptes.liste.mockResolvedValue({ data: enveloppe([]) })
     renderPage(<ComptesPortailAdmin />)
     expect((await screen.findAllByText('Aucun compte portail')).length).toBeGreaterThan(0)
   })
 
   it('crée un compte pour le client choisi', async () => {
-    portailApi.admin.comptes.liste.mockResolvedValue({ data: [] })
+    portailApi.admin.comptes.liste.mockResolvedValue({ data: enveloppe([]) })
     crmApi.getClients.mockResolvedValue({ data: [{ id: 5, nom: 'ACME Solaire' }] })
     portailApi.admin.comptes.creer.mockResolvedValue({ data: {} })
     const user = userEvent.setup()
@@ -82,10 +99,10 @@ describe('ComptesPortailAdmin — PACT96', () => {
 
   it('révoque un compte actif via la bascule (jamais de filtrage client)', async () => {
     portailApi.admin.comptes.liste.mockResolvedValue({
-      data: [{
+      data: enveloppe([{
         id: 3, client: 9, email: 'a@b.ma', token_acces: 'tok-xyz',
         actif: true, derniere_connexion: null, date_creation: '2026-08-01T10:00:00Z',
-      }],
+      }]),
     })
     portailApi.admin.comptes.patch.mockResolvedValue({ data: {} })
     renderPage(<ComptesPortailAdmin />)
@@ -97,10 +114,10 @@ describe('ComptesPortailAdmin — PACT96', () => {
 
   it('provisionne un accès et affiche le message renvoyé par le serveur', async () => {
     portailApi.admin.comptes.liste.mockResolvedValue({
-      data: [{
+      data: enveloppe([{
         id: 7, client: 4, email: 'c@d.ma', token_acces: 'tok-777',
         actif: true, derniere_connexion: null, date_creation: '2026-08-01T10:00:00Z',
-      }],
+      }]),
     })
     portailApi.admin.comptes.provisionnerAcces.mockResolvedValue({
       data: { detail: 'Accès portail créé — mot de passe temporaire envoyé par email.' },
@@ -114,7 +131,7 @@ describe('ComptesPortailAdmin — PACT96', () => {
 
 describe('ERR-QAH-PORTAIL-CLIENTS-TRONQUES-50 — tous les clients sont proposés', () => {
   it('suit la pagination : les clients au-delà de la page 1 sont sélectionnables', async () => {
-    portailApi.admin.comptes.liste.mockResolvedValue({ data: [] })
+    portailApi.admin.comptes.liste.mockResolvedValue({ data: enveloppe([]) })
     const page = (n, ids) => ({
       data: {
         count: 3,
@@ -131,5 +148,36 @@ describe('ERR-QAH-PORTAIL-CLIENTS-TRONQUES-50 — tous les clients sont proposé
     await user.click(screen.getByRole('combobox', { name: 'Client' }))
     expect(await screen.findByRole('option', { name: 'Client 3' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'Client 1' })).toBeInTheDocument()
+  })
+})
+
+describe('ADOC32 — toutes les pages des comptes portail', () => {
+  it('57 comptes sur deux pages', async () => {
+    // Ordering serveur -id : la page 1 porte les ids 57..8, la page 2 les 7..1.
+    // Le plus ancien (id 1) n'était donc JAMAIS affiché ni révocable.
+    const revoques = new Set()
+    portailApi.admin.comptes.liste.mockImplementation(pagine(57, (n) => {
+      const id = 58 - n
+      return {
+        id, client: 100 + id, email: `c${id}@x.ma`, token_apercu: '••••0000',
+        actif: !revoques.has(id), derniere_connexion: null, date_creation: '2026-08-01T10:00:00Z',
+      }
+    }))
+    portailApi.admin.comptes.patch.mockImplementation((id, payload) => {
+      if (payload.actif === false) revoques.add(id)
+      return Promise.resolve({ data: {} })
+    })
+    renderPage(<ComptesPortailAdmin />)
+    expect((await screen.findAllByText('1–25 sur 57')).length).toBeGreaterThan(0)
+    expect(portailApi.admin.comptes.liste).toHaveBeenCalledWith({ page: 2 })
+    // Aller à la dernière page de l'écran : le plus ancien compte est là.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Page suivante' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Page suivante' })[0])
+    await waitFor(() => expect(screen.getAllByText('c1@x.ma').length).toBeGreaterThan(0))
+    fireEvent.click(screen.getAllByRole('switch', { name: 'Révoquer le compte c1@x.ma' })[0])
+    await waitFor(() => expect(portailApi.admin.comptes.patch)
+      .toHaveBeenCalledWith(1, { actif: false }))
+    // Persistance : le rechargement relit TOUTES les pages et le statut révoqué.
+    await waitFor(() => expect(portailApi.admin.comptes.liste.mock.calls.length).toBeGreaterThanOrEqual(4))
   })
 })

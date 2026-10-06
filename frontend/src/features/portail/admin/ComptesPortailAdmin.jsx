@@ -22,6 +22,8 @@ import {
   SelectValue, SelectContent, SelectItem, Form, FormField, DataTable, toast,
 } from '../../../ui'
 
+const toutesLesLignes = (data) => (Array.isArray(data) ? data : (data?.results ?? []))
+
 const formatDateHeure = (iso) => formatDateTime(iso)
 
 export default function ComptesPortailAdmin() {
@@ -32,8 +34,13 @@ export default function ComptesPortailAdmin() {
   const [clientChoisi, setClientChoisi] = useState('')
   const [busyId, setBusyId] = useState(null)
 
-  const fetchComptes = () => portailApi.admin.comptes.liste()
-    .then((r) => setRows(r.data?.results ?? r.data ?? []))
+  // ADOC32 — TOUTES les pages (enveloppe DRF {count, next, results}) : un
+  // compte au-delà de la page 1 (ordering -id ⇒ les plus anciens) restait
+  // invisible donc impossible à révoquer.
+  const fetchComptes = () => fetchAllPages(
+    (page) => portailApi.admin.comptes.liste({ page }).then((r) => r.data),
+  )
+    .then((data) => setRows(toutesLesLignes(data)))
     .catch(() => setLoadError(true))
     .finally(() => setLoading(false))
 

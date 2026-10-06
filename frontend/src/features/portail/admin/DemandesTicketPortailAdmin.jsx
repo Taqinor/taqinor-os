@@ -11,6 +11,7 @@ import { formatDateTime } from '../../../lib/format'
 import { Check, X, Ticket as TicketIcon } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import portailApi from '../../../api/portailApi'
+import { fetchAllPages } from '../../../utils/fetchAllPages'
 import {
   Button, Card, EmptyState, Skeleton, StatusPill, NumberInput, DataTable, toast,
 } from '../../../ui'
@@ -25,6 +26,8 @@ const STATUT_TONES = {
   soumise: 'warning', prise_en_charge: 'info', resolue: 'success', refusee: 'danger',
 }
 
+const toutesLesLignes = (data) => (Array.isArray(data) ? data : (data?.results ?? []))
+
 export default function DemandesTicketPortailAdmin() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
@@ -32,8 +35,11 @@ export default function DemandesTicketPortailAdmin() {
   const [edit, setEdit] = useState(null) // { id, ticketId }
   const [busyId, setBusyId] = useState(null)
 
-  const fetchDemandesTicket = () => portailApi.admin.demandesTicket.liste()
-    .then((r) => setRows(r.data?.results ?? r.data ?? []))
+  // ADOC32 — toutes les pages de l'enveloppe DRF, jamais la seule page 1.
+  const fetchDemandesTicket = () => fetchAllPages(
+    (page) => portailApi.admin.demandesTicket.liste({ page }).then((r) => r.data),
+  )
+    .then((data) => setRows(toutesLesLignes(data)))
     .catch(() => setLoadError(true))
     .finally(() => setLoading(false))
 

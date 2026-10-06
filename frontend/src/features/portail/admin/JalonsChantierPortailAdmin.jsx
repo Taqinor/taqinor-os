@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Check, Milestone } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
+import { fetchAllPages } from '../../../utils/fetchAllPages'
 import installationsApi from '../../../api/installationsApi'
 import {
   Button, Card, EmptyState, Skeleton, StatusPill, Input, NumberInput,
@@ -17,6 +18,8 @@ import {
 } from '../../../ui'
 
 const formatDate = (iso) => (iso ? new Date(iso).toLocaleDateString('fr-FR') : '—')
+
+const toutesLesLignes = (data) => (Array.isArray(data) ? data : (data?.results ?? []))
 
 export default function JalonsChantierPortailAdmin() {
   const [rows, setRows] = useState([])
@@ -28,8 +31,11 @@ export default function JalonsChantierPortailAdmin() {
 
   const [fieldErrors, setFieldErrors] = useState({})
 
-  const fetchJalons = () => portailApi.admin.jalonsChantier.liste()
-    .then((r) => setRows(r.data?.results ?? r.data ?? []))
+  // ADOC32 — toutes les pages de l'enveloppe DRF, jamais la seule page 1.
+  const fetchJalons = () => fetchAllPages(
+    (page) => portailApi.admin.jalonsChantier.liste({ page }).then((r) => r.data),
+  )
+    .then((data) => setRows(toutesLesLignes(data)))
     .catch(() => setLoadError(true))
     .finally(() => setLoading(false))
 
@@ -41,8 +47,9 @@ export default function JalonsChantierPortailAdmin() {
 
   useEffect(() => { fetchJalons() }, [])
   useEffect(() => {
-    installationsApi.getInstallations()
-      .then((r) => setChantiers(r.data?.results ?? r.data ?? []))
+    // ADOC32 — le sélecteur propose TOUS les chantiers (toutes les pages).
+    fetchAllPages((page) => installationsApi.getInstallations({ page }).then((r) => r.data))
+      .then((data) => setChantiers(toutesLesLignes(data)))
       .catch(() => {})
   }, [])
 
