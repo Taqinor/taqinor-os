@@ -1288,6 +1288,28 @@ def _inverser_ventilation_entree(company, produit, *, emplacement,
             lot.save(update_fields=['quantite_restante', 'quantite_recue'])
 
 
+def _lever_blocages_reception_annulee(reception, user):
+    """ASTK58 — lève les ``BlocageQualite`` EN_QUARANTAINE issus d'une
+    réception annulée (statut LEVEE, motif complété « réception annulée »).
+    Renvoie le nombre de blocages levés. Dans la transaction de l'appelant."""
+    from django.utils import timezone
+    from .models_wms import BlocageQualite
+
+    blocages = list(BlocageQualite.objects.select_for_update().filter(
+        company=reception.company, reception=reception,
+        statut=BlocageQualite.Statut.EN_QUARANTAINE))
+    for blocage in blocages:
+        blocage.statut = BlocageQualite.Statut.LEVEE
+        blocage.leve_par = user
+        blocage.date_levee = timezone.now()
+        blocage.motif = (
+            f'{blocage.motif} — réception annulée'.strip(' —')
+            if blocage.motif else 'Réception annulée')
+        blocage.save(update_fields=[
+            'statut', 'leve_par', 'date_levee', 'motif'])
+    return len(blocages)
+
+
 def annuler_reception_confirmee(reception, user):
     """YSTCK6 — annule une réception CONFIRMÉE par une CONTRE-PASSATION
     (reversal référencé, jamais un blocage ni une suppression — pattern SAP
@@ -1389,6 +1411,12 @@ def annuler_reception_confirmee(reception, user):
                 ligne_cmd.quantite_recue = max(
                     ligne_cmd.quantite_recue - qte, 0)
                 ligne_cmd.save(update_fields=['quantite_recue'])
+        # ASTK58 — la quarantaine posée par le routage qualité de CETTE
+        # réception (NTWMS34) porte sur une marchandise qui vient d'être
+        # contre-passée : le blocage est levé avec le motif « réception
+        # annulée » (sinon quantite_disponible_hors_quarantaine retranche
+        # un blocage fantôme d'un stock qui ne le contient plus).
+        _lever_blocages_reception_annulee(reception, user)
         reception.statut = ReceptionFournisseur.Statut.ANNULE
         reception.note = (
             f'{reception.note}\n[{timezone.now().date().isoformat()}] '
