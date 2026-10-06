@@ -42,13 +42,14 @@ def compute_commissioning_result(*, isolement_ok=None, polarite_ok=None,
     ``has_defective_iv`` : au moins une courbe I-V hors tolérance.
     Renvoie une valeur de ``CommissioningTest.Resultat``.
     """
+    # CIQ625 — LA règle vit en fondation (``core.recette.resultat``),
+    # partagée avec la fiche chantier (installations) : ventes y délègue.
+    from core.recette.resultat import resultat_recette
     checks = [isolement_ok, polarite_ok, continuite_terre_ok,
               controle_onduleur_ok]
-    if any(c is False for c in checks) or has_defective_iv:
-        return 'non_conforme'
-    if all(c is True for c in checks):
-        return 'conforme'
-    return 'en_cours'
+    if has_defective_iv:
+        checks.append(False)
+    return resultat_recette(checks)
 
 
 def evaluate_iv_curve(*, pmax_mesure_w=None, pmax_attendu_w=None,

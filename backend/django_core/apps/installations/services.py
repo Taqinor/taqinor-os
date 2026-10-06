@@ -5092,3 +5092,57 @@ def vue_portail_recette_pompage(recette, comparaison=None):
         'commentaire_ecart': recette.commentaire_ecart,
         'resultat': recette.resultat,
     }
+
+
+# ── CIQ625 — le résultat de la recette IEC 62446-1 est CALCULÉ ──────────────
+
+#: Les ESSAIS de la fiche ``CommissioningRecord`` (booléens) qui font son
+#: résultat (``core.recette.resultat``). Un relevé I-V en défaut est un essai
+#: faux de plus.
+ESSAIS_RECETTE = (
+    'doc_dossier_ok', 'doc_schema_ok', 'doc_datasheets_ok',
+    'visuel_structure_ok', 'visuel_cablage_ok', 'visuel_terre_ok',
+    'continuite_terre_ok', 'polarite_ok', 'isolement_ok', 'performance_ok',
+    'securite_coupure_ok', 'securite_signalisation_ok',
+)
+
+
+def essais_recette(record, modifications=None):
+    """CIQ625 — la liste des essais de la fiche APRÈS ``modifications``
+    (champs reçus d'un PATCH, ``None`` = l'état stocké) + un essai faux par
+    relevé I-V en défaut."""
+    modifications = modifications or {}
+    essais = [modifications.get(champ, getattr(record, champ, None))
+              for champ in ESSAIS_RECETTE]
+    if getattr(record, 'pk', None) is not None and \
+            record.iv_readings.filter(defaut_detecte=True).exists():
+        essais.append(False)
+    return essais
+
+
+def resultat_recette_fiche(record, modifications=None, choix=None):
+    """CIQ625 — le résultat que la fiche DOIT porter : calculé par
+    ``core.recette.resultat`` ; le seul choix humain admis est ``reserves``
+    (tous les essais vrais). Un ``reserves`` déjà posé est CONSERVÉ tant que
+    les essais restent tous vrais (un PATCH sans ``resultat`` ne le rétrograde
+    pas). Lève ``core.recette.resultat.ReservesRefusees`` sur un ``reserves``
+    DEMANDÉ alors qu'un essai n'est pas vrai."""
+    from core.recette.resultat import (
+        CONFORME, RESERVES, resultat_avec_choix, resultat_recette,
+    )
+    essais = essais_recette(record, modifications)
+    if choix is None and getattr(record, 'resultat', None) == RESERVES \
+            and resultat_recette(essais) == CONFORME:
+        choix = RESERVES
+    return resultat_avec_choix(essais, choix)
+
+
+def recalculer_resultat_recette(record):
+    """CIQ625 — recalcule et persiste le résultat après une écriture qui ne
+    passe pas par le sérialiseur (relevé I-V ajouté). Aucun statut de devis
+    touché (règle #4). Rend le résultat."""
+    resultat = resultat_recette_fiche(record)
+    if record.resultat != resultat:
+        record.resultat = resultat
+        record.save(update_fields=['resultat'])
+    return resultat

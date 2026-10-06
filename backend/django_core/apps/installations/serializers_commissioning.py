@@ -47,6 +47,26 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
             'ventes_recette_id', 'iv_readings',
         ]
 
+    def validate(self, attrs):
+        """CIQ625 — ``resultat`` est CALCULÉ par le serveur à chaque écriture
+        (``core.recette.resultat`` : un essai faux ⇒ non conforme, tous vrais
+        ⇒ conforme, sinon en cours) : un ``resultat`` envoyé par le client est
+        IGNORÉ, sauf le seul choix humain « conforme avec réserves »
+        (``reserves``), admis seulement quand TOUS les essais sont vrais —
+        sinon 400 FR nommant ``resultat``."""
+        from core.recette.resultat import RESERVES, ReservesRefusees
+
+        from .services import resultat_recette_fiche
+        demande = attrs.pop('resultat', None)
+        fiche = (self.instance if self.instance is not None
+                 else CommissioningRecord())
+        try:
+            attrs['resultat'] = resultat_recette_fiche(
+                fiche, attrs, choix=RESERVES if demande == RESERVES else None)
+        except ReservesRefusees as exc:
+            raise serializers.ValidationError({'resultat': str(exc)})
+        return attrs
+
     def get_instrument_nom(self, obj):
         instrument = obj.instrument
         return instrument.nom if instrument else None
