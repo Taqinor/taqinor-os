@@ -15,7 +15,7 @@ rapport au CRUD de base.
 
 import logging
 
-from rest_framework import filters, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, ValidationError
 from rest_framework.response import Response
@@ -348,13 +348,62 @@ class DemandeTicketPortailViewSet(_PortailBaseViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation']
 
+    #: ADOC118 — refus UNIQUE (octet-identique) pour tout ticket qui n'est pas
+    #: un ticket de CE client dans CETTE société : un id d'une autre société
+    #: ne doit pas se distinguer d'un id inexistant (aucune énumération).
+    TICKET_INCONNU = 'Ticket inconnu pour ce client.'
+
+    def _resoudre_ticket(self, demande, brut):
+        """ADOC118 — résolution commune à ``prendre_en_charge`` et
+        ``lier-ticket`` : le ticket doit exister dans la société de la demande
+        (``apps.sav.selectors.ticket_scoped``, lecture cross-app) ET appartenir
+        au même client. Renvoie le ticket, ou ``None`` (→ 400 nommé)."""
+        from apps.sav.selectors import ticket_scoped
+
+        try:
+            ticket_id = int(str(brut).strip())
+        except (TypeError, ValueError):
+            return None
+        if ticket_id <= 0 or not demande.client_id:
+            return None
+        ticket = ticket_scoped(demande.company, ticket_id)
+        if ticket is None or ticket.client_id != demande.client_id:
+            return None
+        return ticket
+
+    def _refus_ticket(self):
+        return Response({'detail': self.TICKET_INCONNU},
+                        status=status.HTTP_400_BAD_REQUEST)
+
     @action(detail=True, methods=['post'])
     def prendre_en_charge(self, request, pk=None):
         demande = self.get_object()
-        ticket_id = request.data.get('ticket_id')
+        brut = request.data.get('ticket_id')
+        ticket = None
+        if brut not in (None, ''):
+            ticket = self._resoudre_ticket(demande, brut)
+            if ticket is None:
+                return self._refus_ticket()
         if demande.statut == DemandeTicketPortail.Statut.SOUMISE:
             demande.statut = DemandeTicketPortail.Statut.PRISE_EN_CHARGE
-            if ticket_id:
-                demande.ticket_id = ticket_id
+            if ticket is not None:
+                demande.ticket_id = ticket.id
             demande.save(update_fields=['statut', 'ticket_id'])
+        return Response(self.get_serializer(demande).data)
+
+    @action(detail=True, methods=['post'], url_path='lier-ticket')
+    def lier_ticket(self, request, pk=None):
+        """ADOC118 — corrige le ticket SAV lié tant que la demande n'est ni
+        résolue ni refusée (409 sinon) ; même borne que la prise en charge."""
+        demande = self.get_object()
+        if demande.statut in (DemandeTicketPortail.Statut.RESOLUE,
+                              DemandeTicketPortail.Statut.REFUSEE):
+            return Response(
+                {'detail': "Demande close : le ticket lié n'est plus modifiable."},
+                status=status.HTTP_409_CONFLICT)
+        ticket = self._resoudre_ticket(demande, request.data.get('ticket_id'))
+        if ticket is None:
+            return self._refus_ticket()
+        demande.ticket_id = ticket.id
+        demande.save(update_fields=['ticket_id'])
         return Response(self.get_serializer(demande).data)

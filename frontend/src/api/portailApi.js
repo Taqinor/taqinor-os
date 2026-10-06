@@ -157,6 +157,10 @@ const portailApi = {
       liste: (params) => api.get('/portail/demandes-ticket-portail/', { params }),
       prendreEnCharge: (id, payload) =>
         api.post(`/portail/demandes-ticket-portail/${id}/prendre_en_charge/`, payload ?? {}),
+      // ADOC118 — corrige le ticket SAV lié (même borne serveur : ticket de
+      // CE client dans CETTE société ; 409 sur une demande résolue/refusée).
+      lierTicket: (id, payload) =>
+        api.post(`/portail/demandes-ticket-portail/${id}/lier-ticket/`, payload ?? {}),
     },
   },
 }
