@@ -48,13 +48,14 @@ import time
 
 from .chaine_pertes import (
     CLE_CHARGE, CLE_CLIENT_PVGIS, CLE_FOURNISSEUR_METEO, CLE_SORTIES_PAR_PAN,
-    MOTIF_TMY_HORIZONTAL, MeteoIndecise, appliquer_chaine, decision_meteo,
+    MOTIF_TMY_HORIZONTAL, MeteoIndecise, appliquer_chaine,
+    completude_de_la_chaine, decision_meteo,
 )
 from .etapes.autoconsommation import bloc_autoconsommation
 from .etapes.batterie import bloc_batterie
 from .etapes.hors_reseau import bloc_hors_reseau
 from .etapes.vieillissement import tableau_pluriannuel
-from .incertitude import bloc_incertitude
+from .incertitude import bloc_incertitude, masquer_depassements
 from .performance import bloc_performance
 from .pvgis_serie import (
     BASE_PAR_DEFAUT, ClientPvgis, EntreeInvalide, PvgisIndisponible,
@@ -1068,6 +1069,11 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     blocs['ombrage'] = ecrit['ombrage']
     for texte in (ecrit.get('avertissements') or []):
         _ajouter_avertissement(blocs, texte)
+    # ACAL49 — la « borne haute » ouvre les avertissements (D-ACAL-7).
+    entete = completude_de_la_chaine(cascade, contexte)['avertissement']
+    if entete and entete in blocs.get('avertissements', ()):
+        blocs['avertissements'].remove(entete)
+        blocs['avertissements'].insert(0, entete)
     # Le compteur d'appels RÉELS : l'ordonnanceur compte ses demandes, le
     # fournisseur compte ce qui est réellement parti sur le réseau.
     blocs['meteo']['appels_pvgis'] = compteur['appels']
@@ -1122,6 +1128,10 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     blocs['incertitude'] = bloc_incertitude(
         total.get('p50_kwh'), totaux_par_annee=annuels,
         reglages=contexte['reglages_simulation'])
+    # ACAL49 — P75, P90 et P95 masqués ENSEMBLE tant que le socle manque :
+    # la complétude est celle que la chaîne a publiée, jamais recalculée.
+    masquer_depassements(blocs['incertitude'],
+                         total.get('performance_ratio_motif'))
     # ACAL53 — le PR est UNE définition : celui de ``production.total`` ;
     # ``bloc_performance`` ne garde en propre que sa variante corrigée en
     # température, lue sur la série du site au kWc total.

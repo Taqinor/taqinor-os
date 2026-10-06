@@ -84,19 +84,9 @@ EN_ATTENTE_DETAIL = {
 #: (les deux échantillons publient les mêmes blocs).
 EN_ATTENTE_SIMULATION = {
     'simulation.meteo_fichier': 'ACAL146',
-    'cascade.etapes_omises': 'ACAL49',
     'cascade.irradiation_incidente_kwh_m2': 'ACAL128',
     'meteo.fichier': 'ACAL146',
     'meteo.heure.provenance_fuseau': 'ACAL129',
-    'ombrage.par_pan[].cascade.etapes_omises': 'ACAL49',
-    'production.total.complete': 'ACAL49',
-    'production.total.socle_manquant': 'ACAL49',
-    'production.total.mention': 'ACAL49',
-    'production.total.performance_ratio_motif': 'ACAL49',
-    'production.total.p75_kwh_motif': 'ACAL49',
-    'production.total.p90_kwh_motif': 'ACAL49',
-    'production.total.p95_kwh_motif': 'ACAL49',
-    'production.total.p95_kwh': 'ACAL49',
 }
 
 #: Clés propres à ``calepinage_resultat.json`` posées par ACAL8 (M0), en plus

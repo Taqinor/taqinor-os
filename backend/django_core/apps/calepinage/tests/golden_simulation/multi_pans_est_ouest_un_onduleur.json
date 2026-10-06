@@ -9,9 +9,9 @@
   "total": {
    "kwc": 11.36,
    "p50_kwh": 97.5,
-   "p75_kwh": 95.5,
-   "p90_kwh": 93.6,
-   "performance_ratio": 0.556,
+   "p75_kwh": null,
+   "p90_kwh": null,
+   "performance_ratio": null,
    "specific_yield_kwh_kwc": 8.6,
    "total_loss_pct": 44.4
   },
@@ -20,15 +20,15 @@
     "pan": "PAN-1",
     "kwc": 7.1,
     "p50_kwh": 56.9,
-    "p75_kwh": 55.7,
-    "p90_kwh": 54.6
+    "p75_kwh": null,
+    "p90_kwh": null
    },
    {
     "pan": "PAN-2",
     "kwc": 4.26,
     "p50_kwh": 40.6,
-    "p75_kwh": 39.8,
-    "p90_kwh": 39.0
+    "p75_kwh": null,
+    "p90_kwh": null
    }
   ],
   "cascade": [

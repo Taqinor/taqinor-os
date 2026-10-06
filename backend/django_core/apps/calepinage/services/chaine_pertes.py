@@ -395,6 +395,9 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'PORTEE_ANNEE_MOYENNE', 'CLE_ANNEES_FENETRE',
            'RENDEMENT_SPECIFIQUE_PLAUSIBLE_KWH_KWC',
            'MOTIF_RENDEMENT_INVRAISEMBLABLE', 'annees_de_la_fenetre',
+           # ACAL49 — la complétude (D-ACAL-7).
+           'SOCLE_PHYSIQUE', 'MENTION_BORNE_HAUTE', 'MOTIF_SOCLE_MANQUANT',
+           'AVERTISSEMENT_BORNE_HAUTE', 'completude_de_la_chaine',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -524,6 +527,9 @@ def appliquer_chaine(serie, contexte=None, resultat=None, *, phase=None,
         'total_pct': _total_pct(premiere, dernier_connu, appliquees),
         'postes_non_sources': _postes_non_sources(contexte),
         'hash_entree': contexte.get('hash_entree'),
+        # ACAL49 — les étapes OMISES de cette chaîne, dans l'ordre.
+        'etapes_omises': [etape['etape'] for etape in publiees
+                          if etape['motif_omission']],
     }
     if isinstance(resultat, dict):
         _publier(resultat, courante, contexte, cascade)
@@ -625,12 +631,24 @@ def cascade_de_la_somme(cascades_pan, cascade_onduleur, cascade_site,
         for poste in cascade.get('postes_non_sources') or ():
             if poste not in postes:
                 postes.append(poste)
+    # ACAL49 — les omissions de TOUTES les chaînes : une étape omise sur un
+    # seul pan compte (elle est « appliquée » dans la somme, mais le pan
+    # qui l'a omise publie une borne haute).
+    omises = set()
+    for cascade in list(cascades_pan) + [cascade_onduleur or {},
+                                         cascade_site or {}]:
+        omises.update(etape.get('etape') for etape in
+                      (cascade.get('etapes') or ())
+                      if etape.get('motif_omission'))
+    omises.update(etape['etape'] for etape in publiees
+                  if etape.get('motif_omission'))
     return {
         'etapes': publiees,
         'ordre': [etape['etape'] for etape in publiees],
         'total_pct': _total_pct(premiere, derniere, appliquees),
         'postes_non_sources': postes,
         'hash_entree': contexte.get('hash_entree'),
+        'etapes_omises': [nom for nom in ORDRE_ETAPES if nom in omises],
     }
 
 
@@ -682,7 +700,9 @@ def _cascade_du_pan(cascade):
             if etape.get('kwh_apres') is not None:
                 derniere = etape['kwh_apres']
     return {'etapes': etapes,
-            'total_pct': _total_pct(premiere, derniere, appliquees)}
+            'total_pct': _total_pct(premiere, derniere, appliquees),
+            'etapes_omises': [etape['etape'] for etape in etapes
+                              if etape.get('motif_omission')]}
 
 
 def _perte_ombrage_pct(cascade):
@@ -1079,6 +1099,20 @@ CLE_SORTIES_PAR_PAN = 'sorties_par_pan'
 PORTEE_ANNEE_MOYENNE = 'annee_moyenne'
 CLE_ANNEES_FENETRE = 'annees_fenetre'
 
+#: ACAL49 / D-ACAL-7 — LE SOCLE PHYSIQUE : les postes sans lesquels le P50
+#: n'est qu'une BORNE HAUTE. Tant que l'un d'eux est omis (sur une chaîne
+#: quelconque), le PR, P75, P90 et P95 sont masqués avec leur motif et le P50
+#: est publié avec la mention « borne haute » — aucune valeur inventée.
+SOCLE_PHYSIQUE = ('salissure', 'mismatch_fabricant', 'lid', 'ohmique_dc',
+                  'ohmique_ac', 'qualite_module', 'indisponibilite')
+MENTION_BORNE_HAUTE = 'borne haute — {n} {pertes} non renseignée{s}'
+MOTIF_SOCLE_MANQUANT = (
+    'Pertes non renseignées ({postes}) : la valeur serait une borne haute '
+    'fausse — non publiée.')
+AVERTISSEMENT_BORNE_HAUTE = (
+    'Production publiée en {mention} : PR, P75, P90 et P95 non publiés tant '
+    'que les pertes du socle ne sont pas saisies ({postes}).')
+
 #: ACAL54 — le GARDE-FOU de vraisemblance du rendement spécifique (kWh/kWc
 #: et par an), borne du plan ACAL54 (C-ACAL-079, audit D3 du 04/10/2026) :
 #: hors de cette plage, un AVERTISSEMENT nommé est publié — la valeur n'est
@@ -1191,16 +1225,42 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
             valeur=rendement, bas=int(bas), haut=int(haut)))
     for avertissement in avertissements:
         _ajouter_avertissement(resultat, avertissement)
+    entete = completude_de_la_chaine(cascade, contexte)['avertissement']
+    if entete:
+        # ACAL49 — EN TÊTE des avertissements : c'est la phrase qui dit que
+        # le P50 est une borne haute.
+        _ajouter_avertissement(resultat, entete)
+        resultat['avertissements'].remove(entete)
+        resultat['avertissements'].insert(0, entete)
 
     production = resultat.get('production')
     production = dict(production) if isinstance(production, dict) else {}
     production['base'] = _base_production(production, resultat)
+    completude = completude_de_la_chaine(cascade, contexte)
+    masque = completude['motif']
+    if masque:
+        # D-ACAL-7 — un résultat incomplet ne publie ni PR ni quantile, ni au
+        # total ni par pan (le P50 reste, avec sa mention).
+        for ligne in lignes:
+            for cle in ('p75_kwh', 'p90_kwh', 'performance_ratio'):
+                ligne[cle] = None
     production['total'] = {
         'kwc': round(total_kwc, 3),
         'p50_kwh': _arrondi_kwh(total_kwh),
-        'p75_kwh': quantiles['p75_kwh'],
-        'p90_kwh': quantiles['p90_kwh'],
-        'performance_ratio': _ratio(total_kwh, irradiation_ponderee),
+        'p75_kwh': None if masque else quantiles['p75_kwh'],
+        'p90_kwh': None if masque else quantiles['p90_kwh'],
+        'p95_kwh': None if masque else quantiles.get('p95_kwh'),
+        'performance_ratio': (None if masque else
+                              _ratio(total_kwh, irradiation_ponderee)),
+        # ACAL49 — la complétude, LUE ici une seule fois : les lecteurs ne la
+        # recalculent jamais.
+        'complete': completude['complete'],
+        'socle_manquant': completude['socle_manquant'],
+        'mention': completude['mention'],
+        'performance_ratio_motif': masque,
+        'p75_kwh_motif': masque,
+        'p90_kwh_motif': masque,
+        'p95_kwh_motif': masque,
         'specific_yield_kwh_kwc': rendement,
         'annual_variability': quantiles['annual_variability'],
         'annual_variability_source': quantiles['sigma_source'],
@@ -1230,6 +1290,51 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
         for annee in sorted(annuel)
     ]
     return production
+
+
+def completude_de_la_chaine(cascade, contexte=None):
+    """ACAL49 — la complétude d'une simulation, LUE sur ses cascades.
+
+    ``etapes_omises`` vient de la cascade publiée (elle porte déjà l'union
+    des chaînes par pan, :func:`cascade_de_la_somme`). Une omission compte
+    comme « perte non renseignée » sauf si elle est TOUJOURS omise en v1
+    (:data:`TOUJOURS_OMISES`) ou écartée par une EXCLUSIVITÉ (la perte est
+    déjà comptée ailleurs).
+
+    Returns:
+        ``{complete, socle_manquant, mention, motif, avertissement}``.
+    """
+    contexte = contexte if isinstance(contexte, dict) else {}
+    cascades = [cascade or {}]
+    posees = contexte.get(CLE_CASCADES_PAR_PAN)
+    if isinstance(posees, dict):
+        cascades.extend(c for c in posees.values() if isinstance(c, dict))
+    omises = set((cascade or {}).get('etapes_omises') or ())
+    non_renseignees = set()
+    for courante in cascades:
+        for etape in courante.get('etapes') or ():
+            nom = etape.get('etape')
+            motif = etape.get('motif_omission')
+            if not motif:
+                continue
+            omises.add(nom)
+            exclusivite = EXCLUSIVITES.get(nom)
+            if nom in TOUJOURS_OMISES or (exclusivite is not None
+                                          and motif == exclusivite[1]):
+                continue
+            non_renseignees.add(nom)
+    socle = [nom for nom in SOCLE_PHYSIQUE if nom in omises]
+    n = len(non_renseignees)
+    mention = (MENTION_BORNE_HAUTE.format(
+        n=n, pertes='perte' if n == 1 else 'pertes',
+        s='' if n == 1 else 's') if n else '')
+    motif = (MOTIF_SOCLE_MANQUANT.format(postes=', '.join(socle))
+             if socle else '')
+    avertissement = (AVERTISSEMENT_BORNE_HAUTE.format(
+        mention=f'« {mention} »', postes=', '.join(socle)) if socle else '')
+    return {'complete': not socle, 'socle_manquant': socle,
+            'mention': mention, 'motif': motif,
+            'avertissement': avertissement}
 
 
 def _moyenne(valeur, annees):

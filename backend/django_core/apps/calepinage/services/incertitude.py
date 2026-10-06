@@ -48,7 +48,8 @@ __all__ = ['COMPOSANTE_BIAIS', 'COMPOSANTE_METEO', 'COMPOSANTE_MODELE',
            'DEPASSEMENTS', 'IncertitudeInvalide', 'METHODE_QUADRATURE',
            'ORIGINE_ABSENTE', 'ORIGINE_MESUREE', 'ORIGINE_SAISIE',
            'PORTEE_ANNUELLE', 'SOURCE_PVGIS', 'SOURCE_SOCIETE',
-           'SOURCE_TEXTE', 'bloc_incertitude', 'sigma_mesure']
+           'SOURCE_TEXTE', 'bloc_incertitude', 'masquer_depassements',
+           'sigma_mesure']
 
 #: σ a été MESURÉ sur les productions annuelles réellement observées.
 ORIGINE_MESUREE = 'mesuree'
@@ -96,6 +97,23 @@ REGLAGES_COMPOSANTES = {
 #: pas de le mesurer.
 CLE_SIGMA_METEO_SAISI = 'sigma_meteo_saisi_pct'
 LIBELLE_SIGMA_METEO_SAISI = 'Variabilité interannuelle saisie (σ météo)'
+
+
+def masquer_depassements(bloc, motif):
+    """ACAL49 / D-ACAL-7 — les TROIS dépassements (:data:`DEPASSEMENTS`)
+    masqués ENSEMBLE quand la production n'est qu'une borne haute.
+
+    Le P50 et σ restent publiés ; P75, P90 et P95 valent ``None`` et
+    ``motif_refus`` dit pourquoi. Modifie ``bloc`` en place et le rend.
+    """
+    if not motif or not isinstance(bloc, dict):
+        return bloc
+    quantiles = bloc.get('quantiles')
+    if isinstance(quantiles, dict):
+        for cle, _probabilite in DEPASSEMENTS:
+            quantiles[cle] = None
+    bloc['motif_refus'] = motif
+    return bloc
 
 
 class IncertitudeInvalide(ValueError):

@@ -254,8 +254,12 @@ class DeuxPansTest(SimpleTestCase):
         self.assertEqual(bloc['total_chaine_locale_kwh'], 2.0)
 
     def test_par_pan_p90_avec_sigmas_saisis(self):
+        # ACAL49 : le socle physique saisi (sinon P90 masqué, borne haute).
+        socle = [dict(POSTES[0], poste=nom, pct=1.0) for nom in (
+            'salissure', 'mismatch', 'lid', 'ohmique_dc', 'ohmique_ac',
+            'qualite_module', 'indisponibilite')]
         deux = _simuler(_layout(_zone(1, 10, 90.0), _zone(2, 6, 270.0)),
-                        reglages=REGLAGES_SIGMAS)
+                        reglages=REGLAGES_SIGMAS, pertes=socle)
         for ligne in deux['production']['par_pan']:
             self.assertIsNotNone(ligne['p90_kwh'], ligne['pan'])
             self.assertLess(ligne['p90_kwh'], ligne['p50_kwh'])
