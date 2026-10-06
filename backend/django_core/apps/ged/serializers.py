@@ -934,6 +934,9 @@ class SignataireDemandeSerializer(serializers.ModelSerializer):
             'role_signataire', 'role_signataire_nom', 'role_couleur',
             'role_auth_extra', 'statut', 'notifie_le', 'derniere_relance_le',
             'nb_relances', 'date_action', 'motif_refus', 'lien_signature',
+            # ADOC65 — preuves de SA signature (lecture seule).
+            'consentement_explicite', 'adresse_ip', 'user_agent',
+            'signature_texte', 'signature_tracee', 'hash_contenu',
             'created_at', 'updated_at',
         ]
         read_only_fields = fields

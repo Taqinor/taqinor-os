@@ -4253,6 +4253,10 @@ def _signataire_publique_payload(signataire):
         # dégradation explicite (passerelle absente) le lève sans code.
         'otp_requis': signataire.otp_requis_et_non_valide,
         'otp_degrade': signataire.otp_degrade,
+        # ADOC65 — champs positionnés qui visent CE destinataire (mêmes
+        # requis que le mono, exigés à la signature).
+        'champs': ChampSignatureSerializer(
+            services.champs_du_signataire(signataire), many=True).data,
     }
 
 
@@ -4355,7 +4359,8 @@ def public_signataire(request, token):
                 signature_texte=request.data.get('signature_texte', ''),
                 signature_tracee=request.data.get('signature_tracee', ''),
                 adresse_ip=services._adresse_ip_requete(request),
-                user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:512])
+                user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:512],
+                valeurs_champs=request.data.get('valeurs_champs'))
         except ValueError as exc:
             return _signature_echec(request, token, _ged_noindex(Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)),

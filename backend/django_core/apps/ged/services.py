@@ -3025,6 +3025,90 @@ def _hash_version_contenu(version):
         return ''
 
 
+def _poser_preuves_signature(cible, *, consentement, signature_texte='',
+                             signature_tracee='', adresse_ip=None,
+                             user_agent='', document=None):
+    """ADOC65 — Routine de preuve UNIQUE de la signature (pattern QJ10),
+    commune au mono (`DemandeSignatureDocument`) et au circuit multi
+    (`SignataireDemande`) : consentement explicite exigé, au moins une forme
+    de signature (nom tapé ou tracé), IP, user-agent et hash SHA-256 de la
+    version signée, posés CÔTÉ SERVEUR sur `cible`.
+
+    Lève `ValueError` si le consentement ou la signature manquent. N'écrit
+    pas en base : renvoie la liste des champs à sauvegarder."""
+    if not consentement:
+        raise ValueError(
+            "Le consentement explicite à contracter électroniquement est requis.")
+    signature_texte = (signature_texte or '').strip()
+    signature_tracee = (signature_tracee or '').strip()
+    if not signature_texte and not signature_tracee:
+        raise ValueError(
+            "Une signature (nom tapé ou tracé) est requise.")
+    version = selectors_latest_version(document) if document is not None \
+        else None
+    cible.consentement_explicite = True
+    cible.signature_texte = signature_texte[:255]
+    cible.signature_tracee = signature_tracee
+    cible.adresse_ip = adresse_ip or None
+    cible.user_agent = (user_agent or '')[:512]
+    cible.hash_contenu = _hash_version_contenu(version)
+    return [
+        'consentement_explicite', 'signature_texte', 'signature_tracee',
+        'adresse_ip', 'user_agent', 'hash_contenu', 'updated_at',
+    ]
+
+
+def _normaliser_valeurs_champs(valeurs_champs):
+    """ADOC65 — Normalise les valeurs de champs reçues (JSON, chaîne
+    sérialisée multipart, ou valeur mal formée → {})."""
+    if isinstance(valeurs_champs, str):
+        import json as _json
+        try:
+            valeurs_champs = _json.loads(valeurs_champs) if valeurs_champs else {}
+        except (TypeError, ValueError):
+            valeurs_champs = {}
+    if not isinstance(valeurs_champs, dict):
+        valeurs_champs = {}
+    return valeurs_champs
+
+
+def _verifier_champs_requis(champs, valeurs_champs):
+    """ADOC65 — Contrôle des champs REQUIS (hors signature/initiales), commun
+    au mono et au multi. Lève `ValueError` si l'un manque."""
+    from .models import CHAMP_TYPE_INITIALES, CHAMP_TYPE_SIGNATURE
+    requis_a_remplir = [
+        c for c in champs
+        if c.requis and c.type_champ not in (
+            CHAMP_TYPE_SIGNATURE, CHAMP_TYPE_INITIALES)]
+    fournis = {int(k) for k, v in valeurs_champs.items()
+               if str(k).lstrip('-').isdigit() and str(v).strip() != ''}
+    manquants = [c for c in requis_a_remplir if c.id not in fournis]
+    if manquants:
+        raise ValueError(
+            "Certains champs requis du document ne sont pas remplis.")
+
+
+def champs_du_signataire(signataire):
+    """ADOC65 — Champs positionnés qui visent CE destinataire : `role` du
+    champ égal (sans casse) à son nom, à son rôle ou au nom de son rôle
+    réutilisable. Un champ sans rôle vise le destinataire quand il est le
+    SEUL signataire du circuit."""
+    from .models import ROLE_SIGNATAIRE
+    demande = signataire.demande
+    cles = {(signataire.nom or '').strip().lower(),
+            (signataire.role or '').strip().lower()}
+    if signataire.role_signataire_id:
+        cles.add((signataire.role_signataire.nom or '').strip().lower())
+    cles.discard('')
+    seul = demande.signataires.filter(role=ROLE_SIGNATAIRE).count() <= 1
+    resultat = []
+    for champ in demande.champs.all():
+        role = (champ.role or '').strip().lower()
+        if (role and role in cles) or (not role and seul):
+            resultat.append(champ)
+    return resultat
+
+
 def signer_demande_publique(demande, *, consentement, signature_texte='',
                             signature_tracee='', adresse_ip=None,
                             user_agent=''):
@@ -3043,26 +3127,11 @@ def signer_demande_publique(demande, *, consentement, signature_texte='',
     """
     from django.utils import timezone
 
-    if not consentement:
-        raise ValueError(
-            "Le consentement explicite à contracter électroniquement est requis.")
-    signature_texte = (signature_texte or '').strip()
-    signature_tracee = (signature_tracee or '').strip()
-    if not signature_texte and not signature_tracee:
-        raise ValueError(
-            "Une signature (nom tapé ou tracé) est requise.")
-
-    version = selectors_latest_version(demande.document)
-    demande.consentement_explicite = True
-    demande.signature_texte = signature_texte
-    demande.signature_tracee = signature_tracee
-    demande.adresse_ip = adresse_ip or None
-    demande.user_agent = (user_agent or '')[:512]
-    demande.hash_contenu = _hash_version_contenu(version)
-    demande.save(update_fields=[
-        'consentement_explicite', 'signature_texte', 'signature_tracee',
-        'adresse_ip', 'user_agent', 'hash_contenu', 'updated_at',
-    ])
+    champs = _poser_preuves_signature(
+        demande, consentement=consentement, signature_texte=signature_texte,
+        signature_tracee=signature_tracee, adresse_ip=adresse_ip,
+        user_agent=user_agent, document=demande.document)
+    demande.save(update_fields=champs)
     return marquer_signe(demande, date_signature=timezone.now())
 
 
@@ -3384,7 +3453,8 @@ def valider_code_otp_signataire(signataire, code):
 
 
 def signer_signataire(signataire, *, consentement, signature_texte='',
-                      signature_tracee='', adresse_ip=None, user_agent=''):
+                      signature_tracee='', adresse_ip=None, user_agent='',
+                      valeurs_champs=None):
     """XGED2 — Signe le rang d'UN signataire et fait progresser le circuit
     (notifie le rang suivant en séquentiel).
 
@@ -3405,17 +3475,26 @@ def signer_signataire(signataire, *, consentement, signature_texte='',
         raise ValueError(
             "Authentification supplémentaire requise avant de signer : "
             "saisissez le code reçu.")
-    if not consentement:
-        raise ValueError(
-            "Le consentement explicite à contracter électroniquement est requis.")
-    signature_texte = (signature_texte or '').strip()
-    signature_tracee = (signature_tracee or '').strip()
-    if not signature_texte and not signature_tracee:
-        raise ValueError("Une signature (nom tapé ou tracé) est requise.")
+    # ADOC65 — MÊME routine que le mono : champs requis de SON rôle, puis
+    # preuves (consentement, forme, IP, UA, hash de la version signée)
+    # stockées sur CE destinataire.
+    valeurs_champs = _normaliser_valeurs_champs(valeurs_champs)
+    champs_vises = champs_du_signataire(signataire)
+    _verifier_champs_requis(champs_vises, valeurs_champs)
+    champs_preuve = _poser_preuves_signature(
+        signataire, consentement=consentement,
+        signature_texte=signature_texte, signature_tracee=signature_tracee,
+        adresse_ip=adresse_ip, user_agent=user_agent,
+        document=signataire.demande.document)
+    if valeurs_champs and champs_vises:
+        ids = {c.id for c in champs_vises}
+        enregistrer_valeurs_champs(signataire.demande, {
+            k: v for k, v in valeurs_champs.items()
+            if str(k).lstrip('-').isdigit() and int(k) in ids})
 
     signataire.statut = SIGNATAIRE_SIGNE
     signataire.date_action = timezone.now()
-    signataire.save(update_fields=['statut', 'date_action', 'updated_at'])
+    signataire.save(update_fields=['statut', 'date_action'] + champs_preuve)
     notifier_prochains_signataires(signataire.demande)
     _maj_statut_global(signataire.demande)
     return signataire
@@ -3461,6 +3540,15 @@ def _maj_statut_global(demande):
     if not requis:
         return demande
     if all(s.statut == SIGNATAIRE_SIGNE for s in requis):
+        # ADOC65 — preuves de la demande à la complétion : consentement et
+        # hash de la version signée (routine commune `_hash_version_contenu`)
+        # ; les preuves individuelles restent sur chaque destinataire.
+        if not demande.hash_contenu or not demande.consentement_explicite:
+            demande.consentement_explicite = True
+            demande.hash_contenu = demande.hash_contenu or _hash_version_contenu(
+                selectors_latest_version(demande.document))
+            demande.save(update_fields=[
+                'consentement_explicite', 'hash_contenu', 'updated_at'])
         return marquer_signe(demande)
     return demande
 
@@ -3735,31 +3823,9 @@ def signer_demande_publique_avec_champs(demande, *, consentement,
     Enregistre les valeurs (`enregistrer_valeurs_champs`) puis délègue la
     signature elle-même à `signer_demande_publique` (preuves QJ10 inchangées).
     Renvoie la `DemandeSignatureDocument` signée."""
-    from .models import CHAMP_TYPE_INITIALES, CHAMP_TYPE_SIGNATURE
-
-    champs = list(demande.champs.all())
-    requis_a_remplir = [
-        c for c in champs
-        if c.requis and c.type_champ not in (
-            CHAMP_TYPE_SIGNATURE, CHAMP_TYPE_INITIALES)]
-    if isinstance(valeurs_champs, str):
-        # Clients multipart/form (pas JSON) envoient un dict sérialisé en
-        # chaîne : on le décode plutôt que de planter sur `.keys()`.
-        import json as _json
-        try:
-            valeurs_champs = _json.loads(valeurs_champs) if valeurs_champs else {}
-        except (TypeError, ValueError):
-            valeurs_champs = {}
-    # Tout ce qui n'est pas un mapping (int/list/None d'un client mal formé) est
-    # traité comme « aucun champ fourni » plutôt que de planter sur `.keys()`.
-    if not isinstance(valeurs_champs, dict):
-        valeurs_champs = {}
-    fournis = {int(k) for k in valeurs_champs.keys()
-               if str(k).lstrip('-').isdigit()}
-    manquants = [c for c in requis_a_remplir if c.id not in fournis]
-    if manquants:
-        raise ValueError(
-            "Certains champs requis du document ne sont pas remplis.")
+    # ADOC65 — normalisation + contrôle des requis PARTAGÉS avec le multi.
+    valeurs_champs = _normaliser_valeurs_champs(valeurs_champs)
+    _verifier_champs_requis(list(demande.champs.all()), valeurs_champs)
 
     if valeurs_champs:
         enregistrer_valeurs_champs(demande, valeurs_champs)
@@ -3953,15 +4019,34 @@ def _certificat_html(demande):
     l'endpoint public de vérification."""
     document = demande.document
     signataires = list(demande.signataires.all())
+
+    # ADOC65 — UNE ligne de preuve par signataire (IP, user-agent, méthode,
+    # hash de la version signée) ; le mono garde sa ligne unique.
+    def _ligne(nom, email, role, statut, cible):
+        methode = ('Tracée' if cible.signature_tracee else
+                   ('Nom tapé' if cible.signature_texte else '—'))
+        return (
+            f"<tr><td>{nom}</td><td>{email or '—'}</td><td>{role}</td>"
+            f"<td>{statut}</td><td>{cible.adresse_ip or '—'}</td>"
+            f"<td>{cible.user_agent or '—'}</td><td>{methode}</td>"
+            f"<td class='mono'>{cible.hash_contenu or '—'}</td></tr>")
     lignes_signataires = ''.join(
-        f"<tr><td>{s.nom}</td><td>{s.email or '—'}</td>"
-        f"<td>{s.get_role_display()}</td><td>{s.get_statut_display()}</td></tr>"
+        _ligne(s.nom, s.email, s.get_role_display(), s.get_statut_display(), s)
         for s in signataires
-    ) or (
-        f"<tr><td>{demande.signataire_nom}</td>"
-        f"<td>{demande.signataire_email}</td><td>Signataire</td>"
-        f"<td>{demande.get_statut_display()}</td></tr>"
-    )
+    ) or _ligne(demande.signataire_nom, demande.signataire_email,
+                'Signataire', demande.get_statut_display(), demande)
+    if signataires:
+        preuves_globales = (
+            "<p><strong>Preuves :</strong> une ligne par signataire "
+            "ci-dessous (IP, user-agent, méthode, hash signé).</p>")
+    else:
+        preuves_globales = (
+            f"<p><strong>Adresse IP :</strong> "
+            f"{demande.adresse_ip or 'Non transmise'}</p>"
+            f"<p><strong>User-Agent :</strong> "
+            f"{demande.user_agent or 'Non transmis'}</p>"
+            f"<p><strong>Méthode :</strong> "
+            f"{'Tracée' if demande.signature_tracee else 'Nom tapé'}</p>")
     evenements_html = ''.join(
         f"<li>{libelle} — {quand:%Y-%m-%d %H:%M}</li>"
         for libelle, quand in _evenements_cerentonie(demande)
@@ -4009,14 +4094,13 @@ def _certificat_html(demande):
         "<h1>Certificat de complétion de signature électronique</h1>"
         f"<p><strong>Document :</strong> {document.nom}</p>"
         f"<p><strong>Statut final :</strong> {demande.get_statut_display()}</p>"
-        f"<p><strong>Adresse IP :</strong> {demande.adresse_ip or 'Non transmise'}</p>"
-        f"<p><strong>User-Agent :</strong> {demande.user_agent or 'Non transmis'}</p>"
+        f"{preuves_globales}"
         f"<p><strong>Géolocalisation :</strong> {geoloc}</p>"
-        f"<p><strong>Méthode :</strong> "
-        f"{'Tracée' if demande.signature_tracee else 'Nom tapé'}</p>"
         "<h2>Signataires</h2>"
         f"<table><tr><th>Nom</th><th>Email</th><th>Rôle</th>"
-        f"<th>Statut</th></tr>{lignes_signataires}</table>"
+        f"<th>Statut</th><th>Adresse IP</th><th>User-Agent</th>"
+        f"<th>Méthode</th><th>Hash signé</th></tr>"
+        f"{lignes_signataires}</table>"
         "<h2>Séquence des événements</h2>"
         f"<ul>{evenements_html}</ul>"
         f"{pied_integrite}"

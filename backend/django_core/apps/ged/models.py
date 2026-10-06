@@ -2009,6 +2009,24 @@ class SignataireDemande(models.Model):
     # extra est requise — jamais un simple « aucun code émis ».
     otp_degrade = models.BooleanField(
         default=False, verbose_name='authentification extra dégradée')
+    # ADOC65 — preuves IMMUABLES de la signature de CE destinataire, posées
+    # CÔTÉ SERVEUR par la routine de preuve partagée avec le mono
+    # (`services._poser_preuves_signature`, pattern QJ10) — jamais lues du
+    # corps au-delà de ce que la vue publique fournit explicitement.
+    consentement_explicite = models.BooleanField(
+        default=False, verbose_name="consentement explicite à signer")
+    adresse_ip = models.GenericIPAddressField(
+        null=True, blank=True, verbose_name='adresse IP du signataire')
+    user_agent = models.CharField(
+        max_length=512, blank=True, default='', verbose_name='user-agent')
+    signature_texte = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='signature tapée')
+    signature_tracee = models.TextField(
+        blank=True, default='',
+        verbose_name='signature tracée (vecteur/data-URL)')
+    hash_contenu = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='hash du contenu signé (SHA-256)')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
