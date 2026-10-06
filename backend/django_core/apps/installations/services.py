@@ -259,6 +259,63 @@ def ensure_template_ci(company):
     return template
 
 
+# CIQ662 — supplément MT du socle C&I : poste de livraison, réglages de
+# protection, essais (quand exigés, CIQ663), mise sous tension coordonnée avec
+# le distributeur, compteur de production si le site injecte (ANRE décision
+# 04/26 art. 9). AUCUN chiffre, AUCUN réglage dans un libellé.
+CI_MT_TEMPLATE_NOM = 'Site professionnel (MT)'
+CI_MT_ETAPES_SUPPLEMENT = [
+    ('poste_livraison_controle', 'Poste de livraison contrôlé', False, True),
+    ('reglages_protection_appliques',
+     "Réglages de protection reçus de l'étude du distributeur et appliqués",
+     False, True),
+    ('essais_injection_decouplage',
+     "Essais de limitation d'injection et de découplage enregistrés "
+     "(quand ils sont exigés)", False, False),
+    ('mise_sous_tension_distributeur',
+     'Mise sous tension coordonnée avec le distributeur (PV)', False, True),
+    ('compteur_production_pose',
+     'Compteur de production posé (si le site injecte)', False, False),
+]
+#: Les étapes du supplément s'insèrent avant la supervision, après le
+#: raccordement au tableau général.
+_CI_MT_AVANT = 'supervision_compteur'
+
+
+def ci_mt_checklist_etapes():
+    """CIQ662 — étapes du template MT : socle C&I + supplément MT."""
+    etapes = []
+    for etape in CI_CHECKLIST_ETAPES:
+        if etape[0] == _CI_MT_AVANT:
+            etapes.extend(CI_MT_ETAPES_SUPPLEMENT)
+        etapes.append(etape)
+    return etapes
+
+
+def ensure_template_ci_mt(company):
+    """CIQ662 — sème UNE SEULE FOIS le template « Site professionnel (MT) »
+    (type ``industriel``, ``niveau_tension='mt'``) de la société (idempotent,
+    additif). Jamais recréé dès qu'un template industriel MT existe, ACTIF OU
+    NON. Renvoie le template créé, ou None s'il existait déjà."""
+    if company is None:
+        return None
+    industriel = Installation.TypeInstallation.INDUSTRIEL
+    if ChecklistTemplate.objects.filter(
+            company=company, type_installation=industriel,
+            niveau_tension='mt').exists():
+        return None
+    template = ChecklistTemplate.objects.create(
+        company=company, type_installation=industriel, niveau_tension='mt',
+        nom=CI_MT_TEMPLATE_NOM, ordre=2, protege=False, actif=True)
+    for i, (cle, libelle, capture, photo) in enumerate(
+            ci_mt_checklist_etapes()):
+        ChecklistEtapeModele.objects.create(
+            company=company, template=template, cle=cle, libelle=libelle,
+            ordre=i, capture_serie=capture, photo_obligatoire=photo,
+            protege=True)
+    return template
+
+
 # AGR605 — plan d'interventions standard d'un chantier agricole : jamais de
 # « raccordement ». Repère des 30 premiers jours : Ignite, nextbillion.net
 # « Four key lessons for implementing PAYGo ».
@@ -306,6 +363,8 @@ def template_for_installation(installation):
         ensure_template_agricole(company)  # AGR605 — une seule fois.
     elif type_install == Installation.TypeInstallation.INDUSTRIEL:
         ensure_template_ci(company)  # CIQ611 — une seule fois.
+        if getattr(installation, 'niveau_tension', None) == 'mt':
+            ensure_template_ci_mt(company)  # CIQ662 — une seule fois.
     if type_install:
         candidats = ChecklistTemplate.objects.filter(
             company=company, type_installation=type_install, actif=True
