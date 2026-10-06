@@ -96,9 +96,21 @@ class TotauxDePoseTest(unittest.TestCase):
         self.assertGreaterEqual(totaux['nombre_pans'], 1)
 
     def test_sans_kwc_source_le_total_kwc_n_est_pas_invente(self):
-        # ``LAYOUT`` seul, SANS ``kwc`` sur la géométrie : jamais un kWc
-        # deviné depuis le nombre de modules.
+        # ACAL61 — ``LAYOUT`` SANS ``kwc`` sur la géométrie mais avec le
+        # wattage DÉCLARÉ du document (``panelWatt``) : le kWc est celui de
+        # la primitive ``ventes.pans_du_document`` (modules × wattage
+        # déclaré), le même que chiffre le devis.
         totaux = totaux_de_pose(LAYOUT)
+        self.assertGreater(totaux['total_modules'], 0)
+        self.assertAlmostEqual(
+            totaux['total_kwc'],
+            totaux['total_modules'] * LAYOUT['panelWatt'] / 1000.0)
+        # Sans AUCUN wattage déclaré : jamais un kWc deviné depuis le seul
+        # nombre de modules.
+        muet = copy.deepcopy(LAYOUT)
+        muet.pop('panelWatt', None)
+        muet.pop('watt', None)
+        totaux = totaux_de_pose(muet)
         self.assertGreater(totaux['total_modules'], 0)
         self.assertIsNone(totaux['total_kwc'])
 

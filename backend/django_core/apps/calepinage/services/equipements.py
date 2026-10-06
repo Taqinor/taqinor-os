@@ -10,8 +10,13 @@ CAL120 avant cette tâche, PACT10/PACT11).
 
 D'OÙ VIENT L'ÉQUIPEMENT « RETENU »
 -----------------------------------
-Le document ``roof_layout`` (schéma v2) ne cite que le MODULE posé
-(``modules[].produitId``) ; l'onduleur, la batterie et l'optimiseur chiffrés
+Le document ``roof_layout`` (schéma v2) cite le module posé SUR CHAQUE PAN
+(``zones[].geometry.moduleId`` → ``modules[].produitId``) ; c'est CE module
+que le calcul utilise pour le pan (kWc de pose, chaînes, simulation —
+ACAL264, ``electrique._fiches_modules_du_document``) : la famille ``panneau``
+ci-dessous, celle du devis, n'est plus que le DÉFAUT d'un pan sans module, et
+l'écran lit le matériel réellement calculé sur ``GET entree-electrique/``
+(``materiel``). L'onduleur, la batterie et l'optimiseur chiffrés
 vivent sur le DEVIS lié (``Calepinage.devis``). Ce module est LA lecture de
 ces lignes : le résolveur du calcul électrique
 (``services/electrique.py::resoudre_materiel``, D-ACAL-10) le consomme pour

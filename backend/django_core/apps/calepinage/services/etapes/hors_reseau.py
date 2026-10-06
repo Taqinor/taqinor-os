@@ -241,7 +241,10 @@ def bloc_hors_reseau(serie, contexte=None, *, charge=None):
 
     mention = MENTION_CONSOMMATION_JOURNALIERE.format(
         total=round(total_conso, 1), jours=round(jours_couverts, 1))
-    return _publier(serie, rendu, courbe, mention)
+    from apps.calepinage.services.chaine_pertes import annees_de_la_fenetre
+
+    return _publier(serie, rendu, courbe, mention,
+                    annees=annees_de_la_fenetre(contexte))
 
 
 def _omission_autonomie(serie):
@@ -249,8 +252,31 @@ def _omission_autonomie(serie):
                             champ=f'{CLE_CONTEXTE}.jours_autonomie')
 
 
-def _publier(serie, rendu, courbe, mention):
-    """La série enrichie et le bloc, tirés de la MÊME simulation."""
+def _par_an(valeur, annees):
+    """ACAL54 — une énergie de la fenêtre, ramenée à l'année moyenne."""
+    if valeur is None or isinstance(valeur, bool):
+        return valeur
+    return round(float(valeur) / annees, 3) if annees > 1 else valeur
+
+
+def _par_mois_par_an(par_mois, annees):
+    """ACAL54 — chaque énergie mensuelle (clé ``*_kwh``) au mois moyen."""
+    if annees <= 1 or not isinstance(par_mois, list):
+        return par_mois
+    return [{cle: (_par_an(valeur, annees) if str(cle).endswith('_kwh')
+                   else valeur)
+             for cle, valeur in ligne.items()}
+            if isinstance(ligne, dict) else ligne
+            for ligne in par_mois]
+
+
+def _publier(serie, rendu, courbe, mention, annees=1):
+    """La série enrichie et le bloc, tirés de la MÊME simulation.
+
+    ACAL54 — ``annees`` : le N de la fenêtre météo ; les énergies du bloc
+    sont ramenées à l'ANNÉE MOYENNE (le taux de défaillance, rapport de deux
+    énergies, ne bouge pas ; la série horaire reste celle de la fenêtre).
+    """
     banque = rendu['banque']
     simulation = rendu['simulation']
     capacite = banque['capacite_utile_kwh']
@@ -265,16 +291,17 @@ def _publier(serie, rendu, courbe, mention):
     pire = simulation['mois_le_plus_defavorable']
     return suite, {
         'heures': simulation['heures'],
-        'consommation_kwh': simulation['consommation_kwh'],
-        'production_kwh': simulation['production_kwh'],
-        'servi_kwh': simulation['servi_kwh'],
-        'defaillance_kwh': simulation['defaillance_kwh'],
+        'consommation_kwh': _par_an(simulation['consommation_kwh'], annees),
+        'production_kwh': _par_an(simulation['production_kwh'], annees),
+        'servi_kwh': _par_an(simulation['servi_kwh'], annees),
+        'defaillance_kwh': _par_an(simulation['defaillance_kwh'], annees),
         'heures_defaillantes': simulation['heures_defaillantes'],
         'taux_defaillance': simulation['taux_defaillance'],
-        'surplus_perdu_kwh': simulation['surplus_perdu_kwh'],
+        'surplus_perdu_kwh': _par_an(simulation['surplus_perdu_kwh'],
+                                     annees),
         'soc_minimal_pct': min(socs) if socs else None,
         'mois_le_plus_defavorable': pire['mois'] if pire else None,
-        'par_mois': simulation['par_mois'],
+        'par_mois': _par_mois_par_an(simulation['par_mois'], annees),
         'banque': {
             'capacite_utile_kwh': banque['capacite_utile_kwh'],
             'capacite_nominale_kwh': banque['capacite_nominale_kwh'],

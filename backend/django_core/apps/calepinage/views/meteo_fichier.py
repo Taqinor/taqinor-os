@@ -57,7 +57,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
-from ..permissions import PeutGererCalepinage
+from ..permissions import PeutLireOuEcrireCalepinage
 from ..services.meteo_fichier import (
     MeteoFichierRefuse, OCTETS_MAX, lire_serie_meteo,
 )
@@ -104,21 +104,36 @@ def _refus(champ, message, ligne=None):
     return Response(corps, status=status.HTTP_400_BAD_REQUEST)
 
 
-def _deposer(calepinage, contenu, nom_fichier, user):
+def _deposer(calepinage, contenu, nom_fichier, user, fournisseur=''):
     """Le fichier dans le magasin d'objets, sa ligne ``records.Attachment``.
 
     Rien n'est écrit tant que la série n'a pas été LUE : un dépôt refusé ne
     laisse donc aucun objet orphelin derrière lui.
+
+    ACAL146 — un objet COMPAGNON ``<clé>.meta.json`` {fournisseur, sha256,
+    nom} est déposé à côté : la simulation REJOUE le fournisseur saisi
+    (ni migration, ni écriture dans ``Calepinage.resultat``).
     """
+    import hashlib
+    import json
+
     from django.contrib.contenttypes.models import ContentType
 
     from apps.records.models import Attachment
     from apps.ventes import services as ventes_services
 
+    from ..services.simulation import SUFFIXE_COMPAGNON_METEO
+
     cle = ('meteo/{0}/calepinage-{1}-{2}.csv'.format(
         calepinage.company_id or 0, calepinage.pk, uuid4().hex))
     ventes_services.stocker_image_toiture(contenu, cle,
                                           content_type='text/csv')
+    compagnon = {'fournisseur': fournisseur or None,
+                 'sha256': hashlib.sha256(contenu).hexdigest(),
+                 'nom': (nom_fichier or 'meteo.csv')[:255]}
+    ventes_services.stocker_image_toiture(
+        json.dumps(compagnon, ensure_ascii=False).encode('utf-8'),
+        cle + SUFFIXE_COMPAGNON_METEO, content_type='application/json')
     return Attachment.objects.create(
         company=calepinage.company,
         content_type=ContentType.objects.get_for_model(type(calepinage)),
@@ -131,13 +146,43 @@ def _deposer(calepinage, contenu, nom_fichier, user):
     )
 
 
+def _fichier_retenu(calepinage):
+    """ACAL146 — le fichier météo RETENU par la simulation, ou ``None`` :
+    ``{piece_jointe, nom, fournisseur, sha256, depose_le, depose_par}``."""
+    from ..services.simulation import lire_compagnon_meteo, lire_piece_meteo
+
+    piece = lire_piece_meteo(calepinage)
+    if piece is None:
+        return None
+    compagnon = lire_compagnon_meteo(piece)
+    auteur = getattr(piece, 'uploaded_by', None)
+    nom_auteur = ''
+    if auteur is not None:
+        obtenir = getattr(auteur, 'get_full_name', None)
+        nom_auteur = (obtenir() if callable(obtenir) else '') or str(
+            getattr(auteur, 'username', '') or '')
+    depose_le = getattr(piece, 'created_at', None)
+    return {
+        'piece_jointe': piece.pk,
+        'nom': piece.filename or compagnon.get('nom') or None,
+        'fournisseur': compagnon.get('fournisseur') or None,
+        'sha256': compagnon.get('sha256') or None,
+        'depose_le': depose_le.isoformat() if depose_le else None,
+        'depose_par': nom_auteur or None,
+    }
+
+
 @extend_schema(responses={201: _forme()})
-@action(detail=True, methods=['post'], url_path='meteo-fichier',
+@action(detail=True, methods=['get', 'post'], url_path='meteo-fichier',
         url_name='meteo-fichier',
-        permission_classes=[PeutGererCalepinage],
+        permission_classes=[PeutLireOuEcrireCalepinage],
         parser_classes=[MultiPartParser, FormParser])
 def meteo_fichier(self, request, pk=None):
     """CALX62 — ``POST /calepinages/<pk>/meteo-fichier/``.
+
+    ACAL146 — ``GET`` sert le fichier RETENU par la simulation
+    (``{piece_jointe, nom, fournisseur, sha256, depose_le, depose_par}``) ou
+    ``null`` ; même garde que l'écran : lecture pour GET, gestion pour POST.
 
     Corps ``multipart/form-data`` : ``fichier`` (CSV, obligatoire) et
     ``fournisseur`` (texte, obligatoire).
@@ -152,6 +197,10 @@ def meteo_fichier(self, request, pk=None):
     # L'OBJET D'ABORD : un calepinage d'une autre société rend 404 quel que
     # soit le corps envoyé.
     calepinage = self.get_object()  # borné société par get_queryset
+
+    if request.method == 'GET':
+        # ACAL146 — le fichier RETENU (celui que la simulation lit), ou null.
+        return Response(_fichier_retenu(calepinage))
 
     fichier = request.FILES.get(CHAMP_FICHIER)
     if fichier is None:
@@ -175,7 +224,8 @@ def meteo_fichier(self, request, pk=None):
         return _refus(refus.champ or CHAMP_FICHIER, refus.motif,
                       ligne=refus.ligne)
 
-    piece = _deposer(calepinage, contenu, nom_fichier, request.user)
+    piece = _deposer(calepinage, contenu, nom_fichier, request.user,
+                     fournisseur=fournisseur)
     bloc = serie['serie_horaire']
     return Response({
         'calepinage': calepinage.pk,

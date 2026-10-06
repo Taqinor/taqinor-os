@@ -27,6 +27,7 @@ from .views.parametres import (
     ParametresCalepinageView,
     SuggestionPenteIGNView,
 )
+from .views.parametres import RecalculerSimulationsView  # ACAL134
 # CALX2 — LE point de rattachement des ``@action`` du ``CalepinageViewSet``.
 # Un SEUL import ici, et il doit s'exécuter AVANT ``router.register`` (DRF
 # inspecte les attributs de la classe au moment de l'enregistrement, via
@@ -84,5 +85,9 @@ urlpatterns = [
     # n'ouvre aucune seconde famille d'URL pour l'objet métier.
     path('parametres/profils-types/', ProfilsTypesView.as_view(),
          name='calepinage-parametres-profils-types'),
+    # ACAL134 — « tout recalculer » après un changement de réglage société.
+    path('parametres/recalculer-simulations/',
+         RecalculerSimulationsView.as_view(),
+         name='calepinage-parametres-recalculer-simulations'),
     path('', include(router.urls)),
 ]

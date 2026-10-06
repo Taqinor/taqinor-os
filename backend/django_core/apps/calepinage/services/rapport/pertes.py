@@ -4,7 +4,7 @@ Le constat
 ==========
 La note de calcul imprime les pertes comme une liste PLATE de trois colonnes
 (poste, part, source) : aucune cascade où chaque poste consomme l'énergie qui
-lui ARRIVE. Or la simulation du lot 3 la publie — ``resultat['cascade']``
+lui ARRIVE. Or la simulation (CALX5) la publie — ``resultat['cascade']``
 (contrat ``contract_samples/calepinage_pertes_cascade.json``, CALX141,
 produite par ``services/chaine_pertes.py::appliquer_chaine`` qui enchaîne les
 étapes de ``services/etapes/*``).

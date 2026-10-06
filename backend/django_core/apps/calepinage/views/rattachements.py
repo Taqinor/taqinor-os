@@ -134,6 +134,9 @@ from . import asbuilt as _asbuilt_action  # noqa: F401
 # ACAL65 — même patron : rattache ``suggestions-pente`` (proposer / accepter /
 # refuser une suggestion de pente IGN, D-ACAL-19).
 from . import suggestion_pente as _suggestion_pente_action  # noqa: F401
+# ACAL310 — même patron : rattache ``consommation/proposer`` (la
+# consommation PROPOSÉE par le serveur, ``services/consommation.py``).
+from . import consommation as _consommation_action  # noqa: F401
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -171,6 +174,7 @@ MODULES_RATTACHES = (
     'reprise_visite',  # CALX364
     'asbuilt',  # CALX366
     'suggestion_pente',  # ACAL65
+    'consommation',  # ACAL310
 )
 
 __all__ = ['MODULES_RATTACHES']

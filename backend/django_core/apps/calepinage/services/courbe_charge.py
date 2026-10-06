@@ -281,12 +281,49 @@ def _base_layout(points, declaration, avertissements):
     if courbe24 is None:
         avertissements.extend(profil.get('avertissements') or [])
         return None
+    # ACAL310 — la saisonnalité SAISIE (``consumption.saisons``, facteurs
+    # multiplicatifs été / hiver de l'atelier, mois d'été de
+    # ``consommation.MOIS_ETE``) est LUE côté serveur ; absente, la courbe
+    # est répétée telle quelle (comportement d'avant).
+    from .consommation import MOIS_ETE
+
+    saisons = ((layout.get('consumption') or {}).get('saisons')
+               if isinstance(layout, dict) else None)
+    saisons = saisons if isinstance(saisons, dict) else {}
+    ete = _facteur_saison(saisons.get('ete'))
+    hiver = _facteur_saison(saisons.get('hiver'))
+    if ete is None and hiver is None:
+        avertissements.append(
+            "Courbe de base : les 24 valeurs horaires SAISIES dans l'atelier "
+            '(méthode « {methode} »), répétées pour chaque jour de '
+            "l'année — aucune saisonnalité n'est inventée.".format(
+                methode=profil.get('methode') or 'non renseignée'))
+        return [float(courbe24[_heure(point)]) for point in points]
     avertissements.append(
         "Courbe de base : les 24 valeurs horaires SAISIES dans l'atelier "
-        '(méthode « {methode} »), répétées pour chaque jour de '
-        "l'année — aucune saisonnalité n'est inventée.".format(
-            methode=profil.get('methode') or 'non renseignée'))
-    return [float(courbe24[_heure(point)]) for point in points]
+        '(méthode « {methode} »), modulées par la saisonnalité SAISIE '
+        '(« consumption.saisons ») : été ×{ete} (juin–septembre), hiver '
+        '×{hiver}.'.format(methode=profil.get('methode') or 'non renseignée',
+                           ete=ete if ete is not None else 1,
+                           hiver=hiver if hiver is not None else 1))
+    courbe = []
+    for point in points:
+        mois = _mois(point)
+        facteur = (ete if mois in MOIS_ETE else hiver)
+        courbe.append(float(courbe24[_heure(point)])
+                      * (facteur if facteur is not None else 1.0))
+    return courbe
+
+
+def _facteur_saison(valeur):
+    """Un facteur de saison SAISI (> 0), ou ``None``."""
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    return nombre if nombre > 0 else None
 
 
 def _base_import(points, declaration, avertissements):

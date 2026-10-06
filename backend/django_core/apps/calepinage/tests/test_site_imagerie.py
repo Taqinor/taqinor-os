@@ -309,14 +309,30 @@ class EndpointTest(TestCase):
     def test_get_sans_reglage_rend_une_section_vide(self):
         reponse = self.api.get(URL)
         self.assertEqual(reponse.status_code, 200)
-        self.assertEqual(reponse.data['imagerie'], {})
+        # ACAL129 — seule la clé DÉRIVÉE ``site_effectif`` est servie : la
+        # section stockée reste vide (rien d'inventé), et sans fuseau saisi
+        # ni profil société, le fuseau effectif est inconnu.
+        section = dict(reponse.data['imagerie'])
+        effectif = section.pop('site_effectif')
+        self.assertEqual(section, {})
+        self.assertIsNone(effectif['fuseau'])
+        self.assertIsNone(effectif['source'])
 
     def test_put_puis_get_rendent_le_contrat(self):
         reponse = self.api.put(URL, {'imagerie': REGLEE}, format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertEqual(reponse.data['imagerie'], REGLEE)
         relecture = self.api.get(URL)
-        self.assertEqual(relecture.data['imagerie'], REGLEE)
+        section = dict(relecture.data['imagerie'])
+        effectif = section.pop('site_effectif')
+        self.assertEqual(section, REGLEE)
+        self.assertEqual(effectif['source'], 'imagerie')
+        # L'aller-retour GET → PUT renvoie la clé dérivée : elle est retirée,
+        # jamais écrite.
+        retour = self.api.put(URL, {'imagerie': relecture.data['imagerie']},
+                              format='json')
+        self.assertEqual(retour.status_code, 200, retour.data)
+        self.assertEqual(retour.data['imagerie'], REGLEE)
 
     def test_put_invalide_nomme_le_champ(self):
         reponse = self.api.put(

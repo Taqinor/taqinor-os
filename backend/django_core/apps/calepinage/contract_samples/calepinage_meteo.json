@@ -32,8 +32,10 @@
         "decalage_minutes": [
           60
         ],
-        "motif": ""
+        "motif": "",
+        "provenance_fuseau": "profil_societe"
       },
+      "fichier": null,
       "albedo_face_avant": {
         "valeur": null,
         "motif": "Appliqué par PVGIS à l'intérieur de Gr(i) et NON publié par l'API : aucune valeur n'est écrite ici tant qu'une citation de la méthodologie PVGIS n'est pas committée (CALX148). Seul un albédo saisi et sourcé par la société peut remplir cette clé."
@@ -72,8 +74,10 @@
         "base": null,
         "fuseau_site": null,
         "decalage_minutes": [],
-        "motif": ""
+        "motif": "",
+        "provenance_fuseau": null
       },
+      "fichier": null,
       "albedo_face_avant": {
         "valeur": null,
         "motif": "Aucune simulation lancée : aucune météo n'a été demandée."

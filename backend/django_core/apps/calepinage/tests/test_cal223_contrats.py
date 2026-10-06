@@ -392,11 +392,11 @@ POSES_AVANT_LEUR_ROUTE = {
     # (``views/asbuilt.py``) : ``calepinage_asbuilt_ecarts.json`` en est SORTI.
     # CALX359 a livré ``GET calepinages/<pk>/bom-fixation/``
     # (``views/fixation.py``) : ``calepinage_fixation_bom.json`` en est SORTI.
-    # ACAL21 (M0) — POST consommation/proposer/ : la porte arrive avec ACAL310
-    # (retirer l'entrée dans le même commit que la route).
-    'calepinage_consommation_proposee.json': 'ACAL310',
     # ACAL22 a livré POST layout/section/ (views/calepinages.py) :
     # calepinage_layout_section.json en est SORTI.
+    # ACAL310 a livré ``POST calepinages/<pk>/consommation/proposer/``
+    # (``views/consommation.py``) : calepinage_consommation_proposee.json en
+    # est SORTI.
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne

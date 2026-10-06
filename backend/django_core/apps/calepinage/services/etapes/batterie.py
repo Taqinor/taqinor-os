@@ -646,11 +646,14 @@ def _bloc_batterie_dispatch(serie, contexte=None, *, charge=None):
     # une seule lecture, celle de ``etapes/vieillissement.py``.
     from apps.calepinage.services.etapes.vieillissement import _horizon
 
+    from apps.calepinage.services.chaine_pertes import annees_de_la_fenetre
+
     flux = _flux_horaires(trace, courbe, production)
     suite, bloc = _publier(serie, flux, dispatch, groupes, banque, strategie,
                            etat_initial=etat_initial,
                            pas_heures=float(pas) / 60.0,
-                           horizon=_horizon(contexte)[0])
+                           horizon=_horizon(contexte)[0],
+                           annees=annees_de_la_fenetre(contexte))
     if isinstance(reserve, dict):
         bloc['avertissements'].append(MENTION_RESERVE_APPAREILS.format(
             nombre=len(reserve['detail']), energie=reserve['energie_kwh'],
@@ -679,8 +682,11 @@ def _vieillissement(groupes, *, total_sortie, capacite, heures_couvertes,
                      'motif_absence': MOTIF_VIEILLISSEMENT_PLUSIEURS})
         return omis
     groupe = groupes[0]
-    annuelle = any(abs(heures_couvertes - duree) < 1e-6
-                   for duree in _HEURES_D_UNE_ANNEE)
+    # ACAL54 — ``total_sortie`` et ``heures_couvertes`` sont déjà ramenés
+    # à l'année moyenne de la fenêtre : une moyenne d'années bissextiles et
+    # non bissextiles tombe ENTRE les deux durées d'une année civile.
+    annuelle = (min(_HEURES_D_UNE_ANNEE) - 1e-6 <= heures_couvertes
+                <= max(_HEURES_D_UNE_ANNEE) + 1e-6)
     cycles = (total_sortie / capacite
               if annuelle and capacite > _EPSILON else None)
     resultat = vieillissement_batterie(
@@ -692,22 +698,29 @@ def _vieillissement(groupes, *, total_sortie, capacite, heures_couvertes,
 
 
 def _publier(serie, flux, dispatch, groupes, banque, strategie, *,
-             etat_initial, pas_heures=1.0, horizon=None):
-    """La série enrichie et le bloc, tirés des MÊMES flux pas par pas."""
+             etat_initial, pas_heures=1.0, horizon=None, annees=1):
+    """La série enrichie et le bloc, tirés des MÊMES flux pas par pas.
+
+    ACAL54 — ``annees`` : le N de la fenêtre météo. Les énergies du bloc (et
+    les cycles par an) sont ramenées à l'ANNÉE MOYENNE ; la série horaire,
+    elle, reste celle de la fenêtre entière. Le bilan ferme toujours (tous
+    ses termes sont divisés par le même N).
+    """
+    annees = annees if annees and annees > 1 else 1
     capacite = banque['capacite_utile_kwh']
-    total_conso = sum(pas['conso'] for pas in flux)
-    total_prod = sum(pas['prod'] for pas in flux)
-    total_entree = sum(pas['entree'] for pas in flux)
-    total_sortie = sum(pas['sortie'] for pas in flux)
-    total_import = sum(pas['import'] for pas in flux)
-    total_export = sum(pas['export'] for pas in flux)
-    total_direct = sum(pas['direct'] for pas in flux)
+    total_conso = sum(pas['conso'] for pas in flux) / annees
+    total_prod = sum(pas['prod'] for pas in flux) / annees
+    total_entree = sum(pas['entree'] for pas in flux) / annees
+    total_sortie = sum(pas['sortie'] for pas in flux) / annees
+    total_import = sum(pas['import'] for pas in flux) / annees
+    total_export = sum(pas['export'] for pas in flux) / annees
+    total_direct = sum(pas['direct'] for pas in flux) / annees
     # CALX63 — les deux entrées qui ne viennent pas de la production de la
     # série (écrêtage récupéré, réseau des heures creuses) : le bilan ferme
     # avec elles.
-    total_ecretage = sum(pas['entree_ecretage'] for pas in flux)
-    total_reseau = sum(pas['entree_reseau'] for pas in flux)
-    variation = (flux[-1]['etat'] - etat_initial) if flux else 0.0
+    total_ecretage = sum(pas['entree_ecretage'] for pas in flux) / annees
+    total_reseau = sum(pas['entree_reseau'] for pas in flux) / annees
+    variation = ((flux[-1]['etat'] - etat_initial) if flux else 0.0) / annees
     pertes = total_entree - total_sortie - variation
 
     suite = poser_colonnes(serie, {
@@ -774,7 +787,8 @@ def _publier(serie, flux, dispatch, groupes, banque, strategie, *,
             # CALX63 — la capacité année par année, par les cycles.
             'vieillissement': _vieillissement(
                 groupes, total_sortie=total_sortie, capacite=capacite,
-                heures_couvertes=len(flux) * pas_heures, horizon=horizon),
+                heures_couvertes=len(flux) * pas_heures / annees,
+                horizon=horizon),
         },
         'avertissements': avertissements,
         'motif_absence': '',
@@ -895,5 +909,17 @@ def _capacites_du_site(serie, contexte=None, *, charge=None):
                 texte = (f'{texte} Champ manquant : '
                          f'« {CLE_CONTEXTE}.{refus.champ} ».')
             par_motivation[nom] = candidates_omises(nom, texte)
+    # ACAL54 — les énergies de chaque candidate, ramenées à l'année moyenne
+    # de la fenêtre (le classement, lui, ne dépend pas de N).
+    from apps.calepinage.services.chaine_pertes import annees_de_la_fenetre
+
+    annees = annees_de_la_fenetre(contexte)
+    if annees > 1:
+        for comparaison in par_motivation.values():
+            for candidate in comparaison.get('candidates') or ():
+                for cle in ('energie_restituee_kwh', 'import_reseau_kwh'):
+                    valeur = _nombre(candidate.get(cle))
+                    if valeur is not None:
+                        candidate[cle] = round(valeur / annees, 3)
     bloc['par_motivation'] = par_motivation
     return bloc

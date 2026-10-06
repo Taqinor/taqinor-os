@@ -98,10 +98,16 @@ class TableauxCoherentsTest(unittest.TestCase):
         self.assertAlmostEqual(somme, self.production['total']['p50_kwh'],
                                delta=TOLERANCE_KWH)
 
-    def test_les_annees_somment_le_total(self):
-        somme = sum(annee['kwh'] for annee in self.production['annees'])
-        self.assertAlmostEqual(somme, self.production['total']['p50_kwh'],
+    def test_la_moyenne_des_annees_est_le_total(self):
+        # ACAL54 — le P50 est l'ANNÉE MOYENNE de la fenêtre : la moyenne des
+        # totaux observés (une seule année ici, donc son total).
+        annees = self.production['annees']
+        moyenne = sum(annee['kwh'] for annee in annees) / len(annees)
+        self.assertAlmostEqual(moyenne, self.production['total']['p50_kwh'],
                                delta=TOLERANCE_KWH)
+        self.assertEqual(self.production['total']['portee'], 'annee_moyenne')
+        self.assertEqual(self.production['total']['annees_fenetre'],
+                         len(annees))
 
     def test_les_douze_mois_sont_tous_la_dans_l_ordre(self):
         self.assertEqual([mois['mois'] for mois in self.production['mensuel']],

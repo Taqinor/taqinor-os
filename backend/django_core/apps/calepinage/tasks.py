@@ -151,6 +151,23 @@ def calculer_calepinage(job_id=None, company_id=None, entree=None,
             'elements': len(elements)}
 
 
+def _publier_echec(job, calepinage, champ, motif):
+    """ACAL126 — l'échec d'une simulation, publié comme un succès : la charge
+    ``{elements: [{index, repere, statut: 'failed', champ, motif}],
+    resultat: None}`` en cache, ``job.message_erreur`` gardant son texte."""
+    from core import cache as cache_tenant
+
+    charge = {'elements': [{'index': 0, 'repere': str(calepinage.pk),
+                            'statut': 'failed', 'champ': champ or '',
+                            'motif': motif or '', 'resultat': None}],
+              'resultat': None}
+    cache_tenant.set(job.company_id, cle_job(job.pk), charge,
+                     timeout=DUREE_CACHE_S)
+    job.result_file_key = cle_job(job.pk)
+    job.save(update_fields=['result_file_key', 'updated_at'])
+    job.marquer_echec('%s : %s' % (champ, motif) if champ else (motif or ''))
+
+
 @shared_task(name='calepinage.simuler')
 def simuler_calepinage(job_id=None, company_id=None, calepinage_id=None,
                        nature=NATURE_SIMULATION, forcer=False):
@@ -187,13 +204,16 @@ def simuler_calepinage(job_id=None, company_id=None, calepinage_id=None,
         rendu = service_simulation.simuler_calepinage(calepinage,
                                                       forcer=bool(forcer))
     except SimulationRefusee as refus:
-        job.marquer_echec('%s : %s' % (refus.champ or 'simulation',
-                                       refus.motif))
+        # ACAL126 — l'échec est STRUCTURÉ comme un succès : la charge du
+        # cache porte ``elements[0] = {statut, champ, motif}`` que
+        # ``GET moteur/resultat/<job>/`` sert, et l'écran pointe le champ.
+        _publier_echec(job, calepinage, refus.champ or 'simulation',
+                       refus.motif)
         return {'statut': 'failed', 'champ': refus.champ}
     except Exception as erreur:  # noqa: BLE001 — l'issue est publiée, pas avalée
         logger.exception('calepinage.simuler : calepinage #%s en échec',
                          calepinage_id)
-        job.marquer_echec(str(erreur))
+        _publier_echec(job, calepinage, '', str(erreur))
         return {'statut': 'failed', 'motif': str(erreur)}
 
     resume = {

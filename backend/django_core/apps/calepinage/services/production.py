@@ -44,42 +44,22 @@ from .valeurs import nombre as _nombre
 __all__ = ['pans_du_layout']
 
 
-def _premier(*valeurs):
-    for valeur in valeurs:
-        nombre = _nombre(valeur)
-        if nombre is not None:
-            return nombre
-    return None
-
-
 def pans_du_layout(layout):
     """Les pans d'un document ``roof_layout`` v2, prêts à être interrogés.
 
-    Lit ``zones[]`` : la géométrie POSÉE (``geometry``) prime sur le résultat
-    d'écran (``result``), qui prime sur le dimensionnement souhaité
-    (``neededPanels``) — même ordre de préséance que les lecteurs existants du
-    document. Aucune valeur par défaut n'est inventée : un pan sans
-    orientation est rendu tel quel, avec ses champs à ``None``.
+    ACAL61 — adaptateur MINCE de ``apps.ventes.services.pans_du_document``
+    (LA primitive, D-ACAL-5) : pans de toit ET surfaces de pose (champ au
+    sol, ombrière), compte POSÉ (``neededPanels`` n'est jamais posé : un pan
+    non pavé rend 0 module), orientation de ``orientation_du_pan``. Aucune
+    valeur par défaut n'est inventée : un pan sans orientation est rendu tel
+    quel, ses champs à ``None``.
     """
-    zones = ((layout or {}).get('zones')
-             if isinstance(layout, dict) else None) or []
-    pans = []
-    for rang, zone in enumerate(zones):
-        if not isinstance(zone, dict):
-            continue
-        geometrie = zone.get('geometry') if isinstance(
-            zone.get('geometry'), dict) else {}
-        resultat = zone.get('result') if isinstance(
-            zone.get('result'), dict) else {}
-        modules = _premier(geometrie.get('count'), resultat.get('count'), 0)
-        pans.append({
-            'pan': str(zone.get('label') or zone.get('id')
-                       or f'PAN-{rang + 1}'),
-            'modules': int(modules or 0),
-            'kwc': _premier(geometrie.get('kwc'), resultat.get('kwc')),
-            'azimut_deg': _premier(geometrie.get('azimuthDeg'),
-                                   zone.get('facingAzimuthDeg')),
-            'inclinaison_deg': _premier(geometrie.get('tiltDeg'),
-                                        zone.get('pitchDeg')),
-        })
-    return pans
+    from apps.ventes.services import pans_du_document
+
+    return [{
+        'pan': str(pan.get('libelle')),
+        'modules': int(pan.get('modules') or 0),
+        'kwc': _nombre(pan.get('kwc')),
+        'azimut_deg': _nombre(pan.get('azimut_deg')),
+        'inclinaison_deg': _nombre(pan.get('inclinaison_deg')),
+    } for pan in pans_du_document(layout)]

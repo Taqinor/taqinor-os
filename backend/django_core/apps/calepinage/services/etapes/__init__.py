@@ -250,6 +250,125 @@ def etape_appliquee(libelle, *, source, entree, reference='', gain=False):
     }
 
 
+#: ACAL131 — la colonne posée PAR POINT par la ré-indexation sur l'heure
+#: légale du site (``chaine_pertes._reindexer_sur_l_heure_du_site``) : le
+#: décalage UTC (minutes) de CE point. Au Maroc il vaut 60 hors Ramadan et 0
+#: pendant — une seule valeur pour toute la série serait fausse une partie de
+#: l'année. Elle n'entre pas dans la série persistée.
+CLE_DECALAGE_POINT = 'decalage_utc_min'
+
+MOTIF_INSTANT_UTC_INCONNU = (
+    "L'instant UTC des heures de la série n'est pas connu : ni décalage par "
+    "point (ré-indexation sur l'heure légale du site), ni base UTC, ni "
+    'décalage unique déclaré (« meteo.heure »). La position du soleil ne se '
+    'date pas au jugé — jamais un décalage moyen.')
+
+
+def _nombre_simple(valeur):
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    try:
+        return float(valeur)
+    except (TypeError, ValueError):
+        return None
+
+
+def decalage_utc_du_point(point, meteo):
+    """ACAL131 — le décalage UTC (minutes) d'UN point, ou ``None``.
+
+    Dans l'ordre : le décalage PROPRE au point (:data:`CLE_DECALAGE_POINT`,
+    posé par la ré-indexation) ; une série déclarée en UTC (0) ; un décalage
+    UNIQUE déclaré (nombre, ou liste d'une seule valeur). Sinon ``None`` —
+    jamais une moyenne de décalages.
+    """
+    propre = _nombre_simple((point or {}).get(CLE_DECALAGE_POINT)
+                            if isinstance(point, dict) else None)
+    if propre is not None:
+        return propre
+    heure = (meteo or {}).get('heure') or {}
+    if str(heure.get('base') or '').strip().lower() == 'utc':
+        return 0.0
+    brut = heure.get('decalage_minutes')
+    nombre = _nombre_simple(brut)
+    if nombre is not None:
+        return nombre
+    if isinstance(brut, (list, tuple)):
+        valeurs = {_nombre_simple(valeur) for valeur in brut}
+        valeurs.discard(None)
+        if len(valeurs) == 1:
+            return valeurs.pop()
+    return None
+
+
+def instant_utc(point, meteo):
+    """ACAL131 — L'instant UTC d'un point de série, ou ``None``.
+
+    LE lecteur partagé par l'IAM, l'horizon et l'inter-rangées : l'heure
+    locale du point moins SON décalage (:func:`decalage_utc_du_point`).
+    """
+    import datetime
+
+    decalage = decalage_utc_du_point(point, meteo)
+    if decalage is None or not isinstance(point, dict):
+        return None
+    try:
+        moment = datetime.datetime(int(point['annee']), int(point['mois']),
+                                   int(point['jour']),
+                                   tzinfo=datetime.timezone.utc)
+        moment += datetime.timedelta(hours=float(point['heure']))
+    except (KeyError, TypeError, ValueError):
+        return None
+    return moment - datetime.timedelta(minutes=decalage)
+
+
+def decalages_publies(points, meteo):
+    """ACAL131 — les décalages UTC réellement employés (liste triée des
+    valeurs distinctes ; un nombre seul quand il n'y en a qu'un), pour
+    l'``entree`` publiée d'une étape."""
+    valeurs = sorted({decalage_utc_du_point(point, meteo)
+                      for point in points or ()} - {None})
+    if len(valeurs) == 1:
+        return valeurs[0]
+    return valeurs
+
+
+#: ACAL135 / D-ACAL-8 — les réglages société qu'un poste SAISI et SOURCÉ du
+#: calepinage recouvre : ``{clé de réglage: nom du poste}``, déclarés UNE
+#: fois. Le poste du calepinage PRIME sur le réglage société (le projet est
+#: plus précis que la société) ; un poste mensuel garde ses douze mois.
+POSTE_DE_REGLAGE = {
+    'salissure_mensuelle_pct': 'salissure',
+    'mismatch_fabricant_pct': 'mismatch',
+}
+
+#: La provenance publiée d'un réglage repris d'un poste du calepinage.
+ORIGINE_POSTE_CALEPINAGE = 'calepinage'
+
+
+def poste_qui_prime(contexte, cle):
+    """ACAL135 — le poste SOURCÉ du calepinage qui prime sur le réglage
+    ``cle``, à la forme d'un réglage ``{valeur, source, reference, origine}``,
+    ou ``None``. ``valeur`` = les douze mois d'un poste mensuel, sinon son
+    pourcentage. Un poste sans source n'est jamais repris (D-CALX 7)."""
+    nom = POSTE_DE_REGLAGE.get(cle)
+    if not nom:
+        return None
+    for saisi in (contexte or {}).get('postes_saisis') or ():
+        if not isinstance(saisi, dict) or saisi.get('poste') != nom:
+            continue
+        if not str(saisi.get('source') or '').strip():
+            return None
+        mensuel = saisi.get('mensuel')
+        valeur = (list(mensuel) if isinstance(mensuel, (list, tuple))
+                  and mensuel else saisi.get('pct'))
+        if valeur is None:
+            return None
+        return {'valeur': valeur, 'source': saisi.get('source'),
+                'reference': saisi.get('reference') or '',
+                'origine': ORIGINE_POSTE_CALEPINAGE}
+    return None
+
+
 def reglage(contexte, cle):
     """Le réglage société ``cle`` de la section « simulation », ou ``None``.
 
@@ -257,6 +376,9 @@ def reglage(contexte, cle):
     une faute de frappe de l'étape, pas une absence de saisie — elle est donc
     refusée en la nommant. Une clé du registre jamais saisie rend ``None`` :
     l'étape s'omet alors en nommant la clé, sans rien supposer.
+
+    ACAL135 — un poste SOURCÉ du calepinage qui recouvre la clé
+    (:data:`POSTE_DE_REGLAGE`) PRIME sur le réglage société.
     """
     from apps.calepinage.services.parametres_cles import (
         SECTION_SIMULATION, registre)
@@ -267,6 +389,9 @@ def reglage(contexte, cle):
             f'La clé de réglage « {cle} » ne figure pas au registre de la '
             f'section « {SECTION_SIMULATION} » (CALX145) : ajoutez-la EN FIN '
             f'de CLES_SIMULATION avant de la lire.')
+    prime = poste_qui_prime(contexte, cle)
+    if prime is not None:
+        return prime
     valeurs = (contexte or {}).get('reglages_simulation') or {}
     saisie = valeurs.get(cle)
     if not isinstance(saisie, dict):
