@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
    CALX18 — L'ÉDITEUR DES POSTES DE PERTES.
@@ -25,15 +26,15 @@ const CATALOGUE_TEST = [
     reference: 'PVsyst — inverter loss', mensuel: false },
 ]
 
+/* ACAL136 — les réponses viennent de `contract_samples/calepinage_pertes.json`
+   (jamais écrites à la main) ; le catalogue (clé servie par la vue, absente de
+   l'échantillon) est celui du test. */
+const CONTRAT = exempleContrat('calepinage', 'calepinage_pertes')
+const CONTRAT_VIDE = exempleContrat('calepinage', 'calepinage_pertes', 'exemple_non_simulable')
+
 const REPONSE_VIDE = {
-  calepinage: 1,
-  pertes: [],
-  total_pct: null,
-  postes_non_sources: [],
-  simulable: false,
-  motif_non_simulable: 'Aucun poste de perte n’est renseigné : le module '
-    + 'passe TOUJOURS à PVGIS la somme explicite de ses postes et ne '
-    + 'suppose jamais une perte par défaut.',
+  ...CONTRAT_VIDE,
+  postes: [],
   catalogue: CATALOGUE_TEST,
 }
 
@@ -136,5 +137,123 @@ describe('CALX18 — le total est celui des postes SAISIS, avec sa mention', () 
       + 'applique un à un (lot 3) ; un poste devenu calculable par la chaîne '
       + 'y sera écarté et le dira',
     )
+  })
+})
+
+/* ACAL136 — le statut de chaque poste, le forçage signé, et l'aller-retour qui
+   ne perd rien (poste hors catalogue, source null, références). */
+describe('ACAL136 — statuts, forçage signé, aller-retour sans perte', () => {
+  // Le catalogue du test ne connaît que `salissure` ; chaque autre poste du
+  // contrat est « hors catalogue » — il doit survivre à l'enregistrement.
+  const reponse = (extra = []) => ({
+    data: {
+      ...CONTRAT,
+      postes: [...CONTRAT.postes, ...extra],
+      catalogue: [CATALOGUE_TEST[1]],
+    },
+  })
+  const attendu = (p) => {
+    const poste = {
+      poste: p.poste, libelle: p.libelle, pct: p.pct, source: p.source,
+      reference: p.reference ?? '', mensuel: p.mensuel,
+    }
+    if (p.force) { poste.force = true; poste.motif_force = p.motif_force }
+    return poste
+  }
+
+  it('aller-retour : hors catalogue et source null conservés', async () => {
+    const neige = {
+      mensuel: null, force: false, motif_force: '', etape: null, raison: '',
+      poste: 'neige', libelle: 'Neige', pct: 1.5, source: null, reference: null, statut: 'non_source',
+    }
+    pertes.mockResolvedValue(reponse([neige]))
+    enregistrerPertes.mockResolvedValue({ data: { ...CONTRAT, postes: CONTRAT.postes } })
+    rendre()
+    await screen.findByTestId('cal-pertes-poste-neige')
+
+    fireEvent.click(screen.getByTestId('cal-pertes-enregistrer'))
+
+    await waitFor(() => expect(enregistrerPertes).toHaveBeenCalledTimes(1))
+    expect(screen.queryByTestId('cal-pertes-bandeau')).toBeNull()
+    expect(enregistrerPertes.mock.calls[0][1]).toEqual({
+      postes: [...CONTRAT.postes, neige].map(attendu),
+    })
+  })
+
+  it('étape calculante en lecture seule', async () => {
+    pertes.mockResolvedValue(reponse())
+    rendre()
+    await screen.findByTestId('cal-pertes-poste-temperature')
+
+    expect(screen.getByTestId('acal136-statut-temperature')).toHaveTextContent(
+      "Calculé par l'étape Thermique — votre saisie n'est pas appliquée",
+    )
+    expect(champPct('temperature')).toBeDisabled()
+    expect(champSource('temperature')).toBeDisabled()
+    expect(screen.getByTestId('acal136-forcer-temperature')).toBeInTheDocument()
+    // Un poste appliqué reste éditable.
+    expect(champPct('soiling')).not.toBeDisabled()
+  })
+
+  it('forcer exige un motif', async () => {
+    pertes.mockResolvedValue(reponse())
+    enregistrerPertes.mockResolvedValue({ data: { ...CONTRAT } })
+    rendre()
+    await screen.findByTestId('cal-pertes-poste-temperature')
+
+    fireEvent.click(screen.getByTestId('acal136-forcer-temperature'))
+    // Forcé : la ligne redevient éditable, mais le motif est obligatoire.
+    expect(champPct('temperature')).not.toBeDisabled()
+    fireEvent.click(screen.getByTestId('cal-pertes-enregistrer'))
+    expect(await screen.findByTestId('cal-pertes-erreur-temperature')).toHaveTextContent('motif')
+    expect(enregistrerPertes).not.toHaveBeenCalled()
+
+    fireEvent.change(
+      screen.getByTestId('acal136-motif-temperature').querySelector('input'),
+      { target: { value: 'Mesure sur site du 12/03' } },
+    )
+    fireEvent.click(screen.getByTestId('cal-pertes-enregistrer'))
+
+    await waitFor(() => expect(enregistrerPertes).toHaveBeenCalledTimes(1))
+    const envoye = enregistrerPertes.mock.calls[0][1].postes.find((p) => p.poste === 'temperature')
+    expect(envoye).toMatchObject({
+      force: true, motif_force: 'Mesure sur site du 12/03', source: 'fiche', pct: 8,
+    })
+  })
+
+  it('remplace le réglage société affiché', async () => {
+    pertes.mockResolvedValue(reponse())
+    rendre()
+    await screen.findByTestId('cal-pertes-poste-wiring')
+
+    expect(screen.getByTestId('acal136-statut-wiring'))
+      .toHaveTextContent(/Remplace le réglage société \(2 %\)/)
+  })
+
+  it('hors chaîne : la raison servie est affichée', async () => {
+    pertes.mockResolvedValue(reponse())
+    rendre()
+    await screen.findByTestId('cal-pertes-poste-degradation')
+
+    expect(screen.getByTestId('acal136-statut-degradation'))
+      .toHaveTextContent("Hors chaîne : N'agit pas sur la production de l'année 1.")
+  })
+
+  it('une ligne éditée sans source reste refusée, une ligne intacte à source null passe', async () => {
+    pertes.mockResolvedValue(reponse())
+    rendre()
+    await screen.findByTestId('cal-pertes-poste-availability')
+
+    // `availability` : source null servie — intacte, aucun refus.
+    fireEvent.click(screen.getByTestId('cal-pertes-enregistrer'))
+    await waitFor(() => expect(enregistrerPertes).toHaveBeenCalledTimes(1))
+    expect(screen.queryByTestId('cal-pertes-erreur-availability')).toBeNull()
+
+    // Éditée : le pourcentage change, toujours sans source → refus nommé.
+    enregistrerPertes.mockClear()
+    fireEvent.change(champPct('availability'), { target: { value: '2' } })
+    fireEvent.click(screen.getByTestId('cal-pertes-enregistrer'))
+    expect(await screen.findByTestId('cal-pertes-erreur-availability')).toHaveTextContent('source')
+    expect(enregistrerPertes).not.toHaveBeenCalled()
   })
 })
