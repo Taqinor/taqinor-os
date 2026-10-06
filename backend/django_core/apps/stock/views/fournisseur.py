@@ -343,7 +343,11 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         Lecture Stock. INTERNE."""
         from ..services import supplier_performance
         fournisseur = self.get_object()
-        return Response(supplier_performance(request.user.company, fournisseur))
+        donnees = supplier_performance(request.user.company, fournisseur)
+        # ASTK13 (D-ASTK-2) — total des achats retiré sans `prix_achat_voir`.
+        if not getattr(request.user, 'can_view_buy_prices', True):
+            donnees.pop('total_achats_ht', None)
+        return Response(donnees)
 
     @action(detail=True, methods=['get', 'post'], url_path='portail-tokens',
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])
@@ -443,22 +447,29 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         debut, fin = _date('debut'), _date('fin')
         lignes = stock_selectors.conformite_fournisseurs(
             request.user.company, debut=debut, fin=fin)
+        # ASTK13 (D-ASTK-2) — montant acheté retiré (clé JSON ET colonne
+        # xlsx) sans `prix_achat_voir`.
+        voit_montants = getattr(request.user, 'can_view_buy_prices', True)
+        if not voit_montants:
+            for ligne in lignes:
+                ligne.pop('montant_achete', None)
         if request.query_params.get('export') != 'xlsx':
             return Response(lignes)
 
         entetes = [
             'Fournisseur', 'Statut onboarding', 'Score de risque',
             'Niveau de risque', 'Documents expirés', 'Documents manquants',
-            'Dernier retard le', 'Retard (jours)', 'Montant acheté (MAD HT)',
+            'Dernier retard le', 'Retard (jours)',
         ]
+        if voit_montants:
+            entetes.append('Montant acheté (MAD HT)')
         corps = [
             [
                 ligne['fournisseur'], ligne['statut_onboarding'],
                 ligne['score_risque'], ligne['niveau_risque'],
                 ligne['documents_expires'], ligne['documents_manquants'],
                 ligne['dernier_retard_le'], ligne['dernier_retard_jours'],
-                ligne['montant_achete'],
-            ]
+            ] + ([ligne['montant_achete']] if voit_montants else [])
             for ligne in lignes
         ]
         return build_xlsx_response(
@@ -573,7 +584,14 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
 
         otd = otd_stats(company, fournisseur)
 
-        return Response({
+        # ASTK13 (D-ASTK-2) — prix convenus et solde dû retirés sans
+        # `prix_achat_voir` (le reste de la fiche reste intact).
+        voit_montants = getattr(request.user, 'can_view_buy_prices', True)
+        if not voit_montants:
+            for accord in accords_prix:
+                accord.pop('prix_convenu', None)
+
+        donnees = {
             'fournisseur_id': fournisseur.id,
             'bcf_ouverts': bcf_ouverts,
             'bcf_en_retard': bcf_en_retard,
@@ -586,7 +604,10 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             'accords_prix': accords_prix,
             'conformite_ok': not problemes,
             'conformite_documents_manquants': len(problemes),
-        })
+        }
+        if not voit_montants:
+            donnees.pop('solde_total_du', None)
+        return Response(donnees)
 
 
 class ContactFournisseurViewSet(CompanyScopedModelViewSet):
