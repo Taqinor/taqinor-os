@@ -77,10 +77,11 @@ vi.mock('../../api/gedApi', () => ({
 // Toaster s'appuie sur un ThemeProvider absent du test — on neutralise `toast`.
 vi.mock('../../ui/Toaster', () => ({
   Toaster: () => null,
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() },
 }))
 
 import gedApi from '../../api/gedApi'
+import { toast } from '../../ui/Toaster'
 import GedNavigator from './GedNavigator'
 // VX152 — GedNavigator rend désormais le moteur DataTable partagé, qui lit la
 // densité via useTheme : comme tout écran consommant DataTable, le test doit
@@ -657,6 +658,29 @@ describe('GedNavigator — écriture (U14)', () => {
     await userEvent.click(await screen.findByText("Extraire l'OCR"))
 
     await waitFor(() => expect(gedApi.ocrPiece).toHaveBeenCalledWith(8))
+  })
+
+  it('OCR inactif affiche OCR non configuré', async () => {
+    gedApi.ocrPiece.mockResolvedValueOnce({
+      data: { document: {}, metadonnees: {}, ocr_enabled: false },
+    })
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'cin.pdf', updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+
+    renderGed()
+    expect(screen.queryByPlaceholderText(/texte OCR/)).toBeNull()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Plus d'actions pour cin\.pdf/i }))
+    await userEvent.click(await screen.findByText("Extraire l'OCR"))
+
+    await waitFor(() => expect(toast.message).toHaveBeenCalledWith(
+      'OCR non configuré — aucune extraction faite.'))
+    expect(toast.success).not.toHaveBeenCalledWith('OCR effectué — aucune métadonnée reconnue.')
   })
 
   it('WIR249 — pose puis lève le verrou d’avertissement (ZGED9, distinct du check-out)', async () => {

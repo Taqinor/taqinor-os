@@ -55,7 +55,7 @@ const GED_SEARCH_COLUMNS = [
   },
 ]
 
-export default function GedSearch({ onOpenDocument } = {}) {
+export default function GedSearch({ onOpenDocument, ocrActif = false } = {}) {
   const [query, setQuery] = useState('')
   const [semantic, setSemantic] = useState(false)
   const [tagId, setTagId] = useState('')
@@ -186,7 +186,8 @@ export default function GedSearch({ onOpenDocument } = {}) {
             <div className="relative">
               <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <Input value={query} onChange={(e) => setQuery(e.target.value)}
-                placeholder="Nom, description, texte OCR…" className="pl-8"
+                placeholder={ocrActif ? 'Nom, description, texte OCR…' : 'Nom, description, métadonnées…'}
+                className="pl-8"
                 aria-label="Recherche plein-texte" />
             </div>
           </div>

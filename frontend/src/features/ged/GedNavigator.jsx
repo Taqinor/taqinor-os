@@ -306,6 +306,14 @@ export default function GedNavigator() {
   const ocrPieceAction = async (d) => {
     try {
       const res = await gedApi.ocrPiece(d.id)
+      // ADOC28 — dire la vérité : sans moteur OCR configuré, aucune
+      // extraction n'a eu lieu (jamais « OCR effectué »).
+      if (res?.data?.ocr_enabled === false) {
+        setOcrActif(false)
+        toast.message('OCR non configuré — aucune extraction faite.')
+        return
+      }
+      setOcrActif(true)
       const n = Object.keys(res?.data?.metadonnees || {}).length
       toast.success(n
         ? `${n} métadonnée${n > 1 ? 's' : ''} extraite${n > 1 ? 's' : ''}.`
@@ -353,6 +361,9 @@ export default function GedNavigator() {
   const [nouvelleVersionDoc, setNouvelleVersionDoc] = useState(null)
   // ADOC20 — geste « Modifier » (nom, description).
   const [modifierDoc, setModifierDoc] = useState(null)
+  // ADOC28 — le moteur OCR n'est annoncé actif que lorsqu'une extraction a
+  // réellement été faite (réponse `ocr_enabled` du serveur).
+  const [ocrActif, setOcrActif] = useState(false)
 
   const hasCabinet = cabinetId != null
 
@@ -394,7 +405,7 @@ export default function GedNavigator() {
           ZGED7/13 — favoris/récents ouvrent l'aperçu inline GED14. */}
       <div className="mb-4 flex items-start gap-2">
         <div className="flex-1">
-          <GedSearch onOpenDocument={setPreviewDoc} />
+          <GedSearch onOpenDocument={setPreviewDoc} ocrActif={ocrActif} />
         </div>
         {/* FG352/XKB20/WIR249 — DocQA : question en langage naturel → fragments
             GED+KB les plus proches (RAG, KEY-GATED). */}
