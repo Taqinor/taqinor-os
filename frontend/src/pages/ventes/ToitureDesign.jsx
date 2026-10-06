@@ -857,13 +857,18 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // design-context et le document serveur. Si la scène porte des
   // modifications non enregistrées (sérialisation ≠ base serveur), on
   // CONFIRME d'abord — sinon rechargement direct.
-  const rechargerAtelier = () => {
+  const rechargerAtelier = async () => {
     // ACAL85 — MÊME mesure que la garde de sortie (référence = scène hydratée
     // ou dernier enregistrement), jamais l'empreinte serveur du brouillon.
     const modifiee = sceneHydratee && sceneEstModifiee()
-    if (modifiee && !window.confirm(
-      'La scène porte des modifications non enregistrées : elles seront perdues. Recharger quand même ?',
-    )) return
+    if (modifiee) {
+      const ok = await confirm({
+        title: 'Modifications non enregistrées',
+        description: 'La scène porte des modifications non enregistrées : elles seront perdues. Recharger quand même ?',
+        confirmLabel: 'Recharger quand même',
+      })
+      if (!ok) return
+    }
     window.location.reload()
   }
 
