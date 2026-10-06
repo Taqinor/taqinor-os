@@ -14,15 +14,9 @@ import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 
-vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) =>
-  (await import('../../test/fixtures/devisListMocks.js')).ventesSliceMock(await importOriginal()))
-
-vi.mock('../../api/ventesApi', async (importOriginal) =>
-  (await import('../../test/fixtures/devisListMocks.js')).ventesApiPdfMock(await importOriginal(), 1))
-
-vi.mock('../../api/crmApi', async (importOriginal) =>
-  (await import('../../test/fixtures/devisListMocks.js')).crmApiMock(await importOriginal()))
-
+vi.mock('../../features/ventes/store/ventesSlice', async (orig) => (await import('../../test/fixtures/devisListMocks.js')).ventesSliceMock(await orig()))
+vi.mock('../../api/ventesApi', async (orig) => (await import('../../test/fixtures/devisListMocks.js')).ventesApiPdfMock(await orig(), 1))
+vi.mock('../../api/crmApi', async (orig) => (await import('../../test/fixtures/devisListMocks.js')).crmApiMock(await orig()))
 vi.mock('../../api/uxviewsApi', async () => (await import('../../test/fixtures/devisListMocks.js')).uxviewsApiMock())
 
 import DevisList from './DevisList'
@@ -42,21 +36,19 @@ const COMMERCIAL = base(2, 'commercial', { etude_params: { mode: 'commercial' } 
 const RESIDENTIEL = base(3, 'residentiel')
 
 async function ouvrirDialogue(devis) {
-  const store = configureStore({
-    reducer: {
-      ventes: (state = { devis: [devis], loading: false, error: null }) => state,
-      auth: (state = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => state,
-    },
-  })
-  render(
+  const etat = { ventes: { devis: [devis], loading: false, error: null },
+    auth: { role: 'admin', role_nom: 'Directeur', permissions: [] } }
+  const store = configureStore({ reducer: { ventes: (s = etat.ventes) => s, auth: (s = etat.auth) => s } })
+  const arbre = (
     <Provider store={store}>
       <MemoryRouter initialEntries={['/ventes/devis']}>
         <ThemeProvider><DevisList /></ThemeProvider>
       </MemoryRouter>
-    </Provider>,
+    </Provider>
   )
-  const ligne = screen.getByText(devis.reference).closest('tr')
-  fireEvent.click(within(ligne).getByTitle('Générer le PDF (choix du format)'))
+  render(arbre)
+  const rangee = screen.getByText(devis.reference).closest('tr')
+  fireEvent.click(within(rangee).getByTitle('Générer le PDF (choix du format)'))
   return screen.findByRole('dialog')
 }
 
