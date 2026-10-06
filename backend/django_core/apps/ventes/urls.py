@@ -68,6 +68,7 @@ from .etude_horaire_view import etude_horaire_preview  # CJ2a
 from .etude_pompage_view import etude_pompage_preview  # AGR121
 from .etude_ci_view import etude_ci_preview  # CIQ118
 from .views.economie_pompage import economie_pompage_preview  # AGR206
+from .economie_ci_view import economie_ci_preview  # CIQ210
 from .roof_load_view import roof_load_check  # FG253
 from .connection_declaration_view import declaration_raccordement  # FG272
 from .calendrier_view import calendrier_reglementaire  # FG273
@@ -246,6 +247,10 @@ urlpatterns = [
     # ``GET devis/<pk>/economie-pompage/``), aucune écriture.
     path('economie-pompage/preview/', economie_pompage_preview,
          name='economie-pompage-preview'),
+    # CIQ210 — aperçu de l'économie C&I (même calcul que
+    # ``GET devis/<pk>/economie-ci/``), aucune écriture.
+    path('economie-ci/preview/', economie_ci_preview,
+         name='economie-ci-preview'),
     # N87 — état du compte d'envoi email (informatif, lecture seule).
     path('email-config/', email_config, name='email-config'),
     # Config carte pour l'outil de conception 3D de toiture (ERP même origine) :

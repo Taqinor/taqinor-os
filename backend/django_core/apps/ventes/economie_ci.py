@@ -1138,3 +1138,345 @@ def economie_ci_publique(bloc):
     if not isinstance(bloc, dict):
         return bloc
     return _sans_internes(bloc)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CIQ210 — ASSEMBLAGE du bloc ``economie_ci`` (contrat ``economie_ci.json``) et
+# lecture d'un devis : UNE fonction sert l'aperçu, la lecture interne, le PDF
+# et /proposition (celles-ci par :func:`economie_ci_publique`).
+# ═════════════════════════════════════════════════════════════════════════════
+# Entrées : l'aperçu C&I (contrat CIQ2 ``etude_ci_preview.json`` — la forme
+# stockée ``etude_params.etude_ci`` en est le sous-ensemble ``entrees_resolues``
+# / ``profil_charge`` / ``bilan`` / ``alertes``), ``tarif_declare``,
+# ``saisies_economie_ci``, l'investissement de l'option retenue (totaux CLIENT
+# HT/TTC, jamais ``prix_achat``) et les lignes (onduleur, O&M). Aucun prix plat,
+# aucun taux d'autoconsommation forfaitaire, aucune économie de calepinage.
+
+MOTIF_ETUDE_CI_ABSENTE = (
+    "étude C&I du devis absente (aucun panneau au devis ou étude non "
+    "calculée) — économies non chiffrées")
+MOTIF_FINANCEMENT_ABSENT = "aucune offre écrite de prêteur saisie (D-CIQ-15)"
+ALERTE_TARIF_REPLI = (
+    "Tarif valorisé sur la grille officielle (repli) : lire une facture du "
+    "client pour un chiffre déclaré.")
+#: Alertes de l'étude C&I RELAYÉES (jamais recalculées) dans
+#: ``alertes_internes`` — l'alerte cos φ de CIQ134.
+CODES_ALERTES_RELAYEES = ('cos_phi_apres_pv',)
+PARCOURS_AIDE = ('aucun', 'sr500', 'autre')
+MOTIF_SR500_AUCUN = "aucun parcours d'aide déclaré"
+MOTIF_SR500 = ("candidature SR500 manuelle d'abord (D-CIQ-17) — indicateur "
+               "interne seulement, jamais un montant")
+MOTIF_AIDE_AUTRE = ("parcours d'aide « autre » déclaré — non évalué, jamais "
+                    "un montant")
+HYPOTHESE_VALORISATION = {
+    'cle': 'valorisation',
+    'valeur': 'tarif du poste horaire couvert, heure par heure',
+    'statut': 'source', 'source': 'conventions Groupe CIQ'}
+#: Ordre des clés du contrat (``exemple``).
+CLES_BLOC = ('statut', 'motifs_omission', 'base', 'motif_base', 'tarif',
+             'economie_annee1', 'facture_avant', 'facture_apres', 'revente',
+             'flux_ht', 'flux_ttc', 'jalons', 'jalons_ttc', 'indicateurs',
+             'remplacements', 'om', 'sensibilites', 'financement',
+             'hypotheses', 'omissions', 'alertes_internes', 'vue_interne')
+
+
+def _resolue(apercu, feuille):
+    entree = (apercu.get('entrees_resolues') or {}).get(feuille)
+    return entree.get('valeur') if isinstance(entree, dict) else entree
+
+
+def _sr500(saisies):
+    parcours = str(saisies.get('parcours_aide') or 'aucun').strip().lower()
+    if parcours not in PARCOURS_AIDE:
+        raise SaisieEconomieCiInvalide(
+            f"saisies_economie_ci.parcours_aide : choisir parmi "
+            f"{', '.join(PARCOURS_AIDE)}.",
+            champ='saisies_economie_ci.parcours_aide')
+    motif = {'aucun': MOTIF_SR500_AUCUN, 'sr500': MOTIF_SR500,
+             'autre': MOTIF_AIDE_AUTRE}[parcours]
+    return {'statut': 'non_evalue', 'motif': motif}
+
+
+def _hypothese_tarif(tarif):
+    origine = tarif.get('origine')
+    premier = (tarif.get('tarifs_par_poste') or [{}])[0]
+    if origine == tarif_ci.ORIGINE_GRILLE:
+        libelle = tarif_ci._LIBELLES_CONTRAT.get(tarif.get('contrat'),
+                                                 tarif.get('contrat'))
+        return {'cle': 'tarif', 'valeur': f'grille ONEE {libelle}, repli',
+                'statut': 'estimation', 'source': tarif_ci.MENTION_GRILLE}
+    return {'cle': 'tarif', 'valeur': premier.get('source'),
+            'statut': 'declare', 'source': tarif.get('mention')}
+
+
+def _alertes_internes(apercu, tarif):
+    alertes = []
+    if tarif.get('origine') == tarif_ci.ORIGINE_GRILLE:
+        alertes.append({'code': 'tarif_repli', 'message': ALERTE_TARIF_REPLI,
+                        'interne': True})
+    for alerte in apercu.get('alertes') or []:
+        if isinstance(alerte, dict) and \
+                alerte.get('code') in CODES_ALERTES_RELAYEES:
+            relayee = dict(alerte)
+            relayee['interne'] = True
+            alertes.append(relayee)
+    return alertes
+
+
+def _somme_lignes(lignes, cle_filtre):
+    ht = ttc = 0.0
+    trouve = False
+    sources = []
+    for ligne in lignes:
+        if not cle_filtre(ligne):
+            continue
+        h, t = _montant(ligne.get('ht')), _montant(ligne.get('ttc'))
+        if h is None or t is None:
+            continue
+        trouve = True
+        ht += h
+        ttc += t
+        if ligne.get('designation'):
+            sources.append(str(ligne['designation']))
+    if not trouve:
+        return None
+    return {'ht': round(ht, 2), 'ttc': round(ttc, 2), 'sources': sources}
+
+
+def onduleur_et_om(lignes):
+    """``(onduleur, om)`` lus sur les lignes de l'option retenue.
+
+    ``lignes`` : ``[{designation, ht, ttc, optionnelle, onduleur (bool),
+    role_ci}]`` — totaux CLIENT. Onduleur = lignes onduleur COMPTÉES (montant
+    réel, décision Q1) ; O&M = lignes du rôle ``om_ci`` : activée si au moins
+    une n'est pas optionnelle (D-CIQ-12). None quand aucune ligne.
+    """
+    lignes = [li for li in (lignes or []) if isinstance(li, dict)]
+    ond = _somme_lignes(
+        lignes, lambda li: li.get('onduleur') and not li.get('optionnelle'))
+    onduleur = None
+    if ond is not None:
+        onduleur = {'ht': ond['ht'], 'ttc': ond['ttc'],
+                    'source': 'ligne onduleur du devis'
+                    + (f" ({', '.join(ond['sources'])})"
+                       if ond['sources'] else '')}
+    om_lignes = [li for li in lignes if li.get('role_ci') == 'om_ci']
+    om = None
+    if om_lignes:
+        activee = any(not li.get('optionnelle') for li in om_lignes)
+        retenues = [li for li in om_lignes
+                    if not li.get('optionnelle')] if activee else om_lignes
+        somme = _somme_lignes(retenues, lambda li: True)
+        om = {'activee': activee,
+              'ht': None if somme is None else somme['ht'],
+              'ttc': None if somme is None else somme['ttc'],
+              'source': 'ligne O&M souscrite du devis'}
+    return onduleur, om
+
+
+def _bloc_omis(motif, tarif, *, alertes, vue_interne):
+    bloc = dict.fromkeys(CLES_BLOC)
+    bloc.update({
+        'statut': STATUT_OMIS, 'motifs_omission': [motif], 'tarif': tarif,
+        'jalons': [], 'remplacements': [], 'sensibilites': [],
+        'hypotheses': [], 'omissions': [], 'alertes_internes': alertes,
+        'vue_interne': vue_interne,
+    })
+    del bloc['jalons_ttc']
+    del bloc['financement']
+    return bloc
+
+
+def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
+                          investissement=None, lignes=None,
+                          mode_installation=None, reglages=None):
+    """Le bloc ``economie_ci`` INTERNE (avec ``vue_interne`` et
+    ``alertes_internes``) — forme ``exemple`` du contrat ``economie_ci.json``.
+
+    ``apercu_ci`` : sortie de l'aperçu C&I (ou ``etude_params.etude_ci``) ;
+    ``tarif_declare`` : ``etude_params.tarif_declare`` (sinon celui résolu par
+    l'aperçu) ; ``saisies`` : ``saisies_economie_ci`` ; ``investissement`` :
+    ``{ht, ttc}`` CLIENT de l'option retenue ; ``lignes`` : voir
+    :func:`onduleur_et_om` ; ``reglages`` : ``{mention_credit_bail_autorisee}``
+    (``TariffSettings``, CIQ211). Refus nommés par
+    :class:`SaisieEconomieCiInvalide`. Aucune écriture.
+    """
+    apercu = apercu_ci if isinstance(apercu_ci, dict) else {}
+    saisies = saisies if isinstance(saisies, dict) else {}
+    reglages = reglages if isinstance(reglages, dict) else {}
+    if not isinstance(tarif_declare, dict):
+        tarif_declare = _resolue(apercu, 'tarif_declare')
+        if not isinstance(tarif_declare, dict):
+            tarif_declare = None
+    tension = _resolue(apercu, 'tension')
+    tension = tension.strip().lower() if isinstance(tension, str) else None
+    tarif = tarif_ci.tarif_applicable(tarif_declare, tension=tension)
+    vue_interne = {'comparaison_cse': None, 'sr500': _sr500(saisies),
+                   'apres_impot': None}
+    alertes = _alertes_internes(apercu, tarif)
+    if not apercu.get('bilan'):
+        motif = (MOTIF_TARIF_OMIS if tarif.get('origine') ==
+                 tarif_ci.ORIGINE_OMIS else MOTIF_ETUDE_CI_ABSENTE)
+        return _bloc_omis(motif, tarif, alertes=alertes,
+                          vue_interne=vue_interne)
+    valo = valoriser(apercu, tarif, tarif_declare=tarif_declare)
+    if valo['statut'] == STATUT_OMIS:
+        return _bloc_omis(valo['motifs_omission'][0], tarif, alertes=alertes,
+                          vue_interne=vue_interne)
+
+    tva = resoudre_tva_recuperable(_resolue(apercu, 'tva_recuperable'),
+                                   saisies.get('tva_recuperable'))
+    base = base_economique(tva, investissement=investissement,
+                           economie_annee1=valo['economie_annee1'])
+    production = _montant((apercu.get('bilan') or {}).get('production_kwh'))
+    kwh_evites = sum(_f(p.get('kwh_evites'))
+                     for p in valo['economie_annee1']['par_poste'])
+    onduleur, om = onduleur_et_om(lignes)
+    flux = flux_ci(base, production_annee1_kwh=production,
+                   kwh_evites_an=kwh_evites, onduleur=onduleur, om=om,
+                   taux_actualisation_client=saisies.get(
+                       'taux_actualisation_client'))
+    revente = valo['revente']
+    tension_revente = tension or (
+        'mt' if tarif.get('contrat') == 'mt_general' else None)
+    if tension_revente:
+        revente = revente_ci(
+            apercu, tension=tension_revente,
+            revente_demandee=bool(saisies.get('revente_demandee')),
+            production_annuelle_kwh=production)
+    financement = financement_ci(
+        saisies.get('offre_financement'), base,
+        mode_installation=mode_installation,
+        mention_credit_bail_autorisee=bool(
+            reglages.get('mention_credit_bail_autorisee')))
+    vue_interne['comparaison_cse'] = comparaison_cse(
+        flux['flux_ht'], saisies.get('offre_cse_concurrente'), production)
+    omissions = []
+    if flux['indicateurs'] and flux['indicateurs'].get('van_motif'):
+        omissions.append({'cle': 'van_mad',
+                          'motif': flux['indicateurs']['van_motif']})
+    if financement is None:
+        omissions.append({'cle': 'financement',
+                          'motif': MOTIF_FINANCEMENT_ABSENT})
+    hypotheses = [dict(HYPOTHESE_VALORISATION), _hypothese_tarif(tarif)]
+    hypotheses.extend(valo.get('hypotheses') or [])
+    bloc = {
+        'statut': STATUT_CALCULE,
+        'motifs_omission': [],
+        'base': flux['base'],
+        'motif_base': flux['motif_base'],
+        'tarif': tarif,
+        'economie_annee1': valo['economie_annee1'],
+        'facture_avant': valo['facture_avant'],
+        'facture_apres': valo['facture_apres'],
+        'revente': revente,
+        'flux_ht': flux['flux_ht'],
+        'flux_ttc': flux['flux_ttc'],
+        'jalons': flux['jalons'],
+        'jalons_ttc': flux.get('jalons_ttc'),
+        'indicateurs': flux['indicateurs'],
+        'remplacements': flux['remplacements'],
+        'om': flux['om'],
+        'sensibilites': [],
+        'financement': financement,
+        'hypotheses': hypotheses,
+        'omissions': omissions,
+        'alertes_internes': alertes,
+        'vue_interne': vue_interne,
+    }
+    if 'jalons_ttc' not in flux:
+        del bloc['jalons_ttc']
+    if financement is None:
+        del bloc['financement']
+    return bloc
+
+
+# ── Lecture d'un devis (aucune écriture) ─────────────────────────────────────
+
+def _est_onduleur(produit):
+    if produit is None:
+        return False
+    roles = ' '.join(str(getattr(produit, r, '') or '')
+                     for r in ('role_devis', 'role_ci'))
+    if 'onduleur' in roles:
+        return True
+    categorie = getattr(produit, 'categorie', None)
+    return getattr(categorie, 'type_equipement', None) == 'onduleur'
+
+
+def lignes_pour_economie_ci(devis):
+    """Les lignes de l'option RETENUE à la forme de :func:`onduleur_et_om` —
+    totaux CLIENT (remise de ligne ET remise globale), jamais ``prix_achat``.
+    Les O&M optionnelles restent lues (« proposé, non souscrit »)."""
+    from apps.ventes.utils.options import (
+        filter_lines_for_option, has_two_options, lignes_avec_produit,
+        option_effective)
+    lignes = lignes_avec_produit(devis)
+    if has_two_options(devis):
+        option = option_effective(devis)
+        if option:
+            lignes = filter_lines_for_option(lignes, option)
+    remise_globale = _f(getattr(devis, 'remise_globale', 0))
+    facteur = 1.0 - remise_globale / 100.0
+    sorties = []
+    for ligne in lignes:
+        if getattr(ligne, 'type_ligne', 'produit') not in (None, '', 'produit'):
+            continue
+        produit = getattr(ligne, 'produit', None)
+        tva = ligne.taux_tva if ligne.taux_tva is not None else devis.taux_tva
+        ht = (_f(ligne.quantite) * _f(ligne.prix_unitaire)
+              * (1.0 - _f(ligne.remise) / 100.0)) * facteur
+        sorties.append({
+            'designation': ligne.designation,
+            'ht': round(ht, 2),
+            'ttc': round(ht * (1.0 + _f(tva) / 100.0), 2),
+            'optionnelle': bool(getattr(ligne, 'optionnelle', False)),
+            'onduleur': _est_onduleur(produit),
+            'role_ci': (getattr(produit, 'role_ci', '') or None)
+            if produit is not None else None,
+        })
+    return sorties
+
+
+def reglages_economie_ci(company):
+    """``{mention_credit_bail_autorisee}`` du ``TariffSettings`` (CIQ211),
+    lu sans jamais le créer ; vide sans réglage."""
+    if company is None:
+        return {}
+    from apps.parametres.models_tariff import TariffSettings
+    reglage = TariffSettings.objects.filter(company=company).first()
+    if reglage is None:
+        return {}
+    return {
+        'mention_credit_bail_autorisee': bool(
+            getattr(reglage, 'mention_credit_bail_autorisee', False)),
+        'sensibilites_ci': list(getattr(reglage, 'sensibilites_ci', None)
+                                or []),
+    }
+
+
+def economie_ci_pour_devis(devis, company):
+    """Le bloc ``economie_ci`` INTERNE d'un devis commercial / industriel
+    (calculé à la lecture, jamais stocké ; aucune écriture, règle #4).
+
+    Lit ``etude_params.etude_ci`` (aperçu C&I stocké par le rafraîchisseur
+    CIQ119), ``tarif_declare``, ``saisies_economie_ci``, les totaux de
+    l'option retenue (``utils.options.option_totaux``) et ses lignes.
+    """
+    from apps.ventes.utils.options import option_totaux
+    params = getattr(devis, 'etude_params', None)
+    params = params if isinstance(params, dict) else {}
+    apercu = params.get('etude_ci')
+    tarif_declare = params.get('tarif_declare')
+    if not isinstance(tarif_declare, dict):
+        tarif_declare = params.get('tarif') if isinstance(
+            params.get('tarif'), dict) else None
+    totaux = option_totaux(devis)
+    return assembler_economie_ci(
+        apercu if isinstance(apercu, dict) else {},
+        saisies=params.get('saisies_economie_ci'),
+        tarif_declare=tarif_declare,
+        investissement={'ht': totaux.get('ht'), 'ttc': totaux.get('ttc')},
+        lignes=lignes_pour_economie_ci(devis),
+        mode_installation=getattr(devis, 'mode_installation', None),
+        reglages=reglages_economie_ci(company))

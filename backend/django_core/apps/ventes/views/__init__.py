@@ -77,3 +77,6 @@ from . import economie as _economie_action  # noqa: F401,E402
 # AGR206 — rattache l'action ``economie_pompage`` au ``DevisViewSet`` (même
 # patron : import DERNIER, avant ``router.register``).
 from . import economie_pompage as _economie_pompage_action  # noqa: F401,E402
+# CIQ210 — rattache l'action ``economie_ci`` au ``DevisViewSet`` (même
+# patron : import DERNIER, avant ``router.register``).
+from . import economie_ci as _economie_ci_action  # noqa: F401,E402
