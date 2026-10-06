@@ -25,7 +25,9 @@ CE QU'ELLE REND — les clés « cœur » de la forme ``synthese_ci`` du contrat
 partagé ``contract_samples/proposal_data.json`` (CIQ4) : ``version``,
 ``segment``, ``statut_etude``, ``a_confirmer``, ``provenance``, ``systeme``,
 ``baseline?``, ``energie?``, ``option_servie``, ``option_batterie?``,
-``echeancier``, ``omissions``. Le bloc ``argent`` est la moitié 2/2 (CIQ304).
+``echeancier``, ``omissions`` — et, moitié 2/2 (CIQ304), ``argent?`` : le
+bloc PUBLIC ``data['economie_ci']`` (contrat ``economie_ci.json``, CIQ3)
+recopié tel quel, sans recalcul ni arrondi propre.
 Une clé optionnelle est ABSENTE quand elle n'a rien d'honnête à montrer, et
 son motif est nommé dans ``omissions``.
 
@@ -37,6 +39,7 @@ ceux du moteur, seulement exprimés en %), aucun taux fixe (D-CIQ-1), aucun
 from __future__ import annotations
 
 from ..lecture_pure import nombre_normalise
+from .mentions import mentions_ci
 
 #: Version de la forme servie (contrat CIQ4).
 VERSION = 1
@@ -121,6 +124,24 @@ MOTIF_BASELINE_ABSENTE = (
 MOTIF_ETUDE_A_FAIRE = (
     "étude du moteur C&I à faire : chiffres préliminaires")
 LIBELLE_VISITE = "Relevé du site à la visite technique"
+
+#: CIQ304 — ce qui manque quand le moteur n'a pas chiffré l'argent : ce que
+#: le CLIENT peut fournir (ses factures), jamais « votre répartition
+#: horaire ». Texte du contrat partagé ``proposal_data.json``.
+MOTIF_ARGENT_BT = "vos 12 dernières factures"
+MOTIF_ARGENT_MT = ("vos 12 dernières factures MT : prix des trois postes, "
+                   "prime fixe, puissance souscrite")
+#: VAN, LCOE et sensibilités : INDUSTRIEL seulement (D-CIQ-10). En commercial
+#: ces clés sont retirées du bloc recopié (jamais recalculées). Le payback
+#: actualisé suit la VAN (il n'existe que sur un taux déclaré) : un seul
+#: payback servi, celui du flux (``indicateurs.retour_ans``).
+CLES_INDUSTRIEL_SEUL = frozenset({
+    "van_mad", "van_motif", "lcoe_mad_kwh", "lcoe_actualise",
+    "retour_actualise_ans", "sensibilites"})
+#: Entrées de listes ``{cle: …}`` (omissions, hypothèses) qui ne parlent que
+#: de la VAN — retirées avec elle en commercial.
+ENTREES_INDUSTRIEL_SEUL = frozenset({"van_mad", "taux_actualisation_pct",
+                                     "sensibilites"})
 
 
 # ── utilitaires purs ────────────────────────────────────────────────────────
@@ -292,6 +313,49 @@ def _echeancier(data, option):
     return sortie
 
 
+def _sans_industriel(valeur):
+    """Copie de ``valeur`` sans les clés VAN / LCOE / sensibilités
+    (commercial, D-CIQ-10) — un retrait, jamais un calcul."""
+    if isinstance(valeur, dict):
+        return {k: _sans_industriel(v) for k, v in valeur.items()
+                if k not in CLES_INDUSTRIEL_SEUL}
+    if isinstance(valeur, list):
+        return [_sans_industriel(v) for v in valeur
+                if not (isinstance(v, dict)
+                        and v.get("cle") in ENTREES_INDUSTRIEL_SEUL)]
+    return valeur
+
+
+def _est_mt(data, etude_ci, economie):
+    tension = _dict(_dict(etude_ci.get("entrees_resolues")).get(
+        "tension")).get("valeur")
+    if not isinstance(tension, str) or not tension.strip():
+        # Sans moteur : la tension DÉCLARÉE à l'écran (une saisie, pas un
+        # chiffre calculé).
+        tension = _dict(data.get("etude")).get("tension_raccordement")
+    if isinstance(tension, str) and tension.strip().lower() in ("mt", "ht"):
+        return True
+    return _dict(_dict(economie).get("tarif")).get("contrat") == "mt_general"
+
+
+def _bloc_argent(data, etude_ci, segment):
+    """``(argent, motif)`` — CIQ304 : le bloc ``economie_ci`` PUBLIC recopié
+    tel quel (valeurs au centime), ou ``None`` + ce qui manque."""
+    from apps.ventes.economie_ci import STATUT_CALCULE, economie_ci_publique
+
+    economie = data.get("economie_ci")
+    if isinstance(economie, dict) and \
+            economie.get("statut") == STATUT_CALCULE:
+        # ``economie_ci_publique`` rend une COPIE sans rien d'interne.
+        argent = economie_ci_publique(economie)
+        if segment != "industriel":
+            argent = _sans_industriel(argent)
+        return argent, None
+    motif = (MOTIF_ARGENT_MT if _est_mt(data, etude_ci, economie)
+             else MOTIF_ARGENT_BT)
+    return None, motif
+
+
 # ── la fonction publique ────────────────────────────────────────────────────
 
 def synthese_ci(data):
@@ -341,6 +405,77 @@ def synthese_ci(data):
     option_batterie = _option_batterie(data)
     if option_batterie is not None:
         synthese["option_batterie"] = option_batterie
+    argent, motif = _bloc_argent(data, etude_ci, segment)
+    if argent is not None:
+        synthese["argent"] = argent
+    else:
+        omissions.append({"bloc": "argent", "motif": motif})
+    # CIQ305 — les phrases client C&I, sourcées et trilingues (une table).
+    synthese["hypotheses"] = mentions_ci(
+        data, sous_reserve=statut == STATUT_SOUS_RESERVE)
     synthese["echeancier"] = _echeancier(data, option)
     synthese["omissions"] = omissions
     return synthese
+
+
+# ── CIQ307 — les chiffres-clés LUS par les gabarits ET par /proposition ─────
+
+#: Méthode des taux (``energie.methode``) → ligne de méthode imprimée.
+LIBELLES_METHODE = {
+    "horaire_declare": "Taux calculés heure par heure sur vos horaires "
+                       "déclarés.",
+    "horaire_mesure": "Taux calculés heure par heure sur votre courbe de "
+                      "charge mesurée.",
+    "registres_mt": "Taux calculés sur vos registres de compteur MT.",
+    "archetype_estimation": "Taux calculés sur un profil type de votre "
+                            "activité — estimation.",
+    METHODE_INCONNUE: "Taux calculés par estimation.",
+}
+
+
+def chiffres_cles(synthese):
+    """Les chiffres d'une ``synthese_ci`` que la couverture, la page
+    /proposition et la parité lisent — UNE projection, aucun calcul.
+
+    L'économie de l'année 1 est celle de la base principale (D-CIQ-3) :
+    TTC quand la TVA n'est pas récupérable, HT sinon (``economie_ci`` :
+    ``total_mad`` = HT, ``total_mad_ttc`` = TTC). Le payback est le seul
+    servi : ``argent.indicateurs.retour_ans`` (celui du flux)."""
+    s = _dict(synthese)
+    systeme = _dict(s.get("systeme"))
+    energie = _dict(s.get("energie"))
+    argent = _dict(s.get("argent"))
+    economie = _dict(argent.get("economie_annee1"))
+    revente = _dict(argent.get("revente"))
+    if argent.get("base") == "ttc" and \
+            economie.get("total_mad_ttc") is not None:
+        valeur, libelle_base = economie.get("total_mad_ttc"), "TTC"
+    else:
+        valeur = economie.get("total_mad")
+        libelle_base = "HT" if valeur is not None else None
+    methode = energie.get("methode")
+    motif_argent = next((o.get("motif") for o in s.get("omissions") or []
+                         if isinstance(o, dict) and o.get("bloc") == "argent"),
+                        None)
+    pointe = next((h for h in s.get("hypotheses") or []
+                   if isinstance(h, dict) and h.get("cle") == "pointe"), None)
+    return {
+        "kwc": _num(systeme.get("kwc")),
+        "production_kwh_an": _num(systeme.get("production_kwh_an")),
+        "taux_autoconso_pct": _num(energie.get("taux_autoconso_pct")),
+        "taux_couverture_pct": _num(energie.get("taux_couverture_pct")),
+        "methode": methode,
+        "libelle_methode": LIBELLES_METHODE.get(methode) if methode else None,
+        "economie_annuelle_mad": _num(valeur),
+        "base_economie": libelle_base,
+        "payback_ans": _num(_dict(argent.get("indicateurs")).get(
+            "retour_ans")),
+        "revente_kwh_an": _num(revente.get("kwh_an")),
+        "revente_mad_an": _num(revente.get("valeur_mad_an")),
+        "sous_reserve": s.get("statut_etude") == STATUT_SOUS_RESERVE,
+        "a_confirmer": [a.get("libelle") for a in s.get("a_confirmer") or []
+                        if isinstance(a, dict) and a.get("libelle")],
+        "motif_argent": motif_argent,
+        "argent_mt": motif_argent == MOTIF_ARGENT_MT,
+        "note_pointe": _dict(_dict(pointe).get("textes")).get("fr"),
+    }

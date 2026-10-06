@@ -8,6 +8,7 @@ Hypothèse PRUDENTE et HONNÊTE : économies maintenues CONSTANTES (aucune escal
 tarifaire inventée). Le cashflow est l'intégrale de ces économies nettes ; le TRI
 est un VRAI calcul (bisection) sur ce flux, pas un chiffre inventé.
 """
+from ..ci.mentions import texte_revente
 
 _HORIZON = 15  # ans
 
@@ -195,9 +196,9 @@ def build(ctx):
     if injection:
         injection_row = (
             f'<div class="i2-inj">'
-            f'<b>+ {fmt(round(injection))} MAD/an</b> — surplus injecté (loi 82-21, '
-            f'net des frais réseau, plafond 20 % de la production). '
-            f'<span class="i2-mini">Tarif ANRE 03/2026-02/2027, plafond en révision.</span>'
+            f'<b>+ {fmt(round(injection))} MAD/an</b> — surplus injecté. '
+            # CIQ305 — la mention 82-21 est LUE (une table), jamais recopiée.
+            f'<span class="i2-mini">{texte_revente()}.</span>'
             f'</div>')
 
     # QJR120 (b) — « inclus dans les économies nettes » était affirmé sur TOUT

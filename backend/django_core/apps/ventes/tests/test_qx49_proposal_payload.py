@@ -157,7 +157,10 @@ class TestProposalPayloadModes(TestCase):
         self.assertEqual(p['mode_installation'], 'commercial')
         self.assertEqual(p['categorie_commerciale'], 'hotel')
         self.assertIsNotNone(p['mode_kpis'])
-        self.assertEqual(p['mode_kpis']['taux_autoconso'], 78)
+        # CIQ306 — ``mode_kpis`` C&I v2 est PROJETÉ de ``synthese_ci`` : le
+        # taux d'une étude JS persistée (78) n'est plus lu ; sans sortie du
+        # moteur C&I, il n'y a rien d'honnête à montrer.
+        self.assertIsNone(p['mode_kpis']['taux_autoconso'])
         # RULE #4 — jamais de prix d'achat / marge dans tout le payload
         blob = json.dumps(p)
         self.assertNotIn('prix_achat', blob)
@@ -173,7 +176,7 @@ class TestProposalPayloadModes(TestCase):
         # CIQ300 — le payback JS persisté (3,1) n'est plus republié.
         self.assertIsNone(p['mode_kpis']['payback'])
         self.assertIsNone(p['mode_kpis']['economies_annuelles'])
-        self.assertEqual(p['mode_kpis']['taux_autoconso'], 88)
+        self.assertIsNone(p['mode_kpis']['taux_autoconso'])  # CIQ306
 
     def test_agricole_payload_reel_sans_bassin_ni_fda_avec_heures(self):
         """AGR301 — vérifié en RÉEL via le client Django : un devis agricole
