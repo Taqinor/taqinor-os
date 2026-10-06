@@ -124,8 +124,19 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         SOLMVP12 (20/09/2026) — l'évaluation immédiate du rapprochement 3
         voies (``services.evaluate_facture_exception``, lecture du module
         compta détaché de stock) a été retirée : seul
-        ``check_facture_exception_gate`` (au paiement) reste."""
-        serializer.save()
+        ``check_facture_exception_gate`` (au paiement) reste.
+
+        ASTK99 — quand le PATCH fait ACQUÉRIR (ou changer) un BCF à la
+        facture, `facture_fournisseur_creee` est émis UNE fois dans la même
+        transaction (lettrage GR/IR des provisions du BCF) ; un PATCH qui ne
+        change pas `bon_commande` n'émet rien."""
+        from ..services import _emettre_facture_creee
+        ancien_bcf_id = serializer.instance.bon_commande_id
+        with transaction.atomic():
+            facture = serializer.save()
+            if (facture.bon_commande_id is not None
+                    and facture.bon_commande_id != ancien_bcf_id):
+                _emettre_facture_creee(facture, self.request.user)
 
     def perform_destroy(self, instance):
         """AUD207 — `PaiementFournisseur.facture` est désormais PROTECT (une

@@ -2664,6 +2664,24 @@ def generate_facture_fournisseur_pdf(facture):
     return _html_to_pdf(html)
 
 
+def _emettre_facture_creee(facture, user):
+    """ASTK99 — émet `facture_fournisseur_creee` pour une facture qui
+    ACQUIERT un bon de commande (PATCH ``bon_commande`` None → X, création
+    OCR/UBL déjà liée) : les abonnés (installations lettre les provisions
+    GR/IR du BCF) la traitent comme une facture née d'une réception.
+    Contrat unifié core/events.py (instance, company, user). NON avalé :
+    l'appelant l'exécute dans SA transaction (un abonné qui échoue annule le
+    lien, jamais une facture liée sans lettrage). No-op sans BCF."""
+    if facture is None or facture.bon_commande_id is None:
+        return False
+    from core.events import facture_fournisseur_creee
+    from .models import FactureFournisseur
+    facture_fournisseur_creee.send(
+        sender=FactureFournisseur, instance=facture,
+        company=facture.company, user=user)
+    return True
+
+
 # ── FG56 — Facturer une réception ────────────────────────────────────────────
 
 def facturer_reception(company, user, reception):
@@ -5127,6 +5145,9 @@ def creer_facture_fournisseur_depuis_ocr(
 
     from apps.ventes.utils.references import create_with_reference
     facture = create_with_reference(FactureFournisseur, 'FF', company, _save)
+    # ASTK99 — une facture OCR déjà liée à un BCF émet à la création (no-op
+    # aujourd'hui : le lien se pose ensuite par PATCH, qui émet alors).
+    _emettre_facture_creee(facture, user)
 
     if doublons and confirmer_malgre_doublon:
         log_doublon_override(
@@ -6957,7 +6978,10 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
         return facture
 
     from apps.ventes.utils.references import create_with_reference
-    return create_with_reference(FactureFournisseur, 'FF', company, _save)
+    facture = create_with_reference(FactureFournisseur, 'FF', company, _save)
+    # ASTK99 — même émission « au lien » qu'OCR/PATCH (no-op sans BCF).
+    _emettre_facture_creee(facture, user)
+    return facture
 
 
 # ── XSTK15 — Unités de mesure & conditionnements (touret/carton…) ───────────
