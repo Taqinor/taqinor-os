@@ -6,7 +6,7 @@ import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
 import { formatDateTime } from '../../../lib/format'
 import { Button, Card, Spinner } from '../../../ui'
 import { PARAM_ONGLET, ONGLETS } from '../atelier/onglets'
-import { deposerCarteDeChaleur, deposerDiagrammeDePertes } from './deposerImage'
+import { deposerCarteDeChaleur } from './deposerImage'
 
 /* ============================================================================
    CALX320 — LE PANNEAU « DOCUMENTS » BASCULE SUR L'INVENTAIRE `documents/`.
@@ -59,8 +59,9 @@ import { deposerCarteDeChaleur, deposerDiagrammeDePertes } from './deposerImage'
    persistés (`{genre, attachment, depose_le}`) — affichées ICI, en plus de
    la confirmation éphémère de LA session courante que CALX302 posait déjà.
 
-   SectionConception (CALX28) et SectionImages (CALX302, étendue ici du
-   bouton « Joindre le diagramme de pertes ») restent HORS inventaire —
+   SectionConception (CALX28) et SectionImages (CALX302 ; ACAL225 : un seul
+   bouton, la carte de chaleur — le rapport embarque déjà le diagramme de
+   pertes serveur) restent HORS inventaire —
    aucune des deux n'était gouvernée par `sorties()`, ni par `documents()`.
    ========================================================================== */
 
@@ -405,8 +406,6 @@ function SectionConception({
     quel plutôt que de faire planter la liste. */
 const LIBELLE_GENRE_IMAGE = {
   ombrage: 'Carte de chaleur (ombrage)',
-  sankey: 'Diagramme de pertes',
-  plan3d: 'Rendu 3D',
 }
 
 /** CALX302/CALX320 — les images PRODUITES PAR LE NAVIGATEUR jointes au
@@ -414,15 +413,14 @@ const LIBELLE_GENRE_IMAGE = {
     `sorties/planche_png`, CAL175) : la carte de chaleur d'ombrage est rendue
     par l'atelier 3D (`builderApi.renderImageHd(2)`) — sans `builderApi`
     (panneau ouvert hors de la scène 3D), SEUL ce bouton le dit et se
-    désactive ; le diagramme de pertes, lui, vient du SVG autonome SERVEUR
-    (`diagrammePertesSvg`, CALX308) rastérisé ICI — il ne dépend d'AUCUN
-    outil 3D et reste donc toujours actif. Le genre et l'horodatage du
+    désactive. ACAL225 : plus de bouton « diagramme de pertes » (le rapport
+    embarque le SVG serveur ; `sankey` est refusé en 400). Le genre et l'horodatage du
     DERNIER dépôt réussi de CETTE session s'affichent sous les boutons ; la
     liste `images[]` (persistée, CALX291) s'affiche EN PLUS, en dessous —
     « images jointes visibles » (CALX320). */
 function SectionImages({
   builderApi, enCours, erreurs, deposeLe, images,
-  onDeposerCarteDeChaleur, onDeposerDiagrammePertes,
+  onDeposerCarteDeChaleur,
 }) {
   return (
     <div className="rounded-md border border-border/60 p-3" data-testid="cal-doc-images">
@@ -438,15 +436,6 @@ function SectionImages({
         >
           Joindre la carte de chaleur
         </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          loading={enCours === 'sankey'}
-          onClick={onDeposerDiagrammePertes}
-          data-testid="cal-doc-bouton-joindre-pertes"
-        >
-          Joindre le diagramme de pertes
-        </Button>
       </div>
       {!builderApi && (
         <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-doc-images-outil-absent">
@@ -458,17 +447,24 @@ function SectionImages({
           Carte de chaleur jointe ({deposeLe.deposeLe}).
         </p>
       )}
-      {deposeLe?.genre === 'sankey' && (
-        <p role="status" className="mt-2 text-xs text-foreground" data-testid="cal-doc-images-confirmation-pertes">
-          Diagramme de pertes joint ({deposeLe.deposeLe}).
-        </p>
-      )}
       <ErreursSortie erreurs={erreurs} />
       {images?.length > 0 && (
         <ul className="mt-2 space-y-1 text-xs text-muted-foreground" data-testid="cal-doc-images-jointes">
           {images.map((img) => (
             <li key={`${img.genre}-${img.attachment}`} data-testid={`cal-doc-image-${img.genre}-${img.attachment}`}>
               {LIBELLE_GENRE_IMAGE[img.genre] || img.genre} — {formatDateTime(img.depose_le)}
+              {img.perimee === true && (
+                <>
+                  {' — '}
+                  <span
+                    className="font-medium text-destructive"
+                    data-testid={`cal-doc-image-perimee-${img.genre}-${img.attachment}`}
+                  >
+                    Périmée (conception modifiée)
+                  </span>
+                  {' — Rejoindre depuis l’atelier'}
+                </>
+              )}
               {' — '}
               <a
                 href={hrefAttachment(img.attachment)}
@@ -504,7 +500,7 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
   const [enCoursConception, setEnCoursConception] = useState(null)
   const [erreurConception, setErreurConception] = useState(null)
   const [confirmationConception, setConfirmationConception] = useState(null)
-  // CALX302/CALX320 — dépôt d'image : 'ombrage' | 'sankey' | null pendant
+  // CALX302/CALX320 — dépôt d'image : 'ombrage' | null pendant
   // l'appel, ses erreurs (`{champ,message}`) et le dernier dépôt RÉUSSI de
   // cette session (`{genre, deposeLe}`).
   const [enCoursImage, setEnCoursImage] = useState(null)
@@ -684,24 +680,6 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
     }
   }
 
-  // CALX320 — joint le diagramme de pertes (SVG serveur rastérisé ICI). MÊME
-  // régime que `joindreCarteDeChaleur` ci-dessus — `deposerDiagrammeDePertes`
-  // rend toujours `{ok, motif, erreurs?}`, jamais une exception non attrapée.
-  async function joindreDiagrammeDePertes() {
-    setErreursImage(null)
-    setEnCoursImage('sankey')
-    try {
-      const resultat = await deposerDiagrammeDePertes(id)
-      if (resultat.ok) {
-        setDerniereImageDeposee({ genre: resultat.genre, deposeLe: resultat.deposeLe })
-      } else {
-        setErreursImage(resultat.erreurs || [{ champ: '', message: resultat.motif }])
-      }
-    } finally {
-      setEnCoursImage(null)
-    }
-  }
-
   if (loading) return <Spinner />
   if (error) {
     return <p className="text-sm text-destructive" data-testid="cal-doc-erreur">{error}</p>
@@ -758,7 +736,6 @@ export default function PanneauDocuments({ calepinageId, builderApi = null, onRe
         deposeLe={derniereImageDeposee}
         images={data?.images}
         onDeposerCarteDeChaleur={joindreCarteDeChaleur}
-        onDeposerDiagrammePertes={joindreDiagrammeDePertes}
       />
     </Card>
   )

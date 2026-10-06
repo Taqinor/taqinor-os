@@ -242,16 +242,6 @@ const calepinageApi = {
     telechargerDocument: (endpoint, params) =>
       api.get(endpoint, { responseType: 'blob', params }),
 
-    // CALX320 — le diagramme de pertes SERVEUR, SVG autonome (CALX308,
-    // `services/diagramme_pertes.py`, la MÊME cascade que la pièce
-    // imprimable) — à RASTÉRISER dans CE navigateur avant de le déposer
-    // comme image `sankey` (`deposerImageDocument` ci-dessus,
-    // `documents/deposerImage.js::deposerDiagrammeDePertes`) : aucun
-    // rasteriseur SVG n'est installé côté serveur (même limite que
-    // `sorties/planche_png`, CAL175).
-    diagrammePertesSvg: (id, params) =>
-      api.get(`${pivot(id)}diagramme-pertes.svg/`, { responseType: 'blob', params }),
-
     ...projet,
 
     // ACAL82 — persiste le système de fixation CHOISI (ACAL81, contrat

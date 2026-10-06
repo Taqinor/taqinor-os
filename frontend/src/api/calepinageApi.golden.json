@@ -286,17 +286,6 @@
       "verbe": "post"
     }
   ],
-  "calepinages.diagrammePertesSvg": [
-    {
-      "config": {
-        "params": 3,
-        "responseType": "blob"
-      },
-      "data": null,
-      "url": "/calepinage/calepinages/7/diagramme-pertes.svg/",
-      "verbe": "get"
-    }
-  ],
   "calepinages.documents": [
     {
       "config": null,
