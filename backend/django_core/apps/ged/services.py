@@ -4539,11 +4539,28 @@ def matcher_depot_demandes(document):
     dossier ; le premier « en_attente » du dossier est soldé — un
     rapprochement plus fin par libellé reste possible côté appelant)."""
     from .models import DEMANDE_DOC_EN_ATTENTE, DEMANDE_DOC_SOLDEE, DemandeDocument
-    demande = (DemandeDocument.objects
-               .filter(company=document.company, folder=document.folder,
-                       statut=DEMANDE_DOC_EN_ATTENTE)
-               .order_by('created_at', 'id')
-               .first())
+    en_attente = list(
+        DemandeDocument.objects
+        .filter(company=document.company, folder=document.folder,
+                statut=DEMANDE_DOC_EN_ATTENTE)
+        .select_related('exigence')
+        .order_by('created_at', 'id'))
+    # ADOC12 — le dépôt solde la demande de SA PROPRE pièce : celle dont le
+    # libellé (ou celui de son exigence) figure dans le nom du document. À
+    # défaut, seule une demande UNIQUE en attente est soldée (jamais la plus
+    # ancienne d'une autre pièce).
+    nom = (document.nom or '').casefold()
+    demande = None
+    for candidate in en_attente:
+        libelles = [candidate.libelle or '']
+        if candidate.exigence_id:
+            libelles.append(candidate.exigence.libelle or '')
+        if any(lib.strip() and lib.strip().casefold() in nom
+               for lib in libelles):
+            demande = candidate
+            break
+    if demande is None and len(en_attente) == 1:
+        demande = en_attente[0]
     if demande is None:
         return None
     demande.statut = DEMANDE_DOC_SOLDEE
@@ -4611,7 +4628,10 @@ def checklist_dossier(folder):
     """XGED8 — État requis/présent/manquant d'un dossier : combine les
     `ExigenceDossier` applicables (dossier précis OU génériques du cabinet) et
     les `DemandeDocument` en cours. Renvoie une liste de dicts."""
-    from .models import DEMANDE_DOC_EN_ATTENTE, DemandeDocument, ExigenceDossier
+    from .models import (
+        DEMANDE_DOC_EN_ATTENTE, DEMANDE_DOC_SOLDEE, DemandeDocument,
+        ExigenceDossier,
+    )
     exigences = (ExigenceDossier.objects
                  .filter(company=folder.company)
                  .filter(models.Q(folder=folder)
@@ -4622,12 +4642,22 @@ def checklist_dossier(folder):
             company=folder.company, folder=folder,
             statut=DEMANDE_DOC_EN_ATTENTE, exigence__isnull=False)
     }
+    # ADOC12 — « présente » SEULEMENT si un document (vivant) du dossier est
+    # rattaché à l'exigence via une demande soldée ; sinon « manquante »
+    # (une exigence sans demande ni document n'est jamais « présente »).
+    fournies = set(
+        DemandeDocument.objects.filter(
+            company=folder.company, folder=folder,
+            statut=DEMANDE_DOC_SOLDEE, exigence__isnull=False,
+            document__isnull=False, document__folder=folder,
+            document__supprime_le__isnull=True)
+        .values_list('exigence_id', flat=True))
     resultat = []
     for exigence in exigences:
         demande = demandes_par_exigence.get(exigence.pk)
         resultat.append({
             'exigence': exigence,
-            'statut': 'manquant' if demande else 'present',
+            'statut': 'present' if exigence.pk in fournies else 'manquant',
             'demande': demande,
         })
     return resultat
