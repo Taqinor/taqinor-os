@@ -406,6 +406,8 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'irradiation_kwh_m2',
            # ACAL142 — la série persistée après les blocs aval.
            'bloc_serie_horaire',
+           # ACAL143 — la perte d'ombrage d'une cascade servie.
+           'perte_ombrage_de_la_cascade',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -782,6 +784,13 @@ def _cascade_du_pan(cascade):
             'total_pct': _total_pct(premiere, derniere, appliquees),
             'etapes_omises': [etape['etape'] for etape in etapes
                               if etape.get('motif_omission')]}
+
+
+def perte_ombrage_de_la_cascade(cascade):
+    """ACAL143 — la perte d'OMBRAGE (%) d'une cascade publiée (phase PAN :
+    horizon, ombrage proche, accès module, inter-rangées), ou ``None``.
+    Sur la cascade de la SOMME (plusieurs pans), c'est la perte du site."""
+    return _perte_ombrage_pct(_cascade_du_pan(cascade))
 
 
 def _perte_ombrage_pct(cascade):
