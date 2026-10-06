@@ -108,6 +108,55 @@ def bloc_services(synthese, prefixe, couleur_titre, couleur_texte):
             f'color:{couleur_titre};">Services</div>{items}</div>')
 
 
+# ── CIQ318 — bloc « Offre de financement » ──────────────────────────────────
+
+TITRE_FINANCEMENT = "Offre de financement"
+
+
+def bloc_financement(synthese, prefixe="ci", couleur_titre="#0F1E35",
+                     couleur_texte="#1F2937"):
+    """``<div>`` de l'offre de financement telle que ``economie_ci`` la
+    sert (``synthese_ci['argent']['financement']``, D-CIQ-15), ou ''.
+
+    Construit SEULEMENT depuis l'offre écrite saisie par le vendeur : le
+    libellé (organisme et référence quand l'offre les porte), l'échéance,
+    la durée, et l'économie mensuelle moyenne sur la MÊME base HT/TTC
+    (``argent.base``). Aucun taux inventé, aucun recalcul ; le mot
+    « crédit-bail » ne vient que du libellé servi (gardé par le réglage
+    juridique, CIQ211) — ce bloc ne l'écrit jamais lui-même."""
+    argent = synthese.get("argent") if isinstance(synthese, dict) else None
+    offre = argent.get("financement") if isinstance(argent, dict) else None
+    if not isinstance(offre, dict) or offre.get("echeance_mad") is None:
+        return ""
+    base = argent.get("base")
+    suffixe = {"ht": " HT", "ttc": " TTC"}.get(base, "")
+    libelle = _txt(offre.get("libelle_client")) or TITRE_FINANCEMENT
+    lignes = [libelle]
+    duree = offre.get("duree_mois")
+    echeance = (f"Échéance mensuelle&#160;: {_montant(offre['echeance_mad'])}"
+                f"&#160;MAD{suffixe}")
+    if duree:
+        echeance += f" sur {duree:g} mois"
+    lignes.append(echeance)
+    mensuelle = offre.get("economie_mensuelle_moyenne_mad")
+    if mensuelle is not None:
+        lignes.append("Économie mensuelle moyenne estimée&#160;: "
+                      f"{_montant(mensuelle)}&#160;MAD{suffixe}")
+    ecart = offre.get("ecart_mensuel_mad")
+    if ecart is not None:
+        lignes.append(f"Écart mensuel&#160;: {_montant(ecart)}&#160;MAD"
+                      f"{suffixe}")
+    source = _txt(offre.get("source"))
+    if source:
+        lignes.append(f"Source&#160;: {source}")
+    items = "".join(f'<div style="margin-top:2px;">{li}</div>'
+                    for li in lignes)
+    return (f'<div class="{prefixe}-fin" style="margin-top:10px;'
+            f'font-size:8pt;color:{couleur_texte};line-height:1.4;">'
+            f'<div style="font-size:9pt;font-weight:700;'
+            f'color:{couleur_titre};">{TITRE_FINANCEMENT}</div>{items}</div>')
+
+
 # ── CIQ311 — bloc « Conditions » ────────────────────────────────────────────
 
 TITRE_CGV_DEFAUT = "Conditions générales du devis"
