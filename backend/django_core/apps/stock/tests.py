@@ -333,7 +333,15 @@ class TestSeedCatalogue(TestCase):
         chaque déploiement, puisque le seeder tourne désormais à chaque fois.
         """
         from apps.stock.views.produit import CHAMPS_PRODUIT_SUIVIS_DEVIS
-        self.assertEqual(CHAMPS_PRODUIT_SUIVIS_DEVIS, ('nom', 'prix_vente'))
+        # ASTK89 — la liste a été étendue AUX SEULS champs qui chiffrent une
+        # ligne (tva, forfait, par panneau) ; la frontière « fiche / texte
+        # commercial jamais suivi » reste, elle, inchangée.
+        self.assertEqual(
+            CHAMPS_PRODUIT_SUIVIS_DEVIS,
+            ('nom', 'prix_vente', 'tva', 'prix_fixe_ht',
+             'prix_par_panneau_ht'))
+        for champ in ('description', 'marque', 'garantie', 'garantie_mois'):
+            self.assertNotIn(champ, CHAMPS_PRODUIT_SUIVIS_DEVIS)
 
     def test_pv85_deye_10t_modele_confirme_fondateur(self):
         """PV85 — SG05LP3 tranché par le fondateur : plus « supposé »."""
@@ -930,7 +938,10 @@ class TestSeedCatalogue(TestCase):
             prix_achat=Decimal('18000.00'),
             quantite_stock=5, tva=Decimal('20.00'),
         )
-        seed(self.company)
+        # ASTK176 — la conversion RÉÉCRIT prix et TVA : elle n'a lieu que
+        # sous `--reappliquer-fiches` (un run nu la rapporte sans l'appliquer,
+        # cf. test_astk_seed_additif).
+        seed(self.company, reappliquer_fiches=True)
         p.refresh_from_db()
         self.assertEqual(p.tva, Decimal('10.00'))
         self.assertEqual(p.prix_vente, Decimal('21818.18'))

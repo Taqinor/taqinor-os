@@ -214,6 +214,58 @@ def controle_courbe_pompe_lisible(value):
     return None
 
 
+def normaliser_sku(valeur):
+    """ASTK93 — '' et espaces → ``None`` : « pas de SKU » s'écrit UNE seule
+    façon (la contrainte ``(company, sku)`` traiterait deux '' comme un
+    doublon → IntegrityError 500). Survivant unique pour Produit et Kit."""
+    return (valeur or '').strip() or None
+
+
+def verifier_sku_libre(modele, company, sku, instance=None):
+    """ASTK93 — refuse (400) un SKU déjà pris À LA CASSE PRÈS dans la société
+    ('ref-1' / 'REF-1' sont le même article). Le message nomme l'existant."""
+    if sku is None or company is None:
+        return
+    qs = modele.objects.filter(company=company, sku__iexact=sku)
+    if instance is not None and instance.pk:
+        qs = qs.exclude(pk=instance.pk)
+    existant = qs.first()
+    if existant is not None:
+        raise serializers.ValidationError(
+            f'Ce SKU existe déjà ({sku} ≈ {existant.sku}).')
+
+
+MSG_NOM_DOUBLON = 'Un produit actif de ce nom existe déjà.'
+
+
+def valider_nom_sans_sku(company, nom, sku, archive, instance=None):
+    """ASTK94 — garde d'unicité « produit ACTIF SANS SKU de ce nom » (contrainte
+    DB ``stock_produit_company_nom_sans_sku_uniq``), à UN seul endroit : le
+    serializer (create/update), ``unarchive`` et ``dupliquer`` l'appellent
+    tous — un homonyme répond 400 ``{nom: …}``, jamais une IntegrityError 500.
+    ``archive`` = l'état archivé que le produit AURA après l'opération."""
+    sku = (sku or '').strip()
+    # MÊME périmètre que la contrainte : hors de ce périmètre, le doublon
+    # est LÉGITIME (jumeaux SKUés du catalogue, fiche archivée homonyme).
+    if not nom or sku or archive or company is None:
+        return
+    qs = Produit.objects.filter(
+        company=company, nom=nom, is_archived=False,
+    ).filter(models.Q(sku__isnull=True) | models.Q(sku=''))
+    if instance is not None and instance.pk:
+        qs = qs.exclude(pk=instance.pk)
+    if qs.exists():
+        raise serializers.ValidationError({'nom': MSG_NOM_DOUBLON})
+
+
+def _company_du_contexte(serializer):
+    request = serializer.context.get('request')
+    company = getattr(getattr(request, 'user', None), 'company', None)
+    if company is None:
+        company = getattr(serializer.instance, 'company', None)
+    return company
+
+
 class ProduitSerializer(serializers.ModelSerializer):
     categorie = CategorieSerializer(read_only=True)
     categorie_id = serializers.PrimaryKeyRelatedField(
@@ -422,6 +474,39 @@ class ProduitSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(probleme)
         return value
 
+    def validate_sku(self, value):
+        # ASTK93 — '' → None puis refus du doublon à la casse près.
+        value = normaliser_sku(value)
+        verifier_sku_libre(
+            Produit, _company_du_contexte(self), value, self.instance)
+        return value
+
+    # ── ASTK92 — règles de saisie : 400 lisible par champ, jamais 200/500.
+    # ``prix_vente = 0`` reste ACCEPTÉ (pompes « prix à renseigner »).
+    def validate_prix_vente(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le prix de vente ne peut pas être négatif.')
+        return value
+
+    def validate_prix_achat(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le prix d'achat ne peut pas être négatif.")
+        return value
+
+    def validate_seuil_alerte(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le seuil d'alerte ne peut pas être négatif.")
+        return value
+
+    def validate_tva(self, value):
+        if value is not None and not (0 <= value <= 100):
+            raise serializers.ValidationError(
+                'La TVA doit être comprise entre 0 et 100 %.')
+        return value
+
     def validate_code_barres(self, value):
         # XSTK3 — doublon PROPRE (400) même société, plutôt qu'une
         # IntegrityError 500 sur la contrainte DB. Vide/None reste toléré
@@ -446,7 +531,7 @@ class ProduitSerializer(serializers.ModelSerializer):
     # côté sérialiseur, un simple POST de doublon remontait en 500
     # (IntegrityError non attrapée) au lieu d'un 400 lisible. Le message est
     # posé sur le champ `nom`, comme `validate_code_barres` le fait sur le sien.
-    MSG_NOM_DOUBLON = 'Un produit actif de ce nom existe déjà.'
+    MSG_NOM_DOUBLON = MSG_NOM_DOUBLON
 
     def _valeur_effective(self, attrs, champ, defaut=None):
         """La valeur qu'aura le produit APRÈS écriture (création ou PATCH)."""
@@ -460,23 +545,8 @@ class ProduitSerializer(serializers.ModelSerializer):
         nom = self._valeur_effective(attrs, 'nom')
         sku = (self._valeur_effective(attrs, 'sku') or '').strip()
         archive = bool(self._valeur_effective(attrs, 'is_archived', False))
-        # MÊME périmètre que la contrainte : hors de ce périmètre, le doublon
-        # est LÉGITIME (jumeaux SKUés du catalogue, fiche archivée homonyme).
-        if not nom or sku or archive:
-            return
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is None:
-            company = getattr(self.instance, 'company', None)
-        if company is None:
-            return
-        qs = Produit.objects.filter(
-            company=company, nom=nom, is_archived=False,
-        ).filter(models.Q(sku__isnull=True) | models.Q(sku=''))
-        if self.instance is not None:
-            qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
-            raise serializers.ValidationError({'nom': self.MSG_NOM_DOUBLON})
+        company = _company_du_contexte(self)
+        valider_nom_sans_sku(company, nom, sku, archive, self.instance)
 
     def _ecrire(self, ecriture):
         """Filet de course : entre la validation ci-dessus et l'INSERT, une
@@ -1859,6 +1929,15 @@ class KitProduitSerializer(serializers.ModelSerializer):
     # OPT-IN via `?avec_disponibilite=1` (contexte posé par la vue) : la
     # liste/fiche l'affiche sans alourdir le comportement par défaut.
     disponibilite_potentielle = serializers.SerializerMethodField()
+    # ASTK93 — même déclaration explicite que Produit.sku (optionnel, '' → None).
+    sku = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, max_length=50)
+
+    def validate_sku(self, value):
+        value = normaliser_sku(value)
+        verifier_sku_libre(
+            KitProduit, _company_du_contexte(self), value, self.instance)
+        return value
 
     class Meta:
         model = KitProduit
@@ -1952,9 +2031,22 @@ class KitProduitSerializer(serializers.ModelSerializer):
             setattr(instance, attr, val)
         instance.save()
         if composants_data is not None:
-            instance.composants.all().delete()
-            for c in composants_data:
-                KitComposant.objects.create(kit=instance, **c)
+            with transaction.atomic():
+                # ASTK96 — ``taux_perte_pct`` n'est pas un champ du
+                # serializer : on le relit AVANT la suppression et on le
+                # reporte sur le composant recréé (même produit / sous-kit).
+                # Un composant retiré disparaît, un nouveau naît à 0.
+                pertes = {
+                    (k.produit_id, k.composant_kit_id): k.taux_perte_pct
+                    for k in instance.composants.all()}
+                instance.composants.all().delete()
+                for c in composants_data:
+                    cle = (getattr(c.get('produit'), 'pk', None),
+                           getattr(c.get('composant_kit'), 'pk', None))
+                    extra = ({'taux_perte_pct': pertes[cle]}
+                             if cle in pertes else {})
+                    KitComposant.objects.create(
+                        kit=instance, **{**extra, **c})
             self._snapshot(instance)
         return instance
 
@@ -2211,6 +2303,13 @@ class ConditionnementProduitSerializer(serializers.ModelSerializer):
             'id', 'produit', 'produit_nom', 'nom', 'facteur', 'code_barres',
             'unite_stock', 'date_creation',
         ]
+
+    def validate_facteur(self, value):
+        # ASTK92 — un facteur ≤ 0 rendrait toute réception nulle ou négative.
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                'Le facteur de conversion doit être strictement positif.')
+        return value
 
 
 class ModeleBonCommandeFournisseurLigneSerializer(serializers.ModelSerializer):
