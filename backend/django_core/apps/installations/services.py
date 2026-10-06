@@ -4071,32 +4071,101 @@ def autorisation_travaux_8221(installation):
             and bool(resume.get('date_decision')))
 
 
+#: CIQ630 — « Réceptionné » d'un site pro sans fiche de recette passée
+#: (contrôle qualité interne, sans prémisse juridique).
+RAISON_CI_SANS_RECETTE = (
+    "Réception refusée : la fiche de recette du site professionnel n'est pas "
+    "passée (conforme ou conforme avec réserves). Dérogation possible par un "
+    "Directeur, avec motif.")
+#: CIQ630 — « En cours » d'un chantier MT sans visite technique C&I validée
+#: (D-CIQ-5).
+RAISON_MT_SANS_VISITE = (
+    "Montage refusé : aucune visite technique C&I validée pour ce site "
+    "moyenne tension (poste, TGBT, toiture et niveau non vérifiés). "
+    "Dérogation possible par un Directeur, avec motif.")
+AVERTISSEMENT_SANS_VISITE_CI = (
+    "Montage sans visite technique C&I validée : TGBT, toiture et niveau "
+    "non vérifiés sur place.")
+
+
+def est_chantier_industriel(installation):
+    """CIQ630 — chantier de site professionnel (C&I)."""
+    return (installation.type_installation
+            == Installation.TypeInstallation.INDUSTRIEL)
+
+
+def recette_ci_passee(installation):
+    """CIQ630 — la fiche de recette du chantier est-elle PASSÉE ?"""
+    from .models import CommissioningRecord
+    record = CommissioningRecord.objects.filter(
+        installation=installation).first()
+    return bool(record and record.passe)
+
+
+def visite_ci_validee(installation):
+    """CIQ630 — relevé de la dernière visite ``ci`` VALIDÉE du lead du
+    chantier (``visites.selectors.releve_ci_pour_lead``, CIQ606), ou
+    ``None``."""
+    lead = getattr(installation, 'lead', None)
+    if lead is None:
+        return None
+    from apps.visites.selectors import releve_ci_pour_lead
+    return releve_ci_pour_lead(lead)
+
+
+def _entree(installation, nouveau_statut, statuts):
+    canon_old = Installation.canonical_statut(installation.statut)
+    canon_new = Installation.canonical_statut(nouveau_statut)
+    return canon_new in statuts and canon_old not in statuts
+
+
+def avertissements_ci(installation, nouveau_statut):
+    """CIQ630 — avertissements CONSULTATIFS d'un passage de site pro : un
+    chantier BT ou de tension inconnue entre en travaux sans visite C&I
+    validée (jamais un blocage)."""
+    if not est_chantier_industriel(installation):
+        return []
+    if (_entree(installation, nouveau_statut, _STATUTS_TRAVAUX)
+            and installation.niveau_tension != 'mt'
+            and visite_ci_validee(installation) is None):
+        return [AVERTISSEMENT_SANS_VISITE_CI]
+    return []
+
+
 def _gardes_ci(installation, nouveau_statut, user=None,
                motif_derogation=None):
     """CIQ621 — raisons FR qui refusent l'entrée en travaux (« En cours » ou
     au-delà) d'un chantier C&I raccordé sans convention ni autorisation.
-    Résidentiel et agricole : jamais concernés. Dérogation Directeur avec
-    motif (même patron que la dérogation d'acompte YSERV1)."""
-    if not est_chantier_ci_raccorde(installation):
+    CIQ628 — remise refusée tant qu'une réserve BLOQUANTE est ouverte.
+    CIQ630 — pour TOUT chantier industriel, même sans étapes amorcées :
+    « Réceptionné » exige une fiche de recette PASSÉE ; « En cours » exige
+    une visite C&I validée pour un chantier MT (BT/inconnu : avertissement,
+    voir :func:`avertissements_ci`). Résidentiel et agricole : jamais
+    concernés. Dérogation Directeur avec motif (même patron que la
+    dérogation d'acompte YSERV1)."""
+    if not est_chantier_industriel(installation):
         return []
-    canon_old = Installation.canonical_statut(installation.statut)
-    canon_new = Installation.canonical_statut(nouveau_statut)
+    raccorde = est_chantier_ci_raccorde(installation)
     raisons = []
-    # CIQ628 — remise d'un site pro refusée tant qu'une réserve BLOQUANTE
-    # est ouverte, même sans étapes amorcées.
-    if (canon_new == Installation.Statut.RECEPTIONNE
-            and canon_old != Installation.Statut.RECEPTIONNE):
+    if _entree(installation, nouveau_statut,
+               (Installation.Statut.RECEPTIONNE,)):
         raison_reserves = raison_reserves_bloquantes(installation)
         if raison_reserves:
             raisons.append(raison_reserves)
-    if canon_new in _STATUTS_TRAVAUX and canon_old not in _STATUTS_TRAVAUX:
-        if not autorisation_travaux_8221(installation):
-            raisons.append(RAISON_CI_SANS_CONVENTION)
-        # CIQ623 — mêmes documents de sécurité avant « En cours » pour un
-        # site pro, même sans gates amorcés.
-        raison_hse = _gate_check_hse(installation)
-        if raison_hse:
-            raisons.append(raison_hse)
+        if not recette_ci_passee(installation):
+            raisons.append(RAISON_CI_SANS_RECETTE)
+    if _entree(installation, nouveau_statut, _STATUTS_TRAVAUX):
+        if raccorde:
+            if not autorisation_travaux_8221(installation):
+                raisons.append(RAISON_CI_SANS_CONVENTION)
+            # CIQ623 — mêmes documents de sécurité avant « En cours » pour
+            # un site pro raccordé, même sans gates amorcés.
+            raison_hse = _gate_check_hse(installation)
+            if raison_hse:
+                raisons.append(raison_hse)
+        if (installation.niveau_tension == 'mt'
+                and visite_ci_validee(installation) is None):
+            raisons.append(RAISON_MT_SANS_VISITE)
     if raisons and (motif_derogation or '').strip() and est_directeur(user):
         return []
     return raisons
@@ -4250,10 +4319,17 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
             installation, user,
             f'Planifié sans acompte — motif : {motif_override_acompte.strip()}')
     if derogation_8221:
+        # CIQ621/CIQ630 — la dérogation cite les gardes qu'elle franchit.
+        franchies = _gardes_ci(old, nouveau_statut, user, None)
         activity.log_note(
             installation, user,
-            'Travaux démarrés sans convention 82-21 (dérogation Directeur) '
-            f'— motif : {motif_derogation_8221.strip()}')
+            'Passage autorisé par dérogation Directeur (site pro : '
+            + ' '.join(franchies)
+            + f') — motif : {motif_derogation_8221.strip()}')
+    # CIQ630 — avertissements consultatifs (BT sans visite C&I validée).
+    effets['avertissements'] = avertissements_ci(old, nouveau_statut)
+    for avertissement in effets['avertissements']:
+        activity.log_note(installation, user, avertissement)
     return {'ancien': ancien_statut, 'nouveau': installation.statut,
             'effets': effets}
 
