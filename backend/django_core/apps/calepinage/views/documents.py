@@ -165,6 +165,9 @@ DOCUMENTS_SCHEMA = inline_serializer('CalepinageDocuments', {
         'genre': drf_serializers.CharField(),
         'attachment': drf_serializers.IntegerField(),
         'depose_le': drf_serializers.DateTimeField(),
+        # ACAL224 — liée à la conception qui l'a produite.
+        'empreinte': drf_serializers.CharField(allow_null=True),
+        'perimee': drf_serializers.BooleanField(),
     }, many=True),
 })
 
@@ -390,17 +393,19 @@ IMAGE_DOCUMENT_SCHEMA = inline_serializer('CalepinageImageDocumentDepot', {
     'genre': drf_serializers.CharField(),
     'attachment': drf_serializers.IntegerField(),
     'depose_le': drf_serializers.DateTimeField(),
+    'empreinte': drf_serializers.CharField(allow_null=True),  # ACAL224
+    'perimee': drf_serializers.BooleanField(),
 })
 
 
 @extend_schema(request=OpenApiTypes.OBJECT,
                responses={201: IMAGE_DOCUMENT_SCHEMA})
 @action(detail=True, methods=['post'], url_path='image-document',
-        url_name='image-document', permission_classes=[PeutVoirCalepinage])
+        url_name='image-document', permission_classes=[PeutGererCalepinage])
 def image_document(self, request, pk=None):
     """CALX302 — dépose une image PRODUITE PAR LE NAVIGATEUR (carte de
-    chaleur d'ombrage, diagramme de pertes, rendu 3D) — genre parmi une
-    énumération FERMÉE (``ombrage``, ``sankey``, ``plan3d``), stockée en
+    chaleur d'ombrage) — genre parmi une énumération FERMÉE (ACAL224 :
+    ``ombrage`` seul ; réservé à ``calepinage_gerer``), stockée en
     ``records.Attachment`` (MinIO, jamais un binaire au dépôt). Corps
     ``{genre, fichier}`` — ``fichier`` accepte un fichier multipart OU une
     data-URL base64 produite par le navigateur.
@@ -431,6 +436,10 @@ def image_document(self, request, pk=None):
         'genre': depot['genre'],
         'attachment': depot['attachment'].pk,
         'depose_le': depot['attachment'].created_at,
+        # ACAL224 — l'empreinte de la conception pour laquelle elle est
+        # déposée : fraîche par construction au moment du dépôt.
+        'empreinte': depot['empreinte'],
+        'perimee': not depot['empreinte'],
     }, status=status.HTTP_201_CREATED)
 
 
