@@ -1065,6 +1065,17 @@ def apply_retour_fournisseur(retour, user):
                 note=f'Retour fournisseur {retour.reference}'
                      + (f' — {ligne.motif}' if ligne.motif else ''),
                 created_by=user)
+            # ASTK54 — jumeau MVT-10 : un retour contre un BCF livré à un
+            # emplacement non principal débite cet emplacement (même helper
+            # d'inversion que l'annulation de réception).
+            bc_retour = retour.bon_commande if retour.bon_commande_id else None
+            _inverser_ventilation_entree(
+                retour.company, produit,
+                emplacement=(bc_retour.emplacement_destination
+                             if bc_retour is not None
+                             and bc_retour.emplacement_destination_id
+                             else None),
+                numero_lot=None, quantite=ligne.quantite)
             if retour.bon_commande_id:
                 _reouvrir_quantite_recue_bcf(
                     retour.bon_commande, ligne.produit_id, ligne.quantite)
@@ -1247,6 +1258,36 @@ def confirm_reception_fournisseur(reception, user):
     return reception
 
 
+def _inverser_ventilation_entree(company, produit, *, emplacement,
+                                 numero_lot, quantite):
+    """ASTK54 — défait la ventilation posée par une ENTRÉE fournisseur
+    (``credit_emplacement_destination`` + ``alimenter_lot_entrepot``) quand
+    ``quantite`` unités en ressortent (annulation de réception, retour
+    fournisseur). Débite la ligne ``StockEmplacement`` de l'emplacement non
+    principal et le ``LotEntrepot`` du lot, chacun plafonné à ce qu'il
+    détient (jamais négatif). Le principal reste dérivé (total − Σ non
+    principaux) : rien à écrire pour lui. À appeler dans la transaction de
+    l'appelant, APRÈS le mouvement de sortie."""
+    from .models import LotEntrepot, StockEmplacement
+    if quantite <= 0:
+        return
+    if emplacement is not None and not emplacement.is_principal:
+        se = (StockEmplacement.objects.select_for_update()
+              .filter(company=company, produit=produit,
+                      emplacement=emplacement).first())
+        if se is not None:
+            se.quantite = max((se.quantite or 0) - quantite, 0)
+            se.save(update_fields=['quantite'])
+    if numero_lot:
+        lot = (LotEntrepot.objects.select_for_update()
+               .filter(company=company, produit=produit,
+                       numero_lot=numero_lot).first())
+        if lot is not None:
+            lot.quantite_restante = max(lot.quantite_restante - quantite, 0)
+            lot.quantite_recue = max(lot.quantite_recue - quantite, 0)
+            lot.save(update_fields=['quantite_restante', 'quantite_recue'])
+
+
 def annuler_reception_confirmee(reception, user):
     """YSTCK6 — annule une réception CONFIRMÉE par une CONTRE-PASSATION
     (reversal référencé, jamais un blocage ni une suppression — pattern SAP
@@ -1280,9 +1321,35 @@ def annuler_reception_confirmee(reception, user):
             raise ValueError(
                 'Seule une réception confirmée peut être annulée par '
                 'contre-passation (déjà annulée).')
+
+        def _est_stockee(ligne):
+            # XPUR16 — une ligne libre/service n'a JAMAIS produit d'ENTREE à
+            # la confirmation : rien à contre-passer côté stock.
+            return (ligne.produit_id is not None
+                    and not (ligne.ligne_commande is not None
+                             and ligne.ligne_commande.sans_stock))
+
+        # ASTK54 — livraison DIRECTE chantier : la marchandise est sortie
+        # vers le chantier dès la confirmation (entrée + sortie). Annuler
+        # ressortirait du stock LIBRE qui n'a jamais reçu ces unités : refus,
+        # le chemin correct est un retour.
+        if (bc is not None and bc.chantier_livraison_id
+                and any(_est_stockee(lg) and int(lg.quantite or 0) > 0
+                        for lg in lignes)):
+            raise ValueError(
+                'Marchandise livrée au chantier — passer par un retour.')
         for ligne in lignes:
             qte = int(ligne.quantite or 0)
-            if qte <= 0 or ligne.produit_id is None:
+            if qte <= 0:
+                continue
+            if not _est_stockee(ligne):
+                # ASTK54 — ligne service : seule la quantité reçue de la
+                # ligne de BCF est défaite (le BCF est rouvert plus bas).
+                if ligne.ligne_commande_id is not None:
+                    ligne_cmd = _verrouiller_ligne_bcf(ligne.ligne_commande)
+                    ligne_cmd.quantite_recue = max(
+                        ligne_cmd.quantite_recue - qte, 0)
+                    ligne_cmd.save(update_fields=['quantite_recue'])
                 continue
             # AUD216 — VERROU de ligne produit : la contre-passation calcule
             # `min(qte, stock en main)`, donc une lecture non verrouillée
@@ -1306,6 +1373,16 @@ def annuler_reception_confirmee(reception, user):
                     note=(f'Contre-passation annulation réception '
                           f'{reception.reference}'),
                     created_by=user)
+                # ASTK54 — miroir exact de la confirmation : la ventilation
+                # d'emplacement et le lot crédités sont débités d'autant.
+                _inverser_ventilation_entree(
+                    reception.company, produit,
+                    emplacement=(bc.emplacement_destination
+                                 if bc is not None
+                                 and bc.emplacement_destination_id
+                                 else None),
+                    numero_lot=getattr(ligne, 'numero_lot', None),
+                    quantite=qte_sortie)
             if ligne.ligne_commande_id is not None:
                 # ASTK49 — ligne de BCF relue SOUS verrou avant décrément.
                 ligne_cmd = _verrouiller_ligne_bcf(ligne.ligne_commande)
