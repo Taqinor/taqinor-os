@@ -236,7 +236,8 @@ def build(ctx):
         d.get("com_category"), d.get("etude"), C, fmt,
         note_pointe=d.get("com_note_pointe") or d.get("ind_note_pointe"),
         categorie=(d.get("com_synthese") or {}).get("categorie"),
-        langue=d.get("langue_sortie") or "fr")
+        langue=_langue(d),
+        synthese=d.get("com_synthese") or d.get("ind_synthese"))
 
     css = f"""
 <style>

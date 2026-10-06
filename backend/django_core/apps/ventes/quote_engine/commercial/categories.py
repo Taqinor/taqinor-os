@@ -25,16 +25,23 @@ METADATA = {
 }
 
 
-def _categorie_par_defaut(category, etude, note_pointe=None):
+def _categorie_par_defaut(category, etude, note_pointe=None, langue="fr",
+                          synthese=None):
     """Contenu CIQ330 recalculé sur les seules réponses (sans synthèse) ;
     la note sur la pointe passée par l'appelant (CIQ307) sert au bloc
-    générique."""
+    générique. CIQ345 — ``synthese`` (la synthèse C&I servie, dont la note
+    TRILINGUE sur la pointe) et ``langue`` : le bloc générique suit la
+    langue du document (français inchangé)."""
     etude = dict(etude or {})
     etude["categorie_commerciale"] = category
-    synthese = ({"hypotheses": [{"cle": "pointe",
-                                 "textes": {"fr": note_pointe}}]}
-                if note_pointe else None)
-    return ci_categories.categorie_ci({"etude": etude}, synthese)
+    if not isinstance(synthese, dict) or not synthese.get("hypotheses"):
+        synthese = ({"hypotheses": [{"cle": "pointe",
+                                     "textes": {"fr": note_pointe}}]}
+                    if note_pointe else None)
+    donnees = {"etude": etude}
+    if langue and langue != "fr":
+        donnees["langue_sortie"] = langue
+    return ci_categories.categorie_ci(donnees, synthese)
 
 
 def meta(category, categorie=None):
@@ -50,7 +57,7 @@ def meta(category, categorie=None):
 
 
 def category_block(category, etude, C, fmt, note_pointe=None, categorie=None,
-                   langue="fr"):
+                   langue="fr", synthese=None):
     """HTML du bloc de la page 2 — RENDU de ``synthese_ci['categorie']``
     (``categorie``), ou de la table CIQ330 sur les réponses ``etude`` quand
     la synthèse n'est pas fournie. Retourne une chaîne — jamais None.
@@ -58,7 +65,9 @@ def category_block(category, etude, C, fmt, note_pointe=None, categorie=None,
     ``note_pointe`` : la note sur la pointe (table des mentions, CIQ305)
     imprimée par le bloc générique quand la synthèse n'est pas fournie."""
     if not isinstance(categorie, dict) or not categorie.get("bloc"):
-        categorie = _categorie_par_defaut(category, etude, note_pointe)
+        categorie = _categorie_par_defaut(
+            category, etude, note_pointe, langue,
+            synthese if langue and langue != "fr" else None)
     bloc = categorie.get("bloc") or {}
     lignes = "".join(
         f'<div class="c2b-li">{ci_categories.texte_ligne(li, langue)}</div>'

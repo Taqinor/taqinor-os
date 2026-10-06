@@ -102,11 +102,13 @@ def _valeur_hypothese(h, fmt, L):
             return L("ci_ind_n_ans", "{n} ans", n=f"{valeur:g}")
         texte = fmt(valeur) if unite in ("MAD", "kWh") else \
             f"{valeur:g}".replace(".", ",")
+        if unite == "% / an":
+            unite = L("ci_ind_pct_an", unite)
         return f"{texte}&nbsp;{unite}" if unite else texte
     return ci_blocs._txt(valeur)
 
 
-def _hypotheses(argent, flux, fmt, fmt_mad, L):
+def _hypotheses(argent, flux, fmt, fmt_mad, L, d=None):
     """Les hypothèses DU MOTEUR (flux servi, valorisation, tarif,
     remplacements), chacune avec sa source — aucune n'est écrite ici."""
     lignes = []
@@ -129,9 +131,13 @@ def _hypotheses(argent, flux, fmt, fmt_mad, L):
         if not isinstance(r, dict) or r.get("annee") is None:
             continue
         montant = r.get("montant_ttc_mad")
+        composant = ci_blocs._txt(r.get("composant"))
+        cle_composant = f"ci_garantie_{composant}"
+        if ci_blocs.langue(d) != "fr" and cle_composant in _cles_catalogue():
+            composant = L(cle_composant, composant)
         lignes.append(
             L("ci_ind_remplacement", "Remplacement {composant} en année {annee}",
-              composant=ci_blocs._txt(r.get("composant")),
+              composant=composant,
               annee=f"{r['annee']:g}" if isinstance(r["annee"], (int, float))
               else r["annee"])
             + (f"&#160;: {fmt_mad(montant)}&nbsp;MAD {L('ci_ttc', 'TTC')}"
@@ -168,6 +174,12 @@ def _ligne_revente(argent, fmt, L, langue):
     if not valeur:
         return ""
     mentions = [m for m in revente.get("mentions") or [] if m]
+    if langue != "fr":
+        # CIQ345 — les mentions servies sont françaises : la langue du
+        # document lit la MÊME table trilingue (CIQ305).
+        from ..ci.mentions import TEXTES_82_21, TEXTES_ART13, texte
+        mentions = [texte(TEXTES_82_21, langue) + ".",
+                    texte(TEXTES_ART13, langue) + "."]
     mention = (f' <span class="i2-mini">{" ".join(mentions)}</span>'
                if mentions else "")
     return (f'<div class="i2-inj"><b>+ {fmt(valeur)} '
@@ -225,6 +237,9 @@ def _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L, couleurs):
                       + f"&#160;: <b>{fmt_mad(van)}&#160;MAD</b>")
     else:
         motif = ci_blocs._txt(indicateurs.get("van_motif"))
+        if motif and ci_blocs.langue(d) != "fr":
+            # La seule cause d'omission servie : aucun taux déclaré.
+            motif = L("ci_ind_van_motif", motif)
         lignes.append(L("ci_ind_van_omise", "VAN non calculée")
                       + (f"&#160;: {motif}" if motif else ""))
     scenarios = [s for s in argent.get("sensibilites") or []
@@ -478,7 +493,7 @@ def build(ctx):
             f'({base_txt})</th>{entete_ttc}</tr>{rangees}</table>'
             if rangees else "")
         courbe = _courbe(lignes_flux, None)
-        lignes_hyp = _hypotheses(argent, flux, fmt, fmt_mad, L)
+        lignes_hyp = _hypotheses(argent, flux, fmt, fmt_mad, L, d)
         cfo_html = _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L,
                              (navy, ink))
         hypotheses_html = (

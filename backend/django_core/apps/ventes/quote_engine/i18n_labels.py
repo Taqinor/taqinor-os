@@ -1000,7 +1000,7 @@ LIBELLES = {
     'ci_ind_tarif_client': {
         'fr': 'prix moyen de votre kWh évité : {tarif} MAD/kWh',
         'en': 'average price of your avoided kWh: {tarif} MAD/kWh',
-        'ar': 'متوسط ثمن الكيلوواط ساعة الذي تتجنبونه: {tarif} درهم/kWh'},
+        'ar': 'متوسط ثمن الكيلوواط ساعة الذي تتجنبونه: {tarif} MAD/kWh'},
     'ci_ind_van_omise': {'fr': 'VAN non calculée', 'en': 'NPV not calculated',
                          'ar': 'القيمة الحالية الصافية غير محسوبة'},
     'ci_ind_sens_indexation_tarif': {'fr': 'Indexation du tarif',
@@ -1052,6 +1052,11 @@ LIBELLES = {
         'fr': 'Bilan carbone de votre électricité',
         'en': 'Carbon footprint of your electricity',
         'ar': 'البصمة الكربونية لكهربائكم'},
+    'ci_ind_van_motif': {
+        'fr': "aucun taux d'actualisation déclaré par le client",
+        'en': 'no discount rate declared by the client',
+        'ar': 'لم يصرح الزبون بأي معدل خصم'},
+    'ci_ind_pct_an': {'fr': '% / an', 'en': '% / yr', 'ar': '% / سنة'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',
