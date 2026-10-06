@@ -1417,22 +1417,28 @@ def verrouiller_facture_fournisseur_et_verifier_solde(facture, montant):
 
 
 def recompute_facture_fournisseur_statut(facture):
-    """Recalcule le statut de règlement d'une facture fournisseur depuis ses
-    paiements et le persiste. À payer si rien réglé, payée si le solde ≤ 0,
-    sinon partiellement payée."""
+    """Recalcule le statut de règlement d'une facture fournisseur et le
+    persiste. ASTK102 — PROJECTION de ``solde_du`` (TTC − paiements −
+    acomptes imputés − avoirs imputés), jamais des seuls paiements : solde =
+    TTC (rien réglé) ⇒ à payer ; solde nul ⇒ payée ; entre les deux ⇒
+    partiellement payée. Appelé après chaque paiement ET chaque imputation
+    d'acompte ou d'avoir. Relit la facture en base (aucun cache de
+    préchargement périmé)."""
     from decimal import Decimal
     from .models import FactureFournisseur
-    paye = facture.total_paye
-    ttc = facture.montant_ttc or Decimal('0')
-    if paye <= Decimal('0'):
+    fraiche = FactureFournisseur.objects.get(pk=facture.pk)
+    ttc = fraiche.montant_ttc or Decimal('0')
+    solde = fraiche.solde_du
+    if solde >= ttc:
         statut = FactureFournisseur.Statut.A_PAYER
-    elif paye >= ttc:
+    elif solde <= Decimal('0'):
         statut = FactureFournisseur.Statut.PAYEE
     else:
         statut = FactureFournisseur.Statut.PARTIELLEMENT_PAYEE
-    if facture.statut != statut:
-        facture.statut = statut
-        facture.save(update_fields=['statut'])
+    if fraiche.statut != statut:
+        fraiche.statut = statut
+        fraiche.save(update_fields=['statut'])
+    facture.statut = statut
     return statut
 
 
@@ -4737,6 +4743,9 @@ def imputer_acomptes_bcf(bon_commande):
         acompte.montant_consomme = acompte.montant
         acompte.save(update_fields=['facture_imputee', 'montant_consomme'])
         imputed.append(acompte)
+    if imputed:
+        # ASTK102 — le statut suit le solde (acompte imputé = règlement).
+        recompute_facture_fournisseur_statut(facture)
     return imputed
 
 
@@ -4836,6 +4845,8 @@ def imputer_avoir_fournisseur(avoir, facture, montant=None, *, user=None):
                     if avoir.montant_disponible <= 0
                     else AvoirFournisseur.Statut.VALIDE)
     avoir.save(update_fields=['montant_impute', 'statut'])
+    # ASTK102 — le statut de la facture suit son solde (avoir = règlement).
+    recompute_facture_fournisseur_statut(facture)
     return imputation
 
 

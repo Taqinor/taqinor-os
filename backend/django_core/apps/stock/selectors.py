@@ -1620,8 +1620,9 @@ def annonces_livraison_bon_commande(bon_commande):
 #: NTPRT23 — les trois états de RÈGLEMENT que le portail fournisseur affiche.
 #: Ce sont des LIBELLÉS dérivés, jamais un second champ en base : le statut qui
 #: fait foi reste ``FactureFournisseur.statut`` (recalculé par
-#: ``services.recompute_facture_fournisseur_statut`` depuis les paiements
-#: réels). Un quatrième état stocké ailleurs finirait par le contredire.
+#: ``services.recompute_facture_fournisseur_statut`` comme projection du solde
+#: dû — paiements, acomptes et avoirs imputés, ASTK102). Un quatrième état
+#: stocké ailleurs finirait par le contredire.
 REGLEMENT_A_PAYER = 'a_payer'
 REGLEMENT_PAYEE = 'payee'
 REGLEMENT_EN_RETARD = 'en_retard'
@@ -1641,10 +1642,9 @@ def statut_reglement_facture_fournisseur(facture_ligne, a_la_date=None):
     portail tokenisé XPUR22 sert DÉJÀ) : on ne relit pas la base, on ne
     recalcule aucun montant, on QUALIFIE. Les règles, dans cet ordre :
 
-    * ``statut`` interne ``payee`` (ou solde dû nul) ⇒ **payée**. Le solde est
-      la seconde condition parce qu'un acompte ou un avoir peut solder une
-      facture dont le statut n'a pas encore été recalculé ; afficher « à payer »
-      sur une facture soldée serait une erreur visible par le fournisseur ;
+    * ``statut`` interne ``payee`` (ou solde dû nul) ⇒ **payée** — depuis
+      ASTK102 le statut EST la projection du solde (recalculé à chaque
+      paiement et imputation d'acompte/avoir), les deux conditions coïncident ;
     * échéance dépassée et solde restant ⇒ **en retard** ;
     * sinon ⇒ **à payer** (y compris ``partiellement_payee`` : il reste dû).
 
