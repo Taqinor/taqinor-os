@@ -20,6 +20,11 @@ import DealSignedCelebration from '../../../ui/DealSignedCelebration'
 import { formatMAD } from '../../../lib/format'
 import { STATUT_DEVIS_LABELS } from '../../../features/ventes/devisStatuts'
 import { PAS_ARRONDI_DEVIS } from '../../../features/ventes/remise'
+// CIQ324 — identité d'entreprise facultative à l'acceptation d'un C&I.
+import IdentiteEntrepriseFields from '../../../features/ventes/quote/IdentiteEntrepriseFields'
+import {
+  estDevisCi, corpsAcceptation, raisonSocialeConnue, ENTREPRISE_VIDE,
+} from '../../../features/ventes/quote/acceptationEntreprise'
 
 // Rendu PDF.js (canvas) chargé à la demande — même composant inblocable que le
 // panneau devis de la fiche lead. Réutilisé tel quel, jamais dupliqué.
@@ -140,6 +145,9 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
   const [optionChoice, setOptionChoice] = useState('')
   const [nom, setNom] = useState('')
   const [date, setDate] = useState(() => todayLocalStr())
+  // CIQ324 — `null` tant que le vendeur n'a rien tapé : la raison sociale
+  // connue du devis choisi sert alors de valeur affichée (jamais d'effet de sync).
+  const [entrepriseSaisie, setEntrepriseSaisie] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   // Aperçu PDF inline du devis sélectionné (PDF.js canvas, comme le panneau
@@ -181,6 +189,7 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
 
   // Changer de devis ferme un aperçu devenu obsolète (il portait sur l'ancien).
   const onDevisChange = (id) => {
+    setEntrepriseSaisie(null)
     setDevisId(id)
     setPreviewId(null)
     setPreviewBlob(null)
@@ -194,6 +203,8 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
   const detailAll = useMemo(() => optionsDetail(selected), [selected])
   // Rendu du choix d'option — seulement utile quand 2 options.
   const optDetail = twoOptions ? detailAll : null
+  const entreprise = entrepriseSaisie
+    ?? { ...ENTREPRISE_VIDE, raison_sociale: raisonSocialeConnue(selected) }
 
   // Aperçu inline : récupère le PDF /proposal (chemin canonique) en blob, puis
   // le dessine sur canvas. Toggle : recliquer ferme l'aperçu.
@@ -233,7 +244,8 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
     setBusy(true)
     setError(null)
     try {
-      await ventesApi.accepterDevis(selected.id, { nom, date, option })
+      const corps = corpsAcceptation({ nom, date, option }, selected, entreprise)
+      await ventesApi.accepterDevis(selected.id, corps)
       // VX40/VX155 — le SEUL moment célébré de toute l'app : devis envoyé→
       // accepté (rare, lié au revenu). La carte de victoire (montant + kWc
       // réels, CO₂ dérivé) remplace le toast plat ; onConfirmed() n'est
@@ -418,6 +430,11 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
               />
+
+              {estDevisCi(selected) && (
+                <IdentiteEntrepriseFields value={entreprise} onChange={setEntrepriseSaisie}
+                                          idPrefix="sd" />
+              )}
             </>
           )}
 

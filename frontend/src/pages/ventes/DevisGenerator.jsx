@@ -124,7 +124,7 @@ import {
   HEURES_POMPAGE_DEFAUT,
   isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe,
   prixParKwc, discountForTarget,
-  computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
+  computeBuyCostDetail, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
   // QJR66 — `buildEtudeParamsChoice` n'est PLUS importé ici : l'écran n'écrit
   // plus `scenario` / `recommended_option` / `distributeur` / `conso_annuelle`
@@ -3737,7 +3737,8 @@ export default function DevisGenerator({
 
   // QJR568 — prix/kWc et prix cible au kWc FACTURÉ des lignes.
   const pkwc = prixParKwc(kpiTotal, kwpLignes)
-  const buyCost = useMemo(() => computeBuyCost(lines, produits), [lines, produits])
+  const buyDetail = useMemo(() => computeBuyCostDetail(lines, produits), [lines, produits])
+  const buyCost = buyDetail.cost
   const marge = buyCost != null ? Math.round(kpiTotal - buyCost) : null
 
   const applyPrixCible = () => {
@@ -5175,6 +5176,7 @@ export default function DevisGenerator({
             applyPrixCible={applyPrixCible}
             kwp={kwp}
             marge={marge}
+            margeLignesSansAchat={buyDetail.sansAchat}
             kpiTotal={kpiTotal}
           />
         </LigneTable>

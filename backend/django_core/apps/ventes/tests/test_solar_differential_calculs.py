@@ -1,8 +1,8 @@
 """QAH-PROP (feature #3 du lot QA) — TEST DIFFÉRENTIEL #2 `solar.js` (écran)
 <-> Python, sur les CALCULS que ``test_solar_differential`` (QAH3) laissait HORS
 PÉRIMÈTRE : tarifs par tranche, factures -> consommation, consommation ->
-facture, économies « deux factures », ROI/payback/autoconsommation, et
-dimensionnement pompage. C'est exactement là que vivaient les huit bugs de
+facture, économies « deux factures », ROI/payback/autoconsommation (le pompage a quitté l'écran,
+AGR132). C'est exactement là que vivaient les huit bugs de
 miroir trouvés avant ce lot (1,20 MAD/kWh pour un distributeur nommé, inversion
 énergie seule d'une facture TOTALE, …).
 
@@ -10,7 +10,7 @@ COMMENT. Même patron que QAH3 (PACT10) — deux fichiers FIGÉS, générés par
 ``frontend/scripts/solar_calculs_corpus.mjs`` (PRNG seedé, ~930 entrées qui
 visent les branches limites : aucun distributeur, « autre », SRM, factures
 nulles / un mois / été != hiver / énormes, bornes de tranche exactes, une ou
-deux options, catalogues pompage à noms pièges) :
+deux options) :
 
   * ``fixtures/solar_calculs_corpus.json``   — les ENTRÉES ;
   * ``fixtures/solar_calculs_expected.json`` — ce que ``solar.js`` calcule
@@ -31,9 +31,6 @@ Ce fichier recalcule chaque entrée avec la fonction Python RÉELLE jumelle :
                        serveur applique RÉELLEMENT)
   two_bills            twoBillsSavings    <-> pricing.two_bills_savings
   roi                  computeROI         <-> pricing.calculate_savings_roi
-  pompe_debit          debitAtHmt         <-> pompage._debit_a_hmt
-  pompe_select         selectPompeByCurve <-> pompage.selection_pompe
-  pompe_variateur      selectVariateurVeichi <-> pompage.selection_variateur
   ===================  =====================================================
 
 DIVERGENCES — jamais un test assoupli (règle fondateur, comme QAH3). Une
@@ -57,7 +54,6 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
-from apps.calepinage.services import pompage as pompage_py
 from apps.ventes.horaire.conso import serie_kwh_depuis_mad
 from apps.ventes.quote_engine import bareme
 from apps.ventes.quote_engine.pricing import (
@@ -169,31 +165,10 @@ def _py_roi(e):
     }
 
 
-def _py_pompe_debit(e):
-    return {'debit': pompage_py._debit_a_hmt(e['courbe'], e['hmt'])}
-
-
-def _py_pompe_select(e):
-    r = pompage_py.selection_pompe(
-        e['pompes'], hmt=e['hmt'], debit_souhaite_m3h=e['debit'],
-        type_pompe=e['typePompe'], alim=e['alim'])
-    p = r['pompe']
-    return {'pompe_id': p['id'] if p else None, 'kw': r['kw'],
-            'debit_hmt': r['debit_hmt_m3h'], 'sans_prix': r['sans_prix'],
-            'ecart_phase': r['ecart_phase']}
-
-
-def _py_pompe_variateur(e):
-    r = pompage_py.selection_variateur(e['variateurs'], e['kw'], e['alim'])
-    v = r['variateur']
-    return {'variateur_id': v['id'] if v else None, 'insuffisant': r['insuffisant']}
-
-
 PY = {
     'tranche_bill': _py_tranche_bill, 'bill_to_kwh': _py_bill_to_kwh,
     'facture_detail': _py_facture_detail, 'conso_annuelle': _py_conso_annuelle,
-    'two_bills': _py_two_bills, 'roi': _py_roi, 'pompe_debit': _py_pompe_debit,
-    'pompe_select': _py_pompe_select, 'pompe_variateur': _py_pompe_variateur,
+    'two_bills': _py_two_bills, 'roi': _py_roi,
 }
 
 
@@ -372,12 +347,12 @@ class DifferentielCalculsTest(SimpleTestCase):
 
     def test_les_axes_sans_divergence_restent_sans_divergence(self):
         """Verrou de portée : les axes de fermeture (tranches, facture
-        détaillée, économies, pompage) n'ont AUCUNE divergence connue — toute
+        détaillée, économies) n'ont AUCUNE divergence connue — toute
         entrée nouvelle sur ces axes est une régression, pas une « divergence à
         lister »."""
         _, connu = _connu()
         axes_connus = {axe for (axe, _champ) in connu}
-        for axe in ('tranche_bill', 'facture_detail', 'two_bills', 'pompe_debit'):
+        for axe in ('tranche_bill', 'facture_detail', 'two_bills'):
             self.assertNotIn(axe, axes_connus, f"axe {axe} : divergence enregistrée")
             self.assertFalse(
                 [k for k in _MESURE if k[0] == axe],

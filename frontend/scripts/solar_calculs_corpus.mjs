@@ -19,13 +19,9 @@
 //   * `roi`             — ROI/économies/payback/autoconsommation
 //                          (`computeROI` <-> `pricing.calculate_savings_roi`, branche
 //                          « factures » et branche « estimation sans distributeur ») ;
-//   * `pompe_debit`, `pompe_select`, `pompe_variateur` — dimensionnement pompage
-//                          (`debitAtHmt`/`selectPompeByCurve`/`selectVariateurVeichi`
-//                          <-> `calepinage.services.pompage._debit_a_hmt`/
-//                          `selection_pompe`/`selection_variateur`, les ports
-//                          Python CAL158 — un jeu de cas fixe les confrontait déjà ;
-//                          ici les cas sont GÉNÉRÉS, y compris les noms de produit
-//                          pièges).
+//   (AGR132 — les axes `pompe_debit`, `pompe_select`, `pompe_variateur` sont
+//   RETIRÉS avec le moteur pompage JS : le serveur est la seule source,
+//   couverte par les tests du noyau `calepinage.services.pompage`.)
 //
 // GÉNÉRATION. PRNG seedé (mulberry32, aucune dépendance) : mêmes cas à chaque
 // exécution. Les générateurs visent exprès les BRANCHES LIMITES : aucun
@@ -43,7 +39,6 @@ import { fileURLToPath } from 'node:url'
 import {
   ONEE_TRANCHES, monthlyBillFromKwh, kwhFromBill, consoAnnuelleDepuisFactures,
   factureMad, tppanMad, twoBillsSavings, computeROI,
-  debitAtHmt, selectPompeByCurve, selectVariateurVeichi,
 } from '../src/features/ventes/solar.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -121,42 +116,6 @@ function genFactures() {
   }
 }
 
-// ── Catalogue pompage GÉNÉRÉ (noms pièges compris) ───────────────────────────
-function genCourbe() {
-  const n = randInt(2, 7)
-  const debits = [0]
-  const hmts = [randInt(40, 120)]
-  for (let i = 1; i < n; i++) {
-    debits.push(debits[i - 1] + randInt(1, 8))
-    hmts.push(Math.max(1, hmts[i - 1] - randInt(2, 25)))
-  }
-  return { debits_m3h: debits, hmt_m: hmts }
-}
-// Suffixes de nom : la tension ne vit parfois QUE dans le nom (fiche sans
-// `tension_v`) — y compris des noms où « 220 » n'est PAS une tension (« 2200W »).
-const SUFFIXES_NOM = ['', ' 220V', ' 380 V', ' 220 v', ' 2200W', ' 3800W', ' 380V Tri', ' 220V Mono', ' 1.5kW']
-function genPompe(i) {
-  const kw = pick([0.75, 1.1, 1.5, 2.2, 3, 4, 5.5, 7.5, 11])
-  return {
-    id: 100 + i,
-    nom: `Pompe ${pick(['immergée', 'immergée', 'immergee', 'de surface'])} OSP ${i}${pick(SUFFIXES_NOM)}`,
-    prix_vente: pick([0, 0, round2(randFloat(3000, 30000)), round2(randFloat(3000, 30000))]),
-    courbe_pompe: rand() < 0.88 ? genCourbe() : null,
-    pompe_kw: kw,
-    tension_v: pick([220, 380, null, null]),
-  }
-}
-function genVariateur(i) {
-  const kw = pick([0.75, 1.5, 2.2, 4, 5.5, 7.5, 11])
-  return {
-    id: 200 + i,
-    nom: `Variateur VEICHI SVF3 ${kw}kW${pick(SUFFIXES_NOM)}`,
-    prix_vente: pick([0, round2(randFloat(2000, 12000))]),
-    pompe_kw: kw,
-    tension_v: pick([220, 380, null]),
-  }
-}
-
 // ── Génération ───────────────────────────────────────────────────────────────
 function genCorpus() {
   const entries = []
@@ -221,43 +180,6 @@ function genCorpus() {
     })
   }
 
-  // pompe_debit : courbe × HMT (dont hors capacité et sous le dernier point).
-  for (let i = 0; i < 80; i++) {
-    push('pompe_debit', { courbe: genCourbe(), hmt: rand() < 0.15 ? randInt(0, 200) : round2(randFloat(0.5, 130)) })
-  }
-  // pompe_select / pompe_variateur : catalogues générés.
-  for (let i = 0; i < 60; i++) {
-    const pompes = Array.from({ length: randInt(0, 9) }, (_, k) => genPompe(k))
-    push('pompe_select', {
-      pompes, hmt: round2(randFloat(5, 110)), debit: round2(randFloat(1, 30)),
-      typePompe: pick(['immerge', 'surface']), alim: pick([null, 'mono', 'tri']),
-    })
-  }
-  for (let i = 0; i < 50; i++) {
-    const variateurs = Array.from({ length: randInt(0, 7) }, (_, k) => genVariateur(k))
-    push('pompe_variateur', { variateurs, kw: pick([0.5, 0.75, 1.1, 1.5, 2.2, 3, 4, 5.5, 7.5, 11, 15]), alim: pick(['mono', 'tri']) })
-  }
-  // PIÈGES tension : fiches SANS `tension_v`, la tension ne vit que dans le NOM et
-  // des noms réels portent « 2200W »/« 3800W » (puissance, PAS une tension).
-  // L'écran lit `220\s*v`/`380\s*v` ; on confronte le Python sur ces noms.
-  const NOMS_PIEGES = [' 2200W', ' 3800W', ' 1220W', ' SI22 2200W', ' 220V', ' 380V', ' 220 V']
-  for (let i = 0; i < 40; i++) {
-    const variateurs = Array.from({ length: randInt(2, 5) }, (_, k) => ({
-      ...genVariateur(k), nom: `Variateur VEICHI SVF3 ${pick([0.75, 1.5, 2.2, 4, 5.5])}kW${pick(NOMS_PIEGES)}`,
-      tension_v: null, prix_vente: round2(randFloat(2000, 12000)),
-    }))
-    push('pompe_variateur', { variateurs, kw: pick([0.5, 0.75, 1.5, 2.2, 4]), alim: pick(['mono', 'tri']) })
-  }
-  for (let i = 0; i < 40; i++) {
-    const pompes = Array.from({ length: randInt(2, 6) }, (_, k) => ({
-      ...genPompe(k), nom: `Pompe immergée Vortex OSP ${k}${pick(NOMS_PIEGES)}`,
-      tension_v: null, courbe_pompe: genCourbe(), prix_vente: round2(randFloat(3000, 30000)),
-    }))
-    push('pompe_select', {
-      pompes, hmt: round2(randFloat(5, 60)), debit: round2(randFloat(1, 12)),
-      typePompe: 'immerge', alim: pick(['mono', 'tri']),
-    })
-  }
   return entries
 }
 
@@ -307,22 +229,6 @@ export function computeExpectedForEntry(e) {
         facture_avec_avec: r.facture_avec_avec,
         net_gain_sans: r.net_gain_sans, net_gain_avec: r.net_gain_avec,
       }
-    }
-    case 'pompe_debit':
-      return { debit: debitAtHmt(e.courbe, e.hmt) }
-    case 'pompe_select': {
-      const r = selectPompeByCurve(e.pompes, {
-        hmt: e.hmt, debit: e.debit, typePompe: e.typePompe, alim: e.alim ?? undefined,
-      })
-      return {
-        pompe_id: r.pump ? r.pump.id : null, kw: r.pump ? r.kw : null,
-        debit_hmt: r.pump ? r.debitHmt : null, sans_prix: r.sansPrix,
-        ecart_phase: r.phaseMismatch,
-      }
-    }
-    case 'pompe_variateur': {
-      const r = selectVariateurVeichi(e.variateurs, e.kw, e.alim)
-      return { variateur_id: r.vfd ? r.vfd.id : null, insuffisant: r.insuffisant }
     }
     default:
       throw new Error(`axe inconnu : ${e.axe}`)
