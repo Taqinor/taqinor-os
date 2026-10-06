@@ -498,10 +498,15 @@ def valider_visite(visite, user):
     visite.save(update_fields=['statut', 'validee_le', 'validee_par'])
     # AGR413 — les mesures du point d'eau voyagent avec l'événement (vides
     # pour une visite toiture) : c'est le CRM qui décide de les recopier.
+    # CIQ607 — le relevé C&I voyage aussi (vide hors gabarit ``ci``) : le
+    # CRM décide de recopier la mesure sur les colonnes du lead.
+    releve_ci = (selectors.releve_ci_de_visite(visite)
+                 if visite.gabarit == VisiteTerrain.Gabarit.CI else {})
     visite_validee.send(
         sender=VisiteTerrain, visite=visite, lead_id=visite.lead_id,
         user=user, recap=selectors.recap_visite_terrain(visite),
-        mesures_point_eau=selectors.mesures_point_eau_pour_lead(visite))
+        mesures_point_eau=selectors.mesures_point_eau_pour_lead(visite),
+        releve_ci=releve_ci)
     _notifier_commercial_visite(
         visite, 'visite_terrain_validee',
         'Visite technique validée',

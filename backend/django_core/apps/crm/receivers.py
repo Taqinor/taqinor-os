@@ -966,6 +966,21 @@ def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
             logger.warning(
                 'AGR413 : retour des mesures du point d\'eau échoué pour le '
                 'lead #%s', lead_id, exc_info=True)
+    # CIQ607 — le relevé C&I (kwarg ``releve_ci``, vide hors gabarit ``ci``)
+    # remonte au lead : la mesure remplace la déclaration, avec sa
+    # provenance. Lead borné à la société de la visite ; best-effort.
+    releve_ci = kwargs.get('releve_ci')
+    if releve_ci:
+        try:
+            from .services import appliquer_releve_ci
+            lead = Lead.objects.filter(
+                pk=lead_id, company_id=visite.company_id).first()
+            if lead is not None:
+                appliquer_releve_ci(lead, releve_ci, user)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'CIQ607 : retour du relevé C&I échoué pour le lead #%s',
+                lead_id, exc_info=True)
 
 
 # ── VISITE-CADENCE — LE SUIVI COMMERCIAL RÉAGIT À LA VISITE ──────────────────

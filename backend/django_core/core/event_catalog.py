@@ -78,8 +78,10 @@ CATALOG = {
         'Une visite technique terrain reçoit le feu vert du bureau '
         'd\'études — aucun statut de funnel ne bouge. ``mesures_point_eau`` '
         '(AGR413) porte les mesures du point d\'eau d\'une visite agricole '
+        '(vide sinon) ; ``releve_ci`` (CIQ607) le relevé d\'une visite C&I '
         '(vide sinon).',
-        ['visite', 'lead_id', 'user', 'recap', 'mesures_point_eau']),
+        ['visite', 'lead_id', 'user', 'recap', 'mesures_point_eau',
+         'releve_ci']),
     'visite_planifiee': _e(
         'La date prévue d\'une visite technique est posée ou changée — le '
         'suivi commercial s\'y recale (aucun statut de funnel ne bouge).',

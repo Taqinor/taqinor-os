@@ -11702,6 +11702,67 @@ def appliquer_mesures_point_eau(lead, mesures, user):
     return ecrites
 
 
+# ── CIQ607 — LE RELEVÉ C&I REMPLACE LA DÉCLARATION ──────────────────────────
+#
+# Contrat CIQ5 (``visites/contract_samples/visite_terrain.json`` →
+# ``retour_lead_ci``) : à la VALIDATION d'une visite ``ci``, le constaté du
+# bloc ``releve_ci`` (``visites.selectors.releve_ci_de_visite``) est recopié
+# sur les colonnes du contrat CIQ1, avec la provenance ``mesure_visite`` sur
+# la colonne ``*_source`` quand elle existe. Le type de toiture arrive déjà
+# converti par la table CIQ603 (plusieurs couvertures ⇒ ``None``, non
+# recopié). Le type du lead n'est JAMAIS changé (convention 20).
+#: ``(cle du releve_ci, colonne Lead, colonne de provenance | None)``.
+RETOUR_LEAD_CI = (
+    ('niveau_tension', 'tension_raccordement', 'tension_source'),
+    ('puissance_souscrite_kva', 'compteur_puissance_kva',
+     'puissance_souscrite_source'),
+    ('type_toiture', 'type_toiture', None),
+    ('surface_utile', 'surface_toiture_m2', 'surface_source'),
+)
+#: La provenance posée par une mesure de visite (forme AGR2/CIQ1).
+ORIGINE_MESURE_VISITE = 'mesure_visite'
+
+
+def appliquer_releve_ci(lead, releve, user):
+    """CIQ607 — recopie sur le lead le relevé C&I d'une visite VALIDÉE.
+
+    La mesure REMPLACE la déclaration ; une mesure vide ou « non relevée »
+    n'efface JAMAIS rien ; le journal ancien→nouveau est automatique
+    (``activity.log_changes``), auteur = le valideur. Idempotent : re-valider
+    n'écrit rien. Rend ``{colonne: {valeur, provenance: {origine, detail,
+    date}}}`` des colonnes écrites (``{}`` = rien)."""
+    if lead is None or not isinstance(releve, dict) or not releve:
+        return {}
+    avant = Lead.objects.get(pk=lead.pk)
+    provenance = {
+        'origine': ORIGINE_MESURE_VISITE,
+        'detail': f"visite {releve.get('visite_id')}",
+        'date': releve.get('validee_le'),
+    }
+    ecrites, rendu = [], {}
+    for cle, colonne, source in RETOUR_LEAD_CI:
+        bloc = releve.get(cle)
+        if not isinstance(bloc, dict) or bloc.get('non_releve'):
+            continue
+        brute = bloc.get('constate')
+        if brute is None or (isinstance(brute, str) and not brute.strip()):
+            continue
+        valeur = _valeur_colonne_lead(colonne, brute)
+        if valeur is None:
+            continue
+        if getattr(lead, colonne) != valeur:
+            setattr(lead, colonne, valeur)
+            ecrites.append(colonne)
+            rendu[colonne] = {'valeur': valeur, 'provenance': provenance}
+        if source and getattr(lead, source) != ORIGINE_MESURE_VISITE:
+            setattr(lead, source, ORIGINE_MESURE_VISITE)
+            ecrites.append(source)
+    if ecrites:
+        lead.save(update_fields=ecrites + ['date_modification'])
+        activity.log_changes(avant, lead, user)
+    return rendu
+
+
 # ── AGR522 — DOSSIER DE SUBVENTION FDA : LE RAPPEL DES 3 MOIS ───────────────
 #
 # Guide FDA 2024 (p.22-23, tableau « Délais ») : « Demande de subvention —
