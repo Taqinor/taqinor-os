@@ -151,6 +151,10 @@ jours_validite_societe = _envoi.jours_validite_societe
 date_validite_credit = _envoi.date_validite_credit
 # CIQ510 — prolonger (jamais raccourcir) la validité d'un devis envoyé.
 prolonger_validite_devis = _envoi.prolonger_validite_devis
+# CIQ618 — ouverture automatique du dossier 82-21 d'un site pro (appelée
+# par le récepteur ``devis_accepted`` d'installations).
+from apps.ventes.domain import dossier_8221 as _dossier_8221  # noqa: E402
+ouvrir_dossier_8221 = _dossier_8221.ouvrir_dossier_8221
 AcceptError = _cycle_vie.AcceptError
 activate_optional_line = _cycle_vie.activate_optional_line
 OTP_CACHE_TTL = _cycle_vie.OTP_CACHE_TTL
@@ -661,6 +665,7 @@ __all__ = [
     'jours_validite_societe',
     'date_validite_credit',
     'prolonger_validite_devis',
+    'ouvrir_dossier_8221',
     'verifier_empreinte_signature',
     'verifier_sale_warnings',
     'zone_toit_depuis_contour',
