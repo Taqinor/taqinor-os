@@ -191,6 +191,33 @@ def _refuser_contour_nouvellement_croise(ancien, nouveau):
             raise LayoutRefuse(message_contour_croise(chemin), champ=chemin)
 
 
+def _refuser_nature_nouvellement_inconnue(ancien, nouveau):
+    """ACAL312 (D-ACAL-20) — refuse une zone d'exclusion dont la nature n'est
+    pas admise (``services.zones.natures_admises``, le noyau), au chemin
+    ``exclusionZones.<i>.nature``.
+
+    Même patron qu'ACAL76 : une zone DÉJÀ stockée et renvoyée inchangée
+    passe — on ne bloque jamais la réédition d'un dossier existant pour un
+    défaut ancien (pass-through octet-identique).
+    """
+    from .zones import CLE_LAYOUT, message_nature_inconnue, natures_inconnues
+
+    refusees = natures_inconnues(nouveau)
+    if not refusees:
+        return
+
+    def _zone(document, chemin):
+        rang = int(chemin.split('.')[1])
+        return json.dumps(document[CLE_LAYOUT][rang], sort_keys=True,
+                          default=str)
+
+    deja = {_zone(ancien, chemin) for chemin, _n in natures_inconnues(ancien)}
+    for chemin, nature in refusees:
+        if _zone(nouveau, chemin) not in deja:
+            raise LayoutRefuse(message_nature_inconnue(chemin, nature),
+                               champ=chemin)
+
+
 class DocumentModifie(ValueError):
     """ACAL22 (C-ACAL-044) — le jeton d'écriture est périmé.
 
@@ -379,6 +406,9 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
         # ACAL76 — un contour NOUVELLEMENT croisé (nœud papillon) est refusé
         # en nommant son chemin ; rien n'est écrit.
         _refuser_contour_nouvellement_croise(ancien_layout, roof_layout)
+        # ACAL312 — une nature de zone NOUVELLEMENT inconnue est refusée en
+        # nommant ``exclusionZones.<i>.nature`` ; rien n'est écrit.
+        _refuser_nature_nouvellement_inconnue(ancien_layout, roof_layout)
         # ACAL39 — « inchangé » se décide sur l'empreinte DOCUMENT de
         # l'ancien document relu, jamais sur layout_hash (empreinte imprimée,
         # aveugle à l'horizon, aux champs au sol, à l'épingle…).

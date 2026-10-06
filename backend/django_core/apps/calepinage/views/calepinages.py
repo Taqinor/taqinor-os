@@ -88,6 +88,7 @@ from ..services.variantes import (
     supprimer_variante,
 )
 from ..services.versions import VersionInvalide, restaurer_version
+from ..services.zones import natures_admises
 from .electrique import ElectriqueActionsMixin
 from .schema import SchemaUnifilaireMixin  # CAL195
 
@@ -899,6 +900,11 @@ def contexte_conception(calepinage, request=None):
         'modifiable': not _raison_lecture_seule(contexte_devis),
         'raison_lecture_seule': _raison_lecture_seule(contexte_devis),
         'avertissements': _avertissements(geometrie, cible, contexte_devis),
+        # ACAL312 (D-ACAL-20) — les natures de zone d'exclusion ADMISES,
+        # servies depuis la source unique (``services.zones.natures_admises``,
+        # le noyau ``NatureZone``) : l'atelier lit ICI son sélecteur de nature,
+        # jamais une constante recopiée.
+        'natures_zones': list(natures_admises()),
     }
 
 

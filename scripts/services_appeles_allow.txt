@@ -155,8 +155,5 @@ backend/django_core/apps/calepinage/services/site.py::fournisseur_actif
 backend/django_core/apps/calepinage/services/traduction.py::entree_depuis_layout
 backend/django_core/apps/calepinage/services/versions.py::borne_de_purge
 backend/django_core/apps/calepinage/services/versions.py::purger_versions
-backend/django_core/apps/calepinage/services/zones.py::chiffrage_zones
-backend/django_core/apps/calepinage/services/zones.py::injecter_zones
-backend/django_core/apps/calepinage/services/zones.py::natures_admises
 backend/django_core/apps/calepinage/services/zones_reglementaires.py::appliquer_modele
 backend/django_core/apps/calepinage/services/zones_reglementaires.py::source_de_zone
