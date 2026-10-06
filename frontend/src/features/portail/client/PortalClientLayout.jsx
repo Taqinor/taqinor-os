@@ -1,4 +1,5 @@
 import PortalLayout from '../PortalLayout'
+import PortailClientRecherche from './PortailClientRecherche'
 
 /* ============================================================================
    NTPRT8 — Shell du PORTAIL CLIENT (`/portail/client`).
@@ -28,12 +29,26 @@ const NAV_CLIENT = [
   // `labelAr` volontairement absent : repli français documenté ci-dessus, le
   // libellé arabe de cet onglet reste à faire valider (jamais inventé ici).
   { to: '/portail/client/chantiers', label: 'Chantiers' },
+  // ADOC135 — documents partagés (version en vigueur) + dépôt de justificatifs.
+  { to: '/portail/client/documents', label: 'Documents' },
+  // ADOC136 — demandes SAV + fil client du ticket lié.
+  { to: '/portail/client/sav', label: 'SAV' },
+  // ADOC138 — membres et invitations (inviter/révoquer : admin seulement).
+  { to: '/portail/client/equipe', label: 'Équipe' },
+  // ADOC139 — contrats de maintenance + demande de renouvellement/résiliation.
+  { to: '/portail/client/contrats', label: 'Contrats' },
+  // ADOC140 — série de production + alertes de sous-performance ouvertes.
+  { to: '/portail/client/consommation', label: 'Consommation' },
+  // ADOC141 — export (zip) de ses données ; la recherche vit dans le shell.
+  { to: '/portail/client/mes-donnees', label: 'Mes données' },
 ]
 
 export default function PortalClientLayout({ children }) {
   return (
     <PortalLayout titre="Espace client" titreAr="فضاء العميل"
                   items={NAV_CLIENT}>
+      {/* ADOC141 — recherche globale du portail client (scopée serveur). */}
+      <PortailClientRecherche />
       {children}
     </PortalLayout>
   )

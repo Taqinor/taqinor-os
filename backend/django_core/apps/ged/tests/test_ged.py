@@ -2289,7 +2289,8 @@ class CycleDeVieTests(GedBase):
         for cible in (LIFECYCLE_REVUE, LIFECYCLE_APPROUVE,
                       LIFECYCLE_ARCHIVE, LIFECYCLE_OBSOLETE):
             services.change_lifecycle_status(
-                self.doc_a, cible, user=self.admin_a)
+                self.doc_a, cible, user=self.admin_a,
+                via_approbation=(cible == LIFECYCLE_APPROUVE))  # ADOC14
             self.doc_a.refresh_from_db()
         self.assertEqual(self.doc_a.statut, LIFECYCLE_OBSOLETE)
 
@@ -2425,6 +2426,8 @@ class DemandeApprobationTests(GedBase):
         super().setUpTestData()
         cls.folder_a = Folder.objects.create(
             company=cls.co_a, cabinet=cls.cab_a, nom="GED18-docs")
+        # ADOC14 — le demandeur ne décide jamais sa propre demande.
+        cls.approbateur_a = make_user(cls.co_a, 'ged18-approbateur-a', 'admin')
         cls.doc_a = Document.objects.create(
             company=cls.co_a, folder=cls.folder_a, nom="Doc à valider")
         cls.folder_b = Folder.objects.create(
@@ -2475,9 +2478,9 @@ class DemandeApprobationTests(GedBase):
         """approve_demande avance le doc « revue → approuvé » (réutilise GED17)."""
         demande = services.request_review(self.doc_a, user=self.admin_a)
         dem = services.approve_demande(
-            demande, user=self.admin_a, commentaire="OK pour moi")
+            demande, user=self.approbateur_a, commentaire="OK pour moi")
         self.assertEqual(dem.statut, 'approuve')
-        self.assertEqual(dem.approbateur_id, self.admin_a.id)
+        self.assertEqual(dem.approbateur_id, self.approbateur_a.id)
         self.assertIsNotNone(dem.decision_le)
         self.assertEqual(dem.commentaire, "OK pour moi")
         self.doc_a.refresh_from_db()
@@ -2487,7 +2490,7 @@ class DemandeApprobationTests(GedBase):
         """reject_demande renvoie le doc « revue → brouillon »."""
         demande = services.request_review(self.doc_a, user=self.admin_a)
         dem = services.reject_demande(
-            demande, user=self.admin_a, commentaire="À corriger")
+            demande, user=self.approbateur_a, commentaire="À corriger")
         self.assertEqual(dem.statut, 'rejete')
         self.assertIsNotNone(dem.decision_le)
         self.doc_a.refresh_from_db()
@@ -2496,12 +2499,12 @@ class DemandeApprobationTests(GedBase):
     def test_cannot_decide_already_decided(self):
         """Décider deux fois la même demande lève ValueError."""
         demande = services.request_review(self.doc_a, user=self.admin_a)
-        services.approve_demande(demande, user=self.admin_a)
+        services.approve_demande(demande, user=self.approbateur_a)
         demande.refresh_from_db()
         with self.assertRaises(ValueError):
-            services.reject_demande(demande, user=self.admin_a)
+            services.reject_demande(demande, user=self.approbateur_a)
         with self.assertRaises(ValueError):
-            services.approve_demande(demande, user=self.admin_a)
+            services.approve_demande(demande, user=self.approbateur_a)
 
     def test_approve_rejects_other_company_user(self):
         """Approuver une demande d'une autre société → PermissionError."""
@@ -2515,10 +2518,10 @@ class DemandeApprobationTests(GedBase):
         # Document déjà approuvé (hors revue) : on crée une demande à la main.
         services.change_lifecycle_status(self.doc_a, 'revue', user=self.admin_a)
         services.change_lifecycle_status(
-            self.doc_a, 'approuve', user=self.admin_a)
+            self.doc_a, 'approuve', user=self.admin_a, via_approbation=True)
         demande = DemandeApprobation.objects.create(
             company=self.co_a, document=self.doc_a, demandeur=self.admin_a)
-        dem = services.approve_demande(demande, user=self.admin_a)
+        dem = services.approve_demande(demande, user=self.approbateur_a)
         self.assertEqual(dem.statut, 'approuve')
         self.doc_a.refresh_from_db()
         # Le statut documentaire reste « approuvé » (inchangé, pas d'erreur).
@@ -2557,7 +2560,7 @@ class DemandeApprobationTests(GedBase):
     def test_endpoint_approuver(self):
         """POST demandes-approbation/<id>/approuver avance le document."""
         demande = services.request_review(self.doc_a, user=self.admin_a)
-        api = auth(self.admin_a)
+        api = auth(self.approbateur_a)
         resp = api.post(
             f'/api/django/ged/demandes-approbation/{demande.id}/approuver/',
             {'commentaire': 'Validé'}, format='json')
@@ -2569,7 +2572,7 @@ class DemandeApprobationTests(GedBase):
     def test_endpoint_rejeter(self):
         """POST demandes-approbation/<id>/rejeter renvoie le doc en brouillon."""
         demande = services.request_review(self.doc_a, user=self.admin_a)
-        api = auth(self.admin_a)
+        api = auth(self.approbateur_a)
         resp = api.post(
             f'/api/django/ged/demandes-approbation/{demande.id}/rejeter/',
             {}, format='json')
@@ -2581,7 +2584,7 @@ class DemandeApprobationTests(GedBase):
     def test_endpoint_decide_already_decided_400(self):
         """Décider via l'endpoint une demande déjà décidée renvoie 400."""
         demande = services.request_review(self.doc_a, user=self.admin_a)
-        services.approve_demande(demande, user=self.admin_a)
+        services.approve_demande(demande, user=self.approbateur_a)
         api = auth(self.admin_a)
         resp = api.post(
             f'/api/django/ged/demandes-approbation/{demande.id}/approuver/',
@@ -2623,7 +2626,7 @@ class DemandeApprobationTests(GedBase):
     def test_filter_en_attente(self):
         """?en_attente=1 ne renvoie que les demandes encore en attente."""
         d1 = services.request_review(self.doc_a, user=self.admin_a)
-        services.approve_demande(d1, user=self.admin_a)
+        services.approve_demande(d1, user=self.approbateur_a)
         # Nouvelle demande en attente sur le même doc (désormais approuvé).
         d2 = DemandeApprobation.objects.create(
             company=self.co_a, document=self.doc_a, demandeur=self.admin_a)

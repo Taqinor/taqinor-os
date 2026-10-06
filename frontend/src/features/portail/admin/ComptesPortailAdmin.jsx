@@ -17,6 +17,7 @@ import { Plus, KeyRound, Link2, RefreshCw } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
 import crmApi from '../../../api/crmApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
+import { chargerToutesLesPages } from './chargerToutesLesPages'
 import {
   Button, Card, EmptyState, Skeleton, Switch, Select, SelectTrigger,
   SelectValue, SelectContent, SelectItem, Form, FormField, DataTable, toast,
@@ -32,10 +33,13 @@ export default function ComptesPortailAdmin() {
   const [clientChoisi, setClientChoisi] = useState('')
   const [busyId, setBusyId] = useState(null)
 
-  const fetchComptes = () => portailApi.admin.comptes.liste()
-    .then((r) => setRows(r.data?.results ?? r.data ?? []))
-    .catch(() => setLoadError(true))
-    .finally(() => setLoading(false))
+  // ADOC32 — TOUTES les pages (enveloppe DRF {count, next, results}) : un
+  // compte au-delà de la page 1 (ordering -id ⇒ les plus anciens) restait
+  // invisible donc impossible à révoquer.
+  const fetchComptes = () => chargerToutesLesPages(
+    (page) => portailApi.admin.comptes.liste({ page }),
+    { setRows, setLoadError, setLoading },
+  )
 
   const load = () => {
     setLoading(true)

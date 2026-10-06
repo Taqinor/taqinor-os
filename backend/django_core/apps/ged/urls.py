@@ -20,6 +20,9 @@ from .views import (
     analytique_ged, mes_favoris, mes_recents, public_depot, public_partage,
     public_signataire, public_signature, verifier_certificat,
 )
+from .views import (  # ADOC67 — aperçu du document à signer par jeton.
+    public_signataire_document, public_signature_document,
+)
 
 router = DefaultRouter()
 router.register(r'acls', AclGedViewSet)
@@ -72,6 +75,11 @@ urlpatterns = [
     # uniquement. Déclarée avant le routeur pour ne jamais être captée par une
     # route authentifiée.
     path('signature/<str:token>/', public_signature, name='ged-public-signature'),
+    # ADOC67 — aperçu du document à signer PAR LE JETON (AllowAny, noindex).
+    path('signature/<str:token>/document/', public_signature_document,
+         name='ged-public-signature-document'),
+    path('signataire/<str:token>/document/', public_signataire_document,
+         name='ged-public-signataire-document'),
     # XGED2 — cérémonie publique d'UN destinataire du circuit multi-signataires
     # (jeton propre au signataire, distinct du jeton de la demande globale).
     path('signataire/<str:token>/', public_signataire,

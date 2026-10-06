@@ -57,6 +57,14 @@ export default function GedDocumentInsights({ document, onClose }) {
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [favori, setFavori] = useState(!!document?.favori)
+  // ADOC35 — l'étoile suit l'état relu du serveur à chaque (ré)ouverture
+  // (motif « état dérivé d'une prop » : resynchronisé pendant le rendu).
+  const cleFavori = `${document?.id}:${!!document?.favori}`
+  const [cleFavoriVue, setCleFavoriVue] = useState(cleFavori)
+  if (cleFavoriVue !== cleFavori) {
+    setCleFavoriVue(cleFavori)
+    setFavori(!!document?.favori)
+  }
   const [draft, setDraft] = useState({
     principalType: 'utilisateur', principalId: '', niveau: 'lecture',
     herite: true,

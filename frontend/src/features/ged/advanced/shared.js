@@ -8,6 +8,17 @@
    vérité unique pour les listes et les filtres.
    ========================================================================== */
 import { statusPill } from '../../../ui/module'
+import { fetchAllPages } from '../../../utils/fetchAllPages'
+
+/** ADOC31 — lit une liste GED paginée EN ENTIER (StandardPagination : 50 par
+ *  défaut, 200 max) et renvoie une réponse `{ data: [...] }` (même forme
+ *  qu'un appel axios, donc consommable tel quel par les écrans). Une liste
+ *  non paginée (tableau brut) passe inchangée. */
+export async function toutesLesPages(appel, params = {}) {
+  const res = await fetchAllPages(
+    (page) => appel({ ...params, page, page_size: 200 }).then((r) => r?.data))
+  return { data: Array.isArray(res) ? res : (res?.results ?? []) }
+}
 
 /** Extrait un message d'erreur serveur lisible (jamais de JSON brut). */
 export function errMessage(err, fallback = 'Une erreur est survenue — réessayez.') {

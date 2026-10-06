@@ -13,6 +13,8 @@ vi.mock('../../api/gedApi', () => ({
     getDossiers: vi.fn(),
     createDossier: vi.fn(),
     renameDossier: vi.fn(),
+    // ADOC26 — alias e-mail du dossier.
+    updateDossier: vi.fn(),
     moveDossier: vi.fn(),
     getDocuments: vi.fn(),
     uploadDocument: vi.fn(),
@@ -41,6 +43,12 @@ vi.mock('../../api/gedApi', () => ({
     restaurerVersionDocument: vi.fn(() => Promise.resolve({ data: { id: 24, version: 2 } })),
     // XGED24 — caviardage.
     caviarderDocument: vi.fn(() => Promise.resolve({ data: { id: 99 } })),
+    // ADOC20 — geste « Modifier ».
+    updateDocument: vi.fn(() => Promise.resolve({ data: { id: 8 } })),
+    // ADOC18 — geste « Nouvelle version ».
+    nouvelleVersionDocument: vi.fn(() => Promise.resolve({ data: { id: 31, version: 2 } })),
+    // ADOC11 — nombre de pages de la version (choix de page 1..N).
+    getVersionPages: vi.fn(() => Promise.resolve({ data: { pages: 2 } })),
     // XGED10/17 — scission, fusion, comparaison de versions.
     scinderDocument: vi.fn(() => Promise.resolve({ data: [{ id: 100 }, { id: 101 }] })),
     fusionnerDocuments: vi.fn(() => Promise.resolve({ data: { id: 102 } })),
@@ -69,10 +77,11 @@ vi.mock('../../api/gedApi', () => ({
 // Toaster s'appuie sur un ThemeProvider absent du test — on neutralise `toast`.
 vi.mock('../../ui/Toaster', () => ({
   Toaster: () => null,
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() },
 }))
 
 import gedApi from '../../api/gedApi'
+import { toast } from '../../ui/Toaster'
 import GedNavigator from './GedNavigator'
 // VX152 — GedNavigator rend désormais le moteur DataTable partagé, qui lit la
 // densité via useTheme : comme tout écran consommant DataTable, le test doit
@@ -83,6 +92,17 @@ import { ThemeProvider } from '../../design/ThemeProvider'
 import { MemoryRouter } from 'react-router-dom'
 
 const ok = (data) => Promise.resolve({ data })
+
+// ADOC30 — enveloppe DRF réelle {count, next, results} sur deux pages.
+const paginer = (items, taille = 50) => (params = {}) => {
+  const page = params.page || 1
+  const debut = (page - 1) * taille
+  return Promise.resolve({ data: {
+    count: items.length,
+    next: debut + taille < items.length ? `?page=${page + 1}` : null,
+    results: items.slice(debut, debut + taille),
+  } })
+}
 const renderGed = () =>
   render(
     <ThemeProvider>
@@ -185,7 +205,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
     ]))
     gedApi.getVersions.mockResolvedValue(ok([
-      { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
     ]))
 
     renderGed()
@@ -213,7 +233,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
     ]))
     gedApi.getVersions.mockResolvedValue(ok([
-      { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
     ]))
 
     renderGed()
@@ -222,11 +242,137 @@ describe('GedNavigator — écriture (U14)', () => {
     await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith({ document: 8 }))
 
     await userEvent.click(await screen.findByRole('button', { name: /Caviarder…/i }))
-    await userEvent.click(await screen.findByRole('button', { name: /^Caviarder$/i }))
+    // ADOC11 — aucune zone par défaut : « Caviarder » inactif sans geste.
+    const bouton = await screen.findByRole('button', { name: /^Caviarder$/i })
+    expect(bouton).toBeDisabled()
+    await userEvent.type(screen.getByLabelText('X0 %'), '0')
+    await userEvent.type(screen.getByLabelText('Y0 %'), '0')
+    await userEvent.type(screen.getByLabelText('X1 %'), '20')
+    await userEvent.type(screen.getByLabelText('Y1 %'), '10')
+    await userEvent.click(screen.getByRole('button', { name: /^Caviarder$/i }))
 
     await waitFor(() => expect(gedApi.caviarderDocument).toHaveBeenCalledWith(8, {
       zones: [{ page: 0, x0: 0, y0: 0, x1: 20, y1: 10 }], version: 22,
     }))
+  })
+
+  it("charge les 60 documents d'un dossier sur deux pages", async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    const docs = Array.from({ length: 60 }, (_, i) => ({
+      id: 100 + i, nom: `doc-${i + 1}.pdf`, updated_at: '2026-06-01T10:00:00Z',
+    }))
+    gedApi.getDocuments.mockImplementation(paginer(docs))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    expect(await screen.findByText('60 documents')).toBeInTheDocument()
+    expect(screen.getAllByText('doc-60.pdf').length).toBeGreaterThan(0)
+    expect(gedApi.getDocuments).toHaveBeenCalledWith(
+      expect.objectContaining({ folder: 5, page: 2 }))
+  })
+
+  it('arbre de 56 dossiers sur deux pages', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    const dossiers = Array.from({ length: 56 }, (_, i) => ({
+      id: 200 + i, nom: `Dossier ${i + 1}`, cabinet: 1, parent: null, path: `/${200 + i}/`,
+    }))
+    gedApi.getDossiers.mockImplementation(paginer(dossiers))
+    gedApi.getDocuments.mockResolvedValue(ok([]))
+
+    renderGed()
+    expect((await screen.findAllByText('Dossier 56')).length).toBeGreaterThan(0)
+    expect(gedApi.getDossiers).toHaveBeenCalledWith(
+      expect.objectContaining({ cabinet: 1, page: 2 }))
+  })
+
+  it('Modifier renomme le document et relit le nom', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture_scan_0012.pdf', description: '', updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    // Enregistrer sans rien toucher : aucun PATCH.
+    await userEvent.click(await screen.findByRole('button', { name: /Plus d'actions pour facture_scan_0012\.pdf/i }))
+    await userEvent.click(await screen.findByText('Modifier…'))
+    let dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+    expect(gedApi.updateDocument).not.toHaveBeenCalled()
+
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'Facture fournisseur 0012', description: 'Fournisseur X', updated_at: '2026-06-02T10:00:00Z' },
+    ]))
+    await userEvent.click(await screen.findByRole('button', { name: /Plus d'actions pour facture_scan_0012\.pdf/i }))
+    await userEvent.click(await screen.findByText('Modifier…'))
+    dialog = await screen.findByRole('dialog')
+    const champNom = within(dialog).getByLabelText('Nom du document')
+    await userEvent.clear(champNom)
+    await userEvent.type(champNom, 'Facture fournisseur 0012')
+    await userEvent.type(within(dialog).getByLabelText('Description du document'), 'Fournisseur X')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(gedApi.updateDocument).toHaveBeenCalledWith(8, {
+      nom: 'Facture fournisseur 0012', description: 'Fournisseur X',
+    }))
+    expect((await screen.findAllByText('Facture fournisseur 0012')).length).toBeGreaterThan(0)
+  })
+
+  it('Nouvelle version téléverse et rafraîchit la version courante', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'contrat.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Plus d'actions pour contrat\.pdf/i }))
+    await userEvent.click(await screen.findByText('Nouvelle version…'))
+    const dialog = await screen.findByRole('dialog')
+    const input = dialog.querySelector('input[type="file"]')
+    const file = new File(['%PDF-1.4'], 'contrat-v2.pdf', { type: 'application/pdf' })
+    await userEvent.upload(input, file)
+    const appelsAvant = gedApi.getDocuments.mock.calls.length
+    await userEvent.click(within(dialog).getByRole('button', { name: /Déposer la version/i }))
+
+    await waitFor(() => expect(gedApi.nouvelleVersionDocument).toHaveBeenCalledWith(8, file))
+    // La liste est relue (version courante rafraîchie).
+    await waitFor(() => expect(gedApi.getDocuments.mock.calls.length).toBeGreaterThan(appelsAvant))
+  })
+
+  it('Caviarder propose les pages du document', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    gedApi.getVersions.mockResolvedValue(ok([
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /Caviarder…/i }))
+    await waitFor(() => expect(gedApi.getVersionPages).toHaveBeenCalledWith(22))
+    let select = null
+    await waitFor(() => {
+      select = document.getElementById('z-page-0')
+      expect(select?.querySelectorAll('option')).toHaveLength(2)
+    })
+    const libelles = [...select.querySelectorAll('option')].map((o) => o.textContent)
+    expect(libelles).toEqual(['1', '2'])
   })
 
   it('XGED10 — scinde un PDF depuis l’aperçu (points de coupe)', async () => {
@@ -238,7 +384,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
     ]))
     gedApi.getVersions.mockResolvedValue(ok([
-      { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
     ]))
 
     renderGed()
@@ -261,8 +407,8 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
     ]))
     gedApi.getDocuments.mockResolvedValue(ok([
-      { id: 8, nom: 'a.pdf', updated_at: '2026-06-01T10:00:00Z' },
-      { id: 9, nom: 'b.pdf', updated_at: '2026-06-02T10:00:00Z' },
+      { id: 8, nom: 'a.pdf', updated_at: '2026-06-01T10:00:00Z', derniere_mime: 'application/pdf' },
+      { id: 9, nom: 'b.pdf', updated_at: '2026-06-02T10:00:00Z', derniere_mime: 'application/pdf' },
     ]))
 
     renderGed()
@@ -278,6 +424,24 @@ describe('GedNavigator — écriture (U14)', () => {
     }))
   })
 
+  it('ADOC22 — « Fusionner » absent pour une sélection non PDF', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'a.png', updated_at: '2026-06-01T10:00:00Z', derniere_mime: 'image/png' },
+      { id: 9, nom: 'b.pdf', updated_at: '2026-06-02T10:00:00Z', derniere_mime: 'application/pdf' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Sélectionner a\.png/i }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Sélectionner b\.pdf/i }))
+    await screen.findByText(/2 sélectionnés/)
+    expect(screen.queryByRole('button', { name: /^Fusionner$/i })).toBeNull()
+  })
+
   it('XGED17 — compare deux versions d’un document', async () => {
     gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
     gedApi.getDossiers.mockResolvedValue(ok([
@@ -287,8 +451,8 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 8, nom: 'facture.pdf', version_count: 2, updated_at: '2026-06-01T10:00:00Z' },
     ]))
     gedApi.getVersions.mockResolvedValue(ok([
-      { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
-      { id: 23, numero: 2, mime: 'application/pdf', filename: 'facture.pdf' },
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+      { id: 23, version: 2, mime: 'application/pdf', filename: 'facture.pdf' },
     ]))
 
     renderGed()
@@ -301,6 +465,34 @@ describe('GedNavigator — écriture (U14)', () => {
 
     await waitFor(() => expect(gedApi.comparerVersions).toHaveBeenCalledWith(8, '22', '23'))
     expect(await screen.findByText('Comparaison binaire indisponible.')).toBeInTheDocument()
+  })
+
+  it('aperçu prend la version la plus haute et le comparateur affiche v1/v2', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', version_count: 2, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    // Contrat réel (DocumentVersionSerializer) : clé `version`, ordre [v1, v2].
+    gedApi.getVersions.mockResolvedValue(ok([
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+      { id: 23, version: 2, mime: 'application/pdf', filename: 'facture.pdf' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() => {
+      const iframe = dialog.querySelector('iframe')
+      expect(iframe?.getAttribute('src')).toContain('/ged/versions/23/apercu/')
+    })
+    await userEvent.click(await screen.findByRole('button', { name: /Comparer versions…/i }))
+    expect((await screen.findAllByText('v1')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('v2').length).toBeGreaterThan(0)
+    expect(screen.queryByText('vundefined')).toBeNull()
   })
 
   it('GED16 — extrait un document (check-out)', async () => {
@@ -363,6 +555,32 @@ describe('GedNavigator — écriture (U14)', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Valider' }))
 
     await waitFor(() => expect(gedApi.renameDossier).toHaveBeenCalledWith(5, 'Archives'))
+  })
+
+  it("le dialogue dossier saisit et relit l'alias e-mail", async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Compta', cabinet: 1, parent: null, path: '/5/', alias_email: '' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([]))
+    gedApi.updateDossier.mockResolvedValue(ok({
+      id: 5, nom: 'Compta', cabinet: 1, parent: null, path: '/5/', alias_email: 'compta',
+    }))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Compta'))
+    await userEvent.click(await screen.findByRole('button', { name: /Renommer/i }))
+    let dialog = await screen.findByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('Alias e-mail du dossier'), 'compta')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Valider' }))
+    await waitFor(() => expect(gedApi.updateDossier).toHaveBeenCalledWith(5, {
+      nom: 'Compta', alias_email: 'compta',
+    }))
+
+    // Réouverture : l'alias est relu depuis la réponse du serveur.
+    await userEvent.click(await screen.findByRole('button', { name: /Renommer/i }))
+    dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText('Alias e-mail du dossier')).toHaveValue('compta')
   })
 
   it('ERR-QAH-GED-RENAME-STALE-HEADER — le panneau de droite reflète le nouveau nom SANS re-clic', async () => {
@@ -511,6 +729,29 @@ describe('GedNavigator — écriture (U14)', () => {
     await userEvent.click(await screen.findByText("Extraire l'OCR"))
 
     await waitFor(() => expect(gedApi.ocrPiece).toHaveBeenCalledWith(8))
+  })
+
+  it('OCR inactif affiche OCR non configuré', async () => {
+    gedApi.ocrPiece.mockResolvedValueOnce({
+      data: { document: {}, metadonnees: {}, ocr_enabled: false },
+    })
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'cin.pdf', updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+
+    renderGed()
+    expect(screen.queryByPlaceholderText(/texte OCR/)).toBeNull()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Plus d'actions pour cin\.pdf/i }))
+    await userEvent.click(await screen.findByText("Extraire l'OCR"))
+
+    await waitFor(() => expect(toast.message).toHaveBeenCalledWith(
+      'OCR non configuré — aucune extraction faite.'))
+    expect(toast.success).not.toHaveBeenCalledWith('OCR effectué — aucune métadonnée reconnue.')
   })
 
   it('WIR249 — pose puis lève le verrou d’avertissement (ZGED9, distinct du check-out)', async () => {

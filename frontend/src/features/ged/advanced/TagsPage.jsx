@@ -8,7 +8,7 @@ import {
 } from '../../../ui'
 import { formatDateTime } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
-import { errMessage, CIBLES_LIEN } from './shared.js'
+import { errMessage, CIBLES_LIEN, toutesLesPages } from './shared.js'
 
 /* ============================================================================
    UX47 — Tags & liens transverses.
@@ -41,10 +41,11 @@ export default function TagsPage() {
     setError(null)
     try {
       const [t, a, l, docs] = await Promise.all([
-        gedApi.getTags(),
-        gedApi.getTagAssignments(),
-        gedApi.getLiens(),
-        gedApi.getDocumentsList(),
+        // ADOC31 — toutes les pages, jamais la seule première.
+        toutesLesPages(gedApi.getTags),
+        toutesLesPages(gedApi.getTagAssignments),
+        toutesLesPages(gedApi.getLiens),
+        toutesLesPages(gedApi.getDocumentsList),
       ])
       setTags(unpage(t.data))
       setAssignments(unpage(a.data))

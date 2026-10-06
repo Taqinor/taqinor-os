@@ -527,6 +527,33 @@ class CandidatureFournisseurThrottle(SimpleRateThrottle):
         }
 
 
+class CandidatureFournisseurSerializer(serializers.Serializer):
+    """ADOC144 — corps BORNÉ de la candidature fournisseur publique.
+
+    Longueurs alignées sur ``stock.Fournisseur`` (nom / contact 255, téléphone
+    / ICE / IF 20, RC 40 — stock/models.py) : un champ trop long, un e-mail
+    invalide ou une valeur non-chaîne (liste, objet) répond 400 champ par champ
+    au lieu d'un 500 anonyme (DataError en base). Seuls ces champs sont lus —
+    ni ``statut``, ni ``statut_validation``, ni ``company`` (NTPRT25)."""
+
+    nom = serializers.CharField(
+        max_length=255, required=False, allow_blank=True)
+    contact_personne = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True)
+    email = serializers.EmailField(
+        max_length=254, required=False, allow_blank=True, allow_null=True)
+    telephone = serializers.CharField(
+        max_length=20, required=False, allow_blank=True, allow_null=True)
+    adresse = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    ice = serializers.CharField(
+        max_length=20, required=False, allow_blank=True, allow_null=True)
+    identifiant_fiscal = serializers.CharField(
+        max_length=20, required=False, allow_blank=True, allow_null=True)
+    rc = serializers.CharField(
+        max_length=40, required=False, allow_blank=True, allow_null=True)
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([CandidatureFournisseurThrottle])
@@ -556,7 +583,12 @@ def candidature_fournisseur(request):
     if company is None:
         return Response({'detail': 'Introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
-    fournisseur = enregistrer_candidature_fournisseur(company, request.data)
+    # ADOC144 — validation bornée AVANT tout accès base : 400 champ par champ.
+    corps = CandidatureFournisseurSerializer(data=request.data)
+    if not corps.is_valid():
+        return Response(corps.errors, status=status.HTTP_400_BAD_REQUEST)
+    fournisseur = enregistrer_candidature_fournisseur(
+        company, dict(corps.validated_data))
     if fournisseur is None:
         return Response(
             {'detail': 'Le nom de votre société est requis.'},

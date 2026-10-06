@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
@@ -87,5 +87,30 @@ describe('PACT131 CoffresPage', () => {
     await userEvent.click(screen.getAllByRole('button', { name: 'Voir les documents' })[0])
     expect((await screen.findAllByText('Contrat.pdf')).length).toBeGreaterThan(0)
     expect(gedApi.getCoffreDocuments).toHaveBeenCalledWith(1)
+  })
+
+  // ADOC4 — « Supprimer » demande confirmation puis affiche le motif 409.
+  it('Supprimer demande confirmation et affiche le motif 409', async () => {
+    renderPage()
+    await screen.findAllByText('Coffre RH — Reda')
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Supprimer' })[0])
+    let dialog = await screen.findByRole('dialog')
+    expect(gedApi.deleteCoffre).not.toHaveBeenCalled()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Annuler' }))
+    expect(gedApi.deleteCoffre).not.toHaveBeenCalled()
+
+    gedApi.deleteCoffre.mockRejectedValueOnce({
+      response: { status: 409, data: { detail: 'Le coffre contient 3 document(s) : videz-le avant de le supprimer.' } },
+    })
+    await userEvent.click(screen.getAllByRole('button', { name: 'Supprimer' })[0])
+    dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer le coffre' }))
+    await waitFor(() => {
+      expect(gedApi.deleteCoffre).toHaveBeenCalledWith(1)
+      expect(toast.error).toHaveBeenCalledWith(
+        'Le coffre contient 3 document(s) : videz-le avant de le supprimer.')
+    })
+    expect(toast.success).not.toHaveBeenCalledWith('Coffre supprimé.')
   })
 })
