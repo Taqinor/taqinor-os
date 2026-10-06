@@ -64,6 +64,13 @@ class LigneDevisSerializer(serializers.ModelSerializer):
     """
 
     total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    # TVA-LIGNE (06/10/2026) — le taux de la FICHE produit (DC7, 10 %
+    # panneaux PV), en lecture seule, ou null. L'écran le lit pour une ligne
+    # historique sans taux au lieu de lui poser le taux du devis (20 %).
+    # Seul ``tva`` est lu sur le produit — jamais ``prix_achat``.
+    produit_tva = serializers.DecimalField(
+        source='produit.tva', max_digits=5, decimal_places=2,
+        read_only=True, allow_null=True, default=None)
 
     class Meta:
         model = LigneDevis
