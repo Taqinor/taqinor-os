@@ -304,6 +304,8 @@ class PlansTests(unittest.TestCase):
                          "apps/web/src/lib/lead.ts")
         self.assertEqual(co.normaliser("src/lib/lead.ts", web=True),
                          "apps/web/src/lib/lead.ts")
+        self.assertEqual(co.normaliser("apps/yanbow-web/src/pages/index.astro"),
+                         "apps/yanbow-web/src/pages/index.astro")
         self.assertIsNone(co.normaliser("views.py"))
         plans = {"docs/plans/PLAN_DEVIS.md":
                  "- [ ] SPL8 — x. Files: `apps/crm/cadence_temps.py`. (ROUTINE)\n"}

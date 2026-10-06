@@ -384,6 +384,7 @@ owners:
       - backend/django_core/apps/adsengine/**
       - backend/django_core/apps/contact/**
       - backend/django_core/apps/crm/attribution_selectors.py
+      - backend/django_core/apps/crm/contract_samples/demande_rdv_site.json
       - backend/django_core/apps/crm/contract_samples/lead_provenance_site.json
       - backend/django_core/apps/crm/contract_samples/tunnel_webhook_keys.json
       - backend/django_core/apps/crm/leads_meta.py
@@ -870,6 +871,11 @@ owners:
     titre: "Site public Astro (apps/web) hors studio toiture : sa session WEB_PLAN, déploiement Cloudflare"
     fallback:
       - apps/web/**
+  yanbow-web:
+    plan: docs/plans/PLAN_YANBOW_WEB.md
+    titre: "Site public YanBow (apps/yanbow-web) : sa session PLAN_YANBOW_WEB, Worker Cloudflare propre"
+    fallback:
+      - apps/yanbow-web/**
   parked:
     plan: docs/backlog/PHASE2_PLAN.md
     titre: "Coquilles des 47 apps parquées (liste lue dans core/parked.py, jamais recopiée) et miroirs parked/"
@@ -1029,4 +1035,5 @@ plans:
   docs/WEB_ERROR_PLAN.md: web
   docs/backlog/FULL_SAAS_PLAN.md: parked
   docs/plans/PLAN_VEILLE.md: acquisition
+  docs/plans/PLAN_YANBOW_WEB.md: [yanbow-web, acquisition, deploy]
   docs/plans/PLAN_CRM_VENTES.md: [acquisition, lead, crm, devis, facturation, moteur, generateur, calepinage]
