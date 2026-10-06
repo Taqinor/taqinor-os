@@ -665,7 +665,12 @@ def etude_params_pour_copie(etude_params):
     les quantités : il passe désormais ici, suivi d'un
     :func:`rafraichir_etudes_du_devis` forcé, comme les trois autres.
     """
-    bloc = {cle: valeur for cle, valeur in dict(etude_params or {}).items()
+    import copy
+    # CIQ219 — chaque valeur est COPIÉE en profondeur (``tarif_declare``,
+    # ``saisies_economie_ci``… sont des dicts imbriqués) : la copie ne
+    # partage plus aucun objet avec la source (piège QJR117).
+    bloc = {cle: copy.deepcopy(valeur)
+            for cle, valeur in dict(etude_params or {}).items()
             if cle not in CLES_NON_COPIEES}
     return bloc or None
 

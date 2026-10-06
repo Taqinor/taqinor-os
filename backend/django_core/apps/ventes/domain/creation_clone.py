@@ -101,6 +101,9 @@ def cloner_devis(devis, *, user, note=None, version=1, version_parent=None,
                          else devis.custom_data),
             created_by=user,
             version=version, version_parent=version_parent, is_active=True,
+            # CIQ219 — les conditions C&I (payeur tiers, retenue, pénalités,
+            # caution) suivent TOUTE copie, en JSON copié.
+            **conditions_ci_pour_copie(devis),
             **_champs_de_revision(devis, revision),
         )
         holder['obj'] = obj
@@ -124,7 +127,11 @@ def cloner_devis(devis, *, user, note=None, version=1, version_parent=None,
 
 
 def _champs_de_revision(devis, revision):
-    """QJR558 — le travail MANUEL qu'une révision (et elle seule) porte."""
+    """QJR558 — le travail MANUEL qu'une révision (et elle seule) porte.
+
+    CIQ219 — la référence de commande du CLIENT (CIQ216) est gardée par la
+    révision (même commande) et VIDÉE par toute autre copie (duplication,
+    variante, variante-gamme, renouvellement : une nouvelle offre)."""
     if not revision:
         return {}
     import copy
@@ -134,6 +141,27 @@ def _champs_de_revision(devis, revision):
         'roof_image': devis.roof_image,
         'overrides': copy.deepcopy(devis.overrides),
         'offres_tailles_config': copy.deepcopy(devis.offres_tailles_config),
+        'reference_commande_client': (
+            getattr(devis, 'reference_commande_client', '') or ''),
+    }
+
+
+def conditions_ci_pour_copie(devis):
+    """CIQ219 — les conditions d'entête C&I qu'une copie de devis reçoit
+    PARTOUT (révision, duplication, variante, variante-gamme,
+    renouvellement) : ``tiers_payeur`` (CIQ213), ``retenue_garantie``,
+    ``penalites_retard_livraison`` et ``caution`` (CIQ214). Les JSON sont
+    COPIÉS (``copy.deepcopy``), jamais partagés par référence (piège
+    QJR117). La référence de commande du client n'y figure PAS : seule la
+    révision la garde (:func:`_champs_de_revision`)."""
+    import copy
+    return {
+        'tiers_payeur_id': getattr(devis, 'tiers_payeur_id', None),
+        'retenue_garantie': copy.deepcopy(
+            getattr(devis, 'retenue_garantie', None)),
+        'penalites_retard_livraison': copy.deepcopy(
+            getattr(devis, 'penalites_retard_livraison', None)),
+        'caution': copy.deepcopy(getattr(devis, 'caution', None)),
     }
 
 
