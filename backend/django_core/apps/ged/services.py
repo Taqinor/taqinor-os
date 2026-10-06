@@ -1696,6 +1696,9 @@ def resolve_partage_public(token, *, password=None):
     # Jeton inconnu OU partage révoqué → 404 indistinct (pas de fuite).
     if partage is None or not partage.actif:
         return PARTAGE_INTROUVABLE, None
+    # ADOC6 — un document mis en corbeille n'est plus servi (404 indistinct).
+    if partage.document.supprime_le is not None:
+        return PARTAGE_INTROUVABLE, None
     # Expiré ou quota épuisé → 410 Gone.
     if partage.is_expired or partage.quota_exhausted:
         return PARTAGE_EXPIRE, partage

@@ -480,10 +480,44 @@ class PartageGedSerializer(serializers.ModelSerializer):
             'watermark',
             'actif', 'created_by', 'created_by_nom', 'created_at', 'updated_at',
         ]
+        # ADOC6 — `actif` en lecture seule : la révocation passe par
+        # /revoquer/ seulement (aucune réactivation par PATCH).
         read_only_fields = [
-            'token', 'telechargements', 'created_by',
+            'token', 'telechargements', 'created_by', 'actif',
             'created_at', 'updated_at',
         ]
+
+    def get_fields(self):
+        """ADOC6 — `document` borné aux documents VISIBLES de l'appelant
+        (id invisible = id absent) et non modifiable après création."""
+        fields = super().get_fields()
+        request = self.context.get('request')
+        champ = fields.get('document')
+        user = getattr(request, 'user', None)
+        if champ is not None and user is not None and user.is_authenticated:
+            from . import selectors
+            champ.queryset = selectors.documents_visible_to_user(user)
+            if self.instance is not None:
+                champ.read_only = True
+        return fields
+
+    def _voit_le_secret(self, obj):
+        """ADOC6 — le jeton (le secret d'accès) n'est montré qu'au créateur
+        du partage et à l'administrateur."""
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is None or not user.is_authenticated:
+            return False
+        if user.is_superuser or getattr(user, 'is_admin_role', False):
+            return True
+        return obj.created_by_id is not None and obj.created_by_id == user.id
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not self._voit_le_secret(instance):
+            data.pop('token', None)
+            data.pop('public_url', None)
+        return data
 
     def get_public_url(self, obj):
         # Chemin public (relatif) — le jeton EST le secret d'accès.

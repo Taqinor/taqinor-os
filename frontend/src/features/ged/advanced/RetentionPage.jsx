@@ -196,7 +196,10 @@ export default function RetentionPage() {
     { id: 'document', header: 'Document', accessor: (r) => r.document_nom || `#${r.document}` },
     {
       id: 'lien', header: 'Lien public', accessor: (r) => r.public_url,
-      cell: (v) => <span className="truncate font-mono text-xs" title={v}>{v}</span>,
+      // ADOC6 — le lien n'est servi qu'au créateur du partage et à l'admin.
+      cell: (v) => (v
+        ? <span className="truncate font-mono text-xs" title={v}>{v}</span>
+        : <span className="text-xs text-muted-foreground">Masqué</span>),
     },
     {
       id: 'expire', header: 'Expire', width: 150,

@@ -2278,9 +2278,11 @@ class PartageGedViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
+        # ADOC6 — partages des seuls documents visibles de l'appelant.
         qs = selectors.partages_for_company(
             self.request.user.company).select_related(
-            'document', 'created_by', 'company')
+            'document', 'created_by', 'company').filter(
+            document_id__in=selectors.document_ids_visibles(self.request.user))
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
