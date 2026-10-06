@@ -34,6 +34,13 @@ class DocumentProjet(models.Model):
         CALEPINAGE = 'calepinage', 'Calepinage'
         NOTE_CALCUL = 'note_calcul', "Note de calcul"
         AUTRE = 'autre', 'Autre'
+        # CIQ623 — sécurité chantier minimale (QHSE reste parqué) : documents
+        # exigés par le gate `exige_hse` et, pour un site pro, avant
+        # « En cours ». Le contenu des obligations reste une tâche manuelle.
+        PLAN_PREVENTION = 'plan_prevention', 'Plan de prévention'
+        ANALYSE_RISQUES = 'analyse_risques', 'Analyse de risques'
+        PERMIS_TRAVAIL_HAUTEUR = (
+            'permis_travail_hauteur', 'Permis de travail en hauteur')
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -42,7 +49,7 @@ class DocumentProjet(models.Model):
         Installation, on_delete=models.CASCADE,
         related_name='inst_documents')
     type_doc = models.CharField(
-        max_length=20, choices=TypeDoc.choices, default=TypeDoc.AUTRE)
+        max_length=30, choices=TypeDoc.choices, default=TypeDoc.AUTRE)
     titre = models.CharField(max_length=200)
     notes = models.TextField(blank=True, null=True)
     date_creation = models.DateTimeField(auto_now_add=True)

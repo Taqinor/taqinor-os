@@ -115,8 +115,10 @@ class StageModele(models.Model):
     Chaque étape est un GATE : `bloquant` rend son franchissement OBLIGATOIREMENT
     conditionné aux exigences cochées (`exige_*` — checklist faite, photos,
     n° de série, essais de mise en service, matériel disponible, dossier 82-21,
-    pièces de remise) — plus les points d'arrêt QHSE (toujours vérifiés pour un
-    gate bloquant, cf. CH2). Une étape non bloquante reste PUREMENT consultative.
+    pièces de remise, et — CIQ623 — documents de sécurité `exige_hse` : plan
+    de prévention, analyse de risques, permis de travail en hauteur, chacun
+    avec une révision). Aucun autre point d'arrêt QHSE n'est vérifié (l'app
+    `qhse` est parquée). Une étape non bloquante reste PUREMENT consultative.
 
     `statut_legacy` rabat l'étape sur l'entonnoir HISTORIQUE à 7 statuts de
     `Installation.statut` (JAMAIS supprimé) : l'arrivée sur une étape synchronise
@@ -131,7 +133,7 @@ class StageModele(models.Model):
     libelle = models.CharField(max_length=120)
     ordre = models.PositiveIntegerField(default=0)
     # Gate BLOQUANT : le franchissement exige les éléments requis ci-dessous
-    # + la levée des points d'arrêt QHSE. Non bloquant = consultatif.
+    # (rien d'autre). Non bloquant = consultatif.
     bloquant = models.BooleanField(default=False)
     # ── Éléments REQUIS pour franchir le gate (si bloquant) ──
     exige_checklist = models.BooleanField(default=False)
@@ -141,6 +143,9 @@ class StageModele(models.Model):
     exige_materiel = models.BooleanField(default=False)
     exige_dossier = models.BooleanField(default=False)
     exige_pack = models.BooleanField(default=False)
+    # CIQ623 — documents de sécurité (plan de prévention, analyse de risques,
+    # permis de travail en hauteur) présents avec une révision.
+    exige_hse = models.BooleanField(default=False)
     # CHT23 — exigences de comptage CONFIGURABLES, ADDITIVES STRICTES : les
     # gates `exige_checklist`/`exige_photos` ci-dessus restent inconditionnels
     # au comportement historique (« tous faits ») à leurs valeurs par défaut.

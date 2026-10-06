@@ -9,7 +9,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.crm.models import Client
-from apps.installations.models import Installation
+from apps.installations.models import (
+    DocumentProjet, Installation, RevisionDocument)
 from apps.installations.services import (
     AVERTISSEMENT_COMPTEUR_DISTRIBUTEUR, RAISON_CI_SANS_CONVENTION,
     _gate_avertissements, stages_configures)
@@ -54,6 +55,18 @@ class TravauxApresConventionTest(TestCase):
             devis=devis, type_installation=type_installation,
             regime_8221=regime, statut=Installation.Statut.PLANIFIE)
 
+    def _documents_hse(self, chantier):
+        # CIQ623 — les documents de sécurité sont aussi exigés avant
+        # « En cours » : on les pose pour isoler la règle de la convention.
+        for type_doc in ('plan_prevention', 'analyse_risques',
+                         'permis_travail_hauteur'):
+            doc = DocumentProjet.objects.create(
+                company=self.company, installation=chantier,
+                type_doc=type_doc, titre=type_doc)
+            RevisionDocument.objects.create(
+                company=self.company, document=doc,
+                date_revision=date(2027, 1, 1))
+
     def _patch(self, user, chantier, **data):
         return self._api(user).patch(f'{CHANTIERS}{chantier.id}/', data,
                                      format='json')
@@ -76,6 +89,7 @@ class TravauxApresConventionTest(TestCase):
             company=self.company, devis=chantier.devis, chantier=chantier,
             regime_8221='accord_raccordement', statut='approuve',
             convention_signee_le=date(2027, 3, 1))
+        self._documents_hse(chantier)
         r = self._patch(self.responsable, chantier, statut='en_cours')
         self.assertEqual(r.status_code, 200, r.data)
 

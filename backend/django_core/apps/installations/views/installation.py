@@ -1240,7 +1240,7 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         """CH2 — avance le chantier à l'étape demandée (corps {"etape": cle})
         ou à la suivante. Une étape BLOQUANTE ne se franchit pas tant que ses
         exigences (checklist/photos/séries/essais/matériel/dossier 82-21) et
-        les points d'arrêt QHSE ne sont pas levés — rejet 400 avec les raisons
+        les documents de sécurité (`exige_hse`) manquent — rejet 400 avec les raisons
         en français. Les étapes non bloquantes s'avancent librement. Le statut
         hérité est synchronisé, donc les effets de bord existants (stock à
         « Installé », garantie/parc à « Réceptionné ») tirent inchangés."""

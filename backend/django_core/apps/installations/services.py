@@ -1328,8 +1328,13 @@ DEFAULT_LIFECYCLE_GATES = [
      {'exige_dossier': True}),
     ('approvisionnement', 'Approvisionnement matériel', _S.MATERIEL_COMMANDE,
      True, {'exige_materiel': True}),
+    # CIQ623 — documents de sécurité exigés au montage, pour les NOUVEAUX
+    # amorçages seulement (AUD313 : rien n'est semé implicitement). L'étape
+    # reste NON bloquante par défaut (consultative, comportement historique
+    # du franchissement) : le Directeur la rend bloquante dans Paramètres ;
+    # pour un site pro, `_gardes_ci` exige ces documents dans tous les cas.
     ('montage_mecanique', 'Montage mécanique (structure & panneaux)',
-     _S.EN_COURS, False, {}),
+     _S.EN_COURS, False, {'exige_hse': True}),
     ('installation_electrique', 'Installation électrique', _S.EN_COURS,
      False, {}),
     ('mise_en_service', 'Mise en service & essais (IEC 62446-1)', _S.INSTALLE,
@@ -1857,6 +1862,31 @@ def _gate_check_dossier(installation, stage=None):
             f"({Installation.DossierStatut(statut).label}).")
 
 
+#: CIQ623 — documents de sécurité chantier exigés (QHSE reste parqué).
+DOCUMENTS_HSE = (
+    DocumentProjet.TypeDoc.PLAN_PREVENTION,
+    DocumentProjet.TypeDoc.ANALYSE_RISQUES,
+    DocumentProjet.TypeDoc.PERMIS_TRAVAIL_HAUTEUR,
+)
+
+
+def _gate_check_hse(installation, stage=None):
+    """CIQ623 — plan de prévention, analyse de risques et permis de
+    travail en hauteur présents sur le chantier, chacun avec au moins une
+    révision ; sinon une raison FR les nomme. Aucun article ni montant."""
+    presents = set(
+        DocumentProjet.objects.filter(
+            installation=installation, type_doc__in=DOCUMENTS_HSE,
+            inst_revisions__isnull=False)
+        .values_list('type_doc', flat=True))
+    manquants = [DocumentProjet.TypeDoc(t).label for t in DOCUMENTS_HSE
+                 if t not in presents]
+    if manquants:
+        return ("Documents de sécurité manquants : "
+                + ", ".join(manquants) + ".")
+    return None
+
+
 def _gate_check_pack(installation, stage=None):
     """CH4 — le pack de remise client doit assembler ses pièces OBLIGATOIRES.
 
@@ -1879,6 +1909,7 @@ _GATE_CHECKS = [
     ('exige_materiel', _gate_check_materiel),
     ('exige_dossier', _gate_check_dossier),
     ('exige_pack', _gate_check_pack),
+    ('exige_hse', _gate_check_hse),
 ]
 
 
@@ -3713,11 +3744,17 @@ def _gardes_ci(installation, nouveau_statut, user=None,
     canon_new = Installation.canonical_statut(nouveau_statut)
     if canon_new not in _STATUTS_TRAVAUX or canon_old in _STATUTS_TRAVAUX:
         return []
-    if autorisation_travaux_8221(installation):
+    raisons = []
+    if not autorisation_travaux_8221(installation):
+        raisons.append(RAISON_CI_SANS_CONVENTION)
+    # CIQ623 — mêmes documents de sécurité avant « En cours » pour un site
+    # pro, même sans gates amorcés.
+    raison_hse = _gate_check_hse(installation)
+    if raison_hse:
+        raisons.append(raison_hse)
+    if raisons and (motif_derogation or '').strip() and est_directeur(user):
         return []
-    if (motif_derogation or '').strip() and est_directeur(user):
-        return []
-    return [RAISON_CI_SANS_CONVENTION]
+    return raisons
 
 
 def _derogation_ci_utilisee(installation, nouveau_statut, user,
