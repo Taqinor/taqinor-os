@@ -42,8 +42,9 @@ import {
 } from '../../features/ventes/etudePompagePreview'
 import { saisiesEconomiePompage, lignesDepuisKit } from '../../features/ventes/quote/etudeMarcheBloc'
 import {
-  POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie,
+  POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie, libelleProvenance,
 } from '../../features/ventes/etudePompagePreviewPur'
+import { entreesPompageDuLead } from '../../features/ventes/quote/entreesPompageLead'
 import {
   ECO_POMPAGE_VIDE, ecoDepuisSaisies, ATTESTATION_VIDE,
 } from '../../features/ventes/quote/etudeMarcheBloc'
@@ -935,8 +936,25 @@ export default function DevisGenerator({
   // écrit dans `saisies_economie_pompage` — plus jamais « butane » par
   // défaut, plus jamais × 12.
   const [ecoPompage, setEcoPompage] = useState(ECO_POMPAGE_VIDE)
+  // AGR420 — une énergie retouchée à la main perd sa provenance « lead ».
   const majEco = useCallback(
-    (cle, valeur) => setEcoPompage((e) => ({ ...e, [cle]: valeur })), [])
+    (cle, valeur) => setEcoPompage((e) => ({
+      ...e, [cle]: valeur, ...(cle === 'energie' ? { energieProvenance: null } : {}),
+    })), [])
+  // AGR420 — valeurs posées par un lead (garde « touché » : une saisie du
+  // vendeur n'est jamais écrasée) et leur provenance affichée.
+  const posesLead = useRef({})
+  const [provenancesLead, setProvenancesLead] = useState([])
+  // Valeurs COURANTES (la relecture du lead est asynchrone : une fermeture
+  // périmée ne verrait pas ce que le vendeur vient de taper).
+  const courantPompage = useRef({})
+  useEffect(() => {
+    courantPompage.current = {
+      pompeHmt, pompeDebit, farmHmtStatic, pompeProfondeur, pompeDistance,
+      pompeCv, pompeType, farmRegion, farmCrop, farmSurfaceHa, farmIrrigation,
+      eco: ecoPompage,
+    }
+  })
   // AGR218 — attestation d'usage agricole (case + date + signataire).
   const [attestationAgricole, setAttestationAgricole] = useState(ATTESTATION_VIDE)
   const majAttestation = useCallback(
@@ -1896,6 +1914,40 @@ export default function DevisGenerator({
   const deuxValeursDim = selecteurDeuxValeursDim(
     modeInstallation, etudeHoraireDonnees)
 
+  // AGR420 — recopie `lead.entrees_pompage` dans les états agricoles. Une
+  // entrée absente laisse l'état VIDE ; un état déjà saisi par le vendeur
+  // (autre que la valeur posée par un lead) n'est jamais écrasé.
+  const appliquerEntreesPompage = (lead) => {
+    const res = entreesPompageDuLead(lead)
+    if (!res) return
+    const poseurs = {
+      pompeHmt: setPompeHmt, pompeDebit: setPompeDebit,
+      farmHmtStatic: setFarmHmtStatic, pompeProfondeur: setPompeProfondeur,
+      pompeDistance: setPompeDistance, pompeCv: setPompeCv, pompeType: setPompeType,
+      farmRegion: setFarmRegion, farmCrop: setFarmCrop,
+      farmSurfaceHa: setFarmSurfaceHa, farmIrrigation: setFarmIrrigation,
+    }
+    const actuel = courantPompage.current
+    const libre = (cle, courant) => courant === '' || courant == null
+      || courant === posesLead.current[cle]
+    for (const [cle, valeur] of Object.entries(res.ecran)) {
+      const poser = poseurs[cle]
+      if (poser && libre(cle, actuel[cle])) { poser(valeur); posesLead.current[cle] = valeur }
+    }
+    const eco = {}
+    for (const [cle, valeur] of Object.entries(res.eco)) {
+      if (cle === 'moisProvenance' || cle === 'energieProvenance') continue
+      if (libre(`eco.${cle}`, actuel.eco?.[cle])) {
+        eco[cle] = valeur
+        posesLead.current[`eco.${cle}`] = valeur
+      }
+    }
+    if ('energie' in eco) eco.energieProvenance = res.eco.energieProvenance
+    if ('mois' in eco) eco.moisProvenance = res.eco.moisProvenance
+    if (Object.keys(eco).length) setEcoPompage((e) => ({ ...e, ...eco }))
+    setProvenancesLead(res.provenances)
+  }
+
   const applyLead = (id) => {
     setLeadId(id)
     if (!id) return
@@ -1921,12 +1973,15 @@ export default function DevisGenerator({
     if (modeLead && modeLead !== modeInstallation) {
       appliquerPartDiurneDuMarche(modeLead)
     }
-    // Lead agricole : recopie pompe CV / HMT / débit (l'alimentation, elle,
-    // suit le raccordement DANS la transition ci-dessous).
+    // Lead agricole : les ENTRÉES de pompage déclarées ou mesurées
+    // (`entrees_pompage`, AGR404) — l'alimentation, elle, suit le
+    // raccordement DANS la transition ci-dessous. Rien n'est inventé.
     if (LEAD_TYPE_TO_MODE[lead.type_installation] === 'agricole') {
-      if (lead.pompe_cv != null && lead.pompe_cv !== '') setPompeCv(String(lead.pompe_cv))
-      if (lead.pompe_hmt_m != null && lead.pompe_hmt_m !== '') setPompeHmt(String(lead.pompe_hmt_m))
-      if (lead.pompe_debit_m3h != null && lead.pompe_debit_m3h !== '') setPompeDebit(String(lead.pompe_debit_m3h))
+      // La liste des leads ne porte pas `entrees_pompage` (détail seulement) :
+      // on relit le lead ; une panne reste silencieuse (états laissés vides).
+      Promise.resolve().then(() => crmApi.getLead(lead.id))
+        .then((rep) => appliquerEntreesPompage(rep?.data))
+        .catch(() => { /* lead illisible : aucune entrée reprise */ })
     }
     if (lead.conso_mensuelle_kwh) setConsoMensuelle(String(lead.conso_mensuelle_kwh))
     const hiver = parseFloat(lead.facture_hiver) || 0
@@ -1988,7 +2043,8 @@ export default function DevisGenerator({
       appliquerPartDiurneDuMarche(modeLead)
     }
     if (LEAD_TYPE_TO_MODE[p.type_installation] === 'agricole') {
-      if (p.pompe_cv != null && p.pompe_cv !== '') setPompeCv(String(p.pompe_cv))
+      // AGR420 — la pompe du profil est la pompe ACTUELLE (information).
+      if (p.pompe_actuelle_cv != null && p.pompe_actuelle_cv !== '') setPompeCv(String(p.pompe_actuelle_cv))
       if (p.pompe_hmt_m != null && p.pompe_hmt_m !== '') setPompeHmt(String(p.pompe_hmt_m))
       if (p.pompe_debit_m3h != null && p.pompe_debit_m3h !== '') setPompeDebit(String(p.pompe_debit_m3h))
     }
@@ -4478,6 +4534,16 @@ export default function DevisGenerator({
           commercialAnswers={commercialAnswers}
           setCommercialAnswer={setCommercialAnswer}
         />
+        {modeInstallation === 'agricole' && provenancesLead.length > 0 && (
+          <ul className="grid gap-0.5 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
+              data-testid="provenance-lead-pompage" aria-label="Valeurs reprises de la fiche lead">
+            {provenancesLead.map((p) => (
+              <li key={p.colonne}>
+                {p.libelle} : {p.valeur} — {libelleProvenance(p.provenance)}
+              </li>
+            ))}
+          </ul>
+        )}
         <PanneauAgricole
           marche={modeInstallation}
           pompeCv={pompeCv} setPompeCv={setPompeCv}

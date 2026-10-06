@@ -45,7 +45,7 @@ const TYPE_TOITURE = [
 const EMPTY = {
   facture_hiver: '', facture_ete: '', ete_differente: false,
   conso_mensuelle_kwh: '', raccordement: '', type_installation: '',
-  pompe_cv: '', pompe_hmt_m: '', pompe_debit_m3h: '',
+  pompe_actuelle_cv: '', pompe_hmt_m: '', pompe_debit_m3h: '',
   type_toiture: '', surface_toiture_m2: '', inclinaison_deg: '',
 }
 
@@ -239,9 +239,9 @@ export default function SiteProfilePage() {
           <Card>
             <CardContent className="grid gap-4 p-4 sm:grid-cols-3">
               <div className="grid gap-1.5">
-                <Label htmlFor="sp-cv">Pompe (CV)</Label>
+                <Label htmlFor="sp-cv">Pompe actuelle (CV, information)</Label>
                 <Input id="sp-cv" type="number" step="any"
-                  value={form.pompe_cv} onChange={setInput('pompe_cv')} />
+                  value={form.pompe_actuelle_cv} onChange={setInput('pompe_actuelle_cv')} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="sp-hmt">HMT (m)</Label>

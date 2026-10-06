@@ -132,6 +132,7 @@ export function projeterEtudeMarche(mode, {
 export const ECO_POMPAGE_VIDE = Object.freeze({
   energie: '', quantite: '', unite: '', periode: '', joursSemaine: '',
   prix: '', dateDeclaration: '', mois: null, moisProvenance: null,
+  energieProvenance: null,
   confirme: false, factureMontant: '', facturePeriodicite: '',
   facturePartFixe: '', entretien: '', coherenceConfirmee: false,
   interne: Object.freeze({ taux_actualisation: null, pret: null }),
@@ -195,7 +196,9 @@ export function saisiesEconomiePompage(eco, { moisCalendrier = null, aujourdhui 
   const out = {}
   if (e.energie) {
     out.energie_actuelle = {
-      valeur: e.energie, provenance: { origine: 'saisie', detail: null, date },
+      valeur: e.energie,
+      // AGR420 — une énergie reprise du lead garde sa provenance `lead`.
+      provenance: e.energieProvenance || { origine: 'saisie', detail: null, date },
     }
   }
   out.consommation = carburant && !vide(e.quantite) ? {
@@ -229,6 +232,10 @@ export function saisiesEconomiePompage(eco, { moisCalendrier = null, aujourdhui 
 
 const texte = (v) => (v === null || v === undefined ? '' : String(v))
 
+// AGR420 — seule une provenance AUTRE que « saisi » (lead…) est conservée.
+const provenanceNonSaisie = (p) => (
+  p && typeof p === 'object' && p.origine && p.origine !== 'saisie' ? p : null)
+
 /** Inverse : `saisies_economie_pompage` stocké → état d'écran (`?edit=`). */
 export function ecoDepuisSaisies(saisies) {
   const s = saisies && typeof saisies === 'object' ? saisies : null
@@ -238,6 +245,7 @@ export function ecoDepuisSaisies(saisies) {
   return {
     ...ECO_POMPAGE_VIDE,
     energie: s.energie_actuelle?.valeur || '',
+    energieProvenance: provenanceNonSaisie(s.energie_actuelle?.provenance),
     quantite: texte(c.quantite),
     unite: c.unite || '',
     periode: c.periode || '',

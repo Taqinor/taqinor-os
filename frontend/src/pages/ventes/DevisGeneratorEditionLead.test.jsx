@@ -23,6 +23,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import authReducer from '../../features/auth/store/authSlice'
 import ventesReducer from '../../features/ventes/store/ventesSlice'
 import { estimerMois, DEFAULT_MONTHLY_BILLS } from '../../features/ventes/solar'
+import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 vi.mock('../../api/crmApi', () => ({
   default: {
@@ -262,5 +263,79 @@ describe('ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — kWh déclaré contredit par 
     await screen.findAllByText(/Khalid Réouvert/)
     await enregistrerEtLireEtude()
     expect(ventesApi.replaceLignesDevis).toHaveBeenCalled()
+  })
+})
+
+// ── AGR420 — pré-remplissage du pompage depuis `entrees_pompage` du lead ──
+// Le lead de l'exemple du contrat partagé `crm/lead_pompage.json` (jamais une
+// charge utile inventée) ; la liste `leads` ne porte pas le bloc, l'écran
+// relit le détail (`getLead`).
+const LEAD_POMPAGE = exempleContrat('crm', 'lead_pompage')
+
+function renderLead(id) {
+  return render(
+    <Provider store={makeStore()}>
+      <MemoryRouter initialEntries={[`/ventes/devis/nouveau?lead=${id}`]}>
+        <Routes>
+          <Route path="/ventes/devis/nouveau" element={<DevisGenerator />} />
+          <Route path="*" element={<div>APRES-ENREGISTREMENT</div>} />
+        </Routes>
+      </MemoryRouter>
+    </Provider>,
+  )
+}
+
+const dansListe = (lead) => ({
+  id: lead.id, nom: 'Hassan', prenom: 'Agri', societe: '',
+  type_installation: lead.type_installation,
+})
+
+describe('AGR420 — le pompage se pré-remplit des seules entrées du lead', () => {
+  it('reprend HMT, niveau, distance, énergie et prix déclarés, avec leur provenance', async () => {
+    crmApi.getLeads.mockResolvedValue({ data: [dansListe(LEAD_POMPAGE)] })
+    crmApi.getLead.mockResolvedValue({ data: LEAD_POMPAGE })
+    renderLead(LEAD_POMPAGE.id)
+    await waitFor(() => expect(document.getElementById('gen-hmt')?.value).toBe('60'))
+    expect(document.getElementById('gen-distance').value).toBe('25')
+    expect(document.getElementById('gen-farm-static').value).toBe('32')
+    expect(document.getElementById('gen-farm-fuel').value).toBe('butane')
+    expect(document.getElementById('gen-eco-quantite').value).toBe('4')
+    expect(document.getElementById('gen-eco-prix').value).toBe('50')
+    const liste = screen.getByTestId('provenance-lead-pompage')
+    expect(liste).toHaveTextContent('HMT (m) : 60')
+    expect(liste).toHaveTextContent('formulaire du site')
+    // Les heures de pompage SOLAIRE ne viennent jamais du lead.
+    expect(document.getElementById('gen-heures').value).toBe('7')
+  })
+
+  it('un lead sans entrée laisse tout VIDE : ni butane, ni 20 m, ni région', async () => {
+    const vide = {
+      ...LEAD_POMPAGE, entrees_pompage: { entrees: [], manquants: [] },
+    }
+    crmApi.getLeads.mockResolvedValue({ data: [dansListe(vide)] })
+    crmApi.getLead.mockResolvedValue({ data: vide })
+    renderLead(vide.id)
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(vide.id))
+    await waitFor(() => expect(document.getElementById('gen-hmt')).not.toBeNull())
+    expect(document.getElementById('gen-hmt').value).toBe('')
+    expect(document.getElementById('gen-distance').value).toBe('')
+    expect(document.getElementById('gen-farm-fuel').value).toBe('')
+    expect(screen.queryByTestId('provenance-lead-pompage')).toBeNull()
+  })
+
+  it('un champ déjà saisi par le vendeur n\'est pas écrasé par le lead', async () => {
+    let livrer
+    crmApi.getLeads.mockResolvedValue({ data: [dansListe(LEAD_POMPAGE)] })
+    crmApi.getLead.mockReturnValue(new Promise((resolu) => { livrer = resolu }))
+    renderLead(LEAD_POMPAGE.id)
+    const hmt = await waitFor(() => {
+      const el = document.getElementById('gen-hmt')
+      expect(el).not.toBeNull()
+      return el
+    })
+    await userEvent.type(hmt, '75')
+    livrer({ data: LEAD_POMPAGE })
+    await waitFor(() => expect(document.getElementById('gen-distance').value).toBe('25'))
+    expect(document.getElementById('gen-hmt').value).toBe('75')
   })
 })
