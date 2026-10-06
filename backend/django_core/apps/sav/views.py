@@ -861,7 +861,15 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # (`planifier`/`demarrer`/`resoudre`/`cloturer`), qui appliquent la
         # même chaîne d'effets (SLA/chatter/notification/downtime) via
         # `_appliquer_transition_statut`.
+        # CIQ642 — passage « installation à l'arrêt » : vrai maintenant, faux
+        # avant → l'action « notifier le distributeur » est posée sur le
+        # dossier 82-21 (no-op hors site professionnel sous accord /
+        # autorisation).
+        etait_a_l_arret = bool(serializer.instance.arret_installation)
         super().perform_update(serializer)
+        if serializer.instance.arret_installation and not etait_a_l_arret:
+            from . import services as sav_services
+            sav_services.notifier_arret_installation(serializer.instance)
 
     def _appliquer_transition_statut(self, ticket, statut_cible):
         """YDOCF1 — Applique une transition de statut GARDÉE (via

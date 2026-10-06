@@ -38,6 +38,10 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
     decouplage = serializers.SerializerMethodField()
     echantillon_iv = serializers.SerializerMethodField()
     comparaison = serializers.SerializerMethodField()
+    # CIQ628 — réserves du chantier (bloc ``reserves`` du contrat).
+    reserves = serializers.SerializerMethodField()
+    # CIQ629 — bloc ``reception`` du contrat.
+    reception = serializers.SerializerMethodField()
 
     class Meta:
         model = CommissioningRecord
@@ -63,7 +67,8 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
             'decouplage_piece', 'echantillon_iv_chaines',
             'instruments_par_essai',
             'irradiance', 'energie', 'thermographie', 'limitation_injection',
-            'decouplage', 'echantillon_iv', 'comparaison',
+            'decouplage', 'echantillon_iv', 'comparaison', 'reserves',
+            'reception',
             # CIQ627 — promesse figée (lecture seule).
             'promesse_figee',
         ]
@@ -87,6 +92,17 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
                 fiche, attrs, choix=RESERVES if demande == RESERVES else None)
         except ReservesRefusees as exc:
             raise serializers.ValidationError({'resultat': str(exc)})
+        # CIQ628 — « conforme avec réserves » exige au moins une réserve
+        # d'origine recette OUVERTE sur le chantier.
+        if demande == RESERVES:
+            from .services import (
+                RAISON_RESERVES_SANS_LISTE, recette_a_reserve_ouverte,
+            )
+            chantier = getattr(fiche, 'installation', None) \
+                if fiche.installation_id else attrs.get('installation')
+            if chantier is None or not recette_a_reserve_ouverte(chantier):
+                raise serializers.ValidationError(
+                    {'resultat': RAISON_RESERVES_SANS_LISTE})
         return attrs
 
     def validate_instruments_par_essai(self, value):
@@ -171,6 +187,16 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
     def get_comparaison(self, obj):
         from .services import comparaison_recette_ci
         return comparaison_recette_ci(obj)
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_reserves(self, obj):
+        from .services import reserves_contrat
+        return reserves_contrat(obj.installation)
+
+    @extend_schema_field(serializers.DictField())
+    def get_reception(self, obj):
+        from .services import reception_contrat
+        return reception_contrat(obj.installation)
 
     def get_instrument_nom(self, obj):
         instrument = obj.instrument

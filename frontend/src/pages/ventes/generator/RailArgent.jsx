@@ -21,7 +21,7 @@ export default function RailArgent({
   discountPct, setDiscountPct, remiseMax,
   tauxTva, setTauxTva,
   pkwc, prixCible, setPrixCible, applyPrixCible, kwp,
-  marge, kpiTotal,
+  marge, kpiTotal, margeLignesSansAchat = 0,
 }) {
   return (
     <>
@@ -121,8 +121,16 @@ export default function RailArgent({
             </span>
             <span className={`gen-total-value ${marge < 0 ? 'text-destructive' : 'text-success'}`}>
               {formatMoney(marge)}
-              {kpiTotal > 0 ? ` (${Math.round(marge / kpiTotal * 100)} %)` : ''}
+              {margeLignesSansAchat === 0 && kpiTotal > 0
+                ? ` (${Math.round(marge / kpiTotal * 100)} %)` : ''}
             </span>
+            {margeLignesSansAchat > 0 && (
+              /* AGR134 — une ligne chiffrée sans prix d'achat sort du coût : la
+                 marge est gonflée, son pourcentage est masqué et le dit. */
+              <span className="text-xs text-warning" data-testid="marge-partielle">
+                marge partielle : {margeLignesSansAchat} ligne{margeLignesSansAchat > 1 ? 's' : ''} sans prix d'achat
+              </span>
+            )}
           </div>
         )}
       </div>

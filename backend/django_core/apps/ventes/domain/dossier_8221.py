@@ -79,6 +79,43 @@ def ouvrir_dossier_8221(devis, chantier_id, regime, user=None):
     return dossier, True
 
 
+def ajouter_action_dossier_8221(chantier_id, texte, company=None):
+    """CIQ642 — pose ``texte`` en prochaine action du dossier 82-21 d'un
+    chantier (le plus récent). Aucun délai : ``prochaine_action_date`` repart à
+    vide (la date d'une ancienne action ne vaut pas pour la nouvelle).
+
+    Idempotent : si le dossier porte déjà cette action, rien n'est réécrit. Une
+    action DIFFÉRENTE déjà posée n'est jamais perdue : elle est reportée dans
+    les notes du dossier. ``company`` borne la recherche à la société ; sans
+    dossier pour ce chantier, rend ``None`` sans erreur. Rend le dossier
+    touché (ou déjà à jour), jamais un message client."""
+    from ..models import RegulatoryDossier
+
+    texte = (texte or '').strip()
+    if not chantier_id or not texte:
+        return None
+    dossiers = RegulatoryDossier.objects.filter(chantier_id=chantier_id)
+    if company is not None:
+        dossiers = dossiers.filter(company=company)
+    dossier = dossiers.order_by('-created_at', '-id').first()
+    if dossier is None:
+        return None
+    texte = texte[:200]
+    if dossier.prochaine_action == texte:
+        return dossier
+    precedente = (dossier.prochaine_action or '').strip()
+    champs = ['prochaine_action', 'prochaine_action_date']
+    if precedente:
+        report = f'Action précédente : {precedente}'
+        dossier.notes = (f'{dossier.notes}\n{report}'
+                         if dossier.notes else report)
+        champs.append('notes')
+    dossier.prochaine_action = texte
+    dossier.prochaine_action_date = None
+    dossier.save(update_fields=champs + ['updated_at'])
+    return dossier
+
+
 # ── CIQ620 — équipements FIGÉS au dépôt (loi 82-21 art. 8-9) ──────────────
 #: Le dossier déposé contient fabricant et modèle (décret 2.25.100 art. 12) ;
 #: toute modification exige un accord préalable (loi 82-21 art. 9) ou devient

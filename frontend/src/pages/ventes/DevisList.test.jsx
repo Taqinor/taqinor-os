@@ -1391,3 +1391,67 @@ describe('DevisList — QJR659 : partager le PDF vaut envoi', () => {
     clickSpy.mockRestore()
   })
 })
+
+// CIQ324 — l'acceptation saisie dans l'ERP : trois champs FACULTATIFS d'identité
+// d'entreprise pour un devis commercial / industriel (contrat partagé
+// `acceptation_entreprise.json`, `exemple_erp`) ; résidentiel inchangé.
+describe('DevisList — CIQ324 : acceptation C&I (identité d\'entreprise)', () => {
+  const ERP = exempleContrat('ventes', 'acceptation_entreprise', 'exemple_erp').corps
+
+  function ouvrirAcceptation(mode, id) {
+    renderList({
+      loading: false,
+      permissions: ['ventes_valider'],
+      devis: [{
+        id, reference: `DEV-CIQ324-${id}`, client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
+        mode_installation: mode,
+      }],
+    })
+    const row = screen.getByText(`DEV-CIQ324-${id}`).closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Accepter/ }))
+  }
+
+  it('industriel : trois champs, corps avec le bloc `entreprise` du contrat', async () => {
+    const user = userEvent.setup()
+    ventesApi.accepterDevis.mockClear()
+    ouvrirAcceptation('industriel', 3241)
+    await user.type(await screen.findByLabelText('Nom de la personne qui accepte'), ERP.nom)
+    await user.type(screen.getByLabelText('Raison sociale'), ERP.entreprise.raison_sociale)
+    await user.type(screen.getByLabelText('Qualité du signataire'), 'Directeur général')
+    await user.type(screen.getByLabelText('ICE'), '000000000000000')
+    await user.click(screen.getByRole('button', { name: /Confirmer l'acceptation/ }))
+    await waitFor(() => expect(ventesApi.accepterDevis).toHaveBeenCalledTimes(1))
+    const [id, corps] = ventesApi.accepterDevis.mock.calls[0]
+    expect(id).toBe(3241)
+    expect(corps.entreprise).toEqual({
+      raison_sociale: ERP.entreprise.raison_sociale,
+      signataire_qualite: 'Directeur général',
+      ice: '000000000000000',
+    })
+    expect(Object.keys(corps.entreprise).sort()).toEqual(Object.keys(ERP.entreprise).sort())
+    expect(corps.nom).toBe(ERP.nom)
+  })
+
+  it('commercial : les trois champs sont facultatifs (corps avec valeurs vides)', async () => {
+    const user = userEvent.setup()
+    ventesApi.accepterDevis.mockClear()
+    ouvrirAcceptation('commercial', 3242)
+    await user.click(await screen.findByRole('button', { name: /Confirmer l'acceptation/ }))
+    await waitFor(() => expect(ventesApi.accepterDevis).toHaveBeenCalledTimes(1))
+    expect(ventesApi.accepterDevis.mock.calls[0][1].entreprise)
+      .toEqual({ raison_sociale: '', signataire_qualite: '', ice: '' })
+  })
+
+  it('résidentiel : aucun champ d\'entreprise, corps d\'aujourd\'hui', async () => {
+    const user = userEvent.setup()
+    ventesApi.accepterDevis.mockClear()
+    ouvrirAcceptation('residentiel', 3243)
+    await screen.findByLabelText('Nom de la personne qui accepte')
+    expect(screen.queryByTestId('identite-entreprise')).toBeNull()
+    await user.click(screen.getByRole('button', { name: /Confirmer l'acceptation/ }))
+    await waitFor(() => expect(ventesApi.accepterDevis).toHaveBeenCalledTimes(1))
+    expect(Object.keys(ventesApi.accepterDevis.mock.calls[0][1]).sort())
+      .toEqual(['date', 'nom', 'option'])
+  })
+})

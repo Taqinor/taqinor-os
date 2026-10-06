@@ -197,7 +197,8 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
         slot_code = (request.data.get('slot_code') or '').strip()
         # AGR412 — la garde lit le gabarit de LA visite.
-        codes = checklist.codes_slots(visite.gabarit)
+        codes = checklist.codes_slots(visite.gabarit,
+                                      **selectors.contexte_checklist(visite))
         if slot_code not in codes:
             return _erreur(
                 'slot_code',

@@ -199,6 +199,8 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'recette_pompage',
             # CH4 — pack de remise client (lecture ; POST auto-gardé).
             'pack_remise',
+            # CIQ628 — réserves du chantier (lecture ; POST auto-gardé).
+            'reserves',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -216,6 +218,10 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'creer_interventions_standard',
             # ZSTK11 — réservation stock explicite (mode manuel).
             'reserver_stock',
+            # CIQ628 — levée d'une réserve du chantier.
+            'lever_reserve',
+            # CIQ629 — réception définitive.
+            'reception_definitive',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -740,6 +746,24 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             inst.signataire_nom = nom
         inst.signe_le = timezone.now()
         fields = ['signature_client', 'signataire_nom', 'signe_le']
+        # CIQ631 — signataire nommé (fonction, société) et co-signature
+        # facultative. La société est préremplie depuis la raison sociale du
+        # client entreprise (contrat CIQ8) quand elle n'est pas saisie.
+        for champ, longueur in (
+                ('signataire_fonction', 120), ('signataire_societe', 255),
+                ('cosignataire_nom', 120), ('cosignataire_fonction', 120),
+                ('cosignataire_organisme', 255)):
+            if champ in request.data:
+                valeur = (request.data.get(champ) or '').strip()[:longueur]
+                setattr(inst, champ, valeur or None)
+                fields.append(champ)
+        client = inst.client
+        if (not inst.signataire_societe and client is not None
+                and getattr(client, 'type_client', None) == 'entreprise'
+                and (client.nom or '').strip()):
+            inst.signataire_societe = client.nom.strip()[:255]
+            if 'signataire_societe' not in fields:
+                fields.append('signataire_societe')
         inst.save(update_fields=fields)
         activity.log_changes(old, inst, request.user)
         if old.signe_le and motif:
@@ -1198,6 +1222,89 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         if record is None:
             return Response({'installation': inst.id, 'record': None})
         return Response(CommissioningRecordSerializer(record).data)
+
+    # ── CIQ628 — réserves de réception au niveau du chantier ────────────────
+    @action(detail=True, methods=['get', 'post'], url_path='reserves',
+            permission_classes=[IsAnyRole])
+    def reserves(self, request, pk=None):
+        """CIQ628 — GET : réserves du chantier (format du contrat
+        ``recette_ci.json``). POST (Responsable/Admin) : ajoute une réserve
+        {description, origine, bloquante, date_echeance, responsable} ;
+        ``company`` vient du chantier, jamais du corps."""
+        from ..services import (
+            creer_reserve_chantier, reserve_contrat, reserves_contrat,
+        )
+        inst = self.get_object()
+        if request.method == 'GET':
+            return Response(reserves_contrat(inst))
+        if not request.user.is_responsable:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        data = request.data
+        description = (data.get('description') or '').strip()
+        if not description:
+            return Response({'description': 'Description obligatoire.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        origine = data.get('origine') or Reserve.Origine.RECETTE
+        if origine not in Reserve.Origine.values:
+            return Response({'origine': 'Origine inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        echeance = None
+        if data.get('date_echeance'):
+            from django.utils.dateparse import parse_date
+            try:
+                echeance = parse_date(str(data.get('date_echeance')))
+            except ValueError:
+                echeance = None
+            if echeance is None:
+                return Response(
+                    {'date_echeance': 'Date invalide (AAAA-MM-JJ).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        bloquante = data.get('bloquante') in (True, 'true', '1', 1, 'on')
+        reserve = creer_reserve_chantier(
+            inst, request.user, description=description, origine=origine,
+            bloquante=bloquante, date_echeance=echeance,
+            responsable=(data.get('responsable') or '').strip()[:120])
+        return Response(reserve_contrat(reserve),
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'reserves/(?P<rid>\d+)/lever',
+            permission_classes=[IsResponsableOrAdmin])
+    def lever_reserve(self, request, pk=None, rid=None):
+        """CIQ628 — lève une réserve du chantier (scopée société et
+        chantier : une réserve d'ailleurs → 404)."""
+        from django.db.models import Q
+        from ..services import lever_reserve_chantier, reserve_contrat
+        inst = self.get_object()
+        reserve = Reserve.objects.filter(
+            Q(installation=inst) | Q(intervention__installation=inst),
+            company=inst.company, pk=rid).first()
+        if reserve is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        lever_reserve_chantier(
+            reserve, request.user,
+            resolution=(request.data.get('resolution') or '').strip())
+        return Response(reserve_contrat(reserve))
+
+    # ── CIQ629 — réception définitive (après levée de toutes les réserves) ──
+    @action(detail=True, methods=['post'], url_path='reception-definitive',
+            permission_classes=[IsResponsableOrAdmin])
+    def reception_definitive(self, request, pk=None):
+        """CIQ629 — prononce la réception définitive (Directeur ou
+        Responsable). Refusée (400 FR listant les réserves) avant la
+        provisoire ou tant qu'une réserve est ouverte. Rend le bloc
+        ``reception`` du contrat ``recette_ci.json``."""
+        from ..services import (
+            ReceptionDefinitiveRefusee, prononcer_reception_definitive,
+            reception_contrat,
+        )
+        inst = self.get_object()
+        try:
+            prononcer_reception_definitive(inst, request.user)
+        except ReceptionDefinitiveRefusee as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(reception_contrat(inst))
 
     # ── CH4 — pack de remise client (handover) ──────────────────────────────
     @action(detail=True, methods=['get', 'post'], url_path='pack-remise',

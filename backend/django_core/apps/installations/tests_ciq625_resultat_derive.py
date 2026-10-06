@@ -72,6 +72,10 @@ class ResultatDeriveTests(TestCase):
         self.assertIsNone(self.rec.polarite_ok)
 
     def test_reserves_quand_tous_vrais_est_le_seul_choix_humain(self):
+        # CIQ628 — « réserves » exige une réserve de recette ouverte.
+        from apps.installations.services import creer_reserve_chantier
+        creer_reserve_chantier(self.inst, None, description='Étiquette',
+                               origine='recette')
         r = self._patch(dict(TOUS_VRAIS, resultat='reserves'))
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data['resultat'], 'reserves')

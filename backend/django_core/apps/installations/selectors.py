@@ -1116,7 +1116,9 @@ def reserve_resume(reserve):
     coupler les apps. ``chantier_id`` est l'id du chantier (Installation) de
     l'intervention, ``None`` s'il n'y en a pas."""
     intervention = getattr(reserve, 'intervention', None)
-    chantier_id = getattr(intervention, 'installation_id', None)
+    # CIQ628 — une réserve peut être posée directement sur le chantier.
+    chantier_id = (getattr(intervention, 'installation_id', None)
+                   or getattr(reserve, 'installation_id', None))
     return {
         'id': reserve.id,
         'description': reserve.description or '',
@@ -3021,6 +3023,70 @@ def chantier_du_client_portail_obj(company, client_id, chantier_id):
         return None
     return Installation.objects.filter(
         company=company, client_id=client_id, pk=chantier_id).first()
+
+
+def reception_chantier(company, chantier_id):
+    """CIQ629 — bloc ``reception`` du contrat ``recette_ci.json`` d'un
+    chantier de la société (provisoire, définitive, date prévue,
+    définitive possible), ou ``None`` hors société. Lu par la partie D2
+    (dernier jalon, libération de la retenue) ; lecture seule."""
+    from .models import Installation
+    if company is None or not chantier_id:
+        return None
+    chantier = Installation.objects.filter(
+        company=company, pk=chantier_id).first()
+    if chantier is None:
+        return None
+    from .services import reception_contrat
+    return reception_contrat(chantier)
+
+
+#: CIQ631 — libellés des essais imprimés au PV C&I (liste blanche).
+_ESSAIS_PV_CI = (
+    ('doc_dossier_ok', 'Dossier technique'),
+    ('doc_schema_ok', 'Schémas'),
+    ('doc_datasheets_ok', 'Fiches techniques'),
+    ('visuel_structure_ok', 'Inspection de la structure'),
+    ('visuel_cablage_ok', 'Inspection du câblage'),
+    ('visuel_terre_ok', 'Inspection de la mise à la terre'),
+    ('continuite_terre_ok', 'Continuité de terre'),
+    ('polarite_ok', 'Polarité'),
+    ('isolement_ok', "Résistance d'isolement"),
+    ('performance_ok', 'Vérification de performance'),
+    ('securite_coupure_ok', 'Coupure de sécurité'),
+    ('securite_signalisation_ok', 'Signalisation'),
+)
+
+
+def pv_recette_ci(chantier):
+    """CIQ631 — résumé LISTE BLANCHE de la recette et des réserves OUVERTES
+    d'un chantier industriel pour le PV : {date, resultat, pr, pr_libelle,
+    essais: [{libelle, ok}], reserves: [{description, date_echeance,
+    responsable}]}. ``None`` hors chantier industriel. Jamais l'instrument,
+    le technicien, un prix ni ``prix_achat``."""
+    from .models import CommissioningRecord, Installation
+    if (chantier.type_installation
+            != Installation.TypeInstallation.INDUSTRIEL):
+        return None
+    from .services import LIBELLE_PR, pr_mesure_recette, reserves_ouvertes
+    record = CommissioningRecord.objects.filter(installation=chantier).first()
+    recette = None
+    if record is not None:
+        recette = {
+            'date': record.date_essai,
+            'resultat': record.get_resultat_display(),
+            'pr': pr_mesure_recette(record),
+            'pr_libelle': LIBELLE_PR,
+            'essais': [{'libelle': libelle, 'ok': getattr(record, champ)}
+                       for champ, libelle in _ESSAIS_PV_CI],
+        }
+    return {
+        'recette': recette,
+        'reserves': [{'description': r.description or '',
+                      'date_echeance': r.date_echeance,
+                      'responsable': r.responsable or ''}
+                     for r in reserves_ouvertes(chantier)],
+    }
 
 
 def recette_pompage_portail(company, client_id, chantier_id):

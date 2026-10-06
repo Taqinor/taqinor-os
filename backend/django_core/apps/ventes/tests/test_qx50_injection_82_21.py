@@ -2,20 +2,17 @@
 
 Le surplus injectable est plafonné à 20 % de la production et valorisé au tarif
 ANRE NET des frais d'accès réseau. OFF par défaut ; la mention réglementaire
-accompagne toujours la ligne. Valeurs canoniques IDENTIQUES au miroir JS
-(solar.injection.test.mjs) — test de parité.
+accompagne toujours la ligne. Le miroir JS est supprimé (CIQ228) : la valeur vient du serveur.
 
 QXMT — couvre AUSSI le barème MOYENNE TENSION ONEE (``TARIF_MT_ONEE``) : valeurs
-sourcées, omission plutôt qu'invention quand une donnée manque, et parité stricte
-avec le miroir ``solar.js`` (le fichier JS est relu et comparé, comme DC9 le fait
-pour la table GHI).
+sourcées, omission plutôt qu'invention quand une donnée manque ; plus de
+miroir ``solar.js`` (CIQ228).
 
 Run:
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_qx50_injection_82_21 -v 2
 """
 import os
-import re
 
 from django.test import SimpleTestCase
 
@@ -25,37 +22,6 @@ _REPO_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', '..'))
 SOLAR_JS = os.path.join(
     _REPO_ROOT, 'frontend', 'src', 'features', 'ventes', 'solar.js')
-
-
-def _parse_solarjs_tarif_mt():
-    """Extrait les valeurs de ``export const TARIF_MT_ONEE = { ... }``.
-
-    Les commentaires (``//``) sont retirés AVANT de lire les clés : le bloc en
-    porte plusieurs qui contiennent des nombres (dates, valeurs écartées) — les
-    confondre avec des tarifs serait exactement l'erreur que ce test doit
-    empêcher. ``PLAGES_H`` est relu comme la suite (saison, poste, de_h, a_h).
-    """
-    with open(SOLAR_JS, encoding='utf-8') as fh:
-        src = fh.read()
-    m = re.search(r'export const TARIF_MT_ONEE\s*=\s*\{(.*?)\n\}', src, re.DOTALL)
-    if not m:
-        return None
-    body = '\n'.join(line.split('//')[0] for line in m.group(1).splitlines())
-    out = {}
-    for key in ('POINTE', 'PLEINES', 'CREUSES', 'PRIME_PUISSANCE_DH_KVA_AN',
-                'TVA_INCLUSE_PCT'):
-        hit = re.search(rf'\b{key}\s*:\s*(null|-?\d+(?:\.\d+)?)', body)
-        if hit:
-            out[key] = None if hit.group(1) == 'null' else float(hit.group(1))
-    plages = []
-    for bloc in re.finditer(r"saison:\s*'(\w+)'(.*?)\]\s*\}", body, re.DOTALL):
-        for poste in re.finditer(
-                r"poste:\s*'(\w+)',\s*de_h:\s*(\d+),\s*a_h:\s*(\d+)",
-                bloc.group(2)):
-            plages.append((bloc.group(1), poste.group(1),
-                           int(poste.group(2)), int(poste.group(3))))
-    out['PLAGES_H'] = plages
-    return out
 
 
 def _plages_py(saisons):
@@ -228,9 +194,11 @@ class TestTarifMtMoyen(SimpleTestCase):
         self.assertIsNone(c.tarif_mt_moyen({}))
 
 
-class TestTarifMtPariteParametresJs(SimpleTestCase):
-    """CIQ202 — UNE source : parametres/tarifs_officiels ↔ constants_82_21 ↔
-    miroir solar.js (jusqu'à sa suppression par CIQ228)."""
+class TestTarifMtSansJumeauJs(SimpleTestCase):
+    """CIQ228 — UNE source : parametres/tarifs_officiels ↔ constants_82_21.
+    Le miroir JS (`TARIF_MT_ONEE`, `tarifMtMoyen`, `netTarif8221`,
+    `INJECTION_82_21`) est SUPPRIMÉ de solar.js : la parité est remplacée par
+    la preuve de son ABSENCE (la valeur vient d'`economie_ci`)."""
 
     def test_constants_lit_la_fondation(self):
         from apps.parametres import tarifs_officiels as t
@@ -241,19 +209,14 @@ class TestTarifMtPariteParametresJs(SimpleTestCase):
                          t.MT_GENERAL['prime_fixe_kva_an']['valeur'])
         self.assertIs(c.TARIF_MT_ONEE['PLAGES_H'], t.POSTES_MT)
 
-    def test_parity_with_solar_js(self):
-        js = _parse_solarjs_tarif_mt()
-        self.assertIsNotNone(js, 'TARIF_MT_ONEE introuvable dans solar.js')
-        for key in ('POINTE', 'PLEINES', 'CREUSES', 'PRIME_PUISSANCE_DH_KVA_AN'):
-            self.assertIn(key, js, f'{key} absent du miroir solar.js')
-            self.assertAlmostEqual(float(c.TARIF_MT_ONEE[key]), js[key], places=4)
-        self.assertNotIn('TVA_INCLUSE_PCT', js)
-        self.assertEqual(js['PLAGES_H'], _plages_py(c.TARIF_MT_ONEE['PLAGES_H']))
-
-    def test_mention_identique(self):
+    def test_solar_js_sans_symboles_de_valorisation_ci(self):
         with open(SOLAR_JS, encoding='utf-8') as fh:
             src = fh.read()
+        for symbole in ('TARIF_MT_ONEE', 'tarifMtMoyen', 'netTarif8221',
+                        'INJECTION_82_21'):
+            self.assertNotIn(symbole, src, symbole)
+
+    def test_mention_serveur(self):
         for fragment in ('Tarif Général (MT)', 'one.org.ma', '03/10/2026',
                          'taux légal'):
-            self.assertIn(fragment, src)
             self.assertIn(fragment, c.MENTION_MT)

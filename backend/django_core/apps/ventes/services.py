@@ -159,6 +159,8 @@ prolonger_validite_devis = _envoi.prolonger_validite_devis
 # par le récepteur ``devis_accepted`` d'installations).
 from apps.ventes.domain import dossier_8221 as _dossier_8221  # noqa: E402
 ouvrir_dossier_8221 = _dossier_8221.ouvrir_dossier_8221
+# CIQ642 — une action posée sur le dossier 82-21 d'un chantier (lue par sav).
+ajouter_action_dossier_8221 = _dossier_8221.ajouter_action_dossier_8221
 # CIQ620 — équipements figés au dépôt du dossier 82-21.
 figer_equipements_dossier_8221 = _dossier_8221.figer_equipements_dossier_8221
 AcceptError = _cycle_vie.AcceptError
@@ -675,6 +677,7 @@ __all__ = [
     'date_validite_credit',
     'prolonger_validite_devis',
     'ouvrir_dossier_8221',
+    'ajouter_action_dossier_8221',
     'figer_equipements_dossier_8221',
     'verifier_empreinte_signature',
     'verifier_sale_warnings',

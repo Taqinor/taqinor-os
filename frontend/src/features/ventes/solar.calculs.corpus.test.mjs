@@ -25,14 +25,14 @@ const EXPECTED = JSON.parse(readFileSync(EXPECTED_PATH, 'utf8'))
 test('le corpus #2 et son fichier attendu sont alignés (mêmes ids, même graine)', () => {
   assert.equal(CORPUS.seed, SEED)
   assert.equal(EXPECTED.seed, SEED)
-  assert.ok(CORPUS.entries.length >= 800, `corpus régressé : ${CORPUS.entries.length}`)
+  assert.ok(CORPUS.entries.length >= 700, `corpus régressé : ${CORPUS.entries.length}`)
   assert.deepEqual(CORPUS.entries.map((e) => e.id), EXPECTED.entries.map((e) => e.id))
 })
 
-test('les neuf axes de calcul sont couverts', () => {
+test('les six axes de calcul sont couverts (pompage retiré, AGR132)', () => {
   const axes = new Set(CORPUS.entries.map((e) => e.axe))
   for (const a of ['tranche_bill', 'bill_to_kwh', 'facture_detail', 'conso_annuelle',
-    'two_bills', 'roi', 'pompe_debit', 'pompe_select', 'pompe_variateur']) {
+    'two_bills', 'roi']) {
     assert.ok(axes.has(a), `axe manquant : ${a}`)
   }
 })

@@ -44,7 +44,11 @@ ORIGINAL = _pdf_une_page()
 #: PyMuPDF régénère l'identifiant de fichier (``/ID [<…><…>]`` du trailer) à
 #: CHAQUE sérialisation : deux rendus du même filigrane ne diffèrent QUE par
 #: lui. On le neutralise pour comparer le contenu octet par octet.
-_ID_PDF = re.compile(rb'/ID\s*\[\s*<[0-9A-Fa-f]*>\s*<[0-9A-Fa-f]*>\s*\]')
+# L'identifiant /ID d'un PDF est ALÉATOIRE et s'écrit en hexadécimal <…> OU en
+# chaîne littérale (…) (octets binaires échappés) : les deux formes sont ôtées,
+# sinon la comparaison dépend du tirage (rouge intermittent en CI).
+_ELEMENT_ID = rb'(?:<[0-9A-Fa-f]*>|\((?:\\.|[^\\)])*\))'
+_ID_PDF = re.compile(rb'/ID\s*\[\s*' + _ELEMENT_ID + rb'\s*' + _ELEMENT_ID + rb'\s*\]', re.S)
 
 
 def _sans_id(octets):

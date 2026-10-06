@@ -4,6 +4,7 @@ import {
   RadioGroup, RadioGroupItem, Checkbox, Label, Input,
 } from '../../../ui/index.js'
 import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
+import { libelleFormatComplet } from './devisListHelpers.js'
 
 // ── ARC49 — Modale de génération PDF de la LISTE (formats du simulateur). ──
 // Extraite telle quelle de DevisList (« lignes divisées ») : mêmes contrôles,
@@ -14,7 +15,7 @@ export default function DevisPdfDialog({
   pdfTarget, batchPdf, selectedIds,
   pdfMode, setPdfMode, pdfModeAutoOnepage, targetIsAgricole,
   showMonthly, setShowMonthly,
-  targetHasEtude, includeEtude, setIncludeEtude,
+  targetHasEtude, targetIsCi, targetMode, includeEtude, setIncludeEtude,
   includeCalepinage, setIncludeCalepinage,
   devisFinal, setDevisFinal,
   paymentMode, setPaymentMode,
@@ -44,9 +45,7 @@ export default function DevisPdfDialog({
               <label className="flex items-start gap-2 text-sm">
                 <RadioGroupItem value="full" className="mt-0.5" />
                 <span>
-                  {targetIsAgricole
-                    ? 'Document agricole complet (3 pages — eau et argent, fonctionnement, équipement et signature)'
-                    : 'Devis premium (3 pages — options, analyse, garanties)'}
+                  {libelleFormatComplet({ targetIsAgricole, targetMode })}
                 </span>
               </label>
               <label className="flex items-start gap-2 text-sm">
@@ -71,14 +70,14 @@ export default function DevisPdfDialog({
             )}
           </div>
 
-          {pdfMode === 'full' && !targetIsAgricole && (
+          {pdfMode === 'full' && !targetIsAgricole && !targetIsCi && (
             <label className="flex items-start gap-2 text-sm">
               <Checkbox checked={showMonthly} onCheckedChange={v => setShowMonthly(!!v)} className="mt-0.5" />
               <span>Économies mensuelles <span className="text-muted-foreground">(graphique mensuel page 2)</span></span>
             </label>
           )}
 
-          {pdfMode === 'full' && !batchPdf && !targetIsAgricole && (
+          {pdfMode === 'full' && !batchPdf && !targetIsAgricole && !targetIsCi && (
             <label className="flex items-start gap-2 text-sm aria-disabled:opacity-50" aria-disabled={!targetHasEtude}>
               {/* T13 — case désactivée sans données d'étude (note explicative). */}
               <Checkbox
