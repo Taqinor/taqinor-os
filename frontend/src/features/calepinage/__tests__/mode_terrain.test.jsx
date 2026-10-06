@@ -4,9 +4,10 @@ import { MemoryRouter } from 'react-router-dom'
 import fs from 'node:fs'
 import path from 'node:path'
 import {
-  espions, REPONSE_POSE, PAS_REPONSE_POSE, EMPRISE_REPONSE_POSE,
+  espions, PAS_REPONSE_POSE, EMPRISE_REPONSE_POSE,
   verifierSectionEcrite, verifierLectureEnEchec, verifierSectionPousseeDansAtelier,
 } from '../../../test/fixtures/calepinageApiMock'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { SAISIE_SOL } from '../../../test/fixtures/saisiesSurfacePose'
 
 /* `import.meta.url` est virtuel sous vitest : on part du dossier de travail
@@ -117,7 +118,7 @@ const { formatCote } = await import('../plan2d')
 /** La VRAIE réponse du moteur — l'exemple committé du contrat `pose.json`
  *  (PACT10/13 : un mock écrit à la main est une deuxième source de vérité,
  *  `scripts/check_api_shapes.py` le refuse). */
-const REPONSE = REPONSE_POSE
+const REPONSE = exempleContrat('calepinage', 'pose')
 const PAS_REPONSE = PAS_REPONSE_POSE
 const EMPRISE_REPONSE = EMPRISE_REPONSE_POSE
 
