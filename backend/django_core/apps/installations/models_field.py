@@ -397,7 +397,7 @@ class Reserve(models.Model):
         Intervention, on_delete=models.CASCADE, related_name='reserves',
         null=True, blank=True)
     installation = models.ForeignKey(
-        Installation, on_delete=models.CASCADE,
+        Installation, on_delete=models.CASCADE,  # on_delete: une réserve n'existe que sur SON chantier (CIQ628)
         null=True, blank=True, related_name='reserves_chantier')
     origine = models.CharField(
         max_length=12, choices=Origine.choices,
