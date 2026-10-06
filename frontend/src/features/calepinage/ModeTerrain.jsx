@@ -5,15 +5,11 @@
    exerce sans monter l'écran, parce que ce sont ELLES qui garantissent
    qu'aucun pas, aucun taux ni aucune cote n'est inventé côté client.
    Même dérogation que `module.config.jsx` du même module. */
-import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
 import RetourAtelier from './atelier/RetourAtelier'
-import calepinageApi from '../../api/calepinageApi'
-import useDocumentCalepinage, { ecrireSection, MESSAGE_ILLISIBLE } from './useDocumentCalepinage'
+import useSurfacePose from './useSurfacePose'
+import ActionsSurfacePose from './ActionsSurfacePose'
 import {
-  nombre, pasMesure, tauxOccupation, contourTerrain, documentSurfacePose, saisieDepuisSurface, reponseDepuisSurface,
-  entreeMoteurChangee, surfacesDuGenre, remplacerSurface, retirerSurface, repereLibre,
-  KIND_SOL,
+  nombre, pasMesure, tauxOccupation, contourTerrain, documentSurfacePose, KIND_SOL,
 } from './surfacePose'
 import { formatCote, milieu } from './plan2d'
 import { formatNumber } from '../../lib/format'
@@ -342,145 +338,34 @@ function auDixieme(v) {
   return v === null || v === undefined ? '—' : Math.round(v * 10) / 10
 }
 
+/** ACAL345 — ce qui distingue cet écran dans `useSurfacePose` (genre, repère, placeur, libellés). */
+const POSE_TERRAIN = {
+  kind: KIND_SOL,
+  repereDefaut: 'TERRAIN',
+  saisieVide: SAISIE_VIDE,
+  nomPlaceur: 'construireChampPose',
+  libelles: {
+    enregistre: 'Champ au sol enregistré dans la conception.',
+    nonEnregistre: 'Le champ au sol n’a pas pu être enregistré.',
+    supprime: 'Surface supprimée de la conception.',
+    nonSupprime: 'La surface n’a pas pu être supprimée.',
+    echecPose: 'Le moteur n’a pas pu poser ce champ au sol.',
+  },
+}
+
 export default function ModeTerrain({ calepinageId: idPropose = null, persister = true, documentVivant = null }) {
-  const { id: idUrl } = useParams()
-  const calepinageId = idPropose ?? idUrl
+  // ACAL345 — l'état d'écran (document, placeur CALX50, relecture, liste,
+  // enregistrement/suppression PAR id) vient de `useSurfacePose`, l'UNIQUE
+  // copie partagée entre le terrain et l'ombrière.
+  const pose = useSurfacePose({ idPropose, persister, documentVivant, ...POSE_TERRAIN })
+  const { calepinageId, saisie, reponse, placeur, placeurAbsent, plan, majChamp } = pose
 
-  const [saisie, setSaisie] = useState(SAISIE_VIDE)
-  // ACAL24 — l'UNIQUE lecture du document (hook) : un échec donne `erreur`, jamais
-  // un document vide ; l'écriture ne porte que la clé `poseSurfaces`.
-  const doc = useDocumentCalepinage(calepinageId, { actif: persister })
-  const [reponse, setReponse] = useState(null)
-  const [enCours, setEnCours] = useState(false)
-  const [message, setMessage] = useState(null)
-  // CALX50 — le PLACEUR de tables du builder (`construireChampPose`), chargé à
-  // l'ouverture de l'écran seulement. Rangé dans un objet : passer une fonction
-  // nue à un `setState` serait lu comme une mise à jour, pas comme une valeur.
-  const [placeur, setPlaceur] = useState(null)
-  const [placeurAbsent, setPlaceurAbsent] = useState(false)
+  const calculer = () => pose.poser(
+    demandeMoteur(saisie),
+    'Dimensions du terrain et du module incomplètes : rien n’est '
+      + 'envoyé au moteur, et surtout aucune valeur par défaut inventée.',
+  )
 
-  useEffect(() => {
-    let annule = false
-    import('@roofpro/scene3d')
-      .then((mod) => {
-        if (annule) return
-        if (typeof mod?.construireChampPose === 'function') {
-          setPlaceur({ construireChampPose: mod.construireChampPose })
-        } else {
-          setPlaceurAbsent(true)
-        }
-      })
-      .catch(() => { if (!annule) setPlaceurAbsent(true) })
-    return () => { annule = true }
-  }, [])
-
-  // RELECTURE — un champ au sol déjà enregistré revient tel quel (une fois par
-  // lecture serveur, jamais à une application locale d'une section écrite).
-  const [lectureHydratee, setLectureHydratee] = useState(null)
-  if (persister && doc.etat === 'ok' && lectureHydratee !== doc.generation) {
-    setLectureHydratee(doc.generation)
-    const sol = surfacesDuGenre(doc.document?.poseSurfaces, KIND_SOL)[0]
-    if (sol) {
-      setSaisie((s) => ({ ...s, ...saisieDepuisSurface(sol) }))
-      // Le plan RECHARGÉ est celui du moteur : on le réaffiche sans le refaire.
-      setReponse(reponseDepuisSurface(sol))
-    }
-  }
-
-  const surfaces = surfacesDuGenre(doc.document?.poseSurfaces, KIND_SOL)
-  const repereCourant = saisie.repere || 'TERRAIN'
-  const dejaEnregistree = surfaces.some((s) => s.id === repereCourant)
-
-  const majChamp = (cle, brut) => {
-    setSaisie((s) => ({ ...s, [cle]: brut }))
-    // ACAL25 — le plan calculé ne vaut que pour la saisie qui l'a produit : dès
-    // qu'une entrée du moteur change, il est invalidé (jamais un document mixte
-    // contour 80 m / plan moteur 40 m).
-    if (reponse && entreeMoteurChangee(cle)) {
-      setReponse(null)
-      setMessage('Une entrée du moteur a changé : recalculez le plan avant d’enregistrer.')
-    }
-  }
-
-  // Une surface déjà enregistrée est rééditée (liste) ; « Nouvelle surface » en
-  // ouvre une autre, sous un repère libre.
-  const choisirSurface = (surface) => {
-    setSaisie((s) => ({ ...s, ...saisieDepuisSurface(surface) }))
-    setReponse(reponseDepuisSurface(surface))
-    setMessage(null)
-  }
-  const nouvelleSurface = () => {
-    setSaisie((s) => ({
-      ...s, repere: repereLibre(doc.document?.poseSurfaces, KIND_SOL), label: '',
-    }))
-    setReponse(null)
-    setMessage(null)
-  }
-
-  const calculer = () => {
-    const demande = demandeMoteur(saisie)
-    if (!demande) {
-      setMessage('Dimensions du terrain et du module incomplètes : rien n’est '
-        + 'envoyé au moteur, et surtout aucune valeur par défaut inventée.')
-      return
-    }
-    setMessage(null)
-    setEnCours(true)
-    Promise.resolve(calepinageApi.moteur.pose({ demande }))
-      .then((res) => {
-        setEnCours(false)
-        setReponse(res?.data ?? null)
-        setMessage(motifChampVide(res?.data))
-      })
-      .catch((e) => {
-        setEnCours(false)
-        setReponse(null)
-        setMessage(motifRefus(e?.response?.data)
-          || 'Le moteur n’a pas pu poser ce champ au sol.')
-      })
-  }
-
-  const enregistrer = async () => {
-    if (doc.etat !== 'ok') return
-    if (!reponse) {
-      setMessage('Aucun plan du moteur : il n’y a rien à enregistrer.')
-      return
-    }
-    const surface = documentTerrain(saisie, reponse)
-    // ACAL25 — la surface est remplacée PAR id : les autres surfaces sol restent.
-    const valeur = remplacerSurface(doc.document?.poseSurfaces, surface)
-    const res = await ecrireSection({
-      calepinageId, cle: 'poseSurfaces', valeur, empreinte: doc.empreinte, documentVivant,
-    })
-    if (res.ok) {
-      doc.appliquerSection('poseSurfaces', valeur, res.empreinte)
-      setMessage('Champ au sol enregistré dans la conception.')
-    } else if (res.conflit) {
-      setMessage('La conception a changé ailleurs : elle est relue, enregistrez de nouveau.')
-      doc.recharger()
-    } else {
-      setMessage(res.motif || 'Le champ au sol n’a pas pu être enregistré.')
-    }
-  }
-
-  const supprimer = async () => {
-    if (doc.etat !== 'ok' || !dejaEnregistree) return
-    const valeur = retirerSurface(doc.document?.poseSurfaces, KIND_SOL, repereCourant)
-    const res = await ecrireSection({
-      calepinageId, cle: 'poseSurfaces', valeur, empreinte: doc.empreinte, documentVivant,
-    })
-    if (res.ok) {
-      doc.appliquerSection('poseSurfaces', valeur, res.empreinte)
-      setMessage('Surface supprimée de la conception.')
-    } else if (res.conflit) {
-      setMessage('La conception a changé ailleurs : elle est relue, recommencez.')
-      doc.recharger()
-    } else {
-      setMessage(res.motif || 'La surface n’a pas pu être supprimée.')
-    }
-  }
-
-  const plan = (reponse?.plans ?? [])[0] ?? null
   const pas = plan ? (pasMesure(plan.rangees) ?? reponse?._pasRecharge ?? null) : null
   const aire = contourTerrain(saisie.largeurM, saisie.profondeurM)
     ? nombre(saisie.largeurM) * nombre(saisie.profondeurM)
@@ -545,77 +430,20 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
           ))}
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={calculer}
-            disabled={enCours}
-            data-testid="cal-terrain-calculer"
-            className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200"
-          >
-            {enCours ? 'Calcul en cours…' : 'Calculer le champ au sol'}
-          </button>
-          {persister && (
-            <button
-              type="button"
-              onClick={enregistrer}
-              disabled={doc.etat !== 'ok' || !reponse}
-              title={reponse ? undefined : 'Calculez le plan avant d’enregistrer'}
-              data-testid="cal-terrain-enregistrer"
-              className="rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Enregistrer le champ
-            </button>
-          )}
-        </div>
-
-        {persister && surfaces.length > 0 && (
-          <div className="mt-4" role="group" aria-label="Surfaces au sol enregistrées">
-            <p className="tech-label text-lune-faint">Surfaces enregistrées</p>
-            <ul className="mt-2 flex flex-wrap gap-2">
-              {surfaces.map((surface) => (
-                <li key={surface.id}>
-                  <button
-                    type="button"
-                    onClick={() => choisirSurface(surface)}
-                    aria-pressed={surface.id === repereCourant}
-                    className="rounded border border-white/15 px-3 py-1 text-sm text-white aria-pressed:bg-white/10"
-                  >
-                    {`${surface.label || 'Champ au sol'} (${surface.id})`}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <button
-              type="button"
-              onClick={nouvelleSurface}
-              className="mt-2 rounded border border-white/15 px-3 py-1 text-sm text-white"
-            >
-              Nouvelle surface
-            </button>
-          </div>
-        )}
-
-        {persister && dejaEnregistree && (
-          <button
-            type="button"
-            onClick={supprimer}
-            disabled={doc.etat !== 'ok'}
-            className="mt-3 rounded border border-red-300/40 px-3 py-1 text-sm text-red-300"
-          >
-            Supprimer cette surface
-          </button>
-        )}
-
-        {persister && doc.etat === 'erreur' && (
-          <p className="mt-3 text-sm text-red-300" role="alert"
-           >{MESSAGE_ILLISIBLE}</p>
-        )}
-
-        {message && (
-          <p className="mt-3 text-sm text-lune-soft" role="status"
-            data-testid="cal-terrain-message">{message}</p>
-        )}
+        <ActionsSurfacePose
+          pose={pose}
+          persister={persister}
+          prefixe="cal-terrain"
+          onCalculer={calculer}
+          libelles={{
+            calculer: 'Calculer le champ au sol',
+            enregistrer: 'Enregistrer le champ',
+            groupe: 'Surfaces au sol enregistrées',
+            liste: 'Surfaces enregistrées',
+            defaut: 'Champ au sol',
+            nouvelle: 'Nouvelle surface',
+          }}
+        />
 
         {plan && (
           <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-white/10 pt-4 sm:grid-cols-4">
