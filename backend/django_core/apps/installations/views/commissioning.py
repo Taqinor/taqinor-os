@@ -121,6 +121,10 @@ class CommissioningRecordViewSet(UsageGuardedDestroyMixin,
                if k != 'record'})
         compute_iv_ecart(reading)
         reading.save()
+        # CIQ625 — un relevé I-V en défaut est un essai faux : le résultat
+        # de la fiche est recalculé (jamais laissé « conforme »).
+        from ..services import recalculer_resultat_recette
+        recalculer_resultat_recette(record)
         return Response(
             CommissioningIVReadingSerializer(reading).data,
             status=status.HTTP_201_CREATED)
