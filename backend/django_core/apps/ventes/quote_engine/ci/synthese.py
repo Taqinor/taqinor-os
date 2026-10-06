@@ -326,9 +326,13 @@ def _sans_industriel(valeur):
     return valeur
 
 
-def _est_mt(etude_ci, economie):
+def _est_mt(data, etude_ci, economie):
     tension = _dict(_dict(etude_ci.get("entrees_resolues")).get(
         "tension")).get("valeur")
+    if not isinstance(tension, str) or not tension.strip():
+        # Sans moteur : la tension DÉCLARÉE à l'écran (une saisie, pas un
+        # chiffre calculé).
+        tension = _dict(data.get("etude")).get("tension_raccordement")
     if isinstance(tension, str) and tension.strip().lower() in ("mt", "ht"):
         return True
     return _dict(_dict(economie).get("tarif")).get("contrat") == "mt_general"
@@ -347,7 +351,8 @@ def _bloc_argent(data, etude_ci, segment):
         if segment != "industriel":
             argent = _sans_industriel(argent)
         return argent, None
-    motif = MOTIF_ARGENT_MT if _est_mt(etude_ci, economie) else MOTIF_ARGENT_BT
+    motif = (MOTIF_ARGENT_MT if _est_mt(data, etude_ci, economie)
+             else MOTIF_ARGENT_BT)
     return None, motif
 
 
@@ -411,3 +416,66 @@ def synthese_ci(data):
     synthese["echeancier"] = _echeancier(data, option)
     synthese["omissions"] = omissions
     return synthese
+
+
+# ── CIQ307 — les chiffres-clés LUS par les gabarits ET par /proposition ─────
+
+#: Méthode des taux (``energie.methode``) → ligne de méthode imprimée.
+LIBELLES_METHODE = {
+    "horaire_declare": "Taux calculés heure par heure sur vos horaires "
+                       "déclarés.",
+    "horaire_mesure": "Taux calculés heure par heure sur votre courbe de "
+                      "charge mesurée.",
+    "registres_mt": "Taux calculés sur vos registres de compteur MT.",
+    "archetype_estimation": "Taux calculés sur un profil type de votre "
+                            "activité — estimation.",
+    METHODE_INCONNUE: "Taux calculés par estimation.",
+}
+
+
+def chiffres_cles(synthese):
+    """Les chiffres d'une ``synthese_ci`` que la couverture, la page
+    /proposition et la parité lisent — UNE projection, aucun calcul.
+
+    L'économie de l'année 1 est celle de la base principale (D-CIQ-3) :
+    TTC quand la TVA n'est pas récupérable, HT sinon (``economie_ci`` :
+    ``total_mad`` = HT, ``total_mad_ttc`` = TTC). Le payback est le seul
+    servi : ``argent.indicateurs.retour_ans`` (celui du flux)."""
+    s = _dict(synthese)
+    systeme = _dict(s.get("systeme"))
+    energie = _dict(s.get("energie"))
+    argent = _dict(s.get("argent"))
+    economie = _dict(argent.get("economie_annee1"))
+    revente = _dict(argent.get("revente"))
+    if argent.get("base") == "ttc" and \
+            economie.get("total_mad_ttc") is not None:
+        valeur, libelle_base = economie.get("total_mad_ttc"), "TTC"
+    else:
+        valeur = economie.get("total_mad")
+        libelle_base = "HT" if valeur is not None else None
+    methode = energie.get("methode")
+    motif_argent = next((o.get("motif") for o in s.get("omissions") or []
+                         if isinstance(o, dict) and o.get("bloc") == "argent"),
+                        None)
+    pointe = next((h for h in s.get("hypotheses") or []
+                   if isinstance(h, dict) and h.get("cle") == "pointe"), None)
+    return {
+        "kwc": _num(systeme.get("kwc")),
+        "production_kwh_an": _num(systeme.get("production_kwh_an")),
+        "taux_autoconso_pct": _num(energie.get("taux_autoconso_pct")),
+        "taux_couverture_pct": _num(energie.get("taux_couverture_pct")),
+        "methode": methode,
+        "libelle_methode": LIBELLES_METHODE.get(methode) if methode else None,
+        "economie_annuelle_mad": _num(valeur),
+        "base_economie": libelle_base,
+        "payback_ans": _num(_dict(argent.get("indicateurs")).get(
+            "retour_ans")),
+        "revente_kwh_an": _num(revente.get("kwh_an")),
+        "revente_mad_an": _num(revente.get("valeur_mad_an")),
+        "sous_reserve": s.get("statut_etude") == STATUT_SOUS_RESERVE,
+        "a_confirmer": [a.get("libelle") for a in s.get("a_confirmer") or []
+                        if isinstance(a, dict) and a.get("libelle")],
+        "motif_argent": motif_argent,
+        "argent_mt": motif_argent == MOTIF_ARGENT_MT,
+        "note_pointe": _dict(_dict(pointe).get("textes")).get("fr"),
+    }

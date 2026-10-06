@@ -922,18 +922,17 @@ def _mode_kpis_ci(synthese):
     (contrat ``proposal_data.json`` › ``notes_ciq4.mode_kpis_ci_v2``) —
     énergie + ``argent.indicateurs.retour_ans`` + ``argent.revente``. Aucune
     clé d'étude JS lue, aucun calcul ; l'argent omis (ou sa case décochée)
-    ⇒ économies, payback et revente à ``None``."""
-    energie = synthese.get('energie') or {}
-    argent = synthese.get('argent') or {}
-    economie = argent.get('economie_annee1') or {}
-    revente = argent.get('revente') or {}
+    ⇒ économies, payback et revente à ``None``. CIQ307 : par
+    ``chiffres_cles`` — la MÊME projection que lisent les gabarits PDF."""
+    from .quote_engine.ci.synthese import chiffres_cles
+    c = chiffres_cles(synthese)
     return {
-        'taux_autoconso': energie.get('taux_autoconso_pct'),
-        'taux_couverture': energie.get('taux_couverture_pct'),
-        'economies_annuelles': economie.get('total_mad'),
-        'payback': (argent.get('indicateurs') or {}).get('retour_ans'),
-        'injection_kwh_an': revente.get('kwh_an'),
-        'injection_dh_an': revente.get('valeur_mad_an'),
+        'taux_autoconso': c['taux_autoconso_pct'],
+        'taux_couverture': c['taux_couverture_pct'],
+        'economies_annuelles': c['economie_annuelle_mad'],
+        'payback': c['payback_ans'],
+        'injection_kwh_an': c['revente_kwh_an'],
+        'injection_dh_an': c['revente_mad_an'],
     }
 
 

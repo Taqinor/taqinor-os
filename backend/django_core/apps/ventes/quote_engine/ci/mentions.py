@@ -130,6 +130,9 @@ def _tension(data):
     etude_ci = _dict(_dict(data.get("etude")).get("etude_ci"))
     tension = _dict(_dict(etude_ci.get("entrees_resolues")).get(
         "tension")).get("valeur")
+    if not isinstance(tension, str) or not tension.strip():
+        # Sans moteur : la tension DÉCLARÉE à l'écran (une saisie).
+        tension = _dict(data.get("etude")).get("tension_raccordement")
     if isinstance(tension, str) and tension.strip():
         return tension.strip().lower()
     contrat = str(_dict(_dict(data.get("economie_ci")).get("tarif")).get(
