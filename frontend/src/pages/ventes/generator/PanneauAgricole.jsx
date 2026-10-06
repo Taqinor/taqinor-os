@@ -365,6 +365,31 @@ const MOIS = [['1', 'Janvier'], ['2', 'Février'], ['3', 'Mars'], ['4', 'Avril']
 // module supprimé faute de consommateur de production).
 const CLE = 'agricole'
 
+// AGR218 (contrat AGR200) — « Le client atteste l'usage exclusivement
+// agricole » : case + date + signataire, écrits tels que saisis dans
+// `etude_params.attestation_usage_agricole` (jamais cochée d'office).
+function AttestationUsageAgricole({ attestation, majAttestation }) {
+  const a = attestation || {}
+  const maj = (cle) => (valeur) => majAttestation?.(cle, valeur)
+  return (
+    <div className="mt-4 rounded-lg border border-border p-3"
+         data-testid="attestation-usage-agricole">
+      <label className="flex items-center gap-2 text-sm font-medium">
+        <input type="checkbox" id="gen-attestation-agricole"
+               checked={!!a.attestee}
+               onChange={e => maj('attestee')(e.target.checked)} />
+        Le client atteste l’usage exclusivement agricole
+      </label>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <ChampTexte id="gen-attestation-le" label="Date de l’attestation" type="date"
+                    valeur={a.le} onChange={maj('le')} />
+        <ChampTexte id="gen-attestation-signataire" label="Signataire"
+                    valeur={a.signataire} onChange={maj('signataire')} />
+      </div>
+    </div>
+  )
+}
+
 export default function PanneauAgricole({
   marche,
   // ── Pompe et forage ──
@@ -382,6 +407,8 @@ export default function PanneauAgricole({
   pompageSaisie, majPompage, apercuPompage,
   // ── AGR213 — lignes de l'écran (investissement recalculé côté serveur) ──
   lignesDevis = [],
+  // ── AGR218 — attestation d'usage agricole {attestee, le, signataire} ──
+  attestation = null, majAttestation,
 }) {
   if (marche !== CLE) return null
   const sp = pompageSaisie || {}
@@ -692,6 +719,10 @@ export default function PanneauAgricole({
         <CarteEconomiePompage eco={ecoPompage} moisCalendrier={moisCalendrier}
                               sortieEtude={apercuPompage?.donnees || null}
                               lignes={lignesDevis} majEco={majEco} />
+
+        {/* ── AGR218 — attestation d'usage agricole (contrat AGR200) ── */}
+        <AttestationUsageAgricole attestation={attestation}
+                                  majAttestation={majAttestation} />
 
         {/* ── AGR129 — le résultat SERVEUR en direct (aperçu AGR127) ── */}
         {apercuPompage?.chargement && (

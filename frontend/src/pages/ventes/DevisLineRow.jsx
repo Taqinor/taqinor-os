@@ -13,6 +13,7 @@ import {
 // reçu ici en prop `totalTtcRemise` : cette ligne ne recalcule jamais la
 // répartition elle-même).
 import { puRemise } from '../../features/ventes/remise'
+import { baseLegaleManquante } from '../../features/ventes/quote/lignesEcran'
 
 // VX188 — ligne de devis extraite en composant mémoïsé. DevisGenerator.jsx a
 // 64 useState ; le tableau de lignes était du JSX inline dans `lines.map()`,
@@ -80,8 +81,18 @@ function DevisLineRowImpl({
     && (l.designation || '').trim() !== (prodLie.nom || '').trim()
 
   const t = parseFloat(l.taux_tva)
+  // AGR218 (contrat AGR200) — une ligne à 0 % porte sa BASE LÉGALE : champ
+  // obligatoire, jamais pré-rempli d'un article. Erreur sous le champ tant
+  // qu'il est vide (le refus 400 du serveur, posé sur la ligne par
+  // DevisGenerator.jsx dans `_erreurBaseLegale`, prend sa place).
+  const tauxNul = Number.isFinite(t) && t === 0
+  const baseManquante = baseLegaleManquante(l)
+  const erreurBaseLegale = baseManquante
+    ? (l._erreurBaseLegale || 'Base légale obligatoire pour une ligne à 0 %.')
+    : null
   let tvaWarning = null
-  if (Number.isFinite(t) && (l.designation || '').trim()) {
+  // L'alerte d'incohérence se tait pour une ligne à 0 % qui porte sa base.
+  if (Number.isFinite(t) && (l.designation || '').trim() && !(tauxNul && !baseManquante)) {
     const expected = expectedTvaForDesignation(l.designation, { tvaPanneaux, tvaStandard })
     if (t !== expected) tvaWarning = `${expected} % attendu`
   }
@@ -290,6 +301,25 @@ function DevisLineRowImpl({
             et `Produit.tva` reste la source autoritaire par ligne. On n'altère
             JAMAIS la valeur saisie (frappe souveraine). */}
         {tvaWarning && <div className="mt-0.5 text-xs text-warning">{tvaWarning}</div>}
+        {tauxNul && (
+          <div className="mt-1 grid gap-0.5" data-testid="ligne-base-legale">
+            <label htmlFor={`base-legale-${l._key}`}
+                   className="text-[11px] text-muted-foreground">
+              Base légale de l’exonération
+            </label>
+            <Input id={`base-legale-${l._key}`}
+                   className="h-[var(--control-h-sm)] min-w-40 text-xs"
+                   value={l.tvaBaseLegale ?? ''}
+                   maxLength={160}
+                   aria-required="true"
+                   aria-invalid={erreurBaseLegale ? 'true' : undefined}
+                   placeholder="À saisir"
+                   onChange={e => onSetField(l._key, 'tvaBaseLegale', e.target.value)} />
+            {erreurBaseLegale && (
+              <div role="alert" className="text-xs text-destructive">{erreurBaseLegale}</div>
+            )}
+          </div>
+        )}
       </td>
       <td className="line-total" data-label="Total TTC">
         {/* QJRREM — remise globale déjà répartie sur cette ligne (miroir
