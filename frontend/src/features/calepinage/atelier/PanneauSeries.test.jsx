@@ -48,14 +48,23 @@ const CONTRAT_METEO = JSON.parse(readFileSync(join(
 const exportCsv = vi.fn()
 const deposerMeteoFichier = vi.fn()
 const meteoFichier = vi.fn()
+const retirerFichierMeteo = vi.fn()
+const permission = vi.hoisted(() => ({ gerer: true }))
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       exportCsv: (...a) => exportCsv(...a),
       deposerMeteoFichier: (...a) => deposerMeteoFichier(...a),
       meteoFichier: (...a) => meteoFichier(...a),
+      retirerFichierMeteo: (...a) => retirerFichierMeteo(...a),
     },
   },
+}))
+
+/* ACAL148 — « Retirer le fichier météo » est sous `calepinage_gerer` (doublure :
+   pas de Provider Redux dans ce test). */
+vi.mock('../../../hooks/useHasPermission', () => ({
+  useHasPermission: () => permission.gerer,
 }))
 
 const downloadBlob = vi.fn()
@@ -85,6 +94,7 @@ const MOTIF_SANS_SERIE = (
 
 beforeEach(() => {
   vi.clearAllMocks()
+  permission.gerer = true
   // Par défaut : aucun fichier retenu, la simulation lit PVGIS.
   meteoFichier.mockResolvedValue({ data: null })
 })
@@ -314,5 +324,105 @@ describe('ACAL147 — la source météo retenue', () => {
     await waitFor(() => expect(screen.getByTestId('acal147-source-meteo'))
       .toHaveTextContent('indisponible'))
     expect(screen.getByTestId('acal147-source-meteo')).not.toHaveTextContent('PVGIS')
+  })
+})
+
+/* ACAL148 — « Retirer le fichier météo » et l'annonce du remplacement. Les
+   réponses reprennent le contrat `calepinage_meteo_fichier.json`
+   (`exemple_remplace`, `exemple_delete_404`). */
+describe('ACAL148 — retirer ou remplacer le fichier météo', () => {
+  const depot = CONTRAT_METEO.exemple
+  const retenu = {
+    piece_jointe: depot.piece_jointe,
+    nom: depot.meteo.fichier.nom,
+    fournisseur: depot.meteo.fournisseur,
+    sha256: depot.meteo.fichier.empreinte_sha256,
+    depose_le: '2026-09-21T09:00:00+00:00',
+    depose_par: 'Sami Alaoui',
+  }
+
+  it('Retirer le fichier météo appelle DELETE puis affiche Retour à PVGIS', async () => {
+    meteoFichier
+      .mockResolvedValueOnce({ data: retenu })
+      .mockResolvedValue({ data: null })
+    retirerFichierMeteo.mockResolvedValue({ status: 204, data: null })
+    rendre()
+
+    fireEvent.click(await screen.findByTestId('acal148-retirer'))
+    // Confirmation d'abord : rien n'est supprimé au premier clic.
+    expect(retirerFichierMeteo).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('acal148-confirmer'))
+
+    await waitFor(() => expect(retirerFichierMeteo).toHaveBeenCalledWith(5))
+    expect(await screen.findByTestId('acal148-retrait')).toHaveTextContent(
+      'Fichier météo retiré : meteo-2021-plan.csv — retour à PVGIS',
+    )
+    await waitFor(() => expect(screen.getByTestId('acal147-source-meteo'))
+      .toHaveTextContent('Source météo : PVGIS'))
+    expect(screen.queryByTestId('acal148-retirer')).toBeNull()
+  })
+
+  it('annuler la confirmation ne retire rien', async () => {
+    meteoFichier.mockResolvedValue({ data: retenu })
+    rendre()
+
+    fireEvent.click(await screen.findByTestId('acal148-retirer'))
+    fireEvent.click(screen.getByTestId('acal148-annuler'))
+
+    expect(retirerFichierMeteo).not.toHaveBeenCalled()
+    expect(screen.getByTestId('acal148-retirer')).toBeInTheDocument()
+  })
+
+  it('404 nommé : le motif du serveur est affiché, le fichier reste affiché', async () => {
+    meteoFichier.mockResolvedValue({ data: retenu })
+    retirerFichierMeteo.mockRejectedValue({
+      response: { status: 404, data: CONTRAT_METEO.exemple_delete_404 },
+    })
+    rendre()
+
+    fireEvent.click(await screen.findByTestId('acal148-retirer'))
+    fireEvent.click(screen.getByTestId('acal148-confirmer'))
+
+    expect(await screen.findByTestId('acal148-erreur'))
+      .toHaveTextContent(CONTRAT_METEO.exemple_delete_404.detail)
+    expect(screen.getByTestId('acal147-source-meteo')).toHaveTextContent('fichier meteo-2021-plan.csv')
+  })
+
+  it('sans le droit de gérer : aucun bouton de retrait', async () => {
+    permission.gerer = false
+    meteoFichier.mockResolvedValue({ data: retenu })
+    rendre()
+
+    await waitFor(() => expect(screen.getByTestId('acal147-source-meteo'))
+      .toHaveTextContent('fichier meteo-2021-plan.csv'))
+    expect(screen.queryByTestId('acal148-retirer')).toBeNull()
+  })
+
+  it('un dépôt sur un fichier existant annonce le remplacement', async () => {
+    meteoFichier.mockResolvedValue({ data: retenu })
+    deposerMeteoFichier.mockResolvedValue({ data: CONTRAT_METEO.exemple_remplace })
+    rendre()
+
+    const fichier = new File(['x'], 'meteo-2021-plan.csv', { type: 'text/csv' })
+    fireEvent.change(screen.getByTestId('cal-series-depot-fichier'), { target: { files: [fichier] } })
+    fireEvent.change(screen.getByTestId('cal-series-depot-fournisseur'), { target: { value: 'Station' } })
+    fireEvent.click(screen.getByTestId('cal-series-depot-envoyer'))
+
+    const annonce = await screen.findByTestId('acal148-remplace')
+    expect(annonce).toHaveTextContent(`Remplace ${CONTRAT_METEO.exemple_remplace.remplace.nom}`)
+    expect(annonce).toHaveTextContent('déposé le 10/09/2026')
+  })
+
+  it('un premier dépôt n’annonce aucun remplacement', async () => {
+    deposerMeteoFichier.mockResolvedValue({ data: CONTRAT_METEO.exemple })
+    rendre()
+
+    const fichier = new File(['x'], 'meteo.csv', { type: 'text/csv' })
+    fireEvent.change(screen.getByTestId('cal-series-depot-fichier'), { target: { files: [fichier] } })
+    fireEvent.change(screen.getByTestId('cal-series-depot-fournisseur'), { target: { value: 'Station' } })
+    fireEvent.click(screen.getByTestId('cal-series-depot-envoyer'))
+
+    await screen.findByTestId('cal-series-depot-provenance')
+    expect(screen.queryByTestId('acal148-remplace')).toBeNull()
   })
 })

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Download, Upload } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
+import { useHasPermission } from '../../../hooks/useHasPermission'
 import { formatDate } from '../../../lib/format'
 import { Button, Card, Input, Label } from '../../../ui'
 import { downloadBlob } from '../../../utils/downloadBlob'
@@ -200,15 +201,23 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
         })}
       </div>
 
-      <SourceMeteo retenu={retenu} />
+      <SourceMeteo retenu={retenu} calepinageId={calepinageId} onRetire={lireRetenu} />
       <DepotMeteo calepinageId={calepinageId} onDepose={lireRetenu} />
     </div>
   )
 }
 
 /** ACAL147 — « Source météo : … » : le fichier retenu avec son nom, son
-    fournisseur, sa date et son auteur (tels que servis), ou PVGIS. */
-function SourceMeteo({ retenu }) {
+    fournisseur, sa date et son auteur (tels que servis), ou PVGIS.
+    ACAL148 — « Retirer le fichier météo » (avec confirmation) : retour à
+    PVGIS tracé au journal par le serveur, la simulation devient périmée. */
+function SourceMeteo({ retenu, calepinageId, onRetire }) {
+  const peutGerer = useHasPermission('calepinage_gerer')
+  const [confirmation, setConfirmation] = useState(false)
+  const [enCours, setEnCours] = useState(false)
+  const [retrait, setRetrait] = useState(null)
+  const [erreur, setErreur] = useState(null)
+
   let contenu
   if (retenu === undefined) contenu = 'Source météo : lecture en cours…'
   else if (retenu === false) contenu = 'Source météo : indisponible (lecture impossible).'
@@ -222,10 +231,78 @@ function SourceMeteo({ retenu }) {
     ].filter(Boolean).join(', ')
     contenu = `Source météo : fichier ${retenu.nom || 'sans nom'}${details ? ` (${details})` : ''} — remplace PVGIS`
   }
+
+  const retirer = () => {
+    const nom = retenu?.nom || 'sans nom'
+    setErreur(null)
+    setEnCours(true)
+    return Promise.resolve(calepinageApi.calepinages.retirerFichierMeteo(calepinageId))
+      .then(() => {
+        setConfirmation(false)
+        setRetrait(`Fichier météo retiré : ${nom} — retour à PVGIS`)
+        onRetire?.()
+      })
+      .catch((e) => {
+        const detail = e?.response?.data?.detail
+        setErreur(typeof detail === 'string' && detail
+          ? detail : 'Le retrait a été refusé par le serveur : le fichier est conservé.')
+      })
+      .finally(() => setEnCours(false))
+  }
+
   return (
-    <p className="mt-3 text-sm text-white" data-testid="acal147-source-meteo">
-      {contenu}
-    </p>
+    <div className="mt-3">
+      <p className="text-sm text-white" data-testid="acal147-source-meteo">
+        {contenu}
+      </p>
+
+      {retenu && peutGerer && !confirmation && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="mt-2"
+          onClick={() => { setRetrait(null); setConfirmation(true) }}
+          data-testid="acal148-retirer"
+        >
+          Retirer le fichier météo
+        </Button>
+      )}
+      {retenu && confirmation && (
+        <div className="mt-2 flex flex-wrap items-center gap-2" data-testid="acal148-confirmation">
+          <span className="text-xs text-muted-foreground">
+            Le fichier part à la corbeille et la simulation repart sur PVGIS.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={retirer}
+            disabled={enCours}
+            data-testid="acal148-confirmer"
+          >
+            {enCours ? 'Retrait…' : 'Confirmer le retrait'}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setConfirmation(false)}
+            disabled={enCours}
+            data-testid="acal148-annuler"
+          >
+            Annuler
+          </Button>
+        </div>
+      )}
+      {erreur && (
+        <p role="alert" className="mt-2 text-sm text-destructive" data-testid="acal148-erreur">
+          {erreur}
+        </p>
+      )}
+      {retrait && (
+        <p role="status" className="mt-2 text-xs text-lune-soft" data-testid="acal148-retrait">
+          {retrait}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -341,6 +418,18 @@ function DepotMeteo({ calepinageId, onDepose }) {
         </div>
       </form>
 
+      {depose?.remplace && (
+        <p
+          className="mt-2 text-xs text-lune-soft"
+          data-testid="acal148-remplace"
+        >
+          Remplace {depose.remplace.nom || 'le fichier précédent'}
+          {depose.remplace.depose_le
+            ? ` déposé le ${formatDate(depose.remplace.depose_le)}`
+            : ''}
+          {' '}— l’ancien fichier est à la corbeille.
+        </p>
+      )}
       {depose && (
         <p
           className="mt-2 text-xs text-lune-soft"

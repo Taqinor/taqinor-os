@@ -92,7 +92,7 @@ test('SPL292 — sans fichier de fragment, la ligne de spread reste telle quelle
   }
 })
 
-test('SPL292 — dépôt réel : façade + `_base.js`, 105 clés, la racine `pivot` est lisible', () => {
+test('SPL292 — dépôt réel : façade + `_base.js`, 106 clés, la racine `pivot` est lisible', () => {
   const facade = readFileSync(join(here, 'calepinageApi.js'), 'utf8')
   const base = readFileSync(join(here, 'calepinage', '_base.js'), 'utf8')
   const texte = lireSourceCalepinageApi()
@@ -108,7 +108,7 @@ test('SPL292 — dépôt réel : façade + `_base.js`, 105 clés, la racine `piv
     assert.ok(corps.length > 0 && texte.includes(corps.join('\n')), `corps de ${nom} spliçé`)
   }
   assert.ok(texte.endsWith(base))
-  assert.equal(extraireCles(texte).length, 105)
+  assert.equal(extraireCles(texte).length, 106)
   assert.match(texte, /const pivot = \(id\) => `\/calepinage\/calepinages\/\$\{id\}\/`/)
   // Aucun jumeau : `pivot` n'est plus DÉFINI dans la façade.
   assert.doesNotMatch(facade, /const pivot =/)

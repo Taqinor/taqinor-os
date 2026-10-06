@@ -64,7 +64,8 @@ from ..services.meteo_fichier import (
 from .calepinages import CalepinageViewSet
 
 __all__ = ['meteo_fichier', 'CHAMP_FICHIER', 'CHAMP_FOURNISSEUR',
-           'SANS_FICHIER', 'SANS_FOURNISSEUR', 'TROP_LOURD']
+           'SANS_FICHIER', 'SANS_FOURNISSEUR', 'TROP_LOURD',
+           'AUCUN_FICHIER_RETENU']
 
 #: Le champ du formulaire qui porte le fichier — nommé dans CHAQUE refus.
 CHAMP_FICHIER = 'fichier'
@@ -81,6 +82,9 @@ SANS_FOURNISSEUR = (
 TROP_LOURD = ('Ce fichier dépasse {0} Mo : un CSV météo au pas horaire ne '
               'pèse jamais autant.'.format(OCTETS_MAX // (1024 * 1024)))
 
+#: ACAL148 — le 404 nommé d'un retrait sans fichier retenu.
+AUCUN_FICHIER_RETENU = "Aucun fichier météo n'est rattaché à ce calepinage."
+
 MESSAGE_DEPOSE = (
     'Série météo enregistrée et rattachée au calepinage. Elle ne relance '
     'aucun calcul : la simulation la reprendra à son prochain lancement.')
@@ -94,6 +98,8 @@ def _forme():
         'meteo': serializers.DictField(),
         'serie': serializers.DictField(),
         'message': serializers.CharField(),
+        # ACAL148 — le fichier REMPLACÉ ({nom, depose_le}) ou null.
+        'remplace': serializers.DictField(allow_null=True),
     })
 
 
@@ -172,13 +178,62 @@ def _fichier_retenu(calepinage):
     }
 
 
+def _mettre_a_la_corbeille(calepinage, piece, user):
+    """ACAL148 — la pièce part à la CORBEILLE (``apps.trash``), jamais une
+    suppression dure : la ligne ``records.Attachment`` et ses objets du
+    magasin restent, l'entrée de corbeille la rend « non retenue »
+    (``simulation.lire_piece_meteo``) et la rend RESTAURABLE.
+    """
+    from apps.trash.services import journaliser_suppression
+
+    return journaliser_suppression(
+        instance=piece, company=calepinage.company, user=user,
+        type_libelle='Fichier météo',
+        libelle=(piece.filename or 'meteo.csv'))
+
+
+def _descriptif_ancien(piece):
+    """``{nom, depose_le}`` du fichier remplacé (contrat ``exemple_remplace``)."""
+    depose_le = getattr(piece, 'created_at', None)
+    return {'nom': piece.filename or None,
+            'depose_le': depose_le.isoformat() if depose_le else None}
+
+
+def _retirer(calepinage, user):
+    """ACAL148 — ``DELETE meteo-fichier/`` : retour à PVGIS, tracé.
+
+    Hors verrou (le fichier météo est une entrée de la simulation, défaut
+    gravé) ; la simulation stockée devient PÉRIMÉE d'elle-même — le fichier
+    retenu est une entrée de ``empreinte_simulation`` (ACAL48) — et la
+    suivante repart sur PVGIS.
+    """
+    from ..services.journal import noter
+    from ..services.simulation import lire_piece_meteo
+
+    piece = lire_piece_meteo(calepinage)
+    if piece is None:
+        return Response({'detail': AUCUN_FICHIER_RETENU},
+                        status=status.HTTP_404_NOT_FOUND)
+    nom = piece.filename or 'meteo.csv'
+    _mettre_a_la_corbeille(calepinage, piece, user)
+    noter(calepinage,
+          f'Fichier météo retiré : {nom} — retour à PVGIS', user=user)
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 @extend_schema(responses={201: _forme()})
-@action(detail=True, methods=['get', 'post'], url_path='meteo-fichier',
+@action(detail=True, methods=['get', 'post', 'delete'],
+        url_path='meteo-fichier',
         url_name='meteo-fichier',
         permission_classes=[PeutLireOuEcrireCalepinage],
         parser_classes=[MultiPartParser, FormParser])
 def meteo_fichier(self, request, pk=None):
     """CALX62 — ``POST /calepinages/<pk>/meteo-fichier/``.
+
+    ACAL148 — ``DELETE`` retire le fichier retenu (corbeille, journal, retour à
+    PVGIS) ; 404 nommé s'il n'y en a aucun. Un nouveau dépôt sur un fichier
+    déjà retenu le REMPLACE (l'ancien part à la corbeille, la réponse porte
+    ``remplace``).
 
     ACAL146 — ``GET`` sert le fichier RETENU par la simulation
     (``{piece_jointe, nom, fournisseur, sha256, depose_le, depose_par}``) ou
@@ -201,6 +256,8 @@ def meteo_fichier(self, request, pk=None):
     if request.method == 'GET':
         # ACAL146 — le fichier RETENU (celui que la simulation lit), ou null.
         return Response(_fichier_retenu(calepinage))
+    if request.method == 'DELETE':
+        return _retirer(calepinage, request.user)
 
     fichier = request.FILES.get(CHAMP_FICHIER)
     if fichier is None:
@@ -224,8 +281,21 @@ def meteo_fichier(self, request, pk=None):
         return _refus(refus.champ or CHAMP_FICHIER, refus.motif,
                       ligne=refus.ligne)
 
+    from ..services.journal import noter
+    from ..services.simulation import lire_piece_meteo
+
+    # ACAL148 — un fichier déjà retenu est REMPLACÉ : relu AVANT le dépôt
+    # (le nouveau deviendrait sinon « le dernier »), mis à la corbeille APRÈS.
+    ancienne = lire_piece_meteo(calepinage)
     piece = _deposer(calepinage, contenu, nom_fichier, request.user,
                      fournisseur=fournisseur)
+    remplace = None
+    if ancienne is not None:
+        remplace = _descriptif_ancien(ancienne)
+        _mettre_a_la_corbeille(calepinage, ancienne, request.user)
+        noter(calepinage,
+              f'Fichier météo remplacé : {ancienne.filename or "meteo.csv"}'
+              f' par {nom_fichier or "meteo.csv"}', user=request.user)
     bloc = serie['serie_horaire']
     return Response({
         'calepinage': calepinage.pk,
@@ -243,6 +313,7 @@ def meteo_fichier(self, request, pk=None):
             'motif_composantes': serie['motif_composantes'],
         },
         'message': MESSAGE_DEPOSE,
+        'remplace': remplace,
     }, status=status.HTTP_201_CREATED)
 
 

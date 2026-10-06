@@ -441,8 +441,9 @@ class RouteEnregistreeTest(SimpleTestCase):
         action = actions['meteo_fichier']
         self.assertEqual(action.url_path, 'meteo-fichier')
         # ACAL146 — GET sert le fichier retenu : lecture pour GET, gestion
-        # pour POST (une seule garde choisie par la méthode).
-        self.assertEqual(set(action.mapping), {'get', 'post'})
+        # pour POST (une seule garde choisie par la méthode). ACAL148 —
+        # DELETE retire le fichier retenu (même garde : gestion).
+        self.assertEqual(set(action.mapping), {'get', 'post', 'delete'})
         self.assertEqual(
             [garde.__name__ for garde in action.kwargs['permission_classes']],
             ['PeutLireOuEcrireCalepinage'])

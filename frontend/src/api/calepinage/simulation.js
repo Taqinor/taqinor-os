@@ -28,6 +28,12 @@ export const simulation = {
     // depose_par}`, ou `null` quand la simulation lit PVGIS. Lecture pure.
     meteoFichier: (id) => api.get(`${pivot(id)}meteo-fichier/`),
 
+    // ACAL148 — « Retirer le fichier météo » (`views/meteo_fichier.py`, DELETE) :
+    // la pièce part à la corbeille, le retour à PVGIS est tracé au journal, la
+    // simulation stockée devient périmée. 204 sans corps ; 404 nommé
+    // `{detail}` s'il n'y a aucun fichier retenu. Hors verrou.
+    retirerFichierMeteo: (id) => api.delete(`${pivot(id)}meteo-fichier/`),
+
     // CALX5 — LANCER la simulation (`views/simulation.py`, contrat
     // `contract_samples/calepinage_simulation.json`). Deux réponses, jamais
     // une troisième : 202 `{job_id, kind, nature}` — le travail est parti en

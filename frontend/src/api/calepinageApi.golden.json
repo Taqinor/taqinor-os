@@ -854,6 +854,14 @@
       "verbe": "delete"
     }
   ],
+  "calepinages.retirerFichierMeteo": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/meteo-fichier/",
+      "verbe": "delete"
+    }
+  ],
   "calepinages.schemaUnifilaire": [
     {
       "config": null,
