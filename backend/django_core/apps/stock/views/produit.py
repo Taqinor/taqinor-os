@@ -1,6 +1,8 @@
+import copy
 import operator  # noqa: F401
 from functools import reduce  # noqa: F401
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction  # noqa: F401
 from django.db.models import (  # noqa: F401
     ProtectedError, Count, Min, Max, Prefetch, Q, Func, TextField, Value,
@@ -79,6 +81,17 @@ PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
 # PDF), donc ils se propagent DÉJÀ sans qu'aucune ligne n'ait à être réécrite —
 # les émettre ne ferait que réveiller une tâche Celery pour ne rien changer.
 CHAMPS_PRODUIT_SUIVIS_DEVIS = ('nom', 'prix_vente')
+
+# ASTK87 — champs NON copiés par ``dupliquer`` (le reste de
+# ``Produit._meta.concrete_fields`` l'est). Chaque entrée a sa raison : identité
+# (id), société (posée côté serveur), nom (fourni), identifiants uniques
+# (sku, code_barres), stock physique propre (quantite_stock), un clone naît
+# actif (is_archived), horodatages auto, photo (pointeur vers UNE pièce jointe
+# — jamais partagée entre deux produits).
+CHAMPS_DUPLICATION_EXCLUS = frozenset({
+    'id', 'company', 'nom', 'sku', 'code_barres', 'quantite_stock',
+    'is_archived', 'date_creation', 'date_mise_a_jour', 'photo',
+})
 
 
 from .fournisseur_scm import ScmProduitTcoMixin  # noqa: E402
@@ -1557,31 +1570,39 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 {'detail': 'Le nom du nouveau produit est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        # ASTK87 — copie GÉNÉRIQUE de tous les champs concrets (méta-données
+        # Django) moins ``CHAMPS_DUPLICATION_EXCLUS`` : un champ ajouté plus
+        # tard au modèle est copié par défaut, jamais oublié en silence (le
+        # constructeur explicite d'avant perdait forfait, unité, rôles…).
+        valeurs = {
+            f.attname: copy.deepcopy(getattr(source, f.attname))
+            for f in Produit._meta.concrete_fields
+            if f.name not in CHAMPS_DUPLICATION_EXCLUS
+        }
         clone = Produit(
             company=request.user.company,
             nom=nom,
-            description=source.description,
             sku=None,  # jamais dupliqué : évite un doublon (company, sku)
-            prix_achat=source.prix_achat,
-            prix_vente=source.prix_vente,
             quantite_stock=0,  # un clone démarre sans stock physique propre
-            seuil_alerte=source.seuil_alerte,
-            categorie=source.categorie,
-            fournisseur=source.fournisseur,
-            tva=source.tva,
-            marque=source.marque,
-            garantie=source.garantie,
-            garantie_mois=source.garantie_mois,
-            garantie_production_mois=source.garantie_production_mois,
-            pompe_cv=source.pompe_cv,
-            hmt_m=source.hmt_m,
-            debit_m3j=source.debit_m3j,
-            pompe_kw=source.pompe_kw,
-            tension_v=source.tension_v,
-            courbe_pompe=source.courbe_pompe,
+            **valeurs,
         )
         clone.full_clean(exclude=['sku'])
-        clone.save()
+        with transaction.atomic():
+            clone.save()
+            # La fiche technique (OneToOne) suit : même copie générique.
+            try:
+                fiche = source.fiche_technique
+            except ObjectDoesNotExist:
+                fiche = None
+            if fiche is not None:
+                champs_fiche = {
+                    f.attname: copy.deepcopy(getattr(fiche, f.attname))
+                    for f in type(fiche)._meta.concrete_fields
+                    if f.name not in ('id', 'produit', 'company')
+                }
+                type(fiche).objects.create(
+                    produit=clone, company=request.user.company,
+                    **champs_fiche)
         serializer = self.get_serializer(clone)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
