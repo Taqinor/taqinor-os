@@ -13,7 +13,7 @@ export const DEFAULT_PAYMENT_TERMS = {
 // CIQ225 — échéancier société à N jalons (`CompanyProfile.payment_terms[mode]`
 // = liste `[{jalon, pct}]`, ou l'ancienne forme `{acompte, materiel, solde}`
 // toujours lue). Clés = `company_settings.LIBELLES_JALONS`.
-// source-choix: ventes.utils.company_settings.LIBELLES_JALONS
+// (clés de `company_settings.LIBELLES_JALONS`, validées par le serveur)
 export const JALONS_SOCIETE = [
   ['acompte', 'Acompte'],
   ['materiel', 'Livraison du matériel'],

@@ -10,8 +10,8 @@ import { configureStore } from '@reduxjs/toolkit'
 
 vi.mock('../../api/ventesApi', () => ({
   default: {
-    getVarianteConfig: vi.fn(() => Promise.resolve({ data: { variante_pct: '20.00' } })),
-    setVarianteConfig: vi.fn(() => Promise.resolve({ data: {} })),
+    getVarianteConfig: vi.fn(() => Promise.resolve({ data: {} })),
+    setVarianteConfig: vi.fn(),
   },
 }))
 
@@ -22,7 +22,7 @@ import { payloadTermes } from './peConstants'
 afterEach(() => cleanup())
 
 const store = configureStore({
-  reducer: { auth: (s = { role: 'admin', role_nom: null }) => s },
+  reducer: { auth: (s = { role: 'normal', role_nom: 'Directeur' }) => s },
 })
 
 const INDUSTRIEL = [

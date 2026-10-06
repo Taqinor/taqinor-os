@@ -68,12 +68,12 @@ const LEAD = {
   ville: 'Mohammedia',
 }
 
-function devisRouvert(variante, echeancier, mode = 'residentiel') {
+function devisRouvert(variante, echeancier) {
   const contrat = exempleContrat('ventes', 'devis_modifiabilite', variante)
   return {
     data: {
       ...contrat, echeancier, lead: LEAD.id, client: 9, date_envoi: '2026-09-28T10:00:00Z',
-      mode_installation: mode, taux_tva: '20.00', remise_globale: '0',
+      mode_installation: 'residentiel', taux_tva: '20.00', remise_globale: '0',
       etude_params: {
         scenario: 'Sans batterie',
         factures_mensuelles_reelles: estimerMois(3000, 3000),
@@ -135,6 +135,8 @@ beforeEach(() => {
   ventesApi.replaceLignesDevis.mockResolvedValue({ data: {} })
   ventesApi.patchEtudeParams.mockResolvedValue({ data: {} })
 })
+
+const enMode = (r, mode) => ({ data: { ...r.data, mode_installation: mode } })
 
 const EFFECTIFS = {
   residentiel: [
@@ -254,7 +256,7 @@ describe('QJR624 — l\'échéancier s\'édite dans l\'Édition complète', () =
         { jalon: 'reception_definitive', libelle: 'Réception définitive', pct: 10 },
       ],
     } } })
-    const rouvert = devisRouvert('exemple_brouillon', [], 'industriel')
+    const rouvert = enMode(devisRouvert('exemple_brouillon', []), 'industriel')
     ventesApi.getDevisById.mockResolvedValue(rouvert)
     renderEdition(rouvert.data.id)
     await waitFor(() => expect(parametresApi.getProfile).toHaveBeenCalled())
@@ -282,7 +284,7 @@ describe('QJR624 — l\'échéancier s\'édite dans l\'Édition complète', () =
       { libelle: 'Réception définitive', type: 'reception_definitive', jalon: 'reception_definitive', unite: 'pct', pct_or_montant: 10, delai_reglement_jours: 30 },
     ]
     expect(saisieVersEcheancier(echeancierVersSaisie(serveur))).toEqual(serveur)
-    const rouvert = devisRouvert('exemple_envoye', serveur, 'industriel')
+    const rouvert = enMode(devisRouvert('exemple_envoye', serveur), 'industriel')
     ventesApi.getDevisById.mockResolvedValue(rouvert)
     renderEdition(rouvert.data.id)
     await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
