@@ -643,6 +643,9 @@ retiré plus un hook ajouté.
 | `cal-fiches-incompletes` | fiches incomplètes. |
 | `cal-fiches-lien` | fiches lien. |
 | `cal-fiches-sans-devis` | fiches sans devis. |
+| `cal-fiches-materiel-calcul` | fiches « Matériel utilisé par le calcul » (ACAL264). |
+| `cal-fiches-materiel` | fiches ligne de matériel du calcul (ACAL264). |
+| `cal-fiches-ecart-module` | fiches écart calcul ↔ devis sur le module (ACAL264). |
 
 ## PompagePanel (`pompage/PompagePanel.jsx`)
 

@@ -524,6 +524,9 @@ export const ALL_HOOKS = [
   'cal-fiches-incompletes',
   'cal-fiches-lien',
   'cal-fiches-sans-devis',
+  'cal-fiches-materiel-calcul',
+  'cal-fiches-materiel',
+  'cal-fiches-ecart-module',
   // ── pompage/PompagePanel.jsx ──
   'cal-pompage-autonomie',
   'cal-pompage-avertissements',
